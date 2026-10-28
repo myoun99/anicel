@@ -52,6 +52,7 @@ class ExportPreviewPanel extends StatefulWidget {
     this.fileName,
     this.fileAbsent = false,
     this.enabled = true,
+    this.bottomBarLeading = const <Widget>[],
   });
 
   /// The session the window exports from: the memory census this panel's
@@ -83,6 +84,9 @@ class ExportPreviewPanel extends StatefulWidget {
   /// False while an export runs: nothing here turns the picture, which
   /// shows what the run under way is writing.
   final bool enabled;
+
+  /// The head of the pill ([DocumentPreviewPanel.bottomBarLeading]).
+  final List<Widget> bottomBarLeading;
 
   @override
   State<ExportPreviewPanel> createState() => ExportPreviewPanelState();
@@ -292,6 +296,7 @@ class ExportPreviewPanelState extends State<ExportPreviewPanel>
       transport: _transport(context, document),
       documentName: widget.fileName,
       documentAbsent: widget.fileAbsent,
+      bottomBarLeading: widget.bottomBarLeading,
     );
   }
 

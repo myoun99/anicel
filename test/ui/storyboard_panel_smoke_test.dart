@@ -62,7 +62,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(find.text('Video'), findsOneWidget);
+      expect(find.text('Cut'), findsOneWidget);
     });
 
     testWidgets('renders the current cut as a painted block', (tester) async {
@@ -186,8 +186,8 @@ void main() {
         find.byKey(const ValueKey<String>('storyboard-track-row-track-b')),
         findsOneWidget,
       );
-      expect(find.text('Video'), findsOneWidget);
-      expect(find.text('Video 2'), findsOneWidget);
+      expect(find.text('Cut'), findsOneWidget);
+      expect(find.text('Cut 2'), findsOneWidget);
       expect(
         find.byKey(
           const ValueKey<String>('storyboard-timeline-horizontal-viewport'),

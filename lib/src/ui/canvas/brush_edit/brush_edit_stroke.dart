@@ -101,7 +101,7 @@ class _BrushEditStroke {
 
   /// A stroke the TOOL lays (I-69) OPENS: the brush's settings are taken,
   /// and the overlay opens in its blend. No pointer is under it and no pen:
-  /// the pressure rests at full ([_BrushEditPressure.restInput]).
+  /// it is laid at the one pressure its start is given ([startToolStrokeAt]).
   ///
   /// 🚨Open is not IN FLIGHT. A shape the hand is still dragging is laid
   /// under its outline as this stroke ([_BrushEditShapeShow]) and is no
@@ -131,13 +131,22 @@ class _BrushEditStroke {
   /// stabiliser and the perspective snap a pen's samples pass through
   /// ([takeSample], [advanceStrokeThroughGuides]). A stroke the tool lays
   /// goes where it was told.
-  void startToolStrokeAt(CanvasPoint canvasPosition, {required int dice}) {
+  ///
+  /// Every dab of it reads [pressure], as a pen held at it the whole way
+  /// would: full for a shape, which no pen pressed, and the last stroke's
+  /// for the line from it ([ShapeShow.landStroke]).
+  void startToolStrokeAt(
+    CanvasPoint canvasPosition, {
+    required int dice,
+    required double pressure,
+  }) {
     _armItsOwn(
       _state._activeStrokeInputSettings!,
       at: canvasPosition,
       startsInsidePasteboard: _state._isInsidePasteboard(canvasPosition),
       dice: dice,
     );
+    _state._readings = _state._readings.withPressure(pressure);
     _state._pendingOverlayDabs.clear();
     _state._prepareLiveRasterizer();
   }
@@ -151,7 +160,9 @@ class _BrushEditStroke {
     _state._activeDrawingPointer = _toolsOwnStroke;
     _state._touchStrokeDownPosition = null;
     _state._touchStrokeCommitted = false;
-    _state.widget.onActiveStrokeChanged?.call(true);
+    _state.widget.onActiveStrokeChanged?.call(
+      StrokeInFlight.of(_state._activeStrokeInputSettings!),
+    );
   }
 
   /// THE PEN'S STROKE IS ARMED — everything it stands on before its first
@@ -165,7 +176,9 @@ class _BrushEditStroke {
     required bool startsInsidePasteboard,
     required int dice,
   }) {
-    _state.widget.onActiveStrokeChanged?.call(true);
+    _state.widget.onActiveStrokeChanged?.call(
+      StrokeInFlight.of(strokeSettings),
+    );
     _armAfresh(
       strokeSettings,
       at: at,
@@ -259,9 +272,8 @@ class _BrushEditStroke {
     );
     _state._lastDirectionDegrees = null;
     _state._previousBaseDab = null;
-    _state._groundMixer = strokeSettings.shape.mixesGroundColor
-        ? BrushGroundColorMixer(shape: strokeSettings.shape)
-        : null;
+    final mixer = BrushGroundColorMixer(shape: strokeSettings.shape);
+    _state._groundMixer = mixer.isActive ? mixer : null;
     _state._groundSampler = _state._groundMixer == null
         ? null
         : bitmapSurfaceGroundSampler(_state.widget.celNow());
@@ -762,7 +774,7 @@ class _BrushEditStroke {
   );
 
   void endStrokeInput() {
-    _state.widget.onActiveStrokeChanged?.call(false);
+    _state.widget.onActiveStrokeChanged?.call(StrokeInFlight.none);
     _state._pressure.reportReadings();
     clearStrokeInputState();
   }

@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +9,9 @@ import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/services/brush_dab_coverage.dart';
+
+/// asinh 1 = ln(1 + √2): the corner integral of a unit square.
+final _asinhOfOne = math.log(1 + math.sqrt2);
 
 void main() {
   BrushDab dab({
@@ -81,8 +85,14 @@ void main() {
         final visited = <BrushPixelCoverage>[];
         forEachBrushPixelCoverage(
           entry.$2,
-          (x, y, coverage) =>
-              visited.add(BrushPixelCoverage(x: x, y: y, coverage: coverage)),
+          (x, y, coverage, ceiling) => visited.add(
+            BrushPixelCoverage(
+              x: x,
+              y: y,
+              coverage: coverage,
+              ceiling: ceiling,
+            ),
+          ),
         );
         final listed = brushPixelCoveragesForDab(entry.$2);
 
@@ -111,7 +121,7 @@ void main() {
         dab(flow: 0),
       ]) {
         var calls = 0;
-        forEachBrushPixelCoverage(empty, (_, _, _) => calls += 1);
+        forEachBrushPixelCoverage(empty, (_, _, _, _) => calls += 1);
         expect(calls, 0);
         expect(brushPixelCoveragesForDab(empty), isEmpty);
       }
@@ -159,8 +169,32 @@ void main() {
 
     test('round hard tip skips pixels outside radius', () {
       expect(
-        brushPixelCoveragesForDab(dab(x: 1, y: 1, size: 1, hardness: 1)),
+        brushPixelCoveragesForDab(
+          dab(x: 1, y: 1, size: 1, hardness: 1, antiAlias: noEdge),
+        ),
         isEmpty,
+      );
+    });
+
+    test('at a step, a pixel\'s square past the rim takes its share — a dot '
+        'at four pixels\' corner, a quarter of its area each', () {
+      // Q6 b: a small round tip is read under a pixel's WHOLE square, so a
+      // dot lays its area wherever it lies. ↩️Read along the radius (Q4) a
+      // pixel reached half a pixel past the rim and no further, and a dot
+      // of 0.4 at the corner, its centres 0.707 out, laid nothing at all.
+      final past = brushPixelCoveragesForDab(
+        dab(x: 1, y: 1, size: 1, hardness: 1),
+      );
+      expect(past, hasLength(4));
+      expect(past.every((c) => c.coverage > 0 && c.coverage < 0.5), isTrue);
+      final dot = brushPixelCoveragesForDab(
+        dab(x: 1, y: 1, size: 0.4, hardness: 1),
+      );
+      expect(dot, hasLength(4));
+      expect(
+        dot.map((c) => c.coverage),
+        everyElement(closeTo(math.pi * 0.2 * 0.2 / 4, 0.0005)),
+        reason: 'each square holds a quarter of the dot',
       );
     });
 
@@ -190,8 +224,20 @@ void main() {
       final nearEdge = values.firstWhere(
         (value) => value.x == 8 && value.y == 9,
       );
-      expect(nearCenter.coverage, 1);
+      // The square of the pixel by the centre — (0, 0)–(1, 1) from it — is
+      // whole where it lies within 1 of it and loses the ramp's (r − 1)
+      // past that, out to the corner at √2: 2·∫₀^{π/4} ∫₁^{sec θ}
+      // (r − 1) r dr dθ = 2·((√2 + asinh 1)/6 − 1/2 + π/24) of it (Q6 b).
+      // ↩️0.979 while a pixel was read along the radius (Q4).
+      expect(
+        nearCenter.coverage,
+        closeTo(
+          1 - 2 * ((math.sqrt2 + _asinhOfOne) / 6 - 0.5 + math.pi / 24),
+          0.00001,
+        ),
+      );
       expect(nearEdge.coverage, allOf(greaterThan(0), lessThan(1)));
+      expect(nearEdge.coverage, lessThan(nearCenter.coverage));
     });
 
     test('round hardness 1 produces hard coverage', () {
@@ -212,7 +258,14 @@ void main() {
       final nearEdge = values.firstWhere(
         (value) => value.x == 8 && value.y == 9,
       );
-      expect(nearCenter.coverage, closeTo(1 - (0.70710678 / 2), 0.000001));
+      // The cone 1 − r/2 over the pixel's square by the centre: one less
+      // half the square's mean distance from its corner, (√2 + asinh 1)/3
+      // (Q6 b). ↩️At its centre's distance alone, 1 − 0.707/2, while a pixel
+      // was read along the radius (Q4).
+      expect(
+        nearCenter.coverage,
+        closeTo(1 - (math.sqrt2 + _asinhOfOne) / 6, 0.00001),
+      );
       expect(nearEdge.coverage, lessThan(nearCenter.coverage));
     });
 

@@ -4,9 +4,8 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
-import 'package:anicel/src/ui/home_page.dart';
 
+import '../../helpers/timeline_host.dart';
 import 'timeline_cell_probe.dart';
 
 /// F-16 — **the camera and transition rows select like every other row.**
@@ -21,17 +20,14 @@ import 'timeline_cell_probe.dart';
 /// entry point. The session-level path was never the thing in doubt — the
 /// question is whether a drag on these two rows reaches it at all.
 void main() {
-  Future<EditorSessionManager> pumpWorkspace(WidgetTester tester) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(home: HomePage(initialProject: createDefaultProject())),
-    );
-    await tester.pumpAndSettle();
-    return tester
-        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
-        .session;
-  }
+  // The timeline tab alone ([pumpTimelineHost]), as the app's window of
+  // 1400 × 900 laid it — the rail is the panel's.
+  Future<EditorSessionManager> pumpWorkspace(WidgetTester tester) =>
+      pumpTimelineHost(
+        tester,
+        createDefaultProject(),
+        surface: const Size(870, 396),
+      );
 
   Layer layerOfKind(EditorSessionManager session, LayerKind kind) =>
       session.layers.firstWhere((layer) => layer.kind == kind);

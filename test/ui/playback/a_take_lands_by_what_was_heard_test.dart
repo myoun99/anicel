@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/audio_sync_settings.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -95,6 +96,9 @@ void main() {
       clock: device,
     );
     manager.voiceRecording.debugVoiceRecorderFactory = () => microphone;
+    manager.appSettings.setAudioSyncSettings(
+      const AudioSyncSettings(microphoneAllowed: true),
+    );
     return manager;
   }
 

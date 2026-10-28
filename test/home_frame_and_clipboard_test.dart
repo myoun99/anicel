@@ -4,7 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/frame.dart'
-    show breakdownMark, unnamedDrawingMark;
+    show InbetweenMark, unnamedDrawingMark;
 import 'package:anicel/main.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 
@@ -14,6 +14,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
 import 'helpers/home_page_probes.dart';
+import 'helpers/room_for_the_pills.dart';
 import 'helpers/named_finders.dart';
 import 'ui/timeline/timeline_cell_probe.dart' show timelineCellGlobalRect;
 
@@ -227,10 +228,10 @@ void main() {
         tester,
         const ValueKey<String>('toggle-mark-button'),
       );
-      expectCellMark('default-layer-1', 1, breakdownMark);
+      expectCellMark('default-layer-1', 1, InbetweenMark.two);
       expect(
         selectedCellStateLabel(tester),
-        'inbetween mark',
+        'inbetween mark 2',
         reason: '⛔전제: the held cell really carries a dot',
       );
 
@@ -258,6 +259,8 @@ void main() {
   Future<EditorSessionManager> withTheActiveRowSelected(
     WidgetTester tester,
   ) async {
+    await tester.binding.setSurfaceSize(appWindowWithRoomForItsPills);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const AnicelApp());
     final session = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))

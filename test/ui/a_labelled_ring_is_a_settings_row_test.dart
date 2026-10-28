@@ -127,33 +127,33 @@ void main() {
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey<String>('export-tab-sequence')));
     await tester.pump();
-    final tile = find.byKey(const ValueKey<String>('export-apply-fx-toggle'));
+    final tile = find.byKey(const ValueKey<String>('export-audio-toggle'));
     if (tile.evaluate().isEmpty) {
-      // A folded accordion titles itself 「Options — FX on」.
-      final header = find.textContaining(AppText.strings.exOptions).first;
+      // A folded accordion titles itself 「Audio — …」.
+      final header = find.textContaining(AppText.strings.exAudio).first;
       await tester.ensureVisible(header);
       await tester.tap(header);
       await tester.pump();
     }
     final dialog = tester.state<ExportDialogState>(find.byType(ExportDialog));
-    final before = dialog.debugSpecs.sequence.applyLayerFx;
+    final before = dialog.debugSpecs.sequence.includeAudio;
     final label = find.descendant(
       of: tile,
-      matching: find.text(AppText.strings.exApplyLayerFx),
+      matching: find.text(AppText.strings.exMuxSeMix),
     );
 
     await tester.ensureVisible(label);
     await tester.tap(label);
     await tester.pump();
     expect(
-      dialog.debugSpecs.sequence.applyLayerFx,
+      dialog.debugSpecs.sequence.includeAudio,
       before,
       reason: 'the label is words',
     );
 
     await tester.pressRingIn(tile);
     await tester.pump();
-    expect(dialog.debugSpecs.sequence.applyLayerFx, !before);
+    expect(dialog.debugSpecs.sequence.includeAudio, !before);
     expectRingRightOf(tester, tile, label);
   });
 
@@ -237,7 +237,7 @@ void main() {
         // A row with a tooltip and a row without one.
         for (final key in const [
           'settings-extra-finger',
-          'settings-zoom-ceiling',
+          'settings-ignore-touch',
         ]) {
           final tile = find.byKey(ValueKey<String>(key));
           await tester.ensureVisible(tile);

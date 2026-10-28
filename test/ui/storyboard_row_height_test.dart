@@ -12,6 +12,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
+import 'package:anicel/src/ui/session/tab_rail_wiring.dart';
 
 /// The V row's height is the user's to set, all the way down to the floor —
 /// and the floor has to be a height the row actually fits in (feedback #8:
@@ -66,6 +67,7 @@ Future<void> _openStoryboardAtFloor(WidgetTester tester) async {
           listenable: manager,
           builder: (context, _) => StoryboardTabHost(
             session: manager,
+            rail: TabRailWiring.of(manager),
             pixelsPerFrame: 12,
             onPixelsPerFrameChanged: (_) {},
             showSeconds: false,

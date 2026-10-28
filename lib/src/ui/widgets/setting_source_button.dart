@@ -120,6 +120,7 @@ class SettingSourceButton extends StatelessWidget {
         child: ControlPressClaim(
           onPressed: enabled ? () => onPressed(context) : null,
           child: InkWell(
+            mouseCursor: AppCursors.press,
             key: ValueKey<String>(keyValue),
             customBorder: AppShapes.container(AppShapes.wellRadius),
             onTap: silentPress(enabled ? () => onPressed(context) : null),
@@ -207,6 +208,7 @@ class SettingSourceName extends StatelessWidget {
   Widget build(BuildContext context) => ControlPressClaim(
     onPressed: onPressed,
     child: InkWell(
+      mouseCursor: AppCursors.press,
       key: ValueKey<String>(keyValue),
       customBorder: AppShapes.container(AppShapes.wellRadius),
       onTap: silentPress(onPressed),

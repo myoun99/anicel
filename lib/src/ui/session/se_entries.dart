@@ -1,9 +1,12 @@
-import '../../services/project_lookup.dart' show requireLayerAnywhere;
+import '../../services/project_lookup.dart'
+    show projectLayersWithOwners, requireCut, requireLayerAnywhere;
 import '../../models/cut.dart';
+import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/se_line_type.dart';
+import '../../models/timeline_coverage.dart' show coveringDrawingBlockAt;
 import '../../models/track_transitions.dart' show cutDrawnFrameCount;
 import '../../services/camera_projection_matrix.dart' show shotPlacement;
 import '../../services/layer_pose_matrix.dart' show LayerPlacement;
@@ -115,7 +118,7 @@ class SeEntries {
     }
     return resolveSeNameTagsAt(
       trackSeLayers: globalLayersShowingDragPreview(track.seLayers, preview),
-      globalFrame: shown,
+      shown: (globalFrame: shown, cutId: cut.id),
       cameraFrame: _camera.cameraFrameSize,
       shot: shotForCutFrame(cut, localFrameIndex),
     );
@@ -135,9 +138,42 @@ class SeEntries {
   /// SE rows: the selected entry's speaker/effect name (the accent box).
   String? get selectedFrameSeName => _selection.selectedFrame?.seName;
 
-  /// The selected entry's delivery (I-20) — what the SE dialog opens on.
-  SeLineType get selectedFrameSeType =>
-      _selection.selectedFrame?.seType ?? SeLineType.on;
+  /// The selected entry's delivery in each cut (I-20, F-386) — what the SE
+  /// dialog opens on.
+  SeLineTypes get selectedFrameSeTypes =>
+      _selection.selectedFrame?.seTypes ?? SeLineTypes.allOn;
+
+  /// The cuts the block of the SE row [layerId] over its track's frame
+  /// [globalFrame] plays in, in the track's order — the cuts the SE dialog
+  /// sets the line's delivery for (F-386) — and the one whose place holds
+  /// that frame. No cuts when no block covers the frame, and for a block
+  /// that lies between cuts.
+  ({List<Cut> cuts, CutId? atFrame}) seLineCutsAt(
+    LayerId layerId,
+    int globalFrame,
+  ) {
+    final project = _project.repository.requireProject();
+    final row = projectLayersWithOwners(
+      project,
+    ).where((owned) => owned.layer.id == layerId).firstOrNull;
+    final block = row == null
+        ? null
+        : coveringDrawingBlockAt(row.layer.timeline, globalFrame);
+    if (row == null || block == null) {
+      return (cuts: const [], atFrame: null);
+    }
+    final axis = _projectSettings.axisForTrack(row.track.id);
+    return (
+      cuts: [
+        for (final cutId in axis.cutsIn(
+          block.startIndex,
+          block.endIndexExclusive,
+        ))
+          requireCut(project, cutId),
+      ],
+      atFrame: axis.cutsIn(globalFrame, globalFrame + 1).firstOrNull,
+    );
+  }
 
   /// Creates an SE entry at the current cell carrying [name] (the sheet's
   /// dialogue text) and the optional [seName] (speaker/effect, the accent
@@ -176,12 +212,13 @@ class SeEntries {
   }
 
   /// SE rows: updates the selected entry's dialogue (Frame.name), speaker
-  /// name and delivery (I-20) in ONE undo step. Duplicates are allowed — the
-  /// same dialogue can legitimately repeat on a sheet.
+  /// name and delivery in each cut (I-20, F-386) in ONE undo step.
+  /// Duplicates are allowed — the same dialogue can legitimately repeat on
+  /// a sheet.
   void updateSelectedSeEntry({
     required String dialogue,
     String? seName,
-    required SeLineType seType,
+    required SeLineTypes seTypes,
   }) {
     final layer = _selection.activeLayer;
     final frame = _selection.selectedFrame;
@@ -194,7 +231,7 @@ class SeEntries {
       layer.id,
       frame.id,
       dialogue: dialogue,
-      fields: (seName: seName, seType: seType),
+      fields: (seName: seName, seTypes: seTypes),
     );
   }
 

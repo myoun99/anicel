@@ -9,6 +9,8 @@ import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show scrubTransformLaneValue;
 
+import '../../helpers/number_pad_keyboard.dart';
+
 /// 🗣️tool-settings-panel-tidy (유저 2026-10-10): 「fx에도 텍스트편집하는거
 /// 있는데 거기도 사용하는거 어떻지? x랑 y값 안그래도 같이움직여서
 /// 불편했고」 → 「A로하고 … 좀 더 여유롭게 크게하자」 — a lane's value is the
@@ -126,16 +128,17 @@ void main() {
 
     await tester.tap(box('scale', 1));
     await tester.pump();
+    // The pad, not its field: the pencil's pad opens with no field in it
+    // (I-134), so a field missing says nothing about what opened.
     expect(
-      find.byKey(
-        const ValueKey<String>('timeline-lane-value-field-a-scale-1'),
-      ),
+      theNumberPadsNumber,
       findsNothing,
       reason: 'a press on the box opens nothing',
     );
 
     await tester.tap(hand('scale', 1, 'edit'));
     await tester.pump();
+    await openThePadsKeyboard(tester);
     final field = find.byKey(
       const ValueKey<String>('timeline-lane-value-field-a-scale-1'),
     );

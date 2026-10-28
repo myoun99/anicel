@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/widgets/transport_bar.dart';
 import '../../helpers/app_faces.dart';
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/words_cut_off.dart';
+import '../../helpers/number_pad_keyboard.dart';
 
 /// The shared transport. Two things are pinned here, because every surface
 /// that runs in time relies on them without re-testing them:
@@ -370,12 +371,12 @@ void main() {
     ) async {
       var pressed = 0;
       await pump(tester, frameCount: 10, onPlayPause: () => pressed += 1);
-      expect(find.byIcon(Icons.play_arrow), findsOneWidget);
+      expect(find.railIcon(Icons.play_arrow), findsOneWidget);
       await tester.tap(find.byKey(k('play')));
       expect(pressed, 1);
 
       await pump(tester, frameCount: 10, playing: true);
-      expect(find.byIcon(Icons.pause), findsOneWidget);
+      expect(find.railIcon(Icons.pause), findsOneWidget);
     });
 
     testWidgets('with nothing to play, play stays where it is and is off', (
@@ -489,7 +490,7 @@ void main() {
         onMuteToggled: () => toggles += 1,
       );
       await pump(tester, frameCount: 10, sound: sound(muted: false));
-      expect(find.byIcon(Icons.volume_up), findsOneWidget);
+      expect(find.railIcon(Icons.volume_up), findsOneWidget);
       expect(
         tester.widget<FieldSlider>(find.byKey(k('volume'))).restingAccent,
         isNull,
@@ -498,7 +499,7 @@ void main() {
       expect(toggles, 1);
 
       await pump(tester, frameCount: 10, sound: sound(muted: true));
-      expect(find.byIcon(Icons.volume_off), findsOneWidget);
+      expect(find.railIcon(Icons.volume_off), findsOneWidget);
       final bar = tester.widget<FieldSlider>(find.byKey(k('volume')));
       expect(bar.value, 0.7, reason: 'muting keeps the level');
       expect(bar.restingAccent, AppColors.textDim, reason: 'and greys it');
@@ -652,6 +653,12 @@ void main() {
       );
       await tester.tap(find.byKey(k('in-edit')));
       await tester.pump();
+      expect(
+        thePadsLitKeys(tester),
+        (minus: false, point: false),
+        reason: 'a frame is typed in digits alone',
+      );
+      await openThePadsKeyboard(tester);
       await tester.enterText(find.byKey(k('in-input')), '13');
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pump();
@@ -667,6 +674,7 @@ void main() {
       );
       await tester.tap(find.byKey(k('in-edit')));
       await tester.pump();
+      await openThePadsKeyboard(tester);
       await tester.enterText(find.byKey(k('in-input')), '99');
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pump();
@@ -684,6 +692,7 @@ void main() {
       );
       await tester.tap(find.byKey(k('out-edit')));
       await tester.pump();
+      await openThePadsKeyboard(tester);
       await tester.enterText(find.byKey(k('out-input')), '5');
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pump();

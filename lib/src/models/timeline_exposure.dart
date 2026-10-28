@@ -1,6 +1,7 @@
 import '../core/collection_equality.dart';
 import 'exposure_instruction.dart';
 import 'exposure_memo.dart';
+import 'frame.dart' show InbetweenMark;
 import 'frame_id.dart';
 import 'timeline_exposure_type.dart';
 import 'timeline_run_behavior.dart';
@@ -13,8 +14,8 @@ import 'timeline_run_behavior.dart';
 /// lengths. A drawing at index `s` covers `[s, s + length)`; indexes not
 /// covered by any drawing are empty ("X" cells) without any entry existing.
 ///
-/// UI-R9 #8: the inbetween DOTS (중간나누기 ●) are BLOCK-OWNED now —
-/// [breakdownOffsets] inside the entry, so they ride every move/copy of
+/// UI-R9 #8: the inbetween DOTS (중간나누기 ○ ●) are BLOCK-OWNED now —
+/// [breakdownMarks] inside the entry, so they ride every move/copy of
 /// the block for free. The standalone `mark` entry type is retired
 /// (free-floating dots on empty cells are no longer a thing; want one
 /// there, author an unnamed frame). Legacy mark entries migrate on load:
@@ -24,7 +25,7 @@ class TimelineExposure {
     FrameId this.frameId, {
     required int this.length,
     this.ghostOf,
-    this.breakdownOffsets = const [],
+    this.breakdownMarks = const {},
     this.memo,
     this.instruction,
     this.startEdge = TimelineRunEdgeMark.none,
@@ -50,16 +51,35 @@ class TimelineExposure {
   /// entry — the one field says both whether and what.
   final TimelineRunEdgeGhost? ghostOf;
 
-  /// The inbetween DOTS (중간나누기 ●) inside this block, as offsets from
-  /// the block start — sorted, unique, each in `1..length-1` (offset 0 is
-  /// the drawing itself). Owned by the block: moves/copies carry them,
-  /// and a length shrink through [copyWith] drops the offsets it cut off
-  /// ([copyWith] and [fromJson] normalize; direct const construction
+  /// The inbetween DOTS (중간나누기) inside this block: the mark each wears,
+  /// by its offset from the block start — ascending, each in `1..length-1`
+  /// (offset 0 is the drawing itself), one mark to a cell (I-130: 「모양이
+  /// 다를뿐인 같은 중간나누기」). Owned by the block: moves/copies carry
+  /// them, and a length shrink through [copyWith] drops the offsets it cut
+  /// off ([copyWith] and [fromJson] normalize; direct const construction
   /// trusts the caller).
-  final List<int> breakdownOffsets;
+  final Map<int, InbetweenMark> breakdownMarks;
+
+  /// Where [breakdownMarks]' dots stand, ascending — whatever they wear.
+  List<int> get breakdownOffsets => [...breakdownMarks.keys];
+
+  /// A block's [marks] as they stand on a block that starts [cut] cells into
+  /// it: each moved back [cut], each wearing its mark, and the ones at or
+  /// before the cut gone — offset 0 is the drawing itself.
+  ///
+  /// THE one shift for every block that loses its head: the tail a band's X
+  /// leaves, the back half of a split, a repeat's part a wall cuts into.
+  /// ↩️Each of the three spelled it (I-130 found them carrying the mark).
+  static Map<int, InbetweenMark> marksPastCut(
+    Map<int, InbetweenMark> marks,
+    int cut,
+  ) => {
+    for (final MapEntry(key: offset, value: mark) in marks.entries)
+      if (offset > cut) offset - cut: mark,
+  };
 
   /// This block's memo, or null when it carries none. BLOCK-OWNED like
-  /// [breakdownOffsets] — moves and copies carry it, re-exposing the same
+  /// [breakdownMarks] — moves and copies carry it, re-exposing the same
   /// drawing gets its own, and a linked cut's local timeline keeps its own
   /// without any mirroring rule. Ghost entries never hold one: they are
   /// rederived from a run behaviour on every edit, so there is nothing
@@ -75,7 +95,7 @@ class TimelineExposure {
 
   /// This block's share of its glued run's START-side and END-side edge
   /// properties (F-134 — see [TimelineRunEdgeMark]). BLOCK-OWNED like
-  /// [breakdownOffsets] and [memo]: moves, copies and relinks carry them.
+  /// [breakdownMarks] and [memo]: moves, copies and relinks carry them.
   /// Ghost entries never hold one — a ghost is a property's output, not a
   /// block of the run.
   final TimelineRunEdgeMark startEdge;
@@ -85,25 +105,54 @@ class TimelineExposure {
   TimelineRunEdgeMark edgeMark(TimelineRunEdgeSide side) =>
       side == TimelineRunEdgeSide.start ? startEdge : endEdge;
 
-  static List<int> _normalizedOffsets(List<int> offsets, int length) {
-    if (offsets.isEmpty) {
-      return const [];
+  static Map<int, InbetweenMark> _normalizedMarks(
+    Map<int, InbetweenMark> marks,
+    int length,
+  ) {
+    if (marks.isEmpty) {
+      return const {};
     }
-    final kept = offsets.where((offset) => offset >= 1 && offset < length)
-        .toSet()
-        .toList()
-      ..sort();
-    return List.unmodifiable(kept);
+    final kept = [
+      for (final offset in marks.keys)
+        if (offset >= 1 && offset < length) offset,
+    ]..sort();
+    return Map.unmodifiable({for (final offset in kept) offset: marks[offset]});
   }
 
-  bool get isDrawing => type == TimelineExposureType.drawing;
+  /// The key a file writes [mark]'s dots under, as a list of offsets.
+  ///
+  /// ↩️`breakdown` held the one mark there was before I-130, the filled ●
+  /// — mark 2 now — so it goes on holding it: a file written before reads
+  /// as it showed.
+  static String _breakdownKey(InbetweenMark mark) => switch (mark) {
+    InbetweenMark.one => 'breakdown1',
+    InbetweenMark.two => 'breakdown',
+  };
 
-  bool hasBreakdownAt(int offset) => breakdownOffsets.contains(offset);
+  /// Where the dots that wear [mark] stand, ascending.
+  List<int> _offsetsWearing(InbetweenMark mark) => [
+    for (final MapEntry(key: offset, value: wears) in breakdownMarks.entries)
+      if (wears == mark) offset,
+  ];
+
+  /// The dots an entry's [json] writes, as they are written — the ONE
+  /// reader of them, for [fromJson] and the layer's own timeline decoder.
+  /// What its length cuts off is [copyWith]'s to drop.
+  static Map<int, InbetweenMark> breakdownMarksFromJson(
+    Map<String, dynamic> json,
+  ) => {
+    for (final mark in InbetweenMark.values)
+      for (final offset
+          in json[_breakdownKey(mark)] as List<dynamic>? ?? const [])
+        offset as int: mark,
+  };
+
+  bool get isDrawing => type == TimelineExposureType.drawing;
 
   TimelineExposure copyWith({
     FrameId? frameId,
     int? length,
-    List<int>? breakdownOffsets,
+    Map<int, InbetweenMark>? breakdownMarks,
     ExposureMemo? Function()? memo,
     ExposureInstruction? Function()? instruction,
     TimelineRunEdgeMark? startEdge,
@@ -116,8 +165,8 @@ class TimelineExposure {
       ghostOf: ghostOf,
       // Normalization clamps offsets to the (possibly new) length — a
       // shrink drops what it cut off.
-      breakdownOffsets: _normalizedOffsets(
-        breakdownOffsets ?? this.breakdownOffsets,
+      breakdownMarks: _normalizedMarks(
+        breakdownMarks ?? this.breakdownMarks,
         nextLength,
       ),
       memo: memo == null ? this.memo : memo(),
@@ -140,7 +189,9 @@ class TimelineExposure {
     if (frameId != null) 'frameId': frameId!.toJson(),
     if (length != null) 'length': length,
     if (ghostOf != null) 'ghostOf': ghostOf!.toJson(),
-    if (breakdownOffsets.isNotEmpty) 'breakdown': breakdownOffsets,
+    for (final mark in InbetweenMark.values)
+      if (_offsetsWearing(mark) case final offsets when offsets.isNotEmpty)
+        _breakdownKey(mark): offsets,
     if (memo != null && !memo!.isEmpty) 'memo': memo!.toJson(),
     if (instruction != null) 'instruction': instruction!.toJson(),
     if (!startEdge.isNone) 'startEdge': startEdge.toJson(),
@@ -161,10 +212,7 @@ class TimelineExposure {
       FrameId.fromJson(frameIdJson as Map<String, dynamic>),
       length: length,
       ghostOf: TimelineRunEdgeGhost.fromJsonOrNull(json['ghostOf']),
-      breakdownOffsets: _normalizedOffsets([
-        for (final offset in (json['breakdown'] as List<dynamic>? ?? const []))
-          offset as int,
-      ], length),
+      breakdownMarks: _normalizedMarks(breakdownMarksFromJson(json), length),
       memo: json['memo'] == null
           ? null
           : ExposureMemo.fromJson(json['memo'] as Map<String, dynamic>),
@@ -190,7 +238,7 @@ class TimelineExposure {
           other.instruction == instruction &&
           other.startEdge == startEdge &&
           other.endEdge == endEdge &&
-          listEquals(other.breakdownOffsets, breakdownOffsets);
+          mapEquals(other.breakdownMarks, breakdownMarks);
 
   @override
   int get hashCode => Object.hash(
@@ -198,7 +246,10 @@ class TimelineExposure {
     frameId,
     length,
     ghostOf,
-    Object.hashAll(breakdownOffsets),
+    Object.hashAllUnordered([
+      for (final MapEntry(:key, :value) in breakdownMarks.entries)
+        Object.hash(key, value),
+    ]),
     memo,
     instruction,
     startEdge,
@@ -209,7 +260,7 @@ class TimelineExposure {
   String toString() =>
       'TimelineExposure(type: $type, frameId: $frameId, length: $length'
       '${ghostOf == null ? '' : ', $ghostOf'}'
-      '${breakdownOffsets.isEmpty ? '' : ', breakdown: $breakdownOffsets'}'
+      '${breakdownMarks.isEmpty ? '' : ', breakdown: $breakdownMarks'}'
       '${memo == null ? '' : ', memo: $memo'}'
       '${instruction == null ? '' : ', instruction: $instruction'}'
       '${startEdge.isNone ? '' : ', start: $startEdge'}'

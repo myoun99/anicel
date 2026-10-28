@@ -2,7 +2,10 @@ import 'dart:collection';
 import 'dart:math' as math;
 
 import '../../models/camera_instruction.dart';
+import '../../models/cel_bank_lanes.dart' show layerJoined;
+import '../../models/exposure_instruction.dart';
 import '../../models/frame.dart';
+import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -11,7 +14,6 @@ import '../../models/timeline_exposure.dart';
 import '../timeline/instruction_span_editing.dart';
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
-import 'camera.dart';
 
 /// The INSTRUCTIONS — the spans a direction row carries, the span at a
 /// frame, and creating, upserting and removing them — as their own object.
@@ -31,15 +33,11 @@ class Instructions {
     required ChangeSink changes,
     required FrameIds frameIds,
     required ActiveCutControllers controllers,
-    required Camera camera,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _frameIds = frameIds,
-       _controllers = controllers,
-       _camera = camera;
-
-  final Camera _camera;
+       _controllers = controllers;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -52,13 +50,10 @@ class Instructions {
   MapEntry<int, InstructionEvent>? instructionSpanAt(
     LayerId layerId,
     int frameIndex,
-  ) {
-    final layer = _project.layerById(layerId);
-    if (layer == null || layer.kind != LayerKind.instruction) {
-      return null;
-    }
-    return instructionSpanCovering(layer.instructions, frameIndex);
-  }
+  ) => switch (_directionRow(layerId)) {
+    final layer? => instructionSpanCovering(layer.instructions, frameIndex),
+    null => null,
+  };
 
   /// Whether [createDefaultInstructionEventAtCurrentFrame] makes a block —
   /// the ONE sentence its press and the ＋ that lights for it read (T25).
@@ -72,15 +67,17 @@ class Instructions {
       return false;
     }
     final frameIndex = _controllers.timelineController.currentFrameIndex;
-    return frameIndex >= 0 &&
-        instructionSpanAt(layer.id, frameIndex) == null &&
-        _camera.cameraInstructionSet.defs.isNotEmpty;
+    return frameIndex >= 0 && instructionSpanAt(layer.id, frameIndex) == null;
   }
 
   /// Dialog-free instruction creation (UI-R25 #2, 조작 통일화): an EMPTY
-  /// instruction cell gains a ONE-frame event of the vocabulary's first
-  /// entry directly — the Edit Instance dialog changes it afterwards.
-  /// Covered cells no-op (creation never edits).
+  /// instruction cell gains a ONE-frame block that says nothing — the Edit
+  /// Instance dialog tells it something afterwards, as an SE entry made here
+  /// is named afterwards. Covered cells no-op (creation never edits).
+  ///
+  /// 🗣️I-72-block-without-instruction (유저 2026-10-08): 「생성시 기본값
+  /// 없음」. ↩️The block took the vocabulary's first entry, and an emptied
+  /// vocabulary left the ＋ dark.
   void createDefaultInstructionEventAtCurrentFrame() {
     if (!canCreateDefaultInstructionEventAtCurrentFrame) {
       return;
@@ -90,28 +87,32 @@ class Instructions {
     upsertInstructionEventAt(
       layer.id,
       frameIndex,
-      InstructionEvent(
-        instructionId: _camera.cameraInstructionSet.defs.first.id,
-        length: 1,
-      ),
+      const InstructionEvent(instructionId: null, length: 1),
       createLengthFrames: 1,
     );
   }
 
   /// Creates or edits the instruction event at [frameIndex] in ONE undo
-  /// step: a covered cell replaces what its block says (start and length
-  /// stay, and so does the drawing), an empty cell lays a new block on a
-  /// cel of its own, holding for the dialog's length — clamped into the
-  /// cut and at the next block.
-  void upsertInstructionEventAt(
+  /// step: a covered cell replaces what its block says — and what every
+  /// block showing its drawing says, the blocks it is linked with (start
+  /// and length stay, and so does the drawing) — an empty cell lays a new
+  /// block on a cel of its own, holding for the dialog's length — clamped
+  /// into the cut and at the next block.
+  ///
+  /// 🗣️I-72-direction-link: what a block says names its drawing
+  /// ([linkNameOfWriting]), so an edit that would say what ANOTHER drawing
+  /// of the row says writes nothing and hands back that drawing — the link
+  /// is the user's to take ([linkInstructionEventAt]), as a rename onto a
+  /// held name is (`FrameVerbs.renameSelectedFrame`). Null when it wrote.
+  FrameId? upsertInstructionEventAt(
     LayerId layerId,
     int frameIndex,
     InstructionEvent event, {
     int? createLengthFrames,
   }) {
-    final layer = _project.layerById(layerId);
-    if (layer == null || layer.kind != LayerKind.instruction) {
-      return;
+    final layer = _directionRow(layerId);
+    if (layer == null) {
+      return null;
     }
 
     // A resolvable instruction layer implies an active cut.
@@ -119,20 +120,22 @@ class Instructions {
       1,
       1 << 20,
     );
-    final covering = coveringDrawingBlockAt(layer.timeline, frameIndex);
-    final edits = covering != null && !covering.entry.ghost;
+    final covering = authoredDrawingBlockAt(layer.timeline, frameIndex);
+    final edits = covering != null;
     final Layer Function(Layer row) spans;
     if (edits) {
-      spans = (row) => row.copyWith(
-        timeline: {
-          ...row.timeline,
-          covering.startIndex: covering.entry.copyWith(
-            instruction: () => event.writing,
-          ),
-        },
-      );
+      final drawing = covering.frameId;
+      if (_drawingSaying(layer, event.writing, besides: drawing)
+          case final held?) {
+        return held;
+      }
+      spans = (row) => _sayingOnEveryBlockOf(row, drawing, event.writing);
     } else {
-      final cel = _frameIds.mintFrameId(layerId);
+      // A new block saying what a drawing of the row says shows that one,
+      // and says it with that one's blocks: nothing is thrown away, so
+      // there is nothing to ask.
+      final held = _drawingSaying(layer, event.writing);
+      final cel = held ?? _frameIds.mintFrameId(layerId);
       final wanted = (createLengthFrames ?? available).clamp(1, available);
       spans = (row) {
         // A ghost is a hold's projection, not a block: it neither stops the
@@ -140,10 +143,10 @@ class Instructions {
         final authored = SplayTreeMap.of(row.timeline)
           ..removeWhere((_, entry) => entry.ghost);
         final next = nextDrawingBlockAfter(authored, frameIndex)?.startIndex;
-        return row.copyWith(
+        final laid = row.copyWith(
           frames: [
             ...row.frames,
-            Frame(id: cel, duration: 1, strokes: const []),
+            if (held == null) Frame(id: cel, duration: 1, strokes: const []),
           ],
           timeline: {
             ...authored,
@@ -156,6 +159,9 @@ class Instructions {
             ),
           },
         );
+        return held == null
+            ? laid
+            : _sayingOnEveryBlockOf(laid, held, event.writing);
       };
     }
     // ⛔A direction writes nothing into the sheet's memo (I-72, 유저
@@ -171,17 +177,103 @@ class Instructions {
       description: edits ? 'Edit instruction' : 'Add instruction',
     );
     _changes.notifyChanged();
+    return null;
   }
+
+  /// Links the block covering [frameIndex] to [held] — the drawing of the
+  /// row that already says what [event] says ([upsertInstructionEventAt]
+  /// handed it back) — and says [event] on every block of [held]: the
+  /// blocks of the drawing the block showed show [held], and that drawing
+  /// goes from the bank unless a lane of it still shows it ([layerJoined],
+  /// the rename's join). ONE undo step.
+  void linkInstructionEventAt(
+    LayerId layerId,
+    int frameIndex,
+    InstructionEvent event,
+    FrameId held,
+  ) {
+    final drawing = _directionBlockAt(layerId, frameIndex)?.frameId;
+    if (drawing == null) {
+      return;
+    }
+    final bank = _controllers.timelineController.bankLanesOf(layerId);
+    _project.cutCommandCoordinator.updateDirectionSpans(
+      cutId: _project.requireActiveCut.id,
+      layerId: layerId,
+      spans: (row) => _sayingOnEveryBlockOf(
+        layerJoined(row, {drawing: held}, bank: bank),
+        held,
+        event.writing,
+      ),
+      description: 'Link instruction',
+    );
+    _changes.notifyChanged();
+  }
+
+  /// [layerId]'s row where it is a direction row; null for any other.
+  Layer? _directionRow(LayerId layerId) =>
+      switch (_project.layerById(layerId)) {
+        final layer? when layer.kind == LayerKind.instruction => layer,
+        _ => null,
+      };
+
+  /// The block a person wrote covering [frameIndex] on the direction row
+  /// [layerId] — what a link and a delete of a block stand on.
+  TimelineDrawingBlock? _directionBlockAt(LayerId layerId, int frameIndex) =>
+      switch (_directionRow(layerId)) {
+        final layer? => authoredDrawingBlockAt(layer.timeline, frameIndex),
+        null => null,
+      };
+
+  /// The drawing of [layer] — other than [besides] — that already says
+  /// what [writing] says: the one holding the name it gives
+  /// ([linkNameOfWriting]). None where it names no end.
+  FrameId? _drawingSaying(
+    Layer layer,
+    ExposureInstruction? writing, {
+    FrameId? besides,
+  }) {
+    final name = linkNameOfWriting(
+      writing,
+      switch (writing?.instructionId) {
+        final id? => _project.repository
+            .requireProject()
+            .cameraInstructions
+            .defById(id),
+        null => null,
+      },
+    );
+    if (name == null) {
+      return null;
+    }
+    for (final frame in layer.frames) {
+      if (frame.id != besides && frame.name == name) {
+        return frame.id;
+      }
+    }
+    return null;
+  }
+
+  /// [row] with [writing] said on every block that shows [drawing] — what
+  /// the drawing's blocks say is one thing, as the drawing is.
+  Layer _sayingOnEveryBlockOf(
+    Layer row,
+    FrameId drawing,
+    ExposureInstruction? writing,
+  ) => row.copyWith(
+    timeline: {
+      for (final MapEntry(key: start, value: entry) in row.timeline.entries)
+        start: !entry.ghost && entry.frameId == drawing
+            ? entry.copyWith(instruction: () => writing)
+            : entry,
+    },
+  );
 
   /// Removes the instruction span covering [frameIndex] — the block it is,
   /// with its drawing, by the delete button's own code; one undo step.
   void removeInstructionEventAt(LayerId layerId, int frameIndex) {
-    final layer = _project.layerById(layerId);
-    if (layer == null || layer.kind != LayerKind.instruction) {
-      return;
-    }
-    final covering = coveringDrawingBlockAt(layer.timeline, frameIndex);
-    if (covering == null || covering.entry.ghost) {
+    final covering = _directionBlockAt(layerId, frameIndex);
+    if (covering == null) {
       return;
     }
     _controllers.timelineController.deleteBlocksForLayer(

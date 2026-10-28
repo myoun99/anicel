@@ -1,7 +1,11 @@
+import 'dart:async' show FutureOr;
+
 import 'package:flutter/material.dart';
 
 import '../../models/audio_clip.dart' show AudioClip;
 import '../../models/camera_instruction.dart';
+import '../../models/cut.dart' show Cut;
+import '../../models/cut_id.dart';
 import '../../models/pill_subject.dart';
 import '../../models/frame.dart' show Frame;
 import '../../models/frame_id.dart';
@@ -334,7 +338,13 @@ Future<void> _editSeLabel(
     context,
     initialSeName: session.seEntries.selectedFrameSeName ?? '',
     initialDialogue: session.selectedFrameName ?? '',
-    initialSeType: session.seEntries.selectedFrameSeType,
+    initialSeTypes: session.seEntries.selectedFrameSeTypes,
+    // The cut the timeline shows — its のりしろ too, which plays over the
+    // cut in front.
+    cuts: session.seEntries
+        .seLineCutsAt(layerId, session.editingGlobalFrame)
+        .cuts,
+    initialCutId: session.activeCutId,
     linkedAudio: [
       for (final entry in linked)
         _audioLink(session, entry.clip, entry.index, blockFrames),
@@ -343,7 +353,7 @@ Future<void> _editSeLabel(
     commit: (dialogue, fields) => session.seEntries.updateSelectedSeEntry(
       dialogue: dialogue,
       seName: fields.seName,
-      seType: fields.seType,
+      seTypes: fields.seTypes,
     ),
     setOffset: (token, offset) =>
         session.audioClips.setAudioClipOffset(layerId, token, offset),
@@ -454,11 +464,14 @@ Future<void> editSeEntryInstance(
     return;
   }
   final entryId = entry.id;
+  final opening = session.seEntries.seLineCutsAt(layerId, globalFrame);
   await _editSeEntryWithDialog(
     context,
     initialSeName: entry.seName ?? '',
     initialDialogue: entry.name ?? '',
-    initialSeType: entry.seType,
+    initialSeTypes: entry.seTypes,
+    cuts: opening.cuts,
+    initialCutId: opening.atFrame,
     linkedAudio: [
       for (var index = 0; index < layer.audioClips.length; index += 1)
         if (layer.audioClips[index].frameId == entryId)
@@ -484,7 +497,9 @@ Future<void> _editSeEntryWithDialog(
   BuildContext context, {
   required String initialSeName,
   required String initialDialogue,
-  required SeLineType initialSeType,
+  required SeLineTypes initialSeTypes,
+  required List<Cut> cuts,
+  required CutId? initialCutId,
   required List<SeInstanceAudioLink> linkedAudio,
   required Axis previewAxis,
   required void Function(String dialogue, SeEntryFields fields) commit,
@@ -497,7 +512,9 @@ Future<void> _editSeEntryWithDialog(
       creating: false,
       initialSeName: initialSeName,
       initialDialogue: initialDialogue,
-      initialSeType: initialSeType,
+      initialSeTypes: initialSeTypes,
+      cuts: cuts,
+      initialCutId: initialCutId,
       previewAxis: previewAxis,
       linkedAudio: linkedAudio,
     ),
@@ -508,7 +525,7 @@ Future<void> _editSeEntryWithDialog(
 
   final seName = result.seName.isEmpty ? null : result.seName;
   // SE edits never hit the link-conflict flow (duplicates allowed).
-  commit(result.dialogue, (seName: seName, seType: result.seType));
+  commit(result.dialogue, (seName: seName, seTypes: result.seTypes));
   // ⚠️The offsets BEFORE the unlink: a token is the clip's index, and taking
   // a sound off shifts every index after it.
   for (final MapEntry(key: token, value: offset)
@@ -546,6 +563,7 @@ Future<InstructionEventDialogResult?> _showInstructionEditor(
     InstructionEvent covering,
     bool editsSet,
     InstructionEvent Function(InstructionEvent draft)? namedByItsCuts,
+    bool offersNoMark,
   })
   span,
 ) => showDialogVerb<InstructionEventDialogResult>(
@@ -562,6 +580,7 @@ Future<InstructionEventDialogResult?> _showInstructionEditor(
         : null,
     previewAxis: previewAxis,
     namedByItsCuts: span.namedByItsCuts,
+    offersNoMark: span.offersNoMark,
   ),
 );
 
@@ -586,10 +605,11 @@ typedef _SpanRow = ({
   CameraInstructionSet set,
   bool editsSet,
   InstructionEvent Function(InstructionEvent draft)? namedByItsCuts,
+  bool offersNoMark,
   void Function()? create,
   void Function() remove,
   int Function(InstructionEvent covering) length,
-  void Function(InstructionEvent event) commit,
+  FutureOr<void> Function(InstructionEvent event) commit,
 });
 
 Future<void> _editSpanInstance(
@@ -608,6 +628,7 @@ Future<void> _editSpanInstance(
     covering: covering.value,
     editsSet: row.editsSet,
     namedByItsCuts: row.namedByItsCuts,
+    offersNoMark: row.offersNoMark,
   ));
   if (result == null) {
     return;
@@ -617,10 +638,10 @@ Future<void> _editSpanInstance(
     return;
   }
   final instructionId = result.instructionId;
-  if (instructionId == null) {
+  if (instructionId == null && !row.offersNoMark) {
     return;
   }
-  row.commit(
+  await row.commit(
     InstructionEvent(
       instructionId: instructionId,
       length: row.length(covering.value),
@@ -630,6 +651,56 @@ Future<void> _editSpanInstance(
     ),
   );
 }
+
+/// The direction row's commit: what the window says, said on the block
+/// covering [frameIndex] — and, where it says what another drawing of the
+/// row says, the link offered first, listing the drawing the link throws
+/// away.
+///
+/// 🗣️I-72-direction-link (유저 2026-10-08): 「같은이름이라는 규칙을
+/// 시작이름,끝이름,지시 세개 같으면 같은 링크로서」 — what a block says is
+/// its drawing's name ([linkNameOfWriting]), so this is a rename onto a
+/// held name ([_renameSelectedFrame]): Link joins, Cancel writes nothing.
+Future<void> Function(InstructionEvent event) _instructionCommit(
+  BuildContext context,
+  EditorSessionManager session,
+  LayerId layerId,
+  int frameIndex,
+) => (event) async {
+  final project = session.repository.requireProject();
+  final shown = switch (layerAnywhereOrNull(project, layerId)) {
+    final layer? => coveringDrawingBlockAt(layer.timeline, frameIndex),
+    null => null,
+  }?.entry.frameId;
+  final held = session.instructionVerbs.upsertInstructionEventAt(
+    layerId,
+    frameIndex,
+    event,
+    createLengthFrames: 1,
+  );
+  if (held == null || shown == null || !context.mounted) {
+    return;
+  }
+  await offerLink<FrameId>(
+    context,
+    held,
+    onConflict: (
+      lines: (_) => drawingPlaceLines(
+        project,
+        layerId,
+        [shown],
+        framePlace: session.framePlaceLabel,
+      ),
+      join: (held) => session.instructionVerbs.linkInstructionEventAt(
+        layerId,
+        frameIndex,
+        event,
+        held,
+      ),
+      decline: null,
+    ),
+  );
+};
 
 Future<void> _editInstructionEvent(
   BuildContext context,
@@ -643,6 +714,9 @@ Future<void> _editInstructionEvent(
   editsSet: true,
   // A direction's writing is the user's: its ends are what the camera does.
   namedByItsCuts: null,
+  // A direction block stands without a mark — the span that says nothing
+  // (I-72-block-without-instruction).
+  offersNoMark: true,
   // F-105: this is the Edit button's door too — an empty direction cell is
   // created by the double tap's fork and the ＋ ([createActiveInstance]).
   create: null,
@@ -650,12 +724,7 @@ Future<void> _editInstructionEvent(
   // The direction row's events are one frame each; the cell you opened
   // is the span.
   length: (_) => 1,
-  commit: (event) => session.instructionVerbs.upsertInstructionEventAt(
-    layerId,
-    frameIndex,
-    event,
-    createLengthFrames: 1,
-  ),
+  commit: _instructionCommit(context, session, layerId, frameIndex),
 ));
 
 /// The TRANSITION row's instance: the span at the playhead on the GLOBAL axis.
@@ -704,6 +773,9 @@ Future<void> editTransitionSpanInstance(
                 draft.copyWith(length: covering.value.length),
               )
               .copyWith(length: draft.length),
+    // A transition's mark IS the transition — no block stands beside it, so
+    // a span with none is the delete the window already offers.
+    offersNoMark: false,
     create: null,
     remove: () => session.transitions.removeTransitionSpanAt(frame),
     // LENGTH is not taken from the dialog. The grips own it, so a re-pick

@@ -20,7 +20,6 @@ import 'package:anicel/src/ui/canvas/flip_hud_controller.dart'
     show FlipHudAxis;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard/storyboard_rows_channel.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show LayerVisibilityToggleButton;
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
@@ -30,6 +29,7 @@ import 'package:anicel/src/ui/timeline/timeline_section_policy.dart'
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/storyboard_host.dart';
 
 /// 🗣️I-73 ④ (유저 2026-10-08): 「그리고 카메라는 로컬이랑 똑같이 최상단행.
 /// cam섹션의 제일 위」 — and the drawn proposal: 「머리는 타임라인의 카메라
@@ -87,46 +87,20 @@ void main() {
     StoryboardRowsChannel? rowsChannel,
     void Function(EditorSessionManager session)? before,
   }) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 760));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
     final session = EditorSessionManager(initialProject: film());
     addTearDown(session.dispose);
     before?.call(session);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: Listenable.merge([
-              session,
-              session.railView.hiddenSections,
-            ]),
-            builder: (context, _) => StoryboardTabHost(
-              session: session,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-              rowFilter: rowFilter,
-              rowsChannel: rowsChannel,
-              hiddenSections: session.railView.hiddenSections.value,
-              // The workspace's own toggle: the set, then the hand-off of a
-              // stand the hidden section took (F-169).
-              onToggleSection: (section) {
-                final hidden = session.railView.hiddenSections.value;
-                session.railView.hiddenSections.value = hidden.contains(
-                      section,
-                    )
-                    ? ({...hidden}..remove(section))
-                    : {...hidden, section};
-                session.standing.keepStandingShown();
-              },
-            ),
-          ),
-        ),
-      ),
+    // The filter as set — the session's, without the chip's own hand-off.
+    session.railView.rowFilter.value = rowFilter;
+    // ↩️The workspace's section toggle stood here, written out again; the
+    // tab takes the workspace's own now (`TabRailWiring`).
+    await pumpStoryboardHostOn(
+      tester,
+      session,
+      surface: const Size(1600, 760),
+      pixelsPerFrame: 12,
+      rowsChannel: rowsChannel,
     );
-    await tester.pumpAndSettle();
     return session;
   }
 

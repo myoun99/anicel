@@ -12,7 +12,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/landing_preview.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
-import 'package:anicel/src/ui/canvas/tile_pyramid.dart';
+import 'package:anicel/src/ui/canvas/tile_picture_budget.dart';
 
 /// 🚨★★★F-240 — WHILE IT FLOATS, IT SHOWS WHAT IT LANDS AS, AT EVERY ZOOM.
 ///
@@ -20,23 +20,25 @@ import 'package:anicel/src/ui/canvas/tile_pyramid.dart';
 /// 괜찮은데 50%에서 변형중에 필터 없음으로 보임 … 변형중에도 필터 통일적용하도록
 /// 근본/구조적 해결」.
 ///
-/// Below 100% a landed cel shows as level tiles, each level pixel the mean of
-/// a 2×2 block. A float laid over those tiles 1:1 at `none` was sampled one
-/// pixel in two instead, so the picture changed the moment it landed. Here
-/// the SAME surface paint is asked twice: once holding the float (while it
-/// floats), once holding a cel whose tiles are what 100% showed with the
-/// float on it (after it lands) — and at 50% and 25% the two must be the
-/// same bytes. The cel and the float are opaque high-frequency patterns, so
-/// nearest sampling and the mean disagree nearly everywhere; the scene
-/// proves it can tell them apart before it is trusted.
+/// Reduced, a landed cel shows as its tiles' pictures drawn by the display's
+/// filter from their chains. A float laid over those tiles at `none` was
+/// sampled one pixel in two instead, so the picture changed the moment it
+/// landed. Here the SAME surface paint is asked twice: once holding the
+/// float (while it floats), once holding a cel whose tiles are what 100%
+/// showed with the float on it (after it lands) — and at the halvings and
+/// between them the two must be the same bytes, on the tester's Skia and
+/// on its Impeller (`--enable-impeller`). The cel and the float are opaque
+/// high-frequency patterns, so nearest sampling and the mean disagree nearly
+/// everywhere; the scene proves it can tell them apart before it is trusted.
 ///
-/// ⚠️WHERE IT IS EXACT (measured 2026-09-30): the test runner's Skia and the
-/// real Windows app (Impeller GLES) — 0 pixels apart, all six cases. On
-/// Impeller Vulkan (`--enable-impeller`) it is RED by 1/255 at 2–12 pixels:
-/// the floating region is halved as one image and the landed cel tile by
-/// tile, and Vulkan's halving drifts with the size of what it halves (board
-/// `halving-rounds-differently-per-engine`). The old draw was 133–168/255
-/// off on the same scene there.
+/// ↩️⚠️WHERE IT WAS EXACT while a landed cel showed as level tiles
+/// (measured 2026-09-30, until one-picture-per-frame ②-5b-2): the test
+/// runner's Skia and the real Windows app (Impeller GLES) — 0 pixels apart,
+/// all six cases. On Impeller Vulkan (`--enable-impeller`) it was RED by
+/// 1/255 at 2–12 pixels: the floating region was halved as one image and the
+/// landed cel tile by tile, and Vulkan's halving drifts with the size of
+/// what it halves (board `halving-rounds-differently-per-engine`). The old
+/// draw was 133–168/255 off on the same scene there.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -88,22 +90,24 @@ void main() {
     return done.future;
   }
 
-  /// [painter]'s content at [level], the float laid through the surface
-  /// pass — or, [floatOnTop], drawn over it 1:1 at `none` afterwards, the
-  /// way the stack did before F-240.
+  /// [painter]'s content at [scale], the float laid through the surface
+  /// pass — or, [floatOnTop], drawn over it at `none` afterwards, the way
+  /// the stack did before F-240 — the row's [layerPaint] riding the draws.
   Future<ui.Image> paint(
     BitmapSurfacePainter painter, {
-    required int level,
+    required double scale,
     LandingPreview? float,
     bool floatOnTop = false,
+    ui.Paint? layerPaint,
   }) async {
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder)
-      ..scale(1 / (1 << level))
+      ..scale(scale)
       ..clipRect(const ui.Rect.fromLTWH(0, 0, width * 1.0, height * 1.0));
     painter.paintContentInto(
       canvas,
-      level: level,
+      layerPaint: layerPaint,
+      scale: scale,
       float: floatOnTop || float == null
           ? null
           : (preview: float, canvasToRow: null),
@@ -112,7 +116,10 @@ void main() {
       float!.paintInto(canvas);
     }
     final picture = recorder.endRecording();
-    final image = await picture.toImage(width >> level, height >> level);
+    final image = await picture.toImage(
+      (width * scale).ceil(),
+      (height * scale).ceil(),
+    );
     picture.dispose();
     return image;
   }
@@ -142,27 +149,39 @@ void main() {
     lineage: 'f240-${lineages++}',
   );
 
-  /// While it floats and once it has landed, at [level]: the floating
-  /// paint, the landed paint, and what the old overlay drew.
+  /// While it floats and once it has landed, at [scale] on a row drawn with
+  /// [layerPaint]: the floating paint, the landed paint, and what the old
+  /// overlay drew. The landing writes what 100% shows of the cel itself.
   Future<({Uint8List floating, Uint8List landed, Uint8List old})> both(
-    int level, {
+    double scale, {
     required LandingPreview float,
+    ui.Paint? layerPaint,
   }) async {
     final cel = surfaceOf(pattern(width, height, 1));
     final floating = painterOf(cel);
     // What 100% shows with the preview on it is what the landing writes.
-    final atFull = await paint(floating, level: 0, float: float);
+    final atFull = await paint(floating, scale: 1, float: float);
     final landedCel = surfaceOf(
       await bytes(atFull, format: ui.ImageByteFormat.rawStraightRgba),
     );
     atFull.dispose();
-    final whileFloating = await paint(floating, level: level, float: float);
-    final afterLanding = await paint(painterOf(landedCel), level: level);
+    final whileFloating = await paint(
+      floating,
+      scale: scale,
+      float: float,
+      layerPaint: layerPaint,
+    );
+    final afterLanding = await paint(
+      painterOf(landedCel),
+      scale: scale,
+      layerPaint: layerPaint,
+    );
     final oldWay = await paint(
       painterOf(cel),
-      level: level,
+      scale: scale,
       float: float,
       floatOnTop: true,
+      layerPaint: layerPaint,
     );
     final result = (
       floating: await bytes(whileFloating),
@@ -175,8 +194,10 @@ void main() {
     return result;
   }
 
-  for (final level in [1, 2]) {
-    final zoom = '${100 >> level}%';
+  // The halvings, and two reductions between them — where a tile's edge is
+  // filtered on a band of its own (`chained_picture.dart`).
+  for (final scale in [0.5, 0.25, 0.6, 0.3]) {
+    final zoom = '${(scale * 100).round()}%';
 
     test('a TRANSFORM\'s float at $zoom shows the bytes it lands as', () async {
       final floatImage = await imageOf(pattern(22, 14, 2), 22, 14);
@@ -185,7 +206,7 @@ void main() {
         imageLeft: 13,
         imageTop: 9,
       );
-      final seen = await both(level, float: float);
+      final seen = await both(scale, float: float);
       expect(
         differing(seen.old, seen.landed),
         greaterThan(20),
@@ -204,12 +225,31 @@ void main() {
         surface: BitmapSurfacePainter(
           surface: lift,
           showTransparentBackground: false,
-          lineage: TilePyramid.noLineage,
+          lineage: TilePictureBudget.noLineage,
         ),
         surfaceOffset: CanvasPoint(x: 5, y: 3),
         clip: const ui.Rect.fromLTWH(9, 7, 27, 19),
       );
-      final seen = await both(level, float: float);
+      final seen = await both(scale, float: float);
+      expect(differing(seen.old, seen.landed), greaterThan(20));
+      expect(differing(seen.floating, seen.landed), 0);
+    });
+
+    // A row's opacity rides each tile's draw, so a tile the float touches
+    // is drawn once — as the tile it lands as — and never under it too: a
+    // pixel drawn twice at half reads three quarters.
+    test('a TRANSFORM\'s float at $zoom on a row at half opacity shows the '
+        'bytes it lands as', () async {
+      final floatImage = await imageOf(pattern(22, 14, 2), 22, 14);
+      final seen = await both(
+        scale,
+        float: SelectionFloatPaint(
+          image: floatImage,
+          imageLeft: 13,
+          imageTop: 9,
+        ),
+        layerPaint: ui.Paint()..color = const ui.Color(0x80000000),
+      );
       expect(differing(seen.old, seen.landed), greaterThan(20));
       expect(differing(seen.floating, seen.landed), 0);
     });

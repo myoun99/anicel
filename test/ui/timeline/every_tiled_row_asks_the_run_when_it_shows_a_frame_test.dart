@@ -17,9 +17,9 @@ import 'package:anicel/src/services/playback/frame_demand.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
-import 'package:anicel/src/ui/timeline_tab_host.dart';
 
 import '../../helpers/storyboard_host.dart';
+import '../../helpers/timeline_host.dart';
 import '../storyboard_conte_row_probe.dart';
 
 /// 🚨THE SUBSTRATE TILES ARE LET GO BY THE RUN'S OWN ORDER (card
@@ -99,30 +99,15 @@ void main() {
     testWidgets('🚨the timeline\'s rows ($orientation) answer the run\'s '
         'steps to the active cut\'s frames — and nothing while nothing '
         'plays', (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1400, 700));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
       final session = EditorSessionManager(initialProject: project());
       addTearDown(session.dispose);
       addTearDown(session.playbackRig.prerenderScheduler.cancel);
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ListenableBuilder(
-              listenable: session,
-              builder: (context, _) => TimelineTabHost(
-                session: session,
-                orientation: orientation,
-                onOrientationChanged: (_) {},
-                pixelsPerFrame: 24,
-                onPixelsPerFrameChanged: (_) {},
-                showSeconds: false,
-                onShowSecondsChanged: (_) {},
-              ),
-            ),
-          ),
-        ),
+      await pumpTimelineHostOn(
+        tester,
+        session,
+        orientation: orientation,
+        pixelsPerFrame: 24,
       );
-      await tester.pumpAndSettle();
       expect(session.activeCutId, first, reason: '⛔premise: the first cut');
       final rows = tiledRows(tester);
       expect(rows, isNotEmpty, reason: '⛔premise: rows that bake tiles');

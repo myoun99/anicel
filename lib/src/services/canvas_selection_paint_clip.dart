@@ -7,6 +7,7 @@ import '../models/brush_stamp_image.dart';
 import '../models/canvas_size.dart';
 import '../models/dirty_region.dart';
 import 'bitmap_surface_brush_commit.dart';
+import 'brush_blur_stroke_landing.dart';
 import 'brush_dab_dirty_region.dart';
 import 'brush_stroke_blend.dart';
 import 'brush_stroke_commit_data.dart';
@@ -281,6 +282,9 @@ BrushStrokeCommitData? clipStrokeCommitToSelection(
   if (promoted != null && identical(data.promotedBase, surface)) {
     return promoted.isEmpty ? null : data;
   }
+  if (data.sourceDabs.firstOrNull?.blurs ?? false) {
+    return _blurLandedThrough(region, data, surface);
+  }
   final pixels = data.strokePixels;
   final bounds = data.strokeBounds;
   if ((pixels == null || bounds == null) &&
@@ -320,4 +324,30 @@ BrushStrokeCommitData? clipStrokeCommitToSelection(
     strokeOpacity: data.strokeOpacity,
     end: data.end,
   );
+}
+
+/// I-75: a blur has no stroke buffer to cut — it is laid again here,
+/// through [region], as tiles of this very [surface], which the commit
+/// then installs as it installs a promotion.
+BrushStrokeCommitData? _blurLandedThrough(
+  CanvasSelectionRegion region,
+  BrushStrokeCommitData data,
+  BitmapSurface surface,
+) {
+  final tiles = blurStrokeLandedOn(
+    surface,
+    data.sourceDabs,
+    opacity: data.strokeOpacity,
+    selection: region,
+  );
+  return tiles.isEmpty
+      ? null
+      : BrushStrokeCommitData(
+          sourceDabs: data.sourceDabs,
+          blendMode: data.blendMode,
+          strokeOpacity: data.strokeOpacity,
+          promotedBase: surface,
+          promotedTiles: tiles,
+          end: data.end,
+        );
 }

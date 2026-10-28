@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../models/timeline_row_address.dart';
+import '../widgets/anchored_popup.dart' show AnchoredPopupsOpenFrom;
 import 'memo_token.dart';
 import 'property_lane_model.dart';
 
@@ -76,7 +77,7 @@ class RowBerths {
   }
 
   /// [rows] — a surface the grid's rows stand on — with the hands in it
-  /// counted: a pointer down on it, the keyboard's focus inside it.
+  /// counted: a pointer down on it, a popup opened from inside it.
   ///
   /// Every surface a grid's rows stand on is wrapped, and nothing else:
   /// the timeline's ruler is not, because a scrub there is how a cut
@@ -87,77 +88,33 @@ class RowBerths {
 
   final Set<int> _pointers = {};
 
-  /// The surfaces' own nodes in the focus tree — each [_CountedRows] holds
-  /// its own, because a node stands in ONE place: a second [Focus] given
-  /// it takes it from the first without a word.
-  final Set<FocusNode> _surfaces = {};
-
-  bool _handsInTheRows() => _pointers.isNotEmpty || _focusInTheRows();
-
-  /// Whether the keyboard's focus is inside the rows — a number being
-  /// typed.
+  /// The popups open from the rows ([AnchoredPopupsOpenFrom]): a number
+  /// typed on a pencil's pad, a pick in a row's popover — an edit in
+  /// flight that no pointer on the rows and no focus inside them shows,
+  /// a popup being a route over everything.
   ///
-  /// ⛔Asked of the FOCUS tree, never the element tree: the focus can sit in
-  /// a subtree being torn down — the text field of a project leaving the
-  /// screen, the tree a test pumps over — whose element may no longer be
-  /// asked for its ancestors (it asserted), while the focus tree has
-  /// already parked its node at the root.
-  bool _focusInTheRows() =>
-      FocusManager.instance.primaryFocus?.ancestors.any(_surfaces.contains) ??
-      false;
+  /// ↩️It was the keyboard's focus inside the rows — a number typed in
+  /// the row's own field — until I-134 (2026-10-27) moved every typed
+  /// number onto a pad, and nothing in a row took the keyboard any more.
+  final Set<Object> _popups = {};
+
+  bool _handsInTheRows() => _pointers.isNotEmpty || _popups.isNotEmpty;
 }
 
-class _CountedRows extends StatefulWidget {
+class _CountedRows extends StatelessWidget {
   const _CountedRows({required this.berths, required this.child});
 
   final RowBerths berths;
   final Widget child;
 
   @override
-  State<_CountedRows> createState() => _CountedRowsState();
-}
-
-class _CountedRowsState extends State<_CountedRows> {
-  /// Never focused itself, only stood over everything focusable in the
-  /// surface.
-  final FocusNode _node = FocusNode(
-    debugLabel: 'the rows of a grid',
-    skipTraversal: true,
-    canRequestFocus: false,
-  );
-
-  @override
-  void initState() {
-    super.initState();
-    widget.berths._surfaces.add(_node);
-  }
-
-  @override
-  void didUpdateWidget(_CountedRows oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.berths, widget.berths)) {
-      oldWidget.berths._surfaces.remove(_node);
-      widget.berths._surfaces.add(_node);
-    }
-  }
-
-  @override
-  void dispose() {
-    widget.berths._surfaces.remove(_node);
-    _node.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => Focus(
-    focusNode: _node,
-    includeSemantics: false,
+  Widget build(BuildContext context) => AnchoredPopupsOpenFrom(
+    open: berths._popups,
     child: Listener(
-      onPointerDown: (event) => widget.berths._pointers.add(event.pointer),
-      onPointerUp: (event) => widget.berths._pointers.remove(event.pointer),
-      onPointerCancel: (event) =>
-          widget.berths._pointers.remove(event.pointer),
-      child: widget.child,
+      onPointerDown: (event) => berths._pointers.add(event.pointer),
+      onPointerUp: (event) => berths._pointers.remove(event.pointer),
+      onPointerCancel: (event) => berths._pointers.remove(event.pointer),
+      child: child,
     ),
   );
 }

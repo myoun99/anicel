@@ -4,7 +4,6 @@ import 'package:anicel/src/ui/text/byte_size_label.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/timeline/lane_span_in_order.dart';
-import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/ui/timeline/lane_span_keys_shift.dart';
 import 'package:anicel/src/ui/timeline/property_lane_lens.dart';
@@ -113,7 +112,6 @@ void main() {
       expect(inclusiveRunBetween(order, 'b', 'zzz'), isNull);
       expect(inclusiveRunBetween(order, 'zzz', 'b'), isNull);
       expect(inclusiveRunBetween(const <String>[], 'b', 'c'), isNull);
-      expect(transformLaneSpan('se-audio', 'position'), ['se-audio']);
     });
 
     test('the same slice over any list — drawn row addresses included', () {

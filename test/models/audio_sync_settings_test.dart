@@ -182,6 +182,23 @@ void main() {
         AudioSyncSettings.defaults,
       );
     });
+
+    test('the microphone waits for the user: off until allowed, and the '
+        'consent survives a restart (I-133)', () {
+      expect(AudioSyncSettings.defaults.microphoneAllowed, isFalse);
+      expect(
+        AudioSyncSettings.defaults.toJson(),
+        isNot(contains('microphoneAllowed')),
+      );
+      const allowed = AudioSyncSettings(microphoneAllowed: true);
+      expect(allowed, isNot(AudioSyncSettings.defaults));
+      expect(AudioSyncSettings.fromJson(allowed.toJson()), allowed);
+      expect(
+        AudioSyncSettings.defaults.copyWith(microphoneAllowed: true),
+        allowed,
+      );
+      expect(allowed.copyWith(offset: 3).microphoneAllowed, isTrue);
+    });
   });
 
   group('the inspector reports what is actually applied', () {

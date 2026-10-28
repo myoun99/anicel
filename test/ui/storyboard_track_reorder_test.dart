@@ -11,9 +11,10 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
     show TrackRowSubject;
+
+import '../helpers/storyboard_host.dart';
 
 /// R5 #9 — the storyboard's V row re-orders the project's TRACKS.
 ///
@@ -143,29 +144,14 @@ void main() {
   testWidgets('dragging the V row on the real rail re-orders the tracks', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 800));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-
     final session = threeTracks();
     addTearDown(session.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => StoryboardTabHost(
-              session: session,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-            ),
-          ),
-        ),
-      ),
+    await pumpStoryboardHostOn(
+      tester,
+      session,
+      surface: const Size(1400, 800),
+      pixelsPerFrame: 12,
     );
-    await tester.pumpAndSettle();
 
     final v1 = find.byKey(
       const ValueKey<String>('storyboard-track-label-row-t1'),
@@ -202,29 +188,14 @@ void main() {
 
   testWidgets('the pitch is the whole GROUP, so a drag of two gaps moves '
       'two tracks and not four', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-
     final session = threeTracks();
     addTearDown(session.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => StoryboardTabHost(
-              session: session,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-            ),
-          ),
-        ),
-      ),
+    await pumpStoryboardHostOn(
+      tester,
+      session,
+      surface: const Size(1400, 900),
+      pixelsPerFrame: 12,
     );
-    await tester.pumpAndSettle();
 
     double topOf(String id) => tester
         .getTopLeft(

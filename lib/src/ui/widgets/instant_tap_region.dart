@@ -1,4 +1,5 @@
-import 'package:flutter/gestures.dart' show PointerDeviceKind, kPrimaryButton;
+import 'package:flutter/gestures.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import '../input/control_press_claim.dart' show noteAnOwnedLift;
@@ -26,11 +27,11 @@ import '../input/value_control_pointers.dart';
 ///
 /// Register the double tap on a `GestureDetector` *inside* [child] as
 /// usual; it keeps working, and it no longer costs the single tap anything.
-class InstantTapRegion extends StatefulWidget {
+class InstantTapRegion extends SingleChildRenderObjectWidget {
   const InstantTapRegion({
     super.key,
     required this.onTap,
-    required this.child,
+    required Widget super.child,
     this.onPressDown,
     this.onSettledTap,
     this.pressSeeksFor,
@@ -78,24 +79,45 @@ class InstantTapRegion extends StatefulWidget {
   static const double travelSlop = 12;
 
   final HitTestBehavior behavior;
-  final Widget child;
 
   @override
-  State<InstantTapRegion> createState() => _InstantTapRegionState();
+  RenderInstantTapRegion createRenderObject(BuildContext context) =>
+      RenderInstantTapRegion(this);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    RenderInstantTapRegion renderObject,
+  ) => renderObject.wear(this);
 }
 
-class _InstantTapRegionState extends State<InstantTapRegion> {
+/// [InstantTapRegion]'s one box: the press it tracks and the callbacks it
+/// runs, where a state and its [Listener] were two elements for every row a
+/// tab reopens (card frame-panels-build-in-one-frame, 2026-10-25). The
+/// callbacks are the region's as last built, as a state's `widget` was.
+class RenderInstantTapRegion extends RenderProxyBoxWithHitTestBehavior {
+  RenderInstantTapRegion(this._region) : super(behavior: _region.behavior);
+
+  InstantTapRegion _region;
+
+  void wear(InstantTapRegion value) {
+    _region = value;
+    behavior = value.behavior;
+  }
+
   /// The live primary pointer, tracked for EVERY device now — a pen and a
   /// mouse used to be forgotten the moment they acted on the down, because
-  /// nothing downstream cared what happened next. [onSettledTap] does.
+  /// nothing downstream cared what happened next. [InstantTapRegion.
+  /// onSettledTap] does.
   int? _pointer;
   Offset? _downAt;
   Offset? _downLocal;
 
   /// Whether this pointer has left [InstantTapRegion.travelSlop] behind. It
   /// is remembered rather than acted on, because the two callbacks want it
-  /// at different times: the touch [onTap] is cancelled outright, while
-  /// [onSettledTap] only needs to know at the release.
+  /// at different times: the touch [InstantTapRegion.onTap] is cancelled
+  /// outright, while [InstantTapRegion.onSettledTap] only needs to know at
+  /// the release.
   bool _travelled = false;
 
   /// Whether this pointer's [InstantTapRegion.onTap] already ran on the
@@ -104,7 +126,7 @@ class _InstantTapRegionState extends State<InstantTapRegion> {
   bool _actedOnDown = false;
 
   bool _actsOnDown(PointerDeviceKind kind) =>
-      widget.pressSeeksFor?.call(kind) ?? kind != PointerDeviceKind.touch;
+      _region.pressSeeksFor?.call(kind) ?? kind != PointerDeviceKind.touch;
 
   bool _isPrimary(PointerDownEvent event) =>
       event.buttons == 0 || (event.buttons & kPrimaryButton) != 0;
@@ -117,83 +139,87 @@ class _InstantTapRegionState extends State<InstantTapRegion> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Listener(
-      behavior: widget.behavior,
-      onPointerDown: (event) {
-        if (!_isPrimary(event)) {
-          return;
-        }
-        // 🚨★★★ 유저 #1 (2026-08-14): 「액티브 레이어가 아닌 다른 레이어의
-        // 버튼 누르면 작동안함. 불투명도 슬라이더는 한번 움직이고 드래그가
-        // 풀림 … 레이어에 있는 **모든 버튼이나 편집이** 그럼」.
-        //
-        // ★The law is already written, one file over: 「a press that lands
-        // on a CONTROL belongs to that control」
-        // ([value_control_pointers.dart]). Only the pan recogniser was
-        // asking. This region — the rail row's PICK — was not, so a press
-        // on a row's button did both: it worked the button AND moved the
-        // drawing target, which rebuilt the row out from under the gesture
-        // that was still running. A tap survived that (it had already
-        // fired); a slider drag did not, and the button on a non-active row
-        // lost its release.
-        //
-        // Dispatch is deepest-first, so a control that claims on down has
-        // claimed by the time this runs.
-        if (controlOwnsTap(event.pointer)) {
-          return;
-        }
-        // Tracked whatever the device: the release still has something to
-        // say ([onSettledTap]) even when the down already acted.
-        _pointer = event.pointer;
-        _downAt = event.position;
-        _downLocal = event.localPosition;
-        _travelled = false;
-        _actedOnDown = _actsOnDown(event.kind);
-        widget.onPressDown?.call(event.localPosition);
-        if (_actedOnDown) {
-          widget.onTap(event.localPosition);
-        }
-      },
-      onPointerMove: (event) {
-        final downAt = _downAt;
-        if (event.pointer == _pointer &&
-            downAt != null &&
-            (event.position - downAt).distance >
-                InstantTapRegion.travelSlop) {
-          _travelled = true;
-        }
-      },
-      onPointerUp: (event) {
-        // The press is this region's, so a silent button inside it stays
-        // silent for its lift.
-        noteAnOwnedLift();
-        if (event.pointer != _pointer) {
-          return;
-        }
-        final local = _downLocal ?? event.localPosition;
-        // A drag that changed something is a drag however short it
-        // travelled: on a cell narrower than the slop one frame's move
-        // stays inside it (F-238), and its release is no tap.
-        final travelled = _travelled || pointerDragTookAStep(event.pointer);
-        final actedOnDown = _actedOnDown;
+  void handleEvent(PointerEvent event, HitTestEntry entry) {
+    switch (event) {
+      case PointerDownEvent():
+        _down(event);
+      case PointerMoveEvent():
+        _move(event);
+      case PointerUpEvent():
+        _up(event);
+      case PointerCancelEvent(:final pointer) when pointer == _pointer:
         _forget();
-        // A finger that stayed put still owes the primary action, which the
-        // down deliberately withheld from it.
-        if (!actedOnDown && !travelled) {
-          widget.onTap(local);
-        }
-        // And whoever acted, a press that did not travel was a TAP.
-        if (!travelled) {
-          widget.onSettledTap?.call(local);
-        }
-      },
-      onPointerCancel: (event) {
-        if (event.pointer == _pointer) {
-          _forget();
-        }
-      },
-      child: widget.child,
-    );
+      default:
+    }
+  }
+
+  void _down(PointerDownEvent event) {
+    if (!_isPrimary(event)) {
+      return;
+    }
+    // 🚨★★★ 유저 #1 (2026-08-14): 「액티브 레이어가 아닌 다른 레이어의
+    // 버튼 누르면 작동안함. 불투명도 슬라이더는 한번 움직이고 드래그가
+    // 풀림 … 레이어에 있는 **모든 버튼이나 편집이** 그럼」.
+    //
+    // ★The law is already written, one file over: 「a press that lands
+    // on a CONTROL belongs to that control」
+    // ([value_control_pointers.dart]). Only the pan recogniser was
+    // asking. This region — the rail row's PICK — was not, so a press
+    // on a row's button did both: it worked the button AND moved the
+    // drawing target, which rebuilt the row out from under the gesture
+    // that was still running. A tap survived that (it had already
+    // fired); a slider drag did not, and the button on a non-active row
+    // lost its release.
+    //
+    // Dispatch is deepest-first, so a control that claims on down has
+    // claimed by the time this runs.
+    if (controlOwnsTap(event.pointer)) {
+      return;
+    }
+    // Tracked whatever the device: the release still has something to
+    // say ([onSettledTap]) even when the down already acted.
+    _pointer = event.pointer;
+    _downAt = event.position;
+    _downLocal = event.localPosition;
+    _travelled = false;
+    _actedOnDown = _actsOnDown(event.kind);
+    _region.onPressDown?.call(event.localPosition);
+    if (_actedOnDown) {
+      _region.onTap(event.localPosition);
+    }
+  }
+
+  void _move(PointerMoveEvent event) {
+    final downAt = _downAt;
+    if (event.pointer == _pointer &&
+        downAt != null &&
+        (event.position - downAt).distance > InstantTapRegion.travelSlop) {
+      _travelled = true;
+    }
+  }
+
+  void _up(PointerUpEvent event) {
+    // The press is this region's, so a silent button inside it stays
+    // silent for its lift.
+    noteAnOwnedLift();
+    if (event.pointer != _pointer) {
+      return;
+    }
+    final local = _downLocal ?? event.localPosition;
+    // A drag that changed something is a drag however short it
+    // travelled: on a cell narrower than the slop one frame's move
+    // stays inside it (F-238), and its release is no tap.
+    final travelled = _travelled || pointerDragTookAStep(event.pointer);
+    final actedOnDown = _actedOnDown;
+    _forget();
+    // A finger that stayed put still owes the primary action, which the
+    // down deliberately withheld from it.
+    if (!actedOnDown && !travelled) {
+      _region.onTap(local);
+    }
+    // And whoever acted, a press that did not travel was a TAP.
+    if (!travelled) {
+      _region.onSettledTap?.call(local);
+    }
   }
 }

@@ -3,12 +3,12 @@ import 'package:flutter/material.dart';
 
 import '../../models/bitmap_surface.dart';
 import '../../models/canvas_viewport.dart';
-import '../../models/pasteboard_bounds.dart' show PasteboardBounds;
 import '../../models/sheet_marks.dart';
 import '../../services/cel_surface_as_shown.dart';
 import '../../services/viewport_transform_matrix.dart';
 import '../canvas/bitmap_surface_painter.dart';
-import '../canvas/canvas_layer_stack_view.dart';
+import '../playback/camera_shot.dart' show outlineThrough;
+import '../playback/frame_picture_view.dart';
 import '../canvas/outline_clipper.dart';
 import '../editor_session_manager.dart';
 import '../export/export_frame_renderer.dart' show exportFrameGround;
@@ -18,10 +18,10 @@ import 'conte_picture_ink.dart';
 
 /// The pictures the brush draws into, painted LIVE while the conte's brush
 /// is on (유저 답 conte-picture-display-Q1 「실시간 합성 (정확)」): the cut at
-/// the picture's frame through the camera, composited by the editing
-/// canvas's own painter with the block's conte layer standing in the tree
-/// as the live row — so a stroke shows where, and how, the composite will
-/// have it, and the pen-up changes nothing.
+/// the picture's frame through the camera — the frame's one picture
+/// ([FramePictureView], one-picture-per-frame ②-3), with the block's conte
+/// layer standing in the tree as the live row — so a stroke shows where,
+/// and how, the composite will have it, and the pen-up changes nothing.
 ///
 /// Laid over the printed picture as the picture is printed: the camera's
 /// frame on the ground the picture renders on ([exportFrameGround]), the
@@ -151,40 +151,49 @@ class ContePictureLive extends StatelessWidget {
     // The overlay shows its pictures in place of the painter's tiles below,
     // so through the chain they are shown through.
     window.overlay.sourceEffects = drawn.activeSourceEffects;
-    final canvas = picture.cut.canvasSize;
-    final corners = canvas.canvasRect;
     return Stack(
       children: [
         const Positioned.fill(child: ColoredBox(color: exportFrameGround)),
         Positioned.fill(
           child: ClipPath(
-            clipper: OutlineClipper([
-              for (final corner in [
-                corners.topLeft,
-                corners.topRight,
-                corners.bottomRight,
-                corners.bottomLeft,
-              ])
-                MatrixUtils.transformPoint(canvasToBox, corner),
-            ]),
-            child: CanvasLayerStackView(
+            clipper: OutlineClipper(
+              outlineThrough(picture.cut.canvasSize, canvasToBox),
+            ),
+            child: FramePictureView(
               key: ValueKey<String>('conte-picture-live-${window.id}'),
-              nodes: drawn.nodes,
-              imageCache: session.renderCaches.layerFrameImageCache,
-              canvasSize: canvas,
-              viewport: viewportOfSimilarity(canvasToBox)!,
-              activeSurfacePainter: BitmapSurfacePainter(
-                surface: celSurfaceAsShown(
-                  surfaceOf(picture),
-                  drawn.activeSourceEffects,
-                ),
-                overlayModel: window.overlay,
-                showTransparentBackground: false,
-                lineage: (window.key.layerId, window.key.frameId),
+              run: (
+                landings: session.playbackRig.prerenderScheduler.landings,
+                pictures: session.playbackRig.framePictures,
               ),
-              onBufferBytes: (bytes) => _count(window.id, bytes),
+              picture: (
+                cut: picture.cut,
+                frameIndex: picture.frame,
+                paintPaper: false,
+              ),
+              nodes: drawn.nodes,
+              viewport: viewportOfSimilarity(canvasToBox)!,
+              live: (
+                activeSurfacePainter: BitmapSurfacePainter(
+                  surface: celSurfaceAsShown(
+                    surfaceOf(picture),
+                    drawn.activeSourceEffects,
+                  ),
+                  overlayModel: window.overlay,
+                  showTransparentBackground: false,
+                  lineage: (window.key.layerId, window.key.frameId),
+                ),
+                floatOverlay: null,
+                liftedRows: const {},
+              ),
+              laysWhatItMisses: true,
               // The page prints this picture under it: taking over from the
-              // print, the live one shows no less on its first frame.
+              // print, the live one may not go blank for the frames its
+              // picture takes to make — it is drawn as it stands meanwhile
+              // (F-215, 유저 2026-09-28: 「브러시 허용 on시 … 그림이
+              // 사라졌다가 다시 렌더되서 보이기시작. on하든off하든 바뀌는게
+              // 없어야」) — from every cel it draws, read for its first
+              // frame.
+              wholeFrames: false,
               alreadyShown: true,
             ),
           ),
@@ -208,11 +217,6 @@ class ContePictureLive extends StatelessWidget {
       shot.bottomLeft,
     ]);
   }
-
-  /// Picture [id]'s display buffer, on the census — pushed: the census
-  /// cannot reach a widget State; the session can.
-  void _count(String id, int bytes) =>
-      session.renderCaches.countStackBuffer(('conte-picture', id), bytes);
 }
 
 /// The camera's work over the live pictures — its frames, the trails of

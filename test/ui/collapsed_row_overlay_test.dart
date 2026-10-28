@@ -8,8 +8,9 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
+import 'package:anicel/src/ui/timeline/comma_button.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
-    show TimelineGridLaw, TimelineOutsideCutWashPainter;
+    show TimelineGridLaw, TimelineOutsideCutWash;
 import 'package:anicel/src/ui/timeline/timeline_body_cut_end_boundary.dart';
 import 'package:anicel/src/ui/timeline/timeline_body_norishiro_boundary.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
@@ -208,7 +209,7 @@ void main() {
     expect(rail.onToggleLayerFx, isNotNull);
     expect(rail.onToggleLayerOnionSkin, isNotNull);
     expect(rail.onToggleLanes, isNotNull);
-    expect(rail.onToggleLayerFillReference, isNotNull);
+    expect(rail.onToggleLayerClip, isNotNull);
     expect(rail.onLayerBlendModeSelected, isNotNull);
   });
 
@@ -241,7 +242,7 @@ void main() {
 
     bool commaEnabled() =>
         tester
-            .widget<TextButton>(
+            .widget<CommaButton>(
               find.byKey(const ValueKey<String>('set-comma-1-button')),
             )
             .onPressed !=
@@ -458,18 +459,11 @@ void main() {
   });
 }
 
-/// The out-of-cut wash the [stack] paints — its own painter, found by type.
-TimelineOutsideCutWashPainter washOf(WidgetTester tester, Finder stack) =>
-    tester
-            .widget<CustomPaint>(
-              find.descendant(
-                of: stack,
-                matching: find.byWidgetPredicate(
-                  (widget) =>
-                      widget is CustomPaint &&
-                      widget.painter is TimelineOutsideCutWashPainter,
-                ),
-              ),
-            )
-            .painter!
-        as TimelineOutsideCutWashPainter;
+/// The out-of-cut wash the [stack] shows — its own widget, found by type.
+TimelineOutsideCutWash washOf(WidgetTester tester, Finder stack) =>
+    tester.widget<TimelineOutsideCutWash>(
+      find.descendant(
+        of: stack,
+        matching: find.byType(TimelineOutsideCutWash),
+      ),
+    );

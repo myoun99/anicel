@@ -4,7 +4,7 @@
 /// re-exposing the same cel twice shared one memo, and a linked cut (whose
 /// cel bank is shared and whose timeline is local) shared it across cuts.
 /// Neither is what a memo means. Living on [TimelineExposure] instead puts
-/// it beside [TimelineExposure.breakdownOffsets] — data the block owns, so
+/// it beside [TimelineExposure.breakdownMarks] — data the block owns, so
 /// every move and copy carries it with no re-indexing anywhere.
 ///
 /// [actionMemo] is the storyboard layer's ACTION column. Dialogue is not

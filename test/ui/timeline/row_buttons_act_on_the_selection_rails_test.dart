@@ -19,12 +19,11 @@ import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
-import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
-import 'package:anicel/src/ui/timeline_tab_host.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/storyboard_host.dart';
+import '../../helpers/timeline_host.dart';
 
 void main() {
   group('the timeline rail', () {
@@ -177,7 +176,7 @@ final List<(String, bool Function(EditorSessionManager s, LayerId id))>
 _switches = [
   ('visibility', (s, id) => _row(s, id).isVisible),
   ('timesheet', (s, id) => _row(s, id).onTimesheet),
-  ('fill-reference', (s, id) => _row(s, id).isFillReference),
+  ('clip', (s, id) => _row(s, id).clipsToBelow),
   ('fx', (s, id) => fxEnabledFromState(s.effectsAndFx.layerFxState(id))),
   ('onion', (s, id) => s.onionSkin.isLayerOnionSkinEnabled(id)),
 ];
@@ -194,37 +193,15 @@ EditorSessionManager _session() {
   return s;
 }
 
-Future<void> _roomy(WidgetTester tester) async {
-  await tester.binding.setSurfaceSize(const Size(1600, 1000));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
-}
+const _roomy = Size(1600, 1000);
 
 /// The timeline tab over two cels, both selected.
 Future<(EditorSessionManager, LayerId, LayerId)> _timelineRail(
   WidgetTester tester,
 ) async {
-  await _roomy(tester);
   final s = _session();
   s.layerStack.addLayerOfKind(LayerKind.animation);
-  await tester.pumpWidget(
-    MaterialApp(
-      home: Scaffold(
-        body: ListenableBuilder(
-          listenable: s,
-          builder: (context, _) => TimelineTabHost(
-            session: s,
-            orientation: TimelineOrientation.horizontal,
-            onOrientationChanged: (_) {},
-            pixelsPerFrame: 24,
-            onPixelsPerFrameChanged: (_) {},
-            showSeconds: false,
-            onShowSecondsChanged: (_) {},
-          ),
-        ),
-      ),
-    ),
-  );
-  await tester.pumpAndSettle();
+  await pumpTimelineHostOn(tester, s, surface: _roomy, pixelsPerFrame: 24);
   final cels = [
     for (final layer in s.layers)
       if (layer.kind == LayerKind.animation) layer.id,
@@ -238,26 +215,8 @@ Future<(EditorSessionManager, LayerId, LayerId)> _timelineRail(
 Future<(EditorSessionManager, LayerId, LayerId)> _storyboardRail(
   WidgetTester tester,
 ) async {
-  await _roomy(tester);
   final s = _session();
-  await tester.pumpWidget(
-    MaterialApp(
-      home: Scaffold(
-        body: ListenableBuilder(
-          listenable: s,
-          builder: (context, _) => StoryboardTabHost(
-            session: s,
-            pixelsPerFrame: 12,
-            onPixelsPerFrameChanged: (_) {},
-            showSeconds: false,
-            onShowSecondsChanged: (_) {},
-            thumbnails: null,
-          ),
-        ),
-      ),
-    ),
-  );
-  await tester.pumpAndSettle();
+  await pumpStoryboardHostOn(tester, s, surface: _roomy, pixelsPerFrame: 12);
   final ses = [
     for (final layer in s.repository.requireProject().tracks.single.seLayers)
       layer.id,

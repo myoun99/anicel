@@ -16,7 +16,7 @@ import 'package:anicel/src/services/cel_content_notes.dart';
 
 /// Cels noted at the content they hold now — what a cel that could not be
 /// read is remembered by (`LayerFrameImageCache.unreadable`), and a cel that
-/// gave nothing to make (`CanvasPictures`).
+/// gave nothing to make (`FramePictures`).
 void main() {
   BrushFrameKey key(String frame) => BrushFrameKey(
     projectId: const ProjectId('p'),

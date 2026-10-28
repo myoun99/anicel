@@ -8,22 +8,35 @@ import 'dart:math' as math;
 /// `TimelinePanel`, which builds the cluster, and the two files imported
 /// each other (Round 4 of the audit, 2026-09-03).
 abstract final class TimelineZoomLimits {
-  /// The closest zoom.
+  /// The closest zoom — 400% on the bar since F-491 ([percentOf]).
   ///
   /// 🗣️F-403 (유저 2026-10-19): 「우선 200%이상의 값은 필요없어보임. 그러니
-  /// 지금의 최소값부터 200%까지만 살리도록」 — 200% on the bar as it reads
-  /// now, of [referencePixelsPerFrame] (F-403-Q1, 유저 2026-10-24: 「새 눈금
+  /// 지금의 최소값부터 200%까지만 살리도록」 — 200% on the bar as it read
+  /// then, of [referencePixelsPerFrame] (F-403-Q1, 유저 2026-10-24: 「새 눈금
   /// 200% 에서 멈춤」). ↩️48 — 200% of the 24-pixel frame the bar read as
   /// 100% when that was said, 250% on the bar since; and 96 — 400% — before.
   static const double maxPixelsPerFrame = 2 * referencePixelsPerFrame;
 
-  /// The zoom the bar reads as 100%, and the one a cut nobody zoomed opens
-  /// at — the zoom to work at.
+  /// The zoom a cut nobody zoomed opens at — the zoom to work at, 200% on
+  /// the bar since F-491 ([_hundredPercent]).
   ///
   /// 🗣️F-403 (유저 2026-10-19): 「50%이 작업하기 최적한 줌 상태라고
   /// 생각함. 그래서 50%을 100%으로서 두도록」 · (23:12) 「50은 너무 블록이
-  /// 작으니 80%를 100%로 잡도록」 — 80% of the 24-pixel frame.
+  /// 작으니 80%를 100%로 잡도록」 — 80% of the 24-pixel frame. ↩️The bar
+  /// read it as 100% from F-403 to F-491.
   static const double referencePixelsPerFrame = 19.2;
+
+  /// The zoom the bar reads as 100%: half [referencePixelsPerFrame], so what
+  /// it read as 0.5% it reads as 1%, and no zoom moved — a cut opens where
+  /// it did, the closest zoom is where it was, and each reads twice the
+  /// number.
+  ///
+  /// 🗣️F-491 (유저 2026-10-27): 「타임라인 줌, 소수점대도 움직여지는데
+  /// 필요없어지니 그냥 소수점대 안움직이게. 즉 소수점값 없는 정수로. 대신
+  /// 지금의 0.6%정도? 만큼 보이는건 유지하고싶음. 그러니 지금의 0.5%를 1%로
+  /// 두도록 기준 개편. 어떤식으로 개편할지는 알아서 맡김. 결과만 그렇게
+  /// 되면됨」. ↩️It was [referencePixelsPerFrame] from F-403.
+  static const double _hundredPercent = referencePixelsPerFrame / 2;
 
   /// The frame a panel is laid out at when its host names no zoom — the
   /// classic cell, which the block-edge grip is sized by. The app's hosts
@@ -31,29 +44,33 @@ abstract final class TimelineZoomLimits {
   /// ([referencePixelsPerFrame]).
   static const double defaultPixelsPerFrame = 24;
 
-  /// How many steps a zoom takes per [referencePixelsPerFrame]: a step is
-  /// 0.1% — the last digit the bar writes.
+  /// [pixelsPerFrame] as the bar writes it: percent of [_hundredPercent]
+  /// — what its readout shows and is dragged in (F-463).
+  static double percentOf(double pixelsPerFrame) =>
+      pixelsPerFrame * 100 / _hundredPercent;
+
+  /// The zoom the bar writes as [percent] — [percentOf] the other way.
+  static double atPercent(double percent) => percent * _hundredPercent / 100;
+
+  /// The zoom at a whole [percent] — a STEP: every zoom is one, so no zoom
+  /// lies between two numbers the bar writes.
+  ///
+  /// 🗣️F-491 (유저 2026-10-27): 「소수점대도 움직여지는데 필요없어지니 그냥
+  /// 소수점대 안움직이게. 즉 소수점값 없는 정수로」.
   ///
   /// 🗣️F-403 (유저 2026-10-19): 「0.9%에서 숫자 안바뀌는데 줌이 바뀌는걸
   /// 발견. 내가 분명 이런 슬라이더에서 조절되는 숫자까지 다 슬라이더에
   /// 보여주라고 하지않았나? … 소수점 두번째부터는 작동안하도록 … 그로 인해
-  /// 줌이 딱딱해진다거나 다 알고 말하는것임」 — no zoom lies between two
-  /// numbers the bar writes. ↩️Any zoom in the range was one (F-220).
-  static const int _stepsPerReference = 1000;
-
-  /// The zoom [steps] steps make.
-  static double _zoomOf(int steps) =>
-      steps * referencePixelsPerFrame / _stepsPerReference;
+  /// 줌이 딱딱해진다거나 다 알고 말하는것임」. ↩️A step was 0.1% from F-403
+  /// to F-491, and any zoom in the range was one before (F-220).
+  static double _zoomAt(int percent) => atPercent(percent.toDouble());
 
   /// The step nearest [pixelsPerFrame]. The range is its callers' to hold
   /// ([clamped], [stepped]), each after its own arithmetic.
-  static int _stepsOf(double pixelsPerFrame) =>
-      (pixelsPerFrame *
-              _stepsPerReference /
-              referencePixelsPerFrame)
-          .round();
+  static int _stepOf(double pixelsPerFrame) =>
+      percentOf(pixelsPerFrame).round();
 
-  static int get _maxSteps => _stepsOf(maxPixelsPerFrame);
+  static int get _maxStep => _stepOf(maxPixelsPerFrame);
 
   /// The most pixels a SECOND takes at the widest zoom — the floor said in
   /// time, because the ask was in time (I-22, 유저 09-12 「프로급이면
@@ -61,7 +78,8 @@ abstract final class TimelineZoomLimits {
   /// 10분까지 보이게」 · 09-26 「타임라인 10분정도로 보이게 축소가능하게」).
   /// On the user's screen a maximized timeline's frame area measured
   /// ~2,350px (41 s at the old 2.4px floor); at 3px a second, ten minutes
-  /// take 1,800px at most, at every rate.
+  /// take 1,800px at most — at every rate up to 30fps since F-491, where
+  /// a step is 1% (F-491-Q1).
   ///
   /// ↩️The floor was 4 px per FRAME, then 2.4 (UI-R18 #11: 10% of the
   /// default density across all three frame panels) — a floor in frames,
@@ -71,26 +89,25 @@ abstract final class TimelineZoomLimits {
 
   /// The widest zoom for a project counting [framesPerSecond]: the closest
   /// step that keeps a second at [_widestPixelsPerSecond] pixels or under
-  /// (24fps → 0.6%, 30 → 0.5%, 60 → 0.2%), and never under one step.
+  /// (8fps → 3%, 12 and 15 → 2%, 24 → 1%), and never under one step: 1%
+  /// from 24fps up, which from 48fps gives a second more than that
+  /// (F-491-Q1).
   ///
   /// ↩️It was one pixel for a whole number of frames (24fps → 1/8), until
   /// F-403 put every zoom on a step.
   static double minPixelsPerFrameAt(int framesPerSecond) =>
-      _zoomOf(_minStepsAt(framesPerSecond));
+      _zoomAt(_minStepAt(framesPerSecond));
 
-  static int _minStepsAt(int framesPerSecond) => math.max(
+  static int _minStepAt(int framesPerSecond) => math.max(
     1,
-    (_widestPixelsPerSecond /
-            framesPerSecond *
-            _stepsPerReference /
-            referencePixelsPerFrame)
-        .floor(),
+    percentOf(_widestPixelsPerSecond / framesPerSecond).floor(),
   );
 
   /// The zoom a control may emit: [pixelsPerFrame] on its nearest step
-  /// inside the range ([_stepsPerReference]).
+  /// inside the range ([_zoomAt]).
   ///
-  /// 🚨ONE bound, asked by the slider and by the −/+ buttons. The slider
+  /// 🚨ONE bound, asked by the readout and by the zoom keys (↩️the slider
+  /// and the −/+ buttons until F-463). The slider
   /// once wrote 2px under a 2.4px floor and nothing brought it back (I-22
   /// ②-1); nothing can reach a zero cell either — what trips the grid's
   /// `frameCellWidth > 0` assert, the x-sheet's virtualization and the zoom
@@ -106,15 +123,14 @@ abstract final class TimelineZoomLimits {
   /// user's ask then was a smooth drag, not the grid: a zoom step repaints
   /// the rows rather than rebuilding them since R28 #4, and every frame edge
   /// lands on a whole pixel at any zoom ([timelineFrameEdge]) — which is
-  /// what the grid was keeping crisp. The steps of F-403 are the numbers the
-  /// bar writes, so every number it reaches is still a zoom of its own.
+  /// what the grid was keeping crisp. The steps — 0.1% from F-403, 1% since
+  /// F-491 — are the numbers the bar writes, so every number it reaches is
+  /// still a zoom of its own.
   static double clamped(
     double pixelsPerFrame, {
     required int framesPerSecond,
-  }) => _zoomOf(
-    _stepsOf(
-      pixelsPerFrame,
-    ).clamp(_minStepsAt(framesPerSecond), _maxSteps),
+  }) => _zoomAt(
+    _stepOf(pixelsPerFrame).clamp(_minStepAt(framesPerSecond), _maxStep),
   );
 
   /// The closest zoom at which [frames] frames stand inside [extent]
@@ -123,21 +139,16 @@ abstract final class TimelineZoomLimits {
     double extent, {
     required int frames,
     required int framesPerSecond,
-  }) {
-    final steps =
-        extent /
-        math.max(1, frames) *
-        _stepsPerReference /
-        referencePixelsPerFrame;
-    return _zoomOf(
-      steps.floor().clamp(_minStepsAt(framesPerSecond), _maxSteps),
-    );
-  }
+  }) => _zoomAt(
+    percentOf(
+      extent / math.max(1, frames),
+    ).floor().clamp(_minStepAt(framesPerSecond), _maxStep),
+  );
 
-  /// One −/+ step (UI-R11 #11): ×1.25 like every editor zoom in the app, so
-  /// a step feels equal at the widest zoom and the closest — and at least
-  /// one step ([_stepsPerReference]), so a press moves the zoom wherever
-  /// ×1.25 rounds back onto the step it left.
+  /// One zoom key's step (UI-R11 #11, the −/+ buttons' until F-463): ×1.25
+  /// like every editor zoom in the app, so a step feels equal at the widest
+  /// zoom and the closest — and at least one step ([_zoomAt]), so a press
+  /// moves the zoom wherever ×1.25 rounds back onto the step it left.
   ///
   /// ↩️It fell back to the next grid value where ×1.25 rounded back onto
   /// the zoom it left (2026-09-16); with no grid, ×1.25 always moved, until
@@ -147,10 +158,10 @@ abstract final class TimelineZoomLimits {
     required bool zoomIn,
     required int framesPerSecond,
   }) {
-    final from = _stepsOf(pixelsPerFrame);
+    final from = _stepOf(pixelsPerFrame);
     final to = zoomIn
-        ? math.max(from + 1, _stepsOf(pixelsPerFrame * 1.25))
-        : math.min(from - 1, _stepsOf(pixelsPerFrame / 1.25));
-    return _zoomOf(to.clamp(_minStepsAt(framesPerSecond), _maxSteps));
+        ? math.max(from + 1, _stepOf(pixelsPerFrame * 1.25))
+        : math.min(from - 1, _stepOf(pixelsPerFrame / 1.25));
+    return _zoomAt(to.clamp(_minStepAt(framesPerSecond), _maxStep));
   }
 }

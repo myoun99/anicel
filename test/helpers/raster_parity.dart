@@ -81,6 +81,22 @@ Future<void> pumpSurface(
   );
 }
 
+/// The colour the capture [bytes] ([captureBytes]) hold at [logical], a
+/// point in the capture's own units.
+Color capturePixelAt(WidgetTester tester, ByteData bytes, Offset logical) {
+  final ratio = tester.view.devicePixelRatio;
+  final width = (parityCaptureWidth * ratio).round();
+  final i =
+      ((logical.dy * ratio).floor() * width + (logical.dx * ratio).floor()) *
+      4;
+  return Color.fromARGB(
+    bytes.getUint8(i + 3),
+    bytes.getUint8(i),
+    bytes.getUint8(i + 1),
+    bytes.getUint8(i + 2),
+  );
+}
+
 /// The capture's RGBA bytes as the scene has them right now.
 Future<ByteData> captureBytes(WidgetTester tester) async {
   final boundary =

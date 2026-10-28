@@ -774,15 +774,19 @@ Map<TileCoord, BitmapTile> celTilesOf(
 /// truth + the edit mark), so playback/thumbnails see the cel
 /// immediately and the tint flips through the store's own crossing
 /// signal.
+///
+/// [revision]: the one that named [surface], where it is a picture the cel
+/// is given back ([BrushFrameStore.markCelEdited]'s `backTo`).
 void bakeCelSurface(
   BrushFrameStore store,
   BrushFrameKey key,
-  BitmapSurface surface,
-) {
+  BitmapSurface surface, {
+  int? revision,
+}) {
   // Mark-edited FIRST, then donate — the drawing commit's order, which
   // leaves the donated display cache VALID (the reverse order dirtied
   // the cache it had just stored, wasting the donation on first paint).
-  store.markCelEdited(key);
+  store.markCelEdited(key, backTo: revision);
   store.storeRebuiltDisplayCache(key: key, previewSurface: surface);
   store.storeBakedSurface(key, surface);
 }

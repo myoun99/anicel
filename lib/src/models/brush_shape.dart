@@ -4,6 +4,7 @@ import 'brush_anti_alias.dart';
 import 'brush_input_source.dart';
 import 'brush_blend_mode.dart';
 import 'brush_correction.dart';
+import 'brush_mixing_method.dart';
 import 'separable_blend_mode.dart';
 import 'brush_pressure_curve.dart';
 import 'brush_tip_mask.dart';
@@ -72,6 +73,7 @@ class BrushShape {
     this.antiAlias = BrushAntiAlias.high,
     this.blendMode = BrushBlendMode.color,
     this.mixesGroundColor = false,
+    this.mixingMethod = BrushMixingMethod.mix,
     this.paintAmount = 1.0,
     this.paintDensity = 1.0,
     this.colorStretch = 0.0,
@@ -84,9 +86,9 @@ class BrushShape {
   /// default 25%; Clip Studio's fixed spacing is the same percent of the tip
   /// (100 = tips touching). 5% stood here, which clamped an imported ABR
   /// brush's 1–4% back up to 5% and left a large tip's edge scalloped. The
-  /// dab step never goes below one pixel whatever this is
-  /// (`BrushDabInterpolator.spacingForBrushSize`), so a small brush pays
-  /// nothing for it.
+  /// dab step never goes below a tenth of the size nor a quarter of a pixel
+  /// whatever this is (`finestDabStep`), so a small brush pays nothing for
+  /// it.
   static const double minSpacing = 0.01;
 
   /// The widest [spacing]: four tip sizes between dabs.
@@ -285,16 +287,32 @@ class BrushShape {
   /// existed, so a preset that says nothing draws exactly as it always did.
   final BrushAntiAlias antiAlias;
 
-  /// Whether the brush mixes with the colour already on the cel — Clip
-  /// Studio's 밑바탕 혼색, Photoshop's Mixer Brush. The gate: with it off the
-  /// three knobs below mean nothing and the brush paints its own colour flat.
+  /// Whether the brush mixes with the picture already on the cel — Clip
+  /// Studio's 混色. The gate: with it off [mixingMethod] and the three knobs
+  /// below mean nothing and the brush paints its own colour flat.
+  ///
+  /// ⚠️Ask [picksUpGround] or [blurs] rather than this: since I-75 the gate
+  /// opens onto one of two methods, and either question asked of this alone
+  /// answers for both.
+  final bool mixesGroundColor;
+
+  /// What the open gate does — see [BrushMixingMethod].
+  final BrushMixingMethod mixingMethod;
+
+  /// Whether each dab picks colour up from the cel — Clip Studio's 下地混色,
+  /// Photoshop's Mixer Brush.
   ///
   /// Both apps model this the same way, as a brush carrying a reservoir of
   /// paint: each dab picks colour up from the canvas into the reservoir, then
   /// puts a blend of the two back down. The resolved colour is computed AT
   /// PLACEMENT and baked into the dab, so the rasterizers never learn about
   /// mixing and undo/redo replays byte-identically.
-  final bool mixesGroundColor;
+  bool get picksUpGround =>
+      mixesGroundColor && mixingMethod == BrushMixingMethod.mix;
+
+  /// Whether the brush blurs the picture instead of laying colour (I-75) —
+  /// see [BrushMixingMethod.blur].
+  bool get blurs => mixesGroundColor && mixingMethod == BrushMixingMethod.blur;
 
   /// How much of the reservoir reaches the canvas, 0..1 — Clip Studio's
   /// 물감량. At 0 the dab leaves the ground untouched.
@@ -407,6 +425,7 @@ class BrushShape {
       blendMode: blendMode,
       antiAlias: antiAlias,
       mixesGroundColor: mixesGroundColor,
+      mixingMethod: mixingMethod,
       paintAmount: paintAmount,
       paintDensity: paintDensity,
       colorStretch: colorStretch,
@@ -462,6 +481,7 @@ class BrushShape {
     double? textureDensity,
     BrushTextureMode? textureMode,
     bool? mixesGroundColor,
+    BrushMixingMethod? mixingMethod,
     BrushBlendMode? blendMode,
     BrushAntiAlias? antiAlias,
     double? paintAmount,
@@ -501,6 +521,7 @@ class BrushShape {
       blendMode: blendMode ?? this.blendMode,
       antiAlias: antiAlias ?? this.antiAlias,
       mixesGroundColor: mixesGroundColor ?? this.mixesGroundColor,
+      mixingMethod: mixingMethod ?? this.mixingMethod,
       paintAmount: paintAmount ?? this.paintAmount,
       paintDensity: paintDensity ?? this.paintDensity,
       colorStretch: colorStretch ?? this.colorStretch,
@@ -545,6 +566,7 @@ class BrushShape {
           other.blendMode == blendMode &&
           other.antiAlias == antiAlias &&
           other.mixesGroundColor == mixesGroundColor &&
+          other.mixingMethod == mixingMethod &&
           other.paintAmount == paintAmount &&
           other.paintDensity == paintDensity &&
           other.colorStretch == colorStretch &&
@@ -584,6 +606,7 @@ class BrushShape {
     blendMode,
     antiAlias,
     mixesGroundColor,
+    mixingMethod,
     paintAmount,
     paintDensity,
     colorStretch,

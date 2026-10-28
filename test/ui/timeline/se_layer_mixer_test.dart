@@ -39,6 +39,24 @@ void main() {
     expect(session.visibilitySolo.soloedSeLayerIds.value, contains(se.id));
   });
 
+  // 🗣️F-488 (유저 2026-10-27): 「… 조정가능한 값만 조정되도록. 슬라이더를
+  // 전부 그렇게」 — the pan writes whole per cents, `L37`, and holds them.
+  testWidgets('the pan holds the whole per cents it writes', (tester) async {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    session.layerStack.addLayerOfKind(LayerKind.se);
+    final se = session.layers.firstWhere((layer) => layer.kind == LayerKind.se);
+    await _openMixer(tester, session, se.id);
+
+    final pan = tester.widget<FieldSlider>(
+      find.byKey(const ValueKey<String>('se-mixer-pan')),
+    );
+    expect(pan.held(-0.373), -0.37, reason: 'L37 — not L37.3, nor L40');
+    expect(pan.held(0.426), 0.43);
+  });
+
   // row-buttons-act-on-the-selection (유저 2026-09-25: 「… 소리 … 선택범위
   // 내부 레이어 조절하면 선택범위 레이어 모두 적용」): the speaker is a rail
   // button, and the window it opens presses as it does.

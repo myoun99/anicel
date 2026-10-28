@@ -101,7 +101,7 @@ void main() {
     };
     final mixing = [
       for (final preset in defaultBrushPresets)
-        if (preset.settings.mixesGroundColor) preset,
+        if (preset.settings.shape.picksUpGround) preset,
     ];
     expect(
       {for (final preset in mixing) preset.id.value},

@@ -107,22 +107,6 @@ class ScheduledAudioClip {
   /// early part simply sits before the audible window).
   final List<AudioVolumeKey> volumeKeys;
 
-  /// This entry heard at [level]: its [gain] multiplied by it — the one
-  /// number the mixer multiplies the envelope and both fades by, so all of
-  /// it comes out that much quieter.
-  ScheduledAudioClip heardAt(double level) => ScheduledAudioClip(
-    filePath: filePath,
-    startFrame: startFrame,
-    endFrameExclusive: endFrameExclusive,
-    offsetFrames: offsetFrames,
-    gain: gain * level,
-    fadeInFrames: fadeInFrames,
-    fadeOutFrames: fadeOutFrames,
-    pan: pan,
-    fadeCurve: fadeCurve,
-    volumeKeys: volumeKeys,
-  );
-
   @override
   bool operator ==(Object other) =>
       other is ScheduledAudioClip &&
@@ -202,9 +186,6 @@ int _clampToFileLength({
 /// whose peaks are not extracted yet fall back to the window's end (a
 /// shorter file simply completes early — stopping a completed player is a
 /// no-op, and the mixer plays silence past a source's last sample).
-///
-/// [level] is how loud the canvas plays ([AudioSyncSettings.playbackLevel]):
-/// every entry is heard at it, [extraClips] too.
 List<ScheduledAudioClip> buildAudioPlaybackSchedule({
   required PlaybackWindow? window,
   required Project? project,
@@ -213,7 +194,6 @@ List<ScheduledAudioClip> buildAudioPlaybackSchedule({
   Set<LayerId>? soloedLayerIds,
   Set<LayerId>? mutedLayerIds,
   List<ScheduledAudioClip>? extraClips,
-  double level = 1,
 }) {
   // Solo is a MONITORING state (AUDIO-PRO R1): a non-empty set narrows
   // the audible layers to it. Export never passes one — soloing while
@@ -266,11 +246,7 @@ List<ScheduledAudioClip> buildAudioPlaybackSchedule({
   if (extraClips != null) {
     schedule.addAll(extraClips);
   }
-  // The canvas's level (I-85) is a MONITORING level, like solo: the export
-  // never asks this walk, so it never hears one.
-  return level == 1
-      ? schedule
-      : [for (final clip in schedule) clip.heardAt(level)];
+  return schedule;
 }
 
 /// [span] on [window]'s axis, or null when none of it falls inside.

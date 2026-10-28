@@ -161,6 +161,11 @@ Future<T?> showAnchoredPopup<T>(
     width: width,
     height: height,
   )!;
+  final open = anchorContext
+      .getInheritedWidgetOfExactType<AnchoredPopupsOpenFrom>()
+      ?.open;
+  final popup = Object();
+  open?.add(popup);
   return showGeneralDialog<T>(
     context: anchorContext,
     barrierLabel: label,
@@ -202,7 +207,29 @@ Future<T?> showAnchoredPopup<T>(
         ],
       );
     },
-  );
+  ).whenComplete(() => open?.remove(popup));
+}
+
+/// THE POPUPS OPEN FROM INSIDE A SURFACE: each [showAnchoredPopup] whose
+/// anchor stands under it is in [open] while it is up.
+///
+/// A popup is a route over everything, so neither a press on it nor the
+/// keyboard's focus in it lies inside the surface it was opened from. A
+/// surface that must know an edit begun on it is still in flight — the
+/// rows a grid builds in berths (`RowBerths`) — asks here.
+class AnchoredPopupsOpenFrom extends InheritedWidget {
+  const AnchoredPopupsOpenFrom({
+    super.key,
+    required this.open,
+    required super.child,
+  });
+
+  /// The surface's own set: one token for each popup up now.
+  final Set<Object> open;
+
+  /// Asked once, at a popup's opening, and by nothing that depends on it.
+  @override
+  bool updateShouldNotify(AnchoredPopupsOpenFrom oldWidget) => false;
 }
 
 /// The PINNED kind: wrap the anchor in it, drive it with [controller].

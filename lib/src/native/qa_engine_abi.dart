@@ -283,7 +283,27 @@ import '../core/on_a_worker.dart';
 ///   and `qa_audio_device_stop_run` silences unless another run holds the
 ///   device — a player's end stops only its own sound (board
 ///   a-cue-ending-silences-a-viewer-sound-it-did-not-make).
-const int kQaEngineAbiVersion = 55;
+/// - v56: `qa_dab_spec` drops `hard_radius` and `edge_span` for an analytic
+///   round tip's profile — `round_scale`, `round_reach`, `round_inner` and
+///   the two tables `round_coverage` and `round_pile` — and
+///   `QA_DAB_FLAG_EDGE_HELD`: a round tip is two ramps and a pixel's square
+///   read along its radius (`RoundTipProfile`), not a mask the stamp cache
+///   baked, and its edge does not pile (board
+///   a-one-pixel-dab-drops-out-by-where-it-lies Q4, 유저 2026-10-25 「AA
+///   가장자리는 쌓이지 않는다」). The tables are built once per tip in Dart
+///   and copied into the batch arena once per batch. `qa_dab_spec_sizeof`
+///   moves.
+/// - v57: `qa_dab_spec` gains `round_row_length`: a small circle's round
+///   tables are SQUARE — what each pixel's whole square covers, read at
+///   (|dx|, |dy|) (`qa_round_square_at`) — so a dot lays the same ink
+///   wherever it lies (board a-one-pixel-dab-drops-out-by-where-it-lies Q6,
+///   유저 2026-10-25). 0 keeps them along the radius. `qa_dab_spec_sizeof`
+///   moves.
+/// - v58: `qa_blur_dab` and `qa_blur_result_tile` — the blur brush (I-75,
+///   유저 Q1 「섞기 그룹에 「흐리기」」): a dab rewrites the picture under it,
+///   read through a `qa_blur_tile` table (`qa_blur_tile_sizeof`), at the C
+///   speed its finest step needs.
+const int kQaEngineAbiVersion = 58;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///
@@ -359,6 +379,18 @@ bool qaEngineAbiMatches(DynamicLibrary library) {
     return false;
   }
 }
+
+/// Whether [library]'s `[symbol]()` — the size the C lays a struct out at —
+/// is [dartSize], what Dart lays it out at. Both sides must agree on every
+/// byte, or every field read is garbage; whoever declares the struct asks.
+/// Throws where [library] has no [symbol].
+bool qaStructSizeMatches(
+  DynamicLibrary library,
+  String symbol,
+  int dartSize,
+) =>
+    library.lookupFunction<Int32 Function(), int Function()>(symbol).call() ==
+    dartSize;
 
 DynamicLibrary? _open(String? path) {
   if (path != null && path.isNotEmpty) {

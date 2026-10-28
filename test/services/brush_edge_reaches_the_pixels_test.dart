@@ -81,33 +81,50 @@ void main() {
     }
   });
 
-  test('🚨the rim holds — no step paints a pixel the hard nib does not', () {
+  test('🚨the rim holds — no step lays half a pixel the hard nib does not',
+      () {
     // ↩️「굵기 안바꾸고」 was pinned here as the half-coverage footprint. Clip
     // Studio's own lines said the rim is what holds (board I-50): the ramp
-    // grows inward, so the footprint is the same at every step.
-    Set<(int, int)> footprint(BrushAntiAlias step) => {
+    // grows inward. ↩️It was every pixel the step touched until the tip was
+    // read under a pixel's square (Q4, 2026-10-25): the square of a pixel
+    // past the rim takes its sliver of the nib, under half.
+    Map<(int, int), double> laid(BrushAntiAlias step) => {
       for (final c in brushPixelCoveragesForDab(
         dab(antiAlias: step, hardness: 1),
       ))
-        if (c.coverage > 0.0) (c.x, c.y),
+        (c.x, c.y): c.coverage,
     };
-    final hard = footprint(BrushAntiAlias.none);
+    final hard = laid(BrushAntiAlias.none).keys.toSet();
     expect(hard, isNotEmpty, reason: 'premise');
     for (final step in BrushAntiAlias.values) {
-      expect(footprint(step), hard, reason: '$step');
+      for (final MapEntry(key: pixel, value: coverage) in laid(step).entries) {
+        if (!hard.contains(pixel)) {
+          expect(coverage, lessThan(0.5), reason: '$step at $pixel');
+        }
+      }
     }
   });
 
   test('a soft tip\'s own ramp is wider than any step, and stands at every '
-      'step but 없음', () {
-    List<double> coverages(BrushAntiAlias step) => [
+      'step but 없음 — the step touches only its tail', () {
+    Map<(int, int), double> laid(BrushAntiAlias step) => {
       for (final c in brushPixelCoveragesForDab(dab(antiAlias: step)))
-        c.coverage,
-    ];
-    final high = coverages(BrushAntiAlias.high);
-    expect(high.where((c) => c > 0.0 && c < 1.0), isNotEmpty);
-    expect(coverages(BrushAntiAlias.medium), high);
-    expect(coverages(BrushAntiAlias.low), high);
+        (c.x, c.y): c.coverage,
+    };
+    final high = laid(BrushAntiAlias.high);
+    expect(high.values.where((c) => c > 0.0 && c < 1.0), isNotEmpty);
+    for (final step in [BrushAntiAlias.low, BrushAntiAlias.medium]) {
+      final stepped = laid(step);
+      for (final MapEntry(key: pixel, value: coverage) in high.entries) {
+        // The steps' rims lie a little inside (`BrushAntiAlias.edge`), so the
+        // ramp's last sliver differs and nothing else.
+        expect(
+          stepped[pixel] ?? 0.0,
+          closeTo(coverage, 0.05),
+          reason: '$step at $pixel',
+        );
+      }
+    }
   });
 
   test('⛔the edge is cut BEFORE the paper texture, so the texture inside '

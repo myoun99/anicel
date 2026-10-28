@@ -3,11 +3,19 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_anti_alias.dart';
+import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_dab_sequence.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/models/brush_tip_order.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/rgba_color.dart';
+import 'package:anicel/src/services/brush_dab_sequence_blend.dart';
+import 'package:anicel/src/services/brush_tip_stamp_cache.dart';
 import 'package:anicel/src/ui/brush/brush_stroke_preview.dart';
 import 'package:anicel/src/ui/brush/brush_stroke_preview_cache.dart';
 
@@ -403,6 +411,50 @@ void main() {
       (0.3 * 255).round(),
       reason: 'piled to its opacity and no further',
     );
+  });
+
+  // Q4 (board a-one-pixel-dab-drops-out-by-where-it-lies, 2026-10-25): the
+  // swatch lays each dab by the canvas's law, its edge's share included.
+  test('🚨a swatch lays a dab as the canvas does — its edge does not pile',
+      () {
+    BrushDab dab(double x, int sequence, double hardness, double opacity) =>
+        BrushDab(
+          center: CanvasPoint(x: x, y: 10.3),
+          color: 0xFF000000,
+          size: 7,
+          opacity: opacity,
+          flow: 0.8,
+          hardness: hardness,
+          pressure: 1,
+          sequence: sequence,
+          tipShape: BrushTipShape.round,
+          antiAlias: BrushAntiAlias.high,
+        );
+    const width = 24;
+    const height = 20;
+    for (final dabs in [
+      [dab(10.2, 0, 1, 1), dab(10.2, 1, 1, 1)],
+      [dab(10.2, 0, 0.4, 0.6), dab(11.1, 1, 0.4, 0.6)],
+    ]) {
+      final swatch = Float64List(width * height);
+      for (final placed in dabs) {
+        layPreviewDab(swatch, width, height, placed);
+      }
+      final canvas = Uint8List(width * height);
+      for (final operation in brushPixelBlendOperationsForDabSequence(
+        sequence: BrushDabSequence(BrushTipStampCache().resolveDabs(dabs)),
+        destinationAt: (_, _) => RgbaColor.fromArgbInt(0),
+      )) {
+        canvas[operation.y * width + operation.x] = operation.after.a;
+      }
+      for (var index = 0; index < canvas.length; index += 1) {
+        expect(
+          (swatch[index] * 255).round(),
+          closeTo(canvas[index], 1),
+          reason: 'hardness ${dabs.first.hardness}, pixel $index',
+        );
+      }
+    }
   });
 
   group('F-176-Q3: a swatch takes a brush\'s tips in turn, as its strokes '

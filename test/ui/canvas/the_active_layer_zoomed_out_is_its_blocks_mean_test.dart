@@ -1,0 +1,305 @@
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/composite_tree.dart';
+import 'package:anicel/src/models/project_background.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/services/brush_frame_store.dart';
+import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
+import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
+import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import '../../helpers/the_frame_as_it_stands.dart';
+
+/// 🚨★★★THE ACTIVE LAYER ZOOMED OUT IS THE MEAN OF ITS BLOCKS, NEVER
+/// NEAREST (render round 4c, 2026-09-16) — so the layer being drawn on and
+/// the layers around it are the same picture at every zoom.
+///
+/// ↩️Until 4c the active layer's tiles were the one thing in the level
+/// buffer still reduced by nearest under the recorder's scale; 4c drew them
+/// into it as LEVEL TILES (`TilePyramid`, until ②-5b-2), each an exact box
+/// mean of its block. Since 2026-10-25 the frame drawn as it stands is
+/// composed at its
+/// own resolution, as its one picture is (`StackedFrame.paintOnScreen`), and
+/// the blit reduces it: this pins that the mean holds on that road.
+///
+/// The fixture is the cel the level buffer's own pin stood on (↩️until the
+/// row levels went, one-picture-per-frame ②-5b-1) as the ACTIVE layer:
+/// 64×32, an opaque black column every four pixels, every
+/// tile with its picture already in the cache. At 25% each device pixel is
+/// a 4×4 block holding one column — a quarter ink over white paper reads
+/// 191; nearest reads 0 or 255.
+void main() {
+  const tileSize = 8;
+  const canvasSize = CanvasSize(width: 64, height: 32);
+  final cache = BitmapTileImageCache.instance;
+
+  /// A tile of [size] whose pixels are [rgbaAt], with its picture drawn
+  /// the same way and given to the cache as a landed decode.
+  BitmapTile pictured(
+    TileCoord coord,
+    int size,
+    List<int> Function(int x, int y) rgbaAt,
+  ) {
+    final pixels = Uint8List(size * size * 4);
+    final recorder = ui.PictureRecorder();
+    final canvas = ui.Canvas(recorder);
+    for (var y = 0; y < size; y += 1) {
+      for (var x = 0; x < size; x += 1) {
+        final rgba = rgbaAt(x, y);
+        pixels.setRange((y * size + x) * 4, (y * size + x) * 4 + 4, rgba);
+        if (rgba[3] != 0) {
+          canvas.drawRect(
+            ui.Rect.fromLTWH(x * 1.0, y * 1.0, 1, 1),
+            ui.Paint()
+              ..color = ui.Color.fromARGB(rgba[3], rgba[0], rgba[1], rgba[2]),
+          );
+        }
+      }
+    }
+    final tile = BitmapTile(size: size, pixels: pixels);
+    final picture = recorder.endRecording();
+    cache.adoptDecoded(
+      tile,
+      picture.toImageSync(size, size),
+    );
+    picture.dispose();
+    return tile;
+  }
+
+  const black = [0, 0, 0, 255];
+  const clear = [0, 0, 0, 0];
+
+  /// Every tile of the cel: a black column at every fourth canvas x.
+  BitmapSurface columns() => BitmapSurface(
+    canvasSize: canvasSize,
+    tileSize: tileSize,
+    tiles: {
+      for (var ty = 0; ty * tileSize < canvasSize.height; ty += 1)
+        for (var tx = 0; tx * tileSize < canvasSize.width; tx += 1)
+          TileCoord(x: tx, y: ty): pictured(
+            TileCoord(x: tx, y: ty),
+            tileSize,
+            (x, y) => (tx * tileSize + x) % 4 == 0 ? black : clear,
+          ),
+    },
+  );
+
+  /// [walk]: no buffer, the stack drawn row by row under the view — the
+  /// safety net past the texture cap.
+  Widget stackAt({
+    required CanvasViewport viewport,
+    required Size logicalSize,
+    required BitmapSurfacePainter live,
+    required LayerFrameImageCache images,
+    bool walk = false,
+  }) => MaterialApp(
+    home: Scaffold(
+      body: Center(
+        child: SizedBox(
+          width: logicalSize.width,
+          height: logicalSize.height,
+          child: TheFrameAsItStands(
+            nodes: const [
+              CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
+            ],
+            imageCache: images,
+            canvasSize: canvasSize,
+            viewport: viewport,
+            activeSurfacePainter: live,
+            paintPaper: true,
+            paperBackground: ProjectBackground.defaultBackground,
+            debugDisableSingleBuffer: walk,
+          ),
+        ),
+      ),
+    ),
+  );
+
+  CustomPainter painterOf(WidgetTester tester) => tester
+      .widgetList<CustomPaint>(
+        find.descendant(
+          of: find.byType(TheFrameAsItStands),
+          matching: find.byType(CustomPaint),
+        ),
+      )
+      .where((paint) => paint.painter != null)
+      .first
+      .painter!;
+
+  Future<Uint8List> paintBytes(
+    WidgetTester tester,
+    CustomPainter painter,
+    Size size,
+  ) async {
+    final bytes = await tester.runAsync(() async {
+      final recorder = ui.PictureRecorder();
+      painter.paint(Canvas(recorder, Offset.zero & size), size);
+      final picture = recorder.endRecording();
+      final image = picture.toImageSync(
+        size.width.round(),
+        size.height.round(),
+      );
+      picture.dispose();
+      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      image.dispose();
+      return data!.buffer.asUint8List();
+    });
+    return bytes!;
+  }
+
+  // Composed whole and reduced as one picture, and on the walk past the
+  // texture cap, where the active row draws its tiles reduced itself.
+  for (final walk in [false, true]) {
+    testWidgets('at 25% every pixel of the active layer is the mean of its '
+        '4×4 block, not nearest${walk ? ' — on the walk past the cap' : ''}',
+        (tester) async {
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final images = LayerFrameImageCache(frameStore: BrushFrameStore());
+      addTearDown(images.dispose);
+      final live = BitmapSurfacePainter(
+        surface: columns(),
+        showTransparentBackground: false,
+      );
+      // The cel's interior (canvas x 16..48 × y 8..24) in an 8×4 view: one
+      // device pixel per 4×4 block, away from the paper's yielded edge.
+      const logicalSize = Size(8, 4);
+      await tester.pumpWidget(
+        stackAt(
+          viewport: CanvasViewport(zoom: 0.25, panX: -4, panY: -2),
+          logicalSize: logicalSize,
+          live: live,
+          images: images,
+          walk: walk,
+        ),
+      );
+      await tester.pumpAndSettle();
+      final bytes = await paintBytes(tester, painterOf(tester), logicalSize);
+      for (var i = 0; i < bytes.length; i += 4) {
+        expect(bytes[i + 3], 255, reason: 'pixel ${i ~/ 4} is opaque');
+        expect(
+          bytes[i],
+          inInclusiveRange(189, 193),
+          reason: 'pixel ${i ~/ 4}: one column in four is ink, so the mean '
+              'reads 191 — 0 or 255 is a tile drawn by nearest under the '
+              'recorder\'s scale',
+        );
+      }
+    });
+  }
+
+  // 🚨★★★WHAT IS ON SCREEN AFTER ONE BUILD, read off the layer tree — not
+  // by calling the painter again, which would BE the second paint the old
+  // ration was waiting for and nothing in the app ever asked for.
+  //
+  // Measured before the ration went (2026-09-17, this fixture): 40 inked
+  // level-1 blocks against a ration of 32 a paint left 180 of 1080 sampled
+  // pixels nearest (0) beside box-mean neighbours (127) — after the first
+  // build, after another pump, and still a second later.
+  testWidgets('🚨a cold zoomed-out view is WHOLE in its first paint — more '
+      'blocks than the old ration, none of them left to a paint nobody '
+      'asks for', (tester) async {
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    // 16 × 10 tiles → 8 × 5 = 40 level-1 blocks. COLD: no tile has a
+    // picture, so the paint makes all 160 of them (↩️and, at a level, the
+    // 40 level tiles).
+    const wide = CanvasSize(width: 128, height: 80);
+    final surface = BitmapSurface(
+      canvasSize: wide,
+      tileSize: tileSize,
+      tiles: {
+        for (var ty = 0; ty * tileSize < wide.height; ty += 1)
+          for (var tx = 0; tx * tileSize < wide.width; tx += 1)
+            TileCoord(x: tx, y: ty): BitmapTile(
+              size: tileSize,
+              pixels: () {
+                final pixels = Uint8List(tileSize * tileSize * 4);
+                for (var y = 0; y < tileSize; y += 1) {
+                  for (var x = 0; x < tileSize; x += 1) {
+                    if ((tx * tileSize + x) % 4 == 0) {
+                      pixels[(y * tileSize + x) * 4 + 3] = 255;
+                    }
+                  }
+                }
+                return pixels;
+              }(),
+            ),
+      },
+    );
+    final images = LayerFrameImageCache(frameStore: BrushFrameStore());
+    addTearDown(images.dispose);
+    final boundary = GlobalKey();
+    const logicalSize = Size(64, 40);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: RepaintBoundary(
+              key: boundary,
+              child: SizedBox(
+                width: logicalSize.width,
+                height: logicalSize.height,
+                child: TheFrameAsItStands(
+                  nodes: const [
+                    CompositeLeaf<CanvasStackRow>(
+                      CanvasActiveLayerRow(opacity: 1),
+                    ),
+                  ],
+                  imageCache: images,
+                  canvasSize: wide,
+                  viewport: CanvasViewport(zoom: 0.5),
+                  activeSurfacePainter: BitmapSurfacePainter(
+                    surface: surface,
+                    showTransparentBackground: false,
+                  ),
+                  paintPaper: true,
+                  paperBackground: ProjectBackground.defaultBackground,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    final render =
+        boundary.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+    final bytes = (await tester.runAsync(() async {
+      final image = await render.toImage();
+      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      image.dispose();
+      return data!.buffer.asUint8List();
+    }))!;
+    // Every EVEN device x covers canvas x = 2·dx and 2·dx + 1, and 2·dx is
+    // a multiple of four: one ink column of the two. The mean reads 127;
+    // nearest reads the column itself (0).
+    var mean = 0;
+    final nearest = <String>[];
+    for (var y = 2; y < 38; y += 1) {
+      for (var x = 2; x < 62; x += 2) {
+        final value = bytes[(y * 64 + x) * 4];
+        if (value >= 120 && value <= 135) {
+          mean += 1;
+        } else {
+          nearest.add('($x,$y)=$value');
+        }
+      }
+    }
+    expect(
+      nearest,
+      isEmpty,
+      reason: 'a block drawn as its coordinates under the recorder\'s '
+          'scale is nearest — and it stays on screen until something else '
+          'repaints, because nothing asks a painter to paint again',
+    );
+    expect(mean, 36 * 30, reason: 'every sampled pixel was read');
+  });
+}

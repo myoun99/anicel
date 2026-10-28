@@ -177,15 +177,11 @@ void main() {
     }
   });
 
-  testWidgets('손떨림 보정 적용 switched off dims the slider and the speed row '
-      'under it, and keeps what they hold (유저 2026-10-20)', (tester) async {
-    Future<void> tap(String key) async {
-      final target = find.byKey(ValueKey<String>(key));
-      await tester.ensureVisible(target);
-      await tester.tap(target);
-      await tester.pumpAndSettle();
-    }
-
+  // 🗣️유저 2026-10-20 「적용해제면 손떨림보정쪽 다른 버튼 규칙처럼 비활성화」 —
+  // the other buttons' rule, which F-478-Q2 (유저 2026-10-27) made 「없앤다 —
+  // 패널 안 스위치도 같은 법」.
+  testWidgets('손떨림 보정 적용 switched off takes the slider and the speed row '
+      'under it away, and keeps what they hold', (tester) async {
     Future<void> press(String key) async {
       final row = find.byKey(ValueKey<String>(key));
       await tester.ensureVisible(row);
@@ -199,21 +195,25 @@ void main() {
         correction: const BrushCorrection(stabilization: 40),
       ),
     );
-    const off = BrushCorrection(steadies: false, stabilization: 40);
-    await press('brush-tool-stabilizer-on');
-    expect(read().correction, off);
+    final under = [
+      find.byKey(const ValueKey<String>('brush-tool-stabilizer-slider')),
+      find.byKey(const ValueKey<String>('brush-tool-steadying-by-speed-slow')),
+    ];
+    for (final row in under) {
+      expect(row, findsOneWidget, reason: '⛔premise: steadying, it is there');
+    }
 
-    final slider = find.byKey(
-      const ValueKey<String>('brush-tool-stabilizer-slider'),
-    );
-    await tester.ensureVisible(slider);
-    await tester.drag(slider, const Offset(80, 0));
-    await tester.pumpAndSettle();
-    await tap('brush-tool-steadying-by-speed-slow');
-    expect(read().correction, off, reason: 'dim: neither moves');
+    await press('brush-tool-stabilizer-on');
+    expect(read().correction, const BrushCorrection(steadies: false, stabilization: 40));
+    for (final row in under) {
+      expect(row, findsNothing);
+    }
 
     await press('brush-tool-stabilizer-on');
     expect(read().correction, const BrushCorrection(stabilization: 40));
+    for (final row in under) {
+      expect(row, findsOneWidget, reason: 'back with what it held');
+    }
   });
 
   testWidgets('BrushSettingsPanel updates hardness and flow (the tip '
@@ -329,56 +329,68 @@ void main() {
   );
 
   group('placement dynamics', () {
-    testWidgets('⛔the mask sliders keep their place with no mask picked', (
+    // 🗣️F-478-Q2 (유저 2026-10-27): 「없앤다 — 패널 안 스위치도 같은 법」.
+    // ↩️They stood DEAD with no mask, 「없다가 생기는 UI 금지」: they had been
+    // mounted only once a mask was chosen, which shoved four rows into the
+    // panel under the finger that had just come back from the popup — the
+    // cost the answer took.
+    testWidgets('the mask knobs are there only with their mask', (
       tester,
     ) async {
-      // The dual and texture scale/density rows used to be mounted only once
-      // a mask was chosen, so picking one in the popup shoved four rows into
-      // the panel under the finger that had just come back from it.
-      final read = await _pumpPanel(tester);
-
-      expect(read().dualMask, isNull);
-      expect(read().textureMask, isNull);
-
-      expect(
-        find.byKey(const ValueKey<String>('brush-tool-texture-invert-toggle')),
-        findsOneWidget,
-      );
-
-      for (final key in [
+      const dual = [
         'brush-tool-dual-scale-slider',
         'brush-tool-dual-density-slider',
+        'brush-tool-dual-blend-menu-button',
+      ];
+      const texture = [
         'brush-tool-texture-scale-slider',
         'brush-tool-texture-density-slider',
+        'brush-tool-texture-mode-height',
+        'brush-tool-texture-invert-toggle',
         'brush-tool-texture-brightness-slider',
         'brush-tool-texture-contrast-slider',
-      ]) {
-        final slider = find.byKey(ValueKey<String>(key));
-        expect(slider, findsOneWidget, reason: '$key must keep its place');
-        await tester.ensureVisible(slider);
-        await tester.drag(slider, const Offset(60, 0));
-        await tester.pumpAndSettle();
+      ];
+      void expectRows(List<String> keys, Matcher matcher) {
+        for (final key in keys) {
+          expect(find.byKey(ValueKey<String>(key)), matcher, reason: key);
+        }
       }
 
-      // Present, and DEAD: with no mask there is nothing for them to scale.
-      expect(read().dualMaskScale, 1.0);
-      expect(read().dualDensity, 1.0);
-      expect(read().textureScale, 1.0);
-      expect(read().textureDensity, 1.0);
-      expect(read().textureBrightness, 0.0);
-      expect(read().textureContrast, 0.0);
+      final bare = await _pumpPanel(tester);
+      expect(bare().dualMask, isNull, reason: 'fixture premise');
+      expect(bare().textureMask, isNull, reason: 'fixture premise');
+      expectRows([...dual, ...texture], findsNothing);
+
+      final mask = BrushTipMask(
+        id: 'mask-rows-test',
+        size: 2,
+        alpha: Uint8List.fromList([0, 128, 200, 255]),
+      );
+      await _pumpPanel(
+        tester,
+        initial: BrushToolState.defaults.withMask(BrushMaskSlot.dual, mask),
+      );
+      expectRows(dual, findsOneWidget);
+      expectRows(texture, findsNothing);
+
+      await _pumpPanel(
+        tester,
+        initial: BrushToolState.defaults.withMask(BrushMaskSlot.texture, mask),
+      );
+      expectRows(dual, findsNothing);
+      expectRows(texture, findsOneWidget);
     });
 
     testWidgets('🐛the dual sliders reach the engine WITH a mask picked', (
       tester,
     ) async {
-      // 🚨THE TEST ABOVE ONLY EVER ASKED THE DEAD CASE. "Present, and DEAD:
-      // with no mask there is nothing for them to scale" is true and it is
-      // half the question — a row that is disabled cannot say whether the
-      // enabled one writes anywhere. `BrushToolState.copyWith` took a
-      // `dualDensity` and did not pass it to the shape, so the density
-      // slider moved and nothing changed, and every assertion in this file
-      // agreed with it.
+      // 🚨THE TEST ABOVE ONCE ASKED ONLY THE DEAD CASE (↩️the rows stood DEAD
+      // with no mask, until F-478-Q2). "Present, and DEAD: with no mask there
+      // is nothing for them to scale" was true and it was half the question
+      // — a row that is disabled cannot say whether the enabled one writes
+      // anywhere. `BrushToolState.copyWith` took a `dualDensity` and did not
+      // pass it to the shape, so the density slider moved and nothing
+      // changed, and every assertion in this file agreed with it.
       final mask = BrushTipMask(
         id: 'dual-row-test',
         size: 2,
@@ -449,28 +461,6 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('⛔the dual blend row keeps its place with no mask picked', (
-      tester,
-    ) async {
-      // 「없다가 생기는 UI 금지」, the same law the mask sliders above obey:
-      // the row is here and DEAD, not absent and then suddenly present.
-      final read = await _pumpPanel(tester);
-      expect(read().dualMask, isNull);
-      final button = find.byKey(
-        const ValueKey<String>('brush-tool-dual-blend-menu-button'),
-      );
-      expect(button, findsOneWidget, reason: 'the row must keep its place');
-      await tester.ensureVisible(button);
-      await tester.tap(button);
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const ValueKey<String>('brush-tool-dual-blend-add')),
-        findsNothing,
-        reason: 'with no dual tip there is nothing for a mode to combine',
-      );
-      expect(tester.takeException(), isNull);
-    });
-
     testWidgets('繰り返し方法 is picked by its row and reaches the shape '
         '(F-176-Q3)', (tester) async {
       BrushTipMask tip(String id) => BrushTipMask(
@@ -499,46 +489,55 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('⛔the 繰り返し方法 row keeps its place with no tip picked', (
+    // 🗣️F-478-Q2 (유저 2026-10-27): 「없앤다 — 패널 안 스위치도 같은 법」.
+    // ↩️It stood DEAD for the round tip (「없다가 생기는 UI 금지」).
+    testWidgets('the 繰り返し方法 row is there only with tips to take turns — '
+        'one keeps it, its two laps still draw that tip once', (
       tester,
     ) async {
-      // 「없다가 생기는 UI 금지」 again: the parametric tip has no tips to
-      // take turns, so the row is here and DEAD.
-      final read = await _pumpPanel(tester);
-      expect(read().tips, isEmpty, reason: 'fixture premise');
       final button = find.byKey(
         const ValueKey<String>('brush-tool-tip-order-menu-button'),
       );
-      expect(button, findsOneWidget, reason: 'the row must keep its place');
-      await tester.ensureVisible(button);
-      await tester.tap(button);
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const ValueKey<String>('brush-tool-tip-order-pingPong')),
-        findsNothing,
+      final bare = await _pumpPanel(tester);
+      expect(bare().tips, isEmpty, reason: 'fixture premise');
+      expect(button, findsNothing);
+
+      await _pumpPanel(
+        tester,
+        initial: BrushToolState.defaults.copyWith(
+          tips: [
+            BrushTipMask(
+              id: 'one',
+              size: 2,
+              alpha: Uint8List.fromList([0, 128, 200, 255]),
+            ),
+          ],
+        ),
       );
-      expect(tester.takeException(), isNull);
+      expect(button, findsOneWidget);
     });
 
+    // 🗣️F-478-Q2 (유저 2026-10-27): 「없앤다 — 패널 안 스위치도 같은 법」.
+    // ↩️It stood DEAD below two tips (「없다가 생기는 UI 금지」).
     testWidgets('the tips a turn holds are set by their row and reach the '
-        'shape — and the row is DEAD below two tips (F-456-Q4)', (
-      tester,
-    ) async {
-      // 「없다가 생기는 UI 금지」: one tip has nothing to throw between, so
-      // the row is here and dead, not absent.
+        'shape — and the row is there only with two tips to throw between '
+        '(F-456-Q4)', (tester) async {
       final row = find.byKey(
         const ValueKey<String>('brush-tool-tips-per-turn-slider'),
       );
-      final bare = await _pumpPanel(tester);
-      expect(bare().tips, isEmpty, reason: 'fixture premise');
-      expect(row, findsOneWidget, reason: 'the row must keep its place');
-      expect(tester.widget<FieldSlider>(row).onChanged, isNull);
-
       BrushTipMask tip(String id) => BrushTipMask(
         id: id,
         size: 2,
         alpha: Uint8List.fromList([0, 128, 200, 255]),
       );
+      for (final tips in [<BrushTipMask>[], [tip('a')]]) {
+        await _pumpPanel(
+          tester,
+          initial: BrushToolState.defaults.copyWith(tips: tips),
+        );
+        expect(row, findsNothing, reason: '${tips.length} tip(s)');
+      }
+
       final read = await _pumpPanel(
         tester,
         initial: BrushToolState.defaults.copyWith(
@@ -552,32 +551,18 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    // With no paper the row is not there — the mask knobs' test above.
     testWidgets('the paper\'s 高さ is picked by its row and reaches the '
-        'canvas — and the row is DEAD with no paper (F-451)', (tester) async {
+        'canvas (F-451)', (tester) async {
       final height = find.byKey(
         const ValueKey<String>('brush-tool-texture-mode-height'),
       );
-
-      final bare = await _pumpPanel(tester);
-      expect(bare().textureMask, isNull, reason: 'fixture premise');
-      expect(height, findsOneWidget, reason: 'the row must keep its place');
-      await tester.ensureVisible(height);
-      await tester.tap(height);
-      await tester.pumpAndSettle();
-      expect(
-        bare().textureMode,
-        BrushTextureMode.multiply,
-        reason: 'no paper, nothing to cut',
-      );
-
-      final paper = BrushTipMask(
-        id: 'paper-row-test',
-        size: 2,
-        alpha: Uint8List.fromList([0, 128, 200, 255]),
-      );
       final read = await _pumpPanel(
         tester,
-        initial: BrushToolState.defaults.withMask(BrushMaskSlot.texture, paper),
+        initial: BrushToolState.defaults.withMask(
+          BrushMaskSlot.texture,
+          _paper,
+        ),
       );
       expect(read().textureMode, BrushTextureMode.multiply);
       await tester.ensureVisible(height);
@@ -590,7 +575,13 @@ void main() {
 
     testWidgets('the paper\'s density takes a pen curve of its own — the '
         'lead\'s reach into the tooth (F-451)', (tester) async {
-      final read = await _pumpPanel(tester);
+      final read = await _pumpPanel(
+        tester,
+        initial: BrushToolState.defaults.withMask(
+          BrushMaskSlot.texture,
+          _paper,
+        ),
+      );
       final curveButton = find.byKey(
         const ValueKey<String>('brush-tool-pressure-textureDensity'),
       );
@@ -659,35 +650,40 @@ void main() {
     // The blend lock moved to the top strip with the blend button; its
     // pin/release test went with it (editor_top_strip_test.dart).
 
-    testWidgets('⛔mixing DEADENS its knobs, it does not remove them', (
-      tester,
-    ) async {
-      // 유저, 반복: 「없다가 생기는 UI 금지. 자리는 항상 예약하고 내용만
-      // 바꾼다」. The three knobs used to be mounted only while mixing was
-      // on, so the switch made everything below it jump.
+    // 🗣️F-478-Q2 (유저 2026-10-27): 「없앤다 — 패널 안 스위치도 같은 법」.
+    // ↩️The three went DEAD with mixing off (유저, 반복: 「없다가 생기는 UI
+    // 금지. 자리는 항상 예약하고 내용만 바꾼다」 — mounted only while mixing
+    // was on, the switch had made everything below it jump), until the
+    // answer took that cost.
+    testWidgets('mixing brings its knobs, and takes them away keeping what '
+        'they hold', (tester) async {
       final read = await _pumpPanel(tester);
-      const amount = ValueKey<String>('brush-tool-paint-amount-slider');
-      const stretchKey = ValueKey<String>('brush-tool-color-stretch-slider');
-
-      expect(read().mixesGroundColor, isFalse);
-      expect(find.byKey(amount), findsOneWidget);
-
-      // Dead means dead: dragging it while mixing is off changes nothing.
-      final before = read().colorStretch;
-      await tester.ensureVisible(find.byKey(stretchKey));
-      await tester.drag(find.byKey(stretchKey), const Offset(60, 0));
-      await tester.pumpAndSettle();
-      expect(read().colorStretch, before);
+      const knobs = [
+        'brush-tool-paint-amount-slider',
+        'brush-tool-paint-density-slider',
+        'brush-tool-color-stretch-slider',
+      ];
+      void expectKnobs(Matcher matcher) {
+        for (final key in knobs) {
+          expect(find.byKey(ValueKey<String>(key)), matcher, reason: key);
+        }
+      }
 
       final toggle = find.byKey(
         const ValueKey<String>('brush-tool-mixing-toggle'),
       );
-      await tester.ensureVisible(toggle);
-      await tester.pressRingIn(toggle);
-      await tester.pumpAndSettle();
+      Future<void> flip() async {
+        await tester.ensureVisible(toggle);
+        await tester.pressRingIn(toggle);
+        await tester.pumpAndSettle();
+      }
 
+      expect(read().mixesGroundColor, isFalse);
+      expectKnobs(findsNothing);
+
+      await flip();
       expect(read().mixesGroundColor, isTrue);
-      expect(find.byKey(amount), findsOneWidget);
+      expectKnobs(findsOneWidget);
 
       // Colour stretch starts at zero — a brush that lifts nothing is the
       // safe default — so dragging it right is what proves it is wired.
@@ -697,8 +693,48 @@ void main() {
       await tester.ensureVisible(stretch);
       await tester.drag(stretch, const Offset(60, 0));
       await tester.pumpAndSettle();
+      final stretched = read().colorStretch;
+      expect(stretched, greaterThan(0));
 
-      expect(read().colorStretch, greaterThan(0));
+      await flip();
+      expectKnobs(findsNothing);
+      await flip();
+      expect(
+        tester.widget<FieldSlider>(stretch).value,
+        stretched,
+        reason: 'back with what it held',
+      );
+    });
+
+    // 🗣️F-478-Q2 (유저 2026-10-27): the method row is one of the rows under
+    // the mixing switch, and the reservoir's three are the mix's alone.
+    testWidgets('the mixing method is picked by its row and reaches the '
+        'canvas — there only while mixing is on, and a blur takes the '
+        'reservoir\'s knobs away (I-75)', (tester) async {
+      final blur = find.byKey(
+        const ValueKey<String>('brush-tool-mixing-method-blur'),
+      );
+      final bare = await _pumpPanel(tester);
+      expect(bare().mixesGroundColor, isFalse, reason: 'fixture premise');
+      expect(blur, findsNothing, reason: 'mixing off, nothing to pick');
+
+      final read = await _pumpPanel(
+        tester,
+        initial: BrushToolState.defaults.copyWith(mixesGroundColor: true),
+      );
+      const amount = ValueKey<String>('brush-tool-paint-amount-slider');
+      expect(find.byKey(amount), findsOneWidget, reason: 'premise: a mix');
+      await tester.ensureVisible(blur);
+      await tester.tap(blur);
+      await tester.pumpAndSettle();
+
+      expect(read().toInputSettings().blurs, isTrue);
+      expect(
+        find.byKey(amount),
+        findsNothing,
+        reason: 'a blur picks no colour up',
+      );
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('scatter carries a radius, a count and an axis choice', (
@@ -779,8 +815,10 @@ void main() {
     ]);
   });
 
+  // 🗣️F-478-Q2 (유저 2026-10-27): 「없앤다 — 패널 안 스위치도 같은 법」.
+  // ↩️What had nothing under it to bend stood DIM (F-418).
   testWidgets("the 보정 group writes the brush's own — the speed row and the "
-      '後補正 rows — and leaves dim what has nothing under it to bend '
+      '後補正 rows — and has no row for what has nothing under it to bend '
       '(F-418)', (tester) async {
     Future<void> tap(String key) async {
       final target = find.byKey(ValueKey<String>(key));
@@ -808,17 +846,13 @@ void main() {
         correction: BrushCorrection.none,
       ),
     );
-    await tap('brush-tool-steadying-by-speed-slow');
+    // Nothing taken out: nothing to bend. (Nothing steadied, no speed row —
+    // the 손떨림 보정 적용 test above.)
     for (final key in toggles) {
-      await press(key);
+      expect(find.byKey(ValueKey<String>(key)), findsNothing, reason: key);
     }
-    expect(
-      read().correction,
-      BrushCorrection.none,
-      reason: 'nothing steadied, nothing taken out: nothing to bend',
-    );
     // 角をとがらせる sits under no switch in Clip Studio's group: it is
-    // never dim (F-418-Q11).
+    // always there (F-418-Q11).
     await press('brush-tool-sharpen-corners');
     expect(
       read().correction,
@@ -860,6 +894,13 @@ void main() {
     expect(read().toBrushSettings().correction, read().correction);
   });
 }
+
+/// A paper for the texture slot, whose rows are there only with one.
+final _paper = BrushTipMask(
+  id: 'paper-row-test',
+  size: 2,
+  alpha: Uint8List.fromList([0, 128, 200, 255]),
+);
 
 /// The settings panel, scrolled, starting from [initial] and kept as each
 /// change leaves it: what it holds now is the answer of the function given

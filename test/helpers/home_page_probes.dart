@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
+import 'package:anicel/src/ui/timeline/comma_button.dart';
 import 'package:anicel/src/ui/timeline/layer_name_commands.dart'
     show renameActiveCutWithDialog;
 
@@ -30,7 +31,6 @@ import 'app_icon_button_probe.dart';
 import 'named_finders.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
-import 'package:anicel/src/ui/widgets/tick_text.dart';
 
 Future<void> tapToolbarButton(WidgetTester tester, ValueKey<String> key) async {
   final owner = flyoutOwnerByItemKey[key.value];
@@ -421,17 +421,16 @@ void expectActiveLayerName(String name) {
   );
 }
 
+/// The cut-local frame the session stands on, one-based. ↩️It read the
+/// bar's frame counter's cut-local line, until F-463 took the counter off.
 void expectCurrentFrame(WidgetTester tester, int frameNumber) {
-  // The counter is two stacked lines (2026-08-10) — track-global above,
-  // cut-local below. This is the timeline, where the top line is blank, so
-  // the number under assertion is the LOCAL one.
   expect(
     tester
-        .renderObject<RenderTickText>(
-          find.byKey(const ValueKey<String>('timeline-local-frame-counter')),
-        )
-        .data,
-    '$frameNumber',
+            .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+            .session
+            .currentFrameIndex +
+        1,
+    frameNumber,
   );
 }
 
@@ -508,9 +507,9 @@ Future<bool> isActionButtonEnabled(
   final widget = tester.widget(button);
 
   return switch (widget) {
-    TextButton(:final onPressed) => onPressed != null,
+    CommaButton(:final onPressed) => onPressed != null,
     AppIconButtonFace(:final onPressed) => onPressed != null,
-    RailGlyphFace(:final enabled) => enabled,
+    RailGlyphButton(:final enabled) => enabled,
     _ => isDescendantIconButtonEnabled(tester, button),
   };
 }
@@ -619,11 +618,12 @@ void expectTimelineActionTooltips() {
   // An install's Clip Studio layout gives Add Frame no key (F-417-Q2).
   // 🗣️I-58 (유저 2026-10-18): each wears its action's name. ↩️They read
   // 'Add', 'Blank / X' and 'Mark ●'.
-  expect(find.railTooltip('New Frame'), findsOneWidget);
-  expect(find.railTooltip('Clear'), findsOneWidget);
-  expect(find.railTooltip('In-between Mark'), findsOneWidget);
-  expect(find.byTooltip('Decrease Exposure'), findsNothing);
-  expect(find.byTooltip('Increase Exposure'), findsNothing);
+  expect(find.tooltipSaying('New Frame'), findsOneWidget);
+  expect(find.tooltipSaying('Clear'), findsOneWidget);
+  expect(find.tooltipSaying('In-between Mark 1'), findsOneWidget);
+  expect(find.tooltipSaying('In-between Mark 2'), findsOneWidget);
+  expect(find.tooltipSaying('Decrease Exposure'), findsNothing);
+  expect(find.tooltipSaying('Increase Exposure'), findsNothing);
 }
 
 Future<void> expectTimelineActionKeys(WidgetTester tester) async {
@@ -633,6 +633,10 @@ Future<void> expectTimelineActionKeys(WidgetTester tester) async {
   );
   expect(
     find.byKey(const ValueKey<String>('blank-exposure-button')),
+    findsOneWidget,
+  );
+  expect(
+    find.byKey(const ValueKey<String>('toggle-mark-one-button')),
     findsOneWidget,
   );
   expect(

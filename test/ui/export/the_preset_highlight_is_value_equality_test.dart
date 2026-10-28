@@ -18,7 +18,7 @@ void main() {
       ExportPreset(id: ExportPresetId(id), name: 'preset $id', spec: spec);
 
   const plain = ImageExportSpec();
-  final edited = const ImageExportSpec().copyWith(applyLayerFx: false);
+  final edited = const ImageExportSpec().copyWith(layerFx: ExportLayerFx.off);
 
   Future<
     ({List<ExportPreset> applied, List<ExportPreset> deleted, List<int> saves})

@@ -16,7 +16,7 @@ import 'package:anicel/src/ui/canvas/colour_key_shader.dart';
 import 'package:anicel/src/ui/canvas/landing_preview.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_float.dart';
-import 'package:anicel/src/ui/canvas/tile_pyramid.dart';
+import 'package:anicel/src/ui/canvas/tile_picture_budget.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -480,7 +480,9 @@ void main() {
     }) => BitmapSurfacePainter(
       surface: surface,
       showTransparentBackground: false,
-      lineage: landing == null ? 'f344-${lineages++}' : TilePyramid.noLineage,
+      lineage: landing == null
+          ? 'f344-${lineages++}'
+          : TilePictureBudget.noLineage,
       landingPreview: landing,
     );
 

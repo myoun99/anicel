@@ -223,7 +223,7 @@ void main() {
   });
 
   test("a sibling's OWN parameter values survive a later shape change", () {
-    final radiusId = effectParametersOf(EffectKind.blur).first.id;
+    final radiusId = EffectKind.blur.parameters.first.id;
     final pair = makeLinkedPair();
     session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
     final linkedRow = session.activeLayer!;
@@ -274,7 +274,7 @@ void main() {
 
   test('a NAMED key carries its value across 겸용 cuts — the way a shape-only '
       'mirror leaves open', () {
-    final radiusId = effectParametersOf(EffectKind.blur).first.id;
+    final radiusId = EffectKind.blur.parameters.first.id;
     final pair = makeLinkedPair();
     session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
     final row = session.activeLayer!;

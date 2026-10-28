@@ -54,7 +54,7 @@ List<String> everyDigitIn(
 /// shown, the bottom region unfolded). What a line measures is decided by
 /// the line, the style, the text scaler, the direction and the fonts there
 /// are — so measures that agree on the last four share their sizes
-/// ([_grounds]), and a font registered since is another key ([_fontsNow]).
+/// ([_grounds]), and a font registered since is another key ([fontsNow]).
 class TextMeasure {
   TextMeasure(BuildContext context, this.style)
     : _scaler = MediaQuery.textScalerOf(context),
@@ -82,7 +82,7 @@ class TextMeasure {
   /// The sizes laid out where this measure lays text out, shared with every
   /// measure taken there.
   late final BoundedMemo<String, Size> _measured = _grounds.resolve(
-    (style: style, scaler: _scaler, direction: _direction, fonts: _fontsNow),
+    (style: style, scaler: _scaler, direction: _direction, fonts: fontsNow),
     () => BoundedMemo(_linesPerGround),
   );
 
@@ -92,8 +92,9 @@ class TextMeasure {
 
   /// How many times the fonts have changed since the first measure — a face
   /// registered while the app runs (a canvas letter face) can set a line
-  /// differently.
-  static int get _fontsNow {
+  /// differently. A layout kept for its words is kept for this too (a text
+  /// block's, `textCelLaidOut`).
+  static int get fontsNow {
     if (!_hearingFonts) {
       _hearingFonts = true;
       PaintingBinding.instance.systemFonts.addListener(() => _fonts += 1);

@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/input/control_press_claim.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
@@ -527,8 +528,8 @@ void main() {
     });
   });
 
-  testWidgets('🚨one button is the claim and ONE leaf — four render objects '
-      'where the app\'s button is twenty', (tester) async {
+  testWidgets('🚨one button is ONE leaf, the claim too — one element and one '
+      'render object', (tester) async {
     await pump(
       tester,
       RailGlyphButton(
@@ -539,19 +540,23 @@ void main() {
         size: box,
       ),
     );
-    var renderObjects = 0;
+    var elements = 0;
     void visit(Element element) {
-      if (element is RenderObjectElement) {
-        renderObjects += 1;
-      }
+      elements += 1;
       element.visitChildren(visit);
     }
 
-    visit(tester.element(find.byType(RailGlyphButton)));
-    // ⛔THE POINT OF THE ROUND, as a number: the claim's three (its gesture
-    // semantics and two listeners) and the face. A wrapper slipped around
-    // the face fails here on purpose.
-    expect(renderObjects, lessThanOrEqualTo(4));
+    final button = tester.element(find.byType(RailGlyphButton));
+    visit(button);
+    // ⛔THE POINT OF THE ROUND, as a number: the face is the claim and
+    // carries its own name (2026-10-25) — it was a claim, a name and the
+    // face. A wrapper slipped around the face fails here on purpose.
+    expect(elements, 1);
+    expect(button, isA<RenderObjectElement>());
+    expect(
+      tester.renderObject(find.byType(RailGlyphButton)),
+      isA<PressClaim>(),
+    );
   });
 
   group('the one tooltip window', () {
@@ -780,36 +785,39 @@ void main() {
   // The mark's and the take's plates (I-57 ①): the plate draws itself, and
   // the ONE render object around it is the button a [RailGlyphButton] is.
   group('a pressed PLATE is the same press', () {
-    Widget plate({required VoidCallback onRow, required VoidCallback onPick}) =>
-        SizedBox(
-          width: 300,
-          child: GestureDetector(
-            key: const ValueKey<String>('row'),
-            behavior: HitTestBehavior.opaque,
-            onTap: onRow,
-            child: Row(
-              children: [
-                const SizedBox(width: 100, height: 40),
-                RailFlyoutTrigger(
-                  name: 'plate',
-                  tooltip: 'Plate tip',
-                  semanticLabel: 'Plate',
-                  entriesBuilder: () => [
-                    PanelFlyoutItem(
-                      keyValue: 'plate-pick',
-                      label: 'Pick',
-                      onSelected: onPick,
-                    ),
-                  ],
-                  child: const ColoredBox(
-                    color: Colors.white,
-                    child: SizedBox(width: 30, height: 20),
-                  ),
+    Widget plate({
+      required VoidCallback onRow,
+      required VoidCallback onPick,
+      String pick = 'plate-pick',
+    }) => SizedBox(
+      width: 300,
+      child: GestureDetector(
+        key: const ValueKey<String>('row'),
+        behavior: HitTestBehavior.opaque,
+        onTap: onRow,
+        child: Row(
+          children: [
+            const SizedBox(width: 100, height: 40),
+            RailFlyoutTrigger(
+              name: 'plate',
+              tooltip: 'Plate tip',
+              semanticLabel: 'Plate',
+              entriesBuilder: () => [
+                PanelFlyoutItem(
+                  keyValue: pick,
+                  label: 'Pick',
+                  onSelected: onPick,
                 ),
               ],
+              child: const ColoredBox(
+                color: Colors.white,
+                child: SizedBox(width: 30, height: 20),
+              ),
             ),
-          ),
-        );
+          ],
+        ),
+      ),
+    );
 
     testWidgets('🚨a tap opens the shared list through the claim — and does '
         'NOT also tap the row around it', (tester) async {
@@ -863,8 +871,8 @@ void main() {
       semantics.dispose();
     });
 
-    testWidgets('🚨the press is the claim and ONE render object around the '
-        'plate', (tester) async {
+    testWidgets('🚨the press is ONE render object around the plate, the '
+        'claim too', (tester) async {
       await pump(tester, plate(onRow: () {}, onPick: () {}));
       var renderObjects = 0;
       void visit(Element element) {
@@ -875,9 +883,34 @@ void main() {
       }
 
       visit(tester.element(find.byType(RailFlyoutTrigger)));
-      // The claim's three and the face — and the plate's own two (a colour
-      // and a box) under it.
-      expect(renderObjects, lessThanOrEqualTo(6));
+      // The face, which is the claim (2026-10-25) — and the plate's own two
+      // (a colour and a box) under it.
+      expect(renderObjects, lessThanOrEqualTo(3));
+      expect(
+        tester.element(find.byType(RailFlyoutTrigger)),
+        isA<RenderObjectElement>().having(
+          (trigger) => trigger.renderObject,
+          'its box',
+          isA<RenderRailPlateFace>(),
+        ),
+        reason: 'the trigger is its plate button — no element stands over it',
+      );
+    });
+
+    testWidgets('a host that hands the door a new list: a press opens the '
+        'new one, as a fresh door would', (tester) async {
+      var picks = 0;
+      await pump(tester, plate(onRow: () {}, onPick: () {}));
+      await pump(
+        tester,
+        plate(onRow: () {}, onPick: () => picks += 1, pick: 'plate-new'),
+      );
+      await tester.tap(byName('plate'));
+      await tester.pumpAndSettle();
+      expect(byKey('plate-pick'), findsNothing, reason: 'not the old list');
+      await tester.tap(byKey('plate-new'));
+      await tester.pumpAndSettle();
+      expect(picks, 1, reason: 'the new list, with the new press');
     });
   });
 

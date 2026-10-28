@@ -437,6 +437,10 @@ class FloatResamplePreview {
   bool _inFlight = false;
   bool _dirty = false;
 
+  /// Whether the picture shown is the one the box asks for now: no
+  /// resample in flight, and none asked for since ([schedule]).
+  bool get caughtUp => !_inFlight && !_dirty;
+
   /// Ask for the preview to catch up.
   ///
   /// Safe to call from inside a setState: it never calls setState itself.

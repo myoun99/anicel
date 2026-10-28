@@ -7,9 +7,9 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/timeline_horizontal_scrollbar_rail.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_vertical_scrollbar_rail.dart';
-import 'package:anicel/src/ui/timeline_tab_host.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/timeline_host.dart';
 
 /// A page turn — the playhead crossing the frame window's bucket while it
 /// plays — repaints what follows the bucket, each on its own layer, and
@@ -49,25 +49,13 @@ void main() {
       session.selectFrameIndex(0);
 
       const cell = 24.0;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ListenableBuilder(
-              listenable: session,
-              builder: (context, _) => TimelineTabHost(
-                session: session,
-                orientation: orientation,
-                onOrientationChanged: (_) {},
-                pixelsPerFrame: cell,
-                onPixelsPerFrameChanged: (_) {},
-                showSeconds: false,
-                onShowSecondsChanged: (_) {},
-              ),
-            ),
-          ),
-        ),
+      await pumpTimelineHostOn(
+        tester,
+        session,
+        surface: const Size(1200, 800),
+        orientation: orientation,
+        pixelsPerFrame: cell,
       );
-      await tester.pumpAndSettle();
 
       final controller = sheet
           ? tester

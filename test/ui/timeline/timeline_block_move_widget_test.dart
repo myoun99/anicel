@@ -117,7 +117,6 @@ metrics: metrics,
             anchorIndex,
             headIndex, {
             headLayerId,
-            headLaneId,
             spanRows = const [],
           }) {
             onSelectUpdate?.call(layerId, anchorIndex, headIndex);
@@ -648,7 +647,7 @@ onLayerMarkSelected: (_, _) {},
 rangeHooks: TimelineFrameRangeHooks(
               selection: selection,
               onSelectUpdate:
-                  (_, _, _, {headLayerId, headLaneId, spanRows = const []}) {},
+                  (_, _, _, {headLayerId, spanRows = const []}) {},
               onClear: () {},
               move: TimelineRangeMoveCallbacks(
                 holds: (_) => false,
@@ -922,7 +921,8 @@ metrics: const TimelineGridMetrics(
     await gesture.up();
     await tester.pump();
 
-    // F-316: no band before the step off the pressed cell — the first
+    // F-316: no band before the first step (off the pressed cell, or
+    // farther than a tap, F-468) — the first
     // update IS that step.
     expect(selectUpdates.first, (const LayerId('layer-a'), 0, 2));
     expect(selectUpdates.last, (const LayerId('layer-a'), 0, 2));

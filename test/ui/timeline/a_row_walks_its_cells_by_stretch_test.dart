@@ -30,6 +30,7 @@ import 'package:anicel/src/ui/timeline/timeline_tile_raster_source.dart';
 
 import '../../helpers/run_edge_fixtures.dart';
 import 'timeline_frame_geometry_probe.dart';
+import '../../helpers/dots_at.dart';
 
 /// I-22: at the ten-minute floor a window is ~10,000 frames and a cut's own
 /// frames are a few hundred of them, so a row walks its cells by STRETCH —
@@ -51,7 +52,7 @@ void main() {
   }) => TimelineExposure.drawing(
     FrameId(id),
     length: length,
-    breakdownOffsets: dots,
+    breakdownMarks: dotsAt(dots),
   );
 
   // Every way a cell differs from the one before: empty first frames,

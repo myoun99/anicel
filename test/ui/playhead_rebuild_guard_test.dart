@@ -7,10 +7,12 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/timeline/timeline_section_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart';
+import 'package:anicel/src/ui/timeline/comma_button.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
+import 'package:anicel/src/ui/session/tab_rail_wiring.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
@@ -18,6 +20,7 @@ import 'package:anicel/src/ui/widgets/command_pill.dart' show PillNameCell;
 
 import '../helpers/home_page_probes.dart' show isActionButtonEnabled;
 import '../helpers/pill_row_clipboard.dart';
+import '../helpers/timeline_host.dart';
 
 /// R13-2 playhead rebuild guards: committed seeks and cursor moves must
 /// not rebuild what they don't change — measured on device as the
@@ -38,7 +41,7 @@ void main() {
         find.descendant(
           of: find.byType(TimelineActionToolbar),
           matching: find.byWidgetPredicate(
-            (w) => w is AppIconButton || w is PillNameCell || w is TextButton,
+            (w) => w is AppIconButton || w is PillNameCell || w is CommaButton,
           ),
         ),
       )
@@ -61,22 +64,12 @@ void main() {
     );
     addTearDown(session.dispose);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: TimelineTabHost(
-            session: session,
-            orientation: TimelineOrientation.horizontal,
-            onOrientationChanged: (_) {},
-            pixelsPerFrame: 24,
-            onPixelsPerFrameChanged: (_) {},
-            showSeconds: false,
-            onShowSecondsChanged: (_) {},
-          ),
-        ),
-      ),
+    await pumpTimelineHostOn(
+      tester,
+      session,
+      surface: const Size(800, 600),
+      pixelsPerFrame: 24,
     );
-    await tester.pumpAndSettle();
 
     final before = tester.widget(find.byType(TimelineActionToolbar));
     var controls = barControls(tester);
@@ -130,22 +123,12 @@ void main() {
       initialProject: createDefaultProject(),
     );
     addTearDown(session.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: TimelineTabHost(
-            session: session,
-            orientation: TimelineOrientation.horizontal,
-            onOrientationChanged: (_) {},
-            pixelsPerFrame: 24,
-            onPixelsPerFrameChanged: (_) {},
-            showSeconds: false,
-            onShowSecondsChanged: (_) {},
-          ),
-        ),
-      ),
+    await pumpTimelineHostOn(
+      tester,
+      session,
+      surface: const Size(800, 600),
+      pixelsPerFrame: 24,
     );
-    await tester.pumpAndSettle();
     const button = ValueKey<String>('shared-auto-name-button');
 
     session.selectFrameIndex(0);
@@ -181,30 +164,13 @@ void main() {
   // These pump the host under that wrapper so the notify path is real, then
   // assert the toolbar is reconstructed EXACTLY when a value it shows changes.
 
-  Future<EditorSessionManager> pumpNotifyWrappedHost(WidgetTester tester) async {
-    final session = EditorSessionManager(initialProject: createDefaultProject());
-    addTearDown(session.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => TimelineTabHost(
-              session: session,
-              orientation: TimelineOrientation.horizontal,
-              onOrientationChanged: (_) {},
-              pixelsPerFrame: 24,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    return session;
-  }
+  Future<EditorSessionManager> pumpNotifyWrappedHost(WidgetTester tester) =>
+      pumpTimelineHost(
+        tester,
+        createDefaultProject(),
+        surface: const Size(800, 600),
+        pixelsPerFrame: 24,
+      );
 
   Future<void> drainWarming(WidgetTester tester) async {
     await tester.pump(const Duration(seconds: 1));
@@ -439,37 +405,12 @@ void main() {
 
   testWidgets('a section fold refreshes the toolbar (its flyout checkmarks '
       'read hiddenSections)', (tester) async {
-    final session = EditorSessionManager(initialProject: createDefaultProject());
-    addTearDown(session.dispose);
-    var hidden = <TimelineSection>{};
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: StatefulBuilder(
-            builder: (context, setState) => ListenableBuilder(
-              listenable: session,
-              builder: (context, _) => TimelineTabHost(
-                session: session,
-                orientation: TimelineOrientation.horizontal,
-                onOrientationChanged: (_) {},
-                pixelsPerFrame: 24,
-                onPixelsPerFrameChanged: (_) {},
-                showSeconds: false,
-                onShowSecondsChanged: (_) {},
-                hiddenSections: hidden,
-                onToggleSection: (section) => setState(() {
-                  hidden = hidden.contains(section)
-                      ? (hidden.toSet()..remove(section))
-                      : (hidden.toSet()..add(section));
-                }),
-              ),
-            ),
-          ),
-        ),
-      ),
+    final session = await pumpTimelineHost(
+      tester,
+      createDefaultProject(),
+      surface: const Size(800, 600),
+      pixelsPerFrame: 24,
     );
-    await tester.pumpAndSettle();
 
     final before = tester.widget(find.byType(TimelineActionToolbar));
     // The controls on every pill but the layer pill, whose menu checks read
@@ -479,7 +420,7 @@ void main() {
           .descendant(
             of: find.byType(TimelineActionToolbar),
             matching: find.byWidgetPredicate(
-              (w) => w is AppIconButton || w is TextButton,
+              (w) => w is AppIconButton || w is CommaButton,
             ),
           )
           .evaluate())
@@ -500,7 +441,11 @@ void main() {
         .onToggleSection!(TimelineSection.se);
     await tester.pump();
 
-    expect(hidden, contains(TimelineSection.se), reason: 'sanity: it folded');
+    expect(
+      session.railView.hiddenSections.value,
+      contains(TimelineSection.se),
+      reason: 'sanity: it folded',
+    );
     expect(
       identical(tester.widget(find.byType(TimelineActionToolbar)), before),
       isFalse,
@@ -531,6 +476,7 @@ void main() {
         home: Scaffold(
           body: TimelineTabHost(
             session: session,
+            rail: TabRailWiring.of(session),
             orientation: TimelineOrientation.horizontal,
             onOrientationChanged: (_) {},
             pixelsPerFrame: zoom.value,

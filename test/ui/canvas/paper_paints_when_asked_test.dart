@@ -17,8 +17,9 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+
+import '../../helpers/the_frame_as_it_stands.dart';
 
 void main() {
   const canvasSize = CanvasSize(width: 200, height: 100);
@@ -37,7 +38,7 @@ void main() {
           body: SizedBox(
             width: screen.width,
             height: screen.height,
-            child: CanvasLayerStackView(
+            child: TheFrameAsItStands(
               nodes: const [],
               imageCache: LayerFrameImageCache(frameStore: BrushFrameStore()),
               canvasSize: canvasSize,
@@ -53,7 +54,7 @@ void main() {
     return tester
         .widgetList<CustomPaint>(
           find.descendant(
-            of: find.byType(CanvasLayerStackView),
+            of: find.byType(TheFrameAsItStands),
             matching: find.byType(CustomPaint),
           ),
         )

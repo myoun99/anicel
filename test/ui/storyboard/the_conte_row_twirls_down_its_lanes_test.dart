@@ -26,10 +26,10 @@ import 'package:anicel/src/ui/session/session_row_button_presses.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart' show StoryboardPanel;
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart'
     show seekStoryboardGlobalFrame;
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/storyboard_host.dart';
 
 /// 🗣️I-73 (유저 2026-10-08, the drawn proposal taken that day): 「이름 옆의
 /// 접기(∨)로 어태치 행을 접고, 라벨 · fx · 눈 · 불투명도 · 블렌드 · 레인
@@ -113,39 +113,12 @@ void main() {
     WidgetTester tester, {
     bool open = true,
   }) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 1000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final session = EditorSessionManager(initialProject: film());
-    addTearDown(session.dispose);
-    final rail = session.railView;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: Listenable.merge([
-              session,
-              rail.expandedLaneLayerIds,
-              rail.expandedLaneGroupKeys,
-            ]),
-            builder: (context, _) => StoryboardTabHost(
-              session: session,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-              expandedLaneLayerIds: rail.expandedLaneLayerIds.value,
-              onToggleLayerLanes: SessionRowButtonPresses(session).toggleLanes,
-              expandedLaneGroupKeys: rail.expandedLaneGroupKeys.value,
-              onToggleLaneGroupKey: SessionRowButtonPresses(
-                session,
-              ).toggleLaneGroup,
-            ),
-          ),
-        ),
-      ),
+    final session = await pumpStoryboardHost(
+      tester,
+      film(),
+      surface: const Size(1600, 1000),
+      pixelsPerFrame: 12,
     );
-    await tester.pumpAndSettle();
     if (open) {
       await tester.tap(find.named('storyboard-lane-toggle-a-conte'));
       await tester.pumpAndSettle();

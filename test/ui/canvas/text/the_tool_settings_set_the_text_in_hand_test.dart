@@ -36,6 +36,7 @@ import '../../../helpers/cel_text_tool_harness.dart';
 import '../../../helpers/frame_census.dart';
 import '../../../helpers/tool_setting_action_probe.dart';
 import '../../../helpers/rail_group_button.dart';
+import '../../../helpers/number_pad_keyboard.dart';
 
 /// 🚨★★★THE TOOL SETTINGS AND THE TEXT ON THE CANVAS (R9-rest) — the real
 /// app, the real panel, a real mouse.
@@ -221,15 +222,14 @@ void main() {
         ),
       );
       await pumpFrames(tester);
+      await openThePadsKeyboard(tester);
     }
 
-    EditableText typedIn(WidgetTester tester, String name) =>
-        tester.widget<EditableText>(
-          find.descendant(
-            of: find.descendant(of: row(name), matching: typed),
-            matching: find.byType(EditableText),
-          ),
-        );
+    /// The open number pad's field — the pad stands over the panel, not in
+    /// a bar's row (I-134).
+    EditableText typedIn(WidgetTester tester) => tester.widget<EditableText>(
+      find.descendant(of: typed, matching: find.byType(EditableText)),
+    );
 
     bool textHasTheKeyboard(WidgetTester tester) =>
         tester.widget<EditableText>(textField()).focusNode.hasFocus;
@@ -238,8 +238,8 @@ void main() {
     // 생긴상황. 즉 텍스트 편집중인 상황에서 크기쪽 연필누르면 텍스트 선택되지
     // 않은 상태. 추가로 자간같은거 연필누르면 여러 박스가 강조색 되있는상태」.
     testWidgets('🚨F-353: its pencil takes the keyboard, the number '
-        'selected — another bar\'s closes it, ONE field open — and the '
-        'keyboard goes back to the text when that one closes', (
+        'selected — a press on another bar\'s closes it, ONE field open — '
+        'and the keyboard goes back to the text when that one closes', (
       tester,
     ) async {
       await pumpWithSettings(tester);
@@ -250,7 +250,7 @@ void main() {
 
       await pencil(tester, 'size');
 
-      final size = typedIn(tester, 'size');
+      final size = typedIn(tester);
       expect(size.focusNode.hasFocus, isTrue);
       expect(
         size.controller.selection,
@@ -262,12 +262,27 @@ void main() {
       textToolOf(tester).celTextsChanged();
       await pumpFrames(tester);
 
-      expect(typedIn(tester, 'size').focusNode.hasFocus, isTrue);
+      expect(typedIn(tester).focusNode.hasFocus, isTrue);
+
+      // The pad is a window a press elsewhere closes, and that press is the
+      // window's alone ([showAnchoredPopup]): the next bar's pencil closes
+      // the size's pad, and a second press opens its own.
+      await reach(tester, 'tracking');
+      await tester.tap(
+        find.descendant(
+          of: row('tracking'),
+          matching: find.byKey(const ValueKey<String>('field-slider-type')),
+        ),
+        warnIfMissed: false,
+      );
+      await pumpFrames(tester);
+      expect(typed, findsNothing, reason: 'the size\'s pad closed');
+      expect(textHasTheKeyboard(tester), isTrue);
 
       await pencil(tester, 'tracking');
 
       expect(typed, findsOneWidget, reason: 'one field open');
-      expect(typedIn(tester, 'tracking').focusNode.hasFocus, isTrue);
+      expect(typedIn(tester).focusNode.hasFocus, isTrue);
 
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
       await pumpFrames(tester);
@@ -729,6 +744,7 @@ void main() {
 
       await tester.tap(row('x-edit'));
       await pumpFrames(tester);
+      await openThePadsKeyboard(tester);
       await tester.enterText(row('x-input'), '500');
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await pumpFrames(tester);

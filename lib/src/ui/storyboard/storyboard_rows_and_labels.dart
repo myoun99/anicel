@@ -104,6 +104,7 @@ class _StoryboardRowsAndLabels {
       hooks: hooks,
       grip: () => [effectRowDragChip(at.lane)],
       drawsTheGapAfter: slot == displayEffects.length - 1,
+      linesBeyond: _state._railRows.linesBeyondFrom(address),
       onCrossed: (steps, _, _) => hooks.onEffectUpdate(
         chainId,
         displayEffects,
@@ -270,11 +271,12 @@ class _StoryboardRowsAndLabels {
   /// ([_StoryboardRailRows._seLanes]) or a V row's fx chain
   /// ([_StoryboardRailRows._trackEffectLanes]): the group headers plus the
   /// twirled-open member lanes, storyboard-prefixed. [active] gates the
-  /// navigator's frame jumps and value edits.
+  /// navigator's frame jumps and value edits; what they edit with, and at
+  /// which frame, is [carrier]'s row's hand
+  /// ([_StoryboardRailRows._laneHandOf]) — the column sweep's too.
   List<Widget> laneLabels({
     required Layer carrier,
     required List<PropertyLaneRow> lanes,
-    required PropertyLaneEditCallbacks? laneEdit,
     required bool active,
 
     /// The group each header twirls, per LANE, by [laneGroupKey] on the row
@@ -286,7 +288,6 @@ class _StoryboardRowsAndLabels {
     /// ↩️An S and a V row's groups were the rail's own twirls
     /// (`onToggleTransformGroup`), and a list said which verb turned it.
     required String Function(PropertyLaneRow lane) groupKeyOf,
-    ValueListenable<int?>? frameCursor,
     ValueChanged<int>? onSelectFrame,
 
     /// The header's own ON/OFF switch (AE's per-effect eyeball). Null leaves
@@ -324,6 +325,7 @@ class _StoryboardRowsAndLabels {
     );
     final toggleGroup = _state.widget.onToggleLaneGroupKey;
     final selection = _state.widget.rowSelection;
+    final hand = _state._railRows._laneHandOf(carrier.id);
     Widget row(Layer shown, PropertyLaneRow lane) {
       final seated = _seatedOf(carrier.id, lane);
       Widget label(TimelineGraphSeat? seat) => TimelineLaneControlsRow(
@@ -332,9 +334,9 @@ class _StoryboardRowsAndLabels {
         metrics: metrics,
         width: _state._naturalRailWidth,
         height: seated?.extent ?? laneHeight,
-        frameCursor: frameCursor,
+        frameCursor: hand.cursor,
         onSelectFrame: active ? onSelectFrame : null,
-        laneEdit: lane.isGroupHeader || !active ? null : laneEdit,
+        laneEdit: lane.isGroupHeader || !active ? null : hand.edit,
         onToggleLaneGroup: toggleGroup == null
             ? null
             : (_, _) => toggleGroup(groupKeyOf(lane)),
@@ -366,12 +368,13 @@ class _StoryboardRowsAndLabels {
       );
     }
 
-    // The track's rows — V and S alike, their keys are the track's — pass the
-    // GLOBAL playhead (R4b). ↩️The S rows passed the ACTIVE cut's local cursor
-    // until F-102, which put their values and keys at the wrong frame in any
-    // cut but the first. Either way the row SUBSCRIBES — itself, on a layer
-    // of its own — so a committed seek rebuilds these label cells and lays
-    // out nothing else (the timeline rail's own line).
+    // The track's rows — V and S alike, their keys are the track's — stand
+    // on the GLOBAL playhead (R4b, [_StoryboardRailRows._laneHandOf]).
+    // ↩️The S rows passed the ACTIVE cut's local cursor until F-102, which
+    // put their values and keys at the wrong frame in any cut but the
+    // first. Either way the row SUBSCRIBES — itself, on a layer of its own
+    // — so a committed seek rebuilds these label cells and lays out nothing
+    // else (the timeline rail's own line).
     return [
       for (final lane in lanes)
         if (follow == null) row(carrier, lane) else follow(carrier, lane, row),
@@ -416,6 +419,9 @@ class _StoryboardRowsAndLabels {
             ),
         ],
         drawsTheGapAfter: at == shown.length - 1,
+        linesBeyond: _state._railRows.linesBeyondFrom(
+          LayerRowAddress(layer.id),
+        ),
         // The S rows are a flat SE list — no row here holds another, so
         // there is nothing for an on-row drop to mean and the caret stays
         // the only answer (R5 #15). The rows are the track's at the event:
@@ -542,7 +548,7 @@ class _StoryboardRowsAndLabels {
   /// 어니언도 콘티행 기본적으로 버튼 글로벌이니까 넣음」): the sheet toggle,
   /// made the head's ([ConteHead.onTimesheet]), and the onion, read
   /// through the head's rows (`OnionSkin.isLayerOnionSkinEnabled`). The
-  /// fill-reference switch and the link badge are not handed here, and the
+  /// clip switch and the link badge are not handed here, and the
   /// row mounts neither. ↩️The sheet toggle and the onion stayed off it too
   /// until Q22 — the flag was each cut's own.
   ///
@@ -595,6 +601,7 @@ class _StoryboardRowsAndLabels {
         hooks: hooks,
         grip: grip,
         drawsTheGapAfter: index == seats.length - 1,
+        linesBeyond: _state._railRows.linesBeyondFrom(LayerRowAddress(rowId)),
         // A conte group's rows hold nothing to drop into, so the caret is
         // the only answer (the S rows' reasoning).
         onCrossed: (steps, _, inRow) {
@@ -966,12 +973,7 @@ class _StoryboardRowsAndLabels {
       onEditSpan: _state.widget.onEditTransitionSpan,
       // The SE rows' selection bundle, unchanged: one rail, one range verb.
       select: _state.widget.seSelect,
-      railRowAt: (anchorRow, crossOffset) =>
-          _state._railRows._railRowAtCrossOffset(
-            trackId: track.id,
-            anchorRow: anchorRow,
-            crossOffset: crossOffset,
-          ),
+      railSweepAt: _state._railRows._railSweepOn(track.id),
     );
     // The SE strips' gate, as is: a grip or a move publishes the row's two
     // forms on the one channel, and this strip — the track axis — draws the
@@ -1104,6 +1106,9 @@ class _StoryboardRowsAndLabels {
           hooks: hooks,
           grip: grip,
           drawsTheGapAfter: index == trackCount - 1,
+          linesBeyond: _state._railRows.linesBeyondFrom(
+            TrackRowAddress(trackId),
+          ),
           // A track holds nothing, so its middle means nothing: the caret
           // is the only answer and the on-row arm stays unused (the S rows'
           // reasoning, one list up).

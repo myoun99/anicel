@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
+import '../helpers/room_for_the_pills.dart';
 import 'flyout_test_helpers.dart';
 
 /// Commands that used to exist ONLY in the top menu bar now also reach the
@@ -10,6 +11,8 @@ import 'flyout_test_helpers.dart';
 /// to outlive it, so each one is pinned here by key.
 void main() {
   Future<void> pumpHome(WidgetTester tester) async {
+    await tester.binding.setSurfaceSize(appWindowWithRoomForItsPills);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     await tester.pumpAndSettle();
   }

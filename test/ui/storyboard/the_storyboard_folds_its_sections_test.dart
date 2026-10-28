@@ -39,17 +39,6 @@ void main() {
     });
     tearDown(() => session.dispose());
 
-    List<TimelineRowAddress> railRows() =>
-        session.storyboardRows.storyboardRailRows(conteTrackId);
-
-    test('a range drag walks only the rows the rail shows', () {
-      expect(railRows(), [transitionRow, sRow, vRow], reason: 'premise');
-      session.railView.hiddenSections.value = {TimelineSection.se};
-      expect(railRows(), [transitionRow, vRow]);
-      session.railView.hiddenSections.value = {TimelineSection.camera};
-      expect(railRows(), [sRow, vRow]);
-    });
-
     test('hiding the section the storyboard stands in hands it to the V '
         'row', () {
       session.standOnRow(sRow, panel: WorkingPanel.storyboard);

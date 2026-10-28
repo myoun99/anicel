@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart';
 import 'package:anicel/src/ui/timeline/timeline_shift_buttons.dart';
+import '../helpers/storyboard_host.dart';
 import 'flyout_test_helpers.dart' show readCommandEnabled;
 
 /// 유저 확정 (2026-08-10): 스토리보드 레이어의 프레임을 조절해야 하고,
@@ -19,33 +19,12 @@ import 'flyout_test_helpers.dart' show readCommandEnabled;
 /// and "the entry does something" fail apart.
 void main() {
   Future<EditorSessionManager> pumpStoryboard(WidgetTester tester) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 700));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-
-    final manager = EditorSessionManager(
-      initialProject: createDefaultProject(),
+    return pumpStoryboardHost(
+      tester,
+      createDefaultProject(),
+      surface: const Size(1600, 700),
+      pixelsPerFrame: 12,
     );
-    addTearDown(manager.dispose);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: Listenable.merge([manager, manager.frameSeekCommitted]),
-            builder: (context, _) => StoryboardTabHost(
-              session: manager,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    return manager;
   }
 
   testWidgets('the storyboard mounts the timeline\'s own action toolbar', (
@@ -103,6 +82,7 @@ void main() {
     for (final keyValue in [
       'new-frame-button',
       'blank-exposure-button',
+      'toggle-mark-one-button',
       'toggle-mark-button',
       'set-comma-1-button',
       'set-comma-n-button',

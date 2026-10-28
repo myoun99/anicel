@@ -4,6 +4,16 @@ part of '../storyboard_panel.dart';
 /// lane carrier — and whether this build reads it open.
 typedef _Twirl = ({LayerId id, bool open});
 
+/// A row of the rail as a pointer counts it
+/// ([_StoryboardRailRows._pointerTable]): the address it is stood on by,
+/// the address of the row the timeline's rail holds for it
+/// ([_StoryboardRailSlot.display]), and its track.
+typedef _PointerRow = ({
+  TimelineRowAddress? standing,
+  TimelineRowAddress? held,
+  TrackId track,
+});
+
 /// Every lane the rail draws, every track's, as the timeline's rows hold it
 /// (I-89 ①): the [lanes] as they are, the [rows] they make seated in their
 /// groups' open header graphs ([seatLaneGraphs]), where those sit — each
@@ -40,6 +50,14 @@ typedef _LanesDrawn = ({
   TimelineLaneRangeCallbacks? laneRange,
   Iterable<LaneGraphLine> Function(TimelineDisplayRow row) linesOf,
   Widget Function(TimelineDisplayRow row, double height) strip,
+});
+
+/// What a lane row of this rail keys and sets its lane with — the [edit]
+/// its label calls — and the [cursor] naming the frame it stands on
+/// ([_StoryboardRailRows._laneHandOf]).
+typedef _LaneHand = ({
+  PropertyLaneEditCallbacks? edit,
+  ValueListenable<int?>? cursor,
 });
 
 /// THE RAIL'S ROWS AND LANES — the rows the storyboard's rail shows for
@@ -297,6 +315,25 @@ class _StoryboardRailRows {
         TimelineDisplayRow.layer(layer, layerIndex: slot),
   ];
 
+  /// The rows a band's move on [track]'s S rows walks: [_seRowsInDisplayOrder]
+  /// with the lanes the rail draws under each — a lane lands its band on its
+  /// own S row ([resolveBlockMoveTargetLayer]), so the walk still crosses no
+  /// row whose blocks are not sounds.
+  ///
+  /// 🚨H20: a band pressed on a LANE counts its row steps from that lane, as
+  /// the timeline's does, so the lanes are rows of the walk. The S row a band
+  /// is pressed on counts them too: they are rows the pointer crosses.
+  List<TimelineDisplayRow> _seMoveRows(Track track) {
+    final seIds = {
+      for (final row in _seRowsInDisplayOrder(track)) row.layer.id,
+    };
+    return [
+      for (final slot in _trackGroupRowGeometry(track))
+        if (slot.display case final row? when seIds.contains(row.layer.id))
+          row,
+    ];
+  }
+
   /// The S slots the rail SHOWS for [track], top slot first — the order the
   /// rail draws them (slot 0 sits just above the V row) — with the legend's
   /// filter applied ([_filterAllowsSeRow]).
@@ -485,6 +522,9 @@ class _StoryboardRailRows {
   /// (I-89 ①).
   _ProjectionLanes _conteProjection(Track track, int seat) {
     final keyName = _StoryboardRowsAndLabels.conteLabelKeyName(seat);
+    // The row's blocks wear its head's eye in every cut (I-129), and so do
+    // its keys.
+    final headEye = _conteHeadEye(track.cuts, seat);
     return (
       rowId: trackConteRowId(track.id, seat: seat),
       keyName: keyName,
@@ -501,6 +541,7 @@ class _StoryboardRailRows {
         valueSourceAt: (frame) => (layer: row, frame: frame),
         poseCentre: cut.canvasSize,
       ),
+      eyeOf: (cut, row) => headEye ?? _cutsOwnEye(cut, row),
     );
   }
 
@@ -771,7 +812,6 @@ class _StoryboardRailRows {
       groupKeyOf: (lane) => laneGroupKey(layer.id, lane.laneId),
       lanes: lanes,
       follow: (_, lane, row) => _followingSeLane(track, layer, lane, row),
-      laneEdit: _state.widget.layerLaneEdit,
       onToggleGroupEnabled: onToggleEnabled == null
           ? null
           : (lane) => onToggleEnabled(layer, lane),
@@ -779,12 +819,11 @@ class _StoryboardRailRows {
       // The row exists or it does not; the open cut is not part of the
       // question (user, 2026-08-09).
       active: true,
-      // An S row's keys are the TRACK's, so its labels read and seek the
-      // GLOBAL playhead, as the V rows' do (R4b). ↩️They read the ACTIVE
-      // cut's local cursor (#844 carried the frame over as it was): in any
-      // cut but the first the value showed at the wrong frame, and the ◆
-      // keyed there (F-102).
-      frameCursor: _state.widget.playheadFrame,
+      // An S row's keys are the TRACK's, so its labels seek the GLOBAL
+      // playhead they stand on ([_laneHandOf]), as the V rows' do (R4b).
+      // ↩️They read the ACTIVE cut's local cursor (#844 carried the frame
+      // over as it was): in any cut but the first the value showed at the
+      // wrong frame, and the ◆ keyed there (F-102).
       onSelectFrame: _state.widget.onSeekGlobalFrame,
       graphVerbs: _laneGraphVerbs,
     );
@@ -921,9 +960,6 @@ class _StoryboardRailRows {
       lanes: labels.lanes,
       groupKeyOf: (lane) => laneGroupKey(labels.shown.id, lane.laneId),
       follow: stood == null ? null : follow,
-      laneEdit: stood == null
-          ? null
-          : _state.widget.cutLaneEdit?.landingOn(stood.layer),
       onToggleGroupEnabled: stood == null || toggleEnabled == null
           ? null
           : (lane) => toggleEnabled(stood.layer, lane),
@@ -931,7 +967,6 @@ class _StoryboardRailRows {
           ? null
           : (lane) => reset(stood.layer, lane),
       active: stood != null,
-      frameCursor: stood == null ? null : _state.widget.cutFrameCursor,
       onSelectFrame: stood == null || seek == null
           ? null
           : (frame) => seek(stood.cut.id, frame),
@@ -1094,7 +1129,6 @@ class _StoryboardRailRows {
                       ),
               ),
             ),
-            laneEdit: _state.widget.trackLaneEditFor?.call(track),
             onToggleGroupEnabled:
                 _state.widget.onToggleTrackEffectEnabled == null
                 ? null
@@ -1114,7 +1148,6 @@ class _StoryboardRailRows {
                     lane.laneId,
                   ),
             active: true,
-            frameCursor: _state.widget.playheadFrame,
             onSelectFrame: _state.widget.onSeekGlobalFrame,
             graphVerbs: _laneGraphVerbs,
           ),
@@ -1621,7 +1654,10 @@ class _StoryboardRailRows {
   /// The group's rows in VISUAL order with their heights — mirrored from
   /// [_seStripRowsForTrack] and [_stripRowsForTrack] row for row. A new
   /// row kind must land in both, or the band drifts off its rows.
-  /// R9 #25 — the rail row a select-drag's pointer is over.
+  /// R9 #25 — what a select-drag pressed on [anchorRow] has swept: every
+  /// row from the anchor's to the one its pointer is over, in the order
+  /// this rail DRAWS them, lanes and all — the slice the timeline's grids
+  /// hand over ([resolveSelectionSpanOverAddresses]).
   ///
   /// [crossOffset] is the pointer's cross-axis distance from the ANCHOR
   /// row's top (negative above it), handed up raw by the shared gesture.
@@ -1633,31 +1669,60 @@ class _StoryboardRailRows {
   /// V row 28–160, audio 36, transform 26), which is why the old scalar
   /// "offset ÷ my own height" worked everywhere else and failed here.
   ///
+  /// 🚨H20 (유저 2026-08-23: 「둘다 유저가 선택하게」): a lane is a row a
+  /// span ends on and holds, as on the timeline. ↩️The head skipped the
+  /// lane strips and the session cut the span out of its own rows, which
+  /// name no lane: a sweep from an S row's cells down its lanes held the
+  /// S row alone, and a press on a lane it seemed to cover started a
+  /// selection of its own (conte-sweep-leaves-the-lanes-out, 🧪10-25).
+  /// That list of the session's held the rail's order this table draws —
+  /// the transition row, the S rows highest slot first, the V row (user
+  /// 2026-08-11; leading with the V row inverted every cross-row drag) —
+  /// and left a hidden section's rows off, as this table does (F-199).
+  ///
   /// 🚨Asked at the drag, of the track [trackId] names as the panel holds
   /// it THEN ([_trackNamed]): a kept row drags with the lookup it was
   /// built with.
-  TimelineRowAddress? _railRowAtCrossOffset({
-    required TrackId trackId,
-    required TimelineRowAddress anchorRow,
-    required double crossOffset,
-  }) {
+  _RailSweepAt _railSweepOn(TrackId trackId) => (anchorRow, crossOffset) {
     final track = _trackNamed(trackId);
     if (track == null) {
       return null;
     }
     final geometry = _trackGroupRowGeometry(track);
-    final rows = [for (final slot in geometry) slot.row];
-    final anchorIndex = rows.indexOf(anchorRow);
-    if (anchorIndex < 0) {
+    // An Audio strip takes up space but cannot BE a selection head.
+    final swept = _sweptOver(
+      [for (final slot in geometry) slot.row ?? slot.laneRow],
+      [for (final slot in geometry) slot.height],
+      anchor: anchorRow,
+      crossOffset: crossOffset,
+    );
+    if (swept == null) {
       return null;
     }
-    // Audio and lane strips take up space but cannot BE a selection head.
-    return rows[_addressedRowAt(
-      rows,
-      [for (final slot in geometry) slot.height],
-      anchorIndex: anchorIndex,
-      crossOffset: crossOffset,
-    )];
+    return resolveSelectionSpanOverAddresses(
+      rows: swept.rows,
+      anchor: anchorRow,
+      rowDelta: swept.rowDelta,
+    );
+  };
+
+  /// The track band's bundle on [lane] of [track] — the S rows' cells' own
+  /// ([_storyboardBandCallbacks]), handed to the lane's strip as its band:
+  /// a press inside the band on a lane is the band's move (H20). Null where
+  /// this rail selects no band.
+  TimelineRangeGestureCallbacks? _bandOnLane(
+    Track track,
+    LaneRowAddress lane,
+  ) {
+    final select = _state.widget.seSelect;
+    return select == null
+        ? null
+        : _storyboardBandCallbacks(
+            row: lane,
+            select: select,
+            railSweepAt: _railSweepOn(track.id),
+            rows: _seMoveRows(track),
+          );
   }
 
   /// The ROW SELECTION over this rail, as the timeline's rail draws it —
@@ -1705,26 +1770,21 @@ class _StoryboardRailRows {
   /// ([_trackGroupRowGeometry]): a row here is as tall as its kind, so the
   /// pressed row's own height cannot count the rest (F-322). A slot nobody
   /// stands on — the Audio lane, an S slot with no layer — hands the span on
-  /// to the nearest row toward the anchor, as [_railRowAtCrossOffset] does.
+  /// to the nearest row toward the anchor, as the cells' sweep does
+  /// ([_sweptOver]).
   int Function(double offset) selectRowDeltaFrom(TimelineRowAddress anchor) =>
       (offset) {
         final slots = [
           for (final track in _state.widget.project.tracks)
             ..._trackGroupRowGeometry(track),
         ];
-        final addresses = [for (final slot in slots) _standingAddressOf(slot)];
-        final anchorAt = addresses.indexOf(anchor);
-        if (anchorAt < 0) {
-          return 0;
-        }
-        final head = addresses[_addressedRowAt(
-          addresses,
-          [for (final slot in slots) slot.height],
-          anchorIndex: anchorAt,
-          crossOffset: offset,
-        )];
-        final rows = addresses.nonNulls.toList();
-        return rows.indexOf(head!) - rows.indexOf(anchor);
+        return _sweptOver(
+              [for (final slot in slots) _standingAddressOf(slot)],
+              [for (final slot in slots) slot.height],
+              anchor: anchor,
+              crossOffset: offset,
+            )?.rowDelta ??
+            0;
       };
 
   /// Where a pointer [offset] from the top of [anchor]'s label stands, in
@@ -1734,29 +1794,71 @@ class _StoryboardRailRows {
   /// [TimelineRowEdges.rowsAt]), as on the timeline's rail.
   double Function(double offset) pointerRowsFrom(TimelineRowAddress anchor) =>
       (offset) {
-        final rows = <TimelineRowSlot>[];
-        var anchorAt = -1;
-        for (final track in _state.widget.project.tracks) {
-          for (final slot in _trackGroupRowGeometry(track)) {
-            if (_isRoom(slot)) {
-              final last = rows.removeLast();
-              rows.add((
-                extent: last.extent,
-                room: slot.height,
-                joinsNext: false,
-              ));
-              continue;
-            }
-            if (_standingAddressOf(slot) == anchor) {
-              anchorAt = rows.length;
-            }
-            rows.add((extent: slot.height, room: 0, joinsNext: false));
-          }
-        }
-        return anchorAt < 0
-            ? 0
-            : TimelineRowEdges(rows).rowsAt(anchorAt, offset);
+        final table = _pointerTable();
+        final anchorAt = table.rows.indexWhere(
+          (row) => row.standing == anchor,
+        );
+        return anchorAt < 0 ? 0 : table.edges.rowsAt(anchorAt, offset);
       };
+
+  /// How far past [anchor]'s label its two lines stand
+  /// ([LayerRowDragTarget.linesBeyond]): to where its unit begins and
+  /// ends on the table a pointer counts ([_pointerTable]) — the lanes a row
+  /// stands for read as the timeline's rail reads them ([ownsTheLane], over
+  /// the rows the timeline holds for these), and a V row's whole track
+  /// group, which its drag carries.
+  ///
+  /// 🚨The timeline's law on this rail (10-25): every line stood at the
+  /// label's own edges — under an S row, a conte row and an fx header while
+  /// their lanes followed, and at the V row inside a group whose drop lands
+  /// past the rows above and below it.
+  ({double lead, double trail}) Function() linesBeyondFrom(
+    TimelineRowAddress anchor,
+  ) => () {
+    final table = _pointerTable();
+    final rows = table.rows;
+    final at = rows.indexWhere((row) => row.standing == anchor);
+    if (at < 0) {
+      return (lead: 0.0, trail: 0.0);
+    }
+    final head = rows[at].held;
+    final track = rows[at].track;
+    final owns = switch ((anchor, head)) {
+      (TrackRowAddress(), _) => (int index) => rows[index].track == track,
+      (_, final head?) => (int index) => ownsTheLane(head, rows[index].held),
+      _ => (int _) => false,
+    };
+    return linesBeyondRow(
+      table.edges,
+      at,
+      rowUnitAround(at, rows.length, owns),
+    );
+  };
+
+  /// The rail's rows as a pointer counts them — the room an open graph
+  /// stands past its lanes folded into the row before it (I-89 ③,
+  /// [TimelineRowEdges.rowsAt]), as on the timeline's rail — and where they
+  /// lie along it.
+  ({TimelineRowEdges edges, List<_PointerRow> rows}) _pointerTable() {
+    final slots = <TimelineRowSlot>[];
+    final rows = <_PointerRow>[];
+    for (final track in _state.widget.project.tracks) {
+      for (final slot in _trackGroupRowGeometry(track)) {
+        if (_isRoom(slot)) {
+          final last = slots.removeLast();
+          slots.add((extent: last.extent, room: slot.height, joinsNext: false));
+          continue;
+        }
+        slots.add((extent: slot.height, room: 0, joinsNext: false));
+        rows.add((
+          standing: _standingAddressOf(slot),
+          held: slot.display?.address,
+          track: track.id,
+        ));
+      }
+    }
+    return (edges: TimelineRowEdges(slots), rows: rows);
+  }
 
   /// C② — the lane strips' gesture bundle for [track]: raw cross pixels
   /// resolved against THIS rail's mixed-height row table (R9 #25), the
@@ -1769,15 +1871,20 @@ class _StoryboardRailRows {
   /// on them began on ([_laneSweepOver]), and the sweep stays in their
   /// group — it names one cut's layer in the cut's own frames, which no
   /// row of the track's axis shares.
+  ///
+  /// [band] is the track band's bundle on the ONE lane the strip draws
+  /// ([_bandOnLane]), as the timeline's grids hand theirs (H20).
   TimelineLaneRangeCallbacks? _laneGestureCallbacksFor(
     Track track, {
     LayerId? projection,
+    TimelineRangeGestureCallbacks? band,
   }) {
     final host = _state.widget.laneRange;
     if (host == null) {
       return null;
     }
     return TimelineLaneRangeCallbacks(
+      band: band,
       selection: host.selection,
       onSelectUpdate:
           (layerId, laneId, anchorIndex, headIndex, headCrossOffset) {
@@ -1825,7 +1932,6 @@ class _StoryboardRailRows {
               layerId: layerId,
               anchorGlobalFrame: anchorIndex,
               headGlobalFrame: headIndex,
-              headRow: escalation.head,
               anchorRow: anchor,
               spanRows: escalation.spanRows,
             );
@@ -1849,7 +1955,6 @@ class _StoryboardRailRows {
           layerId: anchor.layerId,
           anchorGlobalFrame: anchorIndex,
           headGlobalFrame: headIndex,
-          headRow: rows.last,
           anchorRow: anchor,
           spanRows: rows,
         );
@@ -2158,6 +2263,45 @@ class _StoryboardRailRows {
     final trackId = trackIdOfProjectionRow(rowId);
     final track = trackId == null ? null : _trackNamed(trackId);
     return track == null ? null : _inHand(track, LayerRowAddress(rowId));
+  }
+
+  /// What a lane of [rowId]'s row keys and sets its lane with, and where it
+  /// stands ([_LaneHand]) — ONE answer for its label and for the column
+  /// sweep that presses its ◆ and its flag ring (F-475), so a stroke
+  /// presses a lane where the lane's own button would:
+  ///
+  /// - the V row's lane carrier, its TRACK's verbs;
+  /// - a projection row, the verbs of the layer it has in hand of the cut
+  ///   the session stands in, at that cut's own frame — and none while no
+  ///   cut is stood in there (I-73 ④ⓔ);
+  /// - an S row, its layer's.
+  ///
+  /// The track's rows — V and S alike, their keys are the track's — stand
+  /// on the GLOBAL playhead (R4b). ↩️The S rows read the ACTIVE cut's local
+  /// cursor (#844 carried the frame over as it was): in any cut but the
+  /// first the value showed at the wrong frame, and the ◆ keyed there
+  /// (F-102).
+  _LaneHand _laneHandOf(LayerId rowId) {
+    final widget = _state.widget;
+    if (trackIdOfTransformLaneCarrier(rowId) case final trackId?) {
+      return (
+        edit: switch (_trackNamed(trackId)) {
+          final track? => widget.trackLaneEditFor?.call(track),
+          null => null,
+        },
+        cursor: widget.playheadFrame,
+      );
+    }
+    if (trackIdOfProjectionRow(rowId) == null) {
+      return (edit: widget.layerLaneEdit, cursor: widget.playheadFrame);
+    }
+    return switch (_rowInHand(rowId)) {
+      (cut: _, :final layer, stood: true)? => (
+        edit: widget.cutLaneEdit?.landingOn(layer),
+        cursor: widget.cutFrameCursor,
+      ),
+      _ => (edit: null, cursor: null),
+    };
   }
 
   /// Every lane of every track's table ([_trackGroupSlots]) seated for the
@@ -2678,11 +2822,7 @@ class _StoryboardRailRows {
           standingCutId: _state._standing.standingCutOn(track),
           windowBucket: _state._horizontalWindowBucket,
           viewportWidth: _state._stripViewportWidth,
-          railRowAt: (anchorRow, crossOffset) => _railRowAtCrossOffset(
-            trackId: track.id,
-            anchorRow: anchorRow,
-            crossOffset: crossOffset,
-          ),
+          railSweepAt: _railSweepOn(track.id),
           showSeconds: _state.widget.showSeconds,
           projectFrameRate: _state.widget.projectFrameRate,
           linkedCutIds: _state.widget.linkedCutIds,
@@ -2784,6 +2924,7 @@ class _StoryboardRailRows {
       cut.camera.track,
       canvasSize: cut.canvasSize,
     ),
+    eyeOf: _cutsOwnEye,
   );
 
   /// A projection row's lane strips (I-73 ④ⓔ), row for row with their
@@ -2887,15 +3028,11 @@ class _StoryboardRailRows {
     double width,
     TimelineScale scale,
   ) {
-    final seRowsInDisplayOrder = _seRowsInDisplayOrder(track);
+    final moveRows = _seMoveRows(track);
     final heights = _state._rowHeights;
     Widget seRow(int slot, Layer? layer) => _StoryboardSeRow(
-      railRowAt: (anchorRow, crossOffset) => _railRowAtCrossOffset(
-        trackId: track.id,
-        anchorRow: anchorRow,
-        crossOffset: crossOffset,
-      ),
-      seRowsInDisplayOrder: seRowsInDisplayOrder,
+      railSweepAt: _railSweepOn(track.id),
+      moveRows: moveRows,
       trackIndex: index,
       slot: slot,
       layer: layer,
@@ -2999,7 +3136,13 @@ class _StoryboardRailRows {
           timelineScale: scale,
           projectFrameRate: _state.widget.projectFrameRate,
           laneEdit: laneEdit,
-          laneRange: laneRange,
+          laneRange: _laneGestureCallbacksFor(
+            track,
+            band: _bandOnLane(
+              track,
+              LaneRowAddress(carrier.id, row.lane!.laneId),
+            ),
+          ),
         ),
       ),
     ));
@@ -3082,7 +3225,10 @@ class _StoryboardRailRows {
           height: height,
           timelineScale: scale,
           projectFrameRate: _state.widget.projectFrameRate,
-          laneRange: laneRange,
+          laneRange: _laneGestureCallbacksFor(
+            track,
+            band: _bandOnLane(track, LaneRowAddress(layer.id, lane.laneId)),
+          ),
           audioLane: _state.widget.audioLane,
           audioPeaksFor: _state.widget.audioPeaksFor,
         ),
@@ -3154,26 +3300,35 @@ final class _TrackStrip {
   int get hashCode => Object.hashAll(entries);
 }
 
-/// The row a pointer [crossOffset] from the top of [anchorIndex]'s row
-/// stands over, in a table of rows [heights] tall — walked back toward the
-/// anchor past rows [addresses] names none for (an Audio lane, a strip that
-/// cannot be a span's head), so a drag that ends on one reaches as far as it
-/// legibly can rather than collapsing to nothing. The anchor's own row is
-/// always named.
-int _addressedRowAt(
+/// Where a sweep pressed on [anchor] has reached, the pointer [crossOffset]
+/// from the top of its row, in a table of rows [heights] tall: how many of
+/// the NAMED rows ([rows]) lie from the anchor's to the row it stands over
+/// — walked back toward the anchor past rows [addresses] names none for
+/// (an Audio lane, a slot nobody stands on), so a drag that ends on one
+/// reaches as far as it legibly can rather than collapsing to nothing.
+/// Null when the anchor is not in the table.
+({List<TimelineRowAddress> rows, int rowDelta})? _sweptOver(
   List<TimelineRowAddress?> addresses,
   List<double> heights, {
-  required int anchorIndex,
+  required TimelineRowAddress anchor,
   required double crossOffset,
 }) {
-  var head = rowIndexForCrossOffset(
+  final anchorIndex = addresses.indexOf(anchor);
+  if (anchorIndex < 0) {
+    return null;
+  }
+  var at = rowIndexForCrossOffset(
     crossOffset: crossOffset,
     anchorIndex: anchorIndex,
     heights: heights,
   );
-  final towardAnchor = head >= anchorIndex ? -1 : 1;
-  while (head != anchorIndex && addresses[head] == null) {
-    head += towardAnchor;
+  final towardAnchor = at >= anchorIndex ? -1 : 1;
+  while (at != anchorIndex && addresses[at] == null) {
+    at += towardAnchor;
   }
-  return head;
+  final rows = addresses.nonNulls.toList();
+  return (
+    rows: rows,
+    rowDelta: rows.indexOf(addresses[at]!) - rows.indexOf(anchor),
+  );
 }

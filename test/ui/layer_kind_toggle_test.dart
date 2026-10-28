@@ -27,6 +27,8 @@ import 'package:anicel/src/ui/home_page.dart';
 import '../helpers/boolean_dot_probe.dart';
 import 'flyout_test_helpers.dart';
 import '../helpers/named_finders.dart';
+import '../helpers/room_for_the_pills.dart';
+import '../helpers/timeline_host.dart';
 
 const _toggleKey = ValueKey<String>('toggle-storyboard-layer-button');
 const _seToggleKey = ValueKey<String>('toggle-se-layer-button');
@@ -37,11 +39,33 @@ const _cutId = CutId('phase-73-cut');
 const _layerId = LayerId('phase-73-layer');
 const _frameId = FrameId('phase-73-frame');
 
+/// The timeline tab alone ([pumpTimelineHost]) — the Layer flyout and the
+/// `＋`'s band are the tab's — with room for its pills unless [surface] says
+/// another. ↩️It stood as the app's window of 800 × 600 laid it, where the
+/// pills have 34px now ([timelineTabWithRoomForItsPills]).
 Future<void> _pumpHome(
   WidgetTester tester, {
   Project? project,
   void Function(ProjectRepository repository)? onRepositoryCreated,
+  Size surface = timelineTabWithRoomForItsPills,
 }) async {
+  final session = await pumpTimelineHost(
+    tester,
+    project ?? _projectWithLayer(),
+    surface: surface,
+  );
+  onRepositoryCreated?.call(session.repository);
+}
+
+/// The app, for its undo and redo buttons and the canvas they retarget,
+/// with room for the pills ([appWindowWithRoomForItsPills]).
+Future<void> _pumpApp(
+  WidgetTester tester, {
+  Project? project,
+  void Function(ProjectRepository repository)? onRepositoryCreated,
+}) async {
+  await tester.binding.setSurfaceSize(appWindowWithRoomForItsPills);
+  addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
       home: HomePage(
@@ -181,6 +205,8 @@ Project _projectWithNoLayers() {
 
 void main() {
   testWidgets('toggle lives in the Layer flyout', (tester) async {
+    await tester.binding.setSurfaceSize(appWindowWithRoomForItsPills);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const AnicelApp());
 
     // Not a standalone toolbar button anymore (R-toolbar round)…
@@ -219,7 +245,7 @@ void main() {
     tester,
   ) async {
     late ProjectRepository repository;
-    await _pumpHome(
+    await _pumpApp(
       tester,
       project: _projectWithLayer(isVisible: true),
       onRepositoryCreated: (repo) => repository = repo,
@@ -278,10 +304,9 @@ void main() {
   testWidgets('the art toggle is gone from the Layer flyout', (tester) async {
     // The floating region opens at 2/3 of the window now, so at the 800px
     // test default the timeline toolbar compresses far enough to shed the
-    // Layer flyout's own button.
-    await tester.binding.setSurfaceSize(const Size(1600, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await _pumpHome(tester);
+    // Layer flyout's own button — the tab as the app's window of 1600 × 900
+    // laid it.
+    await _pumpHome(tester, surface: const Size(1003, 396));
 
     // Flyout items only exist while the popup is open — open it, then
     // assert the retired toggle is not among the items.

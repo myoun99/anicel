@@ -364,7 +364,7 @@ void main() {
       File(
         'lib/src/ui/storyboard/storyboard_conte_row.dart',
       ).readAsStringSync(),
-      contains('_runLabels(context, shown)'),
+      contains(RegExp(r'_runLabels\(\s*context,\s*shown\b')),
       reason: 'the conte row prints its panels\' lengths the way every row '
           'prints a run\'s',
     );

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/frame.dart' show InbetweenMark;
 
 void main() {
   group('TimelineExposure', () {
@@ -24,11 +25,34 @@ void main() {
       const exposure = TimelineExposure.drawing(
         FrameId('frame-a'),
         length: 4,
-        breakdownOffsets: [1, 3],
+        breakdownMarks: {1: InbetweenMark.two, 3: InbetweenMark.two},
       );
 
       expect(exposure.toJson()['breakdown'], const [1, 3]);
       expect(TimelineExposure.fromJson(exposure.toJson()), exposure);
+    });
+
+    test('🗣️I-130: each mark round-trips under its own key, and a file '
+        'written with the one ● still reads as the ● — mark 2', () {
+      const exposure = TimelineExposure.drawing(
+        FrameId('frame-a'),
+        length: 5,
+        breakdownMarks: {1: InbetweenMark.one, 3: InbetweenMark.two},
+      );
+      final json = exposure.toJson();
+
+      expect(json['breakdown1'], const [1]);
+      expect(json['breakdown'], const [3]);
+      expect(TimelineExposure.fromJson(json), exposure);
+      expect(
+        TimelineExposure.fromJson({
+          'type': 'drawing',
+          'frameId': {'value': 'frame-a'},
+          'length': 4,
+          'breakdown': [2],
+        }).breakdownMarks,
+        {2: InbetweenMark.two},
+      );
     });
 
     test('omits the breakdown JSON key when there are no dots', () {
@@ -90,7 +114,11 @@ void main() {
       const drawing = TimelineExposure.drawing(
         FrameId('frame-a'),
         length: 6,
-        breakdownOffsets: [1, 3, 5],
+        breakdownMarks: {
+          1: InbetweenMark.two,
+          3: InbetweenMark.two,
+          5: InbetweenMark.two,
+        },
       );
 
       expect(drawing.copyWith(length: 4).breakdownOffsets, const [1, 3]);
@@ -99,16 +127,20 @@ void main() {
       expect(drawing.copyWith(length: 9).breakdownOffsets, const [1, 3, 5]);
     });
 
-    test('hasBreakdownAt reads the offsets', () {
-      const drawing = TimelineExposure.drawing(
-        FrameId('frame-a'),
-        length: 4,
-        breakdownOffsets: [2],
-      );
+    test('a block that starts a cut in keeps the dots past it, moved back '
+        'and each wearing its own mark', () {
+      const marks = {
+        1: InbetweenMark.one,
+        2: InbetweenMark.two,
+        4: InbetweenMark.one,
+        5: InbetweenMark.two,
+      };
 
-      expect(drawing.hasBreakdownAt(2), isTrue);
-      expect(drawing.hasBreakdownAt(1), isFalse);
-      expect(drawing.hasBreakdownAt(0), isFalse);
+      expect(TimelineExposure.marksPastCut(marks, 2), {
+        2: InbetweenMark.one,
+        3: InbetweenMark.two,
+      }, reason: 'the dot ON the cut is the new head, the drawing itself');
+      expect(TimelineExposure.marksPastCut(marks, 0), marks);
     });
 
     test('implements equality and hashCode', () {
@@ -119,7 +151,7 @@ void main() {
       const e = TimelineExposure.drawing(
         FrameId('frame-a'),
         length: 2,
-        breakdownOffsets: [1],
+        breakdownMarks: {1: InbetweenMark.two},
       );
 
       expect(a, b);
@@ -129,10 +161,21 @@ void main() {
       expect(d, isNot(e));
       expect(
         e,
+        isNot(
+          const TimelineExposure.drawing(
+            FrameId('frame-a'),
+            length: 2,
+            breakdownMarks: {1: InbetweenMark.one},
+          ),
+        ),
+        reason: 'the same cell wearing the other mark is another entry',
+      );
+      expect(
+        e,
         const TimelineExposure.drawing(
           FrameId('frame-a'),
           length: 2,
-          breakdownOffsets: [1],
+          breakdownMarks: {1: InbetweenMark.two},
         ),
       );
     });

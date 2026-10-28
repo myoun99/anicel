@@ -11,6 +11,7 @@ import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/brush_tip_order.dart';
+import 'package:anicel/src/models/separable_blend_mode.dart';
 import 'package:anicel/src/services/sut/sut_decoder.dart';
 import 'package:sqlite3/sqlite3.dart';
 import '../helpers/temp_dir.dart';
@@ -157,6 +158,16 @@ void main() {
     return data!.buffer.asUint8List();
   }
 
+  /// PNG bytes for a [width]x[height] image with nothing on it.
+  Future<Uint8List> blankPng(int width, int height) async {
+    final recorder = ui.PictureRecorder();
+    ui.Canvas(recorder);
+    final image = await recorder.endRecording().toImage(width, height);
+    final data = await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    return data!.buffer.asUint8List();
+  }
+
   Future<String> buildFixture({
     required Uint8List tipPng,
     Uint8List? thumbnailPng,
@@ -216,6 +227,8 @@ void main() {
     int? revisionBySpeed,
     int? revisionByViewScale,
     int? revisionBezier,
+    // The dual tip's 合成モード index, null where the file says nothing.
+    int? dualCompositeMode,
   }) async {
     // Unique per call: a test that builds several fixtures would otherwise
     // reopen the first one and fail on its existing tables.
@@ -250,7 +263,8 @@ void main() {
         BrushSharpenCorner INTEGER, FlickerReductionBySpeed INTEGER,
         FlickerReductionBySpeedType INTEGER, BrushUseRevision INTEGER,
         BrushRevision REAL, BrushRevisionBySpeed INTEGER,
-        BrushRevisionByViewScale INTEGER, BrushRevisionBezier INTEGER);
+        BrushRevisionByViewScale INTEGER, BrushRevisionBezier INTEGER,
+        DualBrushCompositeMode INTEGER);
       CREATE TABLE MaterialFile(_PW_ID INTEGER PRIMARY KEY,
         CatalogPath TEXT, OriginalPath TEXT, FileData BLOB);
     ''');
@@ -283,10 +297,11 @@ void main() {
       'BrushPatternOrderType, FlickerReduction, BrushSharpenCorner, '
       'FlickerReductionBySpeed, FlickerReductionBySpeedType, '
       'BrushUseRevision, BrushRevision, BrushRevisionBySpeed, '
-      'BrushRevisionByViewScale, BrushRevisionBezier) '
+      'BrushRevisionByViewScale, BrushRevisionBezier, '
+      'DualBrushCompositeMode) '
       'VALUES (9, 80, 50.0, 60, 70, 15.0, 40, 200.0, 1, ?, ?, ?, ?, '
       '?, 200.0, 4, ?, 182.0, 90, 1, -40, 30, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
-      '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         tipArray ?? patternArray(catalogPath),
         sizeEffector ??
@@ -344,6 +359,7 @@ void main() {
         revisionBySpeed,
         revisionByViewScale,
         revisionBezier,
+        dualCompositeMode,
       ],
     );
     // Round brush without pattern data.
@@ -488,6 +504,47 @@ void main() {
     expect(round.settings.size, 8.0);
     expect(round.settings.hardness, closeTo(0.9, 1e-9));
     expect(round.settings.sizePressureCurve, isNull);
+  });
+
+  // Board an-imported-pencil-drops-its-second-brush (2026-10-25): Clip
+  // Studio's 鉛筆 · デッサン鉛筆 · ガッシュ carry each tip twice at one size,
+  // a blank one first, and came in drawing nothing.
+  test('🚨a blank twin of the tip\'s size is not the tip', () async {
+    final path = await buildFixture(
+      tipPng: await blackPng(6, 4),
+      thumbnailPng: await blankPng(6, 4),
+    );
+    final result = await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    );
+
+    expect(result.warnings, isEmpty);
+    expect(
+      result.presets.first.settings.tipMask!.alpha[1 * 6 + 2],
+      255,
+      reason: 'the inked image, not the blank one before it',
+    );
+  });
+
+  test('a material that holds a blank image alone comes in without it, and '
+      'says so', () async {
+    final path = await buildFixture(tipPng: await blankPng(4, 4));
+    final result = await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    );
+
+    expect(result.presets.first.settings.tipMask, isNull);
+    expect(
+      result.warnings,
+      contains(
+        endsWith(
+          'tip bitmap material holds a blank image alone; imported without '
+          'it.',
+        ),
+      ),
+    );
   });
 
   test('🚨every tip a brush names comes in, in its array\'s order '
@@ -951,6 +1008,46 @@ void main() {
     expect(s.dualMask!.size, 10);
     // Synced: DualSize is a percentage of the brush size.
     expect(s.dualMaskScale, closeTo(2.5, 1e-9));
+  });
+
+  // 유저 2026-10-25 (board an-imported-pencil-drops-its-second-brush Q2):
+  // 鉛筆 drawn with its dual tip at 通常 measures as the line without it.
+  test('🚨a dual tip at 通常 comes in without it, and says so', () async {
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      dualPng: await blackPng(10, 10),
+      dualCompositeMode: 0,
+    );
+    final result = await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    );
+
+    expect(result.presets.first.settings.dualMask, isNull);
+    expect(
+      result.warnings,
+      [
+        'Brush "테스트 브러시": dual brush tip at 通常 draws as no dual tip; '
+            'imported without it.',
+      ],
+    );
+  });
+
+  test('a dual tip at any other mode comes in, by that mode', () async {
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      dualPng: await blackPng(10, 10),
+      dualCompositeMode: 1,
+    );
+    final result = await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    );
+
+    expect(result.warnings, isEmpty);
+    final s = result.presets.first.settings;
+    expect(s.dualMask, isNotNull);
+    expect(s.dualCompositeMode, SeparableBlendMode.darken);
   });
 
   test('🚨the dual tip arrives at the DENSITY its file gives it', () async {

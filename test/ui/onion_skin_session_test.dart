@@ -9,6 +9,7 @@ import 'package:anicel/src/models/onion_skin_settings.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/panels/onion_skin_panel.dart';
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import '../helpers/app_icon_button_probe.dart';
 import '../helpers/app_shortcuts.dart';
 import '../helpers/named_finders.dart';
@@ -121,12 +122,12 @@ void main() {
     // number under the bar — 「1번 2번 등 슬라이더 아래의 순서 숫자를
     // 버튼으로서 누르면 on/off」. The tooltip is still the bar's.
     final peg1 = find.byKey(const ValueKey<String>('onion-peg-before-1'));
-    expect(tester.widget<Tooltip>(peg1).message, '1 back');
+    expect(tester.widget<AppTooltip>(peg1).message, '1 back');
     await tester.tap(
       find.byKey(const ValueKey<String>('onion-peg-switch-before-1')),
     );
     await tester.pumpAndSettle();
-    expect(tester.widget<Tooltip>(peg1).message, '1 back · off');
+    expect(tester.widget<AppTooltip>(peg1).message, '1 back · off');
 
     // Mode switch to Images through the panel's picker.
     await tester.tap(find.byKey(const ValueKey<String>('onion-mode-button')));

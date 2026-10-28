@@ -12,7 +12,6 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
-import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -186,17 +185,20 @@ void main() {
     expect(panel.canCreateInstance, isFalse, reason: 'past the のりしろ');
   });
 
-  test('a range keys the frames of it the cut is drawn for, and no more', () {
+  test('a band keys the frames of it the cut is drawn for, and no more', () {
     final session = open()..selectCut(b);
 
-    final command = session.camera.cameraKeysCommandForRange(
-      const TimelineFrameRangeSelection(
-        layerId: LayerId('b-cam'),
-        startIndex: 21,
-        endIndexExclusive: 28,
-      ),
+    // The camera row beside a drawing row: the band's own lane rung.
+    session.updateFrameRangeSelectionDrag(
+      layerId: const LayerId('b-cam'),
+      anchorIndex: 21,
+      headIndex: 27,
+      spanRows: const [
+        LayerRowAddress(LayerId('b-cam')),
+        LayerRowAddress(LayerId('b-cel')),
+      ],
     );
-    command!.execute();
+    session.cellInstances.createInstancesForSelection();
 
     expect(keysOf(session, b), [2, 21, 22, 23]);
   });

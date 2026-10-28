@@ -1,11 +1,15 @@
 // THE SHEET'S FORM LEAVES INK WHERE THE RULES SAY: A ROW RULE ACROSS THE
-// COLUMNS, THE FRAME NUMBERS IN THE LEFT MARGIN, AND THE COLUMN TITLES ON
-// THE LETTER ROW.
+// COLUMNS, THE FRAME NUMBERS IN THE LEFT MARGIN, AND AN S SLOT'S LETTERS ON
+// THE LETTER ROW — WHILE A CEL ROW'S NAME THERE IS THE VALUES' INK.
 //
 // Three mutants of the paintHalf extraction (2026-09-03) survived every
 // sheet test — the row rules, the row numbers and the column titles each
 // never painted. The sheet tests look at the document, not at pixels;
-// these pins rasterise the FORM stratum and count ink in one place each.
+// these pins rasterise a stratum and count ink in one place each.
+//
+// F-485 (유저 2026-10-27): 「서식은 진짜 서식만 있어야함. 그래서 A같은 셀
+// 이름은 텍스트 층에 넣도록. S1이나 S2 이런 글자는 서식에 있어도 됨」.
+// ↩️Every title printed with the form until then.
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -25,7 +29,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 
-TimesheetDocument _document() => TimesheetDocument.fromCut(
+TimesheetDocument _document({String name = 'A'}) => TimesheetDocument.fromCut(
   cut: Cut(
     id: const CutId('cut-1'),
     name: '1',
@@ -34,7 +38,7 @@ TimesheetDocument _document() => TimesheetDocument.fromCut(
     layers: [
       Layer(
         id: const LayerId('a'),
-        name: 'A',
+        name: name,
         frames: [
           Frame(id: const FrameId('a-f1'), duration: 1, strokes: const []),
         ],
@@ -68,15 +72,18 @@ class _Form {
   }
 }
 
-/// Rasterises the form stratum alone.
-Future<_Form> _paintForm(TimesheetDocument document) async {
+/// Rasterises the form stratum alone — or [layer].
+Future<_Form> _paintForm(
+  TimesheetDocument document, [
+  SheetPaintLayer layer = SheetPaintLayer.form,
+]) async {
   final layout = TimesheetDocumentLayout(document: document);
   final painter = TimesheetDocumentPainter(
     words: timesheetWordsIn(AppLanguage.en),
     face: const TextStyle(),
     document: document,
     layout: layout,
-    layers: const {SheetPaintLayer.form},
+    layers: {layer},
   );
   final size = layout.documentSize;
   final recorder = ui.PictureRecorder();
@@ -123,24 +130,60 @@ void main() {
     );
   });
 
-  test('the column titles print on the letter row', () async {
-    final document = _document();
-    final form = await _paintForm(document);
-    final layout = form.layout;
-    final left = layout.halfLeft(0, 0) + layout.columnLeftInHalf(0);
-    final width = layout.columnWidthFor(document.columns[0].kind);
+  /// The letter-row box over [column], inside its rules.
+  Rect letterBox(TimesheetDocumentLayout layout, int column) {
+    final kind = layout.document.columns[column].kind;
     final lettersTop =
         layout.halfRowsTop(0) - TimesheetDocumentLayout.letterRowHeight;
-    expect(
-      form.inkIn(
-        Rect.fromLTWH(
-          left + 1,
-          lettersTop + 1,
-          width - 2,
-          TimesheetDocumentLayout.letterRowHeight - 2,
-        ),
-      ),
-      greaterThan(0),
+    return Rect.fromLTWH(
+      layout.halfLeft(0, 0) + layout.columnLeftInHalf(column) + 1,
+      lettersTop + 1,
+      layout.columnWidthFor(kind) - 2,
+      TimesheetDocumentLayout.letterRowHeight - 2,
     );
+  }
+
+  test('a cel row\'s name prints on the letter row with the values, and '
+      'changes nothing the form prints', () async {
+    final named = _document();
+    final unnamed = _document(name: '');
+    expect(
+      (
+        named.columns[0].kind,
+        named.columns[0].label,
+        unnamed.columns[0].label,
+      ),
+      (TimesheetColumnKind.action, 'A', ''),
+      reason: '⛔fixture: row A heads the first column — or a row of no name',
+    );
+    final values = await _paintForm(named, SheetPaintLayer.content);
+    final blank = await _paintForm(unnamed, SheetPaintLayer.content);
+    expect(values.inkIn(letterBox(values.layout, 0)), greaterThan(0));
+    expect(blank.inkIn(letterBox(blank.layout, 0)), 0, reason: '⛔CONTROL');
+    final form = (await _paintForm(named)).bytes;
+    final formOfNoName = (await _paintForm(unnamed)).bytes;
+    var apart = 0;
+    for (var i = 0; i < form.length; i += 1) {
+      if (form[i] != formOfNoName[i]) {
+        apart += 1;
+      }
+    }
+    expect(
+      (form.length, apart),
+      (formOfNoName.length, 0),
+      reason: 'the form never reads the film ([SheetPaintLayer.form])',
+    );
+  });
+
+  test('an S slot\'s letters print on the letter row with the form', () async {
+    final document = _document();
+    final s1 = document.columns.indexWhere(
+      (column) => column.kind == TimesheetColumnKind.se,
+    );
+    expect(document.columns[s1].label, 'S1', reason: '⛔fixture: an S slot');
+    final form = await _paintForm(document);
+    final values = await _paintForm(document, SheetPaintLayer.content);
+    expect(form.inkIn(letterBox(form.layout, s1)), greaterThan(0));
+    expect(values.inkIn(letterBox(values.layout, s1)), 0);
   });
 }

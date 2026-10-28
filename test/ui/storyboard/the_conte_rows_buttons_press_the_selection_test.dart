@@ -22,10 +22,10 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/storyboard_host.dart';
 
 /// THE CONTE ROWS' BUTTONS PRESS THE SELECTION (row-buttons-act-on-the-
 /// selection, 유저 2026-09-25: 「선택범위 내부 레이어 조절하면 선택범위
@@ -86,10 +86,9 @@ const _selected = ['a-over', 'b-over', 'a-high', 'b-high'];
 /// The storyboard tab standing in cut b, with the conte rows at seats +1
 /// and +2 selected.
 Future<EditorSessionManager> _storyboard(WidgetTester tester) async {
-  await tester.binding.setSurfaceSize(const Size(1600, 1000));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
-  final s = EditorSessionManager(
-    initialProject: Project(
+  final s = await pumpStoryboardHost(
+    tester,
+    Project(
       id: const ProjectId('conte-presses'),
       name: 'Conte presses',
       createdAt: DateTime.utc(2026, 10, 10),
@@ -97,26 +96,9 @@ Future<EditorSessionManager> _storyboard(WidgetTester tester) async {
         Track(id: _trackId, name: 'V1', cuts: [_cut('a'), _cut('b')]),
       ],
     ),
+    surface: const Size(1600, 1000),
+    pixelsPerFrame: 12,
   );
-  addTearDown(s.dispose);
-  await tester.pumpWidget(
-    MaterialApp(
-      home: Scaffold(
-        body: ListenableBuilder(
-          listenable: s,
-          builder: (context, _) => StoryboardTabHost(
-            session: s,
-            pixelsPerFrame: 12,
-            onPixelsPerFrameChanged: (_) {},
-            showSeconds: false,
-            onShowSecondsChanged: (_) {},
-            thumbnails: null,
-          ),
-        ),
-      ),
-    ),
-  );
-  await tester.pumpAndSettle();
   s.standOnRow(_seat(1), panel: WorkingPanel.storyboard, globalFrameIndex: 15);
   await tester.pumpAndSettle();
   expect(s.activeCutId, const CutId('b'), reason: '⛔전제: standing in b');

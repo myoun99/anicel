@@ -3,7 +3,7 @@ import '../../models/cut.dart';
 import '../../services/playback/cut_composite_structure.dart';
 import '../../services/playback/frame_demand.dart';
 import '../playback/playback_cache_budget.dart';
-import '../playback/canvas_pictures.dart';
+import '../playback/frame_pictures.dart';
 import '../playback/canvas_playback_controller.dart';
 import '../playback/playback_prerender_scheduler.dart' show PictureRoom;
 import '../timeline/timeline_ruler_cursor_overlay.dart' show ReadyRun;
@@ -24,7 +24,7 @@ abstract interface class PlaybackRun {
 
   /// The pictures every screen shows a frame from — the budget keeps them by
   /// [demand].
-  CanvasPictures get pictures;
+  FramePictures get pictures;
 }
 
 /// The PLAYBACK CACHE BUDGET — how many bytes the playback cache may hold,
@@ -37,7 +37,7 @@ abstract interface class PlaybackRun {
 /// refused: the session read it from twenty-two places (its lifecycle —
 /// selectCut, dispose, the frame-rate setters — IS the following). This
 /// is the part that stands on its own.
-class PlaybackCacheBudget implements PictureRoom {
+class PlaybackCacheBudget implements PictureRoom, HeldNodesLine {
   PlaybackCacheBudget({
     required ProjectAccess project,
     required RenderCaches renderCaches,
@@ -54,7 +54,7 @@ class PlaybackCacheBudget implements PictureRoom {
 
   PlaybackCacheBudgetEnforcer get _playbackCacheBudgetEnforcer =>
       _enforcer ??= PlaybackCacheBudgetEnforcer(
-        layerImages: _renderCaches.layerFrameImageCache,
+        pictures: _renderCaches.framePictureStore,
         maxBytes:
             _debugMaxBytes ?? _allowedMaxBytes ?? playbackCacheBudgetBytes,
       );
@@ -86,9 +86,10 @@ class PlaybackCacheBudget implements PictureRoom {
   }
 
   /// The playback cache's trim, run when the line moves under what is held —
-  /// the allowance, a run that borrows it, a memory warning. ⛔Not after a
-  /// picture lands: the warmer asks the room again then ([makeRoomFor]),
-  /// which never lets go of what it just made (F-365).
+  /// the allowance, a run that borrows it, a memory warning, the nodes over
+  /// a pen held ([giveWayToNodes]). ⛔Not after a picture lands: the warmer
+  /// asks the room again then ([makeRoomFor]), which never lets go of what
+  /// it just made (F-365).
   ///
   /// 🚨WHAT IS LET GO IS WHAT IS WANTED LATEST ([FrameDemand] — the one
   /// order the warmer makes pictures in). ↩️B1 had to DERIVE a kept range
@@ -96,13 +97,43 @@ class PlaybackCacheBudget implements PictureRoom {
   /// hypothetical: warming baked the runway past the end line while the
   /// range stopped AT the line, so every runway composite was evictable the
   /// moment it landed. They are one object now, and nothing is kept whole.
-  void enforcePlaybackCacheBudget() => _playbackCacheBudgetEnforcer.enforce(
-    wantedAt: _run.pictures.wantedAt(_run.demand),
-    lentBytes: _lentBytes,
-  );
+  ///
+  /// The nodes held go first only past their own room ([bytesForNodes]):
+  /// the line moved under them.
+  void enforcePlaybackCacheBudget() {
+    _run.pictures.heldNodes.fit();
+    _playbackCacheBudgetEnforcer.enforce(
+      wantedAt: _run.pictures.wantedAt(_run.demand),
+      lentBytes: _besideThePictures,
+    );
+  }
 
   @override
-  int get bytes => _playbackCacheBudgetEnforcer.room(lentBytes: _lentBytes);
+  int get bytes =>
+      _playbackCacheBudgetEnforcer.room(lentBytes: _besideThePictures);
+
+  /// What the line holds beside the frames' pictures, which give way to it:
+  /// what is [lent], and the pictures the nodes of the frame a screen
+  /// stands on are held in (`FramePictures.heldNodes`) — taken off the
+  /// pictures made ahead ([bytesForNodes]), never laid past the line.
+  int get _besideThePictures => _lentBytes + _run.pictures.heldNodes.heldBytes;
+
+  /// How much of the line the nodes over a pen may hold, one by one
+  /// (`FramePictures.heldNodes`): all of it but what a screen shows, what
+  /// is [lent] and what lies below the pen held — the frames' pictures made
+  /// ahead give way to them ([giveWayToNodes]). 🗣️유저 2026-10-27 (Q3 = c):
+  /// 「위 폴더는 하나씩, 재생 메모리 몫 안에서 전부」.
+  @override
+  int get bytesForNodes {
+    final room =
+        _playbackCacheBudgetEnforcer.lendableBytes() -
+        _lentBytes -
+        _run.pictures.heldNodes.heldBelowBytes;
+    return room < 0 ? 0 : room;
+  }
+
+  @override
+  void giveWayToNodes() => enforcePlaybackCacheBudget();
 
   @override
   bool makeRoomFor({required int bytes, required int step}) =>
@@ -122,8 +153,14 @@ class PlaybackCacheBudget implements PictureRoom {
   int _lentBytes = 0;
 
   /// How much of the line a run may hold now — all of it but what the
-  /// playback caches will not give back.
-  int get lendableBytes => _playbackCacheBudgetEnforcer.lendableBytes();
+  /// playback caches will not give back, and the frame's nodes held
+  /// ([_besideThePictures]).
+  int get lendableBytes {
+    final lendable =
+        _playbackCacheBudgetEnforcer.lendableBytes() -
+        _run.pictures.heldNodes.heldBytes;
+    return lendable < 0 ? 0 : lendable;
+  }
 
   /// A run holds [bytes] on this line from now on, and the playback caches
   /// give way to it at once — 0 when its last row is let go.
@@ -133,8 +170,11 @@ class PlaybackCacheBudget implements PictureRoom {
   }
 
   /// The OS memory warning, the playback caches' share: the enforcer
-  /// lowers its cap, and the trim runs against the lowered cap at once.
+  /// lowers its cap, and the trim runs against the lowered cap at once —
+  /// the frame's nodes held let go of first, as they only make a stroke's
+  /// steps cheaper.
   void respondToMemoryPressure() {
+    _run.pictures.heldNodes.clear();
     _playbackCacheBudgetEnforcer.respondToMemoryPressure();
     enforcePlaybackCacheBudget();
   }
@@ -146,7 +186,8 @@ class PlaybackCacheBudget implements PictureRoom {
     if (cut == null) {
       return const [];
     }
-    return playbackReadyRunsForCut(cut, start, end);
+    // The cut's own run, on the canvas: on its paper.
+    return playbackReadyRunsForCut(cut, start, end, paintPaper: true);
   }
 
   /// [playbackReadyRuns] for an arbitrary cut — the storyboard's green
@@ -154,15 +195,18 @@ class PlaybackCacheBudget implements PictureRoom {
   ///
   /// TWO kinds of frame, one bar (유저 2026-08-16, 「왜 콘텐츠끝너머가
   /// 초록이되면 안되는거지? 재생가능한거잖아」):
-  ///  * a frame with something to compose is green when its composite is
-  ///    warmed — the bake IS its readiness;
+  ///  * a frame with something to compose is green when its picture is
+  ///    made — the making IS its readiness;
   ///  * a frame that composes to NOTHING (a hole between blocks, the
   ///    runway past the drawings, hidden or faded-out layers) is not an
   ///    exception the bar skips — it is ready BY DEFINITION. Playback at
-  ///    that frame draws exactly what its composite would hold: nothing.
+  ///    that frame draws its page alone, the paper or nothing
+  ///    (`FramePictures.drawsOnlyItsPage`), and nothing of it is made.
   ///
-  /// The empty answer reads the same shared visit the signature rides, so
-  /// it cannot disagree with what the compose loop would actually paint.
+  /// The two are ONE question, the run's own ([FramePictures.has]).
+  /// ↩️The bar answered a frame of nothing by the plan's empty signature,
+  /// beside the run's question — the same answer asked twice, until a
+  /// frame became one picture and the run's answered it too.
   ///
   /// ★Asked once per span of one picture, never per frame (I-22): zoomed
   /// out to ten minutes the per-frame read was 94% of a playback tick. The
@@ -170,17 +214,26 @@ class PlaybackCacheBudget implements PictureRoom {
   ///
   /// 🚨A BAR COUNTS WHAT ITS RUN SHOWS (playback-plays-the-screen-material):
   /// a span is ready when the pictures every screen shows a frame from are —
-  /// the question a run asks before it goes on ([CanvasPictures.has]) asked
+  /// the question a run asks before it goes on ([FramePictures.has]) asked
   /// of the span's first frame. ↩️The film's bar — the storyboard's — counted
   /// composites while the film played on them.
   ///
-  /// 🗣️AND A SPAN THE RUN HAS STOPPED WAITING FOR, A CEL OF IT UNREADABLE, IS
-  /// READY RED (frame-picture-indicator-Q1 b): nothing more of its picture
-  /// is to come ([CanvasPictures.failed]) and a cel it shows could not be
-  /// read ([CanvasPictures.cannotRead]), so it plays without that cel.
-  /// ↩️The bar asked only [CanvasPictures.has], and such a span was never
-  /// painted at all — the run going on past it said nothing anywhere.
-  List<ReadyRun> playbackReadyRunsForCut(Cut cut, int start, int end) {
+  /// 🗣️AND A SPAN WITH A CEL THAT COULD NOT BE READ IS READY RED
+  /// (frame-picture-indicator-Q1 b) once the run waits for no more of it:
+  /// its picture is made without that cel ([FramePictures.cannotRead]), or
+  /// nothing more of it is to come ([FramePictures.failed]) — it plays
+  /// without that cel. ↩️The bar asked only whether the span's pictures
+  /// were there, and such a span was never painted at all — the run going
+  /// on past it said nothing anywhere.
+  ///
+  /// [paintPaper]: whether the screen its run plays on paints the cut's
+  /// paper ([DemandedPicture.paintPaper]) — which of its pictures it shows.
+  List<ReadyRun> playbackReadyRunsForCut(
+    Cut cut,
+    int start,
+    int end, {
+    required bool paintPaper,
+  }) {
     final pictures = _run.pictures;
     final runs = <ReadyRun>[];
     for (final span in compositeStructureSpansIn(
@@ -188,10 +241,14 @@ class PlaybackCacheBudget implements PictureRoom {
       start: start,
       end: end,
     )) {
-      final picture = (cut: cut, frameIndex: span.start);
+      final picture = (
+        cut: cut,
+        frameIndex: span.start,
+        paintPaper: paintPaper,
+      );
       final bool unreadable;
-      if (span.signature.nodes.isEmpty || pictures.has(picture)) {
-        unreadable = false;
+      if (pictures.has(picture)) {
+        unreadable = pictures.cannotRead(picture);
       } else if (pictures.failed(picture) && pictures.cannotRead(picture)) {
         unreadable = true;
       } else {

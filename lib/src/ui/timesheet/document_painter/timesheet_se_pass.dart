@@ -98,7 +98,12 @@ class _TimesheetSePass {
     required double centerX,
     required double cellTop,
   }) {
-    final seName = cell.seName ?? '';
+    // Off the bar by a bar's width: a sound closing on the row above
+    // closes with its own bar there, under the name.
+    final nameTop = cellTop - 2 - _nameBoxHeight;
+    // A spill-in wears no bar and no name — its head is an earlier cut's
+    // (F-358).
+    final named = lead == 0 && (cell.seName ?? '').isNotEmpty;
     if (lead == 0) {
       paintSeRedBar(
         canvas,
@@ -106,23 +111,24 @@ class _TimesheetSePass {
         columnWidth: columnWidth,
         y: cellTop + 1,
       );
-      // Off the bar by a bar's width: a sound closing on the row above
-      // closes with its own bar there, under the name.
-      final nameTop = cellTop - 2 - _nameBoxHeight;
-      if (seName.isNotEmpty) {
-        _paintNameBox(
-          canvas,
-          seName,
-          Rect.fromLTWH(columnLeft, nameTop, columnWidth, _nameBoxHeight),
-        );
-      }
-      _paintDelivery(
+    }
+    if (named) {
+      _paintNameBox(
         canvas,
-        cell.seType,
-        boundary: Offset(centerX, seName.isNotEmpty ? nameTop : cellTop),
-        maxWidth: columnWidth - 2,
+        cell.seName!,
+        Rect.fromLTWH(columnLeft, nameTop, columnWidth, _nameBoxHeight),
       );
     }
+    // 🗣️F-386 (유저 2026-10-17): 「어떤 컷에선 ON이지만 다음컷에선 OFF …
+    // 그게 타임시트든 화면이든 다 반영됨」 — the line's delivery in THIS
+    // sheet's cut, where the line begins on it: a spill-in's too, over its
+    // first row as a nameless entry's stands.
+    _paintDelivery(
+      canvas,
+      cell.seType,
+      boundary: Offset(centerX, named ? nameTop : cellTop),
+      maxWidth: columnWidth - 2,
+    );
 
     paintSeDialogueShare(
       canvas,

@@ -208,19 +208,22 @@ List<Map<String, dynamic>> _drawingTrackFrames(Layer layer, int duration) {
 
 /// Value-change frames for an instruction row: the event's writing (free
 /// text, vocabulary-name fallback; A→B appended when present) at each span
-/// start, SYMBOL_NULL_CELL where a span ends into empty space.
+/// start, SYMBOL_NULL_CELL where a span ends into empty space — and where a
+/// span that writes nothing stands, the empty cell it shows (「(없음)」).
 List<Map<String, dynamic>> _instructionTrackFrames(
   Layer layer,
   int duration,
   CameraInstructionDef? Function(String instructionId)? defById,
 ) => _changeTrackFrames(
-  layer.instructions.entries.map(
-    (entry) => (
-      start: entry.key,
-      endExclusive: entry.key + entry.value.length,
-      label: _instructionLabel(entry.value, defById),
-    ),
-  ),
+  layer.instructions.entries
+      .map(
+        (entry) => (
+          start: entry.key,
+          endExclusive: entry.key + entry.value.length,
+          label: _instructionLabel(entry.value, defById),
+        ),
+      )
+      .where((span) => span.label.isNotEmpty),
   duration,
 );
 
@@ -230,11 +233,12 @@ String _instructionLabel(
   InstructionEvent event,
   CameraInstructionDef? Function(String instructionId)? defById,
 ) {
-  final label = event.displayLabel(defById?.call(event.instructionId));
+  final label = event.displayLabel(event.defIn(defById));
   final valueA = event.valueA;
   final valueB = event.valueB;
   if (valueA == null && valueB == null) {
     return label;
   }
-  return '$label (${valueA ?? ''}→${valueB ?? ''})';
+  final ends = '(${valueA ?? ''}→${valueB ?? ''})';
+  return label.isEmpty ? ends : '$label $ends';
 }

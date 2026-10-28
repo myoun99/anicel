@@ -5,6 +5,8 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/panels/editor_dock_host.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
+import '../../helpers/app_icon_button_probe.dart';
+
 /// 🚨A LANGUAGE SWITCH SHOWS WHAT A FRESH START IN THAT LANGUAGE SHOWS, in
 /// every open panel (2026-10-24).
 ///
@@ -37,12 +39,12 @@ void main() {
         for (final tip in find
             .descendant(
               of: find.byElementPredicate((e) => identical(e, dock)),
-              // Every kind of tooltip — the app's own is a subclass, which
-              // a finder by type does not match.
-              matching: find.byWidgetPredicate((w) => w is Tooltip),
+              // Every kind of tooltip: the light faces' and the one around
+              // anything else.
+              matching: find.anyTooltip,
             )
             .evaluate())
-          ?(tip.widget as Tooltip).message,
+          ?tooltipOf(tip.widget),
       ],
   };
 

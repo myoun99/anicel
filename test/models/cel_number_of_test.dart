@@ -20,20 +20,22 @@ void main() {
     expect(celNumberOf(' \t'), isNull);
   });
 
-  test('no name wears the in-between mark — ONE filled dot for both of its '
-      'uses (F-149), and one mark as DATA (2026-09-24)', () {
+  test('no name wears the in-between mark — one mark as DATA (2026-09-24), '
+      'and mark 1 of two (F-469)', () {
     // 🗣️유저 2026-09-16: 「일단 이름 없는 기본상태를 속이 찬 동그라미로
     // 통일적용 … 추후 두번째 중간나누기 마크(속이 빈)를 활용할지도
-    // 모르겠지만 당장은 제거」. The GLYPH is pinned here by value — every
-    // other test asks the constant, so this is the one place that says
-    // what the constant is.
-    expect(inbetweenMark, '●');
-    expect(InbetweenMark.one.glyph, inbetweenMark);
+    // 모르겠지만 당장은 제거」. The GLYPHS are pinned here by value — every
+    // other test asks the marks, so this is the one place that says what
+    // they are. 🗣️I-130 (유저 2026-10-25): 「지금의 속이 찬 점을 마크2, 속이
+    // 빈 그냥 선으로 된 원을 마크1」.
+    expect(InbetweenMark.one.glyph, '○');
+    expect(InbetweenMark.two.glyph, '●');
     // 🗣️유저 2026-09-24: 「데이터적으로도 같은 취급시키는거 맞지? 중간나누기
-    // 마크1로서 작동했으면」 — the unnamed head and the dot inside a block
-    // are the same mark, mark 1.
+    // 마크1로서 작동했으면」 — the unnamed head wears a mark as data, the
+    // one the dot inside a block wore. ↩️That mark was named 1 then; I-130
+    // named the filled ● mark 2, and F-469 (유저 2026-10-27) put the
+    // unnamed head on mark 1, the ringed ○.
     expect(unnamedDrawingMark, InbetweenMark.one);
-    expect(breakdownMark, InbetweenMark.one);
     expect(drawingHeadOf('A1', kind: cel), (word: 'A1', mark: null));
     expect(drawingHeadOf(null, kind: cel), (
       word: '',

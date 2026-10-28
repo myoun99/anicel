@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart'
     show SeSpanVisual;
 import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 
+import '../../helpers/an_se_row.dart';
 import '../../helpers/painted_glyph_boxes.dart';
 
 /// F-358 — 유저 2026-10-14: 「여러 컷에 걸친 se블록이 있을때, 글로벌에선
@@ -222,6 +223,7 @@ void main() {
                 child: SizedBox.fromSize(
                   size: sizeAlong(axis, along: 8 * cellExtent, across: 30),
                   child: SeSpanVisual(
+                    layer: anSeRow(),
                     axis: axis,
                     frames: 8,
                     dialogue: line,

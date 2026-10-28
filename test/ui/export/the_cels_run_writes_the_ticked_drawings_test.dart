@@ -156,7 +156,9 @@ void main() {
     Directory? Function()? askedWhere,
     bool throughTheSystemsWindows = false,
   }) async {
-    await tester.binding.setSurfaceSize(const Size(1120, 660));
+    // Room for the window's least in the TEST font, whose words run wide:
+    // the Cels list's rules stand as wide as their words (F-486).
+    await tester.binding.setSurfaceSize(const Size(1400, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
     await tester.pumpWidget(

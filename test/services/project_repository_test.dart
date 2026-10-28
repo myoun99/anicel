@@ -1017,7 +1017,7 @@ void main() {
           0: TimelineExposure.drawing(
             frame.id,
             length: 6,
-            breakdownOffsets: const [3],
+            breakdownMarks: {3: InbetweenMark.two},
           ),
         },
         isVisible: false,

@@ -680,7 +680,47 @@ void main() {
   /// the four being `CanvasLayerStackView`'s own fields. ↩️Bundled the same
   /// day (`FramePage`) for a reason of its own: the frame's picture is
   /// KEYED by the four (`FramePictureKey`), so they are one value already.
-  const wideSignatures = 420;
+  /// ⚠️420 → 422 on 2026-10-25, two named as the rule above asks (I-92 — a
+  /// row clipped to the layer below): `drawClipAsImage` (six) — the canvas,
+  /// the bounds, the scale, what paints the base, what paints what clips to
+  /// it and the paint the group is laid by — the shape of
+  /// `drawBlendOverBackdrop` beside it, whose two halves are the same two
+  /// walks; `LayerStackPaintPass._paintClipNode` (five) — the shape of the
+  /// three node painters the 10-23 note names. 🔬`clean_code_diff` against
+  /// master (`3354f5258`, at 420) named those two added and nothing gone.
+  /// ⚠️422 → 425 on 2026-10-25, three named as the rule above asks (card
+  /// one-picture-per-frame ②-3 · ②-4 — every screen draws a frame's one
+  /// picture, and a canvas that stands patches its strokes into it).
+  /// `drawOnTheDisplay` (eight) is the ONE blit the display lays an image
+  /// it is handed by — the canvas's display buffer and a frame's picture —
+  /// and each parameter is one the draw reads: the canvas, the image, what
+  /// of it and where, the view and the device's ratio its sampling and its
+  /// edge are read off, the level it was composed at, and how it lays (a
+  /// patch still landing lays its clear texels too). `FramePictures._make`
+  /// (five) — what the frame is stacked of, which frame, when its maker
+  /// gives up, when its turn is due, and whether it goes to the front of
+  /// the store's line — is the one road `make` (a run's frame, ahead) and
+  /// `makeShown` (the frame a screen stands on) take; `_lay` (five) takes
+  /// the key and the drawing and hands the last three on.
+  /// 🔬`clean_code_diff` against the lane's base (`3cee149eb`, at 420) named
+  /// those three added and nothing gone. ⛔Not bundled to fit: the turn
+  /// reads two of the three (`QuietTurns.inAQuiet`) and the store the third
+  /// (`FramePictureStore.lay`), so a value of them would be taken apart at
+  /// the one place it is handed to.
+  /// ⚠️425 → 427 on 2026-10-25, two named as the rule above asks (I-65 — a
+  /// cel number stands on a transform's Position and Scale lanes, edited by
+  /// the transform's own verbs): `effectsWithLaneValueEdited` (five) takes
+  /// the transform tool's 「배율 연동」 for the Scale it hands
+  /// `transformTrackWithLaneValueEdited` (seven), and
+  /// `effectsWithGroupReset` (five) the paper the number rests on, for
+  /// `transformTrackWithGroupReset` (five) — each the shape of the
+  /// transform verb it hands to. 🔬`clean_code_diff` against master
+  /// (`c28ff5db3`, at 422, before the three above) named those two added
+  /// and nothing gone. ⛔Not
+  /// bundled to fit: the session reads the switch from the tool and the
+  /// paper from the row's cut, each at the call (`LaneVerbs`), so a value
+  /// of the two would be built at every call first.
+  const wideSignatures = 427;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -975,6 +1015,27 @@ void main() {
   /// named that one added and nothing gone. ⛔Not split to fit: it is the
   /// walk's one switch over the node kinds, the shape the camera's walk
   /// keeps too.
+  ///
+  /// ⚠️412 → 415 on 2026-10-25 under the same ceiling, three named as the
+  /// rule above asks (I-92 — a row clipped to the layer below).
+  /// `clippedOnto` is the clip law's join: which rows read the base's whole
+  /// colour, then a group joined or begun — two switches over the node
+  /// kinds. `LayerStackPaintPass._paintNodesWith` crossed again with the
+  /// clip's and the opaque base's cases. `LazyCanvasRasterRgb`'s
+  /// constructor reads a clipped row cut by its base's layers.
+  /// 🔬`clean_code_diff` against master (`3354f5258`, at 412) named those
+  /// three added and nothing gone. ⛔Not split to fit: each is one walk or
+  /// one switch over the node kinds, as the notes above say of their kin.
+  ///
+  /// ⚠️One in and one out on 2026-10-27 under the same ceiling (F-475 —
+  /// the button a press lands on says which column it sweeps).
+  /// `_StoryboardRailSweep._hooks` (66) crossed the line handing the conte
+  /// rail's sweep the two folds the timeline's sweeps — a group's at the
+  /// end of a name and a lane group's twirl — and `railSwipeColumns` went
+  /// under it with the bands it no longer works out. 🔬`clean_code_diff`
+  /// against the lane's base (`e059586e1`) named those two and no other.
+  /// ⛔Not split to fit: it is one record of what this rail reads and
+  /// presses, field for field the grids' (`timelineRailSwipeHooks`).
   const longBodies = 415;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
@@ -1291,7 +1352,35 @@ void main() {
   /// painter. 🔬`clean_code_diff` against master (`b0a486341`) names this
   /// one and no other class. ⛔Not split to fit: the row's painter is built
   /// in the one place its other arguments are.
-  const longClasses = 74;
+  ///
+  /// ⚠️74 → 75 on 2026-10-25, ONE name: `FramePictureStore` crossed
+  /// (588 → 627) when a frame's one picture came to be every screen's (card
+  /// one-picture-per-frame ②-2 · ②-4): a frame's picture is weighed by the
+  /// bytes the store holds for it (`holds` · `bytesOf`), and a stroke that
+  /// lands moves the picture it was patched into to the frame's next key
+  /// (`move` · `landingOf`), in line behind the patches still landing.
+  /// 🔬`clean_code_diff` against the lane's base (`3cee149eb`) names this
+  /// one and no other class. ⛔Not split to fit: a move is the store's own
+  /// hold on a picture's texture, renamed in the one line its patches land
+  /// in, under the one count of who pins it.
+  ///
+  /// ⚠️One crossed on 2026-10-27 under the same ceiling: `TimelineGridHooks`
+  /// (600 → 611) when the column sweep came to read a row's two folds live
+  /// (F-475 — a group's fold at the end of a name and a lane group's twirl
+  /// are swept as the eye is): `groupFoldOpenOf` · `laneGroupOpenOf`, beside
+  /// the live read of every other column. 🔬`clean_code_diff` against the
+  /// lane's base (`e059586e1`) names this one and no other class. ⛔Not split
+  /// to fit: it is the one bundle both grids take (`one_grid_hooks_test`),
+  /// and a read their sweep needs is one more of its answers.
+  ///
+  /// ⚠️75 → 76 on 2026-10-27, ONE name: `BrushShape` crossed (587 → 609)
+  /// when mixing came to open onto two methods (I-75 — 유저 Q1 「섞기
+  /// 그룹에 「흐리기」」): the method beside the gate (`mixingMethod`), and
+  /// the two questions every reader asks of the pair (`picksUpGround` ·
+  /// `blurs`). 🔬`clean_code_diff` against the lane's base (`635015833`)
+  /// names this one and no other class. ⛔Not split to fit: a brush's
+  /// settings are one value, and the method is one more field of it.
+  const longClasses = 76;
 
   late CleanCodeScan scan;
   setUpAll(() {

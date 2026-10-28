@@ -7,6 +7,8 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
+import '../../helpers/home_page_probes.dart';
+
 /// 🚨F-264 ② (유저 2026-10-08): 「당기기 버튼 한번더 눌러도 타임라인
 /// 변화없음. 그상태에서 다른레이어로 서있는곳 이동하면 … 이동됨. 바로
 /// 바껴야하는데」 — every press of the pull button shows on the rows it
@@ -45,10 +47,10 @@ void main() {
       final before = {
         for (final row in [lower, upper]) row: _startsOn(s, row),
       };
-      await tester.tap(
-        find.byKey(const ValueKey<String>('pull-blocks-button')),
+      await tapToolbarButton(
+        tester,
+        const ValueKey<String>('pull-blocks-button'),
       );
-      await tester.pumpAndSettle();
       for (final row in [lower, upper]) {
         expect(
           _startsOn(s, row),

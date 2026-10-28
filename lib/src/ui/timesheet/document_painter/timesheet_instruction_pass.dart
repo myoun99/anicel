@@ -35,8 +35,10 @@ class _TimesheetInstructionPass {
     final isFirst = offset == 0;
     final isLast = offset == spanLength - 1;
 
-    if ((cell.markType ?? CameraInstructionMarkType.bar) ==
-        CameraInstructionMarkType.bar) {
+    // A span with no mark draws none — 「(없음)」 (I-72-block-without-
+    // instruction); its names and its writing still print below.
+    final mark = cell.markType;
+    if (mark == CameraInstructionMarkType.bar) {
       // R5-⑤: the endpoint cells carry NO line — the names own them. Each
       // row between draws edge to edge (R6-①a: the per-cell padding made
       // the bar read as broken dashes), thin like a ruled sheet line. A
@@ -104,9 +106,10 @@ class _TimesheetInstructionPass {
           linePaint,
         );
       }
-    } else {
+    } else if (mark != null) {
       _paintInstructionMarkSlice(
         canvas,
+        mark: mark,
         cell: cell,
         centerX: centerX,
         halfWidth: columnWidth / 2 - 1,
@@ -294,6 +297,7 @@ class _TimesheetInstructionPass {
   /// exactly like the X-sheet overlay.
   void _paintInstructionMarkSlice(
     Canvas canvas, {
+    required CameraInstructionMarkType mark,
     required TimesheetCell cell,
     required double centerX,
     required double halfWidth,
@@ -317,7 +321,6 @@ class _TimesheetInstructionPass {
     // and the writing — no hatching, no outline (user sketch).
     final fill = Paint()
       ..color = TimesheetDocumentPainter._ink.withValues(alpha: 0.15);
-    final mark = cell.markType ?? CameraInstructionMarkType.bar;
     switch (mark) {
       case CameraInstructionMarkType.ol:
         canvas.drawPath(

@@ -10,7 +10,6 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -24,21 +23,21 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
-import 'package:anicel/src/ui/widgets/fill_reference_button.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
-import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/panel_finders.dart';
-import '../../helpers/named_finders.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/rail_group_button.dart';
 
-/// 🚨I-36 (유저 2026-09-24): 「범위를 보여주고, 활성 레이어의 참조 버튼을
-/// 둔다」 + 「모드 세개. 참조(보이는거 전부), 참조(참조 설정한 레이어만, 없으면
-/// 현재), 현재레이어」 — through the real app: the mode is picked on the fill's
-/// own settings, the line under it names what the fill reads, the bucket
-/// beside it flags the active layer with the rail's verb, and a tap on the
+/// 🚨I-36 (유저 2026-09-24): 「범위를 보여주고」 + 「참조(보이는거 전부) …
+/// 현재레이어」 — through the real app: the mode is picked on the fill's own
+/// settings, the line under it names what the fill reads, and a tap on the
 /// canvas reads exactly that.
+///
+/// ↩️The middle mode (the flagged layers) and the bucket beside it that
+/// flagged the active layer went with I-92 (유저 2026-10-12: 「채우기도구에서
+/// 채색참조 기반으로 채우기 이런식으로 구현되있는데, 그런버튼 삭제하고」) —
+/// the rail's flag is the layer's clipping now.
 ///
 /// The rig: a LINE layer under a COLOR layer, one red stroke on each, and a
 /// blue fill tapped in the empty space between them. What the fill read is
@@ -83,13 +82,6 @@ void main() {
             layers: [
               cel(line, lineFrame),
               cel(color, colorFrame),
-              // A row the flag does not belong on, to stand on at the end.
-              Layer(
-                id: const LayerId('fr-photo'),
-                name: 'fr-photo',
-                frames: const [],
-                kind: LayerKind.image,
-              ),
             ],
           ),
         ],
@@ -279,136 +271,61 @@ void main() {
     expect(went.paintedOverColor, isFalse);
   });
 
-  testWidgets('「참조 설정한 레이어만」 — the flagged line is the wall, and the '
-      'current layer\'s own stroke is not', (tester) async {
-    await pumpRig(tester);
-    sessionOf(tester).layerSwitches.toggleLayerFillReference(line);
-    await pumpFrames(tester);
-    expect(
-      await pickSource(tester, AppText.strings.toolReadReferences),
-      line.value,
-    );
-
-    final went = await fill(tester);
-    expect(went.paintedOverLine, isFalse);
-    expect(went.paintedOverColor, isTrue, reason: 'the color is not read');
-  });
-
-  testWidgets('「없으면 현재」 — nothing flagged reads the current layer', (
-    tester,
-  ) async {
-    await pumpRig(tester);
-    expect(
-      await pickSource(tester, AppText.strings.toolReadReferences),
-      color.value,
-    );
-
-    final went = await fill(tester);
-    expect(went.paintedOverLine, isTrue);
-    expect(went.paintedOverColor, isFalse);
-  });
-
-  testWidgets('the bucket beside the line flags the ACTIVE layer with the '
-      'rail\'s verb — one undo — and is dead on a row that cannot carry it', (
-    tester,
-  ) async {
-    await pumpApp(tester);
-    await standOn(tester, color);
-    await hold(tester, tool: CanvasTool.fill);
-    await toggleToolSettings(tester);
-    await press(tester, segment(AppText.strings.toolReadReferences));
-    final session = sessionOf(tester);
-    final bucket = find.named('fill-active-layer-reference');
-    final before = session.historyManager.undoCount;
-
-    FillReferenceButton face() => tester.widget<FillReferenceButton>(
-      find.ancestor(of: bucket, matching: find.byType(FillReferenceButton)),
-    );
-    expect(face().isOn, isFalse);
-
-    await press(tester, bucket);
-    await pumpFrames(tester);
-    expect(
-      session.layers.firstWhere((layer) => layer.id == color).isFillReference,
-      isTrue,
-    );
-    expect(face().isOn, isTrue, reason: 'the bucket wears the flag');
-    expect(session.historyManager.undoCount, before + 1);
-    expect(readout(tester), color.value, reason: 'the flagged layer is read');
-
-    session.layerSwitches.toggleLayerFillReference(line);
-    await pumpFrames(tester);
-    expect(readout(tester), '${line.value} · ${color.value}');
-
-    session.undo();
-    session.undo();
-    await pumpFrames(tester);
-    expect(
-      session.layers.any((layer) => layer.isFillReference),
-      isFalse,
-      reason: 'each press was its own undo step',
-    );
-
-    final photo = session.layers.firstWhere(
-      (layer) => !layer.kind.carriesFillReference,
-    );
-    await standOn(tester, photo.id);
-    expect(
-      tester.appIconButton(bucket).onPressed,
-      isNull,
-      reason: 'only a drawing row carries the flag — the bucket stays, dead',
-    );
-  });
-
-  testWidgets('the eyedropper offers its two, and a readout instead of a '
-      'caption', (tester) async {
-    await pumpApp(tester);
-    await standOn(tester, color);
-    await hold(tester, tool: CanvasTool.eyedropper);
-    await toggleToolSettings(tester);
-    final segments = find.byKey(
-      const ValueKey<String>('eyedropper-source-segments'),
-    );
-    expect(
-      tester
-          .widgetList<Pill>(
-            find.descendant(of: segments, matching: find.byType(Pill)),
+  for (final (tool, held) in [
+    ('fill', CanvasTool.fill),
+    ('eyedropper', CanvasTool.eyedropper),
+  ]) {
+    testWidgets('the $tool offers the two, and a readout instead of a '
+        'caption', (tester) async {
+      await pumpApp(tester);
+      await standOn(tester, color);
+      await hold(tester, tool: held);
+      await toggleToolSettings(tester);
+      final segments = find.byKey(ValueKey<String>('$tool-source-segments'));
+      expect(
+        tester
+            .widgetList<Pill>(
+              find.descendant(of: segments, matching: find.byType(Pill)),
+            )
+            .map((pill) => (pill.key! as ValueKey<String>).value),
+        [
+          for (final offer in [
+            CanvasReadSource.display,
+            CanvasReadSource.layer,
+          ])
+            '$tool-source-${offer.name}',
+        ],
+      );
+      final reads = find.byKey(ValueKey<String>('$tool-reads'));
+      expect(
+        tester.widget<Text>(reads).data,
+        AppText.strings.toolReadsEveryVisibleLayer,
+      );
+      // ↩️Stood up, one answer a line, while three side by side folded
+      // 「References」 — 유저 2026-10-10: 「채우기 참조는 왜 세로로 버튼이
+      // 있는건지도 모르겠고」. A choice row like every other now.
+      expect(
+        tester.widget<PillStrip>(segments).axis,
+        Axis.horizontal,
+        reason: 'side by side, as every choice of the settings is',
+      );
+      await press(
+        tester,
+        find.descendant(
+          of: segments,
+          matching: find.text(AppText.strings.tlLayer),
+        ),
+      );
+      expect(tester.widget<Text>(reads).data, color.value);
+      bool lit(CanvasReadSource offer) => tester
+          .widget<Pill>(
+            find.byKey(ValueKey<String>('$tool-source-${offer.name}')),
           )
-          .map((pill) => (pill.key! as ValueKey<String>).value),
-      [
-        for (final offer in [CanvasReadSource.display, CanvasReadSource.layer])
-          'eyedropper-source-${offer.name}',
-      ],
-    );
-    final reads = find.byKey(const ValueKey<String>('eyedropper-reads'));
-    expect(
-      tester.widget<Text>(reads).data,
-      AppText.strings.toolReadsEveryVisibleLayer,
-    );
-    // ↩️Stood up, one answer a line, while three side by side folded
-    // 「References」 — 유저 2026-10-10: 「채우기 참조는 왜 세로로 버튼이
-    // 있는건지도 모르겠고」. A choice row like every other now.
-    expect(
-      tester.widget<PillStrip>(segments).axis,
-      Axis.horizontal,
-      reason: 'side by side, as every choice of the settings is',
-    );
-    await press(
-      tester,
-      find.descendant(
-        of: segments,
-        matching: find.text(AppText.strings.tlLayer),
-      ),
-    );
-    expect(tester.widget<Text>(reads).data, color.value);
-    bool lit(CanvasReadSource offer) => tester
-        .widget<Pill>(
-          find.byKey(ValueKey<String>('eyedropper-source-${offer.name}')),
-        )
-        .selected;
-    expect(
-      (lit(CanvasReadSource.display), lit(CanvasReadSource.layer)),
-      (false, true),
-    );
-  });
+          .selected;
+      expect(
+        (lit(CanvasReadSource.display), lit(CanvasReadSource.layer)),
+        (false, true),
+      );
+    });
+  }
 }

@@ -1,3 +1,15 @@
+/// The edge an anti-alias step gives an analytic round tip
+/// ([BrushAntiAlias.edge]): a ramp [width] wide, [widthPerRadius] wider a
+/// pixel of radius up to a radius of [widthReach], ending [inset] inside
+/// the rim, the inset in full from a radius of [insetReach] up.
+typedef BrushTipEdge = ({
+  double width,
+  double widthPerRadius,
+  double widthReach,
+  double inset,
+  double insetReach,
+});
+
 /// How hard a brush's own edge lands (유저 2026-09-08, 클튜 4단).
 ///
 /// A dab's coverage ramp is what makes its edge soft: the pixels between
@@ -38,7 +50,7 @@
 /// on a hardness-100% nib (G펜, 잉크 펜, 마루 펜 …), so tightening it did
 /// nothing and every step drew the same staircase — what edge those pens had
 /// was the stamp's bilinear sampling, about a pixel. The step now GIVES the
-/// tip an edge [edgeWidth] canvas pixels wide INSIDE its rim: the rim stays
+/// tip an edge ([edge]) canvas pixels wide INSIDE its rim: the rim stays
 /// where the size puts it and the ramp grows inward — and where the hardness
 /// ramp is the wider of the two, that ramp stands as it was.
 /// ↩️「굵기 안바꾸고」 was first read as "half coverage stays put", and the
@@ -67,7 +79,7 @@ enum BrushAntiAlias {
   medium,
 
   /// 3단계 — `k = 1` off a round tip, the ramp it always had; on a round
-  /// tip the widest edge ([edgeWidth]). A brush that says nothing is here.
+  /// tip the widest edge ([edge]). A brush that says nothing is here.
   high;
 
   /// The contrast factor every tip but an analytic round one takes, or
@@ -79,26 +91,65 @@ enum BrushAntiAlias {
     high => 1.0,
   };
 
-  /// How wide, in canvas pixels, the edge an ANALYTIC round tip is given at
-  /// this step — the distance its coverage takes to fall from 1 at the hard
-  /// radius to 0 at the rim. 0 for [none], whose cut happens after sampling.
+  /// The edge an ANALYTIC round tip is given at this step: a ramp
+  /// [BrushTipEdge.width] canvas pixels wide — and
+  /// [BrushTipEdge.widthPerRadius] more for each pixel of radius, up to
+  /// [BrushTipEdge.widthReach] — that ends [BrushTipEdge.inset] inside the
+  /// rim, the inset shrinking with the radius below
+  /// [BrushTipEdge.insetReach], so the finest nibs are a cone to the rim.
+  /// Nothing for [none], whose cut happens after sampling.
   ///
-  /// 📏Fitted 2026-10-01 (board I-50) to the user's Clip Studio G펜 lines at
-  /// size 10 AND 50, drawn through this engine's own stamp path — the 8-bit
-  /// stamp, its bilinear sampling, the interpolator's step, each dab laying
-  /// its share of one stamp per tenth of the size (`stampShareOf`) — and
-  /// compared by the lines' edge spread
-  /// (`a_g_pen_edge_matches_clip_studio_test`). ↩️The first fit read size 10
-  /// alone: with the dabs piling a pixel apart, fifty of them across a width
-  /// Clip Studio covers with a handful tightened every ramp, and size 50
-  /// could not be matched at all. Once a dab lays its share, 1단계 and 3단계
-  /// hold at both sizes as they were, and 2단계 narrows from 1.875 to 1.6
-  /// (swept against both rows, `one-pixel-steps-change-a-brush-with-its-size`).
-  double get edgeWidth => switch (this) {
-    none => 0.0,
-    low => 0.4375,
-    medium => 1.6,
-    high => 2.75,
+  /// 📏Fitted 2026-10-25 (board a-one-pixel-dab-drops-out-by-where-it-lies,
+  /// Q4 「AA 가장자리는 쌓이지 않는다」 · Q5 「100 · 300px 표본을 더 준다」) to
+  /// the user's Clip Studio G펜 lines at sizes 1–8, 10, 50, 100 and 300 and
+  /// every step — the ink of a line's column at 1–50, and the 10–90% and
+  /// full edge bands at 10, 50, 100 and 300 — as a line whose cross-section
+  /// is ONE dab's, as the pixel's square covers it: the edge does not pile
+  /// ([tipCoverageAt] · [tipPileAt]). Clip Studio's edge widens with the
+  /// size and then stops (3단계 10–90% about 1.3px at 10, 1.7 at 50, 1.9 at
+  /// 100, 2.5 at 300; 2단계 1.8 at both 100 and 300): one width for every
+  /// size left twice the error (0.95 against 0.48 over 1–50), and a width
+  /// that went on widening drew 300 far too soft — the reach is where each
+  /// step's stops.
+  /// ⚠️Past 300 is unmeasured: the edge holds its width at 300's.
+  /// ↩️Q4's fit stopped every step's widening at radius 25, the largest
+  /// sample then (total error over the four band sizes 2.56 against 0.62).
+  /// ↩️I-50's ramps 0.4375 · 1.6 · 2.75 wide ENDING at the rim (2026-10-01)
+  /// were fitted at sizes 10 and 50 through a stamp path where every dab
+  /// piled its edge too (`a_g_pen_edge_matches_clip_studio_test`); measured
+  /// at every size of the samples they drew 약 a pixel too thick from 1.5px
+  /// up, 중 half a pixel at 4–10px, and the 1px line at a quarter of Clip
+  /// Studio's ink — and no width alone fitted every size, since a different
+  /// number of dabs piled the edge at each.
+  BrushTipEdge get edge => switch (this) {
+    none => (
+      width: 0.0,
+      widthPerRadius: 0.0,
+      widthReach: 0.0,
+      inset: 0.0,
+      insetReach: 1.0,
+    ),
+    low => (
+      width: 0.44,
+      widthPerRadius: 0.0045,
+      widthReach: 120.0,
+      inset: 0.30,
+      insetReach: 1.2,
+    ),
+    medium => (
+      width: 0.95,
+      widthPerRadius: 0.019,
+      widthReach: 60.0,
+      inset: 0.17,
+      insetReach: 2.0,
+    ),
+    high => (
+      width: 1.25,
+      widthPerRadius: 0.025,
+      widthReach: 70.0,
+      inset: 0.12,
+      insetReach: 3.0,
+    ),
   };
 
   String toJson() => name;

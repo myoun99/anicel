@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 
 import '../../helpers/named_finders.dart';
 
@@ -134,9 +135,9 @@ void main() {
     );
 
     final chip = find.named('blend-probe');
-    expect(tester.widget(chip), isA<RailPlateFace>());
+    expect(tester.widget(chip), isA<RailPlateButton>());
     expect(
-      tester.widget<RailPlateFace>(chip).hoverShape,
+      tester.widget<RailPlateButton>(chip).hoverShape,
       PanelFlyoutChip.shape,
       reason: 'a clear chip shows its hover',
     );
@@ -144,7 +145,7 @@ void main() {
     for (final heavy in [
       find.byType(InkWell),
       find.byType(Material),
-      find.byWidgetPredicate((widget) => widget is Tooltip),
+      find.byType(AppTooltip),
     ]) {
       expect(find.descendant(of: host, matching: heavy), findsNothing);
     }

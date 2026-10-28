@@ -10,15 +10,14 @@ import 'package:flutter/gestures.dart'
     show PointerDeviceKind, PointerScrollEvent;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RendererBinding;
+import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/ui/input/control_press_claim.dart';
 import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
-import 'package:anicel/src/ui/theme/app_theme.dart'
-    show AppColors, buildAppTheme;
 import 'package:anicel/src/ui/widgets/drag_value_label.dart';
-import 'package:anicel/src/ui/widgets/field_slider.dart';
-import 'package:anicel/src/ui/widgets/inline_numeric_field.dart';
+
+import '../../helpers/number_pad_keyboard.dart';
 
 /// What a readout told its owner.
 class _Seen {
@@ -101,30 +100,152 @@ void main() {
       for (final delta in seen.deltas) {
         expect(delta, delta.roundToDouble(), reason: 'whole units only');
       }
-      expect(find.byType(InlineNumericField), findsNothing);
+      expect(theNumberPadsNumber, findsNothing);
       expect(seen.edits, isEmpty);
     });
   }
+
+  group('🚨the hand is handed on ONCE A FRAME (a-drag-readout-drops-a-move, '
+      '10-27: a −30px drag of the timeline\'s zoom stood at 100%)', () {
+    /// A host that counts each move from the value it built the readout
+    /// with — the canvas zoom's, the transport's and the page band's way —
+    /// writing what it hears to [heard].
+    Future<int Function()> pumpHost(
+      WidgetTester tester, {
+      List<String>? heard,
+    }) async {
+      var value = 100;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: StatefulBuilder(
+                builder: (context, setState) {
+                  final built = value;
+                  return DragValueLabel(
+                    keyValue: 'zoom',
+                    text: '$built%',
+                    width: 64,
+                    onDragDelta: (units) {
+                      heard?.add('move $units');
+                      setState(() => value = built + units.round());
+                    },
+                    onOperationEnd: () => heard?.add('end'),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      return () => value;
+    }
+
+    testWidgets('two moves before a frame both count', (tester) async {
+      final value = await pumpHost(tester);
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byKey(face)),
+        kind: PointerDeviceKind.mouse,
+      );
+      await gesture.moveBy(const Offset(-10, 0));
+      await gesture.moveBy(const Offset(-20, 0));
+      await tester.pump();
+      expect(value(), 70);
+
+      await gesture.moveBy(const Offset(5, 0));
+      await tester.pump();
+      expect(value(), 75, reason: 'from the value the last frame built');
+      await gesture.up();
+    });
+
+    testWidgets('a release before the frame hands on what is left, and then '
+        'says it is over', (tester) async {
+      final heard = <String>[];
+      final value = await pumpHost(tester, heard: heard);
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byKey(face)),
+        kind: PointerDeviceKind.mouse,
+      );
+      await gesture.moveBy(const Offset(-5, 0));
+      await gesture.up();
+
+      expect(heard, ['move -5.0', 'end']);
+      await tester.pump();
+      expect(value(), 95);
+      expect(heard, ['move -5.0', 'end'], reason: 'nothing left for a frame');
+    });
+
+    testWidgets('a readout taken away before its frame hands nothing on', (
+      tester,
+    ) async {
+      // A move dispatched INSIDE a frame (pointer resampling) waits for the
+      // next one — and the host may take the readout away in between.
+      final heard = <String>[];
+      var shown = true;
+      late StateSetter setHost;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: StatefulBuilder(
+                builder: (context, setState) {
+                  setHost = setState;
+                  return shown
+                      ? DragValueLabel(
+                          keyValue: 'zoom',
+                          text: '100%',
+                          width: 64,
+                          onDragDelta: (units) => heard.add('move $units'),
+                        )
+                      : const SizedBox();
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      final at = tester.getCenter(find.byKey(face));
+      final pointer = TestPointer(9, PointerDeviceKind.mouse);
+      tester.binding
+        ..handlePointerEvent(pointer.addPointer(location: at))
+        ..handlePointerEvent(pointer.down(at))
+        ..handlePointerEvent(pointer.move(at + const Offset(-10, 0)));
+      await tester.pump();
+      expect(heard, ['move -10.0'], reason: 'fixture: the drag is live');
+
+      SchedulerBinding.instance.scheduleFrameCallback((_) {
+        tester.binding.handlePointerEvent(
+          pointer.move(at + const Offset(-30, 0)),
+        );
+        setHost(() => shown = false);
+      });
+      await tester.pump();
+      await tester.pump();
+      expect(heard, ['move -10.0'], reason: 'nobody is left to hand it to');
+      tester.binding.handlePointerEvent(pointer.up());
+    });
+  });
 
   testWidgets('a press on the face that does not move does NOTHING — no '
       'field, no step, no operation', (tester) async {
     final seen = await pump(tester);
     await tester.tap(find.byKey(face));
     await tester.pump();
-    expect(find.byType(InlineNumericField), findsNothing);
+    expect(theNumberPadsNumber, findsNothing);
     expect(seen.deltas, isEmpty);
     expect(seen.starts, 0);
     expect(seen.ends, 0);
   });
 
-  testWidgets('its PENCIL opens the field: the number alone, all of it '
-      'selected, nothing beside it — and a submit reaches the owner', (
-    tester,
-  ) async {
+  testWidgets('its PENCIL opens the number pad on the number alone — and a '
+      'number typed there reaches the owner', (tester) async {
     final seen = await pump(tester);
     await tester.tap(find.byKey(pencil));
     await tester.pump();
-    expect(find.byType(InlineNumericField), findsOneWidget);
+    expect(tester.widget<Text>(theNumberPadsNumber).data, '100');
+    expect(find.byType(TextField), findsNothing, reason: 'no keyboard yet');
+
+    await openThePadsKeyboard(tester);
     final field = tester.widget<TextField>(find.byType(TextField));
     expect(field.controller!.text, '100');
     expect(
@@ -132,14 +253,13 @@ void main() {
       const TextSelection(baseOffset: 0, extentOffset: 3),
       reason: 'the first keystroke replaces the number',
     );
-    expect(find.text('%'), findsNothing, reason: 'its unit is gone with it');
 
     await tester.enterText(find.byType(TextField), '250');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pump();
     expect(seen.edits, ['250']);
     expect(seen.starts, 1, reason: 'a typed commit is an operation');
-    expect(find.byType(InlineNumericField), findsNothing);
+    expect(theNumberPadsNumber, findsNothing);
     expect(seen.deltas, isEmpty);
   });
 
@@ -189,7 +309,7 @@ void main() {
       tester.getCenter(find.byKey(face)),
     );
     await tester.pump();
-    expect(find.byType(InlineNumericField), findsNothing);
+    expect(theNumberPadsNumber, findsNothing);
     for (var step = 0; step < 4; step += 1) {
       await gesture.moveBy(const Offset(5, 0));
       await tester.pump();
@@ -203,7 +323,7 @@ void main() {
     );
     await tester.pump();
     expect(
-      find.byType(InlineNumericField),
+      theNumberPadsNumber,
       findsOneWidget,
       reason: 'a rail row\'s button fires on the press',
     );
@@ -291,85 +411,6 @@ void main() {
     expect(deltas.fold<double>(0, (sum, units) => sum + units), 6);
   });
 
-  testWidgets('🚨typed in, under the app\'s own theme, a box is ALL field: '
-      'no name, no unit, no frame or padding of the field\'s own — its '
-      'frame takes the accent and its number stays where it stood', (
-    tester,
-  ) async {
-    // 🗣️유저 2026-10-11: 「직접입력눌렀을때 텍스트편집박스가 너무 작아.
-    // 오른쪽에도 이상한 패딩있고 왼쪽에도 X 글자 없애고 최대치로 잡아도
-    // 될거같은데. 다른박스 마찬가지 통일」 · 「뒤에 붙은 %나 도같은 단위도
-    // 텍스트편집창에서 없도록. 진짜 박스 전면 텍스트로 하고싶은거야」.
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: buildAppTheme(),
-        home: Scaffold(
-          body: Center(
-            child: SizedBox(
-              width: 160,
-              child: DragValueLabel.box(
-                keyValue: 'box',
-                name: 'X',
-                text: '100.00%',
-                onDragDelta: (_) {},
-                onEditSubmit: (_) {},
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-    // The frame does not move when it is typed in, so it is measured at
-    // rest — typed, the box's key goes with the drag it answers.
-    final frame = tester.getRect(find.byKey(const ValueKey<String>('box')));
-    final restingRight = tester.getRect(find.text('100.00%')).right;
-    await tester.tap(find.byKey(const ValueKey<String>('box-edit')));
-    await tester.pump();
-
-    expect(find.text('X'), findsNothing, reason: 'its name steps aside');
-    expect(find.text('%'), findsNothing, reason: 'its unit too');
-    final typed = tester.getRect(find.byType(EditableText));
-    expect(typed.left, closeTo(frame.left + FieldSlider.inset, 0.01));
-    expect(typed.right, closeTo(frame.right - FieldSlider.inset, 0.01));
-    expect(
-      typed.right,
-      closeTo(restingRight, 0.01),
-      reason: 'the number does not move when it is typed in',
-    );
-    final decoration = tester
-        .widget<InputDecorator>(find.byType(InputDecorator))
-        .decoration;
-    expect(decoration.focusedBorder, InputBorder.none);
-    expect(decoration.contentPadding, EdgeInsets.zero);
-    final frames = tester
-        .widgetList<DecoratedBox>(
-          find.ancestor(
-            of: find.byType(EditableText),
-            matching: find.byType(DecoratedBox),
-          ),
-        )
-        .map((decorated) => decorated.decoration);
-    expect(
-      frames,
-      contains(
-        FieldSlider.frameOf(
-          FieldSlider.defaultHeight,
-          enabled: true,
-          typed: true,
-        ),
-      ),
-    );
-    expect(
-      frames
-          .whereType<ShapeDecoration>()
-          .map((frame) => frame.shape)
-          .whereType<OutlinedBorder>()
-          .map((shape) => shape.side.color),
-      contains(AppColors.accent),
-      reason: 'the frame is the field\'s now, in the accent',
-    );
-  });
-
   testWidgets('disabled, it keeps its place: a drag reports nothing, its '
       'pencil opens no field, and the text wears the disabled foreground', (
     tester,
@@ -388,7 +429,7 @@ void main() {
 
     await tester.tap(find.byKey(pencil), warnIfMissed: false);
     await tester.pump();
-    expect(find.byType(InlineNumericField), findsNothing);
+    expect(theNumberPadsNumber, findsNothing);
     expect(seen.edits, isEmpty);
 
     final scheme = Theme.of(tester.element(find.text('100%'))).colorScheme;
@@ -397,31 +438,6 @@ void main() {
       scheme.onSurface.withValues(alpha: 0.38),
       reason: 'the disabled foreground every icon button wears',
     );
-  });
-
-  testWidgets('a NARROW readout typed in is all field: the number across '
-      'its whole width, nothing beside it', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: DragValueLabel(
-              keyValue: 'page',
-              text: '3 / 1200',
-              width: 30,
-              textStyle: const TextStyle(fontSize: 9),
-              onDragDelta: (_) {},
-              onEditSubmit: (_) {},
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.tap(find.byKey(const ValueKey<String>('page-edit')));
-    await tester.pump();
-    expect(tester.takeException(), isNull, reason: 'nothing ran past it');
-    expect(tester.getSize(find.byType(InlineNumericField)).width, 30);
-    expect(find.text(' / 1200'), findsNothing);
   });
 
   /// 🚨H24 (유저 2026-09-15: 「뷰어쪽 줌 레일스크롤바랑 겹치는거」) — the
@@ -515,7 +531,7 @@ void main() {
         await dragUp(tester, tester.getCenter(find.byKey(face)), kind);
         expect(scroll.offset, 0);
         expect(seen.deltas, isEmpty, reason: 'up is not along the number');
-        expect(find.byType(InlineNumericField), findsNothing);
+        expect(theNumberPadsNumber, findsNothing);
       });
     }
 
@@ -532,7 +548,7 @@ void main() {
       }
       await gesture.up();
       await tester.pump();
-      expect(find.byType(InlineNumericField), findsOneWidget);
+      expect(theNumberPadsNumber, findsOneWidget);
       expect(seen.deltas, isEmpty);
     });
   });

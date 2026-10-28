@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
 import 'helpers/home_page_probes.dart';
+import 'helpers/app_icon_button_probe.dart';
 
 void main() {
   testWidgets('top row keeps cut switching and undo redo reachable', (
@@ -136,7 +137,7 @@ void main() {
     await expectCutsNamed(tester, 'Cut 2', 0);
     await expectCutExists(tester, 'default-cut-1', exists: true);
     await expectActiveCutName(tester, '1 Copy');
-    expect(find.byTooltip('Linked Cut'), findsNothing);
+    expect(find.tooltipSaying('Linked Cut'), findsNothing);
   });
 
   testWidgets('deletes the active cut from the cut list command', (

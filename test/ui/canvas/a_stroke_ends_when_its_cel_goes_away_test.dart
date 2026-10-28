@@ -8,6 +8,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/canvas/stroke_in_flight.dart';
 import '../../helpers/blank_cel.dart';
 
 /// 🗣️F-232 (유저 2026-09-29): 「어느 순간 언두가 안먹히는상황이있음 … 키보드로
@@ -42,7 +43,8 @@ void main() {
           frameId: const FrameId('frame-a'),
           editable: editable,
           inputSettings: () => BrushEditCanvasInputSettings.defaults,
-          onActiveStrokeChanged: strokeLive.add,
+          onActiveStrokeChanged: (stroke) =>
+              strokeLive.add(stroke != StrokeInFlight.none),
           onSourceStrokeCommitted: (_) => commits += 1,
         ),
       ),

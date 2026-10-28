@@ -143,8 +143,28 @@ void main() {
       findsOneWidget,
       reason: 'fixture premise: the Transform header is on screen',
     );
-    expect(find.railTooltip('변형 우회'), findsOneWidget);
-    expect(find.railTooltip('Bypass Transform'), findsNothing);
+    expect(find.tooltipSaying('변형 우회'), findsOneWidget);
+    expect(find.tooltipSaying('Bypass Transform'), findsNothing);
+  });
+
+  test('🗣️I-132-Q7: an effect\'s lanes say the words its name says — '
+      'AE\'s', () {
+    // 유저 2026-10-27: 「효과 이름의 말을 따른다」 — 輝度＆コントラスト's lanes
+    // are 輝度 and コントラスト, 명도 및 대비's 명도 and 대비.
+    List<String> lanesIn(AppLanguage language) {
+      speak(language);
+      return labelsOf(
+        effectPropertyLanes([
+          LayerEffect.defaults(
+            id: const EffectId('bc'),
+            kind: EffectKind.brightnessContrast,
+          ),
+        ], isExpanded: (_) => true),
+      );
+    }
+
+    expect(lanesIn(AppLanguage.ja), ['輝度＆コントラスト', '輝度', 'コントラスト']);
+    expect(lanesIn(AppLanguage.ko), ['명도 및 대비', '명도', '대비']);
   });
 }
 

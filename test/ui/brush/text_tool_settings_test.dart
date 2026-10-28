@@ -24,6 +24,7 @@ import 'package:anicel/src/ui/brush/tool_setting_rows.dart'
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/boolean_dot_probe.dart';
 import '../../helpers/cel_text_hand.dart';
 import '../../helpers/tool_setting_action_probe.dart';
@@ -1147,16 +1148,10 @@ void main() {
       expect(row('text-2'), findsNothing);
       // Each with a delete of its own, in the delete red.
       for (final place in [0, 1]) {
+        final delete = tester.iconButtonIn(row('text-$place-delete'));
         expect(
-          tester
-              .widget<Icon>(
-                find.descendant(
-                  of: row('text-$place-delete'),
-                  matching: find.byIcon(Icons.delete_outline),
-                ),
-              )
-              .color,
-          AppColors.deleteGlyph(enabled: true),
+          (delete.icon, delete.iconColor),
+          (Icons.delete_outline, AppColors.deleteGlyph(enabled: true)),
           reason: 'row $place',
         );
       }

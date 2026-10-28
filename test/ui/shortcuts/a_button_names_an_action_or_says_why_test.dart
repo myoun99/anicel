@@ -36,7 +36,9 @@ import '../../helpers/menu_rows_without_an_action.dart';
 /// read). ⛔Not the kinds that are one of the answer's exclusions by what
 /// they ARE — a boolean dot is a switch, a colour swatch a choice, a
 /// flyout button a door, the layer row's toggles a row's — whose every use
-/// would stand here with the same reason.
+/// would stand here with the same reason. Nor `RailGlyphButton.face`: the
+/// face an `AppIconButton` wears around a plain `Icon` IS that button, and
+/// is scanned where the button is called.
 enum Why { aRow, aSetting, aSecondLevel, inAWindow, declined }
 
 const ledger = <String, Why>{
@@ -87,7 +89,7 @@ const ledger = <String, Why>{
   'timeline/timeline_layer_controls_row.dart | '
           "'\$keyPrefix-layer-\$slug-\${layer.id}'":
       Why.aRow,
-  'widgets/fill_reference_button.dart | name': Why.aRow,
+  'widgets/clip_button.dart | name': Why.aRow,
   // A menu row's own trailing button.
   'widgets/panel_flyout.dart | action.keyValue': Why.aRow,
 
@@ -110,7 +112,7 @@ const ledger = <String, Why>{
       Why.aSetting,
 
   // ── THE DOOR TO A SECOND LEVEL ──────────────────────────────────────
-  // A value's pencil: it opens the value's typed field and runs nothing.
+  // A value's pencil: it opens the value's number pad and runs nothing.
   'widgets/value_hands.dart | keyValue': Why.aSecondLevel,
   "menu/editor_top_strip.dart | 'top-strip-brush-group-button'":
       Why.aSecondLevel,
@@ -118,6 +120,9 @@ const ledger = <String, Why>{
   'menu/editor_top_strip.dart | keyValue': Why.aSecondLevel,
   "timeline/timeline_action_toolbar.dart | 'timeline-effects-button'":
       Why.aSecondLevel,
+  // The cut pill's name cell, read alone since its ＋ is zoned apart from
+  // it round the cut's name (F-463) — the fx pill's door.
+  "cut_command_group.dart | 'cut-menu-button'": Why.aSecondLevel,
 
   // ── IN A WINDOW ─────────────────────────────────────────────────────
   "brush/brush_tip_picker.dart | 'brush-tip-delete'": Why.inAWindow,
@@ -147,6 +152,10 @@ const ledger = <String, Why>{
           "'shortcut-unassign-\${definition.id}'":
       Why.inAWindow,
   "widgets/app_window.dart | 'app-window-close'": Why.inAWindow,
+  // The number pad's keys (I-134): a window a value's pencil opens, whose
+  // keys the keyboard's digits, minus, point, Enter and Escape press.
+  "widgets/number_pad.dart | '\${widget.keyValue}-pad-\$name'":
+      Why.inAWindow,
 
   // ── DECLINED ────────────────────────────────────────────────────────
   // 🗣️I-40-Q3 (유저 2026-10-09, two media viewers — which one would a key

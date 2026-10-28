@@ -216,6 +216,10 @@ enum {
   // 高さ: the paper texture's height cuts the coverage instead of
   // multiplying it (BrushTextureMode.height, F-451). v53.
   QA_DAB_FLAG_TEXTURE_HEIGHT = 64,
+  // The tip holds an edge that does not pile (`tipHoldsAnEdge`): what of a
+  // pixel's coverage piles is read off round_pile, and the rest sets the
+  // level the stroke settles at there (qa_dab_source_alpha). v56.
+  QA_DAB_FLAG_EDGE_HELD = 128,
 };
 
 /* paperHeightBand (brush_stroke_blend.dart): how far above a dab's floor
@@ -294,8 +298,16 @@ typedef struct {
   double center_x;
   double center_y;
   double radius;
-  double hard_radius;
-  double edge_span;
+  /* An analytic round tip's profile (`RoundTipProfile`, v56): entries a
+     canvas pixel, nothing at or past round_reach, 1 at or within
+     round_inner. The tables are round_coverage and round_pile. */
+  double round_scale;
+  double round_reach;
+  double round_inner;
+  /* Entries a row of the round tables holds where they are SQUARE - a small
+     circle's, read at (|dx|, |dy|) (qa_round_square_at) - or 0 where they
+     run along the radius. v57. */
+  double round_row_length;
   double minor_radius;
   double tip_cos;
   double tip_sin;
@@ -372,6 +384,10 @@ typedef struct {
   // The table the dab lays its share through (qa_dab_even), or NULL where
   // it lays whole. v41.
   const double* evening;
+  // An analytic round tip's two tables (qa_round_profile_at), or NULL for
+  // any other tip. v56.
+  const double* round_coverage;
+  const double* round_pile;
 } qa_dab_spec;
 
 QA_EXPORT int32_t qa_dab_spec_sizeof(void) {
@@ -536,6 +552,46 @@ static inline double qa_dab_even(const double* table, double whole) {
   return low + (table[i + 1] - low) * (x - (double)i);
 }
 
+// 🚨★★★A ROUND TIP IS TWO RAMPS AND A PIXEL'S SQUARE, READ ALONG ITS RADIUS
+// (board a-one-pixel-dab-drops-out-by-where-it-lies Q4, 유저 2026-10-25
+// 「AA 가장자리는 쌓이지 않는다」). The law and its reasons are written once,
+// beside `RoundTipProfile` in round_tip_profile.dart, and THE TABLES ARE
+// THE LAW: Dart builds them, and this is `readAt`'s arithmetic, operation
+// by operation, so both kernels read the same numbers.
+static inline double qa_round_profile_at(
+    const double* table,
+    double scale,
+    double distance) {
+  const double x = distance * scale;
+  const int32_t i = (int32_t)x;
+  const double low = table[i];
+  return low + (table[i + 1] - low) * (x - (double)i);
+}
+
+// 🚨★★A SMALL CIRCLE IS READ BY ITS SQUARE'S WHOLE AREA (board
+// a-one-pixel-dab-drops-out-by-where-it-lies Q6, 유저 2026-10-25): its
+// tables are square, `row_length` entries a row, and this is
+// `readSquareAt`'s arithmetic, operation by operation.
+static inline double qa_round_square_at(
+    const double* table,
+    int32_t row_length,
+    double scale,
+    double across,
+    double down) {
+  const double x = across * scale;
+  const double y = down * scale;
+  const int32_t i = (int32_t)x;
+  const int32_t j = (int32_t)y;
+  const double along_row = x - (double)i;
+  const int32_t above = j * row_length + i;
+  const int32_t below = above + row_length;
+  const double top =
+      table[above] + (table[above + 1] - table[above]) * along_row;
+  const double bottom =
+      table[below] + (table[below + 1] - table[below]) * along_row;
+  return top + (bottom - top) * (y - (double)j);
+}
+
 // 🚨★★★A DAB'S OPACITY IS THE LEVEL IT SETTLES AT (F-205, 유저 2026-09-28:
 // 「최대 100%로 해두더라도 필압 약하게하면 해당 선들 겹쳐도 필압에맞춰서
 // 10%만큼만 진해진다」). A dab raises what is under it TOWARDS its opacity,
@@ -562,22 +618,34 @@ static inline double qa_dab_even(const double* table, double whole) {
 // pixel already stands at the ceiling and the dab lays nothing.
 //
 // What the dab would lay whole goes through its share first (qa_dab_even).
+//
+// 🚨★★★AN EDGE SETTLES LOWER (board a-one-pixel-dab-drops-out-by-where-it-
+// lies Q4, 유저 2026-10-25 「AA 가장자리는 쌓이지 않는다」): where the tip's
+// coverage is part edge, [ceiling] — the share of it that does not pile
+// (`edgeCeiling`) — scales the level it settles at, and what it lays toward
+// it is the share that piles. At a ceiling of 1 both are the numbers above
+// to the bit; an erase keeps its multiplier.
 static inline double qa_dab_source_alpha(
     const qa_dab_spec* s,
     double coverage,
     double effective_opacity,
     double destination_alpha,
+    double ceiling,
     int erase) {
-  if (erase || s->dab_opacity >= 1.0) {
+  if (erase || (s->dab_opacity >= 1.0 && ceiling >= 1.0)) {
     const double whole = s->source_alpha_norm * effective_opacity * s->dab_flow;
     return s->evening == NULL ? whole : qa_dab_even(s->evening, whole);
   }
-  if (destination_alpha >= s->dab_opacity) {
+  const double settle = s->dab_opacity * ceiling;
+  if (destination_alpha >= settle) {
     return -1.0;
   }
-  const double whole = s->source_alpha_norm * coverage * s->dab_flow;
+  // The share that piles, no more than whole (`edgePiledShare`).
+  const double share = coverage / ceiling;
+  const double whole =
+      s->source_alpha_norm * (share < 1.0 ? share : 1.0) * s->dab_flow;
   return (s->evening == NULL ? whole : qa_dab_even(s->evening, whole)) *
-         (s->dab_opacity - destination_alpha) / (1.0 - destination_alpha);
+         (settle - destination_alpha) / (1.0 - destination_alpha);
 }
 
 // 🚨A STROKE PILES UP ON A 16-BIT PLANE (ABI 40; board
@@ -630,9 +698,9 @@ static inline int32_t qa_dab_store_own(
     wide[2] = (uint16_t)own[2];
     wide[3] = (uint16_t)wide_a;
   }
-  const uint8_t out_r = (uint8_t)own[3];
-  const uint8_t out_g = (uint8_t)own[4];
-  const uint8_t out_b = (uint8_t)own[5];
+  const uint8_t out_r = out_a == 0 ? 0 : (uint8_t)own[3];
+  const uint8_t out_g = out_a == 0 ? 0 : (uint8_t)own[4];
+  const uint8_t out_b = out_a == 0 ? 0 : (uint8_t)own[5];
   if (pixel[3] != (uint8_t)out_a || pixel[0] != out_r ||
       pixel[1] != out_g || pixel[2] != out_b) {
     pixel[0] = out_r;
@@ -689,6 +757,13 @@ static inline int32_t qa_dab_store(
     }
     out_a = qa_round_byte(out_alpha * 255.0);
     wide_a = qa_round_wide(out_alpha * 65535.0);
+    if (out_a == 0) {
+      // No colour under a zero alpha in the view (`StrokePixel.rounded`
+      // has why); the plane keeps its colour for the dabs that pile on.
+      out_r = 0;
+      out_g = 0;
+      out_b = 0;
+    }
   }
   if ((uint16_t)wide_r != wide[0] || (uint16_t)wide_g != wide[1] ||
       (uint16_t)wide_b != wide[2] || (uint16_t)wide_a != wide[3]) {
@@ -709,9 +784,13 @@ static inline int32_t qa_dab_store(
 }
 
 // 🚨A PLAIN TIPPED DAB BLENDS TWO PIXELS AT A TIME (board `brush-kernel-next`
-// ①, 유저 2026-09-25 「1번 할 생각 있어」 — SIMD). Every canvas dab is a
-// prerendered tip mask (BrushTipStampCache) and most carry no dual or
-// texture mask, so this path is nearly all the brush work there is. Two
+// ①, 유저 2026-09-25 「1번 할 생각 있어」 — SIMD). A raster tip and a square
+// reach the kernel as a tip mask and most carry no dual or texture mask, so
+// this path is their brush work. ↩️A round tip rode it too, baked into a
+// mask (BrushTipStampCache), until it became its profile (v56): read
+// scalar off its two tables it costs 0.75–0.91 of what its mask did here
+// from 20px up, and about the same below (2026-10-25, measured through the
+// live rasterizer — and no bake, no upload). Two
 // doubles a register on both baselines (SSE2 / NEON): the four divisions a
 // pixel pays, and the sampling and alpha arithmetic around them, run for a
 // pair at once.
@@ -891,7 +970,7 @@ static int32_t qa_dab_blend_pairs(
           continue;
         }
         settled[i] = qa_dab_source_alpha(s, coverage[i], effective[i],
-                                         lanes_d[i], erase);
+                                         lanes_d[i], 1.0, erase);
         if (settled[i] < 0.0) {
           keep[i] = 0;
           settled[i] = 0.0;
@@ -1042,6 +1121,8 @@ QA_EXPORT int32_t qa_dab_blend_tile(
   const int aa_threshold = (flags & QA_DAB_FLAG_AA_THRESHOLD) != 0;
   const int texture_height = (flags & QA_DAB_FLAG_TEXTURE_HEIGHT) != 0;
   const double aa_contrast = s->aa_contrast;
+  const int edge_held = (flags & QA_DAB_FLAG_EDGE_HELD) != 0;
+  const int32_t round_row_length = (int32_t)s->round_row_length;
 #if defined(QA_DAB_PAIRS)
   const int pairs = has_tip && unrotated_tip && !has_dual && !has_tex;
 #endif
@@ -1079,6 +1160,9 @@ QA_EXPORT int32_t qa_dab_blend_tile(
 #endif
     for (; x < row_right; x += 1) {
       double coverage;
+      // What of it piles where the tip holds an edge (QA_DAB_FLAG_EDGE_HELD);
+      // unread everywhere else, where all of it piles.
+      double pile = 0.0;
       if (has_tip) {
         if (unrotated_tip) {
           const int32_t u_index = x - s->region_left;
@@ -1100,6 +1184,22 @@ QA_EXPORT int32_t qa_dab_blend_tile(
         if (coverage <= 0.0) {
           continue;
         }
+      } else if (is_round && round_row_length > 0) {
+        // A small circle: its square tables at the pixel's (|dx|, |dy|).
+        const double across = fabs((double)x + 0.5 - s->center_x);
+        const double down = fabs(dy);
+        if (across >= s->round_reach || down >= s->round_reach) {
+          continue;
+        }
+        coverage = qa_round_square_at(
+            s->round_coverage, round_row_length, s->round_scale, across, down);
+        if (edge_held) {
+          pile = qa_round_square_at(
+              s->round_pile, round_row_length, s->round_scale, across, down);
+        }
+        if (coverage <= 0.0) {
+          continue;
+        }
       } else if (is_round) {
         const double dx = (double)x + 0.5 - s->center_x;
         double distance;
@@ -1115,14 +1215,18 @@ QA_EXPORT int32_t qa_dab_blend_tile(
           }
           distance = sqrt(dx_squared + dy_squared);
         }
-        if (distance > s->radius) {
+        if (distance >= s->round_reach) {
           continue;
         }
-        if (distance <= s->hard_radius || s->edge_span <= 0.0) {
+        if (distance <= s->round_inner) {
           coverage = 1.0;
+          pile = 1.0;
         } else {
           coverage =
-              qa_clamp01(1.0 - ((distance - s->hard_radius) / s->edge_span));
+              qa_round_profile_at(s->round_coverage, s->round_scale, distance);
+          if (edge_held) {
+            pile = qa_round_profile_at(s->round_pile, s->round_scale, distance);
+          }
         }
         if (coverage <= 0.0) {
           continue;
@@ -1136,6 +1240,11 @@ QA_EXPORT int32_t qa_dab_blend_tile(
       if (!qa_dab_edge(&coverage, aa_threshold, aa_contrast)) {
         continue;
       }
+      // 🚨★★★THE EDGE DOES NOT PILE (`edgeCeiling`, and the reasons beside
+      // the Dart kernel's own line): the share of the dab's opacity the
+      // stroke may come up to here.
+      const double ceiling =
+          edge_held && pile > coverage ? coverage / pile : 1.0;
 
       if (has_dual) {
         const double dual_sample = qa_sample_tiled_lattice(
@@ -1212,7 +1321,7 @@ QA_EXPORT int32_t qa_dab_blend_tile(
       uint16_t* wide = tile_wide + at;
       const double destination_alpha = (double)wide[3] / 65535.0;
       const double source_alpha = qa_dab_source_alpha(
-          s, coverage, effective_opacity, destination_alpha, erase);
+          s, coverage, effective_opacity, destination_alpha, ceiling, erase);
       if (source_alpha < 0.0) {
         continue;
       }
@@ -2594,6 +2703,466 @@ QA_EXPORT void qa_dab_blend_batch(
   for (int32_t b = 0; b < band_count; b += 1) {
     changed_out[bands[b].tile] |= band_changed[b];
   }
+}
+
+// --- Blur brush (I-75, v58) ------------------------------------------------
+//
+// The C transcription of BrushBlurPicture (lib/src/services/
+// brush_blur_picture.dart), which holds the law and its reasons; this
+// matches it byte for byte (a_blur_brush_rubs_the_picture_it_finds_test,
+// on both engines). A dab reads the picture where the stroke has rewritten
+// it (`own`, premultiplied 16-bit) and the cel where it has not (`cel`,
+// straight 8-bit); blurs it, three box passes along the rows and then three
+// along the columns; and moves its pixels toward the blur by what it would
+// have laid as paint, measured by the dab kernel itself (white onto
+// nothing).
+
+// One tile of the picture a blur reads: the stroke's rewritten tile, or
+// the cel's where there is none yet (NULL both: nothing there).
+typedef struct {
+  uint16_t* own;
+  const uint8_t* cel;
+} qa_blur_tile;
+
+QA_EXPORT int32_t qa_blur_tile_sizeof(void) {
+  return (int32_t)sizeof(qa_blur_tile);
+}
+
+// The scratch tile the laid share is measured on (the Dart side's
+// `_scratchTileSize`): its bytes, then its 16-bit plane.
+#define QA_BLUR_SCRATCH 64
+#define QA_BLUR_SCRATCH_PIXEL_BYTES (QA_BLUR_SCRATCH * QA_BLUR_SCRATCH * 4)
+#define QA_BLUR_SCRATCH_BYTES (QA_BLUR_SCRATCH_PIXEL_BYTES * 3)
+
+// Past this many window pixels a dab's passes are cut into bands for the
+// pool; below it the wake costs more than the work.
+#define QA_BLUR_POOL_PIXELS 16384
+#define QA_BLUR_MAX_BANDS 64
+
+static inline int32_t qa_blur_floor_div(int32_t value, int32_t by) {
+  const int32_t q = value / by;
+  return (value % by != 0 && (value < 0) != (by < 0)) ? q - 1 : q;
+}
+
+// round(channel * alpha * 257 / 255).
+static inline uint16_t qa_blur_premultiplied(uint32_t channel,
+                                             uint32_t alpha) {
+  return (uint16_t)((channel * alpha * 514u + 255u) / 510u);
+}
+
+// round(difference * factor / whole), half away from zero.
+static inline int64_t qa_blur_scaled(int64_t difference, int64_t factor,
+                                     int64_t whole) {
+  return difference >= 0
+             ? (difference * factor * 2 + whole) / (whole * 2)
+             : -((-difference * factor * 2 + whole) / (whole * 2));
+}
+
+// `from` moved toward `to` by share / 65535.
+static inline uint16_t qa_blur_toward(uint16_t from, uint16_t to,
+                                      int64_t share) {
+  return (uint16_t)(from + qa_blur_scaled((int64_t)to - from, share, 65535));
+}
+
+typedef struct {
+  const qa_blur_tile* tiles;
+  int32_t tiles_wide;
+  int32_t tile_x0;
+  int32_t tile_y0;
+  int32_t tile_size;
+  int32_t left;
+  int32_t top;
+  int32_t width;
+  int32_t height;
+  int32_t radius;
+  int32_t reach;
+  int32_t wide;
+  int32_t tall;
+  const qa_dab_spec* spec;
+  uint16_t* laid;
+  uint16_t* across;
+  uint16_t* lines;
+  size_t line_values;
+  // The scratch tiles the laid share is measured on: a grid of
+  // `scratch_wide` a row from (`scratch_x0`, `scratch_y0`), one scratch a
+  // band.
+  uint8_t* scratch_tiles;
+  int32_t scratch_x0;
+  int32_t scratch_y0;
+  int32_t scratch_wide;
+  int32_t scratch_count;
+  int32_t band_scratch;
+  int32_t band_rows;
+  int32_t band_columns;
+} qa_blur_context;
+
+static inline const qa_blur_tile* qa_blur_tile_at(const qa_blur_context* c,
+                                                  int32_t tile_x,
+                                                  int32_t tile_y) {
+  return &c->tiles[(size_t)(tile_y - c->tile_y0) * c->tiles_wide +
+                   (tile_x - c->tile_x0)];
+}
+
+// What the dab lays onto nothing over scratch tile `index` of its rect,
+// alpha * 65535 a pixel - read off the kernel's own 16-bit plane.
+static void qa_blur_laid_tile(const qa_blur_context* c, int32_t index,
+                              uint8_t* pixels, uint16_t* wide) {
+  const int32_t s = QA_BLUR_SCRATCH;
+  const int32_t right = c->left + c->width;
+  const int32_t bottom = c->top + c->height;
+  const int32_t tile_left = (c->scratch_x0 + index % c->scratch_wide) * s;
+  const int32_t tile_top = (c->scratch_y0 + index / c->scratch_wide) * s;
+  const int32_t x0 = c->left > tile_left ? c->left : tile_left;
+  const int32_t x1 = right < tile_left + s ? right : tile_left + s;
+  const int32_t y0 = c->top > tile_top ? c->top : tile_top;
+  const int32_t y1 = bottom < tile_top + s ? bottom : tile_top + s;
+  memset(pixels, 0, (size_t)s * s * 4);
+  memset(wide, 0, (size_t)s * s * 4 * sizeof(uint16_t));
+  qa_dab_blend_tile(pixels, wide, s, tile_left, tile_top, x0, x1, y0, y1,
+                    c->spec);
+  for (int32_t y = y0; y < y1; y += 1) {
+    const uint16_t* from =
+        wide + ((size_t)(y - tile_top) * s + (x0 - tile_left)) * 4 + 3;
+    uint16_t* to = c->laid + (size_t)(y - c->top) * c->width + (x0 - c->left);
+    for (int32_t x = x0; x < x1; x += 1) {
+      *to++ = *from;
+      from += 4;
+    }
+  }
+}
+
+static void qa_blur_laid_item(int32_t band, void* context) {
+  const qa_blur_context* c = (const qa_blur_context*)context;
+  uint8_t* pixels = c->scratch_tiles + (size_t)band * QA_BLUR_SCRATCH_BYTES;
+  uint16_t* wide = (uint16_t*)(pixels + QA_BLUR_SCRATCH_PIXEL_BYTES);
+  const int32_t first = band * c->band_scratch;
+  const int32_t last = first + c->band_scratch < c->scratch_count
+                           ? first + c->band_scratch
+                           : c->scratch_count;
+  for (int32_t index = first; index < last; index += 1) {
+    qa_blur_laid_tile(c, index, pixels, wide);
+  }
+}
+
+// The picture as it stands along row `y` from `x0`, the window's width,
+// premultiplied 16-bit (BrushBlurPicture._gatherRow).
+static void qa_blur_gather_row(const qa_blur_context* c, uint16_t* into,
+                               int32_t x0, int32_t y) {
+  const int32_t size = c->tile_size;
+  const int32_t tile_y = qa_blur_floor_div(y, size);
+  const size_t row_offset = (size_t)(y - tile_y * size) * size;
+  const int32_t x_end = x0 + c->wide;
+  int32_t x = x0;
+  while (x < x_end) {
+    const int32_t tile_x = qa_blur_floor_div(x, size);
+    const int32_t tile_left = tile_x * size;
+    const int32_t span_end =
+        x_end < tile_left + size ? x_end : tile_left + size;
+    const size_t values = (size_t)(span_end - x) * 4;
+    uint16_t* out = into + (size_t)(x - x0) * 4;
+    const size_t from = (row_offset + (size_t)(x - tile_left)) * 4;
+    const qa_blur_tile* tile = qa_blur_tile_at(c, tile_x, tile_y);
+    if (tile->own != NULL) {
+      memcpy(out, tile->own + from, values * sizeof(uint16_t));
+    } else if (tile->cel != NULL) {
+      const uint8_t* source = tile->cel + from;
+      for (size_t i = 0; i < values; i += 4) {
+        const uint32_t alpha = source[i + 3];
+        out[i] = qa_blur_premultiplied(source[i], alpha);
+        out[i + 1] = qa_blur_premultiplied(source[i + 1], alpha);
+        out[i + 2] = qa_blur_premultiplied(source[i + 2], alpha);
+        out[i + 3] = (uint16_t)(alpha * 257u);
+      }
+    } else {
+      memset(out, 0, values * sizeof(uint16_t));
+    }
+    x = span_end;
+  }
+}
+
+// floor(n / d) as a multiply and a shift, exact for every n < 2^n_bits
+// (division by an invariant integer, Granlund & Montgomery): a box pass
+// divides every value it writes by the same count, and a divide each was
+// most of what a pass cost.
+typedef struct {
+  uint64_t multiplier;
+  int shift;
+} qa_blur_divisor;
+
+static qa_blur_divisor qa_blur_divisor_of(uint64_t d, int n_bits) {
+  int d_bits = 0;
+  while (((uint64_t)1 << d_bits) < d) {
+    d_bits += 1;
+  }
+  qa_blur_divisor v;
+  v.shift = n_bits + d_bits;
+  v.multiplier = (((uint64_t)1 << v.shift) + d - 1) / d;
+  return v;
+}
+
+static inline uint16_t qa_blur_divided(uint64_t n, qa_blur_divisor v) {
+  return (uint16_t)((n * v.multiplier) >> v.shift);
+}
+
+// Box pass `pass` along a line of `length` pixels, the first at `from` in
+// `values`, each next `step` values on: every pixel `pass` radii in from
+// either end takes into `target` the mean of the `radius` pixels either
+// side of it and itself, rounded half up (BrushBlurPicture._box).
+static void qa_blur_box(const uint16_t* values, size_t from, size_t step,
+                        uint16_t* target, int32_t radius, int32_t pass,
+                        int32_t length) {
+  const int32_t start = radius * pass;
+  const int32_t end = length - start;
+  const int64_t count = (int64_t)radius * 2 + 1;
+  // A sum is at most count * 65535, so what is divided stays under
+  // count * 131071 + 1.
+  int n_bits = 0;
+  while (((uint64_t)1 << n_bits) <= (uint64_t)count * 131071) {
+    n_bits += 1;
+  }
+  const qa_blur_divisor twice = qa_blur_divisor_of((uint64_t)count * 2, n_bits);
+  int64_t r = 0, g = 0, b = 0, a = 0;
+  for (int32_t at = start - radius; at <= start + radius; at += 1) {
+    const uint16_t* p = values + from + (size_t)at * step;
+    r += p[0];
+    g += p[1];
+    b += p[2];
+    a += p[3];
+  }
+  for (int32_t at = start; at < end; at += 1) {
+    uint16_t* o = target + (size_t)at * 4;
+    o[0] = qa_blur_divided((uint64_t)(r * 2 + count), twice);
+    o[1] = qa_blur_divided((uint64_t)(g * 2 + count), twice);
+    o[2] = qa_blur_divided((uint64_t)(b * 2 + count), twice);
+    o[3] = qa_blur_divided((uint64_t)(a * 2 + count), twice);
+    if (at + 1 < end) {
+      const uint16_t* enter = values + from + (size_t)(at + radius + 1) * step;
+      const uint16_t* leave = values + from + (size_t)(at - radius) * step;
+      r += (int64_t)enter[0] - leave[0];
+      g += (int64_t)enter[1] - leave[1];
+      b += (int64_t)enter[2] - leave[2];
+      a += (int64_t)enter[3] - leave[3];
+    }
+  }
+}
+
+// The three passes along one line; the blur lands in `line_b`.
+static void qa_blur_line(const qa_blur_context* c, const uint16_t* values,
+                         size_t from, size_t step, int32_t length,
+                         uint16_t* line_a, uint16_t* line_b) {
+  qa_blur_box(values, from, step, line_b, c->radius, 1, length);
+  qa_blur_box(line_b, 0, 4, line_a, c->radius, 2, length);
+  qa_blur_box(line_a, 0, 4, line_b, c->radius, 3, length);
+}
+
+// The dab's pixels down `column` moved toward `blurred` by what it laid
+// there (BrushBlurPicture._moveColumn). Every tile of the dab's rect has
+// its `own` (the Dart side makes them first).
+static void qa_blur_move_column(const qa_blur_context* c, int32_t column,
+                                const uint16_t* blurred) {
+  const int32_t size = c->tile_size;
+  const int32_t x = c->left + column;
+  const int32_t tile_x = qa_blur_floor_div(x, size);
+  const int32_t local_x = x - tile_x * size;
+  const int32_t bottom = c->top + c->height;
+  for (int32_t at = c->top; at < bottom; at += 1) {
+    const int64_t share = c->laid[(size_t)(at - c->top) * c->width + column];
+    if (share == 0) {
+      continue;
+    }
+    const int32_t tile_y = qa_blur_floor_div(at, size);
+    uint16_t* p = qa_blur_tile_at(c, tile_x, tile_y)->own +
+                  ((size_t)(at - tile_y * size) * size + local_x) * 4;
+    const uint16_t* to = blurred + (size_t)(c->reach + at - c->top) * 4;
+    p[0] = qa_blur_toward(p[0], to[0], share);
+    p[1] = qa_blur_toward(p[1], to[1], share);
+    p[2] = qa_blur_toward(p[2], to[2], share);
+    p[3] = qa_blur_toward(p[3], to[3], share);
+  }
+}
+
+static void qa_blur_rows_item(int32_t band, void* context) {
+  const qa_blur_context* c = (const qa_blur_context*)context;
+  uint16_t* line_a = c->lines + (size_t)band * 2 * c->line_values;
+  uint16_t* line_b = line_a + c->line_values;
+  const int32_t first = band * c->band_rows;
+  const int32_t last =
+      first + c->band_rows < c->tall ? first + c->band_rows : c->tall;
+  const size_t row_values = (size_t)c->width * 4;
+  for (int32_t row = first; row < last; row += 1) {
+    qa_blur_gather_row(c, line_a, c->left - c->reach, c->top - c->reach + row);
+    qa_blur_line(c, line_a, 0, 4, c->wide, line_a, line_b);
+    memcpy(c->across + (size_t)row * row_values,
+           line_b + (size_t)c->reach * 4, row_values * sizeof(uint16_t));
+  }
+}
+
+static void qa_blur_columns_item(int32_t band, void* context) {
+  const qa_blur_context* c = (const qa_blur_context*)context;
+  uint16_t* line_a = c->lines + (size_t)band * 2 * c->line_values;
+  uint16_t* line_b = line_a + c->line_values;
+  const int32_t first = band * c->band_columns;
+  const int32_t last = first + c->band_columns < c->width
+                           ? first + c->band_columns
+                           : c->width;
+  for (int32_t column = first; column < last; column += 1) {
+    qa_blur_line(c, c->across, (size_t)column * 4, (size_t)c->width * 4,
+                 c->tall, line_a, line_b);
+    qa_blur_move_column(c, column, line_b);
+  }
+}
+
+// Runs `item` over `count` units cut into at most `bands` bands, each
+// `*per_band` units: on the pool when the window is worth waking it for.
+static void qa_blur_run(qa_job_fn item, qa_blur_context* c, int32_t count,
+                        int32_t bands, int32_t* per_band) {
+  *per_band = (count + bands - 1) / bands;
+  const int32_t used = (count + *per_band - 1) / *per_band;
+  if (used <= 1) {
+    item(0, c);
+    return;
+  }
+  qa_pool_run(item, c, used);
+}
+
+static size_t qa_blur_aligned(size_t bytes) {
+  return (bytes + 15) & ~(size_t)15;
+}
+
+// Blurs the picture under one dab (BrushBlurPicture.blurDab): `spec` is
+// the dab staged as paint - its coverage, white onto nothing; `tiles` the
+// picture over the window the blur reads, `tiles_wide` a row from tile
+// (`tile_x0`, `tile_y0`); the rect is the dab's clip; `radius` its box
+// radius. Its buffers are carved from `scratch`, the caller's: when
+// `scratch_bytes` is short it writes nothing and returns the bytes it
+// needs, else 0. (A dab's buffers are megabytes at a large size; made
+// and freed a dab, their pages were faulted in every time.)
+QA_EXPORT int64_t qa_blur_dab(const qa_dab_spec* spec,
+                              const qa_blur_tile* tiles, int32_t tiles_wide,
+                              int32_t tile_x0, int32_t tile_y0,
+                              int32_t tile_size, int32_t left, int32_t top,
+                              int32_t right_exclusive,
+                              int32_t bottom_exclusive, int32_t radius,
+                              uint8_t* scratch, int64_t scratch_bytes) {
+  qa_blur_context c;
+  c.tiles = tiles;
+  c.tiles_wide = tiles_wide;
+  c.tile_x0 = tile_x0;
+  c.tile_y0 = tile_y0;
+  c.tile_size = tile_size;
+  c.left = left;
+  c.top = top;
+  c.width = right_exclusive - left;
+  c.height = bottom_exclusive - top;
+  c.radius = radius;
+  c.reach = radius * 3;
+  c.wide = c.width + c.reach * 2;
+  c.tall = c.height + c.reach * 2;
+  c.line_values = (size_t)(c.wide > c.tall ? c.wide : c.tall) * 4;
+  const int32_t bands = (int64_t)c.wide * c.tall < QA_BLUR_POOL_PIXELS
+                            ? 1
+                            : QA_BLUR_MAX_BANDS;
+  const int32_t s = QA_BLUR_SCRATCH;
+  c.spec = spec;
+  c.scratch_x0 = qa_blur_floor_div(left, s);
+  c.scratch_y0 = qa_blur_floor_div(top, s);
+  c.scratch_wide = qa_blur_floor_div(right_exclusive - 1, s) - c.scratch_x0 + 1;
+  c.scratch_count =
+      c.scratch_wide *
+      (qa_blur_floor_div(bottom_exclusive - 1, s) - c.scratch_y0 + 1);
+
+  const size_t laid_bytes =
+      qa_blur_aligned((size_t)c.width * c.height * sizeof(uint16_t));
+  const size_t across_bytes =
+      qa_blur_aligned((size_t)c.width * c.tall * 4 * sizeof(uint16_t));
+  const size_t lines_bytes =
+      qa_blur_aligned((size_t)bands * 2 * c.line_values * sizeof(uint16_t));
+  const size_t need = laid_bytes + across_bytes + lines_bytes +
+                      (size_t)bands * QA_BLUR_SCRATCH_BYTES;
+  if (scratch_bytes < 0 || (size_t)scratch_bytes < need) {
+    return (int64_t)need;
+  }
+  c.laid = (uint16_t*)scratch;
+  c.across = (uint16_t*)(scratch + laid_bytes);
+  c.lines = (uint16_t*)(scratch + laid_bytes + across_bytes);
+  c.scratch_tiles = scratch + laid_bytes + across_bytes + lines_bytes;
+
+  qa_blur_run(qa_blur_laid_item, &c, c.scratch_count, bands, &c.band_scratch);
+  qa_blur_run(qa_blur_rows_item, &c, c.tall, bands, &c.band_rows);
+  qa_blur_run(qa_blur_columns_item, &c, c.width, bands, &c.band_columns);
+  return 0;
+}
+
+// The cel's `channel` (straight, under `cel_alpha`) moved toward the
+// rewritten premultiplied `own` by cover / 255.
+static inline int64_t qa_blur_covered(uint32_t channel, uint32_t cel_alpha,
+                                      int64_t own, int64_t cover) {
+  const int64_t cel = qa_blur_premultiplied(channel, cel_alpha);
+  return cel + qa_blur_scaled(own - cel, cover, 255);
+}
+
+// A premultiplied 16-bit `channel` over `alpha` as a straight byte - none
+// under an alpha that rounds to nothing.
+static inline uint8_t qa_blur_straight(int64_t channel, int64_t alpha,
+                                       int64_t out_alpha) {
+  return out_alpha == 0 ? 0 : (uint8_t)((channel * 510 + alpha) / (alpha * 2));
+}
+
+// The finished tile (BrushBlurPicture.resultTile): the cel (`cel`, NULL =
+// nothing there) moved toward the rewritten picture `own` by `mask` (NULL
+// = all the way), straight 8-bit, into `out` - the cel's own bytes where
+// the picture is still the cel's. Returns whether any pixel differs from
+// the cel's.
+QA_EXPORT int32_t qa_blur_result_tile(const uint16_t* own,
+                                      const uint8_t* cel,
+                                      const uint8_t* mask, int32_t tile_size,
+                                      uint8_t* out) {
+  const size_t count = (size_t)tile_size * tile_size;
+  if (cel != NULL) {
+    memcpy(out, cel, count * 4);
+  } else {
+    memset(out, 0, count * 4);
+  }
+  int32_t changed = 0;
+  for (size_t p = 0; p < count; p += 1) {
+    const int64_t cover = mask == NULL ? 255 : mask[p];
+    if (cover == 0) {
+      continue;
+    }
+    uint8_t* o = out + p * 4;
+    const uint16_t* w = own + p * 4;
+    const uint32_t cel_alpha = o[3];
+    if (w[3] == cel_alpha * 257 &&
+        w[0] == qa_blur_premultiplied(o[0], cel_alpha) &&
+        w[1] == qa_blur_premultiplied(o[1], cel_alpha) &&
+        w[2] == qa_blur_premultiplied(o[2], cel_alpha)) {
+      continue;  // The picture is the cel's here: its bytes stand.
+    }
+    int64_t alpha = w[3];
+    int64_t red = w[0];
+    int64_t green = w[1];
+    int64_t blue = w[2];
+    if (cover != 255) {
+      const int64_t cel_wide = (int64_t)cel_alpha * 257;
+      alpha = cel_wide + qa_blur_scaled(alpha - cel_wide, cover, 255);
+      red = qa_blur_covered(o[0], cel_alpha, red, cover);
+      green = qa_blur_covered(o[1], cel_alpha, green, cover);
+      blue = qa_blur_covered(o[2], cel_alpha, blue, cover);
+    }
+    const int64_t out_alpha = (alpha * 2 + 257) / 514;
+    const uint8_t out_red = qa_blur_straight(red, alpha, out_alpha);
+    const uint8_t out_green = qa_blur_straight(green, alpha, out_alpha);
+    const uint8_t out_blue = qa_blur_straight(blue, alpha, out_alpha);
+    if (out_red != o[0] || out_green != o[1] || out_blue != o[2] ||
+        out_alpha != cel_alpha) {
+      o[0] = out_red;
+      o[1] = out_green;
+      o[2] = out_blue;
+      o[3] = (uint8_t)out_alpha;
+      changed = 1;
+    }
+  }
+  return changed;
 }
 
 // --- Batched stamp blend ---------------------------------------------------
@@ -4070,10 +4639,21 @@ enum {
   // with float sqrt - IEEE correctly-rounded, so bytes stay identical
   // across platforms.
   QA_GRID_OP_RRECT_FILL = 5,
-  // 6 was the rounded-rect STROKE - the per-cell block border's. D32/D38
-  // (2026-08-18) made that border transparent for good and the substrate
-  // rewrite of 2026-09-24 took the last branch that could ask for it, so
-  // it left the Dart writer, the Dart reference and this engine together.
+  // The rounded-rect RING (I-129, 2026-10-25: an EMPTY block's outline,
+  // the export Cels tab's hollow block on the timeline's blocks):
+  //   QA_GRID_OP_RRECT_RING   (6): x_q8, y_q8, w_q8, h_q8, radius_q8,
+  //                                corner_mask, line_q8, open_mask,
+  //                                rgba                      = 10 words
+  // The RRECT_FILL coverage of the box less that of the box line_q8 in
+  // from each side, its corners line_q8 tighter. open_mask bit0=left,
+  // bit1=top, bit2=right, bit3=bottom names the sides it leaves OPEN: a
+  // block a tile's span cuts runs on into the next tile, which must not
+  // see a seam there.
+  // <- 6 was the per-cell block border's STROKE once: D32/D38 (2026-08-18)
+  // made that border transparent for good, and it left the Dart writer,
+  // the Dart reference and this engine together with the substrate
+  // rewrite of 2026-09-24.
+  QA_GRID_OP_RRECT_RING = 6,
 };
 
 static inline void qa_grid_blend_span(
@@ -4169,40 +4749,146 @@ static inline double qa_grid_rrect_distance(
   return outside + inside - r;
 }
 
-// The RRECT_FILL raster loop: analytic-AA coverage 0.5 - d from the
-// rounded-box SDF, blended source-over per pixel.
-static void qa_grid_blend_rrect(
-    uint8_t* pixels,
-    int32_t tile_width,
-    int32_t tile_height,
+// A rounded box's coverage field: the box, its centre and halves, and each
+// corner's radius (0 = square) - RRECT_FILL's box, and both of a ring's.
+typedef struct {
+  double left;
+  double top;
+  double width;
+  double height;
+  double center_x;
+  double center_y;
+  double half_w;
+  double half_h;
+  double radius_tl;
+  double radius_tr;
+  double radius_bl;
+  double radius_br;
+} qa_grid_rrect_field;
+
+// The box (x, y, w, h) with [radius] on the corners [corner_mask] picks,
+// held to what the box can hold.
+static qa_grid_rrect_field qa_grid_rrect_field_of(
     double x,
     double y,
     double w,
     double h,
     double radius,
-    int32_t corner_mask,
-    uint32_t rgba) {
-  const int32_t color_a = (int32_t)(rgba >> 24) & 0xFF;
-  if (color_a == 0 || w <= 0.0 || h <= 0.0) {
-    return;
-  }
-  const double half_w = w * 0.5;
-  const double half_h = h * 0.5;
-  double max_radius = half_w < half_h ? half_w : half_h;
+    int32_t corner_mask) {
+  qa_grid_rrect_field field;
+  field.left = x;
+  field.top = y;
+  field.width = w;
+  field.height = h;
+  field.half_w = w * 0.5;
+  field.half_h = h * 0.5;
+  field.center_x = x + field.half_w;
+  field.center_y = y + field.half_h;
+  const double max_radius =
+      field.half_w < field.half_h ? field.half_w : field.half_h;
   if (radius > max_radius) {
     radius = max_radius;
   }
-  const double radius_tl = (corner_mask & 1) != 0 ? radius : 0.0;
-  const double radius_tr = (corner_mask & 2) != 0 ? radius : 0.0;
-  const double radius_bl = (corner_mask & 4) != 0 ? radius : 0.0;
-  const double radius_br = (corner_mask & 8) != 0 ? radius : 0.0;
-  const double center_x = x + half_w;
-  const double center_y = y + half_h;
+  field.radius_tl = (corner_mask & 1) != 0 ? radius : 0.0;
+  field.radius_tr = (corner_mask & 2) != 0 ? radius : 0.0;
+  field.radius_bl = (corner_mask & 4) != 0 ? radius : 0.0;
+  field.radius_br = (corner_mask & 8) != 0 ? radius : 0.0;
+  return field;
+}
 
-  int32_t left = (int32_t)(x - 1.0);
-  int32_t top = (int32_t)(y - 1.0);
-  int32_t right = (int32_t)(x + w + 2.0);
-  int32_t bottom = (int32_t)(y + h + 2.0);
+// The box an RRECT_FILL or RRECT_RING op at [op] states: its x_q8, y_q8,
+// w_q8, h_q8, radius_q8 and corner_mask words.
+static qa_grid_rrect_field qa_grid_rrect_field_at(const int32_t* op) {
+  return qa_grid_rrect_field_of(
+      (double)op[1] / 256.0, (double)op[2] / 256.0, (double)op[3] / 256.0,
+      (double)op[4] / 256.0, (double)op[5] / 256.0, op[6]);
+}
+
+// A ring's inner corner: its outer corner [line] tighter, never below
+// square nor past what the inner box can hold.
+static inline double qa_grid_ring_inner_radius(
+    double outer,
+    double line,
+    double max_radius) {
+  double radius = outer - line;
+  if (radius < 0.0) {
+    radius = 0.0;
+  }
+  if (radius > max_radius) {
+    radius = max_radius;
+  }
+  return radius;
+}
+
+// The box a ring of [outer] leaves unpainted: [line] in from each side it
+// strokes and [line] + 2 past each side [open_mask] leaves open, its
+// corners [line] tighter.
+static qa_grid_rrect_field qa_grid_ring_inner_field(
+    const qa_grid_rrect_field* outer,
+    double line,
+    int32_t open_mask) {
+  const double past = line + 2.0;
+  const double left = outer->left + ((open_mask & 1) != 0 ? -past : line);
+  const double top = outer->top + ((open_mask & 2) != 0 ? -past : line);
+  const double right =
+      outer->left + outer->width - ((open_mask & 4) != 0 ? -past : line);
+  const double bottom =
+      outer->top + outer->height - ((open_mask & 8) != 0 ? -past : line);
+  qa_grid_rrect_field field;
+  field.left = left;
+  field.top = top;
+  field.width = right - left;
+  field.height = bottom - top;
+  field.half_w = field.width * 0.5;
+  field.half_h = field.height * 0.5;
+  field.center_x = left + field.half_w;
+  field.center_y = top + field.half_h;
+  const double max_radius =
+      field.half_w < field.half_h ? field.half_w : field.half_h;
+  field.radius_tl = qa_grid_ring_inner_radius(outer->radius_tl, line,
+                                              max_radius);
+  field.radius_tr = qa_grid_ring_inner_radius(outer->radius_tr, line,
+                                              max_radius);
+  field.radius_bl = qa_grid_ring_inner_radius(outer->radius_bl, line,
+                                              max_radius);
+  field.radius_br = qa_grid_ring_inner_radius(outer->radius_br, line,
+                                              max_radius);
+  return field;
+}
+
+// How much of the pixel centred at (cx, cy) [field] covers: analytic-AA
+// 0.5 - d from the rounded-box SDF, held to [0, 1].
+static inline double qa_grid_rrect_coverage(
+    const qa_grid_rrect_field* field,
+    double cx,
+    double cy) {
+  const double coverage = 0.5 - qa_grid_rrect_distance(
+      cx, cy, field->center_x, field->center_y, field->half_w,
+      field->half_h, field->radius_tl, field->radius_tr, field->radius_bl,
+      field->radius_br);
+  return coverage <= 0.0 ? 0.0 : coverage > 1.0 ? 1.0 : coverage;
+}
+
+// The RRECT_FILL and RRECT_RING raster loop: [outer]'s coverage less
+// [inner]'s (NULL for none), blended source-over per pixel.
+static void qa_grid_blend_rrect_band(
+    uint8_t* pixels,
+    int32_t tile_width,
+    int32_t tile_height,
+    const qa_grid_rrect_field* outer,
+    const qa_grid_rrect_field* inner,
+    uint32_t rgba) {
+  const int32_t color_a = (int32_t)(rgba >> 24) & 0xFF;
+  if (color_a == 0 || outer->width <= 0.0 || outer->height <= 0.0) {
+    return;
+  }
+  if (inner != NULL && (inner->half_w <= 0.0 || inner->half_h <= 0.0)) {
+    inner = NULL;
+  }
+  int32_t left = (int32_t)(outer->left - 1.0);
+  int32_t top = (int32_t)(outer->top - 1.0);
+  int32_t right = (int32_t)(outer->left + outer->width + 2.0);
+  int32_t bottom = (int32_t)(outer->top + outer->height + 2.0);
   if (left < 0) left = 0;
   if (top < 0) top = 0;
   if (right > tile_width) right = tile_width;
@@ -4214,14 +4900,13 @@ static void qa_grid_blend_rrect(
   for (int32_t py = top; py < bottom; py += 1) {
     uint8_t* dst = pixels + (((ptrdiff_t)py * tile_width + left) << 2);
     for (int32_t px = left; px < right; px += 1) {
-      const double d = qa_grid_rrect_distance(
-          (double)px + 0.5, (double)py + 0.5, center_x, center_y, half_w,
-          half_h, radius_tl, radius_tr, radius_bl, radius_br);
-      double coverage = 0.5 - d;
+      const double cx = (double)px + 0.5;
+      const double cy = (double)py + 0.5;
+      double coverage = qa_grid_rrect_coverage(outer, cx, cy);
+      if (coverage > 0.0 && inner != NULL) {
+        coverage -= qa_grid_rrect_coverage(inner, cx, cy);
+      }
       if (coverage > 0.0) {
-        if (coverage > 1.0) {
-          coverage = 1.0;
-        }
         const int32_t a = (int32_t)(coverage * (double)color_a + 0.5);
         qa_grid_blend_span(dst, 1, r, g, b, a);
       }
@@ -4293,13 +4978,25 @@ QA_EXPORT int32_t qa_grid_raster_tile(
       }
       case QA_GRID_OP_RRECT_FILL: {
         if (cursor + 8 > op_word_count) return -2;
-        qa_grid_blend_rrect(
-            pixels, tile_width, tile_height,
-            (double)ops[cursor + 1] / 256.0, (double)ops[cursor + 2] / 256.0,
-            (double)ops[cursor + 3] / 256.0, (double)ops[cursor + 4] / 256.0,
-            (double)ops[cursor + 5] / 256.0, ops[cursor + 6],
+        const qa_grid_rrect_field box = qa_grid_rrect_field_at(ops + cursor);
+        qa_grid_blend_rrect_band(
+            pixels, tile_width, tile_height, &box, NULL,
             (uint32_t)ops[cursor + 7]);
         cursor += 8;
+        break;
+      }
+      case QA_GRID_OP_RRECT_RING: {
+        if (cursor + 10 > op_word_count) return -2;
+        const double line = (double)ops[cursor + 7] / 256.0;
+        if (line > 0.0) {
+          const qa_grid_rrect_field box = qa_grid_rrect_field_at(ops + cursor);
+          const qa_grid_rrect_field hole =
+              qa_grid_ring_inner_field(&box, line, ops[cursor + 8]);
+          qa_grid_blend_rrect_band(
+              pixels, tile_width, tile_height, &box, &hole,
+              (uint32_t)ops[cursor + 9]);
+        }
+        cursor += 10;
         break;
       }
       case QA_GRID_OP_GLYPH: {
@@ -5494,8 +6191,9 @@ static void qa_resample_rows(
         // Sample, count, and if the count came back TIED, sample again at
         // twice the rate. A tie is nearly always the grid's fault rather
         // than the geometry's; only tied pixels pay for the refinement,
-        // and a tie that survives the cap is a real one and falls through
-        // to the token met first. See the Dart reference.
+        // and a tie that survives the cap falls through to the token met
+        // first - not because it is an exact half (traced, they were
+        // 55/45). See the Dart reference.
         int32_t nx = samples_x;
         int32_t ny = samples_y;
         int32_t slots = 0;
@@ -6242,4 +6940,14 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // v55: qa_audio_device_play returns the run it starts (it returned 1), and
 // qa_audio_device_stop_run silences unless another run holds the device -
 // a player's end stops only its own sound.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 55; }
+// v56: qa_dab_spec drops hard_radius and edge_span for an analytic round
+// tip's profile - round_scale, round_reach, round_inner and the tables
+// round_coverage and round_pile - and QA_DAB_FLAG_EDGE_HELD: a round tip is
+// its profile read along its radius (qa_round_profile_at), and its edge does
+// not pile (qa_dab_source_alpha's ceiling). Sizeof moves.
+// v57: qa_dab_spec gains round_row_length: a small circle's round tables
+// are square, what each pixel's whole square covers (qa_round_square_at),
+// so a dot lays the same ink wherever it lies. Sizeof moves.
+// v58: qa_blur_dab and qa_blur_result_tile - the blur brush (I-75): a dab
+// rewrites the picture under it, read through a qa_blur_tile table.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 58; }

@@ -13,7 +13,9 @@ import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/widgets/field_slider.dart';
-import 'package:anicel/src/ui/widgets/inline_numeric_field.dart';
+
+import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/number_pad_keyboard.dart';
 
 void main() {
   Future<void> pump(WidgetTester tester, Widget slider) => tester.pumpWidget(
@@ -132,22 +134,21 @@ void main() {
     expect(pencil, findsNothing);
   });
 
-  testWidgets('a stood bar is typed in turned, as it writes', (tester) async {
+  testWidgets('a stood bar\'s pencil opens the number pad as a lying bar\'s '
+      'does', (tester) async {
+    // ↩️It was typed in turned, as it writes — its field in the bar; the
+    // field is the pad's top now (I-134), which lies as any window does.
     await pumpStood(tester, label: 'Size');
     await tester.tap(pencil);
     await tester.pump();
-    final editable = tester.getRect(find.byType(EditableText));
-    expect(editable.height, greaterThan(editable.width));
-    expect(editable.width, lessThanOrEqualTo(20));
+    expect(theNumberPadsNumber, findsOneWidget);
   });
 
   testWidgets('a stood bar\'s ± stand inside their cells (유저 2026-10-18: '
       '「더 작게해도되니까 안에 들어가도록하자」)', (tester) async {
     await pumpStood(tester, label: 'Size');
     for (final cell in [down, up]) {
-      final glyph = tester.getRect(
-        find.descendant(of: cell, matching: find.byType(Icon)),
-      );
+      final glyph = tester.glyphRectOf(cell);
       final room = tester.getRect(cell);
       expect(glyph.width, lessThan(room.width));
       expect(room.contains(glyph.topLeft), isTrue);
@@ -286,8 +287,9 @@ void main() {
           'to nowhere tells nothing',
     );
 
-    // A value a drag left off a stop, where the bar writes it as the stop,
-    // stands on it: the press must show.
+    // A value set off a stop, where the bar writes it as the stop, stands
+    // on it: the press must show. (↩️A drag left such values too, until
+    // the bar held what it hands over — F-488.)
     hold(() => value = 10.03);
     await tester.pump();
     expect(find.text('10.0 px'), findsOneWidget, reason: '⛔LIVENESS');
@@ -367,47 +369,27 @@ void main() {
 
   final field = find.byKey(const ValueKey<String>('field-slider-type-input'));
 
-  testWidgets('its PENCIL types a number: the number alone, selected, the '
-      'bar all field — no name, no unit', (tester) async {
+  testWidgets('its PENCIL opens the number pad on the number alone, and the '
+      'bar wears the typed frame while it is open', (tester) async {
     await pumpKept(tester);
-    expect(field, findsNothing);
     await tester.tap(pencil);
     await tester.pump();
-    expect(field, findsOneWidget);
-    final typed = tester.widget<TextField>(
-      find.descendant(
-        of: find.byType(InlineNumericField),
-        matching: find.byType(TextField),
-      ),
-    );
+    // 🗣️유저 2026-10-11: 「X같은 글자 없애고 전면텍스트박스로 … %나 도같은
+    // 단위도 텍스트편집창에서 없도록」 — the pad's top holds the number alone.
+    expect(tester.widget<Text>(theNumberPadsNumber).data, '50');
+    expect(field, findsNothing, reason: 'no keyboard until it is pressed');
+    final frame = tester
+        .widget<FieldSliderTrack>(find.byType(FieldSliderTrack))
+        .frame;
+    expect((frame.shape as OutlinedBorder).side.color, AppColors.accent);
+
+    await openThePadsKeyboard(tester);
+    final typed = tester.widget<TextField>(field);
     expect(typed.controller!.text, '50');
     expect(
       typed.controller!.selection,
       const TextSelection(baseOffset: 0, extentOffset: 2),
     );
-    // 🗣️유저 2026-10-11: 「X같은 글자 없애고 전면텍스트박스로 … %나 도같은
-    // 단위도 텍스트편집창에서 없도록」.
-    expect(find.text('%'), findsNothing);
-    expect(find.text('Size'), findsNothing);
-    // 「다른박스 마찬가지 통일」: typed, the bar is a number box typed — its
-    // field runs the whole frame, and the frame wears the accent.
-    final framed = find.ancestor(
-      of: find.byType(EditableText),
-      matching: find.byWidgetPredicate(
-        (widget) =>
-            widget is DecoratedBox &&
-            widget.decoration is ShapeDecoration &&
-            (widget.decoration as ShapeDecoration).shape is OutlinedBorder,
-      ),
-    );
-    expect(framed, findsOneWidget);
-    final frame = tester.getRect(framed);
-    final editable = tester.getRect(find.byType(EditableText));
-    expect(editable.left, closeTo(frame.left + FieldSlider.inset, 0.01));
-    expect(editable.right, closeTo(frame.right - FieldSlider.inset, 0.01));
-    final decoration =
-        tester.widget<DecoratedBox>(framed).decoration as ShapeDecoration;
-    expect((decoration.shape as OutlinedBorder).side.color, AppColors.accent);
   });
 
   testWidgets('a typed number is held to the range and handed over as ONE '
@@ -415,6 +397,7 @@ void main() {
     final seen = await pumpKept(tester);
     await tester.tap(pencil);
     await tester.pump();
+    await openThePadsKeyboard(tester);
     await tester.enterText(field, '150');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pump();
@@ -424,6 +407,7 @@ void main() {
 
     await tester.tap(pencil);
     await tester.pump();
+    await openThePadsKeyboard(tester);
     await tester.enterText(field, '25');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pump();
@@ -440,7 +424,7 @@ void main() {
       tester,
       FieldSlider(
         value: 1,
-        min: 0.25,
+        min: 0.2,
         max: 4,
         scale: FieldSliderScale.exponential,
         label: 'Gamma',
@@ -449,10 +433,11 @@ void main() {
     );
     await tester.tap(pencil);
     await tester.pump();
+    await openThePadsKeyboard(tester);
     await tester.enterText(field, '-2');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pump();
-    expect(changes, [0.25]);
+    expect(changes, [0.2]);
   });
 
   testWidgets('Escape abandons the typing and changes nothing', (
@@ -461,6 +446,7 @@ void main() {
     final seen = await pumpKept(tester);
     await tester.tap(pencil);
     await tester.pump();
+    await openThePadsKeyboard(tester);
     await tester.enterText(field, '80');
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pump();

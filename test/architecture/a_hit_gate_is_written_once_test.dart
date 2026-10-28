@@ -28,6 +28,10 @@ void main() {
     'lib/src/ui/sheet/sheet_ink_layer.dart',
     // A clip's silhouette: a pointer in a cut corner must miss.
     'lib/src/ui/widgets/superellipse_clip.dart',
+    // The app tooltip, as Flutter's is (2026-10-25): its whole box takes a
+    // press — its opaque listener — and only the innermost tooltip stands
+    // on a hover's path — its exclusive mouse region. It gates nothing.
+    'lib/src/ui/widgets/app_tooltip.dart',
   };
   final proxyBox = RegExp(r'extends RenderProxyBox\b');
   final hitTest = RegExp(r'bool hitTest\(BoxHitTestResult');

@@ -48,7 +48,6 @@ import '../input/two_axis_drag.dart';
 import 'timeline_grid_shell.dart';
 import 'timeline_zoom_anchor_policy.dart';
 import 'timeline_layer_controls_row.dart';
-import 'rail_eyes.dart';
 import 'timeline_section_policy.dart';
 import 'timeline_section_runs.dart';
 import 'timeline_row_edges.dart';
@@ -224,16 +223,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
   );
   final GlobalKey _rulerScrubViewportKey = GlobalKey();
 
-  /// The sweepable columns — ONE list for both grids ([timelineSwipeColumns]),
-  /// laid on this rail's own width.
+  /// The sweepable columns — ONE list for both grids ([timelineSwipeColumns]).
   List<RailToggleColumn<TimelineDisplayRow>> _swipeColumns() =>
       timelineSwipeColumns(
         hooks: timelineRailSwipeHooks(widget.hooks, widget.layers),
-        axis: Axis.horizontal,
-        crossExtent:
-            _metrics.layerControlsWidth - _metrics.sectionLabelGutterWidth,
-        leadingOrigin: timelineLayerRowLeadingBorder,
-        columns: _metrics.railColumns,
       );
 
   @override
@@ -858,7 +851,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
     // ([rowsWithSilhouette] says why).
     final drawnRows = rowsWithSilhouette(rows, widget.hooks.dragPreview?.value);
     final rangeGesture = _rangeGestures.rangeGestureFor(rows);
-    final laneRange = _rangeGestures.laneRangeFor(rows);
+    final laneRange = _rangeGestures.laneRangeFor(rows, band: rangeGesture);
     // ⛔The gestures above take the REAL rows: nothing can be selected,
     // dragged or edited on a row that does not exist yet.
 
@@ -868,6 +861,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
       ground: colorScheme.surfaceContainerHighest,
       framesPerSecond: _countingFps,
       controllers: [_horizontalScrollController, _verticalScrollController],
+      layers: widget.layers,
       child: LayoutBuilder(
         builder: (context, constraints) {
           final viewportHeight = constraints.hasBoundedHeight

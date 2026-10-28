@@ -37,6 +37,7 @@ class BrushDab {
     this.textureMode = BrushTextureMode.multiply,
     this.antiAlias = BrushAntiAlias.high,
     this.erase = false,
+    this.blurs = false,
     this.stamp,
     this.pathStep,
   }) {
@@ -88,11 +89,11 @@ class BrushDab {
   /// 0..1 against `AppInputSettings.speedReferencePixelsPerSecond`.
   ///
   /// 🚨**NORMALIZED AT THE DOOR, like pressure and tilt.** The raw px/s never
-  /// reaches a dab, because the ratio's ceiling is a user setting and a
-  /// reader holding raw pixels would have to fetch that setting to mean
-  /// anything — sixteen readers, sixteen chances to fetch a different one.
-  /// The pen door divides once (`AppInput.normalizedSpeed`) and everything
-  /// downstream reads a plain 0..1, exactly as it does for the other two.
+  /// reaches a dab, because a reader holding raw pixels would have to divide
+  /// by the ceiling itself to mean anything — sixteen readers, sixteen
+  /// chances to divide by a different one. The pen door divides once
+  /// (`AppInput.normalizedSpeed`) and everything downstream reads a plain
+  /// 0..1, exactly as it does for the other two.
   ///
   /// ⚠️Speed is a property of the MOVE, not of the point: every dab placed
   /// along one segment carries that segment's speed. 0.0 is a pen that has
@@ -198,6 +199,15 @@ class BrushDab {
   /// supplies the source alpha; RGB is ignored.
   final bool erase;
 
+  /// Blur mode (I-75 흐리기): the dab lays no colour — it moves the picture
+  /// under it toward that picture blurred, by what it would have laid as
+  /// paint ([color] is ignored). It rides the dab as [erase] does, so a
+  /// stroke re-derived from its dabs — the commit after the cel moved, 확정
+  /// on another cel — knows what it was. Never set together with [erase]:
+  /// the eraser's law wins (`BrushEditCanvasInputSettings.blurs`). The law
+  /// is beside `BrushBlurPicture`.
+  final bool blurs;
+
   /// RGBA stamp (R14-④ bitmap lift): when set, the dab draws the stamp's
   /// pixels 1:1 source-over centered on [center] (no resampling; [opacity]
   /// still modulates, [erase] still clears) and every tip and texture field
@@ -259,6 +269,7 @@ class BrushDab {
     BrushTextureMode? textureMode,
     BrushAntiAlias? antiAlias,
     bool? erase,
+    bool? blurs,
     BrushStampImage? stamp,
     double? pathStep,
   }) {
@@ -291,6 +302,7 @@ class BrushDab {
       textureMode: textureMode ?? this.textureMode,
       antiAlias: antiAlias ?? this.antiAlias,
       erase: erase ?? this.erase,
+      blurs: blurs ?? this.blurs,
       stamp: stamp ?? this.stamp,
       pathStep: pathStep ?? this.pathStep,
     );
@@ -331,6 +343,7 @@ class BrushDab {
       'textureMode': textureMode.name,
     if (antiAlias != BrushAntiAlias.high) 'antiAlias': antiAlias.name,
     if (erase) 'erase': true,
+    if (blurs) 'blurs': true,
     if (stamp != null) 'stamp': stamp!.toJson(),
     if (pathStep != null) 'pathStep': pathStep,
   };
@@ -380,6 +393,7 @@ class BrushDab {
           BrushAntiAlias.named(json['antiAlias'] as String?) ??
           BrushAntiAlias.high,
       erase: json['erase'] as bool? ?? false,
+      blurs: json['blurs'] as bool? ?? false,
       stamp: json['stamp'] == null
           ? null
           : BrushStampImage.fromJson(json['stamp'] as Map<String, dynamic>),
@@ -419,6 +433,7 @@ class BrushDab {
           other.textureMode == textureMode &&
           other.antiAlias == antiAlias &&
           other.erase == erase &&
+          other.blurs == blurs &&
           other.stamp == stamp &&
           other.pathStep == pathStep;
 
@@ -452,6 +467,7 @@ class BrushDab {
     textureMode,
     antiAlias,
     erase,
+    blurs,
     stamp,
     pathStep,
   ]);

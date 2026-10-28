@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/theme/text_on_ground.dart';
-import 'package:anicel/src/ui/input/control_press_claim.dart';
+import 'package:anicel/src/ui/widgets/owning_axis_grip.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/ground_ink_writing.dart';
 
@@ -19,7 +19,7 @@ void main() {
   /// bar, and this is how.
   Finder trackOf(Key key) => find.descendant(
     of: find.byKey(key),
-    matching: find.byType(DragVerbClaim),
+    matching: find.byType(OwningAxisGrip),
   );
   const trackWidth = 200.0;
 
@@ -109,7 +109,10 @@ void main() {
 
   testWidgets('shift drag moves at one tenth speed', (tester) async {
     final value = ValueNotifier<double>(0.5);
-    await tester.pumpWidget(harness(value: value));
+    // A bar that writes tenths of a per cent, as the bars these steps are
+    // read on do — one that writes tenths of its range holds nothing finer
+    // (F-488).
+    await tester.pumpWidget(harness(value: value, displayScale: 100));
     final track = tester.getSize(trackOf(sliderKey)).width;
     await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
     await tester.drag(trackOf(sliderKey), const Offset(100, 0));
@@ -121,7 +124,7 @@ void main() {
 
   testWidgets('scroll wheel steps by one percent of the track', (tester) async {
     final value = ValueNotifier<double>(0.5);
-    await tester.pumpWidget(harness(value: value));
+    await tester.pumpWidget(harness(value: value, displayScale: 100));
     final center = tester.getCenter(trackOf(sliderKey));
     final pointer = TestPointer(1, PointerDeviceKind.mouse);
     pointer.hover(center);
@@ -139,7 +142,7 @@ void main() {
     tester,
   ) async {
     final value = ValueNotifier<double>(0.5);
-    await tester.pumpWidget(harness(value: value));
+    await tester.pumpWidget(harness(value: value, displayScale: 100));
     final pointer = TestPointer(1, PointerDeviceKind.mouse);
     pointer.hover(tester.getCenter(trackOf(sliderKey)));
     await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
@@ -166,7 +169,7 @@ void main() {
   testWidgets('R10 R5: a bar does not TYPE — a double tap is just two taps, '
       'and the second one sets the value like the first', (tester) async {
     final value = ValueNotifier<double>(0.2);
-    await tester.pumpWidget(harness(value: value));
+    await tester.pumpWidget(harness(value: value, displayScale: 100));
     final box = tester.getRect(trackOf(sliderKey));
     final quarter = Offset(box.left + box.width * 0.25, box.center.dy);
 
@@ -519,9 +522,9 @@ void main() {
     // row must not change width when the control comes alive.
     final bar = find.descendant(
       of: find.byKey(sliderKey),
-      matching: find.byType(DecoratedBox),
+      matching: find.byType(FieldSliderTrack),
     );
-    await tester.tapAt(tester.getCenter(bar.first));
+    await tester.tapAt(tester.getCenter(bar));
     await tester.pump();
     expect(value.value, 0.2);
 
@@ -541,14 +544,8 @@ void main() {
     );
 
     // And it really is dim: the track it draws carries the 40%.
-    final decorated = tester
-        .widgetList<DecoratedBox>(bar)
-        .map((box) => box.decoration)
-        .whereType<ShapeDecoration>()
-        .toList();
-    expect(decorated, isNotEmpty, reason: 'fixture: the bar draws a track');
     expect(
-      decorated.first.color!.a,
+      tester.widget<FieldSliderTrack>(bar).frame.color!.a,
       closeTo(0.4, 1e-3),
       reason: 'a disabled bar shows 40% of itself, as it always did',
     );
@@ -639,6 +636,7 @@ void main() {
                     value: v,
                     min: 0,
                     max: 1,
+                    displayScale: 100,
                     label: 'Test',
                     unit: ' px',
                     onChanged: (next) => value.value = next,
@@ -831,6 +829,7 @@ void main() {
                   value: v,
                   min: 0,
                   max: 1,
+                  displayScale: 100,
                   label: 'Test',
                   unit: ' px',
                   onChanged: (next) => value.value = next,
@@ -1097,6 +1096,7 @@ void main() {
                       value: v,
                       min: 0,
                       max: 1,
+                      displayScale: 100,
                       label: 'Test',
                       onChanged: (next) => value.value = next,
                     ),

@@ -51,10 +51,9 @@ class PlayheadCursors {
   );
 
   /// The active cut's frame the playhead stands on — what the timeline's
-  /// playhead, rulers, lane values and frame counter follow, and the row
-  /// the timeline folds into with them. Playback ticks and editing seeks
-  /// land HERE — never as a panel rebuild; that is the whole
-  /// playback-performance architecture.
+  /// playhead, rulers and lane values follow, and the row the timeline folds
+  /// into with them. Playback ticks and editing seeks land HERE — never as a
+  /// panel rebuild; that is the whole playback-performance architecture.
   ValueListenable<int> get cutFrame => _cutFrame;
 
   /// The track's frame the storyboard draws its playhead on; null when

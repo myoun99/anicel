@@ -16,28 +16,18 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
-import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId;
-import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
-    show
-        layerGraphSlotWidth,
-        layerLaneToggleSlotWidth,
-        layerRailColumnWidthsAtOne;
-import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
-    show noOptionalRailColumns;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
-import 'package:anicel/src/ui/timeline/rail_column_swipe.dart'
-    show railSwipeColumns;
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/named_finders.dart';
+import '../../helpers/timeline_host.dart';
 
 /// **I-89 ③ — a header graph turns from its own button, and from no other.**
 ///
@@ -186,9 +176,9 @@ void main() {
   testWidgets('a swipe from the camera row\'s button sweeps the column too — '
       'from either edge of it — and from past it, nothing', (tester) async {
     // No effect: the Transform header is the one header under the camera
-    // row, and the window is tall enough to keep it in view while the
+    // row, and the panel is tall enough to keep it in view while the
     // camera's group opens above it.
-    final s = await _pump(tester, blur: false, height: 1600);
+    final s = await _pump(tester, blur: false, height: 610);
     await _openLanes(tester, _drawId);
 
     await _sweepFromTheCamerasGraph(tester, (button) => button.left + 1);
@@ -210,7 +200,7 @@ void main() {
     final s = await _pump(
       tester,
       blur: false,
-      height: 1600,
+      height: 610,
       cameraFolds: true,
     );
     await _openLanes(tester, _drawId);
@@ -237,28 +227,6 @@ void main() {
       _bothTransforms,
       reason: 'the column a twirl further in, where this row lays it',
     );
-  });
-
-  test('the button\'s band is its slot to the pixel, each row\'s own way '
-      'short of the trailing run — not one either side', () {
-    // Through the pointer a band a little too wide cannot be seen: the name
-    // before it and the fold twirl after it claim their own presses. The
-    // band is asked here instead, where it is made, as the lane pin's is.
-    final columns = railSwipeColumns<int>(
-      crossExtent: 400,
-      leadingOrigin: 0,
-      columns: layerRailColumnWidthsAtOne,
-      optionalColumns: noOptionalRailColumns,
-      graph: (
-        toggle: (valueOf: (_) => false, toggle: (_) {}),
-        after: (row) => row * layerLaneToggleSlotWidth,
-      ),
-    );
-    final header = columns.single.bandAt(0);
-    final layerRow = columns.single.bandAt(1);
-    expect(header.end - header.start, layerGraphSlotWidth);
-    expect(layerRow.end - layerRow.start, layerGraphSlotWidth);
-    expect(layerRow.end, header.end - layerLaneToggleSlotWidth);
   });
 
   testWidgets('the X-sheet\'s stood-up headers carry the same buttons', (
@@ -388,29 +356,19 @@ Project _project({bool blur = true, bool cameraFolds = false}) => Project(
   ],
 );
 
+/// The timeline tab alone ([pumpTimelineHost]), [height] tall — the graph
+/// and its button are the panel's. The app's window of 1400 × 1200 laid it
+/// 870 × 546.
 Future<EditorSessionManager> _pump(
   WidgetTester tester, {
   bool blur = true,
-  double height = 1200,
+  double height = 546,
   bool cameraFolds = false,
-}) async {
-  await tester.binding.setSurfaceSize(Size(1400, height));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
-  await tester.pumpWidget(
-    MaterialApp(
-      home: HomePage(
-        initialProject: _project(blur: blur, cameraFolds: cameraFolds),
-      ),
-    ),
-  );
-  await tester.pumpAndSettle();
-  await tester.drag(
-    find.byKey(const ValueKey<String>('dock-resize-bottom')),
-    const Offset(0, -520),
-  );
-  await tester.pumpAndSettle();
-  return tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
-}
+}) => pumpTimelineHost(
+  tester,
+  _project(blur: blur, cameraFolds: cameraFolds),
+  surface: Size(870, height),
+);
 
 Future<void> _openLanes(WidgetTester tester, LayerId id) =>
     _tap(tester, 'timeline-lane-toggle-${id.value}');

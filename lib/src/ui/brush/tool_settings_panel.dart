@@ -39,7 +39,6 @@ import '../text/model_vocabulary.dart';
 import '../text/pixel_size_label.dart';
 import '../text/readout_text.dart';
 import '../widgets/empty_state_text.dart';
-import '../widgets/fill_reference_button.dart';
 import '../listenable_rebind.dart';
 import '../widgets/pill_strip.dart';
 import '../widgets/scale_chain_button.dart';
@@ -70,8 +69,6 @@ class ToolSettingsPanel extends StatelessWidget {
     this.eyedropperSource = CanvasReadSource.display,
     this.onEyedropperSourceChanged,
     this.readLayerNames,
-    this.activeLayerIsFillReference = false,
-    this.onToggleActiveLayerFillReference,
     this.tips = const <BrushTipEntry>[],
     this.onTipImportRequested,
     this.onRenameTip,
@@ -178,12 +175,6 @@ class ToolSettingsPanel extends StatelessWidget {
   /// reads another. A host with no answer shows the line empty.
   final List<String>? Function(CanvasReadSource source)? readLayerNames;
 
-  /// The ACTIVE layer's fill-reference flag, and the rail's verb that flips
-  /// it (I-36: 「활성 레이어의 참조 버튼을 둔다」). A null handler shows the
-  /// bucket disabled — the active row is not one that carries the flag.
-  final bool activeLayerIsFillReference;
-  final VoidCallback? onToggleActiveLayerFillReference;
-
   List<String>? _namesReadBy(CanvasReadSource source) {
     final answer = readLayerNames;
     return answer == null ? const [] : answer(source);
@@ -262,8 +253,6 @@ class ToolSettingsPanel extends StatelessWidget {
       options: fillOptions,
       onChanged: onFillOptionsChanged,
       readLayerNames: _namesReadBy(fillOptions.source),
-      activeLayerIsFillReference: activeLayerIsFillReference,
-      onToggleActiveLayerFillReference: onToggleActiveLayerFillReference,
     ),
     // 유저 확정 ⑥: a panel PER TILE, showing what actually applies.
     // The bucket's knobs above are about reading the picture — where
@@ -369,13 +358,7 @@ class _ShapeFillSettings extends StatelessWidget {
           value: options.antiAlias,
           onChanged: (value) => onChanged(options.copyWith(antiAlias: value)),
         ),
-        ToolSettingActions(
-          lines: [
-            [
-              _ClosePolygonButton(shapeKind: shapeKind, traces: traces),
-            ],
-          ],
-        ),
+        ToolSettingActions(lines: _closePolygonLine(shapeKind, traces)),
       ],
     );
   }
@@ -384,15 +367,20 @@ class _ShapeFillSettings extends StatelessWidget {
 /// The SHAPE tool's settings (I-69, 유저 답 Q1 · Q5 · Q7 · Q8 · Q9 —
 /// 2026-10-08).
 ///
-/// Five rows, always there (「없다가 생기는 UI 금지」). A row that means
-/// nothing for what is chosen keeps its place and loses its tap:
+/// 🗣️F-478-Q1 (유저 2026-10-27): 「없앤다 — 그 모양 · 모드에 필요할 때만
+/// 있다」 — 「그리기」 stands only under a tile with an inside to fill. Under
+/// the line tile there is nothing to choose: the line is what is laid,
+/// whatever was chosen for the other shapes. ↩️It kept its place there with
+/// 「채움」 refused (「없다가 생기는 UI 금지」).
 ///
-/// - 「채움」 has no line, so the type and the corners are off (Q9: 「채움은
-///   타입과 무관하다」);
+/// 🗣️F-478-Q2 (유저 2026-10-27): 「없앤다 — 패널 안 스위치도 같은 법」 — so
+/// do the rows what is chosen IN this panel leaves nothing to say.
+/// ↩️They kept their place and lost their tap:
+///
+/// - 「채움」 has no line, so no type and no corners (Q9: 「채움은 타입과
+///   무관하다」);
 /// - the corners are the PLAIN line's (Q8), and so is the edge switch —
-///   with the fill's. A line of the brush type has the brush's own edge;
-/// - under the line tile there is no inside to fill: that answer is off,
-///   and the line is what is lit, whatever was chosen for the other shapes.
+///   with the fill's. A line of the brush type has the brush's own edge.
 ///
 /// ⛔No size and no opacity here: those are the strip's for every tool
 /// (`BrushToolState.activeSize`, `activeOpacity`).
@@ -419,17 +407,16 @@ class _ShapeToolSettings extends StatelessWidget {
       tool: 'shape',
       title: strings.toolShape,
       children: [
-        _partRow(strings),
-        _typeRow(strings),
-        _cornersRow(strings),
-        SettingsSwitchRow(
-          tileKey: const ValueKey<String>('shape-tool-anti-alias-switch'),
-          label: strings.brAntiAlias,
-          value: _options.antiAlias,
-          onChanged: state.shapeDrawsWithTheBrush
-              ? null
-              : (value) => _set(_options.copyWith(antiAlias: value)),
-        ),
+        if (canvasShapeEncloses(state.drawShape)) _partRow(strings),
+        if (_laysLine) _typeRow(strings),
+        if (_laysPlainLine) _cornersRow(strings),
+        if (!state.shapeDrawsWithTheBrush)
+          SettingsSwitchRow(
+            tileKey: const ValueKey<String>('shape-tool-anti-alias-switch'),
+            label: strings.brAntiAlias,
+            value: _options.antiAlias,
+            onChanged: (value) => _set(_options.copyWith(antiAlias: value)),
+          ),
         SettingsSwitchRow(
           tileKey: const ValueKey<String>('shape-tool-ratio-lock-switch'),
           label: strings.shapeToolRatioLock,
@@ -440,27 +427,21 @@ class _ShapeToolSettings extends StatelessWidget {
     );
   }
 
-  /// 「그리기」: the line, or the inside. Under the line tile there is no
-  /// inside to fill, and that answer takes no press.
-  Widget _partRow(AppStrings strings) {
-    final hasInside = canvasShapeEncloses(state.drawShape);
-    return ToolSettingChoiceRow<ShapePart>(
-      tool: 'shape-tool',
-      name: 'part',
-      label: strings.shapeToolDraws,
-      current: state.shapePart,
-      answers: [
-        (value: ShapePart.line, key: 'line', label: strings.shapeToolStroke),
-        (value: ShapePart.fill, key: 'fill', label: strings.shapeToolFill),
-      ],
-      onPick: (part) => part == ShapePart.fill && !hasInside
-          ? null
-          : () => _set(_options.copyWith(part: part)),
-    );
-  }
+  /// 「그리기」: the line, or the inside — asked only under a tile with an
+  /// inside (see the class).
+  Widget _partRow(AppStrings strings) => ToolSettingChoiceRow<ShapePart>(
+    tool: 'shape-tool',
+    name: 'part',
+    label: strings.shapeToolDraws,
+    current: state.shapePart,
+    answers: [
+      (value: ShapePart.line, key: 'line', label: strings.shapeToolStroke),
+      (value: ShapePart.fill, key: 'fill', label: strings.shapeToolFill),
+    ],
+    onPick: (part) => () => _set(_options.copyWith(part: part)),
+  );
 
-  /// 「타입」: what lays the line — it takes a press only where a line is
-  /// laid.
+  /// 「타입」: what lays the line — there only where a line is laid.
   Widget _typeRow(AppStrings strings) => ToolSettingChoiceRow<ShapeLineType>(
     tool: 'shape-tool',
     name: 'type',
@@ -474,8 +455,7 @@ class _ShapeToolSettings extends StatelessWidget {
         label: strings.shapeToolTypePlain,
       ),
     ],
-    onPick: (type) =>
-        _laysLine ? () => _set(_options.copyWith(type: type)) : null,
+    onPick: (type) => () => _set(_options.copyWith(type: type)),
   );
 
   /// 「모서리」: the plain line's alone.
@@ -496,9 +476,7 @@ class _ShapeToolSettings extends StatelessWidget {
         label: strings.shapeToolCornersRound,
       ),
     ],
-    onPick: (corners) => _laysPlainLine
-        ? () => _set(_options.copyWith(corners: corners))
-        : null,
+    onPick: (corners) => () => _set(_options.copyWith(corners: corners)),
   );
 }
 
@@ -539,40 +517,44 @@ class _CutGrabSettings extends StatelessWidget {
               onChanged(state.copyWith(cutDeletesSource: value)),
         ),
         ToolSettingActions(
-          lines: [
-            [
-              _ClosePolygonButton(
-                shapeKind: state.activeShapeKind,
-                traces: traces,
-              ),
-            ],
-          ],
+          lines: _closePolygonLine(state.activeShapeKind, traces),
         ),
       ],
     );
   }
 }
 
+/// The line of [ToolSettingActions] the polygon's confirm stands on — none
+/// while another shape is in hand ([_ClosePolygonButton]).
+List<List<Widget>> _closePolygonLine(
+  CanvasShapeKind? shapeKind,
+  CanvasTraces? traces,
+) => [
+  if (shapeKind == CanvasShapeKind.polygon)
+    [_ClosePolygonButton(traces: traces)],
+];
+
 /// The polygon's confirm, for hands with no Enter key — an ACTION of the
 /// tools that trace one ([ToolSettingActions]).
 ///
-/// It bites only while the polygon shape is armed and three vertices are
-/// down — a button offering to close nothing would be lying about what a
-/// tap does.
+/// It bites only once three vertices are down — a button offering to close
+/// nothing would be lying about what a tap does.
 ///
-/// ↩️It rendered nothing for the other shapes, 「so the panel does not grow
-/// a permanent dead row」 — which is 「없다가 생기는 UI」: tool-settings-
-/// panel-tidy (유저 2026-10-10, 「다 추천대로」 — 「자리를 늘 두고 아닐 때는
-/// 흐리게」). It keeps its place and dims.
+/// 🗣️F-478-Q1 (유저 2026-10-27): 「없앤다 — 그 모양 · 모드에 필요할 때만
+/// 있다」 — it stands only while the polygon is the shape in hand
+/// ([_closePolygonLine]): 「도형닫기가 필요없는 사각형 타원 올가미 전체등은
+/// 해당 버튼 삭제」 · 「선택 도구의 도형 닫기도 다각형 선택만 쓸것임」 ·
+/// 「채우기 도구도 도형 닫기 버튼 마찬가지」. ↩️It kept its place and dimmed
+/// under the other shapes (tool-settings-panel-tidy, 유저 2026-10-10 「자리를
+/// 늘 두고 아닐 때는 흐리게」), and before that rendered nothing for them.
 ///
 /// It is 확정's polygon half (`ConfirmVerb` closes an open outline before
 /// anything else it might confirm — 유저 확정 「폴리곤 확정은 확정 버튼으로」),
 /// so it names 확정 rather than an action of its own (I-40): Enter is its
 /// key.
 class _ClosePolygonButton extends StatelessWidget {
-  const _ClosePolygonButton({required this.shapeKind, required this.traces});
+  const _ClosePolygonButton({required this.traces});
 
-  final CanvasShapeKind? shapeKind;
   final CanvasTraces? traces;
 
   Widget _button(VoidCallback? close) => ToolSettingAction(
@@ -585,7 +567,7 @@ class _ClosePolygonButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final traces = this.traces;
-    if (shapeKind != CanvasShapeKind.polygon || traces == null) {
+    if (traces == null) {
       return _button(null);
     }
     return ListenableBuilder(
@@ -859,12 +841,7 @@ class _SelectionSettings extends StatelessWidget {
         ],
         ToolSettingActions(
           lines: [
-            [
-              _ClosePolygonButton(
-                shapeKind: state.activeShapeKind,
-                traces: traces,
-              ),
-            ],
+            ..._closePolygonLine(state.activeShapeKind, traces),
             // 선택 반전 — 유저 2026-09-12 (I-23): 「선택반전기능 … 위치는
             // 선택툴일때의 툴설정. 버튼.」 In its place whatever is selected
             // (with nothing selected it selects the whole wall), and greyed
@@ -1140,6 +1117,7 @@ class _MoveSettingsState extends State<_MoveSettings> {
     name: name,
     text: '$value',
     enabled: live,
+    digitsOnly: true,
     onDragDelta: (units) => onChanged(
       TransformToolOptions.clampMeshCells(value + units.round()),
     ),
@@ -1174,12 +1152,18 @@ class _MoveSettingsState extends State<_MoveSettings> {
     final commands = widget.selectionCommands;
     final strings = AppText.strings;
     // The mesh's density, shown as numbers because that is what it is
-    // (유저 08-13: "수치도 조절가능하게 값으로 드러내고"). It takes a hand in
-    // 메쉬 alone — a grid size means nothing to the other two modes.
-    // ↩️It was only THERE in 메쉬, which is 「없다가 생기는 UI」: the row
-    // keeps its place and dims.
+    // (유저 08-13: "수치도 조절가능하게 값으로 드러내고"). 🗣️F-478-Q1 (유저
+    // 2026-10-27): 「변형도구의 툴설정의 메시도 마찬가지」 — its rows stand
+    // in 메쉬 alone; a grid size means nothing to the other two modes.
+    // ↩️They kept their place and dimmed there (tool-settings-panel-tidy,
+    // 10-10 — 「없다가 생기는 UI」), and before that were only there in 메쉬.
+    //
+    // ⚠️「메시워프에서도 일반변형등에서만 쓰는거 있으면 삭제하고」: nothing
+    // else here is 일반's alone. 위치 · 배율 · 회전 · 반전 · 기준점 move the
+    // box, and the box carries the mesh and the quad with it — each of
+    // their points is laid through its affine (`FloatWarp._placedPoints`).
     final meshHandler = widget.onOptionsChanged;
-    final meshLive = options.mode == TransformMode.mesh && meshHandler != null;
+    final inMesh = options.mode == TransformMode.mesh;
     final flipHorizontal = canEdit
         ? () => commands?.flipTransform(horizontal: true)
         : null;
@@ -1336,28 +1320,30 @@ class _MoveSettingsState extends State<_MoveSettings> {
               ),
             ),
           ),
-          ToolSettingRow.bar(
-            label: strings.trMesh,
-            bar: _meshBox(
-              keyValue: 'move-mesh-columns-field',
-              name: strings.trMeshColumns,
-              value: options.meshColumns,
-              live: meshLive,
-              onChanged: (cells) =>
-                  meshHandler?.call(options.copyWith(meshColumns: cells)),
+          if (inMesh) ...[
+            ToolSettingRow.bar(
+              label: strings.trMesh,
+              bar: _meshBox(
+                keyValue: 'move-mesh-columns-field',
+                name: strings.trMeshColumns,
+                value: options.meshColumns,
+                live: meshHandler != null,
+                onChanged: (cells) =>
+                    meshHandler?.call(options.copyWith(meshColumns: cells)),
+              ),
             ),
-          ),
-          ToolSettingRow.bar(
-            label: '',
-            bar: _meshBox(
-              keyValue: 'move-mesh-rows-field',
-              name: strings.trMeshRows,
-              value: options.meshRows,
-              live: meshLive,
-              onChanged: (cells) =>
-                  meshHandler?.call(options.copyWith(meshRows: cells)),
+            ToolSettingRow.bar(
+              label: '',
+              bar: _meshBox(
+                keyValue: 'move-mesh-rows-field',
+                name: strings.trMeshRows,
+                value: options.meshRows,
+                live: meshHandler != null,
+                onChanged: (cells) =>
+                    meshHandler?.call(options.copyWith(meshRows: cells)),
+              ),
             ),
-          ),
+          ],
           ...toolSettingsGroup(
             strings.trFinish,
             fold: foldOf('finish'),
@@ -1456,7 +1442,6 @@ class _EyedropperSettings extends StatelessWidget {
       children: [
         _ReadSourceControl(
           tool: 'eyedropper',
-          offered: const [CanvasReadSource.display, CanvasReadSource.layer],
           source: source,
           onChanged: onChanged,
           readLayerNames: readLayerNames,
@@ -1467,38 +1452,33 @@ class _EyedropperSettings extends StatelessWidget {
 }
 
 /// WHAT THE TOOL READS — the eyedropper's 참조 (R28 #6) and the fill's
-/// (I-36) as one control: the answers the tool offers, and a line naming
-/// the layers the chosen answer reads right now.
+/// (I-36) as one control: the answers, and a line naming the layers the
+/// chosen answer reads right now.
 ///
-/// 🗣️유저 2026-09-24 (I-36-Q1): 「범위를 보여주고, 활성 레이어의 참조 버튼을
-/// 둔다」. The line is a READOUT of state, not a caption — it took the place
-/// of the eyedropper's sentences about what each segment does. It is always
-/// there; only its words change.
+/// 🗣️유저 2026-09-24 (I-36-Q1): 「범위를 보여주고」. The line is a READOUT of
+/// state, not a caption — it took the place of the eyedropper's sentences
+/// about what each segment does. It is always there; only its words change.
+/// ↩️The same answer put 「활성 레이어의 참조 버튼」 beside it, and the fill
+/// offered a third answer; both went with I-92 (see [_FillSettings]), so
+/// the two tools offer the same two.
 class _ReadSourceControl extends StatelessWidget {
   const _ReadSourceControl({
     required this.tool,
-    required this.offered,
     required this.source,
     required this.onChanged,
     required this.readLayerNames,
-    this.trailing,
   });
 
   /// The section's name: `eyedropper` keys `eyedropper-source-segments`.
   final String tool;
-  final List<CanvasReadSource> offered;
   final CanvasReadSource source;
   final ValueChanged<CanvasReadSource>? onChanged;
 
   /// The layers [source] reads now; null = every visible layer.
   final List<String>? readLayerNames;
 
-  /// Beside the readout — the fill's bucket for the active layer.
-  final Widget? trailing;
-
   static String _label(CanvasReadSource source) => switch (source) {
     CanvasReadSource.display => AppText.strings.brDisplay,
-    CanvasReadSource.references => AppText.strings.toolReadReferences,
     CanvasReadSource.layer => AppText.strings.tlLayer,
   };
 
@@ -1526,7 +1506,7 @@ class _ReadSourceControl extends StatelessWidget {
           child: PillStrip.even(
             key: ValueKey<String>('$tool-source-segments'),
             items: [
-              for (final offer in offered)
+              for (final offer in CanvasReadSource.values)
                 PillItem(
                   keyValue: '$tool-source-${offer.name}',
                   label: _label(offer),
@@ -1539,25 +1519,18 @@ class _ReadSourceControl extends StatelessWidget {
         // What the answer reads right now, under the answers.
         ToolSettingRow(
           label: '',
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  names == null
-                      ? AppText.strings.toolReadsEveryVisibleLayer
-                      : names.isEmpty
-                      ? '—'
-                      : names.join(' · '),
-                  key: ValueKey<String>('$tool-reads'),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-              ?trailing,
-            ],
+          child: Text(
+            names == null
+                ? AppText.strings.toolReadsEveryVisibleLayer
+                : names.isEmpty
+                ? '—'
+                : names.join(' · '),
+            key: ValueKey<String>('$tool-reads'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
       ],
@@ -1570,15 +1543,11 @@ class _FillSettings extends StatelessWidget {
     required this.options,
     required this.onChanged,
     required this.readLayerNames,
-    required this.activeLayerIsFillReference,
-    required this.onToggleActiveLayerFillReference,
   });
 
   final FloodFillOptions options;
   final ValueChanged<FloodFillOptions> onChanged;
   final List<String>? readLayerNames;
-  final bool activeLayerIsFillReference;
-  final VoidCallback? onToggleActiveLayerFillReference;
 
   @override
   Widget build(BuildContext context) {
@@ -1586,17 +1555,17 @@ class _FillSettings extends StatelessWidget {
       tool: 'fill',
       title: AppText.strings.toolFill,
       children: [
+        // ↩️A third answer, 「References」, read the layers the rail's
+        // bucket flagged, and a bucket here flipped the active layer's flag
+        // (I-36, 유저 2026-09-24). 유저 2026-10-12 (I-92): 「채우기도구에서
+        // 채색참조 기반으로 채우기 이런식으로 구현되있는데, 그런버튼 삭제하고」
+        // — the flag is the rail's CLIPPING now, and the fill reads what you
+        // see or the layer you are on.
         _ReadSourceControl(
           tool: 'fill',
-          offered: CanvasReadSource.values,
           source: options.source,
           onChanged: (source) => onChanged(options.copyWith(source: source)),
           readLayerNames: readLayerNames,
-          trailing: FillReferenceButton(
-            name: 'fill-active-layer-reference',
-            isOn: activeLayerIsFillReference,
-            onPressed: onToggleActiveLayerFillReference,
-          ),
         ),
         ToolSettingRow.bar(
           label: AppText.strings.brTolerance,

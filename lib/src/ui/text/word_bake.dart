@@ -8,6 +8,7 @@ import 'package:flutter/rendering.dart' show CustomPainter, RendererBinding;
 import 'package:flutter/scheduler.dart';
 
 import '../../core/bake_once_lru.dart';
+import '../../core/hashed_once.dart';
 import '../../models/rgba_image_bytes.dart';
 import '../../services/straight_rgba_image.dart' show uploadRawRgba;
 import '../look_only_frames.dart';
@@ -412,13 +413,13 @@ bool paintBakedWord(
   // painter has none).
   final dpr = views.first.configuration.devicePixelRatio;
   final baked = BakedWords.instance._bakeFor(
-    (
+    _Word((
       span: span,
       scaler: painter.textScaler,
       dpr: dpr,
       width: painter.width,
       height: painter.height,
-    ),
+    )),
     fit,
     () => recordWord(painter, fit: fit, dpr: dpr, fontSize: fontSize),
   );
@@ -505,16 +506,24 @@ mixin RepaintOnWordBakes on CustomPainter implements WordBakeWaiter {
 /// and ink, the letter gaps it gave included — the painter's scaling, the
 /// pixel grid, and the box it was laid in (a word laid short, ellipsis and
 /// all, is not the word laid whole).
-typedef _Word = ({
-  InlineSpan span,
-  TextScaler scaler,
-  double dpr,
-  double width,
-  double height,
-});
+///
+/// Hashed once ([HashedOnce]): a paint looks its word up several times —
+/// its bake taken out and put back, the word's latest bake, its waiters —
+/// and a span's hash walks its style and every child's.
+typedef _Word =
+    HashedOnce<
+      ({
+        InlineSpan span,
+        TextScaler scaler,
+        double dpr,
+        double width,
+        double height,
+      })
+    >;
 
-/// A word at one narrowing — what one bake is of.
-typedef _Bake = ({_Word word, double x, double y});
+/// A word at one narrowing — what one bake is of — hashed once, as its word
+/// is.
+typedef _Bake = HashedOnce<({_Word word, double x, double y})>;
 
 /// The words a screen has baked ([paintBakedWord]) — the app's one cache
 /// of them, as images, and when one lands.
@@ -583,7 +592,7 @@ final class BakedWords {
     ({double x, double y}) fit,
     RecordedWord? Function() record,
   ) {
-    final key = (word: word, x: fit.x, y: fit.y);
+    final key = _Bake((word: word, x: fit.x, y: fit.y));
     final exact = _images.peek(key);
     if (exact != null) {
       return exact;
@@ -632,7 +641,7 @@ final class BakedWords {
     _Bake key,
     RecordedWord? Function() record,
   ) async {
-    _baking.add(key.word);
+    _baking.add(key.value.word);
     final recorded = record();
     QuietTurn? turn;
     var landed = false;
@@ -651,7 +660,7 @@ final class BakedWords {
       if (_latestOf.length > 4 * _capacity) {
         _latestOf.clear();
       }
-      _latestOf[key.word] = key;
+      _latestOf[key.value.word] = key;
       landed = true;
       return image;
     } on Object {
@@ -661,8 +670,8 @@ final class BakedWords {
       // The word is shown as soon as it is baked: the turn given back waits
       // for the GPU on its own ([QuietTurn.landed]).
       unawaited(landed ? turn?.landed() : turn?.gaveUp());
-      _baking.remove(key.word);
-      final waiters = _waiting.remove(key.word);
+      _baking.remove(key.value.word);
+      final waiters = _waiting.remove(key.value.word);
       if (waiters != null) {
         _toWake.addAll(waiters);
       }

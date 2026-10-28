@@ -14,6 +14,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/canvas/stroke_in_flight.dart';
 import 'package:anicel/src/ui/canvas/view_hand.dart';
 
 /// 🚨★★★**THE CANVAS HANDS OUT THE ONE VERB A SAVE NEEDS, AND TAKES IT
@@ -70,7 +71,8 @@ void main() {
       onSourceStrokeCommitted: commits.add,
       strokeLander: landers,
       shapeShow: shapes,
-      onActiveStrokeChanged: strokeActive.add,
+      onActiveStrokeChanged: (stroke) =>
+          strokeActive.add(stroke != StrokeInFlight.none),
     );
     await tester.pumpWidget(
       MaterialApp(

@@ -13,6 +13,7 @@ import 'timeline_cell_style.dart';
 import 'timeline_exposure_comma_drag_handle.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_beat_lines.dart' show timelineRowPaperExtent;
+import 'timeline_block_look.dart' show timelineRowLookOf;
 import 'timeline_block_word.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_span_layout.dart';
@@ -149,7 +150,6 @@ List<Widget> timelineRowInstructionOverlays({
   for (final span in visible) {
     final start = span.start;
     final endExclusive = span.endExclusive;
-    final def = defById(span.event.instructionId);
     overlays.add(
       TimelineFrameSpan(
         placement: TimelineFrameSpanPlacement(
@@ -158,7 +158,7 @@ List<Widget> timelineRowInstructionOverlays({
         ),
         child: IgnorePointer(
           key: ValueKey<String>('$keyPrefix-instruction-${layer.id}-$start'),
-          child: _InstructionSpan(axis: axis, event: span.event, def: def),
+          child: _InstructionSpan(axis, layer, span.event, defById),
         ),
       ),
     );
@@ -238,7 +238,7 @@ List<Widget> timelineRowInstructionEdgeGrips({
               crossAxisExtent: timelineRowPaperExtent(crossAxisExtent),
             ),
             child: TimelineBlockEdgeGrip(
-              layerId: layer.id,
+              layer: layer,
               blockStartIndex: start,
               blockOrdinal: ordinal,
               edge: edge,
@@ -256,19 +256,26 @@ List<Widget> timelineRowInstructionEdgeGrips({
 }
 
 class _InstructionSpan extends StatelessWidget {
-  const _InstructionSpan({
-    required this.axis,
-    required this.event,
-    required this.def,
-  });
+  const _InstructionSpan(this.axis, this.layer, this.event, this.defById);
 
   final Axis axis;
+
+  /// The row the span stands on — its mark and words wear the row's eye as
+  /// its blocks do ([timelineRowLookOf], I-129).
+  final Layer layer;
   final InstructionEvent event;
-  final CameraInstructionDef? def;
+  final CameraInstructionDef? Function(String instructionId) defById;
 
   @override
   Widget build(BuildContext context) {
-    final markColor = timelineInstructionInk(def);
+    final def = event.defIn(defById);
+    // [InstructionEvent.markIn]: null draws no mark — the span with none.
+    final mark = event.markIn(defById);
+    final markColor = timelineRowLookOf(
+      context,
+      layer,
+      ink: timelineInstructionInk(def),
+    ).ink;
     // The mark and the writing are independent: free per-event text wins,
     // the vocabulary name is the fallback.
     final name = event.displayLabel(def);
@@ -277,7 +284,7 @@ class _InstructionSpan extends StatelessWidget {
     // blocks — the block word's own print: ink, bold, ambient size.
     final valueStyle = timelineBlockWordStyle(
       base,
-      ink: timelineDrawingInkColor,
+      ink: timelineRowLookOf(context, layer, ink: timelineDrawingInkColor).ink,
       fontSize: timelineBlockNameFontSize(base),
       bold: true,
     );
@@ -294,20 +301,21 @@ class _InstructionSpan extends StatelessWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          Positioned.fill(
-            child: ExcludeSemantics(
-              child: CustomPaint(
-                painter: _InstructionMarkPainter(
-                  axis: axis,
-                  markType: def?.markType ?? CameraInstructionMarkType.bar,
-                  eventLength: event.length,
-                  color: markColor,
-                  hasStartName: valueA != null && valueA.isNotEmpty,
-                  hasEndName: valueB != null && valueB.isNotEmpty,
+          if (mark case final mark?)
+            Positioned.fill(
+              child: ExcludeSemantics(
+                child: CustomPaint(
+                  painter: _InstructionMarkPainter(
+                    axis: axis,
+                    markType: mark,
+                    eventLength: event.length,
+                    color: markColor,
+                    hasStartName: valueA != null && valueA.isNotEmpty,
+                    hasEndName: valueB != null && valueB.isNotEmpty,
+                  ),
                 ),
               ),
             ),
-          ),
           // The A/B values sit in the span's first and last cells, as a
           // block's name and its length do (F-96).
           if (valueA != null && valueA.isNotEmpty)

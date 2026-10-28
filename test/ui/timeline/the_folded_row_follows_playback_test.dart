@@ -28,6 +28,7 @@ import '../../helpers/home_page_probes.dart';
 import '../../helpers/the_classic_rail.dart';
 import '../../helpers/repaint_strays.dart';
 import '../../helpers/scrollable_of.dart';
+import '../../helpers/timeline_zoom.dart';
 
 /// 🚨★★★**THE FOLDED ROW FOLLOWS PLAYBACK — THE PLAYHEAD, THE INDEX AND THE
 /// PAGE, BY THE OPEN PANEL'S OWN LAWS.**
@@ -231,13 +232,10 @@ void main() {
     await tester.pumpAndSettle();
 
     // A zoom after the page anchors on the playhead where the folded row
-    // shows it (the zoom buttons are closed while playing).
+    // shows it (the zoom is closed while playing).
     final stoppedAt = session.playheadCursors.cutFrame.value;
     final before = cellOf(tester);
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-zoom-in-button')),
-    );
-    await tester.pumpAndSettle();
+    await dragTimelineZoom(tester, 25);
     final zoomed = cellOf(tester);
     expect(zoomed, greaterThan(before), reason: '⛔전제: the zoom stepped in');
     final at = origin(tester);
@@ -340,10 +338,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(origin(tester), start, reason: '⛔전제: a seek scrolls nothing');
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-zoom-in-button')),
-    );
-    await tester.pumpAndSettle();
+    await dragTimelineZoom(tester, 25);
     final zoomed = cellOf(tester);
     expect(zoomed, greaterThan(cell), reason: '⛔전제: the zoom stepped in');
     expect(

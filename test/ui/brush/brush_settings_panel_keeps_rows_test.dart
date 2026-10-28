@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -86,25 +87,36 @@ void main() {
     );
   });
 
-  testWidgets('a row that comes ALIVE with the new brush is rebuilt — the '
-      'mixing rows follow the mixing switch', (tester) async {
-    // The paint-amount row keeps its number between these two brushes; only
-    // whether it takes the gesture changes, and a kept dead row would stay
-    // dead under a brush that mixes.
+  testWidgets('🚨rows that come with the new brush are built — and the rows '
+      'between them are still kept, though their places moved', (
+    tester,
+  ) async {
+    // 🗣️F-478-Q2 (유저 2026-10-27): 「없앤다 — 패널 안 스위치도 같은 법」 —
+    // the mixing rows are there only while the brush mixes, and the 後補正's
+    // switches only while it corrects. Two places at once: the framework
+    // matches what stands between them by key alone. ↩️The rows stood DEAD
+    // and this asked that a row coming ALIVE was rebuilt.
     final (notifier, _) = await pumpPanel(tester);
     const amountKey = ValueKey<String>('brush-tool-paint-amount-slider');
-    expect(
-      tester.widget<FieldSlider>(find.byKey(amountKey)).onChanged,
-      isNull,
-      reason: 'premise: dead while the brush does not mix',
-    );
+    const bezierKey = ValueKey<String>('brush-tool-post-bezier-toggle');
+    const scatterKey = ValueKey<String>('brush-tool-scatter-slider');
+    expect(find.byKey(amountKey), findsNothing, reason: '⛔premise');
+    expect(find.byKey(bezierKey), findsNothing, reason: '⛔premise');
+    final scatter = tester.widget(find.byKey(scatterKey));
 
-    notifier.value = a.copyWith(mixesGroundColor: true);
+    notifier.value = a.copyWith(
+      mixesGroundColor: true,
+      correction: const BrushCorrection(postStrength: 20),
+    );
     await tester.pump();
 
+    expect(find.byKey(amountKey), findsOneWidget);
+    expect(find.byKey(bezierKey), findsOneWidget);
     expect(
-      tester.widget<FieldSlider>(find.byKey(amountKey)).onChanged,
-      isNotNull,
+      identical(tester.widget(find.byKey(scatterKey)), scatter),
+      isTrue,
+      reason: 'the scatter row shows what it showed — the very instance, '
+          'skipped whole where it stands now',
     );
   });
 

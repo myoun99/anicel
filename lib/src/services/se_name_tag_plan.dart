@@ -1,6 +1,7 @@
 import 'dart:ui' show Offset;
 
 import '../models/canvas_size.dart';
+import '../models/cut_id.dart';
 import '../models/layer.dart';
 import '../models/layer_effect.dart'
     show ResolvedLayerEffect, resolveLayerEffectsAt;
@@ -112,7 +113,7 @@ class ResolvedSeNameTag {
   final TextCelContent? delivery;
 }
 
-/// The tags visible at the TRACK's frame [globalFrame] — the axis the rows
+/// The tags visible at the TRACK's frame [shown] — the axis the rows
 /// are keyed on — in the rows' own order (first row drawn first).
 ///
 /// A row contributes nothing when its eye is off, when no SE block covers
@@ -126,13 +127,18 @@ class ResolvedSeNameTag {
 /// early (I-73-ol-index-space).
 List<ResolvedSeNameTag> resolveSeNameTagsAt({
   required List<Layer> trackSeLayers,
-  required int globalFrame,
+
+  /// The TRACK frame shown, and the cut whose picture the tags stand over
+  /// there — each line says its delivery in it (F-386), the O.L margins'
+  /// heard speaker included.
+  required ({int globalFrame, CutId cutId}) shown,
   required CanvasSize cameraFrame,
 
   /// Where the shot lies on the canvas at this frame
   /// ([ResolvedSeNameTag.shot]).
   required LayerPlacement shot,
 }) {
+  final (:globalFrame, :cutId) = shown;
   if (globalFrame < 0) {
     return const [];
   }
@@ -198,7 +204,7 @@ List<ResolvedSeNameTag> resolveSeNameTagsAt({
           position: anchor,
         ),
         delivery: TextCelContent(
-          text: frame.seType.label,
+          text: frame.seTypes.inCut(cutId).label,
           style: nameStyle,
           position: anchor,
         ),

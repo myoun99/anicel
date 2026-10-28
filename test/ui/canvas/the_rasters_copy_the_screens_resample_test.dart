@@ -18,7 +18,6 @@ import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
@@ -30,23 +29,24 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/display_resample.dart';
 import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
 import '../../helpers/placement_reading.dart';
+import '../../helpers/the_frame_as_it_stands.dart';
 
 /// 🚨★★★WHICH ROUTES COPY A LAYER IMAGE AND WHICH RESAMPLE IT (유저
 /// 2026-09-24 「통일해서」) — the routes that draw one, each asked.
 ///
 /// A raster on canvas space's grid lays each image down one texel per pixel
 /// — a copy, drawn at `none` like the active layer's tiles
-/// (`a_texel_copy_is_drawn_unfiltered_test`): the editing stack's display
-/// buffer, and the camera render where its projection moves canvas pixels
-/// onto output pixels whole. A route that draws onto the screen, or through
-/// a projection that moves the image off the pixel grid, has to resample it
-/// with the filter its zoom chose: the editing stack's walk, and the camera
-/// render where it turns, zooms or stands between pixels.
+/// (`a_texel_copy_is_drawn_unfiltered_test`): the camera render where its
+/// projection moves canvas pixels onto output pixels whole (↩️and the
+/// editing stack's display buffer, until it drew no row's image,
+/// one-picture-per-frame ②-5b-1). A route that draws onto the screen, or
+/// through a projection that moves the image off the pixel grid, has to
+/// resample it with the filter its zoom chose: the editing stack's walk, and
+/// the camera render where it turns, zooms or stands between pixels.
 ///
 /// ↩️The camera resampled at every pose, the identity too: a sort of the
 /// routes when the law was written (f047e8aa2), not a ruling on cameras. A
@@ -117,17 +117,6 @@ void main() {
     }) async {
       final images = LayerFrameImageCache(frameStore: storeWithInk());
       addTearDown(images.dispose);
-      final warmed = await tester.runAsync(
-        () => images.prepare(
-          key: key,
-          canvasSize: canvasSize,
-          quality: PlaybackQuality.forLevel(
-            displayLevelOf(displayScaleOf(viewport.zoom, 1)),
-          ),
-          sourceEffects: const [],
-        ),
-      );
-      expect(warmed, isNotNull, reason: 'fixture: the row has an image');
       await tester.pumpWidget(
         MaterialApp(
           key: UniqueKey(),
@@ -139,7 +128,7 @@ void main() {
                   child: SizedBox(
                     width: view.width,
                     height: view.height,
-                    child: CanvasLayerStackView(
+                    child: TheFrameAsItStands(
                       nodes: [
                         CompositeLeaf<CanvasStackRow>(
                           CanvasLayerImageRequest(
@@ -192,31 +181,23 @@ void main() {
       return bytes!;
     }
 
-    // Half zoom — a level-1 image — with a pan off the pixel grid.
+    // Half zoom with a pan off the pixel grid.
     final halfOffGrid = CanvasViewport(zoom: 0.5, panX: 30.5, panY: 20.25);
 
-    testWidgets('below 100% the buffer copies each level image', (
-      tester,
-    ) async {
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetDevicePixelRatio);
-      debugTexelCopies = 0;
-      await screen(tester, viewport: halfOffGrid, walk: false, posed: false);
-      expect(debugTexelCopies, greaterThan(0));
-    });
-
+    // ↩️Below 100% the buffer copied each level image, until a row was drawn
+    // from its cel's tiles and no level image was made (one-picture-per-frame
+    // ②-5b-1); and the walk copied nothing, by the counter, until no screen
+    // drew a row's image.
     testWidgets('the walk resamples: off the grid the row draws as a pose '
-        'that moves nothing draws it, and copies nothing', (tester) async {
+        'that moves nothing draws it', (tester) async {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetDevicePixelRatio);
-      debugTexelCopies = 0;
       final plain = await screen(
         tester,
         viewport: halfOffGrid,
         walk: true,
         posed: false,
       );
-      expect(debugTexelCopies, 0);
       final posed = await screen(
         tester,
         viewport: halfOffGrid,

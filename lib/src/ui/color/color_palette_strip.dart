@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/color_palette_file_service.dart';
-import '../theme/app_theme.dart' show AppColors, AppShapes;
+import '../theme/app_theme.dart' show AppColors, AppCursors, AppShapes;
 import '../input/control_press_claim.dart';
 import '../text/app_strings.dart' show AppText;
 
@@ -39,6 +39,7 @@ class ColorPaletteStrip extends StatelessWidget {
     return ControlPressClaim(
       onPressed: onTap,
       child: InkWell(
+        mouseCursor: AppCursors.press,
         key: ValueKey<String>(keyValue),
         onTap: silentPress(onTap),
         child: Container(
@@ -75,6 +76,7 @@ class ColorPaletteStrip extends StatelessWidget {
     return ControlPressClaim(
       onPressed: () => onColorSelected(color),
       child: InkWell(
+        mouseCursor: AppCursors.press,
         key: key,
         onTap: silentPress(() => onColorSelected(color)),
         child: Container(

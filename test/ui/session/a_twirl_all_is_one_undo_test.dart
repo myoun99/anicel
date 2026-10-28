@@ -15,9 +15,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/session/session_row_button_presses.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 
-import '../../helpers/storyboard_twirls.dart';
+import '../../helpers/storyboard_host.dart';
 
 /// 🚨ONE PRESS ON THE LEGEND'S TWIRL-ALL IS ONE UNDO (유저 08-28: 「일괄로
 /// 버튼 조작하고 언두하면 바꼈던 레이어들 다 한번에 언두되야하는데 안됨」).
@@ -128,35 +127,13 @@ void main() {
   });
 
   /// The storyboard tab on [_twoTracks], as the workspace wires its twirls.
-  Future<EditorSessionManager> storyboard(WidgetTester tester) async {
-    final session = EditorSessionManager(initialProject: _twoTracks());
-    addTearDown(session.dispose);
-    await tester.binding.setSurfaceSize(const Size(1600, 1200));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: withStoryboardTwirls(
-            session,
-            (twirls) => StoryboardTabHost(
-              session: session,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-              expandedLaneLayerIds: twirls.expandedLaneLayerIds,
-              onToggleLayerLanes: twirls.onToggleLayerLanes,
-              expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
-              onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    return session;
-  }
+  Future<EditorSessionManager> storyboard(WidgetTester tester) =>
+      pumpStoryboardHost(
+        tester,
+        _twoTracks(),
+        surface: const Size(1600, 1200),
+        pixelsPerFrame: 12,
+      );
 
   testWidgets('on the storyboard — a camera row on each of two tracks, and a '
       'V row its fx chain twirls down under', (tester) async {

@@ -42,9 +42,10 @@
 //   bash tool/run.sh affected_tests --files-from parity.txt --outside-the-line
 //
 // A file green on this machine with byte-for-byte the inputs it has now is
-// not run again, and a red file is run once more: green the second time,
-// it is flaky — quarantined until it changes, and on the board
-// (`test_results.dart`, 유저 tests-crowd-the-machine-Q4).
+// not run again, and a red file is run once more: green the second time
+// with what it reads unchanged, it is flaky — quarantined until anything it
+// reads changes, and on the board (`test_results.dart`, 유저
+// tests-crowd-the-machine-Q4).
 //
 // Exit code is flutter test's own, or 0 when nothing needed running.
 
@@ -102,33 +103,67 @@ const gpuTag = 'gpu';
 /// Impeller engine」 — see [partitionByTag].
 const gpuTagMarker = "@Tags(['$gpuTag'])";
 
+/// The tag [impellerTagMarker] writes, as `dart_test.yaml` declares it.
+const impellerTag = 'impeller';
+
+/// The marker a file writes to say 「I need the Impeller tester」 — see
+/// [partitionByTag].
+const impellerTagMarker = "@Tags(['$impellerTag'])";
+
 /// Whether [source]'s `@Tags` lists [tag]. A file carries ONE such
 /// annotation (test_core refuses a second), so a file with two of the tags
 /// above lists both in it — `@Tags(['gc', 'gpu'])`, which neither marker
-/// spells. CI's shard step reads the gpu tag with the same expression.
+/// spells.
 bool carriesTag(String source, String tag) =>
     RegExp("@Tags\\(\\[[^\\]]*'$tag'").hasMatch(source);
 
 /// The batch a test file runs in, by the tag its library carries
-/// ([partitionByTag]), and what that batch tells the engine.
+/// ([kindOf]), and what that batch tells the engine.
+///
+/// ⚠️THE ORDER IS THE ANSWER for a file listing two of these tags: it goes
+/// to the first. A file that needs an engine cannot run without its flags
+/// at all, and Flutter GPU's flags include Impeller's; a batch of its own
+/// keeps a collector pin out of the crowd as well as the pins' batch does.
 enum BatchKind {
-  /// No tag that moves it: cut into batches with the rest.
-  crowd([]),
+  /// [gpuTagMarker]: batches of their own, on Impeller with Flutter GPU.
+  gpu(gpuTag, ['--enable-impeller', '--enable-flutter-gpu']),
+
+  /// [impellerTagMarker]: batches of their own, on Impeller.
+  impeller(impellerTag, ['--enable-impeller']),
 
   /// [gcTagMarker]: one batch of their own, after every other.
-  collector([]),
+  collector(gcTag, []),
 
-  /// [gpuTagMarker]: batches of their own, on Impeller with Flutter GPU.
-  gpu(['--enable-impeller', '--enable-flutter-gpu']);
+  /// No tag that moves it: cut into batches with the rest.
+  crowd(null, []);
 
-  const BatchKind(this.engineFlags);
+  const BatchKind(this.tag, this.engineFlags);
+
+  /// The tag that puts a file here; null for the files no tag moves.
+  final String? tag;
 
   /// What `flutter test` is told about the engine for this batch.
   final List<String> engineFlags;
 }
 
-/// Splits the run into the [crowd], the files that need [gpu], and the
-/// ones that go [alone].
+/// The order a run goes in ([runInBatches]), and a list prints in: the
+/// crowd first, the files on another engine next, the collector's pins
+/// last and alone.
+const kRunOrder = [
+  BatchKind.crowd,
+  BatchKind.gpu,
+  BatchKind.impeller,
+  BatchKind.collector,
+];
+
+/// The batch a file whose source is [source] runs in: the first kind, in
+/// [BatchKind]'s order, whose tag it carries.
+BatchKind kindOf(String source) => BatchKind.values.firstWhere(
+  (kind) => kind.tag == null || carriesTag(source, kind.tag!),
+);
+
+/// Splits the run by the batch each file runs in ([kindOf]) — every kind
+/// named, each in the order [files] gave.
 ///
 /// 🚨★★★**A PIN THAT WAITS FOR THE COLLECTOR CANNOT RUN IN A CROWD.**
 /// `flutter test` runs a batch's files in concurrent isolates, and a full
@@ -157,29 +192,24 @@ enum BatchKind {
 /// the engine for EVERY file in the command, so they cannot be put on the
 /// crowd: its pins measure what Skia draws (CI's engine), and the canvas
 /// suite under Impeller once came back 174 red (impeller-sweep-canvas-reds).
+/// A pin that needs the Impeller TESTER but not Flutter GPU — a shader
+/// filter Skia does not have — carries its own tag, [impellerTag], and runs
+/// on `--enable-impeller` alone (브러시/렌더링, 10-24: one tag answering
+/// 「does it draw with Flutter GPU」 and 「does it need Impeller」 would be
+/// one flag answering two questions).
 ///
 /// ⚠️It is a whole-FILE question because the tag is a library annotation,
 /// so partitioning by file is exact — no `--exclude-tags` pass that could
 /// come back 「no tests match」 and read as a failure to start.
-({List<String> crowd, List<String> gpu, List<String> alone}) partitionByTag(
+Map<BatchKind, List<String>> partitionByTag(
   List<String> files,
   String Function(String path) read,
 ) {
-  final crowd = <String>[];
-  final gpu = <String>[];
-  final alone = <String>[];
+  final split = {for (final kind in BatchKind.values) kind: <String>[]};
   for (final file in files) {
-    final text = read(file);
-    // A file carrying both is a gpu file: without the flags it cannot run
-    // at all, and its batch is one of its own too.
-    (carriesTag(text, gpuTag)
-            ? gpu
-            : carriesTag(text, gcTag)
-            ? alone
-            : crowd)
-        .add(file);
+    split[kindOf(read(file))]!.add(file);
   }
-  return (crowd: crowd, gpu: gpu, alone: alone);
+  return split;
 }
 
 /// How many imports from a test a change may stand and still choose it
@@ -265,6 +295,11 @@ const kNearConfigImports = 0;
 /// the gates say `--outside-the-line` — ⛔for a list run only: any other run
 /// is a session's, and stands in the line.
 ///
+/// ⚙️NOR DOES A CI SHARD (ci-shards-crowd-the-collector-pins, 10-24): its
+/// runner holds one job, so there is no line to share — and on Windows the
+/// line waits for the room `flutter_room` measures, which a small runner
+/// may never show. It runs its slice as a list, so it says the same.
+///
 /// A run that says `--first-in-line` stands at its head — the build's wide
 /// check, which `master_check` asks for (유저 10-22, tests-crowd-the-machine-
 /// Q18; `waitingInTurn` has why).
@@ -277,8 +312,8 @@ const kNearConfigImports = 0;
     return (
       inTheLine: true,
       first: first,
-      refusal: "--outside-the-line is a land's gates' own, for a "
-          '--files-from list',
+      refusal: "--outside-the-line is a land's gates' and a CI shard's, "
+          'for a --files-from list',
     );
   }
   return (inTheLine: false, first: first, refusal: null);
@@ -534,12 +569,30 @@ List<SuiteRun> _recordBatch(File report, ResultCache? cache) {
     if (file != null && measured.isNotEmpty) {
       updatePairs(file, (known) => merged(timesIn(known), measured));
     }
+  } on FileSystemException catch (e) {
+    _report('what this batch said was not kept: ${e.message}');
+  }
+  _keep(cache, runs);
+  return runs;
+}
+
+/// Lays [runs] over the green record of [cache] ([ResultCache.keep]).
+void _keep(ResultCache? cache, List<SuiteRun> runs) {
+  try {
     cache?.keep(runs);
   } on FileSystemException catch (e) {
     _report('what this batch said was not kept: ${e.message}');
   }
-  return runs;
 }
+
+/// The key of what each test reads in this checkout as it is NOW — the
+/// bytes and the imports measured again ([ResultCache.open]) — or null when
+/// no key can be made.
+String? Function(String file)? _keysNow() => ResultCache.open(
+  Directory.current.path,
+  Platform.environment,
+  buildImportGraph(roots: kGraphRoots),
+)?.keyFor;
 
 String? _flagValue(List<String> args, String name) {
   final i = args.indexOf(name);
@@ -676,9 +729,12 @@ List<String> _wholeSuite() =>
 /// cmd.exe's ~8191-character buffer whatever launched it. A selection of
 /// 214 files is about 9,800 characters, and the failure is not subtle —
 /// "コマンド ラインが長すぎます", exit 1, no tests run. The CI shard action
-/// has carried `xargs -0 -s 6000` against this exact wall since the day it
-/// was written; this tool shipped without it and was caught the first time
-/// somebody changed a widely-imported file.
+/// carried `xargs -0 -s 6000` against this exact wall from the day it was
+/// written (measured there: 182 paths, 8284 characters, died in 598ms; 91
+/// paths, 4105 characters, fine) — a second copy of this rule until its
+/// shards ran their slices through here (ci-shards-crowd-the-collector-
+/// pins, 10-24). This tool shipped without it and was caught the first
+/// time somebody changed a widely-imported file.
 ///
 /// 6000 keeps 2k of daylight below the real ceiling. Elsewhere ARG_MAX is
 /// megabytes and one batch is always enough.
@@ -718,22 +774,34 @@ const kBatchWall = 300;
 /// pin went red in that crowd a third time (2026-09-23, 「16 tiles, 16 still
 /// alive」, green in its own batch). Since 유저 10-20 Q6 a whole suite names
 /// its files ([_wholeSuite]), and ⛔no batch is ever empty.
+///
+/// ⚙️OUTSIDE THE LINE ([inTheLine] false) a batch is all of [left] that
+/// fits: the wall is how long the line goes without deciding again, and
+/// there no line decides. A CI shard of five hundred untimed files cut to
+/// it at one suite would pay a `flutter test` start every thirty files.
 List<String> nextBatch(
   List<String> left,
   Map<String, int> known, {
   required int suites,
+  required bool inTheLine,
   bool Function(List<String> batch) fits = _fitsTheCommandLine,
-}) => timedBatches(left, known, work: suites * kBatchWall, fits: fits).first;
+}) => timedBatches(
+  left,
+  known,
+  work: inTheLine ? suites * kBatchWall : workOf(left, known) + 1,
+  fits: fits,
+).first;
 
-/// Runs [files] batch by batch ([partitionByTag]): the crowd first, then
-/// the files that need Flutter GPU, each cut as it goes to the suites each
-/// batch is given ([nextBatch]); then the pins that wait for the collector
-/// as one batch of their own. [take] stands in the line for the files still
-/// to run and says how many suites the next batch has; [run] runs the batch
-/// at them, on the engine its [BatchKind] names.
+/// Runs [files] batch by batch ([partitionByTag]), kind by kind in
+/// [kRunOrder]: each cut as it goes to the suites each batch is given
+/// ([nextBatch]), but the pins that wait for the collector as one batch of
+/// their own. [take] stands in the line for the files still to run and says
+/// how many suites the next batch has; [run] runs the batch at them, on the
+/// engine its [BatchKind] names.
 Future<void> runInBatches(
   List<String> files, {
   required Map<String, int> known,
+  required bool inTheLine,
   required String Function(String path) read,
   required Future<int> Function(List<String> left) take,
   required Future<void> Function(
@@ -744,27 +812,40 @@ Future<void> runInBatches(
   run,
 }) async {
   final split = partitionByTag(files, read);
-  for (final (kind, cut) in [
-    (BatchKind.crowd, split.crowd),
-    (BatchKind.gpu, split.gpu),
-  ]) {
-    var left = cut;
+  for (final kind in kRunOrder) {
+    var left = split[kind]!;
+    if (kind == BatchKind.collector) {
+      if (left.isNotEmpty) await run(left, await take(left), kind: kind);
+      continue;
+    }
     while (left.isNotEmpty) {
       final suites = await take(left);
-      final batch = nextBatch(left, known, suites: suites);
+      final batch = nextBatch(
+        left,
+        known,
+        suites: suites,
+        inTheLine: inTheLine,
+      );
       await run(batch, suites, kind: kind);
       final ran = batch.toSet();
       left = [for (final file in left) if (!ran.contains(file)) file];
     }
   }
-  if (split.alone.isNotEmpty) {
-    await run(
-      split.alone,
-      await take(split.alone),
-      kind: BatchKind.collector,
-    );
-  }
 }
+
+/// The console reporter every batch asks for, whatever machine it runs on.
+///
+/// 🚨★★★THE CONSOLE IS READ, SO ITS SHAPE IS NAMED. Three readers take the
+/// batch's output as it passes — whether any test ran ([_testOutput]), how
+/// many were skipped ([lastSkipCount]) and when one last finished
+/// ([BatchSilence]) — and all three read the counter `+N ~N -N:`. Left
+/// unnamed, package:test picks `expanded` here (a pipe, on Windows) but
+/// `github` inside GitHub Actions, which prints `✅ <path>: <name>` and no
+/// counter at all. 🧪2026-10-28, bundle PR #1485 (card
+/// ci-silent-batch-cut-reads-no-counter): the first CI to run its shards
+/// through this tool cut all three at exactly fifteen minutes — 25,643 log
+/// lines and not one counter, so the silence watch never saw a test finish.
+const kReporter = '--reporter=expanded';
 
 /// What one batch hands `flutter test`: [files], and at most [concurrency]
 /// suites at once when one is given.
@@ -790,6 +871,7 @@ List<String> flutterTestArguments(
 }) => [
   'test',
   '--no-pub',
+  kReporter,
   ...kind.engineFlags,
   if (concurrency != null) '--concurrency=$concurrency',
   if (report != null) '--file-reporter=json:$report',
@@ -820,7 +902,9 @@ Future<int> _runTests(
   // The collector-waiting pins go last and by themselves.
   final split = partitionByTag(selected, (path) => File(path).readAsStringSync());
   if (listOnly) {
-    [...split.crowd, ...split.gpu, ...split.alone].forEach(stdout.writeln);
+    for (final kind in kRunOrder) {
+      split[kind]!.forEach(stdout.writeln);
+    }
     return 0;
   }
 
@@ -833,16 +917,24 @@ Future<int> _runTests(
   final engine = _engineCaveat();
   if (engine != null) _report(engine);
 
-  if (split.alone.isNotEmpty) {
-    _report('${split.alone.length} pin(s) wait for the garbage collector '
-        '($gcTagMarker) and run in a batch of their own — in company they '
-        'report a holder that has already let go.');
-  }
-  if (split.gpu.isNotEmpty) {
-    _report('${split.gpu.length} file(s) draw with Flutter GPU '
-        '($gpuTagMarker) and run in batches of their own, with '
-        '${BatchKind.gpu.engineFlags.join(' ')} — on Skia they can only '
-        'skip.');
+  for (final kind in kRunOrder) {
+    final those = split[kind]!;
+    final apart = switch (kind) {
+      BatchKind.crowd => null,
+      BatchKind.collector =>
+        'pin(s) wait for the garbage collector ($gcTagMarker) and run in a '
+            'batch of their own — in company they report a holder that has '
+            'already let go.',
+      BatchKind.gpu =>
+        'file(s) draw with Flutter GPU ($gpuTagMarker) and run in batches '
+            'of their own, with ${kind.engineFlags.join(' ')} — on Skia '
+            'they can only skip.',
+      BatchKind.impeller =>
+        'file(s) need the Impeller tester ($impellerTagMarker) and run in '
+            'batches of their own, with ${kind.engineFlags.join(' ')} — on '
+            'Skia they can only skip.',
+    };
+    if (apart != null && those.isNotEmpty) _report('${those.length} $apart');
   }
 
   var skipped = 0;
@@ -850,6 +942,8 @@ Future<int> _runTests(
   final neverRan = <int>[];
   final runsOf = <int, List<SuiteRun>>{};
   final flaky = <String>{};
+  final moved = <String>{};
+  final unrun = <String>[];
   final reports = Directory.systemTemp.createTempSync('affected-times');
   // ②THE MACHINE'S ONE LINE (`test_queue.dart`, 유저 tests-crowd-the-
   // machine-Q1 · Q3 · Q6): this run keeps one place in it, and every batch
@@ -866,6 +960,7 @@ Future<int> _runTests(
     ) => runInBatches(
       files,
       known: known,
+      inTheLine: inTheLine,
       read: (path) => File(path).readAsStringSync(),
       take: (left) =>
           turn.take(files: filesNamed(left), work: workOf(left, known)),
@@ -876,19 +971,28 @@ Future<int> _runTests(
               BatchKind.crowd => '',
               BatchKind.collector => ' — the pins',
               BatchKind.gpu => ' — on Impeller with Flutter GPU',
+              BatchKind.impeller => ' — on Impeller',
             }}');
         final report = File('${reports.path}/batch$i.json');
         try {
-          record(
-            i,
-            report,
-            await _flutterTest(
-              batch,
-              concurrency: suites,
-              report: report.path,
-              kind: kind,
-            ),
+          final result = await _flutterTest(
+            batch,
+            concurrency: suites,
+            report: report.path,
+            kind: kind,
           );
+          if (ranNowhere(
+            exitCode: result.exitCode,
+            noContext: result.noContext,
+          )) {
+            unrun.addAll(batch);
+            _report('⚠️batch ${i + 1} DID NOT RUN — this machine\'s tester '
+                'could not make the context ${kind.engineFlags.join(' ')} '
+                'asks for ($kNoTesterContext). Its files are neither red '
+                'nor green.');
+          } else {
+            record(i, report, result);
+          }
         } finally {
           turn.putDown();
         }
@@ -914,11 +1018,28 @@ Future<int> _runTests(
     if (reds.isEmpty) return;
     _report('${reds.length} red file(s) — running them once more, to tell a '
         'flaky one from a real red.');
+    final again = <SuiteRun>[];
     await runAll(reds.toList()..sort(), (i, report, result) {
-      for (final run in _recordBatch(report, cache)) {
-        if (run.green == true && reds.contains(run.path)) flaky.add(run.path);
-      }
+      again.addAll(_recordBatch(report, null));
     });
+    // ⚠️「The same inputs」 is measured after the second run, not assumed
+    // from the keys taken when this run began ([splitGreenAgain]): a
+    // landing into this checkout can change them in between.
+    final greenAgain = [
+      for (final run in again)
+        if (run.green == true && reds.contains(run.path)) run.path,
+    ];
+    final split = splitGreenAgain(
+      greenAgain,
+      before: cache?.keyFor,
+      after: greenAgain.isEmpty ? null : _keysNow(),
+    );
+    flaky.addAll(split.flaky);
+    moved.addAll(split.moved);
+    _keep(cache, [
+      for (final run in again)
+        if (!split.moved.contains(run.path)) run,
+    ]);
   }
 
   // ⚠️No pin reaches this one line, and its mutant lives (10-21): a pin
@@ -949,6 +1070,12 @@ Future<int> _runTests(
   }
 
   if (flaky.isNotEmpty) _quarantine(flaky.toList()..sort(), cache);
+  if (moved.isNotEmpty) {
+    _report('⚠️red, then green — but what they read changed while this run '
+        'went on (a landing into this checkout?), so they are no flake and '
+        'their red stands: ${(moved.toList()..sort()).join(', ')}. Run them '
+        'again.');
+  }
   final held = <String>{};
   final onMaster = MasterRecords.of(Platform.environment)?.reds ?? const {};
   final fromMaster = <String, Landing>{};
@@ -1020,6 +1147,12 @@ Future<int> _runTests(
         'exit $worst');
   }
   _reportSkips(skipped);
+  if (unrun.isNotEmpty) {
+    _report('⚠️${unrun.length} file(s) DID NOT RUN on this machine — its '
+        'tester made no Impeller context for them ($kNoTesterContext). Not '
+        'a pass: a machine whose tester makes one sees them. '
+        '${unrun.join(', ')}');
+  }
   if (engine != null) _report(engine);
   return worst;
 }
@@ -1043,8 +1176,8 @@ List<String>? _withoutStillGreen(List<String> files, ResultCache cache) {
 /// board — 🗣️Q4 b 「「불안정」으로 표시해 따로 모으고 보드에 올린다」.
 void _quarantine(List<String> flaky, ResultCache? cache) {
   _report('⚠️FLAKY — red, then green with the same inputs: '
-      '${flaky.join(', ')}. Quarantined on this machine until the file '
-      'changes: a red from it holds no verdict back.');
+      '${flaky.join(', ')}. Quarantined on this machine until anything it '
+      'reads changes: a red from it holds no verdict back.');
   try {
     cache?.quarantine(flaky);
   } on FileSystemException catch (e) {
@@ -1054,7 +1187,8 @@ void _quarantine(List<String> flaky, ResultCache? cache) {
     'id': kFlakyCard,
     'note': '⚠️**불안정 — 같은 입력으로 빨강 → 초록**(affected_tests, 기계 '
         '`${Platform.localHostname}`): '
-        '${flaky.map((file) => '`$file`').join(' · ')}. 그 파일이 바뀔 '
+        '${flaky.map((file) => '`$file`').join(' · ')}. 그 파일이 읽는 것'
+        '(시험 · import · 도우미 · 읽는 파일 · Flutter · 엔진)이 바뀔 '
         '때까지 이 기계에서 격리 — 빨강이 판정을 안 막는다.',
   });
   final board = Platform.environment['ANICEL_BOARD'];
@@ -1136,13 +1270,58 @@ void _reportSkips(int skipped) {
 }
 
 class _BatchResult {
-  const _BatchResult(this.exitCode, this.ranTests, this.skipped);
+  const _BatchResult(
+    this.exitCode,
+    this.ranTests,
+    this.skipped, {
+    required this.noContext,
+  });
   final int exitCode;
   final bool ranTests;
 
   /// How many tests the run SKIPPED. See [lastSkipCount].
   final int skipped;
+
+  /// Whether the tester said [kNoTesterContext] — see [ranNowhere].
+  final bool noContext;
 }
+
+/// What the tester says when it cannot make the Impeller context its batch
+/// asked for (`shell/testing/tester_main.cc`, before any suite starts);
+/// `flutter test` hands it on as a `Shell:` line, then every suite of the
+/// batch fails to load.
+const kNoTesterContext = 'Could not create tester context';
+
+/// Hears a batch's output as it comes for [kNoTesterContext] — once said,
+/// said for the batch, and a chunk may end inside the line.
+class NoContextWatch {
+  String _carried = '';
+  bool _said = false;
+
+  /// Whether the batch has said [kNoTesterContext] in anything heard yet.
+  bool get said => _said;
+
+  /// [text] came from the batch.
+  void heard(String text) {
+    final seen = _carried + text;
+    _said = _said || seen.contains(kNoTesterContext);
+    const keep = kNoTesterContext.length - 1;
+    _carried = seen.length > keep ? seen.substring(seen.length - keep) : seen;
+  }
+}
+
+/// Whether a batch that exited [exitCode] having said [kNoTesterContext]
+/// ([noContext]) is one this machine could not run at all.
+///
+/// 🖥️gpu-pins-run-in-a-batch-of-their-own (관제, 10-24): 「a runner with
+/// no context says so, with a reason」 — its files are neither red nor
+/// green, and the run says so by name. The same answer on every machine:
+/// CI's runners were the ones nobody had measured (the tester links
+/// SwiftShader's Vulkan, so they may have one), and a desk machine that
+/// has none is told the same way. ⚠️If the engine ever words it otherwise
+/// the batch comes back red, never green.
+bool ranNowhere({required int exitCode, required bool noContext}) =>
+    exitCode != 0 && noContext;
 
 /// The skip count in `flutter test` output, or null if it says none.
 ///
@@ -1317,6 +1496,7 @@ Future<_BatchResult> _flutterTest(
   );
   var ranTests = false;
   var skipped = 0;
+  final context = NoContextWatch();
   final silence = BatchSilence(DateTime.now());
   var cut = false;
   final look = Timer.periodic(kLookForSilence, (_) {
@@ -1332,6 +1512,7 @@ Future<_BatchResult> _flutterTest(
       if (!ranTests && _testOutput.hasMatch(text)) {
         ranTests = true;
       }
+      context.heard(text);
       final skips = lastSkipCount(text);
       if (skips != null) skipped = skips;
       silence.heard(text, DateTime.now());
@@ -1353,5 +1534,10 @@ Future<_BatchResult> _flutterTest(
     _report('🚨 no test finished for ${kSilentBatch.inMinutes} min — cut the '
         'batch, red. Still running: $named');
   }
-  return _BatchResult(cut && code == 0 ? 1 : code, ranTests, skipped);
+  return _BatchResult(
+    cut && code == 0 ? 1 : code,
+    ranTests,
+    skipped,
+    noContext: context.said,
+  );
 }

@@ -1,12 +1,15 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/painting.dart';
 
+import '../../core/lru.dart';
 import '../../models/canvas_size.dart';
 import '../../models/text_cel_style.dart';
 import 'canvas_letter_lines.dart';
 import 'canvas_letter_passes.dart';
 import 'canvas_letter_style.dart';
+import 'text_measure.dart';
 
 /// ONE canvas-text implementation (R5, ⓣ): the SE NAME TAG draws it live
 /// over the picture. ↩️The TEXT LAYER baked it into cels until F-154
@@ -93,8 +96,52 @@ class TextCelLayout {
 /// A tag line's pitch, as a multiple of its letters' size.
 const double _tagLineHeight = 1.25;
 
-/// Lays [content] out against [canvas]'s geometry. Cheap enough to call
-/// per frame from a painter; dispose the result when done.
+/// [content] laid out against [canvas] within [maxWidth] ([layoutTextCel])
+/// — once for each such content, canvas and budget the fonts set alike
+/// ([TextMeasure.fontsNow]), and kept. 🚨THE LAYOUT IS KEPT HERE, NOT BY
+/// THE CALLER: never dispose it — the next one asking the same draws it.
+///
+/// 🔬Laid out afresh at every paint, a stroke's every step laid each
+/// numbered row's letters out twice, wherever the step was (`layoutTextCel`
+/// 4.3% of the UI isolate over a stroke beside 8 numbered rows, profile,
+/// Windows), and every paint of the SE name tags — each frame of a pan, a
+/// zoom or a run — laid each tag's blocks out twice, to measure and where
+/// they go (card paint-walk-redoes-the-same-work-each-step, 2026-10-27).
+/// ↩️The cel numbers kept their own until the tags asked the same.
+TextCelLayout textCelLaidOut({
+  required TextCelContent content,
+  required CanvasSize canvas,
+  double? maxWidth,
+}) => _laid.resolve(
+  (
+    content: content,
+    canvas: canvas,
+    maxWidth: maxWidth,
+    fonts: TextMeasure.fontsNow,
+  ),
+  () => layoutTextCel(content: content, canvas: canvas, maxWidth: maxWidth),
+);
+
+/// How many layouts [textCelLaidOut] keeps: a frame's tags lay up to seven
+/// blocks each, the ones measured to place the others among them, beside
+/// every numbered row's letters. ↩️64 while the cel numbers kept theirs
+/// alone.
+@visibleForTesting
+const int textCelLayoutsKept = 128;
+
+/// The layouts kept — an [Lru] and not a memo: a layout holds its painters,
+/// let go with it.
+final Lru<
+  ({TextCelContent content, CanvasSize canvas, double? maxWidth, int fonts}),
+  TextCelLayout
+>
+_laid = Lru(
+  entryCap: () => textCelLayoutsKept,
+  letGo: (_, layout) => layout.dispose(),
+);
+
+/// Lays [content] out against [canvas]'s geometry — a layout of its own,
+/// the caller's to dispose. A painter asks [textCelLaidOut].
 ///
 /// [maxWidth] SHRINKS the type until the block fits (the SE name tag's
 /// budget — a long line must stay inside the picture instead of running

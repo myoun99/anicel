@@ -398,9 +398,40 @@ typedef BoardLetter = ({BoardCard card, BoardLog entry});
 /// keeps letters apart from the stories they are entries of.
 List<BoardLetter> lettersOf(Iterable<BoardCard> cards) => [
       for (final card in cards)
-        for (final entry in card.log)
-          if (entry.isLetter) (card: card, entry: entry),
+        for (var i = 0; i < card.log.length; i++)
+          if (card.log[i].isLetter)
+            (card: card, entry: card.log[i])
+          else if (_failureForOwner(card, i) case final told?)
+            (card: card, entry: told),
     ];
+
+/// Who signs the letter an AI 검증 실패 becomes — the verdict, not a 담당.
+const kAiVerifier = '🤖AI 검증';
+
+/// The AI 검증 실패 at entry [i] as a letter to the card's owner, or null.
+///
+/// 🚨★★★THE SAME LINE, TOLD TO THE OWNER (유저 2026-10-27,
+/// ai-verdict-done-is-the-users-tick-Q1 = a: 「그 줄을 카드 담당 세션에
+/// 편지로 띄운다(세션이 턴 시작 · 끝에 받는 그 알림)」) — what 관제 wrote by
+/// hand for every failure before. ⚠️Read off the line like its move
+/// ([_aiVerdictMoves]), nothing written: a 읽음 names the verdict's own stamp
+/// and lands on the verdict ([BoardLog.readBy]).
+/// ⚠️Only while the failure is still what stands the card in 할 일. Once any
+/// later word moves it, somebody has acted on the failure — and the twelve
+/// relayed by hand before this existed are not told a second time.
+/// ⚠️No owner, no letter: a card nobody holds has no session to tell, and
+/// it waits in 할 일 like any card 관제 has yet to give out.
+BoardLog? _failureForOwner(BoardCard card, int i) {
+  if (card.owner.isEmpty) return null;
+  if (_aiVerdictMoves(card, i) != kStatusWord[BoardStatus.todo]) return null;
+  for (var j = i + 1; j < card.log.length; j++) {
+    if (isPlaceWord(stageName(card, j))) return null;
+  }
+  final verdict = card.log[i];
+  return BoardLog(verdict.ts, kLetterStage, verdict.text,
+      to: card.owner, from: kAiVerifier)
+    ..readBy.addAll(verdict.readBy);
+}
 
 /// Whether [letter] still waits for [reader]: it was left for them or for
 /// everyone, somebody else wrote it, and they have not marked it read.
@@ -750,7 +781,10 @@ class _Fold {
       final reader = '${json['from'] ?? ''}'.trim();
       final named = '${json['ref'] ?? ''}';
       for (final entry in e.log) {
-        if (!entry.isLetter || entry.ts != named || reader.isEmpty) continue;
+        // ⚠️An AI 검증 실패 is told to its card's owner as a letter
+        // ([lettersOf]), so the mark for it lands on the verdict.
+        final told = entry.isLetter || aiVerdictIn(entry) == 'failed';
+        if (!told || entry.ts != named || reader.isEmpty) continue;
         entry.readBy.putIfAbsent(reader, () => ts);
       }
       return;
@@ -807,7 +841,16 @@ class _Fold {
       // ⚠️A LETTER IS NEVER A REPEAT. The same words left for a second 담당,
       // or left twice, are two tellings — each has its own reader to reach,
       // and the dedupe would have delivered only the first.
-      if (!letter && e.log.any((l) => l.text == text && l.ref == ref)) return;
+      // ⚠️NOR IS A LINE A REPEAT OF A LETTER: a letter is delivered and moves
+      // nothing, the card's own line is what moves the card. 🧪2026-10-27
+      // (relayed by 관제): the verify session left its verdict for 관제
+      // first, then wrote the same words on the card, and board_say said
+      // 「2줄 추가」 while the card gained nothing — the 검증완료 that was to
+      // end it was taken for the letter again.
+      if (!letter &&
+          e.log.any((l) => !l.isLetter && l.text == text && l.ref == ref)) {
+        return;
+      }
       final label = at.isEmpty ? fallback : at;
       at = '';
       // ⚠️The PR rides the FIRST stage this line opens, not all of them: it
@@ -1355,13 +1398,25 @@ const kAiVerdicts = <(String, String)>[
 /// replaces an earlier one the way the story always reads.
 ({String verdict, String day})? aiVerdictOf(BoardCard e) {
   for (final entry in e.log.reversed) {
-    final opening = entry.text.replaceAll('**', '');
-    for (final (words, verdict) in kAiVerdicts) {
-      if (opening.startsWith(words)) {
-        final day = entry.ts.length >= 10 ? entry.ts.substring(5, 10) : '';
-        return (verdict: verdict, day: day);
-      }
-    }
+    final verdict = aiVerdictIn(entry);
+    if (verdict == null) continue;
+    final day = entry.ts.length >= 10 ? entry.ts.substring(5, 10) : '';
+    return (verdict: verdict, day: day);
+  }
+  return null;
+}
+
+/// The key of the [kAiVerdicts] label [entry] opens with, or null.
+///
+/// ⚠️Only the opening is read: the label is the line's first words, and
+/// [stageName] asks this of every line of every story on each page — a whole
+/// line can run to pages.
+String? aiVerdictIn(BoardLog entry) {
+  final text = entry.text;
+  final opening =
+      (text.length > 48 ? text.substring(0, 48) : text).replaceAll('**', '');
+  for (final (words, verdict) in kAiVerdicts) {
+    if (opening.startsWith(words)) return verdict;
   }
   return null;
 }
@@ -1704,6 +1759,7 @@ final kQName = RegExp(r'^(.+)-Q(\d+)$');
 bool stillOwed(BoardCard e) => lastSection(e) == '남은 것';
 
 String stageName(BoardCard e, int i) {
+  if (_aiVerdictMoves(e, i) case final word?) return word;
   final at = e.log[i].at;
   if (at.isNotEmpty) return at;
   if (i == 0) {
@@ -1712,6 +1768,49 @@ String stageName(BoardCard e, int i) {
     if (e.tags.contains('임시')) return '임시 메모';
   }
   return '작업 기록';
+}
+
+/// The place word an AI hands-on verdict at entry [i] stands the card on,
+/// or null when the line moves nothing.
+///
+/// 🚨★★★AN AI 검증완료 IS THE USER'S 확인 (유저 2026-10-27: 「ai 검증완료면
+/// 그냥 내가 확인한거랑 똑같이 작동하도록」). Such a line IS the card's 완료,
+/// the word the user's own tick writes (`tickRecords` in the server), so the
+/// section, the checks still waiting and the guard on ended cards follow it
+/// through the readers that already follow that word.
+/// ↩️It reverses `law-검증` (10-22) 「완료는 유저가 누른다」: the verdict was a
+/// chip beside the title ([aiVerdictOf]) and the card waited in 검증 for the
+/// tick.
+///
+/// 🚨★★★AN AI 검증 실패 SENDS THE CARD BACK TO ITS OWNER'S 할 일 (유저
+/// 2026-10-27, ai-verdict-done-is-the-users-tick-Q1 = a 「자동 — 담당의 할
+/// 일로 옮기고 담당 세션에 알림」) — the move 관제 made by hand for every
+/// failure before (🧪10 of the first 12, within 2–23 minutes; none went to
+/// 분류 대기, the owner being known). The owner is told by [lettersOf].
+/// ⚠️유저 확인 필요 moves nothing: it is the user's turn, in 검증.
+///
+/// ⚠️READ, NOT WRITTEN. The line is the record and no word is appended for
+/// it — 🧪the 24 cards that already carried a 검증완료 when it came in left
+/// 검증 without a word written about them.
+/// ⚠️Only on a card standing in 검증 (or 실기 확인) just before the line —
+/// where the user's last tick ends a card, and nowhere else: a verdict on a
+/// card someone has taken back into work does not finish that work.
+/// ⚠️Never a letter, which stands in the story and moves nothing
+/// ([BoardLog.to]); never a line whose `at` names a 대분류 of its own.
+String? _aiVerdictMoves(BoardCard e, int i) {
+  final entry = e.log[i];
+  if (entry.isLetter || kSection.containsKey(entry.at)) return null;
+  final word = switch (aiVerdictIn(entry)) {
+    'done' || 'evidence' => kStatusWord[BoardStatus.done],
+    'failed' => kStatusWord[BoardStatus.todo],
+    _ => null,
+  };
+  if (word == null) return null;
+  for (var j = i - 1; j >= 0; j--) {
+    final name = stageName(e, j);
+    if (isPlaceWord(name)) return kSection[name] == 'hands' ? word : null;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------- the axes

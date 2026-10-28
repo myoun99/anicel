@@ -288,6 +288,10 @@ class FrameVerbs {
     // 통일하되 이름을 안보이게, 수정못하게 해서 링크를 애초에 불가능하도록.
     // 이름없으면 독립적인거니까」) — so the link law stays the one every row
     // keeps, and a name that can never be typed can never link two spans.
+    // ↩️It is WRITTEN since I-72-direction-link (유저 2026-10-08: 「시작이름,
+    // 끝이름,지시 세개 같으면 같은 링크로서」): what the block says names its
+    // drawing (`linkNameOfWriting`), and the instruction window is where
+    // it is changed. Still out of sight, and out of this window's reach.
     if (layer == null || layer.kind.spansRideBlocks) {
       return false;
     }
@@ -577,10 +581,12 @@ class FrameVerbs {
         kind: layer.kind,
       ),
       TimelineCellExposureState.held => celNumber ?? '',
-      TimelineCellExposureState.markHeld =>
-        celNumber == null ? inbetweenMark : '$celNumber $inbetweenMark',
+      TimelineCellExposureState.markOneHeld ||
+      TimelineCellExposureState.markTwoHeld =>
+        celNumber == null
+            ? exposureState.mark!.glyph
+            : '$celNumber ${exposureState.mark!.glyph}',
       TimelineCellExposureState.uncovered => 'X',
-      TimelineCellExposureState.markUncovered => inbetweenMark,
     };
   }
 }

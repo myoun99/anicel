@@ -881,28 +881,21 @@ class QaNativeEngine {
       // Struct-layout paranoia: both sides must agree on the spec's exact
       // byte layout, or every field read is garbage. Any mismatch means
       // Dart fallback, never a corrupt blend.
-      final specSize = library
-          .lookupFunction<Int32 Function(), int Function()>(
+      if (!qaStructSizeMatches(
+            library,
             'qa_dab_spec_sizeof',
-          )
-          .call();
-      if (specSize != sizeOf<QaDabSpecStruct>()) {
-        return null;
-      }
-      final spanSize = library
-          .lookupFunction<Int32 Function(), int Function()>(
+            sizeOf<QaDabSpecStruct>(),
+          ) ||
+          !qaStructSizeMatches(
+            library,
             'qa_tile_span_sizeof',
-          )
-          .call();
-      if (spanSize != sizeOf<QaTileSpanStruct>()) {
-        return null;
-      }
-      final celSpecSize = library
-          .lookupFunction<Int32 Function(), int Function()>(
+            sizeOf<QaTileSpanStruct>(),
+          ) ||
+          !qaStructSizeMatches(
+            library,
             'qa_cel_pixel_spec_sizeof',
-          )
-          .call();
-      if (celSpecSize != sizeOf<QaCelPixelSpecStruct>()) {
+            sizeOf<QaCelPixelSpecStruct>(),
+          )) {
         return null;
       }
       final premultiplyRgba = library
@@ -2185,19 +2178,28 @@ class QaNativeEngine {
 
   /// Opens a batch of [dabCount] dabs: room for their specs and clips, and
   /// the arena back to its start.
+  /// The specs [prepareDabAt] staged — what a kernel other than the dab
+  /// blend reads a dab through (the blur's coverage, I-75).
+  Pointer<QaDabSpecStruct> get stagedDabSpecs => _dabSpecs.pointer;
+
   void beginDabBatch(int dabCount) {
     _dabSpecs.ensure(dabCount);
     _dabClips.ensure(dabCount * 4);
     _arenaChunk = 0;
     _arenaOffset = 0;
-    _batchEvenings.clear();
+    _batchTables.clear();
   }
 
-  /// Each evening table the batch has staged, by identity: a stroke's dabs
-  /// lay a few shares (`eveningTableFor` keeps one table a share), so a
-  /// table is copied into the arena once a batch rather than once a dab.
-  final Map<Float64List, Pointer<Double>> _batchEvenings =
+  /// Each table the batch has staged, by identity — a share's evening
+  /// table, a round tip's profile: a stroke's dabs lay a few shares at a
+  /// few sizes (`eveningTableFor` keeps one table a share,
+  /// `RoundTipProfile.of` one profile a tip), so a table is copied into the
+  /// arena once a batch rather than once a dab.
+  final Map<Float64List, Pointer<Double>> _batchTables =
       Map<Float64List, Pointer<Double>>.identity();
+
+  Pointer<Double> _batchTable(Float64List table) =>
+      _batchTables.putIfAbsent(table, () => _arenaFloat64(table));
 
   Pointer<Uint8> _arenaAlloc(int bytes) {
     // Keep every array 8-byte aligned (doubles).
@@ -2249,6 +2251,9 @@ class QaNativeEngine {
   /// (`BrushTextureMode.height`) instead of multiplying it. v53.
   static const int dabFlagTextureHeight = 64;
 
+  /// The tip holds an edge that does not pile (`tipHoldsAnEdge`). v56.
+  static const int dabFlagEdgeHeld = 128;
+
   /// Stages dab [index] of the batch ([beginDabBatch]) for
   /// [dabBlendBatch]: fills its spec and its clip, and uploads masks
   /// (identity-cached) and lattices (arena). All values mirror the Dart
@@ -2267,8 +2272,10 @@ class QaNativeEngine {
     required double centerX,
     required double centerY,
     required double radius,
-    required double hardRadius,
-    required double edgeSpan,
+    required double roundScale,
+    required double roundReach,
+    required double roundInner,
+    required double roundRowLength,
     required double minorRadius,
     required double tipCos,
     required double tipSin,
@@ -2321,6 +2328,8 @@ class QaNativeEngine {
     Float64List? texVOneMinus,
     Int32List? tipRowInk,
     Float64List? evening,
+    Float64List? roundCoverage,
+    Float64List? roundPile,
   }) {
     final clip = _dabClips.pointer + index * 4;
     clip[0] = clipLeft;
@@ -2331,8 +2340,10 @@ class QaNativeEngine {
     spec.centerX = centerX;
     spec.centerY = centerY;
     spec.radius = radius;
-    spec.hardRadius = hardRadius;
-    spec.edgeSpan = edgeSpan;
+    spec.roundScale = roundScale;
+    spec.roundReach = roundReach;
+    spec.roundInner = roundInner;
+    spec.roundRowLength = roundRowLength;
     spec.minorRadius = minorRadius;
     spec.tipCos = tipCos;
     spec.tipSin = tipSin;
@@ -2414,9 +2425,11 @@ class QaNativeEngine {
         ? nullptr
         : _arenaFloat64(texVOneMinus);
     spec.tipRowInk = tipRowInk == null ? nullptr : _arenaInt32(tipRowInk);
-    spec.evening = evening == null
+    spec.evening = evening == null ? nullptr : _batchTable(evening);
+    spec.roundCoverage = roundCoverage == null
         ? nullptr
-        : _batchEvenings.putIfAbsent(evening, () => _arenaFloat64(evening));
+        : _batchTable(roundCoverage);
+    spec.roundPile = roundPile == null ? nullptr : _batchTable(roundPile);
   }
 }
 
@@ -2609,9 +2622,17 @@ final class QaDabSpecStruct extends Struct {
   @Double()
   external double radius;
   @Double()
-  external double hardRadius;
+  external double roundScale;
   @Double()
-  external double edgeSpan;
+  external double roundReach;
+  @Double()
+  external double roundInner;
+
+  /// ABI 57: entries a row of the round tables holds where they are square
+  /// (`RoundTipProfile.rowLength` — a small circle's), or 0 where they run
+  /// along the radius.
+  @Double()
+  external double roundRowLength;
   @Double()
   external double minorRadius;
   @Double()
@@ -2706,6 +2727,11 @@ final class QaDabSpecStruct extends Struct {
   /// ABI 41: the table the dab lays its share through (`qa_dab_even`), or
   /// null where it lays whole.
   external Pointer<Double> evening;
+
+  /// ABI 56: an analytic round tip's two tables (`RoundTipProfile`), or
+  /// null for any other tip.
+  external Pointer<Double> roundCoverage;
+  external Pointer<Double> roundPile;
 }
 
 /// Mirror of the C `qa_cel_pixel_spec` (ABI 34) — field order/types must

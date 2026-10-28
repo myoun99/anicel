@@ -247,19 +247,20 @@ void main() {
       expect(session.trackFrameRangeSelection.value, isNull);
     });
 
-    test('🗣️I-58: the ● every n koma dots the panel stood on from the cell '
-        'stood on (F-402), as the timeline\'s press on that cell does', () {
+    test('🗣️I-58: a mark every n koma dots the panel stood on from the cell '
+        'stood on (F-402), as the timeline\'s press on that cell does — the '
+        'mark its window picked (I-130-Q2)', () {
       final session = onTheConteRow(18);
-      StoryboardToolbarPanelContext(session).markEvery(3);
+      StoryboardToolbarPanelContext(session).markEvery(3, InbetweenMark.one);
 
       final timeline = onTheTimelinesRow(18);
-      TimelineToolbarPanelContext(timeline).markEvery(3);
+      TimelineToolbarPanelContext(timeline).markEvery(3, InbetweenMark.one);
 
-      List<int>? marksOf(EditorSessionManager s) =>
-          conteOf(s).timeline[16]?.breakdownOffsets;
+      Map<int, InbetweenMark>? marksOf(EditorSessionManager s) =>
+          conteOf(s).timeline[16]?.breakdownMarks;
       expect(
         marksOf(session),
-        [2, 5],
+        {2: InbetweenMark.one, 5: InbetweenMark.one},
         reason: 'the third panel, 16..24, from 18',
       );
       expect(marksOf(session), marksOf(timeline));

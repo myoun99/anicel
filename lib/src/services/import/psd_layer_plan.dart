@@ -150,6 +150,8 @@ PsdExpandPlan planPsdExpansion({
             isVisible: source.visible,
             opacity: source.opacity / 255,
             blendMode: _blendFor(source, warnings),
+            // Clipped to the layer under it, as in Photoshop (I-92).
+            clipsToBelow: source.clipping,
             folderId: enclosing(),
             // A folder shown closed comes in closed (F-306).
             collapsed: source.collapsed,
@@ -165,9 +167,6 @@ PsdExpandPlan planPsdExpansion({
           // decoder's one word for a kind it does not carry.
           warnings.add(unsupportedLayerKind(source.name));
           continue;
-        }
-        if (source.clipping) {
-          warnings.add(clippingNotApplied(source.name));
         }
         _sayNotApplied(source, warnings);
         final layerId = mint.nextLayerId();
@@ -186,6 +185,7 @@ PsdExpandPlan planPsdExpansion({
             isVisible: source.visible,
             opacity: source.opacity / 255,
             blendMode: _blendFor(source, warnings),
+            clipsToBelow: source.clipping,
             folderId: enclosing(),
           ),
         );

@@ -3,6 +3,7 @@ import 'package:anicel/src/models/envelope/cut_envelope_counts.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_form.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_presets.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_source.dart';
+import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/cut_metadata.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
@@ -15,8 +16,18 @@ void main() {
     episode: '13',
     note: 'PAN (A)→(B)',
     cuts: [
-      CutEnvelopeCutLine(name: '20', durationFrames: 120, fps: 24),
-      CutEnvelopeCutLine(name: '39A', durationFrames: 60, fps: 24),
+      CutEnvelopeCutLine(
+        cut: CutId('20'),
+        name: '20',
+        durationFrames: 120,
+        fps: 24,
+      ),
+      CutEnvelopeCutLine(
+        cut: CutId('39A'),
+        name: '39A',
+        durationFrames: 60,
+        fps: 24,
+      ),
     ],
     cels: [
       CutEnvelopeCelCount(name: 'A', genga: 16, dougaEstimate: 23),
@@ -254,7 +265,12 @@ bool _isAddressable(String binding) {
   final empty = CutEnvelopeSource(
     cuts: [
       for (var i = 0; i < 32; i += 1)
-        const CutEnvelopeCutLine(name: 'x', durationFrames: 1, fps: 24),
+        const CutEnvelopeCutLine(
+          cut: CutId('x'),
+          name: 'x',
+          durationFrames: 1,
+          fps: 24,
+        ),
     ],
     cels: [
       for (var i = 0; i < 32; i += 1)

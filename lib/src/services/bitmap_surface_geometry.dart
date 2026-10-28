@@ -227,30 +227,40 @@ BitmapSurface surfaceBehindReach(
   BitmapSurface surface,
   PasteboardReach reach, {
   BitmapSurface? crossed,
+}) => _behindReach(surface, reach, crossed: crossed).behind;
+
+/// [surfaceBehindReach], with whether the wall took anything of the picture
+/// ([_BehindWall.took]) — unknown, and so false, of the tiles [crossed]
+/// hands in.
+({BitmapSurface behind, bool took}) _behindReach(
+  BitmapSurface surface,
+  PasteboardReach reach, {
+  BitmapSurface? crossed,
 }) {
   if (surface.pasteboardReach == reach) {
-    return surface;
+    return (behind: surface, took: false);
   }
-  final behind = _BehindWall(
+  final wall = _BehindWall(
     wall: surface.canvasSize.pasteboardAt(reach).region,
     laid: surface.laidBounds,
     tileSize: surface.tileSize,
   );
-  return surface.copyWith(
+  final behind = surface.copyWith(
     pasteboardReach: reach,
-    tiles: behind.tilesOf(surface.tiles, crossed: crossed?.tiles),
+    tiles: wall.tilesOf(surface.tiles, crossed: crossed?.tiles),
     texts: [
       for (final (index, text) in surface.texts.indexed)
         CelText(
           id: text.id,
           content: text.content,
-          plate: behind.tilesOf(
+          plate: wall.tilesOf(
             text.plate,
             crossed: crossed?.texts[index].plate,
           ),
         ),
     ],
   );
+  return (behind: behind, took: wall.took);
 }
 
 /// Of [behind] — [surface] behind a wall ([surfaceBehindReach]) — only the
@@ -279,30 +289,13 @@ BitmapSurface wallCrossingsOf(BitmapSurface surface, BitmapSurface behind) {
   );
 }
 
-/// [surface] behind the wall of [reach] when the wall cuts anything of it —
-/// null when it keeps every pixel ([keepsEveryPixel]). What a kept cel's
-/// rewrite asks, on the main isolate and on a worker alike
-/// (`cutCelInWorker`).
+/// [surface] behind the wall of [reach] when the wall takes anything of its
+/// picture ([_BehindWall.took]) — null when every pixel stays as it was.
+/// What a kept cel's rewrite asks, on the main isolate and on a worker alike
+/// (`cutCelInWorker`), and a hot cel's move of the wall.
 BitmapSurface? cutBehindReach(BitmapSurface surface, PasteboardReach reach) {
-  final behind = surfaceBehindReach(surface, reach);
-  return keepsEveryPixel(surface, behind) ? null : behind;
-}
-
-/// Whether [behind] keeps every pixel [surface] had: the very tiles, its
-/// texts' too.
-bool keepsEveryPixel(BitmapSurface surface, BitmapSurface behind) {
-  bool same(Map<TileCoord, BitmapTile> a, Map<TileCoord, BitmapTile> b) =>
-      a.length == b.length &&
-      a.entries.every((entry) => identical(b[entry.key], entry.value));
-  if (!same(surface.tiles, behind.tiles)) {
-    return false;
-  }
-  for (final (index, text) in surface.texts.indexed) {
-    if (!same(text.plate, behind.texts[index].plate)) {
-      return false;
-    }
-  }
-  return true;
+  final (:behind, :took) = _behindReach(surface, reach);
+  return took ? behind : null;
 }
 
 /// [tiles] on a grid of [tileSize] with what lies past [wall] cut away, to
@@ -340,6 +333,17 @@ final class _BehindWall {
   final DirtyRegion? laid;
   final int tileSize;
 
+  /// Whether this wall has taken anything of a picture yet: a tile wholly
+  /// past it, or a byte that was not zero cleared off one it crosses.
+  ///
+  /// 🗣️[a-save-grows-the-file-without-drawing] (2026-10-28): a tile the
+  /// wall crosses is COPIED to be cleared, and the cut was read off the
+  /// copies — not the very tiles, so cut. A cel with ink beside the paper's
+  /// edge and none past it read as cut: S5_BA, 1.5x → off, 108 cels cut and
+  /// 76 of them every pixel as it was — each one dirty, held twice by the
+  /// undo, and written again by the next save (189MB → 332MB).
+  bool took = false;
+
   Map<TileCoord, BitmapTile> tilesOf(
     Map<TileCoord, BitmapTile> tiles, {
     Map<TileCoord, BitmapTile>? crossed,
@@ -368,7 +372,7 @@ final class _BehindWall {
     Map<TileCoord, BitmapTile>? crossed,
   ) => switch (_keepsOf(coord)) {
     null => tile,
-    [] => null,
+    [] => _gone(),
     final keeps =>
       crossed != null
           ? crossed[coord]
@@ -380,7 +384,7 @@ final class _BehindWall {
     final coord = TileCoord(x: record.x, y: record.y);
     return switch (_keepsOf(coord)) {
       null => record.pixels,
-      [] => null,
+      [] => _gone(),
       final keeps => _cleared(
         coord,
         keeps,
@@ -400,6 +404,13 @@ final class _BehindWall {
       return null;
     }
     return [?inWall, ?inLaid];
+  }
+
+  /// A tile wholly past the wall: nothing of it is left, and that is
+  /// something taken — whatever its pixels held, which nobody asks.
+  T? _gone<T>() {
+    took = true;
+    return null;
   }
 
   DirtyRegion _boxOf(TileCoord coord) => DirtyRegion(
@@ -448,11 +459,20 @@ final class _BehindWall {
           (from: keep.left - box.left, to: keep.rightExclusive - box.left),
     ]..sort((a, b) => a.from.compareTo(b.from));
     final rowStart = row * tileSize;
-    void clear(int from, int to) => pixels.fillRange(
-      (rowStart + from) * BitmapTile.bytesPerPixel,
-      (rowStart + to) * BitmapTile.bytesPerPixel,
-      0,
-    );
+    void clear(int from, int to) {
+      final start = (rowStart + from) * BitmapTile.bytesPerPixel;
+      final end = (rowStart + to) * BitmapTile.bytesPerPixel;
+      if (!took) {
+        for (var at = start; at < end; at += 1) {
+          if (pixels[at] != 0) {
+            took = true;
+            break;
+          }
+        }
+      }
+      pixels.fillRange(start, end, 0);
+    }
+
     var column = 0;
     for (final (:from, :to) in held) {
       if (from > column) {

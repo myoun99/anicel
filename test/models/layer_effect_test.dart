@@ -1,9 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/models/transform_track.dart';
 
 void main() {
   LayerEffect blur({double x = 0, double y = 0}) => LayerEffect(
@@ -59,20 +61,24 @@ void main() {
 
   group('LayerEffect.defaults', () {
     test(
-      'every parameter starts at its spec default, so adding is a no-op',
+      'every parameter starts at its spec default, so adding a filter is a '
+      'no-op',
       () {
         for (final kind in EffectKind.values) {
           final effect = LayerEffect.defaults(
             id: const EffectId('e1'),
             kind: kind,
           );
-          for (final spec in effectParametersOf(kind)) {
+          for (final spec in kind.parameters) {
             expect(effect.parameterOf(spec.id).value, spec.defaultValue);
           }
+          // A filter changes no pixel until a value moves; a kind that
+          // draws its own picture draws it as it is added — a cel number
+          // added writes the number (I-65).
           expect(
             resolveLayerEffectsAt(effects: [effect], frameIndex: 0),
-            isEmpty,
-            reason: 'a fresh $kind must change no pixel until a value moves',
+            kind.drawsItsOwnPicture ? hasLength(1) : isEmpty,
+            reason: 'a fresh $kind',
           );
         }
       },
@@ -252,6 +258,47 @@ void main() {
       expect(json['parameters'], isEmpty);
       // …and still load as full defaults.
       expect(LayerEffect.fromJson(json).parameterOf('blurY').value, 0);
+    });
+
+    // I-65: a cel number's Position and Scale are keys of its own.
+    test('a cel number round-trips where it stands; unkeyed, it writes no '
+        'stand', () {
+      final keyed = LayerEffect(
+        id: const EffectId('n'),
+        kind: EffectKind.celNumber,
+        stand: TransformTrack.empty().copyWith(
+          position: PropertyTrack<CanvasPoint>.empty().withKey(
+            3,
+            CanvasPoint(x: 10, y: 20),
+          ),
+          scale: PropertyTrack<CanvasPoint>.empty().withKey(
+            0,
+            CanvasPoint(x: 2, y: 2),
+          ),
+        ),
+      );
+      expect(LayerEffect.fromJson(keyed.toJson()), keyed);
+      final bare = LayerEffect.defaults(
+        id: const EffectId('n'),
+        kind: EffectKind.celNumber,
+      );
+      expect(bare.toJson().containsKey('stand'), isFalse);
+      expect(LayerEffect.fromJson(bare.toJson()), bare);
+    });
+
+    test('a kind that draws no picture of its own stands nowhere', () {
+      final blurred = LayerEffect(
+        id: const EffectId('b'),
+        kind: EffectKind.blur,
+        stand: TransformTrack.empty().copyWith(
+          position: PropertyTrack<CanvasPoint>.empty().withKey(
+            0,
+            CanvasPoint(x: 1, y: 1),
+          ),
+        ),
+      );
+      expect(blurred.stand.isEmpty, isTrue);
+      expect(blurred.toJson().containsKey('stand'), isFalse);
     });
 
     test('an unknown effect kind is a FormatException, not a silent drop', () {

@@ -1,7 +1,7 @@
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/theme/text_on_ground.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
-import 'package:anicel/src/ui/input/control_press_claim.dart';
+import 'package:anicel/src/ui/widgets/owning_axis_grip.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -39,7 +39,7 @@ void main() {
     // stepper and half the widget is no longer half the bar.
     final track = find.descendant(
       of: find.byType(FieldSlider),
-      matching: find.byType(DragVerbClaim),
+      matching: find.byType(OwningAxisGrip),
     );
     expect(
       track,
@@ -48,6 +48,40 @@ void main() {
         color: AppColors.accent,
       ),
     );
+  });
+
+  // R4 #6: the legend's master-opacity bar reads gray at rest and lights
+  // while adjusting — a resting state, which F-474's own colour is not.
+  testWidgets('a resting colour gives way to the accent while dragged', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      host(
+        FieldSlider(
+          value: 0.5,
+          min: 0,
+          max: 1,
+          label: 'Size',
+          unit: '%',
+          restingAccent: AppColors.textDim,
+          onChanged: (_) {},
+        ),
+      ),
+    );
+    final track = find.descendant(
+      of: find.byType(FieldSlider),
+      matching: find.byType(OwningAxisGrip),
+    );
+    expect(track, paints..rect(color: AppColors.textDim));
+
+    final hand = await tester.startGesture(tester.getCenter(track));
+    await hand.moveBy(const Offset(10, 0));
+    await tester.pump();
+    await hand.moveBy(const Offset(10, 0));
+    await tester.pump();
+    expect(track, paints..rect(color: AppColors.accent), reason: 'dragged');
+    await hand.up();
+    await tester.pumpAndSettle();
   });
 
   testWidgets('nothing marks the fill edge — the fill is the mark', (

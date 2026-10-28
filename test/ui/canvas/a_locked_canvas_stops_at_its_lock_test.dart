@@ -18,6 +18,7 @@ import 'package:anicel/src/ui/widgets/app_scrollbar_lane.dart';
 import '../../helpers/brush_canvas_fixture.dart';
 import '../../helpers/canvas_pill.dart';
 import '../../helpers/dart_sources.dart';
+import '../../helpers/number_pad_keyboard.dart';
 
 /// 🗣️I-27 (유저 2026-09-13): 「설정 줌 스냅 근처에 최대 줌 제한기능. 100%이면
 /// 100% 넘어서 확대하지 못하게 락 거는용도. 축소는 이전처럼 자유. 동시에
@@ -209,6 +210,7 @@ void main() {
         find.byKey(const ValueKey<String>('canvas-viewport-zoom-label-edit')),
       );
       await tester.pumpAndSettle();
+      await openThePadsKeyboard(tester);
       await tester.enterText(
         find.byKey(const ValueKey<String>('canvas-viewport-zoom-input')),
         text,
@@ -386,7 +388,7 @@ void main() {
     });
 
     testWidgets('the drawing canvas says the settings\' lock to the view '
-        'under it — while the switch is on, and at the number it holds', (
+        'under it — the number it holds, and none once it is let go', (
       tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(1600, 1000));
@@ -399,22 +401,16 @@ void main() {
       expect(said(), isNull, reason: 'off until the user locks one');
 
       AppInput.settings.value = AppInput.settings.value.copyWith(
-        zoomCeilingOn: true,
-        zoomCeilingPercent: 150,
+        zoomCeiling: 150,
       );
       await tester.pumpAndSettle();
       expect(said(), 150);
 
       AppInput.settings.value = AppInput.settings.value.copyWith(
-        zoomCeilingOn: false,
+        zoomCeiling: null,
       );
       await tester.pumpAndSettle();
       expect(said(), isNull);
-      expect(
-        AppInput.settings.value.zoomCeilingPercent,
-        150,
-        reason: 'switched off, the number is kept',
-      );
     });
   });
 }

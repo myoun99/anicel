@@ -244,6 +244,11 @@ List<PanelFlyoutEntry> cutMenuEntries(
 class _CutCommandGroupState extends State<CutCommandGroup> {
   EditorSessionManager get session => widget.session;
 
+  /// Baked whole, as the layer pill is. ↩️In TWO zones round the cut's name
+  /// ([CommandGroupZone]) from F-463 ④: the name ticked, and a tick layer
+  /// inside a bake kept the pill from baking (`panel_static_raster_test`).
+  /// The name stands at the head of the bar's right group since F-491
+  /// (`TimelineViewCluster`).
   @override
   Widget build(BuildContext context) {
     return CommandPill(
@@ -253,50 +258,53 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
         tooltip: AppText.strings.cutCommands,
         entriesBuilder: () => cutMenuEntries(context, session),
       ),
-      children: [
-        const PillDivider(),
-        // #18 — the button reads the SAME sentence the verb runs on
-        // ([CutPlacement.cutCreationPlan], the T25 law). The bare
-        // tear-off before this could never go null, so the button lit in
-        // exactly the states where pressing it did something other than
-        // it promised — a gap press appended at the track's end, and the
-        // frame buttons lit for that far-away cut. (Comment sits ABOVE
-        // the button, and names the add glyph only in prose: the ＋-accent
-        // source contract reads a ±320-char window around the glyph
-        // constant — prose between it and its `accent:` pushes the answer
-        // out of the window, and the constant's literal name inside a
-        // comment is a match of its own.)
-        StrapIconButton(
-          buttonKey: 'new-cut-button',
-          // `add` and not `add_photo_alternate`: which noun it adds is what
-          // the pill around it already says, and 「＋가 있는 모든 곳」 wears
-          // the same glyph (유저 확정).
-          icon: Icons.add,
-          accent: true,
-          // 🗣️I-40: this button IS the New cut action's entrance, so it
-          // wears that action's name and shows its key (I-19). No band
-          // ([newCutPress] has why).
-          tooltip: editorActionLabel(EditorActionIds.cutNew),
-          shortcuts: const [EditorActionIds.cutNew],
-          onPressed: newCutPress(session),
-        ),
-        // ⛔THE CUT DELETE IS GONE (T24, 유저 2026-08-13: 「컷알약 삭제버튼
-        // 일단 삭제. 공통버튼에 존재하니까」). ⑰'s one delete has it.
-        //
-        // This button was kept back once, and the reason is worth keeping
-        // because it is the reason that expired rather than a reason that
-        // was wrong: the shared delete reaches a cut through a cut
-        // SELECTION, the cut axis lives only on the storyboard, so removing
-        // this would leave the timeline unable to delete a cut at all — the
-        // same mistake as pulling the layer delete before ⑨ built row
-        // selection.
-        //
-        // 유저 2026-08-13 retired the premise, not the reasoning: 「타임라인
-        // 에서 컷 선택은 못해도되. 할필요도없어. **컷 편집은 스토리보드
-        // 패널에서 하는거고**」 — and the cut pill itself is only here 「일단
-        // 통일성으로」. A capability the timeline is not supposed to have is
-        // not a capability the timeline loses.
-      ],
+      children: _verbs(),
     );
   }
+
+  /// The pill's verbs after the name.
+  List<Widget> _verbs() => [
+    const PillDivider(),
+    // #18 — the button reads the SAME sentence the verb runs on
+    // ([CutPlacement.cutCreationPlan], the T25 law). The bare
+    // tear-off before this could never go null, so the button lit in
+    // exactly the states where pressing it did something other than
+    // it promised — a gap press appended at the track's end, and the
+    // frame buttons lit for that far-away cut. (Comment sits ABOVE
+    // the button, and names the add glyph only in prose: the ＋-accent
+    // source contract reads a ±320-char window around the glyph
+    // constant — prose between it and its `accent:` pushes the answer
+    // out of the window, and the constant's literal name inside a
+    // comment is a match of its own.)
+    StrapIconButton(
+      buttonKey: 'new-cut-button',
+      // `add` and not `add_photo_alternate`: which noun it adds is what
+      // the pill around it already says, and 「＋가 있는 모든 곳」 wears
+      // the same glyph (유저 확정).
+      icon: Icons.add,
+      accent: true,
+      // 🗣️I-40: this button IS the New cut action's entrance, so it
+      // wears that action's name and shows its key (I-19). No band
+      // ([newCutPress] has why).
+      tooltip: editorActionLabel(EditorActionIds.cutNew),
+      shortcuts: const [EditorActionIds.cutNew],
+      onPressed: newCutPress(session),
+    ),
+    // ⛔THE CUT DELETE IS GONE (T24, 유저 2026-08-13: 「컷알약 삭제버튼
+    // 일단 삭제. 공통버튼에 존재하니까」). ⑰'s one delete has it.
+    //
+    // This button was kept back once, and the reason is worth keeping
+    // because it is the reason that expired rather than a reason that
+    // was wrong: the shared delete reaches a cut through a cut
+    // SELECTION, the cut axis lives only on the storyboard, so removing
+    // this would leave the timeline unable to delete a cut at all — the
+    // same mistake as pulling the layer delete before ⑨ built row
+    // selection.
+    //
+    // 유저 2026-08-13 retired the premise, not the reasoning: 「타임라인
+    // 에서 컷 선택은 못해도되. 할필요도없어. **컷 편집은 스토리보드
+    // 패널에서 하는거고**」 — and the cut pill itself is only here 「일단
+    // 통일성으로」. A capability the timeline is not supposed to have is
+    // not a capability the timeline loses.
+  ];
 }

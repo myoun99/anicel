@@ -30,11 +30,11 @@ import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/canvas/landing_preview.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_float.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import '../../helpers/the_frame_as_it_stands.dart';
 
 /// 🚨★★★WHAT THE ACTIVE LAYER DRAWS ON THE PASTEBOARD SHOWS WHILE IT IS
 /// DRAWN, NOT ONCE A COMMIT PUTS TILES THERE (F-85, 2026-09-11).
@@ -101,8 +101,6 @@ void main() {
     SelectionFloatOverlay? float,
     LayerPlacement? placement,
   }) async {
-    final cache = DisplayBufferCache();
-    addTearDown(cache.dispose);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -110,7 +108,7 @@ void main() {
             child: SizedBox(
               width: view.width,
               height: view.height,
-              child: CanvasLayerStackView(
+              child: TheFrameAsItStands(
                 nodes: [
                   CompositeLeaf<CanvasStackRow>(
                     CanvasActiveLayerRow(opacity: 1, placement: placement),
@@ -123,7 +121,6 @@ void main() {
                 floatOverlay: float,
                 paintPaper: true,
                 paperBackground: ProjectBackground.defaultBackground,
-                debugBufferCache: cache,
               ),
             ),
           ),
@@ -134,7 +131,7 @@ void main() {
     return tester
         .widgetList<CustomPaint>(
           find.descendant(
-            of: find.byType(CanvasLayerStackView),
+            of: find.byType(TheFrameAsItStands),
             matching: find.byType(CustomPaint),
           ),
         )

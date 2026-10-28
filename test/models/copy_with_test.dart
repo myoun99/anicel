@@ -45,7 +45,7 @@ void main() {
       3: const TimelineExposure.drawing(
         FrameId('f-3'),
         length: 2,
-        breakdownOffsets: [1],
+        breakdownMarks: {1: InbetweenMark.two},
       ),
     };
     final markedLayer = layer.copyWith(timeline: dotted);

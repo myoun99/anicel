@@ -4,7 +4,7 @@ import 'export_job.dart';
 import 'export_preset_rail.dart' show ExportPresetRail;
 import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
-import '../theme/app_theme.dart' show AppShapes;
+import '../theme/app_theme.dart' show AppCursors, AppShapes;
 import '../widgets/empty_state_text.dart';
 
 /// The right drawer: the render queue. EX2 ships the column and its
@@ -58,6 +58,7 @@ class ExportQueueColumn extends StatelessWidget {
                   ControlPressClaim(
                     onPressed: onRenderAll,
                     child: InkWell(
+                      mouseCursor: AppCursors.press,
                       key: const ValueKey<String>('export-queue-render-all'),
                       onTap: silentPress(onRenderAll),
                       customBorder: AppShapes.container(AppShapes.wellRadius),
@@ -151,6 +152,7 @@ class _JobCard extends StatelessWidget {
     return ControlPressClaim(
       onPressed: enabled && onRestore != null ? () => onRestore!(job) : null,
       child: InkWell(
+        mouseCursor: AppCursors.press,
         key: ValueKey<String>('export-queue-job-${job.id}'),
         onTap: silentPress(
           enabled && onRestore != null ? () => onRestore!(job) : null,
@@ -194,6 +196,7 @@ class _JobCard extends StatelessWidget {
                     ControlPressClaim(
                       onPressed: enabled ? () => onRemove!(job) : null,
                       child: InkWell(
+                        mouseCursor: AppCursors.press,
                         key: ValueKey<String>('export-queue-remove-${job.id}'),
                         onTap: silentPress(
                           enabled ? () => onRemove!(job) : null,
@@ -253,6 +256,7 @@ class ExportDrawerStrip extends StatelessWidget {
     return ControlPressClaim(
       onPressed: onTap,
       child: InkWell(
+        mouseCursor: AppCursors.press,
         onTap: silentPress(onTap),
         child: SizedBox(
           width: 22,

@@ -31,6 +31,9 @@ import '../../helpers/library_source.dart';
 /// ↩️Two walks since 2026-10-10: playback draws its cuts on the editing
 /// stack (playback-plays-the-screen-material), so the playback cache and
 /// its walk are gone, and the editing stack's walk is playback's too.
+/// ↩️ONE since card one-walk-of-the-composite-tree (유저 2026-10-25 「3번은
+/// 합치는거 하고싶고」): the editing stack and the camera walk their trees
+/// by `paintCompositeTree`, each drawing only its own rows.
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
 
@@ -51,8 +54,11 @@ void main() {
     );
   }
 
-  /// The files that walk a composite tree and buffer a sub-tree.
-  const walks = <String>[
+  /// The one walk of a composite tree, which buffers its sub-trees.
+  const walk = 'lib/src/ui/canvas/composite_tree_paint.dart';
+
+  /// The routes that composite a tree — through [walk].
+  const routes = <String>[
     'lib/src/ui/canvas/canvas_layer_stack_view.dart',
     'lib/src/ui/camera/camera_frame_render_service.dart',
   ];
@@ -99,6 +105,7 @@ void main() {
     // absolute numbers do not.
     'lib/src/ui/canvas/canvas_layer_stack_view.dart': 1,
     'lib/src/ui/camera/camera_frame_render_service.dart': 0,
+    walk: 0,
   };
 
   List<String> codeLines(String path) {
@@ -113,16 +120,41 @@ void main() {
     ];
   }
 
-  test('every walk buffers a sub-tree through the one shared function', () {
-    for (final path in walks) {
+  test('every route composites its tree by the one walk, which alone '
+      'holds what a node is drawn by', () {
+    for (final path in routes) {
       final source = codeLines(path).join('\n');
       expect(
-        source.contains('drawSubtreeAsImage'),
+        source.contains('paintCompositeTree('),
         isTrue,
-        reason: '$path composites a tree but does not use the shared raster',
+        reason: '$path composites a tree but not by the one walk',
       );
+      for (final part in [
+        'drawClipAsImage(',
+        'drawBlendOverBackdrop(',
+        'drawOpaque(',
+        'resolveAdjustmentScopePass(',
+      ]) {
+        expect(
+          source.contains(part),
+          isFalse,
+          reason:
+              '$path draws a node by $part itself — a second walk of the '
+              'tree, which drifts from the first one commit at a time',
+        );
+      }
+    }
+  });
+
+  test('the walk buffers a sub-tree through the one shared function', () {
+    expect(
+      codeLines(walk).join('\n').contains('drawSubtreeAsImage'),
+      isTrue,
+      reason: '$walk composites a tree but does not use the shared raster',
+    );
+    for (final path in [walk, ...routes]) {
       expect(
-        source.contains('maxPixelSide'),
+        codeLines(path).join('\n').contains('maxPixelSide'),
         isFalse,
         reason:
             '$path must not ARGUE about the cap. It is the parameter '
@@ -133,22 +165,20 @@ void main() {
     }
   });
 
-  test('every walk sizes a sub-tree\'s buffer by the one shared law', () {
-    for (final path in walks) {
-      expect(
-        codeLines(path).join('\n').contains('subtreeBufferBounds('),
-        isTrue,
-        reason:
-            '$path sizes a buffer by a law of its own — the camera '
-            'buffered a folder at the square around its frame while the '
-            'editing stack buffered it at what of it is in view (card '
-            'export-folders-and-rows-at-their-extent)',
-      );
-    }
+  test('the walk sizes a sub-tree\'s buffer by the one shared law', () {
+    expect(
+      codeLines(walk).join('\n').contains('subtreeBufferBounds('),
+      isTrue,
+      reason:
+          '$walk sizes a buffer by a law of its own — the camera '
+          'buffered a folder at the square around its frame while the '
+          'editing stack buffered it at what of it is in view (card '
+          'export-folders-and-rows-at-their-extent)',
+    );
   });
 
   test('no walk has grown a new sub-tree saveLayer', () {
-    for (final path in walks) {
+    for (final path in [walk, ...routes]) {
       final count = codeLines(
         path,
       ).where((line) => line.contains('saveLayer(')).length;

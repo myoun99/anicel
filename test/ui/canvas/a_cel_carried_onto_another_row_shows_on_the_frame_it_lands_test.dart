@@ -1,8 +1,6 @@
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -10,18 +8,20 @@ import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/composite_tree.dart';
+import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/services/brush_frame_display_cache_service.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/tile_pyramid.dart';
+import 'package:anicel/src/ui/playback/frame_picture_store.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/settle_async.dart';
 
@@ -30,19 +30,24 @@ import '../../helpers/settle_async.dart';
 ///
 /// A move that carries a cel onto another row shows it, until the release,
 /// under the row it came from (`celPixelsOf`); the release re-keys its
-/// pixels onto the row it lands on. The picture does not change — only the
-/// key the canvas asks with does — so the frame it lands on shows it as the
-/// frame before did, whichever way it arrives there.
+/// pixels onto the row it lands on. The pixels do not change — only the
+/// key a screen asks with does — so the frame it lands on shows it as the
+/// frame before did: its preview travels with it, and the frame is drawn as
+/// it stands from it while its picture is laid.
 ///
 /// 🔬Measured before the pictures travelled with their cel (2026-10-12):
 /// **0 of 32** columns on the first frame after the release, at 50% and at
 /// 100%, for a cel that lands as an image row (an onion ghost, a row of a
-/// multi-row move the brush is not on).
+/// multi-row move the brush is not on). ↩️Pinned on the editing stack's row
+/// images at both zooms, until a frame's one picture was all a screen drew
+/// (one-picture-per-frame ②-5b-1) — the zoom asks nothing of a picture
+/// made at the canvas's own resolution.
 void main() {
   const tileSize = 16;
   const tileCount = 8;
   const canvasSize = CanvasSize(width: tileSize * tileCount, height: tileSize);
   const viewSize = Size(tileSize * 2.0, tileSize * 1.0);
+  const zoom = 0.5;
 
   BrushFrameKey keyOf(String layer) => BrushFrameKey(
     projectId: const ProjectId('p'),
@@ -54,7 +59,14 @@ void main() {
 
   final from = keyOf('from');
   final to = keyOf('to');
-
+  final cut = Cut(
+    id: const CutId('c'),
+    name: 'c',
+    duration: 1,
+    canvasSize: canvasSize,
+    layers: const [],
+  );
+  const frame = 0;
   final screen = GlobalKey();
 
   /// One opaque cel of eight tiles, full in colour [channel] (0 red, 2 blue).
@@ -75,181 +87,113 @@ void main() {
     );
   }
 
-  /// A store whose cels are each [opaque] in the channel [channelOf] names,
-  /// FILE-BACKED — because the image cache refuses a cel without a drawing
-  /// state at its first gate.
-  BrushFrameStore celStore(Map<BrushFrameKey, int> channelOf) {
-    final store = BrushFrameStore();
-    keepInAFile(store, {
+  /// The cels of [channelOf], each [opaque] in the channel it names, kept
+  /// in a file as an opened project keeps them.
+  ({BrushFrameStore cels, StackRun run, FramePictureStore<FramePictureKey> store})
+  celsOf(Map<BrushFrameKey, int> channelOf) {
+    final cels = BrushFrameStore();
+    keepInAFile(cels, {
       for (final MapEntry(:key, value: channel) in channelOf.entries)
         key: opaque(channel),
     });
-    return store;
+    final images = LayerFrameImageCache(frameStore: cels);
+    addTearDown(images.dispose);
+    final store = FramePictureStore<FramePictureKey>();
+    addTearDown(store.dispose);
+    final run = runOver(images, store, canvasSize: canvasSize, stackOf: (_) => []);
+    return (cels: cels, run: run, store: store);
   }
 
-  /// [key]'s cel as an image row — or, with [active], as the row the brush
-  /// is on, painted from its tiles — over [under]'s, an image row too.
-  Future<void> pumpRow(
-    WidgetTester tester,
-    LayerFrameImageCache images,
-    BrushFrameKey key, {
-    required double zoom,
-    BitmapSurfacePainter? active,
-    BrushFrameKey? under,
-  }) => tester.pumpWidget(
-    MaterialApp(
-      home: Scaffold(
-        body: Center(
-          child: RepaintBoundary(
-            key: screen,
-            child: ClipRect(
-              child: SizedBox(
-                width: viewSize.width,
-                height: viewSize.height,
-                child: CanvasLayerStackView(
-                  nodes: [
-                    if (under != null)
-                      CompositeLeaf<CanvasStackRow>(
-                        CanvasLayerImageRequest(frameKey: under, opacity: 1),
-                      ),
-                    CompositeLeaf<CanvasStackRow>(
-                      active == null
-                          ? CanvasLayerImageRequest(frameKey: key, opacity: 1)
-                          : CanvasActiveLayerRow(opacity: 1, frameKey: key),
-                    ),
-                  ],
-                  imageCache: images,
-                  canvasSize: canvasSize,
-                  viewport: CanvasViewport(zoom: zoom),
-                  activeSurfacePainter: active,
-                  debugDisableBake: true,
-                ),
-              ),
-            ),
+  List<CompositeNode<CanvasStackRow>> rowOf(BrushFrameKey cel) => [
+    CompositeLeaf<CanvasStackRow>(
+      CanvasLayerImageRequest(frameKey: cel, opacity: 1),
+    ),
+  ];
+
+  /// [cel]'s row on a screen that draws nothing live — as the onion ghosts'
+  /// view draws one.
+  Future<void> pumpRow(WidgetTester tester, StackRun run, BrushFrameKey cel) =>
+      tester.pumpWidget(
+        onAScreen(
+          screen,
+          size: viewSize,
+          under: const Color(0xFF000000),
+          view: FramePictureView(
+            run: run,
+            picture: (cut: cut, frameIndex: frame, paintPaper: false),
+            nodes: rowOf(cel),
+            viewport: CanvasViewport(zoom: zoom),
+            laysWhatItMisses: true,
+            wholeFrames: false,
           ),
         ),
-      ),
-    ),
-  );
+      );
 
-  Future<int> blueColumns(WidgetTester tester, double zoom) async {
-    final render =
-        screen.currentContext!.findRenderObject()! as RenderRepaintBoundary;
-    final rgba = (await tester.runAsync(() async {
-      final image = await render.toImage();
-      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-      image.dispose();
-      return data!.buffer.asUint8List();
-    }))!;
+  /// Blue columns on the row through the middle of the cel.
+  Future<int> blueColumns(WidgetTester tester) async {
+    final shot = await shotOf(tester, screen);
     var n = 0;
     final row = (tileSize * zoom / 2).floor();
-    for (var x = 0; x < viewSize.width.toInt(); x += 1) {
-      final o = (row * viewSize.width.toInt() + x) * 4;
-      if (rgba[o + 2] > 0xC8 && rgba[o + 3] == 0xFF) n += 1;
+    for (var x = 0; x < shot.width; x += 1) {
+      final o = (row * shot.width + x) * 4;
+      if (shot.rgba[o + 2] > 0xC8 && shot.rgba[o + 3] == 0xFF) n += 1;
     }
     return n;
   }
 
-  /// Lets the asynchronous pass land the rows' images.
-  Future<void> landEverything(WidgetTester tester) => lendBothClocks(
+  Future<bool> showsBlueWhole(WidgetTester tester) => settleAsync(
     tester,
-    rounds: 6,
-    beat: const Duration(milliseconds: 30),
+    () async => await blueColumns(tester) == viewSize.width.toInt(),
   );
 
-  /// The cel on screen under the row it came from, as the drag shows it,
-  /// then the release's rekey.
-  Future<(BrushFrameStore, LayerFrameImageCache)> carryAndRelease(
-    WidgetTester tester, {
-    required double zoom,
-  }) async {
+  testWidgets('🚨a cel that lands as an image row is whole on the first '
+      'frame after the release', (tester) async {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetDevicePixelRatio);
-    final store = celStore({from: 2});
-    final images = LayerFrameImageCache(frameStore: store);
-    addTearDown(images.dispose);
-
-    await pumpRow(tester, images, from, zoom: zoom);
+    final (:cels, :run, store: _) = celsOf({from: 2});
+    await pumpRow(tester, run, from);
     expect(
-      await settleAsync(
-        tester,
-        () async =>
-            await blueColumns(tester, zoom) == viewSize.width.toInt(),
-      ),
+      await showsBlueWhole(tester),
       isTrue,
       reason: 'fixture: the drag shows the cel under the row it came from',
     );
-    store.rekeyFrames([(from, to)]);
-    return (store, images);
-  }
 
-  for (final zoom in [0.5, 1.0]) {
-    testWidgets('🚨at ${(zoom * 100).round()}%: a cel that lands as an image '
-        'row is whole on the first frame after the release', (tester) async {
-      final (_, images) = await carryAndRelease(tester, zoom: zoom);
+    cels.rekeyFrames([(from, to)]);
+    // ONE frame — ⛔not pumpAndSettle, which lets the asynchronous read land.
+    await pumpRow(tester, run, to);
 
-      // ONE frame — ⛔not pumpAndSettle, which lets the asynchronous pass
-      // land.
-      await pumpRow(tester, images, to, zoom: zoom);
-      expect(await blueColumns(tester, zoom), viewSize.width.toInt());
-    });
-  }
-
-  testWidgets('🚨at 50%: a cel that lands as the row the brush is on draws its '
-      'blocks from the picture it was shown with, making none', (tester) async {
-    final (store, images) = await carryAndRelease(tester, zoom: 0.5);
-    const lineage = 'carried-into-the-slot';
-    addTearDown(() => TilePyramid.instance.drop(lineage));
-
-    await pumpRow(
-      tester,
-      images,
-      to,
-      zoom: 0.5,
-      active: BitmapSurfacePainter(
-        surface: BrushFrameDisplayCacheService(
-          frameStore: store,
-          canvasSize: canvasSize,
-        ).prepareFramePreview(to).previewSurface,
-        showTransparentBackground: false,
-        lineage: lineage,
-      ),
-    );
-
-    expect(await blueColumns(tester, 0.5), viewSize.width.toInt());
-    expect(
-      TilePyramid.instance.debugHasSeed(lineage),
-      isTrue,
-      reason: 'the picture the row was shown with is handed over as it '
-          'becomes the brush\'s, as it is when a row is stood on '
-          '(a_cel_entering_the_active_slot_draws_the_level_it_had_test)',
-    );
-    expect(TilePyramid.instance.debugTileCountOf(lineage), 0);
+    expect(await blueColumns(tester), viewSize.width.toInt());
   });
 
-  testWidgets('a picture the view held under the key the cel lands on is let '
-      'go — its pin with it — and the cel is what that key shows', (
-    tester,
-  ) async {
+  testWidgets('🚨a cel carried onto a key a picture was made under shows '
+      'itself — not that picture', (tester) async {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetDevicePixelRatio);
-    // A red cel under the key the blue one is carried to.
-    final store = celStore({from: 2, to: 0});
-    final images = LayerFrameImageCache(frameStore: store);
-    addTearDown(images.dispose);
-    await pumpRow(tester, images, from, zoom: 1, under: to);
-    await landEverything(tester);
-
-    store.rekeyFrames([(from, to)]);
-    await pumpRow(tester, images, to, zoom: 1);
-    expect(await blueColumns(tester, 1), viewSize.width.toInt());
-
-    await tester.pumpWidget(const SizedBox());
+    // A red cel under the key the blue one is carried to, its picture made.
+    final (:cels, :run, :store) = celsOf({from: 2, to: 0});
+    await pumpRow(tester, run, to);
+    final red = run.pictures.keyOfStack(rowOf(to), (
+      cut: cut,
+      frameIndex: frame,
+      paintPaper: false,
+    ));
     expect(
-      images.pinnedBytes,
-      0,
-      reason: 'every picture the view held is let go with the view — the one '
-          'the carried cel took the key of as well',
+      await settleAsync(tester, () => store.peek(red) != null),
+      isTrue,
+      reason: '⛔premise: the red cel\'s picture is made',
     );
+    await pumpRow(tester, run, from);
+    expect(await showsBlueWhole(tester), isTrue, reason: 'fixture');
+
+    cels.rekeyFrames([(from, to)]);
+    await pumpRow(tester, run, to);
+
+    expect(
+      await blueColumns(tester),
+      viewSize.width.toInt(),
+      reason: 'the key the cel lands on named the red cel\'s picture: asked '
+          'at the same revision, the screen shows the cel that is gone',
+    );
+    expect(await showsBlueWhole(tester), isTrue, reason: 'and stays so');
   });
 }

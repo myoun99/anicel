@@ -21,7 +21,6 @@ import 'src/native/window_full_screen.dart';
 import 'src/native/window_place.dart';
 import 'src/ui/canvas/colour_key_shader.dart';
 import 'src/ui/canvas/layer_blend_shader.dart';
-import 'src/ui/canvas/level_image.dart' show measuredHalving;
 import 'src/ui/debug/frame_stats.dart';
 import 'src/ui/debug/frame_stats_readout.dart';
 import 'src/ui/debug/repaint_cause.dart';
@@ -180,23 +179,13 @@ Future<void> main(List<String> handedAtLaunch) async {
   MemoryBlackBox.reset();
   LaunchSplash.drawing(AppText.strings);
   runApp(AnicelApp(handedAtLaunch: handedAtLaunch));
-  // 🗣️F-178 (유저 2026-09-24): 「ios에서 녹음누르면 권한묻는데 그게아니라 앱
-  // 실행시로 못하나? 한번 권한 얻으면 심플하잖아」. Once, at launch, after the
-  // first frame so the system dialog lands on the app rather than on an empty
-  // window. The record button still awaits the same ask, so no take rolls
-  // before the answer is in — and an answer already given comes back at
-  // once, which is what makes this cheap on every later launch.
-  WidgetsBinding.instance.addPostFrameCallback(
-    (_) => unawaited(AppStorage.ensureMicrophoneAccess()),
-  );
-  // The engine's halving read once, after the first frame (a few small
-  // pictures, off the frame): a level of a picture laid past the wall is
-  // halved through it ([measuredHalving]), and one made inside a build
-  // before it is read is rastered as it always was.
-  WidgetsBinding.instance.addPostFrameCallback(
-    (_) => unawaited(measuredHalving()),
-  );
-  // And the side this engine holds, the same way: a compose past it is made
+  // ↩️F-178 (유저 2026-09-24) asked for the microphone here, once at launch:
+  // 「ios에서 녹음누르면 권한묻는데 그게아니라 앱 실행시로 못하나?」. 🗣️I-133
+  // (유저 2026-10-26) took it back: 「앞으로는 앱 키고 이 허용을 체크해야
+  // 권한묻도록」 — ⛔nothing asks at launch; the OS first hears of the
+  // microphone when Preferences ▸ Audio ▸ Allow microphone is turned on.
+  // The side this engine holds, read once after the first frame (a few small
+  // pictures, off the frame): a compose past it is made
   // in pieces (`piecesOver`), and one made inside a build before it is read
   // is made whole, as it always was.
   WidgetsBinding.instance.addPostFrameCallback(

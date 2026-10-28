@@ -28,6 +28,7 @@ import 'package:anicel/src/services/editing/default_cut_helpers.dart'
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
 import 'package:anicel/src/ui/canvas/display_resample.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_float.dart';
@@ -37,6 +38,7 @@ import '../../helpers/cel_text_tool_harness.dart';
 import '../../helpers/key_chords.dart';
 import '../../helpers/panel_finders.dart';
 import '../../helpers/settle_async.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// Who the box carries: the row the canvas edits, alone; that row and
 /// another across a frame range (F-329), the other floating in a slot of
@@ -196,17 +198,15 @@ void main() {
     );
   }
 
-  CanvasLayerStackView stackOf(WidgetTester tester) =>
-      tester.widget<CanvasLayerStackView>(
-        inMainCanvas(find.byType(CanvasLayerStackView)),
+  FramePictureView canvasOf(WidgetTester tester) =>
+      tester.widget<FramePictureView>(
+        theFramesPicture(within: mainCanvasPanel()),
       );
 
-  /// The level of the view's pyramid the stack composes at.
-  int levelOf(WidgetTester tester) => displayLevelOf(
-    displayScaleOf(
-      stackOf(tester).viewport.zoom,
-      tester.view.devicePixelRatio,
-    ),
+  /// Device pixels a canvas pixel of the view lands on.
+  double scaleOf(WidgetTester tester) => displayScaleOf(
+    canvasOf(tester).viewport.zoom,
+    tester.view.devicePixelRatio,
   );
 
   /// What the drawing canvas's stack draws — every row, each float in the
@@ -222,12 +222,13 @@ void main() {
   /// (Vulkan, 10-24) the multisampled raster blended them — at 1:1 a
   /// landing read grey 64 on nine pixels the box had carried black.
   Future<Uint8List> composite(WidgetTester tester) async {
-    final paint = inMainCanvas(
-      find.descendant(
-        of: find.byType(CanvasLayerStackView),
-        matching: find.byType(CustomPaint),
-      ),
-    ).evaluate().firstWhere((e) => (e.widget as CustomPaint).painter != null);
+    final paint = find
+        .descendant(
+          of: theFramesPicture(within: mainCanvasPanel()),
+          matching: find.byType(CustomPaint),
+        )
+        .evaluate()
+        .firstWhere((e) => (e.widget as CustomPaint).painter != null);
     final size = (paint.renderObject! as RenderBox).size;
     final dpr = tester.view.devicePixelRatio;
     final recorder = ui.PictureRecorder();
@@ -246,18 +247,42 @@ void main() {
     return Uint8List.fromList(bytes!.buffer.asUint8List());
   }
 
-  /// Lets what is drawn off the frame's clock land.
-  Future<void> settle(WidgetTester tester) => lendBothClocks(
-    tester,
-    rounds: 12,
-    beat: const Duration(milliseconds: 16),
-    step: const Duration(milliseconds: 16),
-  );
+  /// Lets a step land: its frames, and the one thing here drawn off the
+  /// frame's clock — the picture an open warp resamples to, decoded by the
+  /// engine on a real thread — waited for until it is the one the box's
+  /// values ask for now ([CanvasSelectionCommands.debugFloatsCaughtUp]).
+  ///
+  /// ↩️It lent both clocks twelve rounds of 16 ms until 2026-10-25. 🔬On
+  /// two pumped frames and no real time 17 of the 22 tests passed, their
+  /// controls too; the five that failed were the warps, showing the float's
+  /// surface where its resample was still decoding — and one let-go,
+  /// waited for where it is checked.
+  Future<void> settle(WidgetTester tester) async {
+    await pumpFrames(tester, 2);
+    // No selection layer up — before the Move tool is — floats nothing.
+    bool caughtUp() => tester
+        .widgetList<CanvasSelectionLayer>(find.byType(CanvasSelectionLayer))
+        .every(
+          (layer) => layer.selectionCommands?.debugFloatsCaughtUp ?? true,
+        );
+    expect(
+      await settleAsync(
+        tester,
+        caughtUp,
+        step: const Duration(milliseconds: 16),
+      ),
+      isTrue,
+      reason: 'the warp shows the resample its values ask for',
+    );
+    await pumpFrames(tester, 2);
+  }
 
   /// The app on [project], stood on row A — at the 1:1 it opens at, or
-  /// [zoomedOut] by the bar's own steps until its rows are drawn as level
-  /// tiles (F-240) — with the text tool in hand, and the canvas pixel in
-  /// the middle of what can be seen of it.
+  /// [zoomedOut] by the bar's own steps past a halving, where the screen
+  /// samples the frame's picture from its chain (F-240) — with the text
+  /// tool in hand, and the canvas pixel in the middle of what can be seen
+  /// of it. ↩️Past a halving the rows were drawn as level tiles, until
+  /// one-picture-per-frame ②-5b-2.
   Future<Offset> open(
     WidgetTester tester,
     Project project, {
@@ -269,14 +294,18 @@ void main() {
     final view = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .canvasViewCommands!;
-    for (var step = 0; zoomedOut && levelOf(tester) == 0 && step < 8; step++) {
+    for (
+      var step = 0;
+      zoomedOut && scaleOf(tester) > 0.5 && step < 8;
+      step++
+    ) {
       view.zoomStep(zoomIn: false);
       await settle(tester);
     }
     expect(
-      levelOf(tester),
-      zoomedOut ? greaterThan(0) : 0,
-      reason: '⛔fixture: 1:1, or a zoom whose rows are drawn as level tiles',
+      scaleOf(tester),
+      zoomedOut ? lessThanOrEqualTo(0.5) : greaterThan(0.5),
+      reason: '⛔fixture: 1:1, or a zoom past a halving',
     );
     await takeTextTool(tester);
     return canvasPixelInView(tester);
@@ -412,7 +441,7 @@ void main() {
     await settle(tester);
     expect(commands.transformActive, isTrue, reason: '⛔fixture: a box');
     expect(
-      stackOf(tester).liftedRows.keys.toSet(),
+      canvasOf(tester).live!.liftedRows.keys.toSet(),
       switch (rows) {
         _Rows.live => isEmpty,
         _Rows.range => {keyB},
@@ -420,10 +449,10 @@ void main() {
       },
       reason: '⛔fixture: the rows floating in slots of their own',
     );
-    final stack = stackOf(tester);
+    final stack = canvasOf(tester);
     final floats = [
-      if (rows != _Rows.folder) stack.floatOverlay?.value,
-      for (final lifted in stack.liftedRows.values) lifted.float.value,
+      if (rows != _Rows.folder) stack.live!.floatOverlay?.value,
+      for (final lifted in stack.live!.liftedRows.values) lifted.float.value,
     ];
     expect(
       [
@@ -716,7 +745,7 @@ void main() {
     await settle(tester);
     expect(
       tester
-          .getRect(inMainCanvas(find.byType(CanvasLayerStackView)))
+          .getRect(theFramesPicture(within: mainCanvasPanel()))
           .contains(onScreen(tester, page.width + 29.0, c.dy + 30)),
       isTrue,
       reason: '⛔fixture: what lands past the page is on the screen',
@@ -788,7 +817,7 @@ void main() {
     /// The landing the live row shows the float as, asked through the
     /// row's own keys — the one its paint was handed.
     CelTextLanding shownLanding() {
-      final stack = stackOf(tester);
+      final stack = canvasOf(tester);
       CanvasActiveLayerRow? row;
       void walk(List<CompositeNode<CanvasStackRow>> nodes) {
         for (final node in nodes) {
@@ -801,14 +830,18 @@ void main() {
               walk(children);
             case CompositeBackdropBlend(:final children):
               walk(children);
+            case CompositeClip(:final children):
+              walk(children);
             case CompositeLeaf():
+            case CompositeOpaque():
+            case CompositeCelNumber():
               break;
           }
         }
       }
 
       walk(stack.nodes);
-      final shown = stack.floatOverlay!.value!
+      final shown = stack.live!.floatOverlay!.value!
           .shownOn(row!.sourceEffects)
           .preview;
       expect(shown, isA<CelTextLanding>(), reason: '⛔fixture: a landing');
@@ -831,9 +864,15 @@ void main() {
     expect(further.picture.debugDisposed, isFalse, reason: 'still shown');
 
     commands.applyTransform();
-    await settle(tester);
-
-    expect(further.picture.debugDisposed, isTrue);
+    expect(
+      await settleAsync(
+        tester,
+        () => further.picture.debugDisposed,
+        step: const Duration(milliseconds: 16),
+      ),
+      isTrue,
+      reason: 'the last landing is let go once the box lands',
+    );
   });
 }
 

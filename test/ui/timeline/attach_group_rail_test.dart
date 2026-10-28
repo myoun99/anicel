@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
 
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/named_finders.dart';
+import '../../helpers/room_for_the_pills.dart';
 
 /// UI-R20 P6 (#8–#11): the attach-layer rail — placement arrows instead
 /// of kind icons, the group fold twirl, and the + flyout entrance.
@@ -376,6 +377,8 @@ layers: layers,
   testWidgets('the timeline + flyout adds attach layers riding the active '
       'layer, named by side (+1 above, -1 below) and shown as attach-arrow '
       'rows (UI-R20 #8 #11)', (tester) async {
+    await tester.binding.setSurfaceSize(appWindowWithRoomForItsPills);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     await tester.pumpAndSettle();
 

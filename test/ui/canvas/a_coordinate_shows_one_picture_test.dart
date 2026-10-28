@@ -22,8 +22,8 @@ import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import '../../helpers/the_frame_as_it_stands.dart';
 
 /// 🚨★★★A COORDINATE SHOWS ONE PICTURE, AND IT IS THE RESULT'S (유저 절대규칙
 /// 2026-09-17: 「보이는 중이랑 결과랑 절대로 다르면 안 되」). What a
@@ -120,14 +120,13 @@ void main() {
     required Size logicalSize,
     required BitmapSurfacePainter live,
     required LayerFrameImageCache images,
-    DisplayBufferCache? buffers,
   }) => MaterialApp(
     home: Scaffold(
       body: Center(
         child: SizedBox(
           width: logicalSize.width,
           height: logicalSize.height,
-          child: CanvasLayerStackView(
+          child: TheFrameAsItStands(
             nodes: const [
               CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
             ],
@@ -137,7 +136,6 @@ void main() {
             activeSurfacePainter: live,
             paintPaper: true,
             paperBackground: ProjectBackground.defaultBackground,
-            debugBufferCache: buffers,
           ),
         ),
       ),
@@ -147,7 +145,7 @@ void main() {
   CustomPainter painterOf(WidgetTester tester) => tester
       .widgetList<CustomPaint>(
         find.descendant(
-          of: find.byType(CanvasLayerStackView),
+          of: find.byType(TheFrameAsItStands),
           matching: find.byType(CustomPaint),
         ),
       )
@@ -185,8 +183,6 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     final images = LayerFrameImageCache(frameStore: BrushFrameStore());
     addTearDown(images.dispose);
-    final buffers = DisplayBufferCache();
-    addTearDown(buffers.dispose);
     final surface = columns();
 
     // The stroke, the way the interactive view makes one: the real
@@ -228,7 +224,6 @@ void main() {
         logicalSize: logicalSize,
         live: live,
         images: images,
-        buffers: buffers,
       ),
     );
     await tester.pumpAndSettle();
@@ -236,7 +231,6 @@ void main() {
     // the whole 4-block view made.
     await paintBytes(tester, painterOf(tester), logicalSize);
     final whileDrawing = await paintBytes(tester, painterOf(tester), logicalSize);
-    expect(buffers.lastBufferLevel, 2);
     // The paper's outer level pixel is yielded (#15): read the interior.
     for (var y = 1; y < 7; y += 1) {
       for (var x = 1; x < 7; x += 1) {
@@ -284,7 +278,6 @@ void main() {
           showTransparentBackground: false,
         ),
         images: images,
-        buffers: buffers,
       ),
     );
     await tester.pumpAndSettle();

@@ -15,13 +15,14 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/services/project_repository.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 
 import 'flyout_test_helpers.dart';
 import '../helpers/app_icon_button_probe.dart';
 import '../helpers/named_finders.dart';
+import '../helpers/room_for_the_pills.dart';
+import '../helpers/timeline_host.dart';
 
 // ⑰ (2026-08-12): Delete Layer left the Layer FLYOUT, then left its own
 // button too. 유저: 「딜리트 = 버튼 하나 … 레이어를 선택했으면 레이어 삭제」.
@@ -144,7 +145,7 @@ void main() {
 
   testWidgets('undo and redo layer delete from the UI', (tester) async {
     late ProjectRepository repository;
-    await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
+    await _pumpApp(tester, onRepositoryCreated: (repo) => repository = repo);
     await _selectLayer(tester, _layerBId);
     expect(_selectedLayerName(tester), 'B');
     await _deleteActiveLayer(tester);
@@ -230,11 +231,32 @@ void main() {
   });
 }
 
+/// The timeline tab alone ([pumpTimelineHost]) — the shared pill and its
+/// windows are the tab's — with room for its pills. ↩️It stood as the app's
+/// window of 800 × 600 laid it, where the pills have 34px now
+/// ([timelineTabWithRoomForItsPills]).
 Future<void> _pumpHome(
   WidgetTester tester, {
   Project? project,
   void Function(ProjectRepository repository)? onRepositoryCreated,
 }) async {
+  final session = await pumpTimelineHost(
+    tester,
+    project ?? _project(),
+    surface: timelineTabWithRoomForItsPills,
+  );
+  onRepositoryCreated?.call(session.repository);
+}
+
+/// The app, for the app's own undo and redo buttons, with room for the
+/// pills ([appWindowWithRoomForItsPills]).
+Future<void> _pumpApp(
+  WidgetTester tester, {
+  Project? project,
+  void Function(ProjectRepository repository)? onRepositoryCreated,
+}) async {
+  await tester.binding.setSurfaceSize(appWindowWithRoomForItsPills);
+  addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
       home: HomePage(
@@ -267,9 +289,7 @@ Future<void> _selectLayer(WidgetTester tester, LayerId layerId) async {
 /// (and it drives the real drag), while this file's subject is what the
 /// delete then does.
 Future<void> _selectActiveRow(WidgetTester tester) async {
-  final session = tester
-      .widget<EditorWorkspace>(find.byType(EditorWorkspace))
-      .session;
+  final session = timelineSessionOf(tester);
   // The real verb, not the notifier: `beginRowSelection` is what the rail's
   // select drag calls, and it claims the selection domain as well as filling
   // it — poking the notifier alone leaves the rest of the session behind.

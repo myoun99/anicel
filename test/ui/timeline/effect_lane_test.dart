@@ -114,9 +114,9 @@ void main() {
       final rows = effectPropertyLanes([hue()], isExpanded: (_) => true);
       expect(rows.map((row) => row.label), [
         'Hue/Saturation',
-        'Hue',
-        'Saturation',
-        'Lightness',
+        'Master Hue',
+        'Master Saturation',
+        'Master Lightness',
       ]);
       expect(rows.skip(1).every((row) => row.showsKeyNavigator), isTrue);
     });
@@ -155,7 +155,7 @@ void main() {
       );
       final lane = rows.firstWhere((row) => row.label == 'Blur Width');
       expect(lane.valueLabel!(0), '8.00 px');
-      final spec = effectParametersOf(EffectKind.blur).first;
+      final spec = EffectKind.blur.parameters.first;
       expect(parseEffectLaneValue(spec, '8.00 px'), 8);
       expect(parseEffectLaneValue(spec, '12'), 12);
       expect(parseEffectLaneValue(spec, 'wide'), isNull);
@@ -167,7 +167,7 @@ void main() {
     });
 
     test('scrubbing moves the value in the form the editor parses', () {
-      final spec = effectParametersOf(EffectKind.hueSaturation).first;
+      final spec = EffectKind.hueSaturation.parameters.first;
       expect(scrubEffectLaneValue(spec, '10°', const Offset(20, 0)), '20.00°');
       expect(
         scrubEffectLaneValue(spec, '10°', const Offset(-100, 0)),
@@ -232,35 +232,27 @@ void main() {
       const layerId = LayerId('l');
       final header = effectGroupLaneId(const EffectId('e2'));
       final members = effectLaneDisplayOrder(hue());
-      final withHeader = [header, ...members];
+      bool covered(List<String> span) => laneSelectionCoversBandRow(
+        TimelineLaneSelection(
+          layerId: layerId,
+          laneId: span.first,
+          startIndex: 0,
+          endIndexExclusive: 2,
+          laneIds: span,
+        ),
+        layerId,
+        header,
+      );
 
-      expect(effectGroupHeaderCovered(header, withHeader), isTrue);
+      expect(covered([header, ...members]), isTrue);
       expect(
-        effectGroupHeaderCovered(header, members),
+        covered(members),
         isFalse,
         reason: 'every MEMBER selected is not the header selected — the '
             'special case #20 retired',
       );
-      expect(effectGroupHeaderCovered(header, [members.first]), isFalse);
-      expect(
-        effectGroupHeaderCovered(header, transformLaneDisplayOrder),
-        isFalse,
-      );
-      // …and the shared predicate routes an effect header here.
-      expect(
-        laneSelectionCoversBandRow(
-          TimelineLaneSelection(
-            layerId: layerId,
-            laneId: header,
-            startIndex: 0,
-            endIndexExclusive: 2,
-            laneIds: withHeader,
-          ),
-          layerId,
-          header,
-        ),
-        isTrue,
-      );
+      expect(covered([members.first]), isFalse);
+      expect(covered(transformLaneDisplayOrder), isFalse);
     });
   });
 
@@ -291,6 +283,7 @@ void main() {
         laneId: effectLaneId(const EffectId('e1'), 'blurX'),
         frameIndex: 7,
         input: '9',
+        scaleLinked: false,
       )!;
       final parameter = edited.single.parameterOf('blurX');
 
@@ -317,6 +310,7 @@ void main() {
         laneId: effectLaneId(const EffectId('e1'), 'blurX'),
         frameIndex: 5,
         input: '9',
+        scaleLinked: false,
       )!;
       expect(edited.single.parameterOf('blurX').track.keyAt(5)!.value, 9);
     });
@@ -355,6 +349,7 @@ void main() {
           laneId: foreign,
           frameIndex: 0,
           input: '3',
+          scaleLinked: false,
         ),
         isNull,
       );
@@ -413,6 +408,7 @@ void main() {
         laneId: effectLaneId(const EffectId('a'), 'blurX'),
         frameIndex: 0,
         input: '3',
+        scaleLinked: false,
       )!;
       expect(edited[1], same(effects[1]));
     });
@@ -435,6 +431,7 @@ void main() {
             laneId: laneOf(lane.key),
             frameIndex: key.key,
             input: '${key.value}',
+            scaleLinked: false,
           )!;
         }
       }
@@ -580,6 +577,7 @@ void main() {
         laneId: effectLaneId(const EffectId('e1'), 'blurX'),
         frameIndex: 10,
         input: '12',
+        scaleLinked: false,
       )!;
       expect(
         effectParameterValueAt(animated, const EffectId('e1'), 'blurX', 4),

@@ -1,6 +1,7 @@
 import 'app_tooltip.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart' show SchedulerBinding;
 
 import '../input/control_press_claim.dart';
 import '../input/wheel_law.dart';
@@ -12,7 +13,8 @@ import '../theme/text_on_ground.dart';
 import '../timeline/memo_token.dart' show Kept, keptWhileSame;
 import 'axis_bar_gesture.dart';
 import 'field_slider.dart';
-import 'inline_numeric_field.dart';
+import 'number_pad.dart';
+import 'owning_axis_grip.dart';
 import 'value_hands.dart';
 
 /// A NUMBER YOU OPERATE, by hands that each do ONE thing (UI-R18 #21, the
@@ -23,8 +25,8 @@ import 'value_hands.dart';
 ///   [onDragDelta]); a press that does not move does nothing; the wheel
 ///   over it turns it a step a notch;
 /// - its STEPS (the settings bar's own ±, [ValueSteps]) move it a step;
-/// - its PENCIL ([ValuePencil]) opens the inline field — the number alone
-///   ([readoutParts]), selected, the field all of the readout; Enter or a
+/// - its PENCIL ([ValuePencil]) opens the number pad under it
+///   ([showNumberPad]) on the number alone ([readoutParts]); ✓, Enter or a
 ///   press elsewhere commits through [onEditSubmit], Escape abandons.
 ///
 /// 🗣️tool-settings-panel-tidy (유저 2026-10-10): 「모든 드래그+편집이 가능한
@@ -44,15 +46,16 @@ import 'value_hands.dart';
 /// ([OwningHorizontalDragGestureRecognizer]), so no list around it ever
 /// scrolls; a vertical move scrubs nothing and scrolls nothing.
 class DragValueLabel extends StatefulWidget {
-  /// The bare readout — the number in its own width, its pencil after it;
-  /// its steps where the host has none of its own ([steps]: the canvas bar
-  /// turns the view with its ⟲ ⟳, the page band with its ◀ ▶).
+  /// The bare readout — the number in its own width, its pencil after it
+  /// where a number is typed into it ([onEditSubmit]); its steps where the
+  /// host has none of its own ([steps]: the canvas bar turns the view with
+  /// its ⟲ ⟳, the page band with its ◀ ▶).
   const DragValueLabel({
     super.key,
     required this.keyValue,
     required this.text,
     required this.onDragDelta,
-    required this.onEditSubmit,
+    this.onEditSubmit,
     this.unitsPerPixel = 1.0,
     this.width = 48,
     this.tooltip,
@@ -63,6 +66,7 @@ class DragValueLabel extends StatefulWidget {
     this.onOperationStart,
     this.onOperationEnd,
     this.digitsOnly = false,
+    this.signed = true,
     this.steps = false,
     this.stepBeforePencil,
   }) : name = null,
@@ -100,6 +104,7 @@ class DragValueLabel extends StatefulWidget {
     this.onOperationStart,
     this.onOperationEnd,
     this.digitsOnly = false,
+    this.signed = true,
     this.turned = false,
   }) : width = double.infinity,
        textStyle = null,
@@ -132,11 +137,16 @@ class DragValueLabel extends StatefulWidget {
   /// Which face — the bare readout or the box.
   final _Face _face;
 
-  /// Whether the typed value is a whole number with no sign: the field
-  /// takes digits alone (full-width ones converted) on the number pad
+  /// Whether the typed value is a whole number with no sign: the number
+  /// pad's − and . are dark ([NumberPadKeys]), and its field takes digits
+  /// alone (full-width ones converted) on the keyboard's number pad
   /// ([halfWidthDigitsOnly]). The readouts that type a sign or a point
   /// leave it false.
   final bool digitsOnly;
+
+  /// Whether the typed value takes a minus — the number pad's − key
+  /// ([NumberPadKeys]); a zoom does not. A [digitsOnly] value never does.
+  final bool signed;
 
   /// Called ONCE at the top of an operation — a scrub, a step, a notch of
   /// the wheel, a typed commit — before the value moves, for a host that
@@ -180,10 +190,20 @@ class DragValueLabel extends StatefulWidget {
 
   /// Whole-unit drag steps (sign follows the drag direction). A step and a
   /// notch of the wheel are one unit each.
+  ///
+  /// 🚨ONCE A FRAME, the hand's whole moves since the last (🔬
+  /// a-drag-readout-drops-a-move, 10-27): two moves of the hand can land
+  /// before the host builds the readout again, and a host counting each
+  /// from the value it built with lost the first — a −30px drag of the
+  /// timeline's zoom stood at 100%, not 80%. Handed on at the top of the
+  /// next frame, a move always finds the host built with the last one, so
+  /// `built + units` is right in every host.
   final ValueChanged<double> onDragDelta;
 
-  /// Receives the raw typed text on commit; the owner parses/clamps.
-  final ValueChanged<String> onEditSubmit;
+  /// Receives the raw typed text on commit; the owner parses/clamps. Null
+  /// on a number that is only dragged: it has no pencil (the timeline's
+  /// zoom, F-463 — 「연필버튼 삭제」).
+  final ValueChanged<String>? onEditSubmit;
 
   final double unitsPerPixel;
   final double width;
@@ -233,13 +253,36 @@ class _DragValueLabelState extends State<DragValueLabel> {
   /// `37`.
   String get _seed => _part?.number ?? widget.text;
 
-  void _beginEdit() => setState(() => _editing = true);
+  /// The pencil: the number pad, anchored under the readout ([showNumberPad],
+  /// I-134), the readout's frame typed while it is open.
+  Future<void> _beginEdit() async {
+    setState(() => _editing = true);
+    await showNumberPad(
+      context,
+      keyValue: widget.keyValue,
+      initialText: _seed,
+      keys: (
+        minus: widget.signed && !widget.digitsOnly,
+        point: !widget.digitsOnly,
+      ),
+      fieldKey: ValueKey<String>(
+        widget.inputKeyValue ?? '${widget.keyValue}-input',
+      ),
+      keyboardType: widget.digitsOnly ? TextInputType.number : null,
+      inputFormatters: widget.digitsOnly ? halfWidthDigitsOnly : null,
+      onSubmit: _commitEdit,
+    );
+    if (mounted) {
+      setState(() => _editing = false);
+    }
+  }
 
   void _commitEdit(String text) {
     setState(() => _editing = false);
-    if (text.isNotEmpty) {
+    final submit = widget.onEditSubmit;
+    if (text.isNotEmpty && submit != null) {
       widget.onOperationStart?.call();
-      widget.onEditSubmit(text);
+      submit(text);
     }
   }
 
@@ -255,19 +298,43 @@ class _DragValueLabelState extends State<DragValueLabel> {
     final whole = _pendingUnits.truncateToDouble();
     if (whole != 0) {
       _pendingUnits -= whole;
-      // ⚠️On the FIRST whole unit, not on the press: a press that never
-      // moves the value is not an operation.
-      if (!_scrubbedThisPress) {
-        widget.onOperationStart?.call();
-      }
-      _scrubbedThisPress = true;
-      widget.onDragDelta(whole);
+      _unheardUnits += whole;
+      _unheardCall ??= SchedulerBinding.instance.scheduleFrameCallback(
+        (_) => _handOn(),
+      );
     }
   }
 
-  /// The press is over: a scrub it made is done ([DragValueLabel
-  /// .onOperationEnd]).
+  /// The whole units the hand moved that the host has not been handed —
+  /// handed on once a frame ([DragValueLabel.onDragDelta]).
+  double _unheardUnits = 0;
+
+  /// The frame callback that hands them on, while one waits.
+  int? _unheardCall;
+
+  void _handOn() {
+    _unheardCall = null;
+    final units = _unheardUnits;
+    _unheardUnits = 0;
+    if (units == 0) {
+      return;
+    }
+    // ⚠️On the FIRST whole unit, not on the press: a press that never
+    // moves the value is not an operation.
+    if (!_scrubbedThisPress) {
+      widget.onOperationStart?.call();
+    }
+    _scrubbedThisPress = true;
+    widget.onDragDelta(units);
+  }
+
+  /// The press is over — what it moved handed on first: a scrub it made is
+  /// done ([DragValueLabel.onOperationEnd]).
   void _scrubOver() {
+    if (_unheardCall case final call?) {
+      SchedulerBinding.instance.cancelFrameCallbackWithId(call);
+      _handOn();
+    }
     if (_scrubbedThisPress) {
       _scrubbedThisPress = false;
       widget.onOperationEnd?.call();
@@ -292,6 +359,14 @@ class _DragValueLabelState extends State<DragValueLabel> {
     _step(event.scrollDelta.dy < 0 ? 1 : -1);
   }
 
+  @override
+  void dispose() {
+    if (_unheardCall case final call?) {
+      SchedulerBinding.instance.cancelFrameCallbackWithId(call);
+    }
+    super.dispose();
+  }
+
   /// How tall the bare readout's hands stand.
   static const double _bareHandsHeight = 20;
 
@@ -300,28 +375,7 @@ class _DragValueLabelState extends State<DragValueLabel> {
     _Face.bare => _bareHandsHeight,
   };
 
-  /// The field the readout turns into, holding [_seed] — and nothing else:
-  /// typed in, a readout is all field, its name and its unit gone with the
-  /// rest of its chrome (유저 2026-10-11: 「X같은 글자 없애고
-  /// 전면텍스트박스로 하는거니까 뒤에 붙은 %나 도같은 단위도 텍스트편집창에서
-  /// 없도록. 진짜 박스 전면 텍스트로 하고싶은거야」). ↩️The unit stood beside
-  /// the field and the name before it; a narrow readout kept half of itself
-  /// for the unit.
-  Widget _field(TextStyle style, TextAlign align) => InlineNumericField(
-    fieldKey: ValueKey<String>(
-      widget.inputKeyValue ?? '${widget.keyValue}-input',
-    ),
-    initialText: _seed,
-    textStyle: style,
-    textAlign: align,
-    keyboardType: widget.digitsOnly ? TextInputType.number : null,
-    inputFormatters: widget.digitsOnly ? halfWidthDigitsOnly : null,
-    onSubmit: _commitEdit,
-    onCancel: () => setState(() => _editing = false),
-  );
-
-  /// The bare readout: the number, in its own width — typed in, all of it
-  /// the field.
+  /// The bare readout: the number, in its own width.
   Widget _bare(BuildContext context) {
     final base = widget.textStyle ?? DragValueLabel._bareStyle;
     final style = widget.enabled
@@ -333,14 +387,17 @@ class _DragValueLabelState extends State<DragValueLabel> {
           );
     return SizedBox(
       width: widget.width,
-      child: _editing
-          ? _field(style, TextAlign.center)
-          : Text(widget.text, textAlign: widget.textAlign, style: style),
+      child: Text(widget.text, textAlign: widget.textAlign, style: style),
     );
   }
 
-  /// The box: a settings bar's frame around the name and the number —
-  /// typed in, all of it the field, in a typed frame ([FieldSlider.frameOf]).
+  /// The box: a settings bar's frame around the name and the number — in a
+  /// typed frame ([FieldSlider.frameOf]) while its number pad is open.
+  ///
+  /// ↩️Typed in, all of it was the field — the number alone, its name and
+  /// its unit gone (유저 2026-10-11: 「X같은 글자 없애고 전면텍스트박스로
+  /// 하는거니까 뒤에 붙은 %나 도같은 단위도 텍스트편집창에서 없도록」); the
+  /// number pad's top is that field now, and it opens on the number alone.
   Widget _box(BuildContext context) {
     const height = FieldSlider.defaultHeight;
     final ink = TextStyle(
@@ -362,64 +419,73 @@ class _DragValueLabelState extends State<DragValueLabel> {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: FieldSlider.inset),
           child: Row(
-            children: _editing
-                ? [Expanded(child: _field(numberStyle, TextAlign.right))]
-                : [
-                    if (name != null)
-                      Text(
-                        name,
-                        maxLines: 1,
-                        style:
-                            Theme.of(
-                              context,
-                            ).textTheme.labelSmall?.merge(ink) ??
-                            ink,
-                      ),
-                    Expanded(
-                      child: Text(
-                        widget.text,
-                        maxLines: 1,
-                        textAlign: TextAlign.right,
-                        style: numberStyle,
-                      ),
-                    ),
-                  ],
+            children: [
+              if (name != null)
+                Text(
+                  name,
+                  maxLines: 1,
+                  style:
+                      Theme.of(context).textTheme.labelSmall?.merge(ink) ??
+                      ink,
+                ),
+              Expanded(
+                child: Text(
+                  widget.text,
+                  maxLines: 1,
+                  textAlign: TextAlign.right,
+                  style: numberStyle,
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
+  /// Whether a number is typed into it: its pencil is.
+  bool get _typed => widget.onEditSubmit != null;
+
   /// [face] with its hands after it: its steps where it carries them, and
-  /// its pencil — after the host's step that stands there
-  /// ([DragValueLabel.stepBeforePencil]).
+  /// its pencil where a number is typed into it — after the host's step
+  /// that stands there ([DragValueLabel.stepBeforePencil]).
   Widget _withHands(Widget face) {
-    final hands = keptWhileSame(
-      _hands,
-      DragValueLabel,
-      (widget.enabled, widget.keyValue, widget._face, widget.steps),
-      _handsNow,
-    );
+    final hands = widget.steps || _typed
+        ? keptWhileSame(
+            _hands,
+            DragValueLabel,
+            (
+              widget.enabled,
+              widget.keyValue,
+              widget._face,
+              widget.steps,
+              _typed,
+            ),
+            _handsNow,
+          )
+        : null;
     final fills = widget._face == _Face.box;
     return Row(
       mainAxisSize: fills ? MainAxisSize.max : MainAxisSize.min,
       children: [
         if (fills) Expanded(child: face) else face,
         ?widget.stepBeforePencil,
-        hands,
+        ?hands,
       ],
     );
   }
 
   Widget _handsNow() {
-    final pencil = ValuePencil(
-      keyValue: '${widget.keyValue}-edit',
-      height: _handsHeight,
-      enabled: widget.enabled,
-      onPressed: _beginEdit,
-    );
+    final pencil = _typed
+        ? ValuePencil(
+            keyValue: '${widget.keyValue}-edit',
+            height: _handsHeight,
+            enabled: widget.enabled,
+            onPressed: _beginEdit,
+          )
+        : null;
     if (!widget.steps) {
-      return pencil;
+      return pencil!;
     }
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -430,7 +496,7 @@ class _DragValueLabelState extends State<DragValueLabel> {
           enabled: widget.enabled,
           onStep: _step,
         ),
-        pencil,
+        ?pencil,
       ],
     );
   }
@@ -453,35 +519,20 @@ class _DragValueLabelState extends State<DragValueLabel> {
         onPointerSignal: widget.enabled
             ? (event) => handleWheelUnlessScrolling(event, context, _wheel)
             : null,
-        child: DragVerbClaim(
-          behavior: HitTestBehavior.opaque,
-          child: RawGestureDetector(
-            key: ValueKey<String>(widget.keyValue),
-            behavior: HitTestBehavior.opaque,
-            gestures: widget.enabled
-                ? <Type, GestureRecognizerFactory>{
-                    OwningHorizontalDragGestureRecognizer:
-                        GestureRecognizerFactoryWithHandlers<
-                          OwningHorizontalDragGestureRecognizer
-                        >(
-                          () => OwningHorizontalDragGestureRecognizer(
-                            debugOwner: this,
-                          ),
-                          (recognizer) {
-                            // From the press: the first pixel is the
-                            // scrub's.
-                            recognizer.dragStartBehavior =
-                                DragStartBehavior.down;
-                            recognizer.onStart = _dragStarted;
-                            recognizer.onUpdate = _dragUpdated;
-                            recognizer.onEnd = (_) => _scrubOver();
-                            recognizer.onCancel = _scrubOver;
-                          },
-                        ),
-                  }
-                : const <Type, GestureRecognizerFactory>{},
-            child: face,
-          ),
+        child: OwningAxisGrip(
+          key: ValueKey<String>(widget.keyValue),
+          axis: Axis.horizontal,
+          configure: widget.enabled
+              ? (recognizer) {
+                  // From the press: the first pixel is the scrub's.
+                  recognizer.dragStartBehavior = DragStartBehavior.down;
+                  recognizer.onStart = _dragStarted;
+                  recognizer.onUpdate = _dragUpdated;
+                  recognizer.onEnd = (_) => _scrubOver();
+                  recognizer.onCancel = _scrubOver;
+                }
+              : null,
+          child: face,
         ),
       ),
     );

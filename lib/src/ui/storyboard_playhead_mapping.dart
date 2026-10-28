@@ -33,10 +33,10 @@ List<StoryboardTimelineLayoutEntry> storyboardActiveTrackLayout(
 /// the only way to be in a gap), and the storyboard playhead follows the
 /// parking with no extra wiring.
 ///
-/// A free function because the storyboard's transport left its panel for
-/// the 문턱 (유저 확정, 2026-08-10): the button that calls this is built by
-/// the WORKSPACE, not by the storyboard host. One implementation, two
-/// callers.
+/// A free function because its callers are not the storyboard host: the
+/// transport's 「처음으로」 and its key, both through [panelTransportFor].
+/// One implementation, two callers. ↩️It left the host when the transport
+/// went to the 문턱 (유저 확정, 2026-08-10), built by the workspace.
 void seekStoryboardPlayheadToTrackStart(EditorSessionManager session) {
   // An EMPTY selected track displays the whole-layout fallback — re-aim
   // at the track actually on screen before seeking (the old body's
@@ -87,6 +87,14 @@ List<ReadyRun> storyboardReadyRuns(
     start,
     end,
     for (final entry in entries) ...[entry.startFrame, entry.endFrame],
+    // Where any track's cut begins or ends, the film's stage — its lowest
+    // track covered — may move, and with it which picture of a cut the
+    // film shows ([DemandedPicture.paintPaper]).
+    for (final entry in session.projectSettings.projectLayout())
+      if (entry.startFrame < end && entry.endFrame > start) ...[
+        entry.startFrame,
+        entry.endFrame,
+      ],
   }.where((frame) => frame >= start && frame <= end).toList()..sort();
   if (edges.length < 2) {
     return const [];
@@ -116,6 +124,12 @@ List<ReadyRun> storyboardReadyRuns(
           owner.cut,
           ownFrom,
           ownFrom + (to - from),
+          paintPaper: session.rowSpans
+              .trackStackContributionsAt(from)
+              .any(
+                (shown) =>
+                    shown.cut.id == owner.cutId && shown.isBottomTrack,
+              ),
         )) {
       _append(runs, (
         startIndex: run.startIndex + onTrack,
@@ -265,7 +279,7 @@ void commitStoryboardScrub(EditorSessionManager session) {
 /// Switching into the storyboard clamps an over-end playhead back onto the
 /// CUT's last frame (UI-R9 #4 — the runway is a clipped view of the cut,
 /// so tab-switching never lands the playhead in the trailing gap); the
-/// track's last cut keeps its endless runway — so the frame counter and
+/// track's last cut keeps its endless runway — so the cut's frame and
 /// the playhead line agree. Gap parkings (no active cut) need no clamp.
 void clampPlayheadForStoryboard(EditorSessionManager session) {
   if (session.playbackRig.playback.isActive) {

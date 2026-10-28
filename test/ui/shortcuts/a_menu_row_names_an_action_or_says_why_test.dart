@@ -45,9 +45,14 @@ const ledger = <String, Why>{
   "brush/text_tool_settings.dart | 'text-tool-text-\$index'": Why.aChoice,
   "cut_command_group.dart | 'cut-mark-button'": Why.aSecondLevel,
   // F-391: a stop of the zoom list — one value of a settings list; all its
-  // row does is its own ⊖, which takes the stop out.
+  // row does is its own ⊖, which takes the stop out. F-480: the zoom lock's
+  // list is the same rows (`_PercentListRow`), one value at most.
   'dialogs/input_settings_dialog.dart | '
-          "'settings-zoom-snap-\${_shownPercent(stop)}'":
+          "'\$keyValue-\${_shownPercent(percent)}'":
+      Why.aChoice,
+  // I-72-block-without-instruction: 「(없음)」, the first value of the mark
+  // list — the vocabulary's own rows go through `asFlyoutValueChoices`.
+  "dialogs/instruction_event_dialog.dart | 'instruction-option-none'":
       Why.aChoice,
   // 🗣️I-40-Q2 (유저 2026-10-09, a file row's ⋮ — which file would a key
   // take?): 「그런건 단축키 안만들어도됨」.

@@ -4,11 +4,10 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
-import 'package:anicel/src/ui/timeline_tab_host.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/timeline_host.dart';
 
 /// 🗣️F-363 (유저 2026-10-15): 「카메라 불투명도는 레이어랑 통일. 레이어가
 /// 눈이랑 불투명도 바꾸면 언두 저장되니까. 기본적으로 레이어 버튼은 그게
@@ -19,30 +18,13 @@ import '../../helpers/named_finders.dart';
 /// notifier the window held, never the layer — so no file kept it, and a
 /// project opened in the window came up at the last one's dim.
 void main() {
-  Future<EditorSessionManager> pumpRail(WidgetTester tester) async {
-    final session = EditorSessionManager(initialProject: createDefaultProject());
-    addTearDown(session.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => TimelineTabHost(
-              session: session,
-              orientation: TimelineOrientation.horizontal,
-              onOrientationChanged: (_) {},
-              pixelsPerFrame: 24,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    return session;
-  }
+  Future<EditorSessionManager> pumpRail(WidgetTester tester) =>
+      pumpTimelineHost(
+        tester,
+        createDefaultProject(),
+        surface: const Size(800, 600),
+        pixelsPerFrame: 24,
+      );
 
   FieldSlider sliderFor(WidgetTester tester, LayerId layerId) =>
       tester.widget<FieldSlider>(

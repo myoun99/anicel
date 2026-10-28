@@ -9,12 +9,12 @@ import 'package:anicel/src/models/layer_section_defaults.dart'
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
     show LayerRowDragTarget;
 import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
 
 import '../helpers/named_finders.dart';
+import '../helpers/storyboard_host.dart';
 
 /// 🚨storyboard-filter-leaves-the-strips (found 2026-09-25, measured): the
 /// legend's filter hid a storyboard row on the RAIL only. Its strip stayed,
@@ -31,8 +31,6 @@ void main() {
     required TimelineRowFilter rowFilter,
     void Function(EditorSessionManager session)? arrange,
   }) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 700));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
     final session = EditorSessionManager(
       initialProject: createDefaultProject(),
     );
@@ -45,25 +43,15 @@ void main() {
       LayerRowAddress(seLayerIdForTrack(session.selectedTrackId, 1)),
     );
     arrange?.call(session);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => StoryboardTabHost(
-              session: session,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-              rowFilter: rowFilter,
-            ),
-          ),
-        ),
-      ),
+    // The filter as set — the session's, as the legend's chips set it,
+    // without the chip's own hand-off of the stand.
+    session.railView.rowFilter.value = rowFilter;
+    await pumpStoryboardHostOn(
+      tester,
+      session,
+      surface: const Size(1400, 700),
+      pixelsPerFrame: 12,
     );
-    await tester.pumpAndSettle();
     return (session: session, track: track);
   }
 

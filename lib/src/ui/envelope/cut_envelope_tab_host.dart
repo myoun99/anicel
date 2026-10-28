@@ -16,19 +16,13 @@ import '../dialogs/envelope_format_window.dart';
 import '../editor_session_manager.dart';
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/panel_keys.dart';
-import '../text/app_face.dart';
 import '../text/app_strings.dart';
 import '../timeline/memo_token.dart' show ByIdentity;
 import '../widgets/app_icon_button.dart';
-import '../effective_device_pixel_ratio.dart';
 import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
-import '../sheet/sheet_strata.dart';
 import 'cut_envelope_builder.dart';
-import '../sheet/sheet_ink_layer.dart';
-import '../sheet/sheet_photo_drop.dart';
 import 'cut_envelope_ink.dart';
-import 'cut_envelope_overlay.dart';
-import 'cut_envelope_painter.dart';
+import 'cut_envelope_paper.dart';
 
 /// The cut-envelope PANEL: the 봉투 as paper inside the canvas panel shell
 /// — the timesheet's and conte's architecture with envelope content.
@@ -168,9 +162,6 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
     final owner = cut == null
         ? null
         : cutEnvelopeInkOwner(session.repository.requireProject(), cut.id);
-    final windows = owner == null || inkController == null
-        ? const <SheetInkWindow>[]
-        : envelopeInkWindows(layout, owner);
     final brushToolState = widget.brushToolState;
     final inking =
         inkController != null && brushToolState != null && widget.brushAllowed;
@@ -197,102 +188,18 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
       drawingOn: inking,
       brushToolState: brushToolState,
       strokeHold: _strokeHold,
-      content: (context, viewport) => LayoutBuilder(
-        builder: (context, constraints) {
-          // ONE gate, read by both the input layer and the painter: a box
-          // whose window is mounted draws itself, and every other box's
-          // saved ink is baked by the painter.
-          final mounted = inking
-              ? mountedEnvelopeInkWindows(
-                  windows,
-                  viewport,
-                  constraints.biggest,
-                )
-              : const <SheetInkWindow>[];
-          CutEnvelopePainter painterOf(
-            SheetStratum stratum, {
-            Listenable? repaint,
-          }) => CutEnvelopePainter(
-            layout: layout,
-            source: source,
-            face: appFaceOf(DefaultTextStyle.of(context).style),
-            viewport: viewport,
-            effectiveRatio: EffectiveDevicePixelRatio.of(context),
-            layers: stratum.layers,
-            imageFor: widget.imageFor,
-            inkOwner: owner,
-            inkSurfaceFor: inkController == null
-                ? null
-                : (key) => inkController.surfaceFor(null, key),
-            liveInkKeys: {for (final window in mounted) window.key},
-            repaint: repaint,
-          );
-          return Stack(
-            children: [
-              Positioned.fill(
-                // Baked, not merely isolated — see the note on the conte
-                // page. The ink stands down while the pen is down, when it
-                // changes on every sample.
-                child: SheetStrata(
-                  sheet: 'envelope',
-                  painters: {
-                    SheetStratum.form: painterOf(SheetStratum.form),
-                    // A landed logo — nothing the painter compares
-                    // changes for it.
-                    SheetStratum.content: painterOf(
-                      SheetStratum.content,
-                      repaint: widget.imageRepaint,
-                    ),
-                    // The ink, and a landed decode of a photo it holds
-                    // (I-97).
-                    if (inkController != null)
-                      SheetStratum.ink: painterOf(
-                        SheetStratum.ink,
-                        repaint: Listenable.merge([
-                          inkController,
-                          widget.imageRepaint,
-                        ]),
-                      ),
-                  },
-                  liveNow: (stratum) =>
-                      stratum == SheetStratum.ink && _strokeHold.value,
-                  liveChanges: _strokeHold,
-                ),
-              ),
-              if (inking)
-                Positioned.fill(
-                  // The tool-state boundary: the brush reaches only this
-                  // overlay, so a tool switch never reprints the sheet — and
-                  // since H40 ② (2026-09-24) not even the overlay rebuilds
-                  // for it: its windows read the brush when a stroke starts.
-                  child: CutEnvelopeInkOverlay(
-                    key: const ValueKey<String>('cut-envelope-ink-layer'),
-                    controller: inkController,
-                    windows: mounted,
-                    brushToolState: brushToolState,
-                    historyManager: session.historyManager,
-                    viewport: viewport,
-                    strokeActive: _strokeHold,
-                    cacheInvalidationSink: _cacheInvalidationSink,
-                    imageFor: widget.imageFor,
-                    imageRepaint: widget.imageRepaint,
-                    photoHold: session.sheetPhotoHold,
-                  ),
-                ),
-              // A pool picture dropped on a box is its photo (I-97).
-              if (inkController != null && owner != null)
-                Positioned.fill(
-                  child: SheetPhotoDrop(
-                    session: session,
-                    ink: inkController,
-                    windows: () => windows,
-                    viewport: viewport,
-                    cacheInvalidationSink: _cacheInvalidationSink,
-                  ),
-                ),
-            ],
-          );
-        },
+      content: (context, viewport) => CutEnvelopePaper(
+        session: session,
+        layout: layout,
+        source: source,
+        owner: owner,
+        viewport: viewport,
+        strokeHold: _strokeHold,
+        cacheInvalidationSink: _cacheInvalidationSink,
+        inkController: inkController,
+        inkTool: inking ? brushToolState : null,
+        imageFor: widget.imageFor,
+        imageRepaint: widget.imageRepaint,
       ),
     );
   }

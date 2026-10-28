@@ -1229,6 +1229,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       cancelTransform: _cancelTransform,
       applyRegion: applyCommittedRegion,
       movePending: () => _movePending,
+      floatsCaughtUp: () => _floats.every((float) => float.preview.caughtUp),
       // The THIRD caller with the button's old wiring, and the worst of
       // them: `home_page.dart` binds this to `HistoryManager
       // .onBeforeUndoRedo`, which every undo and redo runs

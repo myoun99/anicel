@@ -10,7 +10,6 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
@@ -78,17 +77,7 @@ Future<EditorSessionManager> _open(WidgetTester tester) async {
               id: const TrackId('track'),
               name: 'Video',
               cuts: [
-                _cut(_first, [
-                  _drawing('a1'),
-                  _drawing('a2'),
-                  // A row the fill-reference flag does not belong on.
-                  Layer(
-                    id: const LayerId('a-photo'),
-                    name: 'a-photo',
-                    frames: const [],
-                    kind: LayerKind.image,
-                  ),
-                ]),
+                _cut(_first, [_drawing('a1'), _drawing('a2')]),
                 _cut(_second, [_drawing('b1'), _drawing('b2')]),
                 // A canvas of another size: the selection tool's invert
                 // reaches out to the canvas's edge, so the panel holds it.
@@ -235,30 +224,6 @@ void main() {
       final census = await frameCensus(
         tester,
         () => session.selectLayer(const LayerId('a2')),
-      );
-
-      expect(census.rebuilt, contains(ToolSettingsPanel));
-    });
-
-    testWidgets('the fill-reference flag of the row stood on', (tester) async {
-      final session = await _open(tester);
-
-      final census = await frameCensus(
-        tester,
-        () => session.layerSwitches.toggleLayerFillReference(
-          const LayerId('a1'),
-        ),
-      );
-
-      expect(census.rebuilt, contains(ToolSettingsPanel));
-    });
-
-    testWidgets('whether the row stood on takes the flag', (tester) async {
-      final session = await _open(tester);
-
-      final census = await frameCensus(
-        tester,
-        () => session.selectLayer(const LayerId('a-photo')),
       );
 
       expect(census.rebuilt, contains(ToolSettingsPanel));

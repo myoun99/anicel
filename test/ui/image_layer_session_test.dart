@@ -305,14 +305,19 @@ void main() {
     final imageId = s.activeLayer!.id;
 
     // The mixed cell→lane drag (R26 #3): a band over the image row that
-    // holds no editable block, whose tail also owns a LANE span.
+    // holds no editable block, running on into its own lanes — whose keys
+    // its ＋ makes.
     s.selectLayer(celId);
     s.selectFrameIndex(0);
     s.updateFrameRangeSelectionDrag(
       layerId: imageId,
       anchorIndex: 0,
       headIndex: 3,
-      headLaneId: 'position',
+      spanRows: [
+        LayerRowAddress(imageId),
+        LaneRowAddress(imageId, 'anchor-point'),
+        LaneRowAddress(imageId, 'position'),
+      ],
     );
     s.cellInstances.createInstancesForSelection();
 
@@ -537,7 +542,7 @@ void main() {
     }
 
     s.exposureVerbs.blankExposureAtCurrentFrame();
-    s.layerMarks.toggleMarkAtCurrentFrame();
+    s.layerMarks.toggleMarkAtCurrentFrame(InbetweenMark.two);
     s.clipboard.cutRunAtCurrentFrame();
     s.pasteIndependentFrameAtCurrentFrame();
     s.pasteLinkedFrameAtCurrentFrame();

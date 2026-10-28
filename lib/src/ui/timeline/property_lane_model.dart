@@ -44,6 +44,12 @@ enum PropertyLaneValueKind {
   color,
 }
 
+/// A [PropertyLaneValueKind.boolean] lane's word for [on] — what its row
+/// reads ([PropertyLaneRow.valueLabel]) and what a press on its ring writes
+/// back (the value editor's `parseBoolInput` reads it), from the row and
+/// from a rail's bulk-drag alike (F-475).
+String flagLaneWord(bool on) => on ? 'on' : 'off';
+
 /// A number SCRUBBED by a drag on its readout ([PropertyLaneRow.scrubValue]):
 /// [value] moved by the drag's travel across, half a unit a pixel.
 ///
@@ -392,12 +398,28 @@ class PropertyLaneEditCallbacks {
     this.onSetKeySides,
     this.onPreviewKeySides,
     this.valueLink,
+    this.keyedNow,
+    this.valueNow,
   });
 
   /// Adds a key (freezing the property's current value, AE-style) or
   /// removes the existing one — the keyframe navigator's diamond.
   final void Function(Layer layer, PropertyLaneRow lane, int frameIndex)
   onToggleKeyAt;
+
+  /// Whether [lane] of [layer] holds a key at [frameIndex] as the document
+  /// stands NOW — what the ◆ shows, read where a rail's bulk-drag spreads
+  /// what a press just set (F-475): a row built at the last frame still
+  /// carries the keys from before the press. Null where the rail reads
+  /// none.
+  final bool? Function(Layer layer, PropertyLaneRow lane, int frameIndex)?
+  keyedNow;
+
+  /// [lane]'s value at [frameIndex] as the document stands NOW, written as
+  /// its row writes it ([PropertyLaneRow.valueLabel]) — read as [keyedNow]
+  /// is.
+  final String? Function(Layer layer, PropertyLaneRow lane, int frameIndex)?
+  valueNow;
 
   // 2026-08-08: `onMoveKey` left with the key marker's own drag. Re-timing
   // a key is the lane SELECTION's move now — select the span, then drag it
@@ -473,6 +495,8 @@ class PropertyLaneEditCallbacks {
     final previewValue = onPreviewValue;
     final setKeySides = onSetKeySides;
     final previewKeySides = onPreviewKeySides;
+    final keyed = keyedNow;
+    final value = valueNow;
     return PropertyLaneEditCallbacks(
       onToggleKeyAt: (_, lane, frameIndex) =>
           onToggleKeyAt(layer, lane, frameIndex),
@@ -494,6 +518,12 @@ class PropertyLaneEditCallbacks {
           : (_, lane, frameIndex, sides) =>
                 previewKeySides(layer, lane, frameIndex, sides),
       valueLink: valueLink,
+      keyedNow: keyed == null
+          ? null
+          : (_, lane, frameIndex) => keyed(layer, lane, frameIndex),
+      valueNow: value == null
+          ? null
+          : (_, lane, frameIndex) => value(layer, lane, frameIndex),
     );
   }
 }

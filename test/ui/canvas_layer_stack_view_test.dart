@@ -14,7 +14,6 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut_id.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -30,6 +29,7 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 
 import '../helpers/placement_reading.dart';
+import '../helpers/the_frame_as_it_stands.dart';
 
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
@@ -75,10 +75,11 @@ void main() {
 
   testWidgets('paints drawn layers and skips undrawn ones', (tester) async {
     final cache = cacheWithStroke();
+    addTearDown(cache.dispose);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: CanvasLayerStackView(
+          body: TheFrameAsItStands(
             nodes: [
               CompositeLeaf<CanvasStackRow>(
                 CanvasLayerImageRequest(
@@ -101,83 +102,15 @@ void main() {
         ),
       ),
     );
-    // Let the async image preparation finish.
-    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
-    await tester.pump();
-    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
-    await tester.pump();
 
-    // Paint-only (input passes through) and it renders without errors; the
-    // undrawn layer resolves to nothing.
-    expect(find.byType(IgnorePointer), findsWidgets);
+    // It renders without errors; the undrawn layer resolves to nothing.
     expect(tester.takeException(), isNull);
-    cache.dispose();
   });
 
-  testWidgets('a layer entering the stack with a warm cache image paints '
-      'in the SAME frame (layer-switch flicker regression)', (tester) async {
-    final cache = cacheWithStroke();
-    const quality = PlaybackQuality.full;
-    // Warm the cache the way the prerender does after every stroke.
-    await tester.runAsync(
-      () => cache.prepare(
-        key: key('layer-below'),
-        canvasSize: canvasSize,
-        quality: quality,
-        sourceEffects: const [],
-      ),
-    );
-
-    Widget stack(List<CanvasLayerImageRequest> layers) => MaterialApp(
-      home: Scaffold(
-        body: CanvasLayerStackView(
-          nodes: [for (final layer in layers) CompositeLeaf<CanvasStackRow>(layer)],
-          imageCache: cache,
-          canvasSize: canvasSize,
-          viewport: CanvasViewport(),
-        ),
-      ),
-    );
-
-    int paintedImages() {
-      final paint = tester.widget<CustomPaint>(
-        find.descendant(
-          of: find.byType(CanvasLayerStackView),
-          matching: find.byType(CustomPaint),
-        ),
-      );
-      // The painter walks a TREE now; this stack is flat, so its top level
-      // is exactly the resolved images.
-      final nodes = (paint.painter as dynamic).nodes as List<Object?>;
-      return nodes.length;
-    }
-
-    // The layer starts OUTSIDE the stack (it is the active layer, drawn by
-    // the interactive view).
-    await tester.pumpWidget(stack(const []));
-    expect(paintedImages(), 0);
-
-    // The layer switch: it enters the stack. The warm image must paint on
-    // this very pump — the async-only path painted it a frame late and the
-    // artwork visibly vanished and reappeared.
-    await tester.pumpWidget(
-      stack([
-        CanvasLayerImageRequest(frameKey: key('layer-below'), opacity: 1),
-      ]),
-    );
-    expect(
-      paintedImages(),
-      1,
-      reason: 'warm images must adopt synchronously on layer switch',
-    );
-
-    // Switching back removes it the same frame (no double-draw under the
-    // interactive view).
-    await tester.pumpWidget(stack(const []));
-    expect(paintedImages(), 0);
-
-    cache.dispose();
-  });
+  // ↩️A layer entering the stack with a warm cache image painted in the SAME
+  // frame (the layer-switch flicker), pinned here until no row was drawn as
+  // its held image (one-picture-per-frame ②-5b-1): a frame as it stands
+  // reads its cels in the build.
 
   // 🚨TS1 (유저: 변형 도중에 다른 레이어에 그려진 게 무시되서 라이브로 안보임.
   // 즉 변형중인 레이어 위에 흰 선으로 그린게있으면, 변형중에도 그 선에 의해
@@ -207,15 +140,6 @@ void main() {
       // ABOVE the active one. The float is a red rectangle over (0,0)-(6,2),
       // so it reaches both under that dab and past it.
       final cache = cacheWithStroke();
-      const quality = PlaybackQuality.full;
-      await tester.runAsync(
-        () => cache.prepare(
-          key: key('layer-below'),
-          canvasSize: canvasSize,
-          quality: quality,
-          sourceEffects: const [],
-        ),
-      );
       final float = SelectionFloatOverlay(null);
       addTearDown(float.dispose);
       final image = await tester.runAsync(() async {
@@ -237,7 +161,7 @@ void main() {
               child: SizedBox(
                 width: 8,
                 height: 8,
-                child: CanvasLayerStackView(
+                child: TheFrameAsItStands(
                   // Bottom → top: the active row, then a row above it.
                   nodes: [
                     const CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
@@ -316,7 +240,7 @@ void main() {
               child: SizedBox(
                 width: 8,
                 height: 8,
-                child: CanvasLayerStackView(
+                child: TheFrameAsItStands(
                   nodes: [
                     CompositeLeaf<CanvasStackRow>(
                       CanvasActiveLayerRow(

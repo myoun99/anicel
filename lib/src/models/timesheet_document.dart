@@ -2,8 +2,8 @@ import 'camera_instruction.dart';
 import 'camera_moves.dart';
 import 'camera_work_marks.dart' show cameraKeyLabel;
 import 'cut.dart';
-import 'frame.dart'
-    show DrawingHead, InbetweenMark, breakdownMark, drawingHeadOf;
+import 'cut_id.dart';
+import 'frame.dart' show DrawingHead, InbetweenMark, drawingHeadOf;
 import 'frame_id.dart';
 import 'key_range_move.dart' show transformKeyAgreedNames;
 import 'layer.dart';
@@ -12,6 +12,7 @@ import 'layer_mark.dart';
 import 'layer_process.dart';
 import 'project_frame_rate.dart' show secondsPlusFramesLabel;
 import 'se_line_type.dart';
+import 'sheet_paint_layer.dart' show SheetPaintLayer;
 import 'sheet_sources.dart';
 import 'timeline_exposure.dart';
 import 'timeline_repeat.dart';
@@ -57,7 +58,19 @@ enum TimesheetColumnKind {
   se,
 
   /// A camera-instruction column.
-  camera,
+  camera;
+
+  /// The stratum that prints this kind's column title
+  /// ([TimesheetColumn.label]): a cel row's name — A, B — is a value the
+  /// film holds and prints with the values, while an S slot's and a camera
+  /// slot's letters are the form's own (F-485, 유저 2026-10-27: 「서식은
+  /// 진짜 서식만 있어야함. 그래서 A같은 셀 이름은 텍스트 층에 넣도록. S1이나
+  /// S2 이런 글자는 서식에 있어도 됨」). ↩️Every title printed with the
+  /// form, and a Photoshop document's form row carried the cels' names.
+  SheetPaintLayer get titleLayer => switch (this) {
+    action || cel => SheetPaintLayer.content,
+    se || camera => SheetPaintLayer.form,
+  };
 }
 
 /// One cell of a timesheet column (one frame row).
@@ -175,8 +188,10 @@ class TimesheetCell {
   /// inside the span's mark geometry.
   final int? spanOffset;
 
-  /// The span's mark shape from its def (instruction cells only); null
-  /// paints as [CameraInstructionMarkType.bar].
+  /// The span's mark shape ([InstructionEvent.markIn] — instruction cells
+  /// only); null paints no mark, the span that has none (「(없음)」).
+  /// ↩️Null painted as [CameraInstructionMarkType.bar], the dangling mark's
+  /// fallback, which `markIn` gives now.
   final CameraInstructionMarkType? markType;
 
   /// The sheet's A → B endpoint values (instruction start cells only; the
@@ -458,6 +473,7 @@ class TimesheetDocument {
           dataSheet,
           sources.clipToSheet,
           drawnFrameCount: drawnFrameCount,
+          sheetOf: cut.id,
         ),
       // 🗣️F-453 (유저 2026-10-23): 「타임시트패널의 셀란은 항상 데이터시트임.
       // 데이터시트 표기시트를 따르지않음. 데이터시트 고정이 업계 기본이기때문」 —
@@ -507,6 +523,7 @@ class TimesheetDocument {
     bool dataSheet,
     Layer Function(Layer displayClone) clipToSheet, {
     required int drawnFrameCount,
+    required CutId sheetOf,
   }) {
     return TimesheetColumn(
       kind: TimesheetColumnKind.se,
@@ -533,7 +550,7 @@ class TimesheetDocument {
               // SE columns stay blank between entries on paper — no X;
               // the speaker name rides along for the method-A name row.
               markEmptyRuns: false,
-              includeSeNames: true,
+              seWritingOf: sheetOf,
               dataSheet: dataSheet,
             )
           : _blankCells(rowCount),
@@ -546,7 +563,7 @@ class TimesheetDocument {
               rowCount: rowCount,
               playbackFrameCount: playbackFrameCount,
               markEmptyRuns: false,
-              includeSeNames: true,
+              seWritingOf: sheetOf,
               dataSheet: dataSheet,
             )
           : null,
@@ -702,8 +719,8 @@ class TimesheetDocument {
 
   /// Derives one layer's column cells from the unified timeline model:
   /// drawing starts carry the cel number, covered rows hold, block-owned
-  /// inbetween dots (breakdownOffsets) show ● on their held rows, and the
-  /// FIRST row of each uncovered run inside the playback range gets the X
+  /// inbetween dots (breakdownMarks) show their marks on their held rows, and
+  /// the FIRST row of each uncovered run inside the playback range gets the X
   /// (same rule as the timeline grids). Public as [timesheetLayerCells]
   /// so the drag preview overlay derives one column from a preview layer
   /// without rebuilding the document (UI-R9 #7).
@@ -712,13 +729,13 @@ class TimesheetDocument {
     required int rowCount,
     required int playbackFrameCount,
     bool markEmptyRuns = true,
-    bool includeSeNames = false,
+    CutId? seWritingOf,
     bool dataSheet = false,
   }) {
     final pass = _LayerCellsPass(
       layer: layer,
       rowCount: rowCount,
-      includeSeNames: includeSeNames,
+      seWritingOf: seWritingOf,
       dataSheet: dataSheet,
     );
     pass.writeBlocks();
@@ -748,10 +765,10 @@ class TimesheetDocument {
       final event = entry.value;
       final endExclusive = (start + event.length).clamp(0, rowCount);
       final spanLength = endExclusive - start;
-      final markType = defById?.call(event.instructionId)?.markType;
+      final markType = event.markIn(defById);
       cells[start] = TimesheetCell(
         TimesheetCellKind.instructionStart,
-        label: event.displayLabel(defById?.call(event.instructionId)),
+        label: event.displayLabel(event.defIn(defById)),
         spanLength: spanLength,
         spanOffset: 0,
         markType: markType,
@@ -837,7 +854,7 @@ List<TimesheetCell> timesheetLayerCells({
   required int rowCount,
   required int playbackFrameCount,
   bool markEmptyRuns = true,
-  bool includeSeNames = false,
+  CutId? seWritingOf,
   bool dataSheet = false,
 }) {
   return TimesheetDocument._layerCells(
@@ -845,7 +862,7 @@ List<TimesheetCell> timesheetLayerCells({
     rowCount: rowCount,
     playbackFrameCount: playbackFrameCount,
     markEmptyRuns: markEmptyRuns,
-    includeSeNames: includeSeNames,
+    seWritingOf: seWritingOf,
     dataSheet: dataSheet,
   );
 }
@@ -860,7 +877,7 @@ class _LayerCellsPass {
     required this.layer,
     required this.rowCount,
     required this.dataSheet,
-    required bool includeSeNames,
+    required this.seWritingOf,
   }) : cells = List<TimesheetCell>.filled(rowCount, TimesheetCell.blank),
        covered = List<bool>.filled(rowCount, false),
        entries = layer.timeline.entries.toList(growable: false),
@@ -874,18 +891,23 @@ class _LayerCellsPass {
            frame.id: drawingHeadOf(frame.name, kind: layer.kind),
        },
        seEntriesByFrameId = <FrameId, SeEntryFields>{
-         if (includeSeNames)
+         if (seWritingOf != null)
            for (final frame in layer.frames)
-             frame.id: (seName: frame.seName, seType: frame.seType),
+             frame.id: (seName: frame.seName, seTypes: frame.seTypes),
        };
 
   final Layer layer;
   final int rowCount;
+
+  /// The cut whose sheet an SE column prints — its blocks' writing rides
+  /// along, each line in its delivery in that cut (F-386); null for every
+  /// other column.
+  final CutId? seWritingOf;
   final bool dataSheet;
   final List<TimesheetCell> cells;
 
   /// Drawing coverage straight from the timeline entries; the block's
-  /// breakdown offsets overlay their held rows as ● cells. GHOST chains
+  /// breakdown marks overlay their held rows as mark cells. GHOST chains
   /// print simplified (UI-R10 #6/#11): repeat = the notation repeat word
   /// once + a guide line, END holds print nothing, FRONT holds print the
   /// held cel on their first row only — the timeline keeps the expanded
@@ -913,19 +935,19 @@ class _LayerCellsPass {
       mark: head.mark,
       spanLength: spanLength,
       seName: se?.seName,
-      seType: se?.seType,
+      seType: se?.seTypes.inCut(seWritingOf),
     );
   }
 
   /// A covered row after a drawing's head: the block's in-between dot where
-  /// it has one ([breakdownMark]), a plain hold elsewhere.
+  /// it has one, wearing its own [mark] (I-130), a plain hold elsewhere.
   static TimesheetCell _coveredRow({
-    required bool breakdown,
+    required InbetweenMark? mark,
     required int spanLength,
     required int spanOffset,
   }) => TimesheetCell(
-    breakdown ? TimesheetCellKind.mark : TimesheetCellKind.held,
-    mark: breakdown ? breakdownMark : null,
+    mark == null ? TimesheetCellKind.held : TimesheetCellKind.mark,
+    mark: mark,
     spanLength: spanLength,
     spanOffset: spanOffset,
   );
@@ -1036,7 +1058,7 @@ class _LayerCellsPass {
 
   /// Front hold: the cel moves to the first row FOR REAL (UI-R12 #17) —
   /// one run from here through the anchor block's last frame, held
-  /// straight across the authored position (breakdown ● keep their
+  /// straight across the authored position (breakdown marks keep their
   /// absolute rows).
   void _writeFrontHold(
     int start,
@@ -1060,10 +1082,7 @@ class _LayerCellsPass {
     for (var row = start + 1; row < mergedEndExclusive; row += 1) {
       final blockOffset = row - chainEndExclusive;
       cells[row] = _coveredRow(
-        breakdown:
-            block != null &&
-            blockOffset >= 0 &&
-            block.hasBreakdownAt(blockOffset),
+        mark: blockOffset < 0 ? null : block?.breakdownMarks[blockOffset],
         spanLength: runLength,
         spanOffset: row - start,
       );
@@ -1197,7 +1216,7 @@ class _LayerCellsPass {
       // the ACTION hold bar per the exposure-bar setting (drawn from the
       // (N+1)th comma of N+ holds only).
       cells[row] = _coveredRow(
-        breakdown: exposure.hasBreakdownAt(row - start),
+        mark: exposure.breakdownMarks[row - start],
         spanLength: spanLength,
         spanOffset: row - start,
       );

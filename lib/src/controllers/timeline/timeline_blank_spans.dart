@@ -47,8 +47,7 @@ class _TimelineBlankSpans {
       final layer = _controller._requireLayer(layerId);
       var covered = false;
       for (var index = startIndex; index < endExclusive; index += 1) {
-        final block = coveringDrawingBlockAt(layer.timeline, index);
-        if (block != null && !block.entry.ghost) {
+        if (authoredDrawingBlockAt(layer.timeline, index) != null) {
           covered = true;
           break;
         }
@@ -90,25 +89,19 @@ class _TimelineBlankSpans {
       changed = true;
       nextTimeline.remove(blockStart);
       if (blockStart < start) {
-        nextTimeline[blockStart] = entry.copyWith(
-          length: start - blockStart,
-          breakdownOffsets: [
-            for (final offset in entry.breakdownOffsets)
-              if (offset < start - blockStart) offset,
-          ],
-        );
+        // The shorter length drops the dots it cuts off ([copyWith]).
+        nextTimeline[blockStart] = entry.copyWith(length: start - blockStart);
       }
       if (blockEnd > endExclusive) {
         final tailStart = endExclusive;
-        final shift = tailStart - blockStart;
         nextTimeline[tailStart] = entry.copyWith(
           length: blockEnd - tailStart,
           // Offset 0 IS the drawing, so a dot that lands there is dropped:
           // the tail's first cell is now the block start.
-          breakdownOffsets: [
-            for (final offset in entry.breakdownOffsets)
-              if (offset - shift > 0) offset - shift,
-          ],
+          breakdownMarks: TimelineExposure.marksPastCut(
+            entry.breakdownMarks,
+            tailStart - blockStart,
+          ),
         );
       }
     }

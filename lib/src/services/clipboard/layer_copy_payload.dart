@@ -45,7 +45,7 @@ class LayerCopyPayload {
     List<LayerEffect> effects = const [],
     this.mark = LayerMark.none,
     this.onTimesheet = true,
-    this.isFillReference = false,
+    this.clipsToBelow = false,
   }) : frames = List.unmodifiable(frames),
        timeline = UnmodifiableMapView(
          SplayTreeMap<int, TimelineExposure>.of(timeline),
@@ -98,8 +98,8 @@ class LayerCopyPayload {
   final LayerMark mark;
   final bool onTimesheet;
 
-  /// The FILL tool's reference flag (R20-C2).
-  final bool isFillReference;
+  /// Clips to the layer below (I-92).
+  final bool clipsToBelow;
 
   /// This payload with [timeline] and [instructions] replaced — how a paste
   /// from another project re-spells the terms the row names (I-7).
@@ -122,7 +122,7 @@ class LayerCopyPayload {
     effects: effects,
     mark: mark,
     onTimesheet: onTimesheet,
-    isFillReference: isFillReference,
+    clipsToBelow: clipsToBelow,
   );
 }
 
@@ -143,6 +143,6 @@ LayerCopyPayload copyLayerToPayload(Layer source) {
     effects: source.effects,
     mark: source.mark,
     onTimesheet: source.onTimesheet,
-    isFillReference: source.isFillReference,
+    clipsToBelow: source.clipsToBelow,
   );
 }

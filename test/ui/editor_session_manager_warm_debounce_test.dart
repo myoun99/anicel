@@ -47,8 +47,8 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const canvasSize = CanvasSize(width: 8, height: 8);
 
-  test('a burst of invalidations restarts warming once — and still drops '
-      'the composite synchronously', () async {
+  test('a burst of edits restarts warming once — and a stale picture is '
+      'unservable at once', () async {
     final cut = Cut(
       id: const CutId('cut'),
       name: '1',
@@ -112,12 +112,13 @@ void main() {
       ],
     );
 
-    final pictures = session.playbackRig.canvasPictures;
+    final pictures = session.playbackRig.framePictures;
     await pictures.make((
       cut: activeCut,
       frameIndex: 0,
+      paintPaper: true,
     ), shouldAbort: () => false);
-    expect(pictures.has((cut: activeCut, frameIndex: 0)), isTrue);
+    expect(pictures.has((cut: activeCut, frameIndex: 0, paintPaper: true)), isTrue);
 
     // Let any open-time warm restart land before counting.
     await Future<void>.delayed(Duration.zero);
@@ -136,18 +137,22 @@ void main() {
       () => session.playbackRig.prerenderScheduler.progress.removeListener(countRestarts),
     );
 
-    // The burst: five dab commits' worth of invalidations, synchronously.
+    // The burst: five dab commits' worth, synchronously — each an edit of
+    // the cel's pixels, and its invalidation.
     for (var i = 0; i < 5; i += 1) {
+      renderCachesOf(session).brushFrameStore.markCelEdited(frameKey);
       session.renderCaches.cacheInvalidationHub.invalidateBrushFrame(
         BrushFrameCacheInvalidation(frameKey: frameKey, wholeFrame: true),
       );
     }
 
     expect(
-      pictures.has((cut: activeCut, frameIndex: 0)),
+      pictures.has((cut: activeCut, frameIndex: 0, paintPaper: true)),
       isFalse,
       reason: 'only the RESTART is deferred — a stale picture must be '
-          'unservable before the event loop turns',
+          'unservable before the event loop turns: the edit asks another '
+          'picture (one-picture-per-frame ②-2). ↩️The burst dropped the '
+          'row images it invalidated',
     );
     expect(
       restarts,

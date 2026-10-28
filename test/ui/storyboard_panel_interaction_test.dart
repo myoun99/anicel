@@ -432,7 +432,7 @@ void main() {
                 required TrackId trackId,
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
-                TimelineRowAddress? headRow,
+                List<TimelineRowAddress> spanRows = const [],
               }) {
                 dragSteps.add((trackId, anchorGlobalFrame, headGlobalFrame));
               },
@@ -455,7 +455,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(began, isEmpty);
-      // F-316: no band before the step off the pressed cell — the first
+      // F-316: no band before the first step (off the pressed cell, or
+      // farther than a tap, F-468) — the first
       // update IS that step.
       expect(dragSteps, isNotEmpty);
       expect(dragSteps.first, (const TrackId('track-a'), 12, 32));
@@ -476,7 +477,7 @@ void main() {
       // 60px does not — it floors to one row while the screen shows two.
       final selection = ValueNotifier<TrackFrameRangeSelection?>(null);
       addTearDown(selection.dispose);
-      final heads = <TimelineRowAddress?>[];
+      final spans = <List<TimelineRowAddress>>[];
       const trackId = TrackId('track-a');
       // The rail stacks the HIGHEST slot on top, so the row two above the
       // V row is the middle one: slot 2.
@@ -505,9 +506,9 @@ void main() {
                 required TrackId trackId,
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
-                TimelineRowAddress? headRow,
+                List<TimelineRowAddress> spanRows = const [],
               }) {
-                heads.add(headRow);
+                spans.add(spanRows);
               },
           onClear: () => selection.value = null,
         ),
@@ -528,13 +529,18 @@ void main() {
       await gesture.up();
       await tester.pumpAndSettle();
 
-      expect(heads, isNotEmpty);
+      expect(spans, isNotEmpty);
       expect(
-        heads.last,
-        LayerRowAddress(expectedHead),
+        spans.last,
+        [
+          LayerRowAddress(expectedHead),
+          LayerRowAddress(bottomSeId),
+          const TrackRowAddress(trackId),
+        ],
         reason:
-            'the pointer is two S rows up, so the head is two S rows up — '
-            'the answer must not depend on how tall the V row happens to be',
+            'the pointer is two S rows up, so the span reaches two S rows '
+            'up — the answer must not depend on how tall the V row happens '
+            'to be',
       );
     });
 
@@ -559,7 +565,7 @@ void main() {
                 required TrackId trackId,
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
-                TimelineRowAddress? headRow,
+                List<TimelineRowAddress> spanRows = const [],
               }) {
                 dragSteps.add((anchorGlobalFrame, headGlobalFrame));
               },
@@ -580,7 +586,8 @@ void main() {
       await gesture.up();
       await tester.pumpAndSettle();
 
-      // F-316: no band before the step off the pressed cell.
+      // F-316: no band before the first step (off the pressed cell, or
+      // farther than a tap, F-468).
       expect(dragSteps.first, (28, 38));
       expect(dragSteps.last, (28, 38));
     });
@@ -625,7 +632,7 @@ void main() {
                 required TrackId trackId,
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
-                TimelineRowAddress? headRow,
+                List<TimelineRowAddress> spanRows = const [],
               }) => selectDrags += 1,
           onClear: () => selection.value = null,
         ),
@@ -699,7 +706,7 @@ void main() {
                 required TrackId trackId,
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
-                TimelineRowAddress? headRow,
+                List<TimelineRowAddress> spanRows = const [],
               }) {},
           onClear: () {
             clears += 1;
@@ -746,7 +753,7 @@ void main() {
                 required TrackId trackId,
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
-                TimelineRowAddress? headRow,
+                List<TimelineRowAddress> spanRows = const [],
               }) {},
           onClear: () => selection.value = null,
         ),
@@ -1530,7 +1537,6 @@ void main() {
         List<
           ({
             LayerId layerId,
-            TimelineRowAddress? headRow,
             TimelineRowAddress? anchorRow,
             List<TimelineRowAddress> spanRows,
           })
@@ -1550,7 +1556,6 @@ void main() {
           <
             ({
               LayerId layerId,
-              TimelineRowAddress? headRow,
               TimelineRowAddress? anchorRow,
               List<TimelineRowAddress> spanRows,
             })
@@ -1586,13 +1591,11 @@ void main() {
                 required LayerId layerId,
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
-                TimelineRowAddress? headRow,
                 TimelineRowAddress? anchorRow,
                 List<TimelineRowAddress> spanRows = const [],
               }) {
                 escalated.add((
                   layerId: layerId,
-                  headRow: headRow,
                   anchorRow: anchorRow,
                   spanRows: spanRows,
                 ));
@@ -1628,7 +1631,6 @@ void main() {
       expect(log.escalated, isNotEmpty, reason: 'the drag left the group');
       final last = log.escalated.last;
       expect(last.layerId, seId);
-      expect(last.headRow, LayerRowAddress(seId));
       expect(last.anchorRow, LaneRowAddress(seId, 'position'));
       expect(last.spanRows, [
         LayerRowAddress(seId),
@@ -1659,7 +1661,7 @@ void main() {
 
       expect(log.escalated, isNotEmpty);
       expect(
-        log.escalated.last.headRow,
+        log.escalated.last.spanRows.last,
         TrackRowAddress(log.track.id),
         reason:
             'the cut row is a rail row like any other — the span may '
@@ -1709,7 +1711,7 @@ void main() {
         'inversion lived exactly here', (tester) async {
       final selection = ValueNotifier<TrackFrameRangeSelection?>(null);
       addTearDown(selection.dispose);
-      final heads = <TimelineRowAddress?>[];
+      final spans = <List<TimelineRowAddress>>[];
 
       await _pumpStoryboardPanel(
         tester,
@@ -1725,11 +1727,10 @@ void main() {
                 required LayerId layerId,
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
-                TimelineRowAddress? headRow,
                 TimelineRowAddress? anchorRow,
                 List<TimelineRowAddress> spanRows = const [],
               }) {
-                heads.add(headRow);
+                spans.add(spanRows);
               },
           onClear: () => selection.value = null,
         ),
@@ -1754,14 +1755,18 @@ void main() {
       await gesture.up();
       await tester.pumpAndSettle();
 
-      expect(heads, isNotEmpty);
+      expect(spans, isNotEmpty);
       expect(
-        heads.last,
-        const TrackRowAddress(TrackId('track-a')),
+        spans.last,
+        [
+          LayerRowAddress(seLayerIdForTrack(const TrackId('track-a'), 1)),
+          const TrackRowAddress(TrackId('track-a')),
+        ],
         reason:
             'downward on screen must reach the V row below — and now it '
-            'arrives as the ROW ITSELF, resolved from the painted heights, '
-            'not a count derived from the anchor row\x27s own height (R9 #25)',
+            'arrives as the ROWS THEMSELVES, resolved from the painted '
+            'heights, not a count derived from the anchor row\x27s own height '
+            '(R9 #25)',
       );
     });
 
@@ -1786,7 +1791,7 @@ void main() {
                 required TrackId trackId,
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
-                TimelineRowAddress? headRow,
+                List<TimelineRowAddress> spanRows = const [],
               }) {
                 dragSteps.add((anchorGlobalFrame, headGlobalFrame));
               },
@@ -1850,7 +1855,7 @@ void main() {
                 required TrackId trackId,
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
-                TimelineRowAddress? headRow,
+                List<TimelineRowAddress> spanRows = const [],
               }) {
                 cutDrags.add((anchorGlobalFrame, headGlobalFrame));
               },
@@ -1935,7 +1940,7 @@ void main() {
                 required TrackId trackId,
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
-                TimelineRowAddress? headRow,
+                List<TimelineRowAddress> spanRows = const [],
               }) {},
           onClear: () => selection.value = null,
         ),

@@ -33,6 +33,7 @@ import '../../models/layer_effect.dart' show EffectId;
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/new_row_placement.dart';
+import '../../models/timeline_row_address.dart';
 import 'effect_lane_policy.dart' show parseEffectLaneId;
 import 'property_lane_model.dart' show TimelineDisplayRow;
 import 'timeline_drag_preview.dart'
@@ -1232,21 +1233,23 @@ List<({int rowIndex, Layer layer})> layerRowsOf(List<TimelineDisplayRow> rows) {
   return layers;
 }
 
-/// The gap among the LAYER rows on screen nearest a pointer standing
-/// [along] into a uniform strip of [pitch]-long rows — the caret a drag
-/// that holds no row raises (a file from the pool).
+/// WHERE gap [slot] sits in the drawn row list — the first row of the unit
+/// it stands before, or the end of the list for the gap after the last.
 ///
-/// 유저 2026-08-12 ④: the line is where the cursor is — the nearest
-/// boundary between layer rows. Lanes only ever trail the layer they belong
-/// to, so the last gap is the strip's end.
-/// WHERE gap [slot] sits in the drawn row list — the row it stands above,
-/// or the end of the list for the gap after the last layer row.
+/// 🚨A layer's UNIT is its own row and its lanes, and a gap stands between
+/// units, never inside one. The rail opens a layer's lanes after its row
+/// and the sheet before it (R9 #23: 「further from the layer means applied
+/// later」, read the same both ways), so on the sheet a unit begins at its
+/// first lane. ↩️It stood at the layer's own row, which is the rail's case
+/// alone: on the sheet a file's caret and silhouette stood between a
+/// layer's lanes and its column (10-25).
 ///
-/// 🚨Named because TWO things need it and they must not drift: the caret
-/// measures its distance from this edge ([nearestLayerGap]), and the
-/// silhouette row is inserted AT it ([rowsWithSilhouette]). Written twice,
-/// a line and a row that are supposed to mark the same gap would eventually
-/// mark different ones.
+/// 🚨Named because THREE things need it and they must not drift: the caret
+/// measures its distance from this edge ([nearestLayerGap]), the silhouette
+/// row is inserted AT it ([rowsWithSilhouette]), and the line a row draws
+/// stands at its unit's ends ([linesBeyondRow]) — read off the same walk
+/// ([displayRowUnitAt]). Written twice, a line and a row that are supposed
+/// to mark the same gap would eventually mark different ones.
 ///
 /// ⚠️This sentence was FALSE for one round (2026-09-12, caught by the audit):
 /// the function was added and the caret left holding its own copy of the
@@ -1254,11 +1257,110 @@ List<({int rowIndex, Layer layer})> layerRowsOf(List<TimelineDisplayRow> rows) {
 /// happened. Naming a thing is not the same act as making everyone use it.
 int displayIndexForGap(List<TimelineDisplayRow> rows, int slot) {
   final layers = layerRowsOf(rows);
-  return slot < layers.length ? layers[slot].rowIndex : rows.length;
+  return slot < layers.length
+      ? displayRowUnitAt(rows, layers[slot].rowIndex).first
+      : rows.length;
 }
 
-/// [rows] with the drop's silhouette row standing in its gap, or [rows]
-/// unchanged when nothing is being dragged over the layer area.
+/// The run of rows the row at [at] stands for among [count] rows — itself
+/// and the rows on either side of it [owns] claims — as its first and
+/// last.
+///
+/// 🚨ONE walk for every rail's units — a row and the lanes it heads
+/// ([ownsTheLane]), the storyboard's V row and its track group. The
+/// timeline's and the storyboard's open lanes AFTER the row that heads them
+/// and the sheet BEFORE it (R9 #23), and which way is read off the rows,
+/// never stated.
+({int first, int last}) rowUnitAround(
+  int at,
+  int count,
+  bool Function(int index) owns,
+) {
+  var first = at;
+  while (first > 0 && owns(first - 1)) {
+    first -= 1;
+  }
+  var last = at;
+  while (last + 1 < count && owns(last + 1)) {
+    last += 1;
+  }
+  return (first: first, last: last);
+}
+
+/// Whether [address] is a lane the row at [head] stands for: every lane of
+/// a layer row's layer, and an fx chain header's own parameters.
+bool ownsTheLane(TimelineRowAddress head, TimelineRowAddress? address) {
+  if (address is! LaneRowAddress) {
+    return false;
+  }
+  return switch (head) {
+    LayerRowAddress(:final layerId) => address.layerId == layerId,
+    LaneRowAddress(:final layerId, :final laneId) =>
+      address.layerId == layerId &&
+          switch (parseEffectLaneId(laneId)) {
+            (:final effectId, parameterId: null) =>
+              parseEffectLaneId(address.laneId)?.effectId == effectId,
+            _ => false,
+          },
+    _ => false,
+  };
+}
+
+/// The run [rows] draws for the row at [at] ([rowUnitAround]).
+({int first, int last}) displayRowUnitAt(
+  List<TimelineDisplayRow> rows,
+  int at,
+) {
+  final head = rows[at].address;
+  return rowUnitAround(
+    at,
+    rows.length,
+    (index) => ownsTheLane(head, rows[index].address),
+  );
+}
+
+/// How far past the row at [at] its two lines stand where [edges] lay the
+/// rows: [lead] before it, to where its [unit] begins, and [trail] after
+/// it, to where the unit ends. Both are none while its lanes are shut.
+///
+/// 🚨The row draws the lines, so it must be told how far its unit reaches.
+/// A line drawn at the row's own edge stood between the row and its lanes:
+/// under the rail's last row and its chain's last header while the drop
+/// landed past their lanes, and inside every unit with lanes open on the
+/// sheet (10-25).
+({double lead, double trail}) linesBeyondRow(
+  TimelineRowEdges edges,
+  int at,
+  ({int first, int last}) unit,
+) => (
+  lead: edges.startOf(at) - edges.startOf(unit.first),
+  trail: edges.startOf(unit.last + 1) - edges.endOf(at),
+);
+
+/// The row a file held over the layer area would make, and the gap it
+/// stands in — what [rowsWithSilhouette] draws.
+typedef LayerAreaSilhouette = ({int slot, Layer row});
+
+/// The [LayerAreaSilhouette] [preview] stands, or null: a file over a ROW
+/// stands none, and no other drag does.
+///
+/// 🚨What the grids draw ([rowsWithSilhouette]) AND what they are built
+/// again for, and only then (`TimelinePanel`). They do not listen to the
+/// preview channel — it steps per pointer move — so a silhouette nothing
+/// rebuilt them for was never drawn: the caret stood in its gap and the row
+/// did not (10-25, found writing the test of the edges it is drawn on).
+LayerAreaSilhouette? layerAreaSilhouetteOf(TimelineDragPreview? preview) =>
+    switch (preview) {
+      MediaPlacementPreview(
+        silhouetteSlot: final slot?,
+        silhouetteRow: final row?,
+      ) =>
+        (slot: slot, row: row),
+      _ => null,
+    };
+
+/// [rows] with the silhouette [preview] stands ([layerAreaSilhouetteOf]) in
+/// its gap, or [rows] unchanged when it stands none.
 ///
 /// 🚨★★★**DRAWN, NEVER COUNTED.** This runs AFTER the list the entrance
 /// measures against has been taken, so the gap under the pointer is counted
@@ -1270,22 +1372,26 @@ List<TimelineDisplayRow> rowsWithSilhouette(
   List<TimelineDisplayRow> rows,
   TimelineDragPreview? preview,
 ) {
-  if (preview is! MediaPlacementPreview) {
+  final silhouette = layerAreaSilhouetteOf(preview);
+  if (silhouette == null) {
     return rows;
   }
-  final row = preview.silhouetteRow;
-  final slot = preview.silhouetteSlot;
-  if (row == null || slot == null) {
-    return rows;
-  }
-  final at = displayIndexForGap(rows, slot);
+  final at = displayIndexForGap(rows, silhouette.slot);
   return [
     ...rows.take(at),
-    TimelineDisplayRow.layer(row, layerIndex: slot),
+    TimelineDisplayRow.layer(silhouette.row, layerIndex: silhouette.slot),
     ...rows.skip(at),
   ];
 }
 
+/// The gap among the LAYER rows on screen nearest a pointer standing
+/// [along] the strip [edges] lay them on — the caret a drag that holds no
+/// row raises (a file from the pool).
+///
+/// 유저 2026-08-12 ④: the line is where the cursor is — the nearest
+/// boundary between layer rows: between their UNITS ([displayIndexForGap]).
+/// ↩️This said 「Lanes only ever trail the layer they belong to」, the
+/// rail's case alone (10-25).
 int nearestLayerGap(
   List<TimelineDisplayRow> rows,
   double along,
@@ -1370,10 +1476,14 @@ class LayerRowCaret {
     return slotForSteps(slot, steps, rows.length);
   }
 
-  /// How many rail rows the dragged row stands in: its own and the lanes
-  /// twirled down under it, up to the next layer row.
+  /// How many rail rows the dragged row stands in from its own on: itself
+  /// and the lanes twirled open after it, to where its unit ends
+  /// ([displayRowUnitAt]) — on the sheet, which opens them before it,
+  /// itself alone. ↩️It counted up to the next LAYER row, which on the sheet
+  /// took the next layer's lanes for this one's (10-25).
   int get _ownRowCount =>
-      (slot + 1 < rows.length ? rows[slot + 1].rowIndex : _drawn.length) -
+      displayRowUnitAt(_drawn, rows[slot].rowIndex).last +
+      1 -
       rows[slot].rowIndex;
 
   /// The layer the ON-ROW band names, or null when the band is over a rail

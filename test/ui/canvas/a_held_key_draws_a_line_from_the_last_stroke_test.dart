@@ -7,6 +7,7 @@ import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -23,6 +24,8 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/canvas_line_hold.dart';
+import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart'
+    show debugStrokeDabsLaid;
 import 'package:anicel/src/ui/canvas/selection_ants_painter.dart';
 
 import '../../helpers/brush_canvas_fixture.dart';
@@ -136,6 +139,58 @@ void main() {
     await mouse.moveTo(on(tester, to));
     await tester.pump();
     await mouse.up();
+    await tester.pump();
+  }
+
+  /// A stroke of a pen held at [pressure] the whole way from [from] to
+  /// [to], let go there.
+  Future<void> penStroke(
+    WidgetTester tester,
+    Offset from,
+    Offset to, {
+    required double pressure,
+  }) async {
+    const pen = 77;
+    var time = const Duration(seconds: 1);
+    PointerEvent sample(Offset at, {required bool down}) {
+      time += const Duration(milliseconds: 8);
+      return down
+          ? PointerDownEvent(
+              pointer: pen,
+              kind: PointerDeviceKind.stylus,
+              position: on(tester, at),
+              timeStamp: time,
+              pressure: pressure,
+              pressureMin: 0,
+              pressureMax: 1,
+            )
+          : PointerMoveEvent(
+              pointer: pen,
+              kind: PointerDeviceKind.stylus,
+              position: on(tester, at),
+              timeStamp: time,
+              pressure: pressure,
+              pressureMin: 0,
+              pressureMax: 1,
+            );
+    }
+
+    tester.binding.handlePointerEvent(sample(from, down: true));
+    await tester.pump();
+    for (var step = 1; step <= 4; step += 1) {
+      tester.binding.handlePointerEvent(
+        sample(Offset.lerp(from, to, step / 4)!, down: false),
+      );
+      await tester.pump();
+    }
+    tester.binding.handlePointerEvent(
+      PointerUpEvent(
+        pointer: pen,
+        kind: PointerDeviceKind.stylus,
+        position: on(tester, to),
+        timeStamp: time + const Duration(milliseconds: 8),
+      ),
+    );
     await tester.pump();
   }
 
@@ -321,6 +376,40 @@ void main() {
     const next = Offset(300, 280);
     await hover(tester, mouse, next);
     expect(antsOf(tester), [line(hand, next)]);
+  });
+
+  // 🗣️F-483 (유저 2026-10-27): 「마지막 찍은 필압 기준으로 직선 그리도록」.
+  testWidgets('🚨the line is laid at the pressure the last stroke\'s last dab '
+      'was laid at — shown and landed alike, and on into the next line', (
+    tester,
+  ) async {
+    final env = await pumpPanel(tester);
+    final mouse = await mouseAt(tester, const Offset(10, 10));
+    final laid = debugStrokeDabsLaid = <BrushDab>[];
+    addTearDown(() => debugStrokeDabsLaid = null);
+    await penStroke(tester, strokeFrom, strokeEnd, pressure: 0.3);
+    final pressed = laid.last.pressure;
+    expect(pressed, lessThan(0.9), reason: '⛔premise: the pen pressed light');
+
+    laid.clear();
+    await holdTheKey(tester, true);
+    await hover(tester, mouse, hand);
+    await untilShown(tester, env.overlay);
+    expect(laid, isNotEmpty, reason: '⛔premise: the line showed');
+    expect({for (final dab in laid) dab.pressure}, {pressed}, reason: 'shown');
+
+    laid.clear();
+    await click(tester, mouse, hand);
+    expect(env.overlay.hasStrokeContent, isFalse, reason: 'it has landed');
+    expect(laid, isEmpty, reason: 'it lands what was shown, laid as it was');
+
+    await hover(tester, mouse, const Offset(300, 280));
+    await untilShown(tester, env.overlay);
+    expect(
+      {for (final dab in laid) dab.pressure},
+      {pressed},
+      reason: 'the line landed is the last stroke',
+    );
   });
 
   testWidgets('the key let go takes it back, and nothing lands', (

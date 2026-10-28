@@ -5,10 +5,10 @@ import '../../models/layer_kind.dart';
 import '../../models/pill_subject.dart';
 import '../../models/timeline_empty_gaps.dart' show emptyGapsBetween;
 import '../../models/timeline_frame_range.dart';
+import '../../models/track_frame_range.dart';
 import '../../services/command.dart';
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
-import 'camera.dart';
 import 'instructions.dart';
 import 'lane_verbs.dart';
 import 'layer_verbs.dart';
@@ -31,7 +31,6 @@ class CellInstances {
     required ChangeSink changes,
     required FrameIds frameIds,
     required ActiveCutControllers controllers,
-    required Camera camera,
     required Instructions instructionVerbs,
     required LaneVerbs laneVerbs,
     required LayerVerbs layerVerbs,
@@ -45,7 +44,6 @@ class CellInstances {
        _changes = changes,
        _frameIds = frameIds,
        _controllers = controllers,
-       _camera = camera,
        _instructionVerbs = instructionVerbs,
        _laneVerbs = laneVerbs,
        _layerVerbs = layerVerbs,
@@ -67,7 +65,6 @@ class CellInstances {
   final ChangeSink _changes;
   final FrameIds _frameIds;
   final ActiveCutControllers _controllers;
-  final Camera _camera;
   final Instructions _instructionVerbs;
   final LaneVerbs _laneVerbs;
   final LayerVerbs _layerVerbs;
@@ -81,8 +78,9 @@ class CellInstances {
   /// - Cell selection: every spanned row fills its EMPTY gaps inside the
   ///   range — drawing/SE/direction rows with a new cel per gap (exposure =
   ///   gap, ONE undo across all rows; on a direction row each is a span of
-  ///   the vocabulary's first entry, R27), the camera row with a pose key
-  ///   frozen on every unkeyed frame (one undo).
+  ///   the vocabulary's first entry, R27), and every LANE row it swept —
+  ///   the camera row, its transform header, among them — keys every
+  ///   unkeyed frame ([LaneVerbs.createKeysForBandLanes]), in that one undo.
   /// - Lane selection: the lane freezes a key on every unkeyed frame of
   ///   the range (one undo) — the navigator toggle's range form.
   bool createInstancesForSelection() {
@@ -93,8 +91,10 @@ class CellInstances {
     // through to the stale active layer — the wrong row entirely. The
     // ladder rung was simply missing.
     final trackRange = _selection.trackFrameRangeSelection.value;
-    if (trackRange != null &&
-        _trackSe.createTrackSeEntriesForRange(trackRange)) {
+    if (trackRange != null && _trackBandTakesTheAdd(trackRange)) {
+      _withTheBandsLanes(
+        () => _trackSe.createTrackSeEntriesForRange(trackRange),
+      );
       return true;
     }
     // R10 #19: a live lane SPAN, or the property row you are STANDING on
@@ -118,20 +118,10 @@ class CellInstances {
           List<({int startIndex, int length, FrameId frameId, String? name})>
         >{};
     // R26 #1: every row of the selection composes into ONE undo step.
-    // Camera goes FIRST — its undo restores a whole-project snapshot, so it
-    // must be the last command undone (CompositeCommand undoes in reverse).
-    final cameraCommands = <Command>[];
     Command? transitionCommand;
     for (final layerId in selection.spanLayerIds) {
       final layer = displayById[layerId];
       if (layer == null) {
-        continue;
-      }
-      if (layer.kind == LayerKind.camera) {
-        final command = _camera.cameraKeysCommandForRange(selection);
-        if (command != null) {
-          cameraCommands.add(command);
-        }
         continue;
       }
       // F-180 × #17: the transition row takes a span as long as the range —
@@ -149,20 +139,32 @@ class CellInstances {
         fills[layer.id] = layerFills;
       }
     }
-    _project.historyManager.executeAsOneStep('Create selected cells', [
-      ...cameraCommands,
-      ?transitionCommand,
-      if (fills.isNotEmpty)
-        ..._controllers.timelineController.drawingFramesCommandsForLayers(
-          fills,
-        ),
-    ]);
-    if (cameraCommands.isNotEmpty) {
-      _changes.refreshAfterCutCommand();
-    }
+    _withTheBandsLanes(
+      () => _project.historyManager.executeAsOneStep('Create selected cells', [
+        ?transitionCommand,
+        if (fills.isNotEmpty)
+          ..._controllers.timelineController.drawingFramesCommandsForLayers(
+            fills,
+          ),
+      ]),
+    );
     _changes.notifyChanged();
     return true;
   }
+
+  /// Whether ＋ on the storyboard's track [range] makes anything: an SE
+  /// entry in a gap, or a key on a lane row it swept.
+  bool _trackBandTakesTheAdd(TrackFrameRangeSelection range) =>
+      _trackSe.trackSeCreationGaps(range).isNotEmpty ||
+      _laneVerbs.bandLanesTakeKeys;
+
+  /// [cells] — the band's cells filled — in ONE undo step with the keys of
+  /// the band's lane rows ([LaneVerbs.createKeysForBandLanes]).
+  void _withTheBandsLanes(void Function() cells) =>
+      _project.historyManager.runAsOneStep('Create selected cells', () {
+        _laneVerbs.createKeysForBandLanes();
+        cells();
+      });
 
   /// The blank cels [selection] authors on [layer]: one per empty gap,
   /// each with a fresh frame id — none on a row no cel can be authored on
@@ -308,8 +310,7 @@ class CellInstances {
   /// press down to the row's kind.
   bool? get _selectionRungAnswer {
     final trackRange = _selection.trackFrameRangeSelection.value;
-    if (trackRange != null &&
-        _trackSe.trackSeCreationGaps(trackRange).isNotEmpty) {
+    if (trackRange != null && _trackBandTakesTheAdd(trackRange)) {
       return true;
     }
     final lane = _laneVerbs.laneVerbRange;

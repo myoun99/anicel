@@ -24,7 +24,6 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/session_row_button_presses.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show FxToggleButton, LayerVisibilityToggleButton;
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
@@ -38,7 +37,7 @@ import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
 import '../../helpers/named_finders.dart';
-import '../../helpers/storyboard_twirls.dart';
+import '../../helpers/storyboard_host.dart';
 import '../../helpers/rail_label_name.dart';
 
 /// 🚨I-57 (10-14): A STORYBOARD BUILT AGAIN FOR NOTHING — OR ACROSS A CUT —
@@ -146,47 +145,45 @@ void main() {
   );
 
   /// The tab as the workspace mounts it, on [project]: built again on every
-  /// notify the session makes and every twirl its rows turn. [turned] hears
-  /// every lane twirl the rail turns, in place of the session's verb;
-  /// [openLanes] are the layers whose lanes stand open and [openGroups] the
-  /// conte rows' lane groups that do, in place of the session's; [rowFilter]
-  /// is the legend's.
+  /// notify the session makes and every twirl its rows turn. [before] sets
+  /// the session up first; [rowFilter] is the legend's.
+  ///
+  /// ↩️It took a spy for the lane twirl and sets of open lanes and groups
+  /// in place of the session's: the tab's are the session's now
+  /// (`TabRailWiring`), so a twirl is opened through the session and read
+  /// back off it.
   Future<EditorSessionManager> pumpPanel(
     WidgetTester tester,
     Project project, {
-    List<LayerId>? turned,
-    Set<LayerId>? openLanes,
-    Set<String>? openGroups,
+    void Function(EditorSessionManager session)? before,
     TimelineRowFilter rowFilter = TimelineRowFilter.none,
   }) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 760));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
     final session = EditorSessionManager(initialProject: project);
     addTearDown(session.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: withStoryboardTwirls(
-            session,
-            (twirls) => StoryboardTabHost(
-              session: session,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-              rowFilter: rowFilter,
-              expandedLaneLayerIds: openLanes ?? twirls.expandedLaneLayerIds,
-              expandedLaneGroupKeys: openGroups ?? twirls.expandedLaneGroupKeys,
-              onToggleLayerLanes: turned?.add ?? twirls.onToggleLayerLanes,
-              onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
-            ),
-          ),
-        ),
-      ),
+    before?.call(session);
+    // The filter as set — the session's, without the chip's own hand-off.
+    session.railView.rowFilter.value = rowFilter;
+    await pumpStoryboardHostOn(
+      tester,
+      session,
+      surface: const Size(1600, 760),
+      pixelsPerFrame: 12,
     );
-    await tester.pumpAndSettle();
     return session;
+  }
+
+  /// Whether [layer]'s lanes stand open — the row's own twirl (F-360).
+  bool lanesOpen(EditorSessionManager session, String layer) =>
+      session.layerSwitches.isLayerLanesOpen(LayerId(layer));
+
+  /// [layers]' lanes twirled open, through the twirl a press turns — a
+  /// head's rows twirl together, so one may already have opened another.
+  void openLanes(EditorSessionManager session, List<String> layers) {
+    for (final layer in layers) {
+      if (!lanesOpen(session, layer)) {
+        session.layerSwitches.toggleLayerLanes(LayerId(layer));
+      }
+    }
   }
 
   Finder key(String value) => find.byKey(ValueKey<String>(value));
@@ -514,10 +511,7 @@ void main() {
   testWidgets('🚨a solo the session answers is what the S row\'s speaker '
       'shows — no part of its layer', (tester) async {
     final session = await pumpPanel(tester, film());
-    final speaker = find.ancestor(
-      of: find.named('storyboard-layer-mute-t1-s1'),
-      matching: find.byType(RailGlyphButton),
-    );
+    final speaker = find.named('storyboard-layer-mute-t1-s1');
     bool soloed() =>
         (tester.widget<RailGlyphButton>(speaker).glyph as RailIconGlyph)
             .color ==
@@ -589,10 +583,10 @@ void main() {
 
   testWidgets('🚨a kept head\'s twirl turns the row as the track holds it at '
       'the press, never as it was when the head was built', (tester) async {
-    final turned = <LayerId>[];
-    final session = await pumpPanel(tester, film(), turned: turned);
+    final session = await pumpPanel(tester, film());
     session.selectCut(const CutId('b'));
     await tester.pump();
+    expect(lanesOpen(session, 'b-conte'), isFalse, reason: '⛔전제');
     final before = tester.widget(headIn(conteLabel));
     // a's conte goes: the head — b's — shows nothing new and is kept.
     session.repository.updateProject(
@@ -629,18 +623,21 @@ void main() {
     );
     await tester.pump();
 
-    expect(turned, [const LayerId('b-conte')]);
+    expect(lanesOpen(session, 'b-conte'), isTrue);
   });
 
   testWidgets('🚨the camera head\'s twirl too: the cameras it shuts are the '
       'track\'s at the press', (tester) async {
-    final turned = <LayerId>[];
     // Both cameras' lanes open — each opened on the timeline, in its cut.
     final session = await pumpPanel(
       tester,
       film(),
-      turned: turned,
-      openLanes: {const LayerId('a-cam'), const LayerId('b-cam')},
+      before: (session) => openLanes(session, ['a-cam', 'b-cam']),
+    );
+    expect(
+      [lanesOpen(session, 'a-cam'), lanesOpen(session, 'b-cam')],
+      [true, true],
+      reason: '⛔전제',
     );
     session.selectCut(const CutId('b'));
     await tester.pump();
@@ -673,7 +670,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(turned, [const LayerId('b-cam')]);
+    expect(lanesOpen(session, 'b-cam'), isFalse);
   });
 
   // 🧪What a kept row's wrapper is built from, field by field (the mutants
@@ -816,19 +813,19 @@ void main() {
 
   testWidgets('🚨a conte row\'s wrapper takes its group\'s height as a group '
       'of its lanes twirls open — its head as it was', (tester) async {
-    // The host's set, which it turns in place as its twirl is pressed.
-    final groups = <String>{};
     final session = await pumpPanel(
       tester,
       film(),
-      openLanes: {const LayerId('a-conte')},
-      openGroups: groups,
+      before: (session) => openLanes(session, ['a-conte']),
     );
     final head = tester.widget(headIn(conteLabel));
     final open = wrapper(tester, conteLabel).rowExtent;
 
-    groups.add(laneGroupKey(const LayerId('a-conte'), 'transform-group'));
-    session.notifyChanged();
+    // ↩️A set of the host's, turned in place: the group twirls as its
+    // press turns it now, on the row.
+    SessionRowButtonPresses(session).toggleLaneGroup(
+      laneGroupKey(const LayerId('a-conte'), 'transform-group'),
+    );
     await tester.pump();
 
     expect(tester.widget(headIn(conteLabel)), same(head), reason: 'kept');

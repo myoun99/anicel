@@ -4,16 +4,18 @@ import 'package:flutter/material.dart';
 
 import '../../models/app_frame_count_settings.dart';
 import '../../models/app_input_settings.dart' show AppInput, AppInputSettings;
-import '../input/control_press_claim.dart';
+import '../../models/frame.dart' show InbetweenMark;
 import '../cut_command_group.dart';
 import '../editor_session_manager.dart';
 import '../sliced_value_listenable_builder.dart';
 import '../session/storyboard_cursor.dart' show CommaTargetKind;
 import '../widgets/app_icon_button.dart';
+import 'comma_button.dart';
 import 'timeline_shift_buttons.dart';
 import '../widgets/command_pill.dart';
+import '../widgets/kept_tail_row.dart' show FoldFloor;
 import '../widgets/panel_flyout.dart';
-import '../widgets/static_raster.dart';
+import '../widgets/pill_strip.dart';
 import 'instance_editor_commands.dart' show autoNameWithWindow;
 import 'timeline_section_policy.dart';
 import 'timeline_bar_menus.dart';
@@ -66,15 +68,20 @@ Future<void> showTimelineCommaCountDialog(
 
 /// 🗣️I-58 (유저 2026-10-01): 「버튼누르면 창 열려서 숫자만 입력가능한창.
 /// 3적고 확인누르면 현재 블록에서 헤더부터 시작해서 3코마마다 점 찍음」 — the
-/// ● every n koma, pressed on [panel] as the N commas are. With no band it
-/// counts from the playhead's cell, and it toggles as the ● does (F-402 —
-/// `LayerMarks.markEvery`).
+/// mark every n koma, pressed on [panel] as the N commas are. With no band
+/// it counts from the playhead's cell, and it toggles as the mark's button
+/// does (F-402 — `LayerMarks.markEvery`).
+///
+/// The window picks the mark — ○ or ● — opening on the one picked last:
+/// 🗣️I-130-Q2 (유저 2026-10-25 「창에서 마크를 고른다」 — 간격 숫자 옆에
+/// ○ / ● 고르기(지난번 고른 것 기억). 자동 추가 버튼은 하나 그대로).
 Future<void> showMarkEveryDialog(
   BuildContext context,
   EditorSessionManager session, {
   required ToolbarPanelContext panel,
 }) async {
   final strings = AppText.strings;
+  var mark = AppFrameCountSettings.settings.value.lastEveryMark;
   final every = await _askFrameCount(
     context,
     session,
@@ -87,13 +94,43 @@ Future<void> showMarkEveryDialog(
     titleIcon: _markEveryIcon,
     // The interval is the one number the title does not say.
     field: strings.markEveryField,
+    mark: (
+      picked: mark,
+      onPicked: (picked) {
+        mark = picked;
+        session.appSettings.setFrameCountSettings(
+          AppFrameCountSettings.settings.value.copyWith(lastEveryMark: picked),
+        );
+      },
+    ),
   );
   if (every != null && every >= 1) {
-    panel.markEvery(every);
+    panel.markEvery(every, mark);
   }
 }
 
+/// The mark a count window picks beside its count, and the hook that hears
+/// a pick ([showMarkEveryDialog]).
+typedef _MarkPick = ({
+  InbetweenMark picked,
+  ValueChanged<InbetweenMark> onPicked,
+});
+
 const _markEveryIcon = Icons.linear_scale;
+
+/// A mark's face where it is pressed or picked — its toggle button and the
+/// mark-every window's pick wear one, so the two read as one mark.
+IconData _markIcon(InbetweenMark mark) => switch (mark) {
+  InbetweenMark.one => Icons.circle_outlined,
+  InbetweenMark.two => Icons.circle,
+};
+
+/// The action that toggles [mark] — its button's, and the name its pick
+/// in the mark-every window wears.
+String _markToggleAction(InbetweenMark mark) => switch (mark) {
+  InbetweenMark.one => EditorActionIds.frameToggleMarkOne,
+  InbetweenMark.two => EditorActionIds.frameToggleMarkTwo,
+};
 
 /// What a comma window names in its title's brackets: the kinds it
 /// re-times, together where it re-times several.
@@ -112,7 +149,8 @@ String _commaTargetNoun(List<CommaTargetKind> kinds) {
 
 /// A count of frames, asked in a window and popped as frames — null when
 /// it closes without one. Every window that asks for a count of frames
-/// asks with [FrameCountField] (I-24).
+/// asks with [FrameCountField] (I-24); one that lays a mark picks it
+/// beside the count ([mark]).
 Future<int?> _askFrameCount(
   BuildContext context,
   EditorSessionManager session, {
@@ -121,6 +159,7 @@ Future<int?> _askFrameCount(
   required IconData titleIcon,
   String? field,
   int? initialCount,
+  _MarkPick? mark,
 }) => showDialog<int>(
   context: context,
   builder: (context) => _FrameCountWindow(
@@ -135,8 +174,9 @@ Future<int?> _askFrameCount(
     // keeps it too.
     entry: AppFrameCountSettings.settings.value.lastEntry,
     onEntryChanged: (entry) => session.appSettings.setFrameCountSettings(
-      AppFrameCountSettings(lastEntry: entry),
+      AppFrameCountSettings.settings.value.copyWith(lastEntry: entry),
     ),
+    mark: mark,
   ),
 );
 
@@ -152,6 +192,7 @@ class _FrameCountWindow extends StatefulWidget {
     required this.entry,
     required this.onEntryChanged,
     required this.initialCount,
+    required this.mark,
   });
 
   /// `<keyPrefix>-dialog`, `<keyPrefix>-apply`, and the field's own.
@@ -166,18 +207,28 @@ class _FrameCountWindow extends StatefulWidget {
   final FrameCountEntry entry;
   final ValueChanged<FrameCountEntry> onEntryChanged;
 
+  /// The mark it picks beside the count — null for a window that lays none.
+  final _MarkPick? mark;
+
   @override
   State<_FrameCountWindow> createState() => _FrameCountWindowState();
 }
 
 class _FrameCountWindowState extends State<_FrameCountWindow> {
   int? _count;
+  late InbetweenMark? _mark = widget.mark?.picked;
 
   void _apply() => Navigator.of(context).pop(_count);
+
+  void _pick(InbetweenMark mark) {
+    setState(() => _mark = mark);
+    widget.mark?.onPicked(mark);
+  }
 
   @override
   Widget build(BuildContext context) {
     final strings = AppText.strings;
+    final mark = _mark;
     return AppWindow(
       windowKey: ValueKey<String>('${widget.keyPrefix}-dialog'),
       title: widget.title,
@@ -193,6 +244,20 @@ class _FrameCountWindowState extends State<_FrameCountWindow> {
         initialEntry: widget.entry,
         initialCount: widget.initialCount,
         onEntryChanged: widget.onEntryChanged,
+        beside: mark == null
+            ? null
+            : PillStrip(
+                items: [
+                  for (final each in InbetweenMark.values)
+                    PillItem(
+                      keyValue: '${widget.keyPrefix}-mark-${each.name}',
+                      label: editorActionLabel(_markToggleAction(each)),
+                      icon: _markIcon(each),
+                      selected: each == mark,
+                      onTap: () => _pick(each),
+                    ),
+                ],
+              ),
       ),
       actions: [
         AppWindowAction(
@@ -248,6 +313,7 @@ class _StaticCommandGroup extends StatelessWidget {
     required this.news,
     required this.gates,
     required this.builder,
+    this.zoned = false,
   });
 
   final Listenable news;
@@ -256,6 +322,11 @@ class _StaticCommandGroup extends StatelessWidget {
   final Object? Function() gates;
   final WidgetBuilder builder;
 
+  /// Whether what [builder] makes lays its own zones
+  /// ([CommandGroupZone]) — the frame pill's, round its groups — rather
+  /// than baking whole here.
+  final bool zoned;
+
   @override
   Widget build(BuildContext context) => SlicedListenableBuilder<Object?>(
     listenable: news,
@@ -263,16 +334,22 @@ class _StaticCommandGroup extends StatelessWidget {
     builder: (context, shown) => _BakedCommandGroup(
       shown: shown,
       builder: builder,
+      zoned: zoned,
     ),
   );
 }
 
 /// A group's widgets as last built, and the zone they bake in.
 class _BakedCommandGroup extends StatefulWidget {
-  const _BakedCommandGroup({required this.shown, required this.builder});
+  const _BakedCommandGroup({
+    required this.shown,
+    required this.builder,
+    required this.zoned,
+  });
 
   final Object? shown;
   final WidgetBuilder builder;
+  final bool zoned;
 
   @override
   State<_BakedCommandGroup> createState() => _BakedCommandGroupState();
@@ -301,15 +378,14 @@ class _BakedCommandGroupState extends State<_BakedCommandGroup> {
       _builtAt = scaler;
       _cached = null;
     }
-    return _cached ??= StaticRaster(
-      // Each group is its own ZONE. The bar used to be baked as one
-      // surface, which meant a single button's state changing re-baked
-      // every button on the row; now dirt from one group stops at that
-      // group's own boundary. Siblings, never nesting — a bake inside a
-      // bake is the one thing that freezes.
-      debugLabel: 'command-group',
-      child: widget.builder(context),
-    );
+    // Each group is its own ZONE. The bar used to be baked as one surface,
+    // which meant a single button's state changing re-baked every button
+    // on the row; now dirt from one group stops at that group's own
+    // boundary.
+    return _cached ??= switch (widget.zoned) {
+      true => widget.builder(context),
+      false => CommandGroupZone(child: widget.builder(context)),
+    };
   }
 }
 
@@ -459,51 +535,27 @@ class TimelineActionToolbar extends StatelessWidget {
     required ({String text, String action}) tooltip,
     required VoidCallback? onPressed,
   }) {
-    return ShortcutTooltip(
-      label: tooltip.text,
+    // 🚨F-45 (유저 2026-08-29: 「F45는 해당 버튼쪽만 보지말고 **다른거도
+    // 봐줘 통일해서**」). These five were the app's only chrome buttons
+    // that mounted no claim at all: the ledger that keeps hand-rolled
+    // buttons honest scans `IconButton(`, so a TEXT button walked straight
+    // past it and a drag begun on 1·2·3·4·N leaked into the bar's pan.
+    // The BOX is still theirs (a pill promised it); the LAW never was — the
+    // face IS its claim ([CommaButton]).
+    //
+    // 🚨유저 #8 (2026-08-14): 「1,2,3,4,n만 천천히 페이드인하면서
+    // 나타나거나 페이드아웃하면서 사라짐. **누가 이런 차이 두라했지?
+    // 다 똑같이해. 페이드같은거 넣지마**」. ⛔They were the only toolbar
+    // buttons that faded, and it was never authored — Material animated a
+    // TextButton's foreground between its enabled and disabled colours. A
+    // face reads its colour at build, as the icon buttons beside it do, so
+    // there is nothing left to interpolate.
+    return CommaButton(
+      key: key,
+      label: label,
+      tooltip: tooltip.text,
       shortcuts: [tooltip.action],
-      // 🚨F-45 (유저 2026-08-29: 「F45는 해당 버튼쪽만 보지말고 **다른거도
-      // 봐줘 통일해서**」). These five were the app's only chrome buttons
-      // that mounted no claim at all: the ledger that keeps hand-rolled
-      // buttons honest scans `IconButton(`, so a TEXT button walked straight
-      // past it and a drag begun on 1·2·3·4·N leaked into the bar's pan.
-      // The BOX is still theirs (a pill promised it); the LAW never was.
-      child: ControlPressClaim(onPressed: onPressed,
-        // A context of its own for the one fact the box reads from where it
-        // is shown: the pill's height, which grows with the OS text size.
-        child: Builder(builder: (context) => TextButton(
-          key: key,
-          onPressed: silentPress(onPressed),
-          style: TextButton.styleFrom(
-            // Sized to sit INSIDE a pill (28 outer, 2px of breath each side)
-            // rather than to stand on its own in the bar.
-            minimumSize: Size(21, CommandPill.heightIn(context) - 4),
-            maximumSize: Size(24, CommandPill.heightIn(context) - 4),
-            padding: EdgeInsets.zero,
-            visualDensity: VisualDensity.compact,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            // 🚨유저 #8 (2026-08-14): 「1,2,3,4,n만 천천히 페이드인하면서
-            // 나타나거나 페이드아웃하면서 사라짐. **누가 이런 차이 두라했지?
-            // 다 똑같이해. 페이드같은거 넣지마**」.
-            //
-            // ⛔These five were the only toolbar buttons that faded, and it
-            // was never authored — Material animates a button's foreground
-            // between its enabled and disabled colours over
-            // `kThemeChangeDuration`, and a TEXT button's colour comes from
-            // that state. The icon buttons beside them look instant because
-            // their colour is baked into the `Icon` at build time, so nothing
-            // is left for the button to interpolate.
-            //
-            // ⇒ Zero here says 「같이 하라」 rather than adding a matching
-            // fade to nine other buttons.
-            animationDuration: Duration.zero,
-          ),
-          child: Text(
-            label,
-            style: const TextStyle(fontSize: CommandPill.verbFontSize),
-          ),
-        )),
-      ),
+      onPressed: onPressed,
     );
   }
 
@@ -873,16 +925,25 @@ class TimelineActionToolbar extends StatelessWidget {
 
   /// The FRAME pill — the verbs a rough pass wears out, none of them folded.
   ///
-  /// 🚨Nothing on it outside its groups shows a value, its name included:
-  /// the pill holds zones of its own (the groups below), so it cannot bake
-  /// whole as the layer pill does — a bake inside a bake freezes — and what
-  /// is not in a group is built again only with the bar.
-  Widget _framePill() => CommandPill(
+  /// 🚨Nothing on it outside its groups shows a value but its name: the
+  /// pill holds zones of its own (the groups below), so it cannot bake
+  /// whole as the layer pill does — a bake inside a bake freezes — and is
+  /// built again only for its name, in a zone of its own. ↩️The cut pill
+  /// was zoned too, round the cut's name (F-463 ④ to F-491).
+  /// ↩️The name was a group of its own inside the pill, built where the
+  /// pill could not see it, so the tail paid an icon's 5 after a word's 7
+  /// (frame-pill-tail-breath-regressed — 유저 #7 again).
+  Widget _framePill() => _StaticCommandGroup(
+    news: _news,
+    gates: () => AppText.settings.value.programLanguage,
+    builder: (context) => _frameCommandPill(),
+    zoned: true,
+  );
+
+  Widget _frameCommandPill() => CommandPill(
     key: const ValueKey<String>('timeline-toolbar-frame-group'),
-    head: _StaticCommandGroup(
-      news: _news,
-      gates: () => AppText.settings.value.programLanguage,
-      builder: (context) => PillNameCell(
+    head: CommandGroupZone(
+      child: PillNameCell(
         keyValue: 'timeline-frame-menu-button',
         label: AppText.strings.tlFrame,
         tooltip: AppText.strings.tlFrameCommands,
@@ -950,7 +1011,7 @@ class TimelineActionToolbar extends StatelessWidget {
             //
             // ★It listens for ITSELF. This group is memoized on
             // [_StaticCommandGroup.gates] and baked into a
-            // [StaticRaster]; the toolbar does not rebuild when
+            // [CommandGroupZone]; the toolbar does not rebuild when
             // `AppInput.settings` moves, so a plain read here would show
             // yesterday's state for ever. A listener inside the bake is
             // safe — a rebuild ends in `markNeedsPaint`, which is exactly
@@ -980,15 +1041,21 @@ class TimelineActionToolbar extends StatelessWidget {
                 onPressed: () => toggleAutoCreateFrameOnDraw(session),
               ),
             ),
-            _iconButton(
-              key: const ValueKey<String>('toggle-mark-button'),
-              tooltip: editorActionLabel(EditorActionIds.frameToggleMark),
-              shortcuts: const [EditorActionIds.frameToggleMark],
-              icon: Icons.circle,
-              onPressed: panelContext.canToggleMark
-                  ? panelContext.toggleMark
-                  : null,
-            ),
+            // 🗣️I-130 (유저 2026-10-25): 「기존 중간나누기 버튼 왼쪽에
+            // 중간나누기 마크1 버튼 신설」 — ○ mark 1, then ● mark 2.
+            for (final (mark, key) in const [
+              (InbetweenMark.one, 'toggle-mark-one-button'),
+              (InbetweenMark.two, 'toggle-mark-button'),
+            ])
+              _iconButton(
+                key: ValueKey<String>(key),
+                tooltip: editorActionLabel(_markToggleAction(mark)),
+                shortcuts: [_markToggleAction(mark)],
+                icon: _markIcon(mark),
+                onPressed: panelContext.canToggleMark
+                    ? () => panelContext.toggleMark(mark)
+                    : null,
+              ),
             // 🗣️I-58-Q1 (유저 2026-10-18): 「토글은 지금 자리, 새 버튼만 ●
             // 오른쪽」.
             _iconButton(
@@ -1177,13 +1244,18 @@ class TimelineActionToolbar extends StatelessWidget {
         // …and on the ＋'s gate: a band over the cut that is there leaves
         // nowhere to make one, and a bake keyed on the language alone kept
         // the ＋ lit through it.
-        _StaticCommandGroup(
-          news: _news,
-          gates: () => (
-            AppText.settings.value.programLanguage,
-            session.cutPlacement.canCreateCut,
+        // 🗣️F-463 ⑥: 「컷쪽은 컷알약까지 최소폭」 — the least of the pills
+        // the bar shows ([FoldFloor]), and the transport before them is
+        // kept with it (F-491).
+        FoldFloor(
+          child: _StaticCommandGroup(
+            news: _news,
+            gates: () => (
+              AppText.settings.value.programLanguage,
+              session.cutPlacement.canCreateCut,
+            ),
+            builder: (context) => CutCommandGroup(session: session),
           ),
-          builder: (context) => CutCommandGroup(session: session),
         ),
         const SizedBox(width: 6),
         _layerPill(),

@@ -375,6 +375,42 @@ void main() {
       }
     });
 
+    test('🚨a small circle\'s SQUARE read agrees across all three '
+        'transcriptions', () {
+      // Up to a radius of 2.5 a circle's tables are square (Q6 b,
+      // `RoundTipProfile.rowLength`): each size at a spread of sub-pixel
+      // phases, hard and soft, alone and overlapping — so what piles is read
+      // off the square pile table too — and a 6px dab beside them, read
+      // along its radius.
+      for (final step in BrushAntiAlias.values) {
+        expectParity(
+          surface: blankSurface(),
+          sequence: strokeOf([
+            for (final (i, size) in [0.7, 1.0, 1.5, 2.0, 3.0, 5.0].indexed)
+              for (final (k, phase) in [0.0, 0.23, 0.5, 0.81].indexed)
+                dab(
+                  x: 12.0 + i * 24 + k * 5 + phase,
+                  y: 20.0 + k * 9 + phase * 0.7,
+                  size: size,
+                  hardness: k.isEven ? 1.0 : 0.5,
+                  antiAlias: step,
+                  sequence: i * 4 + k,
+                ),
+            for (var k = 0; k < 6; k += 1)
+              dab(
+                x: 30.0 + k * 0.37,
+                y: 90.31,
+                size: 1.5,
+                antiAlias: step,
+                sequence: 24 + k,
+              ),
+            dab(x: 160.4, y: 120.7, size: 6, antiAlias: step, sequence: 30),
+          ]),
+          reason: 'square read, edge step ${step.name}',
+        );
+      }
+    });
+
     test('full opacity and flow overwrite path', () {
       expectParity(
         surface: blankSurface(),

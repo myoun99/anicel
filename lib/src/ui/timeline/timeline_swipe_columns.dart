@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart' show ValueChanged;
-import 'package:flutter/painting.dart' show Axis;
 
 import '../../models/attached_layer_resolve.dart'
     show attachRowWearsBaseComposite;
@@ -13,8 +12,9 @@ import 'layer_rail_columns.dart';
 import 'property_lane_model.dart';
 import 'rail_column_swipe.dart';
 import 'timeline_grid_hooks.dart';
-import 'timeline_lane_rows.dart' show laneMemberPinInset;
-import 'timeline_layer_controls_row.dart' show timelineRowFolds;
+import 'timeline_lane_rows.dart' show laneRowFrame;
+import 'timeline_layer_controls_row.dart'
+    show TimelineGroupFold, timelineGroupFoldFor;
 
 /// The toggle columns a rail's bulk-drag can sweep, for BOTH grids.
 ///
@@ -26,53 +26,35 @@ import 'timeline_layer_controls_row.dart' show timelineRowFolds;
 /// the rail's over the display row — and the two had drifted: the rail read
 /// the twirl state a frame stale (its own doc said not to), the sheet could
 /// not sweep a lane group's fx switch, the sheet had no sheet-toggle column
-/// until the row widget was shared. ONE list over the display row now; the
-/// geometry stays [railSwipeColumns]'s.
+/// until the row widget was shared. ONE list over the display row now.
 ///
 /// 🚨THE SUBJECT IS THE ROW, NOT ITS LAYER, because a rail stacks two kinds
 /// and they do not share one. A layer row's fx switch is the LAYER's; a lane
 /// row's is that LANE GROUP's. Every other column belongs to layer rows only
 /// and answers null on a lane, which is already what
 /// [RailToggleColumn.valueOf]'s null means. The sheet's columns are these
-/// rows stood up, so a lane COLUMN answers exactly as a lane ROW does.
-///
-/// [crossExtent] is the strip's extent across the sweep — the rail's row
-/// width, or the sheet's header height, which is that width turned on its
-/// side: the slot skeleton lays the sheet's cells with `axis: Axis.vertical`,
-/// so a slot's WIDTH is its height there. [axis] is the grid's: a member
-/// lane's pin is laid by its cell, not by the skeleton, and the cell lays
-/// its value a different length on each.
+/// rows stood up, so a lane COLUMN answers exactly as a lane ROW does —
+/// and which column a press is in, its button says on either grid.
 List<RailToggleColumn<TimelineDisplayRow>> timelineSwipeColumns({
   required RailSwipeHooks hooks,
-  required Axis axis,
-  required double crossExtent,
-  required double leadingOrigin,
-  required LayerRailColumnWidths columns,
 }) => railSwipeColumns<TimelineDisplayRow>(
-  crossExtent: crossExtent,
-  leadingOrigin: leadingOrigin,
-  columns: columns,
-  optionalColumns: hooks.optionalColumns,
-  graph: switch (_graph(hooks)) {
-    final toggle? => (
-      toggle: toggle,
-      after: (row) => _pastTheGraph(row, hooks),
-    ),
-    null => null,
-  },
   visibility: _visibility(hooks),
   onion: _onion(hooks),
   fx: _fx(hooks),
+  clip: _clip(hooks),
   timesheet: _timesheet(hooks),
   laneToggle: _laneToggle(hooks),
-  lanePin: switch (_lanePin(hooks)) {
-    final toggle? => (
-      toggle: toggle,
-      inset: laneMemberPinInset(axis, columns),
-    ),
-    null => null,
-  },
+  graph: _graph(hooks),
+  lanePin: _lanePin(hooks),
+  groupFold: _groupFold(hooks),
+  laneGroupToggle: _laneGroupToggle(hooks),
+  laneKey: _laneKey(hooks),
+  laneFlag: _laneFlag(hooks),
 );
+
+/// What a lane row is handed to key and set its lane with: the verbs its
+/// label calls and the frame it stands on ([laneRowFrame]).
+typedef LaneRowHand = ({PropertyLaneEditCallbacks edit, int frame});
 
 /// What a rail's column sweep reads of its host: the verbs its rows'
 /// buttons call, and the reads it paints by — live where the host can read
@@ -85,7 +67,6 @@ List<RailToggleColumn<TimelineDisplayRow>> timelineSwipeColumns({
 /// 콘티패널에도 동일하게 있어야해. 같은 법으로」) — as the header graph was
 /// narrowed to what it reads (`LaneGraphGrid`).
 typedef RailSwipeHooks = ({
-  LayerRailOptionalColumns optionalColumns,
   ValueChanged<LayerId>? onToggleLayerVisibility,
   bool Function(LayerId layerId)? layerEyeOnOf,
   ValueChanged<LayerId>? onToggleLayerOnionSkin,
@@ -97,6 +78,8 @@ typedef RailSwipeHooks = ({
   bool Function(Layer layer) wearsBaseComposite,
   void Function(Layer layer, PropertyLaneRow lane)? onToggleLaneGroupEnabled,
   bool? Function(LayerId layerId, String headerLaneId)? laneGroupOnOf,
+  ValueChanged<LayerId>? onToggleLayerClip,
+  bool Function(LayerId layerId)? layerClipsOf,
   ValueChanged<LayerId>? onToggleLayerTimesheet,
   bool Function(LayerId layerId)? layerOnTimesheetOf,
   ValueChanged<LayerId>? onToggleLayerLanes,
@@ -105,9 +88,16 @@ typedef RailSwipeHooks = ({
   LaneGraphVerbs? laneGraphVerbs,
   LaneGraphsView Function() laneGraphsNow,
   RailRowHands hands,
-  // Whether a row folds rows of its own, as its label is told — its twirl
-  // ends its name, past the graph's button (F-454).
-  bool Function(TimelineDisplayRow row) folds,
+  // A row's group fold as its label is told (`timelineGroupFoldFor`):
+  // whether it folds rows of its own, open or shut, and what its twirl
+  // presses.
+  TimelineGroupFold Function(TimelineDisplayRow row) foldOf,
+  bool Function(LayerId layerId)? groupFoldOpenOf,
+  void Function(Layer layer, PropertyLaneRow lane)? onToggleLaneGroup,
+  bool Function(LayerId layerId, String headerLaneId)? laneGroupOpenOf,
+  // What a lane row's ◆ and its flag's ring are pressed with, as its label
+  // is handed them — null on a row handed none (F-475).
+  LaneRowHand? Function(TimelineDisplayRow row) laneHandOf,
 });
 
 /// Which of a rail's verbs a ROW is handed, as its label is — what the row
@@ -149,7 +139,6 @@ RailSwipeHooks timelineRailSwipeHooks(
   TimelineGridHooks hooks,
   List<Layer> layers,
 ) => (
-  optionalColumns: hooks.optionalRailColumns,
   onToggleLayerVisibility: hooks.onToggleLayerVisibility,
   layerEyeOnOf: hooks.layerEyeOnOf,
   onToggleLayerOnionSkin: hooks.onToggleLayerOnionSkin,
@@ -159,6 +148,8 @@ RailSwipeHooks timelineRailSwipeHooks(
   wearsBaseComposite: (layer) => attachRowWearsBaseComposite(layer, layers),
   onToggleLaneGroupEnabled: hooks.onToggleLaneGroupEnabled,
   laneGroupOnOf: hooks.laneGroupOnOf,
+  onToggleLayerClip: hooks.onToggleLayerClip,
+  layerClipsOf: hooks.layerClipsOf,
   onToggleLayerTimesheet: hooks.onToggleLayerTimesheet,
   layerOnTimesheetOf: hooks.layerOnTimesheetOf,
   onToggleLayerLanes: hooks.onToggleLayerLanes,
@@ -169,7 +160,21 @@ RailSwipeHooks timelineRailSwipeHooks(
   laneGraphVerbs: hooks.laneGraphVerbs,
   laneGraphsNow: () => hooks.laneGraphsNow?.call() ?? hooks.laneGraphs,
   hands: handsEveryRow,
-  folds: (row) => timelineRowFolds(row, layers),
+  foldOf: (row) => timelineGroupFoldFor(
+    row: row,
+    layers: layers,
+    collapsedAttachBaseIds: hooks.collapsedAttachBaseIds,
+    onToggleLayerCollapsed: hooks.onToggleLayerCollapsed,
+    onToggleAttachGroup: hooks.onToggleAttachGroup,
+  ),
+  groupFoldOpenOf: hooks.groupFoldOpenOf,
+  onToggleLaneGroup: hooks.onToggleLaneGroup,
+  laneGroupOpenOf: hooks.laneGroupOpenOf,
+  // A grid hands every lane row its one set of verbs, at its cursor.
+  laneHandOf: (_) => switch (hooks.laneEdit) {
+    final edit? => (edit: edit, frame: laneRowFrame(hooks.frameCursor)),
+    null => null,
+  },
 );
 
 /// I-89 ③: a header graph's button, on each row that heads one — a
@@ -190,13 +195,6 @@ RailToggle<TimelineDisplayRow>? _graph(RailSwipeHooks hooks) {
     },
   );
 }
-
-/// What a row lays past its graph button at the end of its name (I-89 Q1):
-/// a layer row that folds its twirl, the last of its own buttons (F-454);
-/// any other row nothing. ↩️A layer row laid its fold slot there whether
-/// it folded or not (F-29).
-double _pastTheGraph(TimelineDisplayRow row, RailSwipeHooks hooks) =>
-    !row.isLane && hooks.folds(row) ? layerLaneToggleSlotWidth : 0;
 
 /// I-89 ③: a member lane's pin, on each lane that wears one ([lanePinOf]),
 /// swept as it is pressed and read live, as the graph's button is.
@@ -334,6 +332,23 @@ RailToggle<TimelineDisplayRow>? _timesheet(RailSwipeHooks hooks) {
   );
 }
 
+/// 🗣️F-475 (유저 2026-10-26): 「클리핑버튼도 위아래 드래그로 여러 버튼
+/// 동시조작 가능하게」. A row of a kind that cannot clip carries no button
+/// ([LayerKind.takesClipping], the row's own rule) and a lane row's slot is
+/// its group's reset — both null.
+///
+/// Read LIVE where the host reads it, as every column is.
+RailToggle<TimelineDisplayRow>? _clip(RailSwipeHooks hooks) {
+  final onToggle = hooks.onToggleLayerClip;
+  if (onToggle == null) return null;
+  return (
+    valueOf: (row) => !row.isLane && row.layer.kind.takesClipping
+        ? hooks.layerClipsOf?.call(row.layer.id) ?? row.layer.clipsToBelow
+        : null,
+    toggle: (row) => onToggle(row.layer.id),
+  );
+}
+
 /// A row with no lanes draws no twirl.
 RailToggle<TimelineDisplayRow>? _laneToggle(RailSwipeHooks hooks) {
   final onToggle = hooks.onToggleLayerLanes;
@@ -351,3 +366,104 @@ bool? _laneOpen(RailSwipeHooks hooks, TimelineDisplayRow row) {
   if (lanes.isEmpty) return null;
   return hooks.laneOpenOf(row.layer.id);
 }
+
+/// 🗣️F-475 (유저 2026-10-26): 「다른버튼도 조사」 — and a button I-32 named
+/// among a layer's (09-14: 「그룹펼치기」): a folder's fold, or the attach
+/// group's riding a base, one twirl at the end of the name
+/// ([timelineGroupFoldFor]) on each row that folds rows of its own.
+///
+/// Read LIVE where the host reads it, as every column is: a row the sweep
+/// crosses may have been folded a moment ago by the press, spread across
+/// the selection.
+RailToggle<TimelineDisplayRow> _groupFold(RailSwipeHooks hooks) => (
+  valueOf: (row) {
+    if (row.isLane) return null;
+    final fold = hooks.foldOf(row);
+    if (!fold.has || fold.onToggle == null) return null;
+    return hooks.groupFoldOpenOf?.call(row.layer.id) ?? fold.expanded;
+  },
+  toggle: (row) => hooks.foldOf(row).onToggle?.call(row.layer.id),
+);
+
+/// A LANE GROUP's twirl — Transform, an effect — worn by the group's
+/// header alone. Read LIVE where the host reads it: the group's open state
+/// is its row's (`Layer.expandedLaneGroups`, F-360).
+RailToggle<TimelineDisplayRow>? _laneGroupToggle(RailSwipeHooks hooks) {
+  final onToggle = hooks.onToggleLaneGroup;
+  if (onToggle == null) return null;
+  return (
+    valueOf: (row) => switch (row.lane) {
+      final lane? when lane.isGroupHeader =>
+        hooks.laneGroupOpenOf?.call(row.layer.id, lane.laneId) ??
+            lane.groupExpanded,
+      _ => null,
+    },
+    toggle: (row) {
+      if (row.lane case final lane?) {
+        onToggle(row.layer, lane);
+      }
+    },
+  );
+}
+
+/// 🗣️F-475 (유저 2026-10-26): 「다른버튼도 조사」 — a lane's ◆: a key at the
+/// frame its row stands on, made or taken away, on each member lane that
+/// shows one ([PropertyLaneRow.showsKeyNavigator]) and is handed its verbs.
+///
+/// Read LIVE ([PropertyLaneEditCallbacks.keyedNow]), as every column is: the
+/// press keys its row before the sweep can read it.
+RailToggle<TimelineDisplayRow> _laneKey(RailSwipeHooks hooks) => (
+  valueOf: (row) => switch (_laneInHand(hooks, row)) {
+    (:final lane, :final hand)?
+        when !lane.isGroupHeader && lane.showsKeyNavigator =>
+      hand.edit.keyedNow?.call(row.layer, lane, hand.frame),
+    _ => null,
+  },
+  toggle: (row) {
+    if (_laneInHand(hooks, row) case (:final lane, :final hand)?) {
+      hand.edit.onToggleKeyAt(row.layer, lane, hand.frame);
+    }
+  },
+);
+
+/// A FLAG lane's ring ([PropertyLaneValueKind.boolean]) — its value at the
+/// frame its row stands on, on each lane whose value the row is handed a
+/// way to set — read LIVE ([PropertyLaneEditCallbacks.valueNow]) as the ◆
+/// is.
+RailToggle<TimelineDisplayRow> _laneFlag(RailSwipeHooks hooks) => (
+  valueOf: (row) => switch (_flagNow(hooks, row)) {
+    final word? => word == flagLaneWord(true),
+    null => null,
+  },
+  toggle: (row) {
+    if ((_laneInHand(hooks, row), _flagNow(hooks, row))
+        case ((:final lane, :final hand)?, final word?)) {
+      hand.edit.onSetValue?.call(
+        row.layer,
+        lane,
+        hand.frame,
+        flagLaneWord(word != flagLaneWord(true)),
+      );
+    }
+  },
+);
+
+/// [row]'s flag as its ring shows it now — null on a row that wears none.
+String? _flagNow(RailSwipeHooks hooks, TimelineDisplayRow row) =>
+    switch (_laneInHand(hooks, row)) {
+      (:final lane, :final hand)?
+          when lane.valueKind == PropertyLaneValueKind.boolean &&
+              hand.edit.onSetValue != null =>
+        hand.edit.valueNow?.call(row.layer, lane, hand.frame),
+      _ => null,
+    };
+
+/// [row]'s lane and what it is handed, or null for a layer row or a lane
+/// handed nothing.
+({PropertyLaneRow lane, LaneRowHand hand})? _laneInHand(
+  RailSwipeHooks hooks,
+  TimelineDisplayRow row,
+) => switch ((row.lane, hooks.laneHandOf(row))) {
+  (final lane?, final hand?) => (lane: lane, hand: hand),
+  _ => null,
+};

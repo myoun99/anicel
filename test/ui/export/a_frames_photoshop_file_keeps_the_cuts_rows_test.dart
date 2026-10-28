@@ -21,6 +21,7 @@ import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_section_defaults.dart';
+import 'package:anicel/src/models/media_asset.dart' show MediaFitMode;
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
@@ -29,6 +30,9 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
+import 'package:anicel/src/services/import/media_import_planner.dart'
+    show ImportIdMint;
+import 'package:anicel/src/services/import/psd_layer_plan.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
 import 'package:anicel/src/services/photoshop/psd_reader.dart';
 import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
@@ -110,8 +114,13 @@ void main() {
   /// picture's.
   /// [effects] false takes out what no row of a file holds: the
   /// adjustment's filter and 「G」's effect. [posed] brightens 「A」 by an
-  /// effect of its own and moves 「F」 one pixel to the right.
-  List<Layer> rows({required bool effects, bool posed = false}) => [
+  /// effect of its own and moves 「F」 one pixel to the right. [clipped]
+  /// clips 「C」 to 「B」 and 「F」 to 「A」 (I-92).
+  List<Layer> rows({
+    required bool effects,
+    bool posed = false,
+    bool clipped = false,
+  }) => [
     drawn('a').copyWith(effects: [if (posed) brighter()]),
     drawn(
       'b',
@@ -119,8 +128,9 @@ void main() {
       opacity: 0.75,
       blendMode: LayerBlendMode.multiply,
     ),
-    drawn('c', folder: 'f', visible: false),
+    drawn('c', folder: 'f', visible: false).copyWith(clipsToBelow: clipped),
     createFolderLayer(id: const LayerId('f'), name: 'F').copyWith(
+      clipsToBelow: clipped,
       opacity: 0.5,
       transformTrack: posed
           ? TransformTrack(
@@ -146,7 +156,11 @@ void main() {
   /// A film of the one cut, its cels drawn: a black dot on 「A」, a blue one
   /// on 「B」, a red one on 「C」, a green one on 「D」 — 「A」's and 「B」's
   /// one over the other.
-  EditorSessionManager film({bool effects = true, bool posed = false}) {
+  EditorSessionManager film({
+    bool effects = true,
+    bool posed = false,
+    bool clipped = false,
+  }) {
     final session = EditorSessionManager(
       initialProject: Project(
         id: const ProjectId('project'),
@@ -163,7 +177,11 @@ void main() {
                 name: 'CUT',
                 duration: 1,
                 canvasSize: size,
-                layers: rows(effects: effects, posed: posed),
+                layers: rows(
+                  effects: effects,
+                  posed: posed,
+                  clipped: clipped,
+                ),
               ),
             ],
           ),
@@ -197,7 +215,7 @@ void main() {
 
   ImageExportSpec psdSpec({
     ExportChannels channels = ExportChannels.rgba,
-    bool applyLayerFx = true,
+    ExportLayerFx layerFx = ExportLayerFx.on,
   }) => ImageExportSpec(
     format: ExportFormatSelection(
       kind: ExportMediaKind.still,
@@ -205,7 +223,7 @@ void main() {
       channels: channels,
     ),
     sizeMode: ExportSizeMode.canvas,
-    applyLayerFx: applyLayerFx,
+    layerFx: layerFx,
   );
 
   /// [session]'s frame written as [spec] says — the image tab's own call —
@@ -314,6 +332,56 @@ void main() {
     });
   });
 
+  testWidgets('a row and a folder clipped to the layer below are clipped in '
+      'the file — and read back in, clipped again (I-92)', (tester) async {
+    await tester.runAsync(() async {
+      final (read, _) = await written(film(clipped: true), psdSpec());
+
+      expect(
+        [
+          for (final row in read.layers)
+            if (row.role != PsdLayerRole.groupClose) (row.name, row.clipping),
+        ],
+        [
+          ('A', false),
+          ('B', false),
+          ('C', true),
+          ('F', true),
+          ('FX', false),
+          ('D', false),
+          ('G', false),
+        ],
+      );
+      var ids = 0;
+      final back = planPsdExpansion(
+        document: read,
+        displayName: 'frame.psd',
+        cutId: const CutId('back'),
+        duration: 1,
+        canvas: size,
+        fit: MediaFitMode.none,
+        mint: ImportIdMint(
+          nextLayerId: () => LayerId('back-${ids += 1}'),
+          nextFrameId: (layer) => FrameId('back-${ids += 1}'),
+          nextCutId: () => const CutId('back'),
+        ),
+        newCut: true,
+      );
+      expect(
+        {for (final layer in back.layers) layer.name: layer.clipsToBelow},
+        {
+          'A': false,
+          'B': false,
+          'C': true,
+          'F': true,
+          'FX': false,
+          'D': false,
+          'G': false,
+        },
+      );
+    });
+  });
+
   testWidgets('a row\'s effects are in its picture, and its pose — its '
       'folder\'s with it, a hidden member\'s too', (tester) async {
     await tester.runAsync(() async {
@@ -347,11 +415,11 @@ void main() {
 
       final (clear, _) = await written(session, psdSpec());
       expect(layout(onGround), [
-        '${AppText.strings.exBackground} 255 norm shown',
+        '${AppText.notation.exBackground} 255 norm shown',
         ...layout(clear),
       ]);
       expect(
-        rowNamed(onGround, AppText.strings.exBackground).pixels,
+        rowNamed(onGround, AppText.notation.exBackground).pixels,
         only({
           for (var y = 0; y < size.height; y += 1)
             for (var x = 0; x < size.width; x += 1) (x, y): [255, 255, 255, 255],
@@ -391,7 +459,7 @@ void main() {
         layerEffectsNotApplied('G'),
       ]);
       expect(
-        (await written(session, psdSpec(applyLayerFx: false))).$2,
+        (await written(session, psdSpec(layerFx: ExportLayerFx.off))).$2,
         [unsupportedLayerKind('FX')],
         reason: 'the folder\'s effect is off for every file then',
       );
@@ -399,7 +467,7 @@ void main() {
         ExportFrameRenderer.forFormat(
           session: session,
           format: const ExportFormatSelection(kind: ExportMediaKind.still),
-          applyLayerFx: true,
+          layerFx: ExportLayerFx.on,
         ).leftOutOfRows(frameOf(session)),
         isEmpty,
       );

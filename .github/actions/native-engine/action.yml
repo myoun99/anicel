@@ -34,3 +34,19 @@ runs:
         cmake -S packages/qa_native/src -B build/native_standalone \
           -DCMAKE_BUILD_TYPE=Release
         cmake --build build/native_standalone --config Release
+    # The stamp tool/lane.sh writes beside every build it makes: the name
+    # of the C it came from (tool/native_engine_provenance.dart). Without
+    # it every run of the plan here said it could not tell which C the
+    # engine was built from, and told the reader to rebuild with lane.sh
+    # (ci-shards-crowd-the-collector-pins). A build the cache gave back is
+    # that C too — the key above is the C's own hash.
+    - shell: bash
+      run: |
+        set -euo pipefail
+        named=$(dart tool/native_engine_provenance.dart check . || true)
+        id=${named%% *}
+        if [ -z "$id" ]; then
+          echo "no C to name the engine by"
+          exit 1
+        fi
+        printf '%s\n' "$id" > build/native_standalone/.built-from

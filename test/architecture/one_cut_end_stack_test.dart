@@ -18,7 +18,7 @@ import '../helpers/dart_sources.dart';
 void main() {
   const home = 'lib/src/ui/timeline/timeline_frame_grid_stack.dart';
   const overlays = [
-    'TimelineOutsideCutWashPainter',
+    'TimelineOutsideCutWash',
     'TimelineBodyNoriShiroBoundary',
     'TimelineBodyCutEndBoundary',
     'TimelineCutEndDragHandle',

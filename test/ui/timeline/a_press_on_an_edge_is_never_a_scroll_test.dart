@@ -218,7 +218,7 @@ void main() {
           width: 40,
           height: 40,
           child: TimelineBlockEdgeGrip(
-            layerId: const LayerId('layer-a'),
+            layer: Layer(id: const LayerId('layer-a'), name: 'a', frames: []),
             blockStartIndex: 0,
             blockOrdinal: 0,
             edge: TimelineBlockEdge.end,

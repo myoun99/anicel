@@ -54,7 +54,7 @@ Project _project() => Project(
                   strokes: const [],
                   name: 'A',
                   seName: 'boom',
-                  seType: SeLineType.off,
+                  seTypes: SeLineTypes(own: SeLineType.off),
                 ),
               ],
               timeline: {
@@ -93,7 +93,7 @@ void main() {
     );
     expect(_frameOf(repository).name, 'A2');
     expect(_frameOf(repository).seName, 'boom');
-    expect(_frameOf(repository).seType, SeLineType.off);
+    expect(_frameOf(repository).seTypes.own, SeLineType.off);
   });
 
   test('an SE entry edit writes the fields the call carries — name and '
@@ -107,10 +107,10 @@ void main() {
       layerId: _layerId,
       frameId: _frameId,
       name: 'B',
-      seEntry: (seName: 'crash', seType: SeLineType.mono),
+      seEntry: (seName: 'crash', seTypes: SeLineTypes(own: SeLineType.mono)),
     );
     expect(_frameOf(repository).name, 'B');
     expect(_frameOf(repository).seName, 'crash');
-    expect(_frameOf(repository).seType, SeLineType.mono);
+    expect(_frameOf(repository).seTypes.own, SeLineType.mono);
   });
 }

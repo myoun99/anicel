@@ -101,9 +101,10 @@ void main() {
 
   /// The run's making of the cut's first frame — which reads the cel.
   Future<void> readTheCel(EditorSessionManager s) => expectLater(
-    s.playbackRig.canvasPictures.make((
+    s.playbackRig.framePictures.make((
       cut: s.activeCutOrNull!,
       frameIndex: 0,
+      paintPaper: true,
     ), shouldAbort: () => false),
     throwsA(anything),
     reason: '⛔CONTROL: the cel\'s bytes are not there to read',

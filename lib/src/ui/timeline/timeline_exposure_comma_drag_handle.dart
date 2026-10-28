@@ -4,10 +4,11 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
-import '../../models/layer_id.dart';
+import '../../models/layer.dart';
 import '../../models/timeline_coverage.dart';
 import 'axis_turn.dart';
 import 'timeline_beat_lines.dart' show timelineRowPaperExtent;
+import 'timeline_block_look.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_span_layout.dart';
@@ -308,9 +309,45 @@ Color blockEdgeGripColor(
   );
 }
 
-/// Draws one grip's [triangle] ([blockEdgeGripPath]) in its ink. THE drawing
-/// source, shared by the widget grip and the dense rows' row-wide chrome
-/// painter.
+/// The block a grip stands on where none is told: shown, on the
+/// timeline's plain paper.
+const TimelineBlockFace blockEdgeGripOnPaper = (
+  state: TimelineBlockState.shown,
+  paper: timelineDrawingHeldColor,
+  ground: null,
+);
+
+/// A grip's colour in [ink] on a block that is [on] — the mark the ground
+/// law picks against the block's paper ([blockEdgeGripColor]), worn as the
+/// block wears its words ([timelineBlockLookOn]).
+///
+/// 🗣️I-129-Q1 (유저 2026-10-25 「셋 다 같은 법으로 흐린다」): a hidden row's
+/// grips are dimmed as its blocks are. 🗣️I-129 (10-25 23:33): 「빈 블록이면
+/// 엣지가 검정색이라 엣지가 안보이니, 엣지 회색으로」 — an empty block's
+/// grips are its outline's grey ([timelineEmptyBlockGrey]); ↩️they took the
+/// black the white paper picks while the block itself showed the dark
+/// ground.
+///
+/// Two inks keep their own: a live drag's accent, which must not change
+/// colour with its row ([blockEdgeGripColor]); and a hover on an empty
+/// block, which goes full on what that block shows — the ground — so the
+/// ladder (「반투명 먹」, quiet at rest and full on hover) still reads there.
+/// 🗣️I-129-Q2 (유저 2026-10-26 「올리면 진하게(지금)」) kept that hover:
+/// ↩️it was the lane's own reading of the ladder until then.
+Color timelineBlockGripColor(BlockEdgeGripInk ink, TimelineBlockFace on) {
+  final mark = blockEdgeGripColor(ink, ground: on.paper);
+  if (ink == BlockEdgeGripInk.dragging) {
+    return mark;
+  }
+  final look = timelineBlockLookOn(on, ink: mark);
+  return on.state == TimelineBlockState.empty && ink == BlockEdgeGripInk.hovered
+      ? blockEdgeGripColor(ink, ground: look.paper ?? on.paper)
+      : look.ink;
+}
+
+/// Draws one grip's [triangle] ([blockEdgeGripPath]) in its ink, on the
+/// block it stands [on] ([timelineBlockGripColor]). THE drawing source,
+/// shared by the widget grip and the dense rows' row-wide chrome painter.
 ///
 /// ⛔No outline arm (2026-08-17). R9 #11 wrapped the bar in the text's
 /// white outline so a resting grip read on a busy block; #1104 took the
@@ -321,12 +358,9 @@ void paintBlockEdgeGrip(
   Canvas canvas,
   Path triangle,
   BlockEdgeGripInk ink, {
-  Color ground = timelineDrawingHeldColor,
+  TimelineBlockFace on = blockEdgeGripOnPaper,
 }) {
-  canvas.drawPath(
-    triangle,
-    Paint()..color = blockEdgeGripColor(ink, ground: ground),
-  );
+  canvas.drawPath(triangle, Paint()..color = timelineBlockGripColor(ink, on));
 }
 
 /// The widget grip's triangle, painted rather than boxed: the sparse
@@ -340,11 +374,15 @@ class BlockEdgeGripPainter extends CustomPainter with RepaintOnProps {
     required this.ink,
     required this.devicePixelRatio,
     required this.geometry,
+    this.on = blockEdgeGripOnPaper,
   }) : super(repaint: geometry);
 
   final TimelineBlockEdge edge;
   final Axis axis;
   final BlockEdgeGripInk ink;
+
+  /// The block the grip stands on ([timelineBlockGripColor]).
+  final TimelineBlockFace on;
 
   /// For the round end's one-device-pixel bleed ([blockEdgeGripPath]).
   final double devicePixelRatio;
@@ -379,6 +417,7 @@ class BlockEdgeGripPainter extends CustomPainter with RepaintOnProps {
         ),
       ),
       ink,
+      on: on,
     );
   }
 
@@ -389,6 +428,7 @@ class BlockEdgeGripPainter extends CustomPainter with RepaintOnProps {
     edge,
     axis,
     ink,
+    on,
     devicePixelRatio,
     geometry.value.frameCellExtent,
   );
@@ -433,9 +473,13 @@ class BlockEdgeGrip extends StatefulWidget {
     required this.geometry,
     required this.hooks,
     this.axis = Axis.horizontal,
+    this.on = blockEdgeGripOnPaper,
   });
 
   final TimelineBlockEdge edge;
+
+  /// The block the grip stands on ([timelineBlockGripColor]).
+  final TimelineBlockFace on;
 
   /// The LIVE frame-axis geometry — its cell READ AT DRAG TIME rather than
   /// captured: the grip fills whatever box its mount hands it, and a mount
@@ -469,7 +513,7 @@ class BlockEdgeGrip extends StatefulWidget {
 class TimelineBlockEdgeGrip extends StatelessWidget {
   const TimelineBlockEdgeGrip({
     super.key,
-    required this.layerId,
+    required this.layer,
     required this.blockStartIndex,
     required this.blockOrdinal,
     required this.edge,
@@ -478,7 +522,10 @@ class TimelineBlockEdgeGrip extends StatelessWidget {
     this.axis = Axis.horizontal,
   });
 
-  final LayerId layerId;
+  /// The row whose block the grip is on — it stands on that row's colour
+  /// label as its rail's eye shows the row ([timelineRowFaceOf]), as the
+  /// block under it is drawn.
+  final Layer layer;
 
   /// The block's start frame index at build time (its identity for the
   /// drag; the session snapshots the layer on begin).
@@ -504,7 +551,7 @@ class TimelineBlockEdgeGrip extends StatelessWidget {
   /// site's business: a frame-span layout on the sparse rows, a `Positioned`
   /// on the storyboard.
   Key get subtreeKey => ValueKey<String>(
-    'timeline-block-edge-grip-${edge.name}-$layerId-$blockOrdinal',
+    'timeline-block-edge-grip-${edge.name}-${layer.id}-$blockOrdinal',
   );
 
   @override
@@ -515,8 +562,9 @@ class TimelineBlockEdgeGrip extends StatelessWidget {
         edge: edge,
         geometry: geometry,
         axis: axis,
+        on: timelineRowFaceOf(context, layer),
         hooks: BlockEdgeGripHooks(
-          onBegin: () => callbacks.onBegin(layerId, blockStartIndex, edge),
+          onBegin: () => callbacks.onBegin(layer.id, blockStartIndex, edge),
           onUpdate: callbacks.onUpdate,
           onEnd: callbacks.onEnd,
           onCancel: callbacks.onCancel,
@@ -621,6 +669,7 @@ class _BlockEdgeGripState extends State<BlockEdgeGrip> {
             : BlockEdgeGripInk.rest,
         devicePixelRatio: EffectiveDevicePixelRatio.of(context),
         geometry: widget.geometry,
+        on: widget.on,
       ),
       child: const SizedBox.expand(),
     );

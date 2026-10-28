@@ -10,35 +10,42 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
-import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/rgba_image_bytes.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/cel_surface_as_shown.dart';
-import 'package:anicel/src/services/layer_pose_matrix.dart' show LayerPlacement;
 import 'package:anicel/src/services/playback/frame_demand.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/playback/canvas_pictures.dart';
+import 'package:anicel/src/models/composite_tree.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
+import 'package:anicel/src/models/project_background.dart';
+import 'package:anicel/src/ui/playback/frame_picture_store.dart';
+import 'package:anicel/src/ui/playback/frame_pictures.dart';
+import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart';
 
 import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/poll_until.dart';
-import '../../helpers/one_piece.dart';
 
 /// Card playback-picture-weight-estimates (F-365 ③): the warmer asks the
 /// playback line for room before it makes a picture, and it weighed a row as
 /// the canvas — 🔬a cut's head asked 1.5–2× what it weighed, and one inked
 /// onto the pasteboard less (10-15, PC, a copy of the user's project). A
 /// picture is weighed by the plan its image is made by, once what its
-/// making reads first is read.
+/// making reads first is read. ↩️A row's image was weighed so too, a cel's
+/// shape by a row's kind at every level, until no row image was made
+/// (one-picture-per-frame ②-5b-1).
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
-  const canvasBytes = 8 * 8 * 4;
+  // The canvas as its picture lies ([pictureExtentOf]).
+  final canvasPicture = pictureExtentOf(canvasSize.canvasRect);
+  final canvasBytes = estimatedImageBytes(
+    canvasPicture.width.round(),
+    canvasPicture.height.round(),
+  );
 
   final cut = Cut(
     id: const CutId('c'),
@@ -54,7 +61,7 @@ void main() {
     layerId: const LayerId('l'),
     frameId: const FrameId('a'),
   );
-  final picture = (cut: cut, frameIndex: 0);
+  final picture = (cut: cut, frameIndex: 0, paintPaper: true);
 
   BitmapTile red() => BitmapTile(
     size: 4,
@@ -76,100 +83,32 @@ void main() {
   CanvasLayerImageRequest asItLies() =>
       CanvasLayerImageRequest(frameKey: key, opacity: 1);
 
-  CanvasPictures picturesOf(LayerFrameImageCache images) => CanvasPictures(
-    layerImages: images,
-    rowsOf: (_, _) => [asItLies()],
-    qualityAt: (_, _) => PlaybackQuality.full,
-  );
-
-  final shapes = {
-    'inked in a corner': inACorner,
-    'inked out onto the pasteboard': onThePasteboard,
-  };
-  final rows = {
-    'as it lies — its ink kept alone': asItLies,
-    'posed — kept whole': () => CanvasLayerImageRequest(
-      frameKey: key,
-      opacity: 1,
-      placement: const LayerPlacement(1, 0, 0, 1, 1, 0),
-    ),
-    'keyed out to nothing — its tiles stay': () => CanvasLayerImageRequest(
-      frameKey: key,
-      opacity: 1,
-      effects: [
-        ResolvedLayerEffect(
-          kind: EffectKind.deleteColor,
-          values: const [255, 0, 0, 0, 100],
-        ),
-      ],
-    ),
-  };
-
-  test('⛔fixture: the keyed row keys every inked pixel away, and the cel '
-      'keeps its tiles', () {
-    for (final surfaceOf in shapes.values) {
-      final cel = surfaceOf();
-      final shown = celSurfaceAsShown(
-        cel,
-        rows['keyed out to nothing — its tiles stay']!().sourceEffects,
-      );
-
-      expect(shown.tiles.keys, unorderedEquals(cel.tiles.keys));
-      for (final tile in shown.tiles.values) {
-        expect(
-          tile.readPixels(
-            (_, view) => [for (var i = 3; i < view.length; i += 4) view[i]],
-          ),
-          everyElement(0),
-        );
-      }
-    }
-  });
-
-  for (final MapEntry(key: shape, value: surfaceOf) in shapes.entries) {
-    for (final MapEntry(key: kind, value: rowOf) in rows.entries) {
-      for (final quality in PlaybackQuality.values) {
-        testWidgets('🚨a cel $shape, drawn $kind, at ${quality.name}: weighed '
-            'as the image it is made as', (tester) async {
-          await tester.runAsync(() async {
-            final store = BrushFrameStore()..storeBakedSurface(key, surfaceOf());
-            final images = LayerFrameImageCache(frameStore: store);
-            addTearDown(images.dispose);
-            final row = rowOf();
-            int? weighed() => images.plannedBytes(
-              key,
-              quality,
-              canvasSize: canvasSize,
-              inkSuffices: row.inkSuffices,
-            );
-            expect(weighed(), isNull, reason: 'its preview not prepared yet');
-
-            await images.readIn(key, canvasSize: canvasSize);
-            final weight = weighed();
-            final made = await images.prepare(
-              key: key,
-              canvasSize: canvasSize,
-              quality: quality,
-              sourceEffects: row.sourceEffects,
-              inkSuffices: row.inkSuffices,
-            );
-
-            expect(
-              weight,
-              estimatedImageBytes(made!.image.width, made.image.height),
-            );
-          });
-        });
-      }
-    }
+  FramePictures picturesOf(
+    LayerFrameImageCache images, {
+    List<CompositeNode<CanvasStackRow>> Function(int frame)? rowsAt,
+  }) {
+    final store = FramePictureStore<FramePictureKey>();
+    addTearDown(store.dispose);
+    return FramePictures(
+      store: store,
+      layerImages: images,
+      stackOf: (picture) =>
+          rowsAt?.call(picture.frameIndex) ?? [CompositeLeaf(asItLies())],
+      pageOf: (picture) => (
+        canvasSize: picture.cut.canvasSize,
+        pasteboardReach: PasteboardReach.whole,
+        paintPaper: picture.paintPaper,
+        paperBackground: ProjectBackground.defaultBackground,
+      ),
+    );
   }
 
   testWidgets('🚨a cel still in the file is weighed as the canvas, reading '
       'nothing, until what its making reads first is read — then as the '
-      'image it is made as', (tester) async {
+      'picture it is made as', (tester) async {
     await tester.runAsync(() async {
       final store = BrushFrameStore();
-      keepInAFile(store, {key: inACorner()});
+      keepInAFile(store, {key: onThePasteboard()});
       final images = LayerFrameImageCache(frameStore: store);
       addTearDown(images.dispose);
       final pictures = picturesOf(images);
@@ -186,7 +125,11 @@ void main() {
       expect(await pictures.make(picture, shouldAbort: () => false), isTrue);
 
       expect(weight, pictures.weighNew(picture, {}));
-      expect(weight, lessThan(canvasBytes), reason: '⛔premise: a corner');
+      expect(
+        weight,
+        greaterThan(canvasBytes),
+        reason: '⛔premise: ink past the canvas',
+      );
     });
   });
 
@@ -195,7 +138,7 @@ void main() {
       'why', (tester) async {
     await tester.runAsync(() async {
       final store = BrushFrameStore();
-      final kept = keepInAFile(store, {key: inACorner()});
+      final kept = keepInAFile(store, {key: onThePasteboard()});
       File(kept[key]!.filePath).deleteSync();
       final images = LayerFrameImageCache(frameStore: store);
       addTearDown(images.dispose);
@@ -207,8 +150,8 @@ void main() {
     });
   });
 
-  testWidgets('🚨reading a picture in reads the rows still to make, and no '
-      'cel another frame has made already', (tester) async {
+  testWidgets('🚨reading a picture in reads the cels not in hand, and no cel '
+      'another frame has read already', (tester) async {
     await tester.runAsync(() async {
       final other = BrushFrameKey(
         projectId: key.projectId,
@@ -221,19 +164,19 @@ void main() {
       keepInAFile(store, {key: inACorner(), other: inACorner()});
       final images = _ReadsRecorded(frameStore: store);
       addTearDown(images.dispose);
-      final pictures = CanvasPictures(
-        layerImages: images,
-        rowsOf: (_, frame) => [
-          asItLies(),
-          if (frame == 1) CanvasLayerImageRequest(frameKey: other, opacity: 1),
+      final pictures = picturesOf(
+        images,
+        rowsAt: (frame) => [
+          CompositeLeaf(asItLies()),
+          if (frame == 1)
+            CompositeLeaf(CanvasLayerImageRequest(frameKey: other, opacity: 1)),
         ],
-        qualityAt: (_, _) => PlaybackQuality.full,
       );
       await pictures.readIn(picture);
       expect(await pictures.make(picture, shouldAbort: () => false), isTrue);
       images.read.clear();
 
-      await pictures.readIn((cut: cut, frameIndex: 1));
+      await pictures.readIn((cut: cut, frameIndex: 1, paintPaper: true));
 
       expect(images.read, [other]);
     });
@@ -260,7 +203,7 @@ void main() {
           totalFrames: 1,
           loops: () => false,
           playhead: () => 0,
-          picturesOf: (frame) => [(cut: cut, frameIndex: frame)],
+          picturesOf: (frame) => [(cut: cut, frameIndex: frame, paintPaper: true)],
           playlistFrameOf: (_, frame) => frame,
         ),
       );
@@ -296,7 +239,7 @@ void main() {
           totalFrames: 1,
           loops: () => false,
           playhead: () => 0,
-          picturesOf: (frame) => [(cut: cut, frameIndex: frame)],
+          picturesOf: (frame) => [(cut: cut, frameIndex: frame, paintPaper: true)],
           playlistFrameOf: (_, frame) => frame,
         ),
       );

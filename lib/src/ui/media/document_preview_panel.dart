@@ -42,6 +42,7 @@ class DocumentPreviewPanel extends StatefulWidget {
     this.documentName,
     this.documentAbsent = false,
     this.marks,
+    this.bottomBarLeading = const <Widget>[],
   });
 
   /// What this panel's keys are named under — `<prefix>-page`,
@@ -79,6 +80,10 @@ class DocumentPreviewPanel extends StatefulWidget {
   /// the page does not (a sound's playhead), on its own layer so the page's
   /// [StaticRaster] is not baked again on every tick.
   final Widget Function(CanvasViewport viewport, ui.Size page)? marks;
+
+  /// The head of the pill ([BrushCanvasPanel.bottomBarLeading]) — what a
+  /// host keeps in its place beside the pictures it shows among papers.
+  final List<Widget> bottomBarLeading;
 
   @override
   State<DocumentPreviewPanel> createState() => _DocumentPreviewPanelState();
@@ -153,6 +158,7 @@ class _DocumentPreviewPanelState extends State<DocumentPreviewPanel> {
       // F-315: the viewer's 1:1, where the viewer keeps it.
       oneToOneOnPill: true,
       hasContentToView: document != null,
+      bottomBarLeading: widget.bottomBarLeading,
       transport: widget.transport,
       documentName: document == null ? null : widget.documentName,
       documentAbsent: widget.documentAbsent,

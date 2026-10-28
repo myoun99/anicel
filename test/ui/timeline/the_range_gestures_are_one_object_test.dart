@@ -43,7 +43,7 @@ void main() {
   }) => TimelineFrameRangeHooks(
     selection: selection ?? ValueNotifier<TimelineFrameRangeSelection?>(null),
     onSelectUpdate:
-        (_, _, _, {headLayerId, headLaneId, spanRows = const []}) {},
+        (_, _, _, {headLayerId, spanRows = const []}) {},
     onClear: () {},
     move: TimelineRangeMoveCallbacks(
       holds: (_) => false,
@@ -112,7 +112,7 @@ void main() {
     expect(gestures.rangeGestureFor(passRows), isNull);
     expect(resolver.rows, same(passRows));
     expect(resolver.session, isNull);
-    expect(gestures.laneRangeFor(passRows), isNull);
+    expect(gestures.laneRangeFor(passRows, band: null), isNull);
   });
 
   test('range hooks wired: the cells callbacks come from the shared '
@@ -133,7 +133,7 @@ void main() {
       callbacks!.onMoveBegin(const LayerRowAddress(LayerId('a')), 0),
       isTrue,
     );
-    expect(gestures.laneRangeFor(rows()), isNotNull);
+    expect(gestures.laneRangeFor(rows(), band: null), isNotNull);
   });
 
   test('a pin rides both families\' grips; no pin means no grip', () {
@@ -150,13 +150,13 @@ void main() {
     const other = LayerRowAddress(LayerId('b'));
     pinned.rangeGestureFor(rows())!.onGripTaken!(row);
     expect(pin.held, row);
-    pinned.laneRangeFor(rows())!.onGripTaken!(row);
+    pinned.laneRangeFor(rows(), band: null)!.onGripTaken!(row);
     expect(pin.held, row);
     // ⛔RELEASE ONLY IF STILL MINE: a grip that has moved on must not be
     // cleared by whoever held it last.
     pinned.rangeGestureFor(rows())!.onGripReleased!(other);
     expect(pin.held, row, reason: 'another row\'s release is not mine');
-    pinned.laneRangeFor(rows())!.onGripReleased!(row);
+    pinned.laneRangeFor(rows(), band: null)!.onGripReleased!(row);
     expect(pin.held, isNull);
 
     final unpinned = TimelineGridRangeGestures(
@@ -168,7 +168,7 @@ void main() {
     );
     expect(unpinned.rangeGestureFor(rows())!.onGripTaken, isNull);
     expect(unpinned.rangeGestureFor(rows())!.onGripReleased, isNull);
-    expect(unpinned.laneRangeFor(rows())!.onGripTaken, isNull);
-    expect(unpinned.laneRangeFor(rows())!.onGripReleased, isNull);
+    expect(unpinned.laneRangeFor(rows(), band: null)!.onGripTaken, isNull);
+    expect(unpinned.laneRangeFor(rows(), band: null)!.onGripReleased, isNull);
   });
 }

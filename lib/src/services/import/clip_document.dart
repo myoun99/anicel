@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:sqlite3/sqlite3.dart';
 
+import '../../models/frame.dart' show InbetweenMark;
 import 'clip_cmt.dart';
 import 'clip_container.dart';
 import 'clip_layer_effects.dart';
@@ -245,7 +246,7 @@ final class ClipTrack {
   const ClipTrack({
     required this.kind,
     required this.pieces,
-    required this.labels,
+    this.breakdownMarks = const {},
     this.sounds = const [],
     this.moves = const [],
   });
@@ -257,8 +258,9 @@ final class ClipTrack {
   /// Its clips, in order of frame; outside them the layer is not shown.
   final List<ClipPiece> pieces;
 
-  /// The frames a label (`LabelType` 1 — a breakdown) stands on.
-  final List<int> labels;
+  /// Its in-between labels, by the frame each stands on, as the mark each
+  /// puts there ([_markOfLabel]) — in order of frame.
+  final Map<int, InbetweenMark> breakdownMarks;
 
   /// A sound track's clips, as what each plays — in order of frame.
   final List<ClipSoundCue> sounds;
@@ -268,6 +270,20 @@ final class ClipTrack {
   /// frame.
   final List<ClipMove> moves;
 }
+
+/// The mark a timeline label of [labelType] puts on its frame, or null for
+/// a label that is no in-between.
+///
+/// 🗣️I-130-csp-import-Q1 (유저 2026-10-27, a sample made for it): its
+/// 「中割りトラックラベル○」 on frame 3 and its 「中割りトラックラベル●」 on
+/// frame 5, as asked, were the first two labels it made — 1 and 2. ↩️Only
+/// 1 was read until then, as mark 2, the one mark there was before I-130;
+/// the work samples s1–s5 hold 1 alone.
+InbetweenMark? _markOfLabel(int labelType) => switch (labelType) {
+  1 => InbetweenMark.one,
+  2 => InbetweenMark.two,
+  _ => null,
+};
 
 /// One timeline — a cut.
 final class ClipTimeline {
@@ -896,20 +912,35 @@ final class _DocumentReader {
             ?readTrackClip(node, fps, kind: kind, warnings: warnings),
     ];
     int byStart(ClipSpan a, ClipSpan b) => a.start.compareTo(b.start);
-    final labelFrames = [
-      for (final label in _chain(
-        labels,
-        _int(track['TrackLabelFirstIndex']),
-        'LabelNextIndex',
-      ))
-        if (_int(label['LabelType']) == 1) _int(label['LabelFrame']),
-    ];
+    final marks = <int, InbetweenMark>{};
+    final unread = <int, int>{};
+    for (final label in _chain(
+      labels,
+      _int(track['TrackLabelFirstIndex']),
+      'LabelNextIndex',
+    )) {
+      final type = _int(label['LabelType']);
+      switch (_markOfLabel(type)) {
+        case final mark?:
+          marks[_int(label['LabelFrame'])] = mark;
+        case null:
+          unread[type] = (unread[type] ?? 0) + 1;
+      }
+    }
+    for (final MapEntry(key: type, value: count) in unread.entries) {
+      warnings.add(
+        '$count timeline label(s) of LabelType $type, which no in-between '
+        'mark is, left out',
+      );
+    }
     return ClipTrack(
       kind: kind,
       pieces: [
         for (final clip in clips) clip.piece,
       ]..sort((a, b) => byStart(a.span, b.span)),
-      labels: labelFrames..sort(),
+      breakdownMarks: {
+        for (final frame in marks.keys.toList()..sort()) frame: marks[frame]!,
+      },
       sounds: [
         for (final clip in clips) ?clip.sound,
       ]..sort((a, b) => a.frame.compareTo(b.frame)),

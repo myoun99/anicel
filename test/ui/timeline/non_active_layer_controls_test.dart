@@ -10,9 +10,9 @@ import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
-import 'package:anicel/src/ui/timeline_tab_host.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/timeline_host.dart';
 
 /// 🚨★★★ 유저 #1 (2026-08-14): 「액티브 레이어가 아닌 **다른 레이어의 버튼
 /// 누르면 작동안함.** 불투명도 슬라이더는 **한번 움직이고 드래그가 풀림.**
@@ -41,9 +41,7 @@ void main() {
     WidgetTester tester,
     _Way way, {
     EditorSessionManager? existing,
-    ValueChanged<LayerId>? onToggleLayerLanes,
   }) async {
-    tester.view.physicalSize = const Size(1400, 1000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final session =
@@ -54,26 +52,13 @@ void main() {
       addTearDown(session.dispose);
     }
     final copy = way.acrossACut ? _copyTheCut(session) : null;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => TimelineTabHost(
-              session: session,
-              orientation: way.orientation,
-              onOrientationChanged: (_) {},
-              pixelsPerFrame: 24,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              onToggleLayerLanes: onToggleLayerLanes,
-            ),
-          ),
-        ),
-      ),
+    await pumpTimelineHostOn(
+      tester,
+      session,
+      surface: const Size(1400, 1000),
+      orientation: way.orientation,
+      pixelsPerFrame: 24,
     );
-    await tester.pumpAndSettle();
     if (copy != null) {
       await _crossTo(tester, session, copy);
     }
@@ -234,21 +219,21 @@ void main() {
           );
         });
 
-        testWidgets('fill-reference toggle', (tester) async {
+        testWidgets('clip toggle', (tester) async {
           final session = await pumpRail(tester, way);
           final active = session.activeLayerId;
           final other = otherAnimationRow(session);
           final before = session.layers
               .firstWhere((l) => l.id == other)
-              .isFillReference;
+              .clipsToBelow;
 
-          await tester.tap(find.named('$rail-layer-fill-reference-$other'));
+          await tester.tap(find.named('$rail-layer-clip-$other'));
           await tester.pumpAndSettle();
 
           expect(
-            session.layers.firstWhere((l) => l.id == other).isFillReference,
+            session.layers.firstWhere((l) => l.id == other).clipsToBelow,
             !before,
-            reason: 'the fill-reference toggle did not land on its own row',
+            reason: 'the clip toggle did not land on its own row',
           );
           expect(
             session.activeLayerId,
@@ -315,21 +300,23 @@ void main() {
         });
 
         testWidgets('property-lane twirl', (tester) async {
-          final toggled = <LayerId>[];
-          final session = await pumpRail(
-            tester,
-            way,
-            onToggleLayerLanes: toggled.add,
-          );
-          final active = session.activeLayerId;
+          final session = await pumpRail(tester, way);
+          final active = session.activeLayerId!;
           final other = otherAnimationRow(session);
+          // ↩️It spied on a twirl verb handed to the tab for the test; the
+          // tab's is the session's now, so the row it turned is read back.
+          List<bool> open() => [
+            session.layerSwitches.isLayerLanesOpen(other),
+            session.layerSwitches.isLayerLanesOpen(active),
+          ];
+          expect(open(), [false, false], reason: '⛔전제: both shut');
 
           await tester.tap(find.named('$rail-lane-toggle-$other'));
           await tester.pumpAndSettle();
 
           expect(
-            toggled,
-            [other],
+            open(),
+            [true, false],
             reason: 'the lane twirl did not land on its own row',
           );
           expect(

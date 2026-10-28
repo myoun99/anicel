@@ -88,10 +88,10 @@ const double layerRailLeadingWidth =
 /// than at each control: a control added later is covered by construction.
 /// ⛔An EMPTY slot stays grabbable on purpose — reserved space is not a
 /// button, and this rail reserves a great deal of it.
-Widget layerRailSlot(Axis axis, double extent, [Widget? child]) {
-  final content = child == null ? null : RowControlSurface(child: child);
-  return alongBox(axis, extent, child: content);
-}
+Widget layerRailSlot(Axis axis, double extent, [Widget? child]) =>
+    child == null
+    ? alongBox(axis, extent)
+    : RowControlSurface(axis: axis, extent: extent, child: child);
 
 /// A rail button's box, tight to its slot: [slot] along the rail, [across]
 /// the other way. The rail's law, read off the onion column rather than
@@ -309,6 +309,7 @@ Widget? layerRailTimesheetCell({
     return null;
   }
   return RailSwipeColumnPointer(
+    column: RailSwipeColumn.timesheet,
     child: LayerTimesheetToggleButton(
       keyPrefix: keyPrefix,
       layerId: layer.id,
@@ -376,17 +377,11 @@ Widget? layerRailDepthGuides(
 /// comment of its own. [name] is where the run ends and the label begins.
 enum LayerRailLeadingSlot { mark, laneToggle, timesheet, typeButton, name }
 
-/// How much sits to the LEFT of [to] on a row at [depth].
+/// How much sits to the LEFT of [to] on a rail row — on every row alike:
+/// a row's depth is spent on its name, not in front of it (2026-08-29).
 ///
-/// 🚨Unlike the trailing run this DEPENDS ON THE ROW: the nesting indent
-/// falls between the mark and the twirl, so every leading column from the
-/// twirl rightward moves by a whole slot per level of folder depth. A
-/// caller that treats a leading column as a fixed x is right only on
-/// unnested rows — which is why the rail's column swipe asks the row it was
-/// pressed on before it asks anything else (I-1).
-///
-/// [layerRailLeadingWidth] is this function at depth 0 with `to: name`, kept
-/// as a const because a window minimum needs one; `layer_rail_columns_test`
+/// [layerRailLeadingWidth] is this function with `to: name`, kept as a
+/// const because a window minimum needs one; `layer_rail_columns_test`
 /// pins the two together so neither can drift.
 double layerRailLeadingWidthTo({
   required LayerRailLeadingSlot to,
@@ -411,16 +406,6 @@ double layerRailLeadingWidthTo({
   return total + layerTypeSlotWidth + layerControlChipGap;
 }
 
-/// What one leading cell costs. [LayerRailLeadingSlot.name] has no width of
-/// its own — it is the end of the run, not a cell — so it is not a case.
-double layerRailLeadingSlotWidth(LayerRailLeadingSlot slot) => switch (slot) {
-  LayerRailLeadingSlot.mark => layerLabelSlotWidth,
-  LayerRailLeadingSlot.laneToggle => layerLaneToggleSlotWidth,
-  LayerRailLeadingSlot.timesheet => layerTimesheetSlotWidth,
-  LayerRailLeadingSlot.typeButton => layerTypeSlotWidth,
-  LayerRailLeadingSlot.name => 0,
-};
-
 /// The cells AFTER a rail row's name, in order. Null cells reserve
 /// their slot; a column [optionalColumns] does not carry is dropped outright,
 /// which is the HOST's answer, as distinct from a row that merely has
@@ -429,7 +414,7 @@ List<Widget> layerRailTrailingCells({
   Axis axis = Axis.horizontal,
   required LayerRailColumnWidths columns,
   required LayerRailOptionalColumns optionalColumns,
-  Widget? fillReference,
+  Widget? clip,
   Widget? fx,
   Widget? onion,
   Widget? visibility,
@@ -438,7 +423,7 @@ List<Widget> layerRailTrailingCells({
   Widget? trailingRegion,
 }) {
   return [
-    layerRailSlot(axis, layerFillReferenceSlotWidth, fillReference),
+    layerRailSlot(axis, layerClipSlotWidth, clip),
     layerRailSlot(axis, layerFxSlotWidth, fx),
     // R5 #7: everything AFTER fx as ONE region instead of its columns — a
     // group header has no eye and no blend, so the space is free
@@ -486,7 +471,7 @@ Widget? _plateIn(Axis axis, Widget? plate) => plate == null
 /// them. Naming them lets a host LOCATE a column instead of re-adding the
 /// widths in a comment — see [layerRailTrailingWidth].
 enum LayerRailTrailingSlot {
-  fillReference,
+  clip,
   fx,
   onion,
   visibility,
@@ -535,7 +520,7 @@ double _trailingSlotWidth(
   LayerRailTrailingSlot slot,
   LayerRailColumnWidths columns,
 ) => switch (slot) {
-  LayerRailTrailingSlot.fillReference => layerFillReferenceSlotWidth,
+  LayerRailTrailingSlot.clip => layerClipSlotWidth,
   LayerRailTrailingSlot.fx => layerFxSlotWidth,
   LayerRailTrailingSlot.onion => layerOnionSlotWidth,
   LayerRailTrailingSlot.visibility => layerVisibilitySlotWidth,
@@ -552,7 +537,7 @@ double _trailingSlotWidth(
 double layerRailTrailingWidth({
   required LayerRailColumnWidths columns,
   required LayerRailOptionalColumns optionalColumns,
-  LayerRailTrailingSlot from = LayerRailTrailingSlot.fillReference,
+  LayerRailTrailingSlot from = LayerRailTrailingSlot.clip,
 }) {
   var total = 0.0;
   for (final slot in LayerRailTrailingSlot.values) {

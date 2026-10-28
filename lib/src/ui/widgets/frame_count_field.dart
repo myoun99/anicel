@@ -32,6 +32,7 @@ class FrameCountField extends StatefulWidget {
     this.initialEntry = FrameCountEntry.frames,
     this.initialCount,
     this.onEntryChanged,
+    this.beside,
   });
 
   /// `<keyPrefix>-field` (frames), `-seconds-field` and `-koma-field`
@@ -60,6 +61,11 @@ class FrameCountField extends StatefulWidget {
   /// The entry the switch was just moved to — what a window remembers to
   /// open on next time (I-24-open-entry).
   final ValueChanged<FrameCountEntry>? onEntryChanged;
+
+  /// What stands beside the number, either way it is typed — the mark the
+  /// mark-every window lays: 🗣️I-130-Q2 (유저 2026-10-25 「간격 숫자 옆에
+  /// ○ / ● 고르기」). Null on every other count window.
+  final Widget? beside;
 
   @override
   State<FrameCountField> createState() => _FrameCountFieldState();
@@ -138,10 +144,37 @@ class _FrameCountFieldState extends State<FrameCountField> {
     onSubmitted: (_) => widget.onSubmitted?.call(),
   );
 
+  /// The field or fields the count is typed in, as the entry has it.
+  Widget _number(String prefix) => switch (_entry) {
+    FrameCountEntry.frames => _numberField(
+      '$prefix-field',
+      _frames,
+      autofocus: true,
+    ),
+    FrameCountEntry.secondsPlusFrames => Row(
+      children: [
+        Expanded(
+          child: _numberField(
+            '$prefix-seconds-field',
+            _seconds,
+            autofocus: true,
+          ),
+        ),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 8),
+          child: Text('+'),
+        ),
+        Expanded(child: _numberField('$prefix-koma-field', _koma)),
+      ],
+    ),
+  };
+
   @override
   Widget build(BuildContext context) {
     final strings = AppText.strings;
     final prefix = widget.keyPrefix;
+    final number = _number(prefix);
+    final beside = widget.beside;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -169,29 +202,15 @@ class _FrameCountFieldState extends State<FrameCountField> {
         AppWindowField(
           label: widget.label,
           emphasized: true,
-          child: switch (_entry) {
-            FrameCountEntry.frames => _numberField(
-              '$prefix-field',
-              _frames,
-              autofocus: true,
-            ),
-            FrameCountEntry.secondsPlusFrames => Row(
-              children: [
-                Expanded(
-                  child: _numberField(
-                    '$prefix-seconds-field',
-                    _seconds,
-                    autofocus: true,
-                  ),
+          child: beside == null
+              ? number
+              : Row(
+                  children: [
+                    Expanded(child: number),
+                    const SizedBox(width: 8),
+                    beside,
+                  ],
                 ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 8),
-                  child: Text('+'),
-                ),
-                Expanded(child: _numberField('$prefix-koma-field', _koma)),
-              ],
-            ),
-          },
         ),
       ],
     );

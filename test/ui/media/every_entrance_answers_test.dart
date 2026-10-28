@@ -25,6 +25,7 @@ import 'package:anicel/src/ui/timeline_tab_host.dart';
 import 'package:anicel/src/services/import/import_layer_spot.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
+import 'package:anicel/src/ui/session/tab_rail_wiring.dart';
 
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/named_finders.dart';
@@ -149,6 +150,7 @@ void main() {
     path,
     () => TimelineTabHost(
       session: s,
+      rail: TabRailWiring.of(s),
       orientation: orientation,
       onOrientationChanged: (_) {},
       pixelsPerFrame: 48,
@@ -173,6 +175,7 @@ void main() {
     path,
     () => StoryboardTabHost(
       session: s,
+      rail: TabRailWiring.of(s),
       pixelsPerFrame: 8,
       onPixelsPerFrameChanged: (_) {},
       showSeconds: false,

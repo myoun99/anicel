@@ -6,8 +6,10 @@ import 'package:anicel/src/core/tree_nodes.dart' show preorderNodes;
 import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// F-330 on the canvas — and F-313 (유저 2026-10-08): 「항상 보여야함」.
 ///
@@ -41,7 +43,7 @@ void main() {
 
     List<CanvasStackRow> rows() => [
       for (final node in preorderNodes(
-        tester.widget<CanvasLayerStackView>(find.byType(CanvasLayerStackView))
+        tester.widget<FramePictureView>(theFramesPicture())
             .nodes,
       ))
         if (node case CompositeLeaf(:final payload)) payload,

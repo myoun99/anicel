@@ -462,27 +462,26 @@ void main() {
   });
 }
 
-/// The rows' pictures kept from one render to the next, by surface and level.
+/// The rows' pictures kept from one render to the next, by surface.
 final class _Kept implements RowPictures {
   _Kept({required this.laidTexelForTexel});
 
   @override
   final bool laidTexelForTexel;
 
-  final _pictures = <(BitmapSurface, int), PositionedSurfaceImage>{};
+  final _pictures = <BitmapSurface, PositionedSurfaceImage>{};
   int composed = 0;
 
   @override
   Future<PositionedSurfaceImage> of(
     BitmapSurface surface,
-    int level,
     Future<PositionedSurfaceImage> Function() compose,
   ) async {
-    if (_pictures[(surface, level)] case final kept?) {
+    if (_pictures[surface] case final kept?) {
       return kept;
     }
     composed += 1;
-    return _pictures[(surface, level)] = await compose();
+    return _pictures[surface] = await compose();
   }
 
   void dispose() {

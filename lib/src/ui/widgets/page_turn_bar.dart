@@ -108,11 +108,13 @@ class PageTurnBar extends StatelessWidget {
               // One page per 8px of drag: a 1px-per-page rate flipped whole
               // documents on a twitch.
               unitsPerPixel: 1 / 8,
+              digitsOnly: true,
               onDragDelta: (units) => turnTo?.call(page.index + units.round()),
               onEditSubmit: (text) {
-                // '3' and '3/7' both mean page three (the readout's own
-                // spelling round-trips).
-                final parsed = int.tryParse(text.split('/').first.trim());
+                // ↩️'3/7' meant page three too, the readout's own spelling
+                // typed back; a page is typed in digits alone now
+                // ([DragValueLabel.digitsOnly], I-134), and opens on itself.
+                final parsed = int.tryParse(text.trim());
                 if (parsed != null) {
                   turnTo?.call(parsed - 1);
                 }

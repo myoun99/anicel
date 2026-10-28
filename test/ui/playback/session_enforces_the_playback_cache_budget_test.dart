@@ -10,7 +10,6 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -19,6 +18,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
 /// THE SESSION'S ENFORCEMENT OF THE PLAYBACK CACHE BUDGET IS MEASURED.
 ///
@@ -29,12 +29,10 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// `_PlaybackCacheBudget` (2026-09-02), the adversarial check made the
 /// session's call a no-op and every test stayed green. The product budget
 /// is 600 MB, which no unit test can fill, so the session grew a test seam
-/// for the number; this fills a 256-byte budget with two 8×8 pictures and
-/// asks the session to enforce.
+/// for the number; this fills a budget of one picture with two frames' 8×8
+/// pictures and asks the session to enforce.
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
-  // 8×8 RGBA = 256 bytes per picture: each cel inked over all of it.
-  const fullImageBytes = 8 * 8 * 4;
 
   Cut cut(String id, String frameId) => Cut(
     id: CutId(id),
@@ -51,7 +49,7 @@ void main() {
     ],
   );
 
-  EditorSessionManager session({int budget = fullImageBytes}) {
+  EditorSessionManager session({required int budget}) {
     final s = EditorSessionManager(
       initialProject: Project(
         id: const ProjectId('budget'),
@@ -110,41 +108,66 @@ void main() {
     );
   }
 
+
+  /// [cut]'s first frame, made as the warmer makes it.
+  Future<void> make(EditorSessionManager s, Cut cut) =>
+      s.playbackRig.framePictures.make((
+        cut: cut,
+        frameIndex: 0,
+        paintPaper: true,
+      ), shouldAbort: () => false);
+
+  /// What [cut]'s first frame's picture is kept under.
+  FramePictureKey keyOf(EditorSessionManager s, Cut cut) => s
+      .playbackRig
+      .framePictures
+      .keyOf((cut: cut, frameIndex: 0, paintPaper: true));
+
+  /// What one frame's picture weighs: a cel inked over its canvas, laid as
+  /// the store lays it — measured, on a line it fits in many times.
+  Future<int> onePicture() async {
+    final s = session(budget: 1 << 30);
+    final cut = s.cutById(const CutId('cut-2'))!;
+    draw(s, cut, 'cut-2-layer', 'frame-b');
+    await make(s, cut);
+    return s.renderCaches.framePictureStore.bytesOf(keyOf(s, cut))!;
+  }
+
+  /// Draws cut-2's and cut-3's cels and makes their frames: two cuts, two
+  /// cels, two pictures — two frames of one exposure would share one.
+  Future<void> twoPictures(EditorSessionManager s) async {
+    for (final (id, frameId) in [('cut-2', 'frame-b'), ('cut-3', 'frame-c')]) {
+      final cut = s.cutById(CutId(id))!;
+      draw(s, cut, '$id-layer', frameId);
+      await make(s, cut);
+    }
+  }
+
   testWidgets('the session trims the pictures past its budget', (
     tester,
   ) async {
     await tester.runAsync(() async {
-      final s = session();
+      final one = await onePicture();
+      final s = session(budget: one);
       expect(s.activeCutOrNull!.id, const CutId('cut-1'), reason: 'premise');
       expect(
         s.playbackRig.playbackCache.playbackCacheByteBudget,
-        fullImageBytes,
+        one,
         reason: 'the seam',
       );
-      // Two cuts, two cels, two pictures — two frames of one exposure
-      // would share one image.
-      for (final (id, frameId) in [
-        ('cut-2', 'frame-b'),
-        ('cut-3', 'frame-c'),
-      ]) {
-        final cut = s.cutById(CutId(id))!;
-        draw(s, cut, '$id-layer', frameId);
-        await s.playbackRig.canvasPictures.make((
-          cut: cut,
-          frameIndex: 0,
-        ), shouldAbort: () => false);
-      }
+      await twoPictures(s);
+      final pictures = s.renderCaches.framePictureStore;
       expect(
-        s.renderCaches.layerFrameImageCache.estimatedBytes,
-        2 * fullImageBytes,
+        pictures.estimatedBytes,
+        2 * one,
         reason: 'two pictures of inactive cuts — twice the budget',
       );
 
       s.playbackRig.playbackCache.enforcePlaybackCacheBudget();
 
       expect(
-        s.renderCaches.layerFrameImageCache.estimatedBytes,
-        lessThanOrEqualTo(fullImageBytes),
+        pictures.estimatedBytes,
+        lessThanOrEqualTo(one),
         reason: 'the session handed the enforcer its budget',
       );
     });
@@ -157,25 +180,15 @@ void main() {
   testWidgets('🎯what a run holds comes off the line at once, and every '
       'enforce after counts it until it is handed back', (tester) async {
     await tester.runAsync(() async {
-      const budget = 1024;
-      const lent = 600;
+      final one = await onePicture();
+      final budget = 4 * one;
+      final lent = 2 * one + one ~/ 2;
       final s = session(budget: budget);
       final line = s.playbackRig.playbackCache;
-      int held() => s.renderCaches.layerFrameImageCache.estimatedBytes;
-      Future<void> prepare(String id) => s.playbackRig.canvasPictures.make((
-        cut: s.cutById(CutId(id))!,
-        frameIndex: 0,
-      ), shouldAbort: () => false);
-      for (final (id, frameId) in [
-        ('cut-2', 'frame-b'),
-        ('cut-3', 'frame-c'),
-      ]) {
-        draw(s, s.cutById(CutId(id))!, '$id-layer', frameId);
-        await prepare(id);
-      }
+      int held() => s.renderCaches.framePictureStore.estimatedBytes;
+      await twoPictures(s);
       line.enforcePlaybackCacheBudget();
-      expect(held(), 2 * fullImageBytes, reason: 'premise');
-      expect(held(), lessThanOrEqualTo(budget), reason: 'all of it fits');
+      expect(held(), 2 * one, reason: 'premise: all of it fits');
       expect(line.bytes, budget, reason: '⛔premise: nothing lent yet');
 
       line.lend(lent);
@@ -189,8 +202,8 @@ void main() {
 
       // The warm builds the evicted frame again and enforces, as it does
       // after every frame it bakes.
-      await prepare('cut-2');
-      await prepare('cut-3');
+      await make(s, s.cutById(const CutId('cut-2'))!);
+      await make(s, s.cutById(const CutId('cut-3'))!);
       line.enforcePlaybackCacheBudget();
       expect(
         held(),
@@ -210,36 +223,28 @@ void main() {
   testWidgets('🚨what a run may hold is the line less what a screen shows — '
       'a warm frame gives way like any other', (tester) async {
     await tester.runAsync(() async {
-      const budget = 1024;
+      const budget = 1 << 20;
       final s = session(budget: budget);
       final line = s.playbackRig.playbackCache;
-      final images = s.renderCaches.layerFrameImageCache;
+      final pictures = s.renderCaches.framePictureStore;
       expect(line.lendableBytes, budget, reason: 'LIVENESS: nothing shown');
 
       final open = s.activeCutOrNull!;
       draw(s, open, 'cut-1-layer', 'frame-a');
-      await s.playbackRig.canvasPictures.make((
-        cut: open,
-        frameIndex: 0,
-      ), shouldAbort: () => false);
-      expect(images.estimatedBytes, greaterThan(0), reason: 'premise');
+      await make(s, open);
+      expect(pictures.estimatedBytes, greaterThan(0), reason: 'premise');
       expect(
         line.lendableBytes,
         budget,
         reason: 'the open cut\'s warm frame is not kept from the run',
       );
 
-      final cel = s.brushFrameKeyForCut(
-        open,
-        const LayerId('cut-1-layer'),
-        const FrameId('frame-a'),
-      );
-      images.retainPin(cel, PlaybackQuality.full);
-      addTearDown(() => images.releasePin(cel, PlaybackQuality.full));
-      expect(images.pinnedBytes, fullImageBytes, reason: 'premise');
+      final shown = keyOf(s, open);
+      pictures.retainPin(shown);
+      addTearDown(() => pictures.releasePin(shown));
       expect(
         line.lendableBytes,
-        budget - fullImageBytes,
+        budget - pictures.bytesOf(shown)!,
         reason: 'the frame a screen shows is the session\'s, not the run\'s',
       );
     });

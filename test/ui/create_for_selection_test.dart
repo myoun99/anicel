@@ -55,7 +55,7 @@ void main() {
   });
 
   test('an SE row fills its selected gap with one entry; an instruction '
-      'row gains a default-vocabulary event over the gap', () {
+      'row gains an event over the gap that says nothing yet', () {
     final s = session();
     s.layerStack.addLayerOfKind(LayerKind.se);
     final seId = s.activeLayer!.id;
@@ -78,10 +78,8 @@ void main() {
     expect(cellInstancesOf(s).createInstancesForSelection(), isTrue);
     final instr = layerOf(s, instrId);
     expect(instr.instructions[0]!.length, 3);
-    expect(
-      instr.instructions[0]!.instructionId,
-      s.camera.cameraInstructionSet.defs.first.id,
-    );
+    // 「생성시 기본값 없음」 (I-72-block-without-instruction).
+    expect(instr.instructions[0]!.instructionId, isNull);
   });
 
   test('a camera-row span freezes a pose key on every unkeyed frame in '

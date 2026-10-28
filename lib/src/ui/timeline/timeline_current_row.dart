@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart' show ValueListenable, VoidCallback;
 
 import '../../models/layer_id.dart';
 import '../../models/timeline_row_address.dart';
@@ -28,13 +28,29 @@ import 'transform_lane_policy.dart'
 ///   count frames differently (the timeline locally, the storyboard
 ///   globally) — a frame in this signature is a trap, not a feature.
 class TimelineCurrentRowHooks {
-  const TimelineCurrentRowHooks({required this.currentRow, this.onStandOnLane});
+  const TimelineCurrentRowHooks({
+    required this.currentRow,
+    this.onStandOnLane,
+    this.onSettledPress,
+  });
 
   final ValueListenable<TimelineRowAddress?> currentRow;
 
   /// Null leaves labels inert (passive hosts, and the test harnesses that
   /// mount a grid without a session).
+  ///
+  /// It runs on the PRESS, as the layer row's label picks (T10, 유저
+  /// 2026-08-14 「행이든 뭐든 동일하게」): 🗣️F-476 (유저 2026-10-26 「보통
+  /// 레이어 선택범위 작동할땐 그 레이어에 서고나서 선택범위 적용되는데 지금
+  /// fx에는 서는게 안됨」). ↩️It ran on the release, which a sweep never
+  /// reaches — T10 moved the cells, the sheet and the layer row, and missed
+  /// the lane's label.
   final void Function(LayerId layerId, String laneId)? onStandOnLane;
+
+  /// The release of a label press that turned out to be a tap — the
+  /// layer row's `onSettledPress`, T10's other half: 「클릭하고 떼면 뭐든
+  /// 비우게」.
+  final VoidCallback? onSettledPress;
 }
 
 /// Whether [row] IS the (layer, lane) property row — the one test every

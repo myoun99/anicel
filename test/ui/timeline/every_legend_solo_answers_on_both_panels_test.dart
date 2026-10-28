@@ -21,7 +21,7 @@ import '../../helpers/named_finders.dart';
 ///
 /// Measured before the round (10-20, the default project): on the timeline
 /// every solo checked and unchecked; on the conte the kind, sheet, fx and
-/// fill-reference solos never showed checked and set the same solo again
+/// clip solos never showed checked and set the same solo again
 /// at every press — the conte's tab listened to a hand copy of the rail's
 /// view without the filter.
 void main() {
@@ -30,7 +30,7 @@ void main() {
     'legend-kind': 'legend-filter-kind-animation',
     'legend-sheet': 'legend-filter-sheet',
     'legend-fx': 'legend-filter-fx',
-    'legend-fill-ref': 'legend-filter-fill-ref',
+    'legend-clip': 'legend-filter-clip',
     'legend-eye': 'legend-eye-solo',
   };
 

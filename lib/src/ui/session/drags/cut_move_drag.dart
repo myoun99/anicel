@@ -120,6 +120,12 @@ class CutMoveDrag implements EditorDragSession {
       // writes the previewed span through the selection notifier; the band
       // just listens). An SE/transition-row selection merely overlapping
       // the frames stays put — a cut move does not move that content.
+      // 🗣️conte-v-row-band-moves-cuts-alone-Q1 (유저 2026-10-27): 「지금대로 —
+      // 잡은 행 종류만」 — and so does a band that holds the V row AND S rows
+      // or lanes: pressed on the V row it moves the cuts, by their slots;
+      // pressed on an S row or a lane, the sounds and keys, by frames
+      // (`FrameRangeMoveDrag.beginOnTrackAxis`). ⛔Not a gap to close by
+      // carrying the S rows along here.
       // ⛔The track-axis walk, over SLOTS rather than cuts. Judged 보류
       // (3의 규칙, 2026-09-05): `cutSpansOf` walks `Cut`s and this is the
       // only caller that holds `CutMoveSlot`s, so making the walk generic

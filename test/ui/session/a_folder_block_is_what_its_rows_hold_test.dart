@@ -2,6 +2,9 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/attached_layer_resolve.dart'
+    show isSyncedAttachedLayer;
+import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
@@ -11,6 +14,7 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_folder.dart' show LayerFolderQueries;
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
@@ -26,8 +30,8 @@ import 'package:anicel/src/ui/session/drags/frame_range_move_drag.dart';
 import 'package:anicel/src/ui/session/folder_bands.dart';
 import 'package:anicel/src/ui/session/layer_stack.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
-import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
-    show timelineGridGroundOver;
+import 'package:anicel/src/ui/timeline/timeline_block_look.dart'
+    show timelineEmptyBlockGrey;
 import 'package:anicel/src/ui/timeline/timeline_cel_content_source.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
@@ -323,10 +327,12 @@ void main() {
       );
       expect(onFolder.cellModelAt(9).ghost, isFalse);
       expect(
-        onFolder.resolvedCellStyleFor(9).background,
-        isNot(onFolder.resolvedCellStyleFor(30).background),
-        reason: 'CONTROL: a block does wear paper',
+        onFolder.resolvedCellStyleFor(9).border,
+        isNot(onFolder.resolvedCellStyleFor(30).border),
+        reason: 'CONTROL: a block is drawn — here with no picture yet, over '
+            'no ground, as its outline (I-129)',
       );
+      expect(onFolder.resolvedCellStyleFor(12).border, Colors.transparent);
     });
 
     test('a repeat\'s ghosts are no block either, and stand where no hold '
@@ -419,18 +425,16 @@ void main() {
       expect(
         painter.resolvedCellStyleFor(4).background,
         isNot(painter.resolvedCellStyleFor(1).background),
-        reason: 'one block, 0..6: white where a drew, grey past it',
+        reason: 'one block, 0..6: white where a drew, hollow past it',
       );
       expect(
         painter.resolvedCellStyleFor(4).background,
         painter.resolvedCellStyleFor(9).background,
       );
       expect(
-        painter.resolvedCellStyleFor(4).background,
-        timelineGridGroundOver(
-          under: null,
-          painted: timelineEmptyCelPaperColor(timelineDrawingHeldColor),
-        ),
+        painter.resolvedCellStyleFor(4).border,
+        timelineEmptyBlockGrey,
+        reason: 'the empty block\'s outline, over no known ground (I-129)',
       );
     });
 
@@ -770,6 +774,105 @@ void main() {
         reason: 'b went to 11..15, and the folder shows what its rows hold',
       );
       s.rangeMove.cancelFrameRangeMoveDrag();
+    });
+
+    group('🐛F-467 (유저 2026-10-25): 「폴더의 블록을 잡고 이동시킬때, 원래 '
+        '위치에 블록이 남아있는 버그. 이동끝나면 사라짐」 — a synced attach '
+        'row in it is read as its row shows it, by its base', () {
+      /// `a` standing 0..4 in F, and its mirror under it.
+      (EditorSessionManager, LayerId) mirrored() {
+        final s = _session([
+          _row('a', const {0: 4}, inside: 'F'),
+          _folderRow('F'),
+        ]);
+        s.selectLayer(const LayerId('a'));
+        s.folders.addAttachedLayer(AttachedPlacement.below);
+        final mirror = s.activeLayer!;
+        expect(
+          [isSyncedAttachedLayer(mirror), mirror.folderId, _blocks(mirror)],
+          [true, _folder, {0: 4}],
+          reason: '⛔전제: a mirror of a, in F, standing where a stands',
+        );
+        _selectFolderBlockAt(s, 1);
+        s.rangeMove.beginFrameRangeMoveDrag(_folder);
+        return (s, mirror.id);
+      }
+
+      test('the folder\'s block goes where the hand has it, and nowhere '
+          'else', () {
+        final (s, mirror) = mirrored();
+
+        s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 6);
+
+        final preview = s.dragPreview.value;
+        expect(
+          _blocks(timelineRowPreviewLayer(preview, _layer(s, mirror.value))!),
+          {6: 4},
+          reason: 'CONTROL: the mirror\'s own row follows its base',
+        );
+        expect(
+          _blocks(timelineRowPreviewLayer(preview, _band(s))!),
+          {6: 4},
+          reason: 'read off the mirror where it stood, the folder held the '
+              'block at 0..4 too until the release',
+        );
+        s.rangeMove.endFrameRangeMoveDrag();
+        expect(_blocks(_band(s)), {6: 4});
+      });
+
+      test('its picture greys and whitens the folder where the mirror goes',
+          () {
+        final (s, mirror) = mirrored();
+        final cel = _layer(s, mirror.value).timeline[0]!.frameId!;
+        _draw(s, mirror.value, cel.value);
+
+        s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 6);
+
+        final folder = timelineRowPreviewLayer(s.dragPreview.value, _band(s))!;
+        bool drawn(int frame) =>
+            stackOf(s).celHasContentForLayer(folder, frame);
+        expect(
+          [drawn(1), drawn(7)],
+          [false, true],
+          reason: 'the mirror\'s picture rides to 6..10 with it — read where '
+              'it stood, the white stayed at 0..4',
+        );
+        s.rangeMove.cancelFrameRangeMoveDrag();
+      });
+
+      test('an organizer holding the mirrors of a row outside it follows that '
+          'row\'s drag', () {
+        final s = _session([_row('a', const {0: 4})]);
+        s.selectLayer(const LayerId('a'));
+        s.folders.addAttachedLayer(AttachedPlacement.above);
+        s.folders.groupActiveAttachIntoFolder();
+        final organizer = s.requireActiveCut.layers.folderLayers.single.id;
+        expect(
+          [_layer(s, 'a').folderId, _blocks(_band(s, organizer))],
+          [null, {0: 4}],
+          reason: '⛔전제: a stands outside the organizer its mirror is in',
+        );
+        s.updateFrameRangeSelectionDrag(
+          layerId: const LayerId('a'),
+          anchorIndex: 1,
+          headIndex: 1,
+        );
+        s.rangeMove.beginFrameRangeMoveDrag(const LayerId('a'));
+
+        s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 6);
+
+        final shown = timelineRowPreviewLayer(
+          s.dragPreview.value,
+          _band(s, organizer),
+        );
+        expect(
+          shown == null ? null : _blocks(shown),
+          {6: 4},
+          reason: 'no row of the organizer\'s own is in the drag\'s hand, so '
+              'asked by id the organizer stood still until the release',
+        );
+        s.rangeMove.cancelFrameRangeMoveDrag();
+      });
     });
 
     test('…and on no folder whose rows stand still', () {

@@ -37,6 +37,7 @@ import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 
 import '../../helpers/placement_reading.dart';
+import '../../helpers/the_frame_as_it_stands.dart';
 
 /// 🚨★★★THE LAYER RIDES THE DRAWS — and it is the same pixels the buffer made.
 ///
@@ -388,7 +389,7 @@ void main() {
               child: SizedBox(
                 width: 200,
                 height: 150,
-                child: CanvasLayerStackView(
+                child: TheFrameAsItStands(
                   nodes: [
                     CompositeLeaf<CanvasStackRow>(
                       CanvasActiveLayerRow(
@@ -423,7 +424,7 @@ void main() {
       final painted = tester
           .widgetList<CustomPaint>(
             find.descendant(
-              of: find.byType(CanvasLayerStackView),
+              of: find.byType(TheFrameAsItStands),
               matching: find.byType(CustomPaint),
             ),
           )
@@ -452,7 +453,7 @@ void main() {
         final painted = tester
             .widgetList<CustomPaint>(
               find.descendant(
-                of: find.byType(CanvasLayerStackView),
+                of: find.byType(TheFrameAsItStands),
                 matching: find.byType(CustomPaint),
               ),
             )
@@ -551,7 +552,7 @@ void main() {
         final painted = tester
             .widgetList<CustomPaint>(
               find.descendant(
-                of: find.byType(CanvasLayerStackView),
+                of: find.byType(TheFrameAsItStands),
                 matching: find.byType(CustomPaint),
               ),
             )
@@ -725,6 +726,12 @@ void main() {
           blendMode: blend,
           disableBuffer: true,
           landingPreview: preview,
+          // The route, not the pixels: no paper. A recording canvas has no
+          // transform to cut the paper's edge on the grid by
+          // (`cutOnThePixelGrid`) — ↩️the paper was the composite's bake's
+          // to record, on a canvas of its own, until nothing kept a bake
+          // (one-picture-per-frame ②-5a).
+          paintPaper: false,
           recordInto: canvas,
         );
         expect(
@@ -854,7 +861,7 @@ void main() {
         final painted = tester
             .widgetList<CustomPaint>(
               find.descendant(
-                of: find.byType(CanvasLayerStackView),
+                of: find.byType(TheFrameAsItStands),
                 matching: find.byType(CustomPaint),
               ),
             )

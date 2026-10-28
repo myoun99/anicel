@@ -7,15 +7,12 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show buildAppTheme;
-import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
-    show layerMarkColor;
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
+import 'package:anicel/src/ui/timeline/timeline_block_look.dart'
+    show timelineEmptyBlockGrey;
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
-    show
-        timelineBlockCornerRadiusAt,
-        timelineDrawingHeldColor,
-        timelineEmptyCelPaperColor;
+    show timelineBlockCornerRadiusAt, timelineDrawingHeldColor;
 import 'package:anicel/src/ui/timeline/timeline_cel_content_source.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart'
     show blockEdgeGripCornerRadius, timelineBlockEdgeGripPlacement;
@@ -492,25 +489,27 @@ void main() {
       );
     });
 
-    test('an UNWORKED block is pre-blended onto the host, so the sheet '
+    test('an UNWORKED block is laid in the host\'s own colour, so the sheet '
         'cannot show through it', () {
-      final paper = layerMarkColor(layer.mark);
       final onHost = painterFor(paperGround: host, celHasContent: false);
       expect(
         onHost.resolvedCellStyleFor(11).background,
-        Color.alphaBlend(timelineEmptyCelPaperColor(paper), host),
+        host,
+        reason:
+            'I-129: 「투명말고 뒤의 바탕색으로 칠함」 — ↩️R26 #44 blended a '
+            'paler paper onto it',
       );
       expect(onHost.resolvedCellStyleFor(11).background.a, 1.0);
 
-      // Over the ARTWORK there is nothing to blend onto: it stays
-      // translucent — the one place the lines show faintly through (the
-      // cost the user took with I-44).
+      // Over the ARTWORK there is no colour to lay: the block is its
+      // outline alone, and the lines show through it there (the cost the
+      // user took with I-44).
       final overArt = painterFor(celHasContent: false);
       expect(
         overArt.resolvedCellStyleFor(11).background,
-        timelineEmptyCelPaperColor(paper),
+        Colors.transparent,
       );
-      expect(overArt.resolvedCellStyleFor(11).background.a, lessThan(1));
+      expect(overArt.resolvedCellStyleFor(11).border, timelineEmptyBlockGrey);
     });
   });
 

@@ -11,14 +11,13 @@ import 'package:flutter_test/flutter_test.dart';
 /// 94,000 of them under a 4000×3000 picture in the import window, most of
 /// a second of raster for every press there.
 void main() {
-  testWidgets('a picture-sized checker is one draw, not one per cell', (
-    tester,
-  ) async {
-    expect(
-      (Canvas canvas) =>
-          paintAlphaCheckerboard(canvas, const Rect.fromLTWH(0, 0, 4000, 3000)),
-      paintsExactlyCountTimes(#drawRect, 1),
-    );
+  // Counted on a canvas that answers its clip: the checker is cut to it
+  // (`drawShadedRect`, deep-zoom-blanks-the-canvas), which flutter_test's
+  // recording canvas cannot say.
+  test('a picture-sized checker is one draw, not one per cell', () {
+    final canvas = _CountingCanvas();
+    paintAlphaCheckerboard(canvas, const Rect.fromLTWH(0, 0, 4000, 3000));
+    expect(canvas.drawCalls, 1);
   });
 
   testWidgets('cells of eight from the origin, grey where row + column is '
@@ -79,4 +78,21 @@ void main() {
       );
     }
   });
+}
+
+/// Counts every draw under a clip as wide as the picture; everything else
+/// is a no-op.
+class _CountingCanvas implements ui.Canvas {
+  int drawCalls = 0;
+
+  @override
+  Rect getLocalClipBounds() => const Rect.fromLTWH(0, 0, 4000, 3000);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) {
+    if (invocation.memberName.toString().startsWith('Symbol("draw')) {
+      drawCalls += 1;
+    }
+    return null;
+  }
 }

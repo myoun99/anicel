@@ -1,9 +1,15 @@
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/core/tree_nodes.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cel_number_letters.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -13,6 +19,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart';
 import 'package:anicel/src/services/playback/cut_frame_composite_signature.dart';
@@ -171,6 +178,39 @@ void main() {
     );
   });
 
+  test('a cel number\'s letters part the key — what they say and where '
+      'they stand (I-65)', () {
+    List<CompositeNode<CanvasStackRow>> numbered(String text, {double x = 12}) {
+      final row = CompositeLeaf<CanvasStackRow>(
+        CanvasLayerImageRequest(frameKey: cel('a'), opacity: 1.0),
+      );
+      return [
+        CompositeGroup(
+          children: [
+            row,
+            CompositeCelNumber(
+              on: row,
+              letters: CelNumberLetters(
+                text: text,
+                color: 0xFF000000,
+                center: CanvasPoint(x: x, y: 8),
+                scale: CanvasPoint(x: 1, y: 1),
+              ),
+            ),
+          ],
+          opacity: 1,
+          blendMode: LayerBlendMode.normal,
+          effects: const [],
+        ),
+      ];
+    }
+
+    final plain = keyOf(numbered('A1'));
+    expect(keyOf(numbered('A1')), plain);
+    expect(keyOf(numbered('A2')), isNot(plain));
+    expect(keyOf(numbered('A1', x: 13)), isNot(plain));
+  });
+
   test('the row a pen stands on is keyed as the cel it shows', () {
     List<CompositeNode<CanvasStackRow>> withTheRow(CanvasStackRow row) => [
       CompositeLeaf(
@@ -241,42 +281,93 @@ void main() {
       tiles: const {},
     );
     final asked = <String>[];
-    final drawing = stackedFrameDrawingOf(
+    final drawing = stackedFrameOf(
       [drawn, empty],
       page: page,
       surfaceOf: (cel) {
         asked.add(cel.layerId.value);
         return cel.layerId.value == 'drawn' ? surface : null;
       },
-    );
+    ).drawing;
     expect(asked, ['drawn', 'empty'], reason: '⛔premise: both were asked');
     expect(
       drawing.extent,
-      stackedFrameDrawingOf([drawn], page: page, surfaceOf: (_) => surface)
-          .extent,
+      stackedFrameOf(
+        [drawn],
+        page: page,
+        surfaceOf: (_) => surface,
+      ).drawing.extent,
     );
   });
 
-  test('⛔an onion ghost is no part of a frame\'s picture — keyed or drawn',
-      () {
-    final ghosted = [
+  // ↩️A tinted row was refused here — an onion ghost no part of any
+  // frame's picture — until the ghosts were a picture of their own
+  // (one-picture-per-frame ②-5b-1): no frame's own tree holds one now.
+  test('an onion ghost\'s tint parts the key — the ghosts\' picture is not '
+      'the picture of their cels untinted, nor tinted otherwise', () {
+    List<CompositeNode<CanvasStackRow>> ghosted(int? tint) => [
       CompositeLeaf<CanvasStackRow>(
         CanvasLayerImageRequest(
           frameKey: cel('ghost'),
           opacity: 0.3,
-          tint: 0xFFFF0000,
+          tint: tint,
         ),
       ),
     ];
-    expect(() => keyOf(ghosted), throwsStateError);
-    expect(
-      () => stackedFrameDrawingOf(
-        ghosted,
-        page: page,
-        surfaceOf: (_) => fail('a ghost has no surface to ask for'),
-      ),
-      throwsStateError,
+
+    final red = keyOf(ghosted(0xFFFF0000));
+    expect(keyOf(ghosted(0xFFFF0000)), red);
+    expect(keyOf(ghosted(null)), isNot(red));
+    expect(keyOf(ghosted(0xFF0000FF)), isNot(red));
+  });
+
+  test('an onion ghost is drawn in its tint — the colour the key parts it '
+      'by', () async {
+    final blue = BitmapSurface(
+      canvasSize: page.canvasSize,
+      tileSize: 8,
+      tiles: {
+        for (var x = 0; x < 3; x += 1)
+          for (var y = 0; y < 2; y += 1)
+            TileCoord(x: x, y: y): BitmapTile(
+              size: 8,
+              pixels: Uint8List.fromList([
+                for (var i = 0; i < 8 * 8; i += 1) ...[0, 0, 0xFF, 0xFF],
+              ]),
+            ),
+      },
     );
+    Future<List<int>> drawnAt(int? tint) async {
+      final recorder = ui.PictureRecorder();
+      stackedFrameOf(
+        [
+          CompositeLeaf<CanvasStackRow>(
+            CanvasLayerImageRequest(
+              frameKey: cel('ghost'),
+              opacity: 1,
+              tint: tint,
+            ),
+          ),
+        ],
+        page: (
+          canvasSize: page.canvasSize,
+          pasteboardReach: page.pasteboardReach,
+          paintPaper: false,
+          paperBackground: page.paperBackground,
+        ),
+        surfaceOf: (_) => blue,
+      ).drawing.draw(ui.Canvas(recorder));
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(24, 16);
+      picture.dispose();
+      final bytes = await image.toByteData();
+      image.dispose();
+      const at = (8 * 24 + 12) * 4;
+      return bytes!.buffer.asUint8List(at, 4);
+    }
+
+    expect(await drawnAt(null), [0, 0, 0xFF, 0xFF], reason: '⛔premise');
+    expect(await drawnAt(0xFFFF0000), [0xFF, 0, 0, 0xFF]);
   });
 
   group('a session\'s stacks', () {

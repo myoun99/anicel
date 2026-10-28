@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:anicel/src/ui/timeline/timeline_legend_menus.dart';
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
 
@@ -25,14 +26,14 @@ LayerLegendCallbacks _everyVerb() => LayerLegendCallbacks(
   onSheetAllOn: () {},
   onSheetAllOff: () {},
   onClearMarkFilter: () {},
-  onClearAllFillReferences: () {},
+  onClearAllClips: () {},
   onBypassAllFx: () {},
   onEnableAllFx: () {},
   onToggleMarkFilter: (_) {},
   onToggleKindFilter: (_) {},
   onToggleSheetOnlyFilter: () {},
   onToggleFxOnlyFilter: () {},
-  onToggleFillReferenceOnlyFilter: () {},
+  onToggleClippedOnlyFilter: () {},
   onPreviewLayersOpacity: (_, _) {},
   onCommitLayersOpacity: (_, _) {},
   onToggleOnionSkinForDisplayed: () {},
@@ -62,10 +63,12 @@ Widget _legend({
   ),
 );
 
-/// The plate face a legend cell keyed [key] is.
+/// The plate face a legend cell keyed [key] is — the keyed widget itself
+/// where the plate button is the cell (a list's door IS one — a subclass).
 Finder _faceOf(String key) => find.descendant(
   of: find.byKey(ValueKey<String>(key)),
-  matching: find.byType(RailPlateFace),
+  matching: find.byWidgetPredicate((w) => w is RailPlateButton),
+  matchRoot: true,
 );
 
 void main() {
@@ -82,7 +85,7 @@ void main() {
       'legend-sheet',
       'legend-mark',
       'legend-kind',
-      'legend-fill-ref',
+      'legend-clip',
       'legend-fx',
       'legend-onion',
       'legend-eye',
@@ -90,7 +93,7 @@ void main() {
     ]) {
       expect(_faceOf(cell), findsOneWidget, reason: '$cell is a plate');
       expect(
-        tester.widget<RailPlateFace>(_faceOf(cell)).onSemanticTap,
+        tester.renderObject<RenderRailPlateFace>(_faceOf(cell)).onPress,
         isNotNull,
         reason: '$cell presses',
       );
@@ -104,7 +107,7 @@ void main() {
     expect(
       find.descendant(
         of: legend,
-        matching: find.byWidgetPredicate((widget) => widget is Tooltip),
+        matching: find.byType(AppTooltip),
       ),
       findsOneWidget,
       reason: 'the master opacity bar keeps its own',
@@ -120,12 +123,16 @@ void main() {
       'column', (tester) async {
     await tester.pumpWidget(_legend());
 
-    final eye = tester.widget<RailPlateFace>(_faceOf('legend-eye'));
-    expect(eye.onSemanticTap, isNull);
+    final eye = tester.widget<RailPlateButton>(_faceOf('legend-eye'));
+    expect(
+      tester.renderObject<RenderRailPlateFace>(_faceOf('legend-eye')).onPress,
+      isNull,
+    );
     expect(
       find.descendant(
         of: find.byKey(const ValueKey<String>('legend-eye')),
-        matching: find.railTooltip(eye.tooltip),
+        matching: find.tooltipSaying(eye.tooltip),
+        matchRoot: true,
       ),
       findsOneWidget,
     );

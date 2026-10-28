@@ -534,7 +534,7 @@ void main() {
                 0: const TimelineExposure.drawing(
                   FrameId('f1'),
                   length: 3,
-                  breakdownOffsets: [1],
+                  breakdownMarks: {1: InbetweenMark.two},
                 ),
               },
             ),
@@ -549,8 +549,8 @@ void main() {
       expect(cells[1].spanOffset, 1, reason: 'dot rows keep their span data');
       expect(
         cells[1].mark,
-        breakdownMark,
-        reason: 'the dot wears mark 1 — the mark an unnamed head wears',
+        InbetweenMark.two,
+        reason: 'the dot wears mark 2 — the mark an unnamed head wears',
       );
       expect(cells[2].mark, isNull);
       expect(cells[2].kind, TimesheetCellKind.held);
@@ -561,6 +561,35 @@ void main() {
         reason: 'one X per empty run',
       );
       expect(cells[4].spanOffset, 1, reason: 'counted from the X (F-430)');
+    });
+
+    test('🗣️I-130: a dot wearing mark 1 shows its ○ on its held row', () {
+      final document = _document(
+        _cut(
+          layers: [
+            _layer(
+              'A',
+              frames: [
+                Frame(id: const FrameId('f1'), duration: 1, strokes: const []),
+              ],
+              timeline: {
+                0: const TimelineExposure.drawing(
+                  FrameId('f1'),
+                  length: 3,
+                  breakdownMarks: {2: InbetweenMark.one},
+                ),
+              },
+            ),
+          ],
+          duration: 3,
+        ),
+      );
+
+      final cells = _firstActionColumn(document).cells;
+      expect(cells[1].mark, isNull);
+      expect(cells[2].kind, TimesheetCellKind.mark);
+      expect(cells[2].mark, InbetweenMark.one);
+      expect(cells[2].spanOffset, 2);
     });
 
     test('SE columns carry the name/dialogue label and never mark X runs', () {
@@ -674,6 +703,49 @@ void main() {
       expect(cells[10].spanLength, 1);
       expect(cells[10].markType, CameraInstructionMarkType.fi);
       expect(cells[11].kind, TimesheetCellKind.empty);
+    });
+
+    // 🗣️I-72-block-without-instruction: 「없으면 아무 표시도 안함」.
+    test('a span with no mark prints none — 「(없음)」 — where a dangling '
+        'one prints the plain line; both keep what they write', () {
+      final document = TimesheetDocument.fromCut(
+        cut: _cut(
+          layers: [
+            _layer('A'),
+            Layer(
+              id: const LayerId('cam-inst'),
+              name: 'CAM 1',
+              kind: LayerKind.instruction,
+              frames: const [],
+              timeline: const {},
+              instructions: {
+                2: const InstructionEvent(
+                  instructionId: null,
+                  length: 3,
+                  valueA: 'C',
+                  valueB: 'D',
+                ),
+                8: const InstructionEvent(instructionId: 'gone', length: 2),
+              },
+            ),
+          ],
+        ),
+        projectName: 'Project',
+        fps: 24,
+        pageSeconds: 6,
+        instructionDefById: CameraInstructionSet.standard.defById,
+      );
+
+      final cells = document.columns
+          .where((column) => column.kind == TimesheetColumnKind.camera)
+          .toList()[1]
+          .cells;
+      expect(cells[2].kind, TimesheetCellKind.instructionStart);
+      expect(cells[2].markType, isNull);
+      expect(cells[2].label, '');
+      expect((cells[2].valueA, cells[4].valueB), ('C', 'D'));
+      expect(cells[8].markType, CameraInstructionMarkType.bar);
+      expect(cells[8].label, 'gone');
     });
 
     test('D31: the transition row prints as one more CAM column through '

@@ -15,7 +15,7 @@ import 'timeline_row_filter.dart';
 import 'timeline_section_policy.dart';
 
 /// The rail legend's bulk commands (session-backed; the host wires them).
-/// Project-state sweeps (sheet/mark/fill-ref) land as ONE undo; the
+/// Project-state sweeps (sheet/mark/clip) land as ONE undo; the
 /// view-ish ones (eye/mute/fx/opacity) mirror their per-row toggles. The
 /// row-solo facets and the master opacity bar ride the same struct.
 class LayerLegendCallbacks {
@@ -26,14 +26,14 @@ class LayerLegendCallbacks {
     required this.onSheetAllOn,
     required this.onSheetAllOff,
     required this.onClearMarkFilter,
-    required this.onClearAllFillReferences,
+    required this.onClearAllClips,
     required this.onBypassAllFx,
     required this.onEnableAllFx,
     required this.onToggleMarkFilter,
     required this.onToggleKindFilter,
     required this.onToggleSheetOnlyFilter,
     required this.onToggleFxOnlyFilter,
-    required this.onToggleFillReferenceOnlyFilter,
+    required this.onToggleClippedOnlyFilter,
     required this.onPreviewLayersOpacity,
     required this.onCommitLayersOpacity,
     this.onToggleOnionSkinForDisplayed,
@@ -50,7 +50,7 @@ class LayerLegendCallbacks {
   final VoidCallback onSheetAllOn;
   final VoidCallback onSheetAllOff;
   final VoidCallback onClearMarkFilter;
-  final VoidCallback onClearAllFillReferences;
+  final VoidCallback onClearAllClips;
   final VoidCallback onBypassAllFx;
   final VoidCallback onEnableAllFx;
 
@@ -59,7 +59,7 @@ class LayerLegendCallbacks {
   final ValueChanged<LayerKind> onToggleKindFilter;
   final VoidCallback onToggleSheetOnlyFilter;
   final VoidCallback onToggleFxOnlyFilter;
-  final VoidCallback onToggleFillReferenceOnlyFilter;
+  final VoidCallback onToggleClippedOnlyFilter;
 
   /// The legend's MASTER opacity bar (R4 #6): per-move preview + one
   /// commit on release, over the rows the rail currently displays (the
@@ -176,7 +176,7 @@ class TimelineLegendMenus {
       sheet,
       mark,
       kind,
-      fillReference,
+      clip,
       fx,
       onion,
       visibility,
@@ -217,7 +217,7 @@ class TimelineLegendMenus {
   /// until it took every chip (#904, 2026-08-09: 「있는거면 다 달아서
   /// 통일」); no host has since, and the switch went with I-89 ① ⓖ.
   ///
-  /// The template four columns spell out (timesheet, mark, fill-ref, fx).
+  /// The template four columns spell out (timesheet, mark, clip, fx).
   /// [kind] deliberately does not: its whole flyout is solos with no bulk
   /// half, so it opens nothing outright — an all-or-nothing law, not this
   /// one.
@@ -350,24 +350,24 @@ class TimelineLegendMenus {
     };
   }
 
-  LegendFlyout? get fillReference => _bulkThenSolos(
+  LegendFlyout? get clip => _bulkThenSolos(
     (legend) => [
       PanelFlyoutItem(
-        keyValue: 'legend-fill-ref-clear',
-        label: AppText.strings.tlClearAllFillRefs,
-        shortcuts: const [RailLegendActionIds.fillReferenceClear],
-        icon: Icons.format_color_reset_outlined,
-        onSelected: legend.onClearAllFillReferences,
+        keyValue: 'legend-clip-clear',
+        label: AppText.strings.tlClearAllClips,
+        shortcuts: const [RailLegendActionIds.clipClear],
+        icon: Icons.layers_clear_outlined,
+        onSelected: legend.onClearAllClips,
       ),
     ],
     (legend) => [
       PanelFlyoutItem(
-        keyValue: 'legend-filter-fill-ref',
-        label: AppText.strings.tlSoloFillReferences,
-        shortcuts: const [RailLegendActionIds.soloFillReference],
+        keyValue: 'legend-filter-clip',
+        label: AppText.strings.tlSoloClips,
+        shortcuts: const [RailLegendActionIds.soloClip],
         icon: _soloGlyph,
-        checked: rowFilter.fillReferenceOnly,
-        onSelected: legend.onToggleFillReferenceOnlyFilter,
+        checked: rowFilter.clippedOnly,
+        onSelected: legend.onToggleClippedOnlyFilter,
       ),
     ],
   );

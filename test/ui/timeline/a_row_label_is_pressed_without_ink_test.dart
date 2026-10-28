@@ -1,14 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/input/arena_tap_hold.dart';
-import 'package:anicel/src/ui/theme/app_theme.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
-import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
-import 'package:anicel/src/ui/timeline_tab_host.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/storyboard_host.dart';
+import '../../helpers/timeline_host.dart';
 
 /// F-132 — a rail row's label is pressed without ink, on every rail.
 ///
@@ -61,27 +58,12 @@ void main() {
   testWidgets('the timeline\'s layer labels press without ink', (
     tester,
   ) async {
-    final session = EditorSessionManager(
-      initialProject: createDefaultProject(),
+    await pumpTimelineHost(
+      tester,
+      createDefaultProject(),
+      surface: const Size(800, 600),
+      pixelsPerFrame: 24,
     );
-    addTearDown(session.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: buildAppTheme(),
-        home: Scaffold(
-          body: TimelineTabHost(
-            session: session,
-            orientation: TimelineOrientation.horizontal,
-            onOrientationChanged: (_) {},
-            pixelsPerFrame: 24,
-            onPixelsPerFrameChanged: (_) {},
-            showSeconds: false,
-            onShowSecondsChanged: (_) {},
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
 
     expectInkless(
       find.namedWhere((name) => name.startsWith('timeline-layer-row-')),
@@ -95,31 +77,12 @@ void main() {
   testWidgets('the storyboard\'s track and S-row labels press without ink', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final session = EditorSessionManager(
-      initialProject: createDefaultProject(),
+    final session = await pumpStoryboardHost(
+      tester,
+      createDefaultProject(),
+      surface: const Size(1600, 900),
+      pixelsPerFrame: 12,
     );
-    addTearDown(session.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: buildAppTheme(),
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => StoryboardTabHost(
-              session: session,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
 
     expectInkless(
       labelBodies((key) => key.startsWith('storyboard-track-select-')),

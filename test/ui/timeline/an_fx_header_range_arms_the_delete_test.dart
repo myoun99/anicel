@@ -6,8 +6,6 @@ import 'package:anicel/src/models/pill_subject.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
-import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/axis_turn.dart' show offsetAlong;
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId;
@@ -15,6 +13,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/named_finders.dart';
+import '../../helpers/timeline_host.dart';
 
 /// F-87 (유저 2026-09-12): 「fx 헤더 선택범위로 선택한채로 삭제누르면 해당 fx
 /// 삭제」 — and 09-16: 「추가한 fx를 삭제하려고 fx헤더 선택범위로 선택하니
@@ -24,22 +23,14 @@ import '../../helpers/named_finders.dart';
 /// The 09-16 measurement read the SESSION's answer (`deleteSubject`), never
 /// the button on screen. This reads both, on both axes, with each device.
 void main() {
-  Future<EditorSessionManager> openTheSheet(WidgetTester tester) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 1200));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(home: HomePage(initialProject: createDefaultProject())),
-    );
-    await tester.pumpAndSettle();
-    await tester.drag(
-      find.byKey(const ValueKey<String>('dock-resize-bottom')),
-      const Offset(0, -520),
-    );
-    await tester.pumpAndSettle();
-    return tester
-        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
-        .session;
-  }
+  // The timeline tab alone ([pumpTimelineHost]) — the band and its delete
+  // button are the panel's.
+  Future<EditorSessionManager> openTheSheet(WidgetTester tester) =>
+      pumpTimelineHost(
+        tester,
+        createDefaultProject(),
+        surface: const Size(870, 546),
+      );
 
   for (final kind in const [
     PointerDeviceKind.mouse,

@@ -124,24 +124,6 @@ void main() {
           await bytesOf(positionedReference.image),
           reason: 'the asynchronous positioned compose',
         );
-        final sync = composePositionedSurfaceImageSync(
-          withTexts,
-          reuse: cache,
-          makePictures: true,
-          snapshot: false,
-        )!;
-        final syncReference = composePositionedSurfaceImageSync(
-          laid,
-          reuse: cache,
-          makePictures: true,
-          snapshot: false,
-        )!;
-        expect(sync.deferred.worldRect, syncReference.deferred.worldRect);
-        expect(
-          await bytesOf(sync.deferred.image),
-          await bytesOf(syncReference.deferred.image),
-          reason: 'the synchronous positioned compose',
-        );
       });
     });
   });

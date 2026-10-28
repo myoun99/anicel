@@ -15,7 +15,6 @@ import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
-import 'package:anicel/src/ui/widgets/tick_text.dart';
 
 import '../flyout_test_helpers.dart';
 import '../../helpers/app_icon_button_probe.dart';
@@ -32,13 +31,15 @@ void main() {
     await useAnicelKeys(tester);
   }
 
-  // The counter stacks track-global over cut-local (2026-08-10); the flip
-  // these tests drive is a CUT-local move, so the local line is the reading.
-  String counterText(WidgetTester tester) => tester
-      .renderObject<RenderTickText>(
-        find.byKey(const ValueKey<String>('timeline-local-frame-counter')),
-      )
-      .data;
+  // The flip these tests drive is a CUT-local move, so the cut-local frame,
+  // one-based, is the reading. ↩️It read the bar's frame counter's cut-local
+  // line, until F-463 took the counter off.
+  String counterText(WidgetTester tester) {
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    return '${session.currentFrameIndex + 1}';
+  }
 
   testWidgets('Shift+arrows step frames; plain arrows walk blocks', (
     tester,

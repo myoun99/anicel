@@ -31,10 +31,16 @@ void main() {
   const frameId = FrameId('f');
   final origin = TileCoord(x: 0, y: 0);
 
+  /// A dab over pixel ([x], [y]), the pixel well inside the nib.
+  ///
+  /// ↩️A one-pixel nib until its edge stopped piling
+  /// (a-one-pixel-dab-drops-out-by-where-it-lies Q4 a · Q6 b, 2026-10-25): a
+  /// 1px dot lays its area, about half the pixel, and a 1px eraser takes its
+  /// share of what is there — it no longer clears the pixel.
   BrushDab dabAt(double x, double y, {bool erase = false}) => BrushDab(
     center: CanvasPoint(x: x + 0.5, y: y + 0.5),
     color: 0xFFFF0000,
-    size: 1,
+    size: 6,
     opacity: 1,
     flow: 1,
     hardness: 1,
@@ -45,7 +51,7 @@ void main() {
 
   BitmapSurface painted() => materializeBrushDabSequenceOnBitmapSurface(
     surface: BitmapSurface(canvasSize: canvas, tileSize: 4),
-    sequence: BrushDabSequence([dabAt(0, 0), dabAt(1, 1)]),
+    sequence: BrushDabSequence([dabAt(0, 0), dabAt(3, 3)]),
   ).surface;
 
   int alphaAt(BitmapSurface surface, int x, int y) {
@@ -81,8 +87,8 @@ void main() {
       reason: 'the ink under the eraser is thinner than it was',
     );
     expect(
-      alphaAt(result.afterSurface, 1, 1),
-      alphaAt(before, 1, 1),
+      alphaAt(result.afterSurface, 3, 3),
+      alphaAt(before, 3, 3),
       reason: 'and the ink the stroke never touched is untouched',
     );
   });
@@ -99,7 +105,7 @@ void main() {
     );
 
     expect(alphaAt(result.afterSurface, 0, 0), 0);
-    expect(alphaAt(result.afterSurface, 1, 1), alphaAt(before, 1, 1));
+    expect(alphaAt(result.afterSurface, 3, 3), alphaAt(before, 3, 3));
   });
 
   test('a BLEND that needs the whole buffer takes the same route, and a '

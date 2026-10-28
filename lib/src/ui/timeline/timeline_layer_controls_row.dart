@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import '../input/arena_tap_hold.dart';
 import '../input/control_press_claim.dart';
 import '../widgets/app_icon_button.dart';
-import '../widgets/fill_reference_button.dart';
+import '../widgets/clip_button.dart';
 import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
@@ -103,7 +103,7 @@ final class ControlsRowFace {
             a.onTimesheet == b.onTimesheet &&
             a.blendMode == b.blendMode &&
             a.collapsed == b.collapsed &&
-            a.isFillReference == b.isFillReference &&
+            a.clipsToBelow == b.clipsToBelow &&
             isAttachedLayer(a) == isAttachedLayer(b) &&
             a.attachedPlacement == b.attachedPlacement &&
             _isReference(a) == _isReference(b));
@@ -126,7 +126,7 @@ final class ControlsRowFace {
     layer.onTimesheet,
     layer.blendMode,
     layer.collapsed,
-    layer.isFillReference,
+    layer.clipsToBelow,
     isAttachedLayer(layer),
     layer.attachedPlacement,
     _isReference(layer),
@@ -142,7 +142,7 @@ final class ControlsRowFace {
 /// 절대잊지말고」. The sheet used to carry a private `_LayerHeader` — this
 /// widget transposed by hand, cell by cell, which is how it lagged behind on
 /// press timing (T10), the name's second selection (F-26), the attach gate
-/// (R10 R3), the fill-reference slot (R20-C2), onion and blend (R10 R6), the
+/// (R10 R3), the clip slot (R20-C2, I-92), onion and blend (R10 R6), the
 /// nesting guides (2026-08-29)… each round found one more cell that had not
 /// been turned with the rest. The differences that remain are the ones with a
 /// decision behind them, and every one of them says which.
@@ -164,7 +164,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.onLayerOpacityChangeEnd,
     this.onToggleLayerTimesheet,
     required this.onLayerMarkSelected,
-    this.onToggleLayerFillReference,
+    this.onToggleLayerClip,
     this.onOpenLayerMixer,
     this.onOpenLayerReference,
     this.onOpenLayerLinks,
@@ -248,9 +248,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
   final ValueChanged<LayerId>? onToggleLayerTimesheet;
   final void Function(LayerId layerId, LayerMarkEdit edit) onLayerMarkSelected;
 
-  /// Drawing rows' FILL-reference toggle (R20-C2, the CSP lighthouse);
-  /// null hides it.
-  final ValueChanged<LayerId>? onToggleLayerFillReference;
+  /// The clip toggle (I-92) of every row that can clip; null hides it.
+  final ValueChanged<LayerId>? onToggleLayerClip;
 
   /// SE rows' speaker button, which opens the row's mixer (mute, solo,
   /// fader, pan) anchored under itself; null hides the speaker. It takes
@@ -616,6 +615,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     final onToggle = onToggleLanes;
     if (!hasLanes || onToggle == null) return null;
     return RailSwipeColumnPointer(
+      column: RailSwipeColumn.laneToggle,
       child: LayerFoldTwirl(
         name: '$keyPrefix-lane-toggle-${layer.id}',
         axis: axis,
@@ -719,11 +719,14 @@ class TimelineLayerControlsRow extends StatelessWidget {
         direction: axis,
         children: [
           // The letters as long as they are: the ground past them is the
-          // name's too, a double click there the label's.
+          // name's too, a double click there the label's. ↩️A Flex of one
+          // Flexible stood here, which lays its one child exactly as this
+          // does — an element more on every row, on every panel reopen
+          // (card frame-panels-build-in-one-frame, 2026-10-25).
           Expanded(
-            child: Flex(
-              direction: axis,
-              children: [Flexible(child: _nameText(context))],
+            child: Align(
+              alignment: centerStartAlong(axis),
+              child: _nameText(context),
             ),
           ),
           ?_linkBadge(colorScheme),
@@ -916,15 +919,21 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// arm used to spell the pair out by hand while the x-sheet read the
   /// helper). Same key grammar on both surfaces so a folder and an attach
   /// base read alike anywhere.
+  ///
+  /// A drag from it sweeps the folds down the rail as the eye's does its
+  /// column (F-475).
   Widget? _foldTwirl(BuildContext context) {
     final onToggle = onToggleGroupFold;
     if (!hasGroupFold || onToggle == null) return null;
     final kind = layer.kind.groupsLayers ? 'folder' : 'attach';
-    return LayerFoldTwirl(
-      name: '$keyPrefix-$kind-twirl-${layer.id}',
-      axis: axis,
-      expanded: groupFoldExpanded,
-      onToggle: () => onToggle(layerIdNow(context, layer.id)),
+    return RailSwipeColumnPointer(
+      column: RailSwipeColumn.groupFold,
+      child: LayerFoldTwirl(
+        name: '$keyPrefix-$kind-twirl-${layer.id}',
+        axis: axis,
+        expanded: groupFoldExpanded,
+        onToggle: () => onToggle(layerIdNow(context, layer.id)),
+      ),
     );
   }
 
@@ -940,7 +949,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
       onion: onToggleLayerOnionSkin != null,
       blend: onLayerBlendModeSelected != null,
     ),
-    fillReference: _fillReferenceToggle(context),
+    clip: _clipToggle(context),
     fx: _fxSwitch(context),
     onion: _onionToggle(context, colorScheme),
     visibility: _visibilityToggle(),
@@ -948,21 +957,25 @@ class TimelineLayerControlsRow extends StatelessWidget {
     blend: _blendChip(context),
   );
 
-  /// Fill-reference toggle (R20-C2): drawing rows only — every OTHER kind
-  /// reserves the slot so the legend header's column icons line up over one
-  /// Excel-style grid (R-toolbar round).
-  Widget? _fillReferenceToggle(BuildContext context) {
-    final onToggle = onToggleLayerFillReference;
-    if (onToggle == null || !layer.kind.carriesFillReference) return null;
-    return acrossBox(
-      axis,
-      26,
-      child: FillReferenceButton(
-        name: '$keyPrefix-layer-fill-reference-${layer.id}',
-        isOn: layer.isFillReference,
+  /// Clip to layer below (I-92): every row that can clip
+  /// ([LayerKind.takesClipping]) — every OTHER kind reserves the slot so the
+  /// legend header's column icons line up over one Excel-style grid
+  /// (R-toolbar round).
+  ///
+  /// A toggle COLUMN, as the eye's is (F-475, 유저 2026-10-26: 「클리핑버튼도
+  /// 위아래 드래그로 여러 버튼 동시조작 가능하게」) — kept in step with the
+  /// grid's swipe column list, see [RailSwipeColumnPointer].
+  Widget? _clipToggle(BuildContext context) {
+    final onToggle = onToggleLayerClip;
+    if (onToggle == null || !layer.kind.takesClipping) return null;
+    return RailSwipeColumnPointer(
+      column: RailSwipeColumn.clip,
+      child: ClipButton(
+        name: '$keyPrefix-layer-clip-${layer.id}',
+        isOn: layer.clipsToBelow,
         size: railSlotBox(
           axis,
-          slot: layerFillReferenceSlotWidth,
+          slot: layerClipSlotWidth,
           across: 26,
           iconSize: 16,
         ),
@@ -990,6 +1003,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
       return null;
     }
     return RailSwipeColumnPointer(
+      column: RailSwipeColumn.fx,
       child: FxToggleButton(
         name: '$keyPrefix-layer-fx-${layer.id}',
         state: fxState,
@@ -1007,29 +1021,26 @@ class TimelineLayerControlsRow extends StatelessWidget {
     if (onToggle == null || !layer.kind.takesOnionSkin) {
       return null;
     }
-    return acrossBox(
-      axis,
-      26,
-      child: RailSwipeColumnPointer(
-        child: RailGlyphButton(
-          name: '$keyPrefix-layer-onion-${layer.id}',
-          tooltip: onionSkinEnabled
-              ? AppText.strings.railOnionSkinOn
-              : AppText.strings.railOnionSkin,
-          size: railSlotBox(
-            axis,
-            slot: layerOnionSlotWidth,
-            across: 26,
-            iconSize: 15,
-          ),
-          glyph: RailIconGlyph(
-            Icons.filter_none,
-            color: onionSkinEnabled
-                ? colorScheme.primary
-                : colorScheme.outline.withValues(alpha: 0.45),
-          ),
-          onPressed: () => onToggle(layerIdNow(context, layer.id)),
+    return RailSwipeColumnPointer(
+      column: RailSwipeColumn.onion,
+      child: RailGlyphButton(
+        name: '$keyPrefix-layer-onion-${layer.id}',
+        tooltip: onionSkinEnabled
+            ? AppText.strings.railOnionSkinOn
+            : AppText.strings.railOnionSkin,
+        size: railSlotBox(
+          axis,
+          slot: layerOnionSlotWidth,
+          across: 26,
+          iconSize: 15,
         ),
+        glyph: RailIconGlyph(
+          Icons.filter_none,
+          color: onionSkinEnabled
+              ? colorScheme.primary
+              : colorScheme.outline.withValues(alpha: 0.45),
+        ),
+        onPressed: () => onToggle(layerIdNow(context, layer.id)),
       ),
     );
   }
@@ -1038,6 +1049,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// [Layer] it was built with, and the eye is the one thing a flip changes
   /// — so it is the one thing a flip rebuilds (an-eye-rebuilds-its-whole-row).
   Widget _visibilityToggle() => RailSwipeColumnPointer(
+    column: RailSwipeColumn.visibility,
     child: RailEyeBuilder(
       layer: layer,
       builder: (context, eye) => LayerVisibilityToggleButton(
@@ -1118,7 +1130,7 @@ TimelineGroupFold timelineGroupFoldFor({
   required ValueChanged<LayerId>? onToggleLayerCollapsed,
   required ValueChanged<LayerId>? onToggleAttachGroup,
 }) {
-  final has = timelineRowFolds(row, layers);
+  final has = _rowFolds(row, layers);
   if (row.isFolder) {
     return (
       has: has,
@@ -1135,8 +1147,8 @@ TimelineGroupFold timelineGroupFoldFor({
 
 /// Whether [row] of [layers] folds rows of its own — a folder its members,
 /// an attach base the attach rows riding it: a twirl ends its name
-/// ([timelineGroupFoldFor]), which a sweep lays past the graph's button.
-bool timelineRowFolds(TimelineDisplayRow row, List<Layer> layers) =>
+/// ([timelineGroupFoldFor]).
+bool _rowFolds(TimelineDisplayRow row, List<Layer> layers) =>
     row.isFolder || attachedLayersOf(row.layer.id, layers).isNotEmpty;
 
 /// What a button at the end of a name looks like

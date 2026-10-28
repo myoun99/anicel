@@ -60,19 +60,9 @@ class _StoryboardRailSweep {
     return rows;
   }
 
-  /// The columns the sweep paints, laid on this rail's row plate.
-  ///
-  /// ⚠️The leading origin is 0: this rail's row plate starts at the rail's
-  /// own edge and pads only on the right, unlike the layer rail's bordered
-  /// plate.
+  /// The columns the sweep paints.
   List<RailToggleColumn<TimelineDisplayRow>> columns() =>
-      timelineSwipeColumns(
-        hooks: _hooks(),
-        axis: Axis.horizontal,
-        crossExtent: _state._naturalRailWidth,
-        leadingOrigin: 0,
-        columns: layerRailColumnWidthsIn(_state.context),
-      );
+      timelineSwipeColumns(hooks: _hooks());
 
   /// What this rail's rows read and call, handed to the list as a grid
   /// hands its own ([timelineRailSwipeHooks]): each verb called with the
@@ -81,9 +71,10 @@ class _StoryboardRailSweep {
   RailSwipeHooks _hooks() {
     final widget = _widget;
     final groupOnOf = widget.laneGroupOnOf;
+    final groupOpenOf = widget.laneGroupOpenOf;
+    final groupToggle = widget.onToggleLaneGroupKey;
     final twirl = widget.onToggleLayerLanes;
     return (
-      optionalColumns: StoryboardPanel.optionalRailColumns,
       onToggleLayerVisibility: widget.onToggleLayerVisibility,
       layerEyeOnOf: _readHeld(widget.layerEyeOnOf),
       onToggleLayerOnionSkin: widget.onToggleLayerOnionSkin,
@@ -102,6 +93,9 @@ class _StoryboardRailSweep {
       laneGroupOnOf: groupOnOf == null
           ? null
           : (rowId, header) => groupOnOf(_held(rowId), header),
+      // This rail hands its rows no clip toggle, so they carry none.
+      onToggleLayerClip: null,
+      layerClipsOf: null,
       onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
       layerOnTimesheetOf: _readHeld(widget.layerOnTimesheetOf),
       onToggleLayerLanes: twirl == null
@@ -129,18 +123,47 @@ class _StoryboardRailSweep {
         timesheet: (row) => handsSheetToggle(row.layer.id),
         groupSwitch: _handsGroupSwitch,
       ),
-      folds: _folds,
+      foldOf: _foldOf,
+      groupFoldOpenOf: _readHeld(widget.groupFoldOpenOf),
+      onToggleLaneGroup: groupToggle == null
+          ? null
+          : (layer, lane) =>
+                groupToggle(laneGroupKey(_held(layer.id), lane.laneId)),
+      laneGroupOpenOf: groupOpenOf == null
+          ? null
+          : (rowId, header) => groupOpenOf(_held(rowId), header),
+      // A lane row's hand is its label's ([_StoryboardRailRows._laneHandOf]).
+      laneHandOf: (row) => switch (_rows._laneHandOf(row.layer.id)) {
+        (edit: final edit?, :final cursor) => (
+          edit: edit,
+          frame: laneRowFrame(cursor),
+        ),
+        _ => null,
+      },
     );
   }
 
-  /// Whether [row] folds rows of its own, as its label is told: a conte
-  /// row by its seat ([_conteHeadFolds]); no other row of this rail folds.
+  /// [row]'s group fold, as its label is told: a conte row's by its seat
+  /// ([_conteHeadFolds]), its attach group's on the layer it has in hand;
+  /// no other row of this rail folds.
   ///
-  /// ⛔MUTANT SURVIVES (F-454, 2026-10-23): answering false here reddens
-  /// nothing — the sweep asks it only to step past a GRAPH, and no conte
-  /// row heads one. It answers truly anyway: the hook's question is 「does
-  /// this row fold」, and a false answer would be the one wrong the day a
-  /// conte row wears a graph.
+  /// ⛔MUTANT SURVIVES (F-475, 2026-10-27): pressing by the row's own id
+  /// reddens nothing — the host's press finds the layer in hand itself
+  /// (`layerActedOn`). It presses by the layer in hand anyway, as the
+  /// row's own twirl does (`layerIdNow`), so the stroke and the press
+  /// cannot part.
+  TimelineGroupFold _foldOf(TimelineDisplayRow row) {
+    final toggle = _widget.onToggleAttachGroup;
+    final held = _held(row.layer.id);
+    return (
+      has: _folds(row),
+      expanded: !_widget.collapsedAttachBaseIds.contains(held),
+      onToggle: toggle == null ? null : (rowId) => toggle(_held(rowId)),
+    );
+  }
+
+  /// Whether [row] folds rows of its own: a conte row by its seat
+  /// ([_conteHeadFolds]).
   bool _folds(TimelineDisplayRow row) {
     final rowId = row.layer.id;
     return switch ((

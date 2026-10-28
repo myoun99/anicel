@@ -494,7 +494,7 @@ void main() {
       expect(document.layers.single.hasPixels, isFalse);
     });
 
-    test('clipping is carried even though nothing maps it yet', () {
+    test('clipping is carried', () {
       final document = readPsdDocument(
         buildPsd(
           width: 2,

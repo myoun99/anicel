@@ -49,13 +49,14 @@ void main() {
     final cut = session.activeCutOrNull!;
 
     await tester.runAsync(
-      () => session.playbackRig.canvasPictures.make((
+      () => session.playbackRig.framePictures.make((
         cut: cut,
         frameIndex: 0,
+        paintPaper: true,
       ), shouldAbort: () => false),
     );
     expect(
-      session.renderCaches.layerFrameImageCache.estimatedBytes,
+      session.renderCaches.framePictureStore.estimatedBytes,
       greaterThan(0),
       reason: 'the premise: there is something in the cache to release',
     );
@@ -63,7 +64,7 @@ void main() {
     session.dispose();
 
     expect(
-      session.renderCaches.layerFrameImageCache.estimatedBytes,
+      session.renderCaches.framePictureStore.estimatedBytes,
       0,
       reason:
           'a picture is a GPU image — a cache the session forgot to '

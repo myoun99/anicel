@@ -9,12 +9,11 @@ import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/timeline_shift_buttons.dart';
 import 'storyboard_cut_block_probe.dart';
 import '../helpers/app_icon_button_probe.dart';
 import '../helpers/named_finders.dart';
-import '../helpers/storyboard_twirls.dart';
+import '../helpers/storyboard_host.dart';
 
 /// A COMMITTED SEEK — an arrow-key flip, a ruler release, a `.`/`,` step —
 /// must not rebuild the storyboard panel. It reaches exactly the places
@@ -27,43 +26,23 @@ import '../helpers/storyboard_twirls.dart';
 /// against 1.6ms after. The timeline tab never had that subscription; this
 /// panel was the odd one out.
 ///
-/// ⚠️ The wiring below is the WORKSPACE's, which is the SESSION ALONE.
-/// Most storyboard tests merge `frameSeekCommitted` in as well — under that
-/// harness the panel rebuilds anyway and none of this is observable, which
-/// is exactly why the contract needs its own file.
+/// ⚠️ The wiring below is the WORKSPACE's (`pumpStoryboardHostOn`): the
+/// session and the rail's view, no seek channel. A harness that merged
+/// `frameSeekCommitted` in as well rebuilt the panel anyway and none of this
+/// was observable under it, which is exactly why the contract needs its own
+/// file.
 void main() {
   Future<EditorSessionManager> pumpHost(
     WidgetTester tester,
     EditorSessionManager manager,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 700));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(manager.dispose);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          // The workspace's storyboard-tab listenable: the session and the
-          // rows' twirls — no seek channel.
-          body: withStoryboardTwirls(
-            manager,
-            (twirls) => StoryboardTabHost(
-              session: manager,
-              expandedLaneLayerIds: twirls.expandedLaneLayerIds,
-              onToggleLayerLanes: twirls.onToggleLayerLanes,
-              expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
-              onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-            ),
-          ),
-        ),
-      ),
+    await pumpStoryboardHostOn(
+      tester,
+      manager,
+      surface: const Size(1400, 700),
+      pixelsPerFrame: 12,
     );
-    await tester.pumpAndSettle();
     return manager;
   }
 

@@ -51,17 +51,29 @@ Uint8List coverageTruth({
   );
   final dstWords = Uint32List.view(dst.buffer, 0, dstWidth * dstHeight);
   final t = transform;
-  final counts = <int, int>{};
+  // The vote: each colour in the order it first landed, beside its count —
+  // the order a map iterates in, so a tie still goes to the first, and as
+  // unbounded as a map (it grows). 📏heavy-tests-brush (2026-10-25): it was
+  // a map, and its two hash lookups a sample were most of the sweep's 207
+  // seconds; a pixel sees a handful of colours, so a scan is cheaper.
+  final tokens = <int>[];
+  final counts = <int>[];
+  // Sample centres, so the subdivision is symmetric about the pixel and an
+  // odd count does not bias towards one corner — each formed once, as the
+  // same `(s + 0.5) / samples` it was formed as per sample.
+  final centres = [for (var s = 0; s < samples; s += 1) (s + 0.5) / samples];
 
   for (var y = 0; y < dstHeight; y += 1) {
     for (var x = 0; x < dstWidth; x += 1) {
+      tokens.clear();
       counts.clear();
+      // A sample mostly lands where the one before it did, so the colour it
+      // last counted is asked first.
+      var last = -1;
       for (var sy = 0; sy < samples; sy += 1) {
-        // Sample centres, so the subdivision is symmetric about the pixel
-        // and an odd count does not bias towards one corner.
-        final py = y + (sy + 0.5) / samples;
+        final py = y + centres[sy];
         for (var sx = 0; sx < samples; sx += 1) {
-          final px = x + (sx + 0.5) / samples;
+          final px = x + centres[sx];
           double u;
           double v;
           if (t.isAffine) {
@@ -83,17 +95,26 @@ Uint8List coverageTruth({
           final token = (ix < 0 || ix >= srcWidth || iy < 0 || iy >= srcHeight)
               ? kResampleOutsideToken
               : srcWords[iy * srcWidth + ix];
-          counts[token] = (counts[token] ?? 0) + 1;
+          var seen = last >= 0 && tokens[last] == token
+              ? last
+              : tokens.indexOf(token);
+          if (seen < 0) {
+            seen = tokens.length;
+            tokens.add(token);
+            counts.add(0);
+          }
+          counts[seen] += 1;
+          last = seen;
         }
       }
       var best = kResampleOutsideToken;
       var bestCount = 0;
-      counts.forEach((token, count) {
-        if (count > bestCount) {
-          bestCount = count;
-          best = token;
+      for (var i = 0; i < tokens.length; i += 1) {
+        if (counts[i] > bestCount) {
+          bestCount = counts[i];
+          best = tokens[i];
         }
-      });
+      }
       dstWords[y * dstWidth + x] = best;
     }
   }

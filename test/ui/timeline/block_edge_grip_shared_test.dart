@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart';
@@ -209,7 +210,7 @@ void main() {
                     crossAxisExtent: 60,
                   ),
                   child: TimelineBlockEdgeGrip(
-                    layerId: const LayerId('a'),
+                    layer: Layer(id: const LayerId('a'), name: 'a', frames: []),
                     blockStartIndex: 0,
                     blockOrdinal: 0,
                     edge: TimelineBlockEdge.start,

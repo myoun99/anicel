@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -29,9 +29,9 @@ void main() {
         .session;
   }
 
-  CanvasLayerStackView stackView(WidgetTester tester) =>
-      tester.widget<CanvasLayerStackView>(
-        find.byType(CanvasLayerStackView).first,
+  FramePictureView stackView(WidgetTester tester) =>
+      tester.widget<FramePictureView>(
+        find.byType(FramePictureView).first,
       );
 
   testWidgets('the canvas keeps its PAPER past the cut end line', (
@@ -43,7 +43,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      stackView(tester).paintPaper,
+      stackView(tester).picture.paintPaper,
       isTrue,
       reason: 'inside the cut, for the comparison to mean anything',
     );
@@ -58,7 +58,7 @@ void main() {
           'blamed on the session',
     );
     expect(
-      stackView(tester).paintPaper,
+      stackView(tester).picture.paintPaper,
       isTrue,
       reason: 'past the end line is ordinary space — the paper is the thing '
           'the user says disappears',

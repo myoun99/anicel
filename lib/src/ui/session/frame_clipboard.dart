@@ -3,6 +3,7 @@ import '../../controllers/timeline_controller.dart'
 import '../../models/attached_layer_resolve.dart';
 import '../../models/audio_clip.dart';
 import '../../models/bitmap_surface.dart';
+import '../../models/exposure_instruction.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
@@ -21,6 +22,8 @@ import 'active_cut_controllers.dart';
 import 'drags/exposure_edge_drag.dart' show commitSpliceKeepingTheCutOnItsRow;
 import 'frame_verbs.dart' show rowTakesNewCels;
 import 'independent_clip_mint.dart';
+import 'lane_homes.dart' show KeyCopy, LanesAlone;
+import 'lane_verbs.dart';
 import 'session_roles.dart';
 import 'what_a_copy_brings.dart';
 
@@ -46,6 +49,7 @@ class FrameClipboard implements BringsMedia {
     required RenderCaches renderCaches,
     required MediaByteSource Function(String poolPath) mediaBytesOf,
     required MediaStagingStore staging,
+    required LaneVerbs laneVerbs,
   }) : _board = board,
        _project = project,
        _selection = selection,
@@ -54,7 +58,12 @@ class FrameClipboard implements BringsMedia {
        _controllers = controllers,
        _renderCaches = renderCaches,
        _mediaBytesOf = mediaBytesOf,
-       _staging = staging;
+       _staging = staging,
+       _laneVerbs = laneVerbs;
+
+  /// What a band holds on its lane rows, and the keys a copy of it takes
+  /// and puts back beside its cells (one-band-no-lane-tail-Q1).
+  final LaneVerbs _laneVerbs;
 
   /// Where this project keeps a medium's bytes — what a copy made HERE
   /// tells a paste into another project to read ([CopiedNames.bytesOf]).
@@ -103,9 +112,12 @@ class FrameClipboard implements BringsMedia {
   /// 제대로 서있는곳에서 작동하도록」. Standing on a lane seats its owner as
   /// the active layer, and this place read the owner's cel there. A lane row
   /// is its own subject (R10 #19 · F-87 — Delete's rung); its keys are the
-  /// key board's ([KeyClipboard]).
+  /// key board's ([KeyClipboard]) — but where a band claims the press as
+  /// cells ([LaneVerbs.bandClaimsThePress]), the lane is its row's, and the
+  /// band's lanes ride with its cells (one-band-no-lane-tail-Q1).
   ClipboardPlace? get timelinePlace {
-    if (_selection.timelineStandingRow is LaneRowAddress) {
+    if (_selection.timelineStandingRow is LaneRowAddress &&
+        !_laneVerbs.bandClaimsThePress) {
       return null;
     }
     final row = _selection.activeLayer;
@@ -126,12 +138,17 @@ class FrameClipboard implements BringsMedia {
   /// so it answers inside a cut and parked in a gap alike (H11, 유저
   /// 2026-08-22: 「각 행들은 독립적인 글로벌행이라 뭐든 가능해야함」). Null
   /// where that rail stands on a row that holds no cels: the V row, the
-  /// transition row, a lane.
+  /// transition row, a lane — save a lane under a band that claims the
+  /// press as cells, which is its row's, as [timelinePlace] says.
   ClipboardPlace? get storyboardPlace {
-    final standing = _selection.storyboardStandingRow;
-    final row = standing is LayerRowAddress
-        ? _project.trackSeGlobalLayerById(standing.layerId)
-        : null;
+    final row = switch (_selection.storyboardStandingRow) {
+      LayerRowAddress(:final layerId) => _project.trackSeGlobalLayerById(
+        layerId,
+      ),
+      LaneRowAddress(:final layerId) when _laneVerbs.bandClaimsThePress =>
+        _project.trackSeGlobalLayerById(layerId),
+      _ => null,
+    };
     final index = _selection.editingGlobalFrame;
     if (row == null || index < 0) {
       return null;
@@ -263,9 +280,8 @@ class FrameClipboard implements BringsMedia {
       return 'Copy: -';
     }
 
-    final label = copiedFrame.frameName?.isNotEmpty ?? false
-        ? copiedFrame.frameName!
-        : copiedFrame.frameId.value;
+    final label =
+        celNumberOf(copiedFrame.frameName) ?? copiedFrame.frameId.value;
     return 'Copy: $label';
   }
 
@@ -304,7 +320,9 @@ class FrameClipboard implements BringsMedia {
         index: band.startOn(row.id),
         count: band.length,
       );
-      entries.add(_copiedRowFor(row, clip));
+      entries.add(
+        _copiedRowFor(row, clip, keys: _laneVerbs.bandKeysOf(row.id)),
+      );
     }
     return entries;
   }
@@ -378,13 +396,16 @@ class FrameClipboard implements BringsMedia {
     );
   }
 
-  _CopiedRow _copiedRowFor(Layer row, TimelineClipRow clip) {
+  /// [row]'s entry of the board: [clip] and what it carries — and [keys],
+  /// what a band holds on the row's lanes beside its cells.
+  _CopiedRow _copiedRowFor(Layer row, TimelineClipRow clip, {KeyCopy? keys}) {
     final cels = _celsCarriedBy(row, clip);
     final cut = _project.activeCutOrNull;
     return _CopiedRow(
       layerId: row.id,
       linkable: row.kind.isDrawingCel,
       clip: clip,
+      keys: keys,
       cels: cels,
       sounds: _soundsCarriedBy(row, cels),
       pictures: _picturesCarriedBy(row, cels),
@@ -522,37 +543,62 @@ class FrameClipboard implements BringsMedia {
     // 아니다」.
     final band = place._band;
     final banked = bankedRowLayerIds;
-    final cutMoved = _splice(
-      runs: [
-        for (final bankedLayerId in banked)
-          (
-            layerId: bankedLayerId,
-            index: bankedLayerId == layer.id
-                ? run.index
-                : band!.startOn(bankedLayerId),
-            liftCount: bankedLayerId == layer.id ? run.count : band!.length,
-            clip: null,
-            bornFrames: const <Frame>[],
-            bornSounds: const <AudioClip>[],
-          ),
-        // ⛔MUTANT SURVIVES HERE (`if (false)`), and the classification is
-        // NEVER APPLIED (2026-09-07): the bank above is handed the very run
-        // this verb resolved, so it always banks at least the anchor row.
-        // Kept as the arm that keeps the lift honest if the board ever came
-        // back empty — 결정 14 ②ⓐ says a row lifted but not banked is work
-        // that cannot come back, and this is the other side of it.
-        if (banked.isEmpty)
-          (
-            layerId: layer.id,
-            index: run.index,
-            liftCount: run.count,
-            clip: null,
-            bornFrames: const <Frame>[],
-            bornSounds: const <AudioClip>[],
-          ),
-      ],
-      description: 'Cut frames',
-    );
+    var cutMoved = false;
+    // ONE undo for the cells and the keys beside them (one-band-no-lane-
+    // tail-Q1) — each lane's keys lifted as the copy banked them.
+    _project.historyManager.runAsOneStep('Cut frames', () {
+      cutMoved = _splice(
+        runs: [
+          for (final bankedLayerId in banked)
+            (
+              layerId: bankedLayerId,
+              index: bankedLayerId == layer.id
+                  ? run.index
+                  : band!.startOn(bankedLayerId),
+              liftCount: bankedLayerId == layer.id ? run.count : band!.length,
+              clip: null,
+              bornFrames: const <Frame>[],
+              bornSounds: const <AudioClip>[],
+            ),
+          // ⛔MUTANT SURVIVES HERE (`if (false)`), and the classification is
+          // NEVER APPLIED (2026-09-07): the bank above is handed the very run
+          // this verb resolved, so it always banks at least the anchor row.
+          // Kept as the arm that keeps the lift honest if the board ever came
+          // back empty — 결정 14 ②ⓐ says a row lifted but not banked is work
+          // that cannot come back, and this is the other side of it.
+          if (banked.isEmpty)
+            (
+              layerId: layer.id,
+              index: run.index,
+              liftCount: run.count,
+              clip: null,
+              bornFrames: const <Frame>[],
+              bornSounds: const <AudioClip>[],
+            ),
+        ],
+        description: 'Cut frames',
+      );
+      if (band != null) {
+        for (final row in _copiedFrame?.rows ?? const <_CopiedRow>[]) {
+          if (row.keys case final keys?) {
+            _laneVerbs.liftKeysOnRow(
+              row.layerId,
+              keys,
+              start: band.startOn(row.layerId),
+            );
+          }
+        }
+        // And what it held on lanes alone, from the layers it was taken
+        // off (Q3).
+        for (final lanes in _copiedFrame?.lanesAlone ?? const <LanesAlone>[]) {
+          _laneVerbs.liftKeysOnRow(
+            lanes.layerId,
+            lanes.keys,
+            start: band.startOn(lanes.layerId),
+          );
+        }
+      }
+    });
     band?.clear();
     if (cutMoved) {
       _changes.refreshAfterCutCommand();
@@ -599,14 +645,36 @@ class FrameClipboard implements BringsMedia {
   TimelineClipRow _clipToBank(ClipboardPlace place, Frame frame) {
     final run = _selectedRunAt(place);
     return run == null
-        ? _oneCellOf(frame.id)
+        ? _oneCellOf(frame.id, saying: _sayingOf(place._row, frame.id))
         : _runCopiedOff(place._row, index: run.index, count: run.count);
   }
 
   /// One comma of [frameId] — the whole clip a copy or a cut with nothing
-  /// selected banks.
-  static TimelineClipRow _oneCellOf(FrameId frameId) =>
-      TimelineClipRow.untimed(TimelineExposure.drawing(frameId, length: 1));
+  /// selected banks — [saying] what the drawing's blocks say.
+  ///
+  /// 🗣️I-72-direction-link: on a direction row that is the DRAWING's, not
+  /// only the block's — it names the drawing (`linkNameOfWriting`), and a
+  /// drawing's blocks say one thing. Banked bare, a linked paste laid a
+  /// block saying nothing on a drawing saying A → B, and a copy of its own
+  /// lost what it says with its ends (Q1's note: 「시작이름 끝이름만
+  /// 없음으로 태어나게」 — the ends only).
+  static TimelineClipRow _oneCellOf(
+    FrameId frameId, {
+    ExposureInstruction? saying,
+  }) => TimelineClipRow.untimed(
+    TimelineExposure.drawing(frameId, length: 1, instruction: saying),
+  );
+
+  /// What the blocks of [drawing] on [row] say — one thing, as the drawing
+  /// is (`Instructions.upsertInstructionEventAt` says it on all of them).
+  static ExposureInstruction? _sayingOf(Layer row, FrameId drawing) {
+    for (final entry in row.timeline.values) {
+      if (!entry.ghost && entry.frameId == drawing) {
+        return entry.instruction;
+      }
+    }
+    return null;
+  }
 
   /// Puts [clip] on the board as the copy of [frame] on [layer] — the
   /// half a copy and a 잘라내기 share, clip and all ([_clipToBank]).
@@ -621,8 +689,12 @@ class FrameClipboard implements BringsMedia {
   }) {
     final layer = place._row;
     final cels = _celsCarriedBy(layer, clip);
-    // 🚨결정 14 ②ⓐ — the board takes EVERY swept row, the anchor first.
-    final rows = [_copiedRowFor(layer, clip), ..._copiedRowsBesides(place)];
+    // 🚨결정 14 ②ⓐ — the board takes EVERY swept row, the anchor first, and
+    // each the keys the band holds on its lanes (one-band-no-lane-tail-Q1).
+    final rows = [
+      _copiedRowFor(layer, clip, keys: _laneVerbs.bandKeysOf(layer.id)),
+      ..._copiedRowsBesides(place),
+    ];
     _board._take(_CopiedFrameReference(
       from: this,
       layerId: layer.id,
@@ -632,6 +704,9 @@ class FrameClipboard implements BringsMedia {
       cels: cels,
       sounds: _soundsCarriedBy(layer, cels),
       rows: rows,
+      lanesAlone: _laneVerbs.bandKeysBesides({
+        for (final row in rows) row.layerId,
+      }),
       names: namesOfACopy(
         project: _project.repository.requireProject(),
         media: {
@@ -756,7 +831,7 @@ class FrameClipboard implements BringsMedia {
       return null;
     }
     if (!joinTakenNames) {
-      final joins = _joinsOf(_landingsOn(place, copiedFrame));
+      final joins = _joinsOf(place, copiedFrame);
       if (joins.isNotEmpty) {
         return joins;
       }
@@ -769,16 +844,20 @@ class FrameClipboard implements BringsMedia {
   /// it was NOT copied from — the name-keeping paste (I-71).
   ///
   /// It makes drawings there, so the row has to take them
-  /// ([rowTakesNewCels]) and to WEAR names: a direction row's drawings have
-  /// none (유저 2026-09-12: 「이름없으면 독립적인거니까」). And the copy has
-  /// to be one of NAMED drawings — with no name to keep, the press would be
-  /// the independent paste under another button, and that button alone is
-  /// lit (F-115, said of the SE row: 「링크붙여넣기의 차이점이 없기때문」).
+  /// ([rowTakesNewCels]) and to WEAR the copy's names ([wearsNamesOf]): a
+  /// direction row's are written by what its blocks say, every other row's
+  /// by a hand. And the copy has to be one of NAMED drawings — with no name
+  /// to keep, the press would be the independent paste under another
+  /// button, and that button alone is lit (F-115, said of the SE row:
+  /// 「링크붙여넣기의 차이점이 없기때문」).
+  /// ↩️A direction row wore none (유저 2026-09-12: 「이름없으면
+  /// 독립적인거니까」) until its blocks linked by what they say
+  /// (I-72-direction-link).
   bool _keepsNamesOn(Layer layer, _CopiedFrameReference copied) =>
       rowTakesNewCels(layer) &&
-      !layer.kind.spansRideBlocks &&
       (copied.rows.firstOrNull?.linkable ?? false) &&
-      copied.cels.any((cel) => cel.name != null);
+      copied.cels.any((cel) => cel.name != null) &&
+      wearsNamesOf(layer, copied.cels);
 
   /// 결정 14 ②ⓐ×③ⓐ — EVERY ROW a paste on [layer] lands on, each with the
   /// row of the board it receives.
@@ -811,13 +890,26 @@ class FrameClipboard implements BringsMedia {
       if (_holdsAPictureOnceLifted(target, lift)) {
         continue;
       }
+      // ⛔A selection REPLACES what it covers; with none, nothing comes out.
+      // 「뭘 선택하든 덮어써버리면 선택범위를 조절하는 의미가 통째로 사라지잖아」
+      //
+      // F-115: with nothing selected the clip goes in at the cursor ON THE
+      // ROW'S OWN AXIS ([ClipboardPlace]) — a track-owned SE row keys the
+      // track's frames, and the cut-local index landed it on an earlier
+      // cut's. Each row places the band's start on ITS OWN axis ([_band]):
+      // two rows swept together need not key the same frames.
+      final at = lift == null
+          ? (index: place._index, liftCount: 0)
+          : (index: lift.index, liftCount: lift.count);
       // The anchor row is the board's first — the pictures live on rows.
       final mine = board[board.length <= 1 ? 0 : i];
       final clip = board.length <= 1 ? copied.clip : mine.clip;
       landings.add((
         target: target,
+        at: at,
         source: board.length <= 1 ? copied.layerId : mine.layerId,
         linkable: mine.linkable,
+        keys: mine.keys,
         // 🗣️image-row-cut-paste (유저 2026-10-04): 「첫장만」 — a row that
         // holds ONE picture takes the clip's first, as one comma. The write
         // lays that as the row's held block; a second cel minted beside it
@@ -839,23 +931,86 @@ class FrameClipboard implements BringsMedia {
   static ClipLanding _linkLandingOf(_PasteLanding landing) =>
       landing.target.id == landing.source
       ? ClipLanding.sameDrawings
-      : landing.linkable && !landing.target.kind.spansRideBlocks
+      : landing.linkable && wearsNamesOf(landing.target, landing.cels)
       ? ClipLanding.sameNames
       : ClipLanding.ownDrawings;
 
-  /// The drawings a 링크 붙여넣기 of [landings] would JOIN, by row: the row's
-  /// own that already answer to a name being pasted
-  /// ([drawingsHeldUnderTheNamesOf]). Empty when it links nothing by name.
-  static LinkedPasteJoins _joinsOf(List<_PasteLanding> landings) => [
+  /// What a 링크 붙여넣기 of [copied] on [place] would JOIN, by row: the
+  /// row's own drawings that already answer to a name being pasted
+  /// ([drawingsHeldUnderTheNamesOf]) — and the names of the keys it puts on
+  /// the row's lanes ([_keysLaidBy]) that they hold at another value
+  /// ([LaneVerbs.keyNamesJoinedOnRow]). Empty when it links nothing by name.
+  LinkedPasteJoins _joinsOf(
+    ClipboardPlace place,
+    _CopiedFrameReference copied,
+  ) {
+    final landings = _landingsOn(place, copied);
+    final held = {
+      for (final landing in landings) landing.target.id: _heldOn(landing),
+    };
+    final keyNames = <LayerId, Set<String>>{};
+    for (final (:row, :keys, :at) in _keysLaidBy(place, copied, landings)) {
+      (keyNames[row] ??= {}).addAll(
+        _laneVerbs.keyNamesJoinedOnRow(row, keys, at: at),
+      );
+    }
+    return [
+      for (final row in {...held.keys, ...keyNames.keys})
+        if ((held[row] ?? const []).isNotEmpty ||
+            (keyNames[row] ?? const {}).isNotEmpty)
+          (
+            layerId: row,
+            held: held[row] ?? const [],
+            keyNames: keyNames[row] ?? const {},
+          ),
+    ];
+  }
+
+  /// The drawings of [landing]'s row a 링크 붙여넣기 would show under the
+  /// names it pastes ([_joinsOf]).
+  List<FrameId> _heldOn(_PasteLanding landing) =>
+      _linkLandingOf(landing) == ClipLanding.sameNames
+      ? {
+          ...drawingsHeldUnderTheNamesOf(landing.target, (
+            clip: landing.clip,
+            cels: landing.cels,
+          )).values,
+        }.toList()
+      : const [];
+
+  /// Every row's keys a paste of [copied] on [place] lays: each landing's
+  /// beside its cells ([landings]), and what the copy held on lanes alone
+  /// on the row of the cut stood in that is theirs
+  /// ([LaneVerbs.rowOfLanesAlone]) — from where the paste starts there, as
+  /// far from it as they were from the band's first cell (🗣️
+  /// one-band-no-lane-tail-Q3's option: 「띠 첫 칸에서의 간격 그대로」), the
+  /// frames they span replaced: no cell of that row moves, so none of its
+  /// keys past them does (타임라인/콘티's call, 2026-10-28 — a paste that
+  /// put them in would push its keys off the cells they key).
+  List<_KeysLanding> _keysLaidBy(
+    ClipboardPlace place,
+    _CopiedFrameReference copied,
+    List<_PasteLanding> landings,
+  ) => [
     for (final landing in landings)
-      if (_linkLandingOf(landing) == ClipLanding.sameNames)
-        if (drawingsHeldUnderTheNamesOf(landing.target, (
-              clip: landing.clip,
-              cels: landing.cels,
-            ))
-            case final held when held.isNotEmpty)
-          (layerId: landing.target.id, held: {...held.values}.toList()),
+      if (landing.keys case final keys?)
+        (row: landing.target.id, keys: keys, at: landing.at),
+    for (final lanes in copied.lanesAlone)
+      if (_laneVerbs.rowOfLanesAlone(lanes) case final row?)
+        (
+          row: row,
+          keys: lanes.keys,
+          at: (index: _startOn(place, row), liftCount: lanes.keys.length),
+        ),
   ];
+
+  /// Where a paste on [place] starts on [row]'s own axis: the band's start
+  /// there, or the cursor.
+  int _startOn(ClipboardPlace place, LayerId row) =>
+      place._band?.startOn(row) ??
+      place._index -
+          _project.rowAxisOffset(place._row.id) +
+          _project.rowAxisOffset(row);
 
   /// 🚨★★★ BOTH pastes, because they differ in ONE thing.
   ///
@@ -926,9 +1081,7 @@ class FrameClipboard implements BringsMedia {
       _project.repository.requireProject(),
     );
     final layer = place._row;
-    final run = _runAt(place);
-    // ⛔A selection REPLACES what it covers; with none, nothing comes out.
-    // 「뭘 선택하든 덮어써버리면 선택범위를 조절하는 의미가 통째로 사라지잖아」
+    // Where each row takes the clip is its landing's ([_landingsOn]).
     //
     // 🚨THE BAND ITSELF, NOT A BOOL THAT SAYS THERE IS ONE (I-57,
     // 2026-10-14): a value promoted through a bool and read inside a loop
@@ -937,11 +1090,6 @@ class FrameClipboard implements BringsMedia {
     // (`a_value_checked_in_a_loop_is_read_through_a_local_test`).
     final band = place._band;
     final replaced = band != null && band.covers(layer.id) ? band : null;
-    // F-115: with nothing selected the clip goes in at the cursor ON THE
-    // ROW'S OWN AXIS ([ClipboardPlace]) — a track-owned SE row keys the
-    // track's frames, and the cut-local index landed it on an earlier cut's.
-    final index = replaced != null ? run.index : place._index;
-    final liftCount = replaced != null ? run.count : 0;
 
     // 🚨결정 14 ③ⓐ (유저 확정 2026-08-22) — **THE CLIP LANDS ON EVERY SWEPT
     // ROW.**
@@ -964,7 +1112,8 @@ class FrameClipboard implements BringsMedia {
     // linked or not, a block writes on the conte for itself.
     final handwritten =
         <(Map<String, String>, Map<String, BitmapSurface>)>[];
-    for (final landing in _landingsOn(place, copied)) {
+    final landings = _landingsOn(place, copied);
+    for (final landing in landings) {
       final target = landing.target;
       // ⚠️ONCE per row. The independent branch MINTS inside here, so asking
       // twice would coin two sets of cels and reference only one of them —
@@ -989,22 +1138,30 @@ class FrameClipboard implements BringsMedia {
       }
       runs.add((
         layerId: target.id,
-        // Each row places the band's start on ITS OWN axis ([_band]): two
-        // rows swept together need not key the same frames — a track-owned
-        // SE row keys the track's.
-        index: replaced?.startOn(target.id) ?? index,
-        liftCount: liftCount,
+        index: landing.at.index,
+        liftCount: landing.at.liftCount,
         clip: placed.clip,
         bornFrames: placed.born,
         bornSounds: placed.bornSounds,
       ));
     }
     final description = independent ? 'Paste frames' : 'Paste linked frames';
-    // ONE undo for the paste and what it brought.
+    // ONE undo for the paste and what it brought — the keys a band's copy
+    // carries among it, each row's on its own lanes beside its cells
+    // (one-band-no-lane-tail-Q1), and those it held on lanes alone (Q3).
     var cutMoved = false;
     _project.historyManager.runAsOneStep(description, () {
       landArrival(_project, arrival);
       cutMoved = _splice(runs: runs, description: description);
+      for (final (:row, :keys, :at) in _keysLaidBy(place, copied, landings)) {
+        _laneVerbs.pasteKeysOnRow(
+          row,
+          keys,
+          at: at,
+          keepNames: !independent,
+          description: description,
+        );
+      }
     });
     final cut = _project.activeCutOrNull;
     for (final (targetId, minted, pictures) in mintedByLayer) {
@@ -1342,20 +1499,40 @@ typedef UnlinkRun = ({Layer layer, int index, int count});
 /// What a 링크 붙여넣기 would JOIN, by row: on each row it lands on, the
 /// row's own drawings that already answer to a name being pasted — the
 /// drawings its blocks would show instead of the copied ones
-/// ([FrameClipboard.pasteLinkedFrameAtCurrentFrame], I-71).
-typedef LinkedPasteJoins = List<({LayerId layerId, List<FrameId> held})>;
+/// ([FrameClipboard.pasteLinkedFrameAtCurrentFrame], I-71) — and the names
+/// of the keys beside them its lanes hold at another value (F-388).
+typedef LinkedPasteJoins = List<LinkedPasteJoin>;
+
+/// One row of [LinkedPasteJoins].
+typedef LinkedPasteJoin = ({
+  LayerId layerId,
+  List<FrameId> held,
+  Set<String> keyNames,
+});
 
 /// One row a paste lands on, with the row of the board it receives: where
-/// that was copied from ([source], [linkable]) and what it carries.
+/// it takes it ([at] — the frame it goes in at, and how many from there it
+/// replaces), where that was copied from ([source], [linkable]) and what it
+/// carries.
 typedef _PasteLanding = ({
   Layer target,
+  ({int index, int liftCount}) at,
   LayerId source,
   bool linkable,
+  KeyCopy? keys,
   TimelineClipRow clip,
   List<Frame> cels,
   List<AudioClip> sounds,
   Map<FrameId, BitmapSurface> pictures,
   Map<String, BitmapSurface> handwriting,
+});
+
+/// Keys a paste lays on [row]'s lanes ([FrameClipboard._keysLaidBy]): from
+/// [at]'s frame, the frames there it replaces.
+typedef _KeysLanding = ({
+  LayerId row,
+  KeyCopy keys,
+  ({int index, int liftCount}) at,
 });
 
 /// Whether [layer] is a row a LINK can live on — the linked paste's gate and
@@ -1467,6 +1644,7 @@ class _CopiedRow {
     required this.layerId,
     required this.linkable,
     required this.clip,
+    this.keys,
     this.cels = const [],
     this.sounds = const [],
     this.pictures = const {},
@@ -1485,6 +1663,13 @@ class _CopiedRow {
   /// one of drawings (I-71), though the row itself takes no paste.
   final bool linkable;
   final TimelineClipRow clip;
+
+  /// The keys the band held on the row's lanes, by their frame from its
+  /// first — what a paste puts on the lanes of the same ids of the row it
+  /// lands on, beside the cells (🗣️one-band-no-lane-tail-Q1, 유저
+  /// 2026-10-27: 「칸과 키를 같이 든다」). Null for a copy made standing,
+  /// and for a band that holds no key of the row.
+  final KeyCopy? keys;
 
   /// Carried BY VALUE, for [_CopiedFrameReference.cels]'s reason: a
   /// 잘라내기 orphans what it lifted, and a clipboard that does not hold
@@ -1562,7 +1747,14 @@ class _CopiedFrameReference implements BoardCopy {
     this.cels = const [],
     this.sounds = const [],
     this.rows = const [],
+    this.lanesAlone = const [],
   });
+
+  /// The keys the band held on lane rows of layers whose cells [rows] does
+  /// not hold — a layer swept only by its lanes, the camera row — each put
+  /// back on its own layer (one-band-no-lane-tail-Q3,
+  /// `LaneVerbs.bandKeysBesides`).
+  final List<LanesAlone> lanesAlone;
 
   /// 🚨결정 14 ②ⓐ — EVERY swept row, in display order, the anchor first.
   ///

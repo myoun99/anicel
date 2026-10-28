@@ -1,6 +1,8 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/attached_mode.dart';
+import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -19,16 +21,15 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/track_transform_lane_carrier.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
-import 'package:anicel/src/ui/session/session_row_button_presses.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/text/app_strings.dart' show AppText;
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
-    show effectGroupLaneId;
-import 'package:anicel/src/ui/timeline/lane_graph.dart' show LaneGraphsView;
+    show effectGroupLaneId, effectLaneId;
+import 'package:anicel/src/ui/timeline/property_lane_model.dart'
+    show laneGroupKey;
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
 import '../../helpers/named_finders.dart';
-import '../../helpers/storyboard_twirls.dart';
+import '../../helpers/storyboard_host.dart';
 
 /// 🗣️I-89 ①ⓒ (유저 2026-10-13): 「다시 말하지만 이런건 다 콘티패널에도
 /// 동일하게 있어야해. 같은 법으로」 — the conte rail sweeps the timeline's
@@ -64,7 +65,8 @@ void main() {
     timeline: const {},
   );
 
-  Cut cutOf(String id, {bool projections = true}) => Cut(
+  /// [riders]: a row rides the conte, so the conte head folds.
+  Cut cutOf(String id, {bool projections = true, bool riders = false}) => Cut(
     id: CutId(id),
     name: id,
     duration: 12,
@@ -90,12 +92,23 @@ void main() {
             0: TimelineExposure.drawing(FrameId('$id-panel'), length: 12),
           },
         ),
+        if (riders)
+          Layer(
+            id: LayerId('$id-over'),
+            name: 'Conte+1',
+            kind: LayerKind.storyboard,
+            attachedToLayerId: LayerId('$id-conte'),
+            attachedPlacement: AttachedPlacement.above,
+            attachedMode: AttachedMode.free,
+            frames: const [],
+            timeline: const {},
+          ),
       ],
     ],
   );
 
   /// [conteOnT2]: t2's cut holds a camera and a conte of its own too.
-  Project film({bool conteOnT2 = false}) => Project(
+  Project film({bool conteOnT2 = false, bool riders = false}) => Project(
     id: const ProjectId('conte-sweep'),
     name: 'Conte sweep',
     createdAt: DateTime.utc(2026, 10, 17),
@@ -108,13 +121,16 @@ void main() {
           for (final effect in effects)
             LayerEffect(id: effect, kind: EffectKind.blur),
         ],
-        cuts: [cutOf('a'), cutOf('b')],
+        cuts: [
+          cutOf('a', riders: riders),
+          cutOf('b', riders: riders),
+        ],
       ),
       Track(
         id: const TrackId('t2'),
         name: 'V2',
         seLayers: [se('t2-s1')],
-        cuts: [cutOf('c', projections: conteOnT2)],
+        cuts: [cutOf('c', projections: conteOnT2, riders: riders)],
       ),
     ],
   );
@@ -122,44 +138,13 @@ void main() {
   Future<EditorSessionManager> pump(
     WidgetTester tester, {
     bool conteOnT2 = false,
-  }) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 1400));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final session = EditorSessionManager(
-      initialProject: film(conteOnT2: conteOnT2),
-    );
-    addTearDown(session.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: withStoryboardTwirls(
-            session,
-            (twirls) => ValueListenableBuilder<LaneGraphsView>(
-              valueListenable: session.railView.laneGraphs,
-              builder: (context, open, _) => StoryboardTabHost(
-                session: session,
-                expandedLaneLayerIds: twirls.expandedLaneLayerIds,
-                onToggleLayerLanes: twirls.onToggleLayerLanes,
-                expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
-                onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
-                laneGraphs: open,
-                laneGraphVerbs: SessionRowButtonPresses(
-                  session,
-                ).laneGraphVerbs,
-                pixelsPerFrame: 12,
-                onPixelsPerFrameChanged: (_) {},
-                showSeconds: false,
-                onShowSecondsChanged: (_) {},
-                thumbnails: null,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    return session;
-  }
+    bool riders = false,
+  }) => pumpStoryboardHost(
+    tester,
+    film(conteOnT2: conteOnT2, riders: riders),
+    surface: const Size(1600, 1400),
+    pixelsPerFrame: 12,
+  );
 
   Future<void> tap(WidgetTester tester, String name) async {
     await tester.tap(find.named(name));
@@ -168,16 +153,17 @@ void main() {
 
   /// Presses [from] and walks the pointer to [to] — found afresh each step,
   /// as a row twirled or a graph opened slides every row under it — its
-  /// down and first move in one frame.
-  Future<void> sweep(WidgetTester tester, String from, String to) async {
-    final start = tester.getCenter(find.named(from));
+  /// down and first move in one frame. Finders, for a button keyed rather
+  /// than named, as a lane's ◆ is ([sweep] takes names).
+  Future<void> sweepBetween(WidgetTester tester, Finder from, Finder to) async {
+    final start = tester.getCenter(from);
     final gesture = await tester.startGesture(
       start,
       kind: PointerDeviceKind.mouse,
     );
     var at = start;
     for (var step = 0; step < 400; step += 1) {
-      final gap = tester.getCenter(find.named(to)).dy - at.dy;
+      final gap = tester.getCenter(to).dy - at.dy;
       if (gap.abs() < 1) {
         break;
       }
@@ -188,6 +174,10 @@ void main() {
     await gesture.up();
     await tester.pumpAndSettle();
   }
+
+  /// [sweepBetween] the buttons named [from] and [to].
+  Future<void> sweep(WidgetTester tester, String from, String to) =>
+      sweepBetween(tester, find.named(from), find.named(to));
 
   Track track(EditorSessionManager session, TrackId id) => session.repository
       .requireProject()
@@ -454,6 +444,83 @@ void main() {
     );
   });
 
+  // 🗣️F-475 (유저 2026-10-26): 「다른버튼도 조사」 — the folds are toggle
+  // columns the timeline's rail sweeps, and this rail sweeps its one list.
+  testWidgets('🚨the GROUP TWIRL column opens every lane group it crosses — '
+      'the V row\'s on its TRACK, the conte\'s on the conte in hand', (
+    tester,
+  ) async {
+    final session = await pump(tester);
+    await tap(tester, 'storyboard-track-lane-toggle-t1');
+    await tap(tester, 'storyboard-lane-toggle-a-conte');
+    String twirl(LayerId row, String lane) =>
+        'storyboard-lane-group-toggle-$row-$lane';
+    // The conte's effect group stands open before the stroke: the sweep
+    // crosses it agreeing, and leaves it be.
+    await tap(tester, twirl(conteRow, effectGroupLaneId(shade)));
+    final alreadyOpen = laneGroupKey(
+      const LayerId('a-conte'),
+      effectGroupLaneId(shade),
+    );
+    final keys = [
+      for (final effect in effects)
+        laneGroupKey(carrier, effectGroupLaneId(effect)),
+      laneGroupKey(const LayerId('a-conte'), 'transform-group'),
+      alreadyOpen,
+    ];
+    expect(
+      session.railView.expandedLaneGroupKeys.value.where(keys.contains),
+      [alreadyOpen],
+      reason: '⛔전제',
+    );
+
+    // Down to the conte's Transform, the last group: its effect stands
+    // over it.
+    await sweep(
+      tester,
+      twirl(carrier, effectGroupLaneId(effects.first)),
+      twirl(conteRow, 'transform-group'),
+    );
+
+    expect(
+      session.railView.expandedLaneGroupKeys.value,
+      containsAll(keys),
+      reason:
+          'each group by the row it twirls in, as its own twirl turns it — '
+          'the press read as it left the group: a stale read spreads shut; '
+          'the open one read off the conte in hand: by its own id the host '
+          'finds no row, reads it shut and shuts it',
+    );
+  });
+
+  testWidgets('🚨the FOLD column folds every conte head it crosses, on to the '
+      'next track\'s — read off the conte in hand as the press left it', (
+    tester,
+  ) async {
+    final session = await pump(tester, conteOnT2: true, riders: true);
+    Set<LayerId> folded() => session.railView.collapsedAttachBaseIds.value;
+    expect(folded(), isEmpty, reason: '⛔전제');
+
+    await sweep(
+      tester,
+      'storyboard-attach-twirl-a-conte',
+      'storyboard-attach-twirl-c-conte',
+    );
+
+    expect(
+      folded(),
+      containsAll(const [
+        LayerId('a-conte'),
+        LayerId('b-conte'),
+        LayerId('c-conte'),
+      ]),
+      reason:
+          'the press folded t1\'s head — cut b\'s group with cut a\'s — and '
+          'the sweep the head it reached: by its own id the host finds no '
+          'layer, and the sweep would spread the fold open',
+    );
+  });
+
   testWidgets('⛔the V row draws a twirl only while its track has lanes, as '
       'every row does — the twirl the sweep paints', (tester) async {
     await pump(tester);
@@ -589,5 +656,154 @@ void main() {
           '— the start read by the conte in hand: by its own id the host finds '
           'no row, and the sweep would spread off',
     );
+  });
+
+  // 🗣️F-475 (유저 2026-10-26): 「다른버튼도 조사」 — a lane's ◆ is a toggle
+  // column too, pressed on each lane as the lane's own ◆ presses it.
+  group('the ◆ column', () {
+    /// Stands in cut b at its own frame 3 — a frame the global playhead
+    /// does not name, so a lane keyed on the wrong one shows.
+    Future<int> standInB(
+      EditorSessionManager session,
+      WidgetTester tester,
+    ) async {
+      session.selectCut(const CutId('b'));
+      session.selectFrameIndex(3);
+      await tester.pumpAndSettle();
+      final global = session.activeCutGlobalStartFrame + 3;
+      expect(global, isNot(3), reason: '⛔전제: b starts after frame 0');
+      return global;
+    }
+
+    Finder diamond(LayerId row, String lane) =>
+        find.byKey(ValueKey<String>('storyboard-lane-key-toggle-$row-$lane'));
+
+    testWidgets('🚨it keys every lane of the V row it crosses on its TRACK, at '
+        'the global playhead — past the effect header between', (
+      tester,
+    ) async {
+      final session = await pump(tester);
+      final global = await standInB(session, tester);
+      await tap(tester, 'storyboard-track-lane-toggle-t1');
+      for (final effect in effects) {
+        await tap(
+          tester,
+          'storyboard-lane-group-toggle-$carrier-${effectGroupLaneId(effect)}',
+        );
+      }
+
+      await sweepBetween(
+        tester,
+        diamond(carrier, effectLaneId(effects.first, 'blurX')),
+        diamond(carrier, effectLaneId(effects.last, 'blurY')),
+      );
+
+      expect(
+        [
+          for (final effect in track(session, t1).effects)
+            for (final parameter in ['blurX', 'blurY'])
+              [...effect.parameterOf(parameter).track.keys.keys],
+        ],
+        [
+          for (var lane = 0; lane < 4; lane += 1) [global],
+        ],
+      );
+    });
+
+    testWidgets('🚨it keys a projection row\'s lanes on the layer of the cut '
+        'stood in, at that cut\'s own frame', (tester) async {
+      final session = await pump(tester);
+      await standInB(session, tester);
+      await tap(tester, 'storyboard-lane-toggle-b-conte');
+      await tap(
+        tester,
+        'storyboard-lane-group-toggle-$conteRow-transform-group',
+      );
+
+      await sweepBetween(
+        tester,
+        diamond(conteRow, 'position'),
+        diamond(conteRow, 'rotation'),
+      );
+
+      Map<String, List<int>> keysOf(String id) {
+        final track = row(session, id).transformTrack;
+        return {
+          'position': [...track.position.keys.keys],
+          'scale': [...track.scale.keys.keys],
+          'rotation': [...track.rotation.keys.keys],
+        };
+      }
+
+      expect(keysOf('b-conte'), {
+        'position': [3],
+        'scale': [3],
+        'rotation': [3],
+      }, reason: 'b\'s own 3');
+      expect(keysOf('a-conte'), {
+        'position': <int>[],
+        'scale': <int>[],
+        'rotation': <int>[],
+      });
+    });
+
+    testWidgets('⛔in a gap a projection row\'s ◆ is inert — a press there '
+        'starts no sweep', (tester) async {
+      final session = await pump(tester);
+      await tap(tester, 'storyboard-lane-toggle-a-conte');
+      await tap(
+        tester,
+        'storyboard-lane-group-toggle-$conteRow-transform-group',
+      );
+      await tap(tester, 'storyboard-lane-toggle-t2-s1');
+      await tap(tester, 'storyboard-lane-group-toggle-t2-s1-transform-group');
+      session.selectCut(const CutId('c'));
+      await tester.pumpAndSettle();
+      final start = diamond(conteRow, 'position');
+      expect(
+        start,
+        findsOneWidget,
+        reason: 'the fixture: the row keeps its lanes with no cut stood in',
+      );
+      // A key the stroke would cross: a sweep that started anyway, toward
+      // the unkeyed ◆ it began on, would take it away.
+      final standing = session.editingGlobalFrame;
+      session.laneVerbs.toggleLaneKeyAt(
+        const LayerId('t2-s1'),
+        'rotation',
+        standing,
+        frameIsGlobal: true,
+        description: 'a key the stroke crosses',
+      );
+      await tester.pumpAndSettle();
+
+      await sweepBetween(
+        tester,
+        start,
+        diamond(const LayerId('t2-s1'), 'rotation'),
+      );
+
+      final crossed = row(session, 't2-s1').transformTrack;
+      expect(
+        {
+          'position': [...crossed.position.keys.keys],
+          'rotation': [...crossed.rotation.keys.keys],
+        },
+        {
+          'position': <int>[],
+          'rotation': [standing],
+        },
+        reason:
+            'no cut of the row is stood in, so its ◆ has nothing to key — '
+            'and a ◆ a tap cannot press starts no sweep',
+      );
+      for (final conte in ['a-conte', 'b-conte']) {
+        expect(
+          [...row(session, conte).transformTrack.position.keys.keys],
+          isEmpty,
+          reason: '$conte is not stood in, and keeps no key',
+        );
+      }
+    });
   });
 }

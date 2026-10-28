@@ -39,18 +39,6 @@ class _WorkspaceTabs {
     _state._mutatingLayout(() => _state._layout.removeTab(tabId));
   }
 
-  /// The fill settings' bucket for the ACTIVE layer (I-36) — the rail's own
-  /// verb, so one press is one undo step either way. Null while the active
-  /// row is not one the flag belongs on.
-  VoidCallback? _activeLayerFillReferenceToggle() {
-    final session = _state.widget.session;
-    final layer = session.activeLayer;
-    if (layer == null || !layer.kind.carriesFillReference) {
-      return null;
-    }
-    return () => session.layerSwitches.toggleLayerFillReference(layer.id);
-  }
-
   /// 래스터라이즈 (vanishing-point-types-Q5 · Q6): the picked guide's lines baked
   /// onto [paper] off the frame's clock, then laid on the cels through the
   /// paste's door as one undo. Null with no paper to bake onto.
@@ -102,8 +90,6 @@ class _WorkspaceTabs {
       selectedGuideId: session.cutVerbs.selectedGuideId,
       fillReads: reads(fillSource),
       eyedropperReads: reads(eyedropperSource),
-      activeLayerIsFillReference: session.activeLayer?.isFillReference ?? false,
-      canToggleFillReference: _activeLayerFillReferenceToggle() != null,
       pasteboard: session.activePasteboardOrNull,
       language: session.languageSettings.value.programLanguage,
     );
@@ -154,20 +140,6 @@ class _WorkspaceTabs {
             ),
     ),
   );
-
-  /// A frame panel's 문턱: the transport [panel]'s keys press too
-  /// ([panelTransportFor]) and the camera-view toggle both panels share.
-  Widget _sill(WorkingPanel panel, {required String cameraViewKeyValue}) {
-    final session = _state.widget.session;
-    final transport = panelTransportFor(panel, session);
-    return FramePanelSillControls(
-      session: session,
-      scope: transport.scope,
-      cameraViewKeyValue: cameraViewKeyValue,
-      playbackStartFrame: transport.startFrame,
-      onSkipToStart: transport.skipToStart,
-    );
-  }
 
   /// Both viewers, built from one place: same panel, same code, different
   /// [MediaViewerSlot]. Anything that reads as "the main one does X"
@@ -722,10 +694,6 @@ class _WorkspaceTabs {
                                                     .session
                                                     .activeLayerId,
                                               ),
-                                          activeLayerIsFillReference:
-                                              cut.activeLayerIsFillReference,
-                                          onToggleActiveLayerFillReference:
-                                              _activeLayerFillReferenceToggle(),
                                           selectionMaskOptions: maskOptions,
                                           onSelectionMaskOptionsChanged:
                                               (options) =>
@@ -926,18 +894,15 @@ class _WorkspaceTabs {
           locked: locked,
           // F-452: its bars are thick — the splitter may lie over them.
           sparesSplitters: false,
-          // 유저 확정 (2026-08-10): 재생 그룹과 설정은 문턱으로. Only the
-          // ACTIVE tab's sill controls are mounted, so the timeline's
-          // active-cut transport and the storyboard's all-cuts one share
-          // the one strip without either knowing about the other.
+          // ↩️유저 확정 (2026-08-10): 재생 그룹과 설정은 문턱으로 — the
+          // settings went to the top strip, and the transport to the head of
+          // the panel's own bar (F-111-Q1, 10-08) — its right group from
+          // F-463, its left group's head since F-491 — which its host seats
+          // (`FramePanelTransport`).
           // 접으면 버튼행만 (유저 확정): the panel keeps its command bar and
           // offstages the grid, so the fold is 문턱 30 + this 36 = 66 — and
           // every verb a rough pass needs is still on screen while folded.
           collapsedExtent: TimelineCommandBar.heightIn(_state.context),
-          sillTrailing: (context) => _sill(
-            WorkingPanel.timeline,
-            cameraViewKeyValue: 'timeline-camera-view-button',
-          ),
           builder: (context) => _panelHost(
             // The session subscription lives HERE now (HomePage no longer
             // setStates the world). Seeks are NOT session notifies — the
@@ -1023,35 +988,7 @@ class _WorkspaceTabs {
               },
               timelineRailExtent: _state._railExtents[LayerRailId.timeline],
               xsheetRailExtent: _state._railExtents[LayerRailId.xsheet],
-              timelineFrameAxisOffset:
-                  _state._frameAxisOffsets[LayerRailId.timeline],
-              xsheetFrameAxisOffset: _state._frameAxisOffsets[LayerRailId.xsheet],
-              timelineLayerAxisOffset:
-                  _state._layerAxisOffsets[LayerRailId.timeline],
-              xsheetLayerAxisOffset:
-                  _state._layerAxisOffsets[LayerRailId.xsheet],
-              expandedLaneLayerIds:
-                  _state.widget.session.railView.expandedLaneLayerIds.value,
-              onToggleLayerLanes: SessionRowButtonPresses(
-                _state.widget.session,
-              ).toggleLanes,
-              expandedLaneGroupKeys:
-                  _state.widget.session.railView.expandedLaneGroupKeys.value,
-              onToggleLaneGroupKey: _state._rail._toggleLaneGroup,
-              laneGraphs: _state.widget.session.railView.laneGraphs.value,
-              laneGraphVerbs: SessionRowButtonPresses(
-                _state.widget.session,
-              ).laneGraphVerbs,
-              hiddenSections:
-                  _state.widget.session.railView.hiddenSections.value,
-              onToggleSection: _state._toggleTimelineSection,
-              rowFilter: _state.widget.session.railView.rowFilter.value,
-              onSetRowFilter: _state._setTimelineRowFilter,
-              collapsedAttachBaseIds:
-                  _state.widget.session.railView.collapsedAttachBaseIds.value,
-              onToggleAttachGroup: SessionRowButtonPresses(
-                _state.widget.session,
-              ).toggleGroupFold,
+              rail: TabRailWiring.of(_state.widget.session),
               // The legend's "open onion panel" (UI-R17 #5): already open
               // = the panel flashes in place (the common reveal logic).
               onRevealOnionSkinPanel: () =>
@@ -1069,13 +1006,7 @@ class _WorkspaceTabs {
           locked: locked,
           // F-452: as the timeline's.
           sparesSplitters: false,
-          // The same sill controls the timeline mounts — a different
-          // playlist and a different "to start", and nothing else.
           collapsedExtent: TimelineCommandBar.heightIn(_state.context),
-          sillTrailing: (context) => _sill(
-            WorkingPanel.storyboard,
-            cameraViewKeyValue: 'storyboard-camera-view-button',
-          ),
           builder: (context) => _panelHost(
             // Session subscription — the timeline tab's list exactly, and
             // for the same reason: seeks are NOT session notifies, so this
@@ -1113,39 +1044,15 @@ class _WorkspaceTabs {
               ),
               // R5 #9: ONE filter across the surfaces — the same state the
               // timeline and the sheet read, so a chip set on one is set
-              // wherever the legend appears.
-              rowFilter: _state.widget.session.railView.rowFilter.value,
-              onSetRowFilter: _state._setTimelineRowFilter,
-              // F-199: the sections too — hidden and toggled with the
-              // timeline's.
-              hiddenSections:
-                  _state.widget.session.railView.hiddenSections.value,
-              onToggleSection: _state._toggleTimelineSection,
-              // And the attach folds — the timeline's own set and verb.
-              collapsedAttachBaseIds:
-                  _state.widget.session.railView.collapsedAttachBaseIds.value,
-              onToggleAttachGroup: SessionRowButtonPresses(
-                _state.widget.session,
-              ).toggleGroupFold,
+              // wherever the legend appears. And so the sections (F-199),
+              // the attach folds, the lane twirls (I-73 ④ⓔ — the camera
+              // row's head is the timeline's camera row, and turns its lanes
+              // there too) and the header graphs (I-89 ①): the timeline's
+              // own wiring.
+              rail: TabRailWiring.of(_state.widget.session),
               // And the legend's onion panel door, as the timeline's (F-443).
               onRevealOnionSkinPanel: () =>
                   _state._revealPanel(EditorWorkspace.onionSkinTabId),
-              // And the lane twirls (I-73 ④ⓔ) — the camera row's head is the
-              // timeline's camera row, and turns its lanes there too.
-              expandedLaneLayerIds:
-                  _state.widget.session.railView.expandedLaneLayerIds.value,
-              onToggleLayerLanes: SessionRowButtonPresses(
-                _state.widget.session,
-              ).toggleLanes,
-              expandedLaneGroupKeys:
-                  _state.widget.session.railView.expandedLaneGroupKeys.value,
-              onToggleLaneGroupKey: _state._rail._toggleLaneGroup,
-              // And the header graphs (I-89 ①): the timeline's state and its
-              // verbs, so a graph opened on either rail is open on both.
-              laneGraphs: _state.widget.session.railView.laneGraphs.value,
-              laneGraphVerbs: SessionRowButtonPresses(
-                _state.widget.session,
-              ).laneGraphVerbs,
               pixelsPerFrame: _state._storyboardPixelsPerFrame.value,
               onPixelsPerFrameChanged: _state._setStoryboardZoom,
               onZoomFit: _state._fitStoryboardZoom,
@@ -1154,8 +1061,6 @@ class _WorkspaceTabs {
                 _state._showSecondsDisplay.value = show;
               },
               railExtent: _state._railExtents[LayerRailId.storyboard],
-              frameAxisOffset: _state._frameAxisOffsets[LayerRailId.storyboard],
-              layerAxisOffset: _state._layerAxisOffsets[LayerRailId.storyboard],
               // ⛔No steppers any more (B7): the V rows' splitter is the
               // height's one writer, and it asks the NOTIFIER, not the value
               // this build took — a drag's steps outrun the rebuilds.
@@ -1377,8 +1282,6 @@ typedef _ToolSettingsCut = ({
   GuideId? selectedGuideId,
   ByList<String>? fillReads,
   ByList<String>? eyedropperReads,
-  bool activeLayerIsFillReference,
-  bool canToggleFillReference,
   PasteboardWall? pasteboard,
   AppLanguage language,
 });

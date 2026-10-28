@@ -112,15 +112,18 @@ void main() {
 
   LayerId transitionId() => transitionLayerIdForTrack(_trackId);
 
-  /// Selects the span [2,5) across the transition row AND S1 (the rail
-  /// order runs transition → SE rows → track row, so anchoring on S1 with
-  /// the transition as head covers both).
+  /// Selects the span [2,5) across the transition row AND S1 — the rows a
+  /// sweep from S1 up to the transition row hands over, in the order the
+  /// rail draws them (transition → SE rows → track row).
   void selectMixedSpan(EditorSessionManager session) {
     session.updateTrackRowRangeSelectionByFrame(
       layerId: _seLayerId,
       anchorGlobalFrame: 2,
       headGlobalFrame: 4,
-      headRow: LayerRowAddress(transitionId()),
+      spanRows: [
+        LayerRowAddress(transitionId()),
+        const LayerRowAddress(_seLayerId),
+      ],
     );
     expect(
       session.trackFrameRangeSelection.value!.spanRows,

@@ -13,9 +13,9 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
+import '../../helpers/the_frame_as_it_stands.dart';
 
 /// #15 — THE 1PX BRIGHT LINE AT THE PAPER'S OUTER EDGE, ONLY BELOW ~30%.
 ///
@@ -33,9 +33,14 @@ import 'package:anicel/src/models/composite_tree.dart';
 /// mechanism is the same shape one level down: paper and ink rasterised at
 /// level resolution, where the canvas's edge can fall inside a level pixel
 /// and the ink there is a box-filtered half. The answer is the one the
-/// knee had — the paper yields one buffer pixel — and this pins it at
+/// knee had — the paper yields one buffer pixel — and this pinned it at
 /// level 1 (28%), with level 0 (60%) as the control that composites paper
 /// and ink jointly on whole canvas pixels.
+///
+/// ↩️A frame drawn as it stands is composed at its own resolution since
+/// 2026-10-25, as its one picture is (`StackedFrame.paintOnScreen`), so the
+/// 28% paint takes the control's road: this pins that the zoom #15 was
+/// seen at stays clean on it.
 ///
 /// The fixture: a 4096x1266 canvas filled with opaque black exactly to the
 /// canvas edge (the AA-off fill), a 2400px-wide view, pan chosen so the
@@ -74,13 +79,11 @@ void main() {
     }
   }
 
-  Future<({CustomPainter painter, DisplayBufferCache cache})> pump(
+  Future<CustomPainter> pump(
     WidgetTester tester, {
     required BitmapSurface surface,
     required CanvasViewport viewport,
   }) async {
-    final cache = DisplayBufferCache();
-    addTearDown(cache.dispose);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -88,7 +91,7 @@ void main() {
             child: SizedBox(
               width: 300,
               height: 8,
-              child: CanvasLayerStackView(
+              child: TheFrameAsItStands(
                 nodes: const [CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1))],
                 imageCache: LayerFrameImageCache(frameStore: BrushFrameStore()),
                 canvasSize: canvasSize,
@@ -99,7 +102,6 @@ void main() {
                 ),
                 paintPaper: true,
                 paperBackground: ProjectBackground.defaultBackground,
-                debugBufferCache: cache,
               ),
             ),
           ),
@@ -110,14 +112,14 @@ void main() {
     final painter = tester
         .widgetList<CustomPaint>(
           find.descendant(
-            of: find.byType(CanvasLayerStackView),
+            of: find.byType(TheFrameAsItStands),
             matching: find.byType(CustomPaint),
           ),
         )
         .where((paint) => paint.painter != null)
         .first
         .painter!;
-    return (painter: painter, cache: cache);
+    return painter;
   }
 
   /// The painter over the app's dark backdrop — the plane the white line
@@ -185,27 +187,24 @@ void main() {
   final atLevelOne = CanvasViewport(zoom: 0.28, panX: 1120, panY: 70);
   final atLevelZero = CanvasViewport(zoom: 0.6, panX: 1200, panY: 60);
 
-  testWidgets('at 28% — a level-1 buffer — an opaque-black canvas keeps its '
-      'edge ink-dark: no paper white leaks around the rim (#15)',
+  testWidgets('at 28% — the frame at its own resolution — an opaque-black '
+      'canvas keeps its edge ink-dark: no paper white leaks around the rim '
+      '(#15)',
       (tester) async {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetDevicePixelRatio);
     final surface = blackFilledSurface();
     decodeAll(surface);
-    final rig = await pump(tester, surface: surface, viewport: atLevelOne);
+    final painter = await pump(tester, surface: surface, viewport: atLevelOne);
 
-    final bytes = await paintOverBackdrop(tester, rig.painter, screen);
+    final bytes = await paintOverBackdrop(tester, painter, screen);
 
-    // 🚨THE PATH THIS PINS. Below 50% the buffer is a level, and #15's
-    // mechanism lives there now — a fixture that quietly stayed at canvas
-    // resolution would prove nothing (this file's own history: the cap
-    // moved twice under it).
-    expect(
-      rig.cache.lastBufferLevel,
-      1,
-      reason: '28% on a ratio-1 view is level 1 — the paint must have '
-          'composed the level buffer this test is named after',
-    );
+    // 🚨THE PATH THIS PINS: the frame composed at its own resolution, as
+    // its picture is laid. ↩️Below 50% it was a level, where #15's
+    // mechanism lived — and a fixture that quietly stays off the road it
+    // names proves nothing (this file's own history: the cap moved twice
+    // under it), so the level was asked (`debugLastBufferLevel`) until the
+    // buffer had no level to be at (one-picture-per-frame ②-5b-1).
     expect(
       inkPixels(bytes),
       greaterThan(100000),
@@ -226,16 +225,10 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     final surface = blackFilledSurface();
     decodeAll(surface);
-    final rig = await pump(tester, surface: surface, viewport: atLevelZero);
+    final painter = await pump(tester, surface: surface, viewport: atLevelZero);
 
-    final bytes = await paintOverBackdrop(tester, rig.painter, screen);
+    final bytes = await paintOverBackdrop(tester, painter, screen);
 
-    expect(
-      rig.cache.lastBufferLevel,
-      0,
-      reason: '60% is above the halving: the canvas-resolution buffer',
-    );
-    expect(rig.cache.fullCount, greaterThan(0));
     expect(inkPixels(bytes), greaterThan(100000));
     expect(
       brightPixels(bytes),

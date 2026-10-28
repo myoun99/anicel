@@ -7,7 +7,6 @@ import '../models/cut.dart';
 import '../models/sheet_paper.dart';
 import '../models/sheet_sources.dart';
 import '../models/timesheet_document.dart';
-import '../models/timesheet_info.dart';
 import 'brush/brush_canvas_panel.dart'
     show BrushCanvasPanel, CanvasTransportBand;
 import 'brush/sheet_canvas_panel.dart';
@@ -25,14 +24,10 @@ import 'sliced_value_listenable_builder.dart' show SlicedListenable;
 import 'timeline/memo_token.dart' show ByIdentity;
 import 'timesheet/cut_sheet_document.dart';
 import 'timesheet/timesheet_document_painter.dart';
-import 'timesheet/timesheet_header_edit_layer.dart';
 import 'effective_device_pixel_ratio.dart';
-import 'timesheet/timesheet_words_in.dart';
 import 'timesheet/timesheet_ink_controller.dart';
-import 'timesheet/timesheet_ink_layer.dart';
-import 'timesheet/timesheet_strata.dart';
+import 'timesheet/timesheet_paper.dart';
 import 'sheet/sheet_image_cache.dart' show SheetImageLookup;
-import 'sheet/sheet_photo_drop.dart';
 
 /// The Timesheet tab's content: the active cut rendered as a paper
 /// timesheet DOCUMENT (not an editing grid) inside the canvas panel shell,
@@ -292,30 +287,6 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
     );
   }
 
-  /// Where each header box edited in place lands (I-112): the work's
-  /// episode and title — the values its settings show — the cut's name,
-  /// and its sheet worker ([TimesheetHeaderEditLayer]).
-  Map<TimesheetHeaderField, ValueChanged<String>> _headerCommits() {
-    final session = widget.session;
-    void work(TimesheetInfo Function(TimesheetInfo info) edit) =>
-        session.updateTimesheetInfo(edit(session.timesheetInfo));
-    return {
-      TimesheetHeaderField.episode: (episode) =>
-          work((info) => info.copyWith(episode: episode)),
-      TimesheetHeaderField.title: (title) =>
-          work((info) => info.copyWith(title: title)),
-      // ⛔An empty name is no cut's name — the rename window refuses one
-      // inline ([RenameCutDialog]); a box has no line to say so, so it
-      // keeps the name it prints.
-      TimesheetHeaderField.cut: (name) {
-        if (name.isNotEmpty) {
-          session.cutVerbs.renameActiveCut(name);
-        }
-      },
-      TimesheetHeaderField.name: session.cutVerbs.setActiveCutSheetArtist,
-    };
-  }
-
   /// The sheet's own commands, at the head of the panel's pill — after the
   /// brush switch, which the sheet shell puts first on every sheet.
   ///
@@ -509,95 +480,20 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                     content: (context, viewport) {
                       return Stack(
                         children: [
-                          // The sheet paints in strata (UI-R10 #9, the PSD
-                          // layering live): the printed FORM below, the
-                          // CONTENT above, the saved INK over both — each
-                          // re-recorded only when what it prints changes.
-                          //
-                          // Each stratum is baked rather than merely
-                          // boundaried. This panel measured 13.1 ms/frame
-                          // of raster — 47% of the whole app's — while
-                          // sitting perfectly still, because a boundary
-                          // stops the UI thread re-RECORDING and does
-                          // nothing about the GPU re-EXECUTING. The form
-                          // alone is ~334 lines and ~111 text paragraphs
-                          // of B4 sheet at every frame the app happens to
-                          // produce.
                           Positioned.fill(
-                            child: TimesheetStrata(
+                            child: TimesheetPaper(
+                              session: session,
                               layout: layout,
-                              viewport: viewport,
-                              words: timesheetWordsIn(
-                                session.languageSettings.value.notationLanguage,
-                              ),
-                              dragPreview: session.dragPreview,
                               cutId: _documentCut!.id,
-                              stroking: _strokeHold,
-                              ink: inkController == null
-                                  ? null
-                                  : (
-                                      controller: inkController,
-                                      live: ink != null,
-                                    ),
+                              viewport: viewport,
+                              strokeHold: _strokeHold,
+                              cacheInvalidationSink: _cacheInvalidationSink,
+                              inkController: inkController,
+                              inkTool: ink?.tool,
                               imageFor: widget.imageFor,
                               imageRepaint: widget.imageRepaint,
                             ),
                           ),
-                          // Under the ink windows: reachable exactly when the
-                          // brush is off (the switch doubles as the edit-mode
-                          // switch).
-                          Positioned.fill(
-                            child: TimesheetHeaderEditLayer(
-                              key: const ValueKey<String>(
-                                'timesheet-header-edit-layer',
-                              ),
-                              layout: layout,
-                              viewport: viewport,
-                              onMemoCommitted: (page, memo) => session.cutVerbs
-                                  .updateActiveCutNote(page: page, note: memo),
-                              headerCommits: _headerCommits(),
-                            ),
-                          ),
-                          if (ink != null)
-                            Positioned.fill(
-                              // The tool-state boundary (R18 UI-3): the brush
-                              // reaches only this small overlay — the sheet
-                              // document above never rebuilds for it — and
-                              // since H40 ② (2026-09-24) not even the overlay
-                              // does: its windows read the brush when a
-                              // stroke starts.
-                              child: TimesheetInkLayer(
-                                key: const ValueKey<String>(
-                                  'timesheet-ink-layer',
-                                ),
-                                controller: ink.controller,
-                                layout: layout,
-                                cutId: _documentCut!.id,
-                                brushToolState: ink.tool,
-                                historyManager: session.historyManager,
-                                viewport: viewport,
-                                strokeActive: _strokeHold,
-                                cacheInvalidationSink: _cacheInvalidationSink,
-                                imageFor: widget.imageFor,
-                                imageRepaint: widget.imageRepaint,
-                                photoHold: session.sheetPhotoHold,
-                              ),
-                            ),
-                          // A pool picture dropped on a page is its photo
-                          // (I-97).
-                          if (inkController != null)
-                            Positioned.fill(
-                              child: SheetPhotoDrop(
-                                session: session,
-                                ink: inkController,
-                                windows: () => timesheetInkWindows(
-                                  layout: layout,
-                                  cutId: _documentCut!.id,
-                                ),
-                                viewport: viewport,
-                                cacheInvalidationSink: _cacheInvalidationSink,
-                              ),
-                            ),
                           // The playhead row highlight repaints ALONE (R13-2):
                           // cursor moves, seeks and playback ticks drive this
                           // thin layer through its repaint listenable — the

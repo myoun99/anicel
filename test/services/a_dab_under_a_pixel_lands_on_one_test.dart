@@ -14,6 +14,7 @@ import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/brush_dab_interpolator.dart';
+import 'package:anicel/src/services/brush_dab_tip_geometry.dart';
 import 'package:anicel/src/services/mark_under_a_pixel.dart';
 import 'package:anicel/src/services/brush_tip_stamp_cache.dart';
 
@@ -176,9 +177,9 @@ void main() {
       expect(resolved.size, 1.0);
       expect(resolved.opacity, closeTo(0.8 * 0.3, 1e-12));
       expect(
-        resolved.tipMask!.id,
-        cache.resolveDab(dab(size: 1)).tipMask!.id,
-        reason: 'the stamp a one-pixel dab is drawn with — ↩️the cache held '
+        brushDabTipGeometry(resolved).profile,
+        same(brushDabTipGeometry(cache.resolveDab(dab(size: 1))).profile),
+        reason: 'the tip a one-pixel dab is drawn with — ↩️the cache held '
             'a dab to a quarter of a pixel, so 0.1 and 0.25 drew alike',
       );
     });

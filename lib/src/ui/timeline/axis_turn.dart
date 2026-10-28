@@ -19,9 +19,12 @@ SizedBox alongBox(Axis axis, double extent, {Widget? child}) =>
     ? SizedBox(width: extent, child: child)
     : SizedBox(height: extent, child: child);
 
-/// A box of [extent] across [axis]. The rail wraps its icon buttons in one:
-/// an M3 IconButton otherwise inflates its layout box to the 48px minimum
-/// tap target and overflows the row.
+/// A box of [extent] across [axis]; the other dimension is the child's own.
+///
+/// ↩️The rail wrapped its icon buttons in one while they were M3
+/// IconButtons, which inflate to the 48px tap target. A rail button's box
+/// is its slot's now (`railSlotBox`), so the wrap held nothing and went
+/// (card frame-panels-build-in-one-frame, 2026-10-25).
 SizedBox acrossBox(Axis axis, double extent, {Widget? child}) =>
     axis == Axis.horizontal
     ? SizedBox(height: extent, child: child)
@@ -103,6 +106,17 @@ Positioned stripAlong(
     child: child,
   );
 }
+
+/// A stack child from [along] to the far end of the main axis, across the
+/// whole cross axis — what lies past a frame (the out-of-cut wash). Past
+/// the stack's end it is empty.
+Positioned pastAlong(
+  Axis axis, {
+  required double along,
+  required Widget child,
+}) => axis == Axis.horizontal
+    ? Positioned(left: along, top: 0, right: 0, bottom: 0, child: child)
+    : Positioned(top: along, left: 0, right: 0, bottom: 0, child: child);
 
 /// Text a person READS, turned by the axis: across the strip it is one line
 /// that ellipsises; down a column it STANDS UP — upright letters, the column

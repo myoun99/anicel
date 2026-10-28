@@ -304,7 +304,26 @@ void main() {
 /// the levels under the patched ones are the engine's own halving — how
 /// the store keeps a patched picture's chain whole. The run they go out of
 /// the GPU in is read through it too, a row at a time.
-const int _knownRawDraws = 30;
+/// **27** on 2026-10-25 (one-picture-per-frame ②-5a): −3 — the display
+/// buffer's carried pixels (`_layLevelPixels`) and the static-composite
+/// bake's backdrop blit went with the buffer kept from paint to paint, and
+/// the level blocks drawn from a seed (`_drawSeeded`) with the seed: a
+/// canvas that stands shows the frame's one picture.
+/// **27** still on 2026-10-25, and a different 27 (one-picture-per-frame
+/// ②-5b-2, 유저 D7-2-Q2 「배율이 어떻든 항상 원본 한장」): +1 in
+/// canvas/chained_picture — a tile's picture drawn 1:1 into a render,
+/// which the engine gives its mip chain, so a screen drawing the tile
+/// reduced samples it as it samples a frame's one picture (an upload
+/// carries no chain). The 1:1 blit class, owning `FilterQuality.none` on
+/// its own Paint. The level tiles it replaces drew nothing raw — they were
+/// halvings (`level_image.dart`). −1 in surface_paint/surface_paint_pass —
+/// F-240's region, drawn reduced, is a render per tile drawn as a tile is
+/// (`_drawImageAtTile`), no longer one blit of the region.
+/// **26** on 2026-10-25 (one-picture-per-frame ②-5b-3, 유저 Q3 「메인 PC
+/// 브러시/렌더링이 전부」): −1 in canvas/level_image — the file went with
+/// the camera's halvings: a row drawn through the camera reduced is drawn
+/// from its own chain, as the canvas draws its one picture.
+const int _knownRawDraws = 26;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',

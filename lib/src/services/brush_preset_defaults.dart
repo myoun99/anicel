@@ -4,6 +4,7 @@ import '../models/brush_group.dart';
 import '../models/brush_group_icon.dart';
 import '../models/brush_group_id.dart';
 import '../models/brush_input_source.dart';
+import '../models/brush_mixing_method.dart';
 import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
 import '../models/brush_pressure_curve.dart';
@@ -567,6 +568,30 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       },
     ),
   ),
+  // 🗣️THE ROUGH EDGE IS A PENCIL (F-462, 유저 2026-10-25: 「거친 가장자리는
+  // 연필로서 연필그룹에 등록. 이름은 알아서. 거친연필? 이거는 참고로 후술할
+  // 연필개편에 포함되지않음」) — the Texture group's Rough Edge, moved here
+  // under a pencil's name and left as it drew: the pencil rework that
+  // follows does not touch it. The id stays, as the rounds' did (F-218).
+  BrushPreset(
+    id: const BrushPresetId('builtin-rough-edge'),
+    name: 'Rough Pencil',
+    groupId: _pencilGroup,
+    settings: BrushSettings(
+      size: 22,
+      hardness: 0.9,
+      flow: 1.0,
+      spacing: 0.1,
+      tips: [chalkBrushTipMask],
+      // The EDGE is what varies, not the fill: roundness jitter chews the
+      // silhouette while the dual grain keeps the inside from going flat.
+      curves: _randomRows(roundness: 0.45),
+      angleJitter: 0.5,
+      dualMask: grainBrushTipMask,
+      dualMaskScale: 0.5,
+      dualDensity: 0.6,
+    ),
+  ),
 
   // ---- Pen -------------------------------------------------------------
   BrushPreset(
@@ -1123,6 +1148,27 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       sizePressureCurve: BrushPressureCurve.linearFrom(0.5),
     ),
   ),
+  // 🗣️I-75 (유저 2026-10-27, Q1 「섞기 그룹에 「흐리기」」): the blur, as a
+  // setting of mixing rather than a tool. How far it smears is its size and
+  // how hard it rubs its flow and the pen's pressure (Q3) — so pressure
+  // drives the flow here.
+  // At the finest step, as every general brush lays (the roster's law): a
+  // blur dab costs far more than a paint dab, and that is the kernel's to
+  // answer, not the step's (⛔해상도로 속도를 사지 않는다).
+  BrushPreset(
+    id: const BrushPresetId('builtin-blur'),
+    name: 'Blur',
+    groupId: _blendGroup,
+    settings: BrushSettings(
+      size: 40,
+      hardness: 0.3,
+      flow: 0.3,
+      spacing: BrushShape.minSpacing,
+      mixesGroundColor: true,
+      mixingMethod: BrushMixingMethod.blur,
+      flowPressureCurve: BrushPressureCurve.identity(),
+    ),
+  ),
 
   // ---- Texture ---------------------------------------------------------
   BrushPreset(
@@ -1183,52 +1229,11 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       opacityPressureCurve: BrushPressureCurve.identity(),
     ),
   ),
-  // 🚨HATCHING IS THE BRISTLE TIP HELD AT A FIXED ANGLE, and that is the
-  // whole brush: parallel lines that stay parallel however the hand turns,
-  // which is what a hatching pass is. ⛔`rotationMode.direction` would defeat
-  // it — the lines would follow the stroke and never cross.
-  //
-  // 🗣️ITS MARKS PART AT HALF ITS SIZE (the-gouache-is-a-round-with-a-weave-
-  // Q4, 유저 2026-10-24: 「털 팁 그대로, 간격만 벌림」). At 6% the bristles'
-  // marks filled each other in and the brush drew a plain thick line. The
-  // cost was said with the choice: the lines come in short, soft pieces — a
-  // mass of hatch marks more than long parallels. ⛔A canvas-fixed line
-  // texture was the other choice, and not taken.
-  BrushPreset(
-    id: const BrushPresetId('builtin-hatching'),
-    name: 'Hatching',
-    groupId: _textureGroup,
-    settings: BrushSettings(
-      size: 16,
-      hardness: 1.0,
-      flow: 0.9749,
-      spacing: 0.5,
-      tips: [bristleBrushTipMask],
-      rotationMode: BrushTipRotationMode.fixed,
-      angleDegrees: 45,
-      roundness: 0.7,
-      curves: _randomRows(opacity: 0.15),
-    ),
-  ),
-  BrushPreset(
-    id: const BrushPresetId('builtin-rough-edge'),
-    name: 'Rough Edge',
-    groupId: _textureGroup,
-    settings: BrushSettings(
-      size: 22,
-      hardness: 0.9,
-      flow: 1.0,
-      spacing: 0.1,
-      tips: [chalkBrushTipMask],
-      // The EDGE is what varies, not the fill: roundness jitter chews the
-      // silhouette while the dual grain keeps the inside from going flat.
-      curves: _randomRows(roundness: 0.45),
-      angleJitter: 0.5,
-      dualMask: grainBrushTipMask,
-      dualMaskScale: 0.5,
-      dualDensity: 0.6,
-    ),
-  ),
+  // ↩️HATCHING WENT (F-462, 유저 2026-10-25: 「좋은것들은 좋은데 안좋은건 고쳐도
+  // 안좋으니 정리. 우선 텍스처의 해칭 삭제」): the bristle tip held at 45°,
+  // its marks parted at half its size after the-gouache-is-a-round-with-a-
+  // weave-Q4 (10-24) — short soft pieces, never the long parallels a
+  // hatching pass is. The Rough Edge beside it went to the pencils.
   BrushPreset(
     id: const BrushPresetId('builtin-concrete'),
     name: 'Concrete',

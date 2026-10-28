@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/audio_sync_settings.dart';
 import 'package:anicel/src/models/timeline_coverage.dart' show drawingBlocks;
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
@@ -34,6 +35,8 @@ void main() {
       ),
       log: (_) {},
     ),
+  )..appSettings.setAudioSyncSettings(
+    const AudioSyncSettings(microphoneAllowed: true),
   );
 
   AudioRecording takeOfSeconds(double seconds) {

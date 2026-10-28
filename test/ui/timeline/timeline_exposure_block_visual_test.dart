@@ -23,10 +23,6 @@ void main() {
       segment(current: TimelineCellExposureState.uncovered).isBlock,
       isFalse,
     );
-    expect(
-      segment(current: TimelineCellExposureState.markUncovered).isBlock,
-      isFalse,
-    );
   });
 
   test('a single-frame drawing rounds on both sides', () {
@@ -56,7 +52,7 @@ void main() {
   test('marks inside a hold continue the block visual', () {
     final result = segment(
       previous: TimelineCellExposureState.held,
-      current: TimelineCellExposureState.markHeld,
+      current: TimelineCellExposureState.markTwoHeld,
       next: TimelineCellExposureState.held,
     );
 

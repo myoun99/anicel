@@ -36,8 +36,10 @@ import '../../helpers/cels_parked_cold.dart';
 
 /// 🗣️유저 2026-10-13 (card video-export-speed-Q2): 「캔버스 규칙으로」 — a
 /// film is drawn as the canvas draws: each cut through its camera at the
-/// film's size, reduced by the display's halvings (`displayLevelOf`), cut
-/// at its canvas's edge, and laid on its stage as playback lays it.
+/// film's size, reduced as the canvas reduces — each row from its own mip
+/// chain (`filterQualityForDisplayScale`) — cut at its canvas's edge, and
+/// laid on its stage as playback lays it. ↩️Reduced by the display's
+/// halvings (`displayLevelOf`), until one-picture-per-frame ②-5b-3.
 ///
 /// ↩️A film's cut was composited at the canvas's full size and projected
 /// through the camera in one bilinear draw. 🔬On a grid of lines a pixel
@@ -232,13 +234,20 @@ void main() {
         'doubled', (tester) async {
       await tester.runAsync(() async {
         final (:video, still: _, panel: _) = await routes(0.42);
-        // The film's second row crosses the down lines alone: canvas rows
-        // 49.8–52.2, between the lines across at 45 and 54.
+        // The film's second row: canvas rows 49.8–52.2, between the lines
+        // across at 45 and 54.
         const y = 1;
         // A line at canvas column x lies at film column
         // 24 + (x + 0.5 − 121.3) × 0.42; it covers 0.42 of a film pixel,
         // so it darkens the white by 0.42 × (255 − 0x14) ≈ 99 all told —
-        // over the two pixels whose centres stand either side of it.
+        // most of it over the two pixels whose centres stand either side
+        // of it. Lost between the samples it was ~0 there, doubled ~198:
+        // each line holds within half of its own. 🔬Read from its chain
+        // (one-picture-per-frame ②-5b-3) the two hold 71–127 (2026-10-25):
+        // a level's texel is wider than a film pixel, so a line spreads a
+        // little past the two, and the line across at 54 reaches row 1.
+        // ↩️Within a quarter (75–125) while each row was halved, a 2×2 box
+        // a time, and only the rest of the reduction filtered.
         var lines = 0;
         for (var x = 0; x < canvas.width; x += 7) {
           final at = 24 + (x + 0.5 - 121.3) * 0.42;
@@ -253,7 +262,7 @@ void main() {
           }
           expect(
             ink,
-            inInclusiveRange(75, 125),
+            inInclusiveRange(50, 148),
             reason: 'the line at canvas column $x, at film column $at',
           );
         }
@@ -349,13 +358,13 @@ void main() {
   });
 
   // 🗣️playback-picture-is-not-the-canvas-picture (유저 10-13: 「배율따라서
-  // 끝에 흰 선」): the canvas's edge, where rows reduced to a level end in a
-  // pixel they cover in part, is drawn as the canvas draws it — the paper
-  // laid with the rows, one level pixel in, and the cut out past every
-  // pixel they cover.
+  // 끝에 흰 선」): the canvas's edge, where rows reduced end in a pixel they
+  // cover in part, is drawn as the canvas draws it — no paper past the ink
+  // there (the paper yields that output pixel to the rows, #15), and the
+  // cut out past every pixel they cover. ↩️The paper yielded a level pixel
+  // to rows reduced to a level, until one-picture-per-frame ②-5b-3.
   group('at the canvas\'s edge', () {
-    // No whole number of tiles; its edges fall inside the film's pixels, and
-    // at a quarter its foot inside a level pixel too (38 = 9½ × 4).
+    // No whole number of tiles; its edges fall inside the film's pixels.
     const canvas = CanvasSize(width: 60, height: 38);
     const cutId = CutId('cut');
     const blue = 0xFF0000FF;
@@ -456,8 +465,8 @@ void main() {
       });
 
       testWidgets('🎯through a camera at $where, the cut takes nothing of a '
-          'pixel the rows cover in part: a picture of the sequence is the '
-          'panel\'s picture, which is cut nowhere', (tester) async {
+          'pixel the canvas covers in part: there a picture of the sequence '
+          'is the panel\'s picture, which is cut nowhere', (tester) async {
         await tester.runAsync(() async {
           final (s, renderer) = filmAt(pose);
           final cut = s.requireActiveCut;
@@ -473,19 +482,39 @@ void main() {
             inExclusiveRange(0x10, 0xFF),
             reason: 'LIVENESS: the edge falls inside a pixel',
           );
-          expect(
-            still,
-            await bytesOf(
-              await renderer.renderPicture(cut, 0, width: canvas.width),
-            ),
+          final panel = await bytesOf(
+            await renderer.renderPicture(cut, 0, width: canvas.width),
           );
+          // The film's pixels the canvas covers, whole or in part: the
+          // frame's centre at (30, 19), the canvas `zoom` a canvas pixel.
+          final z = pose.zoom;
+          final left = (30 - pose.center.x * z).floor();
+          final right = (30 + (canvas.width - pose.center.x) * z).ceil();
+          final top = (19 - pose.center.y * z).floor();
+          final bottom = (19 + (canvas.height - pose.center.y) * z).ceil();
+          final apart = <String>[
+            for (var y = top; y < bottom; y += 1)
+              for (var x = left; x < right; x += 1)
+                if (pixelOf(still, canvas.width, x, y) !=
+                    pixelOf(panel, canvas.width, x, y))
+                  '($x, $y): ${pixelOf(still, canvas.width, x, y)} → '
+                      '${pixelOf(panel, canvas.width, x, y)}',
+          ];
+          // ↩️Compared whole while each row was halved: a level's pixel
+          // ended on the grid the cut went out to. Read from its chain, a
+          // row spreads its edge a level's texel past the canvas — onto
+          // the pasteboard the film does not show (「페이스트보드는 포함
+          // 안 시킴」), and cut there as playback's shot cuts it
+          // (`ShotClip`), until one-picture-per-frame ②-5b-3.
+          expect(apart, isEmpty);
         });
       });
     }
 
-    testWidgets('🎯where nothing is drawn over it, the paper\'s edge is cut '
-        'as a level buffer cuts its own under a reduced resample: '
-        'anti-aliased', (tester) async {
+    testWidgets('🎯where nothing is drawn over it, the paper\'s edge — an '
+        'output pixel in, where it yields to the rows — is anti-aliased', (
+      tester,
+    ) async {
       await tester.runAsync(() async {
         final (s, renderer) = filmAt(
           CameraPose(center: CanvasPoint(x: 30.3, y: 19.7), zoom: 0.4),
@@ -496,8 +525,9 @@ void main() {
             ExportFrameTask(cut: s.requireActiveCut, frameIndex: 0),
           ], ExportSizeMode.camera).frame(0),
         );
-        // The paper's foot a level pixel up from the canvas's, at canvas
-        // row 36: film row 19 + (36 − 19.7) × 0.4 = 25.52.
+        // The paper's foot an output pixel — 2.5 canvas pixels — up from
+        // the canvas's, at canvas row 35.5: film row
+        // 19 + (35.5 − 19.7) × 0.4 = 25.32.
         expect(
           pixelOf(film, canvas.width, 30, 24),
           (255, 255, 255, 255),
@@ -508,10 +538,10 @@ void main() {
       });
     });
 
-    testWidgets('🎯a canvas too small to give a level pixel up keeps its '
+    testWidgets('🎯a canvas too small to give an output pixel up keeps its '
         'paper whole — it does not vanish', (tester) async {
       await tester.runAsync(() async {
-        // At a quarter, two film pixels a side: a level pixel in from each
+        // At a quarter, two film pixels a side: an output pixel in from each
         // edge leaves nothing.
         const small = CanvasSize(width: 8, height: 8);
         final (s, renderer) = filmAt(

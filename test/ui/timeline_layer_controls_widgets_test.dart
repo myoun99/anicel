@@ -37,7 +37,7 @@ void main() {
         'legend-mark',
         'legend-kind',
         'legend-layer',
-        'legend-fill-ref',
+        'legend-clip',
         'legend-fx',
         'legend-eye',
         'legend-opacity',
@@ -284,7 +284,7 @@ void main() {
         ),
       );
 
-      expect(find.railTooltip('Remove from timesheet'), findsOneWidget);
+      expect(find.tooltipSaying('Remove from timesheet'), findsOneWidget);
 
       await tester.tap(
         find.named('timeline-layer-timesheet-${layer.id}'),
@@ -300,8 +300,8 @@ void main() {
 
       await tester.pumpWidget(_row(layer: layer));
 
-      expect(find.railTooltip('Add to timesheet'), findsOneWidget);
-      expect(find.railTooltip('Remove from timesheet'), findsNothing);
+      expect(find.tooltipSaying('Add to timesheet'), findsOneWidget);
+      expect(find.tooltipSaying('Remove from timesheet'), findsNothing);
     });
 
     testWidgets('selecting a mark from the chip popup reports it', (
@@ -351,7 +351,7 @@ void main() {
       // The rail's plate face ([RailFlyoutTrigger]), which opens the shared
       // list as [PanelFlyoutTrigger] does — the row height below says it is
       // that list. ↩️It was a [PanelFlyoutTrigger] of its own (I-57 ①).
-      expect(tester.widget(chip), isA<RailPlateFace>());
+      expect(tester.widget(chip), isA<RailPlateButton>());
 
       await tester.tap(chip);
       await tester.pumpAndSettle();
@@ -413,7 +413,7 @@ void main() {
         find.named('timeline-layer-fx-${layer.id}');
 
     TextStyle glyphStyle(WidgetTester tester, Layer layer) {
-      final glyph = tester.widget<RailGlyphFace>(fxButton(layer)).glyph;
+      final glyph = tester.widget<RailGlyphButton>(fxButton(layer)).glyph;
       expect(glyph, isA<RailTextGlyph>().having((g) => g.text, 'text', 'fx'));
       return (glyph as RailTextGlyph).style;
     }

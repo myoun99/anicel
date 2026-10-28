@@ -19,7 +19,6 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -33,10 +32,16 @@ import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/camera_shot.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
+import 'package:anicel/src/ui/playback/frame_picture_store.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
+import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 import 'package:anicel/src/models/composite_tree.dart';
+
+import '../../helpers/settle_async.dart';
 
 /// 🚨★★★ SCRUB ↔ STILL PARITY (device report B2, 2026-08-17).
 ///
@@ -181,28 +186,55 @@ void main() {
     return blended;
   }
 
-  /// The EDITING route: the layer stack view's painter, pumped so the
-  /// MediaQuery DPR reaches it exactly as the panel wires it.
+  /// The frames' pictures a screen shows, read from [store]'s cels, in a
+  /// store of their own.
+  StackRun picturesOf(BrushFrameStore store) {
+    final images = LayerFrameImageCache(frameStore: store);
+    addTearDown(images.dispose);
+    final pictures = FramePictureStore<FramePictureKey>();
+    addTearDown(pictures.dispose);
+    final landings = ValueNotifier<int>(0);
+    addTearDown(landings.dispose);
+    return (
+      landings: landings,
+      pictures: FramePictures(
+        store: pictures,
+        layerImages: images,
+        stackOf: (_) => const [],
+        pageOf: (picture) => (
+          canvasSize: picture.cut.canvasSize,
+          pasteboardReach: PasteboardReach.whole,
+          paintPaper: picture.paintPaper,
+          paperBackground: background,
+        ),
+      ),
+    );
+  }
+
+  /// The EDITING route: the frame's one picture as the canvas shows it,
+  /// pumped so the MediaQuery DPR reaches its painter exactly as the panel
+  /// wires it.
   ///
-  /// 🚨The layer image must be warmed under [WidgetTester.runAsync] BEFORE
-  /// the pump: its build crosses real async (tile decode), which never
-  /// lands under the fake clock — a paper-only render would pass any law
-  /// about how the ink is sampled, which is why each use asks [hasInk].
+  /// 🚨The picture must LAND before the painter is looked at: it is made
+  /// across real async (a raster), which never lands under the fake clock —
+  /// a paper-only render would pass any law about how the ink is sampled,
+  /// which is why each use asks [hasInk].
   Future<CustomPainter> editingPainter(
     WidgetTester tester, {
     required BrushFrameStore store,
     required CanvasViewport viewport,
     required Size logicalSize,
   }) async {
-    final images = LayerFrameImageCache(frameStore: store);
-    await tester.runAsync(
-      () => images.prepare(
-        key: frameKey(cut(), layerId, frameId),
-        canvasSize: canvasSize,
-        quality: PlaybackQuality.full,
-        sourceEffects: const [],
+    final run = picturesOf(store);
+    final nodes = [
+      CompositeLeaf<CanvasStackRow>(
+        CanvasLayerImageRequest(
+          frameKey: frameKey(cut(), layerId, frameId),
+          opacity: 1,
+        ),
       ),
-    );
+    ];
+    final picture = (cut: cut(), frameIndex: 0, paintPaper: true);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -210,33 +242,32 @@ void main() {
             child: SizedBox(
               width: logicalSize.width,
               height: logicalSize.height,
-              child: CanvasLayerStackView(
-                nodes: [
-                  CompositeLeaf<CanvasStackRow>(
-                    CanvasLayerImageRequest(
-                      frameKey: frameKey(cut(), layerId, frameId),
-                      opacity: 1,
-                    ),
-                  ),
-                ],
-                imageCache: images,
-                canvasSize: canvasSize,
+              child: FramePictureView(
+                run: run,
+                picture: picture,
+                nodes: nodes,
                 viewport: viewport,
-                paintPaper: true,
-                paperBackground: background,
+                laysWhatItMisses: true,
               ),
             ),
           ),
         ),
       ),
     );
-    // Warm first, then look — the image cache resolves rows on a later
-    // pass (single_buffer_render_parity_test's trap).
-    await tester.pumpAndSettle();
+    final made = run.pictures.keyOfStack(nodes, picture);
+    expect(
+      await settleAsync(
+        tester,
+        () => run.pictures.store.bytesOf(made) != null,
+      ),
+      isTrue,
+      reason: 'LIVENESS: the frame\'s picture is made',
+    );
+    await lendBothClocks(tester, rounds: 2);
     final painted = tester
         .widgetList<CustomPaint>(
           find.descendant(
-            of: find.byType(CanvasLayerStackView),
+            of: find.byType(FramePictureView),
             matching: find.byType(CustomPaint),
           ),
         )
@@ -296,8 +327,6 @@ void main() {
       tester.view.devicePixelRatio = 1.5;
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      final images = LayerFrameImageCache(frameStore: BrushFrameStore());
-      addTearDown(images.dispose);
       final project = Project(
         id: projectId,
         name: 'Project',
@@ -319,7 +348,7 @@ void main() {
                 globalFrameIndex: globalFrame,
               ),
               stackOf: (_, _) => const [],
-              imageCache: images,
+              pictures: picturesOf(BrushFrameStore()),
               cameraFrameSize: canvasSize,
               cameraViewEnabled: false,
               cameraPoseOf: (cut, frameIndex) =>
@@ -339,8 +368,9 @@ void main() {
             matching: find.byType(CustomPaint),
           ),
         ))
-          // The cut's own stack paints its rows itself, at the ratio it
-          // reads from the view; these are its stage and what lies over it.
+          // The cut's picture is painted at the ratio it reads from the
+          // view ([FramePictureView]); these are its stage and what lies
+          // over it.
           if (paint.painter case final PlaybackFramePainter painter) painter,
       ];
       expect(painters, isNotEmpty);

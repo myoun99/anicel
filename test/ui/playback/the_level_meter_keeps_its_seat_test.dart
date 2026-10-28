@@ -140,8 +140,9 @@ void main() {
 
   testWidgets('🚨a playing meter lays out and paints its bars alone — the '
       'strip it stands in is not painted again', (tester) async {
-    // As a panel's tab strip carries the transport: both rows, and the
-    // tabs beside them, on the strip's own tick layer.
+    // As the layer the transport stands on carries it — the tab strip's
+    // until F-111, its panel's bar's since: both rows, and what stands
+    // beside them, on that layer.
     final controller = newController();
     var heard = 0;
     final beside = _Counting();

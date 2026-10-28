@@ -5,7 +5,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/storyboard_coverage.dart';
 import '../../models/track_transitions.dart' show cutTransitionHandlesIn;
-import '../../services/commands/update_layer_fill_reference_command.dart';
+import '../../services/commands/update_layer_clip_command.dart';
 import '../../services/commands/update_layer_timesheet_command.dart';
 import '../../services/project_lookup.dart'
     show layerAnywhereOrNull, requireLayerAnywhere, rowTwirlsOf;
@@ -160,6 +160,25 @@ class LayerSwitchVerbs {
           ?.lanesExpanded ??
       false;
 
+  /// Whether [layerId]'s group fold is open right now — a folder's members
+  /// or the attach rows riding a base, the row's own `collapsed` (F-360);
+  /// open where no row is. A LIVE read, as [isLayerLanesOpen] is: the
+  /// column sweep spreads what its press just set (F-475).
+  bool isGroupFoldOpen(LayerId layerId) =>
+      !(layerAnywhereOrNull(_project.repository.requireProject(), layerId)
+              ?.collapsed ??
+          false);
+
+  /// Whether the lane group [headerLaneId] heads is twirled open inside
+  /// [layerId]'s lanes right now — the row's own (F-360), a V row's its
+  /// track's ([rowTwirlsOf]). A LIVE read, as [isLayerLanesOpen] is.
+  bool isLaneGroupOpen(LayerId layerId, String headerLaneId) =>
+      rowTwirlsOf(
+        _project.repository.requireProject(),
+        layerId,
+      )?.expandedLaneGroups.contains(headerLaneId) ??
+      false;
+
   /// Whether [layerId]'s own eye is on RIGHT NOW.
   ///
   /// 🚨A LIVE READ, for the same reason as [isLayerOnTimesheet]: a caller
@@ -197,15 +216,20 @@ class LayerSwitchVerbs {
     _changes.notifyChanged();
   }
 
-  /// Flips the layer's FILL-reference flag (R20-C2, the CSP lighthouse) —
-  /// what a fill then reads is its reference source's answer (I-36). One
-  /// undo step; the display composite never changes.
-  void toggleLayerFillReference(LayerId layerId) {
+  /// Whether [layerId] clips to the layer below RIGHT NOW — a LIVE read, for
+  /// the same reason as [isLayerOnTimesheet]: the clip column's sweep spreads
+  /// what its press just set (F-475).
+  bool isLayerClipping(LayerId layerId) => _rowAnywhere(layerId).clipsToBelow;
+
+  /// Flips the layer's clip to the layer below (I-92) — one undo step.
+  /// ↩️It was the fill's reference flag (R20-C2), which the display
+  /// composite never read.
+  void toggleLayerClip(LayerId layerId) {
     final layer = _project.layers.firstWhere((layer) => layer.id == layerId);
-    _project.cutCommandCoordinator.setLayerFillReference(
+    _project.cutCommandCoordinator.setLayerClip(
       cutId: _project.requireActiveCut.id,
       layerId: layerId,
-      isFillReference: !layer.isFillReference,
+      clipsToBelow: !layer.clipsToBelow,
     );
     _changes.notifyChanged();
   }
@@ -215,7 +239,7 @@ class LayerSwitchVerbs {
   // One legend-flyout action sweeps every eligible layer of the active cut.
   // Semantics mirror the per-row toggles — and since 2026-08-29 that means
   // UNDOABLE for all of them (유저: 「눈을 껏다키든 뭐든 다 언두」). Every
-  // bulk action lands as ONE entry, the way sheet/mark/fill-reference
+  // bulk action lands as ONE entry, the way sheet/mark/clip
   // already did.
 
   /// Turns the timesheet flag on/off for every eligible layer — one undo.
@@ -254,19 +278,19 @@ class LayerSwitchVerbs {
     }
   }
 
-  /// Drops the fill-reference flag from every layer — one undo (cut-owned
+  /// Releases every layer's clip — one undo (cut-owned
   /// layers, like the sheet sweep).
-  void clearAllFillReferences() {
+  void clearAllClips() {
     final swept = sweepActiveCutRows(
       project: _project,
-      description: 'Clear all fill references',
+      description: 'Release all clipping',
       rows: (cut) => cut.layers,
-      commandFor: (cut, layer) => layer.isFillReference
-          ? UpdateLayerFillReferenceCommand(
+      commandFor: (cut, layer) => layer.clipsToBelow
+          ? UpdateLayerClipCommand(
               repository: _project.repository,
               cutId: cut.id,
               layerId: layer.id,
-              isFillReference: false,
+              clipsToBelow: false,
             )
           : null,
     );

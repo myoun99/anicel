@@ -9,10 +9,12 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/panels/editor_dock_host.dart';
 import 'package:anicel/src/ui/panels/editor_panel_layout.dart';
 import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
+import 'package:anicel/src/ui/session/tab_rail_wiring.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_window.dart';
+import 'package:anicel/src/ui/playback/playback_transport_controls.dart';
 import 'package:anicel/src/ui/timeline/timeline_command_bar.dart';
 import 'package:anicel/src/ui/widgets/command_pill.dart' show CommandPill;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
@@ -87,6 +89,7 @@ void main() {
     onPixelsPerFrameChanged: (_) {},
     showSeconds: false,
     onShowSecondsChanged: (_) {},
+    rail: TabRailWiring.of(session),
   );
 
   Widget xsheet(EditorSessionManager session) =>
@@ -99,6 +102,7 @@ void main() {
     showSeconds: false,
     onShowSecondsChanged: (_) {},
     thumbnails: null,
+    rail: TabRailWiring.of(session),
   );
 
   Rect rectOf(WidgetTester tester, String key) =>
@@ -159,14 +163,20 @@ void main() {
   group('the two bars are the same bar', () {
     testWidgets('⑫ the first pill starts the same distance in on both '
         'panels', (tester) async {
-      Future<double> inset(
+      /// How far in the transport and the first pill stand.
+      Future<(double, double)> inset(
         Widget Function(EditorSessionManager session) build,
       ) async {
         await pumpAt(tester, build, height: 600);
         final bar = tester.getRect(find.byType(TimelineCommandBar));
-        // The cut pill is the first thing on either bar.
+        // The cut pill is the first pill on either bar, after the transport
+        // (F-491). ↩️It was the first thing on the bar from F-463, and the
+        // first after the transport before that (F-111).
+        final transport = tester.getRect(
+          find.byType(PlaybackTransportControls),
+        );
         final pill = tester.getRect(find.byType(CommandPill).first);
-        return pill.left - bar.left;
+        return (transport.left - bar.left, pill.left - transport.right);
       }
 
       final timelineInset = await inset(timeline);
@@ -178,10 +188,15 @@ void main() {
         reason: 'the storyboard paid the leading inset twice — its own row '
             'padded what the toolbar had already padded',
       );
+      // The bar's gap between its pieces, and its inset.
+      const gap = 8.0;
       expect(
         timelineInset,
-        TimelineCommandBar.padding.left + TimelineCommandBar.leadingInset,
-        reason: 'and the inset is the BAR\'s, so it is these two numbers',
+        (
+          TimelineCommandBar.padding.left,
+          gap + TimelineCommandBar.leadingInset,
+        ),
+        reason: 'and the inset is the BAR\'s, so it is this number',
       );
     });
 

@@ -16,8 +16,6 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
-import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/timeline/lane_graph.dart' show LaneGraph;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
@@ -30,6 +28,7 @@ import 'package:anicel/src/ui/widgets/dock_edge_splitter.dart'
     show DockEdgeSplitter;
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/timeline_host.dart';
 
 /// **I-89 ③ — a header graph is pulled to its height.**
 ///
@@ -383,30 +382,20 @@ Future<void> _tap(WidgetTester tester, String name) async {
   await tester.pumpAndSettle();
 }
 
-/// [tall]: a surface twice as tall, the dock at its cap of half of it —
-/// the sheet stands the rail up as its header. [under], [over]: that many
-/// layers' rows under the drawing's, and over it.
+/// The timeline tab alone ([pumpTimelineHost]), as the app's window of
+/// 1400 × 1200 laid it — the graph is the panel's. [tall]: as one twice as
+/// tall did — the sheet stands the rail up as its header. [under], [over]:
+/// that many layers' rows under the drawing's, and over it.
 Future<EditorSessionManager> _pump(
   WidgetTester tester, {
   bool tall = false,
   int under = 0,
   int over = 0,
-}) async {
-  await tester.binding.setSurfaceSize(Size(1400, tall ? 2400 : 1200));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
-  await tester.pumpWidget(
-    MaterialApp(
-      home: HomePage(initialProject: _project(under: under, over: over)),
-    ),
-  );
-  await tester.pumpAndSettle();
-  await tester.drag(
-    find.byKey(const ValueKey<String>('dock-resize-bottom')),
-    Offset(0, tall ? -1200 : -520),
-  );
-  await tester.pumpAndSettle();
-  return tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
-}
+}) => pumpTimelineHost(
+  tester,
+  _project(under: under, over: over),
+  surface: Size(870, tall ? 610 : 546),
+);
 
 /// How tall one of the timeline's rows stands — the drawing's Position
 /// lane's.

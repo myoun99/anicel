@@ -32,7 +32,7 @@ LayerLegendCallbacks sessionLegendCallbacks(
   onClearMarkFilter: () => onSetRowFilter?.call(
     rowFilter.copyWith(markColors: const <LayerMark>{}),
   ),
-  onClearAllFillReferences: session.layerSwitches.clearAllFillReferences,
+  onClearAllClips: session.layerSwitches.clearAllClips,
   onBypassAllFx: () => session.effectsAndFx.setAllLayersFxBypassed(true),
   onEnableAllFx: () => session.effectsAndFx.setAllLayersFxBypassed(false),
   onToggleMarkFilter: (mark) =>
@@ -44,8 +44,8 @@ LayerLegendCallbacks sessionLegendCallbacks(
   ),
   onToggleFxOnlyFilter: () =>
       onSetRowFilter?.call(rowFilter.copyWith(fxOnly: !rowFilter.fxOnly)),
-  onToggleFillReferenceOnlyFilter: () => onSetRowFilter?.call(
-    rowFilter.copyWith(fillReferenceOnly: !rowFilter.fillReferenceOnly),
+  onToggleClippedOnlyFilter: () => onSetRowFilter?.call(
+    rowFilter.copyWith(clippedOnly: !rowFilter.clippedOnly),
   ),
   onPreviewLayersOpacity: session.opacityVerbs.previewLayersOpacity,
   onCommitLayersOpacity: session.opacityVerbs.commitLayersOpacity,

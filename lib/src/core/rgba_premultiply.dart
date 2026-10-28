@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 /// Premultiplies straight RGBA bytes IN PLACE — the same mul-div-255
@@ -50,6 +51,35 @@ void zeroFullyClearPixels(Uint8List bytes) {
 Uint8List premultipliedRgbaCopy(Uint8List straight) {
   final bytes = Uint8List.fromList(straight);
   premultiplyRgbaInPlace(bytes);
+  return bytes;
+}
+
+/// Straight RGBA bytes that [premultiplyRgbaInPlace] turns back into
+/// exactly [premultiplied]; the source is left as it was. What a picture
+/// DRAWN from straight colours (the door's Skia road, `pictureOf`) needs of
+/// bytes that were only ever premultiplied — a timeline tile's raster.
+///
+/// ⚠️Not the colour the premultiply came from: under a low alpha many
+/// colours premultiply alike, and nothing tells which one it was. It is the
+/// one whose premultiply IS the channel, so the picture's bytes are the
+/// raster's to the last one. A channel over its alpha, which no premultiply
+/// makes, takes 255.
+Uint8List straightRgbaFor(Uint8List premultiplied) {
+  final bytes = Uint8List.fromList(premultiplied);
+  for (var offset = 0; offset < bytes.length; offset += 4) {
+    final alpha = bytes[offset + 3];
+    if (alpha == 255 || alpha == 0) {
+      continue;
+    }
+    for (var channel = offset; channel < offset + 3; channel += 1) {
+      // The rounded inverse of [mul255Round] lands on it exactly for every
+      // channel up to its alpha — pinned over all of them.
+      bytes[channel] = math.min(
+        255,
+        (bytes[channel] * 255 + alpha ~/ 2) ~/ alpha,
+      );
+    }
+  }
   return bytes;
 }
 

@@ -76,7 +76,7 @@ int _breakdownCount(Layer layer) {
     if (exposure.ghost) {
       continue;
     }
-    total += exposure.breakdownOffsets.length;
+    total += exposure.breakdownMarks.length;
   }
   return total;
 }

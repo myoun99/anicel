@@ -53,8 +53,8 @@ const kTestConfig = 'test/flutter_test_config.dart';
 /// The board card the flaky files are put on.
 const kFlakyCard = 'flaky-tests';
 
-/// The records in [machineCacheFolder]: the green files by their keys, and
-/// the flaky files by their own ids.
+/// The records in [machineCacheFolder]: the green files and the flaky files,
+/// each by the key of what it read ([ResultCache.keyFor]).
 File? greenRecord(Map<String, String> environment) =>
     _record(environment, 'test_greens.tsv');
 
@@ -283,14 +283,47 @@ bool holdsVerdictBack(
   return reds.isEmpty || !reds.every(forgiven);
 }
 
-/// Whether [file] is quarantined in the [flaky] record: kept there with
-/// its own id, and not changed since — 🗣️「고칠 때까지」, and a fix to a
-/// flaky test is a change to it.
+/// Whether [file] is quarantined in the [flaky] record: kept there under
+/// the key of everything it reads ([keys]), and none of that changed since
+/// — 🗣️「고칠 때까지」, and a fix to a flaky test is a change to something
+/// it reads.
+///
+/// ↩️It was the file's own id (card a-fixed-red-is-quarantined-as-flaky,
+/// 10-28). A fix lands in a helper or in the code under test as often as in
+/// the test, so a file once taken for flaky kept every red it went on to
+/// have from holding a verdict back, whatever changed beneath it — and the
+/// master_check reads the same record.
 bool quarantined(
   String file,
   Map<String, String> flaky,
-  Map<String, String> ids,
-) => flaky[file] != null && flaky[file] == ids[file];
+  String? Function(String file) keys,
+) => flaky[file] != null && flaky[file] == keys(file);
+
+/// [greenAgain] — files red in a run and green when run once more — told
+/// apart by whether what each reads was the same when the run began
+/// ([before]) and after the second run ([after]): the same, it is flaky;
+/// changed, or a key either side cannot give, its red stands.
+///
+/// 🗣️Q4 b is 「같은 입력으로 한 번 빨갛고 다시 돌려 초록인 테스트」 — the same
+/// inputs, measured, not assumed. 🧪2026-10-28 (card
+/// a-fixed-red-is-quarantined-as-flaky): a landing fixed a helper in the
+/// checkout while affected_tests ran there, the two reds it fixed went
+/// green on the second run, and both were quarantined as flaky — the keys
+/// had been taken when the run began and nothing measured them again.
+({Set<String> flaky, Set<String> moved}) splitGreenAgain(
+  Iterable<String> greenAgain, {
+  required String? Function(String file)? before,
+  required String? Function(String file)? after,
+}) {
+  final flaky = <String>{};
+  final moved = <String>{};
+  for (final file in greenAgain) {
+    final was = before?.call(file);
+    final same = was != null && was == after?.call(file);
+    (same ? flaky : moved).add(file);
+  }
+  return (flaky: flaky, moved: moved);
+}
 
 /// This machine's records for the checkout at [root], keyed as the
 /// checkout is now.
@@ -350,11 +383,11 @@ class ResultCache {
   void keep(List<SuiteRun> runs) =>
       updatePairs(greens, (known) => greensAfter(known, runs, keyFor));
 
-  bool isQuarantined(String file) => quarantined(file, _read(flaky), ids);
+  bool isQuarantined(String file) => quarantined(file, _read(flaky), keyFor);
 
-  /// Quarantines [files] as they are now.
+  /// Quarantines [files] under the key of what they read now.
   void quarantine(Iterable<String> files) => updatePairs(flaky, (known) => {
     ...known,
-    for (final file in files) file: ?ids[file],
+    for (final file in files) file: keyFor(file),
   });
 }

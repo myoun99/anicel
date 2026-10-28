@@ -20,6 +20,12 @@ abstract final class AppText {
   static AppStrings get strings =>
       AppStrings.of(settings.value.programLanguage);
 
+  /// The NOTATION-language table, read at call time: every word a file an
+  /// export writes carries — a Photoshop document's row names too (F-485,
+  /// 유저 2026-10-27: 「출력물 언어, 표기용 언어에 맞춤」).
+  static AppStrings get notation =>
+      AppStrings.of(settings.value.notationLanguage);
+
   /// The PROGRAM language itself — for the vocabularies that localize
   /// through their own `labelFor` (blend modes, effect kinds) instead of
   /// through a string key.
@@ -244,6 +250,7 @@ enum AppStrings {
   String get recordVoiceStopTooltip => _s('recordVoiceStopTooltip');
   String get recordMicOpenFailed => _s('recordMicOpenFailed');
   String get recordMicPermissionDenied => _s('recordMicPermissionDenied');
+  String get recordMicNotAllowed => _s('recordMicNotAllowed');
 
   // --- Capture chain (REC1-D) ---
   String get recordTakeClipped => _s('recordTakeClipped');
@@ -270,6 +277,9 @@ enum AppStrings {
   /// The RNNoise toggle (voice-only by design: dialogue ON, foley OFF).
   String get audioDenoiseLabel => _s('audioDenoiseLabel');
   String get audioInputMeterLabel => _s('audioInputMeterLabel');
+
+  /// The app's consent to the microphone (I-133).
+  String get audioMicrophoneAllowedLabel => _s('audioMicrophoneAllowedLabel');
   String get audioTestSoundLabel => _s('audioTestSoundLabel');
 
   // --- ADR cueing (REC1-E) ---
@@ -290,10 +300,6 @@ enum AppStrings {
   String get layerAudioPanHelp => _s('layerAudioPanHelp');
   String get audioMute => _s('audioMute');
   String get audioSolo => _s('audioSolo');
-
-  /// The canvas's own level, at the end of a frame panel's transport
-  /// (I-85).
-  String get playbackLevelTooltip => _s('playbackLevelTooltip');
 
   // --- The fps-change audio notice (EXPORT-AUDIO ④) ---
   /// '{from}'/'{to}' are replaced with the rate labels.
@@ -318,6 +324,7 @@ enum AppStrings {
   // --- Shared window verbs (the AppWindow action row) ---
   String get commonSave => _s('commonSave');
   String get commonDelete => _s('commonDelete');
+  String get commonAdd => _s('commonAdd');
   String get commonRename => _s('commonRename');
   String get commonLink => _s('commonLink');
   String get commonPreview => _s('commonPreview');
@@ -359,6 +366,7 @@ enum AppStrings {
   /// '{name}' is replaced with the layer name.
   String get deleteLayersMessage => _s('deleteLayersMessage');
   String get deleteLayersHeading => _s('deleteLayersHeading');
+  String get deleteEffectsHeading => _s('deleteEffectsHeading');
   String get frameNameConflictTitle => _s('frameNameConflictTitle');
 
   /// Reads right for one frame or many (I-18: 「단일 변경만 대응하는게
@@ -593,11 +601,7 @@ enum AppStrings {
   String get commonResize => _s('commonResize');
 
   // --- Input settings ---
-  String get inputPressureHeading => _s('inputPressureHeading');
-  String get inputPressureSoftHard => _s('inputPressureSoftHard');
-  String get inputPressureLinear => _s('inputPressureLinear');
-  String get inputSpeedHeading => _s('inputSpeedHeading');
-  String get inputSpeedReference => _s('inputSpeedReference');
+  String get inputPressureCurve => _s('inputPressureCurve');
   String get inputCanvasHeading => _s('inputCanvasHeading');
   String get inputRightClick => _s('inputRightClick');
   String get inputWheelClick => _s('inputWheelClick');
@@ -619,7 +623,6 @@ enum AppStrings {
   String get inputRotationLockHelp => _s('inputRotationLockHelp');
   String get inputRotationSnap => _s('inputRotationSnap');
   String get inputZoomSnaps => _s('inputZoomSnaps');
-  String get inputZoomSnapAdd => _s('inputZoomSnapAdd');
   String get inputZoomCeiling => _s('inputZoomCeiling');
   String get inputTabletHeading => _s('inputTabletHeading');
   String get inputTabletStandard => _s('inputTabletStandard');
@@ -662,6 +665,7 @@ enum AppStrings {
   String get memoryItemSheetInk => _s('memoryItemSheetInk');
   String get memoryItemUndo => _s('memoryItemUndo');
   String get memoryItemLayerImages => _s('memoryItemLayerImages');
+  String get memoryItemFramePictures => _s('memoryItemFramePictures');
   String get memoryItemBrushTips => _s('memoryItemBrushTips');
   String get memoryItemPanelRasters => _s('memoryItemPanelRasters');
   String get memoryItemViewerPages => _s('memoryItemViewerPages');
@@ -731,7 +735,6 @@ enum AppStrings {
   String get drawingCursorCrosshair => _s('drawingCursorCrosshair');
 
   // --- Accent colours ---
-  String get accent1Label => _s('accent1Label');
   String get accent1Help => _s('accent1Help');
 
   // --- Sheet format ---
@@ -800,6 +803,7 @@ enum AppStrings {
   String get instructionEventEditTitle => _s('instructionEventEditTitle');
   String get instructionEventAddTitle => _s('instructionEventAddTitle');
   String get instructionMarkLabel => _s('instructionMarkLabel');
+  String get instructionMarkNone => _s('instructionMarkNone');
   String get instructionNameLabel => _s('instructionNameLabel');
   String get instructionStartLabel => _s('instructionStartLabel');
   String get instructionEndLabel => _s('instructionEndLabel');
@@ -1373,6 +1377,8 @@ enum AppStrings {
   String get exVectorPdf => _s('exVectorPdf');
   String get exFxOn => _s('exFxOn');
   String get exFxOff => _s('exFxOff');
+  String get exFxBasic => _s('exFxBasic');
+  String get exFxBasicOnly => _s('exFxBasicOnly');
 
   /// The rails: the tab names the presets say, the render queue and its jobs,
   /// the cut grid, and why a format cannot be picked here.
@@ -1627,7 +1633,6 @@ enum AppStrings {
   String get toolCutRegisterTip => _s('toolCutRegisterTip');
   String get toolCutDeletesSource => _s('toolCutDeletesSource');
   String get toolReadSource => _s('toolReadSource');
-  String get toolReadReferences => _s('toolReadReferences');
   String get toolReadsEveryVisibleLayer => _s('toolReadsEveryVisibleLayer');
   String get brushSettingsTitle => _s('brushSettingsTitle');
   String get toolShapeRect => _s('toolShapeRect');
@@ -1657,7 +1662,7 @@ enum AppStrings {
   /// ja takes Clip Studio's names where a brush is modelled on one (Gペン ·
   /// 丸ペン · カブラペン · ミリペン), and Photoshop's for the two rounds it
   /// ships (ハード円ブラシ · ソフト円ブラシ). Names with no settled art-supply
-  /// term in a language (Grit Spray, Rough Edge, Water Blend) are rendered
+  /// term in a language (Grit Spray, Water Blend) are rendered
   /// from the English, and are the first a translator may refine.
   String builtinBrushName(String id, String fallback) =>
       _values['builtinBrush.$id'] ?? fallback;
@@ -1679,6 +1684,9 @@ enum AppStrings {
   String get brOpacity => _s('brOpacity');
   String get brFlow => _s('brFlow');
   String get brMixing => _s('brMixing');
+  String get brMixingMethod => _s('brMixingMethod');
+  String get brMixingMix => _s('brMixingMix');
+  String get brMixingBlur => _s('brMixingBlur');
   String get brPaintAmount => _s('brPaintAmount');
   String get brPaintDensity => _s('brPaintDensity');
   String get brColorStretch => _s('brColorStretch');
@@ -1848,7 +1856,7 @@ enum AppStrings {
   String get tlHideAll => _s('tlHideAll');
   String get tlSoloKind => _s('tlSoloKind');
   String get tlSoloColor => _s('tlSoloColor');
-  String get tlSoloFillReferences => _s('tlSoloFillReferences');
+  String get tlSoloClips => _s('tlSoloClips');
   String get tlSoloFxOnRows => _s('tlSoloFxOnRows');
   String get tlSoloSheetOnRows => _s('tlSoloSheetOnRows');
   String get tlApplyAllFx => _s('tlApplyAllFx');
@@ -1856,7 +1864,7 @@ enum AppStrings {
   String get tlAllOnTimesheet => _s('tlAllOnTimesheet');
   String get tlAllOffTimesheet => _s('tlAllOffTimesheet');
   String get tlClearMarkFilter => _s('tlClearMarkFilter');
-  String get tlClearAllFillRefs => _s('tlClearAllFillRefs');
+  String get tlClearAllClips => _s('tlClearAllClips');
   String get tlColVisibility => _s('tlColVisibility');
   String get tlColLayerKind => _s('tlColLayerKind');
   String get tlColOnionSkin => _s('tlColOnionSkin');
@@ -1864,7 +1872,7 @@ enum AppStrings {
   String get tlColBlendMode => _s('tlColBlendMode');
   String get tlColFx => _s('tlColFx');
   String get tlColMark => _s('tlColMark');
-  String get tlColFillReference => _s('tlColFillReference');
+  String get tlColClip => _s('tlColClip');
   String get tlColTimesheet => _s('tlColTimesheet');
   String get tlShowXSheet => _s('tlShowXSheet');
   String get tlShowTimeline => _s('tlShowTimeline');
@@ -1909,8 +1917,8 @@ enum AppStrings {
   String get laneGraphPenOn => _s('laneGraphPenOn');
   String get laneGraphTransformBox => _s('laneGraphTransformBox');
   String get laneGraphTransformBoxOn => _s('laneGraphTransformBoxOn');
-  String get railFillReferenceOn => _s('railFillReferenceOn');
-  String get railFillReference => _s('railFillReference');
+  String get railClipOn => _s('railClipOn');
+  String get railClip => _s('railClip');
   String get tlLayerMark => _s('tlLayerMark');
 
   /// 색 라벨이 안 붙은 상태. ⚠️「수정 없음」이 아니라 라벨 자체가 없는 것 —
@@ -2001,6 +2009,8 @@ enum AppStrings {
         'Could not open the microphone — check Preferences ▸ Audio and the OS microphone permission.',
     'recordMicPermissionDenied':
         'Microphone access is off — allow it for Anicel in Settings.',
+    'recordMicNotAllowed':
+        'The microphone is not allowed — turn on Preferences ▸ Audio ▸ Allow microphone.',
     'recordTakeClipped': 'The take clipped — the red corner marks the block.',
     'recordClipMarkerTooltip': 'This take clipped (recorded too hot)',
     'tlTransitionCrossingWarning': 'Crosses the cut boundary — not applied',
@@ -2014,6 +2024,7 @@ enum AppStrings {
     'audioClippingNoticeLabel': 'Clipping warnings (toast + block marker)',
     'audioDenoiseLabel': 'Noise suppression (voice only — turn off for foley)',
     'audioInputMeterLabel': 'Input level',
+    'audioMicrophoneAllowedLabel': 'Allow microphone',
     'audioTestSoundLabel': 'Test sound',
     'audioCountInLabel': 'Count-in (seconds)',
     'audioCueBeepsLabel': 'Cue beeps (ADR 3-beep)',
@@ -2029,7 +2040,6 @@ enum AppStrings {
     'layerAudioPanHelp':
         'Pan applies on the device mixer path (equal-power law).',
     'audioMute': 'Mute',
-    'playbackLevelTooltip': 'Playback volume',
     'audioSolo': 'Solo',
     'fpsAudioTitleTemplate': '{from} → {to}: what happens to sound?',
     'fpsAudioBody':
@@ -2042,6 +2052,7 @@ enum AppStrings {
     'toolSelectionMode': 'Mode',
     'commonSave': 'Save',
     'commonDelete': 'Delete',
+    'commonAdd': 'Add',
     'commonRename': 'Rename',
     'commonLink': 'Link',
     'commonPreview': 'Preview',
@@ -2057,6 +2068,7 @@ enum AppStrings {
     'deleteLayerTitle': 'Delete layer',
     'deleteLayersMessage': 'Delete the layers below?',
     'deleteLayersHeading': 'Layers to delete',
+    'deleteEffectsHeading': 'Effects to delete',
     'frameNameConflictTitle': 'Frame name already exists',
     'frameNameConflictBody':
         'Each frame listed takes a name another frame on its layer already '
@@ -2216,11 +2228,7 @@ enum AppStrings {
     'cameraRatioFree': 'Free',
     'cameraRatioCurrent': 'Current',
     'commonResize': 'Resize',
-    'inputPressureHeading': 'Pen pressure response',
-    'inputPressureSoftHard': 'Soft ↔ Hard',
-    'inputPressureLinear': 'Linear',
-    'inputSpeedHeading': 'Pen speed response',
-    'inputSpeedReference': 'Full speed at',
+    'inputPressureCurve': 'Pen pressure response',
     'inputCanvasHeading': 'Canvas',
     'inputRightClick': 'Right click / pen side button',
     'inputWheelClick': 'Wheel click / pen upper button',
@@ -2252,7 +2260,6 @@ enum AppStrings {
         'OFF (default): it snaps the angle.',
     'inputRotationSnap': 'Rotation snap',
     'inputZoomSnaps': 'Zoom snaps (%)',
-    'inputZoomSnapAdd': 'Add zoom snap',
     'inputZoomCeiling': 'Max zoom lock (%)',
     'inputTabletHeading': 'Tablet service',
     'inputTabletStandard': 'Standard (default)',
@@ -2299,6 +2306,7 @@ enum AppStrings {
     'memoryItemSheetInk': 'Sheet handwriting',
     'memoryItemUndo': 'Undo history',
     'memoryItemLayerImages': 'Layer images',
+    'memoryItemFramePictures': 'Frame pictures',
     'memoryItemBrushTips': 'Brush tips',
     'memoryItemPanelRasters': 'Panel rasters',
     'memoryItemViewerPages': 'Viewer pages',
@@ -2382,7 +2390,6 @@ enum AppStrings {
     'drawingCursorBrush': 'Brush',
     'drawingCursorPen': 'Pen',
     'drawingCursorCrosshair': 'Crosshair',
-    'accent1Label': 'Accent 1',
     'accent1Help': 'Selection, playhead, active toggles.',
     'sheetFormatTitle': 'Sheet format',
     'sheetFieldTitle': 'Title',
@@ -2435,6 +2442,7 @@ enum AppStrings {
     'instructionEventEditTitle': 'Edit instruction',
     'instructionEventAddTitle': 'New instruction',
     'instructionMarkLabel': 'Instruction (mark)',
+    'instructionMarkNone': '(None)',
     'instructionNameLabel': 'Name (blank = instruction name)',
     'instructionStartLabel': 'Start name (A)',
     'instructionEndLabel': 'End name (B)',
@@ -2709,6 +2717,8 @@ enum AppStrings {
     'exVectorPdf': 'Vector PDF',
     'exFxOn': 'FX on',
     'exFxOff': 'FX off',
+    'exFxBasic': 'Basic FX only',
+    'exFxBasicOnly': 'Basic only',
     'exTabSequence': 'Sequence',
     'exSizeCamera': 'Camera',
     'exSizeCanvas': 'Canvas',
@@ -2856,7 +2866,6 @@ enum AppStrings {
     'toolCutRegisterTip': 'Register as Tip',
     'toolCutDeletesSource': 'Delete original',
     'toolReadSource': 'Reference',
-    'toolReadReferences': 'References',
     'toolReadsEveryVisibleLayer': 'Every visible layer',
     'brushSettingsTitle': 'Brush Settings',
     'toolShapeRect': 'Rectangle',
@@ -2889,7 +2898,10 @@ enum AppStrings {
     'brSize': 'Size',
     'brOpacity': 'Opacity',
     'brFlow': 'Flow',
-    'brMixing': 'Mix with ground colour',
+    'brMixing': 'Colour mixing',
+    'brMixingMethod': 'Method',
+    'brMixingMix': 'Mix with ground',
+    'brMixingBlur': 'Blur',
     'brPaintAmount': 'Paint amount',
     'brPaintDensity': 'Paint density',
     'brColorStretch': 'Colour stretch',
@@ -3035,7 +3047,7 @@ enum AppStrings {
     'tlHideAll': 'Hide all',
     'tlSoloKind': 'Solo kind',
     'tlSoloColor': 'Solo color',
-    'tlSoloFillReferences': 'Solo fill references',
+    'tlSoloClips': 'Solo clipped layers',
     'tlSoloFxOnRows': 'Solo fx-on rows',
     'tlSoloSheetOnRows': 'Solo sheet-on rows',
     'tlApplyAllFx': 'Apply all fx',
@@ -3043,7 +3055,7 @@ enum AppStrings {
     'tlAllOnTimesheet': 'All on timesheet',
     'tlAllOffTimesheet': 'All off timesheet',
     'tlClearMarkFilter': 'Clear mark filter',
-    'tlClearAllFillRefs': 'Clear all fill references',
+    'tlClearAllClips': 'Release all clipping',
     'tlColVisibility': 'Visibility column',
     'tlColLayerKind': 'Layer kind column',
     'tlColOnionSkin': 'Onion skin column',
@@ -3051,7 +3063,7 @@ enum AppStrings {
     'tlColBlendMode': 'Blend mode column',
     'tlColFx': 'FX column',
     'tlColMark': 'Mark column',
-    'tlColFillReference': 'Fill reference column',
+    'tlColClip': 'Clipping column',
     'tlColTimesheet': 'Timesheet column',
     'tlShowXSheet': 'Show X-sheet',
     'tlShowTimeline': 'Show timeline',
@@ -3090,8 +3102,8 @@ enum AppStrings {
     'laneGraphPenOn': 'Pen (on)',
     'laneGraphTransformBox': 'Transform box',
     'laneGraphTransformBoxOn': 'Transform box (on)',
-    'railFillReferenceOn': 'Fill reference layer (on)',
-    'railFillReference': 'Fill reference layer',
+    'railClipOn': 'Clip to layer below (on)',
+    'railClip': 'Clip to layer below',
     'tlLayerMark': 'Layer mark',
     'tlLayerMarkNone': 'No label',
     'tlLayerMarkSource': 'Material',
@@ -3251,6 +3263,7 @@ enum AppStrings {
     'recordVoiceStopTooltip': '録音を停止（テイクを配置）',
     'recordMicOpenFailed': 'マイクを開けませんでした — 環境設定▸オーディオとOSのマイク権限を確認してください。',
     'recordMicPermissionDenied': 'マイクへのアクセスがオフです — 設定でAnicelのマイクを許可してください。',
+    'recordMicNotAllowed': 'マイクが許可されていません — 環境設定▸オーディオ▸「マイクを許可」をオンにしてください。',
     'recordTakeClipped': 'テイクがクリッピングしました — ブロックの赤い角が目印です。',
     'recordClipMarkerTooltip': 'このテイクはクリッピングしています（入力過大）',
     'tlTransitionCrossingWarning': 'カット境界を越えています — 適用されません',
@@ -3264,6 +3277,7 @@ enum AppStrings {
     'audioClippingNoticeLabel': 'クリッピング警告（トースト＋ブロックマーカー）',
     'audioDenoiseLabel': 'ノイズ抑制（音声専用 — 効果音はオフに）',
     'audioInputMeterLabel': '入力レベル',
+    'audioMicrophoneAllowedLabel': 'マイクを許可',
     'audioTestSoundLabel': 'テスト音を再生',
     'audioCountInLabel': 'カウントイン（秒）',
     'audioCueBeepsLabel': 'キュービープ（ADR式3ビープ）',
@@ -3278,7 +3292,6 @@ enum AppStrings {
     'audioPanLabel': 'パン',
     'layerAudioPanHelp': 'パンはデバイスミキサー経路で適用されます（等パワー則）。',
     'audioMute': 'ミュート',
-    'playbackLevelTooltip': '再生音量',
     'audioSolo': 'ソロ',
     'fpsAudioTitleTemplate': '{from} → {to}：音はどうしますか？',
     'fpsAudioBody':
@@ -3291,6 +3304,7 @@ enum AppStrings {
     'toolSelectionMode': 'モード',
     'commonSave': '保存',
     'commonDelete': '削除',
+    'commonAdd': '追加',
     'commonRename': '名前を変更',
     'commonLink': 'リンク',
     'commonPreview': 'プレビュー',
@@ -3306,6 +3320,7 @@ enum AppStrings {
     'deleteLayerTitle': 'レイヤーの削除',
     'deleteLayersMessage': '下のレイヤーを削除しますか？',
     'deleteLayersHeading': '削除するレイヤー',
+    'deleteEffectsHeading': '削除するエフェクト',
     'frameNameConflictTitle': '同じフレーム名が既にあります',
     'frameNameConflictBody':
         '一覧のフレームには、同じレイヤーの別のフレームが既に使っている名前が付きます。'
@@ -3537,11 +3552,7 @@ enum AppStrings {
     'cameraRatioFree': '自由',
     'cameraRatioCurrent': '今の比率',
     'commonResize': 'サイズ変更',
-    'inputPressureHeading': '筆圧カーブ',
-    'inputPressureSoftHard': '柔らかい ↔ 硬い',
-    'inputPressureLinear': 'リニア',
-    'inputSpeedHeading': '速度カーブ',
-    'inputSpeedReference': '最高速度',
+    'inputPressureCurve': '筆圧カーブ',
     'inputCanvasHeading': 'カンバス',
     'inputRightClick': '右クリック / ペンのサイドボタン',
     'inputWheelClick': 'ホイールクリック / ペンの上ボタン',
@@ -3573,7 +3584,6 @@ enum AppStrings {
         'OFF（既定）：角度をスナップします。',
     'inputRotationSnap': '回転スナップ',
     'inputZoomSnaps': 'ズームスナップ（%）',
-    'inputZoomSnapAdd': 'ズームスナップを追加',
     'inputZoomCeiling': '最大ズームをロック（%）',
     'inputTabletHeading': 'タブレットサービス',
     'inputTabletStandard': '標準（既定）',
@@ -3618,6 +3628,7 @@ enum AppStrings {
     'memoryItemSheetInk': '用紙の手書き',
     'memoryItemUndo': '取り消し履歴',
     'memoryItemLayerImages': 'レイヤー画像',
+    'memoryItemFramePictures': 'フレーム画像',
     'memoryItemBrushTips': 'ブラシ先端',
     'memoryItemPanelRasters': 'パネルのラスター',
     'memoryItemViewerPages': 'ビューアのページ',
@@ -3671,7 +3682,6 @@ enum AppStrings {
     'drawingCursorBrush': 'ブラシ',
     'drawingCursorPen': 'ペン',
     'drawingCursorCrosshair': '十字',
-    'accent1Label': 'アクセント1',
     'accent1Help': '選択・再生ヘッド・オンの状態に使われます。',
     'sheetFormatTitle': 'シート書式',
     'sheetFieldTitle': 'タイトル',
@@ -3723,6 +3733,7 @@ enum AppStrings {
     'instructionEventEditTitle': '指示の編集',
     'instructionEventAddTitle': '新規指示',
     'instructionMarkLabel': '指示（記号）',
+    'instructionMarkNone': '（なし）',
     'instructionNameLabel': '名前（空欄なら記号名）',
     'instructionStartLabel': '始点名（A）',
     'instructionEndLabel': '終点名（B）',
@@ -3827,7 +3838,8 @@ enum AppStrings {
     'shortcutAction.frame-new-drawing': '新規フレーム',
     'shortcutAction.layer-add': '新規レイヤー',
     'shortcutAction.frame-blank-exposure': '空にする',
-    'shortcutAction.frame-toggle-mark': '中割りマーク',
+    'shortcutAction.frame-toggle-mark-one': '中割りマーク1',
+    'shortcutAction.frame-toggle-mark': '中割りマーク2',
     'shortcutAction.frame-mark-every': '中割りマークを自動追加',
     'shortcutAction.timeline-push-blocks': '押し出し（コマを開ける）',
     'shortcutAction.timeline-pull-blocks': '詰め（コマを詰める）',
@@ -3883,21 +3895,23 @@ enum AppStrings {
     'blendMode.saturation': '彩度',
     'blendMode.chroma': 'カラー',
     'blendMode.luminosity': '輝度',
-    'effectKind.brightnessContrast': '明るさ・コントラスト',
-    'effectKind.hueSaturation': '色相・彩度',
+    'effectKind.brightnessContrast': '輝度＆コントラスト',
+    'effectKind.hueSaturation': '色相/彩度',
     'effectKind.blur': 'ぼかし',
     'effectKind.deleteColor': '色削除',
     'effectKind.keepColor': '色残し',
-    'effectParameter.brightness': '明るさ',
+    'effectKind.celNumber': 'セル番号',
+    'effectParameter.brightness': '輝度',
     'effectParameter.contrast': 'コントラスト',
-    'effectParameter.hue': '色相',
-    'effectParameter.saturation': '彩度',
-    'effectParameter.lightness': '明度',
+    'effectParameter.hue': 'マスターの色相',
+    'effectParameter.saturation': 'マスターの彩度',
+    'effectParameter.lightness': 'マスターの明度',
     'effectParameter.blurX': 'ぼかしの幅',
     'effectParameter.blurY': 'ぼかしの高さ',
     'effectParameter.keyRed': 'キー色の赤',
     'effectParameter.keyGreen': 'キー色の緑',
     'effectParameter.keyBlue': 'キー色の青',
+    'effectParameter.ink': '色',
     'effectParameter.tolerance': '許容値',
     'effectParameter.amount': '適用量',
     'selectionMode.replace': '新規選択',
@@ -4253,6 +4267,8 @@ enum AppStrings {
     'exVectorPdf': 'ベクターPDF',
     'exFxOn': 'FXオン',
     'exFxOff': 'FXオフ',
+    'exFxBasic': 'FX基本のみ',
+    'exFxBasicOnly': '基本のみ',
     'exTabSequence': '連番',
     'exSizeCamera': 'カメラ',
     'exSizeCanvas': 'キャンバス',
@@ -4397,7 +4413,6 @@ enum AppStrings {
     'toolCutRegisterTip': '先端として登録',
     'toolCutDeletesSource': '元画像を削除',
     'toolReadSource': '参照',
-    'toolReadReferences': '塗り参照',
     'toolReadsEveryVisibleLayer': '表示中のすべてのレイヤー',
     'brushSettingsTitle': 'ブラシ設定',
     'toolShapeRect': '矩形',
@@ -4430,7 +4445,10 @@ enum AppStrings {
     'brSize': 'サイズ',
     'brOpacity': '不透明度',
     'brFlow': '流量',
-    'brMixing': '下地混色',
+    'brMixing': '混色',
+    'brMixingMethod': '方式',
+    'brMixingMix': '下地混色',
+    'brMixingBlur': 'ぼかし',
     'brPaintAmount': '絵の具量',
     'brPaintDensity': '絵の具濃度',
     'brColorStretch': '色延び',
@@ -4529,6 +4547,7 @@ enum AppStrings {
     'builtinBrush.builtin-colored-pencil': '色鉛筆',
     'builtinBrush.builtin-coloring-pencil': '塗り色鉛筆',
     'builtinBrush.builtin-shading-pencil': '寝かせ鉛筆',
+    'builtinBrush.builtin-rough-edge': 'ラフ鉛筆',
     'builtinBrush.builtin-ink-pen': 'ハード円ブラシ',
     'builtinBrush.builtin-g-pen': 'Gペン',
     'builtinBrush.builtin-maru-pen': '丸ペン',
@@ -4559,12 +4578,11 @@ enum AppStrings {
     'builtinBrush.builtin-blender': '色混ぜ',
     'builtinBrush.builtin-water-blend': '水ぼかし',
     'builtinBrush.builtin-blending-stump': '擦筆',
+    'builtinBrush.builtin-blur': 'ぼかし',
     'builtinBrush.builtin-splatter-preset': 'スパッタリング',
     'builtinBrush.builtin-stipple': '点描',
     'builtinBrush.builtin-sponge': 'スポンジ',
     'builtinBrush.builtin-cloud': '雲',
-    'builtinBrush.builtin-hatching': 'ハッチング',
-    'builtinBrush.builtin-rough-edge': '粗いエッジ',
     'builtinBrush.builtin-concrete': 'コンクリート',
     'builtinBrush.builtin-grass': '草',
     'builtinBrush.builtin-sparkle': 'キラキラ',
@@ -4671,7 +4689,7 @@ enum AppStrings {
     'tlHideAll': 'すべて隠す',
     'tlSoloKind': '種類をソロ',
     'tlSoloColor': '色をソロ',
-    'tlSoloFillReferences': '塗り参照をソロ',
+    'tlSoloClips': 'クリッピングをソロ',
     'tlSoloFxOnRows': 'FXオンの行をソロ',
     'tlSoloSheetOnRows': 'シートオンの行をソロ',
     'tlApplyAllFx': 'FXをすべて適用',
@@ -4679,7 +4697,7 @@ enum AppStrings {
     'tlAllOnTimesheet': 'すべてシートに載せる',
     'tlAllOffTimesheet': 'すべてシートから外す',
     'tlClearMarkFilter': 'マークフィルターを解除',
-    'tlClearAllFillRefs': '塗り参照をすべて解除',
+    'tlClearAllClips': 'クリッピングをすべて解除',
     'tlColVisibility': '表示列',
     'tlColLayerKind': 'レイヤー種類列',
     'tlColOnionSkin': 'オニオンスキン列',
@@ -4687,7 +4705,7 @@ enum AppStrings {
     'tlColBlendMode': '合成モード列',
     'tlColFx': 'FX列',
     'tlColMark': 'マーク列',
-    'tlColFillReference': '塗り参照列',
+    'tlColClip': 'クリッピング列',
     'tlColTimesheet': 'タイムシート列',
     'tlShowXSheet': 'Xシートで表示',
     'tlShowTimeline': 'タイムラインで表示',
@@ -4726,8 +4744,8 @@ enum AppStrings {
     'laneGraphPenOn': 'ペン（オン）',
     'laneGraphTransformBox': '変形ボックス',
     'laneGraphTransformBoxOn': '変形ボックス（オン）',
-    'railFillReferenceOn': '塗り参照レイヤー（オン）',
-    'railFillReference': '塗り参照レイヤー',
+    'railClipOn': '下のレイヤーでクリッピング（オン）',
+    'railClip': '下のレイヤーでクリッピング',
     'tlLayerMark': 'レイヤーマーク',
     'tlLayerMarkNone': 'ラベルなし',
     'tlLayerMarkSource': '上がり',
@@ -4926,6 +4944,7 @@ enum AppStrings {
     'recordVoiceStopTooltip': '녹음 정지(테이크 배치)',
     'recordMicOpenFailed': '마이크를 열 수 없습니다 — 환경설정▸오디오와 OS 마이크 권한을 확인하세요.',
     'recordMicPermissionDenied': '마이크 접근이 꺼져 있습니다 — 설정에서 Anicel의 마이크를 허용하세요.',
+    'recordMicNotAllowed': '마이크가 허용되어 있지 않습니다 — 환경설정▸오디오▸「마이크 허용」을 켜세요.',
     'recordTakeClipped': '테이크에 클리핑이 감지되었습니다 — 블록의 빨간 모서리가 표시입니다.',
     'recordClipMarkerTooltip': '이 테이크는 클리핑되었습니다(입력 과대)',
     'tlTransitionCrossingWarning': '컷 경계를 넘어 적용되지 않습니다',
@@ -4939,6 +4958,7 @@ enum AppStrings {
     'audioClippingNoticeLabel': '클리핑 주의 안내(토스트+블록 마커)',
     'audioDenoiseLabel': '잡음 제거(음성 전용 — 효과음 녹음 시 끄기)',
     'audioInputMeterLabel': '입력 레벨',
+    'audioMicrophoneAllowedLabel': '마이크 허용',
     'audioTestSoundLabel': '테스트 사운드',
     'audioCountInLabel': '카운트인(초)',
     'audioCueBeepsLabel': '큐 비프(ADR식 3비프)',
@@ -4953,7 +4973,6 @@ enum AppStrings {
     'audioPanLabel': '팬',
     'layerAudioPanHelp': '팬은 장치 믹서 경로에서 적용됩니다(등파워 법칙).',
     'audioMute': '음소거',
-    'playbackLevelTooltip': '재생 음량',
     'audioSolo': '솔로',
     'fpsAudioTitleTemplate': '{from} → {to}: 소리는 어떻게 할까요?',
     'fpsAudioBody':
@@ -4966,6 +4985,7 @@ enum AppStrings {
     'toolSelectionMode': '모드',
     'commonSave': '저장',
     'commonDelete': '삭제',
+    'commonAdd': '추가',
     'commonRename': '이름 변경',
     'commonLink': '링크',
     'commonPreview': '미리보기',
@@ -4981,6 +5001,7 @@ enum AppStrings {
     'deleteLayerTitle': '레이어 삭제',
     'deleteLayersMessage': '아래 레이어를 삭제할까요?',
     'deleteLayersHeading': '삭제할 레이어',
+    'deleteEffectsHeading': '삭제할 이펙트',
     'frameNameConflictTitle': '같은 프레임 이름이 이미 있습니다',
     'frameNameConflictBody':
         '목록의 프레임에 붙을 이름을 같은 레이어의 다른 프레임이 이미 쓰고 '
@@ -5207,11 +5228,7 @@ enum AppStrings {
     'cameraRatioFree': '자유',
     'cameraRatioCurrent': '지금 비율',
     'commonResize': '크기 변경',
-    'inputPressureHeading': '필압 곡선',
-    'inputPressureSoftHard': '부드럽게 ↔ 단단하게',
-    'inputPressureLinear': '리니어',
-    'inputSpeedHeading': '속도 곡선',
-    'inputSpeedReference': '최고 속도',
+    'inputPressureCurve': '필압 곡선',
     'inputCanvasHeading': '캔버스',
     'inputRightClick': '우클릭 / 펜 사이드 버튼',
     'inputWheelClick': '휠 클릭 / 펜 위쪽 버튼',
@@ -5241,7 +5258,6 @@ enum AppStrings {
         'OFF(기본): 각도를 스냅합니다.',
     'inputRotationSnap': '회전 스냅',
     'inputZoomSnaps': '줌 스냅 (%)',
-    'inputZoomSnapAdd': '줌 스냅 추가',
     'inputZoomCeiling': '최대 줌 잠금 (%)',
     'inputTabletHeading': '태블릿 서비스',
     'inputTabletStandard': '표준 (기본)',
@@ -5286,6 +5302,7 @@ enum AppStrings {
     'memoryItemSheetInk': '용지 손글씨',
     'memoryItemUndo': '실행취소 기록',
     'memoryItemLayerImages': '레이어 이미지',
+    'memoryItemFramePictures': '프레임 이미지',
     'memoryItemBrushTips': '브러시 팁',
     'memoryItemPanelRasters': '패널 래스터',
     'memoryItemViewerPages': '뷰어 페이지',
@@ -5339,7 +5356,6 @@ enum AppStrings {
     'drawingCursorBrush': '브러시',
     'drawingCursorPen': '펜',
     'drawingCursorCrosshair': '십자',
-    'accent1Label': '강조색 1',
     'accent1Help': '선택·플레이헤드·켜진 토글에 쓰입니다.',
     'sheetFormatTitle': '타임시트 서식',
     'sheetFieldTitle': '제목',
@@ -5391,6 +5407,7 @@ enum AppStrings {
     'instructionEventEditTitle': '지시 편집',
     'instructionEventAddTitle': '새 지시',
     'instructionMarkLabel': '지시 (기호)',
+    'instructionMarkNone': '(없음)',
     'instructionNameLabel': '이름 (비우면 기호 이름)',
     'instructionStartLabel': '시작 이름 (A)',
     'instructionEndLabel': '끝 이름 (B)',
@@ -5495,7 +5512,8 @@ enum AppStrings {
     'shortcutAction.frame-new-drawing': '새 프레임',
     'shortcutAction.layer-add': '새 레이어',
     'shortcutAction.frame-blank-exposure': '비우기',
-    'shortcutAction.frame-toggle-mark': '중간나누기 마크',
+    'shortcutAction.frame-toggle-mark-one': '중간나누기 마크1',
+    'shortcutAction.frame-toggle-mark': '중간나누기 마크2',
     'shortcutAction.frame-mark-every': '중간나누기 마크 자동 추가',
     'shortcutAction.timeline-push-blocks': '밀기(칸 열기)',
     'shortcutAction.timeline-pull-blocks': '당기기(칸 닫기)',
@@ -5551,21 +5569,23 @@ enum AppStrings {
     'blendMode.saturation': '채도',
     'blendMode.chroma': '색상',
     'blendMode.luminosity': '광도',
-    'effectKind.brightnessContrast': '밝기·대비',
-    'effectKind.hueSaturation': '색조·채도',
+    'effectKind.brightnessContrast': '명도 및 대비',
+    'effectKind.hueSaturation': '색조/채도',
     'effectKind.blur': '흐림 효과',
     'effectKind.deleteColor': '색 삭제',
     'effectKind.keepColor': '색 남기기',
-    'effectParameter.brightness': '밝기',
+    'effectKind.celNumber': '셀 번호',
+    'effectParameter.brightness': '명도',
     'effectParameter.contrast': '대비',
-    'effectParameter.hue': '색조',
-    'effectParameter.saturation': '채도',
-    'effectParameter.lightness': '명도',
+    'effectParameter.hue': '마스터 색조',
+    'effectParameter.saturation': '마스터 채도',
+    'effectParameter.lightness': '마스터 밝기',
     'effectParameter.blurX': '흐림 너비',
     'effectParameter.blurY': '흐림 높이',
     'effectParameter.keyRed': '키 색 빨강',
     'effectParameter.keyGreen': '키 색 초록',
     'effectParameter.keyBlue': '키 색 파랑',
+    'effectParameter.ink': '잉크',
     'effectParameter.tolerance': '허용차',
     'effectParameter.amount': '적용량',
     // R26 #16 — the user's own words for the four selection modes
@@ -5919,6 +5939,8 @@ enum AppStrings {
     'exVectorPdf': '벡터 PDF',
     'exFxOn': 'FX 켬',
     'exFxOff': 'FX 끔',
+    'exFxBasic': 'FX 기본만',
+    'exFxBasicOnly': '기본만 켬',
     'exTabSequence': '시퀀스',
     'exSizeCamera': '카메라',
     'exSizeCanvas': '캔버스',
@@ -6058,7 +6080,6 @@ enum AppStrings {
     'toolCutRegisterTip': '팁으로 등록',
     'toolCutDeletesSource': '원본 삭제',
     'toolReadSource': '참조',
-    'toolReadReferences': '채색 참조',
     'toolReadsEveryVisibleLayer': '보이는 레이어 전부',
     'brushSettingsTitle': '브러시 설정',
     'toolShapeRect': '사각형',
@@ -6090,7 +6111,10 @@ enum AppStrings {
     'brSize': '크기',
     'brOpacity': '불투명도',
     'brFlow': '흐름',
-    'brMixing': '밑바탕 혼색',
+    'brMixing': '혼색',
+    'brMixingMethod': '방식',
+    'brMixingMix': '섞기',
+    'brMixingBlur': '흐리기',
     'brPaintAmount': '물감량',
     'brPaintDensity': '물감 농도',
     'brColorStretch': '색 늘이기',
@@ -6190,6 +6214,7 @@ enum AppStrings {
     'builtinBrush.builtin-coloring-pencil': '칠하는 색연필',
     // 유저 F-433 (2026-10-21): 「눕혀쓰는연필은 이름 기니 눕힌 연필로」.
     'builtinBrush.builtin-shading-pencil': '눕힌 연필',
+    'builtinBrush.builtin-rough-edge': '거친 연필',
     'builtinBrush.builtin-ink-pen': '하드 라운드',
     'builtinBrush.builtin-g-pen': 'G펜',
     'builtinBrush.builtin-maru-pen': '둥근 펜',
@@ -6220,12 +6245,11 @@ enum AppStrings {
     'builtinBrush.builtin-blender': '색 혼합',
     'builtinBrush.builtin-water-blend': '물 번짐',
     'builtinBrush.builtin-blending-stump': '찰필',
+    'builtinBrush.builtin-blur': '흐리기',
     'builtinBrush.builtin-splatter-preset': '흩뿌리기',
     'builtinBrush.builtin-stipple': '점묘',
     'builtinBrush.builtin-sponge': '스펀지',
     'builtinBrush.builtin-cloud': '구름',
-    'builtinBrush.builtin-hatching': '해칭',
-    'builtinBrush.builtin-rough-edge': '거친 가장자리',
     'builtinBrush.builtin-concrete': '콘크리트',
     'builtinBrush.builtin-grass': '풀',
     'builtinBrush.builtin-sparkle': '반짝이',
@@ -6332,7 +6356,7 @@ enum AppStrings {
     'tlHideAll': '모두 숨기기',
     'tlSoloKind': '종류 솔로',
     'tlSoloColor': '색 솔로',
-    'tlSoloFillReferences': '채색 참조 솔로',
+    'tlSoloClips': '클리핑 솔로',
     'tlSoloFxOnRows': 'FX 켜진 행 솔로',
     'tlSoloSheetOnRows': '시트 켜진 행 솔로',
     'tlApplyAllFx': 'FX 모두 적용',
@@ -6340,7 +6364,7 @@ enum AppStrings {
     'tlAllOnTimesheet': '모두 시트에 올리기',
     'tlAllOffTimesheet': '모두 시트에서 내리기',
     'tlClearMarkFilter': '마크 필터 해제',
-    'tlClearAllFillRefs': '채색 참조 모두 해제',
+    'tlClearAllClips': '클리핑 모두 해제',
     'tlColVisibility': '표시 열',
     'tlColLayerKind': '레이어 종류 열',
     'tlColOnionSkin': '어니언 스킨 열',
@@ -6348,7 +6372,7 @@ enum AppStrings {
     'tlColBlendMode': '블렌드 모드 열',
     'tlColFx': 'FX 열',
     'tlColMark': '마크 열',
-    'tlColFillReference': '채색 참조 열',
+    'tlColClip': '클리핑 열',
     'tlColTimesheet': '타임시트 열',
     'tlShowXSheet': 'X시트로 보기',
     'tlShowTimeline': '타임라인으로 보기',
@@ -6387,8 +6411,8 @@ enum AppStrings {
     'laneGraphPenOn': '펜 (켜짐)',
     'laneGraphTransformBox': '변형 상자',
     'laneGraphTransformBoxOn': '변형 상자 (켜짐)',
-    'railFillReferenceOn': '채색 참조 레이어 (켜짐)',
-    'railFillReference': '채색 참조 레이어',
+    'railClipOn': '아래 레이어로 클리핑 (켜짐)',
+    'railClip': '아래 레이어로 클리핑',
     'tlLayerMark': '레이어 마크',
     'tlLayerMarkNone': '라벨 없음',
     'tlLayerMarkSource': '소재',
@@ -6591,6 +6615,8 @@ enum AppStrings {
         'Impossible d\'ouvrir le micro — vérifiez Préférences ▸ Audio et l\'autorisation micro du système.',
     'recordMicPermissionDenied':
         'L\'accès au micro est désactivé — autorisez-le pour Anicel dans les Réglages.',
+    'recordMicNotAllowed':
+        'Le micro n\'est pas autorisé — activez Préférences ▸ Audio ▸ Autoriser le micro.',
     'recordTakeClipped': 'La prise a saturé — le coin rouge marque le bloc.',
     'recordClipMarkerTooltip': 'Prise saturée (niveau trop fort)',
     'tlTransitionCrossingWarning': 'Dépasse la limite du plan — non appliqué',
@@ -6605,6 +6631,7 @@ enum AppStrings {
     'audioDenoiseLabel':
         'Réduction de bruit (voix — désactiver pour le bruitage)',
     'audioInputMeterLabel': 'Niveau d\'entrée',
+    'audioMicrophoneAllowedLabel': 'Autoriser le micro',
     'audioTestSoundLabel': 'Son de test',
     'audioCountInLabel': 'Décompte (secondes)',
     'audioCueBeepsLabel': 'Bips de repère (3 bips ADR)',
@@ -6620,7 +6647,6 @@ enum AppStrings {
     'layerAudioPanHelp':
         'Le panoramique s\'applique sur la voie du mixeur natif (loi à puissance constante).',
     'audioMute': 'Muet',
-    'playbackLevelTooltip': 'Volume de lecture',
     'audioSolo': 'Solo',
     'fpsAudioTitleTemplate': '{from} → {to} : que faire du son ?',
     'fpsAudioBody':
@@ -6633,6 +6659,7 @@ enum AppStrings {
     'toolSelectionMode': 'Mode',
     'commonSave': 'Enregistrer',
     'commonDelete': 'Supprimer',
+    'commonAdd': 'Ajouter',
     'commonRename': 'Renommer',
     'commonLink': 'Lier',
     'commonPreview': 'Aperçu',
@@ -6648,6 +6675,7 @@ enum AppStrings {
     'deleteLayerTitle': 'Supprimer le calque',
     'deleteLayersMessage': 'Supprimer les calques ci-dessous ?',
     'deleteLayersHeading': 'Calques à supprimer',
+    'deleteEffectsHeading': 'Effets à supprimer',
     'frameNameConflictTitle': "Ce nom d'image existe déjà",
     'frameNameConflictBody':
         'Chaque image listée prend un nom déjà utilisé par une autre image de '
@@ -6887,11 +6915,7 @@ enum AppStrings {
     'cameraRatioFree': 'Libre',
     'cameraRatioCurrent': 'Actuel',
     'commonResize': 'Redimensionner',
-    'inputPressureHeading': 'Réponse à la pression',
-    'inputPressureSoftHard': 'Doux ↔ Dur',
-    'inputPressureLinear': 'Linéaire',
-    'inputSpeedHeading': 'Réponse à la vitesse',
-    'inputSpeedReference': 'Vitesse maximale',
+    'inputPressureCurve': 'Réponse à la pression',
     'inputCanvasHeading': 'Canevas',
     'inputRightClick': 'Clic droit / bouton latéral du stylet',
     'inputWheelClick': 'Clic molette / bouton supérieur du stylet',
@@ -6923,7 +6947,6 @@ enum AppStrings {
         "zoom par crans). DÉSACTIVÉ (par défaut) : il aligne l'angle.",
     'inputRotationSnap': 'Cran de rotation',
     'inputZoomSnaps': 'Crans de zoom (%)',
-    'inputZoomSnapAdd': 'Ajouter un cran de zoom',
     'inputZoomCeiling': 'Verrou de zoom max (%)',
     'inputTabletHeading': 'Service tablette',
     'inputTabletStandard': 'Standard (par défaut)',
@@ -6970,6 +6993,7 @@ enum AppStrings {
     'memoryItemSheetInk': 'Écriture sur feuille',
     'memoryItemUndo': "Historique d'annulation",
     'memoryItemLayerImages': 'Images de calque',
+    'memoryItemFramePictures': 'Images composées',
     'memoryItemBrushTips': 'Pointes de brosse',
     'memoryItemPanelRasters': 'Rasters de panneau',
     'memoryItemViewerPages': 'Pages de la visionneuse',
@@ -7040,7 +7064,6 @@ enum AppStrings {
         "Le fichier de ce projet n'est plus là — supprimé ou déplacé. "
         "Restaurez-le maintenant s'il est encore dans une corbeille : les "
         'dessins déjà enregistrés ne vivent que dans ce fichier.',
-    'accent1Label': 'Accent 1',
     'accent1Help': 'Sélection, tête de lecture, bascules actives.',
     'sheetFormatTitle': 'Format de la feuille',
     'sheetFieldTitle': 'Titre',
@@ -7093,6 +7116,7 @@ enum AppStrings {
     'instructionEventEditTitle': "Modifier l'indication",
     'instructionEventAddTitle': 'Nouvelle indication',
     'instructionMarkLabel': 'Indication (repère)',
+    'instructionMarkNone': '(Aucune)',
     'instructionNameLabel': "Nom (vide = nom de l'indication)",
     'instructionStartLabel': 'Nom de début (A)',
     'instructionEndLabel': 'Nom de fin (B)',
@@ -7201,7 +7225,8 @@ enum AppStrings {
     'shortcutAction.frame-new-drawing': 'Nouvelle image',
     'shortcutAction.layer-add': 'Nouveau calque',
     'shortcutAction.frame-blank-exposure': 'Vider',
-    'shortcutAction.frame-toggle-mark': "Repère d'intervalle",
+    'shortcutAction.frame-toggle-mark-one': "Repère d'intervalle 1",
+    'shortcutAction.frame-toggle-mark': "Repère d'intervalle 2",
     'shortcutAction.frame-mark-every': "Ajout auto de repères d'intervalle",
     'shortcutAction.timeline-push-blocks': 'Pousser (ouvrir des images)',
     'shortcutAction.timeline-pull-blocks': 'Tirer (fermer des images)',
@@ -7263,16 +7288,18 @@ enum AppStrings {
     'effectKind.blur': 'Flou',
     'effectKind.deleteColor': 'Supprimer la couleur',
     'effectKind.keepColor': 'Conserver la couleur',
+    'effectKind.celNumber': 'Numéro de cellulo',
     'effectParameter.brightness': 'Luminosité',
     'effectParameter.contrast': 'Contraste',
-    'effectParameter.hue': 'Teinte',
-    'effectParameter.saturation': 'Saturation',
-    'effectParameter.lightness': 'Luminosité',
+    'effectParameter.hue': 'Teinte globale',
+    'effectParameter.saturation': 'Saturation globale',
+    'effectParameter.lightness': 'Luminosité globale',
     'effectParameter.blurX': 'Largeur du flou',
     'effectParameter.blurY': 'Hauteur du flou',
     'effectParameter.keyRed': 'Rouge de la clé',
     'effectParameter.keyGreen': 'Vert de la clé',
     'effectParameter.keyBlue': 'Bleu de la clé',
+    'effectParameter.ink': 'Encre',
     'effectParameter.tolerance': 'Tolérance',
     'effectParameter.amount': 'Quantité',
     'selectionMode.replace': 'Nouvelle sélection',
@@ -7708,6 +7735,8 @@ enum AppStrings {
     'exVectorPdf': 'PDF vectoriel',
     'exFxOn': 'FX activés',
     'exFxOff': 'FX désactivés',
+    'exFxBasic': 'FX de base seuls',
+    'exFxBasicOnly': 'Base seule',
     'exTabSequence': 'Séquence',
     'exSizeCamera': 'Caméra',
     'exSizeCanvas': 'Canevas',
@@ -7856,7 +7885,6 @@ enum AppStrings {
     'toolCutRegisterTip': 'Enregistrer comme pointe',
     'toolCutDeletesSource': "Supprimer l'original",
     'toolReadSource': 'Référence',
-    'toolReadReferences': 'Références',
     'toolReadsEveryVisibleLayer': 'Tous les calques visibles',
     'brushSettingsTitle': 'Réglages de brosse',
     'toolShapeRect': 'Rectangle',
@@ -7889,7 +7917,10 @@ enum AppStrings {
     'brSize': 'Taille',
     'brOpacity': 'Opacité',
     'brFlow': 'Débit',
-    'brMixing': 'Mélanger au fond',
+    'brMixing': 'Mélange',
+    'brMixingMethod': 'Méthode',
+    'brMixingMix': 'Mélanger au fond',
+    'brMixingBlur': 'Flouter',
     'brPaintAmount': 'Quantité de peinture',
     'brPaintDensity': 'Densité de peinture',
     'brColorStretch': 'Étirement de la couleur',
@@ -7995,6 +8026,7 @@ enum AppStrings {
     'builtinBrush.builtin-colored-pencil': 'Crayon de couleur',
     'builtinBrush.builtin-coloring-pencil': 'Crayon à colorier',
     'builtinBrush.builtin-shading-pencil': 'Crayon couché',
+    'builtinBrush.builtin-rough-edge': 'Crayon rugueux',
     'builtinBrush.builtin-ink-pen': 'Rond dur',
     'builtinBrush.builtin-g-pen': 'Plume G',
     'builtinBrush.builtin-maru-pen': 'Plume ronde',
@@ -8025,12 +8057,11 @@ enum AppStrings {
     'builtinBrush.builtin-blender': 'Mélangeur',
     'builtinBrush.builtin-water-blend': 'Fondu à l\'eau',
     'builtinBrush.builtin-blending-stump': 'Estompe',
+    'builtinBrush.builtin-blur': 'Flou',
     'builtinBrush.builtin-splatter-preset': 'Éclaboussures',
     'builtinBrush.builtin-stipple': 'Pointillé',
     'builtinBrush.builtin-sponge': 'Éponge',
     'builtinBrush.builtin-cloud': 'Nuage',
-    'builtinBrush.builtin-hatching': 'Hachures',
-    'builtinBrush.builtin-rough-edge': 'Bord rugueux',
     'builtinBrush.builtin-concrete': 'Béton',
     'builtinBrush.builtin-grass': 'Herbe',
     'builtinBrush.builtin-sparkle': 'Scintillement',
@@ -8133,7 +8164,7 @@ enum AppStrings {
     'tlHideAll': 'Tout masquer',
     'tlSoloKind': 'Solo par type',
     'tlSoloColor': 'Solo par couleur',
-    'tlSoloFillReferences': 'Solo des références de remplissage',
+    'tlSoloClips': 'Solo des calques écrêtés',
     'tlSoloFxOnRows': 'Solo des lignes avec FX',
     'tlSoloSheetOnRows': 'Solo des lignes sur la feuille',
     'tlApplyAllFx': 'Appliquer tous les FX',
@@ -8141,7 +8172,7 @@ enum AppStrings {
     'tlAllOnTimesheet': 'Tout mettre sur la feuille',
     'tlAllOffTimesheet': 'Tout retirer de la feuille',
     'tlClearMarkFilter': 'Effacer le filtre de repères',
-    'tlClearAllFillRefs': 'Effacer toutes les références de remplissage',
+    'tlClearAllClips': 'Libérer tous les masques d’écrêtage',
     'tlColVisibility': 'Colonne visibilité',
     'tlColLayerKind': 'Colonne type de calque',
     'tlColOnionSkin': "Colonne pelure d'oignon",
@@ -8149,7 +8180,7 @@ enum AppStrings {
     'tlColBlendMode': 'Colonne mode de fusion',
     'tlColFx': 'Colonne FX',
     'tlColMark': 'Colonne repère',
-    'tlColFillReference': 'Colonne référence de remplissage',
+    'tlColClip': 'Colonne masque d’écrêtage',
     'tlColTimesheet': 'Colonne feuille de temps',
     'tlShowXSheet': "Afficher en feuille d'exposition",
     'tlShowTimeline': 'Afficher en timeline',
@@ -8189,8 +8220,8 @@ enum AppStrings {
     'laneGraphPenOn': 'Plume (activée)',
     'laneGraphTransformBox': 'Boîte de transformation',
     'laneGraphTransformBoxOn': 'Boîte de transformation (activée)',
-    'railFillReferenceOn': 'Calque de référence de remplissage (activé)',
-    'railFillReference': 'Calque de référence de remplissage',
+    'railClipOn': 'Masque d’écrêtage sur le calque inférieur (activé)',
+    'railClip': 'Masque d’écrêtage sur le calque inférieur',
     'tlLayerMark': 'Repère de calque',
     'tlLayerMarkNone': 'Aucune étiquette',
     'tlLayerMarkSource': 'Matériel',
@@ -8376,6 +8407,7 @@ enum AppStrings {
     'recordVoiceStopTooltip': '停止录音（放置素材）',
     'recordMicOpenFailed': '无法打开麦克风 — 请检查首选项▸音频以及系统麦克风权限。',
     'recordMicPermissionDenied': '麦克风访问已关闭 — 请在设置中允许 Anicel 使用麦克风。',
+    'recordMicNotAllowed': '未允许使用麦克风 — 请在首选项▸音频中打开「允许麦克风」。',
     'recordTakeClipped': '录音发生削波 — 块上的红角为标记。',
     'recordClipMarkerTooltip': '该录音已削波（电平过高）',
     'tlTransitionCrossingWarning': '超出镜头边界 — 未应用',
@@ -8389,6 +8421,7 @@ enum AppStrings {
     'audioClippingNoticeLabel': '削波警告（提示+块标记）',
     'audioDenoiseLabel': '降噪（仅人声 — 录拟音时请关闭）',
     'audioInputMeterLabel': '输入电平',
+    'audioMicrophoneAllowedLabel': '允许麦克风',
     'audioTestSoundLabel': '测试声音',
     'audioCountInLabel': '倒数（秒）',
     'audioCueBeepsLabel': '提示音（ADR三响）',
@@ -8402,7 +8435,6 @@ enum AppStrings {
     'audioPanLabel': '声像',
     'layerAudioPanHelp': '声像在原生混音器路径上生效（等功率法则）。',
     'audioMute': '静音',
-    'playbackLevelTooltip': '播放音量',
     'audioSolo': '独奏',
     'fpsAudioTitleTemplate': '{from} → {to}：声音怎么办？',
     'fpsAudioBody':
@@ -8415,6 +8447,7 @@ enum AppStrings {
     'toolSelectionMode': '模式',
     'commonSave': '保存',
     'commonDelete': '删除',
+    'commonAdd': '添加',
     'commonRename': '重命名',
     'commonLink': '链接',
     'commonPreview': '预览',
@@ -8430,6 +8463,7 @@ enum AppStrings {
     'deleteLayerTitle': '删除图层',
     'deleteLayersMessage': '要删除下列图层吗？',
     'deleteLayersHeading': '要删除的图层',
+    'deleteEffectsHeading': '要删除的效果',
     'frameNameConflictTitle': '帧名称已存在',
     'frameNameConflictBody':
         '列表中的帧将使用同一图层中另一帧已在使用的名称。是否链接到使用该名称的帧？'
@@ -8640,11 +8674,7 @@ enum AppStrings {
     'cameraRatioFree': '自由',
     'cameraRatioCurrent': '当前比例',
     'commonResize': '调整尺寸',
-    'inputPressureHeading': '压感曲线',
-    'inputPressureSoftHard': '软 ↔ 硬',
-    'inputPressureLinear': '线性',
-    'inputSpeedHeading': '速度曲线',
-    'inputSpeedReference': '最高速度',
+    'inputPressureCurve': '压感曲线',
     'inputCanvasHeading': '画布',
     'inputRightClick': '右键 / 笔侧键',
     'inputWheelClick': '滚轮点击 / 笔上键',
@@ -8666,7 +8696,6 @@ enum AppStrings {
     'inputRotationLockHelp': '开启：额外的手指会冻结角度（纯平移 + 吸附缩放）。关闭（默认）：吸附角度。',
     'inputRotationSnap': '旋转吸附',
     'inputZoomSnaps': '缩放吸附（%）',
-    'inputZoomSnapAdd': '添加缩放吸附',
     'inputZoomCeiling': '锁定最大缩放（%）',
     'inputTabletHeading': '数位板服务',
     'inputTabletStandard': '标准（默认）',
@@ -8706,6 +8735,7 @@ enum AppStrings {
     'memoryItemSheetInk': '纸面手写',
     'memoryItemUndo': '撤销记录',
     'memoryItemLayerImages': '图层图像',
+    'memoryItemFramePictures': '帧图像',
     'memoryItemBrushTips': '笔尖',
     'memoryItemPanelRasters': '面板栅格',
     'memoryItemViewerPages': '查看器页面',
@@ -8750,7 +8780,6 @@ enum AppStrings {
         '此项目未能保存的工作只存在于应用内的失败副本中，程序关闭后失败副本会消失。如需保留，请使用“另存为”，或文件菜单中的“备份失败副本…”。',
     'projectFileVanished':
         '此项目的文件已不在原处 — 可能被删除或移动了。若还能从回收站恢复，请现在恢复：已保存过的画面只存在于该文件中。',
-    'accent1Label': '强调色 1',
     'accent1Help': '用于选区、播放头和已启用的开关。',
     'sheetFormatTitle': '摄影表格式',
     'sheetFieldTitle': '标题',
@@ -8802,6 +8831,7 @@ enum AppStrings {
     'instructionEventEditTitle': '编辑指示',
     'instructionEventAddTitle': '新建指示',
     'instructionMarkLabel': '指示（记号）',
+    'instructionMarkNone': '（无）',
     'instructionNameLabel': '名称（留空则用记号名）',
     'instructionStartLabel': '起点名称（A）',
     'instructionEndLabel': '终点名称（B）',
@@ -8905,7 +8935,8 @@ enum AppStrings {
     'shortcutAction.frame-new-drawing': '新建帧',
     'shortcutAction.layer-add': '新建图层',
     'shortcutAction.frame-blank-exposure': '清空',
-    'shortcutAction.frame-toggle-mark': '中间画标记',
+    'shortcutAction.frame-toggle-mark-one': '中间画标记1',
+    'shortcutAction.frame-toggle-mark': '中间画标记2',
     'shortcutAction.frame-mark-every': '自动添加中间画标记',
     'shortcutAction.timeline-push-blocks': '推出（空出帧）',
     'shortcutAction.timeline-pull-blocks': '拉回（收拢帧）',
@@ -8961,21 +8992,23 @@ enum AppStrings {
     'blendMode.saturation': '饱和度',
     'blendMode.chroma': '颜色',
     'blendMode.luminosity': '明度',
-    'effectKind.brightnessContrast': '亮度/对比度',
+    'effectKind.brightnessContrast': '亮度和对比度',
     'effectKind.hueSaturation': '色相/饱和度',
     'effectKind.blur': '模糊',
     'effectKind.deleteColor': '删除颜色',
     'effectKind.keepColor': '保留颜色',
+    'effectKind.celNumber': '赛璐珞编号',
     'effectParameter.brightness': '亮度',
     'effectParameter.contrast': '对比度',
-    'effectParameter.hue': '色相',
-    'effectParameter.saturation': '饱和度',
-    'effectParameter.lightness': '明度',
+    'effectParameter.hue': '主色相',
+    'effectParameter.saturation': '主饱和度',
+    'effectParameter.lightness': '主亮度',
     'effectParameter.blurX': '模糊宽度',
     'effectParameter.blurY': '模糊高度',
     'effectParameter.keyRed': '键色红',
     'effectParameter.keyGreen': '键色绿',
     'effectParameter.keyBlue': '键色蓝',
+    'effectParameter.ink': '颜色',
     'effectParameter.tolerance': '容差',
     'effectParameter.amount': '数量',
     'selectionMode.replace': '新选区',
@@ -9311,6 +9344,8 @@ enum AppStrings {
     'exVectorPdf': '矢量 PDF',
     'exFxOn': 'FX 开',
     'exFxOff': 'FX 关',
+    'exFxBasic': 'FX 仅基础',
+    'exFxBasicOnly': '仅基础',
     'exTabSequence': '序列',
     'exSizeCamera': '摄影机',
     'exSizeCanvas': '画布',
@@ -9448,7 +9483,6 @@ enum AppStrings {
     'toolCutRegisterTip': '注册为笔尖',
     'toolCutDeletesSource': '删除原图',
     'toolReadSource': '参考',
-    'toolReadReferences': '填充参考',
     'toolReadsEveryVisibleLayer': '所有可见图层',
     'brushSettingsTitle': '笔刷设置',
     'toolShapeRect': '矩形',
@@ -9480,7 +9514,10 @@ enum AppStrings {
     'brSize': '大小',
     'brOpacity': '不透明度',
     'brFlow': '流量',
-    'brMixing': '与底色混合',
+    'brMixing': '混色',
+    'brMixingMethod': '方式',
+    'brMixingMix': '与底色混合',
+    'brMixingBlur': '模糊',
     'brPaintAmount': '颜料量',
     'brPaintDensity': '颜料浓度',
     'brColorStretch': '色彩延伸',
@@ -9575,6 +9612,7 @@ enum AppStrings {
     'builtinBrush.builtin-colored-pencil': '彩色铅笔',
     'builtinBrush.builtin-coloring-pencil': '涂色彩铅',
     'builtinBrush.builtin-shading-pencil': '侧锋铅笔',
+    'builtinBrush.builtin-rough-edge': '粗糙铅笔',
     'builtinBrush.builtin-ink-pen': '硬边圆',
     'builtinBrush.builtin-g-pen': 'G笔',
     'builtinBrush.builtin-maru-pen': '圆笔',
@@ -9605,12 +9643,11 @@ enum AppStrings {
     'builtinBrush.builtin-blender': '混色笔',
     'builtinBrush.builtin-water-blend': '水晕',
     'builtinBrush.builtin-blending-stump': '纸笔',
+    'builtinBrush.builtin-blur': '模糊',
     'builtinBrush.builtin-splatter-preset': '喷溅',
     'builtinBrush.builtin-stipple': '点画',
     'builtinBrush.builtin-sponge': '海绵',
     'builtinBrush.builtin-cloud': '云',
-    'builtinBrush.builtin-hatching': '排线',
-    'builtinBrush.builtin-rough-edge': '粗糙边缘',
     'builtinBrush.builtin-concrete': '混凝土',
     'builtinBrush.builtin-grass': '草',
     'builtinBrush.builtin-sparkle': '闪光',
@@ -9717,7 +9754,7 @@ enum AppStrings {
     'tlHideAll': '全部隐藏',
     'tlSoloKind': '按类型独奏',
     'tlSoloColor': '按颜色独奏',
-    'tlSoloFillReferences': '独奏填充参考',
+    'tlSoloClips': '独奏剪贴图层',
     'tlSoloFxOnRows': '独奏已开 FX 的行',
     'tlSoloSheetOnRows': '独奏已上表的行',
     'tlApplyAllFx': '应用全部 FX',
@@ -9725,7 +9762,7 @@ enum AppStrings {
     'tlAllOnTimesheet': '全部放上摄影表',
     'tlAllOffTimesheet': '全部移出摄影表',
     'tlClearMarkFilter': '清除标记筛选',
-    'tlClearAllFillRefs': '清除所有填充参考',
+    'tlClearAllClips': '释放所有剪贴',
     'tlColVisibility': '可见性列',
     'tlColLayerKind': '图层类型列',
     'tlColOnionSkin': '洋葱皮列',
@@ -9733,7 +9770,7 @@ enum AppStrings {
     'tlColBlendMode': '混合模式列',
     'tlColFx': 'FX 列',
     'tlColMark': '标记列',
-    'tlColFillReference': '填充参考列',
+    'tlColClip': '剪贴列',
     'tlColTimesheet': '摄影表列',
     'tlShowXSheet': '以摄影表显示',
     'tlShowTimeline': '以时间轴显示',
@@ -9772,8 +9809,8 @@ enum AppStrings {
     'laneGraphPenOn': '钢笔（开）',
     'laneGraphTransformBox': '变换框',
     'laneGraphTransformBoxOn': '变换框（开）',
-    'railFillReferenceOn': '填充参考图层（开）',
-    'railFillReference': '填充参考图层',
+    'railClipOn': '用下一图层剪贴（开）',
+    'railClip': '用下一图层剪贴',
     'tlLayerMark': '图层标记',
     'tlRepeat': '重复',
     'tlRepeatSelection': '重复所选',

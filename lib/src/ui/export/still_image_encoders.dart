@@ -92,12 +92,16 @@ sealed class ExportLayerNode {
     required this.opacity,
     required this.blendMode,
     required this.visible,
+    required this.clipped,
   });
 
   final String name;
   final double opacity;
   final LayerBlendMode blendMode;
   final bool visible;
+
+  /// Clipped to the node under it (I-92) — Photoshop's clipping mask.
+  final bool clipped;
 }
 
 /// A row of a layered still file and its picture — drawn when the file
@@ -109,6 +113,7 @@ final class ExportLayerRow extends ExportLayerNode {
     super.opacity = 1,
     super.blendMode = LayerBlendMode.normal,
     super.visible = true,
+    super.clipped = false,
     required this.draw,
   });
 
@@ -124,6 +129,7 @@ final class ExportLayerFolder extends ExportLayerNode {
     super.opacity = 1,
     super.blendMode = LayerBlendMode.passThrough,
     super.visible = true,
+    super.clipped = false,
     required this.children,
   });
 
@@ -207,6 +213,7 @@ final class LayeredPsd {
       opacity: row.opacity,
       visible: row.visible,
       blendMode: row.blendMode,
+      clipped: row.clipped,
     );
     return true;
   }
@@ -217,6 +224,7 @@ final class LayeredPsd {
       opacity: folder.opacity,
       visible: folder.visible,
       blendMode: folder.blendMode,
+      clipped: folder.clipped,
     );
     if (!await add(folder.children)) {
       return false;

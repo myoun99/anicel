@@ -3,6 +3,8 @@ import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 
 import '../../models/cut.dart';
+import '../../models/layer.dart';
+import '../../models/layer_effect.dart' show EffectId;
 import '../../models/layer_id.dart';
 import '../../services/project_lookup.dart' show layerAnywhereOrNull;
 import '../dialogs/delete_layer_dialog.dart';
@@ -10,6 +12,8 @@ import '../dialogs/dialog_verb.dart';
 import '../dialogs/rename_cut_dialog.dart';
 import '../dialogs/rename_layer_dialog.dart';
 import '../editor_session_manager.dart';
+import '../text/app_strings.dart';
+import '../text/model_vocabulary.dart' show EffectKindWords;
 
 /// The two LAYER dialogs the command bar's layer pill opens.
 ///
@@ -42,12 +46,18 @@ Future<void> deleteRowSelectionWithDialog(
   EditorSessionManager session,
 ) {
   final ids = session.layerVerbs.deletableSelectedLayerIds();
+  final effects = session.effectsToDeleteOfRows();
   if (ids.isEmpty) {
+    // Effects alone go unasked, as a range over their headers takes them
+    // (F-87): the window asks before ROWS go.
+    if (effects.isNotEmpty) {
+      session.deleteSelectionSubject();
+    }
     return Future<void>.value();
   }
   return confirmThenCommit(
     context,
-    dialog: (_) => _deleteWindowFor(session, ids),
+    dialog: (_) => _deleteWindowFor(session, ids, effects: effects),
     commit: session.deleteSelectionSubject,
   );
 }
@@ -74,16 +84,25 @@ Future<void> deleteActiveLayerWithDialog(
 /// row and for many (F-303).
 DeleteLayerDialog _deleteWindowFor(
   EditorSessionManager session,
-  List<LayerId> ids,
-) {
+  List<LayerId> ids, {
+  List<({Layer row, List<EffectId> effects})> effects = const [],
+}) {
   final going = {
     ...ids,
     for (final row in session.layerVerbs.rowsHeldBy(ids)) row.id,
   };
+  final language = AppText.language;
   return DeleteLayerDialog(
     rows: [
       for (final row in session.layers.reversed)
         if (going.contains(row.id)) row.name,
+    ],
+    // As the rail stacks them: the row, then its effect's header.
+    effects: [
+      for (final (:row, effects: named) in effects)
+        for (final effect in row.effects)
+          if (named.contains(effect.id))
+            '${row.name} · ${effect.kind.labelFor(language)}',
     ],
   );
 }

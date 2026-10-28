@@ -32,45 +32,24 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 ///   released only when the head is and then recursively on the raster
 ///   thread (2026-09-09: stack overflow at ~2,470 links; 2026-09-12: 17GB
 ///   in two minutes of drawing). Every such chain owes a budget in BOTH
-///   units — links for the stack, bytes for memory — and `DisplayBufferCache`
-///   is the shape to copy.
+///   units — links for the stack, bytes for memory — as the display buffer
+///   kept both (↩️`DisplayBufferCache`, until one-picture-per-frame ②-5a).
 /// · `dispose()` on an image inside such a chain releases the Dart handle
 ///   and nothing else.
 /// `Picture.toImage()` (async) is a plain snapshot and pins nothing; it is
-/// the answer wherever a frame of latency is acceptable — and, through
-/// [rasterPictureAndSnapshot], the way the display buffer stopped forming
-/// a chain at all (2026-09-13): the deferred image is only ever DRAWN, and
-/// the snapshot of the same picture is what the next paint derives from.
+/// the answer wherever a frame of latency is acceptable. ↩️A deferred image
+/// drawn and its plain snapshot kept, as a pair of one recording, is how the
+/// display buffer stopped forming a chain at all (2026-09-13) — and how the
+/// layer stack's row images were held — until neither was kept
+/// (one-picture-per-frame ②-5a · ②-5b-1).
 ui.Image rasterPicture(ui.PictureRecorder recorder, int width, int height) =>
     withPicture(recorder, (picture) => picture.toImageSync(width, height));
 
-/// [rasterPicture]'s deferred image, plus — when [snapshot] — a plain
-/// `toImage` of the SAME picture, started before the picture is released.
-///
-/// ⛔Same picture, same pixels: the two are one recording rasterized
-/// twice, so whatever describes one (the live-surface tokens it was made
-/// from) describes the other, and the caller may keep them as a pair
-/// without a second measurement. The `Future` is safe across the picture's
-/// disposal — `Picture::toImage` captures the display list in its own
-/// raster task (`picture.cc`, `DoRasterizeToImage`).
-({ui.Image deferred, Future<ui.Image>? real}) rasterPictureAndSnapshot(
-  ui.PictureRecorder recorder,
-  int width,
-  int height, {
-  required bool snapshot,
-}) => withPicture(
-  recorder,
-  (picture) => (
-    deferred: picture.toImageSync(width, height),
-    real: snapshot ? picture.toImage(width, height) : null,
-  ),
-);
-
-/// [picture]'s plain snapshot, WAITED FOR — the one spelling the steps of
-/// a layer image's chain share (the tile compose, a halving, the cut of the
-/// ink), so that the waits can be counted ([debugOnWaitedSnapshot]): a
-/// chain is waited for once, at its last step, whatever its length
-/// (`LayerFrameImageCache.prepare`).
+/// [picture]'s plain snapshot, WAITED FOR — the tile compose's, spelled
+/// once so that the waits can be counted ([debugOnWaitedSnapshot]). ↩️The
+/// steps of a layer image's chain shared it (a halving, the cut of the ink)
+/// and were waited for once, at the chain's last step, until no row image
+/// was made (one-picture-per-frame ②-5b-1).
 Future<ui.Image> waitedSnapshot(ui.Picture picture, int width, int height) {
   debugOnWaitedSnapshot?.call(width, height);
   return picture.toImage(width, height);

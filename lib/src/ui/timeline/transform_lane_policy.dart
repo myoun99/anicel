@@ -1,4 +1,3 @@
-import 'lane_span_in_order.dart';
 import 'dart:ui' show Color, Offset;
 
 import '../../models/camera_instruction.dart'
@@ -17,7 +16,6 @@ import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
 import '../../models/transform_track.dart';
 import '../../services/camera_pose_resolver.dart'
     show resolveCameraPoseAtTime;
-import 'effect_lane_policy.dart';
 import '../text/app_strings.dart';
 import '../theme/lane_curve_palette.dart';
 import '../text/readout_text.dart';
@@ -336,56 +334,20 @@ Set<CanvasManipulator> canvasManipulatorsForLane(String? laneId) {
   };
 }
 
-/// The rows as SELECTION sees them: the header is the first of them.
-///
-/// R9 #20: the header used to be outside this list and handled by a
-/// branch, so dragging from it to the SECOND lane selected all five —
-/// selection did something other than what the drag drew. A row is a row
-/// (the rule the user set on #1: a derived display must not change what
-/// selecting does), and a header dragged to the last lane still covers the
-/// whole group — by the ordinary range rule now, not a special case.
-List<String> get transformLaneSelectionOrder => [
-  transformGroupHeaderLane.laneId,
-  ...transformLaneDisplayOrder,
-];
-
-/// The display-ordered lane span from [anchorLaneId] to [headLaneId]
-/// (R26 #3 — the cell selection's Excel span rule applied to lane rows,
-/// within one layer's lane group). Ids outside the canonical order fall
-/// back to the anchor lane alone.
-List<String> transformLaneSpan(String anchorLaneId, String headLaneId) =>
-    inclusiveRunBetween(transformLaneSelectionOrder, anchorLaneId, headLaneId) ??
-    [anchorLaneId];
-
 /// Whether the lane selection covers [laneId]'s BAND ROW on [layerId]
-/// (R26 #3) — member lanes read the span directly; the group HEADER row
-/// counts as covered when the selection spans its WHOLE member group, so
-/// the header washes, rings, and (follow-up) grabs the whole group for a
-/// move. One predicate, shared by the paint and the gesture's
-/// move-vs-select decision. A FOLDER row's lanes ride this same order —
-/// they are layer lanes now, not a private `folder-fx:` address space.
+/// (R26 #3): whether the row is IN the span — a group header as every
+/// other row (R9 #20), not when its members happen to all be. One
+/// predicate, shared by the paint and the gesture's move-vs-select
+/// decision.
+///
+/// ↩️It asked an effect's header, the Transform header and every other row
+/// apart, from when a header was covered by its whole member group; each
+/// branch had come to ask the one membership question.
 bool laneSelectionCoversBandRow(
   TimelineLaneSelection? selection,
   LayerId layerId,
   String laneId,
-) {
-  if (selection == null) {
-    return false;
-  }
-  // R6: an EFFECT's header row answers the same question against its own
-  // members (the effect lane ids carry which effect they belong to).
-  if (parseEffectLaneId(laneId) != null) {
-    return selection.layerId == layerId &&
-        (selection.coversLane(layerId, laneId) ||
-            effectGroupHeaderCovered(laneId, selection.spanLaneIds));
-  }
-  if (laneId == transformGroupHeaderLane.laneId) {
-    // R9 #20: the header is covered when it is IN the span, like every
-    // other row — not when its members happen to all be.
-    return selection.coversLane(layerId, laneId);
-  }
-  return selection.coversLane(layerId, laneId);
-}
+) => selection?.coversLane(layerId, laneId) ?? false;
 
 /// Whether the lane selection holds [laneId]'s key cell at [frame] on
 /// [layerId] ([laneSelectionCoversBandRow]): what a lane's band takes a

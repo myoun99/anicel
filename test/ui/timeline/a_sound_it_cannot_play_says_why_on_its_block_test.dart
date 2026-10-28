@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart'
     show SePaperSpan;
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 
 /// 유저 2026-10-17 (playback-waits-for-its-sound-Q1: 「a + …」, 「이유(형식 ·
 /// 파일 없음 · 출력)는 툴팁으로」): the block of a sound that cannot be played
@@ -65,7 +66,7 @@ void main() {
       return null;
     }
     return tester
-        .widget<Tooltip>(
+        .widget<AppTooltip>(
           find.descendant(of: line, matching: _aTooltip),
         )
         .message;
@@ -203,5 +204,4 @@ void main() {
   });
 }
 
-/// `AppTooltip` is a [Tooltip] of its own type, which `find.byType` misses.
-final _aTooltip = find.byWidgetPredicate((widget) => widget is Tooltip);
+final _aTooltip = find.byType(AppTooltip);

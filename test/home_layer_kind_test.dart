@@ -4,13 +4,29 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/main.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/frame.dart' show unnamedDrawingMark;
 
+import 'helpers/room_for_the_pills.dart';
+import 'helpers/timeline_host.dart';
 import 'helpers/vertical_text_finder.dart';
 import 'ui/timeline/timeline_cell_probe.dart';
 
 import 'helpers/home_page_probes.dart';
 import 'helpers/named_finders.dart';
+
+/// The timeline tab alone ([pumpTimelineHost]) on the project the app opens
+/// — the rows, their kinds and the bar that adds and turns them are the
+/// tab's — with room for its pills. ↩️It stood as the app's window of
+/// 800 × 600 laid it, where the pills have 34px now
+/// ([timelineTabWithRoomForItsPills]).
+Future<void> _open(WidgetTester tester) async {
+  await pumpTimelineHost(
+    tester,
+    newUntitledProject(),
+    surface: timelineTabWithRoomForItsPills,
+  );
+}
 
 void main() {
   testWidgets('uses the sample cut resolved from the project by default', (
@@ -40,7 +56,7 @@ void main() {
   testWidgets('initial timeline layer shows animation kind icon', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const AnicelApp());
+    await _open(tester);
 
     expect(
       find.named('timeline-layer-type-button-default-layer-1'),
@@ -54,7 +70,7 @@ void main() {
   testWidgets('Add Layer creates an animation kind icon for active B', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const AnicelApp());
+    await _open(tester);
 
     await addLayer(tester);
 
@@ -70,7 +86,7 @@ void main() {
   testWidgets('storyboard toggle updates the active layer kind icon', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const AnicelApp());
+    await _open(tester);
 
     expect(layerKindIcon(tester, 'default-layer-1'), Icons.filter_outlined);
 
@@ -97,7 +113,7 @@ void main() {
   testWidgets('multiple layers can show different layer kind icons', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const AnicelApp());
+    await _open(tester);
     await addLayer(tester);
 
     await tapToolbarButton(
@@ -127,7 +143,7 @@ void main() {
   testWidgets('pressing Add Layer creates B then C above active layers', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const AnicelApp());
+    await _open(tester);
 
     expectActiveLayerName('A');
     expect(
@@ -212,7 +228,7 @@ void main() {
   testWidgets('XSheet keeps raw layer order after adding B and C', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const AnicelApp());
+    await _open(tester);
 
     await addLayer(tester);
     await addLayer(tester);

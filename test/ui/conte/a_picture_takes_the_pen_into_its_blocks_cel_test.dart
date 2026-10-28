@@ -39,7 +39,7 @@ import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
-import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/canvas/viewport_canvas_transform.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
 import 'package:anicel/src/ui/conte/conte_page_painter.dart';
@@ -588,10 +588,10 @@ void main() {
       isTrue,
       reason: 'the composite paints the pen\'s live stroke in the cel\'s place',
     );
-    final stack = tester.widget<CanvasLayerStackView>(live);
+    final shown = tester.widget<FramePictureView>(live);
     final pen = penOverThePicture(tester);
     expect(
-      identical(stack.activeSurfacePainter!.overlayModel, pen.overlay),
+      identical(shown.live!.activeSurfacePainter!.overlayModel, pen.overlay),
       isTrue,
       reason: 'one live stroke, drawn by the pen and painted by the picture',
     );
@@ -970,17 +970,20 @@ void main() {
         reason: 'the canvas the camera does not frame stays off the page',
       );
 
-      Iterable<Object> pictures() => session.renderCaches.stackBufferBytes
-          .keys
-          .where((view) => view is (String, String) && view.$1 == 'conte-picture');
+      // The live picture is its frame's one picture, kept in the rig's
+      // store — which the census counts whole (`framePictures`). ↩️Each
+      // held a display buffer of its own, pushed to the census by name.
+      final live = find.byKey(
+        const ValueKey<String>('conte-picture-live-picture-39-0'),
+      );
       expect(
-        pictures(),
-        [('conte-picture', 'picture-39-0')],
+        tester.widget<FramePictureView>(live).run.pictures,
+        same(session.playbackRig.framePictures),
         reason: 'the census counts it',
       );
       brushOn.value = false;
       await tester.pumpAndSettle();
-      expect(pictures(), isEmpty, reason: 'and stops when it goes');
+      expect(live, findsNothing, reason: 'and it goes with the brush');
     });
 
     testWidgets('🗣️F-215: the brush switch moves no pixel — the band\'s '
@@ -1121,9 +1124,9 @@ void main() {
       final live = find.byKey(
         const ValueKey<String>('conte-picture-live-picture-39-0'),
       );
-      final stack = tester.widget<CanvasLayerStackView>(live);
+      final shown = tester.widget<FramePictureView>(live);
       expect(
-        stack.viewport.zoom * 1.25,
+        shown.viewport.zoom * 1.25,
         closeTo(4, 1e-6),
         reason: 'device pixels per canvas pixel: the camera\'s, no more',
       );

@@ -7,12 +7,11 @@ import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
-import 'package:anicel/src/ui/timeline_tab_host.dart';
 import '../../../tool/source_brackets.dart';
 import '../../helpers/dart_sources.dart';
 import '../../helpers/named_finders.dart';
-import '../../helpers/storyboard_twirls.dart';
+import '../../helpers/storyboard_host.dart';
+import '../../helpers/timeline_host.dart';
 
 /// 🚨★★★EVERY BUTTON IN `lib/src/ui` CLAIMS ITS PRESS.
 ///
@@ -26,7 +25,7 @@ import '../../helpers/storyboard_twirls.dart';
 /// #1349 taught `EagerPanGestureRecognizer` to decline a pointer that EITHER
 /// claim holds. That does nothing for a button which makes no claim at all,
 /// and on 2026-08-29 fifteen of them made none: the x-sheet's lane toggle,
-/// folder twirl, fill-reference and onion; the lane rows' three toggles and
+/// folder twirl, clip and onion; the lane rows' three toggles and
 /// their shared button; the legend's flyout, lanes and mute; the storyboard's
 /// two lane toggles; the top strip's blend lock; and the bar's 1·2·3·4·N.
 ///
@@ -379,24 +378,6 @@ void main() {
     );
   });
 
-  Widget host(TimelineOrientation orientation, EditorSessionManager session) =>
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => TimelineTabHost(
-              session: session,
-              orientation: orientation,
-              onOrientationChanged: (_) {},
-              pixelsPerFrame: 24,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-            ),
-          ),
-        ),
-      );
-
   /// Presses [position] and reports whether the pointer was claimed WHILE it
   /// was down — the only moment that counts, because a pan recogniser asks
   /// at `addPointer`, which happens during the down dispatch.
@@ -427,14 +408,12 @@ void main() {
   }) => claimedAt(tester, tester.getCenter(finder), pointer: pointer);
 
   testWidgets('the bar\'s 1·2·3·4·N claim their press', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final session = EditorSessionManager(
-      initialProject: createDefaultProject(),
+    await pumpTimelineHost(
+      tester,
+      createDefaultProject(),
+      surface: const Size(1600, 900),
+      pixelsPerFrame: 24,
     );
-    addTearDown(session.dispose);
-    await tester.pumpWidget(host(TimelineOrientation.horizontal, session));
-    await tester.pumpAndSettle();
 
     var pointer = 20;
     for (final id in const [
@@ -450,11 +429,11 @@ void main() {
         await claimedWhileDown(tester, finder, pointer: pointer++),
         isTrue,
         reason:
-            '$id is a TEXT button, and the ledger that keeps hand-rolled '
-            'buttons honest reads `IconButton(` — so it walked straight '
-            'past the one thing that exists to notice it (F-45). These also '
-            'sit inside a baked StaticRaster, which is why they are PRESSED '
-            'here and not just scanned',
+            '$id let its press through. As a TEXT button it walked straight '
+            'past the ledger that keeps hand-rolled buttons honest — that '
+            'reads `IconButton(` (F-45); the face it became is its claim. '
+            'These also sit inside a baked StaticRaster, which is why they '
+            'are PRESSED here and not just scanned',
       );
     }
   });
@@ -462,14 +441,13 @@ void main() {
   testWidgets('the x-sheet\'s column toggles claim their press', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final session = EditorSessionManager(
-      initialProject: createDefaultProject(),
+    final session = await pumpTimelineHost(
+      tester,
+      createDefaultProject(),
+      surface: const Size(1400, 900),
+      orientation: TimelineOrientation.vertical,
+      pixelsPerFrame: 24,
     );
-    addTearDown(session.dispose);
-    await tester.pumpWidget(host(TimelineOrientation.vertical, session));
-    await tester.pumpAndSettle();
 
     final layerId = session.activeLayerId!;
     var pointer = 40;
@@ -478,7 +456,7 @@ void main() {
     // the SCAN is what covers those two. Everything nameable is driven.
     for (final id in <String>[
       'xsheet-layer-onion-$layerId',
-      'xsheet-layer-fill-reference-$layerId',
+      'xsheet-layer-clip-$layerId',
     ]) {
       final finder = find.named(id);
       expect(finder, findsOneWidget, reason: '$id is not on the sheet');
@@ -499,8 +477,6 @@ void main() {
     // are actually mounted — 유저 2026-08-29: 「스토리보드 fx행이든 뭐든
     // **행이면 싹 다 통일**」, and the same sentence covers the buttons ON
     // those rows.
-    await tester.binding.setSurfaceSize(const Size(1600, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
     final session = EditorSessionManager(
       initialProject: createDefaultProject(),
     );
@@ -510,28 +486,12 @@ void main() {
     session.effectsAndFx.updateTrackEffects(session.activeTrack.id, [
       LayerEffect(id: const EffectId('glow'), kind: EffectKind.blur),
     ]);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: withStoryboardTwirls(
-            session,
-            (twirls) => StoryboardTabHost(
-              session: session,
-              expandedLaneLayerIds: twirls.expandedLaneLayerIds,
-              onToggleLayerLanes: twirls.onToggleLayerLanes,
-              expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
-              onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-            ),
-          ),
-        ),
-      ),
+    await pumpStoryboardHostOn(
+      tester,
+      session,
+      surface: const Size(1600, 900),
+      pixelsPerFrame: 12,
     );
-    await tester.pumpAndSettle();
 
     var pointer = 55;
     // The S row is the timeline's own row (I-89 ①): its twirl is named by
@@ -563,14 +523,12 @@ void main() {
   testWidgets('a plain cell is NOT claimed', (tester) async {
     // ⛔THE CONTROL CASE. A predicate that claimed everything would pass
     // every assertion above and leave the panel unable to scroll at all.
-    await tester.binding.setSurfaceSize(const Size(1600, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final session = EditorSessionManager(
-      initialProject: createDefaultProject(),
+    await pumpTimelineHost(
+      tester,
+      createDefaultProject(),
+      surface: const Size(1600, 900),
+      pixelsPerFrame: 24,
     );
-    addTearDown(session.dispose);
-    await tester.pumpWidget(host(TimelineOrientation.horizontal, session));
-    await tester.pumpAndSettle();
 
     final grid = find.byKey(const ValueKey<String>('timeline-frame-grid-area'));
     expect(grid, findsOneWidget);

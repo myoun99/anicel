@@ -41,14 +41,14 @@ LayerLegendCallbacks everyVerb() => LayerLegendCallbacks(
   onSheetAllOn: () {},
   onSheetAllOff: () {},
   onClearMarkFilter: () {},
-  onClearAllFillReferences: () {},
+  onClearAllClips: () {},
   onBypassAllFx: () {},
   onEnableAllFx: () {},
   onToggleMarkFilter: (_) {},
   onToggleKindFilter: (_) {},
   onToggleSheetOnlyFilter: () {},
   onToggleFxOnlyFilter: () {},
-  onToggleFillReferenceOnlyFilter: () {},
+  onToggleClippedOnlyFilter: () {},
   onPreviewLayersOpacity: (_, _) {},
   onCommitLayersOpacity: (_, _) {},
   onToggleOnionSkinForDisplayed: () {},
@@ -361,7 +361,8 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey<String>('legend-lanes-toggle')),
-        matching: find.railTooltip('모든 레이어 펼치기'),
+        matching: find.tooltipSaying('모든 레이어 펼치기'),
+        matchRoot: true,
       ),
       findsOneWidget,
     );

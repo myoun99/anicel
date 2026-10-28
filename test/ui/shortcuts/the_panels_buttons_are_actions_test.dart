@@ -17,6 +17,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
@@ -132,6 +133,8 @@ Future<void> openRailGroup(
 Future<PanelKeys> pumpToolSettings(
   WidgetTester tester, {
   required CanvasTool tool,
+  // The shape in hand, where the tool traces one.
+  CanvasShapeKind? shape,
   double height = 960,
   CanvasSelectionCommands? selectionCommands,
   CutPieceSlot? cutPieceSlot,
@@ -146,10 +149,11 @@ Future<PanelKeys> pumpToolSettings(
   await tester.binding.setSurfaceSize(const Size(400, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   final keys = PanelKeys();
+  final state = BrushToolState.defaults.copyWith(tool: tool);
   Widget panel = PanelKeysScope(
     keys: keys,
     child: ToolSettingsPanel(
-      state: BrushToolState.defaults.copyWith(tool: tool),
+      state: shape == null ? state : state.withShapeKind(shape, forTool: tool),
       onChanged: (_) {},
       fillOptions: const FloodFillOptions(),
       onFillOptionsChanged: (_) {},
@@ -210,7 +214,7 @@ String tooltipOf(WidgetTester tester, String key) => tester
           )
           .first,
     )
-    .message!;
+    .message;
 
 CutPiece stampPiece() => CutPiece(
   image: BrushStampImage(
@@ -763,9 +767,11 @@ void main() {
       await tester.pump();
       expect(tooltipOf(tester, 'move-reset-button'), 'Reset (K)');
 
+      // The close stands for the polygon alone (F-478-Q1).
       await pumpToolSettings(
         tester,
         tool: CanvasTool.select,
+        shape: CanvasShapeKind.polygon,
         selectionCommands: commands,
         shortcuts: shortcuts,
       );

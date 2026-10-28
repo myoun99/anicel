@@ -16,17 +16,12 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
-import 'package:anicel/src/ui/home_page.dart';
-import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart'
-    show timelineLayerRowLeadingBorder;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerLaneToggleSlotWidth;
-import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
-    show LayerRailLeadingSlot, layerRailLeadingWidthTo;
 
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/named_finders.dart';
+import '../../helpers/timeline_host.dart';
 
 /// **I-1 — a row button's swipe is about the COLUMN, not about the eye.**
 ///
@@ -70,23 +65,10 @@ void main() {
     ],
   );
 
-  EditorSessionManager sessionOf(WidgetTester tester) =>
-      tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
-
-  Future<EditorSessionManager> pump(WidgetTester tester) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 1000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(home: HomePage(initialProject: project())),
-    );
-    await tester.pumpAndSettle();
-    await tester.drag(
-      find.byKey(const ValueKey<String>('dock-resize-bottom')),
-      const Offset(0, -320),
-    );
-    await tester.pumpAndSettle();
-    return sessionOf(tester);
-  }
+  // The timeline tab alone ([pumpTimelineHost]), as the app's window of
+  // 1400 × 1000 laid it — the rail's buttons are the panel's.
+  Future<EditorSessionManager> pump(WidgetTester tester) =>
+      pumpTimelineHost(tester, project(), surface: const Size(870, 446));
 
   /// Presses the button on [fromName] and drags DOWN across [rows] rows —
   /// with [oneFrame], its down and its first move in one frame, as a fast
@@ -230,6 +212,13 @@ void main() {
       ),
       (column: 'onion', changed: (s) => s.onionSkin.layerIds.value.length),
       (
+        column: 'clip',
+        changed: (s) => [
+          for (final layer in s.requireActiveCut.layers)
+            if (layer.clipsToBelow) layer,
+        ].length,
+      ),
+      (
         column: 'fx',
         changed: (s) => [
           for (final layer in s.requireActiveCut.layers)
@@ -274,12 +263,11 @@ void main() {
     }
   });
 
-  /// I-1 잔여 — the LEADING run.
-  ///
-  /// 🚨The leading columns are a GEOMETRY problem the trailing ones are not:
-  /// the folder indent falls between the mark and the twirl, so the sheet
-  /// toggle's x moves one whole slot per level of nesting. A band typed as a
-  /// constant is right only on unnested rows.
+  /// I-1 잔여 — the LEADING run: the sheet toggle and the lane twirl, before
+  /// the name. ↩️They were a geometry problem while each column was a band
+  /// of the row: the folder indent stood between the mark and the twirl
+  /// (until 2026-08-29), and a band typed as a constant was right only on
+  /// unnested rows. The button says its column now (F-475).
   group('the leading columns paint too', () {
     Project nested() => Project(
       id: const ProjectId('swipe'),
@@ -298,7 +286,7 @@ void main() {
               // Rendered top-to-bottom reversed, so the rail reads
               // m1, m0, F, l1, l0 — a downward swipe from a MEMBER crosses
               // the folder row and then two unnested rows, which is the
-              // depth change the bands have to survive.
+              // depth change the sweep has to paint across.
               //
               // Every real row starts OFF the sheet so the swipe TURNS THEM
               // ON: that is what makes "the folder was skipped" observable.
@@ -329,20 +317,8 @@ void main() {
       ],
     );
 
-    Future<EditorSessionManager> pumpNested(WidgetTester tester) async {
-      await tester.binding.setSurfaceSize(const Size(1400, 1000));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.pumpWidget(
-        MaterialApp(home: HomePage(initialProject: nested())),
-      );
-      await tester.pumpAndSettle();
-      await tester.drag(
-        find.byKey(const ValueKey<String>('dock-resize-bottom')),
-        const Offset(0, -320),
-      );
-      await tester.pumpAndSettle();
-      return sessionOf(tester);
-    }
+    Future<EditorSessionManager> pumpNested(WidgetTester tester) =>
+        pumpTimelineHost(tester, nested(), surface: const Size(870, 446));
 
     List<String> offSheet(EditorSessionManager s) => [
       for (final layer in s.requireActiveCut.layers)
@@ -375,9 +351,7 @@ void main() {
       final s = await pumpNested(tester);
       expect(onSheet(s), isEmpty, reason: 'premise: nothing prints yet');
 
-      // M1 sits one level in, so its sheet toggle is two slots right of an
-      // unnested row's. Pressing it is the whole geometry problem: with a
-      // constant band this press lands in no column at all.
+      // M1 sits one level in, inside the folder the sweep goes on to cross.
       await swipeDown(
         tester,
         'timeline-layer-timesheet-m1',
@@ -406,35 +380,6 @@ void main() {
       );
     });
 
-    testWidgets(
-      '🆕and the SAME x on a nested row is the same column — depth no longer '
-      'moves it',
-      (tester) async {
-        final s = await pumpNested(tester);
-        final unnested = tester.getCenter(
-          find.named('timeline-layer-timesheet-l1'),
-        );
-        final nestedRow = tester.getRect(find.named('timeline-layer-row-m1'));
-
-        final gesture = await tester.startGesture(
-          Offset(unnested.dx, nestedRow.center.dy),
-          kind: PointerDeviceKind.mouse,
-        );
-        await tester.pump(const Duration(milliseconds: 16));
-        for (var step = 1; step <= 3; step += 1) {
-          await gesture.moveBy(Offset(0, nestedRow.height));
-          await tester.pump(const Duration(milliseconds: 16));
-        }
-        await gesture.up();
-        await tester.pumpAndSettle();
-
-        // 🪦This used to assert the opposite: that x held the ↳ of the
-        // nesting run, so a press there painted nothing. The run is gone —
-        // depth lives in the NAME now — so one x is one column at every
-        // depth, which is the whole point of the move.
-        expect(onSheet(s), isNotEmpty, reason: '깊이가 열을 옮기지 않으므로 같은 x 는 같은 열이다');
-      },
-    );
     testWidgets('the LANE TWIRL column paints too', (tester) async {
       await pump(tester);
       Finder openTwirls() => find.railIcon(Icons.arrow_drop_down);
@@ -445,48 +390,10 @@ void main() {
       expect(
         openTwirls().evaluate().length,
         greaterThan(before + 1),
-        reason:
-            'the twirl is the leading column most exposed to the indent — '
-            'it is the very cell the nesting run pushes',
+        reason: 'the press opened its row\'s lanes, and the sweep the rows '
+            'it crossed',
       );
     });
-
-    testWidgets(
-      'the band function is what the rail actually renders, at every depth',
-      (tester) async {
-        await pumpNested(tester);
-
-        double insetOf(String rowId) {
-          final button = tester.getTopLeft(
-            find.named('timeline-layer-timesheet-$rowId'),
-          );
-          final row = tester.getTopLeft(
-            find.named('timeline-layer-row-$rowId'),
-          );
-          return button.dx - row.dx;
-        }
-
-        // 🚨Measured against the tree, not against the constants it is made
-        // of: a band derived from a number nothing renders is a band that
-        // 🚨Measured against the tree, not against the constants it is made
-        // of: a band derived from a number nothing renders is a band that
-        // can be wrong in both places at once.
-        expect(
-          insetOf('l1'),
-          timelineLayerRowLeadingBorder +
-              layerRailLeadingWidthTo(to: LayerRailLeadingSlot.timesheet),
-          reason: 'unnested',
-        );
-        // 🆕2026-08-29: depth moved into the NAME column, so a nested row's
-        // buttons sit at exactly the same x. The band no longer has to
-        // follow an indent, because there is no indent in front of it.
-        expect(
-          insetOf('m1'),
-          insetOf('l1'),
-          reason: '한 겹 들어가도 버튼 자리는 그대로다 — 좁아지는 것은 이름이다',
-        );
-      },
-    );
   });
 
   testWidgets(
@@ -508,7 +415,7 @@ void main() {
         expect(finder, findsOneWidget, reason: 'fixture premise: $name exists');
         expect(
           tester.widget(finder),
-          isA<RailGlyphFace>(),
+          isA<RailGlyphButton>(),
           reason:
               '$name must be the rail\'s button face. A bare InkWell hovers '
               'as a different shape from its neighbours — that is the '

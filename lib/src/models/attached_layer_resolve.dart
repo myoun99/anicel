@@ -158,7 +158,7 @@ SplayTreeMap<int, TimelineExposure> attachedDisplayTimeline({
       // ⛔싱크가 세우는 것은 **타이밍 편집**이지 표시가 아니다(이 파일 위쪽의
       // 계약: 「What stands down is TIMING」). 점은 블록이 자기 안을 어떻게
       // 나누는지에 대한 **표시**이고, 미러 행은 그 블록을 그대로 보여 준다.
-      breakdownOffsets: entry.value.breakdownOffsets,
+      breakdownMarks: entry.value.breakdownMarks,
       // F-134: a block's run edge marks mirror with it, so a bake
       // ([detachedLayer]) keeps the tail the row was showing.
       startEdge: entry.value.startEdge,

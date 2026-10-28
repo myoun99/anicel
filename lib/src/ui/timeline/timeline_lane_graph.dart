@@ -29,6 +29,7 @@ import '../dashed_path.dart'
         dashesAlong,
         paintDashedOutline;
 import '../input/hit_gate.dart' show HitGate;
+import '../input/timeline_edit_pan.dart';
 import '../layout/device_grid_scroll_controller.dart' show ScrollStill;
 import '../text/app_strings.dart' show AppStrings, AppText;
 import '../theme/app_theme.dart' show AppColors, AppShapes;
@@ -62,8 +63,7 @@ import 'timeline_frame_range_gesture.dart'
     show
         TimelineLaneRangeCallbacks,
         reportRangeDragFinished,
-        retireRangeDragOnUnmount,
-        timelineEagerPanDetector;
+        retireRangeDragOnUnmount;
 import 'timeline_frame_window.dart'
     show frameWindowContains, visibleFrameWindowFor;
 import 'timeline_grid_hooks.dart' show TimelineGridHooks;
@@ -666,12 +666,11 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     key: const ValueKey<String>('lane-graph-ground'),
     behavior: HitTestBehavior.opaque,
     onTap: lanes.onTapClear,
-    child: timelineEagerPanDetector(
-      context: context,
+    child: TimelineEditPan(
       debugOwner: this,
       firstStepAt: _boxSteppedAt,
       draggedAStep: () => _box != null,
-      onStart: _openBox,
+      onStart: (details) => _openBox(details.localPosition),
       onUpdate: _drawBox,
       onEnd: _closeBox,
       // Nothing to close: the recogniser cancels only a press it never

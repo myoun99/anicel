@@ -121,7 +121,6 @@ class BrushTipMask {
     required this.id,
     required this.size,
     required Uint8List alpha,
-    this.edgeBaked = false,
   }) : alpha = Uint8List.fromList(alpha) {
     if (id.isEmpty) {
       throw ArgumentError.value(id, 'id', 'BrushTipMask.id must not be empty.');
@@ -150,12 +149,6 @@ class BrushTipMask {
 
   /// Row-major alpha bytes (0 = transparent, 255 = full coverage).
   final Uint8List alpha;
-
-  /// Whether [alpha] already holds the anti-alias step's EDGE (I-50): an
-  /// analytic round tip baked with its step's width, which takes its
-  /// sampled coverage as it is. A raster tip's own mask does not, and keeps
-  /// the contrast ladder after sampling ([BrushAntiAlias.contrast]).
-  final bool edgeBaked;
 
   /// [alpha] pre-divided by 255.0 — exactly the `alpha[i] / 255.0` every
   /// sampler computes per texel read, cached once so the rasterizer hot
@@ -200,7 +193,6 @@ class BrushTipMask {
     'id': id,
     'size': size,
     'alpha': base64Encode(alpha),
-    if (edgeBaked) 'edgeBaked': true,
   };
 
   /// A mask of [width] × [height] coverage bytes padded to the centred
@@ -234,7 +226,6 @@ class BrushTipMask {
       id: json['id'] as String,
       size: json['size'] as int,
       alpha: base64Decode(json['alpha'] as String),
-      edgeBaked: json['edgeBaked'] == true,
     );
   }
 
@@ -243,10 +234,7 @@ class BrushTipMask {
     if (identical(this, other)) {
       return true;
     }
-    if (other is! BrushTipMask ||
-        other.id != id ||
-        other.size != size ||
-        other.edgeBaked != edgeBaked) {
+    if (other is! BrushTipMask || other.id != id || other.size != size) {
       return false;
     }
     for (var index = 0; index < alpha.length; index += 1) {

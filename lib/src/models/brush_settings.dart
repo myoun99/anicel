@@ -3,6 +3,7 @@ import 'brush_blend_mode.dart';
 import 'brush_correction.dart';
 import 'separable_blend_mode.dart';
 import 'brush_input_source.dart';
+import 'brush_mixing_method.dart';
 import 'brush_pressure_curve.dart';
 import 'brush_settings_group.dart';
 import 'brush_shape.dart';
@@ -52,6 +53,7 @@ class BrushSettings {
     BrushBlendMode blendMode = BrushBlendMode.color,
     BrushAntiAlias antiAlias = BrushAntiAlias.high,
     bool mixesGroundColor = false,
+    BrushMixingMethod mixingMethod = BrushMixingMethod.mix,
     double paintAmount = 1.0,
     double paintDensity = 1.0,
     double colorStretch = 0.0,
@@ -97,6 +99,7 @@ class BrushSettings {
          blendMode: blendMode,
          antiAlias: antiAlias,
          mixesGroundColor: mixesGroundColor,
+         mixingMethod: mixingMethod,
          paintAmount: paintAmount,
          paintDensity: paintDensity,
          colorStretch: colorStretch,
@@ -198,6 +201,7 @@ class BrushSettings {
 
   /// Ground-colour mixing — see [BrushShape.mixesGroundColor].
   bool get mixesGroundColor => shape.mixesGroundColor;
+  BrushMixingMethod get mixingMethod => shape.mixingMethod;
   double get paintAmount => shape.paintAmount;
   double get paintDensity => shape.paintDensity;
   double get colorStretch => shape.colorStretch;
@@ -244,6 +248,7 @@ class BrushSettings {
     BrushBlendMode? blendMode,
     BrushAntiAlias? antiAlias,
     bool? mixesGroundColor,
+    BrushMixingMethod? mixingMethod,
     double? paintAmount,
     double? paintDensity,
     double? colorStretch,
@@ -296,6 +301,7 @@ class BrushSettings {
       blendMode: blendMode ?? this.blendMode,
       antiAlias: antiAlias ?? this.antiAlias,
       mixesGroundColor: mixesGroundColor ?? this.mixesGroundColor,
+      mixingMethod: mixingMethod ?? this.mixingMethod,
       paintAmount: paintAmount ?? this.paintAmount,
       paintDensity: paintDensity ?? this.paintDensity,
       colorStretch: colorStretch ?? this.colorStretch,
@@ -366,6 +372,9 @@ class BrushSettings {
     // existed round-trip byte-identically.
     if (mixesGroundColor) ...{
       'mixesGroundColor': true,
+      // Off its default only, by the same rule — I-75 added it.
+      if (mixingMethod != BrushMixingMethod.mix)
+        'mixingMethod': mixingMethod.name,
       'paintAmount': paintAmount,
       'paintDensity': paintDensity,
       'colorStretch': colorStretch,
@@ -455,6 +464,7 @@ class BrushSettings {
       textureDensity: (json['textureDensity'] as num?)?.toDouble() ?? 1.0,
       textureMode: BrushTextureMode.fromName(json['textureMode']),
       mixesGroundColor: json['mixesGroundColor'] as bool? ?? false,
+      mixingMethod: BrushMixingMethod.fromName(json['mixingMethod']),
       paintAmount: (json['paintAmount'] as num?)?.toDouble() ?? 1.0,
       paintDensity: (json['paintDensity'] as num?)?.toDouble() ?? 1.0,
       colorStretch: (json['colorStretch'] as num?)?.toDouble() ?? 0.0,

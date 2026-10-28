@@ -9,8 +9,8 @@ part of '../bitmap_surface_painter.dart';
 ///
 /// ⛔A PRE-BLENDED overlay on the surface's own grid is not drawn here at
 /// all: its tiles REPLACE their coordinates, so they are those coordinates'
-/// pictures and the base pass draws them as such at every level
-/// (`_SurfacePaintPass._coordinate`, the one law of what a coordinate
+/// pictures and the base pass draws them as such at every zoom
+/// (`_CoordinatePicture`, the one law of what a coordinate
 /// shows). Two draws of one coordinate is the double-density ghost.
 class _OverlayPass {
   _OverlayPass(this._pass, this._overlay);

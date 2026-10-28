@@ -16,9 +16,9 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
-import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/instant_tap_region.dart';
 
+import '../../helpers/timeline_zoom.dart';
 import 'timeline_cell_probe.dart';
 
 /// 🚨A SELECTION MOVED ONE FRAME IS STILL SELECTED, AT EVERY ZOOM.
@@ -84,12 +84,7 @@ void main() {
       MaterialApp(home: HomePage(initialProject: project())),
     );
     await tester.pumpAndSettle();
-    tester
-        .widget<FieldSlider>(
-          find.byKey(const ValueKey<String>('timeline-zoom-slider')),
-        )
-        .onChanged!(cell);
-    await tester.pumpAndSettle();
+    await zoomTimelineTo(tester, cell);
     final session = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;

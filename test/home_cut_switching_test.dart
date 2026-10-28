@@ -4,7 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/frame.dart'
-    show breakdownMark, unnamedDrawingMark;
+    show InbetweenMark, unnamedDrawingMark;
 import 'package:anicel/main.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
@@ -196,8 +196,8 @@ void main() {
         tester,
         const ValueKey<String>('toggle-mark-button'),
       );
-      expectCellMark(secondCutRowId, 2, breakdownMark);
-      expect(selectedCellStateLabel(tester), 'inbetween mark');
+      expectCellMark(secondCutRowId, 2, InbetweenMark.two);
+      expect(selectedCellStateLabel(tester), 'inbetween mark 2');
 
       await switchToCut(tester, 'default-cut-1');
 
@@ -206,9 +206,9 @@ void main() {
       // comma long, and the empty run behind it — whose first cell reads X.
       expectCellMark('default-layer-1', 0, unnamedDrawingMark);
       expectCellText('default-layer-1', 1, 'X');
-      expectNoCellMark('default-layer-1', 2, breakdownMark);
+      expectNoCellMark('default-layer-1', 2, InbetweenMark.two);
       expect(
-        anyCellSemanticsLabel('default-layer-1', 'inbetween mark'),
+        anyCellSemanticsLabel('default-layer-1', 'inbetween mark 2'),
         isFalse,
       );
     },

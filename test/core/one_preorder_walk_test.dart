@@ -1,18 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/canvas_viewport.dart';
-import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/project_id.dart';
-import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/services/playback/cut_frame_composite_signature.dart';
-import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/models/composite_tree.dart';
 
 /// **The recursion over a composite tree is ONE algorithm.**
 ///
@@ -22,7 +13,8 @@ import 'package:anicel/src/models/composite_tree.dart';
 /// stand-in, its only reader). These pin what the walks must answer: every
 /// leaf in depth-first bottom → top order, nested folders and adjustments
 /// descended into, and the non-leaf kinds contributing nothing of their
-/// own.
+/// own. ↩️The stack view's `layers` was pinned here too, until the view went
+/// (one-picture-per-frame ②-5b-1).
 void main() {
   CompositeLayerSignature leaf(String id) => CompositeLayerSignature(
     layerId: LayerId(id),
@@ -92,65 +84,6 @@ void main() {
         ],
       );
       expect(empty.layers, isEmpty);
-    });
-  });
-
-  group('the canvas STACK walk', () {
-    CanvasLayerImageRequest request(String id) => CanvasLayerImageRequest(
-      frameKey: BrushFrameKey(
-        projectId: const ProjectId('p'),
-        trackId: const TrackId('t'),
-        cutId: const CutId('c'),
-        layerId: LayerId(id),
-        frameId: FrameId('$id-cel'),
-      ),
-      opacity: 1,
-    );
-
-    /// a, then a folder holding the ACTIVE row and an adjustment holding
-    /// b, then c.
-    CanvasLayerStackView view() => CanvasLayerStackView(
-      canvasSize: const CanvasSize(width: 8, height: 8),
-      imageCache: LayerFrameImageCache(frameStore: BrushFrameStore()),
-      viewport: CanvasViewport(),
-      nodes: [
-        CompositeLeaf<CanvasStackRow>(request('a')),
-        CompositeGroup<CanvasStackRow>(
-          opacity: 1,
-          blendMode: LayerBlendMode.normal,
-          children: [
-            const CompositeLeaf<CanvasStackRow>(
-              CanvasActiveLayerRow(opacity: 1),
-            ),
-            CompositeAdjustment<CanvasStackRow>(
-              effects: const [],
-              mix: 1,
-              children: [CompositeLeaf<CanvasStackRow>(request('b'))],
-            ),
-          ],
-        ),
-        CompositeLeaf<CanvasStackRow>(request('c')),
-      ],
-    );
-
-    test('flattens every image request, depth-first bottom → top', () {
-      expect(
-        view().layers.map((entry) => entry.frameKey.layerId.value),
-        ['a', 'b', 'c'],
-        reason: 'the ACTIVE node is not a cached image and yields nothing',
-      );
-    });
-
-    test('an empty stack answers nothing', () {
-      expect(
-        CanvasLayerStackView(
-          canvasSize: const CanvasSize(width: 8, height: 8),
-          imageCache: LayerFrameImageCache(frameStore: BrushFrameStore()),
-          viewport: CanvasViewport(),
-          nodes: const [],
-        ).layers,
-        isEmpty,
-      );
     });
   });
 }

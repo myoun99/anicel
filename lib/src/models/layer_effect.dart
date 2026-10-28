@@ -1,7 +1,20 @@
 import '../core/collection_equality.dart';
+import 'canvas_size.dart';
 import 'property_track.dart';
 import 'string_id.dart';
-import 'transform_track.dart' show doubleKeySpace;
+import 'transform_track.dart'
+    show
+        TransformNamedChanges,
+        TransformPose,
+        TransformPropertyId,
+        TransformTrack,
+        argbKeySpace,
+        doubleKeySpace,
+        layerIdentityPose,
+        transformLaneOf,
+        transformNamedKeyChanges,
+        transformPropertyOfLaneId,
+        transformTrackWithNamedKeys;
 
 /// Stable identity of one effect INSTANCE on a layer — the lane address
 /// (`fx:<id>:<parameter>`) and the undo commands both name effects by this,
@@ -32,20 +45,166 @@ final class EffectId extends StringId {
 ///
 /// Levels/curves and glow are the natural next entries; both need a lookup
 /// table or a second pass, which is a later slice — not a different model.
+///
+/// 🚨THE EFFECT-KIND CAPABILITY TABLE — `LayerKind`'s law (audit round 8):
+/// every question the app asks about a kind is a COLUMN, and every kind
+/// answers it in its own declaration as a REQUIRED named parameter, so a new
+/// kind is a compile error until it has answered them all. 유저 I-132
+/// (2026-10-26): 「fx 들 전체적으로 법 통일」 — a kind used to be answered in
+/// five places (a label switch, `== EffectKind.x` tests, a parameter map,
+/// two composite switches). ⛔TWO COLUMNS THAT MATCH TODAY ARE STILL TWO
+/// COLUMNS: [drawsItsOwnPicture], [isBasic] and [staysOnItsRow] hold the
+/// same trues and name three facts.
 enum EffectKind {
-  brightnessContrast('brightnessContrast'),
-  hueSaturation('hueSaturation'),
-  blur('blur'),
+  brightnessContrast(
+    'brightnessContrast',
+    label: 'Brightness & Contrast',
+    parameters: [
+      EffectParameterSpec(
+        id: 'brightness',
+        label: 'Brightness',
+        defaultValue: 0,
+        minimum: -100,
+        maximum: 100,
+      ),
+      EffectParameterSpec(
+        id: 'contrast',
+        label: 'Contrast',
+        defaultValue: 0,
+        minimum: -100,
+        maximum: 100,
+      ),
+    ],
+    spreadsPixels: false,
+    runsOnSourcePixels: false,
+    drawsItsOwnPicture: false,
+    isBasic: false,
+    staysOnItsRow: false,
+  ),
+  // 🗣️I-132-Q4 (유저 2026-10-27): 「이름 · 범위만 AE 에 맞추고 식은 지금대로」
+  // — the names and ranges are AE's Hue/Saturation (Adobe's help, read
+  // 2026-10-27: Master Hue −180…180, Master Saturation and Lightness
+  // −100…100), the matrix is ours. The ids stay: they address lanes and
+  // strings, and no one sees them.
+  hueSaturation(
+    'hueSaturation',
+    label: 'Hue/Saturation',
+    parameters: [
+      EffectParameterSpec(
+        id: 'hue',
+        label: 'Master Hue',
+        defaultValue: 0,
+        minimum: -180,
+        maximum: 180,
+        unit: EffectParameterUnit.degrees,
+      ),
+      EffectParameterSpec(
+        id: 'saturation',
+        label: 'Master Saturation',
+        defaultValue: 0,
+        minimum: -100,
+        maximum: 100,
+      ),
+      EffectParameterSpec(
+        id: 'lightness',
+        label: 'Master Lightness',
+        defaultValue: 0,
+        minimum: -100,
+        maximum: 100,
+      ),
+    ],
+    spreadsPixels: false,
+    runsOnSourcePixels: false,
+    drawsItsOwnPicture: false,
+    isBasic: false,
+    staysOnItsRow: false,
+  ),
+  blur(
+    'blur',
+    label: 'Blur',
+    parameters: [
+      EffectParameterSpec(
+        id: 'blurX',
+        label: 'Blur Width',
+        defaultValue: 0,
+        minimum: 0,
+        maximum: 500,
+        unit: EffectParameterUnit.pixels,
+      ),
+      EffectParameterSpec(
+        id: 'blurY',
+        label: 'Blur Height',
+        defaultValue: 0,
+        minimum: 0,
+        maximum: 500,
+        unit: EffectParameterUnit.pixels,
+      ),
+    ],
+    spreadsPixels: true,
+    runsOnSourcePixels: false,
+    drawsItsOwnPicture: false,
+    isBasic: false,
+    staysOnItsRow: false,
+  ),
 
   /// Erase every pixel whose color is within [tolerance] of the key color.
-  deleteColor('deleteColor'),
+  deleteColor(
+    'deleteColor',
+    label: 'Delete Color',
+    parameters: colorKeyParameterSpecs,
+    spreadsPixels: false,
+    runsOnSourcePixels: true,
+    drawsItsOwnPicture: false,
+    isBasic: false,
+    staysOnItsRow: false,
+  ),
 
   /// Erase every pixel whose color is NOT within [tolerance] of the key
   /// color — the same comparison with the answer inverted, which is why
   /// the two share [colorKeyParameterSpecs] rather than repeating it.
-  keepColor('keepColor');
+  keepColor(
+    'keepColor',
+    label: 'Keep Color',
+    parameters: colorKeyParameterSpecs,
+    spreadsPixels: false,
+    runsOnSourcePixels: true,
+    drawsItsOwnPicture: false,
+    isBasic: false,
+    staysOnItsRow: false,
+  ),
 
-  const EffectKind(this.jsonValue);
+  /// The CEL NUMBER (I-65): the row's name and its drawing's, in letters
+  /// laid over the row's picture — 「A1」 — where [LayerEffect.stand] puts
+  /// them ([drawsItsOwnPicture]).
+  ///
+  /// 🗣️유저 08-07: 「종이에 매번 셀번호 적는 게 귀찮아서 … 납품 셀에도 셀번호
+  /// 적는 거야. 그래서 fx 로 하는 거고」 · 「체인 위치 고정 반대 — 블러 걸고
+  /// 싶은 상황을 막는 제한」: a link of the chain like any other, so what
+  /// follows it reads the letters too. 10-24 (I-65-Q1 a): 「레이어 이름 + 셀
+  /// 번호(A1) — 이름 없는 그림은 A●」 — ↩️「A○」 since F-469 (기본마크 = 마크1).
+  celNumber(
+    'celNumber',
+    label: 'Cel Number',
+    // Where the letters stand, how big and in what colour are the effect's
+    // [LayerEffect.stand] and [LayerEffect.ink], not parameters.
+    parameters: [],
+    spreadsPixels: false,
+    runsOnSourcePixels: false,
+    drawsItsOwnPicture: true,
+    isBasic: true,
+    staysOnItsRow: true,
+  );
+
+  const EffectKind(
+    this.jsonValue, {
+    required this.label,
+    required this.parameters,
+    required this.spreadsPixels,
+    required this.runsOnSourcePixels,
+    required this.drawsItsOwnPicture,
+    required this.isBasic,
+    required this.staysOnItsRow,
+  });
 
   final String jsonValue;
 
@@ -60,18 +219,17 @@ enum EffectKind {
   /// reversed that rule for every name a model carries), keyed by
   /// [jsonValue] in the string tables — `EffectKindWords` in
   /// `ui/text/model_vocabulary.dart`, which a model cannot import.
-  String get label => switch (this) {
-    EffectKind.brightnessContrast => 'Brightness & Contrast',
-    EffectKind.hueSaturation => 'Hue/Saturation',
-    EffectKind.blur => 'Blur',
-    EffectKind.deleteColor => 'Delete Color',
-    EffectKind.keepColor => 'Keep Color',
-  };
+  final String label;
+
+  /// The kind's parameters, in the order the lanes show them. The specs ARE
+  /// the schema — the lane UI, the value parser, the JSON round-trip and the
+  /// resolver all read this list instead of repeating a switch per effect.
+  final List<EffectParameterSpec> parameters;
 
   /// Whether this kind SPREADS pixels outside their own coverage — the
   /// question the composite asks before deciding a folder must buffer, and
   /// the reason a blur can never be folded into a member's own draw.
-  bool get spreadsPixels => this == EffectKind.blur;
+  final bool spreadsPixels;
 
   /// Whether this kind is computed over the SOURCE pixels — the cel's own
   /// tile bytes, before anything is drawn — rather than over what the
@@ -88,8 +246,43 @@ enum EffectKind {
   /// cel bytes; a folder keys the picture it composed now, through a
   /// fragment shader proven identical to this pass. `splitSourceEffects`
   /// reads this to find the leading run and nothing else does.
-  bool get runsOnSourcePixels =>
-      this == EffectKind.deleteColor || this == EffectKind.keepColor;
+  final bool runsOnSourcePixels;
+
+  /// Whether this kind DRAWS a picture of its own over the row's — the cel
+  /// number's letters — rather than filtering the picture it is handed. Such
+  /// a link is never a no-op ([ResolvedLayerEffect.isNoOp]: the letters are
+  /// what it does), splits the chain where it stands (`celNumberedRow`) and
+  /// stands where its [LayerEffect.stand] puts it.
+  ///
+  /// ⚠️Only a row whose drawings carry cel numbers takes one — the letters
+  /// print that number (`LayerKind.numbersItsDrawings`: the same fact the
+  /// auto naming reads, the kinds whose drawings are named by number).
+  final bool drawsItsOwnPicture;
+
+  /// Whether an output that keeps only the BASIC fx keeps this kind
+  /// (`ExportLayerFx.basic`, `layerAsOutput`).
+  ///
+  /// 🗣️I-65-Q3 (유저 2026-10-25): 「기본만 켬은 지금까지 말햇던 셀번호나
+  /// 참조fx같은것만 키고 트랜스폼 포함해서 나머지 끄는것」. The reference fx is
+  /// the row's, not a link of this chain ([Layer.mediaReference]).
+  final bool isBasic;
+
+  /// Whether only the row that carries this link wears it — an attach row
+  /// wears its base's chain short of it (`chainWornBy`).
+  ///
+  /// 🗣️I-65-Q4 (유저 2026-10-25): 「fx 를 단 행만 적는다 — 어태치는 번호 없이
+  /// 나머지 fx 만 입는다」.
+  final bool staysOnItsRow;
+
+  /// The parameter [id] of this kind — null for an id it does not declare.
+  EffectParameterSpec? parameterSpec(String id) {
+    for (final spec in parameters) {
+      if (spec.id == id) {
+        return spec;
+      }
+    }
+    return null;
+  }
 
   String toJson() => jsonValue;
 
@@ -146,70 +339,6 @@ class EffectParameterSpec {
 
   double clamp(double value) => value.clamp(minimum, maximum).toDouble();
 }
-
-/// Every effect kind's parameters, in the order the lanes show them.
-const Map<EffectKind, List<EffectParameterSpec>> effectParameterSpecs = {
-  EffectKind.brightnessContrast: [
-    EffectParameterSpec(
-      id: 'brightness',
-      label: 'Brightness',
-      defaultValue: 0,
-      minimum: -100,
-      maximum: 100,
-    ),
-    EffectParameterSpec(
-      id: 'contrast',
-      label: 'Contrast',
-      defaultValue: 0,
-      minimum: -100,
-      maximum: 100,
-    ),
-  ],
-  EffectKind.hueSaturation: [
-    EffectParameterSpec(
-      id: 'hue',
-      label: 'Hue',
-      defaultValue: 0,
-      minimum: -180,
-      maximum: 180,
-      unit: EffectParameterUnit.degrees,
-    ),
-    EffectParameterSpec(
-      id: 'saturation',
-      label: 'Saturation',
-      defaultValue: 0,
-      minimum: -100,
-      maximum: 100,
-    ),
-    EffectParameterSpec(
-      id: 'lightness',
-      label: 'Lightness',
-      defaultValue: 0,
-      minimum: -100,
-      maximum: 100,
-    ),
-  ],
-  EffectKind.blur: [
-    EffectParameterSpec(
-      id: 'blurX',
-      label: 'Blur Width',
-      defaultValue: 0,
-      minimum: 0,
-      maximum: 500,
-      unit: EffectParameterUnit.pixels,
-    ),
-    EffectParameterSpec(
-      id: 'blurY',
-      label: 'Blur Height',
-      defaultValue: 0,
-      minimum: 0,
-      maximum: 500,
-      unit: EffectParameterUnit.pixels,
-    ),
-  ],
-  EffectKind.deleteColor: colorKeyParameterSpecs,
-  EffectKind.keepColor: colorKeyParameterSpecs,
-};
 
 /// The color keys' parameters — ONE list for both kinds, because erase and
 /// keep are the same comparison with the answer inverted. Two copies would
@@ -277,18 +406,6 @@ const List<EffectParameterSpec> colorKeyParameterSpecs = [
     maximum: 100,
   ),
 ];
-
-List<EffectParameterSpec> effectParametersOf(EffectKind kind) =>
-    effectParameterSpecs[kind]!;
-
-EffectParameterSpec? effectParameterSpecOf(EffectKind kind, String id) {
-  for (final spec in effectParametersOf(kind)) {
-    if (spec.id == id) {
-      return spec;
-    }
-  }
-  return null;
-}
 
 /// One animatable effect parameter, in the AE property shape: a VALUE plus
 /// an optional key [track]. Keys win where they exist — an empty track
@@ -369,17 +486,28 @@ class LayerEffect {
   /// resolving to identical pixels — and this class's equality feeds the
   /// composite cache key, the autosave dirty check and the thumbnail
   /// signature.
+  ///
+  /// [stand] and [ink] are normalized the same way: a kind that draws no
+  /// picture of its own holds neither, whatever it was handed.
   LayerEffect({
     required this.id,
     required this.kind,
     this.enabled = true,
     Map<String, EffectParameter>? parameters,
+    TransformTrack? stand,
+    PropertyTrack<int>? ink,
   }) : parameters = Map.unmodifiable({
-         for (final spec in effectParametersOf(kind))
+         for (final spec in kind.parameters)
            spec.id:
                parameters?[spec.id] ??
                EffectParameter(value: spec.defaultValue),
-       });
+       }),
+       stand = kind.drawsItsOwnPicture && stand != null
+           ? stand
+           : TransformTrack.empty(),
+       ink = kind.drawsItsOwnPicture && ink != null
+           ? ink
+           : PropertyTrack<int>.empty();
 
   /// A fresh effect of [kind], every parameter at its spec default — what
   /// "Add effect" creates (an effect you just added must change nothing
@@ -402,6 +530,35 @@ class LayerEffect {
   /// its default on old data, with no migration.
   final Map<String, EffectParameter> parameters;
 
+  /// Where the picture a kind that draws its own ([EffectKind
+  /// .drawsItsOwnPicture]) stands on the row's paper, and how big — the KEYS
+  /// of its Position and Scale, in the transform lanes' own words, as the
+  /// reference fx keeps its file's (`MediaReference.fx`). Unkeyed, it stands
+  /// where a row does at rest: the paper's middle, at its size
+  /// ([effectStandPose]). Empty for every other kind.
+  ///
+  /// 🗣️I-65-Q2 메모 (유저 2026-10-24): 「셀번호 fx 자체적으로 위치/크기값
+  /// 구현. 트랜스폼에 있는거처럼 위치/비율 두개 키. 공용화된거 사용하면서」 ·
+  /// 08-07: 「위치는 기본값으로 — 기본 트랜스폼 fx 의 위치 기준, 늘 하던 대로
+  /// 공통된 거 사용」.
+  final TransformTrack stand;
+
+  /// The colour a kind that draws its own picture draws it in — the KEYS of
+  /// ONE colour lane, as an SE row's name tag keys its name's ink
+  /// (`SeNameTagTrack.nameInk`), read in the same key space
+  /// ([argbKeySpace]). Unkeyed, the text tool's own black
+  /// ([effectInkAtRest]). Empty for every other kind.
+  ///
+  /// 🗣️F-477 (유저 2026-10-26): 「se행의 이름표fx의 이름 잉크같은것처럼 색
+  /// 컬러팝오버로 고르는거 그대로 사용하라고. 쓸데없이 빨강파랑초록
+  /// 나누지말고」. ↩️It was three number lanes, Red · Green · Blue — the
+  /// colour keys' shape ([colorKeyParameterSpecs]), which I-65-Q1's 「색 키
+  /// 고르는것」 was read as; nobody asked for it.
+  final PropertyTrack<int> ink;
+
+  /// Whether lane [lane] is this effect's [ink].
+  bool inksOn(String lane) => kind.drawsItsOwnPicture && lane == effectInkLane;
+
   /// The named parameter. Non-null for every id the kind declares (the
   /// constructor materializes them); an id from another kind answers a
   /// zero-valued placeholder rather than throwing, so a stale lane address
@@ -409,19 +566,26 @@ class LayerEffect {
   EffectParameter parameterOf(String id) =>
       parameters[id] ??
       EffectParameter(
-        value: effectParameterSpecOf(kind, id)?.defaultValue ?? 0,
+        value: kind.parameterSpec(id)?.defaultValue ?? 0,
       );
 
+  /// [id] is for a copy that stands beside its source — a paste, a
+  /// duplicate — which has to be an effect of its own (F-476).
   LayerEffect copyWith({
+    EffectId? id,
     EffectKind? kind,
     bool? enabled,
     Map<String, EffectParameter>? parameters,
+    TransformTrack? stand,
+    PropertyTrack<int>? ink,
   }) {
     return LayerEffect(
-      id: id,
+      id: id ?? this.id,
       kind: kind ?? this.kind,
       enabled: enabled ?? this.enabled,
       parameters: parameters ?? this.parameters,
+      stand: stand ?? this.stand,
+      ink: ink ?? this.ink,
     );
   }
 
@@ -431,9 +595,30 @@ class LayerEffect {
     return copyWith(parameters: {...parameters, parameterId: parameter});
   }
 
-  /// Whether this effect carries any animation at all (the lane group
-  /// header's key union asks).
-  bool get isAnimated => parameters.values.any((value) => value.isAnimated);
+  /// The property of [stand] lane [lane] is — a stand lane, by the transform
+  /// lane's id ([effectStandLanes]) — on a kind that draws its own picture;
+  /// null for every other lane: a parameter's.
+  TransformPropertyId? standLaneOf(String lane) =>
+      kind.drawsItsOwnPicture && effectStandLanes.contains(lane)
+      ? transformPropertyOfLaneId(lane)
+      : null;
+
+  /// The keys lane [lane] of this effect holds — a parameter's by its id,
+  /// a stand lane's ([standLaneOf]), the [ink]'s — read without knowing
+  /// their value type; null for a lane the effect has not.
+  PropertyTrack<Object?>? laneTrack(String lane) => switch (standLaneOf(lane)) {
+    final property? => transformLaneOf(stand, property),
+    null when inksOn(lane) => ink,
+    null => parameters[lane]?.track,
+  };
+
+  /// Every lane of this effect, in the order its rows show them: where it
+  /// stands first ([effectStandLanes]), as a transform's lanes lead, and
+  /// its [ink], then its parameters.
+  List<String> get lanes => [
+    if (kind.drawsItsOwnPicture) ...[...effectStandLanes, effectInkLane],
+    for (final spec in kind.parameters) spec.id,
+  ];
 
   Map<String, dynamic> toJson() => {
     'id': id.toJson(),
@@ -446,11 +631,14 @@ class LayerEffect {
             entry.value.track.isNotEmpty)
           entry.key: entry.value.toJson(),
     },
+    if (stand.isNotEmpty) 'stand': stand.toJson(),
+    if (ink.isNotEmpty) 'ink': ink.toJson((value) => value),
   };
 
   factory LayerEffect.fromJson(Map<String, dynamic> json) {
     final kind = EffectKind.fromJson(json['kind']);
     final rawParameters = json['parameters'] as Map<String, dynamic>? ?? {};
+    final stand = json['stand'] as Map<String, dynamic>?;
     // The constructor fills whatever the file left out.
     return LayerEffect(
       id: EffectId.fromJson(json['id'] as Map<String, dynamic>),
@@ -462,6 +650,11 @@ class LayerEffect {
             entry.value as Map<String, dynamic>,
           ),
       },
+      stand: stand == null ? null : TransformTrack.fromJson(stand),
+      ink: PropertyTrack.fromJson(
+        json['ink'] as List?,
+        (value) => (value! as num).toInt(),
+      ),
     );
   }
 
@@ -472,7 +665,9 @@ class LayerEffect {
           other.id == id &&
           other.kind == kind &&
           other.enabled == enabled &&
-          mapEquals(other.parameters, parameters);
+          mapEquals(other.parameters, parameters) &&
+          other.stand == stand &&
+          other.ink == ink;
 
   @override
   int get hashCode => Object.hash(
@@ -483,6 +678,8 @@ class LayerEffect {
       for (final entry in parameters.entries)
         Object.hash(entry.key, entry.value),
     ]),
+    stand,
+    ink,
   );
 
   @override
@@ -491,36 +688,50 @@ class LayerEffect {
 }
 
 double _specDefault(EffectKind kind, String parameterId) =>
-    effectParameterSpecOf(kind, parameterId)?.defaultValue ?? 0;
+    kind.parameterSpec(parameterId)?.defaultValue ?? 0;
 
 /// An effect with its parameters SAMPLED at one frame — what the composite
 /// carries and what the caches compare. Values are in
-/// [effectParametersOf]'s order, which is the only order anything builds
+/// [EffectKind.parameters]' order, which is the only order anything builds
 /// them in.
 class ResolvedLayerEffect {
-  ResolvedLayerEffect({required this.kind, required List<double> values})
-    : values = List.unmodifiable(values);
+  ResolvedLayerEffect({
+    required this.kind,
+    required List<double> values,
+    this.stand,
+    this.ink,
+  }) : values = List.unmodifiable(values);
 
   final EffectKind kind;
   final List<double> values;
 
+  /// Where a kind that draws its own picture stands it at this frame
+  /// ([LayerEffect.stand] sampled); null for every other kind.
+  final EffectStand? stand;
+
+  /// The ARGB colour a kind that draws its own picture draws it in at this
+  /// frame ([LayerEffect.ink] sampled); null for every other kind.
+  final int? ink;
+
   double parameter(String id) {
-    final specs = effectParametersOf(kind);
-    for (var index = 0; index < specs.length; index += 1) {
-      if (specs[index].id == id) {
-        return index < values.length
-            ? values[index]
-            : specs[index].defaultValue;
-      }
+    final specs = kind.parameters;
+    final index = specs.indexWhere((spec) => spec.id == id);
+    if (index < 0) {
+      return 0;
     }
-    return 0;
+    return index < values.length ? values[index] : specs[index].defaultValue;
   }
 
   /// Whether this sample changes any pixel. An effect resolved to its
   /// defaults is dropped by the resolver, so nothing downstream ever pays
   /// for a filter that does nothing.
+  ///
+  /// A kind that draws its own picture never is: drawing it is what it does.
   bool get isNoOp {
-    final specs = effectParametersOf(kind);
+    if (kind.drawsItsOwnPicture) {
+      return false;
+    }
+    final specs = kind.parameters;
     for (
       var index = 0;
       index < specs.length && index < values.length;
@@ -538,14 +749,60 @@ class ResolvedLayerEffect {
       identical(this, other) ||
       other is ResolvedLayerEffect &&
           other.kind == kind &&
-          listEquals(other.values, values);
+          listEquals(other.values, values) &&
+          other.stand == stand &&
+          other.ink == ink;
 
   @override
-  int get hashCode => Object.hash(kind, Object.hashAll(values));
+  int get hashCode => Object.hash(kind, Object.hashAll(values), stand, ink);
 
   @override
-  String toString() => 'ResolvedLayerEffect($kind, $values)';
+  String toString() => 'ResolvedLayerEffect($kind, $values, $stand, $ink)';
 }
+
+/// Where the picture of an effect that draws its own stands at one time:
+/// [LayerEffect.stand]'s keys and the time to read them at — a frame, or
+/// between two. The pose they make is the transform's own resolve of them
+/// on the row's paper ([effectStandPose]); the paper is not the effect's to
+/// know. Unkeyed, every time is 0: one stand, whatever the frame.
+typedef EffectStand = ({TransformTrack keys, double time});
+
+/// The lanes of [LayerEffect.stand] an effect keys, by the ids the
+/// transform's lanes go by: Position and Scale, in that order.
+///
+/// 🗣️I-65-Q2 메모: 「위치/비율 두개 키」 — no Rotation.
+const List<String> effectStandLanes = ['position', 'scale'];
+
+/// [stand] at [time] ([EffectStand]).
+EffectStand effectStandAt(TransformTrack stand, double time) =>
+    (keys: stand, time: stand.isEmpty ? 0 : time);
+
+/// Where [stand] puts the picture on [paper]: its keys resolved as a
+/// transform's are ([TransformTrack.resolveAtTime]) — unkeyed, where a row
+/// stands at rest ([layerIdentityPose]): the paper's middle, at its size.
+///
+/// 🗣️08-07: 「위치는 기본값으로 — 기본 트랜스폼 fx 의 위치 기준, 늘 하던 대로
+/// 공통된 거 사용」.
+TransformPose effectStandPose(EffectStand stand, CanvasSize paper) =>
+    stand.keys.resolveAtTime(
+      time: stand.time,
+      orElse: () => layerIdentityPose(paper),
+    );
+
+/// The lane of [LayerEffect.ink] — after where the effect stands, as an SE
+/// name tag's inks follow its letters' size.
+const String effectInkLane = 'ink';
+
+/// What an unkeyed [LayerEffect.ink] draws in: opaque black, the text
+/// tool's own ink (`TextLetterStyle.color`).
+const int effectInkAtRest = 0xFF000000;
+
+/// [ink] at [time], a frame or between two — unkeyed, [effectInkAtRest].
+int effectInkAt(PropertyTrack<int> ink, double time) => ink.resolveAtTime(
+  time: time,
+  orElse: () => effectInkAtRest,
+  space: argbKeySpace,
+);
 
 /// Samples [effects] at [frameIndex], dropping the disabled ones and the
 /// ones that resolve to a no-op. An empty result is the overwhelmingly
@@ -562,13 +819,19 @@ List<ResolvedLayerEffect> resolveLayerEffectsAt({
     if (!effect.enabled) {
       continue;
     }
-    final specs = effectParametersOf(effect.kind);
+    final specs = effect.kind.parameters;
     final sample = ResolvedLayerEffect(
       kind: effect.kind,
       values: [
         for (final spec in specs)
           spec.clamp(effect.parameterOf(spec.id).resolveAt(frameIndex)),
       ],
+      stand: effect.kind.drawsItsOwnPicture
+          ? effectStandAt(effect.stand, frameIndex.toDouble())
+          : null,
+      ink: effect.kind.drawsItsOwnPicture
+          ? effectInkAt(effect.ink, frameIndex.toDouble())
+          : null,
     );
     if (sample.isNoOp) {
       continue;
@@ -586,25 +849,29 @@ bool resolvedEffectsSpreadPixels(List<ResolvedLayerEffect> effects) =>
 /// A NAMED key whose value moved in a chain edit — what the "same name,
 /// same value" link has to carry to every other use of that name.
 ///
-/// The naming space is one PARAMETER of one effect: Blur A's radius and
-/// Blur B's radius are different properties, so a name means nothing
-/// across them. Linked rows share effect ids by construction, which is
-/// what lets the same space span 겸용 cuts.
+/// The naming space is one LANE of one effect: Blur A's radius and Blur
+/// B's radius are different properties, so a name means nothing across
+/// them. Linked rows share effect ids by construction, which is what lets
+/// the same space span 겸용 cuts.
 class NamedEffectKeyChange {
   const NamedEffectKeyChange({
     required this.effectId,
-    required this.parameterId,
+    required this.lane,
     required this.name,
     required this.held,
   });
 
   final EffectId effectId;
-  final String parameterId;
+
+  /// The lane: a parameter's id, or one where the effect stands
+  /// ([LayerEffect.standLaneOf]).
+  final String lane;
   final String name;
 
-  /// The number and both sides, carried together (F-84 실기, 유저
-  /// 2026-09-12: 「싹다링크해야하는데」).
-  final NamedKeyValue<double> held;
+  /// The value and both sides, carried together (F-84 실기, 유저
+  /// 2026-09-12: 「싹다링크해야하는데」) — a number on a parameter, a point
+  /// where the effect stands.
+  final NamedKeyValue<Object?> held;
 }
 
 /// The named keys whose VALUE differs between [before] and [after] — the
@@ -623,6 +890,19 @@ List<NamedEffectKeyChange> namedEffectKeyChanges(
     if (old == null) {
       continue;
     }
+    void moved(String lane, Map<String, NamedKeyValue<Object?>> keys) {
+      for (final MapEntry(key: name, value: held) in keys.entries) {
+        changes.add(
+          NamedEffectKeyChange(
+            effectId: effect.id,
+            lane: lane,
+            name: name,
+            held: held,
+          ),
+        );
+      }
+    }
+
     for (final entry in effect.parameters.entries) {
       final oldTrack = old.parameters[entry.key]?.track;
       if (oldTrack == null) {
@@ -632,42 +912,37 @@ List<NamedEffectKeyChange> namedEffectKeyChanges(
       // not this loop's: an effect parameter and a transform lane are the
       // same kind of thing to the link, and deciding it twice is how the
       // two would drift.
-      for (final moved
-          in movedNamedKeys(oldTrack, entry.value.track).entries) {
-        changes.add(
-          NamedEffectKeyChange(
-            effectId: effect.id,
-            parameterId: entry.key,
-            name: moved.key,
-            held: moved.value,
-          ),
-        );
-      }
+      moved(entry.key, movedNamedKeys(oldTrack, entry.value.track));
     }
+    // Where it stands is read as a transform's keys are, by the
+    // transform's own reading of them.
+    final stand = transformNamedKeyChanges(old.stand, effect.stand);
+    moved('position', stand.position);
+    moved('scale', stand.scale);
+    moved(effectInkLane, movedNamedKeys(old.ink, effect.ink));
   }
   return changes;
 }
 
-/// The key [name] ALREADY holds in [effects], inside one effect's one
-/// parameter — null when the name is free there.
+/// The key [name] ALREADY holds in [effects], on one effect's one lane —
+/// null when the name is free there.
 ///
 /// This is the rename's pull: a key joining an existing name takes that
-/// name's number rather than imposing its own. Callers ask it across the
+/// name's value rather than imposing its own. Callers ask it across the
 /// whole naming space (this row AND its 겸용 siblings, which share effect
 /// ids), so a free name here can still be taken next door.
-PropertyKey<double>? namedEffectKey(
+PropertyKey<Object?>? namedEffectKey(
   List<LayerEffect> effects, {
   required EffectId effectId,
-  required String parameterId,
+  required String lane,
   required String name,
   Set<int> excludeFrames = const {},
 }) {
   for (final effect in effects) {
     if (effect.id == effectId) {
-      return effect.parameters[parameterId]?.track.keyForName(
-        name,
-        excludeFrames: excludeFrames,
-      );
+      return effect
+          .laneTrack(lane)
+          ?.keyForName(name, excludeFrames: excludeFrames);
     }
   }
   return null;
@@ -704,8 +979,8 @@ double effectParameterValueAtTime(
   return 0;
 }
 
-/// [effects] with every key carrying a change's name — in that change's own
-/// parameter — set to its value AND type. The other half of the link.
+/// [effects] with every key carrying a change's name — on that change's own
+/// lane — set to its value AND type. The other half of the link.
 List<LayerEffect> effectsWithNamedValues(
   List<LayerEffect> effects,
   List<NamedEffectKeyChange> changes,
@@ -720,21 +995,54 @@ List<LayerEffect> effectsWithNamedValues(
       continue;
     }
     final effect = result[index];
-    final parameter = effect.parameters[change.parameterId];
-    if (parameter == null) {
+    final next = _withNamedValue(effect, change);
+    if (next == null || next == effect) {
       continue;
     }
-    final track = parameter.track.withNamedKey(change.name, change.held);
-    if (track == parameter.track) {
-      continue;
-    }
-    result = [...result]
-      ..[index] = effect.withParameter(
-        change.parameterId,
-        EffectParameter(value: parameter.value, track: track),
-      );
+    result = [...result]..[index] = next;
   }
   return result;
+}
+
+/// [effect] with [change]'s name set on its lane — null where the effect
+/// has no such lane. Where it stands takes the name as a transform's keys
+/// do ([transformTrackWithNamedKeys]).
+LayerEffect? _withNamedValue(
+  LayerEffect effect,
+  NamedEffectKeyChange change,
+) {
+  final named = {change.name: change.held};
+  if (effect.inksOn(change.lane)) {
+    return effect.copyWith(ink: effect.ink.withNamedKeys(named.cast()));
+  }
+  switch (effect.standLaneOf(change.lane)) {
+    case TransformPropertyId.position:
+      return effect.copyWith(
+        stand: transformTrackWithNamedKeys(
+          effect.stand,
+          TransformNamedChanges(position: named.cast()),
+        ),
+      );
+    case TransformPropertyId.scale:
+      return effect.copyWith(
+        stand: transformTrackWithNamedKeys(
+          effect.stand,
+          TransformNamedChanges(scale: named.cast()),
+        ),
+      );
+    case _:
+      final parameter = effect.parameters[change.lane];
+      if (parameter == null) {
+        return null;
+      }
+      return effect.withParameter(
+        change.lane,
+        EffectParameter(
+          value: parameter.value,
+          track: parameter.track.withNamedKeys(named.cast()),
+        ),
+      );
+  }
 }
 
 /// [shape]'s chain STRUCTURE — which effects, in what order, each on or

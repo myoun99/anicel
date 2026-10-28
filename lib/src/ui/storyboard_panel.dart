@@ -68,7 +68,8 @@ import 'timeline/timeline_cut_end_handle.dart'
     show EndLineGrip, timelineCutEndPreviewFrameCount;
 import 'timeline/layer_rail_columns.dart';
 import 'timeline/berth_row.dart' show BerthRow;
-import 'timeline/rail_eyes.dart' show RailEyes;
+import 'timeline/rail_eyes.dart'
+    show RailEye, RailEyeShown, RailEyes, railEyesOf;
 import 'timeline/rail_column_swipe.dart';
 import 'timeline/layer_rail_window.dart';
 import 'timeline/timeline_grid_frame.dart';
@@ -104,7 +105,8 @@ import 'timeline/timeline_row_span_resolver.dart'
         laneSpanOverDrawnRows,
         resolveBlockMoveTargetLayer,
         resolveInGroupHeadLane,
-        resolveLaneSpanEscalationOverAddresses;
+        resolveLaneSpanEscalationOverAddresses,
+        resolveSelectionSpanOverAddresses;
 import 'timeline/se_audio_lane.dart'
     show SeAudioLaneFrameRow, TimelineAudioLaneCallbacks, laneIsSeAudio;
 import 'timeline/timeline_lane_rows.dart'
@@ -112,13 +114,20 @@ import 'timeline/timeline_lane_rows.dart'
         TimelineLaneControlsRow,
         TimelineLaneFrameRow,
         TimelineLaneKeysLine,
+        laneRowFrame,
         timelineHollowKeyFrames,
         timelineKeysLineSpan,
         timelineLaneKeySpan,
         timelineStretchWordSpan;
 import 'timeline/effect_lane_policy.dart'
     show effectGroupLaneId, effectPropertyLanes, parseEffectLaneId;
-import 'timeline/layer_drop_policy.dart' show rowStepsBetween, slotForSteps;
+import 'timeline/layer_drop_policy.dart'
+    show
+        linesBeyondRow,
+        ownsTheLane,
+        rowStepsBetween,
+        rowUnitAround,
+        slotForSteps;
 import 'timeline/layer_row_drag.dart'
     show
         ConteSeatRowSubject,
@@ -133,6 +142,8 @@ import 'timeline/layer_row_drag.dart'
         effectRowDragChip,
         layerRowDragChips,
         timelineRowAddressOfDragSubject;
+import 'timeline/timeline_block_look.dart'
+    show TimelineBlockRow, timelineRowLookOf;
 import 'timeline/timeline_cel_content_source.dart';
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_ruler_cursor_overlay.dart';
@@ -174,11 +185,9 @@ import 'timeline/timeline_drag_preview.dart';
 import 'timeline/timeline_cell_style.dart'
     show
         storyboardCutBlockBackgroundColor,
-        timelineDrawingInkColor,
         timelineRangeSelectionBandDecorationAt,
         timelineSelectedFrameBorderColor,
-        timelineStandingWashDecorationAt,
-        timelineUnreadableCelPaperColor;
+        timelineStandingWashDecorationAt;
 import 'timeline/timeline_exposure_comma_drag_handle.dart'
     show TimelineBlockEdgeGrip, timelineBlockEdgeGripPlacement;
 import 'timeline/timeline_row_edit_chrome.dart'
@@ -241,7 +250,7 @@ import 'timeline/timeline_horizontal_scrollbar_rail.dart';
 import 'timeline/timeline_layer_controls_header.dart';
 import 'timeline/timeline_legend_menus.dart';
 import 'timeline/timeline_layer_controls_row.dart'
-    show ControlsRowFace, TimelineLayerControlsRow;
+    show ControlsRowFace, TimelineGroupFold, TimelineLayerControlsRow;
 import 'timeline/timeline_vertical_scrollbar_rail.dart';
 import 'timeline/timeline_playhead.dart' show timelinePlayheadColumn;
 import 'timeline/timeline_row_filter.dart';
@@ -321,6 +330,17 @@ typedef _StoryboardRailSlot = ({
   TimelineDisplayRow? display,
   TimelineGraphSeat? graph,
 });
+
+/// R9 #25: the rows a select-drag pressed on [anchorRow] has swept to a
+/// pointer [crossOffset] from its top ([_StoryboardRailRows._railSweepOn]) —
+/// every row from the pressed one to the one under the pointer, in the
+/// order the rail draws them — resolved by the PANEL against the heights it
+/// paints. Null keeps the anchor.
+typedef _RailSweepAt =
+    List<TimelineRowAddress>? Function(
+      TimelineRowAddress anchorRow,
+      double crossOffset,
+    );
 
 /// The address a rail slot is stood on by — a row's own, a lane's, or the
 /// conte row's — or null for a row nobody stands on (the Audio lane, an S
@@ -453,15 +473,17 @@ class StoryboardCutSelectCallbacks {
   /// gesture of its own; frames are the axis the shared range gesture
   /// already speaks, and the session snaps them to whole cuts with the
   /// same rule the timeline snaps cells with.
-  /// [headRow] is the Excel-style cross-row reach (feedback #14): the
-  /// rail row the pointer is over now, which the PANEL resolves from the
-  /// heights it paints (R9 #25 — it used to be a row count computed from
-  /// one row height, which mis-counted every row of a different size).
+  /// [spanRows] are the Excel-style cross-row reach (feedback #14): the
+  /// rows the drag swept, lanes and all, in the order the panel draws them
+  /// ([StoryboardSeSelectCallbacks.onDrag]'s), which the PANEL resolves
+  /// from the heights it paints (R9 #25 — it used to be a row count
+  /// computed from one row height, which mis-counted every row of a
+  /// different size).
   final void Function({
     required TrackId trackId,
     required int anchorGlobalFrame,
     required int headGlobalFrame,
-    TimelineRowAddress? headRow,
+    List<TimelineRowAddress> spanRows,
   })
   onDrag;
   final VoidCallback onClear;
@@ -483,15 +505,15 @@ class StoryboardSeSelectCallbacks {
   /// here is what takes it off the cut row.
   final ValueListenable<TrackFrameRangeSelection?> selectedRange;
 
-  /// A select-drag step on the track's GLOBAL frame axis. [headRow]
-  /// reaches across the rail's rows exactly as the cut row's does.
-  /// [anchorRow]/[spanRows] are the escalated LANE-anchor form (C②): the
-  /// panel hands the sliced span of the rows it drew.
+  /// A select-drag step on the track's GLOBAL frame axis. [spanRows]
+  /// reach across the rail's rows exactly as the cut row's do: the rows the
+  /// drag swept from [anchorRow] — the panel hands the sliced span of the
+  /// rows it drew, lanes and all, whichever row it was pressed on (C② ·
+  /// H20).
   final void Function({
     required LayerId layerId,
     required int anchorGlobalFrame,
     required int headGlobalFrame,
-    TimelineRowAddress? headRow,
     TimelineRowAddress? anchorRow,
     List<TimelineRowAddress> spanRows,
   })
@@ -670,10 +692,12 @@ class StoryboardPanel extends StatefulWidget {
     this.onLayerBlendModeSelected,
     this.collapsedAttachBaseIds = const {},
     this.onToggleAttachGroup,
+    this.groupFoldOpenOf,
     this.expandedLaneLayerIds = const {},
     this.onToggleLayerLanes,
     this.expandedLaneGroupKeys = const {},
     this.onToggleLaneGroupKey,
+    this.laneGroupOpenOf,
     this.laneGraphs = LaneGraphsView.none,
     this.laneGraphVerbs,
     this.laneGraphsNow,
@@ -1315,6 +1339,9 @@ class StoryboardPanel extends StatefulWidget {
   final Set<LayerId> collapsedAttachBaseIds;
   final ValueChanged<LayerId>? onToggleAttachGroup;
 
+  /// A LIVE read of a row's group fold — see [layerOnTimesheetOf].
+  final bool Function(LayerId layerId)? groupFoldOpenOf;
+
   /// The rows whose property lanes are twirled down, and the twirl's verb —
   /// the timeline rail's own pair (I-73 ④ⓔ). A projection row's head is
   /// the timeline's row, and its twirl is that row's: the camera row's,
@@ -1329,6 +1356,10 @@ class StoryboardPanel extends StatefulWidget {
   /// of the track at once.
   final Set<String> expandedLaneGroupKeys;
   final ValueChanged<String>? onToggleLaneGroupKey;
+
+  /// A LIVE read of a lane group's twirl, by its header lane — see
+  /// [layerOnTimesheetOf].
+  final bool Function(LayerId layerId, String headerLaneId)? laneGroupOpenOf;
 
   /// The header graphs open over those groups, and their verbs — the
   /// timeline rail's own (I-89 ①): a lane this rail draws is seated in its
@@ -3615,38 +3646,58 @@ TimelineFrameRangeGestureLayer _storyboardRowRangeGestureLayer({
   required TimelineFrameGeometryHandle geometry,
   required double crossAxisExtent,
   required StoryboardSeSelectCallbacks select,
-  required TimelineRowAddress? Function(TimelineRowAddress, double)? railRowAt,
+  required _RailSweepAt? railSweepAt,
+  required List<TimelineDisplayRow> rows,
+}) => TimelineFrameRangeGestureLayer(
+  key: key,
+  row: LayerRowAddress(layer.id),
+  geometry: geometry,
+  crossAxisExtent: crossAxisExtent,
+  callbacks: _storyboardBandCallbacks(
+    row: LayerRowAddress(layer.id),
+    select: select,
+    railSweepAt: railSweepAt,
+    rows: rows,
+  ),
+);
+
+/// The track band's gesture bundle on [row] — an S row, or a lane of its
+/// layer ([TimelineRowAddress.owningLayerId]): a sweep from it selects
+/// through [select] over what the rail swept ([railSweepAt]), and a press
+/// inside the band moves the band, its row steps counted from this row
+/// over [rows].
+///
+/// 🚨H20 — ONE bundle for a row's cells and, as their band
+/// ([TimelineLaneRangeCallbacks.band]), each lane under them: a band carries
+/// what each of its rows holds wherever it is grabbed, as the timeline's
+/// grids hand their lanes the cells' bundle. ↩️A lane's press began a lane
+/// selection of its own, and the band it lay in went.
+TimelineRangeGestureCallbacks _storyboardBandCallbacks({
+  required TimelineRowAddress row,
+  required StoryboardSeSelectCallbacks select,
+  required _RailSweepAt? railSweepAt,
   required List<TimelineDisplayRow> rows,
 }) {
-  final row = LayerRowAddress(layer.id);
-  return TimelineFrameRangeGestureLayer(
-    key: key,
-    row: row,
-    geometry: geometry,
-    crossAxisExtent: crossAxisExtent,
-    callbacks: TimelineRangeGestureCallbacks(
-      isInSelection: (_, frame) =>
-          _storyboardRangeCovers(select.selectedRange.value, row, frame),
-      onSelectUpdate: (_, anchorIndex, headIndex, headCrossOffset) =>
-          select.onDrag(
-            layerId: layer.id,
-            anchorGlobalFrame: anchorIndex,
-            headGlobalFrame: headIndex,
-            headRow: railRowAt?.call(row, headCrossOffset),
-          ),
-      onTapClear: (_) => select.onClear(),
-      onMoveBegin: (_, _) => select.move?.onBegin(layer.id) ?? false,
-      onMoveUpdate: (frameDelta, rowDelta) => select.move?.onUpdate(
-        frameDelta,
-        resolveBlockMoveTargetLayer(
-          rows: rows,
-          sourceLayerId: layer.id,
-          rowDelta: rowDelta,
+  final layerId = row.owningLayerId!;
+  return TimelineRangeGestureCallbacks(
+    isInSelection: (_, frame) =>
+        _storyboardRangeCovers(select.selectedRange.value, row, frame),
+    onSelectUpdate: (_, anchorIndex, headIndex, headCrossOffset) =>
+        select.onDrag(
+          layerId: layerId,
+          anchorGlobalFrame: anchorIndex,
+          headGlobalFrame: headIndex,
+          anchorRow: row,
+          spanRows: railSweepAt?.call(row, headCrossOffset) ?? const [],
         ),
-      ),
-      onMoveEnd: () => select.move?.onEnd(),
-      onMoveCancel: () => select.move?.onCancel(),
+    onTapClear: (_) => select.onClear(),
+    onMoveBegin: (_, _) => select.move?.onBegin(layerId) ?? false,
+    onMoveUpdate: (frameDelta, rowDelta) => select.move?.onUpdate(
+      frameDelta,
+      resolveBlockMoveTargetLayer(rows: rows, source: row, rowDelta: rowDelta),
     ),
+    onMoveEnd: () => select.move?.onEnd(),
+    onMoveCancel: () => select.move?.onCancel(),
   );
 }
 
@@ -3667,7 +3718,17 @@ mixin _StoryboardRowRunLabels {
   ProjectFrameRate get projectFrameRate;
   double get height;
 
-  Widget _runLabels(BuildContext context, Layer layer) => Positioned.fill(
+  /// [layer]'s lengths, each on its block as the row draws the block
+  /// (I-129): whether the row is [shown] — its own eye where nothing says —
+  /// and what its cels hold ([celContent]), onto the host's ground. What
+  /// the S and transition rows hold has no picture to lack, so none of
+  /// their blocks is empty.
+  Widget _runLabels(
+    BuildContext context,
+    Layer layer, {
+    bool? shown,
+    TimelineCelContentSource? celContent,
+  }) => Positioned.fill(
     child: IgnorePointer(
       child: RepaintBoundary(
         child: CustomPaint(
@@ -3681,6 +3742,9 @@ mixin _StoryboardRowRunLabels {
             baseTextStyle: DefaultTextStyle.of(context).style,
             windowBucket: windowBucket,
             viewportMainExtent: viewportWidth,
+            shown: shown ?? RailEyes.of(context, layer).shown,
+            celContent: celContent,
+            paperGround: TimelineGridLaw.maybeOf(context)?.ground,
           ),
         ),
       ),
@@ -3720,7 +3784,7 @@ class _StoryboardTransitionRow extends KeptPiece
     this.onRowFramePress,
     this.onEditSpan,
     this.select,
-    this.railRowAt,
+    this.railSweepAt,
   });
 
   /// The track whose row this is — its keys' word.
@@ -3761,9 +3825,9 @@ class _StoryboardTransitionRow extends KeptPiece
   /// its selection (C1 2026-08-17) — through the same verbs.
   final StoryboardSeSelectCallbacks? select;
 
-  /// The rail's row lookup, so a select-drag can reach across rows exactly as
+  /// The rail's sweep, so a select-drag can reach across rows exactly as
   /// the S rows' does.
-  final TimelineRowAddress? Function(TimelineRowAddress, double)? railRowAt;
+  final _RailSweepAt? railSweepAt;
 
   /// The visible frame window this strip covers — the whole content width,
   /// like the SE grips' own geometry.
@@ -3797,13 +3861,13 @@ class _StoryboardTransitionRow extends KeptPiece
     ByList([
       for (final MapEntry(key: start, value: span)
           in layer.instructions.entries)
-        (defById?.call(span.instructionId), crossingTooltip?.call(start)),
+        (span.defIn(defById), crossingTooltip?.call(start)),
     ]),
     commaDrag != null,
     onRowFramePress != null,
     onEditSpan != null,
     select != null,
-    railRowAt != null,
+    railSweepAt != null,
   );
 
   @override
@@ -3832,8 +3896,9 @@ class _StoryboardTransitionRow extends KeptPiece
               axis: Axis.horizontal,
               frameCellExtent: timelineScale.pixelsPerFrame,
               startFrame: entry.key,
-              // ⑲: the block is its layer's colour label.
-              paper: layerMarkColor(layer.mark),
+              // ⑲: the block is its layer's colour label — in its look
+              // (I-129).
+              paper: timelineRowLookOf(context, layer).paper!,
             ),
           ),
         ),
@@ -3931,7 +3996,7 @@ class _StoryboardTransitionRow extends KeptPiece
           geometry: TimelineFrameGeometryHandle(_geometry),
           crossAxisExtent: height,
           select: select,
-          railRowAt: railRowAt,
+          railSweepAt: railSweepAt,
           rows: [TimelineDisplayRow.layer(layer, layerIndex: 0)],
         ),
       );
@@ -3999,25 +4064,21 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
     this.onEditSeEntry,
     this.seCommaDrag,
     this.seSelect,
-    this.railRowAt,
-    this.seRowsInDisplayOrder = const [],
+    this.railSweepAt,
+    this.moveRows = const [],
   });
 
-  /// R9 #25: the rail row a cross-axis pointer offset lands on, resolved
-  /// by the PANEL against the heights it paints. Null keeps the anchor.
-  final TimelineRowAddress? Function(
-    TimelineRowAddress anchorRow,
-    double crossOffset,
-  )?
-  railRowAt;
+  /// The rail's sweep from a pressed row ([_RailSweepAt]).
+  final _RailSweepAt? railSweepAt;
 
   final int trackIndex;
   final int slot;
 
-  /// This track's S rows top-to-bottom — what a MOVE's row delta walks.
-  /// Only S rows are in it, which is what keeps a drag from crossing into
-  /// a row whose blocks are not sounds.
-  final List<TimelineDisplayRow> seRowsInDisplayOrder;
+  /// This track's S rows top-to-bottom, each with the lanes drawn under it
+  /// ([_StoryboardRailRows._seMoveRows]) — what a MOVE's row delta walks.
+  /// Only S rows and their lanes are in it, which is what keeps a drag from
+  /// crossing into a row whose blocks are not sounds.
+  final List<TimelineDisplayRow> moveRows;
 
   /// The track's GLOBAL SE layer behind this row (null = fewer rows).
   final Layer? layer;
@@ -4118,8 +4179,8 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
     onEditSeEntry != null,
     seCommaDrag != null,
     seSelect != null,
-    railRowAt != null,
-    ByList([for (final row in seRowsInDisplayOrder) row.layer.id]),
+    railSweepAt != null,
+    ByList([for (final row in moveRows) row.address]),
   );
 
   /// 🚨THE BLOCKS' PIECES ARE BUILT FOR THE PANEL'S WINDOW
@@ -4222,17 +4283,17 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
       // no longer clip: the block may cross them), the writing on top.
       _contentLayer([
         for (final block in blocks)
-          if (_inWindow(block, window)) _paperSpan(block, layer, sounds),
+          if (_inWindow(block, window))
+            _paperSpan(context, block, layer, sounds),
         if (audioPeaksFor != null)
           ...timelineRowAudioOverlays(
+            context,
             layer: layer,
             frameStartIndex: window.startIndex,
             frameEndIndexExclusive: window.endIndexExclusive,
             axis: Axis.horizontal,
             frameRate: projectFrameRate,
             audioPeaksFor: audioPeaksFor,
-            // Ink on the paper spans, like the timeline SE rows.
-            color: timelineDrawingInkColor.withValues(alpha: 0.22),
             keyPrefix: 'storyboard',
           ),
       ]),
@@ -4493,7 +4554,7 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
           'storyboard-se-grip-${layer.id}-$blockOrdinal'
           '-${edge.name}',
         ),
-        layerId: layer.id,
+        layer: layer,
         blockStartIndex: block.startIndex,
         blockOrdinal: blockOrdinal,
         edge: edge,
@@ -4513,8 +4574,8 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
     geometry: geometry,
     crossAxisExtent: height,
     select: seSelect,
-    railRowAt: railRowAt,
-    rows: seRowsInDisplayOrder,
+    railSweepAt: railSweepAt,
+    rows: moveRows,
   );
 
   Positioned _pressLayer(
@@ -4570,8 +4631,10 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
 
   /// [block]'s paper: its layer's colour label (⑲) — red where a sound it
   /// carries cannot be played, as the timeline's block is
-  /// (`LayerStack.soundCannotPlayAt`) and a cel that cannot be read.
+  /// (`LayerStack.soundCannotPlayAt`) and a cel that cannot be read — in
+  /// the block's look ([timelineRowLookOf], I-129).
   TimelineFrameSpan _paperSpan(
+    BuildContext context,
     TimelineDrawingBlock block,
     Layer layer,
     List<SeAudioSpan> sounds,
@@ -4593,9 +4656,7 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
           axis: Axis.horizontal,
           frameCellExtent: timelineScale.pixelsPerFrame,
           startFrame: block.startIndex,
-          paper: silent
-              ? timelineUnreadableCelPaperColor
-              : layerMarkColor(layer.mark),
+          paper: timelineRowLookOf(context, layer, unreadable: silent).paper!,
         ),
       ),
     );
@@ -4721,11 +4782,12 @@ class _StoryboardLaneStripRow extends StatelessWidget {
 
 /// The name of a track's V row — its label, the chip it shows picked up
 /// (I-39), the sheet's group — by its place among the tracks: the first is
-/// Video, and a film has one track (전제 8); one past it is numbered.
-/// 🗣️F-322 (유저 2026-10-09): 「V행 이제 이름 V1행이아니라 Video나 Cut으로
-/// 하고싶음. Video로하자」. ↩️It was V1, V2, ….
+/// Cut, and a film has one track (전제 8); one past it is numbered.
+/// 🗣️F-491 (유저 2026-10-27): 「콘티패널의 비디오행, 이름 Cut으로 변경」.
+/// ↩️Video from F-322 (유저 2026-10-09: 「V행 이제 이름 V1행이아니라
+/// Video나 Cut으로 하고싶음. Video로하자」), and V1, V2, … before that.
 String storyboardVideoRowName(int index) =>
-    index == 0 ? 'Video' : 'Video ${index + 1}';
+    index == 0 ? 'Cut' : 'Cut ${index + 1}';
 
 /// Rail rows share the timeline label rail's row language — bordered
 /// surface rows, a kind icon leading the name — so the storyboard's left
@@ -4858,6 +4920,7 @@ class StoryboardTrackLabelRow extends KeptPiece {
                 laneToggle: onToggleLane == null
                     ? null
                     : RailSwipeColumnPointer(
+                        column: RailSwipeColumn.laneToggle,
                         child: LayerFoldTwirl(
                           name:
                               'storyboard-track-lane-toggle-${trackId.value}',
@@ -4931,6 +4994,7 @@ class StoryboardTrackLabelRow extends KeptPiece {
                 fx: onToggleTrackFx == null
                     ? null
                     : RailSwipeColumnPointer(
+                        column: RailSwipeColumn.fx,
                         child: FxToggleButton(
                           name: 'storyboard-track-fx-${trackId.value}',
                           subject: RailSubject.track,
@@ -5022,7 +5086,7 @@ class _StoryboardTrackRow extends KeptPiece {
     required this.viewportWidth,
     required this.showSeconds,
     required this.projectFrameRate,
-    this.railRowAt,
+    this.railSweepAt,
     this.linkedCutIds = const {},
     this.onOpenCutLinks,
     this.onEditCutBlock,
@@ -5032,13 +5096,8 @@ class _StoryboardTrackRow extends KeptPiece {
   /// ([StoryboardPanel.onEditCutBlock]). Null keeps the block without one.
   final void Function(TrackId trackId, int globalFrame)? onEditCutBlock;
 
-  /// R9 #25: the rail row a cross-axis pointer offset lands on, resolved
-  /// by the PANEL against the heights it paints. Null keeps the anchor.
-  final TimelineRowAddress? Function(
-    TimelineRowAddress anchorRow,
-    double crossOffset,
-  )?
-  railRowAt;
+  /// The rail's sweep from a pressed row ([_RailSweepAt]).
+  final _RailSweepAt? railSweepAt;
 
   /// The LINKED cuts on this track (I-25): their names wear the link icon.
   final Set<CutId> linkedCutIds;
@@ -5222,10 +5281,9 @@ class _StoryboardTrackRow extends KeptPiece {
             trackId: trackId,
             anchorGlobalFrame: anchorIndex,
             headGlobalFrame: headIndex,
-            headRow: railRowAt?.call(
-              TrackRowAddress(trackId),
-              headCrossOffset,
-            ),
+            spanRows:
+                railSweepAt?.call(TrackRowAddress(trackId), headCrossOffset) ??
+                const [],
           ),
       // A cut press already takes the cut and seeks into it, so the tap
       // only drops the selection (R10: standing is the press's job here).
@@ -5307,7 +5365,7 @@ class _StoryboardTrackRow extends KeptPiece {
     stripEdges != null,
     cutMove != null,
     cutSelect != null,
-    railRowAt != null,
+    railSweepAt != null,
     onOpenCutLinks != null,
     onEditCutBlock != null,
   );

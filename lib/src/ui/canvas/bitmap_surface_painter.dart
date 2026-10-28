@@ -15,17 +15,14 @@ import 'bitmap_tile_image_cache.dart';
 import 'blends_in_place.dart';
 import 'display_resample.dart';
 import 'landing_preview.dart';
-import 'level_image.dart' show halvingPicture;
 import 'tile_origin.dart';
 import 'tile_picture_budget.dart';
-import 'tile_pyramid.dart';
 import 'tiles_under_rect.dart';
 import 'viewport_canvas_transform.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
 
 part 'surface_paint/coordinate_picture.dart';
-part 'surface_paint/level_blocks.dart';
 part 'surface_paint/overlay_pass.dart';
 part 'surface_paint/surface_paint_pass.dart';
 
@@ -129,13 +126,14 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
 
   final bool showTransparentBackground;
 
-  /// The lineage this painter names its cel by — what the level pyramid
-  /// keeps its level tiles under ([TilePyramid]) and the picture budget
+  /// The lineage this painter names its cel by — what the picture budget
   /// counts a paint's shown tiles against ([TilePictureBudget.shown]).
+  /// ↩️The level pyramid kept its level tiles under it too, until nothing
+  /// drew a level tile (one-picture-per-frame ②-5b-2).
   ///
   /// ⚠️ A lineage, not a surface instance. Every painter in `lib/` passes
   /// one; a painter of a surface that is nobody's cel (the selection
-  /// float) passes [TilePyramid.noLineage].
+  /// float) passes [TilePictureBudget.noLineage].
   final Object? lineage;
 
   final BitmapTileImageCache tileImageCache;
@@ -222,17 +220,14 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
     // canvas size, so output still crops to the stage. A file's picture
     // laid past the wall keeps the rest of itself (F-374-Q8).
     canvas.clipRect(storableRect);
-    // The standalone route reads the display law itself: below 100% the
-    // committed tiles are drawn as LEVEL TILES ([TilePyramid]) whose
-    // residual under the transform lies in (0.5, 1] — the pictures a level
-    // buffer draws 1:1 ([_LevelBlocks]).
+    // The standalone route reads the display law itself: the tiles are
+    // resampled by the whole device scale, so they are drawn at that
+    // scale's filter — reduced, from their pictures' chains.
     paintContentInto(
       canvas,
-      level: resolvedViewport == null
-          ? 0
-          : displayLevelOf(
-              displayScaleOf(resolvedViewport.zoom, devicePixelRatio),
-            ),
+      scale: resolvedViewport == null
+          ? 1
+          : displayScaleOf(resolvedViewport.zoom, devicePixelRatio),
     );
     canvas.restore();
   }
@@ -332,11 +327,14 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
 
   // The content paint (Round 6): one paint of the surface, as its own object.
 
-  /// [level] is the level of the display's pyramid the caller composes
-  /// at ([displayLevelOf]): 0 draws the tiles themselves; above it the
-  /// committed tiles are drawn as LEVEL TILES ([TilePyramid]), 1:1 in
-  /// level pixels, and only a block no level tile can be made for yet
-  /// falls back to its tiles under the caller's scale ([_LevelBlocks]).
+  /// [scale] is how many device pixels the caller lands on each canvas
+  /// pixel ([displayScaleOf]) — 1 into a buffer at the canvas's own
+  /// resolution. Every coordinate is drawn as the one picture it shows, at
+  /// that scale's filter ([filterQualityForDisplayScale]); reduced, from
+  /// the picture's chain ([BitmapTileImageCache.chainedPictureFor]).
+  /// ↩️Below 100% the committed tiles were drawn as LEVEL TILES — each the
+  /// box mean of a block of tiles, drawn at `none` — until one-picture-
+  /// per-frame ②-5b-2 (유저 D7-2-Q2 「배율이 어떻든 항상 원본 한장」).
   ///
   /// [float] is a selection's lifted float, drawn over this surface's
   /// coordinates ([RowFloat]) — and with it this painter's own
@@ -344,7 +342,7 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   void paintContentInto(
     Canvas canvas, {
     Paint? layerPaint,
-    int level = 0,
+    double scale = 1,
     RowFloat? float,
   }) =>
       // Constructed PER PAINT: the pass keeps one paint's state in `late
@@ -352,7 +350,7 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
       _SurfacePaintPass(this).paintContentInto(
         canvas,
         layerPaint: layerPaint,
-        level: level,
+        scale: scale,
         float: float,
       );
 

@@ -149,7 +149,7 @@ class ActiveCutSpan {
         continue;
       }
       final term = entry.value.displayLabel(
-        _camera.cameraInstructionSet.defById(entry.value.instructionId),
+        entry.value.defIn(_camera.cameraInstructionSet.defById),
       );
       if (term.isNotEmpty && !terms.contains(term)) {
         terms.add(term);

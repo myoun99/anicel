@@ -29,8 +29,8 @@ import 'transform_track.dart';
 
 /// A cel layer. Its single [timeline] map records everything authored on
 /// the frame axis: drawing block starts (frame + explicit hold length),
-/// each carrying its own inbetween-dot offsets
-/// ([TimelineExposure.breakdownOffsets]). Emptiness has no entry —
+/// each carrying its own inbetween dots
+/// ([TimelineExposure.breakdownMarks]). Emptiness has no entry —
 /// uncovered cells are the timesheet "X" cells. There is no separate marks
 /// map, no blank entry type, and no standalone mark entry.
 class Layer {
@@ -53,7 +53,7 @@ class Layer {
     this.kind = LayerKind.animation,
     this.onTimesheet = true,
     this.mark = LayerMark.none,
-    this.isFillReference = false,
+    this.clipsToBelow = false,
     this.mediaReference,
     this.seNameTag,
     TransformTrack? transformTrack,
@@ -182,12 +182,12 @@ class Layer {
   /// they all carry this one.
   final ConteKey? conteKey;
 
-  /// Reference layer for the FILL tool (R20-C2, the CSP lighthouse): a
-  /// fill set to read its references reads ONLY the flagged layers — paint
-  /// on a color layer never blocks or leaks a fill traced against the line
-  /// art — and the current layer when no layer is flagged (I-36).
-  /// Display/export composite untouched.
-  final bool isFillReference;
+  /// CLIP TO LAYER BELOW (I-92, Photoshop's clipping mask): shown only where
+  /// its base has pixels, at the base's strength and blend — the law is
+  /// `clipTargetOf`'s. ↩️It was the FILL's reference flag (R20-C2; I-36)
+  /// until I-92: 「그런버튼 삭제하고 … 포토샵이나 클튜에서 사용하는
+  /// 마스크기능이 되면 됨」.
+  final bool clipsToBelow;
 
   /// Non-null makes this a REFERENCE layer showing an external media
   /// asset (§6-z23's second axis): the brush refuses
@@ -315,7 +315,7 @@ class Layer {
     LayerKind? kind,
     bool? onTimesheet,
     LayerMark? mark,
-    bool? isFillReference,
+    bool? clipsToBelow,
     TransformTrack? transformTrack,
     bool? transformEnabled,
     List<LayerEffect>? effects,
@@ -348,7 +348,7 @@ class Layer {
       kind: kind ?? this.kind,
       onTimesheet: onTimesheet ?? this.onTimesheet,
       mark: mark ?? this.mark,
-      isFillReference: isFillReference ?? this.isFillReference,
+      clipsToBelow: clipsToBelow ?? this.clipsToBelow,
       transformTrack: transformTrack ?? this.transformTrack,
       transformEnabled: transformEnabled ?? this.transformEnabled,
       effects: effects ?? this.effects,
@@ -409,7 +409,7 @@ class Layer {
     'kind': kind.toJson(),
     'onTimesheet': onTimesheet,
     'mark': mark.toJson(),
-    if (isFillReference) 'fillReference': true,
+    if (clipsToBelow) 'clipToBelow': true,
     if (mediaReference != null) 'mediaReference': mediaReference!.toJson(),
     if (seNameTag != null) 'seNameTag': seNameTag!.toJson(),
     if (folderId != null) 'folderId': folderId!.toJson(),
@@ -469,7 +469,7 @@ class Layer {
       mark: json.containsKey('mark')
           ? LayerMark.fromJson(json['mark'])
           : LayerMark.none,
-      isFillReference: json['fillReference'] as bool? ?? false,
+      clipsToBelow: json['clipToBelow'] as bool? ?? false,
       mediaReference: json['mediaReference'] == null
           ? null
           : MediaReference.fromJson(
@@ -548,7 +548,7 @@ class Layer {
           other.kind == kind &&
           other.onTimesheet == onTimesheet &&
           other.mark == mark &&
-          other.isFillReference == isFillReference &&
+          other.clipsToBelow == clipsToBelow &&
           other.mediaReference == mediaReference &&
           other.seNameTag == seNameTag &&
           other.transformTrack == transformTrack &&
@@ -600,8 +600,8 @@ class Layer {
     kind,
     onTimesheet,
     mark,
-    // Folded with isFillReference: Object.hash caps at 20 positional args.
-    Object.hash(isFillReference, mediaReference, seNameTag),
+    // Folded with clipsToBelow: Object.hash caps at 20 positional args.
+    Object.hash(clipsToBelow, mediaReference, seNameTag),
     // Folded with transformTrack: Object.hash caps at 20 positional args.
     Object.hash(transformTrack, transformEnabled, Object.hashAll(effects)),
     attachedToLayerId,
@@ -934,13 +934,18 @@ FrameId _spanCelId(LayerId layer, int start, Set<FrameId> taken) {
   return id;
 }
 
-/// The spans a direction row's blocks carry — see [Layer.instructions].
+/// The spans a direction row's blocks carry — see [Layer.instructions]. Every
+/// authored block is one: a block that says nothing is a span of nothing
+/// (I-72-block-without-instruction — the block is the span, R27), as an SE
+/// entry with nothing written is still an entry. ↩️Only a block carrying
+/// writing was a span; a bare one was filled with the vocabulary's first
+/// entry on every write.
 SplayTreeMap<int, InstructionEvent> _spansOnBlocks(
   SplayTreeMap<int, TimelineExposure> timeline,
 ) => SplayTreeMap.of({
   for (final MapEntry(key: start, value: entry) in timeline.entries)
-    if (entry.instruction case final writing? when !entry.ghost)
-      start: InstructionEvent.of(writing, length: entry.length!),
+    if (!entry.ghost)
+      start: InstructionEvent.of(entry.instruction, length: entry.length!),
 });
 
 SplayTreeMap<int, TimelineExposure> _deriveTimeline(List<Frame> frames) {
@@ -963,7 +968,7 @@ class _RawTimelineItem {
     this.ghostOf,
     this.startEdge = TimelineRunEdgeMark.none,
     this.endEdge = TimelineRunEdgeMark.none,
-    this.breakdownOffsets = const [],
+    this.breakdownMarks = const {},
     this.memo,
     this.instruction,
   });
@@ -974,7 +979,7 @@ class _RawTimelineItem {
   final TimelineRunEdgeGhost? ghostOf;
   final TimelineRunEdgeMark startEdge;
   final TimelineRunEdgeMark endEdge;
-  final List<int> breakdownOffsets;
+  final Map<int, InbetweenMark> breakdownMarks;
 
   /// The block's memo. [TimelineExposure.toJson] writes it, so a decoder
   /// that skipped the key silently threw away every memo the user typed
@@ -1030,11 +1035,7 @@ SplayTreeMap<int, _RawTimelineItem> _rawTimelineItems(Object? json) {
       ghostOf: TimelineRunEdgeGhost.fromJsonOrNull(exposureJson['ghostOf']),
       startEdge: TimelineRunEdgeMark.fromJsonOrNone(exposureJson['startEdge']),
       endEdge: TimelineRunEdgeMark.fromJsonOrNone(exposureJson['endEdge']),
-      breakdownOffsets: [
-        for (final offset
-            in exposureJson['breakdown'] as List<dynamic>? ?? const [])
-          offset as int,
-      ],
+      breakdownMarks: TimelineExposure.breakdownMarksFromJson(exposureJson),
       memo: exposureJson['memo'] == null
           ? null
           : ExposureMemo.fromJson(
@@ -1091,9 +1092,9 @@ TimelineExposure _exposureFromRawItem(
     startEdge: authored ? item.startEdge : TimelineRunEdgeMark.none,
     endEdge: authored ? item.endEdge : TimelineRunEdgeMark.none,
   );
-  if (item.breakdownOffsets.isNotEmpty) {
-    // copyWith normalizes (sorts, dedupes, clamps to the length).
-    exposure = exposure.copyWith(breakdownOffsets: item.breakdownOffsets);
+  if (item.breakdownMarks.isNotEmpty) {
+    // copyWith normalizes (sorts, clamps to the length).
+    exposure = exposure.copyWith(breakdownMarks: item.breakdownMarks);
   }
   // Ghosts never carry a memo ([TimelineExposure]'s contract): they
   // are rederived on every edit, so a memo there would not survive

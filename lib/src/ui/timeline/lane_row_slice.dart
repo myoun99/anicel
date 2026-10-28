@@ -59,9 +59,15 @@ Object laneRowSlice(Layer layer, String laneId) {
   for (final effect in layer.effects) {
     if (effect.id == address.effectId) {
       final parameterId = address.parameterId;
-      return parameterId == null
-          ? effect
-          : effect.parameters[parameterId] ?? effect;
+      if (parameterId == null) {
+        return effect;
+      }
+      // Where the effect stands its picture is a transform's lane of its
+      // own, and its colour a lane of its own too.
+      return effect.standLaneOf(parameterId) == null &&
+              !effect.inksOn(parameterId)
+          ? effect.parameters[parameterId] ?? effect
+          : effect.laneTrack(parameterId)!;
     }
   }
   return layer;

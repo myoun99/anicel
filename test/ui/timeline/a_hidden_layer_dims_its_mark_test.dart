@@ -5,6 +5,7 @@ import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
+import 'package:anicel/src/ui/timeline/layer_plate_words.dart';
 
 /// 🚨★★★OFF IS ONE LANGUAGE ACROSS THE ROW (유저 2026-08-31, F-56):
 ///
@@ -43,14 +44,12 @@ void main() {
       ),
     );
     await tester.pump();
-    // ⚠️`ColoredBox`, not `DecoratedBox`: the plate is a flat fill under a
-    // clip, and looking for the wrong widget is how a test measures nothing.
-    final boxes = tester.widgetList<ColoredBox>(find.byType(ColoredBox));
-    for (final box in boxes) {
-      // The plate is the only opaque fill in this tree.
-      if (box.color.a > 0) return box.color;
-    }
-    return null;
+    // ⚠️The plate's own box ([RenderLabelPlate]) — what it fills with is
+    // what it paints, and looking for the wrong box is how a test measures
+    // nothing.
+    final plates = find.byType(LayerMarkPlate);
+    if (plates.evaluate().isEmpty) return null;
+    return tester.renderObject<RenderLabelPlate>(plates).fill;
   }
 
   testWidgets('a visible layer wears the mark colour at full strength', (
@@ -107,9 +106,9 @@ void main() {
       ),
     );
     await tester.pump();
-    final plate = tester
-        .widgetList<ColoredBox>(find.byType(ColoredBox))
-        .firstWhere((box) => box.color.a > 0);
-    expect(plate.color.a, closeTo(0.45, 0.001));
+    final plate = tester.renderObject<RenderLabelPlate>(
+      find.byType(LayerMarkPlate),
+    );
+    expect(plate.fill.a, closeTo(0.45, 0.001));
   });
 }

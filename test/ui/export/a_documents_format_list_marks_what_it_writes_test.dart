@@ -31,7 +31,7 @@ void main() {
         home: Scaffold(
           body: ExportPaperFormatModule(
             keyPrefix: 'paper',
-            label: 'Format',
+            caption: ExportCaption.format,
             image: paperDocumentFormat,
             stillEnabled: stillEnabled ?? (_) => true,
             pictured: pictured,

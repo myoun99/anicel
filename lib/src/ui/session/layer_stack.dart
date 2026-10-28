@@ -34,8 +34,14 @@ import '../../services/commands/cut_command_input_planner.dart'
 import '../../services/commands/track_se_layer_commands.dart';
 import '../../services/editing/default_layer_helpers.dart';
 import '../timeline/timeline_cel_content_source.dart' show RowNamingRevision;
+import '../canvas/stroke_in_flight.dart';
 import '../timeline/timeline_drag_preview.dart'
-    show TimelineDragPreview, celPixelsOf, timelineDragPreviewLayerFor;
+    show
+        CelPixelsHung,
+        TimelineDragPreview,
+        celPixelsHungBy,
+        celPixelsOf,
+        timelineRowPreviewLayer;
 import '../audio/sound_cannot_play.dart';
 import 'folder_bands.dart';
 import 'layer_verbs.dart';
@@ -58,7 +64,7 @@ class LayerStack {
     required Standing standing,
     required FolderBands folderBands,
     required RenderCaches renderCaches,
-    required ValueNotifier<bool> brushInputActive,
+    required ValueListenable<StrokeInFlight> canvasStroke,
     required ValueListenable<TimelineDragPreview?> dragPreview,
     required SoundCannotPlay? Function(String filePath) soundCannotPlay,
     required Listenable Function() soundsMoved,
@@ -72,7 +78,7 @@ class LayerStack {
        _standing = standing,
        _folderBands = folderBands,
        _renderCaches = renderCaches,
-       _brushInputActive = brushInputActive,
+       _canvasStroke = canvasStroke,
        _dragPreview = dragPreview,
        _soundCannotPlay = soundCannotPlay,
        _soundsMoved = soundsMoved;
@@ -87,7 +93,11 @@ class LayerStack {
   final Standing _standing;
   final FolderBands _folderBands;
   final RenderCaches _renderCaches;
-  final ValueNotifier<bool> _brushInputActive;
+  final ValueListenable<StrokeInFlight> _canvasStroke;
+
+  /// Whether [_canvasStroke] painted when last heard — a stroke going up or
+  /// landing moves [liveStrokeDraws] only where it paints.
+  bool _paintingHeard = false;
 
   /// The drag in flight: a folder's band asks its rows where the drag has
   /// them ([celHasContentForLayer]).
@@ -318,8 +328,7 @@ class LayerStack {
     return _folderBands
         .folderBandMembersOf(folder.id)
         .any(
-          (member) =>
-              asks(timelineDragPreviewLayerFor(preview, member.id) ?? member),
+          (member) => asks(timelineRowPreviewLayer(preview, member) ?? member),
         );
   }
 
@@ -423,8 +432,14 @@ class LayerStack {
   /// pen-up), so waiting for it left the block grey for the whole stroke —
   /// the user asked for it to go white the moment the line starts, which is
   /// also when the cel stops being "unworked" in any sense that matters.
+  ///
+  /// 🚨ONLY A STROKE THAT PAINTS, AND ONLY THE MAIN CANVAS'S (F-482, 유저
+  /// 2026-10-27: 「없던 블록에서 지우는 동작은 블록 채우지 않도록
+  /// 근본/구조적으로」): an eraser puts nothing on an empty cel, and a pen
+  /// on a sheet draws no cel at all — read as 「a stroke is in flight」, both
+  /// turned the block white until the pen lifted.
   bool liveStrokeDraws(CutId cut, LayerId row, FrameId cel) =>
-      _brushInputActive.value &&
+      _canvasStroke.value == StrokeInFlight.paints &&
       cut == _project.activeCutOrNull?.id &&
       _liveStrokeCel == (row, cel);
 
@@ -519,8 +534,14 @@ class LayerStack {
 
   /// The pen going down or up flips an answer only where the live stroke
   /// is what makes a cel count as drawn — [_liveStrokeCel], while the store
-  /// holds no picture for it. A stroke on a drawn cel changes no block.
+  /// holds no picture for it. A stroke on a drawn cel changes no block, and
+  /// nor does one that does not paint ([liveStrokeDraws]).
   void _bumpWhereTheLiveStrokeDecides() {
+    final paints = _canvasStroke.value == StrokeInFlight.paints;
+    if (paints == _paintingHeard) {
+      return;
+    }
+    _paintingHeard = paints;
     final cut = _project.activeCutOrNull;
     final cel = _liveStrokeCel;
     if (cut == null || cel == null) {
@@ -563,9 +584,39 @@ class LayerStack {
         layerId: crossed.layerId,
       );
 
+  /// What the drag in flight hung where it is not when the rows were last
+  /// told ([celPixelsHungBy]).
+  CelPixelsHung _hungWhenTold = celPixelsHungBy(null);
+
+  /// A drag that hangs a cel's pixels somewhere else flips that cel's
+  /// answers as surely as a stroke does — both of them, each read where the
+  /// pixels are ([_pixelsOf]). A TRADE most of all: it lays no row again —
+  /// its blocks stand where they stood and only their pictures go — so
+  /// nothing else tells the rows (I-98, 유저 2026-10-26: 「바꾸는동안 블록이
+  /// 라이브로 안변함 … 거기서 손 떼고 나서야 블록이 서로 변함」).
+  void _bumpWhereTheDragHangsPixels() {
+    final told = _hungWhenTold;
+    final hung = celPixelsHungBy(_dragPreview.value);
+    if (listEquals(hung.rekeys, told.rekeys) &&
+        listEquals(hung.pictures, told.pictures)) {
+      return;
+    }
+    _hungWhenTold = hung;
+    celTintRevision.bump(
+      rows: _rowsShowing({
+        for (final shown in [told, hung]) ...[
+          for (final rekey in shown.rekeys) rekey.to,
+          for (final move in shown.pictures) move.toRow,
+        ],
+      }),
+    );
+  }
+
   /// The two events that can flip [celHasContentForLayer]'s answer, and the
   /// two that can flip [celCannotBeReadForLayer]'s: a cel found unreadable,
-  /// and a sound's answer moving ([_soundsMoved]).
+  /// and a sound's answer moving ([_soundsMoved]) — and a drag hanging a
+  /// cel's pixels somewhere else, which can flip both
+  /// ([_bumpWhereTheDragHangsPixels]).
   ///
   /// ⛔NOT EVERY PIXEL EDIT. A third listener stood here, on the store's
   /// `celPixelRevision`, for 픽셀 비우기: the crossing detector used to ask
@@ -581,18 +632,20 @@ class LayerStack {
     _renderCaches.brushFrameStore.celContentRevision.addListener(
       _bumpWhereTheStoreCrossed,
     );
-    _brushInputActive.addListener(_bumpWhereTheLiveStrokeDecides);
+    _canvasStroke.addListener(_bumpWhereTheLiveStrokeDecides);
     _renderCaches.layerFrameImageCache.unreadable.revision.addListener(
       _bumpCelTintRevision,
     );
     _soundsMovedHeard = _soundsMoved()..addListener(_bumpCelTintRevision);
+    _dragPreview.addListener(_bumpWhereTheDragHangsPixels);
   }
 
   void dispose() {
+    _dragPreview.removeListener(_bumpWhereTheDragHangsPixels);
     _renderCaches.brushFrameStore.celContentRevision.removeListener(
       _bumpWhereTheStoreCrossed,
     );
-    _brushInputActive.removeListener(_bumpWhereTheLiveStrokeDecides);
+    _canvasStroke.removeListener(_bumpWhereTheLiveStrokeDecides);
     _renderCaches.layerFrameImageCache.unreadable.revision.removeListener(
       _bumpCelTintRevision,
     );

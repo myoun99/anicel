@@ -44,7 +44,10 @@ import 'session_roles.dart';
 /// a duplicate and offers to merge instead, which is this app's
 /// 「같은 이름 = 같은 그림」 rule. Carrying the source's name would assert
 /// the very link this verb exists to avoid, and do it behind that dialog's
-/// back.
+/// back. A direction block's drawing is named by what the block says, so
+/// its copy says it with neither end named (`linkNameOfWriting` — Q1's
+/// note on I-72-direction-link: 「디렉션도 시작이름 끝이름만 없음으로
+/// 태어나게」).
 ///
 /// ↩️…where the name IS the row's identity ([namesAreIdentity], the kind's
 /// `celNameIsIdentity`). On an SE row it is the entry's dialogue, which the
@@ -99,7 +102,12 @@ mintIndependentClip({
       }
       return id;
     });
-    exposures[entry.key] = entry.value.copyWith(frameId: newId);
+    exposures[entry.key] = entry.value.copyWith(
+      frameId: newId,
+      instruction: namesAreIdentity
+          ? () => entry.value.instruction?.unnamed
+          : null,
+    );
   }
   return (
     clip: clip.withExposures(exposures),
@@ -214,6 +222,16 @@ Map<FrameId, FrameId> drawingsHeldUnderTheNamesOf(
       if (shown.contains(cel.id)) cel,
   ]);
 }
+
+/// Whether [row] wears the names [cels] carry: a direction row the names
+/// its blocks write ([isWrittenDrawingName]), every other row the names a
+/// hand gives. A name worn elsewhere means no drawing there — a direction
+/// copy's on a drawing row, a drawing copy's on a direction row.
+bool wearsNamesOf(Layer row, Iterable<Frame> cels) => cels.every(
+  (cel) =>
+      cel.name == null ||
+      isWrittenDrawingName(cel.name) == row.kind.spansRideBlocks,
+);
 
 /// The drawings of [bank] already answering to the names [cels] carry —
 /// each named cel to the one of [bank]'s that holds its name. The question

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/native/qa_tablet_bridge.dart';
+import 'package:anicel/src/services/brush_dab_share.dart';
 import 'package:anicel/src/services/input/raw_pen_input_service.dart';
 import 'package:anicel/src/services/input/wintab_pen_service.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
@@ -859,7 +860,7 @@ void main() {
       final dabs = results.single;
       expect(
         dabs.map((dab) => dab.center.x).toList(),
-        [12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2],
+        _alongTheRow(12, 2),
         reason: 'the off-canvas leg (12..9) draws too now',
       );
       expect(dabs.map((dab) => dab.center.y).toSet(), {1});
@@ -890,7 +891,10 @@ void main() {
       await tester.pump();
 
       expect(results, hasLength(1));
-      expect(results.single.map((dab) => dab.center.x).toList(), [12, 13, 14]);
+      expect(
+        results.single.map((dab) => dab.center.x).toList(),
+        _alongTheRow(12, 14),
+      );
 
       // Beyond the wall (x ≥ 16 for the 8×8 stage's 3×3 pasteboard):
       // nothing.
@@ -1145,11 +1149,15 @@ void main() {
     );
 
     testWidgets(
-      'the pressure response curve shapes stylus pressure (PEN-3: gamma 2 '
-      'squares the input)',
+      'the pressure response curve shapes stylus pressure (PEN-3: a curve '
+      'pulled to the floor squares the input)',
       (tester) async {
-        AppInput.settings.value = const AppInputSettings(
-          pressureCurveGamma: 2.0,
+        AppInput.settings.value = AppInputSettings(
+          pressureCurve: BrushPressureCurve(const [
+            BrushCurvePoint(0, 0),
+            BrushCurvePoint(0.5, 0),
+            BrushCurvePoint(1, 1),
+          ]),
         );
         addTearDown(() {
           AppInput.settings.value = AppInputSettings.testCorpusBaseline;
@@ -1709,9 +1717,7 @@ void _penSpeedGroup() {
 
     setUp(() {
       savedInput = AppInput.settings.value;
-      AppInput.settings.value = const AppInputSettings(
-        speedReferencePixelsPerSecond: 1000,
-      );
+      AppInput.settings.value = const AppInputSettings();
     });
 
     tearDown(() {
@@ -1744,10 +1750,10 @@ void _penSpeedGroup() {
 
       await _timedStroke(
         tester,
-        // 250 canvas px in 500 ms is 500 px/s, half the 1000 px/s reference.
+        // 250 canvas px in 250 ms is 1000 px/s, half the 2000 px/s ceiling.
         moves: const [
           (Offset(2, 1), Duration.zero),
-          (Offset(252, 1), Duration(milliseconds: 500)),
+          (Offset(252, 1), Duration(milliseconds: 250)),
         ],
       );
 
@@ -1769,9 +1775,9 @@ void _penSpeedGroup() {
         tester,
         moves: const [
           (Offset(2, 1), Duration.zero),
-          (Offset(252, 1), Duration(milliseconds: 500)),
+          (Offset(252, 1), Duration(milliseconds: 250)),
           // Same stamp as the reading before it: no elapsed time to divide by.
-          (Offset(300, 1), Duration(milliseconds: 500)),
+          (Offset(300, 1), Duration(milliseconds: 250)),
         ],
       );
 
@@ -1806,32 +1812,6 @@ void _penSpeedGroup() {
       expect(results.last.first.speed, 0.0);
     });
 
-    testWidgets('the reference speed the user set is the one that divides', (
-      tester,
-    ) async {
-      // The setting has to reach the dab, or the slider is decoration — the
-      // hop a mutation found unpinned once already (the antiAlias round).
-      final results = <List<BrushDab>>[];
-      await tester.pumpWidget(
-        _app(_view(_sessionState(width: 400, height: 16), results.add)),
-      );
-      AppInput.settings.value = const AppInputSettings(
-        speedReferencePixelsPerSecond: 4000,
-      );
-
-      await _timedStroke(
-        tester,
-        // The same 500 px/s move, now against a 4000 px/s reference.
-        moves: const [
-          (Offset(2, 1), Duration.zero),
-          (Offset(252, 1), Duration(milliseconds: 500)),
-        ],
-      );
-
-      expect(results, hasLength(1));
-      expect(results.single.last.speed, closeTo(0.125, 1e-6));
-    });
-
     testWidgets('🚨CANVAS px/s, not screen px/s — zoom halves the reading', (
       tester,
     ) async {
@@ -1853,12 +1833,12 @@ void _penSpeedGroup() {
         tester,
         moves: const [
           (Offset(2, 2), Duration.zero),
-          (Offset(252, 2), Duration(milliseconds: 500)),
+          (Offset(252, 2), Duration(milliseconds: 250)),
         ],
       );
 
       expect(results, hasLength(1));
-      // 250 SCREEN px is 125 canvas px, so 250 canvas px/s against 1000.
+      // 250 SCREEN px is 125 canvas px, so 500 canvas px/s against 2000.
       expect(results.single.last.speed, closeTo(0.25, 1e-6));
     });
 
@@ -1886,7 +1866,7 @@ void _penSpeedGroup() {
         tester,
         moves: const [
           (Offset(2, 1), Duration.zero),
-          (Offset(252, 1), Duration(milliseconds: 500)),
+          (Offset(252, 1), Duration(milliseconds: 250)),
         ],
       );
 
@@ -1978,6 +1958,18 @@ BrushEditSessionState _paintedSessionState(List<int> rgba) {
       ),
     ),
     materializationHistoryState: BrushBitmapMaterializationHistoryState(),
+  );
+}
+
+/// The dab centres the default one-pixel brush lays from [from] to [to]
+/// along a row: its finest step apart (`finestDabStep`).
+Matcher _alongTheRow(double from, double to) {
+  final step = finestDabStep(1.0) * (to > from ? 1 : -1);
+  final count = ((to - from) / step).round();
+  return pairwiseCompare<double, num>(
+    [for (var i = 0; i <= count; i += 1) from + i * step],
+    (expected, actual) => (actual - expected).abs() < 1e-9,
+    'within 1e-9 of',
   );
 }
 

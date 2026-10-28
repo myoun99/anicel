@@ -12,7 +12,7 @@ Layer _layer(
   LayerKind kind = LayerKind.animation,
   LayerMark mark = LayerMark.none,
   bool onTimesheet = false,
-  bool isFillReference = false,
+  bool clipsToBelow = false,
 }) {
   return Layer(
     id: LayerId(id),
@@ -20,7 +20,7 @@ Layer _layer(
     kind: kind,
     mark: mark,
     onTimesheet: onTimesheet,
-    isFillReference: isFillReference,
+    clipsToBelow: clipsToBelow,
     frames: const [],
     timeline: const {},
   );

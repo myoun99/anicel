@@ -2,11 +2,11 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 
 import '../../services/input/modifier_keys.dart';
 import '../input/control_press_claim.dart';
 import '../input/wheel_law.dart';
+import '../text/app_strings.dart';
 import '../text/readout_text.dart';
 import '../text/text_measure.dart';
 import '../text/vertical_writing_text.dart';
@@ -14,10 +14,12 @@ import '../theme/app_theme.dart';
 import '../theme/disabled_ink.dart';
 import '../theme/text_on_ground.dart';
 import '../timeline/axis_turn.dart';
-import '../timeline/memo_token.dart' show Kept, keptWhileSame;
-import 'axis_bar_gesture.dart';
+import '../timeline/memo_token.dart' show ByList, Kept, keptWhileSame;
 import 'ground_ink_writing.dart';
-import 'inline_numeric_field.dart';
+import 'keyboard_press.dart';
+import 'number_pad.dart';
+import 'owning_axis_grip.dart';
+import 'rail_glyph_button.dart' show RailPlateButton;
 import 'superellipse_clip.dart';
 import 'value_hands.dart';
 import '../repaint_props.dart';
@@ -33,6 +35,10 @@ enum FieldSliderScale {
   exponential,
 }
 
+/// One thing a [FieldSlider.ceiling] shows under its value: a fill from 0
+/// to [value], in [color].
+typedef FieldSliderLevel = ({double value, Color color});
+
 /// The app's shared settings slider: a filled-bar *field* where the whole bar
 /// is the control (no thumb — friendlier to touch/stylus) and the label and
 /// value live inside the track, so one row carries what used to take a label
@@ -44,7 +50,9 @@ enum FieldSliderScale {
 ///   `Text` BESIDE the bar. ⚠️Those two are not the same situation even
 ///   though they take the same branch, which is why the `%`-dropping rule
 ///   sits in [FieldSlider.opacity] and not in the writing.
-/// - A STOOD-UP bar writes the same row, turned a quarter clockwise.
+/// - A STOOD-UP bar writes the same row, turned a quarter clockwise — or
+///   writes nothing, its number in a readout its host stands by it
+///   ([readout]).
 /// - Drag or tap sets the value by absolute track position; holding Shift
 ///   switches to relative movement at 1/10 speed for fine control.
 /// - The scroll wheel steps the value by 1% of the track (Shift: 0.1%); with
@@ -65,6 +73,9 @@ enum FieldSliderScale {
 /// Where an exact number really is needed, put a [DragValueLabel] BESIDE
 /// the bar rather than inside it: that one types on a single tap, so the
 /// app-wide rule ("tap = pick or edit, double-tap = open") stays whole.
+/// ↩️It types again, never on a tap of the bar: through its pencil since
+/// 2026-10-10 ([ValuePencil]), and through its readout's press where its
+/// readout stands for the pencil (I-135).
 class FieldSlider extends StatefulWidget {
   const FieldSlider({
     super.key,
@@ -77,6 +88,7 @@ class FieldSlider extends StatefulWidget {
     this.onChangeEnd,
     this.valueTextBuilder,
     this.restingText,
+    this.color,
     this.restingAccent,
     this.label,
     this.scale = FieldSliderScale.linear,
@@ -87,10 +99,17 @@ class FieldSlider extends StatefulWidget {
     this.axis = Axis.horizontal,
     this.nameInside = true,
     this.upright = false,
-  }) : assert(max > min, 'max must exceed min'),
+    this.readout,
+  }) : levels = null,
+       floor = null,
+       assert(max > min, 'max must exceed min'),
        assert(
          !upright || (axis == Axis.vertical && (label == null || !nameInside)),
          'a bar stands its number up only stood, and writes the number alone',
+       ),
+       assert(
+         readout == null || (axis == Axis.vertical && !upright),
+         'a readout writes the number of a stood bar, which writes nothing',
        ),
        assert(
          scale != FieldSliderScale.exponential || min > 0,
@@ -130,11 +149,15 @@ class FieldSlider extends StatefulWidget {
     this.fillOrigin,
   }) : nameInside = false,
        restingText = null,
+       color = null,
        restingAccent = null,
        stops = null,
+       levels = null,
+       floor = null,
        height = defaultHeight,
        axis = Axis.horizontal,
        upright = false,
+       readout = null,
        assert(max > min, 'max must exceed min'),
        assert(
          scale != FieldSliderScale.exponential || min > 0,
@@ -171,21 +194,29 @@ class FieldSlider extends StatefulWidget {
     required this.onChanged,
     this.onChangeEnd,
     this.restingText,
+    this.color,
     this.restingAccent,
     this.label,
     this.height = defaultHeight,
     this.axis = Axis.horizontal,
     this.nameInside = true,
     this.upright = false,
+    this.readout,
   }) : assert(
          !upright || (axis == Axis.vertical && (label == null || !nameInside)),
          'a bar stands its number up only stood, and writes the number alone',
+       ),
+       assert(
+         readout == null || (axis == Axis.vertical && !upright),
+         'a readout writes the number of a stood bar, which writes nothing',
        ),
        min = 0,
        fillOrigin = null,
        max = 1,
        divisions = 100,
        stops = null,
+       levels = null,
+       floor = null,
        scale = FieldSliderScale.linear,
        // 🚨THE MICRO OPACITY BAR WRITES THE NUMBER ALONE (유저 2026-09-10:
        // 「타임라인 레이어영역에 있는 슬라이더 미니버전. **미니버전은 텍스트에
@@ -204,6 +235,45 @@ class FieldSlider extends StatefulWidget {
        // and saying the scale here is what lets the digit rule see that.
        displayScale = 100,
        valueTextBuilder = null;
+
+  /// **A CEILING bar**: its value is a LIMIT, set over the [levels] it
+  /// shows beneath it. The track is the whole scale, 0 to [max]; every level
+  /// fills from 0 in its own colour, and the value is drawn as an OUTLINE
+  /// over them, so what it limits stays in sight. It cannot be set under
+  /// [floor]: a drag stops there rather than showing a value the setting
+  /// would not take.
+  ///
+  /// 🗣️F-480 (유저 2026-10-27): the memory allowance's slider and the device
+  /// bar under it — 「두번째 슬라이더랑 내용적으로 같아지니 내용 서로
+  /// 합쳐서 통합」 — are one bar, the allowance outlined over the use
+  /// (F-480-Q2 a: 「사용량 채움 위에 허용치 손잡이」).
+  const FieldSlider.ceiling({
+    super.key,
+    required this.value,
+    required this.max,
+    required double this.floor,
+    required List<FieldSliderLevel> this.levels,
+    required this.onChanged,
+    this.onChangeEnd,
+    this.unit = '',
+    this.color,
+  }) : min = 0,
+       displayScale = 1,
+       valueTextBuilder = null,
+       restingText = null,
+       restingAccent = null,
+       label = null,
+       scale = FieldSliderScale.linear,
+       divisions = null,
+       stops = null,
+       fillOrigin = null,
+       height = defaultHeight,
+       axis = Axis.horizontal,
+       nameInside = true,
+       upright = false,
+       readout = null,
+       assert(max > 0, 'max must exceed min'),
+       assert(floor <= max, 'the floor stands on the scale');
 
   /// Current value in model units (e.g. 0..1 for opacity).
   final double value;
@@ -240,9 +310,19 @@ class FieldSlider extends StatefulWidget {
   /// second one with a digit count of its own.
   final String Function(double value, String derived)? valueTextBuilder;
 
-  /// Fill/edge color while NOT interacting; the drag always paints the
-  /// accent (the legend's master-opacity bar reads gray at rest, accent
-  /// while adjusting — R4 #6). Null = accent always.
+  /// The bar's own fill/edge colour, at rest and while dragged alike — null
+  /// is the app's accent.
+  ///
+  /// 🗣️F-474 (유저 2026-10-26): 「어니언스킨, 막대색이 지정된 색인거 좋은데,
+  /// 막대 편집할때만 앱 강조색 되어있음 … 지정된 색으로 유지되도록」 — the
+  /// onion bar's side tint is its colour, not a resting state: a separate
+  /// question from [restingAccent]'s. ↩️The tint rode [restingAccent], and
+  /// the drag painted the accent over it.
+  final Color? color;
+
+  /// Fill/edge color while NOT interacting; the drag paints [color] (the
+  /// legend's master-opacity bar reads gray at rest, accent while adjusting
+  /// — R4 #6). Null = [color] always.
   final Color? restingAccent;
 
   /// Inside-left label; `null` renders the micro variant (value only).
@@ -275,6 +355,14 @@ class FieldSlider extends StatefulWidget {
   /// in the direction of the setting and hard-left stops reading as empty.
   final double? fillOrigin;
 
+  /// What a [FieldSlider.ceiling] shows under its value, painted in order —
+  /// a later level over an earlier one. Null on every other bar.
+  final List<FieldSliderLevel>? levels;
+
+  /// The least a [FieldSlider.ceiling] can be set to; its scale still starts
+  /// at [min]. Null on every other bar.
+  final double? floor;
+
   /// The bar's extent ACROSS its axis — thickness, not length. The length
   /// always comes from the host.
   final double height;
@@ -282,8 +370,9 @@ class FieldSlider extends StatefulWidget {
   /// Whether the bar writes its [label] inside, at its left — false for a
   /// grid's bar ([FieldSlider.cell]), whose name stands in its row, and for
   /// the canvas's brush pill, whose stood bars write their number alone
-  /// (I-34, 유저 2026-10-18: 「숫자만으로 하자」). Either way the bar keeps
-  /// its hands, and its [label] still names it to a screen reader.
+  /// (I-34, 유저 2026-10-18: 「숫자만으로 하자」) — ↩️above them since
+  /// I-135, in their readouts ([readout]). Either way the bar keeps its
+  /// hands, and its [label] still names it to a screen reader.
   final bool nameInside;
 
   /// Whether a stood bar writes its number STANDING UP — down the bar, one
@@ -293,7 +382,19 @@ class FieldSlider extends StatefulWidget {
   /// 🗣️I-125-Q1 (유저 2026-10-23): the brush pill's bars — 「숫자가 옆으로
   /// 누워있어서 읽기 힘든게 큰 단점」. The x-sheet's stood rail still lies
   /// (유저 2026-09-10: 「세로쓰기 세로표기」; I-125-Q2 a, the pill alone).
+  /// ↩️The pill's bars stand nothing since their numbers stepped out of
+  /// them ([readout]); the onion skin's pegs stand theirs.
   final bool upright;
+
+  /// The link to this bar's number where it is written OUTSIDE the bar, in
+  /// a readout its host stands by it ([FieldSliderValueReadout]) — the bar
+  /// writes nothing in its track, and its readout is its pencil: the ±
+  /// stay.
+  ///
+  /// 🗣️I-135 (유저 2026-10-27), the brush pill's bars: 「역시 사이즈 글자가
+  /// 세로면 알기힘듬. 그러니 그냥 텍스트 독립시키자. 슬라이더 막대엔 텍스트
+  /// 없애고, 연필버튼도 여기선 대체되니 없애고」.
+  final FieldSliderReadout? readout;
 
   /// How many digits a standing number sets in one cell: one — 「한 글자씩
   /// 한 칸」 (F-460-Q1, 유저 2026-10-23: 「2/0/0/0/./0 이렇게 위에서
@@ -311,6 +412,12 @@ class FieldSlider extends StatefulWidget {
   /// settings grid keeps on every row ([ToolSettingEnd]).
   static const double handsReach = valueHandsReach;
 
+  /// What the hands of a bar whose [readout] is its pencil take: its ±.
+  static const double readoutHandsReach = ValueSteps.reach;
+
+  /// What this bar's hands take of its run.
+  double get _handsReach => readout == null ? handsReach : readoutHandsReach;
+
   /// How round a bar [height] thick is cornered.
   static double radiusFor(double height) => height < 20 ? 3 : 4;
 
@@ -319,10 +426,11 @@ class FieldSlider extends StatefulWidget {
   /// (tool-settings-panel-tidy, 유저 2026-10-10: the box is 「다른 도구의
   /// 숫자 상자와 같은 모양」).
   ///
-  /// [typed]: the frame of a bar or a box being typed in. Its field runs
-  /// the whole of it, so the frame is the field's, in the accent a focused
-  /// field wears (유저 2026-10-11: 「X 글자 없애고 최대치로 잡아도 될거같은데.
-  /// 다른박스 마찬가지 통일」).
+  /// [typed]: the frame of a bar or a box being typed in — its number pad
+  /// open ([showNumberPad]) — in the accent a focused field wears. ↩️Its
+  /// field ran the whole of it, so the frame was the field's (유저
+  /// 2026-10-11: 「X 글자 없애고 최대치로 잡아도 될거같은데. 다른박스 마찬가지
+  /// 통일」), until the field moved into the pad (I-134).
   static ShapeDecoration frameOf(
     double height, {
     required bool enabled,
@@ -380,18 +488,15 @@ class FieldSlider extends StatefulWidget {
   /// this the name gives way to an ellipsis, which is where a bar stops
   /// saying what it is.
   double narrowestIn(BuildContext context) {
-    final words = [_textFor(min), _textFor(max), ?restingText];
-    final hands = _carriesHands ? handsReach : 0.0;
-    if (upright) {
-      // A standing number's column keeps the track's insets as its ends.
-      return words
-              .map(
-                (word) =>
-                    _standing(context, word).naturalSizeIn(context).height,
-              )
-              .reduce(math.max) +
-          hands;
+    final hands = _carriesHands ? _handsReach : 0.0;
+    if (readout != null) {
+      // Its number is in its readout: nothing in its track asks room.
+      return hands;
     }
+    if (upright) {
+      return standingRunIn(context) + hands;
+    }
+    final words = _saidAtEnds;
     final name = label;
     final nameRun = name == null || !nameInside
         ? 0.0
@@ -405,6 +510,24 @@ class FieldSlider extends StatefulWidget {
         TextMeasure(context, valueStyleIn(context)).widest(words) +
         hands;
   }
+
+  /// How long a run the widest thing this bar says takes STANDING — a
+  /// glyph to a cell, the track's insets as the column's ends, as an
+  /// [upright] bar writes it.
+  double standingRunIn(BuildContext context) => _saidAtEnds
+      .map((word) => _standing(context, word).naturalSizeIn(context).height)
+      .reduce(math.max);
+
+  /// What this bar says at the ends of its range, and at rest where that is
+  /// not its number — what it is sized around.
+  List<String> get _saidAtEnds => [
+    _textFor(min),
+    _textFor(max),
+    ?restingText,
+  ];
+
+  /// What this bar says while nobody is touching it.
+  String get _saidAtRest => restingText ?? _textFor(value);
 
   /// [word] as an [upright] bar writes it, the ground under it in [inks]:
   /// at the far end of the bar, where a lying bar writes its number — or
@@ -484,7 +607,7 @@ class FieldSlider extends StatefulWidget {
     return t.clamp(0.0, 1.0);
   }
 
-  /// The value at [t] along the track, snapped to [divisions].
+  /// The value at [t] along the track, snapped to [divisions] and [held].
   double _valueFor(double t) {
     final clamped = t.clamp(0.0, 1.0);
     double value;
@@ -499,15 +622,51 @@ class FieldSlider extends StatefulWidget {
       final step = (max - min) / divisions;
       value = min + ((value - min) / step).round() * step;
     }
-    return value.clamp(min, max);
+    return held(value);
   }
+
+  /// [value] as this bar holds it: in its range, and on the numbers it
+  /// writes — [_decimals] digits after the point, in the units it writes
+  /// them in ([displayScale]). Every value the bar hands over is one, by
+  /// drag, tap, step or typing.
+  ///
+  /// 🗣️F-488 (유저 2026-10-27): 「브러시 크기 사이즈 슬라이더, 0.1대에서
+  /// 슬라이더 움직이는데 0.1인채로 유지되는데 설마 0.1 밑의 소수점자리도
+  /// 존재하는건가? … 소수점한자리까지만 존재하도록하고 아니면 조정가능한 값만
+  /// 조정되도록. 슬라이더를 전부 그렇게」 — a bar handed over values it did
+  /// not write, its fill sliding while its number stood still.
+  double held(double value) {
+    final written = _writtenPerUnit;
+    // The least and the most it writes inside its range: an end it cannot
+    // write — a 0.25 on a bar of tenths — is no value it holds either.
+    final least = ((floor ?? min) * written - _slack).ceil();
+    final most = (max * written + _slack).floor();
+    if (least > most) {
+      // A range inside one step of its last digit writes no number at all.
+      return value.clamp(floor ?? min, max).toDouble();
+    }
+    return (value * written).round().clamp(least, most) / written;
+  }
+
+  /// How many of the last digit the bar writes one unit of its value holds.
+  double get _writtenPerUnit =>
+      math.pow(10, _decimals).toDouble() * displayScale;
+
+  /// What a product of two doubles misses a whole number by: 0.7 × 10 is
+  /// 7.000000000000001.
+  static const double _slack = 1e-9;
 
   /// Where one step [direction] from [value] lands: the next of the
   /// [stops], or one notch along the track — a [fine] one when Shift is
   /// held. Null when the stops run out that way.
+  ///
+  /// A notch that would land on the number [value] writes moves it by the
+  /// last digit instead: an exponential sweep's notch is less than a tenth
+  /// under 0.2, and a step that writes the same number is no step (F-488).
   double? _stepFrom(double value, int direction, {required bool fine}) {
     if (stops != null) {
-      return _stopPast(value, direction)?.clamp(min, max).toDouble();
+      final stop = _stopPast(value, direction);
+      return stop == null ? null : held(stop);
     }
     final divisions = this.divisions;
     final double step;
@@ -516,15 +675,19 @@ class FieldSlider extends StatefulWidget {
     } else {
       step = fine ? 0.001 : 0.01;
     }
-    return _valueFor((_tFor(value) + direction * step).clamp(0.0, 1.0));
+    final next = _valueFor((_tFor(value) + direction * step).clamp(0.0, 1.0));
+    final now = held(value);
+    return next != now ? next : held(now + direction / _writtenPerUnit);
   }
 
   /// The stop next past [value] [direction] (+1 up, −1 down); null past
   /// the last.
   ///
-  /// ⚠️A stop the bar WRITES [value] as is not the next one: a drag that
-  /// left 10.03 reads 「10.0」, and a step from it to 10 would be a press
-  /// that shows nothing.
+  /// ⚠️A stop the bar WRITES [value] as is not the next one: a value set
+  /// where the bar does not hold it — a brush's own 10.03 — reads 「10.0」,
+  /// and a step from it to 10 would be a press that shows nothing.
+  /// (↩️A drag left such values too, until the bar [held] what it hands
+  /// over — F-488.)
   double? _stopPast(double value, int direction) {
     final shown = _textFor(value);
     double? next;
@@ -591,6 +754,9 @@ class _FieldSliderState extends State<FieldSlider> {
   /// Label and value stay ONE ink per ground: 09-10 flattened their dim and
   /// bright pair by decision, and that is not what was reversed.
   List<GroundInkRun> _inkRuns(double t, Color accent) {
+    if (widget.levels != null) {
+      return _inkRunsOverLevels();
+    }
     final near = math.min(_originFraction, t);
     final far = math.max(_originFraction, t);
     // A stood-up bar's writing is the row turned a quarter clockwise, so its
@@ -607,6 +773,53 @@ class _FieldSliderState extends State<FieldSlider> {
       onTrack: _asDrawn(textOnColor(AppColors.surface)),
     );
   }
+
+  /// A ceiling bar's levels, as where each ends along the track
+  /// ([FieldSlider.ceiling]) — none on every other bar.
+  List<({double t, Color color})> get _laidLevels => [
+    for (final level in widget.levels ?? const <FieldSliderLevel>[])
+      (t: widget._tFor(level.value), color: level.color),
+  ];
+
+  /// A ceiling bar's ink: the ground under each stretch of the writing is
+  /// the level on top there, or the empty track past them all — the value's
+  /// outline is an edge, not a ground.
+  List<GroundInkRun> _inkRunsOverLevels() {
+    final laid = _laidLevels;
+    final ends = {
+      for (final level in laid)
+        if (level.t > 0) level.t,
+      1.0,
+    }.toList()..sort();
+    Color groundUpTo(double end) => laid
+        .lastWhere(
+          (level) => level.t >= end,
+          orElse: () => (t: 1.0, color: AppColors.surface),
+        )
+        .color;
+    return [
+      for (final end in ends)
+        (end: end, ink: _asDrawn(textOnColor(groundUpTo(end)))),
+    ];
+  }
+
+  /// What the track fills: the value, from its origin — or on a ceiling
+  /// bar, its levels with the value's outline over them.
+  CustomPainter _trackFill(double t, Color accent) => widget.levels == null
+      ? _FieldSliderTrackPainter(
+          axis: widget.axis,
+          t: t,
+          originT: _originFraction,
+          accent: _asDrawn(accent),
+        )
+      : _FieldSliderCeilingPainter(
+          levels: [
+            for (final level in _laidLevels)
+              (t: level.t, color: _asDrawn(level.color)),
+          ],
+          t: t,
+          edge: _asDrawn(accent),
+        );
 
   /// [color] the way this bar draws it — dimmed when the bar is disabled.
   ///
@@ -650,12 +863,55 @@ class _FieldSliderState extends State<FieldSlider> {
   /// whether it takes the gesture, and the language its tooltips speak.
   final Map<Type, Kept<Object?>> _hands = {};
 
-  /// Whether the bar is being typed into: its pencil opened the field
-  /// ([ValuePencil]), and the bar stands as a box holding it until Enter,
-  /// a press elsewhere, or Escape.
+  /// Whether the bar is being typed into: its pencil opened the number pad
+  /// ([ValuePencil], [showNumberPad]) — or its readout did, being its
+  /// pencil — and the bar wears the typed frame until the pad closes.
   bool _typing = false;
 
-  void _beginTyping() => setState(() => _typing = true);
+  /// The pencil: the number pad, anchored under the bar (I-134), on the
+  /// number alone ([readoutParts]) — a − where the bar runs below zero, a
+  /// point where it lands between whole numbers ([FieldSlider._decimals]).
+  Future<void> _beginTyping() async {
+    setState(() => _typing = true);
+    final shown = widget._saidAtRest;
+    await showNumberPad(
+      context,
+      keyValue: 'field-slider-type',
+      initialText: switch (readoutParts(shown)) {
+        [final part] => part.number,
+        _ => shown,
+      },
+      keys: (
+        minus: widget.min * widget.displayScale < 0,
+        point: widget._decimals > 0,
+      ),
+      fieldKey: const ValueKey<String>('field-slider-type-input'),
+      onSubmit: _typed,
+    );
+    if (mounted) {
+      setState(() => _typing = false);
+    }
+  }
+
+  // The readout's press reaches [_beginTyping] while this bar stands.
+  @override
+  void initState() {
+    super.initState();
+    widget.readout?._type = _beginTyping;
+  }
+
+  @override
+  void didUpdateWidget(FieldSlider oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    oldWidget.readout?._letGo(_beginTyping);
+    widget.readout?._type = _beginTyping;
+  }
+
+  @override
+  void dispose() {
+    widget.readout?._letGo(_beginTyping);
+    super.dispose();
+  }
 
   /// A typed number, in the units the bar writes ([FieldSlider
   /// .displayScale]): held to the bar's range and its steps, and handed
@@ -867,9 +1123,6 @@ class _FieldSliderState extends State<FieldSlider> {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final labelStyle = textTheme.labelSmall;
-    final valueStyle = FieldSlider.valueStyleIn(context);
     // An active gesture echoes locally (snapped like the emitted value);
     // otherwise display derives from widget.value (fully controlled).
     final gestureT = _gestureT;
@@ -879,114 +1132,31 @@ class _FieldSliderState extends State<FieldSlider> {
         : widget._tFor(widget.value);
     final valueText = dragging
         ? widget._textFor(widget._valueFor(gestureT))
-        : widget.restingText ?? widget._textFor(widget.value);
-    if (_typing) {
-      return _withHands(
-        _FieldSliderTypedFace(
-          bar: widget,
-          valueText: valueText,
-          onSubmit: _typed,
-          onCancel: () => setState(() => _typing = false),
-        ),
-      );
-    }
+        : widget._saidAtRest;
 
-    final accent = dragging
-        ? AppColors.accent
-        : (widget.restingAccent ?? AppColors.accent);
-    Widget writingIn(TextStyle ink) {
-      final value = valueStyle?.merge(ink) ?? ink;
-      if (widget.label == null) {
-        return Center(
-          child: Text(
-            valueText,
-            maxLines: 1,
-            overflow: TextOverflow.clip,
-            style: value,
-          ),
-        );
-      }
-      if (!widget.nameInside) {
-        // A grid's bar: the name stands in the row, the number where a
-        // named bar writes it.
-        return Align(
-          alignment: Alignment.centerRight,
-          child: Text(valueText, maxLines: 1, style: value),
-        );
-      }
-      return Row(
-        children: [
-          Expanded(
-            child: Text(
-              widget.label!,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: labelStyle?.merge(ink) ?? ink,
-            ),
-          ),
-          Text(valueText, maxLines: 1, style: value),
-        ],
-      );
-    }
-
-    // 🚨A STOOD-UP BAR IS THE ROW, TURNED — 세로쓰기 세로표기 (유저
-    // 2026-09-10: 「x시트의 불투명도바는 **세로쓰기 세로표기**로 바꾸자」).
-    // That is the reading 유저 named on 2026-08-24 for the SE blocks —
-    // 「se블록의 이름이 세로쓰기세로표기 인거같은데, 가로쓰기 세로표기가
-    // 되도록」, where the before state was `VerticalLatinForm.sideways`:
-    // the glyphs LIE DOWN and the line reads along the column.
-    //
-    // ⛔It is NOT the vertical-writing table any more. That stacked one
-    // glyph per cell and set `100%` as three-digit 縦中横 to keep it to two
-    // cells — a horizontal number inside a vertical column, which is
-    // exactly the 가로쓰기 the user is asking away from.
-    // ↩️The table is back where a bar asks for it ([FieldSlider.upright]):
-    // the brush pill's, by I-125-Q1 — a glyph to a cell since F-460-Q1.
-    //
-    // ⚠️A `RotatedBox` HERE and never around the bar: the writing has no
-    // gesture, while a turned recognizer would never see an on-screen
-    // vertical drag at all (see [FieldSlider.axis]).
-    // The ink follows the ground under it — see [_inkRuns]. The writing's
-    // box is the whole track, padding and all, so the runs' fractions are the
-    // painter's.
-    final runs = _inkRuns(t, accent);
-    final inner = widget.upright
-        ? SizedBox.expand(
-            child: widget._standing(context, valueText, inks: runs),
-          )
-        : GroundInkWriting(
-            runs: runs,
-            builder: (context, ink) => Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: FieldSlider.inset,
-              ),
-              child: writingIn(ink),
-            ),
-          );
-
-    Widget bar = _TrackExtentProbe(
+    final own = widget.color ?? AppColors.accent;
+    final accent = dragging ? own : (widget.restingAccent ?? own);
+    Widget bar = FieldSliderTrack(
       axis: widget.axis,
       onExtent: _takeTrackExtent,
-      child: DecoratedBox(
-        decoration: FieldSlider.frameOf(widget.height, enabled: _enabled),
-        child: SuperellipseClip(
-          shape: AppShapes.container(_radius),
-          child: CustomPaint(
-            painter: _FieldSliderTrackPainter(
-              axis: widget.axis,
-              t: t,
-              originT: _originFraction,
-              accent: _asDrawn(accent),
-            ),
-            child: acrossBox(
-              widget.axis,
-              widget.height,
-              child: _vertical && !widget.upright
-                  ? RotatedBox(quarterTurns: 1, child: inner)
-                  : inner,
-            ),
-          ),
-        ),
+      frame: FieldSlider.frameOf(
+        widget.height,
+        enabled: _enabled,
+        typed: _typing,
+      ),
+      shape: AppShapes.container(_radius),
+      fill: _trackFill(t, accent),
+      child: acrossBox(
+        widget.axis,
+        widget.height,
+        // A readout's bar writes nothing: its number is in its readout.
+        child: widget.readout == null
+            ? _FieldSliderWriting(
+                bar: widget,
+                valueText: valueText,
+                runs: _inkRuns(t, accent),
+              )
+            : null,
       ),
     );
 
@@ -1009,30 +1179,12 @@ class _FieldSliderState extends State<FieldSlider> {
       // scrolling included. These recognisers take the arena on the FIRST
       // movement instead of at a slop, so no ancestor scrollable is ever in
       // a position to take the gesture away — see [axis_bar_gesture].
-      child: RawGestureDetector(
-        behavior: HitTestBehavior.opaque,
-        gestures: _vertical
-            ? <Type, GestureRecognizerFactory>{
-                OwningVerticalDragGestureRecognizer:
-                    GestureRecognizerFactoryWithHandlers<
-                      OwningVerticalDragGestureRecognizer
-                    >(
-                      () =>
-                          OwningVerticalDragGestureRecognizer(debugOwner: this),
-                      _configureDrag,
-                    ),
-              }
-            : <Type, GestureRecognizerFactory>{
-                OwningHorizontalDragGestureRecognizer:
-                    GestureRecognizerFactoryWithHandlers<
-                      OwningHorizontalDragGestureRecognizer
-                    >(
-                      () => OwningHorizontalDragGestureRecognizer(
-                        debugOwner: this,
-                      ),
-                      _configureDrag,
-                    ),
-              },
+      // T11: this press is the slider's — the claim and the recogniser in
+      // one box ([OwningAxisGrip]). ↩️They were written here by hand, a
+      // [DragVerbClaim] over a detector, as the splitter wore the pair.
+      child: OwningAxisGrip(
+        axis: widget.axis,
+        configure: _configureDrag,
         child: bar,
       ),
     );
@@ -1046,20 +1198,15 @@ class _FieldSliderState extends State<FieldSlider> {
       slider: true,
       label: widget.label,
       value: valueText,
-      // T11: this press is the slider's. The claim is [DragVerbClaim] now —
-      // the same four lines used to sit here, in the splitter and in the
-      // rail's swipe column, three copies of one law.
-      child: DragVerbClaim(
-        child: Listener(
-          // What is left here is the WHEEL. The raw travel this used to
-          // track went with the workaround that read it.
-          //
-          // H23: registered rather than handled, so the notch this bar takes
-          // is not also taken by the canvas layer above it.
-          onPointerSignal: (event) =>
-              handleWheelUnlessScrolling(event, context, _handleWheel),
-          child: bar,
-        ),
+      child: Listener(
+        // What is left here is the WHEEL. The raw travel this used to
+        // track went with the workaround that read it.
+        //
+        // H23: registered rather than handled, so the notch this bar takes
+        // is not also taken by the canvas layer above it.
+        onPointerSignal: (event) =>
+            handleWheelUnlessScrolling(event, context, _handleWheel),
+        child: bar,
       ),
     );
     return _withHands(claimed);
@@ -1090,6 +1237,9 @@ class _FieldSliderState extends State<FieldSlider> {
   /// left out while the only one was the x-sheet's turned rail, whose row
   /// has no room across at all; that one is the micro variant, and the
   /// variant is what keeps it bare.
+  ///
+  /// A bar whose number is in its readout has no pencil: the readout is
+  /// its pencil (I-135: 「연필버튼도 여기선 대체되니 없애고」).
   Widget _withHands(Widget bar) {
     if (!widget._carriesHands) {
       return bar;
@@ -1100,7 +1250,7 @@ class _FieldSliderState extends State<FieldSlider> {
     final hands = keptWhileSame(
       _hands,
       FieldSlider,
-      (widget.height, widget.axis, _enabled),
+      (widget.height, widget.axis, _enabled, widget.readout == null),
       () => Flex(
         direction: widget.axis,
         mainAxisSize: MainAxisSize.min,
@@ -1112,13 +1262,14 @@ class _FieldSliderState extends State<FieldSlider> {
             onStep: _stepBy,
             axis: widget.axis,
           ),
-          ValuePencil(
-            keyValue: 'field-slider-type',
-            height: widget.height,
-            enabled: _enabled,
-            onPressed: _beginTyping,
-            axis: widget.axis,
-          ),
+          if (widget.readout == null)
+            ValuePencil(
+              keyValue: 'field-slider-type',
+              height: widget.height,
+              enabled: _enabled,
+              onPressed: _beginTyping,
+              axis: widget.axis,
+            ),
         ],
       ),
     );
@@ -1132,58 +1283,242 @@ class _FieldSliderState extends State<FieldSlider> {
   }
 }
 
-/// The bar while it is typed in ([_FieldSliderState._typing]): its frame,
-/// typed ([FieldSlider.frameOf]), and all of it the field — the number
-/// alone, the law every typed number opens by ([readoutParts]), with no
-/// name, no unit and no fill, as a number box typed in (`DragValueLabel`).
-class _FieldSliderTypedFace extends StatelessWidget {
-  const _FieldSliderTypedFace({
+/// What a bar writes in its track — its name and its number, or its number
+/// alone — in the ink the ground under each stretch asks for ([runs]),
+/// typed in too: the number pad opens under the bar ([showNumberPad]).
+/// ↩️It gave way to a typed face, all field, while the bar was typed in.
+class _FieldSliderWriting extends StatelessWidget {
+  const _FieldSliderWriting({
     required this.bar,
     required this.valueText,
-    required this.onSubmit,
-    required this.onCancel,
+    required this.runs,
   });
 
   final FieldSlider bar;
-
-  /// What the bar writes at rest — its number and its unit.
   final String valueText;
-  final ValueChanged<String> onSubmit;
-  final VoidCallback onCancel;
+
+  /// The ink over each stretch of the track ([_FieldSliderState._inkRuns]).
+  final List<GroundInkRun> runs;
 
   @override
   Widget build(BuildContext context) {
-    final parts = readoutParts(valueText);
-    final part = parts.length == 1 ? parts.single : null;
-    final ink = TextStyle(color: textOnColor(AppColors.surface));
-    final style = FieldSlider.valueStyleIn(context)?.merge(ink) ?? ink;
-    final field = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: FieldSlider.inset),
-      child: Row(
-        children: [
-          Expanded(
-            child: InlineNumericField(
-              fieldKey: const ValueKey<String>('field-slider-type-input'),
-              initialText: part?.number ?? valueText,
-              textStyle: style,
-              textAlign: TextAlign.right,
-              onSubmit: onSubmit,
-              onCancel: onCancel,
-            ),
-          ),
-        ],
+    // 🚨A STOOD-UP BAR IS THE ROW, TURNED — 세로쓰기 세로표기 (유저
+    // 2026-09-10: 「x시트의 불투명도바는 **세로쓰기 세로표기**로 바꾸자」).
+    // That is the reading 유저 named on 2026-08-24 for the SE blocks —
+    // 「se블록의 이름이 세로쓰기세로표기 인거같은데, 가로쓰기 세로표기가
+    // 되도록」, where the before state was `VerticalLatinForm.sideways`:
+    // the glyphs LIE DOWN and the line reads along the column.
+    //
+    // ⛔It is NOT the vertical-writing table any more. That stacked one
+    // glyph per cell and set `100%` as three-digit 縦中横 to keep it to two
+    // cells — a horizontal number inside a vertical column, which is
+    // exactly the 가로쓰기 the user is asking away from.
+    // ↩️The table is back where a bar asks for it ([FieldSlider.upright]):
+    // the brush pill's, by I-125-Q1 — a glyph to a cell since F-460-Q1 —
+    // and the onion skin's pegs' (F-461). ↩️The pill's own numbers stand
+    // above its bars in readouts since I-135.
+    //
+    // ⚠️A `RotatedBox` HERE and never around the bar: the writing has no
+    // gesture, while a turned recognizer would never see an on-screen
+    // vertical drag at all (see [FieldSlider.axis]).
+    // The ink follows the ground under it — see [runs]. The writing's box
+    // is the whole track, padding and all, so the runs' fractions are the
+    // painter's.
+    if (bar.upright) {
+      return SizedBox.expand(
+        child: bar._standing(context, valueText, inks: runs),
+      );
+    }
+    final valueStyle = FieldSlider.valueStyleIn(context);
+    final labelStyle = Theme.of(context).textTheme.labelSmall;
+    final row = GroundInkWriting(
+      runs: runs,
+      builder: (context, ink) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: FieldSlider.inset),
+        child: _rowIn(
+          value: valueStyle?.merge(ink) ?? ink,
+          label: labelStyle?.merge(ink) ?? ink,
+        ),
       ),
     );
-    // A stood bar is typed in as it writes: the row turned a quarter
-    // clockwise, its number at the foot ([FieldSlider.axis] — the writing
-    // turns, and a field has no drag to lose by turning).
-    final stood = bar.axis == Axis.vertical;
-    return DecoratedBox(
-      decoration: FieldSlider.frameOf(bar.height, enabled: true, typed: true),
-      child: acrossBox(
-        bar.axis,
-        bar.height,
-        child: stood ? RotatedBox(quarterTurns: 1, child: field) : field,
+    return bar.axis == Axis.vertical
+        ? RotatedBox(quarterTurns: 1, child: row)
+        : row;
+  }
+
+  /// The row in one ink: the number in [value], the name in [label].
+  Widget _rowIn({required TextStyle value, required TextStyle label}) {
+    if (bar.label == null) {
+      return Center(
+        child: Text(
+          valueText,
+          maxLines: 1,
+          overflow: TextOverflow.clip,
+          style: value,
+        ),
+      );
+    }
+    if (!bar.nameInside) {
+      // A grid's bar: the name stands in the row, the number where a
+      // named bar writes it.
+      return Align(
+        alignment: Alignment.centerRight,
+        child: Text(valueText, maxLines: 1, style: value),
+      );
+    }
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            bar.label!,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: label,
+          ),
+        ),
+        Text(valueText, maxLines: 1, style: value),
+      ],
+    );
+  }
+}
+
+/// The link between a stood bar and the readout its number stands in
+/// OUTSIDE it ([FieldSlider.readout], [FieldSliderValueReadout]): the
+/// readout's press reaches the bar's typing. The bar's host makes one for
+/// each such bar, hands it to both, and keeps it while they stand.
+///
+/// 🗣️I-135 (유저 2026-10-27): 「그냥 해당하는 막대 슬라이더 위에 이 텍스트
+/// 두자. 물론 다 안들어가니 최대한 텍스트쪽 위젯 컴팩트하게 하고」. ↩️The
+/// number stood a day in a bubble beside its bar that followed the value
+/// (「막대 옆에 <20.0 이런식으로 약간 말풍선컨셉?」), until 「생각보다 너무
+/// 캔버스 좌우공간을 차지함」.
+class FieldSliderReadout {
+  /// The bar's typing, while the bar stands
+  /// ([_FieldSliderState._beginTyping]).
+  VoidCallback? _type;
+
+  void _letGo(VoidCallback type) {
+    if (_type == type) {
+      _type = null;
+    }
+  }
+}
+
+/// A stood bar's number OUTSIDE it ([FieldSlider.readout]), where its host
+/// stands it — the pill stands each right above its bar: what the bar
+/// would write at rest, small and centred, and the bar's pencil: a press
+/// types into the bar as the pencil's did.
+///
+/// [bar] is the bar it writes for, as its host built it from the same
+/// state: the readout reads the value off it as the bar does, so the two
+/// say one number. ⚠️A bar that echoes a drag before its value comes back
+/// (R4 #4/#5's commit-on-release bars) would run ahead of its readout; the
+/// pill's bars are handed every move, and no other bar has a readout.
+///
+/// Its size is FIXED — [width] across, [heightIn] tall — the bubble's law,
+/// kept: 「고정으로 하는게 성능적인 면에서 효율적인가? 그렇다면 길이
+/// 브러시사이즈 최대 길이(2000.0 의 길이)를 고정으로, 텍스트 중앙정렬로
+/// 하도록. 그냥 고정크기로하자. 그러고 불투명도도 그 고정크기로 통일」
+/// ([widthIn]).
+class FieldSliderValueReadout extends StatefulWidget {
+  const FieldSliderValueReadout({
+    super.key,
+    required this.keyValue,
+    required this.bar,
+    required this.width,
+  });
+
+  /// The readout's handle: its box's key, and its press's name.
+  final String keyValue;
+
+  /// A bar with a [FieldSlider.readout].
+  final FieldSlider bar;
+
+  /// Its width — one for every readout its host shows ([widthIn]).
+  final double width;
+
+  /// 🗣️I-135-Q1 (유저 2026-10-27: 「a로가자」): of 8, 9 and the other bars'
+  /// 11, the size that asks the canvas for the least room — 「2000.0」 runs
+  /// 33 across at 8, so the pill stands 37 across where it stood 28 (41 at
+  /// 9, 50 at 11).
+  static const double fontSize = 8;
+
+  /// The room either side of the words.
+  static const double _pad = 1;
+
+  /// Its height at 1×, as I-135-Q1's sheet drew it: the line, and two
+  /// pixels above and below it for the press.
+  static const double _height = fontSize + 4;
+
+  /// The style it writes in: a bar's own ([FieldSlider.valueStyleIn]) at
+  /// [fontSize], the line as tall as the letters.
+  static TextStyle? styleIn(BuildContext context) => FieldSlider.valueStyleIn(
+    context,
+  )?.copyWith(fontSize: fontSize, height: 1);
+
+  /// The one width for [bars]' readouts: the widest thing any of them says,
+  /// whole, and the room either side of it.
+  static double widthIn(BuildContext context, Iterable<FieldSlider> bars) =>
+      TextMeasure(context, styleIn(context))
+          .widest([for (final bar in bars) ...bar._saidAtEnds])
+          .ceilToDouble() +
+      _pad * 2;
+
+  /// Its height here: [_height], grown as its line grows with the text
+  /// scale (text-scale-fixed-height-bars).
+  static double heightIn(BuildContext context) =>
+      _height +
+      TextMeasure(
+        context,
+        styleIn(context),
+      ).lineGrowthOf(TextMeasure.everyScript);
+
+  @override
+  State<FieldSliderValueReadout> createState() =>
+      _FieldSliderValueReadoutState();
+}
+
+class _FieldSliderValueReadoutState extends State<FieldSliderValueReadout>
+    with KeyboardPress {
+  bool get _enabled => widget.bar.onChanged != null;
+
+  void _type() => widget.bar.readout?._type?.call();
+
+  @override
+  VoidCallback? get keyboardPress => _enabled ? _type : null;
+
+  @override
+  Widget build(BuildContext context) {
+    final height = FieldSliderValueReadout.heightIn(context);
+    // On its host's ground — the pill's, the surface ([AppColors.surface]).
+    final ink = dimmedIfDisabled(
+      textOnColor(AppColors.surface),
+      enabled: _enabled,
+    );
+    return SizedBox(
+      key: ValueKey<String>(widget.keyValue),
+      width: widget.width,
+      height: height,
+      child: keyboardReaches(
+        RailPlateButton(
+          name: widget.keyValue,
+          tooltip: AppText.strings.valueTypeIn,
+          onPressed: _enabled ? _type : null,
+          focus: keyboardFocus,
+          hoverShape: AppShapes.control(height),
+          child: Center(
+            child: Text(
+              widget.bar._saidAtRest,
+              maxLines: 1,
+              softWrap: false,
+              style:
+                  FieldSliderValueReadout.styleIn(
+                    context,
+                  )?.copyWith(color: ink) ??
+                  TextStyle(color: ink),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -1246,8 +1581,65 @@ class _FieldSliderTrackPainter extends CustomPainter with RepaintOnProps {
   Object get props => (t, originT, axis, accent);
 }
 
-/// Hands the bar's length along its axis to the gesture math as the bar is
-/// laid out — the one thing the bar needed a `LayoutBuilder` for.
+/// A [FieldSlider.ceiling]'s track: its levels filled from the left, a
+/// later one over an earlier one, and the value as an outline over them.
+class _FieldSliderCeilingPainter extends CustomPainter with RepaintOnProps {
+  const _FieldSliderCeilingPainter({
+    required this.levels,
+    required this.t,
+    required this.edge,
+  });
+
+  /// Where each level ends along the track, 0..1, and its colour.
+  final List<({double t, Color color})> levels;
+
+  /// Where the value — the outline's far edge — sits along the track.
+  final double t;
+
+  final Color edge;
+
+  /// The outline's stroke: the one the device bar drew the allowance in
+  /// before the two bars were one (F-480).
+  static const double edgeWidth = 1.5;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final level in levels) {
+      if (level.t > 0) {
+        canvas.drawRect(
+          Rect.fromLTWH(0, 0, size.width * level.t, size.height),
+          Paint()..color = level.color,
+        );
+      }
+    }
+    final reach = math.max(size.width * t, edgeWidth);
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, reach, size.height).deflate(edgeWidth / 2),
+      Paint()
+        ..color = edge
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = edgeWidth,
+    );
+  }
+
+  // A list compares by identity; its levels are records, so by value.
+  @override
+  Object get props => (ByList(levels), t, edge);
+}
+
+/// The bar's TRACK, as one box: its [frame] under everything, its [fill]
+/// inside the frame's corner under the writing, and the writing — the
+/// order a [DecoratedBox], a [SuperellipseClip] and a [CustomPaint] painted
+/// them in, and the clip's exact corner for a pointer.
+///
+/// 🪶WHY (card frame-panels-build-in-one-frame, 2026-10-25): the track was
+/// those three and a probe of its length — four elements and four render
+/// objects for one painted bar, made again for every bar a tab reopens
+/// (fourteen on each of the timeline's tabs). It IS the clip, so the
+/// corner is the clip's code and not a second spelling of it.
+///
+/// It also hands the bar's length along its axis to the gesture math as the
+/// bar is laid out — the one thing the bar needed a `LayoutBuilder` for.
 ///
 /// 🚨NOT A LAYOUT BUILDER (2026-09-26). A layout builder re-runs its builder
 /// on every rebuild, and that is a relayout — which climbs past the bar to
@@ -1259,34 +1651,68 @@ class _FieldSliderTrackPainter extends CustomPainter with RepaintOnProps {
 /// pick's heaviest frame spent ~4 ms there. This lays the bar out exactly
 /// as the builder did (its constraints, handed straight through) and asks
 /// for nothing when the bar is only repainted.
-class _TrackExtentProbe extends SingleChildRenderObjectWidget {
-  const _TrackExtentProbe({
+class FieldSliderTrack extends SuperellipseClip {
+  const FieldSliderTrack({
+    super.key,
     required this.axis,
+    required this.frame,
+    required this.fill,
     required this.onExtent,
+    required super.shape,
     required super.child,
   });
 
   final Axis axis;
+
+  /// The bar's frame ([FieldSlider.frameOf]).
+  final ShapeDecoration frame;
+
+  /// What the track fills, inside the corner and under the writing.
+  final CustomPainter fill;
+
   final ValueChanged<double> onExtent;
 
   @override
-  _RenderTrackExtentProbe createRenderObject(BuildContext context) =>
-      _RenderTrackExtentProbe(axis: axis, onExtent: onExtent);
+  RenderSuperellipseClip createRenderObject(BuildContext context) =>
+      RenderFieldSliderTrack(
+        borderRadius: borderRadiusIn(context),
+        clipBehavior: clipBehavior,
+        axis: axis,
+        frame: frame,
+        textDirection: Directionality.maybeOf(context),
+        fill: fill,
+        onExtent: onExtent,
+      );
 
   @override
   void updateRenderObject(
     BuildContext context,
-    _RenderTrackExtentProbe renderObject,
+    covariant RenderFieldSliderTrack renderObject,
   ) {
+    super.updateRenderObject(context, renderObject);
     renderObject
       ..axis = axis
+      ..frame = frame
+      ..textDirection = Directionality.maybeOf(context)
+      ..fill = fill
       ..onExtent = onExtent;
   }
 }
 
-class _RenderTrackExtentProbe extends RenderProxyBox {
-  _RenderTrackExtentProbe({required Axis axis, required this.onExtent})
-    : _axis = axis;
+/// [FieldSliderTrack]'s render object.
+class RenderFieldSliderTrack extends RenderSuperellipseClip {
+  RenderFieldSliderTrack({
+    required super.borderRadius,
+    required super.clipBehavior,
+    required Axis axis,
+    required ShapeDecoration frame,
+    required TextDirection? textDirection,
+    required CustomPainter fill,
+    required this.onExtent,
+  }) : _axis = axis,
+       _frame = frame,
+       _textDirection = textDirection,
+       _fill = fill;
 
   ValueChanged<double> onExtent;
 
@@ -1300,9 +1726,84 @@ class _RenderTrackExtentProbe extends RenderProxyBox {
     markNeedsLayout();
   }
 
+  ShapeDecoration get frame => _frame;
+  ShapeDecoration _frame;
+  BoxPainter? _framePainter;
+  set frame(ShapeDecoration value) {
+    if (_frame == value) {
+      return;
+    }
+    _framePainter?.dispose();
+    _framePainter = null;
+    _frame = value;
+    markNeedsPaint();
+  }
+
+  TextDirection? get textDirection => _textDirection;
+  TextDirection? _textDirection;
+  set textDirection(TextDirection? value) {
+    if (_textDirection == value) {
+      return;
+    }
+    _textDirection = value;
+    markNeedsPaint();
+  }
+
+  CustomPainter get fill => _fill;
+  CustomPainter _fill;
+  set fill(CustomPainter value) {
+    final old = _fill;
+    _fill = value;
+    if (value.runtimeType != old.runtimeType || value.shouldRepaint(old)) {
+      markNeedsPaint();
+    }
+  }
+
   @override
   void performLayout() {
     super.performLayout();
     onExtent(extentAlong(_axis, constraints.biggest));
+  }
+
+  /// The fill's box takes a press anywhere inside the corner, as a
+  /// [CustomPaint] whose painter does not say does.
+  @override
+  bool hitTestSelf(Offset position) => true;
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    final painter = _framePainter ??= _frame.createBoxPainter(markNeedsPaint);
+    painter.paint(
+      context.canvas,
+      offset,
+      ImageConfiguration(size: size, textDirection: _textDirection),
+    );
+    super.paint(context, offset);
+  }
+
+  @override
+  void paintInside(PaintingContext context, Offset offset) {
+    final canvas = context.canvas;
+    canvas.save();
+    if (offset != Offset.zero) {
+      canvas.translate(offset.dx, offset.dy);
+    }
+    _fill.paint(canvas, size);
+    canvas.restore();
+    super.paintInside(context, offset);
+  }
+
+  @override
+  void detach() {
+    _framePainter?.dispose();
+    _framePainter = null;
+    super.detach();
+    markNeedsPaint();
+  }
+
+  @override
+  void dispose() {
+    _framePainter?.dispose();
+    super.dispose();
   }
 }

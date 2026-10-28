@@ -9,10 +9,10 @@ import 'package:anicel/src/models/layer_section_defaults.dart'
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
 import '../helpers/named_finders.dart';
+import '../helpers/storyboard_host.dart';
 
 /// R9 #21 — the V row's own column. The rail row's fx switch describes the
 /// row's SUBJECT, and this row's subject is the TRACK: its fx master,
@@ -174,32 +174,12 @@ void main() {
 
   testWidgets('the V row mounts the TRACK\'s fx switch in the fx column, and '
       'neither an eye nor an opacity bar beside it', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 700));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-
-    final session = EditorSessionManager(
-      initialProject: createDefaultProject(),
+    final session = await pumpStoryboardHost(
+      tester,
+      createDefaultProject(),
+      surface: const Size(1400, 700),
+      pixelsPerFrame: 12,
     );
-    addTearDown(session.dispose);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => StoryboardTabHost(
-              session: session,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
 
     final trackId = session.selectedTrackId;
     final head = find.byKey(

@@ -4,7 +4,13 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../models/brush_frame_key.dart';
+import '../models/cel_number_letters.dart' show celNumberText;
 import '../models/layer_effect.dart';
+import '../services/cel_numbered_row.dart' show celNumberLettersOf;
+import 'text/cel_number_paint.dart' show celNumberBox;
+import 'timeline/effect_lane_policy.dart'
+    show effectBoxedOn, effectGroupLaneId;
 import '../models/camera_path_settings.dart';
 import '../models/camera_pose.dart';
 import '../models/canvas_size.dart';
@@ -29,9 +35,11 @@ import '../services/last_stroke_slot.dart';
 import '../services/se_name_tag_plan.dart';
 import 'brush/brush_editor_selection.dart';
 import 'brush/brush_tool_state.dart';
+import 'brush/brush_value_group.dart' show BrushValueBars;
 import 'brush/temporary_tool.dart';
 import '../core/collection_equality.dart' show listsMatch;
 import '../core/dev_profile.dart';
+import '../core/tree_nodes.dart' show preorderNodes;
 import '../models/app_input_settings.dart' show AppInput;
 import 'brush/canvas_selection_commands.dart';
 import 'brush/cel_text_commands.dart';
@@ -67,10 +75,12 @@ import 'canvas/row_transform_box.dart';
 import 'editor_session_manager.dart';
 import 'playback/camera_shot.dart';
 import 'playback/canvas_track_stack_view.dart';
+import 'playback/frame_picture_view.dart';
 import 'playback/playback_run_layer.dart';
 import 'playback/recording_streamer_overlay.dart';
 import 'playback/transition_veil_paint.dart';
 import 'panels/tool_size_preset_panel.dart' show ToolSizePresetPanel;
+import 'debug/device_grid_probe.dart';
 import 'debug/input_inspector.dart';
 import 'text/app_face.dart';
 import 'text/app_strings.dart';
@@ -121,8 +131,8 @@ part 'canvas_area/interactive_canvas_build.dart';
 
 /// What one mount of the track stack says of itself: the frame it follows,
 /// whose contributions it draws there, whether it lays its own floor,
-/// whether it crops to the camera, whose pictures it shows (a run's, made
-/// by the warmer — or its own, when null) and the key it is found by.
+/// whether it crops to the camera, who makes the pictures it shows (a
+/// run's warmer — or its own cuts, when null) and the key it is found by.
 typedef _TrackStackMount = ({
   ValueListenable<int?> globalFrame,
   List<TrackStackContribution> Function(int globalFrame) positionsOf,
@@ -145,6 +155,11 @@ typedef _ShownSpace = ({
 /// the whole [space] it is posed in, which stands in for a picture with
 /// nothing in it (F-387 ③).
 typedef _RowPicture = ({Rect? drawn, Rect space});
+
+/// One edit of a transform track at a frame — what a canvas handle's drag
+/// makes of the track it drives ([_EditorCanvasAreaState._handleLandings]).
+typedef _TrackEdit =
+    TransformTrack Function(TransformTrack track, int frameIndex);
 
 /// A row's [lane] — its transform [property] — whose keys walk a path, as
 /// the canvas shows it: its frames [axisOffset] ahead of the cut's, its
@@ -379,100 +394,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// exactly the invariant this round wants.
   ValueNotifier<CanvasViewport?> get _canvasViewport =>
       widget.session.canvasViewport;
-
-  /// [nodes] with the onion ghosts inserted directly UNDER the active
-  /// layer — where they belong visually, and (since the merge) inside
-  /// whatever folder buffer the active layer sits in.
-  static List<CompositeNode<CanvasStackRow>> _stackNodesWithGhosts(
-    List<CompositeNode<CanvasStackRow>> nodes,
-    List<CanvasLayerImageRequest> ghosts,
-  ) {
-    if (ghosts.isEmpty) {
-      return nodes;
-    }
-    final ghostNodes = [
-      for (final ghost in ghosts) CompositeLeaf<CanvasStackRow>(ghost),
-    ];
-    var placed = false;
-    List<CompositeNode<CanvasStackRow>> walk(
-      List<CompositeNode<CanvasStackRow>> list,
-    ) {
-      final out = <CompositeNode<CanvasStackRow>>[];
-      for (final node in list) {
-        switch (node) {
-          case CompositeLeaf(payload: CanvasActiveLayerRow()):
-            if (!placed) {
-              out.addAll(ghostNodes);
-              placed = true;
-            }
-            out.add(node);
-          case CompositeGroup(
-            :final children,
-            :final opacity,
-            :final blendMode,
-            :final effects,
-          ):
-            out.add(
-              // The folder's effects (R6) travel with it — turning onion
-              // skin on must not drop them. One structural class carries
-              // every field, so only the children are replaced.
-              CompositeGroup<CanvasStackRow>(
-                children: walk(children),
-                opacity: opacity,
-                blendMode: blendMode,
-                effects: effects,
-              ),
-            );
-          case CompositeAdjustment(:final children, :final effects, :final mix):
-            // Like the group above: the ghosts have to be able to land
-            // INSIDE an adjustment's scope, or the row you are drawing on
-            // would show the grade while its onion ghosts did not.
-            out.add(
-              CompositeAdjustment<CanvasStackRow>(
-                children: walk(children),
-                effects: effects,
-                mix: mix,
-              ),
-            );
-          case CompositeBackdropBlend(
-            :final backdrop,
-            :final source,
-            :final blendMode,
-          ):
-            // Under the active row wherever it stands: in what the blend
-            // reads below it — at its top when the row IS the blended one,
-            // directly under it, which it then composes over as it would
-            // over a ghost in a GPU blend.
-            final below = walk(backdrop);
-            final CompositeNode<CanvasStackRow> row;
-            if (!placed &&
-                source is CompositeLeaf<CanvasStackRow> &&
-                source.payload is CanvasActiveLayerRow) {
-              below.addAll(ghostNodes);
-              placed = true;
-              row = source;
-            } else {
-              row = walk([source]).single;
-            }
-            out.add(
-              CompositeBackdropBlend<CanvasStackRow>(
-                backdrop: below,
-                source: row,
-                blendMode: blendMode,
-              ),
-            );
-          case CompositeLeaf(payload: CanvasLayerImageRequest()):
-            out.add(node);
-        }
-      }
-      return out;
-    }
-
-    final result = walk(nodes);
-    // No active node (a brush-banned row, or nothing exposed): the ghosts
-    // still show, on top like the old below-stack put them.
-    return placed ? result : [...result, ...ghostNodes];
-  }
 
   /// The live-stroke overlay, owned HERE so the layer stack can paint the
   /// active layer inside the composite tree — that is what lets a folder's
@@ -835,15 +756,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     positionsOf: session.rowSpans.trackStackContributionsAt,
     paintsFloor: true,
     cameraView: ofTheRun && widget.cameraViewEnabled.value,
-    run: ofTheRun
-        ? (
-            cuts: (
-              landings: session.playbackRig.prerenderScheduler.landings,
-              gaveUpOn: session.playbackRig.canvasPictures.gaveUpOn,
-            ),
-            frameIsThere: session.playbackRig.frameIsThere,
-          )
-        : null,
+    run: ofTheRun ? (frameIsThere: session.playbackRig.frameIsThere) : null,
     key: const ValueKey<String>('canvas-track-stack-view'),
   ));
 
@@ -884,16 +797,15 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         positionsOf: mount.positionsOf,
         paintsFloor: mount.paintsFloor,
         stackOf: session.editingCanvas.playedStackAt,
-        imageCache: session.renderCaches.layerFrameImageCache,
+        pictures: (
+          landings: session.playbackRig.prerenderScheduler.landings,
+          pictures: session.playbackRig.framePictures,
+        ),
         cameraFrameSize: session.camera.cameraFrameSize,
         cameraViewEnabled: mount.cameraView,
         cameraPoseOf: session.camera.cameraPoseForCut,
         seNameTagsOf: session.seEntries.seNameTagsForCutFrame,
         run: mount.run,
-        onBufferBytes: (cut, bytes) => session.renderCaches.countStackBuffer(
-          (mount.key, cut),
-          bytes,
-        ),
         viewport: viewport,
         background: session.projectSettings.projectBackground,
         backdropArgb: project.backdropArgb,
@@ -1015,7 +927,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       next = AppInput.snapToList(next, ToolSizePresetPanel.presets);
     }
     widget.onBrushToolStateChanged?.call(
-      widget.brushToolState.value.withActiveSize(next),
+      widget.brushToolState.value.withActiveSize(
+        // On the numbers the size bar writes, as the bar holds them (F-488).
+        BrushValueBars.heldSize(next),
+      ),
     );
   }
 
@@ -1210,26 +1125,75 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   RowBoxLanding<T> _handleLandings<T>(
     EditorSessionManager session,
     LayerId layerId,
-    TransformTrack Function(TransformTrack track, int frameIndex) Function(
-      T value,
-    )
-    editOf, {
+    _TrackEdit Function(T value) editOf, {
     required String description,
     bool reference = false,
   }) {
     final verbs = session.laneVerbs;
-    final (preview, edit) = reference
-        ? (verbs.previewReferenceFxAtPlayhead, verbs.editReferenceFxAtPlayhead)
-        : (
-            verbs.previewLayerTransformAtPlayhead,
-            verbs.editLayerTransformAtPlayhead,
+    return reference
+        ? _landedThrough(
+            editOf,
+            preview: (edit) =>
+                verbs.previewReferenceFxAtPlayhead(layerId, edit),
+            write: (edit) => verbs.editReferenceFxAtPlayhead(
+              layerId,
+              edit,
+              description: description,
+            ),
+          )
+        : _landedThrough(
+            editOf,
+            preview: (edit) =>
+                verbs.previewLayerTransformAtPlayhead(layerId, edit),
+            write: (edit) => verbs.editLayerTransformAtPlayhead(
+              layerId,
+              edit,
+              description: description,
+            ),
           );
-    return (
-      changed: (value) => preview(layerId, editOf(value)),
-      committed: (value) =>
-          edit(layerId, editOf(value), description: description),
-    );
   }
+
+  /// [editOf]'s ONE edit of a value a handle drags ([_handleLandings]):
+  /// [preview]ed while the handle moves, [write]n when it lets go.
+  static RowBoxLanding<T> _landedThrough<T>(
+    _TrackEdit Function(T value) editOf, {
+    required void Function(_TrackEdit edit) preview,
+    required void Function(_TrackEdit edit) write,
+  }) => (
+    changed: (value) => preview(editOf(value)),
+    committed: (value) => write(editOf(value)),
+  );
+
+  /// The edits a box's grabs make of the track they drive — ONE key at the
+  /// playhead on the one lane the grab is about (R5 #10) — for every box
+  /// alike: a row's, a reference's, an effect's and the camera's.
+  static _TrackEdit _movedTo(CanvasPoint position) =>
+      (track, frameIndex) => transformTrackWithPositionDragged(
+        track,
+        frameIndex: frameIndex,
+        position: position,
+      );
+
+  static _TrackEdit _scaledTo(CanvasPoint scale) =>
+      (track, frameIndex) => transformTrackWithScaleDragged(
+        track,
+        frameIndex: frameIndex,
+        scale: scale,
+      );
+
+  static _TrackEdit _turnedTo(double degrees) =>
+      (track, frameIndex) => transformTrackWithRotationDragged(
+        track,
+        frameIndex: frameIndex,
+        rotationDegrees: degrees,
+      );
+
+  static _TrackEdit _anchoredAt(CanvasPoint anchorPoint) =>
+      (track, frameIndex) => transformTrackWithAnchorDragged(
+        track,
+        frameIndex: frameIndex,
+        anchorPoint: anchorPoint,
+      );
 
   /// The active row's transform fx box (F-222 ②): the inside moves its
   /// position, a corner scales it, outside on stage turns it, and the cross
@@ -1310,12 +1274,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           ? _handleLandings<CanvasPoint>(
               session,
               activeLayer.id,
-              (dropped) =>
-                  (track, frameIndex) => transformTrackWithPositionDragged(
-                    track,
-                    frameIndex: frameIndex,
-                    position: parent.fromCanvas(dropped),
-                  ),
+              (dropped) => _movedTo(parent.fromCanvas(dropped)),
               description: 'Move $name',
             )
           : null,
@@ -1324,12 +1283,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               _handleLandings<CanvasPoint>(
                 session,
                 activeLayer.id,
-                (scale) =>
-                    (track, frameIndex) => transformTrackWithScaleDragged(
-                      track,
-                      frameIndex: frameIndex,
-                      scale: scale,
-                    ),
+                _scaledTo,
                 description: 'Scale $name',
               ),
             )
@@ -1339,12 +1293,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           ? _handleLandings<double>(
               session,
               activeLayer.id,
-              (degrees) =>
-                  (track, frameIndex) => transformTrackWithRotationDragged(
-                    track,
-                    frameIndex: frameIndex,
-                    rotationDegrees: degrees,
-                  ),
+              _turnedTo,
               description: 'Rotate $name',
             )
           : null,
@@ -1365,12 +1314,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               landing: _handleLandings<CanvasPoint>(
                 session,
                 activeLayer.id,
-                (dropped) =>
-                    (track, frameIndex) => transformTrackWithAnchorDragged(
-                      track,
-                      frameIndex: frameIndex,
-                      anchorPoint: parent.fromCanvas(dropped),
-                    ),
+                (dropped) => _anchoredAt(parent.fromCanvas(dropped)),
                 description: 'Anchor $name',
               ),
             )
@@ -1397,14 +1341,17 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final row = _shownRow(session, frame.activeLayer!);
     final reference = row.mediaReference!;
     final pose = reference.poseAt(session.currentFrameIndex);
-    final parent = session.frameVerbs.layerReferenceSpace(row.id);
-    final back = parent == null ? null : canvasToArtwork(parent);
-    CanvasPoint toCanvas(CanvasPoint point) => parent?.apply(point) ?? point;
-    CanvasPoint fromCanvas(CanvasPoint point) => back?.apply(point) ?? point;
+    final space = _shownThrough(
+      session.frameVerbs.layerReferenceSpace(row.id),
+    );
     final name = row.name;
     return RowTransformBox(
-      corners: _referenceBoxCorners(pose, reference.pictureSize, toCanvas),
-      pose: pose.copyWith(center: toCanvas(pose.center)),
+      corners: _referenceBoxCorners(
+        pose,
+        reference.pictureSize,
+        space.toCanvas,
+      ),
+      pose: pose.copyWith(center: space.toCanvas(pose.center)),
       pasteboard: session.pasteboardOf(canvasSize),
       viewport: viewport,
       presses: frame.boxPresses,
@@ -1412,11 +1359,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       move: _handleLandings<CanvasPoint>(
         session,
         row.id,
-        (dropped) => (track, frameIndex) => transformTrackWithPositionDragged(
-          track,
-          frameIndex: frameIndex,
-          position: fromCanvas(dropped),
-        ),
+        (dropped) => _movedTo(space.fromCanvas(dropped)),
         description: 'Move $name reference',
         reference: true,
       ),
@@ -1424,26 +1367,104 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         _handleLandings<CanvasPoint>(
           session,
           row.id,
-          (scale) => (track, frameIndex) => transformTrackWithScaleDragged(
-            track,
-            frameIndex: frameIndex,
-            scale: scale,
-          ),
+          _scaledTo,
           description: 'Scale $name reference',
           reference: true,
         ),
       ),
-      turnSpace: fromCanvas,
+      turnSpace: space.fromCanvas,
       turn: _handleLandings<double>(
         session,
         row.id,
-        (degrees) => (track, frameIndex) => transformTrackWithRotationDragged(
-          track,
-          frameIndex: frameIndex,
-          rotationDegrees: degrees,
-        ),
+        _turnedTo,
         description: 'Rotate $name reference',
         reference: true,
+      ),
+    );
+  }
+
+  /// The box of an effect that draws its own picture — a cel number's
+  /// letters (F-477) — while its header or where it stands is stood on
+  /// ([effectBoxedOn]): the inside moves the letters, a corner or an edge's
+  /// middle scales them, as a row's box moves and scales its picture; no
+  /// turn, the effect keys none (I-65-Q2 「위치/비율 두개 키」). What each
+  /// writes is where the effect stands — ONE key at the playhead, one undo,
+  /// as the row's box writes its transform's. It frames the letters where
+  /// the canvas shows them: on the row's paper, laid where the row is.
+  Widget _effectBox(
+    _HostFrame frame,
+    CanvasViewport viewport,
+    CanvasSize canvasSize,
+  ) {
+    final session = frame.session;
+    final at = session.laneVerbs.laneValueSourceAt(
+      _shownRow(session, frame.activeLayer!),
+      session.currentFrameIndex,
+    );
+    final row = at.layer;
+    final effectId = frame.effectBox!.id;
+    final effect = effectBoxedOn(row.effects, effectGroupLaneId(effectId));
+    if (effect == null) {
+      return const SizedBox.shrink();
+    }
+    final number = resolveLayerEffectsAt(
+      effects: [effect],
+      frameIndex: at.frame,
+    ).single;
+    final letters = celNumberLettersOf(
+      number,
+      text: celNumberText(
+        rowName: row.name,
+        drawingName: session.selectedFrame?.name,
+        kind: row.kind,
+      ),
+      paper: canvasSize,
+    );
+    final stand = effectStandPose(number.stand!, canvasSize);
+    final space = _shownThrough(
+      session.frameVerbs.layerCanvasPoseSample(row.id),
+    );
+    final box = celNumberBox(letters);
+    final name = row.name;
+    final verbs = session.laneVerbs;
+    RowBoxLanding<T> landing<T>(
+      _TrackEdit Function(T value) editOf, {
+      required String description,
+    }) => _landedThrough(
+      editOf,
+      preview: (edit) =>
+          verbs.previewEffectStandAtPlayhead(row.id, effectId, edit),
+      write: (edit) => verbs.editEffectStandAtPlayhead(
+        row.id,
+        effectId,
+        edit,
+        description: description,
+      ),
+    );
+    return RowTransformBox(
+      corners: [
+        for (final corner in [
+          box.topLeft,
+          box.topRight,
+          box.bottomRight,
+          box.bottomLeft,
+        ])
+          space.toCanvas(CanvasPoint(x: corner.dx, y: corner.dy)),
+      ],
+      pose: stand.copyWith(center: space.toCanvas(stand.center)),
+      pasteboard: session.pasteboardOf(canvasSize),
+      viewport: viewport,
+      presses: frame.boxPresses,
+      onCancelled: session.laneVerbs.endLaneEditPreview,
+      move: landing<CanvasPoint>(
+        (dropped) => _movedTo(space.fromCanvas(dropped)),
+        description: 'Move $name ${effect.kind.label}',
+      ),
+      scale: RowBoxTwoScales(
+        landing<CanvasPoint>(
+          _scaledTo,
+          description: 'Scale $name ${effect.kind.label}',
+        ),
       ),
     );
   }
@@ -1547,34 +1568,19 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final move = _handleLandings<CanvasPoint>(
       session,
       cameraRow.id,
-      (center) =>
-          (track, frameIndex) => transformTrackWithPositionDragged(
-            track,
-            frameIndex: frameIndex,
-            position: center,
-          ),
+      _movedTo,
       description: 'Move camera $at',
     );
     final zoom = _handleLandings<double>(
       session,
       cameraRow.id,
-      (zoom) =>
-          (track, frameIndex) => transformTrackWithScaleDragged(
-            track,
-            frameIndex: frameIndex,
-            scale: uniformScale(zoom),
-          ),
+      (zoom) => _scaledTo(uniformScale(zoom)),
       description: 'Zoom camera $at',
     );
     final turn = _handleLandings<double>(
       session,
       cameraRow.id,
-      (degrees) =>
-          (track, frameIndex) => transformTrackWithRotationDragged(
-            track,
-            frameIndex: frameIndex,
-            rotationDegrees: degrees,
-          ),
+      _turnedTo,
       description: 'Rotate camera $at',
     );
     // The box follows the frame along its animated pose, as the frame does.

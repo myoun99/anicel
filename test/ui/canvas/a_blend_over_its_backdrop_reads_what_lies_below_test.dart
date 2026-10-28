@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import '../../helpers/the_frame_as_it_stands.dart';
 
 /// 🗣️brush-fidelity-Q4 (유저 2026-10-17 「레이어까지 같이」): a layer in a
 /// blend the GPU lacks — ↩️and since a-blurred-folder-cut-by-the-view-moves-
@@ -174,7 +175,7 @@ void main() {
               child: SizedBox(
                 width: 4,
                 height: 4,
-                child: CanvasLayerStackView(
+                child: TheFrameAsItStands(
                   nodes: nodes,
                   imageCache: LayerFrameImageCache(
                     frameStore: BrushFrameStore(),
@@ -197,7 +198,7 @@ void main() {
       final painter = tester
           .widgetList<CustomPaint>(
             find.descendant(
-              of: find.byType(CanvasLayerStackView),
+              of: find.byType(TheFrameAsItStands),
               matching: find.byType(CustomPaint),
             ),
           )

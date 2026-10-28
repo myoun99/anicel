@@ -219,6 +219,22 @@ void main() {
     }
     expect(blockWord('c301'), findsWidgets, reason: 'the preview names it');
 
+    // A transition's mark IS the transition, so its picker offers no
+    // 「(없음)」 (I-72-block-without-instruction): a span with none is the
+    // delete the window already has.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instruction-def-dropdown')),
+    );
+    await tester.pumpAndSettle();
+    final ol = find.byKey(const ValueKey<String>('instruction-option-ol'));
+    expect(ol, findsWidgets, reason: 'premise: the picker is open');
+    expect(
+      find.byKey(const ValueKey<String>('instruction-option-none')),
+      findsNothing,
+    );
+    await tester.tap(ol.last);
+    await tester.pumpAndSettle();
+
     await tester.tap(
       find.byKey(const ValueKey<String>('instance-edit-ok-button')),
     );

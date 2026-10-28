@@ -247,12 +247,12 @@ class ExportCelSheet extends ExportListSheet {
 /// picture back for the second (유저 2026-09-09: 「LO로 고르고 나니까
 /// 미리보기화면이 갱신안되서 여전히 작감수정그림있던데」). The members and
 /// the frame each contributes ARE the picture, so they are the key — with
-/// the size, the background and the FX switch the renderer reads.
+/// the size, the background and the FX the renderer reads.
 String celGroupPreviewKey(
   ExportCelGroupTask task, {
   required String sizeMode,
   required int backgroundKey,
-  required bool applyLayerFx,
+  required ExportLayerFx layerFx,
 }) {
   final members = [
     for (var i = 0; i < task.members.length; i += 1)
@@ -267,7 +267,7 @@ String celGroupPreviewKey(
   final guides = task.guidesLaid ? task.listedCut.id.value : '-';
   return 'celgroup:${task.cut.id.value}:${task.baseLayer.id.value}:'
       '${task.baseFrame.id.value}:$members:$overlays:$camera:$guides:'
-      '$sizeMode:$backgroundKey:${applyLayerFx ? 'fx' : 'raw'}';
+      '$sizeMode:$backgroundKey:${layerFx.jsonValue}';
 }
 
 class ExportCelGroupPlan {
@@ -638,7 +638,7 @@ List<ExportDirectionDrawing> exportDirectionDrawingsOf(
 
 /// What a direction's block says: the name of what it directs.
 String _directionWord(InstructionEvent says, CameraInstructionSet terms) =>
-    says.displayLabel(terms.defById(says.instructionId));
+    says.displayLabel(says.defIn(terms.defById));
 
 /// What a direction row's drawing is called: what its block says and the
 /// two ends it runs between — `T.U_A-B` — or nothing for a block that says

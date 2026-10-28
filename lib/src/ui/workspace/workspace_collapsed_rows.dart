@@ -83,7 +83,7 @@ class _WorkspaceCollapsedRows {
     final snapshot = _state._flipHud.flipHudSnapshot(FlipHudAxis.frame);
     final rowBuilder = _collapsedFrameRowBuilder();
     final cursors = _state.widget.session.playheadCursors;
-    return CollapsedRowOverlay(
+    final overlay = CollapsedRowOverlay(
       height: collapsedRowHeight(),
       snapshot: snapshot,
       // 유저 확정: 레일 폭은 가로 스플리터를 그대로 따라간다 — the same
@@ -124,6 +124,10 @@ class _WorkspaceCollapsedRows {
             : cursors.cutFrame,
       ),
     );
+    // Its eye is the rail's, a folder above that hides the row included
+    // (F-185) — on both halves of it: its blocks wear it too (I-129).
+    final layers = _state.widget.session.layers;
+    return RailEyes.forLayers(layers, stack: layers, child: overlay);
   }
 
   /// What a folded row turns its axis by — the playhead the open panel
@@ -280,7 +284,7 @@ class _WorkspaceCollapsedRows {
     if (layer == null) {
       return null;
     }
-    final controls = TimelineLayerControlsRow(
+    return TimelineLayerControlsRow(
       chromeless: true,
       layer: layer,
       active: true,
@@ -328,16 +332,13 @@ class _WorkspaceCollapsedRows {
       onToggleLayerFx: (_) {},
       onToggleLayerOnionSkin: (_) {},
       onToggleLanes: (_) {},
-      onToggleLayerFillReference: (_) {},
+      onToggleLayerClip: (_) {},
       onOpenLayerMixer: (_, _) {},
       onOpenLayerReference: (_, _) async {},
       onOpenLayerLinks: (_, _) async {},
       onOpenCameraPath: (_) async {},
       onLayerBlendModeSelected: (_, _) {},
     );
-    // Its eye is the rail's, a folder above that hides the row included
-    // (F-185).
-    return RailEyes.forLayers([layer], stack: session.layers, child: controls);
   }
 
   /// The metrics BOTH halves of the collapsed row are built from.

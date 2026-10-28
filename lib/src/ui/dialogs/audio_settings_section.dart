@@ -1,13 +1,17 @@
+import 'dart:async' show unawaited;
+
 import '../widgets/app_icon_button.dart';
-import '../widgets/field_slider.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart';
 import '../editor_session_manager.dart';
 import '../playback/audio_input_monitor.dart';
 import '../../models/audio_sync_settings.dart';
+import '../playback/playback_transport_controls.dart'
+    show askTheOsForTheMicrophone, toggleVoiceRecordingWithFeedback;
 import '../playback/voice_take_processing.dart'
     show micGainFactor, voiceClipThreshold;
+import 'app_confirm_dialog.dart' show showAppNotice;
 import '../text/app_strings.dart';
 import '../text/full_width_numerals.dart';
 import '../widgets/panel_flyout.dart';
@@ -40,6 +44,34 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
     super.dispose();
   }
 
+  /// The consent switch (I-133). Turning it on is the one moment the OS is
+  /// asked — its no turns the switch back off ([askTheOsForTheMicrophone])
+  /// — and the meter opens only on its yes; turning it off shuts the meter
+  /// and ends a rolling take as the record button would.
+  Future<void> _allowMicrophone(
+    bool allowed,
+    AudioSyncSettings settings,
+    AppStrings strings,
+  ) async {
+    final session = widget.session;
+    session.appSettings.setAudioSyncSettings(
+      settings.copyWith(microphoneAllowed: allowed),
+    );
+    if (!allowed && session.voiceRecording.isVoiceRecording.value) {
+      await toggleVoiceRecordingWithFeedback(context, session);
+    } else if (allowed && !await askTheOsForTheMicrophone(session)) {
+      if (mounted) {
+        await showAppNotice(
+          context,
+          title: strings.commonNotice,
+          message: strings.recordMicPermissionDenied,
+        );
+      }
+      return;
+    }
+    session.voiceRecording.restartInputMeter();
+  }
+
   /// One device picker row: "System default" plus the live enumeration.
   /// A SAVED name that is no longer attached still shows (marked
   /// missing) so the choice is visible rather than silently reverted —
@@ -66,29 +98,25 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
         '$device${strings.audioDeviceDefaultSuffix}',
       final String device => device,
     };
-    return Row(
-      children: [
-        Expanded(child: Text(label, style: const TextStyle(fontSize: 12))),
-        PanelFlyoutButton(
-          key: ValueKey<String>(keyValue),
-          label: labelOf(selected),
-          entriesBuilder: () =>
-              <String?>[
-                null,
-                ...names,
-                if (selected != null && !names.contains(selected)) selected,
-              ].asFlyoutValueChoices(
-                current: selected,
-                choiceOf: (name) => PanelFlyoutChoice(
-                  key: name == null
-                      ? '$keyValue-system-default'
-                      : '$keyValue-device-$name',
-                  label: labelOf(name),
-                ),
-                onPicked: onChanged,
-              ),
-        ),
-      ],
+    return SettingsPickerRow(
+      pickerKey: ValueKey<String>(keyValue),
+      label: label,
+      picked: labelOf(selected),
+      entriesBuilder: () =>
+          <String?>[
+            null,
+            ...names,
+            if (selected != null && !names.contains(selected)) selected,
+          ].asFlyoutValueChoices(
+            current: selected,
+            choiceOf: (name) => PanelFlyoutChoice(
+              key: name == null
+                  ? '$keyValue-system-default'
+                  : '$keyValue-device-$name',
+              label: labelOf(name),
+            ),
+            onPicked: onChanged,
+          ),
     );
   }
 
@@ -135,57 +163,55 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
               label: strings.audioOffsetTitle,
               help: strings.audioOffsetHelp,
             ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    strings.audioOffsetLabel,
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ),
-                SizedBox(
-                  width: 72,
-                  child: _OffsetField(
-                    key: const ValueKey<String>('settings-av-offset-value'),
-                    offset: settings.offset,
-                    unit: settings.unit,
-                    onCommitted: (value) => widget.session.appSettings.setAudioSyncSettings(
-                      settings.copyWith(
-                        offset: AudioSyncSettings.clampOffset(
-                          value,
-                          settings.unit,
-                        ),
-                      ),
+            SettingsRow(
+              label: strings.audioOffsetLabel,
+              control: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 72,
+                    child: _OffsetField(
+                      key: const ValueKey<String>('settings-av-offset-value'),
+                      offset: settings.offset,
+                      unit: settings.unit,
+                      onCommitted: (value) =>
+                          widget.session.appSettings.setAudioSyncSettings(
+                            settings.copyWith(
+                              offset: AudioSyncSettings.clampOffset(
+                                value,
+                                settings.unit,
+                              ),
+                            ),
+                          ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                PanelFlyoutButton(
-                  key: const ValueKey<String>('settings-av-offset-unit'),
-                  label: _unitLabel(settings.unit, strings),
-                  entriesBuilder: () => AvOffsetUnit.values.asFlyoutChoices(
-                    current: settings.unit,
-                    keyPrefix: 'settings-av-offset-unit-',
-                    labelOf: (unit) => _unitLabel(unit, strings),
-                    // Switching units keeps the NUMBER (it is what the user
-                    // typed), re-clamped into the new unit's range.
-                    onPicked: (unit) {
-                      if (unit != settings.unit) {
-                        widget.session.appSettings.setAudioSyncSettings(
-                          AudioSyncSettings(
-                            offset: AudioSyncSettings.clampOffset(
-                              settings.offset,
-                              unit,
+                  const SizedBox(width: 8),
+                  PanelFlyoutButton(
+                    key: const ValueKey<String>('settings-av-offset-unit'),
+                    label: _unitLabel(settings.unit, strings),
+                    entriesBuilder: () => AvOffsetUnit.values.asFlyoutChoices(
+                      current: settings.unit,
+                      keyPrefix: 'settings-av-offset-unit-',
+                      labelOf: (unit) => _unitLabel(unit, strings),
+                      // Switching units keeps the NUMBER (it is what the
+                      // user typed), re-clamped into the new unit's range.
+                      onPicked: (unit) {
+                        if (unit != settings.unit) {
+                          widget.session.appSettings.setAudioSyncSettings(
+                            AudioSyncSettings(
+                              offset: AudioSyncSettings.clampOffset(
+                                settings.offset,
+                                unit,
+                              ),
+                              unit: unit,
                             ),
-                            unit: unit,
-                          ),
-                        );
-                      }
-                    },
+                          );
+                        }
+                      },
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             const Divider(height: 24),
             SettingsSectionHeading(
@@ -213,7 +239,15 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                 );
               },
             ),
-            const SizedBox(height: 4),
+            // The consent leads the input rows (I-133): nothing below it
+            // listens until it is on.
+            SettingsSwitchRow(
+              tileKey: const ValueKey<String>('settings-microphone-allowed'),
+              label: strings.audioMicrophoneAllowedLabel,
+              value: settings.microphoneAllowed,
+              onChanged: (allowed) =>
+                  unawaited(_allowMicrophone(allowed, settings, strings)),
+            ),
             _deviceRow(
               strings: strings,
               label: strings.audioInputLabel,
@@ -228,143 +262,104 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                 widget.session.voiceRecording.restartInputMeter();
               },
             ),
-            const SizedBox(height: 4),
             // The live input meter (REC1-D2): raw device peak × the gain
             // slider's factor — turning the slider moves this bar without
             // reopening the microphone. The dot is the clip light.
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    strings.audioInputMeterLabel,
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ),
-                ValueListenableBuilder<double>(
-                  valueListenable: _monitor.peak,
-                  builder: (context, rawPeak, _) {
-                    final scheme = Theme.of(context).colorScheme;
-                    final scaled = rawPeak * micGainFactor(settings.micGainDb);
-                    final level = scaled.clamp(0.0, 1.0);
-                    return Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          key: const ValueKey<String>('settings-input-meter'),
-                          width: 140,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: scheme.surfaceContainerLowest,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                          alignment: Alignment.centerLeft,
-                          child: FractionallySizedBox(
-                            widthFactor: level,
-                            heightFactor: 1,
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: scheme.primary,
-                                borderRadius: BorderRadius.circular(2),
-                              ),
+            SettingsRow(
+              label: strings.audioInputMeterLabel,
+              control: ValueListenableBuilder<double>(
+                valueListenable: _monitor.peak,
+                builder: (context, rawPeak, _) {
+                  final scheme = Theme.of(context).colorScheme;
+                  final scaled = rawPeak * micGainFactor(settings.micGainDb);
+                  final level = scaled.clamp(0.0, 1.0);
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        key: const ValueKey<String>('settings-input-meter'),
+                        width: 140,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: scheme.surfaceContainerLowest,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                        alignment: Alignment.centerLeft,
+                        child: FractionallySizedBox(
+                          widthFactor: level,
+                          heightFactor: 1,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: scheme.primary,
+                              borderRadius: BorderRadius.circular(2),
                             ),
                           ),
                         ),
-                        const SizedBox(width: 6),
-                        Container(
-                          key: const ValueKey<String>(
-                            'settings-input-meter-clip',
-                          ),
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: scaled >= voiceClipThreshold
-                                ? scheme.error
-                                : scheme.outlineVariant,
-                          ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        key: const ValueKey<String>(
+                          'settings-input-meter-clip',
                         ),
-                      ],
-                    );
-                  },
-                ),
-              ],
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: scaled >= voiceClipThreshold
+                              ? scheme.error
+                              : scheme.outlineVariant,
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
             ),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    strings.audioTestSoundLabel,
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ),
-                AppIconButton(
-                  keyValue: 'settings-output-test-button',
-                  tooltip: strings.audioTestSoundLabel,
-                  size: AppIconButtonSize.dense,
-                  icon: const Icon(Icons.volume_up),
-                  onPressed: widget.session.voiceRecording.playOutputTestTone,
-                ),
-              ],
+            SettingsRow(
+              label: strings.audioTestSoundLabel,
+              control: AppIconButton(
+                keyValue: 'settings-output-test-button',
+                tooltip: strings.audioTestSoundLabel,
+                size: AppIconButtonSize.dense,
+                icon: const Icon(Icons.volume_up),
+                onPressed: widget.session.voiceRecording.playOutputTestTone,
+              ),
             ),
             // The capture chain (REC1-D): software gain BAKED into takes
             // (the meter and the file agree), the channel fold for
             // one-sided interface mics, and the clipping-notice gate for
             // the toast + block marker (the transport light stays on
             // duty regardless).
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    strings.audioMicGainLabel,
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ),
-                SizedBox(
-                  width: 180,
-                  child: FieldSlider(
-                    key: const ValueKey<String>('settings-mic-gain-slider'),
-                    value: settings.micGainDb.toDouble(),
-                    min: -AudioSyncSettings.maxMicGainDb.toDouble(),
-                    max: AudioSyncSettings.maxMicGainDb.toDouble(),
-                    divisions: AudioSyncSettings.maxMicGainDb * 2,
-                    valueTextBuilder: _signedDb,
-                    onChanged: (value) => widget.session.appSettings.setAudioSyncSettings(
-                      settings.copyWith(
-                        micGainDb: AudioSyncSettings.clampMicGainDb(
-                          value.round(),
-                        ),
+            SettingsBarRow(
+              barKey: const ValueKey<String>('settings-mic-gain-slider'),
+              label: strings.audioMicGainLabel,
+              value: settings.micGainDb.toDouble(),
+              min: -AudioSyncSettings.maxMicGainDb.toDouble(),
+              max: AudioSyncSettings.maxMicGainDb.toDouble(),
+              divisions: AudioSyncSettings.maxMicGainDb * 2,
+              valueTextBuilder: _signedDb,
+              onChanged: (value) =>
+                  widget.session.appSettings.setAudioSyncSettings(
+                    settings.copyWith(
+                      micGainDb: AudioSyncSettings.clampMicGainDb(
+                        value.round(),
                       ),
                     ),
                   ),
-                ),
-              ],
             ),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    strings.audioInputChannelLabel,
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ),
-                PanelFlyoutButton(
-                  key: const ValueKey<String>('settings-input-channel-mode'),
-                  label: _channelLabel(settings.inputChannelMode, strings),
-                  entriesBuilder: () =>
-                      VoiceInputChannelMode.values.asFlyoutChoices(
-                        current: settings.inputChannelMode,
-                        keyPrefix: 'settings-input-channel-mode-',
-                        labelOf: (mode) => _channelLabel(mode, strings),
-                        onPicked: (mode) {
-                          if (mode != settings.inputChannelMode) {
-                            widget.session.appSettings.setAudioSyncSettings(
-                              settings.copyWith(inputChannelMode: mode),
-                            );
-                          }
-                        },
-                      ),
-                ),
-              ],
+            settingsEnumPickerRow(
+              keyValue: 'settings-input-channel-mode',
+              label: strings.audioInputChannelLabel,
+              value: settings.inputChannelMode,
+              values: VoiceInputChannelMode.values,
+              labelOf: (mode) => _channelLabel(mode, strings),
+              onPicked: (mode) {
+                if (mode != settings.inputChannelMode) {
+                  widget.session.appSettings.setAudioSyncSettings(
+                    settings.copyWith(inputChannelMode: mode),
+                  );
+                }
+              },
             ),
             // RNNoise (the noise-suppression round): BAKED into the take
             // like the gain — speech-specific, so foley sessions turn it
@@ -390,32 +385,21 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
             // ADR cueing (REC1-E): the stopped-⏺ count-in, the 3-beep
             // countdown into a punch, and the streamer wipe on the
             // picture.
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    strings.audioCountInLabel,
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ),
-                SizedBox(
-                  width: 180,
-                  child: FieldSlider(
-                    key: const ValueKey<String>('settings-count-in-slider'),
-                    value: settings.countInSeconds.toDouble(),
-                    min: 0,
-                    max: AudioSyncSettings.maxCountInSeconds.toDouble(),
-                    divisions: AudioSyncSettings.maxCountInSeconds,
-                    onChanged: (value) => widget.session.appSettings.setAudioSyncSettings(
-                      settings.copyWith(
-                        countInSeconds: AudioSyncSettings.clampCountInSeconds(
-                          value.round(),
-                        ),
+            SettingsBarRow(
+              barKey: const ValueKey<String>('settings-count-in-slider'),
+              label: strings.audioCountInLabel,
+              value: settings.countInSeconds.toDouble(),
+              min: 0,
+              max: AudioSyncSettings.maxCountInSeconds.toDouble(),
+              divisions: AudioSyncSettings.maxCountInSeconds,
+              onChanged: (value) =>
+                  widget.session.appSettings.setAudioSyncSettings(
+                    settings.copyWith(
+                      countInSeconds: AudioSyncSettings.clampCountInSeconds(
+                        value.round(),
                       ),
                     ),
                   ),
-                ),
-              ],
             ),
             SettingsSwitchRow(
               tileKey: const ValueKey<String>('settings-cue-beeps'),

@@ -175,6 +175,7 @@ class _SizeCell extends StatelessWidget {
       child: ControlPressClaim(
         onPressed: onTap,
         child: InkWell(
+          mouseCursor: AppCursors.press,
           onTap: silentPress(onTap),
           // ⛔WIDTH ONLY. Pinning the height too made the column overflow by
           // whatever the label's line height happened to be — a number that

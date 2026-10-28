@@ -1,11 +1,14 @@
 import 'dart:math' as math;
 
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../helpers/app_icon_button_probe.dart';
 
 /// 🗣️R9-rest, 유저 2026-10-06 of the text tool's 「선택된 텍스트」 list:
 /// 「거기서 다른 텍스트 선택할수있게 리스트 고르는. 팝오버로 리스트
@@ -236,15 +239,16 @@ void main() {
       ],
     );
 
-    Icon glyph(String button, IconData icon) => tester.widget<Icon>(
-      find.descendant(of: key(button), matching: find.byIcon(icon)),
-    );
+    IconButtonReading glyph(String button) => tester.iconButtonIn(key(button));
 
     expect(
-      glyph('row-a-delete', Icons.delete_outline).color,
-      AppColors.deleteGlyph(enabled: true),
+      (glyph('row-a-delete').icon, glyph('row-a-delete').iconColor),
+      (Icons.delete_outline, AppColors.deleteGlyph(enabled: true)),
     );
-    expect(glyph('row-b-rename', Icons.edit_outlined).color, isNull);
+    expect(
+      (glyph('row-b-rename').icon, glyph('row-b-rename').iconColor),
+      (Icons.edit_outlined, null),
+    );
   });
 
   testWidgets('a row with no command of its own draws no button', (
@@ -256,7 +260,7 @@ void main() {
     );
 
     expect(
-      find.descendant(of: key('row-a'), matching: find.byType(IconButton)),
+      find.descendant(of: key('row-a'), matching: find.byType(AppIconButton)),
       findsNothing,
     );
     expect(

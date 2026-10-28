@@ -6,14 +6,14 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/dialogs/link_window.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
-import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
-import 'package:anicel/src/ui/timeline_tab_host.dart';
 
 import 'storyboard_cut_block_probe.dart';
 import '../helpers/pill_row_clipboard.dart';
 import '../helpers/named_finders.dart';
+import '../helpers/app_icon_button_probe.dart';
+import '../helpers/storyboard_host.dart';
+import '../helpers/timeline_host.dart';
 
 /// 🗣️I-25 (유저 2026-09-14): 「링크컷/링크레이어 등 좀 더 알기쉽게. 우선
 /// 링크컷이 발생해있는 경우, 모든 컷에 적용. 내용은 컷블록에서 컷 이름 오른쪽에
@@ -124,38 +124,15 @@ void main() {
         find.byKey(const ValueKey<String>('link-window-unlink')),
       );
       expect(button.onPressed, isNull);
-      expect(find.byTooltip('why not'), findsOneWidget);
+      expect(find.tooltipSaying('why not'), findsOneWidget);
     });
   });
 
   group('the entrances', () {
-    Future<void> roomy(WidgetTester tester) async {
-      await tester.binding.setSurfaceSize(const Size(1600, 1000));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-    }
+    const roomy = Size(1600, 1000);
 
-    Future<void> timeline(WidgetTester tester, EditorSessionManager s) async {
-      await roomy(tester);
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ListenableBuilder(
-              listenable: s,
-              builder: (context, _) => TimelineTabHost(
-                session: s,
-                orientation: TimelineOrientation.horizontal,
-                onOrientationChanged: (_) {},
-                pixelsPerFrame: 24,
-                onPixelsPerFrameChanged: (_) {},
-                showSeconds: false,
-                onShowSecondsChanged: (_) {},
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-    }
+    Future<void> timeline(WidgetTester tester, EditorSessionManager s) =>
+        pumpTimelineHostOn(tester, s, surface: roomy, pixelsPerFrame: 24);
 
     Future<void> openBadge(WidgetTester tester, LayerId row) async {
       await tester.tap(
@@ -203,7 +180,7 @@ void main() {
       );
       expect(button.onPressed, isNull);
       expect(
-        find.byTooltip(AppText.strings.linkWindowUnlinkLinkedCut),
+        find.tooltipSaying(AppText.strings.linkWindowUnlinkLinkedCut),
         findsOneWidget,
       );
     });
@@ -214,25 +191,7 @@ void main() {
       final source = s.requireActiveCut.id;
       s.cutVerbs.createLinkedCutFromActiveCut();
       final linked = s.requireActiveCut.id;
-      await roomy(tester);
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ListenableBuilder(
-              listenable: s,
-              builder: (context, _) => StoryboardTabHost(
-                session: s,
-                pixelsPerFrame: 12,
-                onPixelsPerFrameChanged: (_) {},
-                showSeconds: false,
-                onShowSecondsChanged: (_) {},
-                thumbnails: null,
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
+      await pumpStoryboardHostOn(tester, s, surface: roomy, pixelsPerFrame: 12);
 
       final painter = cutBlocksPainter(tester);
       final block = painter.blockForCut(source)!;

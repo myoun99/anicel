@@ -9,16 +9,14 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
-import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show LayerMarkChip;
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
-import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
-import 'package:anicel/src/ui/timeline_tab_host.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/reference_to.dart';
 import '../../helpers/named_finders.dart';
+import '../../helpers/timeline_host.dart';
 
 /// The rail row memo's gate (frame-axis round): the row is ~200 Material
 /// widgets and a timesheet edit changes nothing it renders, so the memo asks
@@ -52,8 +50,8 @@ void main() {
             : LayerBlendMode.normal,
       ),
       'collapsed': (layer) => layer.copyWith(collapsed: !layer.collapsed),
-      'isFillReference': (layer) =>
-          layer.copyWith(isFillReference: !layer.isFillReference),
+      'clipsToBelow': (layer) =>
+          layer.copyWith(clipsToBelow: !layer.clipsToBelow),
       'an attach': (layer) =>
           layer.copyWith(attachedToLayerId: const LayerId('other')),
       'attachedPlacement': (layer) => layer.copyWith(
@@ -155,32 +153,15 @@ void main() {
   });
 
   testWidgets('㉞ the ROW SELECTION invalidates the memo', (tester) async {
-    tester.view.physicalSize = const Size(1400, 1000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
 
-    final session = EditorSessionManager(initialProject: createDefaultProject());
-    addTearDown(session.dispose);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => TimelineTabHost(
-              session: session,
-              orientation: TimelineOrientation.horizontal,
-              onOrientationChanged: (_) {},
-              pixelsPerFrame: 24,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-            ),
-          ),
-        ),
-      ),
+    final session = await pumpTimelineHost(
+      tester,
+      createDefaultProject(),
+      surface: const Size(1400, 1000),
+      pixelsPerFrame: 24,
     );
-    await tester.pumpAndSettle();
 
     final activeId = session.activeLayerId!;
     TimelineLayerControlsRow rowFor(LayerId id) => tester
@@ -208,32 +189,15 @@ void main() {
 
   testWidgets('a timesheet edit does NOT rebuild the rail row, a rename does',
       (tester) async {
-    tester.view.physicalSize = const Size(1400, 1000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
 
-    final session = EditorSessionManager(initialProject: createDefaultProject());
-    addTearDown(session.dispose);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => TimelineTabHost(
-              session: session,
-              orientation: TimelineOrientation.horizontal,
-              onOrientationChanged: (_) {},
-              pixelsPerFrame: 24,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-            ),
-          ),
-        ),
-      ),
+    final session = await pumpTimelineHost(
+      tester,
+      createDefaultProject(),
+      surface: const Size(1400, 1000),
+      pixelsPerFrame: 24,
     );
-    await tester.pumpAndSettle();
 
     final activeId = session.activeLayerId;
     TimelineLayerControlsRow rowFor(LayerId id) => tester
@@ -281,32 +245,15 @@ void main() {
 
   testWidgets('🚨an eye flip keeps the CACHED row, and the eye and the plate '
       'still show it (an-eye-rebuilds-its-whole-row)', (tester) async {
-    tester.view.physicalSize = const Size(1400, 1000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
 
-    final session = EditorSessionManager(initialProject: createDefaultProject());
-    addTearDown(session.dispose);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => TimelineTabHost(
-              session: session,
-              orientation: TimelineOrientation.horizontal,
-              onOrientationChanged: (_) {},
-              pixelsPerFrame: 24,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-            ),
-          ),
-        ),
-      ),
+    final session = await pumpTimelineHost(
+      tester,
+      createDefaultProject(),
+      surface: const Size(1400, 1000),
+      pixelsPerFrame: 24,
     );
-    await tester.pumpAndSettle();
 
     final activeId = session.activeLayerId!;
     final rowFinder = find.byWidgetPredicate(

@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart' show ValueNotifier;
-import '../../core/tree_nodes.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/composite_tree.dart';
 import '../../models/cut.dart';
@@ -106,10 +105,10 @@ class EditingCanvas {
   get stack => _stackAtThePlayhead(_selection.activeLayerId);
 
   /// [stack] as a RUN shows it: the same tree with no row standing live. A
-  /// run draws on nothing, so every row is the cached image the warmer made
-  /// ahead of the playhead ([playedRowsAt]) — the picture is the one the
-  /// canvas shows standing still, made of the same images
-  /// (playback-plays-the-screen-material).
+  /// run draws on nothing, so the frame is the picture the warmer made of
+  /// it ahead of the playhead (`FramePictures`), keyed by this tree — the
+  /// picture the canvas shows of the frame standing still
+  /// (one-picture-per-frame).
   ({
     List<CompositeNode<CanvasStackRow>> nodes,
     double activeLayerOpacity,
@@ -117,21 +116,13 @@ class EditingCanvas {
   })
   get playingStack => _stackAtThePlayhead(null);
 
-  /// Every row [cut]'s frame [frameIndex] draws as a cached image while a
-  /// run plays it — [playedStackAt]'s leaves: what the warmer makes ahead of
-  /// the playhead, so the screen holds it when it gets there.
-  List<CanvasLayerImageRequest> playedRowsAt(Cut cut, int frameIndex) => [
-    for (final node in preorderNodes(playedStackAt(cut, frameIndex)))
-      if (node case CompositeLeaf(payload: final CanvasLayerImageRequest row))
-        row,
-  ];
-
   /// [cut]'s frame [frameIndex] as a RUN shows it, wherever it is shown: the
   /// composite tree under the V row's fx with no row standing live — what
   /// the track stack draws for a cut it shows (the whole film, a gap's
-  /// parking, an O.L's partner), and every row the warmer makes ahead of
-  /// the playhead ([playedRowsAt]); the canvas's own at the playhead is
-  /// [playingStack], which also follows a drag in flight.
+  /// parking, an O.L's partner), and the tree the warmer makes a frame's
+  /// picture of ahead of the playhead (`FramePictures.stackOf`); the
+  /// canvas's own at the playhead is [playingStack], which also follows a
+  /// drag in flight.
   ///
   /// ⚠️The track's SE rows join the open cut's frames only: their clones are
   /// the open cut's window ([TrackSeDisplay.trackSeWindow]), and another

@@ -14,6 +14,7 @@
 // panel draws no mark at all since 2026-09-26 — 「콘티레이어는 이름 없으면
 // 진짜 이름 없도록」 — pinned in `storyboard_cut_block_bands_test`.)
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -50,6 +51,7 @@ import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 import '../../helpers/exposure_of.dart';
 import '../../helpers/run_edge_fixtures.dart';
 import 'timeline_frame_geometry_probe.dart';
+import '../../helpers/dots_at.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -68,7 +70,7 @@ void main() {
     0: TimelineExposure.drawing(
       FrameId('unnamed'),
       length: 4,
-      breakdownOffsets: [2],
+      breakdownMarks: {2: InbetweenMark.two},
     ),
     4: TimelineExposure.drawing(FrameId('named'), length: 4),
   };
@@ -79,6 +81,15 @@ void main() {
     name: 'A',
     frames: cels,
     timeline: blocks,
+  );
+
+  /// The row with its dot wearing [mark] — mark 1, the ring, or mark 2
+  /// (I-130).
+  Layer dottedWith(InbetweenMark mark) => layer.copyWith(
+    timeline: {
+      ...blocks,
+      0: blocks[0]!.copyWith(breakdownMarks: {2: mark}),
+    },
   );
 
   TimelineRowCellsPainter rowPainter(
@@ -142,8 +153,10 @@ void main() {
     });
   }
 
+  for (final dotMark in InbetweenMark.values) {
   test('a repeat GHOST wears the same marks — its unnamed head and its '
-      'dot, text-only like every ghost (UI-R10 #11)', () {
+      'dot, text-only like every ghost (UI-R10 #11) — whichever mark the '
+      'dot wears ($dotMark)', () {
     final repeated = rederiveRunBehaviors(
       Layer(
         id: const LayerId('ghosts'),
@@ -171,7 +184,7 @@ void main() {
       // The ghost chain restarts the block at 2; its dot rides at 3.
       exposureStateForLayer: (_, frame) => switch (frame) {
         0 || 2 => TimelineCellExposureState.drawingStart,
-        3 => TimelineCellExposureState.markHeld,
+        3 => TimelineCellExposureState.markHeld(dotMark),
         _ => TimelineCellExposureState.held,
       },
       colorScheme: const ColorScheme.dark(),
@@ -182,10 +195,11 @@ void main() {
     final dot = painter.cellModelAt(3);
     expect(head.ghost && dot.ghost, isTrue, reason: '⛔전제: ghost cells');
     expect(head.mark, unnamedDrawingMark);
-    expect(dot.mark, breakdownMark);
+    expect(dot.mark, dotMark);
     expect(head.glyph, isEmpty);
     expect(dot.glyph, isEmpty);
   });
+  }
 
   // 🚨F-297 (유저 2026-10-05): 「점 지금 줌 낮아지면 크기 자체가 작아지는데
   // 그게아니라 글자랑 똑같이 법 통일해서 가로가 작아지도록」. ↩️This pinned
@@ -245,11 +259,13 @@ void main() {
   });
 
   test('a tile bakes each mark where the row draws it — a disc in the '
-      'cell\'s ink, in the tile\'s own pixels — and no glyph for it', () async {
+      'cell\'s ink, in the tile\'s own pixels, ringed for mark 1 — and no '
+      'glyph for it', () async {
     for (final axis in Axis.values) {
      // A roomy cell, and one narrower than the dot: the stadium.
      for (final cell in [24.0, 3.0]) {
-      final painter = rowPainter(axis, cell: cell);
+     for (final dotMark in InbetweenMark.values) {
+      final painter = rowPainter(axis, cell: cell, row: dottedWith(dotMark));
       for (final dpr in [1.0, 1.5, 2.0]) {
         for (final (start, end) in [(0, 4), (1, 4)]) {
           final ops = await TimelineGridTileStore.instance.debugForegroundOps(
@@ -278,30 +294,138 @@ void main() {
               width: place.size.width * dpr,
               height: place.size.height * dpr,
             );
-            expected.rrectFill(
-              disc.left,
-              disc.top,
-              disc.width,
-              disc.height,
-              disc.shortestSide / 2,
-              TimelineGridTileOp.cornerTopLeft |
-                  TimelineGridTileOp.cornerTopRight |
-                  TimelineGridTileOp.cornerBottomLeft |
-                  TimelineGridTileOp.cornerBottomRight,
-              timelineGridPackRgba(
-                painter.foregroundInkFor(painter.cellModelAt(frame)),
-              ),
+            const round =
+                TimelineGridTileOp.cornerTopLeft |
+                TimelineGridTileOp.cornerTopRight |
+                TimelineGridTileOp.cornerBottomLeft |
+                TimelineGridTileOp.cornerBottomRight;
+            final ink = timelineGridPackRgba(
+              painter.foregroundInkFor(painter.cellModelAt(frame)),
             );
+            switch (frame == 0 ? unnamedDrawingMark : dotMark) {
+              case InbetweenMark.one:
+                expected.rrectRing(
+                  (
+                    x: disc.left,
+                    y: disc.top,
+                    width: disc.width,
+                    height: disc.height,
+                    radius: disc.shortestSide / 2,
+                    cornerMask: round,
+                  ),
+                  lineWidth: inbetweenMarkRingWidth * dpr,
+                  openMask: 0,
+                  rgba: ink,
+                );
+              case InbetweenMark.two:
+                expected.rrectFill(
+                  disc.left,
+                  disc.top,
+                  disc.width,
+                  disc.height,
+                  disc.shortestSide / 2,
+                  round,
+                  ink,
+                );
+            }
           }
           expect(
             ops,
             expected.build(),
-            reason: '$axis, cell $cell, span [$start, $end) at $dpr',
+            reason: '$axis, cell $cell, $dotMark, span [$start, $end) at $dpr',
           );
         }
       }
      }
+     }
     }
+  });
+
+  for (final axis in Axis.values) {
+    test('🗣️I-130: mark 1 is mark 2\'s box ringed — 「속이 빈 그냥 선으로 된 '
+        '원」 — at the same place, size and ink ($axis)', () {
+      Iterable<_LaidMark> marksOf(InbetweenMark dotMark) {
+        final laid = _Laid();
+        rowPainter(axis, row: dottedWith(dotMark)).paint(laid, rowSize(axis));
+        return laid.marks;
+      }
+
+      final [head, ring] = marksOf(InbetweenMark.one).toList();
+      final [_, disc] = marksOf(InbetweenMark.two).toList();
+      expect(ring.line, closeTo(inbetweenMarkRingWidth, 1e-9));
+      expect(disc.line, isNull, reason: 'mark 2 is filled');
+      expect(
+        head.line,
+        closeTo(inbetweenMarkRingWidth, 1e-9),
+        reason: 'the unnamed head wears mark 1 (F-469)',
+      );
+      expect(ring.center, disc.center);
+      expect(ring.size, _sizeNear(disc.size));
+      expect(ring.color, disc.color);
+    });
+  }
+
+  test('a box its ring\'s line fills is all line — filled on the classic '
+      'pass, and the tile\'s ring the same pixels as its disc', () {
+    // A cell of 2px narrows the mark to 2px: two 1px lines meet, the edge
+    // where a hole stops being one.
+    final laid = _Laid();
+    rowPainter(Axis.horizontal, cell: 2, row: dottedWith(InbetweenMark.one))
+        .paint(laid, rowSize(Axis.horizontal, cell: 2));
+    final [_, dot] = laid.marks;
+    expect(
+      dot.size.width,
+      closeTo(2 * inbetweenMarkRingWidth, 1e-9),
+      reason: '⛔전제: narrowed',
+    );
+    expect(dot.line, isNull);
+
+    Uint8List raster(void Function(TimelineGridTileOpWriter) lay) {
+      final writer = TimelineGridTileOpWriter();
+      lay(writer);
+      final pixels = Uint8List(8 * 8 * 4);
+      expect(
+        timelineGridRasterTileReference(
+          pixels: pixels,
+          tileWidth: 8,
+          tileHeight: 8,
+          backgroundRgba: 0,
+          ops: writer.build(),
+        ),
+        0,
+      );
+      return pixels;
+    }
+
+    const box = (
+      x: 2.0,
+      y: 1.0,
+      width: 2 * inbetweenMarkRingWidth,
+      height: 6.0,
+      radius: inbetweenMarkRingWidth,
+      cornerMask: 15,
+    );
+    expect(
+      raster(
+        (writer) => writer.rrectRing(
+          box,
+          lineWidth: inbetweenMarkRingWidth,
+          openMask: 0,
+          rgba: 0xFF000000,
+        ),
+      ),
+      raster(
+        (writer) => writer.rrectFill(
+          box.x,
+          box.y,
+          box.width,
+          box.height,
+          box.radius,
+          box.cornerMask,
+          0xFF000000,
+        ),
+      ),
+    );
   });
 
   test('a narrowed mark is the stadium of its box — as round as it is '
@@ -341,7 +465,7 @@ void main() {
         4: TimelineExposure.drawing(
           const FrameId('named'),
           length: 4,
-          breakdownOffsets: dots,
+          breakdownMarks: dotsAt(dots),
         ),
       },
     );
@@ -549,8 +673,10 @@ void main() {
     });
   });
 
+  for (final dotMark in InbetweenMark.values) {
   test('the sheet draws an unnamed head and a block\'s dot as ONE small '
-      'circle — 「타임시트패널에서 동그라미는 작은걸로 통일」', () {
+      'circle — 「타임시트패널에서 동그라미는 작은걸로 통일」 — the dot ringed '
+      'where it wears mark 1 ($dotMark)', () {
     final document = TimesheetDocument.fromCut(
       cut: Cut(
         id: const CutId('cut-1'),
@@ -564,11 +690,11 @@ void main() {
             frames: [
               Frame(id: const FrameId('f1'), duration: 1, strokes: const []),
             ],
-            timeline: const {
+            timeline: {
               0: TimelineExposure.drawing(
-                FrameId('f1'),
+                const FrameId('f1'),
                 length: 3,
-                breakdownOffsets: [1],
+                breakdownMarks: {1: dotMark},
               ),
             },
           ),
@@ -610,11 +736,23 @@ void main() {
     );
     expect(dot.size, _sizeNear(head.size));
     expect(
+      head.line,
+      closeTo(inbetweenMarkRingWidth, 1e-9),
+      reason: 'the unnamed head wears mark 1 (F-469)',
+    );
+    expect(
+      dot.line,
+      dotMark == InbetweenMark.one
+          ? closeTo(inbetweenMarkRingWidth, 1e-9)
+          : isNull,
+    );
+    expect(
       laid.paragraphs.where((box) => box.overlaps(cellAt(0))),
       isEmpty,
       reason: '↩️the head printed ● as its 10px cel number',
     );
   });
+  }
 }
 
 /// What a painter lays down — its marks, and the boxes of its paragraphs —
@@ -622,9 +760,11 @@ void main() {
 ///
 /// A mark is drawn as the rounded rect that is as round as it is narrow
 /// ([inbetweenMarkShape]): a disc, or a disc narrowed. No paper is that
-/// round, so that is how one is told from the other here.
+/// round, so that is how one is told from the other here. Mark 1 is that
+/// shape ringed (I-130), its [_LaidMark.line] the ring's width — null for a
+/// filled one.
 class _Laid implements Canvas {
-  final marks = <({Offset center, Size size, Color color})>[];
+  final marks = <_LaidMark>[];
   final paragraphs = <Rect>[];
   Size? size;
   final _saved = <Matrix4>[];
@@ -653,7 +793,17 @@ class _Laid implements Canvas {
   );
 
   @override
-  void drawRRect(RRect rrect, Paint paint) {
+  void drawRRect(RRect rrect, Paint paint) => _lay(rrect, paint, line: null);
+
+  @override
+  void drawDRRect(RRect outer, RRect inner, Paint paint) {
+    final across = (outer.width - inner.width) / 2;
+    final along = (outer.height - inner.height) / 2;
+    // A band of one width on every side, or nothing a mark would draw.
+    _lay(outer, paint, line: (across - along).abs() < 1e-9 ? across : -1);
+  }
+
+  void _lay(RRect rrect, Paint paint, {required double? line}) {
     if ((rrect.tlRadiusX * 2 - rrect.shortestSide).abs() > 1e-9) {
       return;
     }
@@ -661,6 +811,7 @@ class _Laid implements Canvas {
       center: MatrixUtils.transformPoint(_transform, rrect.center),
       size: Size(rrect.width, rrect.height),
       color: paint.color,
+      line: line,
     ));
   }
 
@@ -678,6 +829,8 @@ class _Laid implements Canvas {
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
 }
+
+typedef _LaidMark = ({Offset center, Size size, Color color, double? line});
 
 /// [expected] to the billionth of a pixel: a mark's box is read back off
 /// the shape it was drawn as, which is laid about its centre.

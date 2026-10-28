@@ -62,10 +62,8 @@ Set<String> termsSpelledBy(
   Iterable<TimelineExposure> exposures, [
   Iterable<InstructionEvent> spans = const [],
 ]) => {
-  for (final exposure in exposures)
-    if (exposure.instruction case final instruction?)
-      instruction.instructionId,
-  for (final span in spans) span.instructionId,
+  for (final exposure in exposures) ?exposure.instruction?.instructionId,
+  for (final span in spans) ?span.instructionId,
 };
 
 /// What a paste of a copy lands WITH in a project: the pool entries it

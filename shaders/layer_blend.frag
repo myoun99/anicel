@@ -43,14 +43,8 @@ uniform vec2 uSize;
 // `strokeBlendModeNativeId`): one table for the three processors.
 uniform float uMode;
 
-// Where [uSource] lies on this draw, in the draw's own 0..1: its corner and
-// its span. The whole draw — (0, 0, 1, 1) — for a source rastered on the
-// draw's grid; a part of it for a row's own image handed over as it is,
-// texel for texel on that grid, which shows nothing past its edge.
-uniform vec4 uSourceRect;
-
 // What lies below the row in its scope, and the row itself painted normal —
-// both PREMULTIPLIED, the backdrop on the same grid as this draw.
+// both PREMULTIPLIED, both on the same grid as this draw.
 uniform sampler2D uBackdrop;
 uniform sampler2D uSource;
 
@@ -209,10 +203,7 @@ float channel(float mode, float s, float d) {
 void main() {
   vec2 uv = FlutterFragCoord().xy / uSize;
   vec4 backdrop = texture(uBackdrop, uv);
-  vec2 sourceUv = (uv - uSourceRect.xy) / uSourceRect.zw;
-  bool onSource = all(greaterThanEqual(sourceUv, vec2(0.0))) &&
-      all(lessThan(sourceUv, vec2(1.0)));
-  vec4 source = onSource ? texture(uSource, sourceUv) : vec4(0.0);
+  vec4 source = texture(uSource, uv);
 
   float sa = floor(source.a * 255.0 + 0.5);
   float da = floor(backdrop.a * 255.0 + 0.5);

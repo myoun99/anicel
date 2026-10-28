@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
-import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
@@ -36,11 +36,11 @@ void main() {
   /// What the editing canvas is actually showing: the cel under the playhead
   /// (the active surface) and how many other layers stack with it.
   ({Object? surface, int nodes}) shown(WidgetTester tester) {
-    final view = tester.widget<CanvasLayerStackView>(
-      find.byType(CanvasLayerStackView).first,
+    final view = tester.widget<FramePictureView>(
+      find.byType(FramePictureView).first,
     );
     return (
-      surface: view.activeSurfacePainter?.surface,
+      surface: view.live?.activeSurfacePainter?.surface,
       nodes: view.nodes.length,
     );
   }

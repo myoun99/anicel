@@ -729,15 +729,23 @@ void main() {
     expect(names(plain.members), ['A']);
     expect(names(corrected.members), ['A-ad']);
 
-    String keyOf(ExportCelGroupTask task, {bool fx = true}) =>
+    String keyOf(
+      ExportCelGroupTask task, {
+      ExportLayerFx fx = ExportLayerFx.on,
+    }) =>
         celGroupPreviewKey(
           task,
           sizeMode: 'canvas',
           backgroundKey: -1,
-          applyLayerFx: fx,
+          layerFx: fx,
         );
     expect(keyOf(plain), isNot(keyOf(corrected)));
-    expect(keyOf(plain), isNot(keyOf(plain, fx: false)));
+    expect(keyOf(plain), isNot(keyOf(plain, fx: ExportLayerFx.basic)));
+    expect(keyOf(plain), isNot(keyOf(plain, fx: ExportLayerFx.off)));
+    expect(
+      keyOf(plain, fx: ExportLayerFx.basic),
+      isNot(keyOf(plain, fx: ExportLayerFx.off)),
+    );
     expect(keyOf(plain), keyOf(plan(layers).cels.single));
   });
 
@@ -1716,7 +1724,7 @@ void main() {
         task,
         sizeMode: 'canvas',
         backgroundKey: -1,
-        applyLayerFx: true,
+        layerFx: ExportLayerFx.on,
       );
       expect(
         keyOf(laid),
@@ -1771,7 +1779,7 @@ void main() {
       task,
       sizeMode: 'canvas',
       backgroundKey: -1,
-      applyLayerFx: true,
+      layerFx: ExportLayerFx.on,
     );
     expect(keyOf(built.cels.first), isNot(keyOf(plan(layers).cels.first)));
   });
@@ -1797,7 +1805,7 @@ void main() {
       task,
       sizeMode: 'canvas',
       backgroundKey: -1,
-      applyLayerFx: true,
+      layerFx: ExportLayerFx.on,
     );
     expect(keyOf(guides.first), isNot(keyOf(plan(layers).cels.first)));
     expect(

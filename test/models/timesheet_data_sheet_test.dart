@@ -169,17 +169,19 @@ void main() {
     }
   });
 
+  for (final dotMark in InbetweenMark.values) {
   test('🗣️an UNNAMED cel keeps its mark through the fused run, and a dotted '
-      'row keeps its dot — one mark as data (유저 2026-09-24)', () {
+      'row keeps its dot — one mark as data (유저 2026-09-24), whichever of '
+      'the two it wears (I-130: $dotMark)', () {
     var layer = Layer(
       id: const LayerId('h'),
       name: 'H',
       frames: [Frame(id: const FrameId('cel'), duration: 1, strokes: const [])],
-      timeline: const {
+      timeline: {
         4: TimelineExposure.drawing(
-          FrameId('cel'),
+          const FrameId('cel'),
           length: 3,
-          breakdownOffsets: [1],
+          breakdownMarks: {1: dotMark},
           startEdge: holdMark,
           endEdge: holdMark,
         ),
@@ -192,12 +194,13 @@ void main() {
     expect(data[0].mark, unnamedDrawingMark, reason: 'the head wears it');
     expect(data[0].label, isEmpty, reason: 'and writes no word');
     expect(data[5].kind, TimesheetCellKind.mark, reason: 'the block dot');
-    expect(data[5].mark, breakdownMark);
+    expect(data[5].mark, dotMark);
     for (final row in [1, 4, 6, 7, 11]) {
       expect(data[row].kind, TimesheetCellKind.held, reason: 'row $row');
       expect(data[row].mark, isNull, reason: 'row $row');
     }
   });
+  }
 
   // 🗣️F-453 (유저 2026-10-23): 「타임시트패널의 셀란은 항상 데이터시트임.
   // 데이터시트 표기시트를 따르지않음. 데이터시트 고정이 업계 기본이기때문」.

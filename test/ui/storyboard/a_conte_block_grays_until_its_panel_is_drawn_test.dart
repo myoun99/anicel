@@ -16,14 +16,13 @@ import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard/storyboard_rows_channel.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineUnreadableCelPaperColor;
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/cel_text_fixture.dart' show drawingOf, tileFilledWith;
 import '../../helpers/conte_track_fixture.dart';
-import '../../helpers/storyboard_twirls.dart';
+import '../../helpers/storyboard_host.dart';
 import '../timeline/timeline_frame_geometry_probe.dart';
 
 /// 🗣️F-357: the conte row grays a block whose panel holds no picture yet,
@@ -182,8 +181,6 @@ void main() {
 
   testWidgets('the storyboard tab hands the row the session\x27s fact — a '
       'panel goes white when its cel takes ink', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
     final session = EditorSessionManager(
       initialProject: createDefaultProject(),
     );
@@ -192,28 +189,12 @@ void main() {
     final cut = session.activeCutOrNull!;
     final conte = session.activeLayer!;
     final cel = conte.timeline[0]!.frameId!;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: withStoryboardTwirls(
-            session,
-            (twirls) => StoryboardTabHost(
-              session: session,
-              expandedLaneLayerIds: twirls.expandedLaneLayerIds,
-              onToggleLayerLanes: twirls.onToggleLayerLanes,
-              expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
-              onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-            ),
-          ),
-        ),
-      ),
+    await pumpStoryboardHostOn(
+      tester,
+      session,
+      surface: const Size(1600, 900),
+      pixelsPerFrame: 12,
     );
-    await tester.pumpAndSettle();
     final track = session.repository.requireProject().tracks.single.id;
     final painter = tester
         .widgetList<CustomPaint>(find.byType(CustomPaint))

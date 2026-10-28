@@ -32,6 +32,8 @@ import 'package:anicel/src/ui/brush/brush_tip_preview.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
+import '../helpers/app_icon_button_probe.dart';
+
 const _ink = BrushGroupId('ink');
 const _paint = BrushGroupId('paint');
 
@@ -282,7 +284,7 @@ void main() {
     );
 
     // No per-row delete affordance (stray clicks cannot delete).
-    expect(find.byIcon(Icons.close), findsNothing);
+    expect(find.wornIcon(Icons.close), findsNothing);
 
     await tester.tap(
       find.byKey(const ValueKey<String>('brush-preset-menu-button')),
@@ -705,7 +707,10 @@ void main() {
       findsNothing,
     );
     expect(
-      find.descendant(of: _tab('ink'), matching: find.byIcon(Icons.more_horiz)),
+      find.descendant(
+        of: _tab('ink'),
+        matching: find.wornIcon(Icons.more_horiz),
+      ),
       findsNothing,
     );
   });

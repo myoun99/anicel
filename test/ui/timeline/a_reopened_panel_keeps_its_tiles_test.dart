@@ -74,8 +74,8 @@ void main() {
         devicePixelRatio: 1.0,
       );
 
-  /// A tile of the row baked under the dark scheme, and the store idle.
-  Future<void> bakedInTheDark() async {
+  /// The tile of the row baked under the dark scheme, the store idle.
+  Future<Object?> bakedInTheDark() async {
     final store = TimelineGridTileStore.instance;
     var landings = 0;
     void landed() => landings += 1;
@@ -84,6 +84,7 @@ void main() {
     ask(painterIn(const ColorScheme.dark()));
     await pollUntil(() => landings > 0 && !store.debugBusy);
     expect(landings, 1, reason: 'premise: the tile landed');
+    return ask(painterIn(const ColorScheme.dark()));
   }
 
   setUp(() {
@@ -106,18 +107,20 @@ void main() {
       markTestSkipped('qa_engine.dll not built');
       return;
     }
-    await bakedInTheDark();
+    final dark = await bakedInTheDark();
     final anew = const ColorScheme.dark().copyWith();
     expect(anew, isNot(same(const ColorScheme.dark())), reason: 'premise');
     expect(anew, const ColorScheme.dark(), reason: 'premise');
 
-    expect(ask(painterIn(anew)), isNotNull);
+    // The tile itself, not a busy store: a look the store takes for new is
+    // baked in the ask that brings it (F-314), and leaves nothing queued.
     expect(
-      TimelineGridTileStore.instance.debugBusy,
-      isFalse,
+      ask(painterIn(anew)),
+      same(dark),
       reason: '↩️the store took the new instance for a new look: the tile '
-          'went stale and was queued to be baked again',
+          'went stale and was baked again',
     );
+    expect(TimelineGridTileStore.instance.debugBusy, isFalse);
   });
 
   test('a scheme of other colours still bakes the tile again', () async {
@@ -125,12 +128,13 @@ void main() {
       markTestSkipped('qa_engine.dll not built');
       return;
     }
-    await bakedInTheDark();
+    final dark = await bakedInTheDark();
 
-    ask(painterIn(const ColorScheme.light()));
+    final light = ask(painterIn(const ColorScheme.light()));
+    expect(light, isNotNull);
     expect(
-      TimelineGridTileStore.instance.debugBusy,
-      isTrue,
+      light,
+      isNot(same(dark)),
       reason: 'the colours are baked into the tile: other colours are '
           'another look',
     );

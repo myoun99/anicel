@@ -16,11 +16,11 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
-import 'package:anicel/src/ui/timeline_tab_host.dart';
 
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/named_finders.dart';
+import '../../helpers/timeline_host.dart';
 
 void main() {
   late Directory tempDir;
@@ -59,30 +59,16 @@ void main() {
   ]) {
     testWidgets('the $prefix row carries it, and pressing it opens that '
         'row\'s popover', (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1600, 1000));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
       final s = EditorSessionManager(initialProject: createDefaultProject());
       addTearDown(s.dispose);
       final id = await importReference(tester, s);
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ListenableBuilder(
-              listenable: s,
-              builder: (context, _) => TimelineTabHost(
-                session: s,
-                orientation: orientation,
-                onOrientationChanged: (_) {},
-                pixelsPerFrame: 24,
-                onPixelsPerFrameChanged: (_) {},
-                showSeconds: false,
-                onShowSecondsChanged: (_) {},
-              ),
-            ),
-          ),
-        ),
+      await pumpTimelineHostOn(
+        tester,
+        s,
+        surface: const Size(1600, 1000),
+        orientation: orientation,
+        pixelsPerFrame: 24,
       );
-      await tester.pumpAndSettle();
 
       final button = find.named('$prefix-layer-reference-$id');
       expect(button, findsOneWidget);
@@ -109,31 +95,16 @@ void main() {
       'and the undo puts them back at once — on rows no one stands on', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 1000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     final first = await importReference(tester, s);
     final second = await importReference(tester, s, name: 'bg_night.png');
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: s,
-            builder: (context, _) => TimelineTabHost(
-              session: s,
-              orientation: TimelineOrientation.horizontal,
-              onOrientationChanged: (_) {},
-              pixelsPerFrame: 24,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-            ),
-          ),
-        ),
-      ),
+    await pumpTimelineHostOn(
+      tester,
+      s,
+      surface: const Size(1600, 1000),
+      pixelsPerFrame: 24,
     );
-    await tester.pumpAndSettle();
     final buttons = [
       for (final id in [first, second])
         find.named('timeline-layer-reference-$id'),

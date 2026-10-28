@@ -2,8 +2,10 @@ import '../models/attached_layer_resolve.dart';
 import '../models/bitmap_surface.dart';
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
+import '../models/cel_number_letters.dart';
 import '../models/composite_tree.dart';
 import '../models/cut.dart';
+import '../models/cut_id.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
@@ -16,6 +18,7 @@ import '../models/timeline_coverage.dart';
 import '../models/transform_track.dart';
 import 'layer_pose_matrix.dart' show pictureMoved;
 import 'layer_pose_paint.dart';
+import 'cel_numbered_row.dart';
 import 'cel_source_effect_pass.dart';
 import 'cel_surface_as_shown.dart';
 
@@ -154,7 +157,7 @@ typedef LayerFrameSurfaceResolver =
 ///
 /// Built by [resolveCutFrameCompositeTree] and mapped — never rebuilt —
 /// into the shapes the routes need: surfaces for the paint routes
-/// ([planCutFrameComposite]) and identities for the playback cache
+/// ([planCutFrameCompositeTree]) and identities for the playback cache
 /// ([computeCutFrameCompositeSignature]). One structure, so playback,
 /// export and the editing canvas cannot drift.
 sealed class CutFrameCompositeRow {
@@ -163,9 +166,24 @@ sealed class CutFrameCompositeRow {
   /// The blend the row composites with against everything below it.
   LayerBlendMode get blendMode;
 
+  /// The row's strength, folded.
+  double get opacity;
+
+  /// The row's effect chain sampled at this frame.
+  List<ResolvedLayerEffect> get effects;
+
+  /// The same row painting with [paint] — the row's picture under part of
+  /// its chain, where a cel number splits it ([celNumberedRow]).
+  CutFrameCompositeRow withPaint(RowPaint paint);
+
   /// The same row painting normal — what a row in an advanced blend
   /// is, composed over its backdrop ([CompositeBackdropBlend]).
   CutFrameCompositeRow paintedNormal();
+
+  /// The same row painting normal at full strength — what the base of a
+  /// clipping group is ([CompositeClip]), whose strength and blend are the
+  /// group's.
+  CutFrameCompositeRow paintedAsClipBase();
 }
 
 /// One resolved contributor to the cut's picture at a frame — the SHARED
@@ -185,6 +203,7 @@ class CutFrameCompositeEntry extends CutFrameCompositeRow {
 
   final Layer layer;
   final Frame frame;
+  @override
   final double opacity;
 
   /// The layer's composite blend against everything below (R26 #30).
@@ -198,13 +217,33 @@ class CutFrameCompositeEntry extends CutFrameCompositeRow {
   /// The row's effect chain sampled at this frame (R6) — from the FX
   /// CARRIER, so an attach row wears its base's effects exactly as it wears
   /// its base's pose, and the carrier's fx switch bypasses both.
+  @override
   final List<ResolvedLayerEffect> effects;
+
+  @override
+  CutFrameCompositeEntry withPaint(RowPaint paint) => CutFrameCompositeEntry(
+    layer: layer,
+    frame: frame,
+    opacity: paint.opacity,
+    blendMode: paint.blendMode,
+    placement: placement,
+    effects: paint.effects,
+  );
 
   @override
   CutFrameCompositeEntry paintedNormal() => CutFrameCompositeEntry(
     layer: layer,
     frame: frame,
     opacity: opacity,
+    placement: placement,
+    effects: effects,
+  );
+
+  @override
+  CutFrameCompositeEntry paintedAsClipBase() => CutFrameCompositeEntry(
+    layer: layer,
+    frame: frame,
+    opacity: 1,
     placement: placement,
     effects: effects,
   );
@@ -252,10 +291,39 @@ final class CutFrameCompositeLiveRow extends CutFrameCompositeRow {
   LayerBlendMode get blendMode => render.blendMode;
 
   @override
+  double get opacity => render.opacity;
+
+  @override
+  List<ResolvedLayerEffect> get effects => render.effects;
+
+  @override
+  CutFrameCompositeLiveRow withPaint(RowPaint paint) =>
+      CutFrameCompositeLiveRow(
+        layer: layer,
+        render: (
+          opacity: paint.opacity,
+          blendMode: paint.blendMode,
+          placement: render.placement,
+          effects: paint.effects,
+        ),
+      );
+
+  @override
   CutFrameCompositeLiveRow paintedNormal() => CutFrameCompositeLiveRow(
     layer: layer,
     render: (
       opacity: render.opacity,
+      blendMode: LayerBlendMode.normal,
+      placement: render.placement,
+      effects: render.effects,
+    ),
+  );
+
+  @override
+  CutFrameCompositeLiveRow paintedAsClipBase() => CutFrameCompositeLiveRow(
+    layer: layer,
+    render: (
+      opacity: 1,
       blendMode: LayerBlendMode.normal,
       placement: render.placement,
       effects: render.effects,
@@ -279,11 +347,19 @@ final class CutFrameCompositeLiveRow extends CutFrameCompositeRow {
 /// distribute (`T(A over B) == T(A) over T(B)`), so folder FX keeps riding
 /// each member's pose and costs no buffer. A plain organizing folder
 /// therefore allocates nothing at all — the Photoshop/CSP 통과 default.
+///
+/// And a CLIP (I-92-Q3 a, 유저 2026-10-24 「클튜처럼 — 폴더도 켜고, 폴더도
+/// 바탕이 된다」): a folder that clips to the layer below, or that one
+/// clips to, is cut or cuts as ONE picture — its members as one — even a
+/// pass-through one. Asked of the rows as they stand, never of what shows
+/// at the frame: hiding a row clipped to the folder must not change how
+/// the folder's members blend.
 bool folderNeedsCompositeBuffer({
+  required Cut cut,
   required Layer folder,
   required int frameIndex,
 }) {
-  if (folder.blendMode.isolatesGroup) {
+  if (folder.blendMode.isolatesGroup || meetsAClip(cut, folder)) {
     return true;
   }
   if (resolveFolderEffectsAt(
@@ -297,6 +373,160 @@ bool folderNeedsCompositeBuffer({
         frameIndex: frameIndex,
       ) <
       1.0;
+}
+
+/// Whether [layer] CLIPS TO THE LAYER BELOW (I-92): its own switch
+/// ([Layer.clipsToBelow]), on a row that can clip ([LayerKind.takesClipping]).
+bool clipsToLayerBelow(Layer layer) =>
+    layer.clipsToBelow && layer.kind.takesClipping;
+
+/// What [row] clips to when it clips to the layer below — the BASE: the
+/// first row under it in its own folder that does not clip itself
+/// (I-92-Q2 a, 유저 2026-10-24 「프로툴과 같게 — 모두 그 아래 첫 바탕에
+/// 잘린다」). Null at the bottom of its folder: there is nothing to clip to.
+///
+/// A row that takes no part in the picture — the camera, a transition
+/// ([LayerKind.composites]) — is passed over: the composite never sees it.
+Layer? clipBaseOf(Cut cut, Layer row) {
+  final layers = cut.layers;
+  for (var i = _rowIndexOf(cut, row) - 1; i >= 0; i -= 1) {
+    final below = layers[i];
+    // A folder's members are one run under it, so a row of this folder
+    // lies under [row] only inside that run — anything else is a member of
+    // a sibling folder.
+    if (below.folderId == row.folderId &&
+        below.kind.composites &&
+        !clipsToLayerBelow(below)) {
+      return below;
+    }
+  }
+  return null;
+}
+
+/// Whether [row] is cut or cuts by the clip law (I-92) — it clips to the
+/// layer below, or one clips to it — and so meets the clip as ONE picture:
+/// a folder its members as one ([folderNeedsCompositeBuffer]), a row with
+/// its cel number's letters ([celNumberedRow]). Asked of the rows as they
+/// stand, not of what shows at a frame.
+bool meetsAClip(Cut cut, Layer row) =>
+    clipsToLayerBelow(row) || _isClipBase(cut, row);
+
+/// Whether a row clips to [row] ([clipBaseOf]): the nearest row of its
+/// folder above it, of those in the picture, clips to the layer below.
+bool _isClipBase(Cut cut, Layer row) {
+  if (clipsToLayerBelow(row)) {
+    return false; // It clips itself: the run's base is under it.
+  }
+  final layers = cut.layers;
+  for (var i = _rowIndexOf(cut, row) + 1; i < layers.length; i += 1) {
+    final above = layers[i];
+    if (above.id == row.folderId) {
+      return false; // The folder's own row: nothing of it lies above.
+    }
+    if (above.folderId == row.folderId && above.kind.composites) {
+      return clipsToLayerBelow(above);
+    }
+  }
+  return false;
+}
+
+/// [row]'s place in [cut]'s stack — by id, as a row's identity is.
+int _rowIndexOf(Cut cut, Layer row) =>
+    cut.layers.indexWhere((layer) => layer.id == row.id);
+
+/// Where the clip law lays a row ([clipTargetOf]).
+enum ClipPlaced {
+  /// By itself: it clips to nothing, or to a row that does not cut it.
+  alone,
+
+  /// Into the clipping group of the row it clips to.
+  clipped,
+
+  /// Nowhere: it clips to what paints nothing.
+  nowhere,
+}
+
+/// How [row] meets [cut]'s picture by the clip law (I-92), before what a
+/// frame draws is asked: [ClipPlaced.clipped] to [base] ([clipBaseOf] —
+/// null for the other two), by itself, or nowhere.
+({ClipPlaced placed, Layer? base}) clipTargetOf(Cut cut, Layer row) {
+  if (!clipsToLayerBelow(row)) {
+    return (placed: ClipPlaced.alone, base: null);
+  }
+  final base = clipBaseOf(cut, row);
+  if (base == null) {
+    // Nothing under it to clip to.
+    return (placed: ClipPlaced.nowhere, base: null);
+  }
+  if (base.kind.filtersBelow) {
+    // 🗣️I-92-Q4 a: an adjustment row has no picture of its own to cut by
+    // — what clips to it is not cut, until the row is hidden.
+    return (
+      placed: base.isVisible ? ClipPlaced.alone : ClipPlaced.nowhere,
+      base: null,
+    );
+  }
+  return (placed: ClipPlaced.clipped, base: base);
+}
+
+/// THE CLIP LAW's placing half (I-92): rows met bottom-up, each laid by
+/// itself into the list it stands in, or joined to the node of the row it
+/// clips to ([clipTargetOf], [clippedOnto]), or nowhere. The cut's tree
+/// and a cel's stack place through this one.
+final class ClipPlacing<P> {
+  ClipPlacing({required this.blendOf, required this.asClipBase});
+
+  /// The blend a route's own row composites with ([clippedOnto]).
+  final LayerBlendMode Function(P payload) blendOf;
+
+  /// The same row as a clipping group's base ([clippedOnto]).
+  final ({P base, double opacity, LayerBlendMode blendMode}) Function(
+    P payload,
+  )
+  asClipBase;
+
+  // Where each row's node stands — the list and the place in it — for the
+  // rows that clip to it to join; by its cut too, as a cel lays rows of
+  // more cuts than one.
+  final _placeOf =
+      <(CutId, LayerId), ({List<CompositeNode<P>> bucket, int at})>{};
+
+  /// Lays [node], [row]'s picture in [cut], into [into] — the list its
+  /// folder's members gather in — or onto the node of the row it clips
+  /// to, or nowhere.
+  void place(
+    Cut cut,
+    Layer row,
+    CompositeNode<P> node, {
+    required List<CompositeNode<P>> into,
+  }) {
+    final (:placed, :base) = clipTargetOf(cut, row);
+    if (base == null) {
+      if (placed == ClipPlaced.alone) {
+        _placeOf[(cut.id, row.id)] = (bucket: into, at: into.length);
+        into.add(node);
+      }
+      return;
+    }
+    final standing = _placeOf[(cut.id, base.id)];
+    if (standing == null) {
+      return; // The base paints nothing here, so neither does this.
+    }
+    // ⚠️A base's list is never taken by an adjustment before what clips to
+    // it joins: anything between the two clips too, and a folder among
+    // them buffers ([folderNeedsCompositeBuffer]) — so no adjustment's
+    // scope reaches out past it.
+    assert(
+      identical(into, standing.bucket),
+      'the list ${base.id} stands in was taken before ${row.id} joined it',
+    );
+    standing.bucket[standing.at] = clippedOnto(
+      standing.bucket[standing.at],
+      node,
+      blendOf: blendOf,
+      asClipBase: asClipBase,
+    );
+  }
 }
 
 /// A folder's own effect chain at [frameIndex].
@@ -384,6 +614,7 @@ resolveFolderChainAt({
     final buffered =
         !foldBufferedFolders &&
         folderNeedsCompositeBuffer(
+          cut: cut,
           folder: folder,
           frameIndex: frameIndex,
         );
@@ -536,9 +767,11 @@ Layer _fxCarrierOf(Cut cut, Layer layer) => isAttachedLayer(layer)
 ///
 /// 🗣️F-374 (유저 2026-10-17): 「참조fx도 똑같이 fx로서 법 통일. 지금 움직여도
 /// 키 안생긴다거나」 — the fx keys, and a picture laid once stands at each
-/// frame where its keys say. No switch reaches it, as none reaches where the
-/// file was laid (I-68-Q1: 「레이어의 fx버튼 꺼도 그 자리 유지되고 출력시에도
-/// fx 적용 해제되있어도 유지됨」).
+/// frame where its keys say. No switch of the row reaches it, as none
+/// reaches where the file was laid (I-68-Q1: 「레이어의 fx버튼 꺼도 그 자리
+/// 유지되고 출력시에도 fx 적용 해제되있어도 유지됨」) — an output's 끔 does,
+/// handing the plan a reference that stands where it is laid (I-65-Q6
+/// 「참조 fx 도 끈다(정말 날 것)」, `layerAsOutput`). ↩️None reached it.
 LayerPlacement? referenceMoveAt(Layer layer, int frameIndex) {
   final reference = layer.mediaReference;
   if (reference == null) {
@@ -642,6 +875,10 @@ LayerPlacement? placementUnderFolders({
 /// and its FX poses compose outside the member's. That is a flat
 /// APPROXIMATION of the group buffer R27 #29 asks for — see
 /// [resolveFolderChainAt].
+///
+/// ⚠️A row's entry is its own pixels: what a row that clips to the layer
+/// below shows of them is [flatClipOf]'s, asked by a read of the whole
+/// picture — a read of one row reads that row as drawn.
 List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
   required Cut cut,
   required int frameIndex,
@@ -656,6 +893,53 @@ List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
         case final CutFrameCompositeEntry entry)
       entry,
 ];
+
+/// How a FLAT read ([resolveCutFrameCompositeEntries] — the eyedropper,
+/// the fill) cuts [layer]'s pixels when it clips to the layer below
+/// (I-92): null when nothing cuts it. Otherwise [cutBy] — its base's
+/// entries among [entries], whose pixels laid together are where it shows
+/// (none: nowhere) — and [strength], the base's own, which a clipping
+/// group takes on (Photoshop).
+///
+/// The tree's law ([clipTargetOf], [CompositeClip]) read by pixels: the
+/// base's pixels' alpha cuts, its strength and blend go to the group. A
+/// folder's base is every entry inside it — the folder's picture, flat.
+({List<CutFrameCompositeEntry> cutBy, double strength})? flatClipOf({
+  required Cut cut,
+  required Layer layer,
+  required int frameIndex,
+  required List<CutFrameCompositeEntry> entries,
+}) {
+  final (:placed, :base) = clipTargetOf(cut, layer);
+  if (base == null) {
+    return placed == ClipPlaced.alone ? null : (cutBy: const [], strength: 0);
+  }
+  if (base.kind.groupsLayers) {
+    return (
+      cutBy: [
+        for (final entry in entries)
+          if (cut.layers
+              .ancestryOf(entry.layer.folderId)
+              .any((folder) => folder.id == base.id))
+            entry,
+      ],
+      strength: resolveFolderOpacityAt(folder: base, frameIndex: frameIndex),
+    );
+  }
+  return (
+    cutBy: [
+      for (final entry in entries)
+        if (entry.layer.id == base.id) entry,
+    ],
+    strength:
+        layerDrawingAt(
+          cut: cut,
+          layer: base,
+          frameIndex: frameIndex,
+        )?.render.opacity ??
+        0,
+  );
+}
 
 /// The cel [layerId] exposes at [frameIndex] in [cut] — the one this plan
 /// composites for that row, asked before any gate (eye, opacity, folder), so
@@ -711,6 +995,26 @@ Frame? _celOf(Layer layer, Layer? base, int frameIndex) =>
   return base == null ? null : (carrier: base, base: base);
 }
 
+/// The effect chain [layer] wears in [cut]: its own — or, for an attach
+/// row, its base's short of the links only their own row wears
+/// ([EffectKind.staysOnItsRow]: the cel number). Empty for a row that paints
+/// nothing of its own ([_paintingRowOf]).
+///
+/// ⛔ONE answer for every route that lays a row's picture — the composite,
+/// a file that keeps the rows apart, the delivery cel (I-65-Q4).
+List<LayerEffect> chainWornBy(Cut cut, Layer layer) {
+  final painting = _paintingRowOf(cut, layer);
+  return painting == null ? const [] : _wornChain(layer, painting.carrier);
+}
+
+List<LayerEffect> _wornChain(Layer layer, Layer carrier) =>
+    carrier.id == layer.id
+    ? carrier.effects
+    : [
+        for (final effect in carrier.effects)
+          if (!effect.kind.staysOnItsRow) effect,
+      ];
+
 /// What [layer] draws at [frameIndex] in [cut], shown or not: the cel it
 /// exposes there — none where it exposes none — and how: its OWN strength,
 /// its own blend, where it lies under every folder above it, and the chain
@@ -747,7 +1051,7 @@ Frame? _celOf(Layer layer, Layer? base, int frameIndex) =>
         frameIndex: frameIndex,
       ),
       effects: resolveLayerEffectsAt(
-        effects: painting.carrier.effects,
+        effects: _wornChain(layer, painting.carrier),
         frameIndex: frameIndex,
       ),
     ),
@@ -806,14 +1110,14 @@ CutFrameCompositeRow? _resolveLayerNode(
   final frame = _celOf(layer, painting.base, frameIndex);
 
   // R6: effects ride the FX carrier exactly like the pose and the
-  // animated opacity — an attach row wears its base's chain, and the
-  // carrier's fx switch bypasses it.
+  // animated opacity — an attach row wears its base's chain, short of its
+  // cel number ([chainWornBy]), and the carrier's fx switch bypasses it.
   // R8: NOT gated on fxEnabled — that switch is the TRANSFORM group's.
   // Each effect carries its own ([LayerEffect.enabled]) and the master
   // writes them all, so gating here too would make the row switch reach
   // effects it had not turned off.
   final effects = resolveLayerEffectsAt(
-    effects: fxCarrier.effects,
+    effects: _wornChain(layer, fxCarrier),
     frameIndex: frameIndex,
   );
   // The placement is [layerPlacementAt]'s: the same own part, under the
@@ -915,6 +1219,7 @@ _adjustmentScopeNode({
   for (final folder in cut.layers.ancestryOf(adjustment.folderId)) {
     scopeKeys.add(folder.id);
     if (folderNeedsCompositeBuffer(
+      cut: cut,
       folder: folder,
       frameIndex: frameIndex,
     )) {
@@ -948,9 +1253,10 @@ _adjustmentScopeNode({
 /// visible entry, with each BUFFERING folder's members wrapped in a
 /// [CompositeGroup] so the folder's opacity and blend apply
 /// ONCE to their composed buffer (R27 #29), each ADJUSTMENT row's
-/// scope wrapped in a [CompositeAdjustment] (R6b), and each row in an
-/// advanced blend composed over its scope ([CompositeBackdropBlend],
-/// brush-fidelity-Q4).
+/// scope wrapped in a [CompositeAdjustment] (R6b), each row that clips to
+/// the layer below gathered with what it clips to into a [CompositeClip]
+/// (I-92), and each row in an advanced blend composed over its scope
+/// ([CompositeBackdropBlend], brush-fidelity-Q4).
 ///
 /// The stack list IS the structure: a folder's members occupy a
 /// contiguous run with the folder row directly above it, so this single
@@ -972,8 +1278,21 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
   void addTo(LayerId? folderId, CompositeNode<CutFrameCompositeRow> node) =>
       (childrenOf[folderId] ??= <CompositeNode<CutFrameCompositeRow>>[])
           .add(node);
+  final clips = ClipPlacing<CutFrameCompositeRow>(
+    blendOf: (row) => row.blendMode,
+    asClipBase: (row) => (
+      base: row.paintedAsClipBase(),
+      opacity: row.opacity,
+      blendMode: row.blendMode,
+    ),
+  );
+  void place(Layer row, CompositeNode<CutFrameCompositeRow> node) =>
+      clips.place(cut, row, node, into: childrenOf[row.folderId] ??= []);
 
   for (final layer in cut.layers) {
+    if (!layer.kind.composites) {
+      continue; // Not in the picture: no node, and no base for a clip.
+    }
     if (layer.kind.filtersBelow) {
       final wrapped = _adjustmentScopeNode(
         adjustment: layer,
@@ -1002,19 +1321,21 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
         continue;
       }
       if (!folderNeedsCompositeBuffer(
+        cut: cut,
         folder: layer,
         frameIndex: frameIndex,
       )) {
         // 통과, fully opaque: the folder is pure structure. Its members
         // belong to the parent exactly as if it were not there — no
-        // buffer, no node, no cost.
+        // buffer, no node, no cost. (Nothing clips to it, nor does it
+        // clip: either would have buffered it.)
         for (final child in children) {
           addTo(layer.folderId, child);
         }
         continue;
       }
-      addTo(
-        layer.folderId,
+      place(
+        layer,
         CompositeGroup<CutFrameCompositeRow>(
           children: List.unmodifiable(children),
           opacity: opacity,
@@ -1037,7 +1358,32 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
       liveLayerId: liveLayerId,
     ));
     if (row != null) {
-      addTo(layer.folderId, CompositeLeaf(row));
+      final [standing, ...over] = celNumberedRow(
+        paint: (
+          opacity: row.opacity,
+          blendMode: row.blendMode,
+          effects: row.effects,
+        ),
+        rowOf: row.withPaint,
+        text: celNumberText(
+          rowName: layer.name,
+          drawingName: switch (row) {
+            CutFrameCompositeEntry(:final frame) => frame.name,
+            // Drawn on where nothing is exposed yet: the drawing the pen
+            // makes, which is born unnamed.
+            CutFrameCompositeLiveRow() => null,
+          },
+          kind: layer.kind,
+        ),
+        paper: cut.canvasSize,
+        asOnePicture: meetsAClip(cut, layer),
+      );
+      place(layer, standing);
+      // The letters over a row that neither clips nor is clipped to — so
+      // [place] laid it last in its list.
+      for (final letters in over) {
+        addTo(layer.folderId, letters);
+      }
     }
   }
   // A row in an advanced blend goes over a picture of its scope — once
@@ -1052,82 +1398,46 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
   );
 }
 
-/// Plans which surfaces make up the cut's picture at [frameIndex] — the
-/// shared [resolveCutFrameCompositeEntries] visit with surfaces resolved
-/// (entries whose frame has no artwork drop out).
-///
-/// FLAT: folder opacity/blend fold into the members. The paint routes use
-/// [planCutFrameCompositeTree] instead; this stays for the consumers that
-/// cannot nest (a pixel sample, a fill raster).
-///
-/// ⚠️ Flat-path limitation, the same class as the folder-blend
-/// approximation above: a FOLDER's effects are dropped here (they have no
-/// buffer to land on), and a LAYER's effects arrive as data the byte-level
-/// consumers do not run — the eyedropper and the flood fill read the
-/// artwork as DRAWN, not as filtered. Both are Dart byte walks with no
-/// Skia in reach; the filtered picture lives on the paint routes.
-List<CutFrameCompositeLayer> planCutFrameComposite({
-  required Cut cut,
-  required int frameIndex,
-  required LayerFrameSurfaceResolver surfaceResolver,
-}) {
-  final plan = <CutFrameCompositeLayer>[];
-  for (final entry in resolveCutFrameCompositeEntries(
-    cut: cut,
-    frameIndex: frameIndex,
-  )) {
-    final surface = surfaceResolver(entry.layer, entry.frame);
-    if (surface == null) {
-      continue;
-    }
-    plan.add(
-      CutFrameCompositeLayer(
-        surface: surface,
-        opacity: entry.opacity,
-        blendMode: entry.blendMode,
-        placement: entry.placement,
-        effects: entry.effects,
-      ),
-    );
-  }
-  return plan;
-}
-
 /// [resolveCutFrameCompositeTree] with each leaf's surface resolved;
 /// entries whose frame has no artwork drop out, and a group left empty by
-/// that drops with them (an empty buffer is a wasted saveLayer).
+/// that drops with them (an empty buffer is a wasted saveLayer) — save one
+/// a cel number is written on, which stands bare ([mapCompositeLeaves]).
 List<CompositeNode<CutFrameCompositeLayer>> planCutFrameCompositeTree({
   required Cut cut,
   required int frameIndex,
   required LayerFrameSurfaceResolver surfaceResolver,
 }) {
-  CutFrameCompositeLayer? surfaceOf(CutFrameCompositeEntry entry) {
-    final surface = surfaceResolver(entry.layer, entry.frame);
-    if (surface == null) {
-      return null;
-    }
-    return CutFrameCompositeLayer(
-      surface: surface,
-      opacity: entry.opacity,
-      blendMode: entry.blendMode,
-      placement: entry.placement,
-      effects: entry.effects,
-    );
-  }
+  CutFrameCompositeLayer? layerOf(
+    CutFrameCompositeRow row,
+    BitmapSurface? Function(CutFrameCompositeEntry entry) surfaceOf,
+  ) => switch (row) {
+    // ⛔THIS ROUTE HAS NO LIVE PIXELS. Only the editing stack asks the
+    // tree for a live row, and only it owns the surface to fill the slot
+    // with; every other route resolves surfaces from stored frames.
+    // Reached here it would be a caller handing a live row to a route
+    // that cannot draw it, so it contributes nothing rather than guessing.
+    CutFrameCompositeLiveRow() => null,
+    CutFrameCompositeEntry() => switch (surfaceOf(row)) {
+      final surface? => CutFrameCompositeLayer(
+        surface: surface,
+        opacity: row.opacity,
+        blendMode: row.blendMode,
+        placement: row.placement,
+        effects: row.effects,
+      ),
+      null => null,
+    },
+  };
 
   return List.unmodifiable(
     mapCompositeLeaves(
       resolveCutFrameCompositeTree(cut: cut, frameIndex: frameIndex),
-      (row) => switch (row) {
-        // ⛔THIS ROUTE HAS NO LIVE PIXELS. Only the editing stack asks the
-        // tree for a live row, and only it owns the surface to fill the
-        // slot with; every other route resolves surfaces from stored
-        // frames. Reached here it would be a caller handing a live row to
-        // a route that cannot draw it, so it contributes nothing rather
-        // than guessing.
-        CutFrameCompositeLiveRow() => null,
-        CutFrameCompositeEntry() => surfaceOf(row),
-      },
+      (row) => layerOf(
+        row,
+        (entry) => surfaceResolver(entry.layer, entry.frame),
+      ),
+      bare: (row) =>
+          layerOf(row, (_) => BitmapSurface(canvasSize: cut.canvasSize)),
     ),
   );
 }

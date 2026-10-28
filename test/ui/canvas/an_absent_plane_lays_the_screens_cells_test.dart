@@ -25,10 +25,13 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
-import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/stage_planes_painter.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
+import 'package:anicel/src/ui/playback/frame_picture_store.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
+import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
 /// 🚨AN ABSENT PLANE IS ONE CHECKERBOARD ON THE SCREEN, and it lies where
 /// the stack lies (F-114 — 유저 2026-09-15: 「없음버튼 누르면 없는상태. 즉 해당
@@ -65,36 +68,27 @@ void main() {
   const reach = PasteboardReach.quarter;
 
   const cutId = CutId('c');
+  final cut = Cut(
+    id: cutId,
+    name: 'Cut',
+    duration: 1,
+    canvasSize: canvasSize,
+    layers: [
+      Layer(
+        id: const LayerId('l'),
+        name: 'Layer',
+        frames: [Frame(id: const FrameId('f'), duration: 1, strokes: const [])],
+        timeline: {0: const TimelineExposure.drawing(FrameId('f'), length: 1)},
+      ),
+    ],
+  );
   final layout = buildStoryboardTimelineLayout(
     Project(
       id: const ProjectId('p'),
       name: 'Project',
       cameraSize: canvasSize,
       tracks: [
-        Track(
-          id: const TrackId('t'),
-          name: 'Track',
-          cuts: [
-            Cut(
-              id: cutId,
-              name: 'Cut',
-              duration: 1,
-              canvasSize: canvasSize,
-              layers: [
-                Layer(
-                  id: const LayerId('l'),
-                  name: 'Layer',
-                  frames: [
-                    Frame(id: const FrameId('f'), duration: 1, strokes: const []),
-                  ],
-                  timeline: {
-                    0: const TimelineExposure.drawing(FrameId('f'), length: 1),
-                  },
-                ),
-              ],
-            ),
-          ],
-        ),
+        Track(id: const TrackId('t'), name: 'Track', cuts: [cut]),
       ],
       createdAt: DateTime.utc(2026),
     ),
@@ -138,10 +132,29 @@ void main() {
   bool aCell(List<int> rgba) =>
       cells.any((cell) => listEquals(cell, rgba));
 
-  LayerFrameImageCache images() {
+  /// The frames' pictures a screen shows, each on its page: [background] —
+  /// the paper, or its absence — and the pasteboard past it to [reach].
+  StackRun picturesOn(ProjectBackground background) {
     final cache = LayerFrameImageCache(frameStore: BrushFrameStore());
     addTearDown(cache.dispose);
-    return cache;
+    final store = FramePictureStore<FramePictureKey>();
+    addTearDown(store.dispose);
+    final landings = ValueNotifier<int>(0);
+    addTearDown(landings.dispose);
+    return (
+      landings: landings,
+      pictures: FramePictures(
+        store: store,
+        layerImages: cache,
+        stackOf: (_) => const [],
+        pageOf: (picture) => (
+          canvasSize: picture.cut.canvasSize,
+          pasteboardReach: reach,
+          paintPaper: picture.paintPaper,
+          paperBackground: background,
+        ),
+      ),
+    );
   }
 
   /// The editing canvas's planes, every one of them absent: the
@@ -160,8 +173,7 @@ void main() {
 
   /// The film at its one frame through the camera at [pose], nothing drawn:
   /// the stage alone.
-  Widget theFilm(
-    LayerFrameImageCache cache, {
+  Widget theFilm({
     required CanvasViewport view,
     required CameraPose pose,
     bool backdropNone = false,
@@ -175,7 +187,7 @@ void main() {
       globalFrameIndex: frame,
     ),
     stackOf: (_, _) => const [],
-    imageCache: cache,
+    pictures: picturesOn(background),
     cameraFrameSize: canvasSize,
     cameraViewEnabled: true,
     cameraPoseOf: (_, _) => pose,
@@ -226,7 +238,6 @@ void main() {
             await pump(
               tester,
               theFilm(
-                images(),
                 view: view,
                 pose: pose,
                 backdropNone: backdropNone,
@@ -282,7 +293,6 @@ void main() {
           tester.view.devicePixelRatio = ratio;
           addTearDown(tester.view.resetDevicePixelRatio);
           final view = CanvasViewport(zoom: zoom, panX: pan.x, panY: pan.y);
-          final cache = images();
           Widget still({required bool paperNone}) => CustomPaint(
             painter: StagePlanesPainter(
               backdrop: (color: backdrop, none: false),
@@ -293,15 +303,15 @@ void main() {
               viewport: view,
               devicePixelRatio: ratio,
             ),
-            child: CanvasLayerStackView(
+            // The canvas standing on a frame of no row: its page alone.
+            child: FramePictureView(
               key: ValueKey<bool>(paperNone),
+              run: picturesOn(paperNone ? absentPaper : paper),
+              picture: (cut: cut, frameIndex: 0, paintPaper: true),
               nodes: const [],
-              imageCache: cache,
-              canvasSize: canvasSize,
-              pasteboardReach: reach,
               viewport: view,
-              paintPaper: true,
-              paperBackground: paperNone ? absentPaper : paper,
+              laysWhatItMisses: true,
+              wholeFrames: false,
             ),
           );
 

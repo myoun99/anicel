@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/timeline/timeline_frame_range_gesture.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_run_end_handles.dart';
+import 'package:anicel/src/ui/widgets/instant_tap_region.dart';
 
 import 'timeline_row_chrome_probe.dart';
 import '../../helpers/named_finders.dart';
@@ -88,6 +89,7 @@ void main() {
     WidgetTester tester,
     TimelineGridHooks hooks, {
     double rowHeight = 52,
+    double cellWidth = cell,
   }) => tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
@@ -95,7 +97,7 @@ void main() {
           hooks: hooks,
           layers: [blockLayer()],
           metrics: TimelineGridMetrics(
-            frameCellWidth: cell,
+            frameCellWidth: cellWidth,
             layerRowHeight: rowHeight,
           ),
         ),
@@ -110,6 +112,7 @@ void main() {
     bool moveBegins = true,
     bool rowHolds = false,
     double rowHeight = 52,
+    double cellWidth = cell,
   }) async {
     final heard = Heard();
     final selection = ValueNotifier<TimelineFrameRangeSelection?>(
@@ -134,7 +137,6 @@ void main() {
                 anchorIndex,
                 headIndex, {
                 headLayerId,
-                headLaneId,
                 spanRows = const [],
               }) => heard.selects.add((anchorIndex, headIndex)),
           onClear: () => heard.clears += 1,
@@ -152,12 +154,13 @@ void main() {
         ),
       ),
       rowHeight: rowHeight,
+      cellWidth: cellWidth,
     );
     final layer = find.named('timeline-range-gesture-layer-a');
     // The middle of cell 1, halfway down the row.
     return (
       heard,
-      tester.getTopLeft(layer) + Offset(cell * 1.5, rowHeight / 2),
+      tester.getTopLeft(layer) + Offset(cellWidth * 1.5, rowHeight / 2),
     );
   }
 
@@ -335,8 +338,8 @@ void main() {
         heard.selects.toSet(),
         {(6, 7)},
         reason: '↩️nothing until 18px, and then the head was already 8 — '
-            'and the band is shown from the step that left the cell, the '
-            'pressed cell alone never (F-316)',
+            'and the band is shown from the step that left the cell, '
+            'eight pixels being no farther than a tap (F-316, F-468)',
       );
       expect(
         heard.settled,
@@ -379,7 +382,56 @@ void main() {
           reason: 'a click that wobbles is still a click (H24)',
         );
       });
+
+      testWidgets('🗣️F-468: a ${kind.name} that travels farther than a tap '
+          'on the cell it pressed selects that one koma, and its release '
+          'keeps it', (tester) async {
+        const wide = 48.0;
+        final (heard, inside) = await mountSelected(tester, cellWidth: wide);
+
+        // Two pixels into cell 4, outside the selection and short of the
+        // edge the auto-pan scrolls at.
+        final gesture = await tester.startGesture(
+          inside + const Offset(wide * 2.5 + 2, 0),
+          kind: kind,
+        );
+        await creep(tester, gesture, InstantTapRegion.travelSlop.toInt());
+        expect(heard.selects, isEmpty, reason: 'no farther than a tap yet');
+        await creep(tester, gesture, 8);
+        expect(
+          heard.selects.toSet(),
+          {(4, 4)},
+          reason: '「1코마만 선택 가능하게」 — the pressed koma, never left',
+        );
+        await gesture.up();
+        await tester.pump();
+
+        expect(heard.selects.toSet(), {(4, 4)});
+        expect(heard.settled, 0, reason: 'a sweep is no tap: it stays');
+      });
     }
+
+    testWidgets('🗣️F-468: what the edge auto-pan scrolls under the hand is '
+        'no travel of it — a hand short of a tap still shows nothing', (
+      tester,
+    ) async {
+      const wide = 48.0;
+      final (heard, inside) = await mountSelected(tester, cellWidth: wide);
+
+      // Two pixels into cell 6, where the auto-pan scrolls.
+      final gesture = await tester.startGesture(
+        inside + const Offset(wide * 4.5 + 2, 0),
+        kind: PointerDeviceKind.mouse,
+      );
+      await creep(tester, gesture, 7);
+      expect(
+        heard.selects,
+        isEmpty,
+        reason: 'seven pixels of hand, more of scrolled sheet',
+      );
+      await gesture.up();
+      await tester.pump();
+    });
 
     for (final (way, dy) in [('up', -1.0), ('down', 1.0)]) {
       testWidgets('🚨a select that leaves a LOW row ($way) inside a tap\'s '
@@ -476,6 +528,7 @@ void main() {
       WidgetTester tester, {
       TimelineLaneSelection? selected,
       double rowHeight = 52,
+      double cellWidth = cell,
     }) async {
       final heard = Heard();
       final laneSelection = ValueNotifier<TimelineLaneSelection?>(selected);
@@ -500,11 +553,12 @@ void main() {
           ),
         ),
         rowHeight: rowHeight,
+        cellWidth: cellWidth,
       );
       final band = find.byKey(
         const ValueKey<String>('timeline-lane-range-gesture-layer-a-position'),
       );
-      return (heard, tester.getTopLeft(band) + const Offset(cell * 1.5, 12));
+      return (heard, tester.getTopLeft(band) + Offset(cellWidth * 1.5, 12));
     }
 
     testWidgets('🚨F-238: a pen that travels one cell inside the lane '
@@ -625,6 +679,46 @@ void main() {
 
       expect(heard.selects, isEmpty);
       expect(heard.clears, 1, reason: 'H18: a click on the band clears');
+    });
+
+    testWidgets('🗣️F-468: a pen that travels farther than a tap on the '
+        'band\'s cell it pressed selects that one koma, and keeps it', (
+      tester,
+    ) async {
+      const wide = 48.0;
+      final (heard, middle) = await mountBand(tester, cellWidth: wide);
+
+      final gesture = await tester.startGesture(
+        middle - const Offset(wide / 2 - 2, 0),
+        kind: PointerDeviceKind.stylus,
+      );
+      await creep(tester, gesture, 20);
+      expect(heard.selects.toSet(), {(1, 1)}, reason: 'the pressed koma');
+      await gesture.up();
+      await tester.pump();
+
+      expect(heard.selects.toSet(), {(1, 1)});
+      expect(heard.clears, 0, reason: 'a sweep is no tap: it stays');
+    });
+
+    testWidgets('🗣️F-468: on the band too, what the edge auto-pan scrolls '
+        'under the hand is no travel of it', (tester) async {
+      const wide = 48.0;
+      final (heard, middle) = await mountBand(tester, cellWidth: wide);
+
+      // Two pixels into cell 6, where the auto-pan scrolls.
+      final gesture = await tester.startGesture(
+        middle + const Offset(wide * 4.5 + 2, 0),
+        kind: PointerDeviceKind.mouse,
+      );
+      await creep(tester, gesture, 7);
+      expect(
+        heard.selects,
+        isEmpty,
+        reason: 'seven pixels of hand, more of scrolled sheet',
+      );
+      await gesture.up();
+      await tester.pump();
     });
   });
 

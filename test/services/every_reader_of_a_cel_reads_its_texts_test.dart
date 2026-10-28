@@ -171,34 +171,10 @@ void main() {
   });
 
   group('the shared plan — playback, export and the camera', () {
-    List<int>? planPixel(BitmapSurface resolved, int x, int y) {
-      final planned = planCutFrameComposite(
-        cut: cut,
-        frameIndex: 0,
-        surfaceResolver: (_, _) => resolved,
-      ).single.surface;
-      final rgba = surfacePixelRgba(planned, x, y);
-      return rgba == null
-          ? null
-          : [rgba >> 24 & 0xFF, rgba >> 16 & 0xFF, rgba >> 8 & 0xFF, rgba & 0xFF];
-    }
-
-    test('hands every route tiles that already hold the letters, and no '
-        'texts left to lay', () {
-      final resolved = cel(drawn: {(3, 3): blue}, letters: {(3, 3): red});
-
-      expect(planPixel(resolved, 3, 3), red);
-      expect(
-        planCutFrameComposite(
-          cut: cut,
-          frameIndex: 0,
-          surfaceResolver: (_, _) => resolved,
-        ).single.surface.texts,
-        isEmpty,
-      );
-    });
-
-    test('the tree plan, which the paint routes walk, does too', () {
+    // ↩️A flat plan beside it asked the same; only tests called it
+    // (the-flat-composite-plan-has-no-caller-but-tests, 10-25).
+    test('the tree plan the paint routes walk hands every route tiles that '
+        'already hold the letters, and no texts left to lay', () {
       final resolved = cel(drawn: {(3, 3): blue}, letters: {(3, 3): red});
 
       final leaf =

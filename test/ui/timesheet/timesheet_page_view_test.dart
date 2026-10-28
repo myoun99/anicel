@@ -21,6 +21,7 @@ import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/canvas_pill.dart';
 import '../../helpers/device_viewport.dart';
 import '../../helpers/sheet_paper_view.dart';
+import '../../helpers/number_pad_keyboard.dart';
 
 /// THE TIMESHEET'S PAGE VIEW LAYS ITS SHEETS ONE UNDER ANOTHER (F-201,
 /// 유저 2026-09-27 F-201-timesheet-pages-Q1: 「타임시트 페이지 보기도
@@ -304,6 +305,7 @@ void main() {
         find.byKey(ValueKey<String>('${_pageLabelKey.value}-edit')),
       );
       await tester.pumpAndSettle();
+      await openThePadsKeyboard(tester);
       await tester.enterText(find.byKey(_pageInputKey), '1');
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();

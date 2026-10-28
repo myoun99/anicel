@@ -62,3 +62,14 @@ tags:
   # it in batches of their own, with those two flags. CI does the same
   # inside each test shard (.github/actions/test-shard), adding no job.
   gpu:
+  # A file that needs the IMPELLER TESTER but not Flutter GPU — a shader
+  # filter, say, which Skia does not have, so there the pin can only skip.
+  #
+  # NOT skipped, for the reason `gpu` is not: the tag says on what these
+  # run. Its own tag, not `gpu`'s, because 「does it draw with Flutter GPU」
+  # and 「does it need Impeller」 are two questions (브러시/렌더링, 2026-10-24,
+  # impeller-sweep-canvas-reds). `tool/affected_tests.dart` runs the files
+  # carrying it in batches of their own with --enable-impeller alone. A
+  # file that lists both tags runs where `gpu` does: its flags include
+  # Impeller's.
+  impeller:

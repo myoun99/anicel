@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
 /// What a test reads off an icon button — whichever family wears the face
@@ -37,12 +38,13 @@ final class IconButtonReading {
 /// Reads an icon button through the finder a test already holds for its
 /// KEY.
 ///
-/// The key names the FACE — [AppIconButtonFace], or [RailGlyphFace] on a
+/// The key names the FACE — [AppIconButtonFace], or [RailGlyphButton] on a
 /// rail — the box you see and press, and tests used to read `onPressed` /
 /// `isSelected` / `tooltip` off the Material `IconButton` that stood in that
 /// spot. That button is gone (2026-09-10: it was 27 render objects a button
 /// and 47% of the idle screen), so this climbs from the face to the widget
-/// whose PUBLIC API those fields are.
+/// whose PUBLIC API those fields are — or reads the rail's button, which is
+/// its own face.
 ///
 /// ⚠️`onPressed` read here is the REAL callback, where the old read got the
 /// silent one the claim hands down. Every test that reads it only asks
@@ -65,9 +67,8 @@ extension AppIconButtonProbe on WidgetTester {
         shortcuts: button.shortcuts,
       );
     }
-    final button = widget<RailGlyphButton>(
-      find.ancestor(of: face, matching: find.byType(RailGlyphButton)),
-    );
+    // A rail's button IS its face.
+    final button = widget<RailGlyphButton>(face);
     final glyph = button.glyph;
     return IconButtonReading._(
       tooltip: button.tooltip,
@@ -81,56 +82,117 @@ extension AppIconButtonProbe on WidgetTester {
   }
 
   /// The one icon button inside [scope] — for a test that holds the widget
-  /// wrapping a button rather than the button's key.
-  IconButtonReading iconButtonIn(Finder scope) => appIconButton(
-    find.descendant(
-      of: scope,
-      matching: find.byWidgetPredicate(
-        (widget) => widget is AppIconButtonFace || widget is RailGlyphFace,
-      ),
-    ),
-  );
+  /// wrapping a button rather than the button's key. An app button that
+  /// wears a plain [Icon] holds a rail face of its own (2026-10-25), so its
+  /// face is looked for first.
+  IconButtonReading iconButtonIn(Finder scope) {
+    Finder inside(Type face) =>
+        find.descendant(of: scope, matching: find.byType(face));
+    final app = inside(AppIconButtonFace);
+    return appIconButton(
+      app.evaluate().isNotEmpty ? app : inside(RailGlyphButton),
+    );
+  }
 
   /// The colour [face]'s glyph is painted in right now — its ink for the
   /// state the button is in, or the glyph's own colour where it has one.
+  /// A rail face draws the glyph itself, and so does an app button's face
+  /// around a plain [Icon] (2026-10-25).
   Color? glyphInkOf(Finder face) {
-    if (widget(face) is RailGlyphFace) {
-      return renderObject<RenderRailGlyphFace>(face).debugGlyphInk;
+    final rail = _railFaceIn(face);
+    if (rail.evaluate().isNotEmpty) {
+      return renderObject<RenderRailGlyphFace>(rail).debugGlyphInk;
     }
     final icon = find.descendant(of: face, matching: find.byType(Icon));
     return widget<Icon>(icon).color ?? IconTheme.of(element(icon)).color;
   }
+
+  /// Where [face]'s glyph is drawn on the screen — the paragraph a face
+  /// draws itself, or the [Icon] another face holds.
+  Rect glyphRectOf(Finder face) {
+    final rail = _railFaceIn(face);
+    if (rail.evaluate().isNotEmpty) {
+      final box = renderObject<RenderRailGlyphFace>(rail);
+      return MatrixUtils.transformRect(
+        box.getTransformTo(null),
+        box.debugGlyphRect,
+      );
+    }
+    return getRect(find.descendant(of: face, matching: find.byType(Icon)));
+  }
+
+  /// The rail glyph face [face] is or holds — none where its glyph is a
+  /// widget of its own.
+  Finder _railFaceIn(Finder face) => find.descendant(
+    of: face,
+    matching: find.byType(RailGlyphButton),
+    matchRoot: true,
+  );
 }
 
-/// `find.byIcon` and `find.text` for the rail's buttons: a [RailGlyphFace]
+/// `find.byIcon` and `find.text` for the rail's buttons: a [RailGlyphButton]
 /// draws its glyph itself and holds no [Icon] or [Text] to find.
 extension RailGlyphFinders on CommonFinders {
   /// The rail faces wearing [icon].
   Finder railIcon(IconData icon) => byWidgetPredicate(
-    (widget) => widget is RailGlyphFace && switch (widget.glyph) {
+    (widget) => widget is RailGlyphButton && switch (widget.glyph) {
       RailIconGlyph(icon: final worn) => worn == icon,
       RailTextGlyph() => false,
     },
   );
 
+  /// Everything wearing [icon] — an [Icon], or a face that draws it itself.
+  /// A guard that a glyph is NOT shown asks this: `find.byIcon` alone no
+  /// longer sees an app icon button's glyph (2026-10-25).
+  Finder wornIcon(IconData icon) => byWidgetPredicate(
+    (widget) => switch (widget) {
+      Icon(icon: final IconData? worn) ||
+      RailGlyphButton(glyph: RailIconGlyph(icon: final IconData? worn)) =>
+        worn == icon,
+      _ => false,
+    },
+  );
+
   /// The rail faces wearing the word [text].
   Finder railText(String text) => byWidgetPredicate(
-    (widget) => widget is RailGlyphFace && switch (widget.glyph) {
+    (widget) => widget is RailGlyphButton && switch (widget.glyph) {
       RailTextGlyph(text: final worn) => worn == text,
       RailIconGlyph() => false,
     },
   );
 
-  /// The light faces whose tooltip is [message] — `find.byTooltip` for a
-  /// face that summons the one window instead of holding a `Tooltip`: the
-  /// rail's glyph, the rail's plate ([RailPlateButton]) and the app's icon
-  /// button ([AppIconButton], since 2026-10-24).
-  Finder railTooltip(String message) => byWidgetPredicate(
-    (widget) => switch (widget) {
-      RailGlyphFace(:final tooltip) ||
-      RailPlateFace(:final tooltip) ||
-      IconButtonPressFace(:final tooltip) => tooltip == message,
-      _ => false,
-    },
+  /// Whatever says [message] as its tooltip — `find.byTooltip` for this app,
+  /// whose tooltips summon the one window instead of holding a `Tooltip`:
+  /// the rail's glyph, the rail's plate ([RailPlateButton]), the app's icon
+  /// button ([AppIconButton], since 2026-10-24) and the tooltip around
+  /// anything else ([AppTooltip], since 2026-10-25). ⛔`find.byTooltip`
+  /// sees none of them.
+  Finder tooltipSaying(String message) =>
+      byWidgetPredicate((widget) => tooltipOf(widget) == message);
+
+  /// Whatever says a tooltip at all ([tooltipOf]).
+  Finder get anyTooltip =>
+      byWidgetPredicate((widget) => tooltipOf(widget) != null);
+}
+
+/// What [widget] says as its tooltip, if it is one of the boxes that summon
+/// the window (`find.tooltipSaying`).
+String? tooltipOf(Widget widget) => switch (widget) {
+  RailGlyphButton(:final tooltip) ||
+  RailPlateButton(:final tooltip) ||
+  IconButtonPressFace(:final tooltip) => tooltip,
+  AppTooltip(message: final tooltip) => tooltip,
+  _ => null,
+};
+
+/// The light face an app icon button wears inside [button] — the rail's
+/// glyph face around a plain [Icon] (2026-10-25), the shifted face around
+/// any other glyph.
+extension IconButtonFaceFinder on CommonFinders {
+  Finder iconButtonFace(Finder button) => descendant(
+    of: button,
+    matching: byWidgetPredicate(
+      (widget) => widget is IconButtonPressFace || widget is RailGlyphButton,
+    ),
   );
 }

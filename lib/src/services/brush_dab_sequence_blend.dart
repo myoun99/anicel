@@ -24,8 +24,13 @@ List<BrushPixelBlendOperation> brushPixelBlendOperationsForDabSequence({
     // would be built only to be thrown away one dab later. (The coverage
     // OBJECT still gets made, because that is what `blendBrushDabStrokePixel`
     // takes; it is the container around them that goes.)
-    forEachBrushPixelCoverage(dab, (x, y, value) {
-      final coverage = BrushPixelCoverage(x: x, y: y, coverage: value);
+    forEachBrushPixelCoverage(dab, (x, y, value, ceiling) {
+      final coverage = BrushPixelCoverage(
+        x: x,
+        y: y,
+        coverage: value,
+        ceiling: ceiling,
+      );
       final key = _PixelKey(coverage.x, coverage.y);
       final before =
           currentPixels[key] ??

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_dab_sequence.dart';
 import 'package:anicel/src/models/brush_pixel_blend_operation.dart';
@@ -28,6 +29,11 @@ void main() {
       tipShape: BrushTipShape.round,
       pressure: 1,
       sequence: sequence,
+      // 없음: a pixel landed whole. Under any other step a one-pixel nib is
+      // all edge and lays half of it (board
+      // a-one-pixel-dab-drops-out-by-where-it-lies Q4) — these pin the blend,
+      // not the edge.
+      antiAlias: BrushAntiAlias.none,
     );
   }
 

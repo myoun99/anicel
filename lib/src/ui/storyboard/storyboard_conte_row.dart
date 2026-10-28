@@ -319,8 +319,9 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
   @override
   Widget buildKept(BuildContext context) {
     final shown = trackConteRowShown(trackId, layoutEntries, seat: seat);
+    final headShown = _headShown();
     final stripGesture = _stripGesture();
-    final stripEdges = this.stripEdges;
+    final edges = stripEdges;
     final stripSelect = this.stripSelect;
     final edit = _edit;
     return SizedBox(
@@ -332,10 +333,15 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
       height: height,
       child: Stack(
         children: [
-          _cells(context, shown),
+          _cells(context, shown, headShown: headShown),
           // Each panel's length at its end — the timeline row's own print
           // (F-228), over the paper and under everything that answers.
-          _runLabels(context, shown),
+          _runLabels(
+            context,
+            shown,
+            shown: headShown,
+            celContent: _celContent(shown),
+          ),
           // Where each cut begins — the projection rows' dashed line, the
           // camera row's own ([StoryboardCutStartsPainter]).
           _StoryboardCutStarts(
@@ -366,31 +372,45 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
           if (stripSelect != null) _selectionBand(stripSelect),
           // THE EDGES ride ABOVE the range gesture so an edge keeps its
           // priority over it; the middles keep the rest.
-          if (stripEdges != null) _edges(stripEdges, shown),
+          if (edges != null) _edges(edges, _blocks(context, shown, headShown)),
         ],
       ),
     );
   }
 
-  /// The row's edges, over its blocks ([_StoryboardPanelEdges]).
-  Widget _edges(StoryboardStripEdgeCallbacks stripEdges, Layer shown) =>
-      Positioned.fill(
-        key: ValueKey<String>('storyboard-edit-chrome-slot-$_scope'),
-        child: _StoryboardPanelEdges(
-          trackId: trackId,
-          seat: seat,
-          scope: _scope,
-          layoutEntries: layoutEntries,
-          stripEdges: stripEdges,
-          // The grips sit on this row's blocks, and the blocks are the
-          // row's colour label (⑲) — the ground law reads their ink off it.
-          paper: layerMarkColor(shown.mark),
-          height: height,
-          frameGeometry: frameGeometry,
-          windowBucket: windowBucket,
-          viewportWidth: viewportWidth,
-        ),
-      );
+  /// The row [shown] as its cells draw its blocks: the head's eye
+  /// ([headShown]), its cels and the host's ground.
+  TimelineBlockRow _blocks(
+    BuildContext context,
+    Layer shown,
+    bool headShown,
+  ) => (
+    layer: shown,
+    shown: headShown,
+    content: _celContent(shown),
+    ground: TimelineGridLaw.maybeOf(context)?.ground,
+  );
+
+  /// The row's edges, over its blocks ([_StoryboardPanelEdges]) — on them
+  /// as [row] draws them, the cells' own (I-129).
+  Widget _edges(
+    StoryboardStripEdgeCallbacks stripEdges,
+    TimelineBlockRow row,
+  ) => Positioned.fill(
+    key: ValueKey<String>('storyboard-edit-chrome-slot-$_scope'),
+    child: _StoryboardPanelEdges(
+      trackId: trackId,
+      seat: seat,
+      scope: _scope,
+      layoutEntries: layoutEntries,
+      stripEdges: stripEdges,
+      row: row,
+      height: height,
+      frameGeometry: frameGeometry,
+      windowBucket: windowBucket,
+      viewportWidth: viewportWidth,
+    ),
+  );
 
   /// THE blocks — the timeline's own row painter, on the cuts' conte layers
   /// as one row ([trackConteRowShown]): one painter for the whole film,
@@ -400,7 +420,7 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
   /// first cell of every empty run (the timesheet's X), and here a stretch
   /// with no block is not an empty drawing — it is a cut with no conte
   /// layer, which wears its button, or a gap, where there is no cut at all.
-  Widget _cells(BuildContext context, Layer shown) {
+  Widget _cells(BuildContext context, Layer shown, {required bool headShown}) {
     // I-44: the HOST's ground and lines, stated once by its law — as the
     // timeline's rows read them.
     final law = TimelineGridLaw.maybeOf(context);
@@ -428,6 +448,7 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
               blockFrameLines: law?.blockFrameLines ?? false,
               framesPerSecond: law?.framesPerSecond ?? 0,
               celContent: _celContent(shown),
+              shown: headShown,
               // Baked as the timeline's rows are, in a world no live cut
               // moves (TimelineTileRasterSource.followsTheLiveCut).
               tileStore: TimelineGridTileStore.instance,
@@ -441,6 +462,19 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
       ),
     );
   }
+
+  /// Whether the row's eye shows its blocks (I-129): its HEAD's, as the
+  /// folders of the head's cut gate it ([railEyesOf]) — the row wears its
+  /// head's eye as it wears its head's colour label ([trackConteRowShown]).
+  /// One eye answers for every cut's blocks because a track's conte lays
+  /// ONE head on its row in every cut, the eye with it ([ConteHead], F-343
+  /// — 유저 2026-10-08: 「이거만 눈이랑 불투명도조차 링크하도록. 그거마저
+  /// 머리로서 하나로되도록 통일」).
+  bool _headShown() =>
+      _conteHeadEye([
+        for (final entry in layoutEntries) entry.cut,
+      ], seat)?.shown ??
+      true;
 
   /// The timeline's unworked-block tint (R26 #44) on this row's blocks,
   /// each one's cel asked of the cut it stands in and that cut's row at
@@ -666,7 +700,7 @@ class _StoryboardPanelEdges extends StatelessWidget {
     required this.scope,
     required this.layoutEntries,
     required this.stripEdges,
-    required this.paper,
+    required this.row,
     required this.height,
     required this.frameGeometry,
     required this.windowBucket,
@@ -685,8 +719,9 @@ class _StoryboardPanelEdges extends StatelessWidget {
   final List<StoryboardTimelineLayoutEntry> layoutEntries;
   final StoryboardStripEdgeCallbacks stripEdges;
 
-  /// The ground the grips' ink is read off: the row's blocks' paper.
-  final Color paper;
+  /// The row the blocks are drawn as ([TimelineRowEditChromeLayer.gripRow])
+  /// — its paper the ground the grips' ink is read off.
+  final TimelineBlockRow row;
 
   /// The conte row's height.
   final double height;
@@ -820,7 +855,10 @@ class _StoryboardPanelEdges extends StatelessWidget {
     final grips = _grips();
     return TimelineRowEditChromeLayer(
       paintName: 'storyboard-edit-chrome-$scope',
-      gripGround: paper,
+      // The grips sit on this row's blocks, and the blocks are the row's
+      // colour label (⑲) — the ground law reads their ink off it.
+      gripGround: layerMarkColor(row.layer.mark),
+      gripRow: row,
       // The blocks' own window: the row spans the whole film, and the grips
       // are drawn where the view can reach, as the blocks under them are.
       windowBucket: windowBucket,
@@ -999,4 +1037,13 @@ class StoryboardConteCreatePainter extends CustomPainter with RepaintOnProps {
     baseTextStyle,
     viewportMainExtent,
   );
+}
+
+/// The eye of the row that speaks for [seat] among [cuts] ([conteHeadAt]),
+/// as the folders of its cut gate it: the ONE eye every cut's row at that
+/// seat wears on the storyboard, its blocks and its keys alike (F-343,
+/// I-129) - or null while no cut holds a row there.
+RailEye? _conteHeadEye(Iterable<Cut> cuts, int seat) {
+  final head = conteHeadAt(cuts, seat);
+  return head == null ? null : _cutsOwnEye(head.cut, head.row);
 }

@@ -14,23 +14,19 @@ import '../../models/project_background.dart';
 import '../../services/camera_projection_matrix.dart';
 import '../../services/playback/playback_frame_mapping.dart';
 import '../../services/se_name_tag_plan.dart';
-import '../canvas/canvas_layer_stack_view.dart';
+import '../canvas/canvas_layer_stack_view.dart' show CanvasStackRow;
 import '../canvas/stage_planes_painter.dart';
 import 'camera_shot.dart';
-import 'layer_frame_image_cache.dart';
+import 'frame_picture_view.dart';
 import 'playback_frame_painter.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../canvas/viewport_canvas_transform.dart';
 import '../repaint_props.dart';
 
-/// What the track stack takes from a RUN it shows: what each of its cuts
-/// takes ([StackRun]), and whether the run's frame goes up when asked for —
-/// the question the run's clock counts the frames it leaves by
-/// (`PlaybackRig.frameIsThere`).
-typedef TrackStackRun = ({
-  StackRun cuts,
-  bool Function(int frame) frameIsThere,
-});
+/// What the track stack takes from a RUN it shows: whether the run's frame
+/// goes up when asked for — the question the run's clock counts the frames
+/// it leaves by (`PlaybackRig.frameIsThere`).
+typedef TrackStackRun = ({bool Function(int frame) frameIsThere});
 
 /// The parked-state canvas content — the multitrack display path.
 ///
@@ -43,15 +39,16 @@ typedef TrackStackRun = ({
 /// single-active-cut; this path only displays ("draw on the canvas, watch
 /// through the camera" — with nothing active, everything here is watched).
 ///
-/// 🚨★★★A CUT IS DRAWN FROM ITS ROWS' IMAGES, AS THE CANVAS DRAWS IT
-/// (playback-plays-the-screen-material, 2026-10-10; 유저 F-296-Q6
-/// 「중복소재 안만들고 싶은것」, 10-10 「전체컷재생도 동일하게 합성본 안만들고
-/// 통일하고싶고」): each covered cut is its composite tree
-/// ([stackOf] — the V row's fx a group over it) on a [CanvasLayerStackView]
-/// out of the canvas's own image cache, seen through the view the canvas
-/// would see it through. ↩️Each covered cut was one composite per frame,
-/// made and held here beside the very images the canvas holds — a second
-/// picture of everything the film showed.
+/// 🚨★★★A CUT'S FRAME IS ITS ONE PICTURE, THE ONE THE CANVAS SHOWS OF IT
+/// (one-picture-per-frame ②-2 · ②-3, D7-2-Q3=a; 유저 F-296-Q6 「중복소재
+/// 안만들고 싶은것」, 10-10 「전체컷재생도 동일하게 합성본 안만들고
+/// 통일하고싶고」): each covered cut is its composite tree ([stackOf] — the V
+/// row's fx a group over it), signed, and the picture [pictures] keep of
+/// it ([FramePictureView]), seen through the view the canvas would see it
+/// through — parked or under a run. ↩️Each covered cut was one composite
+/// per frame, made and held here beside the very images the canvas holds —
+/// a second picture of everything the film showed; then, parked, its rows'
+/// images stacked again (`CanvasLayerStackView`, 2026-10-10 → ②-3).
 ///
 /// The bottom covered track is the STAGE: its paper and apron lie under its
 /// picture, and its fade thins the whole unit, revealing the floor; the
@@ -68,13 +65,12 @@ class CanvasTrackStackView extends StatelessWidget {
     required this.globalFrame,
     required this.positionsOf,
     required this.stackOf,
-    required this.imageCache,
+    required this.pictures,
     required this.cameraFrameSize,
     required this.cameraPoseOf,
     this.cameraViewEnabled = true,
     this.seNameTagsOf,
     this.run,
-    this.onBufferBytes,
     this.viewport,
     this.background = ProjectBackground.defaultBackground,
     this.backdropArgb = defaultProjectBackdropArgb,
@@ -101,8 +97,9 @@ class CanvasTrackStackView extends StatelessWidget {
   final List<CompositeNode<CanvasStackRow>> Function(Cut cut, int frameIndex)
   stackOf;
 
-  /// The canvas's own images, the ones every cut here is drawn from.
-  final LayerFrameImageCache imageCache;
+  /// The frames' pictures — the canvas's own, every cut here shows — and
+  /// the signal that one landed.
+  final StackRun pictures;
 
   /// Whether the CAMERA VIEW is on — the same view-mode flag the canvas
   /// takes, and the reason this stack no longer crops unconditionally.
@@ -125,22 +122,19 @@ class CanvasTrackStackView extends StatelessWidget {
   final List<ResolvedSeNameTag> Function(Cut cut, int frameIndex)?
   seNameTagsOf;
 
-  /// Null where this view's cuts make what they lack themselves: a parked
-  /// frame, an O.L partner — 「스크럽하던 뭐던 존재하는게 보여야함」 (F-206).
+  /// Null where this view's cuts make what they lack themselves
+  /// ([FramePictureView.laysWhatItMisses]): a parked frame, an O.L partner
+  /// — 「스크럽하던 뭐던 존재하는게 보여야함」 (F-206).
   ///
   /// Set where a run PLAYS through it: the warmer follows the run and is the
   /// one maker of its pictures, in the order the run wants them, so each cut
-  /// here shows what has landed ([CanvasLayerStackView.run]) and the film
+  /// here shows what has landed ([FramePictureView]) and the film
   /// changes frames whole, across its cuts as within one
   /// ([_WholeFilmFrames]). ↩️It composed the frame under the playhead
   /// itself, beside a warmer that was baking the playlist from wherever
   /// play had been pressed — two makers, one picture between them at the
   /// worst moment.
   final TrackStackRun? run;
-
-  /// Told how many bytes each cut's display buffer holds, by cut, whenever
-  /// that changes — 0 when it goes ([CanvasLayerStackView.onBufferBytes]).
-  final void Function(Object cut, int bytes)? onBufferBytes;
 
   /// The panel's live pan/zoom; identity when null.
   final CanvasViewport? viewport;
@@ -178,6 +172,7 @@ class CanvasTrackStackView extends StatelessWidget {
   @override
   Widget build(BuildContext context) => _WholeFilmFrames(
     globalFrame: globalFrame,
+    landings: pictures.landings,
     run: run,
     builder: _frame,
   );
@@ -331,22 +326,16 @@ class CanvasTrackStackView extends StatelessWidget {
           opacity: isStage ? 1 : weight,
           child: ShotClip(
             outline: pictureOutlineOnScreen(view, shot, cut.canvasSize, ratio),
-            child: CanvasLayerStackView(
+            child: FramePictureView(
+              run: pictures,
+              picture: (cut: cut, frameIndex: localFrame, paintPaper: isStage),
               nodes: stackOf(cut, localFrame),
-              imageCache: imageCache,
-              canvasSize: cut.canvasSize,
-              pasteboardReach: pasteboardReach,
               viewport: shot?.frameView ?? view,
-              paintPaper: isStage,
-              paperBackground: background,
-              // A drag parks one frame after another: a cut shows its last
-              // whole frame until the next one is — a run's are whole anyway
-              // ([CanvasLayerStackView.wholeFrames]).
-              wholeFrames: true,
-              run: run?.cuts,
-              onBufferBytes: onBufferBytes == null
-                  ? null
-                  : (bytes) => onBufferBytes!(cut.id, bytes),
+              // A run's frames are made ahead of it by its warmer; parked, a
+              // cut makes what it lacks — and a drag parks one frame after
+              // another, so a cut shows its last whole frame until the next
+              // one is ([FramePictureView.wholeFrames]).
+              laysWhatItMisses: run == null,
             ),
           ),
         ),
@@ -370,7 +359,7 @@ class CanvasTrackStackView extends StatelessWidget {
 /// 2026-10-15, F-365-Q2: 「컷을 넘을 때도 직전 그림을 남기고, 건너뛴 프레임
 /// 수를 재생 버튼 왼쪽에 빨갛게」). Under a run, the frame shown is the
 /// run's — or, while its picture is not all there, the last one that was.
-/// Each cut's view changes its own frames whole ([CanvasLayerStackView.run]),
+/// Each cut's view changes its own frames whole ([FramePictureView]),
 /// but a cut coming in is a view of its own, with no frame of its own to
 /// leave standing: it showed its paper until its rows landed.
 ///
@@ -390,11 +379,15 @@ class CanvasTrackStackView extends StatelessWidget {
 class _WholeFilmFrames extends StatefulWidget {
   const _WholeFilmFrames({
     required this.globalFrame,
+    required this.landings,
     required this.run,
     required this.builder,
   });
 
   final ValueListenable<int?> globalFrame;
+
+  /// That a frame's picture landed ([StackRun.landings]).
+  final Listenable landings;
   final TrackStackRun? run;
   final Widget Function(BuildContext context, int? frame) builder;
 
@@ -410,7 +403,7 @@ class _WholeFilmFramesState extends State<_WholeFilmFrames> {
   void initState() {
     super.initState();
     widget.globalFrame.addListener(_look);
-    widget.run?.cuts.landings.addListener(_look);
+    widget.landings.addListener(_look);
   }
 
   @override
@@ -420,11 +413,9 @@ class _WholeFilmFramesState extends State<_WholeFilmFrames> {
       oldWidget.globalFrame.removeListener(_look);
       widget.globalFrame.addListener(_look);
     }
-    final heard = oldWidget.run?.cuts.landings;
-    final landings = widget.run?.cuts.landings;
-    if (!identical(heard, landings)) {
-      heard?.removeListener(_look);
-      landings?.addListener(_look);
+    if (!identical(oldWidget.landings, widget.landings)) {
+      oldWidget.landings.removeListener(_look);
+      widget.landings.addListener(_look);
     }
     // Another clock, another run: what stands, stands until what is asked
     // for now is whole.
@@ -437,7 +428,7 @@ class _WholeFilmFramesState extends State<_WholeFilmFrames> {
   @override
   void dispose() {
     widget.globalFrame.removeListener(_look);
-    widget.run?.cuts.landings.removeListener(_look);
+    widget.landings.removeListener(_look);
     super.dispose();
   }
 

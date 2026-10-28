@@ -2,6 +2,7 @@ import 'dart:collection';
 import 'dart:math' as math;
 
 import '../core/floor_math.dart';
+import 'frame.dart' show InbetweenMark;
 import 'frame_id.dart';
 import 'layer.dart';
 import 'timeline_exposure.dart';
@@ -39,7 +40,7 @@ typedef _PatternPart = ({
   int offset,
   FrameId frameId,
   int length,
-  List<int> dots,
+  Map<int, InbetweenMark> dots,
 });
 
 /// A free interval `[lo, hi)` a repeat fills, plus the edge its cycle
@@ -251,7 +252,7 @@ class _RunBehaviorPass {
     required FrameId frameId,
     required int length,
     required TimelineRunEdgeGhost owner,
-    List<int> dots = const [],
+    Map<int, InbetweenMark> dots = const {},
   }) {
     var ghost = TimelineExposure.drawing(
       frameId,
@@ -260,7 +261,7 @@ class _RunBehaviorPass {
     );
     if (dots.isNotEmpty) {
       // copyWith clamps the dots to the (possibly shorter) ghost length.
-      ghost = ghost.copyWith(breakdownOffsets: dots);
+      ghost = ghost.copyWith(breakdownMarks: dots);
     }
     return ghost;
   }
@@ -409,7 +410,7 @@ class _RunBehaviorPass {
           offset: entry.key - patternStart,
           frameId: entry.value.frameId!,
           length: math.min(entry.value.length!, patternEnd - entry.key),
-          dots: entry.value.breakdownOffsets,
+          dots: entry.value.breakdownMarks,
         ),
   ];
 
@@ -445,14 +446,11 @@ class _RunBehaviorPass {
         if (end <= start) {
           continue; // Fully cut off by a wall.
         }
-        final shift = start - placed;
         result[start] = ghostEntry(
           frameId: part.frameId,
           length: end - start,
           owner: owner,
-          dots: shift == 0
-              ? part.dots
-              : [for (final dot in part.dots) dot - shift],
+          dots: TimelineExposure.marksPastCut(part.dots, start - placed),
         );
       }
     }

@@ -22,13 +22,12 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart'
     show createCameraLayer;
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
-import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
     show PlaybackScope;
 import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/timeline_host.dart';
 import '../../helpers/row_folds.dart';
 
 /// 🚨★★F-169 — THE STANDING LAW (유저 2026-09-24): ①「보이는거만 선택가능하고
@@ -41,10 +40,12 @@ import '../../helpers/row_folds.dart';
 /// 거기 서있게됨」. The hand-off picked B-1 blind, and the rail's exemption
 /// for the active attach row put it on the screen.
 ///
-/// Every door runs through the real app: the twirl, the legend's filter and
+/// Every door runs through the real tab: the twirl, the legend's filter and
 /// section menus, the verbs the buttons call. Each pin names the source of a
 /// landing and the reason a row is off the screen — the matrix, not the one
-/// symptom.
+/// symptom. ↩️The filter's and the sections' doors opened the app, being
+/// the workspace's verbs; they are the tab's own now (`TabRailWiring`,
+/// tests-hand-roll-the-tab-hosts-Q1 b).
 const _cut = CutId('cut');
 const _a = LayerId('a');
 const _b = LayerId('b');
@@ -102,11 +103,10 @@ Project _project(
   ],
 );
 
-Future<EditorSessionManager> _open(WidgetTester tester, Project project) async {
-  await tester.pumpWidget(MaterialApp(home: HomePage(initialProject: project)));
-  await tester.pumpAndSettle();
-  return tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
-}
+/// The timeline tab alone ([pumpTimelineHost]), as the app's window of
+/// 800 × 600 laid it — the standing is the session's, its rows the panel's.
+Future<EditorSessionManager> _open(WidgetTester tester, Project project) =>
+    pumpTimelineHost(tester, project, surface: const Size(640, 320));
 
 Finder _row(LayerId id) =>
     find.named('timeline-layer-row-${id.value}');

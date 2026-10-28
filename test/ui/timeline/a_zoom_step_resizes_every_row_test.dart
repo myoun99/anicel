@@ -7,6 +7,7 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_ruler.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/timeline_zoom.dart';
 
 /// 🚨F-244: EVERY ROW IS AS LONG AS THE CUT IT SHOWS, AFTER A ZOOM STEP TOO.
 ///
@@ -51,10 +52,8 @@ void main() {
     expect(before, isNotEmpty, reason: 'premise: rows are on screen');
     expect(before.toSet(), {ruler()}, reason: 'premise: they start alike');
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-zoom-in-button')),
-    );
-    await tester.pumpAndSettle();
+    // A drag along the zoom's readout (F-463 took the + off).
+    await dragTimelineZoom(tester, 25);
 
     expect(ruler(), greaterThan(before.first), reason: 'premise: it zoomed');
     expect(widths().toSet(), {ruler()});

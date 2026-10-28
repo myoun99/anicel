@@ -86,20 +86,6 @@ bool? _uploadsPremultiplied;
 set debugPictureOfUploads(bool? uploads) => _uploadsPremultiplied = uploads;
 
 ui.Image? _uploadOrNull(Uint8List premultiplied, int width, int height) {
-  final image = _uploadedNowOrNull(premultiplied, width, height);
-  if (image == null) {
-    // The probe said yes and this said no. Stop asking rather than throw
-    // on every coordinate of every paint.
-    _uploadsPremultiplied = false;
-  }
-  return image;
-}
-
-ui.Image? _uploadedNowOrNull(
-  Uint8List premultiplied,
-  int width,
-  int height,
-) {
   try {
     return ui.decodeImageFromPixelsSync(
       premultiplied,
@@ -108,35 +94,12 @@ ui.Image? _uploadedNowOrNull(
       ui.PixelFormat.rgba8888,
     );
   } on Object catch (_) {
+    // The probe said yes and this said no. Stop asking rather than throw
+    // on every coordinate of every paint.
+    _uploadsPremultiplied = false;
     return null;
   }
 }
-
-/// [bytes]' picture uploaded inside the call, for ONE picture far bigger
-/// than a tile's — a file's picture laid whole past the wall (F-374-Q8 ⑦)
-/// — or null: where this engine draws instead of uploading (Skia, a run of
-/// pixels at a time — no road for a scan's millions of runs), and where it
-/// refuses this upload. ⛔A refusal here is this picture's alone: it does
-/// not turn the run's door to drawing as [pictureOf]'s does — a picture
-/// this big refused says nothing about a tile's.
-ui.Image? wholePictureUploadedOrNull(PictureBytes bytes) {
-  final uploader = debugWholePictureUploader;
-  if (uploader != null) {
-    return uploader(bytes);
-  }
-  if (!pictureOfUploads) {
-    return null;
-  }
-  return bytes.readPremultiplied(
-    (premultiplied) =>
-        _uploadedNowOrNull(premultiplied, bytes.width, bytes.height),
-  );
-}
-
-/// A test's [wholePictureUploadedOrNull]: the test runner draws its
-/// pictures (Skia), so it has no upload of its own to take.
-@visibleForTesting
-ui.Image? Function(PictureBytes bytes)? debugWholePictureUploader;
 
 /// ONE 1×1 upload decides it for the run.
 bool _probe() {

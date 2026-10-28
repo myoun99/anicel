@@ -13,7 +13,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/row_sweep.dart';
 
 /// THE ROW SWEEP — the envelope three legend actions share (the timesheet
-/// flag, the fill references, the layer marks).
+/// flag, the clips, the layer marks).
 ///
 /// It was written by folding those three copies together, and its whole
 /// value is in the two things every copy had to remember and one of them

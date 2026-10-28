@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../models/export_cel_kind.dart';
@@ -7,9 +9,10 @@ import '../../models/layer_mark.dart';
 import '../canvas/guide_overlay.dart' show guideColorOf;
 import '../input/control_press_claim.dart';
 import '../text/app_strings.dart';
-import '../theme/app_theme.dart' show AppColors, AppShapes;
+import '../theme/app_theme.dart' show AppColors, AppCursors, AppShapes;
 import '../timeline/layer_label_controls.dart';
 import '../timeline/layer_rail_columns.dart';
+import '../timeline/timeline_block_look.dart';
 import '../timeline/timeline_block_word.dart';
 import '../timeline/timeline_cell_style.dart';
 import '../timeline/timeline_grid_metrics.dart'
@@ -142,10 +145,21 @@ class ExportCelsBoard extends StatefulWidget {
     required this.onRowSwitched,
     required this.onStoodOn,
     required this.onSheetPressed,
+    this.rulesNeed = 0,
   });
 
-  /// The rules column ([ExportCelsRules]).
+  /// The rules column — the window's, which knows what its words need
+  /// ([rulesNeed]).
   final Widget rules;
+
+  /// How wide [rules] needs to stand for every word of it to be whole, its
+  /// padding included — the column stands [rulesWidthFor] that.
+  final double rulesNeed;
+
+  /// How wide the rules column stands for rules that need [need]: its
+  /// least, or what they need and the hairline that closes the column.
+  static double rulesWidthFor(double need) =>
+      math.max(leastRulesWidth, need + const BorderSide().width);
 
   /// The attach column of the row stood on ([ExportCelsStack]).
   final Widget stack;
@@ -168,8 +182,12 @@ class ExportCelsBoard extends StatefulWidget {
   final ValueChanged<ExportCelsBoardRow> onStoodOn;
   final ValueChanged<ExportListSheet> onSheetPressed;
 
-  /// The rules column's width.
-  static const double rulesWidth = 168;
+  /// The rules column's least width — what it stands at in a language
+  /// whose words fit it.
+  ///
+  /// ↩️It was the column's width in every language (F-486: 「絵コンテ」 got 22
+  /// of its 43 px).
+  static const double leastRulesWidth = 168;
 
   /// The rail's width: the timeline rail's leading cells and a name.
   static const double railWidth = 192;
@@ -199,10 +217,11 @@ class ExportCelsBoard extends StatefulWidget {
   /// by the base's word or an attach row's arrow alone.
   static const double stackWidth = 248;
 
-  /// The narrowest the board lays out at: the rules, the attach column, the
-  /// vertical bar's lane, the rail and five blocks.
-  static const double minimumWidth =
-      rulesWidth +
+  /// The narrowest a board whose rules need [rulesNeed] lays out at: the
+  /// rules, the attach column, the vertical bar's lane, the rail and five
+  /// blocks.
+  static double minimumWidthFor(double rulesNeed) =>
+      rulesWidthFor(rulesNeed) +
       stackWidth +
       AppScrollbarLane.thin +
       railWidth +
@@ -238,7 +257,8 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            width: ExportCelsBoard.rulesWidth,
+            key: const ValueKey<String>('export-cels-rules'),
+            width: ExportCelsBoard.rulesWidthFor(widget.rulesNeed),
             decoration: BoxDecoration(border: Border(right: line)),
             child: widget.rules,
           ),
@@ -443,6 +463,7 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
     return ControlPressClaim(
       onPressed: standOn,
       child: InkWell(
+        mouseCursor: AppCursors.press,
         key: ValueKey<String>('export-cels-stand-$idValue'),
         onTap: silentPress(standOn),
         child: Align(
@@ -563,6 +584,7 @@ class ExportCelBlock extends StatelessWidget {
       child: ControlPressClaim(
         onPressed: onPressed,
         child: InkWell(
+          mouseCursor: AppCursors.press,
           key: ValueKey<String>('export-cels-block-$idValue'),
           onTap: silentPress(onPressed),
           child: Container(
@@ -596,26 +618,39 @@ class ExportCelBlock extends StatelessWidget {
   /// The timeline's own block corner, in the timeline's own form — a box
   /// rounded by the block law ([timelineBlockCornerRadiusAt]), as its
   /// selection band and its standing wash are.
-  BoxDecoration _paper(bool written) => BoxDecoration(
-    color: written ? layerMarkColor(mark) : null,
-    borderRadius: BorderRadius.all(
-      timelineBlockCornerRadiusAt(
-        cellExtent: ExportCelsBoard.blockWidth,
-        crossExtent: height,
+  BoxDecoration _paper(bool written) {
+    final look = _look(written);
+    final line = look.line;
+    return BoxDecoration(
+      color: look.paper,
+      borderRadius: BorderRadius.all(
+        timelineBlockCornerRadiusAt(
+          cellExtent: ExportCelsBoard.blockWidth,
+          crossExtent: height,
+        ),
       ),
-    ),
-    border: written
-        ? null
-        : Border.all(
-            color: shown
-                ? AppColors.accent
-                : timelineDrawingHeldColor.withValues(alpha: 0.28),
-          ),
+      border: line == null
+          ? null
+          : Border.all(
+              color: shown ? AppColors.accent : line,
+              width: timelineBlockLineWidth,
+            ),
+    );
+  }
+
+  /// The block as the timeline draws a frame block ([timelineBlockLook]):
+  /// a written one shown, one not written HOLLOW — the empty block's look,
+  /// which the timeline's empty blocks took from this one (I-129).
+  TimelineBlockLook _look(bool written) => timelineBlockLook(
+    written ? TimelineBlockState.shown : TimelineBlockState.empty,
+    paper: layerMarkColor(mark),
+    ink: timelineInBlockInk(),
   );
 
   /// What the block reads ([ExportCelSheet.word]) in the frame block's own
   /// print: one type whatever its length, narrowed into the block where it
-  /// runs long.
+  /// runs long — a hollow one's in its outline's grey (I-129: 「텍스트는 …
+  /// 외곽선이랑 동일한 회색으로」).
   Widget _word(BuildContext context, bool written) => TimelineBlockText(
     text: sheet.word,
     place: (
@@ -627,9 +662,7 @@ class ExportCelBlock extends StatelessWidget {
     ),
     style: timelineBlockWordStyle(
       DefaultTextStyle.of(context).style,
-      ink: written
-          ? timelineInBlockInk()
-          : Theme.of(context).colorScheme.onSurfaceVariant,
+      ink: _look(written).ink,
       fontSize: 12,
       bold: written,
     ),
@@ -932,6 +965,7 @@ class ExportStepButton extends StatelessWidget {
     return ControlPressClaim(
       onPressed: onPressed,
       child: InkWell(
+        mouseCursor: AppCursors.press,
         key: ValueKey<String>(keyValue),
         onTap: silentPress(onPressed),
         customBorder: AppShapes.container(AppShapes.wellRadius),

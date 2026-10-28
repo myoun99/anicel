@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:anicel/src/ui/brush/brush_tool_state.dart';
-import 'package:anicel/src/ui/brush/brush_value_group.dart';
 import 'package:anicel/src/ui/text/vertical_writing.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
@@ -16,6 +14,11 @@ import '../../helpers/raster_parity.dart';
 /// 「시안대로 px는 필요없어보임. %는 괜찮은데」; then F-460: 「가로표기
 /// 세로쓰기 … 숫자가 90도로 안기울었으면」, 「불투명도는 % 없앰」, and Q1
 /// 「a 한 글자씩 한 칸」.
+///
+/// ↩️The brush pill's bars stand nothing now: their numbers stepped out of
+/// them, into readouts above them (I-135 —
+/// `the_brush_pill_writes_its_numbers_above_its_bars_test`). The onion
+/// skin's pegs stand theirs.
 void main() {
   Future<void> pumpStood(
     WidgetTester tester, {
@@ -123,9 +126,7 @@ void main() {
     expect(inset.height, bare.height + 16);
     // The one cell's centre: an inset down, then half a cell of 10 × 1.15.
     expect(
-      tester.renderObject(
-        find.descendant(of: writing(), matching: find.byType(CustomPaint)),
-      ),
+      tester.renderObject(writing()),
       paints..translate(x: 10, y: 8 + 10 * verticalWritingLineHeight / 2),
     );
   });
@@ -142,9 +143,7 @@ void main() {
     ]);
     final box = tester.getSize(writing());
     expect(
-      tester.renderObject(
-        find.descendant(of: writing(), matching: find.byType(CustomPaint)),
-      ),
+      tester.renderObject(writing()),
       paints
         ..clipRect(rect: Rect.fromLTRB(0, 0, box.width, box.height / 2))
         ..clipRect(
@@ -190,42 +189,5 @@ void main() {
     // The box stands at y 20..120 in the capture; its middle is the edge.
     expect(inksBetween(20, 69), {'above'});
     expect(inksBetween(71, 120), {'on'});
-  });
-
-  testWidgets('the brush pill stands both its numbers up — the size without '
-      'its px, the opacity without its % — and the strip still lays them '
-      'down, units and all', (
-    tester,
-  ) async {
-    final brushTool = ValueNotifier(BrushToolState.defaults);
-    addTearDown(brushTool.dispose);
-    Future<void> pumpBars(BrushValuesLayout layout) => tester.pumpWidget(
-      MaterialApp(
-        theme: buildAppTheme(),
-        home: Scaffold(
-          body: Center(
-            child: BrushValueBars(
-              brushTool: brushTool,
-              widths: (size: 200, opacity: 200),
-              layout: layout,
-            ),
-          ),
-        ),
-      ),
-    );
-
-    await pumpBars(BrushValuesLayout.pill);
-    final words = [
-      for (final column in tester.widgetList<VerticalWritingText>(writing()))
-        column.text,
-    ];
-    expect(words, hasLength(2));
-    expect(words.first, matches(RegExp(r'^\d+\.\d$')), reason: 'no px');
-    expect(words.last, matches(RegExp(r'^\d+$')), reason: 'no %');
-
-    await pumpBars(BrushValuesLayout.strip);
-    expect(writing(), findsNothing);
-    expect(find.textContaining(' px'), findsOneWidget);
-    expect(find.textContaining('%'), findsOneWidget);
   });
 }

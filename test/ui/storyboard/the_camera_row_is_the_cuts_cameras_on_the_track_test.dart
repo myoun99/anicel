@@ -30,7 +30,6 @@ import 'package:anicel/src/ui/storyboard_panel.dart'
         StoryboardCameraRowPainter,
         StoryboardCutStartsPainter,
         StoryboardPanel;
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
     show timelineGridLineSnap;
@@ -45,6 +44,8 @@ import 'package:anicel/src/ui/timeline/timeline_span_name.dart'
     show TimelineSpanName;
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart'
     show transformTrackWithLaneKeysWritten;
+
+import '../../helpers/storyboard_host.dart';
 
 /// 🗣️I-73 ④ (유저 2026-10-08): 「그리고 카메라는 로컬이랑 똑같이 최상단행.
 /// cam섹션의 제일 위」 · 「카메라 행 범위는 키표시/이동/레인 등 모든거
@@ -178,8 +179,6 @@ void main() {
     List<int> cKeys = const [],
     Map<String, Set<int>> held = const {},
   }) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 760));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
     final session = EditorSessionManager(
       initialProject: film(cKeys: cKeys, held: held),
     );
@@ -187,25 +186,14 @@ void main() {
     if (transitions.isNotEmpty) {
       session.transitions.updateTransitionInstructions(transitions);
     }
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => StoryboardTabHost(
-              session: session,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-              hiddenSections: hiddenSections,
-            ),
-          ),
-        ),
-      ),
+    // The sections as hidden — the session's, as the toolbar hides them.
+    session.railView.hiddenSections.value = hiddenSections;
+    await pumpStoryboardHostOn(
+      tester,
+      session,
+      surface: const Size(1600, 760),
+      pixelsPerFrame: 12,
     );
-    await tester.pumpAndSettle();
     return session;
   }
 

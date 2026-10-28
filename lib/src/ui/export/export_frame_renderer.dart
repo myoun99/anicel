@@ -6,12 +6,14 @@ import 'package:flutter/foundation.dart' show listEquals, visibleForTesting;
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
+import '../../models/cel_number_letters.dart' show celNumberText;
 import '../../models/cut.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/project_background.dart';
 import '../../models/cut_id.dart';
 import '../../models/drawing_guide.dart' show DrawingGuide;
 import '../../models/export_format_selection.dart';
+import '../../models/export_spec.dart' show ExportLayerFx;
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/import/import_warning.dart'
@@ -25,7 +27,10 @@ import '../../models/transition_geometry.dart'
     show TransitionVeil, cutTransitionVeilsAt;
 import '../../services/brush_frame_store.dart' show CelRead;
 import '../../models/composite_tree.dart';
+import '../../services/cel_numbered_row.dart';
 import '../../services/cut_frame_composite_plan.dart';
+import '../../services/layer_as_output.dart';
+import '../../services/layer_pose_matrix.dart' show LayerPlacement;
 import '../text/se_name_tag_paint.dart';
 import '../../services/playback/playback_frame_mapping.dart'
     show
@@ -73,12 +78,29 @@ const ui.Color exportFrameGround = ui.Color(0xFFFFFFFF);
 typedef _CelAt = (CutId, LayerId, FrameId);
 
 /// A row of a label-group cel ([ExportFrameRenderer.renderCelGroup]): the
-/// row of the cut it is, its drawing there, and the effects it wears.
+/// row and the cut it is a row of, its drawing there and that drawing's
+/// picture, the effects it wears, and where its file's picture stands on
+/// the paper — its reference fx alone, null for every other row.
+///
+/// 🗣️I-65-Q7 (유저 2026-10-25): 「참조 fx 만 따른다」 — 「트랜스폼은 기본만켬에서
+/// 빠진다고 몇번이나 말했잖아」: a cel goes out on its paper, so the row's
+/// transform never moves it; the reference fx says where a file's picture
+/// stands on that paper, so it is the paper's, and the tab's 레이어 FX keeps
+/// it as every tab's does ([layerAsOutput] — 켬 · 기본만 켬 keep it, 끔
+/// lays the picture where its pixels are). ↩️A cel left it out under all
+/// three.
 typedef _CelRow = ({
+  Cut cut,
   Layer layer,
+  Frame frame,
   BitmapSurface surface,
   List<ResolvedLayerEffect> effects,
+  LayerPlacement? placement,
 });
+
+/// A [row] of a cel and how the cel lays it — [paint]
+/// ([ExportFrameRenderer._laidInTheCel]).
+typedef _CelLaid = ({_CelRow row, RowPaint paint});
 
 /// A label-group cel's rows, bottom-up, the view they are seen through,
 /// and the guides and the camera's work laid over them — null where the
@@ -99,7 +121,7 @@ class ExportFrameRenderer {
   ExportFrameRenderer({
     required this.session,
     CameraFrameRenderService? renderService,
-    this.applyLayerFx = true,
+    this.layerFx,
     this.keepsRowsApart = false,
     ui.Color background = exportFrameGround,
   }) : renderService =
@@ -116,11 +138,11 @@ class ExportFrameRenderer {
   ExportFrameRenderer.forFormat({
     required EditorSessionManager session,
     required ExportFormatSelection format,
-    required bool applyLayerFx,
+    required ExportLayerFx layerFx,
     bool alphaVideo = false,
   }) : this(
          session: session,
-         applyLayerFx: applyLayerFx,
+         layerFx: layerFx,
          keepsRowsApart: format.keepsRowsApart,
          background: (alphaVideo || (format.isStill && format.wantsAlpha))
              ? const ui.Color(0x00000000)
@@ -132,11 +154,16 @@ class ExportFrameRenderer {
   final EditorSessionManager session;
   final CameraFrameRenderService renderService;
 
-  /// The export dialog's 'Apply layer FX' toggle: true (default) exports
-  /// WYSIWYG with playback (per-layer fx switches respected); false
-  /// bypasses EVERY layer's FX — raw cels at their static opacity, no
-  /// transforms. The cut fade and the camera work are cut-level and stay.
-  final bool applyLayerFx;
+  /// What the export window's 레이어 FX keeps of the rows
+  /// ([layerAsOutput]) — or null for a picture of the SCREEN, which no
+  /// window asks about (the storyboard's panels, the conte's cells): every
+  /// row's own switches read as they stand, the camera row's and the V
+  /// row's too (🗣️I-65-Q9, 유저 2026-10-25: 「화면 그대로(지금)」). The
+  /// cut's fade is cut-level and stays either way; an output keeps the
+  /// camera work and the V row's chain as their switches show them under 켬
+  /// and 기본만 켬, and neither under 끔 (I-65-Q11, [layerAsOutput] ·
+  /// [_trackFxLaid]).
+  final ExportLayerFx? layerFx;
 
   /// Whether the frames drawn here go into a file that keeps the cut's rows
   /// apart — a PSD ([frameRows]). Its picture is then the one those rows
@@ -320,46 +347,80 @@ class ExportFrameRenderer {
       session.movieCels.hydrate(cut, frameIndex);
 
   /// Cuts whose FX-stripped view has already been built (memoized: the
-  /// stream renders the same cut for many frames).
-  final Map<CutId, Cut> _fxStrippedByCut = {};
+  /// stream renders the same cut for many frames) — keyed by the cut
+  /// ITSELF: the film can change under the window a renderer lives in
+  /// (I-127 — its undo), and a cut changed is another cut. ↩️Keyed by its
+  /// id, a preview drew the cut as it was when first drawn.
+  final Expando<Cut> _fxStrippedByCut = Expando<Cut>('fx-stripped cut');
 
-  /// The cut as this RENDER should see it. With [applyLayerFx] on — the
-  /// default, and what the video/PNG paths use — that is the cut itself, so
-  /// the render is WYSIWYG with playback down to the rows' own fx switches.
-  ///
-  /// With it OFF (the cel exports: "cels stay raw artwork") every row's
-  /// transform switch and every effect's switch read false, which is the
-  /// master toggle expressed as DATA. Cheaper to reason about than an
-  /// override threaded through the plan, and impossible for another route
-  /// to forget: the plan renders exactly the cut it is given.
+  /// The cut as this RENDER should see it: every row as the window's
+  /// 레이어 FX keeps it ([layerAsOutput] — the choice expressed as DATA,
+  /// cheaper to reason about than an override threaded through the plan,
+  /// and impossible for another route to forget: the plan renders exactly
+  /// the cut it is given), or the cut itself for a picture of the screen
+  /// ([layerFx] null).
   ///
   /// For a file that keeps the rows apart ([keepsRowsApart]), the effects
   /// of every row that paints nothing of its own — a folder, an adjustment
-  /// row — read off the same way: the file has no row to hold them.
+  /// row — read off as well: the file has no row to hold them.
   Cut _cutForRender(Cut cut) {
-    if (applyLayerFx && !keepsRowsApart) {
+    if (layerFx == null && !keepsRowsApart) {
       return cut;
     }
-    return _fxStrippedByCut.putIfAbsent(
-      cut.id,
-      () => cut.copyWith(
-        layers: [for (final layer in cut.layers) _layerForRender(layer)],
-      ),
+    return _fxStrippedByCut[cut] ??= cut.copyWith(
+      layers: [for (final layer in cut.layers) _layerForRender(layer)],
     );
   }
 
   /// [layer] as [_cutForRender] hands it to the plan.
   Layer _layerForRender(Layer layer) {
-    if (!applyLayerFx) {
-      return layer.copyWith(
-        transformEnabled: false,
-        effects: _switchedOff(layer.effects),
-      );
-    }
-    return layer.kind.paintsArtwork
-        ? layer
-        : layer.copyWith(effects: _switchedOff(layer.effects));
+    final output = _asOutput(layer);
+    return keepsRowsApart && !output.kind.paintsArtwork
+        ? output.copyWith(effects: _switchedOff(output.effects))
+        : output;
   }
+
+  /// [layer] as the window's 레이어 FX keeps it — itself for a picture of
+  /// the screen.
+  Layer _asOutput(Layer layer) => switch (layerFx) {
+    final fx? => layerAsOutput(layer, fx),
+    null => layer,
+  };
+
+  /// Whether this render lays [cutId]'s V row chain: where the screen shows
+  /// it — the row's switch on — and, in an output, where the window's 레이어
+  /// FX is not 끔 (I-65-Q11 「켬 · 기본만 켬이면 화면 스위치대로, 끔이면
+  /// 빠짐」, as the camera row's work is — [layerAsOutput]). ↩️I-65-Q8 laid
+  /// it in every output whatever the switch said; the switch alone gated
+  /// the output since R8 before that.
+  bool _trackFxLaid(CutId cutId) =>
+      layerFx != ExportLayerFx.off &&
+      session.effectsAndFx.isCutFxEnabled(cutId);
+
+  /// [cut]'s V row chain at [globalFrame] — the frame's place on the track's
+  /// own axis (R4) — laid as [_trackFxLaid] says: what every route that
+  /// draws a cut lays under its picture.
+  List<ResolvedLayerEffect> _trackChainAt(Cut cut, int globalFrame) =>
+      trackEffectsAt(
+        session.effectsAndFx.trackEffectsForCut(cut.id),
+        globalFrame,
+        enabled: _trackFxLaid(cut.id),
+      );
+
+  /// [task]'s cut's V row chain at the task's place on the track
+  /// ([_trackChainAt]).
+  List<ResolvedLayerEffect> _trackChainOf(ExportFrameTask task) =>
+      _trackChainAt(
+        task.cut,
+        session.rowSpans.trackGlobalFrameOf(task.cut.id, task.frameIndex),
+      );
+
+  /// The V row chain under a STILL of [task] — as a video's frame lays it
+  /// ([_trackChainOf]; I-65-Q10 a: 「이미지 탭에도 V 행 fx 를 깐다」) — none in
+  /// a file that keeps the rows apart, which no row of the file can hold
+  /// ([leftOutOfRows] says so). ↩️A still laid none, whatever the switch.
+  List<ResolvedLayerEffect> _stillChainOf(ExportFrameTask task) =>
+      keepsRowsApart ? const [] : _trackChainOf(task);
 
   static List<LayerEffect> _switchedOff(List<LayerEffect> effects) => [
     for (final effect in effects) effect.copyWith(enabled: false),
@@ -423,6 +484,7 @@ class ExportFrameRenderer {
       task,
       _viewFor(task.cut, task.frameIndex, mode),
       outputSize: outputSize,
+      trackEffects: _stillChainOf(task),
       nameTags: withNameTags
           ? session.seEntries.seNameTagsForCutFrame(task.cut, task.frameIndex)
           : const [],
@@ -456,13 +518,12 @@ class ExportFrameRenderer {
     // the frame is ([_composite]).
     Future<ui.Image> drawn(
       CameraFrameRenderService service, {
-      CutFrameCompositeLayer? Function()? laid,
+      List<CompositeNode<CutFrameCompositeLayer>> Function()? laid,
       ProjectBackground? paper,
     }) async {
       await _hydrate(task.cut, frameIndex);
-      final layer = laid?.call();
       return service.renderThroughCamera(
-        layers: [?layer],
+        nodes: laid?.call() ?? const [],
         pose: view.pose,
         cameraFrameSize: view.frameSize,
         cutTo: task.cut.canvasSize,
@@ -483,6 +544,8 @@ class ExportFrameRenderer {
           ),
           blendMode: layer.blendMode,
           visible: layer.isVisible,
+          // Photoshop clips as the row does (I-92).
+          clipped: clipsToLayerBelow(layer),
           children: childrenOf.remove(layer.id) ?? const [],
         );
       } else if (layer.kind.filtersBelow) {
@@ -508,6 +571,7 @@ class ExportFrameRenderer {
             opacity: drawing.render.opacity,
             blendMode: drawing.render.blendMode,
             visible: layer.isVisible,
+            clipped: clipsToLayerBelow(layer),
             draw: () => drawn(
               _transparentRenderService,
               laid: () => _laidAlone(task.cut, layer, drawing),
@@ -522,7 +586,7 @@ class ExportFrameRenderer {
     return [
       if (renderService.background.a > 0 || paper != null)
         ExportLayerRow(
-          name: AppText.strings.exBackground,
+          name: AppText.notation.exBackground,
           draw: () => drawn(renderService, paper: paper),
         ),
       ...?childrenOf[null],
@@ -530,46 +594,66 @@ class ExportFrameRenderer {
   }
 
   /// [layer]'s [drawing] by itself — whole, in no blend, its pose and its
-  /// effects on it: the picture a layered file lays by the row's own
-  /// strength and blend ([frameRows]). None where it exposes no cel here,
-  /// or one with nothing on it.
-  CutFrameCompositeLayer? _laidAlone(
+  /// effects on it, its cel number with them ([celNumberedRow]): the
+  /// picture a layered file lays by the row's own strength and blend
+  /// ([frameRows]). Nothing where it exposes no cel here, or one with
+  /// nothing on it.
+  List<CompositeNode<CutFrameCompositeLayer>> _laidAlone(
     Cut cut,
     Layer layer,
     ({Frame? frame, ResolvedRowRender render}) drawing,
   ) {
     final frame = drawing.frame;
     final surface = frame == null ? null : _surfaceFor(cut, layer, frame);
-    return surface == null
-        ? null
-        : CutFrameCompositeLayer(
-            surface: surface,
-            opacity: 1,
-            placement: drawing.render.placement,
-            effects: drawing.render.effects,
-          );
+    if (frame == null || surface == null) {
+      return const [];
+    }
+    return celNumberedRow(
+      paint: _alone(drawing.render.effects),
+      rowOf: (paint) => CutFrameCompositeLayer(
+        surface: surface,
+        opacity: paint.opacity,
+        blendMode: paint.blendMode,
+        placement: drawing.render.placement,
+        effects: paint.effects,
+      ),
+      text: celNumberText(
+        rowName: layer.name,
+        drawingName: frame.name,
+        kind: layer.kind,
+      ),
+      paper: cut.canvasSize,
+      // By itself in its picture: the file clips the picture, not a node.
+      asOnePicture: false,
+    );
   }
 
   /// What a file that keeps [task]'s rows apart leaves out of them
   /// ([keepsRowsApart]) — every adjustment row, whose filter no row of the
-  /// file holds, and every folder whose effects are on here — each said as
-  /// a PSD's reader says what it could not bring in. None where the file is
-  /// the picture alone.
+  /// file holds, every folder whose effects are on here, and the V row
+  /// whose chain a picture of the frame would lay ([_trackChainOf]) — each
+  /// said as a PSD's reader says what it could not bring in. None where the
+  /// file is the picture alone.
   ///
   /// 🗣️I-117-Q2 (유저 2026-10-22): 「내보내기가 끝나면 무엇이 빠졌는지
   /// 알린다(PSD 를 읽을 때 못 담은 것을 알리듯이)」.
   List<ImportWarning> leftOutOfRows(ExportFrameTask task) => [
-    if (keepsRowsApart)
+    if (keepsRowsApart) ...[
       for (final layer in task.cut.layers)
         if (layer.kind.filtersBelow)
           unsupportedLayerKind(layer.name)
         else if (layer.kind.groupsLayers &&
-            applyLayerFx &&
             resolveFolderEffectsAt(
-              folder: layer,
+              folder: _asOutput(layer),
               frameIndex: task.frameIndex,
             ).isNotEmpty)
           layerEffectsNotApplied(layer.name),
+      // The V row's chain lies over the whole picture, as a folder's does
+      // over what it holds ([_stillChainOf]).
+      if (session.trackOwningCut(task.cut.id) case final track?
+          when _trackChainOf(task).isNotEmpty)
+        layerEffectsNotApplied(track.name),
+    ],
   ];
 
   /// A panel's picture — the storyboard's, the conte's: [cut] at
@@ -600,10 +684,17 @@ class ExportFrameRenderer {
   /// What a render of [cut] at [frameIndex] looks through in [mode]: its
   /// camera there, or the whole canvas — a camera standing square over all
   /// of it, at its own size.
+  ///
+  /// The camera is the RENDER's ([_cutForRender]): the camera row's switch
+  /// as the screen shows it, and off under an output's 끔 ([layerAsOutput],
+  /// I-65-Q11).
   CameraView _viewFor(Cut cut, int frameIndex, ExportSizeMode mode) =>
       switch (mode) {
         ExportSizeMode.camera => (
-          pose: session.camera.cameraPoseForCut(cut, frameIndex),
+          pose: session.camera.cameraPoseForCut(
+            _cutForRender(cut),
+            frameIndex,
+          ),
           frameSize: session.camera.cameraFrameSize,
         ),
         ExportSizeMode.canvas => cameraViewOver(cut.canvasSize.canvasRect),
@@ -651,11 +742,10 @@ class ExportFrameRenderer {
     );
   }
 
-  /// [task]'s composite tree. The rows' own fx switches apply here too (AE
-  /// semantics: the layer fx switch affects the render) — WYSIWYG with
-  /// playback. They live on the layers now (R8), so the dialog's 'Apply
-  /// layer FX' master toggle is expressed by rendering an FX-STRIPPED VIEW
-  /// of the cut rather than by threading an override through the plan.
+  /// [task]'s composite tree, of the cut as this render sees it
+  /// ([_cutForRender]): the window's 레이어 FX is expressed by rendering
+  /// that VIEW of the cut rather than by threading an override through the
+  /// plan.
   List<CompositeNode<CutFrameCompositeLayer>> _nodesFor(
     ExportFrameTask task,
   ) => planCutFrameCompositeTree(
@@ -854,11 +944,13 @@ class ExportFrameRenderer {
   ) async {
     _startFrame();
     final view = _viewFor(task.cut, task.frameIndex, mode);
+    final trackEffects = _stillChainOf(task);
     final picture = await _cutPicture(
       task.cut,
       task.frameIndex,
-      route: ('still', view),
-      render: (rows) => _composite(task, view, rows: rows),
+      route: ('still', view, ByList(trackEffects)),
+      render: (rows) =>
+          _composite(task, view, trackEffects: trackEffects, rows: rows),
     );
     return picture.clone();
   }
@@ -962,23 +1054,11 @@ class ExportFrameRenderer {
       return _canvasSpaceTransitionFrame(shared, ground: ground);
     }
     final cut = task.cut;
-    // The V effects are TRACK data on the global axis (R4).
-    final trackFrame = session.rowSpans.trackGlobalFrameOf(
-      cut.id,
-      task.frameIndex,
-    );
-    // The V row's fx MASTER reaches the OUTPUT, like every fx switch since
-    // R8 ("a bypass that vanished on reload while a per-effect bypass
-    // survived" is exactly what R8 refused). It gates the effect chain.
-    final trackFxEnabled = session.effectsAndFx.isCutFxEnabled(cut.id);
-    // No track fade: the transition row's ramp lands in
-    // [_canvasSpaceTransitionFrame] above, on the frames it actually covers,
-    // and the track's static opacity went with the V row's bar (I-73).
-    final trackEffects = trackEffectsAt(
-      session.effectsAndFx.trackEffectsForCut(cut.id),
-      trackFrame,
-      enabled: trackFxEnabled,
-    );
+    // The V effects are TRACK data on the global axis (R4). No track fade:
+    // the transition row's ramp lands in [_canvasSpaceTransitionFrame]
+    // above, on the frames it actually covers, and the track's static
+    // opacity went with the V row's bar (I-73).
+    final trackEffects = _trackChainOf(task);
     // The presentation render: the アフレコ name tags belong in the video
     // (their row's eye is the switch).
     final image = await _canvasPicture(
@@ -1093,15 +1173,7 @@ class ExportFrameRenderer {
                   // The V row's chain on this contribution, keys included —
                   // the dissolve weights what the chain made, not what it
                   // started from.
-                  trackEffectsAt(
-                    session.effectsAndFx.trackEffectsForCut(
-                      contribution.cut.id,
-                    ),
-                    shared.globalFrame,
-                    enabled: session.effectsAndFx.isCutFxEnabled(
-                      contribution.cut.id,
-                    ),
-                  ),
+                  _trackChainAt(contribution.cut, shared.globalFrame),
                 ),
               ),
               weight: shared.weights[i].clamp(0.0, 1.0),
@@ -1195,20 +1267,15 @@ class ExportFrameRenderer {
     final frameIndex = position.localFrameIndex;
     final view = _viewFor(cut, frameIndex, ExportSizeMode.camera);
     // Track effects at the frame's GLOBAL position (R4) — the stack's
-    // own axis — with the row's fx master gating them (R8's rule; the
-    // static opacity is not an fx and stays).
-    final trackEffects = trackEffectsAt(
-      session.effectsAndFx.trackEffectsForCut(cut.id),
-      position.globalFrameIndex,
-      enabled: session.effectsAndFx.isCutFxEnabled(cut.id),
-    );
+    // own axis.
+    final trackEffects = _trackChainAt(cut, position.globalFrameIndex);
     // The stage belongs to the bottom covered TRACK, and to every
     // contribution of it: an O.L is a 場面転換, so the arriving cut brings
     // its own paper and the weights cross-fade the whole screen. Keyed to
     // the bottom CONTRIBUTION this baked a superimpose.
     final isStage = position.isBottomTrack;
     // The stage's paper is laid with its rows, in its picture, as playback
-    // lays it (`CanvasLayerStackView.paintPaper`).
+    // lays it (`FramePage.paintPaper`).
     final paper = isStage ? session.projectSettings.projectBackground : null;
     final picture = await _cutPicture(
       cut,
@@ -1278,8 +1345,45 @@ class ExportFrameRenderer {
     if (cel == null) {
       return null;
     }
+    // The members clip as their cut clips them (I-92) — to a row of the
+    // cel's. ⚠️My call: one that clips to a row the cel does not hold
+    // shows nowhere, as over a base with no drawing here.
+    final clips = ClipPlacing<_CelLaid>(
+      blendOf: (laid) => laid.paint.blendMode,
+      asClipBase: (laid) => (
+        base: (row: laid.row, paint: _alone(laid.paint.effects)),
+        opacity: laid.paint.opacity,
+        blendMode: laid.paint.blendMode,
+      ),
+    );
+    final stack = <CompositeNode<_CelLaid>>[];
+    for (final row in cel.rows) {
+      // R26 #30: the delivery cel is the stack as composited — the
+      // members' strengths and blends apply.
+      final [standing, ...over] = _celNumbered(
+        row,
+        (
+          opacity: row.layer.opacity,
+          blendMode: row.layer.blendMode,
+          effects: row.effects,
+        ),
+        asOnePicture: meetsAClip(row.cut, row.layer),
+      );
+      clips.place(row.cut, row.layer, standing, into: stack);
+      // The letters over a row that neither clips nor is clipped to — so
+      // [clips] laid it last in [stack].
+      stack.addAll(over);
+    }
+    final shown = mapCompositeLeaves<_CelLaid, CutFrameCompositeLayer>(
+      stack,
+      _laidInTheCel,
+    );
     return renderService.renderThroughCamera(
-      layers: [for (final row in cel.rows) _laidInTheCel(row)],
+      nodes: composeOverTheirBackdrops(
+        shown,
+        blendOf: (layer) => layer.blendMode,
+        paintedNormal: (layer) => layer.paintedNormal(),
+      ),
       pose: cel.view.pose,
       cameraFrameSize: cel.view.frameSize,
       outputSize: outputSize,
@@ -1312,10 +1416,10 @@ class ExportFrameRenderer {
     }
     Future<ui.Image> drawn(
       CameraFrameRenderService service, {
-      List<CutFrameCompositeLayer> layers = const [],
+      List<CompositeNode<CutFrameCompositeLayer>> nodes = const [],
       CameraOverlayPass? overlayPass,
     }) => service.renderThroughCamera(
-      layers: layers,
+      nodes: nodes,
       pose: cel.view.pose,
       cameraFrameSize: cel.view.frameSize,
       overlayPass: overlayPass,
@@ -1325,7 +1429,7 @@ class ExportFrameRenderer {
           name: name,
           draw: () => drawn(_transparentRenderService, overlayPass: pass),
         );
-    final strings = AppText.strings;
+    final strings = AppText.notation;
     return [
       if (renderService.background.a > 0)
         ExportLayerRow(
@@ -1337,9 +1441,15 @@ class ExportFrameRenderer {
           name: row.layer.name,
           opacity: row.layer.opacity,
           blendMode: row.layer.blendMode,
+          // Photoshop clips as the row does (I-92) — the switch as the row
+          // holds it, as [frameRows] carries it.
+          clipped: clipsToLayerBelow(row.layer),
           draw: () => drawn(
             _transparentRenderService,
-            layers: [_laidInTheCel(row, alone: true)],
+            nodes: mapCompositeLeaves(
+              _celNumbered(row, _alone(row.effects), asOnePicture: false),
+              _laidInTheCel,
+            ),
           ),
         ),
       if (cel.guides case final guides?) laidOver(strings.exLayGuides, guides),
@@ -1364,30 +1474,32 @@ class ExportFrameRenderer {
     final rows = <_CelRow>[];
     // One picture of the stack: [layer]'s [frame] as [cut] holds it.
     void lay(Cut cut, Layer layer, Frame? frame) {
-      final surface = frame == null ? null : _surfaceFor(cut, layer, frame);
+      if (frame == null) {
+        return;
+      }
+      final surface = _surfaceFor(cut, layer, frame);
       if (surface == null) {
         return;
       }
       rows.add((
+        cut: cut,
         layer: layer,
+        frame: frame,
         surface: surface,
-        // R6: the members' EFFECTS ride the same fx gates every other
-        // route uses — the dialog's master toggle and the row's own fx
-        // switch.
+        // R6: the members' EFFECTS are the chain each row wears in its cut
+        // ([chainWornBy] — an attached row its base's, short of the cel
+        // number), as the tab's 레이어 FX keeps it ([chainAsOutput]) — the
+        // one answer every tab reads.
         //
-        // The cel tab's master toggle used to be a hardcoded false ("cels
-        // stay raw artwork"); 유저 2026-08-27 made it the tab's own switch,
-        // defaulting ON — see [CelsExportSpec.applyLayerFx]. An artist who
-        // wants raw line art back turns it off, which is what the other
-        // tabs always allowed. Blend and static opacity are display
-        // properties and stay either way.
-        effects: applyLayerFx
-            ? resolveLayerEffectsAt(
-                // Each effect's own switch (R8) gates it from here.
-                effects: layer.effects,
-                frameIndex: firstExposure,
-              )
-            : const [],
+        // The cel tab's FX used to be a hardcoded false ("cels stay raw
+        // artwork"); 유저 2026-08-27 made it the tab's own choice,
+        // defaulting ON — see [CelsExportSpec.layerFx]. Blend and static
+        // opacity are display properties and stay whatever it is.
+        effects: resolveLayerEffectsAt(
+          effects: _outputChainOf(chainWornBy(cut, layer)),
+          frameIndex: firstExposure,
+        ),
+        placement: referenceMoveAt(_asOutput(layer), firstExposure),
       ));
     }
 
@@ -1411,17 +1523,47 @@ class ExportFrameRenderer {
     );
   }
 
-  /// [row] as the cel lays it — R26 #30: the delivery cel is the stack as
-  /// composited, the members' blends apply — or, [alone], whole and in no
-  /// blend: the picture a layered file keeps and lays by the row's own
-  /// strength and blend ([celGroupRows]).
-  CutFrameCompositeLayer _laidInTheCel(_CelRow row, {bool alone = false}) =>
-      CutFrameCompositeLayer(
-        surface: row.surface,
-        opacity: alone ? 1 : row.layer.opacity,
-        blendMode: alone ? LayerBlendMode.normal : row.layer.blendMode,
-        effects: row.effects,
-      );
+  /// [chain] as the window's 레이어 FX keeps it — itself for a picture of
+  /// the screen ([_asOutput]).
+  List<LayerEffect> _outputChainOf(List<LayerEffect> chain) =>
+      switch (layerFx) {
+        final fx? => chainAsOutput(chain, fx),
+        null => chain,
+      };
+
+  /// [row] — a row of its cel — as the tree of a cel lays it with [paint]:
+  /// its leaf, with the letters its cel number writes over it, or the
+  /// group the two make ([celNumberedRow], [asOnePicture]).
+  List<CompositeNode<_CelLaid>> _celNumbered(
+    _CelRow row,
+    RowPaint paint, {
+    required bool asOnePicture,
+  }) => celNumberedRow(
+    paint: paint,
+    rowOf: (paint) => (row: row, paint: paint),
+    text: celNumberText(
+      rowName: row.layer.name,
+      drawingName: row.frame.name,
+      kind: row.layer.kind,
+    ),
+    paper: row.cut.canvasSize,
+    asOnePicture: asOnePicture,
+  );
+
+  /// [effects] whole and in no blend: the picture a layered file keeps and
+  /// lays by the row's own strength and blend ([celGroupRows]), or a clip's
+  /// base, whose strength and blend are its group's.
+  static RowPaint _alone(List<ResolvedLayerEffect> effects) =>
+      (opacity: 1, blendMode: LayerBlendMode.normal, effects: effects);
+
+  /// [laid]'s row as the cel lays it, by its paint.
+  CutFrameCompositeLayer _laidInTheCel(_CelLaid laid) => CutFrameCompositeLayer(
+    surface: laid.row.surface,
+    opacity: laid.paint.opacity,
+    blendMode: laid.paint.blendMode,
+    placement: laid.row.placement,
+    effects: laid.paint.effects,
+  );
 
   /// What the hand laid over a cel, one pass over another in [passes]'
   /// order — the guides under the camera's work. Null where nothing is.

@@ -460,6 +460,68 @@ void main() {
       expect(_tokensOf(out).difference(_tokensOf(source)), isEmpty);
     });
 
+    test('a vote tied at the first rate is sampled again until area decides '
+        'it — a hairline covering 59% of its pixel is the line', () {
+      // resample-tie-doubling-unpinned (10-25): with the refinement off,
+      // every other test in this file stayed green — the sweep above
+      // states its agreement in percent and an ink floor, and one pixel a
+      // case is inside both.
+      //
+      // One destination pixel over a 1px vertical line, turned 2° (off the
+      // exact axis-aligned path, onto the sampler) and reduced to 0.59×,
+      // centred on the line. The preimage is 1/0.59 = 1.695 source pixels
+      // wide, so the line covers 59% of it. Eight samples across it land at
+      // ±0.106 · ±0.318 · ±0.530 · ±0.741 from the centre — four in the
+      // line's ±0.5, four out: 32 to 32. Sixteen land ten in and six out.
+      const size = 9;
+      const ink = 0xff101010;
+      final source = Uint8List(size * size * 4);
+      final words = Uint32List.view(source.buffer);
+      for (var i = 0; i < words.length; i += 1) {
+        words[i] = i % size == 4 ? ink : 0xffffffff;
+      }
+      const scale = 0.59;
+      const r = 2 * math.pi / 180;
+      final a = math.cos(r) / scale;
+      final b = math.sin(r) / scale;
+      final d = -math.sin(r) / scale;
+      final e = math.cos(r) / scale;
+      // The pixel's centre lands on the line's centre, (4.5, 4.5).
+      final transform = ResampleTransform(
+        a: a,
+        b: b,
+        c: 4.5 - (a + b) / 2,
+        d: d,
+        e: e,
+        f: 4.5 - (d + e) / 2,
+      );
+      Uint8List picked() => resampleRgbaReference(
+        src: source,
+        srcWidth: size,
+        srcHeight: size,
+        dstWidth: 1,
+        dstHeight: 1,
+        transform: transform,
+        mode: ResampleMode.pick,
+      );
+      final truth = coverageTruth(
+        src: source,
+        srcWidth: size,
+        srcHeight: size,
+        dstWidth: 1,
+        dstHeight: 1,
+        transform: transform,
+        samples: 64,
+      );
+
+      expect(_tokenAt(truth, 1, 0, 0), ink, reason: '⛔전제: the line has 59%');
+      expect(
+        _tokenAt(picked(), 1, 0, 0),
+        ink,
+        reason: 'a tie at eight samples was decided without sampling again',
+      );
+    });
+
     test('opaque artwork never comes back transparent, at any anisotropy '
         'or angle', () {
       // The way the previous design died, twice, by two different

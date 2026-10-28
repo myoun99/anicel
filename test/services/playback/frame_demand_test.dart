@@ -170,7 +170,7 @@ void main() {
       totalFrames: 5,
       loops: () => loops,
       playhead: () => playhead,
-      picturesOf: (frame) => [(cut: cutOf(a), frameIndex: frame)],
+      picturesOf: (frame) => [(cut: cutOf(a), frameIndex: frame, paintPaper: true)],
       playlistFrameOf: (cutId, frameIndex) => cutId == a ? frameIndex : null,
       lead: lead,
     );

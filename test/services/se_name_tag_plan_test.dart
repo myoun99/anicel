@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -73,7 +74,7 @@ void main() {
   List<ResolvedSeNameTag> resolve(List<Layer> rows, {int globalFrame = 0}) =>
       resolveSeNameTagsAt(
         trackSeLayers: rows,
-        globalFrame: globalFrame,
+        shown: (globalFrame: globalFrame, cutId: const CutId('cut')),
         cameraFrame: camera,
         shot: atRest,
       );

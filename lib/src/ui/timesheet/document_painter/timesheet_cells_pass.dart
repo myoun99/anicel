@@ -49,29 +49,6 @@ class _TimesheetCellsPass {
   List<TimesheetCell> displayCellsFor(TimesheetColumn column) =>
       timesheetColumnCellsShowing(column, _painter.dragPreview?.value);
 
-  /// The rows of a half starting at [rowsTop] that [_painter._cull] can reach.
-  ///
-  /// This is OpenToonz's move — it turns the damage rect into a CELL
-  /// INDEX RANGE (`xyRectToRange` → `r0..r1`) and iterates only those,
-  /// with no offscreen cache for the grid at all. That is the shape of
-  /// the finding that sent us here: a sheet grid is not expensive, and
-  /// ours only looked expensive because it was drawing a whole B4
-  /// document — ~334 lines and ~111 paragraphs — to fill a dock a few
-  /// hundred pixels tall.
-  ///
-  /// A row of slack each side, because a row's ink is allowed to reach a
-  /// little past its own band (text baselines, the SE dotted guide).
-  (int, int) _rowRange(double rowsTop, int rowCount) {
-    final cull = _painter._cull;
-    if (cull == null) {
-      return (0, rowCount);
-    }
-    const height = TimesheetDocumentLayout.rowHeight;
-    final first = ((cull.top - rowsTop) / height).floor() - 1;
-    final last = ((cull.bottom - rowsTop) / height).ceil() + 1;
-    return (first.clamp(0, rowCount), last.clamp(0, rowCount));
-  }
-
   void paintHalf(
     Canvas canvas, {
     required int pageIndex,
@@ -96,7 +73,7 @@ class _TimesheetCellsPass {
       ..color = TimesheetDocumentPainter._gridBold
       ..strokeWidth = 1.6;
     final seRanges = _seColumnRanges(left);
-    final (firstRow, lastRow) = _rowRange(rowsTop, rowCount);
+    final (firstRow, lastRow) = _rowsReached(_painter._cull, rowsTop, rowCount);
     final sheet = _HalfFrame(
       left: left,
       right: right,
@@ -298,34 +275,35 @@ class _TimesheetCellsPass {
     return seRanges;
   }
 
-  /// The column titles on the letter row, when the form draws.
+  /// The group titles, when the form draws, and the column titles on the
+  /// letter row, each where its stratum draws
+  /// ([TimesheetColumnKind.titleLayer]).
   void _paintColumnTitles(Canvas canvas, _HalfFrame sheet) {
     if (_painter._drawForm) {
       _painter._bands.paintGroupTitles(canvas, sheet.left, sheet.columnsTop);
-      for (
-        var column = 0;
-        column < _painter.document.columns.length;
-        column += 1
-      ) {
-        // Unbacked slots print nothing — no placeholder letters.
-        if (_painter.document.columns[column].label.isEmpty) {
-          continue;
-        }
-        final columnLeft =
-            sheet.left + _painter.layout.columnLeftInHalf(column);
-        final columnWidth = _painter.layout.columnWidthFor(
-          _painter.document.columns[column].kind,
-        );
-        _painter._text(
-          canvas,
-          _painter.document.columns[column].label,
-          Offset(columnLeft + columnWidth / 2, sheet.lettersTop + 2),
-          fontSize: 9,
-          color: TimesheetDocumentPainter._ink,
-          centeredAtX: true,
-          maxWidth: columnWidth - 2,
-        );
+    }
+    for (
+      var column = 0;
+      column < _painter.document.columns.length;
+      column += 1
+    ) {
+      final kind = _painter.document.columns[column].kind;
+      // Unbacked slots print nothing — no placeholder letters.
+      if (_painter.document.columns[column].label.isEmpty ||
+          !_painter._draws(kind.titleLayer)) {
+        continue;
       }
+      final columnLeft = sheet.left + _painter.layout.columnLeftInHalf(column);
+      final columnWidth = _painter.layout.columnWidthFor(kind);
+      _painter._text(
+        canvas,
+        _painter.document.columns[column].label,
+        Offset(columnLeft + columnWidth / 2, sheet.lettersTop + 2),
+        fontSize: 9,
+        color: TimesheetDocumentPainter._ink,
+        centeredAtX: true,
+        maxWidth: columnWidth - 2,
+      );
     }
   }
 
@@ -351,27 +329,22 @@ class _TimesheetCellsPass {
       final columnWidth = _painter.layout.columnWidthFor(spec.kind);
       final centerX = columnLeft + columnWidth / 2;
       final seColumn = spec.kind == TimesheetColumnKind.se;
-      // 🗣️F-358 (유저 2026-10-17): 「컷 엔드라인(OL여백이든 뭐든 총합적인
-      // 엔드라인) 넘어가는건 안보이게하고」 — an SE column's rows end at the
-      // line the cut is DRAWN to, so a sound running past it prints no
-      // words there, and no closing bar where it does not close.
-      final rowsShown = seColumn
-          ? (_painter.liveDrawnFrameCount - startFrame).clamp(0, rowCount)
-          : rowCount;
       // How far before row 0 the block there began: the spill-in's head is
       // an earlier cut's (F-358).
       int leadOf(int blockStart) =>
           blockStart == 0 ? spec.spillInLeadFrames ?? 0 : 0;
-      final (firstRow, lastRow) = _rowRange(rowsTop, rowsShown);
-      for (
-        var row = _spanStartRow(cells, startFrame, firstRow);
-        row < lastRow;
-        row += 1
-      ) {
+      final rows = _columnRows(
+        cells,
+        kind: spec.kind,
+        startFrame: startFrame,
+        rowsTop: rowsTop,
+        rowCount: rowCount,
+        drawnFrameCount: _painter.liveDrawnFrameCount,
+        shown: _painter._cull,
+      );
+      final rowsShown = rows.rowCount;
+      for (var row = rows.from; row < rows.to; row += 1) {
         final frame = startFrame + row;
-        if (frame >= cells.length) {
-          break;
-        }
         final cell = cells[frame];
         final cellTop = rowsTop + row * TimesheetDocumentLayout.rowHeight;
         final cellBottom = cellTop + TimesheetDocumentLayout.rowHeight;
@@ -415,13 +388,12 @@ class _TimesheetCellsPass {
         // F-165: an entry that began in an earlier half writes the rest of
         // its dialogue here, from this half's top — its share of the words
         // laid over the whole span ([_TimesheetSePass.paintSeDialogueShare]).
-        final offset = cell.spanOffset ?? 0;
-        if (seColumn && row == 0 && offset > 0) {
+        if (rows.shareFrom case final from? when row == 0) {
           _painter._se.paintSeDialogueShare(
             canvas,
-            start: cells[frame - offset],
-            spanOffset: offset,
-            lead: leadOf(frame - offset),
+            start: cells[from],
+            spanOffset: frame - from,
+            lead: leadOf(from),
             row: row,
             rowCount: rowsShown,
             centerX: centerX,
@@ -611,13 +583,117 @@ class _TimesheetCellsPass {
   }
 }
 
+/// The rows of a half starting at [rowsTop] that a view of [shown] can
+/// reach — every row when [shown] is null.
+///
+/// This is OpenToonz's move — it turns the damage rect into a CELL
+/// INDEX RANGE (`xyRectToRange` → `r0..r1`) and iterates only those,
+/// with no offscreen cache for the grid at all. That is the shape of
+/// the finding that sent us here: a sheet grid is not expensive, and
+/// ours only looked expensive because it was drawing a whole B4
+/// document — ~334 lines and ~111 paragraphs — to fill a dock a few
+/// hundred pixels tall.
+///
+/// A row of slack each side, because a row's ink is allowed to reach a
+/// little past its own band (text baselines, the SE dotted guide).
+(int, int) _rowsReached(Rect? shown, double rowsTop, int rowCount) {
+  if (shown == null) {
+    return (0, rowCount);
+  }
+  const height = TimesheetDocumentLayout.rowHeight;
+  final first = ((shown.top - rowsTop) / height).floor() - 1;
+  final last = ((shown.bottom - rowsTop) / height).ceil() + 1;
+  return (first.clamp(0, rowCount), last.clamp(0, rowCount));
+}
+
+/// The rows of one column's half that a paint over [shown] writes: how
+/// many the column shows ([rowCount] but for an SE column's, cut at the
+/// drawn end), those a view of [shown] reaches ([_rowsReached]) from the
+/// start of the span that reaches the first ([_spanStartRow]) to the
+/// column's last cell — and, where an SE entry came in from an earlier
+/// half, the frame it starts on: row 0 writes its share of the words
+/// (F-165).
+///
+/// ⛔ONE answer for the paint and the drag print ([timesheetDragPrint]): a
+/// print that reached other rows than the paint would re-print a drag the
+/// sheet shows nothing of, or miss one it shows.
+({int rowCount, int from, int to, int? shareFrom}) _columnRows(
+  List<TimesheetCell> cells, {
+  required TimesheetColumnKind kind,
+  required int startFrame,
+  required double rowsTop,
+  required int rowCount,
+  required int drawnFrameCount,
+  required Rect? shown,
+}) {
+  final seColumn = kind == TimesheetColumnKind.se;
+  // 🗣️F-358 (유저 2026-10-17): 「컷 엔드라인(OL여백이든 뭐든 총합적인
+  // 엔드라인) 넘어가는건 안보이게하고」 — an SE column's rows end at the
+  // line the cut is DRAWN to, so a sound running past it prints no
+  // words there, and no closing bar where it does not close.
+  final rowsShown = seColumn
+      ? (drawnFrameCount - startFrame).clamp(0, rowCount)
+      : rowCount;
+  final (first, last) = _rowsReached(shown, rowsTop, rowsShown);
+  final from = _spanStartRow(cells, startFrame, first);
+  final to = math.min(last, cells.length - startFrame);
+  final offset = seColumn && from == 0 && to > 0
+      ? cells[startFrame].spanOffset ?? 0
+      : 0;
+  return (
+    rowCount: rowsShown,
+    from: from,
+    to: to,
+    shareFrom: offset > 0 ? startFrame - offset : null,
+  );
+}
+
+/// The cells of one column a paint over [shown] reads, half by half
+/// ([_columnRows]) — each run with the frame it starts on, and the start
+/// an SE share writes from.
+List<Object?> _cellsShown(
+  TimesheetDocument document,
+  TimesheetDocumentLayout layout,
+  TimesheetColumnKind kind,
+  List<TimesheetCell> cells, {
+  required Rect? shown,
+  required int drawnFrameCount,
+}) {
+  final read = <Object?>[];
+  for (final page in _pagesShown(document, layout, shown)) {
+    for (final strip in layout.halfStrips) {
+      final startFrame = _halfStartFrame(document, page, strip.half);
+      final rows = _columnRows(
+        cells,
+        kind: kind,
+        startFrame: startFrame,
+        rowsTop: layout.halfRowsTop(page.index),
+        rowCount: strip.rowCount,
+        drawnFrameCount: drawnFrameCount,
+        shown: shown,
+      );
+      if (rows.from < rows.to) {
+        read.add((
+          startFrame + rows.from,
+          ByList(cells.sublist(startFrame + rows.from, startFrame + rows.to)),
+          switch (rows.shareFrom) {
+            final from? => cells[from],
+            null => null,
+          },
+        ));
+      }
+    }
+  }
+  return read;
+}
+
 /// [firstRow], walked back to the start of the span that reaches it.
 ///
 /// 🗣️F-78 (유저 2026-09-11): 「타임시트의 se행. se블록의 이름란이 뷰포트에서
 /// 안보이면 대사 텍스트가 사라짐」. A span's START cell writes down the
 /// whole span — an SE entry its name and dialogue, a hold chain its word, a
 /// repeat chain its word — so culling the start row dropped ink the clip
-/// would have kept: the one thing [_TimesheetCellsPass._rowRange] may not
+/// would have kept: the one thing [_rowsReached] may not
 /// do. The rows a word runs down read as EMPTY, so the walk steps over
 /// empty rows up to the first cell that says where its span is.
 int _spanStartRow(List<TimesheetCell> cells, int startFrame, int firstRow) {

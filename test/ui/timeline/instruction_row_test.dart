@@ -4,6 +4,7 @@ import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -23,6 +24,7 @@ import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 
 import '../../helpers/block_word_finder.dart';
 import '../../helpers/the_classic_rail.dart';
+import '../../helpers/timeline_host.dart';
 import 'timeline_cell_probe.dart';
 import '../../helpers/named_finders.dart';
 
@@ -77,7 +79,23 @@ Project _project({Map<int, InstructionEvent>? instructions}) {
   );
 }
 
-Future<void> _pumpHome(
+/// The tab as the app's window of 1600 × 900 laid it.
+const _wide = Size(1003, 396);
+
+/// The timeline tab alone ([pumpTimelineHost]), as the app's window of
+/// 800 × 600 laid it unless [surface] says another.
+Future<void> _open(
+  WidgetTester tester,
+  Project project, {
+  void Function(ProjectRepository repository)? onRepositoryCreated,
+  Size surface = const Size(640, 320),
+}) async {
+  final session = await pumpTimelineHost(tester, project, surface: surface);
+  onRepositoryCreated?.call(session.repository);
+}
+
+/// The app, for the app's own undo button.
+Future<void> _pumpApp(
   WidgetTester tester,
   Project project, {
   void Function(ProjectRepository repository)? onRepositoryCreated,
@@ -124,7 +142,7 @@ Layer _camLayer(ProjectRepository repository) {
 void main() {
   testWidgets('instruction row shows the [icon+name] chip, A/B values and '
       'span overlay', (tester) async {
-    await _pumpHome(tester, _project());
+    await _open(tester, _project());
 
     expect(
       find.byKey(const ValueKey<String>('timeline-instruction-inst-cam-2')),
@@ -144,7 +162,7 @@ void main() {
   testWidgets('XSheet instruction column shows the same overlay', (
     tester,
   ) async {
-    await _pumpHome(tester, _project());
+    await _open(tester, _project());
 
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-orientation-toggle-button')),
@@ -165,27 +183,35 @@ void main() {
   testWidgets('double-tap on an empty instruction cell adds a ONE-frame '
       'event in one undo (the grips own the length)', (tester) async {
     late ProjectRepository repository;
-    await _pumpHome(
+    await _pumpApp(
       tester,
       _project(instructions: const {}),
       onRepositoryCreated: (repo) => repository = repo,
     );
     await standTheClassicRail(tester);
 
-    // Double-tap on the EMPTY cell creates a default-vocabulary event
-    // DIRECTLY — no dialog (UI-R25 #2, 조작 통일화).
+    // Double-tap on the EMPTY cell creates an event that says nothing,
+    // DIRECTLY — no dialog (UI-R25 #2, 조작 통일화; 「생성시 기본값 없음」,
+    // I-72-block-without-instruction). ↩️It took the vocabulary's first
+    // entry.
     await _doubleTapCell(tester, 'inst-cam', 4);
     expect(find.text('New instruction'), findsNothing);
     var event = _camLayer(repository).instructions[4]!;
     expect(event.length, 1, reason: 'new instances are one frame long');
+    expect(event.instructionId, isNull);
 
-    // The SECOND double-tap (covered now) opens the editor: swap it to
-    // PAN with endpoint values — editing stays the dialog's job.
+    // The SECOND double-tap (covered now) opens the editor on 「(없음)」:
+    // swap it to PAN with endpoint values — editing stays the dialog's job.
     await _doubleTapCell(tester, 'inst-cam', 4);
     expect(find.text('Edit instruction'), findsOneWidget);
-    await tester.tap(
-      find.byKey(const ValueKey<String>('instruction-def-dropdown')),
+    final picker = find.byKey(
+      const ValueKey<String>('instruction-def-dropdown'),
     );
+    expect(
+      find.descendant(of: picker, matching: find.text('(None)')),
+      findsOneWidget,
+    );
+    await tester.tap(picker);
     await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const ValueKey<String>('instruction-option-pan')).last,
@@ -221,7 +247,7 @@ void main() {
   testWidgets('free event text shows over the vocabulary name and edits '
       'through the dialog', (tester) async {
     late ProjectRepository repository;
-    await _pumpHome(
+    await _open(
       tester,
       _project(
         instructions: {
@@ -258,7 +284,7 @@ void main() {
     tester,
   ) async {
     late ProjectRepository repository;
-    await _pumpHome(
+    await _open(
       tester,
       _project(),
       onRepositoryCreated: (repo) => repository = repo,
@@ -290,13 +316,121 @@ void main() {
     expect(_camLayer(repository).instructions, isEmpty);
   });
 
+  // 🗣️I-72-direction-link (유저 2026-10-08): 「시작이름,끝이름,지시 세개
+  // 같으면 같은 링크로서 작동하도록」 — told what another block says, a block
+  // asks before it links, as a rename onto a held name does.
+  testWidgets('told what another block says, a block asks first — Cancel '
+      'writes nothing, Link shows the one drawing', (tester) async {
+    late ProjectRepository repository;
+    await _open(
+      tester,
+      _project(
+        instructions: {
+          2: const InstructionEvent(
+            instructionId: 'pan',
+            length: 3,
+            valueA: 'A',
+            valueB: 'B',
+          ),
+          8: const InstructionEvent(instructionId: 'pan', length: 2),
+        },
+      ),
+      onRepositoryCreated: (repo) => repository = repo,
+    );
+    await standTheClassicRail(tester);
+    FrameId? celAt(int frame) => _camLayer(repository).timeline[frame]?.frameId;
+    final own = celAt(8);
+
+    Future<void> tellTheSecond() async {
+      await _doubleTapCell(tester, 'inst-cam', 8);
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('instruction-value-a-field')),
+        'A',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('instruction-value-b-field')),
+        'B',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('instance-edit-ok-button')),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await tellTheSecond();
+    expect(
+      find.byKey(const ValueKey<String>('frame-name-conflict-dialog')),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('frame-name-conflict-cancel-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(celAt(8), own);
+    expect(
+      _camLayer(repository).instructions[8]?.valueA,
+      isNull,
+      reason: 'Cancel writes nothing',
+    );
+
+    await tellTheSecond();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('frame-name-conflict-link-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(celAt(8), celAt(2));
+    expect(_camLayer(repository).instructions[8]?.valueB, 'B');
+  });
+
+  // 🗣️I-72-block-without-instruction (유저 2026-10-05 · 10-08): 「지시
+  // 기호 없는상태 존재하도록. (없음) 이런식?」 — 「없으면 아무 표시도 안함」.
+  testWidgets('「(없음)」: a span set to no mark draws none and names no '
+      'term — its start and end names stay', (tester) async {
+    late ProjectRepository repository;
+    await _open(
+      tester,
+      _project(),
+      onRepositoryCreated: (repo) => repository = repo,
+    );
+    await standTheClassicRail(tester);
+    Finder markOn(int start) => find.descendant(
+      of: find.byKey(ValueKey<String>('timeline-instruction-inst-cam-$start')),
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is CustomPaint &&
+            widget.painter.runtimeType.toString() == '_InstructionMarkPainter',
+      ),
+    );
+    expect(markOn(2), findsOneWidget, reason: 'premise: PAN draws its line');
+
+    await _doubleTapCell(tester, 'inst-cam', 2);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instruction-def-dropdown')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instruction-option-none')).last,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instance-edit-ok-button')),
+    );
+    await tester.pumpAndSettle();
+
+    final event = _camLayer(repository).instructions[2]!;
+    expect(event.instructionId, isNull);
+    expect((event.valueA, event.valueB, event.length), ('A', 'B', 6));
+    expect(markOn(2), findsNothing);
+    expect(findBlockText('PAN'), findsNothing);
+    expect(findBlockText('A'), findsOneWidget);
+    expect(findBlockText('B'), findsOneWidget);
+  });
+
   // I-44: an instruction span's paper is a block's paper — it stops a seam
   // short of the row, and the edge triangles stand on it.
   testWidgets('I-44: the span\'s grips stand on the PAPER, a seam short of '
       'the row', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await _pumpHome(tester, _project(), onRepositoryCreated: (_) {});
+    await _open(tester, _project(), surface: _wide);
 
     final row = tester.getRect(
       find.named('timeline-row-cells-inst-cam'),
@@ -324,9 +458,7 @@ void main() {
   testWidgets('the span\'s grips listen to their ROW\'s live geometry — a '
       'zoom step moves their round end and their drag with the row, not a '
       'copy of it (the box is 100%\'s size, 유저 2026-09-26)', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await _pumpHome(tester, _project(), onRepositoryCreated: (_) {});
+    await _open(tester, _project(), surface: _wide);
 
     for (final edge in ['start', 'end']) {
       final key = find.byKey(
@@ -353,7 +485,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1600, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     late ProjectRepository repository;
-    await _pumpHome(
+    await _pumpApp(
       tester,
       _project(),
       onRepositoryCreated: (repo) => repository = repo,
@@ -388,7 +520,7 @@ void main() {
     tester,
   ) async {
     late ProjectRepository repository;
-    await _pumpHome(
+    await _open(
       tester,
       _project(instructions: const {}),
       onRepositoryCreated: (repo) => repository = repo,

@@ -34,14 +34,18 @@ Size timelineInbetweenMarkSize(double fontSize, {required Size cell}) {
 /// its 10px cel-number text, about twice across.
 const double timesheetInbetweenMarkRadius = 2.8;
 
+/// How wide the line of mark 1, the hollow ○ (I-130: 「속이 빈 그냥 선으로
+/// 된 원」), is drawn inside its box — on every surface, as its box is.
+const double inbetweenMarkRingWidth = 1.0;
+
 /// Where an in-between mark stands and the box it fills.
 typedef InbetweenMarkPlace = ({Offset center, Size size});
 
 /// The shape of a mark that fills [place]: a disc in a square box, and in a
 /// box narrowed on one axis the stadium a rounded rect as round as it is
-/// narrow makes — the one filled shape the tiles bake
-/// (`TimelineGridTileOpWriter.rrectFill`), so a tile and the classic pass
-/// draw one mark.
+/// narrow makes — the one shape the tiles bake, filled for mark 2
+/// (`TimelineGridTileOpWriter.rrectFill`) and ringed for mark 1 (its
+/// `rrectRing`), so a tile and the classic pass draw one mark.
 RRect inbetweenMarkShape(InbetweenMarkPlace place) => RRect.fromRectAndRadius(
   Rect.fromCenter(
     center: place.center,
@@ -53,8 +57,9 @@ RRect inbetweenMarkShape(InbetweenMarkPlace place) => RRect.fromRectAndRadius(
 
 /// THE drawer of an in-between mark — every surface that shows one asks
 /// here, so a mark is one shape wherever it stands and whatever put it there
-/// (a dot inside a block, a drawing with no cel number: one mark, 유저
-/// 2026-09-24).
+/// (a dot inside a block, a drawing with no cel number: one kind of mark,
+/// 유저 2026-09-24): mark 1 its ring [inbetweenMarkRingWidth] wide, mark 2
+/// filled.
 ///
 /// It is drawn, not printed: a font's ● sits where the face puts it — BIZ's
 /// was a size and a baseline of its own — and a circle is where its centre is.
@@ -64,8 +69,16 @@ void paintInbetweenMark(
   InbetweenMarkPlace place,
   Color color,
 ) {
+  final shape = inbetweenMarkShape(place);
+  final paint = Paint()..color = color;
+  final hole = shape.deflate(inbetweenMarkRingWidth);
   switch (mark) {
-    case InbetweenMark.one:
-      canvas.drawRRect(inbetweenMarkShape(place), Paint()..color = color);
+    // A box no wider than its line twice over is all line: the tile's ring
+    // leaves it no hole either (`_ringHoleOf`), and a hole past its own
+    // edges is no shape to cut.
+    case InbetweenMark.one when hole.width > 0 && hole.height > 0:
+      canvas.drawDRRect(shape, hole, paint);
+    case InbetweenMark.one || InbetweenMark.two:
+      canvas.drawRRect(shape, paint);
   }
 }

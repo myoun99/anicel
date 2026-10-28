@@ -78,6 +78,20 @@ class ExportPreviewDocument implements ViewerDocument {
   /// with nothing on it.
   final Future<ui.Image?> Function(int page, CanvasSize size) renderAt;
 
+  /// This document, its pictures decided by [more] as well — what decides
+  /// them that the tab it is of does not see: the editor's history, which
+  /// an undo pressed in the window moves (I-127).
+  ExportPreviewDocument lookingAlso(Object more) => ExportPreviewDocument(
+    subject: subject,
+    look: (look, more),
+    shape: shape,
+    pageCount: pageCount,
+    sizeOf: sizeOf,
+    renderAt: renderAt,
+    framesPerSecond: framesPerSecond,
+    opensAlpha: opensAlpha,
+  );
+
   @override
   ui.Size pageSize(int pageIndex) {
     final size = sizeOf(pageIndex);

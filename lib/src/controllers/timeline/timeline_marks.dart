@@ -16,7 +16,7 @@ class _TimelineMarks {
     if (frameIndex < 0) {
       return false;
     }
-    return hasBreakdownDotAt(layer.timeline, frameIndex);
+    return breakdownMarkAt(layer.timeline, frameIndex) != null;
   }
 
   /// Inbetween dots live on the HELD cells of a real drawing block only
@@ -30,20 +30,37 @@ class _TimelineMarks {
     return isHeldCellAt(layer.timeline, frameIndex);
   }
 
-  void toggleMarkForLayer({required LayerId layerId}) =>
-      _controller._editCoveringBlockAtEditFrame(
-        layerId,
-        canEdit: (layer, frameIndex) =>
-            canToggleMarkAt(layer: layer, frameIndex: frameIndex),
-        edit: (entry, offset) => entry.copyWith(
-          breakdownOffsets: entry.hasBreakdownAt(offset)
-              ? [
-                  for (final existing in entry.breakdownOffsets)
-                    if (existing != offset) existing,
-                ]
-              : [...entry.breakdownOffsets, offset],
-        ),
-      );
+  /// [mark] at the edit frame — or none, where the cell already wears it.
+  ///
+  /// 🗣️I-130-Q1 (추천 a, 답 전): a cell wearing the OTHER mark takes this
+  /// one — one mark to a cell, 「모양이 다를뿐인 같은 중간나누기」.
+  void toggleMarkForLayer({
+    required LayerId layerId,
+    required InbetweenMark mark,
+  }) => _controller._editCoveringBlockAtEditFrame(
+    layerId,
+    canEdit: (layer, frameIndex) =>
+        canToggleMarkAt(layer: layer, frameIndex: frameIndex),
+    edit: (entry, offset) => _withMark(
+      entry,
+      offset,
+      entry.breakdownMarks[offset] == mark ? null : mark,
+    ),
+  );
+
+  /// [entry] with [mark] on the dot at [offset] — none there when null.
+  static TimelineExposure _withMark(
+    TimelineExposure entry,
+    int offset,
+    InbetweenMark? mark,
+  ) => entry.copyWith(
+    breakdownMarks: {
+      for (final MapEntry(key: other, value: wears)
+          in entry.breakdownMarks.entries)
+        if (other != offset) other: wears,
+      offset: ?mark,
+    },
+  );
 
   /// 🚨결정 9 / R8-c (유저 확정 2026-08-22) — **THE BAND'S FRAMES, NOT THE
   /// PLAYHEAD'S.**
@@ -80,15 +97,16 @@ class _TimelineMarks {
     return byLayer;
   }
 
-  /// Whether every frame in [framesByLayer] already carries a mark — the
+  /// Whether every frame in [framesByLayer] already wears [mark] — the
   /// question that turns a toggle into a SET.
-  bool bandFramesAreAllMarked(Map<LayerId, List<int>> framesByLayer) {
+  bool bandFramesAreAllMarked(
+    Map<LayerId, List<int>> framesByLayer,
+    InbetweenMark mark,
+  ) {
     for (final entry in framesByLayer.entries) {
       final layer = _controller._requireLayer(entry.key);
       for (final frameIndex in entry.value) {
-        final block = coveringDrawingBlockAt(layer.timeline, frameIndex);
-        if (block == null ||
-            !block.entry.hasBreakdownAt(frameIndex - block.startIndex)) {
+        if (breakdownMarkAt(layer.timeline, frameIndex) != mark) {
           return false;
         }
       }
@@ -96,7 +114,8 @@ class _TimelineMarks {
     return true;
   }
 
-  /// Marks or clears every frame in [framesByLayer] — ONE undo step.
+  /// Puts [mark] on every frame in [framesByLayer] — or clears them all,
+  /// when null — ONE undo step.
   ///
   /// ⚠️SET, not toggle-each. A band holding a mix would otherwise INVERT
   /// under the hand and hand back the complement of what was there, which is
@@ -105,18 +124,17 @@ class _TimelineMarks {
   /// together the way Delete's does.
   void setMarksForFrames(
     Map<LayerId, List<int>> framesByLayer, {
-    required bool marked,
+    required InbetweenMark? mark,
   }) => _controller._editLayersAsOneStep(
     framesByLayer,
-    edit: (before, frames) =>
-        _markedFramesLayer(before, frames, marked: marked),
+    edit: (before, frames) => _markedFramesLayer(before, frames, mark: mark),
     description: 'Mark selected cells',
   );
 
   Layer? _markedFramesLayer(
     Layer before,
     List<int> frameIndexes, {
-    required bool marked,
+    required InbetweenMark? mark,
   }) {
     final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
       before.timeline,
@@ -133,17 +151,10 @@ class _TimelineMarks {
       // before it just made. Off `before`, the last write would win and
       // every earlier mark in that block would vanish.
       final entry = nextTimeline[block.startIndex];
-      if (entry == null || entry.hasBreakdownAt(offset) == marked) {
+      if (entry == null || entry.breakdownMarks[offset] == mark) {
         continue;
       }
-      nextTimeline[block.startIndex] = entry.copyWith(
-        breakdownOffsets: marked
-            ? [...entry.breakdownOffsets, offset]
-            : [
-                for (final existing in entry.breakdownOffsets)
-                  if (existing != offset) existing,
-              ],
-      );
+      nextTimeline[block.startIndex] = _withMark(entry, offset, mark);
       changed = true;
     }
     return changed ? before.copyWith(timeline: nextTimeline) : null;

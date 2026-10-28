@@ -10,7 +10,7 @@ import '../../models/timeline_exposure.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_repeat.dart';
 import 'active_cut_controllers.dart';
-import 'camera.dart';
+import 'lane_verbs.dart';
 import 'drags/frame_range_move_drag.dart';
 import 'block_move_commands.dart';
 import 'folders_and_attachments.dart';
@@ -45,7 +45,7 @@ class FrameRangeMoveDragVerbs {
     required ValueNotifier<TimelineDragPreview?> dragPreview,
     required RowSpans rowSpans,
     required BlockMoveCommands blockMove,
-    required Camera camera,
+    required LaneVerbs laneVerbs,
     required FoldersAndAttachments folders,
     required RangeSelections rangeSelections,
     required Transitions transitions,
@@ -58,7 +58,7 @@ class FrameRangeMoveDragVerbs {
          retime: retime,
          dragPreview: dragPreview,
          blockMove: blockMove,
-         camera: camera,
+         laneVerbs: laneVerbs,
          transitions: transitions,
          trackSe: trackSe,
        ),

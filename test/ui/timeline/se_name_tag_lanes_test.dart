@@ -14,8 +14,8 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_provider.dart';
-import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
-import 'package:anicel/src/ui/timeline_tab_host.dart';
+
+import '../../helpers/timeline_host.dart';
 
 /// R5 #7 — the name tag reaches the rail as a fixed lane GROUP, Transform's
 /// sibling, on every SE row.
@@ -62,28 +62,13 @@ void main() {
   );
 
   Future<void> pumpHost(WidgetTester tester, EditorSessionManager s) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(s.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: s,
-            builder: (context, _) => TimelineTabHost(
-              session: s,
-              orientation: TimelineOrientation.horizontal,
-              onOrientationChanged: (_) {},
-              pixelsPerFrame: 24,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-            ),
-          ),
-        ),
-      ),
+    await pumpTimelineHostOn(
+      tester,
+      s,
+      surface: const Size(1400, 900),
+      pixelsPerFrame: 24,
     );
-    await tester.pumpAndSettle();
   }
 
   testWidgets('the group has a header and seven members, and they are the '

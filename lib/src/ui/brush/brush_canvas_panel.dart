@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HardwareKeyboard;
 
 import '../canvas/shown_cels.dart';
+import '../canvas/stroke_in_flight.dart';
 import '../canvas/view_hand.dart';
 import '../timeline/memo_token.dart'
     show ByIdentity, ByList, Kept, keptWhileSame;
@@ -249,9 +250,9 @@ typedef CanvasUnderlayBuilder =
 
 /// What floats on the canvas while a box is open, for the composite to draw
 /// where each belongs: the float of the row this canvas edits, in that
-/// row's slot ([CanvasLayerStackView.floatOverlay]) — and the cels a lift
-/// holds beside it, a folder's rows or a range's, each in its own row
-/// ([CanvasLayerStackView.liftedRows], I-37 · F-329).
+/// row's slot (`LiveRows.floatOverlay`) — and the cels a lift holds beside
+/// it, a folder's rows or a range's, each in its own row
+/// (`LiveRows.liftedRows`, I-37 · F-329).
 typedef CanvasFloats = ({
   SelectionFloatOverlay liveRow,
   Map<BrushFrameKey, LiftedCel> liftedRows,
@@ -698,10 +699,10 @@ class BrushCanvasPanel extends StatefulWidget {
   ///
   /// ⛔Built by the STATE, not here, and memoized — see
   /// `_BrushCanvasPanelState._activeSurfacePainter`. This used to mint a
-  /// fresh instance per call and `CanvasLayerStackView.shouldRepaint`
-  /// compares the field with `!identical(...)`, so the comparison could
-  /// never answer false and every rebuild of this panel re-composited the
-  /// whole stack.
+  /// fresh instance per call and the stack's `shouldRepaint` compared the
+  /// field with `!identical(...)` (↩️as `FramePictureView`'s live rows are
+  /// compared now, `_sameLive`), so the comparison could never answer false
+  /// and every rebuild of this panel re-composited the whole stack.
   ({BitmapSurface surface, BrushFrameKey key, String fx})?
   _activeSurfaceIdentityFor(BrushFrameEditingCoordinator coordinator) {
     if (activeStrokeOverlayModel == null) {
@@ -1060,10 +1061,11 @@ class BrushCanvasPanel extends StatefulWidget {
   /// even while the cut IS armed (I-14) — two questions, two answers.
   final bool runsTheSelectedTool;
 
-  /// Stroke lifecycle for the host (R13-3): true at pen-down, false at
-  /// stroke end/cancel — the session holds prerender warming while a
-  /// stroke is live.
-  final ValueChanged<bool>? onStrokeInputActiveChanged;
+  /// Stroke lifecycle for the host (R13-3): the stroke at pen-down,
+  /// [StrokeInFlight.none] at stroke end/cancel — the session holds
+  /// prerender warming while a stroke is live, and counts the cel a
+  /// painting stroke draws as drawn (F-482).
+  final ValueChanged<StrokeInFlight>? onStrokeInputActiveChanged;
 
   /// Where this panel holds up what a save lands first while it is
   /// mounted — the stroke its view's pen is in and the text in hand
@@ -1148,9 +1150,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   // The book (F-201): the page its reader is on, kept true to the view.
   late final _CanvasPanelBook _bookState = _CanvasPanelBook(this);
 
-  /// True while a brush stroke is in progress; the viewport gesture layer
-  /// ignores wheel zooms and new pans so they cannot disturb the stroke.
-  bool _strokeActive = false;
+  /// The brush stroke in progress, if any; while one is, the viewport
+  /// gesture layer ignores wheel zooms and new pans so they cannot disturb
+  /// the stroke.
+  StrokeInFlight _stroke = StrokeInFlight.none;
+
+  bool get _strokeActive => _stroke != StrokeInFlight.none;
 
   /// True while a selection marquee/move drag is in progress (P9) — holds
   /// viewport gestures exactly like a stroke.
@@ -1269,10 +1274,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   /// The MERGED-mode surface painter, kept ALIVE across rebuilds.
   ///
-  /// 🐛It was rebuilt on every call, and `CanvasLayerStackView` gates the
-  /// entire stack composite on `!identical(oldDelegate.activeSurfacePainter,
-  /// activeSurfacePainter)`. A fresh instance every build makes that test
-  /// unconditionally true, so ANY rebuild of this panel — a pan frame, a
+  /// 🐛It was rebuilt on every call, and the stack gated its entire
+  /// composite on `!identical(oldDelegate.activeSurfacePainter,
+  /// activeSurfacePainter)` — as `FramePictureView` now stands its live rows
+  /// again on the same test (`_sameLive`). A fresh instance every build makes
+  /// that test unconditionally true, so ANY rebuild of this panel — a pan
+  /// frame, a
   /// tool switch, an unrelated notify — redrew the paper, every layer, the
   /// onion ghosts and a `saveLayer` per group buffer. Measured: ten
   /// rebuilds, ten distinct painters.
@@ -1638,7 +1645,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // leaked hold would gate prerendering forever (and a stroke's would
     // hold the playhead). Same for a mid-drag selection interaction.
     if (_strokeActive) {
-      widget.onStrokeInputActiveChanged?.call(false);
+      widget.onStrokeInputActiveChanged?.call(StrokeInFlight.none);
     }
     if (_selectionDragActive) {
       widget.onSelectionInteractionChanged?.call(false);
@@ -2251,14 +2258,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       strokeLander: _viewLander,
       // I-69: the shape tool has the view draw what its drag traced.
       shapeShow: _shapeShow,
-      onActiveStrokeChanged: (active) {
-        if (_strokeActive != active) {
-          widget.onStrokeInputActiveChanged?.call(active);
+      onActiveStrokeChanged: (stroke) {
+        if (_stroke != stroke) {
+          widget.onStrokeInputActiveChanged?.call(stroke);
           // ⛔NOT a setState (2026-09-26): nothing the panel draws reads
           // this — the gesture layer asks for it when an event arrives —
           // and the rebuild it forced rebuilt the whole canvas panel on
           // every pen-down and pen-up.
-          _strokeActive = active;
+          _stroke = stroke;
         }
       },
       // The underlay paints the paper (and the layers below); an opaque
@@ -2869,8 +2876,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// the original first — as ONE STROKE of the tool in hand where
   /// [asStroke], and as ONE AREA where not ([_drawTracedShape]). The shape
   /// tool's line and the line from the last stroke (I-119) both land here:
-  /// 「도형도구의 직선이랑 최대한 동일하게 로직 재사용. 법 통일」.
-  void _landTraced(List<DrawnShapePath> copies, {required bool asStroke}) {
+  /// 「도형도구의 직선이랑 최대한 동일하게 로직 재사용. 법 통일」. A stroke is
+  /// laid at [pressure] the whole way ([ShapeShow.landStroke]).
+  void _landTraced(
+    List<DrawnShapePath> copies, {
+    required bool asStroke,
+    double pressure = 1,
+  }) {
     final show = _contentShape?.show ?? _shapeShow.now;
     final onTheRow = _onTheRow(copies);
     _contentShape = null;
@@ -2882,7 +2894,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       return;
     }
     if (asStroke) {
-      show.landStroke(_tracedStroke(onTheRow));
+      show.landStroke(_tracedStroke(onTheRow), pressure: pressure);
       return;
     }
     show.land(_tracedArea(onTheRow));
@@ -2890,7 +2902,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   /// [_landTraced]'s show: [copies] traced so far, shown as they will land
   /// — or, null, taken back ([_showTracedShape]).
-  void _showTraced(List<DrawnShapePath>? copies, {required bool asStroke}) {
+  void _showTraced(
+    List<DrawnShapePath>? copies, {
+    required bool asStroke,
+    double pressure = 1,
+  }) {
     final show = _contentShape?.show ?? _shapeShow.now;
     if (copies == null) {
       // The drag is over without a shape: what its press took goes too.
@@ -2905,7 +2921,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       return;
     }
     if (asStroke) {
-      show.showStroke(_tracedStroke(onTheRow));
+      show.showStroke(_tracedStroke(onTheRow), pressure: pressure);
       return;
     }
     show.show(_tracedArea(onTheRow));

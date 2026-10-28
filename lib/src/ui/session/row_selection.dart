@@ -88,8 +88,31 @@ class RowSelection {
 
   void dispose() => rowSelection.dispose();
 
-  bool rowIsSelected(TimelineRowAddress row) =>
-      rowSelection.value.contains(row);
+  /// Whether [row] is selected — by its own address, or a lane by the layer
+  /// every door acts on for it ([layerActedOn]): a storyboard projection
+  /// row's lane and its row in hand's are ONE lane, and the selection holds
+  /// whichever name its press gave. 🗣️F-476: the conte rail stands on a
+  /// conte row's seat (F-322) while an fx header's sweep names the chain's
+  /// layer, so a press standing there read as one outside the selection,
+  /// and the stand that moved to the press let go of what the next drag
+  /// was to move.
+  bool rowIsSelected(TimelineRowAddress row) {
+    final selection = rowSelection.value;
+    if (selection.contains(row)) {
+      return true;
+    }
+    final inHand = _laneInHand(row);
+    return selection.any((selected) => _laneInHand(selected) == inHand);
+  }
+
+  /// [row], a lane, as its row in hand's lane ([layerActedOn]).
+  TimelineRowAddress _laneInHand(TimelineRowAddress row) => switch (row) {
+    LaneRowAddress(:final layerId, :final laneId) => LaneRowAddress(
+      layerActedOn(layerId),
+      laneId,
+    ),
+    _ => row,
+  };
 
   /// A press that lands OUTSIDE the current selection starts a fresh one —
   /// the cells' rule, transposed (their range gesture's `isInSelection`).

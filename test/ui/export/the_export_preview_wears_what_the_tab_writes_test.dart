@@ -27,7 +27,6 @@ import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/export/export_preview_document.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
-import '../../helpers/boolean_dot_probe.dart';
 import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/export_format_pick.dart';
@@ -244,10 +243,10 @@ void main() {
     await tester.pump();
     await tester.tap(options);
     await tester.pump();
-    final applyFx = keyed('export-apply-fx-toggle');
-    await tester.ensureVisible(applyFx);
+    final fxOff = keyed('export-apply-fx-off');
+    await tester.ensureVisible(fxOff);
     await tester.pump();
-    await tester.pressRingIn(applyFx);
+    await tester.tap(fxOff);
     await tester.pump();
     // The same thing looked at, in another look. What stands up while the
     // new one is on its way is the panel's to pin, where a landing is the

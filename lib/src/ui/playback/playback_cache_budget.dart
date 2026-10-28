@@ -1,12 +1,14 @@
 import 'dart:math' as math;
 
 import '../../services/memory_pressure_budget.dart';
-import 'layer_frame_image_cache.dart';
+import 'frame_picture_store.dart';
+import 'stacked_frame_picture.dart' show FramePictureKey;
 
 /// Playback render-cache policy constants (single source of truth).
 ///
-/// The byte budget of the canvas's row images, every screen's pictures
-/// (the playback cache). A row's picture is at most the canvas's own size —
+/// The byte budget of the frames' pictures every screen shows (the playback
+/// cache) — the onion ghosts' too, a picture of their own. A frame's picture
+/// is the canvas's own size, more where its ink reaches the pasteboard —
 /// ~15.5 MB for a 2340×1654 canvas.
 const int playbackCacheBudgetBytes = 600 * 1024 * 1024;
 
@@ -29,10 +31,14 @@ const int playbackCacheBudgetBytes = 600 * 1024 * 1024;
 /// number was measured and this one is only about the warning.
 const int playbackCacheBudgetUnderPressureBytes = 64 * 1024 * 1024;
 
-/// Keeps the playback cache — the canvas's row images, the pictures every
-/// screen shows a frame from — inside its byte budget, letting go of the
-/// ones wanted latest ([CanvasPictures.wantedAt]: 「허용치 = 레이어 그림 수요
-/// 순서」).
+/// When each frame's picture is next shown — how many steps on, null where
+/// no step shows it (`FramePictures.wantedAt`).
+typedef FramePictureWantedAt = int? Function(FramePictureKey key);
+
+/// Keeps the playback cache — the frames' pictures every screen shows
+/// ([FramePictureStore]) — inside its byte budget, letting go of the
+/// pictures wanted latest (`FramePictures.wantedAt`: 「허용치 = 레이어 그림
+/// 수요 순서」).
 ///
 /// ⛔No display reserve: what a screen holds is pinned, and a pin is never
 /// let go of — and what the walk wants next is in the same order as what
@@ -42,18 +48,21 @@ const int playbackCacheBudgetUnderPressureBytes = 64 * 1024 * 1024;
 /// ↩️It kept two caches in one budget until 2026-10-10 — a composite of
 /// each of the film's frames beside the row images the canvas holds, the
 /// composites claiming the line first — and the composites went
-/// (playback-plays-the-screen-material: the film is drawn from the row
-/// images too).
+/// (playback-plays-the-screen-material: the film was drawn from the row
+/// images too). ↩️Then the row images alone, until a frame became one
+/// picture (one-picture-per-frame ②-2), the pictures claiming the line
+/// first and the row images holding what was left — until no screen drew
+/// a row's image (②-5b-1).
 class PlaybackCacheBudgetEnforcer {
   PlaybackCacheBudgetEnforcer({
-    required this.layerImages,
+    required this.pictures,
     int maxBytes = playbackCacheBudgetBytes,
   }) : _budget = MemoryPressureBudget.halving(
          normal: maxBytes,
          floor: playbackCacheBudgetUnderPressureBytes,
        );
 
-  final LayerFrameImageCache layerImages;
+  final FramePictureStore<FramePictureKey> pictures;
 
   /// The cap in force — [playbackCacheBudgetBytes] until the OS warns. The
   /// lowers-only rule is [MemoryPressureBudget]'s, shared with the cel
@@ -76,37 +85,36 @@ class PlaybackCacheBudgetEnforcer {
   /// row pictures (F-289-Q21) — and comes off the cache's share first: it
   /// gives way to it, and takes it back when it is lent no more.
   ///
-  /// [wantedAt] is when each image is next shown: the ones wanted latest go
-  /// first. The rows of the frame under the playhead stay whatever the cap.
-  void enforce({required LayerImageWantedAt wantedAt, int lentBytes = 0}) {
-    layerImages.enforceBudget(
+  /// [wantedAt] is when each picture is next shown: the ones wanted latest
+  /// go first. The frame under the playhead stays whatever the cap.
+  void enforce({required FramePictureWantedAt wantedAt, int lentBytes = 0}) {
+    pictures.enforceBudget(
       maxBytes: room(lentBytes: lentBytes),
       wantedAt: wantedAt,
       laterThan: 0,
     );
   }
 
-  /// The bytes the images may hold while they are being made: the line,
+  /// The bytes the pictures may hold while they are being made: the line,
   /// less what is lent.
   int room({int lentBytes = 0}) => math.max(0, maxBytes - lentBytes);
 
   /// Makes room for one more picture of [bytes], wanted [step] frames on,
-  /// [within] the bytes the images may hold ([room]) — by letting go of
-  /// images wanted LATER than it, never of one wanted sooner, nor of one a
-  /// screen shows. False when that leaves no room: what is held is the
-  /// window.
+  /// [within] the bytes the cache may hold ([room]) — the pictures wanted
+  /// LATER than it, never one wanted sooner, nor one a screen shows. False
+  /// when that leaves no room: what is held is the window.
   bool makeRoomFor({
     required int bytes,
     required int step,
     required int within,
-    required LayerImageWantedAt wantedAt,
-  }) => layerImages.enforceBudget(
+    required FramePictureWantedAt wantedAt,
+  }) => pictures.enforceBudget(
     maxBytes: within - bytes,
     wantedAt: wantedAt,
     laterThan: step,
   );
 
   /// How much of the line a borrower may hold: all of it, less what
-  /// [enforce] never takes back — the images a screen shows.
-  int lendableBytes() => math.max(0, maxBytes - layerImages.pinnedBytes);
+  /// [enforce] never takes back — what a screen shows.
+  int lendableBytes() => math.max(0, maxBytes - pictures.pinnedBytes);
 }

@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
@@ -165,8 +166,8 @@ void main() {
     );
   });
 
-  /// Drives [ask] through a REAL save: taps [buttonKey] on the gate window
-  /// and lends both clocks until the whole thing settles — the save crosses
+  /// Drives [ask] through a REAL save: [press] answers the gate window, and
+  /// both clocks are lent until the whole thing settles — the save crosses
   /// into an isolate and the progress window spins, so neither the fake
   /// clock nor pumpAndSettle can finish it ([settleBehindTheWaitWindow]).
   /// ↩️It tapped inside `runAsync` until 10-20, where the window's linger
@@ -174,7 +175,7 @@ void main() {
   Future<bool> settleThroughRealSave(
     WidgetTester tester,
     Future<bool> Function() ask,
-    String buttonKey,
+    Future<void> Function() press,
   ) async {
     late bool settled;
     var done = false;
@@ -185,41 +186,52 @@ void main() {
       }),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(ValueKey<String>(buttonKey)));
+    await press();
     await settleBehindTheWaitWindow(tester, () => done);
     await tester.pump();
     expect(done, isTrue, reason: 'the gate never came back');
     return settled;
   }
 
-  testWidgets('Save inside the gate writes the file and lets the tear-down '
-      'proceed', (tester) async {
-    // The drive-through the presence tests never took: the gate's bool is
-    // what the close reads, and a gate that answered true without the
-    // bytes landing would quit past an unsaved project.
-    final fixture = await mounted(tester);
-    final path = '${folder.path.replaceAll('\\', '/')}/gate-save.anicel';
-    await tester.runAsync(() => fixture.session.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson));
-    final savedLength = File(path).lengthSync();
-    fixture.session.cutVerbs.createCut();
-    expect(fixture.session.projectFile.hasUnsavedChanges, isTrue);
+  Future<void> tapSave(WidgetTester tester) =>
+      tester.tap(find.byKey(const ValueKey<String>('system-exit-save')));
 
-    final settled = await settleThroughRealSave(
-      tester,
-      fixture.ask,
-      'system-exit-save',
-    );
+  final saves = <String, Future<void> Function(WidgetTester tester)>{
+    'tapped': tapSave,
+    // 🗣️F-479-Q2 (유저 2026-10-27): 「닫기 창은 「저장」을 강조 버튼으로 —
+    // Enter = 저장하고 닫기」 — the window opens on it.
+    'by Enter': (tester) => tester.sendKeyEvent(LogicalKeyboardKey.enter),
+  };
+  for (final MapEntry(key: how, value: save) in saves.entries) {
+    testWidgets('Save inside the gate, $how, writes the file and lets the '
+        'tear-down proceed', (tester) async {
+      // The drive-through the presence tests never took: the gate's bool is
+      // what the close reads, and a gate that answered true without the
+      // bytes landing would quit past an unsaved project.
+      final fixture = await mounted(tester);
+      final path = '${folder.path.replaceAll('\\', '/')}/gate-save.anicel';
+      await tester.runAsync(() => fixture.session.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson));
+      final savedLength = File(path).lengthSync();
+      fixture.session.cutVerbs.createCut();
+      expect(fixture.session.projectFile.hasUnsavedChanges, isTrue);
 
-    expect(settled, isTrue);
-    expect(fixture.session.projectFile.hasUnsavedChanges, isFalse);
-    expect(
-      File(path).lengthSync(),
-      greaterThan(savedLength),
-      reason: 'the new cut is really in the file, not just flagged saved',
-    );
-    fixture.session.dispose();
-    await tester.pump();
-  });
+      final settled = await settleThroughRealSave(
+        tester,
+        fixture.ask,
+        () => save(tester),
+      );
+
+      expect(settled, isTrue);
+      expect(fixture.session.projectFile.hasUnsavedChanges, isFalse);
+      expect(
+        File(path).lengthSync(),
+        greaterThan(savedLength),
+        reason: 'the new cut is really in the file, not just flagged saved',
+      );
+      fixture.session.dispose();
+      await tester.pump();
+    });
+  }
 
   testWidgets('🚨 a save that FAILS inside the gate calls the close off', (
     tester,
@@ -243,7 +255,7 @@ void main() {
     final settled = await settleThroughRealSave(
       tester,
       fixture.ask,
-      'system-exit-save',
+      () => tapSave(tester),
     );
 
     expect(settled, isFalse, reason: 'nothing landed, so nothing may close');

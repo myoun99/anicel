@@ -120,17 +120,20 @@ class SetProjectPasteboardCommand
       final picture = snapshot.surfaceOver(
         () => store.bakedSurfaceOrNull(key),
       );
+      // Under the name it had: the frame's picture of these pixels answers
+      // again, rather than being made anew from every tile (F-432 ④).
       if (picture != null) {
-        bakeCelSurface(store, key, picture);
+        bakeCelSurface(store, key, picture, revision: snapshot.revision);
       }
     }
     UndoSurfaceSnapshot.dropAll(layBack.values);
     _cut = {
-      for (final MapEntry(:key, value: picture) in cut.entries)
+      for (final MapEntry(:key, value: (:picture, :revision)) in cut.entries)
         key: UndoSurfaceSnapshot(
           key: key,
           snapshot: picture,
           sharedWith: store.hotBakedSurfaceOrNull(key),
+          revision: revision,
         ),
     };
   }

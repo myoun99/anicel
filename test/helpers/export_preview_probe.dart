@@ -10,6 +10,8 @@ import 'package:anicel/src/ui/export/export_settings_modules.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
+import 'number_pad_keyboard.dart';
+
 /// The export window's preview, read as it is DRAWN — the picture that is
 /// up, the name on its plate, the transport under it.
 extension ExportPreviewProbe on WidgetTester {
@@ -85,7 +87,8 @@ extension ExportPreviewProbe on WidgetTester {
   }
 
   /// Types a one-based frame into the transport's IN or OUT readout, as a
-  /// hand does: its pencil opens it, Enter commits.
+  /// hand does: its pencil opens its number pad, the number atop the pad
+  /// brings the keyboard up (I-134), Enter commits.
   Future<void> typeExportRange({String? inFrame, String? outFrame}) async {
     for (final (end, typed) in [('in', inFrame), ('out', outFrame)]) {
       if (typed == null) {
@@ -93,6 +96,7 @@ extension ExportPreviewProbe on WidgetTester {
       }
       await tap(find.byKey(ValueKey<String>('export-transport-$end-edit')));
       await pump();
+      await openThePadsKeyboard(this);
       await enterText(
         find.byKey(ValueKey<String>('export-transport-$end-input')),
         typed,

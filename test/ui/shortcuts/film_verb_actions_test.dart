@@ -12,7 +12,8 @@ void main() {
   const filmVerbs = <String>[
     EditorActionIds.frameNewDrawing,
     EditorActionIds.frameBlankExposure,
-    EditorActionIds.frameToggleMark,
+    EditorActionIds.frameToggleMarkOne,
+    EditorActionIds.frameToggleMarkTwo,
     EditorActionIds.frameMarkEvery,
     EditorActionIds.timelinePushBlocks,
     EditorActionIds.timelinePullBlocks,
@@ -84,14 +85,22 @@ void main() {
     expect(label(EditorActionIds.cutNew), '새 컷');
     expect(label(EditorActionIds.frameBlankExposure), '비우기');
     expect(label(EditorActionIds.frameAutoCreate), '프레임 자동 생성');
-    expect(label(EditorActionIds.frameToggleMark), '중간나누기 마크');
+    // 🗣️I-130 (유저 2026-10-25): two marks, 마크1 the hollow ○ and 마크2
+    // the filled ●. ↩️The ● read 「중간나누기 마크」 while it was the one.
+    expect(label(EditorActionIds.frameToggleMarkOne), '중간나누기 마크1');
+    expect(label(EditorActionIds.frameToggleMarkTwo), '중간나누기 마크2');
     expect(label(EditorActionIds.frameMarkEvery), '중간나누기 마크 자동 추가');
     final ids = [for (final it in editorActionDefinitions) it.id];
     expect(
       ids.indexOf(EditorActionIds.frameMarkEvery),
-      ids.indexOf(EditorActionIds.frameToggleMark) + 1,
+      ids.indexOf(EditorActionIds.frameToggleMarkTwo) + 1,
       reason: 'the shortcut list prints the registry in order, and the '
           'button stands right of the ● (I-58-Q1)',
+    );
+    expect(
+      ids.indexOf(EditorActionIds.frameToggleMarkOne),
+      ids.indexOf(EditorActionIds.frameToggleMarkTwo) - 1,
+      reason: '「기존 중간나누기 버튼 왼쪽에 중간나누기 마크1 버튼 신설」 (I-130)',
     );
   });
 

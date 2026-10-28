@@ -125,6 +125,28 @@ enum ExportConteFormat {
   };
 }
 
+/// What a picture the export writes keeps of the rows' FX — the window's
+/// 레이어 FX, one choice on every tab that writes the rows' pictures. What
+/// each keeps of a row is `layerAsOutput`'s.
+///
+/// 🗣️I-65-Q3 (유저 2026-10-25): 「출력창 fx 타입 세개 만들자. 켬, 기본만 켬,
+/// 끔. 켬이랑 끔은 지금처럼 전부 켜고 끄는거고, 기본만 켬은 지금까지 말햇던
+/// 셀번호나 참조fx같은것만 키고 트랜스폼 포함해서 나머지 끄는것」. ↩️It was a
+/// switch, on or off.
+enum ExportLayerFx {
+  on,
+  basic,
+  off;
+
+  String get jsonValue => name;
+
+  static ExportLayerFx fromJson(Object? json) => switch (json) {
+    'basic' => ExportLayerFx.basic,
+    'off' => ExportLayerFx.off,
+    _ => ExportLayerFx.on,
+  };
+}
+
 sealed class ExportTabSpec {
   const ExportTabSpec();
 
@@ -156,7 +178,7 @@ class SequenceExportSpec extends ExportTabSpec {
     this.inFrame,
     this.outFrame,
     this.naming = const ExportSequenceNaming(),
-    this.applyLayerFx = true,
+    this.layerFx = ExportLayerFx.on,
     this.includeAudio = true,
   });
 
@@ -166,7 +188,7 @@ class SequenceExportSpec extends ExportTabSpec {
   final int? inFrame;
   final int? outFrame;
   final ExportSequenceNaming naming;
-  final bool applyLayerFx;
+  final ExportLayerFx layerFx;
   final bool includeAudio;
 
   @override
@@ -181,7 +203,7 @@ class SequenceExportSpec extends ExportTabSpec {
     Object? inFrame = _unset,
     Object? outFrame = _unset,
     ExportSequenceNaming? naming,
-    bool? applyLayerFx,
+    ExportLayerFx? layerFx,
     bool? includeAudio,
   }) => SequenceExportSpec(
     format: format ?? this.format,
@@ -190,7 +212,7 @@ class SequenceExportSpec extends ExportTabSpec {
     inFrame: identical(inFrame, _unset) ? this.inFrame : inFrame as int?,
     outFrame: identical(outFrame, _unset) ? this.outFrame : outFrame as int?,
     naming: naming ?? this.naming,
-    applyLayerFx: applyLayerFx ?? this.applyLayerFx,
+    layerFx: layerFx ?? this.layerFx,
     includeAudio: includeAudio ?? this.includeAudio,
   );
 
@@ -202,7 +224,7 @@ class SequenceExportSpec extends ExportTabSpec {
     if (inFrame != null) 'inFrame': inFrame,
     if (outFrame != null) 'outFrame': outFrame,
     'naming': naming.toJson(),
-    if (!applyLayerFx) 'applyLayerFx': false,
+    if (layerFx != ExportLayerFx.on) 'layerFx': layerFx.jsonValue,
     if (!includeAudio) 'includeAudio': false,
   };
 
@@ -222,7 +244,7 @@ class SequenceExportSpec extends ExportTabSpec {
             : ExportSequenceNaming.fromJson(
                 json['naming'] as Map<String, dynamic>,
               ),
-        applyLayerFx: json['applyLayerFx'] as bool? ?? true,
+        layerFx: ExportLayerFx.fromJson(json['layerFx']),
         includeAudio: json['includeAudio'] as bool? ?? true,
       );
 
@@ -236,7 +258,7 @@ class SequenceExportSpec extends ExportTabSpec {
           other.inFrame == inFrame &&
           other.outFrame == outFrame &&
           other.naming == naming &&
-          other.applyLayerFx == applyLayerFx &&
+          other.layerFx == layerFx &&
           other.includeAudio == includeAudio;
 
   @override
@@ -247,7 +269,7 @@ class SequenceExportSpec extends ExportTabSpec {
     inFrame,
     outFrame,
     naming,
-    applyLayerFx,
+    layerFx,
     includeAudio,
   );
 }
@@ -258,12 +280,12 @@ class ImageExportSpec extends ExportTabSpec {
   const ImageExportSpec({
     this.format = const ExportFormatSelection(kind: ExportMediaKind.still),
     this.sizeMode = ExportSizeMode.camera,
-    this.applyLayerFx = true,
+    this.layerFx = ExportLayerFx.on,
   });
 
   final ExportFormatSelection format;
   final ExportSizeMode sizeMode;
-  final bool applyLayerFx;
+  final ExportLayerFx layerFx;
 
   @override
   ExportTab get tab => ExportTab.image;
@@ -271,18 +293,18 @@ class ImageExportSpec extends ExportTabSpec {
   ImageExportSpec copyWith({
     ExportFormatSelection? format,
     ExportSizeMode? sizeMode,
-    bool? applyLayerFx,
+    ExportLayerFx? layerFx,
   }) => ImageExportSpec(
     format: format ?? this.format,
     sizeMode: sizeMode ?? this.sizeMode,
-    applyLayerFx: applyLayerFx ?? this.applyLayerFx,
+    layerFx: layerFx ?? this.layerFx,
   );
 
   @override
   Map<String, dynamic> toJson() => {
     'format': format.toJson(),
     if (sizeMode != ExportSizeMode.camera) 'sizeMode': sizeMode.jsonValue,
-    if (!applyLayerFx) 'applyLayerFx': false,
+    if (layerFx != ExportLayerFx.on) 'layerFx': layerFx.jsonValue,
   };
 
   static ImageExportSpec fromJson(Map<String, dynamic> json) => ImageExportSpec(
@@ -292,7 +314,7 @@ class ImageExportSpec extends ExportTabSpec {
             json['format'] as Map<String, dynamic>,
           ),
     sizeMode: ExportSizeMode.fromJson(json['sizeMode']),
-    applyLayerFx: json['applyLayerFx'] as bool? ?? true,
+    layerFx: ExportLayerFx.fromJson(json['layerFx']),
   );
 
   @override
@@ -301,10 +323,10 @@ class ImageExportSpec extends ExportTabSpec {
       other is ImageExportSpec &&
           other.format == format &&
           other.sizeMode == sizeMode &&
-          other.applyLayerFx == applyLayerFx;
+          other.layerFx == layerFx;
 
   @override
-  int get hashCode => Object.hash(format, sizeMode, applyLayerFx);
+  int get hashCode => Object.hash(format, sizeMode, layerFx);
 }
 
 /// Cels tab: the AUTO RULES (프리셋 저장분). What they resolve to for a
@@ -321,7 +343,7 @@ class CelsExportSpec extends ExportTabSpec {
   const CelsExportSpec({
     this.format = const ExportFormatSelection(kind: ExportMediaKind.still),
     this.sizeMode = ExportSizeMode.canvas,
-    this.applyLayerFx = true,
+    this.layerFx = ExportLayerFx.on,
     this.naming = const ExportCelNaming(),
     this.kinds = defaultKinds,
     this.label = defaultLabel,
@@ -386,7 +408,8 @@ class CelsExportSpec extends ExportTabSpec {
   final bool attach;
   final bool sheetOnly;
 
-  /// Whether the delivery cel is rendered THROUGH the rows' effect chains.
+  /// What of the rows' effect chains the delivery cel is rendered through
+  /// ([ExportLayerFx]).
   ///
   /// 🚨THIS WAS A HARDCODED false, and that was the asymmetry. The other
   /// tabs have carried this switch since R4-new1; the cel tab alone forced
@@ -399,7 +422,7 @@ class CelsExportSpec extends ExportTabSpec {
   /// key exists to clean the artwork BEING delivered; an artist who wants the
   /// raw line back turns it off here, which is what every other tab already
   /// let them do.
-  final bool applyLayerFx;
+  final ExportLayerFx layerFx;
 
   final ExportCelNaming naming;
 
@@ -442,7 +465,7 @@ class CelsExportSpec extends ExportTabSpec {
   CelsExportSpec copyWith({
     ExportFormatSelection? format,
     ExportSizeMode? sizeMode,
-    bool? applyLayerFx,
+    ExportLayerFx? layerFx,
     ExportCelNaming? naming,
     Set<ExportCelKind>? kinds,
     LayerMark? label,
@@ -459,7 +482,7 @@ class CelsExportSpec extends ExportTabSpec {
   }) => CelsExportSpec(
     format: format ?? this.format,
     sizeMode: sizeMode ?? this.sizeMode,
-    applyLayerFx: applyLayerFx ?? this.applyLayerFx,
+    layerFx: layerFx ?? this.layerFx,
     naming: naming ?? this.naming,
     kinds: kinds ?? this.kinds,
     label: label ?? this.label,
@@ -487,7 +510,7 @@ class CelsExportSpec extends ExportTabSpec {
   Map<String, dynamic> toJson() => {
     'format': format.toJson(),
     if (sizeMode != ExportSizeMode.canvas) 'sizeMode': sizeMode.jsonValue,
-    if (!applyLayerFx) 'applyLayerFx': false,
+    if (layerFx != ExportLayerFx.on) 'layerFx': layerFx.jsonValue,
     'naming': naming.toJson(),
     if (!setEquals(kinds, defaultKinds))
       'kinds': [
@@ -519,7 +542,7 @@ class CelsExportSpec extends ExportTabSpec {
     sizeMode: json['sizeMode'] == null
         ? ExportSizeMode.canvas
         : ExportSizeMode.fromJson(json['sizeMode']),
-    applyLayerFx: json['applyLayerFx'] as bool? ?? true,
+    layerFx: ExportLayerFx.fromJson(json['layerFx']),
     naming: json['naming'] == null
         ? const ExportCelNaming()
         : ExportCelNaming.fromJson(json['naming'] as Map<String, dynamic>),
@@ -558,7 +581,7 @@ class CelsExportSpec extends ExportTabSpec {
       other is CelsExportSpec &&
           other.format == format &&
           other.sizeMode == sizeMode &&
-          other.applyLayerFx == applyLayerFx &&
+          other.layerFx == layerFx &&
           other.naming == naming &&
           setEquals(other.kinds, kinds) &&
           other.label == label &&
@@ -577,7 +600,7 @@ class CelsExportSpec extends ExportTabSpec {
   int get hashCode => Object.hash(
     format,
     sizeMode,
-    applyLayerFx,
+    layerFx,
     naming,
     Object.hashAllUnordered(kinds),
     label,

@@ -6,6 +6,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/app_frame_count_settings.dart';
 import 'package:anicel/src/models/app_frame_grid_settings.dart';
+import 'package:anicel/src/models/frame.dart' show InbetweenMark;
 import 'package:anicel/src/models/camera_path_settings.dart';
 import 'package:anicel/src/models/pixel_verb_settings.dart';
 import 'package:anicel/src/services/persistence/app_accent_settings_store.dart';
@@ -28,6 +29,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/editor_app_settings.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/audio_sync_settings.dart';
+import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/models/app_accents.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
@@ -136,11 +138,12 @@ void main() {
     );
     first.setAccentSettings(const AppAccentSettings(accent: Color(0xFF123456)));
     first.projectSettings.setPasteboardColor(0xFF204060);
-    first.setInputSettings(
-      const AppInputSettings(
-        pressureCurveGamma: 1.5,
-      ),
-    );
+    final penResponse = BrushPressureCurve(const [
+      BrushCurvePoint(0, 0),
+      BrushCurvePoint(0.5, 0.8),
+      BrushCurvePoint(1, 1),
+    ]);
+    first.setInputSettings(AppInputSettings(pressureCurve: penResponse));
     first.setSaveSettings(
       const AppSaveSettings(periodicSnapshotMinutes: 7),
     );
@@ -185,10 +188,14 @@ void main() {
     appSettingsOf(first).setFrameGridSettings(
       const AppFrameGridSettings(blockFrameLines: true),
     );
-    // The count window's entry (I-24-open-entry) — seconds+frames, because
-    // frames is the default a lost store returns.
+    // The count window's entry (I-24-open-entry) and the mark-every window's
+    // mark (I-130-Q2) — seconds+frames and the ●, because frames and the ○
+    // are the defaults a lost store returns (F-469).
     appSettingsOf(first).setFrameCountSettings(
-      const AppFrameCountSettings(lastEntry: FrameCountEntry.secondsPlusFrames),
+      const AppFrameCountSettings(
+        lastEntry: FrameCountEntry.secondsPlusFrames,
+        lastEveryMark: InbetweenMark.two,
+      ),
     );
     // How the canvas shows a camera's path (I-89 ④) — every field off its
     // default, since a lost store returns the defaults.
@@ -244,12 +251,12 @@ void main() {
           AppText.settings.value.programLanguage == AppLanguage.ko &&
           AppColors.accentSettings.value.accent == const Color(0xFF123456) &&
           AppWorkspaceColors.settings.value.pasteboardArgb == 0xFF204060 &&
-          AppInput.settings.value.pressureCurveGamma == 1.5 &&
+          AppInput.settings.value.pressureCurve == penResponse &&
           AppSave.settings.value.periodicSnapshotMinutes == 7 &&
           AppMemory.settings.value.allowanceBytes == 3 << 30 &&
           AppFrameGridSettings.settings.value.blockFrameLines &&
-          AppFrameCountSettings.settings.value.lastEntry ==
-              FrameCountEntry.secondsPlusFrames &&
+          AppFrameCountSettings.settings.value.lastEveryMark ==
+              InbetweenMark.two &&
           CameraPathSettings.settings.value.tickEvery == 6 &&
           PixelVerbSettings.settings.value.binarizeThreshold == 179 &&
           appSettingsOf(second).audioSyncSettings.value.offset == 42,
@@ -260,13 +267,16 @@ void main() {
     expect(second.uiStrings, AppStrings.of(AppLanguage.ko));
     expect(AppColors.accentSettings.value.accent, const Color(0xFF123456));
     expect(AppWorkspaceColors.settings.value.pasteboardArgb, 0xFF204060);
-    expect(AppInput.settings.value.pressureCurveGamma, 1.5);
+    expect(AppInput.settings.value.pressureCurve, penResponse);
     expect(AppSave.settings.value.periodicSnapshotMinutes, 7);
     expect(AppMemory.settings.value.allowanceBytes, 3 << 30);
     expect(AppFrameGridSettings.settings.value.blockFrameLines, isTrue);
     expect(
-      AppFrameCountSettings.settings.value.lastEntry,
-      FrameCountEntry.secondsPlusFrames,
+      AppFrameCountSettings.settings.value,
+      const AppFrameCountSettings(
+        lastEntry: FrameCountEntry.secondsPlusFrames,
+        lastEveryMark: InbetweenMark.two,
+      ),
     );
     expect(
       CameraPathSettings.settings.value,

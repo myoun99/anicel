@@ -20,7 +20,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
-import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -250,8 +250,8 @@ void main() {
     // The slot the composite draws the active row's float from — the one
     // the layer handed the float to ([LiftedFloat.showsOn]).
     final overlay = tester
-        .widget<CanvasLayerStackView>(find.byType(CanvasLayerStackView).first)
-        .floatOverlay!;
+        .widget<FramePictureView>(find.byType(FramePictureView).first)
+        .live!.floatOverlay!;
     expect(
       overlay.value,
       isNotNull,

@@ -131,4 +131,44 @@ void main() {
       reason: 'the cell you pressed is the cell you get',
     );
   });
+
+  testWidgets('a region built again answers as it was built again — the '
+      'callbacks it was handed last, and the reach it was given', (
+    tester,
+  ) async {
+    final heard = <String>[];
+    Future<void> build(String who, HitTestBehavior behavior) =>
+        tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Center(
+                child: InstantTapRegion(
+                  onTap: (_) => heard.add(who),
+                  behavior: behavior,
+                  child: const SizedBox(width: 200, height: 100),
+                ),
+              ),
+            ),
+          ),
+        );
+    Future<void> click() async {
+      final gesture = await tester.startGesture(
+        tester.getCenter(region()),
+        kind: PointerDeviceKind.mouse,
+      );
+      await gesture.up();
+      await tester.pump();
+    }
+
+    await build('first', HitTestBehavior.opaque);
+    await click();
+    await build('second', HitTestBehavior.opaque);
+    await click();
+    expect(heard, ['first', 'second']);
+
+    // An empty box defers to a child that is not there: no reach at all.
+    await build('third', HitTestBehavior.deferToChild);
+    await click();
+    expect(heard, ['first', 'second'], reason: 'nothing under it to hit');
+  });
 }

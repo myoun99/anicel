@@ -510,35 +510,84 @@ List<TimesheetCell> timesheetColumnCellsShowing(
   return previewLayer == null ? column.cells : rebuild(previewLayer);
 }
 
-/// What the content stratum PRINTS from the drag channel — every column's
-/// cells as the drag shows them, the cut's live end and its live drawn end,
-/// the three things [TimesheetDocumentPainter] reads off its `dragPreview` —
-/// compared by value.
+/// What the content stratum PRINTS from the drag channel over the view of
+/// [shown] ([timesheetShown]) — each column's cells as the drag shows them
+/// on the rows a paint of that view reaches, the cut's live end and its
+/// live drawn end, the three things [TimesheetDocumentPainter] reads off
+/// its `dragPreview` — compared by value.
 ///
 /// 🚨sheet-prints-only-its-drags: a drag that moves nothing the sheet prints
 /// — a lane value scrubbed, a canvas handle, a key range (F-195) — prints
 /// the same, and the sheet neither repaints nor stands its bake down for it.
+///
+/// ⛔The rows a paint does not reach print nothing (F-244-sheet-print): the
+/// whole document's cells — 11,520 of them on a 480-frame cut of 24 rows,
+/// compared every step — made a block dragged off screen re-print the
+/// sheet at each step, its bake standing down for a picture that stayed the
+/// same. The rows are the paint's own walk ([_cellsShown]), so the print
+/// cannot reach fewer than the paint reads.
 Object timesheetDragPrint({
   required TimesheetDocument document,
+  required TimesheetDocumentLayout layout,
+  required Rect? shown,
   required CutId? cutId,
   required TimelineDragPreview? preview,
-}) => (
-  ByList([
-    for (final column in document.columns)
-      ByList(timesheetColumnCellsShowing(column, preview)),
-  ]),
-  timelineCutEndPreviewFrameCount(
-    preview: preview,
-    cutId: cutId,
-    playbackFrameCount: document.playbackFrameCount,
-  ),
-  timelineDrawnEndPreviewFrameCount(
+}) {
+  final drawnEnd = timelineDrawnEndPreviewFrameCount(
     preview: preview,
     cutId: cutId,
     playbackFrameCount: document.playbackFrameCount,
     drawnFrameCount: document.drawnFrameCount,
-  ),
-);
+  );
+  return (
+    ByList([
+      for (final column in document.columns)
+        ByList(
+          _cellsShown(
+            document,
+            layout,
+            column.kind,
+            timesheetColumnCellsShowing(column, preview),
+            shown: shown,
+            drawnFrameCount: drawnEnd,
+          ),
+        ),
+    ]),
+    timelineCutEndPreviewFrameCount(
+      preview: preview,
+      cutId: cutId,
+      playbackFrameCount: document.playbackFrameCount,
+    ),
+    drawnEnd,
+  );
+}
+
+/// The document-space rectangle a paint of [size] under [viewport] can
+/// show, or null to reach the whole sheet (culling off, or no view): what
+/// the painter culls to and what a drag print reads ([timesheetDragPrint]).
+Rect? timesheetShown(CanvasViewport? viewport, Size size) =>
+    TimesheetDocumentPainter.debugDisableCulling || viewport == null
+    ? null
+    : canvasRectShown(viewport, size);
+
+/// The pages of [document] a view of [shown] reaches any of, top to bottom
+/// — every page when [shown] is null.
+///
+/// A whole page off screen costs nothing at all — this is where the
+/// stacked multi-page document stops being O(document).
+Iterable<TimesheetPage> _pagesShown(
+  TimesheetDocument document,
+  TimesheetDocumentLayout layout,
+  Rect? shown,
+) => document.pages.where((page) {
+  final bounds = layout.pageRect(page.index);
+  return shown == null ||
+      (bounds.bottom >= shown.top && bounds.top <= shown.bottom);
+});
+
+/// The frame the first row of [half] of [page] prints.
+int _halfStartFrame(TimesheetDocument document, TimesheetPage page, int half) =>
+    page.startFrame + (half == 0 ? 0 : document.halfFrameCount);
 
 /// Paints the sheet document — the paper form (header band, Direction memo
 /// band, group/letter rows, second-heavy grid), cel numbers, holds,
@@ -750,35 +799,20 @@ class TimesheetDocumentPainter extends CustomPainter
   static bool debugDisableCulling = false;
 
   /// The document-space rectangle the panel can actually show, or null
-  /// when culling is off. Set once at the top of [paint], read by the
-  /// three row loops and the page/half skips.
+  /// when culling is off ([timesheetShown]). Set once at the top of
+  /// [paint], read by the three row loops and the page skip.
   Rect? _cull;
-
-  /// Whether anything between [top] and [bottom] can be seen.
-  bool _bandVisible(double top, double bottom) {
-    final cull = _cull;
-    return cull == null || (bottom >= cull.top && top <= cull.bottom);
-  }
 
   @override
   void paint(Canvas canvas, Size size) {
-    final resolvedViewport = viewport;
-    _enterDocumentSpace(canvas, size, resolvedViewport, effectiveRatio);
+    _enterDocumentSpace(canvas, size, viewport, effectiveRatio);
     // The clip above, carried back through the viewport transform into
     // document space. Everything outside it is already invisible; the
     // only question is whether we spend the ops finding that out.
-    _cull = debugDisableCulling || resolvedViewport == null
-        ? null
-        : canvasRectShown(resolvedViewport, size);
+    _cull = timesheetShown(viewport, size);
 
-    // Every page, one under another.
-    for (final page in document.pages) {
-      // A whole page off screen costs nothing at all — this is where the
-      // stacked multi-page document stops being O(document).
-      final pageBounds = layout.pageRect(page.index);
-      if (!_bandVisible(pageBounds.top, pageBounds.bottom)) {
-        continue;
-      }
+    // Every page on screen, one under another.
+    for (final page in _pagesShown(document, layout, _cull)) {
       _bands.paintPaper(canvas, page.index);
       _bands.paintHeaderBand(canvas, page.index);
       if (_drawContent) {
@@ -789,8 +823,7 @@ class TimesheetDocumentPainter extends CustomPainter
           canvas,
           pageIndex: page.index,
           half: strip.half,
-          startFrame:
-              page.startFrame + (strip.half == 0 ? 0 : document.halfFrameCount),
+          startFrame: _halfStartFrame(document, page, strip.half),
           rowCount: strip.rowCount,
         );
         if (_drawContent) {
@@ -1017,11 +1050,17 @@ class TimesheetDocumentPainter extends CustomPainter
   );
 
   /// What the paper and the form print from — the sheet's SHAPE: the
-  /// columns and the letter over each, the pages, the header boxes, the
-  /// frame rate and the notation. A value typed on the sheet is not in it.
+  /// columns and the letters the form prints over them
+  /// ([TimesheetColumnKind.titleLayer]), the pages, the header boxes, the
+  /// frame rate and the notation. A value typed on the sheet is not in it,
+  /// nor a cel row's name.
   Object get _formShape => (
     ByList([
-      for (final column in document.columns) (column.kind, column.label),
+      for (final column in document.columns)
+        (
+          column.kind,
+          column.kind.titleLayer == SheetPaintLayer.form ? column.label : null,
+        ),
     ]),
     ByList([
       for (final page in document.pages)

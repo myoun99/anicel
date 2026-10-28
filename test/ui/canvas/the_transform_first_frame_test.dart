@@ -18,6 +18,7 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 
 import '../../helpers/brush_canvas_fixture.dart';
+import '../../helpers/the_frame_as_it_stands.dart';
 
 /// F-38a — 유저 2026-08-27: 「선택 후 변형시 변형 시작할때 **1프레임, 기존
 /// 그림의 일부? 만 보였다가 사라짐**. 비슷한게 옛날에도 있었어서 확정시에도
@@ -81,7 +82,7 @@ void main() {
               activeStrokeOverlayModel: overlay,
               viewportUnderlayBuilder:
                   (context, viewport, activeSurfacePainter, floats) =>
-                      CanvasLayerStackView(
+                      TheFrameAsItStands(
                         nodes: const [CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1))],
                         activeSurfacePainter: activeSurfacePainter,
                         floatOverlay: floats.liveRow,
@@ -104,7 +105,7 @@ void main() {
     final painters = tester
         .widgetList<CustomPaint>(
           find.descendant(
-            of: find.byType(CanvasLayerStackView),
+            of: find.byType(TheFrameAsItStands),
             matching: find.byType(CustomPaint),
           ),
         )
@@ -203,8 +204,8 @@ void main() {
     final key = env.coordinator.activeFrameKey;
     final cel = env.coordinator.currentSurfaceOf(key);
     expect(
-      tester.widget<CanvasLayerStackView>(
-        find.byType(CanvasLayerStackView),
+      tester.widget<TheFrameAsItStands>(
+        find.byType(TheFrameAsItStands),
       ).activeSurfacePainter?.surface,
       same(cel),
       reason: 'at rest the composite draws the cel itself',
@@ -236,8 +237,8 @@ void main() {
       reason: 'the session wrote nothing — the cel is the same object',
     );
 
-    final shown = tester.widget<CanvasLayerStackView>(
-      find.byType(CanvasLayerStackView),
+    final shown = tester.widget<TheFrameAsItStands>(
+      find.byType(TheFrameAsItStands),
     ).activeSurfacePainter?.surface;
     expect(shown, isNotNull, reason: 'the active row still has a painter');
     expect(

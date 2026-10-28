@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
@@ -44,10 +45,15 @@ import 'package:anicel/src/ui/export/png_sequence_export_service.dart'
     show ExportWriteSummary;
 import 'package:anicel/src/ui/export/video_export_service.dart';
 import 'package:anicel/src/ui/input/control_press_claim.dart';
+import 'package:anicel/src/ui/sheet/paper_editing.dart';
+import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart'
+    show EditorActionIds;
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/timesheet/timesheet_ink_layer.dart';
 import 'package:anicel/src/ui/widgets/app_scrollbar.dart';
 
 import '../../helpers/export_format_pick.dart';
+import '../../helpers/paper_editing_kit.dart';
 import '../../helpers/poll_until.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -81,11 +87,16 @@ class _AMovieOfOneByte extends VideoExportService {
 typedef _Taker = ({Element holder, String key, String also, String said});
 
 /// The export window under test: its state, how many times it has handed
-/// its files over, and the answer that lets the hand-over held go.
+/// its files over, the answer that lets the hand-over held go, what it
+/// edits the papers with, the editor's actions its keys reached and the
+/// keys the editor's held keys were asked about.
 typedef _Window = ({
   ExportDialogState state,
   int Function() handedOver,
   void Function() release,
+  PaperEditing editing,
+  List<String> invoked,
+  List<KeyEvent> held,
 });
 
 /// 🚨WHILE AN EXPORT IS UNDER WAY, THE WINDOW TAKES NO PRESS BUT ONE THAT
@@ -299,7 +310,7 @@ void main() {
             'export-format-file',
             'export-naming-base-field',
             'export-scope-project',
-            'export-apply-fx-toggle-ring',
+            'export-apply-fx-basic',
             'export-transport-play',
             'export-transport-in-step-up',
           ],
@@ -326,7 +337,7 @@ void main() {
           offers: [
             'export-file-name-field',
             'export-format-file',
-            'export-image-fx-toggle-ring',
+            'export-image-fx-off',
             'export-transport-play',
           ],
         ),
@@ -359,7 +370,20 @@ void main() {
             'export-cel-suffix-field',
             'export-tsformat-file',
             'export-envelope-paper-sheet',
-            'export-cels-apply-fx-toggle-ring',
+            'export-cels-apply-fx-basic',
+          ],
+        ),
+        // I-127: the page the list stands on is its panel's paper — its
+        // boxes typed in place, its brush switch.
+        'the Cels tab standing on its timesheet': (
+          setUp: (tester) async {
+            await tapKey(tester, 'export-tab-cels');
+            await unfoldEverything(tester);
+            await tapKey(tester, 'export-cels-stand-document-timesheet');
+          },
+          offers: [
+            'timesheet-name-edit-p0',
+            'export-timesheet-brush-toggle-button',
           ],
         ),
         'the Conte Sheet tab': (
@@ -511,7 +535,8 @@ void main() {
 
   /// The window over a fresh session on a surface it opens its drawers
   /// in, its runs handed over as iOS hands them: a run stays under way
-  /// until the window's release answers the hand-over.
+  /// until the window's release answers the hand-over. It edits the
+  /// sheets' papers as the editor's does, under the editor's keys (I-127).
   Future<_Window> openWindow(WidgetTester tester) async {
     debugOperatingSystemOverride = 'ios';
     FolderPicker.debugOperatingSystem = 'ios';
@@ -523,6 +548,8 @@ void main() {
     };
     final s = session();
     addTearDown(s.dispose);
+    final editing = paperEditingKit(s);
+    final (:road, :invoked, held: keysHeld) = recordingKeyRoad(s);
     await tester.binding.setSurfaceSize(const Size(2000, 2400));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
@@ -533,6 +560,8 @@ void main() {
             session: s,
             formatAvailability: ExportFormatAvailability.permissive(),
             videoExportService: _AMovieOfOneByte(),
+            keys: road,
+            paperEditing: editing,
           ),
         ),
       ),
@@ -542,6 +571,9 @@ void main() {
       state: tester.state<ExportDialogState>(find.byType(ExportDialog)),
       handedOver: () => handedOver,
       release: () => held.complete(FolderGrant.granted(path: temp.path)),
+      editing: editing,
+      invoked: invoked,
+      held: keysHeld,
     );
   }
 
@@ -678,5 +710,48 @@ void main() {
     });
     await tester.pump();
     expect(window.handedOver(), 1);
+  });
+
+  // I-127: the window takes the editor's tool keys and its undo — which
+  // change the film a run is writing.
+  testWidgets('🚨while the Cels tab writes, its paper takes no stroke and '
+      'the editor\'s keys reach nothing — both come back when it ends', (
+    tester,
+  ) async {
+    final window = await openWindow(tester);
+    await tabs['the Cels tab standing on its timesheet']!.setUp(tester);
+    window.editing.timesheetBrushAllowed.value = true;
+    await tester.pump();
+    expect(find.byType(TimesheetInkLayer), findsOneWidget, reason: 'premise');
+
+    Future<void> pressKeys() async {
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyE);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyZ);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pump();
+    }
+
+    late Future<void> whole;
+    await tester.runAsync(() async {
+      whole = window.state.export();
+      expect(await pollUntil(() => window.handedOver() == 1), isTrue);
+    });
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(TimesheetInkLayer), findsNothing);
+    await pressKeys();
+    expect(window.invoked, isEmpty);
+    expect(window.held, isEmpty, reason: 'no key is held to a tool either');
+
+    await tester.runAsync(() async {
+      window.release();
+      await whole;
+    });
+    await tester.pump();
+    expect(find.byType(TimesheetInkLayer), findsOneWidget);
+    await pressKeys();
+    expect(window.invoked, [EditorActionIds.toolEraser, EditorActionIds.undo]);
+    expect(window.held, isNotEmpty);
   });
 }

@@ -197,12 +197,12 @@ void main() {
       );
     });
 
-    banksOnce('setLayerFillReference', (c) {
+    banksOnce('setLayerClip', (c) {
       final row = rowOf(c);
-      c.setLayerFillReference(
+      c.setLayerClip(
         cutId: row.cutId,
         layerId: row.layerId,
-        isFillReference: true,
+        clipsToBelow: true,
       );
     });
 

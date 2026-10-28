@@ -6,10 +6,8 @@ import 'package:anicel/src/models/layer_effect.dart';
 /// would wipe that cut's parameter values and keyframes, which is exactly
 /// what this function exists to prevent.
 void main() {
-  final radiusId = effectParametersOf(EffectKind.blur).first.id;
-  final brightnessId = effectParametersOf(
-    EffectKind.brightnessContrast,
-  ).first.id;
+  final radiusId = EffectKind.blur.parameters.first.id;
+  final brightnessId = EffectKind.brightnessContrast.parameters.first.id;
 
   LayerEffect blur(String id, {bool enabled = true, double radius = 0}) =>
       LayerEffect(

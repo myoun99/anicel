@@ -97,7 +97,33 @@ void main() {
     await tester.pumpAndSettle();
     expect(result!.seName, '앨리스');
     expect(result!.dialogue, '그건 아니라고 생각해');
-    expect(result!.seType, SeLineType.on, reason: 'I-20: ON is the default');
+    expect(result!.seTypes.own, SeLineType.on, reason: 'I-20: ON is the default');
+  });
+
+  testWidgets('SE dialog: a space shows on the preview as it is typed, at '
+      'the ends too, and OK keeps the line as typed (F-484)', (tester) async {
+    SeInstanceDialogResult? result;
+    await _openDialog<SeInstanceDialogResult>(
+      tester,
+      const SeInstanceDialog(creating: true),
+      (r) => result = r,
+    );
+    final field = find.byKey(const ValueKey<String>('se-dialogue-field'));
+
+    await tester.enterText(field, 'あ');
+    await tester.pump();
+    await tester.enterText(field, 'あ ');
+    await tester.pump();
+    expect(_previewDialogue(tester), 'あ ', reason: 'the space just typed');
+    await tester.enterText(field, ' あ ');
+    await tester.pump();
+    expect(_previewDialogue(tester), ' あ ');
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instance-edit-ok-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(result!.dialogue, ' あ ', reason: 'what the preview showed');
   });
 
   testWidgets('SE dialog: the delivery is one of three pills, opens on the '
@@ -105,7 +131,7 @@ void main() {
     SeInstanceDialogResult? result;
     await _openDialog<SeInstanceDialogResult>(
       tester,
-      const SeInstanceDialog(initialSeType: SeLineType.mono),
+      SeInstanceDialog(initialSeTypes: SeLineTypes(own: SeLineType.mono)),
       (r) => result = r,
     );
     for (final type in SeLineType.values) {
@@ -120,7 +146,7 @@ void main() {
       find.byKey(const ValueKey<String>('instance-edit-ok-button')),
     );
     await tester.pumpAndSettle();
-    expect(result!.seType, SeLineType.off);
+    expect(result!.seTypes.own, SeLineType.off);
   });
 
   testWidgets('SE dialog cancel pops nothing', (tester) async {

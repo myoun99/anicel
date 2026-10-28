@@ -9,6 +9,7 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
+import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
 
@@ -29,31 +30,34 @@ void main() {
     );
   }
 
-  Color glyphColor(WidgetTester tester, String key) => IconTheme.of(
-    tester.element(
-      find.descendant(
-        of: find.byKey(ValueKey<String>(key)),
-        matching: find.byType(Icon),
-      ),
-    ),
-  ).color!;
+  Color glyphColor(WidgetTester tester, String key) =>
+      tester.glyphInkOf(find.byKey(ValueKey<String>(key)))!;
 
   ColorScheme schemeOf(WidgetTester tester, String key) =>
       Theme.of(tester.element(find.byKey(ValueKey<String>(key)))).colorScheme;
 
   // The face's OWN render object — the box, the state layer and the press,
-  // around the glyph (2026-10-24: the rail's light face).
-  RenderIconButtonPressFace faceOf(WidgetTester tester, String key) =>
-      tester.renderObject<RenderIconButtonPressFace>(
-        find.descendant(
-          of: find.byKey(ValueKey<String>(key)),
-          matching: find.byType(IconButtonPressFace),
-        ),
-      );
+  // around the glyph (2026-10-24: the rail's light face; 2026-10-25: the
+  // rail's glyph face itself, around a plain Icon).
+  RenderBox faceOf(WidgetTester tester, String key) => tester.renderObject(
+    find.iconButtonFace(find.byKey(ValueKey<String>(key))),
+  );
 
   // The state layer it paints right now.
   Color? layerOf(WidgetTester tester, String key) =>
-      faceOf(tester, key).debugLayerInk;
+      switch (faceOf(tester, key)) {
+        RenderIconButtonPressFace(:final debugLayerInk) ||
+        RenderRailGlyphFace(:final debugLayerInk) => debugLayerInk,
+        final other => throw StateError('$other is no icon button face'),
+      };
+
+  // The shape it is cut to.
+  ShapeBorder shapeOf(WidgetTester tester, String key) =>
+      switch (faceOf(tester, key)) {
+        RenderIconButtonPressFace(:final spec) => spec.shape,
+        RenderRailGlyphFace(:final spec) => spec.shape,
+        final other => throw StateError('$other is no icon button face'),
+      };
 
   // What `IconButton.styleFrom` makes of a colour for a state layer:
   // `withOpacity`, which rounds the alpha to 8 bits (0.08 → 20/255). The
@@ -94,13 +98,13 @@ void main() {
       // whether it is selected or not (next test).
       expect(glyphColor(tester, 'on'), AppColors.accent);
       expect(glyphColor(tester, 'off'), schemeOf(tester, 'off').onSurfaceVariant);
-      expect(find.byIcon(Icons.check), findsNothing);
+      expect(find.wornIcon(Icons.check), findsNothing);
     });
 
     testWidgets('an OUTLINED button draws its edge — the hairline at rest, '
         'the accent while ON — and a plain one draws none', (tester) async {
       BorderSide edgeOf(String key) =>
-          (faceOf(tester, key).spec.shape as OutlinedBorder).side;
+          (shapeOf(tester, key) as OutlinedBorder).side;
 
       await pump(
         tester,
@@ -373,16 +377,8 @@ void main() {
           ),
         ),
       );
-      Color painted(String key) => tester
-          .widget<RichText>(
-            find.descendant(
-              of: find.byKey(ValueKey<String>(key)),
-              matching: find.byType(RichText),
-            ),
-          )
-          .text
-          .style!
-          .color!;
+      Color painted(String key) =>
+          tester.glyphInkOf(find.byKey(ValueKey<String>(key)))!;
       expect(painted('app-rest'), AppColors.text);
       expect(painted('app-dead'), AppColors.textDim.withValues(alpha: 0.5));
       expect(painted('app-on'), AppColors.accent);
@@ -441,11 +437,11 @@ void main() {
         ),
       );
       final button = find.byKey(const ValueKey<String>('tip'));
-      expect(find.railTooltip('Say my name'), findsOneWidget);
+      expect(find.tooltipSaying('Say my name'), findsOneWidget);
       expect(
         find.descendant(
           of: button,
-          matching: find.byWidgetPredicate((widget) => widget is Tooltip),
+          matching: find.byType(AppTooltip),
         ),
         findsNothing,
         reason: 'the window is shared — a tooltip each was nine elements',
@@ -615,7 +611,7 @@ void main() {
       expect(rowTaps, 1);
     });
 
-    testWidgets('🚨one button is at most 18 elements and 7 render objects — '
+    testWidgets('🚨one button is at most 7 elements and 1 render object — '
         'the light face was 36 and 20, the Material one 27 render objects', (
       tester,
     ) async {
@@ -639,17 +635,99 @@ void main() {
       }
 
       visit(tester.element(find.byType(AppIconButton)));
-      // ⛔THE WHOLE POINT OF TWO ROUNDS, as numbers. 2026-09-10: 27 render
+      // ⛔THE WHOLE POINT OF THREE ROUNDS, as numbers. 2026-09-10: 27 render
       // objects with the Material button, 20 on the light face. 2026-10-24
       // (board `frame-panels-build-in-one-frame`): every tab reopened
       // builds its buttons anew, and the face's semantics node, tooltip,
       // mouse region, listener and three boxes became ONE render object —
       // 36 elements → 22, 20 render objects → 9. A Flutter upgrade that adds
-      // a node to `Focus`, `Actions` or `Icon` fails this on purpose, so
-      // the number is read again rather than drifting. 2026-10-25: the press
-      // claim became one render object too — 22 → 18, 9 → 7.
-      expect(elements, lessThanOrEqualTo(18));
-      expect(renderObjects, lessThanOrEqualTo(7));
+      // a node to `Focus` or `Actions` fails this on purpose, so the number
+      // is read again rather than drifting. 2026-10-25: the press claim
+      // became one render object too — 22 → 18, 9 → 7 — and then the face's
+      // own (PressClaim) — 18 → 17, 7 → 6 — and then a plain Icon became a
+      // glyph the face draws (the rail's glyph face) — 17 → 7, 6 → 1.
+      expect(elements, lessThanOrEqualTo(7));
+      expect(renderObjects, lessThanOrEqualTo(1));
+    });
+
+    testWidgets('a plain Icon — or one in its own colour — is a glyph the '
+        'face draws; an Icon that says anything more keeps its widget', (
+      tester,
+    ) async {
+      Future<bool> drawnByTheFace(
+        Widget icon, {
+        TextDirection direction = TextDirection.ltr,
+        bool? scaled,
+      }) async {
+        await pump(
+          tester,
+          Directionality(
+            textDirection: direction,
+            child: IconTheme.merge(
+              data: IconThemeData(applyTextScaling: scaled),
+              child: AppIconButton(
+                keyValue: 'which',
+                tooltip: 'Which',
+                icon: icon,
+                onPressed: () {},
+              ),
+            ),
+          ),
+        );
+        final glyph = find.byType(RailGlyphButton).evaluate().isNotEmpty;
+        final widget = find.byType(IconButtonPressFace).evaluate().isNotEmpty;
+        expect(glyph, isNot(widget), reason: 'one face or the other');
+        return glyph;
+      }
+
+      expect(await drawnByTheFace(const Icon(Icons.draw)), isTrue);
+      expect(
+        await drawnByTheFace(const Icon(Icons.draw, color: Color(0xFF2E7D32))),
+        isTrue,
+      );
+      // ⛔CONTROL for the two below: right-to-left alone, and a theme that
+      // does not scale icons, change nothing.
+      expect(
+        await drawnByTheFace(
+          const Icon(Icons.draw),
+          direction: TextDirection.rtl,
+        ),
+        isTrue,
+      );
+      expect(
+        await drawnByTheFace(const Icon(Icons.arrow_back), scaled: false),
+        isTrue,
+      );
+      for (final (what, icon) in const [
+        ('a key', Icon(Icons.draw, key: ValueKey<String>('glyph'))),
+        ('a size', Icon(Icons.draw, size: 14)),
+        ('a fill', Icon(Icons.draw, fill: 1)),
+        ('a weight', Icon(Icons.draw, weight: 700)),
+        ('a grade', Icon(Icons.draw, grade: 200)),
+        ('an optical size', Icon(Icons.draw, opticalSize: 24)),
+        ('shadows', Icon(Icons.draw, shadows: [Shadow(blurRadius: 2)])),
+        ('a label', Icon(Icons.draw, semanticLabel: 'Draw')),
+        ('a direction', Icon(Icons.draw, textDirection: TextDirection.rtl)),
+        ('its own scaling', Icon(Icons.draw, applyTextScaling: true)),
+        ('a blend', Icon(Icons.draw, blendMode: BlendMode.multiply)),
+        ('a font weight', Icon(Icons.draw, fontWeight: FontWeight.bold)),
+        ('a word', Text('1:1')),
+      ]) {
+        expect(await drawnByTheFace(icon), isFalse, reason: what);
+      }
+      expect(
+        await drawnByTheFace(
+          const Icon(Icons.arrow_back),
+          direction: TextDirection.rtl,
+        ),
+        isFalse,
+        reason: 'a glyph that turns for a right-to-left text',
+      );
+      expect(
+        await drawnByTheFace(const Icon(Icons.draw), scaled: true),
+        isFalse,
+        reason: 'a theme that scales icons with the text',
+      );
     });
   });
 

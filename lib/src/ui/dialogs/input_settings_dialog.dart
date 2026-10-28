@@ -5,9 +5,9 @@ import '../../services/input/wintab_pen_service.dart';
 import '../canvas/canvas_zoom_scale.dart';
 import '../editor_session_manager.dart';
 import '../../models/app_input_settings.dart';
-import '../widgets/field_slider.dart';
 import '../widgets/drag_value_label.dart';
 import '../widgets/panel_flyout.dart';
+import '../widgets/pressure_curve_popup.dart' show PenResponseButton;
 import '../widgets/settings_rows.dart';
 import '../text/app_strings.dart';
 
@@ -31,68 +31,33 @@ class InputSettingsSection extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // The pen pressure response curve (PEN-3) — every
-            // platform: output = input^gamma; drag live, persist on
-            // release.
+            // The pen pressure response (PEN-3) — every platform: a graph
+            // in a window (F-480), followed live while a hand moves it and
+            // kept when it lets go.
             const Divider(height: 16),
-            Text(
-              strings.inputPressureHeading,
-              style: Theme.of(context).textTheme.labelLarge,
+            SettingsRow(
+              label: strings.inputPressureCurve,
+              control: PenResponseButton(
+                keyValue: 'settings-pressure-curve',
+                curve: settings.pressureCurve,
+                onChanged: (curve) => AppInput.settings.value =
+                    AppInput.settings.value.copyWith(pressureCurve: curve),
+                onChangeEnd: (curve) => session.setInputSettings(
+                  AppInput.settings.value.copyWith(pressureCurve: curve),
+                ),
+              ),
             ),
-            _SettingsBar(
-              keyValue: 'settings-pressure-curve',
-              session: session,
-              settings: settings,
-              value: settings.pressureCurveGamma,
-              withValue: (settings, gamma) =>
-                  settings.copyWith(pressureCurveGamma: gamma),
-              min: 0.25,
-              max: 4.0,
-              scale: FieldSliderScale.exponential,
-              label: strings.inputPressureSoftHard,
-              // ⚠️An exception to the bar's own number, twice over: the
-              // neutral gamma is a WORD, and a curve exponent is read to
-              // the hundredth (×1.05 and ×1.1 are different pens).
-              valueTextBuilder: (gamma, _) => gamma == 1.0
-                  ? strings.inputPressureLinear
-                  : '×${gamma.toStringAsFixed(2)}',
-            ),
-            // 速度 needs a ceiling and no file format supplies one, so the
-            // user owns it (유저 확정 2026-09-08). Same block as the
-            // pressure curve: both answer 「how is this device's input
-            // read」, and a brush's speed curve is worthless until this
-            // number matches the hand that drew it.
-            const Divider(height: 16),
-            Text(
-              strings.inputSpeedHeading,
-              style: Theme.of(context).textTheme.labelLarge,
-            ),
-            _SettingsBar(
-              keyValue: 'settings-speed-reference',
-              session: session,
-              settings: settings,
-              value: settings.speedReferencePixelsPerSecond,
-              withValue: (settings, reference) =>
-                  settings.copyWith(speedReferencePixelsPerSecond: reference),
-              min: 200,
-              max: 8000,
-              scale: FieldSliderScale.exponential,
-              label: strings.inputSpeedReference,
-              // F-9/F-34: the bar writes its own number — a local
-              // `.round()` here is a display decision the call site does
-              // not get to make.
-              unit: ' px/s',
-            ),
+            // ↩️No 速度 row: the speed a 速度 curve reads as full is the
+            // app's, `AppInputSettings.speedReferencePixelsPerSecond`
+            // (🗣️F-480-Q1, 유저 2026-10-27: 「없앤다 — 기준은 앱이 고정(2000
+            // px/s)」).
             // PEN-7a: the CANVAS mappings for standard secondary
             // inputs — pen side/barrel + S-Pen button + mouse right
             // all arrive as 'right-click'; pen upper + wheel click as
             // 'wheel click'. Hold switches the tool temporarily;
             // release springs back or keeps it.
             const Divider(height: 16),
-            Text(
-              strings.inputCanvasHeading,
-              style: Theme.of(context).textTheme.labelLarge,
-            ),
+            SettingsSectionHeading(label: strings.inputCanvasHeading),
             _CanvasMappingRow(
               keyPrefix: 'settings-canvas-right',
               label: strings.inputRightClick,
@@ -126,10 +91,7 @@ class InputSettingsSection extends StatelessWidget {
             // control/draw mode into the ONE-FINGER slot's Drawing
             // action), the +1-finger modifier and the snap tables.
             const Divider(height: 16),
-            Text(
-              strings.inputCanvasTouchHeading,
-              style: Theme.of(context).textTheme.labelLarge,
-            ),
+            SettingsSectionHeading(label: strings.inputCanvasTouchHeading),
             // 🗣️I-124 (유저 2026-10-22): 「모든 터치입력 무시하는 옵션」 —
             // above the rows it would leave with nothing to answer.
             SettingsSwitchRow(
@@ -140,45 +102,33 @@ class InputSettingsSection extends StatelessWidget {
                 settings.copyWith(touchIgnored: ignored),
               ),
             ),
-            _EnumChoiceRow<CanvasTouchDragAction>(
-              rowKey: 'settings-touch-slot-1',
+            settingsEnumPickerRow(
+              keyValue: 'settings-touch-slot-1',
               label: strings.inputDragOneFinger,
               value: settings.touchDragOneFinger,
               values: CanvasTouchDragAction.values,
               labelOf: _dragActionLabel,
-              onChanged: (action) => session.setInputSettings(
+              onPicked: (action) => session.setInputSettings(
                 settings.copyWith(touchDragOneFinger: action),
               ),
             ),
-            _EnumChoiceRow<CanvasTouchDragAction>(
-              rowKey: 'settings-touch-slot-2',
+            settingsEnumPickerRow(
+              keyValue: 'settings-touch-slot-2',
               label: strings.inputDragTwoFingers,
-              // Drawing is single-finger by nature — the multi-finger
-              // slots never offer it.
-              values: const [
-                CanvasTouchDragAction.flip,
-                CanvasTouchDragAction.navigate,
-                CanvasTouchDragAction.brushSize,
-                CanvasTouchDragAction.none,
-              ],
+              values: _manyFingerActions,
               value: settings.touchDragTwoFingers,
               labelOf: _dragActionLabel,
-              onChanged: (action) => session.setInputSettings(
+              onPicked: (action) => session.setInputSettings(
                 settings.copyWith(touchDragTwoFingers: action),
               ),
             ),
-            _EnumChoiceRow<CanvasTouchDragAction>(
-              rowKey: 'settings-touch-slot-3',
+            settingsEnumPickerRow(
+              keyValue: 'settings-touch-slot-3',
               label: strings.inputDragThreeFingers,
-              values: const [
-                CanvasTouchDragAction.flip,
-                CanvasTouchDragAction.navigate,
-                CanvasTouchDragAction.brushSize,
-                CanvasTouchDragAction.none,
-              ],
+              values: _manyFingerActions,
               value: settings.touchDragThreeFingers,
               labelOf: _dragActionLabel,
-              onChanged: (action) => session.setInputSettings(
+              onPicked: (action) => session.setInputSettings(
                 settings.copyWith(touchDragThreeFingers: action),
               ),
             ),
@@ -235,10 +185,9 @@ class InputSettingsSection extends StatelessWidget {
             ),
             // 🗣️F-391 (유저 2026-10-17): 「회전 스냅은 하나만 존재가능할거같은데
             // 그런부분도 하나만 존재하도록 알아서. 쓰기쉽게」 — ONE number, so
-            // the bar every single number in this window is (the pressure and
-            // speed rows'), not the box the lists were typed into. Whole
-            // degrees from 1 to 90: finer than a degree is the free turn, and
-            // past a right angle a turn has one line to land on.
+            // a bar, not the box the lists were typed into. Whole degrees
+            // from 1 to 90: finer than a degree is the free turn, and past a
+            // right angle a turn has one line to land on.
             _SettingsBar(
               keyValue: 'settings-snap-rotation',
               session: session,
@@ -252,25 +201,32 @@ class InputSettingsSection extends StatelessWidget {
               label: strings.inputRotationSnap,
               unit: '°',
             ),
-            _ZoomSnapsRow(session: session),
-            _ZoomCeilingRow(
-              on: settings.zoomCeilingOn,
-              percent: settings.zoomCeilingPercent,
-              onSwitched: (on) => session.setInputSettings(
-                settings.copyWith(zoomCeilingOn: on),
-              ),
-              onSubmitted: (percent) => session.setInputSettings(
-                settings.copyWith(zoomCeilingPercent: percent),
-              ),
+            _PercentListRow(
+              session: session,
+              keyValue: 'settings-zoom-snap',
+              pickerKey: const ValueKey<String>('settings-snap-zoom'),
+              label: strings.inputZoomSnaps,
+              percentsOf: (settings) => settings.zoomSnapPercents,
+              withPercents: (settings, snaps) =>
+                  settings.copyWith(zoomSnapPercents: snaps),
+              fewest: 1,
+            ),
+            // 🗣️I-27-Q1 (유저 2026-09-13): 「줌 스냅 밑에 한 줄」.
+            _PercentListRow(
+              session: session,
+              keyValue: 'settings-zoom-ceiling',
+              pickerKey: const ValueKey<String>('settings-zoom-ceiling'),
+              label: strings.inputZoomCeiling,
+              percentsOf: (settings) => [?settings.zoomCeiling],
+              withPercents: (settings, lock) =>
+                  settings.copyWith(zoomCeiling: lock.firstOrNull),
+              most: 1,
             ),
             // The CSP-style tablet service switch (PEN-2) — Windows
             // only: other platforms have a single native pen path.
             if (defaultTargetPlatform == TargetPlatform.windows) ...[
               const Divider(height: 16),
-              Text(
-                strings.inputTabletHeading,
-                style: Theme.of(context).textTheme.labelLarge,
-              ),
+              SettingsSectionHeading(label: strings.inputTabletHeading),
               // 🚨THE PICK-ONE GROUP 유저 named twice (guide-sym ⑥⑧): as the
               // model the app's boolean copies (「구체적으론
               // 환경설정-입력-태블릭서비스의 버튼처럼」) and among the buttons
@@ -330,6 +286,15 @@ class InputSettingsSection extends StatelessWidget {
   }
 }
 
+/// What a drag of two fingers or three may do. Drawing is single-finger by
+/// nature — the multi-finger slots never offer it.
+const _manyFingerActions = [
+  CanvasTouchDragAction.flip,
+  CanvasTouchDragAction.navigate,
+  CanvasTouchDragAction.brushSize,
+  CanvasTouchDragAction.none,
+];
+
 String _dragActionLabel(CanvasTouchDragAction action) {
   final strings = AppText.strings;
   return switch (action) {
@@ -345,8 +310,7 @@ String _dragActionLabel(CanvasTouchDragAction action) {
 
 /// One number of these settings on a bar (PEN-3): the setting follows the
 /// bar while it moves, and is kept when the bar is let go — one write for
-/// the whole drag (F-191). The pressure curve's, the speed reference's and
-/// the rotation snap's (F-391) are each one.
+/// the whole drag (F-191). The rotation snap's (F-391) is one.
 class _SettingsBar extends StatelessWidget {
   const _SettingsBar({
     required this.keyValue,
@@ -357,10 +321,8 @@ class _SettingsBar extends StatelessWidget {
     required this.min,
     required this.max,
     required this.label,
-    this.scale = FieldSliderScale.linear,
     this.divisions,
     this.unit = '',
-    this.valueTextBuilder,
   });
 
   final String keyValue;
@@ -378,141 +340,23 @@ class _SettingsBar extends StatelessWidget {
   final double min;
   final double max;
   final String label;
-  final FieldSliderScale scale;
   final int? divisions;
   final String unit;
-  final String Function(double value, String derived)? valueTextBuilder;
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 6, bottom: 2),
-      // Fixed box: FieldSlider builds through a LayoutBuilder, which cannot
-      // answer the AlertDialog's intrinsic-size probes — tight constraints
-      // shield it.
-      child: SizedBox(
-        width: 320,
-        height: 24,
-        child: FieldSlider(
-          key: ValueKey<String>(keyValue),
-          value: value,
-          min: min,
-          max: max,
-          scale: scale,
-          divisions: divisions,
-          label: label,
-          unit: unit,
-          valueTextBuilder: valueTextBuilder,
-          onChanged: (value) => AppInput.settings.value = withValue(
-            AppInput.settings.value,
-            value,
-          ),
-          onChangeEnd: (value) =>
-              session.setInputSettings(withValue(settings, value)),
-        ),
-      ),
-    );
-  }
-}
-
-/// A compact labeled enum choice row (PEN-7b touch settings).
-class _EnumChoiceRow<T extends Enum> extends StatelessWidget {
-  const _EnumChoiceRow({
-    required this.rowKey,
-    required this.label,
-    required this.value,
-    required this.values,
-    required this.labelOf,
-    required this.onChanged,
-  });
-
-  final String rowKey;
-  final String label;
-  final T value;
-  final List<T> values;
-  final String Function(T value) labelOf;
-  final ValueChanged<T> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: Row(
-        children: [
-          Expanded(child: Text(label, style: const TextStyle(fontSize: 12))),
-          PanelFlyoutButton(
-            key: ValueKey<String>(rowKey),
-            label: labelOf(value),
-            entriesBuilder: () => values.asFlyoutChoices(
-              current: value,
-              keyPrefix: '$rowKey-',
-              labelOf: labelOf,
-              onPicked: onChanged,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 🗣️I-27 (유저 2026-09-13): 「설정 줌 스냅 근처에 최대 줌 제한기능」 — the
-/// lock on zooming in: its switch and its number on ONE line, right under
-/// the zoom snaps (I-27-Q1: 「줌 스냅 밑에 한 줄」).
-///
-/// ⛔The number does not come and go with the switch. Off, the field stays
-/// where it is, dimmed, holding what was typed (the same answer: 「끄면 칸은
-/// 회색으로 자리만」) — a field that appeared when the switch went on would
-/// be UI that pops into existence.
-class _ZoomCeilingRow extends StatelessWidget {
-  const _ZoomCeilingRow({
-    required this.on,
-    required this.percent,
-    required this.onSwitched,
-    required this.onSubmitted,
-  });
-
-  final bool on;
-  final double percent;
-  final ValueChanged<bool> onSwitched;
-  final ValueChanged<double> onSubmitted;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: SettingsSwitchRow(
-            tileKey: const ValueKey<String>('settings-zoom-ceiling'),
-            label: AppText.strings.inputZoomCeiling,
-            value: on,
-            onChanged: onSwitched,
-          ),
-        ),
-        SizedBox(
-          width: 180,
-          height: 28,
-          child: TextField(
-            key: const ValueKey<String>('settings-zoom-ceiling-percent'),
-            enabled: on,
-            controller: TextEditingController(text: _shownPercent(percent)),
-            style: const TextStyle(fontSize: 12),
-            decoration: const InputDecoration(
-              isDense: true,
-              contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-              border: OutlineInputBorder(),
-            ),
-            onSubmitted: (text) {
-              final lock = _typedPercent(text);
-              if (lock != null) {
-                onSubmitted(lock);
-              }
-            },
-          ),
-        ),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => SettingsBarRow(
+    barKey: ValueKey<String>(keyValue),
+    label: label,
+    value: value,
+    min: min,
+    max: max,
+    divisions: divisions,
+    unit: unit,
+    onChanged: (value) =>
+        AppInput.settings.value = withValue(AppInput.settings.value, value),
+    onChangeEnd: (value) =>
+        session.setInputSettings(withValue(settings, value)),
+  );
 }
 
 /// [percent] as a view can stand in it: inside the range of display zooms,
@@ -540,29 +384,66 @@ String _shownPercent(double percent) => percent == percent.roundToDouble()
     ? percent.toStringAsFixed(0)
     : percent.toString();
 
+/// Zoom percents as a LIST: the button reads them; opened, they are rows
+/// each with its −, and the number to put in stands at the foot with its
+/// ＋. A − or the ＋ leaves the list open, for the next one.
+///
 /// 🗣️F-391 (유저 2026-10-17): 「이런 스냅 숫자 적는거, 지금 너무 숫자
 /// 하나하나 텍스트로 , 이 점 신경써가면서 적는거라 굉장히 불편하니
-/// 리스트팝오버형식으로? 추가/삭제 할수있게?」 — the zoom snaps as a LIST. The
-/// button writes them; opened, they are rows each with its −, and the
-/// number to put in stands at the foot with its ＋ (F-391-Q1 a, the answer
-/// recommended and built while the card waits). A − or the ＋ leaves the
-/// list open, for the next one. ↩️A text field the list was typed into,
-/// commas and all.
+/// 리스트팝오버형식으로? 추가/삭제 할수있게?」 — the zoom snaps (F-391-Q1 a,
+/// the answer recommended and built while the card waits). ↩️A text field
+/// the list was typed into, commas and all.
+///
+/// 🗣️F-480 (유저 2026-10-26): 「최대 줌 잠금은 … 리스트 팝오버로 없음이랑
+/// 항목하나 100 이렇게 두고 고르게하도록. 줌 스냅 추가하듯이 똑같은
+/// 공용ui로. 다만 줌 잠금은 1개값만 허용이니까 그런 최대갯수 알아서 만들고
+/// 공용화」 — the max zoom lock is this list too, of at most one ([most]),
+/// and reads 「없음」 empty. ↩️A switch row and a typed number on one line
+/// (I-27-Q1: 「줌 스냅 밑에 한 줄」), never level with each other.
 ///
 /// Every list it keeps is one a view can walk: in order, each number once,
-/// each one a view can reach ([_reachablePercent]) — and never empty, since
-/// an empty list reads back as the defaults at the next start
-/// ([AppInputSettings.fromJson]).
-class _ZoomSnapsRow extends StatefulWidget {
-  const _ZoomSnapsRow({required this.session});
+/// each one a view can reach ([_reachablePercent]).
+class _PercentListRow extends StatefulWidget {
+  const _PercentListRow({
+    required this.session,
+    required this.keyValue,
+    required this.pickerKey,
+    required this.label,
+    required this.percentsOf,
+    required this.withPercents,
+    this.fewest = 0,
+    this.most,
+  });
 
   final EditorSessionManager session;
 
+  /// What the list is keyed by: a row `'<keyValue>-<percent>'` and its −
+  /// `'…-remove'`, the number at the foot `'<keyValue>-new'` and its ＋
+  /// `'<keyValue>-add'`.
+  final String keyValue;
+
+  final Key pickerKey;
+  final String label;
+  final List<double> Function(AppInputSettings settings) percentsOf;
+  final AppInputSettings Function(
+    AppInputSettings settings,
+    List<double> percents,
+  )
+  withPercents;
+
+  /// The fewest numbers the list keeps: a − stops there. The snaps keep
+  /// one, since an empty list reads back as the defaults at the next start
+  /// ([AppInputSettings.fromJson]).
+  final int fewest;
+
+  /// The most it holds: the ＋ stops there. Null for no end.
+  final int? most;
+
   @override
-  State<_ZoomSnapsRow> createState() => _ZoomSnapsRowState();
+  State<_PercentListRow> createState() => _PercentListRowState();
 }
 
-class _ZoomSnapsRowState extends State<_ZoomSnapsRow> {
+class _PercentListRowState extends State<_PercentListRow> {
   /// The number at the foot — what the ＋ puts in. It starts where a view
   /// does, at 100%.
   final ValueNotifier<double> _toPutIn = ValueNotifier<double>(100);
@@ -573,45 +454,53 @@ class _ZoomSnapsRowState extends State<_ZoomSnapsRow> {
     super.dispose();
   }
 
-  List<double> get _stops => AppInput.settings.value.zoomSnapPercents;
+  List<double> get _percents => widget.percentsOf(AppInput.settings.value);
 
-  void _keep(Iterable<double> stops) => widget.session.setInputSettings(
-    AppInput.settings.value.copyWith(
-      zoomSnapPercents: ({...stops}.toList()..sort()),
+  bool get _full => switch (widget.most) {
+    final most? => _percents.length >= most,
+    null => false,
+  };
+
+  void _keep(Iterable<double> percents) => widget.session.setInputSettings(
+    widget.withPercents(
+      AppInput.settings.value,
+      {...percents}.toList()..sort(),
     ),
   );
 
   List<PanelFlyoutEntry> _entries() {
     final strings = AppText.strings;
+    final keyValue = widget.keyValue;
     return [
-      PanelFlyoutHeader(strings.inputZoomSnaps),
+      PanelFlyoutHeader(widget.label),
       PanelFlyoutLiveRows(
-        keyValue: 'settings-zoom-snaps',
+        keyValue: '$keyValue-list',
         listenable: Listenable.merge([AppInput.settings, _toPutIn]),
         rows: () => [
-          for (final stop in _stops)
+          for (final percent in _percents)
             PanelFlyoutItem(
-              keyValue: 'settings-zoom-snap-${_shownPercent(stop)}',
-              label: '${_shownPercent(stop)}%',
+              keyValue: '$keyValue-${_shownPercent(percent)}',
+              label: '${_shownPercent(percent)}%',
               actions: [
                 PanelFlyoutRowAction(
-                  keyValue: 'settings-zoom-snap-${_shownPercent(stop)}-remove',
+                  keyValue: '$keyValue-${_shownPercent(percent)}-remove',
                   icon: Icons.remove,
                   tooltip: strings.commonDelete,
                   does: PanelFlyoutActionDoes.deletes,
-                  enabled: _stops.length > 1,
+                  enabled: _percents.length > widget.fewest,
                   onPressed: () =>
-                      _keep(_stops.where((other) => other != stop)),
+                      _keep(_percents.where((other) => other != percent)),
                 ),
               ],
             ),
         ],
         foot: () => PanelFlyoutLiveFoot(
           control: (_) => DragValueLabel(
-            keyValue: 'settings-zoom-snap-new',
+            keyValue: '$keyValue-new',
             text: '${_shownPercent(_toPutIn.value)}%',
             textStyle: const TextStyle(fontSize: 12),
             width: 56,
+            signed: false,
             onDragDelta: (units) =>
                 _toPutIn.value = _reachablePercent(_toPutIn.value + units),
             onEditSubmit: (text) {
@@ -622,13 +511,14 @@ class _ZoomSnapsRowState extends State<_ZoomSnapsRow> {
             },
           ),
           action: PanelFlyoutRowAction(
-            keyValue: 'settings-zoom-snap-add',
+            keyValue: '$keyValue-add',
             icon: Icons.add,
-            tooltip: strings.inputZoomSnapAdd,
+            tooltip: strings.commonAdd,
             does: PanelFlyoutActionDoes.adds,
-            // A number already in the list puts in nothing.
-            enabled: !_stops.contains(_toPutIn.value),
-            onPressed: () => _keep([..._stops, _toPutIn.value]),
+            // A number already in the list puts in nothing, and a full
+            // list takes none.
+            enabled: !_full && !_percents.contains(_toPutIn.value),
+            onPressed: () => _keep([..._percents, _toPutIn.value]),
           ),
         ),
       ),
@@ -637,28 +527,14 @@ class _ZoomSnapsRowState extends State<_ZoomSnapsRow> {
 
   @override
   Widget build(BuildContext context) {
-    final strings = AppText.strings;
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              strings.inputZoomSnaps,
-              style: const TextStyle(fontSize: 12),
-            ),
-          ),
-          SizedBox(
-            width: 180,
-            child: PanelFlyoutButton(
-              key: const ValueKey<String>('settings-snap-zoom'),
-              label: _stops.map(_shownPercent).join(', '),
-              expand: true,
-              entriesBuilder: _entries,
-            ),
-          ),
-        ],
-      ),
+    final percents = _percents;
+    return SettingsPickerRow(
+      pickerKey: widget.pickerKey,
+      label: widget.label,
+      picked: percents.isEmpty
+          ? AppText.strings.commonNone
+          : percents.map(_shownPercent).join(', '),
+      entriesBuilder: _entries,
     );
   }
 }
@@ -706,32 +582,43 @@ class _CanvasMappingRow extends StatelessWidget {
     final holdsTool =
         mapping.action == CanvasPointerAction.eyedropper ||
         mapping.action == CanvasPointerAction.eraser;
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: Row(
+    return SettingsRow(
+      label: label,
+      control: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(child: Text(label, style: const TextStyle(fontSize: 12))),
-          PanelFlyoutButton(
-            key: ValueKey<String>('$keyPrefix-action'),
-            label: _actionLabel(mapping.action),
-            entriesBuilder: () => CanvasPointerAction.values.asFlyoutChoices(
-              current: mapping.action,
-              keyPrefix: '$keyPrefix-action-',
-              labelOf: _actionLabel,
-              onPicked: (action) => onChanged(mapping.copyWith(action: action)),
+          SizedBox(
+            width: SettingsPickerRow.width,
+            child: PanelFlyoutButton(
+              key: ValueKey<String>('$keyPrefix-action'),
+              label: _actionLabel(mapping.action),
+              expand: true,
+              entriesBuilder: () =>
+                  CanvasPointerAction.values.asFlyoutChoices(
+                    current: mapping.action,
+                    keyPrefix: '$keyPrefix-action-',
+                    labelOf: _actionLabel,
+                    onPicked: (action) =>
+                        onChanged(mapping.copyWith(action: action)),
+                  ),
             ),
           ),
           const SizedBox(width: 8),
-          PanelFlyoutButton(
-            key: ValueKey<String>('$keyPrefix-release'),
-            label: _releaseLabel(mapping.release),
-            enabled: holdsTool,
-            entriesBuilder: () => CanvasPointerRelease.values.asFlyoutChoices(
-              current: mapping.release,
-              keyPrefix: '$keyPrefix-release-',
-              labelOf: _releaseLabel,
-              onPicked: (release) =>
-                  onChanged(mapping.copyWith(release: release)),
+          SizedBox(
+            width: SettingsPickerRow.width,
+            child: PanelFlyoutButton(
+              key: ValueKey<String>('$keyPrefix-release'),
+              label: _releaseLabel(mapping.release),
+              expand: true,
+              enabled: holdsTool,
+              entriesBuilder: () =>
+                  CanvasPointerRelease.values.asFlyoutChoices(
+                    current: mapping.release,
+                    keyPrefix: '$keyPrefix-release-',
+                    labelOf: _releaseLabel,
+                    onPicked: (release) =>
+                        onChanged(mapping.copyWith(release: release)),
+                  ),
             ),
           ),
         ],

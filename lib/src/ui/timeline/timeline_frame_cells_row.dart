@@ -19,15 +19,15 @@ import 'axis_turn.dart' show partAlong;
 import 'berth_row.dart';
 import 'layer_label_controls.dart' show layerMarkColor;
 import 'memo_token.dart';
+import 'rail_eyes.dart';
 import 'timeline_cel_content_source.dart';
 import 'timeline_cell_editor_policy.dart';
 import 'timeline_cell_exposure_state.dart';
-import 'timeline_cell_style.dart' show timelineDrawingInkColor;
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_window.dart' show TimelineNextPage;
 import 'timeline_frame_range_gesture.dart';
-import 'timeline_beat_lines.dart' show timelineRowPaperExtent;
+import 'timeline_beat_lines.dart' show TimelineGridLaw, timelineRowPaperExtent;
 import 'timeline_frame_span_layout.dart';
 import 'property_lane_model.dart' show PropertyLaneRow;
 import 'timeline_lane_rows.dart' show timelineUnionKeyMarkerSpans;
@@ -494,13 +494,13 @@ class TimelineFrameCellsRow extends StatelessWidget {
     return [
       if (peaksFor != null)
         ...timelineRowAudioOverlays(
+          context,
           layer: layer,
           frameStartIndex: frames.frameStartIndex,
           frameEndIndexExclusive: frames.frameEndIndexExclusive,
           axis: axis,
           frameRate: projectFrameRate,
           audioPeaksFor: peaksFor,
-          color: timelineDrawingInkColor.withValues(alpha: 0.22),
           leadInAtStart: spillInLeadFrames ?? 0,
           keyPrefix: keyPrefix,
         ),
@@ -620,7 +620,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
       suppressStartGripAtZero: shows.world.spillInLeadFrames != null,
       spanTakesGrips: layer.kind == LayerKind.transition
           ? (event) => transitionEditableInCut(
-              transitionMarkOf(defById?.call(event.instructionId)),
+              transitionMarkOf(event.defIn(defById)),
             )
           : null,
     );
@@ -694,6 +694,11 @@ class TimelineFrameCellsRow extends StatelessWidget {
       // The cells' window: the labels print the blocks it reaches (I-22).
       windowBucket: windowBucket,
       viewportMainExtent: viewportMainExtent,
+      // Each number on its block as the cells draw the block (I-129): the
+      // row's eye, its cels and the host's ground, as they take them.
+      shown: RailEyes.of(context, layer).shown,
+      celContent: celContent,
+      paperGround: TimelineGridLaw.maybeOf(context)?.ground,
     );
   }
 
@@ -758,6 +763,15 @@ class TimelineFrameCellsRow extends StatelessWidget {
             // layer's color label (⑲) — so a purple row's bars go black by
             // the same ground law its numbers follow.
             gripGround: layerMarkColor(layer.mark),
+            // …each grip on its block as the cells draw the block (I-129):
+            // the row's eye, its cels and the host's ground, as the 코마
+            // numbers take them.
+            gripRow: (
+              layer: layer,
+              shown: RailEyes.of(context, layer).shown,
+              content: celContent,
+              ground: TimelineGridLaw.maybeOf(context)?.ground,
+            ),
             // The cells' window: what the chrome draws, as the cells under
             // it.
             windowBucket: windowBucket,

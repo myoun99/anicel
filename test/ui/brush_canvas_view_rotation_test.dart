@@ -16,8 +16,10 @@ import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 
+import '../helpers/app_icon_button_probe.dart';
 import '../helpers/brush_canvas_fixture.dart';
 import '../helpers/pinch_recognised_at.dart';
+import '../helpers/number_pad_keyboard.dart';
 
 /// P8: canvas view rotation + horizontal flip — toolbar buttons, the
 /// shortcut command channel, Fit's reset, pointer round-trip through a
@@ -115,22 +117,14 @@ void main() {
     // close it — so the whole accent sequence runs with it open, which is
     // also how a person uses it (straighten, look, flip, look).
     await openViewSettings(tester);
-    // The PAINTED glyph colour — the Icon's own RichText — at the alpha it
+    // The PAINTED glyph colour — the ink its face draws — at the alpha it
     // is drawn with. 🚨The flyout row used to dim it to 38% as a side effect
     // of being a disabled PopupMenuItem (traced 2026-09-10: an IconTheme with
     // opacity 0.38, forty ancestors up); 유저 asked to see it undimmed
     // (「한번 그냥 흐리지않게 해보자」), so full alpha IS the assertion now —
     // see `_ControlsAtFullStrength` in panel_flyout.dart.
-    Color? inkOf(String key) => tester
-        .widget<RichText>(
-          find.descendant(
-            of: find.byKey(ValueKey<String>(key)),
-            matching: find.byType(RichText),
-          ),
-        )
-        .text
-        .style
-        ?.color;
+    Color? inkOf(String key) =>
+        tester.glyphInkOf(find.byKey(ValueKey<String>(key)));
 
     // Straight, unflipped: everything rests on the default ink.
     for (final key in [
@@ -200,22 +194,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // The PAINTED glyph colour — the Icon's own RichText — at the alpha it
+    // The PAINTED glyph colour — the ink its face draws — at the alpha it
     // is drawn with. 🚨The flyout row used to dim it to 38% as a side effect
     // of being a disabled PopupMenuItem (traced 2026-09-10: an IconTheme with
     // opacity 0.38, forty ancestors up); 유저 asked to see it undimmed
     // (「한번 그냥 흐리지않게 해보자」), so full alpha IS the assertion now —
     // see `_ControlsAtFullStrength` in panel_flyout.dart.
-    Color? inkOf(String key) => tester
-        .widget<RichText>(
-          find.descendant(
-            of: find.byKey(ValueKey<String>(key)),
-            matching: find.byType(RichText),
-          ),
-        )
-        .text
-        .style
-        ?.color;
+    Color? inkOf(String key) =>
+        tester.glyphInkOf(find.byKey(ValueKey<String>(key)));
 
     // No list to open: the controls are on the bar (유저 확정 2026-08-13).
     expect(
@@ -307,6 +293,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(pencil);
       await tester.pumpAndSettle();
+      await openThePadsKeyboard(tester);
       await tester.enterText(
         find.byKey(
           const ValueKey<String>('canvas-viewport-rotation-label-input'),

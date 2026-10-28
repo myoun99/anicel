@@ -21,9 +21,11 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_asset_drag_data.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
+import 'package:anicel/src/ui/session/tab_rail_wiring.dart';
 
 import '../flyout_test_helpers.dart';
 import '../../helpers/named_finders.dart';
+import '../../helpers/timeline_host.dart';
 
 const _seLayerId = LayerId('audio-se');
 const _celLayerId = LayerId('audio-cel');
@@ -70,29 +72,16 @@ EditorSessionManager _session() {
 Future<void> _pumpHost(
   WidgetTester tester,
   EditorSessionManager session,
-) async {
+) {
   // The test owns the session (HomePage normally does) — dispose it so
   // playback/prerender machinery cancels its timers before teardown.
   addTearDown(session.dispose);
-  await tester.pumpWidget(
-    MaterialApp(
-      home: Scaffold(
-        body: ListenableBuilder(
-          listenable: session,
-          builder: (context, _) => TimelineTabHost(
-            session: session,
-            orientation: TimelineOrientation.horizontal,
-            onOrientationChanged: (_) {},
-            pixelsPerFrame: 48,
-            onPixelsPerFrameChanged: (_) {},
-            showSeconds: false,
-            onShowSecondsChanged: (_) {},
-          ),
-        ),
-      ),
-    ),
+  return pumpTimelineHostOn(
+    tester,
+    session,
+    surface: const Size(800, 600),
+    pixelsPerFrame: 48,
   );
-  await tester.pumpAndSettle();
 }
 
 // R5 #5: the Layer ▾ entry is gone — the media pool is the entrance the
@@ -348,6 +337,7 @@ void main() {
                   listenable: session,
                   builder: (context, _) => TimelineTabHost(
                     session: session,
+                    rail: TabRailWiring.of(session),
                     orientation: TimelineOrientation.horizontal,
                     onOrientationChanged: (_) {},
                     pixelsPerFrame: 48,
@@ -477,6 +467,7 @@ void main() {
                   listenable: session,
                   builder: (context, _) => TimelineTabHost(
                     session: session,
+                    rail: TabRailWiring.of(session),
                     orientation: TimelineOrientation.horizontal,
                     onOrientationChanged: (_) {},
                     pixelsPerFrame: 48,
@@ -769,6 +760,7 @@ void main() {
                   listenable: session,
                   builder: (context, _) => TimelineTabHost(
                     session: session,
+                    rail: TabRailWiring.of(session),
                     orientation: TimelineOrientation.horizontal,
                     onOrientationChanged: (_) {},
                     pixelsPerFrame: 48,

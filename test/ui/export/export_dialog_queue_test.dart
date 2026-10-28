@@ -79,7 +79,7 @@ void main() {
     // A screen whose half (F-337) is room for the render queue beside the
     // least the preview takes (the Cels list with its attach column), so
     // the drawer stays open.
-    await tester.binding.setSurfaceSize(const Size(1880, 860));
+    await tester.binding.setSurfaceSize(const Size(1960, 860));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
     await tester.pumpWidget(

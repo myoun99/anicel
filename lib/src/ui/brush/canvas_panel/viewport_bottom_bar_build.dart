@@ -556,6 +556,7 @@ class _BottomBarBuild {
       width: _zoomReadoutWidth,
       enabled: _bar.viewEnabled,
       textStyle: const TextStyle(fontSize: 12),
+      signed: false,
       // ⛔No second bound here. `_zoomToAroundCenter` lands every absolute
       // zoom verb in display units, so the readout, the ± buttons and a
       // typed value all stop at the same number this label shows.

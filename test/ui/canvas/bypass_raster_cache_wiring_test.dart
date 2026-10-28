@@ -20,7 +20,12 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
+import 'package:anicel/src/ui/playback/frame_picture_store.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
+import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
@@ -136,6 +141,30 @@ void main() {
     ],
   );
 
+  /// The frames' pictures a screen shows, in a store of their own.
+  StackRun pictures() {
+    final images = LayerFrameImageCache(frameStore: BrushFrameStore());
+    addTearDown(images.dispose);
+    final store = FramePictureStore<FramePictureKey>();
+    addTearDown(store.dispose);
+    final landings = ValueNotifier<int>(0);
+    addTearDown(landings.dispose);
+    return (
+      landings: landings,
+      pictures: FramePictures(
+        store: store,
+        layerImages: images,
+        stackOf: (_) => const [],
+        pageOf: (picture) => (
+          canvasSize: picture.cut.canvasSize,
+          pasteboardReach: PasteboardReach.whole,
+          paintPaper: picture.paintPaper,
+          paperBackground: ProjectBackground.defaultBackground,
+        ),
+      ),
+    );
+  }
+
   testWidgets(
     'the editing stack picture no longer refuses the raster cache — '
     'willChange pinned ABSENT (R13: the tie is closed at the snap)',
@@ -146,15 +175,23 @@ void main() {
             body: SizedBox(
               width: 100,
               height: 100,
-              child: CanvasLayerStackView(
-                nodes: const [CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1))],
-                imageCache: LayerFrameImageCache(
-                  frameStore: BrushFrameStore(),
-                ),
-                canvasSize: const CanvasSize(width: 16, height: 16),
+              // The canvas standing on its frame's one picture.
+              child: FramePictureView(
+                run: pictures(),
+                picture: (cut: cut(), frameIndex: 0, paintPaper: true),
+                nodes: const [
+                  CompositeLeaf<CanvasStackRow>(
+                    CanvasActiveLayerRow(opacity: 1),
+                  ),
+                ],
                 viewport: CanvasViewport(zoom: 1),
-                paintPaper: true,
-                paperBackground: ProjectBackground.defaultBackground,
+                live: (
+                  activeSurfacePainter: null,
+                  floatOverlay: null,
+                  liftedRows: const {},
+                ),
+                laysWhatItMisses: true,
+                wholeFrames: false,
               ),
             ),
           ),
@@ -165,7 +202,7 @@ void main() {
       final stackPaint = tester
           .widgetList<CustomPaint>(
             find.descendant(
-              of: find.byType(CanvasLayerStackView),
+              of: find.byType(FramePictureView),
               matching: find.byType(CustomPaint),
             ),
           )
@@ -190,8 +227,6 @@ void main() {
     'no parked track-stack picture refuses the raster cache any more — a '
     'parked gap shows a still stack that would snap on cache engage',
     (tester) async {
-      final images = LayerFrameImageCache(frameStore: BrushFrameStore());
-      addTearDown(images.dispose);
       final project = Project(
         id: projectId,
         name: 'Project',
@@ -213,7 +248,7 @@ void main() {
                 globalFrameIndex: globalFrame,
               ),
               stackOf: (_, _) => const [],
-              imageCache: images,
+              pictures: pictures(),
               cameraFrameSize: canvasSize,
               cameraViewEnabled: false,
               cameraPoseOf: (cut, frameIndex) =>

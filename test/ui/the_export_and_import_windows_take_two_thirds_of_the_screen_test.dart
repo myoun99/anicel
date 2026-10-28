@@ -132,26 +132,47 @@ void main() {
 
     testWidgets('takes two thirds of the screen, its drawers open where they '
         'fit', (tester) async {
-      await pumpOn(tester, const Size(1920, 1200));
+      // ↩️1920 × 1200, while the Cels list's rules stood 168 wide whatever
+      // their words: since F-486 they stand as wide as their words, and the
+      // TEST font's run far wider than the app's faces — its drawers no
+      // longer fit two thirds of 1920.
+      await pumpOn(tester, const Size(2000, 1250));
 
       final size = windowSize(tester, 'export-dialog');
-      expect(size.width, closeTo(1567.7, 0.1));
-      expect(size.height, closeTo(979.8, 0.1));
+      expect(size.width, closeTo(1633.0, 0.1));
+      expect(size.height, closeTo(1020.6, 0.1));
       expect(keyed('export-presets-collapse'), findsOneWidget);
       expect(keyed('export-queue-collapse'), findsOneWidget);
     });
 
     testWidgets('is never narrower than its four columns with both drawers '
         'folded — its share yields before the preview does', (tester) async {
-      await pumpOn(tester, const Size(1200, 720));
+      // ↩️1200 wide, while the Cels list's rules stood 168 whatever their
+      // words: the TEST font's need more than the room a 1200 screen leaves
+      // (F-486).
+      await pumpOn(tester, const Size(1400, 720));
 
       final size = windowSize(tester, 'export-dialog');
+      // The window keeps its width whichever tab it shows: the Cels tab
+      // only says how wide its rules stand.
+      await tester.tap(keyed('export-tab-cels'));
+      await tester.pump();
+      expect(windowSize(tester, 'export-dialog'), size);
+      final rules = ExportCelsBoard.rulesWidthFor(
+        tester.widget<ExportCelsBoard>(find.byType(ExportCelsBoard)).rulesNeed,
+      );
       expect(
         size.width,
         // ↩️1018 while the cel list stood 184 wide (F-395 widened it), and
-        // while its lane stood 16 (F-440 halved the thin one).
-        1018 - 184 + ExportCelsBoard.stackWidth - 16 + AppScrollbarLane.thin,
-        reason: 'two thirds of 1200 by area is 980 wide; the columns with '
+        // while its lane stood 16 (F-440 halved the thin one) — and while
+        // its rules stood 168 whatever their words (F-486).
+        1018 -
+            184 +
+            ExportCelsBoard.stackWidth -
+            16 +
+            AppScrollbarLane.thin +
+            (rules - ExportCelsBoard.leastRulesWidth),
+        reason: 'two thirds of 1400 by area is 1143 wide; the columns with '
             'both drawers folded lay out wider',
       );
       expect(size.height, closeTo(587.9, 0.1));

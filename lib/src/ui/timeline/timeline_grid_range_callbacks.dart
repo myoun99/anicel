@@ -52,19 +52,10 @@ TimelineRangeGestureCallbacks timelineGridRangeCallbacks({
       // R9 #25: raw pixels in, resolved where the grid paints its rows.
       final headRowDelta =
           timelineRowDeltaAt(rows, dragEdges(), row, headCrossOffset);
-      final head = headRowDelta == 0
-          ? null
-          : resolveSelectionSpanHead(
-              rows: rows,
-              sourceLayerId: layerId,
-              rowDelta: headRowDelta,
-            );
       rangeHooks.onSelectUpdate(
         layerId,
         anchorIndex,
         headIndex,
-        headLayerId: head?.layerId,
-        headLaneId: head?.laneId,
         // 🚨★ THE SPAN, sliced off what this grid actually drew.
         spanRows: resolveSelectionSpanRows(
           rows: rows,
@@ -76,12 +67,10 @@ TimelineRangeGestureCallbacks timelineGridRangeCallbacks({
     onTapClear: (_) => rangeHooks.onClear(),
     rowHolds: rangeMove.holdsRow,
     // A lane row begins the move of the layer it belongs to — the
-    // fallback [LaneRowAddress] documents. Refusing here is what made
-    // "grab the band on an fx row" do nothing at all.
-    onMoveBegin: (row, _) {
-      final layerId = row.owningLayerId;
-      return layerId != null && rangeMove.begin(layerId);
-    },
+    // fallback [LaneRowAddress] documents — and its rows count from it.
+    // Refusing here is what made "grab the band on an fx row" do nothing
+    // at all.
+    onMoveBegin: (row, _) => rangeMove.begin(row),
     onMoveUpdate: rangeMove.update,
     onMoveEnd: rangeMove.end,
     onMoveCancel: rangeMove.cancel,
@@ -100,11 +89,16 @@ TimelineRangeGestureCallbacks timelineGridRangeCallbacks({
 /// a cells anchor would report (유저: 「선택범위는 어떤 레이어를 건너든
 /// 자유롭게, 규칙 두지 말 것」). Inside the group the host's lane-span path
 /// keeps the drag, unchanged. One law, both axes.
+///
+/// [band] is the cells family's bundle the same grid built
+/// ([timelineGridRangeCallbacks]): a press inside its band on a lane row is
+/// the band's move (H20).
 TimelineLaneRangeCallbacks timelineGridLaneRangeCallbacks({
   required TimelineLaneRangeHooks hostLaneRange,
   required TimelineFrameRangeHooks? rangeHooks,
   required List<TimelineDisplayRow> Function() dragRows,
   required TimelineRowEdges Function() dragEdges,
+  TimelineRangeGestureCallbacks? band,
   void Function(TimelineRowAddress row)? onGripTaken,
   void Function(TimelineRowAddress row)? onGripReleased,
 }) {
@@ -160,7 +154,6 @@ TimelineLaneRangeCallbacks timelineGridLaneRangeCallbacks({
         anchorIndex,
         headIndex,
         headLayerId: escalation.headLayerId,
-        headLaneId: escalation.headLaneId,
         spanRows: escalation.spanRows,
       );
     },
@@ -182,7 +175,6 @@ TimelineLaneRangeCallbacks timelineGridLaneRangeCallbacks({
         anchorIndex,
         headIndex,
         headLayerId: rows.last.layerId,
-        headLaneId: rows.last.laneId,
         spanRows: rows,
       );
     },
@@ -196,6 +188,7 @@ TimelineLaneRangeCallbacks timelineGridLaneRangeCallbacks({
     onMoveCancel: hostLaneRange.onMoveCancel,
     onGripTaken: onGripTaken,
     onGripReleased: onGripReleased,
+    band: band,
   );
 }
 

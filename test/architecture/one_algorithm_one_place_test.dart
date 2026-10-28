@@ -540,6 +540,9 @@ import '../../tool/refactor/clone_scan.dart';
 /// viewer's pages take the order with no pins. 🔜The third pinned cache
 /// moves the filter into the order (its entries less the pinned keys) and
 /// lowers this back.
+/// ↩️The pair left with `07bed0139` (one-picture-per-frame ②-5b — the
+/// row cache keeps no pictures, so it has no budget), and the ceiling did
+/// not follow it (91 → 90 below).
 /// 🔬Measured on the lane over master (`a1317441e`, at 89): this one
 /// added, none gone.
 /// 90 → 91 (2026-10-24, D7-2 — the patches waiting at the cap laid as
@@ -578,8 +581,108 @@ import '../../tool/refactor/clone_scan.dart';
 /// presses the board in hand merges the three.
 /// 🔬Measured on the lane over master (`f1e746c91`, at 91): this one
 /// added, none gone.
+/// 92 → 91 (2026-10-26, F-465 picture-written-at-once — a step is written
+/// into its picture's base and every level before it answers). The pair
+/// laid at 90 → 91 is gone: no patch waits for a quiet turn, so neither
+/// the cap's lay nor the levels' landing is left to take one.
+/// 🔬Measured on the lane over master (`12f2dbcfd`, at 86): none added,
+/// that one gone.
+/// 91 → 90 (2026-10-27, one-picture-per-frame's ceiling). The pair gone:
+///
+///     46 tokens
+///       lib/src/ui/conte/conte_picture_ink.dart
+///         _canvasOnPaper
+///       lib/src/ui/playback/camera_shot.dart
+///         outlineThrough
+///
+/// A canvas's corners through a map — and a third spelling stood inline in
+/// the live conte picture's clip — so the three are one: both conte sites
+/// call [outlineThrough]. The pair came unnamed with `0633fca64` (②-5b-3,
+/// the outline put back from a level's rect to the canvas's corners), in
+/// slack the transition left: the ceiling stayed at 92 when `07bed0139`
+/// took three pairs away (the cache budgets above, the row cache's two
+/// halvings, the selection's stroke clip beside the stack view's row
+/// paint), and came only to 91 when the store's turn pair left, the scan
+/// then at 85 (`59469bbe0`).
+/// ⚠️Six more came unnamed in that slack on 2026-10-27 (85 → 91 at
+/// `dd6e1a1b4`), none of them read here:
+///
+///       brush_canvas_panel.dart  _landTraced · _showTraced
+///       cut_envelope_edit_layer.dart  CutEnvelopeEditLayer.build
+///         · timesheet_header_edit_layer.dart  TimesheetHeaderEditLayer.build
+///       timeline_frame_range_gesture.dart  the two layers' _startDrag
+///         — named below
+///       effect_lane_editing.dart  _editInk · _editParameter, and
+///         _editStand · _editInk — three bodies of one family
+///       editor_canvas_area.dart  _referenceBox · _effectBox
+///
+/// 🔜Each lane that laid one names it here, or merges it.
+/// 🔬Measured on the lane over master (`dd6e1a1b4`, at 91): none added,
+/// this one gone.
+/// Named at 90 (2026-10-27, clone-pairs-1027-timeline), the count kept:
+///
+///     43 tokens
+///       lib/src/ui/timeline/timeline_frame_range_gesture.dart
+///         _TimelineFrameRangeGestureLayerState._startDrag
+///       lib/src/ui/timeline/timeline_frame_range_gesture.dart
+///         _TimelineLaneRangeGestureLayerState._startDrag
+///
+/// I-57's pair (87 → 88 above), back. F-468 (`d6ae9d0e8` — one koma
+/// selected by the hand's travel) told each select where it was pressed,
+/// and that line took the tail both layers begin a select by — the mode,
+/// the anchor, the press point, the grip taken — past the scan's floor
+/// again. The reading is I-57's: one algorithm twice, each on callbacks of
+/// its own, and ⛔not merged — two of them, and the third is what earns a
+/// merge (CLAUDE.md 절대명령 1). 🔜A third range layer merges the three,
+/// into the first step the two already share (`_RangeDragFirstStep`).
+/// 🔬Measured on the lane over master (`556586179`, at 90): none added,
+/// none gone.
+///
+/// 90 → 86 (2026-10-27, clone-pairs-1027 — four of the six, read by the
+/// lane that laid them). Two families merged:
+///
+/// - `_editStand` · `_editInk` · `_editParameter` (three pairs): each found
+///   the effect a lane addresses and rebuilt it — one walk, three bodies.
+///   They are `_editLane` now, the write twin of `_readLane`.
+/// - `_referenceBox` · `_effectBox`: each spelled a placement's way to the
+///   canvas and back, which `_shownThrough` already said for the row's box.
+///   Both call it, and every box's grabs — the row's, the reference's, the
+///   effect's and the camera's — make their edits through `_movedTo`,
+///   `_scaledTo`, `_turnedTo` and `_anchoredAt`, spelled four times before.
+///
+/// Two are named:
+///
+///     43 tokens
+///       lib/src/ui/envelope/cut_envelope_edit_layer.dart
+///         CutEnvelopeEditLayer.build
+///       lib/src/ui/timesheet/timesheet_header_edit_layer.dart
+///         TimesheetHeaderEditLayer.build
+///
+/// The reading finds NO copy: what the two share is already one — the
+/// sheets' one in-place editor ([SheetTextEditLayer]) and the face the
+/// paper prints in ([appFaceOf]) — and what each spells is its own sheet's
+/// targets and keys. The conte's page is the editor's third caller, with
+/// keys of another pattern and its own style, so no law of the call is
+/// left to share.
+///
+///     40 tokens
+///       lib/src/ui/brush/brush_canvas_panel.dart
+///         _BrushCanvasPanelState._landTraced
+///       lib/src/ui/brush/brush_canvas_panel.dart
+///         _BrushCanvasPanelState._showTraced
+///
+/// They ARE one algorithm — "a traced shape lays as one stroke of the
+/// brush or as every copy's area" ([ShapeShow]'s two pairs of verbs) — and
+/// came over the floor when F-483 handed both the stroke's pressure
+/// (`96661a9cc`). ⛔Not merged, by the rule of three (CLAUDE.md): merged,
+/// one body would take the show's two verbs as callbacks for a dispatch
+/// seen twice. 🔜A third verb of the show (or a shape kind beyond the
+/// stroke and the area) moves the dispatch into one value [ShapeShow]
+/// takes, and lowers this back.
+/// 🔬Measured on the lane over master (`01f37d61d`, at 90): none added,
+/// these four gone.
 void main() {
-  const ceiling = 92;
+  const ceiling = 86;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

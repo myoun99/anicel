@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
+import '../input/control_press_claim.dart';
+import '../theme/app_theme.dart' show AppCursors;
 import 'app_tooltip.dart';
 
 /// What a light face's spec says of the one it replaces ([PressFace.respec]).
@@ -27,15 +29,19 @@ abstract interface class FaceSpec<S> {
 /// node, a tooltip of nine elements, a mouse region, a listener — were most
 /// of every panel a tab switch builds anew.
 ///
-/// ⛔THE PRESS IS NOT FIRED HERE: a `ControlPressClaim` above the face fires
-/// it, and `PressFireScope` says when. The face only enters the do-nothing
-/// tap, so an ancestor's tap still loses to a press on a button.
-mixin PressFace on RenderBox
-    implements MouseTrackerAnnotation, SummonedTooltipTarget {
+/// ⛔THE PRESS IS FIRED BY THE CLAIM, NOT HERE: the face IS its claim
+/// ([PressClaim] — the one code a [ControlPressClaim] is too), and
+/// [PressFireScope] says when. The face only enters the do-nothing tap, so
+/// an ancestor's tap still loses to a press on a button. ↩️A
+/// [ControlPressClaim] stood over every face until 2026-10-25 — a second
+/// element and a second render object for every button a tab reopens
+/// (card frame-panels-build-in-one-frame).
+mixin PressFace on RenderBox, PressClaim, SummonsTooltip
+    implements MouseTrackerAnnotation {
   /// Whether a press does anything: a dead face shows no press, enters no
   /// tap and wears the basic cursor.
   @protected
-  bool get pressEnabled;
+  bool get pressEnabled => onPress != null;
 
   /// The ON state, as a screen reader hears it.
   @protected
@@ -45,19 +51,11 @@ mixin PressFace on RenderBox
   @protected
   String? get pressSemanticLabel;
 
-  /// What a screen reader's activation calls — the REAL callback, since a
-  /// screen reader's tap never reaches the claim.
-  @protected
-  VoidCallback? get pressSemanticTap;
-
   @protected
   TextDirection get pressTextDirection;
 
   @protected
   TooltipTriggerMode get pressTriggerMode;
-
-  BuildContext? _tooltipContext;
-  set tooltipContext(BuildContext value) => _tooltipContext = value;
 
   bool _hovered = false;
   bool _pressed = false;
@@ -117,28 +115,10 @@ mixin PressFace on RenderBox
   )..onTap = _ownsTheTap;
   static void _ownsTheTap() {}
 
-  /// The tooltip's own trigger on a touch or a pen: Flutter's, the devices
-  /// that cannot hover.
-  late final LongPressGestureRecognizer _longPress = LongPressGestureRecognizer(
-    debugOwner: this,
-    supportedDevices: const {
-      PointerDeviceKind.invertedStylus,
-      PointerDeviceKind.stylus,
-      PointerDeviceKind.touch,
-      PointerDeviceKind.unknown,
-      PointerDeviceKind.trackpad,
-    },
-  )
-    ..onLongPress = _onLongPress
-    ..onLongPressUp = _onLongPressUp
-    ..onLongPressCancel = _onLongPressCancel;
-  int? _longPressPointer;
-
   // ── hover and press ────────────────────────────────────────────────
 
   @override
-  MouseCursor get cursor =>
-      pressEnabled ? SystemMouseCursors.click : SystemMouseCursors.basic;
+  MouseCursor get cursor => AppCursors.pressWhen(live: pressEnabled);
 
   @override
   PointerEnterEventListener? get onEnter => _onEnter;
@@ -194,44 +174,14 @@ mixin PressFace on RenderBox
         _setPressed(true);
         _arenaTap.addPointer(event);
       }
-      if (pressTriggerMode == TooltipTriggerMode.longPress) {
-        _longPress.addPointer(event);
-      }
+      summonOnLongPress(event, pressTriggerMode);
     } else if (event is PointerUpEvent || event is PointerCancelEvent) {
       _setPressed(false);
     }
+    // The claim hears the pointer AFTER the face, as it did while it was
+    // the box around it.
+    super.handleEvent(event, entry);
   }
-
-  void _onLongPress() {
-    final pointer = _longPress.primaryPointer;
-    if (pointer == null) {
-      return;
-    }
-    _longPressPointer = pointer;
-    SummonedTooltip.longPressed(this, pointer);
-  }
-
-  void _onLongPressUp() {
-    _longPressPointer = null;
-    SummonedTooltip.lifted(this);
-  }
-
-  /// A press that moved off or was taken before it was long: whatever this
-  /// face had summoned goes, as a tooltip's own cancel dismisses it.
-  void _onLongPressCancel() {
-    _longPressPointer = null;
-    SummonedTooltip.forget(this);
-  }
-
-  // ── the summoned tooltip ───────────────────────────────────────────
-
-  @override
-  Rect? get tooltipGlobalRect => attached && hasSize
-      ? MatrixUtils.transformRect(getTransformTo(null), Offset.zero & size)
-      : null;
-
-  @override
-  BuildContext? get tooltipContext => attached ? _tooltipContext : null;
 
   // ── semantics ──────────────────────────────────────────────────────
 
@@ -251,7 +201,10 @@ mixin PressFace on RenderBox
     if (pressSemanticLabel case final label?) {
       config.label = label;
     }
-    if (pressSemanticTap case final onTap?) {
+    // 🚨A screen reader is not a pointer: its activation arrives as
+    // SemanticsAction.tap, which the claim never hears, so the node gets the
+    // press itself.
+    if (onPress case final onTap?) {
       config.onTap = onTap;
     }
   }
@@ -262,17 +215,12 @@ mixin PressFace on RenderBox
   void detach() {
     _hovered = false;
     _pressed = false;
-    if (_longPressPointer != null) {
-      _longPressPointer = null;
-    }
-    SummonedTooltip.forget(this);
     super.detach();
   }
 
   @override
   void dispose() {
     _arenaTap.dispose();
-    _longPress.dispose();
     super.dispose();
   }
 }

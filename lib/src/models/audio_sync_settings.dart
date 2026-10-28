@@ -42,7 +42,7 @@ class AudioSyncSettings {
     this.cueBeeps = true,
     this.streamerEnabled = true,
     this.denoiseVoice = false,
-    this.playbackLevel = 1,
+    this.microphoneAllowed = false,
   });
 
   static const AudioSyncSettings defaults = AudioSyncSettings();
@@ -96,15 +96,18 @@ class AudioSyncSettings {
   /// take conforms once through the normal pipeline on placement.
   final bool denoiseVoice;
 
-  /// How loud the canvas plays, 0..1 — every sound the timeline and the
-  /// storyboard make: a run, a scrub and the count-in's beeps (I-85, 유저
-  /// 2026-10-24: Q3 「캔버스 소리 전부」 · Q4 「다시 켜도 기억」). A
-  /// MONITORING level, like solo: the export mixes without it, and the
-  /// viewer panel keeps a level of its own.
-  final double playbackLevel;
-
-  static double clampPlaybackLevel(double value) =>
-      value.clamp(0.0, 1.0).toDouble();
+  /// The app's own consent to the microphone: while it is off nothing
+  /// opens one — no take, no meter — and the OS is never asked. Default
+  /// OFF.
+  ///
+  /// 🗣️I-133 (유저 2026-10-26): 「이게 허용되어있지 않으면 일절 마이크를
+  /// 인식안함. 즉 앞으로는 앱 키고 이 허용을 체크해야 권한묻도록. 마이크로
+  /// 무언가 정보 빼앗기는건가 싶은 불안같은걸 해결하기 위함」.
+  ///
+  /// ON also says the OS granted it: 🗣️I-133-Q1 (유저 2026-10-27) 「OS 가
+  /// 거절하면 스위치를 다시 끈다」 — a no turns it back off, wherever the OS
+  /// is asked (`askTheOsForTheMicrophone`).
+  final bool microphoneAllowed;
 
   static const int maxCountInSeconds = 10;
 
@@ -132,7 +135,7 @@ class AudioSyncSettings {
     bool? cueBeeps,
     bool? streamerEnabled,
     bool? denoiseVoice,
-    double? playbackLevel,
+    bool? microphoneAllowed,
   }) => AudioSyncSettings(
     offset: offset ?? this.offset,
     unit: unit ?? this.unit,
@@ -149,7 +152,7 @@ class AudioSyncSettings {
     cueBeeps: cueBeeps ?? this.cueBeeps,
     streamerEnabled: streamerEnabled ?? this.streamerEnabled,
     denoiseVoice: denoiseVoice ?? this.denoiseVoice,
-    playbackLevel: playbackLevel ?? this.playbackLevel,
+    microphoneAllowed: microphoneAllowed ?? this.microphoneAllowed,
   );
 
   static int clampMicGainDb(int value) =>
@@ -221,7 +224,7 @@ class AudioSyncSettings {
     if (!cueBeeps) 'cueBeeps': false,
     if (!streamerEnabled) 'streamerEnabled': false,
     if (denoiseVoice) 'denoiseVoice': true,
-    if (playbackLevel != 1) 'playbackLevel': playbackLevel,
+    if (microphoneAllowed) 'microphoneAllowed': true,
   };
 
   factory AudioSyncSettings.fromJson(Map<String, dynamic> json) {
@@ -246,9 +249,7 @@ class AudioSyncSettings {
       cueBeeps: json['cueBeeps'] as bool? ?? true,
       streamerEnabled: json['streamerEnabled'] as bool? ?? true,
       denoiseVoice: json['denoiseVoice'] as bool? ?? false,
-      playbackLevel: clampPlaybackLevel(
-        (json['playbackLevel'] as num?)?.toDouble() ?? 1,
-      ),
+      microphoneAllowed: json['microphoneAllowed'] as bool? ?? false,
     );
   }
 
@@ -267,7 +268,7 @@ class AudioSyncSettings {
           other.cueBeeps == cueBeeps &&
           other.streamerEnabled == streamerEnabled &&
           other.denoiseVoice == denoiseVoice &&
-          other.playbackLevel == playbackLevel;
+          other.microphoneAllowed == microphoneAllowed;
 
   @override
   int get hashCode => Object.hash(
@@ -282,7 +283,7 @@ class AudioSyncSettings {
     cueBeeps,
     streamerEnabled,
     denoiseVoice,
-    playbackLevel,
+    microphoneAllowed,
   );
 
   @override

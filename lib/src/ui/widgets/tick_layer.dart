@@ -63,9 +63,10 @@ class TickLayer extends StatefulWidget {
   const TickLayer({super.key, required this.child}) : _kind = _Kind.built;
 
   /// A layer whose ticks are HEARD — what moves on it listens to its tick
-  /// and lays out or paints itself ([TickText]), so nothing is built for
-  /// one — laid out, painted and described alone as a built tick's is,
-  /// with no build scope of its own.
+  /// and lays out or paints itself (a canvas tool cursor), so nothing is
+  /// built for one — laid out, painted and described alone as a built
+  /// tick's is, with no build scope of its own. A frame panel's command bar
+  /// stands on one too, out of its host's repaints (F-463).
   ///
   /// 🚨A build scope is what a built tick needs and what a heard one pays
   /// for (I-57, 10-14). The command bar stood on a layer with one for its
@@ -73,7 +74,9 @@ class TickLayer extends StatefulWidget {
   /// its seat was built in the layer's scope, and the bar was laid out and
   /// painted again (🔬24 render objects) for a toolbar handing back the
   /// buttons it had. Without a scope of its own the seat is built in its
-  /// host's, and a toolbar handed back as it was touches nothing.
+  /// host's, and a toolbar handed back as it was touches nothing. ↩️The
+  /// tick the bar heard was its counter's line (`TickText`), until F-463
+  /// took the counter off.
   const TickLayer.heard({super.key, required this.child})
     : _kind = _Kind.heard;
 

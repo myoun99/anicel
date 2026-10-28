@@ -30,6 +30,8 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart';
+import 'package:anicel/src/ui/timeline/timeline_block_look.dart'
+    show timelineEmptyBlockGrey;
 import 'package:anicel/src/ui/timeline/timeline_block_word.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
@@ -40,6 +42,7 @@ import 'package:anicel/src/ui/widgets/pill_strip.dart';
 import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/named_finders.dart';
+import '../../helpers/app_icon_button_probe.dart';
 
 /// The export window's Cels list ([ExportCelsBoard], F-289) — drawn with
 /// the timeline's own parts.
@@ -422,6 +425,12 @@ void main() {
         ),
       );
       expect(word.style.fontWeight, isNot(FontWeight.bold));
+      expect(
+        word.style.color,
+        timelineEmptyBlockGrey,
+        reason: 'I-129: 「텍스트는 … 외곽선이랑 동일한 회색으로」 — the one '
+            'empty-block grey the timeline\'s hollow blocks wear',
+      );
     }
   });
 
@@ -494,7 +503,7 @@ void main() {
       down.left,
       board.left +
           1 +
-          ExportCelsBoard.rulesWidth +
+          ExportCelsBoard.leastRulesWidth +
           ExportCelsBoard.stackWidth,
       reason: 'left of the rail, right of the rules and the attach column',
     );
@@ -512,12 +521,10 @@ void main() {
   testWidgets('it lays out at its minimum width without running over', (
     tester,
   ) async {
-    await pumpBoard(tester, width: ExportCelsBoard.minimumWidth);
+    final least = ExportCelsBoard.minimumWidthFor(0);
+    await pumpBoard(tester, width: least);
     expect(tester.takeException(), isNull);
-    expect(
-      tester.getSize(keyed('export-cels-board')).width,
-      ExportCelsBoard.minimumWidth,
-    );
+    expect(tester.getSize(keyed('export-cels-board')).width, least);
   });
 
   group('the band', () {
@@ -563,7 +570,7 @@ void main() {
         false,
       ));
       expect(pill('direction-pan').onTap, isNull);
-      expect(find.byTooltip('T.U_A-B'), findsOneWidget);
+      expect(find.tooltipSaying('T.U_A-B'), findsOneWidget);
       await tester.tap(keyed('direction-tu'));
       await tester.pump();
       expect(pressed, ['lay tu']);
@@ -747,15 +754,18 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await pumpBoard(tester, width: 1000 + ExportCelsBoard.stackWidth);
       expect(caption(), strings.exLayDirection);
-      expect(find.byTooltip(strings.exLayDirection), findsOneWidget);
+      expect(find.tooltipSaying(strings.exLayDirection), findsOneWidget);
 
-      await pumpBoard(tester, width: ExportCelsBoard.minimumWidth);
+      await pumpBoard(
+        tester,
+        width: ExportCelsBoard.minimumWidthFor(0),
+      );
       expect(tester.takeException(), isNull);
       expect(caption(), strings.tlKindInstruction);
       // ↩️The word was pinned READ at the narrowest. With 「가이드」 beside
       // CAM the narrowest band has not the room for the word and the pills
       // both, and the word gives way first (I-105 — the test below).
-      expect(find.byTooltip(strings.exLayDirection), findsOneWidget);
+      expect(find.tooltipSaying(strings.exLayDirection), findsOneWidget);
     });
 
     // ⚖️I-105 (공통 2026-10-17, the user's to overturn): a pill is what is
@@ -852,7 +862,7 @@ void main() {
     );
     await pumpBoard(tester, spec: withDirection);
     expect(tester.celsBoardBlocksOf('dir'), [('T.U', true)]);
-    expect(find.byTooltip('_Direction_T.U_A-B.png'), findsOneWidget);
+    expect(find.tooltipSaying('_Direction_T.U_A-B.png'), findsOneWidget);
 
     // Turned off, it keeps its file's name for when it is turned back on.
     await pumpBoard(
@@ -864,7 +874,7 @@ void main() {
       ), true),
     );
     expect(tester.celsBoardBlocksOf('dir'), [('T.U', false)]);
-    expect(find.byTooltip('_Direction_T.U_A-B.png'), findsOneWidget);
+    expect(find.tooltipSaying('_Direction_T.U_A-B.png'), findsOneWidget);
   });
 
   testWidgets('a block says its file on hover — and a drawing that is no '
@@ -872,9 +882,9 @@ void main() {
     await pumpBoard(tester);
     final written = tester.celsBoardBlockOf('b', 'b-2').sheet;
     expect(written.fileName, isNotEmpty);
-    expect(find.byTooltip(written.fileName), findsOneWidget);
+    expect(find.tooltipSaying(written.fileName), findsOneWidget);
     final refused = tester.celsBoardBlockOf('n', 'n-2').sheet;
     expect(refused.planned, isFalse);
-    expect(find.byTooltip(refused.fullName), findsWidgets);
+    expect(find.tooltipSaying(refused.fullName), findsWidgets);
   });
 }

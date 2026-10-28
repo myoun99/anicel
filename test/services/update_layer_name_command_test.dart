@@ -219,7 +219,7 @@ Layer _layer({
       0: const TimelineExposure.drawing(
         _frameId,
         length: 2,
-        breakdownOffsets: [1],
+        breakdownMarks: {1: InbetweenMark.two},
       ),
     },
   );

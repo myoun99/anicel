@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/models/frame.dart' show InbetweenMark;
 
 /// A dot belongs to the block that holds the cell it sits on, so the toggle
 /// on an empty cell is no edit at all — nothing recorded, no notify.
@@ -21,7 +22,7 @@ void main() {
     s.addListener(() => notifies += 1);
 
     expect(s.layerMarks.canToggleMarkAtCurrentFrame, isFalse);
-    s.layerMarks.toggleMarkAtCurrentFrame();
+    s.layerMarks.toggleMarkAtCurrentFrame(InbetweenMark.two);
 
     expect(
       s.layers.firstWhere((l) => l.id == layer.id).timeline.containsKey(4),

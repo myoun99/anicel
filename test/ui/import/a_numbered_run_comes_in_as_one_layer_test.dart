@@ -31,6 +31,7 @@ import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
+import '../../helpers/number_pad_keyboard.dart';
 
 void main() {
   late Directory tempDir;
@@ -265,6 +266,7 @@ void main() {
     for (final (end, at) in [('in', from), ('out', to)]) {
       await tester.tap(find.byKey(ValueKey<String>('transport-$end-edit')));
       await tester.pump();
+      await openThePadsKeyboard(tester);
       await tester.enterText(
         find.byKey(ValueKey<String>('transport-$end-input')),
         '$at',

@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pressure_curve_popup.dart';
 import 'package:anicel/src/ui/widgets/value_hands.dart' show ValuePencil;
 
+import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/rail_group_button.dart';
 
 /// The top strip that replaced the seven-menu bar: a Project button, a
@@ -668,7 +669,7 @@ void main() {
       find.descendant(of: button, matching: find.text('Erase')),
       findsOneWidget,
     );
-    expect(find.byIcon(Icons.lock_outline), findsNothing);
+    expect(find.wornIcon(Icons.lock_outline), findsNothing);
     expect(tester.getTopLeft(sizeBar).dx, barLeftWithBrush);
   });
 

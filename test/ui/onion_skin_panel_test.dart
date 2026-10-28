@@ -102,7 +102,25 @@ void main() {
     expect(find.text('●'), findsOneWidget);
   });
 
-  testWidgets('each side\'s bars rest in that side\'s tint', (tester) async {
+  /// [side]'s bar [index] filling its track, as drawn on a canvas.
+  void Function(Canvas canvas) fillOf(
+    WidgetTester tester,
+    String side,
+    int index,
+  ) {
+    final track = find.descendant(
+      of: peg(side, index),
+      matching: find.byType(FieldSliderTrack),
+    );
+    final fill = tester.widget<FieldSliderTrack>(track).fill;
+    final size = tester.getSize(track);
+    return (canvas) => fill.paint(canvas, size);
+  }
+
+  // 🗣️F-474 (유저 2026-10-26): 「막대 편집할때만 앱 강조색 되어있음 … 지정된
+  // 색으로 유지되도록 색 안바뀌게」.
+  testWidgets('🚨each side\'s bars fill in that side\'s tint — at rest and '
+      'while dragged alike', (tester) async {
     await pumpPanel(
       tester,
       initial: const OnionSkinSettings(
@@ -110,9 +128,28 @@ void main() {
         tintAfter: 0xFF445566,
       ),
     );
+    expect(
+      fillOf(tester, 'before', 1),
+      paints..rect(color: const Color(0xFF112233)),
+    );
+    expect(
+      fillOf(tester, 'after', 1),
+      paints..rect(color: const Color(0xFF445566)),
+    );
 
-    expect(barOf(tester, 'before', 3).restingAccent, const Color(0xFF112233));
-    expect(barOf(tester, 'after', 3).restingAccent, const Color(0xFF445566));
+    final bar = tester.getRect(peg('before', 1));
+    final hand = await tester.startGesture(bar.center);
+    await hand.moveBy(const Offset(0, -10));
+    await tester.pump();
+    await hand.moveBy(const Offset(0, -10));
+    await tester.pump();
+    expect(
+      fillOf(tester, 'before', 1),
+      paints..rect(color: const Color(0xFF112233)),
+      reason: 'dragged',
+    );
+    await hand.up();
+    await tester.pumpAndSettle();
   });
 
   testWidgets('a vertical drag sets THAT peg\'s opacity, and dragging to '

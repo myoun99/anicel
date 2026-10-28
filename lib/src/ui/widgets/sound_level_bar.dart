@@ -7,9 +7,11 @@ import 'field_slider.dart';
 /// form, the number alone, as the rail's opacity bars write theirs.
 ///
 /// ONE bar for every level a surface's sound is played at: the viewer's
-/// transport stands it beside its speaker, and a frame panel's transport at
-/// the end of its row for the canvas's sound (I-85, 유저 2026-10-24 Q1:
-/// 「그냥 막대 가로형. 늘 쓰던거」).
+/// transport stands it beside its speaker. ↩️A frame panel's transport
+/// stood one at the end of its row for the canvas's sound (I-85) until 유저
+/// 2026-10-25 took it away (F-463 ①: 「그냥 크게 필요성 못느끼겟으니 삭제.
+/// s행의 사운드 조절만으로 충분해보임」) — the canvas plays at its rows'
+/// own faders and its clips' gains.
 class SoundLevelBar extends StatelessWidget {
   const SoundLevelBar({
     super.key,

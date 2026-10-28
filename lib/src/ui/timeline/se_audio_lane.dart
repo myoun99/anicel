@@ -19,6 +19,8 @@ import 'timeline_grid_metrics.dart';
 import 'axis_turn.dart';
 import '../widgets/owning_axis_grip.dart';
 import 'timeline_beat_lines.dart';
+import 'timeline_block_look.dart'
+    show TimelineBlockLook, timelineBlockLook, timelineRowStateOf;
 import 'timeline_se_row_visual.dart' show SePaperSpan;
 
 /// The SE audio lane: SE layers with sounds get ONE twirl-down lane — a
@@ -257,6 +259,7 @@ class SeAudioLaneFrameRow extends StatelessWidget {
           '$keyPrefix-audio-lane-span-${layer.id}-${span.clipIndex}'
           '-b${span.startFrame}',
         ),
+        layer: layer,
         span: span,
         peaks: audioPeaksFor?.call(span.clip.filePath),
         frameRate: frameRate,
@@ -311,6 +314,7 @@ enum _SpanDragMode { slide, fadeIn, fadeOut }
 class _SeAudioLaneSpan extends StatefulWidget {
   const _SeAudioLaneSpan({
     super.key,
+    required this.layer,
     required this.span,
     required this.peaks,
     required this.frameRate,
@@ -322,6 +326,9 @@ class _SeAudioLaneSpan extends StatefulWidget {
     this.onSetFades,
   });
 
+  /// The row the lane twirls down from — the band wears its eye, as the
+  /// row's blocks do ([timelineRowStateOf], I-129-Q1).
+  final Layer layer;
   final SeAudioSpan span;
   final AudioPeaks? peaks;
   final ProjectFrameRate frameRate;
@@ -493,7 +500,7 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
         child: Stack(
           clipBehavior: Clip.hardEdge,
           children: [
-            _backdrop(TimelineGridLaw.maybeOf(context)?.ground),
+            _backdrop(),
             ?_waveform(peaks, offset, fadeIn: fadeIn, fadeOut: fadeOut),
             // Fade ramp ends: accent ticks the handle drags travel with.
             if (showFadeMarks && fadeIn > 0) _fadeMark(fadeIn, leading: true),
@@ -563,17 +570,34 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
   /// outline — beside the span the storyboard paints its SE blocks with; the
   /// frame lines (유저 2026-09-24, a switch) would have made that the third
   /// block drawn three ways.
-  Widget _backdrop(Color? hostGround) => Positioned.fill(
+  Widget _backdrop() => Positioned.fill(
     child: SePaperSpan(
       axis: widget.axis,
       frameCellExtent: widget.frameCellExtent,
       startFrame: widget.span.startFrame,
-      paper: timelineGridGroundOver(
-        under: timelineLaneGround(hostGround),
-        painted: timelineDrawingHeldColor.withValues(alpha: 0.6),
-      )!,
+      paper: _look(context).paper!,
     ),
   );
+
+  /// The band's paper — its 60% paper on the lane's resting ground — and
+  /// its waveform's ink, worn as the row's eye shows the row: 🗣️I-129-Q1
+  /// (유저 2026-10-25 「셋 다 같은 법으로 흐린다」) dims a hidden row's band as
+  /// its blocks ([timelineBlockLook]).
+  TimelineBlockLook _look(BuildContext context) {
+    final ground = timelineLaneGround(
+      TimelineGridLaw.maybeOf(context)?.ground,
+    );
+    return timelineBlockLook(
+      timelineRowStateOf(context, widget.layer),
+      paper: timelineGridGroundOver(
+        under: ground,
+        painted: timelineDrawingHeldColor.withValues(alpha: 0.6),
+      )!,
+      // Editing strip: stronger ink than the row's underlay.
+      ink: timelineDrawingInkColor.withValues(alpha: 0.45),
+      ground: ground,
+    );
+  }
 
   Widget? _waveform(
     AudioPeaks? peaks,
@@ -589,8 +613,7 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
             peaks: peaks,
             frameRate: widget.frameRate,
             pixelsPerFrame: widget.frameCellExtent,
-            // Editing strip: stronger ink than the row's underlay.
-            color: timelineDrawingInkColor.withValues(alpha: 0.45),
+            color: _look(context).ink,
             axis: widget.axis,
             // A spill-in's lead rides on top of the trim (F-113): the strip
             // starts where the sound already is when the cut begins.

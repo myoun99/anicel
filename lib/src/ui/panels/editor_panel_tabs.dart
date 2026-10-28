@@ -35,7 +35,6 @@ class EditorPanelTab {
     this.staticRaster = true,
     this.stillRaster = true,
     this.sparesSplitters = true,
-    this.sillTrailing,
     this.collapsedExtent = 0,
     this.contentIdentity,
   });
@@ -111,15 +110,12 @@ class EditorPanelTab {
   /// 세련되보임」.
   final bool sparesSplitters;
 
-  /// What THIS tab puts on the group's 문턱, right-aligned, ahead of the
-  /// group's own [EditorPanelTabs.trailing].
-  ///
-  /// Only the ACTIVE tab's is mounted, which is what makes the sill able to
-  /// carry a panel's own controls at all: the frame panels put their
-  /// playback transport and their settings pill here (유저 확정,
-  /// 2026-08-10), and 「존재할 거면 늘 그 자리에」 holds because the sill's
-  /// right edge is fixed while the tabs grow from the left.
-  final WidgetBuilder? sillTrailing;
+  // ↩️A tab put its own controls on the group's 문턱 here (`sillTrailing`,
+  // 유저 확정 2026-08-10): the frame panels' transport and settings pill,
+  // right-aligned ahead of the group's own [EditorPanelTabs.trailing]. The
+  // settings went to the top strip and the transport to the head of the
+  // panel's own bar (F-111-Q1, 10-08) — its right group from F-463, its
+  // left group's head since F-491 — and no tab put anything there.
 
   /// How tall this panel needs to be when the region is COLLAPSED — see
   /// [PanelCollapsedScope] for why the shell owns this at all.
@@ -135,13 +131,11 @@ class EditorPanelTab {
   /// handed back only while this stays the same; see [builtFor].
   final Object? contentIdentity;
 
-  /// This tab with everything it builds — the content and the sill's
-  /// controls — keyed by [identity], so both are made again whenever that
-  /// changes and never carry their State across it, the content cache
-  /// included ([contentIdentity]).
+  /// This tab with what it builds keyed by [identity], so it is made again
+  /// whenever that changes and never carries its State across it, the
+  /// content cache included ([contentIdentity]).
   EditorPanelTab builtFor(Object identity) {
     final key = ObjectKey(identity);
-    final sill = sillTrailing;
     return EditorPanelTab(
       id: id,
       label: label,
@@ -154,9 +148,6 @@ class EditorPanelTab {
       staticRaster: staticRaster,
       stillRaster: stillRaster,
       sparesSplitters: sparesSplitters,
-      sillTrailing: sill == null
-          ? null
-          : (context) => KeyedSubtree(key: key, child: sill(context)),
       collapsedExtent: collapsedExtent,
       contentIdentity: identity,
     );
@@ -387,7 +378,7 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
     );
     final content = _contentOf(active);
 
-    final strip = _strip(context, colorScheme, tabs, active);
+    final strip = _strip(context, colorScheme, tabs);
 
     return MouseRegion(
       opaque: false,
@@ -456,7 +447,6 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
     BuildContext context,
     ColorScheme colorScheme,
     List<EditorPanelTab> tabs,
-    EditorPanelTab active,
   ) {
     // A link in the chain to the RAIL-DOCKED canvas: everything in the
     // panel below this strip starts at this height, and a docked canvas is
@@ -467,18 +457,30 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
     final height = DeviceGrid.of(context).position(EditorPanelTabs.stripHeight);
     return widget.chromeless
         ? null
-        : Container(
+        : SizedBox(
             height: height,
-            color: colorScheme.surfaceContainerLow,
-            // 🚨The strip is a TICK LAYER (I-22 ③): the sill carries the
+            // 🚨The strip is a TICK LAYER. ↩️(I-22 ③) The sill carried the
             // transport, whose readouts move on a tick — the level meter on
-            // every frame played, the drop count on every frame missed.
-            // Rebuilt bare, they laid out the workspace floor and repainted
-            // the PAGE on every playback frame; now a tick lays out and paints
-            // the strip.
+            // every frame played, the drop count on every frame missed —
+            // and rebuilt bare they laid out the workspace floor and
+            // repainted the PAGE on every playback frame; F-111 took the
+            // transport to its panel's bar. What keeps the layer now is the
+            // strip's own changes: a hovered tab is drawn live over the
+            // region's image ([StillRaster]) rather than taking it again —
+            // 🔬a hover in and out took the bottom region's image three
+            // times without the layer, once with it (10-24, test app).
             child: TickLayer(
               child: Stack(
                 children: [
+                  // 🚨The strip's ground is painted INSIDE the layer (10-27,
+                  // F-244-drag-start ③). Painted around it, it went into the
+                  // region's own picture after the panel above — a picture
+                  // whose bounds are the whole region — and held the part of
+                  // the region's image above the timeline's moving cursor at
+                  // the region's full height.
+                  Positioned.fill(
+                    child: ColoredBox(color: colorScheme.surfaceContainerLow),
+                  ),
                   // The append drop target carpets the whole strip BEHIND the
                   // tabs: drops on empty strip space append, drops on a tab
                   // hit its own insertion targets above.
@@ -550,13 +552,13 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
                   // them — reading as left-aligned, and sliding sideways every
                   // time a tab was added.
                   //
-                  // A strip too narrow for the group and one tab — a timeline
-                  // or a storyboard docked in a rail, whose sill takes nearly
-                  // the rail's whole width; a 340px window — shows the group
-                  // whole, smaller, and the tabs keep one tab's place: the
-                  // overflow button, the one way to them. ↩️The group was
+                  // A strip too narrow for the group and one tab shows the
+                  // group whole, smaller, and the tabs keep one tab's place:
+                  // the overflow button, the one way to them. ↩️The group was
                   // laid out past the strip's end, and the button cut at the
-                  // room's edge (09-25) — 10px over at 340 (2026-10-15).
+                  // room's edge (09-25) — 10px over at 340 (2026-10-15),
+                  // while the frame panels' transport stood on the sill and
+                  // took nearly a rail's whole width.
                   KeptTailRow(
                     headKeeps: EditorPanelTabs._tabExtent,
                     head: LayoutBuilder(
@@ -588,7 +590,7 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
                     ),
                     tail: SizedBox(
                       height: height,
-                      child: _buildSillTrailing(context, active),
+                      child: _buildSillTrailing(),
                     ),
                   ),
                 ],
@@ -617,24 +619,20 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
     ),
   );
 
-  /// The sill's right-hand group: the ACTIVE tab's own controls, then the
-  /// group's ([EditorPanelTabs.trailing]).
+  /// The sill's right-hand group ([EditorPanelTabs.trailing]).
   ///
   /// ★It gets out of the way while a tab is in flight. The whole strip is a
   /// drop target ([_TabStripTailDropRegion] carpets it), so anything sitting
-  /// on it is eating landing area — and this group is no longer one chevron
-  /// but a transport and a pill. Fading it out is not decoration: it hands
+  /// on it is eating landing area. Fading it out is not decoration: it hands
   /// the sill back to the drag for exactly as long as the drag lasts.
-  Widget _buildSillTrailing(BuildContext context, EditorPanelTab active) {
-    final own = active.sillTrailing?.call(context);
+  /// ↩️(Put in when the group held a transport and a pill beside its
+  /// chevron, 2026-08-10 — F-111 took them off the sill.)
+  Widget _buildSillTrailing() {
     final group = widget.trailing;
-    if (own == null && (group == null || group.isEmpty)) {
+    if (group == null || group.isEmpty) {
       return const SizedBox.shrink();
     }
-    final row = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [?own, ...?group],
-    );
+    final row = Row(mainAxisSize: MainAxisSize.min, children: group);
     final dragging = widget.draggingTab;
     if (dragging == null) {
       return row;
@@ -1081,6 +1079,7 @@ class _PanelTabButtonState extends State<_PanelTabButton> {
       child: ControlPressClaim(
         onPressed: widget.onPressed,
         child: InkWell(
+          mouseCursor: AppCursors.press,
           onTap: silentPress(widget.onPressed),
           // THE SELECTED TAB IS THE PANEL'S FOOT, not a chip lying on the
           // sill. It wears the body's own fill and rounds only the corners

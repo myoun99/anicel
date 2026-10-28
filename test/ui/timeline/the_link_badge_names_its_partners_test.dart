@@ -48,7 +48,7 @@ void main() {
     await tester.pumpWidget(row(const ['C2 · BG', 'C3 · BOOK']));
     expect(find.railIcon(Icons.link), findsOneWidget);
     expect(
-      find.railTooltip(
+      find.tooltipSaying(
         [AppText.strings.tlLinkedWith, 'C2 · BG', 'C3 · BOOK'].join('\n'),
       ),
       findsOneWidget,
@@ -86,7 +86,7 @@ void main() {
   }
 
   Finder tipIn(Type host, String tip) =>
-      find.descendant(of: find.byType(host), matching: find.railTooltip(tip));
+      find.descendant(of: find.byType(host), matching: find.tooltipSaying(tip));
 
   testWidgets('the timeline\'s rail', (tester) async {
     final tip = await linkedApp(tester);

@@ -173,6 +173,23 @@ void main() {
     expect(namingOf(s).timelineTargets, isNull, reason: 'an empty cell');
   });
 
+  test('a band up while the press stands on one of its lanes numbers the '
+      'band\'s blocks — the lane does not claim the press', () {
+    final s = session();
+    final row = oneTwoOneThree(s);
+    s.standOnRow(LaneRowAddress(row, 'position'), frameIndex: 0);
+    s.updateFrameRangeSelectionDrag(
+      layerId: row,
+      anchorIndex: 1,
+      headIndex: 2,
+      spanRows: [LayerRowAddress(row), LaneRowAddress(row, 'position')],
+    );
+
+    press(s, 5);
+
+    expect(reads(s, row, 4), ['6', '5', '6', '3']);
+  });
+
   test('⛔a lane row, a lane band and a band over empty cells each claim the '
       'press and hold nothing to number', () {
     final s = session();

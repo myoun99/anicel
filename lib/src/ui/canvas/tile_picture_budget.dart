@@ -18,14 +18,16 @@ import 'pictured_tiles.dart';
 /// only when the view comes back to them — inside the paint that shows
 /// them, like any tile that has no picture.
 ///
-/// ⚠️WHAT A PAINT STAMPS ([shown]). At 100% and above, the tiles under the
-/// canvas's visible rect. Below 100% the screen is fed from level tiles
-/// ([TilePyramid]), which keep standing when the pictures under them go —
-/// so those paints stamp nothing, the full-size pictures may go, and the
-/// paint that zooms back to 1:1 makes the ones it shows. (🪦For a few hours
-/// of 2026-09-16, before the active layer had level tiles, a zoomed-out
-/// paint stamped the tiles under its view too, so that zooming in would
-/// not be a blank filling over frames; no paint can be a blank any more.)
+/// ⚠️WHAT A PAINT STAMPS ([shown]): the tiles under the canvas's visible
+/// rect, at every zoom — reduced, the screen is fed from those same
+/// pictures, each carrying its chain (one-picture-per-frame ②-5b-2, 유저
+/// D7-2-Q2 「배율이 어떻든 항상 원본 한장」). ↩️From 4c (2026-09-16) a paint
+/// below 100% was fed from level tiles, which kept standing when the
+/// pictures under them went — so it stamped nothing and the full-size
+/// pictures could go. (🪦For a few hours of 2026-09-16, before the active
+/// layer had level tiles, a zoomed-out paint stamped the tiles under its
+/// view too, so that zooming in would not be a blank filling over frames;
+/// no paint can be a blank any more.)
 ///
 /// The law for the device: a sixteenth of RAM, clamped to [128MB, 512MB].
 /// A 4K view of 128px tiles is 32MB of pictures, so the ceiling is a dozen
@@ -36,6 +38,10 @@ class TilePictureBudget {
       _pictured = pictured ?? PicturedTiles.instance;
 
   static final TilePictureBudget instance = TilePictureBudget();
+
+  /// The scope of a painter whose surface is nobody's cel — the selection
+  /// float: every float's paints are counted under it.
+  static final Object noLineage = Object();
 
   final BitmapTileImageCache _cache;
   final PicturedTiles _pictured;

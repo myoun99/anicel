@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/cel_text_hand.dart';
 import '../../helpers/font_file_fixture.dart';
 import '../../helpers/font_library_in_memory.dart';
@@ -145,16 +146,10 @@ void main() {
       );
       expect(row('font-import'), findsOneWidget);
       // A plus, in the colour a plus wears everywhere.
+      final plus = tester.iconButtonIn(row('font-import'));
       expect(
-        tester
-            .widget<Icon>(
-              find.descendant(
-                of: row('font-import'),
-                matching: find.byIcon(Icons.add),
-              ),
-            )
-            .color,
-        AppColors.addGlyph(enabled: true),
+        (plus.icon, plus.iconColor),
+        (Icons.add, AppColors.addGlyph(enabled: true)),
       );
       // One rule between the app's faces and the ones brought.
       expect(find.byType(PopupMenuDivider), findsOneWidget);

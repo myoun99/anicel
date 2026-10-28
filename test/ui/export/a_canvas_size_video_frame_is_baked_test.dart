@@ -9,6 +9,7 @@ import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/export_spec.dart' show ExportLayerFx;
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -69,6 +70,7 @@ void main() {
   EditorSessionManager sessionOf(
     List<Cut> cuts, {
     List<LayerEffect> effects = const [],
+    bool fxEnabled = true,
     List<Layer> seLayers = const [],
     Layer? transitions,
     CanvasSize camera = small,
@@ -85,6 +87,7 @@ void main() {
           name: 'V',
           cuts: cuts,
           effects: effects,
+          fxEnabled: fxEnabled,
           seLayers: seLayers,
           transitionLayer: transitions,
         ),
@@ -125,13 +128,19 @@ void main() {
     });
   }
 
-  /// The pixels of [task] as a canvas-size video frame.
+  /// The pixels of [task] as a canvas-size video frame, written with
+  /// [layerFx] — null for a picture of the screen.
   Future<Uint8List> videoFrame(
     EditorSessionManager session,
     ExportFrameTask task, {
     bool preserveAlpha = false,
+    ExportLayerFx? layerFx,
   }) async {
-    final renderer = ExportFrameRenderer(session: session, background: green);
+    final renderer = ExportFrameRenderer(
+      session: session,
+      background: green,
+      layerFx: layerFx,
+    );
     final image = await renderer
         .videoRun([task], ExportSizeMode.canvas, preserveAlpha: preserveAlpha)
         .frame(0);
@@ -226,11 +235,15 @@ void main() {
 
   group('two cuts an O.L mixes', () {
     /// c1 inked green-ish, c2 inked blue, an O.L over frames 12–35 — under
-    /// the V row's [effects].
-    EditorSessionManager mixing({List<LayerEffect> effects = const []}) {
+    /// the V row's [effects] behind its switch [fxEnabled].
+    EditorSessionManager mixing({
+      List<LayerEffect> effects = const [],
+      bool fxEnabled = true,
+    }) {
       final session = sessionOf(
         [cutOf('c1'), cutOf('c2')],
         effects: effects,
+        fxEnabled: fxEnabled,
         transitions: createTrackTransitionLayer(trackId).copyWith(
           instructions: SplayTreeMap.of({
             12: const InstructionEvent(instructionId: 'ol', length: 24),
@@ -283,6 +296,56 @@ void main() {
         );
         expect(r, greaterThan(40), reason: 'neither cut has red but the lift');
         expect(a, 255);
+      });
+    });
+
+    // 🗣️I-65-Q11 (유저 2026-10-25): 「켬 · 기본만 켬이면 화면 스위치대로, 끔이면
+    // 빠짐」. ↩️Q8 laid it whatever the switch said.
+    testWidgets('🚨an output lays the V row\'s chain on each cut it mixes as '
+        'the row\'s switch shows it under 켬 and 기본만 켬 — never under 끔', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        Future<int> redThrough(
+          ExportLayerFx? layerFx, {
+          required bool switchedOn,
+        }) async {
+          final session = mixing(
+            effects: [
+              LayerEffect(
+                id: const EffectId('fx'),
+                kind: EffectKind.brightnessContrast,
+                parameters: {'brightness': EffectParameter(value: 50)},
+              ),
+            ],
+            fxEnabled: switchedOn,
+          );
+          try {
+            final (r, _, _, _) = centreOf(
+              await videoFrame(session, midway(session), layerFx: layerFx),
+            );
+            return r;
+          } finally {
+            session.dispose();
+          }
+        }
+
+        for (final switchedOn in [true, false]) {
+          final shown = await redThrough(null, switchedOn: switchedOn);
+          expect(
+            shown > 40,
+            switchedOn,
+            reason: 'the screen\'s picture, switched ${switchedOn ? 'on' : 'off'}',
+          );
+          for (final layerFx in ExportLayerFx.values) {
+            final laid = await redThrough(layerFx, switchedOn: switchedOn);
+            expect(
+              laid > 40,
+              switchedOn && layerFx != ExportLayerFx.off,
+              reason: '$layerFx, switched ${switchedOn ? 'on' : 'off'}',
+            );
+          }
+        }
       });
     });
   });

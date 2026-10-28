@@ -98,6 +98,8 @@ void main() {
             ),
             RowControlSurface(
               key: control,
+              axis: Axis.horizontal,
+              extent: 50,
               child: SizedBox.square(dimension: 50),
             ),
           ],

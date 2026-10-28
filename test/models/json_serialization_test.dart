@@ -120,7 +120,8 @@ void main() {
         0: const TimelineExposure.drawing(
           FrameId('frame-a'),
           length: 6,
-          breakdownOffsets: [2, 4],
+          // Both marks (I-130): the layer reads its entries itself.
+          breakdownMarks: {2: InbetweenMark.two, 4: InbetweenMark.one},
         ),
       },
     );
@@ -128,7 +129,10 @@ void main() {
     final restored = Layer.fromJson(layer.toJson());
 
     expect(restored, layer);
-    expect(restored.timeline[0]!.breakdownOffsets, const [2, 4]);
+    expect(restored.timeline[0]!.breakdownMarks, {
+      2: InbetweenMark.two,
+      4: InbetweenMark.one,
+    });
   });
 }
 

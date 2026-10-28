@@ -1,7 +1,10 @@
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../helpers/app_icon_button_probe.dart';
 
 /// R9-rest (the text tool's faces), the two things the app's one picker
 /// (F-230) lacked for the list of faces 유저 took on 2026-10-06 — 「글꼴 ＋」
@@ -106,15 +109,17 @@ void main() {
         ],
       );
 
-      final glyph = find.descendant(
-        of: key('face-bring'),
-        matching: find.byIcon(Icons.add),
+      // Drawn in the colour a plus wears everywhere — and painted in it, at
+      // full strength, where the row would have dimmed it.
+      final plus = tester.iconButtonIn(key('face-bring'));
+      expect(
+        (plus.icon, plus.iconColor),
+        (Icons.add, AppColors.addGlyph(enabled: true)),
       );
       expect(
-        tester.widget<Icon>(glyph).color,
+        tester.glyphInkOf(key('face-bring')),
         AppColors.addGlyph(enabled: true),
       );
-      expect(IconTheme.of(tester.element(glyph)).opacity, 1.0);
       // The header itself is no command: it is the caption it always was.
       expect(
         tester
@@ -142,7 +147,7 @@ void main() {
       );
       expect(tester.getSize(plain).height, 24);
       expect(
-        find.descendant(of: plain, matching: find.byType(Icon)),
+        find.descendant(of: plain, matching: find.byType(AppIconButton)),
         findsNothing,
       );
       expect(tester.takeException(), isNull);

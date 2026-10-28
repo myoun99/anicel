@@ -1,7 +1,8 @@
 import '../../models/attached_layer_resolve.dart';
 import '../../models/canvas_size.dart';
 import '../../models/layer.dart';
-import '../../models/layer_effect.dart' show effectParameterValueAtTime;
+import '../../models/layer_effect.dart'
+    show effectParameterValueAtTime, effectStandAt, effectStandPose;
 import '../../models/layer_kind.dart';
 import '../../models/reference_swap.dart' show referenceRedrawFor;
 import '../../models/se_name_tag.dart' show SeNameTag;
@@ -142,6 +143,7 @@ List<PropertyLaneRow> propertyLanesForRow({
   /// for every row that carries no effects, which is the default
   /// everywhere.
   List<PropertyLaneRow> layerEffectLanes() {
+    final centre = poseCentre;
     if (layer.effects.isEmpty) {
       return const [];
     }
@@ -159,6 +161,21 @@ List<PropertyLaneRow> propertyLanesForRow({
                 effectId,
                 parameterId,
                 at.time,
+              );
+            },
+      // Where an effect stands its picture rests in the middle of the frame
+      // an unkeyed pose sits in, as the row's own transform does.
+      standAt: centre == null || source == null
+          ? null
+          : (effectId, time) {
+              final at = _sourceAtTime(source, time);
+              final stand = at.layer.effects
+                  .where((effect) => effect.id == effectId)
+                  .firstOrNull
+                  ?.stand;
+              return effectStandPose(
+                effectStandAt(stand ?? TransformTrack.empty(), at.time),
+                centre,
               );
             },
     );

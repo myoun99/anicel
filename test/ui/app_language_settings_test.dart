@@ -140,4 +140,35 @@ void main() {
       reason: 'the program language stays untouched',
     );
   });
+
+  testWidgets('the section switches the program language on the session', (
+    tester,
+  ) async {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: LanguageSettingsSection(session: session)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('settings-program-language')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('settings-program-language-ko')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(session.languageSettings.value.programLanguage, AppLanguage.ko);
+    expect(
+      session.languageSettings.value.notationLanguage,
+      AppLanguage.ja,
+      reason: 'the notation language stays untouched',
+    );
+  });
 }

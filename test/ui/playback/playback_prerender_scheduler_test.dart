@@ -11,13 +11,15 @@ import 'package:anicel/src/models/brush_history_policy.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
-import 'package:anicel/src/models/layer_effect.dart' show ResolvedLayerEffect;
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
+import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -26,20 +28,21 @@ import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart'
     show resolveExposedFrameAt;
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart'
-    show CanvasLayerImageRequest;
-import 'package:anicel/src/ui/playback/canvas_pictures.dart';
+    show CanvasLayerImageRequest, CanvasStackRow;
+import 'package:anicel/src/ui/playback/frame_picture_gpu.dart';
+import 'package:anicel/src/models/rgba_image_bytes.dart';
+import 'package:anicel/src/ui/playback/frame_picture_store.dart';
+import 'package:anicel/src/ui/playback/frame_pictures.dart';
+import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
-import 'package:anicel/src/ui/quiet_turns.dart' show QuietTurn;
 import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart';
 
 import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/poll_until.dart';
-import '../../helpers/one_piece.dart';
 
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
@@ -82,35 +85,38 @@ void main() {
         ),
   ];
 
-  /// The screen's pictures over [layerImages]: each frame its rows' images,
-  /// at the full level.
-  CanvasPictures picturesOver(LayerFrameImageCache layerImages) =>
-      CanvasPictures(
-        layerImages: layerImages,
-        rowsOf: rowsOf,
-        qualityAt: (_, _) => PlaybackQuality.full,
-      );
-
-  /// The image frame [frameIndex] of [cut] shows — its one row's — or null
-  /// while it is not made.
-  ui.Image? shownAt(
-    LayerFrameImageCache layerImages,
-    Cut cut,
-    int frameIndex,
-  ) {
-    final rows = rowsOf(cut, frameIndex);
-    return rows.isEmpty
-        ? null
-        : layerImages
-              .peek(
-                rows.single.frameKey,
-                PlaybackQuality.full,
-                canvasSize: cut.canvasSize,
-                sourceEffects: const [],
-                inkSuffices: rows.single.inkSuffices,
-              )
-              ?.image;
+  /// The screen's pictures over [layerImages]: each frame one picture of
+  /// its rows, on its paper.
+  FramePictures picturesOver(
+    LayerFrameImageCache layerImages, {
+    FramePictureGpu? gpu,
+  }) {
+    final store = FramePictureStore<FramePictureKey>(gpu: gpu);
+    addTearDown(store.dispose);
+    return FramePictures(
+      store: store,
+      layerImages: layerImages,
+      stackOf: (picture) => [
+        for (final row in rowsOf(picture.cut, picture.frameIndex))
+          CompositeLeaf<CanvasStackRow>(row),
+      ],
+      pageOf: (picture) => (
+        canvasSize: picture.cut.canvasSize,
+        pasteboardReach: PasteboardReach.whole,
+        paintPaper: picture.paintPaper,
+        paperBackground: ProjectBackground.defaultBackground,
+      ),
+    );
   }
+
+  /// The picture frame [frameIndex] of [cut] shows, or null while it is not
+  /// made.
+  ui.Image? shownAt(FramePictures pictures, Cut cut, int frameIndex) =>
+      pictures.store
+          .peek(
+            pictures.keyOf((cut: cut, frameIndex: frameIndex, paintPaper: true)),
+          )
+          ?.image;
 
   /// A cel's pixels as an open donates them — baked, under a key no
   /// coordinator drew on.
@@ -134,7 +140,7 @@ void main() {
   ({
     BrushFrameStore store,
     LayerFrameImageCache layerImages,
-    CanvasPictures pictures,
+    FramePictures pictures,
     BrushFrameEditingCoordinator coordinator,
   })
   fixture() {
@@ -210,7 +216,7 @@ void main() {
         inkedSurface(),
       );
       expect(
-        f.pictures.has((cut: runwayCut(), frameIndex: 6)),
+        f.pictures.has((cut: runwayCut(), frameIndex: 6, paintPaper: true)),
         isFalse,
         reason: '⛔premise: the runway has a picture to make',
       );
@@ -227,7 +233,7 @@ void main() {
       await patiently(scheduler.idle);
 
       expect(
-        shownAt(f.layerImages, runwayCut(), 6),
+        shownAt(f.pictures, runwayCut(), 6),
         isNotNull,
         reason: 'a frame the warm never visits misses in the cache forever, '
             'which is how a runway drawing stayed invisible while scrubbing '
@@ -254,7 +260,7 @@ void main() {
         beforeCompose: (asked, frameIndex) async {
           await Future<void>.delayed(Duration.zero);
           expect(
-            shownAt(f.layerImages, asked, frameIndex),
+            shownAt(f.pictures, asked, frameIndex),
             isNull,
             reason: 'nothing is composed before the hook has answered',
           );
@@ -271,7 +277,7 @@ void main() {
       expect(filled, isNotEmpty);
       for (final frame in filled) {
         expect(
-          shownAt(f.layerImages, cut(), frame),
+          shownAt(f.pictures, cut(), frame),
           isNotNull,
           reason: 'frame $frame was answered for, so it was warmed',
         );
@@ -291,7 +297,7 @@ void main() {
       );
 
       expect(
-        f.pictures.has((cut: cut(), frameIndex: 0)),
+        f.pictures.has((cut: cut(), frameIndex: 0, paintPaper: true)),
         isFalse,
         reason: '⛔premise: frame 0 has a picture to make',
       );
@@ -303,10 +309,10 @@ void main() {
 
       for (var index = 0; index < 4; index += 1) {
         expect(
-          f.pictures.has((cut: cut(), frameIndex: index)),
+          f.pictures.has((cut: cut(), frameIndex: index, paintPaper: true)),
           isTrue,
-          reason: 'frame $index should be warmed — 1..3 show no cel, and '
-              'are warm with nothing to make',
+          reason: 'frame $index should be warmed — 1..3 show no cel: their '
+              'page alone, there by definition',
         );
       }
       expect(
@@ -340,12 +346,13 @@ void main() {
 
       warm();
       await patiently(scheduler.idle);
-      // The runway's empty frames need no picture: one to make.
+      // The empty frames are their page alone, there by definition: one to
+      // make.
       expect(warmed, 1, reason: 'the premise: one picture to make');
       expect(
         reports,
-        greaterThanOrEqualTo(1 + warmed),
-        reason: 'the request, then every frame it warmed',
+        greaterThan(1),
+        reason: 'the request, then what it warmed',
       );
 
       reports = 0;
@@ -388,7 +395,7 @@ void main() {
             'the warm began',
       );
       expect(
-        shownAt(f.layerImages, cut(), 0),
+        shownAt(f.pictures, cut(), 0),
         isNull,
       );
 
@@ -449,7 +456,7 @@ void main() {
         reason: 'a live stroke must fully stand warming down',
       );
       expect(
-        shownAt(f.layerImages, cut(), 0),
+        shownAt(f.pictures, cut(), 0),
         isNull,
       );
 
@@ -458,7 +465,7 @@ void main() {
 
       expect(scheduler.progress.value.isComplete, isTrue);
       expect(
-        shownAt(f.layerImages, cut(), 0),
+        shownAt(f.pictures, cut(), 0),
         isNotNull,
         reason: 'released holds resume the SAME queue to completion',
       );
@@ -482,7 +489,7 @@ void main() {
         cutId: const CutId('cut'),
       );
       await patiently(scheduler.idle);
-      final before = shownAt(f.layerImages, cut(), 0);
+      final before = shownAt(f.pictures, cut(), 0);
 
       // Edit: caches invalidate via revision, then re-warm.
       f.coordinator.commitSourceStroke(
@@ -501,7 +508,7 @@ void main() {
         ],
       );
       expect(
-        shownAt(f.layerImages, cut(), 0),
+        shownAt(f.pictures, cut(), 0),
         isNull,
       );
 
@@ -510,7 +517,7 @@ void main() {
       );
       await patiently(scheduler.idle);
 
-      final after = shownAt(f.layerImages, cut(), 0);
+      final after = shownAt(f.pictures, cut(), 0);
       expect(after, isNotNull);
       expect(identical(before, after), isFalse);
       scheduler.dispose();
@@ -558,7 +565,7 @@ void main() {
           );
         }
         expect(
-          f.pictures.has((cut: nextCut(), frameIndex: 3)),
+          f.pictures.has((cut: nextCut(), frameIndex: 3, paintPaper: true)),
           isFalse,
           reason: '⛔premise: the runway has a picture to make',
         );
@@ -580,7 +587,7 @@ void main() {
 
         for (var index = 0; index < 4; index += 1) {
           expect(
-            f.pictures.has((cut: nextCut(), frameIndex: index)),
+            f.pictures.has((cut: nextCut(), frameIndex: index, paintPaper: true)),
             isTrue,
             reason: 'next-cut frame $index warms on the same run — index 3 '
                 'is the RUNWAY drawing, covered because the lookahead reads '
@@ -649,7 +656,11 @@ void main() {
   /// followed from the frame under its playhead, at once, and only as far as
   /// the allowance holds.
   group('a run that plays', () {
-    const pictureBytes = 8 * 8 * 4;
+    // A frame of the page as its picture lies ([pictureExtentOf]).
+    final pictureBytes = estimatedImageBytes(
+      pictureExtentOf(canvasSize.canvasRect).width.round(),
+      pictureExtentOf(canvasSize.canvasRect).height.round(),
+    );
 
     // Four frames, four pictures: each frame its own cel, so no two share a
     // picture and what was made says which frame was asked.
@@ -681,15 +692,15 @@ void main() {
       totalFrames: 4,
       loops: () => true,
       playhead: () => playhead,
-      picturesOf: (frame) => [(cut: four(), frameIndex: frame)],
+      picturesOf: (frame) => [(cut: four(), frameIndex: frame, paintPaper: true)],
       playlistFrameOf: (cutId, frameIndex) =>
           cutId == const CutId('cut') ? frameIndex : null,
       lead: lead,
     );
 
-    List<bool> there(CanvasPictures pictures) => [
+    List<bool> there(FramePictures pictures) => [
       for (var frame = 0; frame < 4; frame += 1)
-        pictures.has((cut: four(), frameIndex: frame)),
+        pictures.has((cut: four(), frameIndex: frame, paintPaper: true)),
     ];
 
     /// A cel inked across [four]'s canvas, and [past] tiles past every edge.
@@ -716,7 +727,7 @@ void main() {
     ({
       BrushFrameStore store,
       LayerFrameImageCache layerImages,
-      CanvasPictures pictures,
+      FramePictures pictures,
     })
     inked({FrameId? gone}) {
       final store = BrushFrameStore();
@@ -772,7 +783,7 @@ void main() {
     ({
       BrushFrameStore store,
       LayerFrameImageCache layerImages,
-      CanvasPictures pictures,
+      FramePictures pictures,
     })
     keptInked({required int heavy}) {
       final store = BrushFrameStore();
@@ -796,26 +807,31 @@ void main() {
         'it waits for comes back', (tester) async {
       await tester.runAsync(() async {
         final f = inked();
-        f.layerImages.dispose();
-        final gated = _Gated(frameStore: f.store);
+        final gpu = _RastersInTurn();
+        final asked = <FrameId>{};
         final scheduler = PlaybackPrerenderScheduler(
-          pictures: picturesOver(gated),
+          pictures: picturesOver(f.layerImages, gpu: gpu),
           resolveCut: (_) => four(),
           idleDelay: Duration.zero,
+          beforeCompose: (_, frameIndex) async =>
+              asked.add(FrameId('f$frameIndex')),
         );
 
         scheduler.follow(run());
         await Future<void>.delayed(const Duration(milliseconds: 50));
+        expect(gpu.rastered, 0, reason: '⛔premise: the first raster waits');
         expect(
-          gated.asked,
+          asked,
           {for (var index = 0; index < 3; index += 1) FrameId('f$index')},
           reason: 'the frame waited for, and the two after it',
         );
 
-        gated.gate.complete();
+        for (var index = 0; index < 4; index += 1) {
+          gpu.letThrough(index);
+        }
         await patiently(scheduler.idle);
         scheduler.dispose();
-        gated.dispose();
+        f.layerImages.dispose();
       });
     });
 
@@ -859,51 +875,60 @@ void main() {
             tileSize: 4,
           );
         }
-        final cache = _OneByOne(frameStore: store);
+        final images = LayerFrameImageCache(frameStore: store);
+        final gpu = _RastersInTurn();
+        final asked = <FrameId>{};
+        Future<void> letThrough(FrameId frame) async {
+          gpu.letThrough(int.parse(frame.value.substring(1)));
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+
         final scheduler = PlaybackPrerenderScheduler(
-          pictures: picturesOver(cache),
+          pictures: picturesOver(images, gpu: gpu),
           resolveCut: (_) => six(),
           idleDelay: Duration.zero,
+          beforeCompose: (_, frameIndex) async =>
+              asked.add(FrameId('f$frameIndex')),
         );
         scheduler.follow(
           PlayingDemand(
             totalFrames: 6,
             loops: () => true,
             playhead: () => 0,
-            picturesOf: (frame) => [(cut: six(), frameIndex: frame)],
+            picturesOf: (frame) => [(cut: six(), frameIndex: frame, paintPaper: true)],
             playlistFrameOf: (cutId, frameIndex) =>
                 cutId == const CutId('cut') ? frameIndex : null,
           ),
         );
         await Future<void>.delayed(const Duration(milliseconds: 50));
         expect(
-          cache.asked,
+          asked,
           {for (var index = 0; index < 3; index += 1) FrameId('f$index')},
           reason: '⛔premise: its own, and two ahead',
         );
 
-        await cache.letThrough(const FrameId('f0'));
+        await letThrough(const FrameId('f0'));
         expect(
-          cache.asked,
+          asked,
           contains(const FrameId('f3')),
           reason: 'waiting for frame 1, asked ahead, it asked past it',
         );
 
-        await cache.letThrough(const FrameId('f1'));
-        await cache.letThrough(const FrameId('f2'));
+        await letThrough(const FrameId('f1'));
+        await letThrough(const FrameId('f2'));
         expect(
-          cache.asked,
+          asked,
           containsAll([const FrameId('f4'), const FrameId('f5')]),
           reason: 'and a picture asked ahead gives its place back when it '
               'comes back',
         );
 
         for (final frame in ['f3', 'f4', 'f5']) {
-          await cache.letThrough(FrameId(frame));
+          await letThrough(FrameId(frame));
         }
         await patiently(scheduler.idle);
         scheduler.dispose();
-        cache.dispose();
+        images.dispose();
       });
     });
 
@@ -1057,7 +1082,7 @@ void main() {
             totalFrames: 1,
             loops: () => true,
             playhead: () => 0,
-            picturesOf: (frame) => [(cut: four(), frameIndex: frame)],
+            picturesOf: (frame) => [(cut: four(), frameIndex: frame, paintPaper: true)],
             playlistFrameOf: (_, frameIndex) => frameIndex,
           ),
         );
@@ -1098,7 +1123,7 @@ void main() {
           const PrerenderProgress(cached: 2, total: 2),
           reason: 'what is held is the window: nothing in it is left to make',
         );
-        expect(f.layerImages.estimatedBytes, 2 * pictureBytes);
+        expect(f.pictures.store.estimatedBytes, 2 * pictureBytes);
 
         // One frame on: the frame that came into the window is made, out
         // of the room of the one that fell behind.
@@ -1117,7 +1142,7 @@ void main() {
           reason: 'the window moved on with the playhead; it did not churn',
         );
         expect(there(f.pictures), [false, false, true, true]);
-        expect(f.layerImages.estimatedBytes, 2 * pictureBytes);
+        expect(f.pictures.store.estimatedBytes, 2 * pictureBytes);
         scheduler.dispose();
         f.layerImages.dispose();
       });
@@ -1214,6 +1239,7 @@ void main() {
         await f.pictures.make((
           cut: four(),
           frameIndex: 2,
+          paintPaper: true,
         ), shouldAbort: () => false);
         final room = _Room(f.pictures, 3 * pictureBytes);
         final scheduler = PlaybackPrerenderScheduler(
@@ -1234,7 +1260,7 @@ void main() {
               'picture wanted after it went, and the walk rests',
         );
         expect(
-          f.layerImages.estimatedBytes,
+          f.pictures.store.estimatedBytes,
           greaterThan(3 * pictureBytes),
           reason: '⛔premise: over the line by what the estimate missed',
         );
@@ -1290,7 +1316,7 @@ void main() {
         expect(there(f.pictures), everyElement(isTrue));
 
         // A memory warning's work: every picture goes.
-        f.layerImages.enforceBudget(maxBytes: 0);
+        f.pictures.store.enforceBudget(maxBytes: 0);
         expect(there(f.pictures), everyElement(isFalse));
 
         scheduler.wake();
@@ -1318,7 +1344,7 @@ void main() {
             playhead: () => playhead,
             picturesOf: (frame) {
               asked += 1;
-              return [(cut: cut(duration: 40), frameIndex: frame)];
+              return [(cut: cut(duration: 40), frameIndex: frame, paintPaper: true)];
             },
             playlistFrameOf: (_, frameIndex) => frameIndex,
           ),
@@ -1353,7 +1379,8 @@ void main() {
         scheduler.follow(run());
         await patiently(scheduler.idle);
 
-        f.layerImages.invalidateFrame(
+        // Frame 2's cel drawn on: its picture is another.
+        f.store.markCelEdited(
           frameKey(four(), const LayerId('layer'), const FrameId('f2')),
         );
         expect(there(f.pictures), [true, true, false, true]);
@@ -1370,7 +1397,7 @@ void main() {
         'not paid for twice', (tester) async {
       await tester.runAsync(() async {
         final f = inked(gone: const FrameId('f1'));
-        final layerImages = _CountsMakings(
+        final layerImages = _CountsReadings(
           const FrameId('f1'),
           frameStore: f.store,
         );
@@ -1386,7 +1413,7 @@ void main() {
         );
         final passedAtEach = <bool>[];
         scheduler.changes.addListener(
-          () => passedAtEach.add(scheduler.has([(cut: four(), frameIndex: 1)])),
+          () => passedAtEach.add(scheduler.has([(cut: four(), frameIndex: 1, paintPaper: true)])),
         );
 
         scheduler.follow(run());
@@ -1396,7 +1423,15 @@ void main() {
         // swallows the failure — the pin could not fail.
         FlutterError.onError = previous;
 
-        expect(there(pictures), [true, false, true, true]);
+        expect(
+          there(pictures),
+          everyElement(isTrue),
+          reason: 'frame 1 is laid without the cel that would not read',
+        );
+        expect(
+          pictures.cannotRead((cut: four(), frameIndex: 1, paintPaper: true)),
+          isTrue,
+        );
         expect(reported, hasLength(1), reason: 'the failure is said, once');
         expect(
           passedAtEach,
@@ -1414,7 +1449,7 @@ void main() {
               'first (10-10)',
         );
         expect(
-          scheduler.has([(cut: four(), frameIndex: 1)]),
+          scheduler.has([(cut: four(), frameIndex: 1, paintPaper: true)]),
           isTrue,
           reason: 'nothing waits for a picture that cannot be made',
         );
@@ -1434,12 +1469,12 @@ void main() {
   });
 }
 
-/// The room a test gives the warmer: [bytes] of the pictures' images, kept
-/// by the cache's own law against whatever the warmer follows.
+/// The room a test gives the warmer: [bytes] of the frames' pictures, kept
+/// by the store's own law against whatever the warmer follows.
 class _Room implements PictureRoom {
   _Room(this.pictures, this.bytes);
 
-  final CanvasPictures pictures;
+  final FramePictures pictures;
 
   @override
   final int bytes;
@@ -1448,100 +1483,67 @@ class _Room implements PictureRoom {
 
   @override
   bool makeRoomFor({required int bytes, required int step}) =>
-      pictures.layerImages.enforceBudget(
+      pictures.store.enforceBudget(
         maxBytes: this.bytes - bytes,
         wantedAt: pictures.wantedAt(demand()),
         laterThan: step,
       );
 }
 
-/// An image cache whose asks come back one at a time, each when its cel is
-/// let through ([letThrough]); past it, no picture.
-class _OneByOne extends LayerFrameImageCache {
-  _OneByOne({required super.frameStore});
+/// A GPU whose rasters come back each when it is let through, by the order
+/// they were asked in ([letThrough]) — the store lays one at a time, so the
+/// first waits and the rest queue behind it. It holds no texture: no patch
+/// is written here.
+class _RastersInTurn implements FramePictureGpu {
+  final _turns = <int, Completer<void>>{};
+  int _asked = 0;
 
-  final _held = <FrameId, Completer<void>>{};
+  /// How many rasters came back.
+  int rastered = 0;
 
-  Set<FrameId> get asked => _held.keys.toSet();
+  /// Lets the [turn]th raster asked for come back — now, or once asked.
+  void letThrough(int turn) =>
+      _turns.putIfAbsent(turn, Completer<void>.new).complete();
 
-  /// Lets [frameId]'s ask come back, then lets the walk have its turns.
-  Future<void> letThrough(FrameId frameId) async {
-    _held[frameId]!.complete();
-    await Future<void>.delayed(const Duration(milliseconds: 50));
+  @override
+  Future<ui.Image> render(ui.Picture picture, int width, int height) async {
+    await _turns.putIfAbsent(_asked++, Completer<void>.new).future;
+    rastered += 1;
+    return picture.toImage(width, height);
   }
 
   @override
-  Future<LayerFrameImage?> prepare({
-    required BrushFrameKey key,
-    required CanvasSize canvasSize,
-    required PlaybackQuality quality,
-    required List<ResolvedLayerEffect> sourceEffects,
-    bool Function()? shouldAbort,
-    bool inkSuffices = false,
-    Future<QuietTurn?> Function()? turn,
-  }) async {
-    await _held.putIfAbsent(key.frameId, Completer<void>.new).future;
-    return null;
-  }
-}
-
-/// An image cache whose every ask waits at one gate, saying which cels were
-/// asked for; past the gate it answers with no picture.
-class _Gated extends LayerFrameImageCache {
-  _Gated({required super.frameStore});
-
-  final gate = Completer<void>();
-  final asked = <FrameId>{};
+  Object? hold(ui.Image image) => null;
 
   @override
-  Future<LayerFrameImage?> prepare({
-    required BrushFrameKey key,
-    required CanvasSize canvasSize,
-    required PlaybackQuality quality,
-    required List<ResolvedLayerEffect> sourceEffects,
-    bool Function()? shouldAbort,
-    bool inkSuffices = false,
-    Future<QuietTurn?> Function()? turn,
-  }) async {
-    asked.add(key.frameId);
-    await gate.future;
-    return null;
-  }
+  int levelsOf(Object held) => 1;
+
+  @override
+  Future<bool> write(Object held, List<BaseWrite> base, LevelWrites? levels) =>
+      throw UnsupportedError('holds no texture');
 }
 
-/// An image cache that counts the makings asked of the cel [frameId].
+/// An image cache that counts the readings of the cel [frameId]'s stored
+/// pixels.
 ///
-/// ⚠️IT MAKES THEM AS ANY CACHE DOES: what a cel that could not be read is
+/// ⚠️IT READS THEM AS ANY CACHE DOES: what a cel that could not be read is
 /// remembered by is the cache's record ([LayerFrameImageCache.unreadable]),
-/// kept by its making — a stand-in for the making would stand in for the
+/// kept by its reading — a stand-in for the reading would stand in for the
 /// record as well.
-class _CountsMakings extends LayerFrameImageCache {
-  _CountsMakings(this.frameId, {required super.frameStore});
+class _CountsReadings extends LayerFrameImageCache {
+  _CountsReadings(this.frameId, {required super.frameStore});
 
   final FrameId frameId;
   int asked = 0;
 
   @override
-  Future<LayerFrameImage?> prepare({
-    required BrushFrameKey key,
+  BitmapSurface? storedSurfaceOrNull(
+    BrushFrameKey key, {
     required CanvasSize canvasSize,
-    required PlaybackQuality quality,
-    required List<ResolvedLayerEffect> sourceEffects,
-    bool Function()? shouldAbort,
-    bool inkSuffices = false,
-    Future<QuietTurn?> Function()? turn,
   }) {
     if (key.frameId == frameId) {
       asked += 1;
     }
-    return super.prepare(
-      key: key,
-      canvasSize: canvasSize,
-      quality: quality,
-      sourceEffects: sourceEffects,
-      shouldAbort: shouldAbort,
-      inkSuffices: inkSuffices,
-      turn: turn,
-    );
+    return super.storedSurfaceOrNull(key, canvasSize: canvasSize);
   }
 }

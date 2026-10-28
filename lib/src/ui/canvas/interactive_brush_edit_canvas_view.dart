@@ -49,6 +49,7 @@ import 'canvas_press.dart';
 import 'canvas_tool_holds.dart';
 import 'canvas_touch_contacts.dart';
 import 'shown_cels.dart';
+import 'stroke_in_flight.dart';
 import 'view_hand.dart';
 import 'canvas_viewport_offset.dart';
 
@@ -119,13 +120,15 @@ abstract interface class ShapeShow {
   /// laid whole now — and answers whether anything landed.
   bool land(ShapeArea area);
 
-  /// [show] for the stroke along [path].
-  void showStroke(List<CanvasPoint> path);
+  /// [show] for the stroke along [path], every dab of it at [pressure] —
+  /// full where no pen pressed it, as a shape's is.
+  void showStroke(List<CanvasPoint> path, {double pressure = 1});
 
-  /// [land] for the stroke along [path] — laid and landed in one go when
-  /// nothing of it was laid ahead, asking for the cel where there is none
-  /// — and answers whether it is drawn, or will be once that cel is there.
-  bool landStroke(List<CanvasPoint> path);
+  /// [land] for the stroke along [path] at [pressure] ([showStroke]) — laid
+  /// and landed in one go when nothing of it was laid ahead, asking for the
+  /// cel where there is none — and answers whether it is drawn, or will be
+  /// once that cel is there.
+  bool landStroke(List<CanvasPoint> path, {double pressure = 1});
 
   /// Takes back whatever is shown or being laid: the drag ended without a
   /// shape.
@@ -303,7 +306,10 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   final ValueGetter<BrushEditCanvasInputSettings> inputSettings;
   final ValueChanged<BrushStrokeCommitData> onSourceStrokeCommitted;
   final bool showTransparentBackground;
-  final ValueChanged<bool>? onActiveStrokeChanged;
+
+  /// The stroke this view has in flight, told as it goes up and as it
+  /// lands ([StrokeInFlight.none]).
+  final ValueChanged<StrokeInFlight>? onActiveStrokeChanged;
 
   /// Where this view holds up its [StrokeLander] while it is mounted, and
   /// takes it back when it goes — on the same route as
@@ -437,7 +443,7 @@ class _InteractiveBrushEditCanvasViewState
   ///   clockwise — null when nothing measured one, which is NOT a pen
   ///   turned to 0° (F-176-Q9).
   /// * speed: how fast the pen travelled into the sample, 0..1 against the
-  ///   user's reference speed. A pen that has just landed — and every
+  ///   ceiling the app fixes. A pen that has just landed — and every
   ///   stroke's first dab — rests at 0.0.
   PenReadings _readings = (
     pressure: 1.0,
@@ -614,7 +620,7 @@ class _InteractiveBrushEditCanvasViewState
     if (hadActiveStroke) {
       final notify = widget.onActiveStrokeChanged;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        notify?.call(false);
+        notify?.call(StrokeInFlight.none);
       });
     }
   }
@@ -808,6 +814,7 @@ class _InteractiveBrushEditCanvasViewState
       // while the canvas ignored the setting entirely.
       antiAlias: settings.antiAlias,
       erase: settings.erase,
+      blurs: settings.blurs,
     );
   }
 
@@ -865,8 +872,13 @@ class _InteractiveBrushEditCanvasViewState
     // the same "captured once per stroke" rule — the dabs carry only their
     // own variation now, so this is the only place the tool's opacity
     // enters the live pixels.
-    _liveRasterizer!.strokeOpacity =
-        (_activeStrokeInputSettings ?? widget.inputSettings()).opacity;
+    final settings = _activeStrokeInputSettings ?? widget.inputSettings();
+    _liveRasterizer!.strokeOpacity = settings.opacity;
+    // I-75: a blur stroke rewrites the cel as the stroke finds it — the
+    // same cel the overlay pre-blends against ([_BrushEditStroke._openOverlay]).
+    if (settings.blurs) {
+      _liveRasterizer!.blurOver(surface);
+    }
   }
 
   /// A fill shown and not yet committed: its stamp pieces, the surface its

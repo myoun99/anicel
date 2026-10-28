@@ -15,6 +15,8 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 
+import '../../helpers/timeline_zoom.dart';
+
 /// F-253 (유저 2026-10-01): 「타임라인패널의 줌 상태는 컷마다 기억하도록.
 /// 지금 한번 바꾸면 컷마다 다른컷에서 바꾼 값 따라가니」.
 ///
@@ -61,16 +63,8 @@ void main() {
         .session;
     double zoom() =>
         tester.widget<TimelinePanel>(find.byType(TimelinePanel)).pixelsPerFrame;
-    Future<void> step({required bool zoomIn}) async {
-      await tester.tap(
-        find.byKey(
-          ValueKey<String>(
-            zoomIn ? 'timeline-zoom-in-button' : 'timeline-zoom-out-button',
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-    }
+    Future<void> step({required bool zoomIn}) =>
+        dragTimelineZoom(tester, zoomIn ? 25 : -25);
 
     Future<void> open(String id) async {
       session.selectCut(CutId(id));

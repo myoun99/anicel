@@ -13,6 +13,8 @@ import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_span_layout.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart';
 
+import '../../helpers/an_se_row.dart';
+
 /// I-43 (유저 2026-09-23): the edges took the two corners — so what used to
 /// stand in them moved out.
 ///
@@ -37,6 +39,7 @@ void main() {
               along: 200,
               across: 28,
               child: SeSpanVisual(
+                layer: anSeRow(),
                 axis: axis,
                 frames: 10,
                 dialogue: 'ガチャ',

@@ -200,7 +200,8 @@ class TimelineBarMenus {
           label: editorActionLabel(addEffectActionId(kind)),
           shortcuts: [addEffectActionId(kind)],
           icon: Icons.auto_fix_high_outlined,
-          enabled: serves && session.effectsAndFx.canAddEffectToActiveLayer,
+          enabled:
+              serves && session.effectsAndFx.canAddEffectToActiveLayer(kind),
           onSelected: () => session.effectsAndFx.addEffectToActiveLayer(kind),
         ),
     ];

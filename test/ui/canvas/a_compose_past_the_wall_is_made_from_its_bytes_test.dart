@@ -3,20 +3,15 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/core/sync_image_upload.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/tile_coord.dart';
-import 'package:anicel/src/native/native_scratch.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
-import 'package:anicel/src/services/cel_text_laying.dart';
 import 'package:anicel/src/services/straight_rgba_image.dart';
-import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
-import 'package:anicel/src/ui/canvas/level_image.dart';
-import 'package:anicel/src/ui/canvas/surface_region_picture.dart';
+import 'package:anicel/src/ui/canvas/chained_picture.dart';
 import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart';
 
 import '../../helpers/cel_text_fixture.dart' show textOf;
@@ -140,17 +135,18 @@ void main() {
       reason: 'premise: past the wall on both sides ($over)',
     );
     var uploads = 0;
+    ui.Image? uploaded;
     Future<ui.Image> counted(
       Uint8List rgba, {
       required int width,
       required int height,
       int? targetWidth,
       int? targetHeight,
-    }) {
+    }) async {
       uploads += 1;
       debugRawRgbaUploader = null;
       try {
-        return uploadRawRgba(
+        return uploaded = await uploadRawRgba(
           rgba,
           width: width,
           height: height,
@@ -169,6 +165,19 @@ void main() {
     ))!;
     expect(debugComposesFromBytes, 1);
     expect(uploads, 1, reason: 'made from its bytes, and uploaded');
+    // 🎯A render of the upload, as every other compose hands back a render:
+    // drawn reduced through a camera, a row is sampled from its own chain,
+    // and on Impeller an upload carries none (one-picture-per-frame ②-5b-3).
+    expect(
+      carriesChain(fromBytes.image),
+      isTrue,
+      reason: 'handed back with its mip chain',
+    );
+    expect(
+      uploaded!.debugDisposed,
+      isTrue,
+      reason: 'the upload let go once it is drawn into its render',
+    );
     debugRastersPastTheWall = true;
     final rastered = (await composePositionedSurfaceImage(
       surface,
@@ -244,12 +253,6 @@ void main() {
       ]) {
         final composed = (await composePositionedSurfaceImage(surface))!;
         composed.image.dispose();
-        composePositionedSurfaceImageSync(
-          surface,
-          reuse: BitmapTileImageCache(),
-          makePictures: true,
-          snapshot: false,
-        )!.deferred.image.dispose();
       }
       expect(debugComposesFromBytes, 0);
     });
@@ -455,367 +458,6 @@ void main() {
           reason: 'the queue had its turn after each of the three runs, '
               'and at no other tile',
         );
-      });
-    });
-  });
-
-  group('made now, for a row that was on screen', () {
-    // The test runner draws its pictures (Skia) and has no upload made
-    // now: the door's own drawing stands in for it.
-    tearDown(() => debugWholePictureUploader = null);
-
-    ({PositionedSurfaceImage deferred, Future<List<ui.Image>>? real}) madeNow(
-      BitmapSurface surface,
-      BitmapTileImageCache reuse,
-    ) => composePositionedSurfaceImageSync(
-      surface,
-      reuse: reuse,
-      makePictures: true,
-      snapshot: true,
-      over: lies,
-    )!;
-
-    Future<Uint8List> rasteredNow(BitmapSurface surface) async {
-      final composes = debugComposesFromBytes;
-      debugRastersPastTheWall = true;
-      final rastered = madeNow(surface, BitmapTileImageCache());
-      debugRastersPastTheWall = false;
-      expect(
-        debugComposesFromBytes,
-        composes,
-        reason: 'premise: the hatch rasters',
-      );
-      final kept = (await rastered.real!).single;
-      rastered.deferred.image.dispose();
-      try {
-        return await bytesOf(kept);
-      } finally {
-        kept.dispose();
-      }
-    }
-
-    testWidgets('past the wall it is made from its bytes, in memory of its '
-        'own — the raster\'s picture, no tile pictured, and kept as it is', (
-      tester,
-    ) async {
-      if (engineMissing()) {
-        return;
-      }
-      await tester.runAsync(() async {
-        final surface = pastTheWallWithAText();
-        final shown = celSurfaceWithTextsLaid(surface);
-        Uint8List? premultiplied;
-        debugWholePictureUploader = (bytes) {
-          premultiplied = bytes.readPremultiplied(Uint8List.fromList);
-          return pictureOf(bytes);
-        };
-        final reuse = BitmapTileImageCache();
-        NativeScratch.releaseAll();
-
-        final now = madeNow(surface, reuse);
-
-        expect(debugComposesFromBytes, 1);
-        expect(
-          NativeScratch.liveBytes,
-          lessThan(now.deferred.image.width * now.deferred.image.height * 4),
-          reason: 'the engine\'s scratch did not grow to hold it',
-        );
-        expect(
-          premultiplied,
-          SurfaceRegionBytes(
-            shown,
-            DirtyRegion.wholePixelsOf(lies),
-          ).readPremultiplied(Uint8List.fromList),
-          reason: 'the door\'s bytes, premultiplied where they lie',
-        );
-        expect(
-          shown.tiles.values.where((tile) => reuse.imageFor(tile) != null),
-          isEmpty,
-          reason: 'no tile was pictured for it',
-        );
-        expect(now.deferred.worldRect, lies);
-        final want = await rasteredNow(surface);
-        expect(await bytesOf(now.deferred.image), want);
-        final kept = (await now.real!).single;
-        now.deferred.image.dispose();
-        expect(
-          await bytesOf(kept),
-          want,
-          reason: 'the one kept is the same picture, on a handle of its own',
-        );
-        kept.dispose();
-      });
-    });
-
-    testWidgets('a row that was NOT on screen is not made now past the wall '
-        '— not even with every tile pictured — but inside it, it is', (
-      tester,
-    ) async {
-      await tester.runAsync(() async {
-        for (final (surface, over, made) in [
-          (laid(-48, 64, lies: lies), lies, false),
-          (laid(-16, 32), const ui.Rect.fromLTRB(-16, 0, 32, 16), true),
-        ]) {
-          final reuse = BitmapTileImageCache();
-          for (final tile in surface.tiles.values) {
-            reuse.pictureFor(tile);
-          }
-          final composed = composePositionedSurfaceImageSync(
-            surface,
-            reuse: reuse,
-            makePictures: false,
-            snapshot: false,
-            over: over,
-          );
-          expect(composed != null, made, reason: '$over');
-          composed?.deferred.image.dispose();
-        }
-        expect(debugComposesFromBytes, 0);
-      });
-    });
-
-    testWidgets('an upload refused, or come back another size, is the '
-        'raster, as it always was', (tester) async {
-      await tester.runAsync(() async {
-        final surface = pastTheWallWithAText();
-        final want = await rasteredNow(surface);
-        /// A picture of [surface] the size of [left]..[right] by
-        /// [top]..[bottom] — not the size asked for.
-        ui.Image Function() sized(int left, int top, int right, int bottom) =>
-            () => pictureOf(
-              SurfaceRegionBytes(
-                surface,
-                DirtyRegion(
-                  left: left,
-                  top: top,
-                  rightExclusive: right,
-                  bottomExclusive: bottom,
-                ),
-              ),
-            );
-        for (final (refusal, upload) in <(String, ui.Image? Function())>[
-          ('refused', () => null),
-          // Narrower, its height kept — what this device's decoder does
-          // past its limit — and shorter, its width kept.
-          ('narrower', sized(-45, 2, 41, 14)),
-          ('shorter', sized(-45, 2, 61, 6)),
-        ]) {
-          debugComposesFromBytes = 0;
-          debugWholePictureUploader = (_) => upload();
-          final now = madeNow(surface, BitmapTileImageCache());
-
-          expect(debugComposesFromBytes, 1, reason: 'premise: $refusal');
-          expect(await bytesOf(now.deferred.image), want, reason: refusal);
-          final kept = (await now.real!).single;
-          expect(await bytesOf(kept), want, reason: refusal);
-          now.deferred.image.dispose();
-          kept.dispose();
-        }
-      });
-    });
-  });
-
-  group('🗣️its first level is made from its bytes too, halved through the '
-      'engine\'s own table (a-big-reference-picture-still-costs-when-'
-      'zoomed-out)', () {
-    // On the halving grid past the wall — corners even — holding its ink.
-    const half = ui.Rect.fromLTRB(-46, 2, 62, 14);
-
-    /// Two rows of tiles laid past the wall across — so a tile's half lands
-    /// rows down in the level as well as along it — over [twoRowsHalf].
-    BitmapSurface twoRowsPastTheWall() {
-      const where = ui.Rect.fromLTRB(-45, 3, 61, 29);
-      return BitmapSurface(
-        canvasSize: const CanvasSize(width: 16, height: 16),
-        tileSize: 16,
-        tiles: {
-          for (var x = -3; x < 4; x += 1)
-            for (var y = 0; y < 2; y += 1)
-              TileCoord(x: x, y: y): inked(
-                x * 2 + y,
-                at: TileCoord(x: x, y: y),
-                lies: where,
-              ),
-        },
-        laidBounds: DirtyRegion.wholePixelsOf(where),
-      );
-    }
-
-    const twoRowsHalf = ui.Rect.fromLTRB(-46, 2, 62, 30);
-
-    /// The Surface Pro 11's halving (`the_cpu_halving_is_the_engines_test`).
-    int deviceRule(int sum) =>
-        sum % 4 == 2 && sum != 510 ? sum ~/ 4 : (sum + 2) ~/ 4;
-
-    /// [bytes], [width] wide, halved by [deviceRule] block by block.
-    Uint8List halvedByRule(Uint8List bytes, int width) {
-      final height = bytes.length ~/ (width * 4);
-      final halved = Uint8List(bytes.length ~/ 4);
-      for (var y = 0; y < height ~/ 2; y += 1) {
-        for (var x = 0; x < width ~/ 2; x += 1) {
-          for (var channel = 0; channel < 4; channel += 1) {
-            int at(int dx, int dy) =>
-                bytes[((2 * y + dy) * width + 2 * x + dx) * 4 + channel];
-            halved[(y * (width ~/ 2) + x) * 4 + channel] = deviceRule(
-              at(0, 0) + at(1, 0) + at(0, 1) + at(1, 1),
-            );
-          }
-        }
-      }
-      return halved;
-    }
-
-    setUp(debugForgetMeasuredHalving);
-
-    tearDown(() {
-      debugEngineHalving = null;
-      debugWholePictureUploader = null;
-      debugForgetMeasuredHalving();
-    });
-
-    /// The device's engine, to the measure: the test runner's own halves a
-    /// tie two ways and has no table.
-    void halvingAsTheDevice() => debugEngineHalving = (bytes, width, _) async =>
-        halvedByRule(bytes, width);
-
-    /// The picture over [half] at full size — its bytes, the raster's byte
-    /// for byte (pinned above) — halved by [deviceRule].
-    Future<Uint8List> wantHalved(
-      BitmapSurface surface, {
-      ui.Rect over = half,
-    }) async {
-      final full = (await composePositionedSurfaceImage(surface, over: over))!;
-      try {
-        return halvedByRule(await bytesOf(full.image), full.image.width);
-      } finally {
-        full.image.dispose();
-      }
-    }
-
-    for (final byDart in [false, true]) {
-      testWidgets(
-        byDart
-            ? '…and by Dart where there is no engine'
-            : 'its tiles\' bytes premultiplied by the engine and halved a '
-                  'tile at a time — the full picture halved, texel for texel',
-        (tester) async {
-          if (!byDart && engineMissing()) {
-            return;
-          }
-          QaNativeEngine.debugForceDartFallback = byDart;
-          halvingAsTheDevice();
-          await tester.runAsync(() async {
-            for (final (surface, over, size) in [
-              (pastTheWallWithAText(), half, (54, 6)),
-              (twoRowsPastTheWall(), twoRowsHalf, (54, 14)),
-            ]) {
-              final want = await wantHalved(surface, over: over);
-              debugComposesFromBytes = 0;
-
-              final level = (await composeHalvedSurfaceImage(
-                surface,
-                over: over,
-              ))!.image;
-
-              expect(debugComposesFromBytes, 1, reason: '$over');
-              expect((level.width, level.height), size);
-              expect(await bytesOf(level), want, reason: '$over');
-              level.dispose();
-            }
-          });
-        },
-      );
-    }
-
-    testWidgets('🔬with no table — the test runner\'s own engine has none — '
-        'it is the halved raster, as it always was', (tester) async {
-      await tester.runAsync(() async {
-        final surface = pastTheWallWithAText();
-        debugRastersPastTheWall = true;
-        final rastered = (await composeHalvedSurfaceImage(
-          surface,
-          over: half,
-        ))!.image;
-        debugRastersPastTheWall = false;
-
-        final level =
-            (await composeHalvedSurfaceImage(surface, over: half))!.image;
-
-        expect(measuredHalvingIfRead, isNull, reason: '⛔전제: no table');
-        expect(debugComposesFromBytes, 0);
-        expect(await bytesOf(level), await bytesOf(rastered));
-        level.dispose();
-        rastered.dispose();
-      });
-    });
-
-    testWidgets('made now: rastered until the table has been read, from its '
-        'bytes after — and nothing on the free road', (tester) async {
-      if (engineMissing()) {
-        return;
-      }
-      halvingAsTheDevice();
-      await tester.runAsync(() async {
-        final surface = pastTheWallWithAText();
-        Uint8List? uploaded;
-        debugWholePictureUploader = (bytes) {
-          uploaded = bytes.readPremultiplied(Uint8List.fromList);
-          final recorder = ui.PictureRecorder();
-          ui.Canvas(recorder);
-          final picture = recorder.endRecording();
-          try {
-            return picture.toImageSync(bytes.width, bytes.height);
-          } finally {
-            picture.dispose();
-          }
-        };
-        ({ui.Image deferred, Future<ui.Image>? real})? madeNow({
-          bool makePictures = true,
-        }) => composeHalvedSurfaceImageSync(
-          surface,
-          makePictures: makePictures,
-          snapshot: true,
-          over: half,
-        )?.onePiece;
-
-        final before = madeNow()!;
-        expect(debugComposesFromBytes, 0, reason: 'no table yet: rastered');
-        before.deferred.dispose();
-        (await before.real!).dispose();
-
-        await measuredHalving();
-        final want = await wantHalved(surface);
-        debugComposesFromBytes = 0;
-        final now = madeNow()!;
-        expect(debugComposesFromBytes, 1);
-        expect(uploaded, want, reason: 'its bytes halved, uploaded now');
-        expect((now.deferred.width, now.deferred.height), (54, 6));
-        now.deferred.dispose();
-        (await now.real!).dispose();
-
-        expect(
-          madeNow(makePictures: false),
-          isNull,
-          reason: 'past the wall a level is no free compose either',
-        );
-      });
-    });
-
-    testWidgets('inside the wall a level is rastered as it was, with a '
-        'table read', (tester) async {
-      halvingAsTheDevice();
-      await tester.runAsync(() async {
-        expect(await measuredHalving(), isNotNull, reason: '⛔전제');
-        final surface = laid(-16, 32);
-        const over = ui.Rect.fromLTRB(-16, 0, 32, 16);
-        (await composeHalvedSurfaceImage(surface, over: over))!.image.dispose();
-        composeHalvedSurfaceImageSync(
-          surface,
-          makePictures: true,
-          snapshot: false,
-          over: over,
-        )!.deferred.image.dispose();
-        expect(debugComposesFromBytes, 0);
       });
     });
   });

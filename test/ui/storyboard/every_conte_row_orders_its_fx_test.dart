@@ -16,12 +16,11 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/session/session_row_button_presses.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId;
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/storyboard_host.dart';
 
 /// **I-89 ①ⓓ — every row the conte panel twirls down orders its fx there.**
 ///
@@ -106,39 +105,15 @@ void main() {
     required String twirl,
     CutId standIn = const CutId('a'),
   }) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 1200));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
     final session = EditorSessionManager(initialProject: film());
     addTearDown(session.dispose);
     session.selectCut(standIn);
-    final rail = session.railView;
-    final presses = SessionRowButtonPresses(session);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: Listenable.merge([
-              session,
-              rail.expandedLaneLayerIds,
-              rail.expandedLaneGroupKeys,
-            ]),
-            builder: (context, _) => StoryboardTabHost(
-              session: session,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-              expandedLaneLayerIds: rail.expandedLaneLayerIds.value,
-              onToggleLayerLanes: presses.toggleLanes,
-              expandedLaneGroupKeys: rail.expandedLaneGroupKeys.value,
-              onToggleLaneGroupKey: presses.toggleLaneGroup,
-            ),
-          ),
-        ),
-      ),
+    await pumpStoryboardHostOn(
+      tester,
+      session,
+      surface: const Size(1600, 1200),
+      pixelsPerFrame: 12,
     );
-    await tester.pumpAndSettle();
     await tester.tap(find.named('storyboard-lane-toggle-$twirl'));
     await tester.pumpAndSettle();
     return session;

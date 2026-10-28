@@ -137,7 +137,7 @@ void main() {
 
     test('an UNKEYED parameter resets its STATIC slot — no key is authored, '
         'because an effect has a real static value to put back', () {
-      final spec = effectParametersOf(EffectKind.blur).first;
+      final spec = EffectKind.blur.parameters.first;
       final effects = [
         blur(parameters: {spec.id: EffectParameter(value: 12)}),
       ];
@@ -152,7 +152,7 @@ void main() {
     });
 
     test('a KEYED parameter takes the spec default at the scope frames', () {
-      final spec = effectParametersOf(EffectKind.blur).first;
+      final spec = EffectKind.blur.parameters.first;
       final effects = [
         blur(
           parameters: {

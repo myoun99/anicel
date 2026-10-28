@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart';
 
+import '../../helpers/an_se_row.dart';
 import '../../helpers/painted_glyph_boxes.dart';
 
 /// F-93 — a dialogue glyph keeps to its cell.
@@ -33,7 +34,12 @@ Future<List<Rect>> _paintedGlyphs(
           alignment: Alignment.topLeft,
           child: SizedBox.fromSize(
             size: size,
-            child: SeSpanVisual(axis: axis, frames: 1, dialogue: dialogue),
+            child: SeSpanVisual(
+              layer: anSeRow(),
+              axis: axis,
+              frames: 1,
+              dialogue: dialogue,
+            ),
           ),
         ),
       ),

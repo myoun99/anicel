@@ -2,6 +2,7 @@ import '../widgets/app_icon_button.dart';
 import '../widgets/boolean_dot.dart';
 import '../widgets/drag_value_label.dart';
 import '../widgets/field_slider.dart' show FieldSlider;
+import '../widgets/instant_tap_region.dart';
 import '../widgets/rail_glyph_button.dart';
 import '../widgets/scale_chain_button.dart';
 import '../widgets/tick_layer.dart';
@@ -12,15 +13,16 @@ import 'dart:ui' show ClipOp;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../../models/app_input_settings.dart' show AppInput;
 import '../../models/key_mark.dart' show KeyMark;
 import '../../models/layer.dart';
 import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
 import '../../models/timeline_row_address.dart';
-import '../theme/app_theme.dart' show AppColors, AppShapes;
+import '../theme/app_theme.dart' show AppColors, AppCursors, AppShapes;
 import 'layer_label_controls.dart'
     show
-        LayerRailColumnWidths,
         LayerSectionBandCell,
+        RailSwipeColumn,
         RailSwipeColumnPointer,
         fxGlyphStyle,
         layerLaneChipsSlotWidth,
@@ -29,6 +31,7 @@ import 'layer_label_controls.dart'
         layerMarkColor,
         layerRailColumnWidthsIn,
         railSelectedRowColor;
+import 'timeline_block_look.dart';
 import 'timeline_current_row.dart';
 import '../../models/se_name_tag.dart' show SeNameTag;
 import 'se_name_tag_lane_preview.dart' show SeNameTagLanePreview;
@@ -60,7 +63,6 @@ import 'timeline_cell_style.dart'
         timelineBlockNameFontSize,
         timelineBlockWordStyle,
         timelineFittedGlyphFontSize,
-        timelineInBlockInk,
         timelineJoiningLineWidth;
 import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
 import 'timeline_frame_range_gesture.dart'
@@ -118,16 +120,10 @@ const double _laneColumnEndPadding = 4;
 const double _laneChipSize = 9;
 const double _laneChipGap = 2;
 
-/// How far a member lane's PIN stands from the END of its cell along
-/// [axis] (I-89 ③): the cell's end padding, the value's slot and the gap
-/// before it — the rail's value column, turned on the sheet. What a
-/// sweep's band is measured by, so the band is the column the row lays.
-double laneMemberPinInset(Axis axis, LayerRailColumnWidths columns) =>
-    (axis == Axis.horizontal
-        ? _laneMemberEndPadding
-        : _laneColumnEndPadding) +
-    columns.laneValue +
-    _laneValueGap;
+/// The frame a lane row stands on — where its ◆ keys and its value is read
+/// and set: its cursor's, or the first without one. A rail's bulk-drag
+/// presses a lane it crosses at the same frame (F-475).
+int laneRowFrame(ValueListenable<int?>? cursor) => cursor?.value ?? 0;
 
 /// The label cell of one property lane: an AE-style property name, the
 /// keyframe navigator (◀ previous key · ◆ toggle key at the playhead · ▶
@@ -392,24 +388,28 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           enabled: previousKey != null && onSelectFrame != null,
           onTap: () => onSelectFrame!(previousKey!),
         ),
-        _NavigatorButton(
-          buttonKey: ValueKey<String>(
-            '$_keyPrefix-lane-key-toggle-${layer.id}-${lane.laneId}',
-          ),
-          enabled: laneEdit != null,
-          onTap: () =>
-              laneEdit!.onToggleKeyAt(layer, lane, _frame),
-          child: Transform.rotate(
-            angle: 0.785398,
-            child: Container(
-              width: 7,
-              height: 7,
-              decoration: BoxDecoration(
-                color: keyedNow ? colorScheme.primary : Colors.transparent,
-                border: Border.all(
-                  color: keyedNow
-                      ? colorScheme.primary
-                      : colorScheme.onSurfaceVariant,
+        // A drag from the ◆ sweeps the keys down the rail (F-475); the
+        // arrows beside it act, they do not switch.
+        RailSwipeColumnPointer(
+          column: RailSwipeColumn.laneKey,
+          child: _NavigatorButton(
+            buttonKey: ValueKey<String>(
+              '$_keyPrefix-lane-key-toggle-${layer.id}-${lane.laneId}',
+            ),
+            enabled: laneEdit != null,
+            onTap: () => laneEdit!.onToggleKeyAt(layer, lane, _frame),
+            child: Transform.rotate(
+              angle: 0.785398,
+              child: Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(
+                  color: keyedNow ? colorScheme.primary : Colors.transparent,
+                  border: Border.all(
+                    color: keyedNow
+                        ? colorScheme.primary
+                        : colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             ),
@@ -443,33 +443,29 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     // there is nothing between the two states to scrub through.
     if (lane.valueKind == PropertyLaneValueKind.boolean &&
         laneEdit?.onSetValue != null) {
-      final on = valueLabel == 'on';
+      final on = valueLabel == flagLaneWord(true);
+      void flip() =>
+          laneEdit!.onSetValue!.call(layer, lane, _frame, flagLaneWord(!on));
+      // A drag from the ring sweeps the flags down the rail (F-475).
       return _atValueEnd(
-        ControlPressClaim(
-          onPressed: () => laneEdit!.onSetValue!.call(
-            layer,
-            lane,
-            _frame,
-            on ? 'off' : 'on',
-          ),
-          child: InkWell(
-            key: ValueKey<String>(
-              '$_keyPrefix-lane-toggle-${layer.id}-${lane.laneId}',
-            ),
-            onTap: silentPress(
-              () => laneEdit!.onSetValue!.call(
-                layer,
-                lane,
-                _frame,
-                on ? 'off' : 'on',
+        RailSwipeColumnPointer(
+          column: RailSwipeColumn.laneFlag,
+          child: ControlPressClaim(
+            onPressed: flip,
+            child: InkWell(
+              mouseCursor: AppCursors.press,
+              key: ValueKey<String>(
+                '$_keyPrefix-lane-toggle-${layer.id}-${lane.laneId}',
               ),
-            ),
-            // The app's one boolean (guide-sym ⑥⑧ — 유저 named this very cell:
-            // 「네임태그fx의 bold랑 쇼 다이얼로그」). It drew a check box, and a
-            // CHECK MARK is what 「선택 표시는 색상만」 names outright.
-            child: SizedBox.square(
-              dimension: FieldSlider.defaultHeight,
-              child: Center(child: BooleanDot(value: on, size: 14)),
+              onTap: silentPress(flip),
+              // The app's one boolean (guide-sym ⑥⑧ — 유저 named this very
+              // cell: 「네임태그fx의 bold랑 쇼 다이얼로그」). It drew a check
+              // box, and a CHECK MARK is what 「선택 표시는 색상만」 names
+              // outright.
+              child: SizedBox.square(
+                dimension: FieldSlider.defaultHeight,
+                child: Center(child: BooleanDot(value: on, size: 14)),
+              ),
             ),
           ),
         ),
@@ -573,21 +569,28 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       ? '$_keyPrefix-lane-value-field-${layer.id}-${lane.laneId}'
       : '$_keyPrefix-lane-value-field-${layer.id}-${lane.laneId}-$part';
 
-  /// Pressing anywhere on the label stands on this lane. OPAQUE so the
+  /// Pressing anywhere on the label stands on this lane — on the PRESS, as
+  /// the layer row's label picks, so a sweep started here stands here first
+  /// ([TimelineCurrentRowHooks.onStandOnLane], F-476). OPAQUE so the
   /// padding and the gaps stand too; the navigator buttons, the group
-  /// twirl and the value editor sit DEEPER and keep winning the arena,
-  /// which is what makes one press surface over the whole cell safe.
+  /// twirl and the value editor sit DEEPER and claim their own presses
+  /// (`controlOwnsTap`), which is what makes one press surface over the
+  /// whole cell safe.
   Widget _standable(Widget cell) {
-    final stand = widget.currentRowHooks?.onStandOnLane;
+    final hooks = widget.currentRowHooks;
+    final stand = hooks?.onStandOnLane;
     if (stand == null) {
       return cell;
     }
-    return GestureDetector(
+    final settled = hooks?.onSettledPress;
+    return InstantTapRegion(
       key: ValueKey<String>(
         '$_keyPrefix-lane-stand-cell-${layer.id}-${lane.laneId}',
       ),
       behavior: HitTestBehavior.opaque,
-      onTap: () => stand(layer.id, lane.laneId),
+      pressSeeksFor: AppInput.timelineCellPressSeeks,
+      onTap: (_) => stand(layer.id, lane.laneId),
+      onSettledTap: settled == null ? null : (_) => settled(),
       child: cell,
     );
   }
@@ -632,7 +635,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
 
   /// The frame the row reads its lane at, current whenever [_onTheCursor]
   /// builds.
-  int get _frame => widget.frameCursor?.value ?? 0;
+  int get _frame => laneRowFrame(widget.frameCursor);
 
   /// [cell], built again on every frame the cursor moves to.
   Widget _onTheCursor(BuildContext context, WidgetBuilder cell) {
@@ -706,7 +709,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     if (widget.axis != Axis.horizontal || widget.leadingInset <= 0) {
       return null;
     }
-    return [const LayerSectionBandCell(), SizedBox(width: gap)];
+    return [LayerSectionBandCell(), SizedBox(width: gap)];
   }
 
   // ── the group header ──────────────────────────────────────────────────
@@ -756,17 +759,22 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// excluded from both, and that exclusion is exactly the kind of
   /// surface-local rule this rail keeps paying for.
   ///
-  /// The app's one twirl, as small as the glyph it was.
+  /// The app's one twirl, as small as the glyph it was — and a drag from it
+  /// sweeps the group twirls down the rail, as the eye's does its column
+  /// (F-475).
   Widget _groupTwirl() {
     final onToggleGroup = widget.onToggleLaneGroup;
-    return LayerFoldTwirl(
-      name: '$_keyPrefix-lane-group-toggle-${layer.id}-${lane.laneId}',
-      axis: widget.axis,
-      expanded: lane.groupExpanded,
-      across: 16,
-      onToggle: onToggleGroup == null
-          ? null
-          : () => onToggleGroup(layer, lane),
+    return RailSwipeColumnPointer(
+      column: RailSwipeColumn.laneGroupToggle,
+      child: LayerFoldTwirl(
+        name: '$_keyPrefix-lane-group-toggle-${layer.id}-${lane.laneId}',
+        axis: widget.axis,
+        expanded: lane.groupExpanded,
+        across: 16,
+        onToggle: onToggleGroup == null
+            ? null
+            : () => onToggleGroup(layer, lane),
+      ),
     );
   }
 
@@ -790,7 +798,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       layerRailTrailingCells(
         axis: widget.axis,
         columns: widget.metrics.railColumns,
-        fillReference: _groupReset(colorScheme),
+        clip: _groupReset(colorScheme),
         fx: _groupFx(context),
         optionalColumns: widget.optionalColumns,
         trailingRegion: _groupPreview(),
@@ -813,7 +821,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   }
 
   /// R5: AE's group Reset, in the slot immediately left of fx — the one the
-  /// fill-reference toggle owns on layer rows, and the two never appear on
+  /// clip toggle owns on layer rows, and the two never appear on
   /// the same row.
   Widget? _groupReset(ColorScheme colorScheme) {
     final onReset = widget.onResetLaneGroup;
@@ -835,6 +843,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     if (enabled == null) return null;
     final onToggle = widget.onToggleLaneGroupEnabled;
     return RailSwipeColumnPointer(
+      column: RailSwipeColumn.fx,
       child: RailGlyphButton(
         name: '$_keyPrefix-lane-group-fx-${layer.id}-${lane.laneId}',
         tooltip:
@@ -1261,6 +1270,7 @@ class _NavigatorButton extends StatelessWidget {
     return ControlPressClaim(
       onPressed: enabled ? onTap : null,
       child: InkWell(
+        mouseCursor: AppCursors.press,
         key: buttonKey,
         onTap: silentPress(enabled ? onTap : null),
         child: SizedBox(
@@ -1420,7 +1430,7 @@ class TimelineLaneFrameRow extends StatelessWidget {
         ),
         axis: axis,
         cells: past - from,
-        color: layerMarkColor(layer.mark),
+        layer: layer,
         startsAtKey: from == span.first,
         endsAtKey: past == span.last + 1,
         // The marks the band draws ([_keyMarkers]).
@@ -1503,7 +1513,7 @@ class TimelineLaneFrameRow extends StatelessWidget {
         mark: lane.keyMarkAt(frame),
         axis: axis,
         markerSize: _markerSizeAt(frame),
-        color: layerMarkColor(layer.mark),
+        layer: layer,
         selected: laneSelectionPicksKey(
           selection,
           layer.id,
@@ -1559,7 +1569,7 @@ class TimelineLaneFrameRow extends StatelessWidget {
     across: 0,
     alongExtent: _edge(frame + 1) - _edge(frame),
     acrossExtent: _crossExtent,
-    child: IgnorePointer(child: _LaneKeyName(text: text)),
+    child: IgnorePointer(child: _LaneKeyName(text: text, layer: layer)),
   );
 
   /// The band between its two spacers, along the axis.
@@ -1595,9 +1605,12 @@ class TimelineLaneFrameRow extends StatelessWidget {
 /// (a 9px strip above the mark) went with the beside-the-diamond layout
 /// they existed to serve — `F-17-Q1` 답 B.
 class _LaneKeyName extends StatelessWidget {
-  const _LaneKeyName({required this.text});
+  const _LaneKeyName({required this.text, required this.layer});
 
   final String text;
+
+  /// The row whose key it names — its ink is the key's ([timelineRowLookOf]).
+  final Layer layer;
 
   @override
   Widget build(BuildContext context) {
@@ -1618,7 +1631,7 @@ class _LaneKeyName extends StatelessWidget {
       // 디자인? 색도 똑같이 그대로 재사용」).
       style: timelineBlockWordStyle(
         style,
-        ink: timelineInBlockInk(),
+        ink: timelineRowLookOf(context, layer).ink,
         fontSize: timelineBlockNameFontSize(style),
         bold: true,
       ),
@@ -1742,13 +1755,13 @@ const double _keyMarkerFloor = 4.0;
 /// there.
 ///
 /// The band's print ([_LaneKeyName]), so the camera row says what every
-/// other row says about a named key.
-Widget? _laneKeyWord(PropertyLaneRow lane, {required int frame}) {
+/// other row says about a named key — [layer]'s.
+Widget? _laneKeyWord(PropertyLaneRow lane, Layer layer, {required int frame}) {
   final name = lane.keyNames[frame];
   if (name == null) {
     return null;
   }
-  return IgnorePointer(child: _LaneKeyName(text: name));
+  return IgnorePointer(child: _LaneKeyName(text: name, layer: layer));
 }
 
 /// The UNION summary markers of one row, as [TimelineFrameSpan] children
@@ -1857,13 +1870,13 @@ TimelineFrameSpan timelineLaneKeySpan({
           mark: lane.keyMarkAt(frame),
           axis: axis,
           markerSize: markerSize,
-          color: layerMarkColor(layer.mark),
+          layer: layer,
           selected: selected,
         );
         // The NAME rides the same span — 🗣️유저 2026-09-12:
         // 「카메라레이어만 레이어에 인스턴스 이름이 표시안되」: this row drew
         // the mark and left the word to a band it does not have.
-        final word = named ? _laneKeyWord(lane, frame: frame) : null;
+        final word = named ? _laneKeyWord(lane, layer, frame: frame) : null;
         return word == null
             ? marker
             : Stack(fit: StackFit.expand, children: [marker, word]);
@@ -1897,10 +1910,12 @@ TimelineFrameSpan timelineStretchWordSpan({
     endIndexExclusive: stretch.to + 1,
   ),
   child: IgnorePointer(
-    child: TimelineSpanName(
-      axis: axis,
-      text: stretch.word,
-      ink: layerMarkColor(layer.mark),
+    child: Builder(
+      builder: (context) => TimelineSpanName(
+        axis: axis,
+        text: stretch.word,
+        ink: timelineRowLookOf(context, layer).paper!,
+      ),
     ),
   ),
 );
@@ -1932,7 +1947,7 @@ TimelineFrameSpan? _unionKeysLineSpan({
       ),
       axis: axis,
       cells: span.last - span.first + 1,
-      color: layerMarkColor(layer.mark),
+      layer: layer,
       rings: [
         for (final frame in timelineHollowKeyFrames(lane))
           (cell: frame - span.first, band: 1),
@@ -2010,7 +2025,7 @@ class TimelineLaneKeysLine extends StatelessWidget {
     super.key,
     required this.axis,
     required this.cells,
-    required this.color,
+    required this.layer,
     this.startsAtKey = true,
     this.endsAtKey = true,
     this.crossFraction = 0.5,
@@ -2024,8 +2039,9 @@ class TimelineLaneKeysLine extends StatelessWidget {
   /// the box, so a zoom step lays this out again and rebuilds nothing.
   final int cells;
 
-  /// The row's COLOUR LABEL, as its key marks take it.
-  final Color color;
+  /// The row whose keys it joins — drawn in its COLOUR LABEL as its key
+  /// marks take it ([timelineRowLookOf]).
+  final Layer layer;
 
   final bool startsAtKey;
   final bool endsAtKey;
@@ -2046,7 +2062,14 @@ class TimelineLaneKeysLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IgnorePointer(child: CustomPaint(painter: _KeysLinePainter(this)));
+    return IgnorePointer(
+      child: CustomPaint(
+        painter: _KeysLinePainter(
+          this,
+          color: timelineRowLookOf(context, layer).paper!,
+        ),
+      ),
+    );
   }
 }
 
@@ -2152,9 +2175,10 @@ void strokeKeysLineClearOf(
 }
 
 class _KeysLinePainter extends CustomPainter with RepaintOnProps {
-  _KeysLinePainter(this.line);
+  _KeysLinePainter(this.line, {required this.color});
 
   final TimelineLaneKeysLine line;
+  final Color color;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -2170,7 +2194,7 @@ class _KeysLinePainter extends CustomPainter with RepaintOnProps {
         offsetAlong(axis, along: point.along, across: point.across),
     ];
     final paint = Paint()
-      ..color = line.color
+      ..color = color
       ..strokeWidth = timelineJoiningLineWidth;
     strokeKeysLineClearOf(
       canvas,
@@ -2209,7 +2233,7 @@ class _KeysLinePainter extends CustomPainter with RepaintOnProps {
   Object get props => (
     line.axis,
     line.cells,
-    line.color,
+    color,
     line.startsAtKey,
     line.endsAtKey,
     line.crossFraction,
@@ -2244,7 +2268,7 @@ class TimelineLaneKeyMarker extends StatelessWidget {
     required this.mark,
     required this.axis,
     required this.markerSize,
-    required this.color,
+    required this.layer,
     this.selected = false,
   });
 
@@ -2261,11 +2285,13 @@ class TimelineLaneKeyMarker extends StatelessWidget {
   /// axis, its height across ([timelineLaneKeyMarkerSizeOf]).
   final Size markerSize;
 
-  /// The row's COLOUR LABEL, exactly as its frame blocks take it (유저
-  /// 2026-09-12: 「유니언 키 색은 프레임블록이랑 마찬가지로 색라벨 그대로.
-  /// 로직 그대로 재사용해서」) — [layerMarkColor] answers an unmarked row
-  /// with the same paper the blocks use, so nothing changes for one.
-  final Color color;
+  /// The row whose key it is: the mark wears its COLOUR LABEL, exactly as
+  /// its frame blocks take it (유저 2026-09-12: 「유니언 키 색은
+  /// 프레임블록이랑 마찬가지로 색라벨 그대로. 로직 그대로 재사용해서」) —
+  /// [layerMarkColor] answers an unmarked row with the same paper the blocks
+  /// use, so nothing changes for one — and as its blocks show it, switched
+  /// off with its eye ([timelineRowLookOf], I-129).
+  final Layer layer;
 
   /// Inside the live lane selection (UI-R23 #4): the marker rings in the
   /// accent so selected keys — union diamonds included — read at a glance,
@@ -2286,7 +2312,7 @@ class TimelineLaneKeyMarker extends StatelessWidget {
             // 2026-09-12 means the row's COLOUR LABEL: 「유니언 키 색은
             // 프레임블록이랑 마찬가지로 색라벨 그대로. 로직 그대로
             // 재사용해서」.
-            color: color,
+            color: timelineRowLookOf(context, layer).paper!,
             // ⛔NO outline of its own (유저 2026-09-12: 「지금 실루엣에 외곽선
             // 회색 존재하는거같은데 삭제. 그냥 심플하게 바탕색만 남겨서」). The
             // one ring left is the SELECTION's, in ACCENT 1 (UI-R23 #4) —

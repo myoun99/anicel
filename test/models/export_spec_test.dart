@@ -30,7 +30,7 @@ void main() {
         inFrame: 23,
         outFrame: 94,
         naming: const ExportSequenceNaming(baseName: 'r012', digits: 5),
-        applyLayerFx: false,
+        layerFx: ExportLayerFx.basic,
         includeAudio: false,
       );
       expect(SequenceExportSpec.fromJson(spec.toJson()), spec);
@@ -54,7 +54,7 @@ void main() {
           stillFormat: ExportStillFormat.psd,
         ),
         sizeMode: ExportSizeMode.canvas,
-        applyLayerFx: false,
+        layerFx: ExportLayerFx.off,
       );
       expect(ImageExportSpec.fromJson(spec.toJson()), spec);
     });
@@ -385,12 +385,12 @@ void main() {
       const preset = ExportPreset(
         id: ExportPresetId('preset-1'),
         name: '러시 체크 MP4',
-        spec: SequenceExportSpec(applyLayerFx: false),
+        spec: SequenceExportSpec(layerFx: ExportLayerFx.off),
       );
       final restored = ExportPreset.fromJson(preset.toJson())!;
       expect(restored, preset);
       expect(restored.tab, ExportTab.sequence);
-      expect((restored.spec as SequenceExportSpec).applyLayerFx, isFalse);
+      expect((restored.spec as SequenceExportSpec).layerFx, ExportLayerFx.off);
     });
 
     test('cels preset restores as a cels spec', () {

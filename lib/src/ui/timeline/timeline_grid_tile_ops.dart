@@ -33,17 +33,40 @@ abstract final class TimelineGridTileOp {
   /// bit3=BR (unset corners square). AA from the rounded-box SDF.
   static const int rrectFill = 5;
 
-  // 🪦6 was the rounded-rect STROKE — the per-cell block border's. D32/D38
-  // (2026-08-18) made that border transparent for good, and the substrate
-  // rewrite of 2026-09-24 took the emitter branch that could still have
-  // asked for it; nothing wrote a 6 after that, so the op left the writer,
-  // the reference and the engine together.
+  /// The rounded-rect RING (I-129, 2026-10-25: an EMPTY block's outline —
+  /// the export Cels tab's hollow block, on the timeline's blocks): the
+  /// [rrectFill] coverage of the box less that of the box a line width in
+  /// from each side, its corners that much tighter. Its open mask names
+  /// the sides it leaves OPEN ([sideLeft]…): a block a tile's span cuts
+  /// runs on into the next tile, which must not see a seam there.
+  ///
+  /// ↩️6 was the per-cell block border's STROKE once: D32/D38 (2026-08-18)
+  /// made that border transparent for good, and the op left the writer,
+  /// the reference and the engine together with the substrate rewrite of
+  /// 2026-09-24.
+  static const int rrectRing = 6;
 
   static const int cornerTopLeft = 1;
   static const int cornerTopRight = 2;
   static const int cornerBottomLeft = 4;
   static const int cornerBottomRight = 8;
+
+  static const int sideLeft = 1;
+  static const int sideTop = 2;
+  static const int sideRight = 4;
+  static const int sideBottom = 8;
 }
+
+/// A rounded rect in PIXELS as the op stream states it: [cornerMask] picks
+/// which corners take [radius] (bit0=TL, bit1=TR, bit2=BL, bit3=BR).
+typedef TimelineGridRRect = ({
+  double x,
+  double y,
+  double width,
+  double height,
+  double radius,
+  int cornerMask,
+});
 
 /// Pixels → the op stream's 24.8 fixed-point word.
 int timelineGridQ8(double pixels) => (pixels * 256).round();
@@ -117,6 +140,28 @@ class TimelineGridTileOpWriter {
       ..add(rgba);
   }
 
+  /// [box]'s ring [lineWidth] wide inside it (converted to q8 here),
+  /// leaving open the sides [openMask] names
+  /// ([TimelineGridTileOp.rrectRing]).
+  void rrectRing(
+    TimelineGridRRect box, {
+    required double lineWidth,
+    required int openMask,
+    required int rgba,
+  }) {
+    _words
+      ..add(TimelineGridTileOp.rrectRing)
+      ..add(timelineGridQ8(box.x))
+      ..add(timelineGridQ8(box.y))
+      ..add(timelineGridQ8(box.width))
+      ..add(timelineGridQ8(box.height))
+      ..add(timelineGridQ8(box.radius))
+      ..add(box.cornerMask)
+      ..add(timelineGridQ8(lineWidth))
+      ..add(openMask)
+      ..add(rgba);
+  }
+
   /// An axis-aligned box, antialiased EXACTLY as [rrectFill] with no radius
   /// would draw it — byte for byte — but written as plain rect fills.
   ///
@@ -137,38 +182,27 @@ class TimelineGridTileOpWriter {
     if (colorA == 0 || w <= 0.0 || h <= 0.0) {
       return;
     }
-    final halfW = w * 0.5;
-    final halfH = h * 0.5;
-    final centerX = left + halfW;
-    final centerY = top + halfH;
+    final field = _rrectFieldOf((
+      x: left,
+      y: top,
+      width: w,
+      height: h,
+      radius: 0,
+      cornerMask: 0,
+    ));
     // The field's own pixel window.
     final firstColumn = (left - 1.0).toInt();
     final firstRow = (top - 1.0).toInt();
     final pastColumn = (left + w + 2.0).toInt();
     final pastRow = (top + h + 2.0).toInt();
     int alphaAt(int column, int row) {
-      final d = _rrectDistance(
-        column + 0.5,
-        row + 0.5,
-        centerX,
-        centerY,
-        halfW,
-        halfH,
-        0,
-        0,
-        0,
-        0,
-      );
-      final coverage = 0.5 - d;
-      if (coverage <= 0.0) {
-        return 0;
-      }
-      return ((coverage > 1.0 ? 1.0 : coverage) * colorA + 0.5).toInt();
+      final coverage = _coverageOf(field, column + 0.5, row + 0.5);
+      return coverage > 0.0 ? (coverage * colorA + 0.5).toInt() : 0;
     }
 
     bool inBand(int row) {
-      final ry = row + 0.5 - centerY;
-      return (ry < 0.0 ? -ry : ry) - halfH <= -0.5;
+      final ry = row + 0.5 - field.centerY;
+      return (ry < 0.0 ? -ry : ry) - field.halfH <= -0.5;
     }
 
     // One fill per run of equal columns in [row] (a band of [rows] rows).
@@ -376,76 +410,161 @@ double _rrectDistance(
   return outside + inside - r;
 }
 
-void _blendRRect(
-  Uint8List pixels,
-  int tileWidth,
-  int tileHeight, {
-  required double x,
-  required double y,
-  required double w,
-  required double h,
-  required double radius,
-  required int cornerMask,
+/// A rounded box's coverage field — the C `qa_grid_rrect_field`: the box,
+/// its centre and halves, and each corner's radius (0 = square).
+typedef _RRectField = ({
+  double left,
+  double top,
+  double width,
+  double height,
+  double centerX,
+  double centerY,
+  double halfW,
+  double halfH,
+  double radiusTl,
+  double radiusTr,
+  double radiusBl,
+  double radiusBr,
+});
+
+/// [box]'s field, its radius held to what the box can hold — the C
+/// `qa_grid_rrect_field_of`.
+_RRectField _rrectFieldOf(TimelineGridRRect box) {
+  final halfW = box.width * 0.5;
+  final halfH = box.height * 0.5;
+  final maxRadius = halfW < halfH ? halfW : halfH;
+  final radius = box.radius > maxRadius ? maxRadius : box.radius;
+  final mask = box.cornerMask;
+  return (
+    left: box.x,
+    top: box.y,
+    width: box.width,
+    height: box.height,
+    centerX: box.x + halfW,
+    centerY: box.y + halfH,
+    halfW: halfW,
+    halfH: halfH,
+    radiusTl: (mask & 1) != 0 ? radius : 0.0,
+    radiusTr: (mask & 2) != 0 ? radius : 0.0,
+    radiusBl: (mask & 4) != 0 ? radius : 0.0,
+    radiusBr: (mask & 8) != 0 ? radius : 0.0,
+  );
+}
+
+/// The box an [TimelineGridTileOp.rrectFill] or
+/// [TimelineGridTileOp.rrectRing] op at [at] states — the C
+/// `qa_grid_rrect_field_at`.
+TimelineGridRRect _rrectAt(Int32List ops, int at) => (
+  x: ops[at + 1] / 256.0,
+  y: ops[at + 2] / 256.0,
+  width: ops[at + 3] / 256.0,
+  height: ops[at + 4] / 256.0,
+  radius: ops[at + 5] / 256.0,
+  cornerMask: ops[at + 6],
+);
+
+/// A ring's inner corner: its outer corner [line] tighter, never below
+/// square nor past what the inner box can hold — the C
+/// `qa_grid_ring_inner_radius`.
+double _ringInnerRadius(double outer, double line, double maxRadius) {
+  var radius = outer - line;
+  if (radius < 0.0) {
+    radius = 0.0;
+  }
+  return radius > maxRadius ? maxRadius : radius;
+}
+
+/// The box a ring of [box] leaves unpainted: [line] in from each side it
+/// strokes and [line] + 2 past each side [openMask] leaves open, its
+/// corners [line] tighter — the C `qa_grid_ring_inner_field`.
+_RRectField _ringHoleOf(_RRectField box, double line, int openMask) {
+  final past = line + 2.0;
+  final left = box.left + ((openMask & 1) != 0 ? -past : line);
+  final top = box.top + ((openMask & 2) != 0 ? -past : line);
+  final right = box.left + box.width - ((openMask & 4) != 0 ? -past : line);
+  final bottom = box.top + box.height - ((openMask & 8) != 0 ? -past : line);
+  final width = right - left;
+  final height = bottom - top;
+  final halfW = width * 0.5;
+  final halfH = height * 0.5;
+  final maxRadius = halfW < halfH ? halfW : halfH;
+  return (
+    left: left,
+    top: top,
+    width: width,
+    height: height,
+    centerX: left + halfW,
+    centerY: top + halfH,
+    halfW: halfW,
+    halfH: halfH,
+    radiusTl: _ringInnerRadius(box.radiusTl, line, maxRadius),
+    radiusTr: _ringInnerRadius(box.radiusTr, line, maxRadius),
+    radiusBl: _ringInnerRadius(box.radiusBl, line, maxRadius),
+    radiusBr: _ringInnerRadius(box.radiusBr, line, maxRadius),
+  );
+}
+
+/// How much of the pixel centred at ([cx], [cy]) [field] covers:
+/// analytic-AA 0.5 - d from the rounded-box SDF, held to [0, 1] — the C
+/// `qa_grid_rrect_coverage`.
+double _coverageOf(_RRectField field, double cx, double cy) {
+  final coverage =
+      0.5 -
+      _rrectDistance(
+        cx,
+        cy,
+        field.centerX,
+        field.centerY,
+        field.halfW,
+        field.halfH,
+        field.radiusTl,
+        field.radiusTr,
+        field.radiusBl,
+        field.radiusBr,
+      );
+  return coverage <= 0.0
+      ? 0.0
+      : coverage > 1.0
+      ? 1.0
+      : coverage;
+}
+
+/// The tile the reference rasters into.
+typedef _Tile = ({Uint8List pixels, int width, int height});
+
+/// The [TimelineGridTileOp.rrectFill] and [TimelineGridTileOp.rrectRing]
+/// raster loop — the C `qa_grid_blend_rrect_band`: [box]'s coverage less
+/// [hole]'s (null for none), blended source-over per pixel.
+void _blendRRectBand(
+  _Tile tile,
+  _RRectField box, {
+  _RRectField? hole,
   required int rgba,
 }) {
   final colorA = (rgba >> 24) & 0xFF;
-  if (colorA == 0 || w <= 0.0 || h <= 0.0) {
+  if (colorA == 0 || box.width <= 0.0 || box.height <= 0.0) {
     return;
   }
-  final halfW = w * 0.5;
-  final halfH = h * 0.5;
-  final maxRadius = halfW < halfH ? halfW : halfH;
-  if (radius > maxRadius) {
-    radius = maxRadius;
-  }
-  final radiusTl = (cornerMask & 1) != 0 ? radius : 0.0;
-  final radiusTr = (cornerMask & 2) != 0 ? radius : 0.0;
-  final radiusBl = (cornerMask & 4) != 0 ? radius : 0.0;
-  final radiusBr = (cornerMask & 8) != 0 ? radius : 0.0;
-  final centerX = x + halfW;
-  final centerY = y + halfH;
-
-  var left = (x - 1.0).toInt();
-  var top = (y - 1.0).toInt();
-  var right = (x + w + 2.0).toInt();
-  var bottom = (y + h + 2.0).toInt();
-  if (left < 0) {
-    left = 0;
-  }
-  if (top < 0) {
-    top = 0;
-  }
-  if (right > tileWidth) {
-    right = tileWidth;
-  }
-  if (bottom > tileHeight) {
-    bottom = tileHeight;
-  }
+  final inner = hole != null && hole.halfW > 0.0 && hole.halfH > 0.0
+      ? hole
+      : null;
+  final left = math.max((box.left - 1.0).toInt(), 0);
+  final top = math.max((box.top - 1.0).toInt(), 0);
+  final right = math.min((box.left + box.width + 2.0).toInt(), tile.width);
+  final bottom = math.min((box.top + box.height + 2.0).toInt(), tile.height);
 
   final r = rgba & 0xFF;
   final g = (rgba >> 8) & 0xFF;
   final b = (rgba >> 16) & 0xFF;
   for (var py = top; py < bottom; py += 1) {
     for (var px = left; px < right; px += 1) {
-      final d = _rrectDistance(
-        px + 0.5,
-        py + 0.5,
-        centerX,
-        centerY,
-        halfW,
-        halfH,
-        radiusTl,
-        radiusTr,
-        radiusBl,
-        radiusBr,
-      );
-      var coverage = 0.5 - d;
+      var coverage = _coverageOf(box, px + 0.5, py + 0.5);
+      if (coverage > 0.0 && inner != null) {
+        coverage -= _coverageOf(inner, px + 0.5, py + 0.5);
+      }
       if (coverage > 0.0) {
-        if (coverage > 1.0) {
-          coverage = 1.0;
-        }
         final a = (coverage * colorA + 0.5).toInt();
-        _blendSpan(pixels, (py * tileWidth + px) * 4, 1, r, g, b, a);
+        _blendSpan(tile.pixels, (py * tile.width + px) * 4, 1, r, g, b, a);
       }
     }
   }
@@ -521,6 +640,7 @@ int timelineGridRasterTileReference({
     return 0;
   }
 
+  final tile = (pixels: pixels, width: tileWidth, height: tileHeight);
   var cursor = 0;
   while (cursor < ops.length) {
     switch (ops[cursor]) {
@@ -560,19 +680,27 @@ int timelineGridRasterTileReference({
         if (cursor + 8 > ops.length) {
           return -2;
         }
-        _blendRRect(
-          pixels,
-          tileWidth,
-          tileHeight,
-          x: ops[cursor + 1] / 256.0,
-          y: ops[cursor + 2] / 256.0,
-          w: ops[cursor + 3] / 256.0,
-          h: ops[cursor + 4] / 256.0,
-          radius: ops[cursor + 5] / 256.0,
-          cornerMask: ops[cursor + 6],
+        _blendRRectBand(
+          tile,
+          _rrectFieldOf(_rrectAt(ops, cursor)),
           rgba: ops[cursor + 7],
         );
         cursor += 8;
+      case TimelineGridTileOp.rrectRing:
+        if (cursor + 10 > ops.length) {
+          return -2;
+        }
+        final line = ops[cursor + 7] / 256.0;
+        if (line > 0.0) {
+          final box = _rrectFieldOf(_rrectAt(ops, cursor));
+          _blendRRectBand(
+            tile,
+            box,
+            hole: _ringHoleOf(box, line, ops[cursor + 8]),
+            rgba: ops[cursor + 9],
+          );
+        }
+        cursor += 10;
       case TimelineGridTileOp.glyph:
         if (cursor + 8 > ops.length) {
           return -2;

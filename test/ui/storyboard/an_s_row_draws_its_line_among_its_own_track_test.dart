@@ -12,11 +12,12 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
     show LayerRowSubject, TrackSeRowSubject;
 import 'package:anicel/src/ui/widgets/instant_tap_region.dart'
     show InstantTapRegion;
+
+import '../../helpers/storyboard_host.dart';
 
 /// 🚨F-336 (유저 2026-10-10): 「콘티패널에서 s행의 제일 밑 레이어를 드래그로
 /// s행 제일 위로 이동하려하면 카메라섹션의 가로줄이 생김. 관련문제 여러번
@@ -63,34 +64,22 @@ Track _track(TrackId id, List<String> se) => Track(
   ],
 );
 
+/// The storyboard tab alone ([pumpStoryboardHost]), as the app's window of
+/// 1400 × 1300 laid it — the rail's drag and its line are the panel's.
 Future<void> _pump(WidgetTester tester) async {
-  await tester.binding.setSurfaceSize(const Size(1400, 1300));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
-  await tester.pumpWidget(
-    MaterialApp(
-      home: HomePage(
-        initialProject: Project(
-          id: const ProjectId('s-row-line'),
-          name: 'S row line',
-          createdAt: DateTime.utc(2026, 10, 18),
-          tracks: [
-            _track(_v1, ['Rain', 'Wind', 'Bell']),
-            _track(_v2, ['Door', 'Step']),
-          ],
-        ),
-      ),
+  await pumpStoryboardHost(
+    tester,
+    Project(
+      id: const ProjectId('s-row-line'),
+      name: 'S row line',
+      createdAt: DateTime.utc(2026, 10, 18),
+      tracks: [
+        _track(_v1, ['Rain', 'Wind', 'Bell']),
+        _track(_v2, ['Door', 'Step']),
+      ],
     ),
+    surface: const Size(870, 596),
   );
-  await tester.pumpAndSettle();
-  await tester.tap(
-    find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
-  );
-  await tester.pumpAndSettle();
-  await tester.drag(
-    find.byKey(const ValueKey<String>('dock-resize-bottom')),
-    const Offset(0, -700),
-  );
-  await tester.pumpAndSettle();
 }
 
 final _rail = find.byKey(const ValueKey<String>('storyboard-track-label-rail'));

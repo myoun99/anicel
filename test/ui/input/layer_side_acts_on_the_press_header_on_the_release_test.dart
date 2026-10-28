@@ -7,9 +7,9 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/input/control_press_claim.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
-import 'package:anicel/src/ui/timeline_tab_host.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/timeline_host.dart';
 
 /// 🚨★★★THE RULE, PINNED ON REAL WIDGETS (유저 확정 2026-08-30):
 ///
@@ -29,45 +29,36 @@ import '../../helpers/named_finders.dart';
 /// 🚨HOW THE ROW-LEVEL SCOPE IS PINNED, because two obvious ways do not work
 /// and the next reader would try them:
 ///
-/// * 🧪`find.descendant` from the row also finds the scope each swipe column
-///   mounts, so deleting the row's left it green (measured, twice);
-/// * 🧪pressing an eye or an fx proves nothing either — those ARE columns.
+/// * 🧪`find.descendant` from the row also found the scope each swipe column
+///   mounted, so deleting the row's left it green (measured, twice);
+/// * 🧪pressing an eye or an fx proved nothing either — those are columns.
 ///
 /// ⇒ The case below asks about a button that is in the row and is NOT a
 /// column: the lane group's twirl, a bare [ControlPressClaim] standing beside
 /// them. Deleting the row's scope turns it red, which is what makes it a
-/// test rather than a hope.
+/// test rather than a hope. ↩️The columns mount no scope of their own since
+/// 2026-10-25 — the row's is theirs too — and the case stays, so a column
+/// that took one back could not hide the row's going.
 void main() {
   setUp(debugClearValueControlPointers);
   tearDown(debugClearValueControlPointers);
 
-  Widget host(EditorSessionManager session) => MaterialApp(
-    home: Scaffold(
-      body: ListenableBuilder(
-        listenable: session,
-        builder: (context, _) => TimelineTabHost(
-          session: session,
-          orientation: TimelineOrientation.vertical,
-          onOrientationChanged: (_) {},
-          pixelsPerFrame: 24,
-          onPixelsPerFrameChanged: (_) {},
-          showSeconds: false,
-          onShowSecondsChanged: (_) {},
-        ),
-      ),
-    ),
-  );
+  Future<void> host(WidgetTester tester, EditorSessionManager session) =>
+      pumpTimelineHostOn(
+        tester,
+        session,
+        surface: const Size(1400, 900),
+        orientation: TimelineOrientation.vertical,
+        pixelsPerFrame: 24,
+      );
 
   testWidgets('a LAYER-side button has already acted by the time it is '
       'released', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
     final session = EditorSessionManager(
       initialProject: createDefaultProject(),
     );
     addTearDown(session.dispose);
-    await tester.pumpWidget(host(session));
-    await tester.pumpAndSettle();
+    await host(tester, session);
 
     final layerId = session.activeLayerId!;
     final before = session.onionSkin.isLayerOnionSkinEnabled(layerId);
@@ -97,14 +88,11 @@ void main() {
   });
 
   testWidgets('a HEADER button waits for the release', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
     final session = EditorSessionManager(
       initialProject: createDefaultProject(),
     );
     addTearDown(session.dispose);
-    await tester.pumpWidget(host(session));
-    await tester.pumpAndSettle();
+    await host(tester, session);
 
     // The legend's own flyout: pressing it opens a menu, which is a thing
     // the tree can be asked about without reaching into the session.
@@ -131,8 +119,8 @@ void main() {
   testWidgets('🚨a rail ROW puts its non-column buttons on the press too', (
     tester,
   ) async {
-    // ⛔THE CASE THE SWIPE COLUMNS CANNOT ANSWER. A column mounts a scope of
-    // its own, so pressing an eye or an fx proves nothing about the row —
+    // ⛔THE CASE THE SWIPE COLUMNS COULD NOT ANSWER. A column mounted a scope
+    // of its own, so pressing an eye or an fx proved nothing about the row —
     // 🧪measured twice: deleting the row's scope left every other case green.
     // What the row uniquely covers is the buttons that are NOT columns, and
     // the lane group's twirl is one: a bare [ControlPressClaim] sitting in

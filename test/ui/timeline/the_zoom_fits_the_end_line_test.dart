@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 
 import '../../helpers/scrollable_of.dart';
+import '../../helpers/timeline_zoom.dart';
 
 /// 🗣️I-111 (유저 2026-10-19): 「타임라인/콘티패널등 줌 fit 버튼 추가. 해당
 /// 패널의 엔드라인에 맞춰서 스크롤바 fit하는것」 · 「위치는 줌 확대버튼
@@ -34,9 +35,13 @@ import '../../helpers/scrollable_of.dart';
 ///
 /// The fit is the closest zoom at which the panel's end line stands inside
 /// its window — a step of the bar (F-403) — with the axis at its start.
+///
+/// 🗣️F-472 (유저 2026-10-26): 「엔드라인조차 안보이니까 엔드라인뒤 1코마까지
+/// 추가로 보여주는걸로」 — one koma past the end line stands in it too.
 void main() {
   const frames = 120;
-  const step = TimelineZoomLimits.referencePixelsPerFrame / 1000;
+  /// A step of the bar: 1% of its 100%, half the zoom a cut opens at (F-491).
+  const step = TimelineZoomLimits.referencePixelsPerFrame / 200;
 
   Cut cut(String id, int duration) => Cut(
     id: CutId(id),
@@ -97,9 +102,13 @@ void main() {
     );
   }
 
-  testWidgets('it stands right of the zoom +', (tester) async {
+  // ↩️「위치는 줌 확대버튼 오른쪽」 (I-111) — F-463 took the + off, and the
+  // fit stayed where it was: 「그 옆의 줌 fit버튼은 그대로」. ↩️It stood
+  // past the readout's own pencil, until F-463 took that off too (10-27).
+  testWidgets('it stands right of the zoom\'s readout, the cluster\'s first '
+      'button', (tester) async {
     await open(tester);
-    final order = [
+    final buttons = [
       for (final button in tester.widgetList<AppIconButton>(
         find.descendant(
           of: find.byType(TimelineViewCluster),
@@ -108,10 +117,10 @@ void main() {
       ))
         button.keyValue,
     ];
+    expect(buttons.indexOf('timeline-zoom-fit-button'), 0, reason: '$buttons');
     expect(
-      order.indexOf('timeline-zoom-fit-button'),
-      order.indexOf('timeline-zoom-in-button') + 1,
-      reason: '「위치는 줌 확대버튼 오른쪽」: $order',
+      tester.getRect(fit).left,
+      greaterThanOrEqualTo(tester.getRect(timelineZoomReadout).right),
     );
   });
 
@@ -120,10 +129,7 @@ void main() {
     tester,
   ) async {
     final session = await open(tester);
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-zoom-in-button')),
-    );
-    await tester.pumpAndSettle();
+    await dragTimelineZoom(tester, 25);
     frameAxisOf(tester).jumpTo(300);
     await tester.pumpAndSettle();
     expect(frameAxisOf(tester).pixels, greaterThan(0), reason: '⛔전제');
@@ -132,7 +138,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final zoom = timelineZoom(tester);
-    expectFits(zoom, frames, frameAxisOf(tester).viewportDimension);
+    expectFits(zoom, frames + 1, frameAxisOf(tester).viewportDimension);
     expect(frameAxisOf(tester).pixels, 0, reason: 'at its start');
     expect(session.timelineZoom.zoomOf(session.activeCutId), zoom);
   });
@@ -143,12 +149,7 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
     );
     await tester.pumpAndSettle();
-    for (var i = 0; i < 4; i++) {
-      await tester.tap(
-        find.byKey(const ValueKey<String>('timeline-zoom-in-button')),
-      );
-      await tester.pumpAndSettle();
-    }
+    await zoomTimelineTo(tester, TimelineZoomLimits.maxPixelsPerFrame);
     final kept = session.panelViews.frameAxisOffsets[LayerRailId.storyboard]!;
     kept.value = 200;
     await tester.pumpAndSettle();
@@ -161,7 +162,7 @@ void main() {
 
     expectFits(
       session.panelViews.storyboardPixelsPerFrame.value,
-      movie,
+      movie + 1,
       keptAxisWindows[kept]!,
     );
     expect(kept.value, 0, reason: 'at its start');
@@ -188,11 +189,17 @@ void main() {
       }
     });
 
-    test('a fit that falls between two steps takes the wider', () {
-      // 1000 / 100 = 10px is 520.83 steps of 0.1% of 19.2px.
+    test('a fit that falls between two steps takes the wider — past the '
+        'middle of them too, where the nearer would run over', () {
+      // 1000 / 100 = 10px is 104.17 steps of 1% of 9.6px; 1000 / 96 =
+      // 10.42px is 108.51.
       expect(
         TimelineZoomLimits.fitting(1000, frames: 100, framesPerSecond: fps),
-        closeTo(520 * step, 1e-9),
+        closeTo(104 * step, 1e-9),
+      );
+      expect(
+        TimelineZoomLimits.fitting(1000, frames: 96, framesPerSecond: fps),
+        closeTo(108 * step, 1e-9),
       );
     });
   });
@@ -213,7 +220,7 @@ void main() {
 
     expectFits(
       timelineZoom(tester),
-      frames,
+      frames + 1,
       frameAxisOf(tester).viewportDimension,
     );
   });

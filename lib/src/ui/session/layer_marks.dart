@@ -1,8 +1,9 @@
 import '../../models/attached_layer_resolve.dart';
+import '../../models/frame.dart' show InbetweenMark;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
-import '../../models/timeline_coverage.dart' show coveringDrawingBlockAt;
+import '../../models/timeline_coverage.dart' show authoredDrawingBlockAt;
 import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
 import 'range_selections.dart';
@@ -95,10 +96,12 @@ class LayerMarks {
     ),
   );
 
-  void toggleMarkAtCurrentFrame() {
+  /// The press of [mark]'s button (I-130: ○ is mark 1, ● mark 2) — on the
+  /// band's cells, else the active row's cell under the playhead.
+  void toggleMarkAtCurrentFrame(InbetweenMark mark) {
     final banded = _markableFramesForSelection();
     if (banded.isNotEmpty) {
-      _toggleMarksOf(banded);
+      _toggleMarksOf(banded, mark);
       return;
     }
     final layer = _selection.activeLayer;
@@ -106,19 +109,23 @@ class LayerMarks {
       return;
     }
 
-    _controllers.timelineController.toggleMarkForLayer(layerId: layer.id);
+    _controllers.timelineController.toggleMarkForLayer(
+      layerId: layer.id,
+      mark: mark,
+    );
     _changes.notifyChanged();
   }
 
-  /// The ●'s law over many cells — what a press that toggles [frames] does
-  /// to them, as ONE undo step. SET them one way, never toggle each: a mix
-  /// would invert under the hand and hand back the complement of what was
-  /// there. All marked → clear; anything unmarked → mark them all.
-  void _toggleMarksOf(Map<LayerId, List<int>> frames) {
+  /// A mark's law over many cells — what a press of [mark] that toggles
+  /// [frames] does to them, as ONE undo step. SET them one way, never toggle
+  /// each: a mix would invert under the hand and hand back the complement
+  /// of what was there. All wearing [mark] → clear; anything else → [mark]
+  /// on them all.
+  void _toggleMarksOf(Map<LayerId, List<int>> frames, InbetweenMark mark) {
     final timeline = _controllers.timelineController;
     timeline.setMarksForFrames(
       frames,
-      marked: !timeline.bandFramesAreAllMarked(frames),
+      mark: timeline.bandFramesAreAllMarked(frames, mark) ? null : mark,
     );
     _changes.notifyChanged();
   }
@@ -167,8 +174,8 @@ class LayerMarks {
       return const {};
     }
     final here = _controllers.timelineController.currentFrameIndex;
-    final block = coveringDrawingBlockAt(layer.timeline, here);
-    if (block == null || block.entry.ghost) {
+    final block = authoredDrawingBlockAt(layer.timeline, here);
+    if (block == null) {
       return const {};
     }
     return _withFrames({
@@ -213,7 +220,10 @@ class LayerMarks {
   /// 🗣️F-402 (유저 2026-10-19): 「중간나누기 마크는 토글이기 때문에 마크가
   /// 존재하는 곳은 토글규칙에 따라서 마크 삭제」. ↩️It only added, keeping
   /// every mark the cells carried (I-58 「추가」).
-  void markEvery(int every) {
+  ///
+  /// It lays [mark], the one its window picked: 🗣️I-130-Q2 (유저 2026-10-25
+  /// 「창에서 마크를 고른다」). ↩️It laid the ● alone, the one mark there was.
+  void markEvery(int every, InbetweenMark mark) {
     if (every < 1) {
       return;
     }
@@ -221,7 +231,7 @@ class LayerMarks {
     if (frames.isEmpty) {
       return;
     }
-    _toggleMarksOf(frames);
+    _toggleMarksOf(frames, mark);
   }
 
   bool hasMarkForLayer(Layer layer, int frameIndex) {

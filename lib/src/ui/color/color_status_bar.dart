@@ -152,18 +152,23 @@ class _ColorStatusBarState extends State<ColorStatusBar> {
                   onSubmit: (text) => _commitChannel(which, text),
                   onCancel: () => setState(() => _editing = _Editing.none),
                 )
-              : ControlPressClaim(
-                  onPressed: () => setState(() => _editing = which),
-                  child: GestureDetector(
-                    key: ValueKey<String>(
-                      'color-status-${label.toLowerCase()}',
-                    ),
-                    behavior: HitTestBehavior.opaque,
-                    onTap: silentPress(() => setState(() => _editing = which)),
-                    child: Text(
-                      '$value',
-                      textAlign: TextAlign.right,
-                      style: _readout,
+              : MouseRegion(
+                  cursor: AppCursors.pressWhen(live: true),
+                  child: ControlPressClaim(
+                    onPressed: () => setState(() => _editing = which),
+                    child: GestureDetector(
+                      key: ValueKey<String>(
+                        'color-status-${label.toLowerCase()}',
+                      ),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: silentPress(
+                        () => setState(() => _editing = which),
+                      ),
+                      child: Text(
+                        '$value',
+                        textAlign: TextAlign.right,
+                        style: _readout,
+                      ),
                     ),
                   ),
                 ),
@@ -214,15 +219,18 @@ class _ColorStatusBarState extends State<ColorStatusBar> {
                     onSubmit: _commitHex,
                     onCancel: () => setState(() => _editing = _Editing.none),
                   )
-                : ControlPressClaim(
-                    onPressed: () => setState(() => _editing = _Editing.hex),
-                    child: GestureDetector(
-                      key: const ValueKey<String>('color-status-hex'),
-                      behavior: HitTestBehavior.opaque,
-                      onTap: silentPress(
-                        () => setState(() => _editing = _Editing.hex),
+                : MouseRegion(
+                    cursor: AppCursors.pressWhen(live: true),
+                    child: ControlPressClaim(
+                      onPressed: () => setState(() => _editing = _Editing.hex),
+                      child: GestureDetector(
+                        key: const ValueKey<String>('color-status-hex'),
+                        behavior: HitTestBehavior.opaque,
+                        onTap: silentPress(
+                          () => setState(() => _editing = _Editing.hex),
+                        ),
+                        child: Text(colorHexOf(widget.color), style: _readout),
                       ),
-                      child: Text(colorHexOf(widget.color), style: _readout),
                     ),
                   ),
           ),

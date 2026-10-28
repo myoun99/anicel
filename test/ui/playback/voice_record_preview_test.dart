@@ -11,10 +11,9 @@ import 'package:anicel/src/ui/session/track_se_display.dart';
 import 'package:anicel/src/ui/session/editor_voice_recording.dart';
 import 'package:anicel/src/ui/playback/audio_recorder.dart';
 import 'package:anicel/src/models/audio_sync_settings.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
-import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
-import 'package:anicel/src/ui/timeline_tab_host.dart';
 import '../../helpers/canned_audio_recorder.dart';
+import '../../helpers/storyboard_host.dart';
+import '../../helpers/timeline_host.dart';
 
 /// The live take preview (REC1-C): while a take rolls, the armed lane
 /// shows the planner's would-be landing — real block, real waveform lane,
@@ -36,6 +35,8 @@ void main() {
       ),
       log: (_) {},
     ),
+  )..appSettings.setAudioSyncSettings(
+    const AudioSyncSettings(microphoneAllowed: true),
   );
 
   AudioRecording take() {
@@ -144,7 +145,9 @@ void main() {
     }) async {
       final manager = session();
       manager.appSettings.setAudioSyncSettings(
-        AudioSyncSettings(inputChannelMode: mode),
+        manager.appSettings.audioSyncSettings.value.copyWith(
+          inputChannelMode: mode,
+        ),
       );
       manager.selectLayer(manager.activeTrack.seLayers.first.id);
       manager.voiceRecording.debugVoiceRecorderFactory = () => CannedAudioRecorder(take());
@@ -225,25 +228,12 @@ void main() {
     manager.selectLayer(lane.id);
     manager.voiceRecording.debugVoiceRecorderFactory = () => CannedAudioRecorder(take());
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: manager,
-            builder: (context, _) => TimelineTabHost(
-              session: manager,
-              orientation: TimelineOrientation.horizontal,
-              onOrientationChanged: (_) {},
-              pixelsPerFrame: 48,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-            ),
-          ),
-        ),
-      ),
+    await pumpTimelineHostOn(
+      tester,
+      manager,
+      surface: const Size(800, 600),
+      pixelsPerFrame: 48,
     );
-    await tester.pumpAndSettle();
     expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
     await tester.pump();
 
@@ -269,24 +259,12 @@ void main() {
     manager.selectLayer(lane.id);
     manager.voiceRecording.debugVoiceRecorderFactory = () => CannedAudioRecorder(take());
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: manager,
-            builder: (context, _) => StoryboardTabHost(
-              session: manager,
-              pixelsPerFrame: 4,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-            ),
-          ),
-        ),
-      ),
+    await pumpStoryboardHostOn(
+      tester,
+      manager,
+      surface: const Size(800, 600),
+      pixelsPerFrame: 4,
     );
-    await tester.pumpAndSettle();
 
     // The armed lane's strip row carries no paper span yet.
     final paperKey = ValueKey<String>('storyboard-se-paper-${lane.id}-0');

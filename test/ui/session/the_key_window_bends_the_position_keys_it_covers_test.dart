@@ -1,12 +1,15 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/camera.dart';
 import 'package:anicel/src/ui/session/lane_verbs.dart';
+import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
+    show effectLaneId;
 
 /// I-89 ④-Q4 · anchor-walks-a-path-Q4 (유저 10-21 「네 칸 — AE 이름
 /// 그대로」): the key window's path row lands on the position keys its range
@@ -71,6 +74,35 @@ void main() {
     ]);
     select(['scale'], 0, 9);
     expect(laneVerbs.laneKeyPathsForSelection, isEmpty);
+  });
+
+  test('I-65: a cel number\'s Position reads in the path and roving rows as '
+      'a layer\'s does, and its Scale in neither', () {
+    session.effectsAndFx.addEffectToActiveLayer(EffectKind.celNumber);
+    final layer = session.activeLayer!;
+    final number = layer.effects.single.id;
+    final position = effectLaneId(number, 'position');
+    final scale = effectLaneId(number, 'scale');
+    for (final frame in [0, 4, 8]) {
+      for (final (lane, input) in [(position, '$frame, 0'), (scale, '100')]) {
+        laneVerbs.setLaneValueAt(
+          layer.id,
+          lane,
+          frame,
+          input,
+          frameIsGlobal: false,
+          description: 'Type',
+          scaleLinked: false,
+        );
+      }
+    }
+
+    select([position, scale], 0, 9);
+    expect(laneVerbs.laneKeyPathsForSelection, hasLength(3));
+    expect(laneVerbs.laneKeyRovingForSelection, [false], reason: 'the 4');
+    select([scale], 0, 9);
+    expect(laneVerbs.laneKeyPathsForSelection, isEmpty);
+    expect(laneVerbs.laneKeyRovingForSelection, isEmpty);
   });
 
   test('a curve picked with a name lands on the covered position keys in '

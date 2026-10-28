@@ -9,6 +9,7 @@ import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/export_spec.dart' show ExportLayerFx;
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_effect.dart';
@@ -192,11 +193,11 @@ void main() {
       );
       cut = session.requireActiveCut;
 
-      Future<int> strokeRedChannel({required bool applyLayerFx}) async {
+      Future<int> strokeRedChannel(ExportLayerFx fx) async {
         final image =
             await ExportFrameRenderer(
               session: session,
-              applyLayerFx: applyLayerFx,
+              layerFx: fx,
             ).renderComposite(
               ExportFrameTask(cut: cut, frameIndex: 0),
               ExportSizeMode.canvas,
@@ -211,9 +212,79 @@ void main() {
 
       // FX applied (default): the animated opacity blanks the layer — the
       // white paper shows through.
-      expect(await strokeRedChannel(applyLayerFx: true), 255);
-      // FX bypassed: the raw layer at its static opacity — black stroke.
-      expect(await strokeRedChannel(applyLayerFx: false), lessThan(128));
+      expect(await strokeRedChannel(ExportLayerFx.on), 255);
+      // FX bypassed — the transform with the rest under 기본만 켬 (I-65-Q3:
+      // 「트랜스폼 포함해서 나머지 끄는것」): the raw layer at its static
+      // opacity, a black stroke.
+      expect(await strokeRedChannel(ExportLayerFx.basic), lessThan(128));
+      expect(await strokeRedChannel(ExportLayerFx.off), lessThan(128));
+    });
+    await tester.pumpAndSettle();
+  });
+
+  // I-127: the export window takes the editor's undo, so the film changes
+  // under the renderers its preview keeps.
+  testWidgets('🚨a renderer draws a cut as it is NOW — the cut changed '
+      'under it is drawn changed, not as it was first drawn', (tester) async {
+    await tester.runAsync(() async {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      session.createDrawingAtCurrentFrame();
+      final layer = session.requireActiveCut.layers.firstWhere(
+        (layer) => layer.kind == LayerKind.animation,
+      );
+      final frame = layer.frames.single;
+      final cut = session.requireActiveCut;
+      BrushFrameEditingCoordinator(
+        initialFrameKey: session.brushFrameKeyForCut(cut, layer.id, frame.id),
+        frameStore: session.renderCaches.brushFrameStore,
+        sessionStore: BrushFrameEditSessionStore(canvasSize: cut.canvasSize),
+        historyPolicy: const BrushHistoryPolicy(),
+      ).commitSourceStroke(
+        sourceDabs: [
+          BrushDab(
+            center: CanvasPoint(x: 4, y: 4),
+            color: 0xFF000000,
+            size: 4,
+            opacity: 1,
+            flow: 1,
+            hardness: 1,
+            tipShape: BrushTipShape.round,
+            pressure: 1,
+            sequence: 0,
+          ),
+        ],
+      );
+      final renderer = ExportFrameRenderer(
+        session: session,
+        layerFx: ExportLayerFx.on,
+      );
+
+      Future<int> strokeRedChannel() async {
+        final now = session.requireActiveCut;
+        final image = await renderer.renderComposite(
+          ExportFrameTask(cut: now, frameIndex: 0),
+          ExportSizeMode.canvas,
+        );
+        final bytes = await image.toByteData(
+          format: ui.ImageByteFormat.rawRgba,
+        );
+        image.dispose();
+        return bytes!.getUint8((4 * now.canvasSize.width + 4) * 4);
+      }
+
+      expect(await strokeRedChannel(), lessThan(128), reason: 'premise');
+      // The layer's FX now blank it at frame 0.
+      session.laneVerbs.updateLayerTransformTrack(
+        layer.id,
+        TransformTrack.empty().copyWith(
+          opacity: PropertyTrack<double>().withKey(0, 0),
+        ),
+      );
+      expect(await strokeRedChannel(), 255);
+      renderer.dispose();
     });
     await tester.pumpAndSettle();
   });
@@ -265,11 +336,11 @@ void main() {
         (candidate) => candidate.id == layer.id,
       );
 
-      Future<int> celGrey({required bool applyLayerFx}) async {
+      Future<int> celGrey(ExportLayerFx fx) async {
         final image =
             await ExportFrameRenderer(
               session: session,
-              applyLayerFx: applyLayerFx,
+              layerFx: fx,
             ).renderCelGroup(
               ExportCelGroupTask(
                 cut: cut,
@@ -290,13 +361,13 @@ void main() {
         return bytes!.getUint8(offset);
       }
 
-      // The cel export runs with the master toggle OFF ("cels stay raw
-      // artwork"). A blur baked into line art would be unrecoverable, so
-      // this is the gate that has to hold.
-      expect(await celGrey(applyLayerFx: false), closeTo(0x80, 2));
-      // With FX on, the same call filters — so the gate is what decides,
+      // With the tab's FX off — or keeping the basic links alone, which a
+      // filter is not — the cel is the raw artwork.
+      expect(await celGrey(ExportLayerFx.off), closeTo(0x80, 2));
+      expect(await celGrey(ExportLayerFx.basic), closeTo(0x80, 2));
+      // With FX on, the same call filters — so the choice is what decides,
       // not an accident of the code path.
-      expect(await celGrey(applyLayerFx: true), greaterThan(0x80 + 100));
+      expect(await celGrey(ExportLayerFx.on), greaterThan(0x80 + 100));
     });
     await tester.pumpAndSettle();
   });

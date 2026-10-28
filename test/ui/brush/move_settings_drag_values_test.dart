@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 import 'package:anicel/src/ui/widgets/scale_chain_button.dart';
+import '../../helpers/number_pad_keyboard.dart';
 
 /// R26 #14: the Move/Transform settings' x/y/angle/scale are the shared
 /// DRAG VALUE readouts (the canvas bar's zoom/angle vocabulary) — a
@@ -123,6 +124,7 @@ void main() {
   Future<void> typeInto(WidgetTester tester, String key, String text) async {
     await tester.tap(find.byKey(ValueKey<String>('$key-edit')));
     await tester.pumpAndSettle();
+    await openThePadsKeyboard(tester);
     await tester.enterText(find.byKey(ValueKey<String>('$key-input')), text);
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
@@ -688,10 +690,12 @@ void main() {
   testWidgets('a value a line, X over Y in one column, each with its hands '
       'at the end; the flips a line under 회전; 초기화 · 적용 end the '
       'settings', (tester) async {
+    // In 메쉬, where every row stands (F-478-Q1).
     await pumpMoveSettings(
       tester,
       applied: [],
       onResampleModeChanged: (_) {},
+      mode: TransformMode.mesh,
     );
     Rect at(String key) => tester.getRect(find.byKey(ValueKey<String>(key)));
 
@@ -750,7 +754,29 @@ void main() {
     );
   });
 
-  testWidgets('the mesh row keeps its place, and takes a hand in 메쉬 alone', (
+  testWidgets('a mesh count is typed whole: its pad\'s − and . are dark', (
+    tester,
+  ) async {
+    await pumpMoveSettings(
+      tester,
+      applied: [],
+      onResampleModeChanged: (_) {},
+      mode: TransformMode.mesh,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('move-mesh-columns-field-edit')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      thePadsLitKeys(tester),
+      (minus: false, point: false),
+    );
+  });
+
+  /// 🗣️F-478-Q1 (유저 2026-10-27): 「없앤다 — 그 모양 · 모드에 필요할 때만
+  /// 있다」 · 「변형도구의 툴설정의 메시도 마찬가지」. ↩️The rows kept their
+  /// place and dimmed outside 메쉬.
+  testWidgets('the mesh rows stand in 메쉬 alone, and take a hand there', (
     tester,
   ) async {
     DragValueLabel box(String key) => tester.widget<DragValueLabel>(
@@ -759,23 +785,23 @@ void main() {
         matching: find.byType(DragValueLabel),
       ),
     );
-    await pumpMoveSettings(
-      tester,
-      applied: [],
-      onResampleModeChanged: (_) {},
-    );
-    for (final key in const [
-      'move-mesh-columns-field',
-      'move-mesh-rows-field',
-    ]) {
-      expect(find.byKey(ValueKey<String>(key)), findsOneWidget, reason: key);
-      expect(
-        box(key).enabled,
-        isFalse,
-        reason: '$key: a grid size means nothing outside 메쉬',
+    const rows = ['move-mesh-columns-field', 'move-mesh-rows-field'];
+    for (final mode in TransformMode.values) {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await pumpMoveSettings(
+        tester,
+        applied: [],
+        onResampleModeChanged: (_) {},
+        mode: mode,
       );
+      for (final key in rows) {
+        expect(
+          find.byKey(ValueKey<String>(key)),
+          mode == TransformMode.mesh ? findsOneWidget : findsNothing,
+          reason: '$key in $mode: a grid size means nothing outside 메쉬',
+        );
+      }
     }
-
     await tester.pumpWidget(const SizedBox.shrink());
     await pumpMoveSettings(
       tester,
@@ -783,8 +809,9 @@ void main() {
       onResampleModeChanged: (_) {},
       mode: TransformMode.mesh,
     );
-    expect(box('move-mesh-columns-field').enabled, isTrue);
-    expect(box('move-mesh-rows-field').enabled, isTrue);
+    for (final key in rows) {
+      expect(box(key).enabled, isTrue, reason: key);
+    }
   });
 
   /// 🚨★★★**F-164 ③④ — 유저 2026-09-18**: 「변형중에 툴도구의 X,Y값같은거

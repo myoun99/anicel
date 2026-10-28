@@ -1,7 +1,7 @@
-import 'dart:math' as math;
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
+
+import 'brush_pressure_curve.dart';
 
 /// Pointer-input policy (UI-R22 #6, default flipped in UI-R22F #1).
 ///
@@ -33,8 +33,7 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind;
 class AppInputSettings {
   const AppInputSettings({
     this.tabletService = TabletService.standard,
-    this.pressureCurveGamma = 1.0,
-    this.speedReferencePixelsPerSecond = defaultSpeedReferencePixelsPerSecond,
+    this.pressureCurve = BrushPressureCurve.linear,
     this.canvasRightClick = const CanvasPointerMapping(
       action: CanvasPointerAction.eyedropper,
     ),
@@ -58,8 +57,7 @@ class AppInputSettings {
     this.navigationModifierRotationLock = false,
     this.rotationSnapDegrees = 15,
     this.zoomSnapPercents = defaultZoomSnapPercents,
-    this.zoomCeilingOn = false,
-    this.zoomCeilingPercent = defaultZoomCeilingPercent,
+    this.zoomCeiling,
     // 🗣️I-54 (유저 2026-10-16): 「기본값은 십자가로 하잿나」.
     this.drawingCursor = DrawingCursor.crosshair,
     this.touchIgnored = false,
@@ -143,25 +141,25 @@ class AppInputSettings {
   /// 자유」. The lock on zooming IN, and the display percent it holds a view
   /// under.
   ///
-  /// ⚠️Two fields on purpose. Switched off, the number is KEPT: the row in
-  /// the settings window keeps its place and its value, dimmed (I-27-Q1:
-  /// 「끄면 칸은 회색으로 자리만」) — one nullable number would forget what
-  /// the user typed each time the switch went off.
+  /// Null while there is no lock. ↩️Two fields until F-480 — a switch, and
+  /// the number KEPT while it was off, for the row in the settings window
+  /// to hold dimmed (I-27-Q1: 「끄면 칸은 회색으로 자리만」). The row is a
+  /// list of at most one now (유저 2026-10-26: 「리스트 팝오버로 없음이랑
+  /// 항목하나 100 이렇게 두고 고르게하도록」), and nothing stands dimmed in
+  /// it to keep a number for.
   ///
   /// WHERE it holds is not this object's to say. The answers were 「그리기
   /// 캔버스만」 (I-27-Q1) and, there, 「화면에 맞추기도 최대 줌에서 멈춘다」
-  /// (I-27-Q2): the drawing canvas reads [zoomCeiling] for the view under
-  /// it, and no other document view does.
-  final bool zoomCeilingOn;
-  final double zoomCeilingPercent;
-
-  /// The example the request gave — 「100%이면」 — which is also where the
-  /// number stands until the user types one.
-  static const double defaultZoomCeilingPercent = 100;
-
-  /// The percent a locked view may not be zoomed past, or null while the
-  /// lock is off.
-  double? get zoomCeiling => zoomCeilingOn ? zoomCeilingPercent : null;
+  /// (I-27-Q2): the drawing canvas reads this for the view under it, and
+  /// no other document view does.
+  ///
+  /// ⛔ITS KEY IS NOT `zoomCeilingPercent`. Until F-480 that key held the
+  /// number kept while the lock was OFF — 100 in every file that had ever
+  /// been saved — so the one number reading that key read every such file
+  /// as locked at 100% (F-490, 유저 2026-10-27: 「최대 줌 잠금, 100%인상태인데
+  /// 기본값 아무것도 없도록」). A key no earlier file wrote reads them as no
+  /// lock, with no code that reads the earlier shape (no production data).
+  final double? zoomCeiling;
 
   /// PEN-15: 10/25 joined so a sub-50% view has nearby snaps (the
   /// modifier constraint glues the CURRENT zoom to the nearest entry —
@@ -227,33 +225,34 @@ class AppInputSettings {
   /// through the Raw Input HID observer ([PenSidecars.freshInverted]).
   final CanvasPointerMapping canvasPenTail;
 
-  /// The pen pressure RESPONSE curve (PEN-3, cross-platform): output =
-  /// input^gamma. 1.0 = linear (the default, byte-identical to before);
-  /// below 1 = SOFTER feel (a light touch already reads strong), above
-  /// 1 = HARDER (full pressure takes a firm press). Applied wherever
-  /// normalized pressure enters the brush pipeline — OS pointer and
-  /// Wintab sidecar alike.
-  final double pressureCurveGamma;
+  /// The pen pressure RESPONSE (PEN-3, cross-platform): what a reading of
+  /// the pen becomes before any brush sees it — input across, output up,
+  /// a graph edited as a brush's own curves are. The straight line (the
+  /// default) passes every reading through untouched; a point pulled up
+  /// is a softer pen (a light touch already reads strong), one pulled down
+  /// a harder one. Applied wherever normalized pressure enters the brush
+  /// pipeline — OS pointer and Wintab sidecar alike.
+  ///
+  /// 🗣️F-480 (유저 2026-10-26): 「필압곡선은 클튜처럼 그래프창으로」.
+  /// ↩️It was one exponent — output = input^gamma — on a soft↔hard bar.
+  final BrushPressureCurve pressureCurve;
 
   /// The pen SPEED that reads as 100% input, in canvas pixels per second.
   ///
   /// A brush with a 速度 curve asks "how fast is the pen moving, as 0..1",
   /// and that ratio needs a ceiling. This is it: at this many px/s the input
-  /// is 1.0, and anything faster is 1.0 as well.
+  /// is 1.0, and anything faster is 1.0 as well. No file format stores a
+  /// maximum speed — Clip Studio's 速度 effector carries a curve and a
+  /// minimum, never a ceiling.
   ///
-  /// ⛔**THE DEFAULT IS A GUESS AND WE KNOW IT** (유저 확정 2026-09-08). No
-  /// file format stores a maximum speed — Clip Studio's 速度 effector carries
-  /// a curve and a minimum, never a ceiling — and this repo had no line that
-  /// measured pointer speed at all before this setting existed. That is
-  /// exactly why it is a SETTING and not a private constant: the number is
-  /// meant to be drawn against on a tablet and moved, not defended.
+  /// 🗣️F-480-Q1 (유저 2026-10-27): 「없앤다 — 기준은 앱이 고정(2000 px/s)」 —
+  /// Clip Studio has no app-wide speed setting either, only each brush's
+  /// curve. ↩️It was a SETTING in Preferences ▸ Input (유저 확정 2026-09-08:
+  /// no file format gives the ceiling, so the user owns it).
   ///
   /// ⚠️CANVAS pixels, not screen pixels, so the same hand movement reads as
   /// the same speed at any zoom and a replayed stroke draws what it drew.
-  final double speedReferencePixelsPerSecond;
-
-  /// The starting value of [speedReferencePixelsPerSecond].
-  static const double defaultSpeedReferencePixelsPerSecond = 2000.0;
+  static const double speedReferencePixelsPerSecond = 2000.0;
 
   /// Which tablet backend feeds pen data (PEN-2, the CSP-style dual
   /// service — Windows only; other platforms ignore it):
@@ -277,10 +276,11 @@ class AppInputSettings {
   /// pointer's kind has to ask this again. OFF by default.
   final bool touchIgnored;
 
+  static const Object _unset = Object();
+
   AppInputSettings copyWith({
     TabletService? tabletService,
-    double? pressureCurveGamma,
-    double? speedReferencePixelsPerSecond,
+    BrushPressureCurve? pressureCurve,
     CanvasPointerMapping? canvasRightClick,
     CanvasPointerMapping? canvasWheelClick,
     CanvasPointerMapping? canvasPenTail,
@@ -295,15 +295,12 @@ class AppInputSettings {
     bool? navigationModifierRotationLock,
     double? rotationSnapDegrees,
     List<double>? zoomSnapPercents,
-    bool? zoomCeilingOn,
-    double? zoomCeilingPercent,
+    Object? zoomCeiling = _unset,
     DrawingCursor? drawingCursor,
     bool? touchIgnored,
   }) => AppInputSettings(
     tabletService: tabletService ?? this.tabletService,
-    pressureCurveGamma: pressureCurveGamma ?? this.pressureCurveGamma,
-    speedReferencePixelsPerSecond:
-        speedReferencePixelsPerSecond ?? this.speedReferencePixelsPerSecond,
+    pressureCurve: pressureCurve ?? this.pressureCurve,
     canvasRightClick: canvasRightClick ?? this.canvasRightClick,
     canvasWheelClick: canvasWheelClick ?? this.canvasWheelClick,
     canvasPenTail: canvasPenTail ?? this.canvasPenTail,
@@ -320,16 +317,19 @@ class AppInputSettings {
         navigationModifierRotationLock ?? this.navigationModifierRotationLock,
     rotationSnapDegrees: rotationSnapDegrees ?? this.rotationSnapDegrees,
     zoomSnapPercents: zoomSnapPercents ?? this.zoomSnapPercents,
-    zoomCeilingOn: zoomCeilingOn ?? this.zoomCeilingOn,
-    zoomCeilingPercent: zoomCeilingPercent ?? this.zoomCeilingPercent,
+    // ⚠️Through `num`: the parameter is untyped so that null can mean
+    // 「take the lock off」, and a whole number written `150` arrives as an
+    // int.
+    zoomCeiling: identical(zoomCeiling, _unset)
+        ? this.zoomCeiling
+        : (zoomCeiling as num?)?.toDouble(),
     drawingCursor: drawingCursor ?? this.drawingCursor,
     touchIgnored: touchIgnored ?? this.touchIgnored,
   );
 
   Map<String, dynamic> toJson() => {
     'tabletService': tabletService.name,
-    'pressureCurveGamma': pressureCurveGamma,
-    'speedReferencePixelsPerSecond': speedReferencePixelsPerSecond,
+    'pressureCurve': pressureCurve.toJson(),
     'canvasRightClick': canvasRightClick.toJson(),
     'canvasWheelClick': canvasWheelClick.toJson(),
     'canvasPenTail': canvasPenTail.toJson(),
@@ -344,18 +344,10 @@ class AppInputSettings {
     'navigationModifierRotationLock': navigationModifierRotationLock,
     'rotationSnapDegrees': rotationSnapDegrees,
     'zoomSnapPercents': zoomSnapPercents,
-    'zoomCeilingOn': zoomCeilingOn,
-    'zoomCeilingPercent': zoomCeilingPercent,
+    'zoomCeiling': zoomCeiling,
     'drawingCursor': drawingCursor.name,
     'touchIgnored': touchIgnored,
   };
-
-  /// [json] as a number above zero, or [fallback] — a lock at nothing, or
-  /// below it, is a file somebody edited by hand.
-  static double _positiveOr(Object? json, double fallback) {
-    final value = json is num ? json.toDouble() : fallback;
-    return value > 0 && value.isFinite ? value : fallback;
-  }
 
   static List<double> _doubleList(Object? json, List<double> fallback) {
     if (json is! List) {
@@ -390,10 +382,9 @@ class AppInputSettings {
     tabletService:
         TabletService.values.asNameMap()[json['tabletService']] ??
         TabletService.standard,
-    pressureCurveGamma: (json['pressureCurveGamma'] as num?)?.toDouble() ?? 1.0,
-    speedReferencePixelsPerSecond:
-        (json['speedReferencePixelsPerSecond'] as num?)?.toDouble() ??
-        defaultSpeedReferencePixelsPerSecond,
+    pressureCurve: json['pressureCurve'] == null
+        ? BrushPressureCurve.linear
+        : BrushPressureCurve.fromJson(json['pressureCurve']),
     canvasRightClick: CanvasPointerMapping.fromJson(
       json['canvasRightClick'],
       fallback: const CanvasPointerMapping(
@@ -433,11 +424,12 @@ class AppInputSettings {
       legacyDefaults: legacyZoomSnapDefaults,
       current: defaultZoomSnapPercents,
     ),
-    zoomCeilingOn: json['zoomCeilingOn'] as bool? ?? false,
-    zoomCeilingPercent: _positiveOr(
-      json['zoomCeilingPercent'],
-      defaultZoomCeilingPercent,
-    ),
+    // A lock at nothing, or below it, is a file somebody edited by hand.
+    zoomCeiling: switch (json['zoomCeiling']) {
+      final num percent when percent > 0 && percent.isFinite =>
+        percent.toDouble(),
+      _ => null,
+    },
     drawingCursor:
         DrawingCursor.values.asNameMap()[json['drawingCursor']] ??
         DrawingCursor.crosshair,
@@ -448,8 +440,7 @@ class AppInputSettings {
   bool operator ==(Object other) =>
       other is AppInputSettings &&
       other.tabletService == tabletService &&
-      other.pressureCurveGamma == pressureCurveGamma &&
-      other.speedReferencePixelsPerSecond == speedReferencePixelsPerSecond &&
+      other.pressureCurve == pressureCurve &&
       other.canvasRightClick == canvasRightClick &&
       other.canvasWheelClick == canvasWheelClick &&
       other.canvasPenTail == canvasPenTail &&
@@ -464,16 +455,14 @@ class AppInputSettings {
       other.navigationModifierRotationLock == navigationModifierRotationLock &&
       other.rotationSnapDegrees == rotationSnapDegrees &&
       listEquals(other.zoomSnapPercents, zoomSnapPercents) &&
-      other.zoomCeilingOn == zoomCeilingOn &&
-      other.zoomCeilingPercent == zoomCeilingPercent &&
+      other.zoomCeiling == zoomCeiling &&
       other.drawingCursor == drawingCursor &&
       other.touchIgnored == touchIgnored;
 
   @override
   int get hashCode => Object.hashAll([
     tabletService,
-    pressureCurveGamma,
-    speedReferencePixelsPerSecond,
+    pressureCurve,
     canvasRightClick,
     canvasWheelClick,
     canvasPenTail,
@@ -488,8 +477,7 @@ class AppInputSettings {
     navigationModifierRotationLock,
     rotationSnapDegrees,
     Object.hashAll(zoomSnapPercents),
-    zoomCeilingOn,
-    zoomCeilingPercent,
+    zoomCeiling,
     drawingCursor,
     touchIgnored,
   ]);
@@ -804,14 +792,15 @@ abstract final class AppInput {
     return next * step;
   }
 
-  /// The pen pressure response curve (PEN-3): output = input^gamma.
-  /// Gamma 1 short-circuits so the default path costs nothing.
+  /// The pen pressure response (PEN-3): [pressure] through
+  /// [AppInputSettings.pressureCurve]. The straight line short-circuits, so
+  /// the default path costs nothing and hands a reading on as it came.
   static double applyPressureCurve(double pressure) {
-    final gamma = settings.value.pressureCurveGamma;
-    if (gamma == 1.0) {
+    final curve = settings.value.pressureCurve;
+    if (curve.isIdentity) {
       return pressure;
     }
-    return math.pow(pressure.clamp(0.0, 1.0), gamma).toDouble();
+    return curve.evaluate(pressure);
   }
 
   /// How fast the pen is travelling, as the 0..1 input a 速度 curve reads:
@@ -828,11 +817,14 @@ abstract final class AppInput {
     required Duration elapsed,
   }) {
     final seconds = elapsed.inMicroseconds / Duration.microsecondsPerSecond;
-    final reference = settings.value.speedReferencePixelsPerSecond;
-    if (seconds <= 0.0 || !canvasPixels.isFinite || !(reference > 0.0)) {
+    if (seconds <= 0.0 || !canvasPixels.isFinite) {
       return null;
     }
-    return (canvasPixels / seconds / reference).clamp(0.0, 1.0).toDouble();
+    return (canvasPixels /
+            seconds /
+            AppInputSettings.speedReferencePixelsPerSecond)
+        .clamp(0.0, 1.0)
+        .toDouble();
   }
 
   /// The device set every timeline EDIT pan uses (range select/move,

@@ -74,10 +74,10 @@ class _TimelineFrameNames {
                   // ↩️It was a name plus an `updateSeName` flag; I-20's
                   // delivery would have made that one flag answer for two
                   // fields, so the fields travel as one record instead.
-                  (:final seName, :final seType) => frame.copyWith(
+                  (:final seName, :final seTypes) => frame.copyWith(
                     name: normalizedName,
                     seName: normalizeFrameName(seName),
-                    seType: seType,
+                    seTypes: seTypes,
                   ),
                   null => frame.copyWith(name: normalizedName),
                 },
@@ -119,42 +119,26 @@ class _TimelineFrameNames {
     for (final frameId in {...names.keys, ...joins.keys, ...joins.values}) {
       _controller._requireFrameInLayer(layer: before, frameId: frameId);
     }
-    final lane = joins.isEmpty ? before.timeline : _joined(before, joins);
-    final bank = _controller.bankLanesOf(layerId);
-    final frames = <Frame>[];
-    for (final frame in before.frames) {
-      if (!joins.containsKey(frame.id)) {
-        frames.add(
-          names.containsKey(frame.id)
-              ? frame.copyWith(name: normalizeFrameName(names[frame.id]))
-              : frame,
-        );
-      } else if (bank.exposes(frame.id, lane: lane)) {
-        frames.add(frame);
-      }
-    }
-    final after = before.copyWith(
+    final joined = layerJoined(
+      before,
+      joins,
+      bank: _controller.bankLanesOf(layerId),
+    );
+    final frames = [
+      for (final frame in joined.frames)
+        if (names.containsKey(frame.id) && !joins.containsKey(frame.id))
+          frame.copyWith(name: normalizeFrameName(names[frame.id]))
+        else
+          frame,
+    ];
+    final after = joined.copyWith(
       frames: frames,
-      timeline: lane,
       audioClips: _controller._audioClipsForFrames(before, frames),
     );
     if (after != before) {
       _controller._applyLayerEdit(before: before, after: after);
     }
   }
-
-  /// [layer]'s lane with every drawing block of a key of [joins] showing
-  /// that key's value instead.
-  SplayTreeMap<int, TimelineExposure> _joined(
-    Layer layer,
-    Map<FrameId, FrameId> joins,
-  ) => SplayTreeMap.of({
-    for (final MapEntry(key: index, value: exposure) in layer.timeline.entries)
-      index: switch (exposure.isDrawing ? joins[exposure.frameId] : null) {
-        final target? => exposure.copyWith(frameId: target),
-        null => exposure,
-      },
-  });
 
   String? normalizeFrameName(String? name) {
     final trimmed = name?.trim();

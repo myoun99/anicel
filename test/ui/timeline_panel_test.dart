@@ -9,7 +9,6 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
-import 'package:anicel/src/ui/widgets/tick_text.dart';
 
 import 'timeline/timeline_cell_probe.dart';
 import '../helpers/named_finders.dart';
@@ -320,15 +319,15 @@ void main() {
       _panel(
         exposureStateForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-1') && frameIndex == 0
-            ? TimelineCellExposureState.markHeld
+            ? TimelineCellExposureState.markTwoHeld
             : TimelineCellExposureState.uncovered,
       ),
     );
 
-    expect(timelineCellModel(tester, 'layer-1', 0).mark, breakdownMark);
+    expect(timelineCellModel(tester, 'layer-1', 0).mark, InbetweenMark.two);
     expect(
       timelineCellModel(tester, 'layer-1', 0).semanticsLabel,
-      'inbetween mark',
+      'inbetween mark 2',
     );
   });
 
@@ -337,26 +336,8 @@ void main() {
   ) async {
     await tester.pumpWidget(_panel(currentFrameIndex: 3));
 
-    // The counter is TWO lines now (2026-08-10). On the timeline the top one
-    // is empty and KEPT: this panel is one cut's window, so there is no
-    // track-global frame to print — and holding the line is what puts the
-    // local number at the same height it sits at on the storyboard.
-    expect(
-      tester
-          .renderObject<RenderTickText>(
-            find.byKey(const ValueKey<String>('timeline-global-frame-counter')),
-          )
-          .data,
-      isEmpty,
-    );
-    expect(
-      tester
-          .renderObject<RenderTickText>(
-            find.byKey(const ValueKey<String>('timeline-local-frame-counter')),
-          )
-          .data,
-      '4',
-    );
+    // ↩️The bar's frame counter said the frame as well, until F-463 took it
+    // off.
     expect(find.text('▶ 4'), findsNothing);
   });
 

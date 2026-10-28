@@ -18,6 +18,7 @@ import '../../models/rgba_image_bytes.dart';
 import '../../services/brush_dab_coverage.dart';
 import '../../services/brush_dab_interpolator.dart';
 import '../../services/brush_dab_share.dart';
+import '../../services/brush_dab_tip_geometry.dart';
 import '../../services/brush_pixel_blend.dart';
 import '../../services/brush_pressure_dynamics.dart';
 import '../../services/brush_stroke_dynamics.dart';
@@ -567,6 +568,11 @@ Uint8List rasterizeBrushStrokeSample(
         // deliberately does not: it is random per dab on the canvas, and a
         // preview that moved under you every rebuild would be noise.
         antiAlias: settings.antiAlias,
+        // 🤔A blur brush's swatch shows its SHAPE, as an eraser's does: the
+        // swatch is one plane of coverage over nothing, and a blur over
+        // nothing moves nothing. Showing the blur itself needs something
+        // under it to smear — I-75 round ⓑ (설계 10-27).
+        blurs: false,
         pathStep: stretch.isFinite ? stretch : null,
       ),
       shape: settings.shape,
@@ -587,7 +593,7 @@ Uint8List rasterizeBrushStrokeSample(
     );
     sequence += placed.length;
     for (final dab in placed) {
-      _layPreviewDab(accumulated, width, height, dab);
+      layPreviewDab(accumulated, width, height, dab);
     }
   }
 
@@ -604,7 +610,8 @@ Uint8List rasterizeBrushStrokeSample(
 
 /// Lays [placed], one dab as the stroke placed it, into [accumulated] — a
 /// [width] × [height] plane of alpha.
-void _layPreviewDab(
+@visibleForTesting
+void layPreviewDab(
   Float64List accumulated,
   int width,
   int height,
@@ -644,20 +651,24 @@ void _layPreviewDab(
   // up darker than a short one.
   final opacity = dab.opacity;
   final evening = eveningTableOf(dab);
-  forEachBrushPixelCoverage(dab, (x, y, coverage) {
+  //
+  // 🚨AND ITS EDGE DOES NOT PILE, as on the canvas (Q4, `edgeCeiling`): it
+  // scales the level the dab settles at, and the dab lays its pile toward
+  // it.
+  forEachBrushPixelCoverage(dab, (x, y, coverage, ceiling) {
     // A spray throws dabs past every edge of the row, not only the far two.
     if (x < 0 || y < 0 || x >= width || y >= height) {
       return;
     }
     final index = y * width + x;
-    final whole = coverage * dab.flow;
+    final whole = edgePiledShare(coverage, ceiling) * dab.flow;
     final laid = evening == null ? whole : evenedLaid(evening, whole);
     final under = accumulated[index];
-    final dabAlpha = opacity >= 1.0
+    final dabAlpha = opacity >= 1.0 && ceiling >= 1.0
         ? laid
         : settledDabAlpha(
             laid: laid,
-            opacity: opacity,
+            opacity: opacity * ceiling,
             destinationAlpha: under,
           );
     if (dabAlpha == null) {

@@ -153,7 +153,7 @@ void main() {
     tester,
   ) async {
     await _pump(tester);
-    for (final name in ['S1', 'S2', 'Video', 'Conte', 'Over']) {
+    for (final name in ['S1', 'S2', 'Cut', 'Conte', 'Over']) {
       expect(_name(name), findsOneWidget, reason: name);
     }
     expect(_sessionOf(tester).rowSelection.value, isEmpty);
@@ -191,7 +191,7 @@ void main() {
     await _pump(tester, conte: false);
 
     // It wears the name a conte is born with (F-322).
-    await _dragNames(tester, 'Conte', 'Video');
+    await _dragNames(tester, 'Conte', 'Cut');
 
     expect(
       _sessionOf(tester).rowSelection.value,
@@ -206,7 +206,7 @@ void main() {
       'track to move it among, and it selects all the same', (tester) async {
     await _pump(tester);
 
-    await _dragNames(tester, 'Video', 'Conte');
+    await _dragNames(tester, 'Cut', 'Conte');
 
     expect(
       _sessionOf(tester).rowSelection.value,

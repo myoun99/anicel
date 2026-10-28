@@ -29,6 +29,7 @@ import 'axis_turn.dart'
         startAcross,
         startAlong;
 import 'berth_row.dart';
+import 'rail_eyes.dart';
 import 'layer_label_controls.dart' show layerMarkColor;
 import 'timeline_double_tap.dart';
 import 'timeline_cel_content_source.dart';
@@ -36,12 +37,12 @@ import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_marker.dart';
 import 'inbetween_mark_painter.dart';
 import 'timeline_instruction_row_visual.dart' show bandExposureState;
+import 'timeline_block_look.dart';
 import 'timeline_beat_lines.dart'
     show
         TimelineGridLaw,
         timelineBlockFrameLine,
         timelineFrameLineStep,
-        timelineGridGroundOver,
         timelineRowPaperExtent;
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
@@ -142,6 +143,7 @@ class TimelineRowCellsPainter extends CustomPainter
     this.paperGround,
     this.blockFrameLines = false,
     this.framesPerSecond = 0,
+    this.shown = true,
   }) : super(
          repaint: Listenable.merge([
            geometry,
@@ -308,6 +310,12 @@ class TimelineRowCellsPainter extends CustomPainter
   /// The counting fps — which of those lines are SECOND lines.
   @override
   final int framesPerSecond;
+
+  /// Whether the row is shown — its own eye on, and no folder above hiding
+  /// it ([RailEye.shown]): a hidden row's blocks wear the switched-off look
+  /// its label plate and name wear (I-129). True where nothing says.
+  @override
+  final bool shown;
 
   // ⛔The two per-cell alphas are GONE (유저 확정 2026-08-14): 「반투명 =
   // 오버레이 루트 하나, 70%」. `0x66` on a block's body and `0x9E` on its
@@ -482,8 +490,7 @@ class TimelineRowCellsPainter extends CustomPainter
       writing = switch (exposureState) {
         TimelineCellExposureState.drawingStart =>
           drawingHeadOf(frameName, kind: layer.kind),
-        TimelineCellExposureState.markHeld ||
-        TimelineCellExposureState.markUncovered => timelineInbetweenMarkWriting,
+        _ when exposureState.isMark => timelineDotWriting(exposureState),
         _ => timelineCellWritesNothing,
       };
     } else {
@@ -536,27 +543,21 @@ class TimelineRowCellsPainter extends CustomPainter
       // ⑲: the row's blocks are its layer's colour label.
       paper: paper,
     );
-    // R26 #44: a block whose cel has no picture yet grays its paper
-    // slightly — the whole covered run, ACTION-section rows only (the
-    // resolver stands down elsewhere). Ghosts stay plain (they carry no
-    // block chrome at all). I-44: onto [paperGround], so the grid sheet
-    // under the row cannot show through it.
-    final block =
-        !model.ghost && !_cameraSummaryRow && model.exposureState.isCovered;
-    final Color baseBackground;
-    if (block && (celCannotBeReadForLayer?.call(layer, frameIndex) ?? false)) {
-      // A cel whose picture data could not be read is red, as the ruler's
-      // bar is over its frames (frame-picture-indicator-Q1 b).
-      baseBackground = timelineUnreadableCelPaperColor;
-    } else if (block &&
-        !(celHasContentForLayer?.call(layer, frameIndex) ?? true)) {
-      baseBackground = timelineGridGroundOver(
-        under: paperGround,
-        painted: timelineEmptyCelPaperColor(paper),
-      )!;
-    } else {
-      baseBackground = cellPaper;
-    }
+    // I-129: a block wears what its row and its cel show — the switched-off
+    // look on a hidden row, the empty look where its cel holds no picture
+    // (ACTION-section rows only: the resolver stands down elsewhere), red
+    // where its picture could not be read ([blockLookAt]). Ghosts stay plain
+    // (they carry no block chrome at all). I-44: onto [paperGround], so the
+    // grid sheet under the row cannot show through it.
+    final look =
+        !model.ghost && !_cameraSummaryRow && model.exposureState.isCovered
+        ? blockLookAt(frameIndex, paper: cellPaper)
+        : null;
+    final baseBackground = look == null
+        ? cellPaper
+        : look.paper ?? Colors.transparent;
+    // ↩️The border is an EMPTY block's outline now (I-129) — the whole
+    // block's, laid once per run ([substrateIn]), never a cell's.
     // D32/D38 (2026-08-18): the per-cell BORDER is gone. It existed to be
     // the seams ("the paper blocks' seams all sit on the shared faint
     // alpha" — UI-R20 #7 already killed the strong start edge), and as a
@@ -567,11 +568,11 @@ class TimelineRowCellsPainter extends CustomPainter
     // now (「블록에 존재하는 그리드선만 싹 삭제」); the grid sheet under the
     // row is the only thing that draws one.
     // Nothing here asks where the cut ends any more: the out-of-cut wash is
-    // one rect in its own overlay ([TimelineOutsideCutWashPainter]), which
+    // one rect in its own overlay ([TimelineOutsideCutWash]), which
     // is what lets it follow a live drag while these tiles stay baked.
     return (
       background: baseBackground,
-      border: Colors.transparent,
+      border: look?.line ?? Colors.transparent,
       radius: timelineCellBorderRadius(
         model.segment,
         axis,
@@ -580,6 +581,20 @@ class TimelineRowCellsPainter extends CustomPainter
       ),
     );
   }
+
+  /// The look of the block over [frameIndex], made of [paper] with words in
+  /// [ink] — as its row ([shown]) and its cel ([celContent]) show it, onto
+  /// [paperGround] ([timelineFrameBlockLook]).
+  TimelineBlockLook blockLookAt(
+    int frameIndex, {
+    required Color paper,
+    Color? ink,
+  }) => timelineFrameBlockLook(
+    (layer: layer, shown: shown, content: celContent, ground: paperGround),
+    frameIndex,
+    paper: paper,
+    ink: ink ?? timelineInBlockInk(),
+  );
 
   /// The cell's PAPER — its rect short of the row seam at the trailing
   /// cross edge ([timelineRowPaperExtent]), which the grid sheet draws under
@@ -607,60 +622,84 @@ class TimelineRowCellsPainter extends CustomPainter
 
   TimelineRowSubstrate _substrateIn(int from, int to) {
     final paper = <({Rect rect, Color color, BorderRadius? radius})>[];
+    final rings = <TimelineRowRing>[];
     var runStart = from;
-    Color? runColor;
+    // What the run lays: its paper and its outline (transparent for none).
+    ({Color paper, Color line})? run;
+    ({Color paper, Color line}) lookAt(int frame) {
+      final style = resolvedCellStyleFor(frame);
+      return (paper: style.background, line: style.border);
+    }
+
     void close(int runEnd) {
-      final color = runColor;
-      if (color == null) {
+      final laid = run;
+      if (laid == null) {
         return;
       }
       final first = cellModelAt(runStart).segment;
       final last = cellModelAt(runEnd - 1).segment;
-      paper.add((
-        rect: paperRectFor(
-          runStart,
-        ).expandToInclude(paperRectFor(runEnd - 1)),
-        color: color,
-        // The run's corners are its end cells' — the one corner law, asked
-        // about the run as the block it is.
-        radius: timelineCellBorderRadius(
-          TimelineExposureBlockVisualSegment(
-            kind: first.kind,
-            continuesFromPrevious: first.continuesFromPrevious,
-            continuesToNext: last.continuesToNext,
-          ),
-          axis,
-          cellExtent: frameCellExtent,
-          crossExtent: timelineRowPaperExtent(crossAxisExtent),
+      final rect = paperRectFor(
+        runStart,
+      ).expandToInclude(paperRectFor(runEnd - 1));
+      // The run's corners are its end cells' — the one corner law, asked
+      // about the run as the block it is.
+      final radius = timelineCellBorderRadius(
+        TimelineExposureBlockVisualSegment(
+          kind: first.kind,
+          continuesFromPrevious: first.continuesFromPrevious,
+          continuesToNext: last.continuesToNext,
         ),
-      ));
-      runColor = null;
+        axis,
+        cellExtent: frameCellExtent,
+        crossExtent: timelineRowPaperExtent(crossAxisExtent),
+      );
+      if (laid.paper.a > 0) {
+        paper.add((rect: rect, color: laid.paper, radius: radius));
+      }
+      if (laid.line.a > 0) {
+        final along = axis == Axis.horizontal;
+        rings.add((
+          rect: rect,
+          color: laid.line,
+          radius: radius,
+          width: timelineBlockLineWidth,
+          // Open where the block runs on past the run.
+          open: (
+            left: along && first.continuesFromPrevious,
+            top: !along && first.continuesFromPrevious,
+            right: along && last.continuesToNext,
+            bottom: !along && last.continuesToNext,
+          ),
+        ));
+      }
+      run = null;
     }
 
     // A cell joins the run before it when no corner stands between them and
-    // it is the same paper.
-    bool joins(int frame, Color color) =>
-        color == runColor && cellModelAt(frame).segment.continuesFromPrevious;
+    // it lays the same.
+    bool joins(int frame, ({Color paper, Color line}) look) =>
+        look == run && cellModelAt(frame).segment.continuesFromPrevious;
 
     // By stretch (I-22): the rest of a stretch is its first cell again, so
     // it joins the run that cell joined or started, or lays nothing.
     for (final (start: frame, :end) in _stretchesIn(from, to)) {
-      final color = resolvedCellStyleFor(frame).background;
+      final look = lookAt(frame);
+      final lays = look.paper.a > 0 || look.line.a > 0;
       assert(
         end - frame == 1 ||
             cellModelAt(frame).segment.continuesFromPrevious ||
-            color.a == 0,
+            !lays,
         'a stretch that starts a block is that one cell',
       );
-      if (joins(frame, color)) {
+      if (joins(frame, look)) {
         continue;
       }
       close(frame);
       // UI-R21 #2: an empty cell paints NOTHING — its ground, and every
       // line on it, is the grid sheet's under the row (I-44).
-      if (color.a > 0) {
+      if (lays) {
         runStart = frame;
-        runColor = color;
+        run = look;
       }
     }
     // 🗣️F-208 (유저 2026-09-29, Android): 「6콤마에 한번 세로선 존재. 줌 할때마다
@@ -670,12 +709,7 @@ class TimelineRowCellsPainter extends CustomPainter
     // cell at [to]. Paper that stopped at [to] left that pixel part-covered —
     // a line of ground wherever two tiles of one block met. The lines below
     // reach through [to] for the same sliver.
-    close(
-      to < frameEndIndexExclusive &&
-              joins(to, resolvedCellStyleFor(to).background)
-          ? to + 1
-          : to,
-    );
+    close(to < frameEndIndexExclusive && joins(to, lookAt(to)) ? to + 1 : to);
 
     final lines = <({Rect rect, Color color})>[];
     if (blockFrameLines) {
@@ -697,7 +731,7 @@ class TimelineRowCellsPainter extends CustomPainter
         }
       }
     }
-    return (paper: paper, lines: lines);
+    return (paper: paper, lines: lines, rings: rings);
   }
 
   /// The frame line at [frameIndex]'s leading boundary, where it crosses
@@ -753,11 +787,12 @@ class TimelineRowCellsPainter extends CustomPainter
     // user's switch shows them ([substrateIn]).
   }
 
-  /// The substrate through the tile store: a fresh tile is one
-  /// drawImageRect, a cold or stale span keeps the classic paint
-  /// underneath while its raster lands off-frame, and the two spans past
-  /// the window are asked for so a scroll finds them warm. Answers the
-  /// spans whose fresh tile already carries the foreground ink.
+  /// The substrate through the tile store: a tile is one drawImageRect —
+  /// baked in this paint where an edit moved the span
+  /// ([TimelineGridTileStore.tileFor]) — a cold span keeps the classic
+  /// paint underneath while its raster lands off-frame, and the two spans
+  /// past the window are asked for so a scroll finds them warm. Answers the
+  /// spans whose tile already carries the foreground ink.
   List<(int, int)> _paintTiledSubstrate(
     Canvas canvas,
     ({int startIndex, int endIndexExclusive}) window,
@@ -1096,6 +1131,34 @@ class TimelineRowCellsPainter extends CustomPainter
     for (final line in substrate.lines) {
       canvas.drawRect(line.rect, Paint()..color = line.color);
     }
+    for (final ring in substrate.rings) {
+      _paintRing(canvas, ring);
+    }
+  }
+
+  /// [ring] as a tile lays it (the `rrectRing` op): the band
+  /// its width wide inside its rect, open on the sides it leaves open.
+  static void _paintRing(Canvas canvas, TimelineRowRing ring) {
+    final past = ring.width + 2;
+    final rect = ring.rect;
+    final open = ring.open;
+    final outer = (ring.radius ?? BorderRadius.zero).toRRect(
+      Rect.fromLTRB(
+        rect.left - (open.left ? past : 0),
+        rect.top - (open.top ? past : 0),
+        rect.right + (open.right ? past : 0),
+        rect.bottom + (open.bottom ? past : 0),
+      ),
+    );
+    canvas
+      ..save()
+      ..clipRect(rect)
+      ..drawDRRect(
+        outer,
+        outer.deflate(ring.width),
+        Paint()..color = ring.color,
+      )
+      ..restore();
   }
 
   /// The cell's foreground INK — ghost glyphs read quiet near-white,
@@ -1111,8 +1174,13 @@ class TimelineRowCellsPainter extends CustomPainter
     return model.ghost
         ? colorScheme.onSurface.withValues(alpha: 0.85)
         : timelineCellUsesDrawingInk(model.exposureState)
-        // F-24: the same ink the block's 코마 number takes.
-        ? timelineInBlockInk(dimmed: model.dimmed)
+        // F-24: the same ink the block's 코마 number takes — as the block
+        // shows it (I-129).
+        ? blockLookAt(
+            model.frameIndex,
+            paper: layerMarkColor(layer.mark),
+            ink: timelineInBlockInk(dimmed: model.dimmed),
+          ).ink
         : isEmptyX
         ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
         : model.dimmed
@@ -1406,6 +1474,7 @@ class TimelineRowCellsPainter extends CustomPainter
     paperGround,
     blockFrameLines,
     framesPerSecond,
+    shown,
     devicePixelRatio,
   );
 
@@ -1697,6 +1766,9 @@ class _RowCellsPicture extends StatelessWidget {
       // And whether its lines cross the paper, in its own cadence.
       blockFrameLines: law?.blockFrameLines ?? false,
       framesPerSecond: law?.framesPerSecond ?? 0,
+      // I-129: the eye its rail shows — heard past the row memo, as the
+      // rail's own plate and name hear it.
+      shown: RailEyes.of(context, layer).shown,
     );
     // Named, not keyed (I-57, 10-13): the row shows one layer and then
     // another in the same elements.

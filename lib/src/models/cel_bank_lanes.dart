@@ -1,6 +1,7 @@
 import 'dart:collection';
 
 import 'frame_id.dart';
+import 'layer.dart';
 import 'timeline_exposure.dart';
 
 /// Whether an AUTHORED exposure in [lane] still points at [frameId] — the
@@ -86,4 +87,38 @@ class CelBankLanes {
   bool exposes(FrameId frameId, {required Map<int, TimelineExposure> lane}) =>
       laneExposesFrame(lane, frameId) ||
       others.any((other) => laneExposesFrame(other, frameId));
+}
+
+/// [layer] with every drawing block of a key of [joins] showing that key's
+/// value instead — 「같은 이름 = 같은 그림」 said by the blocks, never by two
+/// drawings answering to one name — and each drawing a join leaves behind
+/// gone from the bank, unless a lane of [bank] still shows it (F-136).
+///
+/// ONE join for the presses that link a drawing to another: a name given
+/// (the frame rename, its link and 자동 이름 지정 —
+/// `TimelineController.nameFramesForLayer`) and a direction block told
+/// what another one says (I-72-direction-link).
+Layer layerJoined(
+  Layer layer,
+  Map<FrameId, FrameId> joins, {
+  required CelBankLanes bank,
+}) {
+  if (joins.isEmpty) {
+    return layer;
+  }
+  final lane = SplayTreeMap.of({
+    for (final MapEntry(key: index, value: exposure) in layer.timeline.entries)
+      index: switch (exposure.isDrawing ? joins[exposure.frameId] : null) {
+        final target? => exposure.copyWith(frameId: target),
+        null => exposure,
+      },
+  });
+  return layer.copyWith(
+    timeline: lane,
+    frames: [
+      for (final frame in layer.frames)
+        if (!joins.containsKey(frame.id) || bank.exposes(frame.id, lane: lane))
+          frame,
+    ],
+  );
 }

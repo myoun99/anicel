@@ -1,6 +1,4 @@
-import 'dart:ui' show Offset, Rect;
-
-import 'package:flutter/painting.dart' show MatrixUtils;
+import 'dart:ui' show Rect;
 
 import 'package:vector_math/vector_math_64.dart' show Matrix4;
 
@@ -16,7 +14,6 @@ import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/pasteboard_bounds.dart' show PasteboardBounds;
 import '../../models/project_id.dart';
 import '../../models/sheet_marks.dart';
 import '../../models/track_id.dart';
@@ -30,6 +27,7 @@ import '../../services/cut_frame_composite_plan.dart' show layerPlacementAt;
 import '../../services/project_lookup.dart' show cutPositionOf;
 import '../canvas/active_stroke_overlay.dart';
 import '../editor_session_manager.dart';
+import '../playback/camera_shot.dart' show outlineThrough;
 import '../sheet/sheet_ink_controller.dart';
 import '../sheet/sheet_ink_layer.dart';
 import '../sheet_painting.dart' show SheetPictureOverInk;
@@ -151,7 +149,7 @@ ContePicture? _pictureOf(
       plane: cut.canvasSize,
       picture: (
         picture: mark,
-        canvas: _canvasOnPaper(cut.canvasSize, canvasToPaper),
+        canvas: outlineThrough(cut.canvasSize, canvasToPaper),
         canvasToPaper: canvasToPaper,
       ),
       placement: placement,
@@ -166,23 +164,6 @@ ContePicture? _pictureOf(
     cameraWork: [...conteCameraMarksOf(cell, page.metrics)],
     original: pictureView(camera, mark.canvasRegion).frameSize,
   );
-}
-
-/// The corners of [canvas] where [canvasToPaper] lays them — what a
-/// picture's outline is cut by (`pictureOutline`): the pen takes exactly
-/// that, so a stroke's piece in a corner the picture cuts away stays on
-/// the paper that shows it.
-List<Offset> _canvasOnPaper(CanvasSize canvas, Matrix4 canvasToPaper) {
-  final rect = canvas.canvasRect;
-  return [
-    for (final corner in [
-      rect.topLeft,
-      rect.topRight,
-      rect.bottomRight,
-      rect.bottomLeft,
-    ])
-      MatrixUtils.transformPoint(canvasToPaper, corner),
-  ];
 }
 
 /// A cut's canvas → the paper, for [mark]'s picture: what the picture
@@ -244,7 +225,7 @@ SheetPictureOverInk _overInk(
   ));
   return (
     picture: picture,
-    canvas: _canvasOnPaper(cut.canvasSize, canvasToPaper),
+    canvas: outlineThrough(cut.canvasSize, canvasToPaper),
     canvasToPaper: canvasToPaper,
   );
 }

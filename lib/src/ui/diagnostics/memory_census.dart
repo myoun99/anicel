@@ -10,7 +10,6 @@ import '../../services/cut_piece_slot.dart';
 import '../../services/last_stroke_slot.dart';
 import '../brush/brush_stroke_preview_cache.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
-import '../canvas/tile_pyramid.dart';
 import '../editor_session_manager.dart';
 import '../text/word_bake.dart';
 import '../timeline/timeline_grid_tile_store.dart';
@@ -218,18 +217,27 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
           LastStrokeSlot.allStrokeBytes,
     ),
     if (textures)
+      // The frames' pictures every screen shows (one-picture-per-frame),
+      // the ones on screen in its detail — and the pictures of the nodes
+      // they are drawn of, held for a stroke's patches (`heldNodes`).
       MemoryCensusItem(
-        id: 'layerImages',
+        id: 'framePictures',
         bytes: sum(
           (session) =>
-              session.renderCaches.layerFrameImageCache.estimatedBytes +
-              // An export run's row pictures, held on this line while the
-              // run goes (F-289-Q21) — layer images too, the full ones.
-              session.playbackRig.playbackCache.lentBytes,
+              session.renderCaches.framePictureStore.estimatedBytes +
+              session.playbackRig.framePictures.heldNodes.heldBytes,
         ),
         detail: sum(
-          (session) => session.renderCaches.layerFrameImageCache.pinnedBytes,
+          (session) => session.renderCaches.framePictureStore.pinnedBytes,
         ),
+      ),
+    if (textures)
+      MemoryCensusItem(
+        id: 'layerImages',
+        // An export run's row pictures, held on this line while the run goes
+        // (F-289-Q21). ↩️The canvas's row images beside them, until no
+        // screen drew a row's image (one-picture-per-frame ②-5b-1).
+        bytes: sum((session) => session.playbackRig.playbackCache.lentBytes),
       ),
     MemoryCensusItem(
       id: 'brushTips',
@@ -250,14 +258,14 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     // every decoded tile, alive as long as its tile is — the picture on
     // screen and, through the tiles it keeps, the undo history's. The
     // share had no row and read as engine overhead (C-ipad-crash,
-    // 2026-09-11). Since 4c (2026-09-16) the row also holds the LEVEL
-    // TILES — the same pictures halved for a zoomed-out screen
-    // ([TilePyramid]), screen-bounded, and let go with the paints that
-    // stop asking for them.
+    // 2026-09-11). A picture a screen draws reduced carries its mip chain,
+    // a third more, and is counted with it (`pictureBytesOf`). ↩️From 4c
+    // (2026-09-16) the row also held the LEVEL TILES — the same pictures
+    // halved for a zoomed-out screen — until one-picture-per-frame ②-5b-2.
     if (textures)
       MemoryCensusItem(
         id: 'tileImages',
-        bytes: BitmapTileImageCache.liveImageBytes + TilePyramid.liveBytes,
+        bytes: BitmapTileImageCache.liveImageBytes,
       ),
     // 🚨THE DRAWING ENGINE'S OWN MEMORY, which is nobody's picture: tile
     // blocks parked for reuse and grow-only scratch sized by the largest
@@ -293,24 +301,14 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
             StaticRaster.censusBytes +
             // A dock region's still image (2026-09-25) is the same kind of
             // holding: a panel region kept as a raster while nothing changes.
-            StillRaster.censusBytes +
-            // ⛔A layer stack view's display buffer belongs on the same
-            // row — the editing canvas's, a live conte picture's, a cut's on
-            // the track stack: a panel holding a raster of itself, kept for
-            // as long as nothing changes. It lives in a widget State, so it
-            // is PUSHED here — 2026-09-10.
             //
-            // ⚠️NOT one image. A derived buffer pins the one it was drawn
-            // from, so this is the whole chain, up to
-            // `DisplayBufferCache._maxChainBytes` — it read one image until
-            // 2026-09-12, and the canvases it was not counting showed up in
-            // 「엔진·폰트·프레임워크」 as 10GB nothing would own.
-            sum(
-              (session) => session.renderCaches.stackBufferBytes.values.fold(
-                0,
-                (total, bytes) => total + bytes,
-              ),
-            ),
+            // ↩️So was a layer stack view's display buffer, PUSHED here from
+            // its widget State (2026-09-10) — the whole chain a derived
+            // buffer pinned, not one image: counting one until 2026-09-12
+            // left the canvases it missed in 「엔진·폰트·프레임워크」 as 10GB
+            // nothing would own. Nothing keeps one since a frame became one
+            // picture (one-picture-per-frame ②-5a, 2026-10-25).
+            StillRaster.censusBytes,
       ),
     // Pushed by the mounted viewers rather than read off a holder the
     // session owns — see [RenderCaches.viewerRasterBytesByViewer].

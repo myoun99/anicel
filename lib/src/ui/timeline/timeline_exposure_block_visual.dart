@@ -106,8 +106,8 @@ String? timelineCellSemanticsLabel({
         final celNumber => 'drawing start $celNumber',
       },
     TimelineCellExposureState.held => 'held exposure',
-    TimelineCellExposureState.markHeld ||
-    TimelineCellExposureState.markUncovered => 'inbetween mark',
+    TimelineCellExposureState.markOneHeld => 'inbetween mark 1',
+    TimelineCellExposureState.markTwoHeld => 'inbetween mark 2',
   };
 }
 

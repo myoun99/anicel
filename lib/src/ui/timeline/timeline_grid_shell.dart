@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 
+import '../../models/layer.dart';
 import '../input/panel_pan.dart';
+import 'rail_eyes.dart';
 import 'stylus_glide_stop.dart';
 import 'timeline_beat_lines.dart';
 
 /// The chrome both timeline grids wrap their whole tree in — the grid law,
-/// the stylus glide stop, the no-overscroll scroll configuration and the
-/// canvas's pan, in that order. The rail grid and the x-sheet each spelled
+/// the stylus glide stop, the no-overscroll scroll configuration, the
+/// canvas's pan and the rows' eyes, in that order. The rail grid and the
+/// x-sheet each spelled
 /// the first three (the audit's clone scan, 2026-09-06); the storyboard
 /// publishes the law alone because it has no glide to stop.
 ///
@@ -24,6 +27,7 @@ class TimelineGridShell extends StatelessWidget {
     required this.ground,
     required this.framesPerSecond,
     required this.controllers,
+    required this.layers,
     required this.child,
   });
 
@@ -35,6 +39,11 @@ class TimelineGridShell extends StatelessWidget {
 
   /// The grid's own scroll controllers ([StylusGlideStop.controllers]).
   final List<ScrollController> controllers;
+
+  /// The grid's stack, whose eyes it hands down ([RailEyes]) — to its rail
+  /// and to its frame rows alike: a hidden row's blocks wear the eye its
+  /// rail shows (I-129), a folder above hiding it included (F-185).
+  final List<Layer> layers;
 
   final Widget child;
 
@@ -60,7 +69,10 @@ class TimelineGridShell extends StatelessWidget {
           // devices with the finger gated (R26-rest-Q2), and a configuration
           // below it read from up here took the ungated ones back — a finger
           // set to 「없음」 still scrolled both grids (found by F-351's pin).
-          child: PanelPanDriver(controllers: controllers, child: child),
+          child: PanelPanDriver(
+            controllers: controllers,
+            child: RailEyes.forLayers(layers, stack: layers, child: child),
+          ),
         ),
       ),
     );

@@ -270,13 +270,15 @@ void main() {
       h: -0.94 / 61,
       i: 1,
     ),
-    // P3e. Pick refines a TIED vote by re-sampling ONCE at twice the rate.
-    // The cases above enter that loop only incidentally; these two enter
-    // it by construction, on the axis-aligned hairline geometry the mode
-    // exists for. An axis-aligned 0.7× splits a one-pixel line 0.5/0.2
-    // across two destination rows, so the row holding 0.5 ties at every
-    // rate and runs the refinement to its cap; 0.55× ties at the first
-    // rate and is decided by the second.
+    // P3e. The hairline ties Pick's refinement was written for: an
+    // axis-aligned 0.7× splits a one-pixel line 0.5/0.2 across two
+    // destination rows, and 0.55× ties at the first rate. ⚠️An axis-aligned
+    // map no longer votes — it goes down the exact-coverage path, where
+    // there is nothing to refine — so these two pin THAT path at a tie, and
+    // the refinement is entered by the turned and perspective cases above:
+    // with it switched off in the C (2026-10-25) those went red and these
+    // two stayed green. The Dart's refinement is pinned in
+    // `resample_kernel_test.dart`.
     //
     // ⚠️ `scaleTranslate` takes the FORWARD scale and inverts it. These
     // said `1 / 0.7` once, which is a 1.43× magnification — it ties

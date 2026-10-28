@@ -70,28 +70,38 @@ class TimesheetStrata extends StatelessWidget {
   final SheetImageLookup? imageFor;
   final Listenable? imageRepaint;
 
-  /// What the content stratum PRINTS of a drag ([timesheetDragPrint]).
-  Object _printOf(TimelineDragPreview? preview) => timesheetDragPrint(
-    document: layout.document,
-    cutId: cutId,
-    preview: preview,
-  );
+  /// What the content stratum PRINTS of a drag over the view of [shown]
+  /// ([timesheetDragPrint]).
+  Object _printOf(TimelineDragPreview? preview, Rect? shown) =>
+      timesheetDragPrint(
+        document: layout.document,
+        layout: layout,
+        shown: shown,
+        cutId: cutId,
+        preview: preview,
+      );
 
   /// The channel is handed on SLICED to what the values print: the content
   /// painter repaints, and its bake stands down, only while a drag
-  /// re-prints something.
+  /// re-prints something on screen.
   ///
   /// 🚨sheet-prints-only-its-drags: both listened to the channel whole, so
   /// a lane value scrubbed on the timeline repainted the sheet every step —
   /// and being "live" for any drag in flight, the sheet paid a full paint a
   /// step for values it prints the same.
+  ///
+  /// The print is of the view the strata paint ([timesheetShown] of the
+  /// box they fill), so a pan or a resize — a build from above or a new
+  /// box — prints afresh.
   @override
-  Widget build(BuildContext context) =>
-      SlicedValueListenableScope<TimelineDragPreview?, Object>(
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      final shown = timesheetShown(viewport, box.biggest);
+      return SlicedValueListenableScope<TimelineDragPreview?, Object>(
         valueListenable: dragPreview,
-        slice: _printOf,
+        slice: (preview) => _printOf(preview, shown),
         builder: (context, printed) {
-          final committed = _printOf(null);
+          final committed = _printOf(null, shown);
           return SheetStrata(
             sheet: 'timesheet',
             painters: _painters(context, printed),
@@ -104,6 +114,8 @@ class TimesheetStrata extends StatelessWidget {
           );
         },
       );
+    },
+  );
 
   Map<SheetStratum, CustomPainter> _painters(
     BuildContext context,

@@ -32,11 +32,24 @@ class InlineNumericField extends StatefulWidget {
     this.signed = true,
     this.keyboardType,
     this.inputFormatters,
+    this.controller,
+    this.groupId,
   });
 
   /// Seeds the field, and is selected whole so the first keystroke
   /// replaces it — the readout you tapped IS the thing you are replacing.
   final String initialText;
+
+  /// What the field types into instead of a controller of its own — for a
+  /// host whose own keys type into it too (the number pad, I-134). The
+  /// host seeds it, selects it and disposes it; [initialText] is still
+  /// what the field opened on.
+  final TextEditingController? controller;
+
+  /// The tap region the field is one part of (`TextField.groupId`): a press
+  /// in it is not a press away — the number pad's keys, which type into
+  /// the field (I-134).
+  final Object? groupId;
 
   /// The text on commit, its numerals half-width; the host parses and
   /// clamps, because only the host knows the units.
@@ -68,9 +81,8 @@ class InlineNumericField extends StatefulWidget {
 }
 
 class _InlineNumericFieldState extends State<InlineNumericField> {
-  late final TextEditingController _controller = selectedTextController(
-    widget.initialText,
-  );
+  late final TextEditingController _controller =
+      widget.controller ?? selectedTextController(widget.initialText);
 
   /// Commit exactly once. `onSubmitted` and `onTapOutside` can both land
   /// for one edit (Enter, then the focus loss it causes), and a host that
@@ -101,7 +113,9 @@ class _InlineNumericFieldState extends State<InlineNumericField> {
 
   @override
   void dispose() {
-    _controller.dispose();
+    if (widget.controller == null) {
+      _controller.dispose();
+    }
     _focus.dispose();
     super.dispose();
   }
@@ -155,6 +169,7 @@ class _InlineNumericFieldState extends State<InlineNumericField> {
         key: widget.fieldKey,
         controller: _controller,
         focusNode: _focus,
+        groupId: widget.groupId ?? EditableText,
         textAlign: widget.textAlign,
         keyboardType:
             widget.keyboardType ??

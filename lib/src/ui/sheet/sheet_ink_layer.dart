@@ -32,6 +32,7 @@ import '../canvas/active_stroke_overlay.dart';
 import '../canvas/bitmap_surface_painter.dart';
 import '../canvas/canvas_touch_contacts.dart' show CanvasTouchContacts;
 import '../canvas/interactive_brush_edit_canvas_view.dart';
+import '../canvas/stroke_in_flight.dart';
 import '../canvas/view_hand.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../session/sheet_photo_hold.dart';
@@ -514,8 +515,10 @@ typedef SheetInkPrintView = ({
 /// showing, or with no ink) clipped where its frame clips the view
 /// ([sheetInkWindowsShown]), laid as wide as the layer lays it, and drawn
 /// by the brush view's own painter at the window's ink viewport — its
-/// snap, its levels, its sampling. The brush switch only mounts the views;
-/// it does not change a pixel. ↩️It drew the surface's whole raster in
+/// snap, its sampling (reduced, each tile from its picture's chain —
+/// ↩️from level tiles until one-picture-per-frame ②-5b-2). The brush
+/// switch only mounts the views; it does not change a pixel. ↩️It drew the
+/// surface's whole raster in
 /// paper space, `medium`-filtered and snapped with the PAGE's view: the
 /// ink went soft and slid by up to a pixel as the switch was flipped.
 ///
@@ -1162,8 +1165,10 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
       // F-420: the shape tool's drag lands what it traced in this view.
       shapeShow: _shapeShows.putIfAbsent(window.id, ViewHand.new),
       shiftLine: _shiftLines.putIfAbsent(window.id, ShiftLine.new),
-      onActiveStrokeChanged: (active) =>
-          _windowStroking(window.id, active: active),
+      onActiveStrokeChanged: (stroke) => _windowStroking(
+        window.id,
+        active: stroke != StrokeInFlight.none,
+      ),
       onSourceStrokeCommitted: (strokeData) =>
           _land(window, keeps, strokeData),
     );

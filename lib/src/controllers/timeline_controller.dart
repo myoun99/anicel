@@ -223,8 +223,10 @@ class TimelineController {
       _marks.hasMarkAt(layer: layer, frameIndex: frameIndex);
   bool canToggleMarkAt({required Layer layer, required int frameIndex}) =>
       _marks.canToggleMarkAt(layer: layer, frameIndex: frameIndex);
-  void toggleMarkForLayer({required LayerId layerId}) =>
-      _marks.toggleMarkForLayer(layerId: layerId);
+  void toggleMarkForLayer({
+    required LayerId layerId,
+    required InbetweenMark mark,
+  }) => _marks.toggleMarkForLayer(layerId: layerId, mark: mark);
   Map<LayerId, List<int>> markableFramesInBand({
     required Iterable<LayerId> layerIds,
     required int startIndex,
@@ -234,12 +236,14 @@ class TimelineController {
     startIndex: startIndex,
     endIndexExclusive: endIndexExclusive,
   );
-  bool bandFramesAreAllMarked(Map<LayerId, List<int>> framesByLayer) =>
-      _marks.bandFramesAreAllMarked(framesByLayer);
+  bool bandFramesAreAllMarked(
+    Map<LayerId, List<int>> framesByLayer,
+    InbetweenMark mark,
+  ) => _marks.bandFramesAreAllMarked(framesByLayer, mark);
   void setMarksForFrames(
     Map<LayerId, List<int>> framesByLayer, {
-    required bool marked,
-  }) => _marks.setMarksForFrames(framesByLayer, marked: marked);
+    required InbetweenMark? mark,
+  }) => _marks.setMarksForFrames(framesByLayer, mark: mark);
 
   int? exposureStartIndexForLayer({
     required Layer layer,

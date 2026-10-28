@@ -289,6 +289,29 @@ abstract final class AppShapes {
   /// reads as a lozenge.)
 }
 
+/// The cursor of everything a press acts on — a button, a toggle, a menu's
+/// row, a tab, a swatch: the HAND while it is live, the arrow while it is
+/// dead. A Material button reads it from this theme; an `InkWell`, which no
+/// theme reaches, names it (`a_press_points_with_the_hand_test` holds
+/// every one to it); the app's own faces resolve it ([PressFace]).
+///
+/// 🗣️유저 2026-10-25 (board `frame-panels-build-in-one-frame-Q2`):
+/// 「손가락으로 통일」. ↩️Until then the app showed both, and nobody had
+/// chosen either: its own faces the hand (since 2026-09-10), every
+/// Material button and `InkWell` the arrow — Flutter 3.47's
+/// `adaptiveClickable`, which is the hand on the web only.
+///
+/// ⛔Not the cursor of what a press merely LANDS on — a cell, a row, the
+/// canvas, a barrier that closes an editor: a press claim says who owns a
+/// press, not that the thing under it is a button.
+abstract final class AppCursors {
+  static const WidgetStateMouseCursor press = WidgetStateMouseCursor.clickable;
+
+  /// [press] for a control that is [live] or not.
+  static MouseCursor pressWhen({required bool live}) =>
+      press.resolve({if (!live) WidgetState.disabled});
+}
+
 /// Every popup menu opens INSTANTLY (R4 #2): Material's default grow +
 /// staggered item fade read as entries appearing one by one — pass this to
 /// each `showMenu`/`PopupMenuButton` as `popUpAnimationStyle`.
@@ -642,7 +665,7 @@ ThemeData _buildAppTheme() {
         minimumSize: const Size(32, 32),
         shape: AppShapes.control(AppShapes.controlSmall),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      ),
+      ).copyWith(mouseCursor: AppCursors.press),
     ),
     // Dialog actions are the only place these two buttons appear (the one
     // toolbar TextButton — the comma group — sets its own minimumSize), so
@@ -656,7 +679,7 @@ ThemeData _buildAppTheme() {
         padding: const EdgeInsets.symmetric(horizontal: 16),
         textStyle: AppTypography.inTheAppFace(_actionLabel),
         shape: AppShapes.control(AppShapes.controlMedium),
-      ),
+      ).copyWith(mouseCursor: AppCursors.press),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
@@ -665,7 +688,12 @@ ThemeData _buildAppTheme() {
         textStyle: AppTypography.inTheAppFace(_actionLabel),
         shape: AppShapes.control(AppShapes.controlMedium),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      ),
+      ).copyWith(mouseCursor: AppCursors.press),
+    ),
+    // The one other button family the app draws (the canvas size's
+    // 「캔버스에서 조정」) — it says nothing but the cursor ([AppCursors]).
+    outlinedButtonTheme: const OutlinedButtonThemeData(
+      style: ButtonStyle(mouseCursor: AppCursors.press),
     ),
     // Every window's MATERIAL, decided once: the panel surface, a hairline
     // border and 6px corners (M3's default is a 28px tinted blob that
@@ -749,6 +777,7 @@ ThemeData _buildAppTheme() {
       shape: AppPopupSurface.shape,
       elevation: AppPopupSurface.elevation,
       surfaceTintColor: AppPopupSurface.surfaceTint,
+      mouseCursor: AppCursors.press,
       // ↩️A text style stood here — 12px in the text colour — that no row
       // read: under Material 3 a menu row takes its LABEL style, which falls
       // to the text theme's and so wears the app's face (measured

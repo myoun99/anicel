@@ -1,10 +1,12 @@
 import '../../models/layer_effect.dart';
+import '../../models/layer_id.dart';
 import '../../models/property_track.dart';
 import '../../models/se_name_tag.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/transform_track.dart';
 import '../timeline/effect_lane_editing.dart' show effectLaneLens;
-import '../timeline/effect_lane_policy.dart' show parseEffectLaneId;
+import '../timeline/effect_lane_policy.dart'
+    show effectLaneWalksAPath, parseEffectLaneId;
 import '../timeline/lane_span_keys_shift.dart' show laneSpanKeysMoved;
 import '../timeline/property_lane_lens.dart';
 import '../timeline/reference_lane_policy.dart' show transformLanesByHome;
@@ -158,6 +160,12 @@ typedef LaneKeys = ({String laneId, Map<int, PropertyKey<Object?>> keys});
 /// in, its gaps and all, as a frame copy's run is.
 typedef KeyCopy = ({List<LaneKeys> lanes, int length});
 
+/// A band's copy of the keys on one layer's lane rows, taken without that
+/// layer's cells (`LaneVerbs.bandKeysBesides`) — [camera] where the layer
+/// is its cut's camera, whose keys go to the camera of the cut they are
+/// pasted in.
+typedef LanesAlone = ({LayerId layerId, bool camera, KeyCopy keys});
+
 /// The four homes of a row's keys ([LaneHome]).
 typedef RowLaneHomes = ({
   LaneHome<TransformTrack> own,
@@ -216,6 +224,13 @@ double? rowLaneNumberShown(RowLaneHomes homes, String laneId, double held) =>
         .nonNulls
         .firstOrNull
         ?.numberShown(held);
+
+/// Whether the keys of lane [laneId] walk a path, whichever home names it:
+/// a row's own and its reference fx's bare ([laneWalksAPath]), where an
+/// effect stands its picture under the effect's id
+/// ([effectLaneWalksAPath]).
+bool rowLaneWalksAPath(String laneId) =>
+    laneWalksAPath(laneId) || effectLaneWalksAPath(laneId);
 
 /// What [verb] leaves [subject]'s row at, home by home — each home it
 /// answers null for left alone.

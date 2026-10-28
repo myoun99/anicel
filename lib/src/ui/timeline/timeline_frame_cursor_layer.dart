@@ -302,13 +302,13 @@ class TimelineCursorLayer extends StatelessWidget {
   /// different kind of selection than a cell span.
   ///
   /// 🚨T6: and the CELL span WINS. There is one selected state at a time
-  /// ([claimSelection]) with a single exception — a mixed cell drag ends up
-  /// owning lane state too — and in that one case both bands would cover
-  /// the same rows and stack their fills, so the same span would read
-  /// darker for having been described twice. The cell span already knows
-  /// every row it swept, lanes included. That precedence is why this is one
-  /// method with an early return rather than two bands with a guard between
-  /// them: a guard is a thing to remember, and an early return is not.
+  /// ([claimSelection]), and the cell span knows every row it swept, lanes
+  /// included. That precedence is why this is one method with an early
+  /// return rather than two bands with a guard between them: a guard is a
+  /// thing to remember, and an early return is not. ↩️A mixed cell drag
+  /// stood a lane selection beside its band, both covered the same rows and
+  /// stacked their fills, and the span read darker for having been
+  /// described twice (one band since 유저 2026-10-25).
   Widget? _selectedBand(({int startIndex, int endIndexExclusive}) window) {
     final range = frameRangeSelection?.value;
     if (range != null) {

@@ -53,15 +53,10 @@ class KeyClipboard {
   /// What a copy here takes: the lanes, each with its keys, and the frames
   /// it spans — null where the press stands on no lane, or on lanes with no
   /// key in reach.
-  KeyCopy? get _copyHere {
-    final lane = _laneVerbs.laneVerbRange;
-    final lanes = lane == null ? null : _laneVerbs.laneKeysCopiedFrom(lane);
-    return lane != null &&
-            lanes != null &&
-            lanes.any((lane) => lane.keys.isNotEmpty)
-        ? (lanes: lanes, length: lane.lengthFrames)
-        : null;
-  }
+  KeyCopy? get _copyHere => switch (_laneVerbs.laneVerbRange) {
+    final lane? => _laneVerbs.keyCopyOf(lane),
+    null => null,
+  };
 
   /// Whether a copy here takes keys — the lane half of the shared pill's
   /// copy, asked before the frame board's ([FrameClipboard.timelinePlace]

@@ -166,7 +166,7 @@ class _StoryboardFolded {
       viewportWidth: 0,
       showSeconds: _state.widget.showSeconds,
       audioPeaksFor: _state.widget.audioPeaksFor,
-      seRowsInDisplayOrder: _state._railRows._seRowsInDisplayOrder(track),
+      moveRows: _state._railRows._seMoveRows(track),
     ),
   );
 

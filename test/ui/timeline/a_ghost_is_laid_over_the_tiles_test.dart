@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
+import '../../helpers/frame_name_of.dart';
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/painted_glyph_boxes.dart';
 import '../../helpers/run_edge_fixtures.dart';
@@ -52,11 +53,6 @@ void main() {
             coveringDrawingBlockAt(layer.timeline, frameIndex) != null
         ? TimelineCellExposureState.held
         : TimelineCellExposureState.uncovered;
-  }
-
-  String? nameFor(Layer layer, int frameIndex) {
-    final cel = exposedFrameIdAt(layer.timeline, frameIndex);
-    return cel == null ? null : layer.frameById(cel)?.name;
   }
 
   Layer rowOf(
@@ -108,7 +104,7 @@ void main() {
     ),
     crossAxisExtent: 28,
     exposureStateForLayer: stateFor,
-    frameNameForLayer: nameFor,
+    frameNameForLayer: frameNameOf,
     colorScheme: const ColorScheme.dark(),
     baseTextStyle: const TextStyle(fontSize: 11),
     tileStore: store,

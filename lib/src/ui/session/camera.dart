@@ -9,11 +9,8 @@ import '../../models/transform_track.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
-import '../../models/timeline_frame_range.dart';
 import '../../services/camera_path.dart';
 import '../../services/camera_pose_resolver.dart';
-import '../../services/command.dart';
-import '../../services/commands/update_cut_camera_command.dart';
 import '../../services/commands/update_project_camera_size_command.dart';
 import '../brush/brush_editor_selection.dart';
 import 'active_cut_controllers.dart';
@@ -21,10 +18,7 @@ import 'active_cut_edits.dart';
 import 'cut_under_playhead.dart';
 import 'session_roles.dart';
 import '../timeline/timeline_drag_preview.dart'
-    show
-        TimelineDragPreview,
-        laneEditInFlight,
-        timelineDragPreviewCarriedCamera;
+    show TimelineDragPreview, timelineDragPreviewCameraTrackFor;
 
 /// The CAMERA — the frame size, the pose at a frame, the keyframes and the
 /// track that holds them, the instruction set and the block preview — as its
@@ -39,7 +33,6 @@ class Camera {
     required ProjectAccess project,
     required SelectionAccess selection,
     required ChangeSink changes,
-    required TimelineAccess timeline,
     required ActiveCutControllers controllers,
     required ValueNotifier<TimelineDragPreview?> dragPreview,
     required ActiveCutEdits activeCut,
@@ -47,7 +40,6 @@ class Camera {
   }) : _project = project,
        _selection = selection,
        _changes = changes,
-       _timeline = timeline,
        _controllers = controllers,
        _dragPreview = dragPreview,
        _activeCut = activeCut,
@@ -59,7 +51,6 @@ class Camera {
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
-  final TimelineAccess _timeline;
   final ActiveCutControllers _controllers;
   final ValueNotifier<TimelineDragPreview?> _dragPreview;
 
@@ -263,48 +254,6 @@ class Camera {
     _changes.notifyChanged();
   }
 
-  Command? cameraKeysCommandForRange(TimelineFrameRangeSelection selection) {
-    final cut = _project.activeCutOrNull;
-    final cutId = _timeline.editingSession.activeCutId;
-    if (cut == null || cutId == null) {
-      return null;
-    }
-    var camera = cut.camera;
-    var changed = false;
-    // Keys only on the frames the cut is drawn for (I-73-camera-row-Q2).
-    final drawn = _project.activeCutDrawnFrameCount;
-    for (
-      var frame = selection.startIndex;
-      frame < selection.endIndexExclusive;
-      frame += 1
-    ) {
-      if (!cameraKeyFits(frame, drawnFrameCount: drawn) ||
-          camera.keyframeAt(frame) != null) {
-        continue;
-      }
-      // Freeze the RESOLVED pose (AE behavior): keys appear, the picture
-      // does not move.
-      camera = camera.withKeyframe(
-        frame,
-        resolveCameraPoseAt(
-          camera: cut.camera,
-          canvasSize: cut.canvasSize,
-          frameIndex: frame,
-        ),
-      );
-      changed = true;
-    }
-    if (!changed) {
-      return null;
-    }
-    return UpdateCutCameraCommand(
-      repository: _project.repository,
-      cutId: cutId,
-      camera: camera,
-      description: 'Create camera keys',
-    );
-  }
-
   /// The camera frame's aspect — what the conte's PICTURE column is shaped
   /// by, so a cell's silhouette matches the cut's.
   double get cameraFrameAspect {
@@ -326,18 +275,18 @@ class Camera {
   ///
   /// …and a length change in flight — a trim (I-73-camera-row-Q4) or an
   /// O.L's edge (Q7): the key on the cut's last frame moves with it under
-  /// the hand ([timelineDragPreviewCarriedCamera]).
+  /// the hand (`timelineDragPreviewCarriedCamera`).
+  ///
+  /// ↩️A block ride's track was handed in here by the drag, a channel of
+  /// its own beside the preview that already carried it; it rides that
+  /// preview alone now (H20), read as the storyboard's lanes read it.
   TransformTrack? get activeCutCameraTrack {
     final cut = _project.activeCutOrNull;
-    final preview = _dragPreview.value;
-    final edit = laneEditInFlight(preview);
-    if (cut != null && edit?.cameraCutId == cut.id) {
-      return edit!.cameraTrack;
+    if (cut == null) {
+      return null;
     }
-    final carried = cut == null
-        ? null
-        : timelineDragPreviewCarriedCamera(preview, cut.id);
-    return _cameraKeysDragPreview ?? carried?.track ?? cut?.camera.track;
+    return timelineDragPreviewCameraTrackFor(_dragPreview.value, cut.id) ??
+        cut.camera.track;
   }
 
   /// The path the active cut's camera takes (I-89 ④), its frames [frameSize]
@@ -384,20 +333,4 @@ class Camera {
     CameraPath? path,
   })?
   _path;
-
-  /// The in-flight camera-key preview the cell resolution consults
-  /// (exposureStateForLayer): the camera row's cells follow the drag
-  /// without the repository moving.
-  ///
-  /// The very track the block-ride commit lands, so the preview can never
-  /// promise a landing the release won't keep. ↩️It was the pose facade's
-  /// map, turned into a track here the way that commit turned it
-  /// (`CutCamera(keyframes:)`) — the form that made keys nobody set
-  /// (F-309).
-  TransformTrack? _cameraKeysDragPreview;
-
-  /// The block-ride drag hands its shifted track in here per move and
-  /// clears it (null) on release — the one writer outside this object.
-  void showCameraKeysDragPreview(TransformTrack? shifted) =>
-      _cameraKeysDragPreview = shifted;
 }

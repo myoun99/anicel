@@ -21,8 +21,6 @@
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show ValueNotifier;
-
 import '../../services/flutter_test_run.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_cache_invalidation.dart';
@@ -31,7 +29,6 @@ import '../../models/conte/conte_ink_keys.dart';
 import '../../models/envelope/cut_envelope_ink_keys.dart';
 import '../../models/frame.dart';
 import '../../models/layer.dart';
-import '../../models/canvas_viewport.dart';
 import '../../models/timesheet_ink_keys.dart';
 import '../../models/viewer_ink_keys.dart';
 import '../../services/bitmap_surface_geometry.dart'
@@ -41,8 +38,9 @@ import '../../services/cel_text_laying.dart';
 import '../../services/cut_frame_composite_plan.dart'
     show resolveExposedFrameAt;
 import '../../services/playback/editor_cache_invalidation_hub.dart';
-import '../canvas/canvas_look.dart';
+import '../playback/frame_picture_store.dart';
 import '../playback/layer_frame_image_cache.dart';
+import '../playback/stacked_frame_picture.dart' show FramePictureKey;
 import 'session_roles.dart';
 import 'cache_budgets.dart';
 
@@ -122,41 +120,11 @@ class RenderCaches {
   /// gap would land in `untrackedBytes` and read as engine overhead.
   final Map<String, int> viewerRasterBytesByViewer = <String, int>{};
 
-  /// What each LAYER STACK VIEW's display buffer holds, by view — the
-  /// editing canvas's, each live conte picture's (유저 답
-  /// conte-picture-display-Q1 「실시간 합성」) and each cut the track stack
-  /// shows: a canvas-resolution image or a chain of them (a derived buffer
-  /// pins the one it was drawn from), 33MB on a 4K view, kept for as long as
-  /// nothing changes — and the static-composite bake beside it, one
-  /// visible-rect raster (~9MB at 1928×1200, 2026-09-11). Each view reports
-  /// both as one number ([countStackBuffer]).
-  ///
-  /// 🚨PUSHED, for the reason above it: each buffer lives in a widget State
-  /// the session does not own. ↩️The canvas pushed a plain int of its own and
-  /// the conte's pictures a map beside it, until the track stack drew its
-  /// cuts on the same view (2026-10-10) and was about to be a third: one map.
-  final Map<Object, int> stackBufferBytes = {};
-
-  /// [view]'s display buffer holds [bytes] now — 0 when it goes away.
-  void countStackBuffer(Object view, int bytes) {
-    if (bytes == 0) {
-      stackBufferBytes.remove(view);
-    } else {
-      stackBufferBytes[view] = bytes;
-    }
-  }
-
-  /// How the editing canvas shows a cut's frame ([CanvasLook]) — what a
-  /// frame is made of where the canvas shows it ([CanvasPictures]), so the
-  /// warmer makes the images the canvas will ask for and the ruler's bar
-  /// counts them. Full at every frame until the canvas first says.
-  ///
-  /// PUSHED, as [stackBufferBytes] is: the look is the canvas view's own
-  /// answer for its zoom, its screen and the camera a run is seen through,
-  /// and the session owns none of them.
-  final ValueNotifier<CanvasLook> canvasLook = ValueNotifier(
-    CanvasLook(view: CanvasViewport(), devicePixelRatio: 1),
-  );
+  /// 🪦`stackBufferBytes` held what each LAYER STACK VIEW's display buffer
+  /// and its static-composite bake kept, pushed by view — one map since the
+  /// track stack was about to be a third pusher (2026-10-10) — until
+  /// nothing kept either (one-picture-per-frame ②-5a, 2026-10-25): a
+  /// frame's picture is the store's (`FramePictureStore`).
 
   /// What the storyboard's and the conte's thumbnails hold — every panel
   /// picture still inside its budget (one viewer's share of this device).
@@ -319,6 +287,12 @@ class RenderCaches {
     frameStore: brushFrameStore,
   );
 
+  /// Every frame's one picture a screen shows a run from — keyed by what it
+  /// shows ([FramePictureKey]), so an edit asks for another picture and
+  /// none needs telling ([FramePictures]).
+  late final FramePictureStore<FramePictureKey> framePictureStore =
+      FramePictureStore();
+
   /// A5 — the trailing edge of an edit burst, so the warming queue
   /// restarts ONCE per burst instead of once per dab commit. Only the
   /// RESTART is deferred: the cache invalidations and the yield signal
@@ -339,7 +313,6 @@ class RenderCaches {
       : const Duration(milliseconds: 200);
 
   void _onBrushFrameInvalidated(BrushFrameCacheInvalidation invalidation) {
-    layerFrameImageCache.invalidateFrame(invalidation.frameKey);
     // Warming yields to the edit and then re-renders the dirty frames.
     _onEditActivity();
     _warmDebounce?.cancel();
@@ -369,6 +342,6 @@ class RenderCaches {
     _warmDebounce?.cancel();
     cacheInvalidationHub.removeBrushFrameListener(_onBrushFrameInvalidated);
     layerFrameImageCache.dispose();
-    canvasLook.dispose();
+    framePictureStore.dispose();
   }
 }

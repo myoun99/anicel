@@ -337,7 +337,7 @@ void main() {
       final drawn = spans.first.child as TimelineLaneKeysLine;
       expect(drawn.cells, 9);
       expect((drawn.startsAtKey, drawn.endsAtKey), (true, true));
-      expect(drawn.color, layerMarkColor(layer.mark));
+      expect(drawn.layer, same(layer), reason: 'the row\'s look');
     });
 
     test('a key alone has its mark and no line', () {

@@ -32,8 +32,8 @@ import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 
-import '../../helpers/make_the_rows_first.dart';
 import '../../helpers/stack_as_the_plan_hands_it.dart';
+import '../../helpers/the_frame_as_it_stands.dart';
 
 /// 🚨★★★ (v) 2단계의 계약 — **한 장으로 합치고 한 번만 리샘플한다.**
 ///
@@ -136,7 +136,12 @@ void main() {
     required bool disableBuffer,
     required CanvasViewport viewport,
   }) async {
-    final view = CanvasLayerStackView(
+    // Every row read in hand from its cel ([TheFrameAsItStands]): nothing
+    // to wait for. ↩️The rows' images were made first, under real time —
+    // a cold cache resolved some on a later pass, and the two sides drew
+    // different numbers of rows — until the live row and the rows round it
+    // went with the frame's one picture (one-picture-per-frame ②-5a).
+    final view = TheFrameAsItStands(
       nodes: stackAsThePlanHandsIt(nodes),
       imageCache: cache,
       canvasSize: canvasSize,
@@ -146,16 +151,9 @@ void main() {
       paperBackground: const ProjectBackground.color(0xFF00FF00),
       debugDisableSingleBuffer: disableBuffer,
     );
-    // 🚨WARM FIRST, THEN LOOK — a cold cache resolves some rows on a later
-    // pass, so the first pump and the second draw different numbers of rows.
-    // Stage 1 measured this failing with the feature OFF on both sides.
-    // ↩️A settle alone waited on the pumped clock, which finishes no decode:
-    // a busy machine still rastered a side with a row missing.
-    await makeTheRowsFirst(tester, view);
     await tester.pumpWidget(
       MaterialApp(
-        // A distinct key per render, so the second pump builds a FRESH state
-        // rather than reusing the first one's warm bake.
+        // A distinct key per render, so the second pump builds a FRESH state.
         key: ValueKey<String>('$disableBuffer/${viewport.zoom}'),
         home: Scaffold(
           body: Center(
@@ -168,7 +166,7 @@ void main() {
     final painted = tester
         .widgetList<CustomPaint>(
           find.descendant(
-            of: find.byType(CanvasLayerStackView),
+            of: find.byType(TheFrameAsItStands),
             matching: find.byType(CustomPaint),
           ),
         )
@@ -311,10 +309,16 @@ void main() {
   group('the law: 줌이 정한다, 액티브는 안 묻는다', () {
     test('reduced filters, magnified does not', () {
       expect(
-        filterQualityForDisplayScale(0.5),
+        filterQualityForDisplayScale(0.7),
         ui.FilterQuality.low,
         reason: 'more artwork pixels than screen pixels — point sampling '
             'throws most of them away and the line work crawls',
+      );
+      expect(
+        filterQualityForDisplayScale(0.5),
+        ui.FilterQuality.medium,
+        reason: 'at or under half a bilinear window misses texels: the '
+            'image\'s own mip chain, which IS the halvings (D7-2)',
       );
       expect(
         filterQualityForDisplayScale(2),
@@ -328,70 +332,11 @@ void main() {
       );
     });
 
-    test(
-      'below 100% the display is fed from a level: halved until the residual '
-      'lies in (0.5, 1] (안 1 「선명」, 2026-09-16)',
-      () {
-        expect(displayLevelOf(1), 0);
-        expect(displayLevelOf(1.5), 0);
-        expect(displayLevelOf(0.75), 0, reason: 'one bilinear window away');
-        expect(displayLevelOf(0.51), 0);
-        expect(
-          displayLevelOf(0.5),
-          1,
-          reason: 'exactly half: the level lands 1:1',
-        );
-        expect(displayLevelOf(0.45), 1);
-        expect(displayLevelOf(0.26), 1);
-        expect(displayLevelOf(0.25), 2);
-        expect(displayLevelOf(0.13), 2);
-        expect(displayLevelOf(0.125), 3);
-        expect(displayLevelOf(1 / 32), maxDisplayLevel, reason: 'capped');
-        expect(displayLevelOf(0.01), maxDisplayLevel, reason: 'capped');
-        expect(displayLevelOf(-0.45), 1, reason: 'a flip is not a reduction');
-      },
-    );
-
-    test('the residual is what the one blit reduces by — in (0.5, 1] under '
-        'the cap, the device scale itself at level 0', () {
-      expect(displayResidualOf(0.45), moreOrLessEquals(0.9));
-      expect(displayResidualOf(0.5), 1.0);
-      expect(displayResidualOf(0.25), 1.0);
-      expect(displayResidualOf(0.26), moreOrLessEquals(0.52));
-      expect(displayResidualOf(0.7), 0.7);
-      expect(displayResidualOf(2), 2);
-      expect(
-        displayResidualOf(0.01),
-        moreOrLessEquals(0.16),
-        reason: 'past the cap the blit undersamples, as it always did',
-      );
-      for (var scale = 1 / 16; scale < 1; scale *= 1.0137) {
-        final residual = displayResidualOf(scale);
-        expect(residual, greaterThan(0.5), reason: 'scale $scale');
-        expect(residual, lessThanOrEqualTo(1), reason: 'scale $scale');
-      }
-    });
-
-    test('the blit samples the RESIDUAL: exactly 50% is a level landing 1:1 '
-        '(none), 45% is a level reduced by 0.9 (low)', () {
-      expect(
-        filterQualityForDisplayScale(displayResidualOf(0.5)),
-        ui.FilterQuality.none,
-      );
-      expect(
-        filterQualityForDisplayScale(displayResidualOf(0.45)),
-        ui.FilterQuality.low,
-      );
-      expect(
-        displayEdgeAntiAliased(CanvasViewport(zoom: 0.5), 1, level: 1),
-        isFalse,
-        reason: 'the level-1 image lands 1:1: its edge is cut on the grid',
-      );
-      expect(
-        displayEdgeAntiAliased(CanvasViewport(zoom: 0.45), 1, level: 1),
-        isTrue,
-      );
-    });
+    // ↩️'below 100% the display is fed from a level', 'the residual is what
+    // the one blit reduces by' and 'the blit samples the RESIDUAL' pinned
+    // the levels (안 1 「선명」, 2026-09-16) — gone with every picture made
+    // per zoom (one-picture-per-frame ②-5b): the one picture at canvas
+    // resolution is reduced from its own chain, by the device scale.
 
     test(
       'the scale is the DEVICE scale, zoom × ratio — rotation and flips do '

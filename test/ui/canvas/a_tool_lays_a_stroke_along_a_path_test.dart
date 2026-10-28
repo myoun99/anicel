@@ -24,6 +24,7 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/canvas/stroke_in_flight.dart';
 import 'package:anicel/src/ui/canvas/view_hand.dart';
 
 import '../brush_canvas_test_helpers.dart';
@@ -72,8 +73,18 @@ void main() {
 
     host.show!.landStroke(corner);
 
-    expect(host.active, [true, false]);
+    expect(host.active, [StrokeInFlight.paints, StrokeInFlight.none]);
     expect(host.committed, hasLength(1), reason: 'landed before it answers');
+  });
+
+  testWidgets('an erasing tool\'s stroke is heard as one that erases — what '
+      'leaves an empty block empty (F-482)', (tester) async {
+    final host = _Host();
+    await _pump(tester, host, _brush().copyWith(erase: true));
+
+    host.show!.landStroke(corner);
+
+    expect(host.active, [StrokeInFlight.erases, StrokeInFlight.none]);
   });
 
   testWidgets('⛔nothing steadies it: a stabilised brush lays the path where '
@@ -270,19 +281,20 @@ void main() {
 
     final down = host.committed.single;
     expect(down.length, greaterThan(4));
-    // The stamp a dab lands with is its tip already turned (the tip-stamp
-    // cache), so two dabs turned alike wear the very same one.
+    // ↩️It compared the tip stamps a dab landed with, its tip already
+    // turned — a round tip has none since it is read off its radial
+    // profile (fbe3767c2), and the two nulls compared alike.
     expect(
-      down.first.tipMask,
-      same(down.last.tipMask),
+      down.first.angleDegrees,
+      down.last.angleDegrees,
       reason: 'one straight line, one direction from its first dab on',
     );
 
     // Fixture: the direction is what turns it.
     host.show!.landStroke([p(8, 30), p(150, 30)]);
     final across = host.committed.last;
-    expect(across.first.tipMask, same(across.last.tipMask));
-    expect(down.first.tipMask, isNot(same(across.first.tipMask)));
+    expect(across.first.angleDegrees, across.last.angleDegrees);
+    expect(down.first.angleDegrees, isNot(across.first.angleDegrees));
   });
 
   group('where there is nothing to draw on', () {
@@ -293,7 +305,11 @@ void main() {
       await tester.pump();
       expect(tester.binding.hasScheduledFrame, isFalse, reason: 'fixture');
 
-      expect(host.show!.landStroke(corner), isTrue, reason: 'it will be drawn');
+      expect(
+        host.show!.landStroke(corner, pressure: 0.3),
+        isTrue,
+        reason: 'it will be drawn',
+      );
       expect(host.askedForACel, 1);
       expect(host.committed, isEmpty, reason: 'not before the cel');
       expect(
@@ -310,6 +326,11 @@ void main() {
 
       expect(host.committed, hasLength(1));
       expect(host.committed.single.first.center, p(10, 10));
+      expect(
+        {for (final dab in host.committed.single) dab.pressure},
+        {0.3},
+        reason: 'at the pressure it was handed',
+      );
       expect(host.askedForACel, 1, reason: 'asked once');
     });
 
@@ -470,6 +491,27 @@ void main() {
       expect(overlay.hasStrokeContent, isFalse, reason: 'it has landed');
     });
 
+    // 🗣️F-483: the line from the last stroke goes through these two doors
+    // at that stroke's pressure.
+    testWidgets('every dab reads the pressure the stroke is handed — and the '
+        'same path at another pressure is another stroke', (tester) async {
+      final once = _Host();
+      await _pump(tester, once, _brush());
+      once.show!.landStroke(corner, pressure: 0.3);
+      expect({for (final dab in once.committed.single) dab.pressure}, {0.3});
+
+      final host = _Host();
+      final overlay = await pumpShown(tester, host);
+      host.show!.showStroke(corner, pressure: 0.3);
+      await untilShown(tester, overlay);
+      expect(host.show!.landStroke(corner), isTrue);
+      expect(
+        {for (final dab in host.committed.single) dab.pressure},
+        {1.0},
+        reason: 'shown light, landed at full: laid again at full',
+      );
+    });
+
     testWidgets('until it lands it is no stroke: the host hears nothing, and '
         'a save lands nothing of it', (tester) async {
       final host = _Host();
@@ -483,7 +525,11 @@ void main() {
       expect(overlay.hasStrokeContent, isTrue, reason: 'and it still shows');
 
       host.show!.landStroke(corner);
-      expect(host.active, [true, false], reason: 'heard as it lands');
+      expect(
+        host.active,
+        [StrokeInFlight.paints, StrokeInFlight.none],
+        reason: 'heard as it lands',
+      );
       expect(host.committed, hasLength(1));
     });
 
@@ -597,7 +643,7 @@ void main() {
         Offset(100, 50),
       ]);
       expect(host.committed, hasLength(1));
-      expect(host.active, [true, false]);
+      expect(host.active, [StrokeInFlight.paints, StrokeInFlight.none]);
     });
 
     testWidgets('a long stretch is laid a share at a time — no frame lays a '
@@ -722,7 +768,7 @@ class _Host {
   List<List<BrushDab>> get committed => [
     for (final landed in data) landed.sourceDabs,
   ];
-  final active = <bool>[];
+  final active = <StrokeInFlight>[];
   int askedForACel = 0;
 }
 

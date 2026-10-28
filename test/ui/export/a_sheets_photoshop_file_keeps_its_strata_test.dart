@@ -76,12 +76,17 @@ void main() {
 
   final strings = AppText.strings;
 
+  /// What the file's rows are named in: the notation language, as the sheet
+  /// prints (F-485) — the program's is another here, so a row named in it
+  /// is no row the file holds.
+  final notation = AppText.notation;
+
   /// The rows of a timesheet or an envelope, as the file names them.
   final paperRows = [
-    strings.exStratumPaper,
-    strings.exStratumForm,
-    strings.exStratumContent,
-    strings.exStratumInk,
+    notation.exStratumPaper,
+    notation.exStratumForm,
+    notation.exStratumContent,
+    notation.exStratumInk,
   ];
 
   File written(String name) =>
@@ -152,10 +157,16 @@ void main() {
       return Completer<ui.Image>().future;
     }
 
+    expect(
+      strings.exStratumForm,
+      isNot(notation.exStratumForm),
+      reason: '⛔CONTROL: the program speaks another language than the sheet',
+    );
     final rows = sheetStrataRows(paperSheetStrata, draw);
     expect(
       [for (final row in rows) (row.name, row.opacity, row.blendMode)],
       [for (final name in paperRows) (name, 1.0, LayerBlendMode.normal)],
+      reason: 'named in the notation language (F-485)',
     );
     expect(asked, isEmpty);
     for (final row in rows) {
@@ -169,7 +180,7 @@ void main() {
     ]);
     expect(
       [for (final row in sheetStrataRows(SheetPaintLayer.values, draw)) row.name],
-      [...paperRows.take(3), strings.exStratumPicture, strings.exStratumInk],
+      [...paperRows.take(3), notation.exStratumPicture, notation.exStratumInk],
       reason: 'the conte\'s pictures between its words and its ink',
     );
   });
@@ -556,8 +567,8 @@ void main() {
       final read = psd('$sheet.psd');
       final strata = [
         ...paperRows.take(3),
-        strings.exStratumPicture,
-        strings.exStratumInk,
+        notation.exStratumPicture,
+        notation.exStratumInk,
       ];
       expect(
         [

@@ -1,22 +1,16 @@
-import 'dart:math' as math;
-
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
-import '../../core/path_names.dart' show fileNameOfPath;
 import '../../models/app_language.dart' show AppLanguage;
 import '../../services/persistence/app_documents.dart' show AppStorage;
-import '../audio/sound_cannot_play.dart' show PlaysWithout, SoundCannotPlay;
+import '../audio/sound_cannot_play.dart' show PlaysWithout;
 import '../dialogs/app_confirm_dialog.dart' show showAppNotice;
 import '../editor_session_manager.dart';
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
 import '../text/app_strings.dart';
-import '../text/text_measure.dart';
-import '../theme/app_theme.dart' show AppColors;
 import '../widgets/app_icon_button.dart';
 import '../widgets/app_tooltip.dart';
-import '../widgets/sound_level_bar.dart';
 import '../widgets/tick_layer.dart';
 import 'audio_level_meter.dart';
 import 'audio_recorder.dart' show VoiceRecordStartResult;
@@ -33,7 +27,11 @@ Future<void> toggleVoiceRecordingWithFeedback(
   final String? message;
   if (session.voiceRecording.isVoiceRecording.value) {
     message = await session.voiceRecording.stopVoiceRecordingAndPlace();
-  } else if (!await AppStorage.ensureMicrophoneAccess()) {
+  } else if (!session.voiceRecording.microphoneAllowed) {
+    // Without the app's consent the OS is not even asked (I-133) — the
+    // switch in Preferences ▸ Audio is where that happens.
+    message = strings.recordMicNotAllowed;
+  } else if (!await askTheOsForTheMicrophone(session)) {
     // The OS grant (Android, iOS, macOS): the Future waits out the system
     // dialog, so a take never rolls before the answer is in (F-178).
     message = strings.recordMicPermissionDenied;
@@ -41,6 +39,7 @@ Future<void> toggleVoiceRecordingWithFeedback(
     message = switch (session.voiceRecording.startVoiceRecording()) {
       VoiceRecordStartResult.started ||
       VoiceRecordStartResult.alreadyRecording => null,
+      VoiceRecordStartResult.notAllowed => strings.recordMicNotAllowed,
       VoiceRecordStartResult.deviceFailed => strings.recordMicOpenFailed,
     };
   }
@@ -52,6 +51,25 @@ Future<void> toggleVoiceRecordingWithFeedback(
   if (message != null && context.mounted) {
     await showAppNotice(context, title: strings.commonNotice, message: message);
   }
+}
+
+/// Asks the OS for the microphone — the one road both places behind the
+/// app's consent take (I-133): the switch in Preferences ▸ Audio turned
+/// on, and the record button with it on. A no turns the switch back off.
+///
+/// 🗣️I-133-Q1 (유저 2026-10-27): 「OS 가 거절하면 스위치를 다시 끈다」 — a
+/// switch that is on is a microphone that works. ↩️The first landing
+/// (53e76a6a2) kept it on after a no, the app's consent and the OS grant
+/// two answers; the user chose the one switch to say both.
+Future<bool> askTheOsForTheMicrophone(EditorSessionManager session) async {
+  if (await AppStorage.ensureMicrophoneAccess()) {
+    return true;
+  }
+  final settings = session.appSettings.audioSyncSettings.value;
+  session.appSettings.setAudioSyncSettings(
+    settings.copyWith(microphoneAllowed: false),
+  );
+  return false;
 }
 
 /// The play button's press — and its key's (F-261), so the key does what
@@ -94,11 +112,21 @@ void toggleLoop(CanvasPlaybackController controller) {
       : PlaybackLoopMode.loop;
 }
 
-/// 🚨T29 — the drop readout's fixed slot. Wide enough for a four-digit
-/// count at `labelSmall`; the text right-aligns inside it, so the digits
-/// grow leftward into space that was already reserved and the transport
-/// buttons never move.
-const double _dropSlotWidth = 72;
+/// The play button's words' box ([PlaybackTransportControls._playWithItsWords])
+/// — as wide as T29's slot was, which held a four-digit count; wider words
+/// shrink into it.
+const double _wordsWidth = 72;
+
+/// The words' box's height, and how far into the play button it reaches:
+/// down to the top of the glyph (a bar button's 18 in its 24).
+const double _wordsHeight = 9;
+const double _wordsReach = 3;
+
+/// The words' size — 「글자 작아도됨」 (F-463 ②).
+const double _wordsFontSize = 8;
+
+/// The clip mark's size — 「오른쪽 위에 들어가니 작게」 (F-487-Q1).
+const double _clipMarkSize = 10;
 
 /// Play/stop and loop mode transport row.
 ///
@@ -118,27 +146,21 @@ class PlaybackTransportControls extends StatelessWidget {
     this.voiceRecordClipLit,
     this.resolveStrings,
     this.playsWithout,
-    this.playbackLevel,
-    this.onPlaybackLevelChanged,
-    this.onPlaybackLevelSettled,
+    this.afterLoop,
   });
 
   final CanvasPlaybackController controller;
   final PlaybackScope scope;
 
-  /// How loud the canvas plays, 0..1 (I-85): non-null stands its bar at the
-  /// row's end, right of the level meter — the output's meter, then the
-  /// output's level (유저 2026-10-24 Q2 「레벨 미터 오른쪽(줄 끝)」).
-  final double? playbackLevel;
-
-  /// Every step of the bar under the hand, and once where it lets go.
-  final ValueChanged<double>? onPlaybackLevelChanged;
-  final ValueChanged<double>? onPlaybackLevelSettled;
+  /// What stands right of the loop toggle: the host panel's camera view
+  /// toggle. 🗣️F-463 ⑤ (유저 2026-10-25): 「카메라버튼은 루프버튼
+  /// 오른쪽에」. ↩️It stood after the whole row, past the mic and the meter.
+  final Widget? afterLoop;
 
   /// What the device transport's run plays without
-  /// ([AudioDeviceTransport.playsWithout]) — the front slot counts the
-  /// sounds while this scope plays, and the meter's seat goes red when the
-  /// output would not open (playback-says-the-sound-it-cannot-play).
+  /// ([AudioDeviceTransport.playsWithout]) — the play button's words
+  /// count the sounds while this scope plays, and the meter's seat goes red
+  /// when the output would not open (playback-says-the-sound-it-cannot-play).
   final ValueListenable<PlaysWithout>? playsWithout;
 
   /// The device transport's pre-clip bus peaks (AUDIO-PRO R2); non-null
@@ -150,9 +172,10 @@ class PlaybackTransportControls extends StatelessWidget {
   final ValueListenable<bool>? isVoiceRecording;
   final VoidCallback? onToggleVoiceRecording;
 
-  /// The take's clip light (REC1-D): shown ONLY while recording, red once
-  /// any post-gain sample hit the ceiling — always on duty, unlike the
-  /// toast/marker which sit behind the notice toggle.
+  /// The take's clip mark (REC1-D), on the mic's corner: red once any
+  /// post-gain sample of the take hit the ceiling — always on duty, unlike
+  /// the toast/marker which sit behind the notice toggle. The session lights
+  /// it inside a take only, and clears it when the take ends.
   final ValueListenable<bool>? voiceRecordClipLit;
 
   /// The PROGRAM-language table for the mic tooltips; null keeps English
@@ -171,7 +194,7 @@ class PlaybackTransportControls extends StatelessWidget {
   final VoidCallback? onSkipToStart;
 
   /// What the row shows of the playback: the buttons' states. The drop count
-  /// is its slot's own read ([_frontSlot]).
+  /// is its words' own read ([_words]).
   static _TransportShows _rowShows(CanvasPlaybackController controller) => (
     active: controller.isActive,
     scope: controller.scope,
@@ -193,20 +216,24 @@ class PlaybackTransportControls extends StatelessWidget {
           key: ValueKey<String>('playback-transport-${scope.name}'),
           mainAxisSize: MainAxisSize.min,
           children: [
-            // 🚨T29 — the drop readout leads the row, in a FIXED slot.
+            // 🗣️F-463 ② (유저 2026-10-25): 「건너뛴 글자 표시, 항상
+            // 자리차지하는거 의미없어보이기도 하니 재생버튼 위에 오버레이로서?
+            // 자리 안차지하고 그냥 위에다 보여주는느낌. 위치적으로도 재생버튼
+            // 위쪽. 글자 작아도됨」 — the drop count rides the play button
+            // ([_playWithItsWords]) and takes no place in the row.
             //
-            // 유저 2026-08-13: 「지금 재생버튼 오른쪽에, 오른쪽정렬로있어서
-            // **글자 생길때마다 재생버튼이 좌우로 왔다갔다함**. 그러니까
-            // 해당 영역 **재생버튼쪽 영역의 제일 왼쪽에 붙여두자.
-            // 오른쪽정렬인상태는 그대로지만 위치만**」
+            // ↩️T29 (유저 2026-08-13: 「글자 생길때마다 재생버튼이 좌우로
+            // 왔다갔다함 … 재생버튼쪽 영역의 제일 왼쪽에 붙여두자」) led the
+            // row with the count in a FIXED 72px slot, right-aligned, so its
+            // digits grew into reserved space and no button moved. An overlay
+            // keeps that — it moves nothing because it takes nothing.
             //
-            // ★The root is a VARIABLE-width thing sharing a flow with fixed
-            // ones. Moving it is only half the fix — first in a `min` row it
-            // would still shove the buttons as its digits appear. The slot
-            // is a fixed width with the text right-aligned INSIDE it, so
-            // the count grows leftward into its own space and no button
-            // ever moves. That is what keeping 「오른쪽정렬」 buys.
-            _frontSlot(),
+            // ↩️It was the least of the bar's right group — the transport
+            // and the zoom as one — its bar showed (a `FoldFloor`, F-463-Q1
+            // 유저 2026-10-27 20:2x: 「줌쪽부터 가려지도록 … 오른쪽묶음은
+            // 오른쪽묶음에서 제일 왼쪽이 남는구조」; (15:23) the transport's
+            // alone), until F-491 (23:15) put the transport at the start of
+            // the bar's left group, kept with the cut pill after it.
             _skipToStartButton(),
             // 🚨T28 — ONE button: play, or stop. 「재생, 일시정지상태의
             // 필요성을 못느끼겠음. 삭제하고 재생/정지 상태만 남김」.
@@ -217,16 +244,21 @@ class PlaybackTransportControls extends StatelessWidget {
             // joined it, hand-rolling `IconButton` + `selectedIcon` with a
             // theme colour of its own. Nothing here is a new rule; three
             // buttons stopped being exceptions to an old one.
-            _playButton(isPlayingHere),
+            _playWithItsWords(_playButton(isPlayingHere)),
             _loopToggle(),
+            ?afterLoop,
             if (isVoiceRecording != null && onToggleVoiceRecording != null)
-              _voiceRecordButton(),
-            if (isVoiceRecording != null && voiceRecordClipLit != null)
-              _clipLight(),
+              switch (voiceRecordClipLit) {
+                final clipLit? => _withItsClipMark(
+                  _voiceRecordButton(),
+                  clipLit,
+                ),
+                null => _voiceRecordButton(),
+              },
             // ↩️The QUALITY selector left this row (유저 확정, 2026-08-10:
             // 품질도 설정에 두자) — a setting, not a transport control, and
-            // the transport is the one row on the 문턱 that has to stay
-            // readable at a glance. On 2026-10-08 it left the app (유저:
+            // the transport is the one row that has to stay readable at a
+            // glance. On 2026-10-08 it left the app (유저:
             // 「재생화질 옵션 자체가 … 그냥 없애고 원본재생으로만 두자」):
             // playback shows a cut's picture at its own size.
             // The level meter (AUDIO-PRO R2), only while THIS scope's
@@ -241,101 +273,81 @@ class PlaybackTransportControls extends StatelessWidget {
             // holds for what it paints: since T29 a silent meter paints
             // nothing, so the seat costs no chrome.
             if (resolveMeterPeaks != null) _meter(controlsThisScope),
-            if (playbackLevel case final level?) _levelBar(level),
-            // ⛔The DROP readout is not here any more — it leads the row
-            // (T29). Trailing a `min`-width row is exactly what made the
-            // buttons move when its digits appeared.
+            // ⛔The DROP readout is not here any more — it rides the play
+            // button (F-463 ②; it led the row from T29). Trailing a
+            // `min`-width row is exactly what made the buttons move when
+            // its digits appeared.
           ],
         );
       },
     );
   }
 
-  /// The canvas's level — the bar every sound level in the app is
-  /// ([SoundLevelBar]), named by its tooltip in the program's language.
-  Padding _levelBar(double level) {
-    final strings = resolveStrings?.call() ?? AppStrings.of(AppLanguage.en);
-    return Padding(
-      padding: const EdgeInsets.only(left: 6),
-      child: AppTooltip(
-        message: strings.playbackLevelTooltip,
-        child: SoundLevelBar(
-          keyValue: 'playback-level-bar',
-          level: level,
-          onChanged: onPlaybackLevelChanged,
-          onChangeEnd: onPlaybackLevelSettled,
-        ),
-      ),
-    );
-  }
-
   Padding _meter(bool metering) {
-    final meter = AudioLevelMeter(
+    AudioLevelMeter meter({bool refused = false}) => AudioLevelMeter(
       controller: controller,
       resolvePeaks: resolveMeterPeaks!,
       metering: metering,
+      refused: refused,
     );
     final without = playsWithout;
     return Padding(
       padding: const EdgeInsets.only(left: 6),
       child: without == null
-          ? meter
+          ? meter()
           : ValueListenableBuilder<PlaysWithout>(
               valueListenable: without,
-              child: meter,
               // 유저 2026-10-17 (playback-waits-for-its-sound-Q1): an output
               // that will not open is said on the meter's own seat — red,
               // the reason on hover. The seat is the one F-111 reserved, so
               // nothing beside it moves.
-              builder: (context, plays, meter) => plays.output
+              builder: (context, plays, _) => plays.output
                   ? AppTooltip(
                       message: AppText.strings.playbackOutputRefused,
-                      child: ColoredBox(
-                        key: const ValueKey<String>(
-                          'playback-output-refused',
-                        ),
-                        color: AppColors.danger,
-                        child: meter,
-                      ),
+                      child: meter(refused: true),
                     )
-                  : meter!,
+                  : meter(),
             ),
     );
   }
 
-  ValueListenableBuilder<bool> _clipLight() {
-    return ValueListenableBuilder<bool>(
-      valueListenable: isVoiceRecording!,
-      builder: (context, recording, _) =>
-          ValueListenableBuilder<bool>(
-            valueListenable: voiceRecordClipLit!,
-            builder: (context, lit, _) => Padding(
-              padding: const EdgeInsets.only(left: 2, right: 2),
-              child: Icon(
-                Icons.circle,
-                key: const ValueKey<String>(
-                  'playback-record-clip-light',
-                ),
-                size: 8,
-                // ⛔THE SEAT IS ALWAYS RESERVED; only the colour
-                // changes. This used to be `!recording ?
-                // SizedBox.shrink() : …`, so arming a take GREW the
-                // row, and the gap that appeared beside the mic is
-                // what the user was looking at — 유저 08-27:
-                // 「재생하면 생기는 마이크 오른쪽 패딩? 공간? **그게
-                // 왜 생기는건지 몰랐어서**」. They were reading a
-                // layout jump as a bug in the mic button, and it
-                // was: 없다가 생기는 UI 금지.
-                color: !recording
-                    ? Colors.transparent
-                    : lit
-                    ? Theme.of(context).colorScheme.error
-                    : Theme.of(context).colorScheme.outlineVariant,
-              ),
+  /// The take's clip mark on the mic's top-right corner.
+  ///
+  /// 🗣️F-487-Q1 (유저 2026-10-27): 「합치는데, 빨간 점을 마이크에 오버레이로
+  /// 오른쪽 위에 둠. 근데 빨간 점은 녹음중이다 라는거랑 비슷해서 좀 더
+  /// 깨졌다는거 알기쉬운 아이콘으로? 오른쪽 위에 들어가니 작게」 — a warning's
+  /// glyph, not the dot a recording light is.
+  ///
+  /// ↩️It had a seat of its own right of the mic: an 8px dot, dim while a
+  /// take was armed and clear while none was. 유저 08-27: 「재생하면 생기는
+  /// 마이크 오른쪽 패딩? 공간? **그게 왜 생기는건지 몰랐어서**」 — it was
+  /// mounted only while recording, so arming a take grew the row, and the
+  /// seat was kept from then on (없다가 생기는 UI 금지). Kept clear, the seat
+  /// was a gap nobody could read (F-487). The mark rides over the mic, so
+  /// it has no seat to keep: only its colour changes.
+  Widget _withItsClipMark(Widget mic, ValueListenable<bool> clipLit) => Stack(
+    clipBehavior: Clip.none,
+    children: [
+      mic,
+      Positioned(
+        top: 0,
+        right: 0,
+        child: IgnorePointer(
+          child: ValueListenableBuilder<bool>(
+            valueListenable: clipLit,
+            builder: (context, lit, _) => Icon(
+              Icons.warning_rounded,
+              key: const ValueKey<String>('playback-record-clip-mark'),
+              size: _clipMarkSize,
+              color: lit
+                  ? Theme.of(context).colorScheme.error
+                  : Colors.transparent,
             ),
           ),
-    );
-  }
+        ),
+      ),
+    ],
+  );
 
   ValueListenableBuilder<bool> _voiceRecordButton() {
     return ValueListenableBuilder<bool>(
@@ -352,8 +364,8 @@ class PlaybackTransportControls extends StatelessWidget {
         // ⛔RED LEAVES, AND THAT IS THE POINT. "Recording" is an ON
         // state like Loop and Play, and the app's law for an on
         // state is the accent foreground ([AppIconButton], and
-        // [[ui-selection-style]]). Red stays on the clip light
-        // beside it, where it means the one thing red should mean
+        // [[ui-selection-style]]). Red stays on the clip mark on
+        // its corner, where it means the one thing red should mean
         // here — a sample hit the ceiling. Two meanings on one
         // colour is what made the row hard to read.
         return AppIconButton(
@@ -422,105 +434,103 @@ class PlaybackTransportControls extends StatelessWidget {
     );
   }
 
-  /// The front slot, on a read of its own (I-22 ③): a drop is counted on
-  /// every frame the device misses — exactly when there is no time to spare
-  /// — and while the count was part of what the ROW showed, every drop
-  /// rebuilt every button beside it. It rebuilds this slot alone now.
+  /// [play] with the playback's words over its top — the drops, and the
+  /// sounds the run plays without — in a box of their own that takes no
+  /// place in the row (F-463 ②): centred on the button, reaching down to its
+  /// glyph, wider than it.
   ///
-  /// 🚨AND IS LAID OUT, PAINTED AND DESCRIBED ALONE ([TickLayer], 10-12): the
-  /// slot was fixed in width only, so a new count laid the row out again up
-  /// to the panel's tab strip — whose layer is a tick's — and re-walked the
-  /// strip's semantics whole: 🔬108 render objects at each count a run
-  /// dropped (the real app, debug, cut 302). Its height is stated too now —
-  /// the row's buttons', or one line of its words where the OS text size
-  /// makes that taller — so the count changes nothing outside it.
+  /// ⛔The words take no press and no hover: they lie over the play button,
+  /// and a gesture that starts on a control is that control's (CLAUDE.md).
+  /// ↩️The sounds' line wore a tooltip naming each sound and why while it
+  /// stood in its own slot; which sound and why is said on its SE cell
+  /// (playback-waits-for-its-sound-Q1 「a」, `seSoundWarningsOf`).
+  Widget _playWithItsWords(Widget play) => Stack(
+    clipBehavior: Clip.none,
+    alignment: Alignment.center,
+    children: [
+      play,
+      Positioned(
+        bottom: AppIconButtonSize.bar.height - _wordsReach,
+        width: _wordsWidth,
+        height: _wordsHeight,
+        child: IgnorePointer(child: _words()),
+      ),
+    ],
+  );
+
+  /// The words, on a read of their own (I-22 ③): a drop is counted on every
+  /// frame the device misses — exactly when there is no time to spare — and
+  /// while the count was part of what the ROW showed, every drop rebuilt
+  /// every button beside it. It rebuilds the words alone now.
   ///
-  /// It says the sounds the run plays without as well (유저 2026-10-17,
+  /// 🚨AND THEY ARE LAID OUT, PAINTED AND DESCRIBED ALONE ([TickLayer],
+  /// 10-12): the slot they stood in was fixed in width only, so a new count
+  /// laid the row out again up to the panel's tab strip — whose layer is a
+  /// tick's — and re-walked the strip's semantics whole: 🔬108 render
+  /// objects at each count a run dropped (the real app, debug, cut 302). The
+  /// box is stated in both sizes, so the count changes nothing outside it.
+  ///
+  /// They say the sounds the run plays without as well (유저 2026-10-17,
   /// playback-waits-for-its-sound-Q1: 「재생 중 재생 버튼 줄 맨 앞에 빨간 경고
-  /// 문구」) — the drops above them when both are there. ⛔The slot does not
-  /// grow for the second line: the words shrink into it, so no button moves.
-  Widget _frontSlot() => Builder(
+  /// 문구」) — after the drops when both are there. ⛔The box does not grow
+  /// for them: the words shrink into it.
+  Widget _words() => Builder(
     builder: (context) {
       final style = Theme.of(context).textTheme.labelSmall?.copyWith(
+        fontSize: _wordsFontSize,
+        height: 1,
         color: Theme.of(context).colorScheme.error,
       );
-      return SizedBox(
-        width: _dropSlotWidth,
-        height: math.max(
-          AppIconButtonSize.bar.height,
-          TextMeasure(context, style).size(TextMeasure.everyScript).height,
-        ),
-        child: TickLayer(
-          child: _OnWhatItShows<_FrontShows>(
-            controller: controller,
-            read: _frontHere,
-            builder: (context) {
-              final shows = _frontHere(controller);
-              final without = playsWithout;
-              if (without == null || !shows.here) {
-                return _frontWords(shows.dropped, const {}, style);
-              }
-              return ValueListenableBuilder<PlaysWithout>(
-                valueListenable: without,
-                builder: (context, plays, _) =>
-                    _frontWords(shows.dropped, plays.sounds, style),
-              );
-            },
-          ),
+      return TickLayer(
+        child: _OnWhatItShows<_FrontShows>(
+          controller: controller,
+          read: _frontHere,
+          builder: (context) {
+            final shows = _frontHere(controller);
+            final without = playsWithout;
+            if (without == null || !shows.here) {
+              return _wordsSaying(shows.dropped, 0, style);
+            }
+            return ValueListenableBuilder<PlaysWithout>(
+              valueListenable: without,
+              builder: (context, plays, _) =>
+                  _wordsSaying(shows.dropped, plays.sounds.length, style),
+            );
+          },
         ),
       );
     },
   );
 
-  Widget _frontWords(
-    int dropped,
-    Map<String, SoundCannotPlay> silent,
-    TextStyle? style,
-  ) {
-    Text line(String words, String key) => Text(
-      words,
-      key: ValueKey<String>(key),
-      textAlign: TextAlign.right,
-      maxLines: 1,
-      style: style,
-    );
+  Widget _wordsSaying(int dropped, int silent, TextStyle? style) {
+    Text line(String words, String key) =>
+        Text(words, key: ValueKey<String>(key), maxLines: 1, style: style);
     final lines = [
       if (dropped > 0)
         line(
           AppText.strings.playbackDroppedCount(dropped),
           'playback-dropped-indicator',
         ),
-      if (silent.isNotEmpty)
-        AppTooltip(
-          message: [
-            for (final MapEntry(key: path, value: why) in silent.entries)
-              '${fileNameOfPath(path)} — '
-                  '${AppText.strings.soundCannotPlay(why)}',
-          ].join('\n'),
-          child: line(
-            AppText.strings.playbackSilentCount(silent.length),
-            'playback-silent-indicator',
-          ),
+      if (silent > 0)
+        line(
+          AppText.strings.playbackSilentCount(silent),
+          'playback-silent-indicator',
         ),
     ];
     if (lines.isEmpty) {
       return const SizedBox.shrink();
     }
-    return Padding(
-      padding: const EdgeInsets.only(right: 6),
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        alignment: Alignment.centerRight,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: lines,
-        ),
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        spacing: 4,
+        children: lines,
       ),
     );
   }
 
-  /// What the front slot shows of the playback: whether its own scope's run
+  /// What the words show of the playback: whether its own scope's run
   /// is the one going, and that run's drops — none while another scope
   /// plays.
   _FrontShows _frontHere(CanvasPlaybackController controller) {
@@ -529,7 +539,7 @@ class PlaybackTransportControls extends StatelessWidget {
   }
 }
 
-/// What the front slot shows of the playback ([PlaybackTransportControls]).
+/// What the play button's words show ([PlaybackTransportControls]).
 typedef _FrontShows = ({bool here, int dropped});
 
 /// What the transport row shows of the playback — the buttons' states, and
@@ -550,7 +560,7 @@ typedef _TransportShows = ({
 /// meter follows the frame on its own listenable. ↩️The drop count rode
 /// with the buttons until the drops were measured: it moves on every frame
 /// missed, so the row rebuilt whole at exactly the frames there was no time
-/// for. The count's slot reads it through a gate of its own.
+/// for. The count's words read it through a gate of its own.
 class _OnWhatItShows<T> extends StatefulWidget {
   const _OnWhatItShows({
     required this.controller,

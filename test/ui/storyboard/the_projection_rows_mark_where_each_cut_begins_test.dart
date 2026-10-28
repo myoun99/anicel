@@ -18,11 +18,12 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart'
     show StoryboardCutStartsPainter, StoryboardPanel;
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
     show TimelineGridSheet, timelineFrameBoundaryLinePosition;
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
     show CutTrimDragPreview;
+
+import '../../helpers/storyboard_host.dart';
 
 /// 🗣️I-73 ④ — the drawn proposal: 「투영 행은 컷이 시작하는 자리마다 세로
 /// 점선(2 3)」, and 유저 2026-10-08: 「컷 클리핑하는거 사이 점선으로
@@ -74,48 +75,28 @@ void main() {
   );
 
   /// The conte tab over the three cuts; the session, to steer a drag.
-  Future<EditorSessionManager> pumpDashes(WidgetTester tester) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final session = EditorSessionManager(
-      initialProject: Project(
-        id: const ProjectId('dashes'),
-        name: 'Dashes',
-        createdAt: DateTime.utc(2026, 10, 9),
-        tracks: [
-          Track(
-            id: trackId,
-            name: 'V1',
-            cuts: [
-              cutOf('a', 10),
-              cutOf('b', 10),
-              cutOf('c', 6, gap: 4, conte: false),
-            ],
-          ),
-        ],
-      ),
-    );
-    addTearDown(session.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => StoryboardTabHost(
-              session: session,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
+  Future<EditorSessionManager> pumpDashes(WidgetTester tester) =>
+      pumpStoryboardHost(
+        tester,
+        Project(
+          id: const ProjectId('dashes'),
+          name: 'Dashes',
+          createdAt: DateTime.utc(2026, 10, 9),
+          tracks: [
+            Track(
+              id: trackId,
+              name: 'V1',
+              cuts: [
+                cutOf('a', 10),
+                cutOf('b', 10),
+                cutOf('c', 6, gap: 4, conte: false),
+              ],
             ),
-          ),
+          ],
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    return session;
-  }
+        surface: const Size(1600, 900),
+        pixelsPerFrame: 12,
+      );
 
   double pixelsPerFrame(WidgetTester tester) => tester
       .widget<StoryboardPanel>(find.byType(StoryboardPanel))

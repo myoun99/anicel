@@ -20,7 +20,11 @@ class _SurfacePaintPass {
   late final bool _overlayReplacesCoords;
   late final bool _overlayBlendsInLayer;
   late final Paint _tileImagePaint;
-  late final int _level;
+
+  /// Device pixels a canvas pixel lands on ([BitmapSurfacePainter
+  /// .paintContentInto]), and whether that is a reduction.
+  late final double _scale;
+  late final bool _reduced = _scale < 1;
   late final Rect _visibleRect;
 
   /// The float the caller handed in — a selection's, from the row's slot.
@@ -55,25 +59,22 @@ class _SurfacePaintPass {
   /// it otherwise applies the layer twice wherever two draws overlap, which
   /// looks like a darkened seam rather than an error.
   ///
-  /// [level] is the display pyramid's level this paint composes at
+  /// [scale] is how many device pixels this paint lands on a canvas pixel
   /// ([BitmapSurfacePainter.paintContentInto]).
   void paintContentInto(
     Canvas canvas, {
     Paint? layerPaint,
-    int level = 0,
+    double scale = 1,
     RowFloat? float,
   }) {
     _canvas = canvas;
     _layerPaint = layerPaint;
-    _level = level;
+    _scale = scale;
     _float = float == null || float.preview.drawnWorldRect.isEmpty
         ? null
         : float;
     _floats = [?_float, ?_painter._ownFloat];
     _painter.pictureBudget.paintBegan(_painter.lineage);
-    if (_level > 0) {
-      TilePyramid.instance.paintBegan(_painter.lineage);
-    }
     assert(
       _layerPaint == null || _painter.drawsDisjointCoverage,
       'A layer paint may only ride the individual draws when they cover '
@@ -115,8 +116,16 @@ class _SurfacePaintPass {
       _canvas.saveLayer(_storableRect, Paint());
     }
 
+    // 🚨★★★T21 (유저 2026-08-13 「줌이 정한다」): the display's one law, read at
+    // this paint's scale — `none` into a buffer at the canvas's resolution
+    // (a tile is filtered with no neighbours to sample, so `low` there
+    // would buy a seam at every tile edge); reduced, the filter, from each
+    // picture's chain ([_CoordinatePicture]). ↩️Every paint drew `none`
+    // until one-picture-per-frame ②-5b-2 — a reduced one from level tiles
+    // at the level's residual, and between 50% and 100% the tiles
+    // themselves, nearest.
     _tileImagePaint = Paint()
-      ..filterQuality = FilterQuality.none
+      ..filterQuality = filterQualityForDisplayScale(_scale)
       ..isAntiAlias = false;
     if (_layerPaint != null) {
       // The layer rides every draw instead of a buffer around them.
@@ -144,9 +153,9 @@ class _SurfacePaintPass {
     // a cliff, not a smoothness question. 2d0478fb (2026-09-09) stopped the
     // copy, so both lookups are O(1) now; `tileAt` stays the one meant here.
     //
-    // 🚨★★★F-240: below 100% what a landing preview covers is not drawn
-    // here but made whole below ([_paintLandingAtLevel]).
-    final landing = _level > 0 ? _landingRegion() : null;
+    // 🚨★★★F-240: reduced, what a landing preview covers is not drawn here
+    // but made whole below ([_paintLandingReduced]).
+    final landing = _reduced ? _landingRegion() : null;
     if (landing != null) {
       _canvas.save();
       _canvas.clipRect(
@@ -167,7 +176,7 @@ class _SurfacePaintPass {
     }
 
     if (landing != null) {
-      _paintLandingAtLevel(landing);
+      _paintLandingReduced(landing);
     } else {
       // ↩️🚨★★★F-33: the STAMP's ghost was drawn here, after the overlay's
       // restore (outside a stroke's isolation layer), so [_layerPaint]
@@ -183,9 +192,6 @@ class _SurfacePaintPass {
     // shows at full brightness — the paper edge against the backdrop is
     // the stage boundary.
     _painter.pictureBudget.paintEnded();
-    if (_level > 0) {
-      TilePyramid.instance.paintEnded(_painter.lineage);
-    }
   }
 
   /// The paper under a surface that shows no transparency.
@@ -207,15 +213,11 @@ class _SurfacePaintPass {
   /// coordinates that have no committed tile yet (ink on blank paper),
   /// which are coordinates like any other.
   ///
-  /// Above level 0 the visible rect is walked in BLOCKS instead
-  /// ([_LevelBlocks]): a block drawn as one level tile shows none of its
-  /// tiles' pictures, so they are not stamped and the budget may let them
-  /// go — zoomed out, the level tiles are the pictures the screen needs.
+  /// At every scale: reduced, the screen is fed from these same pictures,
+  /// so they are the ones it needs. ↩️Below 100% a block was drawn as one
+  /// level tile, which stamped none of the pictures under it and let the
+  /// budget let them go — until one-picture-per-frame ②-5b-2.
   void _paintVisibleTiles() {
-    if (_level > 0) {
-      _LevelBlocks(this).paint();
-      return;
-    }
     for (final covered in tilesUnderRect(_painter.surface, _visibleRect)) {
       _painter.pictureBudget.shown(_painter.lineage, covered.tile);
       _coordinates.paint(covered.coord);
@@ -245,9 +247,8 @@ class _SurfacePaintPass {
     );
   }
 
-  /// THE tile draw: [image], one tile's worth of pixels, at [coord]'s
-  /// origin on the surface's grid — a coordinate's picture at level 0, a
-  /// level tile under its block's scale above it ([_LevelBlocks]).
+  /// THE tile draw: [image], one tile's worth of pixels — a coordinate's
+  /// picture — at [coord]'s origin on the surface's grid.
   void _drawImageAtTile(ui.Image image, TileCoord coord) =>
       _canvas.drawImage(
         image,
@@ -339,9 +340,10 @@ class _SurfacePaintPass {
     }
   }
 
-  /// Where this paint's landing preview — the float —
-  /// draws, in this paint's own space and inside what it shows, grown out to
-  /// whole pixels of [_level]; null when none draws.
+  /// Where this paint's landing preview — the float — draws, in this
+  /// paint's own space and inside what it shows, grown out to whole tiles
+  /// of the surface (the grid its landed pictures' chains are made on,
+  /// [_paintLandingReduced]); null when none draws.
   Rect? _landingRegion() {
     Rect? covered;
     for (final float in _floats) {
@@ -356,53 +358,60 @@ class _SurfacePaintPass {
       return null;
     }
     final shown = covered.intersect(_visibleRect);
-    return shown.isEmpty ? null : wholeLevelPixelsOutward(shown, _level);
+    return shown.isEmpty
+        ? null
+        : rectOutwardOnGrid(shown, 1 / _painter.surface.tileSize);
   }
 
   /// 🚨★★★F-240 (유저 2026-09-29: 「변형툴 변형도중이랑 확정이랑 그림 바뀌는
   /// 문제. 100%줌일땐 괜찮은데 50%에서 변형중에 필터 없음으로 보임 …
   /// 변형중에도 필터 통일적용하도록 근본/구조적 해결」): what a landing
-  /// preview covers, below 100%, is made THE WAY ITS LANDING WILL BE SHOWN.
+  /// preview covers, reduced, is made THE WAY ITS LANDING WILL BE SHOWN.
   ///
-  /// A landed cel shows here as level tiles — every level pixel the exact
-  /// mean of a 2×2 block of the level above, down from the coordinates'
-  /// own pictures ([TilePyramid], one halving law in `level_image.dart`).
-  /// The float and the stamp ghost were drawn over those tiles 1:1 at
-  /// `none` instead, which at a level is nearest sampling — one canvas
-  /// pixel in two at 50% — so a transform looked sharp while it was open
-  /// and softened the moment it landed.
+  /// A landed cel shows here as its tiles' pictures reduced from their
+  /// chains, each the 100% picture of its coordinate ([_CoordinatePicture]).
+  /// The float laid over the tiles, each reduced on its own, would blend
+  /// its edge with nothing under it where the landed tile blends it with
+  /// the cel. So each tile of [region] is painted by this same pass at
+  /// 100% — the coordinates, the overlay and the float exactly as 100% shows
+  /// them — into a render of its own, which the engine gives its chain, and
+  /// drawn reduced at its coordinate as the tile it lands as is: a picture
+  /// of the same size and bytes, the same chain, the same draw — so the
+  /// same bytes at every scale.
   ///
-  /// So [region], aligned to the level's pixels, is painted by this same
-  /// pass at level 0 — the coordinates, the overlay (a stroke or the ghost)
-  /// and the float exactly as 100% shows them — and halved [_level] times
-  /// through that one halving law, then drawn 1:1. Every level pixel in it
-  /// is the mean the landed cel's level tile will hold there: the same bytes
-  /// on the Windows app and the test runner, the ≤2/255 Vulkan gap of any
-  /// level aside (board `halving-rounds-differently-per-engine`).
-  void _paintLandingAtLevel(Rect region) {
-    var image = _rasterAtLevelZero(region);
-    try {
-      for (var halvings = 0; halvings < _level; halvings += 1) {
-        final halved = _halved(image);
-        image.dispose();
-        image = halved;
-      }
-      // 1:1 in the level's pixels, the blit a level tile gets.
-      _canvas.drawImageRect(
-        image,
-        Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
-        region,
-        _tileImagePaint,
+  /// ⛔NOT ONE RENDER OF THE REGION. 🔬Drawn so (this pin, 10-25), it was
+  /// apart from the landing wherever it is not a halving — on Skia on the
+  /// band a tile's edge is filtered on (60%: 47 pixels), on Impeller Vulkan
+  /// over most of the region (60%: 555), whose chain of a picture drifts
+  /// with the picture's size. One render can also pass the texture cap the
+  /// walk past it (`layer_stack_paint_pass.dart`) exists for; a tile cannot.
+  ///
+  /// ↩️The region was made at the display's level, halved from 100% one
+  /// 2×2 box at a time, while a landed cel showed as level tiles — until
+  /// one-picture-per-frame ②-5b-2.
+  void _paintLandingReduced(Rect region) {
+    final tileSize = _painter.surface.tileSize;
+    final tiles = tileRangeCovering(
+      left: region.left,
+      top: region.top,
+      right: region.right,
+      bottom: region.bottom,
+      tileSize: tileSize,
+    );
+    for (final coord in tileCoordsIn(tiles)) {
+      final image = _rasterAtFullSize(
+        tileCoordOriginOffset(coord, tileSize) &
+            Size.square(tileSize.toDouble()),
       );
-    } finally {
+      _drawImageAtTile(image, coord);
       // Safe once drawn: the draw holds its own claim on the pixels.
       image.dispose();
     }
   }
 
-  /// [region] as level 0 shows it — this same pass, one canvas pixel to one
+  /// [region] as 100% shows it — this same pass, one canvas pixel to one
   /// raster pixel.
-  ui.Image _rasterAtLevelZero(Rect region) {
+  ui.Image _rasterAtFullSize(Rect region) {
     final recorder = ui.PictureRecorder();
     final atFull = Canvas(recorder)
       ..translate(-region.left, -region.top)
@@ -413,16 +422,6 @@ class _SurfacePaintPass {
       return picture.toImageSync(region.width.round(), region.height.round());
     } finally {
       picture.dispose();
-    }
-  }
-
-  /// [image] halved once through the one halving law.
-  static ui.Image _halved(ui.Image image) {
-    final halving = halvingPicture([(image: image, at: Offset.zero)]);
-    try {
-      return halving.toImageSync(image.width ~/ 2, image.height ~/ 2);
-    } finally {
-      halving.dispose();
     }
   }
 }

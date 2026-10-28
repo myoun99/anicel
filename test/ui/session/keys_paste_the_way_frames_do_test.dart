@@ -357,6 +357,46 @@ void main() {
     expect(now().transformTrack.anchorPoint.keys[8]?.value, place);
   });
 
+  // I-65: where a cel number stands is a transform's lanes — its Position a
+  // place, its Scale a scale.
+  test('a cel number\'s Position is a place — on a layer\'s Position as it '
+      'is, on its own Scale neither paste lit', () {
+    s.effectsAndFx.addEffectToActiveLayer(EffectKind.celNumber);
+    final number = now().effects.single.id;
+    s.laneVerbs.setLaneValueAt(
+      before.id,
+      effectLaneId(number, 'position'),
+      3,
+      '1170, 300',
+      frameIsGlobal: false,
+      description: 'Type',
+      scaleLinked: false,
+    );
+    standOn(effectLaneId(number, 'position'), at: 3);
+    pill.copyFrame();
+    final scale = now().effects.single.stand.scale;
+
+    standOn(effectLaneId(number, 'scale'), at: 8);
+    expect(
+      (pill.canPasteIndependentFrame, pill.canPasteLinkedFrame),
+      (false, false),
+    );
+    pill.pasteIndependentFrame();
+    expect(now().effects.single.stand.scale, scale);
+
+    // Unnamed, it has no name to keep: the independent paste alone is lit.
+    standOn('position', at: 8);
+    expect(
+      (pill.canPasteIndependentFrame, pill.canPasteLinkedFrame),
+      (true, false),
+    );
+    pill.pasteIndependentFrame();
+    expect(
+      now().transformTrack.position.keys[8]?.value,
+      CanvasPoint(x: 1170, y: 300),
+    );
+  });
+
   group('where none of the copied lanes is there', () {
     late EffectId blurA;
     late EffectId blurB;

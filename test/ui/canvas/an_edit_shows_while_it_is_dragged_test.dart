@@ -184,7 +184,11 @@ void main() {
             walk(children);
           case CompositeBackdropBlend(:final children):
             walk(children);
+          case CompositeClip(:final children):
+            walk(children);
           case CompositeLeaf():
+          case CompositeOpaque():
+          case CompositeCelNumber():
             break;
         }
       }

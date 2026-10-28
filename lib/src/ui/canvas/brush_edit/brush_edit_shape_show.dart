@@ -65,7 +65,7 @@ class _BrushEditShapeShow implements ShapeShow {
   bool _strokeOpen = false;
 
   /// The path the hand asks for now.
-  List<CanvasPoint>? _wantedPath;
+  _ToolPath? _wantedPath;
 
   /// The path being laid, off screen.
   _StrokeLaying? _strokeLaying;
@@ -73,7 +73,7 @@ class _BrushEditShapeShow implements ShapeShow {
   /// The path whose stroke is on screen AND whole in the live rasterizer —
   /// what a release on it lands. Null once a newer path is being laid: the
   /// rasterizer holds that one now, whatever the screen still shows.
-  List<CanvasPoint>? _rasterHolds;
+  _ToolPath? _rasterHolds;
 
   bool _frameAsked = false;
 
@@ -139,33 +139,35 @@ class _BrushEditShapeShow implements ShapeShow {
   }
 
   @override
-  void showStroke(List<CanvasPoint> path) {
+  void showStroke(List<CanvasPoint> path, {double pressure = 1}) {
     if (!_canLay || path.length < 2) {
       return;
     }
     // The overlay shows one shape: a stroke asked for puts away an area.
     _dropTheArea();
-    _wantedPath = path;
-    if (_strokeLaying == null && !listEquals(_rasterHolds, path)) {
-      _strokeLaying = _StrokeLaying(path);
+    final wanted = (points: path, pressure: pressure);
+    _wantedPath = wanted;
+    if (_strokeLaying == null && !_samePath(_rasterHolds, wanted)) {
+      _strokeLaying = _StrokeLaying(wanted);
     }
     _askFrame();
   }
 
   @override
-  bool landStroke(List<CanvasPoint> path) {
+  bool landStroke(List<CanvasPoint> path, {double pressure = 1}) {
     _dropTheArea();
     if (!_strokeOpen || !_canLay || path.length < 2) {
       // Nothing laid ahead: the path is laid and landed in one go — the
       // road that also asks for a cel where there is none.
       _dropTheStroke();
-      return _state._pathStroke.strokeAlong(path);
+      return _state._pathStroke.strokeAlong(path, pressure: pressure);
     }
-    if (!listEquals(_rasterHolds, path)) {
+    final wanted = (points: path, pressure: pressure);
+    if (!_samePath(_rasterHolds, wanted)) {
       final laying = _strokeLaying;
-      final landing = laying != null && listEquals(laying.path, path)
+      final landing = laying != null && _samePath(laying.path, wanted)
           ? laying
-          : _StrokeLaying(path);
+          : _StrokeLaying(wanted);
       while (_stepStroke(landing)) {}
       _putUp(landing);
     }
@@ -280,7 +282,7 @@ class _BrushEditShapeShow implements ShapeShow {
     _putUp(laying);
     // 「앞의 것을 다 그리면 지금 손 위치로 한 번 더」.
     final wanted = _wantedPath;
-    if (wanted != null && !listEquals(wanted, laying.path)) {
+    if (wanted != null && !_samePath(laying.path, wanted)) {
       _strokeLaying = _StrokeLaying(wanted);
       _askFrame();
     }
@@ -303,7 +305,8 @@ class _BrushEditShapeShow implements ShapeShow {
       // scatter and jitter — and lands as the shape laid in one go does.
       stroke.startToolStrokeAt(
         waypoints.first,
-        dice: Object.hashAll(laying.path),
+        dice: Object.hashAll(laying.path.points),
+        pressure: laying.path.pressure,
       );
       _state._overlay._overlayModel.dropStaged();
       _rasterHolds = null;
@@ -434,10 +437,19 @@ class _ShapeLaying {
 }
 
 /// One stroke being laid off screen ([_BrushEditShapeShow._stepStroke]).
-class _StrokeLaying {
-  _StrokeLaying(this.path) : waypoints = _strokeWaypoints(path);
+/// A stroke the tool lays: its path, and the one pressure it is laid at
+/// ([ShapeShow.showStroke]). The same path at another pressure is another
+/// stroke.
+typedef _ToolPath = ({List<CanvasPoint> points, double pressure});
 
-  final List<CanvasPoint> path;
+/// Whether [a] is [b] — the same points, at the same pressure.
+bool _samePath(_ToolPath? a, _ToolPath b) =>
+    a != null && a.pressure == b.pressure && listEquals(a.points, b.points);
+
+class _StrokeLaying {
+  _StrokeLaying(this.path) : waypoints = _strokeWaypoints(path.points);
+
+  final _ToolPath path;
 
   /// The points the stroke is taken through ([_strokeWaypoints]).
   final List<CanvasPoint> waypoints;

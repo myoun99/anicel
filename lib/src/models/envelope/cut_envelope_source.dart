@@ -1,3 +1,4 @@
+import '../cut_id.dart';
 import '../layer_mark.dart';
 import '../project_frame_rate.dart';
 import 'cut_envelope_counts.dart';
@@ -8,10 +9,15 @@ import 'cut_envelope_counts.dart';
 /// is a list rather than a single cut.
 class CutEnvelopeCutLine {
   const CutEnvelopeCutLine({
+    required this.cut,
     required this.name,
     required this.durationFrames,
     required this.fps,
   });
+
+  /// The cut this line prints — the one a name typed into its box renames
+  /// (I-127-Q2).
+  final CutId cut;
 
   /// The cut's name VERBATIM. No prefix, no zero padding: the form already
   /// prints `C`, and a cut called `20` prints as `20` (user, 2026-08-06).
@@ -147,12 +153,88 @@ String? resolveEnvelopeText(String binding, CutEnvelopeSource source) {
       _ => null,
     };
   }
-  if (parts.length == 3 && parts.first == 'staff' && parts.last == 'name') {
-    final name = source.staff[parts[1]] ?? '';
+  if (_staffSlugIn(parts) case final slug?) {
+    final name = source.staff[slug] ?? '';
     return name.isEmpty ? null : name;
   }
   return null;
 }
+
+/// What an envelope box prints that someone TYPED — and so what a name
+/// typed into the box becomes: the work's episode or title, a CUT line's
+/// cut name, a stage's worker on the cut.
+///
+/// 🗣️I-127-Q1 (유저 2026-10-25) opened the staff boxes; I-127-Q2 (유저
+/// 2026-10-27): 「같은 값을 찍는 칸은 전부 — 타임시트 머리와 같은 길」 —
+/// the boxes that print what the timesheet's header prints. A box that
+/// prints what is COUNTED or measured (a length, a cel count, a size)
+/// holds nothing typed, and neither does a cel's letter — its layer's
+/// name, which no header prints — nor the logo.
+sealed class EnvelopeTypedValue {
+  const EnvelopeTypedValue();
+}
+
+/// The work's episode — `{episode}`.
+final class EnvelopeTypedEpisode extends EnvelopeTypedValue {
+  const EnvelopeTypedEpisode();
+}
+
+/// The work's title — `{title}`.
+final class EnvelopeTypedTitle extends EnvelopeTypedValue {
+  const EnvelopeTypedTitle();
+}
+
+/// [cut]'s name — `{cut[i].name}`, each CUT line its own cut.
+final class EnvelopeTypedCutName extends EnvelopeTypedValue {
+  const EnvelopeTypedCutName(this.cut);
+
+  final CutId cut;
+}
+
+/// [stage]'s worker on the envelope's cut — `{staff.<label>.name}`.
+final class EnvelopeTypedStaffName extends EnvelopeTypedValue {
+  const EnvelopeTypedStaffName(this.stage);
+
+  final LayerMark stage;
+}
+
+/// What [binding]'s box prints that someone typed, on [source] — or null
+/// for a box that prints nothing typed, a CUT line past the last cut, and
+/// a label no stage has.
+EnvelopeTypedValue? envelopeTypedValueOf(
+  String binding,
+  CutEnvelopeSource source,
+) {
+  final path = _token.firstMatch(binding.trim())?.group(1);
+  if (path == null) {
+    return null;
+  }
+  if (_indexed.firstMatch(path) case final indexed?) {
+    final line = int.parse(indexed.group(2)!);
+    return indexed.group(1) == 'cut' &&
+            indexed.group(3) == 'name' &&
+            line < source.cuts.length
+        ? EnvelopeTypedCutName(source.cuts[line].cut)
+        : null;
+  }
+  if (_staffSlugIn(path.split('.')) case final slug?) {
+    final stage = everyLayerMark()
+        .where((mark) => mark.keySlug == slug)
+        .firstOrNull;
+    return stage == null ? null : EnvelopeTypedStaffName(stage);
+  }
+  return switch (path) {
+    'episode' => const EnvelopeTypedEpisode(),
+    'title' => const EnvelopeTypedTitle(),
+    _ => null,
+  };
+}
+
+/// The label a binding's [parts] name the worker of, or null.
+String? _staffSlugIn(List<String> parts) =>
+    parts.length == 3 && parts.first == 'staff' && parts.last == 'name'
+    ? parts[1]
+    : null;
 
 /// The media asset PATH an image binding resolves to: `{logo}`. Null
 /// leaves the box empty.

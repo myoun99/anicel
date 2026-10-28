@@ -1,4 +1,3 @@
-import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -119,15 +118,13 @@ void main() {
 
     // And a control that is not an AppIconButton reads the same bindings.
     String commaTooltip() => tester
-        .widget<Tooltip>(
-          find
-              .ancestor(
-                of: _button('set-comma-1-button'),
-                matching: find.byType(AppTooltip),
-              )
-              .first,
+        .widget<IconButtonPressFace>(
+          find.descendant(
+            of: _button('set-comma-1-button'),
+            matching: find.byType(IconButtonPressFace),
+          ),
         )
-        .message!;
+        .tooltip;
     expect(commaTooltip(), endsWith('(1)'));
     bindings.setActivators(EditorActionIds.timelineComma1, const [
       SingleActivator(LogicalKeyboardKey.keyQ),

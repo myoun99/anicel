@@ -6,22 +6,21 @@ import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart' show LayerFxState;
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
-import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
-import 'package:anicel/src/ui/timeline_tab_host.dart';
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/named_finders.dart';
+import '../../helpers/storyboard_host.dart';
+import '../../helpers/timeline_host.dart';
 
 /// 🚨rail-subject-tooltips (found building F-124, 2026-09-17): the rail's
 /// shared controls carried their row as an English WORD and assembled their
 /// tooltips from it — `'$subject blend mode'`, `'Hide $subject'`, `'Bypass
 /// $subject FX'` — and F-37's scan skips every literal with a `$` in it, so
 /// no count ever saw them. The rail row beside them hardcoded four more
-/// pairs (timesheet, lanes, onion, fill reference) as ternaries, which the
+/// pairs (timesheet, lanes, onion, clip) as ternaries, which the
 /// scan reads one arm of at most.
 ///
 /// 🧪**THE TEST DOES NOT NAME THE TRANSLATIONS** (F-124's shape): the same
@@ -99,7 +98,7 @@ void main() {
         .appIconButton(find.named(key))
         .tooltip;
     String chip(String key) => tester
-        .widget<RailPlateFace>(find.named(key))
+        .widget<RailPlateButton>(find.named(key))
         .tooltip;
     return {
       for (final key in [
@@ -159,8 +158,8 @@ void main() {
     'lanes-shut': (s) => s.railExpandLanes,
     'onion-on': (s) => s.railOnionSkinOn,
     'onion-off': (s) => s.railOnionSkin,
-    'fill-on': (s) => s.railFillReferenceOn,
-    'fill-off': (s) => s.railFillReference,
+    'fill-on': (s) => s.railClipOn,
+    'fill-off': (s) => s.railClip,
   };
 
   void expectTranslated(
@@ -186,7 +185,7 @@ void main() {
     expectTranslated(ja, ko);
   });
 
-  /// The rail row's own toggles — lanes, onion, fill reference — in both
+  /// The rail row's own toggles — lanes, onion, clip — in both
   /// arms, on the real timeline over a real session.
   Future<Map<String, String>> rowToggles(
     WidgetTester tester,
@@ -202,30 +201,15 @@ void main() {
       final layer = session.activeLayer!;
       if (on) {
         session.onionSkin.toggleLayerOnionSkin(layer.id);
-        session.layerSwitches.toggleLayerFillReference(layer.id);
+        session.layerSwitches.toggleLayerClip(layer.id);
+        session.layerSwitches.toggleLayerLanes(layer.id);
       }
-      await tester.pumpWidget(
-        MaterialApp(
-          key: ValueKey<(AppLanguage, bool)>((language, on)),
-          home: Scaffold(
-            body: ListenableBuilder(
-              listenable: session,
-              builder: (context, _) => TimelineTabHost(
-                session: session,
-                orientation: TimelineOrientation.horizontal,
-                onOrientationChanged: (_) {},
-                pixelsPerFrame: 24,
-                onPixelsPerFrameChanged: (_) {},
-                showSeconds: false,
-                onShowSecondsChanged: (_) {},
-                expandedLaneLayerIds: on ? {layer.id} : const {},
-                onToggleLayerLanes: (_) {},
-              ),
-            ),
-          ),
-        ),
+      await pumpTimelineHostOn(
+        tester,
+        session,
+        surface: const Size(1400, 900),
+        pixelsPerFrame: 24,
       );
-      await tester.pumpAndSettle();
       String face(String key) => tester
           .appIconButton(find.named(key))
           .tooltip;
@@ -235,7 +219,7 @@ void main() {
       );
       words[on ? 'onion-on' : 'onion-off'] = face('timeline-layer-onion-$id');
       words[on ? 'fill-on' : 'fill-off'] = face(
-        'timeline-layer-fill-reference-$id',
+        'timeline-layer-clip-$id',
       );
     }
     return words;
@@ -244,8 +228,6 @@ void main() {
   testWidgets('the rail row\'s own toggles read both arms from the table', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
     final ja = await rowToggles(tester, AppLanguage.ja);
     final ko = await rowToggles(tester, AppLanguage.ko);
     expect(ja, hasLength(6), reason: 'LIVENESS: both arms of all three');
@@ -253,8 +235,6 @@ void main() {
   });
 
   testWidgets('the storyboard\'s track row names the track', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
     expectTranslated(
       await _trackRow(tester, AppLanguage.ja),
       await _trackRow(tester, AppLanguage.ko),
@@ -273,25 +253,12 @@ Future<Map<String, String>> _trackRow(
   final session = EditorSessionManager(initialProject: createDefaultProject());
   addTearDown(session.dispose);
   final track = session.repository.requireProject().tracks.first;
-  await tester.pumpWidget(
-    MaterialApp(
-      key: ValueKey<AppLanguage>(language),
-      home: Scaffold(
-        body: ListenableBuilder(
-          listenable: session,
-          builder: (context, _) => StoryboardTabHost(
-            session: session,
-            pixelsPerFrame: 24,
-            onPixelsPerFrameChanged: (_) {},
-            showSeconds: false,
-            onShowSecondsChanged: (_) {},
-            thumbnails: null,
-          ),
-        ),
-      ),
-    ),
+  await pumpStoryboardHostOn(
+    tester,
+    session,
+    surface: const Size(1400, 900),
+    pixelsPerFrame: 24,
   );
-  await tester.pumpAndSettle();
   String face(String key) => tester
       .appIconButton(find.named(key))
       .tooltip;

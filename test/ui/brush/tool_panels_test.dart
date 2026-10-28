@@ -18,7 +18,7 @@ import 'package:anicel/src/ui/brush/paint_tool_state_notifier.dart';
 import 'package:anicel/src/ui/brush/tool_library_panel.dart';
 import 'package:anicel/src/ui/brush/tool_press.dart';
 import 'package:anicel/src/ui/brush/tool_setting_rows.dart'
-    show ToolSettingAction;
+    show ToolSettingAction, ToolSettingActions;
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/widgets/content_scrollbar.dart';
@@ -538,27 +538,39 @@ void main() {
       await tester.pump();
     }
 
-    // ↩️It was ABSENT for the other shapes — 「a confirm there would be a
-    // permanently dead row」 — which is 「없다가 생기는 UI」
-    // (tool-settings-panel-tidy, 유저 2026-10-10: 「자리를 늘 두고 아닐 때는
-    // 흐리게」).
-    testWidgets('keeps its place, dead, for the shapes that have no trace '
-        'to close', (tester) async {
-      // Every shape but the polygon finishes on the release of one drag.
-      for (final shape in const [
-        CanvasShapeKind.rect,
-        CanvasShapeKind.ellipse,
-        CanvasShapeKind.lasso,
-      ]) {
-        await pumpSettings(tester, shape: shape, points: 0);
-        expect(find.byKey(buttonKey), findsOneWidget, reason: '$shape');
-        expect(
-          tester.toolSettingAction(find.byKey(buttonKey)).onPressed,
-          isNull,
-          reason: '$shape',
-        );
-      }
-    });
+    // 🗣️F-478-Q1 (유저 2026-10-27): 「없앤다 — 그 모양 · 모드에 필요할 때만
+    // 있다」 — 「도형닫기가 필요없는 사각형 타원 올가미 전체등은 해당 버튼
+    // 삭제」. Every shape but the polygon finishes on the release of one
+    // drag. ↩️It kept its place, dead, for them (tool-settings-panel-tidy,
+    // 유저 2026-10-10: 「자리를 늘 두고 아닐 때는 흐리게」), and before that
+    // was absent for them.
+    for (final tool in const [
+      CanvasTool.select,
+      CanvasTool.cut,
+      CanvasTool.fillShape,
+    ]) {
+      testWidgets('stands for the polygon alone — under ${tool.name}', (
+        tester,
+      ) async {
+        for (final shape in canvasToolShapes(tool)) {
+          await pumpSettings(tester, shape: shape, points: 0, tool: tool);
+          final polygon = shape == CanvasShapeKind.polygon;
+          expect(
+            find.byKey(buttonKey),
+            polygon ? findsOneWidget : findsNothing,
+            reason: '$shape',
+          );
+          if (!polygon && tool != CanvasTool.select) {
+            expect(
+              tester.getSize(find.byType(ToolSettingActions)).height,
+              0,
+              reason: '$shape: nothing else stands on the line, and an '
+                  'empty block takes no room',
+            );
+          }
+        }
+      });
+    }
 
     testWidgets('is dead until three vertices are down', (tester) async {
       await pumpSettings(

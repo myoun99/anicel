@@ -16,6 +16,11 @@
 /// holding a cel id could not say which of the two it followed, and pairing
 /// them by order swaps the two instructions the moment a move reorders the
 /// linked blocks. Owned by the block, each keeps its own.
+/// ↩️…and since I-72-direction-link (유저 2026-10-08: 「시작이름,끝이름,지시
+/// 세개 같으면 같은 링크로서」) the linked blocks say the same: what a block
+/// says names its drawing (`linkNameOfWriting`), and an edit of one says it
+/// on every block of the drawing. Still kept on each block, so a move, a
+/// copy and a paste carry it as they did.
 ///
 /// ⚠️NO LENGTH HERE, on purpose: a span's length is its block's. Two fields
 /// answering one question drift; `InstructionEvent.of` is the one place the
@@ -33,7 +38,7 @@ class ExposureInstruction {
   });
 
   /// See `InstructionEvent.instructionId`.
-  final String instructionId;
+  final String? instructionId;
 
   /// See `InstructionEvent.text`.
   final String? text;
@@ -44,10 +49,17 @@ class ExposureInstruction {
   /// See `InstructionEvent.valueB`.
   final String? valueB;
 
+  /// What this says with neither end named — what a block copied as a
+  /// drawing of its own says (Q1's note: 「시작이름 끝이름만 없음으로
+  /// 태어나게」); null when nothing is left.
+  ExposureInstruction? get unnamed => instructionId == null && text == null
+      ? null
+      : ExposureInstruction(instructionId: instructionId, text: text);
+
   /// The keys a span writes beside its length — ONE spelling of them, which
   /// `InstructionEvent.toJson` spreads too.
   Map<String, dynamic> toJson() => {
-    'instructionId': instructionId,
+    if (instructionId != null) 'instructionId': instructionId,
     if (text != null) 'text': text,
     if (valueA != null) 'valueA': valueA,
     if (valueB != null) 'valueB': valueB,
@@ -55,7 +67,7 @@ class ExposureInstruction {
 
   factory ExposureInstruction.fromJson(Map<String, dynamic> json) =>
       ExposureInstruction(
-        instructionId: json['instructionId'] as String,
+        instructionId: json['instructionId'] as String?,
         text: json['text'] as String?,
         valueA: json['valueA'] as String?,
         valueB: json['valueB'] as String?,

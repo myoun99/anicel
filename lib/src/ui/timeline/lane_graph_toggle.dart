@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../text/app_strings.dart';
 import '../widgets/rail_glyph_button.dart';
-import 'axis_turn.dart';
 import 'layer_label_controls.dart'
-    show RailSwipeColumnPointer, layerGraphSlotWidth, layerLanePinSlotWidth;
+    show
+        RailSwipeColumn,
+        RailSwipeColumnPointer,
+        layerGraphSlotWidth,
+        layerLanePinSlotWidth;
 import 'layer_rail_columns.dart' show railSlotBox;
 
 /// Which of the header graph's two toggles (I-89 ③).
@@ -43,30 +46,29 @@ class LaneGraphToggle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = AppText.strings;
-    final (icon, slot, tooltip) = switch (kind) {
+    final (icon, slot, tooltip, column) = switch (kind) {
       LaneGraphToggleKind.graph => (
         Icons.show_chart,
         layerGraphSlotWidth,
         on ? strings.railLaneGraphOn : strings.railLaneGraph,
+        RailSwipeColumn.graph,
       ),
       LaneGraphToggleKind.pin => (
         Icons.push_pin,
         layerLanePinSlotWidth,
         on ? strings.railLanePinOn : strings.railLanePin,
+        RailSwipeColumn.lanePin,
       ),
     };
-    return acrossBox(
-      axis,
-      26,
-      child: RailSwipeColumnPointer(
-        child: RailGlyphButton(
-          name: name,
-          tooltip: tooltip,
-          size: railSlotBox(axis, slot: slot, across: 26, iconSize: 15),
-          isSelected: on,
-          glyph: RailIconGlyph(icon),
-          onPressed: onToggle,
-        ),
+    return RailSwipeColumnPointer(
+      column: column,
+      child: RailGlyphButton(
+        name: name,
+        tooltip: tooltip,
+        size: railSlotBox(axis, slot: slot, across: 26, iconSize: 15),
+        isSelected: on,
+        glyph: RailIconGlyph(icon),
+        onPressed: onToggle,
       ),
     );
   }

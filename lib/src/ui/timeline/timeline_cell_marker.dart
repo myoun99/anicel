@@ -1,5 +1,4 @@
-import '../../models/frame.dart'
-    show InbetweenMark, breakdownMark, drawingHeadOf;
+import '../../models/frame.dart' show InbetweenMark, drawingHeadOf;
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import 'timeline_cell_exposure_state.dart';
@@ -9,21 +8,20 @@ import 'timeline_se_row_visual.dart';
 /// drawing's cel number — or an in-between MARK — a drawing with no cel
 /// number, the dot inside a block — or neither.
 ///
-/// 🗣️The two marks are ONE mark, as data (유저 2026-09-24: 「데이터적으로도
-/// 같은 취급시키는거 맞지? 중간나누기 마크1로서 작동했으면」): an unnamed
-/// drawing's head answers [unnamedDrawingMark] here ([drawingHeadOf]), not a
-/// glyph standing in for a name, so every surface draws it with the dot
-/// inside a block.
+/// 🗣️An unnamed drawing's head and a dot inside a block are marks of ONE
+/// kind, as data (유저 2026-09-24: 「데이터적으로도 같은 취급시키는거
+/// 맞지?」): the head answers [unnamedDrawingMark] here ([drawingHeadOf]),
+/// not a glyph standing in for a name, so every surface draws it as it
+/// draws the dot.
 typedef TimelineCellWriting = ({String word, InbetweenMark? mark});
 
 /// A cell that neither writes nor marks.
 const TimelineCellWriting timelineCellWritesNothing = (word: '', mark: null);
 
-/// The dot inside a block ([breakdownMark]).
-const TimelineCellWriting timelineInbetweenMarkWriting = (
-  word: '',
-  mark: breakdownMark,
-);
+/// What a cell in [state] writes when it carries a dot inside a block: the
+/// dot's own mark ([TimelineCellExposureState.mark]), no word.
+TimelineCellWriting timelineDotWriting(TimelineCellExposureState state) =>
+    (word: '', mark: state.mark);
 
 /// THE marker a timeline cell shows for its exposure state.
 ///
@@ -75,7 +73,7 @@ TimelineCellWriting timelineCellMarker({
           ? nothing
           : drawingHeadOf(frameName, kind: layer.kind),
     TimelineCellExposureState.held => nothing,
-    TimelineCellExposureState.markHeld ||
-    TimelineCellExposureState.markUncovered => timelineInbetweenMarkWriting,
+    TimelineCellExposureState.markOneHeld ||
+    TimelineCellExposureState.markTwoHeld => timelineDotWriting(exposureState),
   };
 }

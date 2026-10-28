@@ -4,19 +4,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/frame.dart'
-    show breakdownMark, unnamedDrawingMark;
+    show InbetweenMark, unnamedDrawingMark;
 import 'package:anicel/main.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
 import 'helpers/app_icon_button_probe.dart';
 import 'helpers/home_page_probes.dart';
+import 'helpers/room_for_the_pills.dart';
 import 'helpers/named_finders.dart';
 
 void main() {
   testWidgets('timeline action toolbar hosts cell action controls', (
     WidgetTester tester,
   ) async {
+    await tester.binding.setSurfaceSize(appWindowWithRoomForItsPills);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const AnicelApp());
 
     final toolbar = find.byKey(
@@ -136,7 +139,7 @@ void main() {
         const ValueKey<String>('toggle-mark-button'),
       );
 
-      expect(selectedCellStateLabel(tester), 'inbetween mark');
+      expect(selectedCellStateLabel(tester), 'inbetween mark 2');
     },
   );
 
@@ -238,7 +241,7 @@ void main() {
         const ValueKey<String>('toggle-mark-button'),
       );
       expect(markButton, findsOneWidget);
-      expect(find.railTooltip('In-between Mark'), findsOneWidget);
+      expect(find.tooltipSaying('In-between Mark 2'), findsOneWidget);
 
       // Dots are block-owned (UI-R9 #8): an empty cell offers no toggle.
       expect(
@@ -265,9 +268,9 @@ void main() {
       await tester.tap(markButton);
       await tester.pumpAndSettle();
 
-      expectCellMark('default-layer-1', 1, breakdownMark);
+      expectCellMark('default-layer-1', 1, InbetweenMark.two);
       expect(
-        anyCellSemanticsLabel('default-layer-1', 'inbetween mark'),
+        anyCellSemanticsLabel('default-layer-1', 'inbetween mark 2'),
         isTrue,
       );
       // The drawing start is untouched.
@@ -278,11 +281,29 @@ void main() {
       await tester.tap(markButton);
       await tester.pumpAndSettle();
 
-      expectNoCellMark('default-layer-1', 1, breakdownMark);
+      expectNoCellMark('default-layer-1', 1, InbetweenMark.two);
       expect(
-        anyCellSemanticsLabel('default-layer-1', 'inbetween mark'),
+        anyCellSemanticsLabel('default-layer-1', 'inbetween mark 2'),
         isFalse,
       );
+
+      // 🗣️I-130: the ○ left of it lays mark 1, and the ● puts mark 2 on in
+      // its place (I-130-Q1's recommended reading).
+      final markOneButton = find.byKey(
+        const ValueKey<String>('toggle-mark-one-button'),
+      );
+      expect(find.tooltipSaying('In-between Mark 1'), findsOneWidget);
+      for (final (button, mark, label) in [
+        (markOneButton, InbetweenMark.one, 'inbetween mark 1'),
+        (markButton, InbetweenMark.two, 'inbetween mark 2'),
+      ]) {
+        await tester.ensureVisible(button);
+        await tester.pumpAndSettle();
+        await tester.tap(button);
+        await tester.pumpAndSettle();
+        expectCellMark('default-layer-1', 1, mark);
+        expect(anyCellSemanticsLabel('default-layer-1', label), isTrue);
+      }
     },
   );
 
@@ -309,7 +330,7 @@ void main() {
       expectCellText('default-layer-2', 0, 'X');
       expect(anyCellSemanticsLabel('default-layer-1', 'drawing start'), isTrue);
       expect(
-        anyCellSemanticsLabel('default-layer-1', 'inbetween mark'),
+        anyCellSemanticsLabel('default-layer-1', 'inbetween mark 2'),
         isFalse,
       );
     },

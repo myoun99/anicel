@@ -21,6 +21,7 @@ import 'package:anicel/src/services/composite_effect_paint.dart';
 import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
+import '../../helpers/the_frame_as_it_stands.dart';
 
 /// 🚨★★★A GROUP IS AN IMAGE — AND IT IS THE SAME PIXELS `saveLayer` MADE.
 ///
@@ -282,6 +283,7 @@ void main() {
       double scale = 1,
       int maxPixelSide = 8192,
       void Function(double childScale)? onChildScale,
+      int cell = 1,
     }) {
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
@@ -291,6 +293,7 @@ void main() {
         bounds: bounds,
         rasterScale: scale,
         maxPixelSide: maxPixelSide,
+        cell: cell,
         paintSubtree: (into, childScale) {
           onChildScale?.call(childScale);
           drawChildren(into);
@@ -340,6 +343,39 @@ void main() {
       );
       expect(raster.destination.left, lessThanOrEqualTo(6.37));
       expect(raster.destination.right, greaterThanOrEqualTo(6.37 + 46.4));
+    });
+
+    test('a raster a spreading chain reads lies on whole cells counted from '
+        'the origin, and the room for them comes out of the cap', () {
+      // The bounds above at scale 1.5 (device 9.555 · 7.23 · 79.155 ·
+      // 70.38) on cells of [blurReductionCell]: outward to whole cells —
+      // rounding would take device 16 on the left and 64 at the bottom.
+      expect(rasterCellFor(0), 1, reason: 'a blit reads pixel for pixel');
+      expect(rasterCellFor(12), blurReductionCell);
+      rasterise(
+        bounds: const Rect.fromLTWH(6.37, 4.82, 46.4, 42.1),
+        scale: 1.5,
+        cell: rasterCellFor(12),
+      );
+      var raster = debugLastSubtreeRaster!;
+      expect(raster.destination.left, closeTo(0, 1e-9));
+      expect(raster.destination.top, closeTo(0, 1e-9));
+      expect(raster.destination.right, closeTo(80 / 1.5, 1e-9));
+      expect(raster.destination.bottom, closeTo(80 / 1.5, 1e-9));
+      expect(raster.pixelWidth, 80);
+      expect(raster.pixelHeight, 80);
+
+      // A cap of 64 leaves 32 pixels of room: 92 canvas pixels at 32/92,
+      // snapped out to cells, still fit.
+      rasterise(
+        bounds: const Rect.fromLTWH(6, 4, 92, 84),
+        maxPixelSide: 64,
+        cell: rasterCellFor(12),
+      );
+      raster = debugLastSubtreeRaster!;
+      expect(raster.scale, closeTo(32 / 92, 1e-9));
+      expect(raster.pixelWidth, lessThanOrEqualTo(64));
+      expect(raster.pixelHeight, lessThanOrEqualTo(64));
     });
 
     test('the cap clamps the scale, and the blit says it magnified', () {
@@ -558,7 +594,7 @@ void main() {
               child: SizedBox(
                 width: 200,
                 height: 150,
-                child: CanvasLayerStackView(
+                child: TheFrameAsItStands(
                   nodes: [
                     // ↩️A multiply folder, until an advanced blend went
                     // over its backdrop (a-blurred-folder-cut-by-the-view-
@@ -590,7 +626,7 @@ void main() {
       final painted = tester
           .widgetList<CustomPaint>(
             find.descendant(
-              of: find.byType(CanvasLayerStackView),
+              of: find.byType(TheFrameAsItStands),
               matching: find.byType(CustomPaint),
             ),
           )
@@ -674,13 +710,19 @@ void main() {
           compose: composeAdjustmentScope(canvas, pass),
         );
       } else {
-        // The recipe as it stood before this round.
+        // The recipe as layers: the scope drawn twice, the blur on a layer
+        // of its own inside the filtered pass — where the blit carries it
+        // ([AdjustmentScopePass.blitEffects]).
         canvas.saveLayer(pass.bufferBounds, pass.crossfadeLayerPaint!);
         canvas.saveLayer(pass.bufferBounds, pass.unfilteredPaint!);
         drawChildren(canvas);
         canvas.restore();
         canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
+        final carried = Paint();
+        pass.blitEffects.applyTo(carried);
+        canvas.saveLayer(pass.bufferBounds, carried);
         drawChildren(canvas);
+        canvas.restore();
         canvas.restore();
         canvas.restore();
       }

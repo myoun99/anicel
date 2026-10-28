@@ -56,8 +56,9 @@ import 'static_raster.dart';
 /// rest. A region that is re-added has changed (or was moved, which the
 /// grid fit judges); a region that is retained has not. The image is taken
 /// after [stillFrames] frames of being retained — in the frame it changed
-/// in while a clock looks ([_StillLayer._waitNow]) — and dropped the moment
-/// the region is re-added with a different layer tree
+/// in while a clock looks ([_StillLayer._waitNow]) — for the next frame, or
+/// for the frame itself where only its ticks moved in it; and dropped the
+/// moment the region is re-added with a different layer tree
 /// ([_StillLayer._signatureOf] says what "different" covers).
 ///
 /// Content that changes without the layer tree knowing — an external
@@ -136,10 +137,12 @@ class StillRaster extends SingleChildRenderObjectWidget {
   static int _capturesEver = 0;
 
   /// The frame the last image of ANY region was taken on — one a frame. A
-  /// snapshot is a fixed price (1.6–2.0 ms of raster on the real Windows
-  /// app, whatever its size, 2026-09-25), and the regions one pick changes
-  /// become still together: taken on the same frame, their prices landed on
-  /// it at once.
+  /// snapshot cost a fixed price on the real Windows app (1.6–2.0 ms of
+  /// raster whatever its size, 2026-09-25) and one that grows with its
+  /// pixels on the Surface (Impeller GLES, 3567×2166: 5–31 ms, the 18–31 ms
+  /// ones 3.0–3.7 M pixels — 10-27, F-244-drag-start), and the regions one
+  /// pick changes become still together: taken on the same frame, their
+  /// prices landed on it at once.
   static int? _lastCaptureFrame;
 
   @override
@@ -256,7 +259,8 @@ class RenderStillRaster extends RenderProxyBox {
   /// region paints them — empty while it paints.
   @visibleForTesting
   List<Size> get debugLiveTicks => [
-    for (final (:tick, path: _) in _layer?._strata?.ticks ?? const <_Tick>[])
+    for (final (:tick, path: _, reach: _)
+        in _layer?._strata?.ticks ?? const <_Tick>[])
       tick.size,
   ];
 
@@ -351,15 +355,16 @@ class RenderStillRaster extends RenderProxyBox {
 }
 
 /// A tick a region draws live between its strata, with the layers between
-/// the region and it.
-typedef _Tick = ({TickSceneLayer tick, List<ContainerLayer> path});
+/// the region and it, and what of the region it can reach
+/// ([_Strata._reach]).
+typedef _Tick = ({TickSceneLayer tick, List<ContainerLayer> path, Rect reach});
 
 /// A picture of the region's, with the layers between the region and it,
-/// and where those layers put it.
+/// and what of the region it can reach ([_Strata._reach]).
 typedef _Leaf = ({
   PictureLayer picture,
   List<ContainerLayer> path,
-  Matrix4 toRegion,
+  Rect reach,
 });
 
 /// The region's layer: it hands the scene either its children or, while
@@ -430,15 +435,7 @@ class _StillLayer extends OffsetLayer {
   void addToScene(ui.SceneBuilder builder) {
     final strata = _strata;
     if (strata != null && _stillShows(strata)) {
-      engineLayer = builder.pushOffset(
-        offset.dx,
-        offset.dy,
-        oldLayer: engineLayer as ui.OffsetEngineLayer?,
-      );
-      strata.addTo(builder);
-      builder.pop();
-      _owner._drawnFromImage = true;
-      _owner._standDown = StillStandDown.none;
+      _drawFrom(strata, builder);
       _noteWhoMovedAlone();
       return;
     }
@@ -478,9 +475,37 @@ class _StillLayer extends OffsetLayer {
         ? StillStandDown.changing
         : gate;
     if (gate == StillStandDown.none) {
+      // 🚨A REGION RE-ADDED ONCE IT STOOD STILL PAST ITS WAIT IS TAKEN IN
+      // THAT FRAME, BEFORE IT IS DRAWN (F-244-drag-start, 10-27). Only its
+      // ticks moved: one that stood still when the strata were taken —
+      // the rows a block drag carries, at its first step — or a live one
+      // gone still drops them, the rest of the region as it was, and the
+      // frame's own check took the strata again right AFTER this frame, which
+      // was drawn live in between. 🔬On the Surface (profile, Impeller GLES,
+      // 3567×2166) that live frame was 26–46 ms of raster and the image after
+      // it 18–31, at the start of every block, row, comma and [+] drag. Taken
+      // here, the frame is drawn from the new strata, the moving ticks live
+      // in them.
+      if (_mayTake && _capture()) {
+        _drawFrom(_strata!, builder);
+        return;
+      }
       _watch();
     }
     super.addToScene(builder);
+  }
+
+  /// Hands the scene [strata] in place of the region's children.
+  void _drawFrom(_Strata strata, ui.SceneBuilder builder) {
+    engineLayer = builder.pushOffset(
+      offset.dx,
+      offset.dy,
+      oldLayer: engineLayer as ui.OffsetEngineLayer?,
+    );
+    strata.addTo(builder);
+    builder.pop();
+    _owner._drawnFromImage = true;
+    _owner._standDown = StillStandDown.none;
   }
 
   /// 🚨Runs on EVERY layer of the tree before every frame's scene is
@@ -641,6 +666,13 @@ class _StillLayer extends OffsetLayer {
       _stillFramesNeeded -
       (aClockLooksInThisFrame() ? StillRaster.stillFrames : 0);
 
+  /// Whether an image taken now may be first drawn in the frame [_frame]
+  /// reads: the region has stood still past its wait by then, and no other
+  /// region's image is first drawn in it ([StillRaster._lastCaptureFrame]).
+  bool get _mayTake =>
+      _frame - _changedAt > _waitNow &&
+      StillRaster._lastCaptureFrame != _frame;
+
   void _watch() {
     if (_watching) {
       return;
@@ -654,12 +686,23 @@ class _StillLayer extends OffsetLayer {
       if (_owner._gate() != StillStandDown.none) {
         return;
       }
-      // `>`: the frame clock ticks after the scene is built, so the frame
-      // the region changed in already reads one here. And one image a
-      // frame across every region ([StillRaster._lastCaptureFrame]).
-      if (_frame - _changedAt > _waitNow &&
-          StillRaster._lastCaptureFrame != _frame) {
-        _capture();
+      // The frame clock ticks after the scene is built, so [_frame] here
+      // already reads the next frame — the one that draws what is taken.
+      if (_mayTake) {
+        if (_capture()) {
+          // The scene still holds the children: re-add this layer so the
+          // next frame draws the strata instead.
+          //
+          // ⛔NOT A FRAME OF ITS OWN (2026-09-25, H40). One asked for here
+          // shows nothing new — the image is of what is already on screen —
+          // and its frame counted as still for every other region, which
+          // then took ITS image and asked for another: a brush pick with the
+          // settings open grew nine frames longer, ~20 ms more of UI thread,
+          // and the images taken in a row landed on the stroke that followed
+          // (worst frame 48 → 63 ms). The next frame that comes anyway draws
+          // it.
+          markNeedsAddToScene();
+        }
         return;
       }
       _watching = true;
@@ -670,17 +713,17 @@ class _StillLayer extends OffsetLayer {
   }
 
   /// Takes the region's strata as the scene last had it — every stratum a
-  /// part of ONE image, aligned to the device pixel grid — for the next
-  /// frame to show.
+  /// part of ONE image, aligned to the device pixel grid — for the frame
+  /// [_frame] reads to show; false where the region cannot be taken.
   ///
   /// The ticks drawn live are the ones moving ([_moving]): a tick that
   /// is not is painted into its stratum like anything else, and its
   /// moving later is a change of the region's.
-  void _capture() {
+  bool _capture() {
     final fit = _owner._gridFit();
     if (fit == null) {
       _owner._standDown = StillStandDown.unlocatable;
-      return;
+      return false;
     }
     final layout = _Strata.layoutOf(this, _moving);
     _owner._tickRefusals = layout.refusals;
@@ -689,12 +732,12 @@ class _StillLayer extends OffsetLayer {
         : null;
     if (signature == null) {
       _owner._standDown = StillStandDown.unvouched;
-      return;
+      return false;
     }
     try {
       if (!supportsRasterization()) {
         _owner._standDown = StillStandDown.unvouched;
-        return;
+        return false;
       }
       StillRaster._lastCaptureFrame = _frame;
       _strata = _Strata.take(
@@ -714,19 +757,9 @@ class _StillLayer extends OffsetLayer {
       StillRaster._capturesEver += 1;
     } on Object catch (error, stack) {
       _refused(error, stack);
-      return;
+      return false;
     }
-    // The scene still holds the children: re-add this layer so the next
-    // frame draws the strata instead.
-    //
-    // ⛔NOT A FRAME OF ITS OWN (2026-09-25, H40). One asked for here shows
-    // nothing new — the image is of what is already on screen — and its
-    // frame counted as still for every other region, which then took ITS
-    // image and asked for another: a brush pick with the settings open grew
-    // nine frames longer, ~20 ms more of UI thread, and the images taken in
-    // a row landed on the stroke that followed (worst frame 48 → 63 ms).
-    // The next frame that comes anyway draws it.
-    markNeedsAddToScene();
+    return true;
   }
 
   /// Painting is always available and always correct, so a refused capture
@@ -884,6 +917,10 @@ typedef _Layout = ({
   List<String> refusals,
 });
 
+/// Where each stratum's part sits in the one image — null for a stratum
+/// that reaches nothing — and the image's size, in device pixels.
+typedef _Packing = ({List<Offset?> at, Size size});
+
 /// A region's STRATA as taken — what it paints between one live tick and
 /// the next, each a part of ONE image — and the ticks drawn live between
 /// them: how they are taken and handed to the scene. [_StillLayer] says
@@ -916,7 +953,8 @@ class _Strata {
   int get bytes => image.width * image.height * 4;
 
   /// The pictures [region] paints in the order it paints them, cut into
-  /// strata at every tick [live] says is drawn live — with a refusal where a
+  /// strata at every tick [live] says is drawn live, each picture in the
+  /// lowest stratum it can be drawn in ([_lowest]) — with a refusal where a
   /// live tick stands under a layer whose effect is the GROUP's (a fade, a
   /// filter, a mask): cut there, the group would be drawn as parts.
   static _Layout layoutOf(
@@ -937,7 +975,7 @@ class _Strata {
     // timeline's command bar, changing with every film frame, held ticks
     // that moved too, and the playing timeline took its image five times in
     // fifteen frames (10-12).
-    void visit(Layer layer, Matrix4 toRegion) {
+    void visit(Layer layer, Matrix4 toRegion, Rect clip) {
       switch (layer) {
         case TickSceneLayer() when live(layer):
           final under = path.where((above) => !_splits(above));
@@ -947,22 +985,30 @@ class _Strata {
               'under ${under.first.runtimeType}',
             );
           }
-          ticks.add((tick: layer, path: List.of(path)));
+          // Its box, not what it holds now: what it holds changes on every
+          // frame it is drawn live.
+          ticks.add((
+            tick: layer,
+            path: List.of(path),
+            reach: _reach(toRegion, layer.offset & layer.size, clip),
+          ));
           drawnLive.add(layer);
           strata.add([]);
         case PictureLayer():
-          strata.last.add((
+          final leaf = (
             picture: layer,
             path: List.of(path),
-            toRegion: toRegion,
-          ));
+            reach: _reach(toRegion, layer.canvasBounds, clip),
+          );
+          strata[_lowest(leaf, strata, ticks)].add(leaf);
         case ContainerLayer():
           final inner = _inside(layer, toRegion);
+          final within = _clipped(layer, toRegion, clip);
           path.add(layer);
           for (var child = layer.firstChild;
               child != null;
               child = child.nextSibling) {
-            visit(child, inner);
+            visit(child, inner, within);
           }
           path.removeLast();
         default:
@@ -972,7 +1018,7 @@ class _Strata {
     for (var child = region.firstChild;
         child != null;
         child = child.nextSibling) {
-      visit(child, Matrix4.identity());
+      visit(child, Matrix4.identity(), Rect.largest);
     }
     return (
       strata: strata,
@@ -997,10 +1043,12 @@ class _Strata {
     return inner;
   }
 
-  /// Whether a tick drawn live can stand under [layer] as the region had
-  /// it — what [layer] does to its children is done to each part alike.
-  /// A fade, a filter or a mask is done to the GROUP: on the strata and the
-  /// tick apart, overlapping parts would show through each other.
+  /// Whether what stands under [layer] can be drawn in parts as the region
+  /// had it — a tick live apart from its strata, a picture in a lower
+  /// stratum than the one it was painted in — because what [layer] does to
+  /// its children is done to each part alike. A fade, a filter or a mask is
+  /// done to the GROUP: drawn apart, overlapping parts would show through
+  /// each other.
   static bool _splits(ContainerLayer layer) => switch (layer) {
     OpacityLayer(:final alpha) => alpha == null || alpha == 255,
     ColorFilterLayer() ||
@@ -1010,42 +1058,111 @@ class _Strata {
     _ => true,
   };
 
-  /// [layout]'s strata drawn into ONE image — each its own rows of it, cut
-  /// to the device pixels its pictures reach — and a picture per stratum
-  /// that puts its rows back where they were taken, 1:1 ([fit]), with
-  /// [tint] over each where the repaints are shown.
+  /// 🚨A PICTURE IS DRAWN UNDER EVERY LIVE TICK IT DOES NOT TOUCH (10-27,
+  /// F-244-drag-start ③): which of two things is drawn first shows only
+  /// where they overlap. A stratum was every picture painted between two
+  /// live ticks, its part of the image the box all of them reach — so a
+  /// splitter, two scrollbars and the dock's tab strip, painted after the
+  /// timeline's cursor, made the top stratum as tall as the region, and
+  /// with the ground and the rows under it the image was 2.9–3.6 times the
+  /// region it shows (🔬the Surface: 3.0–3.7M pixels for a dock of 1.02M,
+  /// taken in 11–60 ms at each drag's start — 저장 10-27). [leaf] goes down
+  /// past a live tick, and past the pictures already in the stratum above
+  /// that tick, only where it touches none of them, so nothing that
+  /// overlaps is drawn in another order; and never out of a group whose
+  /// effect is the group's ([_splits]).
   ///
-  /// ⛔One image, not one a stratum: a snapshot costs a fixed price on the
-  /// raster thread whatever its size (1.6–2.0 ms on the real Windows app,
-  /// 09-25), and a region cut at every tick has several strata.
+  /// ⚠️As good as the reach: a picture reaches its boundary's whole box,
+  /// whatever it drew (a picture says no more of itself), so a mark painted
+  /// after a tick in a large boundary still holds its stratum at that box.
+  /// Such a mark gets a layer of its own size — the timeline's frame area
+  /// edge, cut-end line and out-of-cut wash, and the dock's tab strip
+  /// (10-27).
+  static int _lowest(
+    _Leaf leaf,
+    List<List<_Leaf>> strata,
+    List<_Tick> ticks,
+  ) {
+    var at = strata.length - 1;
+    if (!leaf.path.every(_splits)) {
+      return at;
+    }
+    while (at > 0 &&
+        !_touch(leaf.reach, ticks[at - 1].reach) &&
+        !strata[at].any((above) => _touch(leaf.reach, above.reach))) {
+      at -= 1;
+    }
+    return at;
+  }
+
+  /// What [bounds], put in the region by [toRegion], can show of it: where
+  /// they land, cut to [clip] — empty where nothing of them shows.
+  static Rect _reach(Matrix4 toRegion, Rect bounds, Rect clip) {
+    final reach = MatrixUtils.transformRect(toRegion, bounds).intersect(clip);
+    return reach.isEmpty ? Rect.zero : reach;
+  }
+
+  /// [clip] cut again to what [layer] clips its children to, from where it
+  /// stands in the region.
+  static Rect _clipped(ContainerLayer layer, Matrix4 toRegion, Rect clip) {
+    final cut = switch (layer) {
+      ClipRectLayer(:final clipRect?, :final clipBehavior)
+          when clipBehavior != Clip.none =>
+        clipRect,
+      ClipRRectLayer(:final clipRRect?, :final clipBehavior)
+          when clipBehavior != Clip.none =>
+        clipRRect.outerRect,
+      ClipRSuperellipseLayer(:final clipRSuperellipse?, :final clipBehavior)
+          when clipBehavior != Clip.none =>
+        clipRSuperellipse.outerRect,
+      ClipPathLayer(:final clipPath?, :final clipBehavior)
+          when clipBehavior != Clip.none =>
+        clipPath.getBounds(),
+      _ => null,
+    };
+    return cut == null
+        ? clip
+        : clip.intersect(MatrixUtils.transformRect(toRegion, cut));
+  }
+
+  /// Whether two reaches share a pixel — never where either is empty.
+  static bool _touch(Rect a, Rect b) =>
+      !a.isEmpty && !b.isEmpty && a.overlaps(b);
+
+  /// [layout]'s strata drawn into ONE image — each its own part of it, cut
+  /// to the device pixels its pictures reach ([_packed] says where) — and a
+  /// picture per stratum that puts its part back where it was taken, 1:1
+  /// ([fit]), with [tint] over each where the repaints are shown.
+  ///
+  /// ⛔One image, not one a stratum: a snapshot costs a price of its own on
+  /// the raster thread besides its pixels (1.6–2.0 ms on the real Windows
+  /// app whatever its size, 09-25; on the Surface the pixels outweigh it —
+  /// [StillRaster._lastCaptureFrame]), and a region cut at every tick has
+  /// several strata.
   static _Strata take(
     _Layout layout,
     Size size,
     RasterGridFit fit, {
     Color? tint,
   }) {
-    final rows = _rowsOf(layout.strata, size, fit);
-    final image = _imageOf(layout.strata, rows, fit);
+    final parts = _partsOf(layout.strata, size, fit);
+    final packing = _packed(parts);
+    final image = _imageOf(layout.strata, parts, packing, fit);
     final pictures = <ui.Picture?>[];
-    var y = 0.0;
-    for (final device in rows) {
-      if (device == null) {
+    for (var i = 0; i < parts.length; i += 1) {
+      final device = parts[i];
+      final at = packing.at[i];
+      if (device == null || at == null) {
         pictures.add(null);
         continue;
       }
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
-      fit.blitPart(
-        canvas,
-        image,
-        Rect.fromLTWH(0, y, device.width, device.height),
-        fit.logicalOf(device),
-      );
+      fit.blitPart(canvas, image, at & device.size, fit.logicalOf(device));
       if (tint != null) {
         canvas.drawRect(fit.logicalOf(device), Paint()..color = tint);
       }
       pictures.add(recorder.endRecording());
-      y += device.height;
     }
     return _Strata._(
       image: image,
@@ -1057,49 +1174,80 @@ class _Strata {
   }
 
   /// The device pixels each stratum's pictures reach in a region of [size]
-  /// — its rows of the image — or null for one that reaches none.
-  static List<Rect?> _rowsOf(
+  /// — its part of the image — or null for one that reaches none.
+  static List<Rect?> _partsOf(
     List<List<_Leaf>> strata,
     Size size,
     RasterGridFit fit,
   ) {
     final whole = fit.devicePixelsOf(Offset.zero & size);
-    final rows = <Rect?>[];
+    final parts = <Rect?>[];
     for (final leaves in strata) {
       Rect? reach;
-      for (final (:picture, path: _, :toRegion) in leaves) {
-        final drawn = MatrixUtils.transformRect(
-          toRegion,
-          picture.canvasBounds,
-        );
-        reach = reach == null ? drawn : reach.expandToInclude(drawn);
+      for (final (picture: _, path: _, reach: drawn) in leaves) {
+        if (!drawn.isEmpty) {
+          reach = reach == null ? drawn : reach.expandToInclude(drawn);
+        }
       }
       final device = reach == null
           ? null
           : fit.devicePixelsOf(reach).intersect(whole);
-      rows.add(device == null || device.isEmpty ? null : device);
+      parts.add(device == null || device.isEmpty ? null : device);
     }
-    return rows;
+    return parts;
   }
 
-  /// [strata] drawn into their [rows], one under the next from the top of
-  /// one image.
+  /// Where each of [parts] goes in the one image, and the image's size:
+  /// beside the parts before it or under them, whichever leaves the image
+  /// smaller. ↩️Each went under the one before, and a narrow stratum
+  /// stacked under a wide one took the wide one's whole width (10-27).
+  static _Packing _packed(List<Rect?> parts) {
+    var width = 0.0;
+    var height = 0.0;
+    final at = <Offset?>[];
+    for (final device in parts) {
+      if (device == null) {
+        at.add(null);
+        continue;
+      }
+      final wider = width < device.width ? device.width : width;
+      final taller = height < device.height ? device.height : height;
+      if ((width + device.width) * taller < wider * (height + device.height)) {
+        at.add(Offset(width, 0));
+        width += device.width;
+        height = taller;
+      } else {
+        at.add(Offset(0, height));
+        height += device.height;
+        width = wider;
+      }
+    }
+    return (at: at, size: Size(width, height));
+  }
+
+  /// [strata] drawn into their [parts], each where [packing] puts it in one
+  /// image.
   static ui.Image _imageOf(
     List<List<_Leaf>> strata,
-    List<Rect?> rows,
+    List<Rect?> parts,
+    _Packing packing,
     RasterGridFit fit,
   ) {
     final builder = ui.SceneBuilder();
-    var width = 0.0;
-    var y = 0.0;
     for (var i = 0; i < strata.length; i += 1) {
-      final device = rows[i];
-      if (device == null) {
+      final device = parts[i];
+      final at = packing.at[i];
+      if (device == null || at == null) {
         continue;
       }
-      final place = Matrix4.translationValues(-device.left, y - device.top, 0)
-        ..scaleByDouble(fit.scale, fit.scale, 1, 1)
-        ..translateByDouble(fit.shift.dx, fit.shift.dy, 0, 1);
+      final place =
+          Matrix4.translationValues(
+              at.dx - device.left,
+              at.dy - device.top,
+              0,
+            )
+            ..scaleByDouble(fit.scale, fit.scale, 1, 1)
+            ..translateByDouble(fit.shift.dx, fit.shift.dy, 0, 1);
       builder
         ..pushTransform(place.storage)
         ..pushClipRect(fit.logicalOf(device));
@@ -1107,14 +1255,12 @@ class _Strata {
       builder
         ..pop()
         ..pop();
-      width = width < device.width ? device.width : width;
-      y += device.height;
     }
     final scene = builder.build();
     try {
       return scene.toImageSync(
-        width.round().clamp(1, 1 << 15),
-        y.round().clamp(1, 1 << 15),
+        packing.size.width.round().clamp(1, 1 << 15),
+        packing.size.height.round().clamp(1, 1 << 15),
       );
     } finally {
       scene.dispose();
@@ -1147,7 +1293,7 @@ class _Strata {
   static void _addLeaves(ui.SceneBuilder builder, List<_Leaf> leaves) {
     final pushed = <ContainerLayer>[];
     final counted = <bool>[];
-    for (final (:picture, :path, toRegion: _) in leaves) {
+    for (final (:picture, :path, reach: _) in leaves) {
       var common = 0;
       while (common < pushed.length &&
           common < path.length &&
@@ -1256,8 +1402,10 @@ class _Strata {
 ///
 /// A still region is cut at every tick that is moving — that changed what
 /// it holds within the last few dozen frames — and each part between two of
-/// them is a part of the one image the region keeps, so everything is drawn
-/// in the order it was painted in, the ticks live in their places. ↩️The
+/// them is a part of the one image the region keeps, so everything that
+/// overlaps is drawn in the order it was painted in, the ticks live in
+/// their places (what touches nothing above it goes lower,
+/// [_Strata._lowest]). ↩️The
 /// first way drew every tick OVER one image of everything else, and a tick
 /// something painted after it covered had to stay in the image: a picture
 /// layer's bounds are its boundary's whole box, not what it drew, so nearly

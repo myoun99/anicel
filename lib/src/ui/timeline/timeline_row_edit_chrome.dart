@@ -23,6 +23,12 @@ import '../widgets/named.dart';
 import '../widgets/panel_flyout.dart';
 import 'timeline_cell_style.dart'
     show timelineBlockCornerRadiusAt, timelineDrawingHeldColor;
+import 'timeline_block_look.dart'
+    show
+        TimelineBlockRow,
+        TimelineBlockState,
+        timelineBlockRowFacts,
+        timelineFrameBlockFace;
 import 'timeline_exposure_comma_drag_handle.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_geometry.dart';
@@ -34,6 +40,7 @@ import '../text/app_face.dart';
 import '../text/app_strings.dart';
 import '../repaint_props.dart';
 import 'memo_token.dart';
+import '../theme/app_theme.dart' show AppCursors;
 
 /// One pointer target in a dense row's edit chrome. Its [rect] is the
 /// row-local hit area — the same rect the painter draws inside, so there is
@@ -462,9 +469,25 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
     required this.devicePixelRatio,
     this.gripGround = timelineDrawingHeldColor,
     this.gripGrounds,
+    this.gripRow,
     this.windowBucket,
     this.viewportMainExtent = 0,
-  }) : super(repaint: Listenable.merge([geometry, ?windowBucket]));
+  }) : super(
+         repaint: Listenable.merge([
+           geometry,
+           ?windowBucket,
+           // Its OWN row's answers: a block that turns empty turns its
+           // grips grey (I-129), as its number.
+           ?_rowContentRepaint(gripRow),
+         ]),
+       );
+
+  static Listenable? _rowContentRepaint(TimelineBlockRow? row) {
+    if (row == null) {
+      return null;
+    }
+    return row.content?.revision.forRow(row.layer.id);
+  }
 
   final TimelineRowChromeResolver resolver;
 
@@ -512,6 +535,10 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
   /// Where the grips stand on more than [gripGround], read once a paint
   /// against the live geometry ([TimelineRowEditChromeLayer.gripGrounds]).
   final TimelineChromeGrounds Function()? gripGrounds;
+
+  /// The row whose blocks the grips stand on
+  /// ([TimelineRowEditChromeLayer.gripRow]).
+  final TimelineBlockRow? gripRow;
 
   /// Every target this row would draw, in hit order — THE probe surface,
   /// the successor of `find.byKey` on the widgets these replaced.
@@ -622,8 +649,9 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
   );
 
   /// One grip, in the ink the ground law picks for each ground it stands on
-  /// ([blockEdgeGripColor]): [gripGround] wherever [grounds] has nothing
-  /// under it, and each region's own colour inside that region.
+  /// ([timelineBlockGripColor]): its block on [gripGround] wherever
+  /// [grounds] has nothing under it — as [gripRow] draws that block — and
+  /// each region's own colour inside that region.
   ///
   /// 🗣️유저 2026-09-26: 「2여도 흰종이부분에 엣지는 1처럼 제대로 보이게
   /// 가능하지?」 — on the storyboard's black plate a triangle crosses a label
@@ -644,21 +672,34 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
         : target.id == hoveredId
         ? BlockEdgeGripInk.hovered
         : BlockEdgeGripInk.rest;
+    final row = gripRow;
+    final on = row == null
+        ? (state: TimelineBlockState.shown, paper: gripGround, ground: null)
+        : timelineFrameBlockFace(
+            row,
+            target.blockStartIndex,
+            paper: gripGround,
+          );
     final under = grounds?.under(target.rect) ?? const [];
     if (under.isEmpty) {
-      paintBlockEdgeGrip(canvas, triangle, ink, ground: gripGround);
+      paintBlockEdgeGrip(canvas, triangle, ink, on: on);
       return;
     }
     canvas.save();
     for (final region in under) {
       canvas.clipRect(region.rect, clipOp: ClipOp.difference);
     }
-    paintBlockEdgeGrip(canvas, triangle, ink, ground: gripGround);
+    paintBlockEdgeGrip(canvas, triangle, ink, on: on);
     canvas.restore();
     for (final region in under) {
       canvas.save();
       canvas.clipRect(region.rect);
-      paintBlockEdgeGrip(canvas, triangle, ink, ground: region.color);
+      paintBlockEdgeGrip(
+        canvas,
+        triangle,
+        ink,
+        on: (state: on.state, paper: region.color, ground: on.ground),
+      );
       canvas.restore();
     }
   }
@@ -684,6 +725,7 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
       // label set, a thumbnail arrived), and the rebuild that made it is
       // the only one that knows.
       gripGrounds,
+      timelineBlockRowFacts(gripRow),
       devicePixelRatio,
       ByIdentity(windowBucket),
       viewportMainExtent,
@@ -764,6 +806,7 @@ class TimelineRowEditChromeLayer extends StatefulWidget {
     required this.runEdit,
     this.gripGround = timelineDrawingHeldColor,
     this.gripGrounds,
+    this.gripRow,
     this.windowBucket,
     this.viewportMainExtent = 0,
   });
@@ -810,6 +853,12 @@ class TimelineRowEditChromeLayer extends StatefulWidget {
   /// one colour. The storyboard's cut row hands its label bands and its
   /// pictures here, over the plate its [gripGround] is.
   final TimelineChromeGrounds Function()? gripGrounds;
+
+  /// The row whose blocks the grips stand on, as its blocks are drawn —
+  /// a grip on a hidden row's block is dimmed with it, one on an empty
+  /// block wears its grey ([timelineBlockGripColor], I-129). Null on the
+  /// storyboard's cut row: a cut block is no row's, and has no eye.
+  final TimelineBlockRow? gripRow;
 
   @override
   State<TimelineRowEditChromeLayer> createState() =>
@@ -1281,7 +1330,7 @@ class _TimelineRowEditChromeLayerState
         continue;
       }
       return switch (target) {
-        TimelineRowRunTagTarget() => SystemMouseCursors.click,
+        TimelineRowRunTagTarget() => AppCursors.pressWhen(live: true),
         _ =>
           _horizontal
               ? SystemMouseCursors.resizeColumn
@@ -1324,6 +1373,7 @@ class _TimelineRowEditChromeLayerState
         devicePixelRatio: EffectiveDevicePixelRatio.of(context),
         gripGround: widget.gripGround,
         gripGrounds: widget.gripGrounds,
+        gripRow: widget.gripRow,
         windowBucket: widget.windowBucket,
         viewportMainExtent: widget.viewportMainExtent,
       ),

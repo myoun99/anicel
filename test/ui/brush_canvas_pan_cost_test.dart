@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
 import 'brush_canvas_test_helpers.dart';
+import '../helpers/number_pad_keyboard.dart';
 
 /// What a PAN costs the panel beyond the redraw it genuinely owes.
 ///
@@ -41,8 +42,8 @@ void main() {
   ///    builder is a callback invoked from it, so its call count IS the
   ///    rebuild count;
   ///  * `painters` records the `activeSurfacePainter` handed down on each of
-  ///    those builds, which is what `CanvasLayerStackView.shouldRepaint`
-  ///    compares BY IDENTITY.
+  ///    those builds, which is what the frame's picture view compares BY
+  ///    IDENTITY (`FramePictureView._sameLive`).
   Future<void> pumpPanel(
     WidgetTester tester, {
     required List<int> panelBuilds,
@@ -185,6 +186,7 @@ void main() {
       find.byKey(const ValueKey<String>('canvas-viewport-zoom-label-edit')),
     );
     await tester.pumpAndSettle();
+    await openThePadsKeyboard(tester);
     await tester.enterText(
       find.byKey(const ValueKey<String>('canvas-viewport-zoom-input')),
       '250',
@@ -205,11 +207,14 @@ void main() {
   testWidgets('a panel rebuild hands the layer stack the SAME surface '
       'painter', (tester) async {
     // 🐛`_activeSurfacePainterFor` minted a fresh `BitmapSurfacePainter` on
-    // every call, and `CanvasLayerStackView.shouldRepaint` compares that
-    // field with `!identical(...)`. So the comparison could never answer
-    // false: ANY rebuild of the panel — a pan frame, a tool switch, an
-    // unrelated notify — re-composited the entire layer stack, paper,
-    // ghosts, group-buffer `saveLayer`s and all.
+    // every call, and the layer stack compared that field with
+    // `!identical(...)`. So the comparison could never answer false: ANY
+    // rebuild of the panel — a pan frame, a tool switch, an unrelated
+    // notify — re-composited the entire layer stack, paper, ghosts,
+    // group-buffer `saveLayer`s and all. ↩️It was
+    // `CanvasLayerStackView.shouldRepaint`; the frame's picture view asks
+    // it now (`FramePictureView._sameLive`), a fresh painter the frame
+    // stood again as it stands.
     //
     // ⚠️Not a pan-specific defect. The pan is one trigger; the blast radius
     // is every rebuild.

@@ -171,30 +171,96 @@ List<double>? resolveColorMatrixIgnoringSpatial(
 ) {
   List<double>? matrix;
   for (final effect in effects) {
-    final next = switch (effect.kind) {
-      EffectKind.brightnessContrast => brightnessContrastMatrix(
-        brightness: effect.parameter('brightness'),
-        contrast: effect.parameter('contrast'),
-      ),
-      EffectKind.hueSaturation => hueSaturationMatrix(
-        hueDegrees: effect.parameter('hue'),
-        saturation: effect.parameter('saturation'),
-        lightness: effect.parameter('lightness'),
-      ),
-      EffectKind.blur => null,
-      // A color key changes ALPHA by a threshold test — there is no color
-      // matrix for it, the same way there is none for a blur. The reader
-      // this serves samples one pixel, so it applies the keys itself
-      // (`CelColorKey.alphaFor`) rather than asking for a matrix that
-      // cannot exist.
-      EffectKind.deleteColor || EffectKind.keepColor => null,
-    };
-    if (next == null) {
-      continue;
+    if (_paintPartOf(effect, DrawSpace.canvas) case _ColourPart(:final next)) {
+      matrix = matrix == null ? next : composeColorMatrices(next, matrix);
     }
-    matrix = matrix == null ? next : composeColorMatrices(next, matrix);
   }
   return matrix;
+}
+
+/// What ONE sampled effect is to a paint — the one place each kind's paint
+/// is written (I-132 「fx 하나 = 한 곳」): a colour matrix, a spatial filter, or
+/// nothing a paint can carry. Both readers of a chain — the painter
+/// ([resolveCompositeEffectPaint]) and the eyedropper's matrix
+/// ([resolveColorMatrixIgnoringSpatial]) — ask it, so a colour kind's matrix
+/// is spelled once. ↩️Each wrote its own switch, the matrices twice.
+sealed class _PaintPart {
+  const _PaintPart();
+}
+
+final class _ColourPart extends _PaintPart {
+  const _ColourPart(this.next);
+
+  final List<double> next;
+}
+
+final class _SpatialPart extends _PaintPart {
+  const _SpatialPart(this.filter, {required this.outset});
+
+  final ui.ImageFilter filter;
+  final double outset;
+}
+
+/// A kind no paint carries: the chain is split before a paint is resolved.
+final class _SplitPart extends _PaintPart {
+  const _SplitPart(this.splitBy);
+
+  /// What takes it out of the chain — the assert's word to a route that
+  /// resolved a chain without splitting it.
+  final String splitBy;
+}
+
+_PaintPart _paintPartOf(ResolvedLayerEffect effect, DrawSpace space) =>
+    switch (effect.kind) {
+      EffectKind.brightnessContrast => _ColourPart(
+        brightnessContrastMatrix(
+          brightness: effect.parameter('brightness'),
+          contrast: effect.parameter('contrast'),
+        ),
+      ),
+      EffectKind.hueSaturation => _ColourPart(
+        hueSaturationMatrix(
+          hueDegrees: effect.parameter('hue'),
+          saturation: effect.parameter('saturation'),
+          lightness: effect.parameter('lightness'),
+        ),
+      ),
+      EffectKind.blur => _blurPart(effect, space),
+      // ⛔THE CPU HALF MUST BE GONE BY NOW. `splitSourceEffects` takes the
+      // color keys out in the shared visit and `celSurfaceWithSourceEffects`
+      // has already applied them to the surface this paint will draw. A
+      // color key changes ALPHA by a threshold test — there is no color
+      // matrix for it, the same way there is none for a blur; the eyedropper
+      // applies the keys itself (`CelColorKey.alphaFor`).
+      EffectKind.deleteColor || EffectKind.keepColor => const _SplitPart(
+        'Source-pixel effects must be split off before a paint is '
+        'resolved — see splitSourceEffects.',
+      ),
+      // ⛔AND SO MUST A CEL NUMBER. It is no paint state but a picture of
+      // its own: the row's tree splits the chain where it stands
+      // (`celNumberedRow`), so no chain handed to a paint holds one. Letters
+      // laid over the picture are spatial work too — what stands at one
+      // point is the picture's, as under a blur.
+      EffectKind.celNumber => const _SplitPart(
+        'A cel number splits the chain before a paint is resolved — see '
+        'celNumberedRow.',
+      ),
+    };
+
+_SpatialPart _blurPart(ResolvedLayerEffect effect, DrawSpace space) {
+  final radiusX = effect.parameter('blurX') * space.scale;
+  final radiusY = effect.parameter('blurY') * space.scale;
+  return _SpatialPart(
+    ui.ImageFilter.blur(
+      sigmaX: radiusX * blurSigmaPerRadius,
+      sigmaY: radiusY * blurSigmaPerRadius,
+      // DECAL, not the clamp default: a layer's artwork must not smear
+      // its edge pixels outward forever — outside its coverage there is
+      // nothing, and that is what the picture should show.
+      tileMode: ui.TileMode.decal,
+    ),
+    outset: blurSpreadForRadius(radiusX > radiusY ? radiusX : radiusY),
+  );
 }
 
 /// Translates [effects] (already sampled at a frame) into paint state.
@@ -260,53 +326,22 @@ CompositeEffectPaint resolveCompositeEffectPaint(
   }
 
   for (final effect in effects) {
-    switch (effect.kind) {
-      // ⛔THE CPU HALF MUST BE GONE BY NOW. `splitSourceEffects` takes the
-      // color keys out in the shared visit and `celSurfaceWithSourceEffects`
-      // has already applied them to the surface this paint will draw.
+    switch (_paintPartOf(effect, space)) {
       // Reaching here means a route resolved a chain without splitting it —
       // an assert rather than a silent skip, because the silent version
       // looks exactly like "the artist set Amount to 0".
-      case EffectKind.deleteColor:
-      case EffectKind.keepColor:
-        assert(
-          false,
-          'Source-pixel effects must be split off before a paint is '
-          'resolved — see splitSourceEffects.',
-        );
-      case EffectKind.brightnessContrast:
-        final matrix = brightnessContrastMatrix(
-          brightness: effect.parameter('brightness'),
-          contrast: effect.parameter('contrast'),
-        );
+      case _SplitPart(:final splitBy):
+        assert(false, splitBy);
+      case _ColourPart(:final next):
         pendingColor = pendingColor == null
-            ? matrix
-            : composeColorMatrices(matrix, pendingColor!);
-      case EffectKind.hueSaturation:
-        final matrix = hueSaturationMatrix(
-          hueDegrees: effect.parameter('hue'),
-          saturation: effect.parameter('saturation'),
-          lightness: effect.parameter('lightness'),
-        );
-        pendingColor = pendingColor == null
-            ? matrix
-            : composeColorMatrices(matrix, pendingColor!);
-      case EffectKind.blur:
+            ? next
+            : composeColorMatrices(next, pendingColor!);
+      case _SpatialPart(:final filter, outset: final spread):
         flushPendingColor();
-        final radiusX = effect.parameter('blurX') * space.scale;
-        final radiusY = effect.parameter('blurY') * space.scale;
-        final blur = ui.ImageFilter.blur(
-          sigmaX: radiusX * blurSigmaPerRadius,
-          sigmaY: radiusY * blurSigmaPerRadius,
-          // DECAL, not the clamp default: a layer's artwork must not smear
-          // its edge pixels outward forever — outside its coverage there is
-          // nothing, and that is what the picture should show.
-          tileMode: ui.TileMode.decal,
-        );
         chain = chain == null
-            ? blur
-            : ui.ImageFilter.compose(outer: blur, inner: chain!);
-        outset += blurSpreadForRadius(radiusX > radiusY ? radiusX : radiusY);
+            ? filter
+            : ui.ImageFilter.compose(outer: filter, inner: chain!);
+        outset += spread;
     }
   }
 
@@ -499,8 +534,29 @@ class AdjustmentScopePass {
     required this.filteredPaint,
     this.crossfadeLayerPaint,
     this.unfilteredPaint,
+    this.blitEffects = CompositeEffectPaint.none,
     this.preSteps = const [],
+    this.outsetPixels = 0,
   });
+
+  /// How far the chain paints past the scope, summed over its steps — what
+  /// says the raster is read by a chain that spreads (`rasterCellFor`).
+  final double outsetPixels;
+
+  /// The chain the filtered pass's BLIT carries: the whole of it where it
+  /// spreads (a blur), else none — the chain then rides [filteredPaint].
+  ///
+  /// 🚨A BLUR READS THE SCOPE'S RASTER, NEVER A LAYER (card
+  /// nested-folder-buffers-read-past-the-view). A blur reduces what it reads
+  /// on a grid counted from that picture's own corner, and a `saveLayer`'s
+  /// picture starts where the clip cuts it — at the view's edge, one pixel
+  /// further at each pan — while the raster lies on the canvas's grid
+  /// (`blurReductionCell`'s law). 🔬On the Windows app (2026-10-27) a blurred
+  /// adjustment by the view's edge came out 2/255 apart pan to pan, and
+  /// 4/255 apart from a blurred folder over the same row; with the blur on
+  /// the blit, 0 and 0. The layer keeps the pass's alpha and blend, so the
+  /// crossfade still adds layers ([composeAdjustmentScope]).
+  final CompositeEffectPaint blitEffects;
 
   /// The rasters the chain takes before either pass composites the scope —
   /// its colour keys, which are shaders and cannot ride a pass's paint.
@@ -513,7 +569,8 @@ class AdjustmentScopePass {
   /// The buffer bounds for every pass.
   final ui.Rect bufferBounds;
 
-  /// The filtered pass's paint. Non-null always.
+  /// The filtered pass's layer: its alpha and blend, and the chain where it
+  /// does not spread ([blitEffects]). Non-null always.
   final ui.Paint filteredPaint;
 
   /// Non-null ONLY when the scope must crossfade (a blur below full mix):
@@ -559,7 +616,9 @@ composeAdjustmentScope(
     canvas.restore();
   }
   canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
-  blit(ui.Paint());
+  final carried = ui.Paint();
+  pass.blitEffects.applyTo(carried);
+  blit(carried);
   canvas.restore();
   if (pass.crossfades) {
     canvas.restore();
@@ -573,25 +632,8 @@ composeAdjustmentScope(
 /// A route runs it as ONE raster and one or two blits. The scope is the same
 /// picture in both passes, so it is rasterised once — on the playback route
 /// "drawing the scope" means awaiting every layer image in it, and the second
-/// pass was not a rounding error:
-/// ```dart
-/// drawSubtreeAsImage(
-///   canvas: canvas,
-///   bounds: pass.bufferBounds,
-///   space: space,
-///   paintSubtree: drawScope,
-///   compose: (blit) {
-///     if (pass.crossfades) {
-///       // An alpha group over two draws of one image — not a buffer
-///       // anything needs to sample, so it stays a layer.
-///       canvas.saveLayer(pass.bufferBounds, pass.crossfadeLayerPaint!);
-///       blit(pass.unfilteredPaint!);
-///     }
-///     blit(pass.filteredPaint);
-///     if (pass.crossfades) canvas.restore();
-///   },
-/// );
-/// ```
+/// pass was not a rounding error. The blits go as [composeAdjustmentScope]
+/// lays them.
 AdjustmentScopePass resolveAdjustmentScopePass({
   required ui.Rect bounds,
   required List<ResolvedLayerEffect> effects,
@@ -615,13 +657,21 @@ AdjustmentScopePass resolveAdjustmentScopePass({
   final resolved = resolveCompositeEffectPlan(effects, space: space);
   final plan = resolved.finalPaint;
   final bufferBounds = effectBufferBounds(bounds, resolved.outsetPixels);
+  // What spreads rides the blit ([AdjustmentScopePass.blitEffects]); a
+  // chain per pixel rides the pass's layer, as it always did.
+  final blitEffects = plan.imageFilter == null
+      ? CompositeEffectPaint.none
+      : plan;
+  final layerEffects = blitEffects.isEmpty ? plan : CompositeEffectPaint.none;
   if (strength >= 1) {
     final paint = ui.Paint();
-    plan.applyTo(paint);
+    layerEffects.applyTo(paint);
     return AdjustmentScopePass(
       bufferBounds: bufferBounds,
       filteredPaint: paint,
+      blitEffects: blitEffects,
       preSteps: resolved.preSteps,
+      outsetPixels: resolved.outsetPixels,
     );
   }
   // A spatial chain below full strength: two passes ADDED inside one
@@ -630,13 +680,15 @@ AdjustmentScopePass resolveAdjustmentScopePass({
   final filtered = ui.Paint()
     ..color = alphaOnly(strength)
     ..blendMode = ui.BlendMode.plus;
-  plan.applyTo(filtered);
+  layerEffects.applyTo(filtered);
   return AdjustmentScopePass(
     bufferBounds: bufferBounds,
     filteredPaint: filtered,
     crossfadeLayerPaint: ui.Paint(),
     unfilteredPaint: ui.Paint()
       ..color = alphaOnly(1 - strength),
+    blitEffects: blitEffects,
     preSteps: resolved.preSteps,
+    outsetPixels: resolved.outsetPixels,
   );
 }

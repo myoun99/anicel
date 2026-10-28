@@ -169,6 +169,75 @@ void main() {
     ]);
   });
 
+  // 🗣️I-72-block-without-instruction: a span with no mark is 「(없음)」 —
+  // 「없으면 아무 표시도 안함」.
+  test('CAMERAWORK: a span that writes nothing is the empty cell it shows, '
+      'and one with no mark writes only its A→B', () {
+    final content = buildXdtsContent(
+      cut: Cut(
+        id: const CutId('xdts-none'),
+        name: 'Cut 4',
+        duration: 12,
+        canvasSize: const CanvasSize(width: 640, height: 360),
+        layers: [
+          Layer(
+            id: const LayerId('cam-inst'),
+            name: 'CAM 1',
+            kind: LayerKind.instruction,
+            frames: const [],
+            timeline: const {},
+            instructions: SplayTreeMap.of({
+              0: const InstructionEvent(instructionId: null, length: 2),
+              2: const InstructionEvent(
+                instructionId: null,
+                length: 3,
+                valueA: 'C',
+                valueB: 'D',
+              ),
+              6: const InstructionEvent(instructionId: 'pan', length: 2),
+            }),
+          ),
+        ],
+      ),
+      cutLabel: '4',
+      instructionDefById: CameraInstructionSet.standard.defById,
+    );
+
+    final json =
+        jsonDecode(content.split('\n').skip(1).join('\n'))
+            as Map<String, dynamic>;
+    // CAMERAWORK is field 5, as in the content test above.
+    final field =
+        (((json['timeTables'] as List<dynamic>).single
+                    as Map<String, dynamic>)['fields']
+                as List<dynamic>)
+            .cast<Map<String, dynamic>>()
+            .firstWhere((field) => field['fieldId'] == 5);
+    final frames =
+        ((field['tracks'] as List<dynamic>).single
+                as Map<String, dynamic>)['frames']
+            as List<dynamic>;
+    expect(
+      [
+        for (final entry in frames.cast<Map<String, dynamic>>())
+          (
+            entry['frame'],
+            (((entry['data'] as List<dynamic>).single
+                        as Map<String, dynamic>)['values']
+                    as List<dynamic>)
+                .single,
+          ),
+      ],
+      [
+        (0, 'SYMBOL_NULL_CELL'),
+        (2, '(C→D)'),
+        (5, 'SYMBOL_NULL_CELL'),
+        (6, 'PAN'),
+        (8, 'SYMBOL_NULL_CELL'),
+      ],
+    );
+  });
+
   // 1da96c92 ("Unify layer controls across every kind") added
   // `&& layer.onTimesheet` to the print sheet's instruction filter and did
   // not touch this builder, which was written earlier — drift, not a

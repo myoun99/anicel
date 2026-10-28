@@ -122,10 +122,10 @@ SplayTreeMap<int, TimelineExposure> splitTimelineAt(
   next[index] = TimelineExposure.drawing(
     frameId,
     length: endExclusive - index,
-    breakdownOffsets: [
-      for (final offset in entry.breakdownOffsets)
-        if (offset > index - covering.key) offset - (index - covering.key),
-    ],
+    breakdownMarks: TimelineExposure.marksPastCut(
+      entry.breakdownMarks,
+      index - covering.key,
+    ),
   );
   return next;
 }
@@ -149,7 +149,7 @@ SplayTreeMap<int, TimelineExposure> blockRestTakenBy(
   final rest = next[index]!;
   next[index] = exposure.copyWith(
     length: rest.length,
-    breakdownOffsets: rest.breakdownOffsets,
+    breakdownMarks: rest.breakdownMarks,
   );
   return next;
 }

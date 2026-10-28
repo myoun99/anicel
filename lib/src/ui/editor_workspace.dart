@@ -11,7 +11,6 @@ import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
 import 'package:flutter/material.dart';
 
 import '../services/flutter_test_run.dart';
-import '../core/set_toggle.dart';
 import '../models/brush_group.dart';
 import '../models/brush_group_id.dart';
 import '../models/brush_preset.dart';
@@ -78,7 +77,7 @@ import 'brush/tool_settings_panel.dart';
 import 'brush/tools_panel.dart';
 import 'editor_canvas_area.dart';
 import 'editor_session_manager.dart';
-import 'session/session_row_button_presses.dart';
+import 'session/tab_rail_wiring.dart';
 import 'session/text_clipboard.dart' show CanvasTextHand, TextCopy;
 import 'shortcuts/editor_action_registry.dart';
 import 'shortcuts/editor_shortcut_scope.dart';
@@ -129,6 +128,7 @@ import 'conte/conte_picture_ink.dart';
 import 'conte/conte_tab_host.dart';
 import 'envelope/cut_envelope_ink.dart';
 import 'envelope/cut_envelope_tab_host.dart';
+import 'sheet/paper_editing.dart';
 import 'sheet/sheet_image_cache.dart';
 import 'storyboard_cut_thumbnail_store.dart';
 import 'storyboard_cut_blocks_painter.dart'
@@ -163,7 +163,6 @@ import 'timeline/timeline_frame_geometry.dart' show TimelineFrameGeometryHandle;
 import 'timeline/timeline_lane_rows.dart' show TimelineLaneFrameRow;
 import 'timeline/timeline_layer_controls_row.dart'
     show TimelineLayerControlsRow;
-import 'timeline/frame_panel_sill_controls.dart';
 import 'timeline/timeline_command_bar.dart' show TimelineCommandBar;
 import 'timeline/layer_rail_window.dart';
 import 'canvas/flip_hud_controller.dart';
@@ -179,8 +178,6 @@ import 'timeline/property_lane_model.dart'
         indexOfDisplayRow;
 import 'timeline/timeline_lane_provider.dart';
 import 'timeline/timeline_layer_nav.dart';
-import 'timeline/timeline_row_filter.dart';
-import 'timeline/timeline_section_policy.dart';
 import '../models/onion_skin_settings.dart';
 import 'panels/onion_skin_panel.dart';
 import 'panels/tool_size_preset_panel.dart';
@@ -888,7 +885,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     TimelineOrientation.horizontal,
   );
 
-  // One shared zoom slider drives whichever view is shown; the values are
+  // One shared zoom readout drives whichever view is shown; the values are
   // kept per view so each keeps a sensible default scale.
   final ValueNotifier<double> _timelinePixelsPerFrame = ValueNotifier(
     TimelineZoomLimits.referencePixelsPerFrame,
@@ -906,8 +903,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   /// The timeline's zoom follows the active cut: each cut shows at the zoom
   /// it was left at ([TimelineZoomMemory]), and a cut nobody zoomed at the
-  /// zoom to work at, the one the bar reads as 100% (F-403) — not at the
-  /// zoom the last cut was left at.
+  /// zoom to work at (F-403; 200% on the bar since F-491) — not at the zoom
+  /// the last cut was left at.
   void _followTimelineZoomToCut() {
     final session = widget.session;
     final cut = session.activeCutId;
@@ -920,22 +917,23 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         TimelineZoomLimits.referencePixelsPerFrame;
   }
 
-  /// The zoom slider's one writer: the timeline shows [value], and the
+  /// The zoom readout's one writer: the timeline shows [value], and the
   /// active cut remembers it.
   void _setTimelineZoom(double value) {
     _timelinePixelsPerFrame.value = value;
     widget.session.timelineZoom.remember(widget.session.activeCutId, value);
   }
 
-  /// The storyboard's zoom slider's one writer — a method like the
+  /// The storyboard's zoom readout's one writer — a method like the
   /// timeline's, so the callback its view cluster is kept by is the same
   /// across the workspace's rebuilds (a closure here was a new one each).
   void _setStoryboardZoom(double value) {
     _storyboardPixelsPerFrame.value = value;
   }
 
-  /// One press of [panel]'s zoom − or + — the step its view cluster's
-  /// button takes, through the same writer (I-40's key).
+  /// One step of [panel]'s zoom in or out — a zoom key's, through the same
+  /// writer (I-40). ↩️It was a press of the view cluster's − or +, until
+  /// F-463 took the buttons off.
   void _stepZoom(WorkingPanel panel, {required bool zoomIn}) {
     final framesPerSecond =
         widget.session.projectSettings.projectFrameRate.countingBase;
@@ -959,6 +957,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// the conte — stands inside the window its frame axis was last shown in
   /// ([keptAxisWindows]), through the zoom's one writer; and the axis at
   /// its start.
+  ///
+  /// 🗣️F-472 (유저 2026-10-26): 「줌 fit 버튼의 동작이 너무 빡빡함. 엔드라인
+  /// 조차 안보이니까 엔드라인뒤 1코마까지 추가로 보여주는걸로」 — so it fits
+  /// one koma past the end line, on both panels. ↩️It fitted the end line
+  /// alone, which then stood on the window's very edge.
   ///
   /// ⚠️The start is written a frame later: the grid re-anchors its axis on
   /// the playhead when the zoom it is built at changes
@@ -987,7 +990,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     write(
       TimelineZoomLimits.fitting(
         window,
-        frames: frames,
+        frames: frames + 1,
         framesPerSecond: session.projectSettings.projectFrameRate.countingBase,
       ),
     );
@@ -1081,32 +1084,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   Map<String, ValueNotifier<double>> get _frameAxisOffsets =>
       widget.session.panelViews.frameAxisOffsets;
 
-  /// Where each frame grid's LAYER axis is scrolled to — the project's as
-  /// well, and saved with it (F-267).
-  Map<String, ValueNotifier<double>> get _layerAxisOffsets =>
-      widget.session.panelViews.layerAxisOffsets;
-
-  // The lane twirl and the group fold are pressed through
-  // `SessionRowButtonPresses` — a press inside the row selection folds every
-  // selected row (I-32).
-
   // The hidden sections, the row filter, the folded attach groups and the
   // lane twirls are the SESSION's (`RailView`, F-169 and I-7): the standing
-  // law reads them, and the layer ids they name are the project's.
-
-  void _toggleTimelineSection(TimelineSection section) {
-    final hiddenSections = widget.session.railView.hiddenSections;
-    hiddenSections.value = toggledSet(hiddenSections.value, section);
-    // F-169: hiding the section you stand in hands the standing on.
-    widget.session.standing.keepStandingShown();
-  }
-
-  void _setTimelineRowFilter(TimelineRowFilter filter) {
-    widget.session.railView.rowFilter.value = filter;
-    // UI-R6 #3: a non-passing active layer moves to the nearest passing
-    // layer above it (instead of lingering through the exemption).
-    widget.session.standing.keepStandingShown(filterSparesStanding: false);
-  }
+  // law reads them, and the layer ids they name are the project's. A tab
+  // takes them, and their verbs, as `TabRailWiring` — the one wiring
+  // (tests-hand-roll-the-tab-hosts-Q1 b, 2026-10-25) — whose twirl and
+  // group fold are pressed through `SessionRowButtonPresses`: a press inside
+  // the row selection folds every selected row (I-32).
 
   /// The TWO viewers (R4 §6-h, second one 유저 확정 2026-08-12): the one
   /// that lies on the floor to be looked at large, and the one that sits
@@ -1319,6 +1303,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       openFiles: () => unawaited(_pickAndOpen()),
       openFolder: () => unawaited(_pickFolderAndOpen()),
       openHanded: (handed) => unawaited(_door.open(context, handed)),
+      paperEditing: () {
+        final tool = widget.brushTool;
+        return tool == null ? null : _views.paperEditingWith(tool);
+      },
     );
     widget.flipHud?.bind(this, _flipHud.flipHudSnapshot);
     for (final slot in _viewerSlots.values) {
@@ -3180,6 +3168,7 @@ class _RailGroupButton extends StatelessWidget {
               child: ControlPressClaim(
                 onPressed: onPressed,
                 child: InkWell(
+                  mouseCursor: AppCursors.press,
                   onTap: silentPress(onPressed),
                   // The pair sizes itself to one button cell, so a group that
                   // wears a face is the same square as every other.

@@ -5,7 +5,7 @@ import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/pill_subject.dart';
-import '../../models/timeline_coverage.dart' show coveringDrawingBlockAt;
+import '../../models/timeline_coverage.dart' show authoredDrawingBlockAt;
 import '../../models/track_id.dart';
 import '../text/place_lines.dart' show drawingPlaceLines;
 import 'active_cut_controllers.dart';
@@ -203,11 +203,11 @@ class BlockNaming {
     if (layer == null || !rowNumbersItsDrawings(layer)) {
       return null;
     }
-    final block = coveringDrawingBlockAt(
+    final block = authoredDrawingBlockAt(
       layer.timeline,
       _selection.currentFrameIndex,
     );
-    if (block == null || block.entry.ghost) {
+    if (block == null) {
       return null;
     }
     final end = layer.timeline.lastKey()! + 1;

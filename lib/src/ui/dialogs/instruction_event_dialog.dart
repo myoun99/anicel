@@ -50,7 +50,16 @@ class InstructionEventDialog extends StatefulWidget {
     this.onEditInstructionSet,
     this.previewAxis = Axis.horizontal,
     this.namedByItsCuts,
+    this.offersNoMark = false,
   });
+
+  /// Whether the mark picker offers 「(없음)」 — a span with no mark
+  /// ([InstructionEvent.instructionId] null), on a row whose block stands
+  /// without one (I-72-block-without-instruction, 유저 2026-10-08:
+  /// 「지시 기호 없는상태 존재하도록. (없음) 이런식?」). A null
+  /// [initialInstructionId] then opens on it; without it, on the
+  /// vocabulary's first entry.
+  final bool offersNoMark;
 
   /// A span whose writing is not the user's: this names a draft the way its
   /// row shows it — a transition's, whose targets are certain (F-229, 유저:
@@ -81,11 +90,14 @@ class InstructionEventDialog extends StatefulWidget {
 }
 
 class _InstructionEventDialogState extends State<InstructionEventDialog> {
-  late String? _instructionId =
-      widget.initialInstructionId ??
-      (widget.instructionSet.defs.isEmpty
-          ? null
-          : widget.instructionSet.defs.first.id);
+  late String? _instructionId = widget.offersNoMark
+      ? widget.initialInstructionId
+      : widget.initialInstructionId ??
+            widget.instructionSet.defs.firstOrNull?.id;
+
+  /// Whether the fields as they stand make a span — one with no mark only
+  /// where the picker offers none.
+  bool get _canSubmit => _instructionId != null || widget.offersNoMark;
   late final TextEditingController _textController = TextEditingController(
     text: widget.initialText ?? '',
   );
@@ -121,14 +133,13 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
   }
 
   void _submit() {
-    final instructionId = _instructionId;
-    if (instructionId == null) {
+    if (!_canSubmit) {
       return;
     }
     final written = widget.namedByItsCuts == null;
     Navigator.of(context).pop(
       InstructionEventDialogResult(
-        instructionId: instructionId,
+        instructionId: _instructionId,
         text: written ? _trimmedOrNull(_textController) : null,
         valueA: written ? _trimmedOrNull(_valueAController) : null,
         valueB: written ? _trimmedOrNull(_valueBController) : null,
@@ -138,7 +149,7 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
 
   /// The event as the fields stand, for the preview — named the way its row
   /// shows it when the writing is not the user's.
-  InstructionEvent _draft(String instructionId) {
+  InstructionEvent _draft(String? instructionId) {
     final draft = InstructionEvent(
       instructionId: instructionId,
       length: InstanceEditPreview.maxKoma,
@@ -170,19 +181,31 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
             emphasized: true,
             child: PanelFlyoutButton(
               key: const ValueKey<String>('instruction-def-dropdown'),
-              label: picked?.name ?? '',
+              label:
+                  picked?.name ??
+                  (widget.offersNoMark && instructionId == null
+                      ? strings.instructionMarkNone
+                      : ''),
               icon: picked == null ? null : instructionIconFor(picked.iconKey),
               expand: true,
-              entriesBuilder: () =>
-                  widget.instructionSet.defs.asFlyoutValueChoices(
-                    current: picked,
-                    choiceOf: (def) => PanelFlyoutChoice(
-                      key: 'instruction-option-${def.id}',
-                      label: def.name,
-                      icon: instructionIconFor(def.iconKey),
-                    ),
-                    onPicked: (def) => setState(() => _instructionId = def.id),
+              entriesBuilder: () => [
+                if (widget.offersNoMark)
+                  PanelFlyoutItem(
+                    keyValue: 'instruction-option-none',
+                    label: strings.instructionMarkNone,
+                    selected: instructionId == null,
+                    onSelected: () => setState(() => _instructionId = null),
                   ),
+                ...widget.instructionSet.defs.asFlyoutValueChoices(
+                  current: picked,
+                  choiceOf: (def) => PanelFlyoutChoice(
+                    key: 'instruction-option-${def.id}',
+                    label: def.name,
+                    icon: instructionIconFor(def.iconKey),
+                  ),
+                  onPicked: (def) => setState(() => _instructionId = def.id),
+                ),
+              ],
             ),
           ),
           if (widget.namedByItsCuts == null) ...[
@@ -234,14 +257,14 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
           ],
         ],
       ),
-      preview: instructionId == null
-          ? null
-          : InstanceEditPreview.instruction(
+      preview: _canSubmit
+          ? InstanceEditPreview.instruction(
               axis: widget.previewAxis,
               event: _draft(instructionId),
               defById: widget.instructionSet.defById,
-            ),
-      onSubmit: instructionId == null ? null : _submit,
+            )
+          : null,
+      onSubmit: _canSubmit ? _submit : null,
       onDelete: widget.editing
           ? () => Navigator.of(
               context,

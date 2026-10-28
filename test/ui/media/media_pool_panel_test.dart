@@ -218,7 +218,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey<String>('media-import-button')),
-        matching: find.railTooltip(AppText.strings.imImport),
+        matching: find.tooltipSaying(AppText.strings.imImport),
       ),
       findsOneWidget,
     );

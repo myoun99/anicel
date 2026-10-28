@@ -22,8 +22,6 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
-import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/layout/device_grid_scroll_controller.dart'
     show ScrollStill;
@@ -47,6 +45,8 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
 import 'package:anicel/src/ui/widgets/pill_strip.dart' show Pill;
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/timeline_host.dart';
+import '../../helpers/timeline_zoom.dart';
 
 /// **I-89 ③ — an open header graph draws its lines.**
 ///
@@ -184,9 +184,9 @@ void main() {
 
     // Zoomed in, a frame's cell is wider than a lane's row is tall and the
     // row is the tighter of the two; zoomed out, the cell is.
-    await _tap(tester, 'timeline-zoom-in-button');
     final seen = <Size>{};
-    for (var step = 0; step < 3; step += 1) {
+    for (final (step, zoom) in [32.0, 24.0, 16.0].indexed) {
+      await zoomTimelineTo(tester, zoom);
       final member = memberMark();
       seen.add(member);
       final marks = graphMarks();
@@ -198,7 +198,6 @@ void main() {
           reason: 'zoom step $step',
         );
       }
-      await _tap(tester, 'timeline-zoom-out-button');
     }
     expect(seen, hasLength(3), reason: '⛔전제: the zoom moved the marks');
   });
@@ -470,8 +469,10 @@ void main() {
     // 1040 → 680 (I-89 Q1, 2026-10-12): the rail is 519 again, and a
     // window's region never opens narrower than 640 by itself — so a
     // window under that. 680 → 622 (F-409, 2026-10-20): the names gave a
-    // third up and the rail is 461, so the view kept its forty.
-    final s = await _pump(tester, frames: 600, width: 622);
+    // third up and the rail is 461, so the view kept its forty. 622
+    // → 530 (heavy-tests-timeline, 2026-10-25): the panel's own width,
+    // which that window laid between its side docks.
+    final s = await _pump(tester, frames: 600, width: 530);
     await _pinTheBlur(tester, s);
 
     final view = tester.getRect(
@@ -874,30 +875,23 @@ RenderBox _firstViewportUnder(WidgetTester tester, String key) {
   return found!;
 }
 
-/// [tall]: a surface twice as tall, the dock at its cap of half of it —
-/// the sheet stands the rail up as its header (~490px), and under 1200px
-/// the frames are left 48px. [width] narrows the frames' view with it, and
-/// [layerName] names the drawing.
+/// The timeline tab alone ([pumpTimelineHost]). [tall]: as a window twice as
+/// tall laid it — the sheet stands the rail up as its header (~490px), and
+/// the shorter one leaves the frames 48px. [width] is the panel's — the view
+/// narrows with it, as it did in the app's window of 1400, which laid the
+/// panel 870 wide between its side docks — and [layerName] names the
+/// drawing.
 Future<EditorSessionManager> _pump(
   WidgetTester tester, {
   int frames = 12,
   bool tall = false,
-  double width = 1400,
+  double width = 870,
   String layerName = 'Drawing',
-}) async {
-  await tester.binding.setSurfaceSize(Size(width, tall ? 2400 : 1200));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
-  await tester.pumpWidget(
-    MaterialApp(home: HomePage(initialProject: _project(frames, layerName))),
-  );
-  await tester.pumpAndSettle();
-  await tester.drag(
-    find.byKey(const ValueKey<String>('dock-resize-bottom')),
-    Offset(0, tall ? -1200 : -520),
-  );
-  await tester.pumpAndSettle();
-  return tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
-}
+}) => pumpTimelineHost(
+  tester,
+  _project(frames, layerName),
+  surface: Size(width, tall ? 610 : 546),
+);
 
 /// The drawing's Transform graph open and stood on its Position, with the
 /// Blur's width pinned to it: one guest.

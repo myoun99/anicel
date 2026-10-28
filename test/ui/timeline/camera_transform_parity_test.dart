@@ -22,8 +22,6 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
-import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerMarkColor;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
@@ -42,6 +40,7 @@ import 'package:anicel/src/ui/widgets/instant_tap_region.dart';
 
 import '../../helpers/block_word_finder.dart';
 import '../../helpers/the_classic_rail.dart';
+import '../../helpers/timeline_host.dart';
 import 'timeline_cell_probe.dart';
 import '../../helpers/named_finders.dart';
 
@@ -114,21 +113,24 @@ Project _project({CutCamera? camera, TransformTrack? drawTransform}) {
   );
 }
 
+/// The timeline tab alone ([pumpTimelineHost]), as the app's window of
+/// 1280 × 1200 laid it — the marks and their drags are the panel's.
 Future<void> _pump(WidgetTester tester, Project project) async {
-  await tester.binding.setSurfaceSize(const Size(1280, 1200));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
-  await tester.pumpWidget(MaterialApp(home: HomePage(initialProject: project)));
-  await tester.pumpAndSettle();
+  await pumpTimelineHost(tester, project, surface: const Size(790, 546));
   await standTheClassicRail(tester);
-  await tester.drag(
-    find.byKey(const ValueKey<String>('dock-resize-bottom')),
-    const Offset(0, -520),
-  );
-  await tester.pumpAndSettle();
 }
 
 Finder _marker(LayerId layerId, String laneId, int frame) => find.byKey(
   ValueKey<String>('timeline-lane-key-${layerId.value}-$laneId-$frame'),
+);
+
+/// What [marker] paints — its fill is the colour it is drawn in.
+Finder _markPaint(Finder marker) =>
+    find.descendant(of: marker, matching: find.byType(CustomPaint));
+
+/// The colour label both fixture rows wear.
+final _finishLabel = layerMarkColor(
+  const LayerMark(process: LayerProcess.finish),
 );
 
 Future<void> _toggleLanes(WidgetTester tester, LayerId layerId) async {
@@ -360,12 +362,8 @@ void main() {
       await _pump(tester, _project(camera: CutCamera.fromTrack(named)));
 
       expect(
-        tester
-            .widget<TimelineLaneKeyMarker>(
-              _marker(_camId, transformGroupHeaderLane.laneId, 4),
-            )
-            .color,
-        layerMarkColor(const LayerMark(process: LayerProcess.finish)),
+        _markPaint(_marker(_camId, transformGroupHeaderLane.laneId, 4)),
+        paints..path(color: _finishLabel),
         reason: '「유니언 키 색은 프레임블록이랑 마찬가지로 색라벨 그대로」',
       );
       expect(
@@ -393,10 +391,8 @@ void main() {
       await _expandTransformGroup(tester, _drawId);
 
       expect(
-        tester
-            .widget<TimelineLaneKeyMarker>(_marker(_drawId, 'position', 8))
-            .color,
-        layerMarkColor(const LayerMark(process: LayerProcess.finish)),
+        _markPaint(_marker(_drawId, 'position', 8)),
+        paints..path(color: _finishLabel),
       );
     });
   });
@@ -458,9 +454,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // The release commits where the preview promised.
-      final session = tester
-          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
-          .session;
+      final session = timelineSessionOf(tester);
       expect(
         session.activeCutOrNull!.camera.track.keyframeAt(10),
         isNotNull,
@@ -572,9 +566,7 @@ void main() {
       await gesture.up();
       await tester.pumpAndSettle();
 
-      final session = tester
-          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
-          .session;
+      final session = timelineSessionOf(tester);
       expect(
         session.activeCutOrNull!.camera.track.position.keyAt(10),
         isNotNull,
@@ -640,7 +632,6 @@ void main() {
           rowDelta: -2, // up past the camera row onto the drawing row.
         )!;
         expect(escalation.headLayerId, _drawId);
-        expect(escalation.headLaneId, isNull);
         expect(escalation.spanRows, [
           const LayerRowAddress(_drawId),
           const LayerRowAddress(_camId),
@@ -672,9 +663,7 @@ void main() {
       );
       await _toggleLanes(tester, _camId);
 
-      final session = tester
-          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
-          .session;
+      final session = timelineSessionOf(tester);
 
       // The rail reads camera-section-first here: [cam, cam lanes…,
       // transition clone, draw]. Drag DOWN from the camera's position lane
@@ -722,9 +711,7 @@ void main() {
       // scale, rotation, transition clone, draw].
       await _toggleLanes(tester, _camId);
 
-      final session = tester
-          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
-          .session;
+      final session = timelineSessionOf(tester);
 
       // Drag UP from the drawing layer's cells, across the transition
       // clone and the camera's three lane rows, onto the camera row.

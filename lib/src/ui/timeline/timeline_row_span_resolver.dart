@@ -3,58 +3,34 @@ import '../../models/timeline_row_address.dart';
 import 'lane_span_in_order.dart';
 import 'property_lane_model.dart';
 
-/// The row [rowDelta] display rows from [sourceLayerId]'s CELLS row,
-/// clamped to the ends — the walk BOTH resolvers make before they answer
-/// their own question. Null when the list is empty or the source row is
-/// not on screen.
+/// The layer whose row sits [rowDelta] display rows away from [source] —
+/// the row the drag was pressed on, whose rows the gesture counted — the
+/// block-move drop target. Lane rows resolve to their owning layer;
+/// out-of-range deltas clamp to the ends. Null when the list is empty or
+/// the source row is not on screen.
 ///
-/// ⚠️The two verbs stay two functions (see [resolveSelectionSpanHead]'s
-/// head): a mode flag would make one function answer both "which row" and
-/// "what may a drag stop on". Only the walk is shared.
-TimelineDisplayRow? _rowAtDelta(
-  List<TimelineDisplayRow> rows,
-  LayerId sourceLayerId,
-  int rowDelta,
-) {
+/// 🚨H20: a band pressed on a LANE row counts its rows from that lane.
+/// ↩️The walk started at the lane's layer's cells row, so a band carried by
+/// its Position lane onto the row above it overshot by as many rows as
+/// the lane sat from its layer.
+///
+/// ↩️A select drag had a resolver of its own beside this one, for the lane
+/// its head could stop on (R27 #14's lane tail). One band (유저 2026-10-25)
+/// left that drag nothing to read but the rows it swept
+/// ([resolveSelectionSpanRows]), so it went.
+LayerId? resolveBlockMoveTargetLayer({
+  required List<TimelineDisplayRow> rows,
+  required TimelineRowAddress source,
+  required int rowDelta,
+}) {
   if (rows.isEmpty) {
     return null;
   }
-  final sourceIndex = indexOfLayerRow(rows, sourceLayerId);
+  final sourceIndex = rows.indexWhere((row) => row.address == source);
   if (sourceIndex < 0) {
     return null;
   }
-  return rows[(sourceIndex + rowDelta).clamp(0, rows.length - 1)];
-}
-
-/// The layer whose row sits [rowDelta] display rows away from
-/// [sourceLayerId]'s cells row — the block-move drop target. Lane rows
-/// resolve to their owning layer; out-of-range deltas clamp to the ends.
-LayerId? resolveBlockMoveTargetLayer({
-  required List<TimelineDisplayRow> rows,
-  required LayerId sourceLayerId,
-  required int rowDelta,
-}) => _rowAtDelta(rows, sourceLayerId, rowDelta)?.layer.id;
-
-/// The display row a cell SELECT drag has reached: its layer, plus the
-/// lane id when the pointer is over a property-lane row (R27 #14 —
-/// "A셀부터 오파시티까지만").
-///
-/// [resolveBlockMoveTargetLayer] answers the same question for MOVES,
-/// where a lane row can only mean its owning layer (keys do not accept
-/// dropped blocks). Selection is the other half: a lane row IS a
-/// selectable row, so the drag has to be able to stop on it. Same row
-/// walk, different verb — hence two functions over one row list rather
-/// than one function with a mode flag.
-({LayerId layerId, String? laneId})? resolveSelectionSpanHead({
-  required List<TimelineDisplayRow> rows,
-  required LayerId sourceLayerId,
-  required int rowDelta,
-}) {
-  final target = _rowAtDelta(rows, sourceLayerId, rowDelta);
-  if (target == null) {
-    return null;
-  }
-  return (layerId: target.layer.id, laneId: target.lane?.laneId);
+  return rows[(sourceIndex + rowDelta).clamp(0, rows.length - 1)].layer.id;
 }
 
 /// 🚨★★★ THE SELECTION SPAN — every row a select drag has swept, in the
@@ -135,7 +111,7 @@ List<TimelineRowAddress> resolveSelectionSpanOverAddresses({
 ///
 /// Null also when the anchor is not on screen or the delta is zero — both
 /// mean "the lane law owns the step", never "refuse".
-({LayerId headLayerId, String? headLaneId, List<TimelineRowAddress> spanRows})?
+({LayerId headLayerId, List<TimelineRowAddress> spanRows})?
 resolveLaneSpanEscalation({
   required List<TimelineDisplayRow> rows,
   required LayerId layerId,
@@ -152,14 +128,8 @@ resolveLaneSpanEscalation({
     return null;
   }
   return switch (escalation.head) {
-    LayerRowAddress(:final layerId) => (
+    LayerRowAddress(:final layerId) || LaneRowAddress(:final layerId) => (
       headLayerId: layerId,
-      headLaneId: null,
-      spanRows: escalation.spanRows,
-    ),
-    LaneRowAddress(:final layerId, :final laneId) => (
-      headLayerId: layerId,
-      headLaneId: laneId,
       spanRows: escalation.spanRows,
     ),
     // A track row never appears on the grids that call this form.
@@ -187,7 +157,7 @@ String? resolveInGroupHeadLane({
 /// the anchor lane's index and the index of the row [rowDelta] away,
 /// clamped to the ends and stepped back toward the anchor over
 /// address-less rows (the storyboard's audio strip takes space but cannot
-/// be a head — the [_railRowAtCrossOffset] rule). Null when the delta is
+/// be a head — the rail's `_sweptOver` rule). Null when the delta is
 /// zero, the list is empty, or the anchor lane is not drawn.
 ({int anchorIndex, int headIndex})? _laneDragHeadIndex(
   List<TimelineRowAddress?> rows,
@@ -228,7 +198,7 @@ List<String> laneBoxLanesOf(List<LaneRowAddress> rows) => [
 /// [TimelineDisplayRow]s: the storyboard rail holds a TRACK row (no Layer
 /// to wrap) and an address-less audio strip (null — it takes space but
 /// cannot be a head; the walk steps back toward the anchor over it, the
-/// [_railRowAtCrossOffset] rule).
+/// rail's `_sweptOver` rule).
 ({TimelineRowAddress head, List<TimelineRowAddress> spanRows})?
 resolveLaneSpanEscalationOverAddresses({
   required List<TimelineRowAddress?> rows,
@@ -277,6 +247,11 @@ resolveLaneSpanEscalationOverAddresses({
 /// others joins the span without anything here learning its name. The rail
 /// already resolves the head lane off these same rows
 /// ([resolveInGroupHeadLane]) — this is the other half of that.
+///
+/// R9 #20: a group HEADER is one of those rows — dragged from it to the
+/// second lane covers the header and the lane between, what the drag
+/// drew. ↩️The header sat outside the transform order behind a branch and
+/// that drag took all five lanes.
 List<String> laneSpanOverDrawnRows({
   required List<TimelineRowAddress?> rows,
   required LayerId layerId,

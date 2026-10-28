@@ -29,6 +29,7 @@ import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
+import '../../helpers/number_pad_keyboard.dart';
 
 /// Empties [file], once nothing else holds it mapped.
 ///
@@ -119,6 +120,7 @@ void main() {
     for (final (end, at) in [('in', first), ('out', last)]) {
       await tester.tap(find.byKey(ValueKey<String>('transport-$end-edit')));
       await tester.pump();
+      await openThePadsKeyboard(tester);
       await tester.enterText(
         find.byKey(ValueKey<String>('transport-$end-input')),
         '$at',
@@ -1842,7 +1844,7 @@ void main() {
         'converted file\'s', (tester) async {
       final psd = await tester.runAsync(() async {
         final file = File(
-          '${tempDir.path}${Platform.pathSeparator}clipped.psd',
+          '${tempDir.path}${Platform.pathSeparator}locked.psd',
         );
         await file.writeAsBytes(
           buildPsd(
@@ -1857,7 +1859,7 @@ void main() {
                   right: 4,
                   bottom: 4,
                   planes: psdSolidPlanes(4, 4, [10, 20, 30]),
-                  clipping: true,
+                  protection: 0x80000000,
                 ),
             ],
             compositePlanes: [Uint8List(16), Uint8List(16), Uint8List(16)],
@@ -1871,7 +1873,7 @@ void main() {
       Finder inNotice(String text) =>
           find.descendant(of: notice, matching: find.text(text));
 
-      expect(inNotice('Clipping mask not applied. (2)'), findsOneWidget);
+      expect(inNotice('Lock not imported. (2)'), findsOneWidget);
       expect(
         [
           for (final layer in ['ink', 'shade'])

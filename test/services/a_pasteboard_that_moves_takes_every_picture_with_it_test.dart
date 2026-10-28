@@ -96,6 +96,18 @@ void main() {
     ];
   }
 
+  /// The straddling tile alone, ink on its [rows] — 0 and 1 past the 1.5x
+  /// wall, 2 and 3 inside it.
+  BitmapSurface straddlingInk(List<int> rows) {
+    final pixels = Uint8List(tileSize * tileSize * 4);
+    for (final row in rows) {
+      pixels.fillRange(row * tileSize * 4, (row + 1) * tileSize * 4, 40);
+    }
+    return BitmapSurface(canvasSize: canvas, tileSize: tileSize).putTiles([
+      (coord: straddling, tile: BitmapTile(size: tileSize, pixels: pixels)),
+    ]);
+  }
+
   group('a picture put behind a nearer wall (surfaceBehindReach)', () {
     test('keeps every tile inside as the very tile, at its place', () {
       final before = drawn();
@@ -130,6 +142,27 @@ void main() {
       ]);
       final behind = surfaceBehindReach(surface, PasteboardReach.quarter);
       expect(behind.tiles, isEmpty);
+    });
+
+    // 🗣️a-save-grows-the-file-without-drawing (2026-10-28): S5_BA, 1.5x →
+    // off — 76 cels with ink beside the paper's edge and none past it read
+    // as cut, and the next save wrote them all again.
+    test('🚨a straddling tile is cut only where it held something past it', () {
+      expect(
+        cutBehindReach(straddlingInk([2, 3]), PasteboardReach.quarter),
+        isNull,
+        reason: 'its ink all inside: not a pixel taken',
+      );
+      expect(
+        cutBehindReach(straddlingInk([1, 2]), PasteboardReach.quarter),
+        isNotNull,
+        reason: 'one row of its ink past the wall',
+      );
+      expect(
+        cutBehindReach(straddlingInk([0]), PasteboardReach.quarter),
+        isNotNull,
+        reason: 'all of it past the wall',
+      );
     });
 
     test('off, the paper alone is left', () {
@@ -305,7 +338,7 @@ void main() {
       store.storeBakedSurface(clean, inkInside());
       final taken = store.adoptPasteboardReach(PasteboardReach.quarter);
       expect(taken.keys, [cut]);
-      expect(identical(taken[cut], before), isTrue);
+      expect(identical(taken[cut]?.picture, before), isTrue);
       expectCut(store.bakedSurfaceOrNull(cut));
       expect(
         store.bakedSurfaceOrNull(clean)!.pasteboardReach,
@@ -337,6 +370,56 @@ void main() {
         PasteboardReach.quarter,
       );
     });
+
+    // 🗣️a-save-grows-the-file-without-drawing (2026-10-28): a cel the move
+    // takes not a pixel of is no cut — not handed to the undo, not dirty,
+    // and kept where it was, so the next save writes nothing of it.
+    for (final (tier, keep, keptThere) in <(
+      String,
+      _KeepAll,
+      bool Function(BrushFrameStore store),
+    )>[
+      ('hot', _keepHot, (s) => s.hotBakedSurfaceOrNull(clean) != null),
+      ('parked cold', parkCold, (s) => s.isCelCold(clean)),
+      ('kept in a file', keepInAFile, (s) => s.isCelFileBacked(clean)),
+    ]) {
+      for (final ahead in [false, true]) {
+        test('🚨$tier${ahead ? ', worked out ahead' : ''}: ink beside the '
+            'wall and none past it is no cut', () async {
+          final store = BrushFrameStore();
+          keep(store, {clean: straddlingInk([2, 3])});
+          final dirty = {...store.dirtyCelKeysSinceSave};
+          final hot = store.hotBakedSurfaceOrNull(clean);
+          if (ahead) {
+            await store.cutCelsAhead(PasteboardReach.quarter);
+          }
+          final walled = store.celsWalledHere;
+
+          expect(store.adoptPasteboardReach(PasteboardReach.quarter), isEmpty);
+
+          expect(keptThere(store), isTrue);
+          expect(store.dirtyCelKeysSinceSave, dirty);
+          if (hot != null) {
+            expect(
+              identical(
+                store.hotBakedSurfaceOrNull(clean)!.tileAt(straddling),
+                hot.tileAt(straddling),
+              ),
+              isTrue,
+              reason: 'its very tile',
+            );
+            expect(
+              store.celsWalledHere,
+              ahead ? walled : walled + 1,
+              reason: 'worked out ahead, it is not cut again here',
+            );
+          }
+          final now = store.bakedSurfaceOrNull(clean)!;
+          expect(now.pasteboardReach, PasteboardReach.quarter);
+          expect(rowsOf(now.tileAt(straddling)!), [0, 0, 40, 40]);
+        });
+      }
+    }
 
     // Card `a-cooled-empty-cel-reads-drawn` (2026-10-24): a kept cel cut to
     // nothing stays kept, and it read 「그려짐」 by being kept at all — so the
@@ -478,7 +561,7 @@ void main() {
         unreadable(store, refs);
         final taken = store.adoptPasteboardReach(PasteboardReach.quarter);
         expect(taken.keys, [cut]);
-        expectSamePicture(taken[cut], drawn());
+        expectSamePicture(taken[cut]?.picture, drawn());
         expect(store.isCelCold(cut), isTrue);
         expect(store.isCelFileBacked(clean), isTrue);
         expect(store.dirtyCelKeysSinceSave, {cut});
@@ -503,7 +586,7 @@ void main() {
           final taken = ahead.adoptPasteboardReach(PasteboardReach.none);
           expect(taken.keys, [cut]);
           expect(takenHere.keys, [cut]);
-          expectSamePicture(taken[cut], takenHere[cut]!);
+          expectSamePicture(taken[cut]?.picture, takenHere[cut]!.picture);
           for (final key in [cut, clean]) {
             expectSamePicture(
               ahead.bakedSurfaceOrNull(key),
@@ -547,7 +630,7 @@ void main() {
         }
         expect(store.cutAheadOf(clean), isNull, reason: 'nothing of it cut');
         final taken = store.adoptPasteboardReach(PasteboardReach.quarter);
-        expect(identical(taken[cut], before), isTrue);
+        expect(identical(taken[cut]?.picture, before), isTrue);
         expect(identical(store.hotBakedSurfaceOrNull(cut), worked), isTrue);
         expect(store.cutAheadOf(cut), isNull, reason: 'let go once taken');
       });
@@ -603,7 +686,7 @@ void main() {
         final drawnSince = drawn();
         store.storeBakedSurface(cut, drawnSince);
         final taken = store.adoptPasteboardReach(PasteboardReach.quarter);
-        expect(identical(taken[cut], drawnSince), isTrue);
+        expect(identical(taken[cut]?.picture, drawnSince), isTrue);
         expect(identical(store.hotBakedSurfaceOrNull(cut), worked), isFalse);
         expectCut(store.bakedSurfaceOrNull(cut));
       });
@@ -846,6 +929,23 @@ void main() {
         command.undo();
         expectWhole(f.store.bakedSurfaceOrNull(cut), before);
       });
+
+      test('$tier: undone, the cel is at the revision that named what it is '
+          'given back — every picture made of it answers again (F-432 ④)', () {
+        final f = fixture((store) => keep(store, drawn()));
+        final named = f.store.getOrCreateFrame(cut).sourceRevision;
+        final command = SetProjectPasteboardCommand(
+          repository: f.repository,
+          brushFrameStore: f.store,
+          size: PasteboardSize.oneAndAHalf,
+        )..execute();
+        expect(f.store.getOrCreateFrame(cut).sourceRevision, isNot(named));
+        command.undo();
+        expect(f.store.getOrCreateFrame(cut).sourceRevision, named);
+        command.execute();
+        command.undo();
+        expect(f.store.getOrCreateFrame(cut).sourceRevision, named);
+      });
     }
 
     test('off leaves the paper alone; undo brings the pasteboard back', () {
@@ -961,11 +1061,36 @@ void main() {
       final command = SetProjectPasteboardCommand(
         repository: f.repository,
         brushFrameStore: f.store,
-        size: PasteboardSize.two,
+        size: PasteboardSize.oneAndAHalf,
       )..execute();
+      expect(
+        f.store.bakedSurfaceOrNull(cut)!.tiles.length,
+        lessThan(before.tiles.length),
+        reason: 'premise: the move cut the cel',
+      );
       expect(await command.parkPayload(), isTrue);
       command.undo();
       expectWhole(f.store.bakedSurfaceOrNull(cut), before);
+    });
+
+    test('a parked payload is laid back under the revision that named it',
+        () async {
+      final f = fixture((store) => store.storeBakedSurface(cut, drawn()));
+      final named = f.store.getOrCreateFrame(cut).sourceRevision;
+      final command = SetProjectPasteboardCommand(
+        repository: f.repository,
+        brushFrameStore: f.store,
+        size: PasteboardSize.oneAndAHalf,
+      )..execute();
+      expect(
+        f.store.getOrCreateFrame(cut).sourceRevision,
+        isNot(named),
+        reason: 'premise: the move cut the cel',
+      );
+      expect(await command.parkPayload(), isTrue);
+      expect(command.estimatedRetainedBytes(undone: false), 0);
+      command.undo();
+      expect(f.store.getOrCreateFrame(cut).sourceRevision, named);
     });
 
     test('a parked payload read back is let go off the UI thread', () async {
@@ -1130,7 +1255,9 @@ void main() {
             'all', () async {
           final store = kept();
           await store.cutCelsAhead(PasteboardReach.none);
-          final was = store.adoptPasteboardReach(PasteboardReach.none)[cel];
+          final was = store
+              .adoptPasteboardReach(PasteboardReach.none)[cel]
+              ?.picture;
 
           expectSamePicture(
             was,

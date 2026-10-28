@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -51,18 +49,22 @@ Future<void> _moveUntilStill(
   }
 }
 
-Color _pixelAt(WidgetTester tester, ByteData bytes, Offset logical) {
+/// Lets the strata just taken live until they paid for themselves — ones
+/// thrown away sooner make the next wait longer ([StillRaster.framesToPay]).
+Future<void> _untilPaid(WidgetTester tester) async {
+  for (var i = 0; i < StillRaster.framesToPay; i += 1) {
+    await _frame(tester);
+  }
+}
+
+/// The bytes of an image that holds the region ONCE: its own device
+/// pixels, and one more each way for where it sits on the grid — with
+/// [beside] more logical pixels of width.
+int _onceBytes(WidgetTester tester, {double beside = 0}) {
   final ratio = tester.view.devicePixelRatio;
-  final width = (parityCaptureWidth * ratio).round();
-  final i =
-      ((logical.dy * ratio).floor() * width + (logical.dx * ratio).floor()) *
-      4;
-  return Color.fromARGB(
-    bytes.getUint8(i + 3),
-    bytes.getUint8(i),
-    bytes.getUint8(i + 1),
-    bytes.getUint8(i + 2),
-  );
+  final width = (_width * ratio).ceil() + 1;
+  final besides = beside == 0 ? 0 : (beside * ratio).ceil() + 1;
+  return (width + besides) * ((_height * ratio).ceil() + 1) * 4;
 }
 
 /// A 10×10 mark at [at] along the tick's 200×40 box.
@@ -158,12 +160,12 @@ void main() {
       expect(region.debugDrawnFromImage, isTrue, reason: 'the tick at $x');
       final bytes = await captureBytes(tester);
       expect(
-        _pixelAt(tester, bytes, Offset(_left + x + 5, _top + 5)),
+        capturePixelAt(tester, bytes, Offset(_left + x + 5, _top + 5)),
         _mark,
         reason: 'the tick drawn where it is now, $x',
       );
       expect(
-        _pixelAt(tester, bytes, const Offset(_left + 175, _top + 5)),
+        capturePixelAt(tester, bytes, const Offset(_left + 175, _top + 5)),
         _ground,
         reason: 'the strata hold no tick of their own',
       );
@@ -192,12 +194,7 @@ void main() {
       await _frame(tester);
     }
     expect(region.debugDrawnFromImage, isTrue, reason: '⛔premise: still');
-    final ratio = tester.view.devicePixelRatio;
-    // The region's own device pixels, and one more each way for where it
-    // sits on the grid.
-    final most =
-        ((_width * ratio).ceil() + 1) * ((_height * ratio).ceil() + 1) * 4;
-    expect(region.rasterBytes, inInclusiveRange(1, most));
+    expect(region.rasterBytes, inInclusiveRange(1, _onceBytes(tester)));
   });
 
   testWidgets('🚨a tick something painted after it covers is drawn UNDER it '
@@ -220,7 +217,7 @@ void main() {
     expect(region.debugDrawnFromImage, isTrue);
     var bytes = await captureBytes(tester);
     expect(
-      _pixelAt(tester, bytes, const Offset(_left + 55, _top + 5)),
+      capturePixelAt(tester, bytes, const Offset(_left + 55, _top + 5)),
       _cover,
       reason: 'what is painted after the tick stays over it',
     );
@@ -229,7 +226,7 @@ void main() {
     await tester.pump();
     bytes = await captureBytes(tester);
     expect(
-      _pixelAt(tester, bytes, const Offset(_left + 155, _top + 5)),
+      capturePixelAt(tester, bytes, const Offset(_left + 155, _top + 5)),
       _mark,
       reason: 'past the cover the tick shows',
     );
@@ -288,14 +285,14 @@ void main() {
     expect(_region(tester).debugDrawnFromImage, isTrue);
     final bytes = await captureBytes(tester);
     expect(
-      _pixelAt(tester, bytes, const Offset(_left + 155, _top + 5)),
+      capturePixelAt(tester, bytes, const Offset(_left + 155, _top + 5)),
       _ground,
       reason: 'past the clip the tick does not show',
     );
     at.value = 50;
     await tester.pump();
     expect(
-      _pixelAt(
+      capturePixelAt(
         tester,
         await captureBytes(tester),
         const Offset(_left + 55, _top + 5),
@@ -326,8 +323,10 @@ void main() {
   });
 
   testWidgets('🚨a tick that stood still while the strata were taken is in '
-      'its stratum — when it moves, the region paints, and the next strata '
-      'draw it live', (tester) async {
+      'its stratum — when it moves, the strata are taken again in that '
+      'frame, it live between them, and the frame is drawn from them', (
+    tester,
+  ) async {
     final at = ValueNotifier<double>(0);
     addTearDown(at.dispose);
     await _pump(tester, _regionWith(at));
@@ -339,16 +338,23 @@ void main() {
     }
     final region = _region(tester);
     expect(region.debugDrawnFromImage, isTrue, reason: '⛔premise: still');
+    expect(region.debugLiveTicks, isEmpty, reason: '⛔premise: in a stratum');
+    await _untilPaid(tester);
 
+    // 🔬F-244-drag-start: that frame drew the whole region live, and the
+    // strata were taken again right after it — at every drag's start.
+    final before = region.debugCaptureCount;
     at.value = 60;
     await tester.pump();
+    expect(region.debugCaptureCount, before + 1, reason: 'taken again');
     expect(
       region.debugDrawnFromImage,
-      isFalse,
-      reason: 'a tick in a stratum moving is a change of the region\'s',
+      isTrue,
+      reason: 'in the frame the tick moved in',
     );
+    expect(region.debugLiveTicks, hasLength(1), reason: 'the tick, live');
     expect(
-      _pixelAt(
+      capturePixelAt(
         tester,
         await captureBytes(tester),
         const Offset(_left + 65, _top + 5),
@@ -356,13 +362,60 @@ void main() {
       _mark,
     );
 
-    await _moveUntilStill(tester, at);
-    expect(region.debugDrawnFromImage, isTrue);
     final taken = region.debugCaptureCount;
     at.value = 100;
     await tester.pump();
     expect(region.debugDrawnFromImage, isTrue, reason: 'drawn live now');
     expect(region.debugCaptureCount, taken);
+  });
+
+  testWidgets('two regions whose ticks start moving in one frame: one is '
+      'taken again in that frame and drawn from it, the other drawn live and '
+      'taken after it — one image a frame', (tester) async {
+    final at = ValueNotifier<double>(0);
+    addTearDown(at.dispose);
+    // Each region as wide as its tick — no overflow, so no clip over it.
+    await pumpSurface(
+      tester,
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: _regionWith(at, key: const ValueKey('a'))),
+          Expanded(child: _regionWith(at, key: const ValueKey('b'))),
+        ],
+      ),
+      left: 10,
+      width: 400,
+      height: _height,
+    );
+    final regions = tester
+        .renderObjectList<RenderStillRaster>(find.byType(StillRaster))
+        .toList();
+    bool still(RenderStillRaster r) =>
+        r.debugDrawnFromImage && r.debugLiveTicks.isEmpty;
+    for (var i = 0; i < StillRaster.maxStillFrames * 2; i += 1) {
+      if (regions.every(still)) {
+        break;
+      }
+      await _frame(tester);
+    }
+    expect(regions.every(still), isTrue, reason: '⛔premise: both still');
+    await _untilPaid(tester);
+    int taken() => regions.fold(0, (sum, r) => sum + r.debugCaptureCount);
+
+    final before = taken();
+    at.value = 60;
+    await tester.pump();
+    expect(
+      [for (final r in regions) r.debugDrawnFromImage],
+      unorderedEquals([true, false]),
+      reason: 'one image first drawn a frame',
+    );
+    expect(taken(), before + 2, reason: 'the other taken after the frame');
+
+    await _frame(tester);
+    expect(regions.every((r) => r.debugDrawnFromImage), isTrue);
+    expect(taken(), before + 2);
   });
 
   testWidgets('🚨a tick inside a tick: the inner one moving is drawn live, and '
@@ -406,9 +459,9 @@ void main() {
     expect(region.debugDrawnFromImage, isTrue);
     expect(region.debugCaptureCount, taken);
     final bytes = await captureBytes(tester);
-    expect(_pixelAt(tester, bytes, const Offset(_left + 75, _top + 5)), _mark);
+    expect(capturePixelAt(tester, bytes, const Offset(_left + 75, _top + 5)), _mark);
     expect(
-      _pixelAt(tester, bytes, const Offset(_left + 165, _top + 25)),
+      capturePixelAt(tester, bytes, const Offset(_left + 165, _top + 25)),
       _cover,
       reason: 'what the outer tick holds is drawn from its stratum',
     );
@@ -457,7 +510,7 @@ void main() {
     expect(region.debugLiveTicks, isEmpty, reason: 'taken into its stratum');
     expect(region.debugDrawnFromImage, isTrue);
     expect(
-      _pixelAt(
+      capturePixelAt(
         tester,
         await captureBytes(tester),
         Offset(_left + at.value + 5, _top + 5),
@@ -467,8 +520,11 @@ void main() {
     );
   });
 
-  testWidgets('something painted after a tick but beside it lets the region '
-      'be still', (tester) async {
+  testWidgets('🚨something painted after a tick but beside it lets the region '
+      'be still, and is drawn UNDER the tick — which is drawn first shows '
+      'only where two things overlap — so the image holds the region once', (
+    tester,
+  ) async {
     final at = ValueNotifier<double>(0);
     addTearDown(at.dispose);
     await _pump(
@@ -485,8 +541,200 @@ void main() {
       ),
     );
     await _moveUntilStill(tester, at);
+    final region = _region(tester);
 
-    expect(_region(tester).debugDrawnFromImage, isTrue);
+    expect(region.debugDrawnFromImage, isTrue);
+    expect(region.debugLiveTicks, hasLength(1), reason: '⛔premise: cut');
+    expect(
+      region.rasterBytes,
+      inInclusiveRange(1, _onceBytes(tester)),
+      reason: '🔬F-244-drag-start ③: a stratum was every picture painted '
+          'between two live ticks, and the timeline\'s dock kept an image '
+          '2.9–3.6 times its size — what was painted after the moving '
+          'cursor took a part of its own',
+    );
+    expect(
+      capturePixelAt(
+        tester,
+        await captureBytes(tester),
+        const Offset(_left + 50, _top + 110),
+      ),
+      _cover,
+      reason: 'drawn where it was painted',
+    );
+  });
+
+  testWidgets('🚨a picture reaches no further than the clips above it — a '
+      'box laid out over the tick but clipped beside it goes under it too', (
+    tester,
+  ) async {
+    // A viewport's rows are laid out as far as their run reaches; the
+    // viewport shows a page of them.
+    final at = ValueNotifier<double>(0);
+    addTearDown(at.dispose);
+    await _pump(
+      tester,
+      _regionWith(
+        at,
+        after: const Positioned(
+          left: 0,
+          top: 60,
+          width: 100,
+          height: 100,
+          child: ClipRect(
+            child: OverflowBox(
+              alignment: Alignment.bottomLeft,
+              minHeight: 400,
+              maxHeight: 400,
+              child: RepaintBoundary(child: ColoredBox(color: _cover)),
+            ),
+          ),
+        ),
+      ),
+    );
+    await _moveUntilStill(tester, at);
+    final region = _region(tester);
+
+    expect(region.debugDrawnFromImage, isTrue, reason: '⛔premise');
+    expect(region.rasterBytes, inInclusiveRange(1, _onceBytes(tester)));
+  });
+
+  testWidgets('🚨a tick reaches no further than the clips above it — laid out '
+      'past its clip, it lets what is painted beside the clip go under it', (
+    tester,
+  ) async {
+    final at = ValueNotifier<double>(0);
+    addTearDown(at.dispose);
+    await _pump(
+      tester,
+      _regionWith(
+        at,
+        wrap: (tick) => ClipRect(
+          child: OverflowBox(
+            alignment: Alignment.topLeft,
+            minHeight: 200,
+            maxHeight: 200,
+            child: tick,
+          ),
+        ),
+        after: const Positioned(
+          left: 0,
+          top: 60,
+          width: 100,
+          height: 100,
+          child: RepaintBoundary(child: ColoredBox(color: _cover)),
+        ),
+      ),
+    );
+    expect(
+      tester.getSize(find.byType(TickLayer)).height,
+      200,
+      reason: '⛔premise: the tick is laid out over the cover, past its clip',
+    );
+    await _moveUntilStill(tester, at);
+    final region = _region(tester);
+
+    expect(region.debugDrawnFromImage, isTrue, reason: '⛔premise');
+    expect(region.rasterBytes, inInclusiveRange(1, _onceBytes(tester)));
+    expect(
+      capturePixelAt(
+        tester,
+        await captureBytes(tester),
+        const Offset(_left + 50, _top + 110),
+      ),
+      _cover,
+      reason: 'drawn where it was painted',
+    );
+  });
+
+  testWidgets('🚨a picture under a fade stays with the fade — sunk under the '
+      'tick apart from the rest of the group, where the two overlap the one '
+      'would show through the other', (tester) async {
+    // The first of the pair is clear of the tick, the second lies over the
+    // tick and over the first.
+    const pair = Positioned.fill(
+      child: Opacity(
+        opacity: 0.5,
+        child: Stack(
+          children: [
+            Positioned(
+              left: 50,
+              top: 60,
+              width: 100,
+              height: 80,
+              child: RepaintBoundary(child: ColoredBox(color: _cover)),
+            ),
+            Positioned(
+              left: 0,
+              top: 20,
+              width: 100,
+              height: 80,
+              child: RepaintBoundary(child: ColoredBox(color: _mark)),
+            ),
+          ],
+        ),
+      ),
+    );
+    final at = ValueNotifier<double>(0);
+    addTearDown(at.dispose);
+    await _pump(
+      tester,
+      _regionWith(at, after: pair, key: const ValueKey('image')),
+    );
+    await _moveUntilStill(tester, at);
+    expect(_region(tester).debugDrawnFromImage, isTrue, reason: '⛔premise');
+    at.value = 150;
+    await tester.pump();
+    final fromStrata = await captureBytes(tester);
+
+    StillRaster.debugCachePaysOverride = false;
+    await _pump(
+      tester,
+      _regionWith(at, after: pair, key: const ValueKey('painted')),
+    );
+    await tester.pumpAndSettle();
+    final painted = await captureBytes(tester);
+    final result = compareRasters(
+      fromStrata,
+      painted,
+      width: (parityCaptureWidth * tester.view.devicePixelRatio).round(),
+      tolerance: parityRoundingTolerance,
+    );
+    expect(
+      result.over,
+      lessThanOrEqualTo(parityTieBudget),
+      reason: '${result.over} beyond the floor, worst ${result.worst}, in '
+          '${result.where}: ${result.samples}',
+    );
+  });
+
+  testWidgets('a narrow part of the image goes beside a wide one — under it, '
+      'it took the wide one\'s whole width', (tester) async {
+    final at = ValueNotifier<double>(0);
+    addTearDown(at.dispose);
+    await _pump(
+      tester,
+      _regionWith(
+        at,
+        after: const Positioned(
+          left: 0,
+          top: 0,
+          width: 10,
+          height: _height,
+          child: RepaintBoundary(child: ColoredBox(color: _cover)),
+        ),
+      ),
+    );
+    await _moveUntilStill(tester, at);
+    final region = _region(tester);
+
+    expect(region.debugDrawnFromImage, isTrue, reason: '⛔premise');
+    expect(
+      region.rasterBytes,
+      inInclusiveRange(_onceBytes(tester) + 1, _onceBytes(tester, beside: 10)),
+      reason: 'the column over the tick is a part of its own, beside the '
+          'ground\'s',
+    );
   });
 
   testWidgets('🚨the strata drawn with the tick live are the region as it '
@@ -584,11 +832,11 @@ void main() {
     expect(region.debugCaptureCount, taken, reason: 'not taken again');
     final bytes = await captureBytes(tester);
     expect(
-      _pixelAt(tester, bytes, Offset(_left + outer.value + 5, _top + 5)),
+      capturePixelAt(tester, bytes, Offset(_left + outer.value + 5, _top + 5)),
       _mark,
     );
     expect(
-      _pixelAt(tester, bytes, Offset(_left + at.value + 5, _top + 25)),
+      capturePixelAt(tester, bytes, Offset(_left + at.value + 5, _top + 25)),
       _mark,
     );
   });
@@ -780,7 +1028,7 @@ void main() {
       );
       expect(_region(tester).debugLiveTicks, isEmpty);
       expect(
-        _pixelAt(
+        capturePixelAt(
           tester,
           await captureBytes(tester),
           const Offset(_left + 65, _top + 5),

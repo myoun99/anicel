@@ -13,7 +13,6 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/timeline/instruction_icon_palette.dart';
-import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 import '../../helpers/native_engine_path.dart';
 
@@ -122,6 +121,41 @@ void main() {
     );
   });
 
+  // Drawing is single-finger by nature: a slot of two fingers or three
+  // never offers it.
+  testWidgets('input: a two- or three-finger slot\'s list has no drawing in '
+      'it — the one-finger slot\'s has', (tester) async {
+    await pumpPreferences(tester, PreferencesSection.input);
+
+    /// Opens [slot]'s list, asks it, and shuts it on the row [leaveOn].
+    Future<void> inTheList(
+      String slot,
+      void Function() ask, {
+      required String leaveOn,
+    }) async {
+      await tester.ensureVisible(byKey(slot));
+      await tester.pumpAndSettle();
+      await tester.tap(byKey(slot));
+      await tester.pumpAndSettle();
+      ask();
+      await tester.tap(byKey(leaveOn));
+      await tester.pumpAndSettle();
+    }
+
+    for (final slot in ['settings-touch-slot-2', 'settings-touch-slot-3']) {
+      await inTheList(
+        slot,
+        () => expect(byKey('$slot-draw'), findsNothing, reason: slot),
+        leaveOn: '$slot-navigate',
+      );
+    }
+    await inTheList(
+      'settings-touch-slot-1',
+      () => expect(byKey('settings-touch-slot-1-draw'), findsOneWidget),
+      leaveOn: 'settings-touch-slot-1-draw',
+    );
+  });
+
   testWidgets('audio: a saved device that is gone still shows in the list; '
       'the system default is picked from it like any other row', (
     tester,
@@ -220,11 +254,8 @@ void main() {
 
     await pick(
       tester,
-      find.descendant(
-        of: byKey('settings-notation-language'),
-        matching: find.byType(PanelFlyoutButton),
-      ),
-      'language-option-${other.name}',
+      byKey('settings-notation-language'),
+      'settings-notation-language-${other.name}',
     );
     expect(session.languageSettings.value.notationLanguage, other);
   });

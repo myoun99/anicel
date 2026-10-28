@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/sqlite3.dart';
+import 'package:anicel/src/models/frame.dart' show InbetweenMark;
 import 'package:anicel/src/services/import/clip_container.dart';
 import 'package:anicel/src/services/import/clip_document.dart';
 import 'package:anicel/src/services/import/clip_track_clip.dart';
@@ -209,7 +210,8 @@ void main() {
           (41, 42, 'cut 2', 24.0, 0, 24, 52),
           (42, 0, 'cut 3', 24.0, 0, 48, 54);
         INSERT INTO TimeLineLabel(MainId, LabelFrame, LabelType,
-          LabelNextIndex) VALUES (70, 6, 1, 71), (71, 20, 2, 0);
+          LabelNextIndex) VALUES (70, 6, 1, 71), (71, 20, 2, 72),
+          (72, 30, 3, 0);
       ''');
       final track = db.prepare(
         'INSERT INTO Track(MainId, TrackNextIndex, TrackKind, '
@@ -318,7 +320,13 @@ void main() {
       ],
       reason: 'the double document — the single one keys 「2」 alone',
     );
-    expect(first.tracks[key]!.labels, [6], reason: 'a breakdown only');
+    expect(
+      first.tracks[key]!.breakdownMarks,
+      {6: InbetweenMark.one, 20: InbetweenMark.two},
+      reason:
+          '🗣️I-130-csp-import-Q1: LabelType 1 is the ○, 2 the ● — the '
+          'third kind is no in-between',
+    );
     expect(second.name, 'cut 2');
     expect(
       shape(second.tracks[key]!),
@@ -335,7 +343,10 @@ void main() {
     expect(shape(bg), [
       [(start: 0, end: 24), isEmpty],
     ]);
-    expect(document.warnings, isEmpty);
+    expect(document.warnings, [
+      '1 timeline label(s) of LabelType 3, which no in-between mark is, '
+          'left out',
+    ]);
   });
 
   test('a text layer is 800 — or 0 with its text\'s columns filled, as four '
@@ -1421,5 +1432,29 @@ void main() {
       folder.listSync().where((entry) => entry.path.endsWith('.db')),
       isEmpty,
     );
+  });
+
+  // 🗣️I-130-csp-import-Q1 (유저 2026-10-27): 「새로 만든것임. 기밀아니고」 —
+  // a sample made for this, not one from work, so it is kept as a fixture.
+  test('🎯the sample the user made for the marks: its ○ on frame 3 and its ● '
+      'on frame 5 — the first two labels it made, as asked — and five more, '
+      'each the mark its kind is', () {
+    final document = readClipDocument(
+      'test/fixtures/clip_inbetween_marks.clip',
+      scratch: folder,
+    );
+    final folderTrack = document.timelines.single.tracks.values.singleWhere(
+      (track) => track.kind == 2000,
+    );
+    expect(folderTrack.breakdownMarks, {
+      3: InbetweenMark.one,
+      5: InbetweenMark.two,
+      8: InbetweenMark.two,
+      9: InbetweenMark.one,
+      10: InbetweenMark.one,
+      11: InbetweenMark.two,
+      12: InbetweenMark.one,
+    });
+    expect(document.warnings, isEmpty);
   });
 }

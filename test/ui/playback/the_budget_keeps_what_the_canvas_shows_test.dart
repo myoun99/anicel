@@ -3,72 +3,60 @@ import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
-import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
-import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/playback_quality.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
+import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
-import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
+import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/playback/frame_picture_store.dart';
+import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_cache_budget.dart';
+import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
 
-/// playback-plays-the-screen-material (10-09, 「허용치 = 레이어 그림 수요
-/// 순서」): the canvas's own images are every screen's pictures, and they
-/// are what the budget keeps — by when each is wanted, the latest let go
-/// first. ↩️The composites the film was shown from gave way before any of
-/// them, until they went (2026-10-10).
+/// 「허용치 = 레이어 그림 수요 순서」(playback-plays-the-screen-material,
+/// 10-09): what every screen shows is what the budget keeps — by when each
+/// is wanted, the latest let go first. Since a frame became one picture
+/// (one-picture-per-frame ②-2) that is the frames' pictures.
+/// ↩️The row images were every screen's pictures, kept by the demand, until
+/// then; ↩️the composites the film was shown from gave way before any of
+/// them, until they went (2026-10-10); ↩️the canvas's row images held what
+/// the pictures left of the line, and gave way first, until no screen drew
+/// a row's image (②-5b-1).
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
-  // 8×8 RGBA: a cel inked into both corners is stored whole.
-  const image = 8 * 8 * 4;
 
-  BrushFrameKey keyOf(Cut cut, LayerId layerId, FrameId frameId) =>
-      BrushFrameKey(
-        projectId: const ProjectId('p'),
-        trackId: const TrackId('t'),
-        cutId: cut.id,
-        layerId: layerId,
-        frameId: frameId,
-      );
-
-  /// One row, cels a, b and c on frames 0, 1 and 2.
   final cut = Cut(
     id: const CutId('c'),
     name: 'c',
     duration: 3,
     canvasSize: canvasSize,
-    layers: [
-      Layer(
-        id: const LayerId('l'),
-        name: 'A',
-        frames: [
-          for (final cel in ['a', 'b', 'c'])
-            Frame(id: FrameId(cel), duration: 1, strokes: const []),
-        ],
-        timeline: {
-          for (final (frame, cel) in ['a', 'b', 'c'].indexed)
-            frame: TimelineExposure.drawing(FrameId(cel), length: 1),
-        },
-      ),
-    ],
+    layers: const [],
   );
 
-  BrushFrameKey cel(String name) =>
-      keyOf(cut, const LayerId('l'), FrameId(name));
+  BrushFrameKey cel(String name) => BrushFrameKey(
+    projectId: const ProjectId('p'),
+    trackId: const TrackId('t'),
+    cutId: cut.id,
+    layerId: const LayerId('l'),
+    frameId: FrameId(name),
+  );
 
-  (BrushFrameKey, PlaybackQuality) slot(String name) =>
-      (cel(name), PlaybackQuality.full);
+  const names = ['a', 'b', 'c'];
 
-  ({LayerFrameImageCache layers}) caches() {
+  /// Frames 0, 1 and 2 show cels a, b and c — each inked into both
+  /// corners, so each frame's picture is the whole canvas.
+  FramePictures picturesOfTheFrames() {
     final store = BrushFrameStore();
-    for (final name in ['a', 'b', 'c']) {
+    for (final name in names) {
       for (final corner in [CanvasPoint(x: 1, y: 1), CanvasPoint(x: 6, y: 6)]) {
         inkCelIn(
           store,
@@ -83,102 +71,176 @@ void main() {
     }
     final layers = LayerFrameImageCache(frameStore: store);
     addTearDown(layers.dispose);
-    return (layers: layers);
+    final pictureStore = FramePictureStore<FramePictureKey>();
+    addTearDown(pictureStore.dispose);
+    return FramePictures(
+      store: pictureStore,
+      layerImages: layers,
+      stackOf: (picture) => [
+        CompositeLeaf(
+          CanvasLayerImageRequest(
+            frameKey: cel(names[picture.frameIndex]),
+            opacity: 1,
+          ),
+        ),
+      ],
+      pageOf: (picture) => (
+        canvasSize: picture.cut.canvasSize,
+        pasteboardReach: PasteboardReach.none,
+        paintPaper: picture.paintPaper,
+        paperBackground: ProjectBackground.defaultBackground,
+      ),
+    );
   }
 
-  Future<void> make(LayerFrameImageCache layers, List<String> names) async {
-    for (final name in names) {
-      await layers.prepare(
-        key: cel(name),
-        canvasSize: canvasSize,
-        quality: PlaybackQuality.full,
-        sourceEffects: const [],
-      );
+  FramePictureKey keyOf(FramePictures pictures, String name) => pictures
+      .keyOf((cut: cut, frameIndex: names.indexOf(name), paintPaper: true));
+
+  Future<void> makePictures(FramePictures pictures) async {
+    for (final frame in [0, 1, 2]) {
+      await pictures.make((
+        cut: cut,
+        frameIndex: frame,
+        paintPaper: true,
+      ), shouldAbort: () => false);
     }
   }
 
-  bool held(LayerFrameImageCache layers, String name) =>
-      layers.validImageOrNull(
-        cel(name),
-        PlaybackQuality.full,
-        canvasSize: canvasSize,
-        sourceEffects: const [],
-      ) !=
-      null;
+  List<bool> heldPictures(FramePictures pictures) => [
+    for (final name in names)
+      pictures.store.peek(keyOf(pictures, name)) != null,
+  ];
 
   /// b under the playhead, a two steps on, c five.
-  int? wantedAt((BrushFrameKey, PlaybackQuality) asked) =>
-      {slot('b'): 0, slot('a'): 2, slot('c'): 5}[asked];
+  FramePictureWantedAt wantedAtOf(FramePictures pictures) =>
+      (key) => {
+        keyOf(pictures, 'b'): 0,
+        keyOf(pictures, 'a'): 2,
+        keyOf(pictures, 'c'): 5,
+      }[key];
 
-  testWidgets('the canvas\'s images go latest-wanted first, and the rows under '
-      'the playhead stay whatever the cap', (tester) async {
+  testWidgets('the frames\' pictures go latest-wanted first, and the one '
+      'under the playhead stays whatever the cap', (tester) async {
     await tester.runAsync(() async {
-      final c = caches();
-      await make(c.layers, ['a', 'b', 'c']);
+      final pictures = picturesOfTheFrames();
+      await makePictures(pictures);
+      final picture = pictures.store.bytesOf(keyOf(pictures, 'a'))!;
+      final wantedAt = wantedAtOf(pictures);
       PlaybackCacheBudgetEnforcer budget(int maxBytes) =>
           PlaybackCacheBudgetEnforcer(
-            layerImages: c.layers,
+            pictures: pictures.store,
             maxBytes: maxBytes,
           );
 
-      budget(2 * image).enforce(wantedAt: wantedAt);
-      expect([held(c.layers, 'a'), held(c.layers, 'b'), held(c.layers, 'c')], [
-        true,
-        true,
-        false,
-      ]);
+      budget(3 * picture).enforce(wantedAt: wantedAt);
+      expect(
+        heldPictures(pictures),
+        [true, true, true],
+        reason: 'LIVENESS: room for all',
+      );
 
-      budget(image).enforce(wantedAt: wantedAt);
-      expect([held(c.layers, 'a'), held(c.layers, 'b')], [false, true]);
+      budget(2 * picture).enforce(wantedAt: wantedAt);
+      expect(heldPictures(pictures), [true, true, false]);
+
+      budget(picture).enforce(wantedAt: wantedAt);
+      expect(heldPictures(pictures), [false, true, false]);
 
       budget(0).enforce(wantedAt: wantedAt);
-      expect(held(c.layers, 'b'), isTrue, reason: 'b is the playhead\'s');
+      expect(
+        heldPictures(pictures),
+        [false, true, false],
+        reason: 'b is the playhead\'s',
+      );
     });
   });
 
-  testWidgets('🚨room is made out of an image wanted LATER, never out of one '
-      'wanted sooner', (tester) async {
+  /// 🗣️F-289-Q21 (유저 2026-10-07): 「붙든다 — 재생 줄의 허용치 안에서」 — an
+  /// export run borrows this line for the rows it keeps, playback resting
+  /// while it goes. What it holds comes off the pictures' share.
+  testWidgets('🎯what is lent comes off the pictures — the same budget with '
+      'nothing lent keeps them all', (tester) async {
     await tester.runAsync(() async {
-      final c = caches();
-      await make(c.layers, ['a', 'b', 'c']);
+      for (final lent in [0, 1]) {
+        final pictures = picturesOfTheFrames();
+        await makePictures(pictures);
+        final picture = pictures.store.bytesOf(keyOf(pictures, 'a'))!;
+        PlaybackCacheBudgetEnforcer(
+          pictures: pictures.store,
+          maxBytes: 3 * picture,
+        ).enforce(wantedAt: wantedAtOf(pictures), lentBytes: lent * picture);
+        expect(
+          heldPictures(pictures),
+          lent == 0 ? [true, true, true] : [true, true, false],
+          reason: 'lent: $lent pictures',
+        );
+      }
+    });
+  });
+
+  testWidgets('🚨room is made out of a picture wanted LATER — never out of '
+      'one wanted sooner', (tester) async {
+    await tester.runAsync(() async {
+      final pictures = picturesOfTheFrames();
+      await makePictures(pictures);
+      final picture = pictures.store.bytesOf(keyOf(pictures, 'a'))!;
+      final wantedAt = wantedAtOf(pictures);
       final budget = PlaybackCacheBudgetEnforcer(
-        layerImages: c.layers,
-        maxBytes: 2 * image,
+        pictures: pictures.store,
+        maxBytes: 4 * picture,
       );
 
       expect(
         budget.makeRoomFor(
-          bytes: image,
+          bytes: picture,
           step: 1,
-          within: 2 * image,
+          within: 3 * picture,
           wantedAt: wantedAt,
         ),
         isTrue,
       );
-      expect([held(c.layers, 'a'), held(c.layers, 'b'), held(c.layers, 'c')], [
-        false,
-        true,
-        false,
-      ]);
+      expect(
+        heldPictures(pictures),
+        [true, true, false],
+        reason: 'c is wanted after step 1',
+      );
 
       expect(
         budget.makeRoomFor(
-          bytes: image,
-          step: 1,
-          within: image,
+          bytes: picture,
+          step: 3,
+          within: picture,
           wantedAt: wantedAt,
         ),
         isFalse,
-        reason: 'only b is left, and b is wanted sooner',
+        reason: 'a and b are wanted sooner than step 3',
       );
-      expect(held(c.layers, 'b'), isTrue);
+      expect(heldPictures(pictures), [true, true, false]);
     });
   });
 
-  test('the canvas\'s images may hold the line, less what is lent', () {
-    final c = caches();
+  testWidgets('what may be lent is the line less the pictures a screen '
+      'shows', (tester) async {
+    await tester.runAsync(() async {
+      final pictures = picturesOfTheFrames();
+      await makePictures(pictures);
+      final shown = keyOf(pictures, 'b');
+      final picture = pictures.store.bytesOf(shown)!;
+      final line = 4 * picture;
+      final budget = PlaybackCacheBudgetEnforcer(
+        pictures: pictures.store,
+        maxBytes: line,
+      );
+      expect(budget.lendableBytes(), line, reason: 'all of it gives way');
+
+      pictures.store.retainPin(shown);
+      addTearDown(() => pictures.store.releasePin(shown));
+      expect(budget.lendableBytes(), line - picture);
+    });
+  });
+
+  test('the pictures may hold the line, less what is lent', () {
     final budget = PlaybackCacheBudgetEnforcer(
-      layerImages: c.layers,
+      pictures: picturesOfTheFrames().store,
       maxBytes: 1000,
     );
     expect(budget.room(), 1000);

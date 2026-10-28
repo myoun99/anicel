@@ -11,6 +11,7 @@ import 'dialogs/app_confirm_dialog.dart';
 import 'dialogs/behind_the_wait_window.dart' show stepBehindTheWaitWindow;
 import '../services/flutter_test_run.dart';
 import '../controllers/default_project_helpers.dart';
+import '../models/frame.dart' show InbetweenMark;
 import '../models/project.dart';
 import '../models/working_panel.dart';
 import '../native/device_battery.dart';
@@ -74,12 +75,13 @@ import 'playback/playback_transport_controls.dart'
 import 'shortcuts/brush_actions.dart';
 import 'shortcuts/editor_action_registry.dart';
 import 'shortcuts/panel_actions.dart';
+import 'shortcuts/editor_key_funnel.dart';
 import 'shortcuts/editor_key_holds.dart';
 import 'shortcuts/editor_shortcut_bindings.dart';
 import 'shortcuts/editor_shortcut_scope.dart';
 import 'shortcuts/panel_keys.dart';
 import 'shortcuts/shortcut_settings_store.dart';
-import 'timeline/frame_panel_sill_controls.dart' show panelTransportFor;
+import 'timeline/frame_panel_transport.dart' show panelTransportFor;
 import 'timeline/instance_editor_commands.dart'
     show autoNameWithWindow, editOnPanel;
 import 'timeline/layer_name_commands.dart' show deleteRowSelectionWithDialog;
@@ -405,6 +407,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void _showPanelsToShortcuts() =>
       _shortcuts.setPanelActions(panelActionsOf(_panelsMenu.entries));
 
+  /// A language switch builds the shell again: the words read as it is
+  /// built — a dock's tab names among them — are the new language's.
+  ///
+  /// ↩️The key layer built it again: it made the whole editor anew for
+  /// every change of the bindings, and a switch renames the panels' rows
+  /// ([_showPanelsToShortcuts]) — so did a brush added to the library. The
+  /// layer is one widget the export window lays too, and hands its child
+  /// through (I-127).
+  void _relabel() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   /// The top strip as it is on screen — and as a KEY presses it: a menu
   /// row's action is pressed among this same strip's rows
   /// ([EditorTopStrip.menuRows]), so a key and its row cannot be handed
@@ -414,6 +430,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     onCloseProject: (session) => unawaited(_closeProject(session)),
     panelsMenu: _panelsMenu,
     door: _workspaceDoor,
+    keyRoad: _keyRoad,
     brushTool: _brushTool,
     colorBackground: _colorWheelBackground,
     colorPalette: _colorPalette,
@@ -433,6 +450,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       change: (next) => _brushTool.value = next,
     ),
     strokeLive: _session.brushInputActive,
+  );
+
+  /// The road every key the shell binds runs down — the shell's layer and a
+  /// window that edits over it (the cel export, I-127) lay the same one.
+  late final EditorKeyRoad _keyRoad = (
+    bindings: _shortcuts,
+    onHoldKey: _keyHolds.engage,
+    invoke: _invokeAction,
   );
 
   /// 🚨F-1: THE autosave trigger. The clock's rule (count from the last
@@ -487,6 +512,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     unawaited(_shortcuts.restore());
     _panelsMenu.addListener(_showPanelsToShortcuts);
     AppText.settings.addListener(_showPanelsToShortcuts);
+    AppText.settings.addListener(_relabel);
     _paletteService = _unlessTesting(ColorPaletteFileService.new);
     unawaited(
       _paletteService?.loadOrDefaults().then((palette) {
@@ -933,6 +959,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _colorWheelBackground.dispose();
     _colorPalette.dispose();
     AppText.settings.removeListener(_showPanelsToShortcuts);
+    AppText.settings.removeListener(_relabel);
     _brushKeys.dispose();
     _shortcuts.dispose();
     _flipHud.dispose();
@@ -1141,10 +1168,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       // makes no cut where it has no place for one.
       case EditorActionIds.cutNew:
         newCutPress(_session)?.call();
-      case EditorActionIds.frameToggleMark:
+      // I-130: ○ and ● by key — their buttons' presses.
+      case EditorActionIds.frameToggleMarkOne:
         final panel = _workingPanel;
         if (panel.canToggleMark) {
-          panel.toggleMark();
+          panel.toggleMark(InbetweenMark.one);
+        }
+      case EditorActionIds.frameToggleMarkTwo:
+        final panel = _workingPanel;
+        if (panel.canToggleMark) {
+          panel.toggleMark(InbetweenMark.two);
         }
       // I-58: the ● every n koma — its button's window, on the panel being
       // worked in.
@@ -1395,179 +1428,163 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             keys: _panelKeys,
             child: DeviceGridSafeArea(
               bottom: false,
-              child: ListenableBuilder(
-                listenable: _shortcuts,
-                builder: (context, _) => Shortcuts.manager(
-                  manager: EditorShortcutManager(
-                    shortcuts: _shortcuts.shortcuts,
-                    onHoldKey: _keyHolds.engage,
+              child: EditorKeyFunnel(
+                road: _keyRoad,
+                child: PlaybackActuationGate(
+                  // 🚨T28-c — the whole editor behind ONE gate: while
+                  // playing, the first actuation stops and is consumed.
+                  //
+                  // ⛔Inside `Shortcuts` AND above the editor's `FocusScope`,
+                  // both deliberately. Inside `Shortcuts`, so a key that
+                  // stopped playback is eaten rather than followed. ABOVE the
+                  // scope, because key dispatch walks UPWARD from the primary
+                  // focus — with no field focused the scope IS that focus, so
+                  // a gate mounted under it is never consulted at all. It sat
+                  // there until 2026-09-08 and the consuming half was dead:
+                  // 실측 — pressing `.` during playback stopped the transport
+                  // AND stepped a frame.
+                  transports: _session.playbackRig.transports,
+                  navigationRegion: (
+                    key: _canvasNavigationRegionKey,
+                    transport: _session.playbackRig.playback,
                   ),
-                  child: Actions(
-                    actions: {
-                      EditorActionIntent: CallbackAction<EditorActionIntent>(
-                        onInvoke: (intent) {
-                          _invokeAction(intent.actionId);
-                          return null;
-                        },
-                      ),
-                    },
-                    child: PlaybackActuationGate(
-                      // 🚨T28-c — the whole editor behind ONE gate: while
-                      // playing, the first actuation stops and is consumed.
-                      //
-                      // ⛔Inside `Shortcuts` AND above the editor's `FocusScope`,
-                      // both deliberately. Inside `Shortcuts`, so a key that
-                      // stopped playback is eaten rather than followed. ABOVE the
-                      // scope, because key dispatch walks UPWARD from the primary
-                      // focus — with no field focused the scope IS that focus, so
-                      // a gate mounted under it is never consulted at all. It sat
-                      // there until 2026-09-08 and the consuming half was dead:
-                      // 실측 — pressing `.` during playback stopped the transport
-                      // AND stepped a frame.
-                      transports: _session.playbackRig.transports,
-                      navigationRegion: (
-                        key: _canvasNavigationRegionKey,
-                        transport: _session.playbackRig.playback,
-                      ),
-                      child: FocusScope(
-                        autofocus: true,
-                        // Multi-finger touch shortcuts (R11-⑨) fire through the SAME
-                        // action funnel as key bindings; the layer only observes raw
-                        // touches, so drawing and pinch navigation are untouched.
-                        child: TouchShortcutLayer(
-                          // T28-c at the gesture's first contact — see the
-                          // field; the funnel's own check comes too late here.
-                          playing: _session.playbackRig.transports,
-                          onGesture: (gesture) {
-                            final actionId = _shortcuts.actionIdForTouchGesture(
-                              gesture,
-                            );
-                            if (actionId != null) {
-                              _invokeAction(actionId);
-                            }
-                          },
-                          // The pen program's diagnosis overlay (Settings ▸ Input
-                          // Inspector) — inert until toggled, observes raw events
-                          // only (never a gesture-arena participant).
-                          // R26 #35/#13: the shared cursor-notice surface wraps
-                          // the whole editor, so any refusal anywhere prints
-                          // next to the pointer.
-                          child: CursorNoticeOverlay(
-                            child: InputInspectorHost(
-                              child: Column(
-                                children: [
-                                  // The top strip: two popover buttons and the
-                                  // work's name. The seven-menu bar it replaced
-                                  // is gone — every command it carried now lives
-                                  // on the surface that shows its result, and
-                                  // undo/redo/export went with them. 48px so the
-                                  // buttons sit on the same grid as the rail's.
-                                  //
-                                  // The SAME fill as the tool rail, because they are
-                                  // the same thing: inert chrome. It used to sit two
-                                  // steps up the container ladder, which is why the
-                                  // strip and the rail never looked like one app.
-                                  Material(
-                                    color: colorScheme.surface,
-                                    child: Container(
-                                      // The strip is the SECOND link in the
-                                      // window-origin chain: everything below it,
-                                      // including the canvas, starts at this
-                                      // height. 48 is on the grid at every Windows
-                                      // scaling step (48 = 16x3) and OFF it the
-                                      // moment a UI scale makes the ratio a
-                                      // product — 48 x 1.35 is 64.8.
-                                      height: DeviceGrid.of(context).position(48),
-                                      // The seam the tool rail already had and this
-                                      // strip did not (유저, R4 #1: 상단띠랑 캔버스
-                                      // 사이엔 없거든? 상단띠에도 아래에 추가).
-                                      // Same `outlineVariant` and the same idiom as
-                                      // `EditorPanelDock` — the border is drawn
-                                      // INSIDE the strip's own height, so the
-                                      // canvas below does not move to make room
-                                      // for it. ⚠️Its own HEIGHT, not 48: the
-                                      // line above quantizes it, so at an
-                                      // effective 1.35 the strip is 47.41. The
-                                      // seam the user sees — this border's bottom
-                                      // edge against the canvas — is what lands
-                                      // on the grid; the border's own 1.0-logical
-                                      // width is 1.35 device px and can never be
-                                      // crisp, which is a hairline problem and
-                                      // not this link's.
-                                      decoration: BoxDecoration(
-                                        border: Border(
-                                          bottom: BorderSide(
-                                            color: colorScheme.outlineVariant,
-                                          ),
-                                        ),
-                                      ),
-                                      // What the strip shows of the open
-                                      // projects is their TABS. A tab opened,
-                                      // closed or brought on screen rebuilds
-                                      // this page ([_followProjectOnScreen]);
-                                      // what a PROJECT changes of its own tab
-                                      // is its name, by its own save — every
-                                      // one of them, a tab behind this one
-                                      // too. 🚨F-244: the strip rebuilt on
-                                      // every notify, and so on every commit —
-                                      // the release frame's whole build phase
-                                      // on the user's own cut. The flyouts (the
-                                      // panels' checks, the export gate) build
-                                      // their entries when they open; the floor
-                                      // switch and the brush bars hear their
-                                      // own.
-                                      child: SlicedListenableBuilder<Object>(
-                                        listenable: Listenable.merge(
-                                          _projects.sessions,
-                                        ),
-                                        slice: () => ByList([
-                                          for (final session
-                                              in _projects.sessions)
-                                            projectTabLabel(_projects, session),
-                                        ]),
-                                        builder: (context, _) => _topStrip(),
+                  child: FocusScope(
+                    autofocus: true,
+                    // Multi-finger touch shortcuts (R11-⑨) fire through the SAME
+                    // action funnel as key bindings; the layer only observes raw
+                    // touches, so drawing and pinch navigation are untouched.
+                    child: TouchShortcutLayer(
+                      // T28-c at the gesture's first contact — see the
+                      // field; the funnel's own check comes too late here.
+                      playing: _session.playbackRig.transports,
+                      onGesture: (gesture) {
+                        final actionId = _shortcuts.actionIdForTouchGesture(
+                          gesture,
+                        );
+                        if (actionId != null) {
+                          _invokeAction(actionId);
+                        }
+                      },
+                      // The pen program's diagnosis overlay (Settings ▸ Input
+                      // Inspector) — inert until toggled, observes raw events
+                      // only (never a gesture-arena participant).
+                      // R26 #35/#13: the shared cursor-notice surface wraps
+                      // the whole editor, so any refusal anywhere prints
+                      // next to the pointer.
+                      child: CursorNoticeOverlay(
+                        child: InputInspectorHost(
+                          child: Column(
+                            children: [
+                              // The top strip: two popover buttons and the
+                              // work's name. The seven-menu bar it replaced
+                              // is gone — every command it carried now lives
+                              // on the surface that shows its result, and
+                              // undo/redo/export went with them. 48px so the
+                              // buttons sit on the same grid as the rail's.
+                              //
+                              // The SAME fill as the tool rail, because they are
+                              // the same thing: inert chrome. It used to sit two
+                              // steps up the container ladder, which is why the
+                              // strip and the rail never looked like one app.
+                              Material(
+                                color: colorScheme.surface,
+                                child: Container(
+                                  // The strip is the SECOND link in the
+                                  // window-origin chain: everything below it,
+                                  // including the canvas, starts at this
+                                  // height. 48 is on the grid at every Windows
+                                  // scaling step (48 = 16x3) and OFF it the
+                                  // moment a UI scale makes the ratio a
+                                  // product — 48 x 1.35 is 64.8.
+                                  height: DeviceGrid.of(context).position(48),
+                                  // The seam the tool rail already had and this
+                                  // strip did not (유저, R4 #1: 상단띠랑 캔버스
+                                  // 사이엔 없거든? 상단띠에도 아래에 추가).
+                                  // Same `outlineVariant` and the same idiom as
+                                  // `EditorPanelDock` — the border is drawn
+                                  // INSIDE the strip's own height, so the
+                                  // canvas below does not move to make room
+                                  // for it. ⚠️Its own HEIGHT, not 48: the
+                                  // line above quantizes it, so at an
+                                  // effective 1.35 the strip is 47.41. The
+                                  // seam the user sees — this border's bottom
+                                  // edge against the canvas — is what lands
+                                  // on the grid; the border's own 1.0-logical
+                                  // width is 1.35 device px and can never be
+                                  // crisp, which is a hairline problem and
+                                  // not this link's.
+                                  decoration: BoxDecoration(
+                                    border: Border(
+                                      bottom: BorderSide(
+                                        color: colorScheme.outlineVariant,
                                       ),
                                     ),
                                   ),
-                                  Expanded(
-                                    child: EditorWorkspace(
-                                      session: _session,
-                                      onOpenProjects: _openProjectPicks,
-                                      layoutStore: widget.layoutStore,
-                                      presetFileService: widget.presetFileService,
-                                      tipLibraryService: widget.tipLibraryService,
-                                      fontLibraryService:
-                                          widget.fontLibraryService,
-                                      keepFontFiles: _keepFontFiles,
-                                      panelsMenu: _panelsMenu,
-                                      brushTool: _brushTool,
-                                      transformOptions: _transformOptions,
-                                      colorBackground: _colorWheelBackground,
-                                      colorPalette: _colorPalette,
-                                      onColorPaletteChanged: _setColorPalette,
-                                      canvasViewCommands: _canvasViewCommands,
-                                      canvasNavigationRegionKey:
-                                          _canvasNavigationRegionKey,
-                                      canvasSelectionCommands:
-                                          _canvasSelectionCommands,
-                                      viewerSelections: _viewerSelections,
-                                      canvasTraces: _traces,
-                                      canvasTextCommands: _canvasTextCommands,
-                                      lastStroke: _lastStroke,
-                                      toolHold: _toolHold,
-                                      confirm: _confirm,
-                                      history: _history,
-                                      layerNav: _timelineLayerNav,
-                                      barCommands: _workspaceBar,
-                                      doorCommands: _workspaceDoor,
-                                      flipHud: _flipHud,
-                                      brushKeys: _brushKeys,
-                                      onInvokeAction: _invokeAction,
+                                  // What the strip shows of the open
+                                  // projects is their TABS. A tab opened,
+                                  // closed or brought on screen rebuilds
+                                  // this page ([_followProjectOnScreen]);
+                                  // what a PROJECT changes of its own tab
+                                  // is its name, by its own save — every
+                                  // one of them, a tab behind this one
+                                  // too. 🚨F-244: the strip rebuilt on
+                                  // every notify, and so on every commit —
+                                  // the release frame's whole build phase
+                                  // on the user's own cut. The flyouts (the
+                                  // panels' checks, the export gate) build
+                                  // their entries when they open; the floor
+                                  // switch and the brush bars hear their
+                                  // own.
+                                  child: SlicedListenableBuilder<Object>(
+                                    listenable: Listenable.merge(
+                                      _projects.sessions,
                                     ),
+                                    slice: () => ByList([
+                                      for (final session
+                                          in _projects.sessions)
+                                        projectTabLabel(_projects, session),
+                                    ]),
+                                    builder: (context, _) => _topStrip(),
                                   ),
-                                ],
+                                ),
                               ),
-                            ),
+                              Expanded(
+                                child: EditorWorkspace(
+                                  session: _session,
+                                  onOpenProjects: _openProjectPicks,
+                                  layoutStore: widget.layoutStore,
+                                  presetFileService: widget.presetFileService,
+                                  tipLibraryService: widget.tipLibraryService,
+                                  fontLibraryService:
+                                      widget.fontLibraryService,
+                                  keepFontFiles: _keepFontFiles,
+                                  panelsMenu: _panelsMenu,
+                                  brushTool: _brushTool,
+                                  transformOptions: _transformOptions,
+                                  colorBackground: _colorWheelBackground,
+                                  colorPalette: _colorPalette,
+                                  onColorPaletteChanged: _setColorPalette,
+                                  canvasViewCommands: _canvasViewCommands,
+                                  canvasNavigationRegionKey:
+                                      _canvasNavigationRegionKey,
+                                  canvasSelectionCommands:
+                                      _canvasSelectionCommands,
+                                  viewerSelections: _viewerSelections,
+                                  canvasTraces: _traces,
+                                  canvasTextCommands: _canvasTextCommands,
+                                  lastStroke: _lastStroke,
+                                  toolHold: _toolHold,
+                                  confirm: _confirm,
+                                  history: _history,
+                                  layerNav: _timelineLayerNav,
+                                  barCommands: _workspaceBar,
+                                  doorCommands: _workspaceDoor,
+                                  flipHud: _flipHud,
+                                  brushKeys: _brushKeys,
+                                  onInvokeAction: _invokeAction,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),

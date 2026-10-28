@@ -41,14 +41,12 @@ void paintSeNameTags(
     if (tag.opacity <= 0) {
       continue;
     }
-    final layouts = _layoutsOf(tag, canvasSize: canvasSize);
-    try {
-      _composite(canvas, tag, layouts, rasterScale: rasterScale);
-    } finally {
-      for (final layout in layouts) {
-        layout.dispose();
-      }
-    }
+    _composite(
+      canvas,
+      tag,
+      _layoutsOf(tag, canvasSize: canvasSize),
+      rasterScale: rasterScale,
+    );
   }
 }
 
@@ -115,11 +113,13 @@ void _composite(
       ),
     ),
     steps: effects.preSteps,
+    cell: rasterCellFor(effects.outsetPixels),
   );
 }
 
 /// [tag]'s text blocks, laid out where they stand in the tag's own space —
-/// the caller's to dispose.
+/// kept ([textCelLaidOut]): a pan, a zoom and a run paint the same tag at
+/// every frame.
 List<TextCelLayout> _layoutsOf(
   ResolvedSeNameTag tag, {
   required CanvasSize canvasSize,
@@ -130,14 +130,13 @@ List<TextCelLayout> _layoutsOf(
   // included) is centred on the anchor.
   var nameInk = ui.Rect.fromLTWH(anchor.dx, anchor.dy, 0, 0);
   if (tag.content.text.isNotEmpty) {
-    final probe = layoutTextCel(
+    final probe = textCelLaidOut(
       content: tag.content.copyWith(position: anchor),
       canvas: canvasSize,
       maxWidth: tag.widthBudget,
     );
     final drift = probe.inkBounds.center - anchor;
-    probe.dispose();
-    final name = layoutTextCel(
+    final name = textCelLaidOut(
       content: tag.content.copyWith(position: anchor - drift),
       canvas: canvasSize,
       maxWidth: tag.widthBudget,
@@ -153,7 +152,7 @@ List<TextCelLayout> _layoutsOf(
   final delivery = tag.delivery;
   if (delivery != null && delivery.text.isNotEmpty) {
     layouts.add(
-      layoutTextCel(
+      textCelLaidOut(
         content: delivery.copyWith(
           position: _deliveryPosition(
             tag,
@@ -170,7 +169,7 @@ List<TextCelLayout> _layoutsOf(
 
   final line = tag.line;
   if (line != null && line.text.isNotEmpty) {
-    final probe = layoutTextCel(
+    final probe = textCelLaidOut(
       content: line.copyWith(position: anchor),
       canvas: canvasSize,
       maxWidth: tag.widthBudget,
@@ -182,9 +181,8 @@ List<TextCelLayout> _layoutsOf(
       nameInk.right + gap - probe.inkBounds.left,
       nameInk.center.dy - probe.inkBounds.center.dy,
     );
-    probe.dispose();
     layouts.add(
-      layoutTextCel(
+      textCelLaidOut(
         content: line.copyWith(position: anchor + shift),
         canvas: canvasSize,
         maxWidth: tag.widthBudget,
@@ -207,13 +205,12 @@ ui.Offset _deliveryPosition(
   required CanvasSize canvasSize,
 }) {
   final anchor = seNameTagAnchorOf(tag, canvasSize: canvasSize);
-  final probe = layoutTextCel(
+  final probe = textCelLaidOut(
     content: delivery.copyWith(position: anchor),
     canvas: canvasSize,
     maxWidth: tag.widthBudget,
   );
   final ink = probe.inkBounds;
-  probe.dispose();
   final gap = delivery.style.fontSize * 0.3;
   return anchor +
       ui.Offset(box.center.dx - ink.center.dx, box.top - gap - ink.bottom);
@@ -229,7 +226,7 @@ ui.Rect? seNameTagDeliveryBounds(
   if (delivery == null || delivery.text.isEmpty) {
     return null;
   }
-  final landed = layoutTextCel(
+  final landed = textCelLaidOut(
     content: delivery.copyWith(
       position: _deliveryPosition(
         tag,
@@ -242,7 +239,6 @@ ui.Rect? seNameTagDeliveryBounds(
     maxWidth: tag.widthBudget,
   );
   final ink = landed.inkBounds;
-  landed.dispose();
   return ink;
 }
 
@@ -267,13 +263,12 @@ ui.Rect seNameTagBoxBounds(
   if (tag.content.text.isEmpty) {
     return ui.Rect.fromLTWH(anchor.dx, anchor.dy, 0, 0);
   }
-  final probe = layoutTextCel(
+  final probe = textCelLaidOut(
     content: tag.content.copyWith(position: anchor),
     canvas: canvasSize,
     maxWidth: tag.widthBudget,
   );
   final ink = probe.inkBounds;
-  probe.dispose();
   return ui.Rect.fromCenter(
     center: anchor,
     width: ink.width,

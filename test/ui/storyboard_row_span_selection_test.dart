@@ -5,7 +5,6 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
-import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_section_defaults.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -20,14 +19,13 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// rows of ONE track-axis selection, so a drag that starts on one and ends
 /// on another covers both.
 ///
-/// The rail's row ORDER is what a row delta walks, and it is the VISUAL
-/// order — the S rows top-down (highest slot first), then the cut row at
-/// the BOTTOM. It used to lead with the cut row, which inverted every
-/// cross-row drag on screen: dragging downward from an S row toward the V
-/// row walked the list away from it (the real-device "row-span select does
-/// nothing" report). Nothing else is on the list, which is why the clamp
-/// at either end is the whole of the kind guard: the strip is a cut-owned
-/// row on the other axis and simply cannot be reached from here.
+/// The rows a drag covers are the ones the PANEL hands over, sliced off
+/// the rows it draws in the order it draws them — the S rows top-down
+/// (highest slot first), then the cut row at the BOTTOM — so these pins
+/// hand them as a sweep would. ↩️The session walked a list of its own by
+/// a head address, and before that by a row delta: leading with the cut
+/// row, it inverted every cross-row drag on screen (the real-device
+/// "row-span select does nothing" report), and it could name no lane.
 void main() {
   EditorSessionManager sessionWithSound() {
     final session = EditorSessionManager(
@@ -72,7 +70,7 @@ void main() {
     session.updateStoryboardCutSelectionByFrame(
       anchorGlobalFrame: 2,
       headGlobalFrame: 6,
-      headRow: LayerRowAddress(seId),
+      spanRows: [LayerRowAddress(seId), TrackRowAddress(trackId)],
     );
 
     final selection = session.trackFrameRangeSelection.value!;
@@ -121,81 +119,17 @@ void main() {
       layerId: transitionId,
       anchorGlobalFrame: 3,
       headGlobalFrame: 5,
-      headRow: TrackRowAddress(trackId),
+      spanRows: [
+        LayerRowAddress(transitionId),
+        for (final se in session.activeTrack.seLayers.reversed)
+          LayerRowAddress(se.id),
+        TrackRowAddress(trackId),
+      ],
     );
 
     final selection = session.trackFrameRangeSelection.value!;
     expect(selection.anchorRow, LayerRowAddress(transitionId));
     expect(selection.spanRows, contains(TrackRowAddress(trackId)));
-  });
-
-  test('reaching DOWN from an S row picks up the V row below — the same '
-      'rail, the direction the screen actually stacks them', () {
-    final session = sessionWithSound();
-    final trackId = session.selectedTrackId;
-    final seId = session.activeTrack.seLayers.first.id;
-
-    session.updateTrackRowRangeSelectionByFrame(
-      layerId: seId,
-      anchorGlobalFrame: 3,
-      headGlobalFrame: 5,
-      headRow: TrackRowAddress(trackId),
-    );
-
-    final selection = session.trackFrameRangeSelection.value!;
-    expect(selection.anchorRow, LayerRowAddress(seId));
-    expect(selection.spanRows, [
-      LayerRowAddress(seId),
-      TrackRowAddress(trackId),
-    ]);
-  });
-
-  test('reaching the rail\'s TOP row takes every row between', () {
-    final session = sessionWithSound();
-    final track = session.activeTrack;
-
-    session.updateStoryboardCutSelectionByFrame(
-      anchorGlobalFrame: 2,
-      headGlobalFrame: 6,
-      headRow: LayerRowAddress(track.seLayers.last.id),
-    );
-
-    final selection = session.trackFrameRangeSelection.value!;
-    expect(
-      selection.spanRows.length,
-      track.seLayers.length + 1,
-      reason: 'every SE row plus the cut row, and nothing beyond',
-    );
-    expect(selection.spanRows.first, LayerRowAddress(track.seLayers.last.id));
-    expect(selection.spanRows.last, TrackRowAddress(track.id));
-  });
-
-  test('a head this rail does not hold leaves the anchor alone — what is '
-      'not on the list is unreachable', () {
-    // R9 #25 moved the CLAMP to the panel, which resolves the pointer
-    // against the heights it paints and can only ever name a row that is
-    // on screen. The session's own guard is the narrower one that remains:
-    // an address it cannot find on this rail simply does not move the head
-    // (the row-move precedent, and what a null head means too).
-    final session = sessionWithSound();
-
-    session.updateStoryboardCutSelectionByFrame(
-      anchorGlobalFrame: 2,
-      headGlobalFrame: 6,
-      headRow: const LayerRowAddress(LayerId('not-on-this-rail')),
-    );
-    expect(session.trackFrameRangeSelection.value!.spanRows, [
-      TrackRowAddress(session.selectedTrackId),
-    ]);
-
-    session.updateStoryboardCutSelectionByFrame(
-      anchorGlobalFrame: 2,
-      headGlobalFrame: 6,
-      headRow: null,
-    );
-    expect(session.trackFrameRangeSelection.value!.spanRows, [
-      TrackRowAddress(session.selectedTrackId),
-    ]);
   });
 
   test('a single-row selection leaves `rows` empty, so the common case needs '
@@ -266,7 +200,10 @@ void main() {
       layerId: otherSe.id,
       anchorGlobalFrame: 2,
       headGlobalFrame: 5,
-      headRow: const TrackRowAddress(otherTrackId),
+      spanRows: [
+        LayerRowAddress(otherSe.id),
+        const TrackRowAddress(otherTrackId),
+      ],
     );
 
     selection = session.trackFrameRangeSelection.value!;

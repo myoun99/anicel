@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/widgets/app_scrollbar_lane.dart';
 import '../../helpers/brush_canvas_fixture.dart';
 import '../../helpers/canvas_pill.dart';
 import '../../helpers/pinch_recognised_at.dart';
+import '../../helpers/number_pad_keyboard.dart';
 
 /// 🚨★★★ONE LAW FOR WHERE A ZOOM LANDS, AND THE PILL WRITES ALL OF IT.
 ///
@@ -313,6 +314,12 @@ void main() {
         find.byKey(const ValueKey<String>('canvas-viewport-zoom-label-edit')),
       );
       await tester.pumpAndSettle();
+      expect(
+        thePadsLitKeys(tester),
+        (minus: false, point: true),
+        reason: 'a zoom takes a point and no minus',
+      );
+      await openThePadsKeyboard(tester);
       await tester.enterText(
         find.byKey(const ValueKey<String>('canvas-viewport-zoom-input')),
         text,

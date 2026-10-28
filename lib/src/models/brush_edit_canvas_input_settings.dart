@@ -238,6 +238,13 @@ class BrushEditCanvasInputSettings {
   /// of painting color.
   final bool erase;
 
+  /// Whether this stroke's dabs blur rather than paint ([BrushDab.blurs]).
+  ///
+  /// 🤔The eraser wins (I-75 설계, 10-27: 「지우개 도구에서 고르면 지우개의
+  /// 법대로 지운다」): a blur brush taken up as the eraser, or pressed with
+  /// the pen's eraser end, erases.
+  bool get blurs => shape.blurs && !erase;
+
   /// The stroke's BRUSH blend (BB-1, R26 #9): how the finished stroke
   /// composites onto the cel at pen-up. [BrushBlendMode.erase] rides the
   /// [erase] flag instead (same kernels as the eraser tool).

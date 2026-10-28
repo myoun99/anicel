@@ -39,6 +39,7 @@ import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
 
 import '../helpers/named_finders.dart';
+import '../helpers/dots_at.dart';
 
 /// Classic 48×52 geometry for this file's pixel oracles (the slim 24×28
 /// default is pinned in timeline_grid_metrics_test) — and the rail they
@@ -1850,27 +1851,10 @@ void main() {
       ),
     );
 
-    expect(timelineCellModel(tester, 'layer-2', 2).mark, breakdownMark);
+    expect(timelineCellModel(tester, 'layer-2', 2).mark, InbetweenMark.two);
     expect(
       timelineCellModel(tester, 'layer-2', 2).semanticsLabel,
-      'inbetween mark',
-    );
-  });
-
-  testWidgets('shows inbetween mark on an empty cell', (tester) async {
-    await tester.pumpWidget(
-      _grid(
-        exposureStateForLayer: (layer, frameIndex) =>
-            layer.id == const LayerId('layer-2') && frameIndex == 2
-            ? TimelineCellExposureState.markUncovered
-            : TimelineCellExposureState.uncovered,
-      ),
-    );
-
-    expect(timelineCellModel(tester, 'layer-2', 2).mark, breakdownMark);
-    expect(
-      timelineCellModel(tester, 'layer-2', 2).semanticsLabel,
-      'inbetween mark',
+      'inbetween mark 2',
     );
   });
 
@@ -2111,7 +2095,7 @@ void main() {
       ),
     );
 
-    expect(timelineCellModel(tester, 'layer-2', 2).mark, breakdownMark);
+    expect(timelineCellModel(tester, 'layer-2', 2).mark, InbetweenMark.two);
   });
 
   testWidgets('marks only the active current cell as selected', (tester) async {
@@ -2175,7 +2159,7 @@ void main() {
       _grid(
         exposureStateForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-1') && frameIndex == 0
-            ? TimelineCellExposureState.markHeld
+            ? TimelineCellExposureState.markTwoHeld
             : TimelineCellExposureState.uncovered,
         frameNameForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-1') && frameIndex == 0
@@ -2183,7 +2167,7 @@ void main() {
             : null,
       ),
     );
-    expect(timelineCellModel(tester, 'layer-1', 0).mark, breakdownMark);
+    expect(timelineCellModel(tester, 'layer-1', 0).mark, InbetweenMark.two);
   });
 
   testWidgets('drawing exposure cells keep divider-safe block radius rules', (
@@ -2430,18 +2414,17 @@ void main() {
       timelineDrawingStartColor,
     );
     expect(timelineDrawingStartColor, timelineDrawingHeldColor);
-    expect(
-      timelineCellPaper(TimelineCellExposureState.markHeld),
-      timelineDrawingHeldColor,
-    );
+    for (final mark in InbetweenMark.values) {
+      expect(
+        timelineCellPaper(TimelineCellExposureState.markHeld(mark)),
+        timelineDrawingHeldColor,
+        reason: 'a dotted cell keeps its block\'s paper, either mark',
+      );
+    }
     // UI-R21 #2: empties are TRANSPARENT — the substrate carries no
     // per-row state, so switching the active layer re-rasters nothing.
     expect(
       timelineCellPaper(TimelineCellExposureState.uncovered),
-      Colors.transparent,
-    );
-    expect(
-      timelineCellPaper(TimelineCellExposureState.markUncovered),
       Colors.transparent,
     );
     // ⑲: a labelled layer's blocks are its label's colour.
@@ -2540,7 +2523,7 @@ TimelineExposure _block(
 }) => TimelineExposure.drawing(
   FrameId('frame-${layer.split('-').last}'),
   length: length,
-  breakdownOffsets: dots,
+  breakdownMarks: dotsAt(dots),
 );
 
 Layer _layer({

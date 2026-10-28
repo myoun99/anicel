@@ -20,10 +20,7 @@ import 'package:anicel/src/models/timeline_coverage.dart'
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/theme/conte_ink.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
@@ -35,6 +32,8 @@ import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart'
 import 'package:anicel/src/ui/timeline/timeline_row_edit_chrome.dart'
     show TimelineRowGripTarget;
 
+import '../../helpers/storyboard_host.dart';
+import '../../helpers/timeline_host.dart';
 import 'timeline_row_chrome_probe.dart';
 
 /// An edge's ink is decided by the COLOR it sits on, not by the theme
@@ -44,6 +43,8 @@ import 'timeline_row_chrome_probe.dart';
 /// white one, and no bar wears an outline anywhere. A triangle over more
 /// than one of them — the storyboard's label bands on its black plate —
 /// takes each one's ink where it stands on it (2026-09-26).
+/// The tab as the app's window of 1500 × 800 laid it.
+const _panel = Size(936, 346);
 const _trackId = TrackId('ink-track');
 
 /// The chrome slot each of the storyboard's two rows paints its grips in:
@@ -180,34 +181,16 @@ void main() {
     });
   });
 
+  /// The storyboard tab alone ([pumpStoryboardHost]), as the app's window of
+  /// 1500 × 800 laid it — the grips' grounds are the panel's paint.
   Future<void> openStoryboard(WidgetTester tester, {Project? project}) async {
-    await tester.binding.setSurfaceSize(const Size(1500, 800));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: ThemeData(brightness: Brightness.dark),
-        home: HomePage(initialProject: project ?? _project()),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
-    );
-    await tester.pumpAndSettle();
+    await pumpStoryboardHost(tester, project ?? _project(), surface: _panel);
   }
 
   testWidgets('🗣️the cut row\'s edges stand on the PLATE — the conte '
       'sheet\'s black, so its ink is the light one — while the timeline row '
       'and the conte row hand their grips their own paper', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1500, 800));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: ThemeData(brightness: Brightness.dark),
-        home: HomePage(initialProject: _project()),
-      ),
-    );
-    await tester.pumpAndSettle();
+    await pumpTimelineHost(tester, _project(), surface: _panel);
 
     // The cut-internal timeline's storyboard row: its own (unmarked) paper.
     expect(
@@ -215,10 +198,7 @@ void main() {
       layerMarkColor(LayerMark.none),
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
-    );
-    await tester.pumpAndSettle();
+    await openStoryboard(tester);
 
     final ground = timelineRowChromePainter(
       tester,
@@ -379,29 +359,7 @@ void main() {
 
   testWidgets('with thumbnails OFF there is no picture under an edge — the '
       'bands over the plate are all it stands on', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1500, 800));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final manager = EditorSessionManager(initialProject: _project());
-    addTearDown(manager.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: ThemeData(brightness: Brightness.dark),
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: manager,
-            builder: (context, _) => StoryboardTabHost(
-              session: manager,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
+    await pumpStoryboardHost(tester, _project(), pixelsPerFrame: 12);
 
     final painter = timelineRowChromePainter(
       tester,

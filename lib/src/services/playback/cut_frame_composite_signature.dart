@@ -1,6 +1,7 @@
 import '../../core/collection_equality.dart';
 import '../../core/tree_nodes.dart';
 import '../../models/canvas_size.dart';
+import '../../models/cel_number_letters.dart';
 import '../../models/composite_tree.dart';
 import '../../models/cut.dart';
 import '../../models/frame_id.dart';
@@ -26,6 +27,7 @@ class CompositeLayerSignature {
     this.blendMode = LayerBlendMode.normal,
     this.placement,
     this.effects = const [],
+    this.tint,
   });
 
   final LayerId layerId;
@@ -55,6 +57,11 @@ class CompositeLayerSignature {
   /// composite's identity, and the compose loop filters with exactly this.
   final List<ResolvedLayerEffect> effects;
 
+  /// The ARGB tint an onion ghost wears over its cel (the onion's Colors
+  /// mode) — a picture of the ghosts is another picture in another colour.
+  /// Null on every row of a cut's own frame.
+  final int? tint;
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -65,6 +72,7 @@ class CompositeLayerSignature {
           other.sourceRevision == sourceRevision &&
           other.blendMode == blendMode &&
           other.placement == placement &&
+          other.tint == tint &&
           listEquals(other.effects, effects);
 
   @override
@@ -75,6 +83,7 @@ class CompositeLayerSignature {
     sourceRevision,
     blendMode,
     placement,
+    tint,
     Object.hashAll(effects),
   );
 
@@ -233,6 +242,93 @@ final class CompositeBackdropBlendSignature extends CompositeNodeSignature {
       'backdrop: $backdrop, source: $source)';
 }
 
+/// A clipping group's identity (I-92): the base, what its alpha cuts, and
+/// the base's strength and blend the group carries — a row switching its
+/// clip on is a different picture, as one changing its blend is.
+final class CompositeClipSignature extends CompositeNodeSignature {
+  CompositeClipSignature({
+    required this.base,
+    required List<CompositeNodeSignature> scope,
+    required this.opacity,
+    required this.blendMode,
+  }) : scope = List.unmodifiable(scope);
+
+  final CompositeNodeSignature base;
+  final List<CompositeNodeSignature> scope;
+  final double opacity;
+  final LayerBlendMode blendMode;
+
+  @override
+  List<CompositeNodeSignature> get children => [base, ...scope];
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CompositeClipSignature &&
+          other.opacity == opacity &&
+          other.blendMode == blendMode &&
+          other.base == base &&
+          listEquals(other.scope, scope);
+
+  @override
+  int get hashCode =>
+      Object.hash(opacity, blendMode, base, Object.hashAll(scope));
+
+  @override
+  String toString() =>
+      'CompositeClipSignature(opacity: $opacity, blendMode: $blendMode, '
+      'base: $base, scope: $scope)';
+}
+
+/// A clip's base made opaque, as its signature: the base it paints again.
+final class CompositeOpaqueSignature extends CompositeNodeSignature {
+  const CompositeOpaqueSignature(this.of);
+
+  final CompositeNodeSignature of;
+
+  /// Empty, as [CompositeOpaque]'s: the base stands in the tree once.
+  @override
+  List<CompositeNodeSignature> get children => const [];
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CompositeOpaqueSignature && other.of == of;
+
+  @override
+  int get hashCode => Object.hash(CompositeOpaqueSignature, of);
+
+  @override
+  String toString() => 'CompositeOpaqueSignature($of)';
+}
+
+/// A row's cel number as its signature (I-65): the letters, and the row
+/// they are written on — whose signature says where it lies — so a renamed
+/// drawing, a moved number and a row moved under it are other pictures.
+final class CompositeCelNumberSignature extends CompositeNodeSignature {
+  const CompositeCelNumberSignature({required this.on, required this.letters});
+
+  final CompositeNodeSignature on;
+  final CelNumberLetters letters;
+
+  /// Empty, as [CompositeCelNumber]'s: the row stands in the tree once.
+  @override
+  List<CompositeNodeSignature> get children => const [];
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CompositeCelNumberSignature &&
+          other.letters == letters &&
+          other.on == on;
+
+  @override
+  int get hashCode => Object.hash(CompositeCelNumberSignature, on, letters);
+
+  @override
+  String toString() => 'CompositeCelNumberSignature($letters, on: $on)';
+}
+
 /// Identity of a composited cut frame's pixels.
 ///
 /// A cached composite is valid iff its stored signature equals the freshly
@@ -279,6 +375,9 @@ class CutFrameCompositeSignature {
         case CompositeGroupSignature():
         case CompositeAdjustmentSignature():
         case CompositeBackdropBlendSignature():
+        case CompositeClipSignature():
+        case CompositeOpaqueSignature():
+        case CompositeCelNumberSignature():
           break;
       }
     }
@@ -379,6 +478,26 @@ List<CompositeNodeSignature> _nodeSignaturesOf(
           backdrop: _nodeSignaturesOf(backdrop),
           source: _nodeSignaturesOf([source]).single,
           blendMode: blendMode,
+        ),
+      CompositeClip(
+        :final base,
+        :final scope,
+        :final opacity,
+        :final blendMode,
+      ) =>
+        CompositeClipSignature(
+          base: _nodeSignaturesOf([base]).single,
+          scope: _nodeSignaturesOf(scope),
+          opacity: opacity,
+          blendMode: blendMode,
+        ),
+      CompositeOpaque(:final of) => CompositeOpaqueSignature(
+        _nodeSignaturesOf([of]).single,
+      ),
+      CompositeCelNumber(:final on, :final letters) =>
+        CompositeCelNumberSignature(
+          on: _nodeSignaturesOf([on]).single,
+          letters: letters,
         ),
     },
 ];

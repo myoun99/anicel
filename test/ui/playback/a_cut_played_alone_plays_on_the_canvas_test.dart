@@ -26,9 +26,11 @@ import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
     show PlaybackScope;
 import 'package:anicel/src/ui/playback/camera_shot.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/playback/playback_run_layer.dart';
 import 'package:anicel/src/ui/repaint_props.dart';
 import 'package:anicel/src/ui/session/frame_scrub.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// playback-plays-the-screen-material ① (10-09) and ② (10-10): a cut played
 /// alone plays ON the editing canvas, through the camera or not. The clock
@@ -86,8 +88,10 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  CanvasLayerStackView stackOf(WidgetTester tester) =>
-      tester.widget<CanvasLayerStackView>(find.byType(CanvasLayerStackView));
+  /// The frame the canvas shows — standing still or under a run: its one
+  /// picture.
+  FramePictureView playedOf(WidgetTester tester) =>
+      tester.widget<FramePictureView>(theFramesPicture());
 
   /// The cels the rows of [nodes] are images of.
   List<BrushFrameKey> celsOf(List<CompositeNode<CanvasStackRow>> nodes) => [
@@ -99,7 +103,7 @@ void main() {
 
   /// Whether a row stands LIVE in the tree the canvas paints.
   bool aRowStandsLive(WidgetTester tester) =>
-      preorderNodes(stackOf(tester).nodes).any(
+      preorderNodes(playedOf(tester).nodes).any(
         (node) => node is CompositeLeaf<CanvasStackRow> &&
             node.payload is CanvasActiveLayerRow,
       );
@@ -120,10 +124,11 @@ void main() {
       expect(find.byType(CanvasTrackStackView), findsNothing);
       expect(find.byType(PlaybackRunLayer), findsOneWidget);
       expect(
-        stackOf(tester).run?.landings,
+        playedOf(tester).run.landings,
         same(s.playbackRig.prerenderScheduler.landings),
         reason: 'the run\'s pictures are the warmer\'s',
       );
+      expect(playedOf(tester).run.pictures, same(s.playbackRig.framePictures));
       s.playbackRig.playback.stop();
       await drain(tester);
     });
@@ -166,7 +171,7 @@ void main() {
     final host = tester.widget<MainCanvasBrushHost>(
       find.byType(MainCanvasBrushHost),
     );
-    final atTheStart = celsOf(stackOf(tester).nodes);
+    final atTheStart = celsOf(playedOf(tester).nodes);
 
     playback.seekToGlobalFrame(5);
     await tester.pump();
@@ -176,9 +181,10 @@ void main() {
       same(host),
       reason: 'the canvas is not built again for a step',
     );
-    expect(celsOf(stackOf(tester).nodes), isNot(atTheStart));
+    expect(celsOf(playedOf(tester).nodes), isNot(atTheStart));
+    expect(playedOf(tester).picture.frameIndex, 5);
     expect(
-      celsOf(stackOf(tester).nodes),
+      celsOf(playedOf(tester).nodes),
       celsOf(s.editingCanvas.playingStack.nodes),
       reason: 'the picture is',
     );
@@ -206,15 +212,15 @@ void main() {
     tester,
   ) async {
     final (s, _) = await pumpArea(tester);
-    final view = tester.state(find.byType(CanvasLayerStackView));
+    final view = tester.state(theFramesPicture());
 
     s.playbackRig.playback.play(scope: PlaybackScope.activeCut);
     await tester.pump();
-    expect(tester.state(find.byType(CanvasLayerStackView)), same(view));
+    expect(tester.state(theFramesPicture()), same(view));
 
     s.playbackRig.playback.stop();
     await tester.pump();
-    expect(tester.state(find.byType(CanvasLayerStackView)), same(view));
+    expect(tester.state(theFramesPicture()), same(view));
     await drain(tester);
   });
 
@@ -229,7 +235,7 @@ void main() {
       reason: '⛔premise: standing still, the camera\'s frame is drawn OVER '
           'the whole canvas — the crop is playback\'s',
     );
-    expect(stackOf(tester).viewport, shotOf().view);
+    expect(playedOf(tester).viewport, shotOf().view);
 
     final playback = s.playbackRig.playback;
     playback.play(scope: PlaybackScope.activeCut);
@@ -242,21 +248,19 @@ void main() {
     expect(shot, isNotNull);
     expect(shot!.pose, s.camera.cameraPoseForCut(s.requireActiveCut, 5));
     expect(
-      stackOf(tester).viewport,
+      playedOf(tester).viewport,
       shot.frameView,
       reason: 'the canvas is seen through the camera at that frame',
     );
-    expect(
-      s.renderCaches.canvasLook.value.camera?.frameSize,
-      s.camera.cameraFrameSize,
-      reason: 'and the warmer is told so, for the frames it makes ahead',
-    );
+    // ↩️The warmer was told the camera the canvas was seen through
+    // (`RenderCaches.canvasLook`), to make each row at the level that view
+    // drew it at — until a frame became one picture, made whatever it is
+    // seen through (D7-2-Q2).
 
     playback.stop();
     await tester.pump();
     await tester.pump();
     expect(shotOf().shot, isNull);
-    expect(s.renderCaches.canvasLook.value.camera, isNull);
     await drain(tester);
   });
 
@@ -422,7 +426,7 @@ void main() {
     playback.play(scope: PlaybackScope.activeCut);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
-    final view = tester.state(find.byType(CanvasLayerStackView));
+    final view = tester.state(theFramesPicture());
 
     for (final throughTheCamera in [true, false]) {
       camera.value = throughTheCamera;
@@ -436,9 +440,9 @@ void main() {
         reason: '$seen, the clock still runs',
       );
       expect(
-        tester.state(find.byType(CanvasLayerStackView)),
+        tester.state(theFramesPicture()),
         same(view),
-        reason: '$seen, the stack that holds the run\'s images is the same — '
+        reason: '$seen, the view that holds the run\'s picture is the same — '
             'not made again, and nothing of it made again',
       );
     }
@@ -456,8 +460,18 @@ void main() {
 
     s.playbackRig.playback.play(scope: PlaybackScope.activeCut);
     await tester.pump();
-    expect(aRowStandsLive(tester), isFalse);
-    expect(stackOf(tester).activeSurfacePainter, isNull);
+    expect(
+      preorderNodes(playedOf(tester).nodes).any(
+        (node) => node is CompositeLeaf<CanvasStackRow> &&
+            node.payload is CanvasActiveLayerRow,
+      ),
+      isFalse,
+    );
+    expect(
+      playedOf(tester).live,
+      isNull,
+      reason: 'the frame is its one picture: nothing in it is drawn live',
+    );
     expect(
       find.byType(InteractiveBrushEditCanvasView),
       findsNothing,
@@ -467,7 +481,6 @@ void main() {
     s.playbackRig.playback.stop();
     await tester.pump();
     expect(aRowStandsLive(tester), isTrue);
-    expect(stackOf(tester).run, isNull);
     expect(find.byType(InteractiveBrushEditCanvasView), findsOneWidget);
     await drain(tester);
   });
@@ -509,8 +522,8 @@ void main() {
       'cut, the track stack the film', (tester) async {
     final (s, camera) = await pumpArea(tester);
     final rig = s.playbackRig;
-    expect(rig.prerenderScheduler.pictures, same(rig.canvasPictures));
-    expect(rig.pictures, same(rig.canvasPictures));
+    expect(rig.prerenderScheduler.pictures, same(rig.framePictures));
+    expect(rig.pictures, same(rig.framePictures));
 
     camera.value = true;
     await tester.pump();
@@ -532,7 +545,7 @@ void main() {
     );
     expect(
       rig.prerenderScheduler.pictures,
-      same(rig.canvasPictures),
+      same(rig.framePictures),
       reason: 'from the same pictures. ↩️It played from composites until '
           '2026-10-10',
     );

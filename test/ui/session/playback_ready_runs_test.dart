@@ -128,9 +128,10 @@ void main() {
       stroke(4, 4);
       final budget = budgetOf(s);
 
-      await s.playbackRig.canvasPictures.make((
+      await s.playbackRig.framePictures.make((
         cut: held,
         frameIndex: 0,
+        paintPaper: true,
       ), shouldAbort: () => false);
       expect(budget.playbackReadyRuns(0, 30), [
         (startIndex: 0, endIndexExclusive: 30, unreadable: false),
@@ -167,9 +168,10 @@ void main() {
       expect(budget.playbackReadyRuns(3, 30), [
         (startIndex: 24, endIndexExclusive: 30, unreadable: false),
       ], reason: '⛔premise: the drawn hold waits for its picture');
-      await s.playbackRig.canvasPictures.make((
+      await s.playbackRig.framePictures.make((
         cut: held,
         frameIndex: 0,
+        paintPaper: true,
       ), shouldAbort: () => false);
 
       expect(budget.playbackReadyRuns(3, 30), [
@@ -207,9 +209,10 @@ void main() {
         reason: 'the other row\'s picture is still to come',
       );
 
-      await s.playbackRig.canvasPictures.make((
+      await s.playbackRig.framePictures.make((
         cut: cut,
         frameIndex: 0,
+        paintPaper: true,
       ), shouldAbort: () => false);
 
       expect(budget.playbackReadyRuns(0, 24), [

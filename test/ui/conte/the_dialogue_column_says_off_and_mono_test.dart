@@ -41,7 +41,7 @@ void main() {
         strokes: const [],
         name: 'やめて',
         seName: 'A子',
-        seType: type,
+        seTypes: SeLineTypes(own: type),
       ),
     ],
     timeline: {2: const TimelineExposure.drawing(FrameId('se-f'), length: 6)},

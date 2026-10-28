@@ -35,6 +35,8 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/se_name_tag_paint.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
+import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
+    show BlockMoveDragPreview;
 import 'package:anicel/src/ui/timeline/timeline_lane_provider.dart'
     show timelineLanesForLayer;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
@@ -214,12 +216,14 @@ void main() {
         y: cut.canvasSize.height / 2,
       ),
     );
-    s.camera.showCameraKeysDragPreview(
-      TransformTrack.empty().copyWith(
+    s.dragPreview.value = BlockMoveDragPreview(
+      previewLayers: const {},
+      cameraCutId: cut.id,
+      cameraTrack: TransformTrack.empty().copyWith(
         position: PropertyTrack<CanvasPoint>().withKey(0, panned.center),
       ),
     );
-    addTearDown(() => s.camera.showCameraKeysDragPreview(null));
+    addTearDown(() => s.dragPreview.value = null);
 
     expectPoint(
       onTheCanvas(tagOf(s)),

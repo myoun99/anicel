@@ -22,6 +22,7 @@ import 'package:anicel/src/ui/canvas/stage_planes_painter.dart';
 import 'package:anicel/src/ui/canvas/viewport_canvas_transform.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
+import '../../helpers/the_frame_as_it_stands.dart';
 
 /// 🚨★★★ THE CANVAS EDGE IS CUT ON THE PIXEL GRID (F-67-paper-edge,
 /// 2026-09-11).
@@ -84,8 +85,8 @@ void main() {
   /// [disableBuffer] takes the DIRECT WALK instead of the buffer blit: the
   /// paper rect and the tiles drawn straight under the viewport transform,
   /// which is the route a frame falls to when the buffer is refused.
-  /// Without [live] the stack has no surface to draw and no bake: the walk
-  /// lays its paper straight onto the screen.
+  /// Without [live] the stack has no surface to draw: the walk lays its
+  /// paper straight onto the screen.
   Future<CustomPainter> pumpEditingStack(
     WidgetTester tester, {
     bool disableBuffer = false,
@@ -94,15 +95,14 @@ void main() {
   }) async {
     await tester.pumpWidget(
       MaterialApp(
-        // A distinct key per route, so the second pump builds a FRESH state
-        // rather than reusing the first one's warm bake.
+        // A distinct key per route, so the second pump builds a FRESH state.
         key: ValueKey<bool>(disableBuffer),
         home: Scaffold(
           body: Center(
             child: SizedBox(
               width: logical.width,
               height: logical.height,
-              child: CanvasLayerStackView(
+              child: TheFrameAsItStands(
                 nodes: const [
                   CompositeLeaf<CanvasStackRow>(
                     CanvasActiveLayerRow(opacity: 1),
@@ -127,7 +127,7 @@ void main() {
     final painted = tester
         .widgetList<CustomPaint>(
           find.descendant(
-            of: find.byType(CanvasLayerStackView),
+            of: find.byType(TheFrameAsItStands),
             matching: find.byType(CustomPaint),
           ),
         )

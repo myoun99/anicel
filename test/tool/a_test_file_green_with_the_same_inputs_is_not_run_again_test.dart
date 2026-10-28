@@ -274,12 +274,60 @@ void main() {
           isTrue);
     });
 
-    test('a flaky file is quarantined until it changes', () {
-      const flaky = {'test/a_test.dart': 'own1'};
-      bool asNow(String file, String id) => quarantined(file, flaky, {file: id});
-      expect(asNow('test/a_test.dart', 'own1'), isTrue);
-      expect(asNow('test/a_test.dart', 'own2'), isFalse);
-      expect(asNow('test/b_test.dart', 'own1'), isFalse);
+    test('a flaky file is quarantined until anything it reads changes', () {
+      const flaky = {'test/a_test.dart': 'key1'};
+      bool asNow(String file, String key) =>
+          quarantined(file, flaky, (f) => f == file ? key : null);
+      expect(asNow('test/a_test.dart', 'key1'), isTrue);
+      expect(asNow('test/a_test.dart', 'key2'), isFalse,
+          reason: 'a helper it imports, or the code under it, changed');
+      expect(asNow('test/b_test.dart', 'key1'), isFalse);
+      expect(quarantined('test/a_test.dart', flaky, (_) => null), isFalse,
+          reason: 'no key, no quarantine');
+      expect(quarantined('test/b_test.dart', flaky, (_) => null), isFalse,
+          reason: 'not in the record and no key is not a match');
+    });
+
+    test('🧪red then green is flaky only when what it reads is the same when '
+        'the run began and after the second run (10-28)', () {
+      const before = {
+        'test/same_test.dart': 'k1',
+        'test/fixed_test.dart': 'k2',
+        'test/gone_test.dart': 'k3',
+      };
+      const after = {
+        'test/same_test.dart': 'k1',
+        // A landing fixed the helper it imports while the run went on.
+        'test/fixed_test.dart': 'k2b',
+      };
+      final split = splitGreenAgain(
+        [
+          'test/same_test.dart',
+          'test/fixed_test.dart',
+          'test/gone_test.dart',
+          'test/unkeyed_test.dart',
+        ],
+        before: (f) => before[f],
+        after: (f) => after[f],
+      );
+      expect(split.flaky, {'test/same_test.dart'});
+      expect(split.moved, {
+        'test/fixed_test.dart',
+        'test/gone_test.dart',
+        'test/unkeyed_test.dart',
+      });
+    });
+
+    test('⛔with no key on either side nothing is flaky — the red stands', () {
+      const files = ['test/a_test.dart'];
+      expect(
+        splitGreenAgain(files, before: null, after: (_) => 'k').moved,
+        {'test/a_test.dart'},
+      );
+      expect(
+        splitGreenAgain(files, before: (_) => 'k', after: null).moved,
+        {'test/a_test.dart'},
+      );
     });
 
     test('the records stand beside the times', () {

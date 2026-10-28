@@ -20,14 +20,15 @@ import 'editor_command_actions.dart';
 import 'editor_session_manager.dart';
 import 'range_move_asking_first.dart';
 import 'session/session_legend_callbacks.dart';
+import 'session/panel_view_memory.dart';
 import 'session/session_row_button_presses.dart';
+import 'session/tab_rail_wiring.dart';
 import 'timeline/session_lane_callbacks.dart';
 import 'timeline/timeline_tile_raster_source.dart'
     show timelineSubstrateGeneration;
 import 'text/app_strings.dart';
 import '../models/timeline_coverage.dart' show TimelineBlockEdge;
-import 'timeline/lane_graph.dart' show LaneGraphVerbs, LaneGraphsView;
-import 'timeline/layer_rail_window.dart' show LayerRailExtent;
+import 'timeline/layer_rail_window.dart' show LayerRailExtent, LayerRailId;
 import 'timeline/property_lane_model.dart';
 import 'timeline/timeline_lane_provider.dart';
 import 'timeline/layer_row_drag.dart'
@@ -39,6 +40,8 @@ import 'timeline/timeline_grid_hooks.dart' show TimelineRowMemoAux;
 import 'timeline/instance_editor_commands.dart';
 import 'timeline/layer_name_commands.dart';
 import 'timeline/timeline_action_toolbar.dart';
+import 'timeline/frame_panel_transport.dart' show FramePanelTransport;
+import 'timeline/timeline_command_bar.dart' show TimelineCommandBar;
 import 'timeline/toolbar_panel_context.dart';
 import 'timeline/timeline_frame_range_gesture.dart';
 import 'timeline/timeline_run_end_handles.dart';
@@ -46,8 +49,8 @@ import 'timeline/timeline_exposure_comma_drag_policy.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/rail_column_swipe.dart' show RailSweepHistory;
 import 'timeline/timeline_panel.dart';
-import 'timeline/timeline_row_filter.dart';
 import 'timeline/timeline_section_policy.dart';
+import 'timeline/timeline_view_cluster.dart';
 import 'timeline/memo_token.dart'
     show ByIdentity, BySet, Kept, keptWhileSame;
 
@@ -71,22 +74,7 @@ class TimelineTabHost extends StatefulWidget {
     required this.onShowSecondsChanged,
     this.timelineRailExtent,
     this.xsheetRailExtent,
-    this.timelineFrameAxisOffset,
-    this.xsheetFrameAxisOffset,
-    this.timelineLayerAxisOffset,
-    this.xsheetLayerAxisOffset,
-    this.expandedLaneLayerIds = const {},
-    this.onToggleLayerLanes,
-    this.expandedLaneGroupKeys = const {},
-    this.onToggleLaneGroupKey,
-    this.laneGraphs = LaneGraphsView.none,
-    this.laneGraphVerbs,
-    this.hiddenSections = const {},
-    this.onToggleSection,
-    this.rowFilter = TimelineRowFilter.none,
-    this.onSetRowFilter,
-    this.collapsedAttachBaseIds = const {},
-    this.onToggleAttachGroup,
+    required this.rail,
     this.onRevealOnionSkinPanel,
     this.transformOptions,
   });
@@ -126,51 +114,16 @@ class TimelineTabHost extends StatefulWidget {
   final LayerRailExtent? timelineRailExtent;
   final LayerRailExtent? xsheetRailExtent;
 
-  /// Where each grid's frame axis stands (held above the grids so it
-  /// survives a fold — F-143; the project's and saved with it, F-267 — see
-  /// the workspace's field).
-  final ValueNotifier<double>? timelineFrameAxisOffset;
-  final ValueNotifier<double>? xsheetFrameAxisOffset;
-
-  /// Where each grid's layer axis stands — the project's too (F-267).
-  final ValueNotifier<double>? timelineLayerAxisOffset;
-  final ValueNotifier<double>? xsheetLayerAxisOffset;
-
-  /// AE-style property-lane twirl-down state (host-owned so it survives
-  /// tab switches).
-  final Set<LayerId> expandedLaneLayerIds;
-  final ValueChanged<LayerId>? onToggleLayerLanes;
-
-  /// LANE GROUPS twirled open (AE group collapse — default collapsed;
-  /// host-owned so the state survives tab switches). Keyed by
-  /// [laneGroupKey]: a row carries the Transform group AND one header per
-  /// R6 effect, so the key has to name the group, not just the row.
-  final Set<String> expandedLaneGroupKeys;
-  final ValueChanged<String>? onToggleLaneGroupKey;
-
-  /// The HEADER GRAPHS standing in a group's lanes' place, and their
-  /// buttons (I-89 ③) — view state as the twirls are, kept by the session's
-  /// rail view. Null [laneGraphVerbs] mounts no graph button.
-  final LaneGraphsView laneGraphs;
-  final LaneGraphVerbs? laneGraphVerbs;
-
-  /// SE/camera section visibility (host-owned, survives tab switches):
-  /// hidden sections render no rows; the toolbar buttons toggle them.
-  final Set<TimelineSection> hiddenSections;
-  final ValueChanged<TimelineSection>? onToggleSection;
-
-  /// The rail's row filter (host-owned, survives tab switches): hides
-  /// layer rows failing its predicate. Null [onSetRowFilter] hides the
-  /// filter UI.
-  final TimelineRowFilter rowFilter;
-  final ValueChanged<TimelineRowFilter>? onSetRowFilter;
-
-  /// The attach-group fold state (UI-R20 #9, workspace-owned so it
-  /// survives tab switches): bases listed here render no attach rows; the
-  /// base row's chevron toggles them. Null [onToggleAttachGroup] hides
-  /// the twirl UI.
-  final Set<LayerId> collapsedAttachBaseIds;
-  final ValueChanged<LayerId>? onToggleAttachGroup;
+  /// The rail's view and its verbs — the session's, as the conte's tab
+  /// takes them ([TabRailWiring]): the lane twirls and their groups, the
+  /// header graphs (I-89 ③), the hidden SE / camera sections, the row
+  /// filter, the folded attach groups (UI-R20 #9).
+  ///
+  /// ↩️Each was an argument of its own, defaulting to 「nothing open, no
+  /// button」 — a tab only a test ever built (tests-hand-roll-the-tab-hosts).
+  /// Where each grid's axes stand is the session's too
+  /// ([EditorSessionManager.panelViews], F-143 · F-267), and read there.
+  final TabRailWiring rail;
 
   /// The workspace's onion-panel reveal (UI-R17 #5): open when hidden,
   /// flash-in-place when already open. Null hides the legend entry.
@@ -189,8 +142,12 @@ class TimelineTabHost extends StatefulWidget {
 class _TimelineTabHostState extends State<TimelineTabHost> {
   EditorSessionManager get _session => widget.session;
 
+  /// Where each grid's axes stand — the project's, saved with it (F-267),
+  /// and held above the grids so a fold keeps them (F-143).
+  PanelViewMemory get _axes => _session.panelViews;
+
   // ⛔The frame cursor the panel's cursor-driven widgets subscribe to
-  // (playhead, rulers, lane values, frame counter) is the SESSION's now
+  // (playhead, rulers, lane values) is the SESSION's now
   // ([PlayheadCursors.cutFrame]): the row this panel folds into follows the
   // same one, and that row is built by the workspace, which could not reach
   // a cursor kept here (유저 2026-09-27,
@@ -321,7 +278,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   List<PropertyLaneRow> _lanesForLayer(Layer layer) => timelineLanesForLayer(
     layer: layer,
     session: _session,
-    expandedGroupKeys: widget.expandedLaneGroupKeys,
+    expandedGroupKeys: widget.rail.expandedLaneGroupKeys,
   );
 
   /// The CAMERA row's union summary (B4): the shared transform-header union
@@ -516,9 +473,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         builder: (context, _) {
           // Zoom scoping (UI-R6 #4): the toolbar widget is built ONCE per
           // host rebuild and reused across zoom steps — the identical
-          // instance lets its transport + ~25 buttons skip rebuilding while
-          // the ValueListenableBuilder below re-lays-out just the panel.
+          // instance lets its ~25 buttons skip rebuilding while the
+          // ValueListenableBuilder below re-lays-out just the panel. The
+          // transport beside it, likewise.
           final timelineToolbar = _buildTimelineToolbar();
+          final timelineTransport = _buildTimelineTransport();
           Widget buildPanel(
             BuildContext context,
             double pixelsPerFrame,
@@ -526,7 +485,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           ) => TimelinePanel(
             layers: _displayLayers(),
             activeLayerId: _session.activeLayerId,
-            cutName: _session.cutUnderPlayhead.cutName,
             // #29: the (project, cut) world the rows' resolvers answer
             // from. Travels WITH the rebuild that carries the new cut's
             // rows — a setter could skew from what is on screen; a build
@@ -706,7 +664,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             onLayerOpacityChanged: _rowPresses.previewOpacity,
             onLayerOpacityChangeEnd: _rowPresses.commitOpacity,
             onToggleLayerTimesheet: _rowPresses.toggleTimesheet,
-            onToggleLayerFillReference: _rowPresses.toggleFillReference,
+            onToggleLayerClip: _rowPresses.toggleClip,
             onLayerMarkSelected: _rowPresses.pickMark,
             // The AE-style fx MASTER over the row's per-group switches (R8:
             // model state, read straight off the layer).
@@ -746,14 +704,12 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                     anchorIndex,
                     headIndex, {
                     headLayerId,
-                    headLaneId,
                     spanRows = const [],
                   }) => _session.updateFrameRangeSelectionDrag(
                     layerId: layerId,
                     anchorIndex: anchorIndex,
                     headIndex: headIndex,
                     headLayerId: headLayerId,
-                    headLaneId: headLaneId,
                     spanRows: spanRows,
                   ),
               onClear: _session.clearFrameRangeSelection,
@@ -823,6 +779,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             currentRowHooks: TimelineCurrentRowHooks(
               currentRow: _session.standing.currentRowListenable,
               onStandOnLane: _standOnLaneRow,
+              onSettledPress: _session.clearTimelineSelections,
             ),
             rowDragHooks: _rowDragHooks,
             onRowSelectionSpan: _session.rowSelectionVerbs.updateRowSelection,
@@ -871,14 +828,16 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             onShowSecondsChanged: widget.onShowSecondsChanged,
             timelineRailExtent: widget.timelineRailExtent,
             xsheetRailExtent: widget.xsheetRailExtent,
-            timelineFrameAxisOffset: widget.timelineFrameAxisOffset,
-            xsheetFrameAxisOffset: widget.xsheetFrameAxisOffset,
-            timelineLayerAxisOffset: widget.timelineLayerAxisOffset,
-            xsheetLayerAxisOffset: widget.xsheetLayerAxisOffset,
+            timelineFrameAxisOffset:
+                _axes.frameAxisOffsets[LayerRailId.timeline],
+            xsheetFrameAxisOffset: _axes.frameAxisOffsets[LayerRailId.xsheet],
+            timelineLayerAxisOffset:
+                _axes.layerAxisOffsets[LayerRailId.timeline],
+            xsheetLayerAxisOffset: _axes.layerAxisOffsets[LayerRailId.xsheet],
             projectFrameRate: _session.projectSettings.projectFrameRate,
-            expandedLaneLayerIds: widget.expandedLaneLayerIds,
-            laneGraphs: widget.laneGraphs,
-            laneGraphVerbs: widget.laneGraphVerbs,
+            expandedLaneLayerIds: widget.rail.expandedLaneLayerIds,
+            laneGraphs: widget.rail.laneGraphs,
+            laneGraphVerbs: widget.rail.laneGraphVerbs,
             // Live, for the reason the twirls' read below is.
             laneGraphsNow: () => _session.railView.laneGraphs.value,
             laneGraphLineOf: (key) =>
@@ -895,13 +854,16 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             laneGroupOnOf: _session.laneVerbs.isLaneGroupOn,
             layerEyeOnOf: _session.layerSwitches.isLayerEyeOn,
             layerOnTimesheetOf: _session.layerSwitches.isLayerOnTimesheet,
-            onToggleLayerLanes: widget.onToggleLayerLanes,
-            hiddenSections: widget.hiddenSections,
-            onToggleSection: widget.onToggleSection,
-            rowFilter: widget.rowFilter,
-            onSetRowFilter: widget.onSetRowFilter,
-            collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
-            onToggleAttachGroup: widget.onToggleAttachGroup,
+            layerClipsOf: _session.layerSwitches.isLayerClipping,
+            groupFoldOpenOf: _session.layerSwitches.isGroupFoldOpen,
+            laneGroupOpenOf: _session.layerSwitches.isLaneGroupOpen,
+            onToggleLayerLanes: widget.rail.toggleLayerLanes,
+            hiddenSections: widget.rail.hiddenSections,
+            onToggleSection: widget.rail.toggleSection,
+            rowFilter: widget.rail.rowFilter,
+            onSetRowFilter: widget.rail.setRowFilter,
+            collapsedAttachBaseIds: widget.rail.collapsedAttachBaseIds,
+            onToggleAttachGroup: widget.rail.toggleAttachGroup,
             visibilitySoloEnabled: _session.visibilitySolo.layerVisibilitySoloEnabled,
             // Master-bar drags (UI-R6 #2): rows' sliders follow the preview
             // channel live; at rest the bar shows the last committed value.
@@ -922,8 +884,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             legendHand: _session.railLegends.handOf(WorkingPanel.timeline),
             legend: sessionLegendCallbacks(
               _session,
-              rowFilter: widget.rowFilter,
-              onSetRowFilter: widget.onSetRowFilter,
+              rowFilter: widget.rail.rowFilter,
+              onSetRowFilter: widget.rail.setRowFilter,
               onRevealOnionSkinPanel: widget.onRevealOnionSkinPanel,
             ),
             lanesForLayer: _lanesForLayer,
@@ -931,11 +893,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             laneEdit: _laneEdit,
             // A group header's twirl (AE collapse) — Transform or one of the
             // row's effects, told apart by the lane the tap carries.
-            onToggleLaneGroup: widget.onToggleLaneGroupKey == null
-                ? null
-                : (layer, lane) => widget.onToggleLaneGroupKey!(
-                    laneGroupKey(layer.id, lane.laneId),
-                  ),
+            onToggleLaneGroup: (layer, lane) => widget.rail.toggleLaneGroup(
+              laneGroupKey(layer.id, lane.laneId),
+            ),
             // R6: the per-effect eyeball on an effect's header row. One undo
             // step through the ordinary effect-chain commit.
             // ↩️R8's transform switch and this eyeball are one verb since
@@ -951,6 +911,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // storyboard ask the same question.
             onResetLaneGroup: (layer, lane) =>
                 _session.laneVerbs.resetLaneGroup(layer.id, lane.laneId),
+            transport: timelineTransport,
+            cutName: _session.cutUnderPlayhead.cutName,
             timelineActionToolbar: timelineToolbar,
           );
           // The GAP empty state (UI-R9 #3): no cut selected — no rows, no
@@ -960,17 +922,19 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // 🚨The SAME overflow scroller [TimelineCommandBar] gives
-                // its leading (유저 2026-08-10: 「버튼 사라지기 시작하면
-                // 생기는 스크롤바」). This state is the one place the toolbar
-                // is mounted WITHOUT that bar, so it was the one place a bar
-                // too wide for the window overflowed instead of scrolling —
-                // and it only showed once ㉕ put three more buttons on it,
-                // which is to say the row had been one button from the edge
-                // for a while.
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: timelineToolbar,
+                // 🚨The SAME bar the panel wears ([TimelineCommandBar]): the
+                // transport stands where it stands with a cut, and the
+                // toolbar scrolls in the bar's overflow scroller (유저
+                // 2026-08-10: 「버튼 사라지기 시작하면 생기는 스크롤바」).
+                // ↩️This state mounted the toolbar WITHOUT that bar, so it
+                // was the one place a bar too wide for the window overflowed
+                // instead of scrolling — it only showed once ㉕ put three
+                // more buttons on it — and then the one place with a
+                // scroller of its own.
+                TimelineCommandBar(
+                  transport: timelineTransport,
+                  leading: timelineToolbar,
+                  cluster: _gapCluster(),
                 ),
                 Expanded(
                   child: ValueListenableBuilder(
@@ -1018,13 +982,12 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   Widget _buildTimelineToolbar() => keptWhileSame(
     _keptToolbar,
     TimelineActionToolbar,
-    (ByIdentity(_session), BySet(widget.hiddenSections)),
-    // ⛔The TRANSPORT and the camera-view toggle left this bar (유저 확정,
-    // 2026-08-10). They are the 문턱's now — see [FramePanelSillControls],
-    // mounted by the workspace through `EditorPanelTab.sillTrailing` —
-    // because the sill's right edge is the one place in this region that
-    // does not move when a panel is added. What is left here is what
-    // reaches into THIS panel's own contents.
+    (ByIdentity(_session), BySet(widget.rail.hiddenSections)),
+    // ⛔The TRANSPORT and the camera-view toggle are not on this toolbar:
+    // the bar seats them at the head of its left group, outside the
+    // toolbar's scroller ([_buildTimelineTransport]; in its right group
+    // from F-463 to F-491). What is here is what reaches into THIS panel's
+    // own contents.
     () => TimelineActionToolbar(
       session: _session,
       // B8: this panel's dispatch context — the session's cut-local
@@ -1042,10 +1005,50 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           unawaited(deleteRowSelectionWithDialog(context, _session)),
       onEditInstance: _editActiveInstance,
       onCreateInstance: _createActiveInstance,
-      hiddenSections: widget.hiddenSections,
-      onToggleSection: widget.onToggleSection,
+      hiddenSections: widget.rail.hiddenSections,
+      onToggleSection: widget.rail.toggleSection,
     ),
   );
+
+  /// The transport at the start of the bar's left group (F-491), kept while
+  /// it is built for this session — what its buttons show, they hear
+  /// themselves.
+  final Map<Type, Kept<ByIdentity<EditorSessionManager>>> _keptTransport = {};
+
+  Widget _buildTimelineTransport() => keptWhileSame(
+    _keptTransport,
+    FramePanelTransport,
+    ByIdentity(_session),
+    () => FramePanelTransport(session: _session, panel: WorkingPanel.timeline),
+  );
+
+  /// The view cluster the bar wears with no cut to show: the panel's, with
+  /// nothing to zoom or fit. Its place is kept, so the bar's right group
+  /// stands where it stands with a cut — ⛔없다가 생기는 UI. ↩️The gap's bar
+  /// ended in nothing while the transport led it (F-111-Q1), and the
+  /// transport stood beside this cluster from F-463 to F-491.
+  Widget _gapCluster() {
+    Widget cluster(double pixelsPerFrame) => TimelineViewCluster(
+      projectFrameRate: _session.projectSettings.projectFrameRate,
+      pixelsPerFrame: pixelsPerFrame,
+      onPixelsPerFrameChanged: null,
+      cutName: _session.cutUnderPlayhead.cutName,
+      trailing: [
+        TimelineOrientationToggle(
+          orientation: widget.orientation,
+          onChanged: widget.onOrientationChanged,
+        ),
+      ],
+    );
+    final zoom = widget.pixelsPerFrameListenable;
+    if (zoom == null) {
+      return cluster(widget.pixelsPerFrame);
+    }
+    return ValueListenableBuilder<double>(
+      valueListenable: zoom,
+      builder: (context, pixelsPerFrame, _) => cluster(pixelsPerFrame),
+    );
+  }
 }
 
 /// What the timeline's bar is built for ([_TimelineTabHostState._keptToolbar]).

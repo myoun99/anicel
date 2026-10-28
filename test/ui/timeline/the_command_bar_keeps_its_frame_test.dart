@@ -40,11 +40,15 @@ void main() {
   TimelineCommandBar bar(WidgetTester tester) =>
       tester.widget<TimelineCommandBar>(find.byType(TimelineCommandBar));
 
+  /// The pills' scroller — the bar's first (F-463-Q1: the transport and the
+  /// zoom stand in one of their own after it).
   Widget scroller(WidgetTester tester) => tester.widget(
-    find.descendant(
-      of: find.byType(TimelineCommandBar),
-      matching: find.byType(SingleChildScrollView),
-    ),
+    find
+        .descendant(
+          of: find.byType(TimelineCommandBar),
+          matching: find.byType(SingleChildScrollView),
+        )
+        .first,
   );
 
   for (final storyboard in [false, true]) {

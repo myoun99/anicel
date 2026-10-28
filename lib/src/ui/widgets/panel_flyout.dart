@@ -11,7 +11,6 @@ import '../theme/disabled_ink.dart';
 import '../input/control_press_claim.dart';
 import 'app_icon_button.dart';
 import 'boolean_dot.dart';
-import 'named.dart';
 import 'rail_glyph_button.dart';
 
 /// One entry of a [showPanelFlyout] list.
@@ -1040,6 +1039,7 @@ class _HoverReporter extends StatelessWidget {
       // A finger has no hover, so a tap does the same thing. ⛔Not a second
       // behaviour — the same call, reached the only way a finger can.
       child: ControlPressClaim(onPressed: () => _report(context), child: InkWell(
+        mouseCursor: AppCursors.press,
         onTap: silentPress(() => _report(context)),
         // 🚨And it STAYS lit while its child is up. Hover cannot say this:
         // by the time the submenu is open the pointer has moved off the
@@ -1218,6 +1218,7 @@ class _SubmenuLayer extends StatelessWidget {
                                 ? () => onPicked(item)
                                 : null,
                             child: InkWell(
+                              mouseCursor: AppCursors.press,
                               key: ValueKey<String>(item.keyValue),
                               onTap: silentPress(
                                 item.enabled ? () => onPicked(item) : null,
@@ -1394,6 +1395,7 @@ class PanelFlyoutTrigger extends StatelessWidget {
     final Widget button = Material(
       color: Colors.transparent,
       child: ControlPressClaim(onPressed: () => showPanelFlyout(context, entries: entriesBuilder()), child: InkWell(
+        mouseCursor: AppCursors.press,
         // `customBorder` and not `borderRadius`: the splash is a corner like
         // any other and takes the app's superellipse, so this widget adds
         // nothing to the circular-corner debt (`app_shapes_coverage_test`,
@@ -1412,7 +1414,7 @@ class PanelFlyoutTrigger extends StatelessWidget {
 }
 
 /// [PanelFlyoutTrigger] for a rail's PLATE — the layer row's mark and take
-/// ([RailPlateFace]): the claim and ONE render object around the plate,
+/// ([RailPlateButton]): ONE render object around the plate, the claim too,
 /// instead of a tooltip, a portal, a [Material], a physical model and an
 /// [InkWell] of their own — ~45 elements a plate, mounted anew for every
 /// row on every cut switch (I-57 ①, measured on the user's project).
@@ -1423,42 +1425,27 @@ class PanelFlyoutTrigger extends StatelessWidget {
 ///
 /// A CLEAR plate — the blend chip, a [PanelFlyoutChip] — showed its hover
 /// ink, so it hands the face the ink's shape ([hoverShape]).
-class RailFlyoutTrigger extends StatelessWidget {
+///
+/// ★It IS the plate button, opening its list from where it stands.
+/// ↩️It was a widget that built one — an element more on every mark, take
+/// and blend chip of every rail row, paid on every panel reopen (card
+/// frame-panels-build-in-one-frame, 2026-10-25).
+class RailFlyoutTrigger extends RailPlateButton {
   const RailFlyoutTrigger({
     super.key,
-    required this.name,
-    required this.tooltip,
+    required super.name,
+    required super.tooltip,
     required this.entriesBuilder,
-    required this.child,
-    this.semanticLabel,
-    this.hoverShape,
-  });
+    required super.child,
+    super.semanticLabel,
+    super.hoverShape,
+  }) : super(onPressed: null);
 
-  /// What a finder calls the [RailPlateFace], the box the user sees and
-  /// presses — a [Named], as a [RailGlyphButton.name] is and for its
-  /// reason.
-  final String name;
-  final String tooltip;
   final List<PanelFlyoutEntry> Function() entriesBuilder;
 
-  /// The plate.
-  final Widget child;
-
-  /// What a screen reader calls it.
-  final String? semanticLabel;
-
-  /// [RailPlateFace.hoverShape].
-  final ShapeBorder? hoverShape;
-
   @override
-  Widget build(BuildContext context) => RailPlateButton(
-    name: name,
-    tooltip: tooltip,
-    onPressed: () => showPanelFlyout(context, entries: entriesBuilder()),
-    semanticLabel: semanticLabel,
-    hoverShape: hoverShape,
-    child: child,
-  );
+  VoidCallback pressIn(BuildContext context) =>
+      () => showPanelFlyout(context, entries: entriesBuilder());
 }
 
 /// A labeled flyout trigger ('Layer', 'Frame', 'Cut'): compact bordered
@@ -1536,6 +1523,7 @@ class PanelFlyoutButton extends StatelessWidget {
       child: ControlPressClaim(
         onPressed: enabled ? open : null,
         child: InkWell(
+          mouseCursor: AppCursors.press,
           customBorder: PanelFlyoutChip.shape,
           // Null, not a no-op: an `InkWell` with a null callback stops
           // splashing and stops taking hover, so the button reads shut to
@@ -1556,10 +1544,10 @@ class PanelFlyoutButton extends StatelessWidget {
         ),
       ),
     );
-    if (tooltip == null) {
-      return chip;
-    }
-    return AppTooltip(message: tooltip, child: chip);
+    return switch (tooltip) {
+      final tooltip? => AppTooltip(message: tooltip, child: chip),
+      null => chip,
+    };
   }
 }
 
@@ -1627,7 +1615,7 @@ class PanelFlyoutChip extends StatelessWidget {
       color: enabled ? ink : ink.withValues(alpha: 0.4),
       fontWeight: fontWeight,
     );
-    final Widget text = vertical
+    final text = vertical
         ? VerticalWritingText(text: label, style: labelStyle)
         : Text(
             label,

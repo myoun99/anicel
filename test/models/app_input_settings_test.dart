@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/app_input_settings_store.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
+import 'package:anicel/src/models/brush_pressure_curve.dart';
 import '../helpers/project_scratch_folder.dart';
 import '../helpers/temp_dir.dart';
 
@@ -249,45 +250,83 @@ void main() {
     });
   });
 
-  // 🗣️I-27 (유저 2026-09-13): 「최대 줌 제한기능 … 100%이면 100% 넘어서
-  // 확대하지 못하게 락」; the row keeps its number while the switch is off
-  // (I-27-Q1: 「끄면 칸은 회색으로 자리만」).
-  group('the lock on zooming in', () {
-    test('is off, at the request\'s own example, until the user sets it', () {
-      const settings = AppInputSettings();
-      expect(settings.zoomCeilingOn, isFalse);
-      expect(settings.zoomCeilingPercent, 100);
-      expect(settings.zoomCeiling, isNull);
+  // 🗣️F-480 (유저 2026-10-26): 「필압곡선은 클튜처럼 그래프창으로」.
+  group('the pen response', () {
+    final bent = BrushPressureCurve(const [
+      BrushCurvePoint(0, 0),
+      BrushCurvePoint(0.4, 0.7),
+      BrushCurvePoint(1, 1),
+    ]);
+
+    test('is the straight line until the user bends it', () {
+      expect(const AppInputSettings().pressureCurve, BrushPressureCurve.linear);
     });
 
-    test('🚨says its number only while it is on — and keeps the number '
-        'while it is off', () {
-      final on = const AppInputSettings().copyWith(
-        zoomCeilingOn: true,
-        zoomCeilingPercent: 150,
+    test('is a setting of its own, kept through a copy and the file', () {
+      final set = const AppInputSettings().copyWith(pressureCurve: bent);
+      expect(set.pressureCurve, bent);
+      expect(set, isNot(const AppInputSettings()));
+      expect(
+        set.copyWith(touchIgnored: true).pressureCurve,
+        bent,
+        reason: 'a copy that does not name it keeps it',
       );
-      expect(on.zoomCeiling, 150);
+      final file = jsonDecode(jsonEncode(set.toJson())) as Map<String, dynamic>;
+      expect(AppInputSettings.fromJson(file).pressureCurve, bent);
+    });
+  });
 
-      final off = on.copyWith(zoomCeilingOn: false);
-      expect(off.zoomCeiling, isNull);
-      expect(off.zoomCeilingPercent, 150);
-      expect(AppInputSettings.fromJson(off.toJson()).zoomCeilingPercent, 150);
+  // 🗣️I-27 (유저 2026-09-13): 「최대 줌 제한기능 … 100%이면 100% 넘어서
+  // 확대하지 못하게 락」 — one number or none (F-480: 「리스트 팝오버로
+  // 없음이랑 항목하나 100」).
+  group('the lock on zooming in', () {
+    test('is none until the user sets it', () {
+      expect(const AppInputSettings().zoomCeiling, isNull);
     });
 
-    test('a file from before the lock reads it off, and a number nobody '
-        'could have typed reads the default', () {
-      final before = const AppInputSettings().toJson()
-        ..remove('zoomCeilingOn')
-        ..remove('zoomCeilingPercent');
-      expect(AppInputSettings.fromJson(before).zoomCeilingOn, isFalse);
-      expect(AppInputSettings.fromJson(before).zoomCeilingPercent, 100);
+    test('🚨is set, kept through the round trip, and let go again', () {
+      final on = const AppInputSettings().copyWith(zoomCeiling: 150);
+      expect(on.zoomCeiling, 150);
+      expect(AppInputSettings.fromJson(on.toJson()).zoomCeiling, 150);
+      expect(
+        on.copyWith(touchIgnored: true).zoomCeiling,
+        150,
+        reason: 'a copy that does not name the lock keeps it',
+      );
 
-      for (final nonsense in <Object?>[0, -50, 'big', double.nan]) {
+      final off = on.copyWith(zoomCeiling: null);
+      expect(off.zoomCeiling, isNull);
+      expect(AppInputSettings.fromJson(off.toJson()).zoomCeiling, isNull);
+    });
+
+    test('🚨a file saved while the lock was a switch and a kept number reads '
+        'none — the 100 it kept while switched off is not a lock (F-490: '
+        '「100%인상태인데 기본값 아무것도 없도록」)', () {
+      final saved = const AppInputSettings().toJson()
+        ..remove('zoomCeiling')
+        ..['zoomCeilingOn'] = false
+        ..['zoomCeilingPercent'] = 100;
+      expect(AppInputSettings.fromJson(saved).zoomCeiling, isNull);
+    });
+
+    test('a file from before the lock reads none, and so does a number '
+        'nobody could have typed', () {
+      final before = const AppInputSettings().toJson()
+        ..remove('zoomCeiling');
+      expect(AppInputSettings.fromJson(before).zoomCeiling, isNull);
+
+      for (final nonsense in <Object?>[
+        0,
+        -50,
+        'big',
+        double.nan,
+        double.infinity,
+      ]) {
         final edited = const AppInputSettings().toJson()
-          ..['zoomCeilingPercent'] = nonsense;
+          ..['zoomCeiling'] = nonsense;
         expect(
-          AppInputSettings.fromJson(edited).zoomCeilingPercent,
-          100,
+          AppInputSettings.fromJson(edited).zoomCeiling,
+          isNull,
           reason: '$nonsense',
         );
       }
@@ -327,13 +366,10 @@ void main() {
       'navigationModifierRotationLock': base.copyWith(
         navigationModifierRotationLock: !base.navigationModifierRotationLock,
       ),
-      'zoomCeilingOn': base.copyWith(zoomCeilingOn: !base.zoomCeilingOn),
       'touchIgnored': base.copyWith(touchIgnored: !base.touchIgnored),
       // Not a bool, and held to the same rule: a lock whose NUMBER was not
-      // in `==` could be typed and never stored.
-      'zoomCeilingPercent': base.copyWith(
-        zoomCeilingPercent: base.zoomCeilingPercent + 50,
-      ),
+      // in `==` could be picked and never stored.
+      'zoomCeiling': base.copyWith(zoomCeiling: 150),
       // I-54: every choice, each one a field value of its own.
       for (final cursor in DrawingCursor.values)
         if (cursor != base.drawingCursor)

@@ -3,6 +3,7 @@ import '../models/brush_pixel_coverage.dart';
 import '../models/rgba_color.dart';
 import '../models/stroke_pixel.dart';
 import 'brush_dab_share.dart';
+import 'brush_dab_tip_geometry.dart';
 import 'rgba_blend.dart';
 
 double effectiveBrushPixelOpacity({
@@ -32,7 +33,11 @@ StrokePixel blendBrushDabStrokePixel({
       evening: evening,
     );
   }
-  if (dab.opacity >= 1.0) {
+  // The tip's edge does not pile: it scales the level the dab settles at,
+  // and what the dab lays toward it is the share that piles (Q4 — the law
+  // beside the tile kernel's ceiling).
+  final ceiling = coverage.ceiling;
+  if (dab.opacity >= 1.0 && ceiling >= 1.0) {
     return strokeSourceOver(
       source: RgbaColor.fromArgbInt(dab.color),
       destination: destination,
@@ -44,12 +49,12 @@ StrokePixel blendBrushDabStrokePixel({
   final source = RgbaColor.fromArgbInt(dab.color);
   final whole = effectiveSourceAlpha(
     source: source,
-    opacity: coverage.coverage,
+    opacity: edgePiledShare(coverage.coverage, ceiling),
     flow: dab.flow,
   );
   final sourceAlpha = settledDabAlpha(
     laid: evening == null ? whole : evenedLaid(evening, whole),
-    opacity: dab.opacity,
+    opacity: dab.opacity * ceiling,
     destinationAlpha: destination.a / 65535.0,
   );
   if (sourceAlpha == null || sourceAlpha == 0.0) {

@@ -186,9 +186,9 @@ void main() {
           (tester) => tapNamed(tester, '$rail-layer-onion-${_two.draw}'),
           'onion ${_two.draw}',
         ),
-        'the fill-reference toggle': (
+        'the clip toggle': (
           (tester) =>
-              tapNamed(tester, '$rail-layer-fill-reference-${_two.draw}'),
+              tapNamed(tester, '$rail-layer-clip-${_two.draw}'),
           'fill ${_two.draw}',
         ),
         'the blend chip': (
@@ -587,7 +587,7 @@ Widget _panel(
         onToggleLayerFx: (id) => hear('fx', id),
         layerOnionSkinEnabledOf: (_) => false,
         onToggleLayerOnionSkin: (id) => hear('onion', id),
-        onToggleLayerFillReference: (id) => hear('fill', id),
+        onToggleLayerClip: (id) => hear('fill', id),
         onLayerBlendModeSelected: (id, _) => hear('blend', id),
         layerLinkPartnersOf: (id) =>
             id.value.startsWith('draw') ? const ['Elsewhere'] : const [],

@@ -7,12 +7,17 @@ import '../models/brush_tip_mask.dart';
 import '../models/brush_tip_shape.dart';
 import 'brush_tip_mask_sampling.dart';
 
+import 'round_tip_profile.dart';
+
 /// The per-dab tip constants a dab rasterizer derives once before its pixel
 /// loop: the radii, which shape branch applies, and the rotation terms.
+/// [reach] is how far from the centre the tip lays anything; [profile] is
+/// an analytic round tip's ([RoundTipProfile]).
 typedef BrushDabTipGeometry = ({
   double radius,
   double minorRadius,
-  double hardRadius,
+  double reach,
+  RoundTipProfile? profile,
   bool isRound,
   BrushTipMask? tipMask,
   bool isEllipse,
@@ -23,7 +28,8 @@ typedef BrushDabTipGeometry = ({
 
 /// The numbers a tip is made of, however the caller came by them: a dab
 /// carries them as fields, the stamp cache as a quantized cache key.
-/// [edgeWidth] is the anti-alias step's ([BrushAntiAlias.edgeWidth]).
+/// [edge] is the anti-alias step's ([BrushAntiAlias.edge]); [threshold],
+/// whether 없음's cut follows the sampling ([brushDabEdgeLaw]).
 typedef BrushTipNumbers = ({
   double size,
   double hardness,
@@ -31,30 +37,28 @@ typedef BrushTipNumbers = ({
   double angleDegrees,
   BrushTipShape tipShape,
   BrushTipMask? tipMask,
-  double edgeWidth,
+  BrushTipEdge edge,
+  bool threshold,
 });
 
 /// 🚨ONE derivation for the coverage list, the kernel plan and the stamp
-/// cache (the audit's clone scan, 2026-09-03) — the parity suites pin
-/// their bytes, so the arithmetic here is theirs, unchanged.
+/// cache (the audit's clone scan, 2026-09-03).
 ///
-/// 🚨★★★I-50: a round tip's edge is the WIDER of its hardness ramp and the
-/// anti-alias step's [BrushTipNumbers.edgeWidth], and it widens INWARD — the
-/// step pulls [hardRadius] in while the rim stays at [radius] (down to the
-/// centre, never past it). That is Clip Studio's G펜: its lines fit a ramp
-/// inside the rim, not one centred on it — centred, the lines came out a
-/// pixel and more too thick (board I-50). A tip whose hardness ramp is the
-/// wider one keeps it to the bit, so the edge moves continuously with
-/// hardness.
+/// An analytic round tip is its [RoundTipProfile] — two ramps and a pixel's
+/// square, read along its radius, the law and its reasons written there.
 BrushDabTipGeometry brushTipGeometry(BrushTipNumbers tip) {
   final radius = tip.size / 2.0;
-  final hardRadius = math.min(
-    radius * tip.hardness,
-    math.max(0.0, radius - tip.edgeWidth),
-  );
   final isRound = tip.tipShape == BrushTipShape.round;
   final tipMask = tip.tipMask;
   final isEllipse = tipMask == null && isRound && tip.roundness < 1.0;
+  final profile = isRound && tipMask == null
+      ? RoundTipProfile.of(
+          radius: radius,
+          hardness: tip.hardness,
+          edge: tip.edge,
+          antiAliasedCircle: !isEllipse && !tip.threshold,
+        )
+      : null;
   // A circle and a square do not turn; the others take their cosine and
   // sine from the one table, exact at the quarter turns ([turnCos]).
   final turns = isEllipse || tipMask != null;
@@ -62,7 +66,8 @@ BrushDabTipGeometry brushTipGeometry(BrushTipNumbers tip) {
   return (
     radius: radius,
     minorRadius: radius * tip.roundness,
-    hardRadius: hardRadius,
+    reach: profile?.reach ?? radius,
+    profile: profile,
     isRound: isRound,
     tipMask: tipMask,
     isEllipse: isEllipse,
@@ -79,7 +84,8 @@ BrushDabTipGeometry brushDabTipGeometry(BrushDab dab) => brushTipGeometry((
   angleDegrees: dab.angleDegrees,
   tipShape: dab.tipShape,
   tipMask: dab.tipMask,
-  edgeWidth: dab.antiAlias.edgeWidth,
+  edge: dab.antiAlias.edge,
+  threshold: brushDabEdgeLaw(dab).threshold,
 ));
 
 /// What a dab's coverage goes through AFTER its tip is sampled — the
@@ -89,21 +95,41 @@ typedef BrushEdgeLaw = ({bool threshold, double contrast});
 /// 🚨★★★ONE answer for the kernel plan and the coverage reference (I-50).
 ///
 /// 없음 cuts at half coverage whatever the tip. Any other step: an ANALYTIC
-/// round tip already carries its edge — in its ramp ([brushTipGeometry]) or
-/// baked into its stamp ([BrushTipMask.edgeBaked]) — and takes its coverage
-/// as it is; every other tip keeps the contrast ladder
-/// ([BrushAntiAlias.contrast]) — a raster tip has no distance to its edge
-/// to widen, and a square's edge was never made wider by the step.
+/// round tip already carries its edge in its profile ([RoundTipProfile])
+/// and takes its coverage as it is; every other tip keeps the contrast
+/// ladder ([BrushAntiAlias.contrast]) — a raster tip has no distance to its
+/// edge to widen, and a square's edge was never made wider by the step.
 BrushEdgeLaw brushDabEdgeLaw(BrushDab dab) {
   final contrast = dab.antiAlias.contrast;
   if (contrast == null) {
     return (threshold: true, contrast: 1.0);
   }
-  final mask = dab.tipMask;
-  final carriesItsEdge = mask == null
-      ? dab.tipShape == BrushTipShape.round
-      : mask.edgeBaked;
+  final carriesItsEdge =
+      dab.tipMask == null && dab.tipShape == BrushTipShape.round;
   return (threshold: false, contrast: carriesItsEdge ? 1.0 : contrast);
+}
+
+/// Whether [tip] holds an EDGE that does not pile under [law] — an analytic
+/// round tip ([RoundTipProfile]); 없음's cut leaves none. The kernels and
+/// the reference ask it here.
+bool tipHoldsAnEdge(BrushDabTipGeometry tip, BrushEdgeLaw law) =>
+    !law.threshold && tip.profile != null;
+
+/// How high, as a share of the dab's opacity, a stroke may come where the
+/// tip covers [coverage] and [pile] of it piles ([tipPileAt]): what is not
+/// pile is edge. 1 where all of it piles.
+@pragma('vm:prefer-inline')
+double edgeCeiling(double coverage, double pile) =>
+    pile > coverage ? coverage / pile : 1.0;
+
+/// What a dab lays toward its edge's [ceiling] ([edgeCeiling]) where it
+/// covers [coverage] after its whole cascade: the share that piles — and
+/// no more than whole, where a dual tip or the paper raised the coverage
+/// past the tip's own. [coverage] itself where the ceiling is 1.
+@pragma('vm:prefer-inline')
+double edgePiledShare(double coverage, double ceiling) {
+  final share = coverage / ceiling;
+  return share < 1.0 ? share : 1.0;
 }
 
 /// [coverage] through [law] — the definition the tile and native kernels
@@ -135,7 +161,28 @@ double brushEdgeApplied(BrushEdgeLaw law, double coverage) {
 /// raster tip off its lattices (board
 /// `the-brush-kernel-turns-a-pixel-into-tip-space-in-two-places`).
 @pragma('vm:prefer-inline')
-double tipCoverageAt(BrushDabTipGeometry tip, double dx, double dy) {
+double tipCoverageAt(BrushDabTipGeometry tip, double dx, double dy) =>
+    _tipAt(tip, dx, dy, pile: false);
+
+/// What of [tipCoverageAt] PILES at ([dx], [dy]) where dabs overlap — at
+/// least the coverage, and the coverage itself where all of it piles (a
+/// square, a raster tip). The rest of the coverage is the tip's edge and
+/// sets how high a stroke may come there: `coverage / pile` of the dab's
+/// opacity (board a-one-pixel-dab-drops-out-by-where-it-lies Q4, 유저
+/// 2026-10-25 「AA 가장자리는 쌓이지 않는다」).
+@pragma('vm:prefer-inline')
+double tipPileAt(BrushDabTipGeometry tip, double dx, double dy) =>
+    _tipAt(tip, dx, dy, pile: true);
+
+/// [tipCoverageAt] or, given [pile], [tipPileAt] — one turn into the tip's
+/// space for both.
+@pragma('vm:prefer-inline')
+double _tipAt(
+  BrushDabTipGeometry tip,
+  double dx,
+  double dy, {
+  required bool pile,
+}) {
   final mask = tip.tipMask;
   if (mask == null && !tip.isRound) {
     // A square dab is the fill and stamp verbs' "cover exactly this rect",
@@ -154,7 +201,8 @@ double tipCoverageAt(BrushDabTipGeometry tip, double dx, double dy) {
   final tipU = turnedX(dx, dy, tip.tipCos, tip.tipSin);
   final tipV = turnedY(dx, dy, tip.tipCos, tip.tipSin) * tip.inverseRoundness;
   if (mask != null) {
-    // A raster tip: nothing outside the mask's square.
+    // A raster tip: nothing outside the mask's square, and all of what it
+    // covers piles.
     if (tipU.abs() > tip.radius || tipV.abs() > tip.radius) {
       return 0.0;
     }
@@ -165,13 +213,27 @@ double tipCoverageAt(BrushDabTipGeometry tip, double dx, double dy) {
       radius: tip.radius,
     );
   }
+  final profile = tip.profile!;
+  if (profile.rowLength > 0) {
+    // A small circle: its square tables, read at the pixel's (|dx|, |dy|)
+    // — a circle's turn is the identity, so these are the canvas offsets.
+    final across = tipU.abs();
+    final down = tipV.abs();
+    if (across >= profile.reach || down >= profile.reach) {
+      return 0.0;
+    }
+    return profile.readSquareAt(
+      pile ? profile.pile : profile.coverage,
+      across,
+      down,
+    );
+  }
   final distance = math.sqrt(tipU * tipU + tipV * tipV);
-  if (distance > tip.radius) {
+  if (distance >= profile.reach) {
     return 0.0;
   }
-  final edgeSpan = tip.radius - tip.hardRadius;
-  if (distance <= tip.hardRadius || edgeSpan <= 0.0) {
+  if (distance <= profile.inner) {
     return 1.0;
   }
-  return (1.0 - ((distance - tip.hardRadius) / edgeSpan)).clamp(0.0, 1.0);
+  return profile.readAt(pile ? profile.pile : profile.coverage, distance);
 }

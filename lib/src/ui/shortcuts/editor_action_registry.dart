@@ -422,8 +422,8 @@ abstract final class RailLegendActionIds {
   static const sheetAllOff = 'rail-sheet-all-off';
   static const soloSheet = 'rail-solo-sheet';
   static const markFilterClear = 'rail-mark-filter-clear';
-  static const fillReferenceClear = 'rail-fill-reference-clear';
-  static const soloFillReference = 'rail-solo-fill-reference';
+  static const clipClear = 'rail-clip-clear';
+  static const soloClip = 'rail-solo-clip';
   static const fxEnableAll = 'rail-fx-enable-all';
   static const fxBypassAll = 'rail-fx-bypass-all';
   static const soloFx = 'rail-solo-fx';
@@ -490,12 +490,12 @@ List<EditorActionDefinition> _railLegendActions() {
       (l) => s(l).tlClearMarkFilter,
     ),
     _railLegendAction(
-      RailLegendActionIds.fillReferenceClear,
-      (l) => s(l).tlClearAllFillRefs,
+      RailLegendActionIds.clipClear,
+      (l) => s(l).tlClearAllClips,
     ),
     _railLegendAction(
-      RailLegendActionIds.soloFillReference,
-      (l) => s(l).tlSoloFillReferences,
+      RailLegendActionIds.soloClip,
+      (l) => s(l).tlSoloClips,
     ),
     _railLegendAction(
       RailLegendActionIds.fxEnableAll,
@@ -740,7 +740,7 @@ abstract final class EditorActionIds {
   static const canvasLineHold = 'canvas-line-hold';
   static const playbackToggle = 'playback-toggle';
 
-  /// The sill transport's 「처음으로」 (F-261).
+  /// The frame panels' transport's 「처음으로」 (F-261).
   static const playbackToStart = 'playback-to-start';
 
   /// The playback bar's loop / play-once switch (I-40).
@@ -779,7 +779,7 @@ abstract final class EditorActionIds {
   static const selectionTransformCancel = 'selection-transform-cancel';
   static const onionSkinToggle = 'onion-skin-toggle';
 
-  /// The sill's camera view switch (I-40).
+  /// The frame panels' camera view switch, beside their transport (I-40).
   static const cameraViewToggle = 'camera-view-toggle';
 
   /// Buttons of panels (I-40), pressed through `PanelKeys` on a panel a key
@@ -829,17 +829,21 @@ abstract final class EditorActionIds {
   /// bind a key to and nothing for a custom rail slot to point at.
   static const frameNewDrawing = 'frame-new-drawing';
   static const frameBlankExposure = 'frame-blank-exposure';
-  static const frameToggleMark = 'frame-toggle-mark';
+  /// I-130's two in-between marks: ○ mark 1, ● mark 2 — the ● keeping the
+  /// id it had as the one mark, so a key bound to it stays on it.
+  static const frameToggleMarkOne = 'frame-toggle-mark-one';
+  static const frameToggleMarkTwo = 'frame-toggle-mark';
   static const frameMarkEvery = 'frame-mark-every';
   static const timelinePushBlocks = 'timeline-push-blocks';
   static const timelinePullBlocks = 'timeline-pull-blocks';
 
-  /// The timeline bar's view buttons (I-40): the zoom − and + of the panel
-  /// being worked in, and the timeline's ⇄ X-sheet.
+  /// The timeline bar's view actions (I-40): the zoom in and out of the panel
+  /// being worked in — keys with no button since F-463 took the − and + off
+  /// — and the timeline's ⇄ X-sheet.
   static const timelineZoomIn = 'timeline-zoom-in';
   static const timelineZoomOut = 'timeline-zoom-out';
 
-  /// The zoom fit beside them (I-111).
+  /// The zoom fit, right of the zoom's readout (I-111).
   static const timelineZoomFit = 'timeline-zoom-fit';
   static const timelineOrientationToggle = 'timeline-orientation-toggle';
 
@@ -1854,9 +1858,18 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     shelf: ShortcutShelf.framePill,
     defaultActivators: [],
   ),
+  // 🗣️I-130 (유저 2026-10-25): 「기존 중간나누기 버튼 왼쪽에 중간나누기
+  // 마크1 버튼 신설」 — ○ before ●, as their buttons stand. No key was said
+  // for it. ↩️The ● read 'In-between Mark' while it was the one mark.
   const EditorActionDefinition(
-    id: EditorActionIds.frameToggleMark,
-    label: 'In-between Mark',
+    id: EditorActionIds.frameToggleMarkOne,
+    label: 'In-between Mark 1',
+    shelf: ShortcutShelf.framePill,
+    defaultActivators: [],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.frameToggleMarkTwo,
+    label: 'In-between Mark 2',
     shelf: ShortcutShelf.framePill,
     defaultActivators: [],
   ),
@@ -1897,7 +1910,9 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   ),
   // 🗣️I-111 (유저 2026-10-19): 「타임라인/콘티패널등 줌 fit 버튼 추가.
   // 해당 패널의 엔드라인에 맞춰서 스크롤바 fit하는것」 · 「위치는 줌
-  // 확대버튼 오른쪽」. No key was said for it.
+  // 확대버튼 오른쪽」. No key was said for it. ↩️Its place is right of the
+  // zoom's readout since F-463 took the − and + buttons off (「그 옆의 줌
+  // fit버튼은 그대로」); the two actions above stayed, with no button.
   const EditorActionDefinition(
     id: EditorActionIds.timelineZoomFit,
     label: 'Timeline Zoom to Fit',

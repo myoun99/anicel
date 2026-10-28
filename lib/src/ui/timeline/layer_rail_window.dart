@@ -32,6 +32,7 @@ import 'memo_token.dart' show KeptPiece;
 import 'timeline_grid_metrics.dart';
 import '../input/control_press_claim.dart';
 import '../input/pan_slide.dart';
+import '../theme/app_theme.dart';
 
 /// The narrowest window the user can drag to: the leading cluster (the
 /// section band and every control slot before the name) plus enough of the
@@ -51,7 +52,7 @@ const double layerRailScrollbarLaneExtent = AppScrollbarLane.thin;
 ///
 /// Stated in DEFAULT cell units, not live zoomed ones: measuring the
 /// reserve in zoomed cells would move the rail's ceiling every time the
-/// user touched the zoom slider.
+/// user zoomed.
 const double layerRailFrameReserveExtent = 2 * timelineFrameCellWidth;
 
 /// What the panel can spare for the rail: everything but its own chrome
@@ -622,6 +623,7 @@ class TimelineSecondsToggleCorner extends KeptPiece {
       child: ControlPressClaim(
         onPressed: () => onChanged(!showSeconds),
         child: InkWell(
+          mouseCursor: AppCursors.press,
           onTap: silentPress(() => onChanged(!showSeconds)),
           child: SizedBox(
             width: width,

@@ -71,21 +71,17 @@ String formatSeNameTagLaneValue(String laneId, SeNameTag resolved) {
     seNameTagTrackingLaneId => columnValueText(
       resolved.style.letterSpacing,
     ),
-    seNameTagBoldLaneId => _onOff(resolved.style.bold),
-    seNameTagItalicLaneId => _onOff(resolved.style.italic),
-    seNameTagUnderlineLaneId => _onOff(resolved.style.underline),
-    seNameTagStrikethroughLaneId => _onOff(resolved.style.strikethrough),
+    seNameTagBoldLaneId => flagLaneWord(resolved.style.bold),
+    seNameTagItalicLaneId => flagLaneWord(resolved.style.italic),
+    seNameTagUnderlineLaneId => flagLaneWord(resolved.style.underline),
+    seNameTagStrikethroughLaneId => flagLaneWord(resolved.style.strikethrough),
     seNameTagNameInkLaneId => hex(resolved.style.color),
     seNameTagBoxColorLaneId => hex(resolved.style.backgroundColor),
     seNameTagLineInkLaneId => hex(resolved.lineStyle.color),
-    seNameTagShowLineLaneId => _onOff(resolved.showLine),
+    seNameTagShowLineLaneId => flagLaneWord(resolved.showLine),
     _ => '',
   };
 }
-
-/// A switch's readout — the words the value editor reads back
-/// (`parseBoolInput`).
-String _onOff(bool on) => on ? 'on' : 'off';
 
 /// The name-tag family's lane table: where each member lane lives on the
 /// track — the name-tag twin of `transformLaneLens`, and the family's arm

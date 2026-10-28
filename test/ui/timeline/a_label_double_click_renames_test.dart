@@ -17,8 +17,6 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
-import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/axis_turn.dart'
     show offsetAlong, partAcross, startAlong;
 import 'package:anicel/src/ui/timeline/rail_eyes.dart';
@@ -28,6 +26,7 @@ import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/timeline_host.dart';
 
 /// 🚨I-48 (유저 2026-09-26): 「레이어 라벨 더블클릭시 해당 레이어 이름변경
 /// 로직 발동. 버튼이랑 마찬가지로 여러레이어 선택한채로 해당 레이어
@@ -284,19 +283,24 @@ void main() {
     late ProjectRepository repository;
     late EditorSessionManager session;
 
+    /// The timeline tab alone ([pumpTimelineHost]), as the app's window of
+    /// 800 × 600 laid it — the rename window is the tab's.
     Future<void> pumpHome(WidgetTester tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: HomePage(
-            initialProject: _project(),
-            onRepositoryCreated: (repo) => repository = repo,
-          ),
-        ),
+      session = await pumpTimelineHost(
+        tester,
+        _project(),
+        surface: const Size(640, 320),
       );
-      await tester.pumpAndSettle();
-      session = tester
-          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
-          .session;
+      repository = session.repository;
+    }
+
+    /// The default project's tab, as the app's window of 1400 × 900 laid it.
+    Future<void> pumpDefault(WidgetTester tester) async {
+      session = await pumpTimelineHost(
+        tester,
+        createDefaultProject(),
+        surface: const Size(870, 396),
+      );
     }
 
     Future<void> select(WidgetTester tester, List<LayerId> ids) async {
@@ -376,15 +380,7 @@ void main() {
 
     testWidgets('a track\'s fixture row stands its rename down here too — '
         'the rule the selection\'s rename already keeps', (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1400, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.pumpWidget(
-        MaterialApp(home: HomePage(initialProject: createDefaultProject())),
-      );
-      await tester.pumpAndSettle();
-      session = tester
-          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
-          .session;
+      await pumpDefault(tester);
       Layer ofKind(LayerKind kind) =>
           session.layers.firstWhere((layer) => layer.kind == kind);
       final transition = ofKind(LayerKind.transition);
@@ -404,15 +400,7 @@ void main() {
 
     testWidgets('a track\'s SE row — owned by the track, not the cut — takes '
         'its new name', (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1400, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.pumpWidget(
-        MaterialApp(home: HomePage(initialProject: createDefaultProject())),
-      );
-      await tester.pumpAndSettle();
-      session = tester
-          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
-          .session;
+      await pumpDefault(tester);
       final se = session.layers.firstWhere(
         (layer) => layer.kind == LayerKind.se,
       );

@@ -9,6 +9,7 @@ import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame.dart' show InbetweenMark;
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/import/import_warning.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -94,6 +95,7 @@ void main() {
     bool animation = false,
     ClipPlacement? camera,
     bool effects = false,
+    bool clipped = false,
     ClipLayerMask? mask,
     bool locked = false,
   }) {
@@ -117,6 +119,7 @@ void main() {
       originalTransform: null,
       camera: camera,
       effectsOn: effects,
+      clipped: clipped,
       mask: mask,
       locked: locked,
       children: children,
@@ -166,7 +169,7 @@ void main() {
     ClipLayer layer,
     List<(int, String)> keys, {
     ClipSpan span = (start: 0, end: 12),
-    List<int> labels = const [],
+    Map<int, InbetweenMark> breakdownMarks = const {},
   }) => MapEntry(
     layer.uuid,
     ClipTrack(
@@ -177,7 +180,7 @@ void main() {
           cels: [for (final (frame, cel) in keys) (frame: frame, cel: cel)],
         ),
       ],
-      labels: labels,
+      breakdownMarks: breakdownMarks,
     ),
   );
 
@@ -190,7 +193,6 @@ void main() {
     ClipTrack(
       kind: 2001,
       pieces: [for (final span in spans) (span: span, cels: const [])],
-      labels: const [],
     ),
   );
 
@@ -816,7 +818,11 @@ void main() {
                   ),
                   (span: (start: 8, end: 20), cels: [(frame: 8, cel: '1')]),
                 ],
-                labels: [3, 4, 9],
+                breakdownMarks: {
+                  3: InbetweenMark.one,
+                  4: InbetweenMark.two,
+                  9: InbetweenMark.two,
+                },
               ),
             ),
             shownOver(above, [(start: 0, end: 10)]),
@@ -840,6 +846,20 @@ void main() {
           [1],
         ],
         reason: 'the label on 「2」\'s head is that key — nothing more',
+      );
+      expect(
+        [
+          for (final exposure in base.timeline.values)
+            exposure.breakdownMarks,
+        ],
+        [
+          {1: InbetweenMark.one},
+          <int, InbetweenMark>{},
+          {1: InbetweenMark.two},
+        ],
+        reason:
+            'each dot wears the mark its label says it is '
+            '(I-130-csp-import-Q1)',
       );
     });
 
@@ -1386,10 +1406,10 @@ void main() {
   });
 
   test('what CLIP STUDIO draws over what comes in — an effect of its '
-      'properties on, or a clip to the layer under it — is said in every '
-      'decoder\'s words: a layer or folder outside the cels by its own '
-      'name, one in a cel (the cel\'s folder too) by its folder and cel, '
-      'and one left out only as left out', () {
+      'properties on, or a clip to the layer under it inside a cel — is '
+      'said in every decoder\'s words: a layer or folder outside the cels '
+      'by its own name, one in a cel (the cel\'s folder too) by its folder '
+      'and cel, and one left out only as left out', () {
     final a = animation(
       'A',
       [
@@ -1420,7 +1440,6 @@ void main() {
       [
         ('layerEffectsNotApplied', 'tinted'),
         ('layerEffectsNotApplied', 'LO'),
-        ('clippingNotApplied', 'clipped'),
         ('layerEffectsNotApplied', 'A'),
         ('layerEffectsNotApplied', 'A / 1'),
         ('layerEffectsNotApplied', 'A / 2'),
@@ -1430,7 +1449,36 @@ void main() {
       ],
     );
     expect(result.warnings.first, layerEffectsNotApplied('tinted'));
-    expect(result.warnings[2], clippingNotApplied('clipped'));
+    expect(result.warnings[5], clippingNotApplied('A / 2'));
+  });
+
+  test('a layer and a folder outside every cel come in clipped to the layer '
+      'under them as they were (I-92) — nothing to say', () {
+    final result = plan(
+      root([
+        layer('base'),
+        layer('shade', clipped: true),
+        folder('glow', [layer('inside')], clipped: true),
+        layer('free'),
+      ]),
+      [timeline(const [])],
+    );
+    final cut = result.cuts.single;
+
+    expect(
+      [
+        for (final name in ['base', 'shade', 'glow', 'inside', 'free'])
+          (name, row(cut, name).clipsToBelow),
+      ],
+      [
+        ('base', false),
+        ('shade', true),
+        ('glow', true),
+        ('inside', false),
+        ('free', false),
+      ],
+    );
+    expect(result.warnings, isEmpty);
   });
 
   group('🎯a layer mask that is on (보드 the-clip-import-leaves-masks-and-'
@@ -1628,7 +1676,6 @@ void main() {
       ClipTrack(
         kind: 4001,
         pieces: [for (final cue in cues) (span: cue.span, cels: const [])],
-        labels: const [],
         sounds: cues,
       ),
     );
@@ -1850,7 +1897,6 @@ void main() {
     ClipTrack(
       kind: kind,
       pieces: [for (final move in moves) (span: move.span, cels: const [])],
-      labels: const [],
       moves: moves,
     ),
   );
@@ -2200,7 +2246,6 @@ void main() {
                     (span: (start: 0, end: 6), cels: []),
                     (span: (start: 6, end: 12), cels: []),
                   ],
-                  labels: const [],
                   moves: [
                     move((start: 6, end: 12), x: ClipCurve.held(6, 100)),
                   ],
@@ -2446,7 +2491,6 @@ void main() {
                 pieces: const [
                   (span: (start: 0, end: 30), cels: [(frame: 0, cel: '1')]),
                 ],
-                labels: const [],
                 moves: [
                   move(
                     (start: 0, end: 30),

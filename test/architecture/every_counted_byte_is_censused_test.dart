@@ -193,6 +193,12 @@ const _notCensused = <String, String>{
       'a CEILING — how much an export run may hold on playback\'s line; '
       'what it holds is lentBytes, which the census reads',
 
+  // — A PART of a holding the census reads whole.
+  'lib/src/ui/canvas/subtree_image_composite.dart → heldBelowBytes':
+      'the rasters held below a pen — a part of heldBytes, which the '
+      'census reads (`framePictures`); the line weighs the nodes over the '
+      'pen by it',
+
   // — On DISK, not in RAM. The census is a RAM readout.
   'lib/src/services/brush_frame_store.dart → coldBakedBytes':
       'bytes on DISK: cooling writes a cel to the 이사대기 room of the run '
@@ -201,12 +207,6 @@ const _notCensused = <String, String>{
 
   // — Real holdings that reach the census through something else. The
   // `via:` prefix names the reader, and the test checks it exists.
-  'lib/src/ui/canvas/display_buffer_cache.dart → heldBytes':
-      'via:stackBufferBytes — the census PULLS from holders the session '
-      'owns and this lives in a widget State, so each stack view pushes it '
-      'onto RenderCaches under its own name — the canvas, a live conte '
-      'picture, each cut of the track stack — the way the media viewers '
-      'already do, one census row',
   'lib/src/native/native_upload_cache.dart → residentBytes':
       'via:nativeUploadBytes — the engine keeps two of these (stamp bytes, '
       'mask alphas) and sums them; ALSO ledgered because the bare name is '
@@ -215,7 +215,7 @@ const _notCensused = <String, String>{
   'lib/src/ui/storyboard_cut_thumbnail_store.dart → thumbnailBytes':
       'via:storyboardThumbnailBytes — the store lives in the workspace '
       'State the session does not own, so the workspace pushes it onto '
-      'RenderCaches, the way the canvas buffer and the viewers are',
+      'RenderCaches, the way the viewers are',
   'lib/src/ui/sheet/sheet_image_cache.dart → decodedBytes':
       'via:sheetImageBytes — the sheets\' image cache lives in the '
       'workspace too, and pushes onto RenderCaches as the thumbnails do',
@@ -226,10 +226,11 @@ const _notCensused = <String, String>{
   'lib/src/services/last_stroke_slot.dart → strokeBytes':
       'via:allStrokeBytes — the app\'s one slot, read once, for the cut '
       'piece\'s reason',
-  'lib/src/ui/canvas/static_composite_bake.dart → heldBytes':
-      'via:stackBufferBytes — the view that owns the bake reports it '
-      'together with its display buffer: both are the view holding a '
-      'raster of itself',
+  'lib/src/native/qa_blur_kernel.dart → debugScratchBytes':
+      'via:liveBytes — the blur\'s scratch is a NativeScratch, which '
+      'NativeScratch.liveBytes already sums with every other (the census\'s '
+      'engineScratch row); this one is the test\'s pin that a stroke\'s end '
+      'lets it go',
 };
 
 /// What a field KEEPS `ui.Image`s in — a map, list, set or queue of them,
@@ -251,19 +252,21 @@ const _keepers =
 /// (`var _thisFrame = <Object, ui.Image>{}`), where a field stands: the top
 /// level, and the bodies of the classes and mixins ([_typesIn]). A local of
 /// a top-level function stands two spaces in as a member does, and is in
-/// neither.
+/// neither. A picture type of its own type arguments is one too
+/// (`Map<K, _Entry<K>>` — the frame picture store's, 2026-10-26: made
+/// generic, its entries fell out of the census).
 Iterable<String> _imageKeepersIn(String source, String pictures) sync* {
   final typed =
       '(?:$_keepers)<'
       r'[^;=]*\b(?:'
       '$pictures'
-      r')\??>+\s+(\w+)\s*[=;]';
+      r')(?:<[^;=]*?>)?\??>+\s+(\w+)\s*[=;]';
   final literal =
       r'(\w+)\s*=\s*(?:'
       '$_keepers'
       r')?<[^;]*\b(?:'
       '$pictures'
-      r')\??>\s*[{\[(]';
+      r')(?:<[^;]*?>)?\??>\s*[{\[(]';
   final declared = '(?:late )?(?:(?:final )?$typed|(?:final |var )$literal)';
   final member = RegExp('^  (?:static )?$declared', multiLine: true);
   final topLevel = RegExp('^$declared', multiLine: true);
@@ -394,15 +397,10 @@ const _imageHolders = <String, String>{
       'a cut block borrows one picture per cell from the storyboard '
       'thumbnail store, which owns and counts them (thumbnailBytes); the '
       'block only carries them into a paint',
+  'lib/src/ui/canvas/subtree_image_composite.dart → _held':
+      'counted:heldBytes',
   'lib/src/ui/canvas/bitmap_tile_image_cache.dart → _images':
       'counted:liveImageBytes',
-  'lib/src/ui/canvas/static_composite_bake.dart → _rasters':
-      'counted:heldBytes',
-  'lib/src/ui/canvas/canvas_layer_stack_view.dart → _superseded':
-      'clones a settle replaced, kept only until the build the settle asks '
-      'for; each is of a picture the display buffer\'s kept image drew and '
-      'still pins until its next compose, so nothing is held through them '
-      'that the buffer does not hold anyway',
   'lib/src/ui/sheet/sheet_image_cache.dart → _images':
       'counted:decodedBytes',
   'lib/src/ui/sheet/sheet_image_cache.dart → _pictures':
@@ -427,9 +425,6 @@ const _imageHolders = <String, String>{
   'lib/src/ui/timeline/timeline_grid_tile_store.dart → _entries':
       'counted:tileImageBytes',
   // … holdings counted all along, by a counter of their own file …
-  'lib/src/ui/canvas/tile_pyramid.dart → tiles': 'counted:liveBytes',
-  'lib/src/ui/playback/layer_frame_image_cache.dart → _entries':
-      'counted:estimatedBytes',
   'lib/src/ui/playback/frame_picture_store.dart → _entries':
       'counted:estimatedBytes',
   'lib/src/ui/widgets/static_raster.dart → census': 'counted:censusBytes',
@@ -459,11 +454,6 @@ const _imageHolders = <String, String>{
   'lib/src/ui/export/export_frame_renderer.dart → all':
       'one camera frame\'s track stack, laying pictures the run\'s '
       'HeldPictures holds — a frame described, not a holding',
-  'lib/src/ui/canvas/canvas_layer_stack_view.dart → _images':
-      'clones of the layer images the rows this view shows draw from — '
-      'the playback cache\'s pictures (estimatedBytes); a clone outlives '
-      'the cache\'s own only for a row on screen, or of the last whole '
-      'frame until this one is whole',
   'lib/src/ui/canvas/canvas_selection_layer.dart → floats':
       'the open move\'s floats, one a cel it lifted: what each keeps of '
       'pictures is its warp preview — the last resample decoded for the '
@@ -471,10 +461,6 @@ const _imageHolders = <String, String>{
   'lib/src/ui/canvas/selection_float_overlay.dart → floats':
       'a paint\'s floats: each picture is a float\'s warp preview, owned by '
       'the float (canvas_selection_layer.dart → floats)',
-  'lib/src/ui/canvas/tiled_surface_compose.dart → _halvings':
-      'one compose\'s laid tiles, drawn halved at its finish: the tile '
-      'cache\'s pictures (liveImageBytes), or the blocks the compose '
-      'pictured itself and lets go when it ends',
 
   // — 2026-10-21, a picture past the side held in pieces (card
   // a-cel-past-the-device-side-composes-smaller): ONE picture, as many
@@ -483,21 +469,10 @@ const _imageHolders = <String, String>{
   'lib/src/ui/canvas/tiled_surface_compose.dart → pieces':
       'one compose\'s picture, in pieces past the side (piecesOver): its '
       'holder keeps and counts them as it did the one image',
-  'lib/src/ui/playback/layer_frame_image_cache.dart → pieces':
-      'one stored picture\'s pieces, the entry\'s own — of _entries '
-      '(estimatedBytes sums them)',
-  'lib/src/ui/playback/frame_picture_store.dart → _landing':
-      'one picture\'s patches on their way into it, the entry\'s own — of '
-      '_entries (estimatedBytes sums them)',
   'lib/src/ui/playback/frame_picture_store.dart → waiting':
-      'the landing patches no batch has taken yet: the very images of '
-      '_landing, counted there',
-  'lib/src/ui/playback/frame_picture_store.dart → levelsDue':
-      'the landing patches whose base is in and whose levels are not: the '
-      'very images of _landing, counted there',
-  'lib/src/ui/playback/frame_picture_store.dart → levelsDueAsOne':
-      'landing patches laid again as one at the cap: the very images of '
-      '_landing, counted there',
-  'lib/src/ui/canvas/canvas_layer_stack_view.dart → pieces':
-      'one row\'s picture carried into a paint: the clones _images holds',
+      'a patch\'s texels from its render to the write that takes them, a '
+      'batch at a time, let go of once written (_writeWaiting) — a write\'s '
+      'round trip, never drawn: ↩️billed with their picture while they were '
+      'drawn over it until its levels were in, up to 64 at a time (F-465, '
+      '2026-10-26)',
 };

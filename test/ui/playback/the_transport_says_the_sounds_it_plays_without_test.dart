@@ -14,12 +14,18 @@ import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 import 'package:anicel/src/ui/playback/playback_transport_controls.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 
 /// 유저 2026-10-17 (playback-waits-for-its-sound-Q1: 「a + 재생 중 재생 버튼
-/// 줄 맨 앞에 빨간 경고 문구」): while this scope plays, the transport's front
-/// slot says how many sounds the run plays without — beside the drops, in
-/// the slot T29 fixed, so no button moves — and the meter's reserved seat
-/// is red when the output would not open.
+/// 줄 맨 앞에 빨간 경고 문구」): while this scope plays, the transport says
+/// how many sounds the run plays without — beside the drops — and the
+/// meter's reserved seat is red when the output would not open.
+///
+/// 🗣️F-463 ② (유저 2026-10-25): 「재생버튼 위에 오버레이로서? 자리
+/// 안차지하고 … 위치적으로도 재생버튼 위쪽. 글자 작아도됨」 — the words ride
+/// the play button's top and take no place. ↩️They stood in T29's fixed
+/// 72px slot at the row's front, two lines, the sounds' line with a
+/// tooltip.
 void main() {
   Project project() => Project(
     id: const ProjectId('project'),
@@ -99,27 +105,40 @@ void main() {
     const ValueKey<String>('playback-dropped-indicator'),
   );
   final refused = find.byKey(const ValueKey<String>('playback-output-refused'));
+  final transport = find.byKey(
+    const ValueKey<String>('playback-transport-activeCut'),
+  );
   Rect playButton(WidgetTester tester) => tester.getRect(
     find.byKey(const ValueKey<String>('playback-play-button')),
   );
   Rect meter(WidgetTester tester) =>
       tester.getRect(find.byKey(const ValueKey<String>('audio-level-meter')));
 
-  testWidgets('while this scope plays, the front slot says how many sounds '
-      'the run plays without, and which and why on hover', (tester) async {
+  /// The meter's seat's fill.
+  Color? seatColor(WidgetTester tester) {
+    final seat = tester.widget<DecoratedBox>(
+      find
+          .descendant(
+            of: find.byKey(const ValueKey<String>('audio-level-meter')),
+            matching: find.byType(DecoratedBox),
+          )
+          .first,
+    );
+    return (seat.decoration as ShapeDecoration).color;
+  }
+
+  testWidgets('while this scope plays, the play button\'s words say how many '
+      'sounds the run plays without', (tester) async {
     await pump(tester, without: silent);
     expect(
       tester.widget<Text>(silentLine).data,
       AppText.strings.playbackSilentCount(2),
     );
+    // ↩️The line said which and why on hover while it had a slot of its
+    // own; over the play button a hover is the button's.
     expect(
-      tester
-          .widget<Tooltip>(
-            find.ancestor(of: silentLine, matching: _aTooltip),
-          )
-          .message,
-      'gone.wav — ${AppText.strings.soundCannotPlay(SoundCannotPlay.missing)}'
-      '\nodd.xyz — ${AppText.strings.soundCannotPlay(SoundCannotPlay.format)}',
+      find.ancestor(of: silentLine, matching: find.byType(AppTooltip)),
+      findsNothing,
     );
   });
 
@@ -131,13 +150,15 @@ void main() {
     expect(silentLine, findsNothing);
   });
 
-  testWidgets('🚨the words come and go and grow to two lines in the slot — '
-      'no button moves', (tester) async {
+  testWidgets('🚨the words come and go over the play button\'s top, taking '
+      'no place — no button moves, the row keeps its width, and a press '
+      'there is the button\'s', (tester) async {
     final without = ValueNotifier(PlaysWithout.nothing);
     addTearDown(without.dispose);
     final controller = await pump(tester, notifier: without, ticking: true);
     final quiet = playButton(tester);
     final quietMeter = meter(tester);
+    final quietRow = tester.getRect(transport);
 
     without.value = silent;
     await tester.pump();
@@ -150,28 +171,26 @@ void main() {
     expect(dropLine, findsOneWidget);
     expect(silentLine, findsOneWidget);
     expect(
-      tester.getRect(dropLine).bottom,
-      lessThanOrEqualTo(tester.getRect(silentLine).top + 0.01),
-      reason: 'the drops above the sounds',
+      tester.getRect(dropLine).right,
+      lessThanOrEqualTo(tester.getRect(silentLine).left + 0.01),
+      reason: 'the drops, then the sounds',
     );
     expect(playButton(tester), quiet);
     expect(meter(tester), quietMeter);
-    // T29's slot: 72 wide, left of 「to start」, as tall as the buttons.
-    final toStart = tester.getRect(
-      find.byKey(const ValueKey<String>('playback-skip-to-start-button')),
-    );
-    final slot = Rect.fromLTRB(
-      toStart.left - 72 - 0.01,
-      quiet.top - 0.01,
-      toStart.left + 0.01,
-      quiet.bottom + 0.01,
+    expect(tester.getRect(transport), quietRow, reason: 'no place taken');
+    // Centred on the button, above it, reaching 3 into it; 72 wide.
+    final box = Rect.fromLTRB(
+      quiet.center.dx - 36 - 0.01,
+      quiet.top + 3 - 9 - 0.01,
+      quiet.center.dx + 36 + 0.01,
+      quiet.top + 3 + 0.01,
     );
     for (final line in [dropLine, silentLine]) {
+      final rect = tester.getRect(line);
       expect(
-        slot.contains(tester.getRect(line).topLeft) &&
-            slot.contains(tester.getRect(line).bottomRight),
+        box.contains(rect.topLeft) && box.contains(rect.bottomRight),
         isTrue,
-        reason: 'inside the row\'s height: ${tester.getRect(line)} in $slot',
+        reason: 'over the button\'s top: $rect in $box',
       );
     }
     expect(tester.takeException(), isNull, reason: 'no overflow');
@@ -181,10 +200,18 @@ void main() {
     expect(silentLine, findsNothing);
     expect(playButton(tester), quiet);
 
-    controller
-      ..stop()
-      ..detachTicker();
+    await tester.tapAt(Offset(quiet.center.dx, quiet.top + 1));
     await tester.pump();
+    expect(controller.isPlaying, isFalse, reason: 'the press stopped it');
+    controller.detachTicker();
+    await tester.pump();
+  });
+
+  testWidgets('the meter beside the mic shows its seat at rest — a well, '
+      'the backdrop in a field\'s frame (F-463 ③)', (tester) async {
+    await pump(tester, playing: null);
+    expect(seatColor(tester), AppColors.backdrop);
+    expect(meter(tester).width, greaterThan(0));
   });
 
   testWidgets('an output that would not open turns the meter\'s seat red, '
@@ -197,13 +224,17 @@ void main() {
 
     without.value = const PlaysWithout(output: true);
     await tester.pump();
-    expect(tester.widget<ColoredBox>(refused).color, AppColors.danger);
+    expect(
+      (tester.widget<DecoratedBox>(refused).decoration as ShapeDecoration)
+          .color,
+      AppColors.danger,
+    );
     expect(tester.getRect(refused), seat, reason: 'the seat, not a new one');
     expect(meter(tester), seat);
     expect(
       tester
-          .widget<Tooltip>(
-            find.ancestor(of: refused, matching: _aTooltip),
+          .widget<AppTooltip>(
+            find.ancestor(of: refused, matching: find.byType(AppTooltip)),
           )
           .message,
       AppText.strings.playbackOutputRefused,
@@ -239,6 +270,3 @@ void main() {
     );
   });
 }
-
-/// `AppTooltip` is a [Tooltip] of its own type, which `find.byType` misses.
-final _aTooltip = find.byWidgetPredicate((widget) => widget is Tooltip);

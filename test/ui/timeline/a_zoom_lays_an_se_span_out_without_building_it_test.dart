@@ -7,6 +7,8 @@ import 'package:anicel/src/ui/text/dialogue_fit_paint.dart';
 import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart';
 
+import '../../helpers/an_se_row.dart';
+
 /// 🚨A ZOOM LAYS AN SE SPAN OUT AGAIN; IT DOES NOT BUILD IT AGAIN
 /// (zoom-step-lays-out-five-times-the-07-25-count, 10-12): the chip's length
 /// is the box's question, asked by the layout and the paint that know the
@@ -36,6 +38,7 @@ void main() {
     var shown = width;
     late StateSetter setState;
     final span = SeSpanVisual(
+      layer: anSeRow(),
       axis: Axis.horizontal,
       frames: frames,
       dialogue: words,
@@ -263,6 +266,7 @@ void main() {
                 width: 100,
                 height: row,
                 child: SeSpanVisual(
+                  layer: anSeRow(),
                   axis: Axis.horizontal,
                   frames: 10,
                   dialogue: dialogue,
@@ -293,14 +297,15 @@ void main() {
           backgroundColor: rowGround,
           body: RepaintBoundary(
             key: shot,
-            child: const Align(
+            child: Align(
               alignment: Alignment.topLeft,
               child: Padding(
-                padding: EdgeInsets.only(top: 40),
+                padding: const EdgeInsets.only(top: 40),
                 child: SizedBox(
                   width: row,
                   height: 100,
                   child: SeSpanVisual(
+                    layer: anSeRow(),
                     axis: Axis.vertical,
                     frames: 10,
                     dialogue: 'あい',
@@ -333,6 +338,7 @@ void main() {
               width: 100,
               height: row,
               child: SeSpanVisual(
+                layer: anSeRow(),
                 axis: Axis.horizontal,
                 frames: 10,
                 dialogue: 'あい',
@@ -400,7 +406,8 @@ void main() {
                 return SizedBox(
                   width: across,
                   height: 60,
-                  child: const SeSpanVisual(
+                  child: SeSpanVisual(
+                    layer: anSeRow(),
                     axis: Axis.vertical,
                     frames: 4,
                     dialogue: dialogue,
@@ -458,6 +465,7 @@ void main() {
             width: 60,
             height: row,
             child: SeSpanVisual(
+              layer: anSeRow(),
               axis: Axis.horizontal,
               frames: 4,
               dialogue: text,

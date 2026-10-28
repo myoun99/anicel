@@ -157,7 +157,7 @@ double? brushInputValue(BrushDab dab, BrushInputSource source) =>
           ? null
           : 1.0 - dab.tiltAltitude!,
       // The dab already holds the RATIO, not px/s: the pen door divides by
-      // the user's reference speed once, where pressure and tilt are
+      // the ceiling the app fixes once, where pressure and tilt are
       // normalized too. See `AppInput.normalizedSpeed`.
       BrushInputSource.speed => dab.speed,
       BrushInputSource.random => null,

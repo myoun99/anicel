@@ -68,6 +68,7 @@ import 'project_settings_menu.dart';
 import '../session/project_file_door.dart'
     show SaveAsked, StagedArchive;
 import '../shortcuts/editor_action_registry.dart';
+import '../shortcuts/editor_key_funnel.dart' show EditorKeyRoad;
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../shortcuts/panel_actions.dart';
 import '../shortcuts/shortcut_settings_dialog.dart';
@@ -93,6 +94,7 @@ class EditorTopStrip extends StatelessWidget {
     required this.onCloseProject,
     required this.panelsMenu,
     this.door,
+    this.keyRoad,
     this.brushTool,
     this.colorBackground,
     this.colorPalette,
@@ -116,6 +118,11 @@ class EditorTopStrip extends StatelessWidget {
   /// (F-282) — the workspace's, which holds what it hands files to. Null
   /// leaves the two rows dim (focused tests).
   final WorkspaceDoorCommands? door;
+
+  /// The road the shell's keys run down — handed to the export window,
+  /// which edits the sheets' papers under the same keys (I-127). Null
+  /// leaves the window deaf to them (focused tests).
+  final EditorKeyRoad? keyRoad;
 
   /// The active tool's settings. The size and opacity bars ride the strip's
   /// right end (프로크리·카리페그 배치) because they are values you set
@@ -468,6 +475,8 @@ class EditorTopStrip extends StatelessWidget {
                   builder: (context) => ExportDialog(
                     session: session,
                     settingsStore: AppExportSettingsStore(),
+                    keys: keyRoad,
+                    paperEditing: door?.paperEditing,
                   ),
                 ),
               );
@@ -1222,6 +1231,7 @@ class _ProjectTab extends StatelessWidget {
           child: ControlPressClaim(
             onPressed: press,
             child: InkWell(
+              mouseCursor: AppCursors.press,
               key: ValueKey<String>('project-tab-$index'),
               customBorder: shape,
               onTap: silentPress(press),
@@ -1626,15 +1636,25 @@ Future<bool> ensureUnsavedWorkSettled(
           actionKey: const ValueKey<String>('system-exit-save-as'),
           onPressed: () => Navigator.of(context).pop(UnsavedWorkChoice.saveAs),
         ),
+        // 🗣️F-479-Q2 (유저 2026-10-27): 「닫기 창은 「저장」을 강조 버튼으로 —
+        // Enter = 저장하고 닫기」 — the accent is on the answer that keeps the
+        // work, so the window opens on it: a stray Enter saves once more and
+        // loses nothing.
         AppWindowAction(
           label: strings.commonSave,
           actionKey: const ValueKey<String>('system-exit-save'),
+          emphasis: AppWindowActionEmphasis.primary,
           onPressed: () => Navigator.of(context).pop(UnsavedWorkChoice.save),
         ),
+        // ⛔Danger, not the window's yes: it throws the work away, as every
+        // answer that does wears danger (`ConfirmChoice.emphasis`). Kept as
+        // the accent since the two-button gate of 07-19, it would have been
+        // the button this window opens on (F-479-Q1) — a stray Enter from
+        // losing what the window exists to keep.
         AppWindowAction(
           label: strings.commonClose,
           actionKey: const ValueKey<String>('system-exit-close'),
-          emphasis: AppWindowActionEmphasis.primary,
+          emphasis: AppWindowActionEmphasis.danger,
           onPressed: () => Navigator.of(context).pop(UnsavedWorkChoice.discard),
         ),
       ],

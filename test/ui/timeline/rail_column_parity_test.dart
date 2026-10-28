@@ -7,13 +7,12 @@ import 'package:anicel/src/models/layer_section_defaults.dart'
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
-import 'package:anicel/src/ui/timeline_tab_host.dart';
 
 import '../../helpers/named_finders.dart';
-import '../../helpers/storyboard_twirls.dart';
+import '../../helpers/storyboard_host.dart';
+import '../../helpers/timeline_host.dart';
 
 /// R9 #22 — the rail's column skeleton, measured on the REAL widget tree.
 ///
@@ -37,34 +36,12 @@ void main() {
 
   testWidgets('the storyboard rail\'s V row, S row and legend header all '
       'start their name at the same inset', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 700));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-
-    final session = EditorSessionManager(initialProject: createDefaultProject());
-    addTearDown(session.dispose);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: withStoryboardTwirls(
-            session,
-            (twirls) => StoryboardTabHost(
-              session: session,
-              expandedLaneLayerIds: twirls.expandedLaneLayerIds,
-              onToggleLayerLanes: twirls.onToggleLayerLanes,
-              expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
-              onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-            ),
-          ),
-        ),
-      ),
+    final session = await pumpStoryboardHost(
+      tester,
+      createDefaultProject(),
+      surface: const Size(1400, 700),
+      pixelsPerFrame: 12,
     );
-    await tester.pumpAndSettle();
 
     final trackId = session.selectedTrackId;
 
@@ -117,31 +94,15 @@ void main() {
 
   testWidgets('the timeline rail starts its name at the SAME inset as the '
       'storyboard rail — one column skeleton, two panels', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 700));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-
     final session = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(session.dispose);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => TimelineTabHost(
-              session: session,
-              orientation: TimelineOrientation.horizontal,
-              onOrientationChanged: (_) {},
-              pixelsPerFrame: 24,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-            ),
-          ),
-        ),
-      ),
+    await pumpTimelineHostOn(
+      tester,
+      session,
+      surface: const Size(1400, 700),
+      pixelsPerFrame: 24,
     );
-    await tester.pumpAndSettle();
 
     final layerId = session.activeLayerId!;
     final timelineInset = insetOf(
@@ -151,28 +112,12 @@ void main() {
     );
 
     // Now the same session in the storyboard, measured the same way.
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: withStoryboardTwirls(
-            session,
-            (twirls) => StoryboardTabHost(
-              session: session,
-              expandedLaneLayerIds: twirls.expandedLaneLayerIds,
-              onToggleLayerLanes: twirls.onToggleLayerLanes,
-              expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
-              onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-            ),
-          ),
-        ),
-      ),
+    await pumpStoryboardHostOn(
+      tester,
+      session,
+      surface: const Size(1400, 700),
+      pixelsPerFrame: 12,
     );
-    await tester.pumpAndSettle();
 
     final trackId = session.selectedTrackId;
     final storyboardInset = insetOf(
@@ -252,31 +197,13 @@ void main() {
 
   testWidgets('the x-sheet column header carries the TYPE BUTTON — a kind '
       'icon, and an attach column\'s placement arrow (R9 S3)', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 700));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-
-    final session = EditorSessionManager(initialProject: createDefaultProject());
-    addTearDown(session.dispose);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => TimelineTabHost(
-              session: session,
-              orientation: TimelineOrientation.vertical,
-              onOrientationChanged: (_) {},
-              pixelsPerFrame: 24,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-            ),
-          ),
-        ),
-      ),
+    final session = await pumpTimelineHost(
+      tester,
+      createDefaultProject(),
+      surface: const Size(1400, 700),
+      orientation: TimelineOrientation.vertical,
+      pixelsPerFrame: 24,
     );
-    await tester.pumpAndSettle();
 
     final layerId = session.activeLayerId!;
     expect(
@@ -314,34 +241,12 @@ void main() {
 
   testWidgets('every SE slot on the storyboard rail shows the SE kind icon '
       'in the shared type slot, not inside the name', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 700));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-
-    final session = EditorSessionManager(initialProject: createDefaultProject());
-    addTearDown(session.dispose);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: withStoryboardTwirls(
-            session,
-            (twirls) => StoryboardTabHost(
-              session: session,
-              expandedLaneLayerIds: twirls.expandedLaneLayerIds,
-              onToggleLayerLanes: twirls.onToggleLayerLanes,
-              expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
-              onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-            ),
-          ),
-        ),
-      ),
+    final session = await pumpStoryboardHost(
+      tester,
+      createDefaultProject(),
+      surface: const Size(1400, 700),
+      pixelsPerFrame: 12,
     );
-    await tester.pumpAndSettle();
 
     final trackId = session.selectedTrackId;
     // The S row is the timeline's own row (I-89 ①): its type button is

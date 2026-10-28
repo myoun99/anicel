@@ -115,7 +115,7 @@ class TimelineGridHooks {
     this.onToggleLayerOnionSkin,
     this.onToggleLayerFx,
     required this.onLayerMarkSelected,
-    this.onToggleLayerFillReference,
+    this.onToggleLayerClip,
     this.commaDrag,
     this.rangeHooks,
     this.laneRange,
@@ -134,6 +134,9 @@ class TimelineGridHooks {
     this.laneGroupOnOf,
     this.layerEyeOnOf,
     this.layerOnTimesheetOf,
+    this.layerClipsOf,
+    this.groupFoldOpenOf,
+    this.laneGroupOpenOf,
     this.onToggleLayerLanes,
     this.lanesForLayer,
     this.unionLaneForLayer,
@@ -395,8 +398,8 @@ class TimelineGridHooks {
 
   final void Function(LayerId layerId, LayerMarkEdit edit) onLayerMarkSelected;
 
-  /// Drawing rows' fill-reference toggle (R20-C2); null hides it.
-  final ValueChanged<LayerId>? onToggleLayerFillReference;
+  /// The clip toggle (I-92) of every row that can clip; null hides it.
+  final ValueChanged<LayerId>? onToggleLayerClip;
 
   /// Comma-drag hooks for the block edge grips (shared policy with the
   /// X-sheet); null hides the grips.
@@ -489,6 +492,20 @@ class TimelineGridHooks {
   /// [layerEyeOnOf] — the read the session keeps for it
   /// (`isLayerOnTimesheet`).
   final bool Function(LayerId layerId)? layerOnTimesheetOf;
+
+  /// A LIVE read of a layer’s clip to the layer below, for the same reason
+  /// as [layerEyeOnOf] — the read the session keeps for it
+  /// (`isLayerClipping`).
+  final bool Function(LayerId layerId)? layerClipsOf;
+
+  /// A LIVE read of a row's group fold — a folder's, or a base's attach
+  /// group — for the same reason as [laneOpenOf]: [collapsedAttachBaseIds]
+  /// and the row's layer reach here a build late (`isGroupFoldOpen`).
+  final bool Function(LayerId layerId)? groupFoldOpenOf;
+
+  /// A LIVE read of a lane GROUP's twirl, named by the group's header, for
+  /// the same reason as [laneOpenOf] (`isLaneGroupOpen`).
+  final bool Function(LayerId layerId, String headerLaneId)? laneGroupOpenOf;
 
   final ValueChanged<LayerId>? onToggleLayerLanes;
 

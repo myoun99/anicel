@@ -62,7 +62,7 @@ Future<bool> writeFrameImage(
   final renderer = ExportFrameRenderer.forFormat(
     session: session,
     format: spec.format,
-    applyLayerFx: spec.applyLayerFx,
+    layerFx: spec.layerFx,
   );
   final summary = await const PngSequenceExportService().exportImages(
     count: 1,

@@ -79,28 +79,8 @@ void main() {
     );
   });
 
-  test('every layer stack view\'s buffer is on the panel rasters\' row — '
-      'the canvas\'s, the conte\'s live pictures\', the track stack\'s cuts\'',
-      () {
-    final session = EditorSessionManager(
-      initialProject: createDefaultProject(),
-    );
-    addTearDown(session.dispose);
-    final before = censusRows(session)['panelRasters']!;
-
-    session.renderCaches
-      ..countStackBuffer('canvas', 1000)
-      ..countStackBuffer(('conte-picture', 'a'), 2000)
-      ..countStackBuffer(('track-stack', 'c'), 4000);
-    expect(censusRows(session)['panelRasters'], before + 7000);
-
-    session.renderCaches.countStackBuffer(('conte-picture', 'a'), 0);
-    expect(
-      censusRows(session)['panelRasters'],
-      before + 5000,
-      reason: 'a view that goes takes its buffer off the row',
-    );
-  });
+  // ↩️Every layer stack view's display buffer was pushed onto the panel
+  // rasters' row, until nothing kept one (one-picture-per-frame ②-5a).
 
   test('🚨cels parked on disk are not RAM — the drawings and sheet-ink '
       'rows count what is resident', () {

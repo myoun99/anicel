@@ -59,8 +59,15 @@ import 'export_cels_selection.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../services/commands/link_mirror.dart' show linkedCutSiblings;
+import '../brush/sheet_canvas_panel.dart' show sheetBrushSwitch;
+import '../sheet/paper_editing.dart';
+import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
+import '../shortcuts/editor_key_funnel.dart';
+import '../sliced_value_listenable_builder.dart';
 import '../timeline/layer_label_controls.dart';
+import '../timeline/memo_token.dart' show ByIdentity;
 import '../timeline/timeline_cell_style.dart' show timelineTextOnColor;
+import 'export_paper_panel.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/settings_rows.dart';
 import 'export_cut_grid.dart';
@@ -95,7 +102,7 @@ import '../text/app_face.dart';
 import '../text/app_strings.dart';
 import '../text/model_vocabulary.dart' show ImportWarningWords;
 import '../input/control_press_claim.dart';
-import '../theme/app_theme.dart' show AppShapes;
+import '../theme/app_theme.dart' show AppCursors, AppShapes;
 import '../widgets/cursor_notice.dart';
 import '../widgets/pill_strip.dart';
 import '../widgets/transport_bar.dart' show TransportRange;
@@ -119,9 +126,20 @@ class ExportDialog extends StatefulWidget {
     this.videoExportService = const VideoExportService(),
     this.settingsStore,
     this.formatAvailability,
+    this.keys,
+    this.paperEditing,
   });
 
   final EditorSessionManager session;
+
+  /// The shell's keys ([EditorKeyRoad]) — the window's route is no child of
+  /// the shell, so it lays them round itself. Null hears none (most tests).
+  final EditorKeyRoad? keys;
+
+  /// What the Cels tab's timesheet pages and cut envelopes are written on
+  /// with — the panels' own ink and switches, and the tool in hand (I-127).
+  /// Null shows them as the pictures their files are.
+  final PaperEditing? paperEditing;
 
   /// Injectable for tests: stands in for whichever system window the door
   /// opens — the folder window, or the save window of a lone file.
@@ -266,7 +284,7 @@ class ExportDialogState extends State<ExportDialog> {
 
   // The preview's renderers key on (FX, ground, rows kept apart): each
   // changes what a frame looks like (EX4; a PSD's — I-117-Q2).
-  final Map<(bool, int, bool), ExportFrameRenderer> _previewRenderers = {};
+  final Map<(ExportLayerFx, int, bool), ExportFrameRenderer> _previewRenderers = {};
   late ExportFormatAvailability _availability;
   bool _ownsAvailability = false;
   int _sequencePosition = 0;
@@ -283,21 +301,43 @@ class ExportDialogState extends State<ExportDialog> {
   /// barrier, where a notice would be said to nobody.
   final CursorNoticeController _notices = CursorNoticeController();
   int _contePosition = 0;
-  // Sheet documents are chunky to derive; the modal dialog memoizes per
-  // cut IDENTITY (the film cannot change under an open dialog).
-  final Map<CutId, (Cut, TimesheetDocument, TimesheetDocumentLayout)>
+  // Sheet documents are chunky to derive — memoized per cut, on the
+  // project's IDENTITY too: a sheet reads where its cut starts on the track.
+  final Map<
+    CutId,
+    (Object, Cut, TimesheetDocument, TimesheetDocumentLayout)
+  >
   _sheetDocs = {};
-  // The conte sheet reads the WHOLE project — memoized on its identity
-  // (the film cannot change under an open dialog).
+  // The conte sheet reads the WHOLE project — memoized on its identity.
   (Object, ConteSheetSource, List<ContePageLayout>)? _conteSheetCache;
 
   EditorSessionManager get _session => widget.session;
 
-  /// R27 #31: the cut this window is built around, resolved ONCE (the film
-  /// cannot change under a modal dialog). Null = the project has no cuts
-  /// at all, and the window degrades to an empty state instead of taking
-  /// the app down with a `requireActiveCut` throw.
+  /// R27 #31: the cut this window is built around — read again by its id
+  /// whenever the film changes under the window ([_heardFilm]). Null = the
+  /// project has no cuts at all, and the window degrades to an empty state
+  /// instead of taking the app down with a `requireActiveCut` throw.
+  ///
+  /// ↩️Resolved once, on 「the film cannot change under a modal dialog」 —
+  /// until the window took the editor's undo and the papers' typing
+  /// (I-127, 유저 2026-10-25: 「물론 언두도 가능」).
   Cut? _anchorCut;
+
+  /// The film as this window hears it: a project that is another one.
+  late final SlicedListenable<Object> _filmNews = SlicedListenable(
+    _session,
+    () => ByIdentity(_session.repository.requireProject()),
+  );
+
+  /// The film changed under the window: the cut it is built around is
+  /// read again — the one under the playhead where it is gone — and every
+  /// page and plan is read off the project that is now.
+  void _heardFilm() => setState(() {
+    final anchor = _anchorCut;
+    _anchorCut =
+        (anchor == null ? null : _session.cutById(anchor.id)) ??
+        frameUnderThePlayhead(_session)?.cut;
+  });
 
   @override
   void initState() {
@@ -327,6 +367,7 @@ class ExportDialogState extends State<ExportDialog> {
           .withSpec(_specs.cels.copyWith(scope: ExportScopeKind.project));
     }
     _syncControllersFromSpecs();
+    _filmNews.addListener(_heardFilm);
     unawaited(_restoreFromStore());
   }
 
@@ -350,6 +391,7 @@ class ExportDialogState extends State<ExportDialog> {
 
   @override
   void dispose() {
+    _filmNews.dispose();
     _progress.dispose();
     _sequenceFileController.dispose();
     _imageFileController.dispose();
@@ -375,15 +417,15 @@ class ExportDialogState extends State<ExportDialog> {
   }
 
   ExportFrameRenderer _previewRendererFor({
-    required bool applyLayerFx,
+    required ExportLayerFx layerFx,
     required ExportFormatSelection format,
   }) {
     final bgKey = _groundKeyOf(format);
     return _previewRenderers.putIfAbsent(
-      (applyLayerFx, bgKey, format.keepsRowsApart),
+      (layerFx, bgKey, format.keepsRowsApart),
       () => ExportFrameRenderer(
         session: _session,
-        applyLayerFx: applyLayerFx,
+        layerFx: layerFx,
         keepsRowsApart: format.keepsRowsApart,
         background: bgKey == -1 ? const ui.Color(0x00000000) : ui.Color(bgKey),
       ),
@@ -537,6 +579,7 @@ class ExportDialogState extends State<ExportDialog> {
     final (cut: _, :pages, :at) = _celPages();
     return ExportCelsBoard(
       rules: _celRules(cut),
+      rulesNeed: _celRulesNeed,
       stack: _celStack(cut, row),
       band: ExportCelsBand(
         cutPicker: _celCutPicker(plan, cut),
@@ -925,10 +968,13 @@ class ExportDialogState extends State<ExportDialog> {
     return 0;
   }
 
-  (Cut, TimesheetDocument, TimesheetDocumentLayout) _sheetDocFor(Cut cut) {
+  (TimesheetDocument, TimesheetDocumentLayout) _sheetDocFor(Cut cut) {
+    final project = _session.repository.requireProject();
     final cached = _sheetDocs[cut.id];
-    if (cached != null && identical(cached.$1, cut)) {
-      return cached;
+    if (cached != null &&
+        identical(cached.$1, project) &&
+        identical(cached.$2, cut)) {
+      return (cached.$3, cached.$4);
     }
     final document = cutSheetDocument(
       _session,
@@ -936,14 +982,13 @@ class ExportDialogState extends State<ExportDialog> {
       cutStartFrame: _trackStartOf(cut),
     );
     final layout = TimesheetDocumentLayout(document: document);
-    final entry = (cut, document, layout);
-    _sheetDocs[cut.id] = entry;
-    return entry;
+    _sheetDocs[cut.id] = (project, cut, document, layout);
+    return (document, layout);
   }
 
   /// How many pages [cut]'s timesheet stands on — the plan lists a file a
   /// page ([buildExportCelGroupPlan]).
-  int _sheetPagesOf(Cut cut) => _sheetDocFor(cut).$2.pages.length;
+  int _sheetPagesOf(Cut cut) => _sheetDocFor(cut).$1.pages.length;
 
   /// The page of its cut's timesheet [sheet] is, as the page renderer takes
   /// it. The sheet's digital file has no picture of its own: its block
@@ -1120,7 +1165,7 @@ class ExportDialogState extends State<ExportDialog> {
     CanvasSize? outputSize,
     Set<SheetPaintLayer>? layers,
   }) async {
-    final (_, document, layout) = _sheetDocFor(task.cut);
+    final (document, layout) = _sheetDocFor(task.cut);
     final page = layout.pageRect(task.pageIndex);
     final windows = [
       for (final window in timesheetInkWindows(
@@ -1408,7 +1453,7 @@ class ExportDialogState extends State<ExportDialog> {
     }
     final format = spec.format;
     final renderer = _previewRendererFor(
-      applyLayerFx: spec.applyLayerFx,
+      layerFx: spec.layerFx,
       format: format,
     );
     // The video run burns the SE name tags in (videoRun);
@@ -1420,7 +1465,7 @@ class ExportDialogState extends State<ExportDialog> {
       subject: (ExportTab.sequence, spec.scope),
       look: (
         spec.sizeMode,
-        spec.applyLayerFx,
+        spec.layerFx,
         _groundKeyOf(format),
         withNameTags,
       ),
@@ -1446,14 +1491,14 @@ class ExportDialogState extends State<ExportDialog> {
     final spec = _specs.image;
     final cut = _activeCut;
     final renderer = _previewRendererFor(
-      applyLayerFx: spec.applyLayerFx,
+      layerFx: spec.layerFx,
       format: spec.format,
     );
     return ExportPreviewDocument(
       subject: ExportTab.image,
       look: (
         spec.sizeMode,
-        spec.applyLayerFx,
+        spec.layerFx,
         _groundKeyOf(spec.format),
         spec.format.keepsRowsApart,
       ),
@@ -1529,7 +1574,7 @@ class ExportDialogState extends State<ExportDialog> {
     if (sheet is ExportCelSheet) {
       final renderer = _previewRendererFor(
         // The preview shows what the export writes — same switch.
-        applyLayerFx: spec.applyLayerFx,
+        layerFx: spec.layerFx,
         format: spec.format,
       );
       return (
@@ -1538,7 +1583,7 @@ class ExportDialogState extends State<ExportDialog> {
           sheet.look,
           sizeMode: spec.sizeMode.jsonValue,
           backgroundKey: _groundKeyOf(spec.format),
-          applyLayerFx: spec.applyLayerFx,
+          layerFx: spec.layerFx,
         ),
         render: (size) => renderer.renderCelGroup(
           sheet.look,
@@ -1573,7 +1618,7 @@ class ExportDialogState extends State<ExportDialog> {
       );
     }
     return (
-      size: _sheetDocFor(page.of).$3.paperPixelSize,
+      size: _sheetDocFor(page.of).$2.paperPixelSize,
       look: 'sheet:$owner:${page.page}:${face.fontFamily}',
       render: (size) =>
           _renderSheetPage(_sheetPageTask(page), face: face, outputSize: size),
@@ -2640,7 +2685,7 @@ class ExportDialogState extends State<ExportDialog> {
     final plan = _sequencePlanForRun(video: true);
     final renderer = ExportFrameRenderer.forFormat(
       session: _session,
-      applyLayerFx: spec.applyLayerFx,
+      layerFx: spec.layerFx,
       format: format,
       alphaVideo: alphaVideo,
     );
@@ -2697,7 +2742,7 @@ class ExportDialogState extends State<ExportDialog> {
     final plan = _sequencePlanForRun(video: false);
     final renderer = ExportFrameRenderer.forFormat(
       session: _session,
-      applyLayerFx: spec.applyLayerFx,
+      layerFx: spec.layerFx,
       format: spec.format,
     );
     final run = renderer.stillRun(plan, spec.sizeMode);
@@ -2758,7 +2803,7 @@ class ExportDialogState extends State<ExportDialog> {
     // is a position an artist can choose rather than a law.
     final renderer = ExportFrameRenderer.forFormat(
       session: _session,
-      applyLayerFx: spec.applyLayerFx,
+      layerFx: spec.layerFx,
       format: spec.format,
     );
     final face = _documentFace;
@@ -3036,6 +3081,36 @@ class ExportDialogState extends State<ExportDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final keys = widget.keys;
+    final window = _window(context);
+    return keys == null
+        ? window
+        : EditorKeyFunnel(
+            road: keys,
+            // The run under way owns the film it writes.
+            enabled: !_isExporting,
+            admits: (actionId) => _keyAdmitted(keys, actionId),
+            // The window's own scope, under the funnel: with nothing in it
+            // focused, the scope is the focus a key starts from — and a
+            // field let go of hands it back here, not to the route's.
+            child: FocusScope(autofocus: true, child: window),
+          );
+  }
+
+  /// Which of the shell's keys reach the window: a tool or a brush pressed,
+  /// undo and redo — what the papers are edited under (I-127, 유저
+  /// 2026-10-25: 「도구 단축키 통해서 변경하든 변경가능하게 … 물론 언두도
+  /// 가능」) — and the held keys, which press a tool for as long as they are
+  /// held. A key of the editor's panels or menus stands behind the window.
+  static bool _keyAdmitted(EditorKeyRoad keys, String actionId) {
+    final definition = keys.bindings.definitionFor(actionId);
+    return definition?.toolPress != null ||
+        definition?.brushPress != null ||
+        actionId == EditorActionIds.undo ||
+        actionId == EditorActionIds.redo;
+  }
+
+  Widget _window(BuildContext context) {
     final theme = Theme.of(context);
     if (_anchorCut == null) {
       return _noCutsDialog(context);
@@ -3106,9 +3181,13 @@ class ExportDialogState extends State<ExportDialog> {
 
   /// The least the preview column is given before a drawer folds for it:
   /// what the Cels list under the preview lays out at — its rules, its rail
-  /// and five blocks ([ExportCelsBoard.minimumWidth]) — inside the column's
-  /// padding. ↩️330, while the list stood beside the preview at 132.
-  static const double _previewColumnWidth = ExportCelsBoard.minimumWidth + 16;
+  /// and five blocks ([ExportCelsBoard.minimumWidthFor]) — inside the
+  /// column's padding. ↩️330, while the list stood beside the preview at 132.
+  ///
+  /// The same on every tab: the window does not change its width as the
+  /// tab it shows does.
+  double get _previewColumnWidth =>
+      ExportCelsBoard.minimumWidthFor(_celRulesNeed) + 16;
   static const double _settingsColumnWidth = 272;
 
   /// The window's size and whether each drawer still fits: its share of the
@@ -3156,7 +3235,7 @@ class ExportDialogState extends State<ExportDialog> {
   }
 
   /// The four columns side by side, each drawer open or folded.
-  static double _columnsWidth({
+  double _columnsWidth({
     required bool presetsOpen,
     required bool queueOpen,
   }) =>
@@ -3366,6 +3445,7 @@ class ExportDialogState extends State<ExportDialog> {
               _persist();
             },
             child: InkWell(
+              mouseCursor: AppCursors.press,
               key: const ValueKey<String>('export-presets-collapse'),
               onTap: silentPress(() {
                 setState(() => _presetsOpen = false);
@@ -3418,18 +3498,7 @@ class ExportDialogState extends State<ExportDialog> {
                   side: BorderSide(color: theme.dividerColor),
                 ),
               ),
-              child: ExportPreviewPanel(
-                session: _session,
-                document: _previewDocument(),
-                page: _previewPage(),
-                onPage: _turnPreviewTo,
-                nothingToShow: _nothingToWriteText(),
-                // The Sequence tab trims; no other does.
-                range: _tab == ExportTab.sequence ? _sequenceRange() : null,
-                fileName: file.name,
-                fileAbsent: file.absent,
-                enabled: !_isExporting,
-              ),
+              child: _previewPanel(file),
             ),
           ),
           // The Cels tab's list stands under its preview (유저 2026-10-06:
@@ -3440,6 +3509,81 @@ class ExportDialogState extends State<ExportDialog> {
           ],
         ],
       ),
+    );
+  }
+
+  /// The file under the window's hand, in its panel: a page of a cut's
+  /// papers as its panel edits it ([ExportPaperPanel], I-127), any other
+  /// file as its picture ([ExportPreviewPanel]) — drawn again when the
+  /// history moves, which an undo pressed in the window does.
+  Widget _previewPanel(({String? name, bool absent}) file) {
+    final editing = widget.paperEditing;
+    final paper = editing == null ? null : _paperShown();
+    if (editing != null && paper != null) {
+      return ExportPaperPanel(
+        session: _session,
+        editing: editing,
+        paper: paper,
+        fileName: file.name,
+        fileAbsent: file.absent,
+        enabled: !_isExporting,
+      );
+    }
+    final history = _session.historyManager;
+    return SlicedListenableBuilder<int>(
+      listenable: history,
+      slice: () => history.revision,
+      builder: (context, revision) => ExportPreviewPanel(
+        session: _session,
+        document: _previewDocument()?.lookingAlso(revision),
+        page: _previewPage(),
+        onPage: _turnPreviewTo,
+        nothingToShow: _nothingToWriteText(),
+        // The Sequence tab trims; no other does.
+        range: _tab == ExportTab.sequence ? _sequenceRange() : null,
+        fileName: file.name,
+        fileAbsent: file.absent,
+        enabled: !_isExporting,
+        // A drawing among the papers keeps their brush switch's place,
+        // standing off: nothing writes on a cel here.
+        bottomBarLeading: [
+          if (editing != null && _tab == ExportTab.cels)
+            sheetBrushSwitch(
+              allowed: false,
+              onChanged: null,
+              keyPrefix: 'export-cel',
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// The page of a cut's papers the Cels list stands on, as it is ruled —
+  /// null on a drawing, and on every other tab.
+  ExportPaper? _paperShown() {
+    if (_tab != ExportTab.cels) {
+      return null;
+    }
+    final (cut: _, :pages, :at) = _celPages();
+    if (pages.isEmpty) {
+      return null;
+    }
+    final sheet = pages[math.max(0, at)];
+    if (sheet is! ExportDocumentSheet) {
+      return null;
+    }
+    if (sheet.kind == ExportCelKind.envelope) {
+      final task = _envelopeTask(sheet);
+      return ExportEnvelopePage(
+        owner: task.owner.id,
+        layout: task.layout,
+        source: task.source,
+      );
+    }
+    return ExportTimesheetPage(
+      cutId: sheet.of.id,
+      layout: _sheetDocFor(sheet.of).$2,
+      page: sheet.page,
     );
   }
 
@@ -3598,9 +3742,9 @@ class ExportDialogState extends State<ExportDialog> {
           ),
         ),
       _fxAccordion(
-        keyValue: 'export-apply-fx-toggle',
-        applyLayerFx: spec.applyLayerFx,
-        onChanged: (value) => _updateSpec(spec.copyWith(applyLayerFx: value)),
+        keyPrefix: 'export-apply-fx',
+        layerFx: spec.layerFx,
+        onChanged: (fx) => _updateSpec(spec.copyWith(layerFx: fx)),
       ),
     ];
   }
@@ -3626,9 +3770,9 @@ class ExportDialogState extends State<ExportDialog> {
         onChanged: (mode) => _updateSpec(spec.copyWith(sizeMode: mode)),
       ),
       _fxAccordion(
-        keyValue: 'export-image-fx-toggle',
-        applyLayerFx: spec.applyLayerFx,
-        onChanged: (value) => _updateSpec(spec.copyWith(applyLayerFx: value)),
+        keyPrefix: 'export-image-fx',
+        layerFx: spec.layerFx,
+        onChanged: (fx) => _updateSpec(spec.copyWith(layerFx: fx)),
       ),
     ];
   }
@@ -3787,7 +3931,7 @@ class ExportDialogState extends State<ExportDialog> {
     final spec = _specs.cels;
     final strings = AppText.strings;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 5, 8, 5),
+      padding: _celRulesPadding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -3835,19 +3979,40 @@ class ExportDialogState extends State<ExportDialog> {
     );
   }
 
-  /// One strip of 「내보낼 종류」: the kinds that are the cut's documents, or
-  /// the ones that are its rows'.
+  static const EdgeInsets _celRulesPadding = EdgeInsets.fromLTRB(8, 5, 8, 5);
+
+  /// How wide the rules need to stand: as wide as their widest strip of
+  /// kinds with every word whole (F-486, 유저 2026-10-27: 「출력창 버튼들
+  /// 자동맞춤해서 글자에 맞게 되도록」).
+  double get _celRulesNeed =>
+      _celRulesPadding.horizontal +
+      math.max(
+        _celKindStripWidth(documents: false),
+        _celKindStripWidth(documents: true),
+      );
+
+  double _celKindStripWidth({required bool documents}) =>
+      PillStrip.naturalWidthIn(context, [
+        for (final kind in _celKinds(documents: documents))
+          exportCelKindLabel(kind),
+      ]);
+
+  /// The kinds of one strip of 「내보낼 종류」: the cut's documents, or its
+  /// rows'.
+  static Iterable<ExportCelKind> _celKinds({required bool documents}) =>
+      ExportCelKind.values.where((kind) => kind.isDocument == documents);
+
+  /// One strip of 「내보낼 종류」 ([_celKinds]).
   Widget _celKindStrip(CelsExportSpec spec, {required bool documents}) =>
       PillStrip(
         items: [
-          for (final kind in ExportCelKind.values)
-            if (kind.isDocument == documents)
-              _specSwitch(
-                'export-cels-kind-${kind.jsonValue}',
-                exportCelKindLabel(kind),
-                spec.kinds.contains(kind),
-                () => spec.withKind(kind, !spec.kinds.contains(kind)),
-              ),
+          for (final kind in _celKinds(documents: documents))
+            _specSwitch(
+              'export-cels-kind-${kind.jsonValue}',
+              exportCelKindLabel(kind),
+              spec.kinds.contains(kind),
+              () => spec.withKind(kind, !spec.kinds.contains(kind)),
+            ),
         ],
       );
 
@@ -4043,15 +4208,15 @@ class ExportDialogState extends State<ExportDialog> {
         // The v10 grid (Timesheet와 공용 부품): checks save with the project.
         child: spec.scope == ExportScopeKind.project ? _scopeCutGrid() : null,
       ),
-      // ✅THE SWITCH THE OTHER TABS ALREADY HAD. This tab used to force FX
-      // off with no way to say otherwise (see [CelsExportSpec.applyLayerFx]);
-      // 유저 2026-08-27 made it a choice. Same accordion, same toggle row,
+      // ✅THE CHOICE THE OTHER TABS ALREADY HAD. This tab used to force FX
+      // off with no way to say otherwise (see [CelsExportSpec.layerFx]);
+      // 유저 2026-08-27 made it a choice. Same accordion, same choice row,
       // same key prefix as the Sequence and Image tabs — one control, three
       // places, rather than a fourth idea of what this question looks like.
       _fxAccordion(
-        keyValue: 'export-cels-apply-fx-toggle',
-        applyLayerFx: spec.applyLayerFx,
-        onChanged: (value) => _updateSpec(spec.copyWith(applyLayerFx: value)),
+        keyPrefix: 'export-cels-apply-fx',
+        layerFx: spec.layerFx,
+        onChanged: (fx) => _updateSpec(spec.copyWith(layerFx: fx)),
       ),
     ];
   }
@@ -4089,7 +4254,7 @@ class ExportDialogState extends State<ExportDialog> {
       expansion: _expansion('sheet-format', open: true),
       child: ExportPaperFormatModule(
         keyPrefix: 'export-tsformat',
-        label: AppText.strings.exFormat,
+        caption: ExportCaption.format,
         image: spec.sheetImage,
         stillEnabled: _availability.stillAllowed,
         pictured: pictured,
@@ -4133,37 +4298,34 @@ class ExportDialogState extends State<ExportDialog> {
         children: [
           ExportPaperFormatModule(
             keyPrefix: 'export-envelope-format',
-            label: strings.exImage,
+            caption: ExportCaption.image,
             image: spec.envelopeImage,
             stillEnabled: _availability.stillAllowed,
             onImageChanged: _isExporting
                 ? null
                 : (image) => _updateSpec(spec.copyWith(envelopeImage: image)),
           ),
-          ExportModuleRow(
-            label: strings.exPaperLabel,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: PillStrip(
-                items: [
-                  _pill(
-                    keyValue: 'export-envelope-paper-cut',
-                    label: strings.exCutSize,
-                    selected: cutPaper,
-                    onPick: () => _updateSpec(
-                      spec.copyWith(envelopePaper: CutEnvelopePaperMode.cut),
-                    ),
+          ExportModuleRow.strip(
+            caption: ExportCaption.paper,
+            strip: PillStrip(
+              items: [
+                _pill(
+                  keyValue: 'export-envelope-paper-cut',
+                  label: strings.exCutSize,
+                  selected: cutPaper,
+                  onPick: () => _updateSpec(
+                    spec.copyWith(envelopePaper: CutEnvelopePaperMode.cut),
                   ),
-                  _pill(
-                    keyValue: 'export-envelope-paper-sheet',
-                    label: strings.exRealSheet,
-                    selected: !cutPaper,
-                    onPick: () => _updateSpec(
-                      spec.copyWith(envelopePaper: CutEnvelopePaperMode.sheet),
-                    ),
+                ),
+                _pill(
+                  keyValue: 'export-envelope-paper-sheet',
+                  label: strings.exRealSheet,
+                  selected: !cutPaper,
+                  onPick: () => _updateSpec(
+                    spec.copyWith(envelopePaper: CutEnvelopePaperMode.sheet),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ],
@@ -4193,7 +4355,7 @@ class ExportDialogState extends State<ExportDialog> {
         expansion: _expansion('format', open: true),
         child: ExportPaperFormatModule(
           keyPrefix: 'export-conteformat',
-          label: AppText.strings.exFormat,
+          caption: ExportCaption.format,
           image: spec.image,
           stillEnabled: _availability.stillAllowed,
           pictured: pictured,
@@ -4240,42 +4402,50 @@ class ExportDialogState extends State<ExportDialog> {
     child: child,
   );
 
-  /// The layer-fx switch every raster tab offers — 유저 2026-08-27 made it
+  /// The layer-fx choice every raster tab offers — 유저 2026-08-27 made it
   /// a choice on the Cels tab too, so it is one control on three tabs.
+  /// [keyPrefix] stays each tab's own: the keys name their tab.
   ///
-  /// ⛔THE PREVIEW CLEAR IS PART OF THE SWITCH. Flipping fx changes what
-  /// renders, and a tab that flipped the spec without clearing would keep
-  /// showing the picture the OTHER setting made. [keyValue] stays each
-  /// tab's own: the keys name their tab.
-  ///
+  /// 🗣️I-65-Q3 (유저 2026-10-25): 「출력창 fx 타입 세개 만들자. 켬, 기본만
+  /// 켬, 끔」 — what each keeps is [layerAsOutput]'s. ↩️A switch, on or off.
   /// 🗣️F-395 (유저 2026-10-18): 「다른곳에 fx적용있으면 마찬가지인데 글이 너무
   /// 설명적임. 레이어 FX 라는 텍스트만으로 충분」 — ONE word on every tab.
   /// ↩️Two tabs' label carried a help line in brackets.
   ExportAccordion _fxAccordion({
-    required String keyValue,
-    required bool applyLayerFx,
-    required void Function(bool applyLayerFx) onChanged,
-  }) => ExportAccordion(
-    title: AppText.strings.exOptions,
-    summary: applyLayerFx ? AppText.strings.exFxOn : AppText.strings.exFxOff,
-    expansion: _expansion('options'),
-    child: SettingsSwitchRow(
-      tileKey: ValueKey<String>(keyValue),
-      label: AppText.strings.exApplyLayerFx,
-      value: applyLayerFx,
-      onChanged: _isExporting
-          ? null
-          : (value) {
-              onChanged(value);
-            },
-    ),
-  );
+    required String keyPrefix,
+    required ExportLayerFx layerFx,
+    required ValueChanged<ExportLayerFx> onChanged,
+  }) {
+    final strings = AppText.strings;
+    return ExportAccordion(
+      title: strings.exOptions,
+      summary: switch (layerFx) {
+        ExportLayerFx.on => strings.exFxOn,
+        ExportLayerFx.basic => strings.exFxBasic,
+        ExportLayerFx.off => strings.exFxOff,
+      },
+      expansion: _expansion('options'),
+      child: ExportChoiceRow<ExportLayerFx>(
+        caption: ExportCaption.layerFx,
+        keyPrefix: keyPrefix,
+        values: ExportLayerFx.values,
+        selected: layerFx,
+        keyOf: (fx) => fx.jsonValue,
+        labelOf: (fx) => switch (fx) {
+          ExportLayerFx.on => strings.commonOn,
+          ExportLayerFx.basic => strings.exFxBasicOnly,
+          ExportLayerFx.off => strings.commonOff,
+        },
+        onSelect: onChanged,
+        enabledFor: (_) => !_isExporting,
+      ),
+    );
+  }
 
   /// A toggle row bound to the tab's spec: DEAD while an export runs, and
   /// a change writes the spec [write] answers. Six rows wrote that binding
   /// out; a run in flight owns the spec, so one place says it — the same
-  /// law [_pill] states for the pills. [_fxAccordion]'s row is not this: its
-  /// preview clear is part of the switch.
+  /// law [_pill] states for the pills.
   SettingsSwitchRow _specToggle({
     required String keyValue,
     required String label,
@@ -4366,6 +4536,7 @@ class ExportDialogState extends State<ExportDialog> {
               _persist();
             },
             child: InkWell(
+              mouseCursor: AppCursors.press,
               key: const ValueKey<String>('export-queue-collapse'),
               onTap: silentPress(() {
                 setState(() => _queueOpen = false);

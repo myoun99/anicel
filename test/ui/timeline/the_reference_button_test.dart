@@ -78,7 +78,7 @@ void main() {
     );
     expect(button('ref'), findsOneWidget);
     expect(
-      find.railTooltip('Reference'),
+      find.tooltipSaying('Reference'),
       findsOneWidget,
       reason: 'icon only — its name is the tooltip, the LAYER\'s word',
     );

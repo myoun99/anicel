@@ -80,6 +80,20 @@ PropertyLaneEditCallbacks sessionLaneEditCallbacks(
       session.laneVerbs.previewLaneKeySidesAt,
       frameIsGlobal: frameIsGlobal,
     ),
+    // F-475: what the ◆ and a flag's ring show, read as the project stands
+    // — the rail's bulk-drag spreads what a press just set.
+    keyedNow: (layer, lane, frameIndex) => session.laneVerbs.isLaneKeyedAt(
+      layer.id,
+      lane.laneId,
+      frameIndex,
+      frameIsGlobal: frameIsGlobal,
+    ),
+    valueNow: (layer, lane, frameIndex) => session.laneVerbs.laneValueAt(
+      layer.id,
+      lane.laneId,
+      frameIndex,
+      frameIsGlobal: frameIsGlobal,
+    ),
   );
 }
 
