@@ -33,7 +33,7 @@ void main() {
   final keys = [
     ResolvedLayerEffect(
       kind: EffectKind.colorKey,
-      values: [0, 64, 192, 96, 10, 100],
+      values: [0, 0xFF40C060, 10, 100],
     ),
   ];
 
@@ -147,7 +147,7 @@ void main() {
     final another = [
       ResolvedLayerEffect(
         kind: EffectKind.colorKey,
-        values: [0, 200, 20, 20, 10, 100],
+        values: [0, 0xFFC81414, 10, 100],
       ),
     ];
 
@@ -199,7 +199,7 @@ void main() {
     final idle = [
       ResolvedLayerEffect(
         kind: EffectKind.colorKey,
-        values: [0, 64, 192, 96, 10, 0],
+        values: [0, 0xFF40C060, 10, 0],
       ),
     ];
 

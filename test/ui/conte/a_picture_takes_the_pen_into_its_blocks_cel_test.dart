@@ -29,6 +29,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
@@ -627,10 +628,10 @@ void main() {
           LayerEffect(
             id: const EffectId('paper-key'),
             kind: EffectKind.colorKey,
+            colors: {
+              'keyColor': PropertyTrack<int>.empty().withKey(0, 0xFF40C060),
+            },
             parameters: {
-              'keyRed': EffectParameter(value: 64),
-              'keyGreen': EffectParameter(value: 192),
-              'keyBlue': EffectParameter(value: 96),
               'tolerance': EffectParameter(value: 10),
               'amount': EffectParameter(value: 100),
             },
@@ -644,7 +645,7 @@ void main() {
     final keys = penOverThePicture(tester).overlay.sourceEffects;
 
     expect(keys.map((key) => key.kind), [EffectKind.colorKey]);
-    expect(keys.single.values, [0, 64, 192, 96, 10, 100]);
+    expect(keys.single.values, [0, 0xFF40C060, 10, 100]);
   });
 
   // 🚨The shown is the result: while the brush is on, the picture on screen

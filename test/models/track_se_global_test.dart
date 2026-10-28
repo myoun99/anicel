@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/audio_clip.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -14,6 +15,10 @@ import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/models/track_se_window.dart';
 import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/ui/timeline/effect_lane_editing.dart'
+    show effectLaneLens;
+import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
+    show effectLaneId;
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart'
     show seNameTagLaneDisplayOrder, seNameTagLaneLens;
 
@@ -302,6 +307,40 @@ void main() {
         blurrinessOf(first.displayLayer(layer).effects).keys.keys.toList(),
         [0, 6],
       );
+    });
+
+    test('🚨EVERY lane of every effect arrives on the cut-local axis — read '
+        'through the lane table, so a lane the rebase leaves out keeps its '
+        'global frame', () {
+      PropertyTrack<T> at40<T>(T value) =>
+          PropertyTrack<T>(keys: {40: PropertyKey(value)});
+      for (final kind in EffectKind.values) {
+        final effect = LayerEffect(
+          id: const EffectId('fx-1'),
+          kind: kind,
+          parameters: {
+            for (final spec in kind.parameters)
+              spec.id: EffectParameter(track: at40(1.0)),
+          },
+          colors: {
+            for (final spec in kind.parameters)
+              spec.id: at40(0xFF000000),
+          },
+          stand: TransformTrack.empty().copyWith(
+            position: at40(CanvasPoint(x: 1, y: 1)),
+            scale: at40(CanvasPoint(x: 1, y: 1)),
+          ),
+        );
+        final rebased = window.displayLayer(withEffect(effect)).effects;
+        for (final lane in effect.lanes) {
+          final laneId = effectLaneId(effect.id, lane);
+          expect(
+            effectLaneLens(laneId)!.keyFrames(rebased),
+            {20},
+            reason: '${kind.name}: $lane',
+          );
+        }
+      }
     });
   });
 

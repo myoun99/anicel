@@ -33,13 +33,13 @@ void main() {
 
   ResolvedLayerEffect deleteRed() => ResolvedLayerEffect(
     kind: EffectKind.colorKey,
-    values: const [0, 255, 0, 0, 0, 100],
+    values: const [0, 0xFFFF0000, 0, 100],
   );
 
   ResolvedLayerEffect deleteWhite() => ResolvedLayerEffect(
     kind: EffectKind.colorKey,
     // Key Colors, key = white, tolerance 0, amount 100.
-    values: const [0, 255, 255, 255, 0, 100],
+    values: const [0, 0xFFFFFFFF, 0, 100],
   );
 
   group('the plan follows the chain', () {
@@ -78,7 +78,7 @@ void main() {
       // nothing is still a raster.
       final fresh = ResolvedLayerEffect(
         kind: EffectKind.colorKey,
-        values: const [0, 255, 255, 255, 0, 0],
+        values: const [0, 0xFFFFFFFF, 0, 0],
       );
       final plan = resolveCompositeEffectPlan([fresh, blur(3)]);
       expect(plan.isSingleDraw, isTrue);
@@ -163,7 +163,7 @@ void main() {
       blur(3),
       ResolvedLayerEffect(
         kind: EffectKind.colorKey,
-        values: const [0, 0, 255, 0, 0, 100],
+        values: const [0, 0xFF00FF00, 0, 100],
       ),
     ]);
     expect(_keysOf(plan.preSteps.first), hasLength(2), reason: 'fixture');
@@ -188,11 +188,11 @@ void main() {
 
   final eraseAll = ResolvedLayerEffect(
     kind: EffectKind.colorKey,
-    values: const [0, 0, 0, 0, 255, 100],
+    values: const [0, 0xFF000000, 255, 100],
   );
   final keepHalfOfWhite = ResolvedLayerEffect(
     kind: EffectKind.colorKey,
-    values: const [1, 255, 255, 255, 0, 50],
+    values: const [1, 0xFFFFFFFF, 0, 50],
   );
 
   /// White on the left half, red on the right, through [chain] — the

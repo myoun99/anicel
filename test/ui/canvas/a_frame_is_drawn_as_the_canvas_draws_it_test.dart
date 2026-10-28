@@ -366,7 +366,7 @@ void main() {
           effects: [
             ResolvedLayerEffect(
               kind: EffectKind.colorKey,
-              values: [0, 0, 0, 0, 255, 100],
+              values: [0, 0xFF000000, 255, 100],
             ),
             ResolvedLayerEffect(
               kind: EffectKind.brightnessContrast,

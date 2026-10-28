@@ -101,10 +101,11 @@ class CelColorKey {
     if (!effect.kind.runsOnSourcePixels) {
       return null;
     }
+    final key = effect.color('keyColor');
     return CelColorKey(
-      red: _byte(effect.parameter('keyRed')),
-      green: _byte(effect.parameter('keyGreen')),
-      blue: _byte(effect.parameter('keyBlue')),
+      red: (key >> 16) & 0xFF,
+      green: (key >> 8) & 0xFF,
+      blue: key & 0xFF,
       tolerance: _byte(effect.parameter('tolerance')),
       amount: (effect.parameter('amount') / 100).clamp(0.0, 1.0),
       operation: effect.parameter('keyOperation').round() == 0

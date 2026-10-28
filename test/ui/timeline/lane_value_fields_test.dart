@@ -98,28 +98,39 @@ void main() {
 
     test('effect lanes, every unit', () {
       for (final unit in EffectParameterUnit.values) {
-        roundTrips(
-          formatEffectLaneValue(
-            unit == EffectParameterUnit.choice
-                ? const EffectParameterSpec.choice(
-                    id: 'p',
-                    label: 'P',
-                    choices: [
-                      EffectChoice(id: 'one', label: 'One'),
-                      EffectChoice(id: 'two', label: 'Two Words'),
-                    ],
-                  )
-                : EffectParameterSpec(
-                    id: 'p',
-                    label: 'P',
-                    minimum: -100,
-                    maximum: 100,
-                    defaultValue: 0,
-                    unit: unit,
-                  ),
-            unit == EffectParameterUnit.choice ? 1 : 12.5,
+        final (spec, value) = switch (unit) {
+          EffectParameterUnit.choice => (
+            const EffectParameterSpec.choice(
+              id: 'p',
+              label: 'P',
+              choices: [
+                EffectChoice(id: 'one', label: 'One'),
+                EffectChoice(id: 'two', label: 'Two Words'),
+              ],
+            ),
+            1.0,
           ),
-        );
+          EffectParameterUnit.color => (
+            const EffectParameterSpec.color(
+              id: 'p',
+              label: 'P',
+              defaultValue: 0xFF000000,
+            ),
+            0xFFC80A1E.toDouble(),
+          ),
+          _ => (
+            EffectParameterSpec(
+              id: 'p',
+              label: 'P',
+              minimum: -100,
+              maximum: 100,
+              defaultValue: 0,
+              unit: unit,
+            ),
+            12.5,
+          ),
+        };
+        roundTrips(formatEffectLaneValue(spec, value));
       }
     });
 

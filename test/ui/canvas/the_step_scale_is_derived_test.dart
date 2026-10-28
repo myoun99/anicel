@@ -36,7 +36,7 @@ void main() {
 
   ResolvedLayerEffect key() => ResolvedLayerEffect(
     kind: EffectKind.colorKey,
-    values: const [0, 0, 0, 0, 0, 100],
+    values: const [0, 0xFF000000, 0, 100],
   );
 
   ResolvedLayerEffect blur({double radius = 4}) =>

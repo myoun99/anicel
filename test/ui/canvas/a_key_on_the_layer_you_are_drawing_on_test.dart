@@ -64,7 +64,7 @@ void main() {
 
   ResolvedLayerEffect deleteWhite() => ResolvedLayerEffect(
     kind: EffectKind.colorKey,
-    values: const [0, 255, 255, 255, 0, 100],
+    values: const [0, 0xFFFFFFFF, 0, 100],
   );
 
   Future<Uint8List> paintWith(
@@ -135,7 +135,7 @@ void main() {
   // itself.
   ResolvedLayerEffect keyDarkenedWhite() => ResolvedLayerEffect(
     kind: EffectKind.colorKey,
-    values: const [0, 252, 252, 252, 2, 100],
+    values: const [0, 0xFFFCFCFC, 2, 100],
   );
 
   ResolvedLayerEffect darken() => ResolvedLayerEffect(

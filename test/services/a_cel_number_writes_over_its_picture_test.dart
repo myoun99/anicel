@@ -50,7 +50,9 @@ void main() {
     kind: EffectKind.celNumber,
     enabled: enabled,
     stand: stand,
-    ink: ink == null ? null : PropertyTrack<int>.empty().withKey(0, ink),
+    colors: {
+      if (ink != null) 'ink': PropertyTrack<int>.empty().withKey(0, ink),
+    },
   );
 
   Layer drawing({

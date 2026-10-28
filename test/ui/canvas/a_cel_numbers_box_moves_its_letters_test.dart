@@ -123,7 +123,7 @@ void main() {
       expect(box.cross, isNull, reason: 'no anchor point');
     }
 
-    s.standOnRow(LaneRowAddress(row.id, effectLaneId(id, effectInkLane)));
+    s.standOnRow(LaneRowAddress(row.id, effectLaneId(id, 'ink')));
     await tester.pump();
     expect(boxOf(tester), isNull, reason: 'a colour is not grabbed on canvas');
     await wrapUp(tester, s);

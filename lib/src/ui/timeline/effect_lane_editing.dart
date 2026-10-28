@@ -9,8 +9,8 @@
 // 🚨WHERE AN EFFECT STANDS ITS PICTURE IS A TRANSFORM'S LANES (I-65): a cel
 // number's Position and Scale ([LayerEffect.stand]) are edited by the
 // transform's own verbs on that track — the reference fx's way (F-374) —
-// so they key, take values, reset and name as a layer's do. Its colour
-// ([LayerEffect.ink]) is a colour lane, as an SE name tag's inks are
+// so they key, take values, reset and name as a layer's do. Its colours
+// ([LayerEffect.colors]) are colour lanes, as an SE name tag's inks are
 // (F-477): a key of the colour typed or picked, `#RRGGBB`.
 
 import '../../models/canvas_size.dart';
@@ -60,13 +60,16 @@ List<LayerEffect>? effectsWithLaneKeyToggled(
             ),
           );
   }
-  if (_inksOn(effects, laneId)) {
-    return _editInk(
+  if (_colorsOn(effects, laneId)) {
+    return _editColor(
       effects,
       laneId,
-      (ink) => ink.keyAt(frameIndex) != null
-          ? ink.withoutKey(frameIndex)
-          : ink.withKey(frameIndex, effectInkAt(ink, frameIndex.toDouble())),
+      (keys, rest) => keys.keyAt(frameIndex) != null
+          ? keys.withoutKey(frameIndex)
+          : keys.withKey(
+              frameIndex,
+              effectColorAt(keys, frameIndex.toDouble(), rest: rest),
+            ),
     );
   }
   return _editParameter(effects, laneId, (parameter, spec) {
@@ -170,11 +173,15 @@ List<LayerEffect>? effectsWithLaneValueEdited(
       ),
     );
   }
-  if (_inksOn(effects, laneId)) {
+  if (_colorsOn(effects, laneId)) {
     final argb = parseArgbInput(input);
     return argb == null
         ? null
-        : _editInk(effects, laneId, (ink) => ink.withKey(frameIndex, argb));
+        : _editColor(
+            effects,
+            laneId,
+            (keys, _) => keys.withKey(frameIndex, argb),
+          );
   }
   return _editParameter(effects, laneId, (parameter, spec) {
     final value = parseEffectLaneValue(spec, input);
@@ -227,6 +234,21 @@ List<LayerEffect>? effectsWithGroupReset(
     var next = effect;
     var changed = false;
     for (final spec in effect.kind.parameters) {
+      // A colour has no static value: unkeyed it is already the rest.
+      if (effect.colors[spec.id] case final keys?) {
+        var reset = keys;
+        for (final frame in frames) {
+          if (keys.isEmpty || (keyedFramesOnly && keys.keyAt(frame) == null)) {
+            continue;
+          }
+          reset = reset.withKey(frame, spec.defaultValue.toInt());
+        }
+        if (reset != keys) {
+          next = next.withColor(spec.id, reset);
+          changed = true;
+        }
+        continue;
+      }
       final parameter = effect.parameterOf(spec.id);
       if (parameter.track.isEmpty) {
         if (parameter.value == spec.defaultValue) {
@@ -271,19 +293,6 @@ List<LayerEffect>? effectsWithGroupReset(
       next = next.copyWith(stand: stand);
       changed = true;
     }
-    // The colour has no static slot: unkeyed it is already the rest.
-    var ink = effect.ink;
-    for (final frame in frames) {
-      if (effect.ink.isEmpty ||
-          (keyedFramesOnly && effect.ink.keyAt(frame) == null)) {
-        continue;
-      }
-      ink = ink.withKey(frame, effectInkAtRest);
-    }
-    if (ink != effect.ink) {
-      next = next.copyWith(ink: ink);
-      changed = true;
-    }
     return changed ? next : null;
   });
 }
@@ -316,8 +325,8 @@ class _EffectLaneLens implements LaneLens<List<LayerEffect>> {
           laneId,
           (stand, lane) => transformLaneLens(lane)?.update(stand, edit),
         )
-      : _inksOn(effects, laneId)
-      ? _editInk(effects, laneId, (ink) => edit(ink))
+      : _colorsOn(effects, laneId)
+      ? _editColor(effects, laneId, (keys, _) => edit(keys))
       : _editParameter(effects, laneId, (parameter, spec) {
           final next = edit(parameter.track);
           return next == null ? null : parameter.copyWith(track: next);
@@ -340,22 +349,31 @@ class _EffectLaneLens implements LaneLens<List<LayerEffect>> {
 
   /// A parameter shows the number it holds ([formatEffectLaneValue]); a
   /// header holds none, where the effect stands is points, as a
-  /// transform's Position and Scale are, and its ink a colour.
+  /// transform's Position and Scale are, and a colour is a colour.
+  ///
+  /// ⚠️Read off the lane's id alone: the keys may be a copy off another
+  /// row ([LaneHome.numbersTaken]), whose chain no lens here sees.
   @override
   double? numberShown(double held) => switch (parseEffectLaneId(laneId)) {
     (effectId: _, parameterId: final lane?)
-        when !effectStandLanes.contains(lane) && lane != effectInkLane =>
+        when !effectStandLanes.contains(lane) &&
+            !effectColorParameters.contains(lane) =>
       held,
     _ => null,
   };
 
   /// A number given a parameter is held clamped to its range, as its value
-  /// editor takes it typed ([parseEffectLaneValue]).
+  /// editor takes it typed ([parseEffectLaneValue]); a colour takes none.
   @override
   double? numberHeld(List<LayerEffect> effects, double shown) => _readLane(
     effects,
     laneId,
-    (effect, lane) => effect.kind.parameterSpec(lane)?.clamp(shown),
+    (effect, lane) => switch (effect.kind.parameterSpec(lane)) {
+      final spec? when spec.unit != EffectParameterUnit.color => spec.clamp(
+        shown,
+      ),
+      _ => null,
+    },
   );
 }
 
@@ -382,10 +400,10 @@ R? _readLane<R>(
 }
 
 /// Rebuilds the effect a lane addresses through [edit], given the lane — a
-/// parameter's id, its colour or one where the effect stands; null when the
-/// lane is a header, its effect is not in the chain, or [edit] declines the
-/// change — every lane's edit ([_editStand], [_editInk], [_editParameter])
-/// finds its effect here.
+/// parameter's id or one where the effect stands; null when the lane is a
+/// header, its effect is not in the chain, or [edit] declines the change —
+/// every lane's edit ([_editStand], [_editParameter]) finds its effect
+/// here.
 List<LayerEffect>? _editLane(
   List<LayerEffect> effects,
   String laneId,
@@ -437,24 +455,28 @@ List<LayerEffect>? effectsWithStandEdited(
   return next == null ? null : effect.copyWith(stand: next);
 });
 
-/// Whether [laneId] is its effect's colour in [effects] ([LayerEffect
-/// .inksOn]).
-bool _inksOn(List<LayerEffect> effects, String laneId) =>
-    _readLane(effects, laneId, (effect, lane) => effect.inksOn(lane)) ?? false;
+/// Whether [laneId] is a colour of its effect in [effects] ([LayerEffect
+/// .colors]).
+bool _colorsOn(List<LayerEffect> effects, String laneId) =>
+    _readLane(effects, laneId, (effect, lane) => effect.colors[lane] != null) ??
+    false;
 
-/// Rebuilds the colour of the effect an ink lane addresses through [edit];
-/// null when the lane is not one, the effect is gone, or [edit] declines
-/// the change — the ink's twin of [_editParameter].
-List<LayerEffect>? _editInk(
+/// Rebuilds the colour an effect's colour lane addresses through [edit],
+/// handed its keys and its rest (the spec's default); null when the lane
+/// is not one, the effect is gone, or [edit] declines the change — the
+/// colour's twin of [_editParameter].
+List<LayerEffect>? _editColor(
   List<LayerEffect> effects,
   String laneId,
-  PropertyTrack<int>? Function(PropertyTrack<int> ink) edit,
+  PropertyTrack<int>? Function(PropertyTrack<int> keys, int rest) edit,
 ) => _editLane(effects, laneId, (effect, lane) {
-  if (!effect.inksOn(lane)) {
+  final keys = effect.colors[lane];
+  final spec = effect.kind.parameterSpec(lane);
+  if (keys == null || spec == null) {
     return null;
   }
-  final next = edit(effect.ink);
-  return next == null ? null : effect.copyWith(ink: next);
+  final next = edit(keys, spec.defaultValue.toInt());
+  return next == null ? null : effect.withColor(lane, next);
 });
 
 /// Whether the key at [frameIndex] of effect lane [laneId] may give its

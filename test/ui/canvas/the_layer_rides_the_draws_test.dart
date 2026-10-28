@@ -801,7 +801,7 @@ void main() {
           ),
           ResolvedLayerEffect(
             kind: EffectKind.colorKey,
-            values: const [0, 240, 192, 32, 60, 100],
+            values: const [0, 0xFFF0C020, 60, 100],
           ),
         ],
         opacity: 1,

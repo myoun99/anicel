@@ -198,6 +198,11 @@ class TrackSeWindow {
                 track: _shift(entry.value.track),
               ),
           },
+          colors: {
+            for (final entry in effect.colors.entries)
+              entry.key: _shift(entry.value),
+          },
+          stand: _rebasedTrack(effect.stand),
         ),
     ];
   }

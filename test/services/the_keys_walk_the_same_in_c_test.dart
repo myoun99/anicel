@@ -84,12 +84,25 @@ void main() {
     },
   );
 
-  // The Color Key's values after its Key Operation: Key Colors, or Keep
-  // Colors (I-132-Q2 — it gives back what the keys before it took).
-  ResolvedLayerEffect keyOut(List<double> values) =>
-      ResolvedLayerEffect(kind: EffectKind.colorKey, values: [0, ...values]);
-  ResolvedLayerEffect keep(List<double> values) =>
-      ResolvedLayerEffect(kind: EffectKind.colorKey, values: [1, ...values]);
+  // The Color Key after its Key Operation — Key Colors, or Keep Colors
+  // (I-132-Q2 — it gives back what the keys before it took) — from its
+  // colour's three bytes, its tolerance and its amount.
+  ResolvedLayerEffect colorKey(int operation, List<double> values) {
+    final [red, green, blue, tolerance, amount] = values;
+    return ResolvedLayerEffect(
+      kind: EffectKind.colorKey,
+      values: [
+        operation.toDouble(),
+        (0xFF000000 | red.toInt() << 16 | green.toInt() << 8 | blue.toInt())
+            .toDouble(),
+        tolerance,
+        amount,
+      ],
+    );
+  }
+
+  ResolvedLayerEffect keyOut(List<double> values) => colorKey(0, values);
+  ResolvedLayerEffect keep(List<double> values) => colorKey(1, values);
 
   final chains = <String, List<ResolvedLayerEffect>>{
     'the paper away, exactly': [

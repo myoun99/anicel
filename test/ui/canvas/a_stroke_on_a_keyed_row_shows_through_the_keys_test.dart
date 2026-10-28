@@ -45,7 +45,7 @@ void main() {
   final keyed = [
     ResolvedLayerEffect(
       kind: EffectKind.colorKey,
-      values: const [0, 64, 192, 96, 10, 100],
+      values: const [0, 0xFF40C060, 10, 100],
     ),
   ];
 
@@ -318,7 +318,7 @@ void main() {
       [
         ResolvedLayerEffect(
           kind: EffectKind.colorKey,
-          values: const [0, 64, 192, 96, 10, 0],
+          values: const [0, 0xFF40C060, 10, 0],
         ),
       ],
     ]) {

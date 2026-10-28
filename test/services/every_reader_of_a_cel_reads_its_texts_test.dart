@@ -196,7 +196,7 @@ void main() {
       // Key Colors, the colour's own three bytes — not its alpha.
       values: [
         0,
-        for (final channel in rgb.take(3)) channel.toDouble(),
+        (0xFF000000 | rgb[0] << 16 | rgb[1] << 8 | rgb[2]).toDouble(),
         0,
         100,
       ],

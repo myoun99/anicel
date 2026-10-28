@@ -10,6 +10,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/layer_effect.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
@@ -46,10 +47,10 @@ void main() {
   LayerEffect deleteWhite() => LayerEffect(
     id: const EffectId('fx-key'),
     kind: EffectKind.colorKey,
+    colors: {
+      'keyColor': PropertyTrack<int>.empty().withKey(0, 0xFFFFFFFF),
+    },
     parameters: {
-      'keyRed': EffectParameter(value: 255),
-      'keyGreen': EffectParameter(value: 255),
-      'keyBlue': EffectParameter(value: 255),
       'tolerance': EffectParameter(value: 0),
       'amount': EffectParameter(value: 100),
     },

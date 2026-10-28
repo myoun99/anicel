@@ -252,7 +252,7 @@ class _Walk {
   /// every stroke leaves go, so every tile it paints is a keyed copy.
   static final _deleteWhite = ResolvedLayerEffect(
     kind: EffectKind.colorKey,
-    values: const [0, 255, 255, 255, 0, 100],
+    values: const [0, 0xFFFFFFFF, 0, 100],
   );
 
   final WidgetTester tester;

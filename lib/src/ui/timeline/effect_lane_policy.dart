@@ -156,24 +156,29 @@ List<PropertyLaneRow> effectPropertyLanes(
       continue;
     }
     if (effect.kind.drawsItsOwnPicture) {
-      rows
-        ..addAll(_standLanes(effect, standAt))
-        ..add(_inkLane(effect, valued: valueAt != null));
+      rows.addAll(_standLanes(effect, standAt));
     }
     for (final (index, spec) in effect.kind.parameters.indexed) {
-      final parameter = effect.parameterOf(spec.id);
+      // A colour's keys are its own ([LayerEffect.colors]); a number's its
+      // parameter's.
+      final keys = effect.laneTrack(spec.id)!;
+      final valueKind = switch (spec.unit) {
+        EffectParameterUnit.choice => PropertyLaneValueKind.choice,
+        // As an SE name tag's inks are: the shared colour swatch.
+        EffectParameterUnit.color => PropertyLaneValueKind.color,
+        _ => PropertyLaneValueKind.number,
+      };
       // A menu has nothing between its words to scrub through, nor a line
       // to lay on a header graph — a flag's lane, with words for a ring.
-      final menu = spec.unit == EffectParameterUnit.choice;
+      // Nor has a colour: its line would be a number no one reads.
+      final numbered = valueKind == PropertyLaneValueKind.number;
       rows.add(
         PropertyLaneRow(
           laneId: effectLaneId(effect.id, spec.id),
           label: spec.labelFor(AppText.language),
-          keyMarks: keyMarksOf(parameter.track),
-          keyNames: parameter.track.namedKeysByFrame,
-          valueKind: menu
-              ? PropertyLaneValueKind.choice
-              : PropertyLaneValueKind.number,
+          keyMarks: keyMarksOf(keys),
+          keyNames: keys.namedKeysByFrame,
+          valueKind: valueKind,
           choices: [
             for (final choice in spec.choices)
               choice.labelFor(AppText.language),
@@ -184,15 +189,15 @@ List<PropertyLaneRow> effectPropertyLanes(
                   spec,
                   valueAt(effect.id, spec.id, frameIndex.toDouble()),
                 ),
-          scrubValue: menu
+          scrubValue: !numbered
               ? null
               : (label, delta) => scrubEffectLaneValue(spec, label, delta),
-          curve: valueAt == null || menu
+          curve: valueAt == null || !numbered
               ? null
               : (
                   parts: [LaneCurvePalette.effectParameter(index)],
                   at: (time) => [valueAt(effect.id, spec.id, time)],
-                  sides: parameter.track.sidesByFrame,
+                  sides: keys.sidesByFrame,
                   way: null,
                 ),
         ),
@@ -230,24 +235,6 @@ List<PropertyLaneRow> _standLanes(
   ];
 }
 
-/// [effect]'s lane of the colour it draws its picture in ([LayerEffect
-/// .ink]): a colour lane, as an SE name tag's inks are — the value cell the
-/// shared colour swatch, no line on a header graph. Unvalued where [valued]
-/// is not, as the parameters' lanes are.
-PropertyLaneRow _inkLane(LayerEffect effect, {required bool valued}) =>
-    PropertyLaneRow(
-      laneId: effectLaneId(effect.id, effectInkLane),
-      label: AppText.strings.effectParameterName(effectInkLane, 'Ink'),
-      keyMarks: keyMarksOf(effect.ink),
-      keyNames: effect.ink.namedKeysByFrame,
-      valueKind: PropertyLaneValueKind.color,
-      valueLabel: valued
-          ? (frameIndex) => formatLaneColorValue(
-              effectInkAt(effect.ink, frameIndex.toDouble()),
-            )
-          : null,
-    );
-
 /// The display order of ONE effect's member lanes — the order the rail
 /// draws them under the effect's group header ([LayerEffect.lanes]).
 ///
@@ -271,6 +258,7 @@ String formatEffectLaneValue(EffectParameterSpec spec, double value) {
     EffectParameterUnit.pixels => '${columnValueText(value)} px',
     EffectParameterUnit.choice =>
       spec.choices[spec.clamp(value).round()].labelFor(AppText.language),
+    EffectParameterUnit.color => formatLaneColorValue(value.toInt()),
   };
 }
 

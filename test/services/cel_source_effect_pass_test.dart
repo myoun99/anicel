@@ -52,9 +52,7 @@ void main() {
     kind: EffectKind.colorKey,
     values: [
       if (keep) 1 else 0,
-      red.toDouble(),
-      green.toDouble(),
-      blue.toDouble(),
+      (0xFF000000 | red << 16 | green << 8 | blue).toDouble(),
       tolerance,
       amount,
     ],
@@ -347,7 +345,7 @@ void main() {
       );
       final key = ResolvedLayerEffect(
         kind: EffectKind.colorKey,
-        values: const [0, 0, 0, 0, 100],
+        values: const [0, 0xFF000000, 100],
       );
       final split = splitSourceEffects([key, blur, key]);
       expect(split.source.map((e) => e.kind), [EffectKind.colorKey]);
@@ -364,7 +362,7 @@ void main() {
       );
       final key = ResolvedLayerEffect(
         kind: EffectKind.colorKey,
-        values: const [0, 0, 0, 0, 100],
+        values: const [0, 0xFF000000, 100],
       );
       final split = splitSourceEffects([blur, key]);
       expect(split.source, isEmpty);

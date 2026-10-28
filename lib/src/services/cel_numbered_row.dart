@@ -109,7 +109,7 @@ CelNumberLetters celNumberLettersOf(
   final stand = effectStandPose(number.stand!, paper);
   return CelNumberLetters(
     text: text,
-    color: number.ink!,
+    color: number.color('ink'),
     center: stand.center,
     scale: stand.scale,
   );

@@ -397,6 +397,40 @@ void main() {
     );
   });
 
+  // I-132-Q10: a colour key's colour is a colour lane as a cel number's ink
+  // is — keyed in one type, so the paste's 「같은 종류의 데이터끼리」 holds.
+  test('a colour goes on a colour alone — a key colour on a cel number\'s '
+      'ink as it is, on an opacity neither paste lit', () {
+    s.effectsAndFx.addEffectToActiveLayer(EffectKind.colorKey);
+    s.effectsAndFx.addEffectToActiveLayer(EffectKind.celNumber);
+    final [key, number] = [for (final effect in now().effects) effect.id];
+    s.laneVerbs.setLaneValueAt(
+      before.id,
+      effectLaneId(key, 'keyColor'),
+      3,
+      '#C80A1E',
+      frameIsGlobal: false,
+      description: 'Type',
+      scaleLinked: false,
+    );
+    standOn(effectLaneId(key, 'keyColor'), at: 3);
+    pill.copyFrame();
+    final opacity = now().transformTrack.opacity;
+
+    standOn('opacity', at: 8);
+    expect(
+      (pill.canPasteIndependentFrame, pill.canPasteLinkedFrame),
+      (false, false),
+    );
+    pill.pasteIndependentFrame();
+    expect(now().transformTrack.opacity, opacity);
+
+    standOn(effectLaneId(number, 'ink'), at: 8);
+    expect(pill.canPasteIndependentFrame, isTrue);
+    pill.pasteIndependentFrame();
+    expect(now().effects.last.colors['ink']!.keys[8]?.value, 0xFFC80A1E);
+  });
+
   group('where none of the copied lanes is there', () {
     late EffectId gradeA;
     late EffectId gradeB;

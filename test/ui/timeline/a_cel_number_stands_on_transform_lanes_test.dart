@@ -46,7 +46,7 @@ void main() {
       expect(rows.skip(1).map((row) => row.laneId), [
         position,
         scale,
-        effectLaneId(id, effectInkLane),
+        effectLaneId(id, 'ink'),
       ]);
       expect(effectLaneDisplayOrder(number()), [
         for (final row in rows.skip(1)) row.laneId,
@@ -250,7 +250,7 @@ void main() {
     }
     expect(effectLaneWalksAPath(position), isTrue);
     expect(effectLaneWalksAPath(scale), isFalse);
-    expect(effectLaneWalksAPath(effectLaneId(id, effectInkLane)), isFalse);
+    expect(effectLaneWalksAPath(effectLaneId(id, 'ink')), isFalse);
   });
 
   group('the keys', () {
@@ -271,7 +271,7 @@ void main() {
     });
 
     test('its colour\'s never may', () {
-      final ink = effectLaneId(id, effectInkLane);
+      final ink = effectLaneId(id, 'ink');
       final keyed = [0, 4, 8].fold(
         [number()],
         (effects, frame) => effectsWithLaneValueEdited(
@@ -283,7 +283,7 @@ void main() {
         )!,
       );
 
-      expect(keyed.single.ink.keys, hasLength(3));
+      expect(keyed.single.colors['ink']!.keys, hasLength(3));
       expect(effectLaneKeyCanRove(keyed, ink, 4), isFalse);
     });
 
@@ -318,7 +318,10 @@ void main() {
     Layer edited(LayerEffect Function(LayerEffect effect) edit) =>
         row.copyWith(effects: [edit(row.effects.single)]);
     final recoloured = edited(
-      (effect) => effect.copyWith(ink: effect.ink.withKey(0, 0xFF112233)),
+      (effect) => effect.withColor(
+        'ink',
+        effect.colors['ink']!.withKey(0, 0xFF112233),
+      ),
     );
     final moved = edited(
       (effect) => effect.copyWith(
@@ -334,7 +337,7 @@ void main() {
     bool kept(Layer after, String lane) =>
         identical(laneRowSlice(row, lane), laneRowSlice(after, lane));
 
-    final ink = effectLaneId(id, effectInkLane);
+    final ink = effectLaneId(id, 'ink');
     expect(kept(recoloured, position), isTrue, reason: 'a colour edit');
     expect(kept(recoloured, ink), isFalse, reason: 'a colour edit, on Ink');
     expect(kept(moved, ink), isTrue, reason: 'a Position edit, on Ink');

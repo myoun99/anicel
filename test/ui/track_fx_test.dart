@@ -61,10 +61,10 @@ LayerEffect _blur({double radius = 9}) => LayerEffect(
 LayerEffect _deleteWhite() => LayerEffect(
   id: const EffectId('fx-key'),
   kind: EffectKind.colorKey,
+  colors: {
+    'keyColor': PropertyTrack<int>.empty().withKey(0, 0xFFFFFFFF),
+  },
   parameters: {
-    'keyRed': EffectParameter(value: 255),
-    'keyGreen': EffectParameter(value: 255),
-    'keyBlue': EffectParameter(value: 255),
     'tolerance': EffectParameter(value: 0),
     'amount': EffectParameter(value: 100),
   },

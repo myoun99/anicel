@@ -446,7 +446,7 @@ void main() {
         effects: [
           ResolvedLayerEffect(
             kind: EffectKind.colorKey,
-            values: const [0, 0xC9, 0x5C, 0x5C, 8, 100],
+            values: const [0, 0xFFC95C5C, 8, 100],
           ),
         ],
       );
