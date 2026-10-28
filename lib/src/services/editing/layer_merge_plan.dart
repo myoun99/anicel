@@ -251,7 +251,6 @@ LayerMergePlan planLayerMerge(
 }) {
   final LayerMergeTaking(
     :cut,
-    _taken: taken,
     _anchor: anchor,
     _pictureRows: pictureRows,
     _riders: riders,
@@ -260,25 +259,14 @@ LayerMergePlan planLayerMerge(
   final over = {
     for (final folder in taking._index.ancestryOf(standing)) folder.id,
   };
-  final takenRows = [
-    for (final row in cut.layers)
-      if (taken.contains(row.id)) _shown(row),
-  ];
-  final folders = _foldersLeft(taking, over, takenRows);
-  // The bases a row it takes rides without them, there to be worn (Q14).
-  final worn = [
-    for (final row in cut.layers)
-      if (!taken.contains(row.id) &&
-          takenRows.any((taken) => taken.attachedToLayerId == row.id))
-        row.copyWith(isVisible: false),
-  ];
-  final baked = _cutWith(taking, folders, [...takenRows, ...worn]);
+  final rows = _bakedRows(taking);
+  final folders = _foldersLeft(taking, over, rows);
+  final baked = _cutWith(taking, folders, rows);
   // The result parts wherever a synced rider's picture does too: each
   // rides the result's cels one for one.
   final runs = _runsByPicture(
     _cutWith(taking, folders, [
-      ...takenRows,
-      ...worn,
+      ...rows,
       for (final rider in riders)
         if (isSyncedAttachedLayer(rider)) _riding(rider),
     ]),
@@ -313,6 +301,23 @@ LayerMergePlan planLayerMerge(
       for (final rider in ridden) rider.row.id: rider.row,
     }),
   );
+}
+
+/// What the result is baked of: the rows [taking] takes, each shown (Q7),
+/// and the bases they ride without them — hidden, there to be worn (Q14).
+List<Layer> _bakedRows(LayerMergeTaking taking) {
+  final LayerMergeTaking(:cut, _taken: taken) = taking;
+  final takenRows = [
+    for (final row in cut.layers)
+      if (taken.contains(row.id)) _shown(row),
+  ];
+  return [
+    ...takenRows,
+    for (final row in cut.layers)
+      if (!taken.contains(row.id) &&
+          takenRows.any((rider) => rider.attachedToLayerId == row.id))
+        row.copyWith(isVisible: false),
+  ];
 }
 
 /// The folder the result stands in: the topmost row's — or, for an attach
