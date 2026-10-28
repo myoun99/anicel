@@ -27,6 +27,7 @@ import '../../helpers/psd_fixture.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/staged_carry.dart';
+import '../../helpers/stand_in_movie.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
 import '../../helpers/import_span.dart';
@@ -279,7 +280,7 @@ void main() {
   group('the media pool is a destination', () {
     Future<String> writeMovie() async {
       final file = File('${tempDir.path}${Platform.pathSeparator}ref.mp4');
-      await file.writeAsBytes(const [0, 0, 0, 24]);
+      await file.writeAsBytes(standInMovieBytes);
       return file.path;
     }
 
@@ -723,7 +724,7 @@ void main() {
   group('the file table', () {
     Future<String> writeMovie(String name) async {
       final file = File('${tempDir.path}${Platform.pathSeparator}$name');
-      await file.writeAsBytes(const [0, 0, 0, 24]);
+      await file.writeAsBytes(standInMovieBytes);
       return file.path;
     }
 

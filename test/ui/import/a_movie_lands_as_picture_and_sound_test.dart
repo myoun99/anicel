@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/import/import_file_settings.dart';
 
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/placed_sound_conform.dart';
+import '../../helpers/stand_in_movie.dart';
 import '../../helpers/temp_dir.dart';
 
 void main() {
@@ -28,7 +29,7 @@ void main() {
   setUp(() async {
     tempDir = await Directory.systemTemp.createTemp('anicel-movie-lands');
     moviePath = '${tempDir.path}${Platform.pathSeparator}take3.mov';
-    await File(moviePath).writeAsBytes(const [0, 0, 0, 24]);
+    await File(moviePath).writeAsBytes(standInMovieBytes);
   });
 
   tearDown(() async {

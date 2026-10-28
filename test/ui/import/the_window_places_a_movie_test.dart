@@ -27,6 +27,7 @@ import '../../helpers/import_span.dart';
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/settle_async.dart';
+import '../../helpers/stand_in_movie.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
 
@@ -45,7 +46,7 @@ void main() {
   Future<String> writeMovie(WidgetTester tester, String name) async =>
       (await tester.runAsync(() async {
         final file = File('${tempDir.path}${Platform.pathSeparator}$name');
-        await file.writeAsBytes(const [0, 0, 0, 24]);
+        await file.writeAsBytes(standInMovieBytes);
         return file.path;
       }))!;
 

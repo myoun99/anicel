@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/widgets/transport_bar.dart';
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/settle_async.dart';
+import '../../helpers/stand_in_movie.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
 import '../../helpers/import_span.dart';
@@ -41,7 +42,7 @@ void main() {
   Future<String> write(WidgetTester tester, String name) async =>
       (await tester.runAsync(() async {
         final file = File('${tempDir.path}${Platform.pathSeparator}$name');
-        await file.writeAsBytes(const [0, 0, 0, 24]);
+        await file.writeAsBytes(standInMovieBytes);
         return file.path;
       }))!;
 

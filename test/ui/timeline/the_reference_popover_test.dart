@@ -41,6 +41,7 @@ import '../../helpers/fake_video_backend.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
+import '../../helpers/stand_in_movie.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
 
@@ -138,7 +139,7 @@ void main() {
     addTearDown(s.dispose);
     await tester.runAsync(() async {
       final path = '${tempDir.path}${Platform.pathSeparator}take.mov';
-      await File(path).writeAsBytes(const [0, 0, 0, 24]);
+      await File(path).writeAsBytes(standInMovieBytes);
       await s.importDoors.importVideoFile(
         path: path,
         settings: ImportFileSettings(
@@ -391,7 +392,7 @@ void main() {
     final (s, _) = await movieSession(tester, frameCount: 6, inFrame: 0);
     await tester.runAsync(() async {
       final path = '${tempDir.path}${Platform.pathSeparator}second.mov';
-      await File(path).writeAsBytes(const [0, 0, 0, 24]);
+      await File(path).writeAsBytes(standInMovieBytes);
       await s.importDoors.importVideoFile(
         path: path,
         settings: const ImportFileSettings(
