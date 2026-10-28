@@ -3,6 +3,7 @@ import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 
 import '../../services/launch_notice.dart';
+import '../../services/usage_stats/usage_stats.dart';
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
 import '../text/app_strings.dart';
@@ -10,6 +11,7 @@ import '../widgets/app_window.dart';
 import '../widgets/content_scrollbar.dart';
 import '../widgets/markdown_subset.dart';
 import 'feedback_window.dart' show showFeedbackWindow;
+import 'usage_stats_switch_row.dart';
 
 /// Opens this build's launch notice — unless it was dismissed already
 /// ([LaunchNotice.due]).
@@ -18,8 +20,9 @@ import 'feedback_window.dart' show showFeedbackWindow;
 /// 있고. 빌드당 한번기억」.
 Future<void> showLaunchNoticeIfDue(
   BuildContext context,
-  LaunchNotice notice,
-) async {
+  LaunchNotice notice, {
+  required UsageStats usageStats,
+}) async {
   final content = await notice.due();
   if (content == null || !context.mounted) {
     return;
@@ -28,6 +31,7 @@ Future<void> showLaunchNoticeIfDue(
     context: context,
     builder: (context) => LaunchNoticeWindow(
       content: content,
+      usageStats: usageStats,
       onDontShowAgain: () => unawaited(notice.dismiss(content)),
     ),
   );
@@ -39,14 +43,21 @@ Future<void> showLaunchNoticeIfDue(
 ///
 /// The feedback section's button is the ⚙ menu's 「의견 보내기」 row: its
 /// window and its name (I-139), one action wherever it is pressed.
+///
+/// Under them, the usage statistics' switch: 🗣️I-70-Q3 (유저 2026-10-29)
+/// 「안내 창에서 묻고 기본 꺼짐」 — Preferences ▸ System's row, the same one.
 class LaunchNoticeWindow extends StatelessWidget {
   const LaunchNoticeWindow({
     super.key,
     required this.content,
+    required this.usageStats,
     required this.onDontShowAgain,
   });
 
   final LaunchNoticeContent content;
+
+  /// What the consent row turns on or off ([UsageStatsSwitchRow]).
+  final UsageStats usageStats;
 
   /// 「다음부터 표시 안 함」 — the window closes either way.
   final VoidCallback onDontShowAgain;
@@ -91,8 +102,9 @@ class LaunchNoticeWindow extends StatelessWidget {
     );
   }
 
-  /// What the window says: its sections one under another, and the
-  /// feedback section's button under that section's words.
+  /// What the window says: its sections one under another, the feedback
+  /// section's button under that section's words, and the usage
+  /// statistics' switch last.
   Widget _sections(BuildContext context) {
     Widget section(LaunchNoticeSection section) =>
         MarkdownSubset(content.textOf(AppText.language, section));
@@ -116,6 +128,8 @@ class LaunchNoticeWindow extends StatelessWidget {
             ),
           ),
         ),
+        const Divider(height: 24),
+        UsageStatsSwitchRow(usageStats: usageStats),
       ],
     );
   }

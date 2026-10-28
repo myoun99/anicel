@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/services/launch_notice.dart';
 import 'package:anicel/src/services/persistence/launch_notice_store.dart';
+import 'package:anicel/src/services/usage_stats/usage_stats.dart';
 import 'package:anicel/src/ui/dialogs/launch_notice_window.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart'
     show EditorActionIds;
@@ -40,6 +41,10 @@ LaunchNoticeContent _content({String whatsNew = '- One thing changed.'}) =>
         LaunchNoticeSection.feedback => 'Tell us ${language.name}.',
       },
     );
+
+/// The usage statistics' switch, kept in memory and with no key to send
+/// under — the window's consent row needs one to show.
+UsageStats _usageStats() => UsageStats(locale: () => 'en');
 
 final _window = find.byKey(const ValueKey<String>('launch-notice'));
 final _dontShowAgain = find.byKey(
@@ -80,6 +85,7 @@ void main() {
                   store: store,
                   content: () async => (content ?? _content)(),
                 ),
+                usageStats: _usageStats(),
               ),
               child: const Text('launch'),
             ),
@@ -253,7 +259,11 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           theme: buildAppTheme(),
-          home: LaunchNoticeWindow(content: bundled, onDontShowAgain: () {}),
+          home: LaunchNoticeWindow(
+            content: bundled,
+            usageStats: _usageStats(),
+            onDontShowAgain: () {},
+          ),
         ),
       );
       final drawn = [

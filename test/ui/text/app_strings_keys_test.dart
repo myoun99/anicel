@@ -26,6 +26,8 @@ void main() {
     'launchStageFirstFrame': (s) => s.launchStageFirstFrame,
     'launchNoticeTitle': (s) => s.launchNoticeTitle,
     'launchNoticeDontShowAgain': (s) => s.launchNoticeDontShowAgain,
+    'usageStatsSend': (s) => s.usageStatsSend,
+    'usageStatsHelp': (s) => s.usageStatsHelp,
     'noCutSelected': (s) => s.noCutSelected,
     'noticeNoFrameHere': (s) => s.noticeNoFrameHere,
     'noticeNothingToCut': (s) => s.noticeNothingToCut,

@@ -19,7 +19,8 @@ import 'system_status_section.dart';
 import '../text/app_strings.dart';
 
 /// SAVE-1: the unified Preferences dialog — Input, Autosave, Audio,
-/// Language, Display and System (the runtime-path report)
+/// Language, Display and System (the runtime-path report, under the usage
+/// statistics' switch — I-70)
 /// as sections of ONE window (the old per-domain Edit menu entries
 /// collapsed here; their dialogs remain as thin wrappers around the same
 /// section widgets for tests and deep links).
@@ -103,6 +104,7 @@ class _PreferencesDialogState extends State<_PreferencesDialog> {
     ),
     PreferencesSection.system => SystemStatusSection(
       openSessions: widget.openSessions,
+      usageStats: widget.session.appSettings.usageStats,
     ),
     PreferencesSection.memory => MemorySettingsSection(
       session: widget.session,

@@ -7,10 +7,12 @@ import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/services/launch_notice.dart';
 import 'package:anicel/src/services/persistence/app_language_settings_store.dart';
 import 'package:anicel/src/services/persistence/launch_notice_store.dart';
+import 'package:anicel/src/ui/dialogs/usage_stats_switch_row.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
+import '../helpers/boolean_dot_probe.dart';
 import '../helpers/settle_async.dart';
 
 /// A dismissal kept in memory, read by every launch of a test.
@@ -99,6 +101,48 @@ void main() {
       LaunchNotice(store: store, content: () async => _content),
     );
     expect(_window, findsNothing);
+  });
+
+  testWidgets('🎯its usage statistics switch is the app\'s — off at first, '
+      'and what Preferences ▸ System then shows (I-70-Q3)', (tester) async {
+    await launch(
+      tester,
+      LaunchNotice(store: _MemoryStore(), content: () async => _content),
+    );
+    final inNotice = find.descendant(
+      of: _window,
+      matching: find.byKey(UsageStatsSwitchRow.tileKey),
+    );
+    expect(tester.booleanDotIn(inNotice).value, isFalse);
+    await tester.pressRingIn(inNotice);
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('launch-notice-close')),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('top-strip-settings-button')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<String>('menu-edit-preferences')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('preferences-section-system')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .booleanDotIn(
+            find.descendant(
+              of: find.byKey(const ValueKey<String>('preferences-dialog')),
+              matching: find.byKey(UsageStatsSwitchRow.tileKey),
+            ),
+          )
+          .value,
+      isTrue,
+    );
   });
 
   testWidgets('a test that hands none in sees no notice', (tester) async {

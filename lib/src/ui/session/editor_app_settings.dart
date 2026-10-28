@@ -19,6 +19,8 @@ import '../../services/persistence/app_memory_settings.dart';
 import '../../services/persistence/app_ui_scale_store.dart';
 import '../../services/persistence/app_workspace_colors_store.dart';
 import '../../services/persistence/audio_sync_settings_store.dart';
+import '../../services/persistence/usage_stats_store.dart';
+import '../../services/usage_stats/usage_stats.dart';
 import '../../models/app_input_settings.dart';
 import '../../models/audio_sync_settings.dart';
 import '../text/app_strings.dart';
@@ -69,6 +71,7 @@ class EditorAppSettings {
     AppFrameCountSettingsStore? frameCountSettingsStore,
     AppCameraPathSettingsStore? cameraPathSettingsStore,
     AppPixelVerbSettingsStore? pixelVerbSettingsStore,
+    UsageStatsStore? usageStatsStore,
     Iterable<String> Function()? deviceLanguageCodes,
   }) : _languageSettingsStore = languageSettingsStore,
        _deviceLanguageCodes = deviceLanguageCodes ?? _platformLanguageCodes,
@@ -83,7 +86,8 @@ class EditorAppSettings {
        _frameGridSettingsStore = frameGridSettingsStore,
        _frameCountSettingsStore = frameCountSettingsStore,
        _cameraPathSettingsStore = cameraPathSettingsStore,
-       _pixelVerbSettingsStore = pixelVerbSettingsStore;
+       _pixelVerbSettingsStore = pixelVerbSettingsStore,
+       _usageStatsStore = usageStatsStore;
 
   /// Starts every restore, in the order the session started them in.
   ///
@@ -103,7 +107,21 @@ class EditorAppSettings {
     unawaited(_restoreFrameCountSettings());
     unawaited(_restoreCameraPathSettings());
     unawaited(_restorePixelVerbSettings());
+    unawaited(usageStats.restore());
   }
+
+  // --- Usage statistics (I-70) ----------------------------------------------
+
+  /// Injectable persistence; null (tests) keeps the answer in memory.
+  final UsageStatsStore? _usageStatsStore;
+
+  /// Whether this device sends usage statistics, and the sending — ONE
+  /// switch the launch notice and Preferences both show (I-70-Q3). The
+  /// shell reports the launch and each return to the app to it.
+  late final UsageStats usageStats = UsageStats(
+    store: _usageStatsStore,
+    locale: () => languageSettings.value.programLanguage.languageCode,
+  );
 
   // --- Frame grid (block frame lines, 2026-09-24) ---------------------------
 
@@ -448,9 +466,11 @@ class EditorAppSettings {
 
   /// [languageSettings] is NOT disposed here: it lives on [AppText],
   /// app-wide, and outlives this object (as the accent settings do). The
-  /// A/V offset and the peg settings are this object's own, so they go.
+  /// A/V offset, the peg settings and the usage statistics' switch are this
+  /// object's own, so they go.
   void dispose() {
     audioSyncSettings.dispose();
     onionSkinSettings.dispose();
+    usageStats.dispose();
   }
 }

@@ -43,6 +43,7 @@ import '../services/persistence/app_memory_settings_store.dart';
 import '../services/persistence/recent_projects.dart';
 import '../services/persistence/recent_projects_store.dart';
 import '../services/persistence/audio_sync_settings_store.dart';
+import '../services/persistence/usage_stats_store.dart';
 import '../services/persistence/autosave_clock.dart';
 import '../services/persistence/session_scratch.dart';
 import '../services/persistence/project_autosave_service.dart';
@@ -243,6 +244,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     frameCountSettingsStore: _unlessTesting(AppFrameCountSettingsStore.new),
     cameraPathSettingsStore: _unlessTesting(AppCameraPathSettingsStore.new),
     pixelVerbSettingsStore: _unlessTesting(AppPixelVerbSettingsStore.new),
+    usageStatsStore: _unlessTesting(UsageStatsStore.new),
   )..restore();
   final WorkspacePanelsMenuController _panelsMenu =
       WorkspacePanelsMenuController();
@@ -595,6 +597,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         (_) => _showLaunchNotice(launchNotice),
       );
     }
+    // I-70: this launch, to the usage statistics (nothing while they are
+    // off) — once the saved language is back: the events name it.
+    unawaited(
+      _appSettings.languageRestored.then(
+        (_) => _appSettings.usageStats.reportLaunch(),
+      ),
+    );
     // 🪦No tool-switch guard, and no hook to announce one.
     //
     // R26 #13 put one here: the transform tool refused to be SELECTED with
@@ -628,7 +637,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void _showLaunchNotice(LaunchNotice notice) => unawaited(
     _appSettings.languageRestored.then((_) async {
       if (mounted) {
-        await showLaunchNoticeIfDue(context, notice);
+        await showLaunchNoticeIfDue(
+          context,
+          notice,
+          usageStats: _appSettings.usageStats,
+        );
       }
     }),
   );
@@ -925,6 +938,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(_warnIfProjectFileVanished(_session));
+      // I-70: a day the app is in front on is a day it was used — a run
+      // that crossed midnight UTC, or a send that failed earlier today.
+      unawaited(_appSettings.usageStats.reportResume());
     }
   }
 

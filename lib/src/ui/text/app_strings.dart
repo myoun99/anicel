@@ -188,6 +188,11 @@ enum AppStrings {
   String get launchNoticeTitle => _s('launchNoticeTitle');
   String get launchNoticeDontShowAgain => _s('launchNoticeDontShowAgain');
 
+  /// The usage statistics' one switch (I-70) — in the launch notice and in
+  /// Preferences ▸ System — and what it sends, as its tooltip.
+  String get usageStatsSend => _s('usageStatsSend');
+  String get usageStatsHelp => _s('usageStatsHelp');
+
   /// The timeline/timesheet gap empty state.
   String get noCutSelected => _s('noCutSelected');
 
@@ -2093,6 +2098,13 @@ enum AppStrings {
     'launchStageFirstFrame': 'Drawing first screen',
     'launchNoticeTitle': 'About this build',
     'launchNoticeDontShowAgain': "Don't show again",
+    'usageStatsSend': 'Send usage statistics',
+    'usageStatsHelp':
+        'When on, sends anonymously when the app opens and once a day: the '
+        'OS and its version, the app build, the language, and how many of '
+        'the last 28 days it was used (new, 1–2, 3 or more). No drawings, '
+        'files or device names. Turning it off also deletes the record kept '
+        'on this device.',
     'programLanguageLabel': 'Program language',
     'notationLanguageLabel': 'Notation language',
     'programLanguageHelp': 'Menus, panels and labels.',
@@ -3412,6 +3424,11 @@ enum AppStrings {
     'launchStageFirstFrame': '最初の画面を描画',
     'launchNoticeTitle': 'ご案内',
     'launchNoticeDontShowAgain': '次回から表示しない',
+    'usageStatsSend': '利用統計を送信',
+    'usageStatsHelp':
+        'オンにすると、アプリを開いたときと1日1回、OSとそのバージョン・アプリのビルド・'
+        '言語・直近28日間に使った日数の区分（初回 / 1〜2日 / 3日以上）を匿名で送信します。'
+        '絵・ファイル・デバイス名は送信しません。オフにすると、この端末に残した記録も削除します。',
     'programLanguageLabel': 'プログラム言語',
     'notationLanguageLabel': '表記言語',
     'programLanguageHelp': 'メニュー・パネル・ラベルの言語。',
@@ -5197,6 +5214,12 @@ enum AppStrings {
     'launchStageFirstFrame': '첫 화면 그리기',
     'launchNoticeTitle': '안내',
     'launchNoticeDontShowAgain': '다음부터 표시 안 함',
+    'usageStatsSend': '사용 통계 보내기',
+    'usageStatsHelp':
+        '켜 두면 앱을 열 때와 하루에 한 번, OS와 그 버전 · 앱 빌드 · 언어 · '
+        '최근 28일 동안 쓴 날의 구간(처음 / 1–2일 / 3일 이상)을 익명으로 보냅니다. '
+        '그림 · 파일 · 기기 이름은 보내지 않습니다. 끄면 이 기기에 남긴 기록도 '
+        '지웁니다.',
     'programLanguageLabel': '프로그램 언어',
     'notationLanguageLabel': '표기용 언어',
     'programLanguageHelp': '메뉴·패널·라벨의 언어.',
@@ -6970,6 +6993,13 @@ enum AppStrings {
     'launchStageFirstFrame': 'Affichage du premier écran',
     'launchNoticeTitle': 'À propos de cette version',
     'launchNoticeDontShowAgain': 'Ne plus afficher',
+    'usageStatsSend': "Envoyer des statistiques d'utilisation",
+    'usageStatsHelp':
+        "Activé, envoie de façon anonyme à l'ouverture de l'app et une fois "
+        "par jour : le système et sa version, la version de l'app, la langue, "
+        "et le nombre de jours d'utilisation sur les 28 derniers (nouveau, "
+        "1–2, 3 ou plus). Aucun dessin, fichier ni nom d'appareil. Le "
+        "désactiver efface aussi l'historique gardé sur cet appareil.",
     'programLanguageLabel': 'Langue du programme',
     'notationLanguageLabel': 'Langue de notation',
     'programLanguageHelp': 'Menus, panneaux et libellés.',
@@ -8875,6 +8905,11 @@ enum AppStrings {
     'launchStageFirstFrame': '绘制首个画面',
     'launchNoticeTitle': '本版本说明',
     'launchNoticeDontShowAgain': '不再显示',
+    'usageStatsSend': '发送使用统计',
+    'usageStatsHelp':
+        '开启后，会在打开应用时以及每天一次匿名发送：操作系统及其版本、应用版本号、语言，'
+        '以及最近 28 天内使用天数的区间（首次 / 1–2 天 / 3 天以上）。不会发送画作、文件或'
+        '设备名称。关闭后也会删除本设备上保存的记录。',
     'programLanguageLabel': '程序语言',
     'notationLanguageLabel': '标注语言',
     'programLanguageHelp': '菜单、面板与标签的语言。',

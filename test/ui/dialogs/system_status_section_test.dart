@@ -81,7 +81,10 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: SingleChildScrollView(
-            child: SystemStatusSection(openSessions: [session]),
+            child: SystemStatusSection(
+              openSessions: [session],
+              usageStats: session.appSettings.usageStats,
+            ),
           ),
         ),
       ),
