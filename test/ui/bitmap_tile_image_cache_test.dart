@@ -49,11 +49,11 @@ void main() {
 
       final first = cache.pictureFor(tile);
       cache.pictureFor(tile);
-      final second = cache.imageFor(tile);
+      final second = cache.heldFor(tile);
 
       expect(identical(first, second), isTrue);
-      expect(first.width, tile.size);
-      expect(first.height, tile.size);
+      expect(first.image.width, tile.size);
+      expect(first.image.height, tile.size);
     });
 
     test(

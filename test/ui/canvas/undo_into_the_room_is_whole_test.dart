@@ -472,5 +472,5 @@ class _Walk {
 
 /// How many of [surface]'s tiles have their own picture.
 int _pictured(BitmapSurface surface) => surface.tiles.values
-    .where((tile) => BitmapTileImageCache.instance.imageFor(tile) != null)
+    .where((tile) => BitmapTileImageCache.instance.heldFor(tile) != null)
     .length;

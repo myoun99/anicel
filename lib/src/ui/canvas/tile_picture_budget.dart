@@ -124,7 +124,7 @@ class TilePictureBudget {
     }
     final candidates = <({int serial, BitmapTile tile})>[];
     for (final tile in _pictured.alive()) {
-      if (_cache.imageFor(tile) == null || _current(tile)) {
+      if (_cache.heldFor(tile) == null || _current(tile)) {
         continue;
       }
       candidates.add((serial: _shownAt[tile]?.serial ?? -1, tile: tile));

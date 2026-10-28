@@ -5667,7 +5667,7 @@ void main() {
       );
       var undecoded = 0;
       for (final tile in moved.surface.tiles.values) {
-        if (BitmapTileImageCache.instance.imageFor(tile) == null) {
+        if (BitmapTileImageCache.instance.heldFor(tile) == null) {
           undecoded += 1;
         }
       }
@@ -6193,7 +6193,7 @@ void main() {
         expect(
           surface.tiles.values.every(
             (tile) =>
-                BitmapTileImageCache.instance.imageFor(tile) != null,
+                BitmapTileImageCache.instance.heldFor(tile) != null,
           ),
           isTrue,
           reason:

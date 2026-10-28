@@ -175,12 +175,12 @@ void main() {
       final laid = shown.tileAt(entry.key)!;
       expect(laid, isNot(same(entry.value)), reason: '⛔fixture: under text');
       expect(
-        cache.imageFor(laid),
+        cache.heldFor(laid),
         isNotNull,
         reason: '${entry.key}: the tile the canvas draws has its picture',
       );
       expect(
-        cache.imageFor(entry.value),
+        cache.heldFor(entry.value),
         isNull,
         reason:
             '${entry.key}: a picture with letters in it was pinned to the '

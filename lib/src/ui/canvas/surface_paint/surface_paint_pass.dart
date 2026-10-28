@@ -39,6 +39,10 @@ class _SurfacePaintPass {
   /// rather than riding each of them ([paintContentInto]).
   late final bool _layerAroundTheCut;
 
+  /// The slots of pages this paint lays a page at a time — null where they
+  /// are laid one by one ([paintContentInto]).
+  late final SlotsByPage? _slotsByPage;
+
   /// The float the caller handed in — a selection's, from the row's slot.
   late final RowFloat? _float;
 
@@ -183,6 +187,20 @@ class _SurfacePaintPass {
         ..colorFilter = _layerPaint.colorFilter
         ..imageFilter = _layerPaint.imageFilter;
     }
+    // 🚨★★★A PAGE'S SLOTS IN ONE DRAW, WHERE THAT IS THE SAME PIXELS
+    // (frame-composite-draws-each-tile-on-its-own, 2026-10-28) — [SlotsByPage]
+    // has the measurement: not where a colour matrix rides, whose alpha
+    // Impeller rounds apart in an atlas, nor where a coordinate is cut,
+    // which lays each through a shader. There each slot is laid by itself,
+    // as its own picture would be. ⛔An image filter is no answer measured:
+    // it never rides (a spreading one buffers the layer), and one that did
+    // would act on the page's draw as a whole.
+    _slotsByPage =
+        _tilesCutOnTheGrid ||
+            _tileImagePaint.colorFilter != null ||
+            _tileImagePaint.imageFilter != null
+        ? null
+        : SlotsByPage();
     // R27 #2: the walk below is visible-only, so every coordinate it
     // reaches already shows — no separate visibility test is needed.
     _visibleRect = _painter._visibleCanvasRect(_canvas, _storableRect);
@@ -276,6 +294,10 @@ class _SurfacePaintPass {
       _painter.pictureBudget.shown(_painter.lineage, covered.tile);
       _coordinates.paint(covered.coord);
     }
+    // The slots go down here, a page at a time, under nothing the walk
+    // drew: the coordinates are disjoint, so the order among them is no
+    // pixel's business.
+    _slotsByPage?.drawInto(_canvas, _tileImagePaint);
     final overlay = _overlay;
     if (overlay == null || !_overlayReplacesCoords) {
       return;
@@ -301,21 +323,57 @@ class _SurfacePaintPass {
     );
   }
 
-  /// THE tile draw: [image], one tile's worth of pixels — a coordinate's
-  /// picture — at [coord]'s origin on the surface's grid, its edge cut on
-  /// the pixel grid where the grid falls off it ([_tilesCutOnTheGrid]).
-  void _drawImageAtTile(ui.Image image, TileCoord coord) {
+  /// A committed tile's [picture] at [coord]: a texture of its own as any
+  /// tile image ([_drawImageAtTile]); a slot of a page with the page's
+  /// others where they go together ([_slotsByPage]), else by itself.
+  void _drawPictureAtTile(TilePicture picture, TileCoord coord) {
+    switch (picture) {
+      case OwnTilePicture(:final image):
+        _drawImageAtTile(image, coord);
+      case final TileSlot slot:
+        final together = _slotsByPage;
+        if (together == null) {
+          _lay(slot.image, slot.source, coord);
+        } else {
+          together.add(
+            slot,
+            tileCoordOriginOffset(coord, _painter.surface.tileSize),
+          );
+        }
+    }
+  }
+
+  /// [image], one tile's worth of pixels — a coordinate's picture — at
+  /// [coord]'s origin ([_lay]).
+  void _drawImageAtTile(ui.Image image, TileCoord coord) =>
+      _lay(image, null, coord);
+
+  /// THE tile draw: [source] of [image] — the whole of it where null — at
+  /// [coord]'s origin on the surface's grid, its edge cut on the pixel grid
+  /// where the grid falls off it ([_tilesCutOnTheGrid]).
+  void _lay(ui.Image image, Rect? source, TileCoord coord) {
     final origin = tileCoordOriginOffset(coord, _painter.surface.tileSize);
     if (!_tilesCutOnTheGrid) {
-      _canvas.drawImage(image, origin, _tileImagePaint);
+      if (source == null) {
+        _canvas.drawImage(image, origin, _tileImagePaint);
+      } else {
+        _canvas.drawImageRect(
+          image,
+          source,
+          origin & source.size,
+          _tileImagePaint,
+        );
+      }
       return;
     }
-    final size = Size(image.width.toDouble(), image.height.toDouble());
+    final from =
+        source ??
+        Offset.zero & Size(image.width.toDouble(), image.height.toDouble());
     drawImageRectOnThePixelGrid(
       _canvas,
       image,
-      Offset.zero & size,
-      origin & size,
+      from,
+      origin & from.size,
       filterQuality: FilterQuality.none,
       pixelRatio: _pixelRatio,
       paint: _tileImagePaint,

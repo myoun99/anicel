@@ -619,7 +619,7 @@ void main() {
       // pixel.
       BitmapTileImageCache.instance.pictureFor(sharedTile);
       expect(
-        BitmapTileImageCache.instance.imageFor(sharedTile),
+        BitmapTileImageCache.instance.heldFor(sharedTile),
         isNotNull,
         reason: 'fixture premise: the tile draws from its own picture',
       );

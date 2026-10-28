@@ -109,7 +109,7 @@ void main() {
       final whole = ui.Canvas(recorder);
       for (final MapEntry(key: coord, value: tile) in tiles.entries) {
         whole.drawImage(
-          cache.pictureFor(tile),
+          cache.pictureFor(tile).image,
           ui.Offset(coord.x * tileSize * 1.0, coord.y * tileSize * 1.0),
           ui.Paint()..filterQuality = ui.FilterQuality.none,
         );

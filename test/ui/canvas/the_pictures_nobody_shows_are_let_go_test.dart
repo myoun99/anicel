@@ -76,18 +76,18 @@ void main() {
     budget.byteBudget = baseline + 2 * oneImage;
     expect(budget.letGo(), 2);
     expect(
-      cache.imageFor(never.tile),
+      cache.heldFor(never.tile),
       isNull,
       reason: 'a picture no paint ever showed goes first',
     );
     expect(
-      cache.imageFor(old.tile),
+      cache.heldFor(old.tile),
       isNull,
       reason: 'then the least recently shown',
     );
-    expect(cache.imageFor(recent.tile), isNotNull);
+    expect(cache.heldFor(recent.tile), isNotNull);
     expect(
-      cache.imageFor(onScreen.tile),
+      cache.heldFor(onScreen.tile),
       isNotNull,
       reason: 'the latest paint\'s tile is on screen',
     );
@@ -105,8 +105,8 @@ void main() {
     budget.shown('cel', b.tile);
     budget.byteBudget = baseline;
     expect(budget.letGo(), 0);
-    expect(cache.imageFor(a.tile), isNotNull);
-    expect(cache.imageFor(b.tile), isNotNull);
+    expect(cache.heldFor(a.tile), isNotNull);
+    expect(cache.heldFor(b.tile), isNotNull);
   });
 
   test('an idle canvas keeps its visible pictures through recentPaints '
@@ -122,7 +122,7 @@ void main() {
     expect(budget.letGo(), 0, reason: 'its latest paint is still recent');
     budget.paintBegan('busy-cel');
     expect(budget.letGo(), 1, reason: 'and now it is not');
-    expect(cache.imageFor(idle.tile), isNull);
+    expect(cache.heldFor(idle.tile), isNull);
   });
 
   test('a tile shown by an EARLIER paint of its own canvas is not current: '
@@ -138,8 +138,8 @@ void main() {
     budget.shown('cel', right.tile);
     budget.byteBudget = baseline;
     expect(budget.letGo(), 1);
-    expect(cache.imageFor(left.tile), isNull);
-    expect(cache.imageFor(right.tile), isNotNull);
+    expect(cache.heldFor(left.tile), isNull);
+    expect(cache.heldFor(right.tile), isNotNull);
   });
 
   test('under budget nothing goes, shown or not', () {
@@ -147,7 +147,7 @@ void main() {
     land(a);
     budget.byteBudget = baseline + oneImage;
     expect(budget.letGo(), 0);
-    expect(cache.imageFor(a.tile), isNotNull);
+    expect(cache.heldFor(a.tile), isNotNull);
   });
 
   test('a tile joins the roll once, however often it is pictured', () {

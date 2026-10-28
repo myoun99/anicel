@@ -174,7 +174,7 @@ void main() {
       for (final entry in surface.tiles.entries) {
         final underTheView = entry.key.x < 2;
         expect(
-          cache.imageFor(entry.value) != null,
+          cache.heldFor(entry.value) != null,
           underTheView,
           reason: underTheView
               ? 'tile ${entry.key} is under the view: kept'

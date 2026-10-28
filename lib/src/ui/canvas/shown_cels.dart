@@ -99,7 +99,7 @@ class ShownCels {
   void warm(Iterable<CelSurface> cels) {
     _queue = [
       for (final tile in _painted(cels))
-        if (_cache.imageFor(tile) == null) tile,
+        if (_cache.heldFor(tile) == null) tile,
     ];
     _pump();
   }
@@ -113,7 +113,7 @@ class ShownCels {
     while (next < _queue.length && left > 0) {
       final tile = _queue[next];
       next += 1;
-      if (_cache.imageFor(tile) != null) {
+      if (_cache.heldFor(tile) != null) {
         continue;
       }
       left -= 1;

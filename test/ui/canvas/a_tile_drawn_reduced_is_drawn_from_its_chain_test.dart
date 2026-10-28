@@ -116,12 +116,12 @@ void main() {
       'one picture a tile, counted with its chain', (tester) async {
     final pictures = ownPictures();
     final tile = columns();
-    final door = pictures.cache.pictureFor(tile);
+    final door = pictures.cache.pictureFor(tile).image;
     final before = BitmapTileImageCache.liveImageBytes;
     final chained = pictures.cache.chainedPictureFor(tile);
     expect(carriesChain(chained), isTrue);
     expect(
-      pictures.cache.imageFor(tile),
+      pictures.cache.heldFor(tile)?.image,
       same(chained),
       reason: 'the tile\'s one picture is the chained one now',
     );
@@ -132,7 +132,7 @@ void main() {
       reason: 'the door picture went: only the chain is added',
     );
     expect(pictures.cache.chainedPictureFor(tile), same(chained));
-    expect(pictures.cache.pictureFor(tile), same(chained));
+    expect(pictures.cache.pictureFor(tile).image, same(chained));
     for (var frame = 0; frame < 4; frame += 1) {
       await tester.pump();
     }
@@ -164,7 +164,7 @@ void main() {
       final tiles = surface.tiles.values.toList();
       expect(tiles, hasLength(50));
       for (final tile in tiles) {
-        final picture = pictures.cache.imageFor(tile);
+        final picture = pictures.cache.heldFor(tile)?.image;
         expect(picture, isNotNull, reason: 'at $zoom every tile shown');
         expect(carriesChain(picture!), chains, reason: 'at $zoom');
         pictures.cache.releasePicture(tile);
@@ -191,9 +191,9 @@ void main() {
     );
     pictures.budget.byteBudget = 0;
     expect(pictures.budget.letGo(), 1, reason: 'the one nobody shows');
-    expect(pictures.cache.imageFor(stranger), isNull);
+    expect(pictures.cache.heldFor(stranger), isNull);
     for (final tile in surface.tiles.values) {
-      expect(pictures.cache.imageFor(tile), isNotNull);
+      expect(pictures.cache.heldFor(tile), isNotNull);
       pictures.cache.releasePicture(tile);
     }
   });

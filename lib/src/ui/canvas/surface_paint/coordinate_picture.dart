@@ -36,17 +36,9 @@ class _CoordinatePicture {
 
   BitmapSurfacePainter get _painter => _pass._painter;
 
-  /// Draws what [coord] shows, if it shows anything.
+  /// Draws the picture [coord] shows — carrying its chain where this paint
+  /// draws it reduced — if it shows anything.
   void paint(TileCoord coord) {
-    final picture = _shownAt(coord);
-    if (picture != null) {
-      _pass._drawImageAtTile(picture, coord);
-    }
-  }
-
-  /// The picture [coord] shows — carrying its chain where this paint draws
-  /// it reduced — or null where it shows nothing.
-  ui.Image? _shownAt(TileCoord coord) {
     final reduced = _pass._reduced;
     final overlay = _pass._overlay;
     if (overlay != null &&
@@ -55,17 +47,23 @@ class _CoordinatePicture {
       // The overlay tile holds the commit's own bytes exactly — the
       // picture pen-up hands to the committed tile — so it is the final
       // picture already.
-      return reduced
+      final image = reduced
           ? overlay.chainedTileImageAt(coord)
           : overlay.tileImages[coord];
+      if (image != null) {
+        _pass._drawImageAtTile(image, coord);
+      }
+      return;
     }
     final tile = _painter.surface.tileAt(coord);
     if (tile == null) {
-      return null;
+      return;
     }
     final pictures = _painter.tileImageCache;
-    return reduced
-        ? pictures.chainedPictureFor(tile)
-        : pictures.pictureFor(tile);
+    if (reduced) {
+      _pass._drawImageAtTile(pictures.chainedPictureFor(tile), coord);
+    } else {
+      _pass._drawPictureAtTile(pictures.pictureFor(tile), coord);
+    }
   }
 }

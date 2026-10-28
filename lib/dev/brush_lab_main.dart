@@ -753,7 +753,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     var total = 0;
     for (final tile in tiles) {
       total += 1;
-      if (BitmapTileImageCache.instance.imageFor(tile) == null) {
+      if (BitmapTileImageCache.instance.heldFor(tile) == null) {
         undecoded += 1;
       }
     }

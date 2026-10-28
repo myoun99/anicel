@@ -51,6 +51,13 @@ abstract interface class PictureBytes {
 ///    un-premultiplying is lossy. That is why the interface reads either
 ///    form rather than taking one list.
 ///
+/// 🆕A committed tile's picture may leave by a second outlet of this door
+/// (frame-composite-draws-each-tile-on-its-own, 2026-10-28): where the
+/// engine writes pages, its premultiplied bytes — this same read, inside
+/// the call — go into a slot of a page that holds many tiles (`TilePages`
+/// in `ui/canvas/`), not a texture of their own. Still synchronous, still
+/// waiting for nothing: the slot is drawn the moment it is handed out.
+///
 /// Availability is a runtime probe (one 1×1 upload), not a platform check:
 /// the question is what THIS engine can do, and an Impeller engine that
 /// answers no mid-run (a lost context) takes the picture road for the

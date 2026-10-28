@@ -223,7 +223,7 @@ void main() {
       final counted = Set<BitmapTile>.identity();
       int bytesOf(BitmapTile tile) => tile.size * tile.size * 4;
       int picturedBytes(BitmapTile tile) =>
-          cache.imageFor(tile) != null ? bytesOf(tile) : 0;
+          cache.heldFor(tile) != null ? bytesOf(tile) : 0;
       var screen = 0;
       for (final tile in coordinator.currentSurfaceOf(key).tiles.values) {
         if (counted.add(tile)) {
@@ -239,7 +239,7 @@ void main() {
       var held = 0;
       var other = 0;
       history.visitDeepHeldTiles((coord, tile) {
-        if (!counted.add(tile) || cache.imageFor(tile) == null) {
+        if (!counted.add(tile) || cache.heldFor(tile) == null) {
           return;
         }
         if (store.holdsTile(coord, tile)) {

@@ -16,6 +16,7 @@ import 'blends_in_place.dart';
 import 'display_resample.dart';
 import 'landing_preview.dart';
 import 'tile_origin.dart';
+import 'tile_pages.dart';
 import 'tile_picture_budget.dart';
 import 'tiles_under_rect.dart';
 import 'viewport_canvas_transform.dart';

@@ -75,10 +75,10 @@ void main() {
       'first needs it', () async {
     final cache = BitmapTileImageCache();
     final tile = tileOf(red);
-    expect(cache.imageFor(tile), isNull, reason: 'premise: no picture yet');
+    expect(cache.heldFor(tile), isNull, reason: 'premise: no picture yet');
     final pixels = await painted(surfaceOf({TileCoord(x: 0, y: 0): tile}), cache);
     expect(rgbaAt(pixels, 1, 1), [255, 0, 0, 255]);
-    expect(cache.imageFor(tile), isNotNull, reason: 'made inside the paint');
+    expect(cache.heldFor(tile), isNotNull, reason: 'made inside the paint');
   });
 
   test('🚨an edit that REMOVES ink shows the removal on the very next paint '

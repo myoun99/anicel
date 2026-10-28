@@ -9,6 +9,7 @@ import '../../native/qa_native_engine.dart';
 import 'chained_picture.dart';
 import 'deferred_image_disposal.dart';
 import 'pictured_tiles.dart';
+import 'tile_pages.dart';
 
 /// The pictures of immutable [BitmapTile]s, keyed by tile identity, for
 /// display.
@@ -30,28 +31,36 @@ import 'pictured_tiles.dart';
 /// arriving tile by tile, a transform's landing half absent, an undo's
 /// first frame blank — was the wait made visible.
 ///
+/// Where the engine writes pages, the bytes go into a slot of one
+/// ([TilePages]) rather than a texture of the tile's own — the same
+/// premultiplied bytes, in the same call, drawn the same.
+///
 /// The other way a tile gets its picture is [adoptDecoded]: pen-up hands
 /// over the picture the live overlay already made of exactly these bytes,
 /// so a stroke's tiles are pictured once, not twice.
 ///
 /// Entries never need manual eviction: the [Expando] releases them with
-/// the tile, and a [Finalizer] disposes the picture afterwards. The
+/// the tile, and a [Finalizer] lets the picture go afterwards. The
 /// picture budget lets pictures go EARLY ([releasePicture]) when the device
 /// cannot hold every one; a tile asked for again is simply pictured again.
 class BitmapTileImageCache {
-  BitmapTileImageCache({PicturedTiles? pictured})
-    : pictured = pictured ?? PicturedTiles.instance;
+  BitmapTileImageCache({PicturedTiles? pictured, TilePages? pages})
+    : pictured = pictured ?? PicturedTiles.instance,
+      pages = pages ?? TilePages.instance;
 
   /// Shared instance used by the display painter. A render cache, not app
   /// state: it holds no editing data and only accelerates repaints.
   static final BitmapTileImageCache instance = BitmapTileImageCache();
 
   /// The roll of every tile given a picture here — the one way the pictures
-  /// held can be walked ([TilePictureBudget]), since [_images] cannot be.
+  /// held can be walked ([TilePictureBudget]), since [_pictures] cannot be.
   final PicturedTiles pictured;
 
-  final Expando<ui.Image> _images = Expando<ui.Image>(
-    'bitmapTileImages',
+  /// Where the pictures this makes lie, where the engine writes pages.
+  final TilePages pages;
+
+  final Expando<TilePicture> _pictures = Expando<TilePicture>(
+    'bitmapTilePictures',
   );
 
   // Deferred, not direct, disposal: the finalizer runs at GC time — pen-up
@@ -59,9 +68,8 @@ class BitmapTileImageCache {
   // is still referenced by the frame on screen. Disposing it there raced
   // the raster thread and intermittently flashed the tile as a black square
   // for one frame.
-  static final Finalizer<ui.Image> _imageFinalizer = Finalizer<ui.Image>(
-    _release,
-  );
+  static final Finalizer<TilePicture> _pictureFinalizer =
+      Finalizer<TilePicture>(_release);
 
   /// Bytes of every tile picture alive right now, every cache's — for the
   /// memory census.
@@ -69,21 +77,30 @@ class BitmapTileImageCache {
   /// 🚨C-ipad-crash (2026-09-11): on a phone these are GPU textures, and
   /// the census had no row for them, so the whole share read as engine
   /// overhead. Taken in [_hold] and let go in [_release], the only two
-  /// places either happens — a picture's chain with it ([pictureBytesOf]).
-  static int get liveImageBytes => _liveImageBytes;
+  /// places either happens — a picture's chain with it ([pictureBytesOf]);
+  /// the pages pictures lie in count whole ([TilePages.liveBytes]).
+  static int get liveImageBytes => _liveImageBytes + TilePages.liveBytes;
   static int _liveImageBytes = 0;
 
-  static void _hold(ui.Image image) =>
-      _liveImageBytes += pictureBytesOf(image);
+  static void _hold(TilePicture picture) {
+    if (picture is OwnTilePicture) {
+      _liveImageBytes += pictureBytesOf(picture.image);
+    }
+  }
 
-  static void _release(ui.Image image) {
-    _liveImageBytes -= pictureBytesOf(image);
-    DeferredImageDisposer.instance.retire(image);
+  static void _release(TilePicture picture) {
+    switch (picture) {
+      case OwnTilePicture(:final image):
+        _liveImageBytes -= pictureBytesOf(image);
+        DeferredImageDisposer.instance.retire(image);
+      case final TileSlot slot:
+        slot.release();
+    }
   }
 
   /// The picture [tile] already has, or `null` — nothing is made here.
   /// Callers deciding what to DRAW want [pictureFor].
-  ui.Image? imageFor(BitmapTile tile) => _images[tile];
+  TilePicture? heldFor(BitmapTile tile) => _pictures[tile];
 
   /// [tile]'s picture: the one it has, or the one made now from its own
   /// bytes through the door and kept — the ONE way a committed tile gets a
@@ -93,28 +110,39 @@ class BitmapTileImageCache {
   /// coordinate, because a picture was also filed under where it sat — the
   /// coordinate fallback's bucket. Nothing is looked up by coordinate any
   /// more, so the cache does not ask where a tile is.
-  ui.Image pictureFor(BitmapTile tile) {
-    final existing = _images[tile];
+  TilePicture pictureFor(BitmapTile tile) {
+    final existing = _pictures[tile];
     if (existing != null) {
       return existing;
     }
-    final image = pictureOfTile(tile);
-    _own(tile, image);
-    return image;
+    final bytes = _TilePictureBytes(tile);
+    final picture = pages.write(bytes) ?? OwnTilePicture(pictureOf(bytes));
+    _own(tile, picture);
+    return picture;
   }
 
   /// [tile]'s picture as a screen drawing it REDUCED samples it — carrying
   /// the engine's chain ([chainedPictureOf]): the one it has where that
   /// carries one, else that one remade with it IN ITS PLACE. Still one
   /// picture a tile; a tile only ever drawn at 100% never pays the chain.
+  /// A page carries no chain, so a tile in a slot drawn reduced leaves its
+  /// slot for a picture of its own.
   ui.Image chainedPictureFor(BitmapTile tile) {
-    final held = pictureFor(tile);
-    if (carriesChain(held)) {
-      return held;
+    final held = _pictures[tile];
+    if (held is OwnTilePicture && carriesChain(held.image)) {
+      return held.image;
     }
-    final chained = chainedPictureOf(held);
-    releasePicture(tile);
-    _own(tile, chained);
+    final from = held ?? OwnTilePicture(pictureOfTile(tile));
+    final chained = chainedPictureOf(
+      from.image,
+      source: from is TileSlot ? from.source : null,
+    );
+    if (held != null) {
+      releasePicture(tile);
+    } else {
+      DeferredImageDisposer.instance.retire(from.image);
+    }
+    _own(tile, OwnTilePicture(chained));
     return chained;
   }
 
@@ -136,17 +164,17 @@ class BitmapTileImageCache {
   /// A tile that somehow already has a picture keeps it and the incoming
   /// one is retired — never two owners for one image.
   void adoptDecoded(BitmapTile tile, ui.Image image) {
-    if (_images[tile] != null) {
+    if (_pictures[tile] != null) {
       DeferredImageDisposer.instance.retire(image);
       return;
     }
-    _own(tile, image);
+    _own(tile, OwnTilePicture(image));
   }
 
-  void _own(BitmapTile tile, ui.Image image) {
-    _images[tile] = image;
-    _imageFinalizer.attach(tile, image, detach: tile);
-    _hold(image);
+  void _own(BitmapTile tile, TilePicture picture) {
+    _pictures[tile] = picture;
+    _pictureFinalizer.attach(tile, picture, detach: tile);
+    _hold(picture);
     pictured.hold(tile);
   }
 
@@ -155,17 +183,17 @@ class BitmapTileImageCache {
   /// exactly as long as its tile. Asked for again, it is made again like
   /// the picture of any tile that has none.
   ///
-  /// Detached first: without it the finalizer retires the same image a
-  /// second time when the tile is eventually collected. Retired through
-  /// the deferred disposer like every picture here.
+  /// Detached first: without it the finalizer lets the same picture go a
+  /// second time when the tile is eventually collected. An image is retired
+  /// through the deferred disposer like every picture here.
   void releasePicture(BitmapTile tile) {
-    final image = _images[tile];
-    if (image == null) {
+    final picture = _pictures[tile];
+    if (picture == null) {
       return;
     }
-    _images[tile] = null;
-    _imageFinalizer.detach(tile);
-    _release(image);
+    _pictures[tile] = null;
+    _pictureFinalizer.detach(tile);
+    _release(picture);
   }
 
   /// [tile]'s pixel bytes premultiplied for a raw rgba8888 upload, staged
