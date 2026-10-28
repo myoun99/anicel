@@ -334,7 +334,10 @@ Map<String, String> _pictureTypesBy(Map<String, String> sources) {
 /// mixin with a field of it — or of the pieces of one (2026-10-21: a
 /// picture past the side is held in pieces, `List<ImagePiece>`, and the
 /// stored picture and the compose, each one image the day before, fell out
-/// of the chain with every holder above them) — a record typedef with one.
+/// of the chain with every holder above them) — or an abstract getter of
+/// one, whose kinds each keep it their own way (2026-10-29: a tile's slot
+/// came to read its page's picture on the getter, and the tile cache fell
+/// out with `TilePicture`) — a record typedef with one.
 /// ⛔Only pieces: a list of any picture is a holding, and a holder of
 /// holdings no picture of its own (widened so, the home page's sessions
 /// came up).
@@ -344,6 +347,11 @@ Iterable<String> _wrappersIn(String source, String pictures) sync* {
     r'\??\s+\w+\s*[;=]',
     multiLine: true,
   );
+  final abstractGetter = RegExp(
+    '^  (?:$pictures)'
+    r'\??\s+get\s+\w+\s*;',
+    multiLine: true,
+  );
   final recordField = RegExp(
     r'(?:^|[(,{])\s*(?:'
     '$pictures'
@@ -351,7 +359,7 @@ Iterable<String> _wrappersIn(String source, String pictures) sync* {
     multiLine: true,
   );
   for (final (:name, :body) in _typesIn(source)) {
-    if (field.hasMatch(body)) {
+    if (field.hasMatch(body) || abstractGetter.hasMatch(body)) {
       yield name;
     }
   }
