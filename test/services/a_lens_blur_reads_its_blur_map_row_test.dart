@@ -10,6 +10,7 @@ import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_section_defaults.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/services/playback/cut_frame_composite_signature.dart';
@@ -188,6 +189,20 @@ void main() {
     ]);
     final reader = readerIn(tree);
     expect(reader.node, isA<CompositeGroup<CutFrameCompositeRow>>());
+    expect(readOf(reader, 'b'), isA<CutFrameCompositeEntry>());
+  });
+
+  test('so does an adjustment\'s, over all it reaches', () {
+    final tree = treeOf([
+      row('b'),
+      row('a'),
+      createAdjustmentLayer(
+        id: const LayerId('fx'),
+        name: 'FX',
+      ).copyWith(effects: [lens(map: 'b')]),
+    ]);
+    final reader = readerIn(tree);
+    expect(reader.node, isA<CompositeAdjustment<CutFrameCompositeRow>>());
     expect(readOf(reader, 'b'), isA<CutFrameCompositeEntry>());
   });
 
