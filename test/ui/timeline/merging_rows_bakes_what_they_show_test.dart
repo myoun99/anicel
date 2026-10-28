@@ -74,11 +74,12 @@ void main() {
       );
 
   /// A synced attach row `r` riding `a` — its ink blue in the canvas's first
-  /// tile of the second row.
+  /// tile of the second row, at half strength.
   final rider = Layer(
     id: const LayerId('r'),
     name: 'r',
     attachedToLayerId: const LayerId('a'),
+    opacity: 0.5,
     frames: [
       Frame(id: const FrameId('r-1'), duration: 2, name: '1', strokes: []),
     ],
@@ -271,6 +272,8 @@ void main() {
     final riderCel = mergedCel(s, 'r');
     expect(at(riderCel, 20, 20), blue, reason: 'it wore a\'s move');
     expect(at(riderCel, 5, 20)?[3] ?? 0, 0);
+    expect(at(riderCel, 52, 5)?[3] ?? 0, 0, reason: 'a\'s own is not in it');
+    expect(ridden.opacity, 0.5, reason: 'its strength stays on its row');
 
     s.undo();
     expect(s.requireActiveCut.layers, before);

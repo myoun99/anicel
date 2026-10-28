@@ -393,7 +393,12 @@ void main() {
         cutOf([
           row('b', {0: 'B1', 2: 'B2'}, lastLength: 6),
           base,
-          synced('r', base),
+          synced('r', base).copyWith(
+            isVisible: false,
+            opacity: 0.5,
+            blendMode: LayerBlendMode.multiply,
+            clipsToBelow: true,
+          ),
         ]),
         ['a', 'b'],
       )!;
@@ -406,6 +411,11 @@ void main() {
       final rider = plan.riders.single;
       expect(rider.attachedToLayerId, const LayerId('a'));
       expect(rider.timeline, isEmpty, reason: 'it rides the result');
+      expect(
+        [rider.isVisible, rider.opacity, rider.blendMode, rider.clipsToBelow],
+        [false, 0.5, LayerBlendMode.multiply, true],
+        reason: 'what is its own stays on its row',
+      );
       expect(
         [for (final cel in rider.frames) (cel.id.value, cel.name)],
         [
@@ -427,10 +437,58 @@ void main() {
       expect(
         [
           for (final row in drawn.first.from.layers)
-            (row.id.value, row.isVisible),
+            (
+              row.id.value,
+              row.isVisible,
+              row.opacity,
+              row.blendMode,
+              row.clipsToBelow,
+            ),
         ],
-        [('a', false), ('r', true)],
+        [
+          ('a', false, 1.0, LayerBlendMode.normal, false),
+          ('r', true, 1.0, LayerBlendMode.normal, false),
+        ],
+        reason: 'and is laid on the pictures as it was, so none of it is '
+            'baked',
       );
+    });
+
+    test('a synced one\'s cel where it showed nothing is an empty cel, '
+        'drawn of nothing', () {
+      final base = row('a', {0: '1', 2: '2'});
+      final plan = merge(
+        cutOf([
+          row('b', {0: 'B1'}, lastLength: 4),
+          base,
+          synced('r', base).copyWith(
+            baseFrameLinks: {base.frames.first.id: const FrameId('r-1')},
+          ),
+        ]),
+        ['a', 'b'],
+      )!;
+
+      final rider = plan.riders.single;
+      expect([for (final cel in rider.frames) cel.name], ['R1', null]);
+      expect(
+        [
+          for (final picture in plan.pictures)
+            if (picture.rowId == rider.id) picture.frameIndex,
+        ],
+        [0],
+      );
+    });
+
+    test('a base that shows nothing still holds a cel wherever its synced '
+        'rider shows one', () {
+      final base = row('a', {0: '1'}).copyWith(opacity: 0);
+      final plan = merge(
+        cutOf([row('b', {}), base, synced('r', base)]),
+        ['a', 'b'],
+      )!;
+
+      expect(plan.result.frames, hasLength(1));
+      expect(plan.riders.single.frames, hasLength(1));
     });
 
     test('a free one keeps its own timing, its cels parted wherever what '
@@ -441,7 +499,7 @@ void main() {
             .withKey(2, CanvasPoint(x: 40, y: 18)),
       );
       final base = row('a', {0: '1'}, lastLength: 4, transformTrack: moving);
-      final free = row('r', {1: 'R1'}).copyWith(
+      final free = row('r', {1: 'R1'}, kind: LayerKind.image).copyWith(
         attachedToLayerId: base.id,
         attachedMode: AttachedMode.free,
       );
@@ -454,6 +512,7 @@ void main() {
       expect(rider.attachedMode, AttachedMode.free);
       expect(rider.attachedToLayerId, const LayerId('a'));
       expect(blocksOf(rider), {1: (1, 'R1'), 2: (1, 'R1-2')});
+      expect(rider.kind, LayerKind.animation, reason: 'an image no more');
     });
 
     test('one taken with its base is merged, and the other rides', () {

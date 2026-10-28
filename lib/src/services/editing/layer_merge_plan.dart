@@ -306,8 +306,10 @@ bool _isPicture(Layer row) => row.kind.isDrawingCel;
 ///   (round ④, Q9 · Q12),
 /// - a reference row, whose picture is its file's, laid whole past the
 ///   wall (F-374-Q8) where no picture of the screen reaches — rasterized,
-///   it merges as every drawing does,
-/// - a direction block, whose direction is no picture to bake,
+///   it merges as every drawing does (my call, put to the user as
+///   I-78-Q15),
+/// - a direction block, whose direction is no picture to bake (my call,
+///   put to the user as I-78-Q16),
 /// - and a row an attach row that stands down rides: the rider would ride
 ///   the result, its cels baked anew.
 ///
