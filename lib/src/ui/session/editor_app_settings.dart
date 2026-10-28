@@ -20,6 +20,7 @@ import '../../services/persistence/app_ui_scale_store.dart';
 import '../../services/persistence/app_workspace_colors_store.dart';
 import '../../services/persistence/audio_sync_settings_store.dart';
 import '../../services/persistence/usage_stats_store.dart';
+import '../../services/usage_stats/aptabase_client.dart';
 import '../../services/usage_stats/usage_stats.dart';
 import '../../models/app_input_settings.dart';
 import '../../models/audio_sync_settings.dart';
@@ -72,6 +73,7 @@ class EditorAppSettings {
     AppCameraPathSettingsStore? cameraPathSettingsStore,
     AppPixelVerbSettingsStore? pixelVerbSettingsStore,
     UsageStatsStore? usageStatsStore,
+    AptabaseClient? usageStatsClient,
     Iterable<String> Function()? deviceLanguageCodes,
   }) : _languageSettingsStore = languageSettingsStore,
        _deviceLanguageCodes = deviceLanguageCodes ?? _platformLanguageCodes,
@@ -87,7 +89,8 @@ class EditorAppSettings {
        _frameCountSettingsStore = frameCountSettingsStore,
        _cameraPathSettingsStore = cameraPathSettingsStore,
        _pixelVerbSettingsStore = pixelVerbSettingsStore,
-       _usageStatsStore = usageStatsStore;
+       _usageStatsStore = usageStatsStore,
+       _usageStatsClient = usageStatsClient;
 
   /// Starts every restore, in the order the session started them in.
   ///
@@ -115,11 +118,16 @@ class EditorAppSettings {
   /// Injectable persistence; null (tests) keeps the answer in memory.
   final UsageStatsStore? _usageStatsStore;
 
+  /// Where the statistics go; null sends under the release's App Key —
+  /// which no build but a release has, so nothing leaves a test.
+  final AptabaseClient? _usageStatsClient;
+
   /// Whether this device sends usage statistics, and the sending — ONE
   /// switch the launch notice and Preferences both show (I-70-Q3). The
   /// shell reports the launch and each return to the app to it.
   late final UsageStats usageStats = UsageStats(
     store: _usageStatsStore,
+    client: _usageStatsClient,
     locale: () => languageSettings.value.programLanguage.languageCode,
   );
 

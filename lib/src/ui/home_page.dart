@@ -44,6 +44,7 @@ import '../services/persistence/recent_projects.dart';
 import '../services/persistence/recent_projects_store.dart';
 import '../services/persistence/audio_sync_settings_store.dart';
 import '../services/persistence/usage_stats_store.dart';
+import '../services/usage_stats/aptabase_client.dart';
 import '../services/persistence/autosave_clock.dart';
 import '../services/persistence/session_scratch.dart';
 import '../services/persistence/project_autosave_service.dart';
@@ -132,6 +133,8 @@ class HomePage extends StatefulWidget {
     this.fontLibraryService,
     this.languageSettingsStore,
     this.launchNotice,
+    this.usageStatsStore,
+    this.usageStatsClient,
     this.battery,
     this.handedAtLaunch = const [],
   });
@@ -169,6 +172,16 @@ class HomePage extends StatefulWidget {
   /// the bundled notice on the saved file outside tests, and nothing inside
   /// them — a test that measures the launch hands one in.
   final LaunchNotice? launchNotice;
+
+  /// Where the usage statistics' answer is restored from (I-70), beside
+  /// [languageSettingsStore]: null reads the saved file outside tests and
+  /// nothing inside them.
+  final UsageStatsStore? usageStatsStore;
+
+  /// Where the usage statistics go. Null sends under the release's App Key,
+  /// which no test has — a test that measures what a launch sends hands one
+  /// in, with [usageStatsStore].
+  final AptabaseClient? usageStatsClient;
 
   /// The device's battery for the top strip's end ([DeviceBattery.shown],
   /// which the app hands in) — null on a device without one, and in a test
@@ -244,7 +257,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     frameCountSettingsStore: _unlessTesting(AppFrameCountSettingsStore.new),
     cameraPathSettingsStore: _unlessTesting(AppCameraPathSettingsStore.new),
     pixelVerbSettingsStore: _unlessTesting(AppPixelVerbSettingsStore.new),
-    usageStatsStore: _unlessTesting(UsageStatsStore.new),
+    usageStatsStore:
+        widget.usageStatsStore ?? _unlessTesting(UsageStatsStore.new),
+    usageStatsClient: widget.usageStatsClient,
   )..restore();
   final WorkspacePanelsMenuController _panelsMenu =
       WorkspacePanelsMenuController();

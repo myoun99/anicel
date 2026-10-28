@@ -335,6 +335,25 @@ void main() {
       expect(sent, hasLength(2));
     });
 
+    test('a launch that lands while a return\'s day is on its way sends '
+        'app_started alone, and the day goes once', () async {
+      final stats = run(_MemoryStore([]));
+      hold = Completer<void>();
+      // The return first, before the answer is even back.
+      final resume = stats.reportResume();
+      await pumpEventQueue();
+      final launch = stats.reportLaunch();
+      await pumpEventQueue();
+      final again = stats.reportResume();
+      await pumpEventQueue();
+      hold!.complete();
+      await Future.wait([resume, launch, again]);
+      expect(sent, [
+        ['day days=new'],
+        ['app_started'],
+      ]);
+    });
+
     test('a return while the day is on its way sends it once', () async {
       final stats = run(_MemoryStore([]));
       hold = Completer<void>();

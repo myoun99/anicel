@@ -15,7 +15,7 @@ import 'aptabase_client.dart';
 /// any time in Preferences: ONE switch ([enabled]) both of them show.
 ///
 /// ⛔Off sends nothing at all, and neither does a build with no App Key
-/// ([AptabaseClient.canSend]).
+/// ([AptabaseClient.endpoint]).
 class UsageStats {
   UsageStats({
     UsageStatsStore? store,
@@ -94,9 +94,6 @@ class UsageStats {
   /// buckets): turning it off deletes the local record, so a device that
   /// comes back on is `new` again.
   void setEnabled(bool on) {
-    if (enabled.value == on) {
-      return;
-    }
     enabled.value = on;
     if (!on) {
       _days = const [];
@@ -127,7 +124,10 @@ class UsageStats {
   }
 
   Future<void> _report({required bool countRun}) async {
-    if (!enabled.value || !_client.canSend) {
+    // ⚠️Off is the one gate here. A build with no App Key is the client's
+    // own ([AptabaseClient.endpoint]): it posts nothing, so the day stays
+    // owed and nothing is counted as sent.
+    if (!enabled.value) {
       return;
     }
     final now = _now();

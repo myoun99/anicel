@@ -69,8 +69,6 @@ final class AptabaseClient {
   final DeviceDescription Function() _describe;
   final Random _random;
 
-  bool get canSend => endpoint != null;
-
   /// The events API of the region in [appKey] — `A-EU-…` or `A-US-…`,
   /// three parts — or null for any other key, the empty one included.
   ///

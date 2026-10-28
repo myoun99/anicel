@@ -91,9 +91,8 @@ void main() {
         'EU-1462843916',
       ]) {
         expect(AptabaseClient.endpointFor(key), isNull, reason: key);
-        expect(client(appKey: key).canSend, isFalse, reason: key);
+        expect(client(appKey: key).endpoint, isNull, reason: key);
       }
-      expect(client().canSend, isTrue);
     });
 
     test('⛔a client with no key posts nothing at all', () async {

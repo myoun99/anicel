@@ -64,8 +64,8 @@ void main() {
     expect(key, isNotNull, reason: 'the script names its key on one line');
     expect(AptabaseClient.endpointFor(key!), isNotNull, reason: key);
     expect(
-      AptabaseClient().canSend,
-      isFalse,
+      AptabaseClient().endpoint,
+      isNull,
       reason: '시험은 키를 받지 않은 빌드다',
     );
   });
