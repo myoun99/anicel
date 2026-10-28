@@ -9,6 +9,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/se_dialogue_spacing.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
@@ -51,11 +52,15 @@ void main() {
   // each cut's sheet is one page of two 12-row halves — and the sound runs
   // past the first two sheets' rows, not only their cuts.
   const cutStarts = [0, 24, 48];
+  // Four frames a glyph: the ten glyphs reach the sound's last frames, on
+  // the third sheet (F-496 ③).
+  const reach = SeDialogueSpacing(komaPerGlyph: 4);
 
   TimesheetDocument sheetAt(
     int cutStart, {
     String? seName = 'N',
     int pageSeconds = 1,
+    SeDialogueSpacing spacing = reach,
   }) => TimesheetDocument.fromCut(
     cut: Cut(
       id: CutId('cut-$cutStart'),
@@ -79,6 +84,7 @@ void main() {
             strokes: const [],
             name: words,
             seName: seName,
+            seSpacing: spacing,
           ),
         ],
         timeline: {
@@ -121,6 +127,7 @@ void main() {
     int cutStart, {
     String? seName = 'N',
     int pageSeconds = 1,
+    SeDialogueSpacing spacing = reach,
   }) {
     // The name box's tint — not the wash an empty row wears.
     final nameBox = AppColors.accent.withValues(alpha: 0.3).toARGB32();
@@ -128,6 +135,7 @@ void main() {
       cutStart,
       seName: seName,
       pageSeconds: pageSeconds,
+      spacing: spacing,
     );
     final layout = TimesheetDocumentLayout(document: sheet);
     final ink = _SheetInk();
@@ -182,26 +190,38 @@ void main() {
   });
 
   // 🗣️F-358 (유저 2026-10-19): 「대사가 1코마부터 시작하게」 — each glyph
-  // on the frame the rows lay it on (`seNameChipPlace`): over the sound's
-  // frames edge to edge, named or not, the name standing outside them.
+  // on the frame the rows lay it on (`seNameChipPlace`), named or not, the
+  // name standing outside them. 🗣️F-496 ③ (유저 2026-10-28): 「1코마부터
+  // 첫번째 글자가 시작되도록. 대사 오프셋은 이 시작되는 위치를 변경함 …
+  // 글자별 코마는 글자별로 배치할 길이」 — the glyph on the first of its own
+  // frames, centred on that frame's row.
   for (final seName in ['N', null]) {
-    test('the words stand on the frames the rows lay them on '
-        '(${seName == null ? 'no name' : 'named'})', () {
-      final writing = [
-        for (final start in cutStarts) ...inkOf(start, seName: seName).writing,
-      ]..sort();
-      final glyphs = seName == null ? writing : writing.skip(1).toList();
-      const from = 16;
-      const cell = (56 - from) / words.length;
-      expect(glyphs, hasLength(words.length));
-      for (final (index, centre) in glyphs.indexed) {
-        expect(
-          centre,
-          closeTo(from + (index + 0.5) * cell, 0.02),
-          reason: 'glyph $index',
-        );
-      }
-    });
+    for (final spacing in [
+      SeDialogueSpacing.standard,
+      const SeDialogueSpacing(offset: 2, komaPerGlyph: 3),
+      reach,
+    ]) {
+      test('the words stand on the frames the rows lay them on '
+          '(${seName == null ? 'no name' : 'named'}, $spacing)', () {
+        final writing = [
+          for (final start in cutStarts)
+            ...inkOf(start, seName: seName, spacing: spacing).writing,
+        ]..sort();
+        final glyphs = seName == null ? writing : writing.skip(1).toList();
+        const from = 16;
+        expect(glyphs, hasLength(words.length));
+        for (final (index, centre) in glyphs.indexed) {
+          expect(
+            centre,
+            closeTo(
+              from + spacing.offset + index * spacing.komaPerGlyph + 0.5,
+              0.02,
+            ),
+            reason: 'glyph $index',
+          );
+        }
+      });
+    }
   }
 
   // 🗣️F-358 (유저 2026-10-17): 「컷 엔드라인(OL여백이든 뭐든 총합적인

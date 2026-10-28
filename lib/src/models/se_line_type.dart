@@ -1,5 +1,6 @@
 import '../core/collection_equality.dart' show mapEquals;
 import 'cut_id.dart';
+import 'se_dialogue_spacing.dart';
 
 /// An SE block's DELIVERY (I-20): the speaker on screen, off it, or inside
 /// their own head.
@@ -134,7 +135,11 @@ final class SeLineTypes {
   String toString() => 'SeLineTypes(${own.name}, $byCut)';
 }
 
-/// An SE block's own fields besides its dialogue — the speaker's name and
-/// the delivery in each cut — written together with the dialogue, as one
-/// edit.
-typedef SeEntryFields = ({String? seName, SeLineTypes seTypes});
+/// An SE block's own fields besides its dialogue — the speaker's name, the
+/// delivery in each cut and where the dialogue's glyphs stand (F-496) —
+/// written together with the dialogue, as one edit.
+typedef SeEntryFields = ({
+  String? seName,
+  SeLineTypes seTypes,
+  SeDialogueSpacing spacing,
+});

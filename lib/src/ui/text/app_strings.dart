@@ -397,6 +397,8 @@ enum AppStrings {
   String get seNameLabel => _s('seNameLabel');
   String get seTypeLabel => _s('seTypeLabel');
   String get seDialogueLabel => _s('seDialogueLabel');
+  String get seDialogueOffsetLabel => _s('seDialogueOffsetLabel');
+  String get seKomaPerGlyphLabel => _s('seKomaPerGlyphLabel');
   String get seLinkedAudioLabel => _s('seLinkedAudioLabel');
   String get seLinkedAudioNone => _s('seLinkedAudioNone');
   String get seUnlinkAudio => _s('seUnlinkAudio');
@@ -2174,6 +2176,8 @@ enum AppStrings {
     'seNameLabel': 'Name (speaker — blank hides the box)',
     'seTypeLabel': 'Type',
     'seDialogueLabel': 'Dialogue',
+    'seDialogueOffsetLabel': 'Dialogue offset',
+    'seKomaPerGlyphLabel': 'Frames per character',
     'seLinkedAudioLabel': 'Linked audio',
     'seLinkedAudioNone': 'None',
     'seUnlinkAudio': 'Unlink',
@@ -3470,6 +3474,8 @@ enum AppStrings {
     'seNameLabel': '名前（話者 — 空欄でボックス非表示）',
     'seTypeLabel': 'タイプ',
     'seDialogueLabel': 'セリフ',
+    'seDialogueOffsetLabel': 'セリフのオフセット',
+    'seKomaPerGlyphLabel': '1文字のコマ数',
     'seLinkedAudioLabel': 'リンクされた音声',
     'seLinkedAudioNone': 'なし',
     'seUnlinkAudio': 'リンクを解除',
@@ -5237,6 +5243,8 @@ enum AppStrings {
     'seNameLabel': '이름 (화자 — 비우면 박스 숨김)',
     'seTypeLabel': '타입',
     'seDialogueLabel': '대사',
+    'seDialogueOffsetLabel': '대사 오프셋',
+    'seKomaPerGlyphLabel': '글자별 코마',
     'seLinkedAudioLabel': '링크된 오디오',
     'seLinkedAudioNone': '없음',
     'seUnlinkAudio': '링크 해제',
@@ -6998,6 +7006,8 @@ enum AppStrings {
     'seNameLabel': 'Nom (locuteur — vide masque le cadre)',
     'seTypeLabel': 'Type',
     'seDialogueLabel': 'Dialogue',
+    'seDialogueOffsetLabel': 'Décalage du dialogue',
+    'seKomaPerGlyphLabel': 'Images par caractère',
     'seLinkedAudioLabel': 'Audio lié',
     'seLinkedAudioNone': 'Aucun',
     'seUnlinkAudio': 'Dissocier',
@@ -8872,6 +8882,8 @@ enum AppStrings {
     'seNameLabel': '名称（说话者 — 留空则隐藏名条）',
     'seTypeLabel': '类型',
     'seDialogueLabel': '台词',
+    'seDialogueOffsetLabel': '台词偏移',
+    'seKomaPerGlyphLabel': '每字帧数',
     'seLinkedAudioLabel': '已链接音频',
     'seLinkedAudioNone': '无',
     'seUnlinkAudio': '解除链接',

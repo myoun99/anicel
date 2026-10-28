@@ -2,6 +2,7 @@ import 'dart:async' show FutureOr;
 
 import 'package:flutter/material.dart';
 
+import '../../models/app_frame_count_settings.dart';
 import '../../models/audio_clip.dart' show AudioClip;
 import '../../models/camera_instruction.dart';
 import '../../models/cut.dart' show Cut;
@@ -12,6 +13,7 @@ import '../../models/frame_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/property_track.dart' show KeySidesEdit, KeyTypePick;
 import '../../models/layer_id.dart';
+import '../../models/se_dialogue_spacing.dart';
 import '../../models/se_line_type.dart';
 import '../../models/timeline_coverage.dart' show coveringDrawingBlockAt;
 import '../../services/project_lookup.dart' show layerAnywhereOrNull;
@@ -336,9 +338,12 @@ Future<void> _editSeLabel(
   final layerId = session.activeLayer!.id;
   await _editSeEntryWithDialog(
     context,
+    session,
     initialSeName: session.seEntries.selectedFrameSeName ?? '',
     initialDialogue: session.selectedFrameName ?? '',
     initialSeTypes: session.seEntries.selectedFrameSeTypes,
+    initialSpacing: session.seEntries.selectedFrameSeSpacing,
+    blockFrames: blockFrames,
     // The cut the timeline shows — its のりしろ too, which plays over the
     // cut in front.
     cuts: session.seEntries
@@ -352,8 +357,7 @@ Future<void> _editSeLabel(
     previewAxis: previewAxis,
     commit: (dialogue, fields) => session.seEntries.updateSelectedSeEntry(
       dialogue: dialogue,
-      seName: fields.seName,
-      seTypes: fields.seTypes,
+      fields: fields,
     ),
     setGain: (token, gain) =>
         session.audioClips.setAudioClipGain(layerId, token, gain),
@@ -470,9 +474,12 @@ Future<void> editSeEntryInstance(
   final opening = session.seEntries.seLineCutsAt(layerId, globalFrame);
   await _editSeEntryWithDialog(
     context,
+    session,
     initialSeName: entry.seName ?? '',
     initialDialogue: entry.name ?? '',
     initialSeTypes: entry.seTypes,
+    initialSpacing: entry.seSpacing,
+    blockFrames: block.length,
     cuts: opening.cuts,
     initialCutId: opening.atFrame,
     linkedAudio: [
@@ -499,10 +506,13 @@ Future<void> editSeEntryInstance(
 /// standing-addressed one and the storyboard's row-addressed one. One body,
 /// so "delete works from one door but not the other" has nowhere to start.
 Future<void> _editSeEntryWithDialog(
-  BuildContext context, {
+  BuildContext context,
+  EditorSessionManager session, {
   required String initialSeName,
   required String initialDialogue,
   required SeLineTypes initialSeTypes,
+  required SeDialogueSpacing initialSpacing,
+  required int blockFrames,
   required List<Cut> cuts,
   required CutId? initialCutId,
   required List<SeInstanceAudioLink> linkedAudio,
@@ -519,6 +529,13 @@ Future<void> _editSeEntryWithDialog(
       initialSeName: initialSeName,
       initialDialogue: initialDialogue,
       initialSeTypes: initialSeTypes,
+      initialSpacing: initialSpacing,
+      blockFrames: blockFrames,
+      frameRate: session.projectSettings.projectFrameRate,
+      // The count windows' entry, kept as theirs is (I-24-open-entry-Q1).
+      onCountEntryChanged: (entry) => session.appSettings.setFrameCountSettings(
+        AppFrameCountSettings.settings.value.copyWith(lastEntry: entry),
+      ),
       cuts: cuts,
       initialCutId: initialCutId,
       previewAxis: previewAxis,
@@ -531,7 +548,11 @@ Future<void> _editSeEntryWithDialog(
 
   final seName = result.seName.isEmpty ? null : result.seName;
   // SE edits never hit the link-conflict flow (duplicates allowed).
-  commit(result.dialogue, (seName: seName, seTypes: result.seTypes));
+  commit(result.dialogue, (
+    seName: seName,
+    seTypes: result.seTypes,
+    spacing: result.spacing,
+  ));
   // ⚠️The offsets and gains BEFORE the unlink: a token is the clip's index,
   // and taking a sound off shifts every index after it.
   for (final MapEntry(key: token, value: offset)

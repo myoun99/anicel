@@ -6,6 +6,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/inbetween_mark.dart';
+import 'package:anicel/src/models/se_dialogue_spacing.dart';
 import 'package:anicel/src/models/se_line_type.dart';
 import 'package:anicel/src/ui/dialogs/instance_edit_preview.dart';
 import 'package:anicel/src/ui/dialogs/instruction_event_dialog.dart';
@@ -186,6 +187,83 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('se-type-off')));
     await tester.pump();
     expect(find.bySemanticsLabel('SE delivery OFF'), findsOneWidget);
+  });
+
+  // 🗣️F-496 ③ (유저 2026-10-28): 「대사 오프셋/글자별 코마 기능 …
+  // 글자별 코마는 기본값 3코마, 오프셋은 기본값 0」.
+  testWidgets('SE dialog: the offset and the frames a glyph open on the '
+      'block\'s own, lay the preview\'s block as they are typed, and come '
+      'back on OK', (tester) async {
+    const opened = SeDialogueSpacing(offset: 1, komaPerGlyph: 2);
+    const typedIn = SeDialogueSpacing(offset: 4, komaPerGlyph: 5);
+    SeInstanceDialogResult? result;
+    await _openDialog<SeInstanceDialogResult>(
+      tester,
+      const SeInstanceDialog(
+        initialDialogue: 'あいう',
+        initialSpacing: opened,
+        blockFrames: 30,
+      ),
+      (r) => result = r,
+    );
+    final offset = find.byKey(const ValueKey('se-dialogue-offset-field'));
+    final koma = find.byKey(const ValueKey('se-koma-per-glyph-field'));
+    String typed(Finder field) =>
+        tester.widget<TextField>(field).controller!.text;
+    DialogueFitText preview() => tester.widget<DialogueFitText>(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('instance-edit-preview')),
+        matching: find.byType(DialogueFitText),
+      ),
+    );
+
+    expect((typed(offset), typed(koma)), ('1', '2'));
+    expect(preview().spacing, opened);
+    expect(
+      preview().frames,
+      30,
+      reason: 'the block as long as it is — the spacing counts in its frames',
+    );
+
+    await tester.enterText(offset, '4');
+    await tester.enterText(koma, '5');
+    await tester.pump();
+    expect(preview().spacing, typedIn);
+
+    await tester.enterText(koma, '');
+    await tester.pump();
+    expect(
+      preview().spacing.komaPerGlyph,
+      5,
+      reason: 'a field typed empty keeps what it last counted',
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instance-edit-ok-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(result!.spacing, typedIn);
+  });
+
+  testWidgets('SE dialog: a new block opens on the standard — from its '
+      'first frame, three a glyph', (tester) async {
+    SeInstanceDialogResult? result;
+    await _openDialog<SeInstanceDialogResult>(
+      tester,
+      const SeInstanceDialog(creating: true),
+      (r) => result = r,
+    );
+    String typed(String key) =>
+        tester.widget<TextField>(find.byKey(ValueKey(key))).controller!.text;
+    expect(
+      (typed('se-dialogue-offset-field'), typed('se-koma-per-glyph-field')),
+      ('0', '3'),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instance-edit-ok-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(result!.spacing, SeDialogueSpacing.standard);
   });
 
   testWidgets('SE dialog cancel pops nothing', (tester) async {

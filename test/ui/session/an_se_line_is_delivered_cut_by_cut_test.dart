@@ -4,6 +4,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/se_dialogue_spacing.dart';
 import 'package:anicel/src/models/se_line_type.dart';
 import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -40,8 +41,11 @@ _Across _aLineAcrossTwoCuts() {
   s.seEntries.createSeEntryAtCurrentFrame(name: '', lengthFrames: 6);
   s.seEntries.updateSelectedSeEntry(
     dialogue: 'やめて',
-    seName: 'A子',
-    seTypes: SeLineTypes.allOn,
+    fields: (
+      seName: 'A子',
+      seTypes: SeLineTypes.allOn,
+      spacing: SeDialogueSpacing.standard,
+    ),
   );
   return (s: s, first: first, second: second, row: row);
 }
@@ -57,7 +61,11 @@ void _deliver(_Across a, SeLineTypes types) =>
       a.row,
       _lineOf(a).id,
       dialogue: 'やめて',
-      fields: (seName: 'A子', seTypes: types),
+      fields: (
+        seName: 'A子',
+        seTypes: types,
+        spacing: SeDialogueSpacing.standard,
+      ),
     );
 
 String? _onCanvas(_Across a, Cut cut, int frame) =>
@@ -113,11 +121,12 @@ PanelFlyoutButton _picker(WidgetTester tester) =>
 
 String _pickerLabel(WidgetTester tester) => _picker(tester).label;
 
-/// The key of the one type pill lit.
+/// The key of the one type pill lit — the strip of type pills, not the
+/// frame-count fields' own entry pills (F-496 ③).
 String _pillOn(WidgetTester tester) => tester
-    .widget<PillStrip>(find.byType(PillStrip))
-    .items
-    .where((item) => item.selected)
+    .widgetList<PillStrip>(find.byType(PillStrip))
+    .expand((strip) => strip.items)
+    .where((item) => item.keyValue.startsWith('se-type-') && item.selected)
     .single
     .keyValue;
 

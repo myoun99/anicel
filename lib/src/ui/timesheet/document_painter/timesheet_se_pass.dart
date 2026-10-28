@@ -256,7 +256,8 @@ class _TimesheetSePass {
     // lay them ([seNameChipPlace]): a glyph stands on the same frame here
     // as on the rows. ↩️They began under the name box and kept off both
     // ends by a pad, a fraction of a frame from the rows' place.
-    final spanBottom = spanTop + (lead + (start.spanLength ?? 1)) * rowHeight;
+    final frames = lead + (start.spanLength ?? 1);
+    final spanBottom = spanTop + frames * rowHeight;
     // The window: this half's rows of the span.
     final top = math.max(spanTop, cellTop);
     final bottom = math.min(spanBottom, cellTop + (rowCount - row) * rowHeight);
@@ -268,6 +269,8 @@ class _TimesheetSePass {
       start.label ?? '',
       topCenter: Offset(centerX, spanTop),
       extent: spanBottom - spanTop,
+      frames: frames,
+      spacing: start.seSpacing ?? SeDialogueSpacing.standard,
       shownFrom: top - spanTop,
       shownTo: bottom - spanTop,
       style: _painter.face.copyWith(

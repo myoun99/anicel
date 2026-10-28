@@ -4,6 +4,7 @@ import '../core/copy_with_sentinel.dart';
 import 'app_frame_grid_settings.dart';
 import 'inbetween_mark.dart';
 import 'layer_kind.dart';
+import 'se_dialogue_spacing.dart';
 import 'se_line_type.dart';
 import 'stroke.dart';
 
@@ -119,6 +120,7 @@ class Frame {
     this.name,
     this.seName,
     this.seTypes = SeLineTypes.allOn,
+    this.seSpacing = SeDialogueSpacing.standard,
     this.filePicture,
   }) : strokes = List.unmodifiable(strokes);
 
@@ -150,6 +152,11 @@ class Frame {
   /// a surface says which cut it shows ([SeLineTypes.inCut]).
   final SeLineTypes seTypes;
 
+  /// SE rows only: where the dialogue starts on its block and how many
+  /// frames each glyph takes (F-496 ③) — what every drawing carries and
+  /// ignores.
+  final SeDialogueSpacing seSpacing;
+
   /// REFERENCE rows only: which picture of the row's file this cel is — a
   /// still's one, a GIF's frame, a PDF's page — counted in the FILE, so the
   /// cel can be made from it again where the row's reference fx stands it
@@ -168,6 +175,7 @@ class Frame {
     Object? name = copyWithSentinel,
     Object? seName = copyWithSentinel,
     SeLineTypes? seTypes,
+    SeDialogueSpacing? seSpacing,
     Object? filePicture = copyWithSentinel,
   }) {
     return Frame(
@@ -179,6 +187,7 @@ class Frame {
           ? this.seName
           : seName as String?,
       seTypes: seTypes ?? this.seTypes,
+      seSpacing: seSpacing ?? this.seSpacing,
       filePicture: identical(filePicture, copyWithSentinel)
           ? this.filePicture
           : filePicture as int?,
@@ -194,6 +203,7 @@ class Frame {
     // ON is the absent field — every drawing, and every block that never
     // chose, reads back as ON.
     ...seTypes.toJson(),
+    ...seSpacing.toJson(),
     if (filePicture != null) 'filePicture': filePicture,
   };
 
@@ -207,6 +217,7 @@ class Frame {
       name: json['name'] as String?,
       seName: json['seName'] as String?,
       seTypes: SeLineTypes.fromJson(json),
+      seSpacing: SeDialogueSpacing.fromJson(json),
       filePicture: json['filePicture'] as int?,
     );
   }
@@ -220,6 +231,7 @@ class Frame {
           other.name == name &&
           other.seName == seName &&
           other.seTypes == seTypes &&
+          other.seSpacing == seSpacing &&
           other.filePicture == filePicture &&
           listEquals(other.strokes, strokes);
 
@@ -230,6 +242,7 @@ class Frame {
     name,
     seName,
     seTypes,
+    seSpacing,
     filePicture,
     Object.hashAll(strokes),
   );
@@ -237,6 +250,6 @@ class Frame {
   @override
   String toString() =>
       'Frame(id: $id, duration: $duration, name: $name, '
-      'seName: $seName, seTypes: $seTypes, '
+      'seName: $seName, seTypes: $seTypes, seSpacing: $seSpacing, '
       'strokes: $strokes)';
 }

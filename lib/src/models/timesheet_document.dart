@@ -12,6 +12,7 @@ import 'layer_id.dart';
 import 'layer_mark.dart';
 import 'layer_process.dart';
 import 'project_frame_rate.dart' show secondsPlusFramesLabel;
+import 'se_dialogue_spacing.dart';
 import 'se_line_type.dart';
 import 'sheet_paint_layer.dart' show SheetPaintLayer;
 import 'sheet_sources.dart';
@@ -144,6 +145,7 @@ class TimesheetCell {
     this.valueB,
     this.seName,
     this.seType,
+    this.seSpacing,
     this.keyLabel,
   });
 
@@ -162,6 +164,7 @@ class TimesheetCell {
     valueB: valueB,
     seName: seName,
     seType: seType,
+    seSpacing: seSpacing,
     keyLabel: keyLabel,
   );
 
@@ -209,6 +212,10 @@ class TimesheetCell {
   /// prints it over the name when [SeLineType.writtenOut] says so.
   final SeLineType? seType;
 
+  /// SE drawing start cells only: where the dialogue's glyphs stand down
+  /// the block's rows (F-496 ③), as the timeline lays them.
+  final SeDialogueSpacing? seSpacing;
+
   /// What a [TimesheetCellKind.cameraKey] row writes for its key: the key's
   /// name, else the frame it stands on — as every surface labels a camera
   /// key ([cameraKeyLabel]; I-89 ⑤, 유저 2026-10-10: 「헤더이름따라서 이름
@@ -234,6 +241,7 @@ class TimesheetCell {
       other.valueB == valueB &&
       other.seName == seName &&
       other.seType == seType &&
+      other.seSpacing == seSpacing &&
       other.keyLabel == keyLabel;
 
   @override
@@ -248,6 +256,7 @@ class TimesheetCell {
     valueB,
     seName,
     seType,
+    seSpacing,
     keyLabel,
   );
 }
@@ -917,7 +926,11 @@ class _LayerCellsPass {
        seEntriesByFrameId = <FrameId, SeEntryFields>{
          if (seWritingOf != null)
            for (final frame in layer.frames)
-             frame.id: (seName: frame.seName, seTypes: frame.seTypes),
+             frame.id: (
+               seName: frame.seName,
+               seTypes: frame.seTypes,
+               spacing: frame.seSpacing,
+             ),
        };
 
   final Layer layer;
@@ -960,6 +973,7 @@ class _LayerCellsPass {
       spanLength: spanLength,
       seName: se?.seName,
       seType: se?.seTypes.inCut(seWritingOf),
+      seSpacing: se?.spacing,
     );
   }
 

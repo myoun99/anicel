@@ -1,12 +1,13 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/ui/text/dialogue_fit_paint.dart'
-    show dialogueNaturalExtent;
 import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart';
 
 import '../../helpers/an_se_row.dart';
+import '../../helpers/painted_glyph_boxes.dart';
 
 /// R4 improvement 2 — the SE span visual must never throw the striped
 /// RenderFlex overflow: long names scale down into the name box, and a span
@@ -74,33 +75,49 @@ void main() {
       double extentOf(Finder finder) =>
           extentAlong(axis, tester.getSize(finder));
 
-      await tester.pumpWidget(along(400));
-      // The words' own length: they have the whole block (F-358, 10-19),
-      // and narrow once the block is shorter than they are.
-      final natural = dialogueNaturalExtent(
-        'せりふのテキスト',
-        axis: axis,
-        style: dialogueFitStyle(
-          tester.element(find.byType(SeSpanVisual)),
-          color: Colors.black,
-        ),
-        maxCrossExtent: cross,
-      );
-      expect(natural, lessThan(400), reason: 'fixture: 400 holds them');
-      expect(natural, greaterThan(20), reason: 'fixture: 20 does not');
+      /// How long each glyph of the dialogue is PAINTED along the block.
+      List<double> glyphLengths() {
+        final glyphs = find.descendant(
+          of: find.byType(DialogueFitText),
+          matching: find.byType(CustomPaint),
+        );
+        final canvas = PaintedGlyphBoxes();
+        tester
+            .widget<CustomPaint>(glyphs)
+            .painter!
+            .paint(canvas, tester.getSize(glyphs));
+        return [for (final box in canvas.boxes) extentAlong(axis, box.size)];
+      }
 
-      for (final extent in [natural, natural * 0.75, natural / 2, 20.0, 6.0]) {
+      // One frame, eight glyphs: each has an eighth of the block (F-496 ③)
+      // — far more than it needs at this length.
+      await tester.pumpWidget(along(4000));
+      final natural = glyphLengths();
+      expect(natural, hasLength(8), reason: '⛔전제: every glyph painted');
+      final longest = natural.reduce(math.max);
+
+      for (final extent in [8 * longest, 6 * longest, 3 * longest, 20.0]) {
         await tester.pumpWidget(along(extent));
+        final lengths = glyphLengths();
+        final narrowed = [
+          for (var i = 0; i < lengths.length; i += 1) lengths[i] / natural[i],
+        ].reduce(math.min);
         final chip = extentOf(find.bySemanticsLabel(RegExp('SE name')));
         final dialogue = extentOf(find.byType(DialogueFitText));
         expect(dialogue, closeTo(extent, 1e-6), reason: 'at $extent');
         expect(
           chip / seNameBoxExtent,
-          closeTo(extent / natural, 1e-6),
+          // A narrowed glyph is quantised down to 1/64 (`wordCondensation`).
+          closeTo(narrowed, 1 / 64 + 1e-6),
           reason: 'at $extent: the chip narrows by the ratio the dialogue '
               'narrows by — ↩️it kept its 16 until the block was under 32',
         );
       }
+      expect(
+        extentOf(find.bySemanticsLabel(RegExp('SE name'))),
+        lessThan(seNameBoxExtent),
+        reason: '⛔전제: the words narrowed by the last length',
+      );
     });
   }
 

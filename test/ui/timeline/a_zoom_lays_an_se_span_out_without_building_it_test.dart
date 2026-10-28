@@ -3,7 +3,9 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/se_dialogue_spacing.dart';
 import 'package:anicel/src/models/se_line_type.dart';
+import 'package:anicel/src/ui/text/dialogue_fit_layout.dart';
 import 'package:anicel/src/ui/text/dialogue_fit_paint.dart';
 import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart';
@@ -138,7 +140,7 @@ void main() {
   testWidgets('🚨and the chip still narrows with the words — laid out at the '
       'length it is given', (tester) async {
     final resize = await mount(tester, width: 400);
-    final natural = dialogueNaturalExtent(
+    final longest = dialogueLongestGlyph(
       dialogue,
       axis: Axis.horizontal,
       style: dialogueFitStyle(
@@ -154,7 +156,13 @@ void main() {
       await tester.pump();
       final place = seNameChipPlace(
         width,
-        dialogueExtent: natural,
+        longestGlyph: longest,
+        glyphRoom: dialogueGlyphSlots(
+          glyphCount: dialogue.characters.length,
+          frames: 4,
+          mainExtent: width,
+          spacing: SeDialogueSpacing.standard,
+        ).first.roomExtent,
         roomBefore: 0,
       );
       expect(place.outside, isFalse, reason: '⛔premise: no room before it');
@@ -675,7 +683,7 @@ void main() {
       color: Colors.black,
     );
     final chip = find.bySemanticsLabel('SE name ドア');
-    double naturalIn(double width) => dialogueNaturalExtent(
+    double longestIn(double width) => dialogueLongestGlyph(
       dialogue,
       axis: Axis.vertical,
       style: style,
@@ -683,13 +691,19 @@ void main() {
     );
     double chipIn(double width) => seNameChipPlace(
       60,
-      dialogueExtent: naturalIn(width),
+      longestGlyph: longestIn(width),
+      glyphRoom: dialogueGlyphSlots(
+        glyphCount: dialogue.characters.length,
+        frames: 4,
+        mainExtent: 60,
+        spacing: SeDialogueSpacing.standard,
+      ).first.roomExtent,
       roomBefore: 0,
     ).chip;
     expect(
       chipIn(10),
       isNot(closeTo(chipIn(40), 1e-6)),
-      reason: '⛔premise: the width across moves the dialogue\'s length, '
+      reason: '⛔premise: the width across moves the glyphs\' length, '
           'and with it the chip',
     );
 

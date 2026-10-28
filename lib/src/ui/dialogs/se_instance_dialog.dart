@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 
+import '../../models/app_frame_count_settings.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/project_frame_rate.dart';
+import '../../models/se_dialogue_spacing.dart';
 import '../../models/se_line_type.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 import '../widgets/field_slider.dart';
+import '../widgets/frame_count_field.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/pill_strip.dart';
 import 'instance_edit_dialog.dart';
@@ -36,6 +39,7 @@ class SeInstanceDialogResult {
     required this.seName,
     required this.dialogue,
     this.seTypes = SeLineTypes.allOn,
+    this.spacing = SeDialogueSpacing.standard,
     this.unlinkedAudioTokens = const {},
     this.audioOffsets = const {},
     this.audioGains = const {},
@@ -47,6 +51,9 @@ class SeInstanceDialogResult {
   /// The line's delivery in each cut it plays in (I-20, F-386) — ON / OFF /
   /// MONO, as the window showed them ([SeLineTypes.shownIn]).
   final SeLineTypes seTypes;
+
+  /// Where the line's glyphs stand on the block (F-496 ③).
+  final SeDialogueSpacing spacing;
 
   /// The [SeInstanceAudioLink.token]s of the sounds unlinked in this
   /// sitting. Empty on every dialog that never showed one — unlinking is a
@@ -78,6 +85,10 @@ class SeInstanceDialog extends StatefulWidget {
     this.creating = false,
     this.previewAxis = Axis.horizontal,
     this.linkedAudio = const [],
+    this.initialSpacing = SeDialogueSpacing.standard,
+    this.blockFrames,
+    this.frameRate = ProjectFrameRate.fps24,
+    this.onCountEntryChanged,
   });
 
   final String initialSeName;
@@ -108,6 +119,22 @@ class SeInstanceDialog extends StatefulWidget {
   /// Follows the timeline orientation so the preview matches what the
   /// user is looking at.
   final Axis previewAxis;
+
+  /// Where the line's glyphs stand on the block (F-496 ③) — the standard
+  /// for one that never set them.
+  final SeDialogueSpacing initialSpacing;
+
+  /// How many frames the edited block runs — what the preview lays its
+  /// glyphs over. Null previews a block filling the strip.
+  final int? blockFrames;
+
+  /// The project's rate — what the spacing's counts are typed against as
+  /// seconds+frames ([FrameCountField]).
+  final ProjectFrameRate frameRate;
+
+  /// The way a count was just switched to be typed — what every count
+  /// window opens on next (I-24-open-entry-Q1).
+  final ValueChanged<FrameCountEntry>? onCountEntryChanged;
 
   @override
   State<SeInstanceDialog> createState() => _SeInstanceDialogState();
@@ -148,6 +175,10 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
   /// The deliveries picked in this sitting, applied on OK.
   late SeLineTypes _seTypes = widget.initialSeTypes;
 
+  /// The glyphs' spacing typed in this sitting, applied on OK — a count
+  /// cleared to be typed again keeps the last one until it is.
+  late SeDialogueSpacing _spacing = widget.initialSpacing;
+
   /// The cut the type pills set — null only for a block in no cut.
   late CutId? _cutId =
       widget.cuts.any((cut) => cut.id == widget.initialCutId)
@@ -169,6 +200,7 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
         seName: _seNameController.text.trim(),
         dialogue: _dialogue,
         seTypes: _seTypes.shownIn([for (final cut in widget.cuts) cut.id]),
+        spacing: _spacing,
         unlinkedAudioTokens: Set.unmodifiable(_unlinked),
         audioOffsets: Map.unmodifiable({
           for (final MapEntry(key: token, value: offset) in _offsets.entries)
@@ -222,6 +254,52 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
           ),
         ],
       ),
+    );
+  }
+
+  // 🗣️F-496 ③ (유저 2026-10-28): 「대사 오프셋/글자별 코마 기능 … 글자별
+  // 코마는 기본값 3코마, 오프셋은 기본값 0(1코마째부터 시작)」 — each a count
+  // of frames, typed in the app's one count field (I-24: 「여러곳에서 쓰일테니
+  // 공용화」).
+  Widget _spacingField(AppStrings strings) {
+    Widget count(
+      String keyPrefix,
+      String label,
+      int initial,
+      SeDialogueSpacing Function(int count) typed,
+    ) => Expanded(
+      child: FrameCountField(
+        keyPrefix: keyPrefix,
+        label: label,
+        framesPerSecond: widget.frameRate.countingBase,
+        initialEntry: AppFrameCountSettings.settings.value.lastEntry,
+        initialCount: initial,
+        onEntryChanged: widget.onCountEntryChanged,
+        autofocus: false,
+        onChanged: (count) {
+          if (count != null) {
+            setState(() => _spacing = typed(count));
+          }
+        },
+      ),
+    );
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        count(
+          'se-dialogue-offset',
+          strings.seDialogueOffsetLabel,
+          _spacing.offset,
+          (offset) => _spacing.copyWith(offset: offset),
+        ),
+        const SizedBox(width: 12),
+        count(
+          'se-koma-per-glyph',
+          strings.seKomaPerGlyphLabel,
+          _spacing.komaPerGlyph,
+          (koma) => _spacing.copyWith(komaPerGlyph: koma),
+        ),
+      ],
     );
   }
 
@@ -338,6 +416,8 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
             ),
           ),
           const SizedBox(height: 12),
+          _spacingField(strings),
+          const SizedBox(height: 12),
           _linkedAudioField(strings),
         ],
       ),
@@ -346,6 +426,8 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
         dialogue: _dialogue,
         seName: _seNameController.text.trim(),
         delivery: _seTypes.inCut(_cutId),
+        spacing: _spacing,
+        blockFrames: widget.blockFrames,
       ),
       onSubmit: _submit,
     );

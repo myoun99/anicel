@@ -13,6 +13,7 @@ import '../../models/canvas_viewport.dart';
 import '../../models/cel_photo.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame.dart' show InbetweenMark;
+import '../../models/se_dialogue_spacing.dart';
 import '../../models/se_line_type.dart' show SeLineType;
 import '../../models/sheet_marks.dart';
 import '../../models/sheet_paint_layer.dart';

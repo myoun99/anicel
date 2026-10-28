@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/se_dialogue_spacing.dart';
 import 'package:anicel/src/ui/text/dialogue_fit_paint.dart';
 import 'package:anicel/src/ui/text/laid_out_glyph.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
@@ -95,6 +96,8 @@ void main() {
         dialogue,
         topCenter: const Offset(20, 0),
         extent: 600,
+        frames: 30,
+        spacing: SeDialogueSpacing.standard,
         style: style,
         setWord: paintFittedText,
         maxCrossExtent: 40,
@@ -130,6 +133,8 @@ void main() {
                   text: dialogue,
                   axis: Axis.horizontal,
                   color: Colors.black,
+                  frames: 30,
+                  spacing: SeDialogueSpacing.standard,
                   fontSize: 20,
                 );
               },

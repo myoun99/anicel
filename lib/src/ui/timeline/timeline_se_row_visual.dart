@@ -8,6 +8,7 @@ import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/se_audio_spans.dart';
+import '../../models/se_dialogue_spacing.dart';
 import '../../models/se_line_type.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
@@ -17,8 +18,9 @@ import '../audio/sound_cannot_play.dart';
 import '../audio/waveform_painter.dart';
 import '../../models/media_asset.dart' show MediaAssetKind, mediaAssetKindForPath;
 import '../media/media_asset_drop_target.dart';
-import '../text/dialogue_fit_layout.dart' show dialogueGlyphsShownIn;
-import '../text/dialogue_fit_paint.dart' show dialogueNaturalExtent;
+import '../text/dialogue_fit_layout.dart'
+    show dialogueGlyphSlots, dialogueGlyphsShownIn;
+import '../text/dialogue_fit_paint.dart' show dialogueLongestGlyph;
 import '../text/app_strings.dart' show AppText;
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
@@ -100,6 +102,7 @@ List<Widget> timelineRowSeLabelOverlays({
             dialogue: dialogue ?? '',
             seName: seName,
             delivery: frame?.seTypes.inCut(cutId),
+            spacing: frame?.seSpacing ?? SeDialogueSpacing.standard,
             shownFrom: lead,
             framesFreeBefore: seFramesFreeBefore(blocks, index),
           ),
@@ -578,8 +581,9 @@ class _AudioClipStrip extends StatelessWidget {
 const double seNameBoxExtent = 16;
 
 /// Where an SE span's name chip stands along a block [mainExtent] long,
-/// whose dialogue runs [dialogueExtent] at its natural size
-/// ([dialogueNaturalExtent]), with [roomBefore] free on its row before it
+/// whose dialogue's longest glyph runs [longestGlyph] at its natural size
+/// ([dialogueLongestGlyph]) in a room [glyphRoom] long
+/// ([dialogueGlyphSlots]), with [roomBefore] free on its row before it
 /// ([seFramesFreeBefore]): [chip] long, and [outside] the block — just
 /// before its start — when that room holds it whole; over the block's
 /// head, on its words, when it does not.
@@ -598,19 +602,19 @@ const double seNameBoxExtent = 16;
 /// 대사는 줄어들어가는데 이름칸은 줄어들기 시작하는게 늦어서 15%정도에서
 /// 이름칸만 100%랑 거의 비슷한 크기인데 대사만 줄어들고있음. 대사랑 이름칸이랑
 /// 동일하게 줄어들기시작하도록」: the chip narrows by the very ratio the
-/// words do, from the zoom the block gets shorter than they are. ↩️The chip
-/// kept its 16 until the block was under 32 and then took half of it — a
-/// ceiling read off an old threshold, not anyone's rule — while the
-/// dialogue beside it had been narrowing since the block got shorter than
-/// the two of them.
+/// words do, from the zoom their longest glyph gets longer than its room
+/// (F-496 ③). ↩️From the zoom the block got shorter than the whole line,
+/// when the line spread over the block; and before that the chip kept its
+/// 16 until the block was under 32 and then took half of it — a ceiling
+/// read off an old threshold, not anyone's rule — while the dialogue beside
+/// it had been narrowing since the block got shorter than the two of them.
 ({double chip, bool outside}) seNameChipPlace(
   double mainExtent, {
-  required double dialogueExtent,
+  required double longestGlyph,
+  required double glyphRoom,
   required double roomBefore,
 }) {
-  final narrowed = dialogueExtent <= mainExtent
-      ? 1.0
-      : mainExtent / dialogueExtent;
+  final narrowed = longestGlyph <= glyphRoom ? 1.0 : glyphRoom / longestGlyph;
   final chip = seNameBoxExtent * narrowed;
   return roomBefore >= chip
       ? (chip: chip, outside: true)
@@ -648,6 +652,7 @@ class SeSpanVisual extends StatelessWidget {
     required this.dialogue,
     this.seName,
     this.delivery,
+    this.spacing = SeDialogueSpacing.standard,
     this.shownFrom = 0,
     this.framesFreeBefore = 0,
   });
@@ -674,6 +679,10 @@ class SeSpanVisual extends StatelessWidget {
   /// 공간없으면 이름이 블록안에 첫부분에 들어가니까, 그 경우 이름 오른쪽에
   /// 검정색으로. 대사랑 겹쳐도 문제없음」 — [_SeSpanFit.headIn].
   final SeLineType? delivery;
+
+  /// Where the dialogue's glyphs stand on the block (F-496 ③,
+  /// [dialogueGlyphSlots]).
+  final SeDialogueSpacing spacing;
 
   /// How many of [frames] run before the window the span is seen through:
   /// the cut a sound spilled into sees its block from its own frame 0 on,
@@ -714,6 +723,7 @@ class SeSpanVisual extends StatelessWidget {
       shownFrom: shownFrom,
       named: chipShown,
       dialogue: dialogue,
+      spacing: spacing,
       style: dialogueFitStyle(context, color: ink),
     );
     return CustomPaint(
@@ -727,6 +737,8 @@ class SeSpanVisual extends StatelessWidget {
               text: dialogue,
               axis: axis,
               color: ink,
+              frames: frames,
+              spacing: spacing,
               shownFromPart: shownFrom <= 0 || frames <= 0
                   ? 0
                   : shownFrom / frames,
@@ -767,7 +779,7 @@ class SeSpanVisual extends StatelessWidget {
 }
 
 /// Where an SE span's chip stands along the box the span lies in
-/// ([seNameChipPlace]), against the dialogue's own length at its natural
+/// ([seNameChipPlace]), against the dialogue's longest glyph at its natural
 /// size across that box — measured once for each width across, not once
 /// for each zoom step.
 ///
@@ -786,8 +798,9 @@ final class _SeSpanFit {
     required this.shownFrom,
     required this.named,
     required this.dialogue,
+    required this.spacing,
     required this.style,
-  });
+  }) : _glyphCount = dialogue.characters.length;
 
   final Axis axis;
 
@@ -806,10 +819,15 @@ final class _SeSpanFit {
   /// beside it rather than in its place.
   final bool named;
   final String dialogue;
+
+  /// Where the dialogue's glyphs stand: the room each has, which the chip
+  /// narrows against.
+  final SeDialogueSpacing spacing;
   final TextStyle style;
+  final int _glyphCount;
 
   double? _measuredAcross;
-  double _dialogueExtent = 0;
+  double _longestGlyph = 0;
 
   /// Where the box the span was last asked about put the head's words
   /// ([headIn]) — what each one's ink is read off at paint ([nameInk],
@@ -849,18 +867,26 @@ final class _SeSpanFit {
     final across = extentAcross(axis, size);
     if (_measuredAcross != across) {
       _measuredAcross = across;
-      _dialogueExtent = dialogueNaturalExtent(
+      _longestGlyph = dialogueLongestGlyph(
         dialogue,
         axis: axis,
         style: style,
         maxCrossExtent: across,
       );
     }
-    final frame = frames <= 0 ? 0.0 : extentAlong(axis, size) / frames;
+    final along = extentAlong(axis, size);
+    final frame = frames <= 0 ? 0.0 : along / frames;
     final room = framesFreeBefore * frame;
+    final glyphs = dialogueGlyphSlots(
+      glyphCount: _glyphCount,
+      frames: frames,
+      mainExtent: along,
+      spacing: spacing,
+    );
     final place = seNameChipPlace(
-      extentAlong(axis, size),
-      dialogueExtent: _dialogueExtent,
+      along,
+      longestGlyph: _longestGlyph,
+      glyphRoom: glyphs.firstOrNull?.roomExtent ?? double.infinity,
       roomBefore: room,
     );
     final chip = place.chip;
@@ -884,6 +910,7 @@ final class _SeSpanFit {
       shownFrom == other.shownFrom &&
       named == other.named &&
       dialogue == other.dialogue &&
+      spacing == other.spacing &&
       style == other.style;
 }
 
@@ -1013,6 +1040,7 @@ class _SeNameGroundPainter extends CustomPainter with RepaintOnProps {
     fit.shownFrom,
     fit.named,
     fit.dialogue,
+    fit.spacing,
     fit.style,
     AppColors.accent,
   );

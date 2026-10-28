@@ -74,11 +74,13 @@ class _TimelineFrameNames {
                   // ↩️It was a name plus an `updateSeName` flag; I-20's
                   // delivery would have made that one flag answer for two
                   // fields, so the fields travel as one record instead.
-                  (:final seName, :final seTypes) => frame.copyWith(
-                    name: normalizedName,
-                    seName: normalizeFrameName(seName),
-                    seTypes: seTypes,
-                  ),
+                  (:final seName, :final seTypes, :final spacing) =>
+                    frame.copyWith(
+                      name: normalizedName,
+                      seName: normalizeFrameName(seName),
+                      seTypes: seTypes,
+                      seSpacing: spacing,
+                    ),
                   null => frame.copyWith(name: normalizedName),
                 },
         )

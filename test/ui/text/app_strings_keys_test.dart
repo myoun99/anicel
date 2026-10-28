@@ -125,6 +125,8 @@ void main() {
     'seInstanceEditTitle': (s) => s.seInstanceEditTitle,
     'seNameLabel': (s) => s.seNameLabel,
     'seTypeLabel': (s) => s.seTypeLabel,
+    'seDialogueOffsetLabel': (s) => s.seDialogueOffsetLabel,
+    'seKomaPerGlyphLabel': (s) => s.seKomaPerGlyphLabel,
     'seDialogueLabel': (s) => s.seDialogueLabel,
     'tlResetGroup': (s) => s.tlResetGroup,
     'seNameTagShowLineLabel': (s) => s.seNameTagShowLineLabel,

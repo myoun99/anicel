@@ -19,6 +19,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/se_dialogue_spacing.dart';
 import 'package:anicel/src/models/se_line_type.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
@@ -96,8 +97,9 @@ void main() {
     expect(_frameOf(repository).seTypes.own, SeLineType.off);
   });
 
-  test('an SE entry edit writes the fields the call carries — name and '
-      'delivery (I-20) — in the same step as the dialogue', () {
+  test('an SE entry edit writes the fields the call carries — name, '
+      'delivery (I-20) and spacing (F-496) — in the same step as the '
+      'dialogue', () {
     final repository = ProjectRepository(initialProject: _project());
     final controller = TimelineController(
       repository: repository,
@@ -107,10 +109,18 @@ void main() {
       layerId: _layerId,
       frameId: _frameId,
       name: 'B',
-      seEntry: (seName: 'crash', seTypes: SeLineTypes(own: SeLineType.mono)),
+      seEntry: (
+        seName: 'crash',
+        seTypes: SeLineTypes(own: SeLineType.mono),
+        spacing: const SeDialogueSpacing(offset: 2, komaPerGlyph: 4),
+      ),
     );
     expect(_frameOf(repository).name, 'B');
     expect(_frameOf(repository).seName, 'crash');
     expect(_frameOf(repository).seTypes.own, SeLineType.mono);
+    expect(
+      _frameOf(repository).seSpacing,
+      const SeDialogueSpacing(offset: 2, komaPerGlyph: 4),
+    );
   });
 }
