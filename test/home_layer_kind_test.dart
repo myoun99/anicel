@@ -162,7 +162,9 @@ void main() {
       find.named('timeline-selected-layer'),
       findsOneWidget,
     );
-    expectCellText('default-layer-2', 0, 'X');
+    // Born with its first cel, one comma, as layer A is (I-138).
+    expectCellMark('default-layer-2', 0, unnamedDrawingMark);
+    expectCellText('default-layer-2', 1, 'X');
 
     var layerBTop = tester
         .getTopLeft(
@@ -183,7 +185,8 @@ void main() {
       find.named('timeline-row-cells-default-layer-3'),
       findsOneWidget,
     );
-    expectCellText('default-layer-3', 0, 'X');
+    expectCellMark('default-layer-3', 0, unnamedDrawingMark);
+    expectCellText('default-layer-3', 1, 'X');
 
     // The layer axis is virtualized and the drawing rows sit at the BOTTOM
     // of the display order — scroll them into the window before measuring.
