@@ -178,6 +178,177 @@ void main() {
     expect(live.blendMode, LayerBlendMode.normal);
   });
 
+  // 🗣️I-132-Q25 a (유저 2026-10-29): 「폴더는 안의 행들을 합친 그림으로
+  // 읽는다」 — as the folder composes what it holds, at its own strength.
+  group('a folder named as the map', () {
+    Layer folderRow(
+      String id, {
+      double opacity = 1,
+      bool visible = true,
+      LayerBlendMode blend = LayerBlendMode.normal,
+      List<LayerEffect> effects = const [],
+      String? folder,
+    }) => createFolderLayer(id: LayerId(id), name: id.toUpperCase()).copyWith(
+      opacity: opacity,
+      isVisible: visible,
+      blendMode: blend,
+      effects: effects,
+      folderId: folder == null ? null : LayerId(folder),
+    );
+
+    /// What [reader] reads of [id], where it is one folder's buffer.
+    CompositeGroup<CutFrameCompositeRow> groupOf(
+      CompositeReadsRows<CutFrameCompositeRow> reader,
+      String id,
+    ) => switch (reader.rows[LayerId(id)]) {
+      [final CompositeGroup<CutFrameCompositeRow> group] => group,
+      final drawn => throw StateError('$id is drawn as $drawn'),
+    };
+
+    List<String> rowsIn(CompositeGroup<CutFrameCompositeRow> group) => [
+      for (final node in group.children)
+        switch (node) {
+          CompositeLeaf(:final CutFrameCompositeEntry payload) =>
+            payload.layer.id.value,
+          _ => throw StateError('$node'),
+        },
+    ];
+
+    /// A blur that blurs.
+    final blur = LayerEffect.defaults(
+      id: const EffectId('blur'),
+      kind: EffectKind.blur,
+    ).withParameter('blurriness', EffectParameter(value: 7));
+
+    test('is what it holds composed, at its own strength and chain — its '
+        'eye not asked, in no blend', () {
+      final tree = treeOf([
+        row('m1', folder: 'f'),
+        row('m2', folder: 'f', opacity: 0.5),
+        row('hidden', folder: 'f', visible: false),
+        folderRow(
+          'f',
+          opacity: 0.6,
+          visible: false,
+          blend: LayerBlendMode.multiply,
+          effects: [blur],
+        ),
+        row('a', effects: [lens(map: 'f')]),
+      ]);
+      final read = groupOf(readerIn(tree), 'f');
+      expect(rowsIn(read), ['m1', 'm2'], reason: 'its rows as they show');
+      expect(read.opacity, closeTo(0.6, 1e-9));
+      expect(read.blendMode, LayerBlendMode.normal);
+      expect(read.effects.single.kind, EffectKind.blur);
+      final [m1, m2] = [
+        for (final node in read.children)
+          (node as CompositeLeaf<CutFrameCompositeRow>).payload,
+      ];
+      expect((m1.opacity, m2.opacity), (1.0, 0.5));
+    });
+
+    test('plain, is its rows as they lie — no buffer of its own', () {
+      final tree = treeOf([
+        row('m1', folder: 'f'),
+        row('m2', folder: 'f'),
+        folderRow('f', blend: LayerBlendMode.multiply),
+        row('a', effects: [lens(map: 'f')]),
+      ]);
+      final reader = readerIn(tree);
+      expect(
+        [
+          for (final node in reader.rows[const LayerId('f')]!)
+            switch (node) {
+              CompositeLeaf(:final CutFrameCompositeEntry payload) =>
+                payload.layer.id.value,
+              _ => throw StateError('$node'),
+            },
+        ],
+        ['m1', 'm2'],
+      );
+    });
+
+    test('⛔clipped to the row below it, not cut by it — it is read alone',
+        () {
+      final tree = treeOf([
+        row('base', visible: false),
+        row('m', folder: 'f'),
+        folderRow('f', opacity: 0.6).copyWith(clipsToBelow: true),
+        row('a', effects: [lens(map: 'f')]),
+      ]);
+      expect(rowsIn(groupOf(readerIn(tree), 'f')), ['m']);
+    });
+
+    test('under the folders above it, none of their strength, blend, chain '
+        'or eye', () {
+      final tree = treeOf([
+        row('m', folder: 'f'),
+        folderRow('f', opacity: 0.6, folder: 'p'),
+        row('beside', folder: 'p'),
+        folderRow(
+          'p',
+          opacity: 0.5,
+          visible: false,
+          blend: LayerBlendMode.screen,
+          effects: [blur],
+        ).copyWith(clipsToBelow: true),
+        row('a', effects: [lens(map: 'f')]),
+      ]);
+      final read = groupOf(readerIn(tree), 'f');
+      expect(rowsIn(read), ['m'], reason: 'nothing beside it in p');
+      expect(read.opacity, closeTo(0.6, 1e-9));
+      final m = (read.children.single as CompositeLeaf<CutFrameCompositeRow>)
+          .payload;
+      expect(m.opacity, 1.0, reason: 'p\'s half folds into nothing here');
+      expect(m.blendMode, LayerBlendMode.normal);
+    });
+
+    test('names no row, it or any it holds — the row reading it among them',
+        () {
+      final tree = treeOf([
+        row('m', folder: 'f', effects: [lens(id: 'own', map: 'm')]),
+        row('a', folder: 'f', effects: [lens(map: 'f')]),
+        folderRow('f', opacity: 0.6),
+      ]);
+      final reader = tree
+          .expand((node) => node.children.isEmpty ? [node] : node.children)
+          .whereType<CompositeReadsRows<CutFrameCompositeRow>>()
+          .firstWhere((reader) => reader.rows.containsKey(const LayerId('f')));
+      final read = groupOf(reader, 'f');
+      expect(rowsIn(read), ['m', 'a']);
+      for (final node in read.children) {
+        final payload = (node as CompositeLeaf<CutFrameCompositeRow>).payload;
+        expect(
+          payload.effects.single.layers,
+          {'blurMapLayer': null},
+          reason: (payload as CutFrameCompositeEntry).layer.id.value,
+        );
+      }
+    });
+
+    test('⛔an adjustment holds no picture of its own: none', () {
+      final tree = treeOf([
+        row('b'),
+        createAdjustmentLayer(
+          id: const LayerId('fx'),
+          name: 'FX',
+        ).copyWith(
+          effects: [
+            LayerEffect.defaults(
+              id: const EffectId('bc'),
+              kind: EffectKind.brightnessContrast,
+            ),
+          ],
+        ),
+        row('a', effects: [lens(map: 'fx')]),
+      ]);
+      expect(
+        tree.whereType<CompositeReadsRows<CutFrameCompositeRow>>(),
+        isEmpty,
+      );
+    });
+  });
+
   test('a folder\'s chain reads as a row\'s does', () {
     final tree = treeOf([
       row('b'),

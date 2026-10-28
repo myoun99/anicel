@@ -14,6 +14,7 @@ import '../models/layer_effect.dart';
 import '../models/layer_folder.dart';
 import '../models/layer_id.dart';
 import '../models/movie_cel.dart';
+import '../models/property_track.dart';
 import '../models/timeline_coverage.dart';
 import '../models/transform_track.dart';
 import 'layer_pose_matrix.dart' show pictureMoved;
@@ -1570,8 +1571,9 @@ List<CompositeNode<CutFrameCompositeRow>> readingTheirRows(
 /// (🗣️I-132-Q21 a), its eye not asked (🗣️I-132-Q23 a), at its own strength
 /// (🗣️I-132-Q24 b), on nothing, so in no blend — and naming no row of its
 /// own (🗣️I-132-Q22 a). Nothing where it exposes no cel, save the row
-/// drawn on ([liveLayerId]); null for no row of the cut or one that paints
-/// nothing of its own, which reads as none.
+/// drawn on ([liveLayerId]); a folder as what it holds ([_folderAsRead]);
+/// null for no row of the cut or one that paints nothing of its own, which
+/// reads as none.
 List<CompositeNode<CutFrameCompositeRow>>? _rowAsRead(
   Cut cut,
   LayerId id, {
@@ -1579,6 +1581,14 @@ List<CompositeNode<CutFrameCompositeRow>>? _rowAsRead(
   required LayerId? liveLayerId,
 }) {
   final layer = cut.layers.byId(id);
+  if (layer != null && layer.kind.groupsLayers) {
+    return _folderAsRead(
+      cut,
+      layer,
+      frameIndex: frameIndex,
+      liveLayerId: liveLayerId,
+    );
+  }
   final drawing = layer == null
       ? null
       : layerDrawingAt(cut: cut, layer: layer, frameIndex: frameIndex);
@@ -1609,6 +1619,67 @@ List<CompositeNode<CutFrameCompositeRow>>? _rowAsRead(
   return row == null
       ? const []
       : _rowNodes(cut, layer, row, asOnePicture: false);
+}
+
+/// Folder [folder] of [cut] at [frameIndex] as a chain that reads it reads
+/// it: what it holds composed as it composes it, its own strength and
+/// chain on that (🗣️I-132-Q25 a 「폴더는 안의 행들을 합친 그림으로 읽는다」)
+/// — and otherwise as a row is read ([_rowAsRead]): under the poses of the
+/// folders above it and none of their strength, blend, chain or eye, its
+/// own eye not asked, on nothing, so in no blend, and naming no row, it or
+/// any row it holds (one level).
+///
+/// The cut's one tree laid ([resolveCutFrameCompositeTree]) with every row
+/// but the folder's hidden: the stack's structure as it stands, so a row it
+/// holds that rides a base outside it rides it still (a base's eye never
+/// reaches its attach rows). The folder and those above it pass through
+/// and clip nowhere, nor does a row hidden, so none buffers but for what
+/// the folder's own strength and chain ask ([folderNeedsCompositeBuffer]).
+List<CompositeNode<CutFrameCompositeRow>> _folderAsRead(
+  Cut cut,
+  Layer folder, {
+  required int frameIndex,
+  required LayerId? liveLayerId,
+}) {
+  final above = {
+    for (final layer in cut.layers.ancestryOf(folder.folderId)) layer.id,
+  };
+  final held = {
+    for (final layer in cut.layers.subtreeMembersOf(folder.id)) layer.id,
+  };
+  Layer alone(Layer layer) {
+    final namingNone = layer.copyWith(
+      effects: effectsWithRowsRenamed(layer.effects, (_) => null),
+    );
+    if (layer.id == folder.id) {
+      return namingNone.copyWith(
+        isVisible: true,
+        blendMode: LayerBlendMode.passThrough,
+        clipsToBelow: false,
+      );
+    }
+    if (above.contains(layer.id)) {
+      return layer.copyWith(
+        isVisible: true,
+        opacity: 1,
+        blendMode: LayerBlendMode.passThrough,
+        clipsToBelow: false,
+        effects: const [],
+        transformTrack: layer.transformTrack.copyWith(
+          opacity: PropertyTrack<double>(),
+        ),
+      );
+    }
+    return held.contains(layer.id)
+        ? namingNone
+        : namingNone.copyWith(isVisible: false, clipsToBelow: false);
+  }
+
+  return resolveCutFrameCompositeTree(
+    cut: cut.copyWith(layers: [for (final layer in cut.layers) alone(layer)]),
+    frameIndex: frameIndex,
+    liveLayerId: liveLayerId,
+  );
 }
 
 /// [resolveCutFrameCompositeTree] with each leaf's surface resolved;
