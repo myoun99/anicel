@@ -202,11 +202,14 @@ void main() {
 
     /// Sky's 「내보내기」 pressed, the save window answering [answer] for the
     /// name it was asked under — every name it was asked under, and what
-    /// was said after (null: nothing).
+    /// was said after (null: nothing). Where [says] is false nothing is
+    /// waited for past the question: a backed-out save does no IO, and a
+    /// wait for a notice that never comes would sit out its whole patience.
     Future<({List<String> asked, String? said})> exportSky(
       WidgetTester tester,
-      Future<FolderGrant> Function(String suggestedName) answer,
-    ) async {
+      Future<FolderGrant> Function(String suggestedName) answer, {
+      bool says = true,
+    }) async {
       FolderPicker.debugOperatingSystem = 'windows';
       final asked = <String>[];
       FolderPicker.debugSaveDestinationPicker = ({
@@ -243,10 +246,18 @@ void main() {
       await tester.tap(byKey('palette-export'), kind: PointerDeviceKind.mouse);
       await settleAsync(
         tester,
-        () => notice.evaluate().isNotEmpty,
-        patience: const Duration(seconds: 2),
+        () => asked.isNotEmpty,
         everyFrame: tester.pump,
       );
+      if (says) {
+        await settleAsync(
+          tester,
+          () => notice.evaluate().isNotEmpty,
+          everyFrame: tester.pump,
+        );
+      } else {
+        await tester.pumpAndSettle();
+      }
       return (
         asked: asked,
         said: notice.evaluate().isEmpty
@@ -282,6 +293,7 @@ void main() {
       final (:asked, :said) = await exportSky(
         tester,
         (_) async => const FolderGrant.cancelled(),
+        says: false,
       );
 
       expect(asked, hasLength(1));
