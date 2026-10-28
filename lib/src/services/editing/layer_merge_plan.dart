@@ -793,7 +793,7 @@ bool _cutAtTheWall(List<LayerMergePicture> drawn, PasteboardWall wall) {
     for (final row in from.layers) {
       final reference = row.mediaReference;
       if (reference == null ||
-          !row.isVisible ||
+          !from.layers.rowVisible(row) ||
           exposedCelIdAt(cut: from, layerId: row.id, frameIndex: frameIndex) ==
               null) {
         continue;
