@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/se_dialogue_spacing.dart';
 import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart';
@@ -120,6 +121,44 @@ void main() {
       );
     });
   }
+
+  testWidgets('the chip narrows by the room the block\'s own koma give a '
+      'glyph — not the standard\'s (F-496 ③)', (tester) async {
+    Future<double> chipAt(SeDialogueSpacing spacing) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              // Thirty frames of four: a glyph is longer than its frame.
+              width: 120,
+              height: 52,
+              child: SeSpanVisual(
+                layer: anSeRow(),
+                axis: Axis.horizontal,
+                frames: 30,
+                dialogue: 'せりふ',
+                seName: 'SE',
+                spacing: spacing,
+              ),
+            ),
+          ),
+        ),
+      );
+      return tester.getSize(find.bySemanticsLabel(RegExp('SE name'))).width;
+    }
+
+    expect(
+      await chipAt(SeDialogueSpacing.standard),
+      seNameBoxExtent,
+      reason: '⛔전제: three koma of four hold a glyph',
+    );
+    expect(
+      await chipAt(const SeDialogueSpacing(komaPerGlyph: 1)),
+      lessThan(seNameBoxExtent),
+      reason: 'one koma of four does not: the glyphs narrow, and the chip',
+    );
+  });
 
   testWidgets('normal spans keep the name box', (tester) async {
     await tester.pumpWidget(host(width: 120, height: 52, name: 'ドア'));

@@ -182,6 +182,78 @@ void main() {
     );
   });
 
+  Project oneLine(
+    List<Cut> cuts, {
+    required int length,
+    required String line,
+  }) => Project(
+        id: const ProjectId('p'),
+        name: 'P',
+        createdAt: DateTime.utc(2026, 10, 29),
+        tracks: [
+          Track(
+            id: const TrackId('t'),
+            name: 'V',
+            cuts: cuts,
+            seLayers: [
+              Layer(
+                id: const LayerId('se'),
+                name: 'S1',
+                kind: LayerKind.se,
+                frames: [
+                  Frame(
+                    id: const FrameId('se-f'),
+                    duration: length,
+                    strokes: const [],
+                    name: line,
+                    seName: 'A子',
+                    seSpacing: const SeDialogueSpacing(komaPerGlyph: 6),
+                  ),
+                ],
+                timeline: {
+                  0: TimelineExposure.drawing(
+                    const FrameId('se-f'),
+                    length: length,
+                  ),
+                },
+              ),
+            ],
+          ),
+        ],
+      );
+  List<List<(int, String)>> partsOf(Project project) => [
+    for (final source in buildConteSheetSource(project).cuts)
+      [for (final part in source.dialogue) (part.startFrame, part.printed)],
+  ];
+
+  test('a gap between two cuts is no panel: the line closes before it and '
+      'speaks again after it', () {
+    // c → frame 12, in the six frames between the cuts: no panel writes it.
+    final project = oneLine(
+      [cut('c1', [0]), cut('c2', [0]).copyWith(leadingGapFrames: 6)],
+      length: 30,
+      line: 'abcd',
+    );
+    expect(partsOf(project), [
+      [(0, 'A子「ab」')],
+      [(0, 'A子「d」')],
+    ]);
+  });
+
+  test('a glyph sharing a frame stands in the panel holding its centre — '
+      'where its frame begins in the panel before', () {
+    // Five glyphs in four frames: 0.8 a glyph, centres 0.4, 1.2, 2.0 … —
+    // the third begins at 1.6, in the first panel, centred in the second.
+    final project = oneLine(
+      [cut('c1', [0, 2])],
+      length: 4,
+      line: 'abcde',
+    );
+    expect(partsOf(project), [
+      [(0, 'A子「ab'), (2, 'cde」')],
+    ]);
+  });
+
   test('an unnamed line prints its parts bare', () {
     expect(written('abcd', panels: [0, 6], speaker: ''), [
       [(0, 'a'), (6, 'b')],

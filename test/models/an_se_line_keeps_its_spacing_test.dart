@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/se_dialogue_spacing.dart';
+import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/services/editing/cut_duplicate_helpers.dart';
 
 /// 🗣️F-496 ③ (유저 2026-10-28): 「글자별 코마는 기본값 3코마, 오프셋은
@@ -71,6 +72,20 @@ void main() {
         newFrameId: const FrameId('se-2'),
       ).seSpacing,
       set,
+    );
+  });
+
+  test('a sheet cell sees it too: two that differ in it alone are not one',
+      () {
+    const head = TimesheetCell(TimesheetCellKind.drawing, spanLength: 12);
+    expect(
+      const TimesheetCell(
+        TimesheetCellKind.drawing,
+        spanLength: 12,
+        seSpacing: set,
+      ),
+      isNot(head),
+      reason: 'a sheet that keeps its picture by its cells repaints on it',
     );
   });
 }
