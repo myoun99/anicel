@@ -150,15 +150,36 @@ abstract final class DeviceDescriptions {
     return null;
   }
 
-  static String? _registryString(String key, String value) {
-    final size = calloc<Uint32>()..value = 512;
-    final data = calloc<Uint16>(256);
+  static String? _registryString(String key, String value) => _registry(
+    key,
+    value,
+    _rrfRtRegSz,
+    (data) => data.cast<Utf16>().toDartString(),
+  );
+
+  static int? _registryNumber(String key, String value) => _registry(
+    key,
+    value,
+    _rrfRtRegDword,
+    (data) => data.cast<Uint32>().value,
+  );
+
+  /// [value] under [key] in `HKEY_LOCAL_MACHINE`, of the type [flag] asks
+  /// for, as [read] takes it out of the bytes; null where there is none.
+  static R? _registry<R>(
+    String key,
+    String value,
+    int flag,
+    R Function(Pointer<Uint8>) read,
+  ) {
+    final size = calloc<Uint32>()..value = _registryBytes;
+    final data = calloc<Uint8>(_registryBytes);
     final k = key.toNativeUtf16();
     final v = value.toNativeUtf16();
     try {
-      final status = _regGetValue(_hklm, k, v, _rrfRtRegSz, nullptr,
-          data.cast(), size);
-      return status == 0 ? data.cast<Utf16>().toDartString() : null;
+      final status = _regGetValue(_hklm, k, v, flag, nullptr, data.cast(),
+          size);
+      return status == 0 ? read(data) : null;
     } finally {
       calloc
         ..free(size)
@@ -168,23 +189,7 @@ abstract final class DeviceDescriptions {
     }
   }
 
-  static int? _registryNumber(String key, String value) {
-    final size = calloc<Uint32>()..value = 4;
-    final data = calloc<Uint32>();
-    final k = key.toNativeUtf16();
-    final v = value.toNativeUtf16();
-    try {
-      final status = _regGetValue(_hklm, k, v, _rrfRtRegDword, nullptr,
-          data.cast(), size);
-      return status == 0 ? data.value : null;
-    } finally {
-      calloc
-        ..free(size)
-        ..free(data)
-        ..free(k)
-        ..free(v);
-    }
-  }
+  static const int _registryBytes = 512;
 
   static String? _systemProperty(String name) {
     final key = name.toNativeUtf8();

@@ -93,6 +93,8 @@ void main() {
     'fpsAudioBody': (s) => s.fpsAudioBody,
     'fpsAudioKeep': (s) => s.fpsAudioKeep,
     'fpsAudioPull': (s) => s.fpsAudioPull,
+    'feedbackTextOnly': (s) => s.feedbackTextOnly,
+    'feedbackWithFiles': (s) => s.feedbackWithFiles,
     'selectionClosePolygon': (s) => s.selectionClosePolygon,
     'selectionInvert': (s) => s.selectionInvert,
     'selectionInvertInCanvas': (s) => s.selectionInvertInCanvas,
