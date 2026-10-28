@@ -1450,6 +1450,35 @@ void main() {
       });
     });
 
+    // Where a frame stands is read off one walk of its stack (card frame-
+    // panels-build-in-one-frame, 2026-10-28): the walk below lays a frame
+    // whose cel will not read WITHOUT it, so its picture comes — this is a
+    // frame given up on outright.
+    testWidgets('a run waits for a picture still to come, and not for one '
+        'given up on', (tester) async {
+      final f = inked();
+      final scheduler = PlaybackPrerenderScheduler(
+        pictures: f.pictures,
+        resolveCut: (_) => four(),
+        idleDelay: Duration.zero,
+      );
+      addTearDown(() {
+        scheduler.dispose();
+        f.layerImages.dispose();
+      });
+      final shown = [
+        (cut: four(), frameIndex: 1, paintPaper: true, ghosts: false),
+      ];
+      expect(scheduler.has(shown), isFalse, reason: 'still to come');
+
+      f.pictures.noteFailure(shown.single);
+      expect(
+        scheduler.has(shown),
+        isTrue,
+        reason: 'nothing waits for a picture that cannot be made',
+      );
+    });
+
     testWidgets('a picture whose compose throws is not waited for, and is '
         'not paid for twice', (tester) async {
       await tester.runAsync(() async {

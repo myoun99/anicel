@@ -358,6 +358,11 @@ void main() {
     );
     expect(pictures.partsToMake(at(0)), isEmpty);
     expect(pictures.gaveUpAt(pictures.keyOf(at(0))), isTrue);
+    expect(
+      pictures.gaveUpAt(pictures.keyOf(at(2))),
+      isFalse,
+      reason: 'still to come is not given up on',
+    );
     expect(pictures.standingOf(at(2)).state, PictureState.toCome);
 
     // Ink where a has none: its content moves.

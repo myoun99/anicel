@@ -223,4 +223,45 @@ void main() {
       ]);
     });
   });
+
+  // The bar reads where a frame stands off one walk of its stack (card
+  // frame-panels-build-in-one-frame, 2026-10-28).
+  testWidgets('a frame given up on is red where a cel it shows cannot be '
+      'read, and not on the bar at all where every cel reads', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final s = twoRows();
+      addTearDown(s.dispose);
+      final cut = s.activeCutOrNull!;
+      BrushFrameKey celOf(String row) =>
+          s.brushFrameKeyForCut(cut, LayerId(row), FrameId(row));
+      for (final row in ['over', 'under']) {
+        inkCel(
+          s,
+          celOf(row),
+          canvasSize: canvasSize,
+          at: CanvasPoint(x: 4, y: 4),
+          size: 4,
+        );
+      }
+      final budget = budgetOf(s);
+      final frame = (cut: cut, frameIndex: 0, paintPaper: true, ghosts: false);
+
+      s.playbackRig.framePictures.noteFailure(frame);
+      expect(
+        budget.playbackReadyRuns(0, 24),
+        isEmpty,
+        reason: 'every cel reads: a run goes on past it, but it is not ready',
+      );
+
+      // A cel that will not read is no part of the frame's picture, so the
+      // frame is another one — given up on in its turn.
+      s.renderCaches.layerFrameImageCache.unreadable.note(celOf('over'));
+      s.playbackRig.framePictures.noteFailure(frame);
+      expect(budget.playbackReadyRuns(0, 24), [
+        (startIndex: 0, endIndexExclusive: 24, unreadable: true),
+      ], reason: 'it plays without the cel that will not read');
+    });
+  });
 }
