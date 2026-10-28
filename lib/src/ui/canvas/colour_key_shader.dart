@@ -45,8 +45,9 @@ class ColourKeyShader {
   }
 
   /// A shader that reads [source] and answers [key] for every pixel of a
-  /// [width] x [height] draw, [original] being its run's input — [source]
-  /// itself for the run's first key ([CelColorKey.alphaFor]).
+  /// draw [source]'s size, 1:1 at the identity ([applyEffectSteps]),
+  /// [original] being its run's input — [source] itself for the run's first
+  /// key ([CelColorKey.alphaFor]).
   ///
   /// ⚠️The caller owns the returned shader and must `dispose()` it after the
   /// draw that used it is recorded.
@@ -54,8 +55,6 @@ class ColourKeyShader {
     required ui.Image source,
     required ui.Image original,
     required CelColorKey key,
-    required double width,
-    required double height,
   }) {
     // The button's 색 유지 edits bytes through its own kernel; no chain
     // holds a key that erases what its colour does not name.
@@ -73,8 +72,8 @@ class ColourKeyShader {
     // slot. Getting this wrong does not throw; it silently keys on the wrong
     // numbers, which is why the proof sweeps values rather than trusting the
     // layout.
-    shader.setFloat(0, width);
-    shader.setFloat(1, height);
+    shader.setFloat(0, source.width.toDouble());
+    shader.setFloat(1, source.height.toDouble());
     shader.setFloat(2, key.red.toDouble());
     shader.setFloat(3, key.green.toDouble());
     shader.setFloat(4, key.blue.toDouble());

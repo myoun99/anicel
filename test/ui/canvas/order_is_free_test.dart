@@ -110,8 +110,6 @@ void main() {
     final stepped = applyEffectSteps(
       source: source,
       steps: plan.preSteps,
-      pixelWidth: side,
-      pixelHeight: side,
       imageScale: 1,
     );
     final bytes = await _bytesOf(stepped, side);
@@ -174,8 +172,6 @@ void main() {
     final stepped = applyEffectSteps(
       source: source,
       steps: plan.preSteps,
-      pixelWidth: side,
-      pixelHeight: side,
       imageScale: 1,
     );
     final bytes = await _bytesOf(stepped, side);
@@ -218,8 +214,6 @@ void main() {
     final stepped = applyEffectSteps(
       source: source,
       steps: resolveCompositeEffectPlan(chain).preSteps,
-      pixelWidth: side,
-      pixelHeight: side,
       imageScale: 1,
     );
     final bytes = await _bytesOf(stepped, side);
@@ -372,8 +366,6 @@ void main() {
       final stepped = applyEffectSteps(
         source: source,
         steps: plan.preSteps,
-        pixelWidth: side,
-        pixelHeight: side,
         imageScale: 1,
       );
       final recorder = ui.PictureRecorder();

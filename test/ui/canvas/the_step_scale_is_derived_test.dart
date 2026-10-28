@@ -122,8 +122,6 @@ void main() {
     final spelled = applyEffectSteps(
       source: source,
       steps: plan.preSteps,
-      pixelWidth: source.width,
-      pixelHeight: source.height,
       imageScale: 1,
     );
     addTearDown(spelled.dispose);

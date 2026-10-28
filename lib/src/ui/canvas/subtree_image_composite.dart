@@ -6,7 +6,6 @@ import '../../core/draw_space.dart';
 import '../../core/lru.dart';
 import '../../models/composite_tree.dart';
 import '../../models/layer_blend_mode.dart';
-import '../../models/layer_effect.dart' show ResolvedLayerEffect;
 import '../../models/rgba_image_bytes.dart';
 import 'colour_key_shader.dart';
 import 'directional_blur_shader.dart';
@@ -1008,12 +1007,11 @@ void _composeInTheFrame({
 /// A step's last lead draw and its painted effects share ONE raster: a
 /// `ui.Paint` applies its shader, then its colour filter, then its image
 /// filter, so "key, then blur" needs no second pass. Each draw before it is a
-/// raster of its own, read beside the step's input by the next.
+/// raster of its own, read beside the step's input by the next. Every raster
+/// is [source]'s size.
 ui.Image applyEffectSteps({
   required ui.Image source,
   required List<CompositeEffectStep> steps,
-  required int pixelWidth,
-  required int pixelHeight,
   required double imageScale,
 }) {
   // ⛔The IMAGE's own space. A step rasters at the identity — there is no
@@ -1027,22 +1025,16 @@ ui.Image applyEffectSteps({
     // What every key of a run reads its colours from and a restore gives
     // back to ([KeyRun]) — alive until the step is done.
     final input = image;
-    final leads = _leadDraws(
-      step.lead,
-      space: space,
-      width: pixelWidth.toDouble(),
-      height: pixelHeight.toDouble(),
-    );
+    final leads = _leadDraws(step.lead, space: space);
     final draws = leads.isEmpty ? 1 : leads.length;
     for (var index = 0; index < draws; index += 1) {
       final next = _effectStepDraw(
         image: image,
         input: input,
         lead: leads.isEmpty ? null : leads[index],
-        then: index == draws - 1 ? step.then : const [],
-        pixelWidth: pixelWidth,
-        pixelHeight: pixelHeight,
-        space: space,
+        then: index == draws - 1
+            ? resolveCompositeEffectPaint(step.then, space: space)
+            : CompositeEffectPaint.none,
       );
       if (!identical(image, source) && !identical(image, input)) {
         image.dispose();
@@ -1064,8 +1056,6 @@ typedef _LeadDraw = ui.FragmentShader Function(ui.Image image, ui.Image input);
 List<_LeadDraw> _leadDraws(
   EffectStepLead? lead, {
   required DrawSpace space,
-  required double width,
-  required double height,
 }) => switch (lead) {
   null => const [],
   KeyRun(:final keys) => [
@@ -1074,31 +1064,21 @@ List<_LeadDraw> _leadDraws(
         source: image,
         original: input,
         key: key,
-        width: width,
-        height: height,
       ),
   ],
   ShadedEffect(:final effect) => [
     for (final pass in shadedPassesOf(effect, space))
-      (image, _) => DirectionalBlurShader.shaderFor(
-        source: image,
-        pass: pass,
-        width: width,
-        height: height,
-      ),
+      (image, _) => DirectionalBlurShader.shaderFor(source: image, pass: pass),
   ],
 };
 
 /// One raster of a step: [lead] over [image] ([input] the step's), then
-/// [then], 1:1 at the identity ([applyEffectSteps]).
+/// [then], 1:1 at the identity ([applyEffectSteps]) and [image]'s size.
 ui.Image _effectStepDraw({
   required ui.Image image,
   required ui.Image input,
   required _LeadDraw? lead,
-  required List<ResolvedLayerEffect> then,
-  required int pixelWidth,
-  required int pixelHeight,
-  required DrawSpace space,
+  required CompositeEffectPaint then,
 }) {
   final stepRecorder = ui.PictureRecorder();
   final into = Canvas(stepRecorder);
@@ -1107,12 +1087,12 @@ ui.Image _effectStepDraw({
   if (shader != null) {
     paint.shader = shader;
   }
-  resolveCompositeEffectPaint(then, space: space).applyTo(paint);
+  then.applyTo(paint);
   final rect = Rect.fromLTWH(
     0,
     0,
-    pixelWidth.toDouble(),
-    pixelHeight.toDouble(),
+    image.width.toDouble(),
+    image.height.toDouble(),
   );
   if (shader == null) {
     // 1:1 by construction — src and dst are the same rect, at the
@@ -1130,7 +1110,7 @@ ui.Image _effectStepDraw({
   // way along it leaked every step it had already built. The picture's
   // release is [rasterPicture]'s; the shader's is this frame's own.
   try {
-    return rasterPicture(stepRecorder, pixelWidth, pixelHeight);
+    return rasterPicture(stepRecorder, image.width, image.height);
   } finally {
     shader?.dispose();
   }
@@ -1157,8 +1137,6 @@ void _finishSubtreeRaster({
   final image = applyEffectSteps(
     source: raster,
     steps: steps,
-    pixelWidth: plan.pixelWidth,
-    pixelHeight: plan.pixelHeight,
     // The sub-tree raster IS at plan.scale, so image pixels per canvas pixel
     // is that number — the one place where the raster's target scale and the
     // image's own resolution are the same thing by construction.
@@ -1232,8 +1210,6 @@ ui.Image steppedForChain({
   return applyEffectSteps(
     source: image,
     steps: plan.preSteps,
-    pixelWidth: image.width,
-    pixelHeight: image.height,
     imageScale: canvasExtent <= 0 ? 1 : image.width / canvasExtent,
   );
 }

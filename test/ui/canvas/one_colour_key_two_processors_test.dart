@@ -82,8 +82,6 @@ void main() {
       source: source,
       original: original ?? source,
       key: key,
-      width: width.toDouble(),
-      height: height.toDouble(),
     );
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
@@ -503,8 +501,6 @@ void main() {
         source: _throwawayImage(),
         original: _throwawayImage(),
         key: keyOf(tolerance: 0, amount: 1),
-        width: 1,
-        height: 1,
       ),
       throwsStateError,
     );

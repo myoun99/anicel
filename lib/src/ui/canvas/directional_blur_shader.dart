@@ -21,16 +21,14 @@ class DirectionalBlurShader {
     _program ??= await ui.FragmentProgram.fromAsset(assetKey);
   }
 
-  /// A shader that draws [pass] over [source] for every pixel of a [width]
-  /// x [height] draw.
+  /// A shader that draws [pass] over [source] for every pixel of a draw
+  /// [source]'s size.
   ///
   /// ⚠️The caller owns the returned shader and must `dispose()` it after the
   /// draw that used it is recorded.
   static ui.FragmentShader shaderFor({
     required ui.Image source,
     required LineBoxPass pass,
-    required double width,
-    required double height,
   }) {
     final program = _program;
     if (program == null) {
@@ -43,8 +41,8 @@ class DirectionalBlurShader {
     // ⛔Indices are declaration order, floats only — a sampler takes no
     // float slot.
     return program.fragmentShader()
-      ..setFloat(0, width)
-      ..setFloat(1, height)
+      ..setFloat(0, source.width.toDouble())
+      ..setFloat(1, source.height.toDouble())
       ..setFloat(2, pass.stepX)
       ..setFloat(3, pass.stepY)
       ..setFloat(4, pass.taps.toDouble())
