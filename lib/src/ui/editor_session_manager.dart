@@ -157,6 +157,7 @@ import 'session/key_clipboard.dart';
 import 'session/text_clipboard.dart';
 import 'session/active_cut_controllers.dart';
 import 'session/layer_stack.dart';
+import 'session/layer_merging.dart';
 import 'session/layer_verbs.dart';
 import 'session/cut_verbs.dart';
 import 'session/rail_view.dart';
@@ -803,6 +804,16 @@ class EditorSessionManager extends ChangeNotifier
   // A collaborator (session/layer_verbs.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
   late final LayerVerbs layerVerbs = LayerVerbs(project: this, selection: this, changes: this, controllers: activeCutControllers, renderCaches: renderCaches, rowSelection: rowSelectionVerbs);
+
+  // ── the merge (I-78): its own object, in its own file ───────────────
+  late final LayerMerging layerMerging = LayerMerging(
+    project: this,
+    changes: this,
+    frameIds: this,
+    renderCaches: renderCaches,
+    rowSelection: rowSelectionVerbs,
+    layerVerbs: layerVerbs,
+  );
 
   // ── the cut's row stack: its own object ─────────────────────────────
   //

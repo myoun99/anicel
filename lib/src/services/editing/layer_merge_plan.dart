@@ -8,7 +8,6 @@ import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_section_defaults.dart' show firstUnusedName;
-import '../../models/movie_cel.dart' show isMovieReference;
 import '../../models/timeline_coverage.dart';
 import '../../models/timeline_exposure.dart';
 import '../cut_frame_composite_plan.dart'
@@ -95,13 +94,8 @@ class LayerMergePlan {
 }
 
 /// [cut]'s rows a press of MERGE takes from [selected], as the plan of
-/// what it makes of them — or null when it takes nothing it can merge: one
-/// picture row alone, and no folder.
-///
-/// A row that paints no drawing of its own is no part of a picture, and is
-/// passed over (Q4's memo: 「불가능한것들은 자연스럽게 무시」). So is a row
-/// this round does not merge yet ([_standsDown]) — and a folder that holds
-/// one, whose rows cannot be taken apart from it.
+/// what it makes of them — or null when it takes nothing it can merge
+/// ([layerMergeTakesAny]).
 ///
 /// [revisionOf] says what each cel holds as the composite signature reads
 /// it; [mintFrameId] names each new cel of the result.
@@ -113,6 +107,76 @@ LayerMergePlan? planLayerMerge({
   required bool Function(Layer row) isLinked,
 }) {
   final index = LayerFolderIndex(cut.layers);
+  final taking = _takingOf(cut, index, selected, isLinked);
+  if (taking == null) {
+    return null;
+  }
+  final (:taken, :foldersTaken, :anchor, :pictureRows) = taking;
+  final anchorId = anchor.id;
+  final over = {
+    for (final folder in index.ancestryOf(anchor.folderId)) folder.id,
+  };
+  final baked = _bakedCut(cut, index, taken, over);
+  final pictures = _picturesOf(
+    cut,
+    baked,
+    pictureRows,
+    revisionOf: revisionOf,
+    mintFrameId: () => mintFrameId(anchorId),
+  );
+  final result = _resultRow(anchor, pictures);
+  return LayerMergePlan._(
+    result: result,
+    baked: baked,
+    pictures: [
+      for (final picture in pictures)
+        (
+          frameId: picture.frameId,
+          name: picture.name,
+          frameIndex: picture.spans.first.start,
+        ),
+    ],
+    removed: [
+      for (final row in cut.layers)
+        if (taken.contains(row.id) && row.id != anchor.id) row.id,
+    ],
+    regrouped: _regroupedOf(cut, index, taken, foldersTaken),
+    changes: _changesOf(cut, index, taken, pictureRows, anchor, over),
+  );
+}
+
+/// Whether a press of MERGE takes anything of [selected] it can merge —
+/// what lights its button, from the very taking the press plans by
+/// ([planLayerMerge]); the pictures are left unasked.
+bool layerMergeTakesAny({
+  required Cut cut,
+  required Set<LayerId> selected,
+  required bool Function(Layer row) isLinked,
+}) =>
+    _takingOf(cut, LayerFolderIndex(cut.layers), selected, isLinked) != null;
+
+/// The rows a press takes: every one of them, the folders among them, the
+/// topmost, and the ones that hold pictures, bottom → top.
+typedef _Taking = ({
+  Set<LayerId> taken,
+  Set<LayerId> foldersTaken,
+  Layer anchor,
+  List<Layer> pictureRows,
+});
+
+/// What a press takes of [selected] — null for nothing it can merge: one
+/// picture row alone, and no folder.
+///
+/// A row that paints no drawing of its own is no part of a picture, and is
+/// passed over (Q4's memo: 「불가능한것들은 자연스럽게 무시」). So is a row
+/// this round does not merge yet ([_standsDown]) — and a folder that holds
+/// one, whose rows cannot be taken apart from it.
+_Taking? _takingOf(
+  Cut cut,
+  LayerFolderIndex index,
+  Set<LayerId> selected,
+  bool Function(Layer row) isLinked,
+) {
   bool standsDown(Layer row) => _standsDown(row, cut.layers, isLinked);
   final taken = <LayerId>{};
   final foldersTaken = <LayerId>{};
@@ -148,36 +212,11 @@ LayerMergePlan? planLayerMerge({
   if (anchor == null || (foldersTaken.isEmpty && pictureRows.length < 2)) {
     return null;
   }
-  final anchorId = anchor.id;
-  final over = {
-    for (final folder in index.ancestryOf(anchor.folderId)) folder.id,
-  };
-  final baked = _bakedCut(cut, index, taken, over);
-  final pictures = _picturesOf(
-    cut,
-    baked,
-    pictureRows,
-    revisionOf: revisionOf,
-    mintFrameId: () => mintFrameId(anchorId),
-  );
-  final result = _resultRow(anchor, pictures);
-  return LayerMergePlan._(
-    result: result,
-    baked: baked,
-    pictures: [
-      for (final picture in pictures)
-        (
-          frameId: picture.frameId,
-          name: picture.name,
-          frameIndex: picture.spans.first.start,
-        ),
-    ],
-    removed: [
-      for (final row in cut.layers)
-        if (taken.contains(row.id) && row.id != anchor.id) row.id,
-    ],
-    regrouped: _regroupedOf(cut, index, taken, foldersTaken),
-    changes: _changesOf(cut, index, taken, pictureRows, anchor, over),
+  return (
+    taken: taken,
+    foldersTaken: foldersTaken,
+    anchor: anchor,
+    pictureRows: pictureRows,
   );
 }
 
@@ -190,7 +229,9 @@ bool _isPicture(Layer row) => row.kind.isDrawingCel;
 /// - an attach row and a row others ride (round ②, Q8),
 /// - a 겸용 row and a conte row, whose cels or structure another cut shares
 ///   (round ④, Q9 · Q12),
-/// - a movie, decoded frame by frame where it shows,
+/// - a reference row, whose picture is its file's, laid whole past the
+///   wall (F-374-Q8) where no picture of the screen reaches — rasterized,
+///   it merges as every drawing does,
 /// - a direction block, whose direction is no picture to bake.
 bool _standsDown(
   Layer row,
@@ -201,7 +242,7 @@ bool _standsDown(
     attachedLayersOf(row.id, layers).isNotEmpty ||
     isLinked(row) ||
     row.conteKey != null ||
-    isMovieReference(row) ||
+    row.mediaReference != null ||
     row.timeline.values.any((exposure) => exposure.instruction != null);
 
 /// [cut] as each picture is baked from it: the [taken] rows and the

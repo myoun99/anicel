@@ -940,6 +940,16 @@ enum AppStrings {
   String get tlAttachDropsFxBody => _s('tlAttachDropsFxBody');
   String get tlAttachDropsFxRows => _s('tlAttachDropsFxRows');
 
+  /// The merge's warning (I-78-Q1 「포토샵 · 클튜처럼 (+경고)」): the merged
+  /// row can hold one blend, so what it looks like over the rows under it
+  /// may change — each line one way it may.
+  String get tlMergeChangesTitle => _s('tlMergeChangesTitle');
+  String get tlMergeChangesBody => _s('tlMergeChangesBody');
+  String get tlMergeChanges => _s('tlMergeChanges');
+  String get tlMergeChangeBlend => _s('tlMergeChangeBlend');
+  String get tlMergeChangeClip => _s('tlMergeChangeClip');
+  String get tlMergeChangeFolder => _s('tlMergeChangeFolder');
+
   /// ⛔No trailing '…' on a BAR BUTTON's writing (B9, 유저 2026-08-17:
   /// 「심플하게 編集」) — this one and [tlSetCommasN] wore it and read as
   /// ellipsized labels on device. ↩️The '…' stayed on menu ENTRIES that
@@ -3227,6 +3237,16 @@ enum AppStrings {
     'tlDropDetachAttach': 'detach',
     'tlAttachDropsFxRows': 'Layers that lose their fx',
     'tlAttachDropsFxTitle': 'Attaching drops its fx',
+    'tlMergeChangesTitle': 'Merging may change how it looks',
+    'tlMergeChangesBody':
+        'The merged layer may look different over the layers under it.',
+    'tlMergeChanges': 'What changes',
+    'tlMergeChangeBlend':
+        'A layer blends in its own mode — the merged layer is Normal',
+    'tlMergeChangeClip':
+        'A selected layer and one not selected are joined by clipping',
+    'tlMergeChangeFolder':
+        "The merged layer's folder lays its look over layers from outside it",
     'tlAttachDropsFxBody':
         'An attached layer keeps no fx of its own. Continuing discards the existing fx. Continue?',
     'tlPush': 'Push (open frames)',
@@ -3900,6 +3920,7 @@ enum AppStrings {
     'shortcutAction.edit-unlink': 'リンクから独立',
     'shortcutAction.edit-delete': '削除',
     'shortcutAction.edit-duplicate': '複製',
+    'shortcutAction.edit-merge': '結合',
     'shortcutAction.edit-replace-colour': '色変換',
     'shortcutAction.edit-clear-pixels': 'ピクセル消去',
     'shortcutAction.edit-binarize': '2値化',
@@ -4929,6 +4950,12 @@ enum AppStrings {
     'shortcutAction.layer-detach': 'アタッチを解除',
     'tlAttachDropsFxRows': 'fx を失うレイヤー',
     'tlAttachDropsFxTitle': 'アタッチすると fx が失われます',
+    'tlMergeChangesTitle': '結合すると見た目が変わることがあります',
+    'tlMergeChangesBody': '結合したレイヤーは、下のレイヤーの上で違って見えることがあります。',
+    'tlMergeChanges': '変わるもの',
+    'tlMergeChangeBlend': '通常以外の合成モードが含まれています — 結合したレイヤーは通常になります',
+    'tlMergeChangeClip': '選んだレイヤーと選んでいないレイヤーがクリッピングでつながっています',
+    'tlMergeChangeFolder': '結合したレイヤーが入るフォルダーの効果が、フォルダーの外から来たレイヤーにもかかります',
     'tlAttachDropsFxBody': 'アタッチレイヤーは自分の fx を持ちません。続けると既存の fx は失われます。実行しますか？',
     'tlPush': '押し出し（コマを開ける）',
     'tlPull': '詰め（コマを詰める）',
@@ -5594,6 +5621,7 @@ enum AppStrings {
     'shortcutAction.edit-unlink': '링크 독립',
     'shortcutAction.edit-delete': '삭제',
     'shortcutAction.edit-duplicate': '복제',
+    'shortcutAction.edit-merge': '병합',
     'shortcutAction.edit-replace-colour': '색 변환',
     'shortcutAction.edit-clear-pixels': '픽셀 비우기',
     'shortcutAction.edit-binarize': '2치화',
@@ -6617,6 +6645,12 @@ enum AppStrings {
     'shortcutAction.layer-detach': '어태치 해제',
     'tlAttachDropsFxRows': 'fx 가 사라지는 레이어',
     'tlAttachDropsFxTitle': '어태치하면 fx 가 사라집니다',
+    'tlMergeChangesTitle': '병합하면 겉보기가 달라질 수 있습니다',
+    'tlMergeChangesBody': '병합한 레이어는 그 아래 레이어 위에서 다르게 보일 수 있습니다.',
+    'tlMergeChanges': '달라지는 것',
+    'tlMergeChangeBlend': '표준이 아닌 합성 모드가 섞여 있습니다 — 병합한 레이어는 표준이 됩니다',
+    'tlMergeChangeClip': '고른 레이어와 고르지 않은 레이어가 클리핑으로 이어져 있습니다',
+    'tlMergeChangeFolder': '병합한 레이어가 놓일 폴더의 효과가 그 폴더 밖에서 온 레이어에도 걸립니다',
     'tlAttachDropsFxBody':
         '어태치된 레이어는 자기 fx 를 갖지 않습니다. 계속하면 기존 fx 가 사라집니다. 실행하겠습니까?',
     'tlPush': '밀기(칸 열기)',
@@ -7327,6 +7361,7 @@ enum AppStrings {
     'shortcutAction.edit-unlink': 'Rendre indépendant',
     'shortcutAction.edit-delete': 'Supprimer',
     'shortcutAction.edit-duplicate': 'Dupliquer',
+    'shortcutAction.edit-merge': 'Fusionner',
     'shortcutAction.edit-replace-colour': 'Remplacer la couleur',
     'shortcutAction.edit-clear-pixels': 'Effacer les pixels',
     'shortcutAction.edit-binarize': 'Binariser',
@@ -8428,6 +8463,16 @@ enum AppStrings {
     'shortcutAction.layer-detach': 'Détacher de la base',
     'tlAttachDropsFxRows': 'Calques qui perdent leur fx',
     'tlAttachDropsFxTitle': 'Le fx sera perdu',
+    'tlMergeChangesTitle': 'La fusion peut changer le rendu',
+    'tlMergeChangesBody':
+        'Le calque fusionné peut changer sur les calques en dessous.',
+    'tlMergeChanges': 'Ce qui change',
+    'tlMergeChangeBlend':
+        'Un calque a son propre mode de fusion — le résultat sera Normal',
+    'tlMergeChangeClip':
+        'Un écrêtage relie un calque choisi à un calque non choisi',
+    'tlMergeChangeFolder':
+        "Le dossier du résultat s'applique à des calques venus d'ailleurs",
     'tlAttachDropsFxBody':
         'Une couche attachée ne garde pas son propre fx. Continuer supprimera le fx existant. Continuer ?',
     'tlPush': 'Pousser (ouvrir des images)',
@@ -9055,6 +9100,7 @@ enum AppStrings {
     'shortcutAction.edit-unlink': '取消链接',
     'shortcutAction.edit-delete': '删除',
     'shortcutAction.edit-duplicate': '创建副本',
+    'shortcutAction.edit-merge': '合并',
     'shortcutAction.edit-replace-colour': '替换颜色',
     'shortcutAction.edit-clear-pixels': '清空像素',
     'shortcutAction.edit-binarize': '二值化',
@@ -10017,6 +10063,12 @@ enum AppStrings {
     'shortcutAction.layer-detach': '解除附属',
     'tlAttachDropsFxRows': '将失去 fx 的图层',
     'tlAttachDropsFxTitle': '附属后将失去 fx',
+    'tlMergeChangesTitle': '合并后外观可能会改变',
+    'tlMergeChangesBody': '合并后的图层叠在下方图层上时可能看起来不同。',
+    'tlMergeChanges': '会改变的内容',
+    'tlMergeChangeBlend': '含有非正常的混合模式 — 合并后的图层为正常',
+    'tlMergeChangeClip': '选中的图层与未选中的图层之间有剪贴关系',
+    'tlMergeChangeFolder': '合并后图层所在文件夹的效果也会作用于来自文件夹外的图层',
     'tlAttachDropsFxBody': '附属图层不保留自身的 fx。继续将丢弃现有的 fx。要继续吗？',
     'tlPush': '推出（空出帧）',
     'tlPull': '拉回（收拢帧）',

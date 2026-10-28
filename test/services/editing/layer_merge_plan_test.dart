@@ -10,6 +10,7 @@ import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_folder.dart' show createFolderLayer;
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/transform_track.dart';
@@ -365,5 +366,25 @@ void main() {
 
     expect(plan.result.id, const LayerId('a'));
     expect(plan.removed, [const LayerId('b')]);
+  });
+
+  test('a reference row is passed over: its file lies past the wall, where '
+      'no picture of the screen reaches', () {
+    final still = row('still', {0: 'P1'}, kind: LayerKind.image).copyWith(
+      mediaReference: MediaReference(
+        assetPath: 'paper.png',
+        pose: TransformPose(center: CanvasPoint(x: 32, y: 18)),
+        pictureSize: const CanvasSize(width: 640, height: 360),
+      ),
+    );
+    final cut = cutOf([row('b', {0: 'B1'}), still, row('a', {0: 'A1'})]);
+
+    final plan = merge(cut, ['a', 'b', 'still'])!;
+
+    expect(plan.removed, [const LayerId('b')]);
+    expect([for (final layer in plan.baked.layers) layer.id.value], [
+      'b',
+      'a',
+    ]);
   });
 }

@@ -85,6 +85,7 @@ import 'timeline/frame_panel_transport.dart' show panelTransportFor;
 import 'timeline/instance_editor_commands.dart'
     show autoNameWithWindow, editOnPanel;
 import 'timeline/layer_name_commands.dart' show deleteRowSelectionWithDialog;
+import 'timeline/merge_layer_rows.dart';
 import 'timeline/timeline_action_toolbar.dart'
     show showMarkEveryDialog, showTimelineCommaCountDialog;
 import 'timeline/timeline_bar_menus.dart';
@@ -1298,6 +1299,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         _workingPanel.unlinkPress?.call();
       case EditorActionIds.editDuplicate:
         _workingPanel.duplicatePress?.call();
+      case EditorActionIds.editMerge:
+        if (_workingPanel.canMerge) {
+          unawaited(mergeLayerRows(context, _session));
+        }
       case EditorActionIds.editDelete:
         // R9-rest: the thing in hand first — Delete takes a text held by
         // its box off its cel, and only with none in hand is it the

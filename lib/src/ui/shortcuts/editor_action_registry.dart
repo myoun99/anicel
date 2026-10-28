@@ -882,6 +882,10 @@ abstract final class EditorActionIds {
   /// 레이어복제/컷복제 삭제」).
   static const editDuplicate = 'edit-duplicate';
 
+  /// 🗣️I-78 — 병합, the shared pill's button beside 복제 (유저 2026-10-06:
+  /// 「프레임도 사용가능할거같으니 공용알약에 두는걸 생각중」).
+  static const editMerge = 'edit-merge';
+
   /// The colour edit list's five verbs, in its order — every one an action
   /// (유저 2026-09-13: 「그 외 같이있는 버튼들도 다 숏컷 지정가능하게」).
   static const editReplaceColour = 'edit-replace-colour';
@@ -1259,6 +1263,15 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.editDuplicate,
     label: 'Duplicate',
+    shelf: ShortcutShelf.sharedPill,
+    defaultActivators: [],
+  ),
+  // 🗣️I-78 — a button, so a row a key can be put on; unbound, as nobody
+  // named a key. ⚠️Neither program's table names it: neither program's
+  // command for it is in hand from its own references (I-88).
+  const EditorActionDefinition(
+    id: EditorActionIds.editMerge,
+    label: 'Merge',
     shelf: ShortcutShelf.sharedPill,
     defaultActivators: [],
   ),

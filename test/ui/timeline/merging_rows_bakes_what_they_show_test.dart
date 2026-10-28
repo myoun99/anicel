@@ -1,0 +1,220 @@
+import 'dart:async';
+import 'dart:typed_data';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/brush_frame_store.dart' show CelRead;
+import 'package:anicel/src/services/editing/default_cut_helpers.dart';
+import 'package:anicel/src/services/import/raster_cel_import.dart'
+    show bakeCelSurface;
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/merge_layer_rows.dart';
+
+import '../../helpers/cel_text_fixture.dart' show pixelOf;
+import '../../helpers/wait_window.dart';
+
+/// 🗣️I-78 (유저 2026-10-06 · 10-28): MERGE makes the selected rows ONE row
+/// whose cels are what they showed together — every row baked shown (Q7),
+/// the result standing where the topmost stood (Q2) — as one undo step, and
+/// asks first where the merge changes how they look (Q1 「포토샵 · 클튜처럼
+/// (+경고)」).
+void main() {
+  const canvasSize = CanvasSize(width: 64, height: 48);
+  const cutId = CutId('cut');
+  const red = [200, 0, 0, 255];
+  const green = [0, 200, 0, 255];
+
+  /// One opaque tile of [rgba] at [coord], 16 pixels a side.
+  BitmapSurface inkAt(TileCoord coord, List<int> rgba) {
+    final pixels = Uint8List(16 * 16 * 4);
+    for (var i = 0; i < pixels.length; i += 4) {
+      pixels.setRange(i, i + 4, rgba);
+    }
+    return BitmapSurface(
+      canvasSize: canvasSize,
+      tileSize: 16,
+      tiles: {coord: BitmapTile(size: 16, pixels: pixels)},
+    );
+  }
+
+  Layer row(String id, {bool isVisible = true, LayerBlendMode? blendMode}) =>
+      Layer(
+        id: LayerId(id),
+        name: id,
+        isVisible: isVisible,
+        blendMode: blendMode ?? LayerBlendMode.normal,
+        frames: [
+          Frame(id: FrameId('$id-1'), duration: 2, name: '1', strokes: []),
+        ],
+        timeline: {0: TimelineExposure.drawing(FrameId('$id-1'), length: 2)},
+      );
+
+  /// A cut of `b` under `a`, `b`'s ink red in the canvas's second column of
+  /// tiles and `a`'s green in its third, both rows selected.
+  EditorSessionManager session({
+    bool bShown = true,
+    LayerBlendMode? aBlend,
+  }) {
+    final s = EditorSessionManager(
+      initialProject: Project(
+        id: const ProjectId('project'),
+        name: 'Project',
+        cameraSize: canvasSize,
+        tracks: [
+          Track(
+            id: const TrackId('track'),
+            name: 'Track',
+            cuts: [
+              Cut(
+                id: cutId,
+                name: 'Cut',
+                duration: 2,
+                canvasSize: canvasSize,
+                layers: [
+                  row('b', isVisible: bShown),
+                  row('a', blendMode: aBlend),
+                  createCameraLayer(cutId: cutId),
+                ],
+              ),
+            ],
+          ),
+        ],
+        createdAt: DateTime.utc(2026),
+      ),
+    );
+    final cut = s.requireActiveCut;
+    final store = s.renderCaches.brushFrameStore;
+    for (final (id, coord, rgba) in [
+      ('b', TileCoord(x: 1, y: 0), red),
+      ('a', TileCoord(x: 2, y: 0), green),
+    ]) {
+      bakeCelSurface(
+        store,
+        s.brushFrameKeyForCut(cut, LayerId(id), FrameId('$id-1')),
+        inkAt(coord, rgba),
+      );
+    }
+    s.rowSelection.value = const [
+      LayerRowAddress(LayerId('a')),
+      LayerRowAddress(LayerId('b')),
+    ];
+    return s;
+  }
+
+  Future<BuildContext> hostedContext(WidgetTester tester) async {
+    late BuildContext hosted;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) {
+              hosted = context;
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      ),
+    );
+    return hosted;
+  }
+
+  /// The one cel the merged row `a` shows, as its picture.
+  BitmapSurface mergedCel(EditorSessionManager s) {
+    final cut = s.requireActiveCut;
+    final merged = cut.layers.byId(const LayerId('a'))!;
+    return s.renderCaches.brushFrameStore.bakedSurfaceOrNull(
+      s.brushFrameKeyForCut(cut, merged.id, merged.frames.single.id),
+      read: CelRead.look,
+    )!;
+  }
+
+  /// [cel]'s pixel at canvas ([x], [y]).
+  List<int>? at(BitmapSurface cel, int x, int y) => pixelOf(
+    cel,
+    TileCoord(x: x ~/ cel.tileSize, y: y ~/ cel.tileSize),
+    x % cel.tileSize,
+    y % cel.tileSize,
+  );
+
+  bool merged(EditorSessionManager s) =>
+      s.requireActiveCut.layers.byId(const LayerId('b')) == null;
+
+  testWidgets('🎯the rows become one row whose cel is what they showed '
+      'together — a hidden row baked shown (Q7) — and one undo gives both '
+      'back', (tester) async {
+    final s = session(bShown: false);
+    addTearDown(s.dispose);
+    final before = s.requireActiveCut.layers;
+    expect(s.layerMerging.mergesSelection, isTrue, reason: 'the button lit');
+    final context = await hostedContext(tester);
+
+    unawaited(mergeLayerRows(context, s));
+    await settleBehindTheWaitWindow(tester, () => merged(s));
+
+    final cut = s.requireActiveCut;
+    expect([for (final layer in cut.layers) layer.id], [
+      const LayerId('a'),
+      cameraLayerIdForCut(cutId),
+    ]);
+    expect(cut.layers.first.frames, hasLength(1), reason: 'one picture');
+    final cel = mergedCel(s);
+    expect([at(cel, 20, 5), at(cel, 36, 5)], [red, green]);
+    expect(at(cel, 5, 5)?[3] ?? 0, 0, reason: 'nothing where neither drew');
+    expect(s.rowSelection.value, isEmpty);
+    expect(s.activeLayer?.id, const LayerId('a'));
+
+    s.undo();
+    expect(s.requireActiveCut.layers, before);
+    s.redo();
+    expect([at(mergedCel(s), 20, 5), at(mergedCel(s), 36, 5)], [red, green]);
+    s.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('a merge that changes how the rows look asks first, and the '
+      'answer no leaves them as they were (Q1)', (tester) async {
+    final s = session(aBlend: LayerBlendMode.multiply);
+    addTearDown(s.dispose);
+    final before = s.requireActiveCut.layers;
+    final context = await hostedContext(tester);
+
+    unawaited(mergeLayerRows(context, s));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('layer-merge-changes-dialog')),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('layer-merge-changes-cancel-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(s.requireActiveCut.layers, before);
+    s.playbackRig.prerenderScheduler.cancel();
+  });
+
+  test('one row alone lights nothing', () {
+    final s = session();
+    addTearDown(s.dispose);
+    s.rowSelection.value = const [LayerRowAddress(LayerId('a'))];
+
+    expect(s.layerMerging.mergesSelection, isFalse);
+    expect(s.layerMerging.planOfSelection(), isNull);
+  });
+}

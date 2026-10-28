@@ -18,6 +18,7 @@ import '../widgets/kept_tail_row.dart' show FoldFloor;
 import '../widgets/panel_flyout.dart';
 import '../widgets/pill_strip.dart';
 import 'instance_editor_commands.dart' show autoNameWithWindow;
+import 'merge_layer_rows.dart';
 import 'timeline_section_policy.dart';
 import 'timeline_bar_menus.dart';
 import 'toolbar_panel_context.dart';
@@ -666,6 +667,8 @@ class TimelineActionToolbar extends StatelessWidget {
     panelContext.canUnlink,
     // F-455: 복제, likewise.
     panelContext.canDuplicate,
+    // I-78: 병합, likewise.
+    panelContext.canMerge,
     // I-18: 자동 이름 지정, likewise.
     panelContext.canAutoName,
   );
@@ -872,6 +875,21 @@ class TimelineActionToolbar extends StatelessWidget {
           shortcuts: const [EditorActionIds.editDuplicate],
           icon: Icons.control_point_duplicate,
           onPressed: panelContext.duplicatePress,
+        ),
+        // 🗣️I-78 (유저 2026-10-06): 「병합버튼. 우선 레이어 다중선택하고
+        // 병합하는걸 원하는데, 프레임도 사용가능할거같으니 공용알약에 두는걸
+        // 생각중」 — beside 복제, the other verb that makes a row of rows. A
+        // context of its own: the press opens its windows from here.
+        Builder(
+          builder: (context) => _iconButton(
+            key: const ValueKey<String>('shared-merge-button'),
+            tooltip: editorActionLabel(EditorActionIds.editMerge),
+            shortcuts: const [EditorActionIds.editMerge],
+            icon: Icons.merge,
+            onPressed: panelContext.canMerge
+                ? () => unawaited(mergeLayerRows(context, session))
+                : null,
+          ),
         ),
         _iconButton(
           key: const ValueKey<String>('shared-delete-button'),
