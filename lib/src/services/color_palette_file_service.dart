@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../models/reorder_target.dart';
 import 'persistence/versioned_settings_file.dart';
 
 import 'persistence/app_support_path.dart';
@@ -11,6 +12,8 @@ class NamedPalette {
     required this.id,
     required this.name,
     required this.slots,
+    this.folded = false,
+    this.locked = false,
   });
 
   /// A palette's places — Procreate's thirty (I-131-Q2).
@@ -24,16 +27,42 @@ class NamedPalette {
   /// [slotCount] long, null where a place is empty.
   final List<int?> slots;
 
+  /// Folded in the palette panel: its name alone stands there (I-131,
+  /// 유저 2026-10-28: 「이름 탭하면 접기」).
+  final bool folded;
+
+  /// Locked: it shows its colours alone, packed with no empty place, and
+  /// takes no edit — a press only picks (I-131, 유저 2026-10-28: 「빈 칸
+  /// 없애서 fit하게 컴팩트하게 … 색끼리 드래그도 안되고 그런 편집기능 다
+  /// 잠금」). The places keep where they stand, so it unlocks as it was.
+  final bool locked;
+
   bool holds(int color) => slots.contains(color);
 
-  NamedPalette _with({String? id, String? name, List<int?>? slots}) =>
-      NamedPalette(
-        id: id ?? this.id,
-        name: name ?? this.name,
-        slots: slots ?? this.slots,
-      );
+  /// The places a locked palette shows: its colours, in order.
+  List<int> get colors => [...slots.nonNulls];
 
-  Map<String, Object?> toJson() => {'id': id, 'name': name, 'slots': slots};
+  NamedPalette _with({
+    String? id,
+    String? name,
+    List<int?>? slots,
+    bool? folded,
+    bool? locked,
+  }) => NamedPalette(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    slots: slots ?? this.slots,
+    folded: folded ?? this.folded,
+    locked: locked ?? this.locked,
+  );
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'name': name,
+    'slots': slots,
+    'folded': folded,
+    'locked': locked,
+  };
 
   static NamedPalette? fromJson(Object? json) {
     if (json is! Map) {
@@ -50,6 +79,8 @@ class NamedPalette {
         for (final slot in slots)
           if (slot is int) slot else null,
       ]),
+      folded: json['folded'] == true,
+      locked: json['locked'] == true,
     );
   }
 
@@ -176,6 +207,35 @@ class ColorPaletteState {
       ],
     ),
   );
+
+  /// Palette [id]'s place [index] emptied — that one place, where the −
+  /// empties every place holding the current colour (I-131: the delete in
+  /// a colour's double-click window).
+  ColorPaletteState cleared(String id, int index) => _changing(
+    id,
+    (palette) => palette._with(slots: [...palette.slots]..[index] = null),
+  );
+
+  /// Palette [id] moved to stand before palette [beforeId] — last where
+  /// that is null (I-131: 「위치관계 바꿀수있게」, by the brush groups'
+  /// own move).
+  ColorPaletteState moved(String id, String? beforeId) {
+    NamedPalette? byId(String? wanted) =>
+        palettes.where((palette) => palette.id == wanted).firstOrNull;
+    final palette = byId(id);
+    if (palette == null) {
+      return this;
+    }
+    return _with(
+      palettes: movedBefore(palettes, moved: palette, anchor: byId(beforeId)),
+    );
+  }
+
+  ColorPaletteState withFolded(String id, {required bool folded}) =>
+      _changing(id, (palette) => palette._with(folded: folded));
+
+  ColorPaletteState withLocked(String id, {required bool locked}) =>
+      _changing(id, (palette) => palette._with(locked: locked));
 
   /// Palette [id] called [name]; a blank name keeps the one it had.
   ColorPaletteState renamed(String id, String name) {

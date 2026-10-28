@@ -913,26 +913,28 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
           // real tabs drag.
           canMove: (index) => reorderable && tabs[index] != null,
           onReorderItem: _handleTabReorder,
-          itemBuilder: (context, index, reordering) {
+          itemBuilder: (context, index, row) {
             final group = tabs[index];
-            return _BrushGroupTab(
-              keyValue: 'brush-preset-tab-${group?.id.value ?? 'root'}',
-              label: group?.name ?? brushRootSectionLabel,
-              shortcuts: [
-                if (group != null) brushGroupActionId(widget.tool, group.id),
-              ],
-              icon: group?.icon,
-              showIcon: _railShowIcon,
-              showName: _railShowName,
-              showTooltip: !reordering,
-              onEdit: group == null || widget.onGroupEdited == null
-                  ? null
-                  : () => _editGroup(group),
-              // The tab wears its group's first brush, so a chalk group
-              // looks chalky and no one has to pick an icon.
-              preview: _firstPresetIn(group?.id),
-              selected: group?.id == open,
-              onTap: () => _enterTab(group?.id),
+            return row.grip(
+              _BrushGroupTab(
+                keyValue: 'brush-preset-tab-${group?.id.value ?? 'root'}',
+                label: group?.name ?? brushRootSectionLabel,
+                shortcuts: [
+                  if (group != null) brushGroupActionId(widget.tool, group.id),
+                ],
+                icon: group?.icon,
+                showIcon: _railShowIcon,
+                showName: _railShowName,
+                showTooltip: !row.reordering,
+                onEdit: group == null || widget.onGroupEdited == null
+                    ? null
+                    : () => _editGroup(group),
+                // The tab wears its group's first brush, so a chalk group
+                // looks chalky and no one has to pick an icon.
+                preview: _firstPresetIn(group?.id),
+                selected: group?.id == open,
+                onTap: () => _enterTab(group?.id),
+              ),
             );
           },
         ),

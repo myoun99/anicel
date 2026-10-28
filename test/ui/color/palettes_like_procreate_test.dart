@@ -13,6 +13,7 @@ import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/services/color_palette_file_service.dart';
 import 'package:anicel/src/ui/color/color_palettes.dart';
 import 'package:anicel/src/ui/color/color_panels.dart';
+import 'package:anicel/src/ui/color/color_wheel_panel.dart' show ColorWheel;
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/disabled_ink.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
@@ -104,6 +105,32 @@ Future<void> _press(WidgetTester tester, Finder target) async {
   await tester.tap(target, kind: PointerDeviceKind.mouse);
   await tester.pumpAndSettle();
 }
+
+/// Two quick presses on [target] — a double click.
+Future<void> _doubleClick(WidgetTester tester, Finder target) async {
+  await tester.tap(target, kind: PointerDeviceKind.mouse);
+  await tester.pump(const Duration(milliseconds: 60));
+  await tester.tap(target, kind: PointerDeviceKind.mouse);
+  await tester.pumpAndSettle();
+}
+
+/// Palette [id]'s name, typed from its ⋯ — a press on the name folds it.
+Future<void> _rename(WidgetTester tester, String id) async {
+  await _press(tester, _key('palette-$id-more'));
+  await _press(tester, _key('palette-rename'));
+}
+
+/// How many places palette [id] shows.
+int _shownPlaces(String id) => find
+    .byWidgetPredicate(
+      (widget) =>
+          widget.key is ValueKey<String> &&
+          (widget.key! as ValueKey<String>).value.startsWith(
+            'palette-$id-slot-',
+          ),
+    )
+    .evaluate()
+    .length;
 
 /// Presses [from], trembles inside it, and lets go on [to] — by way of
 /// [via] when given.
@@ -306,14 +333,14 @@ void main() {
       expect(remove('p1').onPressed, isNull, reason: 'none is left');
     });
 
-    testWidgets('a press on its name types it where it stands: Enter keeps '
-        'it, Escape lets it go, a press away keeps it', (tester) async {
+    testWidgets('its ⋯ types its name where it stands: Enter keeps it, '
+        'Escape lets it go, a press away keeps it', (tester) async {
       final desk = await _open(tester);
       String nameOf(String id) => desk.palettes.palettes
           .firstWhere((palette) => palette.id == id)
           .name;
 
-      await _press(tester, _key('palette-p2-name'));
+      await _rename(tester, 'p2');
       final field = tester.widget<TextField>(_key('palette-p2-name-input'));
       expect(field.focusNode!.hasFocus, isTrue);
       expect(
@@ -332,19 +359,121 @@ void main() {
       expect(nameOf('p2'), 'Sea');
       expect(_key('palette-p2-name-input'), findsNothing);
 
-      await _press(tester, _key('palette-p2-name'));
+      await _rename(tester, 'p2');
       await tester.enterText(_key('palette-p2-name-input'), 'Gone');
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
       await tester.pumpAndSettle();
       expect(nameOf('p2'), 'Sea');
       expect(_key('palette-p2-name-input'), findsNothing);
 
-      await _press(tester, _key('palette-p2-name'));
+      await _rename(tester, 'p2');
       await tester.enterText(_key('palette-p2-name-input'), 'Ocean');
       // Below the last palette: the list's own empty room, no control.
       await tester.tapAt(const Offset(130, 450));
       await tester.pumpAndSettle();
       expect(nameOf('p2'), 'Ocean');
+    });
+
+    testWidgets('a press on its name folds it — the name stays, its places '
+        'go — and a second opens it (I-131, 10-28)', (tester) async {
+      final desk = await _open(tester);
+      bool folded(String id) =>
+          desk.palettes.palettes.firstWhere((p) => p.id == id).folded;
+
+      await _press(tester, _key('palette-p1-name'));
+      expect(folded('p1'), isTrue);
+      expect(_shownPlaces('p1'), 0);
+      expect(_key('palette-p1-name'), findsOneWidget);
+      expect(_key('palette-p1-name-input'), findsNothing, reason: 'no rename');
+      expect(_shownPlaces('p2'), NamedPalette.slotCount, reason: 'p2 alone');
+
+      await _press(tester, _key('palette-p1-name'));
+      expect(folded('p1'), isFalse);
+      expect(_shownPlaces('p1'), NamedPalette.slotCount);
+    });
+
+    testWidgets('a drag that leaves its name moves the palette — the brush '
+        'groups\' own move (I-131, 10-28)', (tester) async {
+      final desk = await _open(tester);
+      List<String> order() => [
+        for (final palette in desk.palettes.palettes) palette.id,
+      ];
+
+      // Up past the top of p1's entry, in steps the list can follow.
+      final start = tester.getCenter(_key('palette-p2-name'));
+      final rise = start.dy - tester.getTopLeft(_key('palette-p1')).dy + 8;
+      final gesture = await tester.startGesture(
+        start,
+        kind: PointerDeviceKind.mouse,
+      );
+      for (var step = 1; step <= 10; step += 1) {
+        await gesture.moveTo(start - Offset(0, rise * step / 10));
+        await tester.pump();
+      }
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(order(), ['p2', 'p1']);
+      expect(
+        desk.palettes.palettes.first.folded,
+        isFalse,
+        reason: 'a drag is not a press',
+      );
+    });
+
+    testWidgets('locked, it shows its colours alone, packed, and a press '
+        'only picks — no fill, no carry, no −, no colour window', (
+      tester,
+    ) async {
+      final desk = await _open(
+        tester,
+        color: _red,
+        palettes: _two().withLocked('p1', locked: true),
+      );
+      final lock = tester.widget<AppIconButtonFace>(_key('palette-p1-lock'));
+      expect(lock.isSelected, isTrue);
+      expect(_shownPlaces('p1'), 3);
+      expect(_place('p1', 2), findsNothing, reason: 'the empty place goes');
+      expect(
+        tester.getRect(_place('p1', 3)).left -
+            tester.getRect(_place('p1', 1)).right,
+        moreOrLessEquals(4),
+        reason: 'the colour after the empty place packs up to the one before',
+      );
+      expect(
+        tester.widget<AppIconButtonFace>(_key('palette-p1-remove')).onPressed,
+        isNull,
+      );
+
+      await _press(tester, _place('p1', 1));
+      expect(desk.color, _blue);
+      await _carry(tester, _place('p1', 0), _place('p1', 1));
+      expect(desk.slotsOf('p1').take(4), [_red, _blue, null, _red]);
+      await _doubleClick(tester, _place('p1', 3));
+      expect(_key('palette-place-delete'), findsNothing);
+
+      await _press(tester, _key('palette-p1-lock'));
+      expect(desk.palettes.palettes.first.locked, isFalse);
+      expect(_shownPlaces('p1'), NamedPalette.slotCount);
+      expect(desk.slotsOf('p1').take(4), [_red, _blue, null, _red]);
+    });
+
+    testWidgets('a double click on a colour opens its window: the wheel '
+        'recolours that place, the delete empties it alone (I-131, 10-28)', (
+      tester,
+    ) async {
+      final desk = await _open(tester);
+
+      await _doubleClick(tester, _place('p1', 0));
+      expect(_key('palette-place-delete'), findsOneWidget);
+      tester
+          .widget<ColorWheel>(find.byType(ColorWheel))
+          .onChanged(HSVColor.fromColor(const Color(_green)));
+      await tester.pump();
+      expect(desk.slotsOf('p1').first, _green);
+
+      await _press(tester, _key('palette-place-delete'));
+      expect(_key('palette-place-delete'), findsNothing, reason: 'it closed');
+      expect(desk.slotsOf('p1').take(4), [null, _blue, null, _red]);
     });
 
     testWidgets("the default palette says so by its name's colour alone", (
@@ -492,6 +621,20 @@ void main() {
         await _carry(tester, _place('p1', 0), _place('p1', 5));
         expect(desk.slotsOf('p1')[5], _red);
         expect(desk.slotsOf('p1')[0], isNull);
+      });
+
+      testWidgets('${kind.name}: a locked default stands packed here too — '
+          'the same places, not a second set', (tester) async {
+        final desk = await _open(
+          tester,
+          kind: kind,
+          palettes: _two().withLocked('p1', locked: true),
+        );
+        expect(_shownPlaces('p1'), 3);
+        expect(_place('p1', 2), findsNothing);
+
+        await _carry(tester, _place('p1', 0), _place('p1', 1));
+        expect(desk.slotsOf('p1').take(4), [_red, _blue, null, _red]);
       });
     }
 

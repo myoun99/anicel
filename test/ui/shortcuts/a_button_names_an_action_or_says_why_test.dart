@@ -49,6 +49,9 @@ const ledger = <String, Why>{
   // A palette's − (I-131): it takes the current colour out of the palette
   // whose name row it stands on.
   "color/color_palettes.dart | 'palette-\${palette.id}-remove'": Why.aRow,
+  // A palette's lock (I-131, 10-28): it locks the palette whose name row it
+  // stands on.
+  "color/color_palettes.dart | 'palette-\${palette.id}-lock'": Why.aRow,
   "media/media_pool_panel.dart | 'media-asset-in-use-\${asset.path}'":
       Why.aRow,
   "menu/editor_top_strip.dart | 'project-tab-close-\$index'": Why.aRow,
@@ -134,6 +137,9 @@ const ledger = <String, Why>{
   "brush/brush_tip_picker.dart | 'brush-tip-delete'": Why.inAWindow,
   "brush/brush_tip_picker.dart | 'brush-tip-picker-add'": Why.inAWindow,
   "brush/brush_tip_picker.dart | 'brush-tip-rename'": Why.inAWindow,
+  // A palette colour's delete, in that colour's double-click window
+  // (I-131, 10-28).
+  "color/color_palettes.dart | 'palette-place-delete'": Why.inAWindow,
   "debug/input_inspector.dart | 'input-inspector-clear'": Why.inAWindow,
   "debug/input_inspector.dart | 'input-inspector-close'": Why.inAWindow,
   "dialogs/audio_settings_section.dart | 'settings-audio-report-refresh'":

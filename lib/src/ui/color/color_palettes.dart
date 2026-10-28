@@ -8,7 +8,8 @@
 /// picker or in the palette panel (「거기서도 누르기 · 빈칸 넣기 · 끌기가
 /// 같다」): a press picks its colour, a press on an empty one puts the
 /// current colour in, and a drag onto another place of the same palette
-/// moves or trades.
+/// moves or trades. A double click opens the colour's own window, with its
+/// delete; a locked palette does none of the editing (I-131, 10-28).
 ///
 /// ⛔No long press anywhere. R10 R3 took every long-press and right-click
 /// menu down — a long press never fires inside a scroll view — and what
@@ -21,6 +22,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../models/reorder_target.dart';
 import '../../services/color_palette_file_service.dart';
 import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/dialog_verb.dart';
@@ -32,10 +34,12 @@ import '../text/app_strings.dart' show AppText;
 import '../theme/app_theme.dart' show AppColors, AppCursors, AppShapes;
 import '../theme/disabled_ink.dart';
 import '../widgets/app_icon_button.dart';
+import '../widgets/color_swatch_button.dart' show showColorPickerPopup;
 import '../widgets/inline_edit_field.dart';
 import '../widgets/owning_draggable.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/pill_strip.dart';
+import '../widgets/stand_on_reorder_list.dart';
 import 'color_hex.dart';
 import 'color_status_bar.dart';
 
@@ -62,6 +66,12 @@ class _Hands {
 
   void trade(String paletteId, int from, int to) =>
       onPalettesChanged(palettes.traded(paletteId, from, to));
+
+  void recolor(String paletteId, int index, int color) =>
+      onPalettesChanged(palettes.filled(paletteId, index, color));
+
+  void clear(String paletteId, int index) =>
+      onPalettesChanged(palettes.cleared(paletteId, index));
 }
 
 /// Where a place stands: which palette, and which of its places.
@@ -252,28 +262,69 @@ class _PalettePlaces extends StatelessWidget {
   final PaletteView view;
   final _Hands hands;
 
+  /// The places it shows, by index: every one — or, locked, its colours
+  /// alone, packed ([NamedPalette.locked]).
+  List<int> get _shown => [
+    for (var index = 0; index < palette.slots.length; index += 1)
+      if (!palette.locked || palette.slots[index] != null) index,
+  ];
+
   Widget _place(int index, double extent) {
     final color = palette.slots[index];
+    final locked = palette.locked;
     return _Place(
       key: ValueKey<String>('palette-${palette.id}-slot-$index'),
       color: color,
       extent: extent,
-      at: (paletteId: palette.id, index: index),
+      // Locked, a place takes no drop and lends no colour to carry.
+      at: locked ? null : (paletteId: palette.id, index: index),
       onPressed: color == null
           ? () => hands.fill(palette.id, index)
           : () => hands.pick(color),
       onTraded: (from) => hands.trade(palette.id, from, index),
+      onEdit: locked || color == null
+          ? null
+          : (anchor) => unawaited(_edit(anchor, index, color)),
     );
   }
 
+  /// The colour of place [index] in its own window, with the delete — I-131
+  /// (유저 2026-10-28): 「색 더블클릭하면 해당 색 편집창 열려서 삭제버튼
+  /// 뜨게」.
+  Future<void> _edit(BuildContext anchor, int index, int color) =>
+      showColorPickerPopup(
+        anchor,
+        color: color,
+        onChanged: (changed) => hands.recolor(palette.id, index, changed),
+        hostRow: Builder(
+          builder: (window) => Align(
+            alignment: Alignment.centerRight,
+            child: AppIconButton(
+              keyValue: 'palette-place-delete',
+              tooltip: AppText.strings.commonDelete,
+              danger: true,
+              icon: const Icon(Icons.delete_outline),
+              onPressed: () {
+                hands.clear(palette.id, index);
+                Navigator.of(window).pop();
+              },
+            ),
+          ),
+        ),
+      );
+
   @override
-  Widget build(BuildContext context) => switch (view) {
-    PaletteView.compact => _CompactPlaces(
-      count: palette.slots.length,
-      place: _place,
-    ),
-    PaletteView.cards => _CardPlaces(slots: palette.slots, place: _place),
-  };
+  Widget build(BuildContext context) {
+    final shown = _shown;
+    Widget place(int at, double extent) => _place(shown[at], extent);
+    return switch (view) {
+      PaletteView.compact => _CompactPlaces(count: shown.length, place: place),
+      PaletteView.cards => _CardPlaces(
+        slots: [for (final index in shown) palette.slots[index]],
+        place: place,
+      ),
+    };
+  }
 }
 
 /// One place: a colour, or empty.
@@ -285,6 +336,7 @@ class _Place extends StatefulWidget {
     required this.onPressed,
     this.at,
     this.onTraded,
+    this.onEdit,
   });
 
   final int? color;
@@ -301,6 +353,11 @@ class _Place extends StatefulWidget {
   /// Another place of the same palette, let go on this one: the place it
   /// left is handed over.
   final void Function(int from)? onTraded;
+
+  /// A double click: the colour's own window, anchored on the place. It
+  /// does not delay the press — that fires from the raw lift
+  /// ([ControlPressClaim]), as the brush group tab's does.
+  final void Function(BuildContext anchor)? onEdit;
 
   @override
   State<_Place> createState() => _PlaceState();
@@ -353,6 +410,7 @@ class _PlaceState extends State<_Place> {
     }
     final at = widget.at;
     final color = widget.color;
+    final onEdit = widget.onEdit;
     // ⚠️The carry sits INSIDE the claim, and the order is the point: the
     // deeper recogniser is offered the first move first, and both take
     // the pointer on it — a claim outside wins it and the carry never
@@ -364,6 +422,7 @@ class _PlaceState extends State<_Place> {
         mouseCursor: AppCursors.press,
         customBorder: const CircleBorder(),
         onTap: silentPress(_press),
+        onDoubleTap: onEdit == null ? null : () => onEdit(context),
         child: at == null || color == null
             ? circle
             : _carrying(circle, color, at),
@@ -555,6 +614,13 @@ class _ColorPalettesPanelState extends State<ColorPalettesPanel> {
     final strings = AppText.strings;
     final palettes = widget.palettes;
     return [
+      // A press on the name folds it now (I-131, 유저 2026-10-28: 「이름편집은
+      // 오른쪽 점3개 설정버튼에서 하도록」).
+      PanelFlyoutItem(
+        keyValue: 'palette-rename',
+        label: strings.commonRename,
+        onSelected: () => setState(() => _renaming = palette.id),
+      ),
       PanelFlyoutItem(
         keyValue: 'palette-make-default',
         label: strings.paletteMakeDefault,
@@ -620,7 +686,11 @@ class _ColorPalettesPanelState extends State<ColorPalettesPanel> {
     );
   }
 
-  Widget _name(NamedPalette palette) {
+  /// The name: a press folds the palette or opens it, and a drag that
+  /// leaves it moves the palette — the brush groups' own move (I-131, 유저
+  /// 2026-10-28: 「이름 탭하면 접기, 이름 탭다운하고 드래그하면 브러시 그룹
+  /// 이동하는 로직 법 통일/재사용해서 드래그」). [grip] makes it the handle.
+  Widget _name(NamedPalette palette, Widget Function(Widget handle) grip) {
     final theme = Theme.of(context);
     final style = theme.textTheme.bodySmall?.copyWith(
       // The default palette says so by its colour alone — 「선택 표시는
@@ -646,23 +716,29 @@ class _ColorPalettesPanelState extends State<ColorPalettesPanel> {
         onCancel: () => setState(() => _renaming = null),
       );
     }
-    void rename() => setState(() => _renaming = palette.id);
+    void fold() => _change(
+      (now) => now.withFolded(palette.id, folded: !palette.folded),
+    );
+    // ⚠️The grip sits INSIDE the claim, as a place's carry does: the deeper
+    // recogniser is offered the first move first.
     return ControlPressClaim(
-      onPressed: rename,
+      onPressed: fold,
       child: InkWell(
         key: ValueKey<String>('palette-${palette.id}-name'),
         mouseCursor: AppCursors.press,
         customBorder: AppShapes.container(AppShapes.wellRadius),
-        onTap: silentPress(rename),
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2),
-            child: Text(
-              palette.name,
-              style: style,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+        onTap: silentPress(fold),
+        child: grip(
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: Text(
+                palette.name,
+                style: style,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ),
         ),
@@ -670,16 +746,29 @@ class _ColorPalettesPanelState extends State<ColorPalettesPanel> {
     );
   }
 
-  Widget _head(NamedPalette palette) {
+  Widget _head(NamedPalette palette, StandOnRow row) {
     final strings = AppText.strings;
     final color = widget.color;
+    final locked = palette.locked;
     return Padding(
       padding: const EdgeInsets.only(top: 10, bottom: 4),
       child: SizedBox(
         height: 26,
         child: Row(
           children: [
-            Expanded(child: _name(palette)),
+            Expanded(child: _name(palette, row.grip)),
+            // I-131 (유저 2026-10-28): 「팔레트 잠금버튼 지금 색 빼기 왼쪽에
+            // 만들기」 — locked, the palette shows its colours packed and
+            // takes no edit ([NamedPalette.locked]).
+            AppIconButton(
+              keyValue: 'palette-${palette.id}-lock',
+              tooltip: strings.paletteLock,
+              icon: const Icon(Icons.lock_outline),
+              isSelected: locked,
+              onPressed: () => _change(
+                (now) => now.withLocked(palette.id, locked: !locked),
+              ),
+            ),
             // 🚨R10 R5: the − is how a colour leaves a palette since R10 R3
             // took the long press down — a gesture that never fired inside
             // a scroll view. It takes the CURRENT colour out, so a place
@@ -690,7 +779,7 @@ class _ColorPalettesPanelState extends State<ColorPalettesPanel> {
               keyValue: 'palette-${palette.id}-remove',
               tooltip: strings.paletteRemoveCurrent,
               icon: const Icon(Icons.remove),
-              onPressed: palette.holds(color)
+              onPressed: !locked && palette.holds(color)
                   ? () => _change((now) => now.emptied(palette.id, color))
                   : null,
             ),
@@ -728,35 +817,56 @@ class _ColorPalettesPanelState extends State<ColorPalettesPanel> {
     //
     // A key presses the ＋ — the palette panel is one panel, whatever is
     // in hand (I-40).
+    final listed = palettes.palettes;
     return PanelKeysBinding(
       buttons: {EditorActionIds.paletteNew: _newPalette},
-      child: ListView(
-        key: const ValueKey<String>('palette-panel'),
+      child: StandOnReorderList(
+        listKey: const ValueKey<String>('palette-panel'),
         padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-        children: [
-          _top(),
-          Padding(
-            padding: const EdgeInsets.only(top: 10, bottom: 4),
-            child: Text(
-              AppText.strings.colorRecent,
-              style: Theme.of(context).textTheme.labelSmall,
+        header: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _top(),
+            Padding(
+              padding: const EdgeInsets.only(top: 10, bottom: 4),
+              child: Text(
+                AppText.strings.colorRecent,
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
             ),
-          ),
-          _RecentPlaces(hands: hands),
-          for (final palette in palettes.palettes)
-            Column(
-              key: ValueKey<String>('palette-${palette.id}'),
+            _RecentPlaces(hands: hands),
+          ],
+        ),
+        itemCount: listed.length,
+        entryKeyOf: (index) => ValueKey<String>('palette-${listed[index].id}'),
+        canMove: (_) => true,
+        onReorderItem: (from, target) {
+          final anchor = reorderAnchorAt(
+            listed,
+            movedIndex: from,
+            target: target,
+          );
+          _change((now) => now.moved(listed[from].id, anchor?.id));
+        },
+        itemBuilder: (context, index, row) {
+          final palette = listed[index];
+          // No tooltip while a palette is carried — see StandOnReorderList.
+          return TooltipVisibility(
+            visible: !row.reordering,
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _head(palette),
-                _PalettePlaces(
-                  palette: palette,
-                  view: palettes.view,
-                  hands: hands,
-                ),
+                _head(palette, row),
+                if (!palette.folded)
+                  _PalettePlaces(
+                    palette: palette,
+                    view: palettes.view,
+                    hands: hands,
+                  ),
               ],
             ),
-        ],
+          );
+        },
       ),
     );
   }

@@ -1152,6 +1152,7 @@ enum AppStrings {
   String paletteDeleteBody(String name) =>
       _s('paletteDeleteTemplate').replaceAll('{name}', name);
   String get paletteRemoveCurrent => _s('paletteRemoveCurrent');
+  String get paletteLock => _s('paletteLock');
   String get paletteMore => _s('paletteMore');
   String get penPressureTitle => _s('penPressureTitle');
   String get brushDynamicsTitle => _s('brushDynamicsTitle');
@@ -2569,6 +2570,7 @@ enum AppStrings {
     'paletteDeleteTitle': 'Delete palette',
     'paletteDeleteTemplate': 'Delete the palette "{name}"?',
     'paletteRemoveCurrent': 'Remove the current colour',
+    'paletteLock': 'Lock the palette',
     'paletteMore': 'More',
     'penPressureTitle': 'Pen pressure',
     'brushDynamicsTitle': 'Response',
@@ -4100,6 +4102,7 @@ enum AppStrings {
     'paletteDeleteTitle': 'パレットを削除',
     'paletteDeleteTemplate': 'パレット「{name}」を削除しますか？',
     'paletteRemoveCurrent': '今の色を外す',
+    'paletteLock': 'パレットをロック',
     'paletteMore': 'その他',
     'penPressureTitle': '筆圧',
     'brushDynamicsTitle': '入り抜き',
@@ -5833,6 +5836,7 @@ enum AppStrings {
     'paletteDeleteTitle': '팔레트 삭제',
     'paletteDeleteTemplate': '「{name}」 팔레트를 삭제할까요?',
     'paletteRemoveCurrent': '지금 색 빼기',
+    'paletteLock': '팔레트 잠금',
     'paletteMore': '더 보기',
     'penPressureTitle': '필압',
     'brushDynamicsTitle': '반응',
@@ -7611,6 +7615,7 @@ enum AppStrings {
     'paletteDeleteTitle': 'Supprimer la palette',
     'paletteDeleteTemplate': 'Supprimer la palette « {name} » ?',
     'paletteRemoveCurrent': 'Retirer la couleur actuelle',
+    'paletteLock': 'Verrouiller la palette',
     'paletteMore': 'Plus',
     'penPressureTitle': 'Pression du stylet',
     'brushDynamicsTitle': 'Réponse',
@@ -9371,6 +9376,7 @@ enum AppStrings {
     'paletteDeleteTitle': '删除调色板',
     'paletteDeleteTemplate': '要删除调色板“{name}”吗？',
     'paletteRemoveCurrent': '移除当前颜色',
+    'paletteLock': '锁定调色板',
     'paletteMore': '更多',
     'penPressureTitle': '笔压',
     'brushDynamicsTitle': '响应',

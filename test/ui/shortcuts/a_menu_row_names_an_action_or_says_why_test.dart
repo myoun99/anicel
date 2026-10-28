@@ -70,6 +70,7 @@ const ledger = <String, Why>{
   "color/color_palettes.dart | 'palette-delete'": Why.declined,
   "color/color_palettes.dart | 'palette-duplicate'": Why.declined,
   "color/color_palettes.dart | 'palette-make-default'": Why.declined,
+  "color/color_palettes.dart | 'palette-rename'": Why.declined,
   // 🗣️I-40-Q3 (유저 2026-10-09, two viewers — which one would a key take?):
   // 「안만들기로했음」.
   "media/media_viewer_tab_host.dart | _key('register-asset-button')":

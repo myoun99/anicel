@@ -87,6 +87,44 @@ void main() {
     expect(emptied.palettes.first.holds(red), isFalse);
   });
 
+  test('a double-click delete empties that one place — the same colour '
+      'elsewhere stays', () {
+    final cleared = two().cleared('p1', 0);
+    expect(slotsOf(cleared, 'p1').take(4), [null, blue, null, red]);
+    expect(slotsOf(cleared, 'p4'), slotsOf(two(), 'p4'), reason: 'p4 alone');
+  });
+
+  test('a palette moves before another, and last before none — the brush '
+      'groups\' own move (I-131)', () {
+    List<String> idsOf(ColorPaletteState state) => [
+      for (final palette in state.palettes) palette.id,
+    ];
+    final three = two().withNewPalette('Palette 2');
+    expect(idsOf(three), ['p5', 'p1', 'p4']);
+    expect(idsOf(three.moved('p4', 'p5')), ['p4', 'p5', 'p1']);
+    expect(idsOf(three.moved('p5', null)), ['p1', 'p4', 'p5']);
+    expect(three.moved('gone', 'p5'), same(three));
+  });
+
+  test('folding and locking are each palette\'s own, and a lock keeps the '
+      'places where they stand — its colours read packed', () {
+    final locked = two().withLocked('p1', locked: true);
+    expect(locked.palettes.first.locked, isTrue);
+    expect(locked.palettes[1].locked, isFalse);
+    expect(slotsOf(locked, 'p1'), slotsOf(two(), 'p1'));
+    expect(locked.palettes.first.colors, [red, blue, red]);
+
+    final folded = two().withFolded('p4', folded: true);
+    expect([for (final palette in folded.palettes) palette.folded], [
+      false,
+      true,
+    ]);
+    expect(
+      folded.withFolded('p4', folded: false).palettes[1].folded,
+      isFalse,
+    );
+  });
+
   test('a rename trims the name, and a blank one keeps the name it had', () {
     expect(two().renamed('p4', '  Sea ').palettes[1].name, 'Sea');
     expect(two().renamed('p4', '   ').palettes[1].name, 'Sky');
@@ -175,6 +213,8 @@ void main() {
     final saved = two()
         .withDefault('p4')
         .withView(PaletteView.cards)
+        .withFolded('p4', folded: true)
+        .withLocked('p1', locked: true)
         .withRecentColor(white);
     await service.save(saved);
     final restored = await ColorPaletteFileService(
@@ -182,6 +222,13 @@ void main() {
     ).loadOrDefaults();
     expect(restored.toJson(), saved.toJson());
     expect(restored.view, PaletteView.cards, reason: 'one side writes it');
+    expect(
+      [
+        for (final palette in restored.palettes)
+          (palette.folded, palette.locked),
+      ],
+      [(false, true), (true, false)],
+    );
 
     File(path).writeAsStringSync('not json');
     final fallback = await ColorPaletteFileService(
