@@ -70,6 +70,15 @@ void writeShortcutTable(String guideRoot, AppLanguage language) {
 ///
 /// Each key is a pair, as a PC and as a Mac or an iPad spell it.
 void writeShortcutKeymap(String guideRoot) {
+  File('$guideRoot/keys.json').writeAsStringSync(
+    const JsonEncoder.withIndent(' ').convert(shortcutKeymap()),
+  );
+}
+
+/// What [writeShortcutKeymap] writes: the preset an install opens on, the
+/// presets, their names and the word between two keys in each language, and
+/// for each action that ships a key, its keys under each preset that has any.
+Map<String, Object> shortcutKeymap() {
   final keys = <String, Map<String, List<List<String>>>>{};
   for (final definition in editorActionDefinitions) {
     for (final preset in ShortcutPreset.values) {
@@ -106,15 +115,13 @@ void writeShortcutKeymap(String guideRoot) {
   } finally {
     AppText.settings.value = before;
   }
-  File('$guideRoot/keys.json').writeAsStringSync(
-    const JsonEncoder.withIndent(' ').convert({
-      'default': EditorShortcutBindings().preset.base.name,
-      'presets': [for (final preset in ShortcutPreset.values) preset.name],
-      'names': names,
-      'or': or,
-      'keys': keys,
-    }),
-  );
+  return {
+    'default': EditorShortcutBindings().preset.base.name,
+    'presets': [for (final preset in ShortcutPreset.values) preset.name],
+    'names': names,
+    'or': or,
+    'keys': keys,
+  };
 }
 
 /// The languages the guide is written in — one folder each.
