@@ -671,8 +671,13 @@ bool attachRowWearsBaseComposite(Layer layer, List<Layer> layers) =>
 /// 「콘티의 어태치 행만」, Q2 「애초에 기준이랑 어태치랑 fx 완전독립. 별개
 /// 레이어처럼 fx작동」 — so it is its own carrier, and none of the base's
 /// fx reaches it. Every other attach row still wears its base's (R9).
+///
+/// ⛔A FOLDER is not that row, even one carrying the conte link itself: an
+/// EMPTY 공정 folder mounted on the conte holds its own `attachedToLayerId`
+/// (F-139), and Q1 left the folders wearing the base's.
 Layer? fxCarrierOf(Layer layer, List<Layer> layers) =>
-    layer.attachedToLayerId == null || ridesTheConte(layer, layers)
+    layer.attachedToLayerId == null ||
+        (!layer.kind.groupsLayers && ridesTheConte(layer, layers))
     ? layer
     : attachedBaseOf(layer, layers);
 

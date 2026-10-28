@@ -151,6 +151,16 @@ void main() {
     name: '[연출]',
   );
 
+  /// A 공정 folder dropped EMPTY between the conte and its rows: no leaf
+  /// carries the relation, so the folder row does (F-139).
+  final emptyOnConte = createFolderLayer(
+    id: const LayerId('empty'),
+    name: '[레이아웃]',
+  ).copyWith(
+    attachedToLayerId: const LayerId('conte'),
+    attachedPlacement: AttachedPlacement.above,
+  );
+
   Cut cutOf(List<Layer> layers) => Cut(
     id: const CutId('c1'),
     name: '1',
@@ -187,6 +197,13 @@ void main() {
       final layers = [conte(), filed, organizer];
       expect(attachRowWearsBaseComposite(filed, layers), isFalse);
       expect(attachRowWearsBaseComposite(organizer, layers), isTrue);
+    });
+
+    test('an EMPTY 공정 folder on the conte carries the link itself (F-139) '
+        'and still wears the conte\'s', () {
+      final layers = [conte(), emptyOnConte];
+      expect(fxCarrierOf(emptyOnConte, layers)?.id, const LayerId('conte'));
+      expect(attachRowWearsBaseComposite(emptyOnConte, layers), isTrue);
     });
   });
 
@@ -283,8 +300,11 @@ void main() {
         reason: 'the conte\'s chain is its own, untouched',
       );
 
-      for (final wearer in ['proc', 'a1']) {
-        final session = standingOn(wearer);
+      for (final wearer in ['proc', 'a1', 'empty']) {
+        final session = standingOn(
+          wearer,
+          layers: [base(), attach(), organizer, conte(), emptyOnConte],
+        );
         for (final kind in EffectKind.values) {
           expect(
             session.effectsAndFx.canAddEffectToActiveLayer(kind),
