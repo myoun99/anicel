@@ -42,8 +42,25 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 /// display buffer stopped forming a chain at all (2026-09-13) — and how the
 /// layer stack's row images were held — until neither was kept
 /// (one-picture-per-frame ②-5a · ②-5b-1).
-ui.Image rasterPicture(ui.PictureRecorder recorder, int width, int height) =>
-    withPicture(recorder, (picture) => picture.toImageSync(width, height));
+///
+/// [inFloats] rasters it a float a channel (`rgbaFloat32`), for a picture
+/// that holds numbers past a byte — a row sum's, an iris's table — where
+/// the engine's own choice is a byte a channel.
+ui.Image rasterPicture(
+  ui.PictureRecorder recorder,
+  int width,
+  int height, {
+  bool inFloats = false,
+}) => withPicture(
+  recorder,
+  (picture) => picture.toImageSync(
+    width,
+    height,
+    targetFormat: inFloats
+        ? ui.TargetPixelFormat.rgbaFloat32
+        : ui.TargetPixelFormat.dontCare,
+  ),
+);
 
 /// [picture]'s plain snapshot, WAITED FOR — the tile compose's, spelled
 /// once so that the waits can be counted ([debugOnWaitedSnapshot]). ↩️The

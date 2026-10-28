@@ -9,8 +9,10 @@ import '../core/draw_space.dart';
 import '../models/canvas_size.dart';
 import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart';
+import 'camera_lens_blur_passes.dart';
 import 'cel_source_effect_pass.dart';
 import 'directional_blur_passes.dart';
+import 'shaded_passes.dart';
 
 /// How much a blur RADIUS parameter spreads, as a Gaussian sigma. A radius
 /// is the visible reach of the blur; three sigma covers it, so a radius of
@@ -259,7 +261,7 @@ final class _NoPart extends _PaintPart {
 final class _StepPart extends _PaintPart {
   const _StepPart(this.passes, {required this.reach});
 
-  final List<LineBoxPass> passes;
+  final List<ShadedPass> passes;
 
   /// How far past its input it paints.
   final double reach;
@@ -289,11 +291,15 @@ final class _SplitPart extends _PaintPart {
 
 /// [paper] is where the paper lies in [space]'s pixels — what a radial
 /// blur's centre stands on ([_radialBlurPart]); a reader that does no
-/// spatial work at all, the eyedropper's, asks without one.
+/// spatial work at all, the eyedropper's, asks without one. [rasterWidth]
+/// is how wide the raster a step is drawn in is, which a camera lens
+/// blur's row sums run across ([_cameraLensBlurPart]) — null for a reader
+/// that draws none, a plan's among them.
 _PaintPart _paintPartOf(
   ResolvedLayerEffect effect,
   DrawSpace space, {
   ui.Rect? paper,
+  int? rasterWidth,
 }) => switch (effect.kind) {
     EffectKind.brightnessContrast => _ColourPart(
       brightnessContrastMatrix(
@@ -311,6 +317,12 @@ _PaintPart _paintPartOf(
     EffectKind.blur => _blurPart(effect, space),
     EffectKind.directionalBlur => _directionalBlurPart(effect, space),
     EffectKind.radialBlur => _radialBlurPart(effect, space, paper),
+    EffectKind.cameraLensBlur => _cameraLensBlurPart(
+      effect,
+      space,
+      paper,
+      rasterWidth,
+    ),
     // ⛔THE CPU HALF MUST BE GONE BY NOW. `splitSourceEffects` takes the
     // color keys out in the shared visit and `celSurfaceWithSourceEffects`
     // has already applied them to the surface this paint will draw. A
@@ -438,14 +450,70 @@ _PaintPart _radialBlurPart(
   );
 }
 
+/// A camera lens blur of no radius changes no pixel, whatever its iris —
+/// as [_directionalBlurPart]'s length. Its iris covers pixel centres within
+/// its radius ([irisSpans]): that is how far it reaches past its input. Its
+/// edge, repeated, is the paper's on whole pixels, as the Gaussian's is
+/// ([paperOnWholePixels]).
+_PaintPart _cameraLensBlurPart(
+  ResolvedLayerEffect effect,
+  DrawSpace space,
+  ui.Rect? paper,
+  int? rasterWidth,
+) {
+  final radius = effect.parameter('blurRadius') * space.scale;
+  if (radius <= 0) {
+    return const _NoPart();
+  }
+  final repeatsTheEdge = effect.flag('repeatEdgePixels');
+  // Asked by a reader that draws no raster: it reads how far the part
+  // reaches, or skips it, so nothing in its passes is read.
+  if (rasterWidth == null || (repeatsTheEdge && paper == null)) {
+    return _StepPart(const [], reach: radius);
+  }
+  return _StepPart(
+    cameraLensBlurPasses(
+      radius: radius,
+      iris: (
+        // The words of Shape, in order: a triangle's three sides to a
+        // decagon's ten.
+        sides: effect.parameter('irisShape').round() + 3,
+        roundness: effect.parameter('irisRoundness') / 100,
+        aspect: effect.parameter('irisAspectRatio'),
+        rotation: effect.parameter('irisRotation') * math.pi / 180,
+        fringe: effect.parameter('irisDiffractionFringe'),
+      ),
+      rasterWidth: rasterWidth,
+      paper: repeatsTheEdge ? paperOnWholePixels(paper!) : null,
+    ),
+    reach: radius,
+  );
+}
+
+/// [paper] on whole pixels: where a blur that repeats the paper's edge
+/// pixels reads them past it and is cut to it — the Gaussian's
+/// ([PaperEdgeEffect]) and the camera lens blur's alike.
+ui.Rect paperOnWholePixels(ui.Rect paper) => ui.Rect.fromLTRB(
+  paper.left.roundToDouble(),
+  paper.top.roundToDouble(),
+  paper.right.roundToDouble(),
+  paper.bottom.roundToDouble(),
+);
+
 /// The rasters [effect] — a step's [ShadedEffect] — is drawn in at [space],
-/// the raster's own, with [paper] where the paper lies in it: empty where
-/// it changes no pixel there.
-List<LineBoxPass> shadedPassesOf(
+/// the raster's own, [rasterWidth] wide, with [paper] where the paper lies
+/// in it: empty where it changes no pixel there.
+List<ShadedPass> shadedPassesOf(
   ResolvedLayerEffect effect,
   DrawSpace space, {
   required ui.Rect paper,
-}) => switch (_paintPartOf(effect, space, paper: paper)) {
+  required int rasterWidth,
+}) => switch (_paintPartOf(
+  effect,
+  space,
+  paper: paper,
+  rasterWidth: rasterWidth,
+)) {
   _StepPart(:final passes) => passes,
   _ => const [],
 };
@@ -587,7 +655,8 @@ final class KeyRun extends EffectStepLead {
 }
 
 /// An effect that reads past the pixel and that no `ui.ImageFilter` carries:
-/// a directional blur, drawn in [shadedPassesOf]'s rasters.
+/// a directional, a radial or a camera lens blur, drawn in
+/// [shadedPassesOf]'s rasters.
 ///
 /// 🔬WHY NOT `ImageFilter.shader`. Measured on Impeller (10-28,
 /// `flutter_tester --enable-impeller`): a shader filter is evaluated in

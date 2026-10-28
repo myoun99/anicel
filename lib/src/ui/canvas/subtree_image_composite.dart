@@ -9,9 +9,11 @@ import '../../models/layer_blend_mode.dart';
 import '../../models/rgba_image_bytes.dart';
 import 'colour_key_shader.dart';
 import 'directional_blur_shader.dart';
+import 'iris_blur_shader.dart';
 import 'display_resample.dart';
 import 'layer_blend_shader.dart';
 import '../../services/composite_effect_paint.dart';
+import '../../services/shaded_passes.dart';
 import '../../services/layer_pose_matrix.dart'
     show LayerPlacement, placementMatrix;
 import 'raster_picture.dart';
@@ -1037,7 +1039,12 @@ ui.Image applyEffectSteps({
     // What every key of a run reads its colours from and a restore gives
     // back to ([KeyRun]) — alive until the step is done.
     final input = image;
-    final draws = _stepDraws(step.lead, space: space, paper: paper);
+    final draws = _stepDraws(
+      step.lead,
+      space: space,
+      paper: paper,
+      rasterWidth: source.width,
+    );
     for (var index = 0; index < draws.length; index += 1) {
       final next = draws[index](
         image,
@@ -1067,12 +1074,13 @@ typedef _StepDraw =
       CompositeEffectPaint then,
     );
 
-/// The rasters a step led by [lead] takes at [space] — one for a step that
-/// only paints.
+/// The rasters a step led by [lead] takes at [space], each [rasterWidth]
+/// wide — one for a step that only paints.
 List<_StepDraw> _stepDraws(
   EffectStepLead? lead, {
   required DrawSpace space,
   required Rect paper,
+  required int rasterWidth,
 }) {
   if (lead case PaperEdgeEffect(:final effect)) {
     if (paperEdgeBlurOf(effect, space) case final blur?) {
@@ -1082,7 +1090,12 @@ List<_StepDraw> _stepDraws(
       ];
     }
   }
-  final shaded = _leadDraws(lead, space: space, paper: paper);
+  final shaded = _leadDraws(
+    lead,
+    space: space,
+    paper: paper,
+    rasterWidth: rasterWidth,
+  );
   return [
     if (shaded.isEmpty)
       (image, input, then) =>
@@ -1094,30 +1107,61 @@ List<_StepDraw> _stepDraws(
 }
 
 /// One lead draw: a shader over the picture the draw before it made and
-/// the step's input.
-typedef _LeadDraw = ui.FragmentShader Function(ui.Image image, ui.Image input);
+/// the step's input — laid [inFloats] where it holds numbers past a byte
+/// ([RowSumPass]).
+typedef _LeadDraw = ({
+  ui.FragmentShader Function(ui.Image image, ui.Image input) shade,
+  bool inFloats,
+});
 
 /// The shaders [lead] draws at [space], with [paper] where the paper lies
-/// there — none for a step that only paints, nor for a blur on the paper
-/// ([_paperEdgeDraw]).
+/// there, over rasters [rasterWidth] wide — none for a step that only
+/// paints, nor for a blur on the paper ([_paperEdgeDraw]).
 List<_LeadDraw> _leadDraws(
   EffectStepLead? lead, {
   required DrawSpace space,
   required Rect paper,
+  required int rasterWidth,
 }) => switch (lead) {
   null || PaperEdgeEffect() => const [],
   KeyRun(:final keys) => [
     for (final key in keys)
-      (image, input) => ColourKeyShader.shaderFor(
-        source: image,
-        original: input,
-        key: key,
+      (
+        shade: (image, input) => ColourKeyShader.shaderFor(
+          source: image,
+          original: input,
+          key: key,
+        ),
+        inFloats: false,
       ),
   ],
   ShadedEffect(:final effect) => [
-    for (final pass in shadedPassesOf(effect, space, paper: paper))
-      (image, _) => DirectionalBlurShader.shaderFor(source: image, pass: pass),
+    for (final pass in shadedPassesOf(
+      effect,
+      space,
+      paper: paper,
+      rasterWidth: rasterWidth,
+    ))
+      _passDraw(pass),
   ],
+};
+
+/// The draw [pass] is.
+_LeadDraw _passDraw(ShadedPass pass) => switch (pass) {
+  LineBoxPass() => (
+    shade: (image, _) =>
+        DirectionalBlurShader.shaderFor(source: image, pass: pass),
+    inFloats: false,
+  ),
+  RowSumPass() => (
+    shade: (image, _) => IrisBlurShader.rowSumFor(source: image, pass: pass),
+    inFloats: true,
+  ),
+  IrisGatherPass() => (
+    shade: (image, input) =>
+        IrisBlurShader.gatherFor(sums: image, input: input, pass: pass),
+    inFloats: false,
+  ),
 };
 
 /// [image] blurred by [blur] as though past [paper] lay the paper's edge
@@ -1139,12 +1183,7 @@ ui.Image _paperEdgeDraw(
     image.width.toDouble(),
     image.height.toDouble(),
   );
-  final cut = Rect.fromLTRB(
-    paper.left.roundToDouble(),
-    paper.top.roundToDouble(),
-    paper.right.roundToDouble(),
-    paper.bottom.roundToDouble(),
-  ).intersect(whole);
+  final cut = paperOnWholePixels(paper).intersect(whole);
   final recorder = ui.PictureRecorder();
   final into = Canvas(recorder);
   // Past the paper nothing is left: a cut that misses the raster draws it
@@ -1210,9 +1249,16 @@ ui.Image _effectStepDraw({
   final stepRecorder = ui.PictureRecorder();
   final into = Canvas(stepRecorder);
   final paint = Paint();
-  final shader = lead?.call(image, input);
+  final shader = lead?.shade(image, input);
+  final inFloats = lead?.inFloats ?? false;
   if (shader != null) {
     paint.shader = shader;
+  }
+  if (inFloats) {
+    // What the shader gives, as it gives it: over an empty raster the
+    // default blend would give the same, but a number past 1 is no colour
+    // a blend is promised to keep.
+    paint.blendMode = BlendMode.src;
   }
   then.applyTo(paint);
   final rect = Rect.fromLTWH(
@@ -1237,7 +1283,12 @@ ui.Image _effectStepDraw({
   // way along it leaked every step it had already built. The picture's
   // release is [rasterPicture]'s; the shader's is this frame's own.
   try {
-    return rasterPicture(stepRecorder, image.width, image.height);
+    return rasterPicture(
+      stepRecorder,
+      image.width,
+      image.height,
+      inFloats: inFloats,
+    );
   } finally {
     shader?.dispose();
   }

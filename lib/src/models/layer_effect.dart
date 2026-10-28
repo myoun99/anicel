@@ -257,6 +257,92 @@ enum EffectKind {
     staysOnItsRow: false,
   ),
 
+  /// Every pixel the mean of the pixels about it its iris covers — AE's
+  /// Camera Lens Blur (`cameraLensBlurPasses`): a polygon of its Shape,
+  /// Blur Radius out, rounded, squeezed and turned by the iris's
+  /// properties, its light pushed out to its edge by the Diffraction
+  /// Fringe.
+  ///
+  /// 🗣️I-132-Q3 (유저 2026-10-27): 「가우시안 · 방향 · 방사형 · 카메라 렌즈」,
+  /// AE's names and items — Adobe's help (read 2026-10-28): a blur radius
+  /// up to 500; Iris Properties Shape, Roundness, Aspect Ratio, Rotation
+  /// and Diffraction Fringe, whose 100 is a natural halo and 500 all the
+  /// blur's energy on the ring; Repeat Edge Pixels. 🗣️I-132-Q15 a: 「모든
+  /// 모양을 정확히 — 행 누적합」. The iris's forms are ours (🗣️I-132-Q4 b),
+  /// and so are the ranges the help does not give, and the shape's words
+  /// (🗣️I-132-Q11 a). ⚠️The Square begins it — I-132-Q19, asked: AE's
+  /// first word is a Fast Rectangle, which drawn exact is the Square. Its
+  /// highlights and its blur map are lanes still to come.
+  cameraLensBlur(
+    'cameraLensBlur',
+    label: 'Camera Lens Blur',
+    parameters: [
+      EffectParameterSpec(
+        id: 'blurRadius',
+        label: 'Blur Radius',
+        defaultValue: 0,
+        minimum: 0,
+        maximum: 500,
+        unit: EffectParameterUnit.pixels,
+      ),
+      EffectParameterSpec.choice(
+        id: 'irisShape',
+        label: 'Shape',
+        choices: [
+          EffectChoice(id: 'triangle', label: 'Triangle'),
+          EffectChoice(id: 'square', label: 'Square'),
+          EffectChoice(id: 'pentagon', label: 'Pentagon'),
+          EffectChoice(id: 'hexagon', label: 'Hexagon'),
+          EffectChoice(id: 'heptagon', label: 'Heptagon'),
+          EffectChoice(id: 'octagon', label: 'Octagon'),
+          EffectChoice(id: 'nonagon', label: 'Nonagon'),
+          EffectChoice(id: 'decagon', label: 'Decagon'),
+        ],
+        defaultValue: 1,
+      ),
+      EffectParameterSpec(
+        id: 'irisRoundness',
+        label: 'Roundness',
+        defaultValue: 0,
+        minimum: 0,
+        maximum: 100,
+      ),
+      EffectParameterSpec(
+        id: 'irisAspectRatio',
+        label: 'Aspect Ratio',
+        defaultValue: 1,
+        minimum: 0.1,
+        maximum: 10,
+      ),
+      EffectParameterSpec(
+        id: 'irisRotation',
+        label: 'Rotation',
+        defaultValue: 0,
+        minimum: -180,
+        maximum: 180,
+        unit: EffectParameterUnit.degrees,
+      ),
+      EffectParameterSpec(
+        id: 'irisDiffractionFringe',
+        label: 'Diffraction Fringe',
+        defaultValue: 0,
+        minimum: 0,
+        maximum: 500,
+      ),
+      // The Gaussian's own (🗣️I-132-Q14 a): past the paper's edge the iris
+      // reads the edge's pixels, and what it draws stays on the paper.
+      EffectParameterSpec.flag(
+        id: 'repeatEdgePixels',
+        label: 'Repeat Edge Pixels',
+      ),
+    ],
+    spreadsPixels: true,
+    runsOnSourcePixels: false,
+    drawsItsOwnPicture: false,
+    isBasic: false,
+    staysOnItsRow: false,
+  ),
+
   /// THE colour key: its Key Operation erases every pixel within the
   /// tolerance of the key colour (Key Colors), or gives back what the keys
   /// before it erased of those (Keep Colors) — AE's Linear Color Key
@@ -509,13 +595,14 @@ class EffectParameterSpec {
        _maximum = maximum,
        choices = const [];
 
-  /// A menu of [choices], the first chosen until a key or a value says
-  /// otherwise.
+  /// A menu of [choices], the word [defaultValue] counts to — the first
+  /// unless it says — chosen until a key or a value says otherwise.
   const EffectParameterSpec.choice({
     required this.id,
     required this.label,
     required this.choices,
-  }) : defaultValue = 0,
+    int defaultValue = 0,
+  }) : defaultValue = defaultValue + 0.0,
        minimum = 0,
        _maximum = null,
        unit = EffectParameterUnit.choice;

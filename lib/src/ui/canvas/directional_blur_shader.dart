@@ -1,7 +1,8 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import '../../services/directional_blur_passes.dart';
+import '../../services/shaded_passes.dart';
+import 'loaded_fragment_program.dart';
 
 /// The fragment program one pass of a blur along a way runs — a
 /// directional blur's line, a radial blur's circle or ray ([LineBoxPass],
@@ -10,18 +11,19 @@ import '../../services/directional_blur_passes.dart';
 class DirectionalBlurShader {
   DirectionalBlurShader._();
 
-  static const String assetKey = 'shaders/directional_blur.frag';
+  static final _program = LoadedFragmentProgram(
+    'shaders/directional_blur.frag',
+    whyAwaited:
+        'A composite that reached a directional or a radial blur with no '
+        'program would have to drop the effect, so the load is a '
+        'prerequisite of offering it at all.',
+  );
 
-  static ui.FragmentProgram? _program;
+  /// Whether [shaderFor] can be called ([LoadedFragmentProgram.isReady]).
+  static bool get isReady => _program.isReady;
 
-  /// Whether [shaderFor] can be called. False until [load] completes.
-  static bool get isReady => _program != null;
-
-  /// Loads the program. Idempotent; safe to call from app start and from a
-  /// test's setUp.
-  static Future<void> load() async {
-    _program ??= await ui.FragmentProgram.fromAsset(assetKey);
-  }
+  /// Loads the program ([LoadedFragmentProgram.load]).
+  static Future<void> load() => _program.load();
 
   /// A shader that draws [pass] over [source] for every pixel of a draw
   /// [source]'s size.
@@ -32,19 +34,11 @@ class DirectionalBlurShader {
     required ui.Image source,
     required LineBoxPass pass,
   }) {
-    final program = _program;
-    if (program == null) {
-      throw StateError(
-        'DirectionalBlurShader.load() has not completed. A composite that '
-        'reached a directional blur with no program would have to drop the '
-        'effect, so the load is a prerequisite of offering it at all.',
-      );
-    }
     final first = _mapOf(pass, -(pass.taps - 1) / 2);
     final each = _mapOf(pass, 1);
     // ⛔Indices are declaration order, floats only — a sampler takes no
     // float slot.
-    final shader = program.fragmentShader()
+    final shader = _program.shader()
       ..setFloat(0, source.width.toDouble())
       ..setFloat(1, source.height.toDouble())
       ..setFloat(2, pass.stepX)

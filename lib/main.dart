@@ -21,6 +21,7 @@ import 'src/native/window_full_screen.dart';
 import 'src/native/window_place.dart';
 import 'src/ui/canvas/colour_key_shader.dart';
 import 'src/ui/canvas/directional_blur_shader.dart';
+import 'src/ui/canvas/iris_blur_shader.dart';
 import 'src/ui/canvas/layer_blend_shader.dart';
 import 'src/ui/debug/frame_stats.dart';
 import 'src/ui/debug/frame_stats_readout.dart';
@@ -98,9 +99,10 @@ Future<void> main(List<String> handedAtLaunch) async {
   // composed over its backdrop by a shader, and drawing it in any other
   // blend because the program was late would be the same lie.
   await LayerBlendShader.load();
-  // 🚨The same, for a directional or a radial blur (I-132-Q3): a raster of
-  // a chain's step, as a key is.
+  // 🚨The same, for a directional, a radial and a camera lens blur
+  // (I-132-Q3): rasters of a chain's step, as a key is.
   await DirectionalBlurShader.load();
+  await IrisBlurShader.load();
   // 🚨AWAITED, BEFORE THE FIRST FRAME, too (I-103-Q1): the top strip keeps
   // a place for the battery on a device that has one and never on one that
   // has not — a place that came a frame later would be UI popping into

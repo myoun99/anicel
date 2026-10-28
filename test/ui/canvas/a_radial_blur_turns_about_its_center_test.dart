@@ -9,6 +9,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/services/composite_effect_paint.dart';
 import 'package:anicel/src/services/directional_blur_passes.dart';
+import 'package:anicel/src/services/shaded_passes.dart';
 import 'package:anicel/src/ui/canvas/directional_blur_shader.dart';
 import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
 
@@ -200,7 +201,8 @@ void main() {
         radial(amount: 90, draft: draft),
         DrawSpace.canvas,
         paper: paper,
-      );
+        rasterWidth: 128,
+      ).cast();
       final best = passes(draft: false);
       final draft = passes(draft: true);
 
@@ -215,7 +217,8 @@ void main() {
         radial(amount: 50, zoom: true),
         DrawSpace.canvas,
         paper: paper,
-      );
+        rasterWidth: 128,
+      ).cast<LineBoxPass>();
       final ray = math.sqrt(64 * 64 * 2) * (math.exp(0.5) - 1);
       expect(
         zoom.fold<int>(1, (product, pass) => product * pass.taps),
@@ -234,7 +237,8 @@ void main() {
         radial(amount: 30, center: CanvasPoint(x: 10, y: 20)),
         const DrawSpace.preScaled(2),
         paper: const Rect.fromLTWH(8, 4, 256, 256),
-      );
+        rasterWidth: 272,
+      ).cast<LineBoxPass>();
 
       expect(passes.first.centerX, 8 + 10 * 2);
       expect(passes.first.centerY, 4 + 20 * 2);
