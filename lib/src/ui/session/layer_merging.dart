@@ -132,14 +132,13 @@ class LayerMerging {
     return true;
   }
 
-  /// Each row's blocks [plan] takes made one — the band let go, as a
-  /// delete lets it go; or nothing, when its cut has changed since it was
-  /// planned.
+  /// Each row's blocks [plan] takes made one — the band let go, as every
+  /// cut command lets it go ([ChangeSink.refreshAfterCutCommand]); or
+  /// nothing, when its cut has changed since it was planned.
   bool landBlocks(BlockMergePlan plan) {
     if (!_lands(plan.cut, plan.layers, 'Merge blocks')) {
       return false;
     }
-    _rangeSelections.clearFrameRangeSelection();
     _changes.refreshAfterCutCommand();
     _changes.notifyChanged();
     return true;

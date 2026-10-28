@@ -158,6 +158,7 @@ void main() {
     await pressTheButton(tester);
     await settleBehindTheWaitWindow(tester, () => blocksMerged(s));
 
+    expect(standing(s).timeline, hasLength(1), reason: 'one block');
     expect(animationRowsOf(s), hasLength(2), reason: 'no row went');
     s.playbackRig.prerenderScheduler.cancel();
   });
@@ -168,6 +169,7 @@ void main() {
     await tester.sendKeyEvent(key);
     await settleBehindTheWaitWindow(tester, () => blocksMerged(s));
 
+    expect(standing(s).timeline, hasLength(1));
     expect(animationRowsOf(s), hasLength(2));
     s.playbackRig.prerenderScheduler.cancel();
   });
