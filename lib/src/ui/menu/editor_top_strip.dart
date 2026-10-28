@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../controllers/default_project_helpers.dart'
     show newUntitledProject;
+import '../../core/build_stamp.dart';
 import '../../core/path_names.dart';
 import '../../services/persistence/anicel_project_archive.dart';
 import '../../services/persistence/app_documents.dart';
@@ -750,8 +751,14 @@ class EditorTopStrip extends StatelessWidget {
       label: editorActionLabel(EditorActionIds.about),
       shortcuts: const [EditorActionIds.about],
       icon: Icons.info_outline,
-      onPressed: () =>
-          showAboutDialog(context: context, applicationName: 'Anicel'),
+      // 🗣️app-version-shown (유저 2026-10-29): 「위치는 환경설정
+      // 애니셀정보버튼 창 안에도 적음」 — this row's window says the build,
+      // the line the launch notice's title carries.
+      onPressed: () => showAboutDialog(
+        context: context,
+        applicationName: 'Anicel',
+        applicationVersion: buildStamp,
+      ),
     ),
     _item(
       id: 'help-send-feedback',

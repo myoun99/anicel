@@ -254,7 +254,8 @@ void main() {
     );
   });
 
-  testWidgets('Settings: About opens the framework about dialog', (
+  testWidgets('Settings: About opens the framework about dialog, and it says '
+      'the build — `dev` where nobody stamped it (app-version-shown)', (
     tester,
   ) async {
     await pumpHome(tester);
@@ -263,6 +264,13 @@ void main() {
     await tapEntry(tester, 'menu-help-about');
 
     expect(find.byType(AboutDialog), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(AboutDialog),
+        matching: find.text('dev'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('Settings: Send Feedback stands right under About and opens '
