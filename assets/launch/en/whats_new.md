@@ -1,9 +1,12 @@
 ## What's new in this version
 
 - **Send Feedback** — send us feedback from the ⚙ Settings menu, as text alone or with screenshots and videos. Your device and the build are filled in for you.
+- **Send usage statistics (optional)** — turn it on in the notice at launch or in Preferences ▸ System, and the app sends anonymously, when it opens and once a day, the OS, build and language, and a range for how many of the last 28 days it was used. It starts off, and no drawings, files or device names are sent.
+- **Build number** — shown beside the title of the notice at launch and in About Anicel in the ⚙ menu.
 - **Work settings, reworked** — the timesheet's artist field now carries the rough key artist's name. Each cut can have its own scene (SCENE) in Cut settings, and each cut remembers which sections you opened or closed.
 - **Palettes, reworked** — tap an empty swatch to put the current color in it, and drag swatches to move or swap them. Palettes can be renamed, folded, reordered and locked.
 - **Exporting palettes and shortcut presets** — export a palette from its menu, or a shortcut preset from its row in the Shortcuts window, as a file, and bring it back in with Open. Opened on another device, Ctrl and ⌘ are read as that device presses them.
+- **Every setting as one file** — export all your settings as one file (.anisettings) from the bottom of the Preferences window; open it with Open and pick, setting by setting, what goes in. Only what you bring in is replaced.
 - **Cut envelope** — key, in-between and finish counts follow the same rule as the timesheet (in-betweens are the cels whose color label is on the in-between side). The digital envelope's stage names fit their boxes, and the analog envelope's seconds sit in the middle of theirs.
 - **Timesheet column names** — up to three full-width characters show as they are; longer names shrink to fit, and only past that end in "…".
 - **Import and save progress** — the import and save windows say what they are doing (re-encoding a movie, keeping a file in the project, writing media …) and how far along they are. Keeping part of a large movie no longer sits at 0% the whole time.
@@ -24,5 +27,5 @@
 - **Brush size numbers** are shown larger.
 - **Grass brush** — the decoration grass now stamps tufts fanning out from one foot, instead of blades lined up in a column.
 - **Color Key on adjustment layers** — the eyedropper now picks the keyed colour through an adjustment layer with a Color Key, and the key no longer drops out when the layer's mix is below 100%.
-- **Speed** — fixed lines trailing behind the pen on heavy cuts, a stutter right after Show all, and scrubbing that fell behind.
+- **Speed** — fixed lines trailing behind the pen on heavy cuts, a stutter right after Show all, and scrubbing that fell behind. Fast scrolling through the timeline and the conte stutters less.
 - While you drag the end of a block inside a folder, the folder row's block follows at once. Fixed broken picture edges on some devices. Also fixed: while drawing near a blurred row inside a blurred folder, the picture no longer looks off.

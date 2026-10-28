@@ -1,9 +1,12 @@
 ## Nouveautés de cette version
 
 - **Envoyer un avis** — envoyez-nous votre avis depuis le menu ⚙ Paramètres, en texte seul ou avec des captures d'écran et des vidéos. Votre appareil et la version sont déjà remplis.
+- **Envoyer des statistiques d'utilisation (facultatif)** — activez-le dans la fenêtre affichée au lancement ou dans Préférences ▸ Système : l'application envoie alors de façon anonyme, à l'ouverture et une fois par jour, le système, la version, la langue et une tranche du nombre de jours d'utilisation sur les 28 derniers. Désactivé au départ ; aucun dessin, fichier ni nom d'appareil n'est envoyé.
+- **Numéro de build** — affiché à côté du titre de la fenêtre affichée au lancement et dans « À propos de Anicel » du menu ⚙.
 - **Réglages de l'œuvre, revus** — le champ de l'artiste de la feuille de temps porte maintenant le nom de l'artiste de la clé brute. Chaque plan peut avoir sa propre scène (SCENE) dans les réglages du plan, et chaque plan retient les sections ouvertes ou fermées.
 - **Palettes, revues** — touchez une case vide pour y mettre la couleur actuelle, et faites glisser les cases pour les déplacer ou les échanger. Les palettes peuvent être renommées, repliées, réordonnées et verrouillées.
 - **Exporter palettes et préréglages de raccourcis** — exportez une palette depuis son menu, ou un préréglage de raccourcis depuis sa ligne dans la fenêtre des raccourcis, en fichier, et réimportez-le avec Ouvrir. Ouvert sur un autre appareil, Ctrl et ⌘ sont lus comme cet appareil les tape.
+- **Tous les réglages en un fichier** — exportez tous vos réglages en un seul fichier (.anisettings) depuis le bas de la fenêtre des Préférences ; ouvrez-le avec Ouvrir et choisissez, réglage par réglage, ce qui entre. Seul ce que vous importez est remplacé.
 - **Enveloppe de plan** — les nombres d'animation clé, d'intervalles et de finition suivent la même règle que la feuille de temps (les intervalles sont les cellulos dont l'étiquette de couleur est du côté intervalles). Les noms d'étape de l'enveloppe numérique tiennent dans leurs cases, et les secondes de l'enveloppe analogique sont centrées.
 - **Noms des colonnes de la feuille de temps** — jusqu'à trois caractères pleine chasse s'affichent tels quels ; un nom plus long rapetisse pour tenir, et ne finit par « … » qu'au-delà.
 - **Progression de l'import et de l'enregistrement** — les fenêtres d'import et d'enregistrement disent ce qu'elles font (réencodage d'une vidéo, intégration d'un fichier au projet, écriture des médias …) et où elles en sont. Intégrer une partie d'une grande vidéo ne reste plus bloqué à 0 %.
@@ -24,5 +27,5 @@
 - **Les chiffres de la taille du pinceau** sont affichés plus grands.
 - **Brosse herbe** — l'herbe de décoration pose désormais des touffes qui s'évasent depuis un même pied, au lieu de brins alignés en colonne.
 - **Masquage par couleur sur les calques de réglage** — la pipette prélève désormais la couleur après masquage à travers un calque de réglage, et le masquage ne disparaît plus quand le mélange du calque est sous 100 %.
-- **Vitesse** — corrigé : le trait qui suivait le stylet avec retard dans les plans lourds, l'à-coup juste après Tout afficher, et le défilement qui prenait du retard.
+- **Vitesse** — corrigé : le trait qui suivait le stylet avec retard dans les plans lourds, l'à-coup juste après Tout afficher, et le défilement qui prenait du retard. Le défilement rapide de la timeline et du conte saccade moins.
 - Pendant que vous faites glisser la fin d'un bloc dans un dossier, le bloc de la ligne du dossier suit aussitôt. Corrigé : des bords d'image abîmés sur certains appareils. Corrigé aussi : en dessinant près d'un calque flouté dans un dossier flouté, l'image ne paraît plus décalée.
