@@ -111,6 +111,7 @@ void main() {
       source: source,
       steps: plan.preSteps,
       imageScale: 1,
+      paper: _whole(source),
     );
     final bytes = await _bytesOf(stepped, side);
     if (!identical(stepped, source)) {
@@ -173,6 +174,7 @@ void main() {
       source: source,
       steps: plan.preSteps,
       imageScale: 1,
+      paper: _whole(source),
     );
     final bytes = await _bytesOf(stepped, side);
     stepped.dispose();
@@ -215,6 +217,7 @@ void main() {
       source: source,
       steps: resolveCompositeEffectPlan(chain).preSteps,
       imageScale: 1,
+      paper: _whole(source),
     );
     final bytes = await _bytesOf(stepped, side);
     if (!identical(stepped, source)) {
@@ -286,6 +289,7 @@ void main() {
       canvas,
       pieces: [(image: source, worldRect: const Rect.fromLTWH(0, 0, 32, 32))],
       extent: const Rect.fromLTWH(0, 0, 32, 32),
+      paper: const Rect.fromLTWH(0, 0, 32, 32),
       placement: null,
       opacity: 1,
       blendMode: LayerBlendMode.normal,
@@ -367,6 +371,7 @@ void main() {
         source: source,
         steps: plan.preSteps,
         imageScale: 1,
+        paper: _whole(source),
       );
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
@@ -450,6 +455,10 @@ Future<ui.Image> _imageFrom(Uint8List straight, int width, int height) {
   );
   return done.future;
 }
+
+/// All of [image] — the paper, where the picture is the whole of it.
+Rect _whole(ui.Image image) =>
+    Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
 
 Future<Uint8List> _bytesOf(ui.Image image, int side) async {
   final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);

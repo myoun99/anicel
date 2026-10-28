@@ -353,6 +353,28 @@ void main() {
       expect((await colourAt(blurred, far)).a, greaterThan(0));
     });
 
+    test('through the row\'s blur repeating the paper\'s edge — the canvas\'s '
+        'edge, not the tag\'s (I-132-Q14 a)', () async {
+      // The box laid across the paper's left edge, two pixels past it.
+      final box = tagBox();
+      final shift = -box.left - 2;
+      ResolvedSeNameTag across({required bool repeats}) => tag(
+        inShot: LayerPlacement(1, 0, 0, 1, shift, 0),
+        effects: [
+          ResolvedLayerEffect(
+            kind: EffectKind.blur,
+            values: [12, 0, if (repeats) 1 else 0],
+          ),
+        ],
+      );
+      final atTheEdge = Offset(0, box.center.dy);
+      expect((await colourAt(across(repeats: false), atTheEdge)).a, lessThan(1));
+      expect((await colourAt(across(repeats: true), atTheEdge)).a, 1);
+      // Inside the paper it spreads past the box, as it does off.
+      final beside = box.centerRight + Offset(shift + 4, 0);
+      expect((await colourAt(across(repeats: true), beside)).a, greaterThan(0));
+    });
+
     test('through the row\'s blur — the picture it blurs is its drawing '
         'grown by the blur\'s spread, as a layer\'s is', () async {
       Future<Rect> bufferOf(double radius) async {

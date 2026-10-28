@@ -86,6 +86,7 @@ void main() {
   ) => drawSubtreeAsImage(
     canvas: canvas,
     bounds: groupRect,
+    paper: groupRect,
     rasterScale: scale,
     maxPixelSide: maxPixelSide,
     paintSubtree: (into, _) => drawChildren(into),
@@ -291,6 +292,7 @@ void main() {
       drawSubtreeAsImage(
         canvas: canvas,
         bounds: bounds,
+        paper: bounds,
         rasterScale: scale,
         maxPixelSide: maxPixelSide,
         cell: cell,
@@ -702,6 +704,7 @@ void main() {
         drawSubtreeAsImage(
           canvas: canvas,
           bounds: pass.bufferBounds,
+          paper: pass.bufferBounds,
           rasterScale: 1,
           maxPixelSide: maxSubtreeRasterSide,
           paintSubtree: (into, _) => drawChildren(into),
@@ -769,6 +772,7 @@ void main() {
     drawSubtreeAsImage(
       canvas: canvas,
       bounds: const Rect.fromLTWH(6, 4, 46, 42),
+      paper: const Rect.fromLTWH(6, 4, 46, 42),
       rasterScale: 1,
       maxPixelSide: maxSubtreeRasterSide,
       paintSubtree: (into, _) {

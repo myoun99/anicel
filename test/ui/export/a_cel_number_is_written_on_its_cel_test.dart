@@ -137,6 +137,7 @@ void main() {
           await const CameraFrameRenderService(
             background: ui.Color(0x00000000),
           ).renderThroughCamera(
+            canvasSize: canvas,
             nodes: planCutFrameCompositeTree(
               cut: Cut(
                 id: cutId,

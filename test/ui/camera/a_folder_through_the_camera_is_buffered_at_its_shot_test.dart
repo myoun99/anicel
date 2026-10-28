@@ -73,6 +73,7 @@ void main() {
     CameraView view,
   ) async {
     final image = await service.renderThroughCamera(
+      canvasSize: canvasSize,
       nodes: nodes,
       pose: view.pose,
       cameraFrameSize: view.frameSize,

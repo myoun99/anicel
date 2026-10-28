@@ -15,13 +15,16 @@ import 'subtree_image_composite.dart';
 /// buffer around it covers, and where the letters on it lie — and what of
 /// the canvas is shown, where a blend can read the frame
 /// ([drawBlendOverBackdrop]'s `shownWithin`) — and where the pictures its
-/// nodes are drawn into are held ([held]).
+/// nodes are drawn into are held ([held]) — and where the canvas the rows
+/// are laid on lies ([paper]), the edge a folder's blur that repeats it
+/// reads past (I-132-Q14 a).
 typedef CompositeRoute<L> = ({
   void Function(Canvas canvas, L row, double rasterScale) paintRow,
   Rect Function(L row) extentOf,
   LayerPlacement? Function(L row) placementOf,
   Rect? shownWithin,
   SubtreeHolding<L>? held,
+  Rect paper,
 });
 
 /// Where a route holds the pictures of its nodes ([HeldSubtreeRasters]):
@@ -164,6 +167,7 @@ class _CompositeTreeWalk<L> {
       canvas: canvas,
       bounds: bounds,
       rasterScale: rasterScale,
+      paper: route.paper,
       paintSubtree: (into, scale) {
         for (final node in run) {
           inside._paintNode(into, node, scale, within);
@@ -288,6 +292,7 @@ class _CompositeTreeWalk<L> {
       // artwork out there too.
       bounds: groupRect,
       rasterScale: rasterScale,
+      paper: route.paper,
       paintSubtree: (into, scale) => paint(into, children, scale, groupRect),
       compose: (blit) => blit(groupPaint),
       steps: groupPlan.preSteps,
@@ -324,6 +329,7 @@ class _CompositeTreeWalk<L> {
       canvas: canvas,
       bounds: pass.bufferBounds,
       rasterScale: rasterScale,
+      paper: route.paper,
       paintSubtree: (into, scale) =>
           paint(into, children, scale, pass.bufferBounds),
       compose: composeAdjustmentScope(canvas, pass),
@@ -372,6 +378,7 @@ class _CompositeTreeWalk<L> {
       canvas: canvas,
       bounds: bounds,
       rasterScale: rasterScale,
+      paper: route.paper,
       paintBase: (into, scale) => paint(into, [base], scale, bounds),
       paintScope: (into, scale) => paint(into, scope, scale, bounds),
       paint: layerCompositePaint(

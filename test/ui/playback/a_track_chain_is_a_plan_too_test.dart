@@ -77,6 +77,7 @@ void main() {
           await const CameraFrameRenderService(
             background: ui.Color(0x00000000),
           ).renderThroughCamera(
+            canvasSize: canvasSize,
             nodes: underTheCutsFx([
               CompositeLeaf(
                 CutFrameCompositeLayer(surface: whiteCut(), opacity: 1),

@@ -51,6 +51,7 @@ void main() {
       canvas,
       pieces: [(image: image, worldRect: worldRect)],
       extent: worldRect,
+      paper: worldRect,
       placement: pose == null
           ? null
           : placedBy(pose, const CanvasSize(width: 120, height: 80)),

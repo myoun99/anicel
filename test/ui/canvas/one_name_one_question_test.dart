@@ -113,7 +113,7 @@ void main() {
           'route started spelling the ratio out again',
     );
     expect(
-      source.contains('image.width / canvasExtent'),
+      source.contains('image.width / extent.width'),
       isTrue,
       reason: 'and it is still derived rather than passed',
     );

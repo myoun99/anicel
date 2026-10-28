@@ -404,6 +404,7 @@ void main() {
       required CanvasSize output,
       RowPictures? rows,
     }) => const CameraFrameRenderService().renderThroughCamera(
+      canvasSize: canvas,
       layers: [layer],
       pose: CameraPose(center: CanvasPoint(x: 4, y: 4)),
       cameraFrameSize: canvas,

@@ -91,6 +91,10 @@ T withLayerPlacement<T>(
 /// parity suites, so switching them to the general path is a change of
 /// rendered bytes and does not belong in a convergence.
 ///
+/// [paper] is where the row's paper lies in canvas space — the edge a blur
+/// of its chain that repeats it reads past ([PaperEdgeEffect]): the
+/// canvas, as on every route (I-132-Q14 a).
+///
 /// [texelScale] is how many target pixels one canvas unit is on [canvas]
 /// when [canvas] is a pixel raster whose grid is aligned to canvas space —
 /// the display buffer, a sub-tree raster, a camera's output where its
@@ -120,6 +124,7 @@ void drawPosedLayerImage(
   double rasterScale = 1,
   required double? texelScale,
   required ui.FilterQuality filterQuality,
+  required ui.Rect paper,
   int? tint,
   bool Function(ui.Rect worldRect, ui.Image image)? drawAtOriginWhen,
 }) {
@@ -172,7 +177,8 @@ void drawPosedLayerImage(
         final stepped = steppedForChain(
           image: laid.image,
           plan: plan,
-          canvasExtent: laid.worldRect.width,
+          extent: laid.worldRect,
+          paper: paper,
         );
         // 🚨★★★A TEXEL COPY RESAMPLES NOTHING, SO IT IS DRAWN AT `none` (유저
         // 2026-09-24 「통일해서」). The law the 1:1 blits beside it already keep

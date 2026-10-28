@@ -81,17 +81,20 @@ class CameraFrameRenderService {
   /// at 0.42–0.52 — such a line went missing ten pixels and more at a
   /// stretch); a chain is that 2×2 mean, level by level.
   ///
-  /// [cutTo] cuts the picture at that canvas's edge where the projection
-  /// lays it — the film shows no pasteboard (「페이스트보드는 포함 안
-  /// 시킴」) — as playback cuts it ([shotClipOnScreen]): out to the whole
+  /// [canvasSize] is the canvas the rows are laid on — a cut's — and where
+  /// a folder's blur that repeats the paper's edge finds it (I-132-Q14 a).
+  ///
+  /// [cutsToTheCanvas] cuts the picture at the canvas's edge where the
+  /// projection lays it — the film shows no pasteboard (「페이스트보드는 포함
+  /// 안 시킴」) — as playback cuts it ([shotClipOnScreen]): out to the whole
   /// pixels around where the rows end, the canvas's own edge
   /// ([outlineThrough]), so the cut takes nothing of a pixel they cover in
   /// part. ↩️On their level's grid while the rows were halved (until
   /// one-picture-per-frame ②-5b-3). Only the rows and [paper]:
   /// [overlayPass] is laid over the cut.
   ///
-  /// [paper] is laid under the rows on [cutTo]'s canvas, as the canvas lays
-  /// its paper with its rows — a stage's, as playback lays it
+  /// [paper] is laid under the rows on the canvas they are cut to, as the
+  /// canvas lays its paper with its rows — a stage's, as playback lays it
   /// (`CanvasTrackStackView._unit`) — yielding the pixel the canvas's edge
   /// falls inside to the rows ([_paperYieldingToTheRows]). ↩️A film laid
   /// it under the picture to the canvas's edge, where rows reduced to a
@@ -112,12 +115,13 @@ class CameraFrameRenderService {
     required CanvasSize cameraFrameSize,
     CanvasSize? outputSize,
     CameraOverlayPass? overlayPass,
-    CanvasSize? cutTo,
+    required CanvasSize canvasSize,
+    bool cutsToTheCanvas = false,
     ProjectBackground? paper,
     RowPictures? rows,
   }) async {
     assert(
-      paper == null || cutTo != null,
+      paper == null || cutsToTheCanvas,
       'a paper is laid on the canvas its picture is cut to',
     );
     // A row in an advanced blend is composed over what lies below it
@@ -202,8 +206,8 @@ class CameraFrameRenderService {
             //
             // ⚠️This changes WHEN the crop happens, not whether. Off-canvas
             // artwork that the pose does not bring in stays out of an export
-            // all the same, cut at the canvas's edge at the end ([cutTo]) —
-            // 유저 확정: 「페이스트보드는 포함 안 시킴」.
+            // all the same, cut at the canvas's edge at the end
+            // ([cutsToTheCanvas]) — 유저 확정: 「페이스트보드는 포함 안 시킴」.
             //
             // Cost is proportional to what is actually there: the positioned
             // compose only rasters a bigger rect when pasteboard tiles
@@ -318,8 +322,8 @@ class CameraFrameRenderService {
       paintProjectPaper(
         canvas,
         antiAlias
-            ? _paperYieldingToTheRows(cutTo!.canvasRect, cameraRasterScale)
-            : cutTo!.canvasRect,
+            ? _paperYieldingToTheRows(canvasSize.canvasRect, cameraRasterScale)
+            : canvasSize.canvasRect,
         stage,
         antiAlias: antiAlias,
         pixelRatio: 1,
@@ -345,7 +349,7 @@ class CameraFrameRenderService {
           // their bytes do not move. Only a surface with artwork outside
           // the canvas takes the general path, which is the case that was
           // broken.
-          final canvasSize = layer.surface.canvasSize;
+          final ownCanvas = layer.surface.canvasSize;
           drawPosedLayerImage(
             canvas,
             // The ink alone where it was composed so ([rowsAsInk]), and
@@ -356,6 +360,8 @@ class CameraFrameRenderService {
             opacity: layer.opacity,
             blendMode: layer.blendMode,
             effects: layer.effects,
+            // Its own canvas, as the rows' are laid on.
+            paper: ownCanvas.canvasRect,
             // A texel copy where the projection moves pixels whole, at
             // the scale this canvas is at — a folder's buffer cut down to
             // its cap lays a crop back.
@@ -368,16 +374,16 @@ class CameraFrameRenderService {
             drawAtOriginWhen: (worldRect, _) =>
                 worldRect.left == 0 &&
                 worldRect.top == 0 &&
-                worldRect.width == canvasSize.width &&
-                worldRect.height == canvasSize.height,
+                worldRect.width == ownCanvas.width &&
+                worldRect.height == ownCanvas.height,
           );
       }
     }
 
     canvas.save();
-    if (cutTo != null) {
+    if (cutsToTheCanvas) {
       final cut = shotClipOnScreen(
-        outlineThrough(cutTo, projection),
+        outlineThrough(canvasSize, projection),
         // An output pixel is the device's.
         1,
       );
@@ -406,6 +412,7 @@ class CameraFrameRenderService {
         placementOf: placementOf,
         shownWithin: null,
         held: null,
+        paper: canvasSize.canvasRect,
       ),
     );
     canvas.restore();

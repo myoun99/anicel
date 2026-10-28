@@ -264,6 +264,19 @@ final class _StepPart extends _PaintPart {
   final double reach;
 }
 
+/// A blur that reads past the paper's edge as its edge's own pixels and
+/// paints no further than it — AE's Repeat Edge Pixels ([PaperEdgeEffect]):
+/// [filter] repeats the edge of the image it is drawn with, so it is drawn
+/// over the paper cut out alone, a step of its own.
+final class _PaperEdgePart extends _PaintPart {
+  const _PaperEdgePart(this.filter, {required this.reach});
+
+  final ui.ImageFilter filter;
+
+  /// How far past its input it paints, inside the paper.
+  final double reach;
+}
+
 /// A kind no paint carries: the chain is split before a paint is resolved.
 final class _SplitPart extends _PaintPart {
   const _SplitPart(this.splitBy);
@@ -322,17 +335,20 @@ _PaintPart _blurPart(ResolvedLayerEffect effect, DrawSpace space) {
   final dimensions = effect.parameter('blurDimensions').round();
   final radiusX = dimensions == 2 ? 0.0 : radius;
   final radiusY = dimensions == 1 ? 0.0 : radius;
-  return _SpatialPart(
-    ui.ImageFilter.blur(
-      sigmaX: radiusX * blurSigmaPerRadius,
-      sigmaY: radiusY * blurSigmaPerRadius,
-      // DECAL, not the clamp default: a layer's artwork must not smear
-      // its edge pixels outward forever — outside its coverage there is
-      // nothing, and that is what the picture should show.
-      tileMode: ui.TileMode.decal,
-    ),
-    outset: blurSpreadForRadius(radiusX > radiusY ? radiusX : radiusY),
+  final repeatsTheEdge = effect.flag('repeatEdgePixels');
+  final filter = ui.ImageFilter.blur(
+    sigmaX: radiusX * blurSigmaPerRadius,
+    sigmaY: radiusY * blurSigmaPerRadius,
+    // DECAL, not the clamp default: a layer's artwork must not smear its
+    // edge pixels outward forever — outside its coverage there is nothing,
+    // and that is what the picture should show. CLAMP where the edge is to
+    // be repeated: drawn over the paper cut out alone, it is the paper's.
+    tileMode: repeatsTheEdge ? ui.TileMode.clamp : ui.TileMode.decal,
   );
+  final spread = blurSpreadForRadius(radiusX > radiusY ? radiusX : radiusY);
+  return repeatsTheEdge
+      ? _PaperEdgePart(filter, reach: spread)
+      : _SpatialPart(filter, outset: spread);
 }
 
 /// A directional blur of no length changes no pixel, whichever way it
@@ -363,6 +379,14 @@ List<LineBoxPass> shadedPassesOf(
   _StepPart(:final passes) => passes,
   _ => const [],
 };
+
+/// The blur [effect] — a step's [PaperEdgeEffect] — draws over the paper
+/// at [space], the raster's own: null where it changes no pixel there.
+ui.ImageFilter? paperEdgeBlurOf(ResolvedLayerEffect effect, DrawSpace space) =>
+    switch (_paintPartOf(effect, space)) {
+      _PaperEdgePart(:final filter) => filter,
+      _ => null,
+    };
 
 /// Translates [effects] (already sampled at a frame) into paint state.
 ///
@@ -433,11 +457,11 @@ CompositeEffectPaint resolveCompositeEffectPaint(
       // looks exactly like "the artist set Amount to 0".
       case _SplitPart(:final splitBy):
         assert(false, splitBy);
-      case _StepPart():
+      case _StepPart() || _PaperEdgePart():
         assert(
           false,
-          'A shaded effect is a step of its own — see '
-          'resolveCompositeEffectPlan.',
+          'A shaded effect and a blur on the paper are steps of their own — '
+          'see resolveCompositeEffectPlan.',
         );
       case _NoPart():
         break;
@@ -507,6 +531,24 @@ final class ShadedEffect extends EffectStepLead {
 
   /// ⛔UNRESOLVED, as [CompositeEffectStep.then]: its length belongs to the
   /// raster the step runs in.
+  final ResolvedLayerEffect effect;
+}
+
+/// A blur repeating the paper's edge pixels past it and cut to it — a
+/// Gaussian's Repeat Edge Pixels (🗣️I-132-Q14 a, 유저 2026-10-28: the
+/// paper's edge, on a layer and a folder alike), drawn in
+/// [paperEdgeBlurOf]'s raster over the paper cut out of the step's input.
+///
+/// 🔬WHY A STEP. Measured on Impeller (10-28, `flutter_tester
+/// --enable-impeller`): a blur's clamp repeats the edge of the image it is
+/// drawn with and paints past it, and drawn from a part of a larger image
+/// it repeats nothing — the decal's pixels. The paper has to be an image of
+/// its own, and only a step holds one.
+final class PaperEdgeEffect extends EffectStepLead {
+  const PaperEdgeEffect(this.effect);
+
+  /// ⛔UNRESOLVED, as [ShadedEffect.effect]: its radius belongs to the
+  /// raster the step runs in, and the paper to where that raster lies.
   final ResolvedLayerEffect effect;
 }
 
@@ -592,12 +634,17 @@ CompositeEffectPlan resolveCompositeEffectPlan(
   for (final effect in effects) {
     final key = CelColorKey.fromResolved(effect);
     if (key == null) {
-      if (_paintPartOf(effect, space) case _StepPart(:final reach)) {
-        outset += reach;
-        leads.add(ShadedEffect(effect));
-        runs.add(<ResolvedLayerEffect>[]);
-      } else {
+      final (lead, reach) = switch (_paintPartOf(effect, space)) {
+        _StepPart(:final reach) => (ShadedEffect(effect), reach),
+        _PaperEdgePart(:final reach) => (PaperEdgeEffect(effect), reach),
+        _ => (null, 0.0),
+      };
+      if (lead == null) {
         runs.last.add(effect);
+      } else {
+        outset += reach;
+        leads.add(lead);
+        runs.add(<ResolvedLayerEffect>[]);
       }
       continue;
     }

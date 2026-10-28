@@ -295,6 +295,7 @@ void main() {
         drawSubtreeAsImage(
           canvas: ui.Canvas(recorder),
           bounds: bounds,
+          paper: bounds,
           rasterScale: 1,
           paintSubtree: (into, _) => into.drawPaint(Paint()),
           compose: (blit) => blit(Paint()),

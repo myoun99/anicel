@@ -107,6 +107,7 @@ void main() {
       final image = await const CameraFrameRenderService(
         background: ui.Color(0x00000000),
       ).renderThroughCamera(
+        canvasSize: canvasSize,
         nodes: nodes,
         pose: view.pose,
         cameraFrameSize: view.frameSize,

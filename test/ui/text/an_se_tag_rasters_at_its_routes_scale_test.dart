@@ -76,6 +76,7 @@ void main() {
       'scale', () async {
     double? handed;
     final image = await const CameraFrameRenderService().renderThroughCamera(
+      canvasSize: canvas,
       pose: CameraPose(center: CanvasPoint(x: 320, y: 180), zoom: 3),
       cameraFrameSize: frame,
       overlayPass: (canvas, rasterScale) => handed = rasterScale,

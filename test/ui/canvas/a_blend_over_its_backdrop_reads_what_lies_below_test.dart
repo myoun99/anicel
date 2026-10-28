@@ -86,7 +86,8 @@ void main() {
         nodes: nodes,
         pose: view.pose,
         cameraFrameSize: view.frameSize,
-        cutTo: canvasSize,
+        canvasSize: canvasSize,
+        cutsToTheCanvas: true,
         paper: paper,
       );
       final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);

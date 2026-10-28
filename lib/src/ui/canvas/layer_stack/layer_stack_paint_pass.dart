@@ -684,6 +684,7 @@ class _LayerStackPaintPass {
       placementOf: _placementOf,
       shownWithin: _shownWithin,
       held: _held,
+      paper: _canvasRect,
     ),
   );
 
@@ -900,6 +901,9 @@ class _LayerStackPaintPass {
         paintSubtree: (into, _) => paintLiveBody(into),
         compose: (blit) => blit(activePaint),
         steps: activePlan.preSteps,
+        // The canvas, in the slot as it is in the canvas: the slot is the
+        // row before its pose.
+        paper: _canvasRect,
         cell: rasterCellFor(activePlan.outsetPixels),
       );
     } else {

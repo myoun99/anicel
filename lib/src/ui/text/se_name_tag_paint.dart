@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import '../../models/canvas_size.dart';
 import '../../models/composite_tree.dart';
 import '../../models/layer_blend_mode.dart';
+import '../../models/pasteboard_bounds.dart' show PasteboardBounds;
 import '../../models/text_cel_style.dart' show TextCelContent;
 import '../../services/composite_effect_paint.dart';
 import '../../services/layer_pose_matrix.dart' show placementMatrix;
@@ -44,7 +45,7 @@ void paintSeNameTags(
     _composite(
       canvas,
       tag,
-      _layoutsOf(tag, canvasSize: canvasSize),
+      canvasSize: canvasSize,
       rasterScale: rasterScale,
     );
   }
@@ -65,10 +66,11 @@ void paintSeNameTags(
 /// be the same pixels.
 void _composite(
   ui.Canvas canvas,
-  ResolvedSeNameTag tag,
-  List<TextCelLayout> layouts, {
+  ResolvedSeNameTag tag, {
+  required CanvasSize canvasSize,
   required double rasterScale,
 }) {
+  final layouts = _layoutsOf(tag, canvasSize: canvasSize);
   final placement = placementMatrix(tag.placement);
   void paintTag(ui.Canvas into) {
     into.save();
@@ -113,6 +115,8 @@ void _composite(
       ),
     ),
     steps: effects.preSteps,
+    // The canvas the tag is laid on, as a row's chain is.
+    paper: canvasSize.canvasRect,
     cell: rasterCellFor(effects.outsetPixels),
   );
 }

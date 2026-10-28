@@ -74,10 +74,13 @@ void main() {
   }) async {
     final source = dot();
     addTearDown(source.dispose);
+    // The picture is the canvas, all of it.
+    final canvas = Rect.fromLTWH(0, 0, canvasExtent, canvasExtent);
     final out = steppedForChain(
       image: source,
       plan: resolveCompositeEffectPlan(chain),
-      canvasExtent: canvasExtent,
+      extent: canvas,
+      paper: canvas,
     );
     if (!identical(out, source)) {
       addTearDown(out.dispose);
@@ -173,7 +176,8 @@ void main() {
     final out = steppedForChain(
       image: source,
       plan: resolveCompositeEffectPlan([directional(degrees: 90, length: 15)]),
-      canvasExtent: side.toDouble(),
+      extent: Rect.fromLTWH(0, 0, side.toDouble(), side.toDouble()),
+      paper: Rect.fromLTWH(0, 0, side.toDouble(), side.toDouble()),
     );
     addTearDown(out.dispose);
     final alphas = await alphasOf(tester, out);
@@ -204,7 +208,8 @@ void main() {
     final out = steppedForChain(
       image: source,
       plan: resolveCompositeEffectPlan([directional(degrees: 90, length: 15)]),
-      canvasExtent: width.toDouble(),
+      extent: Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+      paper: Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
     );
     addTearDown(out.dispose);
     final alphas = await alphasOf(tester, out);
@@ -260,6 +265,7 @@ void main() {
         ),
       ],
       extent: Rect.fromLTWH(0, 0, side.toDouble(), side.toDouble()),
+      paper: Rect.fromLTWH(0, 0, side.toDouble(), side.toDouble()),
       placement: GuideTransform(0, 1, -1, 0, side.toDouble(), 0),
       opacity: 1,
       blendMode: LayerBlendMode.normal,

@@ -308,6 +308,7 @@ void main() {
     }) => drawSubtreeAsImage(
       canvas: canvas,
       bounds: bounds,
+      paper: bounds,
       rasterScale: rasterScale,
       maxPixelSide: maxPixelSide,
       paintSubtree: (into, _) => into.drawRect(
@@ -381,6 +382,7 @@ void main() {
         drawSubtreeAsImage(
           canvas: ui.Canvas(recorder),
           bounds: whole,
+          paper: whole,
           rasterScale: 1,
           paintSubtree: (into, _) => into.drawRect(
             const Rect.fromLTWH(2, 2, 10, 10),

@@ -526,7 +526,8 @@ class ExportFrameRenderer {
         nodes: laid?.call() ?? const [],
         pose: view.pose,
         cameraFrameSize: view.frameSize,
-        cutTo: task.cut.canvasSize,
+        canvasSize: task.cut.canvasSize,
+        cutsToTheCanvas: true,
         paper: paper,
       );
     }
@@ -677,6 +678,7 @@ class ExportFrameRenderer {
       nodes: _nodesFor(ExportFrameTask(cut: cut, frameIndex: frameIndex)),
       pose: view.pose,
       cameraFrameSize: view.frameSize,
+      canvasSize: cut.canvasSize,
       outputSize: view.frameSize.scaledToWidth(width),
     );
   }
@@ -728,7 +730,8 @@ class ExportFrameRenderer {
       pose: view.pose,
       cameraFrameSize: view.frameSize,
       outputSize: outputSize,
-      cutTo: cut.canvasSize,
+      canvasSize: cut.canvasSize,
+      cutsToTheCanvas: true,
       paper: paper,
       rows: rows,
       overlayPass: nameTags.isEmpty
@@ -1386,6 +1389,7 @@ class ExportFrameRenderer {
       ),
       pose: cel.view.pose,
       cameraFrameSize: cel.view.frameSize,
+      canvasSize: task.cut.canvasSize,
       outputSize: outputSize,
       overlayPass: _laidOver([cel.guides, cel.camera]),
     );
@@ -1422,6 +1426,7 @@ class ExportFrameRenderer {
       nodes: nodes,
       pose: cel.view.pose,
       cameraFrameSize: cel.view.frameSize,
+      canvasSize: task.cut.canvasSize,
       overlayPass: overlayPass,
     );
     ExportLayerRow laidOver(String name, CameraOverlayPass pass) =>
