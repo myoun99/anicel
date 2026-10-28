@@ -62,6 +62,7 @@ void main() {
       body: Material(
         child: TimelineFrameRowsScrollBody(
           rows: rows,
+          pass: Object(),
           berths: berthsInOrder(rows),
           edges: TimelineRowEdges.uniform(
             1,

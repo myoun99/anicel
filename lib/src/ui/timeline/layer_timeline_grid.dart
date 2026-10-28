@@ -52,6 +52,7 @@ import 'timeline_section_policy.dart';
 import 'timeline_section_runs.dart';
 import 'timeline_row_edges.dart';
 import 'row_berths.dart';
+import 'window_move_keep.dart';
 import 'timeline_row_selection_bands.dart' show TimelineRowSelectionBands;
 import 'timeline_vertical_scrollbar_rail.dart';
 import 'timeline_visible_range.dart';
@@ -451,6 +452,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
   /// The display rows of the pass in flight — see [_effectHeaderRows].
   List<TimelineDisplayRow> _dragRows = const [];
 
+  /// The build the rows are laid in: a move of the window keeps what they
+  /// built, a build keeps nothing ([WindowMoveKeep]).
+  Object _pass = Object();
+
   /// Where [_dragRows] sit — read by what turns a pointer into a row
   /// between builds (a drag, a placement, a reveal).
   TimelineRowEdges _dragEdges = TimelineRowEdges.uniform(0, 0);
@@ -607,6 +612,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
         rows,
         world: widget.hooks.substrateGeneration,
       ),
+      pass: _pass,
     );
   }
 
@@ -642,6 +648,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
       rows: windowRows,
       edges: edges,
       berths: window.berths,
+      pass: window.pass,
       firstRowIndex: rowWindow.startIndex,
       leadingLayerSpacerHeight: leadingRowSpacerHeight,
       trailingLayerSpacerHeight: trailingRowSpacerHeight,
@@ -854,6 +861,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
     final laneRange = _rangeGestures.laneRangeFor(rows, band: rangeGesture);
     // ⛔The gestures above take the REAL rows: nothing can be selected,
     // dragged or edited on a row that does not exist yet.
+    _pass = Object();
 
     // The law, the glide stop and the overscroll clamp — [TimelineGridShell]
     // carries the PEN-9 / PEN-12 #7 / D43-2 decisions for both grids.
@@ -1492,6 +1500,7 @@ class _RowWindow {
     required this.pinnedBefore,
     required this.pinnedAfter,
     required this.berths,
+    required this.pass,
   });
 
   final TimelineVisibleRange range;
@@ -1518,4 +1527,8 @@ class _RowWindow {
   /// Where each of the grid's rows is built ([RowBerths]) — the window's
   /// and the held row's alike.
   final RowBerthMap berths;
+
+  /// The grid's build the rows are laid in — what the rows a window move
+  /// keeps were built in ([WindowMoveKeep]).
+  final Object pass;
 }

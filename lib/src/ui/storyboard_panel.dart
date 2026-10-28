@@ -80,7 +80,7 @@ import 'timeline/lane_graph.dart'
 import 'timeline/lane_graph_seats.dart'
     show LaneGraphLine, laneGraphHeadedBy, laneGraphLineAmong, seatLaneGraphs;
 import 'timeline/timeline_lane_graph.dart'
-    show LaneGraphGrid, laneGraphFrameSide, laneGraphLines;
+    show LaneGraphGrid, laneGraphFrameSide, laneGraphLines, timelineRowBuiltNow;
 import 'timeline/timeline_section_runs.dart'
     show timelineDisplayRowExtent, timelineRowEdgesOf;
 import 'timeline/timeline_swipe_columns.dart'
@@ -103,6 +103,7 @@ import 'timeline/property_lanes_for_row.dart' show propertyLanesForRow;
 import 'timeline/timeline_row_edges.dart';
 import 'timeline/timeline_visible_range.dart';
 import 'timeline/held_row_pin.dart';
+import 'timeline/window_move_keep.dart';
 import 'timeline/timeline_row_selection_bands.dart';
 import 'timeline/timeline_row_span_resolver.dart'
     show
@@ -2310,34 +2311,27 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                   columns: _sweep.columns(),
                                   rowsIn: _sweep.rowsIn,
                                   // Laid by the rows' window, as the strips.
-                                  child: ValueListenableBuilder<int>(
-                                    valueListenable: _rowsWindow.bucket,
-                                    builder: (context, _, _) => Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      // One pass of the rail's keep: a row
-                                      // it stops drawing is let go of.
-                                      children: _rows.railPass(
-                                        () => [
-                                          // Track groups in TIMELINE order
-                                          // (R6 B3): the S rows sit ABOVE
-                                          // their V track, slots bottom-up
-                                          // like the timeline (top-down S2,
-                                          // S1, V — R7-④).
-                                          for (
-                                            var index = 0;
-                                            index <
-                                                frame.project.tracks.length;
-                                            index++
-                                          )
-                                            ..._railRows.railRowsForTrack(
-                                              frame.project.tracks[index],
-                                              index,
-                                              _rowsWindow.rowsOf(index),
-                                            ),
-                                        ],
-                                      ),
-                                    ),
+                                  child: _rowsWindow.laidColumn(
+                                    _rowsWindow.railKeep,
+                                    (rowsOf) => [
+                                      // Track groups in TIMELINE order (R6
+                                      // B3): the S rows sit ABOVE their V
+                                      // track, slots bottom-up like the
+                                      // timeline (top-down S2, S1, V — R7-④).
+                                      for (
+                                        var index = 0;
+                                        index < frame.project.tracks.length;
+                                        index++
+                                      )
+                                        ..._railRows.railRowsForTrack(
+                                          frame.project.tracks[index],
+                                          index,
+                                          rowsOf(index),
+                                        ),
+                                    ],
+                                    // One pass of the rail's keep: a row it
+                                    // stops drawing is let go of.
+                                    newPass: _rows.railPass,
                                   ),
                                 ),
                                 // The row selection, over the LAYER area

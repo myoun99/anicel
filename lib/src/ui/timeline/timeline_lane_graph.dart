@@ -73,12 +73,23 @@ import 'timeline_lane_rows.dart'
 import 'timeline_row_edges.dart';
 import 'transform_lane_policy.dart' show laneSelectionPicksKey;
 
-/// Rows as a grid lays them: [rows] are its rows from [first] on, and
-/// [edges] where every one of its rows sits.
+/// What keeps a row a grid lays on the frame side while only its window
+/// moves ([WindowMoveKeep.row]): the row kept for [key], else [build]'s.
+typedef TimelineRowKeep =
+    Widget Function(Object key, Widget Function() build);
+
+/// A row built now and kept by nothing — the frame side of a grid whose
+/// window does not move.
+Widget timelineRowBuiltNow(Object key, Widget Function() build) => build();
+
+/// Rows as a grid lays them: [rows] are its rows from [first] on, [edges]
+/// where every one of its rows sits, and [kept] what keeps them while only
+/// the grid's window moves.
 typedef TimelineLaidRows = ({
   List<TimelineDisplayRow> rows,
   int first,
   TimelineRowEdges edges,
+  TimelineRowKeep kept,
 });
 
 /// What [grid] lays on the frame side for [laid] ([laneGraphFrameSide]),
@@ -111,7 +122,7 @@ List<Widget> laneGraphFrameSide(
   lines,
   required Widget Function(TimelineDisplayRow row) cells,
 }) {
-  final (:rows, :first, :edges) = laid;
+  final (:rows, :first, :edges, :kept) = laid;
   final axis = grid.frameAxis.axis;
   return [
     for (final unit in edges.unitsIn(first, first + rows.length))
@@ -122,20 +133,23 @@ List<Widget> laneGraphFrameSide(
       ))
         acrossBox(axis, edges.unitSpanOf(unit.first).extent)
       else if (rows[unit.first - first].graph case final seat?)
-        TimelineLaneGraph(
-          key: ValueKey<String>(
-            '${grid.keyPrefix}-lane-graph-${seat.groupKey}',
+        kept(
+          ('lane-graph', seat.groupKey),
+          () => TimelineLaneGraph(
+            key: ValueKey<String>(
+              '${grid.keyPrefix}-lane-graph-${seat.groupKey}',
+            ),
+            seat: seat,
+            lines: lines(
+              seat,
+              rows.sublist(unit.first - first, unit.last - first + 1),
+            ),
+            grid: grid,
+            crossExtent: edges.unitSpanOf(unit.first).extent,
+            lanesExtent:
+                edges.unitSpanOf(unit.first).extent - edges.roomOf(unit.last),
+            mostExtent: edges.graphMost,
           ),
-          seat: seat,
-          lines: lines(
-            seat,
-            rows.sublist(unit.first - first, unit.last - first + 1),
-          ),
-          grid: grid,
-          crossExtent: edges.unitSpanOf(unit.first).extent,
-          lanesExtent:
-              edges.unitSpanOf(unit.first).extent - edges.roomOf(unit.last),
-          mostExtent: edges.graphMost,
         )
       else ...[
         cells(rows[unit.first - first]),

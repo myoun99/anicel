@@ -30,7 +30,39 @@ class _StoryboardRowsWindow {
   /// The window the rows were last laid for ([_tokenOf]).
   int _laid = -1;
 
+  /// What the rail keeps of its rows while only the window moves.
+  final WindowMoveKeep railKeep = WindowMoveKeep();
+
+  /// What each track's strips keep of theirs, by track.
+  final Map<int, WindowMoveKeep> _stripKeeps = {};
+
+  /// What track [trackIndex]'s strips keep while only the window moves.
+  WindowMoveKeep stripKeepOf(int trackIndex) =>
+      _stripKeeps.putIfAbsent(trackIndex, WindowMoveKeep.new);
+
   void dispose() => bucket.dispose();
+
+  /// [rows] in a column the window lays again when it moves — this call's
+  /// pass, kept by [keep] across the moves ([WindowMoveKeep]); [newPass]
+  /// wraps the first lay of a pass.
+  Widget laidColumn(
+    WindowMoveKeep keep,
+    _LaidRows rows, {
+    List<Widget> Function(List<Widget> Function() laid)? newPass,
+  }) {
+    final pass = Object();
+    return ValueListenableBuilder<int>(
+      valueListenable: bucket,
+      builder: (context, _, _) {
+        List<Widget> laid() => rows((trackIndex) => rowsOf(trackIndex, keep));
+        final fresh = keep.lay(pass);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: fresh && newPass != null ? newPass(laid) : laid(),
+        );
+      },
+    );
+  }
 
   /// The scroll moved: the rows are laid again when the window they stand
   /// in did.
@@ -46,8 +78,8 @@ class _StoryboardRowsWindow {
     }
   }
 
-  /// Track [trackIndex]'s rows as this pass lays them.
-  _WindowedRows rowsOf(int trackIndex) {
+  /// Track [trackIndex]'s rows as this lay lays them, kept by [keep].
+  _WindowedRows rowsOf(int trackIndex, WindowMoveKeep keep) {
     final table = _state._railRows.windowTable;
     final window = _now();
     _laid = _tokenOf(window);
@@ -55,6 +87,7 @@ class _StoryboardRowsWindow {
       table,
       window,
       held,
+      keep,
       table.firstSlots[trackIndex],
     );
   }
@@ -104,14 +137,19 @@ typedef _RowsWindowTable = ({
 /// it — called only when the window builds it.
 typedef _RowUnit = List<Widget> Function();
 
+/// A column's rows, laid off each track's windowed rows ([_WindowedRows]).
+typedef _LaidRows =
+    List<Widget> Function(_WindowedRows Function(int trackIndex) rowsOf);
+
 /// One track's rows as the window lays them, section after section in the
 /// order the table lays them.
 final class _WindowedRows {
-  _WindowedRows(this._table, this._window, this._held, this._slot);
+  _WindowedRows(this._table, this._window, this._held, this._keep, this._slot);
 
   final _RowsWindowTable _table;
   final TimelineVisibleRange? _window;
   final HeldRowPin _held;
+  final WindowMoveKeep _keep;
   int _slot;
 
   /// [units] where they stand: each built while a row of it stands in the
@@ -130,7 +168,7 @@ final class _WindowedRows {
           laid.add(SizedBox(height: gap));
           gap = 0;
         }
-        laid.add(_holdable(head, first, unit()));
+        laid.add(_keep.row(first, () => _holdable(head, first, unit())));
       } else {
         gap += _table.edges.startOf(last + 1) - _table.edges.startOf(first);
       }

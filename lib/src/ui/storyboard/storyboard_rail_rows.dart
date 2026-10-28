@@ -1345,22 +1345,21 @@ class _StoryboardRailRows {
     final window = _state._rowsWindow;
     return Positioned.fill(
       child: TickLayer(
-        child: ValueListenableBuilder<int>(
-          valueListenable: window.bucket,
-          builder: (context, _, _) => SlicedListenableBuilder<_TrackStrip>(
-            listenable: dragPreview,
-            slice: () => _previewedStripFor(index, dragPreview.value, entries),
-            builder: (context, strip) => Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: _stripRowsForTrack(
-                track,
-                index,
-                strip,
-                width,
-                scale,
-                trackGlobalRows,
-                window.rowsOf(index),
-              ),
+        // A preview step is a pass of its own: the window keeps nothing
+        // a drag moved across it.
+        child: SlicedListenableBuilder<_TrackStrip>(
+          listenable: dragPreview,
+          slice: () => _previewedStripFor(index, dragPreview.value, entries),
+          builder: (context, strip) => window.laidColumn(
+            window.stripKeepOf(index),
+            (rowsOf) => _stripRowsForTrack(
+              track,
+              index,
+              strip,
+              width,
+              scale,
+              trackGlobalRows,
+              rowsOf(index),
             ),
           ),
         ),
@@ -2652,6 +2651,7 @@ class _StoryboardRailRows {
         rows: rows.sublist(first, first + lanes.length),
         first: first,
         edges: seating.edges,
+        kept: timelineRowBuiltNow,
       ),
       grid,
       lines: (seat, seated) => laneGraphLines(seat, seated, (
@@ -2664,10 +2664,8 @@ class _StoryboardRailRows {
       cells: (row) => strip(row, timelineDisplayRowExtent(row, metrics)),
     );
     final selection = _state.widget.rowSelection;
-    if (selection == null ||
-        !seating.rows
-            .sublist(first, first + lanes.length)
-            .any((row) => row.graph != null)) {
+    final laneRows = seating.rows.sublist(first, first + lanes.length);
+    if (selection == null || !laneRows.any((row) => row.graph != null)) {
       return laid(seating.rows);
     }
     return [

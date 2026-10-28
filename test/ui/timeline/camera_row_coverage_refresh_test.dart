@@ -51,6 +51,7 @@ void main() {
         height: 200,
         child: TimelineFrameRowsScrollBody(
           rows: rows,
+          pass: Object(),
           berths: berthsInOrder(rows),
           edges: TimelineRowEdges.uniform(
             1,

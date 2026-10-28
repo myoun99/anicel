@@ -424,6 +424,7 @@ Widget _body({
       body: Material(
         child: TimelineFrameRowsScrollBody(
           rows: rows,
+          pass: Object(),
           berths: berthsInOrder(rows),
           edges: timelineRowEdgesOf(rows, metrics),
           hooks: TimelineGridHooks(

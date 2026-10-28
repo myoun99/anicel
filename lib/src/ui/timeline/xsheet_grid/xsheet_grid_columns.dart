@@ -137,7 +137,7 @@ class _XSheetGridColumns {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: timelineFrameSide(
-        (rows: entries, first: 0, edges: edges),
+        (rows: entries, first: 0, edges: edges, kept: timelineRowBuiltNow),
         grid,
         cells: (entry) => _gatedColumn(entry, plan, grid),
         laneRange: _state._laneRange,
