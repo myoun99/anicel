@@ -274,5 +274,10 @@ void main() {
         );
     expect(signed(1), signed(1));
     expect(signed(2), isNot(signed(1)));
+    // So does the reader's own part, which a held picture is keyed by.
+    CompositeReadsRowsSignature readerOf(CutFrameCompositeSignature frame) =>
+        frame.nodes.whereType<CompositeReadsRowsSignature>().single;
+    expect(readerOf(signed(1)), readerOf(signed(1)));
+    expect(readerOf(signed(2)), isNot(readerOf(signed(1))));
   });
 }

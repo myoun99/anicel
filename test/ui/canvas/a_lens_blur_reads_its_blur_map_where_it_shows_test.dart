@@ -193,78 +193,95 @@ void main() {
     await expectReadWhereItShows(drawn);
   });
 
-  // What a folder reads is part of what it draws: the picture of it a
-  // frame holds is kept under both ([CompositeReadsRows]).
-  testWidgets('🚨a folder that reads a map is held with the map it read — '
-      'the map drawn on since, the folder is drawn again', (tester) async {
-    final held = HeldSubtreeRasters(bytes: () => 1 << 20);
-    addTearDown(held.clear);
-    final flipped = surfaceOf(
-      (x, _) =>
-          x < seam ? const [0xFF, 0xFF, 0xFF, 0xFF] : const [0, 0, 0, 0xFF],
-    );
-    var drawnOn = false;
-    final nodes = <CompositeNode<CanvasStackRow>>[
-      CompositeReadsRows(
-        node: CompositeGroup(
-          children: [
-            const CompositeLeaf(
-              CanvasLayerImageRequest(frameKey: cel, opacity: 1),
-            ),
-          ],
+  // What a folder or an adjustment reads is part of what it draws: the
+  // picture of it a frame holds is kept under both ([CompositeReadsRows]).
+  final readers =
+      <
+        String,
+        CompositeNode<CanvasStackRow> Function(
+          List<CompositeNode<CanvasStackRow>> children,
+          List<ResolvedLayerEffect> effects,
+        )
+      >{
+        'a folder': (children, effects) => CompositeGroup(
+          children: children,
           opacity: 1,
           blendMode: LayerBlendMode.normal,
-          effects: [lens(mapped: true)],
+          effects: effects,
         ),
-        rows: {
-          map: [
-            const CompositeLeaf(
-              CanvasLayerImageRequest(frameKey: mapCel, opacity: 1),
-            ),
-          ],
-        },
-      ),
-    ];
-    StackedFrame frameOf({bool? keeps}) => stackedFrameOf(
-      nodes,
-      page: page,
-      surfaceOf: (key) => key == cel
-          ? checker
-          : drawnOn
-          ? flipped
-          : depth,
-      held: switch (keeps) {
-        final keeps? => (
-          pictures: (
-            rasters: held,
-            keeps: keeps,
-            below: keeps ? BelowThePen.whole : BelowThePen.inCells,
+        'an adjustment': (children, effects) =>
+            CompositeAdjustment(children: children, effects: effects, mix: 1),
+      };
+  for (final MapEntry(key: name, value: readerOf) in readers.entries) {
+    testWidgets('🚨$name that reads a map is held with the map it read — '
+        'the map drawn on since, it is drawn again', (tester) async {
+      final held = HeldSubtreeRasters(bytes: () => 1 << 20);
+      addTearDown(held.clear);
+      final flipped = surfaceOf(
+        (x, _) =>
+            x < seam ? const [0xFF, 0xFF, 0xFF, 0xFF] : const [0, 0, 0, 0xFF],
+      );
+      var drawnOn = false;
+      final nodes = <CompositeNode<CanvasStackRow>>[
+        CompositeReadsRows(
+          node: readerOf(
+            [
+              const CompositeLeaf(
+                CanvasLayerImageRequest(frameKey: cel, opacity: 1),
+              ),
+            ],
+            [lens(mapped: true)],
           ),
-          revisionOf: (key) => key == mapCel && drawnOn ? 2 : 1,
+          rows: {
+            map: [
+              const CompositeLeaf(
+                CanvasLayerImageRequest(frameKey: mapCel, opacity: 1),
+              ),
+            ],
+          },
         ),
-        null => null,
-      },
-    );
-    Future<Uint8List> drawn(StackedFrame frame) async {
-      final recorder = ui.PictureRecorder();
-      frame.drawing.draw(Canvas(recorder)..clipRect(frame.drawing.extent));
-      final picture = recorder.endRecording();
-      final image = picture.toImageSync(width, height);
-      picture.dispose();
-      addTearDown(image.dispose);
-      return bytesOf(tester, image);
-    }
+      ];
+      StackedFrame frameOf({bool? keeps}) => stackedFrameOf(
+        nodes,
+        page: page,
+        surfaceOf: (key) => key == cel
+            ? checker
+            : drawnOn
+            ? flipped
+            : depth,
+        held: switch (keeps) {
+          final keeps? => (
+            pictures: (
+              rasters: held,
+              keeps: keeps,
+              below: keeps ? BelowThePen.whole : BelowThePen.inCells,
+            ),
+            revisionOf: (key) => key == mapCel && drawnOn ? 2 : 1,
+          ),
+          null => null,
+        },
+      );
+      Future<Uint8List> drawn(StackedFrame frame) async {
+        final recorder = ui.PictureRecorder();
+        frame.drawing.draw(Canvas(recorder)..clipRect(frame.drawing.extent));
+        final picture = recorder.endRecording();
+        final image = picture.toImageSync(width, height);
+        picture.dispose();
+        addTearDown(image.dispose);
+        return bytesOf(tester, image);
+      }
 
-    await drawn(frameOf(keeps: true));
-    expect(held.length, 1, reason: '⛔premise: the folder was kept');
-    debugSubtreeRasterCount = 0;
-    await drawn(frameOf(keeps: false));
-    expect(debugSubtreeRasterCount, 0, reason: '⛔premise: it is cut from');
+      await drawn(frameOf(keeps: true));
+      expect(held.length, 1, reason: '⛔premise: it was kept');
+      debugSubtreeRasterCount = 0;
+      await drawn(frameOf(keeps: false));
+      expect(debugSubtreeRasterCount, 0, reason: '⛔premise: it is cut from');
 
-    drawnOn = true;
-    final again = await drawn(frameOf(keeps: false));
-    expect(again, await drawn(frameOf()));
-  });
+      drawnOn = true;
+      final again = await drawn(frameOf(keeps: false));
+      expect(again, await drawn(frameOf()));
+    });
+  }
 
   testWidgets('on the camera\'s road, the export\'s', (tester) async {
     const service = CameraFrameRenderService(background: Color(0x00000000));
