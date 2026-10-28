@@ -42,6 +42,7 @@ void main() {
   const conteBlur = EffectId('conte-blur');
   const riderHue = EffectId('rider-hue');
   const baseBlur = EffectId('a-blur');
+  const attachHue = EffectId('a1-hue');
 
   TransformTrack positionAt(int frame, CanvasPoint value) =>
       TransformTrack.empty().copyWith(
@@ -127,7 +128,8 @@ void main() {
   }
 
   /// An attach row of a DRAWING base, filed in its 공정 folder — with a key
-  /// of its own the file keeps but nothing shows (it wears its base's).
+  /// and an effect of its own the file keeps but nothing shows (it wears
+  /// its base's).
   Layer attach() {
     final cels = twoCels('a1');
     return Layer(
@@ -140,6 +142,7 @@ void main() {
       frames: cels.frames,
       timeline: cels.timeline,
       transformTrack: positionAt(2, CanvasPoint(x: 100, y: 100)),
+      effects: [moved(attachHue, EffectKind.hueSaturation, 'hue')],
     );
   }
 
@@ -355,18 +358,24 @@ void main() {
         );
       }
 
-      final session = standingOn('rider');
-      session.laneRangeSelection.value = TimelineLaneSelection(
-        layerId: const LayerId('rider'),
-        laneId: effectGroupLaneId(riderHue),
-        startIndex: 0,
-        endIndexExclusive: 1,
-      );
-      expect(
-        session.laneVerbs.laneVerbRangeHasSomethingToDelete,
-        isTrue,
-        reason: 'a range over the rider\'s fx header names its effect',
-      );
+      // Over frames with no key, so only the header can answer.
+      for (final (row, effect, works) in [
+        ('rider', riderHue, true),
+        ('a1', attachHue, false),
+      ]) {
+        final session = standingOn(row);
+        session.laneRangeSelection.value = TimelineLaneSelection(
+          layerId: LayerId(row),
+          laneId: effectGroupLaneId(effect),
+          startIndex: 5,
+          endIndexExclusive: 6,
+        );
+        expect(
+          session.laneVerbs.laneVerbRangeHasSomethingToDelete,
+          works,
+          reason: '$row: a range over its fx header names the effect',
+        );
+      }
     });
 
     test('the rider\'s animated opacity is its own, not the conte\'s — an '
