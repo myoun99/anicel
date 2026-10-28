@@ -773,7 +773,14 @@ void main() {
   /// palette's copy — every field it has, the folded and the locked among
   /// them — the copyWith idiom the rule leaves out, under a private name.
   /// ⛔Not split to fit: a copy that takes half the fields is two copies.
-  const wideSignatures = 435;
+  ///
+  /// ⚠️435 → 436 on 2026-10-29, one named as the rule above asks (I-138,
+  /// an animation row born with its first cel): `plannedAddLayerCommand`
+  /// (five) takes `bornWithACel` — whether each 겸용 copy is born with a
+  /// cel of its own — beside the row, its cut, its slot and the repository.
+  /// ⛔Not bundled into the row: it is a fact of the ADD, not of the layer
+  /// (the same row pasted hands its copies its lane).
+  const wideSignatures = 436;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
