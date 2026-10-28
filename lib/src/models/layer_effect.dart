@@ -270,8 +270,8 @@ enum EffectKind {
   /// blur's energy on the ring; Repeat Edge Pixels. 🗣️I-132-Q15 a: 「모든
   /// 모양을 정확히 — 행 누적합」. The iris's forms are ours (🗣️I-132-Q4 b),
   /// and so are the ranges the help does not give, and the shape's words
-  /// (🗣️I-132-Q11 a). ⚠️The Square begins it — I-132-Q19, asked: AE's
-  /// first word is a Fast Rectangle, which drawn exact is the Square. Its
+  /// (🗣️I-132-Q11 a). The Square begins it (🗣️I-132-Q19 a): AE's first
+  /// word is a Fast Rectangle, which drawn exact is the Square. Its
   /// highlights and its blur map are lanes still to come.
   cameraLensBlur(
     'cameraLensBlur',
