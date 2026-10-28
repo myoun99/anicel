@@ -349,6 +349,9 @@ class ExportFrameRenderer {
   /// id, a preview drew the cut as it was when first drawn.
   final Expando<Cut> _fxStrippedByCut = Expando<Cut>('fx-stripped cut');
 
+  /// The cuts [_onPaper] has laid out, each by the cut it lays.
+  final Expando<Cut> _onPaperByCut = Expando<Cut>('cut on paper');
+
   /// The cut as this RENDER should see it: every row as the window's
   /// 레이어 FX keeps it ([layerAsOutput] — the choice expressed as DATA,
   /// cheaper to reason about than an override threaded through the plan,
@@ -1387,15 +1390,20 @@ class ExportFrameRenderer {
       // [clips] laid it last in [stack].
       stack.addAll(over);
     }
+    final cutOf = Map<CutFrameCompositeLayer, Cut>.identity();
     final shown = mapCompositeLeaves<_CelLaid, CutFrameCompositeLayer>(
       stack,
-      _laidInTheCel,
+      (laid) => _laidInTheCel(laid, cutOf: cutOf),
     );
     return renderService.renderThroughCamera(
-      nodes: composeOverTheirBackdrops(
-        shown,
-        blendOf: (layer) => layer.blendMode,
-        paintedNormal: (layer) => layer.paintedNormal(),
+      nodes: _readingOnPaper(
+        composeOverTheirBackdrops(
+          shown,
+          blendOf: (layer) => layer.blendMode,
+          paintedNormal: (layer) => layer.paintedNormal(),
+        ),
+        cutOf: cutOf,
+        frameIndex: celGroupFirstExposure(task),
       ),
       pose: cel.view.pose,
       cameraFrameSize: cel.view.frameSize,
@@ -1459,13 +1467,20 @@ class ExportFrameRenderer {
           // Photoshop clips as the row does (I-92) — the switch as the row
           // holds it, as [frameRows] carries it.
           clipped: clipsToLayerBelow(row.layer),
-          draw: () => drawn(
-            _transparentRenderService,
-            nodes: mapCompositeLeaves(
-              _celNumbered(row, _alone(row.effects), asOnePicture: false),
-              _laidInTheCel,
-            ),
-          ),
+          draw: () {
+            final cutOf = Map<CutFrameCompositeLayer, Cut>.identity();
+            return drawn(
+              _transparentRenderService,
+              nodes: _readingOnPaper(
+                mapCompositeLeaves(
+                  _celNumbered(row, _alone(row.effects), asOnePicture: false),
+                  (laid) => _laidInTheCel(laid, cutOf: cutOf),
+                ),
+                cutOf: cutOf,
+                frameIndex: celGroupFirstExposure(task),
+              ),
+            );
+          },
         ),
       if (cel.guides case final guides?) laidOver(strings.exLayGuides, guides),
       if (cel.camera case final camera?) laidOver(strings.tlKindCamera, camera),
@@ -1571,13 +1586,58 @@ class ExportFrameRenderer {
   static RowPaint _alone(List<ResolvedLayerEffect> effects) =>
       (opacity: 1, blendMode: LayerBlendMode.normal, effects: effects);
 
-  /// [laid]'s row as the cel lays it, by its paint.
-  CutFrameCompositeLayer _laidInTheCel(_CelLaid laid) => CutFrameCompositeLayer(
-    surface: laid.row.surface,
-    opacity: laid.paint.opacity,
-    blendMode: laid.paint.blendMode,
-    placement: laid.row.placement,
-    effects: laid.paint.effects,
+  /// [laid]'s row as the cel lays it, by its paint — the row's cut kept by
+  /// it in [cutOf], for what its chain reads ([_readingOnPaper]).
+  CutFrameCompositeLayer _laidInTheCel(
+    _CelLaid laid, {
+    required Map<CutFrameCompositeLayer, Cut> cutOf,
+  }) {
+    final layer = CutFrameCompositeLayer(
+      surface: laid.row.surface,
+      opacity: laid.paint.opacity,
+      blendMode: laid.paint.blendMode,
+      placement: laid.row.placement,
+      effects: laid.paint.effects,
+    );
+    cutOf[layer] = laid.row.cut;
+    return layer;
+  }
+
+  /// [nodes] of a cel — each row's cut in [cutOf] — with each row whose
+  /// chain reads rows of its cut reading them ([withTheRowsTheyRead]) as
+  /// the cel lays its own: on paper ([_onPaper]), at the frame the cel is
+  /// sampled at ([frameIndex], [celGroupFirstExposure]).
+  ///
+  /// 🗣️I-132-Q26 a (유저 2026-10-29): 「셀처럼 종이 그대로 읽는다」 — the cel
+  /// the map's row exposes there, where it is drawn on its paper, at its
+  /// own strength (Q24 b); a folder as what it holds (Q25 a).
+  List<CompositeNode<CutFrameCompositeLayer>> _readingOnPaper(
+    List<CompositeNode<CutFrameCompositeLayer>> nodes, {
+    required Map<CutFrameCompositeLayer, Cut> cutOf,
+    required int frameIndex,
+  }) => withTheRowsTheyRead(
+    nodes,
+    effectsOf: (layer) => layer.effects,
+    drawnOf: (row, by) => switch (cutOf[by]) {
+      final cut? => planRowAsRead(
+        cut: _onPaper(cut),
+        row: row,
+        frameIndex: frameIndex,
+        surfaceResolver: (layer, frame) => _surfaceFor(cut, layer, frame),
+      ),
+      null => null,
+    },
+  );
+
+  /// [cut] as a cel lays its rows: as the window's 레이어 FX keeps each
+  /// ([_asOutput]), on its paper — no row's transform moving it, only a
+  /// reference's fx ([referenceMoveAt]) — at its static strength, as
+  /// [_celGroupOf] lays a member.
+  Cut _onPaper(Cut cut) => _onPaperByCut[cut] ??= cut.copyWith(
+    layers: [
+      for (final layer in cut.layers)
+        _asOutput(layer).copyWith(transformEnabled: false),
+    ],
   );
 
   /// What the hand laid over a cel, one pass over another in [passes]'
