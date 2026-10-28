@@ -8,6 +8,7 @@ import 'package:anicel/src/models/se_dialogue_spacing.dart';
 import 'package:anicel/src/models/se_line_type.dart';
 import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
 import 'package:anicel/src/ui/timeline/instance_editor_commands.dart';
 import 'package:anicel/src/ui/timesheet/cut_sheet_document.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
@@ -252,4 +253,54 @@ void main() {
           'it reaches later carries on with',
     );
   });
+
+  // 🗣️F-496 ③ (유저 2026-10-28): 「대사 오프셋/글자별 코마 기능」 — the
+  // line's own, counted over its whole block, through either door.
+  for (final timeline in [true, false]) {
+    testWidgets('the ${timeline ? 'TIMELINE' : 'CONTE'} door opens the '
+        'window on the line\'s spacing over its whole block, and OK writes '
+        'what was typed', (tester) async {
+      final a = _aLineAcrossTwoCuts();
+      const own = SeDialogueSpacing(offset: 1, komaPerGlyph: 2);
+      a.s.seEntries.updateSeEntryForLayer(
+        a.row,
+        _lineOf(a).id,
+        dialogue: 'やめて',
+        fields: (seName: 'A子', seTypes: SeLineTypes.allOn, spacing: own),
+      );
+      a.s.selectCut(a.second.id);
+      a.s.selectLayer(a.row);
+      final context = await _contextFrom(tester);
+
+      final editing = timeline
+          ? activateCellEditor(context, a.s, layerId: a.row, frameIndex: 1)
+          : editSeEntryInstance(
+              context,
+              a.s,
+              layerId: a.row,
+              globalFrame: _trackFrame(a, a.second, 1),
+            );
+      await tester.pumpAndSettle();
+      final preview = tester.widget<DialogueFitText>(
+        find.descendant(
+          of: find.byKey(const ValueKey<String>('instance-edit-preview')),
+          matching: find.byType(DialogueFitText),
+        ),
+      );
+      expect(preview.spacing, own);
+      expect(
+        preview.frames,
+        6,
+        reason: 'both cuts\' frames of it: the offset counts from its head',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('se-koma-per-glyph-field')),
+        '4',
+      );
+      await _tap(tester, 'instance-edit-ok-button');
+      await editing;
+
+      expect(_lineOf(a).seSpacing, own.copyWith(komaPerGlyph: 4));
+    });
+  }
 }

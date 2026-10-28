@@ -266,6 +266,28 @@ void main() {
     expect(result!.spacing, SeDialogueSpacing.standard);
   });
 
+  testWidgets('SE dialog: the window opens with the keyboard on the '
+      'dialogue — the counts beside it do not take it', (tester) async {
+    await _openDialog<SeInstanceDialogResult>(
+      tester,
+      const SeInstanceDialog(creating: true),
+      (_) {},
+    );
+    bool focused(String key) => tester
+        .widget<EditableText>(
+          find.descendant(
+            of: find.byKey(ValueKey<String>(key)),
+            matching: find.byType(EditableText),
+          ),
+        )
+        .focusNode
+        .hasFocus;
+    expect(focused('se-dialogue-field'), isTrue);
+    for (final key in ['se-dialogue-offset-field', 'se-koma-per-glyph-field']) {
+      expect(focused(key), isFalse, reason: key);
+    }
+  });
+
   testWidgets('SE dialog cancel pops nothing', (tester) async {
     SeInstanceDialogResult? result = const SeInstanceDialogResult(
       seName: 'sentinel',

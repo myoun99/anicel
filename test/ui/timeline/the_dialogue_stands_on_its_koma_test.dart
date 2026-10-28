@@ -27,15 +27,17 @@ void main() {
       required String dialogue,
       required SeDialogueSpacing spacing,
       int frames = frames,
+      double frameExtent = frame,
     }) async {
-      final along = frames * frame;
+      final along = frames * frameExtent;
       await tester.pumpWidget(
         MaterialApp(
           home: Align(
             alignment: Alignment.topLeft,
-            child: SizedBox(
-              width: axis == Axis.horizontal ? along : cross,
-              height: axis == Axis.horizontal ? cross : along,
+            child: sizedAlong(
+              axis,
+              along: along,
+              across: cross,
               child: SeSpanVisual(
                 layer: anSeRow(),
                 axis: axis,
@@ -60,8 +62,7 @@ void main() {
     }
 
     /// Where along the block [box] is centred, in frames.
-    double centreFrame(Rect box) =>
-        (axis == Axis.horizontal ? box.center.dx : box.center.dy) / frame;
+    double centreFrame(Rect box) => partAlong(axis, box.center) / frame;
 
     testWidgets('the first glyph stands on the first frame, and each takes '
         'its koma — not spread over the block (${axis.name})', (tester) async {
@@ -104,6 +105,39 @@ void main() {
       );
     });
 
+    // 「프레임블록의 글자 그대로 법 통일」: past its frame a block word grows
+    // on toward the block's end from that frame (`timelineBlockWordStart`).
+    testWidgets('a glyph longer than its frame stands from it, on into its '
+        'koma — not centred over it, hanging into the frame before '
+        '(${axis.name})', (tester) async {
+      const narrow = 6.0;
+      final boxes = await paintedAlong(
+        tester,
+        dialogue: 'あいう',
+        spacing: SeDialogueSpacing.standard,
+        frameExtent: narrow,
+      );
+      expect(boxes, hasLength(3));
+      for (final (index, box) in boxes.indexed) {
+        final cellStart = index * 3 * narrow;
+        expect(
+          extentAlong(axis, box.size),
+          greaterThan(narrow),
+          reason: '⛔전제: glyph $index is longer than its frame',
+        );
+        expect(
+          partAlong(axis, box.center),
+          greaterThan(cellStart + narrow / 2 + 1),
+          reason: 'glyph $index grows on from its frame',
+        );
+        expect(
+          endAlong(axis, box),
+          lessThanOrEqualTo(cellStart + 3 * narrow + 1e-6),
+          reason: 'glyph $index inside its koma',
+        );
+      }
+    });
+
     testWidgets('a line its koma run past the block shares the frames after '
         'its offset, each glyph narrowed to its share (${axis.name})', (
       tester,
@@ -120,12 +154,12 @@ void main() {
       for (final (index, box) in boxes.indexed) {
         final start = 2 + index * share;
         expect(
-          axis == Axis.horizontal ? box.left : box.top,
+          startAlong(axis, box),
           greaterThanOrEqualTo(start * frame - 1e-6),
           reason: 'glyph $index inside its share',
         );
         expect(
-          axis == Axis.horizontal ? box.right : box.bottom,
+          endAlong(axis, box),
           lessThanOrEqualTo((start + share) * frame + 1e-6),
           reason: 'glyph $index inside its share',
         );

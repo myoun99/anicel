@@ -93,6 +93,46 @@ void main() {
     expect(count, 60);
   });
 
+  testWidgets('the count takes the keyboard as its window opens — unless '
+      'the window asks it beside others (the SE window, F-496)', (
+    tester,
+  ) async {
+    Future<bool> focusedWith({bool? autofocus}) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: autofocus == null
+                ? FrameCountField(
+                    keyPrefix: 'n',
+                    framesPerSecond: 24,
+                    onChanged: (_) {},
+                  )
+                : FrameCountField(
+                    key: const ValueKey('beside'),
+                    keyPrefix: 'n',
+                    framesPerSecond: 24,
+                    onChanged: (_) {},
+                    autofocus: autofocus,
+                  ),
+          ),
+        ),
+      );
+      await tester.pump();
+      return tester
+          .widget<EditableText>(
+            find.descendant(
+              of: find.byKey(const ValueKey<String>('n-field')),
+              matching: find.byType(EditableText),
+            ),
+          )
+          .focusNode
+          .hasFocus;
+    }
+
+    expect(await focusedWith(), isTrue, reason: 'the count window\'s own');
+    expect(await focusedWith(autofocus: false), isFalse);
+  });
+
   // 🐛F-355: a draft a 全角 IME still composes is the field's to read, not
   // to change — and a focus lost mid-draft keeps it as it is.
   testWidgets('a 全角 draft counts as the number it shows, either way', (

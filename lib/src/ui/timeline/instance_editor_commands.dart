@@ -10,12 +10,14 @@ import '../../models/cut_id.dart';
 import '../../models/pill_subject.dart';
 import '../../models/frame.dart' show Frame;
 import '../../models/frame_id.dart';
+import '../../models/layer.dart' show Layer;
 import '../../models/layer_kind.dart';
 import '../../models/property_track.dart' show KeySidesEdit, KeyTypePick;
 import '../../models/layer_id.dart';
 import '../../models/se_dialogue_spacing.dart';
 import '../../models/se_line_type.dart';
-import '../../models/timeline_coverage.dart' show coveringDrawingBlockAt;
+import '../../models/timeline_coverage.dart'
+    show TimelineDrawingBlock, coveringDrawingBlockAt;
 import '../../services/project_lookup.dart' show layerAnywhereOrNull;
 import '../editor_command_actions.dart' show createActiveInstance;
 import '../dialogs/dialog_verb.dart';
@@ -334,8 +336,11 @@ Future<void> _editSeLabel(
   // token — a clip has no id, and it is read once here so the dialog and the
   // unlink below address the same list.
   final linked = session.audioClips.selectedSeAudioClips;
-  final blockFrames = session.audioClips.selectedSeBlockFrames;
   final layerId = session.activeLayer!.id;
+  // The window its sounds play in, which the offset strip draws (09-27),
+  // and what the spacing counts in; 1 where no block covers the playhead.
+  final row = _trackSeRowAt(session, layerId, session.editingGlobalFrame);
+  final blockFrames = row?.block?.length ?? 1;
   await _editSeEntryWithDialog(
     context,
     session,
@@ -385,6 +390,32 @@ SeInstanceAudioLink _audioLink(
   peaks: session.voiceRecording.audioPeaksForDisplay(clip.filePath),
 );
 
+/// The SE row [layerId] as the TRACK has it, and its block under
+/// [globalFrame] (null over an empty cell) — null when [layerId] is no SE
+/// row. What every SE door reads its block off: ⚠️not the cut's display
+/// clone, which restarts a block spilled in from the cut before at local 0
+/// with what is left of it (`TrackSeWindow`) — its head and its length are
+/// the track's to say (F-113). The timeline's door read the clone, and a
+/// spilled-in block's window counted its spacing over the cut's part of it
+/// alone (F-496 ③).
+({Layer layer, TimelineDrawingBlock? block})? _trackSeRowAt(
+  EditorSessionManager session,
+  LayerId layerId,
+  int globalFrame,
+) {
+  final layer = layerAnywhereOrNull(
+    session.repository.requireProject(),
+    layerId,
+  );
+  if (layer == null || layer.kind != LayerKind.se) {
+    return null;
+  }
+  return (
+    layer: layer,
+    block: coveringDrawingBlockAt(layer.timeline, globalFrame),
+  );
+}
+
 /// The S row's DOUBLE TAP on the storyboard (I-9: 「빈 칸이면 만들고, 찬 칸이면
 /// 연다」): an empty cell creates an entry at the storyboard cursor, a covered
 /// one opens through the Edit button's own door ([editSeEntryInstance]).
@@ -395,14 +426,11 @@ Future<void> activateSeEntryCell(
   required int globalFrame,
   Axis previewAxis = Axis.horizontal,
 }) async {
-  final layer = layerAnywhereOrNull(
-    session.repository.requireProject(),
-    layerId,
-  );
-  if (layer == null || layer.kind != LayerKind.se) {
+  final row = _trackSeRowAt(session, layerId, globalFrame);
+  if (row == null) {
     return;
   }
-  if (coveringDrawingBlockAt(layer.timeline, globalFrame) == null) {
+  if (row.block == null) {
     // 🚨★★★I-9 (유저 확정 2026-08-29, I-9-Q2 = `all-kinds`): an EMPTY cell
     // CREATES — the sentence [editTransitionSpanInstance] has said since
     // 2026-08-11, now said of sounds too. The doc above used to end 「COVERED
@@ -450,21 +478,16 @@ Future<void> editSeEntryInstance(
   required int globalFrame,
   Axis previewAxis = Axis.horizontal,
 }) async {
-  final layer = layerAnywhereOrNull(
-    session.repository.requireProject(),
-    layerId,
-  );
-  if (layer == null || layer.kind != LayerKind.se) {
-    return;
-  }
-  final block = coveringDrawingBlockAt(layer.timeline, globalFrame);
-  if (block == null) {
+  final row = _trackSeRowAt(session, layerId, globalFrame);
+  final block = row?.block;
+  if (row == null || block == null) {
     // ↩️F-105 (유저 2026-09-15, 「통일 — 편집 버튼은 빈 칸에서 꺼진다」): this is
     // the Edit button's door, and an empty cell is nothing to edit. The I-9
     // creation — and its decision note — moved to [activateSeEntryCell], the
     // double tap's door.
     return;
   }
+  final layer = row.layer;
   Frame? entry;
   entry = layer.frameById(block.frameId);
   if (entry == null) {
