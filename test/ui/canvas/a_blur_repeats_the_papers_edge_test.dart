@@ -193,6 +193,31 @@ void main() {
       expect(alphaAt(bytes, 48, 7, 24), 0, reason: 'past the paper');
     });
 
+    testWidgets('a paper reaching past the raster is cut to the raster — '
+        'what lies past it is out of sight, and nothing is made for it', (
+      tester,
+    ) async {
+      final source = picture(48, 48);
+      addTearDown(source.dispose);
+      final out = steppedForChain(
+        image: source,
+        plan: resolveCompositeEffectPlan([gaussian(repeats: true)]),
+        extent: const Rect.fromLTWH(-8, -8, 48, 48),
+        paper: const Rect.fromLTWH(0, 0, 100, 100),
+      );
+      addTearDown(out.dispose);
+      final bytes = await bytesOf(tester, out);
+      expect(
+        [
+          for (final (x, y) in [(47, 24), (24, 47), (47, 47)])
+            alphaAt(bytes, 48, x, y),
+        ],
+        everyElement(255),
+        reason: 'the raster\'s edge held where the paper goes on past it',
+      );
+      expect(alphaAt(bytes, 48, 7, 24), 0, reason: 'past the paper');
+    });
+
     testWidgets('what follows it in its step comes after it, on the paper '
         'alone', (tester) async {
       final source = picture(48, 48);
