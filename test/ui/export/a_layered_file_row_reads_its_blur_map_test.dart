@@ -14,6 +14,7 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
+import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -71,18 +72,24 @@ void main() {
   );
 
   /// A row [id] showing its one drawing.
-  Layer row(String id, {List<LayerEffect> effects = const []}) => Layer(
+  Layer row(
+    String id, {
+    List<LayerEffect> effects = const [],
+    String? folder,
+  }) => Layer(
     id: LayerId(id),
     name: id,
     frames: [Frame(id: FrameId('$id-f'), duration: 1, strokes: [])],
     timeline: {0: TimelineExposure.drawing(FrameId('$id-f'), length: 1)},
     effects: effects,
+    folderId: folder == null ? null : LayerId(folder),
   );
 
   /// The checker's row of a PSD of a cut where it wears what [scene] names:
   /// nothing (`sharp`), a lens blur of radius 4 with no map (`uniform`), or
-  /// one whose map is the depth row (`mapped`).
-  Future<Uint8List> drawn(String scene) async {
+  /// one whose map is the depth row (`mapped`) — or, [inAFolder], the
+  /// folder that holds it, darkening it all the way.
+  Future<Uint8List> drawn(String scene, {bool inAFolder = false}) async {
     final lens = LayerEffect.defaults(
       id: const EffectId('lens'),
       kind: EffectKind.cameraLensBlur,
@@ -103,14 +110,30 @@ void main() {
                 duration: 1,
                 canvasSize: canvas,
                 layers: [
-                  row('depth'),
+                  row('depth', folder: inAFolder ? 'f' : null),
+                  if (inAFolder)
+                    createFolderLayer(id: const LayerId('f'), name: 'f')
+                        .copyWith(
+                          effects: [
+                            LayerEffect.defaults(
+                              id: const EffectId('dark'),
+                              kind: EffectKind.brightnessContrast,
+                            ).withParameter(
+                              'brightness',
+                              EffectParameter(value: -100),
+                            ),
+                          ],
+                        ),
                   row(
                     'checker',
                     effects: switch (scene) {
                       'sharp' => const [],
                       'uniform' => [lens],
                       _ => [
-                        lens.withLayer('blurMapLayer', const LayerId('depth')),
+                        lens.withLayer(
+                          'blurMapLayer',
+                          LayerId(inAFolder ? 'f' : 'depth'),
+                        ),
                       ],
                     },
                   ),
@@ -143,32 +166,38 @@ void main() {
     return data!.buffer.asUint8List();
   }
 
-  testWidgets('🎯the row it blurs is sharp where the map is black and blurred '
-      'whole where it is white', (tester) async {
-    await tester.runAsync(() async {
-      final sharp = await drawn('sharp');
-      final uniform = await drawn('uniform');
-      final mapped = await drawn('mapped');
-      var unlikeLeft = 0;
-      var unlikeRight = 0;
-      final off = <String>[];
-      for (var y = 0; y < height; y += 1) {
-        for (var x = 0; x < width; x += 1) {
-          final at = (y * width + x) * 4;
-          final want = x < seam ? sharp : uniform;
-          for (var c = 0; c < 4; c += 1) {
-            if (sharp[at + c] != uniform[at + c]) {
-              x < seam ? unlikeLeft++ : unlikeRight++;
-            }
-            if (mapped[at + c] != want[at + c] && off.length < 8) {
-              off.add('($x, $y)[$c] ${mapped[at + c]} != ${want[at + c]}');
+  for (final inAFolder in [false, true]) {
+    final where = inAFolder
+        ? ' — a folder\'s map without the folder\'s chain, which the file '
+              'leaves out'
+        : '';
+    testWidgets('🎯the row it blurs is sharp where the map is black and '
+        'blurred whole where it is white$where', (tester) async {
+      await tester.runAsync(() async {
+        final sharp = await drawn('sharp');
+        final uniform = await drawn('uniform');
+        final mapped = await drawn('mapped', inAFolder: inAFolder);
+        var unlikeLeft = 0;
+        var unlikeRight = 0;
+        final off = <String>[];
+        for (var y = 0; y < height; y += 1) {
+          for (var x = 0; x < width; x += 1) {
+            final at = (y * width + x) * 4;
+            final want = x < seam ? sharp : uniform;
+            for (var c = 0; c < 4; c += 1) {
+              if (sharp[at + c] != uniform[at + c]) {
+                x < seam ? unlikeLeft++ : unlikeRight++;
+              }
+              if (mapped[at + c] != want[at + c] && off.length < 8) {
+                off.add('($x, $y)[$c] ${mapped[at + c]} != ${want[at + c]}');
+              }
             }
           }
         }
-      }
-      expect(unlikeLeft, greaterThan(0), reason: '⛔premise: left, a blur');
-      expect(unlikeRight, greaterThan(0), reason: '⛔premise: right, a blur');
-      expect(off, isEmpty);
+        expect(unlikeLeft, greaterThan(0), reason: '⛔premise: left, a blur');
+        expect(unlikeRight, greaterThan(0), reason: '⛔premise: right, a blur');
+        expect(off, isEmpty);
+      });
     });
-  });
+  }
 }

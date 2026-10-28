@@ -627,6 +627,9 @@ class ExportFrameRenderer {
         asOnePicture: false,
       ),
       effectsOf: (row) => row.effects,
+      // Read off the cut as the file lays it ([_cutForRender]): a folder's
+      // chain no row of the file holds is out of a map as it is out of the
+      // file — I-117-Q2 「층을 지키고 그 효과는 뺀다」.
       drawnOf: (row, _) => planRowAsRead(
         cut: _cutForRender(cut),
         row: row,
