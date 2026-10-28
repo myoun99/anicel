@@ -387,10 +387,36 @@ class EditorShortcutBindings extends ChangeNotifier {
   /// the layout in use by the ＋ of the window's list (I-107-Q1), any of the
   /// list's by its row's duplicate (I-107-Q3).
   UserShortcutPreset duplicatePreset(ShortcutLayout preset, String name) =>
-      _add(name, preset.base, {
-        ...preset.ownKeys,
-        ..._recordedUnder(preset),
-      });
+      _add(name, preset.base, _keysOf(preset));
+
+  /// [preset] as one of the user's named [name], for a settings file
+  /// (I-142): what a duplicate of it would hold.
+  UserShortcutPreset asOwn(ShortcutLayout preset, String name) =>
+      UserShortcutPreset(
+        id: preset.id,
+        name: name,
+        base: preset.base,
+        keys: _keysOf(preset),
+      );
+
+  /// The presets the settings file [source] holds (I-142), each brought in
+  /// as its duplicate under its own name — 「가져올땐 새 프리셋으로서
+  /// 등록」 (I-107-Q1) — the last one coming into use; null where it holds
+  /// none.
+  List<UserShortcutPreset>? presetsBroughtFrom(String source) {
+    final read = shortcutPresetsInSettingsFile(source, keeps: _keeps);
+    if (read == null || read.isEmpty) {
+      return null;
+    }
+    return [for (final preset in read) duplicatePreset(preset, preset.name)];
+  }
+
+  /// What [preset] presses over its base's: what it was made with, and
+  /// what was recorded over that.
+  Map<String, List<SingleActivator>> _keysOf(ShortcutLayout preset) => {
+    ...preset.ownKeys,
+    ..._recordedUnder(preset),
+  };
 
   /// [preset] under [name]. Saves and notifies.
   void renamePreset(UserShortcutPreset preset, String name) {

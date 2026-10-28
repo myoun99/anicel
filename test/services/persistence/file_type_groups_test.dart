@@ -7,6 +7,7 @@ import 'package:anicel/src/models/media_asset.dart'
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 import 'package:anicel/src/services/brush_pack_file.dart';
 import 'package:anicel/src/services/persistence/file_type_groups.dart';
+import 'package:anicel/src/services/persistence/settings_file.dart';
 
 /// PICK-1. Two of these assertions are unusual and deliberate: they read the
 /// Apple Info.plists off disk and compare them to the Dart constants.
@@ -189,35 +190,38 @@ void main() {
         expect(contents, contains('CFBundleDocumentTypes'));
       });
 
-      test('$platform exports the BRUSH type too — the other type we own', () {
-        // 유저 확정 (`brush-export-format-Q1`, 답 1): the app writes its own
-        // brush format, so `.anibrush` is ours to declare. Undeclared, the
-        // Apple picker greys out every brush file the user just exported.
-        final contents = plist('$platform/Runner/Info.plist');
-        final block = declarationFor(contents, anicelBrushUti);
-        expect(
-          block,
-          isNotNull,
-          reason: 'FileTypeGroups.anicelBrush filters on $anicelBrushUti.',
-        );
-        expect(block, contains('<string>public.data</string>'));
-        expect(
-          block,
-          contains('<string>$anicelBrushExtension</string>'),
-          reason: 'The type must claim the .$anicelBrushExtension extension.',
-        );
-        final exportedAt = contents.indexOf('UTExportedTypeDeclarations');
-        final importedAt = contents.indexOf('UTImportedTypeDeclarations');
-        final declaredAt = contents.indexOf('<string>$anicelBrushUti</string>');
-        expect(declaredAt, greaterThan(exportedAt));
-        if (importedAt >= 0) {
+      // 유저 확정 (`brush-export-format-Q1`, 답 1): the app writes its own
+      // brush format, so `.anibrush` is ours to declare — and the settings
+      // files it writes (I-142) theirs. Undeclared, the Apple picker greys
+      // out every such file the user just exported.
+      for (final (uti, extension) in [
+        (anicelBrushUti, anicelBrushExtension),
+        (anicelPaletteUti, anicelPaletteExtension),
+        (anicelShortcutUti, anicelShortcutExtension),
+      ]) {
+        test('$platform exports $uti too — a type we own', () {
+          final contents = plist('$platform/Runner/Info.plist');
+          final block = declarationFor(contents, uti);
+          expect(block, isNotNull, reason: 'a type group filters on $uti.');
+          expect(block, contains('<string>public.data</string>'));
           expect(
-            declaredAt,
-            lessThan(importedAt),
-            reason: 'a type we OWN sits under the exported block',
+            block,
+            contains('<string>$extension</string>'),
+            reason: 'The type must claim the .$extension extension.',
           );
-        }
-      });
+          final exportedAt = contents.indexOf('UTExportedTypeDeclarations');
+          final importedAt = contents.indexOf('UTImportedTypeDeclarations');
+          final declaredAt = contents.indexOf('<string>$uti</string>');
+          expect(declaredAt, greaterThan(exportedAt));
+          if (importedAt >= 0) {
+            expect(
+              declaredAt,
+              lessThan(importedAt),
+              reason: 'a type we OWN sits under the exported block',
+            );
+          }
+        });
+      }
 
       test('$platform imports every format Apple ships no type for', () {
         final contents = plist('$platform/Runner/Info.plist');

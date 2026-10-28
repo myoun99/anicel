@@ -55,13 +55,32 @@ T? _liftVersionedSettings<T>(
   String text, {
   required int version,
   required T? Function(Map<String, dynamic> json) fromJson,
+}) => liftVersionedSettingsDocument(
+  jsonDecode(text) as Map<String, dynamic>,
+  version: version,
+  fromJson: fromJson,
+);
+
+/// What a settings [document] holds — one a store wrote, or one carried in
+/// a settings file (I-142) — or null when it is stamped with a version this
+/// build does not know. Throws on a corrupt one, as the readers' decode
+/// does.
+T? liftVersionedSettingsDocument<T>(
+  Map<String, dynamic> document, {
+  required int version,
+  required T? Function(Map<String, dynamic> json) fromJson,
 }) {
-  final decoded = jsonDecode(text) as Map<String, dynamic>;
-  if ((decoded['version'] as int? ?? 0) > version) {
+  if ((document['version'] as int? ?? 0) > version) {
     return null;
   }
-  return fromJson(decoded);
+  return fromJson(document);
 }
+
+/// [json] stamped with [version], as a store writes it.
+Map<String, dynamic> versionedSettingsDocument(
+  int version,
+  Map<String, dynamic> json,
+) => {'version': version, ...json};
 
 /// Writes [json] to [filePath] under [version], creating the directory.
 /// The future completes once the file holds this document or a newer one.
@@ -133,7 +152,7 @@ void saveVersionedSettingsSync({
 }
 
 String _versionedText(int version, Map<String, dynamic> json) =>
-    jsonEncode({'version': version, ...json});
+    jsonEncode(versionedSettingsDocument(version, json));
 
 /// The disk half of an asynchronous save, in place of the real one — a test
 /// holds a write open with it to see what waits behind. Null puts the real

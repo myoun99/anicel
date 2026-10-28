@@ -1178,6 +1178,9 @@ enum AppStrings {
 
   String get paletteMakeDefault => _s('paletteMakeDefault');
   String get paletteDuplicate => _s('paletteDuplicate');
+  String get paletteExport => _s('paletteExport');
+  String paletteBrought(String name) =>
+      _s('paletteBroughtTemplate').replaceAll('{name}', name);
   String paletteCopyName(String name) =>
       _s('paletteCopyTemplate').replaceAll('{name}', name);
   String get paletteDeleteTitle => _s('paletteDeleteTitle');
@@ -1262,6 +1265,9 @@ enum AppStrings {
           .replaceAll('{skipped}', '$skipped');
   String shortcutFileUnreadable(String name) =>
       _s('shortcutFileUnreadableTemplate').replaceAll('{name}', name);
+  String get shortcutPresetExport => _s('shortcutPresetExport');
+  String shortcutPresetBrought(String name) =>
+      _s('shortcutPresetBroughtTemplate').replaceAll('{name}', name);
 
   // --- Playback transport and the sheet page rail ---
   String get playbackMode => _s('playbackMode');
@@ -1879,8 +1885,15 @@ enum AppStrings {
   String get brExportSelected => _s('brExportSelected');
   String get brExportGroup => _s('brExportGroup');
   String get brExportNothing => _s('brExportNothing');
-  String brExportPlaceUnchosen(Object error) =>
-      _s('brExportPlaceUnchosenTemplate').replaceAll('{error}', '$error');
+  String fileExportPlaceUnchosen(Object error) =>
+      _s('fileExportPlaceUnchosenTemplate').replaceAll('{error}', '$error');
+
+  /// A settings file (I-142) — one palette's, one shortcut preset's — and
+  /// what came of writing it.
+  String settingsExported(String name) =>
+      _s('settingsExportedTemplate').replaceAll('{name}', name);
+  String settingsExportNotWritten(Object error) =>
+      _s('settingsExportNotWrittenTemplate').replaceAll('{error}', '$error');
   String brExportNotWritten(Object error) =>
       _s('brExportNotWrittenTemplate').replaceAll('{error}', '$error');
   String brExportedOne(String name) =>
@@ -2619,6 +2632,8 @@ enum AppStrings {
     'paletteNumberedTemplate': 'Palette {n}',
     'paletteMakeDefault': 'Make default',
     'paletteDuplicate': 'Duplicate',
+    'paletteExport': 'Export',
+    'paletteBroughtTemplate': 'Added the palette "{name}".',
     'paletteCopyTemplate': '{name} copy',
     'paletteDeleteTitle': 'Delete palette',
     'paletteDeleteTemplate': 'Delete the palette "{name}"?',
@@ -2673,6 +2688,8 @@ enum AppStrings {
     'shortcutPresetDelete': 'Delete preset',
     'shortcutPresetRename': 'Rename preset',
     'shortcutPresetDuplicate': 'Duplicate preset',
+    'shortcutPresetExport': 'Export preset',
+    'shortcutPresetBroughtTemplate': 'Added the preset "{name}".',
     'shortcutPresetCopyTemplate': '{name} copy',
     'shortcutPresetDeleteTemplate': 'Delete the preset "{name}"?',
     'shortcutFileUnreadableTemplate':
@@ -3115,7 +3132,9 @@ enum AppStrings {
     'brExportSelected': 'Export brush',
     'brExportGroup': 'Export brush group',
     'brExportNothing': 'There is nothing to export here.',
-    'brExportPlaceUnchosenTemplate': 'Could not choose where to save: {error}',
+    'fileExportPlaceUnchosenTemplate': 'Could not choose where to save: {error}',
+    'settingsExportedTemplate': 'Exported "{name}".',
+    'settingsExportNotWrittenTemplate': 'Could not write the file: {error}',
     'brExportNotWrittenTemplate': 'Could not write the brush file: {error}',
     'brExportedOneTemplate': 'Exported "{name}".',
     'brExportedManyTemplate': 'Exported {count} brushes.',
@@ -4180,6 +4199,8 @@ enum AppStrings {
     'paletteNumberedTemplate': 'パレット {n}',
     'paletteMakeDefault': 'デフォルトにする',
     'paletteDuplicate': '複製',
+    'paletteExport': '書き出し',
+    'paletteBroughtTemplate': 'パレット「{name}」を追加しました。',
     'paletteCopyTemplate': '{name} のコピー',
     'paletteDeleteTitle': 'パレットを削除',
     'paletteDeleteTemplate': 'パレット「{name}」を削除しますか？',
@@ -4234,6 +4255,8 @@ enum AppStrings {
     'shortcutPresetDelete': 'プリセットを削除',
     'shortcutPresetRename': 'プリセット名を変更',
     'shortcutPresetDuplicate': 'プリセットを複製',
+    'shortcutPresetExport': 'プリセットを書き出し',
+    'shortcutPresetBroughtTemplate': 'プリセット「{name}」を追加しました。',
     'shortcutPresetCopyTemplate': '{name} のコピー',
     'shortcutPresetDeleteTemplate': 'プリセット「{name}」を削除しますか？',
     'shortcutFileUnreadableTemplate':
@@ -4850,7 +4873,9 @@ enum AppStrings {
     'brExportSelected': 'ブラシを書き出し',
     'brExportGroup': 'ブラシグループを書き出し',
     'brExportNothing': '書き出すブラシがありません。',
-    'brExportPlaceUnchosenTemplate': '保存先を選べませんでした: {error}',
+    'fileExportPlaceUnchosenTemplate': '保存先を選べませんでした: {error}',
+    'settingsExportedTemplate': '「{name}」を書き出しました。',
+    'settingsExportNotWrittenTemplate': 'ファイルを書き込めませんでした: {error}',
     'brExportNotWrittenTemplate': 'ブラシファイルを書き込めませんでした: {error}',
     'brExportedOneTemplate': '「{name}」を書き出しました。',
     'brExportedManyTemplate': 'ブラシを{count}個書き出しました。',
@@ -5943,6 +5968,8 @@ enum AppStrings {
     'paletteNumberedTemplate': '팔레트 {n}',
     'paletteMakeDefault': '기본 팔레트로',
     'paletteDuplicate': '복제',
+    'paletteExport': '내보내기',
+    'paletteBroughtTemplate': '「{name}」 팔레트를 추가했습니다.',
     'paletteCopyTemplate': '{name} 사본',
     'paletteDeleteTitle': '팔레트 삭제',
     'paletteDeleteTemplate': '「{name}」 팔레트를 삭제할까요?',
@@ -5997,6 +6024,8 @@ enum AppStrings {
     'shortcutPresetDelete': '프리셋 삭제',
     'shortcutPresetRename': '프리셋 이름 바꾸기',
     'shortcutPresetDuplicate': '프리셋 복제',
+    'shortcutPresetExport': '프리셋 내보내기',
+    'shortcutPresetBroughtTemplate': '「{name}」 프리셋을 추가했습니다.',
     'shortcutPresetCopyTemplate': '{name} 복사본',
     'shortcutPresetDeleteTemplate': '「{name}」 프리셋을 삭제할까요?',
     'shortcutFileUnreadableTemplate':
@@ -6605,7 +6634,9 @@ enum AppStrings {
     'brExportSelected': '브러시 내보내기',
     'brExportGroup': '브러시 그룹 내보내기',
     'brExportNothing': '내보낼 브러시가 없습니다.',
-    'brExportPlaceUnchosenTemplate': '저장할 곳을 고르지 못했습니다: {error}',
+    'fileExportPlaceUnchosenTemplate': '저장할 곳을 고르지 못했습니다: {error}',
+    'settingsExportedTemplate': '「{name}」 내보냈습니다.',
+    'settingsExportNotWrittenTemplate': '파일을 쓰지 못했습니다: {error}',
     'brExportNotWrittenTemplate': '브러시 파일을 쓰지 못했습니다: {error}',
     'brExportedOneTemplate': '브러시 「{name}」 내보냈습니다.',
     'brExportedManyTemplate': '브러시 {count}개를 내보냈습니다.',
@@ -7750,6 +7781,8 @@ enum AppStrings {
     'paletteNumberedTemplate': 'Palette {n}',
     'paletteMakeDefault': 'Définir par défaut',
     'paletteDuplicate': 'Dupliquer',
+    'paletteExport': 'Exporter',
+    'paletteBroughtTemplate': 'Palette « {name} » ajoutée.',
     'paletteCopyTemplate': 'Copie de {name}',
     'paletteDeleteTitle': 'Supprimer la palette',
     'paletteDeleteTemplate': 'Supprimer la palette « {name} » ?',
@@ -7804,6 +7837,8 @@ enum AppStrings {
     'shortcutPresetDelete': 'Supprimer le préréglage',
     'shortcutPresetRename': 'Renommer le préréglage',
     'shortcutPresetDuplicate': 'Dupliquer le préréglage',
+    'shortcutPresetExport': 'Exporter le préréglage',
+    'shortcutPresetBroughtTemplate': 'Préréglage « {name} » ajouté.',
     'shortcutPresetCopyTemplate': 'Copie de {name}',
     'shortcutPresetDeleteTemplate': 'Supprimer le préréglage « {name} » ?',
     'shortcutFileUnreadableTemplate':
@@ -8505,8 +8540,11 @@ enum AppStrings {
     'brExportSelected': 'Exporter la brosse',
     'brExportGroup': 'Exporter le groupe',
     'brExportNothing': 'Aucune brosse à exporter ici.',
-    'brExportPlaceUnchosenTemplate':
+    'fileExportPlaceUnchosenTemplate':
         'Impossible de choisir où enregistrer : {error}',
+    'settingsExportedTemplate': 'Exporté : « {name} ».',
+    'settingsExportNotWrittenTemplate':
+        'Impossible d’écrire le fichier : {error}',
     'brExportNotWrittenTemplate':
         'Impossible d’écrire le fichier de brosses : {error}',
     'brExportedOneTemplate': 'Brosse exportée : « {name} ».',
@@ -9540,6 +9578,8 @@ enum AppStrings {
     'paletteNumberedTemplate': '调色板 {n}',
     'paletteMakeDefault': '设为默认',
     'paletteDuplicate': '复制',
+    'paletteExport': '导出',
+    'paletteBroughtTemplate': '已添加调色板“{name}”。',
     'paletteCopyTemplate': '{name} 副本',
     'paletteDeleteTitle': '删除调色板',
     'paletteDeleteTemplate': '要删除调色板“{name}”吗？',
@@ -9593,6 +9633,8 @@ enum AppStrings {
     'shortcutPresetDelete': '删除预设',
     'shortcutPresetRename': '重命名预设',
     'shortcutPresetDuplicate': '复制预设',
+    'shortcutPresetExport': '导出预设',
+    'shortcutPresetBroughtTemplate': '已添加预设“{name}”。',
     'shortcutPresetCopyTemplate': '{name} 副本',
     'shortcutPresetDeleteTemplate': '要删除预设“{name}”吗？',
     'shortcutFileUnreadableTemplate': '{name}：此文件中没有可读取的快捷键。',
@@ -10182,7 +10224,9 @@ enum AppStrings {
     'brExportSelected': '导出画笔',
     'brExportGroup': '导出画笔组',
     'brExportNothing': '这里没有可导出的画笔。',
-    'brExportPlaceUnchosenTemplate': '无法选择保存位置：{error}',
+    'fileExportPlaceUnchosenTemplate': '无法选择保存位置：{error}',
+    'settingsExportedTemplate': '已导出“{name}”。',
+    'settingsExportNotWrittenTemplate': '无法写入文件：{error}',
     'brExportNotWrittenTemplate': '无法写入画笔文件：{error}',
     'brExportedOneTemplate': '已导出画笔“{name}”。',
     'brExportedManyTemplate': '已导出 {count} 个画笔。',

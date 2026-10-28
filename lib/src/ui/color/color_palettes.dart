@@ -25,8 +25,10 @@ import 'package:flutter/material.dart';
 
 import '../../models/reorder_target.dart';
 import '../../services/color_palette_file_service.dart';
+import '../../services/persistence/file_type_groups.dart' show FileTypeGroups;
 import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/dialog_verb.dart';
+import '../dialogs/settings_file_export.dart';
 import '../input/control_press_claim.dart';
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
@@ -657,6 +659,20 @@ class _ColorPalettesPanelState extends State<ColorPalettesPanel> {
           (now) => now.duplicated(
             palette.id,
             strings.paletteCopyName(palette.name),
+          ),
+        ),
+      ),
+      // I-142-Q1 (유저 2026-10-29): 「주인 자리에서 내보내고」 — the palette's
+      // own menu; it comes back in through 「파일 열기」.
+      PanelFlyoutItem(
+        keyValue: 'palette-export',
+        label: strings.paletteExport,
+        onSelected: () => unawaited(
+          handSettingsFileToUser(
+            context,
+            name: palette.name,
+            type: FileTypeGroups.anicelPalette,
+            contents: () => paletteSettingsFile(palette),
           ),
         ),
       ),

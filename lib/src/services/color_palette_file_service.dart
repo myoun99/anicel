@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import '../models/reorder_target.dart';
+import 'persistence/settings_file.dart';
 import 'persistence/versioned_settings_file.dart';
 
 import 'persistence/app_support_path.dart';
@@ -287,6 +288,20 @@ class ColorPaletteState {
     );
   }
 
+  /// [brought] on top in their order, each under an id of its own — a
+  /// palette file read (I-142), added as a brush or a shortcut file is.
+  /// ⚠️MY READING: the default stays — what the wheel shows under it does
+  /// not change because a file came in.
+  ColorPaletteState withBrought(List<NamedPalette> brought) {
+    var state = this;
+    for (final palette in brought.reversed) {
+      state = state._with(
+        palettes: [palette._with(id: state._freeId()), ...state.palettes],
+      );
+    }
+    return state;
+  }
+
   ColorPaletteState withDefault(String id) => _with(defaultId: id);
 
   ColorPaletteState withView(PaletteView view) => _with(view: view);
@@ -344,6 +359,12 @@ class ColorPaletteFileService {
 
   final String filePath;
 
+  /// Its document's name in a settings file ([paletteSettingsFile]): its
+  /// file's in the settings room. ⚠️Spelled out again below on purpose —
+  /// the room's scan reads the store's call as written
+  /// (`settings_live_in_one_room_test`); a test holds the two together.
+  static const String fileName = 'color_palette.json';
+
   static String defaultColorPaletteFilePath() =>
       appSettingsFilePath('color_palette.json');
 
@@ -368,4 +389,33 @@ class ColorPaletteFileService {
     version: version,
     json: state.toJson(),
   );
+}
+
+/// [palette] alone as a settings file (I-142): the palette store's own
+/// document, holding just it.
+String paletteSettingsFile(NamedPalette palette) => encodeSettingsFile({
+  ColorPaletteFileService.fileName: versionedSettingsDocument(
+    ColorPaletteFileService.version,
+    ColorPaletteState(palettes: [palette], defaultId: palette.id).toJson(),
+  ),
+});
+
+/// The palettes the settings file [source] holds, read as the palette store
+/// reads its own file — null where it holds none.
+List<NamedPalette>? palettesInSettingsFile(String source) {
+  final document = decodeSettingsFile(
+    source,
+  )?[ColorPaletteFileService.fileName];
+  if (document == null) {
+    return null;
+  }
+  try {
+    return liftVersionedSettingsDocument(
+      document,
+      version: ColorPaletteFileService.version,
+      fromJson: ColorPaletteState.fromJson,
+    )?.palettes;
+  } on Object {
+    return null;
+  }
 }

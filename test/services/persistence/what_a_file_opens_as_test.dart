@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/persistence/file_type_groups.dart';
 import 'package:anicel/src/services/persistence/provider_documents.dart';
+import 'package:anicel/src/services/persistence/settings_file.dart';
 import 'package:anicel/src/services/shortcuts/program_keymap.dart'
     show shortcutFileExtensions;
 
@@ -38,6 +39,18 @@ void main() {
     expect(openedAs('/work/Face.OTF'), OpenedAs.font);
     expect(openedAs('/work/default.KHC'), OpenedAs.shortcuts);
     expect(openedAs('/work/Take3.MOV'), OpenedAs.media);
+  });
+
+  test('I-142: our own settings files — a palette goes into the palettes, '
+      'a shortcut preset where every shortcut file goes', () {
+    expect(openedAs('/work/팔레트 1.$anicelPaletteExtension'), OpenedAs.palette);
+    expect(openedAs('/work/Mine.ANIPALETTE'), OpenedAs.palette);
+    expect(
+      openedAs('/work/Clip Studio based.$anicelShortcutExtension'),
+      OpenedAs.shortcuts,
+    );
+    expect(openableExtensions, contains(anicelPaletteExtension));
+    expect(openableExtensions, contains(anicelShortcutExtension));
   });
 
   test('media is what the pool names a kind for — the same judgement, not a '

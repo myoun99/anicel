@@ -1161,7 +1161,7 @@ void _exportRoundTripTests() {
           library.presets,
           hand: (_, _) async => throw StateError('no window'),
         ),
-        ko.brExportPlaceUnchosen('Bad state: no window'),
+        ko.fileExportPlaceUnchosen('Bad state: no window'),
       );
 
       // Brushes of no one group are named in the program language too —

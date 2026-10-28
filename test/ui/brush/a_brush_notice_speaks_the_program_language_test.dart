@@ -9,7 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   final notices = <String, (String Function(AppStrings), List<String>)>{
     'no place chosen': (
-      (s) => s.brExportPlaceUnchosen('ERR-1'),
+      (s) => s.fileExportPlaceUnchosen('ERR-1'),
       ['ERR-1'],
     ),
     'not written': ((s) => s.brExportNotWritten('ERR-2'), ['ERR-2']),

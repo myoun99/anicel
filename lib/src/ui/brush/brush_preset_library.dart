@@ -18,6 +18,7 @@ import '../../services/brush_preset_defaults.dart';
 import '../../services/brush_preset_file_service.dart';
 import '../../services/persistence/file_type_groups.dart';
 import '../../services/sut/sut_decoder.dart';
+import '../dialogs/handed_text_file.dart';
 import '../dialogs/open_file_flow.dart' show fileIsSupported;
 import 'brush_import_merge.dart';
 import 'brush_tip_library.dart';
@@ -371,35 +372,23 @@ class BrushPresetLibrary extends ChangeNotifier {
           if (bank[id.value] != null) id.value: bank[id.value]!,
       },
     );
-    final suggested =
-        '${presets.length == 1 ? presets.single.name : _groupNameFor(groupIds)}'
-        '.$anicelBrushExtension';
-    Object? writeFailed;
-    Future<bool> write(String path) async {
-      try {
-        await File(path).writeAsString(encodeBrushPack(pack), flush: true);
-        return true;
-      } on Object catch (error) {
-        writeFailed = error;
-        return false;
-      }
-    }
-
-    final String? landed;
-    try {
-      landed = await hand(suggested, write);
-    } on Object catch (error) {
-      return AppText.strings.brExportPlaceUnchosen(error);
-    }
-    if (writeFailed case final failed?) {
-      return AppText.strings.brExportNotWritten(failed);
-    }
-    if (landed == null || _disposed) {
-      return null;
-    }
-    return presets.length == 1
-        ? AppText.strings.brExportedOne(presets.single.name)
-        : AppText.strings.brExportedMany(presets.length);
+    final handed = await handTextFile(
+      presets.length == 1 ? presets.single.name : _groupNameFor(groupIds),
+      anicelBrushExtension,
+      () => encodeBrushPack(pack),
+      hand: hand,
+    );
+    final strings = AppText.strings;
+    return switch (handed) {
+      TextFileNotPlaced(:final error) => strings.fileExportPlaceUnchosen(error),
+      TextFileNotWritten(:final error) => strings.brExportNotWritten(error),
+      TextFileDeclined() => null,
+      TextFileLanded() when _disposed => null,
+      TextFileLanded() when presets.length == 1 => strings.brExportedOne(
+        presets.single.name,
+      ),
+      TextFileLanded() => strings.brExportedMany(presets.length),
+    };
   }
 
   /// The presets in [groupId], in library order — the second entry point.

@@ -53,6 +53,7 @@ import 'brush/brush_canvas_panel.dart' show CanvasEdgePill;
 import 'brush/brush_value_group.dart' show BrushValuesPill;
 import 'color/color_panels.dart' show ColorPickerKind, ColorPickerPanel;
 import 'color/color_slot_pair.dart';
+import 'color/palette_file_import.dart';
 import 'theme/app_theme.dart';
 import 'brush/brush_hand_settings_store.dart';
 import 'brush/brush_preset_panel.dart';
@@ -2290,7 +2291,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   /// THE ONE DOOR, with what this workspace holds for it (F-282): the
   /// shell's Open door for projects, the import window, the brush library,
-  /// the fonts and the shortcut presets.
+  /// the fonts, the shortcut presets and the palettes.
   OpenedFilesDoor get _door => OpenedFilesDoor(
     openProjects: widget.onOpenProjects,
     importWindow: (picked, {required toPool}) =>
@@ -2313,6 +2314,18 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     bringShortcuts: (files) async => switch (EditorShortcutScope.peek(context)) {
       final bindings? => importShortcutFiles(bindings, files),
       null => const [],
+    },
+    bringPalettes: (name, bytes) async {
+      final current = widget.colorPalette?.value;
+      final change = widget.onColorPaletteChanged;
+      if (current == null || change == null) {
+        return null;
+      }
+      final (:palettes, :said) = importPaletteFile(current, name, bytes);
+      if (palettes != null) {
+        change(palettes);
+      }
+      return said;
     },
   );
 

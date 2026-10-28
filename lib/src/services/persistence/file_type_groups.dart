@@ -40,6 +40,7 @@ import '../brush_pack_file.dart';
 import '../shortcuts/program_keymap.dart' show shortcutFileExtensions;
 import 'anicel_project_archive.dart';
 import 'provider_documents.dart';
+import 'settings_file.dart';
 
 /// The exported type for a project file — the identifier declared in both
 /// Apple Info.plists. Public because a test pins the two together.
@@ -54,6 +55,11 @@ const String anicelProjectUti = 'com.myoun.anicel.project';
 /// `.sut` and squatting on Adobe's or Celsys' reverse-DNS would be wrong,
 /// but nobody else owns `.anibrush`.
 const String anicelBrushUti = 'com.myoun.anicel.brush';
+
+/// The exported types for the settings files this app writes (I-142) — ours,
+/// declared beside [anicelBrushUti] for the same reason.
+const String anicelPaletteUti = 'com.myoun.anicel.palette';
+const String anicelShortcutUti = 'com.myoun.anicel.shortcut';
 
 /// Apple's umbrella types. Filtering on the umbrella rather than on a dozen
 /// concrete identifiers is deliberate: it keeps working for formats the OS
@@ -129,11 +135,15 @@ enum OpenedAs {
   /// Goes into this device's fonts ([fontFileExtensions]).
   font,
 
-  /// Makes a program's keys a preset ([shortcutFileExtensions], I-107).
+  /// Makes a program's keys a preset ([shortcutFileExtensions], I-107) —
+  /// and our own file's preset one too ([anicelShortcutExtension], I-142).
   /// ⚠️`.txt` · `.ini` · `.cfg` are names other files use too: what is not
   /// a program's shortcut file is said so when it is read (the cost
   /// I-107-Q2 named — 유저 2026-10-18: 「다섯 다」).
   shortcuts,
+
+  /// Goes into the palettes ([anicelPaletteExtension], I-142).
+  palette,
 }
 
 /// What the file [pathOrUri] names opens as — null for a file nothing in the
@@ -157,8 +167,12 @@ OpenedAs? openedAs(String pathOrUri) {
   if (fontFileExtensions.contains(extension)) {
     return OpenedAs.font;
   }
-  if (shortcutFileExtensions.contains(extension)) {
+  if (shortcutFileExtensions.contains(extension) ||
+      extension == anicelShortcutExtension) {
     return OpenedAs.shortcuts;
+  }
+  if (extension == anicelPaletteExtension) {
+    return OpenedAs.palette;
   }
   return mediaAssetKindForPath(name) == null ? null : OpenedAs.media;
 }
@@ -174,6 +188,8 @@ const List<String> openableExtensions = [
   ...brushFileExtensions,
   ...fontFileExtensions,
   ...shortcutFileExtensions,
+  anicelShortcutExtension,
+  anicelPaletteExtension,
 ];
 
 /// What each identifier means to Android, which filters by MIME and has
@@ -197,6 +213,8 @@ const Map<String, String> mimeForUti = {
   _utiData: '*/*',
   anicelProjectUti: '*/*',
   anicelBrushUti: '*/*',
+  anicelPaletteUti: '*/*',
+  anicelShortcutUti: '*/*',
 };
 
 /// Every identifier this file hands to a picker. Public so the test can
@@ -210,6 +228,8 @@ const List<String> allPickerUtis = [
   _utiData,
   anicelProjectUti,
   anicelBrushUti,
+  anicelPaletteUti,
+  anicelShortcutUti,
 ];
 
 /// The picker filters, one per surface that opens a file dialog.
@@ -263,6 +283,21 @@ abstract final class FileTypeGroups {
     label: 'Anicel brush',
     extensions: [anicelBrushExtension],
     uniformTypeIdentifiers: [anicelBrushUti],
+  );
+
+  /// Anicel's own palette and shortcut preset files (I-142), for the places
+  /// that write one: the palette's menu and the shortcut window's preset
+  /// rows.
+  static const XTypeGroup anicelPalette = XTypeGroup(
+    label: 'Anicel palette',
+    extensions: [anicelPaletteExtension],
+    uniformTypeIdentifiers: [anicelPaletteUti],
+  );
+
+  static const XTypeGroup anicelShortcut = XTypeGroup(
+    label: 'Anicel shortcut preset',
+    extensions: [anicelShortcutExtension],
+    uniformTypeIdentifiers: [anicelShortcutUti],
   );
 
   /// Brush files for the IMPORT picker — ours plus the two it borrows

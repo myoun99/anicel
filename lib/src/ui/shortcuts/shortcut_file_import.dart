@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import '../../services/persistence/settings_file.dart';
 import '../../services/shortcuts/program_keymap.dart';
 import '../brush/picked_file.dart' show PickedFile;
 import '../text/app_strings.dart';
@@ -15,6 +19,8 @@ import 'shortcut_presets.dart';
 /// menus' keys in one file and its tools' in another.
 /// ↩️The keys were put on the program's own preset until that answer
 /// (추천 a, built while the question waited).
+/// Our own file (I-142) holds a preset whole, and each it holds comes in
+/// as a new one by the same answer.
 List<String> importShortcutFiles(
   EditorShortcutBindings bindings,
   List<PickedFile> files,
@@ -22,7 +28,9 @@ List<String> importShortcutFiles(
   final said = <String>[];
   final byProgram = <KeymapProgram, List<(String, ProgramKeymap)>>{};
   for (final (:name, :bytes) in files) {
-    if (readShortcutFile(name, bytes) case final keymap?) {
+    if (name.toLowerCase().endsWith('.$anicelShortcutExtension')) {
+      said.addAll(_presetsOfOurFile(bindings, name, bytes));
+    } else if (readShortcutFile(name, bytes) case final keymap?) {
       byProgram.putIfAbsent(keymap.program, () => []).add((name, keymap));
     } else {
       said.add(AppText.strings.shortcutFileUnreadable(name));
@@ -47,4 +55,27 @@ List<String> importShortcutFiles(
     );
   }
   return said;
+}
+
+/// Our own shortcut file [name] (I-142), holding [bytes]: each preset it
+/// holds a new one of the user's — a line for each, or one saying it could
+/// not be read.
+List<String> _presetsOfOurFile(
+  EditorShortcutBindings bindings,
+  String name,
+  Uint8List bytes,
+) {
+  final String text;
+  try {
+    text = utf8.decode(bytes);
+  } on FormatException {
+    return [AppText.strings.shortcutFileUnreadable(name)];
+  }
+  final brought = bindings.presetsBroughtFrom(text);
+  return brought == null
+      ? [AppText.strings.shortcutFileUnreadable(name)]
+      : [
+          for (final preset in brought)
+            AppText.strings.shortcutPresetBrought(preset.name),
+        ];
 }

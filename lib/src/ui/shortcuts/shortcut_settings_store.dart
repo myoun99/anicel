@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart' show SingleActivator;
 
+import '../../services/persistence/settings_file.dart';
 import '../../services/persistence/versioned_settings_file.dart';
 
 import '../../services/persistence/app_support_path.dart';
@@ -19,6 +20,12 @@ class ShortcutSettingsStore {
     : filePath = filePath ?? defaultShortcutSettingsFilePath();
 
   final String filePath;
+
+  /// Its document's name in a settings file ([shortcutPresetSettingsFile]):
+  /// its file's in the settings room. ⚠️Spelled out again below on purpose —
+  /// the room's scan reads the store's call as written
+  /// (`settings_live_in_one_room_test`); a test holds the two together.
+  static const String fileName = 'shortcut_overrides.json';
 
   static String defaultShortcutSettingsFilePath() =>
       appSettingsFilePath('shortcut_overrides.json');
@@ -67,19 +74,70 @@ Map<String, Object?> shortcutSettingsPayload({
     for (final MapEntry(key: layout, value: keys) in recorded.entries)
       layout.id: _keysToJson(keys),
   },
-  'presets': [
-    for (final preset in userPresets)
-      {
-        'id': preset.id,
-        'name': preset.name,
-        'base': preset.base.name,
-        'keys': _keysToJson(preset.ownKeys),
-      },
-  ],
+  'presets': [for (final preset in userPresets) _presetJson(preset)],
   'touch': {
     for (final entry in touch.entries) entry.key: entry.value?.name,
   },
 };
+
+/// A preset of the user's as the settings write it ([userPresetFromJson]
+/// reads it back).
+Map<String, Object?> _presetJson(UserShortcutPreset preset) => {
+  'id': preset.id,
+  'name': preset.name,
+  'base': preset.base.name,
+  'keys': _keysToJson(preset.ownKeys),
+};
+
+/// [preset] alone as a settings file (I-142): the shortcut store's own
+/// document, holding just it — as one of the user's, the keys it presses
+/// over its [ShortcutLayout.base]'s all its own.
+String shortcutPresetSettingsFile(UserShortcutPreset preset) =>
+    encodeSettingsFile({
+      ShortcutSettingsStore.fileName: versionedSettingsDocument(
+        ShortcutSettingsStore.version,
+        {
+          'presets': [_presetJson(preset)],
+        },
+      ),
+    });
+
+/// The presets the settings file [source] holds, read as the shortcut store
+/// reads its own file — an action [keeps] declines dropped; null where it
+/// holds none.
+List<UserShortcutPreset>? shortcutPresetsInSettingsFile(
+  String source, {
+  required bool Function(String actionId) keeps,
+}) {
+  final document = decodeSettingsFile(
+    source,
+  )?[ShortcutSettingsStore.fileName];
+  if (document == null) {
+    return null;
+  }
+  try {
+    final payload = liftVersionedSettingsDocument(
+      document,
+      version: ShortcutSettingsStore.version,
+      fromJson: ShortcutSettingsStore._inThisShape,
+    );
+    final listed = payload?['presets'];
+    final recorded = payload?['overrides'];
+    if (listed is! List) {
+      return null;
+    }
+    return [
+      for (final json in listed)
+        ?userPresetFromJson(
+          json,
+          recordedById: recorded is Map ? recorded : const {},
+          keeps: keeps,
+        ),
+    ];
+  } on Object {
+    return null;
+  }
+}
 
 Map<String, Object?> _keysToJson(Map<String, List<SingleActivator>> keys) => {
   for (final MapEntry(key: actionId, value: activators) in keys.entries)
