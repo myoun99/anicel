@@ -11,6 +11,7 @@ import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_section_defaults.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/services/playback/cut_frame_composite_signature.dart';
@@ -252,6 +253,7 @@ void main() {
         row('m1', folder: 'f'),
         row('m2', folder: 'f'),
         folderRow('f', blend: LayerBlendMode.multiply),
+        row('over', clips: true),
         row('a', effects: [lens(map: 'f')]),
       ]);
       final reader = readerIn(tree);
@@ -281,17 +283,23 @@ void main() {
 
     test('under the folders above it, none of their strength, blend, chain '
         'or eye', () {
+      final p = folderRow(
+        'p',
+        opacity: 0.5,
+        visible: false,
+        blend: LayerBlendMode.screen,
+        effects: [blur],
+      );
       final tree = treeOf([
         row('m', folder: 'f'),
         folderRow('f', opacity: 0.6, folder: 'p'),
         row('beside', folder: 'p'),
-        folderRow(
-          'p',
-          opacity: 0.5,
-          visible: false,
-          blend: LayerBlendMode.screen,
-          effects: [blur],
-        ).copyWith(clipsToBelow: true),
+        p.copyWith(
+          clipsToBelow: true,
+          transformTrack: p.transformTrack.copyWith(
+            opacity: PropertyTrack<double>().withKey(0, 0.5),
+          ),
+        ),
         row('a', effects: [lens(map: 'f')]),
       ]);
       final read = groupOf(readerIn(tree), 'f');
