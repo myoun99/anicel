@@ -235,7 +235,16 @@ void main() {
         final sum = List<double>.filled(4, 0);
         void add(List<IrisRow> rows, double weight) {
           for (var row = 0; row < rows.length; row += 1) {
-            for (var dx = rows[row].left; dx <= rows[row].right; dx += 1) {
+            var (left: from, right: to) = rows[row];
+            if (paper == null) {
+              // Past the raster nothing: only the columns on it.
+              final v = y + row - cover.reach;
+              if (v < 0 || v >= height) {
+                continue;
+              }
+              (from, to) = (math.max(from, -x), math.min(to, width - 1 - x));
+            }
+            for (var dx = from; dx <= to; dx += 1) {
               var (u, v) = (x + dx, y + row - cover.reach);
               if (paper != null) {
                 (u, v) = (u.clamp(left, right), v.clamp(top, bottom));
@@ -679,26 +688,27 @@ void main() {
   });
 
   // A level of more than 1024 rows takes two lines of the table: the rows
-  // from 424 below on lie on the second, which only a picture past 424
-  // tall reaches.
+  // from 424 below on lie on the second. A triangle turned to point down
+  // lays its narrowest rows there, by its tip — narrower than the picture,
+  // so a row read off the wrong line sums to something else.
   testWidgets('an iris of more than 1024 rows reads its rows off both '
       'lines of its table, with a blur map or without', (tester) async {
-    final (width, height) = (4, 450);
+    final (width, height) = (16, 620);
     final bytes = randomPicture(width, height, seed: 31);
     final source = await imageOf(tester, bytes, width, height);
     final input = await bytesOf(tester, source);
-    // Every level from 180 up: each past 424 at a focal distance of 0.
+    // Every level from 230 up: each past 540 at a focal distance of 0.
     final random = math.Random(37);
     final levels = Uint8List(width * height * 4);
     for (var i = 0; i < levels.length; i += 4) {
-      levels.fillRange(i, i + 4, 180 + random.nextInt(76));
+      levels.fillRange(i, i + 4, 230 + random.nextInt(26));
     }
     final map = await imageOf(tester, levels, width, height);
     const shape = (
-      sides: 6,
-      roundness: 0.4,
-      aspect: 1.3,
-      rotation: 0.5,
+      sides: 3,
+      roundness: 0.0,
+      aspect: 1.0,
+      rotation: math.pi,
       fringe: 200.0,
     );
     for (final reads in [false, true]) {
