@@ -82,7 +82,7 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
     required String keyValue,
     required bool capture,
     required String? selected,
-    required ValueChanged<String?> onChanged,
+    required ValueChanged<String?>? onChanged,
   }) {
     final devices = widget.session.playbackRig.audioDevicesOf(capture: capture);
     final defaultNames = {
@@ -102,21 +102,23 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
       pickerKey: ValueKey<String>(keyValue),
       label: label,
       picked: labelOf(selected),
-      entriesBuilder: () =>
-          <String?>[
-            null,
-            ...names,
-            if (selected != null && !names.contains(selected)) selected,
-          ].asFlyoutValueChoices(
-            current: selected,
-            choiceOf: (name) => PanelFlyoutChoice(
-              key: name == null
-                  ? '$keyValue-system-default'
-                  : '$keyValue-device-$name',
-              label: labelOf(name),
-            ),
-            onPicked: onChanged,
-          ),
+      entriesBuilder: onChanged == null
+          ? null
+          : () =>
+                <String?>[
+                  null,
+                  ...names,
+                  if (selected != null && !names.contains(selected)) selected,
+                ].asFlyoutValueChoices(
+                  current: selected,
+                  choiceOf: (name) => PanelFlyoutChoice(
+                    key: name == null
+                        ? '$keyValue-system-default'
+                        : '$keyValue-device-$name',
+                    label: labelOf(name),
+                  ),
+                  onPicked: onChanged,
+                ),
     );
   }
 
@@ -155,6 +157,11 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
     return ValueListenableBuilder<AudioSyncSettings>(
       valueListenable: widget.session.appSettings.audioSyncSettings,
       builder: (context, settings, _) {
+        // I-137 (유저 2026-10-28): 「마이크 허용 안하면 밑의 입력이나
+        // 입력레벨 마이크게인 이런거 사실상 의미없으니 비활성화」 — what only
+        // a take reads goes INERT under the consent, the autosave minutes'
+        // law: the row stays, its callback goes null (없다가 생기는 UI 금지).
+        final listens = settings.microphoneAllowed;
         return Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -254,19 +261,22 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
               keyValue: 'settings-audio-input-device',
               capture: true,
               selected: settings.inputDeviceName,
-              onChanged: (name) {
-                widget.session.appSettings.setAudioSyncSettings(
-                  settings.copyWith(inputDeviceName: name),
-                );
-                // The live meter follows the new microphone immediately.
-                widget.session.voiceRecording.restartInputMeter();
-              },
+              onChanged: !listens
+                  ? null
+                  : (name) {
+                      widget.session.appSettings.setAudioSyncSettings(
+                        settings.copyWith(inputDeviceName: name),
+                      );
+                      // The live meter follows the new microphone at once.
+                      widget.session.voiceRecording.restartInputMeter();
+                    },
             ),
             // The live input meter (REC1-D2): raw device peak × the gain
             // slider's factor — turning the slider moves this bar without
             // reopening the microphone. The dot is the clip light.
             SettingsRow(
               label: strings.audioInputMeterLabel,
+              enabled: listens,
               control: ValueListenableBuilder<double>(
                 valueListenable: _monitor.peak,
                 builder: (context, rawPeak, _) {
@@ -338,14 +348,15 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
               max: AudioSyncSettings.maxMicGainDb.toDouble(),
               divisions: AudioSyncSettings.maxMicGainDb * 2,
               valueTextBuilder: _signedDb,
-              onChanged: (value) =>
-                  widget.session.appSettings.setAudioSyncSettings(
-                    settings.copyWith(
-                      micGainDb: AudioSyncSettings.clampMicGainDb(
-                        value.round(),
+              onChanged: !listens
+                  ? null
+                  : (value) => widget.session.appSettings.setAudioSyncSettings(
+                      settings.copyWith(
+                        micGainDb: AudioSyncSettings.clampMicGainDb(
+                          value.round(),
+                        ),
                       ),
                     ),
-                  ),
             ),
             settingsEnumPickerRow(
               keyValue: 'settings-input-channel-mode',
@@ -353,13 +364,15 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
               value: settings.inputChannelMode,
               values: VoiceInputChannelMode.values,
               labelOf: (mode) => _channelLabel(mode, strings),
-              onPicked: (mode) {
-                if (mode != settings.inputChannelMode) {
-                  widget.session.appSettings.setAudioSyncSettings(
-                    settings.copyWith(inputChannelMode: mode),
-                  );
-                }
-              },
+              onPicked: !listens
+                  ? null
+                  : (VoiceInputChannelMode mode) {
+                      if (mode != settings.inputChannelMode) {
+                        widget.session.appSettings.setAudioSyncSettings(
+                          settings.copyWith(inputChannelMode: mode),
+                        );
+                      }
+                    },
             ),
             // RNNoise (the noise-suppression round): BAKED into the take
             // like the gain — speech-specific, so foley sessions turn it
@@ -368,19 +381,23 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
               tileKey: const ValueKey<String>('settings-denoise-voice'),
               label: strings.audioDenoiseLabel,
               value: settings.denoiseVoice,
-              onChanged: (enabled) => widget.session.appSettings
-                  .setAudioSyncSettings(
-                    settings.copyWith(denoiseVoice: enabled),
-                  ),
+              onChanged: !listens
+                  ? null
+                  : (enabled) => widget.session.appSettings
+                        .setAudioSyncSettings(
+                          settings.copyWith(denoiseVoice: enabled),
+                        ),
             ),
             SettingsSwitchRow(
               tileKey: const ValueKey<String>('settings-clipping-notice'),
               label: strings.audioClippingNoticeLabel,
               value: settings.clippingNotice,
-              onChanged: (enabled) => widget.session.appSettings
-                  .setAudioSyncSettings(
-                    settings.copyWith(clippingNotice: enabled),
-                  ),
+              onChanged: !listens
+                  ? null
+                  : (enabled) => widget.session.appSettings
+                        .setAudioSyncSettings(
+                          settings.copyWith(clippingNotice: enabled),
+                        ),
             ),
             // ADR cueing (REC1-E): the stopped-⏺ count-in, the 3-beep
             // countdown into a punch, and the streamer wipe on the
@@ -392,32 +409,39 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
               min: 0,
               max: AudioSyncSettings.maxCountInSeconds.toDouble(),
               divisions: AudioSyncSettings.maxCountInSeconds,
-              onChanged: (value) =>
-                  widget.session.appSettings.setAudioSyncSettings(
-                    settings.copyWith(
-                      countInSeconds: AudioSyncSettings.clampCountInSeconds(
-                        value.round(),
+              // The cues lead a take in, and without the microphone there
+              // is no take to lead.
+              onChanged: !listens
+                  ? null
+                  : (value) => widget.session.appSettings.setAudioSyncSettings(
+                      settings.copyWith(
+                        countInSeconds: AudioSyncSettings.clampCountInSeconds(
+                          value.round(),
+                        ),
                       ),
                     ),
-                  ),
             ),
             SettingsSwitchRow(
               tileKey: const ValueKey<String>('settings-cue-beeps'),
               label: strings.audioCueBeepsLabel,
               value: settings.cueBeeps,
-              onChanged: (enabled) => widget.session.appSettings
-                  .setAudioSyncSettings(
-                    settings.copyWith(cueBeeps: enabled),
-                  ),
+              onChanged: !listens
+                  ? null
+                  : (enabled) => widget.session.appSettings
+                        .setAudioSyncSettings(
+                          settings.copyWith(cueBeeps: enabled),
+                        ),
             ),
             SettingsSwitchRow(
               tileKey: const ValueKey<String>('settings-streamer'),
               label: strings.audioStreamerLabel,
               value: settings.streamerEnabled,
-              onChanged: (enabled) => widget.session.appSettings
-                  .setAudioSyncSettings(
-                    settings.copyWith(streamerEnabled: enabled),
-                  ),
+              onChanged: !listens
+                  ? null
+                  : (enabled) => widget.session.appSettings
+                        .setAudioSyncSettings(
+                          settings.copyWith(streamerEnabled: enabled),
+                        ),
             ),
             const Divider(height: 24),
             Row(

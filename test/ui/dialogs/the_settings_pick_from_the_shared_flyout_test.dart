@@ -163,6 +163,8 @@ void main() {
     session.appSettings.setAudioSyncSettings(
       session.appSettings.audioSyncSettings.value.copyWith(
         outputDeviceName: 'Studio Monitor',
+        // The input rows answer only with the consent on (I-137).
+        microphoneAllowed: true,
       ),
     );
     await pumpPreferences(tester, PreferencesSection.audio);

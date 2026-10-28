@@ -89,6 +89,12 @@ void main() {
     manager.setLanguageSettings(
       const AppLanguageSettings(programLanguage: AppLanguage.en),
     );
+    // The four rows answer only with the consent on (I-137).
+    manager.appSettings.setAudioSyncSettings(
+      manager.appSettings.audioSyncSettings.value.copyWith(
+        microphoneAllowed: true,
+      ),
+    );
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
