@@ -50,17 +50,21 @@ void main() {
   }) => ResolvedLayerEffect(
     kind: EffectKind.cameraLensBlur,
     values: [
-      radius,
-      shape.toDouble(),
-      roundness,
-      aspect,
-      rotation,
-      fringe,
-      gain,
-      threshold,
-      saturation,
-      if (repeats) 1 else 0,
-      if (linear) 1 else 0,
+      for (final spec in EffectKind.cameraLensBlur.parameters)
+        {
+              'blurRadius': radius,
+              'irisShape': shape.toDouble(),
+              'irisRoundness': roundness,
+              'irisAspectRatio': aspect,
+              'irisRotation': rotation,
+              'irisDiffractionFringe': fringe,
+              'highlightGain': gain,
+              'highlightThreshold': threshold,
+              'highlightSaturation': saturation,
+              'repeatEdgePixels': repeats ? 1.0 : 0.0,
+              'useLinearWorkingSpace': linear ? 1.0 : 0.0,
+            }[spec.id] ??
+            spec.defaultValue,
     ],
   );
 

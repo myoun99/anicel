@@ -92,6 +92,8 @@ class _StoryboardRailRows {
     }
     return effectPropertyLanes(
       track.effects,
+      // A track's chain is no cut's: it names no row.
+      cutRows: const [],
       isExpanded: (effectId) =>
           track.expandedLaneGroups.contains(effectGroupLaneId(effectId)),
       valueAt: (effectId, parameterId, time) => effectParameterValueAtTime(

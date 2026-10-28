@@ -100,6 +100,8 @@ class PropertyLaneRow {
     this.valueKind = PropertyLaneValueKind.number,
     this.colorCanBeNone = false,
     this.choices = const [],
+    this.choiceValues = const [],
+    this.choiceHeld,
     this.scrubValue,
     this.linkable = false,
     this.showsKeyNavigator = true,
@@ -145,6 +147,17 @@ class PropertyLaneRow {
   /// list's order — what its value cell reads ([valueLabel]) and writes
   /// back. Empty on every other lane.
   final List<String> choices;
+
+  /// What a pick of each of [choices] writes back, in their order, where
+  /// that is not the word itself: a row parameter's row ids
+  /// (`effectLaneRowText`) — two rows may share a name. Empty where each
+  /// word writes itself.
+  final List<String> choiceValues;
+
+  /// Which of [choiceValues] the lane holds — one at every frame, as a row
+  /// parameter holds its row. Null where [choiceValues] is empty: the word
+  /// [valueLabel] reads is the one held.
+  final String? choiceHeld;
 
   /// R5 #7: a group header may show a live PREVIEW of what it draws, in the
   /// region right of the fx column. Two fixed runs — the name and the

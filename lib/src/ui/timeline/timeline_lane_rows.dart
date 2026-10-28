@@ -512,6 +512,8 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     if (lane.valueKind == PropertyLaneValueKind.choice &&
         laneEdit?.onSetValue != null) {
       final words = lane.choices;
+      final values = lane.choiceValues.isEmpty ? words : lane.choiceValues;
+      final held = lane.choiceHeld ?? valueLabel;
       return Padding(
         padding: const EdgeInsets.only(right: FieldSlider.handsReach),
         child: PanelFlyoutButton(
@@ -524,7 +526,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           entriesBuilder: () => [
             for (var index = 0; index < words.length; index++) index,
           ].asFlyoutValueChoices(
-            current: words.indexOf(valueLabel),
+            current: values.indexOf(held),
             choiceOf: (index) => PanelFlyoutChoice(
               key: '$_keyPrefix-lane-choice-${layer.id}-${lane.laneId}-$index',
               label: words[index],
@@ -533,7 +535,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
               layer,
               lane,
               _frame,
-              words[index],
+              values[index],
             ),
           ),
         ),

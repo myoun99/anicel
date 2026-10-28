@@ -1,6 +1,7 @@
 import '../core/collection_equality.dart';
 import 'canvas_point.dart';
 import 'canvas_size.dart';
+import 'layer_id.dart';
 import 'property_track.dart';
 import 'string_id.dart';
 import 'transform_track.dart'
@@ -280,8 +281,17 @@ enum EffectKind {
   /// a threshold of 0…255 that begins at 255 and a gain and saturation of
   /// 0…100 that begin at 0 are the ones an Adobe community post's SDK code
   /// reads them with (2026-10-28) — the help's own threshold of 1, which
-  /// leaves no highlight, is the 255 of an 8-bit picture. Its blur map is
-  /// a lane still to come.
+  /// leaves no highlight, is the 255 of an 8-bit picture.
+  ///
+  /// Its Blur Map, as the help has it: a Layer whose Channel sets each
+  /// pixel's radius, in focus at its Blur Focal Distance, inverted by
+  /// Invert Blur Map. 🗣️I-132-Q16 a: the layer is a row of the cut
+  /// ([EffectParameterUnit.layer]). 🗣️I-132-Q21 a: it is read where the
+  /// row shows — so no Placement, the help's way to set it over the
+  /// picture. 🗣️I-132-Q22 a: one level — a map's own blur map is not read.
+  /// 🗣️I-132-Q23 a: 「꺼도 맵으로 읽는다」 — its row's eye does not hide it.
+  /// 🗣️I-132-Q24 b: 「넣는다 — 화면에 보이는 그대로」 — its opacity is in
+  /// what is read.
   cameraLensBlur(
     'cameraLensBlur',
     label: 'Camera Lens Blur',
@@ -338,6 +348,26 @@ enum EffectKind {
         minimum: 0,
         maximum: 500,
       ),
+      EffectParameterSpec.layer(id: 'blurMapLayer', label: 'Blur Map Layer'),
+      EffectParameterSpec.choice(
+        id: 'blurMapChannel',
+        label: 'Blur Map Channel',
+        choices: [
+          EffectChoice(id: 'luminance', label: 'Luminance'),
+          EffectChoice(id: 'red', label: 'Red'),
+          EffectChoice(id: 'green', label: 'Green'),
+          EffectChoice(id: 'blue', label: 'Blue'),
+          EffectChoice(id: 'alpha', label: 'Alpha'),
+        ],
+      ),
+      EffectParameterSpec(
+        id: 'blurFocalDistance',
+        label: 'Blur Focal Distance',
+        defaultValue: 0,
+        minimum: 0,
+        maximum: 255,
+      ),
+      EffectParameterSpec.flag(id: 'invertBlurMap', label: 'Invert Blur Map'),
       EffectParameterSpec(
         id: 'highlightGain',
         label: 'Highlight Gain',
@@ -592,6 +622,17 @@ enum EffectParameterUnit {
   /// a point of each effect's own (a radial blur's centre, a lens flare's
   /// later), where a cel number's stand is the picture it draws.
   point,
+
+  /// Another row of the effect's cut, or none — no number and NO KEYS: its
+  /// row is [LayerEffect.layers]', the one value at every frame. The lane
+  /// is a menu, as a [choice]'s, of none and the cut's rows by name.
+  ///
+  /// 🗣️I-132-Q16 a (유저 2026-10-28): 「「레이어」는 같은 컷의 행을 고르는
+  /// 메뉴(없음 + 행 이름들, 키 없음)」 — a camera lens blur's blur map the
+  /// first. A row that is not the cut's — deleted, or an effect pasted
+  /// into another cut — reads as none, as a dangling attach does
+  /// (`attachedBaseOf`).
+  layer,
 }
 
 /// One word of a menu parameter ([EffectParameterUnit.choice]).
@@ -621,10 +662,12 @@ class EffectParameterSpec {
          unit != EffectParameterUnit.choice &&
              unit != EffectParameterUnit.color &&
              unit != EffectParameterUnit.flag &&
-             unit != EffectParameterUnit.point,
+             unit != EffectParameterUnit.point &&
+             unit != EffectParameterUnit.layer,
          'A menu is EffectParameterSpec.choice, a colour '
-         'EffectParameterSpec.color, a flag EffectParameterSpec.flag and a '
-         'point EffectParameterSpec.point — none has a range of its own.',
+         'EffectParameterSpec.color, a flag EffectParameterSpec.flag, a '
+         'point EffectParameterSpec.point and a row EffectParameterSpec.layer '
+         '— none has a range of its own.',
        ),
        _maximum = maximum,
        choices = const [];
@@ -671,6 +714,15 @@ class EffectParameterSpec {
       unit = EffectParameterUnit.point,
       choices = const [];
 
+  /// A row of the effect's cut ([EffectParameterUnit.layer]): no number and
+  /// no keys — its row is [LayerEffect.layers]', none until one is picked.
+  const EffectParameterSpec.layer({required this.id, required this.label})
+    : defaultValue = 0,
+      minimum = 0,
+      _maximum = 0,
+      unit = EffectParameterUnit.layer,
+      choices = const [];
+
   final String id;
   final String label;
   final double defaultValue;
@@ -693,9 +745,11 @@ class EffectParameterSpec {
   /// lerps. A colour's keys are not numbers, and walk in [argbKeySpace].
   KeyValueSpace<double> get keySpace {
     assert(
-      unit != EffectParameterUnit.color && unit != EffectParameterUnit.point,
-      'A colour keys in argbKeySpace, over LayerEffect.colors, and a point '
-      'as a Position does, over LayerEffect.points.',
+      unit != EffectParameterUnit.color &&
+          unit != EffectParameterUnit.point &&
+          unit != EffectParameterUnit.layer,
+      'A colour keys in argbKeySpace, over LayerEffect.colors, a point as a '
+      'Position does, over LayerEffect.points, and a row not at all.',
     );
     return _steps ? menuKeySpace : doubleKeySpace;
   }
@@ -727,6 +781,14 @@ final Set<String> effectPointParameters = {
   for (final kind in EffectKind.values)
     for (final spec in kind.parameters)
       if (spec.unit == EffectParameterUnit.point) spec.id,
+};
+
+/// The ids of every kind's rows ([EffectParameterUnit.layer]) — lanes that
+/// keep no keys, read off their id alone as [effectColorParameters] are.
+final Set<String> effectLayerParameters = {
+  for (final kind in EffectKind.values)
+    for (final spec in kind.parameters)
+      if (spec.unit == EffectParameterUnit.layer) spec.id,
 };
 
 /// The colour key's parameters ([EffectKind.colorKey]).
@@ -879,10 +941,10 @@ class LayerEffect {
   /// composite cache key, the autosave dirty check and the thumbnail
   /// signature.
   ///
-  /// [colors], [points] and [stand] are normalized the same way: a colour
-  /// or a point the kind declares is materialized (unkeyed where it was
-  /// missing), and a kind that draws no picture of its own stands none,
-  /// whatever it was handed.
+  /// [colors], [points], [layers] and [stand] are normalized the same way:
+  /// a colour, a point or a row the kind declares is materialized (unkeyed,
+  /// or none, where it was missing), and a kind that draws no picture of
+  /// its own stands none, whatever it was handed.
   LayerEffect({
     required this.id,
     required this.kind,
@@ -890,11 +952,13 @@ class LayerEffect {
     Map<String, EffectParameter>? parameters,
     Map<String, PropertyTrack<int>>? colors,
     Map<String, TransformTrack>? points,
+    Map<String, LayerId?>? layers,
     TransformTrack? stand,
   }) : parameters = Map.unmodifiable({
          for (final spec in kind.parameters)
            if (spec.unit != EffectParameterUnit.color &&
-               spec.unit != EffectParameterUnit.point)
+               spec.unit != EffectParameterUnit.point &&
+               spec.unit != EffectParameterUnit.layer)
              spec.id:
                  parameters?[spec.id] ??
                  EffectParameter(value: spec.defaultValue),
@@ -908,6 +972,11 @@ class LayerEffect {
          for (final spec in kind.parameters)
            if (spec.unit == EffectParameterUnit.point)
              spec.id: points?[spec.id] ?? TransformTrack.empty(),
+       }),
+       layers = Map.unmodifiable({
+         for (final spec in kind.parameters)
+           if (spec.unit == EffectParameterUnit.layer)
+             spec.id: layers?[spec.id],
        }),
        stand = kind.drawsItsOwnPicture && stand != null
            ? stand
@@ -948,6 +1017,11 @@ class LayerEffect {
   /// the paper's middle ([effectPointOnPaper]).
   final Map<String, TransformTrack> points;
 
+  /// Row id → the row of the effect's cut that row parameter
+  /// ([EffectParameterUnit.layer]) names, every row parameter the kind
+  /// declares — null for none. No keys: one row at every frame.
+  final Map<String, LayerId?> layers;
+
   /// Where the picture a kind that draws its own ([EffectKind
   /// .drawsItsOwnPicture]) stands on the row's paper, and how big — the KEYS
   /// of its Position and Scale, in the transform lanes' own words, as the
@@ -980,6 +1054,7 @@ class LayerEffect {
     Map<String, EffectParameter>? parameters,
     Map<String, PropertyTrack<int>>? colors,
     Map<String, TransformTrack>? points,
+    Map<String, LayerId?>? layers,
     TransformTrack? stand,
   }) {
     return LayerEffect(
@@ -989,6 +1064,7 @@ class LayerEffect {
       parameters: parameters ?? this.parameters,
       colors: colors ?? this.colors,
       points: points ?? this.points,
+      layers: layers ?? this.layers,
       stand: stand ?? this.stand,
     );
   }
@@ -1003,6 +1079,12 @@ class LayerEffect {
   LayerEffect withColor(String colorId, PropertyTrack<int> keys) {
     return copyWith(colors: {...colors, colorId: keys});
   }
+
+  /// [layers] with row parameter [layerId] naming [row] — none for null.
+  LayerEffect withLayer(String layerId, LayerId? row) {
+    return copyWith(layers: {...layers, layerId: row});
+  }
+
 
   /// The keys lane [lane] keeps as a transform's lane, and which lane of
   /// theirs it is, by the transform lane's id: where a kind that draws its
@@ -1041,6 +1123,8 @@ class LayerEffect {
           keys,
           transformPropertyOfLaneId(kept)!,
         ),
+        // A row keeps no keys: its lane's track is an empty one.
+        null when layers.containsKey(lane) => PropertyTrack<Object?>.empty(),
         null => colors[lane] ?? parameters[lane]?.track,
       };
 
@@ -1074,6 +1158,11 @@ class LayerEffect {
         for (final entry in points.entries)
           if (entry.value.isNotEmpty) entry.key: entry.value.toJson(),
       },
+    if (layers.values.any((row) => row != null))
+      'layers': {
+        for (final MapEntry(key: id, value: row) in layers.entries)
+          if (row != null) id: row.toJson(),
+      },
     if (stand.isNotEmpty) 'stand': stand.toJson(),
   };
 
@@ -1082,6 +1171,7 @@ class LayerEffect {
     final rawParameters = json['parameters'] as Map<String, dynamic>? ?? {};
     final rawColors = json['colors'] as Map<String, dynamic>? ?? {};
     final rawPoints = json['points'] as Map<String, dynamic>? ?? {};
+    final rawLayers = json['layers'] as Map<String, dynamic>? ?? {};
     final stand = json['stand'] as Map<String, dynamic>?;
     // The constructor fills whatever the file left out.
     return LayerEffect(
@@ -1107,6 +1197,10 @@ class LayerEffect {
             entry.value as Map<String, dynamic>,
           ),
       },
+      layers: {
+        for (final entry in rawLayers.entries)
+          entry.key: LayerId.fromJson(entry.value as Map<String, dynamic>),
+      },
       stand: stand == null ? null : TransformTrack.fromJson(stand),
     );
   }
@@ -1121,6 +1215,7 @@ class LayerEffect {
           mapEquals(other.parameters, parameters) &&
           mapEquals(other.colors, colors) &&
           mapEquals(other.points, points) &&
+          mapEquals(other.layers, layers) &&
           other.stand == stand;
 
   @override
@@ -1137,6 +1232,9 @@ class LayerEffect {
     ]),
     Object.hashAll([
       for (final entry in points.entries) Object.hash(entry.key, entry.value),
+    ]),
+    Object.hashAll([
+      for (final entry in layers.entries) Object.hash(entry.key, entry.value),
     ]),
     stand,
   );
@@ -1159,12 +1257,15 @@ class ResolvedLayerEffect {
     required List<double> values,
     this.stand,
     Map<String, CanvasPoint?> points = const {},
+    Map<String, LayerId?> layers = const {},
   }) : values = List.unmodifiable(values),
-       points = Map.unmodifiable(points);
+       points = Map.unmodifiable(points),
+       layers = Map.unmodifiable(layers);
 
   final EffectKind kind;
 
-  /// A point's is its spec's 0: a point is no number ([points]).
+  /// A point's or a row's is its spec's 0: neither is a number ([points],
+  /// [layers]).
   final List<double> values;
 
   /// Where a kind that draws its own picture stands it at this frame
@@ -1175,6 +1276,11 @@ class ResolvedLayerEffect {
   /// ([LayerEffect.points] sampled, [effectPointAt]) — null for one at
   /// rest, the paper's middle, which the paper says ([effectPointOnPaper]).
   final Map<String, CanvasPoint?> points;
+
+  /// The row each of the kind's row parameters names ([LayerEffect.layers])
+  /// — null for none. Its id alone: what that row draws at this frame is
+  /// the cut's to say, and its signature's.
+  final Map<String, LayerId?> layers;
 
   double parameter(String id) {
     final specs = kind.parameters;
@@ -1220,7 +1326,8 @@ class ResolvedLayerEffect {
           other.kind == kind &&
           listEquals(other.values, values) &&
           other.stand == stand &&
-          mapEquals(other.points, points);
+          mapEquals(other.points, points) &&
+          mapEquals(other.layers, layers);
 
   @override
   int get hashCode => Object.hash(
@@ -1230,10 +1337,14 @@ class ResolvedLayerEffect {
     Object.hashAll([
       for (final entry in points.entries) Object.hash(entry.key, entry.value),
     ]),
+    Object.hashAll([
+      for (final entry in layers.entries) Object.hash(entry.key, entry.value),
+    ]),
   );
 
   @override
-  String toString() => 'ResolvedLayerEffect($kind, $values, $stand, $points)';
+  String toString() =>
+      'ResolvedLayerEffect($kind, $values, $stand, $points, $layers)';
 }
 
 /// Where point [keys] ([LayerEffect.points]) stand at [time], a frame or
@@ -1288,8 +1399,9 @@ int effectColorAt(PropertyTrack<int> keys, double time, {required int rest}) =>
 
 /// What lane [spec] of [effect] holds at [time], a frame or between two, as
 /// the number [ResolvedLayerEffect.values] carries: a colour its ARGB
-/// ([effectColorAt]), a point its spec's 0 — it is no number
-/// ([ResolvedLayerEffect.points]) — any other its parameter's walk.
+/// ([effectColorAt]), a point or a row its spec's 0 — neither is a number
+/// ([ResolvedLayerEffect.points], [ResolvedLayerEffect.layers]) — any
+/// other its parameter's walk.
 double effectValueAt(
   LayerEffect effect,
   EffectParameterSpec spec,
@@ -1300,7 +1412,10 @@ double effectValueAt(
     time,
     rest: spec.defaultValue.toInt(),
   ).toDouble(),
-  null when spec.unit == EffectParameterUnit.point => spec.defaultValue,
+  null
+      when spec.unit == EffectParameterUnit.point ||
+          spec.unit == EffectParameterUnit.layer =>
+    spec.defaultValue,
   null => effect
       .parameterOf(spec.id)
       .resolveAtTime(time, space: spec.keySpace),
@@ -1335,6 +1450,7 @@ List<ResolvedLayerEffect> resolveLayerEffectsAt({
         for (final MapEntry(key: id, value: keys) in effect.points.entries)
           id: effectPointAt(keys, frameIndex.toDouble()),
       },
+      layers: effect.layers,
     );
     if (sample.isNoOp) {
       continue;
@@ -1564,6 +1680,29 @@ LayerEffect? _withNamedValue(
       );
   }
 }
+
+/// [effects] with every row they name ([LayerEffect.layers]) put through
+/// [rowOf] — a copy's, whose rows are the copies of its source's (a
+/// duplicated cut's, a linked cut's): what [rowOf] answers null for, they
+/// name none. [effects] themselves where they name none.
+///
+/// ⛔ONE WAY a copy re-names its effects' rows, beside the attach pointer
+/// (`attachedToLayerId`) it re-names at every site that copies rows.
+List<LayerEffect> effectsWithRowsRenamed(
+  List<LayerEffect> effects,
+  LayerId? Function(LayerId row) rowOf,
+) => effects.every((effect) => effect.layers.values.every((row) => row == null))
+    ? effects
+    : [
+        for (final effect in effects)
+          effect.copyWith(
+            layers: {
+              for (final MapEntry(key: id, value: row)
+                  in effect.layers.entries)
+                id: row == null ? null : rowOf(row),
+            },
+          ),
+      ];
 
 /// [shape]'s chain STRUCTURE — which effects, in what order, each on or
 /// off — laid over [onto]'s own parameter values and keyframe tracks.

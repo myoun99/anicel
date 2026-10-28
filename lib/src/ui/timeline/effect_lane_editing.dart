@@ -175,6 +175,16 @@ List<LayerEffect>? effectsWithLaneValueEdited(
       ),
     );
   }
+  // A row is picked, not keyed: the one row at every frame.
+  if (_namesARowOn(effects, laneId)) {
+    final row = effectLaneRowOf(input);
+    return _editLane(
+      effects,
+      laneId,
+      (effect, lane) =>
+          effect.layers[lane] == row ? null : effect.withLayer(lane, row),
+    );
+  }
   if (_colorsOn(effects, laneId)) {
     final argb = parseArgbInput(input);
     return argb == null
@@ -238,6 +248,15 @@ List<LayerEffect>? effectsWithGroupReset(
     for (final spec in effect.kind.parameters) {
       // A point goes back as where the effect stands does, below.
       if (effect.points.containsKey(spec.id)) {
+        continue;
+      }
+      // A row has no keys: it goes back to none as an unkeyed parameter
+      // goes back to its default.
+      if (effect.layers.containsKey(spec.id)) {
+        if (effect.layers[spec.id] != null) {
+          next = next.withLayer(spec.id, null);
+          changed = true;
+        }
         continue;
       }
       // A colour has no static value: unkeyed it is already the rest.
@@ -333,7 +352,10 @@ class _EffectLaneLens implements LaneLens<List<LayerEffect>> {
 
   @override
   List<LayerEffect>? update(List<LayerEffect> effects, PropertyLaneEdit edit) =>
-      _keptAsATransformOn(effects, laneId)
+      // A row keeps no keys to edit.
+      _namesARowOn(effects, laneId)
+      ? null
+      : _keptAsATransformOn(effects, laneId)
       ? _editTransformLane(
           effects,
           laneId,
@@ -372,7 +394,8 @@ class _EffectLaneLens implements LaneLens<List<LayerEffect>> {
     (effectId: _, parameterId: final lane?)
         when !effectStandLanes.contains(lane) &&
             !effectColorParameters.contains(lane) &&
-            !effectPointParameters.contains(lane) =>
+            !effectPointParameters.contains(lane) &&
+            !effectLayerParameters.contains(lane) =>
       held,
     _ => null,
   };
@@ -387,7 +410,8 @@ class _EffectLaneLens implements LaneLens<List<LayerEffect>> {
     (effect, lane) => switch (effect.kind.parameterSpec(lane)) {
       final spec?
           when spec.unit != EffectParameterUnit.color &&
-              spec.unit != EffectParameterUnit.point =>
+              spec.unit != EffectParameterUnit.point &&
+              spec.unit != EffectParameterUnit.layer =>
         spec.clamp(shown),
       _ => null,
     },
@@ -472,6 +496,16 @@ List<LayerEffect>? effectsWithTransformKeysEdited(
   String laneId,
   TransformTrack? Function(TransformTrack keys) edit,
 ) => _editTransformLane(effects, laneId, (keys, _) => edit(keys));
+
+/// Whether [laneId] is a row of its effect in [effects] ([LayerEffect
+/// .layers]).
+bool _namesARowOn(List<LayerEffect> effects, String laneId) =>
+    _readLane(
+      effects,
+      laneId,
+      (effect, lane) => effect.layers.containsKey(lane),
+    ) ??
+    false;
 
 /// Whether [laneId] is a colour of its effect in [effects] ([LayerEffect
 /// .colors]).

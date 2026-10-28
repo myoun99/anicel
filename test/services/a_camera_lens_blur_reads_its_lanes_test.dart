@@ -122,11 +122,16 @@ void main() {
   group('the kind', () {
     const paper = ui.Rect.fromLTWH(0, 0, 64, 64);
 
-    IrisGatherPass irisOf(List<double> values, {DrawSpace? space}) =>
+    /// The iris of a lens blur whose [lanes] are as they say, by id — the
+    /// rest at their first values.
+    IrisGatherPass irisOf(Map<String, double> lanes, {DrawSpace? space}) =>
         shadedPassesOf(
               ResolvedLayerEffect(
                 kind: EffectKind.cameraLensBlur,
-                values: values,
+                values: [
+                  for (final spec in EffectKind.cameraLensBlur.parameters)
+                    lanes[spec.id] ?? spec.defaultValue,
+                ],
               ),
               space ?? DrawSpace.canvas,
               paper: paper,
@@ -151,15 +156,14 @@ void main() {
         ],
       );
       for (var index = 0; index < shape.choices.length; index += 1) {
-        final pass = irisOf([
-          12,
-          index.toDouble(),
-          30,
-          1.4,
-          25,
-          200,
-          ...[0, 255, 0, 0, 0],
-        ]);
+        final pass = irisOf({
+          'blurRadius': 12,
+          'irisShape': index.toDouble(),
+          'irisRoundness': 30,
+          'irisAspectRatio': 1.4,
+          'irisRotation': 25,
+          'irisDiffractionFringe': 200,
+        });
         expect(
           pass.iris,
           iris(
@@ -173,7 +177,7 @@ void main() {
         );
         expect(pass.radius, 12);
         expect(pass.paper, isNull, reason: 'its edge repeats only when on');
-        expect(pass.map, isNull, reason: 'no blur map yet');
+        expect(pass.map, isNull, reason: 'no blur map named');
         expect(pass.light, isNull, reason: 'no gain, read as stored');
       }
     });
@@ -181,11 +185,20 @@ void main() {
     test('reads its Highlight lanes as the light: the threshold over 255, '
         'the saturation a percent, the gain as it is', () {
       expect(
-        irisOf([12, 3, 0, 1, 0, 0, 40, 204, 50, 0, 1]).light,
+        irisOf({
+          'blurRadius': 12,
+          'highlightGain': 40,
+          'highlightThreshold': 204,
+          'highlightSaturation': 50,
+          'useLinearWorkingSpace': 1,
+        }).light,
         (gain: 40.0, threshold: 0.8, saturation: 0.5, linear: true),
       );
       expect(
-        irisOf([12, 3, 0, 1, 0, 0, 0, 255, 0, 0, 1]).light?.linear,
+        irisOf({
+          'blurRadius': 12,
+          'useLinearWorkingSpace': 1,
+        }).light?.linear,
         isTrue,
         reason: 'Use Linear Working Space alone',
       );
@@ -193,7 +206,7 @@ void main() {
 
     test('its radius is canvas pixels: a raster at twice the scale spans '
         'twice the rows', () {
-      const flat = <double>[12, 3, 0, 1, 0, 0, 0, 255, 0, 0, 0];
+      const flat = {'blurRadius': 12.0};
       expect(irisOf(flat).reach, 12);
       expect(irisOf(flat, space: const DrawSpace.preScaled(2)).reach, 24);
     });

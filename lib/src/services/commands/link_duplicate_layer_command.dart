@@ -1,5 +1,6 @@
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
+import '../../models/layer_effect.dart' show effectsWithRowsRenamed;
 import '../../models/layer_id.dart';
 import '../../models/layer_link_join.dart';
 import '../../models/layer_link_registry.dart';
@@ -145,6 +146,12 @@ class LinkDuplicateLayerCommand implements Command {
           attachedToLayerId: member.attachedToLayerId == null
               ? null
               : copyOf(member.attachedToLayerId!),
+          // So do the rows its effects name: a member's copy, and a row
+          // out of the group the row it was.
+          effects: effectsWithRowsRenamed(
+            member.effects,
+            (row) => use.layerIdMap[row] ?? row,
+          ),
           // An ORGANIZER folder copied with the group re-parents its member
           // copies onto the copied folder row. A folder pointer OUT of the
           // slice — the folder the group stood in — is the landing's: the

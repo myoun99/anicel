@@ -7,6 +7,7 @@ import '../../models/cut_id.dart';
 import '../../models/layer_folder.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
+import '../../models/layer_effect.dart' show effectsWithRowsRenamed;
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project.dart';
@@ -610,6 +611,10 @@ List<AddLayerCommandInputPlan> planAddLayersCommandInput({
             layerId: copyId,
             folderId: copyOf(layer.folderId, sibling),
             attachedToLayerId: copyOf(layer.attachedToLayerId, sibling),
+            effects: effectsWithRowsRenamed(
+              layer.effects,
+              (row) => copyOf(row, sibling),
+            ),
             bornCelId:
                 _copiesBornWithACelOfTheirOwn(
                   layer,

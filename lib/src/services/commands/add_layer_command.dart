@@ -2,6 +2,7 @@ import '../../models/cut_id.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
+import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_link_registry.dart';
 import '../../models/project.dart';
@@ -30,6 +31,7 @@ class AddLayerMirror {
     required this.layerId,
     this.folderId,
     this.attachedToLayerId,
+    required this.effects,
     this.bornCelId,
   });
 
@@ -41,6 +43,10 @@ class AddLayerMirror {
 
   /// The sibling's own attach base, when the source rides one.
   final LayerId? attachedToLayerId;
+
+  /// The source's effects, naming the sibling's own rows where they name
+  /// the source's ([effectsWithRowsRenamed]).
+  final List<LayerEffect> effects;
 
   /// The cel of its own this copy is born with, when the row is one born
   /// with a frame — a covering row's fresh panel over ITS cut (F-99), an
@@ -152,6 +158,7 @@ class AddLayerCommand implements Command {
             // its copies outside too.
             folderId: mirror.folderId,
             attachedToLayerId: mirror.attachedToLayerId,
+            effects: mirror.effects,
             // Null keeps the source's lane — a row born empty.
             timeline: panels[mirror.layerId]?.timeline,
           ),

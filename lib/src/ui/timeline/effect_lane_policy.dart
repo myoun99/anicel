@@ -1,7 +1,9 @@
 import 'dart:ui' show Offset;
 
 import '../../models/key_mark.dart';
+import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
+import '../../models/layer_id.dart';
 import '../../models/transform_track.dart' show TransformPose, laneWalksAPath;
 import '../text/app_strings.dart';
 import '../text/model_vocabulary.dart';
@@ -131,8 +133,13 @@ bool effectLaneWalksAPath(String laneId) =>
 /// a time — where it stands its picture, a point ([effectStandPose]) —
 /// the caller knows the paper. Null for either leaves its lanes unvalued:
 /// a rail with no cut to read them in.
+///
+/// [cutRows] are the rows a row parameter ([EffectParameterUnit.layer])
+/// may name: the cut's — 🗣️I-132-Q16 a 「같은 컷의 행」 — none for a
+/// track's chain, which is no cut's.
 List<PropertyLaneRow> effectPropertyLanes(
   List<LayerEffect> effects, {
+  List<Layer> cutRows = const [],
   required bool Function(EffectId effectId) isExpanded,
   double Function(EffectId effectId, String parameterId, double time)?
   valueAt,
@@ -192,6 +199,10 @@ List<PropertyLaneRow> effectPropertyLanes(
         );
         continue;
       }
+      if (effect.layers.containsKey(spec.id)) {
+        rows.add(_rowLane(effect, spec, cutRows));
+        continue;
+      }
       // A colour's keys are its own ([LayerEffect.colors]); a number's its
       // parameter's.
       final keys = effect.laneTrack(spec.id)!;
@@ -242,6 +253,49 @@ List<PropertyLaneRow> effectPropertyLanes(
   }
   return rows;
 }
+
+/// The lane of row parameter [spec] of [effect] ([EffectParameterUnit
+/// .layer]): a menu, as a choice's, of none and [cutRows] by name, whose
+/// pick writes the row's id ([effectLaneRowText]) — one row at every
+/// frame, and no keys to walk to, as the SE audio lane has none
+/// (🗣️I-132-Q16 a: 「없음 + 행 이름들, 키 없음」).
+PropertyLaneRow _rowLane(
+  LayerEffect effect,
+  EffectParameterSpec spec,
+  List<Layer> cutRows,
+) {
+  final named = effectLaneRowNamed(effect.layers[spec.id], cutRows);
+  final none = AppText.strings.commonNone;
+  return PropertyLaneRow(
+    laneId: effectLaneId(effect.id, spec.id),
+    label: spec.labelFor(AppText.language),
+    keyMarks: const {},
+    showsKeyNavigator: false,
+    valueKind: PropertyLaneValueKind.choice,
+    choices: [none, for (final row in cutRows) row.name],
+    choiceValues: [
+      effectLaneRowText(null),
+      for (final row in cutRows) effectLaneRowText(row.id),
+    ],
+    choiceHeld: effectLaneRowText(named?.id),
+    valueLabel: (_) => named?.name ?? none,
+  );
+}
+
+/// The row of [rows] that [row] names — null for none, and for a row that
+/// is not among them: deleted, or named in another cut, it reads as none,
+/// as a dangling attach does (`attachedBaseOf`).
+Layer? effectLaneRowNamed(LayerId? row, List<Layer> rows) =>
+    row == null ? null : rows.where((layer) => layer.id == row).firstOrNull;
+
+/// What a row parameter's lane writes for [row]: its id's value, or the
+/// empty text for none — read back by [effectLaneRowOf].
+String effectLaneRowText(LayerId? row) => row?.value ?? '';
+
+/// The row [input] names, as a row parameter's lane writes it
+/// ([effectLaneRowText]) — null for none.
+LayerId? effectLaneRowOf(String input) =>
+    input.isEmpty ? null : LayerId(input);
 
 /// How the Scale lane where an effect stands its picture reads and is
 /// typed: a layer's two, as the transform's (「트랜스폼에 있는거처럼」).
@@ -301,8 +355,9 @@ String formatEffectLaneValue(EffectParameterSpec spec, double value) {
     EffectParameterUnit.color => formatLaneColorValue(value.toInt()),
     EffectParameterUnit.flag => flagLaneWord(effectFlagIsOn(value)),
     // A point prints as the transform's Position does, on its own row
-    // ([transformPositionLane]) — it is no number to print here.
-    EffectParameterUnit.point => '',
+    // ([transformPositionLane]) — it is no number to print here; a row by
+    // its name ([_rowLane]).
+    EffectParameterUnit.point || EffectParameterUnit.layer => '',
   };
 }
 

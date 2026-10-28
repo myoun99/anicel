@@ -4,6 +4,7 @@ import '../../models/cut_id.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
+import '../../models/layer_effect.dart' show effectsWithRowsRenamed;
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/stroke.dart';
@@ -103,8 +104,12 @@ Layer duplicateLayerAsIndependentCopy({
     seNameTag: source.seNameTag,
     transformTrack: source.transformTrack,
     // The effect chain is layer state like the transform track (R6): a
-    // duplicated cut keeps its 촬영 work.
-    effects: source.effects,
+    // duplicated cut keeps its 촬영 work. The rows it names remap as the
+    // attach pointer does, below.
+    effects: effectsWithRowsRenamed(
+      source.effects,
+      (row) => layerIdMap[row] ?? row,
+    ),
     instructions: source.instructions,
     audioClips: [
       for (final clip in source.audioClips)

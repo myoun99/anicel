@@ -47,8 +47,9 @@ import 'transform_lane_policy.dart'
 ///    track's S row its defaults. Null leaves the pose and anchor lanes
 ///    without a value.
 ///
-/// [rows] are the rows the attach question is asked among. No session is
-/// read here, so a rail that has none — the storyboard panel — asks it too.
+/// [rows] are the rows the attach question is asked among, and the ones
+/// an effect's row parameter may name. No session is read here, so a rail
+/// that has none — the storyboard panel — asks it too.
 ///
 /// The camera row is not read here: its lanes are the cut's camera track,
 /// which only a cut's rail stands on (`timelineLanesForLayer`).
@@ -151,6 +152,7 @@ List<PropertyLaneRow> propertyLanesForRow({
     }
     return effectPropertyLanes(
       layer.effects,
+      cutRows: rows,
       isExpanded: (effectId) => expandedGroupKeys.contains(
         laneGroupKey(layer.id, effectGroupLaneId(effectId)),
       ),

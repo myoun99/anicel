@@ -1467,7 +1467,20 @@ class CutCommandCoordinator {
         ...() {
           final current = _requireLayerAnywhere(target.layerId).effects;
           final isSource = target.cutId == cutId && target.layerId == layerId;
-          final shaped = effectChainWithSharedShape(authored, onto: current);
+          // What crosses to another cut names that cut's rows: an effect
+          // that arrives whole, and a kind's values that mirror.
+          final carried = target.cutId == cutId
+              ? authored
+              : effectsWithRowsRenamed(
+                  authored,
+                  (row) => linkCounterpartIn(
+                    project,
+                    cutId: cutId,
+                    layerId: row,
+                    targetCutId: target.cutId,
+                  ),
+                );
+          final shaped = effectChainWithSharedShape(carried, onto: current);
           // The source takes the write as authored; a sibling takes only
           // the shape unless its kind mirrors values too — plus whatever
           // the named links carry. A row that only wears the head takes
@@ -1477,7 +1490,7 @@ class CutCommandCoordinator {
               : !linked.contains(target)
               ? shaped
               : mirrorsValuesToo
-              ? authored
+              ? carried
               : effectsWithNamedValues(shaped, namedChanges);
           return listEquals(current, next)
               ? const <Command>[]
