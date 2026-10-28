@@ -418,6 +418,45 @@ void main() {
       );
     });
 
+    testWidgets('a nameless span built again with what it had, and not laid '
+        'again, still writes its delivery white before its block', (
+      tester,
+    ) async {
+      Widget at(String dialogue) => MaterialApp(
+        home: Scaffold(
+          backgroundColor: rowGround,
+          body: RepaintBoundary(
+            key: shot,
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 40),
+                child: SizedBox(
+                  width: 100,
+                  height: row,
+                  child: SeSpanVisual(
+                    layer: anSeRow(),
+                    axis: Axis.horizontal,
+                    frames: 10,
+                    dialogue: dialogue,
+                    delivery: SeLineType.off,
+                    framesFreeBefore: 2,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpWidget(at('あい'));
+      // An equal dialogue, another instance of the span: built, not laid.
+      await tester.pumpWidget(at('あい'));
+      final off = tester.getRect(said(SeLineType.off));
+      expect(off.right, closeTo(40, 1e-6), reason: '⛔전제: out');
+      final out = await look(tester, off);
+      expect([out.white, out.tinted], [true, false]);
+    });
+
     testWidgets('the same span seen from another head, or named no more, '
         'lays its words and tint again', (tester) async {
       Widget at({required int shownFrom, String? name = 'ドア'}) =>
