@@ -536,7 +536,7 @@ void main() {
       if (y < 64) above += 1;
       if (y > 64) below += 1;
     });
-    // Measured 2026-10-29: the tuft 24 wide, 27 tall, 19 above and 128
+    // Measured 2026-10-29: the tuft 24 wide, 27 tall, 15 above and 131
     // below; the leaf it replaced 8 wide, 20 tall, 54 above and 46 below.
     expect(below, greaterThan(above * 3), reason: '$above above, $below below');
   });
