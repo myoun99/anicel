@@ -5,6 +5,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/input/arena_tap_hold.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/widgets/instant_tap_region.dart';
+import 'package:anicel/src/ui/widgets/row_plate.dart';
 
 import '../../helpers/timeline_host.dart';
 
@@ -36,17 +37,18 @@ void main() {
       // Down the one-child chain from the pick to the plate.
       final chain = <Element>[];
       var at = pick;
-      while (at.widget is! Container) {
+      while (at.widget is! RowPlate) {
         chain.add(at);
         Element? only;
         at.visitChildren((child) => only = child);
         at = only!;
       }
       final kinds = [for (final e in chain) '${e.widget.runtimeType}'];
+      // The hold wears the row's name itself (2026-10-28): a [Named] over
+      // it was one element more.
       expect(kinds, [
         'InstantTapRegion',
         '_LabelDoubleTap',
-        'Named',
         'ArenaTapHold',
       ], reason: 'the body\'s boxes, in the order they hear a press');
       expect(chain.whereType<StatefulElement>(), isEmpty);
