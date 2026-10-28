@@ -749,15 +749,28 @@ void main() {
   /// 🗣️I-78-Q15 (유저 2026-10-28): 「참조도 그대로 병합한다」.
   group('a reference row is baked as it shows', () {
     /// A reference row laying a [width] × [height] file at the canvas's
-    /// centre.
-    Layer still(int width, int height) =>
-        row('still', {0: 'P1'}, kind: LayerKind.image).copyWith(
-          mediaReference: MediaReference(
-            assetPath: 'paper.png',
-            pose: TransformPose(center: CanvasPoint(x: 32, y: 18)),
-            pictureSize: CanvasSize(width: width, height: height),
-          ),
-        );
+    /// centre, shown there at [scale] and moved by [moves].
+    Layer still(
+      int width,
+      int height, {
+      double scale = 1,
+      TransformTrack? moves,
+    }) {
+      final centre = CanvasPoint(x: 32, y: 18);
+      return row(
+        'still',
+        {0: 'P1'},
+        kind: LayerKind.image,
+        transformTrack: moves,
+      ).copyWith(
+        mediaReference: MediaReference(
+          assetPath: 'paper.png',
+          pose: TransformPose(center: centre, scaleX: scale, scaleY: scale),
+          laid: TransformPose(center: centre),
+          pictureSize: CanvasSize(width: width, height: height),
+        ),
+      );
+    }
     Cut around(Layer still) =>
         cutOf([row('b', {0: 'B1'}), still, row('a', {0: 'A1'})]);
 
@@ -789,6 +802,36 @@ void main() {
         merge(cut, ['a', 'still'], reach: PasteboardReach.whole)!.changes,
         isEmpty,
       );
+    });
+
+    test('it is read where the row shows the file: laid past the wall and '
+        'shown inside it, nothing is cut; laid inside and moved past it by '
+        'the row\'s keys, what lies there is', () {
+      final moved = TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>.empty().withKey(
+          0,
+          CanvasPoint(x: 64, y: 18),
+        ),
+      );
+
+      expect(
+        merge(around(still(640, 360, scale: 0.1)), ['a', 'still'])!.changes,
+        isEmpty,
+      );
+      expect(
+        merge(around(still(64, 36, moves: moved)), ['a', 'still'])!.changes,
+        {LayerMergeChange.wall},
+      );
+    });
+
+    test('a base worn hidden shows no file to cut', () {
+      final base = still(640, 360);
+      final plan = merge(
+        cutOf([row('c', {0: 'C1'}), base, synced('r', base)]),
+        ['c', 'r'],
+      )!;
+
+      expect(plan.changes, isEmpty);
     });
   });
 

@@ -23,7 +23,7 @@ import '../../models/timeline_exposure.dart';
 import '../../models/timeline_repeat.dart' show ghostFreeTimeline;
 import '../../models/timeline_run_behavior.dart';
 import '../cut_frame_composite_plan.dart'
-    show clipBaseOf, clipsToLayerBelow, exposedCelIdAt;
+    show clipBaseOf, clipsToLayerBelow, exposedCelIdAt, layerPlacementAt;
 import '../layer_pose_matrix.dart' show picturePlacement, placedBounds;
 import '../playback/cut_frame_composite_signature.dart';
 import '../playback/cut_frame_composite_spans.dart';
@@ -289,14 +289,16 @@ LayerMergePlan planLayerMerge(
         minting,
       ),
   ];
+  final drawn = _picturesOf(result.row, cels, baked);
+  final wall = cut.canvasSize.pasteboardAt(reach);
   return LayerMergePlan._(
     cut: cut,
     result: result.row,
     pictures: [
-      ..._picturesOf(result.row, cels, baked),
+      ...drawn,
       for (final rider in ridden) ...rider.pictures,
     ],
-    changes: _changesOf(taking, over, cut.canvasSize.pasteboardAt(reach)),
+    changes: _changesOf(taking, over, drawn, wall),
     layers: _layersAfter(taking, over, result.row, {
       for (final rider in ridden) rider.row.id: rider.row,
     }),
@@ -721,11 +723,12 @@ typedef _Minting = ({
 }
 
 /// Why the result may show otherwise than the rows [taking] takes did
-/// ([LayerMergeChange]) — [over] being the folders it stands in, and
-/// [wall] the one its pictures are drawn over.
+/// ([LayerMergeChange]) — [over] being the folders it stands in, [drawn]
+/// its pictures, and [wall] the one they are drawn over.
 Set<LayerMergeChange> _changesOf(
   LayerMergeTaking taking,
   Set<LayerId> over,
+  List<LayerMergePicture> drawn,
   PasteboardWall wall,
 ) {
   final LayerMergeTaking(
@@ -764,27 +767,46 @@ Set<LayerMergeChange> _changesOf(
       LayerMergeChange.riderOver,
     if (led.below.any((row) => pictures.any((at) => at < order[row.id]!)))
       LayerMergeChange.riderUnder,
-    if (takenRows.any((row) => _laidPastTheWall(row, wall)))
-      LayerMergeChange.wall,
+    if (_cutAtTheWall(drawn, wall)) LayerMergeChange.wall,
   };
 }
 
-/// Whether [row]'s file is laid past [wall] — the part a merge, drawing
-/// the screen inside the wall, cuts off (F-374-Q8: a reference's file is
-/// laid whole, past it, on the whole pixels its cels keep as their
-/// `BitmapSurface.laidBounds`).
-bool _laidPastTheWall(Layer row, PasteboardWall wall) {
-  final reference = row.mediaReference;
-  if (reference == null) {
-    return false;
+/// Whether a reference row a picture of [drawn] is drawn of shows its file
+/// past [wall] there — the part the merge, drawing the screen inside the
+/// wall, cuts off (I-78-Q15). Read where the row SHOWS the file at the
+/// picture's frame, as its cut paints it ([layerPlacementAt]): its keys,
+/// its folders' and its reference fx move the file from where its pixels
+/// are laid — whole, past the wall (F-374-Q8, [MediaReference.laid]).
+bool _cutAtTheWall(List<LayerMergePicture> drawn, PasteboardWall wall) {
+  for (final (:from, :frameIndex, rowId: _, frameId: _) in drawn) {
+    for (final row in from.layers) {
+      final reference = row.mediaReference;
+      if (reference == null ||
+          !row.isVisible ||
+          exposedCelIdAt(cut: from, layerId: row.id, frameIndex: frameIndex) ==
+              null) {
+        continue;
+      }
+      final laid = picturePlacement(reference.laid, reference.pictureSize);
+      final shown = DirtyRegion.wholePixelsOf(
+        placedBounds(
+          switch (layerPlacementAt(
+            cut: from,
+            layer: row,
+            frameIndex: frameIndex,
+          )) {
+            final placement? => placement.compose(laid),
+            null => laid,
+          },
+          reference.pictureSize,
+        ),
+      ).rect;
+      if (wall.rect.expandToInclude(shown) != wall.rect) {
+        return true;
+      }
+    }
   }
-  final laid = DirtyRegion.wholePixelsOf(
-    placedBounds(
-      picturePlacement(reference.laid, reference.pictureSize),
-      reference.pictureSize,
-    ),
-  ).rect;
-  return wall.rect.expandToInclude(laid) != wall.rect;
+  return false;
 }
 
 /// Whether [folder] lays anything over what it holds.
