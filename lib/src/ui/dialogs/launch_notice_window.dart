@@ -2,6 +2,7 @@ import 'dart:async' show unawaited;
 
 import 'package:flutter/material.dart';
 
+import '../../core/build_stamp.dart';
 import '../../services/launch_notice.dart';
 import '../../services/usage_stats/usage_stats.dart';
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
@@ -68,7 +69,11 @@ class LaunchNoticeWindow extends StatelessWidget {
     void close() => Navigator.of(context).pop();
     return AppWindow(
       windowKey: const ValueKey<String>('launch-notice'),
-      title: strings.launchNoticeTitle,
+      // 🗣️app-version-shown (유저 2026-10-29): 「안내 창 제목 옆」 — the
+      // build beside the title, as the release stamped it (`dev` where
+      // nobody did). The stamp alone: the version NAME (pubspec's) is not
+      // something the app can read without a package for it.
+      title: '${strings.launchNoticeTitle} · $buildStamp',
       titleIcon: Icons.info_outline,
       onClose: close,
       width: 560,

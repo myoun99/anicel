@@ -110,7 +110,9 @@ void main() {
     expect(find.text('Pre-release en'), findsOneWidget);
     expect(find.text('One thing changed.'), findsOneWidget);
     expect(find.text('Tell us en.'), findsOneWidget);
-    expect(find.text('About this build'), findsOneWidget);
+    // The build beside the title (app-version-shown) — `dev`, as a build
+    // nobody stamped says.
+    expect(find.text('About this build · dev'), findsOneWidget);
     expect(_dontShowAgain, findsOneWidget);
     expect(_close, findsOneWidget);
     expect(_sendFeedback, findsOneWidget);
@@ -197,7 +199,7 @@ void main() {
 
     expect(find.text('Pre-release ko'), findsOneWidget);
     expect(find.text('Tell us ko.'), findsOneWidget);
-    expect(find.text('안내'), findsOneWidget);
+    expect(find.text('안내 · dev'), findsOneWidget);
     expect(find.text('다음부터 표시 안 함'), findsOneWidget);
     expect(find.text('닫기'), findsOneWidget);
   });

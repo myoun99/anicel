@@ -177,7 +177,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     expect(_window, findsOneWidget);
-    expect(find.text('안내'), findsOneWidget);
+    expect(find.text('안내 · dev'), findsOneWidget);
     expect(find.text('notice ko'), findsOneWidget);
   });
 }
