@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/native/qa_audio_decoder.dart';
@@ -10,6 +9,7 @@ import 'package:anicel/src/services/media/movie_span.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/decode_audio_file.dart';
+import '../../helpers/encoded_movie.dart';
 import '../../helpers/native_call_watch.dart';
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/project_scratch_folder.dart';
@@ -45,13 +45,7 @@ void main() {
     // step and ends the file instead.
     final watch = await NativeCallWatch.start('a movie piece keeps its sound');
     addTearDown(watch.stop);
-    watch.step('asking for the encoder');
-    final encoder = QaVideoEncoder.instance;
-    if (encoder == null || !encoder.isSupported) {
-      expect(Platform.isLinux, isTrue, reason: 'no OS encoder only on Linux');
-      return;
-    }
-    watch.step('writing the take');
+    watch.step('asking for the encoder and writing the take');
     final directory = Directory.systemTemp.createTempSync('qa_movie_piece');
     deleteAfterSessionEnds(directory);
     String at(String name) =>
@@ -59,35 +53,21 @@ void main() {
     const rate = 48000;
     const perFrame = rate ~/ 24;
     const clickFrame = 6;
-    expect(
-      encoder.open(
-        path: at('source.mp4'),
-        width: 64,
-        height: 48,
-        fpsNumerator: 24,
-        fpsDenominator: 1,
-        sampleRate: rate,
-        channels: 2,
-      ),
-      isTrue,
-      reason: encoder.lastError,
-    );
-    for (var frame = 0; frame < 12; frame += 1) {
-      final gray = Uint8List(64 * 48 * 4)..fillRange(0, 64 * 48 * 4, 128);
-      expect(encoder.writeFrame(gray), isTrue, reason: encoder.lastError);
-      final pcm = Int16List(perFrame * 2);
-      if (frame == clickFrame) {
-        for (var index = 0; index < 48; index += 1) {
-          // A decaying click, so the codec keeps it.
-          final value = ((index.isEven ? 1 : -1) * 30000 * (1 - index / 48))
-              .round();
-          pcm[index * 2] = value;
-          pcm[index * 2 + 1] = value;
-        }
-      }
-      expect(encoder.writeAudio(pcm, perFrame), isTrue);
+    if (!writeEncodedMovie(
+      at('source.mp4'),
+      frames: 12,
+      sampleRate: rate,
+      sound: (sample) {
+        final index = sample - clickFrame * perFrame;
+        // A decaying click, so the codec keeps it.
+        return index < 0 || index >= 48
+            ? 0
+            : ((index.isEven ? 1 : -1) * 30000 * (1 - index / 48)).round();
+      },
+    )) {
+      expect(Platform.isLinux, isTrue, reason: 'no OS encoder only on Linux');
+      return;
     }
-    expect(encoder.finish(), isTrue, reason: encoder.lastError);
 
     watch.step('cutting the piece');
     final cut = writeMovieSpan(

@@ -8,7 +8,7 @@ import 'package:anicel/src/services/audio/wav16_header.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../helpers/grey_movie.dart';
+import '../../helpers/encoded_movie.dart';
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -91,7 +91,7 @@ void main() {
 
     test('a movie is cut in a worker that finds the engine', () async {
       final movie = inTemp('take.mp4');
-      if (!writeGreyMovie(movie, frames: 6)) {
+      if (!writeEncodedMovie(movie, frames: 6)) {
         return;
       }
 

@@ -4,9 +4,9 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_video_decoder.dart';
-import 'package:anicel/src/native/qa_video_encoder.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 
+import '../../helpers/encoded_movie.dart';
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/project_scratch_folder.dart';
 
@@ -43,37 +43,20 @@ void main() {
   /// with a `free` box of zeros after it, so it shrinks and the writer that
   /// ships keeps it FRAMED. Null where this build cannot encode one.
   ({String plain, String framed, int framedLength})? movie() {
-    final encoder = QaVideoEncoder.instance;
-    if (encoder == null || !encoder.isSupported) {
-      return null;
-    }
     final directory = Directory.systemTemp.createTempSync('qa_framed_movie');
     deleteAfterSessionEnds(directory);
     final encoded = '${directory.path}${Platform.pathSeparator}encoded.mp4';
-    expect(
-      encoder.open(
-        path: encoded,
-        width: 64,
-        height: 48,
-        fpsNumerator: 24,
-        fpsDenominator: 1,
-        sampleRate: 44100,
-        channels: 2,
+    if (!writeEncodedMovie(
+      encoded,
+      frames: 8,
+      picture: (frame, pixel) => (
+        red: (frame * 30) & 0xFF,
+        green: (pixel * 3) & 0xFF,
+        blue: 255 - (frame * 30) & 0xFF,
       ),
-      isTrue,
-      reason: encoder.lastError,
-    );
-    for (var frame = 0; frame < 8; frame += 1) {
-      final rgba = Uint8List(64 * 48 * 4);
-      for (var i = 0; i < 64 * 48; i += 1) {
-        rgba[i * 4] = (frame * 30) & 0xFF;
-        rgba[i * 4 + 1] = (i * 3) & 0xFF;
-        rgba[i * 4 + 2] = 255 - (frame * 30) & 0xFF;
-        rgba[i * 4 + 3] = 255;
-      }
-      expect(encoder.writeFrame(rgba), isTrue, reason: encoder.lastError);
+    )) {
+      return null;
     }
-    expect(encoder.finish(), isTrue, reason: encoder.lastError);
 
     // A `free` box is part of the format — every reader skips one — so the
     // movie in front of it is untouched, and a megabyte of zeros shrinks.

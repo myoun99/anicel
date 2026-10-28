@@ -4,8 +4,8 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_video_decoder.dart';
-import 'package:anicel/src/native/qa_video_encoder.dart';
 
+import '../../helpers/encoded_movie.dart';
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/project_scratch_folder.dart';
 
@@ -49,43 +49,25 @@ void main() {
   /// So they are encoded here, with the app's own encoder, in colours no
   /// comparison can confuse.
   ({String first, String second})? twoMovies() {
-    final encoder = QaVideoEncoder.instance;
-    if (encoder == null || !encoder.isSupported) {
-      return null;
-    }
     final directory = Directory.systemTemp.createTempSync('qa_two');
     deleteAfterSessionEnds(directory);
 
-    String write(String name, int red, int blue) {
+    String? write(String name, int red, int blue) {
       final path = '${directory.path}${Platform.pathSeparator}$name';
-      expect(
-        encoder.open(
-          path: path,
-          width: 64,
-          height: 48,
-          fpsNumerator: 24,
-          fpsDenominator: 1,
-          sampleRate: 44100,
-          channels: 2,
-        ),
-        isTrue,
-        reason: encoder.lastError,
-      );
-      for (var frame = 0; frame < 8; frame += 1) {
-        final rgba = Uint8List(64 * 48 * 4);
-        for (var i = 0; i < 64 * 48; i += 1) {
-          rgba[i * 4] = red;
-          rgba[i * 4 + 1] = (frame * 30) & 0xFF;
-          rgba[i * 4 + 2] = blue;
-          rgba[i * 4 + 3] = 255;
-        }
-        expect(encoder.writeFrame(rgba), isTrue, reason: encoder.lastError);
-      }
-      expect(encoder.finish(), isTrue, reason: encoder.lastError);
-      return path;
+      return writeEncodedMovie(
+            path,
+            frames: 8,
+            picture: (frame, _) =>
+                (red: red, green: (frame * 30) & 0xFF, blue: blue),
+          )
+          ? path
+          : null;
     }
 
-    return (first: write('red.mp4', 230, 20), second: write('blue.mp4', 20, 230));
+    return switch ((write('red.mp4', 230, 20), write('blue.mp4', 20, 230))) {
+      (final first?, final second?) => (first: first, second: second),
+      _ => null,
+    };
   }
 
   test('the instrument first: the two movies do NOT look alike', () {

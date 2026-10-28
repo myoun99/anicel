@@ -22,7 +22,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
 import '../../helpers/fake_video_backend.dart';
-import '../../helpers/grey_movie.dart';
+import '../../helpers/encoded_movie.dart';
 import '../../helpers/import_span.dart';
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/placed_sound_conform.dart';
@@ -636,7 +636,7 @@ void main() {
     Future<String> sixFrames(WidgetTester tester) async =>
         (await tester.runAsync(() async {
           final path = '${tempDir.path}${Platform.pathSeparator}take.mp4';
-          expect(writeGreyMovie(path, frames: 6), isTrue);
+          expect(writeEncodedMovie(path, frames: 6), isTrue);
           return path;
         }))!;
 

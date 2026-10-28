@@ -14,6 +14,7 @@ import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 
 import '../../helpers/adts_from_m4a.dart';
 import '../../helpers/decode_audio_file.dart';
+import '../../helpers/encoded_movie.dart';
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/pcm_movie.dart';
 import '../../helpers/project_scratch_folder.dart';
@@ -439,49 +440,26 @@ void main() {
     // export must say where its sound starts some way the decode reads, or
     // the standard comes off a sound that had none: this is the pin that
     // asks.
-    final encoder = QaVideoEncoder.instance;
-    if (encoder == null || !encoder.isSupported) {
-      expect(Platform.isLinux, isTrue, reason: 'no OS encoder only on Linux');
-      return;
-    }
     final directory = Directory.systemTemp.createTempSync('qa_export_click');
     deleteAfterSessionEnds(directory);
     final path = '${directory.path}${Platform.pathSeparator}click.mp4';
     const rate = 48000;
     const clickAt = rate ~/ 4;
-    expect(
-      encoder.open(
-        path: path,
-        width: 64,
-        height: 48,
-        fpsNumerator: 24,
-        fpsDenominator: 1,
-        sampleRate: rate,
-        channels: 2,
-      ),
-      isTrue,
-      reason: encoder.lastError,
-    );
-    final pcm = Int16List(rate * 2);
-    for (var index = 0; index < 48; index += 1) {
-      // A decaying click, so the codec keeps it.
-      final value = ((index.isEven ? 1 : -1) * 30000 * (1 - index / 48))
-          .round();
-      pcm[(clickAt + index) * 2] = value;
-      pcm[(clickAt + index) * 2 + 1] = value;
+    if (!writeEncodedMovie(
+      path,
+      frames: 24,
+      sampleRate: rate,
+      sound: (sample) {
+        final index = sample - clickAt;
+        // A decaying click, so the codec keeps it.
+        return index < 0 || index >= 48
+            ? 0
+            : ((index.isEven ? 1 : -1) * 30000 * (1 - index / 48)).round();
+      },
+    )) {
+      expect(Platform.isLinux, isTrue, reason: 'no OS encoder only on Linux');
+      return;
     }
-    final gray = Uint8List(64 * 48 * 4)..fillRange(0, 64 * 48 * 4, 128);
-    var written = 0;
-    for (var frame = 0; frame < 24; frame += 1) {
-      encoder.writeFrame(gray);
-      final upTo = ((frame + 1) * rate) ~/ 24;
-      encoder.writeAudio(
-        Int16List.fromList(pcm.sublist(written * 2, upTo * 2)),
-        upTo - written,
-      );
-      written = upTo;
-    }
-    expect(encoder.finish(), isTrue, reason: encoder.lastError);
 
     final decoded = decodeAudioFile(path);
     expect(decoded, isNotNull);

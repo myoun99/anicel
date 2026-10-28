@@ -8,7 +8,6 @@ import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/movie_clock.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/native/qa_video_decoder.dart';
-import 'package:anicel/src/native/qa_video_encoder.dart';
 import 'package:anicel/src/services/audio/wav16_header.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart'
     show ImportDestination;
@@ -17,6 +16,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/decode_audio_file.dart';
+import '../../helpers/encoded_movie.dart';
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/native_call_watch.dart';
 import '../../helpers/native_engine_path.dart';
@@ -462,46 +462,16 @@ void main() {
 
     /// Eight movie frames at [fps], each its own flat red, over a sound —
     /// the size and sound the other encoder fixtures use (the OS encoder
-    /// turns tiny frames away).
-    void writeMovie(
-      QaVideoEncoder encoder,
-      String path,
-      ({int numerator, int denominator}) fps,
-    ) {
-      expect(
-        encoder.open(
-          path: path,
-          width: 64,
-          height: 48,
-          fpsNumerator: fps.numerator,
-          fpsDenominator: fps.denominator,
-          sampleRate: 44100,
-          channels: 2,
-        ),
-        isTrue,
-        reason: encoder.lastError,
-      );
-      final samplesPerFrame =
-          44100 * fps.denominator ~/ fps.numerator;
-      for (var frame = 0; frame < 8; frame += 1) {
-        final rgba = Uint8List(64 * 48 * 4);
-        for (var i = 0; i < 64 * 48; i += 1) {
-          rgba[i * 4] = 20 + frame * redStep;
-          rgba[i * 4 + 3] = 255;
-        }
-        expect(encoder.writeFrame(rgba), isTrue, reason: encoder.lastError);
-        final pcm = Int16List(samplesPerFrame * 2);
-        for (var i = 0; i < pcm.length; i += 1) {
-          pcm[i] = (i * 37 + frame * 1000) % 20000 - 10000;
-        }
-        expect(
-          encoder.writeAudio(pcm, samplesPerFrame),
-          isTrue,
-          reason: encoder.lastError,
+    /// turns tiny frames away). False where this run has no encoder.
+    bool writeMovie(String path, ({int numerator, int denominator}) fps) =>
+        writeEncodedMovie(
+          path,
+          frames: 8,
+          fps: fps,
+          picture: (frame, _) =>
+              (red: 20 + frame * redStep, green: 0, blue: 0),
+          sound: (sample) => (sample * 37) % 20000 - 10000,
         );
-      }
-      expect(encoder.finish(), isTrue, reason: encoder.lastError);
-    }
 
     /// Cuts IN 3 .. OUT 8 of such a movie in a project whose sounds play at
     /// [speed], holds the piece against what the project showed — the span
@@ -515,11 +485,6 @@ void main() {
       required double pace,
     }) async {
       final watch = await watched(tester, 'a trimmed movie at $pace');
-      watch.step('asking for the encoder');
-      final encoder = QaVideoEncoder.instance;
-      if (encoder == null || !encoder.isSupported) {
-        return null;
-      }
       final s = EditorSessionManager(
         initialProject: createDefaultProject().copyWith(
           audioSpeedNumerator: speed.numerator,
@@ -529,8 +494,10 @@ void main() {
       addTearDown(s.dispose);
       final rate = s.projectSettings.projectFrameRate;
       final source = inTemp('take3.mp4');
-      watch.step('writing the take');
-      writeMovie(encoder, source, fps);
+      watch.step('asking for the encoder and writing the take');
+      if (!writeMovie(source, fps)) {
+        return null;
+      }
 
       watch.step('cutting the piece');
       final kept = await tester.runAsync(
@@ -614,14 +581,11 @@ void main() {
       tester,
     ) async {
       final watch = await watched(tester, 'a frame comes back its colour');
-      watch.step('asking for the encoder');
-      final encoder = QaVideoEncoder.instance;
-      if (encoder == null || !encoder.isSupported) {
+      final source = inTemp('colours.mp4');
+      watch.step('asking for the encoder and writing the take');
+      if (!writeMovie(source, (numerator: 12, denominator: 1))) {
         return;
       }
-      final source = inTemp('colours.mp4');
-      watch.step('writing the take');
-      writeMovie(encoder, source, (numerator: 12, denominator: 1));
       final decoder = QaVideoDecoder.instance!;
       watch.step('opening the take');
       final movie = decoder.openDocument(source)!;
