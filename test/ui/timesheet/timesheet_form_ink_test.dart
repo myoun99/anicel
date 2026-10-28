@@ -233,7 +233,7 @@ void main() {
       );
       final box = letterBox(values.layout, 0);
       final inked = [
-        for (var x = box.left.floor(); x < box.right.ceil(); x += 1)
+        for (var x = box.left.floor() - 1; x < box.right.ceil() + 1; x += 1)
           if (values.inkIn(Rect.fromLTWH(x.toDouble(), box.top, 1, box.height)) >
               0)
             x,
@@ -242,6 +242,16 @@ void main() {
         inked.last - inked.first + 1,
         greaterThan(2 * style.fontSize!),
         reason: 'more than two letters\' width — ↩️「A…」',
+      );
+      expect(
+        (inked.first >= box.left.floor(), inked.last < box.right.ceil()),
+        (true, true),
+        reason: 'inside its margin',
+      );
+      expect(
+        (inked.first - box.left) - (box.right - 1 - inked.last),
+        inInclusiveRange(-1, 1),
+        reason: 'centred',
       );
     });
   });
