@@ -62,7 +62,15 @@ void main() {
       final lanes = effectPropertyLanes([effect], isExpanded: (_) => true);
       expect(lanes.first.isGroupHeader, isTrue, reason: '⛔전제');
       for (final lane in lanes) {
-        expect(lane.keyNames, {3: 'A'}, reason: lane.laneId);
+        // 🗣️I-132-Q16 a: a row's lane keeps no keys — none to name.
+        final keyless = effectLayerParameters.any(
+          (id) => lane.laneId == effectLaneId(effect.id, id),
+        );
+        expect(
+          lane.keyNames,
+          keyless ? isEmpty : {3: 'A'},
+          reason: lane.laneId,
+        );
       }
     });
   }

@@ -344,7 +344,8 @@ void main() {
           final laneId = effectLaneId(effect.id, lane);
           expect(
             effectLaneLens(laneId)!.keyFrames(rebased),
-            {20},
+            // 🗣️I-132-Q16 a: a row's lane keeps no keys to rebase.
+            effectLayerParameters.contains(lane) ? isEmpty : {20},
             reason: '${kind.name}: $lane',
           );
         }

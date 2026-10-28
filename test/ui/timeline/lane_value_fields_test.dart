@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
 import 'package:anicel/src/ui/text/readout_text.dart';
@@ -165,6 +167,28 @@ void main() {
                   TransformPose(center: CanvasPoint(x: 120, y: 45.5)),
             ).valueLabel!(0),
           );
+          continue;
+        }
+        // I-132-Q16 a: nor is a row — its lane prints the row it names by
+        // its name, or none.
+        if (unit == EffectParameterUnit.layer) {
+          final lens = LayerEffect.defaults(
+            id: const EffectId('lens'),
+            kind: EffectKind.cameraLensBlur,
+          );
+          final rows = [
+            Layer(id: const LayerId('a'), name: 'Layer 2', frames: const []),
+          ];
+          for (final named in [null, const LayerId('a')]) {
+            final lane = effectPropertyLanes(
+              [lens.withLayer('blurMapLayer', named)],
+              cutRows: rows,
+              isExpanded: (_) => true,
+            ).firstWhere(
+              (lane) => lane.laneId == effectLaneId(lens.id, 'blurMapLayer'),
+            );
+            roundTrips(lane.valueLabel!(0));
+          }
           continue;
         }
         final (spec, value) = switch (unit) {

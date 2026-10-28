@@ -780,7 +780,26 @@ void main() {
   /// cel of its own — beside the row, its cut, its slot and the repository.
   /// ⛔Not bundled into the row: it is a fact of the ADD, not of the layer
   /// (the same row pasted hands its copies its lane).
-  const wideSignatures = 436;
+  ///
+  /// ⚠️436 → 445 on 2026-10-29, nine named as the rule above asks (I-132
+  /// ⑫b·⑫c — a camera lens blur reads its blur map off the row it names,
+  /// where that row shows, 🗣️Q16 a · Q21 a). `_CompositeTreeWalk._group`
+  /// and `._adjustment` (six each) take what the walk hands a folder or an
+  /// adjustment whose chain reads rows (`CompositeReadsRows`): the painter
+  /// of those rows and the node it is held as — the one the cells below a
+  /// pen were kept under. `._reading` (six) is the one that hands them: the
+  /// reader, the rows, where it is held. `effectPropertyLanes` (five) takes
+  /// the cut's rows a row parameter's menu names. `_LayerStackPaintPass
+  /// ._paintSurfaceRow`, `steppedForChain`, `applyEffectSteps`,
+  /// `_stepDraws` and `_leadDraws` (five each) carry the rows a step reads
+  /// from the walk down to the pass that gathers by them — the painter,
+  /// then the row laid on the step's grid. 🔬`clean_code_diff` against
+  /// master (`2a9750ac3`, at 436) named those nine added and nothing gone.
+  /// ⛔Not bundled to fit: the row a step reads is the step's, the space,
+  /// paper and width it rasters at the chain's — one value of them would
+  /// answer two questions; so would one of where a node is held (its cells
+  /// kept) and what it reads (drawn afresh, kept nowhere).
+  const wideSignatures = 445;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -1114,7 +1133,24 @@ void main() {
   /// ⚠️414 → 413 on 2026-10-28, following one down (I-131): the brush
   /// rail's `_buildRailFresh` went with its reorderable list into
   /// `StandOnReorderList`, which the palette panel stands on too.
-  const longBodies = 413;
+  ///
+  /// ⚠️413 → 416 on 2026-10-29, four named and one gone, as the rule above
+  /// asks (I-132 ⑫b·⑫c — a lens blur's blur map names a row of its cut).
+  /// `withTheRowsTheyRead` (70) is new: how each kind of node is laid anew
+  /// with the rows its chain reads beside it, as the fold
+  /// (`mapCompositeLeaves`) lays each kind with its leaves mapped.
+  /// `CutCommandCoordinator.layerEffectsCommands` (70) crossed carrying a
+  /// chain to another cut with the rows it names renamed to that cut's.
+  /// `_nodeSignaturesOf` (62) crossed with the case of a node that reads
+  /// rows, and `LinkDuplicateLayerCommand._laid` (62) with a copy's
+  /// effects naming the copies of the rows they named.
+  /// `_LayerStackPainter._whereTheRowShows` went under as each node it
+  /// stands in came to be asked of by `_whereItShowsIn`. 🔬`clean_code_diff`
+  /// against master (`32c32632f`, at 413) named those four added and that
+  /// one gone. ⛔Not split to fit: each is one table — of a node's kinds,
+  /// of what every row a chain's write reaches takes, of a member's copy
+  /// field for field.
+  const longBodies = 416;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
@@ -1477,7 +1513,17 @@ void main() {
   /// (`FramePictures.giveWayToSteps`). 🔬`clean_code_diff` against the
   /// lane's base (`95cd93423`) names this one and no other class. ⛔Not
   /// split to fit: the step is patched in here, and so is told here.
-  const longClasses = 78;
+  ///
+  /// ⚠️78 → 79 on 2026-10-29, ONE name: `_CompositeTreeWalk` crossed
+  /// (552 → 623) when a node whose chain reads rows came to be walked
+  /// (I-132 ⑫c, 🗣️Q21 a — a lens blur's blur map read where its row
+  /// shows): the rows painted afresh into the step that reads them
+  /// (`_painterOf`), the reader handed them (`_reading`), and the pen's
+  /// cells kept through it. 🔬`clean_code_diff` against master
+  /// (`32c32632f`) names this one and no other class. ⛔Not split to fit:
+  /// the walk is one recursion over the tree, and a node that reads rows is
+  /// one more kind of node in it.
+  const longClasses = 79;
 
   late CleanCodeScan scan;
   setUpAll(() {
