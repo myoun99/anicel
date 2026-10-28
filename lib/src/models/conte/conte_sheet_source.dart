@@ -132,7 +132,7 @@ class ConteDialogueLine {
   final String speaker;
 
   /// The line's delivery (I-20) — written after the speaker when the sheets
-  /// print it ([SeLineType.printsOnSheets]).
+  /// print it ([SeLineType.writtenOut]).
   final SeLineType delivery;
 
   /// The sheet's own rendering: `speaker「line」`, the shape a Japanese
@@ -143,7 +143,7 @@ class ConteDialogueLine {
   /// 표시하지않음」). A delivery with no speaker still says whose voice it is
   /// not: `(OFF)「line」`.
   String get printed {
-    final said = delivery.printsOnSheets ? '(${delivery.label})' : '';
+    final said = delivery.writtenOut ? '(${delivery.label})' : '';
     final who = '$speaker$said';
     return who.isEmpty ? text : '$who「$text」';
   }

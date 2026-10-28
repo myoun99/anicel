@@ -206,7 +206,7 @@ class TimesheetCell {
   final String? seName;
 
   /// SE drawing start cells only: the line's delivery (I-20) — the sheet
-  /// prints it over the name when [SeLineType.printsOnSheets] says so.
+  /// prints it over the name when [SeLineType.writtenOut] says so.
   final SeLineType? seType;
 
   /// What a [TimesheetCellKind.cameraKey] row writes for its key: the key's

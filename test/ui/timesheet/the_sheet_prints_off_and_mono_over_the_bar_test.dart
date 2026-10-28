@@ -146,21 +146,31 @@ void main() {
     ],
   );
 
-  testWidgets('F-386: a line spilling in prints its delivery in THIS cut over '
-      'the sheet\'s first row, with no name and no bar there', (tester) async {
+  // 🗣️F-496 (유저 2026-10-28): 「넘어간 다음 컷도 이름도 보이게 … S3라는
+  // 글자가 가려질수도있는데 그래도 문제없음」 — and its name over that row,
+  // as a line opening there wears it.
+  testWidgets('F-386 · F-496: a line spilling in prints its name over the '
+      'sheet\'s first row, and its delivery in THIS cut over the name',
+      (tester) async {
     final rowTop = TimesheetDocumentLayout(
       document: spillSheet(SeLineTypes.allOn),
     ).frameRowTop(0);
     final on = paint(spillSheet(SeLineTypes.allOn));
-    expect(on.rects, isEmpty, reason: '⛔premise: the name is cut 1\'s');
+    final nameBox = on.rects.single;
+    expect(nameBox.bottom, lessThan(rowTop), reason: 'over the first row');
+    expect(nameBox.top, greaterThan(rowTop - 18), reason: 'in the row above');
     for (final type in [SeLineType.off, SeLineType.mono]) {
       final painted = paint(spillSheet(SeLineTypes(byCut: {cut2: type})));
       expect(painted.offsets.length, on.offsets.length + 1, reason: type.name);
       final delivery = painted.offsets
           .where((offset) => !on.offsets.contains(offset))
           .single;
-      expect(delivery.dy, lessThan(rowTop), reason: '${type.name}: over it');
-      expect(delivery.dy, greaterThan(rowTop - 12), reason: 'right over it');
+      expect(
+        delivery.dy,
+        lessThan(nameBox.top),
+        reason: '${type.name}: over the name',
+      );
+      expect(delivery.dy, greaterThan(nameBox.top - 12), reason: 'right over');
     }
     expect(
       paint(
