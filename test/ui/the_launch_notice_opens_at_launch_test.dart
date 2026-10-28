@@ -11,6 +11,8 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
+import '../helpers/settle_async.dart';
+
 /// A dismissal kept in memory, read by every launch of a test.
 class _MemoryStore extends LaunchNoticeStore {
   _MemoryStore() : super(filePath: 'unused');
@@ -99,14 +101,19 @@ void main() {
     expect(_window, findsNothing);
   });
 
-  testWidgets('a test that hands none in sees no notice — and reads no '
-      'settings file for one', (tester) async {
+  testWidgets('a test that hands none in sees no notice', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       MaterialApp(theme: buildAppTheme(), home: const HomePage()),
     );
-    await tester.pump();
+    // Real time as well as pumped: a notice the app built for itself would
+    // read its settings file, and a pumped clock finishes no real read.
+    await lendBothClocks(
+      tester,
+      rounds: 10,
+      beat: const Duration(milliseconds: 50),
+    );
     await tester.pump(const Duration(milliseconds: 300));
     expect(_window, findsNothing);
   });
