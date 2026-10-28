@@ -41,8 +41,8 @@ void main() {
   const red = [200, 0, 0, 255];
   const green = [0, 200, 0, 255];
 
-  /// One opaque tile of [rgba] at [coord], 16 pixels a side.
-  BitmapSurface inkAt(TileCoord coord, List<int> rgba) {
+  /// Opaque tiles of [rgba] at [coords], 16 pixels a side.
+  BitmapSurface inkAt(List<TileCoord> coords, List<int> rgba) {
     final pixels = Uint8List(16 * 16 * 4);
     for (var i = 0; i < pixels.length; i += 4) {
       pixels.setRange(i, i + 4, rgba);
@@ -50,7 +50,10 @@ void main() {
     return BitmapSurface(
       canvasSize: canvasSize,
       tileSize: 16,
-      tiles: {coord: BitmapTile(size: 16, pixels: pixels)},
+      tiles: {
+        for (final coord in coords)
+          coord: BitmapTile(size: 16, pixels: Uint8List.fromList(pixels)),
+      },
     );
   }
 
@@ -101,14 +104,15 @@ void main() {
     );
     final cut = s.requireActiveCut;
     final store = s.renderCaches.brushFrameStore;
-    for (final (id, coord, rgba) in [
-      ('b', TileCoord(x: 1, y: 0), red),
-      ('a', TileCoord(x: 2, y: 0), green),
+    for (final (id, coords, rgba) in [
+      // A tile of b's past the canvas's left edge — a pan's background.
+      ('b', [TileCoord(x: 1, y: 0), TileCoord(x: -1, y: 0)], red),
+      ('a', [TileCoord(x: 2, y: 0)], green),
     ]) {
       bakeCelSurface(
         store,
         s.brushFrameKeyForCut(cut, LayerId(id), FrameId('$id-1')),
-        inkAt(coord, rgba),
+        inkAt(coords, rgba),
       );
     }
     s.rowSelection.value = const [
@@ -145,13 +149,17 @@ void main() {
     )!;
   }
 
-  /// [cel]'s pixel at canvas ([x], [y]).
-  List<int>? at(BitmapSurface cel, int x, int y) => pixelOf(
-    cel,
-    TileCoord(x: x ~/ cel.tileSize, y: y ~/ cel.tileSize),
-    x % cel.tileSize,
-    y % cel.tileSize,
-  );
+  /// [cel]'s pixel at canvas ([x], [y]) — past the canvas too.
+  List<int>? at(BitmapSurface cel, int x, int y) {
+    final size = cel.tileSize;
+    final (column, row) = ((x / size).floor(), (y / size).floor());
+    return pixelOf(
+      cel,
+      TileCoord(x: column, y: row),
+      x - column * size,
+      y - row * size,
+    );
+  }
 
   /// Whether the press has made the rows one and its window has gone.
   bool merged(EditorSessionManager s) =>
@@ -181,6 +189,7 @@ void main() {
     expect(cut.layers.first.frames, hasLength(1), reason: 'one picture');
     final cel = mergedCel(s);
     expect([at(cel, 20, 5), at(cel, 36, 5)], [red, green]);
+    expect(at(cel, -10, 5), red, reason: 'past the canvas, as it showed');
     expect(at(cel, 5, 5)?[3] ?? 0, 0, reason: 'nothing where neither drew');
     expect(s.rowSelection.value, isEmpty);
     expect(s.activeLayer?.id, const LayerId('a'));

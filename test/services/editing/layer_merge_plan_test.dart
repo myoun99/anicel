@@ -72,11 +72,15 @@ void main() {
     layers: layers,
   );
 
-  LayerMergePlan? merge(Cut cut, List<String> ids) {
+  LayerMergePlan? merge(
+    Cut cut,
+    List<String> ids, {
+    Set<String> linked = const {},
+  }) {
     final taking = takeRowsToMerge(
       cut: cut,
       selected: {for (final id in ids) LayerId(id)},
-      isLinked: (_) => false,
+      isLinked: (row) => linked.contains(row.id.value),
     );
     var minted = 0;
     return taking == null
@@ -368,6 +372,18 @@ void main() {
 
     expect(plan.result.id, const LayerId('a'));
     expect(plan.removed, [const LayerId('b')]);
+  });
+
+  test('a 겸용 row is passed over: another cut shows its cels', () {
+    final cut = cutOf([
+      row('c', {0: 'C1'}),
+      row('b', {0: 'B1'}),
+      row('a', {0: 'A1'}),
+    ]);
+
+    final plan = merge(cut, ['a', 'b', 'c'], linked: {'b'})!;
+
+    expect(plan.removed, [const LayerId('c')]);
   });
 
   test('a reference row is passed over: its file lies past the wall, where '
