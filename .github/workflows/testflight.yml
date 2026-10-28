@@ -104,10 +104,13 @@ jobs:
       # 1006 is rejected outright, and the rejection reads as a signing or
       # upload failure rather than as arithmetic. The offset puts this
       # workflow back above the stopgap for good (2026-09-22).
+      #
+      # Built through tool/release_build.sh, as every release is: it stamps
+      # the number and the commit the app's feedback forms read (I-139-Q5).
       - name: Build Flutter iOS artifacts
         run: |
-          flutter build ios --release --no-codesign \
-            --build-number=$(( ${{ github.run_number }} + 1000 ))
+          bash tool/release_build.sh ios \
+            $(( ${{ github.run_number }} + 1000 )) --no-codesign
 
       - uses: ruby/setup-ruby@v1
         with:

@@ -925,6 +925,10 @@ abstract final class EditorActionIds {
   static const keyboardShortcuts = 'edit-keyboard-shortcuts';
   static const preferences = 'edit-preferences';
   static const about = 'help-about';
+
+  /// 🗣️I-139 (유저 2026-10-28): 「의견 보내기」 under 「Anicel 정보」 — one row,
+  /// a window that chooses between the two feedback forms (I-139-Q2).
+  static const sendFeedback = 'help-send-feedback';
   static const inputInspector = 'edit-input-inspector';
   static const frameTimingOverlay = 'edit-frame-timing-overlay';
   static const frameStats = 'edit-frame-stats';
@@ -2168,6 +2172,13 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.about,
     label: 'About Anicel',
+    shelf: ShortcutShelf.settings,
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.sendFeedback,
+    label: 'Send Feedback',
     shelf: ShortcutShelf.settings,
     defaultActivators: [],
     menuRow: true,

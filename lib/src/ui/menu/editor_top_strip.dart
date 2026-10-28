@@ -42,6 +42,7 @@ import '../widgets/setting_source_button.dart';
 import '../widgets/strip_group_rule.dart';
 import '../dialogs/folder_pick_flow.dart';
 import '../dialogs/dialog_verb.dart';
+import '../dialogs/feedback_window.dart';
 import '../dialogs/preferences_dialog.dart';
 import '../dialogs/work_settings_window.dart';
 import '../debug/input_inspector.dart';
@@ -750,6 +751,13 @@ class EditorTopStrip extends StatelessWidget {
       icon: Icons.info_outline,
       onPressed: () =>
           showAboutDialog(context: context, applicationName: 'Anicel'),
+    ),
+    _item(
+      id: 'help-send-feedback',
+      label: editorActionLabel(EditorActionIds.sendFeedback),
+      shortcuts: const [EditorActionIds.sendFeedback],
+      icon: Icons.feedback_outlined,
+      onPressed: () => showFeedbackWindow(context),
     ),
   ];
 

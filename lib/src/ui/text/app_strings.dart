@@ -312,6 +312,10 @@ enum AppStrings {
   String get fpsAudioKeep => _s('fpsAudioKeep');
   String get fpsAudioPull => _s('fpsAudioPull');
 
+  // --- Send feedback (I-139): the two forms the window chooses between ---
+  String get feedbackTextOnly => _s('feedbackTextOnly');
+  String get feedbackWithFiles => _s('feedbackWithFiles');
+
   // --- The pending selection-move prompt (R17-①) ---
 
   /// Closes an open polygon outline. A tablet has no Enter key, so the
@@ -2091,6 +2095,8 @@ enum AppStrings {
         'These two rates differ by 0.1% in real speed, and audio exists in real seconds — it cannot stay both frame-exact and time-exact.\n\n• Keep audio timing: sounds keep their real seconds; their frame positions drift by 0.1% (about one frame every 42 seconds).\n\n• Pull audio 0.1%: sounds are resampled by the exact pulldown ratio (an inaudible pitch change — the standard telecine conform) so every sound keeps its exact frame span.',
     'fpsAudioKeep': 'Keep audio timing',
     'fpsAudioPull': 'Pull audio 0.1%',
+    'feedbackTextOnly': 'Text only',
+    'feedbackWithFiles': 'With screenshots / videos (Google sign-in)',
     'selectionClosePolygon': 'Close shape',
     'selectionInvert': 'Invert Selection Beyond Canvas',
     'selectionInvertInCanvas': 'Invert Selection in Canvas',
@@ -3371,6 +3377,8 @@ enum AppStrings {
         'この2つのレートは実速度が0.1%異なり、音は実時間で存在します — コマ厳密と時間厳密を両立することはできません。\n\n• 音のタイミングを維持：音は実時間を保ち、コマ位置が0.1%ずれます（約42秒ごとに1コマ）。\n\n• 音を0.1%プル：正確なプルダウン比でリサンプルします（聴き取れないピッチ変化 — テレシネの標準コンフォーム）。全ての音がコマ範囲を維持します。',
     'fpsAudioKeep': '音のタイミングを維持',
     'fpsAudioPull': '音を0.1%プル',
+    'feedbackTextOnly': 'テキストのみ',
+    'feedbackWithFiles': 'スクリーンショット・動画つき（Google ログイン）',
     'selectionClosePolygon': '形を閉じる',
     'selectionInvert': 'カンバス外も選択範囲を反転',
     'selectionInvertInCanvas': 'カンバス内で選択範囲を反転',
@@ -3591,6 +3599,7 @@ enum AppStrings {
     'menuAction.edit-knee-at-one': '画面解像度バッファ',
     'menuAction.edit-show-unpainted-tiles': '描画されなかったタイルを表示',
     'shortcutAction.help-about': 'Anicel について',
+    'shortcutAction.help-send-feedback': 'フィードバックを送る',
     'fileOpenTitle': 'プロジェクトを開く',
     'fileStorageOffNotice':
         'ストレージへのアクセスがオフです — アプリフォルダの外にある'
@@ -5111,6 +5120,8 @@ enum AppStrings {
         '두 레이트는 실제 속도가 0.1% 다르고, 소리는 실시간으로 존재합니다 — 프레임 정확과 시간 정확을 동시에 지킬 수 없습니다.\n\n• 오디오 타이밍 유지: 소리는 실시간을 지키고, 프레임 위치가 0.1% 어긋납니다(약 42초마다 1프레임).\n\n• 오디오 0.1% 당김: 정확한 풀다운 비율로 리샘플합니다(들리지 않는 피치 변화 — 텔레시네 표준 컨폼). 모든 소리가 프레임 범위를 유지합니다.',
     'fpsAudioKeep': '오디오 타이밍 유지',
     'fpsAudioPull': '오디오 0.1% 당김',
+    'feedbackTextOnly': '글만 보내기',
+    'feedbackWithFiles': '사진·동영상 포함 (Google 로그인)',
     'selectionClosePolygon': '도형 닫기',
     'selectionInvert': '캔버스 밖도 선택 반전',
     'selectionInvertInCanvas': '캔버스 안 선택 반전',
@@ -5326,6 +5337,7 @@ enum AppStrings {
     'menuAction.edit-knee-at-one': '화면 해상도 버퍼',
     'menuAction.edit-show-unpainted-tiles': '그려지지 않은 타일 표시',
     'shortcutAction.help-about': 'Anicel 정보',
+    'shortcutAction.help-send-feedback': '의견 보내기',
     'fileOpenTitle': '프로젝트 열기',
     'fileStorageOffNotice':
         '저장소 접근이 꺼져 있습니다 — 앱 폴더 바깥의 프로젝트에는 '
@@ -6843,6 +6855,8 @@ enum AppStrings {
         'Ces deux cadences diffèrent de 0,1 % en vitesse réelle, et le son existe en secondes réelles — il ne peut pas rester à la fois exact à l\'image et exact au temps.\n\n• Garder le timing audio : les sons gardent leurs secondes réelles ; leurs positions d\'image dérivent de 0,1 % (environ une image toutes les 42 secondes).\n\n• Tirer l\'audio de 0,1 % : les sons sont rééchantillonnés au rapport de pulldown exact (variation de hauteur inaudible — la conformation télécinéma standard) et chaque son garde sa plage d\'images exacte.',
     'fpsAudioKeep': 'Garder le timing audio',
     'fpsAudioPull': 'Tirer l\'audio de 0,1 %',
+    'feedbackTextOnly': 'Texte seul',
+    'feedbackWithFiles': 'Avec captures / vidéos (connexion Google)',
     'selectionClosePolygon': 'Fermer la forme',
     'selectionInvert': 'Inverser la sélection au-delà du canevas',
     'selectionInvertInCanvas': 'Inverser la sélection dans le canevas',
@@ -7071,6 +7085,7 @@ enum AppStrings {
     'menuAction.edit-knee-at-one': "Tampon à la résolution de l'écran",
     'menuAction.edit-show-unpainted-tiles': 'Afficher les tuiles non peintes',
     'shortcutAction.help-about': 'À propos de Anicel',
+    'shortcutAction.help-send-feedback': 'Envoyer un avis',
     'fileOpenTitle': 'Ouvrir un projet',
     'fileStorageOffNotice':
         "L'accès au stockage est désactivé — les projets hors du dossier de "
@@ -8695,6 +8710,8 @@ enum AppStrings {
         '这两个帧率的实际速度相差 0.1%，而声音存在于真实时间中 — 无法同时保持帧精确与时间精确。\n\n• 保持音频时间：声音保持真实秒数；帧位置漂移 0.1%（约每 42 秒一帧）。\n\n• 拉伸音频 0.1%：按精确的 pulldown 比例重采样（听不出的音高变化 — 电视电影的标准做法），每个声音保持其精确的帧范围。',
     'fpsAudioKeep': '保持音频时间',
     'fpsAudioPull': '拉伸音频 0.1%',
+    'feedbackTextOnly': '仅文字',
+    'feedbackWithFiles': '附截图 / 视频（需登录 Google）',
     'selectionClosePolygon': '闭合形状',
     'selectionInvert': '反选到画布之外',
     'selectionInvertInCanvas': '在画布内反选',
@@ -8898,6 +8915,7 @@ enum AppStrings {
     'menuAction.edit-knee-at-one': '屏幕分辨率缓冲区',
     'menuAction.edit-show-unpainted-tiles': '显示未绘制的图块',
     'shortcutAction.help-about': '关于 Anicel',
+    'shortcutAction.help-send-feedback': '发送反馈',
     'fileOpenTitle': '打开项目',
     'fileStorageOffNotice': '存储访问已关闭 — 应用文件夹之外的项目需要"所有文件"权限。',
     'fileOpenSettings': '打开设置',

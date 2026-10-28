@@ -72,18 +72,13 @@ jobs:
       # 2026-10-02: 「제일 높은 테스트플라이트 숫자로 통일」). Required here,
       # unlike the Mac's input: Linux has no numbering of its own to fall
       # back to. Read through env, never pasted into the script.
+      # tool/release_build.sh refuses one that is not digits, and stamps the
+      # number and the commit the feedback forms read (I-139-Q5).
       - name: Build Flutter Linux
         env:
           BUILD_NUMBER: ${{ inputs.build_number }}
         run: |
-          case "$BUILD_NUMBER" in
-            ''|*[!0-9]*)
-              echo "::error::build_number must be digits, got '$BUILD_NUMBER'"
-              exit 1
-              ;;
-          esac
-          echo "build number: $BUILD_NUMBER"
-          flutter build linux --release --build-number="$BUILD_NUMBER"
+          bash tool/release_build.sh linux "$BUILD_NUMBER"
 
       # The release path's parity check, as TestFlight and the Mac build run
       # it, but against the engine the bundle SHIPS. On Apple the engine is

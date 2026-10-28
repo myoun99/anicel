@@ -67,6 +67,10 @@ dependencies:
   # 그대로 — GPU 를 거치지 않는 디코더」). Already in the lock through pdf;
   # named here because lib now imports it.
   image: ^4.9.1
+  # The feedback forms open in the system browser (I-139). Already in the
+  # lock through pdfrx, every platform registered; named here because lib
+  # now imports it.
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:

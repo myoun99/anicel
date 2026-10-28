@@ -265,6 +265,28 @@ void main() {
     expect(find.byType(AboutDialog), findsOneWidget);
   });
 
+  testWidgets('Settings: Send Feedback stands right under About and opens '
+      'the window that chooses the form', (tester) async {
+    // 🗣️I-139 (유저 2026-10-28): 「환경설정의 애니셀정보 밑에 의견보내기」.
+    await pumpHome(tester);
+
+    await openStrip(tester, 'top-strip-settings-button');
+    final about = tester.getRect(
+      find.byKey(const ValueKey<String>('menu-help-about')),
+    );
+    final feedback = tester.getRect(
+      find.byKey(const ValueKey<String>('menu-help-send-feedback')),
+    );
+    expect(feedback.top, greaterThanOrEqualTo(about.bottom));
+    expect(feedback.left, about.left);
+
+    await tapEntry(tester, 'menu-help-send-feedback');
+    expect(
+      find.byKey(const ValueKey<String>('feedback-window')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('Settings: the workspace lives under PANELS — the switchboard '
       'and every layout choice', (tester) async {
     // 🗣️유저 2026-09-18 (`F-146-Q1`): 「그냥 패널 관련 싹 다야. **도구
