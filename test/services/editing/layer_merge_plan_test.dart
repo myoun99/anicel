@@ -748,13 +748,15 @@ void main() {
 
   /// 🗣️I-78-Q15 (유저 2026-10-28): 「참조도 그대로 병합한다」.
   group('a reference row is baked as it shows', () {
-    /// A reference row laying a [width] × [height] file at the canvas's
-    /// centre, shown there at [scale] and moved by [moves].
+    /// A reference row showing a [width] × [height] file at the canvas's
+    /// centre at [scale], moved by [moves] — its pixels laid [laidAt], at
+    /// the centre unless a test says otherwise.
     Layer still(
       int width,
       int height, {
       double scale = 1,
       TransformTrack? moves,
+      CanvasPoint? laidAt,
     }) {
       final centre = CanvasPoint(x: 32, y: 18);
       return row(
@@ -766,7 +768,7 @@ void main() {
         mediaReference: MediaReference(
           assetPath: 'paper.png',
           pose: TransformPose(center: centre, scaleX: scale, scaleY: scale),
-          laid: TransformPose(center: centre),
+          laid: TransformPose(center: laidAt ?? centre),
           pictureSize: CanvasSize(width: width, height: height),
         ),
       );
@@ -814,14 +816,22 @@ void main() {
         ),
       );
 
-      expect(
-        merge(around(still(640, 360, scale: 0.1)), ['a', 'still'])!.changes,
-        isEmpty,
-      );
+      for (final shownInside in [
+        still(640, 360, scale: 0.1),
+        still(64, 36, laidAt: CanvasPoint(x: 632, y: 18)),
+      ]) {
+        expect(merge(around(shownInside), ['a', 'still'])!.changes, isEmpty);
+      }
       expect(
         merge(around(still(64, 36, moves: moved)), ['a', 'still'])!.changes,
         {LayerMergeChange.wall},
       );
+    });
+
+    test('one not shown at a frame the merge draws cuts nothing', () {
+      final unshown = still(640, 360).copyWith(timeline: const {});
+
+      expect(merge(around(unshown), ['a', 'b', 'still'])!.changes, isEmpty);
     });
 
     test('a base worn hidden shows no file to cut', () {
