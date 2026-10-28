@@ -592,8 +592,10 @@ void main() {
 
   group('질문도 호스트와 함께 죽지 않는다', () {
     // 🚨THE SAME LAW AS THE CHECKS BELOW, asked of the QUESTION fold — which
-    // never got it. 실측 2026-09-12: eight questions sat in the 「어디에도 안
-    // 그려지는」 complaint, six of them already answered.
+    // got it only on 10-28 ([standQuestionsOfCardsOffTheBoard]); until then
+    // the gate named such a question instead. 실측 2026-09-12: eight
+    // questions sat in the 「어디에도 안 그려지는」 complaint, six of them
+    // already answered.
     //
     // ⛔A RULE-SPECIFIC MATCHER, not `isEmpty`. This fixture legitimately
     // trips other rules, so a pair written against the whole output would be
@@ -606,20 +608,63 @@ void main() {
     // and the rule never fires. 🧪It measured an empty room on the first
     // writing of this very test: the gate returned '' and both halves of the
     // pair passed for the same wrong reason.
-    List<String> board({required bool answered}) => [
+    List<String> board({required bool answered, String hostAt = '완료'}) => [
           '{"kind":"decision","id":"W-Q1","at":"질문","title":"물음",'
               '"where":"거기","why":"막혔다","options":[{"key":"1","label":"A"},'
               '{"key":"2","label":"B"}],"recommend":"1","ts":"${at('09:00')}"}',
           if (answered)
             '{"kind":"decision","id":"W-Q1","answer":"1",'
                 '"ts":"${at('10:00')}"}',
-          '{"kind":"item","id":"W","at":"완료","said":"끝",'
+          '{"kind":"item","id":"W","at":"$hostAt","said":"끝",'
               '"ts":"${at('11:00')}"}',
         ];
 
-    test('🚨★★★an UNANSWERED question whose host ended is NAMED — there is no '
-        'longer anywhere a person could reach it to answer it', () {
-      expect(complaintsFor(board(answered: false)), contains('W-Q1→W'));
+    // ⛔ASKED OF THE MODEL, as the checks' law is below: the folds and the
+    // gate read ONE predicate ([drawsWhatFoldsIn]), so a gate assertion
+    // moves with any mutant of it and measures an empty room.
+    BoardCard read(List<String> lines, String id) {
+      final file = File('${dir.path}/board.jsonl')
+        ..writeAsStringSync(lines.map((l) => '$l\n').join());
+      return readBoard(file, now: base.add(const Duration(hours: 2)))
+          .firstWhere((c) => c.id == id);
+    }
+
+    test('🚨★★★an UNANSWERED question whose host ended stands as its own '
+        'card — where a person can still reach it to answer it', () {
+      // 🧪onion-scrub-rebuilds-the-ghost-each-step-Q1 (10-28): its card ended
+      // by an 🤖AI 검증완료 with the question unanswered inside it, and the
+      // gate named it — the fold folded it into a card drawn nowhere.
+      final question = read(board(answered: false), 'W-Q1');
+      expect(question.foldedInto, isNull, reason: '호스트가 끝났으니 접히지 않는다');
+      expect(question.state, 'ask', reason: '그리고 질문 칸에 선다');
+      expect(
+        read(board(answered: false), 'W').log.where((l) => l.ask != null),
+        isEmpty,
+        reason: '끝난 카드는 그 질문을 더 지니지 않는다',
+      );
+      expect(
+        complaintsFor(board(answered: false)),
+        isNot(contains('끝나지도 않았는데')),
+      );
+    });
+
+    test('⛔but it DOES fold while its host is still on the board', () {
+      expect(read(board(answered: false, hostAt: '하는 중'), 'W-Q1').foldedInto,
+          'W');
+    });
+
+    test('a question folded into a question whose host ended stands too — '
+        'whichever of the two is read first', () {
+      // Decided for every question before any stands: the inner one's host
+      // was folded when the fold ran, so it is drawn nowhere.
+      final lines = [
+        ...board(answered: false),
+        '{"kind":"decision","id":"W-Q1-Q1","of":"W-Q1","at":"질문",'
+            '"title":"딸린 물음","where":"거기","why":"막혔다","options":['
+            '{"key":"1","label":"A"},{"key":"2","label":"B"}],'
+            '"recommend":"1","ts":"${at('10:30')}"}',
+      ];
+      expect(read(lines, 'W-Q1-Q1').foldedInto, isNull);
     });
 
     test('⛔but an ANSWERED one is not named — it is finished, and the writer '
@@ -628,6 +673,11 @@ void main() {
         complaintsFor(board(answered: true)),
         isNot(contains('끝나지도 않았는데')),
         reason: '두 게이트가 한 정의를 쓴다 — 답이 나온 질문은 끝난 것이다',
+      );
+      expect(
+        read(board(answered: true), 'W-Q1').foldedInto,
+        'W',
+        reason: '끝난 질문은 다시 서지 않는다 — 선다면 답한 것이 보드에 돌아온다',
       );
     });
 
@@ -647,8 +697,9 @@ void main() {
       // ⇒ The host has to be ended by its ANSWER *and* not folded itself.
       // That is a card carrying options — `cardAsks` asks about options, not
       // about the word `decision` — which an `item` id never gets folded by.
+      // ↩️10-28: it stands now rather than being named — asked of the model.
       expect(
-        complaintsFor([
+        read([
           '{"kind":"item","id":"W","at":"질문","title":"물음","where":"거기",'
               '"why":"막혔다","options":[{"key":"1","label":"A"},'
               '{"key":"2","label":"B"}],"recommend":"1","ts":"${at('09:00')}"}',
@@ -656,9 +707,9 @@ void main() {
           '{"kind":"decision","id":"W-Q1","at":"질문","title":"딸린 물음",'
               '"where":"거기","why":"막혔다","options":[{"key":"1","label":"A"},'
               '{"key":"2","label":"B"}],"recommend":"1","ts":"${at('11:00')}"}',
-        ]),
-        contains('W-Q1→W'),
-        reason: '답으로 끝난 호스트 안에 접힌 질문도 갈 곳이 없다',
+        ], 'W-Q1').foldedInto,
+        isNull,
+        reason: '답으로 끝난 호스트 안에 접힌 질문도 자기 카드로 선다',
       );
     });
   });

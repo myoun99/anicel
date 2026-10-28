@@ -1190,6 +1190,7 @@ class _Fold {
     for (final e in byId.values) {
       placeByStory(e);
     }
+    standQuestionsOfCardsOffTheBoard(byId);
     foldChecksIntoCards(byId, now);
     for (final e in byId.values) {
       placeByStory(e);
@@ -1555,6 +1556,18 @@ Map<String, String> endedCards(List<BoardCard> cards) => {
           c.id: '이미 답이 나온 질문',
     };
 
+/// Whether a card folded into [host] is drawn: [host] stands on the board
+/// itself — not ended ([ended], from [endedCards]) and not folded into
+/// another card.
+///
+/// 🚨ONE ANSWER for the folds that put a card inside another
+/// ([standQuestionsOfCardsOffTheBoard], [foldChecksIntoCards]) and for the
+/// gate that names a card drawn nowhere (board_check `_drawnNowhere`): a fold
+/// that decided it its own way could fold a card where the gate says nothing
+/// is drawn.
+bool drawsWhatFoldsIn(BoardCard host, Map<String, String> ended) =>
+    !ended.containsKey(host.id) && host.foldedInto == null;
+
 void foldQuestionsIntoCards(Map<String, BoardCard> byId, [DateTime? now]) {
   for (final q in byId.values.toList()) {
     if (!cardAsks(q)) continue;
@@ -1587,6 +1600,37 @@ void foldQuestionsIntoCards(Map<String, BoardCard> byId, [DateTime? now]) {
   }
   for (final e in byId.values) {
     sortByTime(e.log, now);
+  }
+}
+
+/// 🚨★★★A QUESTION NEVER GOES DOWN WITH ITS CARD — the law a check keeps
+/// ([foldChecksIntoCards]): another card finishing is not this question
+/// being answered. An unanswered question folded into a card that is not
+/// drawn stands as its own card again, where the user can still answer it.
+///
+/// 🧪onion-scrub-rebuilds-the-ghost-each-step-Q1 (10-28): its card ended by
+/// an 🤖AI 검증완료 — the user's own 확인 since 10-27 — with the question still
+/// unanswered inside it, drawn nowhere. The gate named it (board_check
+/// `_drawnNowhere`), and its tests had stated this law for questions since
+/// 09-12 (「질문도 호스트와 함께 죽지 않는다」); the fold never had it.
+///
+/// ⚠️AFTER the cards are placed, not in [foldQuestionsIntoCards]: a folded
+/// question is an entry that decides where its card stands, so whether that
+/// card ended is known only once it stands. ⚠️Decided for every question
+/// before any stands, so a question folded into a question stands whichever
+/// of the two is read first.
+void standQuestionsOfCardsOffTheBoard(Map<String, BoardCard> byId) {
+  final ended = endedCards(byId.values.toList());
+  final standing = [
+    for (final q in byId.values)
+      if (cardAsks(q) && !ended.containsKey(q.id))
+        if (byId[q.foldedInto] case final host?
+            when !drawsWhatFoldsIn(host, ended))
+          (q, host),
+  ];
+  for (final (q, host) in standing) {
+    host.log.removeWhere((entry) => entry.ask == q);
+    q.foldedInto = null;
   }
 }
 
@@ -1646,6 +1690,7 @@ void sortByTime(List<BoardLog> log, [DateTime? now]) {
 /// that names nothing IS its own card, and gets the 실기 확인 entry written
 /// onto itself so the section falls out of its story like every other card's.
 void foldChecksIntoCards(Map<String, BoardCard> byId, [DateTime? now]) {
+  final ended = endedCards(byId.values.toList());
   final byPr = <int, BoardCard>{};
   for (final e in byId.values) {
     for (final n in e.prs) {
@@ -1672,10 +1717,7 @@ void foldChecksIntoCards(Map<String, BoardCard> byId, [DateTime? now]) {
     //
     // ⇒ A check whose host has ended stands as its own card. That is what it
     // was before the fold and it is where a person can still act on it.
-    final hostGone = host != null &&
-        (host.state == 'archived' ||
-            host.state == 'deleted' ||
-            host.foldedInto != null);
+    final hostGone = host != null && !drawsWhatFoldsIn(host, ended);
     if (host != null && host.id != c.id && !hostGone) {
       c.foldedInto = host.id;
       host.log.add(BoardLog(at, '실기 확인', text.isEmpty ? c.id : text));

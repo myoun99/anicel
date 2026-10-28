@@ -870,8 +870,7 @@ Iterable<String> _drawnNowhere(List<BoardCard> cards, Set<String> acks) sync* {
     // The third: 「접힘」 means 「drawn INSIDE that card」. If that card is not
     // drawn, the sentence is false and this one is nowhere at all.
     final into = byId[host];
-    final shown =
-        into != null && !ended.containsKey(into.id) && into.foldedInto == null;
+    final shown = into != null && drawsWhatFoldsIn(into, ended);
     if (!shown) lost.add('${c.id}→$host');
   }
   if (lost.isEmpty) return;
