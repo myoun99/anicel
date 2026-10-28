@@ -13,29 +13,34 @@ import 'deferred_image_disposal.dart';
 /// that holds many tiles' ([TileSlot]) — the same premultiplied bytes
 /// either way, and the same pixels drawn 1:1.
 sealed class TilePicture {
-  TilePicture._(this.image, this.source);
+  TilePicture._(this.source);
 
-  final ui.Image image;
+  ui.Image get image;
   final ui.Rect source;
 }
 
 /// A tile's picture in a texture of its own: the door's upload
 /// ([pictureOf]), the pen-up handoff, or a picture carrying its chain.
 final class OwnTilePicture extends TilePicture {
-  OwnTilePicture(ui.Image image)
+  OwnTilePicture(this.image)
     : super._(
-        image,
         ui.Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
       );
+
+  @override
+  final ui.Image image;
 }
 
 /// A tile's picture as a slot of a page ([TilePages]).
 final class TileSlot extends TilePicture {
-  TileSlot._(_Page page, ui.Rect source)
-    : _page = page,
-      super._(page.image, source);
+  TileSlot._(this._page, ui.Rect source) : super._(source);
 
   final _Page _page;
+
+  /// The page, its writes not submitted yet submitted first — whatever
+  /// draws the slot draws its bytes ([TilePages._submitWrites]).
+  @override
+  ui.Image get image => _page.drawn;
 
   /// The tile let its picture go: the slot is dead, and its page with it
   /// once every slot of a page that takes no more is.
@@ -68,6 +73,16 @@ final class TileSlot extends TilePicture {
 /// is done just the same): 🔬a lay drawn right after the writes were
 /// submitted was 0 bytes apart from the tile-by-tile lay, on GLES (25
 /// films) and on Vulkan.
+///
+/// 🚨THE WRITES ARE SUBMITTED TOGETHER (2026-10-29): one buffer, one
+/// command buffer and one submit for every slot written until something
+/// draws one ([_Page.drawn]) or the buffer is full ([_stagingBytes]). A
+/// buffer, a command buffer and a submit a tile cost more than the door:
+/// on the Surface the first scrub step and the first ink after a flip
+/// came later than before the pages; 🔬400 tiles of 128² on the Windows
+/// app (GLES, profile), UI thread 40.4 ms a submit a tile, 28.3 the door,
+/// 22.0 together. ⛔Not submitted after the frame instead: the raster
+/// thread may draw the frame before anything after it runs.
 ///
 /// 🚨★★★A SLOT IS WRITTEN ONCE. A picture recorded earlier — a layer tree
 /// on screen, a `toImageSync` not rastered yet — holds the page and draws
@@ -134,34 +149,31 @@ class TilePages {
       return null;
     }
     final side = bytes.width;
+    final length = side * side * 4;
     try {
       final page = _pageWithRoomFor(context, side);
       final across = page.side ~/ side;
       final x = (page.written % across) * side;
       final y = (page.written ~/ across) * side;
-      bytes.readPremultiplied((premultiplied) {
-        // Copied into the buffer here, inside the read — the bytes may be
-        // a window onto native memory released when the read returns.
-        final buffer = context.createDeviceBufferWithCopy(
+      final staging = _stagingFor(context, length);
+      final at = _staged;
+      // Copied into the buffer here, inside the read — the bytes may be a
+      // window onto native memory released when the read returns.
+      final copied = bytes.readPremultiplied(
+        (premultiplied) => staging.overwrite(
           ByteData.sublistView(premultiplied),
-        );
-        context.createCommandBuffer()
-          ..copyBufferToTexture(
-            gpu.BufferView(
-              buffer,
-              offsetInBytes: 0,
-              lengthInBytes: premultiplied.lengthInBytes,
-            ),
-            gpu.TextureRegion(
-              page.texture,
-              x: x,
-              y: y,
-              width: side,
-              height: side,
-            ),
-          )
-          ..submit();
-      });
+          destinationOffsetInBytes: at,
+        ),
+      );
+      if (!copied) {
+        _context = null;
+        return null;
+      }
+      _staged += length;
+      (_writes ??= context.createCommandBuffer()).copyBufferToTexture(
+        gpu.BufferView(staging, offsetInBytes: at, lengthInBytes: length),
+        gpu.TextureRegion(page.texture, x: x, y: y, width: side, height: side),
+      );
       page.written += 1;
       page.live += 1;
       return TileSlot._(
@@ -179,6 +191,52 @@ class TilePages {
       _context = null;
       return null;
     }
+  }
+
+  /// The writes recorded and not submitted yet, and the buffer they copy
+  /// from, [_staged] bytes of it filled.
+  gpu.CommandBuffer? _writes;
+  gpu.DeviceBuffer? _staging;
+  int _staged = 0;
+
+  /// The most bytes written and not submitted: 64 tiles of 128².
+  static const int _stagingBytes = 4 << 20;
+
+  /// The buffer the next [length] bytes are copied into: the writes' own
+  /// while it has room, else a new one, the writes before submitted.
+  gpu.DeviceBuffer _stagingFor(gpu.GpuContext context, int length) {
+    final staging = _staging;
+    if (staging != null && _staged + length <= staging.sizeInBytes) {
+      return staging;
+    }
+    _submitWrites();
+    _staged = 0;
+    return _staging = context.createDeviceBuffer(
+      gpu.StorageMode.hostVisible,
+      math.max(length, _stagingBytes),
+    );
+  }
+
+  /// The writes recorded since the last submit, submitted as one — before
+  /// anything draws the slots they fill ([_Page.drawn]), so the GPU's one
+  /// queue takes them first.
+  void _submitWrites() {
+    final writes = _writes;
+    if (writes == null) {
+      return;
+    }
+    final staging = _staging!;
+    _writes = null;
+    _staging = null;
+    try {
+      staging.flush(lengthInBytes: _staged);
+      writes.submit();
+    } on Exception {
+      // As a write that throws: the door's own pictures from here on. The
+      // slots these writes filled stay unwritten.
+      _context = null;
+    }
+    _staged = 0;
   }
 
   _Page _pageWithRoomFor(gpu.GpuContext context, int side) {
@@ -212,6 +270,13 @@ class _Page {
   final TilePages _owner;
   final gpu.Texture texture;
   final ui.Image image;
+
+  /// [image] to draw: its owner's writes not submitted yet go first.
+  ui.Image get drawn {
+    _owner._submitWrites();
+    return image;
+  }
+
   final int side;
   final int capacity;
 
@@ -261,13 +326,14 @@ class _Page {
 /// ⛔Not a layer around the atlas: 🔬a layer of a multiply or a screen at
 /// alpha 128 is 1 apart itself, on Impeller.
 final class SlotsByPage {
-  final Map<ui.Image, ({List<ui.RSTransform> at, List<ui.Rect> from})>
-  _pages = Map.identity();
+  final Map<_Page, ({List<ui.RSTransform> at, List<ui.Rect> from})> _pages =
+      Map.identity();
 
-  /// [slot] to lay with its top-left at [origin].
+  /// [slot] to lay with its top-left at [origin] — its page's writes left
+  /// to submit together when the page is drawn ([drawInto]).
   void add(TileSlot slot, ui.Offset origin) {
     final laid = _pages.putIfAbsent(
-      slot.image,
+      slot._page,
       () => (at: <ui.RSTransform>[], from: <ui.Rect>[]),
     );
     laid.at.add(ui.RSTransform(1, 0, origin.dx, origin.dy));
@@ -278,7 +344,15 @@ final class SlotsByPage {
   /// them.
   void drawInto(ui.Canvas canvas, ui.Paint paint) {
     for (final MapEntry(key: page, value: laid) in _pages.entries) {
-      canvas.drawAtlas(page, laid.at, laid.from, null, null, null, paint);
+      canvas.drawAtlas(
+        page.drawn,
+        laid.at,
+        laid.from,
+        null,
+        null,
+        null,
+        paint,
+      );
     }
     _pages.clear();
   }
