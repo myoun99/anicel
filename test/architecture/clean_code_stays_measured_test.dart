@@ -1406,7 +1406,18 @@ void main() {
   /// `blurs`). 🔬`clean_code_diff` against the lane's base (`635015833`)
   /// names this one and no other class. ⛔Not split to fit: a brush's
   /// settings are one value, and the method is one more field of it.
-  const longClasses = 76;
+  ///
+  /// ⚠️76 → 77 on 2026-10-28, ONE name: `FramePictures` crossed (600 → 606)
+  /// when a frame's three questions — there, given up on, its red — came to
+  /// be read off one walk of its stack (`standingOf`, card frame-panels-
+  /// build-in-one-frame: the storyboard's bar walked every span of the film
+  /// two or three times whenever the panel was shown again). It stood AT
+  /// 600, and the ladder the three read is one helper now (`_stateAt`)
+  /// where `partsToMake` and `gaveUpAt` each wrote it. 🔬`clean_code_diff`
+  /// against the lane's base (`84a5c6197`) names this one and no other
+  /// class. ⛔Not split to fit: it is the one keeper of a frame's picture
+  /// and the key it is kept under.
+  const longClasses = 77;
 
   late CleanCodeScan scan;
   setUpAll(() {

@@ -243,9 +243,14 @@ class FramePictures implements PlaybackPictures {
   bool drawsOnlyItsPage(FramePictureKey key) => key.signature.nodes.isEmpty;
 
   /// Whether the making of [key]'s frame threw, and nothing more of it is
-  /// to come ([PictureState.gaveUp]).
-  bool gaveUpAt(FramePictureKey key) =>
-      !_isThere(key) && _gaveNothing.containsKey(key);
+  /// to come.
+  bool gaveUpAt(FramePictureKey key) => _stateAt(key) == PictureState.gaveUp;
+
+  PictureState _stateAt(FramePictureKey key) => _isThere(key)
+      ? PictureState.there
+      : _gaveNothing.containsKey(key)
+      ? PictureState.gaveUp
+      : PictureState.toCome;
 
   /// 🚨A FRAME WHOSE PICTURE A CANVAS HOLDS AS ITS OWN IS THERE — lent while
   /// the canvas shows what no cel stores over it ([FramePictureKey
@@ -266,23 +271,15 @@ class FramePictures implements PlaybackPictures {
   @override
   Set<Object> partsToMake(DemandedPicture picture) {
     final key = keyOf(picture);
-    return _isThere(key) || _gaveNothing.containsKey(key) ? {} : {key};
+    return _stateAt(key) == PictureState.toCome ? {key} : {};
   }
 
-  /// The frame's key and its red off one walk of its stack: a cel it shows
-  /// that could not be read at the content it has now
-  /// ([LayerFrameImageCache.unreadable]) — the ruler's bar paints the frame
-  /// red, as it plays without that cel.
+  /// Its red: a cel it shows that [LayerFrameImageCache.unreadable] holds.
   @override
   PictureStanding standingOf(DemandedPicture picture) {
     final nodes = stackOf(picture);
-    final key = keyOfStack(nodes, picture);
     return (
-      state: _isThere(key)
-          ? PictureState.there
-          : _gaveNothing.containsKey(key)
-          ? PictureState.gaveUp
-          : PictureState.toCome,
+      state: _stateAt(keyOfStack(nodes, picture)),
       cannotRead: stackedCelsOf(nodes).any(layerImages.unreadable.has),
     );
   }
