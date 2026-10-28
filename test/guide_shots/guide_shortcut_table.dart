@@ -1,22 +1,26 @@
 // The guide's shortcut page, written from the app's own shortcut list: its
-// presets, and under each its groups, its names and the keys that preset
-// ships with, in the order the shortcut window shows them.
+// groups and its names, in the order the shortcut window shows them, and
+// beside the language folders `keys.json`, the keys every preset ships with.
 //
 // 유저 2026-10-03: 「단축키 바뀔경우 많을텐데 낡지않을구존가? 프로들하는거처럼?」
 // — a page that copies keys by hand is wrong the day a default moves. Here
-// the page names nothing by hand: re-making the guide re-writes the tables,
-// the way a product's docs read its keymap.
+// the page names nothing by hand: re-making the guide re-writes the tables
+// and the keymap, the way a product's docs read its keymap.
 //
-// Each key goes in twice, as the app itself spells it on a PC and on a Mac or
-// an iPad (`singleActivatorLabel` — Ctrl+Z / ⌘Z), and the page shows the
-// reader's own. Only the part between the two markers is written; the rest of
-// the page stays the guide's own text, edited by hand.
+// A page names an action, never its key (`<span data-k="edit-undo">`); the
+// guide fills it from `keys.json` for the preset the reader picked, as the
+// app itself spells it on a PC and on a Mac or an iPad
+// (`singleActivatorLabel` — Ctrl+Z / ⌘Z). Only the part between the two
+// markers is written; the rest of the page stays the guide's own text,
+// edited by hand.
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show TargetPlatform;
 import 'package:flutter/widgets.dart' show SingleActivator;
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
+import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
     show editorActionLabel;
 import 'package:anicel/src/ui/shortcuts/shortcut_activator_codec.dart';
@@ -55,10 +59,69 @@ void writeShortcutTable(String guideRoot, AppLanguage language) {
   );
 }
 
-/// Every action that ships with a key, one table per shelf, under each
-/// shortcut preset's name (I-63, 유저 2026-10-03: 「이를 가이드페이지에도 두
-/// 프리셋별로 낡지않게 단축키 보여주도록」), in [language]. The keys are the
-/// ones the shortcut window shows for that preset ([presetActivators]).
+/// The keys every preset ships, as `keys.json` beside the language folders:
+/// what each page's `<span data-k="<action id>">` is filled from, for the
+/// preset the reader picks, as a language is picked (유저 2026-10-28:
+/// 「한국어/일본어 고르듯이 단축키도 프리셋 3종 변환해서 보이게 … 3종마다
+/// 페이지 만드는게아니라 연결해서 그 단축키만 자동으로 바뀌도록」). It opens on
+/// the preset an install opens on — asked of the app, not written here.
+///
+/// Each key is a pair, as a PC and as a Mac or an iPad spell it.
+void writeShortcutKeymap(String guideRoot) {
+  final keys = <String, Map<String, List<List<String>>>>{};
+  for (final definition in editorActionDefinitions) {
+    for (final preset in ShortcutPreset.values) {
+      final pairs = [
+        for (final activator in presetActivators(preset, definition))
+          [
+            _spelling(activator, TargetPlatform.windows),
+            _spelling(activator, TargetPlatform.macOS),
+          ],
+      ];
+      if (pairs.isNotEmpty) {
+        (keys[definition.id] ??= {})[preset.name] = pairs;
+      }
+    }
+  }
+  final before = AppText.settings.value;
+  final names = <String, Map<String, String>>{};
+  final or = <String, String>{};
+  try {
+    for (final language in _guideLanguages) {
+      AppText.settings.value = AppLanguageSettings(
+        programLanguage: language,
+        notationLanguage: language,
+      );
+      names[language.name] = {
+        for (final preset in ShortcutPreset.values)
+          preset.name: AppText.strings.shortcutPresetName(
+            preset.name,
+            preset.label,
+          ),
+      };
+      or[language.name] = _wordsOf(language).or;
+    }
+  } finally {
+    AppText.settings.value = before;
+  }
+  File('$guideRoot/keys.json').writeAsStringSync(
+    const JsonEncoder.withIndent(' ').convert({
+      'default': EditorShortcutBindings().preset.base.name,
+      'presets': [for (final preset in ShortcutPreset.values) preset.name],
+      'names': names,
+      'or': or,
+      'keys': keys,
+    }),
+  );
+}
+
+/// The languages the guide is written in — one folder each.
+const _guideLanguages = [AppLanguage.ko, AppLanguage.ja, AppLanguage.en];
+
+/// Every action that ships with a key in any preset, one table per shelf,
+/// in [language] (I-63, 유저 2026-10-03: 「이를 가이드페이지에도 두
+/// 프리셋별로 낡지않게 단축키 보여주도록」). The key column names the action
+/// ([writeShortcutKeymap]): the page shows the keys of the preset picked.
 String shortcutTableMarkdown(AppLanguage language) {
   final before = AppText.settings.value;
   AppText.settings.value = AppLanguageSettings(
@@ -67,36 +130,29 @@ String shortcutTableMarkdown(AppLanguage language) {
   );
   try {
     final out = StringBuffer();
-    for (final preset in ShortcutPreset.values) {
-      final name = AppText.strings.shortcutPresetName(
-        preset.name,
-        preset.label,
-      );
-      out
-        ..writeln()
-        ..writeln('## ${_html(name)}');
-      _writeGroups(out, preset, _wordsOf(language));
-    }
+    _writeGroups(out, _wordsOf(language));
     return out.toString();
   } finally {
     AppText.settings.value = before;
   }
 }
 
-/// [preset]'s tables, one per shelf that has a key in it, headed by the
-/// shelves from its place down — 「캔버스 › 도구」, as the window nests them.
+/// The tables, one per shelf that has a key in it in some preset, headed by
+/// the shelves from its place down — 「캔버스 › 도구」, as the window nests
+/// them.
 void _writeGroups(
   StringBuffer out,
-  ShortcutPreset preset,
   ({String action, String key, String or}) words,
 ) {
   final groups = <ShortcutShelf, List<String>>{};
   for (final definition in editorActionDefinitions) {
-    final keys = presetActivators(preset, definition).map(_key);
-    if (keys.isNotEmpty) {
+    final shipped = ShortcutPreset.values.any(
+      (preset) => presetActivators(preset, definition).isNotEmpty,
+    );
+    if (shipped) {
       (groups[definition.shelf] ??= []).add(
         '| ${_cell(editorActionLabel(definition.id))} '
-        '| ${keys.join(' ${words.or} ')} |',
+        '| <span data-k="${_html(definition.id)}"></span> |',
       );
     }
   }
@@ -119,18 +175,8 @@ void _writeGroups(
   }
 }
 
-/// One key, as the app writes it on a PC and on a Mac or an iPad — one
-/// `<kbd>` when the two agree, both (the page hides the other) when not.
-String _key(SingleActivator activator) {
-  final pc = _spelling(activator, TargetPlatform.windows);
-  final mac = _spelling(activator, TargetPlatform.macOS);
-  if (pc == mac) {
-    return '<kbd>${_html(pc)}</kbd>';
-  }
-  return '<kbd class="k-pc">${_html(pc)}</kbd>'
-      '<kbd class="k-mac">${_html(mac)}</kbd>';
-}
-
+/// One key as the app writes it on [platform] (`singleActivatorLabel` —
+/// Ctrl+Z / ⌘Z).
 String _spelling(SingleActivator activator, TargetPlatform platform) =>
     singleActivatorLabel(platformActivator(activator, platform), platform);
 

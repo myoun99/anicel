@@ -61,6 +61,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/app_window.dart' show AppWindow;
+import 'package:anicel/src/ui/widgets/empty_state_text.dart';
 
 import '../helpers/app_faces.dart';
 import '../helpers/home_page_probes.dart' show tapToolbarButton;
@@ -769,6 +770,369 @@ Rect keyed(WidgetTester tester, List<String> prefixes) {
   return all!;
 }
 
+/// Where the one widget keyed or named exactly [handle] stands.
+Rect handleRect(WidgetTester tester, String handle) {
+  final found = find.byElementPredicate((e) {
+    final key = e.widget.key;
+    return (key is ValueKey<String> && key.value == handle) ||
+        nameOf(e) == handle;
+  });
+  return tester.getRect(found.first);
+}
+
+/// Each of [handles] as a picture of its own, `icon-<handle>.png` — a
+/// button's face for the table row that says what it does (law-사이트,
+/// 유저 2026-10-28: 「도구 막대 이런거 브러시 설명같은거 다 브러시 아이콘 스샷
+/// 첨부해서 설명하면 알기쉬우니까 최대한 스샷으로」).
+Future<void> iconShots(WidgetTester tester, List<String> handles) async {
+  for (final handle in handles) {
+    await shot(
+      tester,
+      'icon-$handle',
+      rect: handleRect(tester, handle),
+      ratio: 2,
+    );
+  }
+}
+
+/// The panel rail group [railId] holds, as `<name>.png`: alone on its rail
+/// and as tall as what it shows, up to the rail — then the rail as it was.
+///
+/// Open under its neighbour, a lower panel ran past the rail's bottom and
+/// its picture came out cut off below its first two rows.
+Future<void> railPanelShot(
+  WidgetTester tester,
+  String railId,
+  String name,
+) => _aloneOnRail(tester, railId, () => _grownShot(tester, railId, name));
+
+/// Each of [tabs] of the rail group [railId] as `panel-<tab>.png`, alone on
+/// its rail as in [railPanelShot] — and the group back on its first tab,
+/// the one every group ships on.
+Future<void> railTabShots(
+  WidgetTester tester,
+  String railId,
+  List<String> tabs,
+) => _aloneOnRail(tester, railId, () async {
+  for (final tab in tabs) {
+    await tester.tap(byKey('panel-tab-$tab'));
+    await settleReal(tester, 4);
+    await _grownShot(tester, railId, 'panel-$tab');
+  }
+  await tester.tap(byKey('panel-tab-${tabs.first}'));
+  await settleReal(tester, 4);
+});
+
+/// Runs [shoot] with the rail group [railId] the one open on its rail, then
+/// opens and shuts the groups back as they were.
+Future<void> _aloneOnRail(
+  WidgetTester tester,
+  String railId,
+  Future<void> Function() shoot,
+) async {
+  final toggled = [
+    ..._openRailGroups(railId.substring(0, 'rail-L'.length))
+        .where((id) => id != railId),
+    if (byKey('rail-group-body-$railId').evaluate().isEmpty) railId,
+  ];
+  for (final id in toggled) {
+    await tester.tap(byKey(railGroupButtonKey(id)));
+    await tester.pump();
+  }
+  await settleReal(tester);
+  await shoot();
+  for (final id in toggled) {
+    await tester.tap(byKey(railGroupButtonKey(id)));
+    await tester.pump();
+  }
+  await settleReal(tester, 4);
+}
+
+/// The open rail group [railId] as `<name>.png`, pulled as tall as what it
+/// shows for the picture and put back after.
+Future<void> _grownShot(
+  WidgetTester tester,
+  String railId,
+  String name,
+) async {
+  final body = byKey('rail-group-body-$railId');
+  final grip = byKey('dock-resize-$railId-height');
+  final before = tester.getRect(body).height;
+  final hidden = _hiddenBelow(body);
+  if (hidden > 0) {
+    await tester.drag(grip, Offset(0, hidden));
+    await settleReal(tester, 4);
+  }
+  await shot(tester, name, rect: tester.getRect(body), ratio: 2);
+  final grown = tester.getRect(body).height - before;
+  if (grown > 0) {
+    await tester.drag(grip, Offset(0, -grown));
+    await settleReal(tester, 4);
+  }
+}
+
+/// The rail groups open on the rail whose ids start with [side].
+List<String> _openRailGroups(String side) => [
+  for (final element in find.byElementPredicate((e) {
+    final key = e.widget.key;
+    return key is ValueKey<String> &&
+        key.value.startsWith('rail-group-body-$side');
+  }).evaluate())
+    (element.widget.key! as ValueKey<String>).value.substring(
+      'rail-group-body-'.length,
+    ),
+];
+
+/// How much of what [body] shows lies below its bottom: the most any one
+/// of its up-and-down scrollers can still scroll.
+double _hiddenBelow(Finder body) => [
+  0.0,
+  for (final element in find
+      .descendant(of: body, matching: find.byType(Scrollable))
+      .evaluate())
+    if ((element as StatefulElement).state case final ScrollableState s
+        when s.position.axis == Axis.vertical)
+      s.position.maxScrollExtent,
+].reduce(math.max);
+
+/// The tool rail's buttons, top to bottom: the history and view buttons,
+/// then the tools.
+const railButtons = [
+  'undo-button',
+  'redo-button',
+  'rail-onion-skin-button',
+  'rail-deselect-button',
+  'rail-confirm-button',
+  'rail-visibility-solo-button',
+];
+const toolNames = [
+  'brush',
+  'eraser',
+  'eyedropper',
+  'fill',
+  'text',
+  'shape',
+  'guide',
+  'select',
+  'move',
+  'cut',
+];
+
+/// Every tool rail button's face, and for each tool the two panels that
+/// follow it — its library (rail-L1) and its settings (rail-L2) — as
+/// `tool-<name>-library.png` · `tool-<name>-settings.png`. A library that
+/// says it holds nothing is not pictured.
+Future<void> toolShots(WidgetTester tester) async {
+  await iconShots(tester, [
+    ...railButtons,
+    for (final tool in toolNames) 'tool-$tool-button',
+  ]);
+  for (final tool in toolNames) {
+    // The eraser's two panels are the brush's, pixel for pixel.
+    if (tool == 'eraser') {
+      continue;
+    }
+    await tester.tap(byKey('tool-$tool-button'));
+    await settleReal(tester, 4);
+    // With no guide the guide tool's two panels are an empty line each:
+    // one of each kind, the perspective one picked, shows what they hold.
+    final made = tool == 'guide' ? await _addGuides(tester) : 0;
+    final saysEmpty = find
+        .descendant(
+          of: byKey('rail-group-body-rail-L1'),
+          matching: find.byType(EmptyStateText),
+        )
+        .evaluate()
+        .isNotEmpty;
+    if (!saysEmpty) {
+      await railPanelShot(tester, 'rail-L1', 'tool-$tool-library');
+    }
+    await railPanelShot(tester, 'rail-L2', 'tool-$tool-settings');
+    for (var i = 0; i < made; i += 1) {
+      await tester.tap(byKey('undo-button'));
+      await settleReal(tester, 4);
+    }
+  }
+  final guidesLeft = find.byElementPredicate((e) {
+    final key = e.widget.key;
+    return key is ValueKey<String> && key.value.startsWith('guide-row-');
+  });
+  if (guidesLeft.evaluate().isNotEmpty) {
+    throw StateError('the guides made for the guide tool outlived its shots');
+  }
+  await tester.tap(byKey('tool-brush-button'));
+  await settleReal(tester, 4);
+}
+
+/// Every rail button's face; the right rail's panels tab by tab — the
+/// colour panel's three ways of picking, the onion skin and the tool size;
+/// and the canvas's view pill with each of its buttons.
+Future<void> panelShots(WidgetTester tester) async {
+  await iconShots(tester, [for (final id in railIds) railGroupButtonKey(id)]);
+  await railTabShots(tester, 'rail-R1', [
+    'color-wheel',
+    'color-rgb',
+    'color-palette',
+  ]);
+  await railTabShots(tester, 'rail-R4', ['onion-skin', 'tool-size']);
+  // A sheet panel carries a canvas and a view pill of its own, the same
+  // buttons under the same keys: with every rail group shut, the floor's
+  // is the only one.
+  final open = _openRailGroups('rail-');
+  for (final id in open) {
+    await tester.tap(byKey(railGroupButtonKey(id)));
+    await tester.pump();
+  }
+  await settleReal(tester);
+  await shot(
+    tester,
+    'view-pill',
+    rect: keyed(tester, viewButtons).inflate(6),
+    ratio: 2,
+  );
+  await iconShots(tester, viewButtons);
+  for (final id in open) {
+    await tester.tap(byKey(railGroupButtonKey(id)));
+    await tester.pump();
+  }
+  await settleReal(tester, 4);
+}
+
+/// The rail groups as they ship, left then right, top to bottom.
+const railIds = [
+  'rail-L1',
+  'rail-L2',
+  'rail-R1',
+  'rail-R2',
+  'rail-R3',
+  'rail-R4',
+  'rail-R5',
+];
+
+/// The canvas view pill's buttons, left to right.
+const viewButtons = [
+  'canvas-viewport-fit',
+  'canvas-viewport-reset',
+  'canvas-viewport-zoom-out',
+  'canvas-viewport-zoom-in',
+  'canvas-viewport-rotate-ccw',
+  'canvas-viewport-rotate-cw',
+  'canvas-viewport-rotate-reset',
+  'canvas-viewport-flip',
+  'canvas-viewport-flip-vertical',
+  'canvas-paper-color-button',
+  'canvas-pasteboard-color-button',
+  'canvas-backdrop-color-button',
+];
+
+/// The timeline's command pills — each whole, each button's face, and the
+/// menu the layer pill opens from its name — and the transport buttons
+/// beside them.
+Future<void> timelineShots(WidgetTester tester) async {
+  for (final pill in ['layer', 'frame', 'shared']) {
+    await shot(
+      tester,
+      'pill-$pill',
+      rect: handleRect(tester, 'timeline-toolbar-$pill-group').inflate(2),
+      ratio: 2,
+    );
+  }
+  await iconShots(tester, [
+    'timeline-toolbar-add-layer-button',
+    ...framePillButtons,
+    ...sharedPillButtons,
+    ...transportButtons,
+  ]);
+  await tester.tap(byKey('timeline-layer-menu-button'));
+  await settleReal(tester, 4);
+  await shot(
+    tester,
+    'menu-layer',
+    rect: keyed(tester, [
+      'timeline-layer-menu-button',
+      'timeline-detach-layer-button',
+      'timeline-rasterize-layer-button',
+      'toggle-storyboard-layer-button',
+    ]).inflate(8),
+    ratio: 2,
+  );
+  await closeWindow(tester);
+}
+
+/// The ball layer's row in the rail, its cells from the label to the
+/// blend, as `layer-row.png`; and the top strip's two menus, each open
+/// under its button, as `menu-project.png` · `menu-settings.png`.
+Future<void> rowAndMenuShots(WidgetTester tester) async {
+  await shot(
+    tester,
+    'layer-row',
+    rect: handleRect(tester, 'timeline-layer-row-$ballLayer').inflate(2),
+    ratio: 2,
+  );
+  for (final menu in ['project', 'settings']) {
+    await tester.tap(byKey('top-strip-$menu-button'));
+    await settleReal(tester, 4);
+    await shot(
+      tester,
+      'menu-$menu',
+      rect: keyed(tester, ['top-strip-$menu-button', 'menu-']).inflate(8),
+      ratio: 2,
+    );
+    await closeWindow(tester);
+  }
+}
+
+/// The frame pill's buttons, left to right.
+const framePillButtons = [
+  'new-frame-button',
+  'blank-exposure-button',
+  'auto-frame-toggle-button',
+  'toggle-mark-one-button',
+  'toggle-mark-button',
+  'mark-every-button',
+  'push-blocks-button',
+  'pull-blocks-button',
+  'set-comma-1-button',
+  'set-comma-2-button',
+  'set-comma-3-button',
+  'set-comma-4-button',
+  'set-comma-n-button',
+];
+
+/// The shared pill's buttons, left to right.
+const sharedPillButtons = [
+  'shared-edit-button',
+  'shared-auto-name-button',
+  'shared-cut-button',
+  'shared-copy-button',
+  'shared-paste-independent-button',
+  'shared-paste-linked-button',
+  'shared-unlink-button',
+  'shared-duplicate-button',
+  'shared-merge-button',
+  'shared-delete-button',
+  'shared-colour-edit-button',
+];
+
+/// The timeline's transport, left to right.
+const transportButtons = [
+  'playback-skip-to-start-button',
+  'playback-play-button',
+  'playback-loop-toggle',
+  'timeline-camera-view-button',
+  'playback-record-voice-button',
+];
+
+/// One symmetry guide and one perspective guide, the second picked as an
+/// added guide is: how many undos take them away again.
+Future<int> _addGuides(WidgetTester tester) async {
+  await tester.tap(byKey('guide-add-symmetry'));
+  await settleReal(tester, 4);
+  await tester.tap(byKey('guide-add-perspective'));
+  await settleReal(tester, 4);
+  return 2;
+}
+
 /// How wide a menu's picture is: the menu and the rows it was opened over.
 const menuShotWidth = 820.0;
 
@@ -815,7 +1179,10 @@ void guideShots(AppLanguage language) {
 
   test(
     'guide shortcuts, ${language.name}',
-    () => writeShortcutTable(outRoot, language),
+    () {
+      writeShortcutTable(outRoot, language);
+      writeShortcutKeymap(outRoot);
+    },
   );
 
   testWidgets(
@@ -838,6 +1205,8 @@ void guideShots(AppLanguage language) {
       await settleReal(tester);
       await shot(tester, 'overview');
       await shot(tester, 'toolbar', rect: toolbarRow(tester), ratio: 2);
+      await toolShots(tester);
+      await panelShots(tester);
 
       // The panels' edges, pointed at: lit where a drag resizes.
       await hoverShot(
@@ -863,6 +1232,8 @@ void guideShots(AppLanguage language) {
         ),
       );
       await shot(tester, 'timeline', rect: timelineRows(tester), ratio: 2);
+      await timelineShots(tester);
+      await rowAndMenuShots(tester);
 
       // The conte layer: its row stood on, in its second panel.
       s.selectLayer(conte1);
