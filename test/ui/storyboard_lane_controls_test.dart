@@ -19,8 +19,6 @@ import 'package:anicel/src/ui/text/vertical_writing_text.dart'
     show VerticalWritingText;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show PropertyLaneEditCallbacks;
-import 'package:anicel/src/ui/timeline/se_audio_lane.dart'
-    show TimelineAudioLaneCallbacks;
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks;
 import 'package:anicel/src/models/project.dart';
@@ -108,8 +106,6 @@ Future<void> _pumpPanel(
   void Function(LayerId layerId, double opacity)? onLayerOpacityChanged,
   StoryboardRowFramePress? onRowFramePress,
   TimelineCommaDragCallbacks? seCommaDrag,
-  void Function(LayerId layerId, int clipIndex, int offsetFrames)?
-  onSetAudioClipOffset,
   PropertyLaneEditCallbacks? Function(Track track)? trackLaneEditFor,
   PropertyLaneEditCallbacks? layerLaneEdit,
   ValueListenable<int?>? playheadFrame,
@@ -148,11 +144,6 @@ Future<void> _pumpPanel(
             onOpenLayerMixer: onOpenLayerMixer,
             onLayerOpacityChanged: onLayerOpacityChanged,
             seCommaDrag: seCommaDrag,
-            audioLane: onSetAudioClipOffset == null
-                ? null
-                : TimelineAudioLaneCallbacks(
-                    onSetClipOffset: onSetAudioClipOffset,
-                  ),
             trackFxStateOf: trackFxStateOf,
             onToggleTrackFx: onToggleTrackFx,
           ),
@@ -191,7 +182,7 @@ void main() {
     await _pumpPanel(tester, project: _projectWithAChain());
 
     const laneToggle = ValueKey<String>('legend-lanes-toggle');
-    const seLane = ValueKey<String>('storyboard-se-lane-row-0-1-se-audio');
+    const seLane = ValueKey<String>('storyboard-se-lane-row-0-1-sound-group');
 
     // The V row's own state is read off its chevron: its lanes are its fx
     // chain.
@@ -264,7 +255,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(
-      find.byKey(const ValueKey<String>('storyboard-se-lane-row-0-1-se-audio')),
+      find.byKey(const ValueKey<String>('storyboard-se-lane-row-0-1-sound-group')),
       findsOneWidget,
     );
 
@@ -272,7 +263,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(const ValueKey<String>('storyboard-se-lane-row-0-1-se-audio')),
+      find.byKey(const ValueKey<String>('storyboard-se-lane-row-0-1-sound-group')),
       findsNothing,
     );
     expect(
@@ -399,12 +390,14 @@ void main() {
     );
   });
 
-  testWidgets('the S-row chevron twirls down the audio lane plus its OWN '
+  testWidgets('the S-row chevron twirls down its 「오디오」 group plus its OWN '
       'Transform group on the active cut\'s slot layer', (tester) async {
     await _pumpPanel(tester, project: _project());
 
     expect(
-      find.byKey(const ValueKey<String>('storyboard-se-lane-row-0-1-se-audio')),
+      find.byKey(
+        const ValueKey<String>('storyboard-se-lane-row-0-1-sound-group'),
+      ),
       findsNothing,
     );
 
@@ -413,30 +406,19 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(
-      find.byKey(const ValueKey<String>('storyboard-se-lane-row-0-1-se-audio')),
+      find.byKey(
+        const ValueKey<String>('storyboard-se-lane-row-0-1-sound-group'),
+      ),
       findsOneWidget,
     );
     expect(
       find.byKey(
-        const ValueKey<String>('storyboard-lane-label-lane-se-se-audio'),
+        const ValueKey<String>('storyboard-lane-label-lane-se-sound-group'),
       ),
       findsOneWidget,
     );
-    // The lane carries the clip's enlarged waveform span — the REUSED
-    // timeline Audio lane substrate ('완벽통일': its span keys ride the
-    // storyboard-<layerId> prefix now that the lane mounts once across
-    // the track).
-    expect(
-      find.byKey(
-        const ValueKey<String>(
-          'storyboard-lane-se-audio-lane-span-lane-se-0-b0',
-        ),
-      ),
-      findsOneWidget,
-    );
-
     // F-101: the timeline's own list — the Name Tag group sits between the
-    // Audio lane and the Transform group, collapsed like it.
+    // 「오디오」 group and the Transform group, collapsed like it.
     expect(
       find.byKey(
         const ValueKey<String>('storyboard-lane-label-lane-se-name-tag-group'),
@@ -444,7 +426,7 @@ void main() {
       findsOneWidget,
     );
 
-    // Audio leads; the Transform group header sits BELOW it, collapsed.
+    // The sound leads; the Transform group header sits BELOW it, collapsed.
     expect(
       find.byKey(
         const ValueKey<String>('storyboard-lane-label-lane-se-transform-group'),
@@ -625,8 +607,8 @@ void main() {
 
   // I-89 ① ⓕ (2026-10-20): the timeline SE row's own strips. ↩️The row
   // read its sounds on its own, and drew no gain and no fade.
-  testWidgets('an S row\'s sound wears its gain and its fades, as the '
-      'timeline row\'s does', (tester) async {
+  testWidgets('an S row\'s sound wears its gain, as the timeline row\'s '
+      'does', (tester) async {
     await _pumpPanel(
       tester,
       project: _project(
@@ -637,8 +619,6 @@ void main() {
                 filePath: 'voice.wav',
                 frameId: const FrameId('lane-f'),
                 gain: 0.5,
-                fadeInFrames: 2,
-                fadeOutFrames: 3,
               ),
             ],
           ),
@@ -657,8 +637,6 @@ void main() {
         tester.widget<CustomPaint>(strip).painter! as WaveformPainter;
 
     expect(painter.gain, 0.5);
-    expect(painter.fadeInFrames, 2);
-    expect(painter.fadeOutFrames, 3);
   });
 
   group('timeline-parity S rows (R4-⑨ 완벽통일)', () {
@@ -765,39 +743,6 @@ void main() {
         reason: 'the drag must report whole-frame deltas',
       );
       expect(log.last, 'end');
-    });
-
-    testWidgets('the twirled-down audio lane IS the timeline lane substrate '
-        'and slide-edits the ACTIVE cut\'s clip', (tester) async {
-      final offsets = <(LayerId, int, int)>[];
-      await _pumpPanel(
-        tester,
-        project: _project(),
-        onSetAudioClipOffset: (layerId, clipIndex, offsetFrames) =>
-            offsets.add((layerId, clipIndex, offsetFrames)),
-      );
-
-      await tester.tap(
-        find.named('storyboard-lane-toggle-lane-se'),
-      );
-      await tester.pumpAndSettle();
-
-      final span = find.byKey(
-        const ValueKey<String>(
-          'storyboard-lane-se-audio-lane-span-lane-se-0-b0',
-        ),
-      );
-      expect(span, findsOneWidget, reason: 'the reused timeline lane span');
-
-      // Slide LEFT (a later part of the file plays at the block start —
-      // offset grows; rightward from offset 0 clamps to no-op), exactly
-      // like the timeline's Audio lane.
-      await tester.drag(span, const Offset(-60, 0));
-      await tester.pumpAndSettle();
-
-      expect(offsets, isNotEmpty);
-      expect(offsets.last.$1, const LayerId('lane-se'));
-      expect(offsets.last.$3, greaterThan(0));
     });
   });
 

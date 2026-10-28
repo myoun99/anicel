@@ -263,8 +263,8 @@ typedef SeRowSoundInk = ({
 /// An SE row's waveform strips with the frames each covers and the name it
 /// is keyed by — what [timelineRowAudioOverlays] places on a cut's cells
 /// and on the storyboard's S row, the track's axis. One reading of a sound
-/// for both: where it starts, how much of it is heard, and its gain and
-/// fades drawn on it. Only the sounds over [window] when one is given —
+/// for both: where it starts, how much of it is heard, and its gain drawn
+/// on it. Only the sounds over [window] when one is given —
 /// the whole row when none is.
 ///
 /// ↩️The storyboard's S row read them on its own, and drew no gain and no
@@ -318,8 +318,6 @@ List<SeRowAudioStrip> seRowAudioStrips(
         color: color,
         leadingFrames: span.leadingFrames,
         gain: span.clip.gain,
-        fadeInFrames: span.clip.fadeInFrames,
-        fadeOutFrames: span.clip.fadeOutFrames,
       ),
     ));
   }
@@ -534,8 +532,6 @@ class _AudioClipStrip extends StatelessWidget {
     required this.color,
     this.leadingFrames = 0,
     this.gain = 1.0,
-    this.fadeInFrames = 0,
-    this.fadeOutFrames = 0,
   });
 
   final AudioPeaks peaks;
@@ -548,8 +544,6 @@ class _AudioClipStrip extends StatelessWidget {
   final Color color;
   final int leadingFrames;
   final double gain;
-  final int fadeInFrames;
-  final int fadeOutFrames;
 
   @override
   Widget build(BuildContext context) {
@@ -566,8 +560,6 @@ class _AudioClipStrip extends StatelessWidget {
               axis: axis,
               leadingFrames: leadingFrames,
               gain: gain,
-              fadeInFrames: fadeInFrames,
-              fadeOutFrames: fadeOutFrames,
             ),
           );
         },

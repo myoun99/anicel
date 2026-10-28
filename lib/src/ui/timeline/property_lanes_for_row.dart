@@ -12,9 +12,10 @@ import 'property_lane_model.dart';
 import 'reference_lane_policy.dart'
     show referenceGroupLaneId, referencePropertyLanes;
 import 'scale_lane_form.dart';
-import 'se_audio_lane.dart' show seAudioLanesFor;
 import 'se_name_tag_lane_policy.dart'
     show seNameTagGroupLaneId, seNameTagPropertyLanes;
+import 'se_sound_lane_policy.dart'
+    show seSoundGroupLaneId, seSoundPropertyLanes;
 import 'transform_lane_policy.dart'
     show
         transformGroupHeaderLane,
@@ -192,15 +193,27 @@ List<PropertyLaneRow> propertyLanesForRow({
         'a camera row reads its cut — ask timelineLanesForLayer',
       );
     case LayerKind.se:
-      // Audio controls lead the SE twirl-down (the row's main tool); the
+      // The row's sound leads the SE twirl-down (the row's main tool); the
       // Transform group sits below, collapsed by default.
       //
       // R5 #7: the NAME TAG group is Transform's SIBLING — not a member of
       // it, and not an effect. The row simply HAS one, the way it has a
-      // transform track, so it sits directly above Transform.
+      // transform track, so it sits directly above Transform. I-140: so
+      // does its 「오디오」 group, where its waveform lane stood.
       final nameTag = layer.seNameTag ?? const SeNameTag();
       return [
-        ...seAudioLanesFor(layer),
+        ...seSoundPropertyLanes(
+          layer.seSound,
+          expanded: expandedGroupKeys.contains(
+            laneGroupKey(layer.id, seSoundGroupLaneId),
+          ),
+          volumeAt: source == null
+              ? null
+              : (time) {
+                  final at = _sourceAtTime(source, time);
+                  return at.layer.seSound.volumeAt(at.time);
+                },
+        ),
         ...layerEffectLanes(),
         ...seNameTagPropertyLanes(
           nameTag,

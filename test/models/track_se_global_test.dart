@@ -13,6 +13,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/se_name_tag.dart';
+import 'package:anicel/src/models/se_sound.dart';
 import 'package:anicel/src/models/track_se_window.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_editing.dart'
@@ -420,6 +421,61 @@ void main() {
           reason: laneId,
         );
       }
+    });
+  });
+
+  group('the display clone rebases the row\'s SOUND onto the cut (I-140)', () {
+    const window = TrackSeWindow(cutStartFrame: 12, cutDurationFrames: 24);
+
+    Layer soundRow(SeSound sound) => Layer(
+      id: const LayerId('se-1'),
+      name: 'S1',
+      kind: LayerKind.se,
+      frames: const [],
+      timeline: const {},
+      seSound: sound,
+    );
+
+    test('the Volume\'s keys move onto the cut-local axis, the ones an '
+        'earlier cut made are dropped, and the Pan rides as it is', () {
+      final rebased = window
+          .displayLayer(
+            soundRow(
+              SeSound(
+                pan: -0.4,
+                volume: PropertyTrack<double>(
+                  keys: {
+                    4: const PropertyKey(0.2),
+                    12: const PropertyKey(0.5),
+                    20: const PropertyKey(1.5),
+                  },
+                ),
+              ),
+            ),
+          )
+          .seSound;
+
+      expect(rebased.volume.keys.keys, [0, 8]);
+      expect(rebased.volume.keyAt(8)!.value, 1.5);
+      expect(rebased.pan, -0.4);
+    });
+
+    test('a window at the track\'s start and an unkeyed sound keep the '
+        'sound as it was', () {
+      final keyed = SeSound(
+        volume: PropertyTrack<double>(keys: {3: const PropertyKey(0.5)}),
+      );
+      expect(
+        const TrackSeWindow(
+          cutStartFrame: 0,
+          cutDurationFrames: 24,
+        ).displayLayer(soundRow(keyed)).seSound,
+        keyed,
+      );
+      expect(
+        window.displayLayer(soundRow(const SeSound(pan: 0.3))).seSound,
+        const SeSound(pan: 0.3),
+      );
     });
   });
 }

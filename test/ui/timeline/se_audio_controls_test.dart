@@ -21,9 +21,10 @@ import 'package:anicel/src/ui/home_page.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/named_finders.dart';
+import '../../helpers/number_pad_keyboard.dart';
 
-/// ⑨b SE audio UX: the row's mute speaker + the audio lane's AE-style
-/// offset value field.
+/// ⑨b SE audio UX: the row's mute speaker and its 「오디오」 group (I-140 —
+/// ↩️the audio lane's AE-style offset value field, then the lane itself).
 
 const _seLayerId = LayerId('sea-voice');
 
@@ -125,41 +126,6 @@ void main() {
     expect(Layer.fromJson(json).muted, isFalse);
   });
 
-  test('the offset drag session previews repo-direct and commits ONE undo '
-      'on release (R4 live slide)', () {
-    final session = EditorSessionManager(initialProject: _project());
-    addTearDown(session.dispose);
-
-    Layer seLayer() => _seLayer(session.repository);
-    expect(
-      audioClipsOf(session).beginAudioClipOffsetDrag(layerId: _seLayerId, clipIndex: 0),
-      isTrue,
-    );
-
-    // Live preview: the MODEL carries the dragged offset (waveforms
-    // everywhere repaint from it), history untouched.
-    audioClipsOf(session).updateAudioClipOffsetDrag(5);
-    expect(seLayer().audioClips.single.offsetFrames, 5);
-    expect(session.canUndo, isFalse);
-
-    audioClipsOf(session).updateAudioClipOffsetDrag(9);
-    expect(seLayer().audioClips.single.offsetFrames, 9);
-
-    // Release: ONE undo step back to the untouched clip.
-    audioClipsOf(session).endAudioClipOffsetDrag();
-    expect(seLayer().audioClips.single.offsetFrames, 9);
-    expect(session.canUndo, isTrue);
-    session.undo();
-    expect(seLayer().audioClips.single.offsetFrames, 0);
-
-    // Cancel reverts silently.
-    audioClipsOf(session).beginAudioClipOffsetDrag(layerId: _seLayerId, clipIndex: 0);
-    audioClipsOf(session).updateAudioClipOffsetDrag(7);
-    expect(seLayer().audioClips.single.offsetFrames, 7);
-    audioClipsOf(session).cancelAudioClipOffsetDrag();
-    expect(seLayer().audioClips.single.offsetFrames, 0);
-  });
-
   testWidgets('the SE speaker opens the MIXER in both orientations, and '
       'mute lives inside it (view state, not undoable)', (tester) async {
     // The x-sheet's header is the rail stood up, laid out whole and seen
@@ -221,13 +187,10 @@ void main() {
     expect(_seLayer(repository).muted, isFalse);
   });
 
-  testWidgets('the mixer carries solo and the fader beside mute — the four '
-      'controls the speaker\'s context menu used to scatter. Solo tints the '
-      'RAIL speaker, which the rail memo could not see before', (
-    tester,
-  ) async {
-    late ProjectRepository repository;
-    await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
+
+  testWidgets('the mixer carries solo beside mute. Solo tints the RAIL '
+      'speaker, which the rail memo could not see before', (tester) async {
+    await _pumpHome(tester, onRepositoryCreated: (_) {});
 
     final speaker = find.named('timeline-layer-mute-sea-voice');
     IconButtonReading speakerIcon() => tester.appIconButton(speaker);
@@ -242,47 +205,62 @@ void main() {
       reason: 'solo is SESSION state — the rail row memo must compare it or '
           'the tint never arrives',
     );
-
-    // The fader writes on RELEASE (commit-on-release, like the opacity
-    // bars) — a drag left of centre pulls the gain down from unity.
-    final gain = find.byKey(const ValueKey<String>('se-mixer-gain'));
-    await tester.drag(gain, const Offset(-40, 0));
-    await tester.pumpAndSettle();
-    expect(_seLayer(repository).audioGain, lessThan(1.0));
-
-    // Pan is a BALANCE: it starts centred and moves either way.
-    final pan = find.byKey(const ValueKey<String>('se-mixer-pan'));
-    await tester.drag(pan, const Offset(-30, 0));
-    await tester.pumpAndSettle();
-    expect(_seLayer(repository).audioPan, lessThan(0.0));
   });
 
-  /// ↩️The label cell TYPED and SCRUBBED the playhead block's offset here
-  /// since R3-(9b) — one value for the whole row, while every block carries
-  /// its own, and a scrub that moved the number but not the waveform. The
-  /// offset is the block's now, edited in the block's own window
-  /// (유저 2026-09-27: 「이거 블록별로 오프셋이 맞지않나? 그래서 블록
-  /// 편집창에서 하는게 맞을듯」) — `a_block_edits_its_own_sound_offset_test`.
-  testWidgets('the audio lane label carries NO offset cell — the offset is '
-      'the block\'s, edited in the block\'s own window', (tester) async {
-    await _pumpHome(tester, onRepositoryCreated: (_) {});
-
+  /// 🗣️I-140 (유저 2026-10-28): the row's sound is its 「오디오」 group —
+  /// Q1 「행에 늘 있는 「오디오」 그룹」, Q2 「%」, Q3 「이번엔 한 값」. ↩️The
+  /// speaker's mixer held a fader and a pan of the row, and the twirl showed
+  /// a waveform lane of the row's sounds.
+  testWidgets('the 「오디오」 group reads the row\'s Volume in % and its Pan '
+      'as a side; a typed Volume keys at the playhead', (
+    tester,
+  ) async {
+    late ProjectRepository repository;
+    await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
     await _ensureVisibleAndTap(
       tester,
       find.named('timeline-lane-toggle-sea-voice'),
     );
+    await _ensureVisibleAndTap(
+      tester,
+      find.named('timeline-lane-group-toggle-sea-voice-sound-group'),
+    );
 
-    expect(
-      find.byKey(const ValueKey<String>('timeline-lane-row-sea-voice-se-audio')),
-      findsOneWidget,
-      reason: 'CONTROL: the audio lane is down',
-    );
-    expect(
+    Finder value(String laneId) =>
+        find.byKey(ValueKey<String>('timeline-lane-value-sea-voice-$laneId'));
+    String shown(String laneId) => tester
+        .widgetList<Text>(
+          find.descendant(of: value(laneId), matching: find.byType(Text)),
+        )
+        .map((text) => text.data)
+        .join();
+    expect(shown('sound:volume'), '100.00%', reason: 'as recorded, unkeyed');
+    expect(shown('sound:pan'), 'C', reason: 'in the middle');
+
+    await _ensureVisibleAndTap(
+      tester,
       find.byKey(
-        const ValueKey<String>('timeline-lane-value-sea-voice-se-audio'),
+        const ValueKey<String>(
+          'timeline-lane-value-sea-voice-sound:volume-edit',
+        ),
       ),
-      findsNothing,
     );
+    await openThePadsKeyboard(tester);
+    await tester.enterText(
+      find.byKey(
+        const ValueKey<String>(
+          'timeline-lane-value-field-sea-voice-sound:volume',
+        ),
+      ),
+      '50',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    final volume = _seLayer(repository).seSound.volume;
+    expect(volume.keys.keys, [0], reason: 'keyed at the playhead (F-407)');
+    expect(volume.keyAt(0)!.value, 0.5, reason: '50% of the sound');
+    expect(shown('sound:volume'), '50.00%');
   });
 
   /// 🚨THE GUARD AND THE CLAMPS EVERY CLIP EDIT SHARES.
@@ -292,7 +270,7 @@ void main() {
   /// surviving (2026-09-04): nothing asked what happens on a row that is
   /// not SE, on an index past the end, or with a negative number. A shared
   /// guard nobody tests is worse than seven, because one edit silently
-  /// covers for the rest.
+  /// covers for the rest. (Three edits are left since I-140.)
   test('a clip edit refuses a non-SE row, a bad index, and negatives', () {
     final session = EditorSessionManager(initialProject: _project());
     addTearDown(session.dispose);
@@ -509,24 +487,13 @@ void main() {
 
     audioClipsOf(session).setAudioClipGain(_seLayerId, 0, 0.25);
     audioClipsOf(session).setAudioClipOffset(_seLayerId, 0, 0);
-    audioClipsOf(session).setAudioClipFades(
-      _seLayerId,
-      0,
-      fadeInFrames: 0,
-      fadeOutFrames: 0,
-    );
-    audioClipsOf(session).setAudioClipFadeCurve(
-      _seLayerId,
-      0,
-      AudioFadeCurve.linear,
-    );
 
     session.undo();
     expect(
       seLayer().audioClips.single.gain,
       1.0,
       reason:
-          'the four repeat edits added nothing, so ONE undo reaches the '
+          'the two repeat edits added nothing, so ONE undo reaches the '
           'gain the clip started with',
     );
     expect(session.canUndo, isFalse);

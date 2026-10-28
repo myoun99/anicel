@@ -15,7 +15,6 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/se_layer_mixer.dart';
-import 'package:anicel/src/ui/widgets/field_slider.dart';
 
 void main() {
   testWidgets('mute and solo press through to the session', (tester) async {
@@ -39,29 +38,11 @@ void main() {
     expect(session.visibilitySolo.soloedSeLayerIds.value, contains(se.id));
   });
 
-  // 🗣️F-488 (유저 2026-10-27): 「… 조정가능한 값만 조정되도록. 슬라이더를
-  // 전부 그렇게」 — the pan writes whole per cents, `L37`, and holds them.
-  testWidgets('the pan holds the whole per cents it writes', (tester) async {
-    final session = EditorSessionManager(
-      initialProject: createDefaultProject(),
-    );
-    addTearDown(session.dispose);
-    session.layerStack.addLayerOfKind(LayerKind.se);
-    final se = session.layers.firstWhere((layer) => layer.kind == LayerKind.se);
-    await _openMixer(tester, session, se.id);
-
-    final pan = tester.widget<FieldSlider>(
-      find.byKey(const ValueKey<String>('se-mixer-pan')),
-    );
-    expect(pan.held(-0.373), -0.37, reason: 'L37 — not L37.3, nor L40');
-    expect(pan.held(0.426), 0.43);
-  });
-
   // row-buttons-act-on-the-selection (유저 2026-09-25: 「… 소리 … 선택범위
   // 내부 레이어 조절하면 선택범위 레이어 모두 적용」): the speaker is a rail
   // button, and the window it opens presses as it does.
-  testWidgets('opened on a selected row, all four controls set every '
-      'selected SE row', (tester) async {
+  testWidgets('opened on a selected row, both controls set every selected '
+      'SE row', (tester) async {
     final session = EditorSessionManager(
       initialProject: createDefaultProject(),
     );
@@ -78,21 +59,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey<String>('se-mixer-solo')));
     await tester.pumpAndSettle();
-    tester
-        .widget<FieldSlider>(find.byKey(const ValueKey<String>('se-mixer-gain')))
-        .onChangeEnd!(0.5);
-    tester
-        .widget<FieldSlider>(find.byKey(const ValueKey<String>('se-mixer-pan')))
-        .onChangeEnd!(-0.4);
-    await tester.pumpAndSettle();
 
     for (final id in ses) {
-      final row = _row(session, id);
-      expect(
-        [row.muted, row.audioGain, row.audioPan],
-        [true, 0.5, -0.4],
-        reason: '$id is selected',
-      );
+      expect(_row(session, id).muted, isTrue, reason: '$id is selected');
     }
     expect(session.visibilitySolo.soloedSeLayerIds.value, ses.toSet());
   });

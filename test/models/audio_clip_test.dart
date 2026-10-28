@@ -40,33 +40,22 @@ void main() {
     expect(trimmed.copyWith(offsetFrames: 0), plain);
   });
 
-  test('gain and fades round-trip, serialize only when set and stay '
-      'backward compatible', () {
+  test('gain round-trips, serializes only when set and stays backward '
+      'compatible', () {
     final shaped = AudioClip(
       filePath: 'a.wav',
       frameId: const FrameId('se-frame'),
       gain: 1.5,
-      fadeInFrames: 6,
-      fadeOutFrames: 12,
     );
     expect(shaped.toJson()['gain'], 1.5);
-    expect(shaped.toJson()['fadeIn'], 6);
-    expect(shaped.toJson()['fadeOut'], 12);
     expect(AudioClip.fromJson(shaped.toJson()), shaped);
 
-    // Default envelope keeps the old json shape; old files decode to it.
+    // A gain of 1 keeps the old json shape; old files decode to it.
     final plain = AudioClip(filePath: 'a.wav', frameId: const FrameId('se-frame'));
     expect(plain.toJson().containsKey('gain'), isFalse);
-    expect(plain.toJson().containsKey('fadeIn'), isFalse);
-    expect(plain.toJson().containsKey('fadeOut'), isFalse);
     final legacy = AudioClip.fromJson({'file': 'a.wav', 'frame': 'se-frame'});
     expect(legacy.gain, 1.0);
-    expect(legacy.fadeInFrames, 0);
-    expect(legacy.fadeOutFrames, 0);
-    expect(
-      shaped.copyWith(gain: 1.0, fadeInFrames: 0, fadeOutFrames: 0),
-      plain,
-    );
+    expect(shaped.copyWith(gain: 1.0), plain);
   });
 
   Layer seLayer() => Layer(

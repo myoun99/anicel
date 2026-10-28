@@ -73,8 +73,7 @@ const double timelineLayerRowLeadingBorder = 1;
 /// Deliberately absent (the row renders none of them): `frames`, `timeline`,
 /// `instructions`, `audioClips`, `baseFrameLinks`,
 /// `transformTrack` (the LANE rows read it, and those are unmemoized),
-/// `audioGain`/`audioPan` (the mixer reads them from the session while it
-/// is open), `attachedMode` and `folderId`.
+/// `seSound` (its 「오디오」 lanes read it), `attachedMode` and `folderId`.
 ///
 /// 🚨And `isVisible`, which the row DOES show — through [RailEyes], not
 /// through this token. an-eye-rebuilds-its-whole-row (measured 2026-09-23):

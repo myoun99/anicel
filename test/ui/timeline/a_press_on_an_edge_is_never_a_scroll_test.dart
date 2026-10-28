@@ -1,28 +1,20 @@
-import 'dart:typed_data';
-
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
-import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/layer_kind.dart';
-import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
 import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
-import 'package:anicel/src/ui/timeline/se_audio_lane.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cut_end_handle.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
-import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_run_end_handles.dart';
 
 import 'timeline_frame_geometry_probe.dart';
@@ -283,54 +275,6 @@ void main() {
       );
       expect(controller.offset, 0);
       expect(begun, 1);
-    });
-  }
-
-  for (final kind in const [PointerDeviceKind.mouse, PointerDeviceKind.touch]) {
-    testWidgets('🚨a sound\'s lane span holds a cross pull too — sliding the '
-        'sound is its verb (${kind.name})', (tester) async {
-      final controller = await pumpInAScroller(
-        tester,
-        Align(
-          alignment: Alignment.topLeft,
-          child: SizedBox(
-            height: TimelineGridMetrics.defaults.layerRowHeight,
-            child: SeAudioLaneFrameRow(
-              layer: Layer(
-                id: const LayerId('se'),
-                name: 'S1',
-                kind: LayerKind.se,
-                frames: [
-                  Frame(id: const FrameId('se-f'), duration: 1, strokes: const []),
-                ],
-                timeline: const {
-                  2: TimelineExposure.drawing(FrameId('se-f'), length: 8),
-                },
-                audioClips: [
-                  AudioClip(filePath: 'steps.wav', frameId: const FrameId('se-f')),
-                ],
-              ),
-              frameStartIndex: 0,
-              frameEndIndexExclusive: 16,
-              leadingFrameSpacerWidth: 0,
-              trailingFrameSpacerWidth: 0,
-              metrics: TimelineGridMetrics.defaults,
-              frameRate: ProjectFrameRate.fps24,
-              audioPeaksFor: (_) =>
-                  AudioPeaks(bucketsPerSecond: 80, peaks: Float32List(160)),
-              onSetClipOffset: (_, _) {},
-            ),
-          ),
-        ),
-      );
-      await pullDown(
-        tester,
-        tester.getCenter(
-          find.byKey(const ValueKey<String>('timeline-audio-lane-span-se-0-b2')),
-        ),
-        kind,
-      );
-      expect(controller.offset, 0);
     });
   }
 }

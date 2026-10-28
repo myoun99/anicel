@@ -1,8 +1,5 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -15,36 +12,26 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
-import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
-import 'package:anicel/src/ui/audio/waveform_painter.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerMarkColor;
-import 'package:anicel/src/ui/timeline/se_audio_lane.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
-    show TimelineGridLaw, timelineGridGroundOver, timelineLaneGround;
+    show TimelineGridLaw, timelineGridGroundOver;
 import 'package:anicel/src/ui/timeline/timeline_block_look.dart';
 import 'package:anicel/src/ui/timeline/timeline_cel_content_source.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
-    show
-        timelineDrawingHeldColor,
-        timelineDrawingInkColor,
-        timelineSelectedFrameBorderColor;
+    show timelineDrawingInkColor, timelineSelectedFrameBorderColor;
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_span_layout.dart';
-import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_instruction_row_visual.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_edit_chrome.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_run_labels_painter.dart';
-import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart'
-    show SePaperSpan;
 
 import '../../helpers/timeline_host.dart';
 import 'timeline_frame_geometry_probe.dart';
@@ -475,81 +462,6 @@ void main() {
           reason: 'it paints the block it stands on',
         );
       }
-    });
-
-    testWidgets('$state: the audio lane\'s waveform band — its paper and '
-        'its waveform', (tester) async {
-      final layer = Layer(
-        id: const LayerId('se'),
-        name: 'S1',
-        kind: LayerKind.se,
-        isVisible: shown,
-        frames: [
-          Frame(id: const FrameId('se-f'), duration: 1, strokes: const []),
-        ],
-        timeline: const {
-          2: TimelineExposure.drawing(FrameId('se-f'), length: 8),
-        },
-        audioClips: [
-          AudioClip(filePath: 'steps.wav', frameId: const FrameId('se-f')),
-        ],
-      );
-      final peaks = AudioPeaks(bucketsPerSecond: 80, peaks: Float32List(160));
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: TimelineGridLaw(
-              ground: ground,
-              framesPerSecond: 24,
-              child: Align(
-                alignment: Alignment.topLeft,
-                child: SeAudioLaneFrameRow(
-                  layer: layer,
-                  frameStartIndex: 0,
-                  frameEndIndexExclusive: 16,
-                  leadingFrameSpacerWidth: 0,
-                  trailingFrameSpacerWidth: 0,
-                  metrics: TimelineGridMetrics.defaults,
-                  frameRate: ProjectFrameRate.fps24,
-                  audioPeaksFor: (_) => peaks,
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-
-      final lane = timelineLaneGround(ground);
-      final band = timelineBlockLook(
-        shown ? TimelineBlockState.shown : TimelineBlockState.hidden,
-        paper: Color.alphaBlend(
-          timelineDrawingHeldColor.withValues(alpha: 0.6),
-          lane,
-        ),
-        ink: timelineDrawingInkColor.withValues(alpha: 0.45),
-        ground: lane,
-      );
-      expect(
-        tester.widget<SePaperSpan>(find.byType(SePaperSpan)).paper,
-        band.paper,
-      );
-      final waveform =
-          tester
-                  .widget<CustomPaint>(
-                    find.byWidgetPredicate(
-                      (widget) =>
-                          widget is CustomPaint &&
-                          widget.painter is WaveformPainter,
-                    ),
-                  )
-                  .painter!
-              as WaveformPainter;
-      expect(waveform.color, band.ink);
-      expect(
-        band.ink == timelineDrawingInkColor.withValues(alpha: 0.45),
-        shown,
-        reason: '⛔전제: the switched-off ink is not the shown one',
-      );
     });
   }
 }

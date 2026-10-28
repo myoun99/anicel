@@ -11,6 +11,8 @@ import 'package:anicel/src/ui/timeline/reference_lane_policy.dart'
     show referenceGroupLaneId, referenceLaneDisplayOrder;
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart'
     show seNameTagGroupLaneId, seNameTagLaneDisplayOrder;
+import 'package:anicel/src/ui/timeline/se_sound_lane_policy.dart'
+    show seSoundGroupLaneId, seSoundLaneDisplayOrder;
 import 'package:anicel/src/ui/timeline/timeline_current_row.dart'
     show laneGroupOf;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
@@ -230,10 +232,9 @@ void main() {
       );
       expect(laneGroupOf('transform-group'), isNull);
       expect(laneGroupOf(effectGroupLaneId(blur)), isNull);
-      expect(laneGroupOf('se-audio'), isNull);
     });
 
-    test('the two fixed groups\' lanes answer with their own header — the '
+    test('the fixed groups\' lanes answer with their own header — the '
         'reference fx\'s Position is not the transform\'s (F-374)', () {
       for (final laneId in referenceLaneDisplayOrder) {
         expect(laneGroupOf(laneId), referenceGroupLaneId, reason: laneId);
@@ -243,6 +244,11 @@ void main() {
       }
       expect(laneGroupOf(referenceGroupLaneId), isNull);
       expect(laneGroupOf(seNameTagGroupLaneId), isNull);
+      // I-140: the 「오디오」 group's too.
+      for (final laneId in seSoundLaneDisplayOrder) {
+        expect(laneGroupOf(laneId), seSoundGroupLaneId, reason: laneId);
+      }
+      expect(laneGroupOf(seSoundGroupLaneId), isNull);
     });
 
     test('only the pressed group\'s lanes take a seat', () {

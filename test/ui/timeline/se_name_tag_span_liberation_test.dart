@@ -273,11 +273,12 @@ void main() {
       );
       await gesture.moveBy(const Offset(24, 0));
       await tester.pump();
-      // Up past the group header (1) onto the SE cells row (2).
-      await gesture.moveBy(const Offset(0, -rowHeight));
-      await tester.pump();
-      await gesture.moveBy(const Offset(0, -rowHeight));
-      await tester.pump();
+      // Up past the group header (1) and the row's 「오디오」 header (2,
+      // I-140: every S row has it) onto the SE cells row (3).
+      for (var row = 0; row < 3; row += 1) {
+        await gesture.moveBy(const Offset(0, -rowHeight));
+        await tester.pump();
+      }
       await gesture.up();
       await tester.pumpAndSettle();
 
@@ -317,11 +318,12 @@ void main() {
       );
       await gesture.moveBy(const Offset(24, 0));
       await tester.pump();
-      // Down over the group header onto the Size member row.
-      await gesture.moveBy(const Offset(0, rowHeight));
-      await tester.pump();
-      await gesture.moveBy(const Offset(0, rowHeight));
-      await tester.pump();
+      // Down over the 「오디오」 header and the group header onto the Size
+      // member row.
+      for (var row = 0; row < 3; row += 1) {
+        await gesture.moveBy(const Offset(0, rowHeight));
+        await tester.pump();
+      }
       await gesture.up();
       await tester.pumpAndSettle();
 

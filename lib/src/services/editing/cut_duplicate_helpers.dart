@@ -61,8 +61,9 @@ Layer duplicateLayerAsIndependentCopy({
   // [duplicateFrameContent] documents: every field NOT listed here is
   // silently reset to its default. The R6 audit found nine already lost —
   // blendMode, folderId (so a duplicated cut FLATTENED every folder),
-  // seNameTag, clipsToBelow, runBehaviors, collapsed, audioGain,
-  // audioPan and attachedMode. Anything added to [Layer] belongs here.
+  // seNameTag, clipsToBelow, runBehaviors, collapsed, the mixer's gain
+  // and pan (the row's sound since I-140) and attachedMode. Anything
+  // added to [Layer] belongs here.
   return Layer(
     id: newLayerId,
     name: newName,
@@ -90,8 +91,7 @@ Layer duplicateLayerAsIndependentCopy({
     lanesExpanded: source.lanesExpanded,
     expandedLaneGroups: source.expandedLaneGroups,
     muted: source.muted,
-    audioGain: source.audioGain,
-    audioPan: source.audioPan,
+    seSound: source.seSound,
     opacity: source.opacity,
     blendMode: source.blendMode,
     kind: kind ?? source.kind,

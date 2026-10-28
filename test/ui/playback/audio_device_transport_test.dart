@@ -15,6 +15,8 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/models/se_sound.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -582,8 +584,8 @@ void main() {
     store.dispose();
   }, skip: skip);
 
-  test('refreshSchedule swaps the mix MID-RUN (AUDIO-PRO R3): a layer '
-      'fader change is heard without stopping the transport', () async {
+  test('refreshSchedule swaps the mix MID-RUN (AUDIO-PRO R3): a row '
+      'volume change is heard without stopping the transport', () async {
     final device = openNullDevice();
     var project = _project;
     final liveController = CanvasPlaybackController(
@@ -614,7 +616,7 @@ void main() {
     );
     final before = device.positionSamples;
 
-    // The live edit: the layer fader jumps to 10x (0.05 -> 0.5 on the bus).
+    // The live edit: the row's volume jumps to 200% (0.05 -> 0.1 on the bus).
     final track = project.tracks.first;
     project = project.copyWith(
       tracks: [
@@ -622,7 +624,15 @@ void main() {
           id: track.id,
           name: track.name,
           cuts: track.cuts,
-          seLayers: [track.seLayers.first.copyWith(audioGain: 10)],
+          seLayers: [
+            track.seLayers.first.copyWith(
+              seSound: SeSound(
+                volume: PropertyTrack<double>(
+                  keys: {0: const PropertyKey(2.0)},
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -630,9 +640,9 @@ void main() {
 
     expect(device.isPlaying, isTrue, reason: 'the swap must not stop audio');
     expect(
-      await waitOnTheDevice(device, () => device.peakFor(0) > 0.4),
+      await waitOnTheDevice(device, () => device.peakFor(0) > 0.08),
       isTrue,
-      reason: 'the fader change must be heard mid-run',
+      reason: 'the volume change must be heard mid-run',
     );
     expect(device.positionSamples, greaterThanOrEqualTo(before));
     liveController.stop();

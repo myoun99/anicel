@@ -302,7 +302,6 @@ enum AppStrings {
   String get layerAudioTitle => _s('layerAudioTitle');
   String get audioGainLabel => _s('audioGainLabel');
   String get audioPanLabel => _s('audioPanLabel');
-  String get layerAudioPanHelp => _s('layerAudioPanHelp');
   String get audioMute => _s('audioMute');
   String get audioSolo => _s('audioSolo');
 
@@ -841,7 +840,8 @@ enum AppStrings {
   String tlReferenceSourceShort(int frames) =>
       _s('tlReferenceSourceShort').replaceFirst('{n}', '$frames');
 
-  String get tlAudioLane => _s('tlAudioLane');
+  String get tlAudioGroup => _s('tlAudioGroup');
+  String get tlSoundVolume => _s('tlSoundVolume');
   String get tlNameTagGroup => _s('tlNameTagGroup');
   String get tlReferenceGroup => _s('tlReferenceGroup');
   String get tlTransformGroup => _s('tlTransformGroup');
@@ -2084,8 +2084,6 @@ enum AppStrings {
     'layerAudioTitle': 'Layer Audio',
     'audioGainLabel': 'Gain',
     'audioPanLabel': 'Pan',
-    'layerAudioPanHelp':
-        'Pan applies on the device mixer path (equal-power law).',
     'audioMute': 'Mute',
     'audioSolo': 'Solo',
     'fpsAudioTitleTemplate': '{from} → {to}: what happens to sound?',
@@ -3179,7 +3177,8 @@ enum AppStrings {
     'tlLayerReference': 'Reference',
     'tlReferenceSourceShort': 'Runs {n} frames past the source',
     'tlSelectedLayers': 'Selected layers',
-    'tlAudioLane': 'Audio',
+    'tlAudioGroup': 'Audio',
+    'tlSoundVolume': 'Volume',
     'tlNameTagGroup': 'Name Tag',
     'tlReferenceGroup': 'Reference',
     'tlTransformGroup': 'Transform',
@@ -3365,7 +3364,6 @@ enum AppStrings {
     'layerAudioTitle': 'レイヤーオーディオ',
     'audioGainLabel': 'ゲイン',
     'audioPanLabel': 'パン',
-    'layerAudioPanHelp': 'パンはデバイスミキサー経路で適用されます（等パワー則）。',
     'audioMute': 'ミュート',
     'audioSolo': 'ソロ',
     'fpsAudioTitleTemplate': '{from} → {to}：音はどうしますか？',
@@ -4917,7 +4915,8 @@ enum AppStrings {
     'tlLayerReference': '参照',
     'tlReferenceSourceShort': '素材より{n}フレーム長い',
     'tlSelectedLayers': '選択したレイヤー',
-    'tlAudioLane': '音声',
+    'tlAudioGroup': '音声',
+    'tlSoundVolume': '音量',
     'tlNameTagGroup': 'ネームタグ',
     'tlReferenceGroup': '参照',
     'tlTransformGroup': 'トランスフォーム',
@@ -5105,7 +5104,6 @@ enum AppStrings {
     'layerAudioTitle': '레이어 오디오',
     'audioGainLabel': '게인',
     'audioPanLabel': '팬',
-    'layerAudioPanHelp': '팬은 장치 믹서 경로에서 적용됩니다(등파워 법칙).',
     'audioMute': '음소거',
     'audioSolo': '솔로',
     'fpsAudioTitleTemplate': '{from} → {to}: 소리는 어떻게 할까요?',
@@ -6643,7 +6641,8 @@ enum AppStrings {
     'tlLayerReference': '참조',
     'tlReferenceSourceShort': '원본보다 {n}프레임 깁니다',
     'tlSelectedLayers': '선택한 레이어',
-    'tlAudioLane': '오디오',
+    'tlAudioGroup': '오디오',
+    'tlSoundVolume': '볼륨',
     'tlNameTagGroup': '이름표',
     'tlReferenceGroup': '참조',
     'tlTransformGroup': '변형',
@@ -6837,8 +6836,6 @@ enum AppStrings {
     'layerAudioTitle': 'Audio du calque',
     'audioGainLabel': 'Gain',
     'audioPanLabel': 'Panoramique',
-    'layerAudioPanHelp':
-        'Le panoramique s\'applique sur la voie du mixeur natif (loi à puissance constante).',
     'audioMute': 'Muet',
     'audioSolo': 'Solo',
     'fpsAudioTitleTemplate': '{from} → {to} : que faire du son ?',
@@ -8494,7 +8491,8 @@ enum AppStrings {
     'tlLayerReference': 'Référence',
     'tlReferenceSourceShort': 'Dépasse la source de {n} images',
     'tlSelectedLayers': 'Calques sélectionnés',
-    'tlAudioLane': 'Audio',
+    'tlAudioGroup': 'Audio',
+    'tlSoundVolume': 'Volume',
     'tlNameTagGroup': 'Étiquette',
     'tlReferenceGroup': 'Référence',
     'tlTransformGroup': 'Transformation',
@@ -8690,7 +8688,6 @@ enum AppStrings {
     'layerAudioTitle': '图层音频',
     'audioGainLabel': '增益',
     'audioPanLabel': '声像',
-    'layerAudioPanHelp': '声像在原生混音器路径上生效（等功率法则）。',
     'audioMute': '静音',
     'audioSolo': '独奏',
     'fpsAudioTitleTemplate': '{from} → {to}：声音怎么办？',
@@ -10127,7 +10124,8 @@ enum AppStrings {
     'tlLayerReference': '引用',
     'tlReferenceSourceShort': '超出素材{n}帧',
     'tlSelectedLayers': '所选图层',
-    'tlAudioLane': '音频',
+    'tlAudioGroup': '音频',
+    'tlSoundVolume': '音量',
     'tlNameTagGroup': '名字条',
     'tlReferenceGroup': '参照',
     'tlTransformGroup': '变换',

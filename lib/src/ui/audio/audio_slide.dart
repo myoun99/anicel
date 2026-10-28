@@ -5,10 +5,10 @@ import 'dart:math' as math;
 /// (negative pixels) plays a LATER part of the file there. Clamped into the
 /// file — never before its start, never past its last frame ([fileFrames]).
 ///
-/// ONE law for every surface that slides a sound under its block: the
-/// audio lane's span and the block edit window's strip (유저 2026-09-27:
-/// 「이거 블록별로 오프셋이 맞지않나? 그래서 블록 편집창에서 하는게
-/// 맞을듯」).
+/// The law the block edit window's strip slides a sound by (유저
+/// 2026-09-27: 「이거 블록별로 오프셋이 맞지않나? 그래서 블록 편집창에서
+/// 하는게 맞을듯」). ↩️The audio lane's span slid by it too, until the lane
+/// went (I-140).
 int slidAudioOffset({
   required int base,
   required double dragPixels,

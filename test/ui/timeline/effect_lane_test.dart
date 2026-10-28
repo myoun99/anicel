@@ -49,7 +49,7 @@ void main() {
         expect(parseEffectLaneId(transformLane), isNull, reason: transformLane);
       }
       expect(parseEffectLaneId(transformGroupHeaderLane.laneId), isNull);
-      expect(parseEffectLaneId('se-audio'), isNull);
+      expect(parseEffectLaneId('sound:volume'), isNull);
     });
 
     test('malformed addresses answer null instead of a wrong effect', () {

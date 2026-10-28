@@ -28,7 +28,6 @@ import 'layer_drop_policy.dart'
     show LayerAreaSilhouette, layerAreaSilhouetteOf, rowsWithSilhouette;
 import 'layer_timeline_grid.dart';
 import 'property_lane_model.dart';
-import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
 import 'timeline_cel_content_source.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'layer_row_drag.dart' show TimelineRowDragHooks;
@@ -88,7 +87,7 @@ class TimelinePanel extends StatefulWidget {
     this.audioPeaksFor,
     this.soundCannotPlay,
     this.seClipMarkerTooltip,
-    this.audioLane,
+    this.onDropMediaAssetOnSeBlock,
     this.onDropMediaAssetOnLayer,
     this.acceptsMediaAssetOnLayer,
     this.onHoverMediaAssetOnLayer,
@@ -288,9 +287,10 @@ class TimelinePanel extends StatefulWidget {
   /// rows only for now — the xsheet's marker joins with its page work.
   final String? seClipMarkerTooltip;
 
-  /// What the audio lane may ask the session to do, both orientations;
-  /// null = display-only.
-  final TimelineAudioLaneCallbacks? audioLane;
+  /// A media-browser sound dropped on an SE block, both orientations
+  /// ([TimelineGridHooks.onDropMediaAssetOnSeBlock]).
+  final void Function(LayerId layerId, int blockStartFrame, String path)?
+  onDropMediaAssetOnSeBlock;
 
   /// A media-browser row dropped on a drawing layer; null refuses the drag.
   final void Function(LayerId layerId, int frameIndex, String path)?
@@ -725,7 +725,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       projectFrameRate: widget.projectFrameRate,
       showSeconds: widget.showSeconds,
       onShowSecondsChanged: widget.onShowSecondsChanged,
-      audioLane: widget.audioLane,
+      onDropMediaAssetOnSeBlock: widget.onDropMediaAssetOnSeBlock,
       onDropMediaAssetOnLayer: widget.onDropMediaAssetOnLayer,
       acceptsMediaAssetOnLayer: widget.acceptsMediaAssetOnLayer,
       onHoverMediaAssetOnLayer: widget.onHoverMediaAssetOnLayer,

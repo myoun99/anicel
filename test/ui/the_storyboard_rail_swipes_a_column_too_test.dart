@@ -436,9 +436,11 @@ void main() {
     // ⚠️STEPPED, not aimed at a precomputed point: opening a row's lanes
     // makes the rail taller, so every row below the one just painted slides
     // DOWN under the finger. A drag to where t3's twirl used to be lands
-    // above it — measured, and it left t3 unpainted.
+    // above it — measured, and it left t3 unpainted. Far enough for every
+    // lane an opened row lays (I-140 added its 「오디오」 header, and 480px
+    // stopped short of t3).
     final gesture = await tester.startGesture(first);
-    for (var step = 1; step <= 24; step += 1) {
+    for (var step = 1; step <= 30; step += 1) {
       await gesture.moveBy(const Offset(0, 20));
       await tester.pump(const Duration(milliseconds: 16));
     }

@@ -137,11 +137,10 @@ class _StoryboardRailRows {
   /// fx bypass never touches authoring values), an unkeyed pose in the middle
   /// of the camera frame. No cut is consulted: the row belongs to the track.
   ///
-  /// C5 (2026-08-17) holds by construction: the Audio lane is in the list
-  /// exactly when the timeline's lane law emits one (`seAudioLanesFor` —
-  /// nothing for a row with no sounds imported). The storyboard once mounted
-  /// it off the twirl alone, and an empty S row showed a waveform strip its
-  /// timeline twin never draws.
+  /// C5 (2026-08-17) holds by construction: the list is the timeline's lane
+  /// law's own, so an S row twirls down exactly the lanes its timeline twin
+  /// draws. ↩️The storyboard once mounted the Audio lane off the twirl alone,
+  /// and an empty S row showed a waveform strip its twin never drew.
   List<PropertyLaneRow> _seLanes(Track track, int slot) {
     final layer = _trackSeAt(track, slot);
     return layer == null ? const [] : _seLanesOf(track, layer);
@@ -673,7 +672,7 @@ class _StoryboardRailRows {
   }
 
   /// One track group's rail rows in TIMELINE order (R6 B3, R7-④): the S
-  /// rows (each with its twirled-down Audio lane and Transform group)
+  /// rows (each with its twirled-down 「오디오」 and Transform groups)
   /// ABOVE the V track row and ITS Transform group, slots counting UP from
   /// the bottom like the timeline's layer stack (S1 sits right above V,
   /// S2 above it); the section ZONE spans the whole group (UI-R7 #2).
@@ -845,8 +844,8 @@ class _StoryboardRailRows {
   ];
 
   /// The SE section's rail rows for [track], top slot first: each slot
-  /// the rail shows ([_shownSeSlots]), with its audio lane label and
-  /// transform lane labels while the row is expanded.
+  /// the rail shows ([_shownSeSlots]), with its lane labels while the row
+  /// is expanded.
   List<Widget> _seRowsFor(Track track) => [
     for (final slot in _shownSeSlots(track)) ...[
       _state._rows.seLabelRow(track, slot),
@@ -1827,8 +1826,8 @@ class _StoryboardRailRows {
   /// Read off the table every track's rail is drawn from
   /// ([_trackGroupRowGeometry]): a row here is as tall as its kind, so the
   /// pressed row's own height cannot count the rest (F-322). A slot nobody
-  /// stands on — the Audio lane, an S slot with no layer — hands the span on
-  /// to the nearest row toward the anchor, as the cells' sweep does
+  /// stands on — an open graph's room, an S slot with no layer — hands the
+  /// span on to the nearest row toward the anchor, as the cells' sweep does
   /// ([_sweptOver]).
   int Function(double offset) selectRowDeltaFrom(TimelineRowAddress anchor) =>
       (offset) {
@@ -2707,15 +2706,13 @@ class _StoryboardRailRows {
       ));
       if (layer != null && _seLanesOpen(track, slot)) {
         // One slot per lane the rail draws ([_seLanes]) — a phantom or a
-        // missing slot here would shift every row under it (C5). The Audio
-        // lane keeps no lane address, as it had: no key range lands on it.
+        // missing slot here would shift every row under it (C5).
         for (final lane in _seLanes(track, slot)) {
-          final audio = laneIsSeAudio(lane);
           slots.add((
             row: null,
-            laneRow: audio ? null : LaneRowAddress(layer.id, lane.laneId),
+            laneRow: LaneRowAddress(layer.id, lane.laneId),
             standRow: null,
-            bandRow: !audio,
+            bandRow: true,
             lane: true,
             seSlot: null,
             height: heights.lane,
@@ -3192,7 +3189,6 @@ class _StoryboardRailRows {
           width: width,
           height: height,
           timelineScale: scale,
-          projectFrameRate: _state.widget.projectFrameRate,
           laneEdit: laneEdit,
           laneRange: _laneGestureCallbacksFor(
             track,
@@ -3272,23 +3268,15 @@ class _StoryboardRailRows {
         (_, lane) => _StoryboardLaneStripRow(
           rowKey:
               'storyboard-se-lane-row-$trackIndex-${slot + 1}-${lane.laneId}',
-          // The Audio band draws the in-flight take while one rolls (REC1-C,
-          // `_seDisplayAt`); the list — and so the strip count — stays the
-          // repository row's, in lockstep with the labels.
-          carrier: laneIsSeAudio(lane)
-              ? (_state._seDisplayAt(track, slot) ?? layer)
-              : layer,
+          carrier: layer,
           lane: lane,
           width: width,
           height: height,
           timelineScale: scale,
-          projectFrameRate: _state.widget.projectFrameRate,
           laneRange: _laneGestureCallbacksFor(
             track,
             band: _bandOnLane(track, LaneRowAddress(layer.id, lane.laneId)),
           ),
-          audioLane: _state.widget.audioLane,
-          audioPeaksFor: _state.widget.audioPeaksFor,
         ),
       ),
     ));
@@ -3362,7 +3350,7 @@ final class _TrackStrip {
 /// from the top of its row, in a table of rows [heights] tall: how many of
 /// the NAMED rows ([rows]) lie from the anchor's to the row it stands over
 /// — walked back toward the anchor past rows [addresses] names none for
-/// (an Audio lane, a slot nobody stands on), so a drag that ends on one
+/// (a graph's room, a slot nobody stands on), so a drag that ends on one
 /// reaches as far as it legibly can rather than collapsing to nothing.
 /// Null when the anchor is not in the table.
 ({List<TimelineRowAddress> rows, int rowDelta})? _sweptOver(

@@ -208,7 +208,7 @@ class PropertyLaneRow {
   final bool linkable;
 
   /// Whether the label cell shows the keyframe navigator (◀ ◆ ▶). Lanes
-  /// without key semantics (the SE audio lane) hide it.
+  /// without key semantics (an SE row's one-value Pan) hide it.
   final bool showsKeyNavigator;
 
   /// AE-style GROUP HEADER row ('Transform', later 'Effects'): a structural

@@ -173,7 +173,7 @@ void main() {
       expect(canvasManipulatorsForLane('fx-group:blur-1'), isEmpty);
       expect(canvasManipulatorsForLane(null), isEmpty);
       expect(
-        canvasManipulatorsForLane('se-audio'),
+        canvasManipulatorsForLane('sound:volume'),
         isEmpty,
         reason: 'a lane the transform order never heard of answers nothing '
             'rather than guessing',

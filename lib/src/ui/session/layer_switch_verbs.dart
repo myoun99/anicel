@@ -77,16 +77,6 @@ class LayerSwitchVerbs {
     _changes.notifyChanged();
   }
 
-  /// The SE row's track fader + pan — an undoable edit, like mute.
-  void setLayerAudio({required LayerId layerId, double? gain, double? pan}) {
-    _controllers.layerController.setLayerAudio(
-      layerId: layerId,
-      gain: gain,
-      pan: pan,
-    );
-    _changes.notifyChanged();
-  }
-
   /// R26 #30: the layer's composite blend — an undoable edit, and its link
   /// group's (`LayerController.setLayerBlendMode`).
   void setLayerBlendMode(LayerId layerId, LayerBlendMode blendMode) {

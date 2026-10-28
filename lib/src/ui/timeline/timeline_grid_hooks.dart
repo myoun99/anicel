@@ -26,7 +26,6 @@ import 'timeline_exposure_comma_drag_policy.dart';
 import 'lane_graph.dart' show LaneGraphVerbs, LaneGraphsView;
 import 'lane_graph_seats.dart' show LaneGraphLine, seatLaneGraphs;
 import 'property_lane_model.dart';
-import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
 import 'timeline_row_filter.dart';
 import 'timeline_ruler_cursor_overlay.dart' show ReadyRunsIn;
 import 'timeline_section_policy.dart';
@@ -92,7 +91,7 @@ class TimelineGridHooks {
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.showSeconds = false,
     this.onShowSecondsChanged,
-    this.audioLane,
+    this.onDropMediaAssetOnSeBlock,
     this.onDropMediaAssetOnLayer,
     this.acceptsMediaAssetOnLayer,
     this.onHoverMediaAssetOnLayer,
@@ -292,8 +291,11 @@ class TimelineGridHooks {
   /// axis it relabels. Null leaves the corner as a plain spacer.
   final ValueChanged<bool>? onShowSecondsChanged;
 
-  /// What the audio lane may ask the session to do; null = display-only.
-  final TimelineAudioLaneCallbacks? audioLane;
+  /// A media-browser sound dropped on an SE block: linked to that block's
+  /// instance. Null mounts no drop place. ↩️It rode the audio lane's
+  /// callbacks, which went with the lane (I-140).
+  final void Function(LayerId layerId, int blockStartFrame, String path)?
+  onDropMediaAssetOnSeBlock;
 
   /// A media-browser row dropped on a DRAWING layer: the window opens with
   /// this cut and this layer already answered.

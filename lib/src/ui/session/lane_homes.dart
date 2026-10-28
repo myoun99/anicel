@@ -2,6 +2,7 @@ import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/property_track.dart';
 import '../../models/se_name_tag.dart';
+import '../../models/se_sound.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/transform_track.dart';
 import '../timeline/effect_lane_editing.dart' show effectLaneLens;
@@ -12,14 +13,17 @@ import '../timeline/property_lane_lens.dart';
 import '../timeline/reference_lane_policy.dart' show transformLanesByHome;
 import '../timeline/se_name_tag_lane_policy.dart'
     show laneIsSeNameTag, seNameTagLaneLens;
+import '../timeline/se_sound_lane_policy.dart'
+    show laneIsSeSound, seSoundLaneLens;
 import '../timeline/transform_lane_editing.dart' show transformLaneLens;
 import 'lane_edit_subject.dart';
 
 /// ONE HOME of a row's keys (F-374): what it holds, the lanes of a span
 /// that live there — in its own words — and how a lane id reaches into it
-/// ([LaneLens]). A row keeps its lanes' keys in four: its own transform
+/// ([LaneLens]). A row keeps its lanes' keys in five: its own transform
 /// track (the cut's camera, on the camera row), its reference fx, its
-/// effect chain and, on an SE row, its name tag ([RowLaneHomes]).
+/// effect chain and, on an SE row, its name tag and its sound
+/// ([RowLaneHomes]).
 ///
 /// 🚨THE SPAN VERBS ARE WRITTEN ONCE, OVER THESE. A lane span is sliced out
 /// of the rows the rail drew (#1381, 2026-08-30), so it may hold lanes of
@@ -166,24 +170,28 @@ typedef KeyCopy = ({List<LaneKeys> lanes, int length});
 /// pasted in.
 typedef LanesAlone = ({LayerId layerId, bool camera, KeyCopy keys});
 
-/// The four homes of a row's keys ([LaneHome]).
+/// The five homes of a row's keys ([LaneHome]).
 typedef RowLaneHomes = ({
   LaneHome<TransformTrack> own,
   LaneHome<TransformTrack> reference,
   LaneHome<List<LayerEffect>> effects,
   LaneHome<SeNameTagTrack> nameTag,
+  LaneHome<SeSound> sound,
 });
 
 /// [subject]'s homes, each holding the lanes of [laneIds] that live there.
 RowLaneHomes rowLaneHomes(LaneEditSubject subject, List<String> laneIds) {
   final effects = <String>[];
   final nameTag = <String>[];
+  final sound = <String>[];
   final transform = <String>[];
   for (final laneId in laneIds) {
     (parseEffectLaneId(laneId) != null
             ? effects
             : laneIsSeNameTag(laneId)
             ? nameTag
+            : laneIsSeSound(laneId)
+            ? sound
             : transform)
         .add(laneId);
   }
@@ -201,25 +209,32 @@ RowLaneHomes rowLaneHomes(LaneEditSubject subject, List<String> laneIds) {
       nameTag,
       seNameTagLaneLens,
     ),
+    sound: LaneHome(subject.seSound ?? const SeSound(), sound, seSoundLaneLens),
   );
 }
+
+/// Every home of [homes], in the order a copy reads them
+/// ([LaneVerbs.laneKeysCopiedFrom]) — what a verb asks of each in turn.
+List<LaneHome<Object?>> rowLaneHomesInOrder(RowLaneHomes homes) => [
+  homes.own,
+  homes.reference,
+  homes.effects,
+  homes.nameTag,
+  homes.sound,
+];
 
 /// Whether a lane of [homes] holds a key at a frame [covers] takes.
 bool rowLaneHomesKeyedWhere(
   RowLaneHomes homes,
   bool Function(int frame) covers,
-) =>
-    homes.own.keyedWhere(covers) ||
-    homes.reference.keyedWhere(covers) ||
-    homes.effects.keyedWhere(covers) ||
-    homes.nameTag.keyedWhere(covers);
+) => rowLaneHomesInOrder(homes).any((home) => home.keyedWhere(covers));
 
 /// The number [held] on lane [laneId] shows as ([LaneLens.numberShown]) —
 /// asked of the home whose table names the lane: every row's homes read
 /// the same tables, and their lane ids never meet ([rowLaneHomes]). Null
 /// for a lane of no numbers.
 double? rowLaneNumberShown(RowLaneHomes homes, String laneId, double held) =>
-    [homes.own, homes.reference, homes.effects, homes.nameTag]
+    rowLaneHomesInOrder(homes)
         .map((home) => home.lensOf(laneId))
         .nonNulls
         .firstOrNull
@@ -242,6 +257,7 @@ LaneEdit rowLaneHomesEdited(
   transform: (own: verb(homes.own), reference: verb(homes.reference)),
   effects: verb(homes.effects),
   nameTag: subject.nameTagWith(verb(homes.nameTag)),
+  sound: verb(homes.sound),
 );
 
 /// Every key at a frame [covers] takes, taken away — nothing where the lane

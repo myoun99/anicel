@@ -19,6 +19,8 @@ import 'package:anicel/src/ui/timeline/property_lanes_for_row.dart';
 import 'package:anicel/src/ui/timeline/scale_lane_form.dart' show TwoScales;
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart'
     show seNameTagGroupLaneId;
+import 'package:anicel/src/ui/timeline/se_sound_lane_policy.dart'
+    show seSoundGroupLaneId;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -282,8 +284,8 @@ void main() {
     expect(laneOf(camera, 'scale').curve!.at(3), [100]);
   });
 
-  test('a header heads a graph where its lanes stand as one — Transform\'s '
-      'and each effect\'s', () {
+  test('a header heads a graph where its lanes stand as one — Transform\'s, '
+      'each effect\'s and an S row\'s 「오디오」 (I-140: its audio fx)', () {
     final se = Layer(
       id: const LayerId('se'),
       name: 'SE',
@@ -298,6 +300,7 @@ void main() {
       {
         effectGroupLaneId(grade.id): true,
         transformGroupHeaderLane.laneId: true,
+        seSoundGroupLaneId: true,
         seNameTagGroupLaneId: false,
       },
     );

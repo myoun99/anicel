@@ -9,6 +9,7 @@ import '../../models/export_spec.dart' show ExportScopeKind;
 import '../../models/layer_kind.dart';
 import '../../models/project.dart';
 import '../../models/se_audio_spans.dart';
+import '../../models/se_sound.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../../models/track.dart';
 import '../../services/project_lookup.dart' show cutPositionOf;
@@ -181,39 +182,25 @@ List<ExportFrameTask> buildExportFramePlan({
 /// mix renders through the same mixer, which is the whole point: what the
 /// preview played is what the file holds.
 /// One span, trimmed into the exported window [audibleStart, audibleEnd)
-/// — or null when the window closed before it opened.
-///
-/// ⛔THE SAME anchors playback ramps at: the fade-in anchors to the span
-/// (block) start, so a range starting mid-fade keeps only the remainder,
-/// and the fade-out anchors to the audible end. Both cap at the audible
-/// length, and the envelope keys shift by the trimmed lead (possibly
-/// negative — before the exported window).
+/// — or null when the window closed before it opened. The row's volume is
+/// read at the frames the trimmed span sounds, as playback reads it
+/// ([ScheduledAudioClip.ofSpan]).
 ScheduledAudioClip? _trimmedExportClip(
   SeAudioSpan span, {
   required _ExportWindow at,
-  required double layerGain,
-  required double layerPan,
+  required SeSound sound,
 }) {
   if (at.audibleEnd <= at.audibleStart) {
     return null;
   }
-  final audibleFrames = at.audibleEnd - at.audibleStart;
-  final trimmedLead = at.audibleStart - at.spanExportStart;
   return ScheduledAudioClip.ofSpan(
     span,
     startFrame: at.audibleStart,
     endFrameExclusive: at.audibleEnd,
     // The clip's offset trim seeks past the skipped file head on top of
     // any range clipping.
-    clippedLead: trimmedLead,
-    layerGain: layerGain,
-    layerPan: layerPan,
-    fadeInFrames:
-        (at.spanExportStart + span.clip.fadeInFrames - at.audibleStart).clamp(
-          0,
-          audibleFrames,
-        ),
-    fadeOutFrames: span.clip.fadeOutFrames.clamp(0, audibleFrames),
+    clippedLead: at.audibleStart - at.spanExportStart,
+    sound: sound,
   );
 }
 
@@ -264,8 +251,7 @@ Iterable<ScheduledAudioClip> _cutOwnedSpans(_ExportBlock block) sync* {
           audibleStart: math.max(block.start, offsetFrames),
           audibleEnd: math.min(block.end, offsetFrames + span.lengthFrames),
         ),
-        layerGain: 1,
-        layerPan: 0,
+        sound: layer.seSound,
       );
       if (clip != null) {
         yield clip;
@@ -399,8 +385,7 @@ Iterable<ScheduledAudioClip> _trackOwnedSpans(
           audibleStart: math.max(block.start, exportPos),
           audibleEnd: math.min(runEnd, exportPos + span.lengthFrames),
         ),
-        layerGain: layer.audioGain,
-        layerPan: layer.audioPan,
+        sound: layer.seSound,
       );
       if (clip != null) {
         yield clip;

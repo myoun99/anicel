@@ -2,7 +2,6 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/audio_clip.dart' show AudioVolumeKey;
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/services/audio/audio_mixer_reference.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
@@ -89,7 +88,7 @@ void main() {
   });
 
   test(
-    'a fade-in ramps from silence exactly like the playback envelope',
+    'a volume line ramps from silence exactly as playback draws it',
     () async {
       final path = '${directory.path}/mix.wav';
       await writeExportAudioMixWav(
@@ -98,7 +97,7 @@ void main() {
             filePath: 'a',
             startFrame: 0,
             endFrameExclusive: 10,
-            fadeInFrames: 5,
+            volume: [(frame: 0, gain: 0.0), (frame: 5, gain: 1.0)],
           ),
         ],
         rate: rate,
@@ -109,15 +108,15 @@ void main() {
       );
       final wav = readWav16(File(path).readAsBytesSync());
       expect(wav.samples[0], 0, reason: 'the ramp starts at silence');
-      // Halfway through the 5-frame fade (~frame 2.5 = sample 12000): half
+      // Halfway up the 5-frame ramp (~frame 2.5 = sample 12000): half
       // the level.
       expect(wav.samples[12000 * 2], closeTo(0.4, 0.01));
-      // Past the fade: full level.
+      // Past the ramp: full level.
       expect(wav.samples[8 * 4800 * 2], closeTo(0.8, 0.001));
     },
   );
 
-  test('pan and the volume envelope survive into the render — the R1 '
+  test('pan and the volume line survive into the render — the R1 '
       'controls must not exist only in the preview', () async {
     final path = '${directory.path}/mix.wav';
     await writeExportAudioMixWav(
@@ -130,12 +129,12 @@ void main() {
           endFrameExclusive: 5,
           pan: -1.0,
         ),
-        // An envelope dropping to half gain from frame 5 on.
+        // A volume line held at half gain from frame 5 on.
         ScheduledAudioClip(
           filePath: 'a',
           startFrame: 5,
           endFrameExclusive: 10,
-          volumeKeys: [AudioVolumeKey(frame: 0, gain: 0.5)],
+          volume: [(frame: 0, gain: 0.5)],
         ),
       ],
       rate: rate,
@@ -152,7 +151,7 @@ void main() {
       0,
       reason: 'a hard-left clip must leave the right channel empty',
     );
-    // Enveloped clip: half gain on both sides.
+    // The half-volume clip: half gain on both sides.
     expect(wav.samples[7 * 4800 * 2], closeTo(0.25, 0.001));
   });
 
@@ -176,7 +175,7 @@ void main() {
         offsetFrames: 1,
         gain: 0.8,
         pan: 0.5,
-        fadeInFrames: 3,
+        volume: [(frame: 0, gain: 0.0), (frame: 3, gain: 1.0)],
       ),
     ];
 

@@ -2,15 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/app_language.dart';
-import 'package:anicel/src/models/audio_clip.dart';
-import 'package:anicel/src/models/frame.dart';
-import 'package:anicel/src/models/frame_id.dart';
-import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
-import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/se_name_tag.dart';
-import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/se_sound.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/timeline/scale_lane_form.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -18,7 +12,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
-import 'package:anicel/src/ui/timeline/se_audio_lane.dart';
+import 'package:anicel/src/ui/timeline/se_sound_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 
@@ -45,16 +39,6 @@ void main() {
     for (final row in rows) row.label,
   ];
 
-  final seLayer = Layer(
-    id: const LayerId('se'),
-    name: 'S1',
-    kind: LayerKind.se,
-    frames: [Frame(id: const FrameId('se-f'), duration: 1, strokes: const [])],
-    timeline: const {2: TimelineExposure.drawing(FrameId('se-f'), length: 8)},
-    audioClips: [
-      AudioClip(filePath: 'steps.wav', frameId: const FrameId('se-f')),
-    ],
-  );
   final effects = [
     LayerEffect.defaults(id: const EffectId('blur'), kind: EffectKind.blur),
     LayerEffect.defaults(
@@ -98,8 +82,17 @@ void main() {
         );
       });
 
-      test('the Audio lane', () {
-        expect(labelsOf(seAudioLanesFor(seLayer)), [words.audio]);
+      test('the 「오디오」 group and its members', () {
+        expect(
+          labelsOf(
+            seSoundPropertyLanes(
+              const SeSound(),
+              expanded: true,
+              volumeAt: null,
+            ),
+          ),
+          words.audio,
+        );
       });
 
       test('each effect and its parameters', () {
@@ -183,7 +176,8 @@ class _RailWords {
   /// The Name Tag header and its ten members, top to bottom.
   final List<String> nameTag;
 
-  final String audio;
+  /// The 「오디오」 header and its two members, top to bottom (I-140).
+  final List<String> audio;
 
   /// A Gaussian Blur and a Color Key, each header followed by its
   /// parameters.
@@ -213,7 +207,7 @@ const _rail = <AppLanguage, _RailWords>{
       'Dialogue Ink',
       'Show Dialogue',
     ],
-    audio: 'Audio',
+    audio: ['Audio', 'Volume', 'Pan'],
     effects: [
       'Gaussian Blur',
       'Blurriness',
@@ -241,7 +235,7 @@ const _rail = <AppLanguage, _RailWords>{
       'セリフの色',
       'セリフを表示',
     ],
-    audio: '音声',
+    audio: ['音声', '音量', 'パン'],
     effects: [
       'ブラー（ガウス）',
       'ブラー',
@@ -269,7 +263,7 @@ const _rail = <AppLanguage, _RailWords>{
       '대사 잉크',
       '대사 표시',
     ],
-    audio: '오디오',
+    audio: ['오디오', '볼륨', '팬'],
     effects: [
       '가우시안 흐림',
       '흐림 정도',
@@ -305,7 +299,7 @@ const _rail = <AppLanguage, _RailWords>{
       'Encre du dialogue',
       'Afficher le dialogue',
     ],
-    audio: 'Audio',
+    audio: ['Audio', 'Volume', 'Panoramique'],
     effects: [
       'Flou gaussien',
       'Flou',
@@ -333,7 +327,7 @@ const _rail = <AppLanguage, _RailWords>{
       '台词颜色',
       '显示台词',
     ],
-    audio: '音频',
+    audio: ['音频', '音量', '声像'],
     effects: [
       '高斯模糊',
       '模糊度',

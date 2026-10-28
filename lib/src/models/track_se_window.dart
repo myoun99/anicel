@@ -4,6 +4,7 @@ import 'timeline_exposure.dart';
 import 'layer_effect.dart';
 import 'property_track.dart';
 import 'se_name_tag.dart';
+import 'se_sound.dart';
 import 'transform_track.dart';
 
 /// A cut-local DISPLAY window over a track-global SE layer.
@@ -138,8 +139,15 @@ class TrackSeWindow {
           : globalLayer.seNameTag!.copyWith(
               track: _rebasedNameTag(globalLayer.seNameTag!.track!),
             ),
+      seSound: _rebasedSound(globalLayer.seSound),
     );
   }
+
+  /// The row's volume keys on the local axis (I-140) — its pan is one value
+  /// and has no frame to move.
+  SeSound _rebasedSound(SeSound sound) => cutStartFrame == 0 || !sound.isKeyed
+      ? sound
+      : sound.copyWith(volume: _shift(sound.volume));
 
   /// ONE lane's keys moved onto the local axis — the primitive every rebase
   /// below is made of.

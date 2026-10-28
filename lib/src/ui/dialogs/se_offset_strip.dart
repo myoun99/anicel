@@ -22,7 +22,7 @@ import '../widgets/owning_axis_grip.dart';
 /// The strip is the block's window over the sound: on the block's paper,
 /// what plays; beyond it, faint, what the block cuts off. Dragging slides
 /// the waveform under the window — toward the start plays a LATER part of
-/// the file there ([slidAudioOffset], the audio lane's own law).
+/// the file there ([slidAudioOffset]).
 ///
 /// 🚨**LIGHT BY CONSTRUCTION.** A drag repaints THIS strip and nothing else:
 /// no model write, no session notice. The offset reaches the window on

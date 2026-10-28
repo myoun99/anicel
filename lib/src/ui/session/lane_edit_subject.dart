@@ -1,5 +1,6 @@
 import '../../models/layer_effect.dart';
 import '../../models/se_name_tag.dart';
+import '../../models/se_sound.dart';
 import '../../models/transform_track.dart';
 import '../timeline/timeline_drag_preview.dart';
 
@@ -29,12 +30,13 @@ class LaneEditSubject {
     required this.preview,
     this.referenceFx,
     this.seNameTag,
+    this.seSound,
   });
 
   /// The transform lanes' keys, the effect chain's, and — on SE rows — the
-  /// name tag's. Which one an edit reads is the LANE's question: an effect
-  /// lane on a camera row edits the layer's chain while its Position lane
-  /// edits the cut's camera.
+  /// name tag's and the sound's. Which one an edit reads is the LANE's
+  /// question: an effect lane on a camera row edits the layer's chain while
+  /// its Position lane edits the cut's camera.
   final TransformTrack transformTrack;
   final List<LayerEffect> effects;
 
@@ -47,6 +49,10 @@ class LaneEditSubject {
   /// write of a tag throws for any row but an SE row's, so no edit of one
   /// is made there.
   final SeNameTag? seNameTag;
+
+  /// The row's sound (I-140) — null, as [seNameTag] is, on every row but an
+  /// SE row's.
+  final SeSound? seSound;
 
   /// [seNameTag] keyed as [keys] — null where [keys] is, or the row
   /// carries no tag.
@@ -64,6 +70,7 @@ class LaneEditSubject {
     referenceFx: edit.transform.reference ?? referenceFx,
     effects: edit.effects ?? effects,
     seNameTag: edit.nameTag ?? seNameTag,
+    seSound: edit.sound ?? seSound,
     commit: commit,
     preview: preview,
   );
@@ -81,7 +88,7 @@ typedef TransformHomes = ({TransformTrack? own, TransformTrack? reference});
 
 /// What a lane edit leaves a row's keys at, family by family — each null
 /// where the edit leaves that family alone: the transform's two homes, the
-/// effect chain and, on an SE row, the name tag.
+/// effect chain and, on an SE row, the name tag and the sound.
 ///
 /// 🚨F-374: ONE edit for every family, so a verb over a span is one step
 /// over all the span holds (`RowLaneHomes`). ↩️An edit was ONE family's,
@@ -91,18 +98,21 @@ class LaneEdit {
     this.transform = (own: null, reference: null),
     this.effects,
     this.nameTag,
+    this.sound,
   });
 
   final TransformHomes transform;
   final List<LayerEffect>? effects;
   final SeNameTag? nameTag;
+  final SeSound? sound;
 
   /// Whether it leaves every family alone.
   bool get isEmpty =>
       transform.own == null &&
       transform.reference == null &&
       effects == null &&
-      nameTag == null;
+      nameTag == null &&
+      sound == null;
 
   /// This edit and then [later], made on what this one leaves: each family
   /// as the last of the two to touch it leaves it.
@@ -113,5 +123,6 @@ class LaneEdit {
     ),
     effects: later.effects ?? effects,
     nameTag: later.nameTag ?? nameTag,
+    sound: later.sound ?? sound,
   );
 }

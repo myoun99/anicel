@@ -21,6 +21,7 @@ import 'layer_process.dart';
 import 'media_reference.dart';
 import 'non_negative_index_map.dart';
 import 'se_name_tag.dart';
+import 'se_sound.dart';
 import 'storyboard_coverage.dart' show storyboardConteStart;
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
@@ -46,8 +47,7 @@ class Layer {
     this.lanesExpanded = false,
     Set<String> expandedLaneGroups = const {},
     this.muted = false,
-    this.audioGain = 1.0,
-    this.audioPan = 0.0,
+    this.seSound = const SeSound(),
     this.opacity = 1.0,
     this.blendMode = LayerBlendMode.normal,
     this.kind = LayerKind.animation,
@@ -139,15 +139,12 @@ class Layer {
   /// clips of muted layers, the waveforms keep displaying.
   final bool muted;
 
-  /// The SE row's track fader (AUDIO-PRO R1): multiplies every clip on
-  /// this layer. 1.0 = unity; applied exactly by the mixer (headroom, no
-  /// platform clamp), like clip gain.
-  final double audioGain;
-
-  /// The SE row's pan, -1 (left) .. +1 (right), equal-power law. 0 =
-  /// center. Applied on the device mixer path; the platform-player
-  /// fallback cannot pan (honest limitation, like exact gain before it).
-  final double audioPan;
+  /// The SE row's sound — its volume over time and its pan, the 「오디오」
+  /// group of its twirl-down (I-140). Multiplies every clip on the row,
+  /// applied exactly by the mixer (headroom, no platform clamp); the pan
+  /// reaches the device mixer path alone — the platform-player fallback
+  /// cannot pan.
+  final SeSound seSound;
 
   final double opacity;
 
@@ -308,8 +305,7 @@ class Layer {
     bool? lanesExpanded,
     Set<String>? expandedLaneGroups,
     bool? muted,
-    double? audioGain,
-    double? audioPan,
+    SeSound? seSound,
     double? opacity,
     LayerBlendMode? blendMode,
     LayerKind? kind,
@@ -341,8 +337,7 @@ class Layer {
       lanesExpanded: lanesExpanded ?? this.lanesExpanded,
       expandedLaneGroups: expandedLaneGroups ?? this.expandedLaneGroups,
       muted: muted ?? this.muted,
-      audioGain: audioGain ?? this.audioGain,
-      audioPan: audioPan ?? this.audioPan,
+      seSound: seSound ?? this.seSound,
       opacity: opacity ?? this.opacity,
       blendMode: blendMode ?? this.blendMode,
       kind: kind ?? this.kind,
@@ -401,8 +396,7 @@ class Layer {
     if (expandedLaneGroups.isNotEmpty)
       'expandedLaneGroups': [...expandedLaneGroups]..sort(),
     if (muted) 'muted': true,
-    if (audioGain != 1.0) 'audioGain': audioGain,
-    if (audioPan != 0.0) 'audioPan': audioPan,
+    if (seSound != const SeSound()) 'seSound': seSound.toJson(),
     'opacity': opacity,
     // Default normal omitted — pre-blend files read back unchanged.
     if (blendMode != LayerBlendMode.normal) 'blendMode': blendMode.toJson(),
@@ -458,8 +452,9 @@ class Layer {
           laneId as String,
       },
       muted: json['muted'] as bool? ?? false,
-      audioGain: (json['audioGain'] as num?)?.toDouble() ?? 1.0,
-      audioPan: (json['audioPan'] as num?)?.toDouble() ?? 0.0,
+      seSound: json['seSound'] is Map<String, dynamic>
+          ? SeSound.fromJson(json['seSound'] as Map<String, dynamic>)
+          : const SeSound(),
       opacity: (json['opacity'] as num).toDouble(),
       blendMode: LayerBlendMode.fromJson(json['blendMode']),
       kind: json.containsKey('kind')
@@ -541,8 +536,7 @@ class Layer {
           listEquals(other.audioClips, audioClips) &&
           other.isVisible == isVisible &&
           other.muted == muted &&
-          other.audioGain == audioGain &&
-          other.audioPan == audioPan &&
+          other.seSound == seSound &&
           other.opacity == opacity &&
           other.blendMode == blendMode &&
           other.kind == kind &&
@@ -594,7 +588,7 @@ class Layer {
       Object.hashAllUnordered(expandedLaneGroups),
     ),
     muted,
-    Object.hash(audioGain, audioPan),
+    seSound,
     // Folded with opacity: Object.hash caps at 20 positional args.
     Object.hash(opacity, blendMode),
     kind,

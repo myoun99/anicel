@@ -15,15 +15,19 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/home_page.dart';
-import 'package:anicel/src/ui/timeline/se_audio_lane.dart' show seAudioLanesFor;
+import 'package:anicel/src/ui/timeline/se_sound_lane_policy.dart'
+    show seSoundGroupLaneId;
 
 import '../helpers/named_finders.dart';
 
-/// 🚨C5 (2026-08-17): the storyboard's S-row twirl shows a WAVEFORM (Audio)
-/// lane exactly when the TIMELINE's own lane law emits one —
-/// [seAudioLanesFor], which answers nothing for an SE row with no sounds
-/// imported. The storyboard used to mount the lane off the twirl alone, so
-/// an empty S row showed a waveform strip its timeline twin never draws.
+/// 🚨C5 (2026-08-17): the storyboard's S-row twirl shows the lanes the
+/// TIMELINE's own lane law gives the row — both rails read one list. The
+/// storyboard once mounted a waveform lane off the twirl alone, so an empty
+/// S row showed a strip its timeline twin never drew.
+///
+/// I-140 (유저 2026-10-28, Q1 「행에 늘 있는 「오디오」 그룹」): the waveform
+/// lane is gone, and every S row — a sound imported or none — twirls its
+/// 「오디오」 group down, as its timeline twin does.
 const _trackId = TrackId('agate-track');
 const _withSoundId = LayerId('agate-se-sound');
 const _emptyId = LayerId('agate-se-empty');
@@ -113,55 +117,41 @@ Future<void> _twirl(WidgetTester tester, int slot) async {
 }
 
 void main() {
-  test('THE predicate is the timeline\'s own lane law: no clips, no Audio '
-      'lane — with clips, one', () {
-    final layers = _project().tracks.single.seLayers;
-    expect(seAudioLanesFor(layers[0]), hasLength(1));
-    expect(seAudioLanesFor(layers[1]), isEmpty);
-  });
+  for (final (slot, id, what) in [
+    (0, _withSoundId, 'WITH a sound imported'),
+    (1, _emptyId, 'with NO sound imported'),
+  ]) {
+    testWidgets('twirling an S row $what shows its 「오디오」 group and no '
+        'waveform lane — the timeline\'s own list', (tester) async {
+      await _openStoryboard(tester);
+      await _twirl(tester, slot);
 
-  testWidgets('twirling an S row with NO imported audio shows NO waveform '
-      'lane — no strip row, no rail label; the Transform group still '
-      'twirls open', (tester) async {
-    await _openStoryboard(tester);
-    // S2 renders top-most (slot 1 sits above slot 0).
-    await _twirl(tester, 1);
-
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-se-lane-row-0-2-se-audio')),
-      findsNothing,
-      reason: 'no clips, no waveform strip — the timeline\'s own answer',
-    );
-    expect(
-      find.byKey(
-        ValueKey<String>('storyboard-lane-label-${_emptyId.value}-se-audio'),
-      ),
-      findsNothing,
-      reason: 'and no Audio label on the rail',
-    );
-    expect(
-      find.byKey(
-        const ValueKey<String>('storyboard-se-lane-row-0-2-transform-group'),
-      ),
-      findsOneWidget,
-      reason: 'the twirl itself still opens the Transform group',
-    );
-  });
-
-  testWidgets('twirling the S row WITH audio shows the waveform lane, as '
-      'before', (tester) async {
-    await _openStoryboard(tester);
-    await _twirl(tester, 0);
-
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-se-lane-row-0-1-se-audio')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(
-        ValueKey<String>('storyboard-lane-label-${_withSoundId.value}-se-audio'),
-      ),
-      findsOneWidget,
-    );
-  });
+      expect(
+        find.byKey(
+          ValueKey<String>(
+            'storyboard-se-lane-row-0-${slot + 1}-$seSoundGroupLaneId',
+          ),
+        ),
+        findsOneWidget,
+        reason: 'the group\'s band, on every S row',
+      );
+      expect(
+        find.byKey(
+          ValueKey<String>(
+            'storyboard-lane-label-${id.value}-$seSoundGroupLaneId',
+          ),
+        ),
+        findsOneWidget,
+        reason: 'and its label on the rail',
+      );
+      expect(
+        find.byKey(
+          ValueKey<String>('storyboard-se-lane-row-0-${slot + 1}-se-audio'),
+        ),
+        findsNothing,
+        reason: 'the waveform lane went (I-140) — the row\'s band draws its '
+            'sounds',
+      );
+    });
+  }
 }

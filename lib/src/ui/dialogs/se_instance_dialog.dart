@@ -7,6 +7,7 @@ import '../../models/se_line_type.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
+import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/pill_strip.dart';
 import 'instance_edit_dialog.dart';
@@ -17,11 +18,12 @@ import '../input/control_press_claim.dart';
 /// A sound the edited SE instance carries: what to show, and the opaque
 /// token the host uses to find it again (R5 #19) — and, for its start
 /// offset (09-27), where in the file it starts, the block it plays in, and
-/// its waveform ([SeOffsetStrip]).
+/// its waveform ([SeOffsetStrip]) — and its own gain (I-140).
 typedef SeInstanceAudioLink = ({
   String label,
   int token,
   int offsetFrames,
+  double gain,
   int blockFrames,
   ProjectFrameRate frameRate,
   AudioPeaks? peaks,
@@ -36,6 +38,7 @@ class SeInstanceDialogResult {
     this.seTypes = SeLineTypes.allOn,
     this.unlinkedAudioTokens = const {},
     this.audioOffsets = const {},
+    this.audioGains = const {},
   });
 
   final String seName;
@@ -53,6 +56,10 @@ class SeInstanceDialogResult {
   /// The start offsets moved in this sitting, by token — only the sounds
   /// that stay linked. Applied on OK like everything else here.
   final Map<int, int> audioOffsets;
+
+  /// The gains moved in this sitting, by token — only the sounds that stay
+  /// linked, applied on OK as the offsets are.
+  final Map<int, double> audioGains;
 }
 
 /// The SE layer's instance editor — name (speaker/effect, accent box) +
@@ -153,6 +160,9 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
   /// Start offsets moved in this sitting, by token, applied on OK.
   final Map<int, int> _offsets = <int, int>{};
 
+  /// Gains moved in this sitting, by token, applied on OK.
+  final Map<int, double> _gains = <int, double>{};
+
   void _submit() {
     Navigator.of(context).pop(
       SeInstanceDialogResult(
@@ -163,6 +173,10 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
         audioOffsets: Map.unmodifiable({
           for (final MapEntry(key: token, value: offset) in _offsets.entries)
             if (!_unlinked.contains(token)) token: offset,
+        }),
+        audioGains: Map.unmodifiable({
+          for (final MapEntry(key: token, value: gain) in _gains.entries)
+            if (!_unlinked.contains(token)) token: gain,
         }),
       ),
     );
@@ -263,6 +277,25 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
                     peaks: link.peaks,
                     onChanged: (offset) =>
                         setState(() => _offsets[link.token] = offset),
+                  ),
+                  const SizedBox(height: 6),
+                  // Its own gain — the level it was brought in at, a pro
+                  // tool's clip gain; the row's volume over time is its
+                  // 「오디오」 group's (유저 I-140: 「블록마다의 게인(한 값)은
+                  // 남겨 블록 편집창에」).
+                  FieldSlider(
+                    key: ValueKey<String>('se-gain-${link.token}'),
+                    min: 0,
+                    max: 2,
+                    value: _gains[link.token] ?? link.gain,
+                    label: strings.audioGainLabel,
+                    // A gain of 1 is 100%, as the row's volume reads — in
+                    // whole per cents, which is what it holds (F-488).
+                    unit: '%',
+                    displayScale: 100,
+                    divisions: 200,
+                    onChanged: (gain) =>
+                        setState(() => _gains[link.token] = gain),
                   ),
                   const SizedBox(height: 6),
                 ],

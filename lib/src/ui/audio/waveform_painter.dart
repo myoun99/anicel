@@ -23,8 +23,6 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
     this.axis = Axis.horizontal,
     this.leadingFrames = 0,
     this.gain = 1.0,
-    this.fadeInFrames = 0,
-    this.fadeOutFrames = 0,
   });
 
   final AudioPeaks peaks;
@@ -38,14 +36,11 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
   /// stays aligned with what actually plays.
   final int leadingFrames;
 
-  /// The clip's volume envelope, drawn INTO the band (amplitudes scale
-  /// with what actually plays): [gain] scales the whole envelope (capped
-  /// at 1 — the band cannot outgrow the row), [fadeInFrames] ramps up from
-  /// the span start and [fadeOutFrames] ramps down toward the audible end
-  /// (span end or file end, whichever comes first).
+  /// The clip's gain, drawn INTO the band (amplitudes scale with what
+  /// actually plays), capped at 1 — the band cannot outgrow the row.
+  /// ↩️The clip's fades were drawn here too, until a row's volume took
+  /// them over (I-140).
   final double gain;
-  final int fadeInFrames;
-  final int fadeOutFrames;
 
   /// The same band asked in SECONDS — what a media viewer has instead of a
   /// frame rate.
@@ -169,27 +164,7 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
     final center = crossExtent / 2;
     final maxAmplitude = (crossExtent / 2) - 1;
 
-    // Where the audible part ends on the main axis: the span's own end or
-    // the file running out, whichever is first — the fade-out anchor.
-    final audibleEndPixels = math.min(
-      mainExtent,
-      (peaks.durationFrames(frameRate) - leadingFrames) * pixelsPerFrame,
-    );
-    final fadeInPixels = fadeInFrames * pixelsPerFrame;
-    final fadeOutPixels = fadeOutFrames * pixelsPerFrame;
     final envelopeGain = math.min(1.0, gain);
-
-    double envelopeAt(double main) {
-      var factor = envelopeGain;
-      if (fadeInPixels > 0 && main < fadeInPixels) {
-        factor *= math.max(0, main / fadeInPixels);
-      }
-      final remaining = audibleEndPixels - main;
-      if (fadeOutPixels > 0 && remaining < fadeOutPixels) {
-        factor *= math.max(0, remaining / fadeOutPixels);
-      }
-      return factor;
-    }
 
     final path = Path();
     final top = <Offset>[];
@@ -208,7 +183,7 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
         main = mainExtent;
         lastSample = true;
       }
-      final amplitude = peaks.peaks[bucket] * maxAmplitude * envelopeAt(main);
+      final amplitude = peaks.peaks[bucket] * maxAmplitude * envelopeGain;
       top.add(offsetAlong(axis, along: main, across: center - amplitude));
       bottom.add(offsetAlong(axis, along: main, across: center + amplitude));
       if (lastSample || main >= shownTo) {
@@ -238,7 +213,5 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
     axis,
     leadingFrames,
     gain,
-    fadeInFrames,
-    fadeOutFrames,
   );
 }

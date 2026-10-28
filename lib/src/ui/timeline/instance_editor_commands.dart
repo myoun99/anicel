@@ -355,6 +355,8 @@ Future<void> _editSeLabel(
       seName: fields.seName,
       seTypes: fields.seTypes,
     ),
+    setGain: (token, gain) =>
+        session.audioClips.setAudioClipGain(layerId, token, gain),
     setOffset: (token, offset) =>
         session.audioClips.setAudioClipOffset(layerId, token, offset),
     unlink: session.audioClips.unlinkAudioClipsFromActiveLayer,
@@ -373,6 +375,7 @@ SeInstanceAudioLink _audioLink(
   label: session.repository.requireProject().shownNameOfMedia(clip.filePath),
   token: index,
   offsetFrames: clip.offsetFrames,
+  gain: clip.gain,
   blockFrames: blockFrames,
   frameRate: session.projectSettings.projectFrameRate,
   peaks: session.voiceRecording.audioPeaksForDisplay(clip.filePath),
@@ -484,6 +487,8 @@ Future<void> editSeEntryInstance(
       dialogue: dialogue,
       fields: fields,
     ),
+    setGain: (token, gain) =>
+        session.audioClips.setAudioClipGain(layerId, token, gain),
     setOffset: (token, offset) =>
         session.audioClips.setAudioClipOffset(layerId, token, offset),
     unlink: (tokens) => session.audioClips.unlinkAudioClipsFromLayer(layerId, tokens),
@@ -504,6 +509,7 @@ Future<void> _editSeEntryWithDialog(
   required Axis previewAxis,
   required void Function(String dialogue, SeEntryFields fields) commit,
   required void Function(int token, int offsetFrames) setOffset,
+  required void Function(int token, double gain) setGain,
   required void Function(Iterable<int> tokens) unlink,
 }) async {
   final result = await showDialogVerb<SeInstanceDialogResult>(
@@ -526,11 +532,14 @@ Future<void> _editSeEntryWithDialog(
   final seName = result.seName.isEmpty ? null : result.seName;
   // SE edits never hit the link-conflict flow (duplicates allowed).
   commit(result.dialogue, (seName: seName, seTypes: result.seTypes));
-  // ⚠️The offsets BEFORE the unlink: a token is the clip's index, and taking
-  // a sound off shifts every index after it.
+  // ⚠️The offsets and gains BEFORE the unlink: a token is the clip's index,
+  // and taking a sound off shifts every index after it.
   for (final MapEntry(key: token, value: offset)
       in result.audioOffsets.entries) {
     setOffset(token, offset);
+  }
+  for (final MapEntry(key: token, value: gain) in result.audioGains.entries) {
+    setGain(token, gain);
   }
   if (result.unlinkedAudioTokens.isNotEmpty) {
     unlink(result.unlinkedAudioTokens);

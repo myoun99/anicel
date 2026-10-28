@@ -5,7 +5,6 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
-import 'package:anicel/src/ui/timeline/se_audio_lane.dart' show seAudioLaneId;
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
@@ -82,15 +81,6 @@ void main() {
       isNot(groundOf(header, null)),
       reason: '「layer ▸ Blur ▸ Radius all lit」 — the header is the middle '
           'link of the chain, and it lights on the rail already',
-    );
-  });
-
-  test('the Audio lane lights like every lane — its rail half always did', () {
-    final audio = laneRow(seAudioLaneId);
-    expect(
-      groundOf(audio, const LaneRowAddress(layerId, seAudioLaneId)),
-      isNot(groundOf(audio, null)),
-      reason: 'the one lane nobody had handed the standing row',
     );
   });
 

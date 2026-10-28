@@ -681,8 +681,27 @@ import '../../tool/refactor/clone_scan.dart';
 /// takes, and lowers this back.
 /// 🔬Measured on the lane over master (`01f37d61d`, at 90): none added,
 /// these four gone.
+///
+/// 86 → 87 (2026-10-28, I-140 — an S row's sound is the fifth home of its
+/// keys). Named:
+///
+///     44 tokens
+///       lib/src/ui/menu/opened_files_door.dart
+///         sortOpened
+///       lib/src/ui/session/lane_homes.dart
+///         rowLaneHomes
+///
+/// The reading finds NO copy: the shared run is the empty lists each
+/// begins with — the opened files' kinds, a span's homes — and what each
+/// sorts by is its own question (`openedAs`, the lane-id grammar). The
+/// fifth list (the 「오디오」 group's lanes) took `rowLaneHomes` over the
+/// floor. The lane laid one more pair, `setSeNameTag` · `setSeSound`, and
+/// merged it: with the row's clips that made three bodies of one guard,
+/// which is `_requireSeRow` now.
+/// 🔬Measured on the lane over master (`992516ed9`, at 86): this one added,
+/// none gone.
 void main() {
-  const ceiling = 86;
+  const ceiling = 87;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

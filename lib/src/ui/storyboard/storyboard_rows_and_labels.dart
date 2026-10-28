@@ -28,9 +28,7 @@ class _StoryboardRowsAndLabels {
   /// selected (`selectableLanes`).
   ///
   /// A null [chainId] leaves the headers to select like every lane: a
-  /// projection row with nothing stood in edits nothing (I-73 ④). The Audio
-  /// lane keeps no address (no key range lands on it), so it stays as it
-  /// is.
+  /// projection row with nothing stood in edits nothing (I-73 ④).
   ///
   /// The pointer counts LANE rows and the chain counts HEADERS, and the two
   /// differ the moment a group is twirled open — which is exactly when
@@ -56,7 +54,7 @@ class _StoryboardRowsAndLabels {
     );
     return _laidLanes(rowId, lanes, [
       for (var index = 0; index < rows.length; index += 1)
-        if (index >= lanes.length || laneIsSeAudio(lanes[index]))
+        if (index >= lanes.length)
           rows[index]
         else
           _laneRow(chain, (lane: lanes[index], index: index), rows[index]),
@@ -1014,7 +1012,8 @@ class _StoryboardRowsAndLabels {
   /// UI-R9 #5's empty slot — ordered twice: the flag is a LAYER field and
   /// the row's layer is track-owned, so it needs no cut to act), its
   /// speaker opening the row's mixer (R10 R3), and no waveform-hide eye
-  /// (UI-R7 #8 — the twirled-down Audio lane is the big waveform).
+  /// (UI-R7 #8 — ↩️said while the twirled-down Audio lane was the big
+  /// waveform; the lane went with I-140).
   ///
   /// The controls belong to the ROW, and the row belongs to the track: a
   /// gap kept them up already (UI-R10 #12, "the SE rows are TRACK-owned"),

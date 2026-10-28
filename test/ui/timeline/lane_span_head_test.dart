@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart';
+import 'package:anicel/src/ui/timeline/se_sound_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 
 /// 🚨T13 (유저 2026-08-13): 「se행의 네임태그에선 이번엔 행 하나만 선택범위
@@ -28,14 +29,15 @@ void main() {
       );
 
   /// An SE row as the rail draws it: the transform group, then the name-tag
-  /// group with its own header, then the audio lane. Three kinds, one list.
+  /// group with its own header, then the sound's Volume (I-140 — ↩️the
+  /// audio lane, until it went). Three kinds, one list.
   List<PropertyLaneRow> seRowLanes() => [
     lane(transformLaneDisplayOrder.first),
     lane(transformLaneDisplayOrder[1]),
     lane(seNameTagGroupLaneId, isGroupHeader: true),
     lane(seNameTagLaneDisplayOrder.first),
     lane(seNameTagLaneDisplayOrder[1]),
-    lane('se-audio'),
+    lane(seSoundVolumeLaneId),
   ];
 
   test('a span inside the NAME TAG group reaches its members', () {
@@ -62,14 +64,15 @@ void main() {
     );
   });
 
-  test('and so can the SE AUDIO lane, the other row the old rule skipped', () {
+  test('and so can a lane of a third family, the row the old rule '
+      'skipped', () {
     expect(
       resolveLaneSpanHead(
         lanes: seRowLanes(),
         anchorLaneId: seNameTagLaneDisplayOrder[1],
         rowDelta: 1,
       ),
-      'se-audio',
+      seSoundVolumeLaneId,
     );
   });
 
@@ -88,7 +91,7 @@ void main() {
     expect(
       resolveLaneSpanHead(
         lanes: seRowLanes(),
-        anchorLaneId: 'se-audio',
+        anchorLaneId: seSoundVolumeLaneId,
         rowDelta: -3,
       ),
       seNameTagGroupLaneId,
@@ -103,7 +106,7 @@ void main() {
         anchorLaneId: seNameTagLaneDisplayOrder[1],
         rowDelta: 40,
       ),
-      'se-audio',
+      seSoundVolumeLaneId,
     );
   });
 

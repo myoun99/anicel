@@ -32,6 +32,8 @@ import 'package:anicel/src/ui/timeline/timeline_frame_range_gesture.dart'
     show TimelineLaneRangeHooks;
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart'
     show seNameTagGroupLaneId;
+import 'package:anicel/src/ui/timeline/se_sound_lane_policy.dart'
+    show seSoundGroupLaneId;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
@@ -1606,24 +1608,24 @@ void main() {
       return (inGroup: inGroup, escalated: escalated, track: track);
     }
 
-    testWidgets('UP out of the group — across the audio strip onto the SE '
-        'row — JOINS the cells law with the sliced span', (tester) async {
+    testWidgets('UP out of the group — across the 「오디오」 header onto the '
+        'SE row — JOINS the cells law with the sliced span', (tester) async {
       final log = await pumpLanes(tester);
       final seId = log.track.seLayers.single.id;
       expect(positionLane(), findsOneWidget);
 
-      // The rail above the position lane: anchor-point (26), the header
-      // (26), then the SE row (30) — this fixture carries no audio, so no
-      // audio slot mounts (C5: the slot exists exactly when the lane is
-      // drawn). -93 from the press point (13px into the 26px lane) puts
-      // the pointer 80px above the lane top: inside the SE row by the
-      // painted heights, but a fourth uniform 26px row up — the exact
-      // reach a uniform resolve mis-answers (R9 #25's mutation pin).
+      // The rail above the position lane: anchor-point (26), the Transform
+      // header (26), the name tag's (26), the 「오디오」 header (26 — every
+      // S row has one, I-140), then the SE row (30). -119 from the press
+      // point (13px into the 26px lane) puts the pointer 106px above the
+      // lane top: inside the SE row by the painted heights, but a fifth
+      // uniform 26px row up — the exact reach a uniform resolve
+      // mis-answers (R9 #25's mutation pin).
       final gesture = await tester.startGesture(
         tester.getCenter(positionLane()),
         kind: PointerDeviceKind.mouse,
       );
-      await gesture.moveBy(const Offset(4, -93));
+      await gesture.moveBy(const Offset(4, -119));
       await tester.pump();
       await gesture.up();
       await tester.pump();
@@ -1634,6 +1636,7 @@ void main() {
       expect(last.anchorRow, LaneRowAddress(seId, 'position'));
       expect(last.spanRows, [
         LayerRowAddress(seId),
+        LaneRowAddress(seId, seSoundGroupLaneId),
         LaneRowAddress(seId, seNameTagGroupLaneId),
         LaneRowAddress(seId, transformGroupHeaderLane.laneId),
         LaneRowAddress(seId, 'anchor-point'),
