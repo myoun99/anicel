@@ -101,6 +101,14 @@ void main() {
     );
   });
 
+  test('a clip base\'s ghosts are no base: where it shows no cel, what '
+      'clips to it paints nothing, its ghosts beside', () {
+    expect(
+      treeOf([drawing('a', from: 2), drawing('b', clips: true)], onion: {'a'}),
+      '~a ~a',
+    );
+  });
+
   test('in a folder that composes on its own, inside it — its strength '
       'and effects are theirs too', () {
     expect(
