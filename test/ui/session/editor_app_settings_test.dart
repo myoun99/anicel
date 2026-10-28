@@ -22,6 +22,7 @@ import 'package:anicel/src/services/persistence/app_memory_settings.dart';
 import 'package:anicel/src/services/persistence/app_onion_skin_settings_store.dart';
 import 'package:anicel/src/services/persistence/app_pixel_verb_settings_store.dart';
 import 'package:anicel/src/models/onion_skin_settings.dart';
+import 'package:anicel/src/models/app_ui_scale.dart';
 import 'package:anicel/src/services/persistence/app_ui_scale_store.dart';
 import 'package:anicel/src/services/persistence/app_workspace_colors_store.dart';
 import 'package:anicel/src/services/persistence/audio_sync_settings_store.dart';
@@ -453,6 +454,26 @@ void main() {
     expect(AppColors.accentSettings.value, const AppAccentSettings());
     expect(AppWorkspaceColors.settings.value, const AppWorkspaceColors());
     expect(appSettingsOf(session).audioSyncSettings.value, AudioSyncSettings.defaults);
+  });
+
+  // I-142: a settings file put in place brings its UI scale — read again
+  // from its file, as `main()` reads it before the first frame.
+  test('the UI scale is read again from its file, and the next set that '
+      'changes nothing writes nothing', () async {
+    final directory = await Directory.systemTemp.createTemp('qa-ui-scale');
+    deleteAfterSessionEnds(directory);
+    final store = AppUiScaleStore(filePath: '${directory.path}/ui.json');
+    final settings = EditorAppSettings(uiScaleStore: store);
+    addTearDown(settings.dispose);
+    addTearDown(() => AppUiScale.value.value = AppUiScale.defaultScale);
+    await store.save(1.25);
+
+    await settings.rereadUiScale();
+
+    expect(AppUiScale.value.value, 1.25);
+    await store.save(0.75);
+    settings.setUiScale(1.25);
+    expect(await store.load(), 0.75, reason: 'held as read: nothing to write');
   });
 
   /// ⛔**THE PANEL MUST NOT WRITE THE NOTIFIER.** 🧪A mutant that put

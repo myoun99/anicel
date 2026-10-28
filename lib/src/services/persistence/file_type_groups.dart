@@ -145,6 +145,11 @@ enum OpenedAs {
 
   /// Goes into the palettes ([anicelPaletteExtension], I-142).
   palette,
+
+  /// Comes in through the import window as its settings, a row each
+  /// ([anicelSettingsExtension] — 🗣️I-142-Q6: 「임포트 창에 설정 파일의
+  /// 행으로」).
+  settings,
 }
 
 /// What the file [pathOrUri] names opens as — null for a file nothing in the
@@ -175,6 +180,9 @@ OpenedAs? openedAs(String pathOrUri) {
   if (extension == anicelPaletteExtension) {
     return OpenedAs.palette;
   }
+  if (extension == anicelSettingsExtension) {
+    return OpenedAs.settings;
+  }
   return mediaAssetKindForPath(name) == null ? null : OpenedAs.media;
 }
 
@@ -191,6 +199,7 @@ const List<String> openableExtensions = [
   ...shortcutFileExtensions,
   anicelShortcutExtension,
   anicelPaletteExtension,
+  anicelSettingsExtension,
 ];
 
 /// What each identifier means to Android, which filters by MIME and has

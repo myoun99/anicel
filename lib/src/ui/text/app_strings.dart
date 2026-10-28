@@ -1905,6 +1905,15 @@ enum AppStrings {
   /// its file is offered under.
   String get settingsExportAll => _s('settingsExportAll');
   String get settingsAllFileName => _s('settingsAllFileName');
+
+  /// A settings file's rows in the import window (I-142-Q6 · Q9): the two
+  /// settings no window of their own names, the Into answer that puts a row
+  /// in place, what that costs, and a row this build cannot read.
+  String get settingsRowFrameCount => _s('settingsRowFrameCount');
+  String get settingsRowWorkspaceLayout => _s('settingsRowWorkspaceLayout');
+  String get imIntoSettings => _s('imIntoSettings');
+  String get imSettingsGoInPlace => _s('imSettingsGoInPlace');
+  String get imSettingsUnreadable => _s('imSettingsUnreadable');
   String brExportNotWritten(Object error) =>
       _s('brExportNotWrittenTemplate').replaceAll('{error}', '$error');
   String brExportedOne(String name) =>
@@ -3150,6 +3159,13 @@ enum AppStrings {
     'settingsExportNotWrittenTemplate': 'Could not write the file: {error}',
     'settingsExportAll': 'Export all settings',
     'settingsAllFileName': 'Anicel settings',
+    'settingsRowFrameCount': 'Frame count entry',
+    'settingsRowWorkspaceLayout': 'Workspace layout',
+    'imIntoSettings': 'Settings',
+    'imSettingsGoInPlace':
+        'What goes into Settings replaces what is there now — '
+        'the current ones will be gone.',
+    'imSettingsUnreadable': 'Unreadable',
     'brExportNotWrittenTemplate': 'Could not write the brush file: {error}',
     'brExportedOneTemplate': 'Exported "{name}".',
     'brExportedManyTemplate': 'Exported {count} brushes.',
@@ -4896,6 +4912,11 @@ enum AppStrings {
     'settingsExportNotWrittenTemplate': 'ファイルを書き込めませんでした: {error}',
     'settingsExportAll': '設定をすべて書き出す',
     'settingsAllFileName': 'Anicel 設定',
+    'settingsRowFrameCount': 'コマ数の入力方式',
+    'settingsRowWorkspaceLayout': 'ワークスペース配置',
+    'imIntoSettings': '設定',
+    'imSettingsGoInPlace': '「設定」に入れる項目は、今の設定が消えます。',
+    'imSettingsUnreadable': '読めません',
     'brExportNotWrittenTemplate': 'ブラシファイルを書き込めませんでした: {error}',
     'brExportedOneTemplate': '「{name}」を書き出しました。',
     'brExportedManyTemplate': 'ブラシを{count}個書き出しました。',
@@ -6662,6 +6683,11 @@ enum AppStrings {
     'settingsExportNotWrittenTemplate': '파일을 쓰지 못했습니다: {error}',
     'settingsExportAll': '설정 전부 내보내기',
     'settingsAllFileName': 'Anicel 설정',
+    'settingsRowFrameCount': '프레임 수 입력 방식',
+    'settingsRowWorkspaceLayout': '작업공간 배치',
+    'imIntoSettings': '설정',
+    'imSettingsGoInPlace': '「설정」에 넣는 항목은 지금 것이 사라집니다.',
+    'imSettingsUnreadable': '읽을 수 없음',
     'brExportNotWrittenTemplate': '브러시 파일을 쓰지 못했습니다: {error}',
     'brExportedOneTemplate': '브러시 「{name}」 내보냈습니다.',
     'brExportedManyTemplate': '브러시 {count}개를 내보냈습니다.',
@@ -8575,6 +8601,12 @@ enum AppStrings {
         'Impossible d’écrire le fichier : {error}',
     'settingsExportAll': 'Exporter toutes les préférences',
     'settingsAllFileName': 'Préférences Anicel',
+    'settingsRowFrameCount': 'Saisie des durées',
+    'settingsRowWorkspaceLayout': 'Disposition de l’espace de travail',
+    'imIntoSettings': 'Préférences',
+    'imSettingsGoInPlace':
+        'Ce qui va dans Préférences remplace l’actuel — il sera perdu.',
+    'imSettingsUnreadable': 'Illisible',
     'brExportNotWrittenTemplate':
         'Impossible d’écrire le fichier de brosses : {error}',
     'brExportedOneTemplate': 'Brosse exportée : « {name} ».',
@@ -10262,6 +10294,11 @@ enum AppStrings {
     'settingsExportNotWrittenTemplate': '无法写入文件：{error}',
     'settingsExportAll': '导出全部设置',
     'settingsAllFileName': 'Anicel 设置',
+    'settingsRowFrameCount': '帧数输入方式',
+    'settingsRowWorkspaceLayout': '工作区布局',
+    'imIntoSettings': '设置',
+    'imSettingsGoInPlace': '放入“设置”的项目会替换当前设置，当前设置将丢失。',
+    'imSettingsUnreadable': '无法读取',
     'brExportNotWrittenTemplate': '无法写入画笔文件：{error}',
     'brExportedOneTemplate': '已导出画笔“{name}”。',
     'brExportedManyTemplate': '已导出 {count} 个画笔。',

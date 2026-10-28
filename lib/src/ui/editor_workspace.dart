@@ -42,7 +42,8 @@ import '../models/drawing_guide.dart' show CutGuides, DrawingGuide, GuideId;
 import '../services/cut_piece_slot.dart';
 import '../services/last_stroke_slot.dart';
 import '../services/cut_piece_tip.dart';
-import '../services/color_palette_file_service.dart' show ColorPaletteState;
+import '../services/color_palette_file_service.dart'
+    show ColorPaletteFileService, ColorPaletteState;
 import 'brush/arrange_brush_library_command.dart';
 import 'brush/brush_library_keys.dart';
 import 'brush/brush_library_look.dart';
@@ -85,6 +86,7 @@ import 'shortcuts/editor_shortcut_scope.dart';
 import 'shortcuts/shortcut_file_import.dart';
 import 'export/export_frame_renderer.dart';
 import 'import/import_dialog.dart';
+import 'import/settings_rows.dart';
 import 'menu/opened_files_door.dart';
 import 'menu/project_open_door.dart' show ProjectPick;
 import '../services/import/import_layer_spot.dart';
@@ -192,6 +194,9 @@ import 'timeline/timeline_zoom_limits.dart' show TimelineZoomLimits;
 import 'workspace/workspace_bar_commands.dart';
 import 'workspace/workspace_door_commands.dart';
 import '../services/persistence/folder_grant.dart' show FolderGrant, handedPath;
+import '../services/persistence/settings_file.dart' show SettingsFile;
+import '../services/persistence/settings_room_file.dart'
+    show putSettingsIntoTheRoom, settingsRoomPath;
 import 'timeline/timeline_panel.dart' show TimelinePanel;
 import 'text/app_strings.dart';
 import 'text/imported_fonts.dart';
@@ -2400,8 +2405,58 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       poolOnly: poolOnly,
       placeOnly: placeOnly,
       spot: spot,
+      putSettingsInPlace: _putSettingsInPlace,
     ),
   );
+
+  /// A settings file's [rows] put in place of this device's, each read again
+  /// as the app reads it at its start (🗣️I-142-Q3: 「전부 갈아끼운다」) — and
+  /// only what was put in place: a holder that saves after a pause would
+  /// read back over what it has not written yet.
+  Future<void> _putSettingsInPlace(
+    SettingsFile file,
+    List<SettingsRow> rows,
+  ) async {
+    await putSettingsIntoTheRoom(file, [
+      for (final row in rows) ...row.entries,
+    ]);
+    for (final reader in {for (final row in rows) row.reader}) {
+      if (!mounted) {
+        return;
+      }
+      await _readAgain(reader);
+    }
+  }
+
+  /// What [reader] holds, read again from the settings room.
+  Future<void> _readAgain(SettingsReader reader) async {
+    switch (reader) {
+      case SettingsReader.appSettings:
+        widget.session.appSettings.restore();
+      case SettingsReader.uiScale:
+        await widget.session.appSettings.rereadUiScale();
+      case SettingsReader.shortcuts:
+        await EditorShortcutScope.peek(context)?.restore();
+      case SettingsReader.layout:
+        await _layoutPersistence.restoreLayout();
+      case SettingsReader.palette:
+        final palette = await ColorPaletteFileService(
+          filePath: settingsRoomPath(ColorPaletteFileService.fileName),
+        ).loadOrDefaults(starterName: AppText.strings.paletteNumbered(1));
+        if (mounted) {
+          widget.onColorPaletteChanged?.call(palette);
+        }
+      case SettingsReader.brushes:
+        // In the order the start reads them ([initState]): tips, the presets
+        // that name them, and what the hand left on each.
+        await _tipLibrary.load();
+        await _presetLibrary.load();
+        await _brushPresets.recallHandSettings(replacing: true);
+        _brushPresets.selectOpeningPreset();
+      case SettingsReader.exportWindow:
+        break;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

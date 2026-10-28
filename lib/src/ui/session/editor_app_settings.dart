@@ -281,6 +281,12 @@ class EditorAppSettings {
   void setUiScale(double scale) =>
       _publish(AppUiScale.value, AppUiScale.snap(scale), _uiScaleStore?.save);
 
+  /// The UI scale read again from its file — the one read after `main()`'s:
+  /// a settings file's put in place (I-142), where the jump the start avoids
+  /// is what was asked for.
+  Future<void> rereadUiScale() async =>
+      _restored(AppUiScale.value, await _uiScaleStore?.load());
+
   // --- Language settings (UI-R10 #7) ----------------------------------------
 
   /// Injectable persistence; null (tests) keeps the in-memory defaults.

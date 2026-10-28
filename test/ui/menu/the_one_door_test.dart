@@ -143,8 +143,20 @@ void main() {
     // preset where every shortcut file goes.
     final palette = fileNamed('Skin.anipalette', [6]);
     final preset = fileNamed('Mine.anishortcut', [8]);
+    // 🗣️I-142-Q6: every setting's file comes in as the import window's
+    // rows.
+    final settings = fileNamed('Anicel 설정.anisettings', [5]);
 
-    await knock(tester, [project, keys, palette, picture, brush, font, preset]);
+    await knock(tester, [
+      project,
+      keys,
+      settings,
+      palette,
+      picture,
+      brush,
+      font,
+      preset,
+    ]);
 
     expect(done, [
       'brushes',
@@ -158,7 +170,10 @@ void main() {
     expect(palettesGot, {
       'Skin.anipalette': [6],
     });
-    expect([for (final grant in windowGot) grant.path], [picture.path]);
+    expect([for (final grant in windowGot) grant.path], [
+      picture.path,
+      settings.path,
+    ]);
     expect([for (final pick in projectsGot) pick.path], [project.path]);
     expect(brushesGot.keys, ['Pack.abr']);
     expect(brushesGot['Pack.abr'], [7, 7]);

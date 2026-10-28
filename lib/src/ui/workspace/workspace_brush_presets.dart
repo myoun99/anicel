@@ -238,16 +238,16 @@ class _WorkspaceBrushPresets {
 
   /// Reads what the hand left on each brush in the last session — giving
   /// way to anything the hand has set since the app opened
-  /// ([brushHandSettingsRecalled]).
-  Future<void> recallHandSettings() async {
+  /// ([brushHandSettingsRecalled]) — or, [replacing] it, what a settings
+  /// file put in place (🗣️I-142-Q3: 「전부 갈아끼운다」).
+  Future<void> recallHandSettings({bool replacing = false}) async {
     final saved = await _brushHandSettingsStore.load();
     if (!_state.mounted) {
       return;
     }
-    final recalled = brushHandSettingsRecalled(
-      live: _brushHandSettings,
-      saved: saved,
-    );
+    final recalled = replacing
+        ? saved
+        : brushHandSettingsRecalled(live: _brushHandSettings, saved: saved);
     _brushHandSettings
       ..clear()
       ..addAll(recalled);

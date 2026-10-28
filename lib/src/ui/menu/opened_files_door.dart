@@ -23,12 +23,14 @@ typedef SortedOpen = ({
   List<FolderGrant> fonts,
   List<FolderGrant> shortcuts,
   List<FolderGrant> palettes,
+  List<FolderGrant> settings,
   List<String> refused,
 });
 
 /// [handed] sorted by the one judgement: a project opens in a tab, a
-/// picture · movie · sound · PDF and a FOLDER (a cut folder) come in
-/// through the import window, a brush goes to the brush library, a font
+/// picture · movie · sound · PDF, a FOLDER (a cut folder) and a settings
+/// file come in through the import window, a brush goes to the brush
+/// library, a font
 /// to this device's fonts, a program's shortcut files into a preset and a
 /// palette into the palettes — and what nothing opens is named.
 SortedOpen sortOpened(List<FolderGrant> handed) {
@@ -38,6 +40,7 @@ SortedOpen sortOpened(List<FolderGrant> handed) {
   final fonts = <FolderGrant>[];
   final shortcuts = <FolderGrant>[];
   final palettes = <FolderGrant>[];
+  final settings = <FolderGrant>[];
   final refused = <String>[];
   for (final grant in handed) {
     final named = grant.document?.uri ?? grant.path;
@@ -59,6 +62,8 @@ SortedOpen sortOpened(List<FolderGrant> handed) {
         fonts.add(grant);
       case OpenedAs.shortcuts:
         shortcuts.add(grant);
+      case OpenedAs.settings:
+        settings.add(grant);
       case OpenedAs.palette:
         palettes.add(grant);
       case null:
@@ -74,6 +79,7 @@ SortedOpen sortOpened(List<FolderGrant> handed) {
     fonts: fonts,
     shortcuts: shortcuts,
     palettes: palettes,
+    settings: settings,
     refused: refused,
   );
 }
@@ -197,8 +203,12 @@ final class OpenedFilesDoor {
         return;
       }
     }
-    if (sorted.media.isNotEmpty) {
-      await importWindow(sorted.media, toPool: toPool);
+    // A settings file comes in through the import window too, its settings
+    // rows of it (🗣️I-142-Q6: 「임포트 창에 설정 파일의 행으로」 —
+    // 「최대한 통일하고싶은게 이유」).
+    final intoTheWindow = [...sorted.media, ...sorted.settings];
+    if (intoTheWindow.isNotEmpty) {
+      await importWindow(intoTheWindow, toPool: toPool);
       if (!context.mounted) {
         return;
       }

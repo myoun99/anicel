@@ -193,6 +193,10 @@ void main() {
         FolderGrant.granted(path: '/work/C-045/A1.png', kind: GrantKind.file),
         FolderGrant.granted(path: '/work/brushes.abr', kind: GrantKind.file),
         FolderGrant.granted(path: '/work/Face.otf', kind: GrantKind.file),
+        FolderGrant.granted(
+          path: '/work/Mine.anisettings',
+          kind: GrantKind.file,
+        ),
       ]);
 
       final picked = await runFlow(tester, pickFilesToOpen);
@@ -208,6 +212,9 @@ void main() {
       ]);
       expect([for (final grant in sorted.fonts) grant.path], [
         '/work/Face.otf',
+      ]);
+      expect([for (final grant in sorted.settings) grant.path], [
+        '/work/Mine.anisettings',
       ]);
       expect(sorted.refused, isEmpty);
     });

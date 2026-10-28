@@ -101,5 +101,93 @@ void main() {
       expect(read.documents.keys, ['language_settings.json']);
       expect(read.files, isEmpty);
     });
+
+    // 🗣️I-142-Q3: 「전부 갈아끼운다」 · Q7: 「남기지 않는다」.
+    test('put back in the room, a document stands as the file holds it and '
+        'a folder holds the file\'s files and nothing else', () async {
+      put('ui_scale.json', jsonEncode({'version': 1, 'scale': 2.0}));
+      put('brush_tips/index.json', jsonEncode({'version': 1, 'tips': []}));
+      put('brush_tips/old.png', tip);
+      final file = readSettingsFile(
+        encodeSettingsFile(
+          {
+            'ui_scale.json': {'version': 1, 'scale': 1.25},
+            'brush_tips/index.json': {
+              'version': 1,
+              'tips': ['t1'],
+            },
+          },
+          files: {'brush_tips/t1.png': tip},
+        ),
+      )!;
+
+      await putSettingsIntoTheRoom(file, [
+        'ui_scale.json',
+        'brush_tips',
+      ], at: at);
+
+      expect(jsonDecode(File(at('ui_scale.json')).readAsStringSync()), {
+        'version': 1,
+        'scale': 1.25,
+      });
+      expect(
+        jsonDecode(File(at('brush_tips/index.json')).readAsStringSync()),
+        {
+          'version': 1,
+          'tips': ['t1'],
+        },
+      );
+      expect(File(at('brush_tips/t1.png')).readAsBytesSync(), tip);
+      expect(
+        File(at('brush_tips/old.png')).existsSync(),
+        isFalse,
+        reason: 'what the folder held before goes with it',
+      );
+    });
+
+    test('puts only the entries asked for, and inside a folder only a plain '
+        'file name — none that climbs out of it or into one below', () async {
+      put('accent_settings.json', jsonEncode({'version': 1, 'kept': true}));
+      final file = readSettingsFile(
+        encodeSettingsFile(
+          {
+            'accent_settings.json': {'version': 1, 'kept': false},
+          },
+          files: {
+            'brush_tips/../escaped.png': tip,
+            'brush_tips/deeper/t2.png': tip,
+            'brush_tips/t1.png': tip,
+          },
+        ),
+      )!;
+
+      await putSettingsIntoTheRoom(file, ['brush_tips'], at: at);
+
+      expect(
+        jsonDecode(File(at('accent_settings.json')).readAsStringSync()),
+        {'version': 1, 'kept': true},
+        reason: 'the file holds it, but it was not asked for',
+      );
+      expect(File(at('brush_tips/t1.png')).existsSync(), isTrue);
+      expect(File(at('escaped.png')).existsSync(), isFalse);
+      expect(Directory(at('brush_tips/deeper')).existsSync(), isFalse);
+    });
+
+    test('leaves an entry the file does not hold as it stands', () async {
+      put('brush_tips/old.png', tip);
+      put('onion_skin_settings.json', jsonEncode({'version': 1, 'a': 1}));
+      final file = readSettingsFile(encodeSettingsFile({}))!;
+
+      await putSettingsIntoTheRoom(file, [
+        'brush_tips',
+        'onion_skin_settings.json',
+      ], at: at);
+
+      expect(File(at('brush_tips/old.png')).existsSync(), isTrue);
+      expect(
+        jsonDecode(File(at('onion_skin_settings.json')).readAsStringSync()),
+        {'version': 1, 'a': 1},
+      );
+    });
   });
 }

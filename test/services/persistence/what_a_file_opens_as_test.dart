@@ -53,6 +53,18 @@ void main() {
     expect(openableExtensions, contains(anicelShortcutExtension));
   });
 
+  // 🗣️I-142-Q1: 「읽기는 「파일 열기」 하나」 · Q6: 「임포트 창에 설정 파일의
+  // 행으로」.
+  test('I-142: every setting\'s file opens as settings, which the import '
+      'window lists as rows', () {
+    expect(
+      openedAs('/work/Anicel 설정.$anicelSettingsExtension'),
+      OpenedAs.settings,
+    );
+    expect(openedAs('/work/Mine.ANISETTINGS'), OpenedAs.settings);
+    expect(openableExtensions, contains(anicelSettingsExtension));
+  });
+
   test('media is what the pool names a kind for — the same judgement, not a '
       'second list', () {
     for (final name in ['a.png', 'b.psd', 'c.mp4', 'd.wav', 'e.pdf']) {

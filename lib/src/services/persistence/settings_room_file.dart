@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'app_support_path.dart';
 import 'settings_file.dart';
+import 'versioned_settings_file.dart';
 
 /// The settings room's entries ([appSettingsEntries]) that stay on this
 /// machine when every setting leaves as one file (I-142).
@@ -67,6 +68,76 @@ Future<String> settingsFileOfTheRoom(
     }
   }
   return encodeSettingsFile(documents, files: files);
+}
+
+/// Puts [entries] of [file] in the room, [at] each entry's place, in place of
+/// what stood there.
+///
+/// 🗣️I-142-Q3 (유저 2026-10-29): 「전부 갈아끼운다」 · Q7: 「남기지 않는다」 —
+/// an entry that is a document is written as the file holds it, through the
+/// queue its store's own saves go by ([saveVersionedSettings]), so a save
+/// still on its way lands before it rather than over it; one that is a
+/// folder holds the file's files under it, and nothing else.
+///
+/// ⚠️A file names its own entries, so only [entries] the caller asked for
+/// are put — and inside a folder only a plain file name: a name that climbs
+/// out of the folder, or into one below it, is no file of the folder.
+Future<void> putSettingsIntoTheRoom(
+  SettingsFile file,
+  Iterable<String> entries, {
+  String Function(String entry) at = settingsRoomPath,
+}) async {
+  for (final entry in entries) {
+    final path = at(entry);
+    if (file.documents[entry] case final document?) {
+      if (document['version'] case final int version) {
+        await saveVersionedSettings(
+          filePath: path,
+          version: version,
+          json: document,
+        );
+      }
+      continue;
+    }
+    final inside = _folderOf(file, entry);
+    if (inside.isEmpty) {
+      continue;
+    }
+    final folder = Directory(path);
+    if (await folder.exists()) {
+      for (final stale in (await folder.list().toList()).whereType<File>()) {
+        if (!inside.containsKey(stale.uri.pathSegments.last)) {
+          await stale.delete();
+        }
+      }
+    }
+    for (final MapEntry(key: name, value: bytes) in inside.entries) {
+      final written = File('$path/$name');
+      await written.parent.create(recursive: true);
+      await written.writeAsBytes(bytes, flush: true);
+    }
+  }
+}
+
+/// What [file] holds under the folder [entry], by each file's plain name.
+Map<String, List<int>> _folderOf(SettingsFile file, String entry) {
+  final under = '$entry/';
+  String? plain(String key) => switch (key.substring(under.length)) {
+    final name
+        when name.isNotEmpty &&
+            !name.contains('/') &&
+            !name.contains(r'\') &&
+            name != '.' &&
+            name != '..' =>
+      name,
+    _ => null,
+  };
+  return {
+    for (final MapEntry(:key, :value) in file.documents.entries)
+      if (key.startsWith(under)) ?plain(key): utf8.encode(jsonEncode(value)),
+    for (final MapEntry(:key, :value) in file.files.entries)
+      if (key.startsWith(under)) ?plain(key): value,
+  };
 }
 
 Map<String, dynamic>? _documentOf(String text) {
