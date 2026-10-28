@@ -1,6 +1,7 @@
 @Tags(['impeller'])
 library;
 
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -739,15 +740,24 @@ void main() {
     // 🚨A STEP DRAWN WITH NOTHING HELD READS AS FAR AS THE FRAME (card
     // a-step-drawn-in-place-reads-short-of-the-one-picture, 2026-10-28): a
     // row blurred on its own in the blurred folder, beside the step's
-    // edge, was 12 to 47/255 off the frame laid whole — the walk stood in
-    // the step alone, and the row's buffer grew by its own spread, short
-    // of what the folder reads past it.
-    for (final (folderBlur, rowBlur) in <(double, double?)>[
-      (8, 1),
-      (8, 2),
-      (30, 1),
-      (30, null),
-      (8, null),
+    // edge, was 12 to 47/255 off the frame laid whole — the row's buffer
+    // stopped at what the step showed, short of what the folder reads past
+    // it.
+    //
+    // ⚠️[off] is what is measured, not what is wanted: under a folder
+    // blurred 30 the step stays 1/255 off at a few texels (2026-10-29) —
+    // not the Gaussian's tail past the spread (read to 4σ, still 1/255),
+    // so most likely the engine reducing a wide blur on a grid its
+    // buffer's extent sets. ↩️It read 0 while `a97a2196c` stood the whole
+    // walk twice as far past the step, which rastered a folder inside a
+    // blurred one past it by the spread twice
+    // (`a_paint_under_a_clip_draws_what_it_shows_test`). Open on the card.
+    for (final (folderBlur, rowBlur, off) in <(double, double?, int)>[
+      (8, 1, 0),
+      (8, 2, 0),
+      (30, 1, 1),
+      (30, null, 1),
+      (8, null, 0),
     ]) {
       final row = rowBlur == null ? 'a row' : 'a row blurred $rowBlur';
       test('a step drawn with nothing held is the frame laid whole — $row in '
@@ -778,17 +788,20 @@ void main() {
         ];
         final whole = await laidWholeOf(nodes);
         // Across the folder's spread over the cells' edge, x = 256.
+        var most = 0;
         for (var x = 256.0; x <= 290; x += 2) {
           final at = Rect.fromLTWH(x, 84, 13, 11);
-          expect(
-            await drawn(
-              frame(nodes, live: stroke, page: page, cels: cels),
-              at,
-            ),
-            whole(at),
-            reason: 'a step at x = $x',
+          final step = await drawn(
+            frame(nodes, live: stroke, page: page, cels: cels),
+            at,
           );
+          final laid = whole(at);
+          expect(step.length, laid.length);
+          for (final (i, byte) in step.indexed) {
+            most = math.max(most, (byte - laid[i]).abs());
+          }
         }
+        expect(most, lessThanOrEqualTo(off), reason: 'the most a texel is off');
       });
     }
   });

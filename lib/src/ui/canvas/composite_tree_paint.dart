@@ -22,9 +22,19 @@ import 'subtree_image_composite.dart';
 /// are laid on lies ([paper]), the edge a folder's blur that repeats it
 /// reads past (I-132-Q14 a). A row's own chain may read rows of the cut
 /// ([CompositeReadsRows]): [paintRow] is handed what paints them in the
-/// walk's space, null where it reads none.
+/// walk's space, null where it reads none — and what of the canvas the
+/// buffer that holds the row reads, which a folder's blur widens past what
+/// is shown: a row whose own buffer stops short of it is cut where the
+/// folder reads on (card a-step-drawn-in-place-reads-short-of-the-one-
+/// picture).
 typedef CompositeRoute<L> = ({
-  void Function(Canvas canvas, L row, double rasterScale, RowPainter? rows)
+  void Function(
+    Canvas canvas,
+    L row,
+    double rasterScale,
+    RowPainter? rows,
+    Rect within,
+  )
   paintRow,
   Rect Function(L row) extentOf,
   LayerPlacement? Function(L row) placementOf,
@@ -306,7 +316,7 @@ class _CompositeTreeWalk<L> {
   ) {
     switch (node) {
       case CompositeLeaf(:final payload):
-        route.paintRow(canvas, payload, rasterScale, null);
+        route.paintRow(canvas, payload, rasterScale, null, within);
       // A row's letters lie where the row does (I-65).
       case CompositeCelNumber(
         on: CompositeLeaf(:final payload),
@@ -356,7 +366,7 @@ class _CompositeTreeWalk<L> {
   }) {
     switch (reader) {
       case CompositeLeaf(:final payload):
-        route.paintRow(canvas, payload, rasterScale, rows);
+        route.paintRow(canvas, payload, rasterScale, rows, within);
       case final CompositeGroup<L> group:
         _group(canvas, group, rasterScale, within, rows: rows, heldAs: heldAs);
       case final CompositeAdjustment<L> adjustment:

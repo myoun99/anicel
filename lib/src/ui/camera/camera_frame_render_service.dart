@@ -335,12 +335,14 @@ class CameraFrameRenderService {
     }
 
     // A row of this render: the ground, or a layer's image posed, faded,
-    // blended and filtered where it lies.
+    // blended and filtered where it lies — whole, whatever of it the
+    // buffer holding it reads ([within]).
     void paintRow(
       Canvas canvas,
       _CameraRow row,
       double rasterScale,
       RowPainter? rows,
+      Rect within,
     ) {
       switch (row) {
         case _CameraGround():

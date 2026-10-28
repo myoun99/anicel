@@ -817,7 +817,16 @@ void main() {
   /// by one at each call, and a value of them and the reporter would be
   /// taken apart again inside the cut. (Measured at 435 → 438 on its own
   /// lane; it landed after I-132 ⑫b·⑫c, so it counts on from 445.)
-  const wideSignatures = 448;
+  ///
+  /// ⚠️448 → 450 on 2026-10-29, two named as the rule above asks (card
+  /// a-step-drawn-in-place-reads-short-of-the-one-picture): a composite
+  /// route's row painter takes what of the canvas the buffer holding the
+  /// row reads — `_LayerStackPaintPass._paintRow` and the camera render's
+  /// `paintRow` (five each), the one type both fill. A row's raster that
+  /// stopped at what is shown stopped short of what a blurred folder
+  /// reads past it. ⛔Not bundled to fit: where the row is read is the
+  /// walk's, the rows its chain reads are its own.
+  const wideSignatures = 450;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

@@ -347,17 +347,12 @@ class _LayerStackPaintPass {
 
   void _paintFrame(Canvas into) {
     final reach = _reachOf(into, Rect.largest);
-    // 🚨As far past what is drawn as the frame's chains read, as the cells
-    // stand ([_paintCells]): a step's patch stood in the patch alone, and a
-    // row blurred on its own in a blurred folder beside its edge was 12 to
-    // 47/255 off the frame laid whole — the row's buffer grew by its own
-    // spread, short of what the folder reads past it (card a-step-drawn-
-    // in-place-reads-short-of-the-one-picture, 2026-10-29).
-    _standInTheWorld(
-      within: reach.inflate(
-        readsPastOf(_rootNodes, paper: _painter.canvasSize.canvasRect),
-      ),
-    );
+    // ⛔Not stood wider by what the chains read: each folder reads its
+    // rows past this by its own spread, and its rows' buffers follow it
+    // ([_slotBufferBounds]). ↩️Stood that much wider (`a97a2196c`), a
+    // folder inside a blurred one rastered past the patch by the spread
+    // twice (card a-step-drawn-in-place-reads-short-of-the-one-picture).
+    _standInTheWorld(within: reach);
     final extent = wholeLevelPixelsOutward(_contentExtent, 0);
     if (extent.isEmpty) {
       return;
@@ -536,7 +531,17 @@ class _LayerStackPaintPass {
   };
 
   /// What the live slot's own raster covers, in the SLOT's space: the rect
-  /// the same layer drawn as an image covers, where the view can see it.
+  /// the same layer drawn as an image covers, where [within] — what the
+  /// buffer holding the row reads — can see it.
+  ///
+  /// 🚨[within], NOT THE VIEW: a folder that blurs reads its rows past what
+  /// is shown by its spread, so a row's raster that stopped at the view
+  /// stopped short of it — a row blurred on its own in a blurred folder
+  /// beside a step's edge came out 12 to 47/255 off the frame laid whole.
+  /// ↩️`a97a2196c` stood the whole walk that much wider instead, and a
+  /// folder inside the blurred one then rastered past it by the spread
+  /// twice (card a-step-drawn-in-place-reads-short-of-the-one-picture,
+  /// 2026-10-29).
   ///
   /// 🚨★★★THE IMAGE ROW'S RECT, BY THE IMAGE ROW'S QUESTION (F-243). A
   /// row drawn as an image — the camera's, so the export's (↩️the playback
@@ -560,11 +565,15 @@ class _LayerStackPaintPass {
   /// posed row in an advanced blend took this route — ↩️until such a row
   /// painted normal over its backdrop; a colour key below a painted effect
   /// and add's `plus` on a buffered row still take it).
-  Rect _slotBufferBounds(_SurfaceSlot slot, _SurfaceRowPaint paint) {
+  Rect _slotBufferBounds(
+    _SurfaceSlot slot,
+    _SurfaceRowPaint paint,
+    Rect within,
+  ) {
     final intoSlot = slot.canvasToSlot;
     final view = intoSlot == null
-        ? _visibleCanvasRect
-        : MatrixUtils.transformRect(intoSlot, _visibleCanvasRect);
+        ? within
+        : MatrixUtils.transformRect(intoSlot, within);
     final drawn = slot.extent;
     final covered =
         inkCropDrawsTheSame(
@@ -747,6 +756,7 @@ class _LayerStackPaintPass {
     _PaintRow row,
     double rasterScale,
     RowPainter? rows,
+    Rect within,
   ) => withLayerPlacement(
     canvas,
     placement: _placementOf(row),
@@ -761,6 +771,7 @@ class _LayerStackPaintPass {
             row.paint,
             rasterScale,
             rows: rowsUnderPlacement(rows, row.placement),
+            within: within,
           );
       }
     },
@@ -770,13 +781,15 @@ class _LayerStackPaintPass {
   /// F-329): drawn straight onto the canvas when its paint can ride the
   /// draws, through one buffer when it cannot (an outset effect,
   /// overlapping coverage, a float overlay, or pre-steps) — [rows] what
-  /// paints the rows its chain reads in the slot, null for none.
+  /// paints the rows its chain reads in the slot, null for none, and
+  /// [within] what of the canvas the buffer holding it reads.
   void _paintSurfaceRow(
     Canvas canvas,
     _SurfaceSlot slot,
     _SurfaceRowPaint paint,
     double rasterScale, {
     RowPainter? rows,
+    required Rect within,
   }) {
     final (:opacity, :blendMode, :effects, :tint, placement: _) = paint;
     // The live surface, drawn by the SAME painter the standalone
@@ -961,7 +974,7 @@ class _LayerStackPaintPass {
       drawSubtreeAsImage(
         canvas: canvas,
         bounds: effectBufferBounds(
-          _slotBufferBounds(slot, paint),
+          _slotBufferBounds(slot, paint, within),
           activePlan.outsetPixels,
         ),
         rasterScale: rasterScale,
