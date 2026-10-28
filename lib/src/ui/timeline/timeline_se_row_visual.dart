@@ -744,29 +744,34 @@ class SeSpanVisual extends StatelessWidget {
           // is what stays legible (F-358-Q1 「이름은 최대한 지금처럼 잘
           // 보이고」).
           if (chipShown)
-            LayoutId(
-              id: _SeSpanSlot.chip,
-              child: _SeHeadWord(
-                axis: axis,
-                word: seName,
-                ink: fit.nameInk,
-                semanticsLabel: 'SE name $seName',
-              ),
-            ),
+            _headWord(_SeSpanSlot.chip, seName, fit.nameInk, 'SE name'),
           if (said != null)
-            LayoutId(
-              id: _SeSpanSlot.delivery,
-              child: _SeHeadWord(
-                axis: axis,
-                word: said,
-                ink: fit.deliveryInk,
-                semanticsLabel: 'SE delivery $said',
-              ),
+            _headWord(
+              _SeSpanSlot.delivery,
+              said,
+              fit.deliveryInk,
+              'SE delivery',
             ),
         ],
       ),
     );
   }
+
+  /// [word] in its head chip at [slot], read out as `<role> <word>`.
+  LayoutId _headWord(
+    _SeSpanSlot slot,
+    String word,
+    BuiltWordInk ink,
+    String role,
+  ) => LayoutId(
+    id: slot,
+    child: _SeHeadWord(
+      axis: axis,
+      word: word,
+      ink: ink,
+      semanticsLabel: '$role $word',
+    ),
+  );
 }
 
 /// Where an SE span's chip stands along the box the span lies in
