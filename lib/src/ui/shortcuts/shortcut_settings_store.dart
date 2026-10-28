@@ -69,6 +69,7 @@ Map<String, Object?> shortcutSettingsPayload({
   required List<UserShortcutPreset> userPresets,
   required Map<String, TouchGesture?> touch,
 }) => {
+  _command: _commandHere(),
   'preset': inUse.id,
   'overrides': {
     for (final MapEntry(key: layout, value: keys) in recorded.entries)
@@ -80,7 +81,77 @@ Map<String, Object?> shortcutSettingsPayload({
   },
 };
 
-/// A preset of the user's as the settings write it ([userPresetFromJson]
+/// Where a shortcut document names the command key its keys were pressed
+/// under ([pressedHere]).
+const String _command = 'command';
+
+/// The command key a document written HERE names.
+String _commandHere() => commandIsMeta() ? 'meta' : 'ctrl';
+
+/// How the keys a saved shortcut [document] holds are pressed HERE.
+///
+/// 🗣️I-142-Q8 (유저 2026-10-29): 「기기가 바뀌면 Ctrl 과 ⌘ 를 바꿔
+/// 읽는다」. A document names the command key its keys were pressed under,
+/// and read where the command key is the other one, each key's Ctrl and ⌘
+/// trade places — as a registry default is read on each device
+/// ([platformActivator]): a Ctrl+K recorded on a PC is ⌘K on a Mac.
+/// ⚠️A key pressed with both trades both — the cost the question named.
+/// A document that names no command key is read as pressed.
+SingleActivator Function(SingleActivator) pressedHere(
+  Map<String, Object?>? document,
+) => switch (document?[_command]) {
+  'ctrl' when commandIsMeta() => commandSwapped,
+  'meta' when !commandIsMeta() => commandSwapped,
+  _ => _asPressed,
+};
+
+SingleActivator _asPressed(SingleActivator activator) => activator;
+
+/// What [payload] — [shortcutSettingsPayload]'s — holds, each key as it is
+/// pressed here ([pressedHere]); null where it holds no overrides. Unknown
+/// action ids ([keeps]) and malformed entries are dropped, and a preset no
+/// build knows reads as the registry's own — an app update or a corrupt
+/// file never breaks the bindings.
+({
+  List<UserShortcutPreset> userPresets,
+  ShortcutLayout inUse,
+  Map<ShortcutPreset, Map<String, List<SingleActivator>>> recorded,
+  Map<String, TouchGesture?> touch,
+})?
+shortcutSettingsFromPayload(
+  Map<String, Object?>? payload, {
+  required bool Function(String actionId) keeps,
+}) {
+  final byPreset = payload?['overrides'];
+  if (byPreset is! Map) {
+    return null;
+  }
+  final pressed = pressedHere(payload);
+  final userPresets = [
+    if (payload?['presets'] case final List saved)
+      for (final json in saved)
+        ?_userPresetFromJson(
+          json,
+          recordedById: byPreset,
+          keeps: keeps,
+          pressed: pressed,
+        ),
+  ];
+  final inUse = payload?['preset'];
+  return (
+    userPresets: userPresets,
+    inUse:
+        userPresets.where((preset) => preset.id == inUse).firstOrNull ??
+        _shippedPresetNamed(inUse),
+    recorded: {
+      for (final preset in ShortcutPreset.values)
+        preset: _shortcutKeysFromJson(byPreset[preset.name], keeps, pressed),
+    },
+    touch: _touchGesturesFromJson(payload?['touch'], keeps),
+  );
+}
+
+/// A preset of the user's as the settings write it ([_userPresetFromJson]
 /// reads it back).
 Map<String, Object?> _presetJson(UserShortcutPreset preset) => {
   'id': preset.id,
@@ -101,6 +172,7 @@ String shortcutPresetSettingsFile(
   ShortcutSettingsStore.fileName: versionedSettingsDocument(
     ShortcutSettingsStore.version,
     {
+      _command: _commandHere(),
       'presets': [
         _presetJson(
           UserShortcutPreset(
@@ -129,17 +201,23 @@ List<UserShortcutPreset>? shortcutPresetsInSettingsFile(
     return null;
   }
   try {
-    final listed = liftVersionedSettingsDocument(
+    final lifted = liftVersionedSettingsDocument(
       document,
       version: ShortcutSettingsStore.version,
       fromJson: ShortcutSettingsStore._inThisShape,
-    )?['presets'];
+    );
+    final listed = lifted?['presets'];
     if (listed is! List) {
       return null;
     }
     return [
       for (final json in listed)
-        ?userPresetFromJson(json, recordedById: const {}, keeps: keeps),
+        ?_userPresetFromJson(
+          json,
+          recordedById: const {},
+          keeps: keeps,
+          pressed: pressedHere(lifted),
+        ),
     ];
   } on Object {
     return null;
@@ -159,16 +237,17 @@ Map<String, Object?> _keysToJson(Map<String, List<SingleActivator>> keys) => {
 /// value, Clip Studio's since I-63-Q5). A file that names no preset this
 /// build knows was written over the registry's keys: before the presets,
 /// or by a build whose preset this one lacks.
-ShortcutPreset shippedPresetNamed(Object? name) =>
+ShortcutPreset _shippedPresetNamed(Object? name) =>
     ShortcutPreset.named(name) ?? ShortcutPreset.anicel;
 
 /// One of the user's presets out of its saved [json], with what was
-/// recorded under it out of [recordedById]; null where [json] is none. An
-/// action [keeps] declines is dropped.
-UserShortcutPreset? userPresetFromJson(
+/// recorded under it out of [recordedById], each key as it is [pressed]
+/// here; null where [json] is none. An action [keeps] declines is dropped.
+UserShortcutPreset? _userPresetFromJson(
   Object? json, {
   required Map<Object?, Object?> recordedById,
   required bool Function(String actionId) keeps,
+  required SingleActivator Function(SingleActivator) pressed,
 }) {
   if (json case {
     'id': final String id,
@@ -179,32 +258,35 @@ UserShortcutPreset? userPresetFromJson(
     return UserShortcutPreset(
       id: id,
       name: name,
-      base: shippedPresetNamed(base),
-      keys: shortcutKeysFromJson(keys, keeps),
-      recorded: {...shortcutKeysFromJson(recordedById[id], keeps)},
+      base: _shippedPresetNamed(base),
+      keys: _shortcutKeysFromJson(keys, keeps, pressed),
+      recorded: {..._shortcutKeysFromJson(recordedById[id], keeps, pressed)},
     );
   }
   return null;
 }
 
-/// One layout's keys out of their saved [json] — an action [keeps] declines
-/// and a malformed entry dropped.
-Map<String, List<SingleActivator>> shortcutKeysFromJson(
+/// One layout's keys out of their saved [json], each as it is [pressed]
+/// here ([pressedHere]) — an action [keeps] declines and a malformed entry
+/// dropped.
+Map<String, List<SingleActivator>> _shortcutKeysFromJson(
   Object? json,
   bool Function(String actionId) keeps,
+  SingleActivator Function(SingleActivator) pressed,
 ) => {
   for (final (actionId, listJson) in _keptEntries(json, keeps))
     if (listJson is List)
       actionId: List.unmodifiable([
         for (final activatorJson in listJson)
-          ?singleActivatorFromJson(activatorJson),
+          if (singleActivatorFromJson(activatorJson) case final activator?)
+            pressed(activator),
       ]),
 };
 
 /// The touch gestures out of their saved [json]: a gesture by its name, or
 /// null for an action deliberately unbound — an action [keeps] declines
 /// and a name no gesture has dropped.
-Map<String, TouchGesture?> touchGesturesFromJson(
+Map<String, TouchGesture?> _touchGesturesFromJson(
   Object? json,
   bool Function(String actionId) keeps,
 ) => {

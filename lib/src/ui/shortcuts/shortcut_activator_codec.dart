@@ -89,6 +89,18 @@ SingleActivator platformActivator(
   );
 }
 
+/// [activator] pressed under the other command key: its Ctrl is ⌘ and its
+/// ⌘ Ctrl ([commandIsMeta]).
+SingleActivator commandSwapped(SingleActivator activator) => SingleActivator(
+  activator.trigger,
+  control: activator.meta,
+  shift: activator.shift,
+  alt: activator.alt,
+  meta: activator.control,
+  numLock: activator.numLock,
+  includeRepeats: activator.includeRepeats,
+);
+
 /// How a shortcut is written on [platform]: 'Ctrl+Shift+Z' on Windows and
 /// the rest, '⇧⌘Z' on a Mac or an iPad — the modifier glyphs in the order
 /// Apple's own menus print them (⌃⌥⇧⌘), with no separators. The settings

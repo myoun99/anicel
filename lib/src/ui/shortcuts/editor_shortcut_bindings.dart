@@ -558,33 +558,27 @@ class EditorShortcutBindings extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Loads the persisted preset and overrides (unknown action ids and
-  /// malformed entries are dropped, and a preset no build knows reads as the
-  /// registry's own — an app update or corrupt file never breaks bindings).
+  /// Loads the persisted preset and overrides, as
+  /// [shortcutSettingsFromPayload] reads them.
   Future<void> restore() async {
-    final payload = await store?.load();
-    final byPreset = payload?['overrides'];
-    if (byPreset is! Map) {
+    final saved = shortcutSettingsFromPayload(
+      await store?.load(),
+      keeps: keeps,
+    );
+    if (saved == null) {
       return;
     }
-    _userPresets = List.unmodifiable([
-      if (payload?['presets'] case final List saved)
-        for (final json in saved)
-          ?userPresetFromJson(json, recordedById: byPreset, keeps: keeps),
-    ]);
-    final inUse = payload?['preset'];
-    _preset =
-        _userPresets.where((preset) => preset.id == inUse).firstOrNull ??
-        shippedPresetNamed(inUse);
+    _userPresets = List.unmodifiable(saved.userPresets);
+    _preset = saved.inUse;
     for (final MapEntry(key: preset, value: overrides)
         in _overridesByPreset.entries) {
       overrides
         ..clear()
-        ..addAll(shortcutKeysFromJson(byPreset[preset.name], keeps));
+        ..addAll(saved.recorded[preset]!);
     }
     _touchOverrides
       ..clear()
-      ..addAll(touchGesturesFromJson(payload?['touch'], keeps));
+      ..addAll(saved.touch);
     notifyListeners();
   }
 

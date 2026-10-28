@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -168,6 +169,171 @@ void main() {
       final brought = elsewhere.userPresets.single;
       expect(brought.ownKeys.keys, [EditorActionIds.cutNew]);
       expect(keysOf(EditorActionIds.cutNew, elsewhere), ['F2']);
+    });
+  });
+
+  group('on a device whose command key is the other one (I-142-Q8: 「기기가 '
+      '바뀌면 Ctrl 과 ⌘ 를 바꿔 읽는다」)', () {
+    tearDown(() => debugDefaultTargetPlatformOverride = null);
+
+    const k = LogicalKeyboardKey.keyK;
+
+    /// [pressed] recorded on [from] and its file opened on [to] — the
+    /// key it comes back as there.
+    SingleActivator carried(
+      SingleActivator pressed, {
+      required TargetPlatform from,
+      required TargetPlatform to,
+    }) {
+      debugDefaultTargetPlatformOverride = from;
+      bindings.setActivators(EditorActionIds.cutNew, [pressed]);
+      final file = fileOf(bindings.preset, 'Mine');
+      debugDefaultTargetPlatformOverride = to;
+      bring(elsewhere, file);
+      return elsewhere.activatorsFor(EditorActionIds.cutNew).single;
+    }
+
+    /// What [key] holds, in a shape a matcher compares.
+    List<Object?> held(SingleActivator key) => [
+      key.trigger,
+      key.control,
+      key.shift,
+      key.alt,
+      key.meta,
+    ];
+
+    test('a Ctrl recorded on a PC is ⌘ on a Mac — and a ⌘ recorded on an '
+        'iPad is Ctrl on Android', () {
+      expect(
+        held(
+          carried(
+            const SingleActivator(k, control: true, shift: true, alt: true),
+            from: TargetPlatform.windows,
+            to: TargetPlatform.macOS,
+          ),
+        ),
+        held(const SingleActivator(k, meta: true, shift: true, alt: true)),
+      );
+      expect(
+        held(
+          carried(
+            const SingleActivator(k, meta: true),
+            from: TargetPlatform.iOS,
+            to: TargetPlatform.android,
+          ),
+        ),
+        held(const SingleActivator(k, control: true)),
+      );
+    });
+
+    test('a ⌘ recorded on a PC — its Windows key — is Ctrl on a Mac', () {
+      expect(
+        held(
+          carried(
+            const SingleActivator(k, meta: true),
+            from: TargetPlatform.linux,
+            to: TargetPlatform.iOS,
+          ),
+        ),
+        held(const SingleActivator(k, control: true)),
+      );
+    });
+
+    test('between two devices with one command key, a key is as pressed', () {
+      for (final (from, to, pressed) in [
+        (
+          TargetPlatform.windows,
+          TargetPlatform.android,
+          const SingleActivator(k, control: true),
+        ),
+        (
+          TargetPlatform.macOS,
+          TargetPlatform.iOS,
+          const SingleActivator(k, meta: true),
+        ),
+        (TargetPlatform.windows, TargetPlatform.macOS, f9),
+      ]) {
+        expect(
+          held(carried(pressed, from: from, to: to)),
+          held(pressed),
+          reason: '$from → $to',
+        );
+      }
+    });
+
+    test('a shortcut document that names no command key is read as '
+        'pressed', () {
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      bring(
+        elsewhere,
+        encodeSettingsFile({
+          ShortcutSettingsStore.fileName: {
+            'version': ShortcutSettingsStore.version,
+            'presets': [
+              {
+                'id': 'user-1',
+                'name': 'Unsaid',
+                'base': ShortcutPreset.tvpaint.name,
+                'keys': {
+                  EditorActionIds.cutNew: [
+                    singleActivatorToJson(
+                      const SingleActivator(k, control: true),
+                    ),
+                  ],
+                },
+              },
+            ],
+          },
+        }),
+      );
+
+      expect(
+        held(elsewhere.activatorsFor(EditorActionIds.cutNew).single),
+        held(const SingleActivator(k, control: true)),
+      );
+    });
+
+    test('the shortcut store\'s own file reads by the same law — what the '
+        'whole-settings file carries', () async {
+      final directory = Directory.systemTemp.createTempSync('qa_command_');
+      addTearDown(() => deleteTempQuietly(directory));
+      final path = '${directory.path}/overrides.json';
+      EditorShortcutBindings saving() {
+        final opened = EditorShortcutBindings(
+          store: ShortcutSettingsStore(filePath: path),
+        );
+        addTearDown(opened.dispose);
+        return opened;
+      }
+
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      final saved = saving()
+        ..setActivators(
+          EditorActionIds.cutNew,
+          const [SingleActivator(k, control: true)],
+        );
+      saved
+        ..duplicatePreset(saved.preset, 'Mine')
+        ..setActivators(
+          EditorActionIds.undo,
+          const [SingleActivator(k, control: true, shift: true)],
+        );
+      await saved.pendingPersist;
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      final again = saving();
+      await again.restore();
+
+      expect(
+        held(again.activatorsFor(EditorActionIds.undo).single),
+        held(const SingleActivator(k, meta: true, shift: true)),
+        reason: 'recorded under the user\'s preset',
+      );
+      again.setPreset(again.userPresets.single.base);
+      expect(
+        held(again.activatorsFor(EditorActionIds.cutNew).single),
+        held(const SingleActivator(k, meta: true)),
+        reason: 'recorded under the preset the app ships',
+      );
     });
   });
 
