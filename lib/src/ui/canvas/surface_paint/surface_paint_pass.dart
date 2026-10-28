@@ -27,6 +27,14 @@ class _SurfacePaintPass {
   late final bool _reduced = _scale < 1;
   late final Rect _visibleRect;
 
+  /// Device pixels a unit of the canvas's space lands on past its transform
+  /// ([cutOnThePixelGrid]) — the screen's ratio on screen, 1 into a raster.
+  late final double _pixelRatio;
+
+  /// Whether each coordinate's picture is laid with its edge cut on the
+  /// pixel grid rather than where it falls ([_drawImageAtTile]).
+  late final bool _tilesCutOnTheGrid;
+
   /// The float the caller handed in — a selection's, from the row's slot.
   late final RowFloat? _float;
 
@@ -59,17 +67,20 @@ class _SurfacePaintPass {
   /// it otherwise applies the layer twice wherever two draws overlap, which
   /// looks like a darkened seam rather than an error.
   ///
-  /// [scale] is how many device pixels this paint lands on a canvas pixel
-  /// ([BitmapSurfacePainter.paintContentInto]).
+  /// [scale] is how many device pixels this paint lands on a canvas pixel,
+  /// and [pixelRatio] how many a unit of [canvas]'s space lands on past its
+  /// transform ([BitmapSurfacePainter.paintContentInto]).
   void paintContentInto(
     Canvas canvas, {
     Paint? layerPaint,
     double scale = 1,
+    required double pixelRatio,
     RowFloat? float,
   }) {
     _canvas = canvas;
     _layerPaint = layerPaint;
     _scale = scale;
+    _pixelRatio = pixelRatio;
     _float = float == null || float.preview.drawnWorldRect.isEmpty
         ? null
         : float;
@@ -135,6 +146,28 @@ class _SurfacePaintPass {
         ..colorFilter = _layerPaint.colorFilter
         ..imageFilter = _layerPaint.imageFilter;
     }
+    // 🚨★★★A COORDINATE'S EDGE IS ONE MORE TEXEL BOUNDARY
+    // (the-walk-draws-off-the-grid-on-impeller, 2026-10-28). Under nearest
+    // sampling on an axis-aligned space the boundary between two
+    // coordinates is decided per pixel by its centre, as every boundary
+    // inside a picture is ([displayEdgeAntiAliased]) — but each coordinate
+    // is its own draw, and where the grid falls inside a pixel Impeller's
+    // MSAA covers that pixel by both draws' samples, whatever the paint
+    // says: 🔬150% on the walk, a line's pixels on the canvas's edge 64
+    // grey for black, and 137% riding an add 129 pixels up to 23 apart from
+    // the buffer (`--enable-impeller`). So there each edge is cut on the
+    // grid, as the paper's and the buffer's blit are. ⛔Only there: the
+    // cut lays the picture through a shader under a clip, and into a
+    // buffer at the canvas's own resolution — every frame's picture and
+    // every step's patch — the grid lands whole and `drawImage` is the
+    // same pixels.
+    _tilesCutOnTheGrid =
+        _tileImagePaint.filterQuality == FilterQuality.none &&
+        cellsFallOffThePixelGrid(
+          _canvas,
+          _painter.surface.tileSize.toDouble(),
+          pixelRatio,
+        );
     // R27 #2: the walk below is visible-only, so every coordinate it
     // reaches already shows — no separate visibility test is needed.
     _visibleRect = _painter._visibleCanvasRect(_canvas, _storableRect);
@@ -248,13 +281,25 @@ class _SurfacePaintPass {
   }
 
   /// THE tile draw: [image], one tile's worth of pixels — a coordinate's
-  /// picture — at [coord]'s origin on the surface's grid.
-  void _drawImageAtTile(ui.Image image, TileCoord coord) =>
-      _canvas.drawImage(
-        image,
-        tileCoordOriginOffset(coord, _painter.surface.tileSize),
-        _tileImagePaint,
-      );
+  /// picture — at [coord]'s origin on the surface's grid, its edge cut on
+  /// the pixel grid where the grid falls off it ([_tilesCutOnTheGrid]).
+  void _drawImageAtTile(ui.Image image, TileCoord coord) {
+    final origin = tileCoordOriginOffset(coord, _painter.surface.tileSize);
+    if (!_tilesCutOnTheGrid) {
+      _canvas.drawImage(image, origin, _tileImagePaint);
+      return;
+    }
+    final size = Size(image.width.toDouble(), image.height.toDouble());
+    drawImageRectOnThePixelGrid(
+      _canvas,
+      image,
+      Offset.zero & size,
+      origin & size,
+      filterQuality: FilterQuality.none,
+      pixelRatio: _pixelRatio,
+      paint: _tileImagePaint,
+    );
+  }
 
   /// The paint a LIVE PREVIEW OF A BRUSH LANDING draws with: a pre-blended
   /// overlay blits (src where it replaces the committed tiles), an erasing
@@ -330,12 +375,12 @@ class _SurfacePaintPass {
     for (final float in _floats) {
       final toRow = float.canvasToRow;
       if (toRow == null) {
-        float.preview.paintInto(_canvas);
+        float.preview.paintInto(_canvas, pixelRatio: _pixelRatio);
         continue;
       }
       _canvas.save();
       _canvas.transform(toRow.storage);
-      float.preview.paintInto(_canvas);
+      float.preview.paintInto(_canvas, pixelRatio: _pixelRatio);
       _canvas.restore();
     }
   }
@@ -416,7 +461,9 @@ class _SurfacePaintPass {
     final atFull = Canvas(recorder)
       ..translate(-region.left, -region.top)
       ..clipRect(region);
-    _SurfacePaintPass(_painter).paintContentInto(atFull, float: _float);
+    _SurfacePaintPass(
+      _painter,
+    ).paintContentInto(atFull, pixelRatio: 1, float: _float);
     final picture = recorder.endRecording();
     try {
       return picture.toImageSync(region.width.round(), region.height.round());

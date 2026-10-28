@@ -497,7 +497,7 @@ void main() {
       final recorder = ui.PictureRecorder();
       final canvas = ui.Canvas(recorder)
         ..clipRect(const ui.Rect.fromLTWH(0, 0, 64, 48));
-      painter.paintContentInto(canvas);
+      painter.paintContentInto(canvas, pixelRatio: 1);
       final picture = recorder.endRecording();
       final image = await picture.toImage(64, 48);
       picture.dispose();

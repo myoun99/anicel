@@ -257,7 +257,7 @@ Future<List<int>> canvasPixel(WidgetTester tester, int x, int y) async {
   final canvas = Canvas(recorder)
     ..translate(-x.toDouble(), -y.toDouble())
     ..clipRect(Rect.fromLTWH(x.toDouble(), y.toDouble(), 1, 1));
-  _canvasPainter(tester).paintContentInto(canvas);
+  _canvasPainter(tester).paintContentInto(canvas, pixelRatio: 1);
   final picture = recorder.endRecording();
   final image = picture.toImageSync(1, 1);
   picture.dispose();
@@ -282,7 +282,7 @@ Future<Uint8List> canvasRaster(
     ..scale(scale)
     ..translate(-region.left, -region.top)
     ..clipRect(region);
-  _canvasPainter(tester).paintContentInto(canvas, scale: scale);
+  _canvasPainter(tester).paintContentInto(canvas, scale: scale, pixelRatio: 1);
   final picture = recorder.endRecording();
   final image = picture.toImageSync(
     region.width.toInt() >> level,

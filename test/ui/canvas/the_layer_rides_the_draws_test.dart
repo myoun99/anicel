@@ -58,11 +58,15 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// advanced blend never rides (pinned below), and the blend compared here is
 /// the one besides srcOver that still does — add.
 ///
-/// ⚠️THE TILE PAINT IS WHY IT HOLDS. `isAntiAlias = false` +
-/// `FilterQuality.none` is what makes adjacent tiles disjoint in DEVICE
+/// ⚠️THE TILE PAINT IS WHY IT HOLDS. `FilterQuality.none` and each tile's
+/// edge on the pixel grid are what make adjacent tiles disjoint in DEVICE
 /// pixels, not only in canvas units. A first draft of this comparison used
 /// the default paint and saw seams at fractional scale — that was the
-/// probe's antialiasing, not the painter's.
+/// probe's antialiasing, not the painter's. ↩️`isAntiAlias = false` was
+/// the edge's half until 10-28: Impeller's MSAA covers a pixel by the
+/// samples whatever the flag, and at 1.37 here 129 pixels came out up to
+/// 23 apart under `--enable-impeller` — so where the tiles' grid falls off
+/// the pixels, each tile is cut on them (`_drawImageAtTile`).
 void main() {
   const canvasSize = CanvasSize(width: 64, height: 64);
   const tileSize = 16;
@@ -126,6 +130,7 @@ void main() {
     painter.paintContentInto(
       canvas,
       layerPaint: buffered ? null : layerPaint(),
+      pixelRatio: 1,
     );
     canvas.restore();
     if (buffered) {
@@ -1026,9 +1031,58 @@ class _ClippedRecordingCanvas extends TestRecordingCanvas {
 
   final Rect bounds;
 
+  /// The transform a draw can ask for — a coordinate's edge is cut on the
+  /// grid it lands on (`cutOnThePixelGrid`) — kept beside the calls.
+  final List<Matrix4> _transforms = [Matrix4.identity()];
+
   @override
   Rect getLocalClipBounds() => bounds;
 
   @override
   Rect getDestinationClipBounds() => bounds;
+
+  @override
+  Float64List getTransform() => Float64List.fromList(_transforms.last.storage);
+
+  @override
+  void save() {
+    _transforms.add(_transforms.last.clone());
+    super.save();
+  }
+
+  @override
+  void saveLayer(Rect? bounds, Paint paint) {
+    _transforms.add(_transforms.last.clone());
+    super.saveLayer(bounds, paint);
+  }
+
+  @override
+  void restore() {
+    _transforms.removeLast();
+    super.restore();
+  }
+
+  @override
+  void translate(double dx, double dy) {
+    _transforms.last.translateByDouble(dx, dy, 0, 1);
+    noSuchMethod(Invocation.method(#translate, [dx, dy]));
+  }
+
+  @override
+  void scale(double sx, [double? sy]) {
+    _transforms.last.scaleByDouble(sx, sy ?? sx, 1, 1);
+    noSuchMethod(Invocation.method(#scale, [sx, sy]));
+  }
+
+  @override
+  void rotate(double radians) {
+    _transforms.last.rotateZ(radians);
+    noSuchMethod(Invocation.method(#rotate, [radians]));
+  }
+
+  @override
+  void transform(Float64List matrix4) {
+    _transforms.last.multiply(Matrix4.fromFloat64List(matrix4));
+    noSuchMethod(Invocation.method(#transform, [matrix4]));
+  }
 }

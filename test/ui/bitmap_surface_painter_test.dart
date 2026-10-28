@@ -270,7 +270,7 @@ void main() {
           applyViewportTransform(canvas, viewport);
           canvas.save();
           canvas.clipRect(painter.storableRect);
-          painter.paintContentInto(canvas);
+          painter.paintContentInto(canvas, pixelRatio: 1);
           canvas.restore();
           canvas.restore();
         },

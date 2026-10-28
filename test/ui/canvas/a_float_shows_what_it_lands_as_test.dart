@@ -108,12 +108,13 @@ void main() {
       canvas,
       layerPaint: layerPaint,
       scale: scale,
+      pixelRatio: 1,
       float: floatOnTop || float == null
           ? null
           : (preview: float, canvasToRow: null),
     );
     if (floatOnTop) {
-      float!.paintInto(canvas);
+      float!.paintInto(canvas, pixelRatio: 1);
     }
     final picture = recorder.endRecording();
     final image = await picture.toImage(

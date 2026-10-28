@@ -700,7 +700,7 @@ class _LayerStackPaintPass {
         body: () {
           switch (row) {
             case _PaintPaper():
-              _paintPaperInto(canvas, intoTheBuffer: _composingTheBuffer);
+              _paintPaperInto(canvas);
             case final _SurfaceRow row:
               _paintSurfaceRow(canvas, _slotOf(row), row.paint, rasterScale);
           }
@@ -829,6 +829,7 @@ class _LayerStackPaintPass {
           // 1:1 in the level's pixels (4c) — until one-picture-per-frame
           // ②-5b-2.
           scale: rasterScale,
+          pixelRatio: _pixelRatio,
           // 🚨TS1: the selection's FLOAT belongs here, right on top of
           // the surface it was lifted out of and UNDER everything
           // above that row. Drawn inside this slot's clip and its
@@ -922,8 +923,8 @@ class _LayerStackPaintPass {
     }
   }
 
-  /// The paper, [intoTheBuffer] or straight onto the screen (the walk).
-  void _paintPaperInto(Canvas into, {required bool intoTheBuffer}) {
+  /// The paper, into the buffer or straight onto the screen (the walk).
+  void _paintPaperInto(Canvas into) {
     if (!_painter.paintPaper) {
       return;
     }
@@ -938,7 +939,7 @@ class _LayerStackPaintPass {
       // The display law's edge (F-67-paper-edge): on the buffer's own
       // pixels inside it, on the screen's on the walk.
       antiAlias: _displayEdgeAntiAliased,
-      pixelRatio: intoTheBuffer ? 1 : _painter.devicePixelRatio,
+      pixelRatio: _pixelRatio,
     );
   }
 
@@ -954,9 +955,15 @@ class _LayerStackPaintPass {
       : _painter.nodes;
 
   /// Whether the content being painted is the display buffer's — a raster
-  /// aligned to canvas space, where a level image lands texel for texel —
-  /// rather than the walk's screen ([_paintImageNode]).
+  /// aligned to canvas space — rather than the walk's screen ([_pixelRatio]).
   bool _composingTheBuffer = false;
+
+  /// Device pixels a unit of the space the content is drawn in lands on past
+  /// its transform: 1 into the buffer, whose transform lands on its own
+  /// pixels, and the screen's ratio on the walk — the grid every edge the
+  /// display law cuts is cut on ([cutOnThePixelGrid]).
+  double get _pixelRatio =>
+      _composingTheBuffer ? 1 : _painter.devicePixelRatio;
 
   /// Where the recording being made is shown — whole, once, cut by nothing
   /// else: the display buffer's rect on the visible canvas while it is

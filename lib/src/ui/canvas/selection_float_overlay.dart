@@ -16,6 +16,7 @@ import '../../services/cel_source_effect_pass.dart'
 import '../../services/cel_surface_as_shown.dart';
 import '../../services/cel_text_laying.dart' show celTextPlatesOver;
 import 'bitmap_surface_painter.dart';
+import 'display_resample.dart' show drawImageRectOnThePixelGrid;
 import 'landing_preview.dart';
 import 'tile_picture_budget.dart' show TilePictureBudget;
 import 'viewport_canvas_transform.dart';
@@ -109,7 +110,7 @@ class SelectionFloatPaint implements LandingPreview {
   }
 
   @override
-  void paintInto(Canvas canvas) {
+  void paintInto(Canvas canvas, {required double pixelRatio}) {
     if (isEmpty) {
       return;
     }
@@ -133,7 +134,12 @@ class SelectionFloatPaint implements LandingPreview {
       // affine, a homography matrix for the quad, and a `drawVertices` mesh
       // at `FilterQuality.medium`), none of which agreed with the commit and
       // none of which agreed with each other.
-      canvas.drawImageRect(
+      //
+      // Its edge is one more texel boundary, cut on the grid as the
+      // surface's coordinates are (`_drawImageAtTile`): drawn where it
+      // falls, Impeller blends it inside a pixel.
+      drawImageRectOnThePixelGrid(
+        canvas,
         image,
         Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
         Rect.fromLTWH(
@@ -142,13 +148,12 @@ class SelectionFloatPaint implements LandingPreview {
           image.width.toDouble(),
           image.height.toDouble(),
         ),
-        Paint()
-          ..filterQuality = FilterQuality.none
-          ..isAntiAlias = false,
+        filterQuality: FilterQuality.none,
+        pixelRatio: pixelRatio,
       );
     } else {
       canvas.translate(surfaceOffset.x, surfaceOffset.y);
-      surface!.paintContentInto(canvas);
+      surface!.paintContentInto(canvas, pixelRatio: pixelRatio);
     }
     canvas.restore();
   }
@@ -396,15 +401,19 @@ class _KeyedFloat implements LandingPreview {
   Rect get drawnWorldRect => _float.drawnWorldRect;
 
   @override
-  void paintInto(Canvas canvas) {
+  void paintInto(Canvas canvas, {required double pixelRatio}) {
     canvas.save();
     final bounds = _float.clip;
     if (bounds != null) {
       canvas.clipRect(bounds);
     }
     canvas.translate(_float.surfaceOffset.x, _float.surfaceOffset.y);
-    _float.surface!.paintContentInto(canvas, layerPaint: _clearing);
-    _keyed.paintContentInto(canvas);
+    _float.surface!.paintContentInto(
+      canvas,
+      layerPaint: _clearing,
+      pixelRatio: pixelRatio,
+    );
+    _keyed.paintContentInto(canvas, pixelRatio: pixelRatio);
     canvas.restore();
   }
 }
@@ -464,7 +473,7 @@ class SelectionFloatPainter extends CustomPainter with RepaintOnProps {
       devicePixelRatio: devicePixelRatio,
     );
     for (final float in floats) {
-      float.paintInto(canvas);
+      float.paintInto(canvas, pixelRatio: devicePixelRatio);
     }
     canvas.restore();
   }

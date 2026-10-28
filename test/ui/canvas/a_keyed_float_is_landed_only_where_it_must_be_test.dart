@@ -102,7 +102,7 @@ void main() {
   /// The alpha [preview] draws at ([x], [y]) of the canvas, over nothing.
   Future<int> alphaAt(LandingPreview preview, int x, int y) async {
     final recorder = PictureRecorder();
-    preview.paintInto(Canvas(recorder));
+    preview.paintInto(Canvas(recorder), pixelRatio: 1);
     final picture = recorder.endRecording();
     final image = await picture.toImage(canvasSize.width, canvasSize.height);
     picture.dispose();
@@ -239,7 +239,7 @@ class _Landing implements LandingPreview {
   Rect get drawnWorldRect => const Rect.fromLTWH(8, 8, 32, 32);
 
   @override
-  void paintInto(Canvas canvas) {}
+  void paintInto(Canvas canvas, {required double pixelRatio}) {}
 }
 
 /// A cel under a float, counting the landings it is asked for.
