@@ -179,10 +179,11 @@ class TimelineBarMenus {
   /// an already crowded row.
   List<PanelFlyoutEntry> effects() {
     // B8: the chain shown and edited here is the CUT's active layer's — the
-    // timeline panel's noun. On the storyboard every entry greys out
-    // honestly (its rows' chains have no add entrance on this pill yet, and
-    // a lit entry would edit a row that panel is not showing).
-    final serves = panel.servesActiveLayerVerbs;
+    // timeline panel's noun, and the storyboard's where a projection row
+    // stands on it (I-99, [ToolbarPanelContext.servesActiveEffects]).
+    // Elsewhere on the storyboard every entry greys out honestly: a lit
+    // entry would edit a row that panel is not showing.
+    final serves = panel.servesActiveEffects;
     // ⛔NO REMOVE ENTRIES (F-87, 유저 2026-09-12: 「fx 헤더 선택범위로 선택한채로
     // 삭제누르면 해당 fx 삭제. 그리고 fx버튼에 있는 해당 fx 삭제버튼은
     // 필요없으니 삭제하고 관련로직 싹 제거」): an effect is removed by a range

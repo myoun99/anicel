@@ -69,13 +69,24 @@ abstract class ToolbarPanelContext {
   void addAttachedLayer(AttachedPlacement placement, {AttachedMode mode});
 
   /// Whether the session's ACTIVE-LAYER menu verbs (the layer menu, the
-  /// frame menu's duplicates, the fx list) are THIS panel's own subject.
+  /// frame menu's duplicates) are THIS panel's own subject.
   ///
   /// The storyboard answers false and those entries grey out honestly: its
   /// rows are tracks, S rows and the transition fixture, and none of them
   /// is the cut's active layer — a lit entry there would edit a row the
   /// panel is not even showing.
   bool get servesActiveLayerVerbs;
+
+  /// Whether the active row's FX LIST — the fx menu's adds, and a paste of
+  /// effects, which is an add of them — is THIS panel's subject: the
+  /// timeline's row, and on the storyboard the timeline's row a projection
+  /// row stands on, as its attach entries are (F-322).
+  ///
+  /// 🗣️I-99 (유저 2026-10-14): 「콘티패널에서 콘티작업중 일부 레이어에만
+  /// 트랜스폼 조정하거나 fx걸고싶은데 그게 불가능해서」. ↩️The list asked
+  /// [servesActiveLayerVerbs] — one flag for two questions — and greyed out
+  /// on the conte rows the storyboard shows.
+  bool get servesActiveEffects;
 
   // --- FRAME pill -----------------------------------------------------------
 
@@ -373,7 +384,7 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
 
   /// Whether a paste here puts down EFFECTS: the hand holds them (F-476-Q1)
   /// — an add of them, so where the fx menu's add is lit
-  /// ([servesActiveLayerVerbs]). Like a text they light no link
+  /// ([servesActiveEffects]). Like a text they light no link
   /// ([EffectClipboard.pasteIndependent]).
   bool get _pastesEffects => session.effectClipboard.holdsEffects;
 
@@ -381,7 +392,7 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   bool get canPasteIndependentFrame => _pastesRows
       ? session.layerClipboard.canPasteRows
       : _pastesEffects
-      ? servesActiveLayerVerbs && session.effectClipboard.canPasteIndependent
+      ? servesActiveEffects && session.effectClipboard.canPasteIndependent
       : _pastesKeys
       ? session.keyClipboard.canPasteIndependent
       : _pastesText
@@ -580,6 +591,9 @@ class TimelineToolbarPanelContext
 
   @override
   bool get servesActiveLayerVerbs => true;
+
+  @override
+  bool get servesActiveEffects => true;
 
   @override
   bool get canCreateInstance => session.cellInstances.canCreateInstance;
@@ -798,6 +812,13 @@ class StoryboardToolbarPanelContext
 
   @override
   bool get servesActiveLayerVerbs => false;
+
+  /// A projection row stood on holds the timeline's own row
+  /// ([_projectedCell]), so its fx list is the timeline's there — the conte
+  /// row's and each row riding it (I-99), every cut of the track wearing
+  /// the chain's shape (I-73); the camera takes none, as there.
+  @override
+  bool get servesActiveEffects => _projectedCell?.servesActiveEffects ?? false;
 
   /// 🗣️F-186 (유저 2026-09-26): 「타임라인 버튼은 기본적으로 선택안한상태에선
   /// 컷블록을 대상으로 하고, 콘티블록 선택하면 지금 편집버튼같은거
