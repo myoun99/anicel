@@ -682,8 +682,10 @@ void main() {
 
     test('🗣️F-494: a batch tells how far it is held, each file an even '
         'share filled as its bytes go through — and the end once', () async {
+      // A small file before a big one: its share is half the bar however
+      // few blocks it is, so the big one's blocks are all told past half.
       final paths = [
-        noiseFile('a.wav', length: 2 * 1024 * 1024),
+        noiseFile('a.wav', length: 64 * 1024),
         noiseFile('b.wav', length: 2 * 1024 * 1024),
       ];
       final heard = <double>[];
@@ -712,31 +714,24 @@ void main() {
   });
 
   group('🗣️F-494: holding one file tells how far it is', () {
-    /// [path] written as a blob a block at a time, with what it told.
-    ({List<double> heard, bool framed}) held(String path) {
-      final length = File(path).lengthSync();
-      final handle = File(path).openSync();
-      addTearDown(handle.closeSync);
+    /// [path] held, with what it told.
+    Future<({List<double> heard, bool framed})> held(String path) async {
       final heard = <double>[];
-      final written = writeMediaBlob(
-        basePath: '$path.held',
-        length: length,
-        readInto: (buffer, position, size) {
-          handle.setPositionSync(position);
-          return handle.readIntoSync(buffer, 0, size);
-        },
-        blockBytes: 64 * 1024,
-        onProgress: heard.add,
-      );
-      return (heard: heard, framed: written.framed);
+      final staged = await store.stageCarriedBytes([
+        carry(path),
+      ], onProgress: heard.add);
+      return (heard: heard, framed: staged.single.framed);
     }
 
     test('a file that will not frame: the framing tries fill the first '
-        'half, the verbatim copy the second, and the end is said', () {
-      final (:heard, :framed) = held(noiseFile('noise.wav', length: 1 << 20));
+        'half, the verbatim copy the second, and the end is said', () async {
+      final (:heard, :framed) = await held(
+        noiseFile('noise.wav', length: 2 << 20),
+      );
 
       expect(framed, isFalse, reason: 'fixture: noise does not compress');
       expect(heard.last, 1);
+      expect(heard.where((told) => told >= 1), hasLength(1));
       expect(
         heard.where((told) => told > 0.5 && told < 1),
         isNotEmpty,
@@ -744,20 +739,22 @@ void main() {
       );
       if (engineHere()) {
         expect(
-          heard.where((told) => told > 0 && told <= 0.5),
+          heard.where((told) => told > 0 && told < 0.5),
           isNotEmpty,
           reason: 'and the framing tries before it: $heard',
         );
       }
     });
 
-    test('a file that frames ends where its framing ends, at half, and '
-        'then says the end', () {
+    test('a file that frames is read once — its framing all of the way, '
+        'and then the end', () async {
       if (!engineHere()) {
         markTestSkipped('no compressor here — nothing frames');
         return;
       }
-      final (:heard, :framed) = held(sourceFile('take.wav', length: 1 << 20));
+      final (:heard, :framed) = await held(
+        sourceFile('take.wav', length: 2 << 20),
+      );
 
       expect(framed, isTrue, reason: 'fixture: the source compresses');
       expect(heard.last, 1);

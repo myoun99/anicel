@@ -8,7 +8,9 @@ import 'package:anicel/src/ui/dialogs/app_confirm_dialog.dart';
 import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
+import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'package:anicel/src/ui/text/app_strings.dart';
+import '../../helpers/carried_media_fixture.dart' show noise;
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
@@ -185,19 +187,12 @@ void main() {
     await tester.pump();
   });
 
-  testWidgets('🗣️F-494: past its first count the window names what the save '
-      'is writing — the cels, then the media (「저장중 말고 … 하고있는 과정을 '
-      '보여주는식으로」)', (tester) async {
-    final s = session();
-    drawOnCurrentFrame(s);
-    final sound = '${directory.path.replaceAll('\\', '/')}/대사.wav';
-    await tester.runAsync(() async {
-      File(sound).writeAsBytesSync(List<int>.generate(300 * 1024, (i) => i));
-      await s.mediaPool.importMediaFiles([sound], copyIntoProject: true);
-    });
-    final path = '${directory.path.replaceAll('\\', '/')}/scene.anicel';
-    final lines = <String>[];
-    var listening = false;
+  /// Every line the save window showed while a save ran from it, in order.
+  Future<List<String>> linesOfASave(
+    WidgetTester tester,
+    EditorSessionManager s,
+    String path,
+  ) async {
     var done = false;
     await tester.pumpWidget(
       MaterialApp(
@@ -214,27 +209,81 @@ void main() {
         ),
       ),
     );
-
     await tester.tap(find.text('go'));
+    final lines = watchTheLine(tester);
     await tester.pump();
-    await settleBehindTheWaitWindow(tester, () {
-      final window = find.byType(AppProgressDialog);
-      if (!listening && window.evaluate().isNotEmpty) {
-        listening = true;
-        final line = tester.widget<AppProgressDialog>(window).runningStatus!;
-        line.addListener(() => lines.add(line.value));
-      }
-      return done;
-    });
+    await settleBehindTheWaitWindow(tester, () => done);
     await tester.pump();
     await tester.pump();
-
     expect(done, isTrue, reason: 'the save never came back');
+    return lines;
+  }
+
+  /// [lines] from where [first] was named on: a count does not take a
+  /// stretch's name back — the line says it until the next is named.
+  void expectEachNameHeld(List<String> lines, String first) {
+    expect(lines, contains(first));
+    expect(
+      lines.skipWhile((line) => line != first),
+      isNot(contains('')),
+      reason: 'a count took a stretch\'s name back: $lines',
+    );
+  }
+
+  testWidgets('🗣️F-494: past its first count the window names what the save '
+      'is writing — the cels, then the media (「저장중 말고 … 하고있는 과정을 '
+      '보여주는식으로」)', (tester) async {
+    final s = session();
+    drawOnCurrentFrame(s);
+    final sound = '${directory.path.replaceAll('\\', '/')}/대사.wav';
+    await tester.runAsync(() async {
+      File(sound).writeAsBytesSync(noise(300 * 1024));
+      await s.mediaPool.importMediaFiles([sound], copyIntoProject: true);
+    });
+    final path = '${directory.path.replaceAll('\\', '/')}/scene.anicel';
+
+    final lines = await linesOfASave(tester, s, path);
+
     expect(
       lines.where((line) => line.isNotEmpty),
-      [AppText.strings.saveStepCels, AppText.strings.saveStepMedia],
+      [
+        AppText.strings.savePrepareRunning,
+        AppText.strings.saveStepCels,
+        AppText.strings.saveStepMedia,
+      ],
       reason: 'each stretch of the write, as it moved on: $lines',
     );
+    expectEachNameHeld(lines, AppText.strings.saveStepCels);
+    s.dispose();
+    await tester.pump();
+  });
+
+  testWidgets('🗣️F-494: a save that takes a carried file out names setting '
+      'it aside before it counts a byte, and holds the name through the '
+      'copy', (tester) async {
+    final s = session();
+    drawOnCurrentFrame(s);
+    final sound = '${directory.path.replaceAll('\\', '/')}/대사.wav';
+    final path = '${directory.path.replaceAll('\\', '/')}/scene.anicel';
+    await tester.runAsync(() async {
+      File(sound).writeAsBytesSync(noise(300 * 1024));
+      await s.mediaPool.importMediaFiles([sound], copyIntoProject: true);
+      await s.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
+    });
+    s.mediaPool.removeMediaAsset(sound);
+
+    final lines = await linesOfASave(tester, s, path);
+
+    expect(
+      lines.where((line) => line.isNotEmpty),
+      [
+        AppText.strings.savePrepareRunning,
+        AppText.strings.saveStepKeepingLeftBehind,
+        AppText.strings.saveStepCompacting,
+      ],
+      reason: 'the copy into the room, then the push-down: $lines',
+    );
+    expectEachNameHeld(lines, AppText.strings.saveStepKeepingLeftBehind);
     s.dispose();
     await tester.pump();
   });

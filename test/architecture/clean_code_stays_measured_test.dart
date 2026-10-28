@@ -799,7 +799,25 @@ void main() {
   /// paper and width it rasters at the chain's — one value of them would
   /// answer two questions; so would one of where a node is held (its cells
   /// kept) and what it reads (drawn afresh, kept nowhere).
-  const wideSignatures = 445;
+  ///
+  /// ⚠️445 → 448 on 2026-10-29, three named as the rule above asks (F-494 —
+  /// 유저 2026-10-28: 「하고있는 과정을 투명하게 … 퍼센테이지에 반영하면서」).
+  /// `TrimmedPieces.cut` and `writeMovieSpan` (five each) take who hears
+  /// how far a movie's piece is encoded — the wait that stood behind the
+  /// import window at 0% (61 s of a 3.4GB file's two minutes) — beside the
+  /// file, its kind or its piece's path, and the span kept and its clock.
+  /// `_movieSoundAlone` (five) hands a movie brought as its sound alone to
+  /// the sound's door with what the movie's door was handed for it, who
+  /// hears its bytes held among them. 🔬`clean_code_diff` against master
+  /// (`b885cdce4`, at 435) named those three added and nothing gone; the
+  /// door's save roads took the two reporters as one value instead
+  /// (`_SaveTold`), and the blob's writer stayed as it was — its reads are
+  /// measured from outside, as an append's are (`mediaBlobReadsAtMost`).
+  /// ⛔Not bundled to fit: the in and out are read off a row's settings one
+  /// by one at each call, and a value of them and the reporter would be
+  /// taken apart again inside the cut. (Measured at 435 → 438 on its own
+  /// lane; it landed after I-132 ⑫b·⑫c, so it counts on from 445.)
+  const wideSignatures = 448;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

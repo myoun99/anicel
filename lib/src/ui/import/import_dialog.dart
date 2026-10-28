@@ -223,6 +223,52 @@ class _FileReport {
 /// order its door runs them ([_FileReport]).
 enum _Stretch { cut, carry, rasterize }
 
+/// What the pool's batches tell back while they run ([_registerFiles]).
+///
+/// F-282-Q1 (유저 2026-10-08: 「파일 수와 각 파일의 진행 … 으로 %를 센다」):
+/// the kept files hold their count's share of the pool's, the linked ones
+/// the rest. 🗣️F-494: within the kept share, each piece cut and then the
+/// holding are even stretches, each named on the window's line while it
+/// reports — the pieces known ahead, as [_FileReport]'s stretches are not.
+class _PoolReport {
+  _PoolReport(
+    this._report,
+    this._say, {
+    required double keptShare,
+    required int cuts,
+  }) : _keptShare = keptShare,
+       _stretches = cuts + 1;
+
+  final void Function(double) _report;
+  final void Function(String step) _say;
+  final double _keptShare;
+  final int _stretches;
+
+  /// How far the [index]th piece, a [kind]'s, is cut.
+  void Function(double fraction) cut(int index, MediaAssetKind kind) =>
+      _stretch(_cuttingStep(kind), index);
+
+  /// How far the kept files are held.
+  void Function(double fraction) get holding =>
+      _stretch(AppText.strings.imStepCarrying, _stretches - 1);
+
+  /// The kept files are in — said outright, for a batch the pool already
+  /// held, which holds nothing and says nothing.
+  void kept() => _report(_keptShare);
+
+  void Function(double fraction) _stretch(String step, int index) =>
+      (fraction) {
+        _say(step);
+        _report(
+          runShare(
+            pieceShare(fraction, index: index, count: _stretches),
+            from: 0,
+            to: _keptShare,
+          ),
+        );
+      };
+}
+
 /// What cutting a [kind]'s piece is called ([TrimmedPieces.cut]): a movie's
 /// encoded again, another kind's span written out.
 String _cuttingStep(MediaAssetKind kind) => kind == MediaAssetKind.video
@@ -1621,6 +1667,9 @@ class _ImportDialogState extends State<ImportDialog> {
       return _placeThrough(path, kind, tally, settings, fileReport);
     }
     final pieces = widget.session.trimmedPieces;
+    // Named from its start: a sound's or a page range's cut says nothing
+    // until it is done (F-494).
+    fileReport.cutting(0, kind);
     final piece = await pieces.cut(
       path,
       kind,
@@ -1821,8 +1870,6 @@ class _ImportDialogState extends State<ImportDialog> {
     _ImportTally tally,
     void Function(double) report,
   ) async {
-    final pool = widget.session.mediaPool;
-    final pieces = widget.session.trimmedPieces;
     report(0);
     // The files the pool keeps, and those of them cut into a piece first.
     final keeping = [
@@ -1835,42 +1882,28 @@ class _ImportDialogState extends State<ImportDialog> {
             _comesInAsAPiece(path, _settingsFor(path)))
           path,
     ];
-    // F-282-Q1 (유저 2026-10-08: 「파일 수와 각 파일의 진행 … 으로 %를
-    // 센다」): the kept files hold their count's share of the pool's, the
-    // linked ones the rest; within the kept share, each piece cut and then
-    // the holding are even stretches, each named while it reports (F-494).
-    final keptShare = doneShare(keeping.length, paths.length);
-    final stretches = cutting.length + 1;
-    void Function(double) saying(String step, int index) => (fraction) {
-      _step.value = step;
-      report(
-        runShare(
-          pieceShare(fraction, index: index, count: stretches),
-          from: 0,
-          to: keptShare,
-        ),
-      );
-    };
+    final told = _PoolReport(
+      report,
+      (step) => _step.value = step,
+      keptShare: doneShare(keeping.length, paths.length),
+      cuts: cutting.length,
+    );
     // What the pool is handed — a piece in place of the file it was cut
     // from — and the picked file each one stands for.
     final carried = <String, String>{};
     final referenced = <String>[];
     for (final path in paths) {
-      final settings = _settingsFor(path);
       final kind = mediaAssetKindForPath(path);
       if (kind != null && cutting.contains(path)) {
-        final piece = await pieces.cut(
+        final piece = await _cutForThePool(
           path,
           kind,
-          inFrame: settings.inFrame,
-          outFrame: settings.outFrame,
-          onProgress: saying(_cuttingStep(kind), cutting.indexOf(path)),
+          told.cut(cutting.indexOf(path), kind),
         );
-        _step.value = '';
         if (piece == null) {
           _warnOf(tally, path, (name) => _placementFailure(name, kind));
         } else {
-          carried[piece.path] = path;
+          carried[piece] = path;
         }
       } else if (keeping.contains(path)) {
         carried[path] = path;
@@ -1878,17 +1911,40 @@ class _ImportDialogState extends State<ImportDialog> {
         referenced.add(path);
       }
     }
+    await _holdInThePool(carried, told);
+    tally
+      ..imported += carried.length
+      ..done.addAll(carried.values);
+    told.kept();
+    await widget.session.mediaPool.importMediaFiles(
+      referenced,
+      copyIntoProject: false,
+    );
+    tally
+      ..imported += referenced.length
+      ..done.addAll(referenced);
+    report(1);
+  }
+
+  /// [carried] — what the pool is handed, by the picked file each stands
+  /// for — held in the pool as ONE batch, each piece with the file it was
+  /// cut from, and each piece kept or let go of as the batch went.
+  Future<void> _holdInThePool(
+    Map<String, String> carried,
+    _PoolReport told,
+  ) async {
+    final pieces = widget.session.trimmedPieces;
     final cutFrom = {
       for (final MapEntry(key: handed, value: picked) in carried.entries)
         if (handed != picked) handed: picked,
     };
     var held = false;
     try {
-      await pool.importMediaFiles(
+      await widget.session.mediaPool.importMediaFiles(
         carried.keys.toList(),
         copyIntoProject: true,
         cutFrom: cutFrom,
-        onCarrying: saying(AppText.strings.imStepCarrying, cutting.length),
+        onCarrying: told.holding,
       );
       held = true;
     } finally {
@@ -1897,15 +1953,31 @@ class _ImportDialogState extends State<ImportDialog> {
         held ? pieces.secure(piece) : pieces.discard(piece);
       }
     }
-    tally
-      ..imported += carried.length
-      ..done.addAll(carried.values);
-    report(keptShare);
-    await pool.importMediaFiles(referenced, copyIntoProject: false);
-    tally
-      ..imported += referenced.length
-      ..done.addAll(referenced);
-    report(1);
+  }
+
+  /// [path] cut into its piece for the pool, [told] how far from the cut's
+  /// start on — a sound's or a page range's cut says nothing until it is
+  /// done, and the window names it all the same (F-494). The piece's path,
+  /// or null when it would not cut.
+  Future<String?> _cutForThePool(
+    String path,
+    MediaAssetKind kind,
+    void Function(double fraction) told,
+  ) async {
+    final settings = _settingsFor(path);
+    told(0);
+    try {
+      final piece = await widget.session.trimmedPieces.cut(
+        path,
+        kind,
+        inFrame: settings.inFrame,
+        outFrame: settings.outFrame,
+        onProgress: told,
+      );
+      return piece?.path;
+    } finally {
+      _step.value = '';
+    }
   }
 
   /// EXPAND, which reports its outcome as warnings-or-null rather than a

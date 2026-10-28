@@ -718,16 +718,30 @@ List<({String path, bool framed, int storedLength})> _stageBytes(
       continue;
     }
     try {
+      final length = handle.lengthSync();
+      void told(double done) =>
+          report(pieceShare(done, index: index, count: carries.length));
+      var read = -1;
       final written = writeMediaBlob(
         basePath: basePath,
-        length: handle.lengthSync(),
+        length: length,
         readInto: (buffer, position, size) {
           handle.setPositionSync(position);
-          return handle.readIntoSync(buffer, 0, size);
+          final got = handle.readIntoSync(buffer, 0, size);
+          // Each of its reads fills its share of the file's: a read back at
+          // the first byte is the next ([mediaBlobReadsAtMost]).
+          read += position == 0 ? 1 : 0;
+          told(
+            pieceShare(
+              doneShare(position + got, length),
+              index: read,
+              count: mediaBlobReadsAtMost,
+            ),
+          );
+          return got;
         },
-        onProgress: (done) =>
-            report(pieceShare(done, index: index, count: carries.length)),
       );
+      told(1);
       out.add((
         path: written.path,
         framed: written.framed,

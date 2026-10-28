@@ -31,10 +31,9 @@ import 'settle_async.dart';
 /// and a stretch that takes no real time — a pool registering small files
 /// — has told all of itself before a test body after `pump()` can listen.
 List<double> watchTheBar(WidgetTester tester) {
-  final window = find.byType(AppProgressDialog);
   final told = <double>[];
-  void listen() {
-    final progress = tester.widget<AppProgressDialog>(window).progress;
+  _listenFromItsFirstFrame(tester, (window) {
+    final progress = window.progress;
     void record() {
       if (progress.value.fraction case final fraction?) {
         told.add(fraction);
@@ -43,17 +42,40 @@ List<double> watchTheBar(WidgetTester tester) {
 
     record();
     progress.addListener(record);
-  }
+  });
+  return told;
+}
 
+/// Every line a wait window's running status says (F-494: the stretch
+/// under way), listened to as [watchTheBar] listens — the one it opens on
+/// first.
+List<String> watchTheLine(WidgetTester tester) {
+  final said = <String>[];
+  _listenFromItsFirstFrame(tester, (window) {
+    final line = window.runningStatus!;
+    void record() => said.add(line.value);
+
+    record();
+    line.addListener(record);
+  });
+  return said;
+}
+
+/// [listen] handed the wait window from inside the frame that puts it up,
+/// or at once when it is up already.
+void _listenFromItsFirstFrame(
+  WidgetTester tester,
+  void Function(AppProgressDialog window) listen,
+) {
+  final window = find.byType(AppProgressDialog);
   void atTheFrame(Duration _) => window.evaluate().isEmpty
       ? tester.binding.addPostFrameCallback(atTheFrame)
-      : listen();
+      : listen(tester.widget<AppProgressDialog>(window));
   if (window.evaluate().isEmpty) {
     tester.binding.addPostFrameCallback(atTheFrame);
   } else {
-    listen();
+    listen(tester.widget<AppProgressDialog>(window));
   }
-  return told;
 }
 
 /// [told] as one bar for a whole run: it never runs back, and it passes

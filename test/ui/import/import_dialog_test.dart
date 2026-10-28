@@ -190,17 +190,12 @@ void main() {
     await tester.pump();
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
-    await tester.pump();
-    await tester.pump();
-    final window = find.byType(AppProgressDialog);
-    final line = tester.widget<AppProgressDialog>(window).runningStatus!;
-    final lines = <String>[];
-    line.addListener(() => lines.add(line.value));
+    final lines = watchTheLine(tester);
     await pumpPastTheWaitWindow(tester);
 
     expect(
       lines,
-      [AppText.strings.imStepCarrying, ''],
+      ['', AppText.strings.imStepCarrying, ''],
       reason: 'a row carries its file at first (seedImportSettings), so the '
           'one long thing this file goes through is its bytes being held',
     );
@@ -636,17 +631,11 @@ void main() {
     await pickCell(tester, column: 'into', path: pdfPath, option: 'newCut');
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    final counted = watchTheBar(tester);
+    final lines = watchTheLine(tester);
     await tester.pump();
     await tester.pump();
-    final window = find.byType(AppProgressDialog);
-    expect(window, findsOneWidget);
-    final progress = tester.widget<AppProgressDialog>(window).progress;
-    final counted = <double>[];
-    progress.addListener(() {
-      if (progress.value.fraction case final fraction?) {
-        counted.add(fraction);
-      }
-    });
+    expect(find.byType(AppProgressDialog), findsOneWidget);
     await pumpPastTheWaitWindow(tester);
 
     expect(
@@ -654,6 +643,15 @@ void main() {
       isNotEmpty,
       reason: 'its pages were counted on the way, not only its end',
     );
+    // 🗣️F-494: what it went through, in the order its door does it, each
+    // an even share of the file's: its bytes held, then its four pages.
+    expect(lines, [
+      '',
+      AppText.strings.imStepCarrying,
+      AppText.strings.imStepRasterizing,
+      '',
+    ]);
+    expectOneBar(counted, [0.5, 0.625, 0.75, 0.875, 1]);
     s.playbackRig.prerenderScheduler.cancel();
   });
 
@@ -1331,10 +1329,21 @@ void main() {
     await keepSpan(tester, 2, 3);
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    final lines = watchTheLine(tester);
     await pumpPastTheWaitWindow(tester);
     List<MediaAsset> pool() => s.repository.requireProject().mediaAssets;
     await settleAsync(tester, () => pool().isNotEmpty);
     await tester.pumpAndSettle();
+
+    // 🗣️F-494: the cut is named from its start — a page range's says
+    // nothing until it is done — and then the piece's holding.
+    expect(lines, [
+      '',
+      AppText.strings.imStepWritingSpan,
+      '',
+      AppText.strings.imStepCarrying,
+      '',
+    ]);
 
     expect(cutFrom, [(pdfPath, 1, 2)], reason: 'cut out of the original');
     expect(

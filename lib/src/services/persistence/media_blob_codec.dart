@@ -104,7 +104,6 @@ import 'dart:io';
 import 'dart:math' show Random;
 import 'dart:typed_data';
 
-import '../../core/progress_share.dart';
 import '../../native/qa_cel_compressor.dart';
 import 'anicel_payload_codec.dart';
 
@@ -114,6 +113,15 @@ import 'anicel_payload_codec.dart';
 /// carries the size it was written at, and the value here has changed
 /// once already. See the doc above for the measurement that chose it.
 const int mediaBlockBytes = 512 * 1024;
+
+/// How many times [writeMediaBlob] may read its file end to end: once
+/// framing it, and once more copying it as it is when the framing did not
+/// pay — each from its first byte.
+///
+/// Declared as `anicelAppendStreamPasses` is, for what measures the write
+/// from outside through the `readInto` it hands over (F-494: a carried
+/// 3.4GB movie took 56 s here behind a bar at 0%).
+const int mediaBlobReadsAtMost = 2;
 
 /// What a framed entry's name ends with.
 ///
@@ -269,18 +277,12 @@ class MediaBlobHeader {
 /// [readInto] is `MediaByteSource.readIntoSync`'s shape — the one the
 /// archive writer already streams through — so a caller holding an open
 /// handle passes it straight in rather than reopening once a block.
-///
-/// [onProgress] hears the bytes gone through as 0–1: the framing tries in
-/// the first half, the verbatim copy fills the second — each a road over
-/// the whole file, and which one ends it is not known until framing's last
-/// block (above) — and 1 once the blob stands, whichever did. 🔬F-494: a
-/// carried 3.4GB movie took 56 s here, behind 0%.
+/// ⚠️Each read goes from the file's first byte on ([mediaBlobReadsAtMost]).
 ({String path, bool framed}) writeMediaBlob({
   required String basePath,
   required int length,
   required int Function(Uint8List buffer, int position, int size) readInto,
   int blockBytes = mediaBlockBytes,
-  void Function(double fraction)? onProgress,
 }) {
   // ⛔Written to a neighbour and renamed, and here that is not only about
   // torn files: framedness is not known until the last block, so the bytes
@@ -290,23 +292,11 @@ class MediaBlobHeader {
   final out = part.openSync(mode: FileMode.write);
   bool framed;
   try {
-    framed = _writeFramedBlocks(
-      out,
-      length,
-      readInto,
-      blockBytes,
-      (done) => onProgress?.call(pieceShare(done, index: 0, count: 2)),
-    );
+    framed = _writeFramedBlocks(out, length, readInto, blockBytes);
     if (!framed) {
       out.setPositionSync(0);
       out.truncateSync(0);
-      _writeVerbatim(
-        out,
-        length,
-        readInto,
-        blockBytes,
-        (done) => onProgress?.call(pieceShare(done, index: 1, count: 2)),
-      );
+      _writeVerbatim(out, length, readInto, blockBytes);
     }
   } finally {
     out.closeSync();
@@ -328,7 +318,6 @@ class MediaBlobHeader {
     }
     part.deleteSync();
   }
-  onProgress?.call(1);
   return (path: path, framed: framed);
 }
 
@@ -398,7 +387,6 @@ bool _writeFramedBlocks(
   int length,
   int Function(Uint8List, int, int) readInto,
   int blockBytes,
-  void Function(double fraction) told,
 ) {
   final compressor = QaCelCompressor.instance;
   if (compressor == null || !compressor.isSupported || length <= 0) {
@@ -436,7 +424,6 @@ bool _writeFramedBlocks(
     out.writeFromSync(block);
     blockLengths.add(block.length);
     at += want;
-    told(at / length);
   }
   out.setPositionSync(0);
   out.writeFromSync(
@@ -464,7 +451,6 @@ void _writeVerbatim(
   int length,
   int Function(Uint8List, int, int) readInto,
   int chunkBytes,
-  void Function(double fraction) told,
 ) {
   final buffer = Uint8List(chunkBytes);
   var at = 0;
@@ -476,6 +462,5 @@ void _writeVerbatim(
     }
     out.writeFromSync(buffer, 0, got);
     at += got;
-    told(at / length);
   }
 }

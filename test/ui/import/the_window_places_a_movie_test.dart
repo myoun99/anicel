@@ -376,25 +376,16 @@ void main() {
     expect(cellText(tester, 'bake', movie), AppText.strings.commonOn);
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    final counted = watchTheBar(tester);
+    final lines = watchTheLine(tester);
     await tester.pump();
     await tester.pump();
-    final window = find.byType(AppProgressDialog);
-    expect(window, findsOneWidget);
+    expect(find.byType(AppProgressDialog), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('import-progress-dialog')),
       findsOneWidget,
       reason: 'the run\'s own window, and no second one for the movie',
     );
-    final progress = tester.widget<AppProgressDialog>(window).progress;
-    final counted = <double>[];
-    progress.addListener(() {
-      if (progress.value.fraction case final fraction?) {
-        counted.add(fraction);
-      }
-    });
-    final line = tester.widget<AppProgressDialog>(window).runningStatus!;
-    final lines = <String>[];
-    line.addListener(() => lines.add(line.value));
     await pumpPastTheWaitWindow(tester);
 
     expect(
@@ -405,6 +396,7 @@ void main() {
     // 🗣️F-494: and the window says what it is doing, in the order the door
     // does it — the file its sound reads held, then the frames baked.
     expect(lines, [
+      '',
       AppText.strings.imStepCarrying,
       AppText.strings.imStepRasterizing,
       '',

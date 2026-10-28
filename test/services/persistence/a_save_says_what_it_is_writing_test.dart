@@ -25,6 +25,7 @@ import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/carried_media_fixture.dart' show noise;
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/whole_carry.dart';
@@ -57,11 +58,7 @@ void main() {
 
   /// Bytes that do not compress, so a carried file streams as itself.
   String writeIncompressible(String name, int length) {
-    var state = 0x2545F491;
-    File(inTemp(name)).writeAsBytesSync([
-      for (var i = 0; i < length; i += 1)
-        ((state = (state * 1103515245 + 12345) & 0x7FFFFFFF) >> 16) & 0xFF,
-    ], flush: true);
+    File(inTemp(name)).writeAsBytesSync(noise(length), flush: true);
     return inTemp(name);
   }
 
@@ -117,7 +114,6 @@ void main() {
       ),
     );
   }
-
 
   List<SaveStretch> stretchesIn(Told told) => [
     for (final said in told)
@@ -315,5 +311,19 @@ void main() {
 
     expect(said.toSet(), hasLength(SaveStretch.values.length));
     expect(said, everyElement(isNot(AppText.strings.saveProgressRunning)));
+    final strings = AppText.strings;
+    expect({
+      for (final stretch in SaveStretch.values)
+        stretch: strings.saveStep(stretch),
+    }, {
+      SaveStretch.keepingLeftBehind: strings.saveStepKeepingLeftBehind,
+      SaveStretch.cels: strings.saveStepCels,
+      SaveStretch.checking: strings.saveStepChecking,
+      SaveStretch.media: strings.saveStepMedia,
+      SaveStretch.conforms: strings.saveStepConforms,
+      SaveStretch.fonts: strings.saveStepFonts,
+      SaveStretch.compacting: strings.saveStepCompacting,
+      SaveStretch.handingBack: strings.saveStepHandingBack,
+    }, reason: 'each says what it is, not its neighbour\'s');
   });
 }
