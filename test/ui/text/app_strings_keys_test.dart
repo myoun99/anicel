@@ -540,6 +540,8 @@ void main() {
     'shortcutPresetRename': (s) => s.shortcutPresetRename,
     'shortcutPresetDuplicate': (s) => s.shortcutPresetDuplicate,
     'shortcutPresetExport': (s) => s.shortcutPresetExport,
+    'settingsExportAll': (s) => s.settingsExportAll,
+    'settingsAllFileName': (s) => s.settingsAllFileName,
     'playbackMode': (s) => s.playbackMode,
     'playbackModeSkipFrames': (s) => s.playbackModeSkipFrames,
     'playbackModeEveryPicture': (s) => s.playbackModeEveryPicture,

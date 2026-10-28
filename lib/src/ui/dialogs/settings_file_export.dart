@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:file_selector/file_selector.dart' show XTypeGroup;
 import 'package:flutter/widgets.dart';
 
@@ -7,15 +9,15 @@ import 'folder_pick_flow.dart';
 import 'handed_text_file.dart';
 
 /// A settings file (I-142) holding what [contents] makes — one palette's,
-/// one shortcut preset's — named for [name] and of [type], put in the
-/// person's hands by the door every finished file leaves by
+/// one shortcut preset's, every setting's — named for [name] and of [type],
+/// put in the person's hands by the door every finished file leaves by
 /// ([handWrittenFileToUser]), and what came of it said; nothing where the
 /// person would not have it.
 Future<void> handSettingsFileToUser(
   BuildContext context, {
   required String name,
   required XTypeGroup type,
-  required String Function() contents,
+  required FutureOr<String> Function() contents,
 }) async {
   final handed = await handTextFile(
     name,

@@ -198,6 +198,7 @@ void main() {
         (anicelBrushUti, anicelBrushExtension),
         (anicelPaletteUti, anicelPaletteExtension),
         (anicelShortcutUti, anicelShortcutExtension),
+        (anicelSettingsUti, anicelSettingsExtension),
       ]) {
         test('$platform exports $uti too — a type we own', () {
           final contents = plist('$platform/Runner/Info.plist');

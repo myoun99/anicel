@@ -1900,6 +1900,11 @@ enum AppStrings {
       _s('settingsExportedTemplate').replaceAll('{name}', name);
   String settingsExportNotWritten(Object error) =>
       _s('settingsExportNotWrittenTemplate').replaceAll('{error}', '$error');
+
+  /// The preferences window's 「설정 전부 내보내기」 (I-142-Q1), and the name
+  /// its file is offered under.
+  String get settingsExportAll => _s('settingsExportAll');
+  String get settingsAllFileName => _s('settingsAllFileName');
   String brExportNotWritten(Object error) =>
       _s('brExportNotWrittenTemplate').replaceAll('{error}', '$error');
   String brExportedOne(String name) =>
@@ -3143,6 +3148,8 @@ enum AppStrings {
     'fileExportPlaceUnchosenTemplate': 'Could not choose where to save: {error}',
     'settingsExportedTemplate': 'Exported "{name}".',
     'settingsExportNotWrittenTemplate': 'Could not write the file: {error}',
+    'settingsExportAll': 'Export all settings',
+    'settingsAllFileName': 'Anicel settings',
     'brExportNotWrittenTemplate': 'Could not write the brush file: {error}',
     'brExportedOneTemplate': 'Exported "{name}".',
     'brExportedManyTemplate': 'Exported {count} brushes.',
@@ -4887,6 +4894,8 @@ enum AppStrings {
     'fileExportPlaceUnchosenTemplate': '保存先を選べませんでした: {error}',
     'settingsExportedTemplate': '「{name}」を書き出しました。',
     'settingsExportNotWrittenTemplate': 'ファイルを書き込めませんでした: {error}',
+    'settingsExportAll': '設定をすべて書き出す',
+    'settingsAllFileName': 'Anicel 設定',
     'brExportNotWrittenTemplate': 'ブラシファイルを書き込めませんでした: {error}',
     'brExportedOneTemplate': '「{name}」を書き出しました。',
     'brExportedManyTemplate': 'ブラシを{count}個書き出しました。',
@@ -6651,6 +6660,8 @@ enum AppStrings {
     'fileExportPlaceUnchosenTemplate': '저장할 곳을 고르지 못했습니다: {error}',
     'settingsExportedTemplate': '「{name}」 내보냈습니다.',
     'settingsExportNotWrittenTemplate': '파일을 쓰지 못했습니다: {error}',
+    'settingsExportAll': '설정 전부 내보내기',
+    'settingsAllFileName': 'Anicel 설정',
     'brExportNotWrittenTemplate': '브러시 파일을 쓰지 못했습니다: {error}',
     'brExportedOneTemplate': '브러시 「{name}」 내보냈습니다.',
     'brExportedManyTemplate': '브러시 {count}개를 내보냈습니다.',
@@ -8562,6 +8573,8 @@ enum AppStrings {
     'settingsExportedTemplate': 'Exporté : « {name} ».',
     'settingsExportNotWrittenTemplate':
         'Impossible d’écrire le fichier : {error}',
+    'settingsExportAll': 'Exporter toutes les préférences',
+    'settingsAllFileName': 'Préférences Anicel',
     'brExportNotWrittenTemplate':
         'Impossible d’écrire le fichier de brosses : {error}',
     'brExportedOneTemplate': 'Brosse exportée : « {name} ».',
@@ -10247,6 +10260,8 @@ enum AppStrings {
     'fileExportPlaceUnchosenTemplate': '无法选择保存位置：{error}',
     'settingsExportedTemplate': '已导出“{name}”。',
     'settingsExportNotWrittenTemplate': '无法写入文件：{error}',
+    'settingsExportAll': '导出全部设置',
+    'settingsAllFileName': 'Anicel 设置',
     'brExportNotWrittenTemplate': '无法写入画笔文件：{error}',
     'brExportedOneTemplate': '已导出画笔“{name}”。',
     'brExportedManyTemplate': '已导出 {count} 个画笔。',

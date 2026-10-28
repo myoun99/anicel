@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/settings_file.dart';
@@ -52,5 +53,44 @@ void main() {
         'color_palette.json': {'version': 2},
       },
     );
+  });
+
+  group('a folder\'s other files (the brush tips\' pictures)', () {
+    final tip = Uint8List.fromList([137, 80, 78, 71, 0, 255]);
+
+    test('come back as their bytes, by their names under the room', () {
+      final read = readSettingsFile(
+        encodeSettingsFile(documents, files: {'brush_tips/t1.png': tip}),
+      )!;
+
+      expect(read.documents, documents);
+      expect(read.files.keys, ['brush_tips/t1.png']);
+      expect(read.files.values.single, tip);
+    });
+
+    test('a file of documents alone holds none, and writes no section for '
+        'them', () {
+      final text = encodeSettingsFile(documents);
+
+      expect(readSettingsFile(text)!.files, isEmpty);
+      expect(jsonDecode(text), isNot(contains('files')));
+    });
+
+    test('what is no file\'s bytes is not one', () {
+      final read = readSettingsFile(
+        jsonEncode({
+          'anicelSettings': settingsFileVersion,
+          'documents': documents,
+          'files': {
+            'brush_tips/t1.png': base64Encode(tip),
+            'brush_tips/t2.png': 'not base64!',
+            'brush_tips/t3.png': 7,
+          },
+        }),
+      )!;
+
+      expect(read.files.keys, ['brush_tips/t1.png']);
+      expect(read.documents, documents, reason: 'the documents still read');
+    });
   });
 }

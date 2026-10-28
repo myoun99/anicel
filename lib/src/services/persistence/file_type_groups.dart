@@ -60,6 +60,7 @@ const String anicelBrushUti = 'com.myoun.anicel.brush';
 /// declared beside [anicelBrushUti] for the same reason.
 const String anicelPaletteUti = 'com.myoun.anicel.palette';
 const String anicelShortcutUti = 'com.myoun.anicel.shortcut';
+const String anicelSettingsUti = 'com.myoun.anicel.settings';
 
 /// Apple's umbrella types. Filtering on the umbrella rather than on a dozen
 /// concrete identifiers is deliberate: it keeps working for formats the OS
@@ -215,6 +216,7 @@ const Map<String, String> mimeForUti = {
   anicelBrushUti: '*/*',
   anicelPaletteUti: '*/*',
   anicelShortcutUti: '*/*',
+  anicelSettingsUti: '*/*',
 };
 
 /// Every identifier this file hands to a picker. Public so the test can
@@ -230,6 +232,7 @@ const List<String> allPickerUtis = [
   anicelBrushUti,
   anicelPaletteUti,
   anicelShortcutUti,
+  anicelSettingsUti,
 ];
 
 /// The picker filters, one per surface that opens a file dialog.
@@ -298,6 +301,13 @@ abstract final class FileTypeGroups {
     label: 'Anicel shortcut preset',
     extensions: [anicelShortcutExtension],
     uniformTypeIdentifiers: [anicelShortcutUti],
+  );
+
+  /// Every setting that travels, from the preferences window (I-142-Q1).
+  static const XTypeGroup anicelSettings = XTypeGroup(
+    label: 'Anicel settings',
+    extensions: [anicelSettingsExtension],
+    uniformTypeIdentifiers: [anicelSettingsUti],
   );
 
   /// Brush files for the IMPORT picker — ours plus the two it borrows

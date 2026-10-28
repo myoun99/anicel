@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import '../export/export_plan.dart' show sanitizeExportFileComponent;
@@ -40,15 +41,15 @@ final class TextFileNotWritten extends TextFileHanded {
 /// by (`handWrittenFileToUser`), or a test's.
 ///
 /// One road for every file of the app's own text a person takes away: a
-/// brush pack, a palette, a shortcut preset (I-142) — each says what came
-/// of it in its own words. [name] is the person's own, so it is made a
-/// name a file can have, as an export's are. [contents] is made at the
-/// write, so a person who backs out of the save window costs nothing, and a
-/// text that cannot be made is a file not written.
+/// brush pack, a palette, a shortcut preset, every setting (I-142) — each
+/// says what came of it in its own words. [name] is the person's own, so it
+/// is made a name a file can have, as an export's are. [contents] is made at
+/// the write, so a person who backs out of the save window costs nothing,
+/// and a text that cannot be made is a file not written.
 Future<TextFileHanded> handTextFile(
   String name,
   String extension,
-  String Function() contents, {
+  FutureOr<String> Function() contents, {
   required Future<String?> Function(
     String suggestedName,
     Future<bool> Function(String path) write,
@@ -58,7 +59,7 @@ Future<TextFileHanded> handTextFile(
   Object? notWritten;
   Future<bool> write(String path) async {
     try {
-      await File(path).writeAsString(contents(), flush: true);
+      await File(path).writeAsString(await contents(), flush: true);
       return true;
     } on Object catch (error) {
       notWritten = error;
