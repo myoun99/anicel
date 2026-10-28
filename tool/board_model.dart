@@ -1562,7 +1562,7 @@ Map<String, String> endedCards(List<BoardCard> cards) => {
 ///
 /// 🚨ONE ANSWER for the folds that put a card inside another
 /// ([standQuestionsOfCardsOffTheBoard], [foldChecksIntoCards]) and for the
-/// gate that names a card drawn nowhere (board_check `_drawnNowhere`): a fold
+/// gate that names a card drawn nowhere (board_check `drawnNowhere`): a fold
 /// that decided it its own way could fold a card where the gate says nothing
 /// is drawn.
 bool drawsWhatFoldsIn(BoardCard host, Map<String, String> ended) =>
@@ -1611,7 +1611,7 @@ void foldQuestionsIntoCards(Map<String, BoardCard> byId, [DateTime? now]) {
 /// 🧪onion-scrub-rebuilds-the-ghost-each-step-Q1 (10-28): its card ended by
 /// an 🤖AI 검증완료 — the user's own 확인 since 10-27 — with the question still
 /// unanswered inside it, drawn nowhere. The gate named it (board_check
-/// `_drawnNowhere`), and its tests had stated this law for questions since
+/// `drawnNowhere`), and its tests had stated this law for questions since
 /// 09-12 (「질문도 호스트와 함께 죽지 않는다」); the fold never had it.
 ///
 /// ⚠️AFTER the cards are placed, not in [foldQuestionsIntoCards]: a folded

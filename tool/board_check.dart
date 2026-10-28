@@ -82,7 +82,7 @@ String boardCheckComplaints(
     ..._questionsNobodyCanAnswer(cards, acks, since),
     ..._answersNobodyRead(cards, acks, since, now),
     ..._deadAcks(cards, acks, openPrs),
-    ..._drawnNowhere(cards, acks),
+    ...drawnNowhere(cards, acks),
   ];
   return complaints.join('\n');
 }
@@ -844,7 +844,16 @@ Iterable<String> _answersNobodyRead(
 /// survivor must land in a column the board draws. One that does not is named
 /// — and 「사라졌다」 stops being ambiguous, because a finish is now the only
 /// silent way to leave.
-Iterable<String> _drawnNowhere(List<BoardCard> cards, Set<String> acks) sync* {
+///
+/// 🚨★★★A SENTINEL THE FOLDS NO LONGER TRIP — kept, and taken by CARDS.
+/// Since 10-28 both folds stand a card whose host is not drawn
+/// ([foldChecksIntoCards], [standQuestionsOfCardsOffTheBoard]), so no file
+/// reaches this complaint and a mutant of it lived (공통, 10-28). ⛔It is not
+/// dead code: it is how the question fold's hole was found that same day
+/// (onion-scrub-rebuilds-the-ghost-each-step-Q1), and the next fold to forget
+/// the law is found the same way. ⇒ Public so a test can hand it the hole
+/// directly — the cards no fold builds any more.
+Iterable<String> drawnNowhere(List<BoardCard> cards, Set<String> acks) sync* {
   final byId = {for (final c in cards) c.id: c};
   // 🚨★★★「끝났다」 IS ASKED OF [endedCards], NOT RE-DECIDED HERE.
   //

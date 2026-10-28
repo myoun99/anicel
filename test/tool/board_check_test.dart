@@ -750,4 +750,40 @@ void main() {
       expect(readBoard(file, now: base.add(const Duration(hours: 2))).firstWhere((c) => c.id == 'C-x').foldedInto, 'HOST');
     });
   });
+
+  group('어디에도 안 그려지는 카드는 이름이 불린다', () {
+    // 🚨★★★HANDED THE CARDS, not a file. Both folds stand a card whose host
+    // is not drawn now, so no file builds the hole and a mutant that made
+    // every host 「drawn」 lived (공통, 10-28). The gate is kept for the next
+    // fold that forgets the law — so the hole is built here by hand.
+    BoardCard host({String state = 'open', String? foldedInto}) =>
+        BoardCard('H', 'item')
+          ..state = state
+          ..foldedInto = foldedInto;
+    BoardCard folded({String state = 'open'}) => BoardCard('C', 'check')
+      ..state = state
+      ..foldedInto = 'H';
+    String named(List<BoardCard> cards, [Set<String> acks = const {}]) =>
+        drawnNowhere(cards, acks).join('\n');
+
+    test('🚨★★★a card folded into a host that ENDED is named', () {
+      expect(named([host(state: 'archived'), folded()]), contains('C→H'));
+      expect(named([host(), folded()]), isEmpty,
+          reason: '호스트가 서 있으면 안에 그려진다');
+    });
+
+    test('a card folded into a host that is itself folded is named', () {
+      expect(named([host(foldedInto: 'X'), folded()]), contains('C→H'));
+    });
+
+    test('a card folded into a host the file never had is named', () {
+      expect(named([folded()]), contains('C→H'));
+    });
+
+    test('⛔but not one that ended itself, nor one acked', () {
+      expect(named([host(state: 'archived'), folded(state: 'archived')]),
+          isEmpty);
+      expect(named([host(state: 'archived'), folded()], {'C'}), isEmpty);
+    });
+  });
 }
