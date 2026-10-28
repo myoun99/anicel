@@ -334,6 +334,20 @@ void main() {
       }
     });
 
+    test('its own chain names no row either', () {
+      final tree = treeOf([
+        row('m', folder: 'f'),
+        folderRow('f', opacity: 0.6, effects: [lens(id: 'fl', map: 'm')]),
+        row('a', effects: [lens(map: 'f')]),
+      ]);
+      final reader = tree
+          .whereType<CompositeReadsRows<CutFrameCompositeRow>>()
+          .firstWhere((reader) => reader.rows.containsKey(const LayerId('f')));
+      expect(groupOf(reader, 'f').effects.single.layers, {
+        'blurMapLayer': null,
+      });
+    });
+
     test('⛔an adjustment holds no picture of its own: none', () {
       final tree = treeOf([
         row('b'),
