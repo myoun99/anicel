@@ -665,18 +665,26 @@ void main() {
       expect(plan.changes, isEmpty);
     });
 
-    test('one riding below stands just under the group', () {
+    test('one riding below stands just under the group, over the rows left '
+        'under it', () {
       final base = row('base', {0: '1'});
       Layer under(String id) => synced(
         id,
         base,
       ).copyWith(attachedPlacement: AttachedPlacement.below);
       final plan = merge(
-        cutOf([row('c', {0: 'C1'}), under('r'), under('s'), base]),
+        cutOf([
+          row('c', {0: 'C1'}),
+          row('k', {0: 'K1'}),
+          under('r'),
+          under('s'),
+          base,
+        ]),
         ['c', 'r'],
       )!;
 
       expect([for (final row in plan.layers) row.id.value], [
+        'k',
         'r',
         's',
         'base',
