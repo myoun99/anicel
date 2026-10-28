@@ -94,8 +94,8 @@ IrisCover irisLaidCoverOf(
 }
 
 /// The table [pass] lays (`iris_table.frag`), as floats: red, green, blue
-/// and alpha a texel.
-typedef IrisTable = ({Float32List texels, int width});
+/// and alpha a texel — of its [levels], one or a blur map's 256.
+typedef IrisTable = ({Float32List texels, int width, int levels});
 
 Future<IrisTable> irisTableOf(WidgetTester tester, IrisGatherPass pass) async {
   final table = IrisBlurShader.tableFor(pass);
@@ -103,12 +103,17 @@ Future<IrisTable> irisTableOf(WidgetTester tester, IrisGatherPass pass) async {
   final bytes = (await tester.runAsync(
     () => table.toByteData(format: ui.ImageByteFormat.rawExtendedRgba128),
   ))!;
-  return (texels: bytes.buffer.asFloat32List(), width: table.width);
+  return (
+    texels: bytes.buffer.asFloat32List(),
+    width: table.width,
+    levels: pass.map == null ? 1 : 256,
+  );
 }
 
-/// Level [level]'s rows of the outline (k 0) or core (k 1), and its
-/// reach, out of [table] laid for a pass reaching [reachMost].
-({List<IrisRow> rows, int reach}) irisLevelOf(
+/// Level [level]'s rows of the outline (k 0) or core (k 1), and what its
+/// head says: its reach, and the centres that outline or core covers —
+/// out of [table] laid for a pass reaching [reachMost].
+({List<IrisRow> rows, int reach, double covered}) irisLevelOf(
   IrisTable table,
   int reachMost, {
   int level = 0,
@@ -123,9 +128,13 @@ Future<IrisTable> irisTableOf(WidgetTester tester, IrisGatherPass pass) async {
     return table.texels[(line * table.width + column) * 4 + channel];
   }
 
-  final reach = at(0, 2).toInt();
+  final head = (table.levels * linesALevel + level ~/ table.width) *
+          table.width +
+      level % table.width;
+  final reach = table.texels[head * 4].toInt();
   return (
     reach: reach,
+    covered: table.texels[head * 4 + 1 + k],
     rows: [
       for (var dy = -reach; dy <= reach; dy += 1)
         (

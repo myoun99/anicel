@@ -115,6 +115,38 @@ void main() {
     }
   });
 
+  testWidgets('each level\'s first row says what its outline and its core '
+      'cover, all their rows — what a pixel\'s mean is over', (tester) async {
+    final shape = iris(7, roundness: 0.3, aspect: 1.6, rotation: 0.9);
+    for (final mapped in [false, true]) {
+      final pass = IrisGatherPass(
+        radius: 40.5,
+        iris: shape,
+        paper: null,
+        light: null,
+        map: mapped
+            ? (channel: IrisMapChannel.luminance, focal: 30, inverts: false)
+            : null,
+      );
+      final table = await irisTableOf(tester, pass);
+      for (final level in mapped ? [0, 29, 30, 31, 128, 255] : [0]) {
+        for (final k in [0, 1]) {
+          final laid = irisLevelOf(table, pass.reach, level: level, k: k);
+          expect(
+            laid.covered,
+            coveredBy(laid.rows),
+            reason: 'level $level, k $k',
+          );
+        }
+      }
+      expect(
+        irisLevelOf(table, pass.reach, level: mapped ? 255 : 0).covered,
+        greaterThan(1000),
+        reason: 'fixture: an iris that covers',
+      );
+    }
+  });
+
   testWidgets('a triangle points up and lies flat along its bottom; a square '
       'stands square, an aspect of 2 is twice as wide as tall, and a quarter '
       'turn is clockwise', (tester) async {

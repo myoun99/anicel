@@ -9,9 +9,11 @@
 // The iris's rows are a table ([uTable], `iris_table.frag`): its levels,
 // each [uLinesALevel] lines of [uRowsALine] rows from [uReachMost] above
 // the pixel down, two texels a row — its outline's left and right column
-// about the pixel, then its core's — and the level's reach in blue. A
-// pixel reads one level: the first, or — where a blur map is read
-// ([uMapped]) — the one its map's value names, through [uChannel].
+// about the pixel, then its core's — and from line [uHeads] on its levels'
+// heads, a texel each: the level's reach, and the centres its outline and
+// its core cover, what the pixels' weights add up to. A pixel reads one
+// level: the first, or — where a blur map is read ([uMapped]) — the one
+// its map's value names, through [uChannel].
 //
 // 📐THE FRINGE pushes [uFringe] of the core's light out to the edge: the
 // outline's sum less that much of the core's, over what the pixels' weights
@@ -59,6 +61,9 @@ uniform vec4 uLight;
 uniform float uMapped;
 uniform vec4 uChannel;
 
+// The table's first line of heads.
+uniform float uHeads;
+
 uniform sampler2D uSums;
 uniform sampler2D uInput;
 uniform sampler2D uTable;
@@ -76,11 +81,19 @@ vec4 inputAt(float x, float y) {
 }
 
 // Level [level]'s row [row] from the top: its outline's (k 0) or core's
-// (k 1) left and right column, and the level's reach.
-vec3 rowOf(float level, float row, float k) {
+// (k 1) left and right column.
+vec2 rowOf(float level, float row, float k) {
   float line = floor(row / uRowsALine);
   float column = (row - line * uRowsALine) * 2.0 + k;
   vec2 texel = vec2(column, level * uLinesALevel + line) + 0.5;
+  return texture(uTable, texel / uTableSize).rg;
+}
+
+// Level [level]'s head: its reach, and the centres its outline and its
+// core cover.
+vec3 headOf(float level) {
+  float line = floor(level / uTableSize.x);
+  vec2 texel = vec2(level - line * uTableSize.x, uHeads + line) + 0.5;
   return texture(uTable, texel / uTableSize).rgb;
 }
 
@@ -116,11 +129,12 @@ void main() {
     vec4 map = texture(uMap, (at + 0.5) / uSize);
     level = clamp(floor(dot(map, uChannel) * 255.0 + 0.5), 0.0, 255.0);
   }
-  float reach = rowOf(level, 0.0, 0.0).b;
+  vec3 head = headOf(level);
+  float reach = head.x;
+  float outlineWeight = head.y;
+  float coreWeight = uFringe > 0.0 ? head.z : 0.0;
   vec4 outline = vec4(0.0);
   vec4 core = vec4(0.0);
-  float outlineWeight = 0.0;
-  float coreWeight = 0.0;
   // A loop needs a constant bound here: `irisRowsAtMost`.
   for (int i = 0; i < 16385; i++) {
     float dy = float(i) - reach;
@@ -130,23 +144,17 @@ void main() {
     if (dy > reach) {
       break;
     }
-    float row = dy + uReachMost;
-    vec2 span = rowOf(level, row, 0.0).rg;
-    outlineWeight += max(0.0, span.y - span.x + 1.0);
-    vec2 inner = vec2(1.0, 0.0);
-    if (uFringe > 0.0) {
-      inner = rowOf(level, row, 1.0).rg;
-      coreWeight += max(0.0, inner.y - inner.x + 1.0);
-    }
+    // A row off the raster sums nothing, and its table is not read.
     float y = at.y + dy;
     if (uRepeats > 0.5) {
       y = clamp(y, uPaper.y, uPaper.w);
     } else if (y < 0.0 || y >= uSize.y) {
       continue;
     }
-    outline += spanSum(at.x + span, y);
+    float row = dy + uReachMost;
+    outline += spanSum(at.x + rowOf(level, row, 0.0), y);
     if (uFringe > 0.0) {
-      core += spanSum(at.x + inner, y);
+      core += spanSum(at.x + rowOf(level, row, 1.0), y);
     }
   }
   float pushed = outlineWeight > coreWeight ? uFringe : 0.0;

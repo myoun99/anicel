@@ -8,8 +8,16 @@
 // one for each of a map's 256 values. Each takes [uLinesALevel] lines of
 // [uRowsALine] rows from [uReachMost] above the pixel down, two texels a
 // row — the outline's span, then the core's — each its left and right
-// column in red and green, and the level's reach in blue. A row past it
-// is empty, its left past its right.
+// column in red and green. A row past the level's reach is empty, its
+// left past its right. After the levels come their HEADS, a texel a
+// level from the left, line on line: its reach, and the centres its
+// outline and its core cover — what a pixel's mean is over.
+//
+// ⚠️THE COVER IS LAID HERE, ONCE A LEVEL, not added up by the gather: a
+// pixel would read every row to add it, the rows off the raster too,
+// which it never sums — at a radius of 500 that cost the Surface Pro 11
+// a third more a run (10-28). ⛔NOT IN ALPHA: a texel's colour is read
+// back over its alpha, so every texel's is 1.
 //
 // 📐THE IRIS (ours, 🗣️I-132-Q4 b: 「식은 지금대로」 — Adobe's help names
 // the properties and gives no shapes): a regular polygon of its sides
@@ -162,20 +170,53 @@ vec2 spanOf(float dy, float radius) {
   return columns;
 }
 
+// The centres the iris [radius] out covers, its rows [reach] above to
+// [reach] below.
+float coveredBy(float reach, float radius) {
+  float covered = 0.0;
+  // A loop needs a constant bound here: `irisRowsAtMost`.
+  for (int i = 0; i < 16385; i++) {
+    float dy = float(i) - reach;
+    if (dy > reach) {
+      break;
+    }
+    vec2 span = spanOf(dy, radius);
+    covered += max(0.0, span.y - span.x + 1.0);
+  }
+  return covered;
+}
+
+// Level [level]'s radius.
+float radiusOf(float level) {
+  float value = uInverts > 0.5 ? 255.0 - level : level;
+  return uLevels > 1.5 ? uRadius * abs(value - uFocal) / 255.0 : uRadius;
+}
+
 void main() {
   vec2 at = floor(FlutterFragCoord().xy);
-  float level = floor(at.y / uLinesALevel);
-  float row = (at.y - level * uLinesALevel) * uRowsALine + floor(at.x / 2.0);
-  bool core = at.x - floor(at.x / 2.0) * 2.0 > 0.5;
-  float value = uInverts > 0.5 ? 255.0 - level : level;
-  float radius = uLevels > 1.5
-      ? uRadius * abs(value - uFocal) / 255.0
-      : uRadius;
-  float reach = floor(radius);
-  float dy = row - uReachMost;
-  vec2 span = vec2(1.0, 0.0);
-  if (abs(dy) <= reach) {
-    span = spanOf(dy, core ? radius * kCoreScale : radius);
+  float heads = uLevels * uLinesALevel;
+  vec4 texel = vec4(1.0, 0.0, 0.0, 1.0);
+  if (at.y >= heads) {
+    float level = (at.y - heads) * uSize.x + at.x;
+    if (level < uLevels) {
+      float radius = radiusOf(level);
+      float reach = floor(radius);
+      texel = vec4(
+        reach,
+        coveredBy(reach, radius),
+        coveredBy(reach, radius * kCoreScale),
+        1.0
+      );
+    }
+  } else {
+    float level = floor(at.y / uLinesALevel);
+    float row = (at.y - level * uLinesALevel) * uRowsALine + floor(at.x / 2.0);
+    bool core = at.x - floor(at.x / 2.0) * 2.0 > 0.5;
+    float radius = radiusOf(level);
+    float dy = row - uReachMost;
+    if (abs(dy) <= floor(radius)) {
+      texel.rg = spanOf(dy, core ? radius * kCoreScale : radius);
+    }
   }
-  fragColor = vec4(span, reach, 1.0);
+  fragColor = texel;
 }

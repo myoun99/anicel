@@ -122,7 +122,8 @@ class IrisBlurShader {
       ..setFloat(19, channel?.r ?? 0)
       ..setFloat(20, channel?.g ?? 0)
       ..setFloat(21, channel?.b ?? 0)
-      ..setFloat(22, channel?.a ?? 0);
+      ..setFloat(22, channel?.a ?? 0)
+      ..setFloat(23, layout.heads.toDouble());
     // ⚠️Safe once bound: the shader holds its own claim on the table.
     table.dispose();
     return shader;
@@ -131,7 +132,8 @@ class IrisBlurShader {
   /// [pass]'s rows as `iris_gather.frag` reads them, laid by
   /// `iris_table.frag` in floats: each of its levels — one, or a blur
   /// map's 256 — [_layoutOf]'s lines, two texels a row, each a span's left
-  /// and right column in red and green and its level's reach in blue.
+  /// and right column in red and green; then from line `heads` a texel a
+  /// level, its reach and the centres its outline and its core cover.
   ///
   /// ⚠️The caller owns the returned image.
   static ui.Image tableFor(IrisGatherPass pass) {
@@ -139,7 +141,7 @@ class IrisBlurShader {
     final map = pass.map;
     final iris = pass.iris;
     final width = layout.rowsALine * 2;
-    final height = layout.levels * layout.linesALevel;
+    final height = layout.heads + layout.headLines;
     final halfSide = math.pi / iris.sides;
     final shader = _table.shader()
       ..setFloat(0, width.toDouble())
@@ -179,16 +181,25 @@ class IrisBlurShader {
 
   /// How [pass]'s table is laid: its levels, each [linesALevel] lines of
   /// [rowsALine] rows — two texels a row, so a line is never wider than
-  /// 2048.
-  static ({int levels, int rowsALine, int linesALevel}) _layoutOf(
-    IrisGatherPass pass,
-  ) {
+  /// 2048 — and from line [heads] on their heads, [headLines] of them.
+  static ({
+    int levels,
+    int rowsALine,
+    int linesALevel,
+    int heads,
+    int headLines,
+  })
+  _layoutOf(IrisGatherPass pass) {
     final rows = 2 * pass.reach + 1;
     final rowsALine = math.min(rows, 1024);
+    final levels = pass.map == null ? 1 : 256;
+    final linesALevel = (rows / rowsALine).ceil();
     return (
-      levels: pass.map == null ? 1 : 256,
+      levels: levels,
       rowsALine: rowsALine,
-      linesALevel: (rows / rowsALine).ceil(),
+      linesALevel: linesALevel,
+      heads: levels * linesALevel,
+      headLines: (levels / (rowsALine * 2)).ceil(),
     );
   }
 
