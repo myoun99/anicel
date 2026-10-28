@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_settings_row.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
 import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -19,7 +20,9 @@ void main() {
   Future<ValueNotifier<BrushToolState>> pumpPanel(WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    final notifier = ValueNotifier<BrushToolState>(BrushToolState.defaults);
+    final notifier = ValueNotifier<BrushToolState>(
+      BrushToolState.defaults.copyWith(shown: {BrushSettingsRow.angle}),
+    );
     addTearDown(notifier.dispose);
     await tester.pumpWidget(
       MaterialApp(

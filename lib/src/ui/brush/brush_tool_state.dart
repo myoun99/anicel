@@ -8,7 +8,7 @@ import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_preset.dart';
 import '../../models/brush_preset_id.dart';
 import '../../models/brush_settings.dart';
-import '../../models/brush_settings_group.dart';
+import '../../models/brush_settings_row.dart';
 import '../../models/brush_shape.dart';
 import '../../models/brush_tip_mask.dart';
 import '../../models/brush_tip_order.dart';
@@ -431,7 +431,7 @@ class BrushToolState {
     this.cutStampOpacity = 1.0,
     this.cutDeletesSource = false,
     this.presetId,
-    this.folded = const {},
+    this.shown = BrushSettingsRow.shownByDefault,
   });
 
   /// Builds tool state from a loose [BrushShape] and the values that still
@@ -457,7 +457,7 @@ class BrushToolState {
     double fillOpacity = 1.0,
     bool cutDeletesSource = false,
     double cutStampOpacity = 1.0,
-    Set<BrushSettingsGroup> folded = const {},
+    Set<BrushSettingsRow> shown = BrushSettingsRow.shownByDefault,
   }) {
     return BrushToolState._raw(
       shape: _clampShape(shape),
@@ -473,7 +473,7 @@ class BrushToolState {
       fillOpacity: clampOpacity(fillOpacity),
       cutDeletesSource: cutDeletesSource,
       cutStampOpacity: clampOpacity(cutStampOpacity),
-      folded: folded,
+      shown: shown,
     );
   }
 
@@ -778,10 +778,10 @@ class BrushToolState {
   /// the shape when a paint tool is restored, everything else carries it.
   final BrushPresetId? presetId;
 
-  /// The groups of the brush's settings folded in the panel — the brush's
-  /// own, moving with it as [presetId] does, and remembered with what the
-  /// hand changed on it ([BrushSettings.folded], F-418-Q10).
-  final Set<BrushSettingsGroup> folded;
+  /// The rows of the brush's settings the panel shows — the brush's own,
+  /// moving with it as [presetId] does, and remembered with what the hand
+  /// changed on it ([BrushSettings.shown], I-141).
+  final Set<BrushSettingsRow> shown;
 
   /// The outline SELECT drags out, remembered separately from the one CUT
   /// drags (유저 확정: 도형은 동사별로 기억). "The shape vocabulary is
@@ -1040,7 +1040,7 @@ class BrushToolState {
   /// Builds tool state from a preset's model-layer [BrushSettings], clamping
   /// every value into the panel's ranges.
   factory BrushToolState.fromBrushSettings(BrushSettings settings) =>
-      BrushToolState.fromShape(settings.shape, folded: settings.folded);
+      BrushToolState.fromShape(settings.shape, shown: settings.shown);
 
   /// This state after [preset] is applied, on [tool] — its shape, and the
   /// preset itself as the brush the state now holds ([presetId]).
@@ -1105,7 +1105,7 @@ class BrushToolState {
     return applied._rebuilt(
       shape: applied.shape,
       presetId: preset.id,
-      folded: brush.folded,
+      shown: brush.shown,
     );
   }
 
@@ -1122,14 +1122,14 @@ class BrushToolState {
     return carried._rebuilt(
       shape: carried.shape,
       presetId: stored.presetId,
-      folded: stored.folded,
+      shown: stored.shown,
     );
   }
 
   /// Snapshot of this tool state as the model-layer [BrushSettings] — the
   /// payload brush presets store.
   BrushSettings toBrushSettings() =>
-      BrushSettings.fromShape(shape, folded: folded);
+      BrushSettings.fromShape(shape, shown: shown);
 
   BrushEditCanvasInputSettings toInputSettings() {
     return BrushEditCanvasInputSettings.fromShape(
@@ -1214,7 +1214,7 @@ class BrushToolState {
     double? fillOpacity,
     bool? cutDeletesSource,
     double? cutStampOpacity,
-    Set<BrushSettingsGroup>? folded,
+    Set<BrushSettingsRow>? shown,
   }) {
     // The base is the caller's shape when it gave one; the named arguments
     // then land on TOP of it, so "this brush, but at my size" is one call.
@@ -1287,7 +1287,7 @@ class BrushToolState {
       cutDeletesSource: cutDeletesSource ?? this.cutDeletesSource,
       cutStampOpacity: clampOpacity(cutStampOpacity ?? this.cutStampOpacity),
       presetId: presetId,
-      folded: folded ?? this.folded,
+      shown: shown ?? this.shown,
     );
   }
 
@@ -1323,15 +1323,15 @@ class BrushToolState {
 
   /// [shape] replaced, every hand setting carried through untouched.
   BrushToolState _withShape(BrushShape next) =>
-      _rebuilt(shape: next, presetId: presetId, folded: folded);
+      _rebuilt(shape: next, presetId: presetId, shown: shown);
 
-  /// [shape], [presetId] and [folded] — the brush — as given, every other
+  /// [shape], [presetId] and [shown] — the brush — as given, every other
   /// field exactly as it is: the one list of the fields outside the shape
   /// besides [copyWith]'s.
   BrushToolState _rebuilt({
     required BrushShape shape,
     required BrushPresetId? presetId,
-    required Set<BrushSettingsGroup> folded,
+    required Set<BrushSettingsRow> shown,
   }) => BrushToolState._raw(
     shape: _clampShape(shape),
     tool: tool,
@@ -1347,7 +1347,7 @@ class BrushToolState {
     cutDeletesSource: cutDeletesSource,
     cutStampOpacity: cutStampOpacity,
     presetId: presetId,
-    folded: folded,
+    shown: shown,
   );
 
   /// Replaces (or CLEARS, with null) one setting's pressure curve —
@@ -1487,8 +1487,8 @@ class BrushToolState {
           // H25-again: which brush a state holds is part of the state — two
           // states wearing one shape under two names are not the same state.
           other.presetId == presetId &&
-          other.folded.length == folded.length &&
-          other.folded.containsAll(folded);
+          other.shown.length == shown.length &&
+          other.shown.containsAll(shown);
 
   @override
   int get hashCode => Object.hash(
@@ -1506,6 +1506,6 @@ class BrushToolState {
     cutDeletesSource,
     cutStampOpacity,
     presetId,
-    Object.hashAllUnordered(folded),
+    Object.hashAllUnordered(shown),
   );
 }

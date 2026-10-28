@@ -110,12 +110,9 @@ class ToolSettingsSection extends StatelessWidget {
 /// header, and then [rows] — unless the group is folded.
 ///
 /// 🗣️Every group folds (유저 2026-10-20, F-418-Q10 「모든 그룹 머리가
-/// 접힌다」), from its header. A brush remembers its folds as its own; the
-/// other tools, each its own ([ToolSettingsFolds]).
-///
-/// ⚠️Rows, not a widget around them: the brush's panel keeps each row it
-/// built while that row shows the same thing, and it finds them by their
-/// place in one flat list.
+/// 접힌다」), from its header — each tool's its own ([ToolSettingsFolds]).
+/// ↩️The brush's six folded too, until its settings showed the rows a
+/// brush shows with no heads (I-141).
 List<Widget> toolSettingsGroup(
   String label, {
   bool first = false,
@@ -132,9 +129,10 @@ List<Widget> toolSettingsGroup(
 /// on it, on the app's one press law ([ControlPressClaim]), wearing the
 /// export window's arrows.
 ///
-/// The brush's settings wrote it; the text tool's are grouped the same way
-/// (글자 · 상자, the layout 유저 took on 2026-10-06), so it stands beside the
-/// shell the sections share rather than in the brush's own file.
+/// The brush's settings wrote it (theirs went with I-141); the text tool's
+/// are grouped the same way (글자 · 상자, the layout 유저 took on
+/// 2026-10-06), so it stands beside the shell the sections share rather
+/// than in the brush's own file.
 class ToolSettingsGroupHeader extends StatelessWidget {
   const ToolSettingsGroupHeader(
     this.label, {
@@ -198,11 +196,11 @@ class ToolSettingsGroupHeader extends StatelessWidget {
   }
 }
 
-/// Which groups of each tool that is not a brush are folded — each tool its
-/// own (F-418-Q10), for as long as the app runs, as those tools' other
-/// settings are kept.
+/// Which groups of each tool are folded — each tool its own (F-418-Q10),
+/// for as long as the app runs, as those tools' other settings are kept.
 ///
-/// A brush keeps its folds itself (`BrushSettings.folded`).
+/// ↩️It said 「each tool that is not a brush」: a brush kept its folds
+/// itself, until its settings lost their heads (I-141).
 abstract final class ToolSettingsFolds {
   static final Map<String, ValueNotifier<Set<String>>> _byTool = {};
 

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
+import 'package:anicel/src/models/brush_settings_row.dart';
 import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/dialogs/preferences_dialog.dart';
@@ -61,7 +62,9 @@ void main() {
   testWidgets('the brush settings panel\'s switch: the ring presses it and '
       'the label does not, the ring is on the right, the label reads as the '
       'names beside it', (tester) async {
-    var state = BrushToolState.defaults;
+    var state = BrushToolState.defaults.copyWith(
+      shown: {BrushSettingsRow.flow, BrushSettingsRow.mixing},
+    );
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

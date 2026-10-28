@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
+import 'package:anicel/src/models/brush_settings_row.dart';
 import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
@@ -13,7 +14,12 @@ void main() {
   const flowKey = ValueKey<String>('brush-tool-flow-slider');
   const angleKey = ValueKey<String>('brush-tool-angle-slider');
 
-  final a = BrushToolState.defaults.copyWith(flow: 0.5, angleJitter: 0.2);
+  // Every row shown: what this pins is the rows, not which a brush shows.
+  final a = BrushToolState.defaults.copyWith(
+    flow: 0.5,
+    angleJitter: 0.2,
+    shown: BrushSettingsRow.values.toSet(),
+  );
 
   /// The panel the way the workspace drives it: the state it is handed is
   /// whatever the notifier holds, and a row's write lands in the notifier.

@@ -1795,6 +1795,9 @@ enum AppStrings {
   String get brGroupScattering => _s('brGroupScattering');
   String get brGroupTexture => _s('brGroupTexture');
   String get brGroupCorrection => _s('brGroupCorrection');
+  String get brDetailTitle => _s('brDetailTitle');
+  String get brShowInPanel => _s('brShowInPanel');
+  String get brHideFromPanel => _s('brHideFromPanel');
 
   String get brBlend => _s('brBlend');
   String get brBlendMode => _s('brBlendMode');
@@ -3023,6 +3026,9 @@ enum AppStrings {
     'brGroupScattering': 'Scattering',
     'brGroupTexture': 'Texture',
     'brGroupCorrection': 'Correction',
+    'brDetailTitle': 'Brush Details',
+    'brShowInPanel': 'Show in the panel',
+    'brHideFromPanel': 'Hide from the panel',
     'brBlend': 'Blend',
     'brBlendMode': 'Brush blend mode',
     'brDualBlend': 'Dual blend',
@@ -4637,6 +4643,9 @@ enum AppStrings {
     'brGroupScattering': '散布',
     'brGroupTexture': '質感',
     'brGroupCorrection': '補正',
+    'brDetailTitle': 'ブラシ詳細',
+    'brShowInPanel': 'パネルに表示',
+    'brHideFromPanel': 'パネルに表示しない',
     'shortcutAction.frame-auto-create': 'フレーム自動生成',
     'brBlend': '合成',
     'brBlendMode': 'ブラシの合成モード',
@@ -6365,6 +6374,9 @@ enum AppStrings {
     'brGroupScattering': '살포',
     'brGroupTexture': '질감',
     'brGroupCorrection': '보정',
+    'brDetailTitle': '브러시 상세',
+    'brShowInPanel': '패널에 보이기',
+    'brHideFromPanel': '패널에서 숨기기',
     'shortcutAction.frame-auto-create': '프레임 자동 생성',
     'brBlend': '합성',
     'brBlendMode': '브러시 합성 모드',
@@ -8230,6 +8242,9 @@ enum AppStrings {
     'brGroupScattering': 'Dispersion',
     'brGroupTexture': 'Texture',
     'brGroupCorrection': 'Correction',
+    'brDetailTitle': 'Détails de la brosse',
+    'brShowInPanel': 'Afficher dans le panneau',
+    'brHideFromPanel': 'Masquer du panneau',
     'shortcutAction.frame-auto-create': "Création auto d'images",
     'brBlend': 'Fusion',
     'brBlendMode': 'Mode de fusion du pinceau',
@@ -9894,6 +9909,9 @@ enum AppStrings {
     'brGroupScattering': '散布',
     'brGroupTexture': '纹理',
     'brGroupCorrection': '修正',
+    'brDetailTitle': '笔刷详细设置',
+    'brShowInPanel': '在面板中显示',
+    'brHideFromPanel': '在面板中隐藏',
     'shortcutAction.frame-auto-create': '自动创建帧',
     'brBlend': '混合',
     'brBlendMode': '画笔混合模式',

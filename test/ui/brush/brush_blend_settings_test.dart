@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_preset.dart';
 import 'package:anicel/src/models/brush_preset_id.dart';
+import 'package:anicel/src/models/brush_settings_row.dart';
 import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 
@@ -13,6 +14,11 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 /// with size and opacity, so its widget tests live in
 /// `test/ui/menu/editor_top_strip_test.dart`.
 void main() {
+  // Every row shown, so a row this panel lost is gone, not merely hidden.
+  final everyRow = BrushToolState.defaults.copyWith(
+    shown: BrushSettingsRow.values.toSet(),
+  );
+
   Future<void> pumpPanel(
     WidgetTester tester, {
     required BrushToolState state,
@@ -34,7 +40,7 @@ void main() {
 
   testWidgets('R26 #11: the color swatches and the tip shape segment are '
       'GONE from the settings panel', (tester) async {
-    await pumpPanel(tester, state: BrushToolState.defaults, onChanged: (_) {});
+    await pumpPanel(tester, state: everyRow, onChanged: (_) {});
     expect(
       find.byKey(const ValueKey<String>('brush-tool-tip-shape-toggle')),
       findsNothing,
@@ -45,7 +51,7 @@ void main() {
 
   testWidgets('size, opacity and blend LEFT this panel for the strip — one '
       'number, one place to read it (유저 확정)', (tester) async {
-    await pumpPanel(tester, state: BrushToolState.defaults, onChanged: (_) {});
+    await pumpPanel(tester, state: everyRow, onChanged: (_) {});
 
     for (final gone in [
       'brush-tool-size-slider',

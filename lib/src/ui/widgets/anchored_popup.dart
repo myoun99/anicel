@@ -144,7 +144,9 @@ class AnchoredPopupHeader extends StatelessWidget {
 /// barrier eats the canvas stroke even when it is transparent — and rode an
 /// `OverlayPortal` instead. The colour window became the colour panels
 /// (`67893911e`, 2026-08-07) and nothing opened it again; it went with
-/// I-131 (2026-10-28).
+/// I-131 (2026-10-28). A window that stays over the canvas came back the
+/// next day as `FloatingAppWindow` (I-141-Q3) — not anchored, moved by its
+/// title bar, on the same portal for the same reason.
 Future<T?> showAnchoredPopup<T>(
   BuildContext anchorContext, {
   required String label,

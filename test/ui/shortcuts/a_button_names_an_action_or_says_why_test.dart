@@ -132,6 +132,10 @@ const ledger = <String, Why>{
   // The cut pill's name cell, read alone since its ＋ is zoned apart from
   // it round the cut's name (F-463) — the fx pill's door.
   "cut_command_group.dart | 'cut-menu-button'": Why.aSecondLevel,
+  // The brush settings' wrench (I-141): it opens the brush's detail window
+  // and runs nothing.
+  "brush/brush_settings_panel.dart | 'brush-detail-button'":
+      Why.aSecondLevel,
 
   // ── IN A WINDOW ─────────────────────────────────────────────────────
   "brush/brush_tip_picker.dart | 'brush-tip-delete'": Why.inAWindow,

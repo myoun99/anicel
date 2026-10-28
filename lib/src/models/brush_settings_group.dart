@@ -1,8 +1,9 @@
-/// The groups a brush's settings are shown in — Clip Studio's categories,
-/// as the tool settings panel lays them out (インク · ブラシ先端 · 色の混ぜ方 ·
-/// 散布効果 · テクスチャ · 補正).
+/// The groups a brush's settings are filed in — Clip Studio's categories
+/// (インク · ブラシ先端 · 色の混ぜ方 · 散布効果 · テクスチャ · 補正), the rail
+/// down the brush detail window's left side (I-141-Q4, 유저 2026-10-29:
+/// 「클튜처럼 왼쪽에 두자. 브러시그룹/브러시목록이랑 비슷한느낌으로」).
 ///
-/// A brush remembers which of them are folded (F-418-Q10, 유저 2026-10-20:
-/// 「모든 그룹 머리가 접힌다」 — the brush's own, with what the hand changed
-/// on it, so a brush pack carries it).
+/// ↩️They were the panel's group heads, and a brush remembered which of them
+/// were folded (F-418-Q10). The panel shows a brush's chosen rows with no
+/// heads now (`BrushSettingsRow`), so there is nothing left to fold.
 enum BrushSettingsGroup { ink, tip, mixing, scattering, texture, correction }

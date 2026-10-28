@@ -23,6 +23,7 @@ import '../widgets/app_scrollbar_lane.dart';
 import '../widgets/app_window.dart';
 import '../widgets/content_scrollbar.dart';
 import '../widgets/dock_edge_splitter.dart' show DockSplitterEdges;
+import '../widgets/group_tab.dart';
 import '../widgets/instant_tap_region.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/stand_on_reorder_list.dart';
@@ -657,7 +658,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     }
     final offset =
         local.dy + (_railController.hasClients ? _railController.offset : 0.0);
-    final index = offset ~/ _BrushGroupTab.extent;
+    final index = offset ~/ GroupTab.extent;
     if (index < 0 || index >= tabs.length) {
       _cancelSpring();
       return;
@@ -898,7 +899,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
       // nothing for a bar that was usually not there — and on a tablet there
       // was no bar at all.
       width:
-          (_railShowName ? _BrushGroupTab.namedWidth : _BrushGroupTab.extent) +
+          (_railShowName ? GroupTab.namedWidth : GroupTab.extent) +
           AppScrollbarLane.thin,
       child: ContentScrollbar(
         controller: _railController,
@@ -1157,7 +1158,8 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
 }
 
 /// One tab in the rail: the group's first brush as its face, its name as the
-/// tooltip, and its own rename/delete menu behind a long press.
+/// tooltip, and its own rename/delete menu behind a long press — a
+/// [GroupTab], the rail's one tab, wearing what only the library's has.
 ///
 /// A rotated label was the obvious alternative and a bad one — Korean and
 /// Japanese group names do not read sideways. The brush the group starts
@@ -1181,42 +1183,6 @@ class _BrushGroupTab extends StatelessWidget {
   /// group's shortcut row, and its tooltip wears that row's key as every
   /// button's does. The root section's tab has none: it is not a group.
   final List<String> shortcuts;
-
-  /// Height of one tab. Fixed, because the rail turns a pointer offset into
-  /// a tab index while a brush is being dragged over it.
-  ///
-  /// 🚨TWO THIRDS OF A BRUSH CELL, WIDE RATHER THAN TALL.
-  ///
-  /// The shape came from `brush-group-tab-shape-Q1` 답 1 (2026-09-10): the
-  /// spec was two sentences that fought each other in pixels — 「그룹도 **좀
-  /// 더 길게**해서 그룹이름 어느정도 **제대로 보이도록**」 and 「비율적으로
-  /// 그룹은 **브러시 프리뷰 세로길이의 반**」 — because a brush cell is 34 and
-  /// an 11pt name had been sitting in 26. The answer reads 「길게」 as WIDTH:
-  /// the tab gets shorter and the rail gets wider, so both sentences hold.
-  ///
-  /// The FRACTION then moved once, on sight: 유저 2026-09-10, 「지금 브러시의
-  /// 절반인데 너무 작으니 2/3로 하고싶고」. A half was 17; two thirds of 34 is
-  /// 22.67, and this is the nearest whole pixel to it.
-  ///
-  /// ⚠️ROUNDED ON PURPOSE. 34 does not divide by 3, and the rail is a list of
-  /// fixed-height rows with backgrounds: a 22.67 row puts every boundary on a
-  /// third of a logical pixel, which is a seam between tabs at every DPR. The
-  /// pin asserts the rounding rather than the fraction, so it still fails if
-  /// either number moves without the other.
-  ///
-  /// ⚠️AND THE COST WAS TAKEN WITH IT: at the stock 260px panel a rail of 120
-  /// leaves 140 for the grid, which is ONE column of 130px cells. That is on
-  /// the card as the price of the answer, not a regression to fix.
-  static const double extent = 23;
-
-  /// Rail width once names are showing.
-  ///
-  /// 96 cut a group name at two or three characters, which is what 「이름이
-  /// 제대로 보이도록」 was about.
-  static const double namedWidth = 120;
-
-  /// The size a group's name is written at — and the key after it.
-  static const double nameFontSize = 11;
 
   /// The tab's picture: the group's chosen icon, else its first brush, else
   /// a plain folder. Choosing is for when that guess reads wrong.
@@ -1266,79 +1232,22 @@ class _BrushGroupTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final body = Material(
-      color: selected ? colorScheme.surfaceContainerHigh : Colors.transparent,
-      shape: AppShapes.container(AppShapes.wellRadius),
-      child: InkWell(
-        mouseCursor: AppCursors.press,
-        key: ValueKey<String>(keyValue),
-        // The switch rides the raw pointer (R10) — see the wrapper below.
-        // The InkWell keeps a no-op tap so its ripple and its semantics
-        // stay, the same shape the timeline cells use.
-        onTap: () {},
-        onDoubleTap: onEdit,
-        customBorder: AppShapes.container(AppShapes.wellRadius),
-        child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 1),
-          decoration: ShapeDecoration(
-            shape: AppShapes.container(
-              AppShapes.wellRadius,
-              side: BorderSide(
-                color: selected
-                    ? colorScheme.primary
-                    : colorScheme.outlineVariant,
-                width: selected ? 1.5 : 1,
-              ),
-            ),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Row(
-            children: [
-              // No fixed width: the selected tab's border is thicker, so a
-              // hard-sized box overflows it by a pixel.
-              if (showIcon)
-                if (showName)
-                  SizedBox(width: 20, child: _face(colorScheme))
-                else
-                  Expanded(child: _face(colorScheme)),
-              if (showName)
-                Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.only(left: showIcon ? 0 : 5, right: 3),
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      // Group names run long — a pack keeps the file's name
-                      // — so the tail is what gives.
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: nameFontSize,
-                        color: selected
-                            ? colorScheme.onSurface
-                            : colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                ),
-              // 🗣️F-319: 「이름이 있는곳은 흐린글자로 표시임」 — the group's
-              // key after its name, as a menu row wears one. Nothing where
-              // no name shows; the tooltip says it there, as on any button.
-              if (showName) _BrushKeyText(shortcuts, fontSize: nameFontSize),
-            ],
-          ),
-        ),
-      ),
+    final tab = GroupTab(
+      keyValue: keyValue,
+      label: label,
+      selected: selected,
+      onTap: onTap,
+      face: showIcon ? _face(Theme.of(context).colorScheme) : null,
+      showName: showName,
+      // 🗣️F-319: 「이름이 있는곳은 흐린글자로 표시임」 — the group's key
+      // after its name, as a menu row wears one. Nothing where no name
+      // shows; the tooltip says it there, as on any button.
+      trailing: _BrushKeyText(shortcuts, fontSize: GroupTab.nameFontSize),
+      onDoubleTap: onEdit,
     );
-    // R10: the group switch acts on the raw pointer, so it no longer waits
-    // out `onEdit`'s double-tap window. Touch still commits on the release
-    // — the rail scrolls, and a press that becomes a scroll must not
-    // switch groups under the finger.
-    final instant = InstantTapRegion(onTap: (_) => onTap(), child: body);
-    final face = showTooltip
-        ? ShortcutTooltip(label: label, shortcuts: shortcuts, child: instant)
-        : instant;
-    return SizedBox(height: extent, child: face);
+    return showTooltip
+        ? ShortcutTooltip(label: label, shortcuts: shortcuts, child: tab)
+        : tab;
   }
 }
 

@@ -9,6 +9,7 @@ import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
 import '../models/brush_pressure_curve.dart';
 import '../models/brush_settings.dart';
+import '../models/brush_settings_row.dart';
 import '../models/brush_shape.dart';
 import '../models/brush_texture_mode.dart';
 import '../models/brush_tip_order.dart';
@@ -274,7 +275,43 @@ Map<BrushDynamicsKey, BrushPressureCurve> _toothRow(double heaviest) => {
       ], minimum: heaviest),
 };
 
+/// The built-ins as the library seeds them: each as made below, showing in
+/// the panel what its group's brushes show ([_shownByGroup]).
 final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
+  for (final preset in _builtinsAsMade)
+    preset.copyWith(
+      settings: BrushSettings.fromShape(
+        preset.settings.shape,
+        shown: {
+          ...BrushSettingsRow.shownByDefault,
+          ...?_shownByGroup[preset.groupId],
+        },
+      ),
+    ),
+]);
+
+/// What each group's brushes show in the panel besides the three every
+/// brush does ([BrushSettingsRow.shownByDefault]) — the setting a brush of
+/// that kind is turned by most. I-141: the user named the three and left
+/// the rest of the first choice to me; a brush's own is changed in the
+/// brush detail window.
+final Map<BrushGroupId, Set<BrushSettingsRow>> _shownByGroup = {
+  _basicGroup: {BrushSettingsRow.hardness},
+  _pencilGroup: {BrushSettingsRow.textureDensity},
+  _dryMediaGroup: {BrushSettingsRow.textureDensity},
+  _penGroup: {BrushSettingsRow.postCorrection},
+  for (final group in [_watercolorGroup, _oilGroup, _blendGroup])
+    group: {
+      BrushSettingsRow.paintAmount,
+      BrushSettingsRow.paintDensity,
+      BrushSettingsRow.colorStretch,
+    },
+  _airbrushGroup: {BrushSettingsRow.flow},
+  for (final group in [_textureGroup, _decorationGroup])
+    group: {BrushSettingsRow.scatter, BrushSettingsRow.scatterCount},
+};
+
+final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
   // ---- Basic -----------------------------------------------------------
   // 🚨THE TWO ROUNDS ARE OLD BRUSHES UNDER NEW NAMES (board F-218): the ids
   // stay `builtin-ink-pen` and `builtin-soft-brush`, so a project's resumed
@@ -1356,7 +1393,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       scatterCount: 4,
     ),
   ),
-]);
+];
 
 /// What a built-in is called when it is made: its id and its English name
 /// in, the stored name out.

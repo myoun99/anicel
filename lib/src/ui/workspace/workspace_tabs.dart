@@ -641,6 +641,7 @@ class _WorkspaceTabs {
                                         ),
                                         builder: (context, cut) => ToolSettingsPanel(
                                           state: toolState,
+                                          brushDetailAt: _state._brushDetailAt,
                                           onChanged: (state) =>
                                               _state._brushTool.value = state,
                                           guides: cut.guides,

@@ -137,6 +137,11 @@ void main() {
     );
     addTearDown(() => AppText.settings.value = const AppLanguageSettings());
     await pumpTool(tester, CanvasTool.brush);
+    // Down the brush detail window's side (I-141) — ↩️the panel's heads.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('brush-detail-button')),
+    );
+    await tester.pump();
 
     final strings = AppText.strings;
     expect(find.text(strings.brGroupInk), findsOneWidget);

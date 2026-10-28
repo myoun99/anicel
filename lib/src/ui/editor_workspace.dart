@@ -1253,6 +1253,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _storyboardTrackLaneHeight.addListener(
       _layoutPersistence.scheduleLayoutSave,
     );
+    // So is where the brush detail window was left: its title bar moves it.
+    _brushDetailAt.addListener(_layoutPersistence.scheduleLayoutSave);
     widget.panelsMenu?.attach(
       entriesProvider: _panelMenuEntries,
       toggler: _togglePanelVisibility,
@@ -1820,6 +1822,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _storyboardTrackLaneHeight.dispose();
     _bottomInsetOverride.dispose();
     _brushPresetView.dispose();
+    _brushDetailAt
+      ..removeListener(_layoutPersistence.scheduleLayoutSave)
+      ..dispose();
     for (final controller in _railScrollControllers.values) {
       controller.dispose();
     }
@@ -2078,6 +2083,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// the workspace file is where panel layout already lives.
   final ValueNotifier<BrushPresetViewOptions> _brushPresetView =
       ValueNotifier<BrushPresetViewOptions>(const BrushPresetViewOptions());
+
+  /// Where the brush detail window stands — null until it has been moved
+  /// (I-141-Q3 「창은 끌어서 옮기고 자리를 기억한다」). Held HERE for the same
+  /// reason as [_brushPresetView]: the tool settings tab keeps no State once
+  /// it closes, and the workspace file is where panel layout already lives.
+  final ValueNotifier<Offset?> _brushDetailAt = ValueNotifier<Offset?>(null);
 
   /// The UN-detented value a side drag is accumulating.
   ///
