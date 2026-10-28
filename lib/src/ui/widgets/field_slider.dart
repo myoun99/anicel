@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 
 import '../../services/input/modifier_keys.dart';
 import '../input/control_press_claim.dart';
@@ -1147,7 +1149,7 @@ class _FieldSliderState extends State<FieldSlider> {
 
     final own = widget.color ?? AppColors.accent;
     final accent = dragging ? own : (widget.restingAccent ?? own);
-    Widget bar = FieldSliderTrack(
+    final bar = FieldSliderTrack(
       axis: widget.axis,
       onExtent: _takeTrackExtent,
       frame: FieldSlider.frameOf(
@@ -1182,45 +1184,38 @@ class _FieldSliderState extends State<FieldSlider> {
       // boundary inside its panel.
       return _withHands(bar);
     }
-    bar = MouseRegion(
-      cursor: _vertical
-          ? SystemMouseCursors.resizeUpDown
-          : SystemMouseCursors.resizeLeftRight,
-      // ★유저 확정 2026-08-14: a press that lands on the bar is the bar's,
-      // scrolling included. These recognisers take the arena on the FIRST
-      // movement instead of at a slop, so no ancestor scrollable is ever in
-      // a position to take the gesture away — see [axis_bar_gesture].
-      // T11: this press is the slider's — the claim and the recogniser in
-      // one box ([OwningAxisGrip]). ↩️They were written here by hand, a
-      // [DragVerbClaim] over a detector, as the splitter wore the pair.
-      child: OwningAxisGrip(
+    // ★유저 확정 2026-08-14: a press that lands on the bar is the bar's,
+    // scrolling included. These recognisers take the arena on the FIRST
+    // movement instead of at a slop, so no ancestor scrollable is ever in
+    // a position to take the gesture away — see [axis_bar_gesture].
+    // T11: this press is the slider's — the claim and the recogniser in
+    // one box ([OwningAxisGrip]). ↩️They were written here by hand, a
+    // [DragVerbClaim] over a detector, as the splitter wore the pair.
+    return _withHands(
+      _FieldSliderGrip(
         axis: widget.axis,
         configure: _configureDrag,
-        child: bar,
-      ),
-    );
-    final claimed = Semantics(
-      // 🚨ITS OWN SEMANTICS BOUNDARY (2026-09-26). A value that changes lays
-      // its writing out again, and every layout re-walks the nearest
-      // boundary's whole share of the semantics tree — without one here that
-      // was the panel's scroll view, about a thousand nodes for one number.
-      // The bar was a node of its own already; this stops the walk at it.
-      container: true,
-      slider: true,
-      label: widget.label,
-      value: valueText,
-      child: Listener(
-        // What is left here is the WHEEL. The raw travel this used to
-        // track went with the workaround that read it.
-        //
+        cursor: _vertical
+            ? SystemMouseCursors.resizeUpDown
+            : SystemMouseCursors.resizeLeftRight,
+        // 🚨ITS OWN SEMANTICS BOUNDARY (2026-09-26). A value that changes
+        // lays its writing out again, and every layout re-walks the nearest
+        // boundary's whole share of the semantics tree — without one here
+        // that was the panel's scroll view, about a thousand nodes for one
+        // number. The bar was a node of its own already; this stops the
+        // walk at it.
+        semantics: SemanticsProperties(
+          slider: true,
+          label: widget.label,
+          value: valueText,
+        ),
         // H23: registered rather than handled, so the notch this bar takes
         // is not also taken by the canvas layer above it.
-        onPointerSignal: (event) =>
+        onWheel: (event) =>
             handleWheelUnlessScrolling(event, context, _handleWheel),
         child: bar,
       ),
     );
-    return _withHands(claimed);
   }
 
   /// [bar] with its hands beside it — the +/− pair and the pencil
@@ -1344,12 +1339,11 @@ class _FieldSliderWriting extends StatelessWidget {
     final labelStyle = Theme.of(context).textTheme.labelSmall;
     final row = GroundInkWriting(
       runs: runs,
-      builder: (context, ink) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: FieldSlider.inset),
-        child: _rowIn(
-          value: valueStyle?.merge(ink) ?? ink,
-          label: labelStyle?.merge(ink) ?? ink,
-        ),
+      padding: const EdgeInsets.symmetric(horizontal: FieldSlider.inset),
+      alignment: _rowAt,
+      builder: (context, ink) => _rowIn(
+        value: valueStyle?.merge(ink) ?? ink,
+        label: labelStyle?.merge(ink) ?? ink,
       ),
     );
     return bar.axis == Axis.vertical
@@ -1357,25 +1351,29 @@ class _FieldSliderWriting extends StatelessWidget {
         : row;
   }
 
+  /// Where [_rowIn]'s row stands in the track: the number alone in the
+  /// middle, a grid's number at the end — and the name and the number
+  /// across the whole of it.
+  Alignment? get _rowAt => bar.label == null
+      ? Alignment.center
+      : bar.nameInside
+      ? null
+      : Alignment.centerRight;
+
   /// The row in one ink: the number in [value], the name in [label].
   Widget _rowIn({required TextStyle value, required TextStyle label}) {
     if (bar.label == null) {
-      return Center(
-        child: Text(
-          valueText,
-          maxLines: 1,
-          overflow: TextOverflow.clip,
-          style: value,
-        ),
+      return Text(
+        valueText,
+        maxLines: 1,
+        overflow: TextOverflow.clip,
+        style: value,
       );
     }
     if (!bar.nameInside) {
       // A grid's bar: the name stands in the row, the number where a
       // named bar writes it.
-      return Align(
-        alignment: Alignment.centerRight,
-        child: Text(valueText, maxLines: 1, style: value),
-      );
+      return Text(valueText, maxLines: 1, style: value);
     }
     return Row(
       children: [
@@ -1916,5 +1914,111 @@ class RenderFieldSliderTrack extends RenderSuperellipseClip {
   void dispose() {
     _framePainter?.dispose();
     super.dispose();
+  }
+}
+
+/// What a hand and a screen reader meet of a live bar, as ONE box: the
+/// grip's press ([OwningAxisGrip]), the resize cursor, the wheel's notch and
+/// the slider's node.
+///
+/// 🪶WHY (card frame-panels-build-in-one-frame, 2026-10-28): those were a
+/// [Semantics], a [Listener] and a [MouseRegion] stood over the grip — four
+/// elements and four render objects for every live bar, made again for each
+/// bar a tab reopens (a rail row's opacity is one). The box says what each
+/// said, the way each said it: the node is [Semantics]' own code
+/// ([SemanticsAnnotationsMixin]), and the cursor and the notch are offered
+/// where the region and the listener offered them — the box is the press
+/// area all three covered.
+class _FieldSliderGrip extends OwningAxisGrip {
+  const _FieldSliderGrip({
+    required super.axis,
+    required super.configure,
+    required this.cursor,
+    required this.semantics,
+    required this.onWheel,
+    required super.child,
+  });
+
+  final MouseCursor cursor;
+
+  /// The slider's node — a boundary of its own ([_FieldSliderState.build]).
+  final SemanticsProperties semantics;
+
+  final PointerSignalEventListener onWheel;
+
+  @override
+  _RenderFieldSliderGrip createRenderObject(BuildContext context) =>
+      _RenderFieldSliderGrip(
+          cursor: cursor,
+          semantics: semantics,
+          textDirection: Directionality.maybeOf(context),
+          onWheel: onWheel,
+        )
+        ..wear(this);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    covariant _RenderFieldSliderGrip renderObject,
+  ) {
+    super.updateRenderObject(context, renderObject);
+    renderObject
+      ..cursor = cursor
+      ..properties = semantics
+      ..textDirection = Directionality.maybeOf(context)
+      ..onWheel = onWheel;
+  }
+}
+
+class _RenderFieldSliderGrip extends RenderOwningAxisGrip
+    with SemanticsAnnotationsMixin
+    implements MouseTrackerAnnotation {
+  _RenderFieldSliderGrip({
+    required MouseCursor cursor,
+    required SemanticsProperties semantics,
+    required TextDirection? textDirection,
+    required this.onWheel,
+  }) : _cursor = cursor {
+    // A bar's [Semantics] said only these: a boundary round its own node.
+    initSemanticsAnnotations(
+      properties: semantics,
+      container: true,
+      explicitChildNodes: false,
+      excludeSemantics: false,
+      blockUserActions: false,
+      localeForSubtree: null,
+      textDirection: textDirection,
+    );
+  }
+
+  PointerSignalEventListener onWheel;
+
+  @override
+  MouseCursor get cursor => _cursor;
+  MouseCursor _cursor;
+  set cursor(MouseCursor value) {
+    if (_cursor != value) {
+      _cursor = value;
+      // As [RenderMouseRegion]: a repaint is what makes the mouse tracker
+      // look for the new cursor.
+      markNeedsPaint();
+    }
+  }
+
+  @override
+  PointerEnterEventListener? get onEnter => null;
+
+  @override
+  PointerExitEventListener? get onExit => null;
+
+  @override
+  bool get validForMouseTracker => attached;
+
+  @override
+  void handleEvent(PointerEvent event, BoxHitTestEntry entry) {
+    super.handleEvent(event, entry);
+    if (event is PointerSignalEvent) {
+      onWheel(event);
+    }
   }
 }

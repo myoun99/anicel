@@ -10,7 +10,7 @@ import 'package:anicel/src/services/persistence/app_input_settings_store.dart';
 import 'package:anicel/src/services/persistence/app_pixel_verb_settings_store.dart';
 import 'package:anicel/src/ui/dialogs/preferences_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/widgets/owning_axis_grip.dart';
+import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/session/editor_app_settings.dart';
 import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart';
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
@@ -112,7 +112,7 @@ void main() {
 
   Finder barOf(String key) => find.descendant(
     of: find.byKey(ValueKey<String>(key)),
-    matching: find.byType(OwningAxisGrip),
+    matching: find.byType(FieldSliderTrack),
   );
 
   testWidgets('the pressure curve bent in Preferences is the one the next '

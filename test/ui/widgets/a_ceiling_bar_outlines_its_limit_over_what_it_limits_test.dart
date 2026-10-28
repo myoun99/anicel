@@ -2,7 +2,6 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/theme/text_on_ground.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/ground_ink_writing.dart';
-import 'package:anicel/src/ui/widgets/owning_axis_grip.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -42,7 +41,7 @@ void main() {
 
   final track = find.descendant(
     of: find.byType(FieldSlider),
-    matching: find.byType(OwningAxisGrip),
+    matching: find.byType(FieldSliderTrack),
   );
 
   testWidgets('the levels fill from the left, a later one over an earlier, '

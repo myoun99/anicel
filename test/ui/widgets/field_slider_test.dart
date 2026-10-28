@@ -6,7 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/theme/text_on_ground.dart';
-import 'package:anicel/src/ui/widgets/owning_axis_grip.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/ground_ink_writing.dart';
 
@@ -19,7 +18,7 @@ void main() {
   /// bar, and this is how.
   Finder trackOf(Key key) => find.descendant(
     of: find.byKey(key),
-    matching: find.byType(OwningAxisGrip),
+    matching: find.byType(FieldSliderTrack),
   );
   const trackWidth = 200.0;
 
@@ -1044,17 +1043,17 @@ void main() {
           ),
         ),
       );
-      String? written() => tester
-          .widget<Semantics>(
+      // The number the bar writes — the last words in its track.
+      String written() => tester
+          .widgetList<RichText>(
             find.descendant(
-              of: find.byKey(sliderKey),
-              matching: find.byWidgetPredicate(
-                (w) => w is Semantics && w.properties.slider == true,
-              ),
+              of: find.byType(FieldSliderTrack),
+              matching: find.byType(RichText),
             ),
           )
-          .properties
-          .value;
+          .last
+          .text
+          .toPlainText();
       final before = layouts;
       final was = written();
 

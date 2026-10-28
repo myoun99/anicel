@@ -102,10 +102,14 @@ class OwningAxisGrip extends RecognizerBox<DragGestureRecognizer> {
   @override
   RenderRecognizerBox<DragGestureRecognizer> createRenderObject(
     BuildContext context,
-  ) => _RenderOwningAxisGrip()..wear(this);
+  ) => RenderOwningAxisGrip()..wear(this);
 }
 
 /// The grip's ONE box: the recogniser offered the down, then the claim
 /// ([HoldsDragVerb]) — the order the claim and the detector under it kept.
-class _RenderOwningAxisGrip extends RenderRecognizerBox<DragGestureRecognizer>
+///
+/// Open to a grip that is more than its press — the value bar's says its
+/// cursor, its wheel and its value too (`FieldSlider`) — so that one is
+/// this box and not boxes around it.
+class RenderOwningAxisGrip extends RenderRecognizerBox<DragGestureRecognizer>
     with HoldsDragVerb {}
