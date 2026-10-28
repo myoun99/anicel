@@ -15,9 +15,18 @@ abstract interface class PlaybackPictures {
   /// counts so a part is asked for once.
   Set<Object> partsToMake(DemandedPicture picture);
 
-  /// Whether making [picture] threw at the content it has now — it is not
-  /// waited for, nor made again until that content changes ([noteFailure]).
-  bool failed(DemandedPicture picture);
+  /// Where [picture] stands — there, never to come, or still to come — and
+  /// whether a cel it shows could not be read at the content it has now:
+  /// what a run asks before it goes on and what the ruler's bar paints, off
+  /// ONE reading of the frame.
+  ///
+  /// 🪶WHY ONE (card frame-panels-build-in-one-frame, 2026-10-28): a
+  /// frame's key is its stack walked and signed, and [has] and then a
+  /// separate "did it fail" walked it twice for every frame still to come —
+  /// the storyboard's bar asks it of every span of the film whenever the
+  /// panel is shown again — and the bar walked the stack a third time for
+  /// its red.
+  PictureStanding standingOf(DemandedPicture picture);
 
   /// Remembers that making [picture] threw at the content it has now.
   void noteFailure(DemandedPicture picture);
@@ -49,3 +58,21 @@ abstract interface class PlaybackPictures {
     bool Function() due = notDue,
   });
 }
+
+/// Where a frame's picture is ([PlaybackPictures.standingOf]).
+enum PictureState {
+  /// There to show.
+  there,
+
+  /// Never to come: making it threw at the content it has now — it is not
+  /// waited for, nor made again until that content changes
+  /// ([PlaybackPictures.noteFailure]).
+  gaveUp,
+
+  /// Still to be made.
+  toCome,
+}
+
+/// Where a frame's picture is, and whether a cel it shows could not be
+/// read at the content it has now ([PlaybackPictures.standingOf]).
+typedef PictureStanding = ({PictureState state, bool cannotRead});

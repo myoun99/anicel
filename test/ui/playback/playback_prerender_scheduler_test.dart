@@ -1491,12 +1491,12 @@ void main() {
           reason: 'frame 1 is laid without the cel that would not read',
         );
         expect(
-          pictures.cannotRead((
+          pictures.standingOf((
             cut: four(),
             frameIndex: 1,
             paintPaper: true,
             ghosts: false,
-          )),
+          )).cannotRead,
           isTrue,
         );
         expect(reported, hasLength(1), reason: 'the failure is said, once');

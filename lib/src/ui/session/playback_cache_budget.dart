@@ -4,6 +4,7 @@ import '../../services/playback/cut_composite_structure.dart';
 import '../../services/playback/frame_demand.dart';
 import '../playback/playback_cache_budget.dart';
 import '../playback/frame_pictures.dart';
+import '../playback/playback_pictures.dart' show PictureState;
 import '../playback/canvas_playback_controller.dart';
 import '../playback/playback_prerender_scheduler.dart' show PictureRoom;
 import '../timeline/timeline_ruler_cursor_overlay.dart' show ReadyRun;
@@ -214,14 +215,14 @@ class PlaybackCacheBudget implements PictureRoom, HeldNodesLine {
   ///
   /// 🚨A BAR COUNTS WHAT ITS RUN SHOWS (playback-plays-the-screen-material):
   /// a span is ready when the pictures every screen shows a frame from are —
-  /// the question a run asks before it goes on ([FramePictures.has]) asked
-  /// of the span's first frame. ↩️The film's bar — the storyboard's — counted
-  /// composites while the film played on them.
+  /// the question a run asks before it goes on ([FramePictures.standingOf])
+  /// asked of the span's first frame. ↩️The film's bar — the storyboard's —
+  /// counted composites while the film played on them.
   ///
   /// 🗣️AND A SPAN WITH A CEL THAT COULD NOT BE READ IS READY RED
   /// (frame-picture-indicator-Q1 b) once the run waits for no more of it:
-  /// its picture is made without that cel ([FramePictures.cannotRead]), or
-  /// nothing more of it is to come ([FramePictures.failed]) — it plays
+  /// its picture is made without that cel ([PictureState.there]), or
+  /// nothing more of it is to come ([PictureState.gaveUp]) — it plays
   /// without that cel. ↩️The bar asked only whether the span's pictures
   /// were there, and such a span was never painted at all — the run going
   /// on past it said nothing anywhere.
@@ -248,12 +249,9 @@ class PlaybackCacheBudget implements PictureRoom, HeldNodesLine {
         // A run shows no ghosts.
         ghosts: false,
       );
-      final bool unreadable;
-      if (pictures.has(picture)) {
-        unreadable = pictures.cannotRead(picture);
-      } else if (pictures.failed(picture) && pictures.cannotRead(picture)) {
-        unreadable = true;
-      } else {
+      final (:state, cannotRead: unreadable) = pictures.standingOf(picture);
+      if (state == PictureState.toCome ||
+          (state == PictureState.gaveUp && !unreadable)) {
         continue;
       }
       final last = runs.isEmpty ? null : runs.last;

@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/ui/playback/playback_pictures.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import 'package:anicel/src/ui/quiet_turns.dart';
 
@@ -101,18 +102,22 @@ void main() {
     String? blank,
     CanvasSize? drawnAt,
     QuietTurns? quietTurns,
+    void Function()? onWalk,
   }) {
     final store = FramePictureStore<FramePictureKey>();
     addTearDown(store.dispose);
     return FramePictures(
       store: store,
       layerImages: images,
-      stackOf: (picture) => [
-        if (blank != null) row(blank),
-        if (picture.frameIndex < 2 || (both && picture.frameIndex == 3))
-          row('a'),
-        if (picture.frameIndex >= 2) row('b'),
-      ],
+      stackOf: (picture) {
+        onWalk?.call();
+        return [
+          if (blank != null) row(blank),
+          if (picture.frameIndex < 2 || (both && picture.frameIndex == 3))
+            row('a'),
+          if (picture.frameIndex >= 2) row('b'),
+        ];
+      },
       pageOf: (picture) => (
         canvasSize: drawnAt ?? picture.cut.canvasSize,
         pasteboardReach: PasteboardReach.whole,
@@ -258,8 +263,11 @@ void main() {
       );
       expect(images.unreadable.has(keyOf('a')), isTrue);
       expect(pictures.has(at(3)), isTrue, reason: 'b is in it');
-      expect(pictures.cannotRead(at(3)), isTrue, reason: 'the bar reads red');
-      expect(pictures.failed(at(3)), isFalse, reason: 'it is there');
+      expect(
+        pictures.standingOf(at(3)),
+        (state: PictureState.there, cannotRead: true),
+        reason: 'it is there, and the bar reads red',
+      );
       expect(
         pictures.keyOf(at(3)),
         pictures.keyOf(at(2)),
@@ -268,8 +276,8 @@ void main() {
 
       pictures.noteFailure(at(3));
       expect(
-        pictures.failed(at(3)),
-        isFalse,
+        pictures.standingOf(at(3)).state,
+        PictureState.there,
         reason: '⛔the walk notes the throw it was handed: a frame that is '
             'there is no failure',
       );
@@ -342,11 +350,15 @@ void main() {
     final pictures = picturesOf(images);
 
     pictures.noteFailure(at(0));
-    expect(pictures.failed(at(0)), isTrue);
-    expect(pictures.failed(at(1)), isTrue, reason: 'the same frame');
+    expect(pictures.standingOf(at(0)).state, PictureState.gaveUp);
+    expect(
+      pictures.standingOf(at(1)).state,
+      PictureState.gaveUp,
+      reason: 'the same frame',
+    );
     expect(pictures.partsToMake(at(0)), isEmpty);
     expect(pictures.gaveUpAt(pictures.keyOf(at(0))), isTrue);
-    expect(pictures.failed(at(2)), isFalse);
+    expect(pictures.standingOf(at(2)).state, PictureState.toCome);
 
     // Ink where a has none: its content moves.
     inkCelIn(
@@ -358,8 +370,41 @@ void main() {
       tipShape: BrushTipShape.square,
       tileSize: tileSize,
     );
-    expect(pictures.failed(at(0)), isFalse, reason: 'a was drawn on');
+    expect(
+      pictures.standingOf(at(0)).state,
+      PictureState.toCome,
+      reason: 'a was drawn on',
+    );
     expect(pictures.partsToMake(at(0)), {pictures.keyOf(at(0))});
+  });
+
+  // 🪶Card frame-panels-build-in-one-frame (2026-10-28): the storyboard's
+  // bar asks this of every span of the film each time the panel is shown
+  // again — asked as there, then failed, then red, it walked a frame's
+  // stack two or three times.
+  testWidgets('where a frame stands, and its red, are read off ONE walk of '
+      'its stack — there, given up on or still to come', (tester) async {
+    await tester.runAsync(() async {
+      final images = LayerFrameImageCache(frameStore: storeOf(['a', 'b']));
+      addTearDown(images.dispose);
+      var walks = 0;
+      final pictures = picturesOf(images, onWalk: () => walks += 1);
+      expect(await pictures.make(at(2), shouldAbort: () => false), isTrue);
+      pictures.noteFailure(at(0));
+
+      for (final (picture, state) in [
+        (at(2), PictureState.there),
+        (at(0), PictureState.gaveUp),
+        (at(2, paintPaper: false), PictureState.toCome),
+      ]) {
+        walks = 0;
+        expect(
+          pictures.standingOf(picture),
+          (state: state, cannotRead: false),
+        );
+        expect(walks, 1, reason: '$state');
+      }
+    });
   });
 
   testWidgets('an interrupted making lands nothing and says so', (
@@ -372,7 +417,11 @@ void main() {
 
       expect(await pictures.make(at(0), shouldAbort: () => true), isFalse);
       expect(pictures.has(at(0)), isFalse);
-      expect(pictures.failed(at(0)), isFalse, reason: 'not a failure');
+      expect(
+        pictures.standingOf(at(0)).state,
+        PictureState.toCome,
+        reason: 'not a failure',
+      );
     });
   });
 
@@ -485,7 +534,11 @@ void main() {
 
         expect(await making, isFalse);
         expect(pictures.has(at(0)), isFalse);
-        expect(pictures.failed(at(0)), isFalse, reason: 'not a failure');
+        expect(
+          pictures.standingOf(at(0)).state,
+          PictureState.toCome,
+          reason: 'not a failure',
+        );
       });
     });
 

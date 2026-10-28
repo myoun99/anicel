@@ -243,7 +243,7 @@ class FramePictures implements PlaybackPictures {
   bool drawsOnlyItsPage(FramePictureKey key) => key.signature.nodes.isEmpty;
 
   /// Whether the making of [key]'s frame threw, and nothing more of it is
-  /// to come ([failed]).
+  /// to come ([PictureState.gaveUp]).
   bool gaveUpAt(FramePictureKey key) =>
       !_isThere(key) && _gaveNothing.containsKey(key);
 
@@ -269,8 +269,23 @@ class FramePictures implements PlaybackPictures {
     return _isThere(key) || _gaveNothing.containsKey(key) ? {} : {key};
   }
 
+  /// The frame's key and its red off one walk of its stack: a cel it shows
+  /// that could not be read at the content it has now
+  /// ([LayerFrameImageCache.unreadable]) — the ruler's bar paints the frame
+  /// red, as it plays without that cel.
   @override
-  bool failed(DemandedPicture picture) => gaveUpAt(keyOf(picture));
+  PictureStanding standingOf(DemandedPicture picture) {
+    final nodes = stackOf(picture);
+    final key = keyOfStack(nodes, picture);
+    return (
+      state: _isThere(key)
+          ? PictureState.there
+          : _gaveNothing.containsKey(key)
+          ? PictureState.gaveUp
+          : PictureState.toCome,
+      cannotRead: stackedCelsOf(nodes).any(layerImages.unreadable.has),
+    );
+  }
 
   /// ⚠️Not where the frame is there: a cel's throw is handed on once the
   /// frame is laid without it ([make]), and the picture laid is no failure.
@@ -281,12 +296,6 @@ class FramePictures implements PlaybackPictures {
       _gaveNothing.keep(key, true);
     }
   }
-
-  /// Whether a cel [picture] shows could not be read at the content it has
-  /// now ([LayerFrameImageCache.unreadable]) — the ruler's bar paints the
-  /// frame red, as it plays without that cel.
-  bool cannotRead(DemandedPicture picture) =>
-      stackedCelsOf(stackOf(picture)).any(layerImages.unreadable.has);
 
   /// What the picture will weigh: the picture the store lays of its
   /// drawing's extent ([pictureExtentOf]), where every cel it draws is in

@@ -158,10 +158,10 @@ class PlaybackPrerenderScheduler {
 
   /// ⛔A picture that already threw at this exact content is not missing:
   /// nothing about it changed, and the open blocks — so it is not paid for
-  /// again ([PlaybackPictures.failed]).
+  /// again ([PictureState.gaveUp]).
   DemandedPicture? _firstMissing(List<DemandedPicture> shown) {
     for (final picture in shown) {
-      if (!pictures.has(picture) && !pictures.failed(picture)) {
+      if (pictures.standingOf(picture).state == PictureState.toCome) {
         return picture;
       }
     }
