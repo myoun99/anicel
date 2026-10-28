@@ -55,12 +55,11 @@ ConteSheetSource buildConteSheetSource(Project project) {
         name: entry.cut.name,
         cells: cellsOf[index],
         endFrame: entry.endFrame,
-        dialogue: _dialogueOf(
-          track,
-          entry.cut.id,
-          cutStart: entry.startFrame,
+        dialogue: _dialogueOf(track, (
+          id: entry.cut.id,
+          start: entry.startFrame,
           panels: panels[index],
-        ),
+        )),
         cameraFrameSize: project.cameraSize,
       ),
     );
@@ -246,6 +245,10 @@ typedef _FrameSpan = ({int start, int end});
 /// or null where the track has none there: its ends, a gap between cuts.
 typedef _Panel = ({_FrameSpan span, _FrameSpan? before, _FrameSpan? after});
 
+/// A cut as its dialogue column reads it: its id, the track frame it
+/// starts on, and its panels.
+typedef _CutPanels = ({CutId id, int start, List<_Panel> panels});
+
 /// The panels of each cut of [layout] on its track's frames, cells
 /// [cellsOf] — a cut's first panel stands next to the one before it on the
 /// track, in the cut before.
@@ -305,80 +308,73 @@ List<List<_Panel>> _panelsOnTheirTracks(
 /// whose frame it holds; it opens on the speaker where the panel before
 /// wrote none of the line, and closes where the panel after writes none.
 /// ↩️Every cut the block reached wrote the whole line, in its first panel.
-List<ConteDialogueLine> _dialogueOf(
-  Track track,
-  CutId cutId, {
-  required int cutStart,
-  required List<_Panel> panels,
-}) {
-  if (panels.isEmpty) {
+List<ConteDialogueLine> _dialogueOf(Track track, _CutPanels cut) {
+  if (cut.panels.isEmpty) {
     return const [];
   }
-  final lines = <ConteDialogueLine>[];
-  for (final layer in track.seLayers) {
-    if (!layerPrintsSheetLines(layer)) {
+  return [
+    for (final layer in track.seLayers)
+      if (layerPrintsSheetLines(layer))
+        for (final block in drawingBlocks(layer.timeline))
+          if (frameRangesOverlap(
+            block.startIndex,
+            block.endIndexExclusive,
+            cut.panels.first.span.start,
+            cut.panels.last.span.end,
+          ))
+            ..._partsOf(layer, block, cut),
+  ]..sort((a, b) => a.startFrame.compareTo(b.startFrame));
+}
+
+/// What [cut]'s panels write of the line [block] of [layer] carries — each
+/// the glyphs whose frame it holds, at the frame its first one stands on.
+Iterable<ConteDialogueLine> _partsOf(
+  Layer layer,
+  TimelineDrawingBlock block,
+  _CutPanels cut,
+) sync* {
+  final frame = layer.frameById(block.frameId);
+  final glyphs = (frame?.name ?? '').characters.toList(growable: false);
+  if (frame == null || glyphs.isEmpty) {
+    return;
+  }
+  final slots = dialogueGlyphSlots(
+    glyphCount: glyphs.length,
+    frames: block.length,
+    mainExtent: block.length.toDouble(),
+    spacing: frame.seSpacing,
+  );
+
+  /// The glyphs [span] holds, or null where none of them shows.
+  ({int first, String text})? partIn(_FrameSpan? span) {
+    if (span == null) {
+      return null;
+    }
+    final shown = dialogueGlyphsShownIn(
+      slots,
+      from: (span.start - block.startIndex).toDouble(),
+      to: (span.end - block.startIndex).toDouble(),
+    );
+    final text = glyphs.sublist(shown.first, shown.end).join();
+    return text.trim().isEmpty ? null : (first: shown.first, text: text);
+  }
+
+  for (final panel in cut.panels) {
+    final part = partIn(panel.span);
+    if (part == null) {
       continue;
     }
-    for (final block in drawingBlocks(layer.timeline)) {
-      if (!frameRangesOverlap(
-        block.startIndex,
-        block.endIndexExclusive,
-        panels.first.span.start,
-        panels.last.span.end,
-      )) {
-        continue;
-      }
-      final frame = layer.frames
-          .where((f) => f.id == block.frameId)
-          .firstOrNull;
-      final glyphs = (frame?.name ?? '').characters.toList(growable: false);
-      if (frame == null || glyphs.isEmpty) {
-        continue;
-      }
-      final slots = dialogueGlyphSlots(
-        glyphCount: glyphs.length,
-        frames: block.length,
-        mainExtent: block.length.toDouble(),
-        spacing: frame.seSpacing,
-      );
-
-      /// The glyphs [span] holds, or null where none of them shows.
-      ({int first, String text})? partIn(_FrameSpan? span) {
-        if (span == null) {
-          return null;
-        }
-        final shown = dialogueGlyphsShownIn(
-          slots,
-          from: (span.start - block.startIndex).toDouble(),
-          to: (span.end - block.startIndex).toDouble(),
-        );
-        final text = glyphs.sublist(shown.first, shown.end).join();
-        return text.trim().isEmpty ? null : (first: shown.first, text: text);
-      }
-
-      for (final panel in panels) {
-        final part = partIn(panel.span);
-        if (part == null) {
-          continue;
-        }
-        final standsOn =
-            block.startIndex + slots[part.first].cellStart.floor() - cutStart;
-        lines.add(
-          ConteDialogueLine(
-            startFrame: standsOn.clamp(
-              panel.span.start - cutStart,
-              panel.span.end - cutStart - 1,
-            ),
-            text: part.text,
-            speaker: frame.seName ?? '',
-            delivery: frame.seTypes.inCut(cutId),
-            opens: partIn(panel.before) == null,
-            closes: partIn(panel.after) == null,
-          ),
-        );
-      }
-    }
+    final first = slots[part.first];
+    yield ConteDialogueLine(
+      // The frame its centre stands on: the one the panel holds it by.
+      startFrame:
+          (block.startIndex + first.cellStart + first.cellExtent / 2).floor() -
+          cut.start,
+      text: part.text,
+      speaker: frame.seName ?? '',
+      delivery: frame.seTypes.inCut(cut.id),
+      opens: partIn(panel.before) == null,
+      closes: partIn(panel.after) == null,
+    );
   }
-  lines.sort((a, b) => a.startFrame.compareTo(b.startFrame));
-  return lines;
 }

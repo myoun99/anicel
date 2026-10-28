@@ -26,11 +26,11 @@ import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
 /// Read off the sheet's builder: what each cut's dialogue column writes, as
 /// (the frame it stands on, what it prints).
 void main() {
-  /// A cut of twelve frames, its storyboard row divided at [divisions].
-  Cut cut(String id, List<int> divisions) => Cut(
+  /// A cut of [duration] frames, its storyboard row divided at [divisions].
+  Cut cut(String id, List<int> divisions, {int duration = 12}) => Cut(
     id: CutId(id),
     name: id,
-    duration: 12,
+    duration: duration,
     canvasSize: const CanvasSize(width: 640, height: 360),
     layers: [
       Layer(
@@ -46,7 +46,9 @@ void main() {
             start: TimelineExposure.drawing(
               FrameId('$id-$start'),
               length:
-                  (index + 1 < divisions.length ? divisions[index + 1] : 12) -
+                  (index + 1 < divisions.length
+                      ? divisions[index + 1]
+                      : duration) -
                   start,
             ),
         },
@@ -137,6 +139,46 @@ void main() {
         [(0, 'A子「a」')],
         [(0, 'A子(OFF)「b'), (6, 'c」')],
       ],
+    );
+  });
+
+  test('a track\'s last panel has none after it on the next track — the '
+      'line closes there', () {
+    Track track(String id, Cut cut, List<Layer> se) =>
+        Track(id: TrackId(id), name: id, cuts: [cut], seLayers: se);
+    final line = Layer(
+      id: const LayerId('se'),
+      name: 'S1',
+      kind: LayerKind.se,
+      frames: [
+        Frame(
+          id: const FrameId('se-f'),
+          duration: 12,
+          strokes: const [],
+          name: 'ab',
+          seName: 'A子',
+          seSpacing: const SeDialogueSpacing(komaPerGlyph: 6),
+        ),
+      ],
+      timeline: {
+        0: const TimelineExposure.drawing(FrameId('se-f'), length: 12),
+      },
+    );
+    // The next track's one cut runs longer: its panel holds the frame the
+    // first track's ends on.
+    final longer = cut('c2', [0], duration: 24);
+    final project = Project(
+      id: const ProjectId('p'),
+      name: 'P',
+      createdAt: DateTime.utc(2026, 10, 29),
+      tracks: [
+        track('t1', cut('c1', [0]), [line]),
+        track('t2', longer, [line]),
+      ],
+    );
+    expect(
+      buildConteSheetSource(project).cuts.first.dialogue.single.printed,
+      'A子「ab」',
     );
   });
 

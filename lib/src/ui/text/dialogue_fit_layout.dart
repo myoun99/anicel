@@ -32,8 +32,10 @@ typedef DialogueGlyphSlot = ({
 /// [frames] is how many frames the block runs over [mainExtent]. Glyphs
 /// too many for the frames after the offset share those evenly, each its
 /// cell no longer than its share, as every glyph shared the block before;
-/// an offset past the block stands on its last frame (「알아서 맡김」,
-/// F-496-Q2). Zero glyphs, or a block of no frames, have no slots.
+/// an offset past the block stands on its last frame — 「알아서 맡김」, then
+/// 🗣️F-496-Q2 (유저 2026-10-29): 「오프셋은 그대로, 남은 코마를 나눠
+/// 갖기」 over shrinking the offset with them. Zero glyphs, or a block of
+/// no frames, have no slots.
 List<DialogueGlyphSlot> dialogueGlyphSlots({
   required int glyphCount,
   required int frames,
