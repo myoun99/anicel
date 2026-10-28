@@ -163,11 +163,23 @@ void main() {
       expect(picked(named, 'b'), isNull, reason: 'the same row changes none');
     });
 
-    test('keys nothing where a key is written', () {
+    test('keys nothing where a key is written: no edit of keys reaches it', () {
       final named = picked([lens], 'b')!;
       expect(
         effectsWithLaneKeysWritten(named, laneId: laneId, frames: {3}),
         isNull,
+      );
+      // An edit that writes the lane back as it is says it wrote something
+      // on any lane it reaches — a number's.
+      final keysOf = effectLaneLens(laneId)!;
+      expect(keysOf.update(named, <U>(keys) => keys), isNull);
+      expect(
+        effectLaneLens(effectLaneId(named.single.id, 'blurRadius'))!.update(
+          named,
+          <U>(keys) => keys,
+        ),
+        isNotNull,
+        reason: 'fixture: a number\'s lane is reached',
       );
     });
 
