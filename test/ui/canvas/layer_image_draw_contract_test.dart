@@ -331,7 +331,14 @@ void main() {
 /// clamp repeats the edge of the image it is drawn with, and nothing of a
 /// part drawn from a larger one (10-28). Both at the identity, 1:1, owning
 /// `FilterQuality.none` on their own Paint.
-const int _knownRawDraws = 28;
+/// **29** on 2026-10-28 (onion-ghosts-in-place ②, 유저 2026-10-26 「보통
+/// 합성이 아닌 경우라도 최대한 극한으로 개선해보자」): +1 in
+/// playback/frame_pictures — a frame with its ghosts in place laid over its
+/// film (`_overTheFilm`): the film's texels, and the place the ghosts show
+/// drawn alone, each taken as they are in place of the canvas's
+/// (`BlendMode.src`), one texel to a pixel (`_inStead`). The 1:1 blit
+/// class, owning `FilterQuality.none` on its own Paint.
+const int _knownRawDraws = 29;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',

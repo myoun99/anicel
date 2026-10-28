@@ -212,6 +212,16 @@ List<CompositeNode<CanvasStackRow>> stackOfDrawnCels(
   bare: (row) => row,
 );
 
+/// [nodes] without their onion ghosts ([CanvasGhostImageRequest]): a frame
+/// with its ghosts in place as a run plays it — the film its picture is
+/// laid over (`FramePictures._make`).
+List<CompositeNode<CanvasStackRow>> stackWithoutGhosts(
+  List<CompositeNode<CanvasStackRow>> nodes,
+) => mapCompositeLeaves<CanvasStackRow, CanvasStackRow>(
+  nodes,
+  (row) => row is CanvasGhostImageRequest ? null : row,
+);
+
 /// A row of a stack as a frame's picture takes it: the cel it draws, and
 /// how.
 typedef _StackedCel = ({

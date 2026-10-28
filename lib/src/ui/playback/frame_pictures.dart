@@ -468,19 +468,20 @@ class FramePictures implements PlaybackPictures {
       return false;
     }
     final nodes = nodesOf();
-    // Laid over its film, a frame draws its nodes only where its ghosts
-    // show, and keeps none: a canvas that shows it holds them then
-    // ([holdNodesOf]).
-    final overTheFilm =
-        picture.ghosts == FrameGhosts.inPlace &&
-        store.holds(_filmOf(nodes, picture));
-    final keeps = keepsNodes && !overTheFilm;
+    // Laid over its film — the same tree without its ghosts, on the same
+    // page — a frame draws its nodes only where they show, and keeps none:
+    // a canvas that shows it holds them then ([holdNodesOf]).
+    final film = picture.ghosts == FrameGhosts.inPlace
+        ? keyOfStack(stackWithoutGhosts(nodes), picture)
+        : null;
+    final heldFilm = film != null && store.holds(film) ? film : null;
+    final keeps = keepsNodes && heldFilm == null;
     final made = drawingNow(nodes, picture, keepsNodes: keeps);
     // Asked once the drawing is: a cel it was made without is noted now.
     final key = keyOfStack(nodes, picture);
-    final drawing = overTheFilm
-        ? _overTheFilm(made.frame, _filmOf(nodes, picture))
-        : made.frame.drawing;
+    final drawing = heldFilm == null
+        ? made.frame.drawing
+        : _overTheFilm(made.frame, () => store.peek(heldFilm));
     if ((keepsNodes || !drawsOnlyItsPage(key)) &&
         !await _lay(
           key,
@@ -495,75 +496,6 @@ class FramePictures implements PlaybackPictures {
       Error.throwWithStackTrace(error, stack);
     }
     return true;
-  }
-
-  /// The key of the frame [nodes] stack for [picture] — one with its
-  /// ghosts in place — as a run plays it: the same tree without them
-  /// ([CanvasGhostImageRequest]).
-  FramePictureKey _filmOf(
-    List<CompositeNode<CanvasStackRow>> nodes,
-    DemandedPicture picture,
-  ) => keyOfStack(
-    mapCompositeLeaves<CanvasStackRow, CanvasStackRow>(
-      nodes,
-      (row) => row is CanvasGhostImageRequest ? null : row,
-    ),
-    (
-      cut: picture.cut,
-      frameIndex: picture.frameIndex,
-      paintPaper: picture.paintPaper,
-      ghosts: FrameGhosts.none,
-    ),
-  );
-
-  /// 🚨A FRAME WITH ITS GHOSTS IN PLACE IS LAID OVER ITS FILM
-  /// (onion-ghosts-in-place ②, 유저 2026-10-26 「보통 합성이 아닌 경우라도
-  /// 최대한 극한으로 개선해보자」): [frame]'s picture made of the picture of
-  /// [film] — the frame as a run plays it ([_filmOf]), held when its turn
-  /// comes — those texels as they are, and where the ghosts show
-  /// ([StackedFrame.whereTheGhostsShow]) a picture of that place alone,
-  /// drawn on nothing by the frame's own body, in their stead: what a
-  /// stroke's step writes into the picture it patches
-  /// ([FramePictureStore.patch]). So any blend, adjustment, folder or clip
-  /// over the ghosts alike — nothing is laid over a texel. Drawn whole where
-  /// the film is gone by then, or the ghosts cannot be told.
-  ///
-  /// Past the film's picture the frame holds nothing but its ghosts: a
-  /// frame covers its page and every row's buffer, spread and all
-  /// (`_LayerStackPaintPass._compositeExtent`), and the ghosts' place
-  /// covers theirs.
-  ///
-  /// 🔬Laid whole, S5_BA cut 352 (67 rows, 2436×1524, 10-28, Windows,
-  /// profile): the standing order warmed in 444–523 ms against 132–166 ms
-  /// with the ghosts on top — on the Surface Pro 11 3,635–3,759 ms against
-  /// 691–816 ms.
-  FrameDrawing _overTheFilm(StackedFrame frame, FramePictureKey film) {
-    final whole = frame.drawing;
-    return (
-      extent: whole.extent,
-      outside: whole.outside,
-      draw: (canvas) {
-        final under = store.peek(film);
-        final ghosts = frame.whereTheGhostsShow;
-        if (under == null || ghosts == null) {
-          whole.draw(canvas);
-          return;
-        }
-        canvas.drawImage(under.image, under.extent.topLeft, _inStead);
-        final place = _onTheCells(ghosts, pictureExtentOf(whole.extent));
-        if (place.isEmpty) {
-          return;
-        }
-        final alone = recordedOver(place, whole.draw);
-        final image = alone.toImageSync(
-          place.width.toInt(),
-          place.height.toInt(),
-        );
-        alone.dispose();
-        canvas.drawImage(image, place.topLeft, _inStead);
-        image.dispose();
-      },
-    );
   }
 
   /// Lays [key]'s picture of [drawing] in its turn ([make]); false where
@@ -729,12 +661,67 @@ class FramePictures implements PlaybackPictures {
   }
 }
 
-/// Texels taken as they are, one to a pixel — a picture laid over its film
-/// ([FramePictures._overTheFilm]), as a patch's take the place of the
-/// picture's.
-final ui.Paint _inStead = ui.Paint()
-  ..blendMode = ui.BlendMode.src
-  ..filterQuality = ui.FilterQuality.none;
+/// 🚨A FRAME WITH ITS GHOSTS IN PLACE IS LAID OVER ITS FILM
+/// (onion-ghosts-in-place ②, 유저 2026-10-26 「보통 합성이 아닌 경우라도
+/// 최대한 극한으로 개선해보자」): [frame]'s picture made of the picture of
+/// its [film] — the frame as a run plays it (`FramePictures._make`), held
+/// when its turn comes — those texels as they are, and where the ghosts
+/// show ([StackedFrame.whereTheGhostsShow]) a picture of that place alone,
+/// drawn on nothing by the frame's own body, in their stead: what a
+/// stroke's step writes into the picture it patches
+/// ([FramePictureStore.patch]). So any blend, adjustment, folder or clip
+/// over the ghosts alike — nothing is laid over a texel. Drawn whole where
+/// the film is gone by then, or the ghosts cannot be told.
+///
+/// Past the film's picture the frame holds nothing but its ghosts: a frame
+/// covers its page and every row's buffer, spread and all
+/// (`_LayerStackPaintPass._compositeExtent`), and the ghosts' place covers
+/// theirs.
+///
+/// 🔬Laid whole, S5_BA cut 352 (67 rows, 2436×1524, 10-28, Windows,
+/// profile): the standing order warmed in 444–523 ms against 132–166 ms
+/// with the ghosts on top — on the Surface Pro 11 3,635–3,759 ms against
+/// 691–816 ms.
+FrameDrawing _overTheFilm(StackedFrame frame, FramePicture? Function() film) {
+  final whole = frame.drawing;
+  return (
+    extent: whole.extent,
+    outside: whole.outside,
+    draw: (canvas) {
+      final under = film();
+      final ghosts = frame.whereTheGhostsShow;
+      if (under == null || ghosts == null) {
+        whole.draw(canvas);
+        return;
+      }
+      _inStead(canvas, under.image, under.extent.topLeft);
+      final place = _onTheCells(ghosts, pictureExtentOf(whole.extent));
+      if (place.isEmpty) {
+        return;
+      }
+      final alone = recordedOver(place, whole.draw);
+      final image = alone.toImageSync(
+        place.width.toInt(),
+        place.height.toInt(),
+      );
+      alone.dispose();
+      _inStead(canvas, image, place.topLeft);
+      image.dispose();
+    },
+  );
+}
+
+/// [image]'s texels laid at [at] as they are, one to a pixel, in place of
+/// what [canvas] holds there — as a patch's take the place of the
+/// picture's ([_overTheFilm]).
+void _inStead(ui.Canvas canvas, ui.Image image, ui.Offset at) =>
+    canvas.drawImage(
+      image,
+      at,
+      ui.Paint()
+        ..blendMode = ui.BlendMode.src
+        ..filterQuality = ui.FilterQuality.none,
+    );
 
 /// [place] out to the cells a blur reduces what it reads by
 /// ([blurReductionCell]), counted from [extent]'s corner — so a chain that
