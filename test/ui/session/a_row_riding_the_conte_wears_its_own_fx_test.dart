@@ -91,7 +91,7 @@ void main() {
       0: const TimelineExposure.drawing(FrameId('panel'), length: 12),
     },
     transformTrack: transform ?? positionAt(0, CanvasPoint(x: 400, y: 200)),
-    effects: [moved(conteBlur, EffectKind.blur, 'blurX')],
+    effects: [moved(conteBlur, EffectKind.blur, 'blurriness')],
   );
 
   Layer rider({
@@ -123,7 +123,7 @@ void main() {
       frames: cels.frames,
       timeline: cels.timeline,
       transformTrack: positionAt(0, CanvasPoint(x: 400, y: 200)),
-      effects: [moved(baseBlur, EffectKind.blur, 'blurX')],
+      effects: [moved(baseBlur, EffectKind.blur, 'blurriness')],
     );
   }
 

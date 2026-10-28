@@ -39,7 +39,8 @@ import '../../helpers/storyboard_host.dart';
 /// The conte row's head is the timeline's row, so its twirl opens the
 /// conte's lanes under it as the timeline's does: each lane drawn as the
 /// camera row's are, each cut's own conte over the cut's own frames. A row
-/// riding the conte has no lanes, as on the timeline.
+/// riding the conte wears its own fx (I-99), so it twirls its own lanes, as
+/// on the timeline.
 ///
 /// Cuts a [0, 12) and b [12, 24), each with a conte; a's Position keyed at
 /// its own 2 and 8, b's at 3. Four frames of gap, then c [28, 40), which has
@@ -182,15 +183,15 @@ void main() {
 
   group('the twirl', () {
     testWidgets('the conte head\'s twirl opens its lanes under the row, label '
-        'and strip on one line — and a row riding it has none', (
+        'and strip on one line — and a row riding it twirls its own', (
       tester,
     ) async {
       final session = await pumpPanel(tester, open: false);
       expect(laneStrip('transform-group'), findsNothing);
       expect(
         find.named('storyboard-lane-toggle-a-over'),
-        findsNothing,
-        reason: 'an attach row rides its base\'s lanes, as on the timeline',
+        findsOneWidget,
+        reason: 'a row riding the conte wears its own fx (I-99)',
       );
 
       await tester.tap(find.named('storyboard-lane-toggle-a-conte'));
@@ -204,6 +205,11 @@ void main() {
         session.railView.expandedLaneLayerIds.value,
         containsAll(const [LayerId('a-conte'), LayerId('b-conte')]),
         reason: 'the rows at its seat twirl as one',
+      );
+      expect(
+        session.railView.expandedLaneLayerIds.value,
+        isNot(contains(const LayerId('a-over'))),
+        reason: 'and the row riding it keeps its own twirl',
       );
     });
 
