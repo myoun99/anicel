@@ -1,7 +1,7 @@
-import 'dart:math' as math;
 import 'dart:ui' show Offset, Rect, Size;
 
 import 'package:flutter/foundation.dart' show listEquals;
+import 'package:flutter/widgets.dart' show StringCharacters;
 
 import '../../models/canvas_size.dart';
 import '../../models/camera_work_marks.dart'
@@ -14,15 +14,17 @@ import '../../models/layer.dart';
 import '../../models/layer_mark.dart';
 import '../../models/layer_process.dart';
 import '../../models/project.dart';
-import '../../models/se_line_type.dart';
 import '../../models/storyboard_coverage.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
 import '../../models/track.dart';
+import '../../models/track_id.dart';
 import '../../services/camera_frame_corners.dart'
     show cameraFramesBounds, cameraFramesShown;
 import '../../services/camera_path.dart' show CameraPath;
 import '../storyboard_layer_policy.dart';
+import '../text/dialogue_fit_layout.dart'
+    show dialogueGlyphSlots, dialogueGlyphsShownIn;
 import '../../models/storyboard_timeline_layout.dart';
 
 /// Reads a project as a conte sheet.
@@ -34,8 +36,16 @@ import '../../models/storyboard_timeline_layout.dart';
 /// authored anywhere but where it already lived.
 ConteSheetSource buildConteSheetSource(Project project) {
   final layout = buildStoryboardTimelineLayout(project);
+  final cellsOf = [
+    for (final entry in layout)
+      storyboardCoverageCells(
+        timeline: storyboardLayerForCut(entry.cut)?.timeline,
+        cutDuration: entry.cut.duration,
+      ),
+  ];
+  final panels = _panelsOnTheirTracks(layout, cellsOf);
   final cuts = <ConteCutSource>[];
-  for (final entry in layout) {
+  for (final (index, entry) in layout.indexed) {
     final track = project.tracks.firstWhere(
       (candidate) => candidate.id == entry.trackId,
     );
@@ -43,9 +53,14 @@ ConteSheetSource buildConteSheetSource(Project project) {
       _cutSource(
         cut: entry.cut,
         name: entry.cut.name,
-        startFrame: entry.startFrame,
+        cells: cellsOf[index],
         endFrame: entry.endFrame,
-        track: track,
+        dialogue: _dialogueOf(
+          track,
+          entry.cut.id,
+          cutStart: entry.startFrame,
+          panels: panels[index],
+        ),
         cameraFrameSize: project.cameraSize,
       ),
     );
@@ -71,16 +86,12 @@ ConteSheetSource buildConteSheetSource(Project project) {
 ConteCutSource _cutSource({
   required Cut cut,
   required String name,
-  required int startFrame,
+  required List<StoryboardCoverageCell> cells,
   required int endFrame,
-  required Track track,
+  required List<ConteDialogueLine> dialogue,
   required CanvasSize cameraFrameSize,
 }) {
   final storyboard = storyboardLayerForCut(cut);
-  final cells = storyboardCoverageCells(
-    timeline: storyboard?.timeline,
-    cutDuration: cut.duration,
-  );
   return ConteCutSource(
     cutId: cut.id,
     name: name,
@@ -95,7 +106,7 @@ ConteCutSource _cutSource({
           cameraFrameSize: cameraFrameSize,
         ),
     ],
-    dialogue: _dialogueOf(track, cut.id, startFrame, endFrame),
+    dialogue: dialogue,
   );
 }
 
@@ -227,19 +238,82 @@ ConteCameraKey _cameraKey(
   label: cameraKeyLabel(named, frameIndex),
 );
 
+/// Frames of a track, `[start, end)`.
+typedef _FrameSpan = ({int start, int end});
+
+/// One panel on its track's frames, and the panels either side of it — the
+/// one holding the frame before it and the one holding the frame after —
+/// or null where the track has none there: its ends, a gap between cuts.
+typedef _Panel = ({_FrameSpan span, _FrameSpan? before, _FrameSpan? after});
+
+/// The panels of each cut of [layout] on its track's frames, cells
+/// [cellsOf] — a cut's first panel stands next to the one before it on the
+/// track, in the cut before.
+List<List<_Panel>> _panelsOnTheirTracks(
+  List<StoryboardTimelineLayoutEntry> layout,
+  List<List<StoryboardCoverageCell>> cellsOf,
+) {
+  // Every panel in the order the layout lays them, track by track.
+  final all = [
+    for (final (cut, entry) in layout.indexed)
+      for (final cell in cellsOf[cut])
+        (
+          cut: cut,
+          track: entry.trackId,
+          span: (
+            start: entry.startFrame + cell.startIndex,
+            end: entry.startFrame + cell.endIndexExclusive,
+          ),
+        ),
+  ];
+  _FrameSpan? holding(int at, TrackId track, int frame) {
+    if (at < 0 || at >= all.length || all[at].track != track) {
+      return null;
+    }
+    final span = all[at].span;
+    return span.start <= frame && frame < span.end ? span : null;
+  }
+
+  final panels = [for (final _ in layout) <_Panel>[]];
+  for (final (at, panel) in all.indexed) {
+    panels[panel.cut].add((
+      span: panel.span,
+      before: holding(at - 1, panel.track, panel.span.start - 1),
+      after: holding(at + 1, panel.track, panel.span.end),
+    ));
+  }
+  return panels;
+}
+
 /// The cut's lines, read off the track's SE rows that print on paper
-/// ([layerPrintsSheetLines], F-345) and clipped to the cut — each in its
-/// delivery in [cutId] (F-386).
+/// ([layerPrintsSheetLines], F-345) — each in its delivery in [cutId]
+/// (F-386) — PANEL by panel.
 ///
 /// The SE block's frame NAME is the line and its `seName` is the speaker
 /// (design G) — the sheet reads them straight, which is why typing dialogue
 /// into the conte later writes an SE entry rather than a second field.
+///
+/// 🗣️F-501 (유저 2026-10-29): 「콘티용지패널에 들어가는 se는 컷별로 구분하는게
+/// 아니라 통일해서 패널별로 … 컷1 패널에 이름「ab / 컷2 패널에 cd」 즉
+/// 이어지면 앞의 이름이랑 대사 표시 글자가 안적힘 … 글자가 위치할때만임.
+/// 만약 블록 자체가 이어져있는데 해당 패널의 부분에만 띄어쓰기같은거로 인해
+/// 글자가 없으면 안적히고, 다음 패널에서 이름「 이게 다시 들어감. 왜냐
+/// 이전패널에서 한번 끊겼으니까」. A line is laid out ONCE over its whole
+/// block ([dialogueGlyphSlots], F-496 ③) and each panel is a window on it
+/// ([dialogueGlyphsShownIn]) — the cut by cut, half by half window the
+/// timesheet's SE column paints through (F-358). A panel writes the glyphs
+/// whose frame it holds; it opens on the speaker where the panel before
+/// wrote none of the line, and closes where the panel after writes none.
+/// ↩️Every cut the block reached wrote the whole line, in its first panel.
 List<ConteDialogueLine> _dialogueOf(
   Track track,
-  CutId cutId,
-  int startFrame,
-  int endFrame,
-) {
+  CutId cutId, {
+  required int cutStart,
+  required List<_Panel> panels,
+}) {
+  if (panels.isEmpty) {
+    return const [];
+  }
   final lines = <ConteDialogueLine>[];
   for (final layer in track.seLayers) {
     if (!layerPrintsSheetLines(layer)) {
@@ -249,28 +323,60 @@ List<ConteDialogueLine> _dialogueOf(
       if (!frameRangesOverlap(
         block.startIndex,
         block.endIndexExclusive,
-        startFrame,
-        endFrame,
+        panels.first.span.start,
+        panels.last.span.end,
       )) {
         continue;
       }
       final frame = layer.frames
           .where((f) => f.id == block.frameId)
           .firstOrNull;
-      final text = frame?.name ?? '';
-      if (text.isEmpty) {
+      final glyphs = (frame?.name ?? '').characters.toList(growable: false);
+      if (frame == null || glyphs.isEmpty) {
         continue;
       }
-      lines.add(
-        ConteDialogueLine(
-          // Clipped: a line that began in an earlier cut still belongs to
-          // this cut's first cell.
-          startFrame: math.max(0, block.startIndex - startFrame),
-          text: text,
-          speaker: frame?.seName ?? '',
-          delivery: frame?.seTypes.inCut(cutId) ?? SeLineType.on,
-        ),
+      final slots = dialogueGlyphSlots(
+        glyphCount: glyphs.length,
+        frames: block.length,
+        mainExtent: block.length.toDouble(),
+        spacing: frame.seSpacing,
       );
+
+      /// The glyphs [span] holds, or null where none of them shows.
+      ({int first, String text})? partIn(_FrameSpan? span) {
+        if (span == null) {
+          return null;
+        }
+        final shown = dialogueGlyphsShownIn(
+          slots,
+          from: (span.start - block.startIndex).toDouble(),
+          to: (span.end - block.startIndex).toDouble(),
+        );
+        final text = glyphs.sublist(shown.first, shown.end).join();
+        return text.trim().isEmpty ? null : (first: shown.first, text: text);
+      }
+
+      for (final panel in panels) {
+        final part = partIn(panel.span);
+        if (part == null) {
+          continue;
+        }
+        final standsOn =
+            block.startIndex + slots[part.first].cellStart.floor() - cutStart;
+        lines.add(
+          ConteDialogueLine(
+            startFrame: standsOn.clamp(
+              panel.span.start - cutStart,
+              panel.span.end - cutStart - 1,
+            ),
+            text: part.text,
+            speaker: frame.seName ?? '',
+            delivery: frame.seTypes.inCut(cutId),
+            opens: partIn(panel.before) == null,
+            closes: partIn(panel.after) == null,
+          ),
+        );
+      }
     }
   }
   lines.sort((a, b) => a.startFrame.compareTo(b.startFrame));

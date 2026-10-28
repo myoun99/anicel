@@ -401,10 +401,10 @@ double _fieldScale(
   ].reduce(math.min);
 }
 
-/// The lines that START in [cell]'s span, in the sheet's printed shape —
-/// the ONE reading both renderers (panel painter and PDF writer) share.
-/// Dialogue is the SE blocks' (design G), so a cell prints whatever was
-/// said while it was on screen.
+/// The lines [cell] writes — the parts of them standing on its frames
+/// (F-501) — in the sheet's printed shape: the ONE reading both renderers
+/// (panel painter and PDF writer) share. Dialogue is the SE blocks'
+/// (design G), so a cell prints whatever was said while it was on screen.
 String contePrintedDialogueFor(ConteSheetSource source, ContePlacedCell cell) {
   for (final cut in source.cuts) {
     if (cut.cutId.value != cell.cutId) {
