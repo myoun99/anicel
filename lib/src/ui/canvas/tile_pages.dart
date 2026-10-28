@@ -65,6 +65,8 @@ final class TileSlot extends TilePicture {
 /// door writes the bytes straight into the slot instead: 🔬on the Windows
 /// app (GLES, profile) 58 µs a tile against 70 µs for the door's own
 /// upload of the same tiles, and no texture of the tile's own at any time.
+/// (↩️10-29's probe of 400 new tiles read a submit a tile dearer than the
+/// door — the writes are submitted together since, below.)
 ///
 /// ⛔NOTHING WAITS FOR THE WRITE. The slot is drawn the moment it is handed
 /// out; the GPU takes the write before any draw recorded after it, in its
