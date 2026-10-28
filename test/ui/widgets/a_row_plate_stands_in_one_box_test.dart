@@ -318,6 +318,8 @@ void main() {
       (('row', end, 160), ('column', EdgeInsets.zero, 160)),
       (('none', EdgeInsets.zero, 160), ('row', end, 120)),
       (('column', EdgeInsets.zero, 120), ('none', end, 160)),
+      // Its size alone — a row whose words grew.
+      (('row', end, 160), ('row', end, 120)),
     ];
     for (final (from, to) in changes) {
       await tester.pumpWidget(const SizedBox());
