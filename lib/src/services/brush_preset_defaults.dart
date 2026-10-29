@@ -649,7 +649,15 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       curves: _randomRows(roundness: 0.45),
       angleJitter: 0.5,
       dualMask: grainBrushTipMask,
-      dualMaskScale: 0.5,
+      // 🎨THE SECOND TIP IS A STROKE OF ITS OWN (an-imported-pencil-drops-
+      // its-second-brush-Q3, 10-29): its stamps pile on a plane of their
+      // own, so laid as close as the first tip's they fill it and the grain
+      // is gone. As big as the tip, half a tip apart and each turned at
+      // random, the grain stays — the six dual brushes' before and after
+      // are on that card.
+      dualMaskScale: 1.2,
+      dualSpacing: 0.5,
+      dualAngleJitter: 1.0,
       dualDensity: 0.6,
     ),
   ),
@@ -786,9 +794,14 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       flow: 0.95,
       spacing: 0.05,
       // The break in the line is the dual tip, not the flow: a hard nib
-      // running out of ink skips, it does not fade.
+      // running out of ink skips, it does not fade. Thrown a third of a tip
+      // off the line, the grain lands thin in places and the nib skips
+      // there (the second tip's way: Rough Pencil's note).
       dualMask: grainBrushTipMask,
-      dualMaskScale: 0.55,
+      dualMaskScale: 1.2,
+      dualSpacing: 0.4,
+      dualAngleJitter: 1.0,
+      dualScatterRadiusRatio: 0.3,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.3),
     ),
   ),
@@ -815,8 +828,14 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       flow: 0.9,
       spacing: 0.12,
       tips: [chalkBrushTipMask],
+      // A whole tip apart and larger than the stick, the grain piles once
+      // and the stroke stays light and clouded (the second tip's way: Rough
+      // Pencil's note).
       dualMask: grainBrushTipMask,
-      dualMaskScale: 0.55,
+      dualMaskScale: 1.5,
+      dualSpacing: 1.0,
+      dualAngleJitter: 1.0,
+      dualScatterRadiusRatio: 0.15,
       textureMaskSource: paperGrainTextureMask,
       textureScale: 1.8,
       textureDensity: 0.75,
@@ -1102,8 +1121,12 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       spacing: 0.06,
       tips: [bristleBrushTipMask],
       rotationMode: BrushTipRotationMode.direction,
+      // Twice the bristles' width, so the sponge's streaks run the whole
+      // stroke: at 0.75 its second stroke bit only the middle (the second
+      // tip's way: Rough Pencil's note).
       dualMask: spongeBrushTipMask,
-      dualMaskScale: 0.75,
+      dualMaskScale: 2.0,
+      dualSpacing: 0.06,
       dualDensity: 0.55,
       curves: _randomRows(spacing: 0.4, opacity: 0.2),
       sizePressureCurve: BrushPressureCurve.linearFrom(0.3),
@@ -1139,8 +1162,16 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       flow: 0.51,
       opacity: 0.85,
       spacing: 0.05,
+      // Small grit thrown far, two at a stamp, and short of full density,
+      // so the spray's soft body shows between (the second tip's way: Rough
+      // Pencil's note).
       dualMask: splatterBrushTipMask,
-      dualMaskScale: 0.5,
+      dualMaskScale: 0.6,
+      dualSpacing: 0.5,
+      dualAngleJitter: 1.0,
+      dualScatterRadiusRatio: 0.8,
+      dualScatterCount: 2,
+      dualDensity: 0.8,
       opacityPressureCurve: BrushPressureCurve.identity(),
     ),
   ),
@@ -1304,8 +1335,12 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       hardness: 1.0,
       flow: 0.9775,
       spacing: 0.05,
+      // A little larger than the tip, and turned at random (the second
+      // tip's way: Rough Pencil's note).
       dualMask: chalkBrushTipMask,
-      dualMaskScale: 0.6,
+      dualMaskScale: 1.2,
+      dualSpacing: 0.4,
+      dualAngleJitter: 1.0,
       textureMaskSource: canvasWeaveTextureMask,
       textureScale: 0.8,
       textureDensity: 0.75,
