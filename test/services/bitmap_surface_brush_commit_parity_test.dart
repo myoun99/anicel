@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -121,12 +122,8 @@ BrushDab dab({
   double roundness = 1.0,
   double angleDegrees = 0.0,
   BrushTipMask? tipMask,
-  BrushTipMask? dualMask,
-  double dualMaskScale = 1.0,
-  double dualDensity = 1.0,
-  SeparableBlendMode dualCompositeMode = SeparableBlendMode.multiply,
-  double dualOffsetU = 0.0,
-  double dualOffsetV = 0.0,
+  BrushDualView? dual,
+  bool second = false,
   BrushTipMask? textureMask,
   double textureScale = 1.0,
   double textureDensity = 1.0,
@@ -147,18 +144,39 @@ BrushDab dab({
     roundness: roundness,
     angleDegrees: angleDegrees,
     tipMask: tipMask,
-    dualMask: dualMask,
-    dualMaskScale: dualMaskScale,
-    dualDensity: dualDensity,
-    dualCompositeMode: dualCompositeMode,
-    dualOffsetU: dualOffsetU,
-    dualOffsetV: dualOffsetV,
+    dual: dual,
+    second: second,
     textureMask: textureMask,
     textureScale: textureScale,
     textureDensity: textureDensity,
     textureMode: textureMode,
   );
 }
+
+/// A dab of a stroke's second tip as `BrushSecondStroke` lays it: black,
+/// opacity and flow 1, piled on the second plane under [dual].
+BrushDab secondDab({
+  required double x,
+  required double y,
+  required BrushDualView dual,
+  double size = 12,
+  double hardness = 0.5,
+  double flow = 1.0,
+  int sequence = 0,
+  BrushTipMask? tipMask,
+}) => dab(
+  x: x,
+  y: y,
+  size: size,
+  color: 0xFF000000,
+  opacity: 1.0,
+  flow: flow,
+  hardness: hardness,
+  sequence: sequence,
+  tipMask: tipMask,
+  dual: dual,
+  second: true,
+);
 
 /// Deterministic 8x8 gradient-with-holes mask for parity scenarios.
 final BrushTipMask _testTipMask = BrushTipMask(
@@ -559,44 +577,191 @@ void main() {
       );
     });
 
-    test('🚨a dual mask at PARTIAL density agrees across all three', () {
-      // ⚠️The case above runs at density 1.0, which is the identity — it
-      // exercises the plain multiply the dual mask always did, not the new
-      // blend. Every transcription would still agree if one of them had
-      // dropped the density term entirely. Only a value that is neither 0
-      // nor 1 makes the three actually compare.
+    test('🚨a dual stroke at PARTIAL density agrees across all three', () {
+      // ⚠️Density 1 is where the lerp collapses: every transcription would
+      // still agree if one of them had dropped the density term entirely.
+      // Only a value that is neither 0 nor 1 makes the three compare.
+      const view = BrushDualView(density: 0.35);
       expectParity(
         surface: blankSurface(),
         sequence: strokeOf([
-          dab(
-            x: 40.4,
-            y: 40.6,
-            size: 18,
-            hardness: 0.5,
-            dualMask: _testTipMask,
-            dualMaskScale: 0.7,
-            dualDensity: 0.35,
-            dualOffsetU: 0.31,
-            dualOffsetV: 0.77,
-            sequence: 0,
-          ),
-          // ...and with a texture on top, so the two density blends run in
-          // the same pixel and their ORDER is pinned as well.
+          dab(x: 40.4, y: 40.6, size: 18, dual: view, sequence: 0),
+          // ...with a texture under one of them, so the paper's blend runs
+          // in the first tip's coverage and the view after it.
           dab(
             x: 52.2,
             y: 44.8,
             size: 18,
-            dualMask: _testTipMask,
-            dualMaskScale: 0.55,
-            dualDensity: 0.8,
+            dual: view,
             textureMask: _testTipMask,
             textureScale: 1.3,
             textureDensity: 0.4,
             sequence: 1,
           ),
+          secondDab(x: 43.1, y: 41.9, dual: view, tipMask: _testTipMask),
+          secondDab(x: 49.7, y: 43.2, dual: view, size: 9, flow: 0.6),
         ]),
         reason: 'the dual density blend must be one law in all three',
       );
+    });
+
+    test('🚨a dual stroke shows the same bytes in any order of its dabs', () {
+      // THE SECOND TIP IS A STROKE OF ITS OWN: the view is a function of the
+      // two planes, and each plane piles its own dabs — so where the second
+      // tip's dabs fall among the first's changes nothing. ⛔A per-dab dual
+      // (the second tip's pattern laid under every first-tip dab) fails
+      // this: the first dab's mark would be cut by the pattern it found.
+      const view = BrushDualView(density: 0.8);
+      final firsts = [
+        for (var i = 0; i < 5; i += 1)
+          dab(x: 36.0 + i * 4.0, y: 40.0 + i * 2.0, size: 16, dual: view),
+      ];
+      final seconds = [
+        for (var i = 0; i < 4; i += 1)
+          secondDab(
+            x: 38.5 + i * 5.0,
+            y: 41.0 + i * 2.5,
+            dual: view,
+            size: 10,
+            tipMask: _testTipMask,
+          ),
+      ];
+      final orders = {
+        'first tip, then second': [...firsts, ...seconds],
+        'second tip, then first': [...seconds, ...firsts],
+        'interleaved': [
+          for (var i = 0; i < firsts.length; i += 1) ...[
+            firsts[i],
+            if (i < seconds.length) seconds[i],
+          ],
+        ],
+      };
+      BitmapSurface? landed;
+      for (final MapEntry(key: order, value: dabs) in orders.entries) {
+        expectParity(
+          surface: blankSurface(),
+          sequence: strokeOf(dabs),
+          reason: 'dual stroke, $order',
+        );
+        final surface = materializeBrushDabSequenceOnBitmapSurface(
+          surface: blankSurface(),
+          sequence: strokeOf(dabs),
+        ).surface;
+        expect(surface, landed ?? surface, reason: order);
+        landed = surface;
+      }
+    });
+
+    test('a second tip shows nothing where the first tip laid nothing', () {
+      const view = BrushDualView(compositeMode: SeparableBlendMode.screen);
+      final landed = materializeBrushDabSequenceOnBitmapSurface(
+        surface: blankSurface(),
+        sequence: strokeOf([
+          dab(x: 30, y: 30, size: 10, dual: view),
+          secondDab(x: 90, y: 90, dual: view, size: 20),
+        ]),
+      );
+      final alone = materializeBrushDabSequenceOnBitmapSurface(
+        surface: blankSurface(),
+        sequence: strokeOf([dab(x: 30, y: 30, size: 10)]),
+      );
+      expect(landed.dirtyTiles, alone.dirtyTiles);
+      expect(
+        landed.surface.tileAt(TileCoord(x: 1, y: 1)),
+        isNull,
+        reason: 'the second tip alone at (90, 90) shows no ink',
+      );
+    });
+
+    test('🚨the second tip cuts the PILED first stroke once, not per dab', () {
+      // Two first-tip dabs on one spot under one second-tip level of a half:
+      // the stroke shows the pile of the two halved — 0.8 piled twice is
+      // 0.96, halved 0.48 — where a second tip under EACH dab would pile
+      // two halved dabs, 1 − (1 − 0.4)² = 0.64.
+      const view = BrushDualView();
+      BrushDab first(int sequence) => dab(
+        x: 40,
+        y: 40,
+        size: 8,
+        hardness: 1,
+        opacity: 1,
+        flow: 0.8,
+        dual: view,
+        sequence: sequence,
+      );
+      final sequence = strokeOf([
+        first(0),
+        first(1),
+        secondDab(
+          x: 40,
+          y: 40,
+          dual: view,
+          size: 30,
+          hardness: 1,
+          flow: 0.5,
+        ),
+      ]);
+      expectParity(
+        surface: blankSurface(),
+        sequence: sequence,
+        reason: 'a second tip at a half',
+      );
+      final tile = materializeBrushDabSequenceOnBitmapSurface(
+        surface: blankSurface(),
+        sequence: sequence,
+      ).surface.tileAt(TileCoord(x: 0, y: 0))!;
+      final centre = readRgbaColorFromBitmapTile(tile: tile, x: 40, y: 40);
+      expect(centre.a, closeTo(0.48 * 255, 1));
+    });
+
+    test('a second tip that covers the first fully shows it unchanged', () {
+      // Multiply at density 1 under a second plane at 1 is the identity:
+      // the view rounds from the plane where a plain stroke rounds from the
+      // double, so a level may part where a channel sits on a half.
+      const view = BrushDualView();
+      final firsts = [
+        for (var i = 0; i < 6; i += 1)
+          dab(
+            x: 34.0 + i * 3.0,
+            y: 38.0 + i * 1.5,
+            size: 14,
+            tipMask: _testTipMask,
+            sequence: i,
+          ),
+      ];
+      final plain = materializeBrushDabSequenceOnBitmapSurface(
+        surface: blankSurface(),
+        sequence: strokeOf(firsts),
+      );
+      final viewed = materializeBrushDabSequenceOnBitmapSurface(
+        surface: blankSurface(),
+        sequence: strokeOf([
+          for (final first in firsts) first.copyWith(dual: view),
+          secondDab(x: 42, y: 42, dual: view, size: 60, hardness: 1),
+        ]),
+      );
+      expect(viewed.dirtyTiles, plain.dirtyTiles);
+      final coord = TileCoord(x: 0, y: 0);
+      final want = plain.surface.tileAt(coord)!;
+      final got = viewed.surface.tileAt(coord)!;
+      var parted = 0;
+      for (var y = 0; y < 64; y += 1) {
+        for (var x = 0; x < 64; x += 1) {
+          final a = readRgbaColorFromBitmapTile(tile: want, x: x, y: y);
+          final b = readRgbaColorFromBitmapTile(tile: got, x: x, y: y);
+          final apart = [
+            (a.r - b.r).abs(),
+            (a.g - b.g).abs(),
+            (a.b - b.b).abs(),
+            (a.a - b.a).abs(),
+          ].reduce(math.max);
+          expect(apart, lessThanOrEqualTo(1), reason: '($x, $y)');
+          if (apart > 0) {
+            parted += 1;
+          }
+        }
+      }
+      expect(parted, lessThan(64), reason: 'a level apart only on a half');
     });
 
     test('🚨every dual COMPOSITE MODE agrees across all three transcriptions',
@@ -606,7 +771,7 @@ void main() {
       // モード index; 1 and 12 in the user's own files) and Photoshop's
       // `dualBrush.BlnM` (eight codes across 765 brushes).
       //
-      // 🚨THE WHOLE TABLE, one dab each, because the C switch and the two
+      // 🚨THE WHOLE TABLE, one stroke each, because the C switch and the two
       // Dart transcriptions are three separate spellings of the same
       // formulas and a mode nobody drives is a mode nobody has compared.
       // `add` is here for a reason of its own: it is NOT in the B(Cs, Cd)
@@ -614,25 +779,17 @@ void main() {
       // add — so it takes a branch of its own in all three, and it is one
       // of the two modes actually found in a real file.
       for (final mode in SeparableBlendMode.values) {
+        // ⛔NEITHER 0 NOR 1: at density 0 the mode cannot show and at 1 the
+        // lerp collapses, so either would pass with the whole branch
+        // deleted.
+        final view = BrushDualView(compositeMode: mode, density: 0.6);
         expectParity(
           surface: blankSurface(),
           sequence: strokeOf([
-            dab(
-              x: 41.3,
-              y: 39.7,
-              size: 20,
-              hardness: 0.45,
-              dualMask: _testTipMask,
-              dualMaskScale: 0.65,
-              // ⛔NEITHER 0 NOR 1: at density 0 the mode cannot show and at
-              // 1 the lerp collapses, so either would pass with the whole
-              // branch deleted.
-              dualDensity: 0.6,
-              dualCompositeMode: mode,
-              dualOffsetU: 0.23,
-              dualOffsetV: 0.61,
-              sequence: 0,
-            ),
+            dab(x: 41.3, y: 39.7, size: 20, hardness: 0.45, dual: view),
+            dab(x: 47.8, y: 42.1, size: 14, dual: view, sequence: 1),
+            secondDab(x: 39.2, y: 38.4, dual: view, tipMask: _testTipMask),
+            secondDab(x: 46.6, y: 43.5, dual: view, size: 8, flow: 0.7),
           ]),
           reason: 'the dual composite mode ${mode.name} must be one law in '
               'all three',
@@ -640,12 +797,10 @@ void main() {
       }
     });
 
-
     test('🚨the paper\'s HEIGHT agrees across all three transcriptions', () {
       // v53 (F-451). The paper cuts the coverage instead of multiplying it:
-      // a soft round, a sampled tip turned and squashed, and one under a
-      // dual mask too, so the height runs after the dual's blend as the
-      // multiply does. ⛔NEITHER DENSITY IS 0 OR 1: the reach is the
+      // a soft round, a sampled tip turned and squashed, and a third that
+      // overlaps both. ⛔NEITHER DENSITY IS 0 OR 1: the reach is the
       // density times the coverage, and only a partial one moves the
       // paper's floor through the texels that the band then grades.
       expectParity(
@@ -679,11 +834,6 @@ void main() {
             x: 47.1,
             y: 58.3,
             size: 20,
-            dualMask: _testTipMask,
-            dualMaskScale: 0.6,
-            dualDensity: 0.7,
-            dualOffsetU: 0.41,
-            dualOffsetV: 0.13,
             textureMask: _testTipMask,
             textureScale: 1.1,
             textureDensity: 0.7,
@@ -695,30 +845,18 @@ void main() {
       );
     });
 
-    test('dual-brush textured stroke across tip shapes', () {
+    test('a dual stroke across tip shapes', () {
+      const view = BrushDualView(density: 0.9);
       expectParity(
         surface: blankSurface(),
         sequence: strokeOf([
-          dab(
-            x: 40.4,
-            y: 40.6,
-            size: 16,
-            hardness: 0.5,
-            dualMask: _testTipMask,
-            dualMaskScale: 0.7,
-            dualOffsetU: 0.31,
-            dualOffsetV: 0.77,
-            sequence: 0,
-          ),
+          dab(x: 40.4, y: 40.6, size: 16, dual: view),
           dab(
             x: 52.2,
             y: 44.8,
             size: 16,
             tipShape: BrushTipShape.square,
-            dualMask: _testTipMask,
-            dualMaskScale: 1.3,
-            dualOffsetU: 0.9,
-            dualOffsetV: 0.1,
+            dual: view,
             sequence: 1,
           ),
           dab(
@@ -726,20 +864,25 @@ void main() {
             y: 47.3,
             size: 16,
             tipMask: _testTipMask,
-            dualMask: _testTipMask,
-            dualMaskScale: 0.5,
-            dualOffsetU: 0.5,
-            dualOffsetV: 0.5,
+            dual: view,
             sequence: 2,
           ),
+          for (var i = 0; i < 4; i += 1)
+            secondDab(
+              x: 41.0 + i * 6.3,
+              y: 41.5 + i * 2.1,
+              dual: view,
+              size: 9,
+              tipMask: _testTipMask,
+            ),
         ]),
-        reason: 'dual brush texture',
+        reason: 'dual stroke',
       );
     });
 
     test('paper-textured stroke stays anchored to the canvas', () {
       // Two dabs at different positions must sample the SAME paper pattern
-      // (canvas-anchored), combined here with pressure-free dual masking.
+      // (canvas-anchored).
       expectParity(
         surface: blankSurface(),
         sequence: strokeOf([
@@ -758,10 +901,6 @@ void main() {
             y: 47.6,
             size: 18,
             tipMask: _testTipMask,
-            dualMask: _testTipMask,
-            dualMaskScale: 0.6,
-            dualOffsetU: 0.25,
-            dualOffsetV: 0.75,
             textureMask: _testTipMask,
             textureScale: 1.5,
             textureDensity: 0.4,
@@ -779,9 +918,10 @@ void main() {
     // ink lands every channel on (source + destination) / 2 exactly, so
     // (100 + 53) / 2 = 76.5 must come out 77, not 76.
     // The C kernel blends a masked tip two pixels at a time only when it has
-    // no dual and no texture mask (board `brush-kernel-next` ①): a tip under
-    // a paper texture must stay on the loop that multiplies the paper in,
-    // and the pairs must take every edge step the scalar loop takes.
+    // no texture mask and its tile shows no second plane (board
+    // `brush-kernel-next` ①): a tip under a paper texture must stay on the
+    // loop that multiplies the paper in, and the pairs must take every edge
+    // step the scalar loop takes.
     test('a masked tip under a paper texture alone blends the same bytes', () {
       expectParity(
         surface: blankSurface(tileSize: 256),
@@ -943,18 +1083,44 @@ void main() {
             y: 64.9,
             size: 140,
             hardness: 0.5,
-            dualMask: _testTipMask,
-            dualMaskScale: 0.7,
-            dualOffsetU: 0.31,
-            dualOffsetV: 0.77,
-            dualDensity: 0.6,
             textureMask: _testTipMask,
             textureScale: 1.5,
             textureDensity: 0.4,
             sequence: 1,
           ),
         ]),
-        reason: 'banded sampled tip, dual and texture',
+        reason: 'banded sampled tip and texture',
+      );
+    });
+
+    test('a banded dual stroke shows its view band by band the same way', () {
+      // The C batch rebuilds the view over each band's rows once its dabs
+      // have landed; a wide unrotated masked tip — the pairs' shape — lays
+      // its planes only, since the tile shows the view.
+      const view = BrushDualView(
+        compositeMode: SeparableBlendMode.overlay,
+        density: 0.7,
+      );
+      expectParity(
+        surface: blankSurface(tileSize: 256),
+        sequence: strokeOf([
+          dab(
+            x: 80.37,
+            y: 70.81,
+            size: 120,
+            tipMask: _testTipMask,
+            dual: view,
+          ),
+          dab(x: 110.2, y: 64.9, size: 140, dual: view, sequence: 1),
+          secondDab(
+            x: 95.6,
+            y: 68.2,
+            dual: view,
+            size: 130,
+            tipMask: _testTipMask,
+          ),
+        ]),
+        reason: 'banded dual stroke',
       );
     });
 

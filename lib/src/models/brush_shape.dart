@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show listEquals, mapEquals;
 import 'brush_anti_alias.dart';
 import 'brush_input_source.dart';
 import 'brush_blend_mode.dart';
+import 'brush_dab.dart' show BrushDab, BrushDualView;
 import 'brush_correction.dart';
 import 'brush_mixing_method.dart';
 import 'separable_blend_mode.dart';
@@ -201,12 +202,15 @@ class BrushShape {
   /// to the stroke direction.
   final bool scatterBothAxes;
 
-  /// Dual-brush mask multiplying every dab's coverage; tiled at
-  /// [dualMaskScale] times the dab size with a random per-dab phase.
+  /// The SECOND tip: a second stroke stamped along the same path at
+  /// [dualMaskScale] times the first tip's size (`BrushSecondStroke`), shown
+  /// over the first through [dualView] (ABI 60, `qa_dual_view_rows`).
+  /// ↩️Until v60 it was a mask tiled over every dab at a random phase.
   final BrushTipMask? dualMask;
   final double dualMaskScale;
 
-  /// How hard the dual mask bites, 0..1 — `coverage *= (1 - d) + d * sample`.
+  /// How hard the second tip bites, 0..1 — at 0 the stroke shows its first
+  /// tip alone ([BrushDualView.density]).
   ///
   /// 🚨1.0 IS THE OLD BEHAVIOUR: the dual mask used to be an unconditional
   /// multiply, all or nothing, while the texture mask beside it has had this
@@ -214,10 +218,15 @@ class BrushShape {
   /// two masks doing the same job, one of them dimmable and one not.
   final double dualDensity;
 
-  /// How the dual mask COMBINES with the coverage under it — see
-  /// [BrushDab.dualCompositeMode]. Both formats carry one; ours multiplied
-  /// and only multiplied until v33.
+  /// How the second tip COMBINES with the first — see [BrushDualView]. Both
+  /// formats carry one; ours multiplied and only multiplied until v33.
   final SeparableBlendMode dualCompositeMode;
+
+  /// How a stroke of this shape shows its second tip, or null when it has
+  /// none — what every dab of its strokes carries ([BrushDab.dual]).
+  BrushDualView? get dualView => dualMask == null
+      ? null
+      : BrushDualView(compositeMode: dualCompositeMode, density: dualDensity);
 
   /// The paper texture AS PICKED, before the three levels below are applied.
   ///

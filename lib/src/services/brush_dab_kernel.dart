@@ -6,7 +6,6 @@ import '../core/argb_channels.dart';
 import '../core/floor_math.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_tip_mask.dart';
-import '../models/separable_blend_mode.dart';
 import '../models/brush_texture_mode.dart';
 import '../models/dirty_region.dart';
 import '../models/pasteboard_bounds.dart';
@@ -60,11 +59,21 @@ import 'native_tile_span_batch.dart';
 /// 🚨The law and its reasons are written once, beside `qa_dab_store` in
 /// qa_engine.c (ABI 40, 유저 2026-10-01 「a는 제안한대로 16비트?」): a dab
 /// reads what is under it from [wide] and writes both planes from the same
-/// double, so [bytes] is [wide]'s view and nothing downstream changes.
-typedef BrushDabTileBuffers = ({Uint8List bytes, Uint16List wide});
+/// double, so [bytes] is [wide]'s view and nothing downstream changes. A
+/// stroke with a second tip carries its [second] plane too, alpha * 65535,
+/// and [bytes] is then the view of the two (`qa_dual_view_rows`, ABI 60).
+typedef BrushDabTileBuffers = ({
+  Uint8List bytes,
+  Uint16List wide,
+  Uint16List? second,
+});
 
-/// The same two planes as the C route holds them.
-typedef BrushDabTilePointers = ({Pointer<Uint8> pixels, Pointer<Uint16> wide});
+/// The same planes as the C route holds them.
+typedef BrushDabTilePointers = ({
+  Pointer<Uint8> pixels,
+  Pointer<Uint16> wide,
+  Pointer<Uint16>? second,
+});
 
 /// Everything one dab needs, resolved once: the clipped bounds, the tip
 /// geometry, and the axis lattices the samplers read.
@@ -99,18 +108,14 @@ class BrushDabPlan {
     required this.dabFlow,
     required this.unrotatedTip,
     required this.erase,
-    required this.dualMask,
+    required this.second,
+    required this.dual,
     required this.textureMask,
-    required this.dualDensity,
-    required this.dualOneMinusDensity,
-    required this.dualCompositeMode,
     required this.textureDensity,
     required this.textureOneMinusDensity,
     required this.textureMode,
     required this.tipULattice,
     required this.tipVLattice,
-    required this.dualULattice,
-    required this.dualVLattice,
     required this.textureULattice,
     required this.textureVLattice,
     required this.evening,
@@ -173,14 +178,16 @@ class BrushDabPlan {
   /// the erase flag, because erase strokes composite at display time.
   final bool erase;
 
-  BrushTipMask? get tipMask => tip.tipMask;
-  final BrushTipMask? dualMask;
-  final BrushTipMask? textureMask;
-  final double dualDensity;
-  final double dualOneMinusDensity;
+  /// Whether the dab is the second tip's ([BrushDab.second]): it piles on
+  /// the tile's second plane and moves no byte — the view does.
+  final bool second;
 
-  /// How the dual mask combines — see [BrushDab.dualCompositeMode].
-  final SeparableBlendMode dualCompositeMode;
+  /// The stroke's view of its two planes ([BrushDab.dual]), or null for a
+  /// stroke with one tip.
+  final BrushDualView? dual;
+
+  BrushTipMask? get tipMask => tip.tipMask;
+  final BrushTipMask? textureMask;
   final double textureDensity;
   final double textureOneMinusDensity;
 
@@ -189,8 +196,6 @@ class BrushDabPlan {
 
   final BrushTipMaskAxisLattice? tipULattice;
   final BrushTipMaskAxisLattice? tipVLattice;
-  final TiledMaskAxisLattice? dualULattice;
-  final TiledMaskAxisLattice? dualVLattice;
   final TiledMaskAxisLattice? textureULattice;
   final TiledMaskAxisLattice? textureVLattice;
 
@@ -247,9 +252,7 @@ class BrushDabPlan {
     // unrotated tips and the never-rotating tiled masks sample through
     // per-axis precomputes with the scalar samplers' exact arithmetic, so
     // the resulting bytes are unchanged — the parity suites pin this.
-    final dualMask = dab.dualMask;
     final textureMask = dab.textureMask;
-    final dualDensity = dab.dualDensity;
     final textureDensity = dab.textureDensity;
     final unrotatedTip = tipMask != null && dab.angleDegrees == 0.0;
     final tiles = clip.tileRange(tileSize: tileSize);
@@ -279,11 +282,9 @@ class BrushDabPlan {
       dabFlow: dab.flow,
       unrotatedTip: unrotatedTip,
       erase: erase,
-      dualMask: dualMask,
+      second: dab.second,
+      dual: dab.dual,
       textureMask: textureMask,
-      dualDensity: dualDensity,
-      dualOneMinusDensity: 1.0 - dualDensity,
-      dualCompositeMode: dab.dualCompositeMode,
       textureDensity: textureDensity,
       textureOneMinusDensity: 1.0 - textureDensity,
       textureMode: dab.textureMode,
@@ -306,26 +307,6 @@ class BrushDabPlan {
               inverseRoundness: tip.inverseRoundness,
             )
           : null,
-      dualULattice: dualMask == null
-          ? null
-          : TiledMaskAxisLattice.compute(
-              mask: dualMask,
-              start: left,
-              count: columnCount,
-              originOffset: -centerX,
-              period: dab.size * dab.dualMaskScale,
-              offset: dab.dualOffsetU,
-            ),
-      dualVLattice: dualMask == null
-          ? null
-          : TiledMaskAxisLattice.compute(
-              mask: dualMask,
-              start: top,
-              count: rowCount,
-              originOffset: -centerY,
-              period: dab.size * dab.dualMaskScale,
-              offset: dab.dualOffsetV,
-            ),
       textureULattice: textureMask == null
           ? null
           : TiledMaskAxisLattice.compute(
@@ -425,7 +406,7 @@ class NativeDabBatcher {
   }
 
   Set<BrushTipMask> _freshMasks(BrushDabPlan plan) => {
-    for (final mask in [plan.tipMask, plan.dualMask, plan.textureMask])
+    for (final mask in [plan.tipMask, plan.textureMask])
       if (mask != null && !_masks.contains(mask)) mask,
   };
 
@@ -480,11 +461,21 @@ class NativeDabBatcher {
     tileSize: tileSize,
     planesFor: planesFor,
   );
+  // A stroke's view is one for all its dabs ([BrushDab.dual]).
+  final dual = plans.first.dual;
+  assert(
+    plans.every((plan) => plan.dual == dual),
+    'a batch is one stroke\'s, and a stroke has one view',
+  );
   return (
     changed: native.dabBlendBatch(
       tileCount: coords.length,
       dabCount: plans.length,
       tileSize: tileSize,
+      dualMode: dual == null
+          ? 0
+          : separableBlendModeNativeId(dual.compositeMode),
+      dualDensity: dual?.density ?? 0.0,
     ),
     coords: coords,
   );
@@ -524,9 +515,6 @@ void _prepareDab(QaNativeEngine native, int index, BrushDabPlan plan) {
     dabFlow: plan.dabFlow,
     sourceAlphaNorm: plan.sourceAlphaNorm,
     radiusSqSkip: plan.radiusSqSkip,
-    dualDensity: plan.dualDensity,
-    dualOneMinusDensity: plan.dualOneMinusDensity,
-    dualCompositeMode: separableBlendModeNativeId(plan.dualCompositeMode),
     textureDensity: plan.textureDensity,
     textureOneMinusDensity: plan.textureOneMinusDensity,
     aaContrast: plan.aaContrast,
@@ -540,6 +528,7 @@ void _prepareDab(QaNativeEngine native, int index, BrushDabPlan plan) {
         (plan.unrotatedTip ? QaNativeEngine.dabFlagTipUnrotated : 0) |
         (plan.aaThreshold ? QaNativeEngine.dabFlagAaThreshold : 0) |
         (plan.edgeHeld ? QaNativeEngine.dabFlagEdgeHeld : 0) |
+        (plan.second ? QaNativeEngine.dabFlagSecond : 0) |
         (plan.textureMode == BrushTextureMode.height
             ? QaNativeEngine.dabFlagTextureHeight
             : 0),
@@ -555,16 +544,6 @@ void _prepareDab(QaNativeEngine native, int index, BrushDabPlan plan) {
     tipVFraction: plan.tipVLattice?.fraction,
     tipVOneMinus: plan.tipVLattice?.oneMinusFraction,
     tipVInRange: plan.tipVLattice?.inRange,
-    dualAlpha: plan.dualMask?.alphaNormalized,
-    dualSize: plan.dualMask?.size ?? 0,
-    dualUTexel0: plan.dualULattice?.texel0,
-    dualUTexel1: plan.dualULattice?.texel1,
-    dualUFraction: plan.dualULattice?.fraction,
-    dualUOneMinus: plan.dualULattice?.oneMinusFraction,
-    dualVTexel0: plan.dualVLattice?.texel0,
-    dualVTexel1: plan.dualVLattice?.texel1,
-    dualVFraction: plan.dualVLattice?.fraction,
-    dualVOneMinus: plan.dualVLattice?.oneMinusFraction,
     texAlpha: plan.textureMask?.alphaNormalized,
     texSize: plan.textureMask?.size ?? 0,
     texUTexel0: plan.textureULattice?.texel0,
@@ -611,12 +590,9 @@ void blendDabTilesDart(
   // a DEBUG build, where nothing is optimized and a field load really is
   // one more load per pixel than a stack slot.
   final tipMask = plan.tipMask;
-  final dualMask = plan.dualMask;
   final textureMask = plan.textureMask;
   final tipULattice = plan.tipULattice;
   final tipVLattice = plan.tipVLattice;
-  final dualULattice = plan.dualULattice;
-  final dualVLattice = plan.dualVLattice;
   final textureULattice = plan.textureULattice;
   final textureVLattice = plan.textureVLattice;
   final centerX = plan.centerX;
@@ -631,9 +607,7 @@ void blendDabTilesDart(
   final sourceR = plan.sourceR;
   final sourceG = plan.sourceG;
   final sourceB = plan.sourceB;
-  final dualDensity = plan.dualDensity;
-  final dualOneMinusDensity = plan.dualOneMinusDensity;
-  final dualCompositeMode = plan.dualCompositeMode;
+  final second = plan.second;
   final textureDensity = plan.textureDensity;
   final textureOneMinusDensity = plan.textureOneMinusDensity;
   final textureHeight = plan.textureMode == BrushTextureMode.height;
@@ -643,7 +617,8 @@ void blendDabTilesDart(
   final bottomExclusive = plan.bottomExclusive;
   final tileXStart = plan.tileXStart;
   final tileXEnd = plan.tileXEnd;
-  final erase = plan.erase;
+  // A second tip's dab piles over, never erases (`qa_dab_blend_tile`).
+  final erase = plan.erase && !second;
   final evening = plan.evening;
   final edgeHeld = plan.edgeHeld;
   // The dab's colour on the 16-bit plane (`qa_dab_over_own_colour`).
@@ -662,7 +637,10 @@ void blendDabTilesDart(
     final localRowOffset = (y - tileY * tileSize) * tileSize;
 
     for (var tileX = tileXStart; tileX <= tileXEnd; tileX += 1) {
-      final (:bytes, :wide) = bufferFor(tileX, tileY);
+      final (:bytes, :wide, second: levels) = bufferFor(tileX, tileY);
+      if (second && levels == null) {
+        continue;
+      }
       final tileLeft = tileX * tileSize;
       final spanLeft = math.max(left, tileLeft);
       final spanRightExclusive = math.min(rightExclusive, tileLeft + tileSize);
@@ -721,37 +699,6 @@ void blendDabTilesDart(
             ? edgeCeiling(coverage, tipPileAt(tip, x + 0.5 - centerX, dy))
             : 1.0;
 
-        // Dual-brush texture: a second tiled mask multiplies the coverage.
-        if (dualMask != null) {
-          final dualSample = sampleBrushTipMaskTiledCoverageLattice(
-            mask: dualMask,
-            uAxis: dualULattice!,
-            uIndex: x - left,
-            vAxis: dualVLattice!,
-            vIndex: vIndex,
-          );
-          // 🚨THE DUAL TIP HAS A MODE (v33) — the reasoning is written once,
-          // in [BrushDab.dualCompositeMode] and beside the same branch in
-          // `brush_dab_coverage.dart`. ⛔Multiply keeps its own line because
-          // the general form is the same NUMBER and not the same BYTES.
-          if (dualCompositeMode == SeparableBlendMode.multiply) {
-            coverage *= dualOneMinusDensity + dualDensity * dualSample;
-          } else {
-            final combined = blendDualCoverage(
-              dualCompositeMode,
-              dualSample,
-              coverage,
-            );
-            coverage = coverage * dualOneMinusDensity + dualDensity * combined;
-            if (coverage > 1.0) {
-              coverage = 1.0;
-            }
-          }
-          if (coverage <= 0.0) {
-            continue;
-          }
-        }
-
         // Paper texture: canvas-anchored tiled mask, blended in by density.
         if (textureMask != null) {
           final textureSample = sampleBrushTipMaskTiledCoverageLattice(
@@ -780,9 +727,13 @@ void blendDabTilesDart(
           continue;
         }
 
-        final offset = (localRowOffset + (x - tileLeft)) * 4;
-        // What is under the dab comes off the 16-bit plane (ABI 40).
-        final destinationAlpha = wide[offset + 3] / 65535.0;
+        final pixel = localRowOffset + (x - tileLeft);
+        final offset = pixel * 4;
+        // What is under the dab comes off the 16-bit plane (ABI 40) — a
+        // second tip's dab's, off the second plane (ABI 60).
+        final destinationAlpha = second
+            ? levels![pixel] / 65535.0
+            : wide[offset + 3] / 65535.0;
         // 🚨★★★A DAB SETTLES AT ITS OPACITY (F-205) — the law and its
         // reasons are written once, beside `qa_dab_source_alpha` in
         // qa_engine.c; this is its arithmetic, operation by operation.
@@ -807,6 +758,18 @@ void blendDabTilesDart(
               (evening == null ? whole : evenedLaid(evening, whole)) *
               (settle - destinationAlpha) /
               (1.0 - destinationAlpha);
+        }
+
+        if (second) {
+          // The second plane piles as any dab piles over its alpha; the view
+          // shows it ([_viewDual]). `qa_dab_store`'s alpha, the same
+          // grouping.
+          final piled = sourceAlpha + destinationAlpha * (1.0 - sourceAlpha);
+          final stored = (piled * 65535.0).round().clamp(0, 65535);
+          if (stored != levels![pixel]) {
+            levels[pixel] = stored;
+          }
+          continue;
         }
 
         // Destination-out for an erase (the grouping of the reference
@@ -899,6 +862,11 @@ void blendDabTilesDart(
           wide[offset + 2] = wideB;
           wide[offset + 3] = wideA;
         }
+        if (levels != null) {
+          // A tile with a second plane shows its view ([_viewDual]): the
+          // view writes the bytes, and says which moved.
+          continue;
+        }
         if (outR != bytes[offset] ||
             outG != bytes[offset + 1] ||
             outB != bytes[offset + 2] ||
@@ -911,6 +879,67 @@ void blendDabTilesDart(
         }
       }
 
+      if (tileChanged && onTileChanged != null) {
+        onTileChanged(tileX, tileY);
+      }
+    }
+  }
+  if (plan.dual case final dual?) {
+    _viewDual(
+      plan,
+      dual,
+      tileSize: tileSize,
+      bufferFor: bufferFor,
+      onTileChanged: onTileChanged,
+    );
+  }
+}
+
+/// The bytes of a stroke with a second tip rebuilt from its two planes over
+/// [plan]'s rect, once the dab has landed — `qa_dual_view_rows`, which has
+/// the law, pixel for pixel ([dualViewAlpha]). The C batch rebuilds the
+/// rect its dabs make together once they all have landed: a pure function
+/// of the two planes, so the bytes are the same.
+void _viewDual(
+  BrushDabPlan plan,
+  BrushDualView dual, {
+  required int tileSize,
+  required BrushDabTileBuffers Function(int tileX, int tileY) bufferFor,
+  void Function(int tileX, int tileY)? onTileChanged,
+}) {
+  for (var y = plan.top; y < plan.bottomExclusive; y += 1) {
+    final tileY = floorDiv(y, tileSize);
+    final localRowOffset = (y - tileY * tileSize) * tileSize;
+    for (var tileX = plan.tileXStart; tileX <= plan.tileXEnd; tileX += 1) {
+      final (:bytes, :wide, second: levels) = bufferFor(tileX, tileY);
+      if (levels == null) {
+        continue;
+      }
+      final tileLeft = tileX * tileSize;
+      final spanLeft = math.max(plan.left, tileLeft);
+      final spanRightExclusive = math.min(
+        plan.rightExclusive,
+        tileLeft + tileSize,
+      );
+      var tileChanged = false;
+      for (var x = spanLeft; x < spanRightExclusive; x += 1) {
+        final pixel = localRowOffset + (x - tileLeft);
+        final offset = pixel * 4;
+        final outA = dualViewAlpha(wide[offset + 3], levels[pixel], dual);
+        final outR = outA == 0 ? 0 : (wide[offset] / 257.0).round();
+        final outG = outA == 0 ? 0 : (wide[offset + 1] / 257.0).round();
+        final outB = outA == 0 ? 0 : (wide[offset + 2] / 257.0).round();
+        if (outR != bytes[offset] ||
+            outG != bytes[offset + 1] ||
+            outB != bytes[offset + 2] ||
+            outA != bytes[offset + 3]) {
+          bytes[offset] = outR;
+          bytes[offset + 1] = outG;
+          bytes[offset + 2] = outB;
+          bytes[offset + 3] = outA;
+          tileChanged = true;
+        }
+      }
       if (tileChanged && onTileChanged != null) {
         onTileChanged(tileX, tileY);
       }

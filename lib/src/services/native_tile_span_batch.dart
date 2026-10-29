@@ -34,12 +34,18 @@ List<TileCoord> stageTileSpans(
   native,
   clips: [clip],
   tileSize: tileSize,
-  planesFor: (coord) => (pixels: pointerFor(coord), wide: null),
+  planesFor: (coord) => (pixels: pointerFor(coord), wide: null, second: null),
 );
 
 /// A stroke tile's native planes: its RGBA bytes and, for the dab batch,
-/// the 16-bit plane its dabs pile up in (ABI 40, `qa_dab_store`).
-typedef TilePlanePointers = ({Pointer<Uint8> pixels, Pointer<Uint16>? wide});
+/// the 16-bit plane its dabs pile up in (ABI 40, `qa_dab_store`) and, for a
+/// stroke with a second tip, the plane its second stroke piles on (ABI 60,
+/// `qa_dual_view_rows`).
+typedef TilePlanePointers = ({
+  Pointer<Uint8> pixels,
+  Pointer<Uint16>? wide,
+  Pointer<Uint16>? second,
+});
 
 /// [stageTileSpans] for a batch of regions (ABI 38 — the generic dabs of a
 /// call, `qa_dab_blend_batch`): one span per tile ANY of [clips] touches,
@@ -76,6 +82,7 @@ List<TileCoord> stageTileSpansCovering(
       index,
       tilePixels: planes.pixels,
       tileWide: planes.wide,
+      tileSecond: planes.second,
       tileLeft: coord.x * tileSize,
       tileTop: coord.y * tileSize,
       spanLeft: span.left,

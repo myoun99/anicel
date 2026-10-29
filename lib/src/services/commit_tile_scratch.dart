@@ -28,6 +28,12 @@ import 'brush_dab_kernel.dart';
 /// for it after the bytes moved without it — on first use, and after every
 /// [bufferFor] hand-out. ⛔A plane that missed a stamp would pile the next
 /// dab over a picture the stamp had already changed.
+///
+/// A stroke with a SECOND TIP (ABI 60) carries a second plane a tile too,
+/// alpha * 65535 a pixel, zeroed when the tile is first asked for — its
+/// bytes are then the view of the two (`qa_dual_view_rows`). ⚠️Such a
+/// stroke's bytes are no widening of its first plane, and nothing that
+/// writes bytes alone lands inside one: a brush stroke is dabs.
 abstract interface class CommitTileScratch {
   /// The mutable bytes for [coord], staged on first request (the tile's
   /// pixels copied in, or zeroes when the surface has no tile there) and
@@ -62,14 +68,18 @@ void widenStrokeBytes(Uint8List bytes, Uint16List wide) {
 /// commit tail ADOPTS the changed buffers as the finished tiles — the
 /// whole sequence materializes with zero pixel copies out.
 final class NativeCommitScratch implements CommitTileScratch {
-  NativeCommitScratch(this.native, this._surface)
+  NativeCommitScratch(this.native, this._surface, {this.secondTip = false})
     : _tileByteLength = _surface.tileBytes;
 
   final QaNativeEngine native;
   final BitmapSurface _surface;
   final int _tileByteLength;
+
+  /// Whether the stroke has a second tip, and so a second plane a tile.
+  final bool secondTip;
   final Map<TileCoord, QaNativeTileBuffer> _buffers = {};
   final Map<TileCoord, QaNativeTileBuffer> _wides = {};
+  final Map<TileCoord, QaNativeTileBuffer> _seconds = {};
 
   /// The tiles whose plane holds what their bytes hold.
   final Set<TileCoord> _wideCurrent = {};
@@ -115,6 +125,15 @@ final class NativeCommitScratch implements CommitTileScratch {
   Uint16List _wideView(QaNativeTileBuffer wide) =>
       wide.pointer.cast<Uint16>().asTypedList(_tileByteLength);
 
+  /// The tile's second plane, zeroed when first asked for — or null for a
+  /// stroke with one tip.
+  QaNativeTileBuffer? _stageSecond(TileCoord coord) => !secondTip
+      ? null
+      : _seconds.putIfAbsent(
+          coord,
+          () => native.acquireTileBuffer(_tileByteLength ~/ 2, zeroed: true),
+        );
+
   /// [stage]'s raw pointer — what a span batch of a bytes-only kernel (the
   /// stamp, the stroke blend) is handed per span.
   Pointer<Uint8> pointerFor(TileCoord coord) {
@@ -122,10 +141,14 @@ final class NativeCommitScratch implements CommitTileScratch {
     return stage(coord).pointer;
   }
 
-  /// Both planes' raw pointers — what the dab batch is handed per span.
+  /// The planes' raw pointers — what the dab batch is handed per span.
   BrushDabTilePointers pointersFor(TileCoord coord) {
     final wide = _stageWide(coord);
-    return (pixels: stage(coord).pointer, wide: wide.pointer.cast<Uint16>());
+    return (
+      pixels: stage(coord).pointer,
+      wide: wide.pointer.cast<Uint16>(),
+      second: _stageSecond(coord)?.pointer.cast<Uint16>(),
+    );
   }
 
   @override
@@ -137,7 +160,13 @@ final class NativeCommitScratch implements CommitTileScratch {
   @override
   BrushDabTileBuffers planesFor(TileCoord coord) {
     final wide = _stageWide(coord);
-    return (bytes: stage(coord).view, wide: _wideView(wide));
+    return (
+      bytes: stage(coord).view,
+      wide: _wideView(wide),
+      second: _stageSecond(
+        coord,
+      )?.pointer.cast<Uint16>().asTypedList(_tileByteLength ~/ 4),
+    );
   }
 
   @override
@@ -154,6 +183,10 @@ final class NativeCommitScratch implements CommitTileScratch {
     if (wide != null) {
       native.releaseTileBuffer(wide);
     }
+    final second = _seconds.remove(coord);
+    if (second != null) {
+      native.releaseTileBuffer(second);
+    }
     _wideCurrent.remove(coord);
   }
 
@@ -165,8 +198,12 @@ final class NativeCommitScratch implements CommitTileScratch {
     for (final wide in _wides.values) {
       native.releaseTileBuffer(wide);
     }
+    for (final second in _seconds.values) {
+      native.releaseTileBuffer(second);
+    }
     _buffers.clear();
     _wides.clear();
+    _seconds.clear();
     _wideCurrent.clear();
   }
 }
@@ -174,13 +211,17 @@ final class NativeCommitScratch implements CommitTileScratch {
 /// The no-engine scratch: Dart byte lists, and the finished tile takes
 /// the constructor copy.
 final class DartCommitScratch implements CommitTileScratch {
-  DartCommitScratch(this._surface)
+  DartCommitScratch(this._surface, {this.secondTip = false})
     : _tileByteLength = _surface.tileBytes;
 
   final BitmapSurface _surface;
   final int _tileByteLength;
+
+  /// Whether the stroke has a second tip, and so a second plane a tile.
+  final bool secondTip;
   final Map<TileCoord, Uint8List> _buffers = {};
   final Map<TileCoord, Uint16List> _wides = {};
+  final Map<TileCoord, Uint16List> _seconds = {};
   final Set<TileCoord> _wideCurrent = {};
 
   Uint8List _stage(TileCoord coord) {
@@ -209,12 +250,22 @@ final class DartCommitScratch implements CommitTileScratch {
     if (_wideCurrent.add(coord)) {
       widenStrokeBytes(bytes, wide);
     }
-    return (bytes: bytes, wide: wide);
+    return (
+      bytes: bytes,
+      wide: wide,
+      second: !secondTip
+          ? null
+          : _seconds.putIfAbsent(
+              coord,
+              () => Uint16List(_tileByteLength ~/ 4),
+            ),
+    );
   }
 
   @override
   BitmapTile finish(TileCoord coord) {
     _wides.remove(coord);
+    _seconds.remove(coord);
     _wideCurrent.remove(coord);
     return BitmapTile(size: _surface.tileSize, pixels: _buffers.remove(coord)!);
   }
@@ -223,6 +274,7 @@ final class DartCommitScratch implements CommitTileScratch {
   void releaseUnfinished() {
     _buffers.clear();
     _wides.clear();
+    _seconds.clear();
     _wideCurrent.clear();
   }
 }

@@ -30,6 +30,7 @@ import '../../services/brush_ground_color_mixing.dart';
 import '../../services/brush_ground_color_sampling.dart';
 import '../../services/brush_fill_promotion.dart';
 import '../../services/brush_live_stroke_rasterizer.dart';
+import '../../services/brush_second_stroke.dart';
 import '../../services/brush_stroke_dynamics.dart';
 import '../../services/brush_tip_stamp_cache.dart';
 import '../../services/brush_pressure_dynamics.dart';
@@ -459,10 +460,10 @@ class _InteractiveBrushEditCanvasViewState
   /// stroke; created at pointer-down from the stroke's settings snapshot.
   BrushStrokeDynamics? _strokeDynamics;
 
-  /// Per-stroke randomness for the dual-mask phase; each dab samples the
-  /// dual texture at its own random offset (stored on the dab, so replay
-  /// is deterministic). Rolled from the stroke's press ([_BrushEditStroke]).
-  math.Random _dualPhaseRandom = math.Random();
+  /// The active stroke's SECOND tip's stroke, walking its path
+  /// ([BrushSecondStroke]); null for a brush with one tip. Made at
+  /// pointer-down from the stroke's settings snapshot ([_BrushEditStroke]).
+  BrushSecondStroke? _secondStroke;
 
   /// Latest known stroke direction (visual CCW degrees); kept across
   /// stationary events so direction-following tips do not snap back.
@@ -772,7 +773,6 @@ class _InteractiveBrushEditCanvasViewState
     required int sequence,
   }) {
     final settings = _activeStrokeInputSettings ?? widget.inputSettings();
-    final dualMask = settings.dualMask;
     return BrushDab(
       center: localPosition,
       color: settings.color,
@@ -796,12 +796,9 @@ class _InteractiveBrushEditCanvasViewState
       roundness: settings.roundness,
       angleDegrees: settings.angleDegrees,
       tipMask: settings.tipMask,
-      dualMask: dualMask,
-      dualMaskScale: settings.dualMaskScale,
-      dualOffsetU: dualMask == null ? 0.0 : _dualPhaseRandom.nextDouble(),
-      dualOffsetV: dualMask == null ? 0.0 : _dualPhaseRandom.nextDouble(),
-      dualDensity: settings.dualDensity,
-      dualCompositeMode: settings.dualCompositeMode,
+      // The second tip is a stroke of its own ([_secondStroke]); every dab
+      // of the stroke carries how the two show.
+      dual: settings.shape.dualView,
       textureMask: settings.textureMask,
       textureScale: settings.textureScale,
       textureDensity: settings.textureDensity,
@@ -839,7 +836,7 @@ class _InteractiveBrushEditCanvasViewState
   // The State keeps the entry points its pointer handlers call.
   late final _BrushEditPressure _pressure = _BrushEditPressure(this);
 
-  /// Rolled from the stroke's press, as [_dualPhaseRandom] is.
+  /// Rolled from the stroke's press, as [_inputRandom] is.
   math.Random _spacingRandom = math.Random();
 
   /// The ランダム row's dice for every per-dab setting (F-176-Q2), rolled

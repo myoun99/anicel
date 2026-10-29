@@ -1,5 +1,4 @@
 import '../models/brush_dab.dart';
-import '../models/separable_blend_mode.dart';
 import '../models/brush_texture_mode.dart';
 import 'brush_stroke_blend.dart';
 import '../models/brush_pixel_coverage.dart';
@@ -38,47 +37,12 @@ void forEachBrushPixelCoverage(
   final edge = brushDabEdgeLaw(dab);
   final edgeHeld = tipHoldsAnEdge(tip, edge);
 
-  // Applies the dual-brush and paper-texture multiplications with the EXACT
-  // multiplication order of the commit/live rasterizers (separate `*=`
-  // steps; folding the factors first would change float associativity).
-  final dualMask = dab.dualMask;
+  // Applies the paper-texture multiplication with the EXACT multiplication
+  // order of the commit/live rasterizers (separate `*=` steps; folding the
+  // factors first would change float associativity).
   final textureMask = dab.textureMask;
   double texturedCoverageAt(double coverage, int x, int y) {
     var result = coverage;
-    if (dualMask != null) {
-      final dualSample = sampleBrushTipMaskTiledCoverage(
-        mask: dualMask,
-        dx: x + 0.5 - dab.center.x,
-        dy: y + 0.5 - dab.center.y,
-        period: dab.size * dab.dualMaskScale,
-        offsetU: dab.dualOffsetU,
-        offsetV: dab.dualOffsetV,
-      );
-      // 🚨THE DUAL TIP HAS A MODE (v33) — see [BrushDab.dualCompositeMode].
-      //
-      // ⛔MULTIPLY KEEPS ITS OWN LINE, AND THAT IS NOT AN OPTIMISATION. The
-      // general form below is `lerp(coverage, B(dual, coverage), d)`, which
-      // for B = multiply is the SAME NUMBER and NOT THE SAME BYTES:
-      // `c * ((1-d) + d*s)` and `c*(1-d) + d*s*c` differ in the last bit of
-      // a double. Every brush that ever shipped multiplies, so the old
-      // expression stays exactly as written.
-      if (dab.dualCompositeMode == SeparableBlendMode.multiply) {
-        result *= (1.0 - dab.dualDensity) + dab.dualDensity * dualSample;
-      } else {
-        final combined = blendDualCoverage(
-          dab.dualCompositeMode,
-          dualSample,
-          result,
-        );
-        result = result * (1.0 - dab.dualDensity) + dab.dualDensity * combined;
-        if (result > 1.0) {
-          result = 1.0;
-        }
-      }
-      if (result <= 0.0) {
-        return 0.0;
-      }
-    }
     if (textureMask != null) {
       final textureSample = sampleBrushTipMaskTiledCoverage(
         mask: textureMask,
@@ -88,8 +52,8 @@ void forEachBrushPixelCoverage(
         offsetU: 0.0,
         offsetV: 0.0,
       );
-      // ⛔MULTIPLY KEEPS ITS OWN LINE, as the dual's does: every brush that
-      // shipped before F-451 multiplies, and its bytes stay as written.
+      // ⛔MULTIPLY KEEPS ITS OWN LINE, as the dual view's does: every brush
+      // that shipped before F-451 multiplies, and its bytes stay as written.
       if (dab.textureMode == BrushTextureMode.height) {
         result = paperHeightCoverage(result, textureSample, dab.textureDensity);
       } else {

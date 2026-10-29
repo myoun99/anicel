@@ -58,10 +58,14 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
   // The scratch the dabs blend into — native pooled memory with the
   // engine loaded, Dart byte lists otherwise (see CommitTileScratch).
   final native = QaNativeEngine.instance;
+  // A stroke with a second tip says so on every dab ([BrushDab.dual]).
+  final secondTip =
+      sequence.dabs.isNotEmpty && sequence.dabs.first.dual != null;
   final nativeScratch = native == null
       ? null
-      : NativeCommitScratch(native, surface);
-  final scratch = nativeScratch ?? DartCommitScratch(surface);
+      : NativeCommitScratch(native, surface, secondTip: secondTip);
+  final scratch =
+      nativeScratch ?? DartCommitScratch(surface, secondTip: secondTip);
   final changedCoords = <TileCoord>{};
   // Native kernel (R18 A-1): identical pixel visits and float math, the
   // run's dabs in pooled batches straight into the native-backed scratch

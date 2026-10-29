@@ -402,6 +402,7 @@ void main() {
           () => (
             bytes: Uint8List(scratch * scratch * 4),
             wide: Uint16List(scratch * scratch * 4),
+            second: null,
           ),
         ),
       );

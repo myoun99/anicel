@@ -64,6 +64,17 @@ class StrokePixel {
     );
   }
 
+  /// A pixel of a second tip's plane: its [level], alpha * 65535, and no
+  /// colour — what that tip's dabs pile over (ABI 60, `qa_dual_view_rows`).
+  /// Its view is no one's: the stroke shows the two planes through its own.
+  factory StrokePixel.level(int level) => StrokePixel._(
+    bytes: _clearView,
+    r: 0,
+    g: 0,
+    b: 0,
+    a: level,
+  );
+
   /// [destination] with only its alpha replaced by [alpha] in [0, 1],
   /// rounded onto both planes — what an erase leaves, and no colour in the
   /// view under a zero alpha ([StrokePixel.rounded]).

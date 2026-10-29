@@ -53,7 +53,7 @@ void main() {
   BrushDab dabAt(
     int i, {
     BrushTipMask? tip,
-    BrushTipMask? dual,
+    BrushTipMask? texture,
     double size = 60,
   }) => BrushDab(
     center: CanvasPoint(x: 80.5 + i * 1.0, y: 120.25 + i * 0.4),
@@ -66,7 +66,7 @@ void main() {
     pressure: 1,
     sequence: i,
     tipMask: tip,
-    dualMask: dual,
+    textureMask: texture,
   );
 
   /// [count] masks the cache tells apart, by [name].
@@ -97,7 +97,7 @@ void main() {
     if (engineMissing()) {
       return;
     }
-    // Two masks of its own a dab — a tip and a dual tip — so the allowance
+    // Two masks of its own a dab — a tip and a texture — so the allowance
     // runs out at half as many dabs. ⚠️With one a dab, the allowance ran
     // out exactly where a call runs out of dabs once both were 64, so the
     // cut on the masks could go and this would still count two.
@@ -109,7 +109,7 @@ void main() {
       surface: BitmapSurface(canvasSize: canvasSize, tileSize: 256),
       sequence: BrushDabSequence([
         for (var i = 0; i < dabs; i += 1)
-          dabAt(i, tip: masks[2 * i], dual: masks[2 * i + 1]),
+          dabAt(i, tip: masks[2 * i], texture: masks[2 * i + 1]),
       ]),
     );
     expect(

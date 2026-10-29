@@ -307,7 +307,13 @@ import '../core/on_a_worker.dart';
 ///   `restores` — a key gives back what its run erased of what it names,
 ///   AE's Keep Colors (`CelKeyOperation.restoreMatches`, I-132-Q2 유저
 ///   2026-10-27 「하나로 + AE 뜻」), where it erased what it did not name.
-const int kQaEngineAbiVersion = 59;
+/// - v60: the second tip is a SECOND STROKE (an-imported-pencil-drops-its-
+///   second-brush Q3 b, 유저 2026-10-25 「두 번째 획으로 다시 만든다」): its
+///   dabs (`dabFlagSecond`) pile on `qa_tile_span.tile_second`, and
+///   `qa_dab_blend_batch` takes the view's `dual_mode` and `dual_density`
+///   and rebuilds a span's bytes from both planes (`qa_dual_view_rows`).
+///   `qa_dab_spec` drops the per-dab dual mask. Both sizeofs move.
+const int kQaEngineAbiVersion = 60;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///
