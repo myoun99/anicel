@@ -48,8 +48,6 @@ class EditorDockHost extends StatelessWidget {
     required this.onTabSelected,
     required this.onTabMoved,
     required this.onTabDragChanged,
-    this.onToggleLock,
-    this.onCloseTab,
     this.flash,
     this.compact = false,
     this.chromeless = false,
@@ -70,8 +68,6 @@ class EditorDockHost extends StatelessWidget {
   final ValueChanged<String> onTabSelected;
   final void Function(EditorPanelTabDragData data, int insertIndex) onTabMoved;
   final ValueChanged<EditorPanelTabDragData?> onTabDragChanged;
-  final ValueChanged<String>? onToggleLock;
-  final ValueChanged<String>? onCloseTab;
 
   /// The workspace's reveal-flash channel (UI-R17 #5), threaded to the
   /// panel shell.
@@ -146,8 +142,6 @@ class EditorDockHost extends StatelessWidget {
           // so the strip goes back to being landing area.
           draggingTab: draggingTab,
           collapsed: collapsed,
-          onToggleLock: onToggleLock,
-          onCloseTab: onCloseTab,
           flash: flash,
         ),
       ),

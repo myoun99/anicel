@@ -24,15 +24,6 @@ class _WorkspaceDocks {
     return null;
   }
 
-  void _toggleTabLock(String tabId) {
-    _state._rebuild(() {
-      if (!_state._lockedTabIds.remove(tabId)) {
-        _state._lockedTabIds.add(tabId);
-      }
-    });
-    _state._layoutPersistence.scheduleLayoutSave();
-  }
-
   bool _canDockAccept(String dockId, EditorPanelTabDragData data) {
     // The slim edge docks only host narrow-fit panels (the tool bar);
     // everything else docks anywhere.
@@ -75,8 +66,6 @@ class _WorkspaceDocks {
       onTabMoved: (data, insertIndex) =>
           _state._placeTab(data, dockId, insertIndex),
       onTabDragChanged: (data) => _state._draggingTab.value = data,
-      onToggleLock: _toggleTabLock,
-      onCloseTab: _state._tabs.closeTab,
       flash: _state._panelFlash,
     );
   }
