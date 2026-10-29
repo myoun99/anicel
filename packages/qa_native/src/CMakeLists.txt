@@ -32,8 +32,69 @@ add_library(qa_engine SHARED
   "${CMAKE_CURRENT_LIST_DIR}/qa_compress.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_media_span.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_display.c"
+  "${CMAKE_CURRENT_LIST_DIR}/qa_fx_plugin.c"
   "${CMAKE_CURRENT_LIST_DIR}/third_party/zstd/zstd.c"
 )
+if(NOT WIN32)
+  # qa_fx_plugin.c opens a native plugin with dlopen.
+  target_link_libraries(qa_engine ${CMAKE_DL_LIBS})
+endif()
+
+# 🗣️I-132-Q31 (유저 2026-10-30): the fx plugins' WebAssembly engine is
+# Wasmtime 48 LTS — its project's own prebuilt C library, pinned by version
+# and SHA-256 and fetched ONCE PER MACHINE into a folder outside the
+# repository (28 MB zipped; a binary in git stays in every clone for ever).
+# Linked statically: 12.9 MB in an executable on Windows x64, where its DLL
+# is 22 MB (measured 2026-10-30).
+# ⚠️Windows x64 first. The other prebuilt libraries (macOS · Linux ·
+# Android) and the iPad's build from source are rounds of their own; until
+# then a build without the engine opens native plugins only and tells a
+# .wasm so (qa_fx_plugin.c).
+set(QA_WASMTIME_VERSION "48.0.8")
+set(QA_WASMTIME_DIR "")
+if(WIN32 AND CMAKE_C_COMPILER_ARCHITECTURE_ID STREQUAL "x64")
+  set(qa_wt_name "wasmtime-v${QA_WASMTIME_VERSION}-x86_64-windows-c-api")
+  set(qa_wt_sha256
+    "31c2d97399b2555c06233a5fe0d2ba7373d020dae584107b1e3f459dd1756c42")
+  file(TO_CMAKE_PATH "$ENV{LOCALAPPDATA}" qa_wt_home)
+  set(qa_wt_cache
+    "${qa_wt_home}/anicel/third_party/wasmtime-v${QA_WASMTIME_VERSION}")
+  set(qa_wt_zip "${qa_wt_cache}/${qa_wt_name}.zip")
+  set(qa_wt_sum "")
+  if(EXISTS "${qa_wt_zip}")
+    file(SHA256 "${qa_wt_zip}" qa_wt_sum)
+  endif()
+  if(NOT qa_wt_sum STREQUAL qa_wt_sha256)
+    file(DOWNLOAD
+      "https://github.com/bytecodealliance/wasmtime/releases/download/v${QA_WASMTIME_VERSION}/${qa_wt_name}.zip"
+      "${qa_wt_zip}"
+      EXPECTED_HASH SHA256=${qa_wt_sha256}
+      STATUS qa_wt_status)
+    list(GET qa_wt_status 0 qa_wt_code)
+    if(NOT qa_wt_code EQUAL 0)
+      message(FATAL_ERROR "Wasmtime ${QA_WASMTIME_VERSION} did not download: ${qa_wt_status}")
+    endif()
+    file(REMOVE_RECURSE "${qa_wt_cache}/x")
+  endif()
+  if(NOT EXISTS "${qa_wt_cache}/x/${qa_wt_name}/lib/wasmtime.lib")
+    file(ARCHIVE_EXTRACT INPUT "${qa_wt_zip}" DESTINATION "${qa_wt_cache}/x")
+  endif()
+  set(QA_WASMTIME_DIR "${qa_wt_cache}/x/${qa_wt_name}")
+endif()
+
+# Links [target] against the engine found above, where there is one.
+function(qa_link_wasmtime target)
+  if(NOT QA_WASMTIME_DIR)
+    return()
+  endif()
+  target_include_directories(${target} PRIVATE "${QA_WASMTIME_DIR}/include")
+  # Empty: the static library's symbols, not a DLL's imports.
+  target_compile_definitions(${target} PRIVATE
+    QA_FX_WASM=1 WASM_API_EXTERN= WASI_API_EXTERN=)
+  target_link_libraries(${target} "${QA_WASMTIME_DIR}/lib/wasmtime.lib"
+    ws2_32 advapi32 userenv ntdll shell32 ole32 bcrypt)
+endfunction()
+qa_link_wasmtime(qa_engine)
 if(APPLE)
   target_sources(qa_engine PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/qa_video_apple.m")
@@ -304,6 +365,36 @@ endif()
 # vendor SDK and no extra link libraries, and absence of a driver is a
 # normal silent state. Same bundle-beside-the-exe + dart:ffi consumption
 # pattern as qa_engine.
+# The fx plugin host, asked the same four questions of the same plugin
+# built twice — a native library from qa_fx_plugin_sample.c and the
+# WebAssembly twin the test writes itself — and holding both to answers it
+# computes on its own (qa_fx_plugin_test.c).
+if(NOT ANDROID AND NOT IOS)
+  add_library(qa_fx_plugin_sample SHARED
+    "${CMAKE_CURRENT_LIST_DIR}/qa_fx_plugin_sample.c")
+  add_executable(qa_fx_plugin_test
+    "${CMAKE_CURRENT_LIST_DIR}/qa_fx_plugin_test.c"
+    "${CMAKE_CURRENT_LIST_DIR}/qa_fx_plugin.c")
+  foreach(qa_fx_target IN ITEMS qa_fx_plugin_sample qa_fx_plugin_test)
+    set_target_properties(${qa_fx_target} PROPERTIES
+      C_STANDARD 99
+      C_STANDARD_REQUIRED ON
+    )
+    if(MSVC)
+      target_compile_options(${qa_fx_target} PRIVATE /utf-8)
+    endif()
+  endforeach()
+  target_compile_definitions(qa_fx_plugin_test PRIVATE
+    "QA_FX_SAMPLE=\"$<TARGET_FILE:qa_fx_plugin_sample>\"")
+  add_dependencies(qa_fx_plugin_test qa_fx_plugin_sample)
+  qa_link_wasmtime(qa_fx_plugin_test)
+  if(NOT WIN32)
+    target_link_libraries(qa_fx_plugin_test ${CMAKE_DL_LIBS})
+  endif()
+  enable_testing()
+  add_test(NAME qa_fx_plugin COMMAND qa_fx_plugin_test)
+endif()
+
 if(WIN32)
   add_library(qa_tablet SHARED
     "${CMAKE_CURRENT_LIST_DIR}/qa_tablet_win.c"
