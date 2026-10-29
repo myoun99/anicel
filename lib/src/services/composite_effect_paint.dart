@@ -128,12 +128,15 @@ class CompositeEffectPaint {
     paint.imageFilter = imageFilter;
   }
 
+  /// The plan as one filter, for a layer that carries it — null for none.
+  /// The plan holds one filter or the other, never both.
+  ui.ImageFilter? get filter => colorFilter ?? imageFilter;
+
   /// [inner], then the plan, as ONE image filter — what [applyTo] gives a
-  /// draw whose own shading is [inner], for a layer that filter carries.
-  /// The plan holds one filter or the other, never both, so the order is
-  /// the draw's: its shading first, the plan over it.
+  /// draw whose own shading is [inner], for a layer that filter carries:
+  /// the draw's order, its shading first, the plan over it.
   ui.ImageFilter after(ui.ImageFilter inner) {
-    final outer = colorFilter ?? imageFilter;
+    final outer = filter;
     return outer == null
         ? inner
         : ui.ImageFilter.compose(outer: outer, inner: inner);
@@ -696,7 +699,7 @@ final class KeyRun extends EffectStepLead {
 /// ([CompositeEffectPlan.outsetPixels]) — and INSIDE that raster, where
 /// neither holds, a directional or a radial blur's passes are shader
 /// filters on Impeller: the layers of one picture, not a raster a pass
-/// (🗣️effect-step-passes-each-pay-a-snapshot-Q1 a, `_passesInOnePicture`).
+/// (🗣️effect-step-passes-each-pay-a-snapshot-Q1 a, `applyEffectSteps`).
 final class ShadedEffect extends EffectStepLead {
   const ShadedEffect(this.effect);
 

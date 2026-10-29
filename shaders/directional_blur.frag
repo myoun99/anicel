@@ -17,7 +17,7 @@
 // no further than the picture it is handed (measured 10-28 — a blur 16
 // long over a dot spread it ±1 px). A step's raster is the buffer the plan
 // already grew — and there, on Impeller, the passes ARE shader filters, the
-// layers of one picture (`_passesInOnePicture`, 10-29: a raster a pass cost
+// layers of one picture (`applyEffectSteps`, 10-29: a raster a pass cost
 // ~22ms each on the Surface).
 //
 // ⛔[uSize] FIRST AMONG THE FLOATS AND [uSource] FIRST AMONG THE SAMPLERS:

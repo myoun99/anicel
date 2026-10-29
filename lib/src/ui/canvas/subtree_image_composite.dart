@@ -894,9 +894,7 @@ void _composeInARaster({
       debugBlendsComposedInARaster += 1;
       return true;
     }());
-    final recorder = ui.PictureRecorder();
-    _shadeTheGrid(Canvas(recorder), plan, shader);
-    composed = rasterPicture(recorder, plan.pixelWidth, plan.pixelHeight);
+    composed = shadedRaster(shader, plan.pixelWidth, plan.pixelHeight);
     _blitSubtreeRaster(
       canvas: canvas,
       image: composed,
@@ -1048,18 +1046,31 @@ void _composeInTheFrame({
 /// Runs [steps] over [source], returning a NEW image the caller owns, or
 /// [source] itself when there is nothing to do.
 ///
-/// 🚨EACH STEP IS ITS OWN RASTER, AT THE IDENTITY. A step's lead is fragment
-/// shaders, and a shader reads `FlutterFragCoord()` — the position in the
-/// space it is drawn into. Folding one into a draw that sits under a
-/// transform would make it read through that transform. Rasterising the step
-/// by itself, 1:1 into a rect at the origin, is what makes the shader's own
-/// coordinates mean what it thinks they mean.
+/// 🚨EVERY DRAW AT THE IDENTITY. A step's lead is fragment shaders, and a
+/// shader reads `FlutterFragCoord()` — the position in the space it is drawn
+/// into. Folding one into a draw that sits under a transform would make it
+/// read through that transform. Laying the chain by itself, 1:1 into a rect
+/// at the origin, is what makes the shader's own coordinates mean what it
+/// thinks they mean. Every raster is [source]'s size.
 ///
-/// A step's last lead draw and its painted effects share ONE raster: a
-/// `ui.Paint` applies its shader, then its colour filter, then its image
-/// filter, so "key, then blur" needs no second pass. Each draw before it is a
-/// raster of its own, read beside the step's input by the next. Every raster
-/// is [source]'s size.
+/// 🚨AS FEW RASTERS AS THE DRAWS ALLOW (🗣️fx-made-light-by-one-law, 유저
+/// 2026-10-29 「fx들 가볍게 하는 로직은 서로 최대한 법 통일하면서
+/// 알아서해줘. 근본구조적으로」). A raster is what an effect pays for:
+/// 🔬on the Surface Pro 11 one of 1920×1080 cost ~22ms and a layer inside
+/// one ~1.5 (10-29, card effect-step-passes-each-pay-a-snapshot). So the
+/// chain is laid as ONE picture ([_Laying]) and rastered only where a draw
+/// must read the picture before it as an IMAGE: a colour key reads its run's
+/// input beside it, a camera lens blur sums its rows in floats and gathers
+/// out of them, a blur repeating the paper's edge cuts the paper out. Every
+/// other draw — a pass along a way, a key, the painted effects a step ends
+/// in — lies over the picture before it as a layer its shader filters
+/// ([_LeadDraw.filtersALayer]), and the painted effects go on the draw under
+/// them where its paint can take them: a `ui.Paint` applies its shader, then
+/// its colour filter, then its image filter.
+///
+/// Where the engine has no shader filter (Skia) or a test switches it off
+/// ([debugDrawsInOnePicture]), every lead draw is a raster of its own — the
+/// route the picture is held against.
 ///
 /// [paper] is where the paper lies in [source]'s pixels — the edge a blur
 /// that repeats it reads past ([PaperEdgeEffect]). [rowOf] lays a row a
@@ -1078,213 +1089,366 @@ ui.Image applyEffectSteps({
   final space = imageScale == 1
       ? DrawSpace.canvas
       : DrawSpace.preScaled(imageScale);
-  var image = source;
-  for (final step in steps) {
-    // What every key of a run reads its colours from and a restore gives
-    // back to ([KeyRun]) — alive until the step is done.
-    final input = image;
-    // And the row its lead reads, on the step's grid — as long.
-    final read = switch (step.lead) {
-      ShadedEffect(:final effect) => effectReadsRow(effect),
-      _ => null,
-    };
-    final row = read == null ? null : rowOf?.call(read);
-    try {
-      final draws = _stepDraws(
-        step.lead,
+  final layers =
+      debugDrawsInOnePicture && ui.ImageFilter.isShaderFilterSupported;
+  var laying = _Laying(source);
+  try {
+    for (final step in steps) {
+      laying = _laidStep(
+        laying,
+        step,
         space: space,
         paper: paper,
-        rasterWidth: source.width,
-        row: row,
+        rowOf: rowOf,
+        layers: layers,
       );
-      for (var index = 0; index < draws.length; index += 1) {
-        final next = draws[index](
-          image,
-          input,
-          index == draws.length - 1
-              ? resolveCompositeEffectPaint(step.then, space: space)
-              : CompositeEffectPaint.none,
-        );
-        if (!identical(image, source) && !identical(image, input)) {
-          image.dispose();
-        }
-        image = next;
-      }
-    } finally {
-      row?.dispose();
     }
-    if (!identical(input, source)) {
-      input.dispose();
-    }
+    return laying.image();
+  } catch (_) {
+    laying.discard();
+    rethrow;
   }
-  return image;
 }
 
-/// One draw of a step: the picture it makes of [image] — the one the draw
-/// before it made — and the step's [input], [then] in it.
-typedef _StepDraw =
-    ui.Image Function(
-      ui.Image image,
-      ui.Image input,
-      CompositeEffectPaint then,
-    );
-
-/// The rasters a step led by [lead] takes at [space], each [rasterWidth]
-/// wide — one for a step that only paints.
-List<_StepDraw> _stepDraws(
-  EffectStepLead? lead, {
-  required DrawSpace space,
-  required Rect paper,
-  required int rasterWidth,
-  required ui.Image? row,
-}) {
-  if (lead case PaperEdgeEffect(:final effect)) {
-    if (paperEdgeBlurOf(effect, space) case final blur?) {
-      return [
-        (image, _, then) =>
-            _paperEdgeDraw(image, paper: paper, blur: blur, then: then),
-      ];
-    }
-  }
-  if (_passesForOnePicture(
-        lead,
-        space: space,
-        paper: paper,
-        rasterWidth: rasterWidth,
-      )
-      case final passes?) {
-    return [
-      (image, _, then) => _passesInOnePicture(image, passes, then: then),
-    ];
-  }
-  final shaded = _leadDraws(
-    lead,
-    space: space,
-    paper: paper,
-    rasterWidth: rasterWidth,
-    row: row,
-  );
-  return [
-    if (shaded.isEmpty)
-      (image, input, then) =>
-          _effectStepDraw(image: image, input: input, lead: null, then: then),
-    for (final shader in shaded)
-      (image, input, then) =>
-          _effectStepDraw(image: image, input: input, lead: shader, then: then),
-  ];
-}
-
-/// Whether a step's blur passes are laid as the layers of one picture
-/// ([_passesInOnePicture]) where the engine can. Off, each pass is a raster
-/// of its own — the route a test holds the picture's bytes against.
+/// Whether a chain is laid as the layers of one picture where its draws let
+/// it ([applyEffectSteps]). Off, every lead draw is a raster of its own —
+/// the route a test holds the picture's bytes against.
 @visibleForTesting
-bool debugPassesInOnePicture = true;
+bool debugDrawsInOnePicture = true;
 
-/// How many steps laid their passes in one picture since a test zeroed it.
+/// How many rasters effect chains took since a test zeroed it
+/// ([applyEffectSteps]).
 ///
 /// ⚠️Written under `assert`, so a release build pays nothing.
 @visibleForTesting
-int debugStepsInOnePicture = 0;
+int debugChainRasters = 0;
 
-/// [lead]'s passes at [space] when every one is a blur along a way
-/// ([LineBoxPass]) and the engine has a shader filter — Impeller; Skia has
-/// none, and throws. Null otherwise: then each pass is a raster of its own.
-///
-/// ⛔A camera lens blur's passes stay rasters: its row sums hold numbers
-/// past a byte, and a layer's texels are bytes.
-List<LineBoxPass>? _passesForOnePicture(
-  EffectStepLead? lead, {
+/// [laying] with [step] laid over it — its draws as layers where [layers]
+/// and they let them be, rasters where they read an image.
+_Laying _laidStep(
+  _Laying laying,
+  CompositeEffectStep step, {
   required DrawSpace space,
   required Rect paper,
-  required int rasterWidth,
+  required ui.Image? Function(LayerId row)? rowOf,
+  required bool layers,
 }) {
-  if (lead is! ShadedEffect ||
-      !debugPassesInOnePicture ||
-      !ui.ImageFilter.isShaderFilterSupported) {
-    return null;
+  final then = resolveCompositeEffectPaint(step.then, space: space);
+  final lead = step.lead;
+  if (lead case PaperEdgeEffect(:final effect)) {
+    if (paperEdgeBlurOf(effect, space) case final blur?) {
+      return laying
+          .cutAndBlurred(paper: paper, blur: blur)
+          .then(then, layers: layers);
+    }
   }
-  final passes = shadedPassesOf(
-    lead.effect,
-    space,
+  // The row its lead reads, on the step's grid — alive until what reads it
+  // is recorded.
+  final read = switch (lead) {
+    ShadedEffect(:final effect) => effectReadsRow(effect),
+    _ => null,
+  };
+  final row = read == null ? null : rowOf?.call(read);
+  final draws = _leadDraws(
+    lead,
+    space: space,
     paper: paper,
-    rasterWidth: rasterWidth,
+    rasterWidth: laying.source.width,
+    row: row,
   );
-  if (passes.isEmpty || passes.any((pass) => pass is! LineBoxPass)) {
-    return null;
+  // What a draw reads beside the picture before it — a key run's input, a
+  // gather's — is the step's input, as an image.
+  final input = draws.any((draw) => draw.readsInput) ? laying.image() : null;
+  var laid = laying;
+  for (final draw in draws) {
+    laid = layers && draw.filtersALayer
+        // ⚠️The engine hands a layer's filter the layer as its first sampler
+        // and its size as its first vec2, so the image the shader is made
+        // with stands for nothing there but that size — the chain's.
+        ? laid.under(draw.shade(laid.source, input ?? laid.source))
+        : laid.drawnBy(draw, input: input);
   }
-  return passes.whereType<LineBoxPass>().toList();
+  laid
+    ..keepUntilLaid(input)
+    ..keepUntilLaid(row);
+  return laid.then(then, layers: layers);
 }
 
-/// [passes] over [image] as the layers of ONE picture, the first innermost,
-/// each layer filtered by its pass ([DirectionalBlurShader]) — then [then]
-/// over the last: one raster where a raster a pass made as many.
+/// A picture a chain is laying ([applyEffectSteps]), the chain's [source]'s
+/// size: an image, or what is drawn at its bottom and the filters laid over
+/// it, the first innermost — recorded and rastered only when a draw must
+/// read it as an image ([image]).
 ///
-/// 🗣️effect-step-passes-each-pay-a-snapshot-Q1 a (유저 2026-10-29 「바꾼다 —
-/// 한 단계의 패스들을 그림 한 장 안에서 겹친다」). 🔬On the Surface Pro 11
-/// (10-29, Windows GLES, a 1920×1080 raster a frame, 100 frames each): a
-/// raster a pass cost ~22ms each — 1 · 2 · 4 · 8 passes 27 · 50 · 104 · 189
-/// ms a frame — and the same passes as layers of one raster 28 · 33 · 32 ·
-/// 40. The pixels: none upside down, none more than 1/255 apart, 0.4–0.8%
-/// of them that far (directional and radial, opaque and with alpha).
-///
-/// Neither reason a pass is not a filter in the FRAME ([ShadedEffect])
-/// reaches here: the picture is the step's own raster, at the identity, and
-/// what each layer holds is the whole buffer the plan grew.
-ui.Image _passesInOnePicture(
-  ui.Image image,
-  List<LineBoxPass> passes, {
-  required CompositeEffectPaint then,
-}) {
-  assert(() {
-    debugStepsInOnePicture += 1;
-    return true;
-  }());
-  final rect = Rect.fromLTWH(
-    0,
-    0,
-    image.width.toDouble(),
-    image.height.toDouble(),
-  );
-  final recorder = ui.PictureRecorder();
-  final into = Canvas(recorder);
-  final shaders = <ui.FragmentShader>[];
-  try {
-    // Outermost first: the last pass, with [then] over it.
-    for (final pass in passes.reversed) {
-      final shader = DirectionalBlurShader.shaderFor(source: image, pass: pass);
-      final filter = ui.ImageFilter.shader(shader);
-      into.saveLayer(
-        rect,
-        Paint()..imageFilter = shaders.isEmpty ? then.after(filter) : filter,
-      );
-      shaders.add(shader);
+/// It owns every image it holds but [source], the caller's: each is released
+/// once the picture that draws it is recorded — ⚠️safe from then on, as the
+/// display list holds its own claim on what it draws.
+class _Laying {
+  _Laying(this.source) : _image = source, _paints = false;
+
+  _Laying._drawn(
+    this.source,
+    void Function(Canvas into, Paint paint) bottom, {
+    required bool paints,
+  }) : _bottom = bottom,
+       _paints = paints;
+
+  /// The chain's input: every raster is its size.
+  final ui.Image source;
+
+  /// The picture where it is an image and nothing is laid over it.
+  ui.Image? _image;
+
+  /// What is drawn at the bottom of the picture, with [_paint].
+  void Function(Canvas into, Paint paint)? _bottom;
+
+  /// The bottom's paint — a fresh one for every picture.
+  Paint _paint = Paint();
+
+  /// Whether [_paint] can still take a step's painted effects: not once it
+  /// holds them, nor where the bottom's own draw is filtered and cut
+  /// ([cutAndBlurred]) — painted there they would come before its blur and
+  /// inside its cut.
+  bool _paints;
+
+  /// The layers over the bottom, the first innermost.
+  final List<ui.ImageFilter> _filters = [];
+
+  final List<ui.FragmentShader> _shaders = [];
+  final Set<ui.Image> _images = Set.identity();
+
+  Rect get _rect =>
+      Rect.fromLTWH(0, 0, source.width.toDouble(), source.height.toDouble());
+
+  /// The picture as an image: itself where it is one, else recorded and
+  /// rastered — once; what it held is released.
+  ui.Image image() {
+    final held = _image;
+    if (held != null) {
+      return held;
     }
-    // 🚨THE LAYER IS AS LARGE AS WHAT IS DRAWN INTO IT ([_composeInTheFrame])
-    // — and this is the whole raster, so every layer is.
-    _blitWhole(into, image, Paint());
-    for (var layer = 0; layer < passes.length; layer += 1) {
+    final rect = _rect;
+    final recorder = ui.PictureRecorder();
+    final into = Canvas(recorder);
+    for (final filter in _filters.reversed) {
+      into.saveLayer(rect, Paint()..imageFilter = filter);
+    }
+    _bottom!(into, _paint);
+    for (var layer = 0; layer < _filters.length; layer += 1) {
       into.restore();
     }
-    return rasterPicture(recorder, image.width, image.height);
-  } finally {
-    // ⚠️Safe once recorded: the picture holds its own claim on each.
-    for (final shader in shaders) {
+    try {
+      final made = rasterPicture(recorder, source.width, source.height);
+      assert(() {
+        debugChainRasters += 1;
+        return true;
+      }());
+      _image = made;
+      return made;
+    } finally {
+      _release();
+      _bottom = null;
+      _paint = Paint();
+      _filters.clear();
+    }
+  }
+
+  /// [shader] laid over the picture as a layer it filters.
+  _Laying under(ui.FragmentShader shader) {
+    _shaders.add(shader);
+    _onTheBottom();
+    _filters.add(ui.ImageFilter.shader(shader));
+    return this;
+  }
+
+  /// [draw] over the picture as an image — and [input], the step's, beside
+  /// it — in a raster of its own where it holds numbers past a byte, else as
+  /// the bottom of the next picture.
+  _Laying drawnBy(_LeadDraw draw, {required ui.Image? input}) {
+    final image = this.image();
+    final shader = draw.shade(image, input ?? image);
+    if (draw.inFloats) {
+      try {
+        final sums = shadedRaster(
+          shader,
+          source.width,
+          source.height,
+          inFloats: true,
+        );
+        assert(() {
+          debugChainRasters += 1;
+          return true;
+        }());
+        return _Laying(source).._image = sums;
+      } finally {
+        shader.dispose();
+        if (!identical(image, input)) {
+          _releaseImage(image);
+        }
+      }
+    }
+    final next = _Laying._drawn(
+      source,
+      (into, paint) => into.drawRect(_rect, paint..shader = shader),
+      paints: true,
+    ).._shaders.add(shader);
+    if (!identical(image, input)) {
+      next._images.add(image);
+    }
+    return next;
+  }
+
+  /// The paper cut out of the picture and drawn through [blur], as the
+  /// bottom of the next picture — a Gaussian's Repeat Edge Pixels on the
+  /// paper's edge (🗣️I-132-Q14 a, [PaperEdgeEffect]).
+  ///
+  /// 🔬[blur]'s clamp repeats the edge of the image it is drawn with, and
+  /// paints past it: so the paper is cut out as an image of its own, on whole
+  /// pixels, and what is drawn of it is cut to it.
+  _Laying cutAndBlurred({required Rect paper, required ui.ImageFilter blur}) {
+    final image = this.image();
+    final rect = _rect;
+    final cut = paperOnWholePixels(paper).intersect(rect);
+    // Past the paper nothing is left: a cut that misses the raster draws it
+    // empty. A raster the paper holds whole — a row inside its page, the
+    // usual case — is its own cut.
+    final sheet = cut.width <= 0 || cut.height <= 0
+        ? null
+        : cut == rect
+        ? image
+        : _cutOut(image, cut);
+    final next = _Laying._drawn(source, (into, _) {
+      // 🚨THE LAYER IS AS LARGE AS WHAT IS DRAWN INTO IT
+      // ([_composeInTheFrame]): nothing, `src`, over the whole raster first,
+      // so a layer over a cut paper is the raster's.
+      into.drawRect(
+        rect,
+        Paint()
+          ..blendMode = BlendMode.src
+          ..color = const Color(0x00000000),
+      );
+      if (sheet != null) {
+        into
+          ..save()
+          ..clipRect(cut)
+          ..drawImage(
+            sheet,
+            cut.topLeft,
+            // 1:1 at the identity: the blur is all the sampling there is.
+            Paint()
+              ..imageFilter = blur
+              ..filterQuality = FilterQuality.none,
+          )
+          ..restore();
+      }
+    }, paints: false);
+    next._images.add(image);
+    if (sheet != null) {
+      next._images.add(sheet);
+    }
+    return next;
+  }
+
+  /// [then] over the picture: on the draw under it where its paint can take
+  /// it, with the outermost layer's filter where one is laid, else as a layer
+  /// of its own where [layers] — or a raster blitted through it.
+  _Laying then(CompositeEffectPaint then, {required bool layers}) {
+    final filter = then.filter;
+    if (filter == null) {
+      return this;
+    }
+    if (_filters.isNotEmpty) {
+      _filters.last = then.after(_filters.last);
+      return this;
+    }
+    if (_image != null || !_paints) {
+      if (layers && _image == null) {
+        _filters.add(filter);
+        return this;
+      }
+      _onTheBottom(blitting: image());
+    }
+    then.applyTo(_paint);
+    _paints = false;
+    return this;
+  }
+
+  /// Keeps [image] alive until the picture is recorded — at once where it
+  /// already is.
+  void keepUntilLaid(ui.Image? image) {
+    if (image == null || identical(image, _image)) {
+      return;
+    }
+    if (_image != null) {
+      _releaseImage(image);
+      return;
+    }
+    _images.add(image);
+  }
+
+  /// Releases what it holds, its image too where that is not [source] —
+  /// for a chain that throws part way along.
+  void discard() {
+    _release();
+    final held = _image;
+    if (held != null) {
+      _releaseImage(held);
+    }
+  }
+
+  /// Makes the picture's image — or [blitting] — the bottom it draws, where
+  /// the picture is an image.
+  void _onTheBottom({ui.Image? blitting}) {
+    final image = blitting ?? _image;
+    if (image == null) {
+      return;
+    }
+    _image = null;
+    _images.add(image);
+    _bottom = (into, paint) => _blitWhole(into, image, paint);
+    _paints = true;
+  }
+
+  void _release() {
+    for (final shader in _shaders) {
       shader.dispose();
+    }
+    _shaders.clear();
+    for (final image in _images) {
+      _releaseImage(image);
+    }
+    _images.clear();
+  }
+
+  void _releaseImage(ui.Image image) {
+    if (!identical(image, source)) {
+      image.dispose();
     }
   }
 }
 
-/// One lead draw: a shader over the picture the draw before it made and
-/// the step's input — laid [inFloats] where it holds numbers past a byte
-/// ([RowSumPass]).
+/// One draw a lead makes: a shader over the picture the draw before it made
+/// and the step's input.
 typedef _LeadDraw = ({
   ui.FragmentShader Function(ui.Image image, ui.Image input) shade,
+
+  /// Whether the shader can filter a layer that holds the picture before it:
+  /// it reads that picture as its first sampler, over its size as its first
+  /// vec2 (`uSize`), and lays a colour — what the engine binds where a
+  /// shader is a layer's filter.
+  bool filtersALayer,
+
+  /// Whether it reads the step's input beside the picture before it — which
+  /// the step then holds as an image.
+  bool readsInput,
+
+  /// Whether it holds numbers past a byte ([RowSumPass]) — laid in floats,
+  /// in a raster of its own.
   bool inFloats,
 });
 
 /// The shaders [lead] draws at [space], with [paper] where the paper lies
 /// there, over rasters [rasterWidth] wide — none for a step that only
-/// paints, nor for a blur on the paper ([_paperEdgeDraw]) — [row] the
+/// paints, nor for a blur on the paper ([PaperEdgeEffect]) — [row] the
 /// row it reads on their grid, null for none.
 List<_LeadDraw> _leadDraws(
   EffectStepLead? lead, {
@@ -1302,6 +1466,8 @@ List<_LeadDraw> _leadDraws(
           original: input,
           key: key,
         ),
+        filtersALayer: true,
+        readsInput: true,
         inFloats: false,
       ),
   ],
@@ -1317,15 +1483,22 @@ List<_LeadDraw> _leadDraws(
 };
 
 /// The draw [pass] is, reading [row] where it reads a row.
+///
+/// ⛔A camera lens blur's passes are not layers: its row sums hold numbers
+/// past a byte, and its gather reads them as its first sampler.
 _LeadDraw _passDraw(ShadedPass pass, {required ui.Image? row}) =>
     switch (pass) {
   LineBoxPass() => (
     shade: (image, _) =>
         DirectionalBlurShader.shaderFor(source: image, pass: pass),
+    filtersALayer: true,
+    readsInput: false,
     inFloats: false,
   ),
   RowSumPass() => (
     shade: (image, _) => IrisBlurShader.rowSumFor(source: image, pass: pass),
+    filtersALayer: false,
+    readsInput: false,
     inFloats: true,
   ),
   IrisGatherPass() => (
@@ -1336,71 +1509,11 @@ _LeadDraw _passDraw(ShadedPass pass, {required ui.Image? row}) =>
       pass: row == null ? pass.unmapped : pass,
       map: row,
     ),
+    filtersALayer: false,
+    readsInput: true,
     inFloats: false,
   ),
 };
-
-/// [image] blurred by [blur] as though past [paper] lay the paper's edge
-/// pixels, and cut to it — AE's Repeat Edge Pixels on the paper's edge
-/// (🗣️I-132-Q14 a) — then [then] in a raster of its own.
-///
-/// 🔬[blur]'s clamp repeats the edge of the image it is drawn with, and
-/// paints past it ([PaperEdgeEffect]): so the paper is cut out as an image
-/// of its own, on whole pixels, and what is drawn of it is cut to it.
-ui.Image _paperEdgeDraw(
-  ui.Image image, {
-  required Rect paper,
-  required ui.ImageFilter blur,
-  required CompositeEffectPaint then,
-}) {
-  final whole = Rect.fromLTWH(
-    0,
-    0,
-    image.width.toDouble(),
-    image.height.toDouble(),
-  );
-  final cut = paperOnWholePixels(paper).intersect(whole);
-  final recorder = ui.PictureRecorder();
-  final into = Canvas(recorder);
-  // Past the paper nothing is left: a cut that misses the raster draws it
-  // empty.
-  if (cut.width > 0 && cut.height > 0) {
-    // A raster the paper holds whole — a row inside its page, the usual
-    // case — is its own cut.
-    final sheet = cut == whole ? image : _cutOut(image, cut);
-    try {
-      into
-        ..clipRect(cut)
-        ..drawImage(
-          sheet,
-          cut.topLeft,
-          // 1:1 at the identity: the blur is all the sampling there is.
-          Paint()
-            ..imageFilter = blur
-            ..filterQuality = FilterQuality.none,
-        );
-    } finally {
-      // ⚠️Safe once recorded: the picture holds its own claim on it.
-      if (!identical(sheet, image)) {
-        sheet.dispose();
-      }
-    }
-  }
-  final blurred = rasterPicture(recorder, image.width, image.height);
-  if (then.isEmpty) {
-    return blurred;
-  }
-  try {
-    return _effectStepDraw(
-      image: blurred,
-      input: blurred,
-      lead: null,
-      then: then,
-    );
-  } finally {
-    blurred.dispose();
-  }
-}
 
 /// [rect] of [image], on whole pixels, as an image of its own.
 ui.Image _cutOut(ui.Image image, Rect rect) {
@@ -1430,58 +1543,6 @@ void _blitWhole(Canvas into, ui.Image image, Paint paint) {
     rect,
     paint..filterQuality = FilterQuality.none,
   );
-}
-
-/// One raster of a step: [lead] over [image] ([input] the step's), then
-/// [then], 1:1 at the identity ([applyEffectSteps]) and [image]'s size.
-ui.Image _effectStepDraw({
-  required ui.Image image,
-  required ui.Image input,
-  required _LeadDraw? lead,
-  required CompositeEffectPaint then,
-}) {
-  final stepRecorder = ui.PictureRecorder();
-  final into = Canvas(stepRecorder);
-  final paint = Paint();
-  final shader = lead?.shade(image, input);
-  final inFloats = lead?.inFloats ?? false;
-  if (shader != null) {
-    paint.shader = shader;
-  }
-  if (inFloats) {
-    // What the shader gives, as it gives it: over an empty raster the
-    // default blend would give the same, but a number past 1 is no colour
-    // a blend is promised to keep.
-    paint.blendMode = BlendMode.src;
-  }
-  then.applyTo(paint);
-  final rect = Rect.fromLTWH(
-    0,
-    0,
-    image.width.toDouble(),
-    image.height.toDouble(),
-  );
-  if (shader == null) {
-    _blitWhole(into, image, paint);
-  } else {
-    // With a shader the image IS the shader's source, so the draw is a
-    // plain rect over it.
-    into.drawRect(rect, paint);
-  }
-  // ⚠️`toImageSync` throws, and a throw here used to keep BOTH the picture
-  // and the shader — this runs once per draw of a chain, so a failure part
-  // way along it leaked every step it had already built. The picture's
-  // release is [rasterPicture]'s; the shader's is this frame's own.
-  try {
-    return rasterPicture(
-      stepRecorder,
-      image.width,
-      image.height,
-      inFloats: inFloats,
-    );
-  } finally {
-    shader?.dispose();
-  }
 }
 
 /// Turns a finished recording into the image, hands [compose] a blit for it,

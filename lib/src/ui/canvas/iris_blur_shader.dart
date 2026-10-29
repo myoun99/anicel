@@ -164,16 +164,9 @@ class IrisBlurShader {
       ..setFloat(15, math.sin(halfSide))
       ..setFloat(16, math.cos(2 * halfSide))
       ..setFloat(17, math.sin(2 * halfSide));
-    final recorder = ui.PictureRecorder();
-    ui.Canvas(recorder).drawRect(
-      ui.Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
-      ui.Paint()
-        ..shader = shader
-        // What the shader gives, as it gives it — a column past 1.
-        ..blendMode = ui.BlendMode.src,
-    );
     try {
-      return rasterPicture(recorder, width, height, inFloats: true);
+      // What the shader gives, as it gives it — a column past 1.
+      return shadedRaster(shader, width, height, inFloats: true);
     } finally {
       shader.dispose();
     }
