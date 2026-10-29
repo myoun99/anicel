@@ -39,20 +39,22 @@ class _MemoryStore extends UsageStatsStore {
   Future<void> save(UsageStatsAnswer answer) async => this.answer = answer;
 }
 
-/// A periodic timer the test ticks by hand ([fire]).
-class _Periodic implements Timer {
-  _Periodic(this.every, this._onTick);
+/// A one-shot timer the test fires by hand ([fire]).
+class _Due implements Timer {
+  _Due(this.after, this._onDue);
 
-  final Duration every;
-  final void Function(Timer) _onTick;
+  /// How long it was armed for.
+  final Duration after;
+  final void Function() _onDue;
   bool _active = true;
   int _ticks = 0;
 
-  /// One period gone by.
+  /// Its moment come.
   void fire() {
     if (_active) {
+      _active = false;
       _ticks += 1;
-      _onTick(this);
+      _onDue();
     }
   }
 
@@ -74,8 +76,8 @@ List<Map<String, dynamic>> _events(String body) =>
     (jsonDecode(body) as List).cast<Map<String, dynamic>>();
 
 /// [event] as `<name>[ <key>=<value>,…]` — less the device's language, its
-/// model and the program language, which every event carries (the client's
-/// tests read them).
+/// model and the program language, which the `day` carries (the test of
+/// where the app runs reads them).
 String _said(Map<String, dynamic> event) {
   final props = {...event['props'] as Map<String, dynamic>}
     ..remove('osLocale')
@@ -107,8 +109,8 @@ void main() {
   /// The settings a run's shell hands in — none unless a test sets them.
   late Map<String, Object> settings;
 
-  /// Every periodic timer a run started, the latest last.
-  late List<_Periodic> timers;
+  /// Every timer a run armed, the latest last.
+  late List<_Due> timers;
 
   setUp(() {
     sent = [];
@@ -137,9 +139,9 @@ void main() {
     build: '1081',
   );
 
-  /// A periodic timer the test ticks, kept in [timers].
-  Timer periodic(Duration every, void Function(Timer) onTick) {
-    final timer = _Periodic(every, onTick);
+  /// A one-shot timer the test fires, kept in [timers].
+  Timer after(Duration after, void Function() onDue) {
+    final timer = _Due(after, onDue);
     timers.add(timer);
     return timer;
   }
@@ -153,18 +155,30 @@ void main() {
       osLocale: () => 'ko-KR',
       settings: () => settings,
       now: () => clock,
-      periodic: periodic,
+      after: after,
     );
     addTearDown(stats.dispose);
     unawaited(stats.restore());
     return stats;
   }
 
-  /// The periodic timers still running.
-  List<_Periodic> running() => [
+  /// The timers still armed.
+  List<_Due> running() => [
     for (final timer in timers)
       if (timer.isActive) timer,
   ];
+
+  /// The one `in_use` armed.
+  _Due armed() => running().single;
+
+  /// The armed `in_use`'s moment come — [late] after it, as a timer is —
+  /// and what it sends sent.
+  Future<void> inUse({Duration late = Duration.zero}) async {
+    final due = armed();
+    clock = clock.add(due.after + late);
+    due.fire();
+    await pumpEventQueue();
+  }
 
   void nextDay([int days = 1]) => clock = clock.add(Duration(days: days));
 
@@ -302,8 +316,7 @@ void main() {
       final stats = run(_MemoryStore([]));
       await stats.reportLaunch();
       settings = {'uiScale': '100%', 'accent': '#E05A47'};
-      timers.single.fire();
-      await pumpEventQueue();
+      await inUse();
       nextDay();
       await stats.reportResume();
       expect(sent, [
@@ -313,44 +326,58 @@ void main() {
       ]);
     });
 
-    test('the program language and the device\'s are read at each send — '
-        'the device\'s on every event, the hour\'s too', () async {
+    test('🎯the day says where the app runs — the device\'s language, its '
+        'model and the program language, read then, as chips — and no other '
+        'event repeats them; the program language still rides every '
+        'event\'s systemProps (유저 2026-10-29 22시대: 「하루한번이면 '
+        '되지않을까?」)', () async {
       var locale = 'ko';
       var osLocale = 'ja-JP';
-      final stats = UsageStats(
-        store: _MemoryStore([]),
-        client: AptabaseClient(
-          appKey: 'A-EU-1462843916',
-          post: (_, _, body) async {
-            sent.add([
-              for (final event in _events(body))
-                '${(event['systemProps'] as Map<String, dynamic>)['locale']} '
-                    '${(event['props'] as Map<String, dynamic>)['osLocale']}',
-            ]);
-            return 200;
-          },
-          prepare: () {},
-          describe: () => (model: 'x', os: FeedbackOs.iOS, osVersion: '18'),
-        ),
-        locale: () => locale,
-        osLocale: () => osLocale,
-        settings: () => const {},
-        now: () => clock,
-        periodic: periodic,
-      );
-      addTearDown(stats.dispose);
-      unawaited(stats.restore());
-      await stats.reportLaunch();
+      final store = _MemoryStore([]);
+      String told(Map<String, dynamic> event) {
+        final system = event['systemProps'] as Map<String, dynamic>;
+        return '${event['eventName']} ${system['locale']} ${event['props']}';
+      }
+
+      UsageStats launched() {
+        final stats = UsageStats(
+          store: store,
+          client: AptabaseClient(
+            appKey: 'A-EU-1462843916',
+            post: (_, _, body) async {
+              sent.add([for (final event in _events(body)) told(event)]);
+              return 200;
+            },
+            prepare: () {},
+            describe: () => (model: 'x', os: FeedbackOs.iOS, osVersion: '18'),
+          ),
+          locale: () => locale,
+          osLocale: () => osLocale,
+          settings: () => const {},
+          now: () => clock,
+          after: after,
+        );
+        addTearDown(stats.dispose);
+        unawaited(stats.restore());
+        return stats;
+      }
+
+      final first = launched();
+      await first.reportLaunch();
       locale = 'fr';
       osLocale = 'fr-CA';
       nextDay();
-      await stats.reportResume();
-      timers.single.fire();
-      await pumpEventQueue();
+      await first.reportResume();
+      await inUse();
+      await launched().reportLaunch();
       expect(sent, [
-        ['ko ja-JP', 'ko ja-JP'],
-        ['fr fr-CA'],
-        ['fr fr-CA'],
+        [
+          'app_started ko {}',
+          'day ko {days: new, osLocale: ja-JP, deviceModel: x, locale: ko}',
+        ],
+        ['day fr {days: 1-2, osLocale: fr-CA, deviceModel: x, locale: fr}'],
+        ['in_use fr {}'],
+        ['app_started fr {}'],
       ]);
     });
   });
@@ -527,40 +554,58 @@ void main() {
   });
 
   /// 🗣️유저 2026-10-29: Aptabase's live view shows who is still using the
-  /// app — an `in_use` 「1시간마다」 while it is on and in front; I-70-Q5:
-  /// 「켠 동안 한 세션」, so a little under the hour.
-  group('in_use, about once an hour', () {
+  /// app — an `in_use` 「1시간마다」 while it is on and in front. I-70-Q13 b
+  /// (유저 22시대: 「그럼 b로하자」): each begins a session, due as the one
+  /// before has run 55 minutes — Live lists the sessions begun within the
+  /// hour, so a device in use is always there.
+  group('in_use, as each session runs out', () {
     test('🎯on and in front: one every 55 minutes, its name alone — and '
         'none before the first is due', () async {
       final store = _MemoryStore([today - 1]);
       final stats = run(store);
       await stats.reportLaunch();
-      expect(UsageStats.inUseEvery, const Duration(minutes: 55));
-      expect(timers.single.every, UsageStats.inUseEvery);
+      expect(AptabaseClient.sessionLasts, const Duration(minutes: 55));
+      expect(armed().after, AptabaseClient.sessionLasts);
       expect(sent, [
         ['app_started', 'day days=1-2'],
       ]);
 
-      timers.single.fire();
-      await pumpEventQueue();
+      await inUse();
       expect(sent.last, ['in_use']);
-      timers.single.fire();
-      await pumpEventQueue();
+      expect(armed().after, AptabaseClient.sessionLasts);
+      await inUse();
       expect(sent, hasLength(3));
       expect(sent.last, ['in_use']);
       expect(store.days, [today - 1, today], reason: 'an in_use records no day');
       expect(stats.enabled.value, isTrue);
     });
 
-    test('🎯a run in front stays ONE session — each in_use, a second late '
-        'as a timer is, comes before the last event\'s session runs out',
-        () async {
+    test('🎯left in front across midnight UTC, the hour says the new day — '
+        'not only a launch or a return (관제 2026-10-29, 「day는 언제 '
+        '측정인거지?」)', () async {
+      clock = DateTime.utc(2026, 10, 29, 23, 30);
+      final store = _MemoryStore([today - 1]);
+      final stats = run(store);
+      await stats.reportLaunch();
+      await inUse();
+      await inUse();
+      expect(sent, [
+        ['app_started', 'day days=1-2'],
+        ['in_use', 'day days=3+'],
+        ['in_use'],
+      ]);
+      expect(store.days, [today - 1, today, today + 1]);
+    });
+
+    test('🎯a run in front begins a session at each in_use — a second late '
+        'as a timer is — so one has always begun within the hour, the '
+        'next due 55 minutes from its own start', () async {
       final stats = run(_MemoryStore([today - 1]));
       await stats.reportLaunch();
+      const late = Duration(seconds: 1);
       for (var tick = 0; tick < 3; tick += 1) {
-        clock = clock.add(UsageStats.inUseEvery + const Duration(seconds: 1));
-        timers.single.fire();
-        await pumpEventQueue();
+        await inUse(late: late);
+        expect(armed().after, AptabaseClient.sessionLasts);
       }
       expect(sent, [
         ['app_started', 'day days=1-2'],
@@ -569,59 +614,77 @@ void main() {
         ['in_use'],
       ]);
       expect({
-        for (final body in bodies)
-          for (final event in body) event['sessionId'],
-      }, hasLength(1));
+        for (final body in bodies) body.first['sessionId'],
+      }, hasLength(4));
       expect(
-        UsageStats.inUseEvery + const Duration(seconds: 1),
-        lessThan(AptabaseClient.sessionTimeout),
+        AptabaseClient.sessionLasts + late,
+        lessThan(const Duration(hours: 1)),
       );
     });
 
     test('⛔none while off — at launch, and from the moment it is turned '
-        'off; turned on, the hour starts then', () async {
+        'off; turned on, it is armed then', () async {
       final stats = run(_MemoryStore());
       await stats.reportLaunch();
       expect(timers, isEmpty);
 
       stats.setEnabled(true);
       await pumpEventQueue();
-      expect(running(), hasLength(1));
-      final hour = timers.single;
+      final due = armed();
+      expect(due.after, AptabaseClient.sessionLasts);
 
       stats.setEnabled(false);
       expect(running(), isEmpty);
-      hour.fire();
+      due.fire();
       await pumpEventQueue();
       expect(sent.expand((events) => events), isNot(contains('in_use')));
     });
 
-    test('⛔none while away; back in front, the hour starts again — and a '
-        'return while still in front keeps the hour it has', () async {
+    test('⛔none while away; back in front, it is due where the session '
+        'ends — at once if it ended meanwhile', () async {
       final stats = run(_MemoryStore([]));
       await stats.reportLaunch();
-      final first = timers.single;
+      final first = armed();
 
+      clock = clock.add(const Duration(minutes: 20));
       await stats.reportResume();
-      expect(timers, [first], reason: 'inactive and back: the same hour');
+      expect(
+        armed().after,
+        const Duration(minutes: 35),
+        reason: 'inactive and back: the same session, the same moment',
+      );
 
-      stats.reportAway();
+      await stats.reportAway();
       expect(running(), isEmpty);
       first.fire();
       await pumpEventQueue();
-      expect(sent, hasLength(1));
+      expect(sent, hasLength(2));
+      expect(sent.last, ['app_away']);
 
+      clock = clock.add(const Duration(minutes: 10));
       await stats.reportResume();
-      expect(running(), hasLength(1));
-      expect(running().single, isNot(same(first)));
-      running().single.fire();
-      await pumpEventQueue();
+      expect(armed().after, const Duration(minutes: 25));
+      await stats.reportAway();
+
+      clock = clock.add(const Duration(hours: 2));
+      await stats.reportResume();
+      expect(armed().after, Duration.zero);
+      await inUse();
       expect(sent.last, ['in_use']);
+      expect(armed().after, AptabaseClient.sessionLasts);
     });
 
-    test('turned on before the launch is reported, the hour waits for the '
-        'launch — the shell\'s report is what says the app is in front',
-        () async {
+    test('a clock put back before the session began waits a whole session, '
+        'no longer', () async {
+      final stats = run(_MemoryStore([today - 1]));
+      await stats.reportLaunch();
+      clock = clock.subtract(const Duration(hours: 3));
+      await stats.reportResume();
+      expect(armed().after, AptabaseClient.sessionLasts);
+    });
+
+    test('turned on before the launch is reported, it waits for the launch '
+        '— the shell\'s report is what says the app is in front', () async {
       final stats = run(_MemoryStore());
       stats.setEnabled(true);
       await pumpEventQueue();
@@ -630,17 +693,17 @@ void main() {
       expect(running(), hasLength(1));
     });
 
-    test('away before the saved answer is back: the launch starts no hour',
+    test('away before the saved answer is back: the launch arms none',
         () async {
       final stats = run(_MemoryStore([]));
       final launch = stats.reportLaunch();
-      stats.reportAway();
+      await stats.reportAway();
       await launch;
       expect(stats.enabled.value, isTrue);
       expect(timers, isEmpty);
     });
 
-    test('gone with the settings — and a launch reported after starts none',
+    test('gone with the settings — and a launch reported after arms none',
         () async {
       final stats = UsageStats(
         store: _MemoryStore([]),
@@ -649,7 +712,7 @@ void main() {
         osLocale: () => 'ko-KR',
         settings: () => const {},
         now: () => clock,
-        periodic: periodic,
+        after: after,
       );
       unawaited(stats.restore());
       await stats.reportLaunch();
@@ -662,6 +725,101 @@ void main() {
     });
   });
 
+  /// 🗣️I-70-Q10 (유저 2026-10-29 20:5x): 「1시간 안에 다시 열면 같은 세션」
+  /// — Aptabase keeps its user on a session, so a reopen on the same one is
+  /// the same person; since Q13, while the session's 55 minutes last.
+  group('the session outlives the run', () {
+    /// The session each POST's first event went in, in order.
+    List<Object?> sessions() => [
+      for (final body in bodies) body.first['sessionId'],
+    ];
+
+    test('🎯closed and opened again before its 55 minutes are out is the '
+        'same session, its in_use due where that session ends; at them, a '
+        'new one', () async {
+      final store = _MemoryStore([today - 1]);
+      final first = run(store);
+      await first.reportLaunch();
+      await first.reportAway();
+
+      clock = clock.add(const Duration(minutes: 54));
+      final second = run(store);
+      await second.reportLaunch();
+      expect(armed().after, const Duration(minutes: 1));
+      await second.reportAway();
+
+      clock = clock.add(const Duration(minutes: 1));
+      await run(store).reportLaunch();
+      expect(sent, [
+        ['app_started', 'day days=1-2'],
+        ['app_away'],
+        ['app_started'],
+        ['app_away'],
+        ['app_started'],
+      ]);
+      expect(sessions()[2], sessions()[0]);
+      expect(sessions()[4], isNot(sessions()[0]));
+      expect(armed().after, AptabaseClient.sessionLasts);
+    });
+
+    test('🎯its time counts from its start, not its last event — closed 50 '
+        'minutes in, a reopen 10 minutes after the close is a new session',
+        () async {
+      final store = _MemoryStore([today - 1]);
+      final first = run(store);
+      await first.reportLaunch();
+      clock = clock.add(const Duration(minutes: 50));
+      await first.reportAway();
+
+      clock = clock.add(const Duration(minutes: 10));
+      await run(store).reportLaunch();
+      expect(sent, [
+        ['app_started', 'day days=1-2'],
+        ['app_away'],
+        ['app_started'],
+      ]);
+      expect(bodies[1].single['timestamp'], '2026-10-29T07:10:00.000Z');
+      expect(sessions()[1], sessions()[0]);
+      expect(sessions()[2], isNot(sessions()[0]));
+    });
+  });
+
+  /// 🗣️I-70-Q11 (유저 2026-10-29 21시대): 「닫을때도 보내게」 — a phone
+  /// cannot tell closing from switching apps, so every going away.
+  group('app_away', () {
+    test('🎯going away is written down before it completes — a closing app '
+        'keeps it for its next launch — and is ONE event, however many of '
+        'hidden, paused and detached follow', () async {
+      final store = _MemoryStore([today - 1]);
+      status = 503;
+      final stats = run(store);
+      await stats.reportLaunch();
+      await stats.reportAway();
+      expect(store.queue!.map(_said), [
+        'app_started',
+        'day days=1-2',
+        'app_away',
+      ]);
+      await stats.reportAway();
+      await stats.reportAway();
+      expect(store.queue!.map(_said).last, 'app_away');
+      expect(store.queue, hasLength(3));
+    });
+
+    test('⛔none before the app was in front, and none while off', () async {
+      final store = _MemoryStore([today - 1]);
+      final stats = run(store);
+      await stats.reportAway();
+      await stats.reportLaunch();
+      stats.setEnabled(false);
+      await stats.reportAway();
+      await pumpEventQueue();
+      expect(sent, [
+        ['app_started', 'day days=1-2'],
+      ]);
+    });
+  });
+
   /// 🗣️유저 2026-10-29 08:5x: an offline queue, as the official SDKs have —
   /// kept on the device with each event's own moment and session.
   group('the queue', () {
@@ -671,7 +829,6 @@ void main() {
           [(name: 'in_use', props: const <String, Object>{})],
           now: at,
           locale: 'ko',
-          osLocale: 'ko-KR',
         )
         .single;
 
@@ -704,13 +861,12 @@ void main() {
     });
 
     test('🎯nothing goes twice: a taken POST leaves the queue, and the next '
-        'return, hour or launch sends only what is new', () async {
+        'return, in_use or launch sends only what is new', () async {
       final store = _MemoryStore([today - 1]);
       final stats = run(store);
       await stats.reportLaunch();
       await stats.reportResume();
-      timers.single.fire();
-      await pumpEventQueue();
+      await inUse();
       await run(store).reportLaunch();
       expect(sent, [
         ['app_started', 'day days=1-2'],
@@ -725,15 +881,11 @@ void main() {
       final stats = run(store);
       await stats.reportLaunch();
       status = 503;
-      clock = clock.add(UsageStats.inUseEvery);
-      timers.single.fire();
-      await pumpEventQueue();
+      await inUse();
       expect(store.queue!.map(_said), ['in_use']);
 
       status = 200;
-      clock = clock.add(UsageStats.inUseEvery);
-      timers.single.fire();
-      await pumpEventQueue();
+      await inUse();
       expect(sent.last, ['in_use', 'in_use']);
       expect(bodies.last.map((event) => event['timestamp']), [
         '2026-10-29T07:15:00.000Z',
@@ -766,7 +918,7 @@ void main() {
         osLocale: () => 'ko-KR',
         settings: () => const {},
         now: () => clock,
-        periodic: periodic,
+        after: after,
       );
       addTearDown(stats.dispose);
       unawaited(stats.restore());
@@ -906,8 +1058,7 @@ void main() {
       status = 503;
       await stats.reportLaunch();
       status = 200;
-      timers.single.fire();
-      await pumpEventQueue();
+      await inUse();
       expect(calls, ['prepare', 'post', 'post']);
     });
 

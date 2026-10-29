@@ -992,7 +992,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       case AppLifecycleState.hidden ||
           AppLifecycleState.paused ||
           AppLifecycleState.detached:
-        _appSettings.usageStats.reportAway();
+        unawaited(_appSettings.usageStats.reportAway());
       case AppLifecycleState.inactive:
         break;
     }
@@ -1728,7 +1728,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// PEN-11: the back-button exit gate. Dirty sessions call out the
   /// unsaved work; Close is the only way out.
   Future<void> _confirmSystemExit() async {
-    if (await _mayLeaveForGood()) {
+    if (await _closing()) {
       await SystemNavigator.pop();
     }
   }
@@ -1736,7 +1736,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// PEN-12 #5: the desktop window-close request routes through the SAME
   /// gate — Cancel keeps the window open.
   Future<AppExitResponse> _handleExitRequested() async =>
-      await _mayLeaveForGood() ? AppExitResponse.exit : AppExitResponse.cancel;
+      await _closing() ? AppExitResponse.exit : AppExitResponse.cancel;
+
+  /// Whether the app may close ([_mayLeaveForGood]) — and when it may, its
+  /// usage statistics' `app_away` written down first (I-70-Q11, 유저
+  /// 2026-10-29: 「닫을때도 보내게」): a closing window may not live to
+  /// report the lifecycle's hidden.
+  Future<bool> _closing() async {
+    if (!await _mayLeaveForGood()) {
+      return false;
+    }
+    await _appSettings.usageStats.reportAway();
+    return true;
+  }
 
   bool _exitDialogOpen = false;
 

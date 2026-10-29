@@ -61,6 +61,41 @@ void main() {
     expect((await store.load() as UsageStatsOn?)?.queue, isEmpty);
   });
 
+  test('🎯on keeps the session and when it began, for the next run to go on '
+      'in (유저 2026-10-29, I-70-Q10 · Q13) — and a file with none, or one it '
+      'cannot read, has none to go on in', () async {
+    final startedAt = DateTime.utc(2026, 10, 29, 11, 50);
+    await store.save(
+      UsageStatsOn(const [20755], const [], (
+        id: '176171880012345678',
+        startedAt: startedAt,
+      )),
+    );
+    expect(file()['session'], {
+      'id': '176171880012345678',
+      'startedAt': '2026-10-29T11:50:00.000Z',
+    });
+    final kept = ((await store.load())! as UsageStatsOn).session;
+    expect(kept, (id: '176171880012345678', startedAt: startedAt));
+
+    await store.save(const UsageStatsOn([20755]));
+    expect(file().containsKey('session'), isFalse);
+    expect(((await store.load())! as UsageStatsOn).session, isNull);
+
+    await File(store.filePath).writeAsString(
+      jsonEncode({
+        'version': 1,
+        'enabled': true,
+        'activeDays': [20755],
+        'queue': <Object>[],
+        'session': {'id': '1', 'startedAt': 'yesterday'},
+      }),
+    );
+    final unread = await store.load();
+    expect(unread, isA<UsageStatsOn>(), reason: 'the answer stays a yes');
+    expect((unread! as UsageStatsOn).session, isNull);
+  });
+
   test('🎯off is an answer: written with no days, and read as a no', () async {
     await store.save(const UsageStatsOn([20755]));
     await store.save(const UsageStatsOff());

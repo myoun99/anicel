@@ -1,3 +1,4 @@
+import '../usage_stats/aptabase_client.dart' show AptabaseSession;
 import 'app_support_path.dart';
 import 'versioned_settings_file.dart';
 
@@ -12,16 +13,21 @@ final class UsageStatsOff extends UsageStatsAnswer {
   const UsageStatsOff();
 }
 
-/// Yes, with the UTC days this device was used on within the last 28, and
-/// the events still to send (`UsageStats`).
+/// Yes, with the UTC days this device was used on within the last 28, the
+/// events still to send and the session the last went in (`UsageStats`).
 final class UsageStatsOn extends UsageStatsAnswer {
-  const UsageStatsOn(this.activeDays, [this.queue = const []]);
+  const UsageStatsOn(this.activeDays, [this.queue = const [], this.session]);
 
   final List<int> activeDays;
 
   /// Each as it goes over the wire, its moment and session already fixed
   /// (`AptabaseStamped`), oldest first.
   final List<Map<String, Object?>> queue;
+
+  /// The session the last event went in and when it began, for a run
+  /// opened before its 55 minutes are out to go on in (I-70-Q10 · Q13) —
+  /// null before any event.
+  final AptabaseSession? session;
 }
 
 /// Where the usage statistics (I-70) keep the person's answer and the
@@ -68,6 +74,7 @@ class UsageStatsStore {
               for (final event in json['queue'] as List)
                 event as Map<String, Object?>,
             ],
+            _sessionOf(json['session']),
           )
         : const UsageStatsOff(),
   );
@@ -76,12 +83,29 @@ class UsageStatsStore {
     filePath: filePath,
     version: version,
     json: switch (answer) {
-      UsageStatsOn(:final activeDays, :final queue) => {
+      UsageStatsOn(:final activeDays, :final queue, :final session) => {
         'enabled': true,
         'activeDays': activeDays,
         'queue': queue,
+        if (session != null)
+          'session': {
+            'id': session.id,
+            'startedAt': session.startedAt.toUtc().toIso8601String(),
+          },
       },
       UsageStatsOff() => {'enabled': false},
     },
   );
+
+  /// The kept session — or none to go on in, which a file without one, or
+  /// with one this build cannot read, also is.
+  static AptabaseSession? _sessionOf(Object? json) {
+    if (json case {'id': final String id, 'startedAt': final String at}) {
+      final startedAt = DateTime.tryParse(at);
+      if (startedAt != null) {
+        return (id: id, startedAt: startedAt);
+      }
+    }
+    return null;
+  }
 }

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -88,9 +89,9 @@ void main() {
       (posts.single.first['systemProps'] as Map<String, dynamic>)['locale'],
       'ko',
     );
-    // The device's own language beside it, as the platform names it.
+    // The device's own language on the day, as the platform names it.
     expect(
-      (posts.single.first['props'] as Map<String, dynamic>)['osLocale'],
+      (posts.single.last['props'] as Map<String, dynamic>)['osLocale'],
       'zh-Hans-CN',
     );
 
@@ -104,8 +105,8 @@ void main() {
     expect(posts.last, posts.first);
   });
 
-  testWidgets('🎯on and in front, an in_use about once an hour — on through '
-      'another window\'s focus, none while hidden, and the wait starts again '
+  testWidgets('🎯on and in front, an in_use as each 55 minutes run out — on '
+      'through another window\'s focus, none while hidden, and armed again '
       'when the app is back', (tester) async {
     final posts = <List<Object?>>[];
     final client = AptabaseClient(
@@ -151,19 +152,22 @@ void main() {
     expect(posts, hasLength(3));
     expect(posts.last, ['in_use']);
 
+    // Hidden: its app_away (I-70-Q11), and no in_use.
     lifecycle([AppLifecycleState.hidden]);
     await tester.pump(const Duration(hours: 3));
-    expect(posts, hasLength(3));
+    expect(posts, hasLength(4));
+    expect(posts.last, ['app_away']);
 
     lifecycle([AppLifecycleState.inactive, AppLifecycleState.resumed]);
     await tester.pump(const Duration(minutes: 54));
-    expect(posts, hasLength(3), reason: 'the day went at launch');
+    expect(posts, hasLength(4), reason: 'the day went at launch');
     await tester.pump(const Duration(minutes: 1));
-    expect(posts, hasLength(4));
+    expect(posts, hasLength(5));
     expect(posts.last, ['in_use']);
 
     // Paused — a phone's app behind another — and detached, the way the
-    // framework allows them: each only after the one before.
+    // framework allows them: each only after the one before, and the three
+    // one going away.
     lifecycle([
       AppLifecycleState.inactive,
       AppLifecycleState.hidden,
@@ -172,10 +176,56 @@ void main() {
     await tester.pump(const Duration(hours: 3));
     lifecycle([AppLifecycleState.detached]);
     await tester.pump(const Duration(hours: 3));
-    expect(posts, hasLength(4));
+    expect(posts, hasLength(6));
+    expect(posts.last, ['app_away']);
     lifecycle([AppLifecycleState.resumed]);
     await tester.pump(const Duration(hours: 1));
-    expect(posts, hasLength(5));
+    expect(posts, hasLength(7));
     expect(posts.last, ['in_use']);
   });
+
+  testWidgets('🎯a window that closes writes its app_away down before it goes '
+      '— the next launch sends it (유저 2026-10-29, I-70-Q11: 「닫을때도 '
+      '보내게」)', (tester) async {
+    final store = _KeptStore();
+    final client = AptabaseClient(
+      appKey: 'A-EU-1462843916',
+      post: (_, _, _) async => 503,
+      prepare: () {},
+      describe: () => (model: 'x', os: FeedbackOs.windows, osVersion: '11'),
+      build: '1081',
+    );
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: HomePage(usageStatsStore: store, usageStatsClient: client),
+      ),
+    );
+    await tester.pump();
+    expect(await tester.binding.handleRequestAppExit(), AppExitResponse.exit);
+    expect(
+      [for (final event in store.queue) event['eventName']],
+      ['app_started', 'day', 'app_away'],
+    );
+  });
+}
+
+/// Turned on, with what it was last given kept.
+class _KeptStore extends UsageStatsStore {
+  _KeptStore() : super(filePath: 'unused');
+
+  UsageStatsAnswer answer = const UsageStatsOn([]);
+
+  List<Map<String, Object?>> get queue => switch (answer) {
+    UsageStatsOn(:final queue) => queue,
+    UsageStatsOff() => const [],
+  };
+
+  @override
+  Future<UsageStatsAnswer?> load() async => answer;
+
+  @override
+  Future<void> save(UsageStatsAnswer answer) async => this.answer = answer;
 }
