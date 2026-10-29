@@ -143,8 +143,8 @@ class TrackSeWindow {
     );
   }
 
-  /// The row's volume keys on the local axis (I-140) — its pan is one value
-  /// and has no frame to move.
+  /// The row's volume keys on the local axis (I-140) — its total and its pan
+  /// are one value each and have no frame to move.
   SeSound _rebasedSound(SeSound sound) => cutStartFrame == 0 || !sound.isKeyed
       ? sound
       : sound.copyWith(volume: _shift(sound.volume));

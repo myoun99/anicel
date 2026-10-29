@@ -251,8 +251,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// The clip toggle (I-92) of every row that can clip; null hides it.
   final ValueChanged<LayerId>? onToggleLayerClip;
 
-  /// SE rows' speaker button, which opens the row's mixer (mute, solo,
-  /// fader, pan) anchored under itself; null hides the speaker. It takes
+  /// SE rows' speaker button, which opens the row's mixer (mute, solo, the
+  /// total volume) anchored under itself; null hides the speaker. It takes
   /// the BUTTON's context so the popup lands on the speaker.
   final void Function(BuildContext anchorContext, LayerId layerId)?
   onOpenLayerMixer;
@@ -851,8 +851,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// row's own button takes comes out of its name. ↩️It stood in a column
   /// of its own after the eye, reserved and empty on every other row.
   ///
-  /// A DOOR, not a toggle (R10 R3): it opens the SE mixer (mute, solo,
-  /// fader, pan) under itself, and SHOWS mute and solo, because a door has
+  /// A DOOR, not a toggle (R10 R3): it opens the SE mixer (mute, solo, the
+  /// total volume) under itself, and SHOWS mute and solo, because a door has
   /// to say what is behind it — solo in the accent, as a selection reads.
   Widget? _soundButton(ColorScheme colorScheme) {
     final onOpenMixer = onOpenLayerMixer;

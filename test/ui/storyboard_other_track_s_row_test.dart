@@ -25,6 +25,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
+import 'package:anicel/src/ui/widgets/field_slider.dart';
 import '../helpers/named_finders.dart';
 import '../helpers/storyboard_host.dart';
 
@@ -56,9 +57,8 @@ void main() {
     );
   });
 
-  testWidgets('its speaker opens its mixer, and the mixer mutes it', (
-    tester,
-  ) async {
+  testWidgets('its speaker opens its mixer, and the mixer mutes it and sets '
+      'its Total', (tester) async {
     final s = await _rail(tester);
 
     await tester.tap(
@@ -75,6 +75,16 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(_row(s, _other).muted, isTrue);
+
+    // I-145: the bar writes through the lane's own verb, which finds the
+    // row on any track.
+    tester
+        .widget<FieldSlider>(
+          find.byKey(const ValueKey<String>('se-mixer-total-volume')),
+        )
+        .onChangeEnd!(0.5);
+    await tester.pumpAndSettle();
+    expect(_row(s, _other).seSound.totalVolume, 0.5);
   });
 }
 

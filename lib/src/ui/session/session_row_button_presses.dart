@@ -9,6 +9,7 @@ import '../../models/track_transform_lane_carrier.dart';
 import '../../services/project_lookup.dart'
     show cutPositionOf, cutWritingRow, layerAnywhereOrNull, rowTwirlsOf;
 import '../editor_session_manager.dart';
+import '../text/readout_text.dart' show columnValueText;
 import '../timeline/layer_label_controls.dart'
     show LayerMarkEdit, layerKindShowsOpacityControl, layerRowWearsFxSwitch;
 import '../timeline/lane_graph.dart'
@@ -16,6 +17,7 @@ import '../timeline/lane_graph.dart'
 import '../timeline/layer_rail_columns.dart' show layerRailEyeIsOn;
 import '../timeline/property_lane_model.dart'
     show laneGroupKey, parseLaneGroupKey;
+import '../timeline/se_sound_lane_policy.dart' show seSoundTotalVolumeLaneId;
 import '../timeline/timeline_lane_provider.dart' show timelineLanesForLayer;
 
 /// The rail rows' buttons wired to [session] as a PRESS on one row asks
@@ -462,6 +464,25 @@ class SessionRowButtonPresses {
     flip: session.visibilitySolo.toggleLayerSolo,
     description: 'Toggle solo',
   );
+
+  /// The window's bar (I-145-Q1 「따로 한 값 — 두 입구」): the row's Total,
+  /// written as a value typed into its 「오디오」 group's lane is — one field,
+  /// two doors. The Total holds no keys, so the frame names nothing.
+  void setTotalVolume(LayerId pressed, double share) =>
+      session.rowSelectionVerbs.pickAcross(pressed, (id) {
+        final layer = _row(id);
+        if (layer != null && _hasMixer(layer)) {
+          session.laneVerbs.setLaneValueAt(
+            id,
+            seSoundTotalVolumeLaneId,
+            0,
+            columnValueText(share * 100),
+            frameIsGlobal: true,
+            description: 'Set total volume',
+            scaleLinked: false,
+          );
+        }
+      }, description: 'Set total volume');
 
   /// The rows the speaker is drawn on (`_muteButton` in the rail row).
   static bool _hasMixer(Layer layer) => layer.kind == LayerKind.se;

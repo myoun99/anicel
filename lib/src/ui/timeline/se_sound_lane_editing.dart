@@ -30,11 +30,12 @@ SeSound? seSoundWithLaneKeyToggled(
 
 /// Applies a value typed into a member's value editor. The Volume KEYS at
 /// [frameIndex] — always, as every lane's value does (R9 #18, F-407: 「fx는
-/// 키가 찍히는게 규칙」); the Pan is the row's one value (I-140-Q3) and takes
-/// it as it is. Null on parse failure.
+/// 키가 찍히는게 규칙」); the Total (I-145-Q1) and the Pan (I-140-Q3) are the
+/// row's one value each and take it as it is — the speaker's window writes
+/// the Total through here too. Null on parse failure.
 ///
-/// Accepted input: the Volume as a per cent (`80` or `80%`); the Pan as it
-/// prints (`L50`, `R50`, `C`) or a signed per cent.
+/// Accepted input: the Volume and the Total as a per cent (`80` or `80%`);
+/// the Pan as it prints (`L50`, `R50`, `C`) or a signed per cent.
 SeSound? seSoundWithLaneValueEdited(
   SeSound sound, {
   required String laneId,
@@ -55,6 +56,11 @@ SeSound? seSoundWithLaneValueEdited(
                 volumeLaneNumbers.held(percent),
               ),
             );
+    case seSoundTotalVolumeLaneId:
+      final percent = columnValueOf(input);
+      return percent == null
+          ? null
+          : sound.copyWith(totalVolume: volumeLaneNumbers.held(percent));
     case seSoundPanLaneId:
       final pan = panOfLaneText(input);
       return pan == null ? null : sound.copyWith(pan: pan);
@@ -85,7 +91,8 @@ SeSound? seSoundWithLaneKeysWritten(
 /// takes (`seNameTagWithGroupReset`): **키를 삭제하진 않고 값만 리셋**. A keyed
 /// Volume takes 100% at [frameIndexes] — at every one at the playhead, on
 /// the keys a lane range covers alone ([keyedFramesOnly]); an unkeyed one
-/// already plays at 100%. The Pan goes back to the middle.
+/// already plays at 100%. The Total goes back to 100%, the Pan to the
+/// middle.
 ///
 /// Null when nothing changed.
 SeSound? seSoundWithGroupReset(
@@ -104,6 +111,6 @@ SeSound? seSoundWithGroupReset(
       volume = volume.withKey(frame, 1.0);
     }
   }
-  final next = sound.copyWith(pan: 0.0, volume: volume);
+  final next = sound.copyWith(pan: 0.0, totalVolume: 1.0, volume: volume);
   return next == sound ? null : next;
 }
