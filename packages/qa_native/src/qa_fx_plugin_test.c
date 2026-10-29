@@ -210,7 +210,9 @@ static void check_refusals(void) {
 // %s is the description (escaped) and the two %d its length.
 static const char *twin_wat =
     "(module\n"
-    " (memory (export \"memory\") 1)\n"
+    // At most two pages: a host that took new room for each render would
+    // run out of it long before the 400 renders check_twin asks for.
+    " (memory (export \"memory\") 1 2)\n"
     " (global $bump (mut i32) (i32.const 4096))\n"
     " (data (i32.const 64) \"%s\")\n"
     " (func (export \"anicel_fx_spec\") (result i32) (i32.const 1))\n"
@@ -362,6 +364,12 @@ static void check_twin(const char *description) {
   CHECK(trapped == QA_FX_TRAPPED, "wasm: a trap answered %d", trapped);
   // A trap is the render's, not the plugin's end.
   check_render(twin, "wasm after a trap", 80, 1);
+  // The frame's room in the module is reused, not taken anew each time.
+  int32_t kept = QA_FX_OK;
+  for (int i = 0; i < 400 && kept == QA_FX_OK; i++) {
+    kept = render(twin, 80, 1, 3, out);
+  }
+  CHECK(kept == QA_FX_OK, "wasm: the 400th render answered %d", kept);
   qa_fx_plugin_close(twin);
 
   error[0] = 0;
