@@ -140,6 +140,41 @@ void main() {
     expect(posts, isEmpty, reason: 'nothing before 「보내기」');
   });
 
+  testWidgets('in Korean, the words chosen for it: 「사용 통계」, the ask '
+      'first and where it changes last, 「보내지 않기」 and 「보내기」', (
+    tester,
+  ) async {
+    AppText.settings.value = const AppLanguageSettings(
+      programLanguage: AppLanguage.ko,
+    );
+    await launch(tester, _MemoryStore());
+    expect(
+      find.descendant(of: _window, matching: find.text('사용 통계')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: _window,
+        matching: find.textContaining(
+          RegExp(
+            r'^사용 통계를 보내시겠습니까\? 켜 주시면 Anicel 개발에 도움이 '
+            r'됩니다\.\n\n[^\n]+\n\n환경설정 ▸ 시스템에서 언제든 바꿀 수 '
+            r'있습니다\.$',
+          ),
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: _send, matching: find.text('보내기')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: _dontSend, matching: find.text('보내지 않기')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('🎯「보내기」 turns it on and sends — and the next launch does not '
       'ask', (tester) async {
     final store = _MemoryStore();

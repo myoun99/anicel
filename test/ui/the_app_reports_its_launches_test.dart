@@ -161,5 +161,21 @@ void main() {
     await tester.pump(const Duration(minutes: 1));
     expect(posts, hasLength(4));
     expect(posts.last, ['in_use']);
+
+    // Paused — a phone's app behind another — and detached, the way the
+    // framework allows them: each only after the one before.
+    lifecycle([
+      AppLifecycleState.inactive,
+      AppLifecycleState.hidden,
+      AppLifecycleState.paused,
+    ]);
+    await tester.pump(const Duration(hours: 3));
+    lifecycle([AppLifecycleState.detached]);
+    await tester.pump(const Duration(hours: 3));
+    expect(posts, hasLength(4));
+    lifecycle([AppLifecycleState.resumed]);
+    await tester.pump(const Duration(hours: 1));
+    expect(posts, hasLength(5));
+    expect(posts.last, ['in_use']);
   });
 }

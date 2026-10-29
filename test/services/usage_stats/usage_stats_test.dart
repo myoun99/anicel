@@ -566,6 +566,17 @@ void main() {
       expect(sent.last, ['in_use']);
     });
 
+    test('turned on before the launch is reported, the hour waits for the '
+        'launch — the shell\'s report is what says the app is in front',
+        () async {
+      final stats = run(_MemoryStore());
+      stats.setEnabled(true);
+      await pumpEventQueue();
+      expect(timers, isEmpty);
+      await stats.reportLaunch();
+      expect(running(), hasLength(1));
+    });
+
     test('away before the saved answer is back: the launch starts no hour',
         () async {
       final stats = run(_MemoryStore([]));
@@ -718,7 +729,7 @@ void main() {
 
     test('🎯a week old is dropped — a week to the millisecond is kept',
         () async {
-      final week = clock.subtract(UsageStats.queueKeeps);
+      final week = clock.subtract(const Duration(days: 7));
       final store = _MemoryStore([today - 1], [
         stampedAt(week.subtract(const Duration(milliseconds: 1))),
         stampedAt(week),
@@ -730,6 +741,25 @@ void main() {
         clock.toIso8601String(),
         clock.toIso8601String(),
       ]);
+    });
+
+    test('one whose moment cannot be read is dropped — its age is not '
+        'known', () async {
+      final unreadable = {...stampedAt(clock), 'timestamp': 'yesterday'};
+      final store = _MemoryStore([today - 1], [unreadable]);
+      status = 503;
+      await run(store).reportLaunch();
+      expect(store.queue!.map(_said), ['app_started', 'day days=1-2']);
+    });
+
+    test('turned on again while on keeps what waits', () async {
+      final store = _MemoryStore([today - 1]);
+      final stats = run(store);
+      status = 503;
+      await stats.reportLaunch();
+      stats.setEnabled(true);
+      await pumpEventQueue();
+      expect(store.queue!.map(_said), ['app_started', 'day days=1-2']);
     });
 
     test('🎯it holds 500 at most, the oldest dropped first', () async {

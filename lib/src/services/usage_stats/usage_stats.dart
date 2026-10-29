@@ -306,14 +306,15 @@ class UsageStats {
   /// Posts what waits, oldest first, a batch at a time, until the queue is
   /// empty or a POST is not taken — what is left waits for the next launch,
   /// return, hour or event. Only a POST the service took leaves the queue:
-  /// one whose 2xx never came back is sent again.
+  /// one whose 2xx never came back is sent again. Its callers asked
+  /// [_sends] already, and off empties the queue.
   Future<void> _flush() async {
     if (_flushing) {
       return;
     }
     _flushing = true;
     try {
-      while (_sends && _queue.isNotEmpty) {
+      while (_queue.isNotEmpty) {
         final batch = _queue.take(AptabaseClient.batchLimit).toList();
         // ⚠️Turned off while it was on its way: the queue is gone, and
         // nothing is written back over the off.
