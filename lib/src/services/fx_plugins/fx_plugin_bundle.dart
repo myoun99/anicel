@@ -40,10 +40,8 @@ FxPluginBundle? readFxPluginBundle(Uint8List bytes, {Abi? abi}) {
   } on Object {
     return null;
   }
-  Uint8List? entry(String? name) {
-    final file = name == null ? null : archive.findFile(name);
-    return file != null && file.isFile ? file.readBytes() : null;
-  }
+  Uint8List? entry(String? name) =>
+      name == null ? null : archive.findFile(name)?.readBytes();
 
   final wasm = entry(fxPluginWasmEntry);
   if (wasm == null) {
