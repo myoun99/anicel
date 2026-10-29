@@ -10,6 +10,7 @@ import 'package:anicel/src/services/persistence/settings_room_file.dart'
     show settingsRoomPath;
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
+import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/panels/workspace_layout_store.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
@@ -58,6 +59,10 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    final session = tester
+        .widget<EditorTopStrip>(find.byType(EditorTopStrip))
+        .projects
+        .active;
     final open = tester.getRect(region()).height;
 
     await tester.tap(
@@ -87,6 +92,7 @@ void main() {
     expect(find.byType(ImportDialog), findsOneWidget, reason: 'CONTROL');
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
+    session.playbackRig.prerenderScheduler.cancel();
 
     await settleAsync(
       tester,
