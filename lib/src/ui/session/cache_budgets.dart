@@ -34,11 +34,17 @@ enum CacheBudgetLine {
   /// The drawings' hot tier.
   drawings({'drawings'}),
 
-  /// The three sheet-ink stores TOGETHER, split evenly between them.
+  /// The sheet-ink stores TOGETHER, split evenly between them.
   ///
-  /// ⛔One cel store's worth, not three: the census already shows the three
-  /// as ONE holding, and each running on the drawings' own law would give
-  /// handwriting three times the pictures' memory.
+  /// ⛔One share, not one per store: the census already shows them as ONE
+  /// holding, and each running on a law of its own would multiply the
+  /// handwriting's memory by the number of sheets.
+  ///
+  /// 🗣️A viewer's share (유저 sheet-ink-takes-a-cels-share-Q1, 2026-10-30:
+  /// 「뷰어 크기로 줄인다」) — ↩️the cels' own law until then: handwriting
+  /// took as much of the allowance as the drawings (about 1.1GB of 5585MB),
+  /// a share the drawings and the frames' pictures could not use while it
+  /// stood empty.
   sheetInk({'sheetInk'}),
 
   undo({'undo'}),
@@ -105,13 +111,13 @@ enum CacheBudgetLine {
     // 2026-10-30: 「그리는셀 시트잉크가 각 1.5gb인데 재생이 600mb? … 너무
     // 심하게 낮지않나?」) — ↩️a fixed 600MB until then.
     CacheBudgetLine.drawings ||
-    CacheBudgetLine.sheetInk ||
     CacheBudgetLine.playback => deviceScaledHotCelBudget(
       physicalMemoryBytes: physicalMemoryBytes,
     ),
     CacheBudgetLine.undo => deviceScaledUndoByteBudget(
       physicalMemoryBytes: physicalMemoryBytes,
     ),
+    CacheBudgetLine.sheetInk ||
     CacheBudgetLine.viewerPages ||
     CacheBudgetLine.storyboardThumbnails ||
     CacheBudgetLine.sheetImages => viewerRasterBytesFor(

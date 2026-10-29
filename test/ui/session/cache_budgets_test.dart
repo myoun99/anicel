@@ -35,11 +35,18 @@ void main() {
       3 * gb ~/ 16,
       reason: 'the tile pictures: RAM/16 (render round, 2026-09-16)',
     );
-    expect(
-      budgets.sheetInk,
-      budgets.drawings,
-      reason: 'the three ink stores share ONE cel store worth',
-    );
+  });
+
+  /// 🗣️유저 sheet-ink-takes-a-cels-share-Q1 (2026-10-30) = 「뷰어 크기로
+  /// 줄인다」 — the cels' own law until then, about 1.1GB of a 5585MB
+  /// allowance the drawings and the frames' pictures could not use.
+  test('the sheets\' handwriting takes one viewer\'s share, on every '
+      'device', () {
+    for (final ram in [null, 1 * gb, 3 * gb, 6 * gb, 12 * gb, 48 * gb]) {
+      final budgets = CacheBudgets.forDevice(physicalMemoryBytes: ram);
+      expect(budgets.sheetInk, budgets.viewerPages, reason: 'RAM $ram');
+      expect(budgets.sheetInk, lessThan(budgets.drawings), reason: 'RAM $ram');
+    }
   });
 
   /// 🗣️유저 F-504-Q1 (2026-10-30) = 「재생 그림의 몫을 키운다」: 「그리는셀
