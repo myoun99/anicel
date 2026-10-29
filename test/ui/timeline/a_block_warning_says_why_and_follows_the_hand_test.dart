@@ -10,6 +10,8 @@ import 'package:anicel/src/models/timeline_coverage.dart'
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart' show StoryboardTabHost;
 import 'package:anicel/src/ui/text/app_strings.dart' show AppText;
+import 'package:anicel/src/ui/timeline/axis_turn.dart'
+    show extentAcross, extentAlong, offsetAlong;
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart'
     show TimelineBlockEdgeGrip;
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
@@ -121,9 +123,13 @@ void main() {
     Axis axis = Axis.horizontal,
   }) {
     final rect = tester.getRect(block);
-    final at = axis == Axis.horizontal
-        ? Offset(rect.left + rect.width / 4, rect.center.dy)
-        : Offset(rect.center.dx, rect.top + rect.height / 4);
+    final at =
+        rect.topLeft +
+        offsetAlong(
+          axis,
+          along: extentAlong(axis, rect.size) / 4,
+          across: extentAcross(axis, rect.size) / 2,
+        );
     expect(
       tester.getRect(find.byType(host)).contains(at),
       isTrue,
@@ -249,9 +255,7 @@ void main() {
           .geometry
           .value
           .frameCellExtent;
-      final step = axis == Axis.horizontal
-          ? Offset(-cell, 0)
-          : Offset(0, -cell);
+      final step = offsetAlong(axis, along: -cell, across: 0);
       final hand = await tester.startGesture(tester.getCenter(grip));
       for (var frame = 0; frame < 5; frame += 1) {
         await hand.moveBy(step);
