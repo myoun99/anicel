@@ -1,13 +1,17 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/models/brush_shape.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
+import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/separable_blend_mode.dart';
 import 'package:anicel/src/services/brush_dab_interpolator.dart';
 import 'package:anicel/src/services/brush_second_stroke.dart';
+import 'package:anicel/src/services/brush_stroke_dynamics.dart';
 
 /// 🚨THE SECOND TIP IS A STROKE OF ITS OWN (board
 /// an-imported-pencil-drops-its-second-brush Q3 b, 「두 번째 획으로 다시
@@ -22,7 +26,9 @@ void main() {
   );
   final shape = BrushShape(
     size: 40,
-    spacing: 0.2,
+    // The first tip's spacing is not the second's.
+    spacing: 0.5,
+    dualSpacing: 0.2,
     dualMask: grain,
     dualMaskScale: 0.5,
     dualDensity: 0.7,
@@ -71,7 +77,7 @@ void main() {
     );
   });
 
-  test('the second stroke spaces its dabs by its own size', () {
+  test('the second stroke spaces its dabs by its own size and spacing', () {
     final laid = BrushSecondStroke.of(shape)!.follow([
       pathDab(0),
       pathDab(30, sequence: 1),
@@ -100,6 +106,71 @@ void main() {
       [for (final dab in inTurn) dab.center],
       [for (final dab in whole) dab.center],
       reason: 'a short step waits for the next instead of starting over',
+    );
+  });
+
+  test('the second tip is turned and squashed by its own settings', () {
+    final turned = shape.copyWith(
+      dualRoundness: 0.4,
+      dualAngleDegrees: 30,
+      // The first tip's own are not the second's.
+      roundness: 0.9,
+      angleDegrees: 70,
+    );
+    final dab = BrushSecondStroke.of(turned)!.follow([
+      pathDab(10),
+    ], firstSequence: 0).single;
+    expect(dab.roundness, 0.4);
+    expect(dab.angleDegrees, 30);
+  });
+
+  test('🚨the second tip scatters by the code the first tip scatters by', () {
+    // Its scatter is the first tip's settings under the second tip's
+    // values (`BrushShape.secondTip`), thrown by the same dynamics: the same
+    // dice give the same spray the first tip would throw with them.
+    final spraying = shape.copyWith(
+      dualScatterRadiusRatio: 1.5,
+      dualScatterCount: 3,
+      dualScatterBothAxes: false,
+      dualAngleJitter: 0.5,
+    );
+    final laid = BrushSecondStroke.of(spraying, random: math.Random(7))!
+        .follow(
+          [pathDab(0), pathDab(30, sequence: 1)],
+          firstSequence: 4,
+          directionDegrees: 0,
+        );
+    final unsprayed = BrushSecondStroke.of(shape)!.follow([
+      pathDab(0),
+      pathDab(30, sequence: 1),
+    ], firstSequence: 4);
+    expect(laid, hasLength(unsprayed.length * 3), reason: 'three a step');
+    expect([for (final dab in laid) dab.sequence], [
+      for (var i = 0; i < laid.length; i += 1) 4 + i,
+    ]);
+    final expected = BrushStrokeDynamics(
+      settings: BrushEditCanvasInputSettings.fromShape(spraying.secondTip!),
+      random: math.Random(7),
+    ).apply(unsprayed, firstSequence: 4, directionDegrees: 0);
+    expect(
+      [for (final dab in laid) (dab.center, dab.angleDegrees)],
+      [for (final dab in expected) (dab.center, dab.angleDegrees)],
+    );
+    expect(
+      laid.any((dab) => (dab.center.y - 20).abs() > 0.5),
+      isTrue,
+      reason: 'it scatters at all',
+    );
+  });
+
+  test('a press waits for the way the stroke goes when the second tip '
+      'reads it', () {
+    expect(BrushSecondStroke.of(shape)!.readsDirection, isFalse);
+    expect(
+      BrushSecondStroke.of(
+        shape.copyWith(dualRotationMode: BrushTipRotationMode.direction),
+      )!.readsDirection,
+      isTrue,
     );
   });
 }

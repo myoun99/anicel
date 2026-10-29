@@ -1,9 +1,11 @@
 import 'dart:math' as math;
 
 import '../models/brush_dab.dart';
+import '../models/brush_edit_canvas_input_settings.dart';
 import '../models/brush_shape.dart';
 import '../models/brush_tip_mask.dart';
 import 'brush_dab_interpolator.dart';
+import 'brush_stroke_dynamics.dart';
 
 /// 🚨★★★THE SECOND TIP IS A SECOND STROKE (board
 /// an-imported-pencil-drops-its-second-brush Q3 b, 유저 2026-10-25 「두 번째
@@ -21,37 +23,62 @@ import 'brush_dab_interpolator.dart';
 ///
 /// A second tip's dab lays whole — colour, opacity and flow at one: how
 /// hard it bites is the view's density, applied once over the stroke.
+///
+/// Its own way along the path — spacing, 向き, scatter — is the second
+/// tip's ([BrushShape.secondTip]) through the code the first tip's goes
+/// through: the same interpolator, then the same [BrushStrokeDynamics].
 class BrushSecondStroke {
-  BrushSecondStroke._(this._shape, this._view, this._tip);
+  BrushSecondStroke._(this._shape, this._view, this._tip, this._dynamics);
 
   /// The second stroke [shape]'s strokes draw, or null when it has no
-  /// second tip.
-  static BrushSecondStroke? of(BrushShape shape) {
+  /// second tip. [random] throws its scatter and its turns.
+  static BrushSecondStroke? of(BrushShape shape, {math.Random? random}) {
     final view = shape.dualView;
     final tip = shape.dualMask;
-    if (view == null || tip == null) {
+    final placement = shape.secondTip;
+    if (view == null || tip == null || placement == null) {
       return null;
     }
-    return BrushSecondStroke._(shape, view, tip);
+    return BrushSecondStroke._(
+      shape,
+      view,
+      tip,
+      BrushStrokeDynamics(
+        settings: BrushEditCanvasInputSettings.fromShape(placement),
+        random: random,
+      ),
+    );
   }
 
   final BrushShape _shape;
   final BrushDualView _view;
   final BrushTipMask _tip;
+  final BrushStrokeDynamics _dynamics;
+
+  /// Whether the second stroke turns on the stroke's direction, as
+  /// [BrushStrokeDynamics.readsDirection] says of the first: a press waits
+  /// for it either way.
+  bool get readsDirection => _dynamics.readsDirection;
 
   /// The second tip's dab before the next — where the walk stands.
   BrushDab? _previous;
 
   /// The second tip's dabs along [path], numbered from [firstSequence] — a
   /// segment's worth at a time, the walk carried over from the last.
-  List<BrushDab> follow(List<BrushDab> path, {required int firstSequence}) {
+  /// [directionDegrees] is the stroke's way at this step, which a turn to
+  /// follow it or a scatter across it reads.
+  List<BrushDab> follow(
+    List<BrushDab> path, {
+    required int firstSequence,
+    double? directionDegrees,
+  }) {
     final laid = <BrushDab>[];
     for (final dab in path) {
       final along = const BrushDabInterpolator().interpolate(
         previous: _previous,
         nextRaw: _secondOf(dab),
         firstSequence: firstSequence + laid.length,
-        spacingRatio: math.max(_shape.spacing, BrushShape.minSpacing),
+        spacingRatio: math.max(_shape.dualSpacing, BrushShape.minSpacing),
       );
       if (along.isEmpty) {
         continue;
@@ -59,7 +86,11 @@ class BrushSecondStroke {
       _previous = along.last;
       laid.addAll(along);
     }
-    return laid;
+    return _dynamics.apply(
+      laid,
+      firstSequence: firstSequence,
+      directionDegrees: directionDegrees,
+    );
   }
 
   BrushDab _secondOf(BrushDab dab) => BrushDab(
@@ -71,6 +102,8 @@ class BrushSecondStroke {
     hardness: dab.hardness,
     pressure: dab.pressure,
     sequence: dab.sequence,
+    roundness: _shape.dualRoundness,
+    angleDegrees: _shape.dualAngleDegrees,
     tiltAzimuthDegrees: dab.tiltAzimuthDegrees,
     tiltAltitude: dab.tiltAltitude,
     twistDegrees: dab.twistDegrees,

@@ -263,7 +263,10 @@ class _BrushEditStroke {
         ? const []
         : symmetryCopiesIn(_state.widget.guideSpace, symmetry);
     _state._spacingRandom = math.Random(dice);
-    _state._secondStroke = BrushSecondStroke.of(strokeSettings.shape);
+    _state._secondStroke = BrushSecondStroke.of(
+      strokeSettings.shape,
+      random: math.Random(dice + 5),
+    );
     _state._inputRandom = math.Random(dice + 3);
     _state._strokeDynamics = BrushStrokeDynamics(
       settings: strokeSettings,
@@ -476,6 +479,7 @@ class _BrushEditStroke {
             ),
           ),
           path: initialDabs,
+          directionDegrees: _state._opening.pressDirection,
         ),
         _state._symmetryTransforms,
         firstSequence: _state._nextSequence,
@@ -490,6 +494,7 @@ class _BrushEditStroke {
   List<BrushDab> _withSecondTip(
     List<BrushDab> firstTip, {
     required List<BrushDab> path,
+    double? directionDegrees,
   }) {
     final second = _state._secondStroke;
     if (second == null) {
@@ -500,6 +505,7 @@ class _BrushEditStroke {
       ...second.follow(
         path,
         firstSequence: _state._nextSequence + firstTip.length,
+        directionDegrees: directionDegrees,
       ),
     ];
   }
@@ -618,6 +624,7 @@ class _BrushEditStroke {
                 baseDabs,
           ),
           path: baseDabs,
+          directionDegrees: _state._lastDirectionDegrees,
         ),
         _state._symmetryTransforms,
         firstSequence: _state._nextSequence,

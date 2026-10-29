@@ -480,7 +480,13 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
     // The dual tip's knobs, with a dual tip. ↩️They stood DEAD without one.
     BrushSettingsRow.dualScale ||
     BrushSettingsRow.dualDensity ||
-    BrushSettingsRow.dualBlend => state.dualMask != null,
+    BrushSettingsRow.dualBlend ||
+    BrushSettingsRow.dualRoundness ||
+    BrushSettingsRow.dualAngle ||
+    BrushSettingsRow.dualSpacing ||
+    BrushSettingsRow.dualScatter ||
+    BrushSettingsRow.dualScatterCount ||
+    BrushSettingsRow.dualScatterBothAxes => state.dualMask != null,
     // The texture's knobs, with a texture. ↩️They stood DEAD without one.
     BrushSettingsRow.textureScale ||
     BrushSettingsRow.textureDensity ||
@@ -727,6 +733,82 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
     BrushSettingsRow.dualBlend => _DualBlendRow(
       state: state,
       onChanged: onChanged,
+    ),
+    // The second tip's way along the path: the first tip's rows of the
+    // same names, the same ranges and controls ([BrushShape.secondTip]).
+    BrushSettingsRow.dualRoundness => _PanelSlider(
+      label: AppText.strings.brRoundness,
+      unit: '%',
+      displayScale: 100,
+      value: BrushToolState.clampRoundness(state.dualRoundness),
+      min: BrushToolState.minRoundness,
+      max: 1,
+      keyValue: 'brush-tool-dual-roundness-slider',
+      onChanged: (value) => onChanged(state.copyWith(dualRoundness: value)),
+    ),
+    BrushSettingsRow.dualAngle => _PanelSlider(
+      label: AppText.strings.brAngle,
+      unit: '°',
+      value: BrushToolState.clampAngleDegrees(state.dualAngleDegrees),
+      min: BrushToolState.minAngleDegrees,
+      max: BrushToolState.maxAngleDegrees,
+      keyValue: 'brush-tool-dual-angle-slider',
+      onChanged: (value) => onChanged(state.copyWith(dualAngleDegrees: value)),
+      trailing: TipDirectionButton(
+        direction: (
+          base: state.dualRotationMode,
+          random: BrushToolState.clampZeroToOne(state.dualAngleJitter),
+        ),
+        onChanged: (direction) => onChanged(
+          state.copyWith(
+            dualRotationMode: direction.base,
+            dualAngleJitter: direction.random,
+          ),
+        ),
+      ),
+    ),
+    BrushSettingsRow.dualSpacing => _PanelSlider(
+      label: AppText.strings.brSpacing,
+      unit: '%',
+      displayScale: 100,
+      value: BrushToolState.clampSpacing(state.dualSpacing),
+      min: BrushShape.minSpacing,
+      max: BrushShape.maxSpacing,
+      scale: FieldSliderScale.exponential,
+      keyValue: 'brush-tool-dual-spacing-slider',
+      onChanged: (value) => onChanged(state.copyWith(dualSpacing: value)),
+    ),
+    BrushSettingsRow.dualScatter => _PanelSlider(
+      label: AppText.strings.brScatter,
+      unit: '%',
+      displayScale: 100,
+      value: BrushToolState.clampScatterRadius(state.dualScatterRadiusRatio),
+      min: 0,
+      max: 4,
+      keyValue: 'brush-tool-dual-scatter-slider',
+      onChanged: (value) =>
+          onChanged(state.copyWith(dualScatterRadiusRatio: value)),
+    ),
+    BrushSettingsRow.dualScatterCount => _PanelSlider(
+      label: AppText.strings.brScatterCount,
+      value: BrushToolState.clampScatterCount(
+        state.dualScatterCount,
+      ).toDouble(),
+      min: 1,
+      max: 16,
+      divisions: 15,
+      keyValue: 'brush-tool-dual-scatter-count-slider',
+      onChanged: (value) =>
+          onChanged(state.copyWith(dualScatterCount: value.round())),
+    ),
+    BrushSettingsRow.dualScatterBothAxes => SettingsSwitchRow(
+      tileKey: const ValueKey<String>(
+        'brush-tool-dual-scatter-both-axes-toggle',
+      ),
+      label: AppText.strings.brScatterBothAxes,
+      value: state.dualScatterBothAxes,
+      onChanged: (value) =>
+          onChanged(state.copyWith(dualScatterBothAxes: value)),
     ),
     BrushSettingsRow.texture => BrushTipPickerRow(
       label: AppText.strings.brTexture,

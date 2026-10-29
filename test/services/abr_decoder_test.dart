@@ -34,11 +34,15 @@ void _writeBrVr(
 /// Sampled + computed brush descriptor payload (`desc` section). The first
 /// brush blends with [mainBlend], and its dual tip names [dualBlend] when
 /// one is given — `BlnM` terms, written as Photoshop writes them.
+///
+/// With [dualWay] the dual tip has a spacing, angle, roundness and
+/// scatter of its own, under the keys the main tip's are written with.
 Uint8List _descPayload({
   required String sampledUuid,
   int angleControl = 6,
   String mainBlend = 'Mltp',
   String? dualBlend,
+  bool dualWay = false,
 }) {
   final desc = AbrBytes();
   desc.i32(16); // descriptor version
@@ -81,7 +85,7 @@ Uint8List _descPayload({
   desc.asciiChars('Objc');
   desc.unicode('');
   desc.key('dualBrush');
-  desc.i32(dualBlend == null ? 2 : 3);
+  desc.i32((dualBlend == null ? 2 : 3) + (dualWay ? 4 : 0));
   desc.key('useDualBrush');
   desc.asciiChars('bool');
   desc.u8(1);
@@ -95,11 +99,29 @@ Uint8List _descPayload({
   desc.asciiChars('Objc');
   desc.unicode('');
   desc.key('sampledBrush');
-  desc.i32(2);
+  desc.i32(dualWay ? 5 : 2);
   desc.key('sampledData');
   desc.text('tip-two-uuid');
   desc.key('Dmtr');
   desc.untf('#Pxl', 22);
+  if (dualWay) {
+    desc.key('Spcn');
+    desc.untf('#Prc', 60);
+    desc.key('Angl');
+    desc.untf('#Ang', -30);
+    desc.key('Rndn');
+    desc.untf('#Prc', 50);
+    desc.key('useScatter');
+    desc.asciiChars('bool');
+    desc.u8(1);
+    desc.key('Cnt ');
+    desc.asciiChars('doub');
+    desc.f64(2);
+    desc.key('bothAxes');
+    desc.asciiChars('bool');
+    desc.u8(0);
+    _writeBrVr(desc, 'scatterDynamics', control: 0, jitterPercent: 120);
+  }
   desc.key('useTipDynamics');
   desc.asciiChars('bool');
   desc.u8(1);
@@ -274,6 +296,7 @@ Uint8List _fixtureAbr({
   int angleControl = 6,
   String mainBlend = 'Mltp',
   String? dualBlend,
+  bool dualWay = false,
 }) {
   final samp = AbrBytes();
   writeSampEntry(
@@ -331,6 +354,7 @@ Uint8List _fixtureAbr({
             angleControl: angleControl,
             mainBlend: mainBlend,
             dualBlend: dualBlend,
+            dualWay: dualWay,
           );
     write8bimSection(file, 'desc', payload);
   }
@@ -509,6 +533,31 @@ void main() {
         expect(chalk.settings.dualCompositeMode, mode, reason: term);
         expect(result.warnings, isEmpty, reason: term);
       }
+    });
+
+    test('🚨the dual brush\'s spacing, angle, roundness and scatter read as '
+        'the main brush\'s do', () {
+      final chalk = decodeAbrBrushFile(
+        _fixtureAbr(dualWay: true),
+        sourceName: 'fixture',
+      ).presets.firstWhere((p) => p.name == 'Fancy Chalk').settings;
+      expect(chalk.dualSpacing, closeTo(0.6, 1e-9));
+      expect(chalk.dualAngleDegrees, closeTo(150, 1e-9));
+      expect(chalk.dualRoundness, closeTo(0.5, 1e-9));
+      expect(chalk.dualScatterRadiusRatio, closeTo(1.2, 1e-9));
+      expect(chalk.dualScatterCount, 2);
+      expect(chalk.dualScatterBothAxes, isFalse);
+      // The main brush's own stay its own.
+      expect(chalk.spacing, closeTo(0.25, 1e-9));
+      expect(chalk.scatterCount, 3);
+      expect(chalk.scatterBothAxes, isTrue);
+
+      final plain = decodeAbrBrushFile(
+        _fixtureAbr(),
+        sourceName: 'fixture',
+      ).presets.firstWhere((p) => p.name == 'Fancy Chalk').settings;
+      expect(plain.dualSpacing, closeTo(0.25, 1e-9), reason: 'no `Spcn`');
+      expect(plain.dualScatterCount, 1, reason: 'no `useScatter`');
     });
 
     test('a dual tip naming a blend of three channels keeps the multiply '

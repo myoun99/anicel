@@ -44,13 +44,11 @@ void main() {
   test('a swatch shows a second tip through the view, as the canvas does', () {
     // A sparse grain at density 1 cuts the line where its second stroke
     // never piled; at density 0 the view is the first stroke, untouched.
-    final grain = BrushTipMask(
-      id: 'swatch-second-tip',
-      size: 8,
-      alpha: Uint8List.fromList([
-        for (var i = 0; i < 64; i += 1) i % 9 == 0 ? 255 : 0,
-      ]),
-    );
+    final sparse = Uint8List(64);
+    for (var i = 0; i < sparse.length; i += 9) {
+      sparse[i] = 255;
+    }
+    final grain = BrushTipMask(id: 'swatch-second-tip', size: 8, alpha: sparse);
     BrushSettings brush({BrushTipMask? dual, double density = 1}) =>
         BrushSettings(
           size: 12,

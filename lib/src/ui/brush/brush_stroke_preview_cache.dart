@@ -493,7 +493,7 @@ Uint8List rasterizeBrushStrokeSample(
 ) {
   final accumulated = Float64List(width * height);
   // A brush with a second tip draws a second stroke, on a plane of its own.
-  final second = BrushSecondStroke.of(settings.shape);
+  final second = BrushSecondStroke.of(settings.shape, random: math.Random(1));
   final levels = second == null ? null : Float64List(width * height);
   final baseSize = height * 0.62;
   // The canvas's own step for this size and spacing — the preview draws by
@@ -598,7 +598,12 @@ Uint8List rasterizeBrushStrokeSample(
     // The second tip's stroke along the curve, on its own plane — the
     // canvas's one producer of it ([BrushSecondStroke]).
     if (second != null) {
-      for (final dab in second.follow([curved], firstSequence: sequence)) {
+      final along = second.follow(
+        [curved],
+        firstSequence: sequence,
+        directionDegrees: heading,
+      );
+      for (final dab in along) {
         layPreviewDab(levels!, width, height, dab);
       }
     }

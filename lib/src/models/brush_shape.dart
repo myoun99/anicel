@@ -64,6 +64,14 @@ class BrushShape {
     this.dualMaskScale = 1.0,
     this.dualDensity = 1.0,
     this.dualCompositeMode = SeparableBlendMode.multiply,
+    this.dualSpacing = 0.1,
+    this.dualRoundness = 1.0,
+    this.dualAngleDegrees = 0.0,
+    this.dualRotationMode = BrushTipRotationMode.fixed,
+    this.dualAngleJitter = 0.0,
+    this.dualScatterRadiusRatio = 0.0,
+    this.dualScatterCount = 1,
+    this.dualScatterBothAxes = true,
     this.textureMaskSource,
     this.textureInvert = false,
     this.textureBrightness = 0.0,
@@ -221,6 +229,37 @@ class BrushShape {
   /// How the second tip COMBINES with the first — see [BrushDualView]. Both
   /// formats carry one; ours multiplied and only multiplied until v33.
   final SeparableBlendMode dualCompositeMode;
+
+  /// The second tip's own way along the path — the first tip's settings of
+  /// the same names, for the second stroke: Photoshop's dual brush has its
+  /// own spacing, angle, roundness and scatter, and Clip Studio's `Dual*`
+  /// columns are its `Brush*` ones over again. [secondTip] hands them to the
+  /// code that reads the first tip's.
+  final double dualSpacing;
+  final double dualRoundness;
+  final double dualAngleDegrees;
+  final BrushTipRotationMode dualRotationMode;
+  final double dualAngleJitter;
+  final double dualScatterRadiusRatio;
+  final int dualScatterCount;
+  final bool dualScatterBothAxes;
+
+  /// The second tip's placement as a shape of its own, under the first
+  /// tip's names — what the second stroke is walked and scattered by
+  /// (`BrushSecondStroke`, the interpolator and `BrushStrokeDynamics` the
+  /// first stroke uses), or null when there is no second tip.
+  BrushShape? get secondTip => dualMask == null
+      ? null
+      : BrushShape(
+          spacing: dualSpacing,
+          roundness: dualRoundness,
+          angleDegrees: dualAngleDegrees,
+          rotationMode: dualRotationMode,
+          angleJitter: dualAngleJitter,
+          scatterRadiusRatio: dualScatterRadiusRatio,
+          scatterCount: dualScatterCount,
+          scatterBothAxes: dualScatterBothAxes,
+        );
 
   /// How a stroke of this shape shows its second tip, or null when it has
   /// none — what every dab of its strokes carries ([BrushDab.dual]).
@@ -448,6 +487,14 @@ class BrushShape {
       dualMaskScale: dualMaskScale,
       dualDensity: dualDensity,
       dualCompositeMode: dualCompositeMode,
+      dualSpacing: dualSpacing,
+      dualRoundness: dualRoundness,
+      dualAngleDegrees: dualAngleDegrees,
+      dualRotationMode: dualRotationMode,
+      dualAngleJitter: dualAngleJitter,
+      dualScatterRadiusRatio: dualScatterRadiusRatio,
+      dualScatterCount: dualScatterCount,
+      dualScatterBothAxes: dualScatterBothAxes,
       textureMaskSource: slot == BrushMaskSlot.texture
           ? mask
           : textureMaskSource,
@@ -482,6 +529,14 @@ class BrushShape {
     double? dualMaskScale,
     double? dualDensity,
     SeparableBlendMode? dualCompositeMode,
+    double? dualSpacing,
+    double? dualRoundness,
+    double? dualAngleDegrees,
+    BrushTipRotationMode? dualRotationMode,
+    double? dualAngleJitter,
+    double? dualScatterRadiusRatio,
+    int? dualScatterCount,
+    bool? dualScatterBothAxes,
     BrushTipMask? textureMaskSource,
     bool? textureInvert,
     double? textureBrightness,
@@ -520,6 +575,15 @@ class BrushShape {
       dualMaskScale: dualMaskScale ?? this.dualMaskScale,
       dualDensity: dualDensity ?? this.dualDensity,
       dualCompositeMode: dualCompositeMode ?? this.dualCompositeMode,
+      dualSpacing: dualSpacing ?? this.dualSpacing,
+      dualRoundness: dualRoundness ?? this.dualRoundness,
+      dualAngleDegrees: dualAngleDegrees ?? this.dualAngleDegrees,
+      dualRotationMode: dualRotationMode ?? this.dualRotationMode,
+      dualAngleJitter: dualAngleJitter ?? this.dualAngleJitter,
+      dualScatterRadiusRatio:
+          dualScatterRadiusRatio ?? this.dualScatterRadiusRatio,
+      dualScatterCount: dualScatterCount ?? this.dualScatterCount,
+      dualScatterBothAxes: dualScatterBothAxes ?? this.dualScatterBothAxes,
       textureMaskSource: textureMaskSource ?? this.textureMaskSource,
       textureInvert: textureInvert ?? this.textureInvert,
       textureBrightness: textureBrightness ?? this.textureBrightness,
@@ -565,6 +629,14 @@ class BrushShape {
           other.dualMaskScale == dualMaskScale &&
           other.dualDensity == dualDensity &&
           other.dualCompositeMode == dualCompositeMode &&
+          other.dualSpacing == dualSpacing &&
+          other.dualRoundness == dualRoundness &&
+          other.dualAngleDegrees == dualAngleDegrees &&
+          other.dualRotationMode == dualRotationMode &&
+          other.dualAngleJitter == dualAngleJitter &&
+          other.dualScatterRadiusRatio == dualScatterRadiusRatio &&
+          other.dualScatterCount == dualScatterCount &&
+          other.dualScatterBothAxes == dualScatterBothAxes &&
           other.textureMaskSource == textureMaskSource &&
           other.textureInvert == textureInvert &&
           other.textureBrightness == textureBrightness &&
@@ -605,6 +677,14 @@ class BrushShape {
     dualMask,
     dualMaskScale,
     dualDensity,
+    dualSpacing,
+    dualRoundness,
+    dualAngleDegrees,
+    dualRotationMode,
+    dualAngleJitter,
+    dualScatterRadiusRatio,
+    dualScatterCount,
+    dualScatterBothAxes,
     textureMaskSource,
     textureInvert,
     textureBrightness,
@@ -633,6 +713,13 @@ class BrushShape {
       'scatterRadiusRatio: $scatterRadiusRatio, scatterCount: $scatterCount, '
       'scatterBothAxes: $scatterBothAxes, dualMask: $dualMask, '
       'dualMaskScale: $dualMaskScale, '
+      'dualSpacing: $dualSpacing, dualRoundness: $dualRoundness, '
+      'dualAngleDegrees: $dualAngleDegrees, '
+      'dualRotationMode: $dualRotationMode, '
+      'dualAngleJitter: $dualAngleJitter, '
+      'dualScatterRadiusRatio: $dualScatterRadiusRatio, '
+      'dualScatterCount: $dualScatterCount, '
+      'dualScatterBothAxes: $dualScatterBothAxes, '
       'textureMaskSource: $textureMaskSource, '
       'textureInvert: $textureInvert, '
       'textureBrightness: $textureBrightness, '

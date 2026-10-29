@@ -174,7 +174,8 @@ class _BrushEditOpening {
       (_pressureUnread && _reads(BrushInputSource.pressure)) ||
       (!_speedMeasured && _reads(BrushInputSource.speed)) ||
       (_pressDirection == null &&
-          (_state._strokeDynamics?.readsDirection ?? false));
+          ((_state._strokeDynamics?.readsDirection ?? false) ||
+              (_state._secondStroke?.readsDirection ?? false)));
 
   /// Whether this stroke's brush reads [source] at all.
   bool _reads(BrushInputSource source) =>
