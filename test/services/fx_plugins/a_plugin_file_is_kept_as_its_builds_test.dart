@@ -130,7 +130,7 @@ void main() {
       expect(kept.native, isNull);
     });
 
-    test('an index naming a path is no plugin', () async {
+    test('an index naming a path, or a file no build is, is no plugin', () async {
       final kept = await library.keep(
         readFxPluginBundle(both, abi: Abi.windowsX64)!,
         description,
@@ -146,6 +146,7 @@ void main() {
           'version': FxPluginLibraryService.indexVersion,
           'plugins': [
             {...entry, 'wasm': '../escape.wasm'},
+            {...entry, 'wasm': 'a1-notes.txt'},
             {...entry, 'native': '../../escape.dll'},
             {...entry, 'description': {'spec': 2}},
             entry,
