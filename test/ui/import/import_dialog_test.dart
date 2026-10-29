@@ -1921,7 +1921,7 @@ void main() {
       Finder inNotice(String text) =>
           find.descendant(of: notice, matching: find.text(text));
 
-      expect(inNotice('Lock not imported. (2)'), findsOneWidget);
+      expect(inNotice('Came in unlocked. (2)'), findsOneWidget);
       expect(
         [
           for (final layer in ['ink', 'shade'])
