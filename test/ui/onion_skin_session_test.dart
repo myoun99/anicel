@@ -128,7 +128,7 @@ void main() {
       find.byKey(const ValueKey<String>('onion-peg-switch-before-1')),
     );
     await tester.pumpAndSettle();
-    expect(tester.widget<AppTooltip>(peg1).message, '1 back · off');
+    expect(tester.widget<AppTooltip>(peg1).message, '1 back · Off');
 
     // Mode switch to Images through the panel's picker.
     await tester.tap(find.byKey(const ValueKey<String>('onion-mode-button')));

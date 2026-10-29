@@ -1258,6 +1258,17 @@ enum AppStrings {
   String get onionGhostColorHelp => _s('onionGhostColorHelp');
   String get onionPegCountHelp => _s('onionPegCountHelp');
   String get onionPlacementHelp => _s('onionPlacementHelp');
+  String get onionStepBlocks => _s('onionStepBlocks');
+  String get onionStepBlocksDrawings => _s('onionStepBlocksDrawings');
+  String get onionStepFrames => _s('onionStepFrames');
+  String get onionModeColors => _s('onionModeColors');
+  String get onionModeImages => _s('onionModeImages');
+  String get onionPlacementOnTop => _s('onionPlacementOnTop');
+  String get onionPlacementInPlace => _s('onionPlacementInPlace');
+  String onionPegBefore(int n) =>
+      _s('onionPegBeforeTemplate').replaceAll('{n}', '$n');
+  String onionPegAfter(int n) =>
+      _s('onionPegAfterTemplate').replaceAll('{n}', '$n');
 
   // --- The shortcut editor ---
   String get shortcutTitle => _s('shortcutTitle');
@@ -2739,6 +2750,15 @@ enum AppStrings {
     'onionGhostColorHelp': 'How the ghosts are colored',
     'onionPegCountHelp': 'What one peg counts',
     'onionPlacementHelp': 'Where the ghosts lie',
+    'onionStepBlocks': 'Blocks',
+    'onionStepBlocksDrawings': 'Blocks (drawings)',
+    'onionStepFrames': 'Frames',
+    'onionModeColors': 'Colors',
+    'onionModeImages': 'Images',
+    'onionPlacementOnTop': 'On top',
+    'onionPlacementInPlace': 'In place',
+    'onionPegBeforeTemplate': '{n} back',
+    'onionPegAfterTemplate': '{n} ahead',
     'shortcutTitle': 'Keyboard shortcuts',
     'shortcutResetAll': 'Reset all',
     'shortcutFileImportedTemplate':
@@ -4333,6 +4353,15 @@ enum AppStrings {
     'onionGhostColorHelp': 'ゴーストの色付け方',
     'onionPegCountHelp': '1段が数えるもの',
     'onionPlacementHelp': 'ゴーストの置き場所',
+    'onionStepBlocks': 'ブロック',
+    'onionStepBlocksDrawings': 'ブロック（絵）',
+    'onionStepFrames': 'フレーム',
+    'onionModeColors': '色',
+    'onionModeImages': '絵',
+    'onionPlacementOnTop': '最前面',
+    'onionPlacementInPlace': 'その場',
+    'onionPegBeforeTemplate': '前 {n}',
+    'onionPegAfterTemplate': '後 {n}',
     'shortcutTitle': 'キーボードショートカット',
     'shortcutResetAll': 'すべてリセット',
     'shortcutFileImportedTemplate':
@@ -6132,6 +6161,15 @@ enum AppStrings {
     'onionGhostColorHelp': '고스트에 색을 입히는 방식',
     'onionPegCountHelp': '한 칸이 세는 단위',
     'onionPlacementHelp': '고스트가 놓이는 자리',
+    'onionStepBlocks': '블록',
+    'onionStepBlocksDrawings': '블록(그림)',
+    'onionStepFrames': '프레임',
+    'onionModeColors': '색',
+    'onionModeImages': '그림',
+    'onionPlacementOnTop': '맨 위',
+    'onionPlacementInPlace': '제자리',
+    'onionPegBeforeTemplate': '이전 {n}',
+    'onionPegAfterTemplate': '이후 {n}',
     'shortcutTitle': '키보드 단축키',
     'shortcutResetAll': '모두 초기화',
     'shortcutFileImportedTemplate':
@@ -7981,6 +8019,15 @@ enum AppStrings {
     'onionGhostColorHelp': 'Comment les fantômes sont colorés',
     'onionPegCountHelp': 'Ce que compte un cran',
     'onionPlacementHelp': 'Où se placent les fantômes',
+    'onionStepBlocks': 'Blocs',
+    'onionStepBlocksDrawings': 'Blocs (dessins)',
+    'onionStepFrames': 'Images',
+    'onionModeColors': 'Couleurs',
+    'onionModeImages': 'Dessins',
+    'onionPlacementOnTop': 'Au-dessus',
+    'onionPlacementInPlace': 'Sur place',
+    'onionPegBeforeTemplate': '{n} avant',
+    'onionPegAfterTemplate': '{n} après',
     'shortcutTitle': 'Raccourcis clavier',
     'shortcutResetAll': 'Tout réinitialiser',
     'shortcutFileImportedTemplate':
@@ -9807,6 +9854,15 @@ enum AppStrings {
     'onionGhostColorHelp': '残影的着色方式',
     'onionPegCountHelp': '一格所计的单位',
     'onionPlacementHelp': '残影的位置',
+    'onionStepBlocks': '块',
+    'onionStepBlocksDrawings': '块（画面）',
+    'onionStepFrames': '帧',
+    'onionModeColors': '颜色',
+    'onionModeImages': '画面',
+    'onionPlacementOnTop': '最上层',
+    'onionPlacementInPlace': '原位',
+    'onionPegBeforeTemplate': '之前 {n}',
+    'onionPegAfterTemplate': '之后 {n}',
     'shortcutTitle': '键盘快捷键',
     'shortcutResetAll': '全部重置',
     'shortcutFileImportedTemplate':
