@@ -104,8 +104,8 @@ void main() {
     expect(posts.last, posts.first);
   });
 
-  testWidgets('🎯on and in front, an in_use once an hour — on through '
-      'another window\'s focus, none while hidden, and the hour starts again '
+  testWidgets('🎯on and in front, an in_use about once an hour — on through '
+      'another window\'s focus, none while hidden, and the wait starts again '
       'when the app is back', (tester) async {
     final posts = <List<Object?>>[];
     final client = AptabaseClient(
@@ -134,7 +134,7 @@ void main() {
       ['app_started', 'day'],
     ]);
 
-    await tester.pump(const Duration(minutes: 59));
+    await tester.pump(const Duration(minutes: 54));
     expect(posts, hasLength(1));
     await tester.pump(const Duration(minutes: 1));
     expect(posts, hasLength(2));
@@ -156,7 +156,7 @@ void main() {
     expect(posts, hasLength(3));
 
     lifecycle([AppLifecycleState.inactive, AppLifecycleState.resumed]);
-    await tester.pump(const Duration(minutes: 59));
+    await tester.pump(const Duration(minutes: 54));
     expect(posts, hasLength(3), reason: 'the day went at launch');
     await tester.pump(const Duration(minutes: 1));
     expect(posts, hasLength(4));

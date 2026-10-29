@@ -7,7 +7,7 @@ import 'aptabase_client.dart';
 
 /// The usage statistics (I-70): whether this device sends them, and what it
 /// sends when it does — `app_started` once a run, `day` once a UTC day and
-/// `in_use` once an hour while the app is in front.
+/// `in_use` about once an hour while the app is in front ([inUseEvery]).
 ///
 /// 🗣️I-70 (유저 2026-10-29): Q1 「둘 다」 — downloads are counted from the
 /// releases, and how many people USE the app from here; Q2 Aptabase
@@ -66,8 +66,17 @@ class UsageStats {
   /// How often a device says it is still in use while the app is in front.
   ///
   /// 🗣️유저 2026-10-29: Aptabase's live view should show the people still
-  /// using the app — 「1시간마다」, chosen over 30 minutes.
-  static const Duration inUseEvery = Duration(hours: 1);
+  /// using the app — 「1시간마다」, chosen over 30 minutes. ↩️55 minutes,
+  /// not 60 (I-70-Q5, 유저 10-29 11시: 「켠 동안 한 세션」): a session ends
+  /// after [AptabaseClient.sessionTimeout] with no event in it, and a timer
+  /// fires late, so an `in_use` on the hour began a new session every hour
+  /// by milliseconds. Five minutes short keeps a run in front ONE session,
+  /// for about 9% more events. ⚠️Chosen knowing that Aptabase's Live view
+  /// lists only the sessions STARTED in the last hour (its server's
+  /// `live_sessions__v1.pipe` and `live_geo__v1.pipe`: `HAVING StartedAt >=
+  /// now() - interval 1 hour`) — a long run shows there for its first hour
+  /// alone.
+  static const Duration inUseEvery = Duration(minutes: 55);
 
   /// ⚖️THE QUEUE'S BOUNDS (유저 2026-10-29 08:5x, as 관제 relayed them —
   /// 「drop events older than 7 days and keep at most ~500」): an event a

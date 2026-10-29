@@ -501,14 +501,15 @@ void main() {
   });
 
   /// 🗣️유저 2026-10-29: Aptabase's live view shows who is still using the
-  /// app — an `in_use` 「1시간마다」 while it is on and in front.
-  group('in_use, once an hour', () {
-    test('🎯on and in front: one every hour, its name alone — and none '
-        'before the first hour is up', () async {
+  /// app — an `in_use` 「1시간마다」 while it is on and in front; I-70-Q5:
+  /// 「켠 동안 한 세션」, so a little under the hour.
+  group('in_use, about once an hour', () {
+    test('🎯on and in front: one every 55 minutes, its name alone — and '
+        'none before the first is due', () async {
       final store = _MemoryStore([today - 1]);
       final stats = run(store);
       await stats.reportLaunch();
-      expect(UsageStats.inUseEvery, const Duration(hours: 1));
+      expect(UsageStats.inUseEvery, const Duration(minutes: 55));
       expect(timers.single.every, UsageStats.inUseEvery);
       expect(sent, [
         ['app_started', 'day days=1-2'],
@@ -523,6 +524,32 @@ void main() {
       expect(sent.last, ['in_use']);
       expect(store.days, [today - 1, today], reason: 'an in_use records no day');
       expect(stats.enabled.value, isTrue);
+    });
+
+    test('🎯a run in front stays ONE session — each in_use, a second late '
+        'as a timer is, comes before the last event\'s session runs out',
+        () async {
+      final stats = run(_MemoryStore([today - 1]));
+      await stats.reportLaunch();
+      for (var tick = 0; tick < 3; tick += 1) {
+        clock = clock.add(UsageStats.inUseEvery + const Duration(seconds: 1));
+        timers.single.fire();
+        await pumpEventQueue();
+      }
+      expect(sent, [
+        ['app_started', 'day days=1-2'],
+        ['in_use'],
+        ['in_use'],
+        ['in_use'],
+      ]);
+      expect({
+        for (final body in bodies)
+          for (final event in body) event['sessionId'],
+      }, hasLength(1));
+      expect(
+        UsageStats.inUseEvery + const Duration(seconds: 1),
+        lessThan(AptabaseClient.sessionTimeout),
+      );
     });
 
     test('⛔none while off — at launch, and from the moment it is turned '
@@ -666,7 +693,7 @@ void main() {
       expect(store.queue, isEmpty);
     });
 
-    test('the hour\'s in_use waits too, and goes with the next one', () async {
+    test('the timer\'s in_use waits too, and goes with the next one', () async {
       final store = _MemoryStore([today - 1]);
       final stats = run(store);
       await stats.reportLaunch();
@@ -682,8 +709,8 @@ void main() {
       await pumpEventQueue();
       expect(sent.last, ['in_use', 'in_use']);
       expect(bodies.last.map((event) => event['timestamp']), [
-        '2026-10-29T07:20:00.000Z',
-        '2026-10-29T08:20:00.000Z',
+        '2026-10-29T07:15:00.000Z',
+        '2026-10-29T08:10:00.000Z',
       ]);
       expect(store.queue, isEmpty);
     });
