@@ -579,6 +579,7 @@ Future<void> showPanelFlyout(
     position: position,
     // Instant open/close (R4 #2): the whole list appears in one frame.
     popUpAnimationStyle: instantMenuAnimation,
+    constraints: _MenuWidth.rows,
     items: [
       for (final entry in entries)
         switch (entry) {
@@ -838,14 +839,17 @@ Widget _warnedBelow(PanelFlyoutItem entry, Widget row) {
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       row,
-      Padding(
-        padding: flyoutRowPadding.copyWith(bottom: 6),
-        child: Text(
-          warning,
-          style: const TextStyle(
-            fontSize: 11,
-            height: _warningLineHeight / 11,
-            color: AppColors.danger,
+      ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: _MenuWidth.warningReach),
+        child: Padding(
+          padding: flyoutRowPadding.copyWith(bottom: 6),
+          child: Text(
+            warning,
+            style: const TextStyle(
+              fontSize: 11,
+              height: _warningLineHeight / 11,
+              color: AppColors.danger,
+            ),
           ),
         ),
       ),
@@ -1088,8 +1092,6 @@ class _SubmenuLayer extends StatelessWidget {
   final EditorShortcutBindings? bindings;
   final ValueChanged<PanelFlyoutItem> onPicked;
 
-  static const double _width = 200;
-
   /// How far a level stays inside the window — the PARENT's inset.
   ///
   /// The parent list is Material's menu, which lays itself out 8px inside
@@ -1148,12 +1150,6 @@ class _SubmenuLayer extends StatelessWidget {
       0.0,
       (overlaySize.height - 2 * _screenMargin).clamp(0.0, double.infinity),
     );
-    // Flush against the parent's right edge, its first row level with the
-    // row that opened it — and folded back to the parent's LEFT when there
-    // is no room, which is what every submenu does at a screen edge.
-    final left = request.anchor.right + _width <= overlaySize.width
-        ? request.anchor.right
-        : request.anchor.left - _width;
     final top = (request.anchor.top - 8).clamp(
       _screenMargin,
       (overlaySize.height - shown - _screenMargin).clamp(
@@ -1161,10 +1157,9 @@ class _SubmenuLayer extends StatelessWidget {
         double.infinity,
       ),
     );
-    return Positioned(
-      left: left,
+    return _BesideItsRow(
+      anchor: request.anchor,
       top: top,
-      width: _width,
       height: shown,
       child: Material(
         // ⛔THE SHARED popup surface, not a colour of its own. Naming
@@ -1243,6 +1238,87 @@ class _SubmenuLayer extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A level [height] tall, as wide as its longest row ([_MenuWidth]), standing
+/// where [_BesideItsRowLayout] puts it once that width is known.
+class _BesideItsRow extends StatelessWidget {
+  const _BesideItsRow({
+    required this.anchor,
+    required this.top,
+    required this.height,
+    required this.child,
+  });
+
+  final Rect anchor;
+  final double top;
+  final double height;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Positioned.fill(
+    child: CustomSingleChildLayout(
+      delegate: _BesideItsRowLayout(anchor: anchor, top: top),
+      child: SizedBox(
+        height: height,
+        child: ConstrainedBox(
+          constraints: _MenuWidth.rows,
+          child: IntrinsicWidth(stepWidth: _MenuWidth.step, child: child),
+        ),
+      ),
+    ),
+  );
+}
+
+/// Where a level stands once its width is known: flush against the parent's
+/// right edge, its first row level with the row that opened it — and folded
+/// back to the parent's LEFT when there is no room, which is what every
+/// submenu does at a screen edge.
+class _BesideItsRowLayout extends SingleChildLayoutDelegate {
+  const _BesideItsRowLayout({required this.anchor, required this.top});
+
+  final Rect anchor;
+  final double top;
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
+      BoxConstraints(
+        maxWidth: (constraints.maxWidth - 2 * _SubmenuLayer._screenMargin)
+            .clamp(0.0, double.infinity),
+        maxHeight: constraints.maxHeight,
+      );
+
+  @override
+  Offset getPositionForChild(Size size, Size childSize) => Offset(
+    anchor.right + childSize.width <= size.width
+        ? anchor.right
+        : anchor.left - childSize.width,
+    top,
+  );
+
+  @override
+  bool shouldRelayout(_BesideItsRowLayout oldDelegate) =>
+      oldDelegate.anchor != anchor || oldDelegate.top != top;
+}
+
+/// 🗣️fr-zh-strings-fall-back-to-english-Q2 (권고 a — 「가장 긴 줄만큼, 창
+/// 안에서」): a menu is as wide as its longest row, and the window is its
+/// only bound. Material's 280 cut 「Keyboard shortcuts  Ctrl+Alt+Shift+K」
+/// in English, Japanese and French alike, and the submenu's fixed 200 cut
+/// four rows of the panels drawer in English — neither number was anyone's
+/// choice (guide-shot census 2026-10-29: 20 English labels cut, 39 French).
+///
+/// Both levels round as Material's list does (`_kMenuWidthStep` ·
+/// `_kMenuMinWidth`, private to `popup_menu.dart`), so the two cannot
+/// disagree about how wide a row is.
+abstract final class _MenuWidth {
+  static const double step = 56;
+  static const BoxConstraints rows = BoxConstraints(minWidth: 2 * step);
+
+  /// How far a warning's sentence may widen its list — Material's old cap
+  /// (`_kMenuMaxWidth`): a warned row wraps where it always has, in the two
+  /// lines [_entryHeight] counts, instead of stretching the list to one.
+  static const double warningReach = 5 * step;
 }
 
 Widget _itemBody(
