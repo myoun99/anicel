@@ -16,7 +16,10 @@ import 'language_settings_dialog.dart';
 /// 보여주고(나중에 바꿀수있다고 알림) 그다음 사용통계창」, because
 /// 「처음에 뜨는창을 최대한 줄이고 간략화하고싶어서」. Then: 「첫설정창에
 /// 프로그램언어 표기언어도 넣자」 — the languages first, so the rest is
-/// read in the one picked.
+/// read in the one picked. And (I-146): 「추가로 화면모드 다크/라이트
+/// 고를수있게」 — the palette's row too, above the accent as in
+/// Preferences. ↩️I-143-Q8 had answered 「안 넣는다」 an hour and a half
+/// before.
 ///
 /// The scale is written however the window closes: the one it shows on a
 /// first launch is the device's default ([AppUiScale.firstRunScaleFor]),
@@ -57,6 +60,7 @@ class FirstRunSettingsWindow extends StatelessWidget {
         children: [
           LanguageSettingsSection(session: session),
           UiScaleRow(session: session),
+          ColorModeRow(session: session),
           AccentSettingsRow(session: session),
           DrawingCursorRow(session: session),
           const SizedBox(height: 12),

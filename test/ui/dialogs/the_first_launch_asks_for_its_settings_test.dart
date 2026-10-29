@@ -76,16 +76,16 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('🎯one window: the languages, the scale, the accent and the '
-      'cursor — Preferences\' own rows — and where they change later', (
-    tester,
-  ) async {
+  testWidgets('🎯one window: the languages, the scale, the palette, the '
+      'accent and the cursor — Preferences\' own rows — and where they '
+      'change later', (tester) async {
     await open(tester);
     expect(_window, findsOneWidget);
     for (final row in [
       'settings-program-language',
       'settings-notation-language',
       'settings-ui-scale',
+      'settings-color-mode',
       'settings-drawing-cursor',
     ]) {
       expect(
@@ -115,6 +115,20 @@ void main() {
           .dy,
       lessThan(
         tester.getTopLeft(find.byKey(const ValueKey('settings-ui-scale'))).dy,
+      ),
+    );
+    // 🗣️I-146: the palette right above the accent, as in Preferences.
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('settings-color-mode'))).dy,
+      lessThan(
+        tester
+            .getTopLeft(
+              find.descendant(
+                of: _window,
+                matching: find.text(AppText.strings.prefsAccent),
+              ),
+            )
+            .dy,
       ),
     );
   });
