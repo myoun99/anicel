@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/pasteboard_bounds.dart';
+import '../../models/project.dart' show defaultProjectBackdropArgb;
 import '../repaint_props.dart';
+import '../theme/app_theme.dart' show AppColors;
 import 'display_resample.dart' show displayEdgeAntiAliased, displayEdgeRect;
 import 'paper_background.dart' show paintAbsentPlane;
 import 'viewport_canvas_transform.dart' show applyViewportTransform;
@@ -13,6 +15,16 @@ import 'viewport_canvas_transform.dart' show applyViewportTransform;
 /// One plane of the stage (R3b): its colour and whether it is there at all
 /// (F-114) — one value, so a colour never travels without its absence.
 typedef StagePlane = ({Color color, bool none});
+
+/// The colour a project's backdrop or pasteboard is drawn in on screen.
+///
+/// 🗣️I-143-Q5 (유저 2026-10-30, 「바닥을 따라 밝게」): both start at the
+/// floor (R3 #4 — 둘레와 바닥이 한 판), and a project stores that start as
+/// the dark palette's floor. That value is read as 「the floor」, so a
+/// project left at it follows the palette it is opened in; any other value
+/// is the colour it says.
+Color stageColorOnScreen(int argb) =>
+    argb == defaultProjectBackdropArgb ? AppColors.backdrop : Color(argb);
 
 /// The ground a canvas panel's shell lays under its stage — the one surface
 /// with no panel behind it, so it states its own colour — and so what a

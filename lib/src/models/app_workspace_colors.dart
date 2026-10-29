@@ -20,8 +20,8 @@ class AppWorkspaceColors {
   ///
   /// It was pure black until R4 #2. Black made the shared field invisible to
   /// draw on: ink put down outside the paper vanished into it. It is
-  /// `AppColors.backdrop` now — the floor the chrome itself sits on, darker
-  /// than any panel and light enough to show a black stroke.
+  /// `AppPalette.dark.backdrop` now — the floor the chrome itself sits on,
+  /// darker than any panel and light enough to show a black stroke.
   ///
   /// ⚠️Must stay in step with `defaultProjectPasteboardArgb`. A project omits
   /// this key when it matches the default, so the two disagreeing would make

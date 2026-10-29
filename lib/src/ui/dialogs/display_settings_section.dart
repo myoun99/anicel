@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/app_accents.dart';
 import '../../models/app_frame_grid_settings.dart';
 import '../../models/app_input_settings.dart';
 import '../../models/inbetween_mark.dart';
@@ -7,16 +8,18 @@ import '../editor_session_manager.dart';
 import '../shortcuts/editor_action_registry.dart' show markToggleActionOf;
 import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
 import '../text/app_strings.dart';
+import '../theme/app_theme.dart' show AppColors;
 import '../timeline/inbetween_mark_icon.dart';
 import '../ui_scale.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/settings_rows.dart';
 import 'accent_settings_dialog.dart';
 
-/// Preferences ▸ Display: the interface scale (R11), the accent colour, the
-/// cursor the drawing tools wear (I-54), whether the frame lines cross a
-/// block's paper (유저 2026-09-24), and which mark a block with no name
-/// wears (F-489) — each a row of the one shape ([SettingsRow]).
+/// Preferences ▸ Display: the interface scale (R11), the palette (I-143),
+/// the accent colour, the cursor the drawing tools wear (I-54), whether the
+/// frame lines cross a block's paper (유저 2026-09-24), and which mark a
+/// block with no name wears (F-489) — each a row of the one shape
+/// ([SettingsRow]).
 ///
 /// A LADDER, not a slider (유저 확정 2026-08-21: "배율을 사다리로"). The
 /// stops are [AppUiScale.ladder]'s — a continuous control would multiply
@@ -42,6 +45,7 @@ class DisplaySettingsSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         UiScaleRow(session: session),
+        ColorModeRow(session: session),
         AccentSettingsRow(session: session),
         DrawingCursorRow(session: session),
         ValueListenableBuilder<AppFrameGridSettings>(
@@ -110,6 +114,34 @@ class UiScaleRow extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// Which palette the chrome wears — dark or light (I-143). One row of the
+/// shape the first launch's window borrows its rows in (I-144).
+class ColorModeRow extends StatelessWidget {
+  const ColorModeRow({super.key, required this.session});
+
+  final EditorSessionManager session;
+
+  @override
+  Widget build(BuildContext context) =>
+      ValueListenableBuilder<AppAccentSettings>(
+        valueListenable: AppColors.accentSettings,
+        builder: (context, settings, _) => settingsEnumPickerRow(
+          keyValue: 'settings-color-mode',
+          label: AppText.strings.colorModeLabel,
+          value: settings.mode,
+          values: AppColorMode.values,
+          labelOf: _labelOf,
+          onPicked: (mode) =>
+              session.setAccentSettings(settings.copyWith(mode: mode)),
+        ),
+      );
+
+  static String _labelOf(AppColorMode mode) => switch (mode) {
+    AppColorMode.dark => AppText.strings.colorModeDark,
+    AppColorMode.light => AppText.strings.colorModeLight,
+  };
 }
 
 /// The cursor the drawing tools wear (I-54). Here and in the first

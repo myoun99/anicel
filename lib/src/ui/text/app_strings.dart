@@ -789,6 +789,9 @@ enum AppStrings {
 
   // --- Display (R11) ---
   String get uiScaleLabel => _s('uiScaleLabel');
+  String get colorModeLabel => _s('colorModeLabel');
+  String get colorModeDark => _s('colorModeDark');
+  String get colorModeLight => _s('colorModeLight');
   String get blockFrameLinesLabel => _s('blockFrameLinesLabel');
   String get unnamedMarkLabel => _s('unnamedMarkLabel');
   String get drawingCursorLabel => _s('drawingCursorLabel');
@@ -2573,6 +2576,9 @@ enum AppStrings {
         'it now if it is still in a trash: the drawings already saved live '
         'only inside that file.',
     'uiScaleLabel': 'Interface scale',
+    'colorModeLabel': 'Appearance',
+    'colorModeDark': 'Dark',
+    'colorModeLight': 'Light',
     'blockFrameLinesLabel': 'Frame lines inside blocks',
     'unnamedMarkLabel': 'Mark of an unnamed block',
     'drawingCursorLabel': 'Cursor',
@@ -3955,6 +3961,9 @@ enum AppStrings {
     'projectFileVanished':
         'このプロジェクトのファイルが見つかりません — 削除か移動された可能性があります。ゴミ箱に残っていれば今すぐ戻してください。保存済みの絵はそのファイルの中にしかありません。',
     'uiScaleLabel': 'UIの大きさ',
+    'colorModeLabel': 'カラーモード',
+    'colorModeDark': 'ダーク',
+    'colorModeLight': 'ライト',
     'blockFrameLinesLabel': 'ブロック内のフレーム線',
     'unnamedMarkLabel': '名前のないブロックのマーク',
     'drawingCursorLabel': 'カーソル',
@@ -5763,6 +5772,9 @@ enum AppStrings {
     'projectFileVanished':
         '이 프로젝트의 파일이 사라졌습니다 — 지워졌거나 옮겨졌습니다. 휴지통에 아직 있다면 지금 되살리세요. 이미 저장했던 그림들은 그 파일 안에만 있습니다.',
     'uiScaleLabel': 'UI 크기',
+    'colorModeLabel': '화면 모드',
+    'colorModeDark': '다크',
+    'colorModeLight': '라이트',
     'blockFrameLinesLabel': '블록 안 프레임선',
     'unnamedMarkLabel': '이름 없는 블록의 마크',
     'drawingCursorLabel': '커서',
@@ -9009,6 +9021,9 @@ enum AppStrings {
     'openWaitingStalledTemplate': 'Rien reçu depuis {sec} s',
     'prefsDisplay': 'Affichage',
     'uiScaleLabel': "Taille de l'interface",
+    'colorModeLabel': 'Apparence',
+    'colorModeDark': 'Sombre',
+    'colorModeLight': 'Clair',
     'unnamedMarkLabel': "Marque d'un bloc sans nom",
     // A label chip's short form: the English ones, which an animator reads
     // the same in any language (유저 2026-08-31 「업계 용어부분쪽 관련 말고는
@@ -10744,6 +10759,9 @@ enum AppStrings {
     'openWaitingStalledTemplate': '已有 {sec} 秒未收到数据',
     'prefsDisplay': '显示',
     'uiScaleLabel': '界面大小',
+    'colorModeLabel': '外观',
+    'colorModeDark': '深色',
+    'colorModeLight': '浅色',
     'unnamedMarkLabel': '无名块的标记',
     'tlLayerMarkNone': '无标记',
     'tlLayerMarkSource': '素材',

@@ -370,6 +370,9 @@ void main() {
     'closeProjectFailedCopyBody': (s) => s.closeProjectFailedCopyBody,
     // R11: the interface scale, in the Display section.
     'uiScaleLabel': (s) => s.uiScaleLabel,
+    'colorModeLabel': (s) => s.colorModeLabel,
+    'colorModeDark': (s) => s.colorModeDark,
+    'colorModeLight': (s) => s.colorModeLight,
     'blockFrameLinesLabel': (s) => s.blockFrameLinesLabel,
     'unnamedMarkLabel': (s) => s.unnamedMarkLabel,
     'drawingCursorLabel': (s) => s.drawingCursorLabel,

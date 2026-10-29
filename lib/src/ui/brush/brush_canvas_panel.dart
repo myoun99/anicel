@@ -4589,11 +4589,11 @@ class _StagePlanes extends StatelessWidget {
     return CustomPaint(
       painter: StagePlanesPainter(
         backdrop: backdropOnScreen((
-          color: Color(backdropArgb),
+          color: stageColorOnScreen(backdropArgb),
           none: backdropNone,
         ), stageGroundOf(context)),
         pasteboard: hasPasteboard
-            ? (color: Color(pasteboardArgb), none: pasteboardNone)
+            ? (color: stageColorOnScreen(pasteboardArgb), none: pasteboardNone)
             : null,
         pasteboardReach: pasteboardReach,
         paperNone: paperNone,
