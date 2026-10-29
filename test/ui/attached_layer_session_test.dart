@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/cursor_notice.dart';
 import '../helpers/pill_row_clipboard.dart';
+import '../helpers/a_folder_made_by_hand.dart';
 
 /// W5 attach layers through the session: creation/placement, the attach
 /// cel flow (Create Drawing = cel + link), edit guards and the cascade
@@ -687,8 +688,7 @@ void main() {
       s.folders.addAttachedLayer(AttachedPlacement.above);
       final attachId = s.activeLayer!.id;
 
-      expect(s.folders.canGroupActiveAttachIntoFolder, isTrue);
-      s.folders.groupActiveAttachIntoFolder();
+      groupTheActiveAttachIntoAFolder(s);
 
       final layers = cutLayers(s);
       final attach = layers.firstWhere((l) => l.id == attachId);
@@ -709,15 +709,6 @@ void main() {
         layers.indexWhere((l) => l.id == organizer.id) + 1,
       );
       expect(folderStructureProblem(layers), isNull);
-
-      // 🪦The FLAT one-level rule used to refuse here. 유저 2026-08-29
-      // lifted it, and the same round removed the drop policy's refusal —
-      // so the gate has to agree with the drag.
-      s.selectLayer(attachId);
-      expect(s.folders.canGroupActiveAttachIntoFolder, isTrue);
-      // The whole-group fold is still not fooled: a base cannot wrap.
-      s.selectLayer(base.id);
-      expect(s.folders.canGroupActiveAttachIntoFolder, isFalse);
     });
 
     test('an organizer NESTS: wrapping a row that is already inside one '
@@ -726,13 +717,13 @@ void main() {
       final (s, base) = sessionWithBase();
       s.folders.addAttachedLayer(AttachedPlacement.above);
       final attachId = s.activeLayer!.id;
-      s.folders.groupActiveAttachIntoFolder();
+      groupTheActiveAttachIntoAFolder(s);
       final outerId = cutLayers(
         s,
       ).firstWhere((l) => l.id == attachId).folderId!;
 
       s.selectLayer(attachId);
-      s.folders.groupActiveAttachIntoFolder();
+      groupTheActiveAttachIntoAFolder(s);
 
       final layers = cutLayers(s);
       final attach = layers.firstWhere((l) => l.id == attachId);
@@ -765,7 +756,7 @@ void main() {
       final (s, base) = sessionWithBase();
       s.folders.addAttachedLayer(AttachedPlacement.above);
       final firstId = s.activeLayer!.id;
-      s.folders.groupActiveAttachIntoFolder();
+      groupTheActiveAttachIntoAFolder(s);
       s.selectLayer(firstId);
 
       s.folders.addAttachedLayer(AttachedPlacement.above);
@@ -791,10 +782,10 @@ void main() {
       final (s, base) = sessionWithBase();
       s.folders.addAttachedLayer(AttachedPlacement.above);
       final attachId = s.activeLayer!.id;
-      s.folders.groupActiveAttachIntoFolder();
+      groupTheActiveAttachIntoAFolder(s);
       s.selectLayer(base.id);
 
-      s.folders.groupActiveLayerIntoFolder();
+      groupTheActiveRowIntoAFolder(s);
 
       final layers = cutLayers(s);
       final attach = layers.firstWhere((l) => l.id == attachId);
@@ -815,7 +806,7 @@ void main() {
       final belowId = s.activeLayer!.id;
       s.selectLayer(base.id);
 
-      s.folders.groupActiveLayerIntoFolder();
+      groupTheActiveRowIntoAFolder(s);
 
       final layers = cutLayers(s);
       final folderId = layers.firstWhere((l) => l.id == base.id).folderId;
@@ -833,7 +824,7 @@ void main() {
       final (s, base) = sessionWithBase();
       s.folders.addAttachedLayer(AttachedPlacement.above);
       final attachId = s.activeLayer!.id;
-      s.folders.groupActiveAttachIntoFolder();
+      groupTheActiveAttachIntoAFolder(s);
       final organizerId = cutLayers(s)
           .firstWhere((l) => l.id == attachId)
           .folderId!;
@@ -866,12 +857,12 @@ void main() {
       final (s, base) = sessionWithBase();
       s.folders.addAttachedLayer(AttachedPlacement.above);
       final attachId = s.activeLayer!.id;
-      s.folders.groupActiveAttachIntoFolder();
+      groupTheActiveAttachIntoAFolder(s);
       final outerId = cutLayers(
         s,
       ).firstWhere((l) => l.id == attachId).folderId!;
       s.selectLayer(attachId);
-      s.folders.groupActiveAttachIntoFolder();
+      groupTheActiveAttachIntoAFolder(s);
       final innerId = cutLayers(
         s,
       ).firstWhere((l) => l.id == attachId).folderId!;
@@ -897,7 +888,7 @@ void main() {
       final (s, base) = sessionWithBase();
       s.folders.addAttachedLayer(AttachedPlacement.above);
       final attachId = s.activeLayer!.id;
-      s.folders.groupActiveAttachIntoFolder();
+      groupTheActiveAttachIntoAFolder(s);
       final organizerId = cutLayers(s)
           .firstWhere((l) => l.id == attachId)
           .folderId!;
@@ -926,7 +917,7 @@ void main() {
       s.createDrawingAtCurrentFrame();
       s.folders.addAttachedLayer(AttachedPlacement.above);
       final attachId = s.activeLayer!.id;
-      s.folders.groupActiveAttachIntoFolder();
+      groupTheActiveAttachIntoAFolder(s);
       final organizerId = cutLayers(s)
           .firstWhere((l) => l.id == attachId)
           .folderId!;

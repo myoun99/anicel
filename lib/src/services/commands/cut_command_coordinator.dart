@@ -654,9 +654,14 @@ class CutCommandCoordinator {
       );
       return;
     }
+    // ⚠️An organizer made by dropping an EMPTY folder on the group carries
+    // the relation on its own row (F-139), so it is one of [attachedRows]
+    // already — deleted twice, the second delete found nothing and threw.
     final organizerRows = [
       for (final row in cut.layers)
-        if (attachOrganizerBaseOf(row, cut.layers) == layerId) row,
+        if (row.attachedToLayerId != layerId &&
+            attachOrganizerBaseOf(row, cut.layers) == layerId)
+          row,
     ];
     historyManager.executeAsOneStep(
       'Delete layer ${layer.name} and its attach layers',
