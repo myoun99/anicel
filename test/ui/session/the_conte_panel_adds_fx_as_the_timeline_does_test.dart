@@ -31,7 +31,8 @@ import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 /// Standing on a row of the conte group in the storyboard holds the
 /// timeline's own row (F-322), so the fx menu's adds — and a paste of
 /// effects, which is an add of them — are the timeline's there. Off such a
-/// row the list stays grey, as it always was.
+/// row the list stays grey, as it always was — but on the V row, whose own
+/// chain takes them (-Q1).
 ///
 /// Cuts a [0, 12) and b [12, 24) each hold a conte and a row riding over
 /// it; four frames of gap; then c [28, 40), which has no conte.
@@ -198,10 +199,63 @@ void main() {
     expect(effectsOf(session, 'a-conte'), [EffectKind.hueSaturation]);
   });
 
-  group('🚨off a row of a cut\'s conte the list stays grey', () {
+  group('🗣️-Q1 (유저 2026-10-30, 「공용 Fx 가 V행도 받는다」): on the V row it '
+      'adds to the V row\'s chain', () {
+    List<EffectKind> trackChainOf(EditorSessionManager session) => [
+      for (final effect
+          in session.repository.requireProject().tracks.single.effects)
+        effect.kind,
+    ];
+
+    List<EffectKind> everyLayersEffects(EditorSessionManager session) => [
+      for (final cut in session.repository.requireProject().tracks.single.cuts)
+        for (final layer in cut.layers)
+          for (final effect in layer.effects) effect.kind,
+    ];
+
+    test('every kind it can hold is lit, a cel number not — and the add '
+        'lands on the track, not on the row the timeline holds', () {
+      final session = standingAt(const TrackRowAddress(trackId), 3);
+      final storyboard = StoryboardToolbarPanelContext(session);
+      for (final kind in EffectKind.values) {
+        expect(
+          addOf(session, storyboard, kind).enabled,
+          !kind.drawsItsOwnPicture,
+          reason: '$kind',
+        );
+      }
+      final layersBefore = everyLayersEffects(session);
+
+      addOf(session, storyboard, EffectKind.blur).onSelected!();
+      expect(trackChainOf(session), [EffectKind.blur]);
+      expect(everyLayersEffects(session), layersBefore);
+    });
+
+    test('effects in hand paste onto it as an add of them', () {
+      final session = sessionOf()..selectCut(const CutId('a'));
+      session.rowSelectionVerbs.beginRowSelection(
+        LaneRowAddress(const LayerId('a-cel'), effectGroupLaneId(hue)),
+      );
+      TimelineToolbarPanelContext(session).copyFrame();
+      expect(session.effectClipboard.holdsEffects, isTrue, reason: '⛔전제');
+
+      session.standOnRow(
+        const TrackRowAddress(trackId),
+        panel: WorkingPanel.storyboard,
+        globalFrameIndex: 3,
+      );
+      final storyboard = StoryboardToolbarPanelContext(session);
+      expect(storyboard.canPasteIndependentFrame, isTrue);
+      storyboard.pasteIndependentFrame();
+      expect(trackChainOf(session), [EffectKind.hueSaturation]);
+      expect(effectsOf(session, 'a-cel'), [EffectKind.hueSaturation]);
+    });
+  });
+
+  group('🚨off a row of a cut\'s conte or the V row the list stays grey', () {
     void expectGrey(EditorSessionManager session) {
       final storyboard = StoryboardToolbarPanelContext(session);
-      expect(storyboard.servesActiveEffects, isFalse);
+      expect(storyboard.effectChainHolder, isNull);
       for (final kind in EffectKind.values) {
         expect(
           addOf(session, storyboard, kind).enabled,
@@ -210,10 +264,6 @@ void main() {
         );
       }
     }
-
-    test('the V row', () {
-      expectGrey(standingAt(const TrackRowAddress(trackId), 3));
-    });
 
     test('the conte row over a cut with no conte — the timeline holds a '
         'drawing row there, which is not this row', () {

@@ -24,8 +24,9 @@ import '../models/layer_effect.dart'
 /// key has no paint form (it is a threshold, and a threshold has no colour
 /// matrix), so the resolver REFUSES one — by assert. A track chain with a
 /// colour key in it therefore threw, exactly as the live layer's did until
-/// #1314. It was unreachable only because the fx menu adds to the active
-/// layer and nothing calls `addEffectToTrack`; "no caller" is not a design.
+/// #1314. It was unreachable only while the fx menu added to the active
+/// layer alone; "no caller" is not a design, and the menu reaches the V row
+/// now (layer-menu-strings-outlive-their-entries-Q1).
 ///
 /// ⛔SO THE HALVES ARE TAKEN AT THE DRAW, like every other row. A layer row
 /// hands `List<ResolvedLayerEffect>` to `drawPosedLayerImage`, which builds

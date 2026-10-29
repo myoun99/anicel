@@ -18,6 +18,8 @@ import '../editor_session_manager.dart';
 import '../paste_linked_asking_first.dart';
 import '../paste_with_its_media.dart';
 import '../session/block_naming.dart' show AutoNameCuts, AutoNameTargets;
+import '../session/effects_and_fx.dart'
+    show ActiveRowChain, EffectChainHolder, TrackChain;
 import '../session/frame_clipboard.dart' show ClipboardPlace;
 import '../session/storyboard_cursor.dart' show CommaTarget;
 import '../session/what_a_copy_brings.dart' show BringsMedia;
@@ -77,16 +79,17 @@ abstract class ToolbarPanelContext {
   /// panel is not even showing.
   bool get servesActiveLayerVerbs;
 
-  /// Whether the active row's FX LIST — the fx menu's adds, and a paste of
-  /// effects, which is an add of them — is THIS panel's subject: the
+  /// The row whose FX LIST is THIS panel's subject — what the fx menu's adds
+  /// and a paste of effects, which is an add of them, land on: the
   /// timeline's row, and on the storyboard the timeline's row a projection
-  /// row stands on, as its attach entries are (F-322).
+  /// row stands on, as its attach entries are (F-322), or the V row stood
+  /// on ([TrackChain]). Null where none is.
   ///
   /// 🗣️I-99 (유저 2026-10-14): 「콘티패널에서 콘티작업중 일부 레이어에만
   /// 트랜스폼 조정하거나 fx걸고싶은데 그게 불가능해서」. ↩️The list asked
   /// [servesActiveLayerVerbs] — one flag for two questions — and greyed out
   /// on the conte rows the storyboard shows.
-  bool get servesActiveEffects;
+  EffectChainHolder? get effectChainHolder;
 
   // --- FRAME pill -----------------------------------------------------------
 
@@ -396,16 +399,21 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   bool get _pastesText => session.textClipboard.holdsText;
 
   /// Whether a paste here puts down EFFECTS: the hand holds them (F-476-Q1)
-  /// — an add of them, so where the fx menu's add is lit
-  /// ([servesActiveEffects]). Like a text they light no link
-  /// ([EffectClipboard.pasteIndependent]).
+  /// — an add of them, so onto the row the fx menu's add lands on
+  /// ([effectChainHolder]). Like a text they light no link
+  /// ([EffectClipboard.pasteOnto]).
   bool get _pastesEffects => session.effectClipboard.holdsEffects;
+
+  bool get _canPasteEffects => switch (effectChainHolder) {
+    final holder? => session.effectClipboard.canPasteOnto(holder),
+    null => false,
+  };
 
   @override
   bool get canPasteIndependentFrame => _pastesRows
       ? session.layerClipboard.canPasteRows
       : _pastesEffects
-      ? servesActiveEffects && session.effectClipboard.canPasteIndependent
+      ? _canPasteEffects
       : _pastesKeys
       ? session.keyClipboard.canPasteIndependent
       : _pastesText
@@ -420,7 +428,9 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   @override
   void pasteIndependentFrame() {
     if (_pastesEffects) {
-      session.effectClipboard.pasteIndependent();
+      if (effectChainHolder case final holder?) {
+        session.effectClipboard.pasteOnto(holder);
+      }
       return;
     }
     if (_pastesKeys) {
@@ -606,7 +616,7 @@ class TimelineToolbarPanelContext
   bool get servesActiveLayerVerbs => true;
 
   @override
-  bool get servesActiveEffects => true;
+  EffectChainHolder? get effectChainHolder => const ActiveRowChain();
 
   @override
   bool get canCreateInstance => session.cellInstances.canCreateInstance;
@@ -830,12 +840,17 @@ class StoryboardToolbarPanelContext
   @override
   bool get servesActiveLayerVerbs => false;
 
-  /// A projection row stood on holds the timeline's own row
-  /// ([_projectedCell]), so its fx list is the timeline's there — the conte
-  /// row's and each row riding it (I-99), every cut of the track wearing
-  /// the chain's shape (I-73); the camera takes none, as there.
+  /// The V row stood on holds its own chain ([TrackChain]). A projection row
+  /// stood on holds the timeline's own row ([_projectedCell]), so its fx
+  /// list is the timeline's there — the conte row's and each row riding it
+  /// (I-99), every cut of the track wearing the chain's shape (I-73); the
+  /// camera takes none, as there.
   @override
-  bool get servesActiveEffects => _projectedCell?.servesActiveEffects ?? false;
+  EffectChainHolder? get effectChainHolder =>
+      switch (session.storyboardStandingRow) {
+        TrackRowAddress(:final trackId) => TrackChain(trackId),
+        _ => _projectedCell?.effectChainHolder,
+      };
 
   /// 🗣️F-186 (유저 2026-09-26): 「타임라인 버튼은 기본적으로 선택안한상태에선
   /// 컷블록을 대상으로 하고, 콘티블록 선택하면 지금 편집버튼같은거

@@ -94,23 +94,23 @@ class EffectClipboard {
   /// Whether the hand holds effects.
   bool get holdsEffects => _board._copy != null;
 
-  /// Whether a paste here puts effects down: the hand holds some the
-  /// active row takes ([EffectsAndFx.canAddEffectCopiesToActiveLayer]).
-  bool get canPasteIndependent => switch (_board._copy) {
-    final copy? => _effectsAndFx.canAddEffectCopiesToActiveLayer(copy),
+  /// Whether a paste onto [holder] puts effects down: the hand holds some
+  /// its chain takes ([EffectsAndFx.canAddEffectCopies]).
+  bool canPasteOnto(EffectChainHolder holder) => switch (_board._copy) {
+    final copy? => _effectsAndFx.canAddEffectCopies(holder, copy),
     null => false,
   };
 
-  /// 독립 붙여넣기 of the effects in hand: at the end of the active row's
-  /// chain, each an effect of its own.
+  /// 독립 붙여넣기 of the effects in hand: at the end of [holder]'s chain,
+  /// each an effect of its own.
   ///
   /// ⛔No 링크 붙여넣기: what links two uses of one effect is its id, shared
   /// by rows made by copying one row — a link group's, never a paste's — so
   /// a link has nothing of the copy to keep and the independent paste alone
   /// is lit (F-115).
-  void pasteIndependent() {
+  void pasteOnto(EffectChainHolder holder) {
     if (_board._copy case final copy?) {
-      _effectsAndFx.addEffectCopiesToActiveLayer(copy);
+      _effectsAndFx.addEffectCopies(holder, copy);
     }
   }
 

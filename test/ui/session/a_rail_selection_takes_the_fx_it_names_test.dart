@@ -387,18 +387,16 @@ void main() {
       expect(_effectsOf(session, 'x'), [EffectKind.hueSaturation]);
     });
 
-    test('effects in hand light no link paste, and the storyboard\'s paste '
-        'stays dark as its fx menu\'s add does', () {
+    // ↩️It pinned the storyboard's paste dark here, as its fx menu's add
+    // was on the V row it stands on. The add takes the V row now (-Q1), and
+    // so does the paste: the_conte_panel_adds_fx_as_the_timeline_does_test.
+    test('effects in hand light no link paste', () {
       final session = _session();
       _select(session, [_header(session, EffectKind.blur)]);
       TimelineToolbarPanelContext(session).copyFrame();
       session.selectLayer(const LayerId('x'));
 
       expect(TimelineToolbarPanelContext(session).canPasteLinkedFrame, isFalse);
-      expect(
-        StoryboardToolbarPanelContext(session).canPasteIndependentFrame,
-        isFalse,
-      );
     });
 
     test('one copy in hand: effects let the rows go, and rows the effects', () {

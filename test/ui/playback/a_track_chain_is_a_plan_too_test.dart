@@ -25,9 +25,10 @@ import 'package:anicel/src/ui/track_effect_paint_policy.dart';
 /// track chain with a key in it therefore threw, exactly as the live layer's
 /// did until #1314.
 ///
-/// ⛔"NO CALLER" IS NOT A DESIGN. It was unreachable only because the fx menu
-/// adds to the active layer and nothing calls `addEffectToTrack`. The next
-/// round to add that menu would have shipped an assert.
+/// ⛔"NO CALLER" IS NOT A DESIGN. It was unreachable only while the fx menu
+/// added to the active layer alone and nothing called `addEffectToTrack`.
+/// The round that let the menu reach the V row would have shipped an assert
+/// (layer-menu-strings-outlive-their-entries-Q1).
 ///
 /// 🧪ASKED OF THE PIXELS, not of the plan: a unit test that the plan has a
 /// step passes on a route that ignores the step. This renders a white cut
