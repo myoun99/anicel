@@ -62,6 +62,29 @@ void main() {
     expect(s.currentFrameIndex, 2);
   });
 
+  test('standing in a GAP, the first undo walks to the edit, and the redo '
+      'after it parks back in the gap (board '
+      'a-text-walked-into-a-gap-lands-at-its-size)', () {
+    final s = session();
+    final cut = s.activeCutId!;
+    final row = s.activeLayerId!;
+    s.selectFrameIndex(2);
+    s.createDrawingAtCurrentFrame();
+    final made = drawingsOn(s, row);
+    s.selectGlobalFrame(9999);
+    expect(s.activeCutId, isNull, reason: '⛔전제: 컷 밖에 주차했다');
+    final parked = s.editingSession.gapGlobalFrame;
+
+    s.undo();
+    expect(s.activeCutId, cut, reason: '그곳으로 이동만');
+    expect(s.currentFrameIndex, 2);
+    expect(drawingsOn(s, row), made, reason: '⛔되돌리지는 않았다');
+
+    s.redo();
+    expect(s.activeCutId, isNull, reason: '리두대칭: 갭으로 돌아간다');
+    expect(s.editingSession.gapGlobalFrame, parked);
+  });
+
   test('standing where the edit was made, the undo takes it back at once', () {
     final s = session();
     final row = s.activeLayerId!;

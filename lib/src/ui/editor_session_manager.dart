@@ -104,6 +104,7 @@ import 'timeline/timeline_cell_exposure_state.dart';
 import 'timeline/timeline_drag_preview.dart';
 import 'timeline/timeline_frame_ruler_painter.dart'
     show timelineFramePlaceLabel;
+import 'timeline/timeline_grid_tile_store.dart';
 import 'session/live_stroke_landing.dart';
 import 'session/pixel_editing.dart';
 import 'session/session_roles.dart';
@@ -425,7 +426,13 @@ class EditorSessionManager extends ChangeNotifier
     if (enforce) {
       playbackRig.playbackCache.enforcePlaybackCacheBudget();
     }
+    playbackLineMoved();
   }
+
+  /// The playback line moved — the allowance, or a memory warning lifted as
+  /// the app came back to the front (F-504) — so a warmer resting for want
+  /// of room looks again, and a line that rose fills while nothing plays.
+  void playbackLineMoved() => playbackRig.prerenderScheduler.wake();
 
   // --- Workspace colors: the PROJECT half (R28 #9) --------------------------
   //
@@ -963,13 +970,14 @@ class EditorSessionManager extends ChangeNotifier
   late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, solo: visibilitySolo, trackSe: trackSe, rangeSelections: rangeSelections, selectTrackCutAtPlayhead: selectTrackCutAtPlayhead, brushInputActive: brushInputActive, sessionDisposed: () => disposed, playbackRig: playbackRig, railView: railView, fxEnabledOf: (layerId) => effectsAndFx.isLayerFxEnabled(layerId), activeCutHasLayer: (layerId) => activeCutSpan.activeCutHasLayer(layerId));
 
   // I-41: every door that MOVES where the user stands — the cut, the row,
-  // the frame, the gap — first settles the last edit where it left them
-  // ([HistoryPlaces.settle]): the move is theirs, not the edit's. A door
+  // the frame, the gap — first walks off ([HistoryPlaces.leave]): the last
+  // edit settles where it left them, for the move is theirs, not the
+  // edit's — and a hand the walk lets go of lands as made there. A door
   // that only passes through these (`selectRow`, `selectGlobalFrame`)
   // leaves it to them. The hand-offs inside an action go through
   // [standing] and the controllers, not through these.
   void selectCut(CutId cutId) {
-    historyManager.places.settle();
+    historyManager.places.leave();
     standing.selectCut(cutId);
   }
 
@@ -997,7 +1005,7 @@ class EditorSessionManager extends ChangeNotifier
     int? frameIndex,
     int? globalFrameIndex,
   }) {
-    historyManager.places.settle();
+    historyManager.places.leave();
     standing.standOnRow(
       row,
       panel: panel,
@@ -1007,7 +1015,7 @@ class EditorSessionManager extends ChangeNotifier
   }
 
   void selectLayer(LayerId layerId) {
-    historyManager.places.settle();
+    historyManager.places.leave();
     standing.selectLayer(layerId);
   }
 
@@ -1667,6 +1675,17 @@ class EditorSessionManager extends ChangeNotifier
     () => unawaited(movieCels.dispose()),
     standing.dispose,
     _letGoOfTheFilesItHolds,
+    // After the files: that reads what the stores read from (F-505).
+    () {
+      for (final store in renderCaches.celStores) {
+        store.dispose();
+      }
+    },
+    // The app's timeline tiles keep the resolvers they were baked against —
+    // this project's, its whole session behind them (F-505, measured: the
+    // first holder of a closed tab). The project on screen bakes its own
+    // again.
+    TimelineGridTileStore.instance.clear,
     canvasStroke.dispose,
     historyManager.dispose,
   ];
@@ -2170,8 +2189,17 @@ class EditorSessionManager extends ChangeNotifier
   void undo() {
     _settleAndAdopt();
     final here = standingPlace;
+    final gap = editingSession.gapGlobalFrame;
     if (_walkTo(undo: true) case final there?) {
-      historyManager.leaveWalkBack(WalkBack(() => standing.standOn(here!)));
+      historyManager.leaveWalkBack(
+        WalkBack(() {
+          if (here != null) {
+            standing.standOn(here);
+          } else if (gap != null) {
+            parkGlobalFrame(gap);
+          }
+        }),
+      );
       standing.standOn(there);
       return;
     }
@@ -2211,12 +2239,16 @@ class EditorSessionManager extends ChangeNotifier
 
   /// Where the next [undo] — or redo — walks the user instead of stepping:
   /// the place its edit was made, while the user stands elsewhere (I-41).
+  ///
+  /// A gap is elsewhere too. ↩️Standing in one (no place) never walked
+  /// (2026-09-24, unasked): the step was taken there, and a cel's pixels
+  /// were refused at the gap's canvas — the undo did nothing (board
+  /// `a-text-walked-into-a-gap-lands-at-its-size`).
   StandingPlace? _walkTo({required bool undo}) {
     final here = standingPlace;
     final there = undo ? historyManager.undoPlace : historyManager.redoPlace;
-    return here != null &&
-            there != null &&
-            standing.isElsewhere(there, from: here)
+    return there != null &&
+            (here == null || standing.isElsewhere(there, from: here))
         ? there
         : null;
   }
@@ -3342,7 +3374,7 @@ class EditorSessionManager extends ChangeNotifier
     if (strokeInFlight) {
       return;
     }
-    historyManager.places.settle();
+    historyManager.places.leave();
     // A direct cut-local seek leaves any gap parking (R16-⑥); the global
     // seek re-parks AFTER this call when it lands in a gap.
     editingSession.gapGlobalFrame = null;
@@ -3569,7 +3601,7 @@ class EditorSessionManager extends ChangeNotifier
     if (strokeInFlight) {
       return;
     }
-    historyManager.places.settle();
+    historyManager.places.leave();
     editingSession.gapGlobalFrame = globalFrame;
     _deselectActiveCutForGap();
     frameSeekCommitted.value += 1;

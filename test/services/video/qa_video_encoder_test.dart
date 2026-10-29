@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/export/video_export_service.dart';
 import '../../helpers/decode_audio_file.dart';
 import '../../helpers/native_call_watch.dart';
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/os_video_codec.dart';
 import '../../helpers/temp_dir.dart';
 import '../../ui/export/fake_ffmpeg_process.dart';
 
@@ -28,9 +29,6 @@ void main() {
   final libraryPath = nativeEngineLibraryPathOrNull();
   final available = libraryPath != null;
   final skip = available ? false : nativeEngineMissingSkipReason;
-  // The encoder paths exist on Windows and Apple today (Android is a
-  // device-only story by nature).
-  final osHasEncoder = Platform.isWindows || Platform.isMacOS;
 
   late Directory directory;
   late NativeCallWatch watch;
@@ -97,7 +95,7 @@ void main() {
     expect(encoder, isNotNull, reason: 'the binary did not bind');
     expect(
       encoder!.isSupported,
-      osHasEncoder,
+      osHasVideoEncoder,
       reason:
           'Windows/Apple encode natively; elsewhere the ffmpeg '
           'fallback carries the export',
@@ -106,11 +104,11 @@ void main() {
 
   test('a real MP4 comes out: video + AAC audio, finalized and playable-'
       'shaped', () {
-    if (!osHasEncoder) {
+    watch.step('a real MP4: asking for the encoder');
+    final encoder = osVideoEncoderOrSkip();
+    if (encoder == null) {
       return;
     }
-    watch.step('a real MP4: asking for the encoder');
-    final encoder = QaVideoEncoder.instance!;
     final path = '${directory.path}/out.mp4';
     watch.step('a real MP4: opening the writer');
     expect(
@@ -158,11 +156,11 @@ void main() {
   }, skip: skip);
 
   test('an ODD canvas encodes — H.264 needs even, the pad supplies it', () {
-    if (!osHasEncoder) {
+    watch.step('an odd canvas: asking for the encoder');
+    final encoder = osVideoEncoderOrSkip();
+    if (encoder == null) {
       return;
     }
-    watch.step('an odd canvas: asking for the encoder');
-    final encoder = QaVideoEncoder.instance!;
     final path = '${directory.path}/odd.mp4';
     watch.step('an odd canvas: opening the writer');
     expect(
@@ -186,11 +184,11 @@ void main() {
   }, skip: skip);
 
   test('a second open while one is running refuses; abort cleans up', () {
-    if (!osHasEncoder) {
+    watch.step('a second open: asking for the encoder');
+    final encoder = osVideoEncoderOrSkip();
+    if (encoder == null) {
       return;
     }
-    watch.step('a second open: asking for the encoder');
-    final encoder = QaVideoEncoder.instance!;
     // 64x48, not smaller: the Microsoft H.264 encoder refuses tiny
     // resolutions (32x32 fails on a real machine) and that is the OS's
     // call, not this test's subject.
@@ -239,7 +237,7 @@ void main() {
 
   test('the SERVICE takes the OS path end to end: rendered images and the '
       'mixed WAV land in one MP4', () async {
-    if (!osHasEncoder) {
+    if (osVideoEncoderOrSkip() == null) {
       return;
     }
     TestWidgetsFlutterBinding.ensureInitialized();
@@ -333,7 +331,7 @@ void main() {
 
   test('🚨the OS encoder is handed a held frame again without its being '
       'read back — twelve frames of one picture are one readback', () async {
-    if (!osHasEncoder) {
+    if (osVideoEncoderOrSkip() == null) {
       return;
     }
     final recorder = ui.PictureRecorder();

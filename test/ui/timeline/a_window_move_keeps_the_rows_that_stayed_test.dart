@@ -10,6 +10,8 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
+import 'package:anicel/src/ui/timeline/timeline_row_selection_bands.dart'
+    show TimelineRowSelectionBands;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 
@@ -19,7 +21,8 @@ import '../../helpers/named_finders.dart';
 /// A move of a windowed host's window keeps the rows that stayed in it —
 /// handed back as the very widgets they were — and a build of the host
 /// lays them fresh (card frame-panels-build-in-one-frame ③, 2026-10-29):
-/// the timeline's rail and cells, the storyboard's rail and strips.
+/// the timeline's rail and cells, the storyboard's rail and strips — and
+/// builds nothing of the frame around them (④, 2026-10-29).
 /// ↩️Every move built every row the window held again.
 void main() {
   EditorSessionManager sessionOf(WidgetTester tester) =>
@@ -144,6 +147,108 @@ void main() {
       );
     });
 
+    // ④: the window's token is heard where the rows are laid, nowhere
+    // above them — ↩️a move built the frame around them again, 119–180
+    // elements.
+    testWidgets('the frame around them — the header, the rail, the body '
+        'and the cells\' sheet', (tester) async {
+      final ids = await pumpTimeline(tester);
+      for (final frame in [
+        'timeline-sticky-header-row',
+        'timeline-layer-controls-rail',
+        'timeline-scrollable-body',
+        'timeline-frame-grid-area',
+        'timeline-grid-sheet',
+      ]) {
+        await expectKeptThroughAMove(
+          tester,
+          viewport: 'timeline-vertical-scroll-viewport',
+          rows: [for (final id in ids) find.named('timeline-rail-row-$id-row')],
+          host: find.byType(LayerTimelineGrid),
+          probe: find.byKey(ValueKey<String>(frame)),
+        );
+      }
+    });
+
+    // What the window lays is laid where the scroll stands, though nothing
+    // around it is built again: the rail's selection bands with its rows,
+    // and a sweep down its column over the rows a move brought in.
+    testWidgets('the rail\'s selection bands move with its rows', (
+      tester,
+    ) async {
+      await pumpTimeline(tester);
+      const viewport = 'timeline-vertical-scroll-viewport';
+      final position = rowsIn(tester, viewport)..jumpTo(0);
+      await tester.pumpAndSettle();
+      int bandsFrom() => tester
+          .widget<TimelineRowSelectionBands>(
+            find.descendant(
+              of: find.byType(LayerTimelineGrid),
+              matching: find.byType(TimelineRowSelectionBands),
+            ),
+          )
+          .firstRow;
+      final before = bandsFrom();
+      final view = tester.getRect(find.byKey(const ValueKey(viewport)));
+      position.jumpTo(view.height / 2);
+      await tester.pumpAndSettle();
+      expect(bandsFrom(), greaterThan(before));
+    });
+
+    testWidgets('a sweep down the rail reaches the rows a move brought in', (
+      tester,
+    ) async {
+      final ids = await pumpTimeline(tester);
+      final session = sessionOf(tester);
+      const viewport = 'timeline-vertical-scroll-viewport';
+      final position = rowsIn(tester, viewport)..jumpTo(0);
+      await tester.pumpAndSettle();
+      Finder eye(String id) => find.named('timeline-layer-visibility-$id');
+      final before = {
+        for (final id in ids)
+          if (eye(id).evaluate().isNotEmpty) id,
+      };
+      final view = tester.getRect(find.byKey(const ValueKey(viewport)));
+      position.jumpTo(view.height / 2);
+      await tester.pumpAndSettle();
+      final arrived = [
+        for (final id in ids)
+          if (!before.contains(id) &&
+              eye(id).evaluate().isNotEmpty &&
+              view.contains(tester.getCenter(eye(id))))
+            id,
+      ]..sort((a, b) => tester.getCenter(eye(a)).dy.compareTo(
+            tester.getCenter(eye(b)).dy,
+          ));
+      expect(
+        arrived.length,
+        greaterThanOrEqualTo(2),
+        reason: '⛔전제: the move brought rows into view',
+      );
+      bool visible(String id) => session.layers
+          .firstWhere((layer) => layer.id == LayerId(id))
+          .isVisible;
+      final first = tester.getCenter(eye(arrived[0]));
+      final second = tester.getCenter(eye(arrived[1]));
+      final wasVisible = (visible(arrived[0]), visible(arrived[1]));
+      // Latched near the top of the first row with a short move, as the
+      // eye sweep's own test does: the recognizer reports where it won.
+      final gesture = await tester.startGesture(
+        first - Offset(0, (second.dy - first.dy) / 2 - 2),
+      );
+      await tester.pump();
+      await gesture.moveBy(const Offset(0, 4));
+      await tester.pump();
+      await gesture.moveTo(second);
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(
+        (visible(arrived[0]), visible(arrived[1])),
+        (!wasVisible.$1, !wasVisible.$2),
+      );
+    });
+
     testWidgets('a graph, drawn whole across its lanes', (tester) async {
       final ids = await pumpTimeline(tester);
       final view = tester.getRect(
@@ -241,6 +346,26 @@ void main() {
       position.jumpTo(0);
       await tester.pumpAndSettle();
       expect(tester.widget(label(_rows)), isNot(same(top)));
+    });
+
+    testWidgets('a section\'s zone beside the rail\'s rows (④)', (
+      tester,
+    ) async {
+      final track = await pumpStoryboard(tester);
+      await expectKeptThroughAMove(
+        tester,
+        viewport: 'storyboard-vertical-viewport',
+        rows: [
+          for (var slot = _rows; slot >= 1; slot -= 1)
+            unitOf(
+              find.byKey(ValueKey<String>('storyboard-se-label-$track-$slot')),
+            ),
+        ],
+        host: find.byType(StoryboardPanel),
+        probe: find.byKey(
+          ValueKey<String>('storyboard-section-zone-$track-se'),
+        ),
+      );
     });
 
     testWidgets('strips', (tester) async {

@@ -343,6 +343,9 @@ void main() {
         'test/services/brush_stroke_accumulation_guard_test.dart',
         'test/ui/canvas/a_parked_transform_lets_go_of_its_picture_test.dart',
         'test/ui/canvas/tile_images_are_counted_test.dart',
+        // F-505 (10-30): what a closed project's tiles give back reaches the
+        // engine's parking only when the collector finds them.
+        'test/ui/a_closed_project_lets_go_of_its_memory_test.dart',
         // I-57 ㉣ (10-13): a berth that leaves must let go of the row it
         // kept, and only the collector can say it did.
         'test/ui/timeline/a_berth_that_leaves_lets_go_of_its_row_test.dart',

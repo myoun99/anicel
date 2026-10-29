@@ -41,30 +41,33 @@ void main() {
     int count = 40,
     double step = 10,
   }) {
+    // A second tip is a second stroke over the same path, piled on a plane
+    // of its own and shown through the stroke's view.
+    final dual = dualMask == null ? null : const BrushDualView();
+    BrushDab at(int index, {required bool second}) => BrushDab(
+      center: CanvasPoint(
+        x: 150.0 + index * step,
+        y: 150.0 + index * step * 0.6,
+      ),
+      color: second ? 0xFF000000 : 0xE6224488,
+      size: size,
+      opacity: second ? 1.0 : 0.85,
+      flow: second ? 1.0 : 0.7,
+      hardness: hardness,
+      tipShape: BrushTipShape.round,
+      pressure: 1,
+      sequence: index,
+      tipMask: second ? dualMask : tipMask,
+      dual: dual,
+      second: second,
+      textureMask: second ? null : textureMask,
+      textureScale: 1.0,
+      textureDensity: 0.8,
+    );
     return [
-      for (var index = 0; index < count; index += 1)
-        BrushDab(
-          center: CanvasPoint(
-            x: 150.0 + index * step,
-            y: 150.0 + index * step * 0.6,
-          ),
-          color: 0xE6224488,
-          size: size,
-          opacity: 0.85,
-          flow: 0.7,
-          hardness: hardness,
-          tipShape: BrushTipShape.round,
-          pressure: 1,
-          sequence: index,
-          tipMask: tipMask,
-          dualMask: dualMask,
-          dualMaskScale: 1.0,
-          dualOffsetU: 0.3,
-          dualOffsetV: 0.7,
-          textureMask: textureMask,
-          textureScale: 1.0,
-          textureDensity: 0.8,
-        ),
+      for (var index = 0; index < count; index += 1) at(index, second: false),
+      if (dual != null)
+        for (var index = 0; index < count; index += 1) at(index, second: true),
     ];
   }
 

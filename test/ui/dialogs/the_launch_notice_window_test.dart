@@ -15,6 +15,8 @@ import 'package:anicel/src/ui/widgets/content_scrollbar.dart';
 import 'package:anicel/src/ui/widgets/markdown_subset.dart';
 import 'package:anicel/src/ui/widgets/settings_rows.dart';
 
+import '../../helpers/dart_sources.dart';
+
 /// A dismissal kept in memory: one store, read by every launch of a test
 /// as the settings file is read by every launch of the app.
 class _MemoryStore extends LaunchNoticeStore {
@@ -50,6 +52,9 @@ final _sendFeedback = find.byKey(
   const ValueKey<String>('launch-notice-send-feedback'),
 );
 final _feedbackWindow = find.byKey(const ValueKey<String>('feedback-window'));
+final _whatsNewFold = find.byKey(
+  const ValueKey<String>('launch-notice-whats-new'),
+);
 
 /// 🗣️유저 2026-10-28: 「앱 실행시 앱 설명 넣고싶어. 다음부터 표시안함버튼
 /// 있고. 빌드당 한번기억」.
@@ -204,6 +209,50 @@ void main() {
     expect(find.text('닫기'), findsOneWidget);
   });
 
+  testWidgets('🎯the feedback stands above the what\'s-new, and the '
+      'what\'s-new starts folded under its own heading (유저 2026-10-29: '
+      '「업데이트내역항목 접어두고 아래의 의견보내기항목을 그 위로」)', (
+    tester,
+  ) async {
+    await pumpHost(
+      tester,
+      _MemoryStore(),
+      content: () =>
+          _content(whatsNew: '## What changed\n\n- One thing changed.'),
+    );
+    await launch(tester);
+    final heading = find.byWidgetPredicate(
+      (widget) =>
+          widget is SettingsSectionHeading && widget.label == 'What changed',
+    );
+    expect(heading, findsOneWidget);
+    expect(find.text('One thing changed.'), findsNothing);
+    final headingTop = tester.getTopLeft(heading).dy;
+    expect(tester.getTopLeft(find.text('Tell us en.')).dy, lessThan(headingTop));
+    expect(tester.getTopLeft(_sendFeedback).dy, lessThan(headingTop));
+
+    await tester.tap(_whatsNewFold);
+    await tester.pumpAndSettle();
+    expect(find.text('One thing changed.'), findsOneWidget);
+    expect(heading, findsOneWidget, reason: 'drawn once, as the fold\'s words');
+  });
+
+  test('every bundled what\'s-new opens with the `## ` heading its fold '
+      'carries', () {
+    final files = [
+      for (final file in filesUnder('assets/launch'))
+        if (file.path.endsWith('whats_new.md')) file,
+    ];
+    expect(files, hasLength(AppLanguage.values.length));
+    for (final file in files) {
+      expect(
+        MarkdownSubset.leadingHeadingOf(file.readAsStringSync()),
+        isNotNull,
+        reason: file.path,
+      );
+    }
+  });
+
   testWidgets('the sections are drawn in the markdown subset: headings, '
       'bullets, paragraphs and bold', (tester) async {
     await pumpHost(
@@ -226,6 +275,8 @@ void main() {
       ),
     );
     await launch(tester);
+    await tester.tap(_whatsNewFold);
+    await tester.pumpAndSettle();
 
     expect(
       find.byWidgetPredicate(
@@ -264,6 +315,9 @@ void main() {
           home: LaunchNoticeWindow(content: bundled, onDontShowAgain: () {}),
         ),
       );
+      // The what's-new starts folded; its words are drawn once opened.
+      await tester.tap(_whatsNewFold);
+      await tester.pumpAndSettle();
       final drawn = [
         for (final text in tester.widgetList<RichText>(
           find.descendant(

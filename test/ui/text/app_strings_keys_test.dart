@@ -33,6 +33,9 @@ void main() {
     'usageStatsChangeLater': (s) => s.usageStatsChangeLater,
     'usageStatsDontSend': (s) => s.usageStatsDontSend,
     'usageStatsDoSend': (s) => s.usageStatsDoSend,
+    'firstRunTitle': (s) => s.firstRunTitle,
+    'firstRunChangeLater': (s) => s.firstRunChangeLater,
+    'firstRunStart': (s) => s.firstRunStart,
     'noCutSelected': (s) => s.noCutSelected,
     'noticeNoFrameHere': (s) => s.noticeNoFrameHere,
     'noticeNothingToCut': (s) => s.noticeNothingToCut,
@@ -367,6 +370,9 @@ void main() {
     'closeProjectFailedCopyBody': (s) => s.closeProjectFailedCopyBody,
     // R11: the interface scale, in the Display section.
     'uiScaleLabel': (s) => s.uiScaleLabel,
+    'colorModeLabel': (s) => s.colorModeLabel,
+    'colorModeDark': (s) => s.colorModeDark,
+    'colorModeLight': (s) => s.colorModeLight,
     'blockFrameLinesLabel': (s) => s.blockFrameLinesLabel,
     'unnamedMarkLabel': (s) => s.unnamedMarkLabel,
     'drawingCursorLabel': (s) => s.drawingCursorLabel,
@@ -531,6 +537,13 @@ void main() {
     'onionGhostColorHelp': (s) => s.onionGhostColorHelp,
     'onionPegCountHelp': (s) => s.onionPegCountHelp,
     'onionPlacementHelp': (s) => s.onionPlacementHelp,
+    'onionStepBlocks': (s) => s.onionStepBlocks,
+    'onionStepBlocksDrawings': (s) => s.onionStepBlocksDrawings,
+    'onionStepFrames': (s) => s.onionStepFrames,
+    'onionModeColors': (s) => s.onionModeColors,
+    'onionModeImages': (s) => s.onionModeImages,
+    'onionPlacementOnTop': (s) => s.onionPlacementOnTop,
+    'onionPlacementInPlace': (s) => s.onionPlacementInPlace,
     'shortcutTitle': (s) => s.shortcutTitle,
     'shortcutResetAll': (s) => s.shortcutResetAll,
     'shortcutResetToDefault': (s) => s.shortcutResetToDefault,
@@ -1180,6 +1193,49 @@ void main() {
       isEmpty,
       reason: 'read here but no longer declared in AppStrings',
     );
+  });
+
+  // 🗣️F-37-Q1 (유저 2026-09-15): 「법 하나로 다 번역」 — and a French or a
+  // Chinese screen still read English (fr-zh-strings-fall-back-to-english,
+  // 관제 10-28): eighteen and twenty-two keys the English table held and
+  // theirs did not, and no process name at all in Chinese. Every test above
+  // passed: a key a table lacks falls back to English, English is not empty,
+  // and nothing held one table up against another.
+  test('every translated table holds every key any table holds', () {
+    final source = File('lib/src/ui/text/app_strings.dart').readAsStringSync();
+    final tables = {
+      for (final table in RegExp(
+        r'static const _(\w+)Values = <String, String>\{(.*?)\n  \};',
+        dotAll: true,
+      ).allMatches(source))
+        table.group(1)!: {
+          for (final key in RegExp(
+            "^    '([^']+)':",
+            multiLine: true,
+          ).allMatches(table.group(2)!))
+            key.group(1)!,
+        },
+    };
+    expect(
+      tables.keys,
+      unorderedEquals(AppLanguage.values.map((language) => language.name)),
+      reason: 'source scan failed',
+    );
+    // English is not held to the others: the words it lacks are the model's
+    // and the registry's own English (`layerProcessName`'s fallback).
+    final every = {for (final keys in tables.values) ...keys};
+    for (final MapEntry(key: language, value: keys) in tables.entries) {
+      if (language == AppLanguage.en.name) {
+        continue;
+      }
+      expect(
+        every.difference(keys),
+        isEmpty,
+        reason:
+            'missing from the $language table — or held by another table '
+            'and read by nobody',
+      );
+    }
   });
 
   test('no action\'s name carries a trailing ellipsis, in any language — '

@@ -29,6 +29,7 @@ void main() {
     graphiteToothTextureMask,
     colorClumpBrushTipMask,
     ...pencilLeadBrushTipMasks,
+    ...pencilCrumbBrushTipMasks,
   ];
 
   test('every bundled mask is 64 a side with an alpha per cell — but the '
@@ -109,6 +110,10 @@ void main() {
       'builtin-pencil-face-5-0': 14873228,
       'builtin-pencil-face-5-1': 14743196,
       'builtin-pencil-face-5-2': 14982888,
+      // Measured 2026-10-29 as they first shipped (F-462 ②).
+      'builtin-pencil-crumb-0': 519671,
+      'builtin-pencil-crumb-1': 529614,
+      'builtin-pencil-crumb-2': 469662,
     };
 
     expect(

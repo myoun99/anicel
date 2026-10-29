@@ -112,22 +112,31 @@ class AppScrollBehavior extends MaterialScrollBehavior {
     Widget child,
     ScrollableDetails details,
   ) {
-    // ⛔DESKTOP ONLY, and not for symmetry with Flutter — for a reason that
-    // makes the alternative impossible. On the mobile platforms a vertical
-    // scroll view with no controller of its own inherits the ROUTE's
-    // `PrimaryScrollController` (`PrimaryScrollController.shouldInherit`),
-    // so every such view on a page shares ONE controller. A bar that reads
-    // that controller cannot tell which of them it is over — and reading
-    // `position` at all throws once two are attached. The guard inside
-    // [PanelScrollbar] keeps that from taking the frame down, but the
-    // honest consequence is that the bar would simply never appear there,
-    // and a rule that silently does not apply is worse than one that says
-    // where it applies. Touch also has no pointer to hover and drags the
-    // content directly, which is why Flutter bars nothing there either.
+    // ⛔NOT A MOBILE VERTICAL VIEW, and not for symmetry with Flutter — for
+    // a reason that makes the alternative impossible. On the mobile
+    // platforms a vertical scroll view with no controller of its own
+    // inherits the ROUTE's `PrimaryScrollController`
+    // (`PrimaryScrollController.shouldInherit`), so every such view on a
+    // page shares ONE controller. A bar that reads that controller cannot
+    // tell which of them it is over — and reading `position` at all throws
+    // once two are attached. The guard inside [PanelScrollbar] keeps that
+    // from taking the frame down, but the honest consequence is that the bar
+    // would simply never appear there, and a rule that silently does not
+    // apply is worse than one that says where it applies.
     //
-    // 🔜Barring mobile properly means reading the metrics off each
-    // scrollable's own `ScrollMetricsNotification` instead of off a
-    // controller. That is a real change and it is not this round's.
+    // A HORIZONTAL view inherits nothing: the route hands its controller to
+    // the vertical axis alone (`automaticallyInheritForAxes`, which the app
+    // leaves at its default), so a sideways scroller always reads its own,
+    // and is barred on every device (🗣️F-502, 유저 2026-10-29: 「알약쪽
+    // 줄어들면 바로 스크롤바 생기게. 갤탭에서 확인한바 안생김. 알약이든
+    // 뭐든 줄어들어서 잘리면」). ↩️It was desktop only, both axes — so on a
+    // tablet a command bar's pills and zoom were cut away with nothing to
+    // say so.
+    //
+    // 🔜Barring mobile's vertical views properly means reading the metrics
+    // off each scrollable's own `ScrollMetricsNotification` instead of off
+    // a controller. That is a real change and it is not this round's.
+    final axis = axisDirectionToAxis(details.direction);
     switch (getPlatform(context)) {
       case TargetPlatform.linux:
       case TargetPlatform.macOS:
@@ -136,7 +145,9 @@ class AppScrollBehavior extends MaterialScrollBehavior {
       case TargetPlatform.android:
       case TargetPlatform.iOS:
       case TargetPlatform.fuchsia:
-        return child;
+        if (axis == Axis.vertical) {
+          return child;
+        }
     }
     final controller = details.controller;
     if (controller == null) {
@@ -157,11 +168,7 @@ class AppScrollBehavior extends MaterialScrollBehavior {
     if (context.findAncestorWidgetOfExactType<EditableText>() != null) {
       return child;
     }
-    return PanelScrollbar(
-      controller: controller,
-      axis: axisDirectionToAxis(details.direction),
-      child: child,
-    );
+    return PanelScrollbar(controller: controller, axis: axis, child: child);
   }
 }
 

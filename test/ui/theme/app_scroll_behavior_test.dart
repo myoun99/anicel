@@ -86,6 +86,25 @@ void main() {
       expect(bar.axis, Axis.horizontal);
     }, variant: desktop);
 
+    // 🗣️F-502 (유저 2026-10-29): 「알약쪽 줄어들면 바로 스크롤바 생기게.
+    // 갤탭에서 확인한바 안생김」.
+    testWidgets('…and on a MOBILE platform as well: a sideways scroller reads '
+        'its own controller there too', (tester) async {
+      await tester.pumpWidget(
+        host(
+          child: const SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(width: 900, height: 40),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final bar = tester.widget<AppControllerScrollbar>(appBar());
+      expect(bar.axis, Axis.horizontal);
+      expect(frameworkBar(), findsNothing);
+    }, variant: TargetPlatformVariant.mobile());
+
     testWidgets('UnbarredScrollable takes the bar off a command strip', (
       tester,
     ) async {
@@ -253,8 +272,8 @@ void main() {
       await tester.pumpAndSettle();
     }, variant: desktop);
 
-    testWidgets('on a MOBILE platform it bars nothing — and says so rather '
-        'than failing to', (tester) async {
+    testWidgets('on a MOBILE platform it bars no VERTICAL view — and says so '
+        'rather than failing to', (tester) async {
       // Every controller-less vertical scroll view on a route shares that
       // route's PrimaryScrollController there, so a per-scrollable bar has
       // no viewport it can name. Two of them used to take the frame down;
@@ -279,6 +298,18 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(appBar(), findsNothing);
       expect(frameworkBar(), findsNothing);
+    }, variant: TargetPlatformVariant.mobile());
+
+    testWidgets('…not even a lone one, whose bar would come and go with '
+        'whatever else the route holds', (tester) async {
+      await tester.pumpWidget(
+        host(
+          child: ListView(children: const [SizedBox(height: 400, width: 100)]),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(appBar(), findsNothing);
     }, variant: TargetPlatformVariant.mobile());
 
     testWidgets('the theme keeps the ONE species it cannot reach on the '

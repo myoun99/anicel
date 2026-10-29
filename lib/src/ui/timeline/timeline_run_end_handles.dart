@@ -14,6 +14,7 @@ import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_span_layout.dart';
 import '../text/laid_out_glyph.dart';
+import '../theme/text_on_ground.dart' show textOnColor;
 
 /// Session-level hooks for the run-edge affordances (UI-R9 #10, TVP
 /// style): [+] adds NEW one-frame drawings by dragging (one-undo drag
@@ -408,7 +409,8 @@ double timelineRunClusterGlyphFit(
       );
 
 /// The 3-state TEXT color (UI-R11 #13: no chrome — the glyph carries every
-/// state): rest dim, hover white, operating accent.
+/// state): rest dim, hover the ink the chrome takes (white on the dark
+/// palette, black on the light — I-143), operating accent.
 Color timelineRunGlyphColor(
   ColorScheme colorScheme, {
   required bool hovered,
@@ -418,7 +420,7 @@ Color timelineRunGlyphColor(
     return colorScheme.primary;
   }
   if (hovered) {
-    return Colors.white;
+    return textOnColor(colorScheme.surface);
   }
   return colorScheme.onSurfaceVariant.withValues(alpha: 0.65);
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
@@ -689,10 +690,20 @@ void main() {
         noiseFile('b.wav', length: 2 * 1024 * 1024),
       ];
       final heard = <double>[];
+      // The listener as the import window's is: it holds the window, and a
+      // window holds futures, which no isolate message carries (🐞10-30 —
+      // a list's `add` crossed, so this passed while every carried
+      // placement in the release failed).
+      final window = Completer<void>();
+      void listener(double fraction) {
+        if (!window.isCompleted) {
+          heard.add(fraction);
+        }
+      }
 
       await store.stageCarriedBytes([
         for (final path in paths) carry(path),
-      ], onProgress: heard.add);
+      ], onProgress: listener);
 
       expect(heard.last, 1);
       expect(

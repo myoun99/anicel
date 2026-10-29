@@ -369,6 +369,26 @@ class QaNativeEngine {
     NativeScratch.releaseAll();
   }
 
+  /// Gives back what [respondToMemoryPressure] gives back once [holder] has
+  /// been collected — a CLOSED project's pictures (F-505).
+  ///
+  /// 🗣️유저 2026-10-29 (F-505): 「무거운거 닫으면 언두기록도 안되니
+  /// 초기프로젝트분만큼만 메모리 존재해야하는데 … 닫았는데도 1700메가사용중.
+  /// 그중 … 묘화엔진 타일풀이 413」. A tile's block comes back when the
+  /// collector finds the tile, after the close — and was parked for reuse up
+  /// to the pool's cap, a close's worth of blocks nobody would ask for.
+  /// ⚠️The callback is the collector's message, which lands AFTER the tiles
+  /// the same collection found were already handed back: their native
+  /// finalizers run inside it. It gives back on the spot, once for each
+  /// holder: after the first nothing is parked, and a timer to gather them
+  /// would be one a test's clock holds.
+  static void giveBackOnceCollected(Object holder) =>
+      _givesBackOnceCollected.attach(holder, 0);
+
+  static final Finalizer<int> _givesBackOnceCollected = Finalizer<int>(
+    (_) => respondToMemoryPressure(),
+  );
+
   final int Function() _physicalMemoryBytes;
 
   /// The device's physical RAM, or null when the platform refused to
@@ -580,6 +600,8 @@ class QaNativeEngine {
     Pointer<QaDabSpecStruct> specs,
     Pointer<Int32> clips,
     int dabCount,
+    int dualMode,
+    double dualDensity,
     Pointer<Uint8> changedOut,
   )
   _dabBlendBatch;
@@ -984,6 +1006,8 @@ class QaNativeEngine {
               Pointer<QaDabSpecStruct>,
               Pointer<Int32>,
               Int32,
+              Int32,
+              Double,
               Pointer<Uint8>,
             ),
             void Function(
@@ -993,6 +1017,8 @@ class QaNativeEngine {
               Pointer<QaDabSpecStruct>,
               Pointer<Int32>,
               int,
+              int,
+              double,
               Pointer<Uint8>,
             )
           >('qa_dab_blend_batch');
@@ -1830,6 +1856,9 @@ class QaNativeEngine {
     Pointer<Uint8>? premulOut,
     // ABI 40 — only the dab batch reads it.
     Pointer<Uint16>? tileWide,
+    // ABI 60 — the second plane of a stroke with a second tip; only the dab
+    // batch reads it.
+    Pointer<Uint16>? tileSecond,
   }) {
     final span = _tileSpans.pointer[index];
     span.tilePixels = tilePixels;
@@ -1845,6 +1874,7 @@ class QaNativeEngine {
     span.maskPixels = maskPixels ?? nullptr;
     span.premulOut = premulOut ?? nullptr;
     span.tileWide = tileWide ?? nullptr;
+    span.tileSecond = tileSecond ?? nullptr;
   }
 
   /// ABI 24: stages, blends and premultiplies every staged span in ONE
@@ -1882,12 +1912,16 @@ class QaNativeEngine {
   /// call — each span the rect the batch's dabs cover in that tile. The C
   /// cuts the tiles into row bands and each band applies every dab that
   /// reaches it, so the bytes are the ones the dabs would have made one at
-  /// a time. Returns the per-tile changed flags (valid until the next
+  /// a time. [view] is what a span carrying a second plane is rebuilt
+  /// through (`qa_dual_view_rows`) — its composite mode, a
+  /// `QA_STROKE_BLEND_*` id, and its density; null for a stroke with no
+  /// second tip. Returns the per-tile changed flags (valid until the next
   /// batch).
   Uint8List dabBlendBatch({
     required int tileCount,
     required int dabCount,
     required int tileSize,
+    ({int mode, double density})? view,
   }) {
     assert(() {
       debugDabBatchCalls += 1;
@@ -1900,6 +1934,8 @@ class QaNativeEngine {
       _dabSpecs.pointer,
       _dabClips.pointer,
       dabCount,
+      view?.mode ?? 0,
+      view?.density ?? 0.0,
       _batchChanged.pointer,
     );
     return _batchChanged.pointer.asTypedList(tileCount);
@@ -2267,6 +2303,10 @@ class QaNativeEngine {
   /// The tip holds an edge that does not pile (`tipHoldsAnEdge`). v56.
   static const int dabFlagEdgeHeld = 128;
 
+  /// The dab is the second tip's: it piles on the tile's second plane and
+  /// moves no byte — the batch's view does (`qa_dual_view_rows`). v60.
+  static const int dabFlagSecond = 256;
+
   /// Stages dab [index] of the batch ([beginDabBatch]) for
   /// [dabBlendBatch]: fills its spec and its clip, and uploads masks
   /// (identity-cached) and lattices (arena). All values mirror the Dart
@@ -2297,9 +2337,6 @@ class QaNativeEngine {
     required double dabFlow,
     required double sourceAlphaNorm,
     required double radiusSqSkip,
-    required double dualDensity,
-    required double dualOneMinusDensity,
-    required int dualCompositeMode,
     required double textureDensity,
     required double textureOneMinusDensity,
     required double aaContrast,
@@ -2319,16 +2356,6 @@ class QaNativeEngine {
     Float64List? tipVFraction,
     Float64List? tipVOneMinus,
     Uint8List? tipVInRange,
-    Float64List? dualAlpha,
-    int dualSize = 0,
-    Int32List? dualUTexel0,
-    Int32List? dualUTexel1,
-    Float64List? dualUFraction,
-    Float64List? dualUOneMinus,
-    Int32List? dualVTexel0,
-    Int32List? dualVTexel1,
-    Float64List? dualVFraction,
-    Float64List? dualVOneMinus,
     Float64List? texAlpha,
     int texSize = 0,
     Int32List? texUTexel0,
@@ -2365,8 +2392,6 @@ class QaNativeEngine {
     spec.dabFlow = dabFlow;
     spec.sourceAlphaNorm = sourceAlphaNorm;
     spec.radiusSqSkip = radiusSqSkip;
-    spec.dualDensity = dualDensity;
-    spec.dualOneMinusDensity = dualOneMinusDensity;
     spec.textureDensity = textureDensity;
     spec.textureOneMinusDensity = textureOneMinusDensity;
     spec.aaContrast = aaContrast;
@@ -2377,9 +2402,7 @@ class QaNativeEngine {
     spec.regionLeft = regionLeft;
     spec.regionTop = regionTop;
     spec.tipSize = tipSize;
-    spec.dualSize = dualSize;
     spec.texSize = texSize;
-    spec.dualCompositeMode = dualCompositeMode;
     spec.tipAlpha = tipAlpha == null
         ? nullptr
         : _maskUploads.upload(tipAlpha).cast<Double>();
@@ -2399,25 +2422,6 @@ class QaNativeEngine {
         ? nullptr
         : _arenaFloat64(tipVOneMinus);
     spec.tipVInRange = tipVInRange == null ? nullptr : _arenaUint8(tipVInRange);
-    spec.dualAlpha = dualAlpha == null
-        ? nullptr
-        : _maskUploads.upload(dualAlpha).cast<Double>();
-    spec.dualUTexel0 = dualUTexel0 == null ? nullptr : _arenaInt32(dualUTexel0);
-    spec.dualUTexel1 = dualUTexel1 == null ? nullptr : _arenaInt32(dualUTexel1);
-    spec.dualUFraction = dualUFraction == null
-        ? nullptr
-        : _arenaFloat64(dualUFraction);
-    spec.dualUOneMinus = dualUOneMinus == null
-        ? nullptr
-        : _arenaFloat64(dualUOneMinus);
-    spec.dualVTexel0 = dualVTexel0 == null ? nullptr : _arenaInt32(dualVTexel0);
-    spec.dualVTexel1 = dualVTexel1 == null ? nullptr : _arenaInt32(dualVTexel1);
-    spec.dualVFraction = dualVFraction == null
-        ? nullptr
-        : _arenaFloat64(dualVFraction);
-    spec.dualVOneMinus = dualVOneMinus == null
-        ? nullptr
-        : _arenaFloat64(dualVOneMinus);
     spec.texAlpha = texAlpha == null
         ? nullptr
         : _maskUploads.upload(texAlpha).cast<Double>();
@@ -2623,6 +2627,11 @@ final class QaTileSpanStruct extends Struct {
   /// [tilePixels], what the dab batch piles up in (`qa_dab_store`). Every
   /// other kernel's spans leave it null.
   external Pointer<Uint16> tileWide;
+
+  /// ABI 60 — the second plane of a stroke with a second tip, alpha * 65535
+  /// a pixel on the same grid, where its second stroke piles
+  /// (`qa_dual_view_rows`). Every other span leaves it null.
+  external Pointer<Uint16> tileSecond;
 }
 
 /// Mirror of the C `qa_dab_spec` — field order/types must match EXACTLY
@@ -2675,14 +2684,6 @@ final class QaDabSpecStruct extends Struct {
   /// last of the doubles — and `qa_dab_spec_sizeof` is what catches a slip.
   @Double()
   external double aaContrast;
-
-  /// v32: how hard the DUAL mask bites, after [aaContrast] and still last of
-  /// the doubles. ⚠️THE ORDER OF THIS BLOCK IS THE ABI — `qa_dab_spec_sizeof`
-  /// is what catches a slip.
-  @Double()
-  external double dualDensity;
-  @Double()
-  external double dualOneMinusDensity;
   @Int32()
   external int sourceR;
   @Int32()
@@ -2698,15 +2699,7 @@ final class QaDabSpecStruct extends Struct {
   @Int32()
   external int tipSize;
   @Int32()
-  external int dualSize;
-  @Int32()
   external int texSize;
-
-  /// How the DUAL mask combines with the coverage under it — a
-  /// `QA_STROKE_BLEND_*` id, the same contract `strokeBlendModeNativeId`
-  /// speaks. Took the `reserved` slot in v33, so the layout did not move.
-  @Int32()
-  external int dualCompositeMode;
   external Pointer<Double> tipAlpha;
   external Pointer<Int32> tipUTexel0;
   external Pointer<Double> tipUFraction;
@@ -2716,15 +2709,6 @@ final class QaDabSpecStruct extends Struct {
   external Pointer<Double> tipVFraction;
   external Pointer<Double> tipVOneMinus;
   external Pointer<Uint8> tipVInRange;
-  external Pointer<Double> dualAlpha;
-  external Pointer<Int32> dualUTexel0;
-  external Pointer<Int32> dualUTexel1;
-  external Pointer<Double> dualUFraction;
-  external Pointer<Double> dualUOneMinus;
-  external Pointer<Int32> dualVTexel0;
-  external Pointer<Int32> dualVTexel1;
-  external Pointer<Double> dualVFraction;
-  external Pointer<Double> dualVOneMinus;
   external Pointer<Double> texAlpha;
   external Pointer<Int32> texUTexel0;
   external Pointer<Int32> texUTexel1;

@@ -8,7 +8,8 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
-import 'package:anicel/src/ui/timeline/axis_turn.dart' show sizedAlong;
+import 'package:anicel/src/ui/timeline/axis_turn.dart'
+    show rectAlong, sizedAlong;
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_span_layout.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart';
@@ -68,6 +69,9 @@ void main() {
       ],
     );
 
+    const marker = ValueKey<String>('timeline-block-warning-se-warn-b2');
+
+    /// Pumps the row's warning; what it paints, the line, is measured.
     Future<Rect> warning(WidgetTester tester, Axis axis) async {
       const cell = 20.0;
       const cross = 28.0;
@@ -102,7 +106,12 @@ void main() {
         ),
       );
       return tester.getRect(
-        find.byKey(const ValueKey<String>('timeline-block-warning-se-warn-b2')),
+        find.descendant(
+          of: find.byKey(marker),
+          matching: find.byWidgetPredicate(
+            (widget) => widget is CustomPaint && widget.painter != null,
+          ),
+        ),
       );
     }
 
@@ -132,5 +141,20 @@ void main() {
         ),
       );
     });
+
+    // 🗣️F-495 (유저 2026-10-28): 「블록에 호버하면 툴팁 띄우도록」.
+    for (final axis in Axis.values) {
+      testWidgets('its hover is the whole block\'s ($axis)', (tester) async {
+        await warning(tester, axis);
+        expect(
+          tester.getRect(find.byKey(marker)),
+          rectAlong(
+            axis,
+            along: (from: 2 * 20, to: 6 * 20),
+            across: (from: 0, to: 28),
+          ),
+        );
+      });
+    }
   });
 }

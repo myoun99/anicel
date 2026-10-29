@@ -55,7 +55,7 @@ class AudioViewerDocument implements ViewerDocument {
   /// ⚠️A PALETTE constant, not `colorScheme.primary`: the viewer's page is a
   /// raster and the accent is live, so an accent-coloured band would be
   /// wrong the moment the accent changed. See [color].
-  static const Color ink = AppColors.textDim;
+  static Color get ink => AppColors.textDim;
 
   /// The band's ink, decided by the caller.
   ///

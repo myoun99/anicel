@@ -229,14 +229,14 @@ final class IconButtonInk {
   /// while it wrapped a Material `IconButton`, which also derives the
   /// accent's state layer. Off, the button has no colour of its own and the
   /// theme answers.
-  static final ButtonStyle _accentInk = IconButton.styleFrom(
+  static ButtonStyle get _accentInk => IconButton.styleFrom(
     foregroundColor: AppColors.accent,
   );
 
   /// The same one step, in [AppColors.danger] — so the state layer under a
   /// hover or a press is derived from the red the glyph is wearing rather
   /// than from the accent it is not.
-  static final ButtonStyle _dangerInk = IconButton.styleFrom(
+  static ButtonStyle get _dangerInk => IconButton.styleFrom(
     foregroundColor: AppColors.danger,
   );
 

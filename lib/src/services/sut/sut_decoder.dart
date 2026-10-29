@@ -296,9 +296,7 @@ BrushSettings _settingsFromVariant(
   final opacityPercent = _doubleOf(variant['Opacity']) ?? 100.0;
   final flowPercent = _doubleOf(variant['BrushFlow']) ?? 100.0;
   final hardnessPercent = _doubleOf(variant['BrushHardness']) ?? 100.0;
-  final intervalPercent = _doubleOf(variant['BrushInterval']) ?? 25.0;
-  final thicknessPercent = _doubleOf(variant['BrushThickness']) ?? 100.0;
-  final rotation = _doubleOf(variant['BrushRotation']) ?? 0.0;
+  final placement = _placementOf(variant, 'Brush');
 
   // BB-3: effectors map to response CURVES — each source's 最小値 is its
   // curve's own minimum. Opacity and flow effectors import as their own
@@ -322,40 +320,6 @@ BrushSettings _settingsFromVariant(
         (target, entry.key): entry.value,
   };
 
-  // Spray mode scatters dabs around the stroke — and it is also the gate on
-  // WHICH pair of rotation columns describes the tip's spin, so it is read
-  // before either of them.
-  final sprays = _intOf(variant['BrushUseSpray']) == 1;
-  // 🚨A SPRAY BRUSH'S PARTICLES SPIN BY THEIR OWN PAIR OF COLUMNS. Measured
-  // on the user's real files (2026-09-10): the only two brushes of twenty
-  // with `BrushUseSpray = 1` — `Sampled Brush 4 3` and `ウェット水彩` — PARK
-  // the plain pair (`BrushRotationEffector = 3`, no random bit) and put the
-  // real setting in `BrushRotationEffectorInSpray = 129`, the same 0x80.
-  // Reading only the plain pair imported `Sampled Brush 4 3`'s 69% particle
-  // spin as ZERO, which is a scatter brush whose stamps all face one way.
-  //
-  // ⚠️THE GATE IS `BrushUseSpray`, not the presence of the in-spray columns:
-  // every non-spray brush in the sample parks them at 3 / 100, and a brush
-  // that really does spin its tip without spray says so in the plain pair
-  // (鉛筆R at 45%).
-  // ⛔What a brush that sets BOTH should do is NOT measured — no file in the
-  // sample has one — so the in-spray pair simply WINS where spray is on,
-  // which is the narrowest reading the evidence supports.
-  //
-  // ⚠️Both effectors are bare ints rather than blobs, and both carry the same
-  // input-source bits; both scales are percentages of a full turn.
-  final angleJitter = sprays
-      ? _randomScaleRatio(
-          variant,
-          effector: 'BrushRotationEffectorInSpray',
-          scale: 'BrushRotationRandomInSpray',
-        )
-      : _randomScaleRatio(
-          variant,
-          effector: 'BrushRotationEffector',
-          scale: 'BrushRotationRandomScale',
-        );
-
   // Ground-colour mixing (밑바탕 혼색). `BrushUseWaterColor` is the gate and
   // it matters: brushes that never enabled mixing still carry stored knob
   // values (鉛筆R sits at 물감량 50 with the gate off). The three knobs are
@@ -369,34 +333,20 @@ BrushSettings _settingsFromVariant(
     fallback: 0.0,
   );
 
-  // The spray size is a percentage of the brush size (its diameter), so the
-  // radius is half.
-  var scatterRadiusRatio = 0.0;
-  var scatterCount = 1;
-  if (sprays) {
-    final spraySize = _doubleOf(variant['BrushSpraySize']) ?? 0.0;
-    scatterRadiusRatio = spraySize.isFinite
-        ? (spraySize / 100.0 / 2.0).clamp(0.0, 10.0).toDouble()
-        : 0.0;
-    scatterCount = (_intOf(variant['BrushSprayDensity']) ?? 1).clamp(1, 16);
-  }
-
-  return BrushSettings(
+  final settings = BrushSettings(
     size: size.isFinite && size > 0 ? size : 24,
     opacity: (opacityPercent / 100.0).clamp(0.0, 1.0).toDouble(),
     flow: (flowPercent / 100.0).clamp(0.0, 1.0).toDouble(),
     hardness: (hardnessPercent / 100.0).clamp(0.0, 1.0).toDouble(),
-    spacing: intervalPercent.isFinite && intervalPercent > 0
-        ? (intervalPercent / 100.0).clamp(0.01, 10.0).toDouble()
-        : 0.25,
-    roundness: (thicknessPercent / 100.0).clamp(0.01, 1.0).toDouble(),
-    angleDegrees: rotation.isFinite ? ((rotation % 180.0) + 180.0) % 180.0 : 0,
+    spacing: placement.spacing,
+    roundness: placement.roundness,
+    angleDegrees: placement.angleDegrees,
     curves: curves,
     tips: tips,
     tipOrder: _tipOrderOf(variant, brushName: brushName, warnings: warnings),
-    angleJitter: angleJitter,
-    scatterRadiusRatio: scatterRadiusRatio,
-    scatterCount: scatterCount,
+    angleJitter: placement.angleJitter,
+    scatterRadiusRatio: placement.scatterRadiusRatio,
+    scatterCount: placement.scatterCount,
     dualMask: dualMask,
     // Inactive dual settings keep their stored defaults (`DualSize` 30 sits
     // on brushes that never enabled a dual tip), so the ratio only means
@@ -456,6 +406,21 @@ BrushSettings _settingsFromVariant(
       warnings: warnings,
     ),
     correction: _correctionOf(variant),
+  );
+  // The second tip's own way along the path, read by the first tip's
+  // reader under its `Dual` prefix — once a tip arrived, for the reason
+  // the scale above gives.
+  if (dualMask == null) {
+    return settings;
+  }
+  final second = _placementOf(variant, 'Dual');
+  return settings.copyWith(
+    dualSpacing: second.spacing,
+    dualRoundness: second.roundness,
+    dualAngleDegrees: second.angleDegrees,
+    dualAngleJitter: second.angleJitter,
+    dualScatterRadiusRatio: second.scatterRadiusRatio,
+    dualScatterCount: second.scatterCount,
   );
 }
 
@@ -1224,4 +1189,89 @@ SeparableBlendMode _dualCompositeModeOf(
     'not one two tips can be combined with; imported as multiply.',
   );
   return SeparableBlendMode.multiply;
+}
+
+/// A tip's way along the path as Clip Studio stores it: the first tip's
+/// `Brush*` columns, or — under [prefix] `Dual` — the second tip's, which
+/// are the same columns over again (`DualInterval` ↔ `BrushInterval`,
+/// `DualThickness`, `DualRotation`, `DualUseSpray` …). One reader for both,
+/// so the second tip's columns mean what the first tip's do.
+({
+  double spacing,
+  double roundness,
+  double angleDegrees,
+  double angleJitter,
+  double scatterRadiusRatio,
+  int scatterCount,
+})
+_placementOf(Map<String, Object?> variant, String prefix) {
+  final intervalPercent = _doubleOf(variant['${prefix}Interval']) ?? 25.0;
+  final thicknessPercent = _doubleOf(variant['${prefix}Thickness']) ?? 100.0;
+  final rotation = _doubleOf(variant['${prefix}Rotation']) ?? 0.0;
+
+  // Spray mode scatters dabs around the stroke — and it is also the gate on
+  // WHICH pair of rotation columns describes the tip's spin, so it is read
+  // before either of them.
+  final sprays = _intOf(variant['${prefix}UseSpray']) == 1;
+  final angleJitter = _spinOf(variant, prefix, sprays: sprays);
+  // The spray size is a percentage of the brush size (its diameter), so the
+  // radius is half.
+  var scatterRadiusRatio = 0.0;
+  var scatterCount = 1;
+  if (sprays) {
+    final spraySize = _doubleOf(variant['${prefix}SpraySize']) ?? 0.0;
+    scatterRadiusRatio = spraySize.isFinite
+        ? (spraySize / 100.0 / 2.0).clamp(0.0, 10.0).toDouble()
+        : 0.0;
+    scatterCount = (_intOf(variant['${prefix}SprayDensity']) ?? 1).clamp(1, 16);
+  }
+
+  return (
+    spacing: intervalPercent.isFinite && intervalPercent > 0
+        ? (intervalPercent / 100.0).clamp(0.01, 10.0).toDouble()
+        : 0.25,
+    roundness: (thicknessPercent / 100.0).clamp(0.01, 1.0).toDouble(),
+    angleDegrees: rotation.isFinite ? ((rotation % 180.0) + 180.0) % 180.0 : 0,
+    angleJitter: angleJitter,
+    scatterRadiusRatio: scatterRadiusRatio,
+    scatterCount: scatterCount,
+  );
+}
+
+/// How far a tip's turn is thrown at random, read from the pair of rotation
+/// columns that describes it — which pair, whether it [sprays] decides.
+double _spinOf(
+  Map<String, Object?> variant,
+  String prefix, {
+  required bool sprays,
+}) {
+  // 🚨A SPRAY BRUSH'S PARTICLES SPIN BY THEIR OWN PAIR OF COLUMNS. Measured
+  // on the user's real files (2026-09-10): the only two brushes of twenty
+  // with `BrushUseSpray = 1` — `Sampled Brush 4 3` and `ウェット水彩` — PARK
+  // the plain pair (`BrushRotationEffector = 3`, no random bit) and put the
+  // real setting in `BrushRotationEffectorInSpray = 129`, the same 0x80.
+  // Reading only the plain pair imported `Sampled Brush 4 3`'s 69% particle
+  // spin as ZERO, which is a scatter brush whose stamps all face one way.
+  //
+  // ⚠️THE GATE IS `BrushUseSpray`, not the presence of the in-spray columns:
+  // every non-spray brush in the sample parks them at 3 / 100, and a brush
+  // that really does spin its tip without spray says so in the plain pair
+  // (鉛筆R at 45%).
+  // ⛔What a brush that sets BOTH should do is NOT measured — no file in the
+  // sample has one — so the in-spray pair simply WINS where spray is on,
+  // which is the narrowest reading the evidence supports.
+  //
+  // ⚠️Both effectors are bare ints rather than blobs, and both carry the same
+  // input-source bits; both scales are percentages of a full turn.
+  return sprays
+      ? _randomScaleRatio(
+          variant,
+          effector: '${prefix}RotationEffectorInSpray',
+          scale: '${prefix}RotationRandomInSpray',
+        )
+      : _randomScaleRatio(
+          variant,
+          effector: '${prefix}RotationEffector',
+          scale: '${prefix}RotationRandomScale',
+        );
 }

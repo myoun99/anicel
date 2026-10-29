@@ -42,6 +42,14 @@ BrushShape _everyFieldNonDefault() => BrushShape(
   scatterBothAxes: false,
   dualMask: _maskFor('dual'),
   dualMaskScale: 0.7,
+  dualSpacing: 0.35,
+  dualRoundness: 0.45,
+  dualAngleDegrees: 25,
+  dualRotationMode: BrushTipRotationMode.penTilt,
+  dualAngleJitter: 0.3,
+  dualScatterRadiusRatio: 0.8,
+  dualScatterCount: 4,
+  dualScatterBothAxes: false,
   textureMaskSource: _maskFor('texture'),
   textureInvert: true,
   textureBrightness: -0.4,
@@ -92,6 +100,17 @@ void main() {
       expect(base.copyWith(scatterBothAxes: true), isNot(base));
       expect(base.copyWith(dualMask: _maskFor('other')), isNot(base));
       expect(base.copyWith(dualMaskScale: 1.0), isNot(base));
+      expect(base.copyWith(dualSpacing: 0.1), isNot(base));
+      expect(base.copyWith(dualRoundness: 1.0), isNot(base));
+      expect(base.copyWith(dualAngleDegrees: 0), isNot(base));
+      expect(
+        base.copyWith(dualRotationMode: BrushTipRotationMode.fixed),
+        isNot(base),
+      );
+      expect(base.copyWith(dualAngleJitter: 0), isNot(base));
+      expect(base.copyWith(dualScatterRadiusRatio: 0), isNot(base));
+      expect(base.copyWith(dualScatterCount: 1), isNot(base));
+      expect(base.copyWith(dualScatterBothAxes: true), isNot(base));
       expect(base.copyWith(textureMaskSource: _maskFor('other')), isNot(base));
       expect(base.copyWith(textureInvert: false), isNot(base));
       expect(base.copyWith(textureBrightness: 0.0), isNot(base));
@@ -132,6 +151,36 @@ void main() {
         ),
         isNot(base),
       );
+    });
+
+    test('withMask carries every other field', () {
+      // It rebuilds the shape field by field (copyWith cannot clear a
+      // mask), so a field it leaves out falls back to its default.
+      final base = _everyFieldNonDefault();
+      expect(base.withMask(BrushMaskSlot.dual, base.dualMask), base);
+      expect(
+        base.withMask(BrushMaskSlot.texture, base.textureMaskSource),
+        base,
+      );
+    });
+
+    test('the second tip\'s placement is the first tip\'s settings under its '
+        'values', () {
+      final base = _everyFieldNonDefault();
+      expect(
+        base.secondTip,
+        const BrushShape(
+          spacing: 0.35,
+          roundness: 0.45,
+          angleDegrees: 25,
+          rotationMode: BrushTipRotationMode.penTilt,
+          angleJitter: 0.3,
+          scatterRadiusRatio: 0.8,
+          scatterCount: 4,
+          scatterBothAxes: false,
+        ),
+      );
+      expect(base.withMask(BrushMaskSlot.dual, null).secondTip, isNull);
     });
 
     test('equal shapes share a hashCode', () {

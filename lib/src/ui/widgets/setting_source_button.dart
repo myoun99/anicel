@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart';
 import '../theme/disabled_ink.dart';
+import '../theme/text_on_ground.dart' show textOnColor;
 import 'app_tooltip.dart';
 
 /// The button at a settings row's END that says whether anything moves the
@@ -52,11 +53,13 @@ class SettingSourceButton extends StatelessWidget {
   /// most of the row it sits in. The one control whose whole message is
   /// "this setting is doing nothing" was the strongest mark on the line.
   ///
-  /// A transparent white rather than another opaque grey, so it dims
+  /// A transparent white — the ink the chrome takes, black on the light
+  /// palette (I-143) — rather than another opaque grey, so it dims
   /// against whatever surface the button lands on — the tool settings, the
   /// brush panel and the top strip are three different greys.
-  static const Color offInk = Color(0x4DFFFFFF);
-  static const Color _offEdge = Color(0x1AFFFFFF);
+  static Color get offInk => textOnColor(AppColors.surface).withAlpha(0x4D);
+  static Color get _offEdge =>
+      textOnColor(AppColors.surface).withAlpha(0x1A);
 
   /// The mark's box, and the padding around it. Named because [slotWidth]
   /// is derived from them and a row reserving the slot must not re-derive

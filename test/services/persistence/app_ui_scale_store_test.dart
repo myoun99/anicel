@@ -36,7 +36,7 @@ void main() {
     await File(store.filePath).writeAsString(
       jsonEncode({'version': 1, 'scale': 1.2}),
     );
-    expect(await store.load(), 1.25);
+    expect(await store.load(), 1.2);
   });
 
   test('a hostile scale never reaches the divisor', () async {

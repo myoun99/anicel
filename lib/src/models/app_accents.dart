@@ -13,12 +13,20 @@ import 'dart:ui';
 /// user-facing setting that told half a truth. The span now says what it is
 /// with a dashed edge, which is a better sign than a hue nobody could name.
 class AppAccentSettings {
-  const AppAccentSettings({this.accent = defaultAccent});
+  const AppAccentSettings({
+    this.accent = defaultAccent,
+    this.mode = AppColorMode.dark,
+  });
 
   /// The historical program teal.
   static const Color defaultAccent = Color(0xFF4FA8A0);
 
   final Color accent;
+
+  /// Which of the two palettes the chrome wears (I-143). It rides with the
+  /// accent because both are how the app's own colours look, and the app
+  /// root already re-derives its theme from this notifier.
+  final AppColorMode mode;
 
   /// 🪦**색 라벨의 톤과 글자 굵기가 여기 있었다. 둘 다 골랐고, 끝났다.**
   ///
@@ -42,10 +50,16 @@ class AppAccentSettings {
   /// 7px, 거기 눌러 넣은 세로획이 1px 아래로 내려가면 알파가 경계를 못 넘어
   /// **획째로 사라졌다**(「글자가 1px같은게 사라졌어」). 판마다 있던
   /// `saveLayer` 도 함께 사라졌다.
-  AppAccentSettings copyWith({Color? accent}) =>
-      AppAccentSettings(accent: accent ?? this.accent);
+  AppAccentSettings copyWith({Color? accent, AppColorMode? mode}) =>
+      AppAccentSettings(
+        accent: accent ?? this.accent,
+        mode: mode ?? this.mode,
+      );
 
-  Map<String, dynamic> toJson() => {'accent': accent.toARGB32()};
+  Map<String, dynamic> toJson() => {
+    'accent': accent.toARGB32(),
+    'mode': mode.name,
+  };
 
   /// A stored `accent2` from an older build is simply not read: the key stays
   /// on disk and is dropped on the next save, and nothing crashes. The same
@@ -53,12 +67,20 @@ class AppAccentSettings {
   static AppAccentSettings fromJson(Map<String, dynamic> json) =>
       AppAccentSettings(
         accent: Color(json['accent'] as int? ?? defaultAccent.toARGB32()),
+        mode: AppColorMode.values.asNameMap()[json['mode']] ??
+            AppColorMode.dark,
       );
 
   @override
   bool operator ==(Object other) =>
-      other is AppAccentSettings && other.accent == accent;
+      other is AppAccentSettings &&
+      other.accent == accent &&
+      other.mode == mode;
 
   @override
-  int get hashCode => accent.hashCode;
+  int get hashCode => Object.hash(accent, mode);
 }
+
+/// The chrome's two palettes (I-143, 유저 2026-10-29: 다크 · 라이트 둘 — no
+/// third that follows the OS). Dark is where the app has always been.
+enum AppColorMode { dark, light }

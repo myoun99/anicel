@@ -3,6 +3,8 @@ import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/brush_texture_mode.dart';
+import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
+import 'package:anicel/src/models/separable_blend_mode.dart';
 
 void main() {
   group('BrushSettings', () {
@@ -107,6 +109,35 @@ void main() {
       final brush = BrushSettings(textureMode: BrushTextureMode.height);
       expect(BrushSettings.fromJson(brush.toJson()), brush);
       expect(BrushSettings().toJson().containsKey('textureMode'), isFalse);
+    });
+
+    test('the second tip\'s mode and its way along the path survive the '
+        'round trip', () {
+      // ⚠️The mode had no key until the second tip became a stroke: a
+      // saved brush came back multiplying.
+      final brush = BrushSettings(
+        dualCompositeMode: SeparableBlendMode.colorBurn,
+        dualSpacing: 0.35,
+        dualRoundness: 0.45,
+        dualAngleDegrees: 25,
+        dualRotationMode: BrushTipRotationMode.direction,
+        dualAngleJitter: 0.3,
+        dualScatterRadiusRatio: 0.8,
+        dualScatterCount: 4,
+        dualScatterBothAxes: false,
+      );
+      final back = BrushSettings.fromJson(brush.toJson());
+      expect(back, brush);
+      expect(back.dualCompositeMode, SeparableBlendMode.colorBurn);
+      expect(
+        BrushSettings().toJson().containsKey('dualCompositeMode'),
+        isFalse,
+        reason: 'multiply, the default, writes nothing',
+      );
+      expect(() => BrushSettings(dualScatterCount: 0), throwsArgumentError);
+      expect(() => BrushSettings(dualRoundness: 0), throwsArgumentError);
+      expect(() => BrushSettings(dualSpacing: 0), throwsArgumentError);
+      expect(() => BrushSettings(dualAngleJitter: 2), throwsArgumentError);
     });
 
     test('the tips a turn holds survive the round trip, one writes nothing, '

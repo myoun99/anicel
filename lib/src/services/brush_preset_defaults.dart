@@ -211,32 +211,16 @@ Map<BrushDynamicsKey, BrushPressureCurve> _randomRows({
       ),
 };
 
-/// 🚨A PENCIL'S MARK LEANS WITH THE PEN (유저 F-433, 2026-10-21: 「눕혀쓰는연필
-/// 말고 일반 연필에도 어느정도 기울기로 형태 바뀌는거 넣고」). Leaned over, a
-/// lead touches with more of its side: the mark widens a little along the
-/// lean and narrows across it. Upright it is the pencil's own size — the
-/// 最小値 of 100% on the size row is load-bearing for the same reason as the
-/// old tilted pencil's was: a pen held straight sits at lean 0.
+/// The tilted pencil's lean, all of it by 0.65: rising, and falling.
 ///
-/// ⚠️Both rows reach their end at a lean of 0.65, not 1.0: a Wacom pen
-/// reports little past 60° from upright (altitude ⅓, lean ⅔), so a row
-/// that ran to 1.0 would never show its end on the tablet it was made on.
-Map<BrushDynamicsKey, BrushPressureCurve> _leanRows({
-  required double widest,
-  required double narrowest,
-}) => {
-  (BrushPressureTarget.size, BrushInputSource.tilt): BrushPressureCurve(
-    _leaningIn,
-    minimum: 1.0,
-    maximum: widest,
-  ),
-  (BrushPressureTarget.roundness, BrushInputSource.tilt): BrushPressureCurve(
-    _leaningOut,
-    minimum: narrowest,
-  ),
-};
-
-/// A lean's response, all of it by 0.65 ([_leanRows]): rising, and falling.
+/// ⚠️Its end at a lean of 0.65, not 1.0: a Wacom pen reports little past
+/// 60° from upright (altitude ⅓, lean ⅔), so a row that ran to 1.0 would
+/// never show its end on the tablet it was made on.
+///
+/// ↩️The grades leaned with the pen on these too (F-433, 유저 2026-10-21:
+/// 「일반 연필에도 어느정도 기울기로 형태 바뀌는거 넣고」) until F-462 ②
+/// (유저 2026-10-25: 「일반연필 기울기에따라 뭐 바뀐다거나 다 잊고,
+/// 눕히는연필만 지금 방향성대로 기울기에따라 팁 바뀌는느낌은 좋음」).
 ///
 /// ⚠️Two points at the far height, 0.5 and 0.8: the points pull the curve
 /// ([BrushPressureCurve]), and it reaches their height only between two of
@@ -273,6 +257,27 @@ Map<BrushDynamicsKey, BrushPressureCurve> _toothRow(double heaviest) => {
         BrushCurvePoint(0.0, 1.0),
         BrushCurvePoint(1.0, 0.0),
       ], minimum: heaviest),
+};
+
+/// 🗣️HOW DEEP A LEAD REACHES INTO THE PAPER, by the pen's pressure (F-462 ②,
+/// 유저 2026-10-25: 「클튜브러시 그대로 참고하되 따라한 느낌만 안나도록
+/// 참고해서 우리방식대로 재구현」). Under a paper worked by its height
+/// (`BrushTextureMode.height`) the density is the reach: the row climbs from
+/// [lightest] of the brush's at the faintest touch, which catches only the
+/// paper's peaks and breaks the line into grain, to all of it at the
+/// hardest. Clip Studio's pencils cut their paper so, dab by dab (紙質
+/// 減算 · 描点ごとに適用 — the user's screenshots on
+/// `the-gouache-is-a-round-with-a-weave` Q1).
+///
+/// ↩️F-456 left the height for a multiplied tooth (유저 2026-10-23:
+/// 「결여가 너무 일정함(같은부분 다시 그려도 결여된 픽셀이 안채워짐)」): under
+/// F-451 every dab laid one smooth face, so it reached the same texels however
+/// often it was laid. The crumbs' mottle moves the reach dab to dab now
+/// ([pencilCrumbBrushTipMasks]); multiplied, a lead only paled and laid
+/// smooth.
+Map<BrushDynamicsKey, BrushPressureCurve> _reachRow(double lightest) => {
+  (BrushPressureTarget.textureDensity, BrushInputSource.pressure):
+      BrushPressureCurve.linearFrom(lightest),
 };
 
 /// The built-ins as the library seeds them: each as made below, showing in
@@ -381,6 +386,21 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
   // piles up to its ceiling (`settledDabAlpha`), so at the old flows the
   // dozen stamps a pixel takes along one stroke filled the valleys before
   // the stroke ended — 4B laid flat black (📏F-456 probe, the same stroke).
+  //
+  // ↩️CRUMBS AT RANDOM, ON A PAPER CUT BY ITS HEIGHT, AND NO LEAN (F-462 ②,
+  // 유저 2026-10-25: 「클튜 연필브러시들은 육각형식으로 안하니까 그거 참고해서
+  // 다시 개편. 육각형같은거 잊어도됨. 일반연필 기울기에따라 뭐 바뀐다거나 다
+  // 잊고」). Clip Studio's pencils throw one of a few irregular tips a dab,
+  // turned at random, and cut their paper dab by dab. These do it with parts
+  // of their own: three crumbs ([pencilCrumbBrushTipMasks]) thrown at random
+  // and turned all the way round, on the graphite tooth worked by its height
+  // and reached deeper the harder the pen presses ([_reachRow]) — so each
+  // density is how deep a full press reaches, and the softer the lead the
+  // deeper. The lead's six footprints and the lean rows are the tilted
+  // pencil's alone. 🔬Drawn beside the user's Clip Studio 鉛筆 line
+  // (`pencil_subtract`, the dual-off column, by eye): multiplied, the grades
+  // laid a smooth tone under a faint tooth; cut by the height they break
+  // into its dense speck, a light line into scattered grain.
   BrushPreset(
     id: const BrushPresetId('builtin-hard-pencil'),
     name: '2H Pencil',
@@ -388,19 +408,19 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
     settings: BrushSettings(
       size: 3,
       hardness: 1.0,
-      flow: 0.3,
-      opacity: 0.65,
+      flow: 0.5,
+      opacity: 0.6,
       spacing: BrushShape.minSpacing,
-      rotationMode: BrushTipRotationMode.penTilt,
-      tips: pencilLeadBrushTipMasks,
-      tipOrder: BrushTipOrder.lean,
-      tipsPerTurn: pencilLeadFacesPerStep,
+      tips: pencilCrumbBrushTipMasks,
+      tipOrder: BrushTipOrder.random,
+      angleJitter: 1.0,
       textureMaskSource: graphiteToothTextureMask,
       textureScale: 1.0,
-      textureDensity: 0.82,
-      sizePressureCurve: BrushPressureCurve.linearFrom(0.75),
-      opacityPressureCurve: BrushPressureCurve.linearFrom(0.6),
-      curves: {..._leanRows(widest: 1.6, narrowest: 0.6), ..._toothRow(0.75)},
+      textureDensity: 0.88,
+      textureMode: BrushTextureMode.height,
+      sizePressureCurve: BrushPressureCurve.linearFrom(0.5),
+      opacityPressureCurve: BrushPressureCurve.linearFrom(0.85),
+      curves: _reachRow(0.6),
     ),
   ),
   BrushPreset(
@@ -410,19 +430,19 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
     settings: BrushSettings(
       size: 4,
       hardness: 0.95,
-      flow: 0.35,
-      opacity: 0.8,
+      flow: 0.5,
+      opacity: 0.75,
       spacing: BrushShape.minSpacing,
-      rotationMode: BrushTipRotationMode.penTilt,
-      tips: pencilLeadBrushTipMasks,
-      tipOrder: BrushTipOrder.lean,
-      tipsPerTurn: pencilLeadFacesPerStep,
+      tips: pencilCrumbBrushTipMasks,
+      tipOrder: BrushTipOrder.random,
+      angleJitter: 1.0,
       textureMaskSource: graphiteToothTextureMask,
-      textureScale: 1.2,
-      textureDensity: 0.87,
-      sizePressureCurve: BrushPressureCurve.linearFrom(0.6),
-      opacityPressureCurve: BrushPressureCurve.linearFrom(0.5),
-      curves: {..._leanRows(widest: 1.6, narrowest: 0.6), ..._toothRow(0.7)},
+      textureScale: 1.0,
+      textureDensity: 0.92,
+      textureMode: BrushTextureMode.height,
+      sizePressureCurve: BrushPressureCurve.linearFrom(0.4),
+      opacityPressureCurve: BrushPressureCurve.linearFrom(0.8),
+      curves: _reachRow(0.62),
     ),
   ),
   BrushPreset(
@@ -432,19 +452,19 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
     settings: BrushSettings(
       size: 6,
       hardness: 0.85,
-      flow: 0.4,
-      opacity: 0.9,
+      flow: 0.55,
+      opacity: 0.88,
       spacing: BrushShape.minSpacing,
-      rotationMode: BrushTipRotationMode.penTilt,
-      tips: pencilLeadBrushTipMasks,
-      tipOrder: BrushTipOrder.lean,
-      tipsPerTurn: pencilLeadFacesPerStep,
+      tips: pencilCrumbBrushTipMasks,
+      tipOrder: BrushTipOrder.random,
+      angleJitter: 1.0,
       textureMaskSource: graphiteToothTextureMask,
-      textureScale: 1.3,
-      textureDensity: 0.92,
-      sizePressureCurve: BrushPressureCurve.linearFrom(0.45),
-      opacityPressureCurve: BrushPressureCurve.linearFrom(0.45),
-      curves: {..._leanRows(widest: 1.6, narrowest: 0.6), ..._toothRow(0.65)},
+      textureScale: 1.1,
+      textureDensity: 0.96,
+      textureMode: BrushTextureMode.height,
+      sizePressureCurve: BrushPressureCurve.linearFrom(0.35),
+      opacityPressureCurve: BrushPressureCurve.linearFrom(0.75),
+      curves: _reachRow(0.65),
     ),
   ),
   BrushPreset(
@@ -454,17 +474,18 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
     settings: BrushSettings(
       size: 8,
       hardness: 0.75,
-      flow: 0.45,
+      flow: 0.6,
       spacing: BrushShape.minSpacing,
-      rotationMode: BrushTipRotationMode.penTilt,
-      tips: pencilLeadBrushTipMasks,
-      tipOrder: BrushTipOrder.lean,
-      tipsPerTurn: pencilLeadFacesPerStep,
+      tips: pencilCrumbBrushTipMasks,
+      tipOrder: BrushTipOrder.random,
+      angleJitter: 1.0,
       textureMaskSource: graphiteToothTextureMask,
-      textureScale: 1.4,
-      textureDensity: 0.96,
-      sizePressureCurve: BrushPressureCurve.linearFrom(0.35),
-      curves: {..._leanRows(widest: 1.6, narrowest: 0.6), ..._toothRow(0.6)},
+      textureScale: 1.2,
+      textureDensity: 1.0,
+      textureMode: BrushTextureMode.height,
+      sizePressureCurve: BrushPressureCurve.linearFrom(0.3),
+      opacityPressureCurve: BrushPressureCurve.linearFrom(0.7),
+      curves: _reachRow(0.7),
     ),
   ),
   // 🚨THE USER'S OWN SHARP (유저 F-433, 2026-10-21: 「프리셋 기본 샤프 연필,
@@ -496,6 +517,10 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       antiAlias: BrushAntiAlias.none,
     ),
   ),
+  // The colored pencil throws the graphite's crumbs (F-462 ②) but keeps its
+  // paper MULTIPLIED — my call, not the user's: wax spreads over the tooth
+  // where graphite only catches its peaks, so it pales and fills instead of
+  // breaking into grain, and the two stay apart in the picker.
   BrushPreset(
     id: const BrushPresetId('builtin-colored-pencil'),
     name: 'Colored Pencil',
@@ -504,15 +529,14 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       size: 6,
       flow: 0.4,
       spacing: BrushShape.minSpacing,
-      rotationMode: BrushTipRotationMode.penTilt,
-      tips: pencilLeadBrushTipMasks,
-      tipOrder: BrushTipOrder.lean,
-      tipsPerTurn: pencilLeadFacesPerStep,
+      tips: pencilCrumbBrushTipMasks,
+      tipOrder: BrushTipOrder.random,
+      angleJitter: 1.0,
       textureMaskSource: graphiteToothTextureMask,
       textureScale: 1.4,
       textureDensity: 0.9,
       opacityPressureCurve: BrushPressureCurve.identity(),
-      curves: {..._leanRows(widest: 1.6, narrowest: 0.6), ..._toothRow(0.65)},
+      curves: _toothRow(0.65),
     ),
   ),
   // 🚨THE USER'S COLOURING PENCIL (유저 F-433: 「색연필 샤프도 내가 만든거
@@ -625,7 +649,15 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       curves: _randomRows(roundness: 0.45),
       angleJitter: 0.5,
       dualMask: grainBrushTipMask,
-      dualMaskScale: 0.5,
+      // 🎨THE SECOND TIP IS A STROKE OF ITS OWN (an-imported-pencil-drops-
+      // its-second-brush-Q3, 10-29): its stamps pile on a plane of their
+      // own, so laid as close as the first tip's they fill it and the grain
+      // is gone. As big as the tip, half a tip apart and each turned at
+      // random, the grain stays — the six dual brushes' before and after
+      // are on that card.
+      dualMaskScale: 1.2,
+      dualSpacing: 0.5,
+      dualAngleJitter: 1.0,
       dualDensity: 0.6,
     ),
   ),
@@ -762,9 +794,14 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       flow: 0.95,
       spacing: 0.05,
       // The break in the line is the dual tip, not the flow: a hard nib
-      // running out of ink skips, it does not fade.
+      // running out of ink skips, it does not fade. Thrown a third of a tip
+      // off the line, the grain lands thin in places and the nib skips
+      // there (the second tip's way: Rough Pencil's note).
       dualMask: grainBrushTipMask,
-      dualMaskScale: 0.55,
+      dualMaskScale: 1.2,
+      dualSpacing: 0.4,
+      dualAngleJitter: 1.0,
+      dualScatterRadiusRatio: 0.3,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.3),
     ),
   ),
@@ -791,8 +828,14 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       flow: 0.9,
       spacing: 0.12,
       tips: [chalkBrushTipMask],
+      // A whole tip apart and larger than the stick, the grain piles once
+      // and the stroke stays light and clouded (the second tip's way: Rough
+      // Pencil's note).
       dualMask: grainBrushTipMask,
-      dualMaskScale: 0.55,
+      dualMaskScale: 1.5,
+      dualSpacing: 1.0,
+      dualAngleJitter: 1.0,
+      dualScatterRadiusRatio: 0.15,
       textureMaskSource: paperGrainTextureMask,
       textureScale: 1.8,
       textureDensity: 0.75,
@@ -1078,8 +1121,12 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       spacing: 0.06,
       tips: [bristleBrushTipMask],
       rotationMode: BrushTipRotationMode.direction,
+      // Twice the bristles' width, so the sponge's streaks run the whole
+      // stroke: at 0.75 its second stroke bit only the middle (the second
+      // tip's way: Rough Pencil's note).
       dualMask: spongeBrushTipMask,
-      dualMaskScale: 0.75,
+      dualMaskScale: 2.0,
+      dualSpacing: 0.06,
       dualDensity: 0.55,
       curves: _randomRows(spacing: 0.4, opacity: 0.2),
       sizePressureCurve: BrushPressureCurve.linearFrom(0.3),
@@ -1115,8 +1162,16 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       flow: 0.51,
       opacity: 0.85,
       spacing: 0.05,
+      // Small grit thrown far, two at a stamp, and short of full density,
+      // so the spray's soft body shows between (the second tip's way: Rough
+      // Pencil's note).
       dualMask: splatterBrushTipMask,
-      dualMaskScale: 0.5,
+      dualMaskScale: 0.6,
+      dualSpacing: 0.5,
+      dualAngleJitter: 1.0,
+      dualScatterRadiusRatio: 0.8,
+      dualScatterCount: 2,
+      dualDensity: 0.8,
       opacityPressureCurve: BrushPressureCurve.identity(),
     ),
   ),
@@ -1280,8 +1335,12 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       hardness: 1.0,
       flow: 0.9775,
       spacing: 0.05,
+      // A little larger than the tip, and turned at random (the second
+      // tip's way: Rough Pencil's note).
       dualMask: chalkBrushTipMask,
-      dualMaskScale: 0.6,
+      dualMaskScale: 1.2,
+      dualSpacing: 0.4,
+      dualAngleJitter: 1.0,
       textureMaskSource: canvasWeaveTextureMask,
       textureScale: 0.8,
       textureDensity: 0.75,

@@ -16,6 +16,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
+import 'package:anicel/src/models/separable_blend_mode.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -285,6 +286,13 @@ void main() {
           ? random.nextDouble() * 90.0
           : 0.0;
 
+      final dual = dualMask == null
+          ? null
+          : BrushDualView(
+              compositeMode: SeparableBlendMode
+                  .values[random.nextInt(SeparableBlendMode.values.length)],
+              density: random.nextDouble(),
+            );
       final dabs = <BrushDab>[];
       for (var i = 0; i < 3; i += 1) {
         dabs.add(
@@ -305,12 +313,7 @@ void main() {
             roundness: roundness,
             angleDegrees: angleDegrees,
             tipMask: tipMask,
-            dualMask: dualMask,
-            dualMaskScale: dualMask == null
-                ? 1.0
-                : 0.3 + random.nextDouble() * 2.0,
-            dualOffsetU: dualMask == null ? 0.0 : random.nextDouble(),
-            dualOffsetV: dualMask == null ? 0.0 : random.nextDouble(),
+            dual: dual,
             textureMask: textureMask,
             textureScale: textureMask == null
                 ? 1.0
@@ -320,12 +323,39 @@ void main() {
           ),
         );
       }
+      // The second tip is a stroke of its own, piled on its own plane.
+      if (dual != null) {
+        for (var i = 0; i < 3; i += 1) {
+          dabs.add(
+            BrushDab(
+              center: randomCenter(),
+              color: 0xFF000000,
+              size: 2.0 + random.nextDouble() * 48.0,
+              opacity: 1,
+              flow: 0.05 + random.nextDouble() * 0.95,
+              hardness: random.nextDouble(),
+              tipShape: BrushTipShape.round,
+              pressure: 1,
+              sequence: 3 + i,
+              tipMask: dualMask,
+              dual: dual,
+              second: true,
+            ),
+          );
+        }
+      }
       final sequence = BrushDabSequence(dabs);
 
       // A partially painted base (built through the Dart reference so both
-      // runs start from the identical surface).
+      // runs start from the identical surface). ⚠️A stroke with a second
+      // tip lands only on an EMPTY surface — every stroke of brush dabs piles
+      // up on its own buffer first (`brush_commit_builder.dart`) — and its
+      // view covers the rows its dabs reach: over paint, which pixels of
+      // those rows it rebuilds is a question no stroke asks.
       QaNativeEngine.debugForceDartFallback = true;
-      final base = materializeBrushDabSequenceOnBitmapSurface(
+      final base = dual != null
+          ? BitmapSurface(canvasSize: canvasSize, tileSize: 32)
+          : materializeBrushDabSequenceOnBitmapSurface(
         surface: BitmapSurface(canvasSize: canvasSize, tileSize: 32),
         sequence: BrushDabSequence([
           BrushDab(

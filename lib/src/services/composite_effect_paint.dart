@@ -128,6 +128,20 @@ class CompositeEffectPaint {
     paint.imageFilter = imageFilter;
   }
 
+  /// The plan as one filter, for a layer that carries it — null for none.
+  /// The plan holds one filter or the other, never both.
+  ui.ImageFilter? get filter => colorFilter ?? imageFilter;
+
+  /// [inner], then the plan, as ONE image filter — what [applyTo] gives a
+  /// draw whose own shading is [inner], for a layer that filter carries:
+  /// the draw's order, its shading first, the plan over it.
+  ui.ImageFilter after(ui.ImageFilter inner) {
+    final outer = filter;
+    return outer == null
+        ? inner
+        : ui.ImageFilter.compose(outer: outer, inner: inner);
+  }
+
   // A VALUE, so a painter can ask "is this the same filter as last frame?"
   // in `shouldRepaint` — the V row's cut chain is resolved fresh every build,
   // and identity would call a static grade a change on every rebuild.
@@ -297,7 +311,13 @@ _PaintPart _paintPartOf(
   DrawSpace space, {
   ui.Rect? paper,
   int? rasterWidth,
-}) => switch (effect.kind) {
+}) {
+  // An effect that changes no pixel is no part, whatever its kind
+  // ([ResolvedLayerEffect.isNoOp]: its defaults, or its strength of nothing).
+  if (effect.isNoOp) {
+    return const _NoPart();
+  }
+  return switch (effect.kind) {
     EffectKind.brightnessContrast => _ColourPart(
       brightnessContrastMatrix(
         brightness: effect.parameter('brightness'),
@@ -340,14 +360,12 @@ _PaintPart _paintPartOf(
       'celNumberedRow.',
     ),
   };
+}
 
-/// A Gaussian of no blurriness changes no pixel, whichever way it runs — as
-/// [_directionalBlurPart]'s length.
+/// A Gaussian: a filter the composite draw carries, or a step where it
+/// repeats the paper's edge ([PaperEdgeEffect]).
 _PaintPart _blurPart(ResolvedLayerEffect effect, DrawSpace space) {
   final radius = effect.parameter('blurriness') * space.scale;
-  if (radius <= 0) {
-    return const _NoPart();
-  }
   // The words of Blur Dimensions, in order: both, across, up and down.
   final dimensions = effect.parameter('blurDimensions').round();
   final radiusX = dimensions == 2 ? 0.0 : radius;
@@ -368,13 +386,9 @@ _PaintPart _blurPart(ResolvedLayerEffect effect, DrawSpace space) {
       : _SpatialPart(filter, outset: spread);
 }
 
-/// A directional blur of no length changes no pixel, whichever way it
-/// points — [ResolvedLayerEffect.isNoOp] reads only "at its defaults".
+/// A directional blur: a step of passes along its way.
 _PaintPart _directionalBlurPart(ResolvedLayerEffect effect, DrawSpace space) {
   final length = effect.parameter('blurLength') * space.scale;
-  if (length <= 0) {
-    return const _NoPart();
-  }
   final radians = effect.parameter('direction') * math.pi / 180;
   return _StepPart(
     directionalBlurPasses(
@@ -400,9 +414,6 @@ _PaintPart _radialBlurPart(
   ui.Rect? paper,
 ) {
   final amount = effect.parameter('amount');
-  if (amount <= 0) {
-    return const _NoPart();
-  }
   // Asked by a reader that does no spatial work: it skips the part, so
   // nothing in it is read.
   if (paper == null) {
@@ -464,9 +475,6 @@ _PaintPart _cameraLensBlurPart(
   int? rasterWidth,
 ) {
   final radius = effect.parameter('blurRadius') * space.scale;
-  if (radius <= 0) {
-    return const _NoPart();
-  }
   final repeatsTheEdge = effect.flag('repeatEdgePixels');
   return _StepPart(
     // Asked by a reader that draws no raster: it reads how far the part
@@ -682,7 +690,10 @@ final class KeyRun extends EffectStepLead {
 /// where the Gaussian turned with it — and paints no further than the
 /// picture it is handed: a blur 16 long over a dot spread it ±1 px. A step
 /// rasters at the identity over a buffer the plan already grew
-/// ([CompositeEffectPlan.outsetPixels]).
+/// ([CompositeEffectPlan.outsetPixels]) — and INSIDE that raster, where
+/// neither holds, a directional or a radial blur's passes are shader
+/// filters on Impeller: the layers of one picture, not a raster a pass
+/// (🗣️effect-step-passes-each-pay-a-snapshot-Q1 a, `applyEffectSteps`).
 final class ShadedEffect extends EffectStepLead {
   const ShadedEffect(this.effect);
 

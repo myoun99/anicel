@@ -326,9 +326,7 @@ BrushPreset? _presetFromBrushDescriptor(
   }
 
   final diameter = tip.numberValue('Dmtr') ?? mask?.size.toDouble() ?? 24.0;
-  final spacingPercent = tip.numberValue('Spcn') ?? 25.0;
-  final angle = tip.numberValue('Angl') ?? 0.0;
-  final roundnessPercent = tip.numberValue('Rndn') ?? 100.0;
+  final placement = _tipPlacementOf(tip);
   final hardnessPercent = tip.numberValue('Hrdn') ?? 100.0;
 
   // Photoshop keeps opacity, flow, blend mode and smoothing together in a
@@ -403,9 +401,9 @@ BrushPreset? _presetFromBrushDescriptor(
     opacityRandom = _jitterOf(opacityVariance, cap: 1.0);
     flowRandom = _jitterOf(flowVariance, cap: 1.0);
   }
-  // Dual brush: the nested second tip combines with the primary coverage.
-  // The dual tip's own spacing/scatter is still approximated by the per-dab
-  // random tile phase.
+  // Dual brush: the nested second tip, a second stroke along the path — its
+  // own spacing, angle, roundness and scatter written with the keys the
+  // main tip's are, so they are read by the same readers.
   //
   // ✏️ITS BLEND MODE ARRIVES NOW (v33). `dualBrush.BlnM` was measured across
   // the user's seven .abr packs — 765 brushes — and EIGHT codes are in
@@ -421,6 +419,11 @@ BrushPreset? _presetFromBrushDescriptor(
   BrushTipMask? dualMask;
   var dualMaskScale = 1.0;
   var dualCompositeMode = SeparableBlendMode.multiply;
+  ({
+    ({double spacingRatio, double angleDegrees, double roundness}) tip,
+    ({double radiusRatio, int count, bool bothAxes}) scatter,
+  })?
+  dualWay;
   final dualBrush = entry.childDescriptor('dualBrush');
   if (dualBrush != null && dualBrush['useDualBrush'] == true) {
     final dualTip = dualBrush.childDescriptor('Brsh');
@@ -429,7 +432,11 @@ BrushPreset? _presetFromBrushDescriptor(
       dualMask = tipsByKey[dualKey];
       if (dualMask != null) {
         usedTipKeys.add(dualKey);
-        final dualDiameter = dualTip?.numberValue('Dmtr');
+        dualWay = (
+          tip: _tipPlacementOf(dualTip!),
+          scatter: _scatterOf(dualBrush),
+        );
+        final dualDiameter = dualTip.numberValue('Dmtr');
         if (dualDiameter != null && dualDiameter > 0 && diameter > 0) {
           dualMaskScale = (dualDiameter / diameter)
               .clamp(0.05, 10.0)
@@ -517,17 +524,7 @@ BrushPreset? _presetFromBrushDescriptor(
     }
   }
 
-  var scatterRadiusRatio = 0.0;
-  var scatterCount = 1;
-  var scatterBothAxes = true;
-  if (entry['useScatter'] == true) {
-    scatterRadiusRatio = _jitterOf(
-      entry.childDescriptor('scatterDynamics'),
-      cap: 10.0,
-    );
-    scatterCount = (entry.numberValue('Cnt ') ?? 1.0).round().clamp(1, 16);
-    scatterBothAxes = entry['bothAxes'] == true;
-  }
+  final scatter = _scatterOf(entry);
 
   final id = uniquePresetId(
     sampledKey != null
@@ -544,9 +541,9 @@ BrushPreset? _presetFromBrushDescriptor(
     settings: _settingsForTip(
       mask,
       diameterPixels: diameter,
-      spacingRatio: spacingPercent / 100.0,
-      angleDegrees: angle,
-      roundness: roundnessPercent / 100.0,
+      spacingRatio: placement.spacingRatio,
+      angleDegrees: placement.angleDegrees,
+      roundness: placement.roundness,
       hardness: hardnessPercent / 100.0,
       opacity: opacityPercent / 100.0,
       flow: flowPercent / 100.0,
@@ -558,12 +555,13 @@ BrushPreset? _presetFromBrushDescriptor(
       flowRandom: flowRandom,
       angleJitter: angleJitter,
       rotationMode: rotationMode,
-      scatterRadiusRatio: scatterRadiusRatio,
-      scatterCount: scatterCount,
-      scatterBothAxes: scatterBothAxes,
+      scatterRadiusRatio: scatter.radiusRatio,
+      scatterCount: scatter.count,
+      scatterBothAxes: scatter.bothAxes,
       dualMask: dualMask,
       dualMaskScale: dualMaskScale,
       dualCompositeMode: dualCompositeMode,
+      dualWay: dualWay,
       textureMaskSource: textureMask,
       textureInvert: textureInvert,
       textureBrightness: textureBrightness,
@@ -671,6 +669,11 @@ BrushSettings _settingsForTip(
   BrushTipMask? dualMask,
   double dualMaskScale = 1.0,
   SeparableBlendMode dualCompositeMode = SeparableBlendMode.multiply,
+  ({
+    ({double spacingRatio, double angleDegrees, double roundness}) tip,
+    ({double radiusRatio, int count, bool bothAxes}) scatter,
+  })?
+  dualWay,
   BrushTipMask? textureMaskSource,
   bool textureInvert = false,
   double textureBrightness = 0.0,
@@ -679,15 +682,11 @@ BrushSettings _settingsForTip(
   double textureDensity = 1.0,
   BrushBlendMode blendMode = BrushBlendMode.color,
 }) {
-  // Photoshop angles span -180..180; the ellipse repeats every 180.
-  final normalizedAngle = ((angleDegrees % 180.0) + 180.0) % 180.0;
-  return BrushSettings(
+  final settings = BrushSettings(
     size: diameterPixels.isFinite && diameterPixels > 0 ? diameterPixels : 24,
-    spacing: spacingRatio.isFinite && spacingRatio > 0
-        ? spacingRatio.clamp(0.01, 10.0).toDouble()
-        : 0.25,
-    angleDegrees: normalizedAngle.isFinite ? normalizedAngle : 0.0,
-    roundness: roundness.isFinite ? roundness.clamp(0.01, 1.0).toDouble() : 1.0,
+    spacing: _spacingFrom(spacingRatio),
+    angleDegrees: _angleFrom(angleDegrees),
+    roundness: _roundnessFrom(roundness),
     hardness: hardness.isFinite ? hardness.clamp(0.0, 1.0).toDouble() : 1.0,
     opacity: opacity.isFinite ? opacity.clamp(0.0, 1.0).toDouble() : 1.0,
     flow: flow.isFinite ? flow.clamp(0.0, 1.0).toDouble() : 1.0,
@@ -722,4 +721,57 @@ BrushSettings _settingsForTip(
     textureDensity: textureDensity,
     blendMode: blendMode,
   );
+  if (dualWay == null) {
+    return settings;
+  }
+  final (:tip, :scatter) = dualWay;
+  return settings.copyWith(
+    dualSpacing: _spacingFrom(tip.spacingRatio),
+    dualAngleDegrees: _angleFrom(tip.angleDegrees),
+    dualRoundness: _roundnessFrom(tip.roundness),
+    dualScatterRadiusRatio: scatter.radiusRatio,
+    dualScatterCount: scatter.count,
+    dualScatterBothAxes: scatter.bothAxes,
+  );
 }
+
+/// A tip's spacing, angle and roundness as a brush descriptor writes them —
+/// the main tip's `Brsh`, or the dual brush's, which has the same keys.
+({double spacingRatio, double angleDegrees, double roundness})
+_tipPlacementOf(PsDescriptor tip) => (
+  spacingRatio: (tip.numberValue('Spcn') ?? 25.0) / 100.0,
+  angleDegrees: tip.numberValue('Angl') ?? 0.0,
+  roundness: (tip.numberValue('Rndn') ?? 100.0) / 100.0,
+);
+
+/// The scatter [brush] writes — the brush entry's, or its dual brush's,
+/// which carries `useScatter`, `Cnt `, `bothAxes` and `scatterDynamics`
+/// under the same keys.
+({double radiusRatio, int count, bool bothAxes}) _scatterOf(
+  PsDescriptor brush,
+) {
+  if (brush['useScatter'] != true) {
+    return (radiusRatio: 0.0, count: 1, bothAxes: true);
+  }
+  return (
+    radiusRatio: _jitterOf(
+      brush.childDescriptor('scatterDynamics'),
+      cap: 10.0,
+    ),
+    count: (brush.numberValue('Cnt ') ?? 1.0).round().clamp(1, 16),
+    bothAxes: brush['bothAxes'] == true,
+  );
+}
+
+double _spacingFrom(double ratio) => ratio.isFinite && ratio > 0
+    ? ratio.clamp(0.01, 10.0).toDouble()
+    : 0.25;
+
+/// Photoshop angles span -180..180; the ellipse repeats every 180.
+double _angleFrom(double degrees) {
+  final normalized = ((degrees % 180.0) + 180.0) % 180.0;
+  return normalized.isFinite ? normalized : 0.0;
+}
+
+double _roundnessFrom(double roundness) =>
+    roundness.isFinite ? roundness.clamp(0.01, 1.0).toDouble() : 1.0;

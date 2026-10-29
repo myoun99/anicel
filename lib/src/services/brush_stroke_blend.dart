@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import '../core/rgba_premultiply.dart';
 import '../models/bitmap_surface.dart';
 import '../models/brush_blend_mode.dart';
+import '../models/brush_dab.dart' show BrushDualView;
 import '../models/non_separable_blend_mode.dart';
 import '../models/separable_blend_mode.dart';
 import '../models/brush_texture_mode.dart';
@@ -653,7 +654,7 @@ Uint8List blendStrokeRegionPixels({
   return result;
 }
 
-/// How the DUAL mask combines with the coverage under it (v33).
+/// How the SECOND tip's coverage combines with the first's (v33, v60).
 ///
 /// [dual] is the SOURCE, [coverage] the destination — the dual tip is the
 /// second tip applied over the first. ⚠️Multiply is commutative so nothing
@@ -679,6 +680,37 @@ double blendDualCoverage(
     return sum > 1.0 ? 1.0 : sum;
   }
   return blendSeparableChannel(mode, dual, coverage);
+}
+
+/// The byte alpha a stroke with a second tip shows where its first plane
+/// holds [firstWide] and its second [secondWide] (both alpha * 65535) —
+/// the view the bytes are rebuilt through. The law and its reasons are
+/// beside `qa_dual_view_rows` (qa_engine.c, ABI 60); this is its
+/// arithmetic, operation by operation, and the Dart kernel and the
+/// reference both read it. A channel's byte is its plane's, rounded
+/// (`(wide / 257).round()`), under any alpha above 0.
+int dualViewAlpha(int firstWide, int secondWide, BrushDualView view) {
+  final alpha = dualViewLevel(firstWide / 65535.0, secondWide / 65535.0, view);
+  return (alpha * 255.0).round().clamp(0, 255);
+}
+
+/// The alpha a stroke with a second tip shows where its first tip laid
+/// [first] and its second [second] — [dualViewAlpha] before it is a byte,
+/// and what the brush list's swatch reads, whose planes are doubles.
+/// Where the first tip laid nothing, nothing shows: a second tip lays only
+/// where both lay.
+double dualViewLevel(double first, double second, BrushDualView view) {
+  if (first <= 0.0) {
+    return 0.0;
+  }
+  final density = view.density;
+  if (view.compositeMode == SeparableBlendMode.multiply) {
+    return first * ((1.0 - density) + density * second);
+  }
+  final combined =
+      first * (1.0 - density) +
+      density * blendDualCoverage(view.compositeMode, second, first);
+  return combined > 1.0 ? 1.0 : combined;
 }
 
 /// What a dab lays where the paper stands [sample] high, under the

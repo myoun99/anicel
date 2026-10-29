@@ -253,6 +253,7 @@ class BrushBlurPicture {
         () => (
           bytes: Uint8List(_scratchTileSize * _scratchTileSize * 4),
           wide: Uint16List(_scratchTileSize * _scratchTileSize * 4),
+          second: null,
         ),
       ),
     );

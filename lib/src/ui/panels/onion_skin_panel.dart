@@ -44,19 +44,19 @@ class OnionSkinPanel extends StatelessWidget {
   final int Function() currentColorOf;
 
   static String _stepLabel(OnionSkinStep step) => switch (step) {
-    OnionSkinStep.blocks => 'Blocks',
-    OnionSkinStep.frames => 'Frames',
+    OnionSkinStep.blocks => AppText.strings.onionStepBlocks,
+    OnionSkinStep.frames => AppText.strings.onionStepFrames,
   };
 
   static String _modeLabel(OnionSkinMode mode) => switch (mode) {
-    OnionSkinMode.colors => 'Colors',
-    OnionSkinMode.images => 'Images',
+    OnionSkinMode.colors => AppText.strings.onionModeColors,
+    OnionSkinMode.images => AppText.strings.onionModeImages,
   };
 
   static String _placementLabel(OnionSkinPlacement placement) =>
       switch (placement) {
-        OnionSkinPlacement.onTop => 'On top',
-        OnionSkinPlacement.inPlace => 'In place',
+        OnionSkinPlacement.onTop => AppText.strings.onionPlacementOnTop,
+        OnionSkinPlacement.inPlace => AppText.strings.onionPlacementInPlace,
       };
 
   @override
@@ -96,8 +96,9 @@ class OnionSkinPanel extends StatelessWidget {
                       current: settings.step,
                       keyPrefix: 'onion-step-',
                       labelOf: (step) => switch (step) {
-                        OnionSkinStep.blocks => 'Blocks (drawings)',
-                        OnionSkinStep.frames => 'Frames',
+                        OnionSkinStep.blocks =>
+                          AppText.strings.onionStepBlocksDrawings,
+                        OnionSkinStep.frames => AppText.strings.onionStepFrames,
                       },
                       onPicked: (step) =>
                           onChanged(settings.copyWith(step: step)),
@@ -306,13 +307,14 @@ class _OnionFalloffStripState extends State<_OnionFalloffStrip> {
     final (before, index) = target;
     final peg = _pegAt(_pegsOf(before), index);
     final side = before ? 'before' : 'after';
+    final name = before
+        ? AppText.strings.onionPegBefore(index + 1)
+        : AppText.strings.onionPegAfter(index + 1);
     // The per cent is the bar's own to write (F-34) — the tooltip names the
     // peg, and says `off` where the bar has nothing to show.
     return AppTooltip(
       key: ValueKey<String>('onion-peg-$side-${index + 1}'),
-      message:
-          '${index + 1} ${before ? 'back' : 'ahead'}'
-          '${peg.shows ? '' : ' · off'}',
+      message: peg.shows ? name : '$name · ${AppText.strings.commonOff}',
       child: FieldSlider.opacity(
         key: ValueKey<String>('onion-peg-bar-$side-${index + 1}'),
         value: peg.opacity,

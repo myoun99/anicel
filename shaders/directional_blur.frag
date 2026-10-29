@@ -11,11 +11,18 @@
 // times the step of the one before, land N^p taps across the way, each
 // once — the box of N^p samples for p·N a pixel.
 //
-// 🔬A RASTER OF ITS OWN, AT THE IDENTITY (`applyEffectSteps`), never an
-// `ImageFilter.shader`: on Impeller a shader filter is evaluated in device
-// space, past the canvas's turn and scale, and paints no further than the
-// picture it is handed (measured 10-28 — a blur 16 long over a dot spread
-// it ±1 px). A step's raster is the buffer the plan already grew.
+// 🔬IN A STEP'S RASTER, AT THE IDENTITY (`applyEffectSteps`), never an
+// `ImageFilter.shader` in the frame: on Impeller a shader filter is
+// evaluated in device space, past the canvas's turn and scale, and paints
+// no further than the picture it is handed (measured 10-28 — a blur 16
+// long over a dot spread it ±1 px). A step's raster is the buffer the plan
+// already grew — and there, on Impeller, the passes ARE shader filters, the
+// layers of one picture (`applyEffectSteps`, 10-29: a raster a pass cost
+// ~22ms each on the Surface).
+//
+// ⛔[uSize] FIRST AMONG THE FLOATS AND [uSource] FIRST AMONG THE SAMPLERS:
+// as a filter the ENGINE binds the layer to the first sampler and its size
+// to the first vec2.
 
 #include <flutter/runtime_effect.glsl>
 

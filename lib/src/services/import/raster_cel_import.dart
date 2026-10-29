@@ -4,7 +4,6 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
-import '../../core/point_bounds.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_frame_key.dart';
@@ -436,18 +435,15 @@ Iterable<TileRange> _partsFitting(
   if (back == null) {
     return null;
   }
-  final over = pointsBounds([
-    for (final corner in placedCorners(
-      back,
-      ui.Rect.fromLTRB(
-        (block.firstX * tileSize).toDouble(),
-        (block.firstY * tileSize).toDouble(),
-        ((block.lastX + 1) * tileSize).toDouble(),
-        ((block.lastY + 1) * tileSize).toDouble(),
-      ),
-    ))
-      ui.Offset(corner.x, corner.y),
-  ]);
+  final over = placedRectBounds(
+    back,
+    ui.Rect.fromLTRB(
+      (block.firstX * tileSize).toDouble(),
+      (block.firstY * tileSize).toDouble(),
+      ((block.lastX + 1) * tileSize).toDouble(),
+      ((block.lastY + 1) * tileSize).toDouble(),
+    ),
+  );
   // A resampled pixel reads the picture about two of its own pixels round
   // where it lands — farther, in the picture's pixels, the more the lay
   // shrinks it.

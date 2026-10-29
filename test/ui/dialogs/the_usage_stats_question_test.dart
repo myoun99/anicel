@@ -64,6 +64,7 @@ void main() {
       ),
       locale: () => 'en',
       osLocale: () => 'en-US',
+      settings: () => const {},
     );
     addTearDown(stats.dispose);
     unawaited(stats.restore());

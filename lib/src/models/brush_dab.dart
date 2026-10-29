@@ -25,12 +25,8 @@ class BrushDab {
     this.roundness = 1.0,
     this.angleDegrees = 0.0,
     this.tipMask,
-    this.dualMask,
-    this.dualMaskScale = 1.0,
-    this.dualDensity = 1.0,
-    this.dualCompositeMode = SeparableBlendMode.multiply,
-    this.dualOffsetU = 0.0,
-    this.dualOffsetV = 0.0,
+    this.dual,
+    this.second = false,
     this.textureMask,
     this.textureScale = 1.0,
     this.textureDensity = 1.0,
@@ -49,17 +45,18 @@ class BrushDab {
       );
     }
     _validateUnitIntervalFinite(textureDensity, 'textureDensity');
-    _validateUnitIntervalFinite(dualDensity, 'dualDensity');
-    _validateColor(color);
-    if (!dualMaskScale.isFinite || dualMaskScale <= 0.0) {
+    if (dual case final dual?) {
+      _validateUnitIntervalFinite(dual.density, 'dual.density');
+    }
+    if (second && dual == null) {
       throw ArgumentError.value(
-        dualMaskScale,
-        'dualMaskScale',
-        'BrushDab.dualMaskScale must be finite and greater than 0.',
+        second,
+        'second',
+        'A second tip\'s dab belongs to a stroke with a second tip — give it '
+            'the stroke\'s view.',
       );
     }
-    _validateFinite(dualOffsetU, 'dualOffsetU');
-    _validateFinite(dualOffsetV, 'dualOffsetV');
+    _validateColor(color);
     _validateNonNegativeFinite(size, 'size');
     _validateUnitIntervalFinite(opacity, 'opacity');
     _validateUnitIntervalFinite(flow, 'flow');
@@ -143,39 +140,18 @@ class BrushDab {
   /// and coverage comes from bilinear-sampling the mask in tip space.
   final BrushTipMask? tipMask;
 
-  /// Dual-brush mask: a second tip texture that MULTIPLIES the dab's
-  /// coverage, tiled across the dab at [dualMaskScale] times the dab size
-  /// with a per-dab random phase ([dualOffsetU]/[dualOffsetV], 0..1 of the
-  /// tile period) chosen at placement time.
-  final BrushTipMask? dualMask;
-  final double dualMaskScale;
+  /// How the stroke shows its second tip — carried by EVERY dab of a stroke
+  /// that has one, the first tip's and the second's alike, null on every
+  /// dab of a stroke that has none. The law is beside `qa_dual_view_rows`
+  /// (qa_engine.c, ABI 60): the second tip is a second stroke along the
+  /// same path, piling on a plane of its own ([second]), and what the
+  /// stroke shows is the two planes through this view.
+  final BrushDualView? dual;
 
-  /// How hard the dual mask bites: `coverage *= (1 - d) + d * sample`, the
-  /// same shape [textureDensity] has had all along. 1.0 is the plain
-  /// multiply the dual mask used to do unconditionally.
-  final double dualDensity;
-
-  /// How the dual mask COMBINES with the coverage under it.
-  ///
-  /// 🚨Both formats say a dual tip has one and ours had none. Clip Studio
-  /// writes `DualBrushCompositeMode` (the 合成モード menu index — 1 and 12
-  /// found in the user's own files) and Photoshop writes `dualBrush.BlnM`
-  /// (eight four-char codes across 765 brushes). We multiplied and only
-  /// multiplied, so both were cut off at the same place.
-  ///
-  /// ⛔[SeparableBlendMode], not [BrushBlendMode]: this combines two
-  /// COVERAGES, and the porter-duff heads (`color`/`behind`/`erase`) answer
-  /// a question about pixels and alpha that a mask pair does not ask. The
-  /// importers already map their formats to [BrushBlendMode] and take
-  /// `.separable` from there, so nothing new decodes anything.
-  ///
-  /// ⚠️[SeparableBlendMode.multiply] is the default AND its own line in both
-  /// kernels — the general form is the same NUMBER and not the same BYTES,
-  /// and every brush that ever shipped multiplies.
-  final SeparableBlendMode dualCompositeMode;
-
-  final double dualOffsetU;
-  final double dualOffsetV;
+  /// Whether this is a dab of the second tip's stroke: its [tipMask] is the
+  /// second tip, and it piles on the stroke's second plane — over, as any
+  /// dab piles over its alpha — and paints no colour of its own.
+  final bool second;
 
   /// Paper texture: a mask tiled in CANVAS space (anchored to the canvas,
   /// no per-dab phase) whose sample darkens coverage by [textureDensity]:
@@ -257,12 +233,8 @@ class BrushDab {
     double? roundness,
     double? angleDegrees,
     BrushTipMask? tipMask,
-    BrushTipMask? dualMask,
-    double? dualMaskScale,
-    double? dualDensity,
-    SeparableBlendMode? dualCompositeMode,
-    double? dualOffsetU,
-    double? dualOffsetV,
+    BrushDualView? dual,
+    bool? second,
     BrushTipMask? textureMask,
     double? textureScale,
     double? textureDensity,
@@ -290,12 +262,8 @@ class BrushDab {
       roundness: roundness ?? this.roundness,
       angleDegrees: angleDegrees ?? this.angleDegrees,
       tipMask: tipMask ?? this.tipMask,
-      dualMask: dualMask ?? this.dualMask,
-      dualMaskScale: dualMaskScale ?? this.dualMaskScale,
-      dualDensity: dualDensity ?? this.dualDensity,
-      dualCompositeMode: dualCompositeMode ?? this.dualCompositeMode,
-      dualOffsetU: dualOffsetU ?? this.dualOffsetU,
-      dualOffsetV: dualOffsetV ?? this.dualOffsetV,
+      dual: dual ?? this.dual,
+      second: second ?? this.second,
       textureMask: textureMask ?? this.textureMask,
       textureScale: textureScale ?? this.textureScale,
       textureDensity: textureDensity ?? this.textureDensity,
@@ -330,12 +298,8 @@ class BrushDab {
     'roundness': roundness,
     'angleDegrees': angleDegrees,
     if (tipMask != null) 'tipMask': tipMask!.toJson(),
-    if (dualMask != null) 'dualMask': dualMask!.toJson(),
-    'dualMaskScale': dualMaskScale,
-    'dualDensity': dualDensity,
-    'dualCompositeMode': dualCompositeMode.name,
-    'dualOffsetU': dualOffsetU,
-    'dualOffsetV': dualOffsetV,
+    if (dual != null) 'dual': dual!.toJson(),
+    if (second) 'second': true,
     if (textureMask != null) 'textureMask': textureMask!.toJson(),
     'textureScale': textureScale,
     'textureDensity': textureDensity,
@@ -371,18 +335,10 @@ class BrushDab {
       tipMask: json['tipMask'] == null
           ? null
           : BrushTipMask.fromJson(json['tipMask'] as Map<String, dynamic>),
-      dualMask: json['dualMask'] == null
+      dual: json['dual'] == null
           ? null
-          : BrushTipMask.fromJson(json['dualMask'] as Map<String, dynamic>),
-      dualMaskScale: (json['dualMaskScale'] as num?)?.toDouble() ?? 1.0,
-      dualDensity: (json['dualDensity'] as num?)?.toDouble() ?? 1.0,
-      dualCompositeMode:
-          SeparableBlendMode.forName(
-            (json['dualCompositeMode'] as String?) ?? '',
-          ) ??
-          SeparableBlendMode.multiply,
-      dualOffsetU: (json['dualOffsetU'] as num?)?.toDouble() ?? 0.0,
-      dualOffsetV: (json['dualOffsetV'] as num?)?.toDouble() ?? 0.0,
+          : BrushDualView.fromJson(json['dual'] as Map<String, dynamic>),
+      second: json['second'] as bool? ?? false,
       textureMask: json['textureMask'] == null
           ? null
           : BrushTipMask.fromJson(json['textureMask'] as Map<String, dynamic>),
@@ -421,12 +377,8 @@ class BrushDab {
           other.roundness == roundness &&
           other.angleDegrees == angleDegrees &&
           other.tipMask == tipMask &&
-          other.dualMask == dualMask &&
-          other.dualMaskScale == dualMaskScale &&
-          other.dualDensity == dualDensity &&
-          other.dualCompositeMode == dualCompositeMode &&
-          other.dualOffsetU == dualOffsetU &&
-          other.dualOffsetV == dualOffsetV &&
+          other.dual == dual &&
+          other.second == second &&
           other.textureMask == textureMask &&
           other.textureScale == textureScale &&
           other.textureDensity == textureDensity &&
@@ -455,12 +407,8 @@ class BrushDab {
     roundness,
     angleDegrees,
     tipMask,
-    dualMask,
-    dualMaskScale,
-    dualDensity,
-    dualCompositeMode,
-    dualOffsetU,
-    dualOffsetV,
+    dual,
+    second,
     textureMask,
     textureScale,
     textureDensity,
@@ -621,4 +569,61 @@ void _validateSequence(int value) {
       'BrushDab.sequence must be greater than or equal to 0.',
     );
   }
+}
+
+/// How a stroke with a second tip shows its two planes — the first tip's
+/// alpha combined with the second tip's through [compositeMode] at
+/// [density] (`qa_dual_view_rows`, and [BrushDab.dual]).
+///
+/// 🚨Both formats say a second tip has a mode and ours had none. Clip
+/// Studio writes `DualBrushCompositeMode` (the 合成モード menu index — 1 and
+/// 12 found in the user's own files) and Photoshop writes `dualBrush.BlnM`
+/// (eight four-char codes across 765 brushes). We multiplied and only
+/// multiplied, so both were cut off at the same place.
+///
+/// ⛔[SeparableBlendMode], not [BrushBlendMode]: this combines two
+/// COVERAGES, and the porter-duff heads (`color`/`behind`/`erase`) answer a
+/// question about pixels and alpha that a pair of coverages does not ask.
+/// The importers already map their formats to [BrushBlendMode] and take
+/// `.separable` from there, so nothing new decodes anything.
+///
+/// ⚠️[SeparableBlendMode.multiply] is the default AND its own line in every
+/// transcription of the view — the general form is the same NUMBER and not
+/// the same BYTES.
+class BrushDualView {
+  const BrushDualView({
+    this.compositeMode = SeparableBlendMode.multiply,
+    this.density = 1.0,
+  });
+
+  factory BrushDualView.fromJson(Map<String, dynamic> json) => BrushDualView(
+    compositeMode:
+        SeparableBlendMode.forName((json['compositeMode'] as String?) ?? '') ??
+        SeparableBlendMode.multiply,
+    density: (json['density'] as num?)?.toDouble() ?? 1.0,
+  );
+
+  final SeparableBlendMode compositeMode;
+
+  /// How hard the second tip bites: at 0 the stroke shows its first tip
+  /// alone, at 1 the combination whole.
+  final double density;
+
+  Map<String, dynamic> toJson() => {
+    if (compositeMode != SeparableBlendMode.multiply)
+      'compositeMode': compositeMode.name,
+    if (density != 1.0) 'density': density,
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is BrushDualView &&
+      other.compositeMode == compositeMode &&
+      other.density == density;
+
+  @override
+  int get hashCode => Object.hash(compositeMode, density);
+
+  @override
+  String toString() => 'BrushDualView($compositeMode, density: $density)';
 }

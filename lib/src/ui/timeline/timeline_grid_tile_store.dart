@@ -236,8 +236,8 @@ class TimelineGridTileStore {
   /// rows.
   String _liveGeneration = '';
 
-  /// Test hook.
-  @visibleForTesting
+  /// Lets go of every tile — a project closing (F-505: its tiles keep its
+  /// session through the resolvers they were baked against), and tests.
   void clear() {
     for (final kept in _entries.values) {
       kept.entry.image.dispose();

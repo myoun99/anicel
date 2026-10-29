@@ -287,56 +287,56 @@ class BrushEditCanvasInputSettings {
     BrushAntiAlias? antiAlias,
     BrushCorrection? correction,
   }) {
-    return BrushEditCanvasInputSettings(
-      color: color ?? this.color,
-      size: size ?? this.size,
-      opacity: opacity ?? this.opacity,
-      flow: flow ?? this.flow,
-      hardness: hardness ?? this.hardness,
-      spacing: spacing ?? this.spacing,
-      // 🚨MERGE, DO NOT REBUILD — see `BrushSettings.copyWith`. The live
-      // stroke path goes through here: a mapped-erase press snapshots the
-      // settings with `copyWith(erase: true)`, and rebuilding from the four
-      // pressure names would strip the brush of its tilt response for that
-      // whole stroke while an ordinary press kept it.
-      curves:
-          brushCurvesWithPressure(
-            shape.curves,
-            size: sizePressureCurve,
-            opacity: opacityPressureCurve,
-            flow: flowPressureCurve,
-            hardness: hardnessPressureCurve,
-          ) ??
+    // 🚨MERGE, DO NOT REBUILD. The live stroke path goes through here: a
+    // mapped-erase press snapshots the settings with `copyWith(erase:
+    // true)`. Rebuilt through the factory, which names only part of the
+    // shape, it dropped whatever the factory did not name — found one at a
+    // time: the tilt curves (see `BrushSettings.copyWith`), the edge step
+    // (↩️a 없음 brush back at 3단계 until 2026-10-01), the line's correction
+    // (no longer steadied), and the second tip's way along the path
+    // (2026-10-29). Merged into the shape, a field this list does not name
+    // is carried as it was.
+    return BrushEditCanvasInputSettings._raw(
+      shape: shape.copyWith(
+        color: color,
+        size: size,
+        opacity: opacity,
+        flow: flow,
+        hardness: hardness,
+        spacing: spacing,
+        curves: brushCurvesWithPressure(
           shape.curves,
-      roundness: roundness ?? this.roundness,
-      angleDegrees: angleDegrees ?? this.angleDegrees,
-      tips: tips ?? this.tips,
-      tipOrder: tipOrder ?? this.tipOrder,
-      tipsPerTurn: tipsPerTurn ?? this.tipsPerTurn,
-      rotationMode: rotationMode ?? this.rotationMode,
-      angleJitter: angleJitter ?? this.angleJitter,
-      scatterRadiusRatio: scatterRadiusRatio ?? this.scatterRadiusRatio,
-      scatterCount: scatterCount ?? this.scatterCount,
-      scatterBothAxes: scatterBothAxes ?? this.scatterBothAxes,
-      dualMask: dualMask ?? this.dualMask,
-      dualMaskScale: dualMaskScale ?? this.dualMaskScale,
-      dualDensity: dualDensity ?? this.dualDensity,
-      dualCompositeMode: dualCompositeMode ?? this.dualCompositeMode,
-      textureMaskSource: textureMaskSource ?? this.textureMaskSource,
-      textureInvert: textureInvert ?? this.textureInvert,
-      textureBrightness: textureBrightness ?? this.textureBrightness,
-      textureContrast: textureContrast ?? this.textureContrast,
-      textureScale: textureScale ?? this.textureScale,
-      textureDensity: textureDensity ?? this.textureDensity,
-      textureMode: textureMode ?? this.textureMode,
+          size: sizePressureCurve,
+          opacity: opacityPressureCurve,
+          flow: flowPressureCurve,
+          hardness: hardnessPressureCurve,
+        ),
+        roundness: roundness,
+        angleDegrees: angleDegrees,
+        tips: tips,
+        tipOrder: tipOrder,
+        tipsPerTurn: tipsPerTurn,
+        rotationMode: rotationMode,
+        angleJitter: angleJitter,
+        scatterRadiusRatio: scatterRadiusRatio,
+        scatterCount: scatterCount,
+        scatterBothAxes: scatterBothAxes,
+        dualMask: dualMask,
+        dualMaskScale: dualMaskScale,
+        dualDensity: dualDensity,
+        dualCompositeMode: dualCompositeMode,
+        textureMaskSource: textureMaskSource,
+        textureInvert: textureInvert,
+        textureBrightness: textureBrightness,
+        textureContrast: textureContrast,
+        textureScale: textureScale,
+        textureDensity: textureDensity,
+        textureMode: textureMode,
+        antiAlias: antiAlias,
+        correction: correction,
+      ),
       erase: erase ?? this.erase,
       blendMode: blendMode ?? this.blendMode,
-      // ↩️The edge step rode the rebuild at its default until 2026-10-01: a
-      // colour change or a mapped-erase press put a 없음 brush back at 3단계.
-      antiAlias: antiAlias ?? this.antiAlias,
-      // A mapped-erase press takes the stroke through here: rebuilt at the
-      // default, its line would stop being steadied.
-      correction: correction ?? this.correction,
     );
   }
 

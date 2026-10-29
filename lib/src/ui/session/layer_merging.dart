@@ -4,6 +4,7 @@ import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../services/commands/set_cut_layers_command.dart';
+import '../../services/commands/set_cuts_layers_command.dart';
 import '../../services/editing/layer_merge_plan.dart';
 import '../../services/import/raster_cel_import.dart' show bakeCelSurface;
 import 'layer_verbs.dart';
@@ -55,14 +56,15 @@ class LayerMerging {
 
   bool _isLinked(Layer row) => _layerVerbs.isLayerLinked(row.id);
 
-  LayerMergeTaking? _takingOfSelection() => switch (_project.activeCutOrNull) {
-    null => null,
-    final cut => takeRowsToMerge(
-      cut: cut,
-      selected: {..._rowSelection.selectedLayerIds},
-      isLinked: _isLinked,
-    ),
-  };
+  LayerMergeTakings? _takingOfSelection() =>
+      switch (_project.activeCutOrNull) {
+        null => null,
+        final cut => takeRowsToMergeAcross(
+          project: _project.repository.requireProject(),
+          cutId: cut.id,
+          selected: {..._rowSelection.selectedLayerIds},
+        ),
+      };
 
   /// The blocks the band holds of the rows whose timing is their own, as
   /// the comma reads them ([RangeSelections.selectionBlockStartsByLayer]).
@@ -88,8 +90,11 @@ class LayerMerging {
     final store = _renderCaches.brushFrameStore;
     return planLayerMerge(
       taking,
-      revisionOf: (layerId, frameId) => store.sourceRevisionOf(
-        _project.brushFrameKeyForCut(taking.cut, layerId, frameId),
+      readsOf: (cut) => (
+        revisionOf: (layerId, frameId) => store.sourceRevisionOf(
+          _project.brushFrameKeyForCut(cut, layerId, frameId),
+        ),
+        inkOf: (row, cel) => _renderCaches.celContentBounds(cut, row, cel),
       ),
       mintFrameId: _frameIds.mintFrameId,
       reach: _project.repository.requireProject().pasteboardReach,
@@ -120,13 +125,25 @@ class LayerMerging {
     surface,
   );
 
-  /// The rows [plan] takes made its one row, and the rows riding it with
-  /// their new cels — standing on it after; or nothing, when its cut has
-  /// changed since it was planned.
+  /// The rows [plan] takes made its one row in every cut it reaches, and
+  /// the rows riding it with their new cels — standing on it after; or
+  /// nothing, when one of its cuts has changed since it was planned.
+  ///
+  /// Every cut and the link table as ONE write and ONE undo step
+  /// ([SetCutsLayersCommand]).
   bool land(LayerMergePlan plan) {
-    if (!_lands(plan.cut, plan.layers, 'Merge layers')) {
+    final cuts = [(cut: plan.cut, layers: plan.layers), ...plan.others];
+    if (cuts.any((each) => _project.cutById(each.cut.id) != each.cut)) {
       return false;
     }
+    _project.historyManager.execute(
+      SetCutsLayersCommand(
+        repository: _project.repository,
+        layers: {for (final each in cuts) each.cut.id: each.layers},
+        links: plan.links,
+        description: 'Merge layers',
+      ),
+    );
     _rowSelection.clearRowSelection();
     _changes.refreshAfterCutCommand(preferredActiveLayerId: plan.result.id);
     _changes.notifyChanged();

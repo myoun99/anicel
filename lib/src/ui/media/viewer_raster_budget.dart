@@ -87,7 +87,9 @@ class ViewerRasterBudget {
 
   /// 🗣️It FOLLOWS the allowance (유저 2026-09-11): a new allowance is a new
   /// normal, asked on every read — so an open viewer follows too, and a
-  /// memory warning's halving holds until the allowance next moves.
+  /// memory warning's halving holds until the allowance next moves or the
+  /// app next comes back to the front (F-504 — ↩️the allowance alone until
+  /// 2026-10-29; `MemoryPressureBudget.liftEveryWarning`).
   int get byteBudget {
     final normal = _allowedNormal();
     if (normal != _normal) {

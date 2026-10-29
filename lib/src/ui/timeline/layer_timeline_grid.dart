@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../canvas/canvas_press.dart' show canvasPressButtons, canvasPressPans;
@@ -167,8 +168,15 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
   /// ruler content re-window from it (sub-cell movement rebuilds nothing).
   final ValueNotifier<int> _frameWindowBucket = ValueNotifier<int>(0);
 
-  /// The LAYER-axis twin of [_frameWindowBucket]: the leading visible ROW
-  /// index. Only the scroll body subscribes.
+  /// The LAYER-axis twin of [_frameWindowBucket]: the window the rows are
+  /// cut to ([_LayerGridScroll.standAt]'s token). Only what lays the
+  /// window's rows subscribes — the rail's rows, its selection bands and
+  /// the cells' rows ([_RowWindowCut]).
+  ///
+  /// ↩️It gated the grid's whole body under the header (frame-panels-build-
+  /// in-one-frame ④, 2026-10-29): a move kept the rows (③) and built the
+  /// ruler, the scrollbar, the viewports and the cells' layers around them
+  /// again — 119–180 elements a move.
   ///
   /// 🚨It exists because the vertical axis used to answer a row crossing
   /// with `setState(() {})` on this State — which reruns [build] from the
@@ -741,7 +749,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
   /// no logic of its own, which is why it may carry that many.
   Widget _buildFrameGridArea(
     List<TimelineDisplayRow> rows,
-    _RowWindow window,
+    _RowWindowCut window,
     TimelineRangeGestureCallbacks? rangeGesture,
     TimelineLaneRangeCallbacks? laneRange,
     double verticalContentHeight,
@@ -791,13 +799,15 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
                 contentHeight: verticalContentHeight,
                 child: TimelineFrameGridStack(
                   rowsBody: _rowBerths.counting(
-                    _buildFrameRowsBody(
-                      rows,
-                      window,
-                      rangeGesture,
-                      laneRange,
-                      totalFrameContentWidth,
-                      viewportWidth,
+                    window.laid(
+                      (window) => _buildFrameRowsBody(
+                        rows,
+                        window,
+                        rangeGesture,
+                        laneRange,
+                        totalFrameContentWidth,
+                        viewportWidth,
+                      ),
                     ),
                   ),
                   // UI-R13 #7 → I-44:
@@ -921,18 +931,13 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
                     Column(
                       children: [
                         Expanded(
-                          // 🎯The layer-axis window token gates THIS subtree
-                          // and nothing above it. A row crossing rebuilds the
-                          // scroll body; it no longer reruns `build`, whose
-                          // first act is `buildTimelineDisplayRows` over every
-                          // layer and every open lane. ⛔Keep it OUTSIDE the
-                          // LayoutBuilder: inside, the token would rebuild a
-                          // callback that a constraints change already
-                          // rebuilds, and the model above would still be gone
-                          // over per row.
-                          child: ValueListenableBuilder<int>(
-                            valueListenable: _rowWindowBucket,
-                            builder: (context, _, _) => LayoutBuilder(
+                          // 🎯The layer-axis window token gates only what
+                          // lays the window's rows ([_RowWindowCut]) — never
+                          // `build`, whose first act is
+                          // `buildTimelineDisplayRows` over every layer and
+                          // every open lane, and never this pass's frame
+                          // around the rows (④).
+                          child: LayoutBuilder(
                               builder: (context, constraints) {
                                 final headerHeight =
                                     _metrics.layerRowHeight;
@@ -1005,12 +1010,22 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
                                 // enters here — once, for both — and every
                                 // surface fed by it must be fed the SAME
                                 // list: the window's indices (the pinned row
-                                // among them) point into it.
-                                final window = _rowWindowFor(
-                                  drawnRows,
+                                // among them) point into it. Cut again
+                                // where the scroll stands each time it
+                                // carries the window — clamped as above.
+                                final window = _RowWindowCut(
                                   drawnEdges,
-                                  bodyViewportHeight,
-                                  effectiveVerticalScrollOffset,
+                                  _rowWindowBucket,
+                                  () => _rowWindowFor(
+                                    drawnRows,
+                                    drawnEdges,
+                                    bodyViewportHeight,
+                                    _scroll._effectiveVerticalScrollOffset(
+                                      requestedOffset: _verticalScrollOffset,
+                                      viewportHeight: bodyViewportHeight,
+                                      contentHeight: verticalContentHeight,
+                                    ),
+                                  ),
                                 );
                                 // I-1: the toggle columns a swipe may
                                 // paint down. Read once per pass — the
@@ -1414,7 +1429,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
                                   ],
                                 );
                               },
-                            ),
                           ),
                         ),
                         TimelineGridBottomRow(
@@ -1534,4 +1548,42 @@ class _RowWindow {
   /// grid's build ([_layRows]), and an enlarged graph stands as far as the
   /// view lets one (I-89 ③D): a resized panel is a pass of its own.
   final Object pass;
+}
+
+/// The rows' window as one lay of the grid's rows cuts it — again each
+/// time the scroll carries it ([token]), and once per carry for every
+/// surface that lays it: the rail's rows, its selection bands and the
+/// cells' rows lay ONE window.
+///
+/// 🚨Only what [laid] builds hears the token (frame-panels-build-in-one-
+/// frame ④, 2026-10-29): the pass's frame around the rows — the ruler,
+/// the scrollbar, the viewports, the cells' layers — is the pass's alone.
+final class _RowWindowCut {
+  _RowWindowCut(this.edges, this.token, this._cut);
+
+  /// Where all the rows of this lay sit — what every window is cut from.
+  final TimelineRowEdges edges;
+
+  /// Moves when the scroll carries the rows into another window.
+  final ValueListenable<int> token;
+
+  final _RowWindow Function() _cut;
+  int? _cutAt;
+  _RowWindow? _window;
+
+  /// The window where the scroll stands now.
+  _RowWindow get now {
+    if (_cutAt != token.value || _window == null) {
+      _cutAt = token.value;
+      _window = _cut();
+    }
+    return _window!;
+  }
+
+  /// [build]'s rows of the window, laid again each time it moves.
+  Widget laid(Widget Function(_RowWindow window) build) =>
+      ValueListenableBuilder<int>(
+        valueListenable: token,
+        builder: (context, _, _) => build(now),
+      );
 }

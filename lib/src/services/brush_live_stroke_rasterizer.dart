@@ -220,6 +220,18 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   final Map<int, Uint16List> _wides = <int, Uint16List>{};
   final Map<int, QaNativeTileBuffer> _nativeWides =
       <int, QaNativeTileBuffer>{};
+
+  /// Each stroke tile's SECOND plane, alpha * 65535 a pixel, where a second
+  /// tip's stroke piles (ABI 60, `qa_dual_view_rows`) — made beside the
+  /// other two for every tile of a stroke that has a second tip
+  /// ([_secondTip]), and for no other.
+  final Map<int, Uint16List> _seconds = <int, Uint16List>{};
+  final Map<int, QaNativeTileBuffer> _nativeSeconds =
+      <int, QaNativeTileBuffer>{};
+
+  /// Whether the stroke has a second tip — the first dab says so, as every
+  /// dab of such a stroke carries its view ([BrushDab.dual]).
+  bool _secondTip = false;
   final QaNativeEngine? _native = QaNativeEngine.instance;
 
   /// The C route's batch: every dab of one [blendFrom] call lands in one
@@ -237,6 +249,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
             return (
               pixels: _nativeBuffers[key]!.pointer,
               wide: _nativeWides[key]!.pointer.cast<Uint16>(),
+              second: _nativeSeconds[key]?.pointer.cast<Uint16>(),
             );
           },
         );
@@ -392,6 +405,9 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       for (final buffer in _nativeWides.values) {
         native.releaseTileBuffer(buffer);
       }
+      for (final buffer in _nativeSeconds.values) {
+        native.releaseTileBuffer(buffer);
+      }
       for (final result in _results.values) {
         final buffer = result.native;
         if (buffer != null) {
@@ -413,6 +429,9 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     _tiles.clear();
     _nativeWides.clear();
     _wides.clear();
+    _nativeSeconds.clear();
+    _seconds.clear();
+    _secondTip = false;
     _tileCoords.clear();
     _tileRevisions.clear();
     _maskTiles.clear();
@@ -1032,7 +1051,18 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       _wides[key] = Uint16List(values);
       return Uint8List(values);
     });
-    return (bytes: bytes, wide: _wides[key]!);
+    if (_secondTip && !_seconds.containsKey(key)) {
+      final levels = tileSize * tileSize;
+      final native = _native;
+      if (native != null) {
+        final second = native.acquireTileBuffer(levels * 2, zeroed: true);
+        _nativeSeconds[key] = second;
+        _seconds[key] = second.pointer.cast<Uint16>().asTypedList(levels);
+      } else {
+        _seconds[key] = Uint16List(levels);
+      }
+    }
+    return (bytes: bytes, wide: _wides[key]!, second: _seconds[key]);
   }
 
   @override
@@ -1165,6 +1195,9 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     );
     if (plan == null) {
       return null;
+    }
+    if (dab.dual != null) {
+      _secondTip = true;
     }
 
     // R21: the C kernel runs the live blend exactly like the commit —

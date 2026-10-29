@@ -43,6 +43,14 @@ class BrushSettings {
     double dualMaskScale = 1.0,
     SeparableBlendMode dualCompositeMode = SeparableBlendMode.multiply,
     double dualDensity = 1.0,
+    double dualSpacing = 0.1,
+    double dualRoundness = 1.0,
+    double dualAngleDegrees = 0.0,
+    BrushTipRotationMode dualRotationMode = BrushTipRotationMode.fixed,
+    double dualAngleJitter = 0.0,
+    double dualScatterRadiusRatio = 0.0,
+    int dualScatterCount = 1,
+    bool dualScatterBothAxes = true,
     BrushTipMask? textureMaskSource,
     bool textureInvert = false,
     double textureBrightness = 0.0,
@@ -89,6 +97,14 @@ class BrushSettings {
          dualMaskScale: dualMaskScale,
          dualCompositeMode: dualCompositeMode,
          dualDensity: dualDensity,
+         dualSpacing: dualSpacing,
+         dualRoundness: dualRoundness,
+         dualAngleDegrees: dualAngleDegrees,
+         dualRotationMode: dualRotationMode,
+         dualAngleJitter: dualAngleJitter,
+         dualScatterRadiusRatio: dualScatterRadiusRatio,
+         dualScatterCount: dualScatterCount,
+         dualScatterBothAxes: dualScatterBothAxes,
          textureMaskSource: textureMaskSource,
          textureInvert: textureInvert,
          textureBrightness: textureBrightness,
@@ -164,6 +180,16 @@ class BrushSettings {
 
   /// See [BrushShape.dualDensity].
   double get dualDensity => shape.dualDensity;
+
+  /// See [BrushShape.dualSpacing] — the second tip's way along the path.
+  double get dualSpacing => shape.dualSpacing;
+  double get dualRoundness => shape.dualRoundness;
+  double get dualAngleDegrees => shape.dualAngleDegrees;
+  BrushTipRotationMode get dualRotationMode => shape.dualRotationMode;
+  double get dualAngleJitter => shape.dualAngleJitter;
+  double get dualScatterRadiusRatio => shape.dualScatterRadiusRatio;
+  int get dualScatterCount => shape.dualScatterCount;
+  bool get dualScatterBothAxes => shape.dualScatterBothAxes;
   /// See [BrushShape.textureMaskSource] — the texture as PICKED.
   BrushTipMask? get textureMaskSource => shape.textureMaskSource;
   bool get textureInvert => shape.textureInvert;
@@ -242,6 +268,14 @@ class BrushSettings {
     double? dualMaskScale,
     SeparableBlendMode? dualCompositeMode,
     double? dualDensity,
+    double? dualSpacing,
+    double? dualRoundness,
+    double? dualAngleDegrees,
+    BrushTipRotationMode? dualRotationMode,
+    double? dualAngleJitter,
+    double? dualScatterRadiusRatio,
+    int? dualScatterCount,
+    bool? dualScatterBothAxes,
     BrushTipMask? textureMaskSource,
     bool? textureInvert,
     double? textureBrightness,
@@ -295,6 +329,15 @@ class BrushSettings {
       dualMaskScale: dualMaskScale ?? this.dualMaskScale,
       dualCompositeMode: dualCompositeMode ?? this.dualCompositeMode,
       dualDensity: dualDensity ?? this.dualDensity,
+      dualSpacing: dualSpacing ?? this.dualSpacing,
+      dualRoundness: dualRoundness ?? this.dualRoundness,
+      dualAngleDegrees: dualAngleDegrees ?? this.dualAngleDegrees,
+      dualRotationMode: dualRotationMode ?? this.dualRotationMode,
+      dualAngleJitter: dualAngleJitter ?? this.dualAngleJitter,
+      dualScatterRadiusRatio:
+          dualScatterRadiusRatio ?? this.dualScatterRadiusRatio,
+      dualScatterCount: dualScatterCount ?? this.dualScatterCount,
+      dualScatterBothAxes: dualScatterBothAxes ?? this.dualScatterBothAxes,
       textureMaskSource: textureMaskSource ?? this.textureMaskSource,
       textureInvert: textureInvert ?? this.textureInvert,
       textureBrightness: textureBrightness ?? this.textureBrightness,
@@ -363,6 +406,18 @@ class BrushSettings {
     if (withMasks && dualMask != null) 'dualMask': dualMask!.toJson(),
     'dualMaskScale': dualMaskScale,
     'dualDensity': dualDensity,
+    // ⚠️The mode had no key from v33 until the second tip became a stroke
+    // of its own: a saved brush came back multiplying.
+    if (dualCompositeMode != SeparableBlendMode.multiply)
+      'dualCompositeMode': dualCompositeMode.name,
+    'dualSpacing': dualSpacing,
+    'dualRoundness': dualRoundness,
+    'dualAngleDegrees': dualAngleDegrees,
+    'dualRotationMode': dualRotationMode.toJson(),
+    'dualAngleJitter': dualAngleJitter,
+    'dualScatterRadiusRatio': dualScatterRadiusRatio,
+    'dualScatterCount': dualScatterCount,
+    'dualScatterBothAxes': dualScatterBothAxes,
     if (withMasks && textureMaskSource != null)
       'textureMaskSource': textureMaskSource!.toJson(),
     if (textureInvert) 'textureInvert': true,
@@ -458,6 +513,22 @@ class BrushSettings {
           : BrushTipMask.fromJson(json['dualMask'] as Map<String, dynamic>),
       dualMaskScale: (json['dualMaskScale'] as num?)?.toDouble() ?? 1.0,
       dualDensity: (json['dualDensity'] as num?)?.toDouble() ?? 1.0,
+      dualCompositeMode:
+          SeparableBlendMode.forName(
+            json['dualCompositeMode'] as String? ?? '',
+          ) ??
+          SeparableBlendMode.multiply,
+      dualSpacing: (json['dualSpacing'] as num?)?.toDouble() ?? 0.1,
+      dualRoundness: (json['dualRoundness'] as num?)?.toDouble() ?? 1.0,
+      dualAngleDegrees: (json['dualAngleDegrees'] as num?)?.toDouble() ?? 0.0,
+      dualRotationMode: BrushTipRotationMode.fromJson(
+        json['dualRotationMode'],
+      ),
+      dualAngleJitter: (json['dualAngleJitter'] as num?)?.toDouble() ?? 0.0,
+      dualScatterRadiusRatio:
+          (json['dualScatterRadiusRatio'] as num?)?.toDouble() ?? 0.0,
+      dualScatterCount: json['dualScatterCount'] as int? ?? 1,
+      dualScatterBothAxes: json['dualScatterBothAxes'] as bool? ?? true,
       textureMaskSource: json['textureMaskSource'] == null
           ? null
           : BrushTipMask.fromJson(
@@ -543,22 +614,31 @@ void _validateShape(BrushShape shape) {
   _validateUnitInterval(shape.flow, 'flow');
   _validateUnitInterval(shape.hardness, 'hardness');
   _validatePositive(shape.spacing, 'spacing');
-  _validateRoundness(shape.roundness);
+  _validateRoundness(shape.roundness, 'roundness');
   _validateFinite(shape.angleDegrees, 'angleDegrees');
   _validateUnitInterval(shape.angleJitter, 'angleJitter');
   _validateNonNegativeFinite(shape.scatterRadiusRatio, 'scatterRadiusRatio');
-  if (shape.scatterCount < 1) {
+  _validateAtLeastOne(shape.scatterCount, 'scatterCount');
+  // The second tip's placement keeps the first tip's ranges: the same code
+  // reads both (`BrushShape.secondTip`).
+  _validatePositive(shape.dualSpacing, 'dualSpacing');
+  _validateRoundness(shape.dualRoundness, 'dualRoundness');
+  _validateFinite(shape.dualAngleDegrees, 'dualAngleDegrees');
+  _validateUnitInterval(shape.dualAngleJitter, 'dualAngleJitter');
+  _validateNonNegativeFinite(
+    shape.dualScatterRadiusRatio,
+    'dualScatterRadiusRatio',
+  );
+  _validateAtLeastOne(shape.dualScatterCount, 'dualScatterCount');
+  _validateAtLeastOne(shape.tipsPerTurn, 'tipsPerTurn');
+}
+
+void _validateAtLeastOne(int value, String fieldName) {
+  if (value < 1) {
     throw ArgumentError.value(
-      shape.scatterCount,
-      'scatterCount',
-      'BrushSettings.scatterCount must be at least 1.',
-    );
-  }
-  if (shape.tipsPerTurn < 1) {
-    throw ArgumentError.value(
-      shape.tipsPerTurn,
-      'tipsPerTurn',
-      'BrushSettings.tipsPerTurn must be at least 1.',
+      value,
+      fieldName,
+      'BrushSettings.$fieldName must be at least 1.',
     );
   }
 }
@@ -594,12 +674,12 @@ void _validateCorrection(double value, String name, double max) {
   }
 }
 
-void _validateRoundness(double value) {
+void _validateRoundness(double value, String fieldName) {
   if (!value.isFinite || value <= 0.0 || value > 1.0) {
     throw ArgumentError.value(
       value,
-      'roundness',
-      'BrushSettings.roundness must be finite and in (0.0, 1.0].',
+      fieldName,
+      'BrushSettings.$fieldName must be finite and in (0.0, 1.0].',
     );
   }
 }

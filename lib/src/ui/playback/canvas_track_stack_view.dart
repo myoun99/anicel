@@ -200,7 +200,7 @@ class CanvasTrackStackView extends StatelessWidget {
             key: const ValueKey<String>('canvas-track-stack-floor'),
             painter: _StageFloor(
               backdrop: backdropOnScreen((
-                color: Color(backdropArgb),
+                color: stageColorOnScreen(backdropArgb),
                 none: backdropNone,
               ), stageGroundOf(context)),
               camera: cameraViewEnabled
@@ -287,7 +287,9 @@ class CanvasTrackStackView extends StatelessWidget {
       paintLetterbox: false,
       // The apron rides the camera view: it is what the camera sees past
       // the paper.
-      pasteboardColor: under && isStage ? Color(pasteboardArgb) : null,
+      pasteboardColor: under && isStage
+          ? stageColorOnScreen(pasteboardArgb)
+          : null,
       // F-114: absent planes show the checkerboard here as on the editing
       // canvas — on screen only.
       pasteboardNone: pasteboardNone,
@@ -311,7 +313,10 @@ class CanvasTrackStackView extends StatelessWidget {
         ? painter(under: true)
         : isStage
         ? StagePlanesPainter(
-            pasteboard: (color: Color(pasteboardArgb), none: pasteboardNone),
+            pasteboard: (
+              color: stageColorOnScreen(pasteboardArgb),
+              none: pasteboardNone,
+            ),
             pasteboardReach: pasteboardReach,
             paperNone: background.none,
             canvasSize: cut.canvasSize,

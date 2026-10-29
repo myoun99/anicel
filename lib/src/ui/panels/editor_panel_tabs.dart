@@ -175,8 +175,7 @@ class EditorPanelTabDragData {
 /// switches): within the strip to reorder, and onto another group's strip
 /// to re-dock. Drop position follows the pointer (left/right half of a
 /// hovered tab inserts before/after it; the empty strip tail appends).
-/// LOCKED tabs ([EditorPanelTab.locked]) refuse to lift; [onToggleLock]
-/// puts a lock toggle for the active tab at the strip's end.
+/// LOCKED tabs ([EditorPanelTab.locked]) refuse to lift.
 class EditorPanelTabs extends StatefulWidget {
   const EditorPanelTabs({
     super.key,
@@ -194,8 +193,6 @@ class EditorPanelTabs extends StatefulWidget {
     this.onTabDragChanged,
     this.draggingTab,
     this.collapsed = false,
-    this.onToggleLock,
-    this.onCloseTab,
     this.flash,
   }) : assert(tabs.length > 0),
        assert(
@@ -278,14 +275,6 @@ class EditorPanelTabs extends StatefulWidget {
   /// exactly as it is — collapsed is not closed — and the content area
   /// switches to the active tab's collapsed form; see [PanelCollapsedScope].
   final bool collapsed;
-
-  /// Toggles a tab's drag lock (every tab button carries the toggle, left
-  /// of its name). Null hides the toggle.
-  final ValueChanged<String>? onToggleLock;
-
-  /// Closes (hides) a panel via the X on its tab. Null hides the button;
-  /// locked tabs never show it (lock = pinned).
-  final ValueChanged<String>? onCloseTab;
 
   /// The workspace's reveal channel (UI-R17 #5): when a flash request
   /// names a tab THIS group hosts, the panel body blinks to show where

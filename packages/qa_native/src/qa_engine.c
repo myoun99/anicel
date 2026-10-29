@@ -220,6 +220,9 @@ enum {
   // pixel's coverage piles is read off round_pile, and the rest sets the
   // level the stroke settles at there (qa_dab_source_alpha). v56.
   QA_DAB_FLAG_EDGE_HELD = 128,
+  // The dab is the SECOND tip's: it piles on the tile's second plane, alpha
+  // alone, and moves no byte — the view does (qa_dual_view_rows). v60.
+  QA_DAB_FLAG_SECOND = 256,
 };
 
 /* paperHeightBand (brush_stroke_blend.dart): how far above a dab's floor
@@ -231,9 +234,9 @@ enum {
 // erase never reach the stroke kernel (they ride the ordinary stamp path).
 //
 // 🚨TWO KERNELS READ THIS ONE TABLE. The stroke blend composites a whole
-// stroke against the cel; the dab kernel's DUAL MASK combines two coverages
-// (v33). They are the same separable vocabulary and the same ids, so the
-// enum and `qa_stroke_blend_channel` sit above both rather than being
+// stroke against the cel; the dual view combines a stroke's two planes
+// (v33, v60). They are the same separable vocabulary and the same ids, so
+// the enum and `qa_stroke_blend_channel` sit above both rather than being
 // written twice.
 enum {
   QA_STROKE_BLEND_BEHIND = 0,
@@ -260,7 +263,7 @@ enum {
   QA_STROKE_BLEND_DIVIDE = 19,
   // ...and the six that mix the three channels — NOT in the channel table:
   // a pixel's B is a colour of three, `qa_stroke_blend_triple`. The dual
-  // mask combines one coverage with another and never sees these.
+  // view combines one coverage with another and never sees these.
   QA_STROKE_BLEND_DARKER_COLOR = 20,
   QA_STROKE_BLEND_LIGHTER_COLOR = 21,
   QA_STROKE_BLEND_HUE = 22,
@@ -271,7 +274,7 @@ enum {
 
 static double qa_stroke_blend_channel(int32_t mode, double cs, double cd);
 
-/* How the DUAL mask combines with the coverage under it (v33).
+/* How the SECOND tip's coverage combines with the first's (v33, v60).
    [dual] is the SOURCE, [coverage] the destination.
 
    ⛔ADD IS NOT IN THE B(Cs, Cd) TABLE, in either language. Skia's `plus` is
@@ -322,11 +325,6 @@ typedef struct {
   // alone, otherwise it scales about 0.5. Ignored when the threshold flag
   // is set. v31.
   double aa_contrast;
-  /* How hard the DUAL mask bites — the same law the texture mask has had all
-     along: coverage *= one_minus + density * sample. 1.0 is the plain
-     multiply the dual mask used to do unconditionally. v32. */
-  double dual_density;
-  double dual_one_minus_density;
   int32_t source_r;
   int32_t source_g;
   int32_t source_b;
@@ -334,19 +332,7 @@ typedef struct {
   int32_t region_left;
   int32_t region_top;
   int32_t tip_size;
-  int32_t dual_size;
   int32_t tex_size;
-  /* How the DUAL mask COMBINES with the coverage under it — one of the
-     QA_STROKE_BLEND_* ids, the same fixed FFI contract the stroke kernel
-     reads. v33.
-
-     ⛔It took the `reserved` slot on purpose: same size, same offset, so
-     `qa_dab_spec_sizeof` does not move and a stale binary fails on the ABI
-     number rather than on a layout the cross-check would have to catch.
-
-     🚨QA_STROKE_BLEND_MULTIPLY is the default AND its own line in the
-     kernel — see the dual block. */
-  int32_t dual_composite_mode;
   // Tip mask (alpha pre-divided by 255, row-major size*size doubles) plus
   // the unrotated-tip axis lattices (null when the tip is rotated).
   const double* tip_alpha;
@@ -358,16 +344,6 @@ typedef struct {
   const double* tip_v_fraction;
   const double* tip_v_one_minus;
   const uint8_t* tip_v_in_range;
-  // Dual-brush tiled mask lattices (wrapped texel pairs).
-  const double* dual_alpha;
-  const int32_t* dual_u_texel0;
-  const int32_t* dual_u_texel1;
-  const double* dual_u_fraction;
-  const double* dual_u_one_minus;
-  const int32_t* dual_v_texel0;
-  const int32_t* dual_v_texel1;
-  const double* dual_v_fraction;
-  const double* dual_v_one_minus;
   // Paper-texture tiled mask lattices (canvas anchored).
   const double* tex_alpha;
   const int32_t* tex_u_texel0;
@@ -480,7 +456,7 @@ static double qa_sample_tip_lattice(
       top * s->tip_v_one_minus[v_index] + bottom * s->tip_v_fraction[v_index]);
 }
 
-// sampleBrushTipMaskTiledCoverageLattice: tiled mask (dual / texture)
+// sampleBrushTipMaskTiledCoverageLattice: the paper texture's tiled mask
 // through wrapped axis lattices.
 static double qa_sample_tiled_lattice(
     const double* alpha,
@@ -783,9 +759,99 @@ static inline int32_t qa_dab_store(
   return 0;
 }
 
+/* 🚨★★★THE SECOND TIP IS A SECOND STROKE (v60; board
+   an-imported-pencil-drops-its-second-brush Q3 b, 유저 2026-10-25 「두 번째
+   획으로 다시 만든다」). Its dabs are stamped along the same path and pile on
+   the tile's SECOND plane (alpha * 65535, QA_DAB_FLAG_SECOND); the first
+   tip's dabs pile on the 16-bit plane as any stroke's do. The BYTES are the
+   view of the two, rebuilt here over every row a batch touched: the first
+   plane's colour, and its alpha combined with the second's through the
+   tip's mode at its density. Outside the first tip's ink nothing shows — a
+   second tip lays only where both lay (Photoshop's Dual Brush, and the mask
+   brush Krita draws it with lays its mask over the WHOLE stroke). A pure
+   function of the two planes, so the order the two strokes' dabs land in
+   moves no byte, and what the stroke shows as it is drawn is what it lands.
+   ↩️Until v60 the second tip was a tiled mask over each dab, at a random
+   phase a dab: a grain inside each stamp, never a stroke of its own.
+
+   🚨THE SECOND TIP HAS A MODE (v33). Both formats say so: Clip Studio writes
+   `DualBrushCompositeMode` (the 合成モード menu index — 1 and 12 seen in the
+   wild) and Photoshop writes `dualBrush.BlnM` (eight four-char codes across
+   765 brushes).
+
+   ⛔MULTIPLY KEEPS ITS OWN LINE. The general form below is
+   `lerp(a, B(s, a), d)`, which for B = multiply is the SAME NUMBER and NOT
+   THE SAME BYTES: `a * ((1-d) + d*s)` and `a*(1-d) + d*s*a` differ in the
+   last bit of a double, and the default should be the one written plainly.
+
+   ⚠️SOURCE = THE SECOND TIP, DESTINATION = THE FIRST. Multiply is commutative
+   so nothing that exists today can tell, and the non-commutative modes are
+   REASONED, not measured: the second tip is applied over the first, so it
+   is the source. Worth a side-by-side against Clip Studio before anyone
+   builds on the order.
+
+   Returns 1 when a byte moved. */
+static int32_t qa_dual_view_rows(
+    uint8_t* tile_pixels,
+    const uint16_t* tile_wide,
+    const uint16_t* tile_second,
+    int32_t tile_size,
+    int32_t tile_left,
+    int32_t tile_top,
+    int32_t left,
+    int32_t right_exclusive,
+    int32_t top,
+    int32_t bottom_exclusive,
+    int32_t mode,
+    double density) {
+  const double one_minus_density = 1.0 - density;
+  int32_t changed = 0;
+  for (int32_t y = top; y < bottom_exclusive; y += 1) {
+    const int32_t row = (y - tile_top) * tile_size;
+    for (int32_t x = left; x < right_exclusive; x += 1) {
+      const int32_t index = row + (x - tile_left);
+      uint8_t* pixel = tile_pixels + (ptrdiff_t)index * 4;
+      const uint16_t* wide = tile_wide + (ptrdiff_t)index * 4;
+      int32_t out_r = 0;
+      int32_t out_g = 0;
+      int32_t out_b = 0;
+      int32_t out_a = 0;
+      if (wide[3] != 0) {
+        const double first = (double)wide[3] / 65535.0;
+        const double level = (double)tile_second[index] / 65535.0;
+        double alpha;
+        if (mode == QA_STROKE_BLEND_MULTIPLY) {
+          alpha = first * (one_minus_density + density * level);
+        } else {
+          alpha = first * one_minus_density +
+                  density * qa_dual_combine(mode, level, first);
+          if (alpha > 1.0) {
+            alpha = 1.0;
+          }
+        }
+        out_a = qa_round_byte(alpha * 255.0);
+        if (out_a != 0) {
+          out_r = qa_round_byte((double)wide[0] / 257.0);
+          out_g = qa_round_byte((double)wide[1] / 257.0);
+          out_b = qa_round_byte((double)wide[2] / 257.0);
+        }
+      }
+      if ((uint8_t)out_r != pixel[0] || (uint8_t)out_g != pixel[1] ||
+          (uint8_t)out_b != pixel[2] || (uint8_t)out_a != pixel[3]) {
+        pixel[0] = (uint8_t)out_r;
+        pixel[1] = (uint8_t)out_g;
+        pixel[2] = (uint8_t)out_b;
+        pixel[3] = (uint8_t)out_a;
+        changed = 1;
+      }
+    }
+  }
+  return changed;
+}
+
 // 🚨A PLAIN TIPPED DAB BLENDS TWO PIXELS AT A TIME (board `brush-kernel-next`
 // ①, 유저 2026-09-25 「1번 할 생각 있어」 — SIMD). A raster tip and a square
-// reach the kernel as a tip mask and most carry no dual or texture mask, so
+// reach the kernel as a tip mask and most carry no texture mask, so
 // this path is their brush work. ↩️A round tip rode it too, baked into a
 // mask (BrushTipStampCache), until it became its profile (v56): read
 // scalar off its two tables it costs 0.75–0.91 of what its mask did here
@@ -1098,10 +1164,13 @@ static int qa_tip_row_reach(
 // visit set and math are identical to the Dart loop (which walks rows
 // outermost; per-dab each pixel is touched exactly once either way).
 // [tile_wide] is the tile's 16-bit plane on the same grid (see
-// qa_dab_store). Returns nonzero when any destination byte changed.
+// qa_dab_store), and [tile_second] its second plane (qa_dual_view_rows) —
+// NULL for a stroke with one tip. Returns nonzero when any destination byte
+// changed.
 QA_EXPORT int32_t qa_dab_blend_tile(
     uint8_t* tile_pixels,
     uint16_t* tile_wide,
+    uint16_t* tile_second,
     int32_t tile_size,
     int32_t tile_left,
     int32_t tile_top,
@@ -1115,16 +1184,24 @@ QA_EXPORT int32_t qa_dab_blend_tile(
   const int is_round = (flags & QA_DAB_FLAG_ROUND) != 0;
   const int is_ellipse = (flags & QA_DAB_FLAG_ELLIPSE) != 0;
   const int unrotated_tip = (flags & QA_DAB_FLAG_TIP_UNROTATED) != 0;
+  const int second = (flags & QA_DAB_FLAG_SECOND) != 0;
   const int has_tip = s->tip_alpha != NULL;
-  const int has_dual = s->dual_alpha != NULL;
   const int has_tex = s->tex_alpha != NULL;
   const int aa_threshold = (flags & QA_DAB_FLAG_AA_THRESHOLD) != 0;
   const int texture_height = (flags & QA_DAB_FLAG_TEXTURE_HEIGHT) != 0;
   const double aa_contrast = s->aa_contrast;
   const int edge_held = (flags & QA_DAB_FLAG_EDGE_HELD) != 0;
   const int32_t round_row_length = (int32_t)s->round_row_length;
+  // A tile with a second plane shows its view (qa_dual_view_rows): a dab
+  // writes its planes there and no byte — the view writes those, and says
+  // which moved. The bytes a store would write go to `sink`.
+  const int viewed = tile_second != NULL;
+  uint8_t sink[4] = {0, 0, 0, 0};
+  if (second && !viewed) {
+    return 0;
+  }
 #if defined(QA_DAB_PAIRS)
-  const int pairs = has_tip && unrotated_tip && !has_dual && !has_tex;
+  const int pairs = has_tip && unrotated_tip && !has_tex && !viewed;
 #endif
   // The dab's colour on the 16-bit plane, then as bytes
   // (qa_dab_over_own_colour, qa_dab_store_own).
@@ -1246,48 +1323,6 @@ QA_EXPORT int32_t qa_dab_blend_tile(
       const double ceiling =
           edge_held && pile > coverage ? coverage / pile : 1.0;
 
-      if (has_dual) {
-        const double dual_sample = qa_sample_tiled_lattice(
-            s->dual_alpha, s->dual_size, s->dual_u_texel0, s->dual_u_texel1,
-            s->dual_u_fraction, s->dual_u_one_minus, s->dual_v_texel0,
-            s->dual_v_texel1, s->dual_v_fraction, s->dual_v_one_minus,
-            x - s->region_left, v_index);
-        /* 🚨THE DUAL TIP HAS A MODE (v33). Both formats say so: Clip Studio
-           writes `DualBrushCompositeMode` (the 合成モード menu index — 1 and
-           12 seen in the wild) and Photoshop writes `dualBrush.BlnM` (eight
-           four-char codes across 765 brushes). Ours multiplied and only
-           multiplied, so both were cut off at the same place.
-
-           ⛔MULTIPLY KEEPS ITS OWN LINE, AND THAT IS NOT AN OPTIMISATION.
-           The general form below is `lerp(coverage, B(dual, coverage), d)`,
-           which for B = multiply is the SAME NUMBER and NOT THE SAME BYTES:
-           `coverage * ((1-d) + d*sample)` and
-           `coverage*(1-d) + d*sample*coverage` differ in the last bit of a
-           double. Every brush that ever shipped multiplies, so the old
-           expression stays exactly as it was written and the new modes take
-           the new road.
-
-           ⚠️SOURCE = THE DUAL SAMPLE, DESTINATION = THE COVERAGE UNDER IT.
-           Multiply is commutative so nothing that exists today can tell,
-           and the non-commutative modes are REASONED, not measured: the
-           dual tip is the second tip applied over the first, so it is the
-           source. Worth a side-by-side against Clip Studio before anyone
-           builds on the order. */
-        if (s->dual_composite_mode == QA_STROKE_BLEND_MULTIPLY) {
-          coverage *= s->dual_one_minus_density + s->dual_density * dual_sample;
-        } else {
-          const double combined = qa_dual_combine(
-              s->dual_composite_mode, dual_sample, coverage);
-          coverage = coverage * s->dual_one_minus_density +
-                     s->dual_density * combined;
-          if (coverage > 1.0) {
-            coverage = 1.0;
-          }
-        }
-        if (coverage <= 0.0) {
-          continue;
-        }
-      }
       if (has_tex) {
         const double texture_sample = qa_sample_tiled_lattice(
             s->tex_alpha, s->tex_size, s->tex_u_texel0, s->tex_u_texel1,
@@ -1316,8 +1351,27 @@ QA_EXPORT int32_t qa_dab_blend_tile(
         continue;
       }
 
+      if (second) {
+        // The second tip's dab piles on the second plane as any dab piles
+        // over its alpha — over, never an erase — and the view shows it.
+        uint16_t* level = tile_second + local_row_offset + (x - tile_left);
+        const double under = (double)*level / 65535.0;
+        const double laid = qa_dab_source_alpha(
+            s, coverage, effective_opacity, under, ceiling, 0);
+        if (laid < 0.0) {
+          continue;
+        }
+        // qa_dab_store's alpha, the same grouping.
+        const double piled = laid + under * (1.0 - laid);
+        const uint16_t stored = (uint16_t)qa_round_wide(piled * 65535.0);
+        if (stored != *level) {
+          *level = stored;
+        }
+        continue;
+      }
+
       const ptrdiff_t at = (ptrdiff_t)(local_row_offset + (x - tile_left)) * 4;
-      uint8_t* pixel = tile_pixels + at;
+      uint8_t* pixel = viewed ? sink : tile_pixels + at;
       uint16_t* wide = tile_wide + at;
       const double destination_alpha = (double)wide[3] / 65535.0;
       const double source_alpha = qa_dab_source_alpha(
@@ -1361,7 +1415,7 @@ QA_EXPORT int32_t qa_dab_blend_tile(
       }
     }
   }
-  return changed;
+  return viewed ? 0 : changed;
 }
 
 // ---------------------------------------------------------------------------
@@ -2224,6 +2278,10 @@ typedef struct {
   // tile_pixels — what the dab kernel piles up in (qa_dab_store). Only the
   // dab batch reads it; every other kernel's spans leave it NULL.
   uint16_t* tile_wide;
+  // --- ABI 60: the stroke tile's SECOND plane, alpha * 65535 a pixel, where
+  // a second tip's dabs pile (qa_dual_view_rows). NULL for a stroke with
+  // one tip, and on every other kernel's spans.
+  uint16_t* tile_second;
 } qa_tile_span;
 
 QA_EXPORT int32_t qa_tile_span_sizeof(void) {
@@ -2547,6 +2605,10 @@ typedef struct {
   uint8_t* changed_out;
   const qa_dab_band* bands;
   uint8_t* band_changed;
+  // The view of a stroke with a second tip (qa_dual_view_rows): its mode
+  // and density, read where a span carries the second plane.
+  int32_t dual_mode;
+  double dual_density;
 } qa_dab_batch_context;
 
 // Where dab `d`'s clip meets rows [top, bottom) of `span`: the rect it
@@ -2572,7 +2634,8 @@ static int64_t qa_dab_meet(
 
 // Every dab of the call, in order, over rows [top, bottom) of one tile —
 // each where its own clip meets the tile, exactly the span it had when it
-// was a call of its own.
+// was a call of its own — and, where the tile carries a second plane, the
+// view over those rows of the span once they have all landed.
 static int32_t qa_dab_blend_rows(
     const qa_dab_batch_context* batch,
     const qa_tile_span* span,
@@ -2584,9 +2647,23 @@ static int32_t qa_dab_blend_rows(
     if (qa_dab_meet(batch, d, span, top, bottom_exclusive, meet) == 0) {
       continue;
     }
-    if (qa_dab_blend_tile(span->tile_pixels, span->tile_wide, batch->tile_size,
+    if (qa_dab_blend_tile(span->tile_pixels, span->tile_wide,
+                          span->tile_second, batch->tile_size,
                           span->tile_left, span->tile_top, meet[0], meet[2],
                           meet[1], meet[3], &batch->specs[d])) {
+      changed = 1;
+    }
+  }
+  if (span->tile_second != NULL) {
+    const int32_t from = top > span->span_top ? top : span->span_top;
+    const int32_t to = bottom_exclusive < span->span_bottom_exclusive
+                           ? bottom_exclusive
+                           : span->span_bottom_exclusive;
+    if (qa_dual_view_rows(span->tile_pixels, span->tile_wide,
+                          span->tile_second, batch->tile_size,
+                          span->tile_left, span->tile_top, span->span_left,
+                          span->span_right_exclusive, from, to,
+                          batch->dual_mode, batch->dual_density)) {
       changed = 1;
     }
   }
@@ -2664,7 +2741,8 @@ static int32_t qa_cut_dab_bands(
 // fanned across the pool. `tiles` holds each covered tile once, its span
 // the rect every dab's clip makes there together; `clips` holds four ints a
 // dab — left, top, right and bottom, exclusive — its region after the
-// pasteboard clip.
+// pasteboard clip. [dual_mode] and [dual_density] are the view of a stroke
+// with a second tip, read only where a span carries its second plane.
 QA_EXPORT void qa_dab_blend_batch(
     qa_tile_span* tiles,
     int32_t tile_count,
@@ -2672,6 +2750,8 @@ QA_EXPORT void qa_dab_blend_batch(
     const qa_dab_spec* specs,
     const int32_t* clips,
     int32_t dab_count,
+    int32_t dual_mode,
+    double dual_density,
     uint8_t* changed_out) {
   qa_dab_band bands[QA_DAB_MAX_BANDS * 2];
   uint8_t band_changed[QA_DAB_MAX_BANDS * 2];
@@ -2684,6 +2764,8 @@ QA_EXPORT void qa_dab_blend_batch(
   context.changed_out = changed_out;
   context.bands = bands;
   context.band_changed = band_changed;
+  context.dual_mode = dual_mode;
+  context.dual_density = dual_density;
 
   int64_t work = 0;
   for (int32_t t = 0; t < tile_count; t += 1) {
@@ -2824,8 +2906,8 @@ static void qa_blur_laid_tile(const qa_blur_context* c, int32_t index,
   const int32_t y1 = bottom < tile_top + s ? bottom : tile_top + s;
   memset(pixels, 0, (size_t)s * s * 4);
   memset(wide, 0, (size_t)s * s * 4 * sizeof(uint16_t));
-  qa_dab_blend_tile(pixels, wide, s, tile_left, tile_top, x0, x1, y0, y1,
-                    c->spec);
+  qa_dab_blend_tile(pixels, wide, NULL, s, tile_left, tile_top, x0, x1, y0,
+                    y1, c->spec);
   for (int32_t y = y0; y < y1; y += 1) {
     const uint16_t* from =
         wide + ((size_t)(y - tile_top) * s + (x0 - tile_left)) * 4 + 3;
@@ -3237,7 +3319,7 @@ QA_EXPORT void qa_stamp_blend_tiles(
 // span the stroke never inked reports unchanged.
 
 // The mode ids and `qa_stroke_blend_channel`'s declaration moved up beside
-// the dab spec (v33): the dab kernel's dual mask reads the same table.
+// the dab spec (v33): the dual view reads the same table.
 
 static inline int32_t qa_stroke_clamp_byte(double value) {
   return qa_round_byte(value * 255.0);
@@ -6959,4 +7041,10 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // v59: qa_key_rgba gains originals, and its keeps bitmask is restores - a
 // key gives back what its run erased of what it names (AE's Keep Colors,
 // I-132-Q2) instead of erasing what it does not name.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 59; }
+// v60: the second tip is a second stroke - QA_DAB_FLAG_SECOND dabs pile on
+// qa_tile_span's new tile_second plane, and qa_dab_blend_batch takes the
+// view's dual_mode and dual_density and rebuilds the bytes of a span that
+// carries it from both planes (qa_dual_view_rows). qa_dab_spec drops the
+// per-dab dual mask - dual_density, dual_one_minus_density, dual_size,
+// dual_composite_mode and its lattices. Sizeof moves, both structs.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 60; }

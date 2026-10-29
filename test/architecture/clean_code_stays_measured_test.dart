@@ -1177,7 +1177,19 @@ void main() {
   /// one gone. ⛔Not split to fit: each is one table — of a node's kinds,
   /// of what every row a chain's write reaches takes, of a member's copy
   /// field for field.
-  const longBodies = 416;
+  ///
+  /// ⚠️416 → 417 on 2026-10-30, two named as the rule above asks (card
+  /// an-imported-pencil-drops-its-second-brush — a brush's second tip lays
+  /// a stroke of its own, with a spacing, a turn, a roundness and a scatter
+  /// of its own, eight fields). `BrushSettings.copyWith` (64) and
+  /// `BrushToolState.clamped` (68) crossed carrying them. The reference
+  /// pile that grew a second plane was split instead (`_Pile`: the first
+  /// plane, the second, the view), and the .sut reader of a tip's way
+  /// handed its spin columns to `_spinOf`. 🔬`clean_code_diff` against
+  /// master (`ce21fca6d`, at 415) named those two added and nothing gone.
+  /// ⛔Not split to fit: each is one table — of a brush's fields, copied
+  /// or held to their ranges field for field.
+  const longBodies = 417;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
@@ -1550,7 +1562,14 @@ void main() {
   /// (`2a9750ac3`) names this one and no other class. ⛔Not split to fit:
   /// the walk is one recursion over the tree, and a node that reads rows is
   /// one more kind of node in it.
-  const longClasses = 79;
+  ///
+  /// ⚠️79 → 80 on 2026-10-30, ONE name: `HistoryManager` crossed (596 →
+  /// 601) when its dispose came to let go of its stacks too (F-505: a
+  /// closed tab's history stayed in memory whoever still held the tab) —
+  /// through `_emptyStacks`, which `clear` wrote out and now shares.
+  /// 🔬`clean_code_diff` against master (`d7cbaccdc`) names this one and
+  /// no other class. ⛔Not split to fit: the stacks are the history.
+  const longClasses = 80;
 
   late CleanCodeScan scan;
   setUpAll(() {

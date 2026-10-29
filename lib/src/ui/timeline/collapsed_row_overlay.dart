@@ -3,10 +3,12 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../../models/app_accents.dart' show AppColorMode;
 import '../../models/frame.dart' show InbetweenMark, drawingHeadOf;
 import '../canvas/flip_hud_model.dart';
 import '../text/word_condensation.dart';
 import '../theme/app_theme.dart';
+import '../theme/text_on_ground.dart' show textOnColor;
 import 'inbetween_mark_painter.dart';
 import 'layer_label_controls.dart' show layerKindIcon;
 import 'layer_rail_window.dart' show LayerRailExtent, LayerRailWindow;
@@ -640,7 +642,7 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
               maxLines: 1,
               softWrap: false,
               overflow: TextOverflow.clip,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11.5,
                 color: AppColors.text,
                 shadows: shadows,
@@ -825,13 +827,13 @@ class _CollapsedStripPainter extends CustomPainter
       // Every block the same: where you stand is the playhead's alone
       // (F-212). ↩️The block under the playhead was filled and outlined
       // in the accent.
-      canvas.drawRRect(rrect, Paint()..color = const Color(0x66E9E7E2));
+      canvas.drawRRect(rrect, Paint()..color = _plate.withAlpha(0x66));
       canvas.drawRRect(
         rrect,
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1
-          ..color = const Color(0x9EE9E7E2),
+          ..color = _plate.withAlpha(0x9E),
       );
       final head = drawingHeadOf(
         run.label,
@@ -872,7 +874,7 @@ class _CollapsedStripPainter extends CustomPainter
             firstCell: x(frame + 1) - x(frame),
           ),
           'x',
-          color: const Color(0xB8E9E7E2),
+          color: _plate.withAlpha(0xB8),
         );
       }
     }
@@ -889,7 +891,7 @@ class _CollapsedStripPainter extends CustomPainter
     Canvas canvas,
     _StripWordPlace place,
     String text, {
-    Color color = _headInk,
+    Color? color,
   }) {
     final room = place.room;
     // Its letter gaps give way first, then it narrows (F-234-Q1).
@@ -897,7 +899,7 @@ class _CollapsedStripPainter extends CustomPainter
       text,
       timelineBlockWordStyle(
         baseTextStyle,
-        ink: color,
+        ink: color ?? _headInk,
         fontSize: _labelFontSize,
         bold: false,
       ).copyWith(
@@ -936,8 +938,17 @@ class _CollapsedStripPainter extends CustomPainter
   /// The strip's type — its own size, the one law every block word keeps.
   static const double _labelFontSize = 9.5;
 
-  /// What a block's head is written in — its name, or its mark.
-  static const Color _headInk = Color(0xF2FFFFFF);
+  /// What a block's head is written in — its name, or its mark: the ink the
+  /// chrome takes, black on the light palette (I-143).
+  static Color get _headInk => textOnColor(AppColors.surface).withAlpha(0xF2);
+
+  /// A block's plate on the strip, laid at an alpha: the warm white on the
+  /// dark palette, and on the light one the dark it turns to (the mockup's,
+  /// I-143-Q3).
+  static Color get _plate => switch (AppColors.mode) {
+    AppColorMode.dark => const Color(0xFFE9E7E2),
+    AppColorMode.light => const Color(0xFF24272A),
+  };
 
   @override
   Object get props =>

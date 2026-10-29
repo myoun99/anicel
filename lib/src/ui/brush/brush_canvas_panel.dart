@@ -109,11 +109,10 @@ import '../canvas/interactive_brush_edit_canvas_view.dart';
 import '../canvas/selection_drag.dart'
     show DrawnShapePath, MarqueeDrag, drawnCopiesOf, guideCarriesOf;
 import '../../services/layer_pose_paint.dart';
-import '../../services/layer_pose_matrix.dart' show placedCorners;
+import '../../services/layer_pose_matrix.dart' show placedRectBounds;
 import 'brush_canvas_defaults.dart';
 import 'brush_tool_state.dart';
 import '../../core/dev_profile.dart';
-import '../../core/point_bounds.dart';
 import 'canvas_selection_commands.dart';
 import 'cel_text_commands.dart';
 import 'text_tool_options.dart';
@@ -2519,18 +2518,15 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (bounds == null || placement == null) {
       return bounds;
     }
-    final shown = pointsBounds([
-      for (final corner in placedCorners(
-        placement,
-        Rect.fromLTRB(
-          bounds.left.toDouble(),
-          bounds.top.toDouble(),
-          bounds.rightExclusive.toDouble(),
-          bounds.bottomExclusive.toDouble(),
-        ),
-      ))
-        Offset(corner.x, corner.y),
-    ]);
+    final shown = placedRectBounds(
+      placement,
+      Rect.fromLTRB(
+        bounds.left.toDouble(),
+        bounds.top.toDouble(),
+        bounds.rightExclusive.toDouble(),
+        bounds.bottomExclusive.toDouble(),
+      ),
+    );
     return (
       left: shown.left.floor(),
       top: shown.top.floor(),
@@ -3742,7 +3738,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// capsule's reason ([CanvasCapsule]). The transport of a document that runs
   /// is a band under them, ruled off the same way.
   List<Widget> _dockedLanes(ColorScheme colorScheme) {
-    const ring = BorderSide(color: AppColors.backdrop);
+    final ring = BorderSide(color: AppColors.backdrop);
     Widget strip(String keyValue, Border ringed, [Widget? bar]) => DecoratedBox(
       key: ValueKey<String>(keyValue),
       decoration: BoxDecoration(color: colorScheme.surface, border: ringed),
@@ -3756,7 +3752,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
         width: lane,
         child: strip(
           'canvas-panbar-vertical',
-          const Border(left: ring),
+          Border(left: ring),
           rightStripBar,
         ),
       ),
@@ -3767,7 +3763,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
         height: lane,
         child: strip(
           'canvas-panbar-horizontal',
-          const Border(top: ring),
+          Border(top: ring),
           horizontalStripBar,
         ),
       ),
@@ -3786,7 +3782,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
           height: _transportCover,
           child: strip(
             'canvas-transport',
-            const Border(top: ring),
+            Border(top: ring),
             Padding(
               padding: const EdgeInsets.only(top: _transportRule),
               child: transport.child,
@@ -4593,11 +4589,11 @@ class _StagePlanes extends StatelessWidget {
     return CustomPaint(
       painter: StagePlanesPainter(
         backdrop: backdropOnScreen((
-          color: Color(backdropArgb),
+          color: stageColorOnScreen(backdropArgb),
           none: backdropNone,
         ), stageGroundOf(context)),
         pasteboard: hasPasteboard
-            ? (color: Color(pasteboardArgb), none: pasteboardNone)
+            ? (color: stageColorOnScreen(pasteboardArgb), none: pasteboardNone)
             : null,
         pasteboardReach: pasteboardReach,
         paperNone: paperNone,

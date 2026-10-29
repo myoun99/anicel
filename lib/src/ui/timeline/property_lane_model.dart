@@ -12,6 +12,7 @@ import '../../models/se_name_tag.dart' show SeNameTag;
 import '../../models/timeline_exposure.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/timeline_run_behavior.dart';
+import '../color/color_hex.dart';
 import 'lane_graph.dart' show TimelineGraphSeat;
 import 'timeline_row_filter.dart';
 import 'timeline_section_policy.dart';
@@ -86,9 +87,8 @@ double scrubbedAngle(double degrees, Offset dragDelta) {
 /// its own lane cannot parse ([[no-copy-to-share]]). `parseArgbInput` is
 /// the other half and stays where it is, beside the commit path that has
 /// always owned it.
-String formatLaneColorValue(int? argb) => argb == null
-    ? 'none'
-    : '#${(argb & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
+String formatLaneColorValue(int? argb) =>
+    argb == null ? 'none' : colorHexOf(argb);
 
 class PropertyLaneRow {
   const PropertyLaneRow({

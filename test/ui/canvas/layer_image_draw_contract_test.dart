@@ -327,9 +327,9 @@ void main() {
 /// from its own chain, as the canvas draws its one picture.
 /// **28** on 2026-10-28 (board `I-132-Q14`, 유저 「용지(캔버스) 테두리 —
 /// 레이어 · 폴더 모두」): +2 in canvas/subtree_image_composite — a Gaussian
-/// repeating the paper's edge (`_paperEdgeDraw`). The paper is cut out of a
-/// step's raster as an image of its own (`_cutOut`, the 1:1 blit class), and
-/// that image is drawn at its place under the blur's clamp: 🔬on Impeller a
+/// repeating the paper's edge (`_Laying.cutAndBlurred`). The paper is cut out
+/// of a step's raster as an image of its own (`_cutOut`, the 1:1 blit class),
+/// and that image is drawn at its place under the blur's clamp: 🔬on Impeller a
 /// clamp repeats the edge of the image it is drawn with, and nothing of a
 /// part drawn from a larger one (10-28). Both at the identity, 1:1, owning
 /// `FilterQuality.none` on their own Paint.

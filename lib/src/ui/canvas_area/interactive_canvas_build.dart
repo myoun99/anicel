@@ -710,7 +710,7 @@ class _InteractiveCanvasBuild {
       shot: shot,
       canvasSize: _canvasSize,
       background: session.projectSettings.projectBackground,
-      pasteboardColor: Color(project.pasteboardArgb),
+      pasteboardColor: stageColorOnScreen(project.pasteboardArgb),
       pasteboardNone: project.pasteboardNone,
       pasteboardReach: project.pasteboardReach,
       // The view the frame is drawn through: the camera's, while a run

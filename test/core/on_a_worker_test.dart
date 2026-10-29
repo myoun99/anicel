@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/on_a_worker.dart';
 
@@ -80,6 +82,27 @@ void reportingFromAWorker() {
     final heard = <double>[];
 
     final answer = await onAWorkerReporting(heard.add, counting);
+
+    expect(answer, isNull, reason: 'it ran on a worker');
+    expectTheBarMoved(heard);
+  });
+
+  // 🐞F-494's own regression (10-30): the import window's listener holds the
+  // window's state, futures and all, and none of that crosses to a worker.
+  test('🎯a listener that holds what no isolate message carries — the import '
+      'window\'s, futures and all — is heard all the same: only the job '
+      'crosses', () async {
+    debugWorkersRunHere = false;
+    _marked = 'this isolate';
+    final window = Completer<void>();
+    final heard = <double>[];
+    void listener(double fraction) {
+      if (!window.isCompleted) {
+        heard.add(fraction);
+      }
+    }
+
+    final answer = await onAWorkerReporting(listener, counting);
 
     expect(answer, isNull, reason: 'it ran on a worker');
     expectTheBarMoved(heard);

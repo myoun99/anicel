@@ -342,6 +342,12 @@ void main() {
         'brush-tool-dual-scale-slider',
         'brush-tool-dual-density-slider',
         'brush-tool-dual-blend-menu-button',
+        'brush-tool-dual-roundness-slider',
+        'brush-tool-dual-angle-slider',
+        'brush-tool-dual-spacing-slider',
+        'brush-tool-dual-scatter-slider',
+        'brush-tool-dual-scatter-count-slider',
+        'brush-tool-dual-scatter-both-axes-toggle',
       ];
       const texture = [
         'brush-tool-texture-scale-slider',
@@ -423,6 +429,59 @@ void main() {
       await tester.drag(scale, const Offset(60, 0));
       await tester.pumpAndSettle();
       expect(read().dualMaskScale, greaterThan(1.0));
+    });
+
+    testWidgets("the second tip's way along the path reaches the shape", (
+      tester,
+    ) async {
+      // The first tip's rows of the same names, written to the second
+      // tip's fields — and not the first tip's.
+      final mask = BrushTipMask(
+        id: 'dual-way-test',
+        size: 2,
+        alpha: Uint8List.fromList([0, 128, 200, 255]),
+      );
+      final read = await _pumpPanel(
+        tester,
+        initial: BrushToolState.defaults.withMask(BrushMaskSlot.dual, mask),
+      );
+      final first = read().shape;
+      Future<void> drag(String key, double dx) async {
+        final row = find.byKey(ValueKey<String>(key));
+        await tester.ensureVisible(row);
+        await tester.drag(row, Offset(dx, 0));
+        await tester.pumpAndSettle();
+      }
+
+      await drag('brush-tool-dual-spacing-slider', 60);
+      await drag('brush-tool-dual-roundness-slider', -60);
+      await drag('brush-tool-dual-angle-slider', 60);
+      await drag('brush-tool-dual-scatter-slider', 60);
+      await drag('brush-tool-dual-scatter-count-slider', 60);
+      final axes = find.byKey(
+        const ValueKey<String>('brush-tool-dual-scatter-both-axes-toggle'),
+      );
+      await tester.ensureVisible(axes);
+      await tester.pressRingIn(axes);
+      await tester.pumpAndSettle();
+
+      final now = read();
+      expect(now.dualSpacing, greaterThan(first.dualSpacing));
+      expect(now.dualRoundness, lessThan(1.0));
+      expect(now.dualAngleDegrees, isNot(0.0));
+      expect(now.dualScatterRadiusRatio, greaterThan(0));
+      expect(now.dualScatterCount, greaterThan(1));
+      expect(now.dualScatterBothAxes, isFalse);
+      expect(
+        (now.spacing, now.roundness, now.angleDegrees, now.scatterCount),
+        (
+          first.spacing,
+          first.roundness,
+          first.angleDegrees,
+          first.scatterCount,
+        ),
+        reason: "the first tip's own stay put",
+      );
     });
 
     testWidgets('the dual BLEND is pickable, and it is a row like the others',

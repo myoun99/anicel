@@ -334,7 +334,8 @@ class PanelFlyoutItem extends PanelFlyoutEntry {
 
 /// One [PanelFlyoutItem] per value, keyed `'$keyPrefix${value.name}'` —
 /// the enum spelling of [PanelFlyoutValueChoices.asFlyoutValueChoices],
-/// whose key is the value's own name.
+/// whose key is the value's own name — wearing [iconOf]'s glyph where a
+/// value has a face.
 ///
 /// An extension on the values because they ARE the subject:
 /// `BrushBlendMode.values.asFlyoutChoices(…)` reads as what it builds.
@@ -344,11 +345,13 @@ extension PanelFlyoutChoices<T extends Enum> on Iterable<T> {
     required String keyPrefix,
     required String Function(T value) labelOf,
     required ValueChanged<T> onPicked,
+    IconData Function(T value)? iconOf,
   }) => asFlyoutValueChoices(
     current: current,
     choiceOf: (value) => PanelFlyoutChoice(
       key: '$keyPrefix${value.name}',
       label: labelOf(value),
+      icon: iconOf?.call(value),
     ),
     onPicked: onPicked,
   );
@@ -576,6 +579,7 @@ Future<void> showPanelFlyout(
     position: position,
     // Instant open/close (R4 #2): the whole list appears in one frame.
     popUpAnimationStyle: instantMenuAnimation,
+    constraints: _MenuWidth.rows,
     items: [
       for (final entry in entries)
         switch (entry) {
@@ -593,7 +597,7 @@ Future<void> showPanelFlyout(
                   Expanded(
                     child: Text(
                       label,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 10,
                         color: AppColors.textDim,
                       ),
@@ -632,7 +636,7 @@ Future<void> showPanelFlyout(
                   if (label != null) ...[
                     Text(
                       label,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
                         color: AppColors.textDim,
                       ),
@@ -835,14 +839,17 @@ Widget _warnedBelow(PanelFlyoutItem entry, Widget row) {
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       row,
-      Padding(
-        padding: flyoutRowPadding.copyWith(bottom: 6),
-        child: Text(
-          warning,
-          style: const TextStyle(
-            fontSize: 11,
-            height: _warningLineHeight / 11,
-            color: AppColors.danger,
+      ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: _MenuWidth.warningReach),
+        child: Padding(
+          padding: flyoutRowPadding.copyWith(bottom: 6),
+          child: Text(
+            warning,
+            style: TextStyle(
+              fontSize: 11,
+              height: _warningLineHeight / 11,
+              color: AppColors.danger,
+            ),
           ),
         ),
       ),
@@ -1085,8 +1092,6 @@ class _SubmenuLayer extends StatelessWidget {
   final EditorShortcutBindings? bindings;
   final ValueChanged<PanelFlyoutItem> onPicked;
 
-  static const double _width = 200;
-
   /// How far a level stays inside the window — the PARENT's inset.
   ///
   /// The parent list is Material's menu, which lays itself out 8px inside
@@ -1145,12 +1150,6 @@ class _SubmenuLayer extends StatelessWidget {
       0.0,
       (overlaySize.height - 2 * _screenMargin).clamp(0.0, double.infinity),
     );
-    // Flush against the parent's right edge, its first row level with the
-    // row that opened it — and folded back to the parent's LEFT when there
-    // is no room, which is what every submenu does at a screen edge.
-    final left = request.anchor.right + _width <= overlaySize.width
-        ? request.anchor.right
-        : request.anchor.left - _width;
     final top = (request.anchor.top - 8).clamp(
       _screenMargin,
       (overlaySize.height - shown - _screenMargin).clamp(
@@ -1158,10 +1157,9 @@ class _SubmenuLayer extends StatelessWidget {
         double.infinity,
       ),
     );
-    return Positioned(
-      left: left,
+    return _BesideItsRow(
+      anchor: request.anchor,
       top: top,
-      width: _width,
       height: shown,
       child: Material(
         // ⛔THE SHARED popup surface, not a colour of its own. Naming
@@ -1185,7 +1183,7 @@ class _SubmenuLayer extends StatelessWidget {
                       alignment: Alignment.centerLeft,
                       child: Text(
                         label,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 10,
                           color: AppColors.textDim,
                         ),
@@ -1240,6 +1238,95 @@ class _SubmenuLayer extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A level [height] tall, as wide as its longest row ([_MenuWidth]), standing
+/// where [_BesideItsRowLayout] puts it once that width is known.
+class _BesideItsRow extends StatelessWidget {
+  const _BesideItsRow({
+    required this.anchor,
+    required this.top,
+    required this.height,
+    required this.child,
+  });
+
+  final Rect anchor;
+  final double top;
+  final double height;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Positioned.fill(
+    child: CustomSingleChildLayout(
+      delegate: _BesideItsRowLayout(anchor: anchor, top: top),
+      child: SizedBox(
+        height: height,
+        child: ConstrainedBox(
+          constraints: _MenuWidth.rows,
+          child: IntrinsicWidth(stepWidth: _MenuWidth.step, child: child),
+        ),
+      ),
+    ),
+  );
+}
+
+/// Where a level stands once its width is known: flush against the parent's
+/// right edge, its first row level with the row that opened it — and folded
+/// back to the parent's LEFT when there is no room, which is what every
+/// submenu does at a screen edge. Where neither side has room it stays
+/// inside the window, over the list: a level as wide as its words can be
+/// wider than either side, and folded past the left edge it stood off the
+/// window (the panels drawer at 800×600, 10-29).
+class _BesideItsRowLayout extends SingleChildLayoutDelegate {
+  const _BesideItsRowLayout({required this.anchor, required this.top});
+
+  final Rect anchor;
+  final double top;
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
+      BoxConstraints(
+        maxWidth: (constraints.maxWidth - 2 * _SubmenuLayer._screenMargin)
+            .clamp(0.0, double.infinity),
+        maxHeight: constraints.maxHeight,
+      );
+
+  @override
+  Offset getPositionForChild(Size size, Size childSize) {
+    const margin = _SubmenuLayer._screenMargin;
+    final last = size.width - margin - childSize.width;
+    final beside = anchor.right <= last
+        ? anchor.right
+        : anchor.left - childSize.width;
+    return Offset(
+      beside.clamp(margin, last.clamp(margin, double.infinity)),
+      top,
+    );
+  }
+
+  @override
+  bool shouldRelayout(_BesideItsRowLayout oldDelegate) =>
+      oldDelegate.anchor != anchor || oldDelegate.top != top;
+}
+
+/// 🗣️fr-zh-strings-fall-back-to-english-Q2 (권고 a — 「가장 긴 줄만큼, 창
+/// 안에서」): a menu is as wide as its longest row, and the window is its
+/// only bound. Material's 280 cut 「Keyboard shortcuts  Ctrl+Alt+Shift+K」
+/// in English, Japanese and French alike, and the submenu's fixed 200 cut
+/// four rows of the panels drawer in English — neither number was anyone's
+/// choice (guide-shot census 2026-10-29: 20 English labels cut, 39 French).
+///
+/// Both levels round as Material's list does (`_kMenuWidthStep` ·
+/// `_kMenuMinWidth`, private to `popup_menu.dart`), so the two cannot
+/// disagree about how wide a row is.
+abstract final class _MenuWidth {
+  static const double step = 56;
+  static const BoxConstraints rows = BoxConstraints(minWidth: 2 * step);
+
+  /// How far a warning's sentence may widen its list — Material's old cap
+  /// (`_kMenuMaxWidth`): a warned row wraps where it always has, in the two
+  /// lines [_entryHeight] counts, instead of stretching the list to one.
+  static const double warningReach = 5 * step;
 }
 
 Widget _itemBody(
@@ -1638,7 +1725,8 @@ class PanelFlyoutChip extends StatelessWidget {
             children: [
               if (glyph != null) ...[
                 Icon(glyph, size: 16, color: labelStyle.color),
-                alongBox(axis, 6),
+                // A glyph with no words stands where they would (F-497).
+                if (label.isNotEmpty) alongBox(axis, 6),
               ],
               if (expand) Flexible(child: text) else text,
             ],

@@ -10,6 +10,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/cache_budgets.dart';
 import 'package:flutter/painting.dart' show ImageCache;
 
+import '../../helpers/poll_until.dart';
+
 /// The memory tab's allowance (유저 2026-09-11): 「RAM/8얘기는 그걸 바탕으로
 /// 정해진다던가?」 — every cache budget follows it, and the automatic one is
 /// exactly what the app did before anyone could choose.
@@ -192,6 +194,36 @@ void main() {
       greaterThanOrEqualTo(CacheBudgets.floors.total),
       reason: 'never under the least the app runs on',
     );
+  });
+
+  /// F-504: the line rising is room a resting warmer did not have. The user
+  /// saw twenty frames go green after moving the allowance — while it
+  /// played, when the playhead moving wakes the walk anyway; a line that
+  /// rose while nothing played was waiting for the next move.
+  testWidgets('a moved allowance has the playback warmer look again', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final session = newSession();
+      final scheduler = session.playbackRig.prerenderScheduler;
+      var rests = 0;
+      scheduler.changes.addListener(() => rests += 1);
+      session.warmActiveCut();
+      await patiently(scheduler.idle);
+      expect(rests, greaterThan(0), reason: 'premise: the walk came to rest');
+      final before = rests;
+
+      AppMemory.settings.value = AppMemorySettings(
+        allowanceBytes: session.deviceCacheBudgets.total * 2,
+      );
+      await patiently(scheduler.idle);
+
+      expect(
+        rests,
+        greaterThan(before),
+        reason: 'a walk resting for want of room waits for something to move',
+      );
+    });
   });
 
   test('a disposed session stops listening', () {

@@ -6,8 +6,10 @@
 /// 그거만 제대로 구현해도 좋아」 — so what goes over the wire is exactly what
 /// the official SDKs send (aptabase_flutter 0.5.0, aptabase-python): the
 /// region from the App Key, the `App-Key` header, a JSON array of events,
-/// and a session id that lives in memory and turns over after an hour with
-/// no event. ⛔Not their package: aptabase_flutter reads the device and the
+/// and a session id — turned over 55 minutes after it began, not after
+/// their hour with no event ([AptabaseClient.sessionLasts]), and kept
+/// across a reopen, which theirs is not ([AptabaseClient.resume]). ⛔Not
+/// their package: aptabase_flutter reads the device and the
 /// build again through device_info_plus and package_info_plus — a second
 /// reader beside [DeviceDescriptions] (I-139) and [buildNumber], which is a
 /// copy (CLAUDE.md 절대명령 1 · 4) — and brings shared_preferences and
@@ -41,6 +43,10 @@ typedef AptabaseEvent = ({String name, Map<String, Object> props});
 /// moment and its session fixed when it happened, so one that waits on the
 /// device for a later send keeps both.
 typedef AptabaseStamped = Map<String, Object?>;
+
+/// A session as a run leaves it: its id and when it began
+/// ([AptabaseClient.resume]).
+typedef AptabaseSession = ({String id, DateTime startedAt});
 
 /// The network half: POSTs [body] to [endpoint] under [appKey] and answers
 /// the response's status code. A test hands one in — no test reaches the
@@ -100,23 +106,69 @@ final class AptabaseClient {
     return host == null ? null : Uri.https(host, '/api/v0/events');
   }
 
-  /// How long a session lasts with no event in it: the SDKs' own
-  /// (aptabase_flutter `_sessionTimeout`).
-  static const Duration sessionTimeout = Duration(hours: 1);
+  /// How long a session takes events after it began: the first event past
+  /// it begins the next — and the app's `in_use` comes due then
+  /// (`UsageStats`), so a run in front is a new session every 55 minutes.
+  ///
+  /// ⚖️A SESSION LASTS 55 MINUTES AT MOST (유저 2026-10-29 22시대, I-70-Q13
+  /// b: 「그럼 b로하자 … 중요한건 하루몇대, 실시간사용중 수」): Aptabase's
+  /// Live view lists the sessions that BEGAN within the last hour (its
+  /// server's `live_sessions__v1.pipe` and `live_geo__v1.pipe`: `HAVING
+  /// StartedAt >= now() - interval 1 hour`), so a session held for as long
+  /// as the app was used showed in Live for its first hour alone. Begun
+  /// again before the hour is out, a device in use is always in Live — the
+  /// pros' real-time, whoever was active lately. How many devices a day is
+  /// the `day`'s count, not Aptabase's users (its user is the connection's
+  /// IP, made again each session).
+  ///
+  /// ↩️It was the SDKs' rule — a new session after an hour with no event
+  /// (aptabase_flutter `_sessionTimeout`) — with an `in_use` every 55
+  /// minutes to keep a run in front ONE session (I-70-Q5, 유저 10-29 11시:
+  /// 「켠 동안 한 세션」). An hour with no event is past 55 minutes from the
+  /// start too, so that rule had nothing left to say, and went.
+  ///
+  /// 🗣️The `in_use`: 유저 2026-10-29, 「1시간마다」 over 30 minutes. ↩️55,
+  /// not 60 (asked again at Q13: 「1시간마다는 안좋던가」): at 60 a session
+  /// leaves Live the moment the next is due, and a timer that fires late or
+  /// a send still on its way blinks the device out; five minutes keep it
+  /// in, for about 9% more events.
+  static const Duration sessionLasts = Duration(minutes: 55);
 
   late String _sessionId;
-  DateTime? _lastEventAt;
+  DateTime? _startedAt;
 
-  /// The session [now] belongs to — the one before it unless that saw no
-  /// event for longer than [sessionTimeout]. Held in memory only: a new run
-  /// is a new session.
+  /// The session [now] belongs to — the one before it unless that began
+  /// [sessionLasts] ago or more.
+  ///
+  /// ↩️IT OUTLIVES THE RUN (유저 2026-10-29 20:5x, I-70-Q10: 「1시간 안에
+  /// 다시 열면 같은 세션」): Aptabase makes its user from the connection's
+  /// IP and User-Agent once a session and keeps it on that session, so an
+  /// app closed and opened again began a new session — and a new person,
+  /// whenever the IP had turned over meanwhile. It was held in memory
+  /// only, as the SDKs hold it; now a run keeps it ([session]) and the next
+  /// goes on in it ([resume]) — within its [sessionLasts], since Q13. Still
+  /// no id beyond the session's.
   String _sessionAt(DateTime now) {
-    final last = _lastEventAt;
-    if (last == null || now.difference(last) > sessionTimeout) {
+    final began = _startedAt;
+    if (began == null || now.difference(began) >= sessionLasts) {
       _sessionId = _newSessionId(now);
+      _startedAt = now;
     }
-    _lastEventAt = now;
     return _sessionId;
+  }
+
+  /// The session the last event was stamped in and when it began — null
+  /// before any event.
+  AptabaseSession? get session {
+    final began = _startedAt;
+    return began == null ? null : (id: _sessionId, startedAt: began);
+  }
+
+  /// Goes on in [kept], a session an earlier run left: the next event joins
+  /// it unless [sessionLasts] have passed since it began ([_sessionAt]).
+  void resume(AptabaseSession kept) {
+    _sessionId = kept.id;
+    _startedAt = kept.startedAt;
   }
 
   /// The SDKs' id: the epoch in seconds, eight random digits after it.
@@ -148,14 +200,16 @@ final class AptabaseClient {
     }
   }
 
+  /// The device's product model, as [stamp]'s systemProps say it — for the
+  /// day's own chips (`UsageStats`).
+  String get deviceModel => _describe().model;
+
   /// [events] as of [now], as they go over the wire: the app speaking
-  /// [locale] on a device set to [osLocale], in the session [now] belongs
-  /// to.
+  /// [locale], in the session [now] belongs to, each with its own props.
   List<AptabaseStamped> stamp(
     List<AptabaseEvent> events, {
     required DateTime now,
     required String locale,
-    required String osLocale,
   }) {
     final device = _describe();
     final timestamp = now.toUtc().toIso8601String();
@@ -178,10 +232,9 @@ final class AptabaseClient {
       'appBuildNumber': build,
       'sdkVersion': 'anicel@$build',
     };
-    // ⚖️THE DEVICE'S LANGUAGE IS A PROP OF EVERY EVENT (유저 2026-10-29
-    // 09:1x): `locale` stays the program language, as it was, and the
-    // device's own goes beside it — the SDKs have no system prop for a
-    // second language, so it is ours, under `osLocale`, on every event.
+    // ⚖️THE SYSTEMPROPS RIDE EVERY EVENT, AS THE SDKs SEND THEM — the
+    // envelope Aptabase reads each event by. The chips that say the same
+    // where its dashboard draws them are the day's own (`UsageStats`).
     return [
       for (final event in events)
         {
@@ -189,7 +242,7 @@ final class AptabaseClient {
           'sessionId': sessionId,
           'eventName': event.name,
           'systemProps': systemProps,
-          'props': {...event.props, 'osLocale': osLocale},
+          'props': event.props,
         },
     ];
   }

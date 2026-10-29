@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/onion_skin_settings.dart';
 import 'package:anicel/src/ui/panels/onion_skin_panel.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
 import '../helpers/vertical_text_finder.dart';
@@ -296,6 +299,60 @@ void main() {
     expect(read().placement, OnionSkinPlacement.onTop);
     expect(find.text('On top'), findsOneWidget);
     expect(read().beforePegs.first.opacity, 0.4, reason: 'the falloff stays');
+  });
+
+  // onion-panel-speaks-english (관제 10-28): the pickers and the pegs'
+  // tooltips were English words in every language — 「한국어 · 일본어
+  // 화면에서도」.
+  testWidgets('the pickers and the pegs speak the program\'s language', (
+    tester,
+  ) async {
+    AppText.settings.value = const AppLanguageSettings(
+      programLanguage: AppLanguage.ko,
+      notationLanguage: AppLanguage.ko,
+    );
+    addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+    await pumpPanel(tester);
+
+    expect(find.text('블록'), findsOneWidget);
+    expect(find.text('색'), findsOneWidget);
+    expect(find.text('제자리'), findsOneWidget);
+    final peg1 = find.byKey(const ValueKey<String>('onion-peg-before-1'));
+    expect(tester.widget<AppTooltip>(peg1).message, '이전 1');
+    await tester.tap(pegSwitch('before', 1));
+    await tester.pumpAndSettle();
+    expect(tester.widget<AppTooltip>(peg1).message, '이전 1 · 끔');
+
+    await tester.tap(find.byKey(const ValueKey<String>('onion-step-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('블록(그림)'), findsOneWidget);
+    expect(find.text('프레임'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey<String>('onion-step-frames')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<String>('onion-mode-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<String>('onion-mode-images')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('onion-placement-button')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('onion-placement-onTop')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('프레임'), findsOneWidget);
+    expect(find.text('그림'), findsOneWidget);
+    expect(find.text('맨 위'), findsOneWidget);
+    expect(find.text('이후 1'), findsNothing, reason: 'a tooltip, not text');
+    expect(
+      tester
+          .widget<AppTooltip>(
+            find.byKey(const ValueKey<String>('onion-peg-after-1')),
+          )
+          .message,
+      '이후 1',
+    );
   });
 
   testWidgets('at the minimum dock width the strip still lays out — the '

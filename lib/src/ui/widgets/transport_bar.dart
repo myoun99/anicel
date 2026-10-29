@@ -244,7 +244,7 @@ class TransportBar extends StatelessWidget {
           ),
         ),
         if (range != null) ...[
-          const SizedBox(
+          SizedBox(
             height: 1,
             child: ColoredBox(color: AppColors.hairline),
           ),

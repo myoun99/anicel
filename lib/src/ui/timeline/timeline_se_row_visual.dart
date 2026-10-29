@@ -24,6 +24,7 @@ import '../text/dialogue_fit_paint.dart' show dialogueLongestGlyph;
 import '../text/app_strings.dart' show AppText;
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
+import '../theme/text_on_ground.dart' show textOnColor;
 import 'dialogue_fit_text.dart';
 import 'se_crossing_mark_painter.dart';
 import 'timeline_block_look.dart' show timelineRowLookOf;
@@ -407,6 +408,13 @@ const double timelineBlockWarningBarThickness = 2;
 /// ↩️It was an 11px red triangle in the block's top-right corner, which is
 /// where the end edge's own triangle sits now (and, on the X-sheet, the start
 /// edge's): two marks in one corner.
+///
+/// 🗣️F-495 (유저 2026-10-28: 「이유가 뭔지 모르겠으니 블록에 호버하면 툴팁
+/// 띄우도록」): the hover that says why is the WHOLE BLOCK's — the line only
+/// shows it. ↩️The tooltip was the line's own box, 2px across, which no
+/// pointer finds. It summons on the hover alone: a long press on a block is
+/// the block's drag, and a tooltip's recognizer would take that press from
+/// it in the arena (the panel tabs' tooltip, for the same reason).
 Widget timelineBlockWarningBar({
   required int blockStart,
   required int blockEndExclusive,
@@ -420,18 +428,26 @@ Widget timelineBlockWarningBar({
     placement: TimelineFrameSpanPlacement(
       startIndex: blockStart,
       endIndexExclusive: blockEndExclusive,
-      crossExtent: timelineBlockWarningBarThickness,
     ),
     child: KeyedSubtree(
       key: markerKey,
       child: AppTooltip(
         message: tooltip,
-        child: CustomPaint(
-          painter: _WarningBarPainter(
-            color: color,
-            axis: axis,
-            frameCount: blockEndExclusive - blockStart,
-            crossAxisExtent: crossAxisExtent,
+        triggerMode: TooltipTriggerMode.manual,
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: sizedAlong(
+            axis,
+            along: double.infinity,
+            across: timelineBlockWarningBarThickness,
+            child: CustomPaint(
+              painter: _WarningBarPainter(
+                color: color,
+                axis: axis,
+                frameCount: blockEndExclusive - blockStart,
+                crossAxisExtent: crossAxisExtent,
+              ),
+            ),
           ),
         ),
       ),
@@ -855,8 +871,10 @@ final class _SeSpanFit {
   /// 텍스트/규칙 … 이름 오른쪽에 검정색으로」).
   Color deliveryInk() => _inkAt(_head.deliveryFrom);
 
+  // The white before the block is the ink the row's chrome takes — black
+  // on the light palette (I-143).
   Color _inkAt(double from) =>
-      from < 0 ? timelineTextOnDarkGroundColor : style.color!;
+      from < 0 ? textOnColor(AppColors.surface) : style.color!;
 
   /// Where the head's words stand along [size]: the name's chip where
   /// [seNameChipPlace] says — just before the block, or at the head the

@@ -27,12 +27,20 @@ void main() {
     group('${kind.label}: $parameter', () {
       final lane = effectLaneId(id, parameter);
 
-      LayerEffect effect({Map<int, PropertyKey<int>> keys = const {}}) =>
-          LayerEffect(
-            id: id,
-            kind: kind,
-            colors: {parameter: PropertyTrack<int>(keys: keys)},
-          );
+      LayerEffect effect({
+        Map<int, PropertyKey<int>> keys = const {},
+        bool changesPixels = false,
+      }) => LayerEffect(
+        id: id,
+        kind: kind,
+        colors: {parameter: PropertyTrack<int>(keys: keys)},
+        // One the chain holds: a key of no amount changes no pixel, and the
+        // resolver drops it (EffectKind.strength).
+        parameters: {
+          if (kind.strength case final strength? when changesPixels)
+            strength: EffectParameter(value: 100),
+        },
+      );
 
       PropertyKey<int> key(int argb, {String? name}) =>
           PropertyKey(argb, name: name);
@@ -76,7 +84,7 @@ void main() {
       test('a colour picked keys it at the playhead, and the chain reads it '
           'there', () {
         final picked = effectsWithLaneValueEdited(
-          [effect()],
+          [effect(changesPixels: true)],
           laneId: lane,
           frameIndex: 3,
           input: formatLaneColorValue(red),
@@ -107,7 +115,10 @@ void main() {
       test('between two keys it walks channel by channel, not as a number',
           () {
         final effects = [
-          effect(keys: {0: key(black), 10: key(0xFFFFFFFF)}),
+          effect(
+            keys: {0: key(black), 10: key(0xFFFFFFFF)},
+            changesPixels: true,
+          ),
         ];
         final halfway = resolveLayerEffectsAt(
           effects: effects,

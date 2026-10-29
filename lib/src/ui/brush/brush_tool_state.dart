@@ -343,6 +343,14 @@ class BrushToolState {
     double dualMaskScale = 1.0,
     double dualDensity = 1.0,
     SeparableBlendMode dualCompositeMode = SeparableBlendMode.multiply,
+    double dualSpacing = 0.1,
+    double dualRoundness = 1.0,
+    double dualAngleDegrees = 0.0,
+    BrushTipRotationMode dualRotationMode = BrushTipRotationMode.fixed,
+    double dualAngleJitter = 0.0,
+    double dualScatterRadiusRatio = 0.0,
+    int dualScatterCount = 1,
+    bool dualScatterBothAxes = true,
     BrushTipMask? textureMaskSource,
     bool textureInvert = false,
     double textureBrightness = 0.0,
@@ -391,6 +399,14 @@ class BrushToolState {
       dualMaskScale: dualMaskScale,
       dualDensity: dualDensity,
       dualCompositeMode: dualCompositeMode,
+      dualSpacing: dualSpacing,
+      dualRoundness: dualRoundness,
+      dualAngleDegrees: dualAngleDegrees,
+      dualRotationMode: dualRotationMode,
+      dualAngleJitter: dualAngleJitter,
+      dualScatterRadiusRatio: dualScatterRadiusRatio,
+      dualScatterCount: dualScatterCount,
+      dualScatterBothAxes: dualScatterBothAxes,
       textureMaskSource: textureMaskSource,
       textureInvert: textureInvert,
       textureBrightness: textureBrightness,
@@ -502,6 +518,14 @@ class BrushToolState {
     double? dualMaskScale,
     double? dualDensity,
     SeparableBlendMode? dualCompositeMode,
+    double? dualSpacing,
+    double? dualRoundness,
+    double? dualAngleDegrees,
+    BrushTipRotationMode? dualRotationMode,
+    double? dualAngleJitter,
+    double? dualScatterRadiusRatio,
+    int? dualScatterCount,
+    bool? dualScatterBothAxes,
     BrushTipMask? textureMaskSource,
     bool? textureInvert,
     double? textureBrightness,
@@ -559,6 +583,14 @@ class BrushToolState {
         dualDensity: dualDensity ?? 1.0,
         dualCompositeMode:
             dualCompositeMode ?? SeparableBlendMode.multiply,
+        dualSpacing: dualSpacing ?? 0.1,
+        dualRoundness: dualRoundness ?? 1.0,
+        dualAngleDegrees: dualAngleDegrees ?? 0.0,
+        dualRotationMode: dualRotationMode ?? BrushTipRotationMode.fixed,
+        dualAngleJitter: dualAngleJitter ?? 0.0,
+        dualScatterRadiusRatio: dualScatterRadiusRatio ?? 0.0,
+        dualScatterCount: dualScatterCount ?? 1,
+        dualScatterBothAxes: dualScatterBothAxes ?? true,
         textureMaskSource: textureMaskSource,
         textureInvert: textureInvert ?? false,
         textureBrightness: textureBrightness ?? 0.0,
@@ -611,6 +643,12 @@ class BrushToolState {
     dualMaskScale: clampDualMaskScale(s.dualMaskScale),
     dualDensity: clampZeroToOne(s.dualDensity),
     dualCompositeMode: s.dualCompositeMode,
+    dualSpacing: clampSpacing(s.dualSpacing),
+    dualRoundness: clampRoundness(s.dualRoundness),
+    dualAngleDegrees: clampAngleDegrees(s.dualAngleDegrees),
+    dualAngleJitter: clampZeroToOne(s.dualAngleJitter),
+    dualScatterRadiusRatio: clampScatterRadius(s.dualScatterRadiusRatio),
+    dualScatterCount: clampScatterCount(s.dualScatterCount),
     textureScale: clampDualMaskScale(s.textureScale),
     textureDensity: clampZeroToOne(s.textureDensity),
     textureBrightness: clampSignedUnit(s.textureBrightness),
@@ -736,6 +774,16 @@ class BrushToolState {
 
   /// See [BrushShape.dualCompositeMode].
   SeparableBlendMode get dualCompositeMode => shape.dualCompositeMode;
+
+  /// See [BrushShape.dualSpacing] — the second tip's way along the path.
+  double get dualSpacing => shape.dualSpacing;
+  double get dualRoundness => shape.dualRoundness;
+  double get dualAngleDegrees => shape.dualAngleDegrees;
+  BrushTipRotationMode get dualRotationMode => shape.dualRotationMode;
+  double get dualAngleJitter => shape.dualAngleJitter;
+  double get dualScatterRadiusRatio => shape.dualScatterRadiusRatio;
+  int get dualScatterCount => shape.dualScatterCount;
+  bool get dualScatterBothAxes => shape.dualScatterBothAxes;
   /// What the PICKER shows — the texture as chosen, before the levels.
   BrushTipMask? get textureMaskSource => shape.textureMaskSource;
   bool get textureInvert => shape.textureInvert;
@@ -1187,6 +1235,14 @@ class BrushToolState {
     double? dualMaskScale,
     double? dualDensity,
     SeparableBlendMode? dualCompositeMode,
+    double? dualSpacing,
+    double? dualRoundness,
+    double? dualAngleDegrees,
+    BrushTipRotationMode? dualRotationMode,
+    double? dualAngleJitter,
+    double? dualScatterRadiusRatio,
+    int? dualScatterCount,
+    bool? dualScatterBothAxes,
     BrushTipMask? textureMaskSource,
     bool? textureInvert,
     double? textureBrightness,
@@ -1249,6 +1305,14 @@ class BrushToolState {
           dualMaskScale: dualMaskScale,
           dualDensity: dualDensity,
           dualCompositeMode: dualCompositeMode,
+          dualSpacing: dualSpacing,
+          dualRoundness: dualRoundness,
+          dualAngleDegrees: dualAngleDegrees,
+          dualRotationMode: dualRotationMode,
+          dualAngleJitter: dualAngleJitter,
+          dualScatterRadiusRatio: dualScatterRadiusRatio,
+          dualScatterCount: dualScatterCount,
+          dualScatterBothAxes: dualScatterBothAxes,
           // 🚨THE ARGUMENTS, NOT THIS STATE'S TEXTURE (board
           // `a-brush-picked-wears-the-texture-of-the-one-before`, 유저
           // 2026-10-01 「초기화가 설마 텍스처항목은 초기화안하나?」). Since G5

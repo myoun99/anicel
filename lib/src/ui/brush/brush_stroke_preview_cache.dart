@@ -21,6 +21,8 @@ import '../../services/brush_dab_share.dart';
 import '../../services/brush_dab_tip_geometry.dart';
 import '../../services/brush_pixel_blend.dart';
 import '../../services/brush_pressure_dynamics.dart';
+import '../../services/brush_second_stroke.dart';
+import '../../services/brush_stroke_blend.dart' show dualViewLevel;
 import '../../services/brush_stroke_dynamics.dart';
 import '../../services/brush_tip_stamp_cache.dart';
 import 'brush_tool_state.dart';
@@ -490,6 +492,9 @@ Uint8List rasterizeBrushStrokeSample(
   int height,
 ) {
   final accumulated = Float64List(width * height);
+  // A brush with a second tip draws a second stroke, on a plane of its own.
+  final second = BrushSecondStroke.of(settings.shape, random: math.Random(1));
+  final levels = second == null ? null : Float64List(width * height);
   final baseSize = height * 0.62;
   // The canvas's own step for this size and spacing — the preview draws by
   // the canvas's law (R20-B), and a floor of its own (0.02) stood here
@@ -555,18 +560,13 @@ Uint8List rasterizeBrushStrokeSample(
         roundness: settings.roundness,
         angleDegrees: settings.angleDegrees,
         tipMask: settings.tipMask,
-        dualMask: settings.dualMask,
-        dualMaskScale: settings.dualMaskScale,
-        dualDensity: settings.dualDensity,
-        dualCompositeMode: settings.dualCompositeMode,
+        dual: settings.shape.dualView,
         textureMask: settings.textureMask,
         textureScale: settings.textureScale,
         textureDensity: settings.textureDensity,
         textureMode: settings.textureMode,
         // The swatch has to show the brush the canvas will draw, so the
-        // edge step and the dual density belong here too. ⚠️The dual PHASE
-        // deliberately does not: it is random per dab on the canvas, and a
-        // preview that moved under you every rebuild would be noise.
+        // edge step belongs here too.
         antiAlias: settings.antiAlias,
         // 🤔A blur brush's swatch shows its SHAPE, as an eraser's does: the
         // swatch is one plane of coverage over nothing, and a blur over
@@ -595,15 +595,34 @@ Uint8List rasterizeBrushStrokeSample(
     for (final dab in placed) {
       layPreviewDab(accumulated, width, height, dab);
     }
+    // The second tip's stroke along the curve, on its own plane — the
+    // canvas's one producer of it ([BrushSecondStroke]).
+    if (second != null) {
+      final along = second.follow(
+        [curved],
+        firstSequence: sequence,
+        directionDegrees: heading,
+      );
+      for (final dab in along) {
+        layPreviewDab(levels!, width, height, dab);
+      }
+    }
   }
 
   // The ceiling, once, on what the dabs accumulated. Floored the way the
   // per-dab value has always been: the row has to show the brush's SHAPE
   // at any setting, so a swatch never fades to nothing.
   final ceiling = settings.opacity.clamp(0.05, 1.0);
+  final view = settings.shape.dualView;
   final bytes = Uint8List(width * height);
   for (var index = 0; index < bytes.length; index += 1) {
-    bytes[index] = (accumulated[index].clamp(0.0, 1.0) * ceiling * 255).round();
+    final first = accumulated[index].clamp(0.0, 1.0);
+    // What a stroke with a second tip shows of its two planes, as on the
+    // canvas (`qa_dual_view_rows`).
+    final shown = view == null || levels == null
+        ? first
+        : dualViewLevel(first, levels[index].clamp(0.0, 1.0), view);
+    bytes[index] = (shown * ceiling * 255).round();
   }
   return bytes;
 }

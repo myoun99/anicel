@@ -35,8 +35,10 @@ const defaultProjectCameraSize = CanvasSize(width: 1920, height: 1080);
 /// gap, a translucent track. The default is the editor's opinion, not a
 /// constraint on the film.
 ///
-/// ⚠️Must stay in step with `AppColors.backdrop`, which is the same colour
-/// stated in the UI layer (the models layer may not import the theme).
+/// ⚠️Must stay in step with `AppPalette.dark.backdrop`, the same colour
+/// stated in the UI layer (the models layer may not import the theme). On
+/// screen this value is read as 「the floor」 of whichever palette is worn
+/// (`stageColorOnScreen`, I-143-Q5).
 const defaultProjectBackdropArgb = 0xFF141517;
 
 /// The default PASTEBOARD: the same as the backdrop (유저, R3 #4, held).

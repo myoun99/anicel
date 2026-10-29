@@ -8,6 +8,7 @@ import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 
 import '../../helpers/encoded_movie.dart';
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/os_video_codec.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// 🚨★★★**A MOVIE KEPT FRAMED IS DECODED WHERE IT LIES.**
@@ -89,8 +90,8 @@ void main() {
 
   test('🚨every frame of a FRAMED movie is the frame the plain file holds',
       () {
-    final decoder = QaVideoDecoder.instance;
-    if (decoder == null || !decoder.isSupported) {
+    final decoder = osVideoDecoderOrSkip();
+    if (decoder == null) {
       return;
     }
     final made = movie();
@@ -118,8 +119,8 @@ void main() {
   }, skip: skip);
 
   test('a framed movie INSIDE a bigger file is read from its own stretch', () {
-    final decoder = QaVideoDecoder.instance;
-    if (decoder == null || !decoder.isSupported) {
+    final decoder = osVideoDecoderOrSkip();
+    if (decoder == null) {
       return;
     }
     final made = movie();
@@ -153,8 +154,8 @@ void main() {
   }, skip: skip);
 
   test('⛔the same blocks read as if they were the movie are refused', () {
-    final decoder = QaVideoDecoder.instance;
-    if (decoder == null || !decoder.isSupported) {
+    final decoder = osVideoDecoderOrSkip();
+    if (decoder == null) {
       return;
     }
     final made = movie();

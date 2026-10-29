@@ -179,6 +179,10 @@ final class _WindowedRows {
     return laid;
   }
 
+  /// [build]'s widget, kept as the rows are while only the window moves —
+  /// what stands beside the rows off the pass alone (a section's zone, ④).
+  Widget kept(Object key, Widget Function() build) => _keep.row(key, build);
+
   bool _builds(int first, int last) => switch (_window) {
     null => true,
     final window =>

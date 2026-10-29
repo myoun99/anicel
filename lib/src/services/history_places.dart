@@ -96,6 +96,30 @@ class HistoryPlaces {
       _places[entry] = place;
     }
   }
+
+  /// What a walk lets go of, landed where the user still stands — set by
+  /// whoever holds a hand, as `HistoryManager.onBeforeUndoRedo` is.
+  ///
+  /// 🗣️For a hand the user WALKS OFF (I-41's 「그곳으로 이동해서 편집되돌리고」,
+  /// 유저 2026-09-24): a text in hand lands on its cel, and its edit is
+  /// where they stood holding it — where the first undo has to walk.
+  ///
+  /// ↩️It landed AFTER the walk until 2026-10-29, once another cel was
+  /// under the tool, stamped back where it was held (`madeAt`). But by then
+  /// the canvas was the walk's: into a gap, or a cut of another size, the
+  /// text landed on a blank of THAT size and the cel lost everything else
+  /// it carried (board `a-text-walked-into-a-gap-lands-at-its-size`).
+  /// Landed here, at the door, the walk has not happened yet.
+  VoidCallback? onLeave;
+
+  /// The user walks off where they stand — what every door that moves them
+  /// does first (`EditorSessionManager.selectCut` and the rest): what is
+  /// in hand lands HERE ([onLeave]), and the last action settles here
+  /// ([settle]).
+  void leave() {
+    onLeave?.call();
+    settle();
+  }
 }
 
 /// The way back from an undo that walked to an edit (I-41): redone, it

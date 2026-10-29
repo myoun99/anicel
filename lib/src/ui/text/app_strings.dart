@@ -201,6 +201,12 @@ enum AppStrings {
   String get usageStatsDontSend => _s('usageStatsDontSend');
   String get usageStatsDoSend => _s('usageStatsDoSend');
 
+  /// The first launch's window (I-144, 유저 2026-10-29): the display
+  /// settings picked before anything else, and where they change later.
+  String get firstRunTitle => _s('firstRunTitle');
+  String get firstRunChangeLater => _s('firstRunChangeLater');
+  String get firstRunStart => _s('firstRunStart');
+
   /// The timeline/timesheet gap empty state.
   String get noCutSelected => _s('noCutSelected');
 
@@ -783,6 +789,9 @@ enum AppStrings {
 
   // --- Display (R11) ---
   String get uiScaleLabel => _s('uiScaleLabel');
+  String get colorModeLabel => _s('colorModeLabel');
+  String get colorModeDark => _s('colorModeDark');
+  String get colorModeLight => _s('colorModeLight');
   String get blockFrameLinesLabel => _s('blockFrameLinesLabel');
   String get unnamedMarkLabel => _s('unnamedMarkLabel');
   String get drawingCursorLabel => _s('drawingCursorLabel');
@@ -1252,6 +1261,17 @@ enum AppStrings {
   String get onionGhostColorHelp => _s('onionGhostColorHelp');
   String get onionPegCountHelp => _s('onionPegCountHelp');
   String get onionPlacementHelp => _s('onionPlacementHelp');
+  String get onionStepBlocks => _s('onionStepBlocks');
+  String get onionStepBlocksDrawings => _s('onionStepBlocksDrawings');
+  String get onionStepFrames => _s('onionStepFrames');
+  String get onionModeColors => _s('onionModeColors');
+  String get onionModeImages => _s('onionModeImages');
+  String get onionPlacementOnTop => _s('onionPlacementOnTop');
+  String get onionPlacementInPlace => _s('onionPlacementInPlace');
+  String onionPegBefore(int n) =>
+      _s('onionPegBeforeTemplate').replaceAll('{n}', '$n');
+  String onionPegAfter(int n) =>
+      _s('onionPegAfterTemplate').replaceAll('{n}', '$n');
 
   // --- The shortcut editor ---
   String get shortcutTitle => _s('shortcutTitle');
@@ -2108,14 +2128,16 @@ enum AppStrings {
     'launchNoticeDontShowAgain': "Don't show again",
     'usageStatsSend': 'Send usage statistics',
     'usageStatsHelp':
-        'When on, the app sends anonymously, when it opens and about once '
-        'an hour while you use it, that it is in use — with the OS and its '
-        'version, the device model, the device language, the app build and '
-        'the app language. Once a day it also sends how many of the last 28 '
-        'days it was used (new, 1–2, 3 or more). Nothing that identifies '
-        'you is sent: no drawings or projects, no file names, no names, not '
-        'the name you gave the device. Turning it off also deletes the '
-        'record kept on this device.',
+        'When on, the app sends anonymously, when it opens, every 55 '
+        'minutes while you use it and when you leave it, that it is in use '
+        '— with the OS and its version, the device model, the app build and '
+        'the app language. Once a day it also sends the device language, '
+        'how many of the last 28 days it was used (new, 1–2, 3 or more), '
+        'and four settings: the interface scale, the accent color, autosave '
+        'and the cursor. Nothing that identifies you is sent: no drawings '
+        'or projects, no file names, no names, not the name you gave the '
+        'device. Turning it off also deletes the record kept on this '
+        'device.',
     'usageStatsTitle': 'Usage statistics',
     'usageStatsAsk':
         'Send usage statistics? Turning them on helps the development of '
@@ -2124,6 +2146,9 @@ enum AppStrings {
         'You can change this any time in Preferences ▸ System.',
     'usageStatsDontSend': "Don't send",
     'usageStatsDoSend': 'Send',
+    'firstRunTitle': 'Getting started',
+    'firstRunChangeLater': 'You can change these any time in Preferences.',
+    'firstRunStart': 'Start',
     'programLanguageLabel': 'Program language',
     'notationLanguageLabel': 'Notation language',
     'programLanguageHelp': 'Menus, panels and labels.',
@@ -2551,6 +2576,9 @@ enum AppStrings {
         'it now if it is still in a trash: the drawings already saved live '
         'only inside that file.',
     'uiScaleLabel': 'Interface scale',
+    'colorModeLabel': 'Appearance',
+    'colorModeDark': 'Dark',
+    'colorModeLight': 'Light',
     'blockFrameLinesLabel': 'Frame lines inside blocks',
     'unnamedMarkLabel': 'Mark of an unnamed block',
     'drawingCursorLabel': 'Cursor',
@@ -2730,6 +2758,15 @@ enum AppStrings {
     'onionGhostColorHelp': 'How the ghosts are colored',
     'onionPegCountHelp': 'What one peg counts',
     'onionPlacementHelp': 'Where the ghosts lie',
+    'onionStepBlocks': 'Blocks',
+    'onionStepBlocksDrawings': 'Blocks (drawings)',
+    'onionStepFrames': 'Frames',
+    'onionModeColors': 'Colors',
+    'onionModeImages': 'Images',
+    'onionPlacementOnTop': 'On top',
+    'onionPlacementInPlace': 'In place',
+    'onionPegBeforeTemplate': '{n} back',
+    'onionPegAfterTemplate': '{n} ahead',
     'shortcutTitle': 'Keyboard shortcuts',
     'shortcutResetAll': 'Reset all',
     'shortcutFileImportedTemplate':
@@ -3398,8 +3435,7 @@ enum AppStrings {
         "The merged layer's folder lays its look over layers from outside it",
     'tlMergeChangeRiderOver': 'An attached layer comes to cover other pictures',
     'tlMergeChangeRiderUnder': 'An attached layer goes under other pictures',
-    'tlMergeChangeWall':
-        "A reference's picture past the pasteboard is cut off",
+    'tlMergeChangeWall': 'What lies past the pasteboard is cut off',
     'tlAttachDropsFxBody':
         'An attached layer keeps no fx of its own. Continuing discards the existing fx. Continue?',
     'tlPush': 'Push (open frames)',
@@ -3445,10 +3481,11 @@ enum AppStrings {
     'launchNoticeDontShowAgain': '次回から表示しない',
     'usageStatsSend': '利用統計を送信',
     'usageStatsHelp':
-        'オンにすると、アプリを開いたときと使っている間の約1時間ごとに、使用中であることを'
-        'OSとそのバージョン・端末の機種名・端末の言語・アプリのビルド・アプリの言語とともに'
+        'オンにすると、アプリを開いたとき・使っている間の55分ごと・離れたときに、使用中であることを'
+        'OSとそのバージョン・端末の機種名・アプリのビルド・アプリの言語とともに'
         '匿名で送信します。'
-        '1日1回、直近28日間に使った日数の区分（初回 / 1〜2日 / 3日以上）も送信します。'
+        '1日1回、端末の言語と、直近28日間に使った日数の区分（初回 / 1〜2日 / 3日以上）、'
+        '4つの設定（UIの大きさ・アクセントカラー・自動保存・カーソル）も送信します。'
         '絵・プロジェクト・ファイル名・名前・端末に付けた名前など、あなたを特定できる'
         'ものは送信しません。オフにすると、この端末に残した記録も削除します。',
     'usageStatsTitle': '利用統計',
@@ -3456,6 +3493,9 @@ enum AppStrings {
     'usageStatsChangeLater': '環境設定 ▸ システムでいつでも変更できます。',
     'usageStatsDontSend': '送信しない',
     'usageStatsDoSend': '送信する',
+    'firstRunTitle': 'はじめの設定',
+    'firstRunChangeLater': '環境設定でいつでも変更できます。',
+    'firstRunStart': 'はじめる',
     'programLanguageLabel': 'プログラム言語',
     'notationLanguageLabel': '表記言語',
     'programLanguageHelp': 'メニュー・パネル・ラベルの言語。',
@@ -3717,14 +3757,6 @@ enum AppStrings {
     'shortcutAction.file-open': 'ファイルを開く',
     'shortcutAction.file-open-folder': 'フォルダを開く',
     'shortcutAction.file-export': '書き出し',
-    'menuAction.edit-undo': '元に戻す',
-    'menuAction.edit-redo': 'やり直す',
-    'menuAction.edit-copy-frame': 'フレームをコピー',
-    'menuAction.edit-paste-linked-frame': 'リンクフレームを貼り付け',
-    'menuAction.edit-new-drawing': 'このフレームに新規作画',
-    'menuAction.edit-delete-cell': 'セルを削除',
-    'menuAction.edit-cut-exposure': '露光をカット',
-    'menuAction.edit-toggle-mark': 'マークの切り替え',
     'shortcutAction.edit-keyboard-shortcuts': 'キーボードショートカット',
     'shortcutAction.edit-preferences': '環境設定',
     'shortcutAction.work-settings': '作品設定',
@@ -3733,19 +3765,7 @@ enum AppStrings {
     'shortcutAction.cut-create-linked': '兼用カットを作成',
     'shortcutAction.cut-convert-linked': '兼用カットに変換',
     'shortcutAction.cut-canvas-size': 'カンバスサイズ',
-    'menuAction.cut-delete': 'カットを削除',
-    'menuAction.layer-add': '新規レイヤー',
-    'menuAction.layer-link-duplicate': 'リンクして複製',
-    'menuAction.layer-unlink': 'リンクを解除',
-    'menuAction.layer-group-into-folder': 'フォルダにまとめる',
-    'menuAction.layer-rename': 'レイヤー名を変更',
     'shortcutAction.layer-rasterize': 'ラスタライズ',
-    'menuAction.layer-se-name-tag': 'SE ネームタグ',
-    'menuAction.layer-copy': 'レイヤーをコピー',
-    'menuAction.layer-paste': 'レイヤーを貼り付け',
-    'menuAction.layer-delete': 'レイヤーを削除',
-    'menuAction.playback-stop': '停止',
-    'menuAction.playback-play-all': '全カットを再生',
     'menuAction.window-panels': 'パネル',
     'shortcutAction.window-tool-rail-right': 'ツールバーを右端に',
     'shortcutAction.window-region-on-top': 'タイムライン領域を上に',
@@ -3758,8 +3778,6 @@ enum AppStrings {
     'shortcutAction.edit-frame-timing-overlay': 'フレームタイミングのオーバーレイ',
     'shortcutAction.edit-frame-stats': 'フレーム統計',
     'shortcutAction.edit-show-repaints': '再描画を表示',
-    'menuAction.edit-knee-at-one': '画面解像度バッファ',
-    'menuAction.edit-show-unpainted-tiles': '描画されなかったタイルを表示',
     'shortcutAction.help-about': 'Anicel について',
     'shortcutAction.help-send-feedback': 'フィードバックを送る',
     'fileOpenTitle': 'プロジェクトを開く',
@@ -3921,6 +3939,9 @@ enum AppStrings {
     'projectFileVanished':
         'このプロジェクトのファイルが見つかりません — 削除か移動された可能性があります。ゴミ箱に残っていれば今すぐ戻してください。保存済みの絵はそのファイルの中にしかありません。',
     'uiScaleLabel': 'UIの大きさ',
+    'colorModeLabel': 'カラーモード',
+    'colorModeDark': 'ダーク',
+    'colorModeLight': 'ライト',
     'blockFrameLinesLabel': 'ブロック内のフレーム線',
     'unnamedMarkLabel': '名前のないブロックのマーク',
     'drawingCursorLabel': 'カーソル',
@@ -4321,6 +4342,15 @@ enum AppStrings {
     'onionGhostColorHelp': 'ゴーストの色付け方',
     'onionPegCountHelp': '1段が数えるもの',
     'onionPlacementHelp': 'ゴーストの置き場所',
+    'onionStepBlocks': 'ブロック',
+    'onionStepBlocksDrawings': 'ブロック（絵）',
+    'onionStepFrames': 'フレーム',
+    'onionModeColors': '色',
+    'onionModeImages': '絵',
+    'onionPlacementOnTop': '最前面',
+    'onionPlacementInPlace': 'その場',
+    'onionPegBeforeTemplate': '前 {n}',
+    'onionPegAfterTemplate': '後 {n}',
     'shortcutTitle': 'キーボードショートカット',
     'shortcutResetAll': 'すべてリセット',
     'shortcutFileImportedTemplate':
@@ -4938,6 +4968,9 @@ enum AppStrings {
     'builtinTip.builtin-pencil-face-5-0': '鉛筆の芯 6-1',
     'builtinTip.builtin-pencil-face-5-1': '鉛筆の芯 6-2',
     'builtinTip.builtin-pencil-face-5-2': '鉛筆の芯 6-3',
+    'builtinTip.builtin-pencil-crumb-0': '鉛筆の粒 1',
+    'builtinTip.builtin-pencil-crumb-1': '鉛筆の粒 2',
+    'builtinTip.builtin-pencil-crumb-2': '鉛筆の粒 3',
     'brRenameGroup': 'グループ名を変更',
     'brDeleteGroup': 'グループを削除',
     'brDeleteEmptyGroupTemplate': '空のグループ「{name}」を削除しますか？',
@@ -5198,7 +5231,7 @@ enum AppStrings {
     'tlMergeChangeFolder': '結合したレイヤーが入るフォルダーの効果が、フォルダーの外から来たレイヤーにもかかります',
     'tlMergeChangeRiderOver': 'アタッチレイヤーがほかの絵を覆うようになります',
     'tlMergeChangeRiderUnder': 'アタッチレイヤーがほかの絵の下に入ります',
-    'tlMergeChangeWall': '参照の絵のペーストボードの外の部分が切り取られます',
+    'tlMergeChangeWall': 'ペーストボードの外の部分が切り取られます',
     'tlAttachDropsFxBody': 'アタッチレイヤーは自分の fx を持ちません。続けると既存の fx は失われます。実行しますか？',
     'tlPush': '押し出し（コマを開ける）',
     'tlPull': '詰め（コマを詰める）',
@@ -5243,10 +5276,11 @@ enum AppStrings {
     'launchNoticeDontShowAgain': '다음부터 표시 안 함',
     'usageStatsSend': '사용 통계 보내기',
     'usageStatsHelp':
-        '켜 두면 앱을 열 때와 쓰는 동안 약 1시간마다 한 번, 쓰고 있다는 것을 '
-        'OS와 그 버전 · 기기 모델명 · 기기 언어 · 앱 빌드 · 앱 언어와 함께 '
-        '익명으로 보냅니다. 하루 한 번은 최근 28일 중 쓴 날의 구간'
-        '(처음 / 1–2일 / 3일 이상)도 보냅니다. '
+        '켜 두면 앱을 열 때 · 쓰는 동안 55분마다 · 앱을 떠날 때, 쓰고 있다는 것을 '
+        'OS와 그 버전 · 기기 모델명 · 앱 빌드 · 앱 언어와 함께 '
+        '익명으로 보냅니다. 하루 한 번은 기기 언어와 최근 28일 중 쓴 날의 구간'
+        '(처음 / 1–2일 / 3일 이상), 설정 네 가지'
+        '(UI 크기 · 강조 색상 · 자동 저장 · 커서)도 보냅니다. '
         '그림 · 프로젝트 · 파일 이름 · 이름 · 기기에 붙인 이름 등 '
         '사용자를 알아볼 수 있는 것은 보내지 않습니다. '
         '끄면 이 기기에 남긴 기록도 지웁니다.',
@@ -5255,6 +5289,9 @@ enum AppStrings {
     'usageStatsChangeLater': '환경설정 ▸ 시스템에서 언제든 바꿀 수 있습니다.',
     'usageStatsDontSend': '보내지 않기',
     'usageStatsDoSend': '보내기',
+    'firstRunTitle': '처음 설정',
+    'firstRunChangeLater': '환경설정에서 언제든 바꿀 수 있습니다.',
+    'firstRunStart': '시작',
     'programLanguageLabel': '프로그램 언어',
     'notationLanguageLabel': '표기용 언어',
     'programLanguageHelp': '메뉴·패널·라벨의 언어.',
@@ -5511,14 +5548,6 @@ enum AppStrings {
     'shortcutAction.file-open': '파일 열기',
     'shortcutAction.file-open-folder': '폴더 열기',
     'shortcutAction.file-export': '내보내기',
-    'menuAction.edit-undo': '실행 취소',
-    'menuAction.edit-redo': '다시 실행',
-    'menuAction.edit-copy-frame': '프레임 복사',
-    'menuAction.edit-paste-linked-frame': '링크 프레임 붙여넣기',
-    'menuAction.edit-new-drawing': '이 프레임에 새 원화',
-    'menuAction.edit-delete-cell': '셀 삭제',
-    'menuAction.edit-cut-exposure': '노출 잘라내기',
-    'menuAction.edit-toggle-mark': '마크 켜기/끄기',
     'shortcutAction.edit-keyboard-shortcuts': '키보드 단축키',
     'shortcutAction.edit-preferences': '환경설정',
     'shortcutAction.work-settings': '작품 설정',
@@ -5527,19 +5556,7 @@ enum AppStrings {
     'shortcutAction.cut-create-linked': '겸용컷 만들기',
     'shortcutAction.cut-convert-linked': '겸용컷으로 변환',
     'shortcutAction.cut-canvas-size': '캔버스 크기',
-    'menuAction.cut-delete': '컷 삭제',
-    'menuAction.layer-add': '새 레이어',
-    'menuAction.layer-link-duplicate': '링크해서 복제',
-    'menuAction.layer-unlink': '링크 해제',
-    'menuAction.layer-group-into-folder': '폴더로 묶기',
-    'menuAction.layer-rename': '레이어 이름 변경',
     'shortcutAction.layer-rasterize': '래스터라이즈',
-    'menuAction.layer-se-name-tag': 'SE 이름표',
-    'menuAction.layer-copy': '레이어 복사',
-    'menuAction.layer-paste': '레이어 붙여넣기',
-    'menuAction.layer-delete': '레이어 삭제',
-    'menuAction.playback-stop': '정지',
-    'menuAction.playback-play-all': '모든 컷 재생',
     'menuAction.window-panels': '패널',
     'shortcutAction.window-tool-rail-right': '툴 바를 오른쪽에',
     'shortcutAction.window-region-on-top': '타임라인 영역을 위로',
@@ -5552,8 +5569,6 @@ enum AppStrings {
     'shortcutAction.edit-frame-timing-overlay': '프레임 타이밍 오버레이',
     'shortcutAction.edit-frame-stats': '프레임 통계',
     'shortcutAction.edit-show-repaints': '다시 그리기 표시',
-    'menuAction.edit-knee-at-one': '화면 해상도 버퍼',
-    'menuAction.edit-show-unpainted-tiles': '그려지지 않은 타일 표시',
     'shortcutAction.help-about': 'Anicel 정보',
     'shortcutAction.help-send-feedback': '의견 보내기',
     'fileOpenTitle': '프로젝트 열기',
@@ -5713,6 +5728,9 @@ enum AppStrings {
     'projectFileVanished':
         '이 프로젝트의 파일이 사라졌습니다 — 지워졌거나 옮겨졌습니다. 휴지통에 아직 있다면 지금 되살리세요. 이미 저장했던 그림들은 그 파일 안에만 있습니다.',
     'uiScaleLabel': 'UI 크기',
+    'colorModeLabel': '화면 모드',
+    'colorModeDark': '다크',
+    'colorModeLight': '라이트',
     'blockFrameLinesLabel': '블록 안 프레임선',
     'unnamedMarkLabel': '이름 없는 블록의 마크',
     'drawingCursorLabel': '커서',
@@ -6114,6 +6132,15 @@ enum AppStrings {
     'onionGhostColorHelp': '고스트에 색을 입히는 방식',
     'onionPegCountHelp': '한 칸이 세는 단위',
     'onionPlacementHelp': '고스트가 놓이는 자리',
+    'onionStepBlocks': '블록',
+    'onionStepBlocksDrawings': '블록(그림)',
+    'onionStepFrames': '프레임',
+    'onionModeColors': '색',
+    'onionModeImages': '그림',
+    'onionPlacementOnTop': '맨 위',
+    'onionPlacementInPlace': '제자리',
+    'onionPegBeforeTemplate': '이전 {n}',
+    'onionPegAfterTemplate': '이후 {n}',
     'shortcutTitle': '키보드 단축키',
     'shortcutResetAll': '모두 초기화',
     'shortcutFileImportedTemplate':
@@ -6723,6 +6750,9 @@ enum AppStrings {
     'builtinTip.builtin-pencil-face-5-0': '연필심 6-1',
     'builtinTip.builtin-pencil-face-5-1': '연필심 6-2',
     'builtinTip.builtin-pencil-face-5-2': '연필심 6-3',
+    'builtinTip.builtin-pencil-crumb-0': '연필 알갱이 1',
+    'builtinTip.builtin-pencil-crumb-1': '연필 알갱이 2',
+    'builtinTip.builtin-pencil-crumb-2': '연필 알갱이 3',
     'brRenameGroup': '그룹 이름 변경',
     'brDeleteGroup': '그룹 삭제',
     'brDeleteEmptyGroupTemplate': '「{name}」 빈 그룹을 삭제할까요?',
@@ -6984,7 +7014,7 @@ enum AppStrings {
     'tlMergeChangeFolder': '병합한 레이어가 놓일 폴더의 효과가 그 폴더 밖에서 온 레이어에도 걸립니다',
     'tlMergeChangeRiderOver': '어태치 레이어가 다른 그림을 덮게 됩니다',
     'tlMergeChangeRiderUnder': '어태치 레이어가 다른 그림 밑으로 들어갑니다',
-    'tlMergeChangeWall': '참조 그림의 페이스트보드 밖 부분이 잘립니다',
+    'tlMergeChangeWall': '페이스트보드 밖 부분이 잘립니다',
     'tlAttachDropsFxBody':
         '어태치된 레이어는 자기 fx 를 갖지 않습니다. 계속하면 기존 fx 가 사라집니다. 실행하겠습니까?',
     'tlPush': '밀기(칸 열기)',
@@ -7030,12 +7060,15 @@ enum AppStrings {
     'launchNoticeDontShowAgain': 'Ne plus afficher',
     'usageStatsSend': "Envoyer des statistiques d'utilisation",
     'usageStatsHelp':
-        "Activé, l'app envoie de façon anonyme, à son ouverture et environ "
-        "une fois par heure pendant que vous l'utilisez, qu'elle est "
-        "utilisée — avec le système et sa version, le modèle de l'appareil, "
-        "la langue de l'appareil, la version de l'app et la langue de l'app. "
-        'Une fois par jour, elle envoie aussi le nombre de jours '
-        "d'utilisation sur les 28 derniers (nouveau, 1–2, 3 ou plus). "
+        "Activé, l'app envoie de façon anonyme, à son ouverture, toutes les "
+        "55 minutes pendant que vous l'utilisez et quand vous la quittez, "
+        "qu'elle est utilisée — avec le système et sa version, le modèle de "
+        "l'appareil, la version de l'app et la langue de l'app. "
+        "Une fois par jour, elle envoie aussi la langue de l'appareil, le "
+        "nombre de jours d'utilisation sur les 28 derniers (nouveau, 1–2, "
+        '3 ou plus) et '
+        "quatre réglages : la taille de l'interface, la couleur d'accent, "
+        'la sauvegarde auto et le curseur. '
         "Rien qui vous identifie n'est envoyé : ni dessins ni projets, "
         "ni noms de fichiers, ni noms, ni le nom donné à l'appareil. Le "
         "désactiver efface aussi l'historique gardé sur cet appareil.",
@@ -7047,6 +7080,10 @@ enum AppStrings {
         'Vous pouvez changer cela à tout moment dans Préférences ▸ Système.',
     'usageStatsDontSend': 'Ne pas envoyer',
     'usageStatsDoSend': 'Envoyer',
+    'firstRunTitle': 'Premiers réglages',
+    'firstRunChangeLater':
+        'Vous pouvez les changer à tout moment dans les Préférences.',
+    'firstRunStart': 'Commencer',
     'programLanguageLabel': 'Langue du programme',
     'notationLanguageLabel': 'Langue de notation',
     'programLanguageHelp': 'Menus, panneaux et libellés.',
@@ -7248,7 +7285,7 @@ enum AppStrings {
     'guideDeleteVanishingPoint': 'Supprimer le point de fuite',
     'guideParallel': 'Parallèle',
     'guideParallelAngle': 'Angle',
-    'guideLineDensity': 'Densité des lignes',
+    'guideLineDensity': 'Densité',
     'guideRasterize': 'Pixelliser',
     'closeProjectTitle': 'Fermer le projet ?',
     'shortcutAction.file-new': 'Nouveau projet',
@@ -7318,14 +7355,6 @@ enum AppStrings {
     'shortcutAction.file-open': 'Ouvrir un fichier',
     'shortcutAction.file-open-folder': 'Ouvrir un dossier',
     'shortcutAction.file-export': 'Exporter',
-    'menuAction.edit-undo': 'Annuler',
-    'menuAction.edit-redo': 'Rétablir',
-    'menuAction.edit-copy-frame': "Copier l'image",
-    'menuAction.edit-paste-linked-frame': "Coller l'image liée",
-    'menuAction.edit-new-drawing': 'Nouveau dessin sur cette image',
-    'menuAction.edit-delete-cell': 'Supprimer la case',
-    'menuAction.edit-cut-exposure': "Couper l'exposition",
-    'menuAction.edit-toggle-mark': 'Basculer le repère',
     'shortcutAction.edit-keyboard-shortcuts': 'Raccourcis clavier',
     'shortcutAction.edit-preferences': 'Préférences',
     'shortcutAction.work-settings': 'Réglages de l’œuvre',
@@ -7334,19 +7363,7 @@ enum AppStrings {
     'shortcutAction.cut-create-linked': 'Créer un plan lié',
     'shortcutAction.cut-convert-linked': 'Convertir en plan lié',
     'shortcutAction.cut-canvas-size': 'Taille du canevas',
-    'menuAction.cut-delete': 'Supprimer le plan',
-    'menuAction.layer-add': 'Nouveau calque',
-    'menuAction.layer-link-duplicate': 'Dupliquer en liant',
-    'menuAction.layer-unlink': 'Délier le calque',
-    'menuAction.layer-group-into-folder': 'Grouper dans un dossier',
-    'menuAction.layer-rename': 'Renommer le calque',
     'shortcutAction.layer-rasterize': 'Pixelliser le calque',
-    'menuAction.layer-se-name-tag': 'Étiquette SE',
-    'menuAction.layer-copy': 'Copier le calque',
-    'menuAction.layer-paste': 'Coller le calque',
-    'menuAction.layer-delete': 'Supprimer le calque',
-    'menuAction.playback-stop': 'Arrêter',
-    'menuAction.playback-play-all': 'Lire tous les plans',
     'menuAction.window-panels': 'Panneaux',
     'shortcutAction.window-tool-rail-right': "Barre d'outils à droite",
     'shortcutAction.window-region-on-top': 'Zone de timeline en haut',
@@ -7361,8 +7378,6 @@ enum AppStrings {
         'Superposition du minutage des images',
     'shortcutAction.edit-frame-stats': 'Statistiques des images',
     'shortcutAction.edit-show-repaints': 'Afficher les redessins',
-    'menuAction.edit-knee-at-one': "Tampon à la résolution de l'écran",
-    'menuAction.edit-show-unpainted-tiles': 'Afficher les tuiles non peintes',
     'shortcutAction.help-about': 'À propos de Anicel',
     'shortcutAction.help-send-feedback': 'Envoyer un avis',
     'fileOpenTitle': 'Ouvrir un projet',
@@ -7774,7 +7789,7 @@ enum AppStrings {
     'effectKind.blur': 'Flou gaussien',
     'effectKind.directionalBlur': 'Flou directionnel',
     'effectKind.radialBlur': 'Flou radial',
-    'effectKind.cameraLensBlur': 'Flou objectif appareil photo',
+    'effectKind.cameraLensBlur': "Flou d'objectif",
     'effectKind.colorKey': 'Masquage par couleur',
     'effectKind.celNumber': 'Numéro de cellulo',
     'effectParameter.brightness': 'Luminosité',
@@ -7956,6 +7971,15 @@ enum AppStrings {
     'onionGhostColorHelp': 'Comment les fantômes sont colorés',
     'onionPegCountHelp': 'Ce que compte un cran',
     'onionPlacementHelp': 'Où se placent les fantômes',
+    'onionStepBlocks': 'Blocs',
+    'onionStepBlocksDrawings': 'Blocs (dessins)',
+    'onionStepFrames': 'Images',
+    'onionModeColors': 'Couleurs',
+    'onionModeImages': 'Dessins',
+    'onionPlacementOnTop': 'Au-dessus',
+    'onionPlacementInPlace': 'Sur place',
+    'onionPegBeforeTemplate': '{n} avant',
+    'onionPegAfterTemplate': '{n} après',
     'shortcutTitle': 'Raccourcis clavier',
     'shortcutResetAll': 'Tout réinitialiser',
     'shortcutFileImportedTemplate':
@@ -8396,7 +8420,7 @@ enum AppStrings {
     'textToolAlignRight': 'Droite',
     'textToolCentreAcross': 'Centrer horizontalement',
     'textToolCentreDown': 'Centrer verticalement',
-    'textToolBoxWidth': 'Largeur du bloc',
+    'textToolBoxWidth': 'Largeur',
     'textToolWidthAuto': 'Auto',
     'textToolWidthFixed': 'Fixe',
     'textToolLineHeight': 'Interligne',
@@ -8435,7 +8459,7 @@ enum AppStrings {
     'toolCutRegisterTip': 'Enregistrer comme pointe',
     'toolCutDeletesSource': "Supprimer l'original",
     'toolReadSource': 'Référence',
-    'toolReadsEveryVisibleLayer': 'Tous les calques visibles',
+    'toolReadsEveryVisibleLayer': 'Calques visibles',
     'brushSettingsTitle': 'Réglages de brosse',
     'toolShapeRect': 'Rectangle',
     'toolShapeEllipse': 'Ellipse',
@@ -8535,9 +8559,9 @@ enum AppStrings {
     'brEditGroup': 'Modifier le groupe',
     'brFolderIcon': 'Icône du dossier',
     'brFolderName': 'Nom du dossier',
-    'brFeather': 'Contour progressif',
+    'brFeather': 'Adoucir',
     'brTolerance': 'Tolérance',
-    'brGapClose': 'Fermeture des trous',
+    'brGapClose': 'Colmatage',
     'brGrowShrink': 'Étendre / Réduire',
     'brAntiAlias': 'Anticrénelage',
     'trFlipHorizontal': 'Miroir horizontal',
@@ -8656,6 +8680,9 @@ enum AppStrings {
     'builtinTip.builtin-pencil-face-5-0': 'Mine 6-1',
     'builtinTip.builtin-pencil-face-5-1': 'Mine 6-2',
     'builtinTip.builtin-pencil-face-5-2': 'Mine 6-3',
+    'builtinTip.builtin-pencil-crumb-0': 'Grain de mine 1',
+    'builtinTip.builtin-pencil-crumb-1': 'Grain de mine 2',
+    'builtinTip.builtin-pencil-crumb-2': 'Grain de mine 3',
     'brRenameGroup': 'Renommer le groupe',
     'brDeleteGroup': 'Supprimer le groupe',
     'brDeleteEmptyGroupTemplate': 'Supprimer le groupe vide « {name} » ?',
@@ -8904,16 +8931,54 @@ enum AppStrings {
     'tlMergeChangeRiderOver':
         "Un calque attaché recouvrira d'autres dessins",
     'tlMergeChangeRiderUnder': "Un calque attaché passera sous d'autres dessins",
-    'tlMergeChangeWall':
-        "La partie d'une référence hors du fond est coupée",
+    'tlMergeChangeWall': 'Ce qui dépasse du fond est coupé',
     'tlAttachDropsFxBody':
         'Une couche attachée ne garde pas son propre fx. Continuer supprimera le fx existant. Continuer ?',
     'tlPush': 'Pousser (ouvrir des images)',
     'tlPull': 'Tirer (fermer des images)',
     'sbOneStoryboardRowPerCut':
         'Ce plan a déjà un calque storyboard. Un seul par plan.',
-    'cnPreviousPage': 'Page précédente',
-    'cnNextPage': 'Page suivante',
+    'blockFrameLinesLabel': "Lignes d'image dans les blocs",
+    'brDualBlend': 'Fusion double',
+    'brTextureBrightness': 'Luminosité',
+    'brTextureContrast': 'Contraste',
+    'brTextureInvert': 'Inverser',
+    'drawingCursorLabel': 'Curseur',
+    'drawingCursorBrush': 'Brosse',
+    'drawingCursorPen': 'Stylo',
+    'drawingCursorCrosshair': 'Réticule',
+    'mediaRelinkScanning': 'Lecture du dossier…',
+    'mediaRelinkScanned': 'Dossier lu',
+    'openProgressRunning': 'Ouverture…',
+    'openProgressDone': 'Ouvert',
+    'openWaitingCloudTemplate': 'Téléchargement depuis le cloud · {sec} s',
+    'openWaitingStalledTemplate': 'Rien reçu depuis {sec} s',
+    'prefsDisplay': 'Affichage',
+    'uiScaleLabel': "Taille de l'interface",
+    'colorModeLabel': 'Apparence',
+    'colorModeDark': 'Sombre',
+    'colorModeLight': 'Clair',
+    'unnamedMarkLabel': "Marque d'un bloc sans nom",
+    // A label chip's short form: the English ones, which an animator reads
+    // the same in any language (유저 2026-08-31 「업계 용어부분쪽 관련 말고는
+    // 다 번역」) — written here so the table is whole; whether French takes
+    // its own is fr-zh-strings-fall-back-to-english-Q1.
+    'layerProcessAbbrev.paper': 'PAP',
+    'layerProcessAbbrev.conte': 'SB',
+    'layerProcessAbbrev.art': 'ART',
+    'layerProcessAbbrev.layout': 'LO',
+    'layerProcessAbbrev.rough-key': 'RK',
+    'layerProcessAbbrev.key': 'KEY',
+    'layerProcessAbbrev.inbetween': 'IB',
+    'layerProcessAbbrev.finish': 'FIN',
+    'layerReviseAbbrev.direction': 'DIR',
+    'layerReviseAbbrev.animation-director': 'AD',
+    'layerReviseAbbrev.chief-animation-director': 'CAD',
+    'layerReviseAbbrev.director': 'DR',
+    'layerReviseAbbrev.chief-director': 'CD',
+    'layerReviseAbbrev.action-animation-director': 'AAD',
+    'layerReviseAbbrev.inbetween-check': 'IBC',
+    'layerReviseAbbrev.cell-check': 'CC',
     'cnHeadCut': 'PLAN',
     'cnHeadPicture': 'IMAGE',
     'cnHeadAction': 'ACTION',
@@ -8954,9 +9019,10 @@ enum AppStrings {
     'launchNoticeDontShowAgain': '不再显示',
     'usageStatsSend': '发送使用统计',
     'usageStatsHelp':
-        '开启后，会在打开应用时以及使用期间大约每小时一次，匿名发送“正在使用”，'
-        '并附带操作系统及其版本、设备型号、设备语言、应用版本号和应用语言。每天一次还会'
-        '发送最近 28 天内使用天数的区间（首次 / 1–2 天 / 3 天以上）。不会发送画作、项目、'
+        '开启后，会在打开应用时、使用期间每 55 分钟一次以及离开应用时，匿名发送“正在使用”，'
+        '并附带操作系统及其版本、设备型号、应用版本号和应用语言。每天一次还会'
+        '发送设备语言、最近 28 天内使用天数的区间（首次 / 1–2 天 / 3 天以上）以及四项设置'
+        '（界面大小、强调色、自动保存、光标）。不会发送画作、项目、'
         '文件名、名称、您给设备起的名字等任何能识别您的信息。关闭后也会删除本设备上'
         '保存的记录。',
     'usageStatsTitle': '使用统计',
@@ -8964,6 +9030,9 @@ enum AppStrings {
     'usageStatsChangeLater': '可随时在偏好设置 ▸ 系统中更改。',
     'usageStatsDontSend': '不发送',
     'usageStatsDoSend': '发送',
+    'firstRunTitle': '初始设置',
+    'firstRunChangeLater': '可随时在偏好设置中更改。',
+    'firstRunStart': '开始',
     'programLanguageLabel': '程序语言',
     'notationLanguageLabel': '标注语言',
     'programLanguageHelp': '菜单、面板与标签的语言。',
@@ -9000,9 +9069,9 @@ enum AppStrings {
     'audioSyncInspectorTitle': '同步检查器',
     'recordVoiceTooltip': '在播放头位置录制语音',
     'recordVoiceStopTooltip': '停止录音（放置素材）',
-    'recordMicOpenFailed': '无法打开麦克风 — 请检查首选项▸音频以及系统麦克风权限。',
+    'recordMicOpenFailed': '无法打开麦克风 — 请检查偏好设置▸音频以及系统麦克风权限。',
     'recordMicPermissionDenied': '麦克风访问已关闭 — 请在设置中允许 Anicel 使用麦克风。',
-    'recordMicNotAllowed': '未允许使用麦克风 — 请在首选项▸音频中打开「允许麦克风」。',
+    'recordMicNotAllowed': '未允许使用麦克风 — 请在偏好设置▸音频中打开「允许麦克风」。',
     'recordTakeClipped': '录音发生削波 — 块上的红角为标记。',
     'recordClipMarkerTooltip': '该录音已削波（电平过高）',
     'tlTransitionCrossingWarning': '超出镜头边界 — 未应用',
@@ -9100,7 +9169,7 @@ enum AppStrings {
         '位置经过此关键帧的路径形状。线性：在关键帧处转折 · 贝塞尔曲线：前后手柄各自的方向 · 连续贝塞尔曲线：两个手柄连成一条直线 · 自动贝塞尔曲线：按前后关键帧平滑弯曲。',
     'keyRovingHelp':
         '关键帧保留其在路径上的位置，交出时间：在前后保有时间的关键帧之间，自动移到速度均匀的帧（After Effects 的 Rove Across Time）。第一个和最后一个关键帧不会漂浮。',
-    'cameraPath': '摄像机路径',
+    'cameraPath': '摄影机路径',
     'cameraPathOff': '关',
     'cameraPathSpace': '空间',
     'cameraPathSpaceTime': '空间＋时间',
@@ -9206,14 +9275,6 @@ enum AppStrings {
     'shortcutAction.file-open': '打开文件',
     'shortcutAction.file-open-folder': '打开文件夹',
     'shortcutAction.file-export': '导出',
-    'menuAction.edit-undo': '撤销',
-    'menuAction.edit-redo': '重做',
-    'menuAction.edit-copy-frame': '复制帧',
-    'menuAction.edit-paste-linked-frame': '粘贴链接帧',
-    'menuAction.edit-new-drawing': '在此帧新建原画',
-    'menuAction.edit-delete-cell': '删除单元格',
-    'menuAction.edit-cut-exposure': '剪切曝光',
-    'menuAction.edit-toggle-mark': '切换标记',
     'shortcutAction.edit-keyboard-shortcuts': '键盘快捷键',
     'shortcutAction.edit-preferences': '偏好设置',
     'shortcutAction.work-settings': '作品设置',
@@ -9222,19 +9283,7 @@ enum AppStrings {
     'shortcutAction.cut-create-linked': '创建链接镜头',
     'shortcutAction.cut-convert-linked': '转换为链接镜头',
     'shortcutAction.cut-canvas-size': '画布尺寸',
-    'menuAction.cut-delete': '删除镜头',
-    'menuAction.layer-add': '新建图层',
-    'menuAction.layer-link-duplicate': '链接复制图层',
-    'menuAction.layer-unlink': '取消图层链接',
-    'menuAction.layer-group-into-folder': '编组到文件夹',
-    'menuAction.layer-rename': '重命名图层',
     'shortcutAction.layer-rasterize': '栅格化图层',
-    'menuAction.layer-se-name-tag': 'SE 名字条',
-    'menuAction.layer-copy': '复制图层',
-    'menuAction.layer-paste': '粘贴图层',
-    'menuAction.layer-delete': '删除图层',
-    'menuAction.playback-stop': '停止',
-    'menuAction.playback-play-all': '播放所有镜头',
     'menuAction.window-panels': '面板',
     'shortcutAction.window-tool-rail-right': '工具条在右侧',
     'shortcutAction.window-region-on-top': '时间轴区域置顶',
@@ -9247,8 +9296,6 @@ enum AppStrings {
     'shortcutAction.edit-frame-timing-overlay': '帧时序叠加',
     'shortcutAction.edit-frame-stats': '帧统计',
     'shortcutAction.edit-show-repaints': '显示重绘',
-    'menuAction.edit-knee-at-one': '屏幕分辨率缓冲区',
-    'menuAction.edit-show-unpainted-tiles': '显示未绘制的图块',
     'shortcutAction.help-about': '关于 Anicel',
     'shortcutAction.help-send-feedback': '发送反馈',
     'fileOpenTitle': '打开项目',
@@ -9292,7 +9339,7 @@ enum AppStrings {
     'inputDragTwoFingers': '双指拖动',
     'inputDragThreeFingers': '三指拖动',
     'inputExtraFinger': '加指修饰键',
-    'inputExtraFingerHelp': '手势进行中再加一根手指会约束它 — 缩放/旋转/笔刷大小吸附，逐帧微调。',
+    'inputExtraFingerHelp': '手势进行中再加一根手指会约束它 — 缩放/旋转/画笔大小吸附，逐帧微调。',
     'inputStrokeFinger': '手指笔画修饰键',
     'inputStrokeFingerHelp': '绘制时另一根手指按在屏幕上，笔画会锁定到最近的45°方向（与Shift相同）。',
     'inputFlipHaptics': '翻页震动',
@@ -9312,7 +9359,7 @@ enum AppStrings {
     'inputTabletAutoDemoted': '已切回 Standard：在 Wintab 通道下，笔完全无法到达窗口。',
     'dragActionFlip': '翻页（帧 / 图层）',
     'dragActionScreen': '画面（平移·缩放·旋转）',
-    'dragActionBrushSize': '笔刷大小',
+    'dragActionBrushSize': '画笔大小',
     'dragActionDraw': '触摸绘制',
     'commonNone': '无',
     'mapEyedropper': '吸管',
@@ -9527,7 +9574,7 @@ enum AppStrings {
     'shortcutAction.transform-reset': '重置变换',
     'shortcutAction.cut-stamp-reset': '重置图章',
     'shortcutAction.onion-skin-toggle': '切换洋葱皮',
-    'shortcutAction.camera-view-toggle': '切换摄像机视图',
+    'shortcutAction.camera-view-toggle': '切换摄影机视图',
     'shortcutAction.canvas-rotate-ccw': '画布视图向左旋转',
     'shortcutAction.canvas-rotate-cw': '画布视图向右旋转',
     'shortcutAction.canvas-flip-horizontal': '画布视图水平翻转',
@@ -9776,6 +9823,15 @@ enum AppStrings {
     'onionGhostColorHelp': '残影的着色方式',
     'onionPegCountHelp': '一格所计的单位',
     'onionPlacementHelp': '残影的位置',
+    'onionStepBlocks': '块',
+    'onionStepBlocksDrawings': '块（画面）',
+    'onionStepFrames': '帧',
+    'onionModeColors': '颜色',
+    'onionModeImages': '画面',
+    'onionPlacementOnTop': '最上层',
+    'onionPlacementInPlace': '原位',
+    'onionPegBeforeTemplate': '之前 {n}',
+    'onionPegAfterTemplate': '之后 {n}',
     'shortcutTitle': '键盘快捷键',
     'shortcutResetAll': '全部重置',
     'shortcutFileImportedTemplate':
@@ -9868,7 +9924,7 @@ enum AppStrings {
     'exSelBase': '基准',
     'exCelsLayersOut': '要导出的图层',
     'exSelAttach': '附属',
-    'exSelSheet': '仅律表',
+    'exSelSheet': '仅摄影表',
     'exSelDirection': '指示',
     'exSelCustom': '自定义',
     'exPaperLabel': '用纸',
@@ -9937,7 +9993,7 @@ enum AppStrings {
     'importWarning.clipCelLayers': '{name}：赛璐珞中的图层与其他赛璐珞同名的按名称、其余按从上往下的位置分成了行——各自的名称和文件夹不保留。',
     'importWarning.clipSpread': '{name}：在 {count} 张赛璐珞中，文件夹的不透明度或混合模式分给了其中的每个图层——图层重叠处看起来可能不同。',
     'importWarning.clipLineOrder': '{name}：在 {count} 张赛璐珞中，两个图层的叠放顺序与 CLIP STUDIO 相反——图层重叠处看起来可能不同。',
-    'importWarning.clipVector': '{name}：矢量图层——已用圆头笔绘制；笔刷的形状和质感未能保留。',
+    'importWarning.clipVector': '{name}：矢量图层——已用圆头笔绘制；画笔的形状和质感未能保留。',
     'importWarning.clipVectorUnread': '{name}：{count} 条无法读取的矢量线——未绘制。',
     'importWarning.clipSound': '{name}：未导入声音图层。',
     'importWarning.clipSoundMissing': '{name}：文件中没有它的声音——不播放。',
@@ -10157,7 +10213,7 @@ enum AppStrings {
     'toolCutDeletesSource': '删除原图',
     'toolReadSource': '参考',
     'toolReadsEveryVisibleLayer': '所有可见图层',
-    'brushSettingsTitle': '笔刷设置',
+    'brushSettingsTitle': '画笔设置',
     'toolShapeRect': '矩形',
     'toolShapeEllipse': '椭圆',
     'toolShapeLasso': '套索',
@@ -10176,14 +10232,14 @@ enum AppStrings {
     'shapeToolCornersSharp': '尖角',
     'shapeToolCornersRound': '圆角',
     'shapeToolRatioLock': '锁定比例',
-    'brBrushesTitle': '笔刷',
+    'brBrushesTitle': '画笔',
     'brGroupNameField': '组名称',
     'brCreate': '创建',
-    'brRenameBrush': '重命名笔刷',
-    'brBrushNameField': '笔刷名称',
+    'brRenameBrush': '重命名画笔',
+    'brBrushNameField': '画笔名称',
     'brGroupNameEmpty': '组名称不能为空。',
-    'brBrushNameEmpty': '笔刷名称不能为空。',
-    'brResetLibraryBody': '要用内置笔刷替换整个库 — 包括每个组、导入的包和已保存的笔刷吗？',
+    'brBrushNameEmpty': '画笔名称不能为空。',
+    'brResetLibraryBody': '要用内置画笔替换整个库 — 包括每个组、导入的包和已保存的画笔吗？',
     'brSize': '大小',
     'brOpacity': '不透明度',
     'brFlow': '流量',
@@ -10246,7 +10302,7 @@ enum AppStrings {
     'brGroupScattering': '散布',
     'brGroupTexture': '纹理',
     'brGroupCorrection': '修正',
-    'brDetailTitle': '笔刷详细设置',
+    'brDetailTitle': '画笔详细设置',
     'brShowInPanel': '在面板中显示',
     'brHideFromPanel': '在面板中隐藏',
     'shortcutAction.frame-auto-create': '自动创建帧',
@@ -10365,11 +10421,14 @@ enum AppStrings {
     'builtinTip.builtin-pencil-face-5-0': '铅芯 6-1',
     'builtinTip.builtin-pencil-face-5-1': '铅芯 6-2',
     'builtinTip.builtin-pencil-face-5-2': '铅芯 6-3',
+    'builtinTip.builtin-pencil-crumb-0': '铅笔颗粒 1',
+    'builtinTip.builtin-pencil-crumb-1': '铅笔颗粒 2',
+    'builtinTip.builtin-pencil-crumb-2': '铅笔颗粒 3',
     'brRenameGroup': '重命名分组',
     'brDeleteGroup': '删除分组',
     'brDeleteEmptyGroupTemplate': '要删除空分组“{name}”吗？',
-    'brDeleteGroupTemplateOne': '要删除“{name}”及其中的 1 个笔刷吗？',
-    'brDeleteGroupTemplate': '要删除“{name}”及其中的 {n} 个笔刷吗？',
+    'brDeleteGroupTemplateOne': '要删除“{name}”及其中的 1 个画笔吗？',
+    'brDeleteGroupTemplate': '要删除“{name}”及其中的 {n} 个画笔吗？',
     'brRenameSelected': '重命名所选画笔',
     'brDeleteSelected': '删除所选画笔',
     'brSaveAsPreset': '将当前设置保存为预设',
@@ -10460,8 +10519,8 @@ enum AppStrings {
     'tlColTimesheet': '摄影表列',
     'tlShowXSheet': '以摄影表显示',
     'tlShowTimeline': '以时间轴显示',
-    'cameraViewOn': '摄像机视图（开）',
-    'cameraViewOff': '摄像机视图',
+    'cameraViewOn': '摄影机视图（开）',
+    'cameraViewOff': '摄影机视图',
     'tlOpenOnionPanel': '打开洋葱皮面板',
     'tlApplyOnionToDisplayed': '对显示的图层应用洋葱皮',
     'tlClearOnionOnDisplayed': '清除显示图层的洋葱皮',
@@ -10590,13 +10649,68 @@ enum AppStrings {
     'tlMergeChangeFolder': '合并后图层所在文件夹的效果也会作用于来自文件夹外的图层',
     'tlMergeChangeRiderOver': '附属图层会盖住其他画面',
     'tlMergeChangeRiderUnder': '附属图层会被压到其他画面下面',
-    'tlMergeChangeWall': '参照图片超出底板的部分会被裁掉',
+    'tlMergeChangeWall': '超出底板的部分会被裁掉',
     'tlAttachDropsFxBody': '附属图层不保留自身的 fx。继续将丢弃现有的 fx。要继续吗？',
     'tlPush': '推出（空出帧）',
     'tlPull': '拉回（收拢帧）',
     'sbOneStoryboardRowPerCut': '该镜头已有分镜图层，每个镜头只能有一个。',
-    'cnPreviousPage': '上一页',
-    'cnNextPage': '下一页',
+    'blockFrameLinesLabel': '块内帧线',
+    'brDualBlend': '双重混合',
+    'brTextureBrightness': '亮度',
+    'brTextureContrast': '对比度',
+    'brTextureInvert': '浓度反转',
+    'drawingCursorLabel': '光标',
+    'drawingCursorBrush': '画笔',
+    'drawingCursorPen': '钢笔',
+    'drawingCursorCrosshair': '十字',
+    'mediaRelinkScanning': '正在读取该文件夹…',
+    'mediaRelinkScanned': '已读取文件夹',
+    'openProgressRunning': '正在打开…',
+    'openProgressDone': '已打开',
+    'openWaitingCloudTemplate': '正在从云端下载 · {sec} 秒',
+    'openWaitingStalledTemplate': '已有 {sec} 秒未收到数据',
+    'prefsDisplay': '显示',
+    'uiScaleLabel': '界面大小',
+    'colorModeLabel': '外观',
+    'colorModeDark': '深色',
+    'colorModeLight': '浅色',
+    'unnamedMarkLabel': '无名块的标记',
+    'tlLayerMarkNone': '无标记',
+    'tlLayerMarkSource': '素材',
+    'tlLayerTake': '镜次',
+    'tlLayerTakeNumber': '镜次 {n}',
+    'layerProcess.paper': '用纸',
+    'layerProcess.conte': '分镜',
+    'layerProcess.art': '美术',
+    'layerProcess.layout': '设计稿',
+    'layerProcess.rough-key': '粗原画',
+    'layerProcess.key': '原画',
+    'layerProcess.inbetween': '中割',
+    'layerProcess.finish': '上色',
+    'layerProcessAbbrev.paper': '用纸',
+    'layerProcessAbbrev.conte': '分镜',
+    'layerProcessAbbrev.art': '美术',
+    'layerProcessAbbrev.layout': 'LO',
+    'layerProcessAbbrev.rough-key': '粗原',
+    'layerProcessAbbrev.key': '原画',
+    'layerProcessAbbrev.inbetween': '中割',
+    'layerProcessAbbrev.finish': '上色',
+    'layerRevise.direction': '演出',
+    'layerRevise.animation-director': '作画监督',
+    'layerRevise.chief-animation-director': '总作画监督',
+    'layerRevise.director': '导演',
+    'layerRevise.chief-director': '总导演',
+    'layerRevise.action-animation-director': '动作作画监督',
+    'layerRevise.inbetween-check': '中割检查',
+    'layerRevise.cell-check': '赛璐珞检查',
+    'layerReviseAbbrev.direction': '演出',
+    'layerReviseAbbrev.animation-director': '作监',
+    'layerReviseAbbrev.chief-animation-director': '总作监',
+    'layerReviseAbbrev.director': '导演',
+    'layerReviseAbbrev.chief-director': '总导演',
+    'layerReviseAbbrev.action-animation-director': '动作',
+    'layerReviseAbbrev.inbetween-check': '中检',
+    'layerReviseAbbrev.cell-check': '赛检',
     'cnHeadCut': '镜头',
     'cnHeadPicture': '画面',
     'cnHeadAction': '内容',

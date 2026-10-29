@@ -2542,7 +2542,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
             top: 0,
             bottom: 0,
             width: 2,
-            child: const IgnorePointer(
+            child: IgnorePointer(
               child: ColoredBox(color: AppColors.danger),
             ),
           );
@@ -3922,29 +3922,30 @@ class _StoryboardTransitionRow extends KeptPiece
       );
     }
     spans.add(_runLabels(context, layer));
-    // The marks, from the direction row's own overlay builder.
+    // The marks, from the direction row's own overlay builder. Each mark
+    // takes no pointer of its own; a warning's hover reaches its block
+    // (F-495). ↩️The whole layer took none, and the warning's tooltip,
+    // added inside it later (D26), could never be hovered here.
     final defById = this.defById;
     if (defById != null && _frameEndExclusive > 0) {
       spans.add(
         Positioned.fill(
-          child: IgnorePointer(
-            child: TimelineFixedFrameSpanLayer(
-              geometry: _geometry,
-              crossAxisExtent: height,
+          child: TimelineFixedFrameSpanLayer(
+            geometry: _geometry,
+            crossAxisExtent: height,
+            axis: Axis.horizontal,
+            children: timelineRowInstructionOverlays(
+              layer: layer,
+              frameStartIndex: 0,
+              frameEndIndexExclusive: _frameEndExclusive,
               axis: Axis.horizontal,
-              children: timelineRowInstructionOverlays(
-                layer: layer,
-                frameStartIndex: 0,
-                frameEndIndexExclusive: _frameEndExclusive,
-                axis: Axis.horizontal,
-                defById: defById,
-                keyPrefix: 'storyboard',
-                // D26: the refusal marker on the AUTHORING axis too — the
-                // one predicate, answered by global key here.
-                crossingWarningTooltip: crossingTooltip,
-                crossingWarningColor: Theme.of(context).colorScheme.error,
-                crossAxisExtent: height,
-              ),
+              defById: defById,
+              keyPrefix: 'storyboard',
+              // D26: the refusal marker on the AUTHORING axis too — the
+              // one predicate, answered by global key here.
+              crossingWarningTooltip: crossingTooltip,
+              crossingWarningColor: Theme.of(context).colorScheme.error,
+              crossAxisExtent: height,
             ),
           ),
         ),

@@ -25,6 +25,7 @@ import '../../services/usage_stats/aptabase_client.dart';
 import '../../services/usage_stats/usage_stats.dart';
 import '../../models/app_input_settings.dart';
 import '../../models/audio_sync_settings.dart';
+import '../color/color_hex.dart';
 import '../text/app_strings.dart';
 import '../../models/app_accents.dart';
 import '../../models/camera_path_settings.dart';
@@ -131,7 +132,26 @@ class EditorAppSettings {
     client: _usageStatsClient,
     locale: () => languageSettings.value.programLanguage.languageCode,
     osLocale: _platformLanguageTag,
+    settings: _usageSettings,
   );
+
+  /// The settings a usage-statistics day carries, as Preferences shows
+  /// them: the UI scale's label, the accent's HEX, autosave's minutes or
+  /// `off`, the drawing cursor's name.
+  ///
+  /// 🗣️I-70-Q8 (유저 2026-10-29 19:5x): 「정한 목록만」 — these four, and one
+  /// more only by its name, with the usage question's words and the site's
+  /// privacy policy changed beside it. ⛔Never Preferences whole: a path
+  /// setting carries the PC's user name.
+  static Map<String, Object> _usageSettings() => {
+    'uiScale': AppUiScale.label(AppUiScale.value.value),
+    'accent': colorHexOf(AppColors.accentSettings.value.accent.toARGB32()),
+    'autosave': switch (AppSave.settings.value.periodicSnapshotMinutes) {
+      null => 'off',
+      final minutes => '${minutes}min',
+    },
+    'drawingCursor': AppInput.settings.value.drawingCursor.name,
+  };
 
   /// The device's own language, as the platform names it (`ko-KR`,
   /// `zh-Hans-CN`) — for the usage statistics (유저 2026-10-29 09:1x).

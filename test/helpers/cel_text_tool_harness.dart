@@ -58,24 +58,37 @@ const textToolLayerId = LayerId('text-tool-layer');
 const textToolKey = BrushFrameKey(
   projectId: ProjectId('text-tool-project'),
   trackId: TrackId('text-tool-track'),
-  cutId: CutId('text-tool-cut'),
+  cutId: textToolCutId,
   layerId: textToolLayerId,
   frameId: textToolFrameId,
 );
 const textToolSecondKey = BrushFrameKey(
   projectId: ProjectId('text-tool-project'),
   trackId: TrackId('text-tool-track'),
-  cutId: CutId('text-tool-cut'),
+  cutId: textToolCutId,
   layerId: textToolLayerId,
   frameId: textToolSecondFrameId,
 );
 
+/// The row [textToolProject] adds with no cel at all.
+const textToolEmptyLayerId = LayerId('text-tool-empty-layer');
+
+/// The cut the text tool works in.
+const textToolCutId = CutId('text-tool-cut');
+
+/// The cut [textToolProject] adds after it — one row, no cel anywhere.
+const textToolSecondCutId = CutId('text-tool-second-cut');
+
 /// One cut, one layer, a drawing at the first frame — and with [drawings]
 /// two, another at the second. Every frame after them is EMPTY: no cel.
-/// The layer wears [effects].
+/// The layer wears [effects]. With [emptyLayer], a second row beside it
+/// has no cel anywhere ([textToolEmptyLayerId]). With [secondCut], another
+/// cut follows on the track ([textToolSecondCutId]).
 Project textToolProject({
   int drawings = 1,
   List<LayerEffect> effects = const [],
+  bool emptyLayer = false,
+  bool secondCut = false,
 }) => Project(
   id: const ProjectId('text-tool-project'),
   name: 'Text Tool',
@@ -86,7 +99,7 @@ Project textToolProject({
       name: 'Video Track',
       cuts: [
         Cut(
-          id: const CutId('text-tool-cut'),
+          id: textToolCutId,
           name: 'Text Tool Cut',
           duration: defaultCutDuration,
           canvasSize: defaultCutCanvasSize,
@@ -109,8 +122,28 @@ Project textToolProject({
                   index: TimelineExposure.drawing(id, length: 1),
               },
             ),
+            if (emptyLayer)
+              Layer(
+                id: textToolEmptyLayerId,
+                name: 'Empty Layer',
+                frames: [],
+              ),
           ],
         ),
+        if (secondCut)
+          Cut(
+            id: textToolSecondCutId,
+            name: 'Second Cut',
+            duration: defaultCutDuration,
+            canvasSize: defaultCutCanvasSize,
+            layers: [
+              Layer(
+                id: const LayerId('text-tool-second-cut-layer'),
+                name: 'Second Cut Layer',
+                frames: [],
+              ),
+            ],
+          ),
       ],
     ),
   ],

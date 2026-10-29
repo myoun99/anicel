@@ -15,6 +15,7 @@ import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
+import 'package:anicel/src/models/separable_blend_mode.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/brush_commit_builder.dart';
@@ -48,10 +49,8 @@ BrushDab _dab({
   double roundness = 1.0,
   double angleDegrees = 0.0,
   BrushTipMask? tipMask,
-  BrushTipMask? dualMask,
-  double dualMaskScale = 1.0,
-  double dualOffsetU = 0.0,
-  double dualOffsetV = 0.0,
+  BrushDualView? dual,
+  bool second = false,
   BrushTipMask? textureMask,
   double textureScale = 1.0,
   double textureDensity = 1.0,
@@ -69,15 +68,37 @@ BrushDab _dab({
     roundness: roundness,
     angleDegrees: angleDegrees,
     tipMask: tipMask,
-    dualMask: dualMask,
-    dualMaskScale: dualMaskScale,
-    dualOffsetU: dualOffsetU,
-    dualOffsetV: dualOffsetV,
+    dual: dual,
+    second: second,
     textureMask: textureMask,
     textureScale: textureScale,
     textureDensity: textureDensity,
   );
 }
+
+/// A dab of a stroke's second tip as `BrushSecondStroke` lays it.
+BrushDab _second({
+  required double x,
+  required double y,
+  required BrushDualView dual,
+  double size = 10,
+}) => _dab(
+  x: x,
+  y: y,
+  size: size,
+  color: 0xFF000000,
+  opacity: 1.0,
+  flow: 1.0,
+  tipMask: _testTipMask,
+  dual: dual,
+  second: true,
+);
+
+const _fullMultiply = BrushDualView();
+const _halfOverlay = BrushDualView(
+  compositeMode: SeparableBlendMode.overlay,
+  density: 0.5,
+);
 
 /// Deterministic 8x8 gradient-with-holes mask for parity scenarios.
 final BrushTipMask _testTipMask = BrushTipMask(
@@ -218,34 +239,25 @@ void main() {
             sequence: i,
           ),
       ],
-      'paper texture combined with dual mask and sampled tip': [
+      'paper texture under a dual stroke\'s sampled tip': [
         _dab(
           x: 16.4,
           y: 15.8,
           size: 14,
           tipMask: _testTipMask,
-          dualMask: _testTipMask,
-          dualMaskScale: 0.7,
-          dualOffsetU: 0.4,
-          dualOffsetV: 0.6,
+          dual: _halfOverlay,
           textureMask: _testTipMask,
           textureScale: 1.2,
           textureDensity: 0.5,
         ),
+        _second(x: 15.1, y: 16.9, size: 10, dual: _halfOverlay),
       ],
-      'dual-brush textured soft round dab': [
-        _dab(
-          x: 13.4,
-          y: 12.7,
-          size: 14,
-          hardness: 0.5,
-          dualMask: _testTipMask,
-          dualMaskScale: 0.6,
-          dualOffsetU: 0.31,
-          dualOffsetV: 0.77,
-        ),
+      'dual stroke over a soft round dab': [
+        _dab(x: 13.4, y: 12.7, size: 14, hardness: 0.5, dual: _fullMultiply),
+        _second(x: 12.2, y: 13.5, size: 9, dual: _fullMultiply),
+        _second(x: 15.8, y: 11.9, size: 7, dual: _fullMultiply),
       ],
-      'dual mask over sampled tip, translucent overlap': [
+      'dual stroke over a sampled tip, translucent overlap': [
         for (var i = 0; i < 3; i += 1)
           _dab(
             x: 10.3 + i * 4.1,
@@ -253,11 +265,15 @@ void main() {
             size: 12,
             color: 0x9040A0C0,
             tipMask: _testTipMask,
-            dualMask: _testTipMask,
-            dualMaskScale: 1.4,
-            dualOffsetU: 0.1 * (i + 1),
-            dualOffsetV: 0.9 - 0.2 * i,
+            dual: _halfOverlay,
             sequence: i,
+          ),
+        for (var i = 0; i < 4; i += 1)
+          _second(
+            x: 9.7 + i * 3.4,
+            y: 12.9 + i * 1.2,
+            size: 8,
+            dual: _halfOverlay,
           ),
       ],
       'sampled tip rotated and squashed, overlapping stroke': [
@@ -279,6 +295,34 @@ void main() {
       test(name, () {
         _expectExact(_liveBufferFor(dabs), _materializedBytes(dabs), name);
       });
+    });
+
+    test('a dual stroke blended as the pen moves shows what it shows at once',
+        () {
+      // The pen hands the overlay each advance's first-tip dabs with the
+      // second tip's that follow them; the view is of the two planes, so
+      // where the pieces break changes nothing.
+      final dabs = [
+        for (var i = 0; i < 6; i += 1) ...[
+          _dab(
+            x: 8.4 + i * 3.7,
+            y: 11.3 + i * 2.2,
+            size: 11,
+            dual: _halfOverlay,
+            sequence: i,
+          ),
+          _second(x: 9.1 + i * 3.5, y: 11.8 + i * 2.0, dual: _halfOverlay),
+        ],
+      ];
+      final rasterizer = BrushLiveStrokeRasterizer(pasteboard: _pasteboard);
+      for (var from = 0; from < dabs.length; from += 4) {
+        rasterizer.blendFrom(dabs.sublist(0, from + 4), from: from);
+      }
+      _expectExact(
+        _rasterizerBytes(rasterizer),
+        _materializedBytes(dabs),
+        'dual stroke in pieces',
+      );
     });
   });
 

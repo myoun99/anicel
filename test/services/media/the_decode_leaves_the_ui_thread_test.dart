@@ -9,6 +9,7 @@ import 'package:anicel/src/native/qa_video_decoder.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
 
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/os_video_codec.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// 🚨★★★**THE WHOLE ROUND IS ONE QUESTION: WHOSE THREAD DECODES?**
@@ -45,8 +46,7 @@ void main() {
 
   const movie = 'test/fixtures/tone_with_video.mp4';
 
-  bool readerHere() =>
-      QaVideoDecoder.instance != null && QaVideoDecoder.instance!.isSupported;
+  bool readerHere() => osVideoDecoderOrSkip() != null;
 
   /// Whether a zero-duration timer scheduled just before the frame gets to
   /// run BEFORE the frame arrives.
@@ -79,7 +79,7 @@ void main() {
   test('the isolate backend leaves the caller free; the direct one does '
       'not', () async {
     if (!readerHere()) {
-      return; // no reader in this build — absence is answered elsewhere
+      return;
     }
 
     // ⚠️The control FIRST, so a green result cannot come from a timer that

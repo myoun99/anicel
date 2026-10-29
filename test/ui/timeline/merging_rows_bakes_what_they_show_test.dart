@@ -16,6 +16,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_link_registry.dart';
 import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -155,13 +156,14 @@ void main() {
     TransformTrack? aMoves,
     bool aRidden = false,
     bool aParted = false,
+    bool pasteboardInUse = true,
   }) {
     final a = row('a', blendMode: aBlend).copyWith(transformTrack: aMoves);
     final s = sessionOf([
       row('b', isVisible: bShown),
       if (aParted) parted(a) else a,
       if (aRidden) rider,
-    ]);
+    ], pasteboardInUse: pasteboardInUse);
     final cut = s.requireActiveCut;
     final store = s.renderCaches.brushFrameStore;
     for (final (id, cel, coords, rgba) in [
@@ -467,6 +469,199 @@ void main() {
         reason: 'in use: $inUse',
       );
     }
+  });
+
+  test('…and a drawing\'s ink where the row shows it, as a reference\'s '
+      'file is (Q19)', () {
+    for (final (dx, inUse, changes) in [
+      // b's tile past the canvas's left edge, the pasteboard's to hold.
+      (16.0, true, <LayerMergeChange>{}),
+      (16.0, false, {LayerMergeChange.wall}),
+      // a's ink keyed past the pasteboard's right edge.
+      (96.0, true, {LayerMergeChange.wall}),
+    ]) {
+      final s = session(
+        aMoves: TransformTrack.empty().copyWith(
+          position: PropertyTrack<CanvasPoint>.empty().withKey(
+            0,
+            CanvasPoint(x: 32 + dx, y: 24),
+          ),
+        ),
+        pasteboardInUse: inUse,
+      );
+      addTearDown(s.dispose);
+
+      expect(
+        s.layerMerging.planOfSelection()!.changes,
+        changes,
+        reason: 'moved ${dx}px, in use: $inUse',
+      );
+    }
+  });
+
+  /// 🗣️I-78-Q9 (유저 2026-10-28): 「이어진 컷에서도 같이 병합한다」.
+  group('a 겸용 row', () {
+    const other = CutId('cut2');
+    LayerLinkMember member(CutId cut, String id) => LayerLinkMember(
+      trackId: const TrackId('track'),
+      cutId: cut,
+      layerId: LayerId(id),
+    );
+    final before = LayerLinkRegistry(
+      groups: [
+        // Its cels kept under the other cut's row.
+        LayerLinkGroup(
+          id: 'link-9',
+          members: [member(other, 'a2'), member(cutId, 'a')],
+        ),
+      ],
+    );
+
+    /// A session over a cut of `b` under `a` — inked as [session] inks
+    /// them, both selected, `b` shown at its first frame alone — and a cut
+    /// of `a2`, ONE layer with `a`, moved by [a2Moves].
+    EditorSessionManager linkedSession({TransformTrack? a2Moves}) {
+      final a = row('a');
+      Cut cutOf(CutId id, List<Layer> layers) => Cut(
+        id: id,
+        name: id.value,
+        duration: 2,
+        canvasSize: canvasSize,
+        layers: [...layers, createCameraLayer(cutId: id)],
+      );
+      final s = EditorSessionManager(
+        initialProject: Project(
+          id: const ProjectId('project'),
+          name: 'Project',
+          cameraSize: canvasSize,
+          tracks: [
+            Track(
+              id: const TrackId('track'),
+              name: 'Track',
+              cuts: [
+                cutOf(cutId, [
+                  row('b').copyWith(
+                    timeline: const {
+                      0: TimelineExposure.drawing(FrameId('b-1'), length: 1),
+                    },
+                  ),
+                  a,
+                ]),
+                cutOf(other, [
+                  a.copyWith(
+                    id: const LayerId('a2'),
+                    transformTrack: a2Moves,
+                  ),
+                ]),
+              ],
+            ),
+          ],
+          linkRegistry: before,
+          createdAt: DateTime.utc(2026),
+        ),
+      );
+      for (final (id, coord, rgba) in [
+        ('b', TileCoord(x: 1, y: 0), red),
+        ('a', TileCoord(x: 2, y: 0), green),
+      ]) {
+        bakeCelSurface(
+          s.renderCaches.brushFrameStore,
+          s.brushFrameKeyForCut(
+            s.requireActiveCut,
+            LayerId(id),
+            FrameId('$id-1'),
+          ),
+          inkAt([coord], rgba),
+        );
+      }
+      s.rowSelection.value = const [
+        LayerRowAddress(LayerId('a')),
+        LayerRowAddress(LayerId('b')),
+      ];
+      return s;
+    }
+
+    testWidgets('🎯merges in every cut it is in: each cut\'s result shows '
+        'its own picture, the cels kept where the link table kept the '
+        'row\'s — and one undo gives both cuts and the table back', (
+      tester,
+    ) async {
+      final s = linkedSession();
+      addTearDown(s.dispose);
+      final layersBefore = {
+        for (final id in [cutId, other]) id: s.cutById(id)!.layers,
+      };
+      final context = await hostedContext(tester);
+
+      unawaited(mergeLayerRows(context, s));
+      await settleBehindTheWaitWindow(tester, () => merged(s));
+
+      /// The picture the row [id] of [cut] shows.
+      BitmapSurface shown(CutId cut, String id) {
+        final at = s.cutById(cut)!;
+        final result = at.layers.byId(LayerId(id))!;
+        return s.renderCaches.brushFrameStore.bakedSurfaceOrNull(
+          s.brushFrameKeyForCut(at, result.id, result.timeline[0]!.frameId!),
+          read: CelRead.look,
+        )!;
+      }
+
+      final after = LayerLinkRegistry(
+        groups: [
+          LayerLinkGroup(
+            id: 'link-1',
+            members: [member(other, 'a2'), member(cutId, 'a')],
+          ),
+        ],
+      );
+      final there = shown(other, 'a2');
+      expect([at(shown(cutId, 'a'), 20, 5), at(shown(cutId, 'a'), 36, 5)], [
+        red,
+        green,
+      ]);
+      expect(at(there, 36, 5), green);
+      expect(at(there, 20, 5)?[3] ?? 0, 0, reason: 'b is no row of that cut');
+      Layer result(CutId cut, String id) =>
+          s.cutById(cut)!.layers.byId(LayerId(id))!;
+      expect(
+        [result(other, 'a2').frames, result(other, 'a2').frames.length],
+        [result(cutId, 'a').frames, 2],
+        reason: 'a alone, at the second frame here and both there, one cel',
+      );
+      expect(
+        s.repository.requireProject().linkRegistry,
+        after,
+        reason: 'the results one layer, as the rows were',
+      );
+
+      s.undo();
+      expect({
+        for (final id in [cutId, other]) id: s.cutById(id)!.layers,
+      }, layersBefore);
+      expect(s.repository.requireProject().linkRegistry, before);
+      s.redo();
+      expect(at(shown(other, 'a2'), 36, 5), green);
+      expect(s.repository.requireProject().linkRegistry, after);
+      s.playbackRig.prerenderScheduler.cancel();
+    });
+
+    test('…and a picture another cut shows past the wall is warned of, as '
+        'one of the cut pressed is (Q19)', () {
+      final s = linkedSession(
+        // a's ink keyed past the pasteboard's right edge — in cut2 alone.
+        a2Moves: TransformTrack.empty().copyWith(
+          position: PropertyTrack<CanvasPoint>.empty().withKey(
+            0,
+            CanvasPoint(x: 32 + 96, y: 24),
+          ),
+        ),
+      );
+      addTearDown(s.dispose);
+
+      expect(s.layerMerging.planOfSelection()!.changes, {
+        LayerMergeChange.wall,
+      });
+    });
   });
 
   test('one row alone lights nothing', () {

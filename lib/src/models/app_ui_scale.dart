@@ -32,9 +32,12 @@ import 'package:flutter/foundation.dart';
 class AppUiScale {
   const AppUiScale._();
 
-  /// The stops, ascending. Tight around 100 (90/110) because that is the
-  /// range a user reaches for to make one panel comfortable; wider steps
-  /// further out, where the choice is "much bigger" rather than "a little".
+  /// The stops, ascending: 50% to 150% in steps of ten.
+  ///
+  /// 🗣️유저 2026-10-29 (I-144-Q1): 「배율 더 넣어서 50부터 10단위로
+  /// 150까지」 — eleven stops, 80% among them for the first-run default
+  /// below. ↩️Seven stops tight around 100 (90/110) and wider further out
+  /// (75/125), on the reasoning that a hand lands near 100.
   ///
   /// 🆕50% (유저 2026-08-29, I-11): 「**50%같은 더 낮은수도 넣어도
   /// 괜찮을거같은데.** 데스크톱은 쓰기 힘들지만 dpr높은 디바이스는
@@ -43,15 +46,22 @@ class AppUiScale {
   /// reaches for it.
   static const List<double> ladder = <double>[
     0.5,
-    0.75,
+    0.6,
+    0.7,
+    0.8,
     0.9,
     1.0,
     1.1,
-    1.25,
+    1.2,
+    1.3,
+    1.4,
     1.5,
   ];
 
   static const double defaultScale = 1.0;
+
+  /// Where an Android device and a phone start (I-144-Q2).
+  static const double handheldScale = 0.8;
 
   /// The scale a device starts on when NOTHING HAS EVER BEEN CHOSEN.
   ///
@@ -65,15 +75,23 @@ class AppUiScale {
   /// eventually overwrite a scale the user chose by hand, and there is no
   /// undo for a setting that changes itself.
   ///
-  /// ⛔AND IT ONLY KNOWS WHAT THE USER TOLD IT. They named two devices — a
-  /// desktop (uncomfortable small) and a phone (75% comfortable) — so those
-  /// are the two answers. A tablet sits at 2.0 and keeps the 100% it has
-  /// always had, because nobody said otherwise and inventing a middle step
-  /// would be inventing a preference.
-  static double firstRunScaleFor(double devicePixelRatio) =>
-      devicePixelRatio.isFinite && devicePixelRatio >= 2.5
-      ? 0.75
-      : defaultScale;
+  /// ⛔AND IT ONLY KNOWS WHAT THE USER TOLD IT. 🗣️유저 2026-10-29
+  /// (I-144-Q2 a): 「안드로이드기준 80%해도 될거같은데」 — every Android
+  /// device, its tablets too, starts at [handheldScale]; a phone elsewhere
+  /// (a ratio of 2.5 and up) starts there as well, where the 75% of 08-29
+  /// stood before the ladder lost it. A desktop and an iPad (2.0) keep the
+  /// 100% they have always had, because nobody said otherwise.
+  static double firstRunScaleFor(
+    double devicePixelRatio, {
+    required bool android,
+  }) {
+    if (android) {
+      return handheldScale;
+    }
+    return devicePixelRatio.isFinite && devicePixelRatio >= 2.5
+        ? handheldScale
+        : defaultScale;
+  }
 
   /// The LIVE scale. App-wide rather than session-owned for the same reason
   /// the accents are: widgets holding no session read it, and it outlives

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/app_accents.dart';
 import 'package:anicel/src/models/app_frame_grid_settings.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/inbetween_mark.dart';
@@ -11,6 +12,8 @@ import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
     show editorActionLabel;
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/timeline/inbetween_mark_icon.dart';
 import 'package:anicel/src/ui/ui_scale.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
@@ -92,12 +95,12 @@ void main() {
 
     testWidgets('picking a stop sets the live scale', (tester) async {
       await pump(tester);
-      await pick(tester, picker, stop(1.25));
-      expect(AppUiScale.value.value, 1.25);
-      expect(said(tester, picker), AppUiScale.label(1.25));
+      await pick(tester, picker, stop(1.3));
+      expect(AppUiScale.value.value, 1.3);
+      expect(said(tester, picker), AppUiScale.label(1.3));
 
-      await pick(tester, picker, stop(0.75));
-      expect(AppUiScale.value.value, 0.75);
+      await pick(tester, picker, stop(0.7));
+      expect(AppUiScale.value.value, 0.7);
     });
 
     testWidgets('the row follows the value it did not set', (tester) async {
@@ -113,13 +116,13 @@ void main() {
     testWidgets('an off-ladder value from outside is snapped, not shown '
         'raw', (tester) async {
       await pump(tester);
-      session.setUiScale(1.2);
+      session.setUiScale(1.24);
       await tester.pump();
-      expect(AppUiScale.value.value, 1.25);
+      expect(AppUiScale.value.value, 1.2);
       // ⚠️Otherwise no stop would look picked and the row would read as
       // "the scale is off".
-      expect(find.text('120%'), findsNothing);
-      expect(pickedIn(tester, picker), [stop(1.25)]);
+      expect(find.text('124%'), findsNothing);
+      expect(pickedIn(tester, picker), [stop(1.2)]);
     });
   });
 
@@ -249,6 +252,57 @@ void main() {
     });
   });
 
+  // 🗣️I-143 (유저 2026-10-29): 다크 · 라이트 둘(Q2), dark as the app has
+  // always been.
+  group('the palette', () {
+    final picker = find.byKey(const ValueKey<String>('settings-color-mode'));
+    String row(AppColorMode mode) => 'settings-color-mode-${mode.name}';
+
+    tearDown(
+      () => AppColors.accentSettings.value = const AppAccentSettings(),
+    );
+
+    testWidgets('is a list of dark and light, dark picked out of the box', (
+      tester,
+    ) async {
+      await pump(tester);
+      expect(find.text(AppText.strings.colorModeLabel), findsOneWidget);
+      expect(
+        [
+          for (final item in rowsOf(tester, picker)) (item.keyValue, item.label),
+        ],
+        [
+          (row(AppColorMode.dark), AppText.strings.colorModeDark),
+          (row(AppColorMode.light), AppText.strings.colorModeLight),
+        ],
+      );
+      expect(pickedIn(tester, picker), [row(AppColorMode.dark)]);
+    });
+
+    testWidgets('a pick wears the palette at once, keeping the accent', (
+      tester,
+    ) async {
+      AppColors.accentSettings.value = const AppAccentSettings(
+        accent: Color(0xFF5B9BD5),
+      );
+      await pump(tester);
+      await pick(tester, picker, row(AppColorMode.light));
+      expect(
+        AppColors.accentSettings.value,
+        const AppAccentSettings(
+          accent: Color(0xFF5B9BD5),
+          mode: AppColorMode.light,
+        ),
+      );
+      expect(AppColors.surface, AppPalette.light.surface);
+      expect(said(tester, picker), AppText.strings.colorModeLight);
+
+      await pick(tester, picker, row(AppColorMode.dark));
+      expect(AppColors.accentSettings.value.mode, AppColorMode.dark);
+      expect(AppColors.surface, AppPalette.dark.surface);
+    });
+  });
+
   // 🗣️F-489 (유저 2026-10-27): 「이름 없는 블록의 기본 마크1,2인지
   // 설정할수있게 … 환경설정에서 바꾸도록. 화면 탭에서? 그런건 판단 맡기고 …
   // 기본값은 마크2로 둠」.
@@ -261,28 +315,54 @@ void main() {
     tearDown(() => AppFrameGridSettings.settings.value =
         const AppFrameGridSettings());
 
-    testWidgets('is a list of the two marks, each by its button\'s name, '
-        'mark 2 picked out of the box', (tester) async {
+    /// What the button wears: the face, any words, and its tooltip.
+    (IconData?, String, String?) worn(WidgetTester tester) {
+      final button = tester.widget<PanelFlyoutButton>(picker);
+      return (button.icon, button.label, button.tooltip);
+    }
+
+    // 🗣️F-497 (유저 2026-10-28): 「이름없는 블록 마크 버튼 텍스트가 아니라
+    // 마크 그대로사용 … 텍스트면 뭔지 알기힘드니」 — the face its toggle
+    // button and the mark-every window's pick wear.
+    testWidgets('is a list of the two marks, each wearing its button\'s face '
+        'beside its name, mark 2 picked out of the box — and the button wears '
+        'the mark alone, its name the tooltip', (tester) async {
       await pump(tester);
       expect(find.text(AppText.strings.unnamedMarkLabel), findsOneWidget);
       expect(
         [
-          for (final item in rowsOf(tester, picker)) (item.keyValue, item.label),
+          for (final item in rowsOf(tester, picker))
+            (item.keyValue, item.icon, item.label),
         ],
         [
           for (final mark in InbetweenMark.values)
-            (row(mark), editorActionLabel(markToggleActionOf(mark))),
+            (
+              row(mark),
+              inbetweenMarkIcon(mark),
+              editorActionLabel(markToggleActionOf(mark)),
+            ),
         ],
       );
       expect(pickedIn(tester, picker), [row(InbetweenMark.two)]);
-      expect(
-        said(tester, picker),
+      expect(worn(tester), (
+        inbetweenMarkIcon(InbetweenMark.two),
+        '',
         editorActionLabel(EditorActionIds.frameToggleMarkTwo),
+      ));
+      final face = find.descendant(
+        of: picker,
+        matching: find.byIcon(inbetweenMarkIcon(InbetweenMark.two)),
+      );
+      expect(face, findsOneWidget, reason: 'what the eye meets');
+      expect(
+        tester.getCenter(face).dx,
+        moreOrLessEquals(tester.getCenter(picker).dx),
+        reason: 'standing where the words would, not a gap before them',
       );
     });
 
     testWidgets('a pick sets the live setting, touching nothing else it '
-        'holds, and the button says it', (tester) async {
+        'holds, and the button wears it', (tester) async {
       AppFrameGridSettings.settings.value = const AppFrameGridSettings(
         blockFrameLines: true,
       );
@@ -296,10 +376,11 @@ void main() {
         ),
       );
       expect(pickedIn(tester, picker), [row(InbetweenMark.one)]);
-      expect(
-        said(tester, picker),
+      expect(worn(tester), (
+        inbetweenMarkIcon(InbetweenMark.one),
+        '',
         editorActionLabel(EditorActionIds.frameToggleMarkOne),
-      );
+      ));
     });
   });
 }

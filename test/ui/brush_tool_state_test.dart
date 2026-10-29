@@ -370,6 +370,31 @@ void main() {
       expect(state.spacing, BrushShape.maxSpacing);
       expect(state.angleDegrees, BrushToolState.maxAngleDegrees);
     });
+
+    test('a second tip\'s way along the path is held to the first tip\'s '
+        'ranges', () {
+      final state = BrushToolState.fromBrushSettings(
+        BrushSettings(
+          dualSpacing: 100,
+          dualAngleDegrees: 720,
+          dualScatterRadiusRatio: 1000,
+          dualScatterCount: 40,
+        ),
+      );
+      final first = BrushToolState.fromBrushSettings(
+        BrushSettings(
+          spacing: 100,
+          angleDegrees: 720,
+          scatterRadiusRatio: 1000,
+          scatterCount: 40,
+        ),
+      );
+      expect(state.dualSpacing, first.spacing);
+      expect(state.dualAngleDegrees, first.angleDegrees);
+      expect(state.dualScatterRadiusRatio, first.scatterRadiusRatio);
+      expect(state.dualScatterCount, first.scatterCount);
+      expect(state.dualScatterCount, 16);
+    });
   });
 
   group('ground-colour mixing', () {

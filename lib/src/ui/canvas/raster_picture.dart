@@ -62,6 +62,30 @@ ui.Image rasterPicture(
   ),
 );
 
+/// [shader] over the whole of a [width]×[height] raster, rastered as
+/// [rasterPicture] does — and laid as it gives it (`BlendMode.src`) where it
+/// is [inFloats]: over an empty raster the default blend gives the same, but
+/// a number past 1 is no colour a blend is promised to keep.
+///
+/// ⚠️The caller keeps [shader], and disposes it once this returns.
+ui.Image shadedRaster(
+  ui.Shader shader,
+  int width,
+  int height, {
+  bool inFloats = false,
+}) {
+  final recorder = ui.PictureRecorder();
+  final paint = ui.Paint()..shader = shader;
+  if (inFloats) {
+    paint.blendMode = ui.BlendMode.src;
+  }
+  ui.Canvas(recorder).drawRect(
+    ui.Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+    paint,
+  );
+  return rasterPicture(recorder, width, height, inFloats: inFloats);
+}
+
 /// [picture]'s plain snapshot, WAITED FOR — the tile compose's, spelled
 /// once so that the waits can be counted ([debugOnWaitedSnapshot]). ↩️The
 /// steps of a layer image's chain shared it (a halving, the cut of the ink)

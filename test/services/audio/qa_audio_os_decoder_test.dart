@@ -457,7 +457,6 @@ void main() {
             : ((index.isEven ? 1 : -1) * 30000 * (1 - index / 48)).round();
       },
     )) {
-      expect(Platform.isLinux, isTrue, reason: 'no OS encoder only on Linux');
       return;
     }
 

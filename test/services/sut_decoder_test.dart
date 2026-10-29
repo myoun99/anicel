@@ -10,6 +10,7 @@ import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
+import 'package:anicel/src/models/brush_shape.dart';
 import 'package:anicel/src/models/brush_tip_order.dart';
 import 'package:anicel/src/models/separable_blend_mode.dart';
 import 'package:anicel/src/services/sut/sut_decoder.dart';
@@ -229,6 +230,14 @@ void main() {
     int? revisionBezier,
     // The dual tip's 合成モード index, null where the file says nothing.
     int? dualCompositeMode,
+    // The second tip's own way along the path — its `Brush*` columns over
+    // again under `Dual`, null where the file says nothing.
+    double? dualInterval,
+    int? dualThickness,
+    double? dualRotation,
+    int? dualUseSpray,
+    double? dualSpraySize,
+    int? dualSprayDensity,
   }) async {
     // Unique per call: a test that builds several fixtures would otherwise
     // reopen the first one and fail on its existing tables.
@@ -264,7 +273,9 @@ void main() {
         FlickerReductionBySpeedType INTEGER, BrushUseRevision INTEGER,
         BrushRevision REAL, BrushRevisionBySpeed INTEGER,
         BrushRevisionByViewScale INTEGER, BrushRevisionBezier INTEGER,
-        DualBrushCompositeMode INTEGER);
+        DualBrushCompositeMode INTEGER, DualInterval REAL,
+        DualThickness INTEGER, DualRotation REAL, DualUseSpray INTEGER,
+        DualSpraySize REAL, DualSprayDensity INTEGER);
       CREATE TABLE MaterialFile(_PW_ID INTEGER PRIMARY KEY,
         CatalogPath TEXT, OriginalPath TEXT, FileData BLOB);
     ''');
@@ -298,10 +309,12 @@ void main() {
       'FlickerReductionBySpeed, FlickerReductionBySpeedType, '
       'BrushUseRevision, BrushRevision, BrushRevisionBySpeed, '
       'BrushRevisionByViewScale, BrushRevisionBezier, '
-      'DualBrushCompositeMode) '
+      'DualBrushCompositeMode, DualInterval, DualThickness, DualRotation, '
+      'DualUseSpray, DualSpraySize, DualSprayDensity) '
       'VALUES (9, 80, 50.0, 60, 70, 15.0, 40, 200.0, 1, ?, ?, ?, ?, '
       '?, 200.0, 4, ?, 182.0, 90, 1, -40, 30, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
-      '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
+      '?, ?)',
       [
         tipArray ?? patternArray(catalogPath),
         sizeEffector ??
@@ -360,6 +373,12 @@ void main() {
         revisionByViewScale,
         revisionBezier,
         dualCompositeMode,
+        dualInterval,
+        dualThickness,
+        dualRotation,
+        dualUseSpray,
+        dualSpraySize,
+        dualSprayDensity,
       ],
     );
     // Round brush without pattern data.
@@ -990,6 +1009,57 @@ void main() {
     )).presets.first.settings;
 
     expect(s.angleJitter, 0.0);
+  });
+
+  test('🚨the second tip\'s way along the path reads its `Dual` columns as '
+      'the first tip\'s `Brush` ones are read', () async {
+    // 鉛筆's own: `DualInterval` 10, `DualThickness` 60 — and a spray, read
+    // as the first tip's 散布 is: size a percentage of the tip, density the
+    // count.
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      dualPng: await blackPng(10, 10),
+      dualInterval: 40.0,
+      dualThickness: 60,
+      dualRotation: 210.0,
+      dualUseSpray: 1,
+      dualSpraySize: 150.0,
+      dualSprayDensity: 3,
+    );
+    final s = (await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    )).presets.first.settings;
+
+    expect(s.dualSpacing, closeTo(0.4, 1e-9));
+    expect(s.dualRoundness, closeTo(0.6, 1e-9));
+    expect(s.dualAngleDegrees, closeTo(30, 1e-9), reason: 'an ellipse half');
+    expect(s.dualScatterRadiusRatio, closeTo(0.75, 1e-9));
+    expect(s.dualScatterCount, 3);
+    // The first tip's columns are the first tip's alone.
+    expect(s.spacing, closeTo(0.15, 1e-9));
+    expect(s.roundness, closeTo(0.4, 1e-9));
+  });
+
+  test('a brush with no second tip keeps the second tip\'s parked columns '
+      'out', () async {
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      dualInterval: 40.0,
+      dualThickness: 60,
+      dualUseSpray: 1,
+      dualSpraySize: 150.0,
+      dualSprayDensity: 3,
+    );
+    final s = (await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    )).presets.first.settings;
+
+    expect(s.dualMask, isNull);
+    expect(s.shape.secondTip, isNull);
+    expect(s.dualSpacing, const BrushShape().dualSpacing);
+    expect(s.dualScatterCount, 1);
   });
 
   test('imports the dual brush tip with a synced size ratio', () async {

@@ -26,7 +26,8 @@ void main() {
         expect(AppUiScale.snap(stop), stop);
       }
       expect(AppUiScale.snap(1.02), 1.0);
-      expect(AppUiScale.snap(1.19), 1.25);
+      expect(AppUiScale.snap(1.19), 1.2);
+      expect(AppUiScale.snap(0.83), 0.8);
       expect(AppUiScale.snap(0.2), 0.5, reason: 'clamps below the ladder');
       expect(AppUiScale.snap(9.0), 1.5, reason: 'clamps above the ladder');
     });
@@ -37,7 +38,7 @@ void main() {
       expect(AppUiScale.ladder, contains(0.5));
       expect(AppUiScale.ladder.first, 0.5);
       expect(
-        AppUiScale.stepped(0.75, -1),
+        AppUiScale.stepped(0.6, -1),
         0.5,
         reason: 'and the keyboard step reaches it like any other stop',
       );
@@ -46,18 +47,35 @@ void main() {
     group('🚨I-11: the first-run scale', () {
       // 유저 2026-08-29: 「폰에서 보니까 **75% ui로 봐도 문제없고 쾌적**」,
       // and 08-31 on how often it may decide: 「**초기값은 첫 실행 때만**」.
-      test('a phone-class ratio starts at the 75% the user measured', () {
-        for (final dpr in [2.5, 2.75, 3.0, 4.0]) {
-          expect(AppUiScale.firstRunScaleFor(dpr), 0.75, reason: 'dpr $dpr');
+      // 🗣️2026-10-29 (I-144-Q2 a): 「안드로이드기준 80%해도 될거같은데」 —
+      // Android at 80% whatever its ratio, a phone elsewhere at 80% where
+      // the 75% stood.
+      test('every Android device starts at 80%, its tablets too', () {
+        for (final dpr in [1.0, 1.5, 2.0, 2.5, 3.0, 4.0]) {
+          expect(
+            AppUiScale.firstRunScaleFor(dpr, android: true),
+            0.8,
+            reason: 'dpr $dpr',
+          );
         }
       });
 
-      test('⛔a desktop and a TABLET keep 100% — nobody said otherwise', () {
-        // A tablet sits at 2.0. Sliding it down would be inventing a
+      test('a phone-class ratio elsewhere starts at 80% too', () {
+        for (final dpr in [2.5, 2.75, 3.0, 4.0]) {
+          expect(
+            AppUiScale.firstRunScaleFor(dpr, android: false),
+            0.8,
+            reason: 'dpr $dpr',
+          );
+        }
+      });
+
+      test('⛔a desktop and an iPad keep 100% — nobody said otherwise', () {
+        // An iPad sits at 2.0. Sliding it down would be inventing a
         // preference out of a gap in what was said.
         for (final dpr in [1.0, 1.25, 1.5, 2.0]) {
           expect(
-            AppUiScale.firstRunScaleFor(dpr),
+            AppUiScale.firstRunScaleFor(dpr, android: false),
             AppUiScale.defaultScale,
             reason: 'dpr $dpr',
           );
@@ -73,7 +91,7 @@ void main() {
         // the app has always shipped rather than on a guess.
         for (final bad in [double.nan, double.infinity, -1.0, 0.0]) {
           expect(
-            AppUiScale.firstRunScaleFor(bad),
+            AppUiScale.firstRunScaleFor(bad, android: false),
             AppUiScale.defaultScale,
             reason: '$bad',
           );
@@ -83,12 +101,14 @@ void main() {
       test('⛔every answer it can give is ON the ladder', () {
         // A first-run value off the ladder would show no stop selected in
         // the settings row — the same bug `snap` exists to prevent.
-        for (final dpr in [0.5, 1.0, 2.0, 2.5, 3.0, 4.0]) {
-          expect(
-            AppUiScale.ladder,
-            contains(AppUiScale.firstRunScaleFor(dpr)),
-            reason: 'dpr $dpr',
-          );
+        for (final android in [true, false]) {
+          for (final dpr in [0.5, 1.0, 2.0, 2.5, 3.0, 4.0]) {
+            expect(
+              AppUiScale.ladder,
+              contains(AppUiScale.firstRunScaleFor(dpr, android: android)),
+              reason: 'dpr $dpr, android $android',
+            );
+          }
         }
       });
     });

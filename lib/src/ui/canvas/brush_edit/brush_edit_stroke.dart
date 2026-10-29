@@ -263,7 +263,10 @@ class _BrushEditStroke {
         ? const []
         : symmetryCopiesIn(_state.widget.guideSpace, symmetry);
     _state._spacingRandom = math.Random(dice);
-    _state._dualPhaseRandom = math.Random(dice + 1);
+    _state._secondStroke = BrushSecondStroke.of(
+      strokeSettings.shape,
+      random: math.Random(dice + 5),
+    );
     _state._inputRandom = math.Random(dice + 3);
     _state._strokeDynamics = BrushStrokeDynamics(
       settings: strokeSettings,
@@ -465,20 +468,46 @@ class _BrushEditStroke {
     // where the pen landed.
     final emitted = BrushTipStampCache.instance.resolveDabs(
       replicateDabs(
-        _state._withGroundMixing(
-          _state._strokeDynamics!.apply(
-            initialDabs,
-            firstSequence: _state._nextSequence,
-            // Which way the stroke set off, once a move has said so; a tap
-            // that never moved has no direction to follow.
-            directionDegrees: _state._opening.pressDirection,
+        _withSecondTip(
+          _state._withGroundMixing(
+            _state._strokeDynamics!.apply(
+              initialDabs,
+              firstSequence: _state._nextSequence,
+              // Which way the stroke set off, once a move has said so; a tap
+              // that never moved has no direction to follow.
+              directionDegrees: _state._opening.pressDirection,
+            ),
           ),
+          path: initialDabs,
+          directionDegrees: _state._opening.pressDirection,
         ),
         _state._symmetryTransforms,
         firstSequence: _state._nextSequence,
       ),
     );
     _lay(emitted);
+  }
+
+  /// [firstTip] with the second tip's stroke along [path] behind it — the
+  /// first tip's dabs before the dynamics placed them ([BrushSecondStroke]).
+  /// Symmetry copies both, as one emission.
+  List<BrushDab> _withSecondTip(
+    List<BrushDab> firstTip, {
+    required List<BrushDab> path,
+    double? directionDegrees,
+  }) {
+    final second = _state._secondStroke;
+    if (second == null) {
+      return firstTip;
+    }
+    return [
+      ...firstTip,
+      ...second.follow(
+        path,
+        firstSequence: _state._nextSequence + firstTip.length,
+        directionDegrees: directionDegrees,
+      ),
+    ];
   }
 
   /// Puts [emitted] on the stroke: collected for the commit, queued for the
@@ -585,13 +614,17 @@ class _BrushEditStroke {
     // compositing over each other.
     final emitted = BrushTipStampCache.instance.resolveDabs(
       replicateDabs(
-        _state._withGroundMixing(
-          _state._strokeDynamics?.apply(
+        _withSecondTip(
+          _state._withGroundMixing(
+            _state._strokeDynamics?.apply(
+                  baseDabs,
+                  firstSequence: _state._nextSequence,
+                  directionDegrees: _state._lastDirectionDegrees,
+                ) ??
                 baseDabs,
-                firstSequence: _state._nextSequence,
-                directionDegrees: _state._lastDirectionDegrees,
-              ) ??
-              baseDabs,
+          ),
+          path: baseDabs,
+          directionDegrees: _state._lastDirectionDegrees,
         ),
         _state._symmetryTransforms,
         firstSequence: _state._nextSequence,
@@ -793,6 +826,7 @@ class _BrushEditStroke {
     _state._opening.clear();
     _state._pressure.restInput();
     _state._strokeDynamics = null;
+    _state._secondStroke = null;
     _state._lastDirectionDegrees = null;
     _state._previousBaseDab = null;
     // Guides are re-read at the next pointer-down, so an axis moved between

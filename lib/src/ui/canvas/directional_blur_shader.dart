@@ -6,8 +6,10 @@ import 'loaded_fragment_program.dart';
 
 /// The fragment program one pass of a blur along a way runs — a
 /// directional blur's line, a radial blur's circle or ray ([LineBoxPass],
-/// `shaders/directional_blur.frag`) — a raster of its own at the identity,
-/// as a colour key is ([applyEffectSteps], `ShadedEffect`).
+/// `shaders/directional_blur.frag`) — in a step's raster at the identity
+/// ([applyEffectSteps], `ShadedEffect`): a raster a pass on Skia, a layer's
+/// filter a pass on Impeller (`applyEffectSteps`), where the engine
+/// binds the layer over [shaderFor]'s source and size.
 class DirectionalBlurShader {
   DirectionalBlurShader._();
 

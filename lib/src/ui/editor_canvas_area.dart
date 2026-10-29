@@ -52,7 +52,7 @@ import 'brush/canvas_view_commands.dart';
 import 'canvas/display_resample.dart' show displayScaleOf;
 import 'canvas/paper_background.dart' show paintAbsentPlane;
 import 'canvas/stage_planes_painter.dart'
-    show StagePlane, backdropOnScreen, stageGroundOf;
+    show StagePlane, backdropOnScreen, stageColorOnScreen, stageGroundOf;
 import 'canvas/viewport_canvas_transform.dart';
 import '../services/composite_effect_paint.dart' show alphaOnly;
 import 'brush/main_canvas_brush_host.dart';
@@ -2011,7 +2011,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                     : session.pasteboardOf(canvasSize).rect,
                 veils: veils,
                 backdrop: backdropOnScreen((
-                  color: Color(project.backdropArgb),
+                  color: stageColorOnScreen(project.backdropArgb),
                   none: project.backdropNone,
                 ), stageGroundOf(context)),
                 share: backdropShareUnder(cutFadeOpacity, [

@@ -34,8 +34,8 @@ const DeviceDescription _device = (
 
 /// 🗣️I-70 (유저 2026-10-29): Aptabase receives (Q2), 「그거만 제대로 구현해도
 /// 좋아」 — so what goes over the wire is the official SDKs' own: the
-/// region from the App Key, a JSON array of events, and a session that
-/// turns over after an hour with no event.
+/// region from the App Key, a JSON array of events, and a session id —
+/// whose turning over is ours (Q13).
 void main() {
   late List<_Post> posts;
   late int status;
@@ -73,10 +73,7 @@ void main() {
     List<AptabaseEvent> events, {
     required DateTime now,
     String locale = 'ko',
-    String osLocale = 'ko-KR',
-  }) => it.deliver(
-    it.stamp(events, now: now, locale: locale, osLocale: osLocale),
-  );
+  }) => it.deliver(it.stamp(events, now: now, locale: locale));
 
   group('the App Key names the region', () {
     test('A-EU-… goes to the EU events API, A-US-… to the US one', () {
@@ -148,12 +145,22 @@ void main() {
           'sdkVersion': 'anicel@1081',
         });
       }
+      // Each event's own props, and nothing added — the day's chips are its
+      // own (`UsageStats`, 유저 2026-10-29 22시대).
       expect(events[0]['eventName'], 'app_started');
-      // The device's own language beside each event's own props (유저
-      // 2026-10-29 09:1x) — `locale` above stays the program language.
-      expect(events[0]['props'], {'osLocale': 'ko-KR'});
+      expect(events[0]['props'], isEmpty);
       expect(events[1]['eventName'], 'day');
-      expect(events[1]['props'], {'days': '3+', 'osLocale': 'ko-KR'});
+      expect(events[1]['props'], {'days': '3+'});
+    });
+
+    test('the device model the day\'s chips say is the systemProps\' own',
+        () async {
+      final it = client();
+      await send(it, [started], now: now);
+      expect(
+        it.deviceModel,
+        (sent(0).single['systemProps'] as Map<String, dynamic>)['deviceModel'],
+      );
     });
 
     test('the device model is the product\'s, as the feedback forms read it '
@@ -180,7 +187,7 @@ void main() {
         'on', () async {
       // A local moment, wherever the test runs.
       final local = DateTime(2026, 10, 29, 15, 20);
-      await send(client(), [day], now: local, locale: 'ja', osLocale: 'ja-JP');
+      await send(client(), [day], now: local, locale: 'ja');
       expect(sent(0).single['timestamp'], local.toUtc().toIso8601String());
       expect(sent(0).single['timestamp'], endsWith('Z'));
       expect(
@@ -221,20 +228,10 @@ void main() {
         'takes it — and a POST of several, oldest first, says them as they '
         'were', () async {
       final it = client();
-      final first = it.stamp(
-        [started],
-        now: now,
-        locale: 'ko',
-        osLocale: 'ko-KR',
-      );
+      final first = it.stamp([started], now: now, locale: 'ko');
       random.value = 87654321;
       final later = now.add(const Duration(hours: 3));
-      final second = it.stamp(
-        [day],
-        now: later,
-        locale: 'fr',
-        osLocale: 'fr-FR',
-      );
+      final second = it.stamp([day], now: later, locale: 'fr');
       expect(posts, isEmpty, reason: 'stamping posts nothing');
 
       expect(await it.deliver([...first, ...second]), isTrue);
@@ -257,9 +254,12 @@ void main() {
     });
   });
 
+  /// 🗣️I-70-Q13 b (유저 2026-10-29 22시대): a session takes events for 55
+  /// minutes from its start, however they keep coming — Aptabase's Live
+  /// lists the sessions begun within the hour.
   group('the session', () {
-    test('one id while events keep coming, a new one after an hour with '
-        'none — held in memory, the SDKs\' rule', () async {
+    test('🎯one id until 55 minutes after it began, however events keep '
+        'coming — then a new one', () async {
       final it = client();
       Future<String> sendAt(DateTime at) async {
         await send(it, [day], now: at);
@@ -268,26 +268,37 @@ void main() {
 
       final first = await sendAt(now);
       expect(first, '${now.millisecondsSinceEpoch ~/ 1000}12345678');
+      expect(it.session, (id: first, startedAt: now));
 
       random.value = 87654321;
-      // Each under an hour after the one before — 118 minutes after the
-      // first, and still its session.
-      expect(await sendAt(now.add(const Duration(minutes: 59))), first);
-      expect(await sendAt(now.add(const Duration(minutes: 118))), first);
-      // Exactly an hour is not MORE than one.
-      expect(await sendAt(now.add(const Duration(minutes: 178))), first);
+      expect(await sendAt(now.add(const Duration(minutes: 30))), first);
+      const lasts = AptabaseClient.sessionLasts;
+      final out = now.add(lasts);
+      final edge = out.subtract(const Duration(milliseconds: 1));
+      expect(await sendAt(edge), first);
 
-      final later = now.add(const Duration(minutes: 239));
-      final second = await sendAt(later);
-      expect(second, '${later.millisecondsSinceEpoch ~/ 1000}87654321');
-      expect(await sendAt(later.add(const Duration(minutes: 1))), second);
+      final second = await sendAt(out);
+      expect(second, '${out.millisecondsSinceEpoch ~/ 1000}87654321');
+      expect(it.session, (id: second, startedAt: out));
+      expect(await sendAt(out.add(const Duration(minutes: 1))), second);
     });
 
-    test('a new client — a new run — starts a new session', () async {
-      await send(client(), [day], now: now);
+    test('a new client — a new run — starts a new session, unless it goes '
+        'on in one kept from before, while that one\'s 55 minutes last',
+        () async {
+      final kept = client();
+      await send(kept, [day], now: now);
+      final session = kept.session!;
+
       random.value = 1;
       await send(client(), [day], now: now.add(const Duration(minutes: 1)));
-      expect(sent(1).single['sessionId'], isNot(sent(0).single['sessionId']));
+      expect(sent(1).single['sessionId'], isNot(session.id));
+
+      final reopened = client()..resume(session);
+      await send(reopened, [day], now: now.add(const Duration(minutes: 54)));
+      expect(sent(2).single['sessionId'], session.id);
+      await send(reopened, [day], now: now.add(AptabaseClient.sessionLasts));
+      expect(sent(3).single['sessionId'], isNot(session.id));
     });
   });
 

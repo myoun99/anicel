@@ -354,9 +354,9 @@ class HistoryManager extends ChangeNotifier {
     _disposed = true;
     // ⛔The room gets its files back: nobody can reach this history again,
     // so anything it parked is unreachable bytes on the user's disk until
-    // the run ends.
-    dropPayloadsOf(_undoStack);
-    dropPayloadsOf(_redoStack);
+    // the run ends — and (F-505) what it kept in memory, whoever still
+    // holds a closed tab.
+    _emptyStacks();
     VolatileScratchFiles.forget(this);
     super.dispose();
   }
@@ -631,13 +631,18 @@ class HistoryManager extends ChangeNotifier {
   }
 
   void clear() {
+    _emptyStacks();
+    _spillStoodDown = false;
+    _revision += 1;
+    notifyListeners();
+  }
+
+  /// Every entry let go of, and what each parked in the room with it.
+  void _emptyStacks() {
     dropPayloadsOf(_undoStack);
     dropPayloadsOf(_redoStack);
     _undoStack.clear();
     _redoStack.clear();
-    _spillStoodDown = false;
-    _revision += 1;
-    notifyListeners();
   }
 }
 

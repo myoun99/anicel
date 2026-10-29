@@ -78,6 +78,7 @@ void main() {
     LaunchNotice notice, {
     AppLanguageSettingsStore? language,
     UsageStatsStore? usageStats,
+    bool firstLaunch = false,
   }) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -89,6 +90,7 @@ void main() {
           launchNotice: notice,
           languageSettingsStore: language,
           usageStatsStore: usageStats,
+          firstLaunch: firstLaunch,
         ),
       ),
     );
@@ -120,30 +122,29 @@ void main() {
     expect(_window, findsNothing);
   });
 
-  testWidgets('🎯the usage statistics\' question comes after the notice '
-      'closes, and alone when the notice is not due — 「보내기」 is the switch '
-      'Preferences ▸ System then shows (유저 2026-10-29 08:1x)', (
-    tester,
-  ) async {
+  testWidgets('🎯the usage statistics\' question comes BEFORE the notice, '
+      'the notice once it is answered, and the question alone when the '
+      'notice is not due — 「보내기」 is the switch Preferences ▸ System then '
+      'shows (유저 2026-10-29: 「지치기전에 … 수락하게」)', (tester) async {
     final notices = _MemoryStore();
     await launch(
       tester,
       LaunchNotice(store: notices, content: () async => _content),
       usageStats: _UnansweredStore(),
     );
-    expect(_window, findsOneWidget);
+    expect(_question, findsOneWidget);
+    expect(_window, findsNothing);
+    await tester.tap(find.byKey(usageStatsQuestionKeys.decline));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
     expect(_question, findsNothing);
+    expect(_window, findsOneWidget);
     await tester.tap(
       find.byKey(const ValueKey<String>('launch-notice-dont-show-again')),
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     expect(_window, findsNothing);
-    expect(_question, findsOneWidget);
-    await tester.tap(find.byKey(usageStatsQuestionKeys.decline));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(_question, findsNothing);
 
     // The next launch: the notice dismissed, the question never answered on
     // this store.
@@ -179,6 +180,46 @@ void main() {
           .value,
       isTrue,
     );
+  });
+
+  testWidgets('🎯the machine\'s first launch opens its settings first, then '
+      'the question, then the notice; a launch after it opens no settings '
+      '(유저 2026-10-29, I-144: 「첫설정창, 사용통계창, 안내창」)', (
+    tester,
+  ) async {
+    final settings = find.byKey(const ValueKey<String>('first-run-settings'));
+    Future<void> next(Finder press) async {
+      await tester.tap(press);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+
+    await launch(
+      tester,
+      LaunchNotice(store: _MemoryStore(), content: () async => _content),
+      usageStats: _UnansweredStore(),
+      firstLaunch: true,
+    );
+    expect(settings, findsOneWidget);
+    expect(_question, findsNothing);
+    expect(_window, findsNothing);
+    await next(
+      find.byKey(const ValueKey<String>('first-run-settings-start')),
+    );
+    expect(settings, findsNothing);
+    expect(_question, findsOneWidget);
+    expect(_window, findsNothing);
+    await next(find.byKey(usageStatsQuestionKeys.decline));
+    expect(_question, findsNothing);
+    expect(_window, findsOneWidget);
+
+    await launch(
+      tester,
+      LaunchNotice(store: _MemoryStore(), content: () async => _content),
+      usageStats: _UnansweredStore(),
+    );
+    expect(settings, findsNothing);
+    expect(_question, findsOneWidget);
   });
 
   testWidgets('a test that hands none in sees no notice, and is asked '

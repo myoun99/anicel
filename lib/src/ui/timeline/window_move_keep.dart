@@ -17,7 +17,8 @@ import 'package:flutter/widgets.dart';
 /// were windowed (②).
 ///
 /// ONE keep for every windowed host: the timeline's rail and cells, the
-/// storyboard's rail and strips.
+/// storyboard's rail and strips — and what a lay builds beside its rows off
+/// the pass alone, the storyboard's section zones (④).
 final class WindowMoveKeep {
   Object? _pass;
   Map<Object, Widget> _held = {};

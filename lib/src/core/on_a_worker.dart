@@ -41,13 +41,32 @@ Future<T> onAWorkerReporting<T>(
       onProgress(message);
     }
   });
-  final told = heard.sendPort;
   try {
-    return await Isolate.run(() => job(_whenTheBarMoves(told.send)));
+    return await Isolate.run(_reportingInto(heard.sendPort, job));
   } finally {
     heard.close();
   }
 }
+
+/// [job] reporting into [told] — the closure that crosses, made HERE and
+/// not in [onAWorkerReporting].
+///
+/// 🚨★★★**A CLOSURE CARRIES ITS WHOLE SCOPE, NOT ONLY WHAT IT NAMES.** The
+/// variables a scope's closures capture live in one context, so a closure
+/// made beside the listener carries the listener's `onProgress` too — and
+/// the import window's holds the window's state, futures and all, which no
+/// isolate message carries. 🐞F-494's own regression (10-30, the release's
+/// import window): every file 「파일 품기」 placed failed as 「열 수
+/// 없습니다 — 손상됐거나 암호로 잠겨 있습니다」 — the send refused, and the
+/// window reads any throw as that. A test corpus runs the job here
+/// ([debugWorkersRunHere]) and a test's listener held a list, so nothing
+/// saw it. The save met the same wall once (`AnicelFileService`'s
+/// `reportsProgress`).
+FutureOr<T> Function() _reportingInto<T>(
+  SendPort told,
+  FutureOr<T> Function(void Function(double fraction) report) job,
+) =>
+    () => job(_whenTheBarMoves(told.send));
 
 void _heardByNobody(double fraction) {}
 

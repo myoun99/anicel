@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart' show BuildContext, Color;
 
+import '../../models/app_accents.dart' show AppColorMode;
 import '../../models/layer.dart';
 import '../theme/app_theme.dart' show AppColors;
 import 'layer_label_controls.dart' show layerMarkColor;
@@ -10,6 +11,7 @@ import 'timeline_cel_content_source.dart';
 import 'timeline_cell_style.dart'
     show
         timelineDrawingHeldColor,
+        timelineDrawingInkColor,
         timelineInBlockInk,
         timelineUnreadableCelPaperColor;
 
@@ -48,10 +50,13 @@ TimelineBlockState timelineBlockStateOf({
 /// The grey an EMPTY block's outline and words are drawn in — the export
 /// Cels tab's hollow block's outline (I-129: 「출력의 셀 탭에서 그림이
 /// 없는블록을 표시하는것처럼」), its words in the same grey (「너무 흰색이면 …
-/// 주장이 강해지니 회색으로. 외곽선이랑 동일한 회색으로」).
-final Color timelineEmptyBlockGrey = timelineDrawingHeldColor.withValues(
-  alpha: 0.28,
-);
+/// 주장이 강해지니 회색으로. 외곽선이랑 동일한 회색으로」). On the light
+/// palette the paper's white would vanish into the ground, so the grey is
+/// the ink's instead (the mockup's, I-143-Q3).
+Color get timelineEmptyBlockGrey => switch (AppColors.mode) {
+  AppColorMode.dark => timelineDrawingHeldColor.withValues(alpha: 0.28),
+  AppColorMode.light => timelineDrawingInkColor.withValues(alpha: 0.5),
+};
 
 /// How wide a block's outline ([TimelineBlockLook.line]) is drawn inside
 /// it — the export Cels tab's hollow block's, a box border's own width.

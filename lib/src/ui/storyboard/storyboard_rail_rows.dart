@@ -800,6 +800,7 @@ class _StoryboardRailRows {
           keyValue: 'storyboard-section-zone-${track.id.value}-camera',
           label: timelineSectionLabel(TimelineSection.camera),
           rows: camRows,
+          laidBy: rows,
         ),
       // A section with no rows left draws no zone: an empty SE band would
       // be a label over nothing once the filter took its rows.
@@ -808,12 +809,14 @@ class _StoryboardRailRows {
           keyValue: 'storyboard-section-zone-${track.id.value}-se',
           label: 'SE',
           rows: seRows,
+          laidBy: rows,
         ),
       if (_filterAllowsTrackRow(track))
         _sectionZoneGroup(
           keyValue: 'storyboard-section-zone-${track.id.value}-v',
           label: 'V',
           rows: vRows,
+          laidBy: rows,
         ),
       // The CONTE row, directly under the V row whose cuts it reads (I-73,
       // 유저 2026-10-08: 「v행 아래에 콘티행 만들어서 거기서」). The band says
@@ -826,6 +829,7 @@ class _StoryboardRailRows {
             timelineSectionForLayerKind(LayerKind.storyboard),
           ),
           rows: conteRows,
+          laidBy: rows,
         ),
     ];
   }
@@ -1228,22 +1232,28 @@ class _StoryboardRailRows {
 
   /// One section's rail rows with the ZONE spanning the whole group over
   /// the rows' reserved band slots (UI-R7 #2): S1·S2 read as one SE
-  /// sub-zone, exactly like the timeline's run zones.
+  /// sub-zone, exactly like the timeline's run zones. The zone is the
+  /// pass's: a move of the window lays the rows again, never it
+  /// ([_WindowedRows.kept]).
   Widget _sectionZoneGroup({
     required String keyValue,
     required String label,
     required List<Widget> rows,
+    required _WindowedRows laidBy,
   }) {
     return Stack(
       children: [
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: rows),
-        Positioned(
-          left: 0,
-          top: 0,
-          bottom: 0,
-          child: KeyedSubtree(
-            key: ValueKey<String>(keyValue),
-            child: SectionBandZone(label: label),
+        laidBy.kept(
+          keyValue,
+          () => Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: KeyedSubtree(
+              key: ValueKey<String>(keyValue),
+              child: SectionBandZone(label: label),
+            ),
           ),
         ),
       ],

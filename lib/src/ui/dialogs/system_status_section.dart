@@ -50,7 +50,7 @@ class SystemStatusSection extends StatelessWidget {
         const SizedBox(height: 10),
         Text(
           AppText.strings.systemStatusHelp,
-          style: const TextStyle(fontSize: 11, color: AppColors.textDim),
+          style: TextStyle(fontSize: 11, color: AppColors.textDim),
         ),
         const SizedBox(height: 10),
         // ⚠️REVERSED, and the original reason is kept because it was not
@@ -117,14 +117,14 @@ class _MemoryRow extends StatelessWidget {
         Text(
           'Memory  ${_mb(footprint)} in use · ${_mb(available)} still '
           'available to this app',
-          style: const TextStyle(fontSize: 12, color: AppColors.text),
+          style: TextStyle(fontSize: 12, color: AppColors.text),
         ),
         if (interrupted != null) ...[
           const SizedBox(height: 4),
           Text(
             'Last run stopped during: $interrupted',
             key: const ValueKey<String>('system-status-memory-interrupted'),
-            style: const TextStyle(fontSize: 11, color: AppColors.danger),
+            style: TextStyle(fontSize: 11, color: AppColors.danger),
           ),
         ],
       ],
@@ -154,7 +154,7 @@ class _EntryRow extends StatelessWidget {
       decoration: ShapeDecoration(
         shape: AppShapes.container(
           AppShapes.wellRadius,
-          side: const BorderSide(color: AppColors.hairline),
+          side: BorderSide(color: AppColors.hairline),
         ),
       ),
       child: Column(
@@ -163,7 +163,7 @@ class _EntryRow extends StatelessWidget {
         children: [
           Text(
             entry.subsystem,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               color: AppColors.text,
               fontWeight: FontWeight.w600,
@@ -190,7 +190,7 @@ class _EntryRow extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             entry.detail,
-            style: const TextStyle(fontSize: 10.5, color: AppColors.textDim),
+            style: TextStyle(fontSize: 10.5, color: AppColors.textDim),
           ),
         ],
       ),

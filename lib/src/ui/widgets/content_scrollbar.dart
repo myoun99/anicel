@@ -12,9 +12,9 @@ import 'app_scrollbar.dart';
 ///
 /// The app had both shapes already and this makes the second one a shared
 /// widget. `AppScrollBehavior` lays [PanelScrollbar] OVER every scrollable,
-/// but only on a desktop and only while it overflows — so on a tablet these
-/// panels had no bar at all, and on a desktop a list that fit had none. The
-/// timeline's rails keep a lane of their own; so does this.
+/// but a vertical one only on a desktop, and only while it overflows — so on
+/// a tablet these panels had no bar at all, and on a desktop a list that fit
+/// had none. The timeline's rails keep a lane of their own; so does this.
 ///
 /// ⚠️IT READS ITS OWN CONTROLLER (one it owns, or the host's), and that is
 /// what lets it stand on a tablet: the mobile exclusion in

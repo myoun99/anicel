@@ -121,7 +121,7 @@ void main() {
         expect(
           softer.textureDensity,
           greaterThan(harder.textureDensity),
-          reason: 'a softer lead grains coarser',
+          reason: 'a softer lead reaches deeper into the paper',
         );
         expect(
           softer.hardness,
@@ -181,9 +181,12 @@ void main() {
       expect(1.0 / roundness.evaluate(0.65), closeTo(4.0, 1e-9));
     });
 
-    test('every other graphite pencil leans a little with the pen — at its '
-        'own size upright (F-433)', () {
-      // 유저: 「일반 연필에도 어느정도 기울기로 형태 바뀌는거 넣고」.
+    test('🗣️no pencil but the tilted one answers the pen\'s lean (F-462 ②)',
+        () {
+      // 유저 2026-10-25: 「일반연필 기울기에따라 뭐 바뀐다거나 다 잊고,
+      // 눕히는연필만 지금 방향성대로 기울기에따라 팁 바뀌는느낌은 좋음」.
+      // ↩️F-433 had them lean a little: 「일반 연필에도 어느정도 기울기로 형태
+      // 바뀌는거 넣고」.
       for (final id in [
         'builtin-hard-pencil',
         'builtin-pencil',
@@ -192,33 +195,65 @@ void main() {
         'builtin-colored-pencil',
       ]) {
         final settings = byId(id).settings;
-        final curves = settings.shape.curves;
-        final size =
-            curves[(BrushPressureTarget.size, BrushInputSource.tilt)]!;
-        final roundness =
-            curves[(BrushPressureTarget.roundness, BrushInputSource.tilt)]!;
-        expect(settings.rotationMode, BrushTipRotationMode.penTilt, reason: id);
-        expect(size.evaluate(0.0), 1.0, reason: '$id upright');
-        expect(size.evaluate(0.65), greaterThan(1.0), reason: '$id leaned');
-        expect(roundness.evaluate(0.65), lessThan(1.0), reason: '$id leaned');
+        expect(
+          [
+            for (final (target, source) in settings.shape.curves.keys)
+              if (source == BrushInputSource.tilt) target,
+          ],
+          isEmpty,
+          reason: '$id has a tilt row',
+        );
+        expect(settings.rotationMode, isNot(BrushTipRotationMode.penTilt));
+        expect(settings.tipOrder, isNot(BrushTipOrder.lean), reason: id);
       }
     });
 
-    test('🚨every graphite pencil wears the lead upright to flat, three '
-        'faces a step thrown per dab, on a tooth that multiplies — paler the '
-        'lighter it presses (F-451, F-456)', () {
-      // 유저: 「팁 사각형인채로 질감만 얼버무려서 연필느낌내는건 너무
-      // 구현도가 낮음」 (F-451) · 「결여가 너무 일정함(같은부분 다시 그려도
-      // 결여된 픽셀이 안채워짐)」 · Q4 「기울기가 단계를 고르고, 그 단계
-      // 안에서 여러 장 중 무작위」 (F-456).
+    test('🗣️the grades throw a crumb of lead at random, turned all the way, '
+        'on a paper reached deeper the harder they press (F-462 ②)', () {
+      // 유저 2026-10-25: 「클튜 연필브러시들은 육각형식으로 안하니까 그거
+      // 참고해서 다시 개편. 육각형같은거 잊어도됨」 · 「클튜브러시 그대로
+      // 참고하되 따라한 느낌만 안나도록 참고해서 우리방식대로 재구현」.
       for (final id in [
         'builtin-hard-pencil',
         'builtin-pencil',
         'builtin-soft-pencil',
         'builtin-dark-pencil',
-        'builtin-colored-pencil',
-        'builtin-shading-pencil',
       ]) {
+        final settings = byId(id).settings;
+        expect(settings.tips, pencilCrumbBrushTipMasks, reason: id);
+        expect(settings.tipOrder, BrushTipOrder.random, reason: id);
+        expect(settings.angleJitter, 1.0, reason: id);
+        expect(
+          settings.textureMaskSource?.id,
+          'builtin-graphite-tooth',
+          reason: id,
+        );
+        // ↩️F-456 multiplied it: a lead only paled and laid smooth.
+        expect(settings.textureMode, BrushTextureMode.height, reason: id);
+        final reach = settings.shape.curves[(
+          BrushPressureTarget.textureDensity,
+          BrushInputSource.pressure,
+        )]!;
+        expect(reach.evaluate(0.0), lessThan(0.75), reason: '$id touched');
+        expect(reach.evaluate(1.0), 1.0, reason: '$id pressed');
+      }
+      // Wax spreads over the tooth where graphite catches its peaks: the
+      // colored pencil throws the crumbs on a multiplied paper.
+      final colored = byId('builtin-colored-pencil').settings;
+      expect(colored.tips, pencilCrumbBrushTipMasks);
+      expect(colored.tipOrder, BrushTipOrder.random);
+      expect(colored.textureMode, BrushTextureMode.multiply);
+    });
+
+    test('🚨the tilted pencil wears the lead upright to flat, three faces a '
+        'step thrown per dab, on a tooth that multiplies — paler the lighter '
+        'it presses (F-451, F-456)', () {
+      // 유저: 「팁 사각형인채로 질감만 얼버무려서 연필느낌내는건 너무
+      // 구현도가 낮음」 (F-451) · 「결여가 너무 일정함(같은부분 다시 그려도
+      // 결여된 픽셀이 안채워짐)」 · Q4 「기울기가 단계를 고르고, 그 단계
+      // 안에서 여러 장 중 무작위」 (F-456). ↩️Every graphite pencil wore it
+      // until F-462 ②: 「눕히는연필만 지금 방향성대로」.
+      for (final id in ['builtin-shading-pencil']) {
         final settings = byId(id).settings;
         expect(settings.tips, pencilLeadBrushTipMasks, reason: id);
         expect(settings.tipOrder, BrushTipOrder.lean, reason: id);

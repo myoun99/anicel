@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/panels/panel_scrollbar.dart';
 import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
@@ -495,4 +496,163 @@ void main() {
       );
     });
   }
+
+  /// 🗣️fr-zh-strings-fall-back-to-english-Q2: a menu is as wide as its
+  /// longest row, inside the window. 🧪Material's 280 cut 「Keyboard
+  /// shortcuts  Ctrl+Alt+Shift+K」 in three languages, and the drawer's fixed
+  /// 200 cut four English rows of the panels drawer.
+  const long = 'Brush values on the top strip, wide';
+
+  Future<void> pumpOpened(
+    WidgetTester tester,
+    List<PanelFlyoutEntry> entries, {
+    Alignment at = Alignment.topLeft,
+  }) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: at,
+            child: Builder(
+              builder: (context) => TextButton(
+                key: const ValueKey<String>('flyout-anchor'),
+                onPressed: () => showPanelFlyout(context, entries: entries),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('flyout-anchor')));
+    await tester.pumpAndSettle();
+  }
+
+  bool cut(WidgetTester tester, String label) => tester
+      .renderObject<RenderParagraph>(
+        find.descendant(of: find.text(label), matching: find.byType(RichText)),
+      )
+      .didExceedMaxLines;
+
+  Rect levelOf(WidgetTester tester, String key) => tester.getRect(
+    find
+        .ancestor(
+          of: find.byKey(ValueKey<String>(key)),
+          matching: find.byType(Material),
+        )
+        .first,
+  );
+
+  testWidgets('the top list is as wide as its longest row — no label is '
+      'cut at Material\'s 280', (tester) async {
+    await pumpOpened(tester, [
+      const PanelFlyoutItem(keyValue: 'short', label: 'Panels'),
+      const PanelFlyoutItem(keyValue: 'long', label: long),
+    ]);
+
+    expect(
+      levelOf(tester, 'long').width,
+      greaterThan(280),
+      reason: '⛔전제: the row is longer than Material\'s cap',
+    );
+    expect(cut(tester, long), isFalse, reason: 'the list widened to the row');
+  });
+
+  testWidgets('a drawer is as wide as its longest row, by the same rule as '
+      'the list it opens from', (tester) async {
+    await pumpOpened(tester, [
+      PanelFlyoutItem(
+        keyValue: 'drawer',
+        label: 'Panels',
+        submenuBuilder: () => [
+          const PanelFlyoutItem(keyValue: 'kid-short', label: 'Tools'),
+          const PanelFlyoutItem(keyValue: 'kid-long', label: long),
+        ],
+      ),
+    ]);
+    await tester.tap(find.text('Panels'));
+    await tester.pumpAndSettle();
+
+    expect(levelOf(tester, 'kid-long').width, greaterThan(200));
+    expect(cut(tester, long), isFalse, reason: 'no fixed 200 cuts it');
+    expect(
+      levelOf(tester, 'kid-long').left,
+      levelOf(tester, 'drawer').right,
+      reason: 'flush against the list it opened from',
+    );
+  });
+
+  testWidgets('at the window\'s right edge a drawer folds to the list\'s '
+      'LEFT by its own width', (tester) async {
+    await pumpOpened(tester, [
+      PanelFlyoutItem(
+        keyValue: 'drawer',
+        label: 'Panels',
+        submenuBuilder: () => [
+          const PanelFlyoutItem(keyValue: 'kid-long', label: long),
+        ],
+      ),
+    ], at: Alignment.topRight);
+    await tester.tap(find.text('Panels'));
+    await tester.pumpAndSettle();
+
+    expect(
+      levelOf(tester, 'kid-long').right,
+      moreOrLessEquals(levelOf(tester, 'drawer').left),
+      reason: 'flush against the list\'s left edge, not 200 short of it',
+    );
+    expect(cut(tester, long), isFalse);
+  });
+
+  /// 🧪The panels drawer at 800×600 (editor_top_strip_test, 10-29): wider
+  /// than either side of its list, it folded left past the window's edge
+  /// and every tap on it missed.
+  testWidgets('where neither side has room, a drawer stays inside the '
+      'window, over its list', (tester) async {
+    await pumpOpened(tester, [
+      const PanelFlyoutItem(keyValue: 'wide', label: long),
+      PanelFlyoutItem(
+        keyValue: 'drawer',
+        label: 'Panels',
+        submenuBuilder: () => [
+          const PanelFlyoutItem(keyValue: 'kid-long', label: long),
+        ],
+      ),
+    ]);
+    await tester.tap(find.text('Panels'));
+    await tester.pumpAndSettle();
+
+    final window = tester.view.physicalSize / tester.view.devicePixelRatio;
+    final list = levelOf(tester, 'drawer');
+    final drawer = levelOf(tester, 'kid-long');
+    expect(
+      list.left < drawer.width + 8 &&
+          list.right + drawer.width > window.width - 8,
+      isTrue,
+      reason: '⛔전제: the drawer fits on neither side of its list',
+    );
+    expect(drawer.left, greaterThanOrEqualTo(8));
+    expect(drawer.right, lessThanOrEqualTo(window.width - 8));
+  });
+
+  testWidgets('a warning wraps where it always has — it does not stretch '
+      'the list to one line', (tester) async {
+    const warning =
+        'This merge cuts a drawing at the wall, and the part beyond the '
+        'wall is gone from every cut the merged row is in.';
+    await pumpOpened(tester, [
+      const PanelFlyoutItem(
+        keyValue: 'warned',
+        label: 'Merge',
+        warning: warning,
+      ),
+    ]);
+
+    expect(
+      levelOf(tester, 'warned').width,
+      280,
+      reason: 'Material\'s old cap, which the two lines the height table '
+          'counts were written for',
+    );
+  });
 }

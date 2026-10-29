@@ -9,6 +9,7 @@ import 'package:flutter/services.dart' show SystemNavigator;
 
 import 'dialogs/app_confirm_dialog.dart';
 import 'dialogs/behind_the_wait_window.dart' show stepBehindTheWaitWindow;
+import 'dialogs/first_run_settings_window.dart' show showFirstRunSettings;
 import 'dialogs/launch_notice_window.dart' show showLaunchNoticeIfDue;
 import 'dialogs/usage_stats_question.dart' show askUsageStatsIfUnanswered;
 import '../services/flutter_test_run.dart';
@@ -24,6 +25,7 @@ import '../services/brush_tip_library_service.dart';
 import '../services/font_library_service.dart';
 import '../services/last_stroke_slot.dart';
 import '../services/launch_notice.dart';
+import '../services/memory_pressure_budget.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/failed_save_copies.dart';
 import '../services/persistence/folder_grant.dart'
@@ -138,6 +140,7 @@ class HomePage extends StatefulWidget {
     this.usageStatsClient,
     this.battery,
     this.handedAtLaunch = const [],
+    this.firstLaunch = false,
   });
 
   final Project? initialProject;
@@ -195,6 +198,11 @@ class HomePage extends StatefulWidget {
   /// how Windows' 「연결 프로그램」 and a double-click in the Explorer hand a
   /// file over (`open-door-windows-open-with`), and Linux's file managers.
   final List<String> handedAtLaunch;
+
+  /// Whether the app never ran on this machine (`settingsRoomIsEmpty`, read
+  /// by `main` before the launch wrote anything) — the launch then opens
+  /// the first launch's settings window (I-144).
+  final bool firstLaunch;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -652,25 +660,31 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     ),
   );
 
-  /// What a launch opens, one window after the other: this build's
-  /// [notice] if it is due, then the usage statistics' question if it was
-  /// never answered — after the first frame, and once the saved language is
-  /// back, for the reason [_openHanded] waits: each window is written in
-  /// the program language as it opens.
+  /// What a launch opens, one window after the other: on the machine's
+  /// first launch its settings ([HomePage.firstLaunch]), then the usage
+  /// statistics' question if it was never answered, then this build's
+  /// [notice] if it is due — after the first frame, and once the saved
+  /// language is back, for the reason [_openHanded] waits: each window is
+  /// written in the program language as it opens.
   ///
-  /// 🗣️유저 2026-10-29 08:1x (「따로 묻는 작은 창」): the question after the
-  /// notice closes, or alone when the notice is not due.
+  /// 🗣️유저 2026-10-29 (I-144): 「순서를 첫설정창, 사용통계창, 안내창으로
+  /// 하자, 안내창이 텍스트가 많아서 지치니까 지치기전에 … 수락하게하려고」.
+  /// ↩️08:1x put the question after the notice (「따로 묻는 작은 창」, which
+  /// stays its own window).
   ///
   /// ⚠️Each is opened from its store, as `_unlessTesting` hands them out: a
   /// test that hands neither in sees neither, and one that measures the
   /// launch hands its own in.
   void _showLaunchWindows(LaunchNotice? notice) => unawaited(
     _appSettings.languageRestored.then((_) async {
-      if (notice != null && mounted) {
-        await showLaunchNoticeIfDue(context, notice);
+      if (widget.firstLaunch && mounted) {
+        await showFirstRunSettings(context, _session);
       }
       if (_usageStatsStore != null && mounted) {
         await askUsageStatsIfUnanswered(context, _appSettings.usageStats);
+      }
+      if (notice != null && mounted) {
+        await showLaunchNoticeIfDue(context, notice);
       }
     }),
   );
@@ -923,7 +937,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   /// The OS says memory is tight: EVERY open project stands its caches
   /// down — hot cels halve and cool, playback re-runs its budget — the tabs
-  /// behind the one on screen as much as it (I-7).
+  /// behind the one on screen as much as it (I-7) — until the app next
+  /// comes back to the front ([didChangeAppLifecycleState], F-504).
   @override
   void didHaveMemoryPressure() {
     for (final session in _projects.sessions) {
@@ -967,6 +982,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.resumed:
+        // F-504: in front again, no memory warning stands — every open
+        // project's caches are at the allowance once more
+        // ([MemoryPressureBudget.liftEveryWarning]), and its warmer looks
+        // again in the room that came back.
+        MemoryPressureBudget.liftEveryWarning();
+        for (final session in _projects.sessions) {
+          session.playbackLineMoved();
+        }
         unawaited(_warnIfProjectFileVanished(_session));
         // I-70: a day the app is in front on is a day it was used — a run
         // that crossed midnight UTC, or a send that failed earlier today.
@@ -979,7 +1002,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       case AppLifecycleState.hidden ||
           AppLifecycleState.paused ||
           AppLifecycleState.detached:
-        _appSettings.usageStats.reportAway();
+        unawaited(_appSettings.usageStats.reportAway());
       case AppLifecycleState.inactive:
         break;
     }
@@ -1715,7 +1738,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// PEN-11: the back-button exit gate. Dirty sessions call out the
   /// unsaved work; Close is the only way out.
   Future<void> _confirmSystemExit() async {
-    if (await _mayLeaveForGood()) {
+    if (await _closing()) {
       await SystemNavigator.pop();
     }
   }
@@ -1723,7 +1746,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// PEN-12 #5: the desktop window-close request routes through the SAME
   /// gate — Cancel keeps the window open.
   Future<AppExitResponse> _handleExitRequested() async =>
-      await _mayLeaveForGood() ? AppExitResponse.exit : AppExitResponse.cancel;
+      await _closing() ? AppExitResponse.exit : AppExitResponse.cancel;
+
+  /// Whether the app may close ([_mayLeaveForGood]) — and when it may, its
+  /// usage statistics' `app_away` written down first (I-70-Q11, 유저
+  /// 2026-10-29: 「닫을때도 보내게」): a closing window may not live to
+  /// report the lifecycle's hidden.
+  Future<bool> _closing() async {
+    if (!await _mayLeaveForGood()) {
+      return false;
+    }
+    await _appSettings.usageStats.reportAway();
+    return true;
+  }
 
   bool _exitDialogOpen = false;
 
@@ -1914,6 +1949,11 @@ final class _ProjectHooks {
       shell._canvasTextCommands.landNow();
       session.sheetPhotoHold.letGo();
     };
+    // I-41: and a walk lands the text in hand the same way, at its door,
+    // before the walk moves the canvas ([HistoryPlaces.onLeave]) — made
+    // where it was held, on its own cel. ⛔Not the selection's lift: a
+    // move carries it (F-86).
+    history.places.onLeave = shell._canvasTextCommands.landNow;
     // ...and a step that WAITED behind the wait window asks first whether
     // there is anything to adopt: work begun after the press is the user's.
     history.pendingBeforeUndoRedo = () =>
