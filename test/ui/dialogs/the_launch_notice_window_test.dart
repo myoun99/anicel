@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -16,6 +14,8 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/content_scrollbar.dart';
 import 'package:anicel/src/ui/widgets/markdown_subset.dart';
 import 'package:anicel/src/ui/widgets/settings_rows.dart';
+
+import '../../helpers/dart_sources.dart';
 
 /// A dismissal kept in memory: one store, read by every launch of a test
 /// as the settings file is read by every launch of the app.
@@ -239,14 +239,17 @@ void main() {
 
   test('every bundled what\'s-new opens with the `## ` heading its fold '
       'carries', () {
-    for (final file in Directory('assets/launch').listSync(recursive: true)) {
-      if (file is File && file.path.endsWith('whats_new.md')) {
-        expect(
-          MarkdownSubset.leadingHeadingOf(file.readAsStringSync()),
-          isNotNull,
-          reason: file.path,
-        );
-      }
+    final files = [
+      for (final file in filesUnder('assets/launch'))
+        if (file.path.endsWith('whats_new.md')) file,
+    ];
+    expect(files, hasLength(AppLanguage.values.length));
+    for (final file in files) {
+      expect(
+        MarkdownSubset.leadingHeadingOf(file.readAsStringSync()),
+        isNotNull,
+        reason: file.path,
+      );
     }
   });
 

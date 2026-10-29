@@ -13,6 +13,8 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/ui_scale.dart';
 
+import '../../helpers/temp_dir.dart';
+
 /// A scale kept in memory — a widget test's clock finishes no real write.
 class _MemoryScaleStore extends AppUiScaleStore {
   _MemoryScaleStore() : super(filePath: 'unused');
@@ -51,7 +53,7 @@ void main() {
   tearDown(() {
     session.dispose();
     AppUiScale.value.value = AppUiScale.defaultScale;
-    temp.deleteSync(recursive: true);
+    deleteTempQuietly(temp);
   });
 
   Future<void> open(WidgetTester tester) async {
