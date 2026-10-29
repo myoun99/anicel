@@ -6,8 +6,9 @@ import '../persistence/usage_stats_store.dart';
 import 'aptabase_client.dart';
 
 /// The usage statistics (I-70): whether this device sends them, and what it
-/// sends when it does — `app_started` once a run, `day` once a UTC day and
-/// `in_use` about once an hour while the app is in front ([inUseEvery]).
+/// sends when it does — `app_started` once a run, `day` once a UTC day with
+/// the settings it carries ([_settings]) and `in_use` about once an hour
+/// while the app is in front ([inUseEvery]).
 ///
 /// 🗣️I-70 (유저 2026-10-29): Q1 「둘 다」 — downloads are counted from the
 /// releases, and how many people USE the app from here; Q2 Aptabase
@@ -32,12 +33,14 @@ class UsageStats {
     AptabaseClient? client,
     required String Function() locale,
     required String Function() osLocale,
+    required Map<String, Object> Function() settings,
     DateTime Function() now = DateTime.now,
     Timer Function(Duration, void Function(Timer)) periodic = Timer.periodic,
   }) : _store = store,
        _client = client ?? AptabaseClient(),
        _locale = locale,
        _osLocale = osLocale,
+       _settings = settings,
        _now = now,
        _periodic = periodic;
 
@@ -51,6 +54,10 @@ class UsageStats {
   /// The device's own language, as a BCP 47 tag (`ko-KR`), read at each
   /// event — the shell reads it from the platform and hands it in.
   final String Function() _osLocale;
+
+  /// The settings a `day` carries, each as its chip reads, read when the
+  /// day is queued — the shell names which (I-70-Q8).
+  final Map<String, Object> Function() _settings;
   final DateTime Function() _now;
   final Timer Function(Duration, void Function(Timer)) _periodic;
 
@@ -277,9 +284,12 @@ class UsageStats {
           today,
         ];
       }
+      // ⚖️THE SETTINGS RIDE ON THE DAY (유저 2026-10-29 19:5x, I-70-Q8:
+      // 「설정값은 실는거 a, 방식도 제안대로」): once a device-day, so a
+      // device that opens the app often is counted once, as every other is.
       _queueUp([
         if (start) (name: 'app_started', props: const <String, Object>{}),
-        if (day) (name: 'day', props: {'days': bucket}),
+        if (day) (name: 'day', props: {'days': bucket, ..._settings()}),
       ], now);
     }
     await _flush();

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -26,6 +27,8 @@ import 'package:anicel/src/models/app_ui_scale.dart';
 import 'package:anicel/src/services/persistence/app_ui_scale_store.dart';
 import 'package:anicel/src/services/persistence/app_workspace_colors_store.dart';
 import 'package:anicel/src/services/persistence/audio_sync_settings_store.dart';
+import 'package:anicel/src/services/feedback/feedback_forms.dart';
+import 'package:anicel/src/services/usage_stats/aptabase_client.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/editor_app_settings.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
@@ -496,6 +499,50 @@ void main() {
           '⛔a direct write publishes and saves NOTHING — it is the shape of '
           'F-150 itself',
     );
+  });
+
+  test('🎯the usage statistics\' day carries the four settings as '
+      'Preferences shows them (유저 2026-10-29, I-70-Q8: 「정한 목록만」)', () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    final days = <Map<String, dynamic>>[];
+    final settings = EditorAppSettings(
+      usageStatsClient: AptabaseClient(
+        appKey: 'A-EU-1462843916',
+        post: (_, _, body) async {
+          days.addAll([
+            for (final event
+                in (jsonDecode(body) as List).cast<Map<String, dynamic>>())
+              if (event['eventName'] == 'day')
+                event['props'] as Map<String, dynamic>,
+          ]);
+          return 200;
+        },
+        prepare: () {},
+        describe: () => (model: 'x', os: FeedbackOs.windows, osVersion: '11'),
+        build: '1081',
+      ),
+    );
+    addTearDown(() => AppUiScale.value.value = AppUiScale.defaultScale);
+    AppUiScale.value.value = 0.8;
+    AppColors.accentSettings.value = const AppAccentSettings(
+      accent: Color(0xFFE05A47),
+    );
+    AppSave.settings.value = const AppSaveSettings(periodicSnapshotMinutes: 5);
+    AppInput.settings.value = const AppInputSettings(
+      drawingCursor: DrawingCursor.pen,
+    );
+    settings.usageStats.setEnabled(true);
+    await pumpEventQueue();
+    expect(days.single, containsPair('uiScale', '80%'));
+    expect(days.single, containsPair('accent', '#E05A47'));
+    expect(days.single, containsPair('autosave', '5min'));
+    expect(days.single, containsPair('drawingCursor', 'pen'));
+
+    AppSave.settings.value = const AppSaveSettings();
+    settings.usageStats.setEnabled(false);
+    settings.usageStats.setEnabled(true);
+    await pumpEventQueue();
+    expect(days.last, containsPair('autosave', 'off'));
   });
 }
 

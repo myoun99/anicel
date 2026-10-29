@@ -1,7 +1,7 @@
 ## What's new in this version
 
 - **Send Feedback** — send us feedback from the ⚙ Settings menu, as text alone or with screenshots and videos. Your device and the build are filled in for you.
-- **Send usage statistics (optional)** — turn it on in the window that asks at first launch or in Preferences ▸ System, and the app sends anonymously, when it opens and about once an hour while you use it, that it is in use, and once a day a range for how many of the last 28 days it was used — with the OS, device model, device language, build and app language. It starts off, and no drawings, files or the name you gave the device are sent.
+- **Send usage statistics (optional)** — turn it on in the window that asks at first launch or in Preferences ▸ System, and the app sends anonymously, when it opens and about once an hour while you use it, that it is in use, and once a day a range for how many of the last 28 days it was used with four settings (interface scale, accent color, autosave, cursor) — with the OS, device model, device language, build and app language. It starts off, and no drawings, files or the name you gave the device are sent.
 - **Build number** — shown beside the title of the notice at launch and in About Anicel in the ⚙ menu.
 - **Work settings, reworked** — the timesheet's artist field now carries the rough key artist's name. Each cut can have its own scene (SCENE) in Cut settings, and each cut remembers which sections you opened or closed.
 - **Palettes, reworked** — tap an empty swatch to put the current color in it, and drag swatches to move or swap them. Palettes can be renamed, folded, reordered and locked.
@@ -26,6 +26,7 @@
 - **Preferences ▸ Audio** — without microphone access, the input settings are grayed out.
 - **Brush size numbers** are shown larger.
 - **Grass brush** — the decoration grass now stamps tufts fanning out from one foot, instead of blades lined up in a column.
+- **Pencils** — the 2H, HB, 2B and 4B pencils and the colored pencil are made anew: grain-shaped tips stamped at random turns, reaching into the paper's tooth as hard as you press. Only the shading pencil answers the pen's tilt.
 - **Color Key on adjustment layers** — the eyedropper now picks the keyed colour through an adjustment layer with a Color Key, and the key no longer drops out when the layer's mix is below 100%.
 - **Speed** — fixed lines trailing behind the pen on heavy cuts, a stutter right after Show all, and scrubbing that fell behind. Fast scrolling through the timeline and the conte stutters less.
 - While you drag the end of a block inside a folder, the folder row's block follows at once. Fixed broken picture edges on some devices. Also fixed: while drawing near a blurred row inside a blurred folder, the picture no longer looks off.

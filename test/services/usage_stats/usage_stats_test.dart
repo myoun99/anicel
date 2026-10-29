@@ -104,6 +104,9 @@ void main() {
   late Completer<void>? hold;
   late DateTime clock;
 
+  /// The settings a run's shell hands in — none unless a test sets them.
+  late Map<String, Object> settings;
+
   /// Every periodic timer a run started, the latest last.
   late List<_Periodic> timers;
 
@@ -114,6 +117,7 @@ void main() {
     status = 200;
     hold = null;
     clock = DateTime.utc(2026, 10, 29, 6, 20);
+    settings = const {};
     timers = [];
   });
 
@@ -147,6 +151,7 @@ void main() {
       client: client(appKey: appKey),
       locale: () => 'ko',
       osLocale: () => 'ko-KR',
+      settings: () => settings,
       now: () => clock,
       periodic: periodic,
     );
@@ -291,6 +296,23 @@ void main() {
       ]);
     });
 
+    test('🎯the settings ride on the day alone, as they read when the day is '
+        'queued (유저 2026-10-29, I-70-Q8)', () async {
+      settings = {'uiScale': '80%', 'accent': '#4FA8A0'};
+      final stats = run(_MemoryStore([]));
+      await stats.reportLaunch();
+      settings = {'uiScale': '100%', 'accent': '#E05A47'};
+      timers.single.fire();
+      await pumpEventQueue();
+      nextDay();
+      await stats.reportResume();
+      expect(sent, [
+        ['app_started', 'day days=new,uiScale=80%,accent=#4FA8A0'],
+        ['in_use'],
+        ['day days=1-2,uiScale=100%,accent=#E05A47'],
+      ]);
+    });
+
     test('the program language and the device\'s are read at each send — '
         'the device\'s on every event, the hour\'s too', () async {
       var locale = 'ko';
@@ -312,6 +334,7 @@ void main() {
         ),
         locale: () => locale,
         osLocale: () => osLocale,
+        settings: () => const {},
         now: () => clock,
         periodic: periodic,
       );
@@ -624,6 +647,7 @@ void main() {
         client: client(),
         locale: () => 'ko',
         osLocale: () => 'ko-KR',
+        settings: () => const {},
         now: () => clock,
         periodic: periodic,
       );
@@ -740,6 +764,7 @@ void main() {
         ),
         locale: () => 'ko',
         osLocale: () => 'ko-KR',
+        settings: () => const {},
         now: () => clock,
         periodic: periodic,
       );

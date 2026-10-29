@@ -1,7 +1,7 @@
 ## Nouveautés de cette version
 
 - **Envoyer un avis** — envoyez-nous votre avis depuis le menu ⚙ Paramètres, en texte seul ou avec des captures d'écran et des vidéos. Votre appareil et la version sont déjà remplis.
-- **Envoyer des statistiques d'utilisation (facultatif)** — activez-le dans la fenêtre qui le demande au premier lancement ou dans Préférences ▸ Système : l'application envoie alors de façon anonyme, à l'ouverture et environ une fois par heure pendant l'utilisation, qu'elle est utilisée, et une fois par jour une tranche du nombre de jours d'utilisation sur les 28 derniers — avec le système, le modèle et la langue de l'appareil, la version et la langue de l'app. Désactivé au départ ; ni dessins, ni fichiers, ni le nom donné à l'appareil ne sont envoyés.
+- **Envoyer des statistiques d'utilisation (facultatif)** — activez-le dans la fenêtre qui le demande au premier lancement ou dans Préférences ▸ Système : l'application envoie alors de façon anonyme, à l'ouverture et environ une fois par heure pendant l'utilisation, qu'elle est utilisée, et une fois par jour une tranche du nombre de jours d'utilisation sur les 28 derniers avec quatre réglages (taille de l'interface, couleur d'accent, sauvegarde auto, curseur) — avec le système, le modèle et la langue de l'appareil, la version et la langue de l'app. Désactivé au départ ; ni dessins, ni fichiers, ni le nom donné à l'appareil ne sont envoyés.
 - **Numéro de build** — affiché à côté du titre de la fenêtre affichée au lancement et dans « À propos de Anicel » du menu ⚙.
 - **Réglages de l'œuvre, revus** — le champ de l'artiste de la feuille de temps porte maintenant le nom de l'artiste de la clé brute. Chaque plan peut avoir sa propre scène (SCENE) dans les réglages du plan, et chaque plan retient les sections ouvertes ou fermées.
 - **Palettes, revues** — touchez une case vide pour y mettre la couleur actuelle, et faites glisser les cases pour les déplacer ou les échanger. Les palettes peuvent être renommées, repliées, réordonnées et verrouillées.
@@ -26,6 +26,7 @@
 - **Préférences ▸ Audio** — sans accès au micro, les réglages d'entrée sont grisés.
 - **Les chiffres de la taille du pinceau** sont affichés plus grands.
 - **Brosse herbe** — l'herbe de décoration pose désormais des touffes qui s'évasent depuis un même pied, au lieu de brins alignés en colonne.
+- **Crayons** — les crayons 2H, HB, 2B et 4B et le crayon de couleur sont refaits : des pointes en forme de grain posées à des angles aléatoires, qui entrent dans le grain du papier autant que vous appuyez. Seul le crayon couché répond à l'inclinaison du stylet.
 - **Masquage par couleur sur les calques de réglage** — la pipette prélève désormais la couleur après masquage à travers un calque de réglage, et le masquage ne disparaît plus quand le mélange du calque est sous 100 %.
 - **Vitesse** — corrigé : le trait qui suivait le stylet avec retard dans les plans lourds, l'à-coup juste après Tout afficher, et le défilement qui prenait du retard. Le défilement rapide de la timeline et du conte saccade moins.
 - Pendant que vous faites glisser la fin d'un bloc dans un dossier, le bloc de la ligne du dossier suit aussitôt. Corrigé : des bords d'image abîmés sur certains appareils. Corrigé aussi : en dessinant près d'un calque flouté dans un dossier flouté, l'image ne paraît plus décalée.
