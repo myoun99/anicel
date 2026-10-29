@@ -244,7 +244,8 @@ import 'timeline/timeline_tile_raster_source.dart'
 import 'effective_device_pixel_ratio.dart' show EffectiveDevicePixelRatio;
 import 'timeline/timeline_cell_exposure_state.dart'
     show timelineOwnCelNameAt, timelineOwnCelsStateAt;
-import 'timeline/timeline_frame_window.dart' show visibleFrameWindowFor;
+import 'timeline/timeline_frame_window.dart'
+    show timelineFrameWindowReachFor, visibleFrameWindowFor;
 import 'timeline/memo_token.dart'
     show ByIdentity, ByList, BySet, Kept, KeptPiece, keptWhileSame;
 import 'repaint_props.dart';
@@ -3731,7 +3732,6 @@ TimelineRangeGestureCallbacks _storyboardBandCallbacks({
 mixin _StoryboardRowRunLabels {
   TimelineFrameGeometryHandle get frameGeometry;
   ValueListenable<int> get windowBucket;
-  double get viewportWidth;
   bool get showSeconds;
   ProjectFrameRate get projectFrameRate;
   double get height;
@@ -3792,7 +3792,6 @@ class _StoryboardTransitionRow extends KeptPiece
     required this.timelineScale,
     required this.frameGeometry,
     required this.windowBucket,
-    required this.viewportWidth,
     required this.showSeconds,
     required this.projectFrameRate,
     this.defById,
@@ -3823,8 +3822,6 @@ class _StoryboardTransitionRow extends KeptPiece
   final TimelineFrameGeometryHandle frameGeometry;
   @override
   final ValueListenable<int> windowBucket;
-  @override
-  final double viewportWidth;
   @override
   final bool showSeconds;
   @override
@@ -3872,7 +3869,6 @@ class _StoryboardTransitionRow extends KeptPiece
     timelineScale.minBlockWidth,
     ByIdentity(frameGeometry),
     ByIdentity(windowBucket),
-    viewportWidth,
     showSeconds,
     projectFrameRate,
     ByList([
@@ -4151,7 +4147,9 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
   /// The panel's window, as the V row's blocks painter takes it.
   @override
   final ValueListenable<int> windowBucket;
-  @override
+
+  /// How far the panel's view reaches — what the window the row's pieces
+  /// are built for reaches past its bucket ([_window]).
   final double viewportWidth;
   @override
   final bool showSeconds;
@@ -4177,7 +4175,13 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
     projectFrameRate,
     ByIdentity(frameGeometry),
     ByIdentity(windowBucket),
-    viewportWidth,
+    // By the window it reaches, not the breadth: a view a pixel wider keeps
+    // its window, and the pieces built for it stand
+    // (storyboard-strips-build-on-every-view-pixel).
+    timelineFrameWindowReachFor(
+      viewportExtent: viewportWidth,
+      cellExtent: timelineScale.pixelsPerFrame,
+    ),
     showSeconds,
     ByList([
       if (layer case final layer?)
@@ -5063,7 +5067,6 @@ class _StoryboardTrackRow extends KeptPiece {
     required this.hoveredCutId,
     this.standingCutId,
     required this.windowBucket,
-    required this.viewportWidth,
     required this.showSeconds,
     required this.projectFrameRate,
     this.railSweepAt,
@@ -5120,10 +5123,10 @@ class _StoryboardTrackRow extends KeptPiece {
   /// ([StoryboardCutBlocksPainter.standingCutId]).
   final ValueListenable<CutId?>? standingCutId;
 
-  /// The shared window inputs (UI-R16): the blocks painter draws — and asks
-  /// for thumbnails — only inside the visible span.
+  /// The shared window (UI-R16): the blocks painter draws — and asks for
+  /// thumbnails — only inside the visible span, as far as the live
+  /// geometry's view reaches.
   final ValueListenable<int> windowBucket;
-  final double viewportWidth;
 
   final bool showSeconds;
   final ProjectFrameRate projectFrameRate;
@@ -5333,7 +5336,6 @@ class _StoryboardTrackRow extends KeptPiece {
     ByIdentity(hoveredCutId),
     ByIdentity(standingCutId),
     ByIdentity(windowBucket),
-    viewportWidth,
     showSeconds,
     projectFrameRate,
     thumbnails,

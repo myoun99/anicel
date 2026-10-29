@@ -8,14 +8,12 @@ class _StoryboardCutStarts extends StatelessWidget {
     required this.starts,
     required this.geometry,
     required this.windowBucket,
-    required this.viewportWidth,
   });
 
   final Key paintKey;
   final List<int> starts;
   final TimelineFrameGeometryHandle geometry;
   final ValueListenable<int> windowBucket;
-  final double viewportWidth;
 
   @override
   Widget build(BuildContext context) => Positioned.fill(
@@ -28,7 +26,6 @@ class _StoryboardCutStarts extends StatelessWidget {
             geometry: geometry,
             colorScheme: Theme.of(context).colorScheme,
             windowBucket: windowBucket,
-            viewportMainExtent: viewportWidth,
           ),
         ),
       ),
@@ -51,7 +48,6 @@ class StoryboardCutStartsPainter extends CustomPainter with RepaintOnProps {
     required this.geometry,
     required this.colorScheme,
     required this.windowBucket,
-    required this.viewportMainExtent,
   }) : super(repaint: Listenable.merge([geometry, windowBucket]));
 
   /// Each cut's place on the track — its first frame, not where a のりしろ
@@ -60,7 +56,10 @@ class StoryboardCutStartsPainter extends CustomPainter with RepaintOnProps {
   final TimelineFrameGeometryHandle geometry;
   final ColorScheme colorScheme;
   final ValueListenable<int> windowBucket;
-  final double viewportMainExtent;
+
+  /// How far the view reaches along the frames — the live geometry's, so a
+  /// widened view repaints the lines ([TimelineFrameGeometry.viewExtentPx]).
+  double get viewportMainExtent => geometry.value.viewExtentPx;
 
   /// Two on, three off.
   static const DashPattern dashes = DashPattern(on: 2, off: 3);
@@ -122,5 +121,5 @@ class StoryboardCutStartsPainter extends CustomPainter with RepaintOnProps {
   @override
   // Geometry and the window are absent on purpose — they arrive through
   // `repaint`.
-  Object get props => (ByList(starts), colorScheme, viewportMainExtent);
+  Object get props => (ByList(starts), colorScheme);
 }

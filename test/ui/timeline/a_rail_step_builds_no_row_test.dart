@@ -18,18 +18,27 @@ import 'package:anicel/src/ui/widgets/named.dart';
 /// ruler). On 10-11, before the rows' window kept them, it was 828 and every
 /// rail row too.
 ///
+/// ↩️The storyboard's strips held the breadth to cut the window their pieces
+/// are built for, and a pixel moved the window's end a cell at a time
+/// (storyboard-strips-build-on-every-view-pixel, 10-30): 273 a step, 162
+/// after. They key on the spans the window reaches now
+/// (`timelineFrameWindowReachFor`), and the rows that cut no window hold no
+/// breadth at all.
+///
 /// ⚠️The sheet's column BOX (`xsheet-column-…`) is laid fresh on every
 /// pass by design, outside the kept column (F-244) — what is held to
 /// nothing here is what the box holds.
 void main() {
   final aRow = RegExp(
     '^(timeline-rail-row-|timeline-row-|timeline-frame-row-area-'
-    '|xsheet-frame-column-area-|xsheet-row-cells-)',
+    '|xsheet-frame-column-area-|xsheet-row-cells-'
+    '|timeline-range-gesture-|storyboard-)',
   );
 
   for (final (grid, toggle, step) in [
     ('timeline', null, const Offset(-1, 0)),
     ('x-sheet', 'timeline-orientation-toggle-button', const Offset(0, -1)),
+    ('storyboard', 'timeline-mode-storyboard-button', const Offset(-1, 0)),
   ]) {
     testWidgets('one pixel of the $grid\'s rail splitter builds none of its '
         'rows', (tester) async {

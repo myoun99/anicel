@@ -58,7 +58,6 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
     required this.timelineScale,
     required this.frameGeometry,
     required this.windowBucket,
-    required this.viewportWidth,
     required this.showSeconds,
     required this.projectFrameRate,
     this.onRowFramePress,
@@ -106,8 +105,6 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
   /// The panel's window, as the V row's blocks painter takes it.
   @override
   final ValueListenable<int> windowBucket;
-  @override
-  final double viewportWidth;
   @override
   final bool showSeconds;
   @override
@@ -304,7 +301,6 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
     timelineScale.minBlockWidth,
     ByIdentity(frameGeometry),
     ByIdentity(windowBucket),
-    viewportWidth,
     showSeconds,
     projectFrameRate,
     onRowFramePress != null,
@@ -349,7 +345,6 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
             starts: [for (final entry in layoutEntries) entry.startFrame],
             geometry: frameGeometry,
             windowBucket: windowBucket,
-            viewportWidth: viewportWidth,
           ),
           if (seat == 0) _createButtons(context),
           // The cells' press — the S rows' and the transition row's own
@@ -408,7 +403,6 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
       height: height,
       frameGeometry: frameGeometry,
       windowBucket: windowBucket,
-      viewportWidth: viewportWidth,
     ),
   );
 
@@ -703,7 +697,6 @@ class _StoryboardPanelEdges extends StatelessWidget {
     required this.height,
     required this.frameGeometry,
     required this.windowBucket,
-    required this.viewportWidth,
   });
 
   final TrackId trackId;
@@ -726,7 +719,6 @@ class _StoryboardPanelEdges extends StatelessWidget {
   final double height;
   final TimelineFrameGeometryHandle frameGeometry;
   final ValueListenable<int> windowBucket;
-  final double viewportWidth;
 
   /// One entry per block of the row, in track order — what the edit chrome
   /// hangs its grips on.

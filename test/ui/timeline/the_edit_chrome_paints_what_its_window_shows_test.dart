@@ -83,9 +83,9 @@ void main() {
     expect(painter.targets, hasLength(600), reason: 'premise: every edge');
     final atStart = drawnGrips();
     expect(atStart, isNotEmpty, reason: 'premise: the window has grips');
-    // Bucket 0 of a 20-cell viewport reaches frame 26
-    // ([timelineFrameWindowFor]).
-    expect(atStart.where((grip) => grip.left > 26 * 24.0), isEmpty);
+    // Bucket 0 of a 20-cell viewport reaches frame 26, and on to the edge of
+    // its four-cell span: 28 ([timelineFrameWindowFor]).
+    expect(atStart.where((grip) => grip.left > 28 * 24.0), isEmpty);
 
     var repaints = 0;
     painter.addListener(() => repaints += 1);
