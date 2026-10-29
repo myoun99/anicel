@@ -44,7 +44,11 @@ import 'package:anicel/src/ui/quiet_turns.dart';
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// The cels' reads, counted — and refused past [_enough], where a view that
-/// reads again and again would otherwise hold the test forever.
+/// reads again and again would otherwise hold the test forever. No cel is
+/// ever in hand: one the store draws that no read brings in — a decoded
+/// movie was, until 2026-10-30; one whose bytes will not thaw still is.
+/// ⛔Not a movie not decoded yet, nor one decoded at another size: nothing
+/// draws those, and the stands end without the guard.
 final class _CountedReads extends LayerFrameImageCache {
   _CountedReads({required super.frameStore});
 
@@ -58,6 +62,12 @@ final class _CountedReads extends LayerFrameImageCache {
     }
     return super.readIn(key, canvasSize: canvasSize);
   }
+
+  @override
+  bool storedSurfaceIsInHand(
+    BrushFrameKey key, {
+    required CanvasSize canvasSize,
+  }) => false;
 }
 
 const int _enough = 100;
@@ -91,16 +101,13 @@ void main() {
 
   testWidgets('🎯a movie on the canvas is read, and the frame does not stand '
       'again for a read that brought nothing into hand', (tester) async {
-    // ↩️Stood on a decoded movie until it was in hand (the pin below).
-    final cels = BrushFrameStore();
+    final cels = BrushFrameStore()
+      ..installMovieCel(
+        film,
+        BitmapSurface(canvasSize: canvasSize, tileSize: defaultCelTileSize),
+      );
     final images = _CountedReads(frameStore: cels);
     addTearDown(images.dispose);
-    expect(
-      images.storedSurfaceIsInHand(film, canvasSize: canvasSize),
-      isFalse,
-      reason: 'fixture: a movie not decoded yet is not in hand, and no read '
-          'brings it in — its decode is the hydrator\'s',
-    );
     final store = FramePictureStore<FramePictureKey>();
     addTearDown(store.dispose);
     // No quiet comes, as none came in the app: the frame laying its
