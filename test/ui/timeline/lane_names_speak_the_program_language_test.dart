@@ -207,7 +207,7 @@ const _rail = <AppLanguage, _RailWords>{
       'Dialogue Ink',
       'Show Dialogue',
     ],
-    audio: ['Audio', 'Volume', 'Pan'],
+    audio: ['Audio', 'Volume', 'Total volume', 'Pan'],
     effects: [
       'Gaussian Blur',
       'Blurriness',
@@ -235,7 +235,7 @@ const _rail = <AppLanguage, _RailWords>{
       'セリフの色',
       'セリフを表示',
     ],
-    audio: ['音声', '音量', 'パン'],
+    audio: ['音声', '音量', '全体の音量', 'パン'],
     effects: [
       'ブラー（ガウス）',
       'ブラー',
@@ -263,7 +263,7 @@ const _rail = <AppLanguage, _RailWords>{
       '대사 잉크',
       '대사 표시',
     ],
-    audio: ['오디오', '볼륨', '팬'],
+    audio: ['오디오', '볼륨', '총 볼륨', '팬'],
     effects: [
       '가우시안 흐림',
       '흐림 정도',
@@ -299,7 +299,7 @@ const _rail = <AppLanguage, _RailWords>{
       'Encre du dialogue',
       'Afficher le dialogue',
     ],
-    audio: ['Audio', 'Volume', 'Panoramique'],
+    audio: ['Audio', 'Volume', 'Volume global', 'Panoramique'],
     effects: [
       'Flou gaussien',
       'Flou',
@@ -327,7 +327,7 @@ const _rail = <AppLanguage, _RailWords>{
       '台词颜色',
       '显示台词',
     ],
-    audio: ['音频', '音量', '声像'],
+    audio: ['音频', '音量', '总音量', '声像'],
     effects: [
       '高斯模糊',
       '模糊度',
