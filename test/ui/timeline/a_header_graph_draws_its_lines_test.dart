@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart'
     show OffsetLayer, RenderAbstractViewport, RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/app_accents.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -149,37 +148,6 @@ void main() {
     final mark = layerMarkColor(_layer.mark).toARGB32();
     expect(marks, List.filled(2 * 2 + 2, mark), reason: 'Position\'s two '
         'keys on each of its numbers, and the Blur\'s two');
-  });
-
-  // 🗣️I-143-Q7 (유저 2026-10-30): 「라이트에서만 진하게(강조색과 같은 법)」.
-  testWidgets('on the light palette a key wears its label darkened to stand '
-      'on the ground the graph lies on', (tester) async {
-    AppColors.accentSettings.value = const AppAccentSettings(
-      mode: AppColorMode.light,
-    );
-    addTearDown(
-      () => AppColors.accentSettings.value = const AppAccentSettings(),
-    );
-    final s = await _pump(tester);
-    await _openTransform(tester);
-    await _tapNamed(tester, 'timeline-lane-group-graph-draw-$_transform');
-    s.standOnRow(const LaneRowAddress(_drawId, 'position'));
-    await tester.pumpAndSettle();
-
-    final painter = _painter(tester);
-    expect(painter.ground, AppColors.surface);
-    final label = layerMarkColor(_layer.mark);
-    final worn = AppColors.onTheGround(label, AppColors.surface);
-    expect(worn, isNot(label), reason: '⛔전제: the label is pale there');
-    final canvas = TestRecordingCanvas();
-    painter.paint(canvas, tester.getSize(_picture('timeline')));
-    expect({
-      for (final call in canvas.invocations)
-        if (call.invocation.memberName == #drawPath)
-          if (call.invocation.positionalArguments[1] case final Paint paint
-              when paint.style == PaintingStyle.fill)
-            paint.color.toARGB32(),
-    }, {worn.toARGB32()});
   });
 
   // 🗣️F-367-Q3 (유저 2026-10-17): 「레인 멤버 키와 같은 크기」 — every line

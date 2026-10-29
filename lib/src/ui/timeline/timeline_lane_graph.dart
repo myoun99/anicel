@@ -55,7 +55,6 @@ import 'lane_graph_seats.dart'
     show LaneGraphLine, laneGraphDrawnLanes, laneGraphGuests;
 import 'layer_label_controls.dart' show layerMarkColor;
 import 'property_lane_model.dart';
-import 'timeline_beat_lines.dart' show TimelineGridLaw;
 import 'timeline_cells_row_facts.dart' show TimelineCellsRowGrid;
 import 'timeline_drag_preview.dart' show timelineDragPreviewLayerFor;
 import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
@@ -657,7 +656,6 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
       box: _box?.rect,
       transformBox: widget.transformBox,
       pivot: _pivot ?? laneGraphBoxMiddle,
-      ground: TimelineGridLaw.maybeOf(context)?.ground,
     );
     final picture = HitGate(
       admits: _takesPressAt,
@@ -2247,7 +2245,6 @@ class TimelineLaneGraphPainter extends CustomPainter {
     this.box,
     this.transformBox = true,
     this.pivot = laneGraphBoxMiddle,
-    this.ground,
   }) : super(
          repaint: Listenable.merge([
            frameAxis.geometry,
@@ -2284,11 +2281,6 @@ class TimelineLaneGraphPainter extends CustomPainter {
   /// Where the box's anchor point stands between the keys picked
   /// ([LaneGraphPicked.pivotAt]).
   final LaneGraphBoxPoint pivot;
-
-  /// The host's ground under the graph ([TimelineGridLaw]) — what its keys'
-  /// colour labels are drawn straight on ([AppColors.onTheGround]); null
-  /// over the artwork.
-  final Color? ground;
 
   Axis get axis => frameAxis.axis;
 
@@ -2425,7 +2417,7 @@ class TimelineLaneGraphPainter extends CustomPainter {
         center: key.at,
         box: _keySizeOf(key),
         standing: axis == Axis.vertical,
-        color: _onTheGround(layerMarkColor(key.line.layer.mark)),
+        color: layerMarkColor(key.line.layer.mark),
         ring: _picks(key) ? ring : null,
       );
     }
@@ -2796,13 +2788,7 @@ class TimelineLaneGraphPainter extends CustomPainter {
       oldDelegate.held != held ||
       oldDelegate.box != box ||
       oldDelegate.transformBox != transformBox ||
-      oldDelegate.pivot != pivot ||
-      oldDelegate.ground != ground;
-
-  Color _onTheGround(Color label) {
-    final ground = this.ground;
-    return ground == null ? label : AppColors.onTheGround(label, ground);
-  }
+      oldDelegate.pivot != pivot;
 }
 
 /// The segments [curve]'s handles bend, in order: from each of its

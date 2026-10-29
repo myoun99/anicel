@@ -227,6 +227,12 @@ TimelineBlockFace timelineRowFaceOf(
 
 /// The look of what [layer]'s row draws in its colour label
 /// ([timelineRowFaceOf]), with words in [ink] — the block's own by default.
+///
+/// 🗣️I-143 (유저 2026-10-30): 「색라벨 진하게한거면 너무 진하니까 그냥
+/// 기존이랑 똑같이」 — on the light palette too the label is worn as it is,
+/// where it is drawn straight on the ground as well. ↩️-Q7 darkened those
+/// marks (keys, the line between them, the word over it) to stand 3:1
+/// there, as the accent does.
 TimelineBlockLook timelineRowLookOf(
   BuildContext context,
   Layer layer, {
@@ -236,27 +242,3 @@ TimelineBlockLook timelineRowLookOf(
   timelineRowFaceOf(context, layer, unreadable: unreadable),
   ink: ink ?? timelineInBlockInk(),
 );
-
-/// The colour [layer]'s marks wear where they are drawn straight on the
-/// host's ground rather than filling a block — its keys, the line between
-/// them and the word over it: its colour label on that ground
-/// ([AppColors.onTheGround]), then in the row's state as a block's paper is
-/// ([timelineRowLookOf]). Over the artwork, where no ground is known, the
-/// label as it is.
-///
-/// 🗣️I-143-Q7 (유저 2026-10-30, 「라이트에서만 진하게(강조색과 같은 법)」): a
-/// pastel label — the paper itself on a row with none — was all but gone on
-/// the light ground. Darkened BEFORE the state, so a hidden row's marks are
-/// still the dimmed ones.
-Color timelineRowMarkOf(BuildContext context, Layer layer) {
-  final face = timelineRowFaceOf(context, layer);
-  final ground = face.ground;
-  return timelineBlockLook(
-    face.state,
-    paper: ground == null
-        ? face.paper
-        : AppColors.onTheGround(face.paper, ground),
-    ink: timelineInBlockInk(),
-    ground: ground,
-  ).paper!;
-}
