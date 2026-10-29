@@ -15,6 +15,13 @@ name: TestFlight (iOS)
 # queue for hours to deliver versions nobody asked to look at.
 on:
   workflow_dispatch:
+    inputs:
+      build_number:
+        description: >-
+          The build number to stamp, for a round's TestFlight built again
+          after a fix. Empty is this workflow's own run number + 1000.
+        required: false
+        type: string
 
 concurrency:
   group: testflight
@@ -105,12 +112,22 @@ jobs:
       # upload failure rather than as arithmetic. The offset puts this
       # workflow back above the stopgap for good (2026-09-22).
       #
+      # 🔢A ROUND'S NUMBER IS ITS FIRST TESTFLIGHT RUN'S (유저 2026-10-02,
+      # see macos-developer-id.yml). 🗣️유저 2026-10-29 (release-2026-10-29-Q1
+      # 「셋 먼저, 애플은 뒤따라」 — the same 1080): a TestFlight that has to
+      # be built again after a fix lands is a new run with a new number, so
+      # the round's number can come in as `build_number`, as it does for
+      # the Mac. Read through env, never pasted into the script.
+      #
       # Built through tool/release_build.sh, as every release is: it stamps
       # the number and the commit the app's feedback forms read (I-139-Q5).
       - name: Build Flutter iOS artifacts
+        env:
+          BUILD_NUMBER_INPUT: ${{ inputs.build_number }}
         run: |
           bash tool/release_build.sh ios \
-            $(( ${{ github.run_number }} + 1000 )) --no-codesign
+            "${BUILD_NUMBER_INPUT:-$(( ${{ github.run_number }} + 1000 ))}" \
+            --no-codesign
 
       - uses: ruby/setup-ruby@v1
         with:
