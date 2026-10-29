@@ -330,14 +330,31 @@ class _FramePictureViewState extends State<FramePictureView> {
       _liveChanges = frame.changes;
     }
     final nodes = widget.nodes;
-    _onScreen = {
+    final picture = widget.picture;
+    final inHand = {
       for (final cel in stackedCelsOf(nodes))
-        if (_pictures.inHand(cel, widget.picture)) cel,
+        if (_pictures.inHand(cel, picture)) cel,
     };
-    if (!_pictures.allInHand(nodes, widget.picture)) {
+    _onScreen = inHand;
+    if (!_pictures.allInHand(nodes, picture)) {
+      // 🚨STOOD AGAIN ONLY FOR WHAT THE READ BROUGHT INTO HAND. A cel a read
+      // cannot bring in — a movie's, whose picture is the movie tier's and
+      // banked nowhere (`BrushFrameStore.installMovieCel`), or one whose
+      // bytes would not thaw — answered the read at once, and the frame
+      // stood again and read again in the same microtask, for ever: from
+      // 2026-10-25 (one picture per frame) the app hung the moment a movie
+      // stood on the canvas, and the decode that would have brought its
+      // picture never got a turn (🐞10-30, the hands-on verify's 23.976
+      // `.mov`). A cel that comes in later comes with a revision of its own,
+      // and the frame is handed anew ([didUpdateWidget]).
       unawaited(
-        _pictures.readInStack(nodes, widget.picture).then((_) {
-          if (mounted && identical(_live, frame)) {
+        _pictures.readInStack(nodes, picture).then((_) {
+          if (mounted &&
+              identical(_live, frame) &&
+              stackedCelsOf(nodes).any(
+                (cel) =>
+                    !inHand.contains(cel) && _pictures.inHand(cel, picture),
+              )) {
             setState(_standLive);
           }
         }),
