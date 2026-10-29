@@ -612,7 +612,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
         rows,
         world: widget.hooks.substrateGeneration,
       ),
-      pass: _pass,
+      pass: (_pass, edges),
     );
   }
 
@@ -1528,7 +1528,10 @@ class _RowWindow {
   /// and the held row's alike.
   final RowBerthMap berths;
 
-  /// The grid's build the rows are laid in — what the rows a window move
-  /// keeps were built in ([WindowMoveKeep]).
+  /// The grid's build the rows are laid in, and the edges they are laid on
+  /// — what the rows a window move keeps were built in ([WindowMoveKeep]).
+  /// 🚨The edges are laid anew for a view of another height below the
+  /// grid's build ([_layRows]), and an enlarged graph stands as far as the
+  /// view lets one (I-89 ③D): a resized panel is a pass of its own.
   final Object pass;
 }
