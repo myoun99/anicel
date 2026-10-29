@@ -17,10 +17,10 @@ class _OnStore extends UsageStatsStore {
   _OnStore() : super(filePath: 'unused');
 
   @override
-  Future<List<int>?> load() async => const [];
+  Future<UsageStatsAnswer?> load() async => const UsageStatsOn([]);
 
   @override
-  Future<void> save(List<int>? activeDays) async {}
+  Future<void> save(UsageStatsAnswer answer) async {}
 }
 
 /// A saved Korean, back a moment after the usage statistics' answer.

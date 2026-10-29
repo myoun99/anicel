@@ -11,9 +11,11 @@ import 'aptabase_client.dart';
 ///
 /// 🗣️I-70 (유저 2026-10-29): Q1 「둘 다」 — downloads are counted from the
 /// releases, and how many people USE the app from here; Q2 Aptabase
-/// receives ([AptabaseClient]); Q3 「안내 창에서 묻고 기본 꺼짐」 — asked in
-/// the launch notice, OFF until the person turns it on, and turned on or off
-/// any time in Preferences: ONE switch ([enabled]) both of them show.
+/// receives ([AptabaseClient]); Q3 「안내 창에서 묻고 기본 꺼짐」 — OFF until
+/// the person turns it on, and turned on or off any time in Preferences:
+/// ONE switch ([enabled]). ↩️Where it is asked moved (유저 08:1x, 「따로
+/// 묻는 작은 창」): a window of its own at launch, while the person has never
+/// answered ([unanswered]) — not a row under the launch notice's what's-new.
 ///
 /// ⛔Off sends nothing at all, and neither does a build with no App Key
 /// ([AptabaseClient.endpoint]).
@@ -81,16 +83,30 @@ class UsageStats {
   /// one must not write its day into the cleared record.
   int _turnedOff = 0;
 
+  /// Whether the person has answered — the question at launch, or the
+  /// switch in Preferences — on this device ([UsageStatsStore]).
+  bool _answered = false;
+
   /// Reads the saved answer and record back.
   Future<void> restore() => _restored = _load();
 
   Future<void> _load() async {
-    final days = await _store?.load();
-    if (days == null) {
+    final answer = await _store?.load();
+    if (answer == null) {
       return;
     }
-    _days = days;
-    enabled.value = true;
+    _answered = true;
+    if (answer case UsageStatsOn(:final activeDays)) {
+      _days = activeDays;
+      enabled.value = true;
+    }
+  }
+
+  /// Whether the person has yet to answer, once the saved answer is back —
+  /// what the question at launch asks of it.
+  Future<bool> unanswered() async {
+    await _restored;
+    return !_answered;
   }
 
   /// The app has started: this run's `app_started`, and today's `day` if
@@ -139,7 +155,8 @@ class UsageStats {
     locale: _locale(),
   );
 
-  /// The person's answer. On reports at once — this run and today, as a
+  /// The person's answer — the question's or the switch's, which is
+  /// remembered either way. On reports at once — this run and today, as a
   /// launch would have; off forgets the record kept on this device.
   ///
   /// 🗣️MoArt's rule, which I-70 follows (유저 10-15 liked its return
@@ -147,11 +164,12 @@ class UsageStats {
   /// comes back on is `new` again.
   void setEnabled(bool on) {
     enabled.value = on;
+    _answered = true;
     if (!on) {
       _days = const [];
       _turnedOff += 1;
     }
-    unawaited(_store?.save(on ? _days : null));
+    unawaited(_store?.save(on ? UsageStatsOn(_days) : const UsageStatsOff()));
     _keepInUse();
     if (on) {
       unawaited(_report(countRun: true));
@@ -186,7 +204,7 @@ class UsageStats {
     final now = _now();
     final today = dayOf(now);
     // ⚖️A RUN IS COUNTED ONCE, at launch or when it is turned on during
-    // it (2026-10-29, this lane): the launch notice asks at launch, and a
+    // it (2026-10-29, this lane): the question is asked at launch, and a
     // first launch counted only from the NEXT one would never be. Not
     // retried — a run whose `app_started` failed stays uncounted, as the
     // SDKs' own fire-and-forget would leave it.
@@ -224,7 +242,7 @@ class UsageStats {
           if (today - kept < windowDays) kept,
         today,
       ];
-      unawaited(_store?.save(_days));
+      unawaited(_store?.save(UsageStatsOn(_days)));
     }
   }
 

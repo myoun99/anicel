@@ -34,7 +34,8 @@ class SystemStatusSection extends StatelessWidget {
   /// Every open project — the census adds them all up (I-7).
   final Iterable<EditorSessionManager> openSessions;
 
-  /// The switch the launch notice asks with ([UsageStatsSwitchRow]).
+  /// What the usage statistics' switch turns on or off
+  /// ([UsageStatsSwitchRow]).
   final UsageStats usageStats;
 
   @override

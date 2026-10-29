@@ -11,16 +11,25 @@ import 'package:anicel/src/services/usage_stats/usage_stats.dart';
 /// The answer and the record kept in memory, as the settings file keeps
 /// them across launches.
 class _MemoryStore extends UsageStatsStore {
-  _MemoryStore([this.days]) : super(filePath: 'unused');
+  /// On with [days] — or never answered without them.
+  _MemoryStore([List<int>? days])
+    : answer = days == null ? null : UsageStatsOn(days),
+      super(filePath: 'unused');
 
-  /// What the file holds: null is off.
-  List<int>? days;
+  /// What the file holds: null is no file.
+  UsageStatsAnswer? answer;
+
+  /// The days the file holds: none while it is off or never answered.
+  List<int>? get days => switch (answer) {
+    UsageStatsOn(:final activeDays) => activeDays,
+    _ => null,
+  };
 
   @override
-  Future<List<int>?> load() async => days;
+  Future<UsageStatsAnswer?> load() async => answer;
 
   @override
-  Future<void> save(List<int>? activeDays) async => days = activeDays;
+  Future<void> save(UsageStatsAnswer answer) async => this.answer = answer;
 }
 
 /// A periodic timer the test ticks by hand ([fire]).
@@ -413,6 +422,42 @@ void main() {
       await launch;
       await stats.reportResume();
       expect(sent, hasLength(1));
+    });
+  });
+
+  /// 🗣️유저 2026-10-29 08:1x: 「따로 묻는 작은 창」, asked ONCE — whichever
+  /// way it is answered, and wherever.
+  group('the question is asked once', () {
+    test('🎯a device never asked is unanswered — and off', () async {
+      final stats = run(_MemoryStore());
+      expect(await stats.unanswered(), isTrue);
+      expect(stats.enabled.value, isFalse);
+    });
+
+    test('🎯「보내기」 and 「보내지 않기」 are both remembered: the next run is '
+        'not asked, and is what was answered', () async {
+      for (final yes in [true, false]) {
+        final store = _MemoryStore();
+        final first = run(store);
+        expect(await first.unanswered(), isTrue);
+        first.setEnabled(yes);
+        expect(await first.unanswered(), isFalse, reason: '$yes');
+        expect(
+          store.answer,
+          yes ? isA<UsageStatsOn>() : isA<UsageStatsOff>(),
+          reason: '$yes',
+        );
+
+        final next = run(store);
+        expect(await next.unanswered(), isFalse, reason: '$yes');
+        expect(next.enabled.value, yes, reason: '$yes');
+      }
+    });
+
+    test('a saved answer is read before it is asked about', () async {
+      final store = _MemoryStore()..answer = const UsageStatsOff();
+      expect(await run(store).unanswered(), isFalse);
+      expect(await run(_MemoryStore([])).unanswered(), isFalse);
     });
   });
 

@@ -10,6 +10,7 @@ import 'package:flutter/services.dart' show SystemNavigator;
 import 'dialogs/app_confirm_dialog.dart';
 import 'dialogs/behind_the_wait_window.dart' show stepBehindTheWaitWindow;
 import 'dialogs/launch_notice_window.dart' show showLaunchNoticeIfDue;
+import 'dialogs/usage_stats_question.dart' show askUsageStatsIfUnanswered;
 import '../services/flutter_test_run.dart';
 import '../controllers/default_project_helpers.dart';
 import '../models/frame.dart' show InbetweenMark;
@@ -175,7 +176,9 @@ class HomePage extends StatefulWidget {
 
   /// Where the usage statistics' answer is restored from (I-70), beside
   /// [languageSettingsStore]: null reads the saved file outside tests and
-  /// nothing inside them.
+  /// nothing inside them — where nothing is asked at launch either, as no
+  /// notice is shown ([launchNotice]); a test that measures the question
+  /// hands one in.
   final UsageStatsStore? usageStatsStore;
 
   /// Where the usage statistics go. Null sends under the release's App Key,
@@ -257,10 +260,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     frameCountSettingsStore: _unlessTesting(AppFrameCountSettingsStore.new),
     cameraPathSettingsStore: _unlessTesting(AppCameraPathSettingsStore.new),
     pixelVerbSettingsStore: _unlessTesting(AppPixelVerbSettingsStore.new),
-    usageStatsStore:
-        widget.usageStatsStore ?? _unlessTesting(UsageStatsStore.new),
+    usageStatsStore: _usageStatsStore,
     usageStatsClient: widget.usageStatsClient,
   )..restore();
+
+  /// Where the usage statistics' answer is kept — restored by the app's
+  /// settings, and what the question at launch is asked of
+  /// ([_showLaunchWindows]).
+  late final UsageStatsStore? _usageStatsStore =
+      widget.usageStatsStore ?? _unlessTesting(UsageStatsStore.new);
   final WorkspacePanelsMenuController _panelsMenu =
       WorkspacePanelsMenuController();
 
@@ -607,11 +615,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     HandedFiles.listen(_openHanded);
     final launchNotice =
         widget.launchNotice ?? _unlessTesting(LaunchNotice.new);
-    if (launchNotice != null) {
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _showLaunchNotice(launchNotice),
-      );
-    }
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _showLaunchWindows(launchNotice),
+    );
     // I-70: this launch, to the usage statistics (nothing while they are
     // off) — once the saved language is back: the events name it.
     unawaited(
@@ -646,17 +652,25 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     ),
   );
 
-  /// This build's notice, once per launch — after the first frame, and
-  /// once the saved language is back, for the reason [_openHanded] waits:
-  /// the window is written in the program language as it opens.
-  void _showLaunchNotice(LaunchNotice notice) => unawaited(
+  /// What a launch opens, one window after the other: this build's
+  /// [notice] if it is due, then the usage statistics' question if it was
+  /// never answered — after the first frame, and once the saved language is
+  /// back, for the reason [_openHanded] waits: each window is written in
+  /// the program language as it opens.
+  ///
+  /// 🗣️유저 2026-10-29 08:1x (「따로 묻는 작은 창」): the question after the
+  /// notice closes, or alone when the notice is not due.
+  ///
+  /// ⚠️Each is opened from its store, as `_unlessTesting` hands them out: a
+  /// test that hands neither in sees neither, and one that measures the
+  /// launch hands its own in.
+  void _showLaunchWindows(LaunchNotice? notice) => unawaited(
     _appSettings.languageRestored.then((_) async {
-      if (mounted) {
-        await showLaunchNoticeIfDue(
-          context,
-          notice,
-          usageStats: _appSettings.usageStats,
-        );
+      if (notice != null && mounted) {
+        await showLaunchNoticeIfDue(context, notice);
+      }
+      if (_usageStatsStore != null && mounted) {
+        await askUsageStatsIfUnanswered(context, _appSettings.usageStats);
       }
     }),
   );

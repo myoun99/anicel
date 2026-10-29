@@ -7,6 +7,8 @@ import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/services/launch_notice.dart';
 import 'package:anicel/src/services/persistence/app_language_settings_store.dart';
 import 'package:anicel/src/services/persistence/launch_notice_store.dart';
+import 'package:anicel/src/services/persistence/usage_stats_store.dart';
+import 'package:anicel/src/ui/dialogs/usage_stats_question.dart';
 import 'package:anicel/src/ui/dialogs/usage_stats_switch_row.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -48,7 +50,20 @@ final _content = LaunchNoticeContent(
   (language, section) => '## ${section.name} ${language.name}',
 );
 
+/// A device never asked about the usage statistics, whose answers are
+/// kept nowhere.
+class _UnansweredStore extends UsageStatsStore {
+  _UnansweredStore() : super(filePath: 'unused');
+
+  @override
+  Future<UsageStatsAnswer?> load() async => null;
+
+  @override
+  Future<void> save(UsageStatsAnswer answer) async {}
+}
+
 final _window = find.byKey(const ValueKey<String>('launch-notice'));
+final _question = find.byKey(usageStatsQuestionKeys.window);
 
 /// 🗣️유저 2026-10-28: 「앱 실행시 앱 설명 넣고싶어」 — the app's first
 /// frame opens the notice ([HomePage.launchNotice]), and a test that hands
@@ -62,6 +77,7 @@ void main() {
     WidgetTester tester,
     LaunchNotice notice, {
     AppLanguageSettingsStore? language,
+    UsageStatsStore? usageStats,
   }) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -72,6 +88,7 @@ void main() {
           key: UniqueKey(),
           launchNotice: notice,
           languageSettingsStore: language,
+          usageStatsStore: usageStats,
         ),
       ),
     );
@@ -103,22 +120,41 @@ void main() {
     expect(_window, findsNothing);
   });
 
-  testWidgets('🎯its usage statistics switch is the app\'s — off at first, '
-      'and what Preferences ▸ System then shows (I-70-Q3)', (tester) async {
+  testWidgets('🎯the usage statistics\' question comes after the notice '
+      'closes, and alone when the notice is not due — 「보내기」 is the switch '
+      'Preferences ▸ System then shows (유저 2026-10-29 08:1x)', (
+    tester,
+  ) async {
+    final notices = _MemoryStore();
     await launch(
       tester,
-      LaunchNotice(store: _MemoryStore(), content: () async => _content),
+      LaunchNotice(store: notices, content: () async => _content),
+      usageStats: _UnansweredStore(),
     );
-    final inNotice = find.descendant(
-      of: _window,
-      matching: find.byKey(UsageStatsSwitchRow.tileKey),
-    );
-    expect(tester.booleanDotIn(inNotice).value, isFalse);
-    await tester.pressRingIn(inNotice);
-    await tester.pump();
+    expect(_window, findsOneWidget);
+    expect(_question, findsNothing);
     await tester.tap(
-      find.byKey(const ValueKey<String>('launch-notice-close')),
+      find.byKey(const ValueKey<String>('launch-notice-dont-show-again')),
     );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(_window, findsNothing);
+    expect(_question, findsOneWidget);
+    await tester.tap(find.byKey(usageStatsQuestionKeys.decline));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(_question, findsNothing);
+
+    // The next launch: the notice dismissed, the question never answered on
+    // this store.
+    await launch(
+      tester,
+      LaunchNotice(store: notices, content: () async => _content),
+      usageStats: _UnansweredStore(),
+    );
+    expect(_window, findsNothing);
+    expect(_question, findsOneWidget);
+    await tester.tap(find.byKey(usageStatsQuestionKeys.accept));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
@@ -145,7 +181,8 @@ void main() {
     );
   });
 
-  testWidgets('a test that hands none in sees no notice', (tester) async {
+  testWidgets('a test that hands none in sees no notice, and is asked '
+      'nothing', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -160,6 +197,7 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 300));
     expect(_window, findsNothing);
+    expect(_question, findsNothing);
   });
 
   testWidgets('it waits for the saved language and opens in it', (
@@ -179,5 +217,24 @@ void main() {
     expect(_window, findsOneWidget);
     expect(find.text('안내 · dev'), findsOneWidget);
     expect(find.text('notice ko'), findsOneWidget);
+  });
+
+  testWidgets('the question waits for the saved language too, and asks in '
+      'it', (tester) async {
+    final language = _LateKorean();
+    final notices = _MemoryStore()..dismissed = _content.key;
+    await launch(
+      tester,
+      LaunchNotice(store: notices, content: () async => _content),
+      language: language,
+      usageStats: _UnansweredStore(),
+    );
+    expect(_question, findsNothing);
+
+    language.gate.complete();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(_question, findsOneWidget);
+    expect(find.text('사용 통계'), findsOneWidget);
   });
 }

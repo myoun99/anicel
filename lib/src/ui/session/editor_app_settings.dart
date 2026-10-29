@@ -123,8 +123,8 @@ class EditorAppSettings {
   final AptabaseClient? _usageStatsClient;
 
   /// Whether this device sends usage statistics, and the sending — ONE
-  /// switch the launch notice and Preferences both show (I-70-Q3). The
-  /// shell reports the launch and each return to the app to it.
+  /// answer the question at launch and Preferences' switch both give
+  /// (I-70). The shell reports the launch and each return to the app to it.
   late final UsageStats usageStats = UsageStats(
     store: _usageStatsStore,
     client: _usageStatsClient,

@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/services/launch_notice.dart';
 import 'package:anicel/src/services/persistence/launch_notice_store.dart';
-import 'package:anicel/src/services/usage_stats/usage_stats.dart';
 import 'package:anicel/src/ui/dialogs/launch_notice_window.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart'
     show EditorActionIds;
@@ -41,10 +40,6 @@ LaunchNoticeContent _content({String whatsNew = '- One thing changed.'}) =>
         LaunchNoticeSection.feedback => 'Tell us ${language.name}.',
       },
     );
-
-/// The usage statistics' switch, kept in memory and with no key to send
-/// under — the window's consent row needs one to show.
-UsageStats _usageStats() => UsageStats(locale: () => 'en');
 
 final _window = find.byKey(const ValueKey<String>('launch-notice'));
 final _dontShowAgain = find.byKey(
@@ -85,7 +80,6 @@ void main() {
                   store: store,
                   content: () async => (content ?? _content)(),
                 ),
-                usageStats: _usageStats(),
               ),
               child: const Text('launch'),
             ),
@@ -116,6 +110,12 @@ void main() {
     expect(_dontShowAgain, findsOneWidget);
     expect(_close, findsOneWidget);
     expect(_sendFeedback, findsOneWidget);
+    // ↩️The usage statistics are asked in a window of their own now
+    // (유저 2026-10-29 08:1x): no switch in here.
+    expect(
+      find.descendant(of: _window, matching: find.byType(SettingsSwitchRow)),
+      findsNothing,
+    );
     // The content scrolls in its own lane, there whether it overflows or
     // not (CLAUDE.md: 스크롤바를 자동으로 숨기지 않는다).
     expect(
@@ -261,11 +261,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           theme: buildAppTheme(),
-          home: LaunchNoticeWindow(
-            content: bundled,
-            usageStats: _usageStats(),
-            onDontShowAgain: () {},
-          ),
+          home: LaunchNoticeWindow(content: bundled, onDontShowAgain: () {}),
         ),
       );
       final drawn = [

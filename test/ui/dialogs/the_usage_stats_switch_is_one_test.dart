@@ -2,10 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/services/launch_notice.dart';
-import 'package:anicel/src/services/persistence/launch_notice_store.dart';
-import 'package:anicel/src/ui/dialogs/launch_notice_window.dart';
 import 'package:anicel/src/ui/dialogs/preferences_dialog.dart';
+import 'package:anicel/src/ui/dialogs/usage_stats_question.dart';
 import 'package:anicel/src/ui/dialogs/usage_stats_switch_row.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/editor_app_settings.dart';
@@ -15,36 +13,24 @@ import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 
 import '../../helpers/boolean_dot_probe.dart';
 
-/// Nothing dismissed, ever: every launch of the test shows the notice.
-class _NeverDismissed extends LaunchNoticeStore {
-  _NeverDismissed() : super(filePath: 'unused');
-
-  @override
-  Future<String?> load() async => null;
-
-  @override
-  Future<void> save(String dismissedKey) async {}
-}
-
-final _notice = find.byKey(const ValueKey<String>('launch-notice'));
+final _question = find.byKey(usageStatsQuestionKeys.window);
 final _preferences = find.byKey(const ValueKey<String>('preferences-dialog'));
-
-Finder _switchIn(Finder window) => find.descendant(
-  of: window,
+final _switch = find.descendant(
+  of: _preferences,
   matching: find.byKey(UsageStatsSwitchRow.tileKey),
 );
 
-/// 🗣️I-70-Q3 (유저 2026-10-29): 「안내 창에서 묻고 기본 꺼짐」, and on or off
-/// any time in 환경설정 — ONE switch, asked in the one window and kept in
-/// the other.
+/// 🗣️I-70-Q3 (유저 2026-10-29): on or off any time in 환경설정 — ONE switch,
+/// which the question at launch (유저 08:1x, 「따로 묻는 작은 창」) answers
+/// and which answers the question in turn.
 void main() {
-  testWidgets('🎯the launch notice asks with the switch Preferences ▸ System '
-      'keeps — off until pressed, one value in both', (tester) async {
+  /// A screen with the app's two ways in: the question as a launch asks it,
+  /// and Preferences ▸ System.
+  Future<EditorSessionManager> pumpHost(WidgetTester tester) async {
     final session = EditorSessionManager(
       initialProject: createDefaultProject(),
     );
     addTearDown(session.dispose);
-    final usageStats = session.appSettings.usageStats;
     await tester.binding.setSurfaceSize(const Size(1200, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -55,15 +41,9 @@ void main() {
             builder: (context) => Column(
               children: [
                 TextButton(
-                  onPressed: () => showLaunchNoticeIfDue(
+                  onPressed: () => askUsageStatsIfUnanswered(
                     context,
-                    LaunchNotice(
-                      store: _NeverDismissed(),
-                      content: () async => LaunchNoticeContent(
-                        (language, section) => '## ${section.name}',
-                      ),
-                    ),
-                    usageStats: usageStats,
+                    session.appSettings.usageStats,
                   ),
                   child: const Text('launch'),
                 ),
@@ -82,21 +62,44 @@ void main() {
         ),
       ),
     );
+    return session;
+  }
 
-    await tester.tap(find.text('launch'));
+  Future<void> tapText(WidgetTester tester, String text) async {
+    await tester.tap(find.text(text));
     await tester.pumpAndSettle();
-    expect(_switchIn(_notice), findsOneWidget);
-    expect(tester.booleanDotIn(_switchIn(_notice)).value, isFalse);
-    expect(usageStats.enabled.value, isFalse);
+  }
+
+  Future<void> closePreferences(WidgetTester tester) async {
+    await tester.tap(find.byKey(const ValueKey<String>('preferences-close')));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('🎯the question\'s 「보내기」 is the switch Preferences ▸ System '
+      'shows — and what it sends is the switch\'s tooltip, no caption', (
+    tester,
+  ) async {
+    final session = await pumpHost(tester);
+    final usageStats = session.appSettings.usageStats;
+
+    await tapText(tester, 'launch');
+    await tester.tap(find.byKey(usageStatsQuestionKeys.accept));
+    await tester.pumpAndSettle();
+    expect(usageStats.enabled.value, isTrue);
+
+    await tapText(tester, 'preferences');
+    expect(tester.booleanDotIn(_switch).value, isTrue);
     expect(
-      find.descendant(of: _notice, matching: find.text('Send usage statistics')),
+      find.descendant(
+        of: _switch,
+        matching: find.text('Send usage statistics'),
+      ),
       findsOneWidget,
     );
-    // What it sends is the tooltip — no caption under the control.
     expect(find.text(AppText.strings.usageStatsHelp), findsNothing);
     expect(
       find.descendant(
-        of: _notice,
+        of: _preferences,
         matching: find.byWidgetPredicate(
           (widget) =>
               widget is AppTooltip &&
@@ -105,29 +108,28 @@ void main() {
       ),
       findsOneWidget,
     );
-
-    await tester.pressRingIn(_switchIn(_notice));
-    await tester.pumpAndSettle();
-    expect(usageStats.enabled.value, isTrue);
-    expect(tester.booleanDotIn(_switchIn(_notice)).value, isTrue);
-    await tester.tap(
-      find.byKey(const ValueKey<String>('launch-notice-close')),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('preferences'));
-    await tester.pumpAndSettle();
-    expect(tester.booleanDotIn(_switchIn(_preferences)).value, isTrue);
-    await tester.pressRingIn(_switchIn(_preferences));
+    await tester.pressRingIn(_switch);
     await tester.pumpAndSettle();
     expect(usageStats.enabled.value, isFalse);
-    await tester.tap(find.byKey(const ValueKey<String>('preferences-close')));
-    await tester.pumpAndSettle();
+    await closePreferences(tester);
 
-    // And the next launch's notice asks again from what Preferences left.
-    await tester.tap(find.text('launch'));
+    // Answered: the next launch's question is not asked.
+    await tapText(tester, 'launch');
+    expect(_question, findsNothing);
+  });
+
+  testWidgets('🎯the switch pressed before the question is asked is an '
+      'answer too — the question does not come', (tester) async {
+    final session = await pumpHost(tester);
+    await tapText(tester, 'preferences');
+    expect(tester.booleanDotIn(_switch).value, isFalse);
+    await tester.pressRingIn(_switch);
     await tester.pumpAndSettle();
-    expect(tester.booleanDotIn(_switchIn(_notice)).value, isFalse);
+    expect(session.appSettings.usageStats.enabled.value, isTrue);
+    await closePreferences(tester);
+
+    await tapText(tester, 'launch');
+    expect(_question, findsNothing);
   });
 
   test('the switch goes with the app\'s settings', () {

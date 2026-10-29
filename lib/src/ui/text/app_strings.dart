@@ -188,10 +188,18 @@ enum AppStrings {
   String get launchNoticeTitle => _s('launchNoticeTitle');
   String get launchNoticeDontShowAgain => _s('launchNoticeDontShowAgain');
 
-  /// The usage statistics' one switch (I-70) — in the launch notice and in
-  /// Preferences ▸ System — and what it sends, as its tooltip.
+  /// The usage statistics' one switch (I-70), in Preferences ▸ System, and
+  /// what it sends, as its tooltip.
   String get usageStatsSend => _s('usageStatsSend');
   String get usageStatsHelp => _s('usageStatsHelp');
+
+  /// The usage statistics' question at launch (유저 2026-10-29: 「따로 묻는
+  /// 작은 창」): the ask, then [usageStatsHelp], then where it changes.
+  String get usageStatsTitle => _s('usageStatsTitle');
+  String get usageStatsAsk => _s('usageStatsAsk');
+  String get usageStatsChangeLater => _s('usageStatsChangeLater');
+  String get usageStatsDontSend => _s('usageStatsDontSend');
+  String get usageStatsDoSend => _s('usageStatsDoSend');
 
   /// The timeline/timesheet gap empty state.
   String get noCutSelected => _s('noCutSelected');
@@ -2107,6 +2115,14 @@ enum AppStrings {
         'more). Nothing that identifies you is sent: no drawings or '
         'projects, no file names, no names, not the name you gave the '
         'device. Turning it off also deletes the record kept on this device.',
+    'usageStatsTitle': 'Usage statistics',
+    'usageStatsAsk':
+        'Send usage statistics? Turning them on helps the development of '
+        'Anicel.',
+    'usageStatsChangeLater':
+        'You can change this any time in Preferences ▸ System.',
+    'usageStatsDontSend': "Don't send",
+    'usageStatsDoSend': 'Send',
     'programLanguageLabel': 'Program language',
     'notationLanguageLabel': 'Notation language',
     'programLanguageHelp': 'Menus, panels and labels.',
@@ -3433,6 +3449,11 @@ enum AppStrings {
         '1日1回、直近28日間に使った日数の区分（初回 / 1〜2日 / 3日以上）も送信します。'
         '絵・プロジェクト・ファイル名・名前・端末に付けた名前など、あなたを特定できる'
         'ものは送信しません。オフにすると、この端末に残した記録も削除します。',
+    'usageStatsTitle': '利用統計',
+    'usageStatsAsk': '利用統計を送信しますか？オンにしていただくと、Anicel の開発の助けになります。',
+    'usageStatsChangeLater': '環境設定 ▸ システムでいつでも変更できます。',
+    'usageStatsDontSend': '送信しない',
+    'usageStatsDoSend': '送信する',
     'programLanguageLabel': 'プログラム言語',
     'notationLanguageLabel': '表記言語',
     'programLanguageHelp': 'メニュー・パネル・ラベルの言語。',
@@ -5226,6 +5247,11 @@ enum AppStrings {
         '보냅니다. 그림 · 프로젝트 · 파일 이름 · 이름 · 기기에 붙인 이름 등 '
         '사용자를 알아볼 수 있는 것은 보내지 않습니다. 끄면 이 기기에 남긴 기록도 '
         '지웁니다.',
+    'usageStatsTitle': '사용 통계',
+    'usageStatsAsk': '사용 통계를 보내시겠습니까? 켜 주시면 Anicel 개발에 도움이 됩니다.',
+    'usageStatsChangeLater': '환경설정 ▸ 시스템에서 언제든 바꿀 수 있습니다.',
+    'usageStatsDontSend': '보내지 않기',
+    'usageStatsDoSend': '보내기',
     'programLanguageLabel': '프로그램 언어',
     'notationLanguageLabel': '표기용 언어',
     'programLanguageHelp': '메뉴·패널·라벨의 언어.',
@@ -7009,6 +7035,14 @@ enum AppStrings {
         "plus). Rien qui vous identifie n'est envoyé : ni dessins ni projets, "
         "ni noms de fichiers, ni noms, ni le nom donné à l'appareil. Le "
         "désactiver efface aussi l'historique gardé sur cet appareil.",
+    'usageStatsTitle': "Statistiques d'utilisation",
+    'usageStatsAsk':
+        "Envoyer des statistiques d'utilisation ? Les activer aide au "
+        "développement d'Anicel.",
+    'usageStatsChangeLater':
+        'Vous pouvez changer cela à tout moment dans Préférences ▸ Système.',
+    'usageStatsDontSend': 'Ne pas envoyer',
+    'usageStatsDoSend': 'Envoyer',
     'programLanguageLabel': 'Langue du programme',
     'notationLanguageLabel': 'Langue de notation',
     'programLanguageHelp': 'Menus, panneaux et libellés.',
@@ -8921,6 +8955,11 @@ enum AppStrings {
         '28 天内使用天数的区间（首次 / 1–2 天 / 3 天以上）。不会发送画作、项目、'
         '文件名、名称、您给设备起的名字等任何能识别您的信息。关闭后也会删除本设备上'
         '保存的记录。',
+    'usageStatsTitle': '使用统计',
+    'usageStatsAsk': '要发送使用统计吗？开启后将有助于 Anicel 的开发。',
+    'usageStatsChangeLater': '可随时在偏好设置 ▸ 系统中更改。',
+    'usageStatsDontSend': '不发送',
+    'usageStatsDoSend': '发送',
     'programLanguageLabel': '程序语言',
     'notationLanguageLabel': '标注语言',
     'programLanguageHelp': '菜单、面板与标签的语言。',
