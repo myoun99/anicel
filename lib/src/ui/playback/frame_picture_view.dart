@@ -343,9 +343,10 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// brought one into hand and [frame] is still the one standing.
   ///
   /// 🚨STOOD AGAIN ONLY FOR WHAT THE READ BROUGHT INTO HAND. A cel no read
-  /// brings in — a movie's, decoded or not: its picture is the movie tier's
-  /// and banked nowhere (`BrushFrameStore.storeRebuiltDisplayCache`) — or
-  /// one whose bytes would not thaw answered the read at once, and the frame
+  /// brings in — a movie's not decoded yet, its decode the hydrator's (and
+  /// a decoded one, banked nowhere, until it was in hand: 2026-10-30,
+  /// `LayerFrameImageCache.storedSurfaceIsInHand`) — or one whose bytes
+  /// would not thaw answered the read at once, and the frame
   /// stood again and read again in the same microtask, for ever: from
   /// 2026-10-25 (one picture per frame) the app hung the moment a movie
   /// stood on the canvas (🐞10-30, the hands-on verify's 23.976 `.mov` —

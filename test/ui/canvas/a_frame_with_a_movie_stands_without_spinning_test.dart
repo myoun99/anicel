@@ -1,15 +1,25 @@
 // A FRAME WITH A MOVIE ON IT STANDS ONCE AND DOES NOT SPIN.
 //
 // 🐞10-30 (the hands-on verify's 23.976 `.mov`, then any movie placed): the
-// app hung the moment a movie stood on the canvas. A movie cel is never in
+// app hung the moment a movie stood on the canvas. A movie cel was never in
 // hand, decoded or not — its picture is the movie tier's, banked nowhere —
 // so a read answered at once, and the view stood again and read again in
 // the same microtask, for ever (probed in the app: 21 million stands in two
 // minutes, the UI thread never free again).
+//
+// A DECODED MOVIE IS IN THE FRAME AS IT STANDS.
+//
+// 🐞10-30 (저장's hand-over on the same card): never in hand, a decoded
+// movie was left out of the frame drawn as it stands — the body every step
+// of a stroke on a row above it is patched into the frame's picture by.
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
@@ -20,6 +30,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/movie_cel.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart'
@@ -80,17 +91,15 @@ void main() {
 
   testWidgets('🎯a movie on the canvas is read, and the frame does not stand '
       'again for a read that brought nothing into hand', (tester) async {
-    final cels = BrushFrameStore()
-      ..installMovieCel(
-        film,
-        BitmapSurface(canvasSize: canvasSize, tileSize: defaultCelTileSize),
-      );
+    // ↩️Stood on a decoded movie until it was in hand (the pin below).
+    final cels = BrushFrameStore();
     final images = _CountedReads(frameStore: cels);
     addTearDown(images.dispose);
     expect(
       images.storedSurfaceIsInHand(film, canvasSize: canvasSize),
       isFalse,
-      reason: 'fixture: a decoded movie is not in hand, as in the app',
+      reason: 'fixture: a movie not decoded yet is not in hand, and no read '
+          'brings it in — its decode is the hydrator\'s',
     );
     final store = FramePictureStore<FramePictureKey>();
     addTearDown(store.dispose);
@@ -143,6 +152,66 @@ void main() {
       settled,
       reason: 'a read that brought nothing into hand does not stand the '
           'frame again — standing again, it read again',
+    );
+  });
+
+  testWidgets('🎯a decoded movie is drawn by the frame as it stands — what '
+      'a step on a row above it is patched into its picture by', (
+    tester,
+  ) async {
+    const red = [255, 0, 0, 255];
+    const tile = defaultCelTileSize;
+    final cels = BrushFrameStore()
+      ..installMovieCel(
+        film,
+        BitmapSurface(canvasSize: canvasSize, tileSize: tile).putTiles([
+          (
+            coord: TileCoord(x: 0, y: 0),
+            tile: BitmapTile(
+              size: tile,
+              pixels: Uint8List.fromList([
+                for (var pixel = 0; pixel < tile * tile; pixel += 1) ...red,
+              ]),
+            ),
+          ),
+        ]),
+      );
+    final images = LayerFrameImageCache(frameStore: cels);
+    addTearDown(images.dispose);
+    final store = FramePictureStore<FramePictureKey>();
+    addTearDown(store.dispose);
+    final pictures = runOver(
+      images,
+      store,
+      canvasSize: canvasSize,
+      stackOf: (_) => nodes,
+    ).pictures;
+
+    final recorder = ui.PictureRecorder();
+    pictures
+        .frameAsItStands(nodes, picture)
+        .drawing
+        .draw(ui.Canvas(recorder));
+    final drawn = recorder.endRecording();
+    final rgba = (await tester.runAsync(() async {
+      final image = await drawn.toImage(8, 8);
+      drawn.dispose();
+      final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      image.dispose();
+      return bytes!.buffer.asUint8List();
+    }))!;
+
+    const middle = (8 * 4 + 4) * 4;
+    expect(
+      rgba.sublist(middle, middle + 4),
+      red,
+      reason: 'the film is in the frame as it stands — left out as a cel '
+          'not in hand, a step patched in from it cut a hole in the film',
+    );
+    expect(
+      pictures.inHand(film, picture),
+      isTrue,
+      reason: 'drawn at once from the movie tier — nothing to read',
     );
   });
 }
