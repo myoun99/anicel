@@ -3427,8 +3427,7 @@ enum AppStrings {
         "The merged layer's folder lays its look over layers from outside it",
     'tlMergeChangeRiderOver': 'An attached layer comes to cover other pictures',
     'tlMergeChangeRiderUnder': 'An attached layer goes under other pictures',
-    'tlMergeChangeWall':
-        "A reference's picture past the pasteboard is cut off",
+    'tlMergeChangeWall': 'What lies past the pasteboard is cut off',
     'tlAttachDropsFxBody':
         'An attached layer keeps no fx of its own. Continuing discards the existing fx. Continue?',
     'tlPush': 'Push (open frames)',
@@ -5242,7 +5241,7 @@ enum AppStrings {
     'tlMergeChangeFolder': '結合したレイヤーが入るフォルダーの効果が、フォルダーの外から来たレイヤーにもかかります',
     'tlMergeChangeRiderOver': 'アタッチレイヤーがほかの絵を覆うようになります',
     'tlMergeChangeRiderUnder': 'アタッチレイヤーがほかの絵の下に入ります',
-    'tlMergeChangeWall': '参照の絵のペーストボードの外の部分が切り取られます',
+    'tlMergeChangeWall': 'ペーストボードの外の部分が切り取られます',
     'tlAttachDropsFxBody': 'アタッチレイヤーは自分の fx を持ちません。続けると既存の fx は失われます。実行しますか？',
     'tlPush': '押し出し（コマを開ける）',
     'tlPull': '詰め（コマを詰める）',
@@ -7043,7 +7042,7 @@ enum AppStrings {
     'tlMergeChangeFolder': '병합한 레이어가 놓일 폴더의 효과가 그 폴더 밖에서 온 레이어에도 걸립니다',
     'tlMergeChangeRiderOver': '어태치 레이어가 다른 그림을 덮게 됩니다',
     'tlMergeChangeRiderUnder': '어태치 레이어가 다른 그림 밑으로 들어갑니다',
-    'tlMergeChangeWall': '참조 그림의 페이스트보드 밖 부분이 잘립니다',
+    'tlMergeChangeWall': '페이스트보드 밖 부분이 잘립니다',
     'tlAttachDropsFxBody':
         '어태치된 레이어는 자기 fx 를 갖지 않습니다. 계속하면 기존 fx 가 사라집니다. 실행하겠습니까?',
     'tlPush': '밀기(칸 열기)',
@@ -8979,8 +8978,7 @@ enum AppStrings {
     'tlMergeChangeRiderOver':
         "Un calque attaché recouvrira d'autres dessins",
     'tlMergeChangeRiderUnder': "Un calque attaché passera sous d'autres dessins",
-    'tlMergeChangeWall':
-        "La partie d'une référence hors du fond est coupée",
+    'tlMergeChangeWall': 'Ce qui dépasse du fond est coupé',
     'tlAttachDropsFxBody':
         'Une couche attachée ne garde pas son propre fx. Continuer supprimera le fx existant. Continuer ?',
     'tlPush': 'Pousser (ouvrir des images)',
@@ -10716,7 +10714,7 @@ enum AppStrings {
     'tlMergeChangeFolder': '合并后图层所在文件夹的效果也会作用于来自文件夹外的图层',
     'tlMergeChangeRiderOver': '附属图层会盖住其他画面',
     'tlMergeChangeRiderUnder': '附属图层会被压到其他画面下面',
-    'tlMergeChangeWall': '参照图片超出底板的部分会被裁掉',
+    'tlMergeChangeWall': '超出底板的部分会被裁掉',
     'tlAttachDropsFxBody': '附属图层不保留自身的 fx。继续将丢弃现有的 fx。要继续吗？',
     'tlPush': '推出（空出帧）',
     'tlPull': '拉回（收拢帧）',

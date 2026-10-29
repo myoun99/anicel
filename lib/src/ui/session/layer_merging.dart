@@ -91,6 +91,7 @@ class LayerMerging {
       revisionOf: (layerId, frameId) => store.sourceRevisionOf(
         _project.brushFrameKeyForCut(taking.cut, layerId, frameId),
       ),
+      inkOf: _renderCaches.celContentBounds,
       mintFrameId: _frameIds.mintFrameId,
       reach: _project.repository.requireProject().pasteboardReach,
     );

@@ -155,13 +155,14 @@ void main() {
     TransformTrack? aMoves,
     bool aRidden = false,
     bool aParted = false,
+    bool pasteboardInUse = true,
   }) {
     final a = row('a', blendMode: aBlend).copyWith(transformTrack: aMoves);
     final s = sessionOf([
       row('b', isVisible: bShown),
       if (aParted) parted(a) else a,
       if (aRidden) rider,
-    ]);
+    ], pasteboardInUse: pasteboardInUse);
     final cut = s.requireActiveCut;
     final store = s.renderCaches.brushFrameStore;
     for (final (id, cel, coords, rgba) in [
@@ -465,6 +466,34 @@ void main() {
         s.layerMerging.planOfSelection()!.changes,
         changes,
         reason: 'in use: $inUse',
+      );
+    }
+  });
+
+  test('…and a drawing\'s ink where the row shows it, as a reference\'s '
+      'file is (Q19)', () {
+    for (final (dx, inUse, changes) in [
+      // b's tile past the canvas's left edge, the pasteboard's to hold.
+      (16.0, true, <LayerMergeChange>{}),
+      (16.0, false, {LayerMergeChange.wall}),
+      // a's ink keyed past the pasteboard's right edge.
+      (96.0, true, {LayerMergeChange.wall}),
+    ]) {
+      final s = session(
+        aMoves: TransformTrack.empty().copyWith(
+          position: PropertyTrack<CanvasPoint>.empty().withKey(
+            0,
+            CanvasPoint(x: 32 + dx, y: 24),
+          ),
+        ),
+        pasteboardInUse: inUse,
+      );
+      addTearDown(s.dispose);
+
+      expect(
+        s.layerMerging.planOfSelection()!.changes,
+        changes,
+        reason: 'moved ${dx}px, in use: $inUse',
       );
     }
   });

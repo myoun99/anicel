@@ -28,7 +28,9 @@ import '../../models/brush_frame_key.dart';
 import '../../models/conte/conte_ink_keys.dart';
 import '../../models/envelope/cut_envelope_ink_keys.dart';
 import '../../models/frame.dart';
+import '../../models/frame_id.dart';
 import '../../models/layer.dart';
+import '../../models/layer_id.dart';
 import '../../models/timesheet_ink_keys.dart';
 import '../../models/viewer_ink_keys.dart';
 import '../../services/bitmap_surface_geometry.dart'
@@ -229,7 +231,10 @@ class RenderCaches {
   /// ([ProjectAccess.brushFrameKeyForCut]) — this read built its key by
   /// hand from the SELECTED track, the old name for the active cut's track
   /// (the audit's twentieth family, 2026-09-29).
-  BitmapSurface? brushSurfaceForLayerFrame(Layer layer, Frame frame) {
+  BitmapSurface? brushSurfaceForLayerFrame(Layer layer, Frame frame) =>
+      _activeCutSurfaceOf(layer.id, frame.id);
+
+  BitmapSurface? _activeCutSurfaceOf(LayerId row, FrameId cel) {
     final cut = _project.activeCutOrNull;
     if (cut == null) {
       return null; // Gap state: no cut, no artwork.
@@ -238,7 +243,7 @@ class RenderCaches {
     // reference read (valid display cache first, else baked). No replay
     // exists anymore.
     return brushFrameStore.currentSurfaceWithoutReplay(
-      _project.brushFrameKeyForCut(cut, layer.id, frame.id),
+      _project.brushFrameKeyForCut(cut, row, cel),
       canvasSize: cut.canvasSize,
     );
   }
@@ -257,15 +262,19 @@ class RenderCaches {
   ({int left, int top, int rightExclusive, int bottomExclusive})?
   layerContentBoundsAt(Layer layer, int frameIndex) {
     final frame = resolveExposedFrameAt(layer, frameIndex);
-    if (frame == null) {
-      return null;
-    }
+    return frame == null ? null : celContentBounds(layer.id, frame.id);
+  }
+
+  /// [layerContentBoundsAt] of the active cut's cel [cel] of [row] — what a
+  /// merge reads to see a picture cut at the wall (I-78-Q19).
+  ({int left, int top, int rightExclusive, int bottomExclusive})?
+  celContentBounds(LayerId row, FrameId cel) {
     // The LAYER's picture — its texts with it: the box this frames moves
     // the whole row, and a text is part of what the row shows (유저
     // 2026-10-06: 「셀의 그림이랑 정확히 동일」). ⚠️The transform TOOL's own box
     // frames the drawing alone — it never takes a text (「변형도구로 잡히지도
     // 아무 영향도 없음」) — and does not ask here.
-    final drawn = brushSurfaceForLayerFrame(layer, frame);
+    final drawn = _activeCutSurfaceOf(row, cel);
     final surface = drawn == null ? null : celSurfaceWithTextsLaid(drawn);
     if (surface == null) {
       return null;

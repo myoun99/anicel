@@ -80,12 +80,15 @@ void main() {
   );
 
   /// What MERGE makes of [cut]'s rows [ids] — its pictures drawn over the
-  /// wall [reach] stands, the canvas itself unless a test says otherwise.
+  /// wall [reach] stands, the canvas itself unless a test says otherwise,
+  /// each cel's ink where [inks] lays it by `row/cel` (none elsewhere).
   LayerMergePlan? merge(
     Cut cut,
     List<String> ids, {
     Set<String> linked = const {},
     PasteboardReach reach = PasteboardReach.none,
+    Map<String, ({int left, int top, int rightExclusive, int bottomExclusive})>
+        inks = const {},
   }) {
     final taking = takeRowsToMerge(
       cut: cut,
@@ -98,6 +101,7 @@ void main() {
         : planLayerMerge(
             taking,
             revisionOf: (_, _) => 0,
+            inkOf: (row, cel) => inks['${row.value}/${cel.value}'],
             mintFrameId: (_) => FrameId('m${minted++}'),
             reach: reach,
           );
@@ -850,6 +854,91 @@ void main() {
       )!;
 
       expect(plan.changes, isEmpty);
+    });
+  });
+
+  /// 🗣️I-78-Q19 (유저 2026-10-28): 「보통 그림도 같은 경고」.
+  group('a drawing is warned of at the wall as a reference is', () {
+    /// A position keyed [dx] to the right of the canvas's centre.
+    TransformTrack movedBy(double dx) => TransformTrack.empty().copyWith(
+      position: PropertyTrack<CanvasPoint>.empty().withKey(
+        0,
+        CanvasPoint(x: 32 + dx, y: 18),
+      ),
+    );
+
+    /// `a`'s cel `A1` inked up to the canvas's right edge, `A2` past it.
+    const inks = {
+      'a/a-A1': (left: 48, top: 0, rightExclusive: 64, bottomExclusive: 36),
+      'a/a-A2': (left: 56, top: 0, rightExclusive: 72, bottomExclusive: 16),
+    };
+
+    test('🎯one its keys move past the wall is cut there; one inside it, to '
+        'its edges, is not', () {
+      for (final (moves, changes) in [
+        (null, <LayerMergeChange>{}),
+        (movedBy(16), {LayerMergeChange.wall}),
+      ]) {
+        final cut = cutOf([
+          row('b', {0: 'B1'}),
+          row('a', {0: 'A1'}, transformTrack: moves),
+        ]);
+
+        expect(
+          merge(cut, ['a', 'b'], inks: inks)!.changes,
+          changes,
+          reason: 'moved: ${moves != null}',
+        );
+      }
+    });
+
+    test('a folder moving it moves it as its own keys do — but one the '
+        'result stays in moves the result after, and cuts nothing', () {
+      final folder = createFolderLayer(
+        id: const LayerId('F'),
+        name: 'F',
+      ).copyWith(transformTrack: movedBy(16));
+      final a = row('a', {0: 'A1'}, inside: 'F');
+      final b = row('b', {0: 'B1'});
+
+      for (final (stands, layers, changes) in [
+        ('over F', [a, folder, b], {LayerMergeChange.wall}),
+        ('in F', [b, a, folder], {LayerMergeChange.folder}),
+      ]) {
+        expect(
+          merge(cutOf(layers), ['a', 'b'], inks: inks)!.changes,
+          changes,
+          reason: 'the result stands $stands',
+        );
+      }
+    });
+
+    test('the ink is the cel\'s the row shows at the frame drawn', () {
+      final cut = cutOf([
+        row('b', {0: 'B1'}),
+        row('a', {0: 'A1', 1: 'A2'}),
+      ]);
+
+      expect(merge(cut, ['a', 'b'], inks: inks)!.changes, {
+        LayerMergeChange.wall,
+      });
+    });
+
+    test('what the pasteboard holds past the canvas is not cut', () {
+      final cut = cutOf([
+        row('b', {0: 'B1'}),
+        row('a', {0: 'A1'}, transformTrack: movedBy(16)),
+      ]);
+
+      expect(
+        merge(
+          cut,
+          ['a', 'b'],
+          inks: inks,
+          reach: PasteboardReach.whole,
+        )!.changes,
+        isEmpty,
+      );
     });
   });
 

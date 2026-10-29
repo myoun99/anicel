@@ -1,3 +1,5 @@
+import 'dart:ui' show Offset, Rect, Size;
+
 import '../../models/attached_layer_resolve.dart'
     show
         attachedGroupEndIndex,
@@ -24,7 +26,8 @@ import '../../models/timeline_repeat.dart' show ghostFreeTimeline;
 import '../../models/timeline_run_behavior.dart';
 import '../cut_frame_composite_plan.dart'
     show clipBaseOf, clipsToLayerBelow, exposedCelIdAt, layerPlacementAt;
-import '../layer_pose_matrix.dart' show picturePlacement, placedBounds;
+import '../layer_pose_matrix.dart'
+    show LayerPlacement, picturePlacement, placedRectBounds;
 import '../playback/cut_frame_composite_signature.dart';
 import '../playback/cut_frame_composite_spans.dart';
 
@@ -53,11 +56,23 @@ enum LayerMergeChange {
   /// of as Q1 warns of every change in how the rows look.
   riderUnder,
 
-  /// A reference row it took lays its file past the wall, and the merge
-  /// draws the screen inside it (I-78-Q15 「참조도 그대로 병합한다」 — 「벽 밖
-  /// 부분이 잘리면 … 경고 창에 한 줄로 알린다」).
+  /// A row it drew shows a picture past the wall, and the merge draws the
+  /// screen inside it (I-78-Q15 「참조도 그대로 병합한다」 — 「벽 밖 부분이
+  /// 잘리면 … 경고 창에 한 줄로 알린다」).
+  ///
+  /// 🗣️I-78-Q19 (유저 2026-10-28): 「보통 그림도 같은 경고」 — a drawing
+  /// its keys or its folders move past the wall is cut there just the same,
+  /// and the one line says so of both. ↩️It was a reference row's alone.
   wall,
 }
+
+/// The box round the ink of what [row]'s cel [cel] shows — its drawing and
+/// its texts — in the row's own artwork; null where it shows none.
+typedef CelInkResolver =
+    ({int left, int top, int rightExclusive, int bottomExclusive})? Function(
+      LayerId row,
+      FrameId cel,
+    );
 
 /// One picture a merge bakes: the cel of the row it lands on, and the cut
 /// and frame it is drawn from.
@@ -240,12 +255,13 @@ LayerMergeTaking? takeRowsToMerge({
 /// What a press makes of [taking].
 ///
 /// [revisionOf] says what each cel holds as the composite signature reads
-/// it; [mintFrameId] names each new cel of a row; [reach] is how far past
-/// the canvas the project's wall stands — the wall the pictures are drawn
-/// over.
+/// it; [inkOf] where its picture's ink lies; [mintFrameId] names each new
+/// cel of a row; [reach] is how far past the canvas the project's wall
+/// stands — the wall the pictures are drawn over.
 LayerMergePlan planLayerMerge(
   LayerMergeTaking taking, {
   required BrushFrameRevisionResolver revisionOf,
+  required CelInkResolver inkOf,
   required FrameId Function(LayerId row) mintFrameId,
   required PasteboardReach reach,
 }) {
@@ -298,7 +314,7 @@ LayerMergePlan planLayerMerge(
       ...drawn,
       for (final rider in ridden) ...rider.pictures,
     ],
-    changes: _changesOf(taking, over, drawn, wall),
+    changes: _changesOf(taking, over, drawn, (wall: wall, inkOf: inkOf)),
     layers: _layersAfter(taking, over, result.row, {
       for (final rider in ridden) rider.row.id: rider.row,
     }),
@@ -724,12 +740,13 @@ typedef _Minting = ({
 
 /// Why the result may show otherwise than the rows [taking] takes did
 /// ([LayerMergeChange]) — [over] being the folders it stands in, [drawn]
-/// its pictures, and [wall] the one they are drawn over.
+/// its pictures, and [wall] the one they are drawn over with where its
+/// cels' ink lies.
 Set<LayerMergeChange> _changesOf(
   LayerMergeTaking taking,
   Set<LayerId> over,
   List<LayerMergePicture> drawn,
-  PasteboardWall wall,
+  _WallCheck wall,
 ) {
   final LayerMergeTaking(
     :cut,
@@ -782,34 +799,37 @@ Set<LayerMergeChange> _ridersLed(LayerMergeTaking taking, Set<LayerId> over) {
   };
 }
 
-/// Whether a reference row a picture of [drawn] is drawn of shows its file
-/// past [wall] there — the part the merge, drawing the screen inside the
-/// wall, cuts off (I-78-Q15). Read where the row SHOWS the file at the
-/// picture's frame, as its cut paints it ([layerPlacementAt]): its keys,
-/// its folders' and its reference fx move the file from where its pixels
-/// are laid — whole, past the wall (F-374-Q8, [MediaReference.laid]).
-bool _cutAtTheWall(List<LayerMergePicture> drawn, PasteboardWall wall) {
+/// The wall a merge's pictures are drawn over, and where its cels' ink
+/// lies ([CelInkResolver]).
+typedef _WallCheck = ({PasteboardWall wall, CelInkResolver inkOf});
+
+/// Whether a row a picture of [drawn] is drawn of shows a picture past the
+/// wall there — the part the merge, drawing the screen inside the wall,
+/// cuts off (I-78-Q15 · Q19). Read where the row SHOWS it at the picture's
+/// frame, as its cut paints it ([layerPlacementAt]): its keys, its folders'
+/// and a reference's fx move it from where its pixels are laid ([_laidOf]).
+bool _cutAtTheWall(List<LayerMergePicture> drawn, _WallCheck check) {
+  final (:wall, :inkOf) = check;
   for (final (:from, :frameIndex, rowId: _, frameId: _) in drawn) {
     for (final row in from.layers) {
-      final reference = row.mediaReference;
-      if (reference == null ||
-          !from.layers.rowVisible(row) ||
-          exposedCelIdAt(cut: from, layerId: row.id, frameIndex: frameIndex) ==
-              null) {
+      final cel = from.layers.rowVisible(row)
+          ? exposedCelIdAt(cut: from, layerId: row.id, frameIndex: frameIndex)
+          : null;
+      final laid = cel == null ? null : _laidOf(row, cel, inkOf);
+      if (laid == null) {
         continue;
       }
-      final laid = picturePlacement(reference.laid, reference.pictureSize);
       final shown = DirtyRegion.wholePixelsOf(
-        placedBounds(
+        placedRectBounds(
           switch (layerPlacementAt(
             cut: from,
             layer: row,
             frameIndex: frameIndex,
           )) {
-            final placement? => placement.compose(laid),
-            null => laid,
+            final placement? => placement.compose(laid.at),
+            null => laid.at,
           },
-          reference.pictureSize,
+          laid.box,
         ),
       ).rect;
       if (wall.rect.expandToInclude(shown) != wall.rect) {
@@ -818,6 +838,38 @@ bool _cutAtTheWall(List<LayerMergePicture> drawn, PasteboardWall wall) {
     }
   }
   return false;
+}
+
+/// What [row] lays of its cel [cel] in its own artwork — [box], [at] there:
+/// a reference row's file whole where its pixels are laid, past the wall
+/// too (F-374-Q8, [MediaReference.laid]); any other row's ink ([inkOf])
+/// where it is drawn. Null where it lays nothing.
+({LayerPlacement at, Rect box})? _laidOf(
+  Layer row,
+  FrameId cel,
+  CelInkResolver inkOf,
+) {
+  if (row.mediaReference case final reference?) {
+    final picture = reference.pictureSize;
+    return (
+      at: picturePlacement(reference.laid, picture),
+      box:
+          Offset.zero &
+          Size(picture.width.toDouble(), picture.height.toDouble()),
+    );
+  }
+  return switch (inkOf(row.id, cel)) {
+    null => null,
+    final ink => (
+      at: const LayerPlacement.identity(),
+      box: Rect.fromLTRB(
+        ink.left.toDouble(),
+        ink.top.toDouble(),
+        ink.rightExclusive.toDouble(),
+        ink.bottomExclusive.toDouble(),
+      ),
+    ),
+  };
 }
 
 /// Whether [folder] lays anything over what it holds.
