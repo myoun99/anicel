@@ -67,15 +67,25 @@ class Transitions {
   /// answered that with the second form (유저 2026-09-26: 「se블록이랑
   /// 똑같이 글로벌이 주인인 상태랑 똑같지않나? 그거 그대로 법 통일해서
   /// 적용해도 문제되나?」).
-  ({Layer shown, Layer? global}) previewFormsOf(Layer row) => (
-    shown: _projectOntoCut(
+  ({Layer shown, Layer? global}) previewFormsOf(Layer row) =>
+      (shown: _inFlightProjectionOf(row).display, global: row);
+
+  /// [row] — a drag's in flight — projected onto the open cut, as
+  /// [_openCutProjection] projects the committed row: walked once per row
+  /// the drag hands over, so the row it shows and the warning it wears
+  /// ([transitionCrossingWarningInCutAt]) are one walk's answers.
+  _CutWalk _inFlightProjectionOf(Layer row) => _inFlight.resolve(
+    identity: row,
+    key: (_project.activeCutId, _selection.selectedTrackId, AppText.strings),
+    build: () => _projectOntoCut(
       names.rowNamed(_selection.activeTrack, row),
       cutStart: _project.activeCutGlobalStartFrame,
       duration: _project.activeCutOrNull?.duration ?? 0,
       lead: _openCutLead,
-    ).display,
-    global: row,
+    ),
   );
+
+  final _inFlight = IdentityMemo<_CutWalk>();
 
   /// How many of the open cut's OWN frames come before its place on the
   /// track — its head のりしろ, as the session's lens counts it
@@ -222,7 +232,7 @@ class Transitions {
   /// with the projected keys of the one-sided spans that cross it, and
   /// where each projected mark came from — its span's GLOBAL start, by
   /// projected key.
-  ({Layer display, Set<int> crossing, Map<int, int> origins}) _projectOntoCut(
+  _CutWalk _projectOntoCut(
     Layer source, {
     required int cutStart,
     required int duration,
@@ -289,10 +299,21 @@ class Transitions {
   /// in [trackTransitionDisplayLayer]'s own projection walk with the SAME
   /// predicate the apply gate reads ([oneSidedSpanCrossesOwnCut]) — the
   /// T25 one-sentence law: the refusal and the warning cannot drift.
-  String? transitionCrossingWarningInCutAt(int projectedStartKey) =>
-      _openCutProjection.crossing.contains(projectedStartKey)
-      ? AppText.strings.tlTransitionCrossingWarning
-      : null;
+  ///
+  /// 🗣️F-495 (유저 2026-10-28: 「컷 안에 넣고 나서 손 떼야 빨간줄 사라짐 …
+  /// 뭐든 최대한 라이브로」): of the row as it is SHOWN — while a drag
+  /// carries it, the walk that projected the drag's row
+  /// ([_inFlightProjectionOf]). ↩️It read the committed row's walk only, so
+  /// the line kept its answer until the release wrote one.
+  String? transitionCrossingWarningInCutAt(int projectedStartKey) {
+    final row = activeTrackTransitionRowShown;
+    final crossing = identical(row, _selection.activeTrack.transitionLayer)
+        ? _openCutProjection.crossing
+        : _inFlightProjectionOf(row).crossing;
+    return crossing.contains(projectedStartKey)
+        ? AppText.strings.tlTransitionCrossingWarning
+        : null;
+  }
 
   /// D31 × D26: the transition row the printed SHEET consumes — the
   /// cut-view projection MINUS the spans the apply gate refuses (the
@@ -350,9 +371,10 @@ class Transitions {
   /// storyboard's own way (gap, then duration) to find the owning cut; a
   /// gap-anchored fade has no owner, is already inert today, and stays
   /// quietly unmarked.
+  ///
+  /// Of the row as it is shown, as the cut view's is (F-495).
   String? transitionCrossingWarningAtGlobalKey(int globalStartKey) {
-    final event =
-        _selection.activeTrack.transitionLayer.instructions[globalStartKey];
+    final event = activeTrackTransitionRowShown.instructions[globalStartKey];
     if (event == null) {
       return null;
     }
@@ -693,6 +715,11 @@ class Transitions {
   TransitionSpan transitionSpanOf(MapEntry<int, InstructionEvent> entry) =>
       transitionSpanOfEvent(entry, _camera.cameraInstructionSet);
 }
+
+/// A transition row's walk onto a cut ([Transitions._projectOntoCut]): the
+/// clone, the projected keys of the one-sided spans that cross the cut, and
+/// where each projected mark came from.
+typedef _CutWalk = ({Layer display, Set<int> crossing, Map<int, int> origins});
 
 /// The transition row projected onto the open cut ([Transitions]): the
 /// row it was projected from, the cut's place and length it was projected
