@@ -93,6 +93,15 @@ class AppUiScale {
         : defaultScale;
   }
 
+  /// [firstRunScaleFor] the device this runs on — where the settings hold
+  /// no scale: the launch that finds none (`main()`), and a settings file
+  /// that put the scale back at its defaults (I-142), which the next launch
+  /// would find so.
+  static double firstRunScaleHere() => firstRunScaleFor(
+    PlatformDispatcher.instance.implicitView?.devicePixelRatio ?? 1.0,
+    android: defaultTargetPlatform == TargetPlatform.android,
+  );
+
   /// The LIVE scale. App-wide rather than session-owned for the same reason
   /// the accents are: widgets holding no session read it, and it outlives
   /// any one project.

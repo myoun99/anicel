@@ -41,8 +41,8 @@ enum SettingsReader {
   /// The brush library, its tips and what the hand left on each brush.
   brushes,
 
-  /// The export window, which reads its settings each time it opens — no
-  /// one, until then.
+  /// The export window, which reads its settings each time it opens, and
+  /// opens on `AppExport.settings` where the file holds none.
   exportWindow,
 }
 
@@ -72,9 +72,10 @@ final class SettingsRow {
 
   final bool Function(SettingsFile file) _reads;
 
-  /// Whether [file] holds anything of the row.
+  /// Whether [file] holds anything of the row — its defaults included.
   bool heldBy(SettingsFile file) => entries.any(
     (entry) =>
+        file.atDefaults.contains(entry) ||
         file.documents.containsKey(entry) ||
         [
           ...file.documents.keys,

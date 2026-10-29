@@ -75,14 +75,24 @@ class _WorkspaceLayoutPersistence {
     });
   }
 
-  Future<void> restoreLayout() async {
+  /// The arrangement the layout file holds, put in place — answering
+  /// whether there was one: false where the file holds none, or none this
+  /// build reads, and the workspace stands as it was. With no file to read
+  /// (a test) there is nothing to stand by: true, and nothing changes.
+  ///
+  /// ⚠️No arrangement is the factory one, and at the start the workspace
+  /// stands so already — so nothing is put back here: a first read that
+  /// lands late would undo what the hand did meanwhile (the storyboard tab
+  /// a test had opened, 2026-10-30). Read AGAIN, the workspace may stand
+  /// elsewhere, and its reader puts it back ([resetWorkspaceLayout]).
+  Future<bool> restoreLayout() async {
     final store = _layoutStore;
     if (store == null) {
-      return;
+      return true;
     }
     final payload = await store.load();
     if (payload == null || !_state.mounted) {
-      return;
+      return false;
     }
     final restored = restoreWorkspaceLayout(
       payload: payload,
@@ -97,7 +107,7 @@ class _WorkspaceLayoutPersistence {
       },
     );
     if (restored == null || !_state.mounted) {
-      return;
+      return false;
     }
     final openRails = payload['openRails'];
     _state._rebuild(() {
@@ -134,6 +144,7 @@ class _WorkspaceLayoutPersistence {
     }
     _restoreTrackLaneHeight(payload[_storyboardTrackLaneHeightKey]);
     _state._brushDetailAt.value = _restoredPoint(payload[_brushDetailAtKey]);
+    return true;
   }
 
   /// The layout file's key for where the brush detail window was left.

@@ -233,6 +233,23 @@ void main() {
     expect(_laneHeights(tester), {ceiling - 40});
   });
 
+  // ⚠️No arrangement saved is the factory one, and the workspace starts so
+  // — a first read that finds none and lands late puts nothing back over
+  // what the hand did meanwhile (I-142, 2026-10-30: the storyboard tab
+  // this file's first test opens was taken away).
+  testWidgets('a first read that finds no arrangement, landing late, leaves '
+      'what the hand did meanwhile', (tester) async {
+    final store = _HeldLayout(await _store(tester));
+    await _openStoryboard(tester, store);
+    await _dragSplitter(tester, 40);
+    expect(_laneHeights(tester), {_default + 40}, reason: '⛔CONTROL');
+
+    store.answer.complete(null);
+    await tester.pumpAndSettle();
+
+    expect(_laneHeights(tester), {_default + 40});
+  });
+
   testWidgets('the next launch opens at the saved height, and a workspace '
       'reset forgets it — back to the default, off the file', (tester) async {
     final store = await _store(tester);
@@ -326,4 +343,15 @@ void main() {
     await gesture.removePointer();
     await tester.pumpAndSettle();
   });
+}
+
+/// [WorkspaceLayoutStore] whose first read waits for [answer] — what the
+/// workspace reads once its arrangement has already changed.
+class _HeldLayout extends WorkspaceLayoutStore {
+  _HeldLayout(WorkspaceLayoutStore on) : super(filePath: on.filePath);
+
+  final Completer<Map<String, Object?>?> answer = Completer();
+
+  @override
+  Future<Map<String, Object?>?> load() => answer.future;
 }

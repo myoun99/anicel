@@ -99,6 +99,28 @@ void main() {
       expect(disk.started, [('a.json', 1), ('b.json', 2)]);
     });
 
+    // 🗣️I-142-Q3: a setting put back at its defaults — its file goes, in
+    // its turn.
+    test('a removal waits for the write on its way, and takes the place of '
+        'a save still waiting', () async {
+      final file = File(pathFor('a.json'))
+        ..writeAsStringSync('{"version":1,"value":0}');
+      unawaited(save('a.json', 1));
+      unawaited(save('a.json', 2));
+      final removed = removeVersionedSettings(file.path);
+
+      expect(file.existsSync(), isTrue, reason: 'not past a write on its way');
+      expect(await disk.finishOne(), isTrue);
+      await removed;
+
+      expect(file.existsSync(), isFalse);
+      expect(
+        disk.started.map((write) => write.$2),
+        [1],
+        reason: 'the save it took the place of is not written',
+      );
+    });
+
     test('⛔a document JSON cannot hold is not written — and the caller '
         'does not hear of it', () async {
       final nan = saveVersionedSettings(

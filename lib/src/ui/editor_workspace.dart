@@ -195,6 +195,9 @@ import 'workspace/workspace_bar_commands.dart';
 import 'workspace/workspace_door_commands.dart';
 import '../services/persistence/folder_grant.dart' show FolderGrant, handedPath;
 import '../services/persistence/settings_file.dart' show SettingsFile;
+import '../services/persistence/app_export_settings.dart'
+    show AppExport, AppExportSettings;
+import '../services/persistence/app_export_settings_store.dart';
 import '../services/persistence/settings_room_file.dart'
     show putSettingsIntoTheRoom, settingsRoomPath;
 import 'timeline/timeline_panel.dart' show TimelinePanel;
@@ -2438,7 +2441,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       case SettingsReader.shortcuts:
         await EditorShortcutScope.peek(context)?.restore();
       case SettingsReader.layout:
-        await _layoutPersistence.restoreLayout();
+        // 🗣️I-142-Q3 (유저 2026-10-29): 「전부 갈아끼운다」 — no arrangement
+        // saved is the factory one. ↩️Nothing read kept the arrangement as
+        // it was (10-29).
+        if (!await _layoutPersistence.restoreLayout() && mounted) {
+          _layoutPersistence.resetWorkspaceLayout();
+        }
       case SettingsReader.palette:
         final palette = await ColorPaletteFileService(
           filePath: settingsRoomPath(ColorPaletteFileService.fileName),
@@ -2454,7 +2462,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         await _brushPresets.recallHandSettings(replacing: true);
         _brushPresets.selectOpeningPreset();
       case SettingsReader.exportWindow:
-        break;
+        // The window reads its file as it opens, and where the file holds
+        // none it opens on the live value — this run's, not the defaults
+        // the file was put back at (I-142-Q3).
+        AppExport.settings.value =
+            await AppExportSettingsStore(
+              filePath: settingsRoomPath(AppExportSettingsStore.fileName),
+            ).load() ??
+            AppExportSettings();
     }
   }
 

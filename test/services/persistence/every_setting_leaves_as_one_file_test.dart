@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/app_support_path.dart';
 import 'package:anicel/src/services/persistence/settings_file.dart';
 import 'package:anicel/src/services/persistence/settings_room_file.dart';
+import 'package:anicel/src/services/persistence/versioned_settings_file.dart';
 
 import '../../helpers/temp_dir.dart';
 
@@ -89,12 +90,16 @@ void main() {
       expect(read.files.values.first, tip);
     });
 
-    test('leaves out an entry no store has written, one it was not asked '
-        'for, and a document that is no JSON object', () async {
+    // 🗣️I-142-Q3: 「전부 갈아끼운다」 — what its store reads as its defaults
+    // goes as its defaults.
+    test('holds at its defaults an entry no store has written, a document '
+        'that is no JSON object and an empty folder — and nothing of one it '
+        'was not asked for', () async {
       put('ui_scale.json', '{"version": 1, "sca');
       put('accent_settings.json', jsonEncode([1, 2]));
       put('window.json', jsonEncode({'version': 1}));
       put('language_settings.json', jsonEncode({'version': 1, 'code': 'ko'}));
+      Directory(at('brush_tips')).createSync();
 
       final read = readSettingsFile(
         await settingsFileOfTheRoom([
@@ -102,11 +107,18 @@ void main() {
           'accent_settings.json',
           'language_settings.json',
           'onion_skin_settings.json',
+          'brush_tips',
         ], at: at),
       )!;
 
       expect(read.documents.keys, ['language_settings.json']);
       expect(read.files, isEmpty);
+      expect(read.atDefaults, {
+        'ui_scale.json',
+        'accent_settings.json',
+        'onion_skin_settings.json',
+        'brush_tips',
+      });
     });
 
     // 🗣️I-142-Q3: 「전부 갈아끼운다」 · Q7: 「남기지 않는다」.
@@ -187,6 +199,39 @@ void main() {
         ['t1.png'],
       );
       expect(File(at('escaped.png')).existsSync(), isFalse);
+    });
+
+    test('an entry held at its defaults holds nothing once put back — a '
+        'document\'s file goes, after a save already on its way, and a '
+        'folder\'s files go', () async {
+      put('accent_settings.json', jsonEncode({'version': 1, 'a': 1}));
+      put('brush_tips/old.png', tip);
+      final onItsWay = saveVersionedSettings(
+        filePath: at('ui_scale.json'),
+        version: 1,
+        json: {'scale': 1.5},
+      );
+      const entries = [
+        'accent_settings.json',
+        'brush_tips',
+        'ui_scale.json',
+        'onion_skin_settings.json',
+      ];
+      final file = readSettingsFile(
+        encodeSettingsFile({}, atDefaults: entries.toSet()),
+      )!;
+
+      await putSettingsIntoTheRoom(file, entries, at: at);
+      await onItsWay;
+
+      expect(File(at('accent_settings.json')).existsSync(), isFalse);
+      expect(Directory(at('brush_tips')).listSync(), isEmpty);
+      expect(
+        File(at('ui_scale.json')).existsSync(),
+        isFalse,
+        reason: 'the save on its way landed before the removal, not over it',
+      );
+      expect(File(at('onion_skin_settings.json')).existsSync(), isFalse);
     });
 
     test('leaves an entry the file does not hold as it stands', () async {

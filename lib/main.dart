@@ -1,12 +1,7 @@
 import 'dart:async' show unawaited;
-import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/foundation.dart'
-    show
-        LicenseEntryWithLineBreaks,
-        LicenseRegistry,
-        TargetPlatform,
-        defaultTargetPlatform;
+    show LicenseEntryWithLineBreaks, LicenseRegistry;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'
     show SystemChrome, SystemUiMode, rootBundle;
@@ -171,10 +166,7 @@ Future<void> main(List<String> handedAtLaunch) async {
     // so a stored scale — even one equal to the default — is never
     // reconsidered. The branch structure IS the guarantee: there is no path
     // from here that can overwrite a value the user chose.
-    AppUiScale.value.value = AppUiScale.firstRunScaleFor(
-      PlatformDispatcher.instance.implicitView?.devicePixelRatio ?? 1.0,
-      android: defaultTargetPlatform == TargetPlatform.android,
-    );
+    AppUiScale.value.value = AppUiScale.firstRunScaleHere();
   }
   // AWAITED like the scale, and for its reason (I-103-Q2: 「다음 실행 때도
   // 기억한다」): a window the last run left full screen opens full screen,

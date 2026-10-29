@@ -170,8 +170,28 @@ Future<void> _writeSettingsFile(String filePath, String text) async {
   await file.writeAsString(text);
 }
 
+/// The settings file at [filePath] gone — what its store reads as its
+/// defaults — in its turn: after a save already on its way, and in place of
+/// one still waiting ([saveVersionedSettings]'s law, for the one change that
+/// is no document).
+///
+/// 🗣️I-142-Q3 (유저 2026-10-29): 「전부 갈아끼운다」 — 「통째로 바뀐다(백업
+/// 복원처럼)」: a setting the settings file left at its defaults is put back
+/// at them. Removed out of turn, a save still on its way would write the old
+/// value back over the defaults.
+Future<void> removeVersionedSettings(String filePath) =>
+    _SettingsFileWrites.of(filePath).remove();
+
+Future<void> _removeSettingsFile(String filePath) async {
+  final file = File(filePath);
+  if (await file.exists()) {
+    await file.delete();
+  }
+}
+
 /// One settings file's writes: the one on its way, and the newest document
-/// waiting behind it ([saveVersionedSettings]). One per file, for the run —
+/// waiting behind it ([saveVersionedSettings]) — or the file's removal
+/// ([removeVersionedSettings]), a `null` text. One per file, for the run —
 /// the app has a handful of settings files.
 final class _SettingsFileWrites {
   _SettingsFileWrites._(this._filePath);
@@ -182,12 +202,16 @@ final class _SettingsFileWrites {
       _byFile.putIfAbsent(filePath, () => _SettingsFileWrites._(filePath));
 
   final String _filePath;
-  String? _waiting;
+  ({String? text})? _waiting;
   Completer<void>? _waitingLanded;
   bool _writing = false;
 
-  Future<void> save(String text) {
-    _waiting = text;
+  Future<void> save(String text) => _wait((text: text));
+
+  Future<void> remove() => _wait((text: null));
+
+  Future<void> _wait(({String? text}) next) {
+    _waiting = next;
     final landed = _waitingLanded ??= Completer<void>();
     if (!_writing) {
       unawaited(_drain());
@@ -198,12 +222,16 @@ final class _SettingsFileWrites {
   Future<void> _drain() async {
     _writing = true;
     while (_waiting != null) {
-      final text = _waiting!;
+      final next = _waiting!;
       final landed = _waitingLanded!;
       _waiting = null;
       _waitingLanded = null;
       try {
-        await (_writeOverride ?? _writeSettingsFile)(_filePath, text);
+        if (next.text case final text?) {
+          await (_writeOverride ?? _writeSettingsFile)(_filePath, text);
+        } else {
+          await _removeSettingsFile(_filePath);
+        }
       } on Object {
         // Best-effort: the file keeps what it had, and the next save runs.
       }
