@@ -311,7 +311,13 @@ _PaintPart _paintPartOf(
   DrawSpace space, {
   ui.Rect? paper,
   int? rasterWidth,
-}) => switch (effect.kind) {
+}) {
+  // An effect that changes no pixel is no part, whatever its kind
+  // ([ResolvedLayerEffect.isNoOp]: its defaults, or its strength of nothing).
+  if (effect.isNoOp) {
+    return const _NoPart();
+  }
+  return switch (effect.kind) {
     EffectKind.brightnessContrast => _ColourPart(
       brightnessContrastMatrix(
         brightness: effect.parameter('brightness'),
@@ -354,14 +360,12 @@ _PaintPart _paintPartOf(
       'celNumberedRow.',
     ),
   };
+}
 
-/// A Gaussian of no blurriness changes no pixel, whichever way it runs — as
-/// [_directionalBlurPart]'s length.
+/// A Gaussian: a filter the composite draw carries, or a step where it
+/// repeats the paper's edge ([PaperEdgeEffect]).
 _PaintPart _blurPart(ResolvedLayerEffect effect, DrawSpace space) {
   final radius = effect.parameter('blurriness') * space.scale;
-  if (radius <= 0) {
-    return const _NoPart();
-  }
   // The words of Blur Dimensions, in order: both, across, up and down.
   final dimensions = effect.parameter('blurDimensions').round();
   final radiusX = dimensions == 2 ? 0.0 : radius;
@@ -382,13 +386,9 @@ _PaintPart _blurPart(ResolvedLayerEffect effect, DrawSpace space) {
       : _SpatialPart(filter, outset: spread);
 }
 
-/// A directional blur of no length changes no pixel, whichever way it
-/// points — [ResolvedLayerEffect.isNoOp] reads only "at its defaults".
+/// A directional blur: a step of passes along its way.
 _PaintPart _directionalBlurPart(ResolvedLayerEffect effect, DrawSpace space) {
   final length = effect.parameter('blurLength') * space.scale;
-  if (length <= 0) {
-    return const _NoPart();
-  }
   final radians = effect.parameter('direction') * math.pi / 180;
   return _StepPart(
     directionalBlurPasses(
@@ -414,9 +414,6 @@ _PaintPart _radialBlurPart(
   ui.Rect? paper,
 ) {
   final amount = effect.parameter('amount');
-  if (amount <= 0) {
-    return const _NoPart();
-  }
   // Asked by a reader that does no spatial work: it skips the part, so
   // nothing in it is read.
   if (paper == null) {
@@ -478,9 +475,6 @@ _PaintPart _cameraLensBlurPart(
   int? rasterWidth,
 ) {
   final radius = effect.parameter('blurRadius') * space.scale;
-  if (radius <= 0) {
-    return const _NoPart();
-  }
   final repeatsTheEdge = effect.flag('repeatEdgePixels');
   return _StepPart(
     // Asked by a reader that draws no raster: it reads how far the part

@@ -168,6 +168,7 @@ enum EffectKind {
     spreadsPixels: true,
     runsOnSourcePixels: false,
     drawsItsOwnPicture: false,
+    strength: 'blurriness',
     isBasic: false,
     staysOnItsRow: false,
   ),
@@ -205,6 +206,7 @@ enum EffectKind {
     spreadsPixels: true,
     runsOnSourcePixels: false,
     drawsItsOwnPicture: false,
+    strength: 'blurLength',
     isBasic: false,
     staysOnItsRow: false,
   ),
@@ -254,6 +256,7 @@ enum EffectKind {
     spreadsPixels: true,
     runsOnSourcePixels: false,
     drawsItsOwnPicture: false,
+    strength: 'amount',
     isBasic: false,
     staysOnItsRow: false,
   ),
@@ -403,6 +406,7 @@ enum EffectKind {
     spreadsPixels: true,
     runsOnSourcePixels: false,
     drawsItsOwnPicture: false,
+    strength: 'blurRadius',
     isBasic: false,
     staysOnItsRow: false,
   ),
@@ -423,6 +427,7 @@ enum EffectKind {
     spreadsPixels: false,
     runsOnSourcePixels: true,
     drawsItsOwnPicture: false,
+    strength: 'amount',
     isBasic: false,
     staysOnItsRow: false,
   ),
@@ -474,9 +479,18 @@ enum EffectKind {
     required this.drawsItsOwnPicture,
     required this.isBasic,
     required this.staysOnItsRow,
+    this.strength,
   });
 
   final String jsonValue;
+
+  /// The parameter at whose zero this kind changes no pixel, whatever its
+  /// others say — a blur of no length, whichever way it points; a key of no
+  /// amount — null for a kind that has none. A sample there is a no-op
+  /// ([ResolvedLayerEffect.isNoOp]), dropped by the resolver, so nothing
+  /// downstream pays for it: no step, no buffer grown past its input, no
+  /// row read.
+  final String? strength;
 
   /// The English menu/lane label — the vocabulary artists already read in
   /// AE and Photoshop.
@@ -1310,14 +1324,18 @@ class ResolvedLayerEffect {
           layers: {for (final parameter in layers.keys) parameter: null},
         );
 
-  /// Whether this sample changes any pixel. An effect resolved to its
-  /// defaults is dropped by the resolver, so nothing downstream ever pays
-  /// for a filter that does nothing.
+  /// Whether this sample changes no pixel: at its defaults, or at its kind's
+  /// [EffectKind.strength] of nothing. Such an effect is dropped by the
+  /// resolver, so nothing downstream ever pays for a filter that does
+  /// nothing.
   ///
   /// A kind that draws its own picture never is: drawing it is what it does.
   bool get isNoOp {
     if (kind.drawsItsOwnPicture) {
       return false;
+    }
+    if (kind.strength case final strength? when parameter(strength) <= 0) {
+      return true;
     }
     final specs = kind.parameters;
     for (
