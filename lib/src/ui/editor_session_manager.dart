@@ -78,6 +78,7 @@ import 'session/block_shift.dart';
 import 'session/cut_shift.dart';
 import 'session/history_pictures.dart';
 import 'text/app_strings.dart';
+import 'text/word_bake.dart' show RepaintOnWordBakes;
 import '../models/track_frame_axis.dart';
 import '../models/storyboard_timeline_layout.dart';
 import '../services/command.dart' show WorkAhead;
@@ -1686,6 +1687,8 @@ class EditorSessionManager extends ChangeNotifier
     // first holder of a closed tab). The project on screen bakes its own
     // again.
     TimelineGridTileStore.instance.clear,
+    // So do the rows' kept pictures, by what each was drawn from.
+    RepaintOnWordBakes.clearKeptPictures,
     canvasStroke.dispose,
     historyManager.dispose,
   ];

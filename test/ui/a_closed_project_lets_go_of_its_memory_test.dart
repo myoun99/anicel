@@ -29,12 +29,20 @@ import '../helpers/settle_async.dart';
 /// reached — its store holding 3,262MB the panel read as 「엔진·폰트·
 /// 프레임워크」, and the engine's parking filled to its cap with blocks no
 /// tab would ask for. After: 557MB for the process, nothing parked.
+///
+/// 🔬And the session itself (2026-10-30, the same measure): still reached
+/// once all that was given back, through the kept pictures of its rows'
+/// numbers, whose answers held its cels' resolvers. ⚠️The VM's retaining
+/// path named an Expando of the timeline's scrollers instead — a weak key
+/// the path walks and the collector does not; letting the pictures go is
+/// what made it collectable.
 void main() {
   final enginePath = nativeEngineLibraryPathOrNull();
 
   testWidgets('a closed project lets go of its pictures and its history, the '
-      'app\'s timeline tiles go with them, and the engine gives back what '
-      'it parked of them', (tester) async {
+      'app\'s timeline tiles and its rows\' kept pictures go with them, the '
+      'engine gives back what it parked of them, and the session itself is '
+      'collected', (tester) async {
     debugQaEngineLibraryPathOverride = enginePath;
     addTearDown(() => debugQaEngineLibraryPathOverride = null);
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
@@ -57,48 +65,57 @@ void main() {
 
     await tapKey('top-strip-project-button');
     await tapKey('menu-file-new');
-    final heavy = projects.active;
-    drawCels(heavy, 4);
-    heavy.cutVerbs.createCut();
-    heavy.cutVerbs.createCut();
-    heavy.historyManager.undo();
-    await tester.pumpAndSettle();
-    // The timeline's tiles are baked on the engine, off the test's clock.
-    await settleAsync(
-      tester,
-      () =>
-          !TimelineGridTileStore.instance.debugBusy &&
-          TimelineGridTileStore.instance.tileImageBytes > 0,
-    );
-    final store = heavy.renderCaches.brushFrameStore;
     final engine = QaNativeEngine.instance!;
-    expect(store.hotBakedBytes, greaterThan(0), reason: 'CONTROL');
-    expect(heavy.historyManager.canUndo, isTrue, reason: 'CONTROL');
-    expect(heavy.historyManager.canRedo, isTrue, reason: 'CONTROL');
-    expect(
-      TimelineGridTileStore.instance.tileImageBytes,
-      greaterThan(0),
-      reason: 'CONTROL: the timeline baked its rows',
-    );
 
-    await tapKey('project-tab-close-1');
-    await tester.tap(find.byKey(const ValueKey<String>('system-exit-close')));
-    // It goes after the frame that stops showing it (`_letGo`) — and the
-    // wait leaves on that frame, before real time could land the tab on
-    // screen's tiles again.
-    await settleAsync(tester, () => heavy.disposed);
-    expect(heavy.disposed, isTrue);
-    expect(
-      TimelineGridTileStore.instance.tileImageBytes,
-      0,
-      reason: 'the app\'s timeline tiles went with it — the tab on screen '
-          'bakes its own again',
-    );
-    await tester.pumpAndSettle();
-    expect(store.hotBakedBytes, 0, reason: 'its pictures');
-    expect(heavy.historyManager.canUndo, isFalse, reason: 'its history');
-    expect(heavy.historyManager.canRedo, isFalse, reason: 'its history');
+    // In a frame of its own, so the test holds the session no longer once
+    // it is closed: whatever still reaches it then is the app's.
+    Future<WeakReference<EditorSessionManager>> closeAHeavyOne() async {
+      final heavy = projects.active;
+      drawCels(heavy, 4);
+      heavy.cutVerbs.createCut();
+      heavy.cutVerbs.createCut();
+      heavy.historyManager.undo();
+      await tester.pumpAndSettle();
+      // The timeline's tiles are baked on the engine, off the test's clock.
+      await settleAsync(
+        tester,
+        () =>
+            !TimelineGridTileStore.instance.debugBusy &&
+            TimelineGridTileStore.instance.tileImageBytes > 0,
+      );
+      final store = heavy.renderCaches.brushFrameStore;
+      expect(store.hotBakedBytes, greaterThan(0), reason: 'CONTROL');
+      expect(heavy.historyManager.canUndo, isTrue, reason: 'CONTROL');
+      expect(heavy.historyManager.canRedo, isTrue, reason: 'CONTROL');
+      expect(
+        TimelineGridTileStore.instance.tileImageBytes,
+        greaterThan(0),
+        reason: 'CONTROL: the timeline baked its rows',
+      );
 
+      await tapKey('project-tab-close-1');
+      await tester.tap(
+        find.byKey(const ValueKey<String>('system-exit-close')),
+      );
+      // It goes after the frame that stops showing it (`_letGo`) — and the
+      // wait leaves on that frame, before real time could land the tab on
+      // screen's tiles again.
+      await settleAsync(tester, () => heavy.disposed);
+      expect(heavy.disposed, isTrue);
+      expect(
+        TimelineGridTileStore.instance.tileImageBytes,
+        0,
+        reason: 'the app\'s timeline tiles went with it — the tab on screen '
+            'bakes its own again',
+      );
+      await tester.pumpAndSettle();
+      expect(store.hotBakedBytes, 0, reason: 'its pictures');
+      expect(heavy.historyManager.canUndo, isFalse, reason: 'its history');
+      expect(heavy.historyManager.canRedo, isFalse, reason: 'its history');
+      return WeakReference(heavy);
+    }
+
+    final closed = await closeAHeavyOne();
     await tester.runAsync(
       () => collectGarbageUntil(() => engine.tilePoolParkedBytes == 0),
     );
@@ -106,6 +123,15 @@ void main() {
       engine.tilePoolParkedBytes,
       0,
       reason: 'what came back of its tiles is not kept for reuse',
+    );
+    await tester.runAsync(
+      () => collectGarbageUntil(() => closed.target == null),
+    );
+    expect(
+      closed.target,
+      isNull,
+      reason: 'and nothing holds the session itself — the rows\' kept '
+          'pictures held it by what each was drawn from, as the tiles did',
     );
   }, skip: enginePath == null);
 }
