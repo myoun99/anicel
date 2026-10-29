@@ -1207,7 +1207,7 @@ void main() {
       ).allMatches(source))
         table.group(1)!: {
           for (final key in RegExp(
-            r"^    '([^']+)':",
+            "^    '([^']+)':",
             multiLine: true,
           ).allMatches(table.group(2)!))
             key.group(1)!,
