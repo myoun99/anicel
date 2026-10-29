@@ -12,12 +12,16 @@ final class UsageStatsOff extends UsageStatsAnswer {
   const UsageStatsOff();
 }
 
-/// Yes, with the UTC days this device was used on within the last 28
-/// (`UsageStats`).
+/// Yes, with the UTC days this device was used on within the last 28, and
+/// the events still to send (`UsageStats`).
 final class UsageStatsOn extends UsageStatsAnswer {
-  const UsageStatsOn(this.activeDays);
+  const UsageStatsOn(this.activeDays, [this.queue = const []]);
 
   final List<int> activeDays;
+
+  /// Each as it goes over the wire, its moment and session already fixed
+  /// (`AptabaseStamped`), oldest first.
+  final List<Map<String, Object?>> queue;
 }
 
 /// Where the usage statistics (I-70) keep the person's answer and the
@@ -33,9 +37,15 @@ final class UsageStatsOn extends UsageStatsAnswer {
 ///
 /// 🗣️I-70-Q3 (유저 2026-10-29): 「기본 꺼짐」 — never answered is OFF too.
 ///
-/// ⚠️The record lives ON THIS DEVICE ALONE and only while the switch is on:
-/// [UsageStatsOff] holds none, so "off with a record" cannot come back from
-/// the file even if one was written.
+/// ⚠️The record and the queue live ON THIS DEVICE ALONE and only while the
+/// switch is on: [UsageStatsOff] holds neither, so "off with a record" — or
+/// with events still to send — cannot come back from the file even if one
+/// was written.
+///
+/// ⚖️THE QUEUE SHARES THE FILE WITH THE RECORD (2026-10-29, this lane): a
+/// day is recorded in the same write that queues its event, so a day is
+/// never counted without its event kept, nor kept twice — and the file is
+/// already bound to this machine (`settingsBoundToThisMachine`).
 class UsageStatsStore {
   UsageStatsStore({String? filePath})
     : filePath = filePath ?? defaultFilePath();
@@ -52,9 +62,13 @@ class UsageStatsStore {
     filePath: filePath,
     version: version,
     fromJson: (json) => json['enabled'] as bool
-        ? UsageStatsOn([
-            for (final day in json['activeDays'] as List) day as int,
-          ])
+        ? UsageStatsOn(
+            [for (final day in json['activeDays'] as List) day as int],
+            [
+              for (final event in json['queue'] as List)
+                event as Map<String, Object?>,
+            ],
+          )
         : const UsageStatsOff(),
   );
 
@@ -62,9 +76,10 @@ class UsageStatsStore {
     filePath: filePath,
     version: version,
     json: switch (answer) {
-      UsageStatsOn(:final activeDays) => {
+      UsageStatsOn(:final activeDays, :final queue) => {
         'enabled': true,
         'activeDays': activeDays,
+        'queue': queue,
       },
       UsageStatsOff() => {'enabled': false},
     },

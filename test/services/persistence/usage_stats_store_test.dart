@@ -33,19 +33,32 @@ void main() {
     expect(await store.load(), isNull);
   });
 
-  test('on, with its days, is what the next launch reads', () async {
-    await store.save(const UsageStatsOn([20754, 20755]));
+  test('on, with its days and the events still to send, is what the next '
+      'launch reads', () async {
+    const waiting = <Map<String, Object?>>[
+      {
+        'timestamp': '2026-10-29T06:20:00.000Z',
+        'sessionId': '176171880012345678',
+        'eventName': 'day',
+        'systemProps': {'locale': 'ko', 'isDebug': false},
+        'props': {'days': '1-2', 'osLocale': 'ko-KR'},
+      },
+    ];
+    await store.save(const UsageStatsOn([20754, 20755], waiting));
     expect(file(), {
       'version': 1,
       'enabled': true,
       'activeDays': [20754, 20755],
+      'queue': waiting,
     });
     final next = await UsageStatsStore(filePath: store.filePath).load();
     expect(next, isA<UsageStatsOn>());
     expect(daysOf(next), [20754, 20755]);
+    expect((next! as UsageStatsOn).queue, waiting);
 
     await store.save(const UsageStatsOn([]));
     expect(daysOf(await store.load()), isEmpty);
+    expect((await store.load() as UsageStatsOn?)?.queue, isEmpty);
   });
 
   test('🎯off is an answer: written with no days, and read as a no', () async {
@@ -55,13 +68,16 @@ void main() {
     expect(await store.load(), isA<UsageStatsOff>());
   });
 
-  test('⛔a file that says off brings back no record, whatever days it '
-      'holds', () async {
+  test('⛔a file that says off brings back no record and nothing to send, '
+      'whatever it holds', () async {
     await File(store.filePath).writeAsString(
       jsonEncode({
         'version': 1,
         'enabled': false,
         'activeDays': [20755],
+        'queue': [
+          {'eventName': 'day'},
+        ],
       }),
     );
     expect(await store.load(), isA<UsageStatsOff>());
@@ -71,14 +87,32 @@ void main() {
       'again', () async {
     for (final text in [
       '{not json',
-      jsonEncode({'version': 1, 'activeDays': [20755]}),
-      jsonEncode({'version': 1, 'enabled': 'yes', 'activeDays': []}),
-      jsonEncode({'version': 1, 'enabled': true, 'activeDays': ['a']}),
-      jsonEncode({'version': 1, 'enabled': true}),
+      jsonEncode({'version': 1, 'activeDays': [20755], 'queue': []}),
+      jsonEncode({
+        'version': 1,
+        'enabled': 'yes',
+        'activeDays': [],
+        'queue': [],
+      }),
+      jsonEncode({
+        'version': 1,
+        'enabled': true,
+        'activeDays': ['a'],
+        'queue': [],
+      }),
+      jsonEncode({'version': 1, 'enabled': true, 'queue': []}),
+      jsonEncode({'version': 1, 'enabled': true, 'activeDays': []}),
+      jsonEncode({
+        'version': 1,
+        'enabled': true,
+        'activeDays': [],
+        'queue': ['day'],
+      }),
       jsonEncode({
         'version': UsageStatsStore.version + 1,
         'enabled': true,
         'activeDays': [20755],
+        'queue': [],
       }),
     ]) {
       await File(store.filePath).writeAsString(text);

@@ -43,7 +43,9 @@ void main() {
   tearDown(() => AppText.settings.value = const AppLanguageSettings());
 
   testWidgets('🎯a launch reports itself once the answer and the language '
-      'are back, and a return sends the day still owed', (tester) async {
+      'are back, and a return sends what the launch could not', (
+    tester,
+  ) async {
     final posts = <List<Map<String, dynamic>>>[];
     var status = 503;
     final client = AptabaseClient(
@@ -91,13 +93,14 @@ void main() {
       'zh-Hans-CN',
     );
 
-    // The service was down at launch; the app comes back to the front.
+    // The service was down at launch; the app comes back to the front, and
+    // what waited on the device goes — the same events, as they were.
     status = 200;
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pump();
     expect(posts, hasLength(2));
-    expect(posts.last.map((event) => event['eventName']), ['day']);
+    expect(posts.last, posts.first);
   });
 
   testWidgets('🎯on and in front, an in_use once an hour — on through '

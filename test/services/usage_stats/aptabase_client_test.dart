@@ -67,6 +67,17 @@ void main() {
       event as Map<String, dynamic>,
   ];
 
+  /// [events] stamped as of [now] and delivered at once.
+  Future<bool> send(
+    AptabaseClient it,
+    List<AptabaseEvent> events, {
+    required DateTime now,
+    String locale = 'ko',
+    String osLocale = 'ko-KR',
+  }) => it.deliver(
+    it.stamp(events, now: now, locale: locale, osLocale: osLocale),
+  );
+
   group('the App Key names the region', () {
     test('A-EU-… goes to the EU events API, A-US-… to the US one', () {
       expect(
@@ -96,12 +107,7 @@ void main() {
     });
 
     test('⛔a client with no key posts nothing at all', () async {
-      expect(
-        await client(
-          appKey: '',
-        ).send([started], now: now, locale: 'ko', osLocale: 'ko-KR'),
-        isFalse,
-      );
+      expect(await send(client(appKey: ''), [started], now: now), isFalse);
       expect(posts, isEmpty);
     });
   });
@@ -109,15 +115,7 @@ void main() {
   group('what goes over the wire', () {
     test('🎯one POST: the App Key, and a JSON ARRAY of the events — each '
         'with exactly the SDKs\' keys', () async {
-      expect(
-        await client().send(
-          [started, day],
-          now: now,
-          locale: 'ko',
-          osLocale: 'ko-KR',
-        ),
-        isTrue,
-      );
+      expect(await send(client(), [started, day], now: now), isTrue);
       expect(posts, hasLength(1));
       expect(
         posts.single.endpoint,
@@ -171,7 +169,7 @@ void main() {
             (model: 'Unknown', os: FeedbackOs.android, osVersion: '14'),
         build: '1081',
       );
-      await unread.send([started], now: now, locale: 'ko', osLocale: 'ko-KR');
+      await send(unread, [started], now: now);
       expect(
         (sent(0).single['systemProps'] as Map<String, dynamic>)['deviceModel'],
         'Unknown',
@@ -182,7 +180,7 @@ void main() {
         'on', () async {
       // A local moment, wherever the test runs.
       final local = DateTime(2026, 10, 29, 15, 20);
-      await client().send([day], now: local, locale: 'ja', osLocale: 'ja-JP');
+      await send(client(), [day], now: local, locale: 'ja', osLocale: 'ja-JP');
       expect(sent(0).single['timestamp'], local.toUtc().toIso8601String());
       expect(sent(0).single['timestamp'], endsWith('Z'));
       expect(
@@ -204,12 +202,7 @@ void main() {
       ]) {
         status = code;
         expect(
-          await client().send(
-            [day],
-            now: now,
-            locale: 'en',
-            osLocale: 'en-US',
-          ),
+          await send(client(), [day], now: now),
           taken,
           reason: '$code',
         );
@@ -219,10 +212,48 @@ void main() {
         post: (_, _, _) async => throw const SocketException('offline'),
         describe: () => _device,
       );
-      expect(
-        await throwing.send([day], now: now, locale: 'en', osLocale: 'en-US'),
-        isFalse,
+      expect(await send(throwing, [day], now: now), isFalse);
+    });
+  });
+
+  group('stamped when they happen, posted later', () {
+    test('🎯an event keeps its moment and its session whatever later POST '
+        'takes it — and a POST of several, oldest first, says them as they '
+        'were', () async {
+      final it = client();
+      final first = it.stamp(
+        [started],
+        now: now,
+        locale: 'ko',
+        osLocale: 'ko-KR',
       );
+      random.value = 87654321;
+      final later = now.add(const Duration(hours: 3));
+      final second = it.stamp(
+        [day],
+        now: later,
+        locale: 'fr',
+        osLocale: 'fr-FR',
+      );
+      expect(posts, isEmpty, reason: 'stamping posts nothing');
+
+      expect(await it.deliver([...first, ...second]), isTrue);
+      final events = sent(0);
+      expect(events.map((event) => event['timestamp']), [
+        '2026-10-29T06:20:00.000Z',
+        '2026-10-29T09:20:00.000Z',
+      ]);
+      expect(events.map((event) => event['sessionId']), [
+        '${now.millisecondsSinceEpoch ~/ 1000}12345678',
+        '${later.millisecondsSinceEpoch ~/ 1000}87654321',
+      ]);
+      expect(
+        events.map(
+          (event) => (event['systemProps'] as Map<String, dynamic>)['locale'],
+        ),
+        ['ko', 'fr'],
+      );
+      expect(posts.single.body, jsonEncode([...first, ...second]));
     });
   });
 
@@ -231,7 +262,7 @@ void main() {
         'none — held in memory, the SDKs\' rule', () async {
       final it = client();
       Future<String> sendAt(DateTime at) async {
-        await it.send([day], now: at, locale: 'en', osLocale: 'en-US');
+        await send(it, [day], now: at);
         return sent(posts.length - 1).single['sessionId'] as String;
       }
 
@@ -253,14 +284,9 @@ void main() {
     });
 
     test('a new client — a new run — starts a new session', () async {
-      await client().send([day], now: now, locale: 'en', osLocale: 'en-US');
+      await send(client(), [day], now: now);
       random.value = 1;
-      await client().send(
-        [day],
-        now: now.add(const Duration(minutes: 1)),
-        locale: 'en',
-        osLocale: 'en-US',
-      );
+      await send(client(), [day], now: now.add(const Duration(minutes: 1)));
       expect(sent(1).single['sessionId'], isNot(sent(0).single['sessionId']));
     });
   });

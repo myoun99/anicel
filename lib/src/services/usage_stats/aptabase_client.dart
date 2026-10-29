@@ -37,6 +37,11 @@ const String _definedKey = String.fromEnvironment(aptabaseKeyDefine);
 /// One event: its name and its own properties.
 typedef AptabaseEvent = ({String name, Map<String, Object> props});
 
+/// One event as it goes over the wire ([AptabaseClient.stamp]) — its
+/// moment and its session fixed when it happened, so one that waits on the
+/// device for a later send keeps both.
+typedef AptabaseStamped = Map<String, Object?>;
+
 /// The network half: POSTs [body] to [endpoint] under [appKey] and answers
 /// the response's status code. A test hands one in — no test reaches the
 /// network.
@@ -112,36 +117,33 @@ final class AptabaseClient {
     return '${seconds * 100000000 + _random.nextInt(100000000)}';
   }
 
-  /// Sends [events] as of [now], the app speaking [locale] on a device set
-  /// to [osLocale]; answers whether the service took them (a 2xx).
+  /// The most events one POST carries — 관제 relayed 25 with the queue
+  /// (유저 2026-10-29 08:5x), and a queue sends in POSTs of this many.
+  static const int batchLimit = 25;
+
+  /// POSTs [stamped] as one batch; answers whether the service took them
+  /// (a 2xx).
   ///
   /// ⚠️Never throws: a send that fails — offline, refused, too slow — is
-  /// false, and nothing else (no dialog, no log).
-  Future<bool> send(
-    List<AptabaseEvent> events, {
-    required DateTime now,
-    required String locale,
-    required String osLocale,
-  }) async {
+  /// false, and nothing else (no dialog, no log). A client with no
+  /// [endpoint] posts nothing and answers false.
+  Future<bool> deliver(List<AptabaseStamped> stamped) async {
     final to = endpoint;
     if (to == null) {
       return false;
     }
     try {
-      final status = await _post(
-        to,
-        appKey,
-        jsonEncode(
-          _bodyOf(events, now: now, locale: locale, osLocale: osLocale),
-        ),
-      );
+      final status = await _post(to, appKey, jsonEncode(stamped));
       return status >= 200 && status < 300;
     } on Object {
       return false;
     }
   }
 
-  List<Map<String, Object?>> _bodyOf(
+  /// [events] as of [now], as they go over the wire: the app speaking
+  /// [locale] on a device set to [osLocale], in the session [now] belongs
+  /// to.
+  List<AptabaseStamped> stamp(
     List<AptabaseEvent> events, {
     required DateTime now,
     required String locale,

@@ -8,12 +8,12 @@ import 'package:anicel/src/services/persistence/usage_stats_store.dart';
 import 'package:anicel/src/services/usage_stats/aptabase_client.dart';
 import 'package:anicel/src/services/usage_stats/usage_stats.dart';
 
-/// The answer and the record kept in memory, as the settings file keeps
-/// them across launches.
+/// The answer, the record and the queue kept in memory, as the settings
+/// file keeps them across launches.
 class _MemoryStore extends UsageStatsStore {
-  /// On with [days] — or never answered without them.
-  _MemoryStore([List<int>? days])
-    : answer = days == null ? null : UsageStatsOn(days),
+  /// On with [days] and [queue] — or never answered without days.
+  _MemoryStore([List<int>? days, List<AptabaseStamped> queue = const []])
+    : answer = days == null ? null : UsageStatsOn(days, queue),
       super(filePath: 'unused');
 
   /// What the file holds: null is no file.
@@ -22,6 +22,13 @@ class _MemoryStore extends UsageStatsStore {
   /// The days the file holds: none while it is off or never answered.
   List<int>? get days => switch (answer) {
     UsageStatsOn(:final activeDays) => activeDays,
+    _ => null,
+  };
+
+  /// The events the file holds still to send: none while it is off or
+  /// never answered.
+  List<AptabaseStamped>? get queue => switch (answer) {
+    UsageStatsOn(:final queue) => queue,
     _ => null,
   };
 
@@ -84,6 +91,9 @@ String _said(Map<String, dynamic> event) {
 /// (유저 10-15) — the count on the device, only the bucket sent.
 void main() {
   late List<_Sent> sent;
+
+  /// Every POST's events as they went over the wire.
+  late List<List<Map<String, dynamic>>> bodies;
   late int status;
   late Completer<void>? hold;
   late DateTime clock;
@@ -93,6 +103,7 @@ void main() {
 
   setUp(() {
     sent = [];
+    bodies = [];
     status = 200;
     hold = null;
     clock = DateTime.utc(2026, 10, 29, 6, 20);
@@ -105,6 +116,7 @@ void main() {
     appKey: appKey,
     post: (endpoint, appKey, body) async {
       sent.add([for (final event in _events(body)) _said(event)]);
+      bodies.add(_events(body));
       await hold?.future;
       return status;
     },
@@ -157,15 +169,21 @@ void main() {
       expect(sent, isEmpty);
     });
 
-    test('by a build with no App Key, on or not', () async {
+    test('by a build with no App Key, on or not — which queues nothing, '
+        'counts no day and runs no hour', () async {
       final store = _MemoryStore([today - 1]);
       final stats = run(store, appKey: '');
       await stats.reportLaunch();
       expect(stats.enabled.value, isTrue);
+      expect(store.days, [today - 1]);
+      expect(store.queue, isEmpty);
+      expect(timers, isEmpty);
       stats.setEnabled(false);
       stats.setEnabled(true);
       await pumpEventQueue();
       expect(sent, isEmpty);
+      expect(store.queue, isEmpty);
+      expect(timers, isEmpty);
     });
 
     test('once it is turned off', () async {
@@ -382,25 +400,25 @@ void main() {
   });
 
   group('a send that fails', () {
-    test('🎯leaves the day owed: the next return the same day sends it '
-        'again, and no second app_started', () async {
+    test('🎯keeps its events on the device: the next return sends the same '
+        'ones — no second day, no second app_started — and then nothing',
+        () async {
       final store = _MemoryStore([today - 1]);
       final stats = run(store);
       status = 503;
       await stats.reportLaunch();
-      expect(store.days, [today - 1]);
+      expect(store.days, [today - 1, today], reason: 'counted as queued');
+      expect(store.queue!.map(_said), ['app_started', 'day days=1-2']);
 
       status = 200;
+      clock = clock.add(const Duration(minutes: 5));
       await stats.reportResume();
       expect(sent, [
-        [
-          'app_started',
-          'day days=1-2',
-        ],
-        [
-          'day days=1-2',
-        ],
+        ['app_started', 'day days=1-2'],
+        ['app_started', 'day days=1-2'],
       ]);
+      expect(bodies[1], bodies[0], reason: 'the same events, as they were');
+      expect(store.queue, isEmpty);
       expect(store.days, [today - 1, today]);
 
       await stats.reportResume();
@@ -569,6 +587,195 @@ void main() {
       expect(running(), isEmpty);
       await stats.reportLaunch();
       expect(running(), isEmpty);
+    });
+  });
+
+  /// 🗣️유저 2026-10-29 08:5x: an offline queue, as the official SDKs have —
+  /// kept on the device with each event's own moment and session.
+  group('the queue', () {
+    /// An `in_use` as it went over the wire at [at], from a run of its own.
+    AptabaseStamped stampedAt(DateTime at) => client()
+        .stamp(
+          [(name: 'in_use', props: const <String, Object>{})],
+          now: at,
+          locale: 'ko',
+          osLocale: 'ko-KR',
+        )
+        .single;
+
+    test('🎯offline, the events wait on the device — written before the '
+        'POST — and the next launch online sends them, oldest first, with '
+        'their own moments and session, then its own', () async {
+      final store = _MemoryStore([today - 1]);
+      status = 503;
+      hold = Completer<void>();
+      final launch = run(store).reportLaunch();
+      await pumpEventQueue();
+      // Closed now, mid-send, it would keep them.
+      expect(store.queue!.map(_said), ['app_started', 'day days=1-2']);
+      hold!.complete();
+      await launch;
+      hold = null;
+      final waiting = bodies.single;
+
+      // The next launch, two hours on — online.
+      status = 200;
+      clock = clock.add(const Duration(hours: 2));
+      await run(store).reportLaunch();
+      expect(sent.last, ['app_started', 'day days=1-2', 'app_started']);
+      final went = bodies.last;
+      expect(went.take(2), waiting, reason: 'the same events, as they were');
+      expect(went[0]['timestamp'], '2026-10-29T06:20:00.000Z');
+      expect(went[2]['timestamp'], '2026-10-29T08:20:00.000Z');
+      expect(went[2]['sessionId'], isNot(went[0]['sessionId']));
+      expect(store.queue, isEmpty);
+    });
+
+    test('🎯nothing goes twice: a taken POST leaves the queue, and the next '
+        'return, hour or launch sends only what is new', () async {
+      final store = _MemoryStore([today - 1]);
+      final stats = run(store);
+      await stats.reportLaunch();
+      await stats.reportResume();
+      timers.single.fire();
+      await pumpEventQueue();
+      await run(store).reportLaunch();
+      expect(sent, [
+        ['app_started', 'day days=1-2'],
+        ['in_use'],
+        ['app_started'],
+      ]);
+      expect(store.queue, isEmpty);
+    });
+
+    test('the hour\'s in_use waits too, and goes with the next one', () async {
+      final store = _MemoryStore([today - 1]);
+      final stats = run(store);
+      await stats.reportLaunch();
+      status = 503;
+      clock = clock.add(UsageStats.inUseEvery);
+      timers.single.fire();
+      await pumpEventQueue();
+      expect(store.queue!.map(_said), ['in_use']);
+
+      status = 200;
+      clock = clock.add(UsageStats.inUseEvery);
+      timers.single.fire();
+      await pumpEventQueue();
+      expect(sent.last, ['in_use', 'in_use']);
+      expect(bodies.last.map((event) => event['timestamp']), [
+        '2026-10-29T07:20:00.000Z',
+        '2026-10-29T08:20:00.000Z',
+      ]);
+      expect(store.queue, isEmpty);
+    });
+
+    test('🎯in POSTs of 25, oldest first; one not taken keeps the rest for '
+        'later', () async {
+      final waiting = [
+        for (var minute = 0; minute < 30; minute += 1)
+          stampedAt(clock.subtract(Duration(minutes: 60 - minute))),
+      ];
+      final store = _MemoryStore([today - 1], waiting);
+      var posts = 0;
+      final stats = UsageStats(
+        store: store,
+        client: AptabaseClient(
+          appKey: 'A-EU-1462843916',
+          post: (_, _, body) async {
+            bodies.add(_events(body));
+            posts += 1;
+            return posts == 2 ? 503 : 200;
+          },
+          describe: () => (model: 'x', os: FeedbackOs.android, osVersion: '14'),
+        ),
+        locale: () => 'ko',
+        osLocale: () => 'ko-KR',
+        now: () => clock,
+        periodic: periodic,
+      );
+      addTearDown(stats.dispose);
+      unawaited(stats.restore());
+      await stats.reportLaunch();
+      expect(bodies.map((body) => body.length), [25, 7]);
+      expect(bodies[0], [for (final event in waiting.take(25)) event]);
+      expect(store.queue, hasLength(7));
+      expect(store.queue!.first, waiting[25]);
+      expect(store.queue!.map(_said).skip(5), ['app_started', 'day days=1-2']);
+
+      await stats.reportResume();
+      expect(bodies.map((body) => body.length), [25, 7, 7]);
+      expect(store.queue, isEmpty);
+    });
+
+    test('🎯a week old is dropped — a week to the millisecond is kept',
+        () async {
+      final week = clock.subtract(UsageStats.queueKeeps);
+      final store = _MemoryStore([today - 1], [
+        stampedAt(week.subtract(const Duration(milliseconds: 1))),
+        stampedAt(week),
+      ]);
+      status = 503;
+      await run(store).reportLaunch();
+      expect(store.queue!.map((event) => event['timestamp']), [
+        week.toIso8601String(),
+        clock.toIso8601String(),
+        clock.toIso8601String(),
+      ]);
+    });
+
+    test('🎯it holds 500 at most, the oldest dropped first', () async {
+      final waiting = [
+        for (var second = 0; second < UsageStats.queueHolds; second += 1)
+          stampedAt(
+            clock.subtract(
+              Duration(seconds: UsageStats.queueHolds - second),
+            ),
+          ),
+      ];
+      final store = _MemoryStore([today - 1], waiting);
+      status = 503;
+      await run(store).reportLaunch();
+      expect(UsageStats.queueHolds, 500);
+      expect(store.queue, hasLength(500));
+      expect(store.queue!.first, waiting[2]);
+      expect(store.queue!.map(_said).skip(498), [
+        'app_started',
+        'day days=1-2',
+      ]);
+    });
+
+    test('⛔off clears it — nothing queued is sent after, and back on '
+        'only what is new goes', () async {
+      final store = _MemoryStore([today - 1]);
+      final stats = run(store);
+      status = 503;
+      await stats.reportLaunch();
+      expect(store.queue, hasLength(2));
+
+      stats.setEnabled(false);
+      expect(store.answer, isA<UsageStatsOff>());
+      status = 200;
+      await stats.reportResume();
+      expect(sent, hasLength(1));
+
+      stats.setEnabled(true);
+      await pumpEventQueue();
+      expect(sent.last, ['day days=new']);
+      expect(store.queue, isEmpty);
+    });
+
+    test('a POST taken after it was turned off writes nothing back over the '
+        'off', () async {
+      final store = _MemoryStore([today - 1]);
+      final stats = run(store);
+      hold = Completer<void>();
+      final launch = stats.reportLaunch();
+      await pumpEventQueue();
+      stats.setEnabled(false);
+      hold!.complete();
+      await launch;
+      expect(store.answer, isA<UsageStatsOff>());
     });
   });
 

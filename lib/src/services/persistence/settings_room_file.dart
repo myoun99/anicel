@@ -16,8 +16,9 @@ import 'versioned_settings_file.dart';
 /// ⚖️Two more that came after Q2, each this device's own by what it holds
 /// (관제 2026-10-29, the user away — 「판단필요한건 알아서 판단해서
 /// 진행해줘」): the launch notice's dismissal (what THIS install was shown)
-/// and the usage statistics (I-70: a consent given on this device, and the
-/// days THIS device was used, which the privacy policy keeps on it).
+/// and the usage statistics (I-70: a consent given on this device, the
+/// days THIS device was used, which the privacy policy keeps on it, and
+/// the events it still has to send).
 const Set<String> settingsBoundToThisMachine = {
   'recent_projects.json',
   'window.json',

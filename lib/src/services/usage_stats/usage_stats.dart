@@ -17,8 +17,15 @@ import 'aptabase_client.dart';
 /// 묻는 작은 창」): a window of its own at launch, while the person has never
 /// answered ([unanswered]) — not a row under the launch notice's what's-new.
 ///
-/// ⛔Off sends nothing at all, and neither does a build with no App Key
-/// ([AptabaseClient.endpoint]).
+/// ⚖️EVERY EVENT GOES THROUGH A QUEUE ON THE DEVICE (유저 2026-10-29 08:5x,
+/// 「as the official SDKs have」): an event is stamped when it happens — its
+/// moment and its session fixed — written down, and only then posted; one
+/// the service did not take (no network, a timeout, anything but a 2xx, the
+/// app closed first) waits for the next launch, return, hour or taken send,
+/// and goes oldest first, [AptabaseClient.batchLimit] to a POST.
+///
+/// ⛔Off sends nothing at all and keeps nothing queued, and a build with no
+/// App Key ([AptabaseClient.endpoint]) queues nothing either.
 class UsageStats {
   UsageStats({
     UsageStatsStore? store,
@@ -38,11 +45,11 @@ class UsageStats {
   final UsageStatsStore? _store;
   final AptabaseClient _client;
 
-  /// The program language's code, read at each send.
+  /// The program language's code, read at each event.
   final String Function() _locale;
 
   /// The device's own language, as a BCP 47 tag (`ko-KR`), read at each
-  /// send — the shell reads it from the platform and hands it in.
+  /// event — the shell reads it from the platform and hands it in.
   final String Function() _osLocale;
   final DateTime Function() _now;
   final Timer Function(Duration, void Function(Timer)) _periodic;
@@ -62,11 +69,20 @@ class UsageStats {
   /// using the app — 「1시간마다」, chosen over 30 minutes.
   static const Duration inUseEvery = Duration(hours: 1);
 
+  /// ⚖️THE QUEUE'S BOUNDS (유저 2026-10-29 08:5x, as 관제 relayed them —
+  /// 「drop events older than 7 days and keep at most ~500」): an event a
+  /// week old is past what the live view and the day counts are for, so it
+  /// is dropped; and 500 — far above a week of an hour's `in_use` and each
+  /// launch's two — is the ceiling that keeps the file small whatever
+  /// happens, the oldest going first.
+  static const Duration queueKeeps = Duration(days: 7);
+  static const int queueHolds = 500;
+
   /// Whether the app is in front: from its launch or a return to it, until
   /// it goes away ([reportAway]).
   bool _inFront = false;
 
-  /// The hourly `in_use` — running exactly while it is on and the app is in
+  /// The hourly `in_use` — running exactly while it sends and the app is in
   /// front ([_keepInUse]).
   Timer? _inUse;
 
@@ -76,24 +92,27 @@ class UsageStats {
   /// kept on the device, never sent; empty while off.
   List<int> _days = const [];
 
+  /// The events still to send, oldest first — kept on the device with
+  /// [_days]; empty while off.
+  List<AptabaseStamped> _queue = const [];
+
+  /// Whether a POST is on its way — the one that is takes what is queued
+  /// meanwhile, in turn.
+  bool _flushing = false;
+
   Future<void> _restored = Future<void>.value();
 
-  /// Whether this run's `app_started` went out (or was tried).
+  /// Whether this run's `app_started` is queued.
   bool _runCounted = false;
-
-  /// Whether a `day` is on its way — a resume that lands meanwhile must not
-  /// send the same day twice.
-  bool _dayInFlight = false;
-
-  /// How many times the person turned it off — a send that comes back after
-  /// one must not write its day into the cleared record.
-  int _turnedOff = 0;
 
   /// Whether the person has answered — the question at launch, or the
   /// switch in Preferences — on this device ([UsageStatsStore]).
   bool _answered = false;
 
-  /// Reads the saved answer and record back.
+  /// On, and a build that can send at all.
+  bool get _sends => enabled.value && _client.endpoint != null;
+
+  /// Reads the saved answer, record and queue back.
   Future<void> restore() => _restored = _load();
 
   Future<void> _load() async {
@@ -102,8 +121,9 @@ class UsageStats {
       return;
     }
     _answered = true;
-    if (answer case UsageStatsOn(:final activeDays)) {
+    if (answer case UsageStatsOn(:final activeDays, :final queue)) {
       _days = activeDays;
+      _queue = queue;
       enabled.value = true;
     }
   }
@@ -116,8 +136,8 @@ class UsageStats {
   }
 
   /// The app has started: this run's `app_started`, and today's `day` if
-  /// it is still owed — once the saved answer is back; and the hour to the
-  /// first `in_use` starts.
+  /// it is still owed, with whatever waits from before — once the saved
+  /// answer is back; and the hour to the first `in_use` starts.
   Future<void> reportLaunch() async {
     _inFront = true;
     await _restored;
@@ -126,8 +146,8 @@ class UsageStats {
   }
 
   /// The app is in front again: today's `day` if it is still owed — a run
-  /// that crosses midnight UTC, or a send that failed earlier today — and,
-  /// back from away, the hour to the next `in_use` starts again.
+  /// that crosses midnight UTC — with whatever waits; and, back from away,
+  /// the hour to the next `in_use` starts again.
   Future<void> reportResume() async {
     _inFront = true;
     await _restored;
@@ -142,10 +162,10 @@ class UsageStats {
     _keepInUse();
   }
 
-  /// Starts the hourly `in_use` when it is on and the app is in front, and
+  /// Starts the hourly `in_use` when it sends and the app is in front, and
   /// stops it otherwise. One already running keeps its hour.
   void _keepInUse() {
-    if (_disposed || !enabled.value || !_inFront) {
+    if (_disposed || !_sends || !_inFront) {
       _inUse?.cancel();
       _inUse = null;
       return;
@@ -153,18 +173,16 @@ class UsageStats {
     _inUse ??= _periodic(inUseEvery, (_) => unawaited(_reportInUse()));
   }
 
-  /// The hour's `in_use`: the event's name alone — not retried, not
-  /// recorded.
-  Future<void> _reportInUse() => _client.send(
-    [(name: 'in_use', props: const <String, Object>{})],
-    now: _now(),
-    locale: _locale(),
-    osLocale: _osLocale(),
-  );
+  /// The hour's `in_use` — the event's name alone — with whatever waits.
+  Future<void> _reportInUse() async {
+    _queueUp(const [(name: 'in_use', props: <String, Object>{})], _now());
+    await _flush();
+  }
 
   /// The person's answer — the question's or the switch's, which is
   /// remembered either way. On reports at once — this run and today, as a
-  /// launch would have; off forgets the record kept on this device.
+  /// launch would have; off forgets the record and the queue kept on this
+  /// device, so nothing queued is ever sent after it.
   ///
   /// 🗣️MoArt's rule, which I-70 follows (유저 10-15 liked its return
   /// buckets): turning it off deletes the local record, so a device that
@@ -174,9 +192,11 @@ class UsageStats {
     _answered = true;
     if (!on) {
       _days = const [];
-      _turnedOff += 1;
+      _queue = const [];
     }
-    unawaited(_store?.save(on ? UsageStatsOn(_days) : const UsageStatsOff()));
+    unawaited(
+      _store?.save(on ? UsageStatsOn(_days, _queue) : const UsageStatsOff()),
+    );
     _keepInUse();
     if (on) {
       unawaited(_report(countRun: true));
@@ -202,55 +222,101 @@ class UsageStats {
   }
 
   Future<void> _report({required bool countRun}) async {
-    // ⚠️Off is the one gate here. A build with no App Key is the client's
-    // own ([AptabaseClient.endpoint]): it posts nothing, so the day stays
-    // owed and nothing is counted as sent.
-    if (!enabled.value) {
+    if (!_sends) {
       return;
     }
     final now = _now();
     final today = dayOf(now);
     // ⚖️A RUN IS COUNTED ONCE, at launch or when it is turned on during
     // it (2026-10-29, this lane): the question is asked at launch, and a
-    // first launch counted only from the NEXT one would never be. Not
-    // retried — a run whose `app_started` failed stays uncounted, as the
-    // SDKs' own fire-and-forget would leave it.
+    // first launch counted only from the NEXT one would never be. ↩️It was
+    // not retried, as the SDKs' fire-and-forget left it; with the queue
+    // (유저 08:5x) it waits for a send that takes it, like every event.
     final start = countRun && !_runCounted;
-    final day = !_dayInFlight && !_days.contains(today);
-    if (!start && !day) {
-      return;
-    }
-    _runCounted = _runCounted || start;
-    _dayInFlight = _dayInFlight || day;
-    final days = _days;
-    final turnedOff = _turnedOff;
-    final sent = await _client.send(
-      [
+    // ⚖️THE DAY IS RECORDED IN THE WRITE THAT QUEUES IT (2026-10-29, this
+    // lane, with the queue): the record and the queue are one file, so a
+    // day is never counted without its event kept to send, and never
+    // queued twice. ↩️It was written down only once the service took it,
+    // so that a failed send left the day owed — the queue owes it now.
+    final day = !_days.contains(today);
+    if (start || day) {
+      _runCounted = _runCounted || start;
+      final bucket = bucketOf(_days, today);
+      if (day) {
+        _days = [
+          for (final kept in _days)
+            if (today - kept < windowDays) kept,
+          today,
+        ];
+      }
+      _queueUp([
         if (start) (name: 'app_started', props: const <String, Object>{}),
-        if (day) (name: 'day', props: {'days': bucketOf(days, today)}),
-      ],
-      now: now,
-      locale: _locale(),
-      osLocale: _osLocale(),
-    );
-    if (!day) {
+        if (day) (name: 'day', props: {'days': bucket}),
+      ], now);
+    }
+    await _flush();
+  }
+
+  /// [events], stamped as of [now], onto the queue — written down with the
+  /// record before anything is posted, so an app closed first keeps them.
+  void _queueUp(List<AptabaseEvent> events, DateTime now) {
+    _queue = _keptAt(now, [
+      ..._queue,
+      ..._client.stamp(
+        events,
+        now: now,
+        locale: _locale(),
+        osLocale: _osLocale(),
+      ),
+    ]);
+    _save();
+  }
+
+  /// [queue] as of [now], less what is older than [queueKeeps] and, past
+  /// [queueHolds], its oldest.
+  static List<AptabaseStamped> _keptAt(
+    DateTime now,
+    List<AptabaseStamped> queue,
+  ) {
+    final since = now.subtract(queueKeeps);
+    final fresh = [
+      for (final event in queue)
+        if (DateTime.tryParse('${event['timestamp']}')?.isBefore(since) ==
+            false)
+          event,
+    ];
+    return fresh.length > queueHolds
+        ? fresh.sublist(fresh.length - queueHolds)
+        : fresh;
+  }
+
+  void _save() => unawaited(_store?.save(UsageStatsOn(_days, _queue)));
+
+  /// Posts what waits, oldest first, a batch at a time, until the queue is
+  /// empty or a POST is not taken — what is left waits for the next launch,
+  /// return, hour or event. Only a POST the service took leaves the queue:
+  /// one whose 2xx never came back is sent again.
+  Future<void> _flush() async {
+    if (_flushing) {
       return;
     }
-    _dayInFlight = false;
-    // ⚖️THE DAY IS WRITTEN DOWN ONLY ONCE THE SERVICE TOOK IT (2026-10-29,
-    // this lane). MoArt writes it before sending and never retries; here a
-    // send that failed — offline at launch, the service down — leaves the
-    // day owed, and the next launch or resume the same UTC day sends it
-    // again. The record is what says "sent", and it is written on a 2xx
-    // alone — so only a day the service took whose answer never came back
-    // is sent twice.
-    if (sent && _turnedOff == turnedOff) {
-      _days = [
-        for (final kept in days)
-          if (today - kept < windowDays) kept,
-        today,
-      ];
-      unawaited(_store?.save(UsageStatsOn(_days)));
+    _flushing = true;
+    try {
+      while (_sends && _queue.isNotEmpty) {
+        final batch = _queue.take(AptabaseClient.batchLimit).toList();
+        // ⚠️Turned off while it was on its way: the queue is gone, and
+        // nothing is written back over the off.
+        if (!await _client.deliver(batch) || !enabled.value) {
+          return;
+        }
+        _queue = [
+          for (final event in _queue)
+            if (!batch.any((sent) => identical(sent, event))) event,
+        ];
+        _save();
+      }
+    } finally {
+      _flushing = false;
     }
   }
 
