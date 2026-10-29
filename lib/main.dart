@@ -257,10 +257,8 @@ class AnicelApp extends StatelessWidget {
       builder: (context, _) => MaterialApp(
         title: 'Anicel',
         theme: buildAppTheme(),
-        // ⛔No lerp between two themes: only the half of the chrome that
-        // reads the theme can lerp — the half that reads [AppColors] lands
-        // at once — so the 200 ms in between showed both palettes at once
-        // (I-143).
+        // ⛔No lerp: what reads [AppColors] lands at once, so a lerping theme
+        // showed both palettes for 200 ms (I-143).
         themeAnimationDuration: Duration.zero,
         // ONE scrollbar in the app, and this is where it is installed.
         // It has to be the App's and not a wrapper below it: dialogs,
