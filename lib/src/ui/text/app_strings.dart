@@ -1610,8 +1610,12 @@ enum AppStrings {
   String get imNotClip => _s('imNotClip');
 
   /// What an import's warnings notice opens with, over the lists of what
-  /// did not come in (F-370) — a converted project's on the Open door, the
-  /// import window's run or pick alike (F-370-Q1).
+  /// did not come in as it was (F-370) — a converted project's on the Open
+  /// door, the import window's run or pick alike (F-370-Q1).
+  ///
+  /// 🗣️F-503 (유저 2026-10-29: 「지금은 그림을 못읽었다는걸로 보이니까
+  /// 잠금상태만 바꼇다고 투명하게하자」): ↩️it said something had not come
+  /// in, over lists whose layers all had — only their lock had not.
   String get imLeftBehind => _s('imLeftBehind');
   String get imFileUnreadable => _s('imFileUnreadable');
   String imNotFound(String path) =>
@@ -2899,7 +2903,7 @@ enum AppStrings {
     'exRealSheet': 'Real sheet',
     'imNotTvpp': 'This file cannot be read as a TVPaint project.',
     'imNotClip': 'This file cannot be read as a CLIP STUDIO PAINT file.',
-    'imLeftBehind': 'Not everything could be imported.',
+    'imLeftBehind': 'Not everything came in as it was.',
     'imWarningCount': '{n} warnings',
     'imWarningCountOne': '{n} warning',
     'imFileUnreadable':
@@ -4481,7 +4485,7 @@ enum AppStrings {
     'exRealSheet': '実寸用紙',
     'imNotTvpp': 'このファイルはTVPaintプロジェクトとして読めません。',
     'imNotClip': 'このファイルはCLIP STUDIO PAINTのファイルとして読めません。',
-    'imLeftBehind': '一部を取り込めませんでした。',
+    'imLeftBehind': '一部をそのままの形では取り込めませんでした。',
     'imWarningCount': '警告 {n} 件',
     'imWarningCountOne': '警告 {n} 件',
     'imFileUnreadable': 'ファイルを読めませんでした — クラウド上のファイルなら、少し後にもう一度お試しください。',
@@ -4502,7 +4506,7 @@ enum AppStrings {
     'importWarning.clippingNotApplied': '{name}: クリッピングマスクは適用しませんでした。',
     'importWarning.layerEffectsNotApplied': '{name}: レイヤー効果は適用しませんでした。',
     'importWarning.layerMaskNotApplied': '{name}: レイヤーマスクは適用しませんでした。',
-    'importWarning.lockNotImported': '{name}: ロックは読み込みませんでした。',
+    'importWarning.lockNotImported': '{name}: ロックを外して読み込みました。',
     'importWarning.psdBlend': '{name}: 描画モード「{mode}」に相当するものがありません — 通常にしました。',
     'importWarning.folderNothing': 'このフォルダーに取り込めるセルや画像はありませんでした。',
     'importWarning.folderNoCutNumber': 'フォルダー名にカット番号が見つかりません。',
@@ -6269,7 +6273,7 @@ enum AppStrings {
     'exRealSheet': '실측 용지',
     'imNotTvpp': 'TVPaint 프로젝트로 읽을 수 없는 파일입니다.',
     'imNotClip': 'CLIP STUDIO PAINT 파일로 읽을 수 없는 파일입니다.',
-    'imLeftBehind': '가져오지 못한 것이 있습니다.',
+    'imLeftBehind': '그대로 가져오지 못한 것이 있습니다.',
     'imWarningCount': '경고 {n}가지',
     'imWarningCountOne': '경고 {n}가지',
     'imFileUnreadable': '파일을 읽지 못했습니다 — 클라우드의 파일이면 잠시 후 다시 시도해 주세요.',
@@ -6290,7 +6294,7 @@ enum AppStrings {
     'importWarning.clippingNotApplied': '{name}: 클리핑 마스크는 적용하지 않았습니다.',
     'importWarning.layerEffectsNotApplied': '{name}: 레이어 효과는 적용하지 않았습니다.',
     'importWarning.layerMaskNotApplied': '{name}: 레이어 마스크는 적용하지 않았습니다.',
-    'importWarning.lockNotImported': '{name}: 잠금은 가져오지 않았습니다.',
+    'importWarning.lockNotImported': '{name}: 잠금을 푼 채로 가져왔습니다.',
     'importWarning.psdBlend': '{name}: 블렌드 모드 "{mode}" 에 해당하는 것이 없습니다 — 보통으로 설정했습니다.',
     'importWarning.folderNothing': '이 폴더에 가져올 수 있는 셀이나 그림이 없습니다.',
     'importWarning.folderNoCutNumber': '폴더 이름에서 컷 번호를 찾지 못했습니다.',
@@ -8115,7 +8119,7 @@ enum AppStrings {
     'imNotTvpp': 'Ce fichier ne peut pas être lu comme un projet TVPaint.',
     'imNotClip':
         'Ce fichier ne peut pas être lu comme un fichier CLIP STUDIO PAINT.',
-    'imLeftBehind': 'Tout n’a pas pu être importé.',
+    'imLeftBehind': 'Tout n’a pas pu être importé tel quel.',
     'imWarningCount': '{n} avertissements',
     'imWarningCountOne': '{n} avertissement',
     'imFileUnreadable':
@@ -8150,7 +8154,7 @@ enum AppStrings {
     'importWarning.clippingNotApplied': '{name} : masque d\'écrêtage non appliqué.',
     'importWarning.layerEffectsNotApplied': '{name} : effets de calque non appliqués.',
     'importWarning.layerMaskNotApplied': '{name} : masque de fusion non appliqué.',
-    'importWarning.lockNotImported': '{name} : verrouillage non importé.',
+    'importWarning.lockNotImported': '{name} : importé déverrouillé.',
     'importWarning.psdBlend':
         '{name} : le mode de fusion « {mode} » n\'a pas d\'équivalent — réglé '
         'sur normal.',
@@ -9956,7 +9960,7 @@ enum AppStrings {
     'exRealSheet': '实际纸张',
     'imNotTvpp': '该文件无法作为 TVPaint 项目读取。',
     'imNotClip': '该文件无法作为 CLIP STUDIO PAINT 文件读取。',
-    'imLeftBehind': '部分内容未能导入。',
+    'imLeftBehind': '部分内容未能按原样导入。',
     'imWarningCount': '{n} 条警告',
     'imWarningCountOne': '{n} 条警告',
     'imFileUnreadable': '无法读取该文件——如果文件在云端，请稍后重试。',
@@ -9977,7 +9981,7 @@ enum AppStrings {
     'importWarning.clippingNotApplied': '{name}：未应用剪贴蒙版。',
     'importWarning.layerEffectsNotApplied': '{name}：未应用图层效果。',
     'importWarning.layerMaskNotApplied': '{name}：未应用图层蒙版。',
-    'importWarning.lockNotImported': '{name}：未导入锁定。',
+    'importWarning.lockNotImported': '{name}：已解除锁定后导入。',
     'importWarning.psdBlend': '{name}：混合模式“{mode}”没有对应项——已设为正常。',
     'importWarning.folderNothing': '该文件夹中没有可导入的赛璐珞或图片。',
     'importWarning.folderNoCutNumber': '文件夹名中找不到镜头编号。',

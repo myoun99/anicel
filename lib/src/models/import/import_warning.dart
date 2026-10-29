@@ -134,8 +134,12 @@ ImportWarning layerMaskNotApplied(String name) => ImportWarning(
 /// A layer that was locked, come in unlocked — no row here carries a lock
 /// — named, as every decoder says it (the same card, by the same 10-07 law
 /// as [layerEffectsNotApplied]; 유저 10-09 「다른 디코드 마찬가지 통일해서」).
+///
+/// 🗣️F-503 (유저 2026-10-29: 「잠금상태만 바꼇다고 투명하게하자」): it says
+/// the layer came in, unlocked. ↩️It said the lock had not come in, which
+/// read as the picture not having come in.
 ImportWarning lockNotImported(String name) => ImportWarning(
   'lockNotImported',
-  '{name}: lock not imported.',
+  '{name}: came in unlocked.',
   {'name': name},
 );
