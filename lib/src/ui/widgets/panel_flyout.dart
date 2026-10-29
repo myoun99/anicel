@@ -1273,7 +1273,10 @@ class _BesideItsRow extends StatelessWidget {
 /// Where a level stands once its width is known: flush against the parent's
 /// right edge, its first row level with the row that opened it — and folded
 /// back to the parent's LEFT when there is no room, which is what every
-/// submenu does at a screen edge.
+/// submenu does at a screen edge. Where neither side has room it stays
+/// inside the window, over the list: a level as wide as its words can be
+/// wider than either side, and folded past the left edge it stood off the
+/// window (the panels drawer at 800×600, 10-29).
 class _BesideItsRowLayout extends SingleChildLayoutDelegate {
   const _BesideItsRowLayout({required this.anchor, required this.top});
 
@@ -1289,12 +1292,17 @@ class _BesideItsRowLayout extends SingleChildLayoutDelegate {
       );
 
   @override
-  Offset getPositionForChild(Size size, Size childSize) => Offset(
-    anchor.right + childSize.width <= size.width
+  Offset getPositionForChild(Size size, Size childSize) {
+    const margin = _SubmenuLayer._screenMargin;
+    final last = size.width - margin - childSize.width;
+    final beside = anchor.right <= last
         ? anchor.right
-        : anchor.left - childSize.width,
-    top,
-  );
+        : anchor.left - childSize.width;
+    return Offset(
+      beside.clamp(margin, last.clamp(margin, double.infinity)),
+      top,
+    );
+  }
 
   @override
   bool shouldRelayout(_BesideItsRowLayout oldDelegate) =>

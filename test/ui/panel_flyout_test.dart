@@ -604,6 +604,37 @@ void main() {
     expect(cut(tester, long), isFalse);
   });
 
+  /// 🧪The panels drawer at 800×600 (editor_top_strip_test, 10-29): wider
+  /// than either side of its list, it folded left past the window's edge
+  /// and every tap on it missed.
+  testWidgets('where neither side has room, a drawer stays inside the '
+      'window, over its list', (tester) async {
+    await pumpOpened(tester, [
+      const PanelFlyoutItem(keyValue: 'wide', label: long),
+      PanelFlyoutItem(
+        keyValue: 'drawer',
+        label: 'Panels',
+        submenuBuilder: () => [
+          const PanelFlyoutItem(keyValue: 'kid-long', label: long),
+        ],
+      ),
+    ]);
+    await tester.tap(find.text('Panels'));
+    await tester.pumpAndSettle();
+
+    final window = tester.view.physicalSize / tester.view.devicePixelRatio;
+    final list = levelOf(tester, 'drawer');
+    final drawer = levelOf(tester, 'kid-long');
+    expect(
+      list.left < drawer.width + 8 &&
+          list.right + drawer.width > window.width - 8,
+      isTrue,
+      reason: '⛔전제: the drawer fits on neither side of its list',
+    );
+    expect(drawer.left, greaterThanOrEqualTo(8));
+    expect(drawer.right, lessThanOrEqualTo(window.width - 8));
+  });
+
   testWidgets('a warning wraps where it always has — it does not stretch '
       'the list to one line', (tester) async {
     const warning =
