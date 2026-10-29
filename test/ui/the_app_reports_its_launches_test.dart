@@ -57,6 +57,12 @@ void main() {
     );
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    tester.platformDispatcher.localeTestValue = const Locale.fromSubtags(
+      languageCode: 'zh',
+      scriptCode: 'Hans',
+      countryCode: 'CN',
+    );
+    addTearDown(tester.platformDispatcher.clearLocaleTestValue);
     await tester.pumpWidget(
       MaterialApp(
         theme: buildAppTheme(),
@@ -78,6 +84,11 @@ void main() {
     expect(
       (posts.single.first['systemProps'] as Map<String, dynamic>)['locale'],
       'ko',
+    );
+    // The device's own language beside it, as the platform names it.
+    expect(
+      (posts.single.first['props'] as Map<String, dynamic>)['osLocale'],
+      'zh-Hans-CN',
     );
 
     // The service was down at launch; the app comes back to the front.

@@ -97,7 +97,9 @@ void main() {
 
     test('⛔a client with no key posts nothing at all', () async {
       expect(
-        await client(appKey: '').send([started], now: now, locale: 'ko'),
+        await client(
+          appKey: '',
+        ).send([started], now: now, locale: 'ko', osLocale: 'ko-KR'),
         isFalse,
       );
       expect(posts, isEmpty);
@@ -108,7 +110,12 @@ void main() {
     test('🎯one POST: the App Key, and a JSON ARRAY of the events — each '
         'with exactly the SDKs\' keys', () async {
       expect(
-        await client().send([started, day], now: now, locale: 'ko'),
+        await client().send(
+          [started, day],
+          now: now,
+          locale: 'ko',
+          osLocale: 'ko-KR',
+        ),
         isTrue,
       );
       expect(posts, hasLength(1));
@@ -144,9 +151,11 @@ void main() {
         });
       }
       expect(events[0]['eventName'], 'app_started');
-      expect(events[0]['props'], isEmpty);
+      // The device's own language beside each event's own props (유저
+      // 2026-10-29 09:1x) — `locale` above stays the program language.
+      expect(events[0]['props'], {'osLocale': 'ko-KR'});
       expect(events[1]['eventName'], 'day');
-      expect(events[1]['props'], {'days': '3+'});
+      expect(events[1]['props'], {'days': '3+', 'osLocale': 'ko-KR'});
     });
 
     test('the device model is the product\'s, as the feedback forms read it '
@@ -162,7 +171,7 @@ void main() {
             (model: 'Unknown', os: FeedbackOs.android, osVersion: '14'),
         build: '1081',
       );
-      await unread.send([started], now: now, locale: 'ko');
+      await unread.send([started], now: now, locale: 'ko', osLocale: 'ko-KR');
       expect(
         (sent(0).single['systemProps'] as Map<String, dynamic>)['deviceModel'],
         'Unknown',
@@ -173,7 +182,7 @@ void main() {
         'on', () async {
       // A local moment, wherever the test runs.
       final local = DateTime(2026, 10, 29, 15, 20);
-      await client().send([day], now: local, locale: 'ja');
+      await client().send([day], now: local, locale: 'ja', osLocale: 'ja-JP');
       expect(sent(0).single['timestamp'], local.toUtc().toIso8601String());
       expect(sent(0).single['timestamp'], endsWith('Z'));
       expect(
@@ -195,7 +204,12 @@ void main() {
       ]) {
         status = code;
         expect(
-          await client().send([day], now: now, locale: 'en'),
+          await client().send(
+            [day],
+            now: now,
+            locale: 'en',
+            osLocale: 'en-US',
+          ),
           taken,
           reason: '$code',
         );
@@ -205,7 +219,10 @@ void main() {
         post: (_, _, _) async => throw const SocketException('offline'),
         describe: () => _device,
       );
-      expect(await throwing.send([day], now: now, locale: 'en'), isFalse);
+      expect(
+        await throwing.send([day], now: now, locale: 'en', osLocale: 'en-US'),
+        isFalse,
+      );
     });
   });
 
@@ -214,7 +231,7 @@ void main() {
         'none — held in memory, the SDKs\' rule', () async {
       final it = client();
       Future<String> sendAt(DateTime at) async {
-        await it.send([day], now: at, locale: 'en');
+        await it.send([day], now: at, locale: 'en', osLocale: 'en-US');
         return sent(posts.length - 1).single['sessionId'] as String;
       }
 
@@ -236,12 +253,13 @@ void main() {
     });
 
     test('a new client — a new run — starts a new session', () async {
-      await client().send([day], now: now, locale: 'en');
+      await client().send([day], now: now, locale: 'en', osLocale: 'en-US');
       random.value = 1;
       await client().send(
         [day],
         now: now.add(const Duration(minutes: 1)),
         locale: 'en',
+        osLocale: 'en-US',
       );
       expect(sent(1).single['sessionId'], isNot(sent(0).single['sessionId']));
     });

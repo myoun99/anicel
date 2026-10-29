@@ -62,6 +62,7 @@ void main() {
         build: '1081',
       ),
       locale: () => 'en',
+      osLocale: () => 'en-US',
     );
     addTearDown(stats.dispose);
     unawaited(stats.restore());

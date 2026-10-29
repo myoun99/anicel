@@ -66,9 +66,11 @@ typedef _Sent = List<String>;
 List<Map<String, dynamic>> _events(String body) =>
     (jsonDecode(body) as List).cast<Map<String, dynamic>>();
 
-/// [event] as `<name>[ <key>=<value>,…]`.
+/// [event] as `<name>[ <key>=<value>,…]` — less the device's language,
+/// which every event carries (its own test reads it).
 String _said(Map<String, dynamic> event) {
-  final props = event['props'] as Map<String, dynamic>;
+  final props = {...event['props'] as Map<String, dynamic>}
+    ..remove('osLocale');
   return [
     event['eventName'] as String,
     if (props.isNotEmpty)
@@ -123,6 +125,7 @@ void main() {
       store: store,
       client: client(appKey: appKey),
       locale: () => 'ko',
+      osLocale: () => 'ko-KR',
       now: () => clock,
       periodic: periodic,
     );
@@ -261,8 +264,10 @@ void main() {
       ]);
     });
 
-    test('the program language is read at each send', () async {
+    test('the program language and the device\'s are read at each send — '
+        'the device\'s on every event, the hour\'s too', () async {
       var locale = 'ko';
+      var osLocale = 'ja-JP';
       final stats = UsageStats(
         store: _MemoryStore([]),
         client: AptabaseClient(
@@ -270,23 +275,32 @@ void main() {
           post: (_, _, body) async {
             sent.add([
               for (final event in _events(body))
-                (event['systemProps'] as Map<String, dynamic>)['locale']
-                    as String,
+                '${(event['systemProps'] as Map<String, dynamic>)['locale']} '
+                    '${(event['props'] as Map<String, dynamic>)['osLocale']}',
             ]);
             return 200;
           },
           describe: () => (model: 'x', os: FeedbackOs.iOS, osVersion: '18'),
         ),
         locale: () => locale,
+        osLocale: () => osLocale,
         now: () => clock,
+        periodic: periodic,
       );
       addTearDown(stats.dispose);
       unawaited(stats.restore());
       await stats.reportLaunch();
       locale = 'fr';
+      osLocale = 'fr-CA';
       nextDay();
       await stats.reportResume();
-      expect(sent.map((events) => events.first), ['ko', 'fr']);
+      timers.single.fire();
+      await pumpEventQueue();
+      expect(sent, [
+        ['ko ja-JP', 'ko ja-JP'],
+        ['fr fr-CA'],
+        ['fr fr-CA'],
+      ]);
     });
   });
 
@@ -543,6 +557,7 @@ void main() {
         store: _MemoryStore([]),
         client: client(),
         locale: () => 'ko',
+        osLocale: () => 'ko-KR',
         now: () => clock,
         periodic: periodic,
       );

@@ -112,8 +112,8 @@ final class AptabaseClient {
     return '${seconds * 100000000 + _random.nextInt(100000000)}';
   }
 
-  /// Sends [events] as of [now], the app speaking [locale]; answers whether
-  /// the service took them (a 2xx).
+  /// Sends [events] as of [now], the app speaking [locale] on a device set
+  /// to [osLocale]; answers whether the service took them (a 2xx).
   ///
   /// ⚠️Never throws: a send that fails — offline, refused, too slow — is
   /// false, and nothing else (no dialog, no log).
@@ -121,6 +121,7 @@ final class AptabaseClient {
     List<AptabaseEvent> events, {
     required DateTime now,
     required String locale,
+    required String osLocale,
   }) async {
     final to = endpoint;
     if (to == null) {
@@ -130,7 +131,9 @@ final class AptabaseClient {
       final status = await _post(
         to,
         appKey,
-        jsonEncode(_bodyOf(events, now: now, locale: locale)),
+        jsonEncode(
+          _bodyOf(events, now: now, locale: locale, osLocale: osLocale),
+        ),
       );
       return status >= 200 && status < 300;
     } on Object {
@@ -142,6 +145,7 @@ final class AptabaseClient {
     List<AptabaseEvent> events, {
     required DateTime now,
     required String locale,
+    required String osLocale,
   }) {
     final device = _describe();
     final timestamp = now.toUtc().toIso8601String();
@@ -164,6 +168,10 @@ final class AptabaseClient {
       'appBuildNumber': build,
       'sdkVersion': 'anicel@$build',
     };
+    // ⚖️THE DEVICE'S LANGUAGE IS A PROP OF EVERY EVENT (유저 2026-10-29
+    // 09:1x): `locale` stays the program language, as it was, and the
+    // device's own goes beside it — the SDKs have no system prop for a
+    // second language, so it is ours, under `osLocale`, on every event.
     return [
       for (final event in events)
         {
@@ -171,7 +179,7 @@ final class AptabaseClient {
           'sessionId': sessionId,
           'eventName': event.name,
           'systemProps': systemProps,
-          'props': event.props,
+          'props': {...event.props, 'osLocale': osLocale},
         },
     ];
   }

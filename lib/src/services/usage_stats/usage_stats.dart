@@ -24,11 +24,13 @@ class UsageStats {
     UsageStatsStore? store,
     AptabaseClient? client,
     required String Function() locale,
+    required String Function() osLocale,
     DateTime Function() now = DateTime.now,
     Timer Function(Duration, void Function(Timer)) periodic = Timer.periodic,
   }) : _store = store,
        _client = client ?? AptabaseClient(),
        _locale = locale,
+       _osLocale = osLocale,
        _now = now,
        _periodic = periodic;
 
@@ -38,6 +40,10 @@ class UsageStats {
 
   /// The program language's code, read at each send.
   final String Function() _locale;
+
+  /// The device's own language, as a BCP 47 tag (`ko-KR`), read at each
+  /// send — the shell reads it from the platform and hands it in.
+  final String Function() _osLocale;
   final DateTime Function() _now;
   final Timer Function(Duration, void Function(Timer)) _periodic;
 
@@ -153,6 +159,7 @@ class UsageStats {
     [(name: 'in_use', props: const <String, Object>{})],
     now: _now(),
     locale: _locale(),
+    osLocale: _osLocale(),
   );
 
   /// The person's answer — the question's or the switch's, which is
@@ -224,6 +231,7 @@ class UsageStats {
       ],
       now: now,
       locale: _locale(),
+      osLocale: _osLocale(),
     );
     if (!day) {
       return;

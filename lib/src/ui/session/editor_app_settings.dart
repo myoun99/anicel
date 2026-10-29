@@ -1,6 +1,7 @@
 import 'dart:async' show unawaited;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show ServicesBinding;
 
 import '../../models/app_language.dart';
 import '../../services/input/wintab_pen_service.dart';
@@ -129,7 +130,15 @@ class EditorAppSettings {
     store: _usageStatsStore,
     client: _usageStatsClient,
     locale: () => languageSettings.value.programLanguage.languageCode,
+    osLocale: _platformLanguageTag,
   );
+
+  /// The device's own language, as the platform names it (`ko-KR`,
+  /// `zh-Hans-CN`) — for the usage statistics (유저 2026-10-29 09:1x).
+  /// Through the binding's dispatcher, which a test can set, rather than
+  /// [PlatformDispatcher.instance], which it cannot.
+  static String _platformLanguageTag() =>
+      ServicesBinding.instance.platformDispatcher.locale.toLanguageTag();
 
   // --- Frame grid (block frame lines, 2026-09-24) ---------------------------
 
