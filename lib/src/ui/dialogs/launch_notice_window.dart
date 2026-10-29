@@ -10,6 +10,8 @@ import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 import '../widgets/content_scrollbar.dart';
 import '../widgets/markdown_subset.dart';
+import '../widgets/settings_rows.dart' show SettingsSectionHeading;
+import 'app_confirm_dialog.dart' show Fold;
 import 'feedback_window.dart' show showFeedbackWindow;
 
 /// Opens this build's launch notice — unless it was dismissed already
@@ -43,8 +45,9 @@ Future<void> showLaunchNoticeIfDue(
 ///
 /// ↩️The usage statistics' switch stood under them (I-70-Q3: 「안내 창에서
 /// 묻고 기본 꺼짐」), below the what's-new where nobody scrolls; 유저
-/// 2026-10-29 08:1x moved the asking to a window of its own, opened after
-/// this one (`askUsageStatsIfUnanswered`).
+/// 2026-10-29 08:1x moved the asking to a window of its own
+/// (`askUsageStatsIfUnanswered`) — opened before this one since 19:5x
+/// (I-144: 「안내창이 텍스트가 많아서 지치니까」).
 class LaunchNoticeWindow extends StatelessWidget {
   const LaunchNoticeWindow({
     super.key,
@@ -103,18 +106,21 @@ class LaunchNoticeWindow extends StatelessWidget {
 
   /// What the window says: its sections one under another, and the
   /// feedback section's button under that section's words.
+  ///
+  /// 🗣️유저 2026-10-29 (I-144): 「첫 실행창 업데이트내역항목 접어두고
+  /// 아래의 의견보내기항목을 그 위로 올리자」 — the feedback before the
+  /// what's-new, and the what's-new folded under its own heading. ↩️The
+  /// what's-new stood open between the notice and the feedback.
   Widget _sections(BuildContext context) {
-    Widget section(LaunchNoticeSection section) =>
-        MarkdownSubset(content.textOf(AppText.language, section));
+    String text(LaunchNoticeSection section) =>
+        content.textOf(AppText.language, section);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        section(LaunchNoticeSection.notice),
+        MarkdownSubset(text(LaunchNoticeSection.notice)),
         const Divider(height: 24),
-        section(LaunchNoticeSection.whatsNew),
-        const Divider(height: 24),
-        section(LaunchNoticeSection.feedback),
+        MarkdownSubset(text(LaunchNoticeSection.feedback)),
         const SizedBox(height: 8),
         Align(
           alignment: Alignment.centerLeft,
@@ -126,7 +132,30 @@ class LaunchNoticeWindow extends StatelessWidget {
             ),
           ),
         ),
+        const Divider(height: 24),
+        _whatsNew(text(LaunchNoticeSection.whatsNew)),
       ],
+    );
+  }
+
+  /// The what's-new, folded under its file's own `## ` heading. A file that
+  /// opens with no heading has nothing to fold under, and stands open.
+  static Widget _whatsNew(String source) {
+    final heading = MarkdownSubset.leadingHeadingOf(source);
+    if (heading == null) {
+      return MarkdownSubset(source);
+    }
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Fold(
+        toggleKey: const ValueKey<String>('launch-notice-whats-new'),
+        startsOpen: false,
+        heading: Flexible(child: SettingsSectionHeading(label: heading)),
+        child: Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: MarkdownSubset(source, leadingHeading: false),
+        ),
+      ),
     );
   }
 }

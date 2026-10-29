@@ -2,7 +2,11 @@ import 'dart:async' show unawaited;
 import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/foundation.dart'
-    show LicenseEntryWithLineBreaks, LicenseRegistry;
+    show
+        LicenseEntryWithLineBreaks,
+        LicenseRegistry,
+        TargetPlatform,
+        defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'
     show SystemChrome, SystemUiMode, rootBundle;
@@ -60,6 +64,8 @@ Future<void> main(List<String> handedAtLaunch) async {
   // here can do is leave an entry at the old address for the next launch
   // to try again. See [migrateSettingsIntoTheirRoom].
   migrateSettingsIntoTheirRoom();
+  // Asked before this launch writes a setting of its own (I-144-Q4).
+  final firstLaunch = settingsRoomIsEmpty();
   // The language, AWAITED here and not left to the session's restore: the
   // launch splash says what the launch is doing in the app's own language
   // (I-106, 2026-10-21), and it says it before the session exists. One
@@ -166,6 +172,7 @@ Future<void> main(List<String> handedAtLaunch) async {
     // from here that can overwrite a value the user chose.
     AppUiScale.value.value = AppUiScale.firstRunScaleFor(
       PlatformDispatcher.instance.implicitView?.devicePixelRatio ?? 1.0,
+      android: defaultTargetPlatform == TargetPlatform.android,
     );
   }
   // AWAITED like the scale, and for its reason (I-103-Q2: 「다음 실행 때도
@@ -184,7 +191,9 @@ Future<void> main(List<String> handedAtLaunch) async {
   MemoryBlackBox.lastUnfinished = MemoryBlackBox.unfinishedEntry();
   MemoryBlackBox.reset();
   LaunchSplash.drawing(AppText.strings);
-  runApp(AnicelApp(handedAtLaunch: handedAtLaunch));
+  runApp(
+    AnicelApp(handedAtLaunch: handedAtLaunch, firstLaunch: firstLaunch),
+  );
   // ↩️F-178 (유저 2026-09-24) asked for the microphone here, once at launch:
   // 「ios에서 녹음누르면 권한묻는데 그게아니라 앱 실행시로 못하나?」. 🗣️I-133
   // (유저 2026-10-26) took it back: 「앞으로는 앱 키고 이 허용을 체크해야
@@ -200,10 +209,17 @@ Future<void> main(List<String> handedAtLaunch) async {
 }
 
 class AnicelApp extends StatelessWidget {
-  const AnicelApp({super.key, this.handedAtLaunch = const []});
+  const AnicelApp({
+    super.key,
+    this.handedAtLaunch = const [],
+    this.firstLaunch = false,
+  });
 
   /// The files the OS opened the app with ([HomePage.handedAtLaunch]).
   final List<String> handedAtLaunch;
+
+  /// Whether the app never ran on this machine ([HomePage.firstLaunch]).
+  final bool firstLaunch;
 
   @override
   Widget build(BuildContext context) {
@@ -269,5 +285,6 @@ class AnicelApp extends StatelessWidget {
   Widget _home() => HomePage(
     battery: DeviceBattery.shown,
     handedAtLaunch: handedAtLaunch,
+    firstLaunch: firstLaunch,
   );
 }

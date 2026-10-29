@@ -93,12 +93,12 @@ void main() {
 
     testWidgets('picking a stop sets the live scale', (tester) async {
       await pump(tester);
-      await pick(tester, picker, stop(1.25));
-      expect(AppUiScale.value.value, 1.25);
-      expect(said(tester, picker), AppUiScale.label(1.25));
+      await pick(tester, picker, stop(1.3));
+      expect(AppUiScale.value.value, 1.3);
+      expect(said(tester, picker), AppUiScale.label(1.3));
 
-      await pick(tester, picker, stop(0.75));
-      expect(AppUiScale.value.value, 0.75);
+      await pick(tester, picker, stop(0.7));
+      expect(AppUiScale.value.value, 0.7);
     });
 
     testWidgets('the row follows the value it did not set', (tester) async {
@@ -114,13 +114,13 @@ void main() {
     testWidgets('an off-ladder value from outside is snapped, not shown '
         'raw', (tester) async {
       await pump(tester);
-      session.setUiScale(1.2);
+      session.setUiScale(1.24);
       await tester.pump();
-      expect(AppUiScale.value.value, 1.25);
+      expect(AppUiScale.value.value, 1.2);
       // ⚠️Otherwise no stop would look picked and the row would read as
       // "the scale is off".
-      expect(find.text('120%'), findsNothing);
-      expect(pickedIn(tester, picker), [stop(1.25)]);
+      expect(find.text('124%'), findsNothing);
+      expect(pickedIn(tester, picker), [stop(1.2)]);
     });
   });
 

@@ -184,7 +184,7 @@ void main() {
         placement: OnionSkinPlacement.onTop,
       ),
     );
-    first.setUiScale(1.25);
+    first.setUiScale(1.3);
     // The block frame lines (유저 2026-09-24) — a user setting, app-wide like
     // the accents; ON here because OFF is the default a lost store returns
     // (↩️the other way round until 2026-10-01, 「기본값 off로」). And the mark
@@ -466,14 +466,14 @@ void main() {
     final settings = EditorAppSettings(uiScaleStore: store);
     addTearDown(settings.dispose);
     addTearDown(() => AppUiScale.value.value = AppUiScale.defaultScale);
-    await store.save(1.25);
+    await store.save(1.3);
 
     await settings.rereadUiScale();
 
-    expect(AppUiScale.value.value, 1.25);
-    await store.save(0.75);
-    settings.setUiScale(1.25);
-    expect(await store.load(), 0.75, reason: 'held as read: nothing to write');
+    expect(AppUiScale.value.value, 1.3);
+    await store.save(0.7);
+    settings.setUiScale(1.3);
+    expect(await store.load(), 0.7, reason: 'held as read: nothing to write');
   });
 
   /// ⛔**THE PANEL MUST NOT WRITE THE NOTIFIER.** 🧪A mutant that put

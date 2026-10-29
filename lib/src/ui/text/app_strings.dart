@@ -201,6 +201,12 @@ enum AppStrings {
   String get usageStatsDontSend => _s('usageStatsDontSend');
   String get usageStatsDoSend => _s('usageStatsDoSend');
 
+  /// The first launch's window (I-144, 유저 2026-10-29): the display
+  /// settings picked before anything else, and where they change later.
+  String get firstRunTitle => _s('firstRunTitle');
+  String get firstRunChangeLater => _s('firstRunChangeLater');
+  String get firstRunStart => _s('firstRunStart');
+
   /// The timeline/timesheet gap empty state.
   String get noCutSelected => _s('noCutSelected');
 
@@ -2124,6 +2130,9 @@ enum AppStrings {
         'You can change this any time in Preferences ▸ System.',
     'usageStatsDontSend': "Don't send",
     'usageStatsDoSend': 'Send',
+    'firstRunTitle': 'Getting started',
+    'firstRunChangeLater': 'You can change these any time in Preferences.',
+    'firstRunStart': 'Start',
     'programLanguageLabel': 'Program language',
     'notationLanguageLabel': 'Notation language',
     'programLanguageHelp': 'Menus, panels and labels.',
@@ -3456,6 +3465,9 @@ enum AppStrings {
     'usageStatsChangeLater': '環境設定 ▸ システムでいつでも変更できます。',
     'usageStatsDontSend': '送信しない',
     'usageStatsDoSend': '送信する',
+    'firstRunTitle': 'はじめの設定',
+    'firstRunChangeLater': '環境設定でいつでも変更できます。',
+    'firstRunStart': 'はじめる',
     'programLanguageLabel': 'プログラム言語',
     'notationLanguageLabel': '表記言語',
     'programLanguageHelp': 'メニュー・パネル・ラベルの言語。',
@@ -5258,6 +5270,9 @@ enum AppStrings {
     'usageStatsChangeLater': '환경설정 ▸ 시스템에서 언제든 바꿀 수 있습니다.',
     'usageStatsDontSend': '보내지 않기',
     'usageStatsDoSend': '보내기',
+    'firstRunTitle': '처음 설정',
+    'firstRunChangeLater': '환경설정에서 언제든 바꿀 수 있습니다.',
+    'firstRunStart': '시작',
     'programLanguageLabel': '프로그램 언어',
     'notationLanguageLabel': '표기용 언어',
     'programLanguageHelp': '메뉴·패널·라벨의 언어.',
@@ -7053,6 +7068,10 @@ enum AppStrings {
         'Vous pouvez changer cela à tout moment dans Préférences ▸ Système.',
     'usageStatsDontSend': 'Ne pas envoyer',
     'usageStatsDoSend': 'Envoyer',
+    'firstRunTitle': 'Premiers réglages',
+    'firstRunChangeLater':
+        'Vous pouvez les changer à tout moment dans les Préférences.',
+    'firstRunStart': 'Commencer',
     'programLanguageLabel': 'Langue du programme',
     'notationLanguageLabel': 'Langue de notation',
     'programLanguageHelp': 'Menus, panneaux et libellés.',
@@ -8973,6 +8992,9 @@ enum AppStrings {
     'usageStatsChangeLater': '可随时在偏好设置 ▸ 系统中更改。',
     'usageStatsDontSend': '不发送',
     'usageStatsDoSend': '发送',
+    'firstRunTitle': '初始设置',
+    'firstRunChangeLater': '可随时在偏好设置中更改。',
+    'firstRunStart': '开始',
     'programLanguageLabel': '程序语言',
     'notationLanguageLabel': '标注语言',
     'programLanguageHelp': '菜单、面板与标签的语言。',

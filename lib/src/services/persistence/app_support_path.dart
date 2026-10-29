@@ -193,6 +193,31 @@ int migrateSettingsIntoTheirRoom({String? containerRoot}) {
   return moved;
 }
 
+/// Whether the app has never run on this machine: its settings room holds
+/// nothing yet.
+///
+/// 🗣️유저 2026-10-29 (I-144-Q4): 「첫 설정창은 진짜 기계에서 처음
+/// 실행됬을때만 하는것임, 어차피 기계에 기록되고」 — the first launch's
+/// window asks this, and not whether one setting was ever chosen: a machine
+/// that has run the app has left something here, so an update is never a
+/// first launch. A room that cannot be read answers no — a window shown
+/// again is worse than one not shown.
+///
+/// ⚠️Read ONCE, at launch, after [migrateSettingsIntoTheirRoom] and before
+/// the launch writes a setting of its own.
+bool settingsRoomIsEmpty({String? containerRoot}) {
+  final room = Directory(
+    containerRoot == null
+        ? appSettingsFilePath('')
+        : '$containerRoot/Settings',
+  );
+  try {
+    return !room.existsSync() || room.listSync().isEmpty;
+  } on FileSystemException {
+    return false;
+  }
+}
+
 /// [appSettingsFilePath] with the test sandbox, for the stores a test
 /// reaches through the production wiring — it must not read the developer's
 /// own recents, export defaults or brush hand settings.

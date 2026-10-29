@@ -164,7 +164,7 @@ class NoticeDetails {
 /// all the same: the 겸용 conversion's 안내문, whose replaced drawings are a
 /// list under one of its lines (I-18 link-notice-Q1) — the same fold, not a
 /// second one drawn for it.
-class DetailsDisclosure extends StatefulWidget {
+class DetailsDisclosure extends StatelessWidget {
   const DetailsDisclosure({
     super.key,
     required this.heading,
@@ -181,86 +181,118 @@ class DetailsDisclosure extends StatefulWidget {
   final bool oneLineEach;
 
   @override
-  State<DetailsDisclosure> createState() => _DetailsDisclosureState();
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Fold(
+      startsOpen: startsOpen,
+      // The heading and its count. Flexible: one longer than the window is
+      // wide wraps under itself rather than running off the edge (F-303
+      // gave the list to windows whose headings are sentences).
+      heading: Flexible(
+        child: Text(
+          '$heading (${lines.length})',
+          style: theme.textTheme.bodyMedium,
+        ),
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 180),
+        // ⛔NO SCROLLBAR BY HAND. `AppScrollBehavior` already gives
+        // every scrollable in the app the same one, so a framework
+        // `Scrollbar` here drew a SECOND bar over it — 유저 answered
+        // ARCH-audit-Q2 「unify」 and this is what unifying means: not
+        // swapping the widget, but deleting the one that was doubled.
+        child: SingleChildScrollView(
+          key: const ValueKey<String>('app-notice-details-list'),
+          primary: false,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final line in lines)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 1),
+                  child: Text(
+                    oneLineEach ? _firstLineOf(line) : line,
+                    style: theme.textTheme.bodySmall,
+                    maxLines: oneLineEach ? 1 : null,
+                    overflow: oneLineEach ? TextOverflow.ellipsis : null,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
-class _DetailsDisclosureState extends State<DetailsDisclosure> {
+/// A heading that folds what stands under it: an arrow and [heading], and
+/// [child] while open.
+///
+/// One fold for [DetailsDisclosure]'s list and the launch notice's
+/// what's-new (I-144, 유저 2026-10-29: 「업데이트내역항목 접어두고」).
+class Fold extends StatefulWidget {
+  const Fold({
+    super.key,
+    required this.heading,
+    required this.startsOpen,
+    required this.child,
+    this.toggleKey = const ValueKey<String>('app-notice-details-toggle'),
+  });
+
+  /// The words beside the arrow — a [Flexible] where they may wrap.
+  final Widget heading;
+  final bool startsOpen;
+  final Widget child;
+  final Key toggleKey;
+
+  @override
+  State<Fold> createState() => _FoldState();
+}
+
+class _FoldState extends State<Fold> {
   late bool _open = widget.startsOpen;
 
-  /// The heading and its count. Flexible: one longer than the window is
-  /// wide wraps under itself rather than running off the edge (F-303 gave
-  /// the list to windows whose headings are sentences).
-  Widget _heading(ThemeData theme) => Flexible(
-    child: Text(
-      '${widget.heading} (${widget.lines.length})',
-      style: theme.textTheme.bodyMedium,
-    ),
-  );
+  void _toggle() => setState(() => _open = !_open);
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        ControlPressClaim(onPressed: () => setState(() => _open = !_open), child: InkWell(
-          mouseCursor: AppCursors.press,
-          key: const ValueKey<String>('app-notice-details-toggle'),
-          // 🗣️F-479 (유저 2026-10-26): 「처음 탭하면 삭제할 레이어 리스트에
-          // 포커스있는데, 굳이 이거에 포커스 가능하게 할 이유없을듯」 — the
-          // list is there to read, so the keyboard passes it by; a press
-          // still folds it.
-          canRequestFocus: false,
-          onTap: silentPress(() => setState(() => _open = !_open)),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                _open ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right,
-                size: 18,
-              ),
-              _heading(theme),
-            ],
+        ControlPressClaim(
+          onPressed: _toggle,
+          child: InkWell(
+            mouseCursor: AppCursors.press,
+            key: widget.toggleKey,
+            // 🗣️F-479 (유저 2026-10-26): 「처음 탭하면 삭제할 레이어 리스트에
+            // 포커스있는데, 굳이 이거에 포커스 가능하게 할 이유없을듯」 — the
+            // list is there to read, so the keyboard passes it by; a press
+            // still folds it.
+            canRequestFocus: false,
+            onTap: silentPress(_toggle),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  _open
+                      ? Icons.keyboard_arrow_down
+                      : Icons.keyboard_arrow_right,
+                  size: 18,
+                ),
+                widget.heading,
+              ],
+            ),
           ),
-        )),
+        ),
         // ⛔The space is NOT reserved when closed: this is a dialog that
         // sizes to its content, and an empty box under the heading would
         // make every notice taller for a list nobody opened. The rule it
         // looks like (「없다가 생기는 UI 금지」) is about a LAYOUT holding
         // still while its contents change; a disclosure IS the control
         // whose whole purpose is to change the height.
-        if (_open)
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 180),
-            // ⛔NO SCROLLBAR BY HAND. `AppScrollBehavior` already gives
-            // every scrollable in the app the same one, so a framework
-            // `Scrollbar` here drew a SECOND bar over it — 유저 answered
-            // ARCH-audit-Q2 「unify」 and this is what unifying means: not
-            // swapping the widget, but deleting the one that was doubled.
-            child: SingleChildScrollView(
-              key: const ValueKey<String>('app-notice-details-list'),
-              primary: false,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (final line in widget.lines)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 1),
-                      child: Text(
-                        widget.oneLineEach ? _firstLineOf(line) : line,
-                        style: theme.textTheme.bodySmall,
-                        maxLines: widget.oneLineEach ? 1 : null,
-                        overflow: widget.oneLineEach
-                            ? TextOverflow.ellipsis
-                            : null,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
+        if (_open) widget.child,
       ],
     );
   }

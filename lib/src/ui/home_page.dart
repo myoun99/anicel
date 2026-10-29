@@ -9,6 +9,7 @@ import 'package:flutter/services.dart' show SystemNavigator;
 
 import 'dialogs/app_confirm_dialog.dart';
 import 'dialogs/behind_the_wait_window.dart' show stepBehindTheWaitWindow;
+import 'dialogs/first_run_settings_window.dart' show showFirstRunSettings;
 import 'dialogs/launch_notice_window.dart' show showLaunchNoticeIfDue;
 import 'dialogs/usage_stats_question.dart' show askUsageStatsIfUnanswered;
 import '../services/flutter_test_run.dart';
@@ -138,6 +139,7 @@ class HomePage extends StatefulWidget {
     this.usageStatsClient,
     this.battery,
     this.handedAtLaunch = const [],
+    this.firstLaunch = false,
   });
 
   final Project? initialProject;
@@ -195,6 +197,11 @@ class HomePage extends StatefulWidget {
   /// how Windows' 「연결 프로그램」 and a double-click in the Explorer hand a
   /// file over (`open-door-windows-open-with`), and Linux's file managers.
   final List<String> handedAtLaunch;
+
+  /// Whether the app never ran on this machine (`settingsRoomIsEmpty`, read
+  /// by `main` before the launch wrote anything) — the launch then opens
+  /// the first launch's settings window (I-144).
+  final bool firstLaunch;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -652,25 +659,31 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     ),
   );
 
-  /// What a launch opens, one window after the other: this build's
-  /// [notice] if it is due, then the usage statistics' question if it was
-  /// never answered — after the first frame, and once the saved language is
-  /// back, for the reason [_openHanded] waits: each window is written in
-  /// the program language as it opens.
+  /// What a launch opens, one window after the other: on the machine's
+  /// first launch its settings ([HomePage.firstLaunch]), then the usage
+  /// statistics' question if it was never answered, then this build's
+  /// [notice] if it is due — after the first frame, and once the saved
+  /// language is back, for the reason [_openHanded] waits: each window is
+  /// written in the program language as it opens.
   ///
-  /// 🗣️유저 2026-10-29 08:1x (「따로 묻는 작은 창」): the question after the
-  /// notice closes, or alone when the notice is not due.
+  /// 🗣️유저 2026-10-29 (I-144): 「순서를 첫설정창, 사용통계창, 안내창으로
+  /// 하자, 안내창이 텍스트가 많아서 지치니까 지치기전에 … 수락하게하려고」.
+  /// ↩️08:1x put the question after the notice (「따로 묻는 작은 창」, which
+  /// stays its own window).
   ///
   /// ⚠️Each is opened from its store, as `_unlessTesting` hands them out: a
   /// test that hands neither in sees neither, and one that measures the
   /// launch hands its own in.
   void _showLaunchWindows(LaunchNotice? notice) => unawaited(
     _appSettings.languageRestored.then((_) async {
-      if (notice != null && mounted) {
-        await showLaunchNoticeIfDue(context, notice);
+      if (widget.firstLaunch && mounted) {
+        await showFirstRunSettings(context, _session);
       }
       if (_usageStatsStore != null && mounted) {
         await askUsageStatsIfUnanswered(context, _appSettings.usageStats);
+      }
+      if (notice != null && mounted) {
+        await showLaunchNoticeIfDue(context, notice);
       }
     }),
   );

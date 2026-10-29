@@ -14,13 +14,32 @@ import 'settings_rows.dart' show SettingsSectionHeading;
 /// alike; anything else — a link, a picture, `#` or `###` — is shown as
 /// the text it is, which is how a reader finds a file that used it.
 class MarkdownSubset extends StatelessWidget {
-  const MarkdownSubset(this.source, {super.key});
+  const MarkdownSubset(this.source, {super.key, this.leadingHeading = true});
 
   final String source;
 
+  /// Whether the `## ` heading [source] opens with is drawn — off where a
+  /// fold carries it as its own words ([leadingHeadingOf]).
+  final bool leadingHeading;
+
+  /// The `## ` heading [source] opens with, or null when it opens with
+  /// anything else.
+  static String? leadingHeadingOf(String source) {
+    final blocks = _blocksOf(source);
+    return blocks.isNotEmpty && blocks.first.kind == _BlockKind.heading
+        ? blocks.first.text
+        : null;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final blocks = _blocksOf(source);
+    final all = _blocksOf(source);
+    final blocks =
+        !leadingHeading &&
+            all.isNotEmpty &&
+            all.first.kind == _BlockKind.heading
+        ? all.sublist(1)
+        : all;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
