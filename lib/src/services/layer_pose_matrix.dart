@@ -124,13 +124,21 @@ List<CanvasPoint> placedCorners(LayerPlacement placement, Rect rect) => [
 /// The canvas rect [placement] lays a [picture]-sized picture's pixels over
 /// — its four corners' bounds, so a turned picture is covered whole.
 Rect placedBounds(LayerPlacement placement, CanvasSize picture) =>
-    pointsBounds([
-      for (final corner in placedCorners(
-        placement,
-        Offset.zero & Size(picture.width.toDouble(), picture.height.toDouble()),
-      ))
-        Offset(corner.x, corner.y),
-    ]);
+    placedRectBounds(
+      placement,
+      Offset.zero & Size(picture.width.toDouble(), picture.height.toDouble()),
+    );
+
+/// The canvas rect [placement] lays [rect] over — its four corners' bounds
+/// ([placedCorners]), so a turned rect is covered whole.
+///
+/// ⛔ONE spelling of them. A picture laid, a row's ink where the canvas
+/// shows it and a raster block taken back into a picture each folded the
+/// four on their own.
+Rect placedRectBounds(LayerPlacement placement, Rect rect) => pointsBounds([
+  for (final corner in placedCorners(placement, rect))
+    Offset(corner.x, corner.y),
+]);
 
 /// [placement] as the matrix a `Canvas` takes. [rasterScale] restates the
 /// same canvas-space placement in a scaled raster (a level of the display's

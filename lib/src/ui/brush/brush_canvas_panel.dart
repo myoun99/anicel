@@ -109,11 +109,10 @@ import '../canvas/interactive_brush_edit_canvas_view.dart';
 import '../canvas/selection_drag.dart'
     show DrawnShapePath, MarqueeDrag, drawnCopiesOf, guideCarriesOf;
 import '../../services/layer_pose_paint.dart';
-import '../../services/layer_pose_matrix.dart' show placedCorners;
+import '../../services/layer_pose_matrix.dart' show placedRectBounds;
 import 'brush_canvas_defaults.dart';
 import 'brush_tool_state.dart';
 import '../../core/dev_profile.dart';
-import '../../core/point_bounds.dart';
 import 'canvas_selection_commands.dart';
 import 'cel_text_commands.dart';
 import 'text_tool_options.dart';
@@ -2519,18 +2518,15 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (bounds == null || placement == null) {
       return bounds;
     }
-    final shown = pointsBounds([
-      for (final corner in placedCorners(
-        placement,
-        Rect.fromLTRB(
-          bounds.left.toDouble(),
-          bounds.top.toDouble(),
-          bounds.rightExclusive.toDouble(),
-          bounds.bottomExclusive.toDouble(),
-        ),
-      ))
-        Offset(corner.x, corner.y),
-    ]);
+    final shown = placedRectBounds(
+      placement,
+      Rect.fromLTRB(
+        bounds.left.toDouble(),
+        bounds.top.toDouble(),
+        bounds.rightExclusive.toDouble(),
+        bounds.bottomExclusive.toDouble(),
+      ),
+    );
     return (
       left: shown.left.floor(),
       top: shown.top.floor(),
