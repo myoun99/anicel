@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/app_accents.dart';
 import 'package:anicel/src/models/app_frame_grid_settings.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/inbetween_mark.dart';
@@ -11,6 +12,7 @@ import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
     show editorActionLabel;
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/inbetween_mark_icon.dart';
 import 'package:anicel/src/ui/ui_scale.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
@@ -247,6 +249,57 @@ void main() {
           drawingCursor: DrawingCursor.brush,
         ),
       );
+    });
+  });
+
+  // 🗣️I-143 (유저 2026-10-29): 다크 · 라이트 둘(Q2), dark as the app has
+  // always been.
+  group('the palette', () {
+    final picker = find.byKey(const ValueKey<String>('settings-color-mode'));
+    String row(AppColorMode mode) => 'settings-color-mode-${mode.name}';
+
+    tearDown(
+      () => AppColors.accentSettings.value = const AppAccentSettings(),
+    );
+
+    testWidgets('is a list of dark and light, dark picked out of the box', (
+      tester,
+    ) async {
+      await pump(tester);
+      expect(find.text(AppText.strings.colorModeLabel), findsOneWidget);
+      expect(
+        [
+          for (final item in rowsOf(tester, picker)) (item.keyValue, item.label),
+        ],
+        [
+          (row(AppColorMode.dark), AppText.strings.colorModeDark),
+          (row(AppColorMode.light), AppText.strings.colorModeLight),
+        ],
+      );
+      expect(pickedIn(tester, picker), [row(AppColorMode.dark)]);
+    });
+
+    testWidgets('a pick wears the palette at once, keeping the accent', (
+      tester,
+    ) async {
+      AppColors.accentSettings.value = const AppAccentSettings(
+        accent: Color(0xFF5B9BD5),
+      );
+      await pump(tester);
+      await pick(tester, picker, row(AppColorMode.light));
+      expect(
+        AppColors.accentSettings.value,
+        const AppAccentSettings(
+          accent: Color(0xFF5B9BD5),
+          mode: AppColorMode.light,
+        ),
+      );
+      expect(AppColors.surface, AppPalette.light.surface);
+      expect(said(tester, picker), AppText.strings.colorModeLight);
+
+      await pick(tester, picker, row(AppColorMode.dark));
+      expect(AppColors.accentSettings.value.mode, AppColorMode.dark);
+      expect(AppColors.surface, AppPalette.dark.surface);
     });
   });
 
