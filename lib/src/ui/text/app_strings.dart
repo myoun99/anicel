@@ -8613,7 +8613,7 @@ enum AppStrings {
     'brEditGroup': 'Modifier le groupe',
     'brFolderIcon': 'Icône du dossier',
     'brFolderName': 'Nom du dossier',
-    'brFeather': 'Adoucissement',
+    'brFeather': 'Adoucir',
     'brTolerance': 'Tolérance',
     'brGapClose': 'Colmatage',
     'brGrowShrink': 'Étendre / Réduire',
