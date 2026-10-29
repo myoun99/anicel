@@ -300,6 +300,18 @@ void main() {
       expect(frameworkBar(), findsNothing);
     }, variant: TargetPlatformVariant.mobile());
 
+    testWidgets('…not even a lone one, whose bar would come and go with '
+        'whatever else the route holds', (tester) async {
+      await tester.pumpWidget(
+        host(
+          child: ListView(children: const [SizedBox(height: 400, width: 100)]),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(appBar(), findsNothing);
+    }, variant: TargetPlatformVariant.mobile());
+
     testWidgets('the theme keeps the ONE species it cannot reach on the '
         'same visuals', (tester) async {
       // Dropdown and MenuAnchor menus build their own Scrollbar behind a
