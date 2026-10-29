@@ -105,24 +105,15 @@ class _CelTextWayOut {
     }
     final step = held.owed;
     held.owed = null;
-    if (owed < 0 && step == null) {
+    if (owed >= 0) {
+      leaving.removeAt(owed);
+      _landOut(held, step ?? _StepOf.letters);
+    } else if (step != null) {
+      land(held, step);
+    } else {
       // Landed already as it settled, or given up by a step back.
       return;
     }
-    void landIt() {
-      if (owed >= 0) {
-        leaving.removeAt(owed);
-        _landOut(held, step ?? _StepOf.letters);
-      } else {
-        land(held, step!);
-      }
-    }
-
-    // Walked off before its want was set: made where it was held, as one
-    // that lands at once is ([CelTextTool.confirmWalkedOff]).
-    final at = held.madeAt;
-    final places = _tool.host.gestures?.places;
-    at == null || places == null ? landIt() : places.madeAt(at, landIt);
     _tool._changed();
   }
 

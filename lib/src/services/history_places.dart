@@ -97,46 +97,28 @@ class HistoryPlaces {
     }
   }
 
-  /// How many times the user has walked off where they stood ([leave]),
-  /// ever — what a hand held across a walk counts by.
-  int get walks => _walks;
-  int _walks = 0;
-
-  /// Where the last walk ([leave]) left from.
-  StandingPlace? get walkedFrom => _walkedFrom;
-  StandingPlace? _walkedFrom;
+  /// What a walk lets go of, landed where the user still stands — set by
+  /// whoever holds a hand, as `HistoryManager.onBeforeUndoRedo` is.
+  ///
+  /// 🗣️For a hand the user WALKS OFF (I-41's 「그곳으로 이동해서 편집되돌리고」,
+  /// 유저 2026-09-24): a text in hand lands on its cel, and its edit is
+  /// where they stood holding it — where the first undo has to walk.
+  ///
+  /// ↩️It landed AFTER the walk until 2026-10-29, once another cel was
+  /// under the tool, stamped back where it was held (`madeAt`). But by then
+  /// the canvas was the walk's: into a gap, or a cut of another size, the
+  /// text landed on a blank of THAT size and the cel lost everything else
+  /// it carried (board `a-text-walked-into-a-gap-lands-at-its-size`).
+  /// Landed here, at the door, the walk has not happened yet.
+  VoidCallback? onLeave;
 
   /// The user walks off where they stand — what every door that moves them
-  /// does first (`EditorSessionManager.selectCut` and the rest): the last
-  /// action settles HERE ([settle]), and here is kept as [walkedFrom].
+  /// does first (`EditorSessionManager.selectCut` and the rest): what is
+  /// in hand lands HERE ([onLeave]), and the last action settles here
+  /// ([settle]).
   void leave() {
+    onLeave?.call();
     settle();
-    _walks += 1;
-    _walkedFrom = placeNow?.call();
-  }
-
-  /// Runs [write] as made at [place]: what it pushes or folds is stamped
-  /// there, and settles there.
-  ///
-  /// 🗣️For a hand the user WALKED OFF (I-41's 「그곳으로 이동해서 편집되돌리고」,
-  /// 유저 2026-09-24): a text in hand lands on its cel once another cel is
-  /// under the tool — after the walk, where the user no longer stands. Its
-  /// edit is where they stood holding it, and that is where the first undo
-  /// has to walk. ↩️Stamped where the walk took them, the first undo
-  /// walked away from the text, and the second took it back from there
-  /// (board `undo-walks-to-the-frame-a-text-landed-from`).
-  void madeAt(StandingPlace place, void Function() write) {
-    // The action before it settles where the user stands, as [stamp] has
-    // it settle — only what [write] writes was made at [place].
-    settle();
-    final placeNow = this.placeNow;
-    this.placeNow = () => place;
-    try {
-      write();
-      settle();
-    } finally {
-      this.placeNow = placeNow;
-    }
   }
 }
 

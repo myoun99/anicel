@@ -137,9 +137,10 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
   }
 
   /// Another cel is under the tool: what was in hand is the cel's it was
-  /// set on (유저 2026-10-06: 「주인은 셀임」), and it lands there — as made
-  /// where the user stood with it ([CelTextTool.confirmWalkedOff]). After
-  /// the frame — a landing tells listeners, and this is a build.
+  /// set on (유저 2026-10-06: 「주인은 셀임」), and it lands there. After the
+  /// frame — a landing tells listeners, and this is a build. ⚠️A walk the
+  /// user took landed it already, at the door (`HistoryPlaces.onLeave`):
+  /// what is left for here is a cel that went some other way.
   void _celChanged() {
     final awaited = _textAwaitingCel;
     _textAwaitingCel = null;
@@ -155,7 +156,7 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
       if (!mounted) {
         return;
       }
-      _tool.confirmWalkedOff();
+      _tool.confirm();
       if (awaited != null && widget.cel != null) {
         // The press that made this cel came up before it was here.
         _beginText(

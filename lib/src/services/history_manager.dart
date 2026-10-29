@@ -655,10 +655,6 @@ class HistoryGestures {
 
   final HistoryManager _history;
 
-  /// Where each entry was made — for a hold that lands after the user
-  /// walked off it ([HistoryPlaces.madeAt]).
-  HistoryPlaces get places => _history.places;
-
   /// Every entry the history has pushed, and every one [retractSince] took
   /// back, ever — what [mark] counts by, because the stack's length stops
   /// moving once the deep end trims.

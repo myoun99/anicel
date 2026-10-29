@@ -1927,6 +1927,11 @@ final class _ProjectHooks {
       shell._canvasTextCommands.landNow();
       session.sheetPhotoHold.letGo();
     };
+    // I-41: and a walk lands the text in hand the same way, at its door,
+    // before the walk moves the canvas ([HistoryPlaces.onLeave]) — made
+    // where it was held, on its own cel. ⛔Not the selection's lift: a
+    // move carries it (F-86).
+    history.places.onLeave = shell._canvasTextCommands.landNow;
     // ...and a step that WAITED behind the wait window asks first whether
     // there is anything to adopt: work begun after the press is the user's.
     history.pendingBeforeUndoRedo = () =>

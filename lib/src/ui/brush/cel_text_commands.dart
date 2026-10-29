@@ -123,7 +123,7 @@ class CelTextCommands extends ChangeNotifier {
   void confirm() => _tool?.confirm();
 
   /// Lands everything as it is shown, now — what a step of history asks
-  /// before it is taken.
+  /// before it is taken, and a walk at its door.
   void landNow() => _tool?.landNow();
 
   /// Takes the text in hand off its cel.

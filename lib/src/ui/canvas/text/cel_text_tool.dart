@@ -7,7 +7,6 @@ import '../../../models/bitmap_surface.dart';
 import '../../../models/brush_frame_key.dart';
 import '../../../models/canvas_point.dart';
 import '../../../models/cel_text.dart';
-import '../../../models/standing_place.dart';
 import '../../../models/text_cel_style.dart';
 import '../../../services/bitmap_surface_geometry.dart'
     show celTextContentMoved;
@@ -94,21 +93,10 @@ class _Holding {
     this.cel, {
     required HistoryGestures? gestures,
     this.celMade,
-  }) : boxSteps = gestures == null ? null : HistoryRun(gestures),
-       walksBefore = gestures?.places.walks ?? 0;
+  }) : boxSteps = gestures == null ? null : HistoryRun(gestures);
 
   final CelTextSession session;
   final CelTextCel cel;
-
-  /// How many times the user had walked off where they stood as this was
-  /// taken ([HistoryPlaces.walks]) — fewer than now, and they walked while
-  /// holding it.
-  final int walksBefore;
-
-  /// Where its landing is made, for one the user walked off
-  /// ([CelTextTool.confirmWalkedOff]): where they last stood holding it.
-  /// Null for one landed where they stand.
-  StandingPlace? madeAt;
 
   /// The steps landed while the text is held by its BOX — a carry, a turn,
   /// a corner, a setting come to rest: undo takes them back one at a time
@@ -704,25 +692,6 @@ class CelTextTool extends ChangeNotifier {
     _dropLetters();
     _wayOut.landHeld(thenLetGo: true, of: of);
     _changed();
-  }
-
-  /// [confirm], for the text another cel came under the tool from: where
-  /// the user walked while holding it, it lands as made where they last
-  /// stood with it ([HistoryPlaces.walkedFrom]) — where its edit is, and
-  /// where the first undo walks (I-41) — not where the walk took them.
-  /// That place shows its cel: the cel leaving is what lands it.
-  void confirmWalkedOff() {
-    final held = _held;
-    final places = host.gestures?.places;
-    if (held == null || places == null) {
-      confirm();
-      return;
-    }
-    if (places.walks != held.walksBefore) {
-      held.madeAt = places.walkedFrom;
-    }
-    final at = held.madeAt;
-    at == null ? confirm() : places.madeAt(at, confirm);
   }
 
   /// Takes the text in hand off its cel — one step — and lets go of it. A

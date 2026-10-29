@@ -632,7 +632,12 @@ void main() {
       await typeText(tester, 'hi');
       walkOff(session);
       await pumpFrames(tester);
-      expect(celOf(tester).texts.single.content.text, 'hi', reason: '⛔');
+      // The store's: the canvas the walk took them to may be another size
+      // than the cel's, and its session would read the cel blank.
+      final carried = coordinatorOf(
+        tester,
+      ).frameStore.bakedSurfaceOrNull(textToolKey);
+      expect(carried?.texts.single.content.text, 'hi', reason: '⛔');
       if (back) {
         if (session.activeCutId != textToolCutId) {
           session.selectCut(textToolCutId);
@@ -646,15 +651,15 @@ void main() {
 
     // Every door that moves where the user stands (`EditorSessionManager`'s
     // I-41 doors): each walks off, and the hand it lets go of lands there.
-    // ⚠️All but the gap (`parkGlobalFrame`): a text walked into a gap lands
-    // at the gap's canvas, not its cut's, and its undo is refused — on
-    // master's landing too (board `a-text-walked-into-a-gap-lands-at-its-size`).
     final walks = <String, void Function(EditorSessionManager)>{
       'another frame': (session) => session.selectFrameIndex(1),
       'another layer': (session) => session.selectLayer(textToolEmptyLayerId),
       'another row': (session) =>
           session.standOnRow(const LayerRowAddress(textToolEmptyLayerId)),
       'another cut': (session) => session.selectCut(textToolSecondCutId),
+      // A gap's canvas is not the cut's (board
+      // `a-text-walked-into-a-gap-lands-at-its-size`).
+      'a gap': (session) => session.parkGlobalFrame(60),
     };
     for (final MapEntry(key: walk, value: walkOff) in walks.entries) {
       testWidgets('$walk: back where it was typed, ONE undo takes it back', (
@@ -698,8 +703,46 @@ void main() {
       });
     }
 
-    testWidgets('walked off while the engine was still setting it: it lands '
-        'once set, as made where it was held', (tester) async {
+    testWidgets('🚨walked into a gap, it lands on its cel at the cut\'s own '
+        'size, and the cel keeps all it carried (board '
+        'a-text-walked-into-a-gap-lands-at-its-size)', (tester) async {
+      await pumpTextToolApp(
+        tester,
+        project: textToolProject(drawings: 2, secondCut: true),
+      );
+      await takeTextTool(tester);
+      final c = canvasPixelInView(tester);
+      final session = sessionOf(tester);
+      await clickAt(tester, c.dx, c.dy);
+      await typeText(tester, 'hi');
+      await clickAt(tester, c.dx + 300, c.dy + 200);
+      final size = celOf(tester).canvasSize;
+      await clickAt(tester, c.dx, c.dy + 120);
+      await typeText(tester, 'yo');
+
+      session.parkGlobalFrame(60);
+      await pumpFrames(tester);
+      expect(session.activeCutId, isNull, reason: '⛔premise: a gap');
+      session.selectCut(textToolCutId);
+      session.selectFrameIndex(0);
+      await pumpFrames(tester);
+
+      expect([for (final text in celOf(tester).texts) text.content.text], [
+        'hi',
+        'yo',
+      ]);
+      expect(celOf(tester).canvasSize, size);
+    });
+
+    // ↩️It landed once set, after the walk (2026-10-29 morning), and by then
+    // the canvas could be the walk's: a gap's, or another cut's size, and
+    // the cel lost all it carried (board
+    // `a-text-walked-into-a-gap-lands-at-its-size`). Now the door lands it
+    // as it is SHOWN, as an undo or another project coming on screen does —
+    // what was never on screen is given up (유저 2026-09-17: 「보이는
+    // 중이랑 결과랑 절대로 다르면 안 되」).
+    testWidgets('walked off while the engine was still setting it: what is '
+        'shown lands at the door, made where it was held', (tester) async {
       await pumpTextToolApp(
         tester,
         project: textToolProject(drawings: 2),
@@ -707,7 +750,9 @@ void main() {
       await takeTextTool(tester);
       final c = canvasPixelInView(tester);
       final session = sessionOf(tester);
+      final steps = session.historyManager.undoCount;
       await clickAt(tester, c.dx, c.dy);
+      await typeText(tester, 'h');
       final set = Completer<void>();
       debugCelTextBaker = (
         layout, {
@@ -726,16 +771,19 @@ void main() {
       await typeText(tester, 'hi');
       expect(textToolOf(tester).session?.settled, isFalse, reason: 'premise');
       session.selectFrameIndex(1);
+
+      expect(celOf(tester).texts.single.content.text, 'h', reason: 'at once');
       await pumpFrames(tester);
       set.complete();
       await pumpFrames(tester);
-      expect(celOf(tester).texts.single.content.text, 'hi', reason: 'landed');
+      expect(celOf(tester).texts.single.content.text, 'h');
+      expect(session.historyManager.undoCount, steps + 1);
 
       session.undo();
       await pumpFrames(tester);
 
       expect(session.standingPlace?.frame, 0, reason: 'walked back');
-      expect(celOf(tester).texts.single.content.text, 'hi');
+      expect(celOf(tester).texts.single.content.text, 'h');
 
       session.undo();
       await pumpFrames(tester);
