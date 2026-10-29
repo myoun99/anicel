@@ -1245,9 +1245,6 @@ ui.Image _passesInOnePicture(
     image.width.toDouble(),
     image.height.toDouble(),
   );
-  final nothing = Paint()
-    ..blendMode = BlendMode.src
-    ..color = const Color(0x00000000);
   final recorder = ui.PictureRecorder();
   final into = Canvas(recorder);
   final shaders = <ui.FragmentShader>[];
@@ -1256,23 +1253,15 @@ ui.Image _passesInOnePicture(
     for (final pass in passes.reversed) {
       final shader = DirectionalBlurShader.shaderFor(source: image, pass: pass);
       final filter = ui.ImageFilter.shader(shader);
-      into
-        ..saveLayer(
-          rect,
-          Paint()..imageFilter = shaders.isEmpty ? then.after(filter) : filter,
-        )
-        // 🚨THE LAYER IS AS LARGE AS WHAT IS DRAWN INTO IT
-        // ([_composeInTheFrame]): nothing, `src`, over the whole raster.
-        ..drawRect(rect, nothing);
+      into.saveLayer(
+        rect,
+        Paint()..imageFilter = shaders.isEmpty ? then.after(filter) : filter,
+      );
       shaders.add(shader);
     }
-    // 1:1 at the identity, as [_effectStepDraw] blits.
-    into.drawImageRect(
-      image,
-      rect,
-      rect,
-      Paint()..filterQuality = FilterQuality.none,
-    );
+    // 🚨THE LAYER IS AS LARGE AS WHAT IS DRAWN INTO IT ([_composeInTheFrame])
+    // — and this is the whole raster, so every layer is.
+    _blitWhole(into, image, Paint());
     for (var layer = 0; layer < passes.length; layer += 1) {
       into.restore();
     }
@@ -1425,6 +1414,24 @@ ui.Image _cutOut(ui.Image image, Rect rect) {
   return rasterPicture(recorder, rect.width.toInt(), rect.height.toInt());
 }
 
+/// [image] into [into] whole, with [paint]: 1:1 by construction — src and
+/// dst are the same rect, at the identity. A filter here would resample a
+/// blit that is already aligned.
+void _blitWhole(Canvas into, ui.Image image, Paint paint) {
+  final rect = Rect.fromLTWH(
+    0,
+    0,
+    image.width.toDouble(),
+    image.height.toDouble(),
+  );
+  into.drawImageRect(
+    image,
+    rect,
+    rect,
+    paint..filterQuality = FilterQuality.none,
+  );
+}
+
 /// One raster of a step: [lead] over [image] ([input] the step's), then
 /// [then], 1:1 at the identity ([applyEffectSteps]) and [image]'s size.
 ui.Image _effectStepDraw({
@@ -1455,11 +1462,7 @@ ui.Image _effectStepDraw({
     image.height.toDouble(),
   );
   if (shader == null) {
-    // 1:1 by construction — src and dst are the same rect, at the
-    // identity. A filter here would resample a blit that is already
-    // aligned.
-    paint.filterQuality = FilterQuality.none;
-    into.drawImageRect(image, rect, rect, paint);
+    _blitWhole(into, image, paint);
   } else {
     // With a shader the image IS the shader's source, so the draw is a
     // plain rect over it.

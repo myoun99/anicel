@@ -124,8 +124,17 @@ void main() {
     'a directional blur of two passes': ([directional(30, 40)], 1),
     'a spin': ([radial(30, zoom: false)], 1),
     'a zoom': ([radial(20, zoom: true)], 1),
-    'a blur, then a colour over it': ([directional(30, 40), brighter], 1),
-    'a blur, then a Gaussian over it': ([directional(120, 40), gaussian], 1),
+    // A painted effect between two leads is the first step's last draw —
+    // after the last of its passes. One after every lead is the composite
+    // draw's, which a step never holds.
+    'a blur, a colour, a blur': (
+      [directional(30, 40), brighter, directional(0, 12)],
+      2,
+    ),
+    'a blur, a Gaussian, a blur': (
+      [directional(120, 40), gaussian, radial(25, zoom: true)],
+      2,
+    ),
     'two blurs, a step each': ([directional(0, 40), radial(25, zoom: true)], 2),
     'a camera lens blur, which stays a raster a pass': ([cameraLens], 0),
   };
