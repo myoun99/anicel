@@ -313,7 +313,11 @@ import '../core/on_a_worker.dart';
 ///   `qa_dab_blend_batch` takes the view's `dual_mode` and `dual_density`
 ///   and rebuilds a span's bytes from both planes (`qa_dual_view_rows`).
 ///   `qa_dab_spec` drops the per-dab dual mask. Both sizeofs move.
-const int kQaEngineAbiVersion = 60;
+/// - v61: `qa_fx_plugin_*` — the fx plugin host (I-132-Q5 b · Q31): a
+///   plugin opened from a native library or a WebAssembly module (Wasmtime
+///   where the build linked it) and asked to describe, reach and render
+///   (`qa_fx_render_job_sizeof` · `qa_fx_picture_sizeof`).
+const int kQaEngineAbiVersion = 61;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///
