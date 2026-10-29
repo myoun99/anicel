@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/audio_clip.dart';
@@ -72,6 +73,20 @@ void main() {
         .message;
   }
 
+  /// What a mouse resting on the middle of [block] is told.
+  Future<Finder> hoveredWith(
+    WidgetTester tester,
+    String block,
+    String words,
+  ) async {
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    addTearDown(mouse.removePointer);
+    await mouse.moveTo(tester.getCenter(find.byKey(ValueKey<String>(block))));
+    await tester.pump(const Duration(seconds: 2));
+    return find.text(words);
+  }
+
   group('the timeline\'s SE row', () {
     Future<void> pump(
       WidgetTester tester,
@@ -121,6 +136,19 @@ void main() {
     testWidgets('⛔CONTROL: a sound that plays wears no line', (tester) async {
       await pump(tester, plays);
       expect(says(tester, line), isNull);
+    });
+
+    // 🗣️F-495 (유저 2026-10-28): 「블록에 호버하면 툴팁 띄우도록」.
+    testWidgets('says it under a hover on the block', (tester) async {
+      await pump(tester, gone);
+      expect(
+        await hoveredWith(
+          tester,
+          'timeline-se-label-se-0',
+          AppText.strings.soundCannotPlay(SoundCannotPlay.missing),
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('a take that clipped and cannot be played says both, on the '
@@ -200,6 +228,18 @@ void main() {
       await pump(tester, plays);
       expect(paper(tester), layerMarkColor(row().mark));
       expect(says(tester, line), isNull);
+    });
+
+    testWidgets('says it under a hover on the block', (tester) async {
+      await pump(tester, gone);
+      expect(
+        await hoveredWith(
+          tester,
+          'storyboard-se-paper-se-0',
+          AppText.strings.soundCannotPlay(SoundCannotPlay.missing),
+        ),
+        findsOneWidget,
+      );
     });
   });
 }
