@@ -472,10 +472,12 @@ class NativeDabBatcher {
       tileCount: coords.length,
       dabCount: plans.length,
       tileSize: tileSize,
-      dualMode: dual == null
-          ? 0
-          : separableBlendModeNativeId(dual.compositeMode),
-      dualDensity: dual?.density ?? 0.0,
+      view: dual == null
+          ? null
+          : (
+              mode: separableBlendModeNativeId(dual.compositeMode),
+              density: dual.density,
+            ),
     ),
     coords: coords,
   );
@@ -608,6 +610,7 @@ void blendDabTilesDart(
   final sourceG = plan.sourceG;
   final sourceB = plan.sourceB;
   final second = plan.second;
+  final dual = plan.dual;
   final textureDensity = plan.textureDensity;
   final textureOneMinusDensity = plan.textureOneMinusDensity;
   final textureHeight = plan.textureMode == BrushTextureMode.height;
@@ -760,112 +763,118 @@ void blendDabTilesDart(
               (1.0 - destinationAlpha);
         }
 
+        var outR = 0;
+        var outG = 0;
+        var outB = 0;
+        var outA = 0;
         if (second) {
-          // The second plane piles as any dab piles over its alpha; the view
-          // shows it ([_viewDual]). `qa_dab_store`'s alpha, the same
-          // grouping.
+          // The second plane piles as any dab piles over its alpha —
+          // `qa_dab_store`'s alpha, the same grouping.
           final piled = sourceAlpha + destinationAlpha * (1.0 - sourceAlpha);
           final stored = (piled * 65535.0).round().clamp(0, 65535);
           if (stored != levels![pixel]) {
             levels[pixel] = stored;
           }
-          continue;
-        }
-
-        // Destination-out for an erase (the grouping of the reference
-        // strokeDestinationOut), source-over otherwise, keeping the exact
-        // floating-point grouping of the reference strokeSourceOverAt:
-        // (dest * destinationAlpha) * inverseSourceAlpha.
-        final inverseSourceAlpha = 1.0 - sourceAlpha;
-        final double outAlpha;
-        var red = 0.0;
-        var green = 0.0;
-        var blue = 0.0;
-        if (erase) {
-          outAlpha = destinationAlpha * inverseSourceAlpha;
         } else {
-          outAlpha = sourceAlpha + destinationAlpha * inverseSourceAlpha;
-          // Over nothing or over its own colour the dab lands its own
-          // colour exactly (`qa_dab_over_own_colour`).
-          if (outAlpha != 0.0 &&
-              (wide[offset + 3] == 0 ||
-                  (wide[offset] == ownR &&
-                      wide[offset + 1] == ownG &&
-                      wide[offset + 2] == ownB))) {
-            red = sourceR.toDouble();
-            green = sourceG.toDouble();
-            blue = sourceB.toDouble();
-          } else if (outAlpha != 0.0) {
-            red =
-                (sourceR * sourceAlpha +
-                    wide[offset] / 257.0 *
-                        destinationAlpha *
-                        inverseSourceAlpha) /
-                outAlpha;
-            green =
-                (sourceG * sourceAlpha +
-                    wide[offset + 1] / 257.0 *
-                        destinationAlpha *
-                        inverseSourceAlpha) /
-                outAlpha;
-            blue =
-                (sourceB * sourceAlpha +
-                    wide[offset + 2] / 257.0 *
-                        destinationAlpha *
-                        inverseSourceAlpha) /
-                outAlpha;
-          }
-        }
-        // Both planes from the same doubles, each written only where it
-        // moves — `qa_dab_store`'s arithmetic, operation by operation: the
-        // view rounded from the double, never from the plane, and the
-        // change set the view's.
-        var outR = 0;
-        var outG = 0;
-        var outB = 0;
-        var outA = 0;
-        var wideR = 0;
-        var wideG = 0;
-        var wideB = 0;
-        var wideA = 0;
-        if (outAlpha != 0.0) {
+          // Destination-out for an erase (the grouping of the reference
+          // strokeDestinationOut), source-over otherwise, keeping the exact
+          // floating-point grouping of the reference strokeSourceOverAt:
+          // (dest * destinationAlpha) * inverseSourceAlpha.
+          final inverseSourceAlpha = 1.0 - sourceAlpha;
+          final double outAlpha;
+          var red = 0.0;
+          var green = 0.0;
+          var blue = 0.0;
           if (erase) {
-            outR = bytes[offset];
-            outG = bytes[offset + 1];
-            outB = bytes[offset + 2];
-            wideR = wide[offset];
-            wideG = wide[offset + 1];
-            wideB = wide[offset + 2];
+            outAlpha = destinationAlpha * inverseSourceAlpha;
           } else {
-            outR = red.round().clamp(0, 255);
-            outG = green.round().clamp(0, 255);
-            outB = blue.round().clamp(0, 255);
-            wideR = (red * 257.0).round().clamp(0, 65535);
-            wideG = (green * 257.0).round().clamp(0, 65535);
-            wideB = (blue * 257.0).round().clamp(0, 65535);
+            outAlpha = sourceAlpha + destinationAlpha * inverseSourceAlpha;
+            // Over nothing or over its own colour the dab lands its own
+            // colour exactly (`qa_dab_over_own_colour`).
+            if (outAlpha != 0.0 &&
+                (wide[offset + 3] == 0 ||
+                    (wide[offset] == ownR &&
+                        wide[offset + 1] == ownG &&
+                        wide[offset + 2] == ownB))) {
+              red = sourceR.toDouble();
+              green = sourceG.toDouble();
+              blue = sourceB.toDouble();
+            } else if (outAlpha != 0.0) {
+              red =
+                  (sourceR * sourceAlpha +
+                      wide[offset] / 257.0 *
+                          destinationAlpha *
+                          inverseSourceAlpha) /
+                  outAlpha;
+              green =
+                  (sourceG * sourceAlpha +
+                      wide[offset + 1] / 257.0 *
+                          destinationAlpha *
+                          inverseSourceAlpha) /
+                  outAlpha;
+              blue =
+                  (sourceB * sourceAlpha +
+                      wide[offset + 2] / 257.0 *
+                          destinationAlpha *
+                          inverseSourceAlpha) /
+                  outAlpha;
+            }
           }
-          outA = (outAlpha * 255.0).round().clamp(0, 255);
-          wideA = (outAlpha * 65535.0).round().clamp(0, 65535);
-          if (outA == 0) {
-            // No colour under a zero alpha in the view (`StrokePixel.rounded`).
-            outR = 0;
-            outG = 0;
-            outB = 0;
+          // Both planes from the same doubles, each written only where it
+          // moves — `qa_dab_store`'s arithmetic, operation by operation: the
+          // view rounded from the double, never from the plane, and the
+          // change set the view's.
+          var wideR = 0;
+          var wideG = 0;
+          var wideB = 0;
+          var wideA = 0;
+          if (outAlpha != 0.0) {
+            if (erase) {
+              outR = bytes[offset];
+              outG = bytes[offset + 1];
+              outB = bytes[offset + 2];
+              wideR = wide[offset];
+              wideG = wide[offset + 1];
+              wideB = wide[offset + 2];
+            } else {
+              outR = red.round().clamp(0, 255);
+              outG = green.round().clamp(0, 255);
+              outB = blue.round().clamp(0, 255);
+              wideR = (red * 257.0).round().clamp(0, 65535);
+              wideG = (green * 257.0).round().clamp(0, 65535);
+              wideB = (blue * 257.0).round().clamp(0, 65535);
+            }
+            outA = (outAlpha * 255.0).round().clamp(0, 255);
+            wideA = (outAlpha * 65535.0).round().clamp(0, 65535);
+            if (outA == 0) {
+              // No colour under a zero alpha in the view
+              // (`StrokePixel.rounded`).
+              outR = 0;
+              outG = 0;
+              outB = 0;
+            }
           }
-        }
-        if (wideR != wide[offset] ||
-            wideG != wide[offset + 1] ||
-            wideB != wide[offset + 2] ||
-            wideA != wide[offset + 3]) {
-          wide[offset] = wideR;
-          wide[offset + 1] = wideG;
-          wide[offset + 2] = wideB;
-          wide[offset + 3] = wideA;
+          if (wideR != wide[offset] ||
+              wideG != wide[offset + 1] ||
+              wideB != wide[offset + 2] ||
+              wideA != wide[offset + 3]) {
+            wide[offset] = wideR;
+            wide[offset + 1] = wideG;
+            wide[offset + 2] = wideB;
+            wide[offset + 3] = wideA;
+          }
         }
         if (levels != null) {
-          // A tile with a second plane shows its view ([_viewDual]): the
-          // view writes the bytes, and says which moved.
-          continue;
+          // A tile with a second plane shows its view of the two planes as
+          // they stand after the dab (`qa_dual_view_rows`, which has the
+          // law: [dualViewAlpha]). Every tile of such a stroke has had its
+          // second plane from the first, so only a pixel whose planes the
+          // dab moved can show anything new: the view is rebuilt here, the
+          // reference's own road, pixel by pixel.
+          outA = dualViewAlpha(wide[offset + 3], levels[pixel], dual!);
+          outR = outA == 0 ? 0 : (wide[offset] / 257.0).round();
+          outG = outA == 0 ? 0 : (wide[offset + 1] / 257.0).round();
+          outB = outA == 0 ? 0 : (wide[offset + 2] / 257.0).round();
         }
         if (outR != bytes[offset] ||
             outG != bytes[offset + 1] ||
@@ -879,67 +888,6 @@ void blendDabTilesDart(
         }
       }
 
-      if (tileChanged && onTileChanged != null) {
-        onTileChanged(tileX, tileY);
-      }
-    }
-  }
-  if (plan.dual case final dual?) {
-    _viewDual(
-      plan,
-      dual,
-      tileSize: tileSize,
-      bufferFor: bufferFor,
-      onTileChanged: onTileChanged,
-    );
-  }
-}
-
-/// The bytes of a stroke with a second tip rebuilt from its two planes over
-/// [plan]'s rect, once the dab has landed — `qa_dual_view_rows`, which has
-/// the law, pixel for pixel ([dualViewAlpha]). The C batch rebuilds the
-/// rect its dabs make together once they all have landed: a pure function
-/// of the two planes, so the bytes are the same.
-void _viewDual(
-  BrushDabPlan plan,
-  BrushDualView dual, {
-  required int tileSize,
-  required BrushDabTileBuffers Function(int tileX, int tileY) bufferFor,
-  void Function(int tileX, int tileY)? onTileChanged,
-}) {
-  for (var y = plan.top; y < plan.bottomExclusive; y += 1) {
-    final tileY = floorDiv(y, tileSize);
-    final localRowOffset = (y - tileY * tileSize) * tileSize;
-    for (var tileX = plan.tileXStart; tileX <= plan.tileXEnd; tileX += 1) {
-      final (:bytes, :wide, second: levels) = bufferFor(tileX, tileY);
-      if (levels == null) {
-        continue;
-      }
-      final tileLeft = tileX * tileSize;
-      final spanLeft = math.max(plan.left, tileLeft);
-      final spanRightExclusive = math.min(
-        plan.rightExclusive,
-        tileLeft + tileSize,
-      );
-      var tileChanged = false;
-      for (var x = spanLeft; x < spanRightExclusive; x += 1) {
-        final pixel = localRowOffset + (x - tileLeft);
-        final offset = pixel * 4;
-        final outA = dualViewAlpha(wide[offset + 3], levels[pixel], dual);
-        final outR = outA == 0 ? 0 : (wide[offset] / 257.0).round();
-        final outG = outA == 0 ? 0 : (wide[offset + 1] / 257.0).round();
-        final outB = outA == 0 ? 0 : (wide[offset + 2] / 257.0).round();
-        if (outR != bytes[offset] ||
-            outG != bytes[offset + 1] ||
-            outB != bytes[offset + 2] ||
-            outA != bytes[offset + 3]) {
-          bytes[offset] = outR;
-          bytes[offset + 1] = outG;
-          bytes[offset + 2] = outB;
-          bytes[offset + 3] = outA;
-          tileChanged = true;
-        }
-      }
       if (tileChanged && onTileChanged != null) {
         onTileChanged(tileX, tileY);
       }

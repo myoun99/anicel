@@ -14,18 +14,33 @@ List<BrushPixelBlendOperation> brushPixelBlendOperationsForDabSequence({
   required BrushDabSequence sequence,
   required DestinationPixelReader destinationAt,
 }) {
+  final pile = _Pile(destinationAt);
+  for (final dab in sequence.dabs) {
+    pile.lay(dab);
+  }
+  return List<BrushPixelBlendOperation>.unmodifiable(pile.operations);
+}
+
+/// What the sequence's dabs have piled up so far, pixel by pixel, and the
+/// changes of bytes they made on the way ([operations]).
+class _Pile {
+  _Pile(this._destinationAt);
+
+  final DestinationPixelReader _destinationAt;
   final operations = <BrushPixelBlendOperation>[];
+
   // Each pixel as the sequence piles it up — on its 16-bit plane, widened
   // from the destination's bytes the first time a dab reaches it, the way
   // the commit scratch widens a tile ([StrokePixel], ABI 40).
-  final currentPixels = <_PixelKey, StrokePixel>{};
+  final _first = <_PixelKey, StrokePixel>{};
+
   // A stroke with a second tip piles that tip's dabs on a plane of their
   // own and shows the two through its view (ABI 60, `qa_dual_view_rows`):
   // each pixel's second level, and the bytes it shows.
-  final levels = <_PixelKey, StrokePixel>{};
-  final shown = <_PixelKey, RgbaColor>{};
+  final _second = <_PixelKey, StrokePixel>{};
+  final _shown = <_PixelKey, RgbaColor>{};
 
-  for (final dab in sequence.dabs) {
+  void lay(BrushDab dab) {
     final dual = dab.dual;
     // A second tip's dab piles over, never erases (`qa_dab_blend_tile`).
     final piler = dab.second && dab.erase ? dab.copyWith(erase: false) : dab;
@@ -43,65 +58,81 @@ List<BrushPixelBlendOperation> brushPixelBlendOperationsForDabSequence({
         ceiling: ceiling,
       );
       final key = _PixelKey(coverage.x, coverage.y);
-      if (dab.second) {
-        final under = levels[key] ?? StrokePixel.level(0);
-        final piled = blendBrushDabStrokePixel(
-          dab: piler,
-          coverage: coverage,
-          destination: under,
-        );
-        if (piled.a != under.a) {
-          levels[key] = StrokePixel.level(piled.a);
-          touched.add(key);
-        }
-        return;
-      }
-      final before =
-          currentPixels[key] ??
-          StrokePixel.widened(destinationAt(coverage.x, coverage.y));
-      final after = blendBrushDabStrokePixel(
-        dab: dab,
-        coverage: coverage,
-        destination: before,
-      );
-
-      if (after == before) {
-        return;
-      }
-
-      currentPixels[key] = after;
-      if (dual != null) {
+      final moved = dab.second
+          ? _pileSecond(piler, coverage, key)
+          : _pileFirst(dab, coverage, key, viewed: dual != null);
+      if (moved) {
         touched.add(key);
-        return;
       }
-      // An operation is a change of BYTES — the plane can move under a
-      // view that stays put.
-      if (after.bytes == before.bytes) {
-        return;
-      }
+    });
+    if (dual != null) {
+      _show(touched, dual);
+    }
+  }
+
+  /// Piles [dab] at [key] on the first plane — whether the plane moved. The
+  /// bytes of a [viewed] stroke are its view's ([_show]); any other stroke's
+  /// change of bytes is an operation here.
+  bool _pileFirst(
+    BrushDab dab,
+    BrushPixelCoverage coverage,
+    _PixelKey key, {
+    required bool viewed,
+  }) {
+    final before =
+        _first[key] ?? StrokePixel.widened(_destinationAt(key.x, key.y));
+    final after = blendBrushDabStrokePixel(
+      dab: dab,
+      coverage: coverage,
+      destination: before,
+    );
+    if (after == before) {
+      return false;
+    }
+    _first[key] = after;
+    // An operation is a change of BYTES — the plane can move under a
+    // view that stays put.
+    if (!viewed && after.bytes != before.bytes) {
       operations.add(
         BrushPixelBlendOperation(
-          x: coverage.x,
-          y: coverage.y,
+          x: key.x,
+          y: key.y,
           before: before.bytes,
           after: after.bytes,
         ),
       );
-    });
-    if (dual == null) {
-      continue;
     }
-    // The view of the pixels the dab moved a plane under, once it has
-    // landed.
+    return true;
+  }
+
+  /// Piles a second tip's [dab] at [key] on the second plane — whether the
+  /// plane moved.
+  bool _pileSecond(BrushDab dab, BrushPixelCoverage coverage, _PixelKey key) {
+    final under = _second[key] ?? StrokePixel.level(0);
+    final piled = blendBrushDabStrokePixel(
+      dab: dab,
+      coverage: coverage,
+      destination: under,
+    );
+    if (piled.a == under.a) {
+      return false;
+    }
+    _second[key] = StrokePixel.level(piled.a);
+    return true;
+  }
+
+  /// The view of the pixels the dab moved a plane under, once it has
+  /// landed.
+  void _show(List<_PixelKey> touched, BrushDualView dual) {
     for (final key in touched) {
       final first =
-          currentPixels[key] ?? StrokePixel.widened(destinationAt(key.x, key.y));
-      final before = shown[key] ?? destinationAt(key.x, key.y);
-      final after = _dualView(first, levels[key]?.a ?? 0, dual);
+          _first[key] ?? StrokePixel.widened(_destinationAt(key.x, key.y));
+      final before = _shown[key] ?? _destinationAt(key.x, key.y);
+      final after = _dualView(first, _second[key]?.a ?? 0, dual);
       if (after == before) {
         continue;
       }
-      shown[key] = after;
+      _shown[key] = after;
       operations.add(
         BrushPixelBlendOperation(
           x: key.x,
@@ -112,8 +143,6 @@ List<BrushPixelBlendOperation> brushPixelBlendOperationsForDabSequence({
       );
     }
   }
-
-  return List<BrushPixelBlendOperation>.unmodifiable(operations);
 }
 
 /// What [first] and a second level of [second] show through [dual] — the

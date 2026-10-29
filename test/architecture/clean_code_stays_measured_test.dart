@@ -1177,7 +1177,19 @@ void main() {
   /// one gone. ⛔Not split to fit: each is one table — of a node's kinds,
   /// of what every row a chain's write reaches takes, of a member's copy
   /// field for field.
-  const longBodies = 416;
+  ///
+  /// ⚠️416 → 417 on 2026-10-30, two named as the rule above asks (card
+  /// an-imported-pencil-drops-its-second-brush — a brush's second tip lays
+  /// a stroke of its own, with a spacing, a turn, a roundness and a scatter
+  /// of its own, eight fields). `BrushSettings.copyWith` (64) and
+  /// `BrushToolState.clamped` (68) crossed carrying them. The reference
+  /// pile that grew a second plane was split instead (`_Pile`: the first
+  /// plane, the second, the view), and the .sut reader of a tip's way
+  /// handed its spin columns to `_spinOf`. 🔬`clean_code_diff` against
+  /// master (`ce21fca6d`, at 415) named those two added and nothing gone.
+  /// ⛔Not split to fit: each is one table — of a brush's fields, copied
+  /// or held to their ranges field for field.
+  const longBodies = 417;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///

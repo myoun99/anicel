@@ -1892,16 +1892,16 @@ class QaNativeEngine {
   /// call — each span the rect the batch's dabs cover in that tile. The C
   /// cuts the tiles into row bands and each band applies every dab that
   /// reaches it, so the bytes are the ones the dabs would have made one at
-  /// a time. [dualMode] (a `QA_STROKE_BLEND_*` id) and [dualDensity] are the
-  /// view a span carrying a second plane is rebuilt through
-  /// (`qa_dual_view_rows`). Returns the per-tile changed flags (valid until
-  /// the next batch).
+  /// a time. [view] is what a span carrying a second plane is rebuilt
+  /// through (`qa_dual_view_rows`) — its composite mode, a
+  /// `QA_STROKE_BLEND_*` id, and its density; null for a stroke with no
+  /// second tip. Returns the per-tile changed flags (valid until the next
+  /// batch).
   Uint8List dabBlendBatch({
     required int tileCount,
     required int dabCount,
     required int tileSize,
-    int dualMode = 0,
-    double dualDensity = 0.0,
+    ({int mode, double density})? view,
   }) {
     assert(() {
       debugDabBatchCalls += 1;
@@ -1914,8 +1914,8 @@ class QaNativeEngine {
       _dabSpecs.pointer,
       _dabClips.pointer,
       dabCount,
-      dualMode,
-      dualDensity,
+      view?.mode ?? 0,
+      view?.density ?? 0.0,
       _batchChanged.pointer,
     );
     return _batchChanged.pointer.asTypedList(tileCount);

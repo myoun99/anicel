@@ -1213,35 +1213,7 @@ _placementOf(Map<String, Object?> variant, String prefix) {
   // WHICH pair of rotation columns describes the tip's spin, so it is read
   // before either of them.
   final sprays = _intOf(variant['${prefix}UseSpray']) == 1;
-  // 🚨A SPRAY BRUSH'S PARTICLES SPIN BY THEIR OWN PAIR OF COLUMNS. Measured
-  // on the user's real files (2026-09-10): the only two brushes of twenty
-  // with `BrushUseSpray = 1` — `Sampled Brush 4 3` and `ウェット水彩` — PARK
-  // the plain pair (`BrushRotationEffector = 3`, no random bit) and put the
-  // real setting in `BrushRotationEffectorInSpray = 129`, the same 0x80.
-  // Reading only the plain pair imported `Sampled Brush 4 3`'s 69% particle
-  // spin as ZERO, which is a scatter brush whose stamps all face one way.
-  //
-  // ⚠️THE GATE IS `BrushUseSpray`, not the presence of the in-spray columns:
-  // every non-spray brush in the sample parks them at 3 / 100, and a brush
-  // that really does spin its tip without spray says so in the plain pair
-  // (鉛筆R at 45%).
-  // ⛔What a brush that sets BOTH should do is NOT measured — no file in the
-  // sample has one — so the in-spray pair simply WINS where spray is on,
-  // which is the narrowest reading the evidence supports.
-  //
-  // ⚠️Both effectors are bare ints rather than blobs, and both carry the same
-  // input-source bits; both scales are percentages of a full turn.
-  final angleJitter = sprays
-      ? _randomScaleRatio(
-          variant,
-          effector: '${prefix}RotationEffectorInSpray',
-          scale: '${prefix}RotationRandomInSpray',
-        )
-      : _randomScaleRatio(
-          variant,
-          effector: '${prefix}RotationEffector',
-          scale: '${prefix}RotationRandomScale',
-        );
+  final angleJitter = _spinOf(variant, prefix, sprays: sprays);
   // The spray size is a percentage of the brush size (its diameter), so the
   // radius is half.
   var scatterRadiusRatio = 0.0;
@@ -1264,4 +1236,42 @@ _placementOf(Map<String, Object?> variant, String prefix) {
     scatterRadiusRatio: scatterRadiusRatio,
     scatterCount: scatterCount,
   );
+}
+
+/// How far a tip's turn is thrown at random, read from the pair of rotation
+/// columns that describes it — which pair, whether it [sprays] decides.
+double _spinOf(
+  Map<String, Object?> variant,
+  String prefix, {
+  required bool sprays,
+}) {
+  // 🚨A SPRAY BRUSH'S PARTICLES SPIN BY THEIR OWN PAIR OF COLUMNS. Measured
+  // on the user's real files (2026-09-10): the only two brushes of twenty
+  // with `BrushUseSpray = 1` — `Sampled Brush 4 3` and `ウェット水彩` — PARK
+  // the plain pair (`BrushRotationEffector = 3`, no random bit) and put the
+  // real setting in `BrushRotationEffectorInSpray = 129`, the same 0x80.
+  // Reading only the plain pair imported `Sampled Brush 4 3`'s 69% particle
+  // spin as ZERO, which is a scatter brush whose stamps all face one way.
+  //
+  // ⚠️THE GATE IS `BrushUseSpray`, not the presence of the in-spray columns:
+  // every non-spray brush in the sample parks them at 3 / 100, and a brush
+  // that really does spin its tip without spray says so in the plain pair
+  // (鉛筆R at 45%).
+  // ⛔What a brush that sets BOTH should do is NOT measured — no file in the
+  // sample has one — so the in-spray pair simply WINS where spray is on,
+  // which is the narrowest reading the evidence supports.
+  //
+  // ⚠️Both effectors are bare ints rather than blobs, and both carry the same
+  // input-source bits; both scales are percentages of a full turn.
+  return sprays
+      ? _randomScaleRatio(
+          variant,
+          effector: '${prefix}RotationEffectorInSpray',
+          scale: '${prefix}RotationRandomInSpray',
+        )
+      : _randomScaleRatio(
+          variant,
+          effector: '${prefix}RotationEffector',
+          scale: '${prefix}RotationRandomScale',
+        );
 }
