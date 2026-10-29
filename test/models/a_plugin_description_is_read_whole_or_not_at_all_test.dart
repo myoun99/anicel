@@ -15,7 +15,7 @@ void main() {
     'name': 'Every Kind',
     'vendor': 'Example',
     'version': '2.1.0',
-    'can': ['cpu'],
+    'can': ['cpu', 'gpu'],
     'params': params,
   };
 
@@ -55,12 +55,14 @@ void main() {
       'default': 1,
     },
     {'id': 'map', 'kind': 'layer', 'label': 'Map'},
+    {'id': 'hard', 'kind': 'checkbox', 'label': 'Hard', 'default': false},
   ]);
 
   test('each kind is the app parameter of its kind', () {
     final description = FxPluginDescription.read(jsonEncode(everyKind))!;
     expect(description.id, 'com.example.every-kind');
     expect(description.version, '2.1.0');
+    expect(description.can, ['cpu', 'gpu']);
     final specs = description.parameters;
     expect([for (final spec in specs) spec.unit], [
       EffectParameterUnit.number,
@@ -70,6 +72,7 @@ void main() {
       EffectParameterUnit.flag,
       EffectParameterUnit.choice,
       EffectParameterUnit.layer,
+      EffectParameterUnit.flag,
     ]);
     expect([specs[0].defaultValue, specs[0].minimum, specs[0].maximum], [
       25,
@@ -88,6 +91,7 @@ void main() {
       'square',
     ]);
     expect(specs[5].defaultValue, 1);
+    expect(effectFlagIsOn(specs[7].defaultValue), isFalse);
   });
 
   test('what a project keeps reads back as the same description', () {
@@ -121,6 +125,10 @@ void main() {
         ...plugin([]),
         'can': ['gpu'],
       },
+      'what it can do not said in words': {
+        ...plugin([]),
+        'can': ['cpu', 3],
+      },
       'an id a lane would misread': {...plugin([]), 'id': 'com:example'},
       'a number with no range': plugin([amount({'max': null})]),
       'a default past its range': plugin([amount({'default': 101})]),
@@ -146,6 +154,28 @@ void main() {
             {'id': 'round', 'label': 'Round'},
           ],
           'default': 1,
+        },
+      ]),
+      'a menu before its words': plugin([
+        {
+          'id': 'shape',
+          'kind': 'menu',
+          'label': 'Shape',
+          'choices': [
+            {'id': 'round', 'label': 'Round'},
+          ],
+          'default': -1,
+        },
+      ]),
+      'a word of an id a lane would misread': plugin([
+        {
+          'id': 'shape',
+          'kind': 'menu',
+          'label': 'Shape',
+          'choices': [
+            {'id': 'round edge', 'label': 'Round'},
+          ],
+          'default': 0,
         },
       ]),
       'a menu with no words': plugin([

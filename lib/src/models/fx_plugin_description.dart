@@ -60,7 +60,7 @@ final class FxPluginDescription {
       'version': final String version,
       'can': final List<dynamic> can,
       'params': final List<dynamic> params,
-    } when _isName(id) && name.isNotEmpty && version.isNotEmpty) {
+    } when _isName(id)) {
       final canDo = can.whereType<String>().toList();
       if (canDo.length != can.length || !canDo.contains('cpu')) {
         return null;
@@ -110,7 +110,7 @@ final class FxPluginDescription {
       'id': final String id,
       'kind': final String kind,
       'label': final String label,
-    } when _isName(id) && label.isNotEmpty) {
+    } when _isName(id)) {
       return switch ((kind, json)) {
         ('number' || 'angle', {
           'default': final num initial,
@@ -164,13 +164,13 @@ final class FxPluginDescription {
       if (word case {
         'id': final String choice,
         'label': final String said,
-      } when _isName(choice) && said.isNotEmpty) {
+      } when _isName(choice)) {
         choices.add(EffectChoice(id: choice, label: said));
       } else {
         return null;
       }
     }
-    if (choices.isEmpty || initial < 0 || initial >= choices.length) {
+    if (initial < 0 || initial >= choices.length) {
       return null;
     }
     return EffectParameterSpec.choice(
