@@ -53,11 +53,13 @@ final class AptabaseClient {
   AptabaseClient({
     this.appKey = _definedKey,
     AptabasePost post = postToAptabase,
+    void Function() prepare = loadTrustedRoots,
     DeviceDescription Function() describe = DeviceDescriptions.read,
     this.build = buildNumber,
     Random? random,
   }) : endpoint = endpointFor(appKey),
        _post = post,
+       _prepare = prepare,
        _describe = describe,
        _random = random ?? Random();
 
@@ -71,8 +73,14 @@ final class AptabaseClient {
   final String build;
 
   final AptabasePost _post;
+  final void Function() _prepare;
   final DeviceDescription Function() _describe;
   final Random _random;
+
+  /// Readies what the first HTTPS connection needs ([loadTrustedRoots]) —
+  /// now, at a moment the caller chooses, rather than inside the first
+  /// POST that gets through.
+  void prepare() => _prepare();
 
   /// The events API of the region in [appKey] — `A-EU-…` or `A-US-…`,
   /// three parts — or null for any other key, the empty one included.
@@ -189,6 +197,22 @@ final class AptabaseClient {
 
 /// How long one step of a send may take before it is given up.
 const Duration _sendTimeout = Duration(seconds: 10);
+
+/// Loads the trusted roots every HTTPS connection of this process checks
+/// against — the OS's store, once per process — as the first
+/// [postToAptabase] would.
+///
+/// ⚖️MEASURED BEFORE IT WAS MOVED (관제 2026-10-29, the main PC, an AOT
+/// exe timing the event loop's worst stall): the first
+/// `SecurityContext.defaultContext` of a process stalls the loop 20–25 ms
+/// (Windows' root store), 3 runs of 3; touched first, the first HTTPS
+/// stalls ~1 ms, and any round trip 0.4–1.5 ms (`jsonEncode` of 500
+/// queued events 0.85 ms). The first POST is normally the launch's — but
+/// offline at launch the connection fails before TLS, and the load lands
+/// on the first POST that gets through: an hour's `in_use` or a return,
+/// perhaps mid-stroke — one or two frames, on the old tablets the app is
+/// for (`UsageStats` loads it at launch, and when it is turned on).
+void loadTrustedRoots() => SecurityContext.defaultContext;
 
 /// The real [AptabasePost]: an HTTPS POST through `dart:io`.
 Future<int> postToAptabase(Uri endpoint, String appKey, String body) async {

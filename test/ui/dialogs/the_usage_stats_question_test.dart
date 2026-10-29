@@ -58,6 +58,7 @@ void main() {
           ]);
           return 200;
         },
+        prepare: () {},
         describe: () => (model: 'x', os: FeedbackOs.windows, osVersion: '11'),
         build: '1081',
       ),

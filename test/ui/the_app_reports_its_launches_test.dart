@@ -54,6 +54,7 @@ void main() {
         posts.add((jsonDecode(body) as List).cast<Map<String, dynamic>>());
         return status;
       },
+      prepare: () {},
       describe: () => (model: 'x', os: FeedbackOs.windows, osVersion: '11'),
       build: '1081',
     );
@@ -116,6 +117,7 @@ void main() {
         ]);
         return 200;
       },
+      prepare: () {},
       describe: () => (model: 'x', os: FeedbackOs.windows, osVersion: '11'),
       build: '1081',
     );

@@ -94,6 +94,9 @@ void main() {
 
   /// Every POST's events as they went over the wire.
   late List<List<Map<String, dynamic>>> bodies;
+
+  /// What the client was asked, in order: `prepare` and `post`.
+  late List<String> calls;
   late int status;
   late Completer<void>? hold;
   late DateTime clock;
@@ -104,6 +107,7 @@ void main() {
   setUp(() {
     sent = [];
     bodies = [];
+    calls = [];
     status = 200;
     hold = null;
     clock = DateTime.utc(2026, 10, 29, 6, 20);
@@ -115,11 +119,13 @@ void main() {
   AptabaseClient client({String appKey = 'A-EU-1462843916'}) => AptabaseClient(
     appKey: appKey,
     post: (endpoint, appKey, body) async {
+      calls.add('post');
       sent.add([for (final event in _events(body)) _said(event)]);
       bodies.add(_events(body));
       await hold?.future;
       return status;
     },
+    prepare: () => calls.add('prepare'),
     describe: () => (model: 'x', os: FeedbackOs.android, osVersion: '14'),
     build: '1081',
   );
@@ -298,6 +304,7 @@ void main() {
             ]);
             return 200;
           },
+          prepare: () {},
           describe: () => (model: 'x', os: FeedbackOs.iOS, osVersion: '18'),
         ),
         locale: () => locale,
@@ -687,6 +694,7 @@ void main() {
             posts += 1;
             return posts == 2 ? 503 : 200;
           },
+          prepare: () {},
           describe: () => (model: 'x', os: FeedbackOs.android, osVersion: '14'),
         ),
         locale: () => 'ko',
@@ -776,6 +784,44 @@ void main() {
       hold!.complete();
       await launch;
       expect(store.answer, isA<UsageStatsOff>());
+    });
+  });
+
+  /// 관제 2026-10-29: the first HTTPS of a process loads the OS's trusted
+  /// roots — 20–25 ms of the event loop — so it is loaded where a stroke
+  /// is not ([loadTrustedRoots]).
+  group('the first connection is readied', () {
+    test('🎯at launch while it is on — before anything is posted', () async {
+      await run(_MemoryStore([today - 1])).reportLaunch();
+      expect(calls, ['prepare', 'post']);
+    });
+
+    test('🎯offline at launch, still at launch — not in the hour that gets '
+        'through', () async {
+      final stats = run(_MemoryStore([today - 1]));
+      status = 503;
+      await stats.reportLaunch();
+      status = 200;
+      timers.single.fire();
+      await pumpEventQueue();
+      expect(calls, ['prepare', 'post', 'post']);
+    });
+
+    test('⛔not while off, nor in a build with no App Key', () async {
+      await run(_MemoryStore()).reportLaunch();
+      await run(_MemoryStore([today - 1]), appKey: '').reportLaunch();
+      expect(calls, isEmpty);
+    });
+
+    test('turned on, at that press — before what it sends', () async {
+      final stats = run(_MemoryStore());
+      await stats.reportLaunch();
+      stats.setEnabled(true);
+      await pumpEventQueue();
+      expect(calls, ['prepare', 'post']);
+
+      stats.setEnabled(false);
+      expect(calls, hasLength(2), reason: 'turned off readies nothing');
     });
   });
 

@@ -142,7 +142,17 @@ class UsageStats {
     _inFront = true;
     await _restored;
     _keepInUse();
+    _prepare();
     await _report(countRun: true);
+  }
+
+  /// The first HTTPS connection's costly part, done now — at launch or as
+  /// it is turned on, never inside a send that lands mid-stroke
+  /// ([loadTrustedRoots] has the numbers) — and only when it sends.
+  void _prepare() {
+    if (_sends) {
+      _client.prepare();
+    }
   }
 
   /// The app is in front again: today's `day` if it is still owed — a run
@@ -199,6 +209,7 @@ class UsageStats {
     );
     _keepInUse();
     if (on) {
+      _prepare();
       unawaited(_report(countRun: true));
     }
   }
