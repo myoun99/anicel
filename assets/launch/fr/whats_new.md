@@ -1,6 +1,7 @@
 ## Nouveautés de cette version
 
 - **Premiers réglages** — au premier lancement sur un appareil, une fenêtre fait d'abord choisir la langue du programme et celle des notations, la taille de l'interface, la couleur d'accent et le curseur de dessin. La taille de l'interface va de 50 % à 150 % par pas de 10 %, et les appareils Android et les téléphones commencent à 80 %.
+- **Apparence** — choisissez Sombre ou Clair dans les Préférences. L'application commence en sombre.
 - **Crayons** — les crayons 2H, HB, 2B et 4B et le crayon de couleur sont refaits : des pointes en forme de grain posées à des angles aléatoires, qui entrent dans le grain du papier autant que vous appuyez. Seul le crayon couché répond à l'inclinaison du stylet.
 - **Brosses doubles** — la seconde pointe est dessinée comme un second trait, et le grain du papier vit dans le trait. L'espacement, l'angle, l'aplatissement, la dispersion et le nombre de la seconde pointe se règlent dans le panneau des réglages de la brosse, et les brosses CLIP STUDIO et Photoshop apportent leurs réglages doubles.
 - **Fusionner des calques** — fusionner les calques d'un plan lié les fusionne dans chaque plan où ils sont, et une image qui dépasse du fond est d'abord signalée comme coupée.

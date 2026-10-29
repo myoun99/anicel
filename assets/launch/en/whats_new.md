@@ -1,6 +1,7 @@
 ## What's new in this version
 
 - **Getting started** — the first launch on a device opens a window to pick the program and notation languages, the interface scale, the accent color and the drawing cursor before anything else. The interface scale goes from 50% to 150% in steps of 10%, and Android devices and phones start at 80%.
+- **Appearance** — pick Dark or Light in Preferences ▸ Display. It starts dark.
 - **Pencils** — the 2H, HB, 2B and 4B pencils and the colored pencil are made anew: grain-shaped tips stamped at random turns, reaching into the paper's tooth as hard as you press. Only the shading pencil answers the pen's tilt.
 - **Dual brushes** — the second tip is drawn as a second stroke, so the paper's tooth lives inside the line. The second tip's spacing, angle, roundness, scatter and count can be changed in the brush settings panel, and CLIP STUDIO and Photoshop brushes bring their dual settings along.
 - **Merging layers** — merging rows of a linked cut merges them in every cut they are in, and a picture that reaches past the pasteboard is flagged as cut off first.
