@@ -128,6 +128,17 @@ class CompositeEffectPaint {
     paint.imageFilter = imageFilter;
   }
 
+  /// [inner], then the plan, as ONE image filter — what [applyTo] gives a
+  /// draw whose own shading is [inner], for a layer that filter carries.
+  /// The plan holds one filter or the other, never both, so the order is
+  /// the draw's: its shading first, the plan over it.
+  ui.ImageFilter after(ui.ImageFilter inner) {
+    final outer = colorFilter ?? imageFilter;
+    return outer == null
+        ? inner
+        : ui.ImageFilter.compose(outer: outer, inner: inner);
+  }
+
   // A VALUE, so a painter can ask "is this the same filter as last frame?"
   // in `shouldRepaint` — the V row's cut chain is resolved fresh every build,
   // and identity would call a static grade a change on every rebuild.
@@ -682,7 +693,10 @@ final class KeyRun extends EffectStepLead {
 /// where the Gaussian turned with it — and paints no further than the
 /// picture it is handed: a blur 16 long over a dot spread it ±1 px. A step
 /// rasters at the identity over a buffer the plan already grew
-/// ([CompositeEffectPlan.outsetPixels]).
+/// ([CompositeEffectPlan.outsetPixels]) — and INSIDE that raster, where
+/// neither holds, a directional or a radial blur's passes are shader
+/// filters on Impeller: the layers of one picture, not a raster a pass
+/// (🗣️effect-step-passes-each-pay-a-snapshot-Q1 a, `_passesInOnePicture`).
 final class ShadedEffect extends EffectStepLead {
   const ShadedEffect(this.effect);
 

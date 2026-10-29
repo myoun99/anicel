@@ -17,10 +17,12 @@ import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
 /// average of the line through it, [blurLength] across; 0° up, clockwise,
 /// so 0° blurs up and down.
 ///
-/// 🔬Drawn as a raster step at the identity, not an `ImageFilter.shader`:
-/// on Impeller that filter ignored the canvas's turn and spread a dot no
-/// further than ±1 px ([ShadedEffect]). A dot is the probe here too — what
-/// it becomes IS the kernel.
+/// 🔬Drawn as a raster step at the identity, not an `ImageFilter.shader` in
+/// the frame: on Impeller that filter ignored the canvas's turn and spread a
+/// dot no further than ±1 px ([ShadedEffect]). This runner's Skia draws a
+/// raster a pass; Impeller lays the passes in one raster, held to these
+/// bytes by `a_steps_passes_are_layers_of_one_picture_test`. A dot is the
+/// probe here too — what it becomes IS the kernel.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 

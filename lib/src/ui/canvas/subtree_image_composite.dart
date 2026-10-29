@@ -1146,6 +1146,17 @@ List<_StepDraw> _stepDraws(
       ];
     }
   }
+  if (_passesForOnePicture(
+        lead,
+        space: space,
+        paper: paper,
+        rasterWidth: rasterWidth,
+      )
+      case final passes?) {
+    return [
+      (image, _, then) => _passesInOnePicture(image, passes, then: then),
+    ];
+  }
   final shaded = _leadDraws(
     lead,
     space: space,
@@ -1161,6 +1172,117 @@ List<_StepDraw> _stepDraws(
       (image, input, then) =>
           _effectStepDraw(image: image, input: input, lead: shader, then: then),
   ];
+}
+
+/// Whether a step's blur passes are laid as the layers of one picture
+/// ([_passesInOnePicture]) where the engine can. Off, each pass is a raster
+/// of its own — the route a test holds the picture's bytes against.
+@visibleForTesting
+bool debugPassesInOnePicture = true;
+
+/// How many steps laid their passes in one picture since a test zeroed it.
+///
+/// ⚠️Written under `assert`, so a release build pays nothing.
+@visibleForTesting
+int debugStepsInOnePicture = 0;
+
+/// [lead]'s passes at [space] when every one is a blur along a way
+/// ([LineBoxPass]) and the engine has a shader filter — Impeller; Skia has
+/// none, and throws. Null otherwise: then each pass is a raster of its own.
+///
+/// ⛔A camera lens blur's passes stay rasters: its row sums hold numbers
+/// past a byte, and a layer's texels are bytes.
+List<LineBoxPass>? _passesForOnePicture(
+  EffectStepLead? lead, {
+  required DrawSpace space,
+  required Rect paper,
+  required int rasterWidth,
+}) {
+  if (lead is! ShadedEffect ||
+      !debugPassesInOnePicture ||
+      !ui.ImageFilter.isShaderFilterSupported) {
+    return null;
+  }
+  final passes = shadedPassesOf(
+    lead.effect,
+    space,
+    paper: paper,
+    rasterWidth: rasterWidth,
+  );
+  if (passes.isEmpty || passes.any((pass) => pass is! LineBoxPass)) {
+    return null;
+  }
+  return passes.whereType<LineBoxPass>().toList();
+}
+
+/// [passes] over [image] as the layers of ONE picture, the first innermost,
+/// each layer filtered by its pass ([DirectionalBlurShader]) — then [then]
+/// over the last: one raster where a raster a pass made as many.
+///
+/// 🗣️effect-step-passes-each-pay-a-snapshot-Q1 a (유저 2026-10-29 「바꾼다 —
+/// 한 단계의 패스들을 그림 한 장 안에서 겹친다」). 🔬On the Surface Pro 11
+/// (10-29, Windows GLES, a 1920×1080 raster a frame, 100 frames each): a
+/// raster a pass cost ~22ms each — 1 · 2 · 4 · 8 passes 27 · 50 · 104 · 189
+/// ms a frame — and the same passes as layers of one raster 28 · 33 · 32 ·
+/// 40. The pixels: none upside down, none more than 1/255 apart, 0.4–0.8%
+/// of them that far (directional and radial, opaque and with alpha).
+///
+/// Neither reason a pass is not a filter in the FRAME ([ShadedEffect])
+/// reaches here: the picture is the step's own raster, at the identity, and
+/// what each layer holds is the whole buffer the plan grew.
+ui.Image _passesInOnePicture(
+  ui.Image image,
+  List<LineBoxPass> passes, {
+  required CompositeEffectPaint then,
+}) {
+  assert(() {
+    debugStepsInOnePicture += 1;
+    return true;
+  }());
+  final rect = Rect.fromLTWH(
+    0,
+    0,
+    image.width.toDouble(),
+    image.height.toDouble(),
+  );
+  final nothing = Paint()
+    ..blendMode = BlendMode.src
+    ..color = const Color(0x00000000);
+  final recorder = ui.PictureRecorder();
+  final into = Canvas(recorder);
+  final shaders = <ui.FragmentShader>[];
+  try {
+    // Outermost first: the last pass, with [then] over it.
+    for (final pass in passes.reversed) {
+      final shader = DirectionalBlurShader.shaderFor(source: image, pass: pass);
+      final filter = ui.ImageFilter.shader(shader);
+      into
+        ..saveLayer(
+          rect,
+          Paint()..imageFilter = shaders.isEmpty ? then.after(filter) : filter,
+        )
+        // 🚨THE LAYER IS AS LARGE AS WHAT IS DRAWN INTO IT
+        // ([_composeInTheFrame]): nothing, `src`, over the whole raster.
+        ..drawRect(rect, nothing);
+      shaders.add(shader);
+    }
+    // 1:1 at the identity, as [_effectStepDraw] blits.
+    into.drawImageRect(
+      image,
+      rect,
+      rect,
+      Paint()..filterQuality = FilterQuality.none,
+    );
+    for (var layer = 0; layer < passes.length; layer += 1) {
+      into.restore();
+    }
+    return rasterPicture(recorder, image.width, image.height);
+  } finally {
+    // ⚠️Safe once recorded: the picture holds its own claim on each.
+    for (final shader in shaders) {
+      shader.dispose();
+    }
+  }
 }
 
 /// One lead draw: a shader over the picture the draw before it made and
