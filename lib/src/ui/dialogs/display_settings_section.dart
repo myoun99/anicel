@@ -7,6 +7,7 @@ import '../editor_session_manager.dart';
 import '../shortcuts/editor_action_registry.dart' show markToggleActionOf;
 import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
 import '../text/app_strings.dart';
+import '../timeline/inbetween_mark_icon.dart';
 import '../ui_scale.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/settings_rows.dart';
@@ -104,6 +105,7 @@ class DisplaySettingsSection extends StatelessWidget {
           value: grid.unnamedMark,
           values: InbetweenMark.values,
           labelOf: (mark) => editorActionLabel(markToggleActionOf(mark)),
+          iconOf: inbetweenMarkIcon,
           onPicked: (mark) => pick(grid.copyWith(unnamedMark: mark)),
         ),
       ],

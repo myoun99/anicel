@@ -334,7 +334,8 @@ class PanelFlyoutItem extends PanelFlyoutEntry {
 
 /// One [PanelFlyoutItem] per value, keyed `'$keyPrefix${value.name}'` —
 /// the enum spelling of [PanelFlyoutValueChoices.asFlyoutValueChoices],
-/// whose key is the value's own name.
+/// whose key is the value's own name — wearing [iconOf]'s glyph where a
+/// value has a face.
 ///
 /// An extension on the values because they ARE the subject:
 /// `BrushBlendMode.values.asFlyoutChoices(…)` reads as what it builds.
@@ -344,11 +345,13 @@ extension PanelFlyoutChoices<T extends Enum> on Iterable<T> {
     required String keyPrefix,
     required String Function(T value) labelOf,
     required ValueChanged<T> onPicked,
+    IconData Function(T value)? iconOf,
   }) => asFlyoutValueChoices(
     current: current,
     choiceOf: (value) => PanelFlyoutChoice(
       key: '$keyPrefix${value.name}',
       label: labelOf(value),
+      icon: iconOf?.call(value),
     ),
     onPicked: onPicked,
   );
@@ -1638,7 +1641,8 @@ class PanelFlyoutChip extends StatelessWidget {
             children: [
               if (glyph != null) ...[
                 Icon(glyph, size: 16, color: labelStyle.color),
-                alongBox(axis, 6),
+                // A glyph with no words stands where they would (F-497).
+                if (label.isNotEmpty) alongBox(axis, 6),
               ],
               if (expand) Flexible(child: text) else text,
             ],

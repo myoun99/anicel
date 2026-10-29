@@ -86,6 +86,7 @@ class SettingsPickerRow extends StatelessWidget {
     required this.picked,
     required this.entriesBuilder,
     this.help,
+    this.pickedIcon,
   });
 
   /// The button's key — what the list is opened by.
@@ -94,6 +95,11 @@ class SettingsPickerRow extends StatelessWidget {
 
   /// What the button reads: the value picked now.
   final String picked;
+
+  /// The face of the value picked now, for a value that IS a picture: the
+  /// button wears it in place of [picked], which it says as its tooltip
+  /// (F-497 — 「텍스트면 뭔지 알기힘드니」).
+  final IconData? pickedIcon;
 
   /// Null leaves the row inert — there, dimmed — as a switch row with no
   /// `onChanged` is ([SettingsSwitchRow]).
@@ -116,7 +122,9 @@ class SettingsPickerRow extends StatelessWidget {
         width: width,
         child: PanelFlyoutButton(
           key: pickerKey,
-          label: picked,
+          label: pickedIcon == null ? picked : '',
+          icon: pickedIcon,
+          tooltip: pickedIcon == null ? null : picked,
           expand: true,
           enabled: entries != null,
           entriesBuilder: entries ?? () => const [],
@@ -198,17 +206,20 @@ SettingsPickerRow settingsEnumPickerRow<T extends Enum>({
   required String Function(T value) labelOf,
   required ValueChanged<T>? onPicked,
   String? help,
+  IconData Function(T value)? iconOf,
 }) => SettingsPickerRow(
   pickerKey: ValueKey<String>(keyValue),
   label: label,
   help: help,
   picked: labelOf(value),
+  pickedIcon: iconOf?.call(value),
   entriesBuilder: onPicked == null
       ? null
       : () => values.asFlyoutChoices(
           current: value,
           keyPrefix: '$keyValue-',
           labelOf: labelOf,
+          iconOf: iconOf,
           onPicked: onPicked,
         ),
 );

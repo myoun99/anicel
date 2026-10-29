@@ -12,6 +12,7 @@ import '../sliced_value_listenable_builder.dart';
 import '../session/storyboard_cursor.dart' show CommaTargetKind;
 import '../widgets/app_icon_button.dart';
 import 'comma_button.dart';
+import 'inbetween_mark_icon.dart';
 import 'timeline_shift_buttons.dart';
 import '../widgets/command_pill.dart';
 import '../widgets/kept_tail_row.dart' show FoldFloor;
@@ -123,13 +124,6 @@ typedef _MarkPick = ({
 });
 
 const _markEveryIcon = Icons.linear_scale;
-
-/// A mark's face where it is pressed or picked — its toggle button and the
-/// mark-every window's pick wear one, so the two read as one mark.
-IconData _markIcon(InbetweenMark mark) => switch (mark) {
-  InbetweenMark.one => Icons.circle_outlined,
-  InbetweenMark.two => Icons.circle,
-};
 
 /// What a comma window names in its title's brackets: the kinds it
 /// re-times, together where it re-times several.
@@ -251,7 +245,7 @@ class _FrameCountWindowState extends State<_FrameCountWindow> {
                     PillItem(
                       keyValue: '${widget.keyPrefix}-mark-${each.name}',
                       label: editorActionLabel(markToggleActionOf(each)),
-                      icon: _markIcon(each),
+                      icon: inbetweenMarkIcon(each),
                       selected: each == mark,
                       onTap: () => _pick(each),
                     ),
@@ -1073,7 +1067,7 @@ class TimelineActionToolbar extends StatelessWidget {
                 key: ValueKey<String>(key),
                 tooltip: editorActionLabel(markToggleActionOf(mark)),
                 shortcuts: [markToggleActionOf(mark)],
-                icon: _markIcon(mark),
+                icon: inbetweenMarkIcon(mark),
                 onPressed: panelContext.canToggleMark
                     ? () => panelContext.toggleMark(mark)
                     : null,
