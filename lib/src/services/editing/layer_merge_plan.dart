@@ -9,6 +9,7 @@ import '../../models/attached_layer_resolve.dart'
         attachedMirrorCelId,
         attachedRowAsShown,
         isSyncedAttachedLayer;
+import '../../models/attached_mode.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/dirty_region.dart';
@@ -28,6 +29,8 @@ import '../../models/timeline_coverage.dart';
 import '../../models/timeline_exposure.dart';
 import '../../models/timeline_repeat.dart' show ghostFreeTimeline;
 import '../../models/timeline_run_behavior.dart';
+import '../../models/track_conte_laying.dart' show conteBaseOf;
+import '../../models/transform_track.dart';
 import '../commands/link_mirror.dart' show existenceMirrorTargets;
 import '../cut_frame_composite_plan.dart'
     show clipBaseOf, clipsToLayerBelow, exposedCelIdAt, layerPlacementAt;
@@ -87,9 +90,11 @@ typedef CelReads = ({
   CelInkResolver inkOf,
 });
 
-/// One picture a merge bakes: the cel of the row it lands on, and the cut
-/// and frame it is drawn from.
+/// One picture a merge bakes: the cel of the row it lands on, in the cut
+/// [into] — the row keeping the cels of the rows the result is one layer
+/// with — and the cut and frame it is drawn from.
 typedef LayerMergePicture = ({
+  Cut into,
   LayerId rowId,
   FrameId frameId,
   Cut from,
@@ -185,8 +190,13 @@ class LayerMergePlan {
 /// what the press plans from ([planLayerMerge]): one taking for both, so
 /// the button cannot light where the press would merge nothing.
 final class LayerMergeTaking {
-  LayerMergeTaking._(this.cut, this._index, this._taken, this._anchor)
-    : _pictureRows = [
+  LayerMergeTaking._(
+    this.cut,
+    this._index,
+    this._taken,
+    this._anchor,
+    this._conte,
+  ) : _pictureRows = [
         for (final row in cut.layers)
           if (_taken.contains(row.id) && _isPicture(row)) row,
       ],
@@ -213,6 +223,16 @@ final class LayerMergeTaking {
   /// The attach rows riding a row it takes that it does not take — the
   /// rows that ride the result (Q8).
   final List<Layer> _riders;
+
+  /// The cut's conte, when the rows it takes are the conte's rows — rows
+  /// of the track's structure, merged in every cut of it (I-78-Q20).
+  final Layer? _conte;
+
+  /// The row whose place in the track's structure the result keeps, for
+  /// the conte's rows: the topmost picture row taken — a 공정 folder taken
+  /// files no picture, and the structure forgets a folder filing nothing.
+  /// The topmost row taken, for any other rows.
+  Layer get _keeper => _conte == null ? _anchor : _pictureRows.last;
 }
 
 /// The rows ONE press of MERGE takes of every cut they exist in: the
@@ -248,7 +268,8 @@ final class LayerMergeTakings {
 /// to. And an attach row with a self in another cut stays — and with it
 /// the base it rides ([_standsDown]) — until the round that takes it
 /// (④b): its cels are its group's, which the merge would bake anew in one
-/// cut.
+/// cut. A row of a track's conte is none of them: its selves are the
+/// track's structure's, and each is baked in its own cut (I-78-Q20).
 LayerMergeTakings? takeRowsToMergeAcross({
   required Project project,
   required CutId cutId,
@@ -256,6 +277,7 @@ LayerMergeTakings? takeRowsToMergeAcross({
 }) {
   bool linkedRider(Layer row) =>
       row.attachedToLayerId != null &&
+      row.conteKey == null &&
       existenceMirrorTargets(project, cutId: cutId, layerId: row.id).length >
           1;
   final staying = <LayerId>{};
@@ -336,7 +358,8 @@ _selvesOf(Project project, LayerMergeTaking pressed) {
 ///   law of the verb), one with two selves in one cut, and every row an
 ///   attach row rides or that rides one where the merge reaches across
 ///   cuts: the results there are one layer, and a rider's mirrors would be
-///   its group's.
+///   its group's. A row riding its cut's conte by a row of the track's
+///   structure is none (I-78-Q20): the result rides the conte as it did.
 Set<LayerId> _toStay(
   Project project,
   LayerMergeTaking pressed,
@@ -378,7 +401,7 @@ Set<LayerId> _toStay(
   }
   bool attached(LayerMergeTaking taking, LayerId id) {
     final row = taking.cut.layers.byId(id)!;
-    return row.attachedToLayerId != null ||
+    return (row.attachedToLayerId != null && row.conteKey == null) ||
         attachedLayersOf(id, taking.cut.layers).isNotEmpty;
   }
 
@@ -418,6 +441,12 @@ Set<LayerId> _toStay(
 /// ([LayerKind.reordersInCut]), and a transition row is its track's.
 /// ↩️It took only those that composite, and re-placed the rest in the
 /// folder above, for rows no folder can hold.
+///
+/// 🗣️I-78-Q20 (유저 10-30 「트랙의 모든 컷에서 같이 병합」): the rows of the
+/// cut's conte merge among themselves — chosen with rows of the cut's own,
+/// they are passed over (the option's 「콘티 행과 보통 행이 섞이면 콘티 행은
+/// 건너뜁니다」), so the conte's rows are taken only where none of the
+/// cut's own is.
 LayerMergeTaking? takeRowsToMerge({
   required Cut cut,
   required Set<LayerId> selected,
@@ -425,23 +454,33 @@ LayerMergeTaking? takeRowsToMerge({
   bool alone = false,
 }) {
   final index = LayerFolderIndex(cut.layers);
-  bool standsDown(Layer row) => _standsDown(row, cut.layers, staysFor);
   // What a chosen row takes, whole or not at all: itself — or a folder,
-  // everything it holds. Null for a row it cannot take.
-  List<Layer>? reachOf(Layer row) {
-    if (!row.kind.groupsLayers) {
-      return _isPicture(row) && !standsDown(row) ? [row] : null;
+  // everything it holds. Nothing of a row it cannot take, nor of the rows
+  // of the side it is not taking of ([_standsDown]).
+  Map<LayerId, List<Layer>> reachesOf({required bool ofTheConte}) {
+    bool standsDown(Layer row) =>
+        _standsDown(row, cut.layers, staysFor, ofTheConte: ofTheConte);
+    List<Layer>? reachOf(Layer row) {
+      if (!row.kind.groupsLayers) {
+        return _isPicture(row) && !standsDown(row) ? [row] : null;
+      }
+      final under = index.subtreeMembersOf(row.id);
+      return under.any(_isPicture) &&
+              !standsDown(row) &&
+              !under.any(standsDown)
+          ? [row, ...under]
+          : null;
     }
-    final under = index.subtreeMembersOf(row.id);
-    return under.any(_isPicture) && !standsDown(row) && !under.any(standsDown)
-        ? [row, ...under]
-        : null;
+
+    return {
+      for (final row in cut.layers)
+        if (selected.contains(row.id)) row.id: ?reachOf(row),
+    };
   }
 
-  final reaches = {
-    for (final row in cut.layers)
-      if (selected.contains(row.id)) row.id: ?reachOf(row),
-  };
+  final own = reachesOf(ofTheConte: false);
+  final ofTheConte = own.isEmpty;
+  final reaches = ofTheConte ? reachesOf(ofTheConte: true) : own;
   // Bottom → top: the last is the topmost.
   final heads = [
     for (final row in cut.layers)
@@ -450,10 +489,16 @@ LayerMergeTaking? takeRowsToMerge({
   if (heads.isEmpty) {
     return null;
   }
-  final taking = LayerMergeTaking._(cut, index, {
-    for (final head in heads)
-      for (final row in reaches[head.id]!) row.id,
-  }, heads.last);
+  final taking = LayerMergeTaking._(
+    cut,
+    index,
+    {
+      for (final head in heads)
+        for (final row in reaches[head.id]!) row.id,
+    },
+    heads.last,
+    ofTheConte ? conteBaseOf(cut) : null,
+  );
   return alone ||
           heads.any((head) => head.kind.groupsLayers) ||
           taking._pictureRows.length > 1
@@ -475,49 +520,107 @@ LayerMergePlan planLayerMerge(
   required PasteboardReach reach,
 }) {
   final pressed = takings.pressed;
+  final all = takings._all;
   final canonical = _canonicalIdsOf(takings);
   final parts = [
-    for (final taking in takings._all)
+    for (final taking in all)
       _partOf(taking, readsOf(taking.cut), canonical[taking.cut.id]!),
   ];
-  final bank = _bankOf(parts, () => mintFrameId(pressed._anchor.id));
-  final held = [for (final (:cel, part: _) in bank.cels) cel];
   final wall = pressed.cut.canvasSize.pasteboardAt(reach);
-  final made = [
-    for (final (index, part) in parts.indexed)
-      _madeOf(
+  final layers = _oneLayerOf(takings);
+  final made = <int, _Made>{};
+  final banked = <LayerMergePicture>[];
+  for (final layer in layers) {
+    final first = all[layer.first];
+    final keptUnder = _resultIdIn(takings, first, first);
+    final bank = _bankOf(
+      [for (final index in layer) parts[index]],
+      (part, spans) => switch (part.follows) {
+        final conte? => attachedMirrorCelId(
+          keptUnder,
+          exposedFrameIdAt(conte.timeline, spans.first.start)!,
+        ),
+        null => mintFrameId(keptUnder),
+      },
+    );
+    final held = [for (final (:cel, part: _) in bank.cels) cel];
+    for (final (at, index) in layer.indexed) {
+      final part = parts[index];
+      made[index] = _madeOf(
         part,
         (
-          id: _resultIdIn(takings, part.taking),
+          id: _resultIdIn(takings, first, part.taking),
           head: pressed._anchor,
           bank: held,
-          cels: bank.byPart[index],
+          cels: bank.byPart[at],
         ),
         mintFrameId,
         (wall: wall, inkOf: part.reads.inkOf),
-      ),
-  ];
-  return LayerMergePlan._(
-    cut: pressed.cut,
-    result: made.first.result,
-    pictures: [
+      );
+    }
+    banked.addAll([
       for (final (:cel, :part) in bank.cels)
         (
-          rowId: made.first.result.id,
+          into: first.cut,
+          rowId: keptUnder,
           frameId: cel.frameId,
-          from: parts[part].baked,
+          from: parts[layer[part]].baked,
           frameIndex: cel.spans.first.start,
         ),
-      for (final part in made) ...part.riderPictures,
+    ]);
+  }
+  final results = [for (final (index, _) in parts.indexed) made[index]!];
+  return LayerMergePlan._(
+    cut: pressed.cut,
+    result: results.first.result,
+    pictures: [
+      ...banked,
+      for (final part in results) ...part.riderPictures,
     ],
-    changes: {for (final part in made) ...part.changes},
-    layers: made.first.layers,
+    changes: {for (final part in results) ...part.changes},
+    layers: results.first.layers,
     others: [
-      for (final (index, part) in made.indexed.skip(1))
+      for (final (index, part) in results.indexed.skip(1))
         (cut: parts[index].taking.cut, layers: part.layers),
     ],
-    links: _linksAfter(takings, [for (final part in made) part.result]),
+    links: _linksAfter(takings, layers, [
+      for (final part in results) part.result,
+    ]),
   );
+}
+
+/// The takings whose results are ONE layer — each set by its index in
+/// [takings], the pressed cut's first: those a link group joins, a row one
+/// takes linked to a row another takes (Q12 「컷끼리 계속 겸용입니다」).
+///
+/// ⛔A track's conte rows are no link across its cuts (`conteHeadTargets`
+/// — 「two cuts' conte rows in one group would turn every pair of
+/// same-named panels into one picture」): where the press reaches the
+/// cuts by the track's structure (I-78-Q20), each cut's result is a layer
+/// of its own — but for the cuts a 겸용 pair links.
+List<List<int>> _oneLayerOf(LayerMergeTakings takings) {
+  final links = takings._project.linkRegistry;
+  final all = takings._all;
+  final joinedTo = [for (var index = 0; index < all.length; index += 1) index];
+  int rootOf(int index) => joinedTo[index] == index
+      ? index
+      : joinedTo[index] = rootOf(joinedTo[index]);
+  final byGroup = <String, int>{};
+  for (final (index, taking) in all.indexed) {
+    for (final id in taking._taken) {
+      final group = links.groupOf(cutId: taking.cut.id, layerId: id);
+      if (group != null) {
+        joinedTo[rootOf(index)] = rootOf(
+          byGroup.putIfAbsent(group.id, () => index),
+        );
+      }
+    }
+  }
+  final layers = <int, List<int>>{};
+  for (var index = 0; index < all.length; index += 1) {
+    (layers[rootOf(index)] ??= []).add(index);
+  }
+  return [...layers.values];
 }
 
 /// ONE cut's share of a merge: what it is baked of and drawn from, and the
@@ -530,6 +633,7 @@ typedef _Part = ({
   Set<LayerId> over,
   Cut baked,
   List<List<CutFrameCompositeSpan>> runs,
+  Layer? follows,
 });
 
 /// [taking]'s share ([_Part]), its cels read by [reads] and its rows
@@ -545,25 +649,56 @@ _Part _partOf(
   };
   final rows = _bakedRows(taking);
   final folders = _foldersLeft(taking, over, rows);
+  // The result parts wherever a synced rider's picture does too: each
+  // rides the result's cels one for one.
+  final runs = _runsByPicture(
+    _cutWith(taking, folders, [
+      ...rows,
+      for (final rider in taking._riders)
+        if (isSyncedAttachedLayer(rider)) _riding(rider),
+    ]),
+    taking._pictureRows,
+    reads.revisionOf,
+    keys: canonical,
+  );
   return (
     taking: taking,
     reads: reads,
     standing: standing,
     over: over,
     baked: _cutWith(taking, folders, rows),
-    // The result parts wherever a synced rider's picture does too: each
-    // rides the result's cels one for one.
-    runs: _runsByPicture(
-      _cutWith(taking, folders, [
-        ...rows,
-        for (final rider in taking._riders)
-          if (isSyncedAttachedLayer(rider)) _riding(rider),
-      ]),
-      taking._pictureRows,
-      reads.revisionOf,
-      keys: canonical,
-    ),
+    runs: runs,
+    follows: _conteFollowed(taking, runs),
   );
+}
+
+/// The conte whose timing the result of [taking] — of its conte's rows —
+/// follows, as every row it takes did (I-78-Q20): each of its pictures
+/// ([runs]) shown where one cel of the conte is, and each such cel showing
+/// one — what a synced row's cels are, one for each of the conte's. Null
+/// for a result that keeps a timing of its own.
+Layer? _conteFollowed(
+  LayerMergeTaking taking,
+  List<List<CutFrameCompositeSpan>> runs,
+) {
+  final conte = taking._conte;
+  if (conte == null || !taking._pictureRows.every(isSyncedAttachedLayer)) {
+    return null;
+  }
+  final shown = <FrameId>{};
+  for (final spans in runs) {
+    final cels = {
+      for (final span in spans) ...[
+        exposedFrameIdAt(conte.timeline, span.start),
+        exposedFrameIdAt(conte.timeline, span.start + span.length - 1),
+      ],
+    };
+    final cel = cels.length == 1 ? cels.single : null;
+    if (cel == null || !shown.add(cel)) {
+      return null;
+    }
+  }
+  return conte;
 }
 
 /// Every cut's rows as ONE key names them across the cuts: a row of a link
@@ -585,16 +720,17 @@ Map<CutId, Map<LayerId, LayerId>> _canonicalIdsOf(LayerMergeTakings takings) {
 /// One cel of the bank the results share, and the share it first shows in.
 typedef _BankCel = ({_Cel cel, int part});
 
-/// The cels the results hold — ONE bank for every cut, as a 겸용 layer's
-/// cels are its group's (`UpdateLayerTimelineCommand`): a cel for each
-/// picture a share shows, the same picture in two cuts one cel (the Q12
-/// question's reading: 「같은 조합이면 같은 이름(은행의 한 그림)을, 다른
-/// 조합이면 꼬리 번호」) — minted by [mint] and named after the cel the
-/// topmost row taken shows where it first shows (Q10 · Q11), clear of every
-/// name the bank holds. With them, each share's own cels by its runs.
+/// The cels the results that are ONE layer hold — one bank for every cut,
+/// as a 겸용 layer's cels are its group's (`UpdateLayerTimelineCommand`):
+/// a cel for each picture a share shows, the same picture in two cuts one
+/// cel (the Q12 question's reading: 「같은 조합이면 같은 이름(은행의 한
+/// 그림)을, 다른 조합이면 꼬리 번호」) — minted by [mint], handed the share
+/// and the picture's runs, and named after the cel the topmost row taken
+/// shows where it first shows (Q10 · Q11), clear of every name the bank
+/// holds. With them, each share's own cels by its runs.
 ({List<_BankCel> cels, List<List<_Cel>> byPart}) _bankOf(
   List<_Part> parts,
-  FrameId Function() mint,
+  FrameId Function(_Part share, List<CutFrameCompositeSpan> spans) mint,
 ) {
   final held = <String>{};
   final bySignature = <CutFrameCompositeSignature, _BankCel>{};
@@ -607,7 +743,7 @@ typedef _BankCel = ({_Cel cel, int part});
     final share = parts[part];
     final cel = (
       cel: (
-        frameId: mint(),
+        frameId: mint(share, spans),
         name: _nameTakenAt(
           held,
           share.baked,
@@ -644,25 +780,38 @@ typedef _ResultOf = ({
   List<_Cel> cels,
 });
 
-/// What [part]'s cut is made of the merge: its result ([_ResultOf]) where
-/// its topmost row stood, the rows riding it baked anew — minted by
-/// [mintFrameId] — and why it may show otherwise, its pictures checked at
-/// [wall].
-({
+/// What a share's cut is made of the merge: its result where its topmost
+/// row stood, its rows after, the pictures of the rows riding it baked
+/// anew, and why it may show otherwise.
+typedef _Made = ({
   Layer result,
   List<Layer> layers,
   List<LayerMergePicture> riderPictures,
   Set<LayerMergeChange> changes,
-})
-_madeOf(
+});
+
+/// What [part]'s cut is made of the merge ([_Made]): its result
+/// ([_ResultOf]) — a row of its conte, where it takes the conte's rows
+/// ([_onTheConte]) — the rows riding it baked anew, minted by
+/// [mintFrameId], its pictures checked at [wall].
+_Made _madeOf(
   _Part part,
   _ResultOf of,
   FrameId Function(LayerId row) mintFrameId,
   _WallCheck wall,
 ) {
   final taking = part.taking;
+  final row = _resultRow(of, taking._anchor, part.standing);
   final result = (
-    row: _resultRow(of, taking._anchor, part.standing),
+    row: switch (taking._conte) {
+      final conte? => _onTheConte(
+        row,
+        taking._keeper,
+        conte,
+        following: part.follows == null ? null : of.cels,
+      ),
+      null => row,
+    },
     runs: part.runs,
     cels: of.cels,
   );
@@ -685,82 +834,88 @@ _madeOf(
     changes: _changesOf(
       taking,
       part.over,
-      _picturesOf(result.row, of.cels, part.baked),
+      _picturesOf(taking.cut, result.row, of.cels, part.baked),
       wall,
     ),
   );
 }
 
-/// The id [taking]'s result keeps: that of the pressed cut's topmost row's
-/// self there, where it has one — so the results' cels stay where the
-/// link table keeps the pressed one's now ([_linksAfter]) — else that of
-/// its own topmost row.
-LayerId _resultIdIn(LayerMergeTakings takings, LayerMergeTaking taking) {
-  final pressed = takings.pressed;
-  if (identical(taking, pressed)) {
-    return pressed._anchor.id;
+/// The id [taking]'s result keeps, of the results ONE layer with [first]'s
+/// ([_oneLayerOf]): that of [first]'s keeper's self there ([_keeper]),
+/// where it has one — so the results' cels stay where the link table keeps
+/// [first]'s now ([_linksAfter]) — else that of its own keeper.
+LayerId _resultIdIn(
+  LayerMergeTakings takings,
+  LayerMergeTaking first,
+  LayerMergeTaking taking,
+) {
+  if (identical(taking, first)) {
+    return first._keeper.id;
   }
   return takings._project.linkRegistry.counterpartIn(
-        cutId: pressed.cut.id,
-        layerId: pressed._anchor.id,
+        cutId: first.cut.id,
+        layerId: first._keeper.id,
         targetCutId: taking.cut.id,
       ) ??
-      taking._anchor.id;
+      taking._keeper.id;
 }
 
 /// The link table after [takings]' merge leaves [results], one for each
 /// cut: every group a row it takes stood in gone — each of its members is
-/// taken, in its own cut — and, across cuts, the results ONE layer (Q12
-/// 「컷끼리 계속 겸용입니다(이름 · 그림 은행 같이 씀)」), its first member the
-/// one the pressed result's cels are kept under now: what the pictures are
-/// laid under before the table changes.
+/// taken, in its own cut — and the results of each of [layers] ONE layer
+/// across their cuts (Q12 「컷끼리 계속 겸용입니다(이름 · 그림 은행 같이
+/// 씀)」), its first member the one the first's cels are kept under now:
+/// what the pictures are laid under before the table changes.
 LayerLinkRegistry _linksAfter(
   LayerMergeTakings takings,
+  List<List<int>> layers,
   List<Layer> results,
 ) {
   final project = takings._project;
   final links = project.linkRegistry;
+  final all = takings._all;
   final gone = {
-    for (final taking in takings._all) ...taking._taken,
+    for (final taking in all) ...taking._taken,
   };
-  final kept = [
+  final groups = [
     for (final group in links.groups)
       if (!group.members.any((member) => gone.contains(member.layerId)))
         group,
   ];
-  if (results.length < 2) {
-    return LayerLinkRegistry(groups: kept);
-  }
-  final pressed = takings.pressed;
-  final first = links
-      .groupOf(cutId: pressed.cut.id, layerId: pressed._anchor.id)
-      ?.canonical;
-  final members = [
-    for (final (index, taking) in takings._all.indexed)
-      LayerLinkMember(
-        trackId: requireCutPosition(project, taking.cut.id).trackId,
-        cutId: taking.cut.id,
-        layerId: results[index].id,
-      ),
-  ];
-  return LayerLinkRegistry(
-    groups: [
-      ...kept,
+  for (final layer in layers) {
+    if (layer.length < 2) {
+      continue;
+    }
+    final first = all[layer.first];
+    final keptUnder = links
+        .groupOf(cutId: first.cut.id, layerId: first._keeper.id)
+        ?.canonical;
+    final members = [
+      for (final index in layer)
+        LayerLinkMember(
+          trackId: requireCutPosition(project, all[index].cut.id).trackId,
+          cutId: all[index].cut.id,
+          layerId: results[index].id,
+        ),
+    ];
+    groups.add(
       LayerLinkGroup(
         id: firstUnusedName({
-          for (final group in kept) group.id,
+          for (final group in groups) group.id,
         }, (index) => 'link-$index'),
         members: [
-          ...members.where((member) => member == first),
-          ...members.where((member) => member != first),
+          ...members.where((member) => member == keptUnder),
+          ...members.where((member) => member != keptUnder),
         ],
       ),
-    ],
-  );
+    );
+  }
+  return LayerLinkRegistry(groups: groups);
 }
 
 /// What the result is baked of: the rows [taking] takes, each shown (Q7),
-/// and the bases they ride without them — hidden, there to be worn (Q14).
+/// and the bases they ride without them — hidden, there to be worn (Q14);
+/// the conte bare ([_bare]), which the result rides after (I-78-Q20).
 List<Layer> _bakedRows(LayerMergeTaking taking) {
   final LayerMergeTaking(:cut, _taken: taken) = taking;
   final takenRows = [
@@ -772,9 +927,22 @@ List<Layer> _bakedRows(LayerMergeTaking taking) {
     for (final row in cut.layers)
       if (!taken.contains(row.id) &&
           takenRows.any((rider) => rider.attachedToLayerId == row.id))
-        row.copyWith(isVisible: false),
+        if (row.id == taking._conte?.id)
+          _bare(row)
+        else
+          row.copyWith(isVisible: false),
   ];
 }
+
+/// [conte] as the rows riding it are baked against it: hidden, and laying
+/// nothing over them — no pose, no opacity of its keys, no fx — what the
+/// result wears of it after, riding it as they did, and would wear twice
+/// baked in.
+Layer _bare(Layer conte) => conte.copyWith(
+  isVisible: false,
+  transformTrack: TransformTrack.empty(),
+  effects: const [],
+);
 
 /// The folder the result stands in: the topmost row's — or, for an attach
 /// row taken without its base, its base's, the group's folder, where the
@@ -787,10 +955,13 @@ LayerId? _standingFolderOf(LayerMergeTaking taking) {
   };
 }
 
-/// The base the topmost row taken rides, when it is not taken itself (Q14).
+/// The base the topmost row taken rides, when it is not taken itself (Q14)
+/// — but the conte, which the result of its rows rides as they did
+/// ([_onTheConte]).
 Layer? _baseLeftBy(LayerMergeTaking taking) =>
     switch (taking._anchor.attachedToLayerId) {
-      final baseId? when !taking._taken.contains(baseId) =>
+      final baseId?
+          when taking._conte == null && !taking._taken.contains(baseId) =>
         taking.cut.layers.byId(baseId),
       _ => null,
     };
@@ -871,33 +1042,40 @@ List<Layer> _layersAfter(
 /// ([LayerKind.isDrawingCel]).
 bool _isPicture(Layer row) => row.kind.isDrawingCel;
 
-/// The rows this round passes over until the round that merges them comes —
-/// the card's order (I-78, 10-28), not a law of the verb:
-/// - a conte row, whose structure every cut of its track shares (I-78-Q20
-///   waits), and a row [staysFor] keeps — a 겸용 row a band's blocks merge,
-///   and a row whose other selves cannot go with it ([_toStay]),
+/// The rows a merge passes over:
+/// - a row of the side it does not take of — the conte's rows, which merge
+///   only among themselves ([takeRowsToMerge], 🗣️I-78-Q20), where it takes
+///   the cut's own ([ofTheConte] false), and the cut's own where it takes
+///   the conte's,
+/// - until the round that merges them comes — the card's order (I-78,
+///   10-28), not a law of the verb — a row [staysFor] keeps: a 겸용 row a
+///   band's blocks merge, and a row whose other selves cannot go with it
+///   ([_toStay]),
 /// - a direction block, whose direction is no picture to bake (🗣️I-78-Q16,
 ///   유저 10-28: 「건너뛴다 (지금 동작 그대로)」),
 /// - and a row an attach row that stands down rides: the rider would ride
-///   the result, its cels baked anew.
+///   the result, its cels baked anew — which passes over the conte itself
+///   wherever a row rides it, the cut's own though it is.
 ///
 /// ↩️Round ① passed over every attach row and every row one rides; round ②
 /// takes them (Q8 · Q13 · Q14). ↩️A reference row was passed over too, its
 /// file laid whole past the wall (F-374-Q8) where no picture of the screen
 /// reaches, until 🗣️I-78-Q15 (유저 10-28 「참조도 그대로 병합한다」): what
-/// lies there is warned of instead ([LayerMergeChange.wall]).
+/// lies there is warned of instead ([LayerMergeChange.wall]). ↩️And every
+/// conte row was passed over until Q20 was answered.
 bool _standsDown(
   Layer row,
   List<Layer> layers,
-  bool Function(Layer row) staysFor,
-) =>
+  bool Function(Layer row) staysFor, {
+  required bool ofTheConte,
+}) =>
     staysFor(row) ||
-    row.conteKey != null ||
+    (row.conteKey != null) != ofTheConte ||
     row.timeline.values.any((exposure) => exposure.instruction != null) ||
-    attachedLayersOf(
-      row.id,
-      layers,
-    ).any((rider) => _standsDown(rider, layers, staysFor));
+    attachedLayersOf(row.id, layers).any(
+      (rider) =>
+          _standsDown(rider, layers, staysFor, ofTheConte: ofTheConte),
+    );
 
 /// The folders above [rows] that the result does not stand in ([over]):
 /// the looks the rows leave, baked into their pictures.
@@ -1101,11 +1279,17 @@ String? _nameShownAt(Cut cut, List<Layer> rows, int frameIndex) {
   return null;
 }
 
-/// The pictures [cels] of [row] are baked from: each drawn of [from] at the
-/// first frame it shows.
-List<LayerMergePicture> _picturesOf(Layer row, List<_Cel> cels, Cut from) => [
+/// The pictures [cels] of [row] in [into] are baked from: each drawn of
+/// [from] at the first frame it shows.
+List<LayerMergePicture> _picturesOf(
+  Cut into,
+  Layer row,
+  List<_Cel> cels,
+  Cut from,
+) => [
   for (final cel in cels)
     (
+      into: into,
       rowId: row.id,
       frameId: cel.frameId,
       from: from,
@@ -1120,7 +1304,7 @@ List<LayerMergePicture> _picturesOf(Layer row, List<_Cel> cels, Cut from) => [
 Layer _resultRow(_ResultOf of, Layer anchor, LayerId? folderId) => Layer(
   id: of.id,
   name: of.head.name,
-  kind: _kindHolding(of.head.kind, of.bank),
+  kind: _kindHolding(of.head.kind, of.bank.length),
   mark: of.head.mark,
   onTimesheet: anchor.onTimesheet,
   folderId: folderId,
@@ -1128,11 +1312,42 @@ Layer _resultRow(_ResultOf of, Layer anchor, LayerId? folderId) => Layer(
   timeline: _timelineOf(of.cels),
 );
 
-/// The kind a row of [kind] is once it holds [cels]: a picture row's own —
-/// a folder or an image that now holds more than one picture becoming a
-/// drawing row.
-LayerKind _kindHolding(LayerKind kind, List<_Cel> cels) =>
-    kind.isDrawingCel && !(kind.holdsSingleCel && cels.length > 1)
+/// [row] made a row of [conte] (🗣️I-78-Q20: 「결과는 트랙 구조에서 맨 위 행
+/// 자리에 서고 모든 컷이 같은 구조를 유지」): riding it on the side [keeper]
+/// rode, as [keeper]'s row of the track's structure, of its kind — and,
+/// [following] the conte's timing as every row taken did
+/// ([_conteFollowed]), a cel for each cel of the conte it shows, as a
+/// synced row's are; a timing of its own where null.
+Layer _onTheConte(
+  Layer row,
+  Layer keeper,
+  Layer conte, {
+  required List<_Cel>? following,
+}) {
+  final riding = row.copyWith(
+    kind: _kindHolding(keeper.kind, row.frames.length),
+    attachedToLayerId: conte.id,
+    attachedPlacement: keeper.attachedPlacement,
+    conteKey: keeper.conteKey,
+  );
+  if (following == null) {
+    return riding.copyWith(attachedMode: AttachedMode.free);
+  }
+  return riding.copyWith(
+    attachedMode: AttachedMode.synced,
+    timeline: const {},
+    baseFrameLinks: {
+      for (final cel in following)
+        exposedFrameIdAt(conte.timeline, cel.spans.first.start)!: cel.frameId,
+    },
+  );
+}
+
+/// The kind a row of [kind] is once it holds [pictures] cels: a picture
+/// row's own — a folder or an image that now holds more than one picture
+/// becoming a drawing row.
+LayerKind _kindHolding(LayerKind kind, int pictures) =>
+    kind.isDrawingCel && !(kind.holdsSingleCel && pictures > 1)
     ? kind
     : LayerKind.animation;
 
@@ -1198,7 +1413,7 @@ typedef _Minting = ({
         },
       ),
       pictures: [
-        for (final picture in _picturesOf(rider, cels, alone))
+        for (final picture in _picturesOf(alone, rider, cels, alone))
           if (exposedCelIdAt(
                 cut: alone,
                 layerId: rider.id,
@@ -1218,11 +1433,11 @@ typedef _Minting = ({
   return (
     row: rider.copyWith(
       attachedToLayerId: result.row.id,
-      kind: _kindHolding(rider.kind, cels),
+      kind: _kindHolding(rider.kind, cels.length),
       frames: _framesOf(cels),
       timeline: _timelineOf(cels),
     ),
-    pictures: _picturesOf(rider, cels, alone),
+    pictures: _picturesOf(alone, rider, cels, alone),
   );
 }
 
@@ -1298,7 +1513,7 @@ typedef _WallCheck = ({PasteboardWall wall, CelInkResolver inkOf});
 /// and a reference's fx move it from where its pixels are laid ([_laidOf]).
 bool _cutAtTheWall(List<LayerMergePicture> drawn, _WallCheck check) {
   final (:wall, :inkOf) = check;
-  for (final (:from, :frameIndex, rowId: _, frameId: _) in drawn) {
+  for (final (:from, :frameIndex, into: _, rowId: _, frameId: _) in drawn) {
     for (final row in from.layers) {
       final cel = from.layers.rowVisible(row)
           ? exposedCelIdAt(cut: from, layerId: row.id, frameIndex: frameIndex)
@@ -1451,9 +1666,11 @@ final class BlockMergeTaking {
 /// What a press of MERGE takes of [cut]'s blocks starting at
 /// [blockStarts], by row — null where no row merges any.
 ///
-/// A row passes over as a merge of rows passes it over ([_standsDown]),
-/// and so does a row with one block in the band, or none. A synced attach
-/// row owns no blocks of its own: it merges as its base does.
+/// A row passes over as a merge of the cut's own rows passes it over
+/// ([_standsDown]) — a conte row among them, as every one was before
+/// I-78-Q20, which answered the merge of rows — and so does a row with one
+/// block in the band, or none. A synced attach row owns no blocks of its
+/// own: it merges as its base does.
 BlockMergeTaking? takeBlocksToMerge({
   required Cut cut,
   required Map<LayerId, List<int>> blockStarts,
@@ -1465,7 +1682,7 @@ BlockMergeTaking? takeBlocksToMerge({
           when starts.length > 1 &&
               _isPicture(row) &&
               !isSyncedAttachedLayer(row) &&
-              !_standsDown(row, cut.layers, isLinked))
+              !_standsDown(row, cut.layers, isLinked, ofTheConte: false))
         row: starts,
   };
   return starts.isEmpty ? null : BlockMergeTaking._(cut, starts);

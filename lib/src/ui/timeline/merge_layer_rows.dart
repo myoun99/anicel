@@ -127,16 +127,22 @@ Future<void> mergeBlocks(
 }
 
 /// Each of [plan]'s pictures drawn of the cut it is made from, laid on its
-/// new cel.
+/// new cel in the cut that keeps it ([LayerMergePicture.into]) — a merge
+/// of a track's conte rows lays each cut's own (I-78-Q20), one cut's after
+/// another's.
 Future<void> _layPictures(
   EditorSessionManager session,
   LayerMergePlan plan,
   void Function(double) report,
 ) async {
-  final laying = _Laying(session, plan.cut);
+  _Laying? laying;
   try {
     for (final (index, picture) in plan.pictures.indexed) {
-      await laying.lay(
+      if (laying?.cut.id != picture.into.id) {
+        laying?.dispose();
+        laying = _Laying(session, picture.into);
+      }
+      await laying!.lay(
         picture.rowId,
         picture.frameId,
         await laying.draw(picture.from, picture.frameIndex),
@@ -144,7 +150,7 @@ Future<void> _layPictures(
       report(doneShare(index + 1, plan.pictures.length));
     }
   } finally {
-    laying.dispose();
+    laying?.dispose();
   }
 }
 
