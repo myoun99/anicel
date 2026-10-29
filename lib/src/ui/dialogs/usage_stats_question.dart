@@ -23,6 +23,12 @@ final usageStatsQuestionKeys = confirmDialogKeys('usage-stats-question');
 ///
 /// ⚠️A window closed with neither — the barrier, escape — is no answer, and
 /// the next launch asks again.
+///
+/// ⚖️IT OPENS ON NEITHER BUTTON (I-70-Q6, 유저 2026-10-29: 「포커스
+/// 없음」): an answer is a press of one of the two, never the Enter that
+/// was meant for whatever stood there a moment before the window appeared —
+/// consent is deliberate. The one exception to F-479, which opens every
+/// other window on its yes ([ConfirmQuestion.opensOnItsYes]).
 Future<void> askUsageStatsIfUnanswered(
   BuildContext context,
   UsageStats usageStats,
@@ -42,6 +48,7 @@ Future<void> askUsageStatsIfUnanswered(
         strings.usageStatsHelp,
         strings.usageStatsChangeLater,
       ].join('\n\n'),
+      opensOnItsYes: false,
     ),
     accept: ConfirmChoice(strings.usageStatsDoSend),
     decline: ConfirmChoice(strings.usageStatsDontSend),

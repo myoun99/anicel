@@ -209,6 +209,24 @@ void main() {
     expect(posts, isEmpty);
   });
 
+  // 🗣️I-70-Q6 (유저 2026-10-29): 「포커스 없음」 — consent is a press.
+  testWidgets('⛔Enter answers nothing — the window opens on neither '
+      'button, and only a press of one answers', (tester) async {
+    final store = _MemoryStore();
+    final stats = await launch(tester, store);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+    expect(_window, findsOneWidget);
+    expect(store.answer, isNull);
+    expect(stats.enabled.value, isFalse);
+    expect(posts, isEmpty);
+
+    await tester.tap(_dontSend);
+    await tester.pumpAndSettle();
+    expect(_window, findsNothing);
+    expect(store.answer, isA<UsageStatsOff>());
+  });
+
   testWidgets('⛔closed with neither — escape, or a tap beside it — is no '
       'answer: off, nothing sent, and the next launch asks again', (
     tester,
