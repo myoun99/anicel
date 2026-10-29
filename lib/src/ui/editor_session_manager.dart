@@ -104,6 +104,7 @@ import 'timeline/timeline_cell_exposure_state.dart';
 import 'timeline/timeline_drag_preview.dart';
 import 'timeline/timeline_frame_ruler_painter.dart'
     show timelineFramePlaceLabel;
+import 'timeline/timeline_grid_tile_store.dart';
 import 'session/live_stroke_landing.dart';
 import 'session/pixel_editing.dart';
 import 'session/session_roles.dart';
@@ -1674,6 +1675,17 @@ class EditorSessionManager extends ChangeNotifier
     () => unawaited(movieCels.dispose()),
     standing.dispose,
     _letGoOfTheFilesItHolds,
+    // After the files: that reads what the stores read from (F-505).
+    () {
+      for (final store in renderCaches.celStores) {
+        store.dispose();
+      }
+    },
+    // The app's timeline tiles keep the resolvers they were baked against —
+    // this project's, its whole session behind them (F-505, measured: the
+    // first holder of a closed tab). The project on screen bakes its own
+    // again.
+    TimelineGridTileStore.instance.clear,
     canvasStroke.dispose,
     historyManager.dispose,
   ];

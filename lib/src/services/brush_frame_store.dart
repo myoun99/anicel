@@ -14,6 +14,7 @@ import '../models/cut_id.dart';
 import '../models/movie_cel.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
+import '../native/qa_native_engine.dart';
 import 'bitmap_surface_geometry.dart';
 import 'memory_pressure_budget.dart';
 import 'persistence/brush_drawing_binary_codec.dart';
@@ -1272,6 +1273,38 @@ class BrushFrameStore {
     // project per tab (I-7) that let go of every OTHER tab's file too, so it
     // lets go of the files THIS store read from and no others.
     releaseFilesReadFrom();
+    _letGoOfEveryCel();
+    // R27 #13: a whole-store swap (project open) is one crossing for
+    // every cel there was — one bump covers the lot.
+    _crossing.addAll(_celsWithContent);
+    _celsWithContent.clear();
+    _announceCrossings();
+  }
+
+  /// A CLOSED project's store lets go of every cel it holds — and the
+  /// engine gives back its parking once the collector has found them
+  /// ([QaNativeEngine.giveBackOnceCollected]).
+  ///
+  /// 🗣️유저 2026-10-29 (F-505): 「무거운거 닫으면 … 초기프로젝트분만큼만
+  /// 메모리 존재해야하는데 무거운 프로젝트의 메모리가 아직 남아있는듯함」.
+  /// 🔬Measured (a heavy tab closed beside an empty one, two collections
+  /// after): the session disposed, its store still holding 3,262MB of hot
+  /// cels — whatever still reached the closed session reached them, and the
+  /// panel read them as 「엔진·폰트·프레임워크」. A closed project's pictures
+  /// go at the close, whoever still holds its session.
+  ///
+  /// ⚠️After its files are released (`EditorSessionManager`'s teardown reads
+  /// [filesReadFrom] first) and announcing nothing: nobody listens to a
+  /// closed project's crossings.
+  void dispose() {
+    for (final surface in [..._bakedSurfaces.values, ..._movieCels.values]) {
+      QaNativeEngine.giveBackOnceCollected(surface);
+    }
+    _dropMovieCels();
+    _letGoOfEveryCel();
+  }
+
+  void _letGoOfEveryCel() {
     _frames.clear();
     clearDisplayCaches();
     _bakedSurfaces.clear();
@@ -1284,11 +1317,6 @@ class BrushFrameStore {
     _dropCutAhead(_cutAhead);
     _cutAhead = null;
     _movedAhead = null;
-    // R27 #13: a whole-store swap (project open) is one crossing for
-    // every cel there was — one bump covers the lot.
-    _crossing.addAll(_celsWithContent);
-    _celsWithContent.clear();
-    _announceCrossings();
   }
 
   /// Replaces the WHOLE store with loaded cels as COLD-RAM blobs (tests
