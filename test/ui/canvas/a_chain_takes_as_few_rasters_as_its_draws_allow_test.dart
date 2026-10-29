@@ -129,11 +129,11 @@ void main() {
     kind: EffectKind.brightnessContrast,
     values: [40, 25],
   );
-  final cameraLens = ResolvedLayerEffect(
+  ResolvedLayerEffect cameraLens(double radius) => ResolvedLayerEffect(
     kind: EffectKind.cameraLensBlur,
     values: [
       for (final spec in EffectKind.cameraLensBlur.parameters)
-        if (spec.id == 'blurRadius') 6 else spec.defaultValue,
+        if (spec.id == 'blurRadius') radius else spec.defaultValue,
     ],
   );
   const inner = Rect.fromLTWH(5, 4, 58, 37);
@@ -233,25 +233,28 @@ void main() {
         // Its sums are numbers past a byte and its gather reads them: every
         // raster of its own stays one.
         'a camera lens blur': (
-          chain: [cameraLens],
+          chain: [cameraLens(6)],
           paper: canvas,
           takes: (laid, off) => laid == off && laid > 1,
           most: 0,
         ),
         // ...and what lies over its gather is one picture with it.
         'a camera lens blur, then a blur along a way': (
-          chain: [cameraLens, directional(30, 40)],
+          chain: [cameraLens(6), directional(30, 40)],
           paper: canvas,
           takes: (laid, off) => laid == off - 2,
           most: 1,
         ),
-        // Its gather and the colour on it are a raster, as the keys after
-        // read them; the keys one more — a fresh paint each, so the colour
-        // is laid once.
-        'a camera lens blur, a colour, then two keys': (
+        // Its gather and the Gaussian on it are a raster, as the keys after
+        // read them; the keys one more — over a fresh paint, so the Gaussian
+        // blurs once. ⚠️A key takes its colours from the run's input and only
+        // its alpha from the layer under it: what a stale paint did there
+        // shows only where it moves an alpha — a colour would not — and a
+        // lens of a pixel leaves the alpha rough enough to show it.
+        'a camera lens blur, a Gaussian, then two keys': (
           chain: [
-            cameraLens,
-            brighter,
+            cameraLens(1),
+            gaussian(),
             key(0xFF808080, keeps: false),
             key(0xFF406080, keeps: true),
           ],
