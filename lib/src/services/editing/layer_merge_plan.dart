@@ -605,22 +605,17 @@ typedef _BankCel = ({_Cel cel, int part});
       return known;
     }
     final share = parts[part];
-    final name = switch (_nameShownAt(
-      share.baked,
-      share.taking._pictureRows,
-      spans.first.start,
-    )) {
-      final shown? => firstUnusedName(
-        held,
-        (index) => index == 1 ? shown : '$shown-$index',
-      ),
-      null => null,
-    };
-    if (name != null) {
-      held.add(name);
-    }
     final cel = (
-      cel: (frameId: mint(), name: name, spans: spans),
+      cel: (
+        frameId: mint(),
+        name: _nameTakenAt(
+          held,
+          share.baked,
+          share.taking._pictureRows,
+          spans.first.start,
+        ),
+        spans: spans,
+      ),
       part: part,
     );
     cels.add(cel);
@@ -1054,22 +1049,41 @@ List<_Cel> _celsOf(
   FrameId Function(int picture) mintFrameId,
 ) {
   final heldNames = <String>{};
-  final cels = <_Cel>[];
-  for (final (picture, spans) in runs.indexed) {
-    final name = switch (_nameShownAt(shown, rows, spans.first.start)) {
-      final shown? => firstUnusedName(
-        heldNames,
-        (index) => index == 1 ? shown : '$shown-$index',
+  return [
+    for (final (picture, spans) in runs.indexed)
+      (
+        frameId: mintFrameId(picture),
+        name: _nameTakenAt(heldNames, shown, rows, spans.first.start),
+        spans: spans,
       ),
-      null => null,
-    };
-    if (name != null) {
-      heldNames.add(name);
-    }
-    cels.add((frameId: mintFrameId(picture), name: name, spans: spans));
-  }
-  return cels;
+  ];
 }
+
+/// The name a new cel takes where the topmost of [rows] that shows a cel
+/// in [shown] at [frameIndex] shows one (Q10 · Q11): that cel's number, its
+/// tail clear of every name [held] holds — which holds it from then on.
+String? _nameTakenAt(
+  Set<String> held,
+  Cut shown,
+  List<Layer> rows,
+  int frameIndex,
+) {
+  final name = switch (_nameShownAt(shown, rows, frameIndex)) {
+    final number? => _tailClearOf(held, number),
+    null => null,
+  };
+  if (name != null) {
+    held.add(name);
+  }
+  return name;
+}
+
+/// [number], or [number] with the first tail no name of [held] wears
+/// (Q10).
+String _tailClearOf(Set<String> held, String number) => firstUnusedName(
+  held,
+  (index) => index == 1 ? number : '$number-$index',
+);
 
 /// The name of the cel the topmost of [rows] that shows one at
 /// [frameIndex] shows there — null where its cel is unnamed, or none shows.
@@ -1637,11 +1651,7 @@ String? _nameKept(String? name, List<Frame> kept) {
   if (shown == null) {
     return null;
   }
-  final held = {for (final cel in kept) ?celNumberOf(cel.name)};
-  return firstUnusedName(
-    held,
-    (index) => index == 1 ? shown : '$shown-$index',
-  );
+  return _tailClearOf({for (final cel in kept) ?celNumberOf(cel.name)}, shown);
 }
 
 /// [cut] holding [cel] of [row] alone and as it is — no look of the row's,
