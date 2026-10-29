@@ -4,8 +4,9 @@
 // It inverts where its Amount is at least 50 and its Map's alpha (read at
 // the same canvas place, nothing outside the map) is over 127; with no Map
 // it inverts everywhere Amount allows. Amount below 0 answers a failure.
-// Its reach is Amount / 10 plus the frame's index, so a reach that comes
-// back right has read the values and the frame both.
+// Its reach is Amount / 10 at the frame's scale, plus the frame's index,
+// plus its time in frames — a reach that comes back right has read the
+// values and every number of the frame.
 //
 // Built twice more for what the host must refuse: QA_FX_SAMPLE_SPEC names
 // another spec version, QA_FX_SAMPLE_NO_RENDER keeps its render unexported.
@@ -41,10 +42,21 @@ uint32_t anicel_fx_describe(char *out, uint32_t capacity) {
   return length;
 }
 
+// What a plugin asks first of every frame it is handed.
+static int speaks(const anicel_fx_frame *frame) {
+  return frame->spec == ANICEL_FX_SPEC_VERSION &&
+         frame->format == ANICEL_FX_RGBA8_PREMULTIPLIED;
+}
+
 ANICEL_FX_EXPORT(anicel_fx_reach)
 uint32_t anicel_fx_reach(const anicel_fx_frame *frame) {
+  if (!speaks(frame)) {
+    return 0;
+  }
   const anicel_fx_value *values = anicel_fx_values(frame);
-  return (uint32_t)(values[0].v[0] / 10.0) + (uint32_t)frame->frame_index;
+  return (uint32_t)(values[0].v[0] / 10.0 * frame->scale) +
+         (uint32_t)frame->frame_index +
+         (uint32_t)(frame->time * frame->frame_rate + 0.5);
 }
 
 static int map_allows(const anicel_fx_frame *frame, const anicel_fx_image *map,
@@ -65,6 +77,9 @@ static int map_allows(const anicel_fx_frame *frame, const anicel_fx_image *map,
 
 QA_FX_SAMPLE_RENDER_EXPORT
 int32_t anicel_fx_render(anicel_fx_frame *frame) {
+  if (!speaks(frame)) {
+    return 2;
+  }
   const anicel_fx_value *values = anicel_fx_values(frame);
   double amount = values[0].v[0];
   if (amount < 0) {

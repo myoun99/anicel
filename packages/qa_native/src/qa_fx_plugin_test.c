@@ -160,7 +160,11 @@ static void check_plugin(void *plugin, const char *who,
 
   double values[8] = {80, 0, 0, 0, 0, 0, 0, 0};
   int32_t reach = qa_fx_plugin_reach(plugin, values, 2, 3, 3 / 24.0, 24, 1);
-  CHECK(reach == 11, "%s: reach %d, the spec's 80 / 10 + 3 = 11", who, reach);
+  CHECK(reach == 14, "%s: reach %d, the spec's 80 / 10 · 1 + 3 + 3 = 14", who,
+        reach);
+  reach = qa_fx_plugin_reach(plugin, values, 2, 5, 7 / 24.0, 24, 0.5);
+  CHECK(reach == 16, "%s: reach %d, the spec's 80 / 10 · 0.5 + 5 + 7 = 16",
+        who, reach);
 
   check_render(plugin, who, 80, 1);
   check_render(plugin, who, 80, 0);
@@ -207,7 +211,7 @@ static void check_refusals(void) {
 
 #if QA_FX_WASM
 // The sample's C, as WebAssembly text: one line of the C per few here.
-// %s is the description (escaped) and the two %d its length.
+// %s is the description (escaped) and each %d its length.
 static const char *twin_wat =
     "(module\n"
     // At most two pages: a host that took new room for each render would
@@ -235,11 +239,20 @@ static const char *twin_wat =
     "   (select (i32.const %d) (local.get $cap)\n"
     "    (i32.lt_u (i32.const %d) (local.get $cap))))\n"
     "  (i32.const %d))\n"
+    " (func $speaks (param $f i32) (result i32)\n"
+    "  (i32.and (i32.eq (i32.load (local.get $f)) (i32.const 1))\n"
+    "   (i32.eq (i32.load offset=4 (local.get $f)) (i32.const 1))))\n"
     " (func (export \"anicel_fx_reach\") (param $f i32) (result i32)\n"
-    "  (i32.add\n"
-    "   (i32.trunc_sat_f64_u (f64.div (f64.load (i32.add (local.get $f)\n"
-    "    (i32.load offset=60 (local.get $f)))) (f64.const 10)))\n"
-    "   (i32.load offset=96 (local.get $f))))\n"
+    "  (if (i32.eqz (call $speaks (local.get $f)))\n"
+    "   (then (return (i32.const 0))))\n"
+    "  (i32.add (i32.add\n"
+    "   (i32.trunc_sat_f64_u (f64.mul (f64.div (f64.load (i32.add\n"
+    "    (local.get $f) (i32.load offset=60 (local.get $f))))\n"
+    "    (f64.const 10)) (f64.load offset=88 (local.get $f))))\n"
+    "   (i32.load offset=96 (local.get $f)))\n"
+    "   (i32.trunc_sat_f64_u (f64.add (f64.mul\n"
+    "    (f64.load offset=72 (local.get $f))\n"
+    "    (f64.load offset=80 (local.get $f))) (f64.const 0.5)))))\n"
     " (func $map_allows (param $f i32) (param $map i32) (param $x i32)\n"
     "  (param $y i32) (result i32) (local $mx i32) (local $my i32)\n"
     "  (if (i32.eqz (local.get $map)) (then (return (i32.const 1))))\n"
@@ -265,6 +278,8 @@ static const char *twin_wat =
     "  (local $a i32) (local $c i32)\n"
     "  (local.set $vals (i32.add (local.get $f)\n"
     "   (i32.load offset=60 (local.get $f))))\n"
+    "  (if (i32.eqz (call $speaks (local.get $f)))\n"
+    "   (then (return (i32.const 2))))\n"
     "  (local.set $amount (f64.load (local.get $vals)))\n"
     // The twin's own: far below zero it traps, as a broken module would.
     "  (if (f64.lt (local.get $amount) (f64.const -100)) (then unreachable))\n"
@@ -371,6 +386,69 @@ static void check_twin(const char *description) {
   }
   CHECK(kept == QA_FX_OK, "wasm: the 400th render answered %d", kept);
   qa_fx_plugin_close(twin);
+
+  // A plugin that writes nothing gives a clear picture, never the last
+  // render's: this one copies its input at frame 0 and leaves the output
+  // be at any other.
+  error[0] = 0;
+  void *lazy = open_wat(
+      "(module (memory (export \"memory\") 1)"
+      " (global $bump (mut i32) (i32.const 1024))"
+      " (func (export \"anicel_fx_spec\") (result i32) i32.const 1)"
+      " (func (export \"anicel_fx_alloc\") (param $n i32) (result i32)"
+      "  (local $at i32) (local.set $at (global.get $bump))"
+      "  (global.set $bump (i32.add (local.get $at) (local.get $n)))"
+      "  (local.get $at))"
+      " (func (export \"anicel_fx_describe\") (param i32 i32) (result i32)"
+      "  i32.const 0)"
+      " (func (export \"anicel_fx_reach\") (param i32) (result i32)"
+      "  i32.const 0)"
+      " (func (export \"anicel_fx_render\") (param $f i32) (result i32)"
+      "  (if (i32.eqz (i32.load offset=96 (local.get $f))) (then"
+      "   (memory.copy"
+      "    (i32.add (local.get $f) (i32.load offset=32 (local.get $f)))"
+      "    (i32.add (local.get $f) (i32.load offset=8 (local.get $f)))"
+      "    (i32.mul (i32.load offset=20 (local.get $f))"
+      "     (i32.load offset=16 (local.get $f))))))"
+      "  i32.const 0))",
+      error, (int32_t)sizeof(error));
+  CHECK(lazy != NULL, "the lazy module would not open: %s", error);
+  if (lazy != NULL) {
+    uint8_t clear[IN_H * OUT_STRIDE];
+    memset(clear, 0xEE, sizeof(clear));
+    for (int y = 0; y < IN_H; y++) {
+      memset(clear + y * OUT_STRIDE, 0, IN_W * 4);
+    }
+    render(lazy, 80, 1, 0, out);
+    int32_t answer = render(lazy, 80, 1, 1, out);
+    CHECK(answer == QA_FX_OK && memcmp(out, clear, sizeof(out)) == 0,
+          "a render that wrote nothing kept the last one's picture (%d)",
+          answer);
+    qa_fx_plugin_close(lazy);
+  }
+
+  // A module that gives room past its own memory is refused the frame,
+  // not written past.
+  error[0] = 0;
+  void *astray = open_wat(
+      "(module (memory (export \"memory\") 1)"
+      " (func (export \"anicel_fx_spec\") (result i32) i32.const 1)"
+      " (func (export \"anicel_fx_alloc\") (param i32) (result i32)"
+      "  i32.const 65500)"
+      " (func (export \"anicel_fx_describe\") (param i32 i32) (result i32)"
+      "  i32.const 0)"
+      " (func (export \"anicel_fx_reach\") (param i32) (result i32)"
+      "  i32.const 0)"
+      " (func (export \"anicel_fx_render\") (param i32) (result i32)"
+      "  i32.const 0))",
+      error, (int32_t)sizeof(error));
+  CHECK(astray != NULL, "the astray module would not open: %s", error);
+  if (astray != NULL) {
+    int32_t answer = qa_fx_plugin_reach(astray, NULL, 0, 0, 0, 24, 1);
+    CHECK(answer == QA_FX_NO_ROOM, "room past the memory answered %d",
+          answer);
+    qa_fx_plugin_close(astray);
+  }
 
   error[0] = 0;
   CHECK(open_wat("(module (memory (export \"memory\") 1))", error,
