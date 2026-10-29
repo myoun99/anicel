@@ -2011,7 +2011,7 @@ TimelineFrameSpan timelineStretchWordSpan({
       builder: (context) => TimelineSpanName(
         axis: axis,
         text: stretch.word,
-        ink: timelineRowLookOf(context, layer).paper!,
+        ink: timelineRowMarkOf(context, layer),
       ),
     ),
   ),
@@ -2137,7 +2137,7 @@ class TimelineLaneKeysLine extends StatelessWidget {
   final int cells;
 
   /// The row whose keys it joins — drawn in its COLOUR LABEL as its key
-  /// marks take it ([timelineRowLookOf]).
+  /// marks take it ([timelineRowMarkOf]).
   final Layer layer;
 
   final bool startsAtKey;
@@ -2163,7 +2163,7 @@ class TimelineLaneKeysLine extends StatelessWidget {
       child: CustomPaint(
         painter: _KeysLinePainter(
           this,
-          color: timelineRowLookOf(context, layer).paper!,
+          color: timelineRowMarkOf(context, layer),
         ),
       ),
     );
@@ -2387,7 +2387,7 @@ class TimelineLaneKeyMarker extends StatelessWidget {
   /// 프레임블록이랑 마찬가지로 색라벨 그대로. 로직 그대로 재사용해서」) —
   /// [layerMarkColor] answers an unmarked row with the same paper the blocks
   /// use, so nothing changes for one — and as its blocks show it, switched
-  /// off with its eye ([timelineRowLookOf], I-129).
+  /// off with its eye ([timelineRowMarkOf], I-129).
   final Layer layer;
 
   /// Inside the live lane selection (UI-R23 #4): the marker rings in the
@@ -2409,7 +2409,7 @@ class TimelineLaneKeyMarker extends StatelessWidget {
             // 2026-09-12 means the row's COLOUR LABEL: 「유니언 키 색은
             // 프레임블록이랑 마찬가지로 색라벨 그대로. 로직 그대로
             // 재사용해서」.
-            color: timelineRowLookOf(context, layer).paper!,
+            color: timelineRowMarkOf(context, layer),
             // ⛔NO outline of its own (유저 2026-09-12: 「지금 실루엣에 외곽선
             // 회색 존재하는거같은데 삭제. 그냥 심플하게 바탕색만 남겨서」). The
             // one ring left is the SELECTION's, in ACCENT 1 (UI-R23 #4) —

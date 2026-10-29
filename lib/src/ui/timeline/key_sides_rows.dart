@@ -9,6 +9,7 @@ import '../widgets/field_slider.dart';
 import '../repaint_props.dart';
 import '../widgets/pill_strip.dart' show PillItem, PillStrip;
 import 'key_mark_glyph.dart' show paintKeyMark;
+import '../theme/app_theme.dart' show AppColors;
 import 'timeline_cell_style.dart' show timelineDrawingHeldColor;
 
 /// THE KEY WINDOW'S TWO SIDES (I-89 ②, 유저 2026-10-10: 「ae보다 조작감면에서
@@ -231,7 +232,12 @@ class _KeySidePainter extends CustomPainter with RepaintOnProps {
       box: Size.square(size.shortestSide),
       // A window's row reads left to right, as the timeline does.
       standing: false,
-      color: timelineDrawingHeldColor,
+      // An unlabelled row's key, as it shows on the window's panel
+      // (I-143-Q7).
+      color: AppColors.onTheGround(
+        timelineDrawingHeldColor,
+        AppColors.surface,
+      ),
     );
     canvas.restore();
   }

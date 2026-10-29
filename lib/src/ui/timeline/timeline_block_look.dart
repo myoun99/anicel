@@ -236,3 +236,27 @@ TimelineBlockLook timelineRowLookOf(
   timelineRowFaceOf(context, layer, unreadable: unreadable),
   ink: ink ?? timelineInBlockInk(),
 );
+
+/// The colour [layer]'s marks wear where they are drawn straight on the
+/// host's ground rather than filling a block — its keys, the line between
+/// them and the word over it: its colour label on that ground
+/// ([AppColors.onTheGround]), then in the row's state as a block's paper is
+/// ([timelineRowLookOf]). Over the artwork, where no ground is known, the
+/// label as it is.
+///
+/// 🗣️I-143-Q7 (유저 2026-10-30, 「라이트에서만 진하게(강조색과 같은 법)」): a
+/// pastel label — the paper itself on a row with none — was all but gone on
+/// the light ground. Darkened BEFORE the state, so a hidden row's marks are
+/// still the dimmed ones.
+Color timelineRowMarkOf(BuildContext context, Layer layer) {
+  final face = timelineRowFaceOf(context, layer);
+  final ground = face.ground;
+  return timelineBlockLook(
+    face.state,
+    paper: ground == null
+        ? face.paper
+        : AppColors.onTheGround(face.paper, ground),
+    ink: timelineInBlockInk(),
+    ground: ground,
+  ).paper!;
+}

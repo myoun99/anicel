@@ -5,6 +5,7 @@ import '../../models/app_language.dart';
 import '../text/app_strings.dart';
 
 import '../../models/app_accents.dart';
+import 'darker_at_its_chroma.dart';
 import 'text_on_ground.dart' show textOnLightGroundColor;
 
 /// The app-wide dark palette (TVPaint/OpenToonz-style flat charcoal).
@@ -53,26 +54,20 @@ abstract final class AppColors {
   /// stays the colour they picked.
   static Color get accent => _accent.resolve(
     identity: accentSettings.value,
-    build: () => switch (mode) {
-      AppColorMode.dark => accentSettings.value.accent,
-      AppColorMode.light => _deepened(accentSettings.value.accent, surface),
-    },
+    build: () => onTheGround(accentSettings.value.accent, surface),
   );
 
   static final _accent = IdentityMemo<Color>();
 
-  /// [colour]'s hue and saturation, darkened a step at a time until it
-  /// stands 3:1 against [ground].
-  static Color _deepened(Color colour, Color ground) {
-    final groundLuminance = ground.computeLuminance();
-    var hsl = HSLColor.fromColor(colour);
-    while (hsl.lightness > 0.05 &&
-        (groundLuminance + 0.05) / (hsl.toColor().computeLuminance() + 0.05) <
-            3) {
-      hsl = hsl.withLightness(hsl.lightness - 0.01);
-    }
-    return hsl.toColor();
-  }
+  /// [colour] drawn straight on [ground]: itself on the dark palette; on the
+  /// light one, the same colour darkened until it stands 3:1 against the
+  /// ground ([darkenedToStandOn]). The accent wears it (I-143-Q4), and so
+  /// does a row's colour label where it is a line or a word rather than a
+  /// block's paper (I-143-Q7, 「강조색과 같은 법」).
+  static Color onTheGround(Color colour, Color ground) => switch (mode) {
+    AppColorMode.dark => colour,
+    AppColorMode.light => darkenedToStandOn(colour, ground),
+  };
 
   /// The colour of a `＋` glyph, wherever one appears.
   ///
