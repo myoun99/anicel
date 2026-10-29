@@ -13,7 +13,6 @@ import '../../models/app_input_settings.dart'
     show AppInput, CanvasTouchDragAction;
 import '../canvas/canvas_view_hold.dart';
 import '../canvas/canvas_press.dart' show canvasPressButtons, canvasPressPans;
-import '../timeline/axis_turn.dart' show partAlong;
 import 'pan_slide.dart';
 import 'value_control_pointers.dart';
 
@@ -175,16 +174,8 @@ class _PanelPanDriverState extends State<PanelPanDriver>
     final slide = _slide;
     for (final controller in widget.controllers) {
       for (final position in controller.positions) {
-        if (!panMoves(position, slide)) {
-          continue;
-        }
-        // The content goes WITH the hand: dragging down shows what was above.
-        final to = (position.pixels - partAlong(position.axis, delta)).clamp(
-          position.minScrollExtent,
-          position.maxScrollExtent,
-        );
-        if (to != position.pixels) {
-          position.jumpTo(to);
+        if (panMoves(position, slide)) {
+          scrollWithHand(position, delta);
         }
       }
     }

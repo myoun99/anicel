@@ -655,6 +655,7 @@ class StoryboardPanel extends StatefulWidget {
     this.trackLaneHeight = defaultTrackLaneHeight,
     this.onResizeTrackLanes,
     this.pixelsPerFrame = 8,
+    this.onPixelsPerFrameChanged,
     this.showSeconds = false,
     this.onShowSecondsChanged,
     this.railExtent,
@@ -1099,6 +1100,11 @@ class StoryboardPanel extends StatefulWidget {
   /// Frame-axis zoom, owned by the host (the panel header's shared zoom
   /// slider drives it).
   final double pixelsPerFrame;
+
+  /// The host's zoom writer — the readout's and the zoom keys' — which a
+  /// pinch on the sheet writes through too (F-506). Null names no zoom, and
+  /// fingers only move the sheet.
+  final ValueChanged<double>? onPixelsPerFrameChanged;
 
   /// Conte-sheet time display for the cut totals: frames (`48f`) or
   /// seconds+frames (`2+00`), toggled from the grid's top-left corner.
@@ -2274,6 +2280,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
               ).copyWith(scrollbars: false),
               child: TwoAxisDrag(
                 axes: [_verticalController, _horizontalController],
+                zoom: sheetZoom(
+                  widget.pixelsPerFrame,
+                  widget.projectFrameRate,
+                  widget.onPixelsPerFrameChanged,
+                ),
                 child: SingleChildScrollView(
                   key: const ValueKey<String>(
                     'storyboard-vertical-viewport',

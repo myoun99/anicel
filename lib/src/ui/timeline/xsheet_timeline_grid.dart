@@ -1271,6 +1271,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
                                         _layerScrollController,
                                         _frameScrollController,
                                       ],
+                                      zoom: widget.hooks.zoomAt(
+                                        _metrics.frameCellWidth,
+                                      ),
                                       child: _buildLayerHorizontalViewport(
                                         colorScheme,
                                         // THE drawing entrance — the columns

@@ -760,6 +760,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   onSelectTrack: (trackId) =>
                       _session.standOnRow(TrackRowAddress(trackId)),
                   pixelsPerFrame: widget.pixelsPerFrame,
+                  onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
                   trackLaneHeight: widget.trackLaneHeight,
                   onResizeTrackLanes: widget.onResizeTrackLanes,
                   showSeconds: widget.showSeconds,
