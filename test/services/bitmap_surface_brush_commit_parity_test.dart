@@ -653,17 +653,25 @@ void main() {
     });
 
     test('a second tip shows nothing where the first tip laid nothing', () {
+      // Screen over nothing is the second tip itself, so only the view's
+      // own rule — no first tip, nothing shown — keeps (90, 90) empty.
       const view = BrushDualView(compositeMode: SeparableBlendMode.screen);
-      final landed = materializeBrushDabSequenceOnBitmapSurface(
+      final sequence = strokeOf([
+        dab(x: 30, y: 30, size: 10, dual: view),
+        secondDab(x: 90, y: 90, dual: view, size: 20),
+      ]);
+      expectParity(
         surface: blankSurface(),
-        sequence: strokeOf([
-          dab(x: 30, y: 30, size: 10, dual: view),
-          secondDab(x: 90, y: 90, dual: view, size: 20),
-        ]),
+        sequence: sequence,
+        reason: 'a second tip alone',
       );
-      final alone = materializeBrushDabSequenceOnBitmapSurface(
+      final alone = referenceMaterialize(
         surface: blankSurface(),
         sequence: strokeOf([dab(x: 30, y: 30, size: 10)]),
+      );
+      final landed = referenceMaterialize(
+        surface: blankSurface(),
+        sequence: sequence,
       );
       expect(landed.dirtyTiles, alone.dirtyTiles);
       expect(
