@@ -354,14 +354,9 @@ class HistoryManager extends ChangeNotifier {
     _disposed = true;
     // ⛔The room gets its files back: nobody can reach this history again,
     // so anything it parked is unreachable bytes on the user's disk until
-    // the run ends.
-    dropPayloadsOf(_undoStack);
-    dropPayloadsOf(_redoStack);
-    // 🗣️F-505 (유저 2026-10-29): 「무거운거 닫으면 언두기록도 안되니
-    // 초기프로젝트분만큼만 메모리 존재해야」 — and what it kept in memory
-    // with them, whoever still holds the closed project.
-    _undoStack.clear();
-    _redoStack.clear();
+    // the run ends — and (F-505) what it kept in memory, whoever still
+    // holds a closed tab.
+    _emptyStacks();
     VolatileScratchFiles.forget(this);
     super.dispose();
   }
@@ -636,13 +631,18 @@ class HistoryManager extends ChangeNotifier {
   }
 
   void clear() {
+    _emptyStacks();
+    _spillStoodDown = false;
+    _revision += 1;
+    notifyListeners();
+  }
+
+  /// Every entry let go of, and what each parked in the room with it.
+  void _emptyStacks() {
     dropPayloadsOf(_undoStack);
     dropPayloadsOf(_redoStack);
     _undoStack.clear();
     _redoStack.clear();
-    _spillStoodDown = false;
-    _revision += 1;
-    notifyListeners();
   }
 }
 

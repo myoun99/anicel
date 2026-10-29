@@ -1562,7 +1562,14 @@ void main() {
   /// (`2a9750ac3`) names this one and no other class. ⛔Not split to fit:
   /// the walk is one recursion over the tree, and a node that reads rows is
   /// one more kind of node in it.
-  const longClasses = 79;
+  ///
+  /// ⚠️79 → 80 on 2026-10-30, ONE name: `HistoryManager` crossed (596 →
+  /// 601) when its dispose came to let go of its stacks too (F-505: a
+  /// closed tab's history stayed in memory whoever still held the tab) —
+  /// through `_emptyStacks`, which `clear` wrote out and now shares.
+  /// 🔬`clean_code_diff` against master (`d7cbaccdc`) names this one and
+  /// no other class. ⛔Not split to fit: the stacks are the history.
+  const longClasses = 80;
 
   late CleanCodeScan scan;
   setUpAll(() {

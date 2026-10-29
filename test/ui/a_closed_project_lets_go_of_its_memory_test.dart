@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import '../helpers/collect_garbage.dart';
 import '../helpers/draw_on_current_frame.dart';
 import '../helpers/native_engine_path.dart';
+import '../helpers/settle_async.dart';
 
 /// 🗣️F-505 (유저 2026-10-29): 「프로젝트 2개연상태서 하나 무거운거, 하나
 /// 초기프로젝트면 무거운거 닫으면 언두기록도 안되니 초기프로젝트분만큼만 메모리
@@ -63,16 +64,12 @@ void main() {
     heavy.historyManager.undo();
     await tester.pumpAndSettle();
     // The timeline's tiles are baked on the engine, off the test's clock.
-    for (var round = 0; round < 50; round += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump();
-      if (!TimelineGridTileStore.instance.debugBusy &&
-          TimelineGridTileStore.instance.tileImageBytes > 0) {
-        break;
-      }
-    }
+    await settleAsync(
+      tester,
+      () =>
+          !TimelineGridTileStore.instance.debugBusy &&
+          TimelineGridTileStore.instance.tileImageBytes > 0,
+    );
     final store = heavy.renderCaches.brushFrameStore;
     final engine = QaNativeEngine.instance!;
     expect(store.hotBakedBytes, greaterThan(0), reason: 'CONTROL');
@@ -86,10 +83,10 @@ void main() {
 
     await tapKey('project-tab-close-1');
     await tester.tap(find.byKey(const ValueKey<String>('system-exit-close')));
-    // It goes after the frame that stops showing it (`_letGo`).
-    for (var frame = 0; frame < 20 && !heavy.disposed; frame += 1) {
-      await tester.pump();
-    }
+    // It goes after the frame that stops showing it (`_letGo`) — and the
+    // wait leaves on that frame, before real time could land the tab on
+    // screen's tiles again.
+    await settleAsync(tester, () => heavy.disposed);
     expect(heavy.disposed, isTrue);
     expect(
       TimelineGridTileStore.instance.tileImageBytes,
