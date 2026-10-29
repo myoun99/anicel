@@ -1,14 +1,16 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:anicel/src/native/qa_video_encoder.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'os_video_codec.dart';
 
 /// A colour of a picture in an [writeEncodedMovie] movie.
 typedef MovieColour = ({int red, int green, int blue});
 
 /// A real movie at [path], written by the engine's own encoder — false
-/// where this run has no encoder.
+/// where this run has no encoder, the test then marked skipped or failed
+/// ([osVideoEncoderOrSkip]).
 ///
 /// [frames] pictures, 64×48 (the OS encoder turns tiny frames away) at
 /// [fps]: each pixel the colour [picture] gives it, or grey where none is
@@ -33,8 +35,8 @@ bool writeEncodedMovie(
   int sampleRate = 44100,
   int? soundFrames,
 }) {
-  final encoder = QaVideoEncoder.instance;
-  if (encoder == null || !encoder.isSupported) {
+  final encoder = osVideoEncoderOrSkip();
+  if (encoder == null) {
     return false;
   }
   expect(

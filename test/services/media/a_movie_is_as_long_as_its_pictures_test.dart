@@ -8,6 +8,7 @@ import 'package:anicel/src/native/qa_video_encoder.dart';
 import '../../helpers/decode_audio_file.dart';
 import '../../helpers/encoded_movie.dart';
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/os_video_codec.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// 🚨★★★**A MOVIE IS AS LONG AS ITS PICTURES — NOT AS ITS SOUND.**
@@ -42,8 +43,8 @@ void main() {
 
   test('🚨twelve pictures with three seconds of sound are twelve frames, and '
       'the last of them is a picture', () {
-    final decoder = QaVideoDecoder.instance;
-    if (decoder == null || !decoder.isSupported) {
+    final decoder = osVideoDecoderOrSkip();
+    if (decoder == null) {
       return;
     }
     final directory = Directory.systemTemp.createTempSync('qa_movie_length');
@@ -83,8 +84,8 @@ void main() {
 
   test('a movie whose last picture ends a tick short of a whole frame still '
       'counts that frame', () {
-    final decoder = QaVideoDecoder.instance;
-    if (decoder == null || !decoder.isSupported) {
+    final decoder = osVideoDecoderOrSkip();
+    if (decoder == null) {
       return;
     }
     // Twelve pictures at 24 a tick short of twelve frames either way they

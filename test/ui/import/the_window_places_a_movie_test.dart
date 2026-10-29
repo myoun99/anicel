@@ -635,8 +635,8 @@ void main() {
     /// Six real frames — the cut reads the file through the engine — while
     /// the preview reads them through [FakeVideoBackend]; null where this
     /// run has no encoder (Linux: the engine is there, the OS encoder is
-    /// not), and the test then has nothing to cut, as every other movie
-    /// written through [writeEncodedMovie] does.
+    /// not), and the test is then skipped, with why, as every other one
+    /// writing through [writeEncodedMovie] is.
     Future<String?> sixFrames(WidgetTester tester) =>
         tester.runAsync<String?>(() async {
           final path = '${tempDir.path}${Platform.pathSeparator}take.mp4';

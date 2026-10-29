@@ -7,7 +7,6 @@ import 'package:anicel/src/models/kept_span.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/movie_clock.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
-import 'package:anicel/src/native/qa_video_decoder.dart';
 import 'package:anicel/src/services/audio/wav16_header.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart'
     show ImportDestination;
@@ -20,6 +19,7 @@ import '../../helpers/encoded_movie.dart';
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/native_call_watch.dart';
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/os_video_codec.dart';
 import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -476,8 +476,8 @@ void main() {
     /// Cuts IN 3 .. OUT 8 of such a movie in a project whose sounds play at
     /// [speed], holds the piece against what the project showed — the span
     /// and the frames the movie's own clock gives, at [pace] frames a
-    /// second — and answers how many frames it kept; null when this machine
-    /// has no encoder to cut with.
+    /// second — and answers how many frames it kept; null when this run
+    /// has no encoder to cut with, or no decoder to read it back.
     Future<int?> cutsWhatTheProjectShows(
       WidgetTester tester, {
       required ({int numerator, int denominator}) fps,
@@ -509,7 +509,10 @@ void main() {
         ),
       );
 
-      final decoder = QaVideoDecoder.instance!;
+      final decoder = osVideoDecoderOrSkip();
+      if (decoder == null) {
+        return null;
+      }
       watch.step('opening the take');
       final original = decoder.openDocument(source)!;
       final clock = movieClockFor(
@@ -586,7 +589,10 @@ void main() {
       if (!writeMovie(source, (numerator: 12, denominator: 1))) {
         return;
       }
-      final decoder = QaVideoDecoder.instance!;
+      final decoder = osVideoDecoderOrSkip();
+      if (decoder == null) {
+        return;
+      }
       watch.step('opening the take');
       final movie = decoder.openDocument(source)!;
       try {

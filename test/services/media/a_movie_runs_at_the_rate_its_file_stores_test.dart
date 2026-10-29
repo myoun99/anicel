@@ -8,6 +8,7 @@ import 'package:anicel/src/native/qa_video_decoder.dart';
 
 import '../../helpers/mpeg4_visual_movie.dart';
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/os_video_codec.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// 🚨★★★**A MOVIE RUNS AT THE RATE ITS FILE STORES.**
@@ -67,8 +68,8 @@ void main() {
 
   test('🚨a 23.976 movie is 23.976 — a 24 project\'s pulldown partner — and '
       'a 24 one is 24, each with every frame counted', () {
-    final decoder = QaVideoDecoder.instance;
-    if (decoder == null || !decoder.isSupported) {
+    final decoder = osVideoDecoderOrSkip();
+    if (decoder == null) {
       return;
     }
     for (final movie in [
@@ -113,8 +114,8 @@ void main() {
 
   test('🚨every frame plays as itself to the end, and a jump two thousand '
       'frames in lands where it was sent', () {
-    final decoder = QaVideoDecoder.instance;
-    if (decoder == null || !decoder.isSupported) {
+    final decoder = osVideoDecoderOrSkip();
+    if (decoder == null) {
       return;
     }
     // Long enough for 23.97 and 23.976 to part by more than half a frame —

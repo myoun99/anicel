@@ -7,6 +7,7 @@ import 'package:anicel/src/native/qa_video_decoder.dart';
 
 import '../../helpers/encoded_movie.dart';
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/os_video_codec.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// 🚨★★★**EVERY MOVIE THAT IS OPEN STAYS OPEN.**
@@ -75,8 +76,8 @@ void main() {
     // The first draft of this file copied one fixture twice, and every test
     // passed with the product code turned off — because reading the wrong
     // movie gave back the right picture.
-    final decoder = QaVideoDecoder.instance;
-    if (decoder == null || !decoder.isSupported) {
+    final decoder = osVideoDecoderOrSkip();
+    if (decoder == null) {
       return;
     }
     final movies = twoMovies();
@@ -98,9 +99,9 @@ void main() {
   }, skip: skip);
 
   test('a second movie does not blind the first — both keep answering', () {
-    final decoder = QaVideoDecoder.instance;
-    if (decoder == null || !decoder.isSupported) {
-      return; // no reader in this build; absence is an answer elsewhere
+    final decoder = osVideoDecoderOrSkip();
+    if (decoder == null) {
+      return;
     }
     final movies = twoMovies();
     if (movies == null) {
@@ -135,8 +136,8 @@ void main() {
   test('the same frame reads the same either side of a switch', () {
     // ⚠️Not just 「non-null」: a document that had been put back on the wrong
     // frame, or read out of the OTHER movie, would pass the test above.
-    final decoder = QaVideoDecoder.instance;
-    if (decoder == null || !decoder.isSupported) {
+    final decoder = osVideoDecoderOrSkip();
+    if (decoder == null) {
       return;
     }
     final movies = twoMovies();
@@ -163,8 +164,8 @@ void main() {
     // movie while the warmer fills another's frames. Alternating used to
     // mean a re-open per frame; what a test can still see is that neither
     // side ever answers with the other's picture.
-    final decoder = QaVideoDecoder.instance;
-    if (decoder == null || !decoder.isSupported) {
+    final decoder = osVideoDecoderOrSkip();
+    if (decoder == null) {
       return;
     }
     final movies = twoMovies();
@@ -186,8 +187,8 @@ void main() {
     // ⛔A bare close from one consumer took the other's movie with it. Each
     // handle is its own document now, so a dispose over here cannot be felt
     // over there.
-    final decoder = QaVideoDecoder.instance;
-    if (decoder == null || !decoder.isSupported) {
+    final decoder = osVideoDecoderOrSkip();
+    if (decoder == null) {
       return;
     }
     final movies = twoMovies();
@@ -220,8 +221,8 @@ void main() {
   test('the slots run out HONESTLY — and a close hands one back', () {
     // ⚠️A fixed row of documents is a refusal that has to be readable: the
     // alternative is an open that answers a handle nothing can read.
-    final decoder = QaVideoDecoder.instance;
-    if (decoder == null || !decoder.isSupported) {
+    final decoder = osVideoDecoderOrSkip();
+    if (decoder == null) {
       return;
     }
     final movies = twoMovies();

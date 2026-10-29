@@ -9,6 +9,7 @@ import 'package:anicel/src/native/qa_video_decoder.dart';
 
 import '../../helpers/mpeg4_visual_movie.dart';
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/os_video_codec.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// 🚨★★★**A MOVIE OPENED AND CLOSED LEAVES NOTHING BEHIND.**
@@ -64,8 +65,8 @@ void main() {
 
   test('🚨two hundred more opens of the same movie leave the heaps where two '
       'hundred left them', () {
-    final decoder = QaVideoDecoder.instance;
-    if (decoder == null || !decoder.isSupported) {
+    final decoder = osVideoDecoderOrSkip();
+    if (decoder == null) {
       return;
     }
     final directory = Directory.systemTemp.createTempSync('qa_closed_movie');

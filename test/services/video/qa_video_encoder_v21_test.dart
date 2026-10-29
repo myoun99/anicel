@@ -7,6 +7,7 @@ import 'package:anicel/src/native/qa_video_encoder.dart';
 
 import '../../helpers/native_call_watch.dart';
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/os_video_codec.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// ABI v21: the container/codec surface. Real-binary-or-skip, like every
@@ -25,26 +26,8 @@ void main() {
     QaVideoEncoder.debugResetForTests();
   });
 
-  QaVideoEncoder? encoderOrSkip() {
-    final encoder = QaVideoEncoder.instance;
-    if (encoder == null || !encoder.isSupported) {
-      if (nativeEngineRequired &&
-          (Platform.isWindows || Platform.isMacOS)) {
-        fail('QA_REQUIRE_NATIVE=1 but no OS encoder: '
-            '$nativeEngineMissingSkipReason');
-      }
-      markTestSkipped(
-        encoder == null
-            ? nativeEngineMissingSkipReason
-            : 'no OS encoder on this platform',
-      );
-      return null;
-    }
-    return encoder;
-  }
-
   test('the baseline pair always probes true', () {
-    final encoder = encoderOrSkip();
+    final encoder = osVideoEncoderOrSkip();
     if (encoder == null) {
       return;
     }
@@ -53,7 +36,7 @@ void main() {
 
   test('Windows: MOV/ProRes probe false and open refuses toward FFmpeg',
       () async {
-    final encoder = encoderOrSkip();
+    final encoder = osVideoEncoderOrSkip();
     if (encoder == null) {
       return;
     }
@@ -88,7 +71,7 @@ void main() {
     final watch = await NativeCallWatch.start('HEVC: open as the probe says');
     addTearDown(watch.stop);
     watch.step('asking for the encoder');
-    final encoder = encoderOrSkip();
+    final encoder = osVideoEncoderOrSkip();
     if (encoder == null) {
       return;
     }
