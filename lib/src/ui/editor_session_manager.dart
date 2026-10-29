@@ -425,7 +425,13 @@ class EditorSessionManager extends ChangeNotifier
     if (enforce) {
       playbackRig.playbackCache.enforcePlaybackCacheBudget();
     }
+    playbackLineMoved();
   }
+
+  /// The playback line moved — the allowance, or a memory warning lifted as
+  /// the app came back to the front (F-504) — so a warmer resting for want
+  /// of room looks again, and a line that rose fills while nothing plays.
+  void playbackLineMoved() => playbackRig.prerenderScheduler.wake();
 
   // --- Workspace colors: the PROJECT half (R28 #9) --------------------------
   //

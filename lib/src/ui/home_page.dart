@@ -25,6 +25,7 @@ import '../services/brush_tip_library_service.dart';
 import '../services/font_library_service.dart';
 import '../services/last_stroke_slot.dart';
 import '../services/launch_notice.dart';
+import '../services/memory_pressure_budget.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/failed_save_copies.dart';
 import '../services/persistence/folder_grant.dart'
@@ -936,7 +937,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   /// The OS says memory is tight: EVERY open project stands its caches
   /// down — hot cels halve and cool, playback re-runs its budget — the tabs
-  /// behind the one on screen as much as it (I-7).
+  /// behind the one on screen as much as it (I-7) — until the app next
+  /// comes back to the front ([didChangeAppLifecycleState], F-504).
   @override
   void didHaveMemoryPressure() {
     for (final session in _projects.sessions) {
@@ -980,6 +982,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.resumed:
+        // F-504: in front again, no memory warning stands — every open
+        // project's caches are at the allowance once more
+        // ([MemoryPressureBudget.liftEveryWarning]), and its warmer looks
+        // again in the room that came back.
+        MemoryPressureBudget.liftEveryWarning();
+        for (final session in _projects.sessions) {
+          session.playbackLineMoved();
+        }
         unawaited(_warnIfProjectFileVanished(_session));
         // I-70: a day the app is in front on is a day it was used — a run
         // that crossed midnight UTC, or a send that failed earlier today.

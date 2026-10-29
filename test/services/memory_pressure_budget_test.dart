@@ -157,6 +157,81 @@ void main() {
     });
   });
 
+  /// 🚨F-504 (유저 2026-10-29): Android tells an app memory is tight each
+  /// time it is covered — a picker, Drive — and the caches stayed halved
+  /// until the allowance moved, so a few trips away left playback on two
+  /// frames. A warning holds while the app stays in front; coming back
+  /// lifts it.
+  group('a warning holds while the app stays in front', () {
+    test('and coming back to the front lifts it, to the normal it was', () {
+      final budget = MemoryPressureBudget.halving(
+        normal: 1024 * mb,
+        floor: 64 * mb,
+      );
+      budget.respondToMemoryPressure();
+      budget.respondToMemoryPressure();
+      expect(budget.bytes, 256 * mb, reason: 'premise: two warnings, held');
+
+      MemoryPressureBudget.liftEveryWarning();
+
+      expect(budget.bytes, 1024 * mb);
+      expect(
+        budget.respondToMemoryPressure(),
+        isTrue,
+        reason: 'the next warning halves from the normal again',
+      );
+      expect(budget.bytes, 512 * mb);
+    });
+
+    test('a drop is lifted the same way', () {
+      final budget = MemoryPressureBudget.droppingTo(
+        normal: 512 * mb,
+        underPressure: 64 * mb,
+      );
+      budget.respondToMemoryPressure();
+      MemoryPressureBudget.liftEveryWarning();
+      expect(budget.bytes, 512 * mb);
+    });
+
+    test('a normal set while a warning stands is the one coming back lifts '
+        'to', () {
+      final budget = MemoryPressureBudget.halving(
+        normal: 1024 * mb,
+        floor: 64 * mb,
+      );
+      budget.respondToMemoryPressure();
+      budget.bytes = 900 * mb;
+      budget.respondToMemoryPressure();
+      MemoryPressureBudget.liftEveryWarning();
+      expect(budget.bytes, 900 * mb);
+    });
+
+    test('every pixel cache is lifted on the same law', () {
+      final store = BrushFrameStore()..hotCelByteBudget = 1024 * mb;
+      final viewer = ViewerRasterBudget(physicalMemoryBytes: null);
+      final history = HistoryManager();
+      addTearDown(history.dispose);
+      final normals = [
+        store.hotCelByteBudget,
+        viewer.byteBudget,
+        history.byteBudget,
+      ];
+      store.respondToMemoryPressure();
+      viewer.respondToMemoryPressure();
+      history.respondToMemoryPressure();
+      expect(store.hotCelByteBudget, lessThan(normals[0]), reason: 'premise');
+      expect(viewer.byteBudget, lessThan(normals[1]), reason: 'premise');
+      expect(history.byteBudget, lessThan(normals[2]), reason: 'premise');
+
+      MemoryPressureBudget.liftEveryWarning();
+
+      expect(
+        [store.hotCelByteBudget, viewer.byteBudget, history.byteBudget],
+        normals,
+      );
+    });
+  });
+
   /// 🚨The divisor in [viewerRasterBytesFor] is fixed by BOTH endpoints of
   /// the canvas clamp, not chosen. If either end stops landing on a whole
   /// number of pages, the derivation in that file's doc is no longer true.
