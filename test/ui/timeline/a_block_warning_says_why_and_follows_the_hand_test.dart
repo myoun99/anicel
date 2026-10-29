@@ -176,6 +176,30 @@ void main() {
       });
     }
 
+    testWidgets('and a hand held on the block keeps its press — held past a '
+        'long press, then moved, it selects as on any block', (tester) async {
+      final session = await theCutView(tester, xsheet: false);
+      final block = find.byKey(
+        ValueKey<String>(
+          'timeline-instruction-${rowId(session)}-${crossingOf(session)}',
+        ),
+      );
+      final cell = tester.getRect(block).width / 8;
+      final hand = await tester.startGesture(
+        onTheBlock(tester, block, TimelineTabHost),
+        kind: PointerDeviceKind.touch,
+      );
+      await tester.pump(const Duration(seconds: 1));
+      await hand.moveBy(Offset(-cell * 3, 0));
+      await tester.pump();
+      await hand.up();
+      await tester.pumpAndSettle();
+
+      final picked = session.frameRangeSelection.value;
+      expect(picked?.layerId, session.activeTrack.transitionLayer.id);
+      expect(picked!.endIndexExclusive - picked.startIndex, greaterThan(1));
+    });
+
     testWidgets('on the conte\'s row', (tester) async {
       final session = await theConte(tester);
       final id = rowId(session);
