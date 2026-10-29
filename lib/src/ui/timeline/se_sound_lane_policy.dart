@@ -183,11 +183,19 @@ String? scrubSeSoundVolume(String currentLabel, Offset dragDelta) {
 
 /// The Pan scrubbed by a drag on its readout — its per cents at the one
 /// rate, across from left to right.
+///
+/// A move that writes the per cent it started from moves it one per cent
+/// instead: a step that writes the same number is no step (F-488, the
+/// settings bars' law — `FieldSlider`). The Pan writes whole per cents and
+/// the one rate is half of one a pixel, so a ± press — one pixel — rounded
+/// R2 back to R2 (🤖AI 검증 10-29: 「R2 에서 − 를 네 번 눌러도 R2」).
 String? scrubSeSoundPan(String currentLabel, Offset dragDelta) {
   final pan = panOfLaneText(currentLabel);
   if (pan == null) {
     return null;
   }
-  final scrubbed = scrubbedNumber(pan * 100, dragDelta).clamp(-100.0, 100.0);
-  return panLaneText(scrubbed.round() / 100);
+  final now = (pan * 100).round();
+  final next = scrubbedNumber(now.toDouble(), dragDelta).round();
+  final moved = next != now ? next : now + dragDelta.dx.sign.toInt();
+  return panLaneText(moved.clamp(-100, 100) / 100);
 }
