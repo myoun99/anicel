@@ -2466,10 +2466,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         // none it opens on the live value — this run's, not the defaults
         // the file was put back at (I-142-Q3).
         AppExport.settings.value =
-            await AppExportSettingsStore(
-              filePath: settingsRoomPath(AppExportSettingsStore.fileName),
-            ).load() ??
-            AppExportSettings();
+            await AppExportSettingsStore().load() ?? AppExportSettings();
     }
   }
 

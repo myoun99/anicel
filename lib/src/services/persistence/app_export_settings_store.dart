@@ -12,10 +12,8 @@ class AppExportSettingsStore {
 
   final String filePath;
 
-  /// Its entry in the settings room.
-  static const String fileName = 'export_settings.json';
   static String defaultFilePath() => testRedirectedAppSettingsPath(
-    fileName,
+    'export_settings.json',
     sandbox: 'export_settings',
   );
 

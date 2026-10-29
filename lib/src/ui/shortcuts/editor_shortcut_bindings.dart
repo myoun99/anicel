@@ -14,6 +14,9 @@ import 'shortcut_presets.dart';
 import 'shortcut_settings_store.dart';
 import 'touch_shortcuts.dart';
 
+/// The layout an install opens on ([EditorShortcutBindings.preset]).
+const ShortcutLayout _startingPreset = ShortcutPreset.clipStudio;
+
 /// The LIVE shortcut bindings: the keys of the preset in use merged with the
 /// user's persisted overrides. Notifies on every change so the app-level
 /// Shortcuts map, the menu labels and the settings dialog all rebuild
@@ -100,9 +103,6 @@ class EditorShortcutBindings extends ChangeNotifier {
   /// the question said it would.
   ShortcutLayout get preset => _preset;
   ShortcutLayout _preset = _startingPreset;
-
-  /// The layout an install opens on ([preset]).
-  static const ShortcutLayout _startingPreset = ShortcutPreset.clipStudio;
 
   /// The presets the user made, in the order they were made (I-107).
   List<UserShortcutPreset> get userPresets => _userPresets;

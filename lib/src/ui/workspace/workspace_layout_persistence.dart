@@ -109,7 +109,6 @@ class _WorkspaceLayoutPersistence {
     if (restored == null || !_state.mounted) {
       return false;
     }
-    final openRails = payload['openRails'];
     _state._rebuild(() {
       _state._lockedTabIds = restored.lockedTabIds;
       _state._bottomDockCollapsed = payload['bottomCollapsed'] == true;
@@ -121,7 +120,7 @@ class _WorkspaceLayoutPersistence {
         _state._bottomInsetOverride.value = savedInset.toDouble();
       }
       _restoreBrushPresetView(payload['brushPresetView']);
-      if (openRails is List) {
+      if (payload['openRails'] case final List openRails) {
         // Filtered against the POOL, not taken on trust: a file written by
         // a build with a different pool size would otherwise leave open
         // ids that name nothing.
