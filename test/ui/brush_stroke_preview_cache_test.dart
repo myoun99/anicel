@@ -70,6 +70,32 @@ void main() {
     expect(ink(cut), greaterThan(0), reason: 'the grain lets some through');
   });
 
+  test('a swatch\'s second tip that follows the stroke turns with the curve, '
+      'as the canvas\'s does', () {
+    BrushSettings brush(BrushTipRotationMode rotation) => BrushSettings(
+      size: 12,
+      dualMask: BrushTipMask(
+        id: 'swatch-second-follows',
+        size: 2,
+        alpha: Uint8List.fromList(const [255, 255, 255, 255]),
+      ),
+      dualMaskScale: 0.8,
+      dualRoundness: 0.2,
+      dualRotationMode: rotation,
+    );
+
+    expect(
+      rasterizeBrushStrokeSample(
+        brush(BrushTipRotationMode.direction),
+        96,
+        24,
+      ),
+      isNot(
+        rasterizeBrushStrokeSample(brush(BrushTipRotationMode.fixed), 96, 24),
+      ),
+    );
+  });
+
   test('ensure() rasterizes once per key and later lookups hit the SAME '
       'image', () async {
     final cache = BrushStrokePreviewCache.instance;

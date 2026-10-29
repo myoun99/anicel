@@ -1,9 +1,15 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_correction.dart';
+import 'package:anicel/src/models/brush_mixing_method.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
+import 'package:anicel/src/models/brush_shape.dart';
+import 'package:anicel/src/models/brush_tip_mask.dart';
+import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
 
 void main() {
   group('BrushEditCanvasInputSettings', () {
@@ -223,6 +229,39 @@ void main() {
         brush.copyWith(antiAlias: BrushAntiAlias.low).antiAlias,
         BrushAntiAlias.low,
       );
+    });
+
+    test('🚨a copyWith keeps what it cannot name — a second tip\'s way along '
+        'the path, and the paint a brush mixes', () {
+      // The factory names only part of the shape; rebuilt through it, a
+      // mapped-erase press drew a dual brush's grain at the defaults.
+      final shape = BrushShape(
+        size: 12,
+        dualMask: BrushTipMask(
+          id: 'grain',
+          size: 2,
+          alpha: Uint8List.fromList(const [10, 20, 30, 40]),
+        ),
+        dualSpacing: 0.6,
+        dualRoundness: 0.5,
+        dualAngleDegrees: 30,
+        dualRotationMode: BrushTipRotationMode.direction,
+        dualAngleJitter: 0.2,
+        dualScatterRadiusRatio: 1.5,
+        dualScatterCount: 3,
+        dualScatterBothAxes: false,
+        blendMode: BrushBlendMode.multiply,
+        mixesGroundColor: true,
+        mixingMethod: BrushMixingMethod.blur,
+        paintAmount: 0.4,
+        paintDensity: 0.3,
+        colorStretch: 0.2,
+      );
+      final erasing = BrushEditCanvasInputSettings.fromShape(
+        shape,
+      ).copyWith(erase: true, blendMode: BrushBlendMode.erase);
+
+      expect(erasing.shape, shape);
     });
   });
 }

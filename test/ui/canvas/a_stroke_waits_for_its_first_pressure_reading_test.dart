@@ -11,6 +11,8 @@ import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
+import 'package:anicel/src/models/brush_shape.dart';
+import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -820,6 +822,33 @@ void main() {
         ]);
 
         expect(results.single.first.center.x, closeTo(20, 1e-9));
+      },
+    );
+
+    testWidgets(
+      'a second tip that follows the stroke has the press wait for the way '
+      'too, though its first tip turns nowhere — and follows it all along',
+      (tester) async {
+        final results = await _strokes(tester, _secondDirectionBrush, [
+          _pen(pressureMax: 1, [
+            _s(const Offset(4, 4), 0.5, 0),
+            // Down and to the right: 315° on the screen, the whole way.
+            _s(const Offset(24, 24), 0.5, 8),
+            _s(const Offset(28, 28), 0.5, 16),
+          ]),
+        ]);
+
+        final second = [
+          for (final dab in results.single)
+            if (dab.second) dab,
+        ];
+        expect(second.length, greaterThan(2));
+        expect((second.first.center.x, second.first.center.y), (4, 4));
+        expect({for (final dab in second) _laidAngle(dab)}, {315});
+        expect({
+          for (final dab in results.single)
+            if (!dab.second) _laidAngle(dab),
+        }, {0});
       },
     );
 
@@ -1677,6 +1706,21 @@ final BrushEditCanvasInputSettings _directionBrush =
       size: 10,
       roundness: 0.5,
       rotationMode: BrushTipRotationMode.direction,
+    );
+
+final BrushEditCanvasInputSettings _secondDirectionBrush =
+    BrushEditCanvasInputSettings.fromShape(
+      BrushShape(
+        size: 10,
+        dualMask: BrushTipMask(
+          id: 'second-follows',
+          size: 2,
+          alpha: Uint8List.fromList(const [255, 255, 255, 255]),
+        ),
+        dualRoundness: 0.5,
+        dualRotationMode: BrushTipRotationMode.direction,
+        correction: BrushCorrection.none,
+      ),
     );
 
 final BrushEditCanvasInputSettings _acrossScatterBrush =
