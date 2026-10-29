@@ -711,13 +711,17 @@ class EffectParameterSpec {
        choices = const [];
 
   /// A flag ([EffectParameterUnit.flag]), off until a key or a value says
-  /// otherwise.
-  const EffectParameterSpec.flag({required this.id, required this.label})
-    : defaultValue = 0,
-      minimum = 0,
-      _maximum = 1,
-      unit = EffectParameterUnit.flag,
-      choices = const [];
+  /// otherwise — or on, where a plugin's checkbox starts on
+  /// (`FxPluginDescription`): its default is the plugin's to say.
+  const EffectParameterSpec.flag({
+    required this.id,
+    required this.label,
+    bool on = false,
+  }) : defaultValue = on ? 1 : 0,
+       minimum = 0,
+       _maximum = 1,
+       unit = EffectParameterUnit.flag,
+       choices = const [];
 
   /// A point ([EffectParameterUnit.point]): no number at all — its keys
   /// are [LayerEffect.points]'.

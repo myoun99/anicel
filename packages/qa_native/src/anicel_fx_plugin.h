@@ -62,7 +62,17 @@
  *
  *   "kind" is one of number · angle · color · point · checkbox · menu ·
  *   layer — the kinds the app's own effects have, keyed, graphed and linked
- *   the same way. A menu lists "choices":[{"id":…,"label":…}]. A parameter's
+ *   the same way. What each says beside its id and label:
+ *     number, angle  "default", "min", "max" (an angle in degrees)
+ *     color          "default":[r, g, b, a], each from 0 to 1
+ *     checkbox       "default": true or false
+ *     menu           "choices":[{"id":…,"label":…}, …], "default": its place
+ *     point, layer   nothing (a point starts at the paper's middle, a layer
+ *                    names no row until one is picked)
+ *   An id is letters, digits and `_ . -`. A description that leaves out
+ *   what its kind says, or says it past its range, is no plugin: the app
+ *   makes nothing up for it. A key the spec does not name is passed over,
+ *   so a later spec's hints do not stop an older host. A parameter's
  *   place in "params" is its place in frame->values.
  */
 #ifndef ANICEL_FX_PLUGIN_H
