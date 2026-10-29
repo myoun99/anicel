@@ -1308,7 +1308,7 @@ class CutCommandCoordinator {
         );
         if (mirrorFolder == null) {
           // The folder this row joined has no counterpart there — the
-          // structures have diverged, and folder_mirror's rule is to stand
+          // structures have diverged, and the mirrors' rule is to stand
           // down rather than guess.
           translatable = false;
           break;

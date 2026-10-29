@@ -381,7 +381,7 @@ namedTransformWrites(
 /// appear too, because layer existence is shared structure.
 ///
 /// A cut qualifies only when EVERY linked layer of [cutId] has a
-/// counterpart in it (folder_mirror's rule: a partial match means the
+/// counterpart in it (the mirrors' rule: a partial match means the
 /// structure diverged, so we stand down rather than guess). A cut whose
 /// layers are all unlinked has no siblings at all.
 List<CutId> linkedCutSiblings(Project project, {required CutId cutId}) {

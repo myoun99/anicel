@@ -3,9 +3,11 @@
 // registry back exactly as it stood before the first execute.
 //
 // Four commands wrote that scaffold out by hand and nothing named it
-// (audit round 8). These pins drive all four through the same three
+// (audit round 8). These pins drive each through the same three
 // questions, so a copy that starts answering differently is caught here
 // rather than by whichever command happens to have a test of its own.
+// ↩️The folder-creation command was the fourth; it went with the menu
+// verbs that alone called it (layer-menu-strings-outlive-their-entries-Q3).
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -14,12 +16,11 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_link_registry.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/command.dart';
-import 'package:anicel/src/services/commands/create_folder_command.dart';
 import 'package:anicel/src/services/commands/delete_layer_command.dart';
 import 'package:anicel/src/services/commands/dissolve_folder_command.dart';
 import 'package:anicel/src/services/commands/unlink_layer_command.dart';
-import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/services/project_repository.dart';
+import '../../helpers/a_folder_written_around_a_row.dart';
 
 void main() {
   const folderId = LayerId('folder-under-test');
@@ -34,28 +35,16 @@ void main() {
 
   LayerLinkRegistry registryNow() => repository.requireProject().linkRegistry;
 
-  void makeFolder() {
-    CreateFolderCommand(
-      repository: repository,
-      cutId: cut.id,
-      name: 'Folder',
-      memberLayerIds: [cut.layers.first.id],
-      folderIdByCut: {cut.id: folderId},
-      groupId: 'group-under-test',
-    ).execute();
-  }
+  void makeFolder() => writeAFolderAround(
+    repository,
+    cutId: cut.id,
+    member: cut.layers.first.id,
+    folderId: folderId,
+  );
 
   /// One entry per command, each built fresh so "never executed" is a real
   /// state rather than a leftover.
   Map<String, Command Function()> commands() => {
-    'CreateFolderCommand': () => CreateFolderCommand(
-      repository: repository,
-      cutId: cut.id,
-      name: 'Folder',
-      memberLayerIds: [cut.layers.first.id],
-      folderIdByCut: {cut.id: const LayerId('folder-fresh')},
-      groupId: 'group-fresh',
-    ),
     'DeleteLayerCommand': () => DeleteLayerCommand(
       repository: repository,
       cutId: cut.id,
@@ -128,32 +117,5 @@ void main() {
         );
       });
     });
-  });
-
-  test('the folder command\'s own inverse runs too: the row goes and the '
-      'member is released', () {
-    final memberId = cut.layers.first.id;
-    final command = CreateFolderCommand(
-      repository: repository,
-      cutId: cut.id,
-      name: 'Folder',
-      memberLayerIds: [memberId],
-      folderIdByCut: {cut.id: folderId},
-      groupId: 'group-under-test',
-    );
-    command.execute();
-    expect(
-      requireCut(
-        repository.requireProject(),
-        cut.id,
-      ).layers.any((layer) => layer.id == folderId),
-      isTrue,
-    );
-
-    command.undo();
-
-    final layers = requireCut(repository.requireProject(), cut.id).layers;
-    expect(layers.any((layer) => layer.id == folderId), isFalse);
-    expect(layers.firstWhere((layer) => layer.id == memberId).folderId, isNull);
   });
 }

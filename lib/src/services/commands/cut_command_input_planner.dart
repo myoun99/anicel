@@ -19,7 +19,6 @@ import '../project_lookup.dart' show requireCut;
 import '../project_repository.dart';
 import 'add_layer_command.dart';
 import 'convert_to_linked_cut_plan.dart';
-import 'folder_mirror.dart';
 import 'link_duplicate_layer_command.dart' show LinkDuplicateUse;
 import 'link_mirror.dart';
 
@@ -463,55 +462,6 @@ LinkDuplicateUse _linkDuplicateShare(
   );
 }
 
-class CreateFolderCommandInputPlan {
-  const CreateFolderCommandInputPlan({
-    required this.folderIdByCut,
-    required this.folderGroupId,
-  });
-
-  /// Planned new folder-LAYER id for the origin cut AND each 겸용 mirror
-  /// cut (ids are per-cut; planned up front so redo reuses them).
-  final Map<CutId, LayerId> folderIdByCut;
-
-  /// Planned registry group id tying those folder rows together, so the
-  /// folder's shared properties mirror through the ordinary layer path.
-  final String folderGroupId;
-}
-
-/// Plans a 폴더 생성: one fresh folder-layer id per cut the command will
-/// touch (the origin plus every mirror cut of [memberLayerIds]), plus the
-/// link group they join.
-CreateFolderCommandInputPlan planCreateFolderCommandInput({
-  required Project project,
-  required CutId cutId,
-  required List<LayerId> memberLayerIds,
-}) {
-  final ids = _ProjectIdSnapshot.fromProject(project);
-  LayerId next() {
-    final id = LayerId(
-      _firstAvailableId(prefix: 'folder', usedIds: ids.layerIds),
-    );
-    ids.layerIds.add(id.value);
-    return id;
-  }
-
-  return CreateFolderCommandInputPlan(
-    folderIdByCut: {
-      cutId: next(),
-      for (final mirror in folderMirrorCuts(
-        project,
-        cutId: cutId,
-        memberLayerIds: memberLayerIds,
-      ))
-        mirror.cutId: next(),
-    },
-    folderGroupId: _firstAvailableId(
-      prefix: 'link',
-      usedIds: {for (final group in project.linkRegistry.groups) group.id},
-    ),
-  );
-}
-
 class AddLayerCommandInputPlan {
   const AddLayerCommandInputPlan({
     required this.mirrors,
@@ -545,7 +495,7 @@ class AddLayerCommandInputPlan {
 /// so a sibling with its own keeps it and the new row stays this cut's.
 ///
 /// A sibling whose counterpart for an anchor is missing is DROPPED rather
-/// than guessed at (folder_mirror's rule): a row inheriting a folder that
+/// than guessed at (the mirrors' rule): a row inheriting a folder that
 /// only exists in the origin cut would break the sibling's folder
 /// invariant, and an attach row without its base is not a row at all.
 AddLayerCommandInputPlan planAddLayerCommandInput({
