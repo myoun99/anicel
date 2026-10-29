@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/media_asset.dart';
+import 'package:anicel/src/services/fx_plugins/fx_plugin_bundle.dart'
+    show anicelFxPluginExtension;
 import 'package:anicel/src/services/persistence/file_type_groups.dart';
 import 'package:anicel/src/services/persistence/provider_documents.dart';
 import 'package:anicel/src/services/persistence/settings_file.dart';
@@ -63,6 +65,15 @@ void main() {
     );
     expect(openedAs('/work/Mine.ANISETTINGS'), OpenedAs.settings);
     expect(openableExtensions, contains(anicelSettingsExtension));
+  });
+
+  test('I-132: an fx plugin\'s file is installed as one', () {
+    expect(
+      openedAs('/work/Invert.$anicelFxPluginExtension'),
+      OpenedAs.fxPlugin,
+    );
+    expect(openedAs('/work/Invert.ANIFX'), OpenedAs.fxPlugin);
+    expect(openableExtensions, contains(anicelFxPluginExtension));
   });
 
   test('media is what the pool names a kind for — the same judgement, not a '

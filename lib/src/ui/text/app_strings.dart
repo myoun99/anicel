@@ -1753,6 +1753,29 @@ enum AppStrings {
   String fontBrought(String family) =>
       _s('fontBroughtTemplate').replaceAll('{family}', family);
 
+  /// I-132: an fx plugin's file opened like any other — the question what
+  /// it says of itself is put with, and what it came to.
+  String get fxPluginInstallTitle => _s('fxPluginInstallTitle');
+  String get fxPluginInstall => _s('fxPluginInstall');
+  String fxPluginInstallBody(String name, String vendor, String version) =>
+      _s('fxPluginInstallBodyTemplate')
+          .replaceAll('{name}', name)
+          .replaceAll('{vendor}', vendor)
+          .replaceAll('{version}', version);
+  String fxPluginReplaces(String version) =>
+      _s('fxPluginReplacesTemplate').replaceAll('{version}', version);
+
+  /// ⚠️A warning: a native build runs outside the sandbox.
+  String get fxPluginRunsNatively => _s('fxPluginRunsNatively');
+  String fxPluginInstalled(String name) =>
+      _s('fxPluginInstalledTemplate').replaceAll('{name}', name);
+  String fxPluginUnreadable(String file) =>
+      _s('fxPluginUnreadableTemplate').replaceAll('{file}', file);
+  String fxPluginUnopened(String file, String why) =>
+      _s('fxPluginUnopenedTemplate')
+          .replaceAll('{file}', file)
+          .replaceAll('{why}', why);
+
   /// Why a picked file was not taken as a font.
   String get textToolFontUnreadable => _s('textToolFontUnreadable');
   String get textToolFontIsTheApps => _s('textToolFontIsTheApps');
@@ -3246,6 +3269,21 @@ enum AppStrings {
     'brImportUnreadable': 'This file could not be read as a brush file.',
     'brImportPickFailedTemplate': 'Could not open the file: {error}',
     'fontBroughtTemplate': 'Added the font "{family}" to this device.',
+    'fxPluginInstallTitle': 'Install FX plugin',
+    'fxPluginInstall': 'Install',
+    'fxPluginInstallBodyTemplate':
+        'Install "{name}" {version} from {vendor}?',
+    'fxPluginReplacesTemplate':
+        'It replaces version {version} on this device.',
+    'fxPluginRunsNatively':
+        'This plugin includes code that runs directly on this device, '
+        'outside the sandbox. Install it only if you trust where it came '
+        'from.',
+    'fxPluginInstalledTemplate': 'Installed the FX plugin "{name}".',
+    'fxPluginUnreadableTemplate':
+        '"{file}" is not an FX plugin this app can read.',
+    'fxPluginUnopenedTemplate':
+        '"{file}" could not be opened as an FX plugin on this device: {why}',
     'brImportedOneTemplate': 'Imported 1 brush from "{file}".',
     'brImportedManyTemplate': 'Imported {count} brushes from "{file}".',
     'brImportWarningsTemplate': '{summary} ({count} entries with warnings)',
@@ -5008,6 +5046,18 @@ enum AppStrings {
     'brImportUnreadable': 'このファイルはブラシファイルとして読み込めませんでした。',
     'brImportPickFailedTemplate': 'ファイルを開けませんでした: {error}',
     'fontBroughtTemplate': 'フォント「{family}」をこの端末に読み込みました。',
+    'fxPluginInstallTitle': 'FXプラグインをインストール',
+    'fxPluginInstall': 'インストール',
+    'fxPluginInstallBodyTemplate':
+        '{vendor} の「{name}」{version} をインストールしますか？',
+    'fxPluginReplacesTemplate': 'この端末のバージョン {version} と置き換わります。',
+    'fxPluginRunsNatively':
+        'このプラグインには、サンドボックスの外でこの端末上で直接動くコードが'
+        '含まれています。入手元を信頼できる場合だけインストールしてください。',
+    'fxPluginInstalledTemplate': 'FXプラグイン「{name}」をインストールしました。',
+    'fxPluginUnreadableTemplate': '「{file}」は読み込めるFXプラグインではありません。',
+    'fxPluginUnopenedTemplate':
+        '「{file}」をこの端末でFXプラグインとして開けませんでした: {why}',
     'brImportedOneTemplate': '「{file}」からブラシを1個読み込みました。',
     'brImportedManyTemplate': '「{file}」からブラシを{count}個読み込みました。',
     'brImportWarningsTemplate': '{summary}（警告のある項目 {count}件）',
@@ -6792,6 +6842,17 @@ enum AppStrings {
     'brImportUnreadable': '이 파일은 브러시 파일로 읽을 수 없습니다.',
     'brImportPickFailedTemplate': '파일을 열지 못했습니다: {error}',
     'fontBroughtTemplate': '「{family}」 글꼴을 이 기기에 가져왔습니다.',
+    'fxPluginInstallTitle': 'FX 플러그인 설치',
+    'fxPluginInstall': '설치',
+    'fxPluginInstallBodyTemplate': '{vendor}의 「{name}」 {version}을(를) 설치할까요?',
+    'fxPluginReplacesTemplate': '이 기기의 {version} 버전을 대신합니다.',
+    'fxPluginRunsNatively':
+        '이 플러그인에는 샌드박스 밖에서 이 기기에서 직접 실행되는 코드가 들어 '
+        '있습니다. 출처를 믿을 수 있을 때만 설치하세요.',
+    'fxPluginInstalledTemplate': 'FX 플러그인 「{name}」을(를) 설치했습니다.',
+    'fxPluginUnreadableTemplate': '「{file}」은(는) 읽을 수 있는 FX 플러그인이 아닙니다.',
+    'fxPluginUnopenedTemplate':
+        '「{file}」을(를) 이 기기에서 FX 플러그인으로 열 수 없습니다: {why}',
     'brImportedOneTemplate': '「{file}」에서 브러시 1개를 가져왔습니다.',
     'brImportedManyTemplate': '「{file}」에서 브러시 {count}개를 가져왔습니다.',
     'brImportWarningsTemplate': '{summary} (경고가 있는 항목 {count}개)',
@@ -8732,6 +8793,22 @@ enum AppStrings {
         'Ce fichier n’a pas pu être lu comme un fichier de brosses.',
     'brImportPickFailedTemplate': 'Impossible d’ouvrir le fichier : {error}',
     'fontBroughtTemplate': 'Police « {family} » ajoutée à cet appareil.',
+    'fxPluginInstallTitle': 'Installer le plug-in FX',
+    'fxPluginInstall': 'Installer',
+    'fxPluginInstallBodyTemplate':
+        'Installer « {name} » {version} de {vendor} ?',
+    'fxPluginReplacesTemplate':
+        'Il remplace la version {version} de cet appareil.',
+    'fxPluginRunsNatively':
+        'Ce plug-in contient du code qui s’exécute directement sur cet '
+        'appareil, hors du bac à sable. Ne l’installez que si vous faites '
+        'confiance à sa provenance.',
+    'fxPluginInstalledTemplate': 'Plug-in FX « {name} » installé.',
+    'fxPluginUnreadableTemplate':
+        '« {file} » n’est pas un plug-in FX lisible par cette application.',
+    'fxPluginUnopenedTemplate':
+        '« {file} » n’a pas pu être ouvert comme plug-in FX sur cet '
+        'appareil : {why}',
     'brImportedOneTemplate': '1 brosse importée depuis « {file} ».',
     'brImportedManyTemplate': '{count} brosses importées depuis « {file} ».',
     'brImportWarningsTemplate':
@@ -10468,6 +10545,14 @@ enum AppStrings {
     'brImportUnreadable': '无法将此文件读取为画笔文件。',
     'brImportPickFailedTemplate': '无法打开文件：{error}',
     'fontBroughtTemplate': '已将字体“{family}”导入此设备。',
+    'fxPluginInstallTitle': '安装 FX 插件',
+    'fxPluginInstall': '安装',
+    'fxPluginInstallBodyTemplate': '要安装 {vendor} 的“{name}” {version} 吗？',
+    'fxPluginReplacesTemplate': '它将替换此设备上的 {version} 版本。',
+    'fxPluginRunsNatively': '此插件包含在沙盒之外、直接在此设备上运行的代码。仅在信任其来源时安装。',
+    'fxPluginInstalledTemplate': '已安装 FX 插件“{name}”。',
+    'fxPluginUnreadableTemplate': '“{file}”不是可读取的 FX 插件。',
+    'fxPluginUnopenedTemplate': '无法在此设备上将“{file}”作为 FX 插件打开：{why}',
     'brImportedOneTemplate': '已从“{file}”导入 1 个画笔。',
     'brImportedManyTemplate': '已从“{file}”导入 {count} 个画笔。',
     'brImportWarningsTemplate': '{summary}（{count} 项有警告）',

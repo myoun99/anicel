@@ -31,6 +31,7 @@ import '../services/brush_hand_overlay.dart';
 import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
 import '../services/font_library_service.dart';
+import '../services/fx_plugins/installed_fx_plugins.dart';
 import '../services/canvas_read_source.dart';
 import '../services/canvas_flood_fill.dart' show FloodFillOptions;
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
@@ -103,6 +104,7 @@ import '../services/audio/conform_wav_export.dart';
 import '../services/persistence/file_type_groups.dart';
 import 'dialogs/app_prompt_dialog.dart';
 import 'dialogs/folder_pick_flow.dart';
+import 'dialogs/fx_plugin_install_flow.dart';
 import 'dialogs/app_confirm_dialog.dart'
     show
         ConfirmChoice,
@@ -890,6 +892,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// (`CanvasLetterFaces.current`), so it is made before any canvas is.
   late final ImportedFonts _fonts;
 
+  /// The fx plugins installed on this device (I-132) — what 「열기」 installs
+  /// a plugin's file into.
+  late final InstalledFxPlugins _fxPlugins;
+
   final ValueNotifier<TimelineOrientation> _timelineOrientation = ValueNotifier(
     TimelineOrientation.horizontal,
   );
@@ -1212,6 +1218,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       beforeLettingGo: (files) async => widget.keepFontFiles?.call(files),
     );
     unawaited(_fonts.load());
+    _fxPlugins = InstalledFxPlugins();
+    unawaited(_fxPlugins.load());
     // R9-rest: a text lands WITH the faces it is set in — whoever lands
     // one asks here, where the fonts and the project on screen are both
     // in hand ([ProjectFonts.landingWith]).
@@ -1827,6 +1835,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       widget.canvasTextCommands?.landingWith = null;
     }
     _fonts.dispose();
+    _fxPlugins.dispose();
     _cutPieceSlot
       ..removeListener(_brushPresets.armStampOnFreshCut)
       // Its bytes are counted while it lives (CutPieceSlot.allPieceBytes),
@@ -2313,7 +2322,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   /// THE ONE DOOR, with what this workspace holds for it (F-282): the
   /// shell's Open door for projects, the import window, the brush library,
-  /// the fonts, the shortcut presets and the palettes.
+  /// the fonts, the shortcut presets, the palettes and the fx plugins.
   OpenedFilesDoor get _door => OpenedFilesDoor(
     openProjects: widget.onOpenProjects,
     importWindow: (picked, {required toPool}) =>
@@ -2349,6 +2358,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       }
       return said;
     },
+    bringFxPlugins: (name, bytes) =>
+        installFxPluginFile(context, _fxPlugins, name, bytes),
   );
 
   /// The top strip's 「파일 열기」 — and the media panel's ＋, which

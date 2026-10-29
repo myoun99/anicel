@@ -37,6 +37,7 @@ import '../../models/media_asset.dart'
         pdfFileExtensions,
         videoFileExtensions;
 import '../brush_pack_file.dart';
+import '../fx_plugins/fx_plugin_bundle.dart' show anicelFxPluginExtension;
 import '../shortcuts/program_keymap.dart' show shortcutFileExtensions;
 import 'anicel_project_archive.dart';
 import 'provider_documents.dart';
@@ -150,6 +151,10 @@ enum OpenedAs {
   /// ([anicelSettingsExtension] — 🗣️I-142-Q6: 「임포트 창에 설정 파일의
   /// 행으로」).
   settings,
+
+  /// Is installed as an fx plugin, once the person has seen what it says of
+  /// itself ([anicelFxPluginExtension], I-132).
+  fxPlugin,
 }
 
 /// What the file [pathOrUri] names opens as — null for a file nothing in the
@@ -180,6 +185,9 @@ OpenedAs? openedAs(String pathOrUri) {
   if (extension == anicelPaletteExtension) {
     return OpenedAs.palette;
   }
+  if (extension == anicelFxPluginExtension) {
+    return OpenedAs.fxPlugin;
+  }
   if (extension == anicelSettingsExtension) {
     return OpenedAs.settings;
   }
@@ -200,6 +208,7 @@ const List<String> openableExtensions = [
   anicelShortcutExtension,
   anicelPaletteExtension,
   anicelSettingsExtension,
+  anicelFxPluginExtension,
 ];
 
 /// What each identifier means to Android, which filters by MIME and has
