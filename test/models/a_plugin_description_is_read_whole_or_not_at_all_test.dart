@@ -40,7 +40,7 @@ void main() {
       'id': 'tint',
       'kind': 'color',
       'label': 'Tint',
-      'default': [1, 0.5, 0, 1],
+      'default': [1, 0.2, 0, 1],
     },
     {'id': 'centre', 'kind': 'point', 'label': 'Centre'},
     {'id': 'soft', 'kind': 'checkbox', 'label': 'Soft', 'default': true},
@@ -84,7 +84,7 @@ void main() {
       -180,
       180,
     ]);
-    expect(specs[2].defaultValue.toInt(), 0xFFFF8000);
+    expect(specs[2].defaultValue.toInt(), 0xFFFF3300);
     expect(effectFlagIsOn(specs[4].defaultValue), isTrue);
     expect([for (final choice in specs[5].choices) choice.id], [
       'round',
@@ -99,6 +99,9 @@ void main() {
     final again = FxPluginDescription.fromJson(
       jsonDecode(jsonEncode(first.toJson())),
     )!;
+    // What it keeps is what the plugin said — a colour of whole bytes
+    // reads back to the very fractions.
+    expect(first.toJson(), everyKind);
     expect(jsonEncode(again.toJson()), jsonEncode(first.toJson()));
     expect(
       [for (final spec in again.parameters) (spec.id, spec.unit, spec.label)],
