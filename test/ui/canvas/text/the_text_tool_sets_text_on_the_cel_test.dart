@@ -1,5 +1,6 @@
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -615,7 +616,11 @@ void main() {
     }) async {
       await pumpTextToolApp(
         tester,
-        project: textToolProject(drawings: 2, emptyLayer: true),
+        project: textToolProject(
+          drawings: 2,
+          emptyLayer: true,
+          secondCut: true,
+        ),
       );
       await takeTextTool(tester);
       final c = canvasPixelInView(tester);
@@ -626,6 +631,9 @@ void main() {
       await pumpFrames(tester);
       expect(celOf(tester).texts.single.content.text, 'hi', reason: '⛔');
       if (back) {
+        if (session.activeCutId != textToolCutId) {
+          session.selectCut(textToolCutId);
+        }
         session.selectLayer(textToolLayerId);
         session.selectFrameIndex(0);
         await pumpFrames(tester);
@@ -633,9 +641,17 @@ void main() {
       return session;
     }
 
+    // Every door that moves where the user stands (`EditorSessionManager`'s
+    // I-41 doors): each walks off, and the hand it lets go of lands there.
+    // ⚠️All but the gap (`parkGlobalFrame`): a text walked into a gap lands
+    // at the gap's canvas, not its cut's, and its undo is refused — on
+    // master's landing too (board `a-text-walked-into-a-gap-lands-at-its-size`).
     final walks = <String, void Function(EditorSessionManager)>{
       'another frame': (session) => session.selectFrameIndex(1),
       'another layer': (session) => session.selectLayer(textToolEmptyLayerId),
+      'another row': (session) =>
+          session.standOnRow(const LayerRowAddress(textToolEmptyLayerId)),
+      'another cut': (session) => session.selectCut(textToolSecondCutId),
     };
     for (final MapEntry(key: walk, value: walkOff) in walks.entries) {
       testWidgets('$walk: back where it was typed, ONE undo takes it back', (
@@ -651,6 +667,7 @@ void main() {
         await pumpFrames(tester);
 
         expect(celOf(tester).texts, isEmpty, reason: 'no walk first');
+        expect(session.activeCutId, textToolCutId);
         expect(session.standingPlace?.frame, 0);
         expect(session.activeLayerId, textToolLayerId);
       });
@@ -666,7 +683,8 @@ void main() {
         session.undo();
         await pumpFrames(tester);
 
-        expect(session.standingPlace?.frame, 0, reason: 'walked back');
+        expect(session.activeCutId, textToolCutId, reason: 'walked back');
+        expect(session.standingPlace?.frame, 0);
         expect(session.activeLayerId, textToolLayerId);
         expect(celOf(tester).texts.single.content.text, 'hi');
 
