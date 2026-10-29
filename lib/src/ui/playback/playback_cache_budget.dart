@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../../services/brush_frame_store.dart' show deviceScaledHotCelBudget;
 import '../../services/memory_pressure_budget.dart';
 import 'frame_picture_store.dart';
 import 'stacked_frame_picture.dart' show FramePictureKey;
@@ -10,7 +11,16 @@ import 'stacked_frame_picture.dart' show FramePictureKey;
 /// cache) — the onion ghosts' too, a picture of their own. A frame's picture
 /// is the canvas's own size, more where its ink reaches the pasteboard —
 /// ~15.5 MB for a 2340×1654 canvas.
-const int playbackCacheBudgetBytes = 600 * 1024 * 1024;
+///
+/// The line takes the drawings' own law (`CacheBudgetLine.lawFor`, RAM/4
+/// clamped); this is that law where the RAM is unknown — what the line
+/// holds until the allowance sets it. ↩️A fixed 600MB until 2026-10-30:
+/// 유저 F-504-Q1 = 「재생 그림의 몫을 키운다」 — 「그리는셀 시트잉크가 각
+/// 1.5gb인데 재생이 600mb? 소재 하나라 그림말하는거잖아. 너무 심하게
+/// 낮지않나?」.
+final int playbackCacheBudgetBytes = deviceScaledHotCelBudget(
+  physicalMemoryBytes: null,
+);
 
 /// 🚨WHERE PRESSURE PUTS IT — and until 2026-08-30 the answer was
 /// "nowhere", which made this the LARGEST cache in the app and the only
@@ -26,9 +36,9 @@ const int playbackCacheBudgetBytes = 600 * 1024 * 1024;
 /// of them. Below that a scrub around the playhead rebuilds every frame it
 /// touches, and the cache has stopped being a cache.
 ///
-/// ⛔Not a device-class check, and not a rescaling of the 600MB either:
-/// what a desktop holds when memory is FINE is unchanged, because that
-/// number was measured and this one is only about the warning.
+/// ⛔Not a device-class check, and not a rescaling of the line either:
+/// what a desktop holds when memory is FINE is the line's own law, and
+/// this one is only about the warning.
 const int playbackCacheBudgetUnderPressureBytes = 64 * 1024 * 1024;
 
 /// When each frame's picture is next shown — how many steps on, null where
@@ -56,9 +66,9 @@ typedef FramePictureWantedAt = int? Function(FramePictureKey key);
 class PlaybackCacheBudgetEnforcer {
   PlaybackCacheBudgetEnforcer({
     required this.pictures,
-    int maxBytes = playbackCacheBudgetBytes,
+    int? maxBytes,
   }) : _budget = MemoryPressureBudget.halving(
-         normal: maxBytes,
+         normal: maxBytes ?? playbackCacheBudgetBytes,
          floor: playbackCacheBudgetUnderPressureBytes,
        );
 

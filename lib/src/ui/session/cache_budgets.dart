@@ -22,9 +22,9 @@ import '../playback/playback_cache_budget.dart';
 /// budgets were nine hand-written fields, and a new holder was six edits.
 ///
 /// ⛔EVERY holder the session can set a ceiling on is an entry. Scaling only
-/// the device-scaled ones would make the allowance a lie: playback's 600MB
-/// and the native uploads' 640MB would sit outside it, and they are two of
-/// the largest. 🗣️유저 2026-09-16 (memory-allowance-Q2): 「천장을 걸 수 있는
+/// the device-scaled ones would make the allowance a lie: the native
+/// uploads' 640MB would sit outside it, one of the largest (and playback's
+/// 600MB did, until it took the cels' law). 🗣️유저 2026-09-16 (memory-allowance-Q2): 「천장을 걸 수 있는
 /// 것은 전부 허용치 안으로」 — so the engine's parked tile blocks (a
 /// compile-time cap in C until then) and the framework's image cache
 /// (ceilinged by the binding at startup) are entries too. What is sized by
@@ -101,14 +101,17 @@ enum CacheBudgetLine {
   /// (no engine: tests, host runs) keeps the desktop-class ceiling, as every
   /// device law here already does.
   int lawFor({required int? physicalMemoryBytes}) => switch (this) {
+    // 🗣️The frames' pictures take the cels' own law (유저 F-504-Q1,
+    // 2026-10-30: 「그리는셀 시트잉크가 각 1.5gb인데 재생이 600mb? … 너무
+    // 심하게 낮지않나?」) — ↩️a fixed 600MB until then.
     CacheBudgetLine.drawings ||
-    CacheBudgetLine.sheetInk => deviceScaledHotCelBudget(
+    CacheBudgetLine.sheetInk ||
+    CacheBudgetLine.playback => deviceScaledHotCelBudget(
       physicalMemoryBytes: physicalMemoryBytes,
     ),
     CacheBudgetLine.undo => deviceScaledUndoByteBudget(
       physicalMemoryBytes: physicalMemoryBytes,
     ),
-    CacheBudgetLine.playback => playbackCacheBudgetBytes,
     CacheBudgetLine.viewerPages ||
     CacheBudgetLine.storyboardThumbnails ||
     CacheBudgetLine.sheetImages => viewerRasterBytesFor(
