@@ -1210,24 +1210,40 @@ void main() {
       expect([for (final row in plan.layers) row.id.value], ['s', 'k2']);
     });
 
-    test('a 공정 folder taken is the row (Q5) — wearing its name, kept as '
-        "the topmost picture row's row of the track: a folder filing "
-        'nothing, the structure forgets', () {
+    /// The track's 공정 folder `KP` [id], named [name].
+    Layer filing(String id, {String name = 'Lines'}) => createFolderLayer(
+      id: LayerId(id),
+      name: name,
+    ).copyWith(conteKey: const ConteKey('KP'));
+
+    test('a 공정 folder taken is the row (Q5) — wearing its name, kept in '
+        "every cut as the topmost picture row's row of the track: a folder "
+        'filing nothing, the structure forgets', () {
       final s = conte('s');
+      final t = conte('t');
       final plan = merge(
         cutOf([
           s,
           onIt('k1', s, 'K1', inside: 'P'),
           onIt('k2', s, 'K2', inside: 'P'),
-          createFolderLayer(
-            id: const LayerId('P'),
-            name: 'Lines',
-          ).copyWith(conteKey: const ConteKey('KP')),
+          filing('P'),
         ]),
         ['P'],
+        elsewhere: [
+          cutOf(id: 'd', [
+            t,
+            onIt('j1', t, 'K1', inside: 'Q'),
+            onIt('j2', t, 'K2', inside: 'Q'),
+            filing('Q'),
+          ]),
+        ],
       )!;
 
       expect([for (final row in plan.layers) row.id.value], ['s', 'k2']);
+      expect([for (final row in plan.others.single.layers) row.id.value], [
+        't',
+        'j2',
+      ]);
       expect(
         [
           plan.result.name,
@@ -1236,6 +1252,138 @@ void main() {
           plan.result.folderId,
         ],
         ['Lines', const ConteKey('K2'), LayerKind.storyboard, null],
+      );
+    });
+
+    test('chosen inside a 공정 folder, under the conte, the result stays '
+        'filed there and rides under it', () {
+      final s = conte('s');
+      Layer under(String id, String key) => onIt(
+        id,
+        s,
+        key,
+        inside: 'P',
+      ).copyWith(attachedPlacement: AttachedPlacement.below);
+      final plan = merge(
+        cutOf([under('k1', 'K1'), under('k2', 'K2'), filing('P'), s]),
+        ['k1', 'k2'],
+      )!;
+
+      expect([for (final row in plan.layers) row.id.value], ['k2', 'P', 's']);
+      expect(
+        [plan.result.folderId, plan.result.attachedPlacement],
+        [const LayerId('P'), AttachedPlacement.below],
+      );
+    });
+
+    test("a 겸용 pair's 공정 folder: each cut's result is its keeper's self "
+        'there, the cels kept where the table keeps the keeper\'s', () {
+      final s = conte('s');
+      final k1 = onIt('k1', s, 'K1', inside: 'P');
+      final k2 = onIt('k2', s, 'K2', inside: 'P');
+      Layer self(Layer row, String id) => row.copyWith(
+        id: LayerId(id),
+        folderId: row.folderId == null ? null : const LayerId('P2'),
+        attachedToLayerId: row.attachedToLayerId == null
+            ? null
+            : const LayerId('s2'),
+      );
+      final plan = merge(
+        cutOf([s, k1, k2, filing('P')]),
+        ['P'],
+        elsewhere: [
+          cutOf(id: 'd', [
+            self(s, 's2'),
+            self(k1, 'k1d'),
+            self(k2, 'k2d'),
+            filing('P2'),
+          ]),
+        ],
+        links: [
+          ['c/s', 'd/s2'],
+          ['c/k1', 'd/k1d'],
+          ['d/k2d', 'c/k2'],
+          ['c/P', 'd/P2'],
+        ],
+      )!;
+
+      expect([for (final row in plan.others.single.layers) row.id.value], [
+        's2',
+        'k2d',
+      ]);
+      expect(plan.links.groups.last.members, const [
+        LayerLinkMember(
+          trackId: TrackId('t'),
+          cutId: CutId('d'),
+          layerId: LayerId('k2d'),
+        ),
+        LayerLinkMember(
+          trackId: TrackId('t'),
+          cutId: CutId('c'),
+          layerId: LayerId('k2'),
+        ),
+      ]);
+    });
+
+    test('two 겸용 pairs on the track merge as two layers — each a row of '
+        'the link table of its own', () {
+      Cut pair(String cut, String conteId, String prefix) {
+        final base = conte(conteId);
+        return cutOf(id: cut, [
+          base,
+          onIt('${prefix}1', base, 'K1'),
+          onIt('${prefix}2', base, 'K2'),
+        ]);
+      }
+
+      final plan = merge(
+        pair('c', 's', 'k'),
+        ['k1', 'k2'],
+        elsewhere: [
+          pair('d', 's', 'k').copyWith(
+            layers: [
+              for (final row in pair('d', 's', 'k').layers)
+                row.copyWith(
+                  id: LayerId('${row.id.value}d'),
+                  attachedToLayerId: row.attachedToLayerId == null
+                      ? null
+                      : const LayerId('sd'),
+                ),
+            ],
+          ),
+          pair('e', 'u', 'm'),
+          pair('f', 'u', 'm').copyWith(
+            layers: [
+              for (final row in pair('f', 'u', 'm').layers)
+                row.copyWith(
+                  id: LayerId('${row.id.value}f'),
+                  attachedToLayerId: row.attachedToLayerId == null
+                      ? null
+                      : const LayerId('uf'),
+                ),
+            ],
+          ),
+        ],
+        links: [
+          for (final (one, other, rows) in const [
+            ('c', 'd', ['s', 'k1', 'k2']),
+            ('e', 'f', ['u', 'm1', 'm2']),
+          ])
+            for (final row in rows) ['$one/$row', '$other/$row$other'],
+        ],
+      )!;
+
+      expect(plan.links.groups, hasLength(4), reason: "the contes' kept");
+      expect({for (final group in plan.links.groups) group.id}, hasLength(4));
+      expect(
+        [
+          for (final group in plan.links.groups.skip(2))
+            [for (final member in group.members) member.layerId.value],
+        ],
+        [
+          ['k2', 'k2d'],
+          ['m2', 'm2f'],
+        ],
       );
     });
 

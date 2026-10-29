@@ -1334,7 +1334,6 @@ Layer _onTheConte(
     return riding.copyWith(attachedMode: AttachedMode.free);
   }
   return riding.copyWith(
-    attachedMode: AttachedMode.synced,
     timeline: const {},
     baseFrameLinks: {
       for (final cel in following)
