@@ -41,6 +41,37 @@ void main() {
     expect(first.any((value) => value > 0), isTrue);
   });
 
+  test('a swatch shows a second tip through the view, as the canvas does', () {
+    // A sparse grain at density 1 cuts the line where its second stroke
+    // never piled; at density 0 the view is the first stroke, untouched.
+    final grain = BrushTipMask(
+      id: 'swatch-second-tip',
+      size: 8,
+      alpha: Uint8List.fromList([
+        for (var i = 0; i < 64; i += 1) i % 9 == 0 ? 255 : 0,
+      ]),
+    );
+    BrushSettings brush({BrushTipMask? dual, double density = 1}) =>
+        BrushSettings(
+          size: 12,
+          dualMask: dual,
+          dualMaskScale: 0.6,
+          dualDensity: density,
+        );
+    int ink(Uint8List bytes) => bytes.fold(0, (sum, value) => sum + value);
+
+    final plain = rasterizeBrushStrokeSample(brush(), 96, 24);
+    final cut = rasterizeBrushStrokeSample(brush(dual: grain), 96, 24);
+    final idle = rasterizeBrushStrokeSample(
+      brush(dual: grain, density: 0),
+      96,
+      24,
+    );
+    expect(idle, plain);
+    expect(ink(cut), lessThan(ink(plain) * 0.9));
+    expect(ink(cut), greaterThan(0), reason: 'the grain lets some through');
+  });
+
   test('ensure() rasterizes once per key and later lookups hit the SAME '
       'image', () async {
     final cache = BrushStrokePreviewCache.instance;
