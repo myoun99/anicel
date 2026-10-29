@@ -35,7 +35,6 @@ import '../models/project_font_file.dart';
 import '../models/project_frame_rate.dart';
 import '../models/stroke.dart';
 import '../models/transform_track.dart';
-import '../models/track.dart';
 import '../models/track_conte_laying.dart'
     show
         ConteHeadPut,
@@ -244,8 +243,8 @@ class ProjectRepository {
   // leaves the source untouched). These helpers ARE that name for the
   // ordinary case — they do not replace the editor. A mutation that needs
   // a different message, or that must report WHAT it removed, still calls
-  // the editor itself: [removeTrack], [removeCut], [reorderCut] and
-  // [deleteLayer] each do, and each says why where it does it.
+  // the editor itself: [removeCut], [reorderCut] and [deleteLayer] each
+  // do, and each says why where it does it.
 
   /// What one entity kind is called in that message, and the editor that
   /// finds it — the only two things the four kinds differed in.
@@ -572,12 +571,6 @@ class ProjectRepository {
     );
   }
 
-  void addTrack(Track track) {
-    updateProject((project) {
-      return project.copyWith(tracks: [...project.tracks, track]);
-    });
-  }
-
   /// Moves the track at [fromIndex] so it sits at [toIndex] in the
   /// project's list (R5 #9 — the storyboard's V-row drag).
   ///
@@ -597,26 +590,6 @@ class ProjectRepository {
         return project;
       }
       tracks.insert(toIndex, tracks.removeAt(fromIndex));
-      return project.copyWith(tracks: tracks);
-    });
-  }
-
-  void replaceTrack(Track track) {
-    _mutate(_track, track.id, (_) => track);
-  }
-
-  /// ⚠️Not [_mutate] with [_track]: this REMOVES, so there is no track to
-  /// hand an update, and the miss shows up as a length that did not change.
-  void removeTrack(TrackId trackId) {
-    updateProject((project) {
-      final tracks = project.tracks
-          .where((track) => track.id != trackId)
-          .toList(growable: false);
-
-      if (tracks.length == project.tracks.length) {
-        throw StateError('Track not found: $trackId');
-      }
-
       return project.copyWith(tracks: tracks);
     });
   }

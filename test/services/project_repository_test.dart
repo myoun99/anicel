@@ -57,42 +57,6 @@ void main() {
       expect(originalProject.name, 'Original');
     });
 
-    test('adds, replaces, and removes tracks through project copies', () {
-      final originalProject = _project(id: 'project-1', name: 'Project');
-      final repository = ProjectRepository(initialProject: originalProject);
-      final track = _track(id: 'track-1', name: 'Video');
-      final replacementTrack = _track(id: 'track-1', name: 'Renamed Video');
-
-      repository.addTrack(track);
-
-      expect(repository.requireProject().tracks, [track]);
-      expect(originalProject.tracks, isEmpty);
-
-      repository.replaceTrack(replacementTrack);
-
-      expect(repository.requireProject().tracks, [replacementTrack]);
-
-      repository.removeTrack(const TrackId('track-1'));
-
-      expect(repository.requireProject().tracks, isEmpty);
-    });
-
-    test('throws when replacing or removing a missing track', () {
-      final repository = ProjectRepository(
-        initialProject: _project(id: 'project-1', name: 'Project'),
-      );
-
-      expect(
-        () => repository.replaceTrack(_track(id: 'missing', name: 'Missing')),
-        throwsStateError,
-      );
-
-      expect(
-        () => repository.removeTrack(const TrackId('missing')),
-        throwsStateError,
-      );
-    });
-
     test('adds a cut to an existing track', () {
       final track = _track(id: 'track-1', name: 'Video');
       final project = _project(

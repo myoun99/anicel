@@ -13,34 +13,11 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/commands/add_cut_command.dart';
 import 'package:anicel/src/services/commands/add_frame_command.dart';
 import 'package:anicel/src/services/commands/add_layer_command.dart';
-import 'package:anicel/src/services/commands/add_track_command.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/project_repository.dart';
 
 void main() {
   group('Add commands', () {
-    test('AddTrackCommand executes, undoes, and redoes', () {
-      final originalProject = _project();
-      final repository = ProjectRepository(initialProject: originalProject);
-      final historyManager = HistoryManager();
-      final track = _track(id: 'track-1', name: 'Video');
-
-      historyManager.execute(
-        AddTrackCommand(repository: repository, track: track),
-      );
-
-      expect(repository.requireProject().tracks, [track]);
-
-      historyManager.undo();
-
-      expect(repository.requireProject(), originalProject);
-      expect(repository.requireProject().tracks, isEmpty);
-
-      historyManager.redo();
-
-      expect(repository.requireProject().tracks, [track]);
-    });
-
     test('AddCutCommand executes, undoes, and redoes', () {
       final track = _track(id: 'track-1', name: 'Video');
       final originalProject = _project(tracks: [track]);
@@ -167,9 +144,10 @@ void main() {
 
     test('undo before execute throws', () {
       final repository = ProjectRepository(initialProject: _project());
-      final command = AddTrackCommand(
+      final command = AddCutCommand(
         repository: repository,
-        track: _track(id: 'track-1', name: 'Video'),
+        trackId: const TrackId('track-1'),
+        cut: _cut(id: 'cut-1', name: 'Cut 1'),
       );
 
       expect(command.undo, throwsStateError);
