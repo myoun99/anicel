@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -12,12 +13,14 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
+import 'package:anicel/src/ui/session/panel_view_memory.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
 import 'package:anicel/src/ui/timeline/axis_turn.dart';
@@ -30,6 +33,7 @@ import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 import 'package:anicel/src/ui/widgets/overflow_scrollers.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/storyboard_host.dart';
 
 /// 🗣️F-351 (유저 2026-10-12): 「스페이스바로 타임라인쪽 조작하면 가로/세로
 /// 스크롤 통합해서 캔버스 조작하듯이 팬 되는데, 법 통일해서 터치로 해당영역
@@ -743,19 +747,21 @@ void main() {
 
       /// Two fingers land [apart] across [at] — the cells' middle unless it
       /// says — each [by] further from the other in ten steps, and are let
-      /// go; the zoom they leave, against the one they found.
+      /// go; the zoom they leave, against the one they found. The first is
+      /// a [first] — a finger unless it says.
       Future<double> pinch(
         WidgetTester tester, {
         Offset? at,
         double apart = 80,
         double by = 20,
+        PointerDeviceKind first = PointerDeviceKind.touch,
       }) async {
         final found = zoom.value;
         final middle = at ?? onTheCells(tester);
         final fingers = [
           await tester.startGesture(
             middle - Offset(apart / 2, 0),
-            kind: PointerDeviceKind.touch,
+            kind: first,
             pointer: 20,
           ),
           await tester.startGesture(
@@ -878,6 +884,131 @@ void main() {
         expect(await pinch(tester, apart: 0), 1);
       });
 
+      testWidgets('fingers closing onto one point zoom it out no further '
+          "than the project's rate lets any zoom (F-491)", (tester) async {
+        await pumpSheet(tester);
+        await pinch(tester, apart: 160, by: -80);
+
+        expect(
+          zoom.value,
+          TimelineZoomLimits.minPixelsPerFrameAt(
+            ProjectFrameRate.fps24.countingBase,
+          ),
+        );
+      });
+
+      testWidgets("⛔a pen and a finger zoom nothing — a pinch is fingers'", (
+        tester,
+      ) async {
+        await pumpSheet(tester);
+
+        expect(await pinch(tester, first: PointerDeviceKind.stylus), 1);
+      });
+
+      testWidgets('a second finger landing on a pull takes the sheet from it '
+          '— let go, it coasts on neither way', (tester) async {
+        await pumpSheet(tester);
+        final cells = onTheCells(tester);
+        final pulling = await tester.startGesture(
+          cells - const Offset(40, 0),
+          kind: PointerDeviceKind.touch,
+          pointer: 20,
+        );
+        for (var i = 0; i < 5; i += 1) {
+          await pulling.moveBy(const Offset(-40, -30));
+          await tester.pump(const Duration(milliseconds: 8));
+        }
+        final joining = await tester.startGesture(
+          cells + const Offset(40, 0),
+          kind: PointerDeviceKind.touch,
+          pointer: 21,
+        );
+        await joining.up();
+        final released = standing(tester);
+        await pulling.up();
+        await tester.pumpAndSettle();
+
+        expect(
+          [released.dx, released.dy],
+          everyElement(greaterThan(0)),
+          reason: '⛔premise: the first finger pulled it',
+        );
+        expect(standing(tester), released);
+      });
+
+      testWidgets('a finger landing on a pinch before the sheet is built '
+          'again zooms on from where the pinch had got, not from the build', (
+        tester,
+      ) async {
+        AppInput.settings.value = const AppInputSettings(
+          touchDragThreeFingers: CanvasTouchDragAction.navigate,
+        );
+        await pumpSheet(tester);
+        final cells = onTheCells(tester);
+        final fingers = [
+          for (final (pointer, x) in const [(20, -40.0), (21, 40.0)])
+            await tester.startGesture(
+              cells + Offset(x, 0),
+              kind: PointerDeviceKind.touch,
+              pointer: pointer,
+            ),
+        ];
+        await tester.pump();
+
+        // One frame: the two spread half as far again, a third lands
+        // between them and stirs.
+        await fingers[0].moveBy(const Offset(-20, 0));
+        await fingers[1].moveBy(const Offset(20, 0));
+        fingers.add(
+          await tester.startGesture(
+            cells,
+            kind: PointerDeviceKind.touch,
+            pointer: 22,
+          ),
+        );
+        await fingers[2].moveBy(Offset.zero);
+        for (final finger in fingers) {
+          await finger.up();
+        }
+        await tester.pumpAndSettle();
+
+        expect(
+          zoom.value / TimelineZoomLimits.referencePixelsPerFrame,
+          closeTo(1.5, 0.005),
+        );
+      });
+
+      testWidgets('⛔a third finger stops the zoom where three are set to '
+          'anything but 「내비게이트」 — 「브러시 크기」, unless set (R26 #34)', (
+        tester,
+      ) async {
+        await pumpSheet(tester);
+        final cells = onTheCells(tester);
+        final fingers = [
+          for (final (pointer, at) in const [
+            (20, Offset(-40, 0)),
+            (21, Offset(40, 0)),
+            (22, Offset(0, 40)),
+          ])
+            await tester.startGesture(
+              cells + at,
+              kind: PointerDeviceKind.touch,
+              pointer: pointer,
+            ),
+        ];
+        for (var i = 0; i < 10; i += 1) {
+          await fingers[0].moveBy(const Offset(-2, 0));
+          await fingers[1].moveBy(const Offset(2, 0));
+          await tester.pump();
+        }
+        for (final finger in fingers) {
+          await finger.up();
+        }
+        await tester.pumpAndSettle();
+
+        expect(zoom.value, TimelineZoomLimits.referencePixelsPerFrame);
+      });
+
       group('with one finger the drawing hand (결정 10)', () {
         setUp(
           () => AppInput.settings.value = const AppInputSettings(
@@ -956,6 +1087,50 @@ void main() {
       });
     });
   }
+
+  testWidgets("the conte tab hands its sheet's pinch to the zoom the "
+      'workspace keeps (F-506)', (tester) async {
+    final written = <double>[];
+    await pumpStoryboardHost(
+      tester,
+      createDefaultProject(),
+      onPixelsPerFrameChanged: written.add,
+    );
+    final frames = tester
+        .getRect(
+          find.byKey(
+            const ValueKey<String>('storyboard-timeline-horizontal-viewport'),
+          ),
+        )
+        .intersect(
+          tester.getRect(
+            find.byKey(const ValueKey<String>('storyboard-vertical-viewport')),
+          ),
+        )
+        .center;
+    final fingers = [
+      for (final (pointer, x) in const [(20, -40.0), (21, 40.0)])
+        await tester.startGesture(
+          frames + Offset(x, 0),
+          kind: PointerDeviceKind.touch,
+          pointer: pointer,
+        ),
+    ];
+    for (var i = 0; i < 10; i += 1) {
+      await fingers[0].moveBy(const Offset(-2, 0));
+      await fingers[1].moveBy(const Offset(2, 0));
+      await tester.pump();
+    }
+    for (final finger in fingers) {
+      await finger.up();
+    }
+    await tester.pumpAndSettle();
+
+    expect(
+      written.lastOrNull,
+      greaterThan(PanelViewMemory.defaultStoryboardPixelsPerFrame),
+    );
+  });
 }
 
 /// A sheet: its panel with its layer area seen through a window, the keys of

@@ -12,7 +12,8 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 /// with nothing of the app around it: [project] opened in a session, the
 /// rail wired to it as the workspace wires it (`TabRailWiring`) and built
 /// again when its view moves, the conte at the zoom it opens at unless
-/// [pixelsPerFrame] names another.
+/// [pixelsPerFrame] names another — the zooms it writes heard by
+/// [onPixelsPerFrameChanged], when the test asks.
 ///
 /// 📏heavy-tests-timeline (2026-10-20): opening the app and turning to the
 /// conte was two of a storyboard test's three seconds — 2.1s, against 0.45s
@@ -23,6 +24,7 @@ Future<EditorSessionManager> pumpStoryboardHost(
   Project project, {
   Size surface = const Size(1500, 800),
   double pixelsPerFrame = PanelViewMemory.defaultStoryboardPixelsPerFrame,
+  ValueChanged<double> onPixelsPerFrameChanged = _unheard,
 }) async {
   final session = EditorSessionManager(initialProject: project);
   addTearDown(session.dispose);
@@ -31,6 +33,7 @@ Future<EditorSessionManager> pumpStoryboardHost(
     session,
     surface: surface,
     pixelsPerFrame: pixelsPerFrame,
+    onPixelsPerFrameChanged: onPixelsPerFrameChanged,
   );
   return session;
 }
@@ -50,6 +53,7 @@ Future<void> pumpStoryboardHostOn(
   EditorSessionManager session, {
   Size surface = const Size(1500, 800),
   double pixelsPerFrame = PanelViewMemory.defaultStoryboardPixelsPerFrame,
+  ValueChanged<double> onPixelsPerFrameChanged = _unheard,
   StoryboardRowsChannel? rowsChannel,
 }) async {
   await tester.binding.setSurfaceSize(surface);
@@ -71,7 +75,7 @@ Future<void> pumpStoryboardHostOn(
             session: session,
             rail: TabRailWiring.of(session),
             pixelsPerFrame: pixelsPerFrame,
-            onPixelsPerFrameChanged: (_) {},
+            onPixelsPerFrameChanged: onPixelsPerFrameChanged,
             showSeconds: false,
             onShowSecondsChanged: (_) {},
             thumbnails: null,
@@ -83,3 +87,6 @@ Future<void> pumpStoryboardHostOn(
   );
   await tester.pumpAndSettle();
 }
+
+/// A zoom no one asked about.
+void _unheard(double _) {}
