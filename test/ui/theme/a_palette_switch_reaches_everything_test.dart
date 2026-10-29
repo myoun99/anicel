@@ -1,4 +1,4 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/app_accents.dart';
@@ -8,6 +8,8 @@ import 'package:anicel/src/ui/canvas/stage_planes_painter.dart'
     show stageColorOnScreen;
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/theme/color_mode_rederive.dart';
+import 'package:anicel/src/ui/theme/text_on_ground.dart'
+    show textOnLightGroundColor;
 
 /// 🗣️I-143: a switch of the palette reaches every colour on screen at once
 /// ([ColorModeRederive]) — the parts nothing else would touch included.
@@ -62,6 +64,21 @@ void main() {
     );
     await tester.pump();
     expect(builds, 1, reason: 'the walk is for the palette, not the accent');
+  });
+
+  test('the theme is built of the palette worn', () {
+    expect(buildAppTheme().colorScheme.brightness, Brightness.dark);
+    expect(buildAppTheme().colorScheme.onPrimary, AppPalette.dark.backdrop);
+
+    wear(AppColorMode.light);
+    final scheme = buildAppTheme().colorScheme;
+    expect(scheme.brightness, Brightness.light);
+    expect(scheme.surface, AppPalette.light.surface);
+    expect(
+      scheme.onPrimary,
+      textOnLightGroundColor,
+      reason: 'black on the accent where the chrome is light (I-143-Q3)',
+    );
   });
 
   /// 🗣️I-143-Q5 (유저 2026-10-30, 「바닥을 따라 밝게」).
