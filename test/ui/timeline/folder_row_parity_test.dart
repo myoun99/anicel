@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/widgets/row_plate.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/named_finders.dart';
+import '../../helpers/a_folder_made_by_hand.dart';
 
 /// R27 #23~#29 asked for a folder row that reads exactly like a layer row.
 /// It IS one now — the same widget, so parity is by construction and these
@@ -208,7 +209,7 @@ void main() {
     addTearDown(s.dispose);
     s.createDrawingAtCurrentFrame();
     final layerId = s.activeLayer!.id;
-    s.folders.groupActiveLayerIntoFolder();
+    groupTheActiveRowIntoAFolder(s);
     final folderId = s.activeCutOrNull!.layers.folderLayers.single.id;
     expect(s.activeLayerId, layerId);
 
@@ -225,7 +226,7 @@ void main() {
     addTearDown(s.dispose);
     s.createDrawingAtCurrentFrame();
     final layerId = s.activeLayer!.id;
-    s.folders.groupActiveLayerIntoFolder();
+    groupTheActiveRowIntoAFolder(s);
     final folderId = s.activeCutOrNull!.layers.folderLayers.single.id;
 
     s.rowSelection.value = [LayerRowAddress(layerId)];
@@ -259,7 +260,7 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     s.createDrawingAtCurrentFrame();
-    s.folders.groupActiveLayerIntoFolder();
+    groupTheActiveRowIntoAFolder(s);
     final folderId = s.activeCutOrNull!.layers.folderLayers.single.id;
     s.layerSwitches.setLayerBlendMode(folderId, LayerBlendMode.multiply);
     expect(
@@ -332,7 +333,7 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     s.createDrawingAtCurrentFrame();
-    s.folders.groupActiveLayerIntoFolder();
+    groupTheActiveRowIntoAFolder(s);
     final folderId = s.activeCutOrNull!.layers.folderLayers.single.id;
 
     // Exactly the read the rail hosts do (`_displayLayers`).

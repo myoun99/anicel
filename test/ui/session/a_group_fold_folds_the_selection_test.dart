@@ -8,6 +8,7 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/session_row_button_presses.dart';
+import '../../helpers/a_folder_made_by_hand.dart';
 
 /// 🗣️I-32 (유저 2026-09-14): 「레이어 선택범위 버튼 일괄조작 … 기존 규칙
 /// 로직 최대한 통일하면서 따라서(선택안 버튼조작은 선택전부적용, 그 외 조작은
@@ -98,7 +99,7 @@ class _Rig {
       s.folders.addAttachedLayer(AttachedPlacement.above);
     }
     s.selectLayer(cels[2]);
-    s.folders.groupActiveLayerIntoFolder();
+    groupTheActiveRowIntoAFolder(s);
     folder = s.activeCutOrNull!.layers.folderLayers.single.id;
     expect(
       [open(baseA), open(baseB), open(folder), open(plain)],

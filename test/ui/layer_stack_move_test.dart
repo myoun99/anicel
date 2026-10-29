@@ -7,6 +7,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/layer_row_drag.dart';
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
     show LayerRowSubject;
+import '../helpers/a_folder_made_by_hand.dart';
 
 /// Moving a row along the stack, driven through the DRAG — the only way a
 /// user can do it since R5 #5 retired the step verbs.
@@ -101,7 +102,7 @@ void main() {
         .lastWhere((layer) => layer.kind == LayerKind.animation)
         .id;
     session.selectLayer(member);
-    session.folders.groupActiveLayerIntoFolder();
+    groupTheActiveRowIntoAFolder(session);
     final folder = session.requireActiveCut.layers
         .firstWhere((layer) => layer.kind == LayerKind.folder)
         .id;

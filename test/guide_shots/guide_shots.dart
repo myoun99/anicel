@@ -74,6 +74,7 @@ import '../helpers/settle_async.dart';
 import 'guide_shortcut_table.dart';
 
 import '../helpers/rail_group_button.dart';
+import '../helpers/a_folder_made_by_hand.dart';
 
 final outRoot = Platform.environment['GUIDE_OUT'] ?? 'build/guide';
 
@@ -1405,7 +1406,7 @@ Future<void> layerKindShots(WidgetTester tester) async {
 
   s.selectLayer(ballLayer);
   await settleReal(tester, 4);
-  s.folders.groupActiveLayerIntoFolder();
+  groupTheActiveRowIntoAFolder(s);
   await settleReal(tester, 4);
   await shot(tester, 'folder', rect: timelineRows(tester), ratio: 2);
   await undoAll();

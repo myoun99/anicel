@@ -6,6 +6,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/models/composite_tree.dart';
+import '../../helpers/a_folder_made_by_hand.dart';
 
 /// 🚨★★★유저 확정 2026-09-04 (ARCH-active-node): **재생과 똑같이.**
 ///
@@ -30,7 +31,7 @@ void main() {
     // A drawing row with a cel, folded into a folder — then step to a frame
     // where the row has nothing exposed, which is the whole case.
     s.createDrawingAtCurrentFrame();
-    s.folders.groupActiveLayerIntoFolder();
+    groupTheActiveRowIntoAFolder(s);
     final folderId = s.activeCutOrNull!.layers.folderLayers.single.id;
     if (folderBlend != LayerBlendMode.passThrough) {
       s.layerSwitches.setLayerBlendMode(folderId, folderBlend);

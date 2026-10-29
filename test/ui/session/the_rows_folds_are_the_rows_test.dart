@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 
 import '../../helpers/row_folds.dart';
+import '../../helpers/a_folder_made_by_hand.dart';
 
 /// 🚨F-360 (유저 2026-10-14): 「어태치레이어 분명 접은채로 저장했는데
 /// 다시열면 펼쳐져있음. fx나 폴더나 이런 접음/펼침상태가 기록이 안되는건지?
@@ -73,7 +74,7 @@ void main() {
       final plain = added();
       final filed = added();
       s.selectLayer(filed);
-      s.folders.groupActiveLayerIntoFolder();
+      groupTheActiveRowIntoAFolder(s);
       final folder = s.requireActiveCut.layers.folderLayers.single.id;
       s.selectLayer(base);
       s.folders.addAttachedLayer(AttachedPlacement.below);

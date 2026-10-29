@@ -1784,7 +1784,6 @@ class EditorSessionManager extends ChangeNotifier
   // second envelope waiting to drift.
   late final ActiveCutEdits _activeCutEdits = ActiveCutEdits(
     project: this,
-    selection: this,
     timeline: this,
     changes: this,
   );

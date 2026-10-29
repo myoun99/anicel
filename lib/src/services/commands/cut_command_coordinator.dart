@@ -46,7 +46,6 @@ import 'cut_command_input_planner.dart';
 import 'convert_to_linked_cut_command.dart';
 import 'convert_to_linked_cut_plan.dart';
 import 'create_cut_command.dart';
-import 'create_folder_command.dart';
 import 'create_linked_cut_command.dart';
 import 'dissolve_folder_command.dart';
 import 'link_mirror.dart'
@@ -505,24 +504,6 @@ class CutCommandCoordinator {
   _FolderAndAttachmentCommands get _folders =>
       _FolderAndAttachmentCommands(this);
 
-  LayerId? createFolderFromLayer({
-    required CutId cutId,
-    required LayerId layerId,
-    String? name,
-  }) => _folders.createFolderFromLayer(
-    cutId: cutId,
-    layerId: layerId,
-    name: name,
-  );
-  LayerId? createAttachOrganizerFolder({
-    required CutId cutId,
-    required LayerId layerId,
-    String? name,
-  }) => _folders.createAttachOrganizerFolder(
-    cutId: cutId,
-    layerId: layerId,
-    name: name,
-  );
   void dissolveFolder({required CutId cutId, required LayerId folderId}) =>
       _folders.dissolveFolder(cutId: cutId, folderId: folderId);
   List<Command> layerAttachmentCommands({

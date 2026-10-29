@@ -18,6 +18,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/layer_verbs.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/layer_name_commands.dart';
+import '../../helpers/a_folder_made_by_hand.dart';
 
 /// F-305 (유저 2026-10-06): 「타임라인에서 폴더 삭제할때 내용물도 함께 삭제.
 /// 선택범위로 폴더/내용물 선택하고 삭제하는건 알아서 폴더만 삭제되도록 하는게
@@ -225,7 +226,7 @@ void main() {
     session.selectLayer(base);
     session.folders.addAttachedLayer(AttachedPlacement.above);
     final attached = session.activeLayer!.id;
-    session.folders.groupActiveAttachIntoFolder();
+    groupTheActiveAttachIntoAFolder(session);
     final organizer = session.requireActiveCut.layers.folderLayers.single.id;
     final before = _stack(session);
     expect(

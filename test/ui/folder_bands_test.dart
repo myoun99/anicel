@@ -5,6 +5,7 @@ import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/folder_bands.dart';
+import '../helpers/a_folder_made_by_hand.dart';
 
 /// THE FOLDER BANDS ARE MEASURED.
 ///
@@ -25,7 +26,7 @@ void main() {
     addTearDown(s.dispose);
     s.createDrawingAtCurrentFrame();
     final member = s.activeLayer!.id;
-    s.folders.groupActiveLayerIntoFolder();
+    groupTheActiveRowIntoAFolder(s);
     final folder = s.activeCutOrNull!.layers.folderLayers.single.id;
     s.selectLayer(member);
     return (s, member, folder);

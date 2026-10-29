@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 import '../../helpers/pill_row_clipboard.dart';
 import '../../helpers/a_cut_with_a_drawing_row.dart';
+import '../../helpers/a_folder_made_by_hand.dart';
 
 /// 🗣️F-302 (유저 2026-10-05): 「겸용컷, 레이어에서 fx 접기펼치기, 폴더/어태치
 /// 접기/펼치기 버튼도 공유. 지금 겸용컷별로 독립적임. 펼친 상태 접힌 상태
@@ -429,7 +430,7 @@ class _Rig {
         .firstWhere((layer) => layer.attachedToLayerId == base)
         .id;
     s.selectLayer(inFolder);
-    s.folders.groupActiveLayerIntoFolder();
+    groupTheActiveRowIntoAFolder(s);
     folder = s.requireActiveCut.layers.folderLayers.single.id;
   }
 

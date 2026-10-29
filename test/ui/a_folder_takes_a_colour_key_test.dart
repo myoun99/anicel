@@ -4,6 +4,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import '../helpers/a_folder_made_by_hand.dart';
 
 /// 🚨★★★A FOLDER TAKES A COLOUR KEY — the user-facing end of the round.
 ///
@@ -23,7 +24,7 @@ void main() {
     final session = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(session.dispose);
     session.createDrawingAtCurrentFrame();
-    session.folders.groupActiveLayerIntoFolder();
+    groupTheActiveRowIntoAFolder(session);
     return session;
   }
 

@@ -9,6 +9,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/models/composite_tree.dart';
+import '../../helpers/a_folder_made_by_hand.dart';
 
 /// The EDITING canvas composites the same tree playback does, so a folder
 /// buffer looks the same while you draw as it will when you play.
@@ -29,7 +30,7 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     s.createDrawingAtCurrentFrame();
-    s.folders.groupActiveLayerIntoFolder();
+    groupTheActiveRowIntoAFolder(s);
     final folderId = s.activeCutOrNull!.layers.folderLayers.single.id;
     if (blend != LayerBlendMode.passThrough) {
       s.layerSwitches.setLayerBlendMode(folderId, blend);

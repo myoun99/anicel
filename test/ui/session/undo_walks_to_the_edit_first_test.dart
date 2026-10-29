@@ -9,6 +9,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
     show PlaybackScope;
 import '../../helpers/row_folds.dart';
+import '../../helpers/a_folder_made_by_hand.dart';
 
 /// 🚨★★★I-41 — UNDO WALKS TO THE EDIT FIRST, AND REDO IS ITS MIRROR.
 ///
@@ -286,7 +287,7 @@ void main() {
     EditorSessionManager s,
   ) {
     final row = s.activeLayerId!;
-    s.folders.groupActiveLayerIntoFolder();
+    groupTheActiveRowIntoAFolder(s);
     final folder = s.layers.firstWhere((layer) => layer.kind.groupsLayers).id;
     s
       ..selectLayer(row)

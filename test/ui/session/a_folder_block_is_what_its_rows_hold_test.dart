@@ -47,6 +47,7 @@ import 'package:anicel/src/ui/timeline/timeline_tile_raster_source.dart'
     show timelineHoldGlyph;
 
 import '../timeline/timeline_frame_geometry_probe.dart';
+import '../../helpers/a_folder_made_by_hand.dart';
 
 /// F-311 (유저 2026-10-06): 「일반 폴더의 블록, 왜 이 경우 일부만 회색인지?
 /// 폴더 블록이 그림 없는구간 회색하는건 아이디어 좋다고 하니 개선해서 채용.
@@ -1008,7 +1009,7 @@ void main() {
         final s = _session([_row('a', const {0: 4})]);
         s.selectLayer(const LayerId('a'));
         s.folders.addAttachedLayer(AttachedPlacement.above);
-        s.folders.groupActiveAttachIntoFolder();
+        groupTheActiveAttachIntoAFolder(s);
         final organizer = s.requireActiveCut.layers.folderLayers.single.id;
         expect(
           [_layer(s, 'a').folderId, _blocks(_band(s, organizer))],
