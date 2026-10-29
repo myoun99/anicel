@@ -2125,15 +2125,16 @@ enum AppStrings {
     'launchNoticeDontShowAgain': "Don't show again",
     'usageStatsSend': 'Send usage statistics',
     'usageStatsHelp':
-        'When on, the app sends anonymously, when it opens and about once '
-        'an hour while you use it, that it is in use — with the OS and its '
-        'version, the device model, the device language, the app build and '
-        'the app language. Once a day it also sends how many of the last 28 '
-        'days it was used (new, 1–2, 3 or more), and four settings: the '
-        'interface scale, the accent color, autosave and the cursor. '
-        'Nothing that identifies you is sent: no drawings or projects, no file names, no names, not '
-        'the name you gave the device. Turning it off also deletes the '
-        'record kept on this device.',
+        'When on, the app sends anonymously, when it opens, every 55 '
+        'minutes while you use it and when you leave it, that it is in use '
+        '— with the OS and its version, the device model, the app build and '
+        'the app language. Once a day it also sends the device language, '
+        'how many of the last 28 days it was used (new, 1–2, 3 or more), '
+        'and four settings: the interface scale, the accent color, autosave '
+        'and the cursor. Nothing that identifies you is sent: no drawings '
+        'or projects, no file names, no names, not the name you gave the '
+        'device. Turning it off also deletes the record kept on this '
+        'device.',
     'usageStatsTitle': 'Usage statistics',
     'usageStatsAsk':
         'Send usage statistics? Turning them on helps the development of '
@@ -3474,10 +3475,10 @@ enum AppStrings {
     'launchNoticeDontShowAgain': '次回から表示しない',
     'usageStatsSend': '利用統計を送信',
     'usageStatsHelp':
-        'オンにすると、アプリを開いたときと使っている間の約1時間ごとに、使用中であることを'
-        'OSとそのバージョン・端末の機種名・端末の言語・アプリのビルド・アプリの言語とともに'
+        'オンにすると、アプリを開いたとき・使っている間の55分ごと・離れたときに、使用中であることを'
+        'OSとそのバージョン・端末の機種名・アプリのビルド・アプリの言語とともに'
         '匿名で送信します。'
-        '1日1回、直近28日間に使った日数の区分（初回 / 1〜2日 / 3日以上）と、'
+        '1日1回、端末の言語と、直近28日間に使った日数の区分（初回 / 1〜2日 / 3日以上）、'
         '4つの設定（UIの大きさ・アクセントカラー・自動保存・カーソル）も送信します。'
         '絵・プロジェクト・ファイル名・名前・端末に付けた名前など、あなたを特定できる'
         'ものは送信しません。オフにすると、この端末に残した記録も削除します。',
@@ -5288,10 +5289,10 @@ enum AppStrings {
     'launchNoticeDontShowAgain': '다음부터 표시 안 함',
     'usageStatsSend': '사용 통계 보내기',
     'usageStatsHelp':
-        '켜 두면 앱을 열 때와 쓰는 동안 약 1시간마다 한 번, 쓰고 있다는 것을 '
-        'OS와 그 버전 · 기기 모델명 · 기기 언어 · 앱 빌드 · 앱 언어와 함께 '
-        '익명으로 보냅니다. 하루 한 번은 최근 28일 중 쓴 날의 구간'
-        '(처음 / 1–2일 / 3일 이상)과 설정 네 가지'
+        '켜 두면 앱을 열 때 · 쓰는 동안 55분마다 · 앱을 떠날 때, 쓰고 있다는 것을 '
+        'OS와 그 버전 · 기기 모델명 · 앱 빌드 · 앱 언어와 함께 '
+        '익명으로 보냅니다. 하루 한 번은 기기 언어와 최근 28일 중 쓴 날의 구간'
+        '(처음 / 1–2일 / 3일 이상), 설정 네 가지'
         '(UI 크기 · 강조 색상 · 자동 저장 · 커서)도 보냅니다. '
         '그림 · 프로젝트 · 파일 이름 · 이름 · 기기에 붙인 이름 등 '
         '사용자를 알아볼 수 있는 것은 보내지 않습니다. '
@@ -7091,12 +7092,13 @@ enum AppStrings {
     'launchNoticeDontShowAgain': 'Ne plus afficher',
     'usageStatsSend': "Envoyer des statistiques d'utilisation",
     'usageStatsHelp':
-        "Activé, l'app envoie de façon anonyme, à son ouverture et environ "
-        "une fois par heure pendant que vous l'utilisez, qu'elle est "
-        "utilisée — avec le système et sa version, le modèle de l'appareil, "
-        "la langue de l'appareil, la version de l'app et la langue de l'app. "
-        'Une fois par jour, elle envoie aussi le nombre de jours '
-        "d'utilisation sur les 28 derniers (nouveau, 1–2, 3 ou plus) et "
+        "Activé, l'app envoie de façon anonyme, à son ouverture, toutes les "
+        "55 minutes pendant que vous l'utilisez et quand vous la quittez, "
+        "qu'elle est utilisée — avec le système et sa version, le modèle de "
+        "l'appareil, la version de l'app et la langue de l'app. "
+        "Une fois par jour, elle envoie aussi la langue de l'appareil, le "
+        "nombre de jours d'utilisation sur les 28 derniers (nouveau, 1–2, "
+        '3 ou plus) et '
         "quatre réglages : la taille de l'interface, la couleur d'accent, "
         'la sauvegarde auto et le curseur. '
         "Rien qui vous identifie n'est envoyé : ni dessins ni projets, "
@@ -9068,9 +9070,9 @@ enum AppStrings {
     'launchNoticeDontShowAgain': '不再显示',
     'usageStatsSend': '发送使用统计',
     'usageStatsHelp':
-        '开启后，会在打开应用时以及使用期间大约每小时一次，匿名发送“正在使用”，'
-        '并附带操作系统及其版本、设备型号、设备语言、应用版本号和应用语言。每天一次还会'
-        '发送最近 28 天内使用天数的区间（首次 / 1–2 天 / 3 天以上）以及四项设置'
+        '开启后，会在打开应用时、使用期间每 55 分钟一次以及离开应用时，匿名发送“正在使用”，'
+        '并附带操作系统及其版本、设备型号、应用版本号和应用语言。每天一次还会'
+        '发送设备语言、最近 28 天内使用天数的区间（首次 / 1–2 天 / 3 天以上）以及四项设置'
         '（界面大小、强调色、自动保存、光标）。不会发送画作、项目、'
         '文件名、名称、您给设备起的名字等任何能识别您的信息。关闭后也会删除本设备上'
         '保存的记录。',

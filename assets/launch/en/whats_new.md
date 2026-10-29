@@ -1,7 +1,7 @@
 ## What's new in this version
 
 - **Send Feedback** — send us feedback from the ⚙ Settings menu, as text alone or with screenshots and videos. Your device and the build are filled in for you.
-- **Send usage statistics (optional)** — turn it on in the window that asks at first launch or in Preferences ▸ System, and the app sends anonymously, when it opens and about once an hour while you use it, that it is in use, and once a day a range for how many of the last 28 days it was used with four settings (interface scale, accent color, autosave, cursor) — with the OS, device model, device language, build and app language. It starts off, and no drawings, files or the name you gave the device are sent.
+- **Send usage statistics (optional)** — turn it on in the window that asks at first launch or in Preferences ▸ System, and the app sends anonymously, when it opens, every 55 minutes while you use it and when you leave it, that it is in use, and once a day a range for how many of the last 28 days it was used with the device language and four settings (interface scale, accent color, autosave, cursor) — with the OS, device model, build and app language. It starts off, and no drawings, files or the name you gave the device are sent.
 - **Build number** — shown beside the title of the notice at launch and in About Anicel in the ⚙ menu.
 - **Work settings, reworked** — the timesheet's artist field now carries the rough key artist's name. Each cut can have its own scene (SCENE) in Cut settings, and each cut remembers which sections you opened or closed.
 - **Palettes, reworked** — tap an empty swatch to put the current color in it, and drag swatches to move or swap them. Palettes can be renamed, folded, reordered and locked.
