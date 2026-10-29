@@ -89,13 +89,14 @@ void main() {
 
   for (final axis in Axis.values) {
     group(axis.name, () {
-      // Frames 210..212 stand at 2100..2120 of the content, 300px into the
-      // screen; 190..205 at 1900..2050; 270..290 at 2700..2900.
+      // Frames 190..205 stand at 1900..2050 of the content, 100px into the
+      // screen; 270..290 at 2700..2900; 210..212 at 2100..2120, 300px in.
+      // The one hit first is laid last: a press asks the topmost first.
       late ValueNotifier<TimelineFrameGeometry> handle;
       late List<Rect> spanBClips;
       late List<Rect> spanDClips;
       late List<Offset> spanADrawnAt;
-      late int spanATaps;
+      late Map<String, int> taps;
 
       Future<void> pumpRow(WidgetTester tester) async {
         handle = ValueNotifier(windowAt(2000));
@@ -103,7 +104,11 @@ void main() {
         spanBClips = [];
         spanDClips = [];
         spanADrawnAt = [];
-        spanATaps = 0;
+        taps = {'A': 0, 'B': 0};
+        Widget tapped(String name, CustomPainter painter) => GestureDetector(
+          onTap: () => taps[name] = taps[name]! + 1,
+          child: CustomPaint(painter: painter),
+        );
         await tester.pumpWidget(
           Directionality(
             textDirection: TextDirection.ltr,
@@ -132,29 +137,10 @@ void main() {
                         children: [
                           TimelineFrameSpan(
                             placement: const TimelineFrameSpanPlacement(
-                              startIndex: 210,
-                              endIndexExclusive: 212,
-                            ),
-                            child: Semantics(
-                              container: true,
-                              key: const ValueKey('A'),
-                              label: 'A',
-                              child: GestureDetector(
-                                onTap: () => spanATaps += 1,
-                                child: CustomPaint(
-                                  painter: _PlaceReader(spanADrawnAt),
-                                ),
-                              ),
-                            ),
-                          ),
-                          TimelineFrameSpan(
-                            placement: const TimelineFrameSpanPlacement(
                               startIndex: 190,
                               endIndexExclusive: 205,
                             ),
-                            child: CustomPaint(
-                              painter: _ClipReader(spanBClips),
-                            ),
+                            child: tapped('B', _ClipReader(spanBClips)),
                           ),
                           TimelineFrameSpan(
                             placement: const TimelineFrameSpanPlacement(
@@ -163,6 +149,18 @@ void main() {
                             ),
                             child: CustomPaint(
                               painter: _ClipReader(spanDClips),
+                            ),
+                          ),
+                          TimelineFrameSpan(
+                            placement: const TimelineFrameSpanPlacement(
+                              startIndex: 210,
+                              endIndexExclusive: 212,
+                            ),
+                            child: Semantics(
+                              container: true,
+                              key: const ValueKey('A'),
+                              label: 'A',
+                              child: tapped('A', _PlaceReader(spanADrawnAt)),
                             ),
                           ),
                         ],
@@ -192,7 +190,7 @@ void main() {
       }
 
       testWidgets('a window that moved is painted, never laid out, and its '
-          'span is drawn, placed and hit where it stood', (tester) async {
+          'spans are drawn, placed and hit where they stood', (tester) async {
         await pumpRow(tester);
         final spanA = find.byKey(const ValueKey('A'));
         expect(partAlong(axis, spanADrawnAt.last), closeTo(300, 1e-6));
@@ -208,10 +206,13 @@ void main() {
           expect(drawn, closeTo(300, 1e-6), reason: where);
           final placed = partAlong(axis, tester.getTopLeft(spanA));
           expect(placed, closeTo(300, 1e-6), reason: where);
-          final taps = spanATaps;
-          await tester.tapAt(offsetAlong(axis, along: 310, across: 20));
-          await tester.pump();
-          expect(spanATaps, taps + 1, reason: where);
+          // B is pressed where it stands inside the window either way.
+          for (final (name, along) in [('A', 310.0), ('B', 220.0)]) {
+            final before = taps[name]!;
+            await tester.tapAt(offsetAlong(axis, along: along, across: 20));
+            await tester.pump();
+            expect(taps[name], before + 1, reason: '$name, $where');
+          }
         }
       });
 
@@ -223,6 +224,11 @@ void main() {
         await moveTheWindowTo(tester, 1600);
         expect(endAlong(axis, spanDClips.last), closeTo(100, 1));
         expect(startAlong(axis, spanBClips.last), closeTo(-300, 1));
+
+        // 1800..3000: every span inside it, so nothing is clipped.
+        await moveTheWindowTo(tester, 1800);
+        expect(startAlong(axis, spanBClips.last), lessThan(-1000));
+        expect(endAlong(axis, spanDClips.last), greaterThan(10000));
 
         // 2000..3200: the 1900..2050 span runs in from before its start.
         await moveTheWindowTo(tester, 2000);
