@@ -154,6 +154,24 @@ class TimelineFrameGeometry {
     windowExtentPx: extentPx,
   );
 
+  /// Whether a row laid out under [other] stands laid out under this: all
+  /// a layout reads the same — where the window stands along the content
+  /// and how far the view reaches are read where the row paints, never
+  /// where its pieces are laid ([TimelineFrameAxisRenderMixin]).
+  ///
+  /// The content's own spacer is compared within a hair: [windowed] takes
+  /// the origin off it, and adding it back is not exact for every origin.
+  bool laysOutAs(TimelineFrameGeometry other) =>
+      other.frameCellExtent == frameCellExtent &&
+      other.frameStartIndex == frameStartIndex &&
+      other.frameEndIndexExclusive == frameEndIndexExclusive &&
+      ((other.leadingFrameSpacerWidth + other.windowOriginPx) -
+                  (leadingFrameSpacerWidth + windowOriginPx))
+              .abs() <
+          1e-6 &&
+      other.trailingFrameSpacerWidth == trailingFrameSpacerWidth &&
+      other.windowExtentPx == windowExtentPx;
+
   @override
   bool operator ==(Object other) =>
       other is TimelineFrameGeometry &&
@@ -265,12 +283,41 @@ mixin TimelineFrameAxisRenderMixin on RenderBox {
       return;
     }
     if (attached) {
-      current?.removeListener(markNeedsLayout);
-      value.addListener(markNeedsLayout);
+      current?.removeListener(_follow);
+      value.addListener(_follow);
     }
     _geometryHandle = value;
     markNeedsLayout();
   }
+
+  /// What the last layout was laid under ([layOutUnder]).
+  TimelineFrameGeometry? _laidOutUnder;
+
+  /// The geometry a layout reads — remembered, so that a window moving
+  /// along the content alone is answered with a paint ([_follow]).
+  TimelineFrameGeometry layOutUnder() => _laidOutUnder = geometry.value;
+
+  /// 🚨A WINDOW THAT MOVED IS PAINTED, NOT LAID OUT
+  /// (frame-axis-box-at-window-size, 2026-10-30): where the window stands
+  /// is read where the row paints, hit-tests and says where its pieces are,
+  /// so a crossing lays nothing out. ↩️Every row's box and every span layer
+  /// in it was laid out again at each crossing past the window's margin —
+  /// 43 on the timeline, 76 on the sheet (24 layers, measured) — each
+  /// measuring its semantics again with it.
+  void _follow() {
+    final laid = _laidOutUnder;
+    if (laid != null && geometry.value.laysOutAs(laid)) {
+      markNeedsPaint();
+      markNeedsSemanticsUpdate();
+      return;
+    }
+    markNeedsLayout();
+  }
+
+  /// Where the window stands along the content, as an offset — what a
+  /// piece laid out free of it is painted back by.
+  Offset get windowShift =>
+      offsetAlong(axis, along: geometry.value.windowOriginPx, across: 0);
 
   double _crossAxisExtent = 0;
   double get crossAxisExtent => _crossAxisExtent;
@@ -295,12 +342,12 @@ mixin TimelineFrameAxisRenderMixin on RenderBox {
   @override
   void attach(PipelineOwner owner) {
     super.attach(owner);
-    _geometryHandle!.addListener(markNeedsLayout);
+    _geometryHandle!.addListener(_follow);
   }
 
   @override
   void detach() {
-    _geometryHandle!.removeListener(markNeedsLayout);
+    _geometryHandle!.removeListener(_follow);
     super.detach();
   }
 }
@@ -339,24 +386,20 @@ class RenderTimelineFrameAxisBox extends RenderProxyBox
   Size _outerSize(BoxConstraints constraints) =>
       constraints.constrain(_sizeFor(geometry.value.contentMainExtent));
 
-  /// Where the child sits inside this box.
-  Offset get _childOffset {
-    final origin = geometry.value.windowOriginPx;
-    if (origin == 0) {
-      return Offset.zero;
-    }
-    return offsetAlong(axis, along: origin, across: 0);
-  }
+  /// Where the child sits inside this box — read live, so a window that
+  /// moved paints it there without a layout ([TimelineFrameAxisRenderMixin]).
+  Offset get _childOffset => windowShift;
 
   @override
   void performLayout() {
+    final frames = layOutUnder();
     final child = this.child;
     if (child == null) {
       size = _outerSize(constraints);
       return;
     }
     child.layout(_innerConstraints(constraints), parentUsesSize: true);
-    size = geometry.value.isWindowed ? _outerSize(constraints) : child.size;
+    size = frames.isWindowed ? _outerSize(constraints) : child.size;
   }
 
   @override
