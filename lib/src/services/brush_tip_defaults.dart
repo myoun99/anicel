@@ -35,6 +35,8 @@ final List<BrushTipEntry> defaultBrushTipEntries = List.unmodifiable([
       'Pencil Lead ${index ~/ pencilLeadFacesPerStep + 1}-'
       '${index % pencilLeadFacesPerStep + 1}',
     ),
+  for (final (index, crumb) in pencilCrumbBrushTipMasks.indexed)
+    _entry(crumb, 'Pencil Crumb ${index + 1}'),
 ]);
 
 BrushTipEntry _entry(BrushTipMask mask, String name) => BrushTipEntry(

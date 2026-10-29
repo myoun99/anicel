@@ -161,6 +161,22 @@ final List<BrushTipMask> pencilLeadBrushTipMasks = List.unmodifiable([
 /// pencil wears as its `tipsPerTurn`.
 const int pencilLeadFacesPerStep = 3;
 
+/// 🗣️THE CRUMBS A LEAD LEAVES (F-462 ②, 유저 2026-10-25: 「클튜
+/// 연필브러시들은 육각형식으로 안하니까 그거 참고해서 다시 개편. 육각형같은거
+/// 잊어도됨」). Three lumpy rounds, each its own outline, whole through most of
+/// its reach and easing to the rim, its face mottled — the way Clip Studio's
+/// pencils draw: a few irregular tips thrown at random, each turned at
+/// random, the paper's tooth doing the grain. The mottle is what moves the
+/// grain dab to dab: under a paper worked by its height a texel the last dab
+/// reached short of is reached by the next, so a line laid again fills in.
+///
+/// ⚠️64 texels, not the lead faces' 256: a pencil is a few pixels across,
+/// and the tip sampler has no minification filter (F-462 ③'s tuft, the same
+/// finding) — a 256 rim would stair there.
+final List<BrushTipMask> pencilCrumbBrushTipMasks = List.unmodifiable([
+  for (var crumb = 0; crumb < 3; crumb += 1) _generatePencilCrumbMask(crumb),
+]);
+
 const int _maskSize = 64;
 
 /// Every round tip is one disc about the mask centre, a pixel short of the
@@ -812,6 +828,32 @@ double _superReach(double u, double v, int order) {
     reach = math.sqrt(reach);
   }
   return reach;
+}
+
+/// One crumb of [pencilCrumbBrushTipMasks]: a round whose reach a slow noise
+/// moves in and out by a quarter — its lumps — whole out to 0.7 of it, then
+/// easing as `(1 - s²)²` to the rim, every texel of it mottled down by up to
+/// three tenths.
+BrushTipMask _generatePencilCrumbMask(int crumb) {
+  const centre = _maskSize / 2.0;
+  const radius = _maskSize / 2.0 - 1.5;
+  final lumps = _seamlessValueNoise(5, 0xC0B + crumb * 77);
+  final mottle = _seamlessValueNoise(16, 0x3A7 + crumb * 131);
+  return _textureMask('builtin-pencil-crumb-$crumb', (x, y, index) {
+    final u = (x + 0.5 - centre) / radius;
+    final v = (y + 0.5 - centre) / radius;
+    final reach =
+        math.sqrt(u * u + v * v) * (1.0 + (lumps[index] - 0.5) * 0.5);
+    if (reach >= 1.0) {
+      return 0.0;
+    }
+    var cover = 1.0;
+    if (reach > 0.7) {
+      final s = (reach - 0.7) / 0.3;
+      cover = (1.0 - s * s) * (1.0 - s * s);
+    }
+    return 255.0 * cover * (0.7 + 0.3 * mottle[index]);
+  });
 }
 
 /// Graphite tooth ([graphiteToothTextureMask]): per texel a hashed speck
