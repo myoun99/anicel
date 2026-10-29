@@ -1761,7 +1761,7 @@ class LaneGraphGuestTags extends StatelessWidget {
         color: AppColors.surface,
         shape: AppShapes.container(
           AppShapes.wellRadius,
-          side: const BorderSide(color: AppColors.hairline),
+          side: BorderSide(color: AppColors.hairline),
         ),
       ),
       child: Padding(
@@ -1795,10 +1795,10 @@ class LaneGraphGuestTags extends StatelessWidget {
           child: Text(
             '${layer.name} · ${lane.label}',
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 11, color: AppColors.text),
+            style: TextStyle(fontSize: 11, color: AppColors.text),
           ),
         ),
-        const Icon(
+        Icon(
           Icons.push_pin,
           size: _guestPinSize,
           color: AppColors.textDim,

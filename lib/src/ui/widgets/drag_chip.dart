@@ -78,7 +78,7 @@ class DragChip extends StatelessWidget {
           const SizedBox(width: 5),
           Text(
             item.label,
-            style: const TextStyle(fontSize: 12, color: AppColors.text),
+            style: TextStyle(fontSize: 12, color: AppColors.text),
           ),
           if (banned) ...[
             const SizedBox(width: 2),
@@ -86,9 +86,9 @@ class DragChip extends StatelessWidget {
               key: const ValueKey<String>('drag-chip-ban'),
               width: 16,
               height: 16,
-              decoration: const ShapeDecoration(
+              decoration: ShapeDecoration(
                 color: AppColors.danger,
-                shape: CircleBorder(),
+                shape: const CircleBorder(),
               ),
               child: const Icon(Icons.block, size: 12, color: Color(0xFF1B0F0F)),
             ),

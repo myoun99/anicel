@@ -227,7 +227,7 @@ class _CutName extends StatelessWidget {
       '${decimalDigits}ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 
   /// The pills' name cells' words (`PillNameCell`), the name's weight.
-  static const TextStyle _style = TextStyle(
+  static TextStyle get _style => TextStyle(
     fontSize: 11.5,
     fontWeight: FontWeight.w600,
     color: AppColors.text,

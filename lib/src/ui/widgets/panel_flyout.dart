@@ -597,7 +597,7 @@ Future<void> showPanelFlyout(
                   Expanded(
                     child: Text(
                       label,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 10,
                         color: AppColors.textDim,
                       ),
@@ -636,7 +636,7 @@ Future<void> showPanelFlyout(
                   if (label != null) ...[
                     Text(
                       label,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
                         color: AppColors.textDim,
                       ),
@@ -845,7 +845,7 @@ Widget _warnedBelow(PanelFlyoutItem entry, Widget row) {
           padding: flyoutRowPadding.copyWith(bottom: 6),
           child: Text(
             warning,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
               height: _warningLineHeight / 11,
               color: AppColors.danger,
@@ -1183,7 +1183,7 @@ class _SubmenuLayer extends StatelessWidget {
                       alignment: Alignment.centerLeft,
                       child: Text(
                         label,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 10,
                           color: AppColors.textDim,
                         ),

@@ -5,6 +5,7 @@ import '../../models/app_language.dart';
 import '../text/app_strings.dart';
 
 import '../../models/app_accents.dart';
+import 'text_on_ground.dart' show textOnLightGroundColor;
 
 /// The app-wide dark palette (TVPaint/OpenToonz-style flat charcoal).
 ///
@@ -34,9 +35,44 @@ abstract final class AppColors {
   static final ValueNotifier<AppAccentSettings> accentSettings =
       ValueNotifier<AppAccentSettings>(const AppAccentSettings());
 
+  /// Which palette the chrome wears now (I-143).
+  static AppColorMode get mode => accentSettings.value.mode;
+
+  static AppPalette get _palette => switch (mode) {
+    AppColorMode.dark => AppPalette.dark,
+    AppColorMode.light => AppPalette.light,
+  };
+
   /// The accent — selection, playhead, active toggles (default teal;
   /// customizable, UI-R22 #5).
-  static Color get accent => accentSettings.value.accent;
+  ///
+  /// 🗣️I-143-Q4 (유저 2026-10-30, 「라이트에서만 진하게」): on the light
+  /// palette the picked hue is darkened until it stands 3:1 against
+  /// [surface] — the eight presets fell to 1.7–3.4:1 on the light grey, and
+  /// the playhead and a selection with them. The swatch the user picked
+  /// stays the colour they picked.
+  static Color get accent => _accent.resolve(
+    identity: accentSettings.value,
+    build: () => switch (mode) {
+      AppColorMode.dark => accentSettings.value.accent,
+      AppColorMode.light => _deepened(accentSettings.value.accent, surface),
+    },
+  );
+
+  static final _accent = IdentityMemo<Color>();
+
+  /// [colour]'s hue and saturation, darkened a step at a time until it
+  /// stands 3:1 against [ground].
+  static Color _deepened(Color colour, Color ground) {
+    final groundLuminance = ground.computeLuminance();
+    var hsl = HSLColor.fromColor(colour);
+    while (hsl.lightness > 0.05 &&
+        (groundLuminance + 0.05) / (hsl.toColor().computeLuminance() + 0.05) <
+            3) {
+      hsl = hsl.withLightness(hsl.lightness - 0.01);
+    }
+    return hsl.toColor();
+  }
 
   /// The colour of a `＋` glyph, wherever one appears.
   ///
@@ -61,7 +97,7 @@ abstract final class AppColors {
   /// state to freeze on. The value is the same grey the button theme dims to
   /// (`disabledForegroundColor`), so nothing looks different at rest — what
   /// changes is that the in-between has nowhere to live.
-  static final Color glyphDisabled = textDim.withValues(alpha: 0.5);
+  static Color get glyphDisabled => textDim.withValues(alpha: 0.5);
 
   static Color addGlyph({required bool enabled}) =>
       enabled ? accent : glyphDisabled;
@@ -101,15 +137,15 @@ abstract final class AppColors {
 
   /// FILL 1 — below every chrome surface: the scaffold, a well cut into a
   /// panel, the ring that separates a floating panel from the artwork.
-  static const Color backdrop = Color(0xFF141517);
+  static Color get backdrop => _palette.backdrop;
 
   /// FILL 2 — every opaque chrome surface, no exceptions. The app talking
   /// about itself.
-  static const Color surface = Color(0xFF1E2022);
+  static Color get surface => _palette.surface;
 
   /// FILL 3 — never at rest: a control the pointer is on or that is switched
   /// on, and the surfaces the pointer summons (menus, tooltips).
-  static const Color surfaceHigh = Color(0xFF303336);
+  static Color get surfaceHigh => _palette.surfaceHigh;
 
   /// The two SHADES of the chrome: a wash laid over a fill, or the resting
   /// plate of something that sits ON a fill (a storyboard cut block, a
@@ -124,20 +160,20 @@ abstract final class AppColors {
   /// glyph behind them, so they would not degrade, they would disappear.
   ///
   /// [washUp] lifts the fill beneath it; [washDown] sinks it.
-  static const Color washUp = Color(0xFF26282B);
-  static const Color washDown = Color(0xFF1A1C1E);
+  static Color get washUp => _palette.washUp;
+  static Color get washDown => _palette.washDown;
 
   /// LINE — a seam between cells inside one surface.
-  static const Color hairline = Color(0xFF37393C);
+  static Color get hairline => _palette.hairline;
 
   /// LINE — a grip you have not touched yet: block outlines, field borders,
   /// a scrollbar thumb at rest.
-  static const Color hairlineStrong = Color(0xFF45494E);
+  static Color get hairlineStrong => _palette.hairlineStrong;
 
   /// LINE — your pointer is on the grip itself. The interaction half of what
   /// used to be [textDim]; it left the text family, because a colour cannot
   /// be both "this text is secondary" and "your hand is here".
-  static const Color gripHover = Color(0xFF7C8184);
+  static Color get gripHover => _palette.gripHover;
 
   /// LINE — the one line that must read on chrome AND on near-white sheet
   /// paper in the same stroke: the 1-second beat, drawn straight across
@@ -151,12 +187,12 @@ abstract final class AppColors {
   static const Color beatLine = Color(0xFF7C8184);
 
   /// INK — primary text and icons.
-  static const Color text = Color(0xFFB4B8BB);
+  static Color get text => _palette.text;
 
   /// INK — secondary text and inactive icons. Raised from the old #7C8184,
   /// which sat at 4.15:1 on the panel surface: it was the app's most-read
   /// colour (116 sites) and it was the least legible one.
-  static const Color textDim = Color(0xFF9DA2A6);
+  static Color get textDim => _palette.textDim;
 
   /// 「OFF」 — the alpha a switched-off icon or plate wears: the onion, the
   /// fx glyph, the hidden row's label plate, and a boolean button whose
@@ -175,13 +211,13 @@ abstract final class AppColors {
   /// 🗣️유저 2026-09-13: 「단축키 색 지금보다 더 불투명도 낮춰서. 진짜
   /// 흐리게.」 It was [textDim] itself — the colour secondary TEXT reads in —
   /// and a key beside a name is quieter than that.
-  static final Color shortcutKeys = textDim.withValues(alpha: 0.45);
+  static Color get shortcutKeys => textDim.withValues(alpha: 0.45);
 
   /// [shortcutKeys] on a row that cannot be pressed.
-  static final Color shortcutKeysDisabled = textDim.withValues(alpha: 0.22);
+  static Color get shortcutKeysDisabled => textDim.withValues(alpha: 0.22);
 
   /// Muted red for destructive/warning marks (cut-end boundary).
-  static const Color danger = Color(0xFFC95C5C);
+  static Color get danger => _palette.danger;
 
   /// The のりしろ boundary — where a cut is DRAWN to, past the red line that
   /// says where it plays to.
@@ -191,6 +227,70 @@ abstract final class AppColors {
   /// "selection, playhead, active state", but the user wants the app's accent
   /// here. ⇒ non-const, since the accent is a live setting.
   static Color get noriShiro => accent;
+}
+
+/// The values of [AppColors]' neutrals, one set per [AppColorMode]. The
+/// roles are the tokens' own (their docs say what each is for); a palette
+/// only says what colour that role is.
+///
+/// 🗣️I-143-Q3 (유저 2026-10-30, 「이대로」): the light set is the mockup's
+/// (artifact 879imeRC7AgiNXzKqdQRzb) — the dark one's structure kept, the
+/// floor below the panels below the hovered and switched-on controls, and
+/// the ink a dark grey rather than black (10.7:1 on the panel).
+final class AppPalette {
+  const AppPalette({
+    required this.backdrop,
+    required this.surface,
+    required this.surfaceHigh,
+    required this.washUp,
+    required this.washDown,
+    required this.hairline,
+    required this.hairlineStrong,
+    required this.gripHover,
+    required this.text,
+    required this.textDim,
+    required this.danger,
+  });
+
+  final Color backdrop;
+  final Color surface;
+  final Color surfaceHigh;
+  final Color washUp;
+  final Color washDown;
+  final Color hairline;
+  final Color hairlineStrong;
+  final Color gripHover;
+  final Color text;
+  final Color textDim;
+  final Color danger;
+
+  static const dark = AppPalette(
+    backdrop: Color(0xFF141517),
+    surface: Color(0xFF1E2022),
+    surfaceHigh: Color(0xFF303336),
+    washUp: Color(0xFF26282B),
+    washDown: Color(0xFF1A1C1E),
+    hairline: Color(0xFF37393C),
+    hairlineStrong: Color(0xFF45494E),
+    gripHover: Color(0xFF7C8184),
+    text: Color(0xFFB4B8BB),
+    textDim: Color(0xFF9DA2A6),
+    danger: Color(0xFFC95C5C),
+  );
+
+  static const light = AppPalette(
+    backdrop: Color(0xFFD2D5D9),
+    surface: Color(0xFFE4E7EA),
+    surfaceHigh: Color(0xFFFAFBFC),
+    washUp: Color(0xFFEEF0F2),
+    washDown: Color(0xFFD9DCE0),
+    hairline: Color(0xFFC6CBCF),
+    hairlineStrong: Color(0xFFA7ACB1),
+    gripHover: Color(0xFF6B7075),
+    text: Color(0xFF2C3034),
+    textDim: Color(0xFF565B60),
+    danger: Color(0xFFB5403F),
+  );
 }
 
 /// The app's one corner.
@@ -348,13 +448,13 @@ abstract final class AppPopupSurface {
   /// 알아서 변경되겟지?」 is true: menus, tooltips, dialogs and popovers all
   /// read it. ⛔A window that spells the value out is a copy even while the
   /// two happen to match — `one_summoned_surface_test` scans for that.
-  static const Color color = AppColors.surface;
+  static Color get color => AppColors.surface;
 
   /// Enough shadow to lift the window off the panel under it. A summoned
   /// window is not docked to anything, so it may not read as flush.
   static const double elevation = 6;
 
-  static const BorderSide edge = BorderSide(color: AppColors.hairline);
+  static BorderSide get edge => BorderSide(color: AppColors.hairline);
 
   /// ⚠️Material 3 tints an elevated surface with the primary colour unless
   /// it is told not to. The app paints its own greys and any tint is a
@@ -395,14 +495,23 @@ Color _accentWash(double alpha) => Color.alphaBlend(
 ColorScheme _buildColorScheme() {
   // Non-const: the accent is LIVE now (UI-R22 #5) — the app root
   // rebuilds the theme when the accent settings change.
+  // On the accent, the dark floor where the chrome is dark, and black where
+  // it is light — the mockup's (I-143-Q3).
+  final onAccent = switch (AppColors.mode) {
+    AppColorMode.dark => AppColors.backdrop,
+    AppColorMode.light => textOnLightGroundColor,
+  };
   return ColorScheme(
-    brightness: Brightness.dark,
+    brightness: switch (AppColors.mode) {
+      AppColorMode.dark => Brightness.dark,
+      AppColorMode.light => Brightness.light,
+    },
     primary: AppColors.accent,
-    onPrimary: AppColors.backdrop,
+    onPrimary: onAccent,
     primaryContainer: _accentWash(0.26),
     onPrimaryContainer: AppColors.text,
     secondary: AppColors.accent,
-    onSecondary: AppColors.backdrop,
+    onSecondary: onAccent,
     secondaryContainer: _accentWash(0.20),
     onSecondaryContainer: AppColors.text,
     error: AppColors.danger,
@@ -637,7 +746,7 @@ ThemeData _buildAppTheme() {
     // remember, and none of them did. A theme is what a default is.
     splashFactory: NoSplash.splashFactory,
     highlightColor: Colors.transparent,
-    appBarTheme: const AppBarTheme(
+    appBarTheme: AppBarTheme(
       backgroundColor: AppColors.surface,
       foregroundColor: AppColors.text,
       elevation: 0,
@@ -648,7 +757,7 @@ ThemeData _buildAppTheme() {
         fontWeight: FontWeight.w600,
       ),
     ),
-    iconTheme: const IconThemeData(color: AppColors.text, size: 20),
+    iconTheme: IconThemeData(color: AppColors.text, size: 20),
     // THE line that makes "one button shape" true rather than aspirational.
     // Without a shape here every IconButton in the app falls through to M3's
     // default StadiumBorder — a PILL, which is further from the app's corner
@@ -709,12 +818,12 @@ ThemeData _buildAppTheme() {
       // cousin of the colour copy this file just lost.
       shape: AppPopupSurface.shape,
       insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 28),
-      titleTextStyle: const TextStyle(
+      titleTextStyle: TextStyle(
         color: AppColors.text,
         fontSize: 13,
         fontWeight: FontWeight.w500,
       ),
-      contentTextStyle: const TextStyle(color: AppColors.text, fontSize: 13),
+      contentTextStyle: TextStyle(color: AppColors.text, fontSize: 13),
       actionsPadding: const EdgeInsets.fromLTRB(10, 4, 10, 10),
     ),
     // Boxed fields sunk to the backdrop, so a field reads as a well on the
@@ -730,10 +839,10 @@ ThemeData _buildAppTheme() {
       disabledBorder: _fieldBorder(AppColors.hairline),
       errorBorder: _fieldBorder(AppColors.danger),
       focusedErrorBorder: _fieldBorder(AppColors.danger),
-      labelStyle: const TextStyle(color: AppColors.textDim, fontSize: 13),
+      labelStyle: TextStyle(color: AppColors.textDim, fontSize: 13),
       floatingLabelStyle: TextStyle(color: AppColors.accent, fontSize: 12),
-      hintStyle: const TextStyle(color: AppColors.textDim, fontSize: 13),
-      errorStyle: const TextStyle(color: AppColors.danger, fontSize: 11),
+      hintStyle: TextStyle(color: AppColors.textDim, fontSize: 13),
+      errorStyle: TextStyle(color: AppColors.danger, fontSize: 11),
     ),
     // ⛔NOT "stragglers only" — that comment was wrong for as long as it
     // stood. `MaterialScrollBehavior.buildScrollbar` puts a framework
@@ -785,7 +894,7 @@ ThemeData _buildAppTheme() {
     ),
     menuTheme: MenuThemeData(
       style: MenuStyle(
-        backgroundColor: const WidgetStatePropertyAll<Color>(
+        backgroundColor: WidgetStatePropertyAll<Color>(
           AppPopupSurface.color,
         ),
         surfaceTintColor: const WidgetStatePropertyAll<Color>(
@@ -819,7 +928,7 @@ ThemeData _buildAppTheme() {
         shape: AppShapes.container(AppShapes.wellRadius),
       ),
       textStyle: AppTypography.inTheAppFace(
-        const TextStyle(color: AppColors.text, fontSize: 12),
+        TextStyle(color: AppColors.text, fontSize: 12),
       ),
     ),
   );

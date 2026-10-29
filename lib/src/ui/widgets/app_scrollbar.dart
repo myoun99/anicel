@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../theme/text_on_ground.dart' show textOnColor;
 import '../timeline/axis_turn.dart'
     show extentAcross, extentAlong, partAlong, stripAlong;
 import 'app_scrollbar_lane.dart';
@@ -197,7 +198,8 @@ class _AppScrollbarState extends State<AppScrollbar> {
       builder: (context, constraints) {
         final trackExtent = extentAlong(widget.axis, constraints.biggest);
         final geometry = _geometry(trackExtent);
-        // Colour is the whole state machine (see the class doc). White
+        // Colour is the whole state machine (see the class doc). The ink the
+        // chrome takes (white on the dark palette, black on the light, I-143)
         // rather than a palette grey because a thumb has to win
         // against the lane behind it to read as "the pointer is here".
         final color = !widget.enabled
@@ -205,7 +207,7 @@ class _AppScrollbarState extends State<AppScrollbar> {
             : _pressed
             ? AppColors.accent
             : _hovered
-            ? Colors.white
+            ? textOnColor(AppColors.surface)
             : AppColors.hairlineStrong;
         // 🚨F-202 (유저 2026-09-27): 「안에서 동작하는 스크롤이나 드래그는 절대
         // 밖으로 안새게」. A thumb's drag is the bar's VERB, so the bar wears

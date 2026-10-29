@@ -720,7 +720,7 @@ class ExportCelBlock extends StatelessWidget {
 /// The colour a laid direction is said in: the 「D」 on the drawing it is
 /// laid over, and the band's pill that laid it — one colour, so the eye
 /// ties the pill to the mark it put there (drawn so in the F-289 mock).
-const Color exportLaidDirectionInk = AppColors.danger;
+Color get exportLaidDirectionInk => AppColors.danger;
 
 /// The colour the camera's work laid is said in: the 「C」 on the drawing it
 /// is laid over, and the CAM pill that laid it — as for

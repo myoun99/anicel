@@ -40,7 +40,7 @@ class _OldNameCell extends StatelessWidget {
             label,
             maxLines: 1,
             softWrap: false,
-            style: const TextStyle(fontSize: 11.5, color: AppColors.text),
+            style: TextStyle(fontSize: 11.5, color: AppColors.text),
           );
     final cell = ControlPressClaim(
       onPressed: () {

@@ -471,7 +471,7 @@ void main() {
       return (lane.decoration as BoxDecoration).border! as Border;
     }
 
-    const ring = BorderSide(color: AppColors.backdrop);
+    final ring = BorderSide(color: AppColors.backdrop);
     expect(ringOf('canvas-panbar-vertical').left, ring);
     expect(ringOf('canvas-panbar-horizontal').top, ring);
   });

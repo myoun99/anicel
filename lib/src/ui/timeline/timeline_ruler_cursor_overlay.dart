@@ -104,7 +104,7 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
 
   /// A ready run with a cel that could not be read ([ReadyRun.unreadable])
   /// — the red the reference button wears for a file it cannot read.
-  static const Color unreadableBarColor = AppColors.danger;
+  static Color get unreadableBarColor => AppColors.danger;
 
   /// The strip's thickness along the ruler's bottom edge.
   ///

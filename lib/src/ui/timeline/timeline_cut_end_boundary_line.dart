@@ -20,11 +20,13 @@ import '../theme/app_theme.dart';
 Widget timelineCutEndBoundaryLine({
   required double left,
   required Axis axis,
-  Color color = AppColors.danger,
+  Color? color,
 }) {
   final line = IgnorePointer(
     child: RepaintBoundary(
-      child: DecoratedBox(decoration: BoxDecoration(color: color)),
+      child: DecoratedBox(
+        decoration: BoxDecoration(color: color ?? AppColors.danger),
+      ),
     ),
   );
   if (axis == Axis.vertical) {

@@ -39,6 +39,7 @@ import 'src/services/diagnostics/memory_black_box.dart';
 import 'src/ui/theme/app_scroll_behavior.dart';
 import 'src/ui/text/app_strings.dart';
 import 'src/ui/theme/app_theme.dart';
+import 'src/ui/theme/color_mode_rederive.dart';
 import 'src/ui/ui_scale.dart';
 import 'src/ui/ui_scale_binding.dart';
 
@@ -226,6 +227,12 @@ class AnicelApp extends StatelessWidget {
     // The theme rides the LIVE accent settings (UI-R22 #5). ↩️Not the input
     // settings: their rebuild re-derived nothing but a whole-app theme lerp
     // (auto-frame-toggle-hitch, 2026-09-29 — see [buildAppTheme]).
+    // Their palette (I-143) is read past the theme too, so a switch of it
+    // rebuilds and repaints everything ([ColorModeRederive]).
+    return ColorModeRederive(child: _themed());
+  }
+
+  Widget _themed() {
     return ListenableBuilder(
       listenable: Listenable.merge([
         AppColors.accentSettings,
@@ -250,6 +257,11 @@ class AnicelApp extends StatelessWidget {
       builder: (context, _) => MaterialApp(
         title: 'Anicel',
         theme: buildAppTheme(),
+        // ⛔No lerp between two themes: only the half of the chrome that
+        // reads the theme can lerp — the half that reads [AppColors] lands
+        // at once — so the 200 ms in between showed both palettes at once
+        // (I-143).
+        themeAnimationDuration: Duration.zero,
         // ONE scrollbar in the app, and this is where it is installed.
         // It has to be the App's and not a wrapper below it: dialogs,
         // popup menus and dropdown routes are children of the Navigator's

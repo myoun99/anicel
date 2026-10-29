@@ -408,7 +408,7 @@ class _AllowanceRow extends StatelessWidget {
           const SizedBox(width: 6),
           Text(
             label,
-            style: const TextStyle(fontSize: 12, color: AppColors.textDim),
+            style: TextStyle(fontSize: 12, color: AppColors.textDim),
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -481,7 +481,7 @@ class _LiveBar extends StatelessWidget {
                 top: 0,
                 bottom: 0,
                 width: width * wholeFraction,
-                child: const ColoredBox(color: AppColors.hairline),
+                child: ColoredBox(color: AppColors.hairline),
               ),
               Positioned(
                 left: 0,
@@ -530,7 +530,7 @@ class _ItemRow extends StatelessWidget {
               Expanded(
                 child: Text(
                   label,
-                  style: const TextStyle(fontSize: 12, color: AppColors.text),
+                  style: TextStyle(fontSize: 12, color: AppColors.text),
                 ),
               ),
               Text(
@@ -541,7 +541,7 @@ class _ItemRow extends StatelessWidget {
                 pinned > 0
                     ? '${format(bytes)}  (${format(pinned)} $pinnedLabel)'
                     : format(bytes),
-                style: const TextStyle(fontSize: 12, color: AppColors.textDim),
+                style: TextStyle(fontSize: 12, color: AppColors.textDim),
               ),
             ],
           ),

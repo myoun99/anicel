@@ -834,7 +834,7 @@ Future<void> _expectTheCompositorShowsTheTags(
   final edge = partAlong(axis, end);
   bool isGround(int at) {
     final i = (along ? across * width + at : at * width + across) * 4;
-    const ground = AppColors.surface;
+    final ground = AppColors.surface;
     bool near(int byte, double channel) =>
         (bytes.getUint8(i + byte) - (channel * 255).round()).abs() < 8;
     return near(0, ground.r) && near(1, ground.g) && near(2, ground.b);

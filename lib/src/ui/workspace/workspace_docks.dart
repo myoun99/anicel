@@ -456,7 +456,7 @@ class _WorkspaceDocks {
         shape: _floatingBottomShape(
           inset: inset,
           onTop: onTop,
-          side: const BorderSide(
+          side: BorderSide(
             color: AppColors.backdrop,
             width: _floatingRingWidth,
           ),

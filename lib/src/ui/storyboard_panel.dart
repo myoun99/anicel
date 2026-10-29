@@ -2542,7 +2542,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
             top: 0,
             bottom: 0,
             width: 2,
-            child: const IgnorePointer(
+            child: IgnorePointer(
               child: ColoredBox(color: AppColors.danger),
             ),
           );

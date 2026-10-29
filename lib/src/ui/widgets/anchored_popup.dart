@@ -64,7 +64,7 @@ class _AnchoredPopupSurface extends StatelessWidget {
 abstract final class AnchoredPopupText {
   /// The window's own name, once, at the top. Heavier than the flyout's
   /// 12pt rows on purpose: a menu is a list of peers, a window has a title.
-  static const TextStyle title = TextStyle(
+  static TextStyle get title => TextStyle(
     fontSize: 12,
     fontWeight: FontWeight.w600,
     color: AppColors.text,
@@ -76,7 +76,7 @@ abstract final class AnchoredPopupText {
   /// was drawn in the BORDER colour (0xFF37393C) on this surface
   /// (0xFF303336), which is a sentence you cannot read. A token borrowed
   /// from the wrong family stops being a colour choice and becomes a bug.
-  static const TextStyle caption = TextStyle(
+  static TextStyle get caption => TextStyle(
     fontSize: 10,
     color: AppColors.textDim,
   );

@@ -31,7 +31,7 @@ import 'timeline_cell_exposure_state.dart';
 /// asked them to, not because one derives from the other.
 const Color timelineDrawingHeldColor = Color(0xFFFFFDF7);
 const Color timelineDrawingStartColor = timelineDrawingHeldColor;
-const Color timelineDrawingStartBorderColor = AppColors.hairlineStrong;
+Color get timelineDrawingStartBorderColor => AppColors.hairlineStrong;
 
 /// LIVE accent read (UI-R22 #5): the selection ink follows accent 1.
 Color get timelineSelectedFrameBorderColor => AppColors.accent;
@@ -334,7 +334,7 @@ typedef TimelineBlockWordSlot = ({
 /// ⚠️Whole, not derived from the row's paper: it is no state of the drawing
 /// but a fault, and the colour labels are pastels it must not be taken for.
 /// Its block is never an empty one (`timelineFrameBlockLook`).
-const Color timelineUnreadableCelPaperColor = AppColors.danger;
+Color get timelineUnreadableCelPaperColor => AppColors.danger;
 
 /// The PLAIN (non-block) frame grid's border alpha (UI-R14 #4): ONE
 /// faint value for every surface — the painterized drawing rows, the

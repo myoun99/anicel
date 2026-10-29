@@ -3738,7 +3738,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// capsule's reason ([CanvasCapsule]). The transport of a document that runs
   /// is a band under them, ruled off the same way.
   List<Widget> _dockedLanes(ColorScheme colorScheme) {
-    const ring = BorderSide(color: AppColors.backdrop);
+    final ring = BorderSide(color: AppColors.backdrop);
     Widget strip(String keyValue, Border ringed, [Widget? bar]) => DecoratedBox(
       key: ValueKey<String>(keyValue),
       decoration: BoxDecoration(color: colorScheme.surface, border: ringed),
@@ -3752,7 +3752,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
         width: lane,
         child: strip(
           'canvas-panbar-vertical',
-          const Border(left: ring),
+          Border(left: ring),
           rightStripBar,
         ),
       ),
@@ -3763,7 +3763,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
         height: lane,
         child: strip(
           'canvas-panbar-horizontal',
-          const Border(top: ring),
+          Border(top: ring),
           horizontalStripBar,
         ),
       ),
@@ -3782,7 +3782,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
           height: _transportCover,
           child: strip(
             'canvas-transport',
-            const Border(top: ring),
+            Border(top: ring),
             Padding(
               padding: const EdgeInsets.only(top: _transportRule),
               child: transport.child,

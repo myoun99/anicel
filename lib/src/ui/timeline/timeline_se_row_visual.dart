@@ -24,6 +24,7 @@ import '../text/dialogue_fit_paint.dart' show dialogueLongestGlyph;
 import '../text/app_strings.dart' show AppText;
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
+import '../theme/text_on_ground.dart' show textOnColor;
 import 'dialogue_fit_text.dart';
 import 'se_crossing_mark_painter.dart';
 import 'timeline_block_look.dart' show timelineRowLookOf;
@@ -870,8 +871,10 @@ final class _SeSpanFit {
   /// 텍스트/규칙 … 이름 오른쪽에 검정색으로」).
   Color deliveryInk() => _inkAt(_head.deliveryFrom);
 
+  // The white before the block is the ink the row's chrome takes — black
+  // on the light palette (I-143).
   Color _inkAt(double from) =>
-      from < 0 ? timelineTextOnDarkGroundColor : style.color!;
+      from < 0 ? textOnColor(AppColors.surface) : style.color!;
 
   /// Where the head's words stand along [size]: the name's chip where
   /// [seNameChipPlace] says — just before the block, or at the head the

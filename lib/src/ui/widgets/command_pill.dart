@@ -134,7 +134,7 @@ class CommandPill extends StatelessWidget {
         // here too.
         shape: AppShapes.control(
           heightIn(context),
-          side: const BorderSide(color: AppColors.hairline),
+          side: BorderSide(color: AppColors.hairline),
         ),
       ),
       child: SizedBox(
@@ -298,7 +298,7 @@ class _PillNameCellState extends State<PillNameCell> with KeyboardPress {
             label,
             maxLines: 1,
             softWrap: false,
-            style: const TextStyle(fontSize: 11.5, color: AppColors.text),
+            style: TextStyle(fontSize: 11.5, color: AppColors.text),
           );
     // 🚨A name cell is a control: a press that lands here is its own,
     // scroll included — the plate IS its claim ([PressClaim]).

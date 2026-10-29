@@ -62,7 +62,7 @@ class CanvasCapsule extends StatelessWidget {
       decoration: ShapeDecoration(
         color: Theme.of(context).colorScheme.surface,
         shape: shape.copyWith(
-          side: const BorderSide(color: AppColors.backdrop),
+          side: BorderSide(color: AppColors.backdrop),
         ),
       ),
       child: SuperellipseClip(
