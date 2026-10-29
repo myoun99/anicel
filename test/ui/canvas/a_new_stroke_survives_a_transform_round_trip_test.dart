@@ -490,6 +490,11 @@ void main() {
         .session
         .historyManager;
     final entries = history.undoCount;
+    // Heard as it lands, not read after: a history let go empties its
+    // stacks (F-505, 2026-10-30), so what it holds once the window has
+    // gone says nothing of what was written to it.
+    final heard = <int>[];
+    history.addListener(() => heard.add(history.undoCount));
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
     expect(
@@ -498,8 +503,8 @@ void main() {
       reason: 'the landing wrote to a history that was still there',
     );
     expect(
-      history.undoCount,
-      entries + 1,
+      heard,
+      contains(entries + 1),
       reason: 'and the box LANDED — an unmount is not a revert',
     );
   });
