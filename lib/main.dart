@@ -34,7 +34,7 @@ import 'src/services/diagnostics/memory_black_box.dart';
 import 'src/ui/theme/app_scroll_behavior.dart';
 import 'src/ui/text/app_strings.dart';
 import 'src/ui/theme/app_theme.dart';
-import 'src/ui/theme/color_mode_rederive.dart';
+import 'src/ui/theme/app_colors_rederive.dart';
 import 'src/ui/ui_scale.dart';
 import 'src/ui/ui_scale_binding.dart';
 
@@ -219,9 +219,10 @@ class AnicelApp extends StatelessWidget {
     // The theme rides the LIVE accent settings (UI-R22 #5). ↩️Not the input
     // settings: their rebuild re-derived nothing but a whole-app theme lerp
     // (auto-frame-toggle-hitch, 2026-09-29 — see [buildAppTheme]).
-    // Their palette (I-143) is read past the theme too, so a switch of it
-    // rebuilds and repaints everything ([ColorModeRederive]).
-    return ColorModeRederive(child: _themed());
+    // Their palette (I-143) and accent (F-508) are read past the theme too,
+    // so a switch of either rebuilds and repaints everything
+    // ([AppColorsRederive]).
+    return AppColorsRederive(child: _themed());
   }
 
   Widget _themed() {
