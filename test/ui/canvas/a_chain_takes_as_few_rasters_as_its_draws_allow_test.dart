@@ -245,6 +245,20 @@ void main() {
           takes: (laid, off) => laid == off - 2,
           most: 1,
         ),
+        // Its gather and the colour on it are a raster, as the keys after
+        // read them; the keys one more — a fresh paint each, so the colour
+        // is laid once.
+        'a camera lens blur, a colour, then two keys': (
+          chain: [
+            cameraLens,
+            brighter,
+            key(0xFF808080, keeps: false),
+            key(0xFF406080, keeps: true),
+          ],
+          paper: canvas,
+          takes: (laid, off) => laid == off - 1,
+          most: 0,
+        ),
       };
 
   for (final MapEntry(key: name, value: (:chain, :paper, :takes, :most))

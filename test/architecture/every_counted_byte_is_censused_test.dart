@@ -461,6 +461,9 @@ const _imageHolders = <String, String>{
   'lib/src/ui/export/held_rows.dart → _passing':
       'the rows composed for one picture alone, let go once it is made '
       '(during) — the working set of a render',
+  'lib/src/ui/canvas/subtree_image_composite.dart → _images':
+      'what one effect chain\'s picture draws while it is laid (_Laying), '
+      'let go once that picture is recorded — the working set of a chain',
   'lib/src/ui/export/held_pictures.dart → _thisFrame':
       'an export run\'s pictures — a cut\'s whole picture, the finished '
       'frame — for the frame being drawn, held one frame more and let go '
