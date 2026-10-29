@@ -182,6 +182,14 @@ final class AptabaseClient {
     // 09:1x): `locale` stays the program language, as it was, and the
     // device's own goes beside it — the SDKs have no system prop for a
     // second language, so it is ours, under `osLocale`, on every event.
+    //
+    // 👁️WHAT IS SENT IS SHOWN (유저 2026-10-29 18:4x, I-70-Q7: 「우리가
+    // 수집하기로한건 다 뜨게하고싶어」): Aptabase's dashboard draws a
+    // session's OS and its version, and every event's props as chips, but
+    // the device model and the program language nowhere — its widgets, its
+    // session timeline and its CSV export all leave `device_model` and
+    // `locale` out (its source, 10-29). So those two ride in every event's
+    // props as well, under the systemProps' own keys, beside `osLocale`.
     return [
       for (final event in events)
         {
@@ -189,7 +197,12 @@ final class AptabaseClient {
           'sessionId': sessionId,
           'eventName': event.name,
           'systemProps': systemProps,
-          'props': {...event.props, 'osLocale': osLocale},
+          'props': {
+            ...event.props,
+            'osLocale': osLocale,
+            'deviceModel': device.model,
+            'locale': locale,
+          },
         },
     ];
   }

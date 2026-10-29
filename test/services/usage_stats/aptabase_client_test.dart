@@ -150,10 +150,40 @@ void main() {
       }
       expect(events[0]['eventName'], 'app_started');
       // The device's own language beside each event's own props (유저
-      // 2026-10-29 09:1x) — `locale` above stays the program language.
-      expect(events[0]['props'], {'osLocale': 'ko-KR'});
+      // 2026-10-29 09:1x) — `locale` above stays the program language —
+      // and the device model and that program language again, as the
+      // dashboard draws props and not those systemProps (I-70-Q7).
+      expect(events[0]['props'], {
+        'osLocale': 'ko-KR',
+        'deviceModel': 'Surface Pro, 11th Edition',
+        'locale': 'ko',
+      });
       expect(events[1]['eventName'], 'day');
-      expect(events[1]['props'], {'days': '3+', 'osLocale': 'ko-KR'});
+      expect(events[1]['props'], {
+        'days': '3+',
+        'osLocale': 'ko-KR',
+        'deviceModel': 'Surface Pro, 11th Edition',
+        'locale': 'ko',
+      });
+    });
+
+    test('👁️what the dashboard draws carries all that is sent: the device '
+        'model and the program language ride in the props too, as the '
+        'systemProps say them (유저 2026-10-29 18:4x, I-70-Q7)', () async {
+      await send(
+        client(),
+        [started],
+        now: now,
+        locale: 'ja',
+        osLocale: 'fr-CA',
+      );
+      final event = sent(0).single;
+      final system = event['systemProps'] as Map<String, dynamic>;
+      final props = event['props'] as Map<String, dynamic>;
+      expect(props['deviceModel'], system['deviceModel']);
+      expect(props['locale'], system['locale']);
+      expect(props['locale'], 'ja');
+      expect(props['osLocale'], 'fr-CA');
     });
 
     test('the device model is the product\'s, as the feedback forms read it '

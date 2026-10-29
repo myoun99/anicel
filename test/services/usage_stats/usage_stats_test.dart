@@ -73,11 +73,14 @@ typedef _Sent = List<String>;
 List<Map<String, dynamic>> _events(String body) =>
     (jsonDecode(body) as List).cast<Map<String, dynamic>>();
 
-/// [event] as `<name>[ <key>=<value>,…]` — less the device's language,
-/// which every event carries (its own test reads it).
+/// [event] as `<name>[ <key>=<value>,…]` — less the device's language, its
+/// model and the program language, which every event carries (the client's
+/// tests read them).
 String _said(Map<String, dynamic> event) {
   final props = {...event['props'] as Map<String, dynamic>}
-    ..remove('osLocale');
+    ..remove('osLocale')
+    ..remove('deviceModel')
+    ..remove('locale');
   return [
     event['eventName'] as String,
     if (props.isNotEmpty)
