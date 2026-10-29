@@ -208,30 +208,46 @@ void main() {
 
   // 🗣️I-70-Q6 (유저 2026-10-29: 「포커스 없음」): the usage statistics'
   // consent is answered by a press alone — its own test drives the Enter.
-  testWidgets('a question only a press may answer opens on neither button '
-      '— its yes emphasized all the same', (tester) async {
+  testWidgets('a question opens on its yes — and one only a press may '
+      'answer on neither button, its yes emphasized all the same', (
+    tester,
+  ) async {
     const send = ValueKey<String>('consent-confirm-button');
     const dontSend = ValueKey<String>('consent-cancel-button');
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: buildAppTheme(),
-        home: Builder(
-          builder: (context) => confirmWindow(
-            context,
-            ConfirmQuestion(
-              keys: confirmDialogKeys('consent'),
-              title: 'T',
-              message: 'M',
-              opensOnItsYes: false,
+    Future<void> open({bool? opensOnItsYes}) async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildAppTheme(),
+          home: Builder(
+            builder: (context) => confirmWindow(
+              context,
+              opensOnItsYes == null
+                  ? ConfirmQuestion(
+                      keys: confirmDialogKeys('consent'),
+                      title: 'T',
+                      message: 'M',
+                    )
+                  : ConfirmQuestion(
+                      keys: confirmDialogKeys('consent'),
+                      title: 'T',
+                      message: 'M',
+                      opensOnItsYes: opensOnItsYes,
+                    ),
+              accept: const ConfirmChoice('Send'),
+              decline: const ConfirmChoice("Don't send"),
             ),
-            accept: const ConfirmChoice('Send'),
-            decline: const ConfirmChoice("Don't send"),
           ),
         ),
-      ),
-    );
-    await tester.pump();
+      );
+      await tester.pump();
+    }
+
+    await open();
     expect(find.byKey(send), findsOneWidget, reason: '⛔전제');
+    expect(focusIsIn(tester, find.byKey(send)), isTrue, reason: 'F-479');
+
+    await open(opensOnItsYes: false);
     expect(focusIsIn(tester, find.byKey(send)), isFalse);
     expect(focusIsIn(tester, find.byKey(dontSend)), isFalse);
     final dialog = tester.widget<AppConfirmDialog>(
