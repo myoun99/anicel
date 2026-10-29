@@ -1,15 +1,15 @@
-// A FRAME WITH A MOVIE ON IT STANDS ONCE AND WAITS FOR ITS FILM.
+// A FRAME WITH A MOVIE ON IT STANDS ONCE AND DOES NOT SPIN.
 //
 // 🐞10-30 (the hands-on verify's 23.976 `.mov`, then any movie placed): the
-// app hung the moment a movie stood on the canvas. A movie cel has its
-// picture before it is decoded (`celHasRenderableContent`), yet a read
-// cannot bring it into hand — its picture is the movie tier's, banked
-// nowhere (`BrushFrameStore.installMovieCel`) — so the read answered at
-// once, the view stood again in the same microtask, and again, forever:
-// the hydrator that decodes the movie never got a turn.
+// app hung the moment a movie stood on the canvas. A movie cel is never in
+// hand, decoded or not — its picture is the movie tier's, banked nowhere —
+// so a read answered at once, and the view stood again and read again in
+// the same microtask, for ever (probed in the app: 21 million stands in two
+// minutes, the UI thread never free again).
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
@@ -78,21 +78,24 @@ void main() {
     ),
   ];
 
-  testWidgets('🎯a movie cel not decoded yet is read once, not again and '
-      'again — the frame stands and waits for its film', (tester) async {
-    final cels = BrushFrameStore();
-    expect(
-      cels.celHasRenderableContent(film),
-      isTrue,
-      reason: 'fixture: a movie cel is part of its frame before it decodes',
-    );
+  testWidgets('🎯a movie on the canvas is read, and the frame does not stand '
+      'again for a read that brought nothing into hand', (tester) async {
+    final cels = BrushFrameStore()
+      ..installMovieCel(
+        film,
+        BitmapSurface(canvasSize: canvasSize, tileSize: defaultCelTileSize),
+      );
     final images = _CountedReads(frameStore: cels);
     addTearDown(images.dispose);
+    expect(
+      images.storedSurfaceIsInHand(film, canvasSize: canvasSize),
+      isFalse,
+      reason: 'fixture: a decoded movie is not in hand, as in the app',
+    );
     final store = FramePictureStore<FramePictureKey>();
     addTearDown(store.dispose);
-    // No quiet comes, as none came in the app: the view standing again in
-    // the same microtask left no frame for one. A making that drew the
-    // frame would note the film as drawing nothing yet and end it here.
+    // No quiet comes, as none came in the app: the frame laying its
+    // picture waits for one, and nothing else ends the stands.
     final noQuiet = (await tester.runAsync(
       () async => QuietTurns(
         clock: QuietClock(
@@ -128,16 +131,18 @@ void main() {
         ),
       ),
     );
+    await tester.pump(const Duration(milliseconds: 16));
+    final settled = images.reads;
     for (var frame = 0; frame < 5; frame += 1) {
       await tester.pump(const Duration(milliseconds: 16));
     }
 
+    expect(settled, inInclusiveRange(1, _enough), reason: 'the film is read');
     expect(
       images.reads,
-      2,
-      reason: 'the film is asked for by the frame standing and by its '
-          'making, and a read that brought nothing into hand does not stand '
-          'the frame again',
+      settled,
+      reason: 'a read that brought nothing into hand does not stand the '
+          'frame again — standing again, it read again',
     );
   });
 }

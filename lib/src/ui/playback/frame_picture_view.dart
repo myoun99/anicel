@@ -330,36 +330,42 @@ class _FramePictureViewState extends State<FramePictureView> {
       _liveChanges = frame.changes;
     }
     final nodes = widget.nodes;
-    final picture = widget.picture;
-    final inHand = {
+    _onScreen = {
       for (final cel in stackedCelsOf(nodes))
-        if (_pictures.inHand(cel, picture)) cel,
+        if (_pictures.inHand(cel, widget.picture)) cel,
     };
-    _onScreen = inHand;
-    if (!_pictures.allInHand(nodes, picture)) {
-      // 🚨STOOD AGAIN ONLY FOR WHAT THE READ BROUGHT INTO HAND. A cel a read
-      // cannot bring in — a movie's, whose picture is the movie tier's and
-      // banked nowhere (`BrushFrameStore.installMovieCel`), or one whose
-      // bytes would not thaw — answered the read at once, and the frame
-      // stood again and read again in the same microtask, for ever: from
-      // 2026-10-25 (one picture per frame) the app hung the moment a movie
-      // stood on the canvas, and the decode that would have brought its
-      // picture never got a turn (🐞10-30, the hands-on verify's 23.976
-      // `.mov`). A cel that comes in later comes with a revision of its own,
-      // and the frame is handed anew ([didUpdateWidget]).
-      unawaited(
-        _pictures.readInStack(nodes, picture).then((_) {
-          if (mounted &&
-              identical(_live, frame) &&
-              stackedCelsOf(nodes).any(
-                (cel) =>
-                    !inHand.contains(cel) && _pictures.inHand(cel, picture),
-              )) {
-            setState(_standLive);
-          }
-        }),
-      );
+    if (!_pictures.allInHand(nodes, widget.picture)) {
+      _readInThenStandAgain(frame);
     }
+  }
+
+  /// Reads the cels [frame] stood without, and stands again where the read
+  /// brought one into hand and [frame] is still the one standing.
+  ///
+  /// 🚨STOOD AGAIN ONLY FOR WHAT THE READ BROUGHT INTO HAND. A cel no read
+  /// brings in — a movie's, decoded or not: its picture is the movie tier's
+  /// and banked nowhere (`BrushFrameStore.storeRebuiltDisplayCache`) — or
+  /// one whose bytes would not thaw answered the read at once, and the frame
+  /// stood again and read again in the same microtask, for ever: from
+  /// 2026-10-25 (one picture per frame) the app hung the moment a movie
+  /// stood on the canvas (🐞10-30, the hands-on verify's 23.976 `.mov` —
+  /// 21 million stands in two minutes). What changes a cel after moves its
+  /// revision, and the frame is handed anew ([didUpdateWidget]).
+  void _readInThenStandAgain(StackedFrame frame) {
+    final nodes = widget.nodes;
+    final picture = widget.picture;
+    final inHand = _onScreen;
+    unawaited(
+      _pictures.readInStack(nodes, picture).then((_) {
+        if (mounted &&
+            identical(_live, frame) &&
+            stackedCelsOf(nodes).any(
+              (cel) => !inHand.contains(cel) && _pictures.inHand(cel, picture),
+            )) {
+          setState(_standLive);
+        }
+      }),
+    );
   }
 
   /// Takes the frame asked for where it is there; leaves what stands where
