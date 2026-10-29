@@ -74,6 +74,20 @@
  *   makes nothing up for it. A key the spec does not name is passed over,
  *   so a later spec's hints do not stop an older host. A parameter's
  *   place in "params" is its place in frame->values.
+ *
+ * THE FILE (.anifx) — a zip a person opens with the app's 「열기」:
+ *
+ *   plugin.wasm                the module; every bundle has it
+ *   native/windows-x64.dll     \
+ *   native/windows-arm64.dll    |  the same source built natively,
+ *   native/macos.dylib          |  each where the plugin has one
+ *   native/linux-x64.so         |  (🗣️I-132-Q5 b)
+ *   native/linux-arm64.so      /
+ *
+ *   The app asks plugin.wasm for the description, in its sandbox, and
+ *   shows it to the person before anything is installed; a native build
+ *   is never opened before they say yes. A device with a native build of
+ *   its own runs that, and every other device the module.
  */
 #ifndef ANICEL_FX_PLUGIN_H
 #define ANICEL_FX_PLUGIN_H
