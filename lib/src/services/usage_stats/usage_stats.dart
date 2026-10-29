@@ -78,13 +78,21 @@ class UsageStats {
   /// alone.
   static const Duration inUseEvery = Duration(minutes: 55);
 
-  /// ⚖️THE QUEUE'S BOUNDS (유저 2026-10-29 08:5x, as 관제 relayed them —
-  /// 「drop events older than 7 days and keep at most ~500」): an event a
-  /// week old is past what the live view and the day counts are for, so it
-  /// is dropped; and 500 — far above a week of an hour's `in_use` and each
-  /// launch's two — is the ceiling that keeps the file small whatever
-  /// happens, the oldest going first.
-  static const Duration queueKeeps = Duration(days: 7);
+  /// ⚖️THE QUEUE'S BOUNDS (유저 2026-10-29 08:5x: a queue, bounded — as 관제
+  /// relayed it). ↩️A DAY, not the week first relayed (관제's guess, 10-29):
+  /// Aptabase's server refuses an event stamped more than a day before it
+  /// arrives (`src/Features/Ingestion/EventBody.cs`, `IsValid`: `Timestamp <
+  /// DateTime.UtcNow.AddDays(-1)` → "Event is too old."), so one kept
+  /// longer is posted only to be thrown away; its batch endpoint
+  /// (`EventsController.cs`) leaves such events out and still answers 200,
+  /// so one that slips past this on its way is taken off the queue and
+  /// jams nothing. And 500, kept: a day's ordinary use queues a few dozen
+  /// (an `in_use` every [inUseEvery] is 26, each launch one more, the day
+  /// one), so the day is the bound that works, and 500 — some 330 bytes an
+  /// event — only keeps a day of hundreds of launches, an app that keeps
+  /// failing to start, from growing the file past about 170 KB, its oldest
+  /// going first.
+  static const Duration queueKeeps = Duration(days: 1);
   static const int queueHolds = 500;
 
   /// Whether the app is in front: from its launch or a return to it, until

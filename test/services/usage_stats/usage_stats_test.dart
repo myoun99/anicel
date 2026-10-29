@@ -754,20 +754,39 @@ void main() {
       expect(store.queue, isEmpty);
     });
 
-    test('🎯a week old is dropped — a week to the millisecond is kept',
-        () async {
-      final week = clock.subtract(const Duration(days: 7));
+    // Aptabase refuses an event more than a day old ("Event is too old.",
+    // `EventBody.IsValid`): the queue keeps no longer than the server takes.
+    test('🎯more than a day old is dropped — a day to the millisecond is '
+        'kept', () async {
+      final day = clock.subtract(const Duration(days: 1));
       final store = _MemoryStore([today - 1], [
-        stampedAt(week.subtract(const Duration(milliseconds: 1))),
-        stampedAt(week),
+        stampedAt(day.subtract(const Duration(milliseconds: 1))),
+        stampedAt(day),
       ]);
       status = 503;
       await run(store).reportLaunch();
       expect(store.queue!.map((event) => event['timestamp']), [
-        week.toIso8601String(),
+        day.toIso8601String(),
         clock.toIso8601String(),
         clock.toIso8601String(),
       ]);
+    });
+
+    test('a launch after two days offline sends only what is new', () async {
+      final store = _MemoryStore([today - 1]);
+      status = 503;
+      await run(store).reportLaunch();
+      expect(store.queue, hasLength(2));
+
+      status = 200;
+      nextDay(2);
+      await run(store).reportLaunch();
+      expect(sent.last, ['app_started', 'day days=3+']);
+      expect(bodies.last.map((event) => event['timestamp']), [
+        clock.toIso8601String(),
+        clock.toIso8601String(),
+      ]);
+      expect(store.queue, isEmpty);
     });
 
     test('one whose moment cannot be read is dropped — its age is not '
