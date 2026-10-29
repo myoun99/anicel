@@ -237,9 +237,11 @@ void main() {
     });
 
     testWidgets('a mixing brush deposits the colour it lifted', (tester) async {
-      // A black brush releasing half its paint over a white cel lands
-      // halfway between the two. Driven through a real pointer stroke so
-      // the whole placement chain is exercised, not just the mixer.
+      // A black brush over a white cel lands grey: neither its own colour
+      // nor the cel's. Driven through a real pointer stroke so the whole
+      // placement chain is exercised, not just the mixer — whose numbers
+      // are its own test's. ↩️Pinned halfway (0x808080) under the mixer
+      // that never refilled.
       final results = <List<BrushDab>>[];
       await tester.pumpWidget(
         _app(
@@ -269,7 +271,10 @@ void main() {
       expect(results, hasLength(1));
       expect(results.single, isNotEmpty);
       for (final dab in results.single) {
-        expect(dab.color, 0xFF808080);
+        final grey = dab.color & 0xFF;
+        expect(dab.color >>> 24, 0xFF);
+        expect(dab.color & 0xFFFFFF, grey * 0x010101, reason: 'a grey');
+        expect(grey, inExclusiveRange(0, 255), reason: 'lifted, and laid');
       }
     });
 

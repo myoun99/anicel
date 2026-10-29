@@ -44,9 +44,19 @@ class BrushGroundColorMixer {
 
   final BrushShape shape;
 
-  /// The paint currently on the brush, 0xRRGGBB. Null until the first dab
-  /// seeds it from the brush colour.
-  int? _reservoir;
+  /// The paint currently on the brush. Null until the first dab seeds it
+  /// from the brush colour.
+  ///
+  /// ⚠️UNROUNDED: a dab moves it by a fraction of a stamp's pull, and at a
+  /// low 물감량 that is a fraction of a level — rounded each dab, it
+  /// rounded back, and a wet watercolour that crossed red stayed red to
+  /// the end of the stroke (measured 2026-10-30: 125 → 125 over twenty of
+  /// its widths). Only what a dab lays is rounded.
+  _Paint? _reservoir;
+
+  /// How much paint a DRY brush holds, 0..1 — one whose paint amount is 0
+  /// carries no drawing colour, only what it picked up ([apply]).
+  double _held = 0.0;
 
   bool get isActive => shape.picksUpGround;
 
@@ -57,6 +67,32 @@ class BrushGroundColorMixer {
   /// pointer-move at a time and forcing a rasterize per dab would undo that
   /// batching. The reservoir still carries across every dab, which is what
   /// actually produces the smear.
+  ///
+  /// 🗣️THE BRUSH COMES BACK TO ITS OWN COLOUR (gouache card Q3 = c, Q8 = a,
+  /// 2026-10-24: fitted to the user's Clip Studio strokes — 유채 · 진한 수채 ·
+  /// 불투명 수채 · 투명 수채 · 구아슈 · 수채 섞기 crossing red, yellow and black
+  /// bands, `参考/CSP_decode/mixing`). Each dab:
+  /// • picks the ground up, a whole stamp lifting [_pickPerStamp] of it at
+  ///   色延び 0 and none at 1 — Clip Studio's manual: the higher the stretch,
+  ///   the further the picked colour is drawn out (it lingers);
+  /// • is refilled with the drawing colour, a stamp by [_refillPerStamp] ×
+  ///   絵の具量² — so a blue 유채 (40) that crossed red is purple for a long
+  ///   way and comes back to blue, a 진한 수채 (70) soon;
+  /// • lays what it carries with [_drawingLaid] × 絵の具量 of the drawing
+  ///   colour on top, at 絵の具濃度 as before.
+  /// 🔬Against the sample's stroke centres every 20px (RGB RMS): 유채 92 →
+  /// 12, 진한 수채 124 → 25. 불투명 · 투명 수채 and 구아슈 stay ~45–70 under
+  /// every law tried: their 絵の具量 follows pressure in Clip Studio (minimum
+  /// 0), which the import does not read yet.
+  /// ↩️Until then the reservoir was never refilled — a blue oil brush that
+  /// crossed red was red to the end of the stroke — and the stretch was how
+  /// much a stamp lifted.
+  ///
+  /// A brush with no 絵の具量 is DRY (수채 섞기: 「필압 최대로 그려도 색이
+  /// 안 나옴, 다른 칠해진 색을 섞을 뿐」): it lays nothing on bare canvas and
+  /// carries what it picked up as thick as it was, thinning over bare
+  /// canvas at the pickup's rate. 絵の具濃度 is the drawing colour's, and it
+  /// carries none.
   List<BrushDab> apply(
     List<BrushDab> dabs, {
     required BrushGroundColorSampler sample,
@@ -67,35 +103,67 @@ class BrushGroundColorMixer {
     final stretch = shape.colorStretch.clamp(0.0, 1.0);
     final amount = shape.paintAmount.clamp(0.0, 1.0);
     final density = shape.paintDensity.clamp(0.0, 1.0);
+    final pickPerStamp = (1.0 - stretch) * _pickPerStamp;
 
     final mixed = <BrushDab>[];
     for (final dab in dabs) {
       final sourceArgb = dab.color;
-      _reservoir ??= sourceArgb & 0x00FFFFFF;
-
+      final drawing = _Paint.of(sourceArgb);
       final ground = sample(dab.center.x, dab.center.y, dab.size / 2.0);
-      // Bare canvas has no colour to lift; the brush keeps what it holds.
-      if (ground.coverage > 0.0) {
-        _reservoir = _lerpRgb(
-          _reservoir!,
-          ground.rgb,
-          _pickedUp(dab, stretch * ground.coverage),
+      final _Paint deposit;
+      final double thickness;
+      if (amount > 0.0) {
+        var carried = _reservoir ?? drawing;
+        // Bare canvas has no colour to lift; the brush keeps what it holds.
+        if (ground.coverage > 0.0) {
+          carried = carried.towards(
+            _Paint.of(ground.rgb),
+            _pickedUp(dab, pickPerStamp * ground.coverage),
+          );
+        }
+        carried = carried.towards(
+          drawing,
+          _pickedUp(dab, amount * amount * _refillPerStamp),
         );
+        _reservoir = carried;
+        deposit = carried.towards(drawing, amount * _drawingLaid);
+        thickness = density;
+      } else {
+        final take = _pickedUp(dab, pickPerStamp);
+        final held = _held + (ground.coverage - _held) * take;
+        if (held > 0.0) {
+          final lifted = _Paint.of(ground.rgb);
+          _reservoir = (_reservoir ?? lifted).towards(
+            lifted,
+            ground.coverage * take / held,
+          );
+        }
+        _held = held;
+        deposit = _reservoir ?? drawing;
+        thickness = held;
       }
-      // What lands is the reservoir pulled back toward the ground by however
-      // little paint the brush is releasing.
-      final depositRgb = ground.coverage > 0.0
-          ? _lerpRgb(ground.rgb, _reservoir!, amount)
-          : _reservoir!;
-      final alpha = (argbAlpha(sourceArgb) * density).round().clamp(0, 255);
-      mixed.add(dab.copyWith(color: (alpha << 24) | depositRgb));
+      final alpha = (argbAlpha(sourceArgb) * thickness).round().clamp(0, 255);
+      mixed.add(dab.copyWith(color: (alpha << 24) | deposit.rgb));
     }
     return mixed;
   }
 }
 
-/// How much of the ground [dab] lifts into the reservoir where a whole
-/// stamp would lift [pull]: its share of that stamp ([stampShareOf]).
+/// What a whole stamp lifts of the ground at 色延び 0 ([BrushGroundColorMixer]
+/// — fitted to the user's Clip Studio strokes).
+const double _pickPerStamp = 0.12;
+
+/// How far a whole stamp refills the brush with its drawing colour at 絵の具量
+/// 1 — by 絵の具量², fitted with [_pickPerStamp].
+const double _refillPerStamp = 0.12;
+
+/// The share of the drawing colour a dab lays over what the brush carries at
+/// 絵の具量 1, fitted with [_pickPerStamp].
+const double _drawingLaid = 0.3;
+
+/// How far [dab] moves the reservoir — toward the ground it lifts, or the
+/// drawing colour it is refilled with — where a whole stamp would move it
+/// by [pull]: its share of that stamp ([stampShareOf]).
 ///
 /// 🚨THE STRETCH DRAGS AS FAR AT EVERY SPACING — the flow's law, through the
 /// flow's own numbers (유저 2026-10-01 「엔진이 쌓임을 환산 — 크기와 무관하게
@@ -110,18 +178,40 @@ double _pickedUp(BrushDab dab, double pull) {
   return share >= 1.0 ? pull : evenedLaid(eveningTableFor(share), pull);
 }
 
-/// Channel-wise linear blend of two 0xRRGGBB colours.
-int _lerpRgb(int from, int to, double t) {
-  if (t <= 0.0) {
-    return from;
+/// A colour on the brush, 0..255 a channel and unrounded
+/// ([BrushGroundColorMixer._reservoir]).
+final class _Paint {
+  const _Paint(this.red, this.green, this.blue);
+
+  _Paint.of(int rgb)
+    : this(
+        argbRed(rgb).toDouble(),
+        argbGreen(rgb).toDouble(),
+        argbBlue(rgb).toDouble(),
+      );
+
+  final double red;
+  final double green;
+  final double blue;
+
+  /// This moved [t] of the way to [to], channel by channel.
+  _Paint towards(_Paint to, double t) {
+    if (t <= 0.0) {
+      return this;
+    }
+    if (t >= 1.0) {
+      return to;
+    }
+    return _Paint(
+      red + (to.red - red) * t,
+      green + (to.green - green) * t,
+      blue + (to.blue - blue) * t,
+    );
   }
-  if (t >= 1.0) {
-    return to;
+
+  /// 0xRRGGBB, each channel rounded.
+  int get rgb {
+    int channel(double value) => value.round().clamp(0, 255);
+    return (channel(red) << 16) | (channel(green) << 8) | channel(blue);
   }
-  int channel(int fromChannel, int toChannel) =>
-      (fromChannel + (toChannel - fromChannel) * t).round().clamp(0, 255);
-  final r = channel(argbRed(from), argbRed(to));
-  final g = channel(argbGreen(from), argbGreen(to));
-  final b = channel(argbBlue(from), argbBlue(to));
-  return (r << 16) | (g << 8) | b;
 }

@@ -862,9 +862,16 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       textureDensity: 0.7,
       angleJitter: 0.4,
       // Soft pastel lifts what is already down and drags it along.
+      //
+      // 🗣️RE-PICKED FOR THE REFILLING MIXER (gouache card Q8, 2026-10-30 —
+      // [BrushGroundColorMixer.apply]): 색 늘이기 reads as Clip Studio's now,
+      // higher lingering, and 물감량 refills the brush, so the old numbers
+      // barely mixed. Every mixing brush here was chosen by eye crossing red,
+      // yellow and black bands: each drags a way and comes back to its own
+      // colour. ↩️Was 0.9 · 0.4.
       mixesGroundColor: true,
-      colorStretch: 0.4,
-      paintAmount: 0.9,
+      colorStretch: 0.3,
+      paintAmount: 0.5,
       paintDensity: 0.85,
       opacityPressureCurve: BrushPressureCurve.identity(),
     ),
@@ -964,9 +971,10 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       // single stroke crossing itself stays even, which is what one wet pass
       // does. Both halves of that are correct here; neither is a bug.
       blendMode: BrushBlendMode.multiply,
+      // ↩️Was 0.9 · 0.64 (Pastel's note).
       mixesGroundColor: true,
-      colorStretch: 0.64,
-      paintAmount: 0.9,
+      colorStretch: 0.7,
+      paintAmount: 0.2,
       paintDensity: 0.6,
       opacityPressureCurve: BrushPressureCurve.identity(),
     ),
@@ -981,9 +989,10 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       flow: 0.9375,
       opacity: 0.9,
       spacing: BrushShape.minSpacing,
+      // ↩️Was 0.95 · 0.5441 (Pastel's note).
       mixesGroundColor: true,
-      colorStretch: 0.5441,
-      paintAmount: 0.95,
+      colorStretch: 0.1,
+      paintAmount: 0.7,
       paintDensity: 0.95,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.5),
     ),
@@ -1008,9 +1017,10 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       roundness: 0.2,
       angleDegrees: 90,
       rotationMode: BrushTipRotationMode.fixed,
+      // ↩️Was 0.9 · 0.8494 (Pastel's note).
       mixesGroundColor: true,
-      colorStretch: 0.8494,
-      paintAmount: 0.9,
+      colorStretch: 0.4,
+      paintAmount: 0.6,
       paintDensity: 0.7,
       opacityPressureCurve: BrushPressureCurve.identity(),
     ),
@@ -1059,6 +1069,13 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
         (BrushPressureTarget.textureDensity, BrushInputSource.pressure):
             BrushPressureCurve.linearFrom(0.2),
       },
+      // 🗣️IT MIXES (F-462 ④ 「클튜 구아슈랑 달라도 너무다른거같은데」, gouache
+      // card Q8, 2026-10-30): Clip Studio's 구아슈 picks the ground up, and
+      // ours laid its own colour flat (Pastel's note). 물감 농도 stays 1 —
+      // Q2 chose a stroke that covers; a thinner one is a watercolour's.
+      mixesGroundColor: true,
+      colorStretch: 0.15,
+      paintAmount: 0.7,
     ),
   ),
   BrushPreset(
@@ -1078,10 +1095,11 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       // ⚠️Roundness's ランダム row only ever SHRINKS — the bundle splays
       // thinner, never fatter — which is why a floor this high still reads.
       curves: _randomRows(roundness: 0.2),
-      // Loaded paint picks up what it crosses.
+      // Loaded paint picks up what it crosses. ↩️Was 0.9 · 0.7349 (Pastel's
+      // note).
       mixesGroundColor: true,
-      colorStretch: 0.7349,
-      paintAmount: 0.9,
+      colorStretch: 0.1,
+      paintAmount: 0.4,
       paintDensity: 1.0,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.55),
     ),
@@ -1101,9 +1119,10 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       rotationMode: BrushTipRotationMode.direction,
       textureMaskSource: canvasWeaveTextureMask,
       textureDensity: 0.25,
+      // ↩️Was 0.95 · 0.75 (Pastel's note).
       mixesGroundColor: true,
-      colorStretch: 0.75,
-      paintAmount: 0.95,
+      colorStretch: 0.6,
+      paintAmount: 0.3,
       paintDensity: 1.0,
     ),
   ),
@@ -1187,15 +1206,17 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       flow: 0.91,
       spacing: 0.05,
       mixesGroundColor: true,
-      // 🚨STRETCH 0.35, NEVER 1.0 — and this is arithmetic, not taste. The
-      // reservoir is re-sampled every dab as `lerp(reservoir, ground,
-      // stretch × coverage)` and then deposited as `lerp(ground, reservoir,
-      // amount)`. At stretch 1.0 the reservoir BECOMES the ground each dab,
-      // so the deposit is the colour that was already there: a provable
-      // identity, i.e. an invisible brush. The smear IS the reservoir's lag,
-      // so the stretch has to stay moderate.
-      colorStretch: 0.5775,
-      paintAmount: 1.0,
+      // 🗣️A BLENDER IS DRY (gouache card Q8, 2026-10-30): it carries no paint
+      // of its own, as Clip Studio's 수채 섞기 — 「필압 최대로 그려도 색이 안
+      // 나옴, 다른 칠해진 색을 섞을 뿐」 — so its 물감량 is 0 and it lays only
+      // what it lifts (Pastel's note). The blend group's three are dry alike.
+      // 🚨STRETCH NEVER 1.0 — arithmetic, not taste: a stamp lifts nothing
+      // there, so a dry brush lays nothing at all.
+      // ↩️It was 1.0 · 0.5775 under the mixer that never refilled, whose
+      // stretch was how much a stamp lifted: at 1.0 the reservoir became the
+      // ground each dab — invisible then too, from the other end.
+      colorStretch: 0.3,
+      paintAmount: 0.0,
       paintDensity: 0.9,
       opacityPressureCurve: BrushPressureCurve.identity(),
     ),
@@ -1212,9 +1233,10 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       textureMaskSource: paperGrainTextureMask,
       textureScale: 2.6,
       textureDensity: 0.6,
+      // Dry (Blender's note). ↩️Was 1.0 · 0.51.
       mixesGroundColor: true,
-      colorStretch: 0.51,
-      paintAmount: 1.0,
+      colorStretch: 0.3,
+      paintAmount: 0.0,
       paintDensity: 0.45,
       // ⚠️The ABSENCE of a pressure curve is load-bearing: the preview drives
       // a synthetic 0-1-0 arc, so Watercolor's row tapers at both ends and
@@ -1233,9 +1255,10 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       textureMaskSource: paperGrainTextureMask,
       textureScale: 1.3,
       textureDensity: 0.5,
+      // Dry (Blender's note). ↩️Was 1.0 · 0.4531.
       mixesGroundColor: true,
-      colorStretch: 0.4531,
-      paintAmount: 1.0,
+      colorStretch: 0.5,
+      paintAmount: 0.0,
       paintDensity: 0.6,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.5),
     ),

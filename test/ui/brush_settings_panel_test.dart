@@ -745,8 +745,9 @@ void main() {
       expect(read().mixesGroundColor, isTrue);
       expectKnobs(findsOneWidget);
 
-      // Colour stretch starts at zero — a brush that lifts nothing is the
-      // safe default — so dragging it right is what proves it is wired.
+      // Colour stretch starts at zero, so dragging it right is what proves
+      // it is wired. ↩️Zero was 「a brush that lifts nothing」 until the
+      // stretch read as Clip Studio's (2026-10-30): it lifts the most now.
       final stretch = find.byKey(
         const ValueKey<String>('brush-tool-color-stretch-slider'),
       );
