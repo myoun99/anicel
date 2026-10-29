@@ -37,6 +37,12 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 /// This changes one fact at a time; what a zoom step keeps is
 /// `zoom_does_not_rebuild_rows_test`'s.
 ///
+/// ↩️The viewport was pinned here as a fact, which built every row again on
+/// every pixel the view moved. It rides the live geometry now, which a kept
+/// row follows ([TimelineFrameGeometry.viewExtentPx]) — the law itself is
+/// `timeline_viewport_resize_test`'s, and a splitter step that builds no
+/// row is `a_rail_step_builds_no_row_test`'s.
+///
 /// 🚨I-57 (10-13): the facts are the row's SHAPE, and what a cut switch
 /// changes reaches the kept row past them, as its world
 /// ([timelineCellsRowWorld]) — so a fact the row shows changes one of the
@@ -111,7 +117,6 @@ void main() {
     TimelineGridMetrics metrics = TimelineGridMetrics.defaults,
     ProjectFrameRate projectFrameRate = ProjectFrameRate.fps24,
     String substrateGeneration = 'world-0',
-    double viewportMainExtent = 400,
     TimelineCellExposureState Function(Layer, int)? exposure,
     String? Function(Layer, int)? frameNames,
     TimelineCommaDragCallbacks? comma,
@@ -162,7 +167,6 @@ void main() {
       metrics: metrics,
       geometry: geometry,
       windowBucket: null,
-      viewportMainExtent: viewportMainExtent,
       frameAxisController: null,
       nextPage: null,
       rangeGesture: range,
@@ -235,8 +239,6 @@ void main() {
       told(),
       told(projectFrameRate: const ProjectFrameRate.integer(30)),
     ),
-    // THE RESIZE LAW: a viewport that widens must rebuild the row.
-    'viewportMainExtent': (told(), told(viewportMainExtent: 800)),
     'exposureStateForLayer': (told(), told(exposure: covered)),
     'frameNameForLayer': (told(), told(frameNames: named)),
     'hasCommaDrag': (told(), told(comma: commaDrag)),

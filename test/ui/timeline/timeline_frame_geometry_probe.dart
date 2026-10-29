@@ -12,6 +12,7 @@ ValueNotifier<TimelineFrameGeometry> testFrameGeometry({
   required int frameEndIndexExclusive,
   double leadingFrameSpacerWidth = 0,
   double trailingFrameSpacerWidth = 0,
+  double viewExtentPx = 0,
 }) => ValueNotifier(
   TimelineFrameGeometry(
     frameCellExtent: frameCellExtent,
@@ -19,5 +20,6 @@ ValueNotifier<TimelineFrameGeometry> testFrameGeometry({
     frameEndIndexExclusive: frameEndIndexExclusive,
     leadingFrameSpacerWidth: leadingFrameSpacerWidth,
     trailingFrameSpacerWidth: trailingFrameSpacerWidth,
+    viewExtentPx: viewExtentPx,
   ),
 );

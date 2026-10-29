@@ -443,7 +443,6 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
               colorScheme: Theme.of(context).colorScheme,
               baseTextStyle: DefaultTextStyle.of(context).style,
               windowBucket: windowBucket,
-              viewportMainExtent: viewportWidth,
               paperGround: law?.ground,
               blockFrameLines: law?.blockFrameLines ?? false,
               unnamedMark: TimelineGridLaw.unnamedMarkOf(context),
@@ -556,7 +555,6 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
             colorScheme: Theme.of(context).colorScheme,
             baseTextStyle: DefaultTextStyle.of(context).style,
             windowBucket: windowBucket,
-            viewportMainExtent: viewportWidth,
           ),
         ),
       ),
@@ -863,7 +861,6 @@ class _StoryboardPanelEdges extends StatelessWidget {
       // The blocks' own window: the row spans the whole film, and the grips
       // are drawn where the view can reach, as the blocks under them are.
       windowBucket: windowBucket,
-      viewportMainExtent: viewportWidth,
       // No layer: these blocks are rows of many cuts, and the row has no
       // run edges for a LayerId to name.
       layerId: null,
@@ -963,7 +960,6 @@ class StoryboardConteCreatePainter extends CustomPainter with RepaintOnProps {
     required this.colorScheme,
     required this.baseTextStyle,
     required this.windowBucket,
-    required this.viewportMainExtent,
   }) : super(repaint: Listenable.merge([geometry, windowBucket]));
 
   /// The cuts that wear the button, each as its frames on the track's axis.
@@ -973,7 +969,10 @@ class StoryboardConteCreatePainter extends CustomPainter with RepaintOnProps {
   final ColorScheme colorScheme;
   final TextStyle baseTextStyle;
   final ValueListenable<int> windowBucket;
-  final double viewportMainExtent;
+
+  /// How far the view reaches along the frames — the live geometry's
+  /// ([TimelineFrameGeometry.viewExtentPx]).
+  double get viewportMainExtent => geometry.value.viewExtentPx;
 
   /// Each button's plate inside the visible window, row-local — THE probe
   /// surface, and what [paint] lays down.
@@ -1036,7 +1035,6 @@ class StoryboardConteCreatePainter extends CustomPainter with RepaintOnProps {
     crossAxisExtent,
     colorScheme,
     baseTextStyle,
-    viewportMainExtent,
   );
 }
 

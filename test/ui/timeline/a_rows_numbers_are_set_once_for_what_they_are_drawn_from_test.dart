@@ -32,8 +32,14 @@ void main() {
   final blocks = row();
   const size = Size(48 * 24, 28);
 
-  ValueNotifier<TimelineFrameGeometry> zoomed(double cell) =>
-      testFrameGeometry(frameCellExtent: cell, frameEndIndexExclusive: 48);
+  ValueNotifier<TimelineFrameGeometry> zoomed(
+    double cell, {
+    double view = 24 * 20,
+  }) => testFrameGeometry(
+    frameCellExtent: cell,
+    frameEndIndexExclusive: 48,
+    viewExtentPx: view,
+  );
 
   /// A row built again: every handle it is handed is a new one — the axis,
   /// and the window it is scrolled to.
@@ -46,7 +52,6 @@ void main() {
     TextStyle baseTextStyle = const TextStyle(fontSize: 11),
     Axis axis = Axis.horizontal,
     ValueNotifier<int>? window,
-    double viewportMainExtent = 24 * 20,
     bool shown = true,
     TimelineCelContentSource? celContent,
     Color? paperGround,
@@ -59,7 +64,6 @@ void main() {
     baseTextStyle: baseTextStyle,
     axis: axis,
     windowBucket: window ?? ValueNotifier(0),
-    viewportMainExtent: viewportMainExtent,
     shown: shown,
     celContent: celContent,
     paperGround: paperGround,
@@ -100,7 +104,7 @@ void main() {
       'the row\'s extent': numbers(crossAxisExtent: 40),
       'the axis': numbers(axis: Axis.vertical),
       'the window': numbers(window: ValueNotifier(1)),
-      'the viewport': numbers(viewportMainExtent: 24 * 30),
+      'the viewport': numbers(geometry: zoomed(24, view: 24 * 30)),
       'the eye': numbers(shown: false),
       'what its cels hold': numbers(
         celContent: TimelineCelContentSource(

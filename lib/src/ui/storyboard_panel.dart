@@ -2044,6 +2044,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           ) +
           _frameAxis.trailingFrames +
           _viewportFillFrameCells,
+      viewExtentPx: _stripViewportWidth,
     );
     // SE rows are built OUTSIDE the drag-preview builder from the RAW
     // project (R10-③): their content is track-global, so a cut trim
@@ -3758,7 +3759,6 @@ mixin _StoryboardRowRunLabels {
             countingBase: projectFrameRate.countingBase,
             baseTextStyle: DefaultTextStyle.of(context).style,
             windowBucket: windowBucket,
-            viewportMainExtent: viewportWidth,
             shown: shown ?? RailEyes.of(context, layer).shown,
             celContent: celContent,
             paperGround: TimelineGridLaw.maybeOf(context)?.ground,
@@ -5184,7 +5184,6 @@ class _StoryboardTrackRow extends KeptPiece {
       // The blocks' own window: the row spans the whole film, and the grips
       // are drawn where the view can reach, as the blocks under them are.
       windowBucket: windowBucket,
-      viewportMainExtent: viewportWidth,
       // No layer: these blocks are cuts, and the row has no run edges for a
       // LayerId to name.
       layerId: null,
@@ -5378,7 +5377,6 @@ class _StoryboardTrackRow extends KeptPiece {
       thumbnails: thumbnails,
       devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
       windowBucket: windowBucket,
-      viewportMainExtent: viewportWidth,
       linkedCutIds: linkedCutIds,
     );
 

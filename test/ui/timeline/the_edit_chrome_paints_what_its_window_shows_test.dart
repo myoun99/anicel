@@ -58,6 +58,7 @@ void main() {
         includeRunEdges: false,
       ),
       geometry: testFrameGeometry(
+        viewExtentPx: 480,
         frameCellExtent: 24,
         frameEndIndexExclusive: 1200,
       ),
@@ -68,7 +69,6 @@ void main() {
       draggingGripId: null,
       devicePixelRatio: 1,
       windowBucket: window,
-      viewportMainExtent: 480,
     );
     Iterable<Rect> drawnGrips() {
       final canvas = TestRecordingCanvas();
@@ -114,6 +114,7 @@ void main() {
               layer: layer,
               drawnFrameCount: 1200,
               geometry: testFrameGeometry(
+                viewExtentPx: 480,
                 frameCellExtent: 24,
                 frameEndIndexExclusive: 1200,
               ),
@@ -128,7 +129,6 @@ void main() {
                 onCancel: () {},
               ),
               windowBucket: ValueNotifier<int>(0),
-              viewportMainExtent: 480,
             ),
           ),
         ),

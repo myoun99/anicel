@@ -40,6 +40,7 @@ void main() {
     final painter = TimelineRowRunLabelsPainter(
       layer: longLayer(300),
       geometry: testFrameGeometry(
+        viewExtentPx: 480,
         frameCellExtent: 24,
         frameEndIndexExclusive: 1200,
       ),
@@ -48,7 +49,6 @@ void main() {
       countingBase: 24,
       baseTextStyle: const TextStyle(fontSize: 11),
       windowBucket: window,
-      viewportMainExtent: 480,
     );
     // Each label clips to its own block before it prints.
     List<Rect> printedBlocks() {
@@ -89,6 +89,7 @@ void main() {
     final painter = TimelineRowRunLabelsPainter(
       layer: longLayer(300),
       geometry: testFrameGeometry(
+        viewExtentPx: 480,
         frameCellExtent: 24,
         frameEndIndexExclusive: 1200,
       ),
@@ -97,7 +98,6 @@ void main() {
       countingBase: 24,
       baseTextStyle: const TextStyle(fontSize: 11),
       windowBucket: ValueNotifier<int>(0),
-      viewportMainExtent: 480,
     );
     final said = painter.semanticsBuilder(const Size(1200 * 24, 52));
 
@@ -124,6 +124,7 @@ void main() {
               layer: longLayer(300),
               drawnFrameCount: 1200,
               geometry: testFrameGeometry(
+                viewExtentPx: 480,
                 frameCellExtent: 24,
                 frameEndIndexExclusive: 1200,
               ),
@@ -138,7 +139,6 @@ void main() {
                 onCancel: () {},
               ),
               windowBucket: ValueNotifier<int>(0),
-              viewportMainExtent: 480,
             ),
           ),
         ),

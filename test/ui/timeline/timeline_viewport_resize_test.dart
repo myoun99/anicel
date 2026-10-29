@@ -28,6 +28,10 @@ import 'timeline_cell_probe.dart';
 /// kept computing yesterday's narrower window — cells the user could see
 /// were outside every row's paint window, nothing requested their spans,
 /// and no amount of waiting could fill them.
+///
+/// ↩️It was kept by building every row again for every view it stood in;
+/// the view rides the live geometry the kept rows follow now
+/// ([TimelineFrameGeometry.viewExtentPx], 2026-10-30).
 void main() {
   // 🚨THE STORE IS A SINGLETON WITH AN EVICTION BUDGET, so what this test
   // can measure depends on what ran before it in the same process. Any

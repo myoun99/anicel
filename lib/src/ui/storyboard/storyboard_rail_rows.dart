@@ -2646,7 +2646,6 @@ class _StoryboardRailRows {
       frameAxis: (
         geometry: _state._frameGeometry,
         windowBucket: _state._horizontalWindowBucket,
-        viewportMainExtent: _state._stripViewportWidth,
         axis: Axis.horizontal,
         laneExtent: metrics.layerRowHeight,
       ),

@@ -482,28 +482,30 @@ void main() {
     // Two cuts with no conte layer, 50 000 frames apart on a 10px cell.
     const cell = 10.0;
     const far = 50000;
-    final geometry = TimelineFrameGeometryHandle(
-      const TimelineFrameGeometry(
-        frameCellExtent: cell,
-        frameStartIndex: 0,
-        frameEndIndexExclusive: 100000,
-      ),
+    TimelineFrameGeometry over(double viewport) => TimelineFrameGeometry(
+      frameCellExtent: cell,
+      frameStartIndex: 0,
+      frameEndIndexExclusive: 100000,
+      viewExtentPx: viewport,
     );
+    final geometry = TimelineFrameGeometryHandle(over(400));
     addTearDown(geometry.dispose);
     final bucket = ValueNotifier<int>(0);
     addTearDown(bucket.dispose);
-    List<RRect> plates({double viewport = 400}) => StoryboardConteCreatePainter(
-      spans: const [
-        (start: 0, endExclusive: 10),
-        (start: far, endExclusive: far + 10),
-      ],
-      geometry: geometry,
-      crossAxisExtent: 30,
-      colorScheme: const ColorScheme.light(),
-      baseTextStyle: const TextStyle(),
-      windowBucket: bucket,
-      viewportMainExtent: viewport,
-    ).plates();
+    List<RRect> plates({double viewport = 400}) {
+      geometry.value = over(viewport);
+      return StoryboardConteCreatePainter(
+        spans: const [
+          (start: 0, endExclusive: 10),
+          (start: far, endExclusive: far + 10),
+        ],
+        geometry: geometry,
+        crossAxisExtent: 30,
+        colorScheme: const ColorScheme.light(),
+        baseTextStyle: const TextStyle(),
+        windowBucket: bucket,
+      ).plates();
+    }
 
     expect(
       [for (final plate in plates()) plate.left],

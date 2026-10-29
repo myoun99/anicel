@@ -99,6 +99,7 @@ void main() {
   }) => TimelineRowCellsPainter(
     layer: layer,
     geometry: testFrameGeometry(
+      viewExtentPx: bucket == null ? 0 : 96,
       frameCellExtent: 24,
       frameEndIndexExclusive: built,
     ),
@@ -110,7 +111,6 @@ void main() {
     tileStore: store,
     substrateGeneration: 'p:cut',
     windowBucket: bucket,
-    viewportMainExtent: bucket == null ? 0 : 96,
   );
 
   group('which cells ink a ghost', () {

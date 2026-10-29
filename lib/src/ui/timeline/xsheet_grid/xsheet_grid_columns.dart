@@ -102,12 +102,11 @@ class _XSheetGridColumns {
   /// bucket (repaint per span crossing), so the bucket pass diffs
   /// identical params and records nothing; the sparse widget-cell kinds
   /// re-window internally under the same bucket.
-  TimelineCellsRowGrid _cellsRowGrid(double viewportExtent) => (
+  TimelineCellsRowGrid _cellsRowGrid() => (
     hooks: _state.widget.hooks,
     metrics: _state._metrics,
     geometry: _state._frameScroll.publishFrameGeometry(),
     windowBucket: _state._frameWindowBucket,
-    viewportMainExtent: viewportExtent,
     frameAxisController: _state._frameScrollController,
     nextPage: _state._nextPage,
     rangeGesture: _state._rangeGesture,
@@ -133,7 +132,7 @@ class _XSheetGridColumns {
     // outside any build. ⚠️Before the geometry is published: the window is
     // laid over this extent.
     _state._frameViewportExtent = bodyViewportHeight;
-    final grid = _cellsRowGrid(bodyViewportHeight);
+    final grid = _cellsRowGrid();
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: timelineFrameSide(

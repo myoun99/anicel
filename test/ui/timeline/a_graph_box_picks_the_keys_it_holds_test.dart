@@ -98,6 +98,7 @@ void main() {
   setUp(() {
     geometry = ValueNotifier(
       const TimelineFrameGeometry(
+        viewExtentPx: 48 * cell,
         frameCellExtent: cell,
         frameStartIndex: 0,
         frameEndIndexExclusive: 48,
@@ -141,7 +142,6 @@ void main() {
               frameAxis: (
                 geometry: geometry,
                 windowBucket: bucket,
-                viewportMainExtent: 48 * cell,
                 axis: Axis.horizontal,
                 laneExtent: timelineLayerRowHeight,
               ),
@@ -512,7 +512,6 @@ void main() {
         frameAxis: (
           geometry: geometry,
           windowBucket: bucket,
-          viewportMainExtent: 48 * cell,
           axis: Axis.horizontal,
           laneExtent: timelineLayerRowHeight,
         ),

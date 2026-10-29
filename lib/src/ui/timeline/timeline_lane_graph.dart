@@ -160,15 +160,14 @@ List<Widget> laneGraphFrameSide(
 }
 
 /// The frames a header graph is drawn over (I-89 ③), as the grid's rows of
-/// cells lay them: the grid's live geometry, the window over it, the
-/// view's extent along them and which way they run — what its picture and
+/// cells lay them: the grid's live geometry (the view's extent along them
+/// with it), the window over it and which way they run — what its picture and
 /// its handles read — and how far a lane's row of them reaches across: the
 /// room its keys are marked in, which a graph's are marked in too
 /// (F-367-Q3).
 typedef LaneGraphFrames = ({
   ValueNotifier<TimelineFrameGeometry> geometry,
   ValueListenable<int>? windowBucket,
-  double viewportMainExtent,
   Axis axis,
   double laneExtent,
 });
@@ -201,7 +200,6 @@ LaneGraphGrid laneGraphGridOf(
   frameAxis: (
     geometry: grid.geometry,
     windowBucket: grid.windowBucket,
-    viewportMainExtent: grid.viewportMainExtent,
     axis: grid.axis,
     laneExtent: grid.metrics.layerRowHeight,
   ),
@@ -375,7 +373,7 @@ class TimelineLaneGraph extends StatelessWidget {
     return CustomMultiChildLayout(
       delegate: _LaneGraphCorners(
         _axis,
-        grid.frameAxis.viewportMainExtent,
+        grid.frameAxis.geometry,
       ),
       children: [
         LayoutId(
@@ -1670,13 +1668,18 @@ enum _LaneGraphCorner { tools, guests }
 /// view leaves them on the timeline — the graph's on the sheet — so a long
 /// name ends in an ellipsis; never narrower than a tag's dash and pin.
 class _LaneGraphCorners extends MultiChildLayoutDelegate {
-  _LaneGraphCorners(this.axis, this.viewportExtent);
+  _LaneGraphCorners(this.axis, this.geometry) : super(relayout: geometry);
 
   final Axis axis;
 
+  /// The live geometry the graph is drawn over — read where the corners are
+  /// laid, so a widened view moves them without the graph building again
+  /// ([TimelineFrameGeometry.viewExtentPx]).
+  final ValueListenable<TimelineFrameGeometry> geometry;
+
   /// The view's extent along the frames; nothing where the host says
   /// nothing, and the view is all of them.
-  final double viewportExtent;
+  double get viewportExtent => geometry.value.viewExtentPx;
 
   /// How far the view reaches along a graph [size] big.
   double _view(Size size) {
@@ -1739,7 +1742,7 @@ class _LaneGraphCorners extends MultiChildLayoutDelegate {
 
   @override
   bool shouldRelayout(_LaneGraphCorners oldDelegate) =>
-      oldDelegate.axis != axis || oldDelegate.viewportExtent != viewportExtent;
+      oldDelegate.axis != axis || !identical(oldDelegate.geometry, geometry);
 }
 
 /// A graph's guests named over its picture (I-89 ③, the mock's 5판): each
@@ -2379,7 +2382,7 @@ class TimelineLaneGraphPainter extends CustomPainter {
     final frames = frameAxis.geometry.value;
     return visibleFrameWindowFor(
       bucket: frameAxis.windowBucket,
-      viewportMainExtent: frameAxis.viewportMainExtent,
+      viewportMainExtent: frames.viewExtentPx,
       cellExtent: frames.frameCellExtent,
       frameStartIndex: frames.frameStartIndex,
       frameEndIndexExclusive: frames.frameEndIndexExclusive,

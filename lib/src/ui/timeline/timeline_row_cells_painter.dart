@@ -132,7 +132,6 @@ class TimelineRowCellsPainter extends CustomPainter
     required this.baseTextStyle,
     this.axis = Axis.horizontal,
     this.windowBucket,
-    this.viewportMainExtent = 0,
     this.nextPage,
     this.stepsUntilShown,
     this.tileStore,
@@ -268,8 +267,10 @@ class TimelineRowCellsPainter extends CustomPainter
   /// on scroll. Null keeps the classic pre-windowed contract.
   final ValueListenable<int>? windowBucket;
 
-  /// The scroll viewport's main-axis extent for the self-windowing path.
-  final double viewportMainExtent;
+  /// The scroll viewport's main-axis extent for the self-windowing path —
+  /// read off the live geometry, so a widened view repaints a kept row
+  /// rather than building it again ([TimelineFrameGeometry.viewExtentPx]).
+  double get viewportMainExtent => geometry.value.viewExtentPx;
 
   /// ⛔Not a paint input: it never repaints the row.
   @override
@@ -1470,7 +1471,6 @@ class TimelineRowCellsPainter extends CustomPainter
     crossAxisExtent,
     axis,
     ByIdentity(windowBucket),
-    viewportMainExtent,
     colorScheme,
     exposureStateForLayer,
     frameNameForLayer,
@@ -1567,7 +1567,6 @@ Widget timelineRowCellsPaintArea({
   VoidCallback? onSettledPress,
   void Function(LayerId layerId, int frameIndex)? onActivateCell,
   ValueListenable<int>? windowBucket,
-  double viewportMainExtent = 0,
   TimelineNextPage? Function()? nextPage,
   int? Function(int frame)? stepsUntilShown,
   Object? coverageIdentity,
@@ -1684,7 +1683,6 @@ Widget timelineRowCellsPaintArea({
             frameNameForLayer: frameNameForLayer,
             celContent: celContent,
             windowBucket: windowBucket,
-            viewportMainExtent: viewportMainExtent,
             nextPage: nextPage,
             stepsUntilShown: stepsUntilShown,
             coverageIdentity: coverageIdentity,
@@ -1712,7 +1710,6 @@ class _RowCellsPicture extends StatelessWidget {
     required this.frameNameForLayer,
     required this.celContent,
     required this.windowBucket,
-    required this.viewportMainExtent,
     required this.nextPage,
     required this.stepsUntilShown,
     required this.coverageIdentity,
@@ -1731,7 +1728,6 @@ class _RowCellsPicture extends StatelessWidget {
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
   final TimelineCelContentSource? celContent;
   final ValueListenable<int>? windowBucket;
-  final double viewportMainExtent;
   final TimelineNextPage? Function()? nextPage;
   final int? Function(int frame)? stepsUntilShown;
   final Object? coverageIdentity;
@@ -1757,7 +1753,6 @@ class _RowCellsPicture extends StatelessWidget {
       baseTextStyle: DefaultTextStyle.of(context).style,
       axis: axis,
       windowBucket: windowBucket,
-      viewportMainExtent: viewportMainExtent,
       nextPage: nextPage,
       stepsUntilShown: stepsUntilShown,
       // Substrate tiles (UI-R18 O7 T2): the app-wide store; it stands down

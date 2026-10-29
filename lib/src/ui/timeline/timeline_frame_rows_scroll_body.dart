@@ -173,6 +173,7 @@ class _TimelineFrameRowsScrollBodyState
     frameEndIndexExclusive: widget.frameEndIndexExclusive,
     leadingFrameSpacerWidth: widget.leadingFrameSpacerWidth,
     trailingFrameSpacerWidth: widget.trailingFrameSpacerWidth,
+    viewExtentPx: widget.viewportMainExtent,
   );
 
   /// The window for the CURRENT bucket: origin quantized to the shared
@@ -268,7 +269,6 @@ class _TimelineFrameRowsScrollBodyState
     metrics: widget.metrics,
     geometry: _windowedGeometry,
     windowBucket: widget.windowBucket,
-    viewportMainExtent: widget.viewportMainExtent,
     frameAxisController: widget.frameAxisController,
     nextPage: widget.nextPage,
     rangeGesture: widget.rangeGesture,
@@ -301,8 +301,11 @@ class _TimelineFrameRowsScrollBodyState
 
   @override
   Widget build(BuildContext context) {
-    // The view's breadth is laid below the grid's build: a pass of its own.
-    _keep.lay((widget.pass, widget.viewportMainExtent));
+    // ↩️The view's breadth made a pass of its own, for the rows read it as
+    // they were built: every pixel the rail splitter or the dock moved built
+    // every row of cells again (row-extent-drag-rebuilds-every-visible-row).
+    // It rides the geometry published below now, which the rows follow.
+    _keep.lay(widget.pass);
     // Republish BEFORE the rows read it: the painted rows' render objects
     // take the mark now and settle it during this frame's layout/paint.
     _geometry.value = _geometryFromWidget();

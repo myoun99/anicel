@@ -471,7 +471,6 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
     this.gripGrounds,
     this.gripRow,
     this.windowBucket,
-    this.viewportMainExtent = 0,
   }) : super(
          repaint: Listenable.merge([
            geometry,
@@ -503,7 +502,10 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
   /// at 24px a frame the view shows about twenty of them. Null keeps the
   /// whole row, for a host that shows all of it.
   final ValueListenable<int>? windowBucket;
-  final double viewportMainExtent;
+
+  /// How far the view reaches along the frames — the live geometry's, so a
+  /// widened view repaints the chrome ([TimelineFrameGeometry.viewExtentPx]).
+  double get viewportMainExtent => geometry.value.viewExtentPx;
 
   TimelineRowEditChromeModel get model => resolver.resolve(geometry.value);
   double get frameCellExtent => geometry.value.frameCellExtent;
@@ -728,7 +730,6 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
       timelineBlockRowFacts(gripRow),
       devicePixelRatio,
       ByIdentity(windowBucket),
-      viewportMainExtent,
     );
   }
 
@@ -808,7 +809,6 @@ class TimelineRowEditChromeLayer extends StatefulWidget {
     this.gripGrounds,
     this.gripRow,
     this.windowBucket,
-    this.viewportMainExtent = 0,
   });
 
   /// What a finder calls the [CustomPaint] itself ([Named]): tests read the
@@ -818,7 +818,6 @@ class TimelineRowEditChromeLayer extends StatefulWidget {
   /// The row's scroll window, as its cells take it — what the painter draws
   /// ([TimelineRowEditChromePainter.windowBucket]).
   final ValueListenable<int>? windowBucket;
-  final double viewportMainExtent;
 
   /// The row's layer — the RUN-edge half's identity. Null on rows whose
   /// blocks are not a layer's (the storyboard's cut row), which is also
@@ -1375,7 +1374,6 @@ class _TimelineRowEditChromeLayerState
         gripGrounds: widget.gripGrounds,
         gripRow: widget.gripRow,
         windowBucket: widget.windowBucket,
-        viewportMainExtent: widget.viewportMainExtent,
       ),
       child: HitGate(
         // Off-target pixels belong to the cells: the gate keeps the

@@ -23,9 +23,36 @@ class TimelineFrameGeometry {
     required this.frameEndIndexExclusive,
     this.leadingFrameSpacerWidth = 0,
     this.trailingFrameSpacerWidth = 0,
-    this.windowOriginPx = 0,
-    this.windowExtentPx = 0,
+    this.viewExtentPx = 0,
+  }) : windowOriginPx = 0,
+       windowExtentPx = 0;
+
+  const TimelineFrameGeometry._windowed({
+    required this.frameCellExtent,
+    required this.frameStartIndex,
+    required this.frameEndIndexExclusive,
+    required this.leadingFrameSpacerWidth,
+    required this.trailingFrameSpacerWidth,
+    required this.viewExtentPx,
+    required this.windowOriginPx,
+    required this.windowExtentPx,
   });
+
+  /// How far along the frames the VIEW reaches — the panel's breadth beside
+  /// its rail — and so how many frames a row's painters draw and bake from
+  /// the bucket they stand in ([visibleFrameWindowFor]). Zero where nothing
+  /// was measured.
+  ///
+  /// 🚨THE RESIZE LAW (device report 2026-08-17): a view that widens must
+  /// reach every row's request set, or the newly exposed cells stay outside
+  /// it — a project opened in a small window and enlarged left the new
+  /// width's blocks unrendered. It rides here, live, rather than as a
+  /// build-time scalar of each painter (row-extent-drag-rebuilds-every-
+  /// visible-row, 2026-10-30): ↩️as a scalar it was a memo key, and every
+  /// pixel the rail splitter, the dock or the window moved missed every
+  /// row's memo at once and built every row of cells again (299 widgets a
+  /// splitter step on the default project). A kept row repaints on it.
+  final double viewExtentPx;
 
   /// Main-axis extent of one frame cell (cell width in the horizontal
   /// timeline, frame row height in the X-sheet).
@@ -111,16 +138,18 @@ class TimelineFrameGeometry {
   }
 
   /// The same geometry seen through a window starting at [originPx] and
-  /// [extentPx] wide. Only the owner (the rows body) calls this.
+  /// [extentPx] wide, over the same view. Only the owner (the rows body)
+  /// calls this.
   TimelineFrameGeometry windowed({
     required double originPx,
     required double extentPx,
-  }) => TimelineFrameGeometry(
+  }) => TimelineFrameGeometry._windowed(
     frameCellExtent: frameCellExtent,
     frameStartIndex: frameStartIndex,
     frameEndIndexExclusive: frameEndIndexExclusive,
     leadingFrameSpacerWidth: leadingFrameSpacerWidth - originPx,
     trailingFrameSpacerWidth: trailingFrameSpacerWidth,
+    viewExtentPx: viewExtentPx,
     windowOriginPx: originPx,
     windowExtentPx: extentPx,
   );
@@ -133,6 +162,7 @@ class TimelineFrameGeometry {
       other.frameEndIndexExclusive == frameEndIndexExclusive &&
       other.leadingFrameSpacerWidth == leadingFrameSpacerWidth &&
       other.trailingFrameSpacerWidth == trailingFrameSpacerWidth &&
+      other.viewExtentPx == viewExtentPx &&
       other.windowOriginPx == windowOriginPx &&
       other.windowExtentPx == windowExtentPx;
 
@@ -143,6 +173,7 @@ class TimelineFrameGeometry {
     frameEndIndexExclusive,
     leadingFrameSpacerWidth,
     trailingFrameSpacerWidth,
+    viewExtentPx,
     windowOriginPx,
     windowExtentPx,
   );
@@ -151,7 +182,8 @@ class TimelineFrameGeometry {
   String toString() =>
       'TimelineFrameGeometry(cell $frameCellExtent, '
       '[$frameStartIndex, $frameEndIndexExclusive), '
-      'spacers $leadingFrameSpacerWidth/$trailingFrameSpacerWidth'
+      'spacers $leadingFrameSpacerWidth/$trailingFrameSpacerWidth, '
+      'view $viewExtentPx'
       '${isWindowed ? ', window $windowOriginPx+$windowExtentPx' : ''})';
 }
 
