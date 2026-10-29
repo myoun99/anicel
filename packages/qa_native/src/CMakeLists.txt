@@ -370,12 +370,21 @@ endif()
 # WebAssembly twin the test writes itself — and holding both to answers it
 # computes on its own (qa_fx_plugin_test.c).
 if(NOT ANDROID AND NOT IOS)
-  add_library(qa_fx_plugin_sample SHARED
-    "${CMAKE_CURRENT_LIST_DIR}/qa_fx_plugin_sample.c")
+  # The sample, and two builds of it the host must refuse.
+  foreach(qa_fx_target IN ITEMS qa_fx_plugin_sample
+      qa_fx_plugin_sample_spec2 qa_fx_plugin_sample_no_render)
+    add_library(${qa_fx_target} SHARED
+      "${CMAKE_CURRENT_LIST_DIR}/qa_fx_plugin_sample.c")
+  endforeach()
+  target_compile_definitions(qa_fx_plugin_sample_spec2 PRIVATE
+    QA_FX_SAMPLE_SPEC=2)
+  target_compile_definitions(qa_fx_plugin_sample_no_render PRIVATE
+    QA_FX_SAMPLE_NO_RENDER=1)
   add_executable(qa_fx_plugin_test
     "${CMAKE_CURRENT_LIST_DIR}/qa_fx_plugin_test.c"
     "${CMAKE_CURRENT_LIST_DIR}/qa_fx_plugin.c")
-  foreach(qa_fx_target IN ITEMS qa_fx_plugin_sample qa_fx_plugin_test)
+  foreach(qa_fx_target IN ITEMS qa_fx_plugin_sample qa_fx_plugin_sample_spec2
+      qa_fx_plugin_sample_no_render qa_fx_plugin_test)
     set_target_properties(${qa_fx_target} PROPERTIES
       C_STANDARD 99
       C_STANDARD_REQUIRED ON
@@ -385,8 +394,11 @@ if(NOT ANDROID AND NOT IOS)
     endif()
   endforeach()
   target_compile_definitions(qa_fx_plugin_test PRIVATE
-    "QA_FX_SAMPLE=\"$<TARGET_FILE:qa_fx_plugin_sample>\"")
-  add_dependencies(qa_fx_plugin_test qa_fx_plugin_sample)
+    "QA_FX_SAMPLE=\"$<TARGET_FILE:qa_fx_plugin_sample>\""
+    "QA_FX_SAMPLE_SPEC2=\"$<TARGET_FILE:qa_fx_plugin_sample_spec2>\""
+    "QA_FX_SAMPLE_NO_RENDER=\"$<TARGET_FILE:qa_fx_plugin_sample_no_render>\"")
+  add_dependencies(qa_fx_plugin_test qa_fx_plugin_sample
+    qa_fx_plugin_sample_spec2 qa_fx_plugin_sample_no_render)
   qa_link_wasmtime(qa_fx_plugin_test)
   if(NOT WIN32)
     target_link_libraries(qa_fx_plugin_test ${CMAKE_DL_LIBS})

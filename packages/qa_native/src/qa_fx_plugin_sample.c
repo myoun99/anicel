@@ -6,10 +6,22 @@
 // it inverts everywhere Amount allows. Amount below 0 answers a failure.
 // Its reach is Amount / 10 plus the frame's index, so a reach that comes
 // back right has read the values and the frame both.
+//
+// Built twice more for what the host must refuse: QA_FX_SAMPLE_SPEC names
+// another spec version, QA_FX_SAMPLE_NO_RENDER keeps its render unexported.
 #include <stdint.h>
 #include <string.h>
 
 #include "anicel_fx_plugin.h"
+
+#ifndef QA_FX_SAMPLE_SPEC
+#define QA_FX_SAMPLE_SPEC ANICEL_FX_SPEC_VERSION
+#endif
+#if defined(QA_FX_SAMPLE_NO_RENDER)
+#define QA_FX_SAMPLE_RENDER_EXPORT static
+#else
+#define QA_FX_SAMPLE_RENDER_EXPORT ANICEL_FX_EXPORT(anicel_fx_render)
+#endif
 
 static const char description[] =
     "{\"spec\":1,\"id\":\"app.anicel.test.invert\",\"name\":\"Invert\","
@@ -19,7 +31,7 @@ static const char description[] =
     "{\"id\":\"map\",\"kind\":\"layer\",\"label\":\"Map\"}]}";
 
 ANICEL_FX_EXPORT(anicel_fx_spec) uint32_t anicel_fx_spec(void) {
-  return ANICEL_FX_SPEC_VERSION;
+  return QA_FX_SAMPLE_SPEC;
 }
 
 ANICEL_FX_EXPORT(anicel_fx_describe)
@@ -51,7 +63,7 @@ static int map_allows(const anicel_fx_frame *frame, const anicel_fx_image *map,
   return pixel[3] > 127;
 }
 
-ANICEL_FX_EXPORT(anicel_fx_render)
+QA_FX_SAMPLE_RENDER_EXPORT
 int32_t anicel_fx_render(anicel_fx_frame *frame) {
   const anicel_fx_value *values = anicel_fx_values(frame);
   double amount = values[0].v[0];

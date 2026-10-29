@@ -8,8 +8,10 @@
 // (values and the frame's index both read), a render with a map layer
 // placed elsewhere on the canvas, without one, below the plugin's
 // threshold, a plugin's failure, a module's trap (and a render after it),
-// strides on both sides with the output's padding untouched, and the
-// modules and libraries the host must refuse.
+// strides on both sides with the output's padding untouched, the modules
+// and libraries the host must refuse (another spec version, no render, no
+// plugin at all), a module started before it is asked (`_initialize`), and
+// WASI linked with no folder behind it.
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -185,6 +187,16 @@ static void check_refusals(void) {
                                  (int32_t)sizeof(error)) == NULL &&
             error[0] != 0,
         "a library that is not there opened");
+  error[0] = 0;
+  CHECK(qa_fx_plugin_open_native(QA_FX_SAMPLE_SPEC2, error,
+                                 (int32_t)sizeof(error)) == NULL &&
+            error[0] != 0,
+        "a library of another spec version opened");
+  error[0] = 0;
+  CHECK(qa_fx_plugin_open_native(QA_FX_SAMPLE_NO_RENDER, error,
+                                 (int32_t)sizeof(error)) == NULL &&
+            error[0] != 0,
+        "a library with no render opened");
   uint8_t garbage[8] = {1, 2, 3, 4, 5, 6, 7, 8};
   error[0] = 0;
   CHECK(qa_fx_plugin_open_wasm(garbage, sizeof(garbage), error,
@@ -371,6 +383,51 @@ static void check_twin(const char *description) {
                  error, (int32_t)sizeof(error)) == NULL &&
             error[0] != 0,
         "a module of another spec version opened");
+
+  // A module built on WASI's libc starts its runtime in `_initialize`:
+  // this one names its spec only once started.
+  error[0] = 0;
+  void *started = open_wat(
+      "(module (memory (export \"memory\") 1)"
+      " (global $ready (mut i32) (i32.const 0))"
+      " (func (export \"_initialize\") (global.set $ready (i32.const 1)))"
+      " (func (export \"anicel_fx_spec\") (result i32) (global.get $ready))"
+      " (func (export \"anicel_fx_alloc\") (param i32) (result i32)"
+      "  i32.const 1024)"
+      " (func (export \"anicel_fx_describe\") (param i32 i32) (result i32)"
+      "  i32.const 0)"
+      " (func (export \"anicel_fx_reach\") (param i32) (result i32)"
+      "  i32.const 0)"
+      " (func (export \"anicel_fx_render\") (param i32) (result i32)"
+      "  i32.const 0))",
+      error, (int32_t)sizeof(error));
+  CHECK(started != NULL, "a module was not started first: %s", error);
+  qa_fx_plugin_close(started);
+
+  // WASI is there to link against and reaches nothing: the first folder a
+  // host could open to a module is descriptor 3, and there is none (EBADF).
+  error[0] = 0;
+  void *sandboxed = open_wat(
+      "(module (import \"wasi_snapshot_preview1\" \"fd_prestat_get\""
+      "  (func $prestat (param i32 i32) (result i32)))"
+      " (memory (export \"memory\") 1)"
+      " (func (export \"anicel_fx_spec\") (result i32) i32.const 1)"
+      " (func (export \"anicel_fx_alloc\") (param i32) (result i32)"
+      "  i32.const 1024)"
+      " (func (export \"anicel_fx_describe\") (param i32 i32) (result i32)"
+      "  i32.const 0)"
+      " (func (export \"anicel_fx_reach\") (param i32) (result i32)"
+      "  (call $prestat (i32.const 3) (i32.const 512)))"
+      " (func (export \"anicel_fx_render\") (param i32) (result i32)"
+      "  i32.const 0))",
+      error, (int32_t)sizeof(error));
+  CHECK(sandboxed != NULL, "a module on WASI would not open: %s", error);
+  if (sandboxed != NULL) {
+    int32_t answer = qa_fx_plugin_reach(sandboxed, NULL, 0, 0, 0, 24, 1);
+    CHECK(answer == 8, "a module saw a folder: fd_prestat_get(3) is %d",
+          answer);
+    qa_fx_plugin_close(sandboxed);
+  }
 }
 #endif
 
