@@ -673,6 +673,33 @@ void main() {
       );
     });
 
+    test('a tile the second tip never reaches shows nothing and is not '
+        'dirty', () {
+      // Multiply at density 1 under an empty second plane shows nothing:
+      // the first tip's dabs there move the plane under a view that stays
+      // put, so the tile is no change — in the bytes AND the change set,
+      // which the kernels report from the view, not from the dabs.
+      const view = BrushDualView();
+      expectParity(
+        surface: blankSurface(),
+        sequence: strokeOf([
+          dab(x: 30, y: 30, size: 14, dual: view),
+          dab(x: 100, y: 30, size: 14, dual: view, sequence: 1),
+          secondDab(x: 30, y: 30, dual: view, size: 20),
+        ]),
+        reason: 'a first-tip dab beyond the second tip',
+      );
+      final landed = materializeBrushDabSequenceOnBitmapSurface(
+        surface: blankSurface(),
+        sequence: strokeOf([
+          dab(x: 30, y: 30, size: 14, dual: view),
+          dab(x: 100, y: 30, size: 14, dual: view, sequence: 1),
+          secondDab(x: 30, y: 30, dual: view, size: 20),
+        ]),
+      );
+      expect(landed.dirtyTiles.coords.toSet(), {TileCoord(x: 0, y: 0)});
+    });
+
     test('🚨the second tip cuts the PILED first stroke once, not per dab', () {
       // Two first-tip dabs on one spot under one second-tip level of a half:
       // the stroke shows the pile of the two halved — 0.8 piled twice is
