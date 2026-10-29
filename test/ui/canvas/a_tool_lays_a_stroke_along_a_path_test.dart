@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
@@ -9,6 +10,8 @@ import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
+import 'package:anicel/src/models/brush_shape.dart';
+import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -63,6 +66,60 @@ void main() {
     expect(laid.length, greaterThan(20), reason: 'a line of dabs, not a dot');
     expect(laid.first.center, p(10, 10), reason: 'it begins under its start');
     expect(_look(laid), _look(host.committed.last));
+  });
+
+  testWidgets('a brush with a second tip lays its second stroke along the '
+      'path, a hand\'s and a tool\'s alike', (tester) async {
+    final grain = BrushTipMask(
+      id: 'path-second-tip',
+      size: 8,
+      alpha: Uint8List.fromList([for (var i = 0; i < 64; i += 1) i * 4]),
+    );
+    final host = _Host();
+    await _pump(
+      tester,
+      host,
+      BrushToolState.defaults
+          .copyWith(
+            size: 6,
+            dualMaskScale: 0.5,
+            dualDensity: 0.8,
+            // Nothing steadies or smooths the hand, so it lays the path
+            // the tool lays.
+            correction: const BrushCorrection(
+              steadies: false,
+              postBySpeed: false,
+            ),
+          )
+          .withMask(BrushMaskSlot.dual, grain)
+          .toInputSettings(),
+    );
+
+    host.show!.landStroke(corner);
+    await tester.pump();
+    await _byMouse(tester, const [
+      Offset(10, 10),
+      Offset(100, 10),
+      Offset(100, 50),
+    ]);
+
+    expect(host.committed, hasLength(2));
+    final laid = host.committed.first;
+    final second = [for (final dab in laid) if (dab.second) dab];
+    expect(second.length, greaterThan(20), reason: 'a stroke, not a dot');
+    expect(second.first.center, p(10, 10), reason: 'it follows the pen');
+    expect({for (final dab in second) dab.size}, {3});
+    expect({for (final dab in second) dab.tipMask}, {grain});
+    expect(
+      {for (final dab in laid) dab.dual},
+      {const BrushDualView(density: 0.8)},
+      reason: 'every dab of the stroke shows through the one view',
+    );
+    expect(
+      _placed([for (final dab in host.committed.last) if (dab.second) dab]),
+      _placed(second),
+      reason: "the hand's second stroke is the tool's, numbered as it came",
+    );
   });
 
   testWidgets('the host hears the stroke begin and end, inside the call', (
@@ -878,4 +935,10 @@ List<Object?> _look(List<BrushDab> dabs) => [
       dab.pressure,
       dab.sequence,
     ),
+];
+
+/// Where dabs fall and how big — [_look] without the numbering, which a
+/// hand's advances interleave with the first tip's.
+List<Object?> _placed(List<BrushDab> dabs) => [
+  for (final dab in dabs) (dab.center.x, dab.center.y, dab.size),
 ];
