@@ -1,4 +1,5 @@
 import 'dart:developer' show Timeline;
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -733,25 +734,37 @@ void main() {
       );
 
       // The frames read in the moments after a wrap: the latest callback
-      // the first of a new lap, asked for on time, and less than 10ms old —
-      // what is HEARD is then 4ms or more short of the lap's end. For as
-      // many laps as it takes — up to twelve of the device's own, an idle
-      // one's twelve seconds. ↩️Twelve seconds of the wall (10-17: none
-      // landed in them, a lane's run under five and six others).
+      // the first of a new lap, and what is HEARD then still 6ms or more
+      // short of the lap's end. For as many laps as it takes — up to twelve
+      // of the device's own, an idle one's twelve seconds. ↩️Twelve seconds
+      // of the wall (10-17: none landed in them, a lane's run under five and
+      // six others).
       //
-      // ⚠️ON TIME, OR NOT AT ALL (10-15, TestFlight #73: `[9, 0, 0, 0]`). A
-      // callback asked for late lies under the line by its lateness, and
-      // the device has played on through what it carries meanwhile — what
-      // the line is for: when a wrap's first callback comes 20ms late, what
-      // is heard IS in the new lap, and frame 0 is the right answer. The
-      // null device is a thread, and a starved runner holds it back.
+      // ⚠️HEARD SHORT OF THE END, OR NOT AT ALL (10-15, TestFlight #73:
+      // `[9, 0, 0, 0]`). A callback asked for late lies under the line by
+      // its lateness, and the device has played on through what it carries
+      // meanwhile — what the line is for: when a wrap's first callback comes
+      // 20ms late, what is heard IS in the new lap, and frame 0 is the right
+      // answer. So a reading counts by where it hears: the step's own count,
+      // its callback's lateness and the reading's age, less the latency.
       // ↩️「However late that callback came」 — true of none later than the
       // latency less a step.
+      // ↩️A callback within 4ms of on time, read within 10ms of it (10-29,
+      // Developer ID build 1080: none in twelve laps, 4/4 and alone, while
+      // TestFlight's runner passed the same head). The worst reading that
+      // let in was heard 480 + 192 + 480 past the wrap, of the 1440 the
+      // null device carries: those 288 short of the end stand, the split
+      // between lateness and age does not.
+      const shortOfTheEnd = 288;
       final lateness = _CallbackLateness(rate: 48000, lap: 48000);
       final justWrapped = <int>[];
       final handed = Handed(device);
       final watch = Stopwatch()..start();
       var nearTheEnd = false;
+      // What the wraps offered, for a premise that fails.
+      final wrapSteps = <int>{};
+      int? nearest;
+      var straddled = 0;
       while (justWrapped.length < 4 &&
           handed.samples < 12 * 48000 &&
           watch.elapsed < deviceStoppedAfter) {
@@ -770,23 +783,37 @@ void main() {
         // heard past by the time the status looked. A reading a callback
         // or 2ms came between is not one.
         if (after.point != point || after.nowMicros - clock.nowMicros > 2000) {
+          straddled += 1;
           continue;
         }
         if (point.positionSamples > 40000) {
           nearTheEnd = true;
         } else if (point.positionSamples > 480) {
           nearTheEnd = false;
-        } else if (nearTheEnd &&
-            clock.nowMicros - point.atMicros < 10000 &&
-            late < 192) {
-          justWrapped.add(status.globalFrame);
+        } else if (nearTheEnd) {
+          // Aged to [after]: the status read its clock before that did, so
+          // the moment it answers for is no later.
+          final age =
+              (after.nowMicros - point.atMicros) *
+              48000 ~/
+              Duration.microsecondsPerSecond;
+          final past = point.positionSamples + late + age;
+          wrapSteps.add(point.atMicros);
+          nearest = math.min(nearest ?? past, past);
+          if (past < device.latencySamples - shortOfTheEnd) {
+            justWrapped.add(status.globalFrame);
+          }
         }
       }
 
       expect(
         justWrapped,
         isNotEmpty,
-        reason: '⛔premise: no reading landed in the step after a wrap',
+        reason: '⛔premise: no reading landed in the step after a wrap — '
+            '${wrapSteps.length} wrap step(s) read, the nearest heard '
+            '$nearest past the wrap (under '
+            '${device.latencySamples - shortOfTheEnd} lands), $straddled '
+            'reading(s) a callback or 2ms came between',
       );
       expect(
         justWrapped,
