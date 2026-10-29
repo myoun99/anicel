@@ -148,7 +148,7 @@ static void check_plugin(void *plugin, const char *who,
   int32_t length = qa_fx_plugin_describe(plugin, said, (int32_t)sizeof(said));
   CHECK(length == (int32_t)strlen(description) &&
             memcmp(said, description, (size_t)length) == 0,
-        "%s: description %d bytes, \"%.40s…\"", who, length, said);
+        "%s: description %d bytes, \"%.40s...\"", who, length, said);
   // Too little room: the length still, and nothing past the room.
   char small[9];
   memset(small, 'x', sizeof(small));
@@ -160,10 +160,10 @@ static void check_plugin(void *plugin, const char *who,
 
   double values[8] = {80, 0, 0, 0, 0, 0, 0, 0};
   int32_t reach = qa_fx_plugin_reach(plugin, values, 2, 3, 3 / 24.0, 24, 1);
-  CHECK(reach == 14, "%s: reach %d, the spec's 80 / 10 · 1 + 3 + 3 = 14", who,
+  CHECK(reach == 14, "%s: reach %d, the spec's 80 / 10 * 1 + 3 + 3 = 14", who,
         reach);
   reach = qa_fx_plugin_reach(plugin, values, 2, 5, 7 / 24.0, 24, 0.5);
-  CHECK(reach == 16, "%s: reach %d, the spec's 80 / 10 · 0.5 + 5 + 7 = 16",
+  CHECK(reach == 16, "%s: reach %d, the spec's 80 / 10 * 0.5 + 5 + 7 = 16",
         who, reach);
 
   check_render(plugin, who, 80, 1);
@@ -536,7 +536,7 @@ int main(void) {
 #if QA_FX_WASM
   check_twin(description);
 #else
-  printf("qa_fx_plugin_test: this build has no WebAssembly engine — the "
+  printf("qa_fx_plugin_test: this build has no WebAssembly engine - the "
          "twin is not asked\n");
 #endif
   if (failures == 0) {
