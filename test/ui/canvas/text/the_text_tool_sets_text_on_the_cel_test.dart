@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/text/cel_text_bake.dart';
 import 'package:flutter/gestures.dart'
     show PointerDeviceKind, kSecondaryButton;
 import 'package:flutter/material.dart';
@@ -694,6 +697,51 @@ void main() {
         expect(celOf(tester).texts, isEmpty);
       });
     }
+
+    testWidgets('walked off while the engine was still setting it: it lands '
+        'once set, as made where it was held', (tester) async {
+      await pumpTextToolApp(
+        tester,
+        project: textToolProject(drawings: 2),
+      );
+      await takeTextTool(tester);
+      final c = canvasPixelInView(tester);
+      final session = sessionOf(tester);
+      await clickAt(tester, c.dx, c.dy);
+      final set = Completer<void>();
+      debugCelTextBaker = (
+        layout, {
+        required pasteboard,
+        required tileSize,
+        previous = const {},
+      }) async {
+        await set.future;
+        return boxFillingBake(
+          layout,
+          pasteboard: pasteboard,
+          tileSize: tileSize,
+          previous: previous,
+        );
+      };
+      await typeText(tester, 'hi');
+      expect(textToolOf(tester).session?.settled, isFalse, reason: 'premise');
+      session.selectFrameIndex(1);
+      await pumpFrames(tester);
+      set.complete();
+      await pumpFrames(tester);
+      expect(celOf(tester).texts.single.content.text, 'hi', reason: 'landed');
+
+      session.undo();
+      await pumpFrames(tester);
+
+      expect(session.standingPlace?.frame, 0, reason: 'walked back');
+      expect(celOf(tester).texts.single.content.text, 'hi');
+
+      session.undo();
+      await pumpFrames(tester);
+
+      expect(celOf(tester).texts, isEmpty);
+    });
   });
 
   testWidgets('another frame taken mid-drag ends the drag where it is: the '
