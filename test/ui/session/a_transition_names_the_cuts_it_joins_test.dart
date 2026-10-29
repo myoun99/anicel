@@ -156,10 +156,7 @@ void main() {
 
       // The cut next door renamed while 301 stays printed — nothing the
       // sheet keys its memo on changes but the names the O.L writes.
-      s.cutCommandCoordinator.renameCut(
-        cutId: const CutId('302'),
-        newName: '305',
-      );
+      s.cutCommandCoordinator.renameCuts({const CutId('302'): '305'});
       s.notifyChanged();
       await tester.pumpAndSettle();
       expect(

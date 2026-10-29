@@ -7,12 +7,20 @@ import '../../models/brush_correction.dart';
 import '../../models/brush_mixing_method.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_settings_group.dart';
+import '../../models/brush_settings_row.dart';
 import '../../models/brush_shape.dart' show BrushMaskSlot, BrushShape;
 import '../../models/brush_tip_entry.dart';
 import '../../models/brush_tip_order.dart';
 import '../../models/brush_texture_mode.dart';
 import '../../models/separable_blend_mode.dart';
 import '../panels/editor_panel_frame.dart';
+import '../timeline/layer_label_controls.dart'
+    show LayerVisibilityToggleButton;
+import '../widgets/app_icon_button.dart';
+import '../widgets/app_window.dart';
+import '../widgets/content_scrollbar.dart';
+import '../widgets/floating_app_window.dart';
+import '../widgets/group_tab.dart';
 import '../widgets/settings_rows.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
@@ -22,18 +30,37 @@ import '../widgets/tip_direction_popup.dart';
 import 'brush_tip_picker.dart';
 import 'brush_tool_state.dart';
 import 'tool_setting_rows.dart'
-    show ToolSettingChoiceRow, ToolSettingRow, ToolSettingSurface;
+    show
+        ToolSettingChoiceRow,
+        ToolSettingColumns,
+        ToolSettingRow,
+        ToolSettingSurface;
 import 'tool_settings_section.dart';
 import '../text/app_strings.dart';
 import '../text/model_vocabulary.dart';
 import '../widgets/pill_strip.dart';
 
-/// Editable brush tool properties — the CSP-style GROUPED layout (BB-2,
-/// user-picked candidate B, 07-22): 브러시 크기 / 잉크 / 브러시 끝 /
-/// 보정, with the BRUSH BLEND dropdown living in the ink group exactly
-/// where Clip Studio keeps its 합성 모드. The color swatches and the tip
-/// shape segment are GONE (R26 #11): color belongs to the color wheel
-/// panel, the tip belongs to brush presets.
+/// Editable brush tool properties — the brush's own settings, each row
+/// one of [BrushSettingsRow]. The BRUSH BLEND, size and opacity live in the
+/// top strip; the color swatches and the tip shape segment are GONE (R26
+/// #11): color belongs to the color wheel panel, the tip belongs to brush
+/// presets.
+///
+/// 🗣️I-141 (유저 2026-10-29): the panel shows only the rows the brush
+/// SHOWS ([BrushToolState.shown]), in the panel's own order, with no group
+/// heads (Q2 「패널 본래 순서 그대로」; 「클튜처럼 보이도록 고정한 항목은
+/// 항목헤더같은거 표시안함. 멤버만 심플하게 하나씩 보여주는느낌」), and the
+/// wrench under them opens the brush detail window, where every row stands
+/// under its group with an eye that shows it here or not (Q1 ⓐ 「클튜식 —
+/// 상세 창에서 고른다」). ↩️Every row stood here under six folding group
+/// heads (BB-2 candidate B, 07-22; F-418-Q10).
+///
+/// 🚨THE WINDOW IS THE USER'S EXCEPTION to 「툴 설정은 툴 설정 패널에 —
+/// 그 툴 전용 패널을 새로 만들지 않는다」: Q1's answer chose a window, and
+/// Q3 (「떠 있는 창(클튜처럼)」) one that floats, so the canvas takes
+/// strokes while it is open. Its rows are THIS panel's rows, built by the
+/// one [_BrushSettingsPanelState._rowOf] — the window is where they are
+/// chosen, not a second panel.
 ///
 /// The brush library lives in the separate [BrushPresetPanel]; this panel
 /// only mutates the live [BrushToolState].
@@ -46,6 +73,7 @@ class BrushSettingsPanel extends StatefulWidget {
     this.onTipImportRequested,
     this.onRenameTip,
     this.onDeleteTip,
+    this.detailAt,
   });
 
   final BrushToolState state;
@@ -69,6 +97,12 @@ class BrushSettingsPanel extends StatefulWidget {
   final void Function(BrushTipEntry tip)? onRenameTip;
   final void Function(BrushTipEntry tip)? onDeleteTip;
 
+  /// Where the brush detail window stands ([FloatingAppWindow.at]) — the
+  /// workspace's, so it opens where it was left after a restart (Q3 「창은
+  /// 끌어서 옮기고 자리를 기억한다」). Null keeps it for as long as the panel
+  /// lives.
+  final ValueNotifier<Offset?>? detailAt;
+
   // The `language` parameter left with the blend row: it existed only for
   // the blend labels (ja = CSP terms), and the rest of the panel reads its
   // wording from `AppText.strings`.
@@ -77,6 +111,8 @@ class BrushSettingsPanel extends StatefulWidget {
   State<BrushSettingsPanel> createState() => _BrushSettingsPanelState();
 }
 
+/// The rows one place showed last, by the row each is ([BrushSettingsRow]).
+///
 /// 🔬H40 (유저 2026-09-11): 「고르는 프레임에서 끝나더라도 지금 안그래도 고를때
 /// 렉있어서 그부분도 효율적으로 가볍게 하고싶어」. With this panel open, a
 /// pick's frame was measured at half a second, and nearly all of it was
@@ -84,15 +120,42 @@ class BrushSettingsPanel extends StatefulWidget {
 /// were built again for every brush — the rows two brushes share included.
 ///
 /// ⇒ A row that SHOWS what it showed before is handed back as the very
-/// instance it was ([_keepRows]), which the framework skips whole. What a
-/// row shows is its label, its number, its range and unit, whether it is
-/// alive, and its pressure curves ([_sameRow]).
+/// instance it was ([keep]), which the framework skips whole. What a row
+/// shows is its label, its number, its range and unit, whether it is alive,
+/// and its pressure curves ([_BrushSettingsPanelState._sameRow]).
 ///
-/// A row is found by its name ([_nameOf]), not by its place: a switch's
-/// rows are there only while it is on (F-478-Q2), so the rows under them
-/// move. Each row is keyed by that name as well, or the framework would
-/// hand a kept row the element of whichever row stood at its place before.
+/// A row is found by the row it is, not by its place: what a brush shows
+/// (I-141) and a switch's rows standing only while it is on (F-478-Q2) both
+/// move the rows under them. Each row is keyed by it as well, or the
+/// framework would hand a kept row the element of whichever row stood at
+/// its place before. ↩️Rows were found by their place, which held while
+/// every row stood in the panel whatever the brush.
 ///
+/// One per place a row stands — the panel, and the detail window's group.
+class _KeptRows {
+  Map<BrushSettingsRow, Widget> _kept = const {};
+
+  /// [fresh], with every row that shows what the kept row of its name
+  /// showed replaced by that kept instance.
+  List<(BrushSettingsRow, Widget)> keep(
+    List<(BrushSettingsRow, Widget)> fresh,
+  ) {
+    final kept = _kept;
+    final rows = [
+      for (final (row, built) in fresh)
+        switch (kept[row]) {
+          final old? when _BrushSettingsPanelState._sameRow(old, built) => (
+            row,
+            old,
+          ),
+          _ => (row, built),
+        },
+    ];
+    _kept = {for (final (row, built) in rows) row: built};
+    return rows;
+  }
+}
+
 /// ⚠️A kept row's callbacks must write the brush in hand NOW, not the one it
 /// was built with — so the configuration is read through the getters below
 /// at CALL time, and the rows keep closing over those names as they always
@@ -112,7 +175,27 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
   void Function(BrushTipEntry tip)? get onRenameTip => widget.onRenameTip;
   void Function(BrushTipEntry tip)? get onDeleteTip => widget.onDeleteTip;
 
-  Map<Object, Widget> _kept = const {};
+  final _panelRows = _KeptRows();
+  final _detailRows = _KeptRows();
+
+  /// The brush detail window, and the group its rail is on.
+  final _detail = OverlayPortalController();
+  BrushSettingsGroup _detailGroup = BrushSettingsGroup.ink;
+
+  /// Where the window stands when no workspace keeps it ([widget.detailAt]).
+  ValueNotifier<Offset?>? _ownDetailAt;
+  ValueNotifier<Offset?> get _detailAt =>
+      widget.detailAt ?? (_ownDetailAt ??= ValueNotifier<Offset?>(null));
+
+  /// The window's size: the rail, and the rows at the panel's own width
+  /// with an eye before each — the texture group's eleven without a scroll.
+  static const Size _detailSize = Size(480, 400);
+
+  @override
+  void dispose() {
+    _ownDetailAt?.dispose();
+    super.dispose();
+  }
 
   // The library's tip callbacks, handed to the rows as this state's own
   // methods, which read the current callback at call time. The workspace
@@ -128,39 +211,6 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
       widget.onRenameTip == null ? null : _renameTipNow;
   void Function(BrushTipEntry tip)? get _deleteTip =>
       widget.onDeleteTip == null ? null : _deleteTipNow;
-
-  /// [fresh], with every row that shows what the kept row of its name
-  /// showed replaced by that kept instance, and each keyed by its name.
-  /// ↩️Rows were found by their place, which held while every row stood in
-  /// the panel whatever the brush.
-  List<Widget> _keepRows(List<Widget> fresh) {
-    final kept = _kept;
-    final rows = [
-      for (final row in fresh)
-        switch (kept[_nameOf(row)]) {
-          final old? when _sameRow(old, row) => old,
-          _ => row,
-        },
-    ];
-    _kept = {for (final row in rows) _nameOf(row): row};
-    return [
-      for (final row in rows)
-        KeyedSubtree(key: ValueKey<Object>(_nameOf(row)), child: row),
-    ];
-  }
-
-  /// Which row of the panel [row] is, whatever it shows: its kind, and the
-  /// key it already carries where the panel holds several of that kind.
-  static Object _nameOf(Widget row) => (
-    row.runtimeType,
-    switch (row) {
-      _PanelSlider(:final keyValue) => keyValue,
-      SettingsSwitchRow(:final tileKey, :final label) => tileKey ?? label,
-      BrushTipPickerRow(:final role) => role,
-      ToolSettingsGroupHeader(:final label) => label,
-      _ => null,
-    },
-  );
 
   /// Whether [kept] and [fresh] show the same thing. Callbacks are not
   /// compared: theirs read the configuration at call time (see the class).
@@ -220,14 +270,6 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
   void _correct(BrushCorrection correction) =>
       onChanged(state.copyWith(correction: correction));
 
-  /// [group] of the brush in hand, folded or not, and what folds it or
-  /// opens it — the brush's own (F-418-Q10).
-  ToolSettingsFold _foldOf(BrushSettingsGroup group) => (
-    folded: state.folded.contains(group),
-    onToggle: () =>
-        onChanged(state.copyWith(folded: toggledSet(state.folded, group))),
-  );
-
   /// The CSP-style per-setting pressure button (BB-3): sits at the right
   /// of each pressure-capable slider row and opens the shared curve popup.
   Widget _pressureButton(BrushPressureTarget target) {
@@ -238,6 +280,15 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
       onChanged: (curves) => onChanged(state.withTargetCurves(target, curves)),
     );
   }
+
+  /// The rows of [rows] that stand in the brush in hand ([_stands]), each
+  /// built, in the panel's order — the panel's and the window's alike.
+  List<(BrushSettingsRow, Widget)> _built(
+    bool Function(BrushSettingsRow row) rows,
+  ) => [
+    for (final row in BrushSettingsRow.values)
+      if (rows(row) && _stands(row)) (row, _rowOf(row)),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -252,43 +303,20 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
           key: const ValueKey<String>('brush-settings-panel'),
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
-          children: _keepRows([
+          children: [
             // 유저 확정 (rail-and-strip): SIZE, OPACITY and BLEND — each with
             // its pressure curve or lock — left this panel for the TOP STRIP.
             // They are the settings a hand changes mid-stroke, against a test
             // mark on the canvas, and this panel scrolls; the strip is always
             // where it was. Keeping a second copy here would be two places
             // showing one number.
-            ...toolSettingsGroup(
-              AppText.strings.brGroupInk,
-              first: true,
-              fold: _foldOf(BrushSettingsGroup.ink),
-              rows: _inkRows(),
-            ),
-            ...toolSettingsGroup(
-              AppText.strings.brGroupTip,
-              fold: _foldOf(BrushSettingsGroup.tip),
-              rows: _tipRows(),
-            ),
-            ...toolSettingsGroup(
-              AppText.strings.brGroupMixing,
-              fold: _foldOf(BrushSettingsGroup.mixing),
-              rows: _mixingRows(),
-            ),
-            ...toolSettingsGroup(
-              AppText.strings.brGroupScattering,
-              fold: _foldOf(BrushSettingsGroup.scattering),
-              rows: _scatteringRows(),
-            ),
-            ...toolSettingsGroup(
-              AppText.strings.brGroupTexture,
-              fold: _foldOf(BrushSettingsGroup.texture),
-              rows: _textureRows(),
-            ),
-            ...toolSettingsGroup(
-              AppText.strings.brGroupCorrection,
-              fold: _foldOf(BrushSettingsGroup.correction),
-              rows: _correctionRows(),
+            for (final (row, built) in _panelRows.keep(
+              _built(state.shown.contains),
+            ))
+              KeyedSubtree(key: ValueKey<BrushSettingsRow>(row), child: built),
+            KeyedSubtree(
+              key: const ValueKey<String>('brush-detail-bar'),
+              child: _detailBar(context),
             ),
             // ⛔THE AUTO-FRAME TOGGLE IS NOT HERE ANY MORE (F-61, 유저:
             // 「프레임 자동생성 버튼 툴 설정에 있는데, **왜 이딴식으로
@@ -301,15 +329,182 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
             // settings convention into the gap. It lives in the frame pill —
             // beside the other verbs that make and unmake a block, which is
             // the group it belongs to.
-          ]),
+          ],
         ),
       ),
     );
   }
 
-  /// インク.
-  List<Widget> _inkRows() => [
-    _PanelSlider(
+  /// The wrench under the rows, at the panel's end, over a hairline — what
+  /// opens the brush detail window and closes it again.
+  Widget _detailBar(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: 2),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Divider(
+          height: 1,
+          thickness: 1,
+          color: Theme.of(context).colorScheme.outlineVariant,
+        ),
+        const SizedBox(height: ToolSettingsSection.rowGap),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FloatingAppWindow(
+            controller: _detail,
+            at: _detailAt,
+            size: _detailSize,
+            window: _detailWindow,
+            child: AppIconButton(
+              keyValue: 'brush-detail-button',
+              tooltip: AppText.strings.brDetailTitle,
+              icon: const Icon(Icons.build_outlined),
+              outlined: true,
+              isSelected: _detail.isShowing,
+              onPressed: () => setState(_detail.toggle),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  /// The brush detail window: the groups down its left side, as the brush
+  /// library's are (I-141-Q4 「클튜처럼 왼쪽에 두자. 브러시그룹/브러시목록이랑
+  /// 비슷한느낌으로」 — ↩️a tab strip across its top, as drawn first), and the
+  /// rail's group's rows, each with its eye.
+  Widget _detailWindow(
+    BuildContext context,
+    Size size,
+    GestureDragUpdateCallback onTitleDrag,
+  ) => AppWindow(
+    windowKey: const ValueKey<String>('brush-detail-window'),
+    title: AppText.strings.brDetailTitle,
+    onClose: () => setState(_detail.hide),
+    onTitleDrag: onTitleDrag,
+    width: size.width,
+    height: size.height,
+    scrollBody: false,
+    bodyPadding: EdgeInsets.zero,
+    body: Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _detailRail(),
+        VerticalDivider(
+          width: 1,
+          thickness: 1,
+          color: Theme.of(context).colorScheme.outlineVariant,
+        ),
+        Expanded(
+          child: ToolSettingSurface(
+            end: _PanelSlider.endReach,
+            child: ContentScrollbar(
+              builder: (context, controller) => ListView(
+                key: const ValueKey<String>('brush-detail-rows'),
+                controller: controller,
+                padding: ToolSettingsSection.inset,
+                children: [
+                  for (final (row, built) in _detailRows.keep(
+                    _built((row) => row.group == _detailGroup),
+                  ))
+                    _EyedRow(
+                      key: ValueKey<BrushSettingsRow>(row),
+                      row: row,
+                      shown: state.shown.contains(row),
+                      onToggle: () => onChanged(
+                        state.copyWith(shown: toggledSet(state.shown, row)),
+                      ),
+                      child: built,
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  /// The window's rail: one [GroupTab] a group, the brush library's tab.
+  Widget _detailRail() => SizedBox(
+    width: GroupTab.namedWidth,
+    child: Padding(
+      padding: const EdgeInsets.all(4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final group in BrushSettingsGroup.values)
+            GroupTab(
+              keyValue: 'brush-detail-group-${group.name}',
+              label: _groupLabel(group),
+              selected: group == _detailGroup,
+              onTap: () => setState(() => _detailGroup = group),
+            ),
+        ],
+      ),
+    ),
+  );
+
+  static String _groupLabel(BrushSettingsGroup group) => switch (group) {
+    BrushSettingsGroup.ink => AppText.strings.brGroupInk,
+    BrushSettingsGroup.tip => AppText.strings.brGroupTip,
+    BrushSettingsGroup.mixing => AppText.strings.brGroupMixing,
+    BrushSettingsGroup.scattering => AppText.strings.brGroupScattering,
+    BrushSettingsGroup.texture => AppText.strings.brGroupTexture,
+    BrushSettingsGroup.correction => AppText.strings.brGroupCorrection,
+  };
+
+  /// Whether [row] stands in the brush in hand at all.
+  ///
+  /// 🗣️F-478-Q2 (유저 2026-10-27): 「없앤다 — 패널 안 스위치도 같은 법」 — the
+  /// rows under a switch are there only while it is on, and the rows under
+  /// them moving is the cost the answer took. ↩️They were mounted only while
+  /// the switch was on, then went DEAD instead (유저, 반복: 「없다가 생기는 UI
+  /// 금지. 자리는 항상 예약하고 내용만 바꾼다」 — the panel jumped under the
+  /// finger), until this answer. A row the brush shows stands by this law in
+  /// the panel, and the window's rows by it too (I-141).
+  bool _stands(BrushSettingsRow row) => switch (row) {
+    // How the dabs take the tips (F-176-Q3) — with tips to take: the round
+    // tip has none. One tip keeps it: the two laps still draw that tip once.
+    BrushSettingsRow.tipOrder => state.tips.isNotEmpty,
+    // How many of the tips each turn holds (F-456-Q4) — with two tips to
+    // throw between. ↩️It stood DEAD below two.
+    BrushSettingsRow.tipsPerTurn => state.tips.length >= 2,
+    BrushSettingsRow.mixingMethod => state.mixesGroundColor,
+    // The reservoir's three are the mix's alone: a blur picks no colour up
+    // (I-75), so by the same answer they are there only under a mix.
+    BrushSettingsRow.paintAmount ||
+    BrushSettingsRow.paintDensity ||
+    BrushSettingsRow.colorStretch => state.shape.picksUpGround,
+    // The dual tip's knobs, with a dual tip. ↩️They stood DEAD without one.
+    BrushSettingsRow.dualScale ||
+    BrushSettingsRow.dualDensity ||
+    BrushSettingsRow.dualBlend => state.dualMask != null,
+    // The texture's knobs, with a texture. ↩️They stood DEAD without one.
+    BrushSettingsRow.textureScale ||
+    BrushSettingsRow.textureDensity ||
+    BrushSettingsRow.textureMode ||
+    BrushSettingsRow.textureInvert ||
+    BrushSettingsRow.textureBrightness ||
+    BrushSettingsRow.textureContrast => state.textureMaskSource != null,
+    // What sits under the 手ブレ補正 (유저 2026-10-20 「적용해제면
+    // 손떨림보정쪽 다른 버튼 규칙처럼 비활성화」 — the other buttons' rule,
+    // which F-478-Q2 made 「없앤다」). ↩️It stood DIM when off.
+    BrushSettingsRow.stabilizer ||
+    BrushSettingsRow.steadyingBySpeed => state.correction.steadies,
+    // What bends the 後補正, where it corrects. ↩️They stood DEAD at no
+    // strength.
+    BrushSettingsRow.postBySpeed ||
+    BrushSettingsRow.postByViewScale ||
+    BrushSettingsRow.postBezier => state.correction.postStrength > 0,
+    _ => true,
+  };
+
+  /// [row] of the brush in hand.
+  Widget _rowOf(BrushSettingsRow row) => switch (row) {
+    // ---- インク ----
+    BrushSettingsRow.flow => _PanelSlider(
       label: AppText.strings.brFlow,
       unit: '%',
       displayScale: 100,
@@ -320,11 +515,8 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
       onChanged: (value) => onChanged(state.copyWith(flow: value)),
       trailing: _pressureButton(BrushPressureTarget.flow),
     ),
-  ];
-
-  /// ブラシ先端.
-  List<Widget> _tipRows() => [
-    BrushTipPickerRow(
+    // ---- ブラシ先端 ----
+    BrushSettingsRow.tip => BrushTipPickerRow(
       label: AppText.strings.brBrushTip,
       role: BrushTipRole.tip,
       selected: state.tips,
@@ -338,25 +530,21 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
       // tip it is not given. ↩️One tip went through `withMask`.
       onPicked: (masks) => onChanged(state.copyWith(tips: masks)),
     ),
-    // How the dabs take the tips above (F-176-Q3) — with tips to take.
-    if (state.tips.isNotEmpty)
-      _TipOrderRow(state: state, onChanged: onChanged),
-    // How many of those tips each turn holds, one thrown per dab
-    // (F-456-Q4) — there only with two tips to throw between (F-478-Q2,
-    // 유저 2026-10-27 「없앤다 — 패널 안 스위치도 같은 법」). ↩️It stood DEAD
-    // below two.
-    if (state.tips.length >= 2)
-      _PanelSlider(
-        label: AppText.strings.brTipsPerTurn,
-        value: state.tipsPerTurn.clamp(1, state.tips.length).toDouble(),
-        min: 1,
-        max: state.tips.length.toDouble(),
-        divisions: state.tips.length - 1,
-        keyValue: 'brush-tool-tips-per-turn-slider',
-        onChanged: (value) =>
-            onChanged(state.copyWith(tipsPerTurn: value.round())),
-      ),
-    _PanelSlider(
+    BrushSettingsRow.tipOrder => _TipOrderRow(
+      state: state,
+      onChanged: onChanged,
+    ),
+    BrushSettingsRow.tipsPerTurn => _PanelSlider(
+      label: AppText.strings.brTipsPerTurn,
+      value: state.tipsPerTurn.clamp(1, state.tips.length).toDouble(),
+      min: 1,
+      max: state.tips.length.toDouble(),
+      divisions: state.tips.length - 1,
+      keyValue: 'brush-tool-tips-per-turn-slider',
+      onChanged: (value) =>
+          onChanged(state.copyWith(tipsPerTurn: value.round())),
+    ),
+    BrushSettingsRow.hardness => _PanelSlider(
       label: AppText.strings.brHardness,
       unit: '%',
       displayScale: 100,
@@ -370,11 +558,11 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
     // Beside hardness on purpose: hardness sets how WIDE the coverage
     // ramp is, this sets how hard its edge cuts. Two halves of one
     // footprint, so they read together.
-    _AntiAliasRow(
+    BrushSettingsRow.antiAlias => _AntiAliasRow(
       value: state.antiAlias,
       onChanged: (step) => onChanged(state.copyWith(antiAlias: step)),
     ),
-    _PanelSlider(
+    BrushSettingsRow.roundness => _PanelSlider(
       label: AppText.strings.brRoundness,
       unit: '%',
       displayScale: 100,
@@ -385,15 +573,14 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
       onChanged: (value) => onChanged(state.copyWith(roundness: value)),
       trailing: _pressureButton(BrushPressureTarget.roundness),
     ),
-    _PanelSlider(
+    BrushSettingsRow.angle => _PanelSlider(
       label: AppText.strings.brAngle,
       unit: '°',
       value: BrushToolState.clampAngleDegrees(state.angleDegrees),
       min: BrushToolState.minAngleDegrees,
       max: BrushToolState.maxAngleDegrees,
       keyValue: 'brush-tool-angle-slider',
-      onChanged: (value) =>
-          onChanged(state.copyWith(angleDegrees: value)),
+      onChanged: (value) => onChanged(state.copyWith(angleDegrees: value)),
       // 向き is ONE setting — the angle, the base it turns from and its
       // random turn (F-176-Q1 「클튜처럼 — 「방향」 하나: 기준 + 랜덤」) —
       // and the base and the random turn are behind the button beside it
@@ -412,7 +599,7 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
         ),
       ),
     ),
-    _PanelSlider(
+    BrushSettingsRow.spacing => _PanelSlider(
       label: AppText.strings.brSpacing,
       unit: '%',
       displayScale: 100,
@@ -424,87 +611,64 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
       onChanged: (value) => onChanged(state.copyWith(spacing: value)),
       trailing: _pressureButton(BrushPressureTarget.spacing),
     ),
-  ];
-
-  /// 色の混ぜ方.
-  List<Widget> _mixingRows() => [
-    SettingsSwitchRow(
+    // ---- 色の混ぜ方 ----
+    BrushSettingsRow.mixing => SettingsSwitchRow(
       tileKey: const ValueKey<String>('brush-tool-mixing-toggle'),
       label: AppText.strings.brMixing,
       value: state.mixesGroundColor,
-      onChanged: (value) =>
-          onChanged(state.copyWith(mixesGroundColor: value)),
+      onChanged: (value) => onChanged(state.copyWith(mixesGroundColor: value)),
     ),
-    // 🗣️F-478-Q2 (유저 2026-10-27): 「없앤다 — 패널 안 스위치도 같은 법」 —
-    // the rows under the switch are there only while mixing is on, and the
-    // rows under the switch moving is the cost the answer took. ↩️They were
-    // mounted only while mixing was on, then went DEAD instead (유저, 반복:
-    // 「없다가 생기는 UI 금지. 자리는 항상 예약하고 내용만 바꾼다」 — the
-    // panel jumped under the finger), until this answer.
-    if (state.mixesGroundColor) ...[
-      _MixingMethodRow(state: state, onChanged: onChanged),
-      // The reservoir's three are the mix's alone: a blur picks no colour
-      // up (I-75), so by the same answer they are there only under a mix.
-      if (state.shape.picksUpGround) ...[
-        _PanelSlider(
-          label: AppText.strings.brPaintAmount,
-          unit: '%',
-          displayScale: 100,
-          value: BrushToolState.clampZeroToOne(state.paintAmount),
-          min: 0,
-          max: 1,
-          keyValue: 'brush-tool-paint-amount-slider',
-          onChanged: (value) =>
-              onChanged(state.copyWith(paintAmount: value)),
-        ),
-        _PanelSlider(
-          label: AppText.strings.brPaintDensity,
-          unit: '%',
-          displayScale: 100,
-          value: BrushToolState.clampZeroToOne(state.paintDensity),
-          min: 0,
-          max: 1,
-          keyValue: 'brush-tool-paint-density-slider',
-          onChanged: (value) =>
-              onChanged(state.copyWith(paintDensity: value)),
-        ),
-        _PanelSlider(
-          label: AppText.strings.brColorStretch,
-          unit: '%',
-          displayScale: 100,
-          value: BrushToolState.clampZeroToOne(state.colorStretch),
-          min: 0,
-          max: 1,
-          keyValue: 'brush-tool-color-stretch-slider',
-          onChanged: (value) =>
-              onChanged(state.copyWith(colorStretch: value)),
-        ),
-      ],
-    ],
-  ];
-
-  /// 散布効果.
-  List<Widget> _scatteringRows() => [
-    _PanelSlider(
+    BrushSettingsRow.mixingMethod => _MixingMethodRow(
+      state: state,
+      onChanged: onChanged,
+    ),
+    BrushSettingsRow.paintAmount => _PanelSlider(
+      label: AppText.strings.brPaintAmount,
+      unit: '%',
+      displayScale: 100,
+      value: BrushToolState.clampZeroToOne(state.paintAmount),
+      min: 0,
+      max: 1,
+      keyValue: 'brush-tool-paint-amount-slider',
+      onChanged: (value) => onChanged(state.copyWith(paintAmount: value)),
+    ),
+    BrushSettingsRow.paintDensity => _PanelSlider(
+      label: AppText.strings.brPaintDensity,
+      unit: '%',
+      displayScale: 100,
+      value: BrushToolState.clampZeroToOne(state.paintDensity),
+      min: 0,
+      max: 1,
+      keyValue: 'brush-tool-paint-density-slider',
+      onChanged: (value) => onChanged(state.copyWith(paintDensity: value)),
+    ),
+    BrushSettingsRow.colorStretch => _PanelSlider(
+      label: AppText.strings.brColorStretch,
+      unit: '%',
+      displayScale: 100,
+      value: BrushToolState.clampZeroToOne(state.colorStretch),
+      min: 0,
+      max: 1,
+      keyValue: 'brush-tool-color-stretch-slider',
+      onChanged: (value) => onChanged(state.copyWith(colorStretch: value)),
+    ),
+    // ---- 散布効果 ----
+    BrushSettingsRow.scatter => _PanelSlider(
       // A ratio of the brush size, so scatter keeps its character as
       // the brush grows.
       label: AppText.strings.brScatter,
       unit: '%',
       displayScale: 100,
-      value: BrushToolState.clampScatterRadius(
-        state.scatterRadiusRatio,
-      ),
+      value: BrushToolState.clampScatterRadius(state.scatterRadiusRatio),
       min: 0,
       max: 4,
       keyValue: 'brush-tool-scatter-slider',
       onChanged: (value) =>
           onChanged(state.copyWith(scatterRadiusRatio: value)),
     ),
-    _PanelSlider(
+    BrushSettingsRow.scatterCount => _PanelSlider(
       label: AppText.strings.brScatterCount,
-      value: BrushToolState.clampScatterCount(
-        state.scatterCount,
-      ).toDouble(),
+      value: BrushToolState.clampScatterCount(state.scatterCount).toDouble(),
       min: 1,
       max: 16,
       // A COUNT of dabs, so the bar stops between them — F-34's own
@@ -517,20 +681,14 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
       onChanged: (value) =>
           onChanged(state.copyWith(scatterCount: value.round())),
     ),
-    SettingsSwitchRow(
-      tileKey: const ValueKey<String>(
-        'brush-tool-scatter-both-axes-toggle',
-      ),
+    BrushSettingsRow.scatterBothAxes => SettingsSwitchRow(
+      tileKey: const ValueKey<String>('brush-tool-scatter-both-axes-toggle'),
       label: AppText.strings.brScatterBothAxes,
       value: state.scatterBothAxes,
-      onChanged: (value) =>
-          onChanged(state.copyWith(scatterBothAxes: value)),
+      onChanged: (value) => onChanged(state.copyWith(scatterBothAxes: value)),
     ),
-  ];
-
-  /// テクスチャ.
-  List<Widget> _textureRows() => [
-    BrushTipPickerRow(
+    // ---- テクスチャ ----
+    BrushSettingsRow.dualTip => BrushTipPickerRow(
       label: AppText.strings.brDualTip,
       role: BrushTipRole.dual,
       selected: [?state.dualMask],
@@ -538,42 +696,39 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
       onImportRequested: _importTip,
       onRenameTip: _renameTip,
       onDeleteTip: _deleteTip,
-      onPicked: (masks) => onChanged(
-        state.withMask(BrushMaskSlot.dual, masks.firstOrNull),
-      ),
+      onPicked: (masks) =>
+          onChanged(state.withMask(BrushMaskSlot.dual, masks.firstOrNull)),
     ),
-    // The dual tip's knobs, there only with a dual tip (F-478-Q2, 유저
-    // 2026-10-27 「없앤다 — 패널 안 스위치도 같은 법」). ↩️They stood DEAD
-    // without one.
-    if (state.dualMask != null) ...[
-      _PanelSlider(
-        label: AppText.strings.brScale,
-        unit: '%',
-        displayScale: 100,
-        value: BrushToolState.clampDualMaskScale(state.dualMaskScale),
-        min: 0.05,
-        max: 10,
-        scale: FieldSliderScale.exponential,
-        keyValue: 'brush-tool-dual-scale-slider',
-        onChanged: (value) => onChanged(state.copyWith(dualMaskScale: value)),
-      ),
-      // The dual mask's own density, beside its scale — the same pair
-      // the texture mask below has had all along. The dual mask used to
-      // be an unconditional multiply, which made it the one mask you
-      // could only have at full strength.
-      _PanelSlider(
-        label: AppText.strings.brTextureDensity,
-        unit: '%',
-        displayScale: 100,
-        value: BrushToolState.clampZeroToOne(state.dualDensity),
-        min: 0,
-        max: 1,
-        keyValue: 'brush-tool-dual-density-slider',
-        onChanged: (value) => onChanged(state.copyWith(dualDensity: value)),
-      ),
-      _DualBlendRow(state: state, onChanged: onChanged),
-    ],
-    BrushTipPickerRow(
+    BrushSettingsRow.dualScale => _PanelSlider(
+      label: AppText.strings.brScale,
+      unit: '%',
+      displayScale: 100,
+      value: BrushToolState.clampDualMaskScale(state.dualMaskScale),
+      min: 0.05,
+      max: 10,
+      scale: FieldSliderScale.exponential,
+      keyValue: 'brush-tool-dual-scale-slider',
+      onChanged: (value) => onChanged(state.copyWith(dualMaskScale: value)),
+    ),
+    // The dual mask's own density, beside its scale — the same pair
+    // the texture mask below has had all along. The dual mask used to
+    // be an unconditional multiply, which made it the one mask you
+    // could only have at full strength.
+    BrushSettingsRow.dualDensity => _PanelSlider(
+      label: AppText.strings.brTextureDensity,
+      unit: '%',
+      displayScale: 100,
+      value: BrushToolState.clampZeroToOne(state.dualDensity),
+      min: 0,
+      max: 1,
+      keyValue: 'brush-tool-dual-density-slider',
+      onChanged: (value) => onChanged(state.copyWith(dualDensity: value)),
+    ),
+    BrushSettingsRow.dualBlend => _DualBlendRow(
+      state: state,
+      onChanged: onChanged,
+    ),
+    BrushSettingsRow.texture => BrushTipPickerRow(
       label: AppText.strings.brTexture,
       role: BrushTipRole.texture,
       // ⚠️The SOURCE, not the painted mask: the swatch answers "which
@@ -588,121 +743,106 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
         state.withMask(BrushMaskSlot.texture, masks.firstOrNull),
       ),
     ),
-    // The texture's knobs, there only with a texture (F-478-Q2).
-    // ↩️They stood DEAD without one.
-    if (state.textureMaskSource != null) ...[
-      _PanelSlider(
-        label: AppText.strings.brScale,
-        unit: '%',
-        displayScale: 100,
-        value: BrushToolState.clampDualMaskScale(state.textureScale),
-        min: 0.05,
-        max: 10,
-        scale: FieldSliderScale.exponential,
-        keyValue: 'brush-tool-texture-scale-slider',
-        onChanged: (value) => onChanged(state.copyWith(textureScale: value)),
-      ),
-      _PanelSlider(
-        label: AppText.strings.brTextureDensity,
-        unit: '%',
-        displayScale: 100,
-        value: BrushToolState.clampZeroToOne(state.textureDensity),
-        min: 0,
-        max: 1,
-        keyValue: 'brush-tool-texture-density-slider',
-        onChanged: (value) =>
-            onChanged(state.copyWith(textureDensity: value)),
-        trailing: _pressureButton(BrushPressureTarget.textureDensity),
-      ),
-      _TextureModeRow(state: state, onChanged: onChanged),
-      // The three LEVELS both source formats carry and neither could
-      // reach: the importers baked them into the mask, which left no
-      // original to re-bake from. Clip Studio calls them 濃度反転 /
-      // 明るさ / コントラスト and Photoshop InvT / Brightness / Contrast.
-      SettingsSwitchRow(
-        tileKey: const ValueKey<String>(
-          'brush-tool-texture-invert-toggle',
-        ),
-        label: AppText.strings.brTextureInvert,
-        value: state.textureInvert,
-        onChanged: (value) =>
-            onChanged(state.copyWith(textureInvert: value)),
-      ),
-      _PanelSlider(
-        label: AppText.strings.brTextureBrightness,
-        unit: '%',
-        displayScale: 100,
-        value: BrushToolState.clampSignedUnit(state.textureBrightness),
-        min: -1,
-        max: 1,
-        keyValue: 'brush-tool-texture-brightness-slider',
-        onChanged: (value) =>
-            onChanged(state.copyWith(textureBrightness: value)),
-      ),
-      _PanelSlider(
-        label: AppText.strings.brTextureContrast,
-        unit: '%',
-        displayScale: 100,
-        value: BrushToolState.clampSignedUnit(state.textureContrast),
-        min: -1,
-        max: 1,
-        keyValue: 'brush-tool-texture-contrast-slider',
-        onChanged: (value) =>
-            onChanged(state.copyWith(textureContrast: value)),
-      ),
-    ],
-  ];
-
-  /// 補正.
-  List<Widget> _correctionRows() => [
+    BrushSettingsRow.textureScale => _PanelSlider(
+      label: AppText.strings.brScale,
+      unit: '%',
+      displayScale: 100,
+      value: BrushToolState.clampDualMaskScale(state.textureScale),
+      min: 0.05,
+      max: 10,
+      scale: FieldSliderScale.exponential,
+      keyValue: 'brush-tool-texture-scale-slider',
+      onChanged: (value) => onChanged(state.copyWith(textureScale: value)),
+    ),
+    BrushSettingsRow.textureDensity => _PanelSlider(
+      label: AppText.strings.brTextureDensity,
+      unit: '%',
+      displayScale: 100,
+      value: BrushToolState.clampZeroToOne(state.textureDensity),
+      min: 0,
+      max: 1,
+      keyValue: 'brush-tool-texture-density-slider',
+      onChanged: (value) => onChanged(state.copyWith(textureDensity: value)),
+      trailing: _pressureButton(BrushPressureTarget.textureDensity),
+    ),
+    BrushSettingsRow.textureMode => _TextureModeRow(
+      state: state,
+      onChanged: onChanged,
+    ),
+    // The three LEVELS both source formats carry and neither could
+    // reach: the importers baked them into the mask, which left no
+    // original to re-bake from. Clip Studio calls them 濃度反転 /
+    // 明るさ / コントラスト and Photoshop InvT / Brightness / Contrast.
+    BrushSettingsRow.textureInvert => SettingsSwitchRow(
+      tileKey: const ValueKey<String>('brush-tool-texture-invert-toggle'),
+      label: AppText.strings.brTextureInvert,
+      value: state.textureInvert,
+      onChanged: (value) => onChanged(state.copyWith(textureInvert: value)),
+    ),
+    BrushSettingsRow.textureBrightness => _PanelSlider(
+      label: AppText.strings.brTextureBrightness,
+      unit: '%',
+      displayScale: 100,
+      value: BrushToolState.clampSignedUnit(state.textureBrightness),
+      min: -1,
+      max: 1,
+      keyValue: 'brush-tool-texture-brightness-slider',
+      onChanged: (value) =>
+          onChanged(state.copyWith(textureBrightness: value)),
+    ),
+    BrushSettingsRow.textureContrast => _PanelSlider(
+      label: AppText.strings.brTextureContrast,
+      unit: '%',
+      displayScale: 100,
+      value: BrushToolState.clampSignedUnit(state.textureContrast),
+      min: -1,
+      max: 1,
+      keyValue: 'brush-tool-texture-contrast-slider',
+      onChanged: (value) => onChanged(state.copyWith(textureContrast: value)),
+    ),
+    // ---- 補正 ----
     // 角をとがらせる, first as in Clip Studio's group: the steadied line and
     // the 後補正 both keep the corners the pen turned (F-418-Q11).
-    SettingsSwitchRow(
+    BrushSettingsRow.sharpenCorners => SettingsSwitchRow(
       tileKey: const ValueKey<String>('brush-tool-sharpen-corners'),
       label: AppText.strings.brSharpenCorners,
       value: state.correction.sharpenCorners,
       onChanged: (on) =>
           _correct(state.correction.copyWith(sharpenCorners: on)),
     ),
-    // Over the 手ブレ補正 and what sits under it, which is there only while
-    // it is on (유저 2026-10-20 「적용해제면 손떨림보정쪽 다른 버튼 규칙처럼
-    // 비활성화」 — the other buttons' rule, which F-478-Q2 made 「없앤다 —
-    // 패널 안 스위치도 같은 법」). ↩️What sits under it stood DIM when off.
-    SettingsSwitchRow(
+    BrushSettingsRow.stabilizerOn => SettingsSwitchRow(
       tileKey: const ValueKey<String>('brush-tool-stabilizer-on'),
       label: AppText.strings.brStabilizerOn,
       value: state.correction.steadies,
       onChanged: (on) => _correct(state.correction.copyWith(steadies: on)),
     ),
-    if (state.correction.steadies) ...[
-      // The brush's own, kept in its preset as Clip Studio keeps it
-      // (F-418-Q6). ↩️It was the pull string's rope, a hand-feel
-      // setting kept out of presets (P7).
-      _PanelSlider(
-        label: AppText.strings.brStabilizer,
-        value: BrushToolState.clampCorrection(
-          state.correction.stabilization,
-          BrushCorrection.maxStabilization,
-        ),
-        min: 0,
-        max: BrushCorrection.maxStabilization,
-        // Whole numbers, as Clip Studio sets it (유저 2026-10-21, F-435:
-        // 「클튜에선 소수점자리가 없음. 거기까지 조절안함. 우리도 정수로만」).
-        divisions: BrushCorrection.maxStabilization.toInt(),
-        keyValue: 'brush-tool-stabilizer-slider',
-        onChanged: (value) =>
-            _correct(state.correction.copyWith(stabilization: value)),
+    // The brush's own, kept in its preset as Clip Studio keeps it
+    // (F-418-Q6). ↩️It was the pull string's rope, a hand-feel setting kept
+    // out of presets (P7).
+    BrushSettingsRow.stabilizer => _PanelSlider(
+      label: AppText.strings.brStabilizer,
+      value: BrushToolState.clampCorrection(
+        state.correction.stabilization,
+        BrushCorrection.maxStabilization,
       ),
-      // Clip Studio's switch and 補正タイプ under it, as one row.
-      // ↩️It dimmed where the line is not steadied, as Clip Studio greys
-      // what sits under a switch that is off (F-418).
-      _SteadyingBySpeedRow(
-        value: state.correction.steadyingBySpeed,
-        onPick: (value) =>
-            _correct(state.correction.copyWith(steadyingBySpeed: value)),
-      ),
-    ],
-    _PanelSlider(
+      min: 0,
+      max: BrushCorrection.maxStabilization,
+      // Whole numbers, as Clip Studio sets it (유저 2026-10-21, F-435:
+      // 「클튜에선 소수점자리가 없음. 거기까지 조절안함. 우리도 정수로만」).
+      divisions: BrushCorrection.maxStabilization.toInt(),
+      keyValue: 'brush-tool-stabilizer-slider',
+      onChanged: (value) =>
+          _correct(state.correction.copyWith(stabilization: value)),
+    ),
+    // Clip Studio's switch and 補正タイプ under it, as one row.
+    // ↩️It dimmed where the line is not steadied, as Clip Studio greys
+    // what sits under a switch that is off (F-418).
+    BrushSettingsRow.steadyingBySpeed => _SteadyingBySpeedRow(
+      value: state.correction.steadyingBySpeed,
+      onPick: (value) =>
+          _correct(state.correction.copyWith(steadyingBySpeed: value)),
+    ),
+    BrushSettingsRow.postCorrection => _PanelSlider(
       label: AppText.strings.brPostCorrection,
       value: BrushToolState.clampCorrection(
         state.correction.postStrength,
@@ -717,36 +857,79 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
       onChanged: (value) =>
           _correct(state.correction.copyWith(postStrength: value)),
     ),
-    // What bends the 後補正, there only where it corrects (F-478-Q2).
-    // ↩️They stood DEAD at no strength.
-    if (state.correction.postStrength > 0)
-      for (final (key, label, value, change) in [
-        (
-          'brush-tool-post-by-speed-toggle',
-          AppText.strings.brPostBySpeed,
-          state.correction.postBySpeed,
-          (bool on) => state.correction.copyWith(postBySpeed: on),
-        ),
-        (
-          'brush-tool-post-by-view-scale-toggle',
-          AppText.strings.brPostByViewScale,
-          state.correction.postByViewScale,
-          (bool on) => state.correction.copyWith(postByViewScale: on),
-        ),
-        (
-          'brush-tool-post-bezier-toggle',
-          AppText.strings.brPostBezier,
-          state.correction.postBezier,
-          (bool on) => state.correction.copyWith(postBezier: on),
-        ),
-      ])
-        SettingsSwitchRow(
-          tileKey: ValueKey<String>(key),
-          label: label,
-          value: value,
-          onChanged: (on) => _correct(change(on)),
-        ),
-  ];
+    BrushSettingsRow.postBySpeed => _postSwitch(
+      'brush-tool-post-by-speed-toggle',
+      AppText.strings.brPostBySpeed,
+      state.correction.postBySpeed,
+      (on) => state.correction.copyWith(postBySpeed: on),
+    ),
+    BrushSettingsRow.postByViewScale => _postSwitch(
+      'brush-tool-post-by-view-scale-toggle',
+      AppText.strings.brPostByViewScale,
+      state.correction.postByViewScale,
+      (on) => state.correction.copyWith(postByViewScale: on),
+    ),
+    BrushSettingsRow.postBezier => _postSwitch(
+      'brush-tool-post-bezier-toggle',
+      AppText.strings.brPostBezier,
+      state.correction.postBezier,
+      (on) => state.correction.copyWith(postBezier: on),
+    ),
+  };
+
+  /// One of the three switches that bend the 後補正.
+  Widget _postSwitch(
+    String key,
+    String label,
+    bool value,
+    BrushCorrection Function(bool on) change,
+  ) => SettingsSwitchRow(
+    tileKey: ValueKey<String>(key),
+    label: label,
+    value: value,
+    onChanged: (on) => _correct(change(on)),
+  );
+}
+
+/// A row of the brush detail window: the eye that shows it in the panel or
+/// not, and the row itself — the panel's own, live here as there (Clip
+/// Studio's サブツール詳細 edits as its palette does).
+///
+/// ⛔NOT a hand-rolled eye: the app's one ([LayerVisibilityToggleButton],
+/// F-58 「비지블버튼은 다른곳에서도 쓰니까 공용화/통일화」), its off colour
+/// with it.
+class _EyedRow extends StatelessWidget {
+  const _EyedRow({
+    super.key,
+    required this.row,
+    required this.shown,
+    required this.onToggle,
+    required this.child,
+  });
+
+  final BrushSettingsRow row;
+  final bool shown;
+  final VoidCallback onToggle;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    // At the row's top, level with its control: the gap under a row is
+    // the row's own.
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      LayerVisibilityToggleButton(
+        name: 'brush-detail-eye-${row.name}',
+        isVisible: shown,
+        tooltip: shown
+            ? AppText.strings.brHideFromPanel
+            : AppText.strings.brShowInPanel,
+        onToggle: onToggle,
+      ),
+      const SizedBox(width: ToolSettingColumns.gap),
+      Expanded(child: child),
+    ],
+  );
 }
 
 /// Which tip each dab takes — Clip Studio's 繰り返し方法, all six (F-176-Q3

@@ -293,8 +293,8 @@ void main() {
     }
 
     testWidgets('the three the app ships, then a rule and the user\'s own; '
-        'every row a duplicate, the user\'s a rename and a delete '
-        'besides', (tester) async {
+        'every row a duplicate and an export (I-142), the user\'s a rename '
+        'and a delete besides', (tester) async {
       final mine = copyInUse('Mine');
       await pump(tester);
 
@@ -310,8 +310,13 @@ void main() {
         },
         {
           for (final preset in ShortcutPreset.values)
-            'shortcut-preset-${preset.name}': ['duplicate'],
-          'shortcut-preset-${mine.id}': ['rename', 'duplicate', 'delete'],
+            'shortcut-preset-${preset.name}': ['duplicate', 'export'],
+          'shortcut-preset-${mine.id}': [
+            'rename',
+            'duplicate',
+            'export',
+            'delete',
+          ],
         },
       );
       expect(

@@ -100,7 +100,7 @@ void main() {
               onPressed: () => promptSaveProjectAs(
                 context,
                 session,
-                writeArchive: (path, report) async {
+                writeArchive: (path, report, _) async {
                   File(path).writeAsBytesSync(const [7, 7, 7, 7]);
                   // What the real writer reports when a cel's only copy
                   // was in a file that has gone.

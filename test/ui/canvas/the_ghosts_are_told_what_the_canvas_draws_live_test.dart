@@ -5,6 +5,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/core/tree_nodes.dart' show preorderNodes;
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/composite_tree.dart';
+import 'package:anicel/src/models/onion_skin_settings.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/debug/device_grid_probe.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -12,62 +13,79 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 
 /// The onion's ghosts lie over the frame's one picture in a view of their
-/// own, and the cel the canvas draws live is a ghost the frame after a step
-/// — whole on its first frame only when the ghosts' view was told, the
-/// build before, that the canvas drew it live
+/// own — or in the frame's picture itself, laid in place — and the cel the
+/// canvas draws live is a ghost the frame after a step: whole on its first
+/// frame only when the view the ghosts lie in was told, the build before,
+/// that the canvas drew it live
 /// (`a_cel_drawn_live_is_its_ghost_on_the_frame_after_test`).
 void main() {
-  testWidgets('the ghosts\' view stands over the canvas with no ghost too, '
-      'told the cel the canvas draws live', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1280, 1000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(home: HomePage(initialProject: createDefaultProject())),
-    );
-    await tester.pumpAndSettle();
-    final session = tester
-        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
-        .session;
-    session.createDrawingAtCurrentFrame();
-    await tester.pumpAndSettle();
+  for (final placement in OnionSkinPlacement.values) {
+    testWidgets('laid ${placement.name}, the view the ghosts lie in stands '
+        'with no ghost too, told the cel the canvas draws live', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+      );
+      await tester.pumpAndSettle();
+      final session = tester
+          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+          .session;
+      session.onionSkin.settings.value = session.onionSkin.settings.value
+          .copyWith(placement: placement);
+      session.createDrawingAtCurrentFrame();
+      await tester.pumpAndSettle();
 
-    final views = tester
-        .widgetList<FramePictureView>(
-          find.descendant(
-            of: find.byType(DeviceGridProbe),
-            matching: find.byType(FramePictureView),
-          ),
-        )
-        .toList();
-    expect(
-      views,
-      hasLength(2),
-      reason: 'the frame\'s picture, and the ghosts\' over it',
-    );
-    final [canvas, ghosts] = views;
+      final views = tester
+          .widgetList<FramePictureView>(
+            find.descendant(
+              of: find.byType(DeviceGridProbe),
+              matching: find.byType(FramePictureView),
+            ),
+          )
+          .toList();
+      final onTop = placement == OnionSkinPlacement.onTop;
+      expect(
+        views,
+        hasLength(onTop ? 2 : 1),
+        reason: 'the frame\'s picture, and the ghosts\' over it — or the '
+            'frame\'s with them in it',
+      );
+      final canvas = views.first;
+      final ghostsIn = views.last;
 
-    final drawnLive = <BrushFrameKey>[
-      for (final node in preorderNodes(canvas.nodes))
-        if (node case CompositeLeaf(
-          payload: CanvasActiveLayerRow(frameKey: final cel?),
-        ))
-          cel,
-    ];
-    expect(drawnLive, hasLength(1), reason: '⛔premise: a cel is drawn live');
+      final drawnLive = <BrushFrameKey>[
+        for (final node in preorderNodes(canvas.nodes))
+          if (node case CompositeLeaf(
+            payload: CanvasActiveLayerRow(frameKey: final cel?),
+          ))
+            cel,
+      ];
+      expect(
+        drawnLive,
+        hasLength(1),
+        reason: '⛔premise: a cel is drawn live',
+      );
 
-    expect(ghosts.nodes, isEmpty, reason: '⛔premise: no onion skin is on');
-    expect(
-      ghosts.picture.paintPaper,
-      isFalse,
-      reason: 'the frame\'s picture under them holds its paper — laid over '
-          'it, the ghosts\' paper would hide the frame',
-    );
-    expect(
-      ghosts.drawnLive,
-      {drawnLive.single},
-      reason: 'the ghosts\' view has to know the cel the canvas drew live '
-          'BEFORE the step that makes it a ghost — mounted with that step, '
-          'or told nothing, it reads the cel you just drew a frame late',
-    );
-  });
+      if (onTop) {
+        expect(ghostsIn.nodes, isEmpty, reason: '⛔premise: no onion skin');
+        expect(
+          ghostsIn.picture.paintPaper,
+          isFalse,
+          reason: 'the frame\'s picture under them holds its paper — laid '
+              'over it, the ghosts\' paper would hide the frame',
+        );
+      }
+      expect(
+        ghostsIn.drawnLive,
+        {drawnLive.single},
+        reason: 'the view the ghosts lie in has to know the cel the canvas '
+            'drew live BEFORE the step that makes it a ghost — mounted with '
+            'that step, or told nothing, it reads the cel you just drew a '
+            'frame late',
+      );
+    });
+  }
 }

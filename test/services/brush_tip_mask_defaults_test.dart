@@ -21,6 +21,7 @@ void main() {
     flakeBrushTipMask,
     ringBrushTipMask,
     leafBrushTipMask,
+    grassClumpBrushTipMask,
     paperGrainTextureMask,
     canvasWeaveTextureMask,
     coldPressTextureMask,
@@ -87,6 +88,8 @@ void main() {
       'builtin-graphite-tooth': 9601082,
       // Measured 2026-10-23 as it first shipped (F-449).
       'builtin-color-clumps': 807546,
+      // Measured 2026-10-29 as it first shipped (F-462).
+      'builtin-grass-clump': 172065,
       // Measured 2026-10-23 as they first shipped (F-456-Q4).
       'builtin-pencil-face-0-0': 10835814,
       'builtin-pencil-face-0-1': 9796625,

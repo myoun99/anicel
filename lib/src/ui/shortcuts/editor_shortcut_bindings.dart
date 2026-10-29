@@ -142,7 +142,7 @@ class EditorShortcutBindings extends ChangeNotifier {
 
   /// Whether a saved entry for [actionId] is kept: an action there is, or a
   /// brush the library — a panel the workspace — may yet tell of.
-  bool _keeps(String actionId) =>
+  bool keeps(String actionId) =>
       definitionFor(actionId) != null ||
       isBrushActionId(actionId) ||
       isPanelActionId(actionId);
@@ -387,10 +387,15 @@ class EditorShortcutBindings extends ChangeNotifier {
   /// the layout in use by the ＋ of the window's list (I-107-Q1), any of the
   /// list's by its row's duplicate (I-107-Q3).
   UserShortcutPreset duplicatePreset(ShortcutLayout preset, String name) =>
-      _add(name, preset.base, {
-        ...preset.ownKeys,
-        ..._recordedUnder(preset),
-      });
+      _add(name, preset.base, keysOf(preset));
+
+  /// What [preset] presses over its base's: what it was made with, and
+  /// what was recorded over that — what a duplicate of it holds, and a
+  /// file of it (I-142).
+  Map<String, List<SingleActivator>> keysOf(ShortcutLayout preset) => {
+    ...preset.ownKeys,
+    ..._recordedUnder(preset),
+  };
 
   /// [preset] under [name]. Saves and notifies.
   void renamePreset(UserShortcutPreset preset, String name) {
@@ -553,33 +558,27 @@ class EditorShortcutBindings extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Loads the persisted preset and overrides (unknown action ids and
-  /// malformed entries are dropped, and a preset no build knows reads as the
-  /// registry's own — an app update or corrupt file never breaks bindings).
+  /// Loads the persisted preset and overrides, as
+  /// [shortcutSettingsFromPayload] reads them.
   Future<void> restore() async {
-    final payload = await store?.load();
-    final byPreset = payload?['overrides'];
-    if (byPreset is! Map) {
+    final saved = shortcutSettingsFromPayload(
+      await store?.load(),
+      keeps: keeps,
+    );
+    if (saved == null) {
       return;
     }
-    _userPresets = List.unmodifiable([
-      if (payload?['presets'] case final List saved)
-        for (final json in saved)
-          ?userPresetFromJson(json, recordedById: byPreset, keeps: _keeps),
-    ]);
-    final inUse = payload?['preset'];
-    _preset =
-        _userPresets.where((preset) => preset.id == inUse).firstOrNull ??
-        shippedPresetNamed(inUse);
+    _userPresets = List.unmodifiable(saved.userPresets);
+    _preset = saved.inUse;
     for (final MapEntry(key: preset, value: overrides)
         in _overridesByPreset.entries) {
       overrides
         ..clear()
-        ..addAll(shortcutKeysFromJson(byPreset[preset.name], _keeps));
+        ..addAll(saved.recorded[preset]!);
     }
     _touchOverrides
       ..clear()
-      ..addAll(touchGesturesFromJson(payload?['touch'], _keeps));
+      ..addAll(saved.touch);
     notifyListeners();
   }
 

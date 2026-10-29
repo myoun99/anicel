@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/instance_editor_commands.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart'
     show SePaperSpan;
+import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -120,10 +121,15 @@ void main() {
   });
 
   group('the window', () {
-    SeInstanceAudioLink link(int token, {int offsetFrames = 0}) => (
+    SeInstanceAudioLink link(
+      int token, {
+      int offsetFrames = 0,
+      double gain = 1.0,
+    }) => (
       label: 'take-$token.wav',
       token: token,
       offsetFrames: offsetFrames,
+      gain: gain,
       blockFrames: 12,
       frameRate: rate,
       peaks: peaks,
@@ -188,6 +194,31 @@ void main() {
 
       expect(result.value?.audioOffsets, {1: 6});
       expect(result.value?.unlinkedAudioTokens, {0});
+    });
+
+    // 🗣️I-140 (유저): 「블록마다의 게인(한 값)은 남겨 블록 편집창에」.
+    testWidgets('every linked sound has its gain beside its strip, from its '
+        'own; OK hands back the gains moved — of the sounds that stay', (
+      tester,
+    ) async {
+      final result = await open(tester, [link(0), link(1, gain: 0.5)]);
+      FieldSlider gainOf(int token) => tester.widget<FieldSlider>(
+        find.byKey(ValueKey<String>('se-gain-$token')),
+      );
+      expect([gainOf(0).value, gainOf(1).value], [1.0, 0.5]);
+
+      gainOf(1).onChanged!(1.5);
+      gainOf(0).onChanged!(0.25);
+      await tester.pumpAndSettle();
+      expect(gainOf(1).value, 1.5, reason: 'held until OK');
+      await tester.tap(find.byKey(const ValueKey<String>('se-unlink-audio-0')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('instance-edit-ok-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(result.value?.audioGains, {1: 1.5});
     });
 
     testWidgets('Cancel keeps every offset as it was', (tester) async {
@@ -329,6 +360,39 @@ void main() {
       final clips = s.activeTrack.seLayers.first.audioClips;
       expect(clips.map((clip) => clip.filePath), [second]);
       expect(clips.single.offsetFrames, 7, reason: 'from its own 3, by 4');
+    });
+
+    testWidgets('🚨the gain set in the window lands on the sound it names, '
+        'even when a sound before it is taken off in the same sitting', (
+      tester,
+    ) async {
+      final first = take('first.wav');
+      final second = take('second.wav');
+      final s = await standingOnSounds(tester, [
+        (path: first, offsetFrames: 0),
+        (path: second, offsetFrames: 0),
+      ]);
+      final context = await contextFrom(tester);
+
+      final editing = editSeEntryInstance(
+        context,
+        s,
+        layerId: s.activeTrack.seLayers.first.id,
+        globalFrame: 0,
+      );
+      await tester.pumpAndSettle();
+      tester
+          .widget<FieldSlider>(find.byKey(const ValueKey<String>('se-gain-1')))
+          .onChanged!(0.25);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey<String>('se-unlink-audio-0')));
+      await tester.pumpAndSettle();
+      await pressOk(tester);
+      await editing;
+
+      final clips = s.activeTrack.seLayers.first.audioClips;
+      expect(clips.map((clip) => clip.filePath), [second]);
+      expect(clips.single.gain, 0.25);
     });
 
     testWidgets('🎯the TIMELINE door: the same strip in the block the '

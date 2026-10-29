@@ -646,6 +646,7 @@ class TimelineGridTileStore {
       devicePixelRatio: request.devicePixelRatio,
       paperGround: painter.paperGround,
       blockFrameLines: painter.blockFrameLines,
+      unnamedMark: painter.unnamedMark,
       framesPerSecond: painter.framesPerSecond,
       shown: painter.shown,
       image: rastered.image,
@@ -1497,6 +1498,7 @@ class _TileEntry {
     required this.devicePixelRatio,
     required this.paperGround,
     required this.blockFrameLines,
+    required this.unnamedMark,
     required this.framesPerSecond,
     required this.shown,
     required this.image,
@@ -1560,6 +1562,11 @@ class _TileEntry {
   /// would otherwise keep the other look until an unrelated bump.
   final bool blockFrameLines;
   final int framesPerSecond;
+
+  /// The mark a drawing with no name wore — the user's pick (F-489), which
+  /// moves no layer, so a pick anew must re-bake as the frame lines' flip
+  /// does.
+  final InbetweenMark unnamedMark;
 
   /// Whether the row was shown — a folder's flip hides its rows without
   /// making a new layer of any of them, so it is no fact of the layer's
@@ -1685,6 +1692,7 @@ class _TileEntry {
         baseTextStyle == painter.baseTextStyle &&
         paperGround == painter.paperGround &&
         blockFrameLines == painter.blockFrameLines &&
+        unnamedMark == painter.unnamedMark &&
         framesPerSecond == painter.framesPerSecond &&
         shown == painter.shown &&
         this.spanEndIndexExclusive == spanEndIndexExclusive &&

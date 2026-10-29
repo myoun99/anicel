@@ -63,8 +63,8 @@ void main() {
   }
 
   ResolvedLayerEffect deleteWhite() => ResolvedLayerEffect(
-    kind: EffectKind.deleteColor,
-    values: const [255, 255, 255, 0, 100],
+    kind: EffectKind.colorKey,
+    values: const [0, 0xFFFFFFFF, 0, 100],
   );
 
   Future<Uint8List> paintWith(
@@ -130,9 +130,12 @@ void main() {
     return n;
   }
 
-  ResolvedLayerEffect keepWhite() => ResolvedLayerEffect(
-    kind: EffectKind.keepColor,
-    values: const [255, 255, 255, 0, 100],
+  // Key Colors over the near-white [darken] makes of white — brightness
+  // −0.5 takes 1.275 off, so white lands at 253 or 254 — and not white
+  // itself.
+  ResolvedLayerEffect keyDarkenedWhite() => ResolvedLayerEffect(
+    kind: EffectKind.colorKey,
+    values: const [0, 0xFFFCFCFC, 2, 100],
   );
 
   ResolvedLayerEffect darken() => ResolvedLayerEffect(
@@ -165,34 +168,36 @@ void main() {
     // The configuration free ordering opened, and the one that forces the
     // live layer to rasterise: a shader needs an image to sample.
     //
-    // ⛔KEEP, not DELETE, and that is the whole design of this fixture. "Keep
-    // white, tolerance 0" over a picture where the darken has left NOTHING
-    // white erases everything — so the assertion fails both when the key
-    // never runs AND when it runs on the cel instead of on the darkened
-    // picture. A delete-white here would have passed on a key that did
-    // nothing at all, which is exactly how the first draft of this test lied.
+    // ⛔THE DARKENED WHITE, not white, and that is the whole design of this
+    // fixture. Keying out the colour the darken makes erases everything
+    // after it and nothing on the white cel — so the assertion fails both
+    // when the key never runs AND when it runs on the cel instead of on the
+    // darkened picture. A delete-white here would have passed on a key that
+    // did nothing at all, which is exactly how the first draft of this test
+    // lied. ↩️It was "keep white" — erase all but white — until I-132-Q2
+    // made a keep give back instead (유저 2026-10-27 「하나로 + AE 뜻」).
     final darkenedOnly = await paintWith(tester, [darken()]);
     expect(
       inkPixels(darkenedOnly),
       greaterThan(0),
       reason: 'fixture: the darkened layer drew',
     );
-    final keyed = await paintWith(tester, [darken(), keepWhite()]);
+    final keyed = await paintWith(tester, [darken(), keyDarkenedWhite()]);
     expect(
       inkPixels(keyed),
       0,
-      reason: 'the key ran AFTER the darken, where nothing is white any more '
-          '— so KEEP WHITE keeps nothing',
+      reason: 'the key ran AFTER the darken, where every pixel is the '
+          'darkened white — so it takes them all',
     );
-    // ⛔And the same key at the HEAD keeps everything: white IS white on the
-    // cel. Same two effects, opposite order, opposite picture — which is the
-    // order-is-free law, on the row you are drawing on.
-    final keptFirst = await paintWith(tester, [keepWhite(), darken()]);
+    // ⛔And the same key at the HEAD takes nothing: white is not darkened on
+    // the cel. Same two effects, opposite order, opposite picture — which is
+    // the order-is-free law, on the row you are drawing on.
+    final keptFirst = await paintWith(tester, [keyDarkenedWhite(), darken()]);
     expect(
       inkPixels(keptFirst),
       inkPixels(darkenedOnly),
-      reason: 'a leading keep-white is the surface\'s job and keeps the '
-          'white cel whole',
+      reason: 'a leading key is the surface\'s job, and on the white cel it '
+          'names nothing',
     );
   });
 }

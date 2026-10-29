@@ -42,7 +42,8 @@ import '../models/drawing_guide.dart' show CutGuides, DrawingGuide, GuideId;
 import '../services/cut_piece_slot.dart';
 import '../services/last_stroke_slot.dart';
 import '../services/cut_piece_tip.dart';
-import '../services/color_palette_file_service.dart' show ColorPaletteState;
+import '../services/color_palette_file_service.dart'
+    show ColorPaletteFileService, ColorPaletteState;
 import 'brush/arrange_brush_library_command.dart';
 import 'brush/brush_library_keys.dart';
 import 'brush/brush_library_look.dart';
@@ -53,6 +54,7 @@ import 'brush/brush_canvas_panel.dart' show CanvasEdgePill;
 import 'brush/brush_value_group.dart' show BrushValuesPill;
 import 'color/color_panels.dart' show ColorPickerKind, ColorPickerPanel;
 import 'color/color_slot_pair.dart';
+import 'color/palette_file_import.dart';
 import 'theme/app_theme.dart';
 import 'brush/brush_hand_settings_store.dart';
 import 'brush/brush_preset_panel.dart';
@@ -84,6 +86,7 @@ import 'shortcuts/editor_shortcut_scope.dart';
 import 'shortcuts/shortcut_file_import.dart';
 import 'export/export_frame_renderer.dart';
 import 'import/import_dialog.dart';
+import 'import/settings_rows.dart';
 import 'menu/opened_files_door.dart';
 import 'menu/project_open_door.dart' show ProjectPick;
 import '../services/import/import_layer_spot.dart';
@@ -191,6 +194,9 @@ import 'timeline/timeline_zoom_limits.dart' show TimelineZoomLimits;
 import 'workspace/workspace_bar_commands.dart';
 import 'workspace/workspace_door_commands.dart';
 import '../services/persistence/folder_grant.dart' show FolderGrant, handedPath;
+import '../services/persistence/settings_file.dart' show SettingsFile;
+import '../services/persistence/settings_room_file.dart'
+    show putSettingsIntoTheRoom, settingsRoomPath;
 import 'timeline/timeline_panel.dart' show TimelinePanel;
 import 'text/app_strings.dart';
 import 'text/imported_fonts.dart';
@@ -1253,6 +1259,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _storyboardTrackLaneHeight.addListener(
       _layoutPersistence.scheduleLayoutSave,
     );
+    // So is where the brush detail window was left: its title bar moves it.
+    _brushDetailAt.addListener(_layoutPersistence.scheduleLayoutSave);
     widget.panelsMenu?.attach(
       entriesProvider: _panelMenuEntries,
       toggler: _togglePanelVisibility,
@@ -1820,6 +1828,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _storyboardTrackLaneHeight.dispose();
     _bottomInsetOverride.dispose();
     _brushPresetView.dispose();
+    _brushDetailAt
+      ..removeListener(_layoutPersistence.scheduleLayoutSave)
+      ..dispose();
     for (final controller in _railScrollControllers.values) {
       controller.dispose();
     }
@@ -2079,6 +2090,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   final ValueNotifier<BrushPresetViewOptions> _brushPresetView =
       ValueNotifier<BrushPresetViewOptions>(const BrushPresetViewOptions());
 
+  /// Where the brush detail window stands — null until it has been moved
+  /// (I-141-Q3 「창은 끌어서 옮기고 자리를 기억한다」). Held HERE for the same
+  /// reason as [_brushPresetView]: the tool settings tab keeps no State once
+  /// it closes, and the workspace file is where panel layout already lives.
+  final ValueNotifier<Offset?> _brushDetailAt = ValueNotifier<Offset?>(null);
+
   /// The UN-detented value a side drag is accumulating.
   ///
   /// 🐛Without it the detent ate the drag: every frame added its few pixels
@@ -2279,7 +2296,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   /// THE ONE DOOR, with what this workspace holds for it (F-282): the
   /// shell's Open door for projects, the import window, the brush library,
-  /// the fonts and the shortcut presets.
+  /// the fonts, the shortcut presets and the palettes.
   OpenedFilesDoor get _door => OpenedFilesDoor(
     openProjects: widget.onOpenProjects,
     importWindow: (picked, {required toPool}) =>
@@ -2302,6 +2319,18 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     bringShortcuts: (files) async => switch (EditorShortcutScope.peek(context)) {
       final bindings? => importShortcutFiles(bindings, files),
       null => const [],
+    },
+    bringPalettes: (name, bytes) async {
+      final current = widget.colorPalette?.value;
+      final change = widget.onColorPaletteChanged;
+      if (current == null || change == null) {
+        return null;
+      }
+      final (:palettes, :said) = importPaletteFile(current, name, bytes);
+      if (palettes != null) {
+        change(palettes);
+      }
+      return said;
     },
   );
 
@@ -2376,8 +2405,58 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       poolOnly: poolOnly,
       placeOnly: placeOnly,
       spot: spot,
+      putSettingsInPlace: _putSettingsInPlace,
     ),
   );
+
+  /// A settings file's [rows] put in place of this device's, each read again
+  /// as the app reads it at its start (🗣️I-142-Q3: 「전부 갈아끼운다」) — and
+  /// only what was put in place: a holder that saves after a pause would
+  /// read back over what it has not written yet.
+  Future<void> _putSettingsInPlace(
+    SettingsFile file,
+    List<SettingsRow> rows,
+  ) async {
+    await putSettingsIntoTheRoom(file, [
+      for (final row in rows) ...row.entries,
+    ]);
+    for (final reader in {for (final row in rows) row.reader}) {
+      if (!mounted) {
+        return;
+      }
+      await _readAgain(reader);
+    }
+  }
+
+  /// What [reader] holds, read again from the settings room.
+  Future<void> _readAgain(SettingsReader reader) async {
+    switch (reader) {
+      case SettingsReader.appSettings:
+        widget.session.appSettings.restore();
+      case SettingsReader.uiScale:
+        await widget.session.appSettings.rereadUiScale();
+      case SettingsReader.shortcuts:
+        await EditorShortcutScope.peek(context)?.restore();
+      case SettingsReader.layout:
+        await _layoutPersistence.restoreLayout();
+      case SettingsReader.palette:
+        final palette = await ColorPaletteFileService(
+          filePath: settingsRoomPath(ColorPaletteFileService.fileName),
+        ).loadOrDefaults(starterName: AppText.strings.paletteNumbered(1));
+        if (mounted) {
+          widget.onColorPaletteChanged?.call(palette);
+        }
+      case SettingsReader.brushes:
+        // In the order the start reads them ([initState]): tips, the presets
+        // that name them, and what the hand left on each.
+        await _tipLibrary.load();
+        await _presetLibrary.load();
+        await _brushPresets.recallHandSettings(replacing: true);
+        _brushPresets.selectOpeningPreset();
+      case SettingsReader.exportWindow:
+        break;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

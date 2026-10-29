@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../models/app_frame_count_settings.dart';
+import '../../models/app_frame_grid_settings.dart';
 import '../../models/app_input_settings.dart' show AppInput, AppInputSettings;
 import '../../models/frame.dart' show InbetweenMark;
 import '../cut_command_group.dart';
@@ -17,6 +18,7 @@ import '../widgets/kept_tail_row.dart' show FoldFloor;
 import '../widgets/panel_flyout.dart';
 import '../widgets/pill_strip.dart';
 import 'instance_editor_commands.dart' show autoNameWithWindow;
+import 'merge_layer_rows.dart';
 import 'timeline_section_policy.dart';
 import 'timeline_bar_menus.dart';
 import 'toolbar_panel_context.dart';
@@ -74,14 +76,18 @@ Future<void> showTimelineCommaCountDialog(
 ///
 /// The window picks the mark — ○ or ● — opening on the one picked last:
 /// 🗣️I-130-Q2 (유저 2026-10-25 「창에서 마크를 고른다」 — 간격 숫자 옆에
-/// ○ / ● 고르기(지난번 고른 것 기억). 자동 추가 버튼은 하나 그대로).
+/// ○ / ● 고르기(지난번 고른 것 기억). 자동 추가 버튼은 하나 그대로). Before
+/// any pick, on the mark an unnamed drawing wears (F-489-Q1 「둘 다
+/// 따라간다」).
 Future<void> showMarkEveryDialog(
   BuildContext context,
   EditorSessionManager session, {
   required ToolbarPanelContext panel,
 }) async {
   final strings = AppText.strings;
-  var mark = AppFrameCountSettings.settings.value.lastEveryMark;
+  var mark =
+      AppFrameCountSettings.settings.value.lastEveryMark ??
+      AppFrameGridSettings.settings.value.unnamedMark;
   final every = await _askFrameCount(
     context,
     session,
@@ -123,13 +129,6 @@ const _markEveryIcon = Icons.linear_scale;
 IconData _markIcon(InbetweenMark mark) => switch (mark) {
   InbetweenMark.one => Icons.circle_outlined,
   InbetweenMark.two => Icons.circle,
-};
-
-/// The action that toggles [mark] — its button's, and the name its pick
-/// in the mark-every window wears.
-String _markToggleAction(InbetweenMark mark) => switch (mark) {
-  InbetweenMark.one => EditorActionIds.frameToggleMarkOne,
-  InbetweenMark.two => EditorActionIds.frameToggleMarkTwo,
 };
 
 /// What a comma window names in its title's brackets: the kinds it
@@ -251,7 +250,7 @@ class _FrameCountWindowState extends State<_FrameCountWindow> {
                   for (final each in InbetweenMark.values)
                     PillItem(
                       keyValue: '${widget.keyPrefix}-mark-${each.name}',
-                      label: editorActionLabel(_markToggleAction(each)),
+                      label: editorActionLabel(markToggleActionOf(each)),
                       icon: _markIcon(each),
                       selected: each == mark,
                       onTap: () => _pick(each),
@@ -668,6 +667,8 @@ class TimelineActionToolbar extends StatelessWidget {
     panelContext.canUnlink,
     // F-455: 복제, likewise.
     panelContext.canDuplicate,
+    // I-78: 병합, likewise.
+    panelContext.canMerge,
     // I-18: 자동 이름 지정, likewise.
     panelContext.canAutoName,
   );
@@ -875,6 +876,27 @@ class TimelineActionToolbar extends StatelessWidget {
           icon: Icons.control_point_duplicate,
           onPressed: panelContext.duplicatePress,
         ),
+        // 🗣️I-78 (유저 2026-10-06): 「병합버튼. 우선 레이어 다중선택하고
+        // 병합하는걸 원하는데, 프레임도 사용가능할거같으니 공용알약에 두는걸
+        // 생각중」 — beside 복제, the other verb that makes a row of rows. A
+        // context of its own: the press opens its windows from here.
+        Builder(
+          builder: (context) => _iconButton(
+            key: const ValueKey<String>('shared-merge-button'),
+            tooltip: editorActionLabel(EditorActionIds.editMerge),
+            shortcuts: const [EditorActionIds.editMerge],
+            icon: Icons.merge,
+            onPressed: panelContext.canMerge
+                ? () => unawaited(
+                    mergeSelectionSubject(
+                      context,
+                      session,
+                      panelContext.mergeSubject,
+                    ),
+                  )
+                : null,
+          ),
+        ),
         _iconButton(
           key: const ValueKey<String>('shared-delete-button'),
           tooltip: editorActionLabel(EditorActionIds.editDelete),
@@ -1049,8 +1071,8 @@ class TimelineActionToolbar extends StatelessWidget {
             ])
               _iconButton(
                 key: ValueKey<String>(key),
-                tooltip: editorActionLabel(_markToggleAction(mark)),
-                shortcuts: [_markToggleAction(mark)],
+                tooltip: editorActionLabel(markToggleActionOf(mark)),
+                shortcuts: [markToggleActionOf(mark)],
                 icon: _markIcon(mark),
                 onPressed: panelContext.canToggleMark
                     ? () => panelContext.toggleMark(mark)

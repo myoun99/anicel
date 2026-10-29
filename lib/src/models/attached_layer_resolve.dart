@@ -12,6 +12,7 @@ import '../core/mapped_or_same.dart';
 import '../core/signed_memo.dart';
 import 'attached_mode.dart';
 import 'attached_placement.dart';
+import 'conte_group.dart' show ridesTheConte;
 import 'cut.dart';
 import 'frame.dart';
 import 'frame_id.dart';
@@ -640,8 +641,8 @@ List<Layer> _seatsOf(
 }
 
 /// Whether [layer] wears its BASE's composite instead of authoring its own
-/// (R9): true for an attach ROW and for the 공정 organizer FOLDER that
-/// holds attach rows.
+/// (R9): true for an attach ROW — but one riding the conte (I-99) — and for
+/// the 공정 organizer FOLDER that holds attach rows.
 ///
 /// This is a LAYER-level question, not a kind-level one — a folder is a
 /// folder either way, and only its membership says whether it is inside an
@@ -652,10 +653,33 @@ List<Layer> _seatsOf(
 /// groups. What it does NOT gate: the eye, the static opacity, the blend
 /// and the fold, which stay the organizer's whole reason to exist (user,
 /// 2026-07-31: "그냥 블렌드 두는게 나을수도있단생각 들기시작했어").
-bool attachRowWearsBaseComposite(Layer layer, List<Layer> layers) {
-  return layer.attachedToLayerId != null ||
-      attachOrganizerBaseOf(layer, layers) != null;
-}
+///
+/// An attach ROW is asked through [fxCarrierOf], so the rows the panels
+/// draw without fx are exactly the rows the composite lays without their
+/// own — the conte's riders are neither (I-99).
+bool attachRowWearsBaseComposite(Layer layer, List<Layer> layers) =>
+    layer.attachedToLayerId != null
+    ? fxCarrierOf(layer, layers)?.id != layer.id
+    : attachOrganizerBaseOf(layer, layers) != null;
+
+/// The row whose fx — the transform, the animated opacity, the effect
+/// chain — [layer] wears: its BASE for an attach row, itself for any other.
+/// Null for an attach row whose base is gone: a dangling link wears
+/// nothing.
+///
+/// 🗣️A ROW RIDING THE CONTE WEARS ITS OWN (I-99, 유저 2026-10-28): Q1
+/// 「콘티의 어태치 행만」, Q2 「애초에 기준이랑 어태치랑 fx 완전독립. 별개
+/// 레이어처럼 fx작동」 — so it is its own carrier, and none of the base's
+/// fx reaches it. Every other attach row still wears its base's (R9).
+///
+/// ⛔A FOLDER is not that row, even one carrying the conte link itself: an
+/// EMPTY 공정 folder mounted on the conte holds its own `attachedToLayerId`
+/// (F-139), and Q1 left the folders wearing the base's.
+Layer? fxCarrierOf(Layer layer, List<Layer> layers) =>
+    layer.attachedToLayerId == null ||
+        (!layer.kind.groupsLayers && ridesTheConte(layer, layers))
+    ? layer
+    : attachedBaseOf(layer, layers);
 
 /// Whether [layer] would LOSE fx by becoming part of an attach group.
 ///

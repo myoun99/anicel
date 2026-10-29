@@ -16,6 +16,7 @@ import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_folder.dart' show createFolderLayer;
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
@@ -74,11 +75,11 @@ void main() {
   /// [ground] taken away.
   LayerEffect groundKey() => LayerEffect(
     id: const EffectId('sheet-ground-key'),
-    kind: EffectKind.deleteColor,
+    kind: EffectKind.colorKey,
+    colors: {
+      'keyColor': PropertyTrack<int>.empty().withKey(0, ground),
+    },
     parameters: {
-      'keyRed': EffectParameter(value: (ground >> 16 & 0xFF).toDouble()),
-      'keyGreen': EffectParameter(value: (ground >> 8 & 0xFF).toDouble()),
-      'keyBlue': EffectParameter(value: (ground & 0xFF).toDouble()),
       'tolerance': EffectParameter(value: 10),
       'amount': EffectParameter(value: 100),
     },
@@ -831,6 +832,8 @@ void main() {
             case CompositeBackdropBlend(:final children):
               walk(children);
             case CompositeClip(:final children):
+              walk(children);
+            case CompositeReadsRows(:final children):
               walk(children);
             case CompositeLeaf():
             case CompositeOpaque():

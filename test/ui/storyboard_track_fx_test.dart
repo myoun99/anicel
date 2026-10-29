@@ -255,7 +255,7 @@ void main() {
     await tester.pumpAndSettle();
     final parameter = find.byKey(
       const ValueKey<String>(
-        'storyboard-lane-label-v-track:fx-track-fx:fx-a:blurX',
+        'storyboard-lane-label-v-track:fx-track-fx:fx-a:blurriness',
       ),
     );
     expect(parameter, findsOneWidget);

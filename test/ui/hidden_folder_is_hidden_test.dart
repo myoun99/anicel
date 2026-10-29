@@ -76,7 +76,7 @@ void main() {
       s.selectFrameIndex(2);
 
       expect(
-        onion.onionSkinCanvasRequests(),
+        onion.ghostsAt(s.requireActiveCut, s.currentFrameIndex, null),
         isNotEmpty,
         reason: 'the CONTROL — with everything visible there ARE ghosts',
       );
@@ -84,7 +84,7 @@ void main() {
       hideFolder(s, folder);
 
       expect(
-        onion.onionSkinCanvasRequests(),
+        onion.ghostsAt(s.requireActiveCut, s.currentFrameIndex, null),
         isEmpty,
         reason:
             'A ghost is that row\'s artwork. Hiding the folder used to leave '

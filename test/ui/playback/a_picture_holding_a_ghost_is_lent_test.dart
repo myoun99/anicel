@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -111,7 +112,7 @@ void main() {
       CanvasActiveLayerRow(opacity: 1, frameKey: cel),
     ),
   ];
-  final frame = (cut: cut, frameIndex: 0, paintPaper: false);
+  final frame = (cut: cut, frameIndex: 0, paintPaper: false, ghosts: FrameGhosts.none);
   final ghostTile = PromotedStrokeTile(
     TileCoord(x: 0, y: 0),
     tileOf((x, y) => x > 3 && x < 12 && y > 3 && y < 12 ? ghost : null),

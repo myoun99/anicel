@@ -2,6 +2,7 @@ import 'dart:async' show FutureOr;
 
 import 'package:flutter/material.dart';
 
+import '../../models/app_frame_count_settings.dart';
 import '../../models/audio_clip.dart' show AudioClip;
 import '../../models/camera_instruction.dart';
 import '../../models/cut.dart' show Cut;
@@ -9,11 +10,14 @@ import '../../models/cut_id.dart';
 import '../../models/pill_subject.dart';
 import '../../models/frame.dart' show Frame;
 import '../../models/frame_id.dart';
+import '../../models/layer.dart' show Layer;
 import '../../models/layer_kind.dart';
 import '../../models/property_track.dart' show KeySidesEdit, KeyTypePick;
 import '../../models/layer_id.dart';
+import '../../models/se_dialogue_spacing.dart';
 import '../../models/se_line_type.dart';
-import '../../models/timeline_coverage.dart' show coveringDrawingBlockAt;
+import '../../models/timeline_coverage.dart'
+    show TimelineDrawingBlock, coveringDrawingBlockAt;
 import '../../services/project_lookup.dart' show layerAnywhereOrNull;
 import '../editor_command_actions.dart' show createActiveInstance;
 import '../dialogs/dialog_verb.dart';
@@ -332,13 +336,19 @@ Future<void> _editSeLabel(
   // token — a clip has no id, and it is read once here so the dialog and the
   // unlink below address the same list.
   final linked = session.audioClips.selectedSeAudioClips;
-  final blockFrames = session.audioClips.selectedSeBlockFrames;
   final layerId = session.activeLayer!.id;
+  // The window its sounds play in, which the offset strip draws (09-27),
+  // and what the spacing counts in; 1 where no block covers the playhead.
+  final row = _trackSeRowAt(session, layerId, session.editingGlobalFrame);
+  final blockFrames = row?.block?.length ?? 1;
   await _editSeEntryWithDialog(
     context,
+    session,
     initialSeName: session.seEntries.selectedFrameSeName ?? '',
     initialDialogue: session.selectedFrameName ?? '',
     initialSeTypes: session.seEntries.selectedFrameSeTypes,
+    initialSpacing: session.seEntries.selectedFrameSeSpacing,
+    blockFrames: blockFrames,
     // The cut the timeline shows — its のりしろ too, which plays over the
     // cut in front.
     cuts: session.seEntries
@@ -352,9 +362,10 @@ Future<void> _editSeLabel(
     previewAxis: previewAxis,
     commit: (dialogue, fields) => session.seEntries.updateSelectedSeEntry(
       dialogue: dialogue,
-      seName: fields.seName,
-      seTypes: fields.seTypes,
+      fields: fields,
     ),
+    setGain: (token, gain) =>
+        session.audioClips.setAudioClipGain(layerId, token, gain),
     setOffset: (token, offset) =>
         session.audioClips.setAudioClipOffset(layerId, token, offset),
     unlink: session.audioClips.unlinkAudioClipsFromActiveLayer,
@@ -373,10 +384,37 @@ SeInstanceAudioLink _audioLink(
   label: session.repository.requireProject().shownNameOfMedia(clip.filePath),
   token: index,
   offsetFrames: clip.offsetFrames,
+  gain: clip.gain,
   blockFrames: blockFrames,
   frameRate: session.projectSettings.projectFrameRate,
   peaks: session.voiceRecording.audioPeaksForDisplay(clip.filePath),
 );
+
+/// The SE row [layerId] as the TRACK has it, and its block under
+/// [globalFrame] (null over an empty cell) — null when [layerId] is no SE
+/// row. What every SE door reads its block off: ⚠️not the cut's display
+/// clone, which restarts a block spilled in from the cut before at local 0
+/// with what is left of it (`TrackSeWindow`) — its head and its length are
+/// the track's to say (F-113). The timeline's door read the clone, and a
+/// spilled-in block's window counted its spacing over the cut's part of it
+/// alone (F-496 ③).
+({Layer layer, TimelineDrawingBlock? block})? _trackSeRowAt(
+  EditorSessionManager session,
+  LayerId layerId,
+  int globalFrame,
+) {
+  final layer = layerAnywhereOrNull(
+    session.repository.requireProject(),
+    layerId,
+  );
+  if (layer == null || layer.kind != LayerKind.se) {
+    return null;
+  }
+  return (
+    layer: layer,
+    block: coveringDrawingBlockAt(layer.timeline, globalFrame),
+  );
+}
 
 /// The S row's DOUBLE TAP on the storyboard (I-9: 「빈 칸이면 만들고, 찬 칸이면
 /// 연다」): an empty cell creates an entry at the storyboard cursor, a covered
@@ -388,14 +426,11 @@ Future<void> activateSeEntryCell(
   required int globalFrame,
   Axis previewAxis = Axis.horizontal,
 }) async {
-  final layer = layerAnywhereOrNull(
-    session.repository.requireProject(),
-    layerId,
-  );
-  if (layer == null || layer.kind != LayerKind.se) {
+  final row = _trackSeRowAt(session, layerId, globalFrame);
+  if (row == null) {
     return;
   }
-  if (coveringDrawingBlockAt(layer.timeline, globalFrame) == null) {
+  if (row.block == null) {
     // 🚨★★★I-9 (유저 확정 2026-08-29, I-9-Q2 = `all-kinds`): an EMPTY cell
     // CREATES — the sentence [editTransitionSpanInstance] has said since
     // 2026-08-11, now said of sounds too. The doc above used to end 「COVERED
@@ -443,21 +478,16 @@ Future<void> editSeEntryInstance(
   required int globalFrame,
   Axis previewAxis = Axis.horizontal,
 }) async {
-  final layer = layerAnywhereOrNull(
-    session.repository.requireProject(),
-    layerId,
-  );
-  if (layer == null || layer.kind != LayerKind.se) {
-    return;
-  }
-  final block = coveringDrawingBlockAt(layer.timeline, globalFrame);
-  if (block == null) {
+  final row = _trackSeRowAt(session, layerId, globalFrame);
+  final block = row?.block;
+  if (row == null || block == null) {
     // ↩️F-105 (유저 2026-09-15, 「통일 — 편집 버튼은 빈 칸에서 꺼진다」): this is
     // the Edit button's door, and an empty cell is nothing to edit. The I-9
     // creation — and its decision note — moved to [activateSeEntryCell], the
     // double tap's door.
     return;
   }
+  final layer = row.layer;
   Frame? entry;
   entry = layer.frameById(block.frameId);
   if (entry == null) {
@@ -467,9 +497,12 @@ Future<void> editSeEntryInstance(
   final opening = session.seEntries.seLineCutsAt(layerId, globalFrame);
   await _editSeEntryWithDialog(
     context,
+    session,
     initialSeName: entry.seName ?? '',
     initialDialogue: entry.name ?? '',
     initialSeTypes: entry.seTypes,
+    initialSpacing: entry.seSpacing,
+    blockFrames: block.length,
     cuts: opening.cuts,
     initialCutId: opening.atFrame,
     linkedAudio: [
@@ -484,6 +517,8 @@ Future<void> editSeEntryInstance(
       dialogue: dialogue,
       fields: fields,
     ),
+    setGain: (token, gain) =>
+        session.audioClips.setAudioClipGain(layerId, token, gain),
     setOffset: (token, offset) =>
         session.audioClips.setAudioClipOffset(layerId, token, offset),
     unlink: (tokens) => session.audioClips.unlinkAudioClipsFromLayer(layerId, tokens),
@@ -494,16 +529,20 @@ Future<void> editSeEntryInstance(
 /// standing-addressed one and the storyboard's row-addressed one. One body,
 /// so "delete works from one door but not the other" has nowhere to start.
 Future<void> _editSeEntryWithDialog(
-  BuildContext context, {
+  BuildContext context,
+  EditorSessionManager session, {
   required String initialSeName,
   required String initialDialogue,
   required SeLineTypes initialSeTypes,
+  required SeDialogueSpacing initialSpacing,
+  required int blockFrames,
   required List<Cut> cuts,
   required CutId? initialCutId,
   required List<SeInstanceAudioLink> linkedAudio,
   required Axis previewAxis,
   required void Function(String dialogue, SeEntryFields fields) commit,
   required void Function(int token, int offsetFrames) setOffset,
+  required void Function(int token, double gain) setGain,
   required void Function(Iterable<int> tokens) unlink,
 }) async {
   final result = await showDialogVerb<SeInstanceDialogResult>(
@@ -513,6 +552,13 @@ Future<void> _editSeEntryWithDialog(
       initialSeName: initialSeName,
       initialDialogue: initialDialogue,
       initialSeTypes: initialSeTypes,
+      initialSpacing: initialSpacing,
+      blockFrames: blockFrames,
+      frameRate: session.projectSettings.projectFrameRate,
+      // The count windows' entry, kept as theirs is (I-24-open-entry-Q1).
+      onCountEntryChanged: (entry) => session.appSettings.setFrameCountSettings(
+        AppFrameCountSettings.settings.value.copyWith(lastEntry: entry),
+      ),
       cuts: cuts,
       initialCutId: initialCutId,
       previewAxis: previewAxis,
@@ -525,12 +571,19 @@ Future<void> _editSeEntryWithDialog(
 
   final seName = result.seName.isEmpty ? null : result.seName;
   // SE edits never hit the link-conflict flow (duplicates allowed).
-  commit(result.dialogue, (seName: seName, seTypes: result.seTypes));
-  // ⚠️The offsets BEFORE the unlink: a token is the clip's index, and taking
-  // a sound off shifts every index after it.
+  commit(result.dialogue, (
+    seName: seName,
+    seTypes: result.seTypes,
+    spacing: result.spacing,
+  ));
+  // ⚠️The offsets and gains BEFORE the unlink: a token is the clip's index,
+  // and taking a sound off shifts every index after it.
   for (final MapEntry(key: token, value: offset)
       in result.audioOffsets.entries) {
     setOffset(token, offset);
+  }
+  for (final MapEntry(key: token, value: gain) in result.audioGains.entries) {
+    setGain(token, gain);
   }
   if (result.unlinkedAudioTokens.isNotEmpty) {
     unlink(result.unlinkedAudioTokens);

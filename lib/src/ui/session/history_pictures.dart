@@ -122,8 +122,8 @@ class HistoryPictures {
   void _letGo(BrushFrameStore store, TileCoord coord, BitmapTile tile) {
     final keyed = keyedCopyOf(tile);
     final pictured =
-        _cache.imageFor(tile) != null ||
-        (keyed != null && _cache.imageFor(keyed) != null);
+        _cache.heldFor(tile) != null ||
+        (keyed != null && _cache.heldFor(keyed) != null);
     if (!pictured || store.holdsTile(coord, tile)) {
       return;
     }

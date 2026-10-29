@@ -29,7 +29,7 @@ void main() {
       expect(ntsc.sampleToFrame(1601, 48000), 0);
     });
 
-    test('carries trim, gain and fades into sample units', () {
+    test('carries trim, gain and the volume line into sample units', () {
       const rate = ProjectFrameRate.fps24;
       final converted = audioMixScheduleFrom(
         schedule: const [
@@ -39,8 +39,7 @@ void main() {
             endFrameExclusive: 34,
             offsetFrames: 5,
             gain: 0.5,
-            fadeInFrames: 2,
-            fadeOutFrames: 3,
+            volume: [(frame: 0, gain: 0.0), (frame: 3, gain: 0.8)],
           ),
         ],
         rate: rate,
@@ -51,8 +50,8 @@ void main() {
       expect(clip.endSample, 34 * 2000);
       expect(clip.sourceOffset, 5 * 2000);
       expect(clip.gain, 0.5);
-      expect(clip.fadeInSamples, 2 * 2000);
-      expect(clip.fadeOutSamples, 3 * 2000);
+      expect([for (final point in clip.envelope) point.sample], [0, 3 * 2000]);
+      expect([for (final point in clip.envelope) point.gain], [0.0, 0.8]);
     });
 
     test('shares one source per distinct path, in first-appearance order', () {

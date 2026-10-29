@@ -43,6 +43,7 @@ void main() {
   late Map<String, Uint8List> brushesGot;
   late List<Uint8List> fontsGot;
   late Map<String, Uint8List> shortcutsGot;
+  late Map<String, Uint8List> palettesGot;
 
   OpenedFilesDoor door() {
     windowGot = [];
@@ -51,6 +52,7 @@ void main() {
     brushesGot = {};
     fontsGot = [];
     shortcutsGot = {};
+    palettesGot = {};
     return OpenedFilesDoor(
       openProjects: (picks) async {
         done.add('projects');
@@ -75,6 +77,11 @@ void main() {
         done.add('shortcuts');
         shortcutsGot = {for (final (:name, :bytes) in files) name: bytes};
         return ['keys from ${[for (final file in files) file.name]}'];
+      },
+      bringPalettes: (name, bytes) async {
+        done.add('palettes');
+        palettesGot[name] = bytes;
+        return 'colours from $name';
       },
     );
   }
@@ -132,24 +139,49 @@ void main() {
     final brush = fileNamed('Pack.abr', [7, 7]);
     final font = fileNamed('Face.otf', [9]);
     final keys = fileNamed('default.khc', [4]);
+    // I-142: our own settings files — a palette into the palettes, a
+    // preset where every shortcut file goes.
+    final palette = fileNamed('Skin.anipalette', [6]);
+    final preset = fileNamed('Mine.anishortcut', [8]);
+    // 🗣️I-142-Q6: every setting's file comes in as the import window's
+    // rows.
+    final settings = fileNamed('Anicel 설정.anisettings', [5]);
 
-    await knock(tester, [project, keys, picture, brush, font]);
+    await knock(tester, [
+      project,
+      keys,
+      settings,
+      palette,
+      picture,
+      brush,
+      font,
+      preset,
+    ]);
 
     expect(done, [
       'brushes',
       'font',
+      'palettes',
       'shortcuts',
       'notice',
       'window',
       'projects',
     ]);
-    expect([for (final grant in windowGot) grant.path], [picture.path]);
+    expect(palettesGot, {
+      'Skin.anipalette': [6],
+    });
+    expect([for (final grant in windowGot) grant.path], [
+      picture.path,
+      settings.path,
+    ]);
     expect([for (final pick in projectsGot) pick.path], [project.path]);
     expect(brushesGot.keys, ['Pack.abr']);
     expect(brushesGot['Pack.abr'], [7, 7]);
     expect(fontsGot.single, [9]);
-    expect(shortcutsGot.keys, ['default.khc']);
-    expect(shortcutsGot['default.khc'], [4]);
+    expect(shortcutsGot, {
+      'default.khc': [4],
+      'Mine.anishortcut': [8],
+    });
   });
 
   testWidgets('a program\'s shortcut files are handed over together, once '

@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import 'frame.dart' show InbetweenMark, defaultInbetweenMark;
+import 'inbetween_mark.dart';
 
 /// How a frame count is typed (I-24): as frames, or as seconds+frames.
 enum FrameCountEntry { frames, secondsPlusFrames }
@@ -13,7 +13,7 @@ enum FrameCountEntry { frames, secondsPlusFrames }
 class AppFrameCountSettings {
   const AppFrameCountSettings({
     this.lastEntry = FrameCountEntry.frames,
-    this.lastEveryMark = defaultInbetweenMark,
+    this.lastEveryMark,
   });
 
   final FrameCountEntry lastEntry;
@@ -22,10 +22,11 @@ class AppFrameCountSettings {
   /// count window opens on [lastEntry]: 🗣️I-130-Q2 (유저 2026-10-25 「창에서
   /// 마크를 고른다」 — 지난번 고른 것 기억).
   ///
-  /// Until one is picked, [defaultInbetweenMark] — 🗣️F-469 (유저 2026-10-25
-  /// 「기본마크, 앞으로 마크1 사용 … 다른곳도 같은곳있으면 확인해서 법 통일」).
-  /// ↩️The ●, the one mark the window laid before marks were two.
-  final InbetweenMark lastEveryMark;
+  /// Null until one is picked: the window then opens on the mark an unnamed
+  /// drawing wears (`AppFrameGridSettings.unnamedMark`) — 🗣️F-489-Q1 (유저
+  /// 2026-10-27 「둘 다 따라간다」). ↩️Mark 1, the ○ (F-469 「기본마크, 앞으로
+  /// 마크1 사용」); the ●, the one mark the window laid before marks were two.
+  final InbetweenMark? lastEveryMark;
 
   AppFrameCountSettings copyWith({
     FrameCountEntry? lastEntry,
@@ -37,7 +38,7 @@ class AppFrameCountSettings {
 
   Map<String, dynamic> toJson() => {
     'lastEntry': lastEntry.name,
-    'lastEveryMark': lastEveryMark.name,
+    if (lastEveryMark case final mark?) 'lastEveryMark': mark.name,
   };
 
   factory AppFrameCountSettings.fromJson(Map<String, dynamic> json) =>
@@ -45,9 +46,7 @@ class AppFrameCountSettings {
         lastEntry:
             FrameCountEntry.values.asNameMap()[json['lastEntry']] ??
             FrameCountEntry.frames,
-        lastEveryMark:
-            InbetweenMark.values.asNameMap()[json['lastEveryMark']] ??
-            defaultInbetweenMark,
+        lastEveryMark: InbetweenMark.values.asNameMap()[json['lastEveryMark']],
       );
 
   @override

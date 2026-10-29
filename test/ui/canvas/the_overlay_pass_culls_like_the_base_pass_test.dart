@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -38,6 +39,9 @@ class _SpyCanvas implements Canvas {
 
   @override
   Rect getLocalClipBounds() => _clip;
+
+  @override
+  Float64List getTransform() => Matrix4.identity().storage;
 
   @override
   void drawImage(ui.Image image, Offset offset, Paint paint) {
@@ -112,7 +116,7 @@ void main() {
       overlayModel: model,
       showTransparentBackground: false,
       lineage: Object(),
-    ).paintContentInto(canvas);
+    ).paintContentInto(canvas, pixelRatio: 1);
 
     expect(
       canvas.imageOffsets.map((offset) => offset.dx),

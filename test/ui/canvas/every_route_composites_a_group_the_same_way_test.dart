@@ -231,6 +231,7 @@ void main() {
         debugLastSubtreeRaster = null;
         const service = CameraFrameRenderService();
         final image = await service.renderThroughCamera(
+          canvasSize: canvasSize,
           nodes: [node],
           pose: CameraPose(center: CanvasPoint(x: 4, y: 4), zoom: 2),
           cameraFrameSize: canvasSize,

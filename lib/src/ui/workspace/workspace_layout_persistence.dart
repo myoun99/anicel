@@ -61,6 +61,7 @@ class _WorkspaceLayoutPersistence {
     // which is now an arrangement rather than the absence of one.
     _state._bottomInsetOverride.value = null;
     _state._brushPresetView.value = const BrushPresetViewOptions();
+    _state._brushDetailAt.value = null;
     // The open groups and the docks are ONE change to what the docks show.
     _state._mutatingLayout(() {
       _state._rebuild(() {
@@ -132,7 +133,21 @@ class _WorkspaceLayoutPersistence {
       entry.value.value = restored.railExtents[entry.key];
     }
     _restoreTrackLaneHeight(payload[_storyboardTrackLaneHeightKey]);
+    _state._brushDetailAt.value = _restoredPoint(payload[_brushDetailAtKey]);
   }
+
+  /// The layout file's key for where the brush detail window was left.
+  static const _brushDetailAtKey = 'brushDetailAt';
+
+  /// A point as the file kept it — `[x, y]` — or null for anything else,
+  /// which opens the window where a window that was never moved opens.
+  static Offset? _restoredPoint(Object? saved) => switch (saved) {
+    [final num x, final num y] when x.isFinite && y.isFinite => Offset(
+      x.toDouble(),
+      y.toDouble(),
+    ),
+    _ => null,
+  };
 
   /// The layout file's key for the V rows' height.
   static const _storyboardTrackLaneHeightKey = 'storyboardTrackLaneHeight';
@@ -213,5 +228,8 @@ class _WorkspaceLayoutPersistence {
     'regionOnTop': _state._regionOnTop,
     'brushValuesOnStrip': _state._brushValuesOnStrip.value,
     'brushPresetView': _state._brushPresetView.value.toJson(),
+    // Absent until the window has been moved, by the rail extents' rule.
+    if (_state._brushDetailAt.value case final at?)
+      _brushDetailAtKey: [at.dx, at.dy],
   };
 }

@@ -197,4 +197,120 @@ void main() {
       reason: 'a cut naming no one writes nothing',
     );
   });
+
+  /// 🗣️유저 2026-10-28 (F-291): 「이런 접힘/펼침상태는 컷별로 기억」 ·
+  /// F-291-Q4 「파일에, 저장 버튼을 누를 때만」.
+  group('the folds 컷 설정 opens on', () {
+    Set<LayerProcess> foldsOf(ProjectRepository repository, CutId id) =>
+        requireCut(repository.requireProject(), id).metadata.openStaffFolds;
+
+    test('are the rough key\'s alone before a save; a save lands them on '
+        'every cut it is about — a 겸용 sibling keeps its own — in the '
+        'names\' ONE undo step', () {
+      final (:repository, :cuts, :history) = fixture();
+      for (final id in [cut1, cut2, cut3]) {
+        expect(foldsOf(repository, id), {LayerProcess.roughKey});
+      }
+
+      cuts.setCutStaffNames(
+        cutIds: const [cut1, cut3],
+        names: {layout: '林'},
+        openFolds: {LayerProcess.key, LayerProcess.layout},
+      );
+      for (final id in [cut1, cut3]) {
+        expect(foldsOf(repository, id), {
+          LayerProcess.key,
+          LayerProcess.layout,
+        }, reason: '$id');
+      }
+      expect(
+        foldsOf(repository, cut2),
+        {LayerProcess.roughKey},
+        reason: 'a window\'s memory of the cut, not the picture\'s',
+      );
+
+      history.undo();
+      expect(history.canUndo, isFalse, reason: 'ONE step');
+      expect(foldsOf(repository, cut1), {LayerProcess.roughKey});
+      expect(foldsOf(repository, cut3), {LayerProcess.roughKey});
+      expect(staffOf(repository, cut3), {'layout': '清'});
+    });
+
+    test('a save of folds alone is a step; one that changes nothing is '
+        'none', () {
+      final (:repository, :cuts, :history) = fixture();
+      cuts.setCutStaffNames(
+        cutIds: const [cut1],
+        names: const {},
+        openFolds: {LayerProcess.roughKey},
+      );
+      expect(history.canUndo, isFalse);
+
+      cuts.setCutStaffNames(
+        cutIds: const [cut1],
+        names: const {},
+        openFolds: const {},
+      );
+      expect(foldsOf(repository, cut1), isEmpty);
+      expect(history.canUndo, isTrue);
+    });
+
+    test('travel with the cut through its file — and the rough key\'s '
+        'alone write nothing', () {
+      const shut = CutMetadata(openStaffFolds: {});
+      const open = CutMetadata(
+        openStaffFolds: {LayerProcess.key, LayerProcess.finish},
+      );
+      for (final metadata in [shut, open]) {
+        expect(CutMetadata.fromJson(metadata.toJson()), metadata);
+      }
+      expect(const CutMetadata().toJson(), isEmpty);
+    });
+  });
+
+  /// 🗣️유저 2026-10-28 (F-291): 「즉 컷마다 개별적임 … 신은 그리고 이름
+  /// 비울수있음」 · F-291-Q5 「비어서 시작한다」 · F-291-Q6 「컷마다 따로(컷
+  /// 이름처럼)」.
+  group('a cut\'s scene', () {
+    String sceneOf(ProjectRepository repository, CutId id) =>
+        requireCut(repository.requireProject(), id).metadata.scene;
+
+    test('starts empty, is the cut\'s alone — its 겸용 sibling keeps its own '
+        '— and empties again', () {
+      final (:repository, :cuts, :history) = fixture();
+      expect(sceneOf(repository, cut1), isEmpty);
+
+      cuts.setCutScene(cutId: cut1, scene: 'S3');
+      expect(sceneOf(repository, cut1), 'S3');
+      expect(sceneOf(repository, cut2), isEmpty, reason: 'its own, as names');
+
+      cuts.setCutScene(cutId: cut1, scene: 'S3');
+      history.undo();
+      expect(history.canUndo, isFalse, reason: 'the same scene is no step');
+      expect(sceneOf(repository, cut1), isEmpty);
+
+      cuts.setCutScene(cutId: cut1, scene: 'S3');
+      cuts.setCutScene(cutId: cut1, scene: '');
+      expect(sceneOf(repository, cut1), isEmpty);
+    });
+
+    test('lands with the cut\'s name from the rename window, ONE undo '
+        'step', () {
+      final (:repository, :cuts, :history) = fixture();
+      cuts.nameCut(cutId: cut3, name: 'C3', scene: 'S1');
+      final cut = requireCut(repository.requireProject(), cut3);
+      expect((cut.name, cut.metadata.scene), ('C3', 'S1'));
+
+      history.undo();
+      expect(history.canUndo, isFalse);
+      final back = requireCut(repository.requireProject(), cut3);
+      expect((back.name, back.metadata.scene), ('cut-3', ''));
+    });
+
+    test('travels with the cut through its file — none writes nothing', () {
+      const metadata = CutMetadata(scene: 'S12');
+      expect(CutMetadata.fromJson(metadata.toJson()), metadata);
+      expect(const CutMetadata(scene: '').toJson(), isEmpty);
+    });
+  });
 }

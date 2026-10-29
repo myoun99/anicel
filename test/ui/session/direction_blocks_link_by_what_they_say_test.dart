@@ -80,7 +80,11 @@ void main() {
       expect(isWrittenDrawingName(name), isTrue, reason: 'it has one');
       expect(celNumberOf(name), isNull, reason: 'and it prints none');
       expect(
-        drawingHeadOf(name, kind: LayerKind.instruction),
+        drawingHeadOf(
+          name,
+          kind: LayerKind.instruction,
+          unnamedMark: defaultUnnamedDrawingMark,
+        ),
         (word: '', mark: null),
       );
       session.selectFrameIndex(2);

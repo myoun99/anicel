@@ -1726,10 +1726,15 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
                           strokeActive: _strokeHold,
                           cacheInvalidationSink: _cacheInvalidationSink,
                         ),
-                      // The file still opening, or a page on screen not
-                      // drawn yet (F-315).
+                      // The file still opening, a page on screen not
+                      // drawn yet (F-315), or a run parked before a page
+                      // that is not there, over the page it stands on —
+                      // 🗣️F-499 (유저 2026-10-29): 「멈출땐 화면중앙에 그림은
+                      // 유지한채 로딩 ui 띄우도록? 미디어플레이어들이
+                      // 하는거처럼」, Q1 「뷰어만」.
                       if (document == null ||
-                          pages.any((page) => page.image == null))
+                          pages.any((page) => page.image == null) ||
+                          _run.buffering)
                         ViewerPageLoading(
                           key: ValueKey<String>(_key('loading')),
                         ),

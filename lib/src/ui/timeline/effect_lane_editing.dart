@@ -9,9 +9,11 @@
 // 🚨WHERE AN EFFECT STANDS ITS PICTURE IS A TRANSFORM'S LANES (I-65): a cel
 // number's Position and Scale ([LayerEffect.stand]) are edited by the
 // transform's own verbs on that track — the reference fx's way (F-374) —
-// so they key, take values, reset and name as a layer's do. Its colour
-// ([LayerEffect.ink]) is a colour lane, as an SE name tag's inks are
-// (F-477): a key of the colour typed or picked, `#RRGGBB`.
+// so they key, take values, reset and name as a layer's do. So is a point
+// (I-132-Q12 b, [LayerEffect.points]): a Position of its own. Every such
+// lane is found by ONE question ([LayerEffect.transformLaneAt]). Its
+// colours ([LayerEffect.colors]) are colour lanes, as an SE name tag's
+// inks are (F-477): a key of the colour typed or picked, `#RRGGBB`.
 
 import '../../models/canvas_size.dart';
 import '../../models/layer_effect.dart';
@@ -31,9 +33,9 @@ import 'transform_lane_editing.dart'
 /// behaviour: keying a property freezes its current value), or removes the
 /// existing one — the keyframe navigator's diamond toggle.
 ///
-/// Where an effect stands is resolved on [paper], the paper its row stands
-/// on — its rest is that paper's middle ([effectStandPose]); without one
-/// such a lane keys nothing.
+/// Where an effect stands, and a point, is resolved on [paper], the paper
+/// its row stands on — its rest is that paper's middle ([effectStandPose]);
+/// without one such a lane keys nothing.
 List<LayerEffect>? effectsWithLaneKeyToggled(
   List<LayerEffect> effects, {
   required String laneId,
@@ -43,30 +45,33 @@ List<LayerEffect>? effectsWithLaneKeyToggled(
   if (frameIndex < 0) {
     return null;
   }
-  if (_standsOn(effects, laneId)) {
+  if (_keptAsATransformOn(effects, laneId)) {
     return paper == null
         ? null
-        : _editStand(
+        : _editTransformLane(
             effects,
             laneId,
-            (stand, lane) => transformTrackWithLaneKeyToggled(
-              stand,
+            (keys, lane) => transformTrackWithLaneKeyToggled(
+              keys,
               laneId: lane,
               frameIndex: frameIndex,
               resolvedPose: effectStandPose(
-                effectStandAt(stand, frameIndex.toDouble()),
+                effectStandAt(keys, frameIndex.toDouble()),
                 paper,
               ),
             ),
           );
   }
-  if (_inksOn(effects, laneId)) {
-    return _editInk(
+  if (_colorsOn(effects, laneId)) {
+    return _editColor(
       effects,
       laneId,
-      (ink) => ink.keyAt(frameIndex) != null
-          ? ink.withoutKey(frameIndex)
-          : ink.withKey(frameIndex, effectInkAt(ink, frameIndex.toDouble())),
+      (keys, rest) => keys.keyAt(frameIndex) != null
+          ? keys.withoutKey(frameIndex)
+          : keys.withKey(
+              frameIndex,
+              effectColorAt(keys, frameIndex.toDouble(), rest: rest),
+            ),
     );
   }
   return _editParameter(effects, laneId, (parameter, spec) {
@@ -76,7 +81,8 @@ List<LayerEffect>? effectsWithLaneKeyToggled(
     return parameter.copyWith(
       track: parameter.track.withKey(
         frameIndex,
-        spec.clamp(parameter.resolveAt(frameIndex)),
+        spec.clamp(parameter.resolveAt(frameIndex, space: spec.keySpace)),
+        outgoing: spec.keyExit,
       ),
     );
   });
@@ -142,9 +148,9 @@ List<LayerEffect>? effectsWithLaneKeysWritten(
 /// it is the slot an AE-style stopwatch would switch off into if this app
 /// ever grows one (the user's note when #18 was decided).
 ///
-/// Where an effect stands is typed as a transform's Position and Scale are
-/// ([transformTrackWithLaneValueEdited]) — the Scale by the transform
-/// tool's 「배율 연동」, [scaleLinked], as a layer's.
+/// Where an effect stands, and a point, is typed as a transform's Position
+/// and Scale are ([transformTrackWithLaneValueEdited]) — the Scale by the
+/// transform tool's 「배율 연동」, [scaleLinked], as a layer's.
 List<LayerEffect>? effectsWithLaneValueEdited(
   List<LayerEffect> effects, {
   required String laneId,
@@ -155,12 +161,12 @@ List<LayerEffect>? effectsWithLaneValueEdited(
   if (frameIndex < 0) {
     return null;
   }
-  if (_standsOn(effects, laneId)) {
-    return _editStand(
+  if (_keptAsATransformOn(effects, laneId)) {
+    return _editTransformLane(
       effects,
       laneId,
-      (stand, lane) => transformTrackWithLaneValueEdited(
-        stand,
+      (keys, lane) => transformTrackWithLaneValueEdited(
+        keys,
         laneId: lane,
         frameIndex: frameIndex,
         input: input,
@@ -169,11 +175,25 @@ List<LayerEffect>? effectsWithLaneValueEdited(
       ),
     );
   }
-  if (_inksOn(effects, laneId)) {
+  // A row is picked, not keyed: the one row at every frame.
+  if (_namesARowOn(effects, laneId)) {
+    final row = effectLaneRowOf(input);
+    return _editLane(
+      effects,
+      laneId,
+      (effect, lane) =>
+          effect.layers[lane] == row ? null : effect.withLayer(lane, row),
+    );
+  }
+  if (_colorsOn(effects, laneId)) {
     final argb = parseArgbInput(input);
     return argb == null
         ? null
-        : _editInk(effects, laneId, (ink) => ink.withKey(frameIndex, argb));
+        : _editColor(
+            effects,
+            laneId,
+            (keys, _) => keys.withKey(frameIndex, argb),
+          );
   }
   return _editParameter(effects, laneId, (parameter, spec) {
     final value = parseEffectLaneValue(spec, input);
@@ -181,7 +201,11 @@ List<LayerEffect>? effectsWithLaneValueEdited(
       return null;
     }
     return parameter.copyWith(
-      track: parameter.track.withKey(frameIndex, value),
+      track: parameter.track.withKey(
+        frameIndex,
+        value,
+        outgoing: spec.keyExit,
+      ),
     );
   });
 }
@@ -222,6 +246,34 @@ List<LayerEffect>? effectsWithGroupReset(
     var next = effect;
     var changed = false;
     for (final spec in effect.kind.parameters) {
+      // A point goes back as where the effect stands does, below.
+      if (effect.points.containsKey(spec.id)) {
+        continue;
+      }
+      // A row has no keys: it goes back to none as an unkeyed parameter
+      // goes back to its default.
+      if (effect.layers.containsKey(spec.id)) {
+        if (effect.layers[spec.id] != null) {
+          next = next.withLayer(spec.id, null);
+          changed = true;
+        }
+        continue;
+      }
+      // A colour has no static value: unkeyed it is already the rest.
+      if (effect.colors[spec.id] case final keys?) {
+        var reset = keys;
+        for (final frame in frames) {
+          if (keys.isEmpty || (keyedFramesOnly && keys.keyAt(frame) == null)) {
+            continue;
+          }
+          reset = reset.withKey(frame, spec.defaultValue.toInt());
+        }
+        if (reset != keys) {
+          next = next.withColor(spec.id, reset);
+          changed = true;
+        }
+        continue;
+      }
       final parameter = effect.parameterOf(spec.id);
       if (parameter.track.isEmpty) {
         if (parameter.value == spec.defaultValue) {
@@ -239,7 +291,11 @@ List<LayerEffect>? effectsWithGroupReset(
         if (keyedFramesOnly && parameter.track.keyAt(frame) == null) {
           continue;
         }
-        track = track.withKey(frame, spec.defaultValue);
+        track = track.withKey(
+          frame,
+          spec.defaultValue,
+          outgoing: spec.keyExit,
+        );
       }
       if (track == parameter.track) {
         continue;
@@ -248,32 +304,26 @@ List<LayerEffect>? effectsWithGroupReset(
       changed = true;
     }
     final rest = paper == null ? null : layerIdentityPose(paper);
-    final stand = rest == null
+    // Where it stands and each point, as a transform group is.
+    TransformTrack? reset(TransformTrack keys) => rest == null
         ? null
         : transformTrackWithGroupReset(
-            effect.stand,
+            keys,
             frameIndexes: frames,
             identity: rest,
             // No anchor lane: nothing is reset to it.
             defaultAnchorPoint: rest.center,
             keyedFramesOnly: keyedFramesOnly,
           );
-    if (stand != null) {
+    if (reset(effect.stand) case final stand?) {
       next = next.copyWith(stand: stand);
       changed = true;
     }
-    // The colour has no static slot: unkeyed it is already the rest.
-    var ink = effect.ink;
-    for (final frame in frames) {
-      if (effect.ink.isEmpty ||
-          (keyedFramesOnly && effect.ink.keyAt(frame) == null)) {
-        continue;
+    for (final MapEntry(key: lane, value: keys) in effect.points.entries) {
+      if (reset(keys) case final point?) {
+        next = next.withTransformKeysAt(lane, point);
+        changed = true;
       }
-      ink = ink.withKey(frame, effectInkAtRest);
-    }
-    if (ink != effect.ink) {
-      next = next.copyWith(ink: ink);
-      changed = true;
     }
     return changed ? next : null;
   });
@@ -283,8 +333,9 @@ List<LayerEffect>? effectsWithGroupReset(
 /// (effectId, lane) over the chain — a different key law from the
 /// fixed-field tracks, so the lens walks the list rather than reading a
 /// field: a parameter's through [_editParameter], and where the effect
-/// stands through the transform's own table ([transformLaneLens]) on
-/// [LayerEffect.stand]. The group header is a lane too (its keyed frames
+/// stands and a point through the transform's own table
+/// ([transformLaneLens]) on the keys it keeps them in
+/// ([LayerEffect.transformLaneAt]). The group header is a lane too (its keyed frames
 /// are its members' union) but holds no track of its own, so an edit
 /// through it answers null. Null for an id that is not an effect lane at
 /// all.
@@ -301,14 +352,17 @@ class _EffectLaneLens implements LaneLens<List<LayerEffect>> {
 
   @override
   List<LayerEffect>? update(List<LayerEffect> effects, PropertyLaneEdit edit) =>
-      _standsOn(effects, laneId)
-      ? _editStand(
+      // A row keeps no keys to edit.
+      _namesARowOn(effects, laneId)
+      ? null
+      : _keptAsATransformOn(effects, laneId)
+      ? _editTransformLane(
           effects,
           laneId,
-          (stand, lane) => transformLaneLens(lane)?.update(stand, edit),
+          (keys, lane) => transformLaneLens(lane)?.update(keys, edit),
         )
-      : _inksOn(effects, laneId)
-      ? _editInk(effects, laneId, (ink) => edit(ink))
+      : _colorsOn(effects, laneId)
+      ? _editColor(effects, laneId, (keys, _) => edit(keys))
       : _editParameter(effects, laneId, (parameter, spec) {
           final next = edit(parameter.track);
           return next == null ? null : parameter.copyWith(track: next);
@@ -330,23 +384,37 @@ class _EffectLaneLens implements LaneLens<List<LayerEffect>> {
       const {};
 
   /// A parameter shows the number it holds ([formatEffectLaneValue]); a
-  /// header holds none, where the effect stands is points, as a
-  /// transform's Position and Scale are, and its ink a colour.
+  /// header holds none, where the effect stands and a point are points, as
+  /// a transform's Position and Scale are, and a colour is a colour.
+  ///
+  /// ⚠️Read off the lane's id alone: the keys may be a copy off another
+  /// row ([LaneHome.numbersTaken]), whose chain no lens here sees.
   @override
   double? numberShown(double held) => switch (parseEffectLaneId(laneId)) {
     (effectId: _, parameterId: final lane?)
-        when !effectStandLanes.contains(lane) && lane != effectInkLane =>
+        when !effectStandLanes.contains(lane) &&
+            !effectColorParameters.contains(lane) &&
+            !effectPointParameters.contains(lane) &&
+            !effectLayerParameters.contains(lane) =>
       held,
     _ => null,
   };
 
   /// A number given a parameter is held clamped to its range, as its value
-  /// editor takes it typed ([parseEffectLaneValue]).
+  /// editor takes it typed ([parseEffectLaneValue]); a colour and a point
+  /// take none.
   @override
   double? numberHeld(List<LayerEffect> effects, double shown) => _readLane(
     effects,
     laneId,
-    (effect, lane) => effect.kind.parameterSpec(lane)?.clamp(shown),
+    (effect, lane) => switch (effect.kind.parameterSpec(lane)) {
+      final spec?
+          when spec.unit != EffectParameterUnit.color &&
+              spec.unit != EffectParameterUnit.point &&
+              spec.unit != EffectParameterUnit.layer =>
+        spec.clamp(shown),
+      _ => null,
+    },
   );
 }
 
@@ -373,10 +441,10 @@ R? _readLane<R>(
 }
 
 /// Rebuilds the effect a lane addresses through [edit], given the lane — a
-/// parameter's id, its colour or one where the effect stands; null when the
-/// lane is a header, its effect is not in the chain, or [edit] declines the
-/// change — every lane's edit ([_editStand], [_editInk], [_editParameter])
-/// finds its effect here.
+/// parameter's id or one where the effect stands; null when the lane is a
+/// header, its effect is not in the chain, or [edit] declines the change —
+/// every lane's edit ([_editTransformLane], [_editParameter]) finds its
+/// effect here.
 List<LayerEffect>? _editLane(
   List<LayerEffect> effects,
   String laneId,
@@ -390,68 +458,83 @@ List<LayerEffect>? _editLane(
   return _editEffect(effects, address.effectId, (effect) => edit(effect, lane));
 }
 
-/// Whether [laneId] is one where its effect in [effects] stands its picture
-/// ([LayerEffect.standLaneOf]).
-bool _standsOn(List<LayerEffect> effects, String laneId) =>
-    _readLane(effects, laneId, (effect, lane) => effect.standLaneOf(lane)) !=
+/// Whether [laneId] is one its effect in [effects] keeps as a transform's
+/// lane — where it stands its picture, or a point
+/// ([LayerEffect.transformLaneAt]).
+bool _keptAsATransformOn(List<LayerEffect> effects, String laneId) =>
+    _readLane(
+      effects,
+      laneId,
+      (effect, lane) => effect.transformLaneAt(lane),
+    ) !=
     null;
 
-/// Rebuilds where the effect a stand lane addresses stands through [edit],
-/// handed the transform lane the lane is ([LayerEffect.standLaneOf]); null
-/// when the lane is not one, the effect is gone, or [edit] declines the
-/// change — the stand's twin of [_editParameter].
-List<LayerEffect>? _editStand(
+/// Rebuilds the keys a lane its effect keeps as a transform's lane
+/// ([LayerEffect.transformLaneAt]) through [edit], handed the transform
+/// lane it is, by its id; null when the lane is not one, the effect is
+/// gone, or [edit] declines the change — the twin of [_editParameter].
+List<LayerEffect>? _editTransformLane(
   List<LayerEffect> effects,
   String laneId,
-  TransformTrack? Function(TransformTrack stand, String lane) edit,
+  TransformTrack? Function(TransformTrack keys, String lane) edit,
 ) => _editLane(effects, laneId, (effect, lane) {
-  if (effect.standLaneOf(lane) == null) {
+  final kept = effect.transformLaneAt(lane);
+  if (kept == null) {
     return null;
   }
-  final next = edit(effect.stand, lane);
-  return next == null ? null : effect.copyWith(stand: next);
+  final next = edit(kept.keys, kept.lane);
+  return next == null ? null : effect.withTransformKeysAt(lane, next);
 });
 
-/// [effects] with where [effectId] stands its picture rebuilt through
-/// [edit] — a canvas box's drag over that picture (F-477), as a lane of it
-/// is edited ([_editStand]); null when the effect is gone, draws no picture
-/// of its own, or [edit] declines the change.
-List<LayerEffect>? effectsWithStandEdited(
-  List<LayerEffect> effects,
-  EffectId effectId,
-  TransformTrack? Function(TransformTrack stand) edit,
-) => _editEffect(effects, effectId, (effect) {
-  if (!effect.kind.drawsItsOwnPicture) {
-    return null;
-  }
-  final next = edit(effect.stand);
-  return next == null ? null : effect.copyWith(stand: next);
-});
-
-/// Whether [laneId] is its effect's colour in [effects] ([LayerEffect
-/// .inksOn]).
-bool _inksOn(List<LayerEffect> effects, String laneId) =>
-    _readLane(effects, laneId, (effect, lane) => effect.inksOn(lane)) ?? false;
-
-/// Rebuilds the colour of the effect an ink lane addresses through [edit];
-/// null when the lane is not one, the effect is gone, or [edit] declines
-/// the change — the ink's twin of [_editParameter].
-List<LayerEffect>? _editInk(
+/// [effects] with the keys effect lane [laneId] keeps as a transform's
+/// lane rebuilt through [edit] — a canvas box's drag over the picture an
+/// effect draws, on its stand's (F-477), or a point's cross, as a lane of
+/// it is edited ([_editTransformLane]); null when the lane keeps none,
+/// the effect is gone, or [edit] declines the change.
+List<LayerEffect>? effectsWithTransformKeysEdited(
   List<LayerEffect> effects,
   String laneId,
-  PropertyTrack<int>? Function(PropertyTrack<int> ink) edit,
+  TransformTrack? Function(TransformTrack keys) edit,
+) => _editTransformLane(effects, laneId, (keys, _) => edit(keys));
+
+/// Whether [laneId] is a row of its effect in [effects] ([LayerEffect
+/// .layers]).
+bool _namesARowOn(List<LayerEffect> effects, String laneId) =>
+    _readLane(
+      effects,
+      laneId,
+      (effect, lane) => effect.layers.containsKey(lane),
+    ) ??
+    false;
+
+/// Whether [laneId] is a colour of its effect in [effects] ([LayerEffect
+/// .colors]).
+bool _colorsOn(List<LayerEffect> effects, String laneId) =>
+    _readLane(effects, laneId, (effect, lane) => effect.colors[lane] != null) ??
+    false;
+
+/// Rebuilds the colour an effect's colour lane addresses through [edit],
+/// handed its keys and its rest (the spec's default); null when the lane
+/// is not one, the effect is gone, or [edit] declines the change — the
+/// colour's twin of [_editParameter].
+List<LayerEffect>? _editColor(
+  List<LayerEffect> effects,
+  String laneId,
+  PropertyTrack<int>? Function(PropertyTrack<int> keys, int rest) edit,
 ) => _editLane(effects, laneId, (effect, lane) {
-  if (!effect.inksOn(lane)) {
+  final keys = effect.colors[lane];
+  final spec = effect.kind.parameterSpec(lane);
+  if (keys == null || spec == null) {
     return null;
   }
-  final next = edit(effect.ink);
-  return next == null ? null : effect.copyWith(ink: next);
+  final next = edit(keys, spec.defaultValue.toInt());
+  return next == null ? null : effect.withColor(lane, next);
 });
 
 /// Whether the key at [frameIndex] of effect lane [laneId] may give its
-/// time up (I-89 ④): where the effect stands its picture, as a
-/// transform's may ([transformLaneKeyCanRove]); a parameter's keys walk no
-/// path, so none of theirs.
+/// time up (I-89 ④): where the effect stands its picture, and a point,
+/// as a transform's may ([transformLaneKeyCanRove]); a parameter's keys
+/// walk no path, so none of theirs.
 bool effectLaneKeyCanRove(
   List<LayerEffect> effects,
   String laneId,
@@ -460,10 +543,10 @@ bool effectLaneKeyCanRove(
     _readLane(
       effects,
       laneId,
-      (effect, lane) => switch (effect.standLaneOf(lane)) {
-        final property? => transformLaneKeyCanRove(
-          effect.stand,
-          property,
+      (effect, lane) => switch (effect.transformLaneAt(lane)) {
+        (:final keys, lane: final kept) => transformLaneKeyCanRove(
+          keys,
+          transformPropertyOfLaneId(kept)!,
           frameIndex,
         ),
         null => false,

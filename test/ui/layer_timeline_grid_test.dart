@@ -491,16 +491,16 @@ void main() {
     await tester.pumpWidget(_grid(layers: manyLayers, playbackFrameCount: 48));
 
     final addLayer = find.byKey(const ValueKey<String>('legend-layer'));
-    final firstLayerRow = find.named('timeline-layer-row-layer-1');
-    final firstFrameRow = find.named('timeline-frame-row-area-layer-1');
+    final firstLayerRow = find.named('timeline-layer-row-layer-4');
+    final firstFrameRow = find.named('timeline-frame-row-area-layer-4');
 
     final initialAddLayerTop = tester.getTopLeft(addLayer).dy;
     final initialFrameHeaderTop = timelineHeaderGlobalRect(tester, 0).top;
     final initialLayerRowTop = tester.getTopLeft(firstLayerRow).dy;
     final initialFrameRowTop = tester.getTopLeft(firstFrameRow).dy;
 
-    // Layer-1's row must stay inside the virtualization window's overscan
-    // for the position assertions below, so scroll less than two rows.
+    // Layer-4's row stays on screen through the scroll below: the grid
+    // builds no row past its viewport (2026-10-28), so layer-1's is gone.
     await _dragFrameGridVertically(tester, -100);
 
     expect(
@@ -553,7 +553,7 @@ void main() {
       reason: '⛔fixture premise: the frames scroll too, so they are a '
           'scroller running across the rows',
     );
-    final firstFrameRow = find.named('timeline-frame-row-area-layer-1');
+    final firstFrameRow = find.named('timeline-frame-row-area-layer-4');
     final before = tester.getTopLeft(firstFrameRow).dy;
 
     await _dragFrameGridVertically(tester, -100);

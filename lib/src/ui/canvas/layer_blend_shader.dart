@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import '../../models/layer_blend_mode.dart';
 import '../../services/brush_stroke_blend.dart';
+import 'loaded_fragment_program.dart';
 
 /// 🚨★★★ONE BLEND, TWO PROCESSORS (brush-fidelity-Q4, 유저 2026-10-17
 /// 「레이어까지 같이」).
@@ -17,34 +18,25 @@ import '../../services/brush_stroke_blend.dart';
 ///
 /// ⛔NOT a fallback pair, as the colour key's two are not: each runs where
 /// its pixels are, and neither is the other's stand-in.
-///
-/// ⚠️The second program loader after `ColourKeyShader`, the same few lines.
-/// Not merged, by the rule of three — a third shader merges them.
 class LayerBlendShader {
   LayerBlendShader._();
 
-  static const String assetKey = 'shaders/layer_blend.frag';
+  static final _program = LoadedFragmentProgram(
+    'shaders/layer_blend.frag',
+    whyAwaited:
+        'A layer in an advanced blend cannot be drawn without it — drawn in '
+        'some other blend it would be the screen lying about the file — so '
+        'the load is a prerequisite of offering those blends at all.',
+  );
 
-  static ui.FragmentProgram? _program;
+  /// Whether [shaderFor] can be called ([LoadedFragmentProgram.isReady]).
+  static bool get isReady => _program.isReady;
 
-  /// Whether [shaderFor] can be called. False until [load] completes.
-  ///
-  /// ⚠️`FragmentProgram.fromAsset` is async and a paint is not, so the
-  /// program has to be in hand before the first frame: a composite that
-  /// reached such a layer with no program would have to draw it in some
-  /// other blend, and that is the screen lying about the file.
-  static bool get isReady => _program != null;
-
-  /// Loads the program. Idempotent; safe to call from app start and from a
-  /// test's setUp.
-  static Future<void> load() async {
-    _program ??= await ui.FragmentProgram.fromAsset(assetKey);
-  }
+  /// Loads the program ([LoadedFragmentProgram.load]).
+  static Future<void> load() => _program.load();
 
   /// Releases the loaded program so a test can prove the unloaded path.
-  static void debugUnload() {
-    _program = null;
-  }
+  static void debugUnload() => _program.debugUnload();
 
   /// A shader that composes [source] over [backdrop] through [mode] for
   /// every pixel of a [width] x [height] draw — both pictures on that grid,
@@ -67,15 +59,7 @@ class LayerBlendShader {
             'it in the shader\'s default, the backdrop',
       );
     }
-    final program = _program;
-    if (program == null) {
-      throw StateError(
-        'LayerBlendShader.load() has not completed. A layer in an advanced '
-        'blend cannot be drawn without it, so the load is a prerequisite '
-        'of offering those blends at all.',
-      );
-    }
-    final shader = program.fragmentShader();
+    final shader = _program.shader();
     // ⛔Indices are declaration order, floats only — a sampler takes no float
     // slot, and getting this wrong does not throw.
     shader.setFloat(0, width);

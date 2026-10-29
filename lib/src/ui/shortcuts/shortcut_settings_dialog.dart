@@ -6,11 +6,13 @@ import 'package:flutter/services.dart';
 
 import '../../models/brush_group.dart';
 import '../../services/input/modifier_keys.dart';
+import '../../services/persistence/file_type_groups.dart' show FileTypeGroups;
 import '../brush/brush_press.dart';
 import '../brush/brush_tool_state.dart';
 import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/app_prompt_dialog.dart';
 import '../dialogs/dialog_verb.dart';
+import '../dialogs/settings_file_export.dart';
 import '../input/control_press_claim.dart'
     show ControlPressClaim, silentPress;
 import '../timeline/layer_label_controls.dart' show layerLaneToggleSlotWidth;
@@ -22,6 +24,7 @@ import 'editor_shortcut_bindings.dart';
 import 'editor_shortcut_scope.dart';
 import 'shortcut_activator_codec.dart';
 import 'shortcut_presets.dart';
+import 'shortcut_settings_store.dart' show shortcutPresetSettingsFile;
 import 'shortcut_shelf.dart';
 import 'touch_shortcuts.dart';
 import '../text/app_strings.dart';
@@ -406,7 +409,8 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
   }
 
   /// [preset]'s row: picked, it comes into use. Every row has its
-  /// duplicate, and the user's own their rename and delete beside it.
+  /// duplicate and its export, and the user's own their rename and delete
+  /// beside them.
   PanelFlyoutItem _presetRow(BuildContext context, ShortcutLayout preset) {
     final strings = AppText.strings;
     final key = 'shortcut-preset-${preset.id}';
@@ -435,6 +439,15 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
               title: strings.shortcutPresetDuplicate,
             ),
           ),
+        ),
+        // I-142-Q1 · Q4 (유저 2026-10-29): 「주인 자리에서 내보내고」 ·
+        // 「프리셋 하나」 — every row's, a shipped one's too: what comes back
+        // in through 「파일 열기」 is a new preset of the user's either way.
+        PanelFlyoutRowAction(
+          keyValue: '$key-export',
+          icon: Icons.upload_file_outlined,
+          tooltip: strings.shortcutPresetExport,
+          onPressed: () => unawaited(_exportPreset(context, preset)),
         ),
         if (preset is UserShortcutPreset)
           PanelFlyoutRowAction(
@@ -469,6 +482,23 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     ),
     commit: (name) => widget.bindings.duplicatePreset(preset, name),
   );
+
+  /// [preset] written as a shortcut file of its own (I-142), under the name
+  /// its row shows.
+  Future<void> _exportPreset(BuildContext context, ShortcutLayout preset) {
+    final bindings = widget.bindings;
+    final name = _presetName(preset);
+    return handSettingsFileToUser(
+      context,
+      name: name,
+      type: FileTypeGroups.anicelShortcut,
+      contents: () => shortcutPresetSettingsFile(
+        preset,
+        name: name,
+        keys: bindings.keysOf(preset),
+      ),
+    );
+  }
 
   Future<void> _renamePreset(
     BuildContext context,

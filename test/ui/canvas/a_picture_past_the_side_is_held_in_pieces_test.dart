@@ -11,6 +11,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/services/camera_frame_corners.dart';
@@ -342,6 +343,7 @@ void main() {
       canvas,
       pieces: pieces,
       extent: extent,
+      paper: canvasSize.canvasRect,
       placement: pose == null ? null : placedBy(pose, canvasSize),
       opacity: 0.9,
       blendMode: blendMode,
@@ -362,7 +364,7 @@ void main() {
       center: CanvasPoint(x: 194, y: -24),
       zoom: 4,
     );
-    final blur = ResolvedLayerEffect(kind: EffectKind.blur, values: [3, 3]);
+    final blur = ResolvedLayerEffect(kind: EffectKind.blur, values: [3, 0]);
 
     for (final (name, draw, posed) in [
       ('laid down texel for texel', drawing(), false),
@@ -460,7 +462,7 @@ void main() {
       rotationDegrees: 17,
     );
     final blurred = [
-      ResolvedLayerEffect(kind: EffectKind.blur, values: [3, 3]),
+      ResolvedLayerEffect(kind: EffectKind.blur, values: [3, 0]),
     ];
 
     CompositeNode<CutFrameCompositeLayer> row(
@@ -507,7 +509,7 @@ void main() {
                 opacity: 0.9,
                 blendMode: LayerBlendMode.multiply,
                 effects: [
-                  ResolvedLayerEffect(kind: EffectKind.blur, values: [2, 2]),
+                  ResolvedLayerEffect(kind: EffectKind.blur, values: [2, 0]),
                 ],
               ),
             ];
@@ -570,6 +572,7 @@ void main() {
             Future<Uint8List> render() async {
               final rows = _Deferred(laidTexelForTexel: !through.turns);
               final frame = await service.renderThroughCamera(
+                canvasSize: canvasSize,
                 // As the plan hands them over: a row in multiply composed
                 // over what lies below it.
                 nodes: composeOverTheirBackdrops(

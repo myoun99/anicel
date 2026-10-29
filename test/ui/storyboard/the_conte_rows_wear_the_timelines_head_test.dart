@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_frame_grid_settings.dart';
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -421,7 +422,8 @@ void main() {
 
       expect(headOf(tester, 'conte+1').layer.id, const LayerId('a-over'));
       expect(headOf(tester, 'conte-1').layer.id, const LayerId('a-under'));
-      // An attach row says which side it rides, and wears its base's fx.
+      // An attach row says which side it rides — and, riding the conte, wears
+      // its own fx (I-99).
       expect(
         find.descendant(
           of: label('conte+1'),
@@ -429,8 +431,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(named('storyboard-layer-fx-a-over'), findsNothing);
-      for (final cell in const ['visibility', 'opacity', 'blend']) {
+      for (final cell in const ['visibility', 'opacity', 'blend', 'fx']) {
         expect(
           named('storyboard-layer-$cell-a-over'),
           findsOneWidget,
@@ -491,7 +492,7 @@ void main() {
     });
 
     testWidgets('🚨a sweep down a column reaches each seat\'s OWN row: the '
-        'eye paints all three, and the fx and the sheet switch the '
+        'eye and the fx paint all three, and the sheet switches the '
         'conte\'s alone', (tester) async {
       final session = await pumpPanel(tester, film(withRiders: true));
       const se = 't1-s1';
@@ -521,8 +522,8 @@ void main() {
       await sweepDown('fx');
       expect(
         [for (final id in group) row(session, id).transformEnabled],
-        [true, false, true],
-        reason: 'the fx: a row that rides wears its base\'s, and has none',
+        [false, false, false],
+        reason: 'the fx: a row riding the conte wears its own (I-99)',
       );
 
       final sheetWas = [for (final id in group) row(session, id).onTimesheet];
@@ -666,6 +667,35 @@ void main() {
       expect(shownMark('t1'), conteMark);
       expect(shownMark('t1-conte+1'), LayerMark.none);
       expect(shownMark('t1-conte-1'), LayerMark.none);
+    });
+
+    // 🗣️F-489 — the conte's strips are the timeline's rows, so their
+    // unnamed heads wear the mark picked in Preferences as well.
+    testWidgets('each seat\'s strip wears the unnamed mark picked', (
+      tester,
+    ) async {
+      addTearDown(
+        () => AppFrameGridSettings.settings.value =
+            const AppFrameGridSettings(),
+      );
+      await pumpPanel(tester, film(withRiders: true));
+      InbetweenMark shownMark(String row) => (tester
+              .widget<CustomPaint>(key('storyboard-conte-cells-$row'))
+              .painter!
+          as TimelineRowCellsPainter)
+          .unnamedMark;
+      const seats = ['t1', 't1-conte+1', 't1-conte-1'];
+      expect([for (final row in seats) shownMark(row)], [
+        for (final _ in seats) InbetweenMark.two,
+      ]);
+
+      AppFrameGridSettings.settings.value = const AppFrameGridSettings(
+        unnamedMark: InbetweenMark.one,
+      );
+      await tester.pump();
+      expect([for (final row in seats) shownMark(row)], [
+        for (final _ in seats) InbetweenMark.one,
+      ]);
     });
   });
 }

@@ -315,7 +315,12 @@ final class MoveDrag extends SelectionDrag {
     required super.pointer,
     required this.txAtStart,
     required this.tyAtStart,
+    required this.byTouch,
   });
+
+  /// Whether a finger drives the drag — a finger laid beside it is then not
+  /// its Shift (`CanvasTouchContacts.aMoveTakesAModifierFinger`).
+  final bool byTouch;
 
   /// The drag so far, in screen pixels. The layer rounds it into whole
   /// canvas pixels before anything is shown or landed (TP5).

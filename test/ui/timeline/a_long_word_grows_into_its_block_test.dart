@@ -338,7 +338,7 @@ void main() {
     final width = laidOutGlyph(label.text, painter.labelStyle).width;
     expect(width, greaterThan(smallCell), reason: 'fixture');
     final spy = _Spy();
-    painter.paint(spy, const Size(smallCell * 40, crossExtent));
+    painter.paintWords(spy, const Size(smallCell * 40, crossExtent));
     const blockEnd = smallCell * 6;
     expect(
       spy.texts.single.dx + width,

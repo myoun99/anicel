@@ -19,6 +19,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_frame_grid_settings.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_words_in.dart';
@@ -30,6 +31,8 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
@@ -92,12 +95,18 @@ void main() {
     },
   );
 
+  /// The named block's name — one function for every row [rowPainter]
+  /// makes, so two of them differ only where a test says.
+  String? namedAtFour(Layer _, int frame) => frame == 4 ? 'A1' : null;
+
   TimelineRowCellsPainter rowPainter(
     Axis axis, {
     double cell = 24,
     double crossExtent = rowExtent,
     Layer? row,
+    InbetweenMark unnamedMark = defaultUnnamedDrawingMark,
   }) => TimelineRowCellsPainter(
+        unnamedMark: unnamedMark,
         layer: row ?? layer,
         geometry: testFrameGeometry(
           frameCellExtent: cell,
@@ -105,7 +114,7 @@ void main() {
         ),
         crossAxisExtent: crossExtent,
         exposureStateForLayer: stateFor,
-        frameNameForLayer: (_, frame) => frame == 4 ? 'A1' : null,
+        frameNameForLayer: namedAtFour,
         colorScheme: const ColorScheme.dark(),
         baseTextStyle: const TextStyle(fontSize: font),
         axis: axis,
@@ -154,9 +163,12 @@ void main() {
   }
 
   for (final dotMark in InbetweenMark.values) {
+  // The head wears the other mark from its dot, so neither can pass for
+  // the other — the head's is the one picked for it (F-489).
+  final headMark = InbetweenMark.values.firstWhere((mark) => mark != dotMark);
   test('a repeat GHOST wears the same marks — its unnamed head and its '
       'dot, text-only like every ghost (UI-R10 #11) — whichever mark the '
-      'dot wears ($dotMark)', () {
+      'dot wears, and the head the one picked for it ($dotMark)', () {
     final repeated = rederiveRunBehaviors(
       Layer(
         id: const LayerId('ghosts'),
@@ -189,12 +201,13 @@ void main() {
       },
       colorScheme: const ColorScheme.dark(),
       baseTextStyle: const TextStyle(fontSize: font),
+      unnamedMark: headMark,
     );
 
     final head = painter.cellModelAt(2);
     final dot = painter.cellModelAt(3);
     expect(head.ghost && dot.ghost, isTrue, reason: '⛔전제: ghost cells');
-    expect(head.mark, unnamedDrawingMark);
+    expect(head.mark, headMark);
     expect(dot.mark, dotMark);
     expect(head.glyph, isEmpty);
     expect(dot.glyph, isEmpty);
@@ -356,8 +369,10 @@ void main() {
       expect(disc.line, isNull, reason: 'mark 2 is filled');
       expect(
         head.line,
-        closeTo(inbetweenMarkRingWidth, 1e-9),
-        reason: 'the unnamed head wears mark 1 (F-469)',
+        isNull,
+        reason:
+            'the unnamed head wears mark 2 until another is picked (F-489; '
+            '↩️mark 1 from F-469)',
       );
       expect(ring.center, disc.center);
       expect(ring.size, _sizeNear(disc.size));
@@ -509,8 +524,11 @@ void main() {
   FlipHudPainter flipWindow(
     String label, {
     LayerKind kind = LayerKind.animation,
+    InbetweenMark unnamedMark = defaultUnnamedDrawingMark,
+    FlipHudSnapshot? snapshot,
   }) => FlipHudPainter(
-    snapshot: FlipHudSnapshot(
+    unnamedMark: unnamedMark,
+    snapshot: snapshot ?? FlipHudSnapshot(
       rows: [
         FlipHudRow(
           name: 'A',
@@ -737,8 +755,10 @@ void main() {
     expect(dot.size, _sizeNear(head.size));
     expect(
       head.line,
-      closeTo(inbetweenMarkRingWidth, 1e-9),
-      reason: 'the unnamed head wears mark 1 (F-469)',
+      isNull,
+      reason:
+          'the unnamed head wears mark 2 until another is picked (F-489; '
+          '↩️mark 1 from F-469)',
     );
     expect(
       dot.line,
@@ -753,6 +773,115 @@ void main() {
     );
   });
   }
+
+  // 🗣️F-489 (유저 2026-10-27): 「이름 없는 블록의 기본 마크1,2인지
+  // 설정할수있게 … 기본값은 마크2로 둠」 — the unnamed head wears the mark
+  // Preferences ▸ Display picks on every surface that draws it, and a pick
+  // anew draws it again where it stands.
+  group('the unnamed head wears the mark picked for it (F-489)', () {
+    tearDown(
+      () => AppFrameGridSettings.settings.value = const AppFrameGridSettings(),
+    );
+    final ringed = closeTo(inbetweenMarkRingWidth, 1e-9);
+
+    for (final mark in InbetweenMark.values) {
+      final line = mark == InbetweenMark.one ? ringed : isNull;
+      test('the row, the flip window and the sheet draw $mark', () {
+        final row = _Laid();
+        rowPainter(
+          Axis.horizontal,
+          unnamedMark: mark,
+        ).paint(row, rowSize(Axis.horizontal));
+        expect(row.marks.first.line, line, reason: 'the row\'s head');
+
+        final flip = _Laid();
+        flipWindow(
+          '',
+          unnamedMark: mark,
+        ).paint(flip, FlipHudMetrics.sizeFor(FlipHudAxis.frame));
+        expect(flip.marks.single.line, line, reason: 'the flip window');
+
+        final sheet = TimesheetDocument.fromCut(
+          cut: Cut(
+            id: const CutId('cut-1'),
+            name: '1',
+            duration: 12,
+            canvasSize: const CanvasSize(width: 1920, height: 1080),
+            // The 動画 row prints in the CELL block, the other in ACTION.
+            layers: [
+              layer,
+              layer.copyWith(
+                id: const LayerId('douga'),
+                mark: const LayerMark(process: LayerProcess.inbetween),
+              ),
+            ],
+          ),
+          projectName: 'P',
+          fps: 24,
+          unnamedMark: mark,
+        );
+        TimesheetColumn block(TimesheetColumnKind kind) =>
+            sheet.columns.firstWhere((column) => column.kind == kind);
+        for (final kind in [
+          TimesheetColumnKind.action,
+          TimesheetColumnKind.cel,
+        ]) {
+          expect(block(kind).cells[0].mark, mark, reason: 'the sheet, $kind');
+        }
+      });
+    }
+
+    test('a pick anew repaints the row and the flip window', () {
+      expect(
+        rowPainter(Axis.horizontal).shouldRepaint(rowPainter(Axis.horizontal)),
+        isFalse,
+        reason: '⛔premise: nothing else moved between the two',
+      );
+      expect(
+        rowPainter(
+          Axis.horizontal,
+          unnamedMark: InbetweenMark.one,
+        ).shouldRepaint(rowPainter(Axis.horizontal)),
+        isTrue,
+      );
+      final snapshot = flipWindow('').snapshot;
+      expect(
+        flipWindow(
+          '',
+          snapshot: snapshot,
+        ).shouldRepaint(flipWindow('', snapshot: snapshot)),
+        isFalse,
+        reason: '⛔premise: nothing else moved between the two',
+      );
+      expect(
+        flipWindow(
+          '',
+          snapshot: snapshot,
+          unnamedMark: InbetweenMark.one,
+        ).shouldRepaint(flipWindow('', snapshot: snapshot)),
+        isTrue,
+      );
+    });
+
+    testWidgets('the folded row\'s strip hears the pick where it stands', (
+      tester,
+    ) async {
+      final strip = find.byKey(const ValueKey<String>('collapsed-strip'));
+      final before = await foldedStrip(tester, '');
+      expect(before.marks.single.line, isNull, reason: 'mark 2 to begin');
+      final painted = tester.widget<CustomPaint>(strip).painter!;
+
+      AppFrameGridSettings.settings.value = const AppFrameGridSettings(
+        unnamedMark: InbetweenMark.one,
+      );
+      await tester.pump();
+      final painter = tester.widget<CustomPaint>(strip).painter!;
+      expect(painter.shouldRepaint(painted), isTrue);
+      final after = _Laid()..size = tester.getSize(strip);
+      painter.paint(after, after.size!);
+      expect(after.marks.single.line, ringed);
+    });
+  });
 }
 
 /// What a painter lays down — its marks, and the boxes of its paragraphs —

@@ -295,14 +295,19 @@ class _TimesheetCellsPass {
       }
       final columnLeft = sheet.left + _painter.layout.columnLeftInHalf(column);
       final columnWidth = _painter.layout.columnWidthFor(kind);
-      _painter._text(
-        canvas,
+      final (:glyph, :fit) = columnTitleSetOnto(
         _painter.document.columns[column].label,
-        Offset(columnLeft + columnWidth / 2, sheet.lettersTop + 2),
-        fontSize: 9,
-        color: TimesheetDocumentPainter._ink,
-        centeredAtX: true,
-        maxWidth: columnWidth - 2,
+        TimesheetDocumentPainter.wordsStyle(_painter.face, fontSize: 9),
+        columnWidth - 2,
+      );
+      paintScaledText(
+        canvas,
+        glyph,
+        Offset(
+          columnLeft + columnWidth / 2 - glyph.width * fit.x / 2,
+          sheet.lettersTop + 2,
+        ),
+        fit,
       );
     }
   }

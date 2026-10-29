@@ -8,6 +8,7 @@ import 'package:anicel/src/services/persistence/provider_documents.dart';
 import 'package:anicel/src/services/persistence/recent_projects.dart';
 import 'package:anicel/src/services/persistence/recent_projects_store.dart';
 import 'package:anicel/src/services/persistence/save_failure.dart';
+import 'package:anicel/src/services/persistence/save_stretch.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
@@ -15,6 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/opened_session.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/wait_window.dart' show expectOneBar;
 
 /// PICK-7: a project in a document with no filesystem path — Google Drive
 /// on Android — opens through a WORKING COPY in this run's room, saves
@@ -247,6 +249,42 @@ void main() {
       );
       expect(session.projectFile.hasUnsavedChanges, isFalse);
       expect(progress.last, 1);
+    });
+
+    test('🗣️F-494: the hand-back names itself once the write is done — the '
+        'window says the file is going back to its document', () async {
+      final uri = await projectDocument('Back.anicel');
+      final source = await FolderPicker.materializeOpenedFile(
+        uri,
+        within: null,
+        isCancelled: () => false,
+      );
+      final session = await openedSession(source.path);
+      addTearDown(session.dispose);
+      session.cutVerbs.createCut();
+      final told = <Object>[];
+
+      await session.projectDoor.saveProjectToFile(
+        source.path,
+        asked: SaveAsked.byAPerson,
+        onProgress: told.add,
+        onStretch: told.add,
+      );
+
+      final stretches = told.whereType<SaveStretch>();
+      expect(stretches, isNotEmpty);
+      expect(stretches.last, SaveStretch.handingBack);
+      expect(
+        stretches.where((stretch) => stretch == SaveStretch.handingBack),
+        hasLength(1),
+      );
+      final handingBack = told.indexOf(SaveStretch.handingBack);
+      expect(
+        told.take(handingBack).whereType<double>(),
+        everyElement(lessThanOrEqualTo(0.5)),
+        reason: 'the write is the first half of the bar: $told',
+      );
+      expectOneBar(told.whereType<double>().toList(), [0.5, 1]);
     });
 
     test('🚨a hand-back the provider refuses leaves the session UNSAVED, '

@@ -45,21 +45,22 @@ class RowControlSurface extends SingleChildRenderObjectWidget {
   final double extent;
 
   /// What [alongBox] would hold its child to.
-  BoxConstraints get _along {
+  @protected
+  BoxConstraints get along {
     final box = alongBox(axis, extent);
     return BoxConstraints.tightFor(width: box.width, height: box.height);
   }
 
   @override
   RenderRowControlSurface createRenderObject(BuildContext context) =>
-      RenderRowControlSurface(_along);
+      RenderRowControlSurface(along);
 
   @override
   void updateRenderObject(
     BuildContext context,
     RenderRowControlSurface renderObject,
   ) {
-    renderObject.additionalConstraints = _along;
+    renderObject.additionalConstraints = along;
   }
 
   /// Whether the press at [globalPosition] landed on a control INSIDE the

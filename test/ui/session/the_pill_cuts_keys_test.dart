@@ -112,27 +112,27 @@ void main() {
     final blur = now().effects.single.id;
     s.laneVerbs.setLaneValueAt(
       before.id,
-      effectLaneId(blur, 'blurX'),
+      effectLaneId(blur, 'blurriness'),
       4,
       '1',
       frameIsGlobal: false,
       description: 'Type',
       scaleLinked: false,
     );
-    double? blurX(int frame) => now()
+    double? blurriness(int frame) => now()
         .effects
         .single
-        .parameters['blurX']!
+        .parameters['blurriness']!
         .track
         .keys[frame]
         ?.value;
-    expect(blurX(4), 1, reason: '⛔전제');
+    expect(blurriness(4), 1, reason: '⛔전제');
     select(effectGroupLaneId(blur), 3, 6);
 
     pill.cutRun();
 
     expect(now().effects.single.id, blur, reason: 'the effect stays');
-    expect(blurX(4), isNull, reason: 'its key went');
+    expect(blurriness(4), isNull, reason: 'its key went');
     expect(s.keyClipboard.holdsKeys, isTrue);
   });
 

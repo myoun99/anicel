@@ -12,6 +12,9 @@ abstract interface class LandingPreview {
   Rect get drawnWorldRect;
 
   /// Draws the preview in CANVAS space, one canvas pixel to one of its own:
-  /// the pixels the landing will write, as they will stand.
-  void paintInto(Canvas canvas);
+  /// the pixels the landing will write, as they will stand. [pixelRatio] is
+  /// how many device pixels a unit of [canvas]'s space lands on past its
+  /// transform — the screen's ratio on screen, 1 into a raster — the grid
+  /// its edges are cut on (`cutOnThePixelGrid`).
+  void paintInto(Canvas canvas, {required double pixelRatio});
 }

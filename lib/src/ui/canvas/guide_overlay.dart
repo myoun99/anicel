@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui show ImageByteFormat;
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 
 import '../../models/brush_stamp_image.dart';
@@ -10,9 +11,12 @@ import '../../models/canvas_viewport.dart';
 import '../../models/cut_piece.dart';
 import '../../models/drawing_guide.dart';
 import '../../services/guide_geometry.dart';
+import '../../services/input/modifier_keys.dart' show ModifierKeys;
+import '../../services/transform_box_law.dart';
 import '../../models/app_input_settings.dart';
 import '../export/offscreen_raster.dart' show rasterizeOffscreen;
 import '../repaint_props.dart';
+import 'canvas_touch_contacts.dart';
 import 'canvas_viewport_offset.dart';
 
 /// How far from a handle, in screen pixels, a press still grabs it.
@@ -874,8 +878,39 @@ class _GuideEditLayerState extends State<GuideEditLayer> {
   int? _pointer;
   CutGuides? _live;
 
+  /// Where the drag in hand went down, on the canvas, and whether a finger
+  /// drives it.
+  CanvasPoint _pressAt = CanvasPoint(x: 0, y: 0);
+  bool _byTouch = false;
+
   CanvasPoint _canvasPoint(Offset local) =>
       widget.viewport.viewportOffsetToCanvas(local);
+
+  /// Where the hand at [local] puts [handle]: under it — or, while Shift is
+  /// held, only as far from where the handle stood as the hand went the
+  /// one way it went further (I-136, [TransformBoxLaw.oneWay]): the key, or
+  /// a finger beside a pen's or a mouse's drag
+  /// ([CanvasTouchContacts.aFingerHoldsAMovesShift]). An angle's handle
+  /// turns a line rather than moving a point, and takes none.
+  CanvasPoint _handleTo(GuideHandle handle, Offset local) {
+    final pointer = _canvasPoint(local);
+    final movesAPoint =
+        handle.kind == GuideHandleKind.origin ||
+        handle.kind == GuideHandleKind.vanishingPoint;
+    final held =
+        ModifierKeys.isShiftPressed ||
+        CanvasTouchContacts.aFingerHoldsAMovesShift(byTouch: _byTouch);
+    if (!movesAPoint || !held) {
+      return pointer;
+    }
+    final moved = TransformBoxLaw.oneWay(
+      CanvasPoint(x: pointer.x - _pressAt.x, y: pointer.y - _pressAt.y),
+    );
+    return CanvasPoint(
+      x: handle.position.x + moved.x,
+      y: handle.position.y + moved.y,
+    );
+  }
 
   void _end() {
     final live = _live;
@@ -927,6 +962,8 @@ class _GuideEditLayerState extends State<GuideEditLayer> {
           _dragging = handle;
           _pointer = event.pointer;
           _live = widget.guides;
+          _pressAt = point;
+          _byTouch = event.kind == PointerDeviceKind.touch;
         });
         widget.onGuideSelected?.call(handle.guideId);
       },
@@ -936,7 +973,7 @@ class _GuideEditLayerState extends State<GuideEditLayer> {
         final next = dragGuideHandle(
           _live ?? widget.guides,
           handle,
-          _canvasPoint(event.localPosition),
+          _handleTo(handle, event.localPosition),
         );
         _live = next;
         widget.onGuidesChanged(next);

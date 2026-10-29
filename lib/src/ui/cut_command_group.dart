@@ -3,7 +3,7 @@ import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 
 import '../models/cut.dart';
-import '../models/layer_mark.dart';
+import '../models/cut_metadata.dart';
 import 'cut/cut_note_dialog.dart';
 import 'dialogs/cut_settings_window.dart';
 import 'editor_command_actions.dart';
@@ -63,11 +63,14 @@ Future<void> _editActiveCutNote(
 Future<void> _editCutSettings(
   BuildContext context,
   EditorSessionManager session,
-) => askAboutThenCommit<Map<String, String>, Map<LayerMark, String>>(
+) => askAboutThenCommit<CutMetadata, CutSettingsSave>(
   context,
-  session.cutVerbs.addressedCutStaff,
-  dialog: (staff) => CutSettingsWindow(cutStaff: staff),
-  commit: session.cutVerbs.setAddressedCutStaffNames,
+  session.cutVerbs.addressedCutMetadata,
+  dialog: (cut) => CutSettingsWindow(cut: cut),
+  commit: (save) => session.cutVerbs.setAddressedCutStaff(
+    save.names,
+    openFolds: save.openFolds,
+  ),
 );
 
 Future<void> _resizeActiveCutCanvas(

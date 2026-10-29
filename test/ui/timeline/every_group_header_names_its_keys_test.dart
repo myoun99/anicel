@@ -39,18 +39,38 @@ void main() {
           for (final spec in kind.parameters)
             spec.id: EffectParameter(track: namedAtThree()),
         },
+        // F-477 · I-132-Q10: and the colours, keyed as colours are.
+        colors: {
+          for (final spec in kind.parameters)
+            spec.id: PropertyTrack<int>()
+                .withKey(3, 0xFF000000)
+                .withKeyName(3, 'A'),
+        },
         // I-65: where a cel number stands is among its members too.
         stand: TransformTrack.empty().copyWith(
           position: placeNamedAtThree(),
           scale: placeNamedAtThree(),
         ),
-        // F-477: and the colour it is written in.
-        ink: PropertyTrack<int>().withKey(3, 0xFF000000).withKeyName(3, 'A'),
+        // I-132-Q12 b: and a point, kept as a Position is.
+        points: {
+          for (final spec in kind.parameters)
+            spec.id: TransformTrack.empty().copyWith(
+              position: placeNamedAtThree(),
+            ),
+        },
       );
       final lanes = effectPropertyLanes([effect], isExpanded: (_) => true);
       expect(lanes.first.isGroupHeader, isTrue, reason: '⛔전제');
       for (final lane in lanes) {
-        expect(lane.keyNames, {3: 'A'}, reason: lane.laneId);
+        // 🗣️I-132-Q16 a: a row's lane keeps no keys — none to name.
+        final keyless = effectLayerParameters.any(
+          (id) => lane.laneId == effectLaneId(effect.id, id),
+        );
+        expect(
+          lane.keyNames,
+          keyless ? isEmpty : {3: 'A'},
+          reason: lane.laneId,
+        );
       }
     });
   }

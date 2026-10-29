@@ -24,20 +24,29 @@ import 'dart:ui' as ui;
 /// picture, and a tile drawn at 100% — into a frame's picture, into a
 /// display buffer — never samples it. A picture gains one the first time a
 /// screen draws it reduced, and is that picture from then on.
-ui.Image chainedPictureOf(ui.Image image) {
-  if (carriesChain(image)) {
+///
+/// [source] is the picture's part of [image] where it shares one — a
+/// tile's slot of a page; null is the whole of [image].
+ui.Image chainedPictureOf(ui.Image image, {ui.Rect? source}) {
+  if (source == null && carriesChain(image)) {
     return image;
   }
+  final from =
+      source ??
+      ui.Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
   final recorder = ui.PictureRecorder();
   // 1:1 — the same bytes; what the render adds is the engine's chain.
-  ui.Canvas(recorder).drawImage(
+  ui.Canvas(recorder).drawImageRect(
     image,
-    ui.Offset.zero,
+    from,
+    ui.Offset.zero & from.size,
     ui.Paint()..filterQuality = ui.FilterQuality.none,
   );
+  final width = from.width.round();
+  final height = from.height.round();
   final picture = recorder.endRecording();
   try {
-    final chained = picture.toImageSync(image.width, image.height);
+    final chained = picture.toImageSync(width, height);
     _chained[chained] = true;
     return chained;
   } finally {

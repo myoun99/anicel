@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../text/text_measure.dart';
 import '../theme/app_theme.dart';
-import '../widgets/inline_numeric_field.dart';
+import '../widgets/inline_edit_field.dart';
 import 'color_hex.dart';
 import '../input/control_press_claim.dart';
 
@@ -59,7 +59,9 @@ class ColorStatusBar extends StatefulWidget {
   static const double _swatchGap = 6;
   static const double _channelGap = 4;
 
-  static const TextStyle _readout = TextStyle(
+  /// The face a colour's numbers are read in — here, and under a palette
+  /// card's place (I-131).
+  static const TextStyle readout = TextStyle(
     fontSize: 10,
     // The whole point of the fixed cells: a 3 and an 8 must be the same
     // width or the letters shuffle as the drag moves.
@@ -77,7 +79,7 @@ class ColorStatusBar extends StatefulWidget {
   );
 
   static TextMeasure _measureIn(BuildContext context) =>
-      TextMeasure(context, DefaultTextStyle.of(context).style.merge(_readout));
+      TextMeasure(context, DefaultTextStyle.of(context).style.merge(readout));
 
   /// The cells' widths: the width they were drawn at, or what their widest
   /// value measures in the face and at the size the bar is shown in — the
@@ -103,7 +105,7 @@ enum _Editing { none, hex, r, g, b }
 
 class _ColorStatusBarState extends State<ColorStatusBar> {
   _Editing _editing = _Editing.none;
-  static const TextStyle _readout = ColorStatusBar._readout;
+  static const TextStyle _readout = ColorStatusBar.readout;
   void _commitHex(String text) {
     setState(() => _editing = _Editing.none);
     final parsed = parseColorHex(text);
@@ -138,7 +140,7 @@ class _ColorStatusBarState extends State<ColorStatusBar> {
           // 255 so the next label never shifts.
           width: width,
           child: _editing == which
-              ? InlineNumericField(
+              ? InlineEditField(
                   fieldKey: ValueKey<String>(
                     'color-status-${label.toLowerCase()}-input',
                   ),
@@ -209,7 +211,7 @@ class _ColorStatusBarState extends State<ColorStatusBar> {
           SizedBox(
             width: cells.hex,
             child: _editing == _Editing.hex
-                ? InlineNumericField(
+                ? InlineEditField(
                     fieldKey: const ValueKey<String>('color-status-hex-input'),
                     initialText: colorHexOf(widget.color).substring(1),
                     textStyle: _readout,

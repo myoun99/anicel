@@ -121,7 +121,7 @@ void main() {
         reason: 'fixture: a grown scratch is on the books',
       );
       // Read after the census, so the tile outlives it.
-      expect(BitmapTileImageCache.instance.imageFor(held), isNotNull);
+      expect(BitmapTileImageCache.instance.heldFor(held), isNotNull);
 
       // ⚠️And take this test's picture off the books before it ends. The
       // counter is one static for the whole file, so a release still in the
@@ -149,7 +149,7 @@ void main() {
 
       cache.pictureFor(tile);
       expect(
-        cache.imageFor(tile),
+        cache.heldFor(tile),
         isNotNull,
         reason: 'the picture is made inside the call',
       );

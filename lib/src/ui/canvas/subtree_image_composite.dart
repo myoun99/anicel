@@ -6,11 +6,15 @@ import '../../core/draw_space.dart';
 import '../../core/lru.dart';
 import '../../models/composite_tree.dart';
 import '../../models/layer_blend_mode.dart';
+import '../../models/layer_id.dart';
 import '../../models/rgba_image_bytes.dart';
 import 'colour_key_shader.dart';
+import 'directional_blur_shader.dart';
+import 'iris_blur_shader.dart';
 import 'display_resample.dart';
 import 'layer_blend_shader.dart';
 import '../../services/composite_effect_paint.dart';
+import '../../services/shaded_passes.dart';
 import '../../services/layer_pose_matrix.dart'
     show LayerPlacement, placementMatrix;
 import 'raster_picture.dart';
@@ -94,6 +98,8 @@ Rect _subtreeExtent<T>(
     // What clips is cut to the base: the base's rect is all of it.
     case CompositeClip(base: final of):
     case CompositeOpaque(:final of):
+    // What it reads of a row is read, not drawn: its own rect is all.
+    case CompositeReadsRows(node: final of):
       return _subtreeExtent(of, extentOf, placementOf);
     case CompositeGroup(:final children):
     case CompositeAdjustment(:final children):
@@ -167,6 +173,24 @@ class SubtreeRasterPlan {
         )
         ..scale(scale)
         ..translate(-destination.left, -destination.top);
+}
+
+/// Paints row [row] of the cut — one a chain reads, a camera lens blur's
+/// blur map (🗣️I-132-Q16 a) — onto [into], in the space the raster that
+/// reads it is recorded in, [rasterScale] of its pixels a unit there.
+/// False, and nothing painted, for a row it does not hold: none.
+typedef RowPainter =
+    bool Function(Canvas into, LayerId row, double rasterScale);
+
+/// Row [row] as [rows] paint it on [plan]'s grid — what a step rastered on
+/// that grid reads of it; null where [rows] hold no such row.
+ui.Image? _rowOnTheGrid(RowPainter rows, LayerId row, SubtreeRasterPlan plan) {
+  final recorder = ui.PictureRecorder();
+  if (!rows(plan.recordInto(recorder), row, plan.scale)) {
+    recorder.endRecording().dispose();
+    return null;
+  }
+  return rasterPicture(recorder, plan.pixelWidth, plan.pixelHeight);
 }
 
 /// What the last blit actually did, so a test can read the GEOMETRY rather
@@ -356,6 +380,10 @@ typedef BlitSubtree = void Function(Paint paint, {bool stepped});
 /// [held] is where the node's raster may already be, drawn whole, and where
 /// a whole one is kept ([HeldSubtreeRasters]). [cell] is the grid what
 /// [compose] blits with reads the raster by ([rasterCellFor]).
+/// [paper] is where the paper lies in the space [bounds] is in — the edge a
+/// blur among [steps] that repeats it reads past ([PaperEdgeEffect]): the
+/// canvas, wherever a chain is laid, a row's own or a folder's
+/// (I-132-Q14 a).
 void drawSubtreeAsImage({
   required Canvas canvas,
   required Rect bounds,
@@ -364,8 +392,10 @@ void drawSubtreeAsImage({
   required void Function(Canvas into, double rasterScale) paintSubtree,
   required void Function(BlitSubtree blit) compose,
   List<CompositeEffectStep> steps = const [],
+  required Rect paper,
   SubtreeHold? held,
   int cell = 1,
+  RowPainter? rows,
 }) {
   final plan = _planSubtreeRaster(
     bounds: bounds,
@@ -406,7 +436,9 @@ void drawSubtreeAsImage({
     plan: plan,
     compose: compose,
     steps: steps,
+    paper: paper,
     held: held,
+    rows: rows,
   );
 }
 
@@ -466,20 +498,32 @@ final class SubtreeHold {
     }
   }
 
+  /// Whether a picture of [bounds] at [rasterScale] is held to be cut from.
+  bool finds(Rect bounds, double rasterScale) {
+    final plan = _planSubtreeRaster(bounds: bounds, rasterScale: rasterScale);
+    return plan != null && covering(plan) != null;
+  }
+
   /// Whether a picture of [bounds] at [rasterScale] is held to be cut from,
   /// or one drawn of it now — with no steps on it — would be kept: where
   /// neither, a picture of what could be drawn in place is drawn for
   /// nothing.
   bool findsOrKeeps(Rect bounds, double rasterScale) {
     final plan = _planSubtreeRaster(bounds: bounds, rasterScale: rasterScale);
-    return plan != null &&
-        (covering(plan) != null ||
-            keeps &&
-                !plan.magnifies &&
-                _shelf._fits(
-                  estimatedImageBytes(plan.pixelWidth, plan.pixelHeight),
-                ));
+    return plan != null && (covering(plan) != null || _wouldKeep(plan));
   }
+
+  /// Whether no picture of [bounds] at [rasterScale] is held to be cut
+  /// from, and one drawn of it now — with no steps on it — would be kept.
+  bool keepsAnew(Rect bounds, double rasterScale) {
+    final plan = _planSubtreeRaster(bounds: bounds, rasterScale: rasterScale);
+    return plan != null && covering(plan) == null && _wouldKeep(plan);
+  }
+
+  bool _wouldKeep(SubtreeRasterPlan plan) =>
+      keeps &&
+      !plan.magnifies &&
+      _shelf._fits(estimatedImageBytes(plan.pixelWidth, plan.pixelHeight));
 }
 
 /// 🚨★A NODE THAT DREW THE SAME PICTURE DOES NOT DRAW IT AGAIN — a folder, a
@@ -528,6 +572,24 @@ final class HeldSubtreeRasters {
   /// the nodes held one by one.
   int get heldBelowBytes => _below._held.held;
 
+  /// How many rasters held have been let go of — a node's drawn anew in its
+  /// place aside: while it stands, every node a frame was drawn whole to
+  /// hold, and kept, is held still.
+  int get _lettings => _nodes.lettings + _below.lettings;
+
+  /// 🚨THE FRAME WHOSE NODES WERE LAST DRAWN WHOLE TO BE HELD ([heldAllOf]),
+  /// and how many held rasters had been let go of then: while both stand,
+  /// every node of it that could be held is ([holdsAllOf]).
+  ({Object of, int lettings})? _allOf;
+
+  /// Notes that [of]'s frame was just drawn whole to hold its nodes
+  /// ([holdOnly]).
+  void heldAllOf(Object of) => _allOf = (of: of, lettings: _lettings);
+
+  /// Whether [of]'s frame was drawn whole to hold its nodes, none held let
+  /// go of since — drawn so again, it would hold nothing more.
+  bool holdsAllOf(Object of) => _allOf == (of: of, lettings: _lettings);
+
   /// Draws [draw] — a frame drawn whole to hold its nodes — and lets go of
   /// every raster held that it neither found nor kept: those of the frame
   /// a canvas stood on before, and of what a frame held before it changed.
@@ -541,6 +603,12 @@ final class HeldSubtreeRasters {
       _drawn = null;
     }
   }
+
+  /// Counts what is held below a pen whose key [test] answers as found by
+  /// the drawing [holdOnly] draws — what it leaves as it is held, undrawn
+  /// (`BelowThePen.asHeld`).
+  void keepHeldWhere(bool Function(Object key) test) =>
+      _drawn?.addAll(_below._held.keys.where(test));
 
   /// Lets go of the least recently used rasters past each shelf's bound as
   /// it stands now — the line under it moved.
@@ -561,16 +629,19 @@ final class HeldSubtreeRasters {
 final class _HeldShelf {
   _HeldShelf(int Function() bytes, {int Function()? each})
     : _bytes = bytes,
-      _each = each ?? bytes,
-      _held = Lru(
-        limit: bytes,
-        costOf: _bytesOf,
-        letGo: (_, held) => _letGo(held),
-      );
+      _each = each ?? bytes;
 
   final int Function() _bytes;
   final int Function() _each;
-  final Lru<Object, HeldSubtreeRaster> _held;
+  late final Lru<Object, HeldSubtreeRaster> _held = Lru(
+    limit: _bytes,
+    costOf: _bytesOf,
+    letGo: (_, held) => _letGo(held),
+  );
+
+  /// How many rasters this shelf has let go of — a node's drawn anew in its
+  /// place aside ([HeldSubtreeRasters.lettings]).
+  int lettings = 0;
 
   bool _fits(int bytes) => bytes <= _each() && bytes <= _bytes();
 
@@ -589,7 +660,7 @@ final class _HeldShelf {
           : drawn.image.clone(),
     );
     if (_held.keep(key, whole) case final replaced?) {
-      _letGo(replaced);
+      _dispose(replaced);
     }
     return true;
   }
@@ -614,7 +685,12 @@ final class _HeldShelf {
       estimatedImageBytes(held.plan.pixelWidth, held.plan.pixelHeight) *
       (identical(held.image, held.raster) ? 1 : 2);
 
-  static void _letGo(HeldSubtreeRaster held) {
+  void _letGo(HeldSubtreeRaster held) {
+    lettings += 1;
+    _dispose(held);
+  }
+
+  static void _dispose(HeldSubtreeRaster held) {
     if (!identical(held.image, held.raster)) {
       held.image.dispose();
     }
@@ -636,11 +712,13 @@ void drawClipAsImage({
   required void Function(Canvas into, double rasterScale) paintBase,
   required void Function(Canvas into, double rasterScale) paintScope,
   required Paint paint,
+  required Rect paper,
   SubtreeHold? held,
 }) => drawSubtreeAsImage(
   canvas: canvas,
   bounds: bounds,
   rasterScale: rasterScale,
+  paper: paper,
   paintSubtree: (into, scale) {
     paintBase(into, scale);
     into.saveLayer(bounds, Paint()..blendMode = BlendMode.srcATop);
@@ -967,95 +1045,331 @@ void _composeInTheFrame({
   }
 }
 
-/// Turns a finished recording into the image, hands [compose] a blit for it,
-/// and owns its lifetime.
 /// Runs [steps] over [source], returning a NEW image the caller owns, or
 /// [source] itself when there is nothing to do.
 ///
-/// 🚨EACH STEP IS ITS OWN RASTER, AT THE IDENTITY. A colour key is a fragment
-/// shader, and a shader reads `FlutterFragCoord()` — the position in the
+/// 🚨EACH STEP IS ITS OWN RASTER, AT THE IDENTITY. A step's lead is fragment
+/// shaders, and a shader reads `FlutterFragCoord()` — the position in the
 /// space it is drawn into. Folding one into a draw that sits under a
 /// transform would make it read through that transform. Rasterising the step
 /// by itself, 1:1 into a rect at the origin, is what makes the shader's own
 /// coordinates mean what it thinks they mean.
 ///
-/// A step's key and its painted effects share ONE raster: a `ui.Paint`
-/// applies its shader, then its colour filter, then its image filter, so
-/// "key, then blur" needs no second pass.
+/// A step's last lead draw and its painted effects share ONE raster: a
+/// `ui.Paint` applies its shader, then its colour filter, then its image
+/// filter, so "key, then blur" needs no second pass. Each draw before it is a
+/// raster of its own, read beside the step's input by the next. Every raster
+/// is [source]'s size.
+///
+/// [paper] is where the paper lies in [source]'s pixels — the edge a blur
+/// that repeats it reads past ([PaperEdgeEffect]). [rowOf] lays a row a
+/// step reads ([effectReadsRow]) on [source]'s grid — null for none, and
+/// none for every row where it is null: such a step reads no row.
 ui.Image applyEffectSteps({
   required ui.Image source,
   required List<CompositeEffectStep> steps,
-  required int pixelWidth,
-  required int pixelHeight,
   required double imageScale,
+  required Rect paper,
+  ui.Image? Function(LayerId row)? rowOf,
 }) {
+  // ⛔The IMAGE's own space. A step rasters at the identity — there is no
+  // CTM to map a sigma or a length through — so the chain arrives
+  // pre-multiplied by however many image pixels a canvas pixel is.
+  final space = imageScale == 1
+      ? DrawSpace.canvas
+      : DrawSpace.preScaled(imageScale);
   var image = source;
   for (final step in steps) {
-    final stepRecorder = ui.PictureRecorder();
-    final into = Canvas(stepRecorder);
-    final paint = Paint();
-    final key = step.key;
-    ui.FragmentShader? shader;
-    if (key != null) {
-      shader = ColourKeyShader.shaderFor(
-        source: image,
-        key: key,
-        width: pixelWidth.toDouble(),
-        height: pixelHeight.toDouble(),
-      );
-      paint.shader = shader;
-    }
-    // ⛔Resolved HERE, in the IMAGE's own space. A step rasters at the
-    // identity — there is no CTM to map a sigma through — so the chain
-    // arrives pre-multiplied by however many image pixels a canvas pixel is.
-    resolveCompositeEffectPaint(
-      step.then,
-      space: imageScale == 1
-          ? DrawSpace.canvas
-          : DrawSpace.preScaled(imageScale),
-    ).applyTo(paint);
-    final rect = Rect.fromLTWH(
-      0,
-      0,
-      pixelWidth.toDouble(),
-      pixelHeight.toDouble(),
-    );
-    if (shader == null) {
-      // 1:1 by construction — src and dst are the same rect, at the
-      // identity. A filter here would resample a blit that is already
-      // aligned.
-      paint.filterQuality = FilterQuality.none;
-      into.drawImageRect(image, rect, rect, paint);
-    } else {
-      // With a shader the image IS the shader's source, so the draw is a
-      // plain rect over it.
-      into.drawRect(rect, paint);
-    }
-    // ⚠️`toImageSync` throws, and a throw here used to keep BOTH the picture
-    // and the shader — this loop runs once per effect step, so a failure part
-    // way along a chain leaked every step it had already built. The picture's
-    // release is [rasterPicture]'s; the shader's is this frame's own.
-    final ui.Image next;
+    // What every key of a run reads its colours from and a restore gives
+    // back to ([KeyRun]) — alive until the step is done.
+    final input = image;
+    // And the row its lead reads, on the step's grid — as long.
+    final read = switch (step.lead) {
+      ShadedEffect(:final effect) => effectReadsRow(effect),
+      _ => null,
+    };
+    final row = read == null ? null : rowOf?.call(read);
     try {
-      next = rasterPicture(stepRecorder, pixelWidth, pixelHeight);
+      final draws = _stepDraws(
+        step.lead,
+        space: space,
+        paper: paper,
+        rasterWidth: source.width,
+        row: row,
+      );
+      for (var index = 0; index < draws.length; index += 1) {
+        final next = draws[index](
+          image,
+          input,
+          index == draws.length - 1
+              ? resolveCompositeEffectPaint(step.then, space: space)
+              : CompositeEffectPaint.none,
+        );
+        if (!identical(image, source) && !identical(image, input)) {
+          image.dispose();
+        }
+        image = next;
+      }
     } finally {
-      shader?.dispose();
+      row?.dispose();
     }
-    if (!identical(image, source)) {
-      image.dispose();
+    if (!identical(input, source)) {
+      input.dispose();
     }
-    image = next;
   }
   return image;
 }
 
+/// One draw of a step: the picture it makes of [image] — the one the draw
+/// before it made — and the step's [input], [then] in it.
+typedef _StepDraw =
+    ui.Image Function(
+      ui.Image image,
+      ui.Image input,
+      CompositeEffectPaint then,
+    );
+
+/// The rasters a step led by [lead] takes at [space], each [rasterWidth]
+/// wide — one for a step that only paints.
+List<_StepDraw> _stepDraws(
+  EffectStepLead? lead, {
+  required DrawSpace space,
+  required Rect paper,
+  required int rasterWidth,
+  required ui.Image? row,
+}) {
+  if (lead case PaperEdgeEffect(:final effect)) {
+    if (paperEdgeBlurOf(effect, space) case final blur?) {
+      return [
+        (image, _, then) =>
+            _paperEdgeDraw(image, paper: paper, blur: blur, then: then),
+      ];
+    }
+  }
+  final shaded = _leadDraws(
+    lead,
+    space: space,
+    paper: paper,
+    rasterWidth: rasterWidth,
+    row: row,
+  );
+  return [
+    if (shaded.isEmpty)
+      (image, input, then) =>
+          _effectStepDraw(image: image, input: input, lead: null, then: then),
+    for (final shader in shaded)
+      (image, input, then) =>
+          _effectStepDraw(image: image, input: input, lead: shader, then: then),
+  ];
+}
+
+/// One lead draw: a shader over the picture the draw before it made and
+/// the step's input — laid [inFloats] where it holds numbers past a byte
+/// ([RowSumPass]).
+typedef _LeadDraw = ({
+  ui.FragmentShader Function(ui.Image image, ui.Image input) shade,
+  bool inFloats,
+});
+
+/// The shaders [lead] draws at [space], with [paper] where the paper lies
+/// there, over rasters [rasterWidth] wide — none for a step that only
+/// paints, nor for a blur on the paper ([_paperEdgeDraw]) — [row] the
+/// row it reads on their grid, null for none.
+List<_LeadDraw> _leadDraws(
+  EffectStepLead? lead, {
+  required DrawSpace space,
+  required Rect paper,
+  required int rasterWidth,
+  required ui.Image? row,
+}) => switch (lead) {
+  null || PaperEdgeEffect() => const [],
+  KeyRun(:final keys) => [
+    for (final key in keys)
+      (
+        shade: (image, input) => ColourKeyShader.shaderFor(
+          source: image,
+          original: input,
+          key: key,
+        ),
+        inFloats: false,
+      ),
+  ],
+  ShadedEffect(:final effect) => [
+    for (final pass in shadedPassesOf(
+      effect,
+      space,
+      paper: paper,
+      rasterWidth: rasterWidth,
+    ))
+      _passDraw(pass, row: row),
+  ],
+};
+
+/// The draw [pass] is, reading [row] where it reads a row.
+_LeadDraw _passDraw(ShadedPass pass, {required ui.Image? row}) =>
+    switch (pass) {
+  LineBoxPass() => (
+    shade: (image, _) =>
+        DirectionalBlurShader.shaderFor(source: image, pass: pass),
+    inFloats: false,
+  ),
+  RowSumPass() => (
+    shade: (image, _) => IrisBlurShader.rowSumFor(source: image, pass: pass),
+    inFloats: true,
+  ),
+  IrisGatherPass() => (
+    shade: (image, input) => IrisBlurShader.gatherFor(
+      sums: image,
+      input: input,
+      // A blur map that is none here: the blur at its whole radius.
+      pass: row == null ? pass.unmapped : pass,
+      map: row,
+    ),
+    inFloats: false,
+  ),
+};
+
+/// [image] blurred by [blur] as though past [paper] lay the paper's edge
+/// pixels, and cut to it — AE's Repeat Edge Pixels on the paper's edge
+/// (🗣️I-132-Q14 a) — then [then] in a raster of its own.
+///
+/// 🔬[blur]'s clamp repeats the edge of the image it is drawn with, and
+/// paints past it ([PaperEdgeEffect]): so the paper is cut out as an image
+/// of its own, on whole pixels, and what is drawn of it is cut to it.
+ui.Image _paperEdgeDraw(
+  ui.Image image, {
+  required Rect paper,
+  required ui.ImageFilter blur,
+  required CompositeEffectPaint then,
+}) {
+  final whole = Rect.fromLTWH(
+    0,
+    0,
+    image.width.toDouble(),
+    image.height.toDouble(),
+  );
+  final cut = paperOnWholePixels(paper).intersect(whole);
+  final recorder = ui.PictureRecorder();
+  final into = Canvas(recorder);
+  // Past the paper nothing is left: a cut that misses the raster draws it
+  // empty.
+  if (cut.width > 0 && cut.height > 0) {
+    // A raster the paper holds whole — a row inside its page, the usual
+    // case — is its own cut.
+    final sheet = cut == whole ? image : _cutOut(image, cut);
+    try {
+      into
+        ..clipRect(cut)
+        ..drawImage(
+          sheet,
+          cut.topLeft,
+          // 1:1 at the identity: the blur is all the sampling there is.
+          Paint()
+            ..imageFilter = blur
+            ..filterQuality = FilterQuality.none,
+        );
+    } finally {
+      // ⚠️Safe once recorded: the picture holds its own claim on it.
+      if (!identical(sheet, image)) {
+        sheet.dispose();
+      }
+    }
+  }
+  final blurred = rasterPicture(recorder, image.width, image.height);
+  if (then.isEmpty) {
+    return blurred;
+  }
+  try {
+    return _effectStepDraw(
+      image: blurred,
+      input: blurred,
+      lead: null,
+      then: then,
+    );
+  } finally {
+    blurred.dispose();
+  }
+}
+
+/// [rect] of [image], on whole pixels, as an image of its own.
+ui.Image _cutOut(ui.Image image, Rect rect) {
+  final recorder = ui.PictureRecorder();
+  Canvas(recorder).drawImageRect(
+    image,
+    rect,
+    Rect.fromLTWH(0, 0, rect.width, rect.height),
+    Paint()..filterQuality = FilterQuality.none,
+  );
+  return rasterPicture(recorder, rect.width.toInt(), rect.height.toInt());
+}
+
+/// One raster of a step: [lead] over [image] ([input] the step's), then
+/// [then], 1:1 at the identity ([applyEffectSteps]) and [image]'s size.
+ui.Image _effectStepDraw({
+  required ui.Image image,
+  required ui.Image input,
+  required _LeadDraw? lead,
+  required CompositeEffectPaint then,
+}) {
+  final stepRecorder = ui.PictureRecorder();
+  final into = Canvas(stepRecorder);
+  final paint = Paint();
+  final shader = lead?.shade(image, input);
+  final inFloats = lead?.inFloats ?? false;
+  if (shader != null) {
+    paint.shader = shader;
+  }
+  if (inFloats) {
+    // What the shader gives, as it gives it: over an empty raster the
+    // default blend would give the same, but a number past 1 is no colour
+    // a blend is promised to keep.
+    paint.blendMode = BlendMode.src;
+  }
+  then.applyTo(paint);
+  final rect = Rect.fromLTWH(
+    0,
+    0,
+    image.width.toDouble(),
+    image.height.toDouble(),
+  );
+  if (shader == null) {
+    // 1:1 by construction — src and dst are the same rect, at the
+    // identity. A filter here would resample a blit that is already
+    // aligned.
+    paint.filterQuality = FilterQuality.none;
+    into.drawImageRect(image, rect, rect, paint);
+  } else {
+    // With a shader the image IS the shader's source, so the draw is a
+    // plain rect over it.
+    into.drawRect(rect, paint);
+  }
+  // ⚠️`toImageSync` throws, and a throw here used to keep BOTH the picture
+  // and the shader — this runs once per draw of a chain, so a failure part
+  // way along it leaked every step it had already built. The picture's
+  // release is [rasterPicture]'s; the shader's is this frame's own.
+  try {
+    return rasterPicture(
+      stepRecorder,
+      image.width,
+      image.height,
+      inFloats: inFloats,
+    );
+  } finally {
+    shader?.dispose();
+  }
+}
+
+/// Turns a finished recording into the image, hands [compose] a blit for it,
+/// and owns its lifetime.
 void _finishSubtreeRaster({
   required Canvas canvas,
   required ui.PictureRecorder recorder,
   required SubtreeRasterPlan plan,
   required void Function(BlitSubtree blit) compose,
   List<CompositeEffectStep> steps = const [],
+  required Rect paper,
   SubtreeHold? held,
+  RowPainter? rows,
 }) {
   assert(() {
     debugSubtreeRasterCount += 1;
@@ -1068,12 +1382,17 @@ void _finishSubtreeRaster({
   final image = applyEffectSteps(
     source: raster,
     steps: steps,
-    pixelWidth: plan.pixelWidth,
-    pixelHeight: plan.pixelHeight,
     // The sub-tree raster IS at plan.scale, so image pixels per canvas pixel
     // is that number — the one place where the raster's target scale and the
     // image's own resolution are the same thing by construction.
     imageScale: plan.scale,
+    // Where the raster's corner lies, as it was recorded ([recordInto]).
+    paper: _rectInPixels(
+      paper,
+      origin: plan.destination.topLeft,
+      scale: plan.scale,
+    ),
+    rowOf: rows == null ? null : (row) => _rowOnTheGrid(rows, row, plan),
   );
   try {
     compose(
@@ -1132,19 +1451,48 @@ void _finishSubtreeRaster({
 /// in by hand, which is right at full size and wrong for a storyboard
 /// thumbnail — `outputSize` scales the render down, so a keyed track chain
 /// would have blurred at the wrong strength there.
+///
+/// [extent] is the rect of canvas space [image] stands for, and [paper]
+/// where the paper lies there — what a blur repeating its edge reads past
+/// ([PaperEdgeEffect]) — and [rows] paint the rows a step reads in it.
 ui.Image steppedForChain({
   required ui.Image image,
   required CompositeEffectPlan plan,
-  required double canvasExtent,
+  required Rect extent,
+  required Rect paper,
+  RowPainter? rows,
 }) {
   if (plan.isSingleDraw) {
     return image;
   }
+  final imageScale = extent.width <= 0 ? 1.0 : image.width / extent.width;
+  // [image]'s grid, as a raster the walk plans lies on its own.
+  final grid = SubtreeRasterPlan(
+    bounds: extent,
+    destination: extent,
+    pixelWidth: image.width,
+    pixelHeight: image.height,
+    scale: imageScale,
+    rasterScale: imageScale,
+  );
   return applyEffectSteps(
     source: image,
     steps: plan.preSteps,
-    pixelWidth: image.width,
-    pixelHeight: image.height,
-    imageScale: canvasExtent <= 0 ? 1 : image.width / canvasExtent,
+    imageScale: imageScale,
+    paper: _rectInPixels(paper, origin: extent.topLeft, scale: imageScale),
+    rowOf: rows == null ? null : (row) => _rowOnTheGrid(rows, row, grid),
   );
 }
+
+/// Where [rect] lies in the pixels of an image whose corner stands at
+/// [origin], [scale] of its pixels a unit.
+Rect _rectInPixels(
+  Rect rect, {
+  required Offset origin,
+  required double scale,
+}) => Rect.fromLTRB(
+  (rect.left - origin.dx) * scale,
+  (rect.top - origin.dy) * scale,
+  (rect.right - origin.dx) * scale,
+  (rect.bottom - origin.dy) * scale,
+);

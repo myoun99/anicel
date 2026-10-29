@@ -3,7 +3,7 @@ import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/transform_track.dart'
-    show lerpArgb, lerpBoolHold;
+    show lerpArgb, lerpHold;
 import 'package:anicel/src/ui/text/app_strings.dart' show AppText;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show PropertyLaneValueKind;
@@ -38,8 +38,8 @@ void main() {
     });
 
     test('a boolean HOLDS — half a shown line is not a state', () {
-      expect(lerpBoolHold(true, false, 0.99), isTrue);
-      expect(lerpBoolHold(false, true, 0.99), isFalse);
+      expect(lerpHold(true, false, 0.99), isTrue);
+      expect(lerpHold(false, true, 0.99), isFalse);
     });
   });
 

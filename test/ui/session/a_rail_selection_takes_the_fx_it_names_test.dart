@@ -201,7 +201,7 @@ void main() {
     final blur = _idOf(session, EffectKind.blur);
     _select(session, [
       LaneRowAddress(const LayerId('y'), transformGroupHeaderLane.laneId),
-      LaneRowAddress(const LayerId('y'), effectLaneId(blur, 'blurX')),
+      LaneRowAddress(const LayerId('y'), effectLaneId(blur, 'blurriness')),
     ]);
 
     expect(lanesOf(session).effectsNamedBySelectedRows, isEmpty);
@@ -315,7 +315,7 @@ void main() {
     void blurAtSeven(EditorSessionManager session) {
       final blur = _layer(session, 'y').effects.first;
       session.effectsAndFx.updateLayerEffects(const LayerId('y'), [
-        blur.withParameter('blurX', EffectParameter(value: 7)),
+        blur.withParameter('blurriness', EffectParameter(value: 7)),
         ..._layer(session, 'y').effects.skip(1),
       ]);
     }
@@ -337,7 +337,7 @@ void main() {
 
       final pasted = _layer(session, 'x').effects.single;
       expect(pasted.kind, EffectKind.blur);
-      expect(pasted.parameterOf('blurX').value, 7);
+      expect(pasted.parameterOf('blurriness').value, 7);
       expect(pasted.id, isNot(_idOf(session, EffectKind.blur)));
       expect(_effectsOf(session, 'y'), _both, reason: 'a copy leaves them');
       expect(session.historyManager.undoCount, steps + 1, reason: 'ONE step');
@@ -528,7 +528,7 @@ void main() {
         ]);
         expect(chain.first.id, source);
         expect(chain[1].id, isNot(source));
-        expect(chain[1].parameterOf('blurX').value, 7);
+        expect(chain[1].parameterOf('blurriness').value, 7);
         expect(
           rowTwirlsOf(
             session.repository.requireProject(),

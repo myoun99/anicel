@@ -2,9 +2,25 @@ import 'dart:math' as math;
 
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
+import '../../models/onion_skin_settings.dart';
+
+/// What of the onion a frame's picture holds ([DemandedPicture.ghosts]).
+enum FrameGhosts {
+  /// None — the film's frame.
+  none,
+
+  /// The ghosts alone, which a canvas standing on the frame lays over its
+  /// picture (`OnionSkinPlacement.onTop`).
+  alone,
+
+  /// The frame with each onion row's ghosts directly under its drawing, which
+  /// a canvas standing on it shows instead (`OnionSkinPlacement.inPlace`).
+  inPlace,
+}
 
 /// One picture a frame shows: [cut]'s, at its own [frameIndex] — on its
-/// paper where the screen showing it paints the paper ([paintPaper]).
+/// paper where the screen showing it paints the paper ([paintPaper]) — and
+/// what of the onion it holds ([ghosts]).
 ///
 /// 🚨[paintPaper] IS PART OF WHICH PICTURE (one-picture-per-frame ②-2): the
 /// paper is the root's bottom row, read by a blend over its backdrop and by
@@ -12,7 +28,59 @@ import '../../models/cut_id.dart';
 /// without it. A cut on the canvas, and the film's stage — its lowest track
 /// covered at that frame — paint it; a track over the stage does not, and
 /// the same frame of it is another picture there.
-typedef DemandedPicture = ({Cut cut, int frameIndex, bool paintPaper});
+///
+/// 🚨[ghosts] IS TOO (card onion-scrub-rebuilds-the-ghost-each-step): the
+/// ghosts are a picture of their own over the frame's (`_ghostsOver`), and
+/// a picture is made ahead only where a demand can name it. 🔬Named by none,
+/// each frame a scrub crossed laid its ghosts on the spot: 3840² with lines
+/// to the pasteboard's ends, a ghost picture 11520×7680, asked→back p50
+/// 131ms, max 2.57s — 30 steps in 11.6s against 0.23s with the onion off
+/// (10-28, PC, the whole app, 14 testers beside it).
+typedef DemandedPicture = ({
+  Cut cut,
+  int frameIndex,
+  bool paintPaper,
+  FrameGhosts ghosts,
+});
+
+/// The pictures a canvas standing on [cut]'s frame [frameIndex] shows, its
+/// onion ghosts lying as [placement] says: the [frame] — with the ghosts in
+/// it, or as a run plays it — and the ghosts [over] it where they lie on
+/// top. The warmer lays them ahead as the canvas asks for them
+/// ([StandingDemand]).
+///
+/// [paintPaper] is false where the canvas paints no paper — parked in a gap
+/// (R16-⑥).
+({DemandedPicture frame, DemandedPicture? over}) standingPicturesOf(
+  Cut cut,
+  int frameIndex,
+  OnionSkinPlacement placement, {
+  bool paintPaper = true,
+}) => switch (placement) {
+  OnionSkinPlacement.onTop => (
+    frame: (
+      cut: cut,
+      frameIndex: frameIndex,
+      paintPaper: paintPaper,
+      ghosts: FrameGhosts.none,
+    ),
+    over: (
+      cut: cut,
+      frameIndex: frameIndex,
+      paintPaper: false,
+      ghosts: FrameGhosts.alone,
+    ),
+  ),
+  OnionSkinPlacement.inPlace => (
+    frame: (
+      cut: cut,
+      frameIndex: frameIndex,
+      paintPaper: paintPaper,
+      ghosts: FrameGhosts.inPlace,
+    ),
+    over: null,
+  ),
+};
 
 /// The order frames will be WANTED in, counted in steps on from where the
 /// playhead stands — step 0 is the frame under it.
@@ -144,6 +212,7 @@ class StandingDemand implements FrameDemand {
     this.nextCutId,
     int nextFrameCount = 0,
     required this.resolveCut,
+    this.placement = OnionSkinPlacement.onTop,
   }) : _frameCount = frameCount,
        _center = around.clamp(0, frameCount - 1),
        _nextFrameCount = nextCutId == null || nextCutId == cutId
@@ -156,6 +225,9 @@ class StandingDemand implements FrameDemand {
   /// The cut as it is NOW: an edit is a new cut, and a picture made of the
   /// one this was asked with would be a picture of what the cut was.
   final Cut? Function(CutId cutId) resolveCut;
+
+  /// Where the ghosts of the canvas standing on these frames lie.
+  final OnionSkinPlacement placement;
 
   final int _frameCount;
   final int _center;
@@ -174,16 +246,26 @@ class StandingDemand implements FrameDemand {
     if (cut == null) {
       return const [];
     }
+    final frameIndex = own
+        ? standingFrameAt(step, center: _center, count: _frameCount)!
+        : step - _frameCount;
+    // Both cuts are the canvas's: the one it stands on, and the one it shows
+    // next — each frame on its paper as a run plays it, and the pictures a
+    // canvas standing there shows ([standingPicturesOf]). A frame nothing
+    // ghosts at draws no row, and is there (`FramePictures.drawsOnlyItsPage`);
+    // one whose ghosts lie in place is the frame's own picture where no row
+    // ghosts — the same key, one picture.
+    final played = (
+      cut: cut,
+      frameIndex: frameIndex,
+      paintPaper: true,
+      ghosts: FrameGhosts.none,
+    );
+    final standing = standingPicturesOf(cut, frameIndex, placement);
     return [
-      (
-        cut: cut,
-        frameIndex: own
-            ? standingFrameAt(step, center: _center, count: _frameCount)!
-            : step - _frameCount,
-        // Both cuts are the canvas's: the one it stands on, and the one it
-        // shows next.
-        paintPaper: true,
-      ),
+      played,
+      if (standing.frame != played) standing.frame,
+      ?standing.over,
     ];
   }
 

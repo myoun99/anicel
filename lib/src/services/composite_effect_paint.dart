@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show immutable;
@@ -5,9 +6,14 @@ import 'package:flutter/foundation.dart' show immutable;
 import '../core/argb_channels.dart';
 import '../core/color_matrix.dart';
 import '../core/draw_space.dart';
+import '../models/canvas_size.dart';
 import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart';
+import '../models/layer_id.dart';
+import 'camera_lens_blur_passes.dart';
 import 'cel_source_effect_pass.dart';
+import 'directional_blur_passes.dart';
+import 'shaded_passes.dart';
 
 /// How much a blur RADIUS parameter spreads, as a Gaussian sigma. A radius
 /// is the visible reach of the blur; three sigma covers it, so a radius of
@@ -139,51 +145,91 @@ class CompositeEffectPaint {
 }
 
 /// The single folded matrix for a COLOUR-ONLY chain; null as soon as the
-/// chain contains anything spatial (a blur), because a matrix cannot say
-/// what a blur does.
+/// chain holds anything a matrix cannot say — a blur, which reads past the
+/// pixel, or a colour key, which rides the raster — and null for a chain
+/// with no colour in it at all.
 ///
 /// STRICT on purpose: a caller that gets a matrix may paint it INSTEAD of
-/// the chain, so answering "here is the colour part" for a chain with a
-/// blur in it would silently drop the blur. The adjustment scope relies on
-/// that to fold its MIX into the matrix ([lerpColorMatrixFromIdentity])
-/// and paint one pass. Readers that only want the colour part and know
-/// they cannot do spatial work at all — the eyedropper — ask
-/// [resolveColorMatrixIgnoringSpatial] instead.
+/// the chain, so answering "here is the colour part" for a chain with
+/// anything else in it would silently drop the rest. The adjustment scope
+/// relies on that to fold its MIX into the matrix
+/// ([lerpColorMatrixFromIdentity]) and paint one pass. ↩️It asked after a
+/// blur alone, so an adjustment's key went unpainted below full mix —
+/// keyed at 100 % and gone at 99.
 List<double>? resolveColorOnlyMatrix(List<ResolvedLayerEffect> effects) {
+  List<double>? matrix;
   for (final effect in effects) {
     if (effect.kind.spreadsPixels) {
       return null;
     }
-  }
-  return resolveColorMatrixIgnoringSpatial(effects);
-}
-
-/// The folded matrix of the chain's COLOUR effects, with the spatial ones
-/// (a blur) skipped; null when there are no colour effects at all.
-///
-/// Only for readers that cannot do spatial work under any circumstances —
-/// the eyedropper answers "what colour is at this point" from one pixel, so
-/// a blur is out of reach either way and dropping the colour grade with it
-/// would be strictly worse. Never use this to PAINT: see
-/// [resolveColorOnlyMatrix].
-List<double>? resolveColorMatrixIgnoringSpatial(
-  List<ResolvedLayerEffect> effects,
-) {
-  List<double>? matrix;
-  for (final effect in effects) {
-    if (_paintPartOf(effect, DrawSpace.canvas) case _ColourPart(:final next)) {
-      matrix = matrix == null ? next : composeColorMatrices(next, matrix);
+    switch (_paintPartOf(effect, DrawSpace.canvas)) {
+      case _ColourPart(:final next):
+        matrix = matrix == null ? next : composeColorMatrices(next, matrix);
+      case _NoPart():
+        break;
+      case _:
+        return null;
     }
   }
   return matrix;
 }
 
+/// ONE straight pixel through [effects] IN THEIR ORDER — what the composite
+/// draws there, as the eyedropper reads it: a colour effect's matrix, a key
+/// over its run's input ([resolveCompositeEffectPlan]'s runs — the keys
+/// standing together), and the spatial ones skipped: one pixel cannot
+/// reach its neighbours, and dropping the colour with them would be
+/// strictly worse.
+///
+/// ↩️The eyedropper ran every key first and every matrix after, which read
+/// a key under a colour effect as if it stood above it — and every key of
+/// the chain as one run.
+///
+/// The colour may come in between bytes — a stack an adjustment grades is
+/// laid up from many rows — and the alpha comes out a byte, as a raster
+/// holds it.
+({double red, double green, double blue, int alpha}) pixelThroughChain(
+  List<ResolvedLayerEffect> effects, {
+  required num red,
+  required num green,
+  required num blue,
+  required num alpha,
+}) {
+  var (r, g, b) = (red.toDouble(), green.toDouble(), blue.toDouble());
+  var a = _byte(alpha.toDouble());
+  int? runInput;
+  for (final effect in effects) {
+    final key = CelColorKey.fromResolved(effect);
+    if (key == null) {
+      runInput = null;
+      final part = _paintPartOf(effect, DrawSpace.canvas);
+      if (part is _ColourPart) {
+        final filtered = applyColorMatrixToStraightColor(
+          part.next,
+          r,
+          g,
+          b,
+          a.toDouble(),
+        );
+        (r, g, b) = (filtered.r, filtered.g, filtered.b);
+      }
+    } else if (!key.isNoOp) {
+      runInput ??= a;
+      a = key.alphaFor(_byte(r), _byte(g), _byte(b), a, original: runInput);
+    }
+  }
+  return (red: r, green: g, blue: b, alpha: a);
+}
+
+int _byte(double channel) => channel.round().clamp(0, 255);
+
 /// What ONE sampled effect is to a paint — the one place each kind's paint
 /// is written (I-132 「fx 하나 = 한 곳」): a colour matrix, a spatial filter, or
-/// nothing a paint can carry. Both readers of a chain — the painter
-/// ([resolveCompositeEffectPaint]) and the eyedropper's matrix
-/// ([resolveColorMatrixIgnoringSpatial]) — ask it, so a colour kind's matrix
-/// is spelled once. ↩️Each wrote its own switch, the matrices twice.
+/// nothing a paint can carry. Every reader of a chain — the painter
+/// ([resolveCompositeEffectPaint]), an adjustment's one pass
+/// ([resolveColorOnlyMatrix]) and the eyedropper ([pixelThroughChain]) —
+/// asks it, so a colour kind's matrix is spelled once. ↩️Each wrote its own
+/// switch, the matrices twice.
 sealed class _PaintPart {
   const _PaintPart();
 }
@@ -201,6 +247,36 @@ final class _SpatialPart extends _PaintPart {
   final double outset;
 }
 
+/// A sample that changes no pixel though its values are not its defaults.
+final class _NoPart extends _PaintPart {
+  const _NoPart();
+}
+
+/// A kind a fragment shader draws over a whole raster, in [passes], because
+/// it reads past the pixel and no `ui.ImageFilter` carries it — a step of
+/// its own ([ShadedEffect]), [reach] past its input.
+final class _StepPart extends _PaintPart {
+  const _StepPart(this.passes, {required this.reach});
+
+  final List<ShadedPass> passes;
+
+  /// How far past its input it paints.
+  final double reach;
+}
+
+/// A blur that reads past the paper's edge as its edge's own pixels and
+/// paints no further than it — AE's Repeat Edge Pixels ([PaperEdgeEffect]):
+/// [filter] repeats the edge of the image it is drawn with, so it is drawn
+/// over the paper cut out alone, a step of its own.
+final class _PaperEdgePart extends _PaintPart {
+  const _PaperEdgePart(this.filter, {required this.reach});
+
+  final ui.ImageFilter filter;
+
+  /// How far past its input it paints, inside the paper.
+  final double reach;
+}
+
 /// A kind no paint carries: the chain is split before a paint is resolved.
 final class _SplitPart extends _PaintPart {
   const _SplitPart(this.splitBy);
@@ -210,58 +286,263 @@ final class _SplitPart extends _PaintPart {
   final String splitBy;
 }
 
-_PaintPart _paintPartOf(ResolvedLayerEffect effect, DrawSpace space) =>
-    switch (effect.kind) {
-      EffectKind.brightnessContrast => _ColourPart(
-        brightnessContrastMatrix(
-          brightness: effect.parameter('brightness'),
-          contrast: effect.parameter('contrast'),
-        ),
+/// [paper] is where the paper lies in [space]'s pixels — what a radial
+/// blur's centre stands on ([_radialBlurPart]); a reader that does no
+/// spatial work at all, the eyedropper's, asks without one. [rasterWidth]
+/// is how wide the raster a step is drawn in is, which a camera lens
+/// blur's row sums run across ([_cameraLensBlurPart]) — null for a reader
+/// that draws none, a plan's among them.
+_PaintPart _paintPartOf(
+  ResolvedLayerEffect effect,
+  DrawSpace space, {
+  ui.Rect? paper,
+  int? rasterWidth,
+}) => switch (effect.kind) {
+    EffectKind.brightnessContrast => _ColourPart(
+      brightnessContrastMatrix(
+        brightness: effect.parameter('brightness'),
+        contrast: effect.parameter('contrast'),
       ),
-      EffectKind.hueSaturation => _ColourPart(
-        hueSaturationMatrix(
-          hueDegrees: effect.parameter('hue'),
-          saturation: effect.parameter('saturation'),
-          lightness: effect.parameter('lightness'),
-        ),
-      ),
-      EffectKind.blur => _blurPart(effect, space),
-      // ⛔THE CPU HALF MUST BE GONE BY NOW. `splitSourceEffects` takes the
-      // color keys out in the shared visit and `celSurfaceWithSourceEffects`
-      // has already applied them to the surface this paint will draw. A
-      // color key changes ALPHA by a threshold test — there is no color
-      // matrix for it, the same way there is none for a blur; the eyedropper
-      // applies the keys itself (`CelColorKey.alphaFor`).
-      EffectKind.deleteColor || EffectKind.keepColor => const _SplitPart(
-        'Source-pixel effects must be split off before a paint is '
-        'resolved — see splitSourceEffects.',
-      ),
-      // ⛔AND SO MUST A CEL NUMBER. It is no paint state but a picture of
-      // its own: the row's tree splits the chain where it stands
-      // (`celNumberedRow`), so no chain handed to a paint holds one. Letters
-      // laid over the picture are spatial work too — what stands at one
-      // point is the picture's, as under a blur.
-      EffectKind.celNumber => const _SplitPart(
-        'A cel number splits the chain before a paint is resolved — see '
-        'celNumberedRow.',
-      ),
-    };
-
-_SpatialPart _blurPart(ResolvedLayerEffect effect, DrawSpace space) {
-  final radiusX = effect.parameter('blurX') * space.scale;
-  final radiusY = effect.parameter('blurY') * space.scale;
-  return _SpatialPart(
-    ui.ImageFilter.blur(
-      sigmaX: radiusX * blurSigmaPerRadius,
-      sigmaY: radiusY * blurSigmaPerRadius,
-      // DECAL, not the clamp default: a layer's artwork must not smear
-      // its edge pixels outward forever — outside its coverage there is
-      // nothing, and that is what the picture should show.
-      tileMode: ui.TileMode.decal,
     ),
-    outset: blurSpreadForRadius(radiusX > radiusY ? radiusX : radiusY),
+    EffectKind.hueSaturation => _ColourPart(
+      hueSaturationMatrix(
+        hueDegrees: effect.parameter('hue'),
+        saturation: effect.parameter('saturation'),
+        lightness: effect.parameter('lightness'),
+      ),
+    ),
+    EffectKind.blur => _blurPart(effect, space),
+    EffectKind.directionalBlur => _directionalBlurPart(effect, space),
+    EffectKind.radialBlur => _radialBlurPart(effect, space, paper),
+    EffectKind.cameraLensBlur => _cameraLensBlurPart(
+      effect,
+      space,
+      paper,
+      rasterWidth,
+    ),
+    // ⛔THE CPU HALF MUST BE GONE BY NOW. `splitSourceEffects` takes the
+    // color keys out in the shared visit and `celSurfaceWithSourceEffects`
+    // has already applied them to the surface this paint will draw. A
+    // color key changes ALPHA by a threshold test — there is no color
+    // matrix for it, the same way there is none for a blur; the eyedropper
+    // applies the keys itself (`CelColorKey.alphaFor`).
+    EffectKind.colorKey => const _SplitPart(
+      'Source-pixel effects must be split off before a paint is '
+      'resolved — see splitSourceEffects.',
+    ),
+    // ⛔AND SO MUST A CEL NUMBER. It is no paint state but a picture of
+    // its own: the row's tree splits the chain where it stands
+    // (`celNumberedRow`), so no chain handed to a paint holds one. Letters
+    // laid over the picture are spatial work too — what stands at one
+    // point is the picture's, as under a blur.
+    EffectKind.celNumber => const _SplitPart(
+      'A cel number splits the chain before a paint is resolved — see '
+      'celNumberedRow.',
+    ),
+  };
+
+/// A Gaussian of no blurriness changes no pixel, whichever way it runs — as
+/// [_directionalBlurPart]'s length.
+_PaintPart _blurPart(ResolvedLayerEffect effect, DrawSpace space) {
+  final radius = effect.parameter('blurriness') * space.scale;
+  if (radius <= 0) {
+    return const _NoPart();
+  }
+  // The words of Blur Dimensions, in order: both, across, up and down.
+  final dimensions = effect.parameter('blurDimensions').round();
+  final radiusX = dimensions == 2 ? 0.0 : radius;
+  final radiusY = dimensions == 1 ? 0.0 : radius;
+  final repeatsTheEdge = effect.flag('repeatEdgePixels');
+  final filter = ui.ImageFilter.blur(
+    sigmaX: radiusX * blurSigmaPerRadius,
+    sigmaY: radiusY * blurSigmaPerRadius,
+    // DECAL, not the clamp default: a layer's artwork must not smear its
+    // edge pixels outward forever — outside its coverage there is nothing,
+    // and that is what the picture should show. CLAMP where the edge is to
+    // be repeated: drawn over the paper cut out alone, it is the paper's.
+    tileMode: repeatsTheEdge ? ui.TileMode.clamp : ui.TileMode.decal,
+  );
+  final spread = blurSpreadForRadius(radiusX > radiusY ? radiusX : radiusY);
+  return repeatsTheEdge
+      ? _PaperEdgePart(filter, reach: spread)
+      : _SpatialPart(filter, outset: spread);
+}
+
+/// A directional blur of no length changes no pixel, whichever way it
+/// points — [ResolvedLayerEffect.isNoOp] reads only "at its defaults".
+_PaintPart _directionalBlurPart(ResolvedLayerEffect effect, DrawSpace space) {
+  final length = effect.parameter('blurLength') * space.scale;
+  if (length <= 0) {
+    return const _NoPart();
+  }
+  final radians = effect.parameter('direction') * math.pi / 180;
+  return _StepPart(
+    directionalBlurPasses(
+      dx: math.sin(radians),
+      dy: -math.cos(radians),
+      length: length,
+    ),
+    // Half the line each way, and the texel a sample at its end reads.
+    reach: length / 2 + 1,
   );
 }
+
+/// A radial blur of no amount changes no pixel, whichever way it turns —
+/// as [_directionalBlurPart]'s length. Its centre stands on [paper] — where
+/// its keys put it, or the paper's middle ([effectPointOnPaper]) — and the
+/// paper's corner farthest from it is how far a pixel it blurs lies: what
+/// it reaches past its input, and how finely it is laid
+/// ([radialBlurPasses]). Ink past the paper is blurred as finely as its
+/// edge is.
+_PaintPart _radialBlurPart(
+  ResolvedLayerEffect effect,
+  DrawSpace space,
+  ui.Rect? paper,
+) {
+  final amount = effect.parameter('amount');
+  if (amount <= 0) {
+    return const _NoPart();
+  }
+  // Asked by a reader that does no spatial work: it skips the part, so
+  // nothing in it is read.
+  if (paper == null) {
+    return const _StepPart([], reach: 0);
+  }
+  final scale = space.scale;
+  final point = effectPointOnPaper(
+    effect.points['center'],
+    CanvasSize(
+      width: (paper.width / scale).round(),
+      height: (paper.height / scale).round(),
+    ),
+  );
+  final center = paper.topLeft + ui.Offset(point.x, point.y) * scale;
+  final farthest = [
+    paper.topLeft,
+    paper.topRight,
+    paper.bottomLeft,
+    paper.bottomRight,
+  ].map((corner) => (corner - center).distance).reduce(math.max);
+  // The words of Type and of Antialiasing, in order: Spin, Zoom; Best,
+  // Draft.
+  final spin = effect.parameter('type').round() == 0;
+  // Spin's Amount is degrees, Zoom's the streak a percent of the way out.
+  final across = spin ? amount * math.pi / 180 : amount / 100;
+  return _StepPart(
+    radialBlurPasses(
+      centerX: center.dx,
+      centerY: center.dy,
+      spin: spin,
+      across: across,
+      farthest: farthest,
+      draft: effect.parameter('antialiasing').round() == 1,
+    ),
+    // How far a pixel out there moves: the chord of half the arc, or half
+    // the ray outward — and the texel a sample at its end reads.
+    reach:
+        (spin
+            ? 2 * farthest * math.sin(math.min(across / 2, math.pi) / 2)
+            : farthest * (math.exp(across / 2) - 1)) +
+        1,
+  );
+}
+
+/// The row of its cut whose picture a step of [effect] reads — a camera
+/// lens blur's blur map (🗣️I-132-Q16 a) — null where it reads none.
+LayerId? effectReadsRow(ResolvedLayerEffect effect) =>
+    effect.layers.values.nonNulls.firstOrNull;
+
+/// A camera lens blur of no radius changes no pixel, whatever its iris —
+/// as [_directionalBlurPart]'s length. Its iris covers pixel centres within
+/// its radius (`shaders/iris_table.frag`): that is how far it reaches past
+/// its input. Its edge, repeated, is the paper's on whole pixels, as the
+/// Gaussian's is ([paperOnWholePixels]).
+_PaintPart _cameraLensBlurPart(
+  ResolvedLayerEffect effect,
+  DrawSpace space,
+  ui.Rect? paper,
+  int? rasterWidth,
+) {
+  final radius = effect.parameter('blurRadius') * space.scale;
+  if (radius <= 0) {
+    return const _NoPart();
+  }
+  final repeatsTheEdge = effect.flag('repeatEdgePixels');
+  return _StepPart(
+    // Asked by a reader that draws no raster: it reads how far the part
+    // reaches, or skips it, so nothing in its passes is read.
+    rasterWidth == null || (repeatsTheEdge && paper == null)
+        ? const []
+        : cameraLensBlurPasses(
+            (
+              radius: radius,
+              iris: (
+                // The words of Shape, in order: a triangle's three sides to
+                // a decagon's ten.
+                sides: effect.parameter('irisShape').round() + 3,
+                roundness: effect.parameter('irisRoundness') / 100,
+                aspect: effect.parameter('irisAspectRatio'),
+                rotation: effect.parameter('irisRotation') * math.pi / 180,
+                fringe: effect.parameter('irisDiffractionFringe'),
+              ),
+              light: (
+                gain: effect.parameter('highlightGain'),
+                threshold: effect.parameter('highlightThreshold') / 255,
+                saturation: effect.parameter('highlightSaturation') / 100,
+                linear: effect.flag('useLinearWorkingSpace'),
+              ),
+            ),
+            rasterWidth: rasterWidth,
+            paper: repeatsTheEdge ? paperOnWholePixels(paper!) : null,
+            map: effectReadsRow(effect) == null
+                ? null
+                : (
+                    // The words of Blur Map Channel, in order.
+                    channel: IrisMapChannel
+                        .values[effect.parameter('blurMapChannel').round()],
+                    focal: effect.parameter('blurFocalDistance'),
+                    inverts: effect.flag('invertBlurMap'),
+                  ),
+          ),
+    reach: radius,
+  );
+}
+
+/// [paper] on whole pixels: where a blur that repeats the paper's edge
+/// pixels reads them past it and is cut to it — the Gaussian's
+/// ([PaperEdgeEffect]) and the camera lens blur's alike.
+ui.Rect paperOnWholePixels(ui.Rect paper) => ui.Rect.fromLTRB(
+  paper.left.roundToDouble(),
+  paper.top.roundToDouble(),
+  paper.right.roundToDouble(),
+  paper.bottom.roundToDouble(),
+);
+
+/// The rasters [effect] — a step's [ShadedEffect] — is drawn in at [space],
+/// the raster's own, [rasterWidth] wide, with [paper] where the paper lies
+/// in it: empty where it changes no pixel there.
+List<ShadedPass> shadedPassesOf(
+  ResolvedLayerEffect effect,
+  DrawSpace space, {
+  required ui.Rect paper,
+  required int rasterWidth,
+}) => switch (_paintPartOf(
+  effect,
+  space,
+  paper: paper,
+  rasterWidth: rasterWidth,
+)) {
+  _StepPart(:final passes) => passes,
+  _ => const [],
+};
+
+/// The blur [effect] — a step's [PaperEdgeEffect] — draws over the paper
+/// at [space], the raster's own: null where it changes no pixel there.
+ui.ImageFilter? paperEdgeBlurOf(ResolvedLayerEffect effect, DrawSpace space) =>
+    switch (_paintPartOf(effect, space)) {
+      _PaperEdgePart(:final filter) => filter,
+      _ => null,
+    };
 
 /// Translates [effects] (already sampled at a frame) into paint state.
 ///
@@ -332,6 +613,14 @@ CompositeEffectPaint resolveCompositeEffectPaint(
       // looks exactly like "the artist set Amount to 0".
       case _SplitPart(:final splitBy):
         assert(false, splitBy);
+      case _StepPart() || _PaperEdgePart():
+        assert(
+          false,
+          'A shaded effect and a blur on the paper are steps of their own — '
+          'see resolveCompositeEffectPlan.',
+        );
+      case _NoPart():
+        break;
       case _ColourPart(:final next):
         pendingColor = pendingColor == null
             ? next
@@ -368,23 +657,74 @@ CompositeEffectPaint resolveCompositeEffectPaint(
   return CompositeEffectPaint(imageFilter: chain, outsetPixels: outset);
 }
 
-/// The `saveLayer` bounds for a buffered group whose chain is [plan]:
-/// [bounds] grown by the blur spread, so a group blur is not clipped at the
-/// buffer edge it was meant to bleed past.
-/// One raster a chain takes before the draw that composites it.
+/// What a step draws before its painted effects — each draw a fragment
+/// shader over the whole raster, at the identity.
+sealed class EffectStepLead {
+  const EffectStepLead();
+}
+
+/// The colour keys standing together in the chain: a draw a key, each over
+/// the picture the key before it made and the step's input — what a
+/// restore gives back to ([CelColorKey.alphaFor]).
+final class KeyRun extends EffectStepLead {
+  const KeyRun(this.keys);
+
+  final List<CelColorKey> keys;
+}
+
+/// An effect that reads past the pixel and that no `ui.ImageFilter` carries:
+/// a directional, a radial or a camera lens blur, drawn in
+/// [shadedPassesOf]'s rasters.
 ///
-/// A step is a colour KEY and then the painted effects that follow it, in one
-/// draw: a `ui.Paint` applies its shader, then its colour filter, then its
-/// image filter, so "key, then blur" is one raster and needs no second.
-/// "Blur, then key" is two, and the first of them has no key.
+/// 🔬WHY NOT `ImageFilter.shader`. Measured on Impeller (10-28,
+/// `flutter_tester --enable-impeller`): a shader filter is evaluated in
+/// device space — a canvas turned 90° left a horizontal blur horizontal,
+/// where the Gaussian turned with it — and paints no further than the
+/// picture it is handed: a blur 16 long over a dot spread it ±1 px. A step
+/// rasters at the identity over a buffer the plan already grew
+/// ([CompositeEffectPlan.outsetPixels]).
+final class ShadedEffect extends EffectStepLead {
+  const ShadedEffect(this.effect);
+
+  /// ⛔UNRESOLVED, as [CompositeEffectStep.then]: its length belongs to the
+  /// raster the step runs in.
+  final ResolvedLayerEffect effect;
+}
+
+/// A blur repeating the paper's edge pixels past it and cut to it — a
+/// Gaussian's Repeat Edge Pixels (🗣️I-132-Q14 a, 유저 2026-10-28: the
+/// paper's edge, on a layer and a folder alike), drawn in
+/// [paperEdgeBlurOf]'s raster over the paper cut out of the step's input.
+///
+/// 🔬WHY A STEP. Measured on Impeller (10-28, `flutter_tester
+/// --enable-impeller`): a blur's clamp repeats the edge of the image it is
+/// drawn with and paints past it, and drawn from a part of a larger image
+/// it repeats nothing — the decal's pixels. The paper has to be an image of
+/// its own, and only a step holds one.
+final class PaperEdgeEffect extends EffectStepLead {
+  const PaperEdgeEffect(this.effect);
+
+  /// ⛔UNRESOLVED, as [ShadedEffect.effect]: its radius belongs to the
+  /// raster the step runs in, and the paper to where that raster lies.
+  final ResolvedLayerEffect effect;
+}
+
+/// One raster a chain takes before the draw that composites it — more than
+/// one where its [lead] draws more.
+///
+/// A step is its [lead] and then the painted effects that follow it, with
+/// the lead's last draw: a `ui.Paint` applies its shader, then its colour
+/// filter, then its image filter, so "key, then blur" is one raster and
+/// needs no second. "Blur, then key" is two, and the first of them has no
+/// lead.
 @immutable
 class CompositeEffectStep {
-  const CompositeEffectStep({this.key, required this.then});
+  const CompositeEffectStep({this.lead, required this.then});
 
-  /// Applied first, by a fragment shader over the image handed in.
-  final CelColorKey? key;
+  /// Drawn first; null for a step that only paints.
+  final EffectStepLead? lead;
 
-  /// Applied after [key], in the same draw. ⛔UNRESOLVED, because a blur's
+  /// Applied after [lead], in its last draw. ⛔UNRESOLVED, because a blur's
   /// radii belong to the RASTER this step runs in, and only the renderer
   /// knows that scale.
   final List<ResolvedLayerEffect> then;
@@ -438,19 +778,48 @@ class CompositeEffectPlan {
 /// [resolveCompositeEffectPaint] means it. A step's own effects are left
 /// unresolved for the renderer, which knows the scale of the raster it is
 /// about to make.
+///
+/// [paper] is where the paper lies, in canvas space: a radial blur reaches
+/// as far past its input as the paper's corners lie from its centre
+/// ([_radialBlurPart]), so every route that grows a buffer by the plan
+/// says where its paper is.
 CompositeEffectPlan resolveCompositeEffectPlan(
   List<ResolvedLayerEffect> effects, {
   DrawSpace space = DrawSpace.canvas,
   int? tint,
+  required ui.Rect paper,
 }) {
-  // Each run is "the key that opens it, then the painted effects until the
-  // next key". The first run has no key.
-  final keys = <CelColorKey?>[null];
+  // Each run is "the lead that opens it — keys, or a shaded effect — then
+  // the painted effects until the next lead". The first run has no lead.
+  final leads = <EffectStepLead?>[null];
   final runs = <List<ResolvedLayerEffect>>[<ResolvedLayerEffect>[]];
+  var outset = 0.0;
+  // In the space's own pixels, as the reach it gives is.
+  final scaled = ui.Rect.fromLTRB(
+    paper.left * space.scale,
+    paper.top * space.scale,
+    paper.right * space.scale,
+    paper.bottom * space.scale,
+  );
   for (final effect in effects) {
     final key = CelColorKey.fromResolved(effect);
     if (key == null) {
-      runs.last.add(effect);
+      final (lead, reach) = switch (_paintPartOf(
+        effect,
+        space,
+        paper: scaled,
+      )) {
+        _StepPart(:final reach) => (ShadedEffect(effect), reach),
+        _PaperEdgePart(:final reach) => (PaperEdgeEffect(effect), reach),
+        _ => (null, 0.0),
+      };
+      if (lead == null) {
+        runs.last.add(effect);
+      } else {
+        outset += reach;
+        leads.add(lead);
+        runs.add(<ResolvedLayerEffect>[]);
+      }
       continue;
     }
     // ⛔A key at Amount 0 is dropped, not rasterised. The CPU pass drops it
@@ -459,7 +828,13 @@ CompositeEffectPlan resolveCompositeEffectPlan(
     if (key.isNoOp) {
       continue;
     }
-    keys.add(key);
+    // A key right after a key joins its run: a restore gives back what the
+    // keys before it took, so they share the picture they started from.
+    if (leads.last case KeyRun(:final keys) when runs.last.isEmpty) {
+      keys.add(key);
+      continue;
+    }
+    leads.add(KeyRun([key]));
     runs.add(<ResolvedLayerEffect>[]);
   }
   final last = runs.length - 1;
@@ -468,32 +843,33 @@ CompositeEffectPlan resolveCompositeEffectPlan(
     space: space,
     tint: tint,
   );
+  outset += finalPaint.outsetPixels;
   if (last == 0) {
-    // No keys survived: the chain is one draw, exactly as it always was.
+    // No lead survived: the chain is one draw, exactly as it always was.
     return finalPaint.isEmpty
         ? CompositeEffectPlan.none
         : CompositeEffectPlan._(
             preSteps: const [],
             finalPaint: finalPaint,
-            outsetPixels: finalPaint.outsetPixels,
+            outsetPixels: outset,
           );
   }
-  var outset = finalPaint.outsetPixels;
   final steps = <CompositeEffectStep>[];
   for (var i = 0; i < last; i += 1) {
-    if (keys[i] == null && runs[i].isEmpty) {
-      // The leading run is empty whenever the chain opens with a key, which
-      // is the ordinary shape.
+    if (leads[i] == null && runs[i].isEmpty) {
+      // The leading run is empty whenever the chain opens with a lead,
+      // which is the ordinary shape.
       continue;
     }
     outset += resolveCompositeEffectPaint(
       runs[i],
       space: space,
     ).outsetPixels;
-    steps.add(CompositeEffectStep(key: keys[i], then: runs[i]));
+    steps.add(CompositeEffectStep(lead: leads[i], then: runs[i]));
   }
-  // The last key has to happen before the final draw carries what follows it.
-  steps.add(CompositeEffectStep(key: keys[last], then: const []));
+  // The last lead has to happen before the final draw carries what follows
+  // it.
+  steps.add(CompositeEffectStep(lead: leads[last], then: const []));
   return CompositeEffectPlan._(
     preSteps: steps,
     finalPaint: finalPaint,
@@ -501,6 +877,9 @@ CompositeEffectPlan resolveCompositeEffectPlan(
   );
 }
 
+/// The `saveLayer` bounds for a buffered group whose chain paints
+/// [outsetPixels] past its input: [bounds] grown by them, so a group blur is
+/// not clipped at the buffer edge it was meant to bleed past.
 ui.Rect effectBufferBounds(ui.Rect bounds, double outsetPixels) {
   if (outsetPixels <= 0) {
     return bounds;
@@ -634,11 +1013,14 @@ composeAdjustmentScope(
 /// "drawing the scope" means awaiting every layer image in it, and the second
 /// pass was not a rounding error. The blits go as [composeAdjustmentScope]
 /// lays them.
+///
+/// [paper] is where the paper lies, as [resolveCompositeEffectPlan] asks.
 AdjustmentScopePass resolveAdjustmentScopePass({
   required ui.Rect bounds,
   required List<ResolvedLayerEffect> effects,
   required double mix,
   DrawSpace space = DrawSpace.canvas,
+  required ui.Rect paper,
 }) {
   final strength = mix.clamp(0.0, 1.0);
   if (strength < 1) {
@@ -654,7 +1036,11 @@ AdjustmentScopePass resolveAdjustmentScopePass({
       );
     }
   }
-  final resolved = resolveCompositeEffectPlan(effects, space: space);
+  final resolved = resolveCompositeEffectPlan(
+    effects,
+    space: space,
+    paper: paper,
+  );
   final plan = resolved.finalPaint;
   final bufferBounds = effectBufferBounds(bounds, resolved.outsetPixels);
   // What spreads rides the blit ([AdjustmentScopePass.blitEffects]); a

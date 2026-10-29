@@ -1,21 +1,12 @@
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/key_mark.dart';
-import 'package:anicel/src/models/audio_clip.dart';
-import 'package:anicel/src/models/frame.dart';
-import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
-import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
-import 'package:anicel/src/ui/audio/waveform_painter.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
-import 'package:anicel/src/ui/timeline/se_audio_lane.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cells_row_facts.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
@@ -28,17 +19,6 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 /// grid's own keys.
 void main() {
   const frames = 16;
-  final peaks = AudioPeaks(bucketsPerSecond: 80, peaks: Float32List(160));
-  final se = Layer(
-    id: const LayerId('se'),
-    name: 'S1',
-    kind: LayerKind.se,
-    frames: [Frame(id: const FrameId('se-f'), duration: 1, strokes: const [])],
-    timeline: const {0: TimelineExposure.drawing(FrameId('se-f'), length: 8)},
-    audioClips: [
-      AudioClip(filePath: 'steps.wav', frameId: const FrameId('se-f')),
-    ],
-  );
   final drawing = Layer(
     id: const LayerId('a'),
     name: 'A',
@@ -61,7 +41,6 @@ void main() {
     required String keyPrefix,
     required String key,
     Map<LayerId, int> spillInLeadFrames = const {},
-    TimelineAudioLaneCallbacks? audioLane,
   }) async {
     final cursor = ValueNotifier<int>(0);
     addTearDown(cursor.dispose);
@@ -86,9 +65,8 @@ void main() {
         onToggleLayerTimesheet: (_) {},
         onLayerMarkSelected: (_, _) {},
         projectFrameRate: ProjectFrameRate.fps24,
-        audioPeaksFor: (_) => peaks,
+        audioPeaksFor: (_) => null,
         spillInLeadFrames: spillInLeadFrames,
-        audioLane: audioLane,
       ),
       metrics: TimelineGridMetrics.defaults,
       geometry: geometry,
@@ -119,39 +97,6 @@ void main() {
     await tester.pumpAndSettle();
     return tester.getRect(find.byKey(ValueKey<String>('$keyPrefix-$key')));
   }
-
-  testWidgets('a sound\'s lane runs along the timeline\'s row and down the '
-      'x-sheet\'s column', (tester) async {
-    final row = TimelineDisplayRow.lane(
-      se,
-      seAudioLanesFor(se).single,
-      layerIndex: 0,
-    );
-    const span = 'audio-lane-span-se-0-b0';
-    final along = await laid(
-      tester,
-      row,
-      se,
-      axis: Axis.horizontal,
-      keyPrefix: 'timeline',
-      key: span,
-    );
-    final down = await laid(
-      tester,
-      row,
-      se,
-      axis: Axis.vertical,
-      keyPrefix: 'xsheet',
-      key: span,
-    );
-    expect(along.width, greaterThan(along.height), reason: 'fixture');
-    expect(along.left, 0, reason: 'its block starts at the first frame given');
-    expect(
-      down.size,
-      Size(along.height, along.width),
-      reason: 'turned on its side',
-    );
-  });
 
   testWidgets('a property lane runs its frames along the timeline\'s row and '
       'down the x-sheet\'s column', (tester) async {
@@ -184,62 +129,5 @@ void main() {
       Offset(along.center.dy, along.center.dx),
       reason: 'turned on its side',
     );
-  });
-
-  testWidgets('a sound\'s lane edits its own layer through its grid\'s hooks '
-      '— the spill the grid knows, the slide and the fades', (tester) async {
-    final offsets = <(LayerId, int, int)>[];
-    final fades = <(LayerId, int, int, int)>[];
-    final row = TimelineDisplayRow.lane(
-      se,
-      seAudioLanesFor(se).single,
-      layerIndex: 0,
-    );
-    final rect = await laid(
-      tester,
-      row,
-      se,
-      axis: Axis.vertical,
-      keyPrefix: 'xsheet',
-      key: 'audio-lane-span-se-0-b0',
-      spillInLeadFrames: {const LayerId('se'): 14},
-      audioLane: TimelineAudioLaneCallbacks(
-        onSetClipOffset: (layerId, clipIndex, offsetFrames) =>
-            offsets.add((layerId, clipIndex, offsetFrames)),
-        onSetClipFades: (layerId, clipIndex, fadeIn, fadeOut) =>
-            fades.add((layerId, clipIndex, fadeIn, fadeOut)),
-      ),
-    );
-    final span = find.byKey(
-      const ValueKey<String>('xsheet-audio-lane-span-se-0-b0'),
-    );
-    final waveform =
-        tester
-                .widget<CustomPaint>(
-                  find.descendant(
-                    of: span,
-                    matching: find.byWidgetPredicate(
-                      (widget) =>
-                          widget is CustomPaint &&
-                          widget.painter is WaveformPainter,
-                    ),
-                  ),
-                )
-                .painter!
-            as WaveformPainter;
-    expect(waveform.leadingFrames, 14, reason: 'drawn from where it is');
-
-    final cell = TimelineGridMetrics.defaults.frameCellWidth;
-    await tester.drag(span, Offset(0, -2 * cell));
-    await tester.pumpAndSettle();
-    expect(offsets, [(const LayerId('se'), 0, 2)]);
-
-    final fadeIn = await tester.startGesture(
-      rect.topCenter + const Offset(0, 6),
-    );
-    await fadeIn.moveBy(Offset(0, 3 * cell));
-    await fadeIn.up();
-    await tester.pumpAndSettle();
-    expect(fades, [(const LayerId('se'), 0, 3, 0)]);
   });
 }

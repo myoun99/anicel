@@ -16,6 +16,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 
 import '../../core/worker_count.dart';
+import '../../models/app_frame_grid_settings.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/import/tvpp_convert.dart';
@@ -522,6 +523,7 @@ List<(TvpImportPlan, Map<String, TvppSlot>)> _planTvppClips(
       // [conversion.slotsByFile] at bake time — not paths.
       resolveFile: (key) => key,
       mint: mint,
+      unnamedMark: AppFrameGridSettings.settings.value.unnamedMark,
     );
     warnings.addAll(plan.warnings);
     plans.add((plan, conversion.slotsByFile));

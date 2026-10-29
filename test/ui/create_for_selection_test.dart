@@ -6,6 +6,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/cell_instances.dart';
 import 'package:anicel/src/ui/session/instructions.dart';
+import '../helpers/an_empty_drawing_row.dart';
 
 /// UI-R25 #3: Add with a live selection fills the WHOLE selection — every
 /// selectable row kind creates over its selected range.
@@ -29,7 +30,7 @@ void main() {
     s.selectFrameIndex(2);
     s.createDrawingAtCurrentFrame(); // covered island at 2
     final aId = s.activeLayer!.id;
-    s.layerStack.addLayer();
+    addAnEmptyDrawingRow(s);
     final bId = s.activeLayer!.id; // empty second row
 
     s.updateFrameRangeSelectionDrag(

@@ -7,20 +7,19 @@ import '../../services/cut_frame_composite_plan.dart'
     show resolveExposedFrameAt;
 import '../../services/project_lookup.dart' show requireLayerAnywhere;
 import 'active_cut_controllers.dart';
-import 'drags/audio_clip_offset_drag.dart';
 import 'media_pool.dart';
 import 'se_entries.dart';
 import 'session_roles.dart';
 
 /// The SOUNDS AN SE ROW CARRIES — importing one onto the row under the
-/// playhead, linking one off the media pool, the seven clip edits (remove,
-/// slide, fade, gain, fade curve, envelope), the live slide drag, and the
-/// unlink the instance editor offers.
+/// playhead, linking one off the media pool, the clip edits the block edit
+/// window makes (remove, slide, gain), and the unlink it offers.
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
-/// G3, 2026-09-07). It OWNS the in-flight slide drag — the one host field
-/// this cluster wrote — and names the roles and siblings it needs in its
-/// constructor.
+/// G3, 2026-09-07). It names the roles and siblings it needs in its
+/// constructor. ↩️It also owned the in-flight slide drag — the one host field
+/// this cluster wrote — and the fade, fade-curve and envelope edits, until
+/// the audio lane went: a row's volume keys carry the fades now (I-140).
 class AudioClips {
   AudioClips({
     required ProjectAccess project,
@@ -133,7 +132,7 @@ class AudioClips {
     _changes.notifyChanged();
   }
 
-  /// [_editAudioClips] for the six edits that replace ONE clip.
+  /// [_editAudioClips] for the edits that replace ONE clip.
   void _editAudioClip(
     LayerId layerId,
     int clipIndex,
@@ -153,7 +152,7 @@ class AudioClips {
   );
 
   /// Sets the [clipIndex]th clip's offset trim (frames skipped into the
-  /// file where its block starts) — the audio lane's slide edit; one undo
+  /// file where its block starts) — the block edit window's slide; one undo
   /// step, clamped non-negative, no-op when unchanged.
   void setAudioClipOffset(LayerId layerId, int clipIndex, int offsetFrames) {
     final clamped = offsetFrames < 0 ? 0 : offsetFrames;
@@ -167,80 +166,7 @@ class AudioClips {
     );
   }
 
-  // --- Audio offset live drags (comma-drag idiom) --------------------------
-
-  /// The in-flight slide ([AudioClipOffsetDrag]), or null. The repo-direct
-  /// idiom's rationale lives on the drag class.
-  AudioClipOffsetDrag? _audioOffsetDrag;
-
-  bool beginAudioClipOffsetDrag({
-    required LayerId layerId,
-    required int clipIndex,
-  }) {
-    final drag = AudioClipOffsetDrag.begin(
-      layerId: layerId,
-      clipIndex: clipIndex,
-      layerById: _project.layerById,
-      previewClips: ({required layerId, required audioClips}) {
-        _project.repository.updateLayerAudioClips(
-          cutId: _project.requireActiveCut.id,
-          layerId: layerId,
-          audioClips: audioClips,
-        );
-      },
-      commitClips: ({required layerId, required audioClips}) {
-        _project.cutCommandCoordinator.updateLayerAudioClips(
-          cutId: _project.requireActiveCut.id,
-          layerId: layerId,
-          audioClips: audioClips,
-          description: 'Slide sound',
-        );
-      },
-      notify: _changes.notifyChanged,
-    );
-    if (drag == null) {
-      // A refused grip leaves an in-flight drag exactly as it was.
-      return false;
-    }
-    _audioOffsetDrag = drag;
-    return true;
-  }
-
-  void updateAudioClipOffsetDrag(int offsetFrames) =>
-      _audioOffsetDrag?.update(offsetFrames);
-
-  void endAudioClipOffsetDrag() {
-    _audioOffsetDrag?.commit();
-    _audioOffsetDrag = null;
-  }
-
-  void cancelAudioClipOffsetDrag() {
-    _audioOffsetDrag?.cancel();
-    _audioOffsetDrag = null;
-  }
-
-  /// Sets the [clipIndex]th clip's fade lengths (the audio lane's edge
-  /// handles); one undo step, clamped non-negative, no-op when unchanged.
-  void setAudioClipFades(
-    LayerId layerId,
-    int clipIndex, {
-    required int fadeInFrames,
-    required int fadeOutFrames,
-  }) {
-    final clampedIn = fadeInFrames < 0 ? 0 : fadeInFrames;
-    final clampedOut = fadeOutFrames < 0 ? 0 : fadeOutFrames;
-    _editAudioClip(
-      layerId,
-      clipIndex,
-      'Fade sound',
-      (clip) =>
-          clip.fadeInFrames == clampedIn && clip.fadeOutFrames == clampedOut
-          ? null
-          : clip.copyWith(fadeInFrames: clampedIn, fadeOutFrames: clampedOut),
-    );
-  }
-
-  /// Sets the [clipIndex]th clip's gain (the audio lane's volume dialog);
+  /// Sets the [clipIndex]th clip's gain (the block edit window's, I-140);
   /// one undo step, clamped non-negative, no-op when unchanged.
   void setAudioClipGain(LayerId layerId, int clipIndex, double gain) {
     final clamped = gain < 0 ? 0.0 : gain;
@@ -252,33 +178,6 @@ class AudioClips {
     );
   }
 
-  /// Sets the [clipIndex]th clip's fade curve (AUDIO-PRO R1); one undo
-  /// step, no-op when unchanged.
-  void setAudioClipFadeCurve(
-    LayerId layerId,
-    int clipIndex,
-    AudioFadeCurve curve,
-  ) => _editAudioClip(
-    layerId,
-    clipIndex,
-    'Sound fade curve',
-    (clip) => clip.fadeCurve == curve ? null : clip.copyWith(fadeCurve: curve),
-  );
-
-  /// Sets the [clipIndex]th clip's volume envelope (AUDIO-PRO R1); one
-  /// undo step. [keys] arrive sorted from the editor; an empty list
-  /// clears the envelope.
-  void setAudioClipEnvelope(
-    LayerId layerId,
-    int clipIndex,
-    List<AudioVolumeKey> keys,
-  ) => _editAudioClip(
-    layerId,
-    clipIndex,
-    'Sound envelope',
-    (clip) => clip.copyWith(volumeKeys: keys),
-  );
-
   /// The sounds the SELECTED SE instance carries, each with the index it
   /// sits at in its layer's clip list (R5 #19 — the instance editor shows
   /// what a block is linked to, and lets you take it off).
@@ -286,21 +185,6 @@ class AudioClips {
   /// The index travels with the clip because [removeAudioClipAt] addresses
   /// by position: a clip has no id of its own, and looking it up again
   /// afterwards would search a list that just changed.
-  /// How many frames the block the selection stands on covers — the window
-  /// its sounds play in, which the block edit window's offset strip draws
-  /// (09-27). Found the way [selectedSeAudioClips] finds the block's frame;
-  /// 1 where no block covers the playhead.
-  int get selectedSeBlockFrames {
-    final layer = _selection.activeLayer;
-    if (layer == null) {
-      return 1;
-    }
-    final block = _controllers.timelineController.blockForLayerAt(
-      layer: layer,
-    );
-    return block?.length ?? 1;
-  }
-
   List<({AudioClip clip, int index})> get selectedSeAudioClips {
     final layer = _selection.activeLayer;
     final frame = _selection.selectedFrame;

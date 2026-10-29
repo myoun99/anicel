@@ -1,3 +1,4 @@
+import '../../models/app_frame_grid_settings.dart';
 import '../../models/cut.dart';
 import '../../models/timesheet_document.dart';
 import '../../services/export/xdts_builder.dart';
@@ -47,6 +48,7 @@ TimesheetDocument cutSheetDocument(
           )
         : null,
     dataSheet: dataSheet,
+    unnamedMark: AppFrameGridSettings.settings.value.unnamedMark,
   );
 }
 

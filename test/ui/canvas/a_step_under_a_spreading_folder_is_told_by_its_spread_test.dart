@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' show Rect;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -9,6 +10,12 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/dirty_region.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
@@ -19,6 +26,8 @@ import 'package:anicel/src/services/guide_geometry.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/canvas/composite_tree_paint.dart'
+    show readsPastOf;
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
 /// 🚨A STEP UNDER A FOLDER OR AN ADJUSTMENT THAT SPREADS IS TOLD BY ITS
@@ -37,7 +46,7 @@ void main() {
   // 24×8 at tile size 8: the dab's tile is 8 wide.
   const canvasSize = CanvasSize(width: 24, height: 8);
   final blur = [
-    ResolvedLayerEffect(kind: EffectKind.blur, values: [4, 4]),
+    ResolvedLayerEffect(kind: EffectKind.blur, values: [4, 0]),
   ];
 
   BrushDab dabAt(double x) => BrushDab(
@@ -71,7 +80,8 @@ void main() {
         paintPaper: true,
         paperBackground: const ProjectBackground.color(0xFF00FF00),
       ),
-      surfaceOf: (_) => null,
+      // A row another reads a blur map by is drawn from a cel of its own.
+      surfaceOf: (_) => BitmapSurface(canvasSize: canvasSize, tileSize: 8),
       live: (
         rows: (
           activeSurfacePainter: BitmapSurfacePainter(
@@ -188,5 +198,131 @@ void main() {
     ]);
     expect(moved.located, isTrue);
     expect(moved.dirty, const Rect.fromLTRB(-9, -9, 17, 17));
+  });
+
+  // I-132-Q3: a spin reaches as far as the paper's farthest corner moves
+  // about its centre — the paper's middle, (12, 4): the corner 12.6 out,
+  // turned 45° each way, moves 9.7, and the texel past it.
+  testWidgets('a row in a spinning folder: grown by how far the paper\'s '
+      'corner moves', (tester) async {
+    final reach = 2 * math.sqrt(12 * 12 + 4 * 4) * math.sin(math.pi / 8) + 1;
+    final moved = await aDabUnder(tester, [
+      CompositeGroup<CanvasStackRow>(
+        children: [row()],
+        opacity: 1,
+        blendMode: LayerBlendMode.normal,
+        effects: [
+          ResolvedLayerEffect(
+            kind: EffectKind.radialBlur,
+            values: [90, 0, 0, 0],
+            points: {'center': null},
+          ),
+        ],
+      ),
+    ]);
+    expect(moved.located, isTrue);
+    final dirty = moved.dirty!;
+    // The tile, the reach on each side and the hairline.
+    for (final (side, was) in [
+      (dirty.left, -reach - 1),
+      (dirty.top, -reach - 1),
+      (dirty.right, 8 + reach + 1),
+      (dirty.bottom, 8 + reach + 1),
+    ]) {
+      expect(side, closeTo(was, 1e-9));
+    }
+  });
+
+  // 🗣️I-132-Q21 a: a camera lens blur reads its blur map's row where it
+  // shows, pixel for pixel — so a step on that row moves the row that reads
+  // it there, and as far past as that row's chain reads past a pixel.
+  group('a step on a blur map\'s row', () {
+    const map = LayerId('map');
+    const cel = BrushFrameKey(
+      projectId: ProjectId('p'),
+      trackId: TrackId('t'),
+      cutId: CutId('c'),
+      layerId: LayerId('reader'),
+      frameId: FrameId('f'),
+    );
+    final lens = ResolvedLayerEffect(
+      kind: EffectKind.cameraLensBlur,
+      values: [
+        for (final spec in EffectKind.cameraLensBlur.parameters)
+          if (spec.id == 'blurRadius') 4 else spec.defaultValue,
+      ],
+      layers: {'blurMapLayer': map},
+    );
+
+    /// A row whose lens blur reads the live row as its map.
+    CompositeNode<CanvasStackRow> reading({
+      GuideTransform? placement,
+      List<ResolvedLayerEffect> after = const [],
+    }) => CompositeReadsRows<CanvasStackRow>(
+      node: CompositeLeaf(
+        CanvasLayerImageRequest(
+          frameKey: cel,
+          opacity: 1,
+          placement: placement,
+          effects: [lens, ...after],
+        ),
+      ),
+      rows: {
+        map: [row()],
+      },
+    );
+
+    test('a cell is read as far past it as the folder that reads the map '
+        'reads past a pixel', () {
+      const paper = Rect.fromLTWH(0, 0, 24, 8);
+      final folder = blurredFolder([row()]);
+      final past = readsPastOf([folder], paper: paper);
+      expect(past, greaterThan(0), reason: '⛔premise: its chain spreads');
+      expect(
+        readsPastOf([
+          CompositeReadsRows<CanvasStackRow>(
+            node: folder,
+            rows: {
+              map: [row()],
+            },
+          ),
+        ], paper: paper),
+        past,
+      );
+    });
+
+    testWidgets('its eye off: told where it is read, grown by the reading '
+        'row\'s chain', (tester) async {
+      final moved = await aDabUnder(tester, [reading()]);
+      expect(moved.located, isTrue);
+      expect(moved.dirty, const Rect.fromLTRB(-5, -5, 13, 13));
+      final blurred = await aDabUnder(tester, [reading(after: blur)]);
+      expect(blurred.dirty, const Rect.fromLTRB(-9, -9, 17, 17));
+    });
+
+    testWidgets('shown as well: told where it stands and where it is read, '
+        'both', (tester) async {
+      final moved = await aDabUnder(tester, [row(), reading(after: blur)]);
+      expect(moved.located, isTrue);
+      expect(moved.dirty, const Rect.fromLTRB(-9, -9, 17, 17));
+    });
+
+    testWidgets('read by a row in a blurred folder: grown by both', (
+      tester,
+    ) async {
+      final moved = await aDabUnder(tester, [
+        blurredFolder([reading()]),
+      ]);
+      expect(moved.dirty, const Rect.fromLTRB(-9, -9, 17, 17));
+    });
+
+    testWidgets('⛔read by a posed row: not told, as the posed row itself', (
+      tester,
+    ) async {
+      final moved = await aDabUnder(tester, [
+        reading(placement: const GuideTransform(1, 0, 0, 1, 3, 0)),
+      ]);
+      expect(moved.located, isFalse);
+    });
   });
 }

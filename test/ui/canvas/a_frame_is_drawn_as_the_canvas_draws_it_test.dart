@@ -313,6 +313,10 @@ void main() {
     paint: paint,
   ));
 
+  final repeatingTheEdge = ResolvedLayerEffect(
+    kind: EffectKind.blur,
+    values: [2, 0, 1],
+  );
   final scenes = <String, List<CompositeNode<_Cel>>>{
     'two rows, one over the other': [
       cel('under', 1),
@@ -341,7 +345,7 @@ void main() {
       CompositeGroup<_Cel>(
         opacity: 0.5,
         blendMode: LayerBlendMode.normal,
-        effects: [ResolvedLayerEffect(kind: EffectKind.blur, values: [1, 1])],
+        effects: [ResolvedLayerEffect(kind: EffectKind.blur, values: [1, 0])],
         children: [
           cel('under', 1, tiles: [TileCoord(x: 1, y: 0)]),
           cel('over', 2, tiles: [TileCoord(x: 1, y: 1)]),
@@ -365,8 +369,8 @@ void main() {
         paint: paintOf(
           effects: [
             ResolvedLayerEffect(
-              kind: EffectKind.deleteColor,
-              values: [0, 0, 0, 255, 100],
+              kind: EffectKind.colorKey,
+              values: [0, 0xFF000000, 255, 100],
             ),
             ResolvedLayerEffect(
               kind: EffectKind.brightnessContrast,
@@ -409,8 +413,28 @@ void main() {
         4,
         tiles: [TileCoord(x: -1, y: 0), TileCoord(x: 3, y: 1)],
         paint: paintOf(
-          effects: [ResolvedLayerEffect(kind: EffectKind.blur, values: [2, 2])],
+          effects: [ResolvedLayerEffect(kind: EffectKind.blur, values: [2, 0])],
         ),
+      ),
+    ],
+    // 🗣️I-132-Q14 a: the edge it repeats is the paper's, on a row and a
+    // folder alike — and its ink on the pasteboard is out of sight.
+    'a row repeating the paper\'s edge, with ink on the pasteboard': [
+      cel(
+        'past',
+        4,
+        tiles: [TileCoord(x: -1, y: 0), ...pageTiles],
+        paint: paintOf(effects: [repeatingTheEdge]),
+      ),
+    ],
+    'a folder repeating the paper\'s edge, with ink on the pasteboard': [
+      CompositeGroup<_Cel>(
+        opacity: 1,
+        blendMode: LayerBlendMode.normal,
+        effects: [repeatingTheEdge],
+        children: [
+          cel('past', 4, tiles: [TileCoord(x: -1, y: 0), ...pageTiles]),
+        ],
       ),
     ],
     'a screen row inside a folder': [
@@ -450,6 +474,8 @@ void main() {
   const blurs = {
     'a blurred folder of two rows at half opacity',
     'a blurred row with ink on the pasteboard',
+    'a row repeating the paper\'s edge, with ink on the pasteboard',
+    'a folder repeating the paper\'s edge, with ink on the pasteboard',
   };
 
   for (final MapEntry(key: name, value: scene) in scenes.entries) {
@@ -479,6 +505,25 @@ void main() {
         reason: 'the frame\'s one picture is not what the canvas shows of '
             'the frame: ${differing.length} pixels, the first '
             '${differing.take(6).join(', ')}',
+      );
+    });
+  }
+
+  for (final name in [
+    'a row repeating the paper\'s edge, with ink on the pasteboard',
+    'a folder repeating the paper\'s edge, with ink on the pasteboard',
+  ]) {
+    testWidgets('$name: the canvas shows none of it past the page', (
+      tester,
+    ) async {
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final scene = scenes[name]!;
+      final canvas = await canvasShows(tester, scene, storeOf(scene));
+      expect(
+        [for (var x = -margin; x < 0; x += 1) alphaAt(canvas, x, 3)],
+        everyElement(0),
+        reason: 'the blur repeating the paper\'s edge is cut to the paper',
       );
     });
   }

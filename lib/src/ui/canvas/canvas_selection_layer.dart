@@ -867,12 +867,19 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   ///
   /// The cost is deliberate: zoomed in, the drag steps by canvas pixels
   /// instead of gliding. That is the truth about where pixels can go.
-  CanvasPoint get _moveCanvasDelta => TransformBoxLaw.wholePixels(
-    widget.viewport.viewportDeltaToCanvasDelta(
+  ///
+  /// Kept to one way on the CANVAS while Shift is held (I-136,
+  /// [TransformBoxLaw.oneWay]) — after the view's turn is taken off, so a
+  /// turned view still keeps it across or down the picture.
+  CanvasPoint get _moveCanvasDelta {
+    final travel = widget.viewport.viewportDeltaToCanvasDelta(
       dx: _moveScreenDelta.dx,
       dy: _moveScreenDelta.dy,
-    ),
-  );
+    );
+    return TransformBoxLaw.wholePixels(
+      _shiftHeld ? TransformBoxLaw.oneWay(travel) : travel,
+    );
+  }
 
   // Ctrl+T free-transform session (P9b): the open box and the session
   // riding it, or none — see [TransformBox] and [_OpenBox]. The per-drag
@@ -944,6 +951,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   bool get _dragTakesAModifierTouch {
     final drag = _drag;
     return drag is TransformDrag ||
+        // A move's Shift keeps it to one way (I-136) — and a finger beside
+        // a pen's or a mouse's move holds it, as beside any move.
+        (drag is MoveDrag &&
+            CanvasTouchContacts.aMoveTakesAModifierFinger(
+              byTouch: drag.byTouch,
+            )) ||
         (drag is MarqueeDrag &&
             _aShapeTakesAModifierTouch(
               byTouch: drag.byTouch,
@@ -2638,6 +2651,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         pointer: event.pointer,
         txAtStart: affine.tx,
         tyAtStart: affine.ty,
+        byTouch: event.kind == PointerDeviceKind.touch,
       );
       _buildFloatSurfaces();
     });
@@ -2843,7 +2857,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final startOffsets = drag.startOffsets;
     final affine = box.affine;
     final from = affine.applyInverse(drag.startPointer);
-    final to = affine.applyInverse(pointer);
+    final to = affine.applyInverse(_movedPointer(drag, pointer));
     final dx = to.x - from.x;
     final dy = to.y - from.y;
     // ONE displacement, applied to every point the drag carries: an edge
@@ -2870,6 +2884,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _syncAnts();
   }
 
+  /// [pointer] for a drag of [drag]'s that MOVES something — the inside, the
+  /// anchor, a warp point: kept to one way from where it went down while
+  /// Shift is held (I-136, [TransformBoxLaw.oneWayFrom]).
+  CanvasPoint _movedPointer(TransformDrag drag, CanvasPoint pointer) =>
+      _shiftHeld
+      ? TransformBoxLaw.oneWayFrom(drag.startPointer, pointer)
+      : pointer;
+
   void _dragBoxHandle(
     BoxHandleDrag drag,
     TransformBox box,
@@ -2879,11 +2901,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     switch (drag.handle) {
       case TransformHandle.inside:
         // A hand on the canvas moves in whole pixels, as the drag that
-        // opened this box did ([TransformBoxLaw.wholePixels]).
+        // opened this box did ([TransformBoxLaw.wholePixels]) — kept to
+        // one way while Shift is held, as it is (I-136).
+        final to = _movedPointer(drag, pointer);
         final moved = TransformBoxLaw.wholePixels(
           CanvasPoint(
-            x: pointer.x - drag.startPointer.x,
-            y: pointer.y - drag.startPointer.y,
+            x: to.x - drag.startPointer.x,
+            y: to.y - drag.startPointer.y,
           ),
         );
         setState(() {
@@ -2902,10 +2926,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         // whole: 「그 과정에서 **그림이 바깥으로 나가던 뭐던 쓸데없어**.
         // 그건 유저가 그렇게 하고싶지않으면 **생각해서 할일**이야」 — and
         // the anchor is an edit value like any other.
+        final to = _movedPointer(drag, pointer);
         setState(() {
           box.affine = start.copyWith(
-            anchorX: start.anchorX + pointer.x - drag.startPointer.x,
-            anchorY: start.anchorY + pointer.y - drag.startPointer.y,
+            anchorX: start.anchorX + to.x - drag.startPointer.x,
+            anchorY: start.anchorY + to.y - drag.startPointer.y,
           );
         });
       case TransformHandle.rotate:

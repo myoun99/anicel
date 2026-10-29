@@ -6,6 +6,8 @@ import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/se_dialogue_spacing.dart';
+import '../../models/se_line_type.dart';
 import '../../models/timeline_exposure.dart';
 import '../timeline/timeline_beat_lines.dart' show TimelineGridLaw;
 import '../timeline/axis_turn.dart' show sizedAlong;
@@ -36,9 +38,15 @@ class InstanceEditPreview extends StatefulWidget {
     required this.axis,
     required String dialogue,
     required String seName,
+    SeLineType delivery = SeLineType.on,
+    SeDialogueSpacing spacing = SeDialogueSpacing.standard,
+    int? blockFrames,
   }) : _kind = LayerKind.se,
        _dialogue = dialogue,
        _seName = seName,
+       _delivery = delivery,
+       _spacing = spacing,
+       _blockFrames = blockFrames,
        _event = null,
        _defById = null;
 
@@ -50,6 +58,9 @@ class InstanceEditPreview extends StatefulWidget {
   }) : _kind = LayerKind.instruction,
        _dialogue = '',
        _seName = '',
+       _delivery = SeLineType.on,
+       _spacing = SeDialogueSpacing.standard,
+       _blockFrames = null,
        _event = event,
        _defById = defById;
 
@@ -57,6 +68,19 @@ class InstanceEditPreview extends StatefulWidget {
   final LayerKind _kind;
   final String _dialogue;
   final String _seName;
+
+  /// The delivery in the cut the window sets — what the block writes beside
+  /// its name there (F-496).
+  final SeLineType _delivery;
+
+  /// Where the line's glyphs stand on the block (F-496 ③), as the window
+  /// sets them.
+  final SeDialogueSpacing _spacing;
+
+  /// How many frames the edited block runs — the strip shows its first koma
+  /// as the timeline lays the whole of it, glyphs where its spacing puts
+  /// them. Null fills the strip, as a block of no known length.
+  final int? _blockFrames;
   final InstructionEvent? _event;
   final CameraInstructionDef? Function(String instructionId)? _defById;
 
@@ -65,8 +89,12 @@ class InstanceEditPreview extends StatefulWidget {
   static const double crossExtent = 52;
   static const double _verticalMainBudget = 240;
 
+  /// How many frames the previewed block runs on a strip of [komaCount].
+  int _blockLength(int komaCount) => _blockFrames ?? komaCount;
+
   Layer _previewLayer(int komaCount) {
     const frameId = FrameId('instance-preview-frame');
+    final length = _blockLength(komaCount);
     return switch (_kind) {
       LayerKind.se => Layer(
         id: const LayerId('instance-preview'),
@@ -75,13 +103,15 @@ class InstanceEditPreview extends StatefulWidget {
         frames: [
           Frame(
             id: frameId,
-            duration: komaCount,
+            duration: length,
             strokes: const [],
             name: _dialogue,
             seName: _seName.isEmpty ? null : _seName,
+            seTypes: SeLineTypes(own: _delivery),
+            seSpacing: _spacing,
           ),
         ],
-        timeline: {0: TimelineExposure.drawing(frameId, length: komaCount)},
+        timeline: {0: TimelineExposure.drawing(frameId, length: length)},
       ),
       _ => Layer(
         id: const LayerId('instance-preview'),
@@ -137,10 +167,12 @@ class _InstanceEditPreviewState extends State<InstanceEditPreview> {
         );
         _geometry.value = geometry;
 
-        // The synthetic block always covers [0, komaCount). An instruction
-        // row's band reads the layer's own event; this answers the SE's.
+        // The synthetic block covers [0, its length) of the strip. An
+        // instruction row's band reads the layer's own event; this answers
+        // the SE's.
+        final length = widget._blockLength(komaCount);
         TimelineCellExposureState stateAt(Layer layer, int frameIndex) {
-          if (frameIndex < 0 || frameIndex >= komaCount) {
+          if (frameIndex < 0 || frameIndex >= length) {
             return TimelineCellExposureState.uncovered;
           }
           return frameIndex == 0
@@ -201,6 +233,7 @@ class _InstanceEditPreviewState extends State<InstanceEditPreview> {
                               axis: axis,
                               paperGround: law.ground,
                               blockFrameLines: law.blockFrameLines,
+                              unnamedMark: law.unnamedMark,
                               framesPerSecond: law.framesPerSecond,
                             ),
                           );
@@ -209,13 +242,16 @@ class _InstanceEditPreviewState extends State<InstanceEditPreview> {
                     ),
                     // The span overlays place themselves off the frame
                     // geometry (the timeline's own mechanism); the preview
-                    // hands them the koma strip's.
+                    // hands them the koma strip's — and a block longer than
+                    // the strip runs on past its edge, as past a cut's.
                     Positioned.fill(
-                      child: TimelineFixedFrameSpanLayer(
-                        geometry: geometry,
-                        crossAxisExtent: crossExtent,
-                        axis: axis,
-                        children: overlays,
+                      child: ClipRect(
+                        child: TimelineFixedFrameSpanLayer(
+                          geometry: geometry,
+                          crossAxisExtent: crossExtent,
+                          axis: axis,
+                          children: overlays,
+                        ),
                       ),
                     ),
                   ],

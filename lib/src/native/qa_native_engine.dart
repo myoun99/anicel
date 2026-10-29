@@ -211,16 +211,18 @@ class QaNativeEngine {
 
   final int Function(
     Pointer<Uint8> pixels,
+    Pointer<Uint8> originals,
     int pixelCount,
     Pointer<Uint32> red,
     Pointer<Uint32> green,
     Pointer<Uint32> blue,
-    int keeps,
+    int restores,
     Pointer<Uint8> alphaMaps,
   )
   _keyRgba;
 
   final _keyPixels = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
+  final _keyOriginals = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
   final _keyRed = NativeScratch<Uint32>(
     (n) => calloc<Uint32>(n),
     bytesPerElement: sizeOf<Uint32>(),
@@ -238,23 +240,32 @@ class QaNativeEngine {
   /// [straight] rgba through a row's colour keys, given as the [tables]
   /// their one definition makes (`CelColorKey`, the keys' pass) — the
   /// keyed bytes, or null when the keys leave every alpha as it was
-  /// (`qa_key_rgba`, ABI 49).
+  /// (`qa_key_rgba`, ABI 59). [originals] is the run's input, whose alphas
+  /// a restore gives back to — [straight] itself in a run's first call.
   ///
   /// The bytes go through the engine's own buffer, so [straight] may live
   /// anywhere, and the answer is a view of that buffer: good until the
   /// next call.
-  Uint8List? keyRgba(Uint8List straight, KeyRgbaTables tables) {
-    final (:red, :green, :blue, :keeps, :alphaMaps) = tables;
+  Uint8List? keyRgba(
+    Uint8List straight,
+    Uint8List originals,
+    KeyRgbaTables tables,
+  ) {
+    final (:red, :green, :blue, :restores, :alphaMaps) = tables;
     final length = straight.length;
     final pixels = _keyPixels.ensure(length);
     final keyed = pixels.asTypedList(length)..setAll(0, straight);
     final changed = _keyRgba(
       pixels,
+      identical(originals, straight)
+          ? pixels
+          : (_keyOriginals.ensure(length)
+              ..asTypedList(length).setAll(0, originals)),
       length ~/ 4,
       _staged(_keyRed, red),
       _staged(_keyGreen, green),
       _staged(_keyBlue, blue),
-      keeps,
+      restores,
       _keyAlphaMaps.ensure(alphaMaps.length)
         ..asTypedList(alphaMaps.length).setAll(0, alphaMaps),
     );
@@ -1087,6 +1098,7 @@ class QaNativeEngine {
           .lookupFunction<
             Int32 Function(
               Pointer<Uint8>,
+              Pointer<Uint8>,
               Int32,
               Pointer<Uint32>,
               Pointer<Uint32>,
@@ -1095,6 +1107,7 @@ class QaNativeEngine {
               Pointer<Uint8>,
             ),
             int Function(
+              Pointer<Uint8>,
               Pointer<Uint8>,
               int,
               Pointer<Uint32>,
@@ -2441,14 +2454,15 @@ typedef NativeRows = ({Pointer<Uint8> start, int stride});
 /// Up to [keyRgbaKeysAtOnce] colour keys as `qa_key_rgba` reads them — a
 /// table lookup a channel where the keys asked a question a key: bit k of
 /// `red[r]`, `green[g]` and `blue[b]` says key k is within its tolerance of
-/// a pixel in that channel, bit k of `keeps` that key k keeps what it
-/// names, and `alphaMaps[k * 256 + a]` is what key k leaves of an alpha `a`
-/// it erases ([QaNativeEngine.keyRgba]; the keys' pass makes them).
+/// a pixel in that channel, bit k of `restores` that key k gives back what
+/// its run erased of what it names instead of erasing it, and
+/// `alphaMaps[k * 256 + a]` is what key k leaves of an alpha `a` it erases
+/// ([QaNativeEngine.keyRgba]; the keys' pass makes them).
 typedef KeyRgbaTables = ({
   Uint32List red,
   Uint32List green,
   Uint32List blue,
-  int keeps,
+  int restores,
   Uint8List alphaMaps,
 });
 

@@ -62,7 +62,7 @@ import 'timeline_section_runs.dart';
 import 'timeline_vertical_scrollbar_rail.dart';
 import 'timeline_virtualization_plan.dart';
 import 'timeline_visible_range.dart';
-import 'timeline_lane_graph.dart' show timelineFrameSide;
+import 'timeline_lane_graph.dart' show timelineFrameSide, timelineRowBuiltNow;
 import 'timeline_row_edges.dart';
 import 'timeline_zoom_anchor_policy.dart';
 import 'timeline_frame_grid_stack.dart';

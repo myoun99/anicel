@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
@@ -21,6 +22,7 @@ import 'anicel_incremental_writer.dart';
 import 'open_project_file.dart';
 import 'same_file.dart';
 import 'save_failure.dart' show SaveNotSwappedIn;
+import 'save_stretch.dart';
 import 'scratch_file.dart';
 import 'session_scratch.dart';
 import '../media/media_moves.dart';
@@ -182,12 +184,20 @@ class _CelWork {
 /// a name is written again when the source has another length — true for
 /// what is DERIVED and can be rebuilt under the same name (a conform),
 /// false for what is written once and never edited (media, fonts).
+///
+/// [stretch]: what the save's window says while one of these is written
+/// (F-494).
 typedef _CarriedKind = ({
   String prefix,
   Set<String> held,
   Map<String, MediaByteSource> sources,
   bool rewrittenAtAnotherLength,
+  SaveStretch stretch,
 });
+
+/// An entry a writer streams, and the stretch it is written in
+/// ([_CarriedKind.stretch]).
+typedef _Streamed = ({AnicelStreamedEntry entry, SaveStretch stretch});
 
 /// Counts a save's entries as they land, inside the writing isolate, and
 /// pushes the running fraction back out through [port].
@@ -204,6 +214,9 @@ typedef _CarriedKind = ({
 /// every cel in the project; counted flat, the bar would run to nearly
 /// full and then sit still through the only part that takes time, which
 /// reads as a hang rather than as progress.
+///
+/// It also says WHAT is being written — the [SaveStretch] — whenever that
+/// changes, as the second kind of message on the port (F-494).
 class _SaveProgress {
   _SaveProgress(this._port, this._total);
 
@@ -211,6 +224,18 @@ class _SaveProgress {
   final int _total;
   int _done = 0;
   double _sent = -1;
+  SaveStretch? _saying;
+
+  /// The save is in [stretch] now. Told once each time it changes, and
+  /// never throttled as the fraction is: the line it moves changes a word
+  /// at a time.
+  void stretch(SaveStretch stretch) {
+    if (stretch == _saying) {
+      return;
+    }
+    _saying = stretch;
+    _port?.send(stretch);
+  }
 
   /// An entry is finished.
   void step() {
@@ -254,26 +279,41 @@ class _SaveProgress {
   }
 }
 
-/// [entry] with its reads reported to [progress], and its own [step] taken
-/// when the last byte is handed over.
+/// [streamed]'s entry with its reads reported to [progress], and its own
+/// [step] taken when the last byte is handed over — each pass in the
+/// stretch [passes] names for it: the writer reads it end to end once per
+/// pass ([anicelAppendStreamPasses], [anicelArchiveStreamPasses]).
 AnicelStreamedEntry _progressed(
-  AnicelStreamedEntry entry,
-  _SaveProgress progress,
-) {
+  _Streamed streamed,
+  _SaveProgress progress, {
+  required List<SaveStretch> passes,
+}) {
+  final (:entry, stretch: _) = streamed;
   final length = entry.length;
+  var pass = 0;
   return AnicelStreamedEntry(
     name: entry.name,
     length: length,
     readInto: (buffer, position, size) {
-      progress.within(doneShare(position, length));
+      progress
+        ..stretch(passes[math.min(pass, passes.length - 1)])
+        ..within(doneShare(position, length));
       final read = entry.readInto(buffer, position, size);
       if (position + read >= length) {
         progress.step();
+        pass += 1;
       }
       return read;
     },
   );
 }
+
+/// What an append's passes over [streamed] are: the checksum first, then
+/// the copy in its own kind's stretch ([anicelAppendStreamPasses]).
+List<SaveStretch> _appendPasses(_Streamed streamed) => [
+  SaveStretch.checking,
+  streamed.stretch,
+];
 
 /// A writing isolate asking the session to move its cel refs off bytes it
 /// is about to write over, and waiting on [reply] until they have
@@ -300,24 +340,28 @@ Future<void> _askToMoveRefs(
   await answer.first;
 }
 
-/// Runs [write] with a port for it to report progress on — and, given
-/// [onMoveRefs], to ask the session to move its refs on — and closes that
-/// port afterwards. With neither there is no port and no cost.
+/// Runs [write] with a port for it to report progress on — how far, and
+/// in which stretch ([onStretch]) — and, given [onMoveRefs], to ask the
+/// session to move its refs on — and closes that port afterwards. With
+/// none of them there is no port and no cost.
 ///
 /// ⚠️[onMoveRefs] is answered even when it throws: the isolate waits on
 /// the answer, and a save that never hears back never finishes.
 Future<R> _reportingProgress<R>(
   void Function(double)? onProgress,
   Future<R> Function(SendPort? port) write, {
+  void Function(SaveStretch stretch)? onStretch,
   void Function(Map<int, AnicelRelocation> moved)? onMoveRefs,
 }) async {
-  if (onProgress == null && onMoveRefs == null) {
+  if (onProgress == null && onStretch == null && onMoveRefs == null) {
     return write(null);
   }
   final receive = ReceivePort();
   receive.listen((message) {
     if (message is double) {
       onProgress?.call(message);
+    } else if (message is SaveStretch) {
+      onStretch?.call(message);
     } else if (message is _MoveRefs) {
       try {
         onMoveRefs?.call(message.moved);
@@ -444,6 +488,10 @@ class AnicelFileService {
     /// Called on the UI isolate with 0..1 as the write proceeds. Null costs
     /// nothing — no port is opened and the writer reports into no one.
     void Function(double)? onProgress,
+
+    /// Called on the UI isolate as the write moves from one [SaveStretch]
+    /// to the next — what the save is writing, for its window to say.
+    void Function(SaveStretch stretch)? onStretch,
 
     /// Entries something reads by OFFSET right now
     /// (`ProjectFile.heldArchiveEntries`): a save that packs the file in
@@ -641,6 +689,7 @@ class AnicelFileService {
         carried: carried,
         sessionFields: sessionFields,
         onProgress: onProgress,
+        onStretch: onStretch,
         heldEntries: heldEntries,
         onMoveRefs: moveRefs,
       );
@@ -668,6 +717,7 @@ class AnicelFileService {
       carried: carried,
       sessionFields: sessionFields,
       onProgress: onProgress,
+      onStretch: onStretch,
       onFullWriteLeftAt: onFullWriteLeftAt,
       beforeReplacing: beforeReplacing,
     );
@@ -920,6 +970,7 @@ class AnicelFileService {
     /// sweep.
     List<_CarriedKind> carried = const [],
     void Function(double)? onProgress,
+    void Function(SaveStretch stretch)? onStretch,
 
     /// Entries the push-down leaves where they are — see `save`'s.
     Set<String> heldEntries = const {},
@@ -952,10 +1003,11 @@ class AnicelFileService {
     // no one watching the bar, and a callback reaching into the isolate
     // drags the session along with it — the send refuses (a `Future` deep
     // in its settings is unsendable), and every Save from the menu failed.
-    final reportsProgress = onProgress != null;
+    final reportsProgress = onProgress != null || onStretch != null;
 
     return _reportingProgress(
       onProgress,
+      onStretch: onStretch,
       onMoveRefs: onMoveRefs,
       (port) => Isolate.run(() async {
         final sound = _layoutSafeToAppendOnto(
@@ -1010,7 +1062,8 @@ class AnicelFileService {
           },
           removeNames: leaving,
           streamedEntries: [
-            for (final entry in streamed) _progressed(entry, progress),
+            for (final entry in streamed)
+              _progressed(entry, progress, passes: _appendPasses(entry)),
           ],
         );
         // The push-down and the cut, here in the isolate that just appended.
@@ -1022,6 +1075,7 @@ class AnicelFileService {
           Future<void> moveRefs(Map<int, AnicelRelocation> moved) =>
               _askToMoveRefs(port!, moved);
           await moveRefs(_rehomedRefs(appended, heldByDirtyCels));
+          progress.stretch(SaveStretch.compacting);
           written = await compactAnicelInPlace(
             path: filePath,
             layout: appended,
@@ -1068,6 +1122,7 @@ class AnicelFileService {
   ) {
     final blobs = <(BrushFrameKey, String, AnicelCelBlob)>[];
     for (final work in works) {
+      progress.stretch(SaveStretch.cels);
       final blob = work.resolveBlob();
       if (blob != null) {
         blobs.add((work.key, work.name, blob));
@@ -1131,24 +1186,29 @@ class AnicelFileService {
   ///
   /// THE FONTS it has to write: as media — a font file is written once
   /// under a name minted for it, and never edited.
-  static List<AnicelStreamedEntry> _entriesToAppend(
+  static List<_Streamed> _entriesToAppend(
     AnicelZipLayout layout,
     List<_CarriedKind> carried,
   ) => [
     for (final kind in carried)
       for (final MapEntry(key: name, value: source) in kind.sources.entries)
         if (_needsStreaming(layout, name, source, kind))
-          _streamedEntryOf(name, source),
+          _streamedEntryOf(name, source, kind),
   ];
 
-  /// [source], as the entry called [name] a writer streams into the file.
-  static AnicelStreamedEntry _streamedEntryOf(
+  /// [source], as the entry called [name] a writer streams into the file,
+  /// in [kind]'s stretch.
+  static _Streamed _streamedEntryOf(
     String name,
     MediaByteSource source,
-  ) => AnicelStreamedEntry(
-    name: name,
-    length: source.lengthSync(),
-    readInto: source.readIntoSync,
+    _CarriedKind kind,
+  ) => (
+    entry: AnicelStreamedEntry(
+      name: name,
+      length: source.lengthSync(),
+      readInto: source.readIntoSync,
+    ),
+    stretch: kind.stretch,
   );
 
   /// Every kind of thing a project carries BESIDE ITS CELS, as a save sees
@@ -1169,18 +1229,21 @@ class AnicelFileService {
         held: media.keys.toSet(),
         sources: media,
         rewrittenAtAnotherLength: false,
+        stretch: SaveStretch.media,
       ),
       (
         prefix: anicelConformEntryPrefix,
         held: conforms.entries.keys.toSet(),
         sources: conforms.entries,
         rewrittenAtAnotherLength: true,
+        stretch: SaveStretch.conforms,
       ),
       (
         prefix: anicelFontEntryPrefix,
         held: fonts.held,
         sources: fonts.entries,
         rewrittenAtAnotherLength: false,
+        stretch: SaveStretch.fonts,
       ),
     ];
   }
@@ -1275,6 +1338,7 @@ class AnicelFileService {
     /// written.
     List<_CarriedKind> carried = const [],
     void Function(double)? onProgress,
+    void Function(SaveStretch stretch)? onStretch,
     void Function(String tempPath)? onFullWriteLeftAt,
     Future<void> Function()? beforeReplacing,
   }) async {
@@ -1346,6 +1410,7 @@ class AnicelFileService {
         carried: carried,
         sessionFields: sessionFields,
         onProgress: onProgress,
+        onStretch: onStretch,
       );
     } on Object {
       if (temp.existsSync()) {
@@ -1456,9 +1521,11 @@ class AnicelFileService {
     // the picker's grant type could not cross this boundary at all.
     required AnicelSessionFields sessionFields,
     void Function(double)? onProgress,
+    void Function(SaveStretch stretch)? onStretch,
   }) {
     return _reportingProgress(
       onProgress,
+      onStretch: onStretch,
       (port) => Isolate.run(() {
         // One pass here, unlike the append path above — this writer patches
         // the CRC by seeking back rather than pre-reading.
@@ -1477,7 +1544,7 @@ class AnicelFileService {
           for (final kind in carried)
             for (final MapEntry(key: name, value: source)
                 in kind.sources.entries)
-              _streamedEntryOf(name, source),
+              _streamedEntryOf(name, source, kind),
         ];
         final progress = _SaveProgress(
           port,
@@ -1512,6 +1579,7 @@ class AnicelFileService {
             for (final work in works) {
               // Resolved HERE rather than up front: the generator is pulled
               // lazily, so exactly one cel is resident at a time.
+              progress.stretch(SaveStretch.cels);
               final blob = work.resolveBlob();
               if (blob == null) {
                 // The file this ref pointed into is gone. Skipping keeps
@@ -1544,7 +1612,8 @@ class AnicelFileService {
           // here needs no removal list: an entry no kind hands over simply
           // is not written.
           streamedEntries: [
-            for (final entry in streamed) _progressed(entry, progress),
+            for (final entry in streamed)
+              _progressed(entry, progress, passes: [entry.stretch]),
           ],
         );
         progress.finish();

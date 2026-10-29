@@ -186,4 +186,73 @@ void main() {
     expect(form.inkIn(letterBox(form.layout, s1)), greaterThan(0));
     expect(values.inkIn(letterBox(values.layout, s1)), 0);
   });
+
+  // 🗣️F-500 (유저 2026-10-29): 「전각 기준 3글자까지 보이도록. 그 후론 글자수
+  // 작게하면서 버티다가 임계점넘어가면 ...으로 생략」 — Q2 b, the block word's
+  // law: its size kept, its gaps then its width giving way. The test face
+  // sets every letter an em wide, as a full-width one is.
+  group('a column\'s title', () {
+    const style = TextStyle(fontSize: 9);
+    const room = 22.0;
+
+    test('that fits is set as it is', () {
+      final (:glyph, :fit) = columnTitleSetOnto('AB', style, room);
+      expect((glyph.plainText, fit.x), ('AB', 1.0));
+    });
+
+    test('of three letters narrows to show all three, at its size', () {
+      final (:glyph, :fit) = columnTitleSetOnto('ABC', style, room);
+      expect(glyph.plainText, 'ABC');
+      expect(fit.x, inExclusiveRange(columnTitleNarrowest, 1));
+      expect(glyph.width * fit.x, lessThanOrEqualTo(room));
+      expect(glyph.height, columnTitleSetOnto('AB', style, room).glyph.height);
+    });
+
+    test('that would narrow past half is cut short to what narrows no '
+        'further', () {
+      final (:glyph, :fit) = columnTitleSetOnto('ABCDEFGH', style, room);
+      expect(glyph.plainText, 'ABCD…');
+      expect(fit.x, greaterThanOrEqualTo(columnTitleNarrowest));
+      expect(
+        columnTitleSetOnto('ABCDE…', style, room).glyph.plainText,
+        'ABCD…',
+        reason: '⛔premise: one letter more would narrow past half',
+      );
+    });
+
+    test('⛔in no room is still there', () {
+      final (:glyph, :fit) = columnTitleSetOnto('A', style, 0);
+      expect(glyph.plainText, '…');
+      expect(fit.x, greaterThan(0));
+    });
+
+    test('of three letters prints across its column', () async {
+      final values = await _paintForm(
+        _document(name: 'ABC'),
+        SheetPaintLayer.content,
+      );
+      final box = letterBox(values.layout, 0);
+      final inked = [
+        for (var x = box.left.floor() - 1; x < box.right.ceil() + 1; x += 1)
+          if (values.inkIn(Rect.fromLTWH(x.toDouble(), box.top, 1, box.height)) >
+              0)
+            x,
+      ];
+      expect(
+        inked.last - inked.first + 1,
+        greaterThan(2 * style.fontSize!),
+        reason: 'more than two letters\' width — ↩️「A…」',
+      );
+      expect(
+        (inked.first >= box.left.floor(), inked.last < box.right.ceil()),
+        (true, true),
+        reason: 'inside its margin',
+      );
+      expect(
+        (inked.first - box.left) - (box.right - 1 - inked.last),
+        inInclusiveRange(-1, 1),
+        reason: 'centred',
+      );
+    });
+  });
 }

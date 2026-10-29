@@ -31,6 +31,8 @@ import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
+import 'package:anicel/src/ui/export/still_image_encoders.dart'
+    show ExportLayerRow;
 
 import '../../helpers/cels_parked_cold.dart';
 
@@ -353,6 +355,18 @@ void main() {
         pixelOf(still, 32, 3, 16),
         (255, 255, 255, 255),
         reason: 'the picture\'s ground, past the canvas',
+      );
+      // A layered file's row of it, drawn by itself on nothing — cut at the
+      // canvas's edge as the frame is.
+      final parkedRow = renderer
+          .frameRows(task, ExportSizeMode.camera)
+          .whereType<ExportLayerRow>()
+          .singleWhere((row) => row.name == 'parked');
+      final layered = await bytesOf(await parkedRow.draw());
+      expect(
+        pixelOf(layered, 32, 3, 16),
+        (0, 0, 0, 0),
+        reason: 'a layered file\'s row, past the canvas',
       );
     });
   });

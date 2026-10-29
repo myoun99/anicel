@@ -1,9 +1,14 @@
 import 'package:flutter/foundation.dart';
 
-/// How the frame grid is drawn — a user preference, not project data
-/// (Preferences ▸ Display).
+import 'inbetween_mark.dart';
+
+/// How the frame grid is drawn, and the mark an unnamed drawing wears on
+/// it — a user preference, not project data (Preferences ▸ Display).
 class AppFrameGridSettings {
-  const AppFrameGridSettings({this.blockFrameLines = false});
+  const AppFrameGridSettings({
+    this.blockFrameLines = false,
+    this.unnamedMark = defaultUnnamedDrawingMark,
+  });
 
   /// Whether the frame lines cross a block's paper.
   ///
@@ -15,27 +20,52 @@ class AppFrameGridSettings {
   /// 선을 기본값 off로」) — the switch stays, OFF is the default.
   final bool blockFrameLines;
 
-  AppFrameGridSettings copyWith({bool? blockFrameLines}) =>
-      AppFrameGridSettings(
-        blockFrameLines: blockFrameLines ?? this.blockFrameLines,
-      );
+  /// Which of the two marks a drawing with no name wears where its block
+  /// starts ([defaultUnnamedDrawingMark] until one is picked).
+  ///
+  /// 🗣️F-489 (유저 2026-10-27): 「이름 없는 블록의 기본 마크1,2인지
+  /// 설정할수있게. 파일에 기억되도록? 환경설정에서 바꾸도록. 화면 탭에서?
+  /// 그런건 판단 맡기고」 — a preference of the hand that draws, kept with the
+  /// app as the frame lines are, so a file says nothing about it.
+  final InbetweenMark unnamedMark;
 
-  Map<String, dynamic> toJson() => {'blockFrameLines': blockFrameLines};
+  AppFrameGridSettings copyWith({
+    bool? blockFrameLines,
+    InbetweenMark? unnamedMark,
+  }) => AppFrameGridSettings(
+    blockFrameLines: blockFrameLines ?? this.blockFrameLines,
+    unnamedMark: unnamedMark ?? this.unnamedMark,
+  );
 
-  factory AppFrameGridSettings.fromJson(Map<String, dynamic> json) =>
-      json['blockFrameLines'] is bool
-      ? AppFrameGridSettings(blockFrameLines: json['blockFrameLines'] as bool)
-      // Nothing saved reads as the default — the constructor's, the one
-      // place it is written.
-      : const AppFrameGridSettings();
+  Map<String, dynamic> toJson() => {
+    'blockFrameLines': blockFrameLines,
+    'unnamedMark': unnamedMark.name,
+  };
+
+  /// Nothing saved — or nothing this app can read — reads as the default,
+  /// the constructor's, the one place it is written.
+  factory AppFrameGridSettings.fromJson(Map<String, dynamic> json) {
+    const unsaid = AppFrameGridSettings();
+    return AppFrameGridSettings(
+      blockFrameLines: switch (json['blockFrameLines']) {
+        final bool shown => shown,
+        _ => unsaid.blockFrameLines,
+      },
+      unnamedMark:
+          InbetweenMark.values.asNameMap()[json['unnamedMark']] ??
+          unsaid.unnamedMark,
+    );
+  }
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is AppFrameGridSettings && other.blockFrameLines == blockFrameLines;
+      other is AppFrameGridSettings &&
+          other.blockFrameLines == blockFrameLines &&
+          other.unnamedMark == unnamedMark;
 
   @override
-  int get hashCode => blockFrameLines.hashCode;
+  int get hashCode => Object.hash(blockFrameLines, unnamedMark);
 
   /// The LIVE app-wide value (the workspace colours' idiom): the grids read
   /// it through their host's law, and the session restores and persists it.

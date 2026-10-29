@@ -128,8 +128,12 @@ void main() {
     // `paintImage` and `DecorationImage` wrap the same engine draw behind
     // their OWN quality defaults, which is the exact drift the required
     // parameter exists to end — and their internal draw lives in the
-    // framework, where the census regex cannot see it. `drawAtlas` /
-    // `drawRawAtlas` sample images through a paint the same way.
+    // framework, where the census regex cannot see it.
+    // ↩️`drawAtlas` / `drawRawAtlas` stood here as well, until a page's
+    // tile slots were laid by one (frame-composite-draws-each-tile-on-its-
+    // own, 2026-10-28): it samples by the Paint handed to it, as
+    // `drawImage` does — no default of its own — so it is a raw draw, and
+    // the census counts it as one ([_rawImageDraw]).
     //
     // ⚠️Stripping the private `_paintImage` FIRST keeps the guard's
     // teeth without banning a local helper whose body the census already
@@ -144,8 +148,6 @@ void main() {
         }
         final probe = line.replaceAll('_paintImage', '');
         if (probe.contains('paintImage(') ||
-            probe.contains('drawAtlas(') ||
-            probe.contains('drawRawAtlas(') ||
             probe.contains('DecorationImage(')) {
           found.add('${file.path}:${i + 1}');
         }
@@ -323,8 +325,45 @@ void main() {
 /// 브러시/렌더링이 전부」): −1 in canvas/level_image — the file went with
 /// the camera's halvings: a row drawn through the camera reduced is drawn
 /// from its own chain, as the canvas draws its one picture.
-const int _knownRawDraws = 26;
+/// **28** on 2026-10-28 (board `I-132-Q14`, 유저 「용지(캔버스) 테두리 —
+/// 레이어 · 폴더 모두」): +2 in canvas/subtree_image_composite — a Gaussian
+/// repeating the paper's edge (`_paperEdgeDraw`). The paper is cut out of a
+/// step's raster as an image of its own (`_cutOut`, the 1:1 blit class), and
+/// that image is drawn at its place under the blur's clamp: 🔬on Impeller a
+/// clamp repeats the edge of the image it is drawn with, and nothing of a
+/// part drawn from a larger one (10-28). Both at the identity, 1:1, owning
+/// `FilterQuality.none` on their own Paint.
+/// **29** on 2026-10-28 (onion-ghosts-in-place ②, 유저 2026-10-26 「보통
+/// 합성이 아닌 경우라도 최대한 극한으로 개선해보자」): +1 in
+/// playback/frame_pictures — a frame with its ghosts in place laid over its
+/// film (`_overTheFilm`): the film's texels, and the place the ghosts show
+/// drawn alone, each taken as they are in place of the canvas's
+/// (`BlendMode.src`), one texel to a pixel (`_inStead`). The 1:1 blit
+/// class, owning `FilterQuality.none` on its own Paint.
+/// **27** on 2026-10-28 (the-walk-draws-off-the-grid-on-impeller): −1 in
+/// canvas/selection_float_overlay, −1 in canvas/text/cel_text_float — a
+/// transform's preview and a text's landing are laid with their edges cut
+/// on the pixel grid (`drawImageRectOnThePixelGrid`), as the coordinates
+/// they float over are.
+/// **28** on 2026-10-28 (board `I-78-Q4`, 유저 「한 행의 여러 블록을 …
+/// 제일 왼쪽 블록에 합침」): +1 in timeline/merge_layer_rows — a block
+/// merge's new cel laid of the cels it is made of (`_layBlockPictures`),
+/// each drawn alone over the same wall at the same size and laid over the
+/// one under it at the origin. The 1:1 blit class, owning
+/// `FilterQuality.none` on its own Paint.
+/// **30** on 2026-10-28 (frame-composite-draws-each-tile-on-its-own): a
+/// committed tile's picture is a slot of a page. +1 in
+/// canvas/surface_paint/surface_paint_pass — a slot laid by itself where a
+/// colour matrix rides (`_lay`: Impeller rounds one in an atlas apart), in
+/// the tile paint, whose quality the display law answers. +1 in
+/// canvas/tile_pages — a page's slots in one `drawAtlas`, counted here
+/// since it samples by the Paint handed in (`SlotsByPage.drawInto`: the
+/// tile paint, and the composes' `FilterQuality.none`). ±0 in
+/// canvas/chained_picture: its 1:1 copy is one `drawImageRect` of the
+/// picture's part, a slot's or the whole.
+const int _knownRawDraws = 30;
 
 final RegExp _rawImageDraw = RegExp(
-  r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',
+  r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(|\.drawAtlas\(|'
+  r'\.drawRawAtlas\(',
 );

@@ -69,7 +69,7 @@ void main() {
         transformGroupHeaderLane.laneId,
         'position',
         effectGroupLaneId(blur),
-        effectLaneId(blur, 'blurX'),
+        effectLaneId(blur, 'blurriness'),
       ]) {
         standOn(laneId);
         expect(

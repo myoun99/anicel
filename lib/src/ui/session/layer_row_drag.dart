@@ -207,14 +207,30 @@ class LayerRowDrag {
     int slot,
     LayerId targetId,
   ) {
-    // A conte group's rows hold nothing to drop into (its base carries its
-    // riders already), so a conte row's drag takes the caret alone — with
-    // the pointer still in the row it is over, as the rail's gap hears it.
-    if (_conteSeatDrag != null) {
-      updateLayerRowDrag(displayLayers, slot, pointerInRow: targetId);
+    // A conte row's drop ON a row is the timeline's drop on that seat's row
+    // in the cut the drag is made in — a 공정 folder swallows it (I-99) —
+    // lit on the rail's own row.
+    //
+    // ↩️It took the caret alone: 「a conte group's rows hold nothing to drop
+    // into」 (10-10, a rule nobody asked for), which a folder of the group
+    // makes untrue.
+    final seat = _conteSeatDrag;
+    if (seat == null) {
+      _rowOrderDrag?.updateLayerRowDropOnRow(displayLayers, slot, targetId);
       return;
     }
-    _rowOrderDrag?.updateLayerRowDropOnRow(displayLayers, slot, targetId);
+    final cut = _project.cutById(seat.cutId);
+    final rows = cut == null ? null : _seatRowsIn(cut, displayLayers);
+    final target = cut == null ? null : _seatRowIn(cut, targetId);
+    if (rows == null || target == null) {
+      return;
+    }
+    _rowOrderDrag?.updateLayerRowDropOnRow(
+      rows,
+      slot,
+      target.id,
+      drawnTarget: targetId,
+    );
   }
 
   void endLayerRowDrag() {

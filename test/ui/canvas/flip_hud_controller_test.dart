@@ -3,7 +3,9 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_frame_grid_settings.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/inbetween_mark.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
 import 'package:anicel/src/ui/canvas/flip_hud_controller.dart';
@@ -463,6 +465,57 @@ void main() {
 
       controller.end();
       await tester.pump();
+    });
+
+    // 🗣️F-489 — the window's unnamed heads wear the mark picked in
+    // Preferences, and a pick made while it shows reaches it there.
+    testWidgets('the window draws the unnamed mark picked, and hears a pick',
+        (tester) async {
+      addTearDown(
+        () => AppFrameGridSettings.settings.value =
+            const AppFrameGridSettings(),
+      );
+      final controller =
+          FlipHudController(hapticTick: () {}, hapticsEnabled: () => false)
+            ..bind(
+              _testOwner,
+              (_) => const FlipHudSnapshot(
+                rows: [rowA],
+                rowIndex: 0,
+                frameIndex: 2,
+                frameCount: 15,
+              ),
+            );
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: FlipHudOverlay(controller: controller)),
+        ),
+      );
+      controller.begin(
+        axis: FlipHudAxis.frame,
+        anchor: const Offset(300, 400),
+        frameStep: false,
+      );
+      await tester.pump();
+      FlipHudPainter painter() => tester
+          .widget<CustomPaint>(
+            find.descendant(
+              of: find.byKey(const ValueKey<String>('flip-hud')),
+              matching: find.byType(CustomPaint),
+            ),
+          )
+          .painter! as FlipHudPainter;
+      expect(painter().unnamedMark, InbetweenMark.two);
+
+      AppFrameGridSettings.settings.value =
+          const AppFrameGridSettings(unnamedMark: InbetweenMark.one);
+      await tester.pump();
+      expect(painter().unnamedMark, InbetweenMark.one);
+
+      controller.end();
+      await tester.pump(FlipHudController.holdAfterRelease);
+      await tester.pump(FlipHudController.fadeOut);
     });
 
     testWidgets('a vertical lock shows the ROW axis', (tester) async {

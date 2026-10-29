@@ -312,9 +312,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   ///
   /// ↩️「SE layers only here; no camera or audio-lane dispatch on these
   /// lanes」 stopped being true with F-101: an S row twirls down the
-  /// timeline's own list, Audio lane included, so both hosts take
-  /// [sessionLaneEditCallbacks] and the typed offset goes where the
-  /// timeline's does.
+  /// timeline's own list, so both hosts take [sessionLaneEditCallbacks].
   PropertyLaneEditCallbacks get _layerLaneEdit => sessionLaneEditCallbacks(
     _session,
     frameIsGlobal: true,
@@ -1140,8 +1138,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onEnd: _session.edgeDrag.endExposureEdgeDrag,
                     onCancel: _session.edgeDrag.cancelExposureEdgeDrag,
                   ),
-                  // The S rows' sound edits — the timeline's own (F-101).
-                  audioLane: sessionAudioLaneCallbacks(_session),
                   // The TRANSITION row. This panel is its only editor: the
                   // row is track-owned and its spans address the global
                   // axis, so the cut timeline shows them read-only.

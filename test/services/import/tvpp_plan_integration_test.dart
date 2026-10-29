@@ -1,10 +1,10 @@
 import 'package:anicel/src/models/cut_id.dart';
-import 'package:anicel/src/models/frame.dart' show defaultInbetweenMark;
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/import/import_warning.dart';
 import 'package:anicel/src/models/import/tvp_import_model.dart';
 import 'package:anicel/src/models/import/tvpp_convert.dart';
 import 'package:anicel/src/models/import/tvpp_parse.dart';
+import 'package:anicel/src/models/inbetween_mark.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
@@ -105,6 +105,7 @@ void main() {
       parsed: conversion.result,
       resolveFile: (key) => key,
       mint: mint(),
+      unnamedMark: defaultUnnamedDrawingMark,
     );
 
     expect(plan.cut.name, 'cut12');
@@ -130,13 +131,22 @@ void main() {
     final exposure = a.timeline[0]!;
     expect(exposure.length, 4);
     expect(exposure.breakdownOffsets, const [2]);
-    expect(
-      exposure.breakdownMarks,
-      {2: defaultInbetweenMark},
-      reason:
-          'a TVPaint mark says no kind, so it wears the default — '
-          '🗣️I-130-csp-import-Q2 (유저 2026-10-27) 「모를 때는 ○마크1」',
-    );
+    for (final pick in InbetweenMark.values) {
+      final picked = planTvpImport(
+        parsed: conversion.result,
+        resolveFile: (key) => key,
+        mint: mint(),
+        unnamedMark: pick,
+      ).cut.layers.singleWhere((l) => l.name == 'A');
+      expect(
+        picked.timeline[0]!.breakdownMarks,
+        {2: pick},
+        reason:
+            'a TVPaint mark says no kind, so it wears the mark an unnamed '
+            'drawing wears, whichever is picked — 🗣️F-489-Q1 (유저 '
+            '2026-10-27) 「둘 다 따라간다」',
+      );
+    }
 
     // The bake carries the slot key the session resolves.
     expect(plan.bakes, hasLength(1));
@@ -178,6 +188,7 @@ void main() {
       parsed: parsed,
       resolveFile: (key) => key,
       mint: mint(),
+      unnamedMark: defaultUnnamedDrawingMark,
     );
     final se = plan.cut.layers.singleWhere((l) => l.kind == LayerKind.se);
     expect(se.name, '12.mp4');
@@ -241,6 +252,7 @@ void main() {
       parsed: convertTvppClip(clip, clipIndex: 0).result,
       resolveFile: (key) => key,
       mint: mint(),
+      unnamedMark: defaultUnnamedDrawingMark,
     );
 
     expect(plan.warnings, [lockNotImported('12.mp4')]);

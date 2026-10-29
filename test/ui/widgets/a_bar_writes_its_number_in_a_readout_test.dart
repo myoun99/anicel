@@ -45,10 +45,14 @@ void main() {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              FieldSliderValueReadout(
-                keyValue: 'readout',
-                bar: barWith(readoutHolds),
-                width: 40,
+              Builder(
+                builder: (context) => FieldSliderValueReadout(
+                  keyValue: 'readout',
+                  bar: barWith(readoutHolds),
+                  sizes: FieldSliderReadoutSizes.of(context, [
+                    barWith(readoutHolds),
+                  ]),
+                ),
               ),
               SizedBox(
                 width: 20,
@@ -159,7 +163,7 @@ void main() {
   testWidgets('a readout is as wide as the widest word its bar can say, '
       'whatever the bar says now — 「그냥 고정크기로하자」', (tester) async {
     final context = await pumpContext(tester);
-    double widthAt(double value) => FieldSliderValueReadout.widthIn(context, [
+    double widthAt(double value) => FieldSliderReadoutSizes.of(context, [
       FieldSlider(
         label: 'Size',
         nameInside: false,
@@ -171,7 +175,7 @@ void main() {
         readout: FieldSliderReadout(),
         onChanged: (_) {},
       ),
-    ]);
+    ]).width;
 
     final widest = widthAt(100);
     expect(widthAt(10), widest, reason: '「10.0」 says less than 「100.0」');

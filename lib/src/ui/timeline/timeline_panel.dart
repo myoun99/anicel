@@ -5,6 +5,7 @@ import '../panels/panel_collapsed_scope.dart';
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../text/app_strings.dart';
 import '../../models/camera_instruction.dart';
+import '../../models/cut_id.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/attached_layer_resolve.dart' show attachArrowPlacement;
@@ -27,7 +28,6 @@ import 'layer_drop_policy.dart'
     show LayerAreaSilhouette, layerAreaSilhouetteOf, rowsWithSilhouette;
 import 'layer_timeline_grid.dart';
 import 'property_lane_model.dart';
-import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
 import 'timeline_cel_content_source.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'layer_row_drag.dart' show TimelineRowDragHooks;
@@ -87,7 +87,7 @@ class TimelinePanel extends StatefulWidget {
     this.audioPeaksFor,
     this.soundCannotPlay,
     this.seClipMarkerTooltip,
-    this.audioLane,
+    this.onDropMediaAssetOnSeBlock,
     this.onDropMediaAssetOnLayer,
     this.acceptsMediaAssetOnLayer,
     this.onHoverMediaAssetOnLayer,
@@ -171,6 +171,7 @@ class TimelinePanel extends StatefulWidget {
     this.masterOpacityValue = 1.0,
     this.dragPreview,
     this.spillInLeadFrames = const {},
+    this.cutId,
     this.cutEndDrag,
     this.substrateGeneration = '',
     this.memoAux = const TimelineRowMemoAux(),
@@ -204,6 +205,9 @@ class TimelinePanel extends StatefulWidget {
   /// from an earlier cut, each with how far into it the cut starts — see
   /// [TimelineGridHooks.spillInLeadFrames].
   final Map<LayerId, int> spillInLeadFrames;
+
+  /// The cut the rows are seen in — [TimelineGridHooks.cutId].
+  final CutId? cutId;
 
   /// The frame cursor (editing playhead / playback position). Only the
   /// cursor-driven widgets subscribe — a tick never rebuilds the panel or
@@ -283,9 +287,10 @@ class TimelinePanel extends StatefulWidget {
   /// rows only for now — the xsheet's marker joins with its page work.
   final String? seClipMarkerTooltip;
 
-  /// What the audio lane may ask the session to do, both orientations;
-  /// null = display-only.
-  final TimelineAudioLaneCallbacks? audioLane;
+  /// A media-browser sound dropped on an SE block, both orientations
+  /// ([TimelineGridHooks.onDropMediaAssetOnSeBlock]).
+  final void Function(LayerId layerId, int blockStartFrame, String path)?
+  onDropMediaAssetOnSeBlock;
 
   /// A media-browser row dropped on a drawing layer; null refuses the drag.
   final void Function(LayerId layerId, int frameIndex, String path)?
@@ -720,7 +725,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       projectFrameRate: widget.projectFrameRate,
       showSeconds: widget.showSeconds,
       onShowSecondsChanged: widget.onShowSecondsChanged,
-      audioLane: widget.audioLane,
+      onDropMediaAssetOnSeBlock: widget.onDropMediaAssetOnSeBlock,
       onDropMediaAssetOnLayer: widget.onDropMediaAssetOnLayer,
       acceptsMediaAssetOnLayer: widget.acceptsMediaAssetOnLayer,
       onHoverMediaAssetOnLayer: widget.onHoverMediaAssetOnLayer,
@@ -783,6 +788,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       onToggleAttachGroup: widget.onToggleAttachGroup,
       opacityDragPreview: widget.opacityDragPreview,
       spillInLeadFrames: widget.spillInLeadFrames,
+      cutId: widget.cutId,
       cutEndDrag: widget.cutEndDrag,
       substrateGeneration: widget.substrateGeneration,
       memoAux: widget.memoAux,

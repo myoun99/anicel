@@ -92,6 +92,8 @@ class _StoryboardRailRows {
     }
     return effectPropertyLanes(
       track.effects,
+      // A track's chain is no cut's: it names no row.
+      cutRows: const [],
       isExpanded: (effectId) =>
           track.expandedLaneGroups.contains(effectGroupLaneId(effectId)),
       valueAt: (effectId, parameterId, time) => effectParameterValueAtTime(
@@ -137,11 +139,10 @@ class _StoryboardRailRows {
   /// fx bypass never touches authoring values), an unkeyed pose in the middle
   /// of the camera frame. No cut is consulted: the row belongs to the track.
   ///
-  /// C5 (2026-08-17) holds by construction: the Audio lane is in the list
-  /// exactly when the timeline's lane law emits one (`seAudioLanesFor` —
-  /// nothing for a row with no sounds imported). The storyboard once mounted
-  /// it off the twirl alone, and an empty S row showed a waveform strip its
-  /// timeline twin never draws.
+  /// C5 (2026-08-17) holds by construction: the list is the timeline's lane
+  /// law's own, so an S row twirls down exactly the lanes its timeline twin
+  /// draws. ↩️The storyboard once mounted the Audio lane off the twirl alone,
+  /// and an empty S row showed a waveform strip its twin never drew.
   List<PropertyLaneRow> _seLanes(Track track, int slot) {
     final layer = _trackSeAt(track, slot);
     return layer == null ? const [] : _seLanesOf(track, layer);
@@ -483,6 +484,39 @@ class _StoryboardRailRows {
     return rows.where(open.contains).firstOrNull ?? rows.firstOrNull;
   }
 
+  /// [rowId]'s group fold: a conte row's is THE TIMELINE ROW'S answer for
+  /// the layer it has in hand ([timelineGroupFoldFor]) — a 공정 folder
+  /// folds the rows it files, the conte the rows riding it — and no other
+  /// row of this rail folds. ONE answer for the row's label and the column
+  /// sweep that paints it (F-475).
+  ///
+  /// ↩️The label and the sweep each asked 「the conte's seat, with rows
+  /// over or under it」 — the attach half alone, twice, and no folder
+  /// ([conteGroupOf], I-99).
+  ///
+  /// The host's verb is the one chevron (I-32) — a folder's fold or a
+  /// base's group — so both halves press it.
+  TimelineGroupFold _conteGroupFoldOf(LayerId rowId) {
+    final inHand = trackIdOfConteRow(rowId) == null
+        ? null
+        : _rowInHand(rowId);
+    if (inHand == null) {
+      return (has: false, expanded: true, onToggle: null);
+    }
+    final layers = inHand.cut.layers;
+    final toggle = _state.widget.onToggleAttachGroup;
+    return timelineGroupFoldFor(
+      row: TimelineDisplayRow.layer(
+        inHand.layer,
+        layerIndex: layers.indexOf(inHand.layer),
+      ),
+      layers: layers,
+      collapsedAttachBaseIds: _state.widget.collapsedAttachBaseIds,
+      onToggleLayerCollapsed: toggle,
+      onToggleAttachGroup: toggle,
+    );
+  }
+
   /// [row]'s lanes in [cut] — THE list its timeline row twirls down
   /// ([propertyLanesForRow]), with its groups twirled as the timeline's
   /// are; [valued] reads them at a frame of the cut's own.
@@ -501,7 +535,7 @@ class _StoryboardRailRows {
   /// The lanes [track]'s conte row at [seat] twirls down: those of its row
   /// in hand ([_inHand]) — valued in the cut the session stands in, or,
   /// where that cut holds none, the head's, with nothing to read their
-  /// values in. A row riding the conte has none, as on the timeline.
+  /// values in — the timeline's lanes of the row, a rider's own (I-99).
   List<PropertyLaneRow> _conteLanes(Track track, int seat) =>
       switch (_inHand(track, _conteRow(track, seat))) {
         (:final cut, :final layer, :final stood) => _conteRowLanes(
@@ -580,42 +614,67 @@ class _StoryboardRailRows {
   }
 
   /// The seats of [track]'s conte group the rail SHOWS, top row first — the
-  /// attach rows above the conte, the conte, the ones below it
-  /// ([conteSeatsOf]) — under the V row (I-73): its section is the one the
-  /// timeline puts the kind in, and the legend's filter judges each row as
-  /// it judges every row ([_filterAllowsConteSeat]). The conte's own row is
-  /// there whether or not a cut has a conte layer yet — a cut with none
-  /// wears the button that makes one there. An attach row is there while
-  /// some cut holds one at its seat and the group is not folded.
+  /// attach rows above the conte and the 공정 folders filing them, the
+  /// conte, the ones below it ([conteSeatsOf]) — under the V row (I-73).
+  /// A seat is there while the timeline would show its head
+  /// ([_conteSeatShown]). The conte's own row is there whether or not a
+  /// cut has a conte layer yet — a cut with none wears the button that
+  /// makes one there.
   ///
   /// 🚨ONE LIST for the three places that lay these rows out — the row
   /// table, the rail's labels and the strips — as [_shownSeSlots] is.
   List<int> _shownConteSeats(Track track) {
-    if (!_sectionShown(timelineSectionForLayerKind(LayerKind.storyboard))) {
-      return const [];
-    }
-    final base = conteHeadRowAt(track.cuts, 0);
-    final folded =
-        base != null &&
-        _state.widget.collapsedAttachBaseIds.contains(base.id);
+    final folders = <Cut, LayerFolderIndex>{};
     return [
-      for (final seat in folded ? const [0] : conteSeatsOf(track.cuts))
-        if (_filterAllowsConteSeat(track, seat)) seat,
+      for (final seat in conteSeatsOf(track.cuts))
+        if (_conteSeatShown(track, seat, folders)) seat,
     ];
   }
 
-  /// Whether the legend's filter lets the conte row at [seat] show
-  /// ([_filterAllowsProjectionRow]) — with no head while no cut holds a
-  /// layer there.
-  bool _filterAllowsConteSeat(Track track, int seat) =>
-      _filterAllowsProjectionRow(
-        LayerRowAddress(trackConteRowId(track.id, seat: seat)),
-        head: conteHeadRowAt(track.cuts, seat),
-        kind: LayerKind.storyboard,
-      );
+  /// Whether the rail shows [track]'s conte row at [seat]: THE TIMELINE'S
+  /// ANSWER for its head in the head's cut ([layerRowHiddenBy]) — its
+  /// section, its group's fold, the legend's filter, a folder above it
+  /// shut — and while no cut holds a layer there, the section and the
+  /// filter's answer for its kind ([_filterAllowsProjectionRow]).
+  ///
+  /// ↩️It asked the section, the base's fold and the filter of its own,
+  /// and no folder: the group's folders were no seats ([conteGroupOf],
+  /// I-99).
+  ///
+  /// [folders] holds each head cut's index for one pass over the seats.
+  bool _conteSeatShown(
+    Track track,
+    int seat,
+    Map<Cut, LayerFolderIndex> folders,
+  ) {
+    final address = LayerRowAddress(trackConteRowId(track.id, seat: seat));
+    final head = conteHeadAt(track.cuts, seat);
+    if (head == null) {
+      return _sectionShown(timelineSectionForLayerKind(LayerKind.storyboard)) &&
+          _filterAllowsProjectionRow(
+            address,
+            head: null,
+            kind: LayerKind.storyboard,
+          );
+    }
+    final widget = _state.widget;
+    final layers = head.cut.layers;
+    return layerRowHiddenBy(
+          head.row,
+          folders: folders[head.cut] ??= LayerFolderIndex(layers),
+          attachBaseId: attachGroupBaseOf(head.row, layers),
+          hiddenSections: widget.hiddenSections,
+          rowFilter: widget.rowFilter,
+          collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
+          standingLayerId: widget.selectedRow == address ? head.row.id : null,
+          fxEnabledOf: (id) =>
+              fxEnabledFromState(widget.layerFxStateOf?.call(id)),
+        ) ==
+        null;
+  }
 
   /// One track group's rail rows in TIMELINE order (R6 B3, R7-④): the S
-  /// rows (each with its twirled-down Audio lane and Transform group)
+  /// rows (each with its twirled-down 「오디오」 and Transform groups)
   /// ABOVE the V track row and ITS Transform group, slots counting UP from
   /// the bottom like the timeline's layer stack (S1 sits right above V,
   /// S2 above it); the section ZONE spans the whole group (UI-R7 #2).
@@ -714,11 +773,16 @@ class _StoryboardRailRows {
     return extent;
   }
 
-  List<Widget> railRowsForTrack(Track track, int index) {
-    final seRows = _seRowsFor(track);
-    final vRows = _vRowsFor(track, index);
-    final camRows = _camRowsFor(track);
-    final conteRows = _conteRowsFor(track);
+  /// [track]'s rail rows, section by section, as the rows' window [rows]
+  /// lays them.
+  List<Widget> railRowsForTrack(Track track, int index, _WindowedRows rows) {
+    // In the table's order — the window lays each section's units off it.
+    final camRows = rows.lay(_camRowsFor(track));
+    final seRows = rows.lay(_seRowsFor(track));
+    final vRows = _filterAllowsTrackRow(track)
+        ? rows.lay([() => _vRowsFor(track, index)])
+        : const <Widget>[];
+    final conteRows = rows.lay(_conteRowsFor(track));
     return [
       // The CAM section heads the group: the camera row at its top, as the
       // timeline's camera row tops its own (I-73 ④, 유저 2026-10-08:
@@ -768,32 +832,36 @@ class _StoryboardRailRows {
 
   /// The CAM section's rail rows for [track]: the camera row with its lanes
   /// while it is twirled open (I-73 ④ⓔ), then the transition row.
-  List<Widget> _camRowsFor(Track track) => [
-    if (_showsCameraRow(track)) ...[
-      _state._rows.cameraLabelRow(track),
-      if (_cameraLanesOpen(track)) ..._cameraLaneLabels(track),
-    ],
-    if (_showsTransitionRow(track)) _state._rows.transitionLabelRow(track),
+  List<_RowUnit> _camRowsFor(Track track) => [
+    if (_showsCameraRow(track))
+      () => [
+        _state._rows.cameraLabelRow(track),
+        if (_cameraLanesOpen(track)) ..._cameraLaneLabels(track),
+      ],
+    if (_showsTransitionRow(track))
+      () => [_state._rows.transitionLabelRow(track)],
   ];
 
   /// The conte section's rail rows for [track], top seat first
   /// ([_shownConteSeats]): each row with its lanes while it is twirled open
   /// (I-73 ④ⓔ).
-  List<Widget> _conteRowsFor(Track track) => [
-    for (final seat in _shownConteSeats(track)) ...[
-      _state._rows.conteLabelRow(track, seat),
-      if (_conteLanesOpen(track, seat)) ..._conteLaneLabels(track, seat),
-    ],
+  List<_RowUnit> _conteRowsFor(Track track) => [
+    for (final seat in _shownConteSeats(track))
+      () => [
+        _state._rows.conteLabelRow(track, seat),
+        if (_conteLanesOpen(track, seat)) ..._conteLaneLabels(track, seat),
+      ],
   ];
 
   /// The SE section's rail rows for [track], top slot first: each slot
-  /// the rail shows ([_shownSeSlots]), with its audio lane label and
-  /// transform lane labels while the row is expanded.
-  List<Widget> _seRowsFor(Track track) => [
-    for (final slot in _shownSeSlots(track)) ...[
-      _state._rows.seLabelRow(track, slot),
-      if (_seLanesOpen(track, slot)) ..._seLaneLabels(track, slot),
-    ],
+  /// the rail shows ([_shownSeSlots]), with its lane labels while the row
+  /// is expanded.
+  List<_RowUnit> _seRowsFor(Track track) => [
+    for (final slot in _shownSeSlots(track))
+      () => [
+        _state._rows.seLabelRow(track, slot),
+        if (_seLanesOpen(track, slot)) ..._seLaneLabels(track, slot),
+      ],
   ];
 
   /// One S row's lane labels on the shared substrate, row for row with
@@ -1212,7 +1280,7 @@ class _StoryboardRailRows {
     List<StoryboardTimelineLayoutEntry> entries,
     double width,
     TimelineScale scale,
-    List<Widget> trackGlobalRows,
+    List<List<Widget>> trackGlobalRows,
   ) {
     // As tall as the rail draws the group ([_trackGroupExtent]), so the
     // strip's tick layer ([_trackStrip]) is handed its size from above —
@@ -1263,29 +1331,35 @@ class _StoryboardRailRows {
   /// viewports, and repainted the storyboard's body around them — on a
   /// panel comma, a cut's trim or move, and the SE row's comma, whose gate
   /// stands in the column too.
+  ///
+  /// The rows' window lays them ([_StoryboardRowsWindow]), as the rail's.
   Widget _trackStrip(
     Track track,
     int index,
     List<StoryboardTimelineLayoutEntry> entries,
     double width,
     TimelineScale scale,
-    List<Widget> trackGlobalRows,
+    List<List<Widget>> trackGlobalRows,
   ) {
     final dragPreview = _state.widget.dragPreview ?? _noDragPreview;
+    final window = _state._rowsWindow;
     return Positioned.fill(
       child: TickLayer(
+        // A preview step is a pass of its own: the window keeps nothing
+        // a drag moved across it.
         child: SlicedListenableBuilder<_TrackStrip>(
           listenable: dragPreview,
           slice: () => _previewedStripFor(index, dragPreview.value, entries),
-          builder: (context, strip) => Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: _stripRowsForTrack(
+          builder: (context, strip) => window.laidColumn(
+            window.stripKeepOf(index),
+            (rowsOf) => _stripRowsForTrack(
               track,
               index,
               strip,
               width,
               scale,
               trackGlobalRows,
+              rowsOf(index),
             ),
           ),
         ),
@@ -1762,6 +1836,34 @@ class _StoryboardRailRows {
     );
   }
 
+  /// The rail's rows as the rows' window cuts them ([_StoryboardRowsWindow])
+  /// — [_railTable]'s, a head row joined with the lanes twirled under it:
+  /// one unit, as the strips draw a camera row and its lanes in one
+  /// ([_cameraStripRow]). Read once a build ([forgetLaneSeating]).
+  _RowsWindowTable get windowTable => _windowTable ??= _windowTableNow();
+  _RowsWindowTable? _windowTable;
+
+  _RowsWindowTable _windowTableNow() {
+    final slots = <_StoryboardRailSlot>[];
+    final firstSlots = <int>[];
+    for (final track in _state.widget.project.tracks) {
+      firstSlots.add(slots.length);
+      slots.addAll(_trackGroupRowGeometry(track));
+    }
+    return (
+      edges: TimelineRowEdges([
+        for (var index = 0; index < slots.length; index += 1)
+          (
+            extent: slots[index].height,
+            room: 0,
+            joinsNext: index + 1 < slots.length && slots[index + 1].lane,
+          ),
+      ]),
+      slots: slots,
+      firstSlots: firstSlots,
+    );
+  }
+
   /// Where a SELECT drag pressed on [anchor]'s label has reached, in rows
   /// of [_StoryboardSheet.rows] from it, asked with the pointer's distance
   /// from that label's top ([LayerRowDragTarget.selectRowDeltaAt]).
@@ -1769,8 +1871,8 @@ class _StoryboardRailRows {
   /// Read off the table every track's rail is drawn from
   /// ([_trackGroupRowGeometry]): a row here is as tall as its kind, so the
   /// pressed row's own height cannot count the rest (F-322). A slot nobody
-  /// stands on — the Audio lane, an S slot with no layer — hands the span on
-  /// to the nearest row toward the anchor, as the cells' sweep does
+  /// stands on — an open graph's room, an S slot with no layer — hands the
+  /// span on to the nearest row toward the anchor, as the cells' sweep does
   /// ([_sweptOver]).
   int Function(double offset) selectRowDeltaFrom(TimelineRowAddress anchor) =>
       (offset) {
@@ -2157,6 +2259,7 @@ class _StoryboardRailRows {
   void forgetLaneSeating() {
     _seating = null;
     _graphs = null;
+    _windowTable = null;
   }
 
   /// THE HEADER GRAPHS AS THIS RAIL KEYS ITS ROWS (I-89 ①): the session's
@@ -2548,6 +2651,7 @@ class _StoryboardRailRows {
         rows: rows.sublist(first, first + lanes.length),
         first: first,
         edges: seating.edges,
+        kept: timelineRowBuiltNow,
       ),
       grid,
       lines: (seat, seated) => laneGraphLines(seat, seated, (
@@ -2560,10 +2664,8 @@ class _StoryboardRailRows {
       cells: (row) => strip(row, timelineDisplayRowExtent(row, metrics)),
     );
     final selection = _state.widget.rowSelection;
-    if (selection == null ||
-        !seating.rows
-            .sublist(first, first + lanes.length)
-            .any((row) => row.graph != null)) {
+    final laneRows = seating.rows.sublist(first, first + lanes.length);
+    if (selection == null || !laneRows.any((row) => row.graph != null)) {
       return laid(seating.rows);
     }
     return [
@@ -2649,15 +2751,13 @@ class _StoryboardRailRows {
       ));
       if (layer != null && _seLanesOpen(track, slot)) {
         // One slot per lane the rail draws ([_seLanes]) — a phantom or a
-        // missing slot here would shift every row under it (C5). The Audio
-        // lane keeps no lane address, as it had: no key range lands on it.
+        // missing slot here would shift every row under it (C5).
         for (final lane in _seLanes(track, slot)) {
-          final audio = laneIsSeAudio(lane);
           slots.add((
             row: null,
-            laneRow: audio ? null : LaneRowAddress(layer.id, lane.laneId),
+            laneRow: LaneRowAddress(layer.id, lane.laneId),
             standRow: null,
-            bandRow: !audio,
+            bandRow: true,
             lane: true,
             seSlot: null,
             height: heights.lane,
@@ -2781,66 +2881,68 @@ class _StoryboardRailRows {
 
   /// One track group's strip rows, mirroring [railRowsForTrack] row for
   /// row (heights must stay in lockstep — the two columns share no
-  /// scaffolding).
+  /// scaffolding), as the rows' window [rows] lays them.
   List<Widget> _stripRowsForTrack(
     Track track,
     int index,
     _TrackStrip strip,
     double width,
     TimelineScale scale,
-    List<Widget> trackGlobalRows,
+    List<List<Widget>> trackGlobalRows,
+    _WindowedRows rows,
   ) {
     final entries = strip.entries;
-    return [
+    return rows.lay([
       // The CAMERA row heads the group (I-73 ④) — a row of the CUTS, so it
       // is built on them as this step lays them, like the V row below.
       if (_showsCameraRow(track))
-        _cameraStripRow(track, strip, width, scale),
+        () => [_cameraStripRow(track, strip, width, scale)],
       // Prebuilt from the RAW project outside the drag-preview builder
       // (R10-③): identical instances per step = subtree rebuilds skipped.
       // The transition row and the S rows are both track-global, so both
       // qualify — a cut trim cannot change either.
-      ...trackGlobalRows,
+      for (final unit in trackGlobalRows) () => unit,
       // The filter hides the V row as the rail does — the strip and its
       // lanes with it, or every row under it parts from its label.
-      if (_filterAllowsTrackRow(track)) ...[
-        _StoryboardTrackRow(
-          trackId: track.id,
-          layoutEntries: entries,
-          onRowFramePress: _state.widget.onRowFramePress,
-          onDropMediaAsset: _state.widget.onDropMediaAsset,
-          acceptsMediaAsset: _state.widget.acceptsMediaAsset,
-          laneHeight: _state.widget.trackLaneHeight,
-          width: width,
-          stripEdges: _state.widget.stripEdges,
-          cutMove: _state.widget.cutMove,
-          cutSelect: _state.widget.cutSelect,
-          thumbnails: _state.widget.thumbnails,
-          timelineScale: scale,
-          frameGeometry: _state._frameGeometry,
-          hoveredCutId: _state._hoveredCutId,
-          standingCutId: _state._standing.standingCutOn(track),
-          windowBucket: _state._horizontalWindowBucket,
-          viewportWidth: _state._stripViewportWidth,
-          railSweepAt: _railSweepOn(track.id),
-          showSeconds: _state.widget.showSeconds,
-          projectFrameRate: _state.widget.projectFrameRate,
-          linkedCutIds: _state.widget.linkedCutIds,
-          onOpenCutLinks: _state.widget.onOpenCutLinks,
-          onEditCutBlock: _state.widget.onEditCutBlock,
-        ),
-        if (track.lanesExpanded)
-          for (final strip in _trackTransformLaneStrips(
-            track,
-            index,
-            entries,
-            width,
-            scale,
-          ))
-            strip,
-      ],
+      if (_filterAllowsTrackRow(track))
+        () => [
+          _StoryboardTrackRow(
+            trackId: track.id,
+            layoutEntries: entries,
+            onRowFramePress: _state.widget.onRowFramePress,
+            onDropMediaAsset: _state.widget.onDropMediaAsset,
+            acceptsMediaAsset: _state.widget.acceptsMediaAsset,
+            laneHeight: _state.widget.trackLaneHeight,
+            width: width,
+            stripEdges: _state.widget.stripEdges,
+            cutMove: _state.widget.cutMove,
+            cutSelect: _state.widget.cutSelect,
+            thumbnails: _state.widget.thumbnails,
+            timelineScale: scale,
+            frameGeometry: _state._frameGeometry,
+            hoveredCutId: _state._hoveredCutId,
+            standingCutId: _state._standing.standingCutOn(track),
+            windowBucket: _state._horizontalWindowBucket,
+            viewportWidth: _state._stripViewportWidth,
+            railSweepAt: _railSweepOn(track.id),
+            showSeconds: _state.widget.showSeconds,
+            projectFrameRate: _state.widget.projectFrameRate,
+            linkedCutIds: _state.widget.linkedCutIds,
+            onOpenCutLinks: _state.widget.onOpenCutLinks,
+            onEditCutBlock: _state.widget.onEditCutBlock,
+          ),
+          if (track.lanesExpanded)
+            for (final strip in _trackTransformLaneStrips(
+              track,
+              index,
+              entries,
+              width,
+              scale,
+            ))
+              strip,
+        ],
       ..._conteStripRows(track, strip, width, scale),
-    ];
+    ]);
   }
 
   /// The CAMERA row's strip (I-73 ④): the cuts as this step lays them, each
@@ -2975,54 +3077,55 @@ class _StoryboardRailRows {
   /// them: a cut's panels ride its trim and its move with the block above
   /// them. Each row's lanes run under it while it is twirled open (I-73
   /// ④ⓔ), over the cuts' own frames as the camera row's do.
-  List<Widget> _conteStripRows(
+  List<_RowUnit> _conteStripRows(
     Track track,
     _TrackStrip strip,
     double width,
     TimelineScale scale,
   ) => [
-    for (final seat in _shownConteSeats(track)) ...[
-      _StoryboardConteRow(
-        trackId: track.id,
-        seat: seat,
-        layoutEntries: strip.entries,
-        width: width,
-        height: _state._rowHeights.conte,
-        timelineScale: scale,
-        frameGeometry: _state._frameGeometry,
-        windowBucket: _state._horizontalWindowBucket,
-        viewportWidth: _state._stripViewportWidth,
-        showSeconds: _state.widget.showSeconds,
-        projectFrameRate: _state.widget.projectFrameRate,
-        onRowFramePress: _state.widget.onRowFramePress,
-        stripEdges: _state.widget.stripEdges,
-        stripSelect: _state.widget.stripSelect,
-        onCreateStoryboardLayer: _state.widget.onCreateStoryboardLayer,
-        onEditConteBlock: _state.widget.onEditConteBlock,
-        conteCelContent: _state.widget.conteCelContent,
-        stepsUntilShown: _state.widget.stepsUntilShown,
-      ),
-      if (_conteLanesOpen(track, seat))
-        _onTheReaches(
-          track,
-          strip,
-          (reaches) => Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: _projectionLaneStrips(
-              track,
-              _conteProjection(track, seat),
-              _conteLanes(track, seat),
-              (reaches: reaches, width: width, scale: scale),
+    for (final seat in _shownConteSeats(track))
+      () => [
+        _StoryboardConteRow(
+          trackId: track.id,
+          seat: seat,
+          layoutEntries: strip.entries,
+          width: width,
+          height: _state._rowHeights.conte,
+          timelineScale: scale,
+          frameGeometry: _state._frameGeometry,
+          windowBucket: _state._horizontalWindowBucket,
+          viewportWidth: _state._stripViewportWidth,
+          showSeconds: _state.widget.showSeconds,
+          projectFrameRate: _state.widget.projectFrameRate,
+          onRowFramePress: _state.widget.onRowFramePress,
+          stripEdges: _state.widget.stripEdges,
+          stripSelect: _state.widget.stripSelect,
+          onCreateStoryboardLayer: _state.widget.onCreateStoryboardLayer,
+          onEditConteBlock: _state.widget.onEditConteBlock,
+          conteCelContent: _state.widget.conteCelContent,
+          stepsUntilShown: _state.widget.stepsUntilShown,
+        ),
+        if (_conteLanesOpen(track, seat))
+          _onTheReaches(
+            track,
+            strip,
+            (reaches) => Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: _projectionLaneStrips(
+                track,
+                _conteProjection(track, seat),
+                _conteLanes(track, seat),
+                (reaches: reaches, width: width, scale: scale),
+              ),
             ),
           ),
-        ),
-    ],
+      ],
   ];
 
   /// One track's SE strip rows (+ twirled-down audio/transform lanes) —
   /// track-global content, built from the base layout.
-  List<Widget> _seStripRowsForTrack(
+  List<List<Widget>> _seStripRowsForTrack(
     Track track,
     int index,
     double width,
@@ -3055,7 +3158,7 @@ class _StoryboardRailRows {
       seSelect: _state.widget.seSelect,
     );
     return [
-      for (final slot in _shownSeSlots(track)) ...[
+      for (final slot in _shownSeSlots(track)) [
         // The gate keeps comma drags LIVE here (UI-R7 #7): these rows
         // are built once per panel build (identical instances across
         // cut-trim preview steps, R10-③), so without it an SE edge drag
@@ -3134,7 +3237,6 @@ class _StoryboardRailRows {
           width: width,
           height: height,
           timelineScale: scale,
-          projectFrameRate: _state.widget.projectFrameRate,
           laneEdit: laneEdit,
           laneRange: _laneGestureCallbacksFor(
             track,
@@ -3214,32 +3316,25 @@ class _StoryboardRailRows {
         (_, lane) => _StoryboardLaneStripRow(
           rowKey:
               'storyboard-se-lane-row-$trackIndex-${slot + 1}-${lane.laneId}',
-          // The Audio band draws the in-flight take while one rolls (REC1-C,
-          // `_seDisplayAt`); the list — and so the strip count — stays the
-          // repository row's, in lockstep with the labels.
-          carrier: laneIsSeAudio(lane)
-              ? (_state._seDisplayAt(track, slot) ?? layer)
-              : layer,
+          carrier: layer,
           lane: lane,
           width: width,
           height: height,
           timelineScale: scale,
-          projectFrameRate: _state.widget.projectFrameRate,
           laneRange: _laneGestureCallbacksFor(
             track,
             band: _bandOnLane(track, LaneRowAddress(layer.id, lane.laneId)),
           ),
-          audioLane: _state.widget.audioLane,
-          audioPeaksFor: _state.widget.audioPeaksFor,
         ),
       ),
     ));
   }
 
   /// The base-layout TRACK-GLOBAL strip rows per track index — the transition
-  /// row and the SE rows (+ their twirled-down lanes) — computed once per
-  /// PANEL build and reused across drag-preview steps.
-  List<List<Widget>> _trackGlobalStripRowsByTrack() {
+  /// row and the SE rows (+ their twirled-down lanes), one unit of the rows'
+  /// window each — computed once per PANEL build and reused across
+  /// drag-preview steps.
+  List<List<List<Widget>>> _trackGlobalStripRowsByTrack() {
     final layoutEntries = buildStoryboardTimelineLayout(_state.widget.project);
     final scale = _state._scale;
     final contentWidth = _state._contentWidthFor(layoutEntries, scale);
@@ -3248,11 +3343,13 @@ class _StoryboardRailRows {
         [
           // Heads the group, matching the rail's row order.
           if (_showsTransitionRow(_state.widget.project.tracks[index]))
-            _state._rows.transitionStripRow(
-              _state.widget.project.tracks[index],
-              contentWidth,
-              scale,
-            ),
+            [
+              _state._rows.transitionStripRow(
+                _state.widget.project.tracks[index],
+                contentWidth,
+                scale,
+              ),
+            ],
           ..._seStripRowsForTrack(
             _state.widget.project.tracks[index],
             index,
@@ -3304,7 +3401,7 @@ final class _TrackStrip {
 /// from the top of its row, in a table of rows [heights] tall: how many of
 /// the NAMED rows ([rows]) lie from the anchor's to the row it stands over
 /// — walked back toward the anchor past rows [addresses] names none for
-/// (an Audio lane, a slot nobody stands on), so a drag that ends on one
+/// (a graph's room, a slot nobody stands on), so a drag that ends on one
 /// reaches as far as it legibly can rather than collapsing to nothing.
 /// Null when the anchor is not in the table.
 ({List<TimelineRowAddress> rows, int rowDelta})? _sweptOver(

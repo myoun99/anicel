@@ -63,9 +63,44 @@ String columnValueText(num value) =>
 /// column (2026-09-07). ↩️Each column read its own — twelve copies of
 /// `double.tryParse(text.replaceAll('%', '')…)`, each knowing a different
 /// set of units, until F-407's made the clone scan name two of them.
-double? columnValueOf(String text) => double.tryParse(
+///
+/// An angle's turns and degrees ([turnsReadoutText]) read as the degrees
+/// they come to — `1x+90°` is 450 — whichever column they are typed into.
+double? columnValueOf(String text) {
+  final mark = text.indexOf(turnsMark);
+  // Whole turns lead it: the `x` of `12 px` stands after no turns.
+  final turns = mark <= 0
+      ? null
+      : int.tryParse(text.substring(0, mark).trim());
+  if (turns == null) {
+    return _bareValueOf(text);
+  }
+  final rest = _bareValueOf(text.substring(mark + turnsMark.length));
+  return rest == null ? null : turns * 360 + rest;
+}
+
+double? _bareValueOf(String text) => double.tryParse(
   text.replaceAll('%', '').replaceAll('°', '').replaceAll('px', '').trim(),
 );
+
+/// What stands after an angle's whole turns — `1x+90.00°`.
+const String turnsMark = 'x';
+
+/// An ANGLE as After Effects writes one: its whole turns, then what is
+/// left of them with its own sign — `0x+90.00°`, `1x+90.00°` for 450,
+/// `-1x-90.00°` for −450 — the degrees to every digit of the readout grid
+/// ([columnValueText]). [columnValueOf] reads it back.
+///
+/// 🗣️I-132-Q17 a (유저 2026-10-28): 「키를 박는 각도 레인만」 — the angle
+/// lanes a key is set on: a row's rotation and an effect's angle. A tool
+/// setting's angle (the brush's, the view's, a guide's) is one number.
+String turnsReadoutText(double degrees) {
+  final gridded = CanvasViewport.onReadoutGrid(degrees);
+  final turns = gridded ~/ 360;
+  final rest = gridded - turns * 360;
+  final sign = rest < 0 ? '-' : '+';
+  return '$turns$turnsMark$sign${columnValueText(rest.abs())}°';
+}
 
 /// The two numbers a two-number column's text holds — `120, 45`, each read
 /// by [columnValueOf]. Null unless it holds exactly two. ↩️The position's
@@ -104,7 +139,14 @@ typedef ReadoutPart = ({String number, String unit});
 /// ⛔A readout only SPLITS when every comma-separated piece reads as a
 /// number: a text value that happens to contain a comma is one value, not
 /// two.
+///
+/// An angle's readout ([turnsReadoutText]) is its two boxes, the turns and
+/// the degrees — the way After Effects opens them (I-132-Q17: 「1x」 ·
+/// 「+90.0°」).
 List<ReadoutPart> readoutParts(String readout) {
+  if (_turnsParts(readout) case final turns?) {
+    return turns;
+  }
   final pieces = readout.split(',');
   final parts = <ReadoutPart>[];
   for (final piece in pieces) {
@@ -118,8 +160,29 @@ List<ReadoutPart> readoutParts(String readout) {
 }
 
 /// [readoutParts] put back together — byte for byte what the readout was.
-String joinReadoutParts(List<ReadoutPart> parts) =>
-    parts.map((part) => '${part.number}${part.unit}').join(', ');
+String joinReadoutParts(List<ReadoutPart> parts) => parts
+    .map((part) => '${part.number}${part.unit}')
+    .join(readsTurns(parts) ? '' : ', ');
+
+/// Whether [parts] are an angle's turns and degrees ([turnsReadoutText]),
+/// not a pair of numbers.
+bool readsTurns(List<ReadoutPart> parts) =>
+    parts.length == 2 && parts.first.unit == turnsMark;
+
+/// `1x+90.00°` → (1, 'x'), (+90.00, '°'). Null unless [readout] is an
+/// angle's turns and degrees, whole.
+List<ReadoutPart>? _turnsParts(String readout) {
+  final mark = readout.indexOf(turnsMark);
+  if (mark <= 0) {
+    return null;
+  }
+  final turns = _numberAndUnit(readout.substring(0, mark));
+  final rest = _numberAndUnit(readout.substring(mark + turnsMark.length));
+  if (turns == null || turns.unit.isNotEmpty || rest?.unit != '°') {
+    return null;
+  }
+  return [(number: turns.number, unit: turnsMark), rest!];
+}
 
 /// `85%` → (85, '%'), `12 px` → (12, ' px'), `-3.5` → (-3.5, ''). Null when
 /// the text does not lead with a number at all, which is every value that is

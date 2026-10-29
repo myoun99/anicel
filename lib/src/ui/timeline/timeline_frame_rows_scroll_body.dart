@@ -15,6 +15,7 @@ import 'timeline_grid_metrics.dart';
 import 'timeline_lane_graph.dart';
 import 'timeline_row_edges.dart';
 import 'timeline_section_runs.dart' show timelineDisplayRowExtent;
+import 'window_move_keep.dart';
 
 import '../listenable_rebind.dart';
 import '../widgets/named.dart';
@@ -25,6 +26,7 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     required this.rows,
     required this.edges,
     required this.berths,
+    required this.pass,
     this.firstRowIndex = 0,
     required this.hooks,
     required this.frameStartIndex,
@@ -82,6 +84,9 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   /// two halves are kept, and handed over, together ([RowBerths]).
   final RowBerthMap berths;
 
+  /// The grid's build the rows are laid in ([WindowMoveKeep]).
+  final Object pass;
+
   final int firstRowIndex;
   final int frameStartIndex;
   final int frameEndIndexExclusive;
@@ -129,6 +134,10 @@ class _TimelineFrameRowsScrollBodyState
   /// [BerthWorld]). Lane rows, which are few, are not memoized
   /// ([keptTimelineCellsRow], the x-sheet's columns' too).
   final KeptTimelineCellsRows _rowMemo = KeptTimelineCellsRows();
+
+  /// What the rows keep while only the window moves — the frame side's
+  /// rows and an open graph's lanes alike.
+  final WindowMoveKeep _keep = WindowMoveKeep();
 
   /// The LIVE frame-axis geometry every painted row follows (R28 #4).
   ///
@@ -230,15 +239,21 @@ class _TimelineFrameRowsScrollBodyState
     laneRange: widget.laneRange,
   );
 
+  /// [row] as this pass built it ([WindowMoveKeep]).
+  Widget _buildRow(TimelineDisplayRow row) =>
+      _keep.row(widget.berths.keyOf(row), () => _rowOf(row));
+
   /// The row built in its berth and named for its layer — a key spelled
   /// from the layer remade every row's cells on a cut switch (I-57).
-  Widget _buildRow(TimelineDisplayRow row) => Named(
+  Widget _rowOf(TimelineDisplayRow row) => Named(
     'timeline-row-${row.layer.id}-${_rowNameSuffix(row)}',
     key: widget.berths.keyOf(row),
     // 🚨F-244: the row's own size, laid FRESH on every build. It is what
     // makes the tick layer's constraints tight — and a zoom step keeps the
     // memo entry below while it moves the content extent, so a box inside
     // the memo would hold the old width: the row cut short of its cells.
+    // A window move keeps it (③): a zoom step is a build of the grid, a
+    // pass of its own.
     child: SizedBox(
       width: widget.totalFrameContentWidth,
       height: timelineDisplayRowExtent(row, widget.metrics),
@@ -273,7 +288,12 @@ class _TimelineFrameRowsScrollBodyState
   /// The window's rows as this body lays them ([timelineFrameSide]). The
   /// window holds a graph's lanes whole ([TimelineRowEdges.window]).
   List<Widget> _windowRows() => timelineFrameSide(
-    (rows: widget.rows, first: widget.firstRowIndex, edges: widget.edges),
+    (
+      rows: widget.rows,
+      first: widget.firstRowIndex,
+      edges: widget.edges,
+      kept: _keep.row,
+    ),
     _cellsRowGrid,
     cells: _buildRow,
     laneRange: widget.laneRange,
@@ -281,6 +301,8 @@ class _TimelineFrameRowsScrollBodyState
 
   @override
   Widget build(BuildContext context) {
+    // The view's breadth is laid below the grid's build: a pass of its own.
+    _keep.lay((widget.pass, widget.viewportMainExtent));
     // Republish BEFORE the rows read it: the painted rows' render objects
     // take the mark now and settle it during this frame's layout/paint.
     _geometry.value = _geometryFromWidget();

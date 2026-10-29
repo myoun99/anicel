@@ -5,6 +5,7 @@ import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/se_dialogue_spacing.dart';
 import '../../models/se_line_type.dart';
 import '../../models/timeline_coverage.dart' show coveringDrawingBlockAt;
 import '../../models/track_transitions.dart' show cutDrawnFrameCount;
@@ -143,6 +144,11 @@ class SeEntries {
   SeLineTypes get selectedFrameSeTypes =>
       _selection.selectedFrame?.seTypes ?? SeLineTypes.allOn;
 
+  /// Where the selected entry's glyphs stand (F-496) — what the SE dialog
+  /// opens on.
+  SeDialogueSpacing get selectedFrameSeSpacing =>
+      _selection.selectedFrame?.seSpacing ?? SeDialogueSpacing.standard;
+
   /// The cuts the block of the SE row [layerId] over its track's frame
   /// [globalFrame] plays in, in the track's order — the cuts the SE dialog
   /// sets the line's delivery for (F-386) — and the one whose place holds
@@ -211,14 +217,13 @@ class SeEntries {
     _changes.notifyChanged();
   }
 
-  /// SE rows: updates the selected entry's dialogue (Frame.name), speaker
-  /// name and delivery in each cut (I-20, F-386) in ONE undo step.
-  /// Duplicates are allowed — the same dialogue can legitimately repeat on
-  /// a sheet.
+  /// SE rows: updates the selected entry's dialogue (Frame.name) and its
+  /// own fields — speaker name, delivery in each cut, glyph spacing (I-20,
+  /// F-386, F-496) — in ONE undo step. Duplicates are allowed — the same
+  /// dialogue can legitimately repeat on a sheet.
   void updateSelectedSeEntry({
     required String dialogue,
-    String? seName,
-    required SeLineTypes seTypes,
+    required SeEntryFields fields,
   }) {
     final layer = _selection.activeLayer;
     final frame = _selection.selectedFrame;
@@ -231,7 +236,7 @@ class SeEntries {
       layer.id,
       frame.id,
       dialogue: dialogue,
-      fields: (seName: seName, seTypes: seTypes),
+      fields: fields,
     );
   }
 

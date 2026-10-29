@@ -49,16 +49,26 @@ void main() {
     expect(layer.frames.single.id, layer.timeline[0]!.frameId);
   });
 
-  test('a plain cel row still starts EMPTY — this is the storyboard row\'s '
-      'rule, not a new rule for everyone', () {
+  // ↩️A plain cel row started EMPTY. 🗣️I-138 (유저 2026-10-28) gave it its
+  // first cel — ONE comma, not the cut: covering is still this row's rule.
+  test('a plain cel row is born with ONE comma, not covering its cut — '
+      'covering is the storyboard row\'s rule, not everyone\'s', () {
     final session = sessionFor();
+    final duration = session.requireActiveCut.duration;
 
     session.layerStack.addLayerOfKind(LayerKind.animation);
 
     final added = session.layers.firstWhere(
       (layer) => layer.id == session.activeLayerId,
     );
-    expect(added.timeline, isEmpty);
+    expect(duration, greaterThan(1), reason: '⛔전제');
+    expect(
+      [
+        for (final entry in added.timeline.entries)
+          if (!entry.value.ghost) (entry.key, entry.value.length),
+      ],
+      [(0, 1)],
+    );
   });
 
   test('the row can be DIVIDED from the moment it is made: add-frame '

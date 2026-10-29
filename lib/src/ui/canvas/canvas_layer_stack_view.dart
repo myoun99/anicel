@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/widgets.dart';
 
 import '../../core/collection_equality.dart';
+import '../../core/tree_nodes.dart';
 import '../../services/cut_frame_composite_plan.dart'
     show CutFrameCompositeLayer;
 import '../../models/bitmap_surface.dart';
@@ -166,9 +167,12 @@ class CanvasLayerImageRequest extends CanvasStackRow {
   /// mode); null paints the artwork as-is.
   final int? tint;
 
-  /// The row's effect chain (R6). Onion GHOSTS deliberately carry none:
-  /// they are editing scaffolding, and the Colors-mode tint already owns
-  /// this paint's colorFilter slot.
+  /// The row's effect chain (R6) — an onion ghost's too
+  /// ([CanvasGhostImageRequest]): ✅유저 2026-08-27 (I-8-Q5) 「a ghost shows
+  /// the pixels the screen shows」. ↩️Ghosts carried none while the Colors
+  /// tint owned the paint's one colour-filter slot, which read as a design
+  /// ("editing scaffolding") until `resolveCompositeEffectPaint` folded the
+  /// two.
   ///
   /// ⛔THE WHOLE CHAIN, both halves. The two `shouldRepaint` comparisons
   /// diff this field, so splitting it here would let a color-key edit slip
@@ -189,6 +193,22 @@ class CanvasLayerImageRequest extends CanvasStackRow {
   /// The paint half — everything that folds into a color filter or an image
   /// filter.
   List<ResolvedLayerEffect> get paintEffects => splitSourceEffects(effects).paint;
+}
+
+/// An onion row's GHOST — one of its cels before or after the frame, at its
+/// peg's strength and tint — laid in the frame's own tree directly under
+/// the row's drawing (`OnionSkinPlacement.inPlace`, onion-ghosts-in-place)
+/// or with the other ghosts alone over the frame. Drawn as every row is,
+/// from its cel; told apart only where a frame with its ghosts is laid
+/// over the frame without them ([StackedFrame.whereTheGhostsShow]).
+class CanvasGhostImageRequest extends CanvasLayerImageRequest {
+  const CanvasGhostImageRequest({
+    required super.frameKey,
+    required super.opacity,
+    super.blendMode,
+    super.tint,
+    super.effects,
+  });
 }
 
 /// What a frame is drawn ON — the four a [StackedFrame] draws its nodes on:
@@ -240,21 +260,28 @@ typedef LiveSurfaceTokens = ({
 });
 
 /// A row as a frame's body draws it from its cel's stored pixels
-/// ([StackedFrame.of]): the layer, the tint an onion ghost wears over it —
-/// null on every row of a frame's own tree — and what it draws, as a
-/// frame's picture is signed by it (null where that is not told: a node
-/// holding it is drawn afresh each time, [HeldNodePictures]).
+/// ([StackedFrame.of]): the layer, the tint an onion ghost wears over it
+/// in Colors mode, whether it is a [ghost] ([CanvasGhostImageRequest]) —
+/// and what it draws, as a frame's picture is signed by it (null where
+/// that is not told: a node holding it is drawn afresh each time,
+/// [HeldNodePictures]).
 typedef StoredRow = ({
   CutFrameCompositeLayer layer,
   int? tint,
+  bool ghost,
   CompositeLayerSignature? signature,
 });
 
 /// Where a frame's picture keeps the pictures its nodes are drawn into
-/// ([HeldSubtreeRasters]) — and whether the frame drawn here keeps the ones
-/// it draws whole: the frame laid for a screen that stands on it, every row
-/// in hand. A stroke's step patched into it only finds them.
-typedef HeldNodePictures = ({HeldSubtreeRasters rasters, bool keeps});
+/// ([HeldSubtreeRasters]) — whether the frame drawn here keeps the ones it
+/// draws whole: the frame laid for a screen that stands on it, every row
+/// in hand; a stroke's step patched into it only finds them — and what it
+/// does with what lies below its pen ([below]).
+typedef HeldNodePictures = ({
+  HeldSubtreeRasters rasters,
+  bool keeps,
+  BelowThePen below,
+});
 
 /// 🚨★★★A FRAME'S ONE PICTURE IS DRAWN BY THE CANVAS'S OWN BODY
 /// (one-picture-per-frame, D7-2-Q3=a — 「합성기는 하나」): [nodes], the
@@ -425,6 +452,14 @@ final class StackedFrame {
   ({bool located, Rect? dirty, LiveSurfaceTokens? now}) movedSince(
     LiveSurfaceTokens since,
   ) => _painter._liveDirtyCanvasRect(since: since);
+
+  /// Where this frame's onion ghosts ([CanvasGhostImageRequest]) show in
+  /// it, in world coordinates — all a frame laid with its ghosts in place
+  /// differs by from the same frame laid without them: each ghost's ink,
+  /// told as a stroke's change of the live row is
+  /// ([_LayerStackPainter._whereAChangeShows]). Empty where none has ink;
+  /// null where that cannot be told.
+  Rect? get whereTheGhostsShow => _painter._whereTheGhostsShow();
 }
 
 /// The painters the rows a lift holds beside the live one are drawn by
@@ -638,12 +673,16 @@ final class _PaintCelSurface extends _SurfaceRow {
       placement = row.layer.placement,
       effects = row.layer.effects,
       tint = row.tint,
+      ghost = row.ghost,
       signature = row.signature;
 
   final BitmapSurfacePainter painter;
 
   /// What it draws ([StoredRow.signature]).
   final CompositeLayerSignature? signature;
+
+  /// Whether it is an onion ghost ([StoredRow.ghost]).
+  final bool ghost;
 
   /// Whether it is the row a pen draws on — the active layer's
   /// ([CanvasActiveLayerRow]), drawn from what is stored until a stroke
@@ -886,7 +925,7 @@ final class _LayerStackPainter {
 
   /// Where the LIVE surface changed since [since] — what it looked like
   /// when the picture it is patched into last took it in — in canvas space
-  /// ([_whereTheLiveRowShows]), plus what it looks like now, for the next
+  /// ([_whereAChangeShows]), plus what it looks like now, for the next
   /// measure.
   ///
   /// 🎯[since] IS WHAT THE PICTURE HOLDS, not what the last paint drew.
@@ -897,13 +936,6 @@ final class _LayerStackPainter {
   /// 🚨`located: false` is the safe answer, and it costs only drawing the
   /// frame as it stands. It is the answer whenever the change cannot be
   /// located ([_liveSurfaceTokens]).
-  ///
-  /// ⛔The rect is INFLATED by one pixel. A dab writes whole texels, but the
-  /// composite around it does not have to land on them — a posed sibling or
-  /// a rounded edge can put ink a fraction over the line, and a patch that
-  /// trusted the exact rect would leave a hairline of the previous frame.
-  /// One pixel is cheap and the alternative is a class of bug that only
-  /// shows on some zoom levels.
   ({bool located, Rect? dirty, LiveSurfaceTokens? now})
   _liveDirtyCanvasRect({required LiveSurfaceTokens since}) {
     final now = _liveSurfaceTokens();
@@ -934,8 +966,13 @@ final class _LayerStackPainter {
     if (dirty == null) {
       return (located: true, dirty: null, now: now);
     }
-    final shows = _whereTheLiveRowShows(nodes, dirty);
-    return (located: shows != null, dirty: shows?.inflate(1), now: now);
+    final shows = _whereAChangeShows(
+      nodes,
+      dirty,
+      _isTheLiveRow,
+      paper: canvasSize.canvasRect,
+    );
+    return (located: shows != null, dirty: shows, now: now);
   }
 
   /// Whether what the live rows draw can change only where their tokens
@@ -962,9 +999,27 @@ final class _LayerStackPainter {
   /// question had two answers and a mutant of either survived.
   bool get _liveCanBeTold => floatOverlay?.value == null && liftedRows.isEmpty;
 
-  /// Where a change at [rect] of the live surface's own pixels shows in the
-  /// composite of [list] — or null where that cannot be told, or the live
-  /// surface is not in it.
+  /// Where a change at [rect] of the pixels of the row [isRow] picks shows
+  /// in the composite of [list] ([_whereTheRowShows]) — or null where that
+  /// cannot be told. The live surface a stroke's step changes
+  /// ([_isTheLiveRow]), or an onion ghost a frame laid over its film adds
+  /// ([_whereTheGhostsShow]): one question, one answer.
+  ///
+  /// ⛔The rect is INFLATED by one pixel. A dab writes whole texels, but the
+  /// composite around it does not have to land on them — a posed sibling or
+  /// a rounded edge can put ink a fraction over the line, and a patch that
+  /// trusted the exact rect would leave a hairline of the previous frame.
+  /// One pixel is cheap and the alternative is a class of bug that only
+  /// shows on some zoom levels.
+  static Rect? _whereAChangeShows(
+    List<CompositeNode<_PaintRow>> list,
+    Rect rect,
+    bool Function(_PaintRow row) isRow, {
+    required Rect paper,
+  }) => _whereTheRowShows(list, rect, isRow, paper: paper)?.inflate(1);
+
+  /// Where [rect] of the row [isRow] picks shows in the composite of [list]
+  /// — or null where that cannot be told, or the row is not in it.
   ///
   /// An effect that SPREADS on a folder or an adjustment enclosing the
   /// surface — the stroke's pixels pass through its buffer — smears a dab
@@ -973,13 +1028,39 @@ final class _LayerStackPainter {
   /// ([effectBufferBounds]). ↩️It drew the frame as it stands, whole, at
   /// every step, until the cost of a frame drawn as it stands was cut on
   /// the canvas's own resolution (one-picture-per-frame, 유저 2026-10-25
-  /// 「원본 기준 위에서 푼다」).
-  static Rect? _whereTheLiveRowShows(
+  /// 「원본 기준 위에서 푼다」). [paper] is where the paper lies, which a
+  /// radial blur's reach is read from ([resolveCompositeEffectPlan]).
+  ///
+  /// Each node it stands in: a row read by another's chain stands where it
+  /// lies and in the node that reads it ([CompositeReadsRows]).
+  static Rect? _whereTheRowShows(
     List<CompositeNode<_PaintRow>> list,
     Rect rect,
-  ) {
-    for (final node in list) {
-      if (node case CompositeLeaf(payload: final _PaintActiveSurface active)) {
+    bool Function(_PaintRow row) isRow, {
+    required Rect paper,
+  }) {
+    Rect? shows;
+    for (final node in list.where((node) => holdsRow(node, isRow))) {
+      final here = _whereItShowsIn(node, rect, isRow, paper: paper);
+      if (here == null) {
+        return null;
+      }
+      shows = shows?.expandToInclude(here) ?? here;
+    }
+    return shows;
+  }
+
+  /// [_whereTheRowShows] in [node], which holds the row.
+  static Rect? _whereItShowsIn(
+    CompositeNode<_PaintRow> node,
+    Rect rect,
+    bool Function(_PaintRow row) isRow, {
+    required Rect paper,
+  }) {
+    Rect? inside() =>
+        _whereTheRowShows(node.children, rect, isRow, paper: paper);
+    switch (node) {
+      case CompositeLeaf(payload: final _SurfaceRow row):
         // ⛔A POSE is not told. 🔬Told through it, the step's patch came
         // apart from the frame drawn as it stands (Impeller tester,
         // 2026-10-27): the row turned by 30° and enlarged 2.5×, a few
@@ -998,46 +1079,120 @@ final class _LayerStackPainter {
         // 2026-10-27): its blur rode a `saveLayer` the patch's clip cut,
         // and at 200% the patch came apart from the frame along the
         // stroke's tile by a band 2.5 canvas pixels wide.
-        return active.placement == null
-            ? _spreadBy(active.effects, rect)
+        return row.placement == null
+            ? _spreadBy(row.effects, rect, paper)
             : null;
-      }
-      if (node is CompositeGroup<_PaintRow> &&
-          holdsRow(node, _isTheLiveRow)) {
-        final inside = _whereTheLiveRowShows(node.children, rect);
-        return inside == null ? null : _spreadBy(node.effects, inside);
-      }
-      if (node is CompositeAdjustment<_PaintRow> &&
-          holdsRow(node, _isTheLiveRow)) {
-        final inside = _whereTheLiveRowShows(node.children, rect);
-        return inside == null ? null : _spreadBy(node.effects, inside);
-      }
+      case CompositeGroup(:final effects):
+      case CompositeAdjustment(:final effects):
+        return switch (inside()) {
+          final at? => _spreadBy(effects, at, paper),
+          null => null,
+        };
       // A blend composes pixel by pixel: a dab moves the composite where it
       // lands and nowhere else, so only what the row passes through decides.
-      if (node is CompositeBackdropBlend<_PaintRow> &&
-          holdsRow(node, _isTheLiveRow)) {
-        return _whereTheLiveRowShows(node.children, rect);
-      }
+      case CompositeBackdropBlend():
       // So does a clip: the base's alpha cuts pixel by pixel, and the base
       // made opaque is the base's own pixels.
-      if (node is CompositeClip<_PaintRow> &&
-          holdsRow(node, _isTheLiveRow)) {
-        return _whereTheLiveRowShows(node.children, rect);
-      }
+      case CompositeClip():
+        return inside();
+      case final CompositeReadsRows<_PaintRow> reads:
+        return _whereReadShows(reads, rect, isRow, paper: paper);
+      // Holding no row: nothing of theirs is told here.
+      case CompositeLeaf():
+      case CompositeOpaque():
+      case CompositeCelNumber():
+        return null;
     }
-    return null;
   }
 
-  /// [rect] grown by as far as [effects] read past a pixel.
-  static Rect _spreadBy(List<ResolvedLayerEffect> effects, Rect rect) =>
-      effectBufferBounds(
-        rect,
-        resolveCompositeEffectPlan(effects).outsetPixels,
-      );
+  /// Where [rect] of the row [isRow] picks shows through [node]: in the
+  /// node that reads, where it stands in it, and where the rows it reads
+  /// hold it — read where it shows, pixel for pixel (🗣️I-132-Q21 a), so
+  /// changed there and as far past as the reader's chain reads past a
+  /// pixel ([_readerSpreads]).
+  static Rect? _whereReadShows(
+    CompositeReadsRows<_PaintRow> node,
+    Rect rect,
+    bool Function(_PaintRow row) isRow, {
+    required Rect paper,
+  }) {
+    final CompositeReadsRows(node: reader, :rows) = node;
+    final read = [for (final drawn in rows.values) ...drawn];
+    final parts = [
+      if (holdsRow(reader, isRow))
+        _whereItShowsIn(reader, rect, isRow, paper: paper),
+      if (read.any((drawn) => holdsRow(drawn, isRow)))
+        switch (_whereTheRowShows(read, rect, isRow, paper: paper)) {
+          final at? => _readerSpreads(reader, at, paper),
+          null => null,
+        },
+    ];
+    return parts.contains(null)
+        ? null
+        : parts.nonNulls.reduce((all, part) => all.expandToInclude(part));
+  }
+
+  /// [at] — where what [reader]'s chain reads changed — as far past as that
+  /// chain reads past a pixel; null where that cannot be told: a posed
+  /// row's, as for the row itself ([_whereItShowsIn]).
+  static Rect? _readerSpreads(
+    CompositeNode<_PaintRow> reader,
+    Rect at,
+    Rect paper,
+  ) => switch (reader) {
+    CompositeLeaf(payload: final _SurfaceRow row) =>
+      row.placement == null ? _spreadBy(row.effects, at, paper) : null,
+    CompositeGroup(:final effects) ||
+    CompositeAdjustment(:final effects) => _spreadBy(effects, at, paper),
+    // Only a row, a folder or an adjustment reads rows.
+    CompositeLeaf() ||
+    CompositeBackdropBlend() ||
+    CompositeClip() ||
+    CompositeOpaque() ||
+    CompositeCelNumber() ||
+    CompositeReadsRows() => null,
+  };
+
+  /// [rect] grown by as far as [effects] read past a pixel, on [paper].
+  static Rect _spreadBy(
+    List<ResolvedLayerEffect> effects,
+    Rect rect,
+    Rect paper,
+  ) => effectBufferBounds(
+    rect,
+    resolveCompositeEffectPlan(effects, paper: paper).outsetPixels,
+  );
 
   /// Whether [row] is the live surface ([holdsRow]) — not a lifted row:
   /// that only shows, and nothing draws into it.
   static bool _isTheLiveRow(_PaintRow row) => row is _PaintActiveSurface;
+
+  /// [StackedFrame.whereTheGhostsShow]: where each ghost's ink shows
+  /// ([_whereAChangeShows]), together.
+  Rect? _whereTheGhostsShow() {
+    var shows = Rect.zero;
+    for (final node in preorderNodes(nodes)) {
+      if (node case CompositeLeaf(
+        payload: final _PaintCelSurface ghost,
+      ) when ghost.ghost) {
+        final ink = ghost.painter.drawnWorldRect;
+        if (ink.isEmpty) {
+          continue;
+        }
+        final where = _whereAChangeShows(
+          nodes,
+          ink,
+          (row) => identical(row, ghost),
+          paper: canvasSize.canvasRect,
+        );
+        if (where == null) {
+          return null;
+        }
+        shows = shows.isEmpty ? where : shows.expandToInclude(where);
+      }
+    }
+    return shows;
+  }
 }
 
 /// How many paints have fallen to the direct walk because the buffer would

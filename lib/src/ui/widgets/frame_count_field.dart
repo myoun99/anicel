@@ -33,6 +33,7 @@ class FrameCountField extends StatefulWidget {
     this.initialCount,
     this.onEntryChanged,
     this.beside,
+    this.autofocus = true,
   });
 
   /// `<keyPrefix>-field` (frames), `-seconds-field` and `-koma-field`
@@ -66,6 +67,11 @@ class FrameCountField extends StatefulWidget {
   /// mark-every window lays: 🗣️I-130-Q2 (유저 2026-10-25 「간격 숫자 옆에
   /// ○ / ● 고르기」). Null on every other count window.
   final Widget? beside;
+
+  /// Whether the count takes the keyboard as the window opens — the count
+  /// window's one question; false in a window that asks it beside others
+  /// (the SE window's dialogue, F-496).
+  final bool autofocus;
 
   @override
   State<FrameCountField> createState() => _FrameCountFieldState();
@@ -149,7 +155,7 @@ class _FrameCountFieldState extends State<FrameCountField> {
     FrameCountEntry.frames => _numberField(
       '$prefix-field',
       _frames,
-      autofocus: true,
+      autofocus: widget.autofocus,
     ),
     FrameCountEntry.secondsPlusFrames => Row(
       children: [
@@ -157,7 +163,7 @@ class _FrameCountFieldState extends State<FrameCountField> {
           child: _numberField(
             '$prefix-seconds-field',
             _seconds,
-            autofocus: true,
+            autofocus: widget.autofocus,
           ),
         ),
         const Padding(

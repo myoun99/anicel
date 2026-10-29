@@ -8,12 +8,12 @@ import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/transform_track.dart';
 
 void main() {
-  LayerEffect blur({double x = 0, double y = 0}) => LayerEffect(
+  LayerEffect blur({double blurriness = 0, double dimensions = 0}) => LayerEffect(
     id: const EffectId('e-blur'),
     kind: EffectKind.blur,
     parameters: {
-      'blurX': EffectParameter(value: x),
-      'blurY': EffectParameter(value: y),
+      'blurriness': EffectParameter(value: blurriness),
+      'blurDimensions': EffectParameter(value: dimensions),
     },
   );
 
@@ -57,6 +57,22 @@ void main() {
       expect(parameter.resolveAt(9), 4);
       expect(parameter.resolveAt(10), 20);
     });
+
+    test('a menu is made with its words, or not at all', () {
+      // A menu with no words has nothing to show for its value — the lane
+      // reads `choices[value]` (I-132-Q6).
+      expect(
+        () => EffectParameterSpec(
+          id: 'p',
+          label: 'P',
+          defaultValue: 0,
+          minimum: 0,
+          maximum: 1,
+          unit: EffectParameterUnit.choice,
+        ),
+        throwsAssertionError,
+      );
+    });
   });
 
   group('LayerEffect.defaults', () {
@@ -91,7 +107,7 @@ void main() {
         parameters: {
           'hue': EffectParameter(value: 30),
           // Not a hue/saturation parameter at all: dropped.
-          'blurX': EffectParameter(value: 9),
+          'blurriness': EffectParameter(value: 9),
         },
       );
       expect(partial.parameters.keys, ['hue', 'saturation', 'lightness']);
@@ -120,23 +136,23 @@ void main() {
             id: const EffectId('a'),
             kind: EffectKind.brightnessContrast,
           ),
-          blur(x: 6, y: 2),
+          blur(blurriness: 6, dimensions: 2),
         ],
         frameIndex: 0,
       );
       expect(resolved, hasLength(1));
       expect(resolved.single.kind, EffectKind.blur);
-      expect(resolved.single.parameter('blurX'), 6);
-      expect(resolved.single.parameter('blurY'), 2);
+      expect(resolved.single.parameter('blurriness'), 6);
+      expect(resolved.single.parameter('blurDimensions'), 2);
     });
 
     test('a DISABLED effect resolves to nothing but keeps its keys', () {
-      final disabled = blur(x: 6).copyWith(enabled: false);
+      final disabled = blur(blurriness: 6).copyWith(enabled: false);
       expect(
         resolveLayerEffectsAt(effects: [disabled], frameIndex: 0),
         isEmpty,
       );
-      expect(disabled.parameterOf('blurX').value, 6);
+      expect(disabled.parameterOf('blurriness').value, 6);
     });
 
     test('values clamp to the spec range', () {
@@ -154,7 +170,7 @@ void main() {
         id: const EffectId('e'),
         kind: EffectKind.blur,
         parameters: {
-          'blurX': EffectParameter(
+          'blurriness': EffectParameter(
             track: PropertyTrack<double>(
               keys: {
                 0: const PropertyKey<double>(0),
@@ -173,7 +189,7 @@ void main() {
         resolveLayerEffectsAt(
           effects: [animated],
           frameIndex: 5,
-        ).single.parameter('blurX'),
+        ).single.parameter('blurriness'),
         5,
       );
     });
@@ -192,7 +208,7 @@ void main() {
       );
       expect(
         resolvedEffectsSpreadPixels(
-          resolveLayerEffectsAt(effects: [blur(x: 3)], frameIndex: 0),
+          resolveLayerEffectsAt(effects: [blur(blurriness: 3)], frameIndex: 0),
         ),
         isTrue,
       );
@@ -220,7 +236,7 @@ void main() {
             ),
           },
         ),
-        blur(x: 4),
+        blur(blurriness: 4),
       ];
       final layer = Layer(
         id: const LayerId('l1'),
@@ -257,7 +273,7 @@ void main() {
       ).toJson();
       expect(json['parameters'], isEmpty);
       // …and still load as full defaults.
-      expect(LayerEffect.fromJson(json).parameterOf('blurY').value, 0);
+      expect(LayerEffect.fromJson(json).parameterOf('blurDimensions').value, 0);
     });
 
     // I-65: a cel number's Position and Scale are keys of its own.
@@ -325,7 +341,7 @@ void main() {
         id: const LayerId('l1'),
         name: 'A',
         frames: const [],
-        effects: [blur(x: radius)],
+        effects: [blur(blurriness: radius)],
       );
       expect(withBlur(4) == withBlur(4), isTrue);
       expect(withBlur(4) == withBlur(5), isFalse);

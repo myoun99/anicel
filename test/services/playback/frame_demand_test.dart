@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/onion_skin_settings.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart';
 
 /// THE ORDER FRAMES ARE WANTED IN — the one order the warmer makes pictures
@@ -22,11 +23,13 @@ void main() {
     layers: const [],
   );
 
-  /// The frames [demand] wants, in order, each named `cut:frame`.
+  /// The frames [demand] wants, in order, each named `cut:frame` — by the
+  /// pictures of them; the ghosts over a frame are pinned on their own.
   List<String> wanted(FrameDemand demand) => [
     for (var step = 0; step < demand.length; step += 1)
       for (final picture in demand.picturesAt(step)!)
-        '${picture.cut.id.value}:${picture.frameIndex}',
+        if (picture.ghosts == FrameGhosts.none)
+          '${picture.cut.id.value}:${picture.frameIndex}',
   ];
 
   group('while nothing plays', () {
@@ -35,6 +38,7 @@ void main() {
       int around = 1,
       CutId? next = b,
       int nextFrameCount = 3,
+      OnionSkinPlacement placement = OnionSkinPlacement.onTop,
     }) => StandingDemand(
       cutId: a,
       frameCount: frameCount,
@@ -42,6 +46,7 @@ void main() {
       nextCutId: next,
       nextFrameCount: nextFrameCount,
       resolveCut: cutOf,
+      placement: placement,
     );
 
     test('the cut is wanted from the playhead outwards, and then the cut '
@@ -60,7 +65,7 @@ void main() {
         'no step shows', () {
       final demand = standing();
       for (var step = 0; step < demand.length; step += 1) {
-        final picture = demand.picturesAt(step)!.single;
+        final picture = demand.picturesAt(step)!.first;
         expect(
           demand.stepOf(picture.cut.id, picture.frameIndex),
           step,
@@ -71,6 +76,42 @@ void main() {
       expect(demand.stepOf(a, -1), isNull);
       expect(demand.stepOf(b, 3), isNull, reason: 'past the next cut');
       expect(demand.stepOf(const CutId('elsewhere'), 0), isNull);
+    });
+
+    test('each frame is wanted as a run plays it — on its paper — and with '
+        'the ghosts of a canvas standing on it: off it, over the frame, or '
+        'in the frame on its paper (onion-ghosts-in-place)', () {
+      for (final placement in OnionSkinPlacement.values) {
+        final demand = standing(placement: placement);
+        for (var step = 0; step < demand.length; step += 1) {
+          final [frame, onion] = demand.picturesAt(step)!;
+          expect((frame.paintPaper, frame.ghosts), (true, FrameGhosts.none));
+          expect(
+            (onion.paintPaper, onion.ghosts),
+            switch (placement) {
+              OnionSkinPlacement.onTop => (false, FrameGhosts.alone),
+              OnionSkinPlacement.inPlace => (true, FrameGhosts.inPlace),
+            },
+            reason: placement.name,
+          );
+          expect(identical(onion.cut, frame.cut), isTrue);
+          expect(onion.frameIndex, frame.frameIndex);
+        }
+      }
+    });
+
+    test('the pictures it wants are the ones a canvas standing on the frame '
+        'shows ([standingPicturesOf])', () {
+      for (final placement in OnionSkinPlacement.values) {
+        final demand = standing(placement: placement);
+        final [_, onion] = demand.picturesAt(0)!;
+        final shown = standingPicturesOf(
+          onion.cut,
+          onion.frameIndex,
+          placement,
+        );
+        expect(onion, shown.over ?? shown.frame, reason: placement.name);
+      }
     });
 
     test('a playhead past either end starts at the nearest frame', () {
@@ -93,11 +134,11 @@ void main() {
         around: 0,
         resolveCut: (_) => now,
       );
-      expect(identical(demand.picturesAt(0)!.single.cut, now), isTrue);
+      expect(identical(demand.picturesAt(0)!.first.cut, now), isTrue);
 
       final edited = cutOf(a);
       now = edited;
-      expect(identical(demand.picturesAt(0)!.single.cut, edited), isTrue);
+      expect(identical(demand.picturesAt(0)!.first.cut, edited), isTrue);
 
       now = null;
       expect(demand.picturesAt(0), isEmpty);
@@ -170,7 +211,12 @@ void main() {
       totalFrames: 5,
       loops: () => loops,
       playhead: () => playhead,
-      picturesOf: (frame) => [(cut: cutOf(a), frameIndex: frame, paintPaper: true)],
+      picturesOf: (frame) => [(
+        cut: cutOf(a),
+        frameIndex: frame,
+        paintPaper: true,
+        ghosts: FrameGhosts.none,
+      )],
       playlistFrameOf: (cutId, frameIndex) => cutId == a ? frameIndex : null,
       lead: lead,
     );

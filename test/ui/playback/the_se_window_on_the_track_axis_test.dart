@@ -10,6 +10,8 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/models/se_sound.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -265,5 +267,104 @@ void main() {
     );
 
     expect(scheduled, isEmpty);
+  });
+
+  group('the row\'s sound rides every entry (I-140)', () {
+    Project soundedWith(
+      SeSound sound, {
+      required ({int start, int length}) at,
+    }) => Project(
+      id: const ProjectId('p'),
+      name: 'P',
+      frameRate: rate,
+      cameraSize: canvas,
+      createdAt: DateTime.utc(2026, 10, 28),
+      tracks: [
+        Track(
+          id: const TrackId('t'),
+          name: 'V',
+          seLayers: [
+            seRow(
+              start: at.start,
+              length: at.length,
+            ).copyWith(seSound: sound),
+          ],
+          cuts: [cut('c1'), cut('c2')],
+        ),
+      ],
+    );
+
+    /// The volume an entry's line passes at [frame] — straight between its
+    /// points and held past its ends, as the mixer draws it.
+    double lineAt(List<ScheduledVolumePoint> line, int frame) {
+      if (frame <= line.first.frame) {
+        return line.first.gain;
+      }
+      for (var index = 1; index < line.length; index += 1) {
+        final (before, after) = (line[index - 1], line[index]);
+        if (frame <= after.frame) {
+          final share = (frame - before.frame) / (after.frame - before.frame);
+          return before.gain + (after.gain - before.gain) * share;
+        }
+      }
+      return line.last.gain;
+    }
+
+    test('🎯a window opening mid-sound reads the volume on the TRACK\'s '
+        'frames — where the ramp has climbed to, not where it began', () {
+      final sound = SeSound(
+        pan: -0.5,
+        volume: PropertyTrack<double>(
+          keys: {0: const PropertyKey(0.0), 20: const PropertyKey(1.0)},
+        ),
+      );
+      final entry = schedule(
+        project: soundedWith(sound, at: (start: 6, length: 10)),
+        window: window(trackStart: 10, frames: 10),
+      ).single;
+
+      expect([entry.startFrame, entry.endFrameExclusive], [0, 6]);
+      expect([for (final point in entry.volume) point.frame], [0, 6]);
+      expect(entry.volume.first.gain, closeTo(0.5, 1e-9));
+      expect(entry.volume.last.gain, closeTo(0.8, 1e-9));
+      expect(entry.pan, -0.5);
+    });
+
+    test('an eased key is met at EVERY frame the entry sounds — the mixer\'s '
+        'line is straight, so the curve is laid frame by frame', () {
+      final sound = SeSound(
+        volume: PropertyTrack<double>(
+          keys: {
+            0: const PropertyKey(0.2, outgoing: EaseSide()),
+            6: const PropertyKey(1.6, incoming: EaseSide()),
+          },
+        ),
+      );
+      final entry = schedule(
+        project: soundedWith(sound, at: (start: 2, length: 8)),
+        window: window(trackStart: 0, frames: 20),
+      ).single;
+
+      for (var frame = 0; frame <= 8; frame += 1) {
+        expect(
+          lineAt(entry.volume, frame),
+          closeTo(sound.volumeAt(2.0 + frame), 1e-9),
+          reason: 'entry frame $frame is track frame ${2 + frame}',
+        );
+      }
+    });
+
+    test('an unkeyed row lays no line — the entry plays as recorded', () {
+      final entry = schedule(
+        project: soundedWith(
+          const SeSound(pan: 0.25),
+          at: (start: 2, length: 3),
+        ),
+        window: window(trackStart: 0, frames: 10),
+      ).single;
+
+      expect(entry.volume, isEmpty);
+      expect(entry.pan, 0.25);
+    });
   });
 }

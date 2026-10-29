@@ -56,7 +56,7 @@ void main() {
 
     await tester.pumpWidget(host(surface));
     final undecoded = surface.tiles.values
-        .where((tile) => BitmapTileImageCache.instance.imageFor(tile) == null)
+        .where((tile) => BitmapTileImageCache.instance.heldFor(tile) == null)
         .length;
     expect(
       undecoded,
@@ -69,7 +69,7 @@ void main() {
     final rematerialized = freshSurface(tiles: 12);
     await tester.pumpWidget(host(rematerialized));
     final undecodedAfter = rematerialized.tiles.values
-        .where((tile) => BitmapTileImageCache.instance.imageFor(tile) == null)
+        .where((tile) => BitmapTileImageCache.instance.heldFor(tile) == null)
         .length;
     expect(
       undecodedAfter,

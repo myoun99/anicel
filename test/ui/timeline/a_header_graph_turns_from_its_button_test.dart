@@ -152,7 +152,11 @@ void main() {
     final rows =
         ((tester.getCenter(from).dy - tester.getCenter(to).dy) / rowHeight)
             .round();
-    expect(rows, 3, reason: '⛔전제: the effect\'s two lanes lie between');
+    expect(
+      rows,
+      EffectKind.blur.parameters.length + 1,
+      reason: '⛔전제: the effect\'s lanes lie between',
+    );
 
     // ⛔No frame between the press and the first step: the sweep starts
     // from what the button did on the down, before the grid rebuilds.

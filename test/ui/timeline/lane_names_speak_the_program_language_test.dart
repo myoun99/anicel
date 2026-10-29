@@ -2,15 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/app_language.dart';
-import 'package:anicel/src/models/audio_clip.dart';
-import 'package:anicel/src/models/frame.dart';
-import 'package:anicel/src/models/frame_id.dart';
-import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
-import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/se_name_tag.dart';
-import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/se_sound.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/timeline/scale_lane_form.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -18,7 +12,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
-import 'package:anicel/src/ui/timeline/se_audio_lane.dart';
+import 'package:anicel/src/ui/timeline/se_sound_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 
@@ -45,21 +39,11 @@ void main() {
     for (final row in rows) row.label,
   ];
 
-  final seLayer = Layer(
-    id: const LayerId('se'),
-    name: 'S1',
-    kind: LayerKind.se,
-    frames: [Frame(id: const FrameId('se-f'), duration: 1, strokes: const [])],
-    timeline: const {2: TimelineExposure.drawing(FrameId('se-f'), length: 8)},
-    audioClips: [
-      AudioClip(filePath: 'steps.wav', frameId: const FrameId('se-f')),
-    ],
-  );
   final effects = [
     LayerEffect.defaults(id: const EffectId('blur'), kind: EffectKind.blur),
     LayerEffect.defaults(
       id: const EffectId('key'),
-      kind: EffectKind.deleteColor,
+      kind: EffectKind.colorKey,
     ),
   ];
 
@@ -98,8 +82,17 @@ void main() {
         );
       });
 
-      test('the Audio lane', () {
-        expect(labelsOf(seAudioLanesFor(seLayer)), [words.audio]);
+      test('the 「오디오」 group and its members', () {
+        expect(
+          labelsOf(
+            seSoundPropertyLanes(
+              const SeSound(),
+              expanded: true,
+              volumeAt: null,
+            ),
+          ),
+          words.audio,
+        );
       });
 
       test('each effect and its parameters', () {
@@ -183,9 +176,11 @@ class _RailWords {
   /// The Name Tag header and its ten members, top to bottom.
   final List<String> nameTag;
 
-  final String audio;
+  /// The 「오디오」 header and its two members, top to bottom (I-140).
+  final List<String> audio;
 
-  /// A Blur and a Delete Color, each header followed by its parameters.
+  /// A Gaussian Blur and a Color Key, each header followed by its
+  /// parameters.
   final List<String> effects;
 }
 
@@ -212,15 +207,15 @@ const _rail = <AppLanguage, _RailWords>{
       'Dialogue Ink',
       'Show Dialogue',
     ],
-    audio: 'Audio',
+    audio: ['Audio', 'Volume', 'Pan'],
     effects: [
-      'Blur',
-      'Blur Width',
-      'Blur Height',
-      'Delete Color',
-      'Key Red',
-      'Key Green',
-      'Key Blue',
+      'Gaussian Blur',
+      'Blurriness',
+      'Blur Dimensions',
+      'Repeat Edge Pixels',
+      'Color Key',
+      'Key Operation',
+      'Key Color',
       'Tolerance',
       'Amount',
     ],
@@ -240,15 +235,15 @@ const _rail = <AppLanguage, _RailWords>{
       'セリフの色',
       'セリフを表示',
     ],
-    audio: '音声',
+    audio: ['音声', '音量', 'パン'],
     effects: [
-      'ぼかし',
-      'ぼかしの幅',
-      'ぼかしの高さ',
-      '色削除',
-      'キー色の赤',
-      'キー色の緑',
-      'キー色の青',
+      'ブラー（ガウス）',
+      'ブラー',
+      'ブラーの方向',
+      'エッジピクセルを繰り返す',
+      'カラーキー',
+      'キー操作',
+      'キー色',
       '許容値',
       '適用量',
     ],
@@ -268,15 +263,15 @@ const _rail = <AppLanguage, _RailWords>{
       '대사 잉크',
       '대사 표시',
     ],
-    audio: '오디오',
+    audio: ['오디오', '볼륨', '팬'],
     effects: [
-      '흐림 효과',
-      '흐림 너비',
-      '흐림 높이',
-      '색 삭제',
-      '키 색 빨강',
-      '키 색 초록',
-      '키 색 파랑',
+      '가우시안 흐림',
+      '흐림 정도',
+      '흐림 방향',
+      '가장자리 픽셀 반복',
+      '색상 키',
+      '키 작업',
+      '키 색',
       // I-8-Q2 — the user's word for this knob.
       '허용차',
       '적용량',
@@ -304,15 +299,15 @@ const _rail = <AppLanguage, _RailWords>{
       'Encre du dialogue',
       'Afficher le dialogue',
     ],
-    audio: 'Audio',
+    audio: ['Audio', 'Volume', 'Panoramique'],
     effects: [
+      'Flou gaussien',
       'Flou',
-      'Largeur du flou',
-      'Hauteur du flou',
-      'Supprimer la couleur',
-      'Rouge de la clé',
-      'Vert de la clé',
-      'Bleu de la clé',
+      'Dimensions du flou',
+      'Répéter les pixels du contour',
+      'Masquage par couleur',
+      'Opération',
+      'Couleur de la clé',
       'Tolérance',
       'Quantité',
     ],
@@ -332,7 +327,17 @@ const _rail = <AppLanguage, _RailWords>{
       '台词颜色',
       '显示台词',
     ],
-    audio: '音频',
-    effects: ['模糊', '模糊宽度', '模糊高度', '删除颜色', '键色红', '键色绿', '键色蓝', '容差', '数量'],
+    audio: ['音频', '音量', '声像'],
+    effects: [
+      '高斯模糊',
+      '模糊度',
+      '模糊方向',
+      '重复边缘像素',
+      '颜色键',
+      '主要操作',
+      '键色',
+      '容差',
+      '数量',
+    ],
   ),
 };

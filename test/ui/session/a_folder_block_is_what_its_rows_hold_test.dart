@@ -8,6 +8,7 @@ import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -17,14 +18,20 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_folder.dart' show LayerFolderQueries;
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/timeline_coverage.dart'
+    show TimelineBlockEdge;
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_repeat.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/timeline_run_behavior.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/drags/frame_range_move_drag.dart';
 import 'package:anicel/src/ui/session/folder_bands.dart';
@@ -110,12 +117,16 @@ List<Layer> _stack({Map<int, int> over = const {}}) => [
   _row('over', over),
 ];
 
-EditorSessionManager _session(List<Layer> layers) {
+EditorSessionManager _session(
+  List<Layer> layers, {
+  List<MediaAsset> pool = const [],
+}) {
   final session = EditorSessionManager(
     initialProject: Project(
       id: const ProjectId('f311'),
       name: 'F-311',
       createdAt: DateTime.utc(2026, 10, 7),
+      mediaAssets: pool,
       tracks: [
         Track(
           id: const TrackId('f311-track'),
@@ -776,6 +787,158 @@ void main() {
       s.rangeMove.cancelFrameRangeMoveDrag();
     });
 
+    // 🐛folder-band-lags-a-comma-drag (10-27): the band followed a MOVE
+    // alone — a comma drag and a file held over a row drew the folder as
+    // it stood, and it caught up on the release.
+    test('a row\'s comma drag shows on the folder it stands in', () {
+      final s = _session(_stack());
+      expect(
+        s.edgeDrag.beginExposureEdgeDrag(
+          layerId: const LayerId('b'),
+          blockStartIndex: 2,
+          edge: TimelineBlockEdge.end,
+        ),
+        isTrue,
+      );
+
+      s.edgeDrag.updateExposureEdgeDrag(3);
+
+      final folder = timelineRowPreviewLayer(s.dragPreview.value, _band(s));
+      expect(
+        folder == null ? null : _blocks(folder),
+        {0: 10},
+        reason: 'b ends at 9 under the hand, and meets a\'s 8..10',
+      );
+      s.edgeDrag.cancelExposureEdgeDrag();
+      expect(s.dragPreview.value, isNull);
+    });
+
+    test('a file held over a row shows on the folder it stands in', () {
+      const path = '/pool/walk_0001.png';
+      final s = _session(
+        _stack(),
+        pool: [
+          MediaAsset(
+            path: path,
+            name: 'walk',
+            kind: MediaAssetKind.image,
+            frameCount: 4,
+          ),
+        ],
+      );
+
+      s.showMediaPlacement(const LayerId('b'), 12, path);
+
+      expect(
+        (s.dragPreview.value as MediaPlacementPreview?)?.silhouette,
+        (layerId: const LayerId('b'), startIndex: 12, endIndexExclusive: 16),
+        reason: '⛔전제: the four cells it would make on b',
+      );
+      final folder = timelineRowPreviewLayer(s.dragPreview.value, _band(s));
+      expect(
+        folder == null ? null : _blocks(folder),
+        {0: 6, 8: 2, 12: 4},
+        reason: 'the cells the drop would make are what b would hold',
+      );
+      s.mediaPlacement.clear();
+    });
+
+    test('a folder kept over an edit that left its blocks as they were is '
+        'read from its rows as they are now', () {
+      final s = _session(_stack());
+      final before = _band(s);
+      s.edgeDrag.beginExposureEdgeDrag(
+        layerId: const LayerId('a'),
+        blockStartIndex: 0,
+        edge: TimelineBlockEdge.end,
+      );
+      s.edgeDrag.updateExposureEdgeDrag(-1);
+      s.edgeDrag.endExposureEdgeDrag();
+      expect(
+        [_blocks(_layer(s, 'a')), identical(_band(s), before)],
+        [
+          {0: 3, 8: 2},
+          true,
+        ],
+        reason: '⛔전제: a ends at 3 under b\'s 2..6, so the band was kept',
+      );
+
+      s.edgeDrag.beginExposureEdgeDrag(
+        layerId: const LayerId('b'),
+        blockStartIndex: 2,
+        edge: TimelineBlockEdge.end,
+      );
+      s.edgeDrag.updateExposureEdgeDrag(-3);
+
+      final folder = timelineRowPreviewLayer(s.dragPreview.value, _band(s));
+      expect(
+        folder == null ? null : _blocks(folder),
+        {0: 3, 8: 2},
+        reason: 'b ends at 3 under the hand, over the a that ends at 3 now',
+      );
+      s.edgeDrag.cancelExposureEdgeDrag();
+    });
+
+    // The folder's OWN form in a drag is no band: it holds no block, so
+    // the row read as that form alone went blank while its keys moved.
+    test('a folder\'s block moved with its own keys shows its rows where '
+        'they go, and its keys with them', () {
+      final s = _session([
+        for (final layer in _stack())
+          if (layer.id == _folder)
+            layer.copyWith(
+              transformTrack: TransformTrack.empty().copyWith(
+                position: PropertyTrack<CanvasPoint>.empty().withKey(
+                  1,
+                  CanvasPoint(x: 5, y: 5),
+                ),
+              ),
+            )
+          else
+            layer,
+      ]);
+      s.updateFrameRangeSelectionDrag(
+        layerId: _folder,
+        anchorIndex: 1,
+        headIndex: 1,
+        spanRows: const [
+          LayerRowAddress(_folder),
+          LaneRowAddress(_folder, 'position'),
+        ],
+      );
+      expect(s.rangeMove.beginFrameRangeMoveDrag(_folder), isTrue);
+
+      s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 12);
+
+      final folder = timelineRowPreviewLayer(s.dragPreview.value, _band(s));
+      expect(
+        folder == null ? null : _blocks(folder),
+        {8: 2, 12: 6},
+        reason: 'a\'s 0..4 and b\'s 2..6 went 12 on',
+      );
+      expect(folder?.transformTrack.position.keys.keys.toList(), [13]);
+      s.rangeMove.cancelFrameRangeMoveDrag();
+    });
+
+    test('a folder\'s own keys scrubbed leave its row holding what its rows '
+        'hold', () {
+      final s = _session(_stack());
+      s.laneVerbs.previewLayerTransformAtPlayhead(
+        _folder,
+        (track, frame) => track.withKeyframe(
+          frame,
+          TransformPose(center: CanvasPoint(x: 12, y: 34)),
+        ),
+      );
+      final scrubbed = (s.dragPreview.value as LaneEditPreview?)?.row;
+      expect(scrubbed?.id, _folder, reason: '⛔전제: the scrub is on F');
+
+      final folder = timelineRowPreviewLayer(s.dragPreview.value, _band(s));
+      expect(folder == null ? null : _blocks(folder), {0: 6, 8: 2});
+      expect(folder?.transformTrack, scrubbed?.transformTrack);
+      s.laneVerbs.endLaneEditPreview();
+    });
+
     group('🐛F-467 (유저 2026-10-25): 「폴더의 블록을 잡고 이동시킬때, 원래 '
         '위치에 블록이 남아있는 버그. 이동끝나면 사라짐」 — a synced attach '
         'row in it is read as its row shows it, by its base', () {
@@ -891,13 +1054,23 @@ void main() {
 
       s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 3);
 
-      final shown =
-          (s.dragPreview.value! as BlockMoveDragPreview).previewLayers;
+      final preview = s.dragPreview.value;
       expect(
-        shown.keys,
-        unorderedEquals([const LayerId('a'), _folder]),
+        (preview! as BlockMoveDragPreview).previewLayers.keys,
+        [const LayerId('a')],
+        reason: 'the drag carries the rows it moves, and no band: a band is '
+            'read off its rows where the folder\'s row shows it',
+      );
+      expect(
+        timelineRowPreviewLayer(preview, _band(s)),
+        isNotNull,
+        reason: '⛔전제: F holds a',
+      );
+      expect(
+        timelineRowPreviewLayer(preview, _band(s, const LayerId('H'))),
+        isNull,
         reason: 'a step rebuilds the rows it moves: H holds none of them, '
-            'and a band handed to it every step would rebuild its row',
+            'and a band made anew every step would rebuild its row',
       );
       s.rangeMove.cancelFrameRangeMoveDrag();
     });
@@ -928,8 +1101,9 @@ void main() {
           (s.dragPreview.value! as BlockMoveDragPreview).previewLayers;
       expect(_blocks(shown[const LayerId('under')]!), {0: 4}, reason: 'a\'s');
       expect(_blocks(shown[const LayerId('a')]!), {2: 4, 8: 2}, reason: 'b\'s');
+      final folder = timelineRowPreviewLayer(s.dragPreview.value, _band(s));
       expect(
-        shown[_folder] == null ? null : _blocks(shown[_folder]!),
+        folder == null ? null : _blocks(folder),
         {2: 4, 8: 2},
         reason: 'a\'s block left the folder: its band is what stays in it',
       );

@@ -28,9 +28,7 @@ class _StoryboardRowsAndLabels {
   /// selected (`selectableLanes`).
   ///
   /// A null [chainId] leaves the headers to select like every lane: a
-  /// projection row with nothing stood in edits nothing (I-73 ④). The Audio
-  /// lane keeps no address (no key range lands on it), so it stays as it
-  /// is.
+  /// projection row with nothing stood in edits nothing (I-73 ④).
   ///
   /// The pointer counts LANE rows and the chain counts HEADERS, and the two
   /// differ the moment a group is twirled open — which is exactly when
@@ -56,7 +54,7 @@ class _StoryboardRowsAndLabels {
     );
     return _laidLanes(rowId, lanes, [
       for (var index = 0; index < rows.length; index += 1)
-        if (index >= lanes.length || laneIsSeAudio(lanes[index]))
+        if (index >= lanes.length)
           rows[index]
         else
           _laneRow(chain, (lane: lanes[index], index: index), rows[index]),
@@ -602,18 +600,27 @@ class _StoryboardRowsAndLabels {
         grip: grip,
         drawsTheGapAfter: index == seats.length - 1,
         linesBeyond: _state._railRows.linesBeyondFrom(LayerRowAddress(rowId)),
-        // A conte group's rows hold nothing to drop into, so the caret is
-        // the only answer (the S rows' reasoning).
-        onCrossed: (steps, _, inRow) {
+        // The timeline row's two answers: a pointer in a row's middle is ON
+        // that row — the session judges what it swallows, a 공정 folder of
+        // the group (I-99) — and anywhere else the caret, with the row the
+        // pointer is in. ↩️It took the caret alone (「a conte group's rows
+        // hold nothing to drop into」, 10-10, a rule nobody asked for).
+        onCrossed: (steps, onRow, inRow) {
           final rows = _conteRowsNow(trackId);
           final from = rows.indexWhere((row) => row.id == rowId);
           if (from < 0) {
             return;
           }
+          final slot = slotForSteps(from, steps, rows.length);
+          final on = onRow == null ? -1 : from + onRow;
+          if (on >= 0 && on < rows.length) {
+            hooks.onRowTarget(rows, slot, rows[on].id);
+            return;
+          }
           final under = from + inRow;
           hooks.onUpdate(
             rows,
-            slotForSteps(from, steps, rows.length),
+            slot,
             pointerInRow: under >= 0 && under < rows.length
                 ? rows[under].id
                 : null,
@@ -879,17 +886,21 @@ class _StoryboardRowsAndLabels {
     final widget = _state.widget;
     final rowId = trackConteRowId(track.id, seat: seat);
     final trackId = track.id;
+    final fold = _state._railRows._conteGroupFoldOf(rowId);
     return _StoryboardRailHead(
       key: ValueKey<String>(
         'storyboard-${conteLabelKeyName(seat)}-label-${trackId.value}',
       ),
       rowId: rowId,
       chromeless: chromeless,
+      // Hung off the conte as the timeline hangs the group off its base:
+      // one level per 공정 folder above the row (I-99).
+      depth: attachFolderLevelsAbove(head.row, head.cut.layers),
       layer: head.row,
       active: widget.selectedRow == LayerRowAddress(rowId),
       // Its twirl — the timeline row's — opens the row's lanes under it
       // (I-73 ④ⓔ), the rows at its seat in every cut as one; a row riding
-      // the conte has none to open, as on the timeline.
+      // the conte opens its own (I-99), as on the timeline.
       hasLanes: _state._railRows._conteLanes(track, seat).isNotEmpty,
       lanesExpanded: _state._railRows._conteLanesOpen(track, seat),
       onToggleLanes: _twirlTurning(
@@ -922,11 +933,9 @@ class _StoryboardRowsAndLabels {
         head.row,
         head.cut.layers,
       ),
-      hasGroupFold: _conteHeadFolds(track, seat),
-      groupFoldExpanded: !widget.collapsedAttachBaseIds.contains(
-        head.row.id,
-      ),
-      onToggleGroupFold: widget.onToggleAttachGroup,
+      hasGroupFold: fold.has,
+      groupFoldExpanded: fold.expanded,
+      onToggleGroupFold: fold.onToggle,
     );
   }
 
@@ -1003,7 +1012,8 @@ class _StoryboardRowsAndLabels {
   /// UI-R9 #5's empty slot — ordered twice: the flag is a LAYER field and
   /// the row's layer is track-owned, so it needs no cut to act), its
   /// speaker opening the row's mixer (R10 R3), and no waveform-hide eye
-  /// (UI-R7 #8 — the twirled-down Audio lane is the big waveform).
+  /// (UI-R7 #8 — ↩️said while the twirled-down Audio lane was the big
+  /// waveform; the lane went with I-140).
   ///
   /// The controls belong to the ROW, and the row belongs to the track: a
   /// gap kept them up already (UI-R10 #12, "the SE rows are TRACK-owned"),
@@ -1176,9 +1186,3 @@ final class _KeptRailRows {
 /// ([storyboardVideoRowName]), and what its chip shows once the row is
 /// picked up (I-39).
 const IconData _vRowGlyph = Icons.movie_outlined;
-
-/// Whether [track]'s conte row at [seat] folds rows of its own: the base's
-/// twirl folds the attach rows riding it (UI-R20 #9) — what its label ends
-/// its name with, and a sweep lays past the graph's button (F-454).
-bool _conteHeadFolds(Track track, int seat) =>
-    seat == 0 && conteSeatsOf(track.cuts).length > 1;

@@ -78,13 +78,16 @@ void main() {
         // DIFFERENT binary (the Wintab sidecar, its own qat_abi_version);
         // windows_screen_reader.dart opens user32, which every Windows has
         // — no candidate list to copy, no version to gate (I-57-Q3) —
-        // device_battery.dart kernel32, for the same reason (I-103-Q1), and
-        // windows_key_state.dart user32 again, for the held keys (I-61).
+        // device_battery.dart kernel32, for the same reason (I-103-Q1),
+        // windows_key_state.dart user32 again, for the held keys (I-61), and
+        // device_description.dart the OS's own (advapi32, libc, the process
+        // for sysctl), for what the feedback forms are told (I-139).
         if (name == 'qa_engine_abi.dart' ||
             name == 'qa_tablet_bridge.dart' ||
             name == 'windows_screen_reader.dart' ||
             name == 'device_battery.dart' ||
-            name == 'windows_key_state.dart') {
+            name == 'windows_key_state.dart' ||
+            name == 'device_description.dart') {
           continue;
         }
         final source = file.readAsStringSync();

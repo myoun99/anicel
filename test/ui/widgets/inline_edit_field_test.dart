@@ -1,0 +1,233 @@
+// THE ONE INLINE FIELD: ENTER SUBMITS THE TRIMMED TEXT, ESCAPE CANCELS
+// WITHOUT SUBMITTING.
+//
+// No test named this widget (audit 2026-09-03) although every typed
+// readout in the app goes through it. These pins drive it as a user does.
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:anicel/src/ui/widgets/inline_edit_field.dart';
+
+import '../../helpers/ime_draft.dart';
+
+void main() {
+  Future<({List<String> submitted, List<int> cancelled})> pump(
+    WidgetTester tester,
+  ) async {
+    final submitted = <String>[];
+    final cancelled = <int>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 80,
+              child: InlineEditField(
+                initialText: '12',
+                onSubmit: submitted.add,
+                onCancel: () => cancelled.add(1),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    return (submitted: submitted, cancelled: cancelled);
+  }
+
+  testWidgets('Enter submits the trimmed text', (tester) async {
+    final seen = await pump(tester);
+    await tester.enterText(find.byType(TextField), ' 34 ');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(seen.submitted, ['34']);
+    expect(seen.cancelled, isEmpty);
+  });
+
+  // F-353 (유저 2026-10-14): a field opened while a text on the canvas is
+  // typed into takes the keyboard from it — and it must go back.
+  group('the keyboard, taken from another field', () {
+    /// A field holding the keyboard, and a number field its host opens
+    /// beside it and closes on a commit or an abandonment.
+    Future<({FocusNode before, VoidCallback open})> beside(
+      WidgetTester tester,
+    ) async {
+      final before = FocusNode();
+      var open = false;
+      late StateSetter setOpen;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) {
+                setOpen = setState;
+                return Column(
+                  children: [
+                    TextField(focusNode: before),
+                    if (open)
+                      SizedBox(
+                        width: 80,
+                        child: InlineEditField(
+                          initialText: '12',
+                          onSubmit: (_) => setState(() => open = false),
+                          onCancel: () => setState(() => open = false),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      before.requestFocus();
+      await tester.pump();
+      return (before: before, open: () => setOpen(() => open = true));
+    }
+
+    bool numberHasIt(WidgetTester tester) => tester
+        .widget<EditableText>(
+          find.descendant(
+            of: find.byType(InlineEditField),
+            matching: find.byType(EditableText),
+          ),
+        )
+        .focusNode
+        .hasFocus;
+
+    testWidgets('🚨it takes it as it opens, and Enter gives it back — with '
+        'nothing typed', (tester) async {
+      final (:before, :open) = await beside(tester);
+      expect(before.hasFocus, isTrue, reason: '⛔fixture');
+
+      open();
+      await tester.pump();
+
+      expect(numberHasIt(tester), isTrue);
+      expect(before.hasFocus, isFalse);
+
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byType(InlineEditField), findsNothing, reason: 'closed');
+      expect(before.hasFocus, isTrue);
+      await tester.pumpWidget(const SizedBox());
+      before.dispose();
+    });
+
+    testWidgets('Escape gives it back', (tester) async {
+      final (:before, :open) = await beside(tester);
+      open();
+      await tester.pump();
+      expect(numberHasIt(tester), isTrue, reason: '⛔fixture');
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byType(InlineEditField), findsNothing, reason: 'closed');
+      expect(before.hasFocus, isTrue);
+      await tester.pumpWidget(const SizedBox());
+      before.dispose();
+    });
+  });
+
+  testWidgets('Escape cancels and submits nothing', (tester) async {
+    final seen = await pump(tester);
+    await tester.tap(find.byType(TextField));
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+    expect(seen.cancelled, hasLength(1));
+    expect(seen.submitted, isEmpty);
+  });
+
+  // 🐛F-355 (유저 2026-10-13): 「５０이라고 입력할때 숫자가 두번 등록되는거같은?
+  // 5500 이런식으로 … ５０인상태에도 엔터하면 50으로 등록되는? 그런거 원함」.
+  group('a 全角 IME', () {
+    String shown(WidgetTester tester) =>
+        tester.widget<TextField>(find.byType(TextField)).controller!.text;
+
+    testWidgets('🚨nothing goes back to it while it composes — on Windows '
+        'that doubled what was typed next', (tester) async {
+      await pump(tester);
+      await tester.showKeyboard(find.byType(TextField));
+      tester.testTextInput.log.clear();
+
+      await composeDraft(tester, find.byType(TextField), '５０');
+
+      expect(shown(tester), '５０', reason: '⛔fixture: the draft arrived');
+      expect(
+        tester.testTextInput.log.where(
+          (call) => call.method == 'TextInput.setEditingState',
+        ),
+        isEmpty,
+      );
+    });
+
+    testWidgets('what it commits shows half-width, and Enter submits it', (
+      tester,
+    ) async {
+      final seen = await pump(tester);
+      await composeDraft(tester, find.byType(TextField), '５０');
+
+      await commitDraft(tester, '５０');
+      expect(shown(tester), '50');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+
+      expect(seen.submitted, ['50']);
+    });
+
+    testWidgets('a tap away from a draft submits its numerals half-width', (
+      tester,
+    ) async {
+      final seen = await pump(tester);
+      await composeDraft(tester, find.byType(TextField), '５０');
+
+      await tester.tapAt(const Offset(4, 4));
+      await tester.pump();
+
+      expect(seen.submitted, ['50']);
+    });
+
+    // I-131: a palette's name is typed into the same field — and a name is
+    // not a number, so F-355's half-width reading is not its law.
+    testWidgets('a NAME is handed over as it was typed, numerals and all, '
+        'from the text keyboard', (tester) async {
+      final submitted = <String>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 120,
+                child: InlineEditField.name(
+                  initialText: 'Skin',
+                  onSubmit: submitted.add,
+                  onCancel: () {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).keyboardType,
+        TextInputType.text,
+      );
+
+      await composeDraft(tester, find.byType(TextField), '肌２');
+      await commitDraft(tester, '肌２');
+      expect(shown(tester), '肌２');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+
+      expect(submitted, ['肌２']);
+    });
+  });
+}

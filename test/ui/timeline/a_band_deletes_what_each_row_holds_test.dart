@@ -270,7 +270,7 @@ void main() {
       final effect = row(session, _a).effects.single;
       session.laneVerbs.toggleLaneKeyAt(
         _a,
-        effectLaneId(effect.id, 'blurX'),
+        effectLaneId(effect.id, 'blurriness'),
         1,
         frameIsGlobal: false,
         description: 'Key blur',
@@ -289,7 +289,7 @@ void main() {
 
       final kept = row(session, _a).effects;
       expect(kept, hasLength(1), reason: 'standing is no range: the fx stays');
-      expect(kept.single.parameterOf('blurX').isAnimated, isFalse);
+      expect(kept.single.parameterOf('blurriness').isAnimated, isFalse);
     });
 
     test('the storyboard\'s band: an S row\'s lane is not its sounds', () {

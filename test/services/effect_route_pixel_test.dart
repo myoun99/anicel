@@ -23,7 +23,7 @@ void main() {
   );
 
   ResolvedLayerEffect blur(double radius) =>
-      ResolvedLayerEffect(kind: EffectKind.blur, values: [radius, radius]);
+      ResolvedLayerEffect(kind: EffectKind.blur, values: [radius, 0]);
 
   Future<ui.Image> rasterize(void Function(Canvas canvas) draw) async {
     final recorder = ui.PictureRecorder();
@@ -187,6 +187,7 @@ void main() {
         bounds: bounds,
         effects: effects ?? [brightness(40)],
         mix: mix,
+        paper: bounds,
       );
       return rasterize((canvas) {
         void drawScope() {
@@ -261,6 +262,7 @@ void main() {
         bounds: bounds,
         effects: [blur(4)],
         mix: 0.5,
+        paper: bounds,
       );
       expect(pass.crossfades, isTrue);
       expect(
@@ -268,6 +270,7 @@ void main() {
           bounds: bounds,
           effects: [brightness(40)],
           mix: 0.5,
+          paper: bounds,
         ).crossfades,
         isFalse,
         reason: 'a colour-only chain folds the mix into its matrix instead',

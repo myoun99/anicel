@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/session/block_shift.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import '../helpers/an_empty_drawing_row.dart';
 
 /// THE PULL STOPS WHERE THE FIRST ROW RUNS OUT OF ROOM.
 ///
@@ -28,7 +28,7 @@ void main() {
     s.createDrawingAtCurrentFrame();
 
     // Row B: blocks at 0 and 8 — seven empty frames, more room than A.
-    s.layerStack.addLayerOfKind(LayerKind.animation);
+    addAnEmptyDrawingRow(s);
     final rowB = s.activeLayer!.id;
     s.selectFrameIndex(0);
     s.createDrawingAtCurrentFrame();

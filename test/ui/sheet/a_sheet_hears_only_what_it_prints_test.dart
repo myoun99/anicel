@@ -7,12 +7,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/app_frame_grid_settings.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
@@ -23,9 +29,12 @@ import 'package:anicel/src/ui/timesheet/timesheet_strata.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
 void main() {
-  Future<EditorSessionManager> pumpSheet(WidgetTester tester) async {
+  Future<EditorSessionManager> pumpSheet(
+    WidgetTester tester, {
+    Project? project,
+  }) async {
     final session = EditorSessionManager(
-      initialProject: createDefaultProject(),
+      initialProject: project ?? createDefaultProject(),
     );
     addTearDown(session.dispose);
     await tester.pumpWidget(
@@ -91,6 +100,65 @@ void main() {
       isFalse,
       reason: 'the sheet\'s title is printed on it',
     );
+
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+  });
+
+  // 🗣️F-489 — the unnamed head's mark is an app pick, not the session's:
+  // a pick in Preferences is printed on the sheet all the same.
+  testWidgets('a mark picked for the unnamed head reprints it', (
+    tester,
+  ) async {
+    addTearDown(
+      () => AppFrameGridSettings.settings.value = const AppFrameGridSettings(),
+    );
+    final base = createDefaultProject();
+    final track = base.tracks.first;
+    final cut = track.cuts.first;
+    final unnamed = Frame(
+      id: const FrameId('u'),
+      duration: 1,
+      strokes: const [],
+    );
+    await pumpSheet(
+      tester,
+      project: base.copyWith(
+        tracks: [
+          track.copyWith(
+            cuts: [
+              cut.copyWith(
+                layers: [
+                  Layer(
+                    id: const LayerId('a'),
+                    name: 'A',
+                    frames: [unnamed],
+                    timeline: const {
+                      0: TimelineExposure.drawing(FrameId('u'), length: 3),
+                    },
+                  ),
+                  ...cut.layers,
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    final before = strata(tester);
+    Set<InbetweenMark> marks(TimesheetStrata strata) => {
+      for (final column in strata.layout.document.columns)
+        for (final cell in column.cells) ?cell.mark,
+    };
+    expect(marks(before), {InbetweenMark.two}, reason: '⛔premise');
+
+    AppFrameGridSettings.settings.value = const AppFrameGridSettings(
+      unnamedMark: InbetweenMark.one,
+    );
+    await tester.pump();
+
+    expect(identical(strata(tester).layout, before.layout), isFalse);
+    expect(marks(strata(tester)), {InbetweenMark.one});
 
     await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();

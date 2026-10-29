@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../core/one_way.dart';
 import '../../core/wrap_degrees.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/app_input_settings.dart';
@@ -651,7 +652,10 @@ class _CanvasViewportGestureLayerState
         : _actionFor(_groupPointers.length);
     switch (_groupAction) {
       case CanvasTouchDragAction.flip:
-        final horizontal = firstMovedDelta.dx.abs() >= firstMovedDelta.dy.abs();
+        final horizontal = wentFurtherAlongFirst(
+          firstMovedDelta.dx,
+          firstMovedDelta.dy,
+        );
         _flipAxisHorizontal = horizontal;
         _flipEmittedSteps = 0;
         // The HUD appears on the LOCK, not on touchdown: a tap or a plain

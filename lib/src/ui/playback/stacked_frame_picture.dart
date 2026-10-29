@@ -156,6 +156,7 @@ StackedFrame stackedFrameOf(
               effects: stacked.effects,
             ),
             tint: stacked.tint,
+            ghost: row is CanvasGhostImageRequest,
             signature: switch (held) {
               (:final revisionOf, pictures: _) => _signatureOf(
                 stacked,
@@ -211,6 +212,16 @@ List<CompositeNode<CanvasStackRow>> stackOfDrawnCels(
   bare: (row) => row,
 );
 
+/// [nodes] without their onion ghosts ([CanvasGhostImageRequest]): a frame
+/// with its ghosts in place as a run plays it — the film its picture is
+/// laid over (`FramePictures._make`).
+List<CompositeNode<CanvasStackRow>> stackWithoutGhosts(
+  List<CompositeNode<CanvasStackRow>> nodes,
+) => mapCompositeLeaves<CanvasStackRow, CanvasStackRow>(
+  nodes,
+  (row) => row is CanvasGhostImageRequest ? null : row,
+);
+
 /// A row of a stack as a frame's picture takes it: the cel it draws, and
 /// how.
 typedef _StackedCel = ({
@@ -231,13 +242,15 @@ typedef _StackedCel = ({
 /// drops — as [mapCompositeLeaves] drops it, with a folder it leaves
 /// empty.
 ///
-/// A TINTED ROW IS AN ONION GHOST, and the ghosts are a picture of their
-/// own, laid over the frame's (`_ghostsOver`; one-picture-per-frame-Q1 = a,
-/// 「한 장 위에 얹는다」): no frame's own tree holds one, and the tint is
-/// read with the rest of the row. ↩️It was refused here while the ghosts
-/// were stacked from their rows' images at the display's level, until those
-/// were the last per-zoom pictures kept (②-5b-1, 유저 2026-10-25 「원본기준으로
-/// 해서 쓸데없는 소재 없애고 거기서 극한 최적화 해야지」).
+/// AN ONION GHOST ([CanvasGhostImageRequest]) IS READ AS EVERY ROW IS, its
+/// tint with the rest — in a picture of the ghosts alone laid over the
+/// frame's (`_ghostsOver`; one-picture-per-frame-Q1 = a, 「한 장 위에
+/// 얹는다」), or in the frame's own tree under its row's drawing
+/// (onion-ghosts-in-place). ↩️A tinted row was refused here while the
+/// ghosts were stacked from their rows' images at the display's level,
+/// until those were the last per-zoom pictures kept (②-5b-1, 유저
+/// 2026-10-25 「원본기준으로 해서 쓸데없는 소재 없애고 거기서 극한 최적화
+/// 해야지」).
 _StackedCel? _stackedCelOf(CanvasStackRow row) => switch (row) {
   CanvasLayerImageRequest(
     :final frameKey,

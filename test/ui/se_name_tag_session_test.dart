@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/se_dialogue_spacing.dart';
 import 'package:anicel/src/models/se_line_type.dart';
 import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
@@ -108,8 +109,11 @@ void main() {
     s.seEntries.createSeEntryAtCurrentFrame(name: '', lengthFrames: 4);
     s.seEntries.updateSelectedSeEntry(
       dialogue: 'おはよう',
-      seName: 'タモツ',
-      seTypes: SeLineTypes.allOn,
+      fields: (
+        seName: 'タモツ',
+        seTypes: SeLineTypes.allOn,
+        spacing: SeDialogueSpacing.standard,
+      ),
     );
 
     final cut = s.requireActiveCut;
@@ -143,8 +147,11 @@ void main() {
     s.seEntries.createSeEntryAtCurrentFrame(name: '', lengthFrames: 2);
     s.seEntries.updateSelectedSeEntry(
       dialogue: 'おはよう',
-      seName: 'タモツ',
-      seTypes: SeLineTypes.allOn,
+      fields: (
+        seName: 'タモツ',
+        seTypes: SeLineTypes.allOn,
+        spacing: SeDialogueSpacing.standard,
+      ),
     );
 
     final cut = s.requireActiveCut;
@@ -170,8 +177,11 @@ void main() {
     s.seEntries.createSeEntryAtCurrentFrame(name: '', lengthFrames: 4);
     s.seEntries.updateSelectedSeEntry(
       dialogue: 'おはよう',
-      seName: 'タモツ',
-      seTypes: SeLineTypes.allOn,
+      fields: (
+        seName: 'タモツ',
+        seTypes: SeLineTypes.allOn,
+        spacing: SeDialogueSpacing.standard,
+      ),
     );
 
     final cut = s.requireActiveCut;

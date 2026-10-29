@@ -95,7 +95,9 @@ class SettingsPickerRow extends StatelessWidget {
   /// What the button reads: the value picked now.
   final String picked;
 
-  final List<PanelFlyoutEntry> Function() entriesBuilder;
+  /// Null leaves the row inert — there, dimmed — as a switch row with no
+  /// `onChanged` is ([SettingsSwitchRow]).
+  final List<PanelFlyoutEntry> Function()? entriesBuilder;
 
   /// See [SettingsSwitchRow.help].
   final String? help;
@@ -104,19 +106,24 @@ class SettingsPickerRow extends StatelessWidget {
   static const double width = 180;
 
   @override
-  Widget build(BuildContext context) => SettingsRow(
-    label: label,
-    help: help,
-    control: SizedBox(
-      width: width,
-      child: PanelFlyoutButton(
-        key: pickerKey,
-        label: picked,
-        expand: true,
-        entriesBuilder: entriesBuilder,
+  Widget build(BuildContext context) {
+    final entries = entriesBuilder;
+    return SettingsRow(
+      label: label,
+      help: help,
+      enabled: entries != null,
+      control: SizedBox(
+        width: width,
+        child: PanelFlyoutButton(
+          key: pickerKey,
+          label: picked,
+          expand: true,
+          enabled: entries != null,
+          entriesBuilder: entries ?? () => const [],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 /// A NUMBER on a bar at the end of its row: the bar and its hands — its ±
@@ -149,7 +156,9 @@ class SettingsBarRow extends StatelessWidget {
   final double value;
   final double min;
   final double max;
-  final ValueChanged<double> onChanged;
+  /// Null leaves the row inert — the bar dims itself — as a switch row
+  /// with no `onChanged` is ([SettingsSwitchRow]).
+  final ValueChanged<double>? onChanged;
   final ValueChanged<double>? onChangeEnd;
   final FieldSliderScale scale;
   final int? divisions;
@@ -159,6 +168,7 @@ class SettingsBarRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) => SettingsRow(
     label: label,
+    enabled: onChanged != null,
     control: SizedBox(
       width: SettingsPickerRow.width,
       child: FieldSlider.cell(
@@ -186,19 +196,21 @@ SettingsPickerRow settingsEnumPickerRow<T extends Enum>({
   required T value,
   required Iterable<T> values,
   required String Function(T value) labelOf,
-  required ValueChanged<T> onPicked,
+  required ValueChanged<T>? onPicked,
   String? help,
 }) => SettingsPickerRow(
   pickerKey: ValueKey<String>(keyValue),
   label: label,
   help: help,
   picked: labelOf(value),
-  entriesBuilder: () => values.asFlyoutChoices(
-    current: value,
-    keyPrefix: '$keyValue-',
-    labelOf: labelOf,
-    onPicked: onPicked,
-  ),
+  entriesBuilder: onPicked == null
+      ? null
+      : () => values.asFlyoutChoices(
+          current: value,
+          keyPrefix: '$keyValue-',
+          labelOf: labelOf,
+          onPicked: onPicked,
+        ),
 );
 
 /// THE settings row pair — a label, a control, and the explanation as a

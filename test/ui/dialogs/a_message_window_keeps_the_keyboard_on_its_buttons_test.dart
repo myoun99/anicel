@@ -206,6 +206,60 @@ void main() {
     expect(focusedOf(['cancel', 'replace']), isEmpty);
   });
 
+  // 🗣️I-70-Q6 (유저 2026-10-29: 「포커스 없음」): the usage statistics'
+  // consent is answered by a press alone — its own test drives the Enter.
+  testWidgets('a question opens on its yes — and one only a press may '
+      'answer on neither button, its yes emphasized all the same', (
+    tester,
+  ) async {
+    const send = ValueKey<String>('consent-confirm-button');
+    const dontSend = ValueKey<String>('consent-cancel-button');
+    Future<void> open({bool? opensOnItsYes}) async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildAppTheme(),
+          home: Builder(
+            builder: (context) => confirmWindow(
+              context,
+              opensOnItsYes == null
+                  ? ConfirmQuestion(
+                      keys: confirmDialogKeys('consent'),
+                      title: 'T',
+                      message: 'M',
+                    )
+                  : ConfirmQuestion(
+                      keys: confirmDialogKeys('consent'),
+                      title: 'T',
+                      message: 'M',
+                      opensOnItsYes: opensOnItsYes,
+                    ),
+              accept: const ConfirmChoice('Send'),
+              decline: const ConfirmChoice("Don't send"),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    await open();
+    expect(find.byKey(send), findsOneWidget, reason: '⛔전제');
+    expect(focusIsIn(tester, find.byKey(send)), isTrue, reason: 'F-479');
+
+    await open(opensOnItsYes: false);
+    expect(focusIsIn(tester, find.byKey(send)), isFalse);
+    expect(focusIsIn(tester, find.byKey(dontSend)), isFalse);
+    final dialog = tester.widget<AppConfirmDialog>(
+      find.byType(AppConfirmDialog),
+    );
+    expect(
+      dialog.actions.last.emphasis,
+      AppWindowActionEmphasis.primary,
+      reason: 'where it opens is not what it looks like',
+    );
+  });
+
   // 🗣️F-479-Q2 (유저 2026-10-27): 「닫기 창은 「저장」을 강조 버튼으로 —
   // Enter = 저장하고 닫기」. The Enter itself is driven through a real save
   // in `unsaved_work_gate_test.dart`.

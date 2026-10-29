@@ -9,6 +9,7 @@ import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
 import '../models/brush_pressure_curve.dart';
 import '../models/brush_settings.dart';
+import '../models/brush_settings_row.dart';
 import '../models/brush_shape.dart';
 import '../models/brush_texture_mode.dart';
 import '../models/brush_tip_order.dart';
@@ -274,7 +275,43 @@ Map<BrushDynamicsKey, BrushPressureCurve> _toothRow(double heaviest) => {
       ], minimum: heaviest),
 };
 
+/// The built-ins as the library seeds them: each as made below, showing in
+/// the panel what its group's brushes show ([_shownByGroup]).
 final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
+  for (final preset in _builtinsAsMade)
+    preset.copyWith(
+      settings: BrushSettings.fromShape(
+        preset.settings.shape,
+        shown: {
+          ...BrushSettingsRow.shownByDefault,
+          ...?_shownByGroup[preset.groupId],
+        },
+      ),
+    ),
+]);
+
+/// What each group's brushes show in the panel besides the three every
+/// brush does ([BrushSettingsRow.shownByDefault]) — the setting a brush of
+/// that kind is turned by most. I-141: the user named the three and left
+/// the rest of the first choice to me; a brush's own is changed in the
+/// brush detail window.
+final Map<BrushGroupId, Set<BrushSettingsRow>> _shownByGroup = {
+  _basicGroup: {BrushSettingsRow.hardness},
+  _pencilGroup: {BrushSettingsRow.textureDensity},
+  _dryMediaGroup: {BrushSettingsRow.textureDensity},
+  _penGroup: {BrushSettingsRow.postCorrection},
+  for (final group in [_watercolorGroup, _oilGroup, _blendGroup])
+    group: {
+      BrushSettingsRow.paintAmount,
+      BrushSettingsRow.paintDensity,
+      BrushSettingsRow.colorStretch,
+    },
+  _airbrushGroup: {BrushSettingsRow.flow},
+  for (final group in [_textureGroup, _decorationGroup])
+    group: {BrushSettingsRow.scatter, BrushSettingsRow.scatterCount},
+};
+
+final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
   // ---- Basic -----------------------------------------------------------
   // 🚨THE TWO ROUNDS ARE OLD BRUSHES UNDER NEW NAMES (board F-218): the ids
   // stay `builtin-ink-pen` and `builtin-soft-brush`, so a project's resumed
@@ -1266,23 +1303,26 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     name: 'Grass',
     groupId: _decorationGroup,
     settings: BrushSettings(
-      size: 26,
+      size: 30,
       hardness: 1.0,
       flow: 0.95,
-      spacing: 0.6,
-      tips: [leafBrushTipMask],
-      // Blades stand UP and lean a little, so the tip follows the stroke
-      // rather than the fixed angle a fallen-leaf pile wants. The leaf's
-      // length is its mask's height, so a sideways sweep stands it upright
-      // as it is. ↩️It wore roundness 0.35 at 90°: the squeeze takes the
-      // mask's height — the blade's length — and every blade landed a round
-      // dot (measured 10-24, the-gouache-is-a-round-with-a-weave's sweep).
+      spacing: 0.45,
+      // A tuft of its own (F-462 ③): its blades rise from their own places
+      // and lean their own ways. ↩️It threw the leaf's lens five at a time
+      // across the stroke, and every dab stood as one column of blades end
+      // to end — 「너무 일직선」 (유저 2026-10-25).
+      tips: [grassClumpBrushTipMask],
+      // Tufts stand UP and lean a little, so the tip follows the stroke
+      // rather than the fixed angle a fallen-leaf pile wants. The tuft rises
+      // up its mask, so a sideways sweep stands it upright as it is.
+      // ↩️It wore roundness 0.35 at 90°: the squeeze takes the mask's
+      // height and every blade landed a round dot (measured 10-24, the-
+      // gouache-is-a-round-with-a-weave's sweep).
       rotationMode: BrushTipRotationMode.direction,
-      angleJitter: 0.12,
+      angleJitter: 0.08,
       curves: _randomRows(size: 0.45),
-      scatterRadiusRatio: 0.8,
-      scatterCount: 5,
-      scatterBothAxes: false,
+      scatterRadiusRatio: 0.35,
+      scatterCount: 2,
     ),
   ),
   BrushPreset(
@@ -1346,17 +1386,18 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       flow: 0.9,
       spacing: 0.9,
       tips: [leafBrushTipMask],
-      // ⛔The opposite of Grass on purpose, out of the same tip: leaves lie at
-      // every angle and grass stands up. One mask, two brushes — which is
-      // what a full turn of angle jitter buys, and it is also what keeps the
-      // two rows from being one brush wearing two names.
+      // ⛔The opposite of Grass on purpose: leaves lie at every angle and
+      // grass stands up — what a full turn of angle jitter buys, and what
+      // keeps the two rows from being one brush wearing two names. ↩️They
+      // shared this tip until F-462 ③ (2026-10-29): a leaf stood upright
+      // read as a picket fence, so Grass draws its own fanned tuft now.
       angleJitter: 1.0,
       curves: _randomRows(size: 0.5, roundness: 0.25),
       scatterRadiusRatio: 1.5,
       scatterCount: 4,
     ),
   ),
-]);
+];
 
 /// What a built-in is called when it is made: its id and its English name
 /// in, the stored name out.

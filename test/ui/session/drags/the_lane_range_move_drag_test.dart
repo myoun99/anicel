@@ -39,14 +39,14 @@ void main() {
     },
   );
 
-  final blurLane = effectLaneId(const EffectId('e1'), 'blurX');
+  final blurLane = effectLaneId(const EffectId('e1'), 'blurriness');
 
   List<LayerEffect> blurWithKeysAt(List<int> frames) => [
     LayerEffect(
       id: const EffectId('e1'),
       kind: EffectKind.blur,
       parameters: {
-        'blurX': EffectParameter(
+        'blurriness': EffectParameter(
           track: PropertyTrack<double>(
             keys: {
               for (final frame in frames)

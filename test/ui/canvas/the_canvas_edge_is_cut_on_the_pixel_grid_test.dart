@@ -18,7 +18,10 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_resample.dart';
+import 'package:anicel/src/ui/canvas/landing_preview.dart';
+import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/canvas/stage_planes_painter.dart';
+import 'package:anicel/src/ui/canvas/text/cel_text_float.dart';
 import 'package:anicel/src/ui/canvas/viewport_canvas_transform.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
@@ -82,16 +85,51 @@ void main() {
     );
   }
 
+  /// Ink over two whole coordinates of half the canvas a side, the first
+  /// and the last, so every coordinate's edge inside the canvas — 7.25 and
+  /// 5.25 at this view — falls inside a pixel between ink and paper, as a
+  /// cel's grid does on screen at any zoom but a whole one.
+  BitmapSurfacePainter seamedInkSurface() {
+    BitmapTile inked() {
+      var tile = BitmapTile.blank(size: 2);
+      for (var y = 0; y < 2; y += 1) {
+        for (var x = 0; x < 2; x += 1) {
+          tile = writeRgbaColorToBitmapTile(
+            tile: tile,
+            x: x,
+            y: y,
+            color: RgbaColor(r: 255, g: 0, b: 0, a: 255),
+          );
+        }
+      }
+      return tile;
+    }
+
+    return BitmapSurfacePainter(
+      surface: BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: 2,
+        tiles: {
+          TileCoord(x: 0, y: 0): inked(),
+          TileCoord(x: 1, y: 1): inked(),
+        },
+      ),
+      showTransparentBackground: false,
+    );
+  }
+
   /// [disableBuffer] takes the DIRECT WALK instead of the buffer blit: the
   /// paper rect and the tiles drawn straight under the viewport transform,
   /// which is the route a frame falls to when the buffer is refused.
   /// Without [live] the stack has no surface to draw: the walk lays its
-  /// paper straight onto the screen.
+  /// paper straight onto the screen. [surface] draws in place of the corner
+  /// ink.
   Future<CustomPainter> pumpEditingStack(
     WidgetTester tester, {
     bool disableBuffer = false,
     bool ink = true,
     bool live = true,
+    BitmapSurfacePainter? surface,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -113,7 +151,9 @@ void main() {
                 ),
                 canvasSize: canvasSize,
                 viewport: viewport,
-                activeSurfacePainter: live ? cornerInkSurface(ink: ink) : null,
+                activeSurfacePainter: live
+                    ? surface ?? cornerInkSurface(ink: ink)
+                    : null,
                 paintPaper: true,
                 paperBackground: paper,
                 debugDisableSingleBuffer: disableBuffer,
@@ -138,11 +178,15 @@ void main() {
   }
 
   /// Logical == device pixels: the painter snaps in device pixels through
-  /// the view's DPR, and the raster below is at logical size. With
+  /// the view's DPR, and the raster below is at logical size — times
+  /// [ratio], the view's, where it is not 1: the painter records in logical
+  /// pixels and the recording is laid on the device's, as the engine's root
+  /// does, so the canvas's own transform never holds the ratio. With
   /// [everyEdgeBlended] the painter draws onto [_EveryEdgeBlended].
   Future<Uint8List> rasterize(
     CustomPainter painter, {
     bool everyEdgeBlended = false,
+    double ratio = 1,
   }) async {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder, Offset.zero & logical);
@@ -150,9 +194,13 @@ void main() {
       everyEdgeBlended ? _EveryEdgeBlended(canvas) : canvas,
       logical,
     );
-    final image = await recorder.endRecording().toImage(
-      logical.width.round(),
-      logical.height.round(),
+    final device = ui.PictureRecorder();
+    Canvas(device, Offset.zero & logical * ratio)
+      ..scale(ratio)
+      ..drawPicture(recorder.endRecording());
+    final image = await device.endRecording().toImage(
+      (logical.width * ratio).round(),
+      (logical.height * ratio).round(),
     );
     final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
     return bytes!.buffer.asUint8List();
@@ -397,6 +445,179 @@ void main() {
       ))!;
       expectWhollyInside(bytes, 'walk, no surface');
     });
+
+    testWidgets('the direct walk laying the coordinates straight on the '
+        'screen — every edge of each, inside the canvas too', (tester) async {
+      // the-walk-draws-off-the-grid-on-impeller (10-28): each coordinate is
+      // its own draw, and drawn where it fell its edge was the one left
+      // blended — 🔬at 150% under `--enable-impeller` a line of ink along
+      // the canvas's edge 64 grey for black, apart from the buffer's.
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final buffered = await pumpEditingStack(
+        tester,
+        surface: seamedInkSurface(),
+      );
+      final bufferedBytes = (await tester.runAsync(
+        () => rasterize(buffered),
+      ))!;
+      final walk = await pumpEditingStack(
+        tester,
+        disableBuffer: true,
+        surface: seamedInkSurface(),
+      );
+      final bytes = (await tester.runAsync(
+        () => rasterize(walk, everyEdgeBlended: true),
+      ))!;
+      expectCutOnTheGrid(bytes, 'walk, every edge blended');
+      expect(
+        bytes,
+        equals(bufferedBytes),
+        reason: 'the walk lays each texel where the buffer does — a route '
+            'flip moves no coordinate\'s edge',
+      );
+    });
+
+    testWidgets('…on the DEVICE\'s grid, at a ratio of 2', (tester) async {
+      // Cut on the logical grid, each edge would land a device pixel off
+      // the buffer's wherever it fell in a logical pixel's second half.
+      tester.view.devicePixelRatio = 2.0;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final buffered = await pumpEditingStack(
+        tester,
+        surface: seamedInkSurface(),
+      );
+      final bufferedBytes = (await tester.runAsync(
+        () => rasterize(buffered, ratio: 2),
+      ))!;
+      final walk = await pumpEditingStack(
+        tester,
+        disableBuffer: true,
+        surface: seamedInkSurface(),
+      );
+      final bytes = (await tester.runAsync(
+        () => rasterize(walk, everyEdgeBlended: true, ratio: 2),
+      ))!;
+      for (var at = 0; at < bytes.length; at += 4) {
+        final pixel = bytes.sublist(at, at + 4);
+        expect(
+          [green, red, transparent].any((shown) => listEquals(pixel, shown)),
+          isTrue,
+          reason: 'device pixel ${at ~/ 4} = $pixel: wholly paper, ink or '
+              'nothing — a blend is an edge left off the grid',
+        );
+      }
+      expect(
+        bytes,
+        equals(bufferedBytes),
+        reason: 'the walk cuts each edge on the pixel the buffer does',
+      );
+    });
+
+    test('a grid whole in the canvas\'s space and not on the device\'s — '
+        'the ratio decides', () async {
+      // At 150% in logical pixels from a whole origin every coordinate's
+      // edge is whole there, and at a ratio of 1.25 a quarter in on the
+      // device: 6.25 · 10 · 13.75.
+      const ratio = 1.25;
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder, Offset.zero & const Size(16, 16));
+      seamedInkSurface().paintContentInto(
+        _EveryEdgeBlended(canvas)
+          ..translate(5, 5)
+          ..scale(1.5),
+        pixelRatio: ratio,
+      );
+      final device = ui.PictureRecorder();
+      Canvas(device)
+        ..scale(ratio)
+        ..drawPicture(recorder.endRecording());
+      final image = await device.endRecording().toImage(20, 20);
+      final rgba = (await image.toByteData(
+        format: ui.ImageByteFormat.rawRgba,
+      ))!.buffer.asUint8List();
+      bool inked(int x, int y) =>
+          (x >= 6 && x <= 9 && y >= 6 && y <= 9) ||
+          (x >= 10 && x <= 13 && y >= 10 && y <= 13);
+      for (var y = 0; y < 20; y += 1) {
+        for (var x = 0; x < 20; x += 1) {
+          final at = (y * 20 + x) * 4;
+          expect(
+            rgba.sublist(at, at + 4),
+            inked(x, y) ? red : transparent,
+            reason: '($x,$y): a coordinate wholly, or nothing — cut on the '
+                'device\'s grid',
+          );
+        }
+      }
+    });
+
+    test('a float\'s picture over the walk — a transform\'s, a text\'s '
+        'landing', () async {
+      final recorder = ui.PictureRecorder();
+      Canvas(recorder).drawRect(
+        const Rect.fromLTWH(0, 0, 2, 2),
+        Paint()..color = const Color(0xFFFF0000),
+      );
+      final square = await recorder.endRecording().toImage(2, 2);
+      // At canvas (1, 1), so its edges fall at 6.15 · 8.35 and 4.15 · 6.35.
+      for (final (route, float) in <(String, LandingPreview)>[
+        ('a transform', SelectionFloatPaint(
+          image: square,
+          imageLeft: 1,
+          imageTop: 1,
+        )),
+        ('a text', CelTextLanding(picture: square, left: 1, top: 1)),
+      ]) {
+        final drawn = ui.PictureRecorder();
+        final canvas = Canvas(drawn, Offset.zero & logical);
+        float.paintInto(
+          _EveryEdgeBlended(canvas)
+            ..translate(5.05, 3.05)
+            ..scale(zoom),
+          pixelRatio: 1,
+        );
+        final image = await drawn.endRecording().toImage(
+          logical.width.round(),
+          logical.height.round(),
+        );
+        final rgba = (await image.toByteData(
+          format: ui.ImageByteFormat.rawRgba,
+        ))!.buffer.asUint8List();
+        final columns = pixelsInside(6.15, 8.35);
+        final rows = pixelsInside(4.15, 6.35);
+        for (var y = 0; y < logical.height.round(); y += 1) {
+          for (var x = 0; x < logical.width.round(); x += 1) {
+            final inside =
+                x >= columns.first &&
+                x <= columns.last &&
+                y >= rows.first &&
+                y <= rows.last;
+            expect(
+              rgbaAt(rgba, x, y),
+              inside ? red : transparent,
+              reason: '$route ($x,$y): wholly the float inside the '
+                  'pixel-centre cut, untouched past it',
+            );
+          }
+        }
+      }
+    });
+  });
+
+  test('on the grid — into a raster at the canvas\'s own pixels, every '
+      'frame\'s picture and step\'s patch — each coordinate is one drawImage',
+      () {
+    // ⛔The cut's clip and shader are paid only where an edge falls inside
+    // a pixel: on the grid they are the same pixels at a coordinate's draw
+    // more, and a frame's picture lays thousands.
+    final canvas = _WholeRecordingCanvas(const Rect.fromLTWH(0, 0, 4, 4));
+    seamedInkSurface().paintContentInto(canvas, pixelRatio: 1);
+    final calls = [
+      for (final call in canvas.invocations) call.invocation.memberName,
+    ];
+    expect(calls.where((name) => name == #drawImage), hasLength(2));
+    expect(calls, isNot(contains(#drawPaint)));
   });
 
   test('the grid\'s blit lays the texels a nearest sample picks — only its '
@@ -545,6 +766,23 @@ void main() {
   });
 }
 
+/// A canvas that records its calls, its space the raster's own pixels and
+/// [bounds] its clip.
+class _WholeRecordingCanvas extends TestRecordingCanvas {
+  _WholeRecordingCanvas(this.bounds);
+
+  final Rect bounds;
+
+  @override
+  Rect getLocalClipBounds() => bounds;
+
+  @override
+  Rect getDestinationClipBounds() => bounds;
+
+  @override
+  Float64List getTransform() => Matrix4.identity().storage;
+}
+
 /// [inner], with every edge handed over anti-aliased: each paint's
 /// `isAntiAlias` and each clip's `doAntiAlias` forced on — an engine that
 /// blends what it is told not to, as Impeller's MSAA does. What this
@@ -610,6 +848,10 @@ class _EveryEdgeBlended implements ui.Canvas {
   @override
   void drawRect(ui.Rect rect, ui.Paint paint) =>
       _inner.drawRect(rect, _blended(paint));
+
+  @override
+  void drawImage(ui.Image image, ui.Offset offset, ui.Paint paint) =>
+      _inner.drawImage(image, offset, _blended(paint));
 
   @override
   void drawImageRect(

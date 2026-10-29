@@ -31,7 +31,7 @@ import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
-import '../../helpers/number_pad_keyboard.dart';
+import '../../helpers/import_span.dart';
 
 void main() {
   late Directory tempDir;
@@ -259,23 +259,6 @@ void main() {
     }
   });
 
-  /// Stands the preview's IN on picture [from] and its OUT on [to] — one-
-  /// based, as the transport shows them — for the row it previews.
-  Future<void> span(WidgetTester tester, int from, int to) async {
-    await settleLoadedPages(tester);
-    for (final (end, at) in [('in', from), ('out', to)]) {
-      await tester.tap(find.byKey(ValueKey<String>('transport-$end-edit')));
-      await tester.pump();
-      await openThePadsKeyboard(tester);
-      await tester.enterText(
-        find.byKey(ValueKey<String>('transport-$end-input')),
-        '$at',
-      );
-      await tester.testTextInput.receiveAction(TextInputAction.done);
-      await settleLoadedPages(tester);
-    }
-  }
-
   // 🗣️F-282 (유저 2026-10-09, 시안 ③ · ④): 「연번은 들어갈 범위만(A2–A3) —
   // 미리보기의 IN/OUT, 동영상과 같은 법」 · 한 장만 = IN 과 OUT 이 같은 장.
   // ↩️「함께 / 이 파일만」 in the cell.
@@ -331,7 +314,7 @@ void main() {
       'layer of those two', (tester) async {
     final files = await writeFolder(tester);
     final s = await open(tester, [files['A1']!]);
-    await span(tester, 2, 3);
+    await keepImportSpan(tester, 2, 3);
 
     expect(
       cellText(tester, 'option', files['A1']!),
@@ -348,10 +331,10 @@ void main() {
       (tester) async {
     final files = await writeFolder(tester);
     await open(tester, [files['A1']!]);
-    await span(tester, 2, 2);
+    await keepImportSpan(tester, 2, 2);
     expect(cellText(tester, 'option', files['A1']!), 'A2');
 
-    await span(tester, 2, 3);
+    await keepImportSpan(tester, 2, 3);
 
     expect(
       cellText(tester, 'option', files['A1']!),
@@ -363,7 +346,7 @@ void main() {
       'picture always did — whichever one they stood on', (tester) async {
     final files = await writeFolder(tester);
     final s = await open(tester, [files['A1']!]);
-    await span(tester, 2, 2);
+    await keepImportSpan(tester, 2, 2);
 
     expect(cellText(tester, 'option', files['A1']!), 'A2');
     expect(
@@ -409,7 +392,7 @@ void main() {
       reason: '⛔전제: the whole run bakes',
     );
     expect(answerable(), isFalse, reason: 'locked: the run has one answer');
-    await span(tester, 2, 2);
+    await keepImportSpan(tester, 2, 2);
 
     expect(answerable(), isTrue);
     await tester.tap(bake);
@@ -500,8 +483,8 @@ void main() {
     String,
     Future<void> Function(WidgetTester, Map<String, String> files),
   )>[
-    ('span\'s start', (tester, _) => span(tester, 2, 3)),
-    ('span\'s end', (tester, _) => span(tester, 1, 2)),
+    ('span\'s start', (tester, _) => keepImportSpan(tester, 2, 3)),
+    ('span\'s end', (tester, _) => keepImportSpan(tester, 1, 2)),
     (
       'place',
       (tester, files) async {

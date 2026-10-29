@@ -14,6 +14,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/se_dialogue_spacing.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -117,6 +118,8 @@ void main() {
                 text: 'ABC',
                 axis: Axis.horizontal,
                 color: Color(0xFF000000),
+                frames: 9,
+                spacing: SeDialogueSpacing.standard,
               ),
             ),
           ),

@@ -55,7 +55,7 @@ void main() {
   const canvasSize = CanvasSize(width: 64, height: 48);
   const view = Size(32, 16);
   final viewport = CanvasViewport(panX: -16, panY: -16);
-  final blur = [ResolvedLayerEffect(kind: EffectKind.blur, values: [8, 8])];
+  final blur = [ResolvedLayerEffect(kind: EffectKind.blur, values: [8, 0])];
 
   const frameKey = BrushFrameKey(
     projectId: ProjectId('p'),

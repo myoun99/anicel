@@ -194,6 +194,10 @@ const _notCensused = <String, String>{
       'what it holds is lentBytes, which the census reads',
 
   // — A PART of a holding the census reads whole.
+  'lib/src/ui/canvas/tile_pages.dart → bytes':
+      'one TilePages\' own pages — a part of liveBytes, which the census '
+      'reads whole through liveImageBytes (`tileImages`); a test weighs its '
+      'own pages by it, where another test\'s tiles may die meanwhile',
   'lib/src/ui/canvas/subtree_image_composite.dart → heldBelowBytes':
       'the rasters held below a pen — a part of heldBytes, which the '
       'census reads (`framePictures`); the line weighs the nodes over the '
@@ -216,6 +220,10 @@ const _notCensused = <String, String>{
       'via:storyboardThumbnailBytes — the store lives in the workspace '
       'State the session does not own, so the workspace pushes it onto '
       'RenderCaches, the way the viewers are',
+  'lib/src/ui/canvas/tile_pages.dart → liveBytes':
+      'via:liveImageBytes — the pages tile pictures lie in are tile '
+      'pictures: the cache\'s total adds them whole (`tileImages`), so the '
+      'budget that lets tile pictures go weighs them too',
   'lib/src/ui/sheet/sheet_image_cache.dart → decodedBytes':
       'via:sheetImageBytes — the sheets\' image cache lives in the '
       'workspace too, and pushes onto RenderCaches as the thumbnails do',
@@ -326,7 +334,10 @@ Map<String, String> _pictureTypesBy(Map<String, String> sources) {
 /// mixin with a field of it — or of the pieces of one (2026-10-21: a
 /// picture past the side is held in pieces, `List<ImagePiece>`, and the
 /// stored picture and the compose, each one image the day before, fell out
-/// of the chain with every holder above them) — a record typedef with one.
+/// of the chain with every holder above them) — or an abstract getter of
+/// one, whose kinds each keep it their own way (2026-10-29: a tile's slot
+/// came to read its page's picture on the getter, and the tile cache fell
+/// out with `TilePicture`) — a record typedef with one.
 /// ⛔Only pieces: a list of any picture is a holding, and a holder of
 /// holdings no picture of its own (widened so, the home page's sessions
 /// came up).
@@ -336,6 +347,11 @@ Iterable<String> _wrappersIn(String source, String pictures) sync* {
     r'\??\s+\w+\s*[;=]',
     multiLine: true,
   );
+  final abstractGetter = RegExp(
+    '^  (?:$pictures)'
+    r'\??\s+get\s+\w+\s*;',
+    multiLine: true,
+  );
   final recordField = RegExp(
     r'(?:^|[(,{])\s*(?:'
     '$pictures'
@@ -343,7 +359,7 @@ Iterable<String> _wrappersIn(String source, String pictures) sync* {
     multiLine: true,
   );
   for (final (:name, :body) in _typesIn(source)) {
-    if (field.hasMatch(body)) {
+    if (field.hasMatch(body) || abstractGetter.hasMatch(body)) {
       yield name;
     }
   }
@@ -399,8 +415,9 @@ const _imageHolders = <String, String>{
       'block only carries them into a paint',
   'lib/src/ui/canvas/subtree_image_composite.dart → _held':
       'counted:heldBytes',
-  'lib/src/ui/canvas/bitmap_tile_image_cache.dart → _images':
+  'lib/src/ui/canvas/bitmap_tile_image_cache.dart → _pictures':
       'counted:liveImageBytes',
+  'lib/src/ui/canvas/tile_pages.dart → _open': 'counted:liveBytes',
   'lib/src/ui/sheet/sheet_image_cache.dart → _images':
       'counted:decodedBytes',
   'lib/src/ui/sheet/sheet_image_cache.dart → _pictures':

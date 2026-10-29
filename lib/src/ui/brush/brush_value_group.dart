@@ -259,15 +259,12 @@ class BrushValueBars extends StatelessWidget {
         .ceilToDouble();
   }
 
-  /// The pill's readouts' one width: the widest number either bar says,
-  /// whole ([FieldSliderValueReadout.widthIn]) — 「불투명도도 그 고정크기로
-  /// 통일」 (I-135).
-  static double readoutWidthIn(BuildContext context) {
+  /// The pill's readouts' one box and their letters, read off both bars
+  /// ([FieldSliderReadoutSizes.of]) — 「불투명도도 그 고정크기로 통일」
+  /// (I-135), 「불투명도도 규칙은 통일」 (F-493).
+  static FieldSliderReadoutSizes readoutSizesIn(BuildContext context) {
     final bars = _measured(BrushValuesLayout.pill, stoodThicknessIn(context));
-    return FieldSliderValueReadout.widthIn(context, [
-      bars.size,
-      bars.opacity,
-    ]);
+    return FieldSliderReadoutSizes.of(context, [bars.size, bars.opacity]);
   }
 
   /// What the bars show of [state] — a drag elsewhere, or a colour, moves
@@ -382,17 +379,18 @@ class BrushValueBars extends StatelessWidget {
           child: bar,
         );
         final bars = _barsFor(context, state);
+        final sizes = readouts == null ? null : readoutSizesIn(context);
         // Along the line: a bar, then its curve — after it lying, under it
         // stood, where its number heads the line.
         final step = alongBox(layout.axis, gap);
         final sizeLine = [
-          ..._readoutOver(context, 'size', bars.size),
+          ..._readoutOver('size', bars.size, sizes),
           placed(widths.size, bars.size),
           step,
           pressure(BrushPressureTarget.size),
         ];
         final opacityLine = [
-          ..._readoutOver(context, 'opacity', bars.opacity),
+          ..._readoutOver('opacity', bars.opacity, sizes),
           placed(widths.opacity, bars.opacity),
           step,
           pressure(BrushPressureTarget.opacity),
@@ -425,16 +423,19 @@ class BrushValueBars extends StatelessWidget {
   /// [bar]'s number right above it, in its readout, and the room between
   /// them — where [bar] has one, the pill's (I-135: 「그냥 해당하는 막대
   /// 슬라이더 위에 이 텍스트 두자」); nothing where a bar writes its own.
+  ///
+  /// [sizes] are the pill's readouts' ([readoutSizesIn]), measured once for
+  /// both.
   List<Widget> _readoutOver(
-    BuildContext context,
     String name,
     FieldSlider bar,
+    FieldSliderReadoutSizes? sizes,
   ) => [
-    if (bar.readout != null) ...[
+    if (bar.readout != null && sizes != null) ...[
       FieldSliderValueReadout(
         keyValue: '${layout._keyPrefix}-$name-readout',
         bar: bar,
-        width: readoutWidthIn(context),
+        sizes: sizes,
       ),
       alongBox(layout.axis, _readoutGap),
     ],
@@ -585,7 +586,7 @@ class BrushValuesPill extends StatefulWidget {
   /// ([CanvasEdgePill.width]).
   static double widthIn(BuildContext context) => math.max(
     BrushValueBars.stoodThicknessIn(context) + CanvasCapsule.barPillEnd * 2,
-    BrushValueBars.readoutWidthIn(context) + _ringRoom * 2,
+    BrushValueBars.readoutSizesIn(context).width + _ringRoom * 2,
   );
 
   /// The ring's pixel inside the capsule's edge ([CanvasCapsule]), which a

@@ -86,6 +86,7 @@ void main() {
   ) => drawSubtreeAsImage(
     canvas: canvas,
     bounds: groupRect,
+    paper: groupRect,
     rasterScale: scale,
     maxPixelSide: maxPixelSide,
     paintSubtree: (into, _) => drawChildren(into),
@@ -291,6 +292,7 @@ void main() {
       drawSubtreeAsImage(
         canvas: canvas,
         bounds: bounds,
+        paper: bounds,
         rasterScale: scale,
         maxPixelSide: maxPixelSide,
         cell: cell,
@@ -684,9 +686,10 @@ void main() {
     AdjustmentScopePass freshPass() => resolveAdjustmentScopePass(
       bounds: rect,
       effects: [
-        ResolvedLayerEffect(kind: EffectKind.blur, values: const [3, 3]),
+        ResolvedLayerEffect(kind: EffectKind.blur, values: const [3, 0]),
       ],
       mix: 0.5,
+      paper: rect,
     );
     // ⛔Prove the scene is the case this test is named for. A chain that did
     // not crossfade would compare one blit against one saveLayer and pass
@@ -702,6 +705,7 @@ void main() {
         drawSubtreeAsImage(
           canvas: canvas,
           bounds: pass.bufferBounds,
+          paper: pass.bufferBounds,
           rasterScale: 1,
           maxPixelSide: maxSubtreeRasterSide,
           paintSubtree: (into, _) => drawChildren(into),
@@ -769,6 +773,7 @@ void main() {
     drawSubtreeAsImage(
       canvas: canvas,
       bounds: const Rect.fromLTWH(6, 4, 46, 42),
+      paper: const Rect.fromLTWH(6, 4, 46, 42),
       rasterScale: 1,
       maxPixelSide: maxSubtreeRasterSide,
       paintSubtree: (into, _) {

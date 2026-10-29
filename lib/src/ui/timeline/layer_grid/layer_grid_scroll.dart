@@ -31,7 +31,7 @@ class _LayerGridScroll {
   }
 
   /// Layer-axis virtualization: re-plan only when the scroll crosses a
-  /// row boundary (the ≥2-row overscan absorbs sub-row movement).
+  /// row boundary — the window ([standAt]) moves only there.
   ///
   /// ⛔The crossing publishes a TOKEN; it does not `setState`. See
   /// [_state._rowWindowBucket] for what the `setState` was costing — and note that

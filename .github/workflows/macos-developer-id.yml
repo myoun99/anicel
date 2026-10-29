@@ -123,19 +123,14 @@ jobs:
       # fine). This workflow counts its own runs, so the round's number
       # comes in as `build_number`; empty keeps the own-run number above.
       # It is read through env, never pasted into the script.
+      # tool/release_build.sh refuses one that is not digits, and stamps the
+      # number and the commit the feedback forms read (I-139-Q5).
       - name: Build Flutter macOS
         env:
           BUILD_NUMBER_INPUT: ${{ inputs.build_number }}
         run: |
-          BUILD_NUMBER="${BUILD_NUMBER_INPUT:-$(( ${{ github.run_number }} + 1000 ))}"
-          case "$BUILD_NUMBER" in
-            ''|*[!0-9]*)
-              echo "::error::build_number must be digits, got '$BUILD_NUMBER'"
-              exit 1
-              ;;
-          esac
-          echo "build number: $BUILD_NUMBER"
-          flutter build macos --release --build-number="$BUILD_NUMBER"
+          bash tool/release_build.sh macos \
+            "${BUILD_NUMBER_INPUT:-$(( ${{ github.run_number }} + 1000 ))}"
 
       - name: Sign, notarize, package
         working-directory: ios

@@ -21,6 +21,8 @@ import '../models/layer.dart';
 import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart'
     show EffectId, LayerEffect, effectParameterValueAtTime;
+import '../models/layer_folder.dart'
+    show LayerFolderIndex, attachFolderLevelsAbove, attachGroupBaseOf;
 import '../models/layer_id.dart';
 import '../models/layer_mark.dart';
 import '../models/project.dart';
@@ -78,7 +80,7 @@ import 'timeline/lane_graph.dart'
 import 'timeline/lane_graph_seats.dart'
     show LaneGraphLine, laneGraphHeadedBy, laneGraphLineAmong, seatLaneGraphs;
 import 'timeline/timeline_lane_graph.dart'
-    show LaneGraphGrid, laneGraphFrameSide, laneGraphLines;
+    show LaneGraphGrid, laneGraphFrameSide, laneGraphLines, timelineRowBuiltNow;
 import 'timeline/timeline_section_runs.dart'
     show timelineDisplayRowExtent, timelineRowEdgesOf;
 import 'timeline/timeline_swipe_columns.dart'
@@ -94,10 +96,14 @@ import 'timeline/property_lane_model.dart'
         TimelineDisplayRow,
         laneAsPreviewed,
         laneGroupKey,
+        layerRowHiddenBy,
         parseLaneGroupKey,
         previewedLaneRow;
 import 'timeline/property_lanes_for_row.dart' show propertyLanesForRow;
 import 'timeline/timeline_row_edges.dart';
+import 'timeline/timeline_visible_range.dart';
+import 'timeline/held_row_pin.dart';
+import 'timeline/window_move_keep.dart';
 import 'timeline/timeline_row_selection_bands.dart';
 import 'timeline/timeline_row_span_resolver.dart'
     show
@@ -107,8 +113,6 @@ import 'timeline/timeline_row_span_resolver.dart'
         resolveInGroupHeadLane,
         resolveLaneSpanEscalationOverAddresses,
         resolveSelectionSpanOverAddresses;
-import 'timeline/se_audio_lane.dart'
-    show SeAudioLaneFrameRow, TimelineAudioLaneCallbacks, laneIsSeAudio;
 import 'timeline/timeline_lane_rows.dart'
     show
         TimelineLaneControlsRow,
@@ -162,6 +166,7 @@ import 'timeline/transform_lane_policy.dart'
         transformGroupHeaderLane;
 import '../models/app_input_settings.dart' show AppInput;
 import 'widgets/instant_tap_region.dart' show InstantTapRegion;
+import 'widgets/row_plate.dart';
 import 'timeline/timeline_beat_lines.dart'
     show
         TimelineGridDash,
@@ -250,7 +255,11 @@ import 'timeline/timeline_horizontal_scrollbar_rail.dart';
 import 'timeline/timeline_layer_controls_header.dart';
 import 'timeline/timeline_legend_menus.dart';
 import 'timeline/timeline_layer_controls_row.dart'
-    show ControlsRowFace, TimelineGroupFold, TimelineLayerControlsRow;
+    show
+        ControlsRowFace,
+        TimelineGroupFold,
+        TimelineLayerControlsRow,
+        timelineGroupFoldFor;
 import 'timeline/timeline_vertical_scrollbar_rail.dart';
 import 'timeline/timeline_playhead.dart' show timelinePlayheadColumn;
 import 'timeline/timeline_row_filter.dart';
@@ -280,6 +289,7 @@ part 'storyboard/storyboard_cut_starts.dart';
 part 'storyboard/storyboard_standing.dart';
 part 'storyboard/storyboard_rows_and_labels.dart';
 part 'storyboard/storyboard_scroll.dart';
+part 'storyboard/storyboard_rows_window.dart';
 part 'storyboard/storyboard_rail_rows.dart';
 part 'storyboard/storyboard_rail_sweep.dart';
 part 'storyboard/storyboard_sheet.dart';
@@ -295,10 +305,10 @@ part 'storyboard/storyboard_folded_row.dart';
 /// lane's row and takes the standing cell, but it draws fade handles
 /// instead of key markers and no selection reaches it.
 ///
-/// [lane] is whether the row is a LANE band at all — the Audio lane as much
-/// as a property lane — which is what the grid sheet paints the lane ground
-/// under (I-44). Neither address says it: the Audio lane keeps none, and an
-/// S slot with no layer keeps none either.
+/// [lane] is whether the row is a LANE band at all — an open graph's room
+/// as much as a property lane — which is what the grid sheet paints the
+/// lane ground under (I-44). Neither address says it: the room keeps none,
+/// and an S slot with no layer keeps none either.
 ///
 /// [seSlot] is the slot of an S row, which its run is found by; null for
 /// every other row.
@@ -343,8 +353,8 @@ typedef _RailSweepAt =
     );
 
 /// The address a rail slot is stood on by — a row's own, a lane's, or the
-/// conte row's — or null for a row nobody stands on (the Audio lane, an S
-/// slot with no layer).
+/// conte row's — or null for a row nobody stands on (an open graph's room,
+/// an S slot with no layer).
 TimelineRowAddress? _standingAddressOf(_StoryboardRailSlot slot) =>
     slot.row ?? slot.laneRow ?? slot.standRow;
 
@@ -710,7 +720,6 @@ class StoryboardPanel extends StatefulWidget {
     this.onResetLaneGroup,
     this.seCommaDrag,
     this.seSelect,
-    this.audioLane,
     this.transitionDefById,
     this.transitionRowShown,
     this.rowsChannel,
@@ -876,7 +885,7 @@ class StoryboardPanel extends StatefulWidget {
   /// ONE height for every V track, not one per track (user's rule): the
   /// rows are the same kind of thing, and a rail whose rows disagree about
   /// height stops reading as a rail. The S rows keep their own sizing —
-  /// they twirl audio lanes open, so height means something else there.
+  /// they twirl their lanes open, so height means something else there.
   ///
   /// 🗣️I-73 (유저 2026-10-08: 「띠 둘만 이사로 가자」, and the drawn
   /// proposal it answered: 「글자 띠 둘이 내려가 콘티 행이 됩니다. 한 번만
@@ -1448,11 +1457,6 @@ class StoryboardPanel extends StatefulWidget {
   /// blocks select on tap first). Null hides the grips.
   final TimelineCommaDragCallbacks? seCommaDrag;
 
-  /// The S rows' sound edits — the Audio lane's offset slide and fade drags —
-  /// the same object the timeline's SE rows take (F-101; ↩️it was the offset
-  /// slide alone). Null keeps the lane display-only.
-  final TimelineAudioLaneCallbacks? audioLane;
-
   /// An S row's group header switch and reset — the timeline's own verbs
   /// (F-101). Null leaves the switch inert and hides the reset.
   final void Function(Layer layer, PropertyLaneRow lane)?
@@ -1586,7 +1590,7 @@ class _StoryboardBodyFrame {
   final double? availableRailWidth;
   final double railWindowExtent;
   final ColorScheme colorScheme;
-  final List<List<Widget>> trackGlobalStripRowsByTrack;
+  final List<List<List<Widget>>> trackGlobalStripRowsByTrack;
 }
 class _StoryboardPanelState extends State<StoryboardPanel> {
   /// The integer rate the grid COUNTS with — the ruler's second marks
@@ -1643,6 +1647,12 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   // A collaborator (storyboard/storyboard_scroll.dart, a part of this library). The
   // State keeps the entry points its build tree calls.
   late final _StoryboardScroll _scroll = _StoryboardScroll(this);
+
+  // ── the rows' window: its own object ────────────────────────────────
+  //
+  // A collaborator (storyboard/storyboard_rows_window.dart, a part of this
+  // library): the rows built where the view stands.
+  late final _StoryboardRowsWindow _rowsWindow = _StoryboardRowsWindow(this);
 
   /// The door a collaborator rebuilds through - setState is protected,
   /// and a collaborator is not a subclass.
@@ -1716,6 +1726,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     super.initState();
     _legendKeeper?.up(_legend);
     _horizontalController.addListener(_frameAxis.handleScroll);
+    _verticalController.addListener(_rowsWindow.handleScroll);
     _letGoOfKeptRows = followKeptAxis(
       _verticalController,
       _keptLayerAxis,
@@ -1833,6 +1844,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     widget.revealSelectionTick?.removeListener(_handleRevealSelection);
     widget.playheadFrame?.removeListener(_handlePlaybackPage);
     _horizontalController.removeListener(_frameAxis.handleScroll);
+    _verticalController.removeListener(_rowsWindow.handleScroll);
+    _rowsWindow.dispose();
     _frameAxis.dispose();
     _letGoOfKeptRows();
     _standing.dispose();
@@ -2098,7 +2111,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   Widget _buildBody(
     BuildContext context,
     Project project,
-    List<List<Widget>> trackGlobalStripRowsByTrack,
+    List<List<List<Widget>>> trackGlobalStripRowsByTrack,
   ) {
     final colorScheme = Theme.of(context).colorScheme;
     final layoutEntries = buildStoryboardTimelineLayout(project);
@@ -2297,29 +2310,28 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                   axis: Axis.vertical,
                                   columns: _sweep.columns(),
                                   rowsIn: _sweep.rowsIn,
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                  // Laid by the rows' window, as the strips.
+                                  child: _rowsWindow.laidColumn(
+                                    _rowsWindow.railKeep,
+                                    (rowsOf) => [
+                                      // Track groups in TIMELINE order (R6
+                                      // B3): the S rows sit ABOVE their V
+                                      // track, slots bottom-up like the
+                                      // timeline (top-down S2, S1, V — R7-④).
+                                      for (
+                                        var index = 0;
+                                        index < frame.project.tracks.length;
+                                        index++
+                                      )
+                                        ..._railRows.railRowsForTrack(
+                                          frame.project.tracks[index],
+                                          index,
+                                          rowsOf(index),
+                                        ),
+                                    ],
                                     // One pass of the rail's keep: a row it
                                     // stops drawing is let go of.
-                                    children: _rows.railPass(
-                                      () => [
-                                        // Track groups in TIMELINE order (R6
-                                        // B3): the S rows sit ABOVE their V
-                                        // track, slots bottom-up like the
-                                        // timeline (top-down S2, S1, V —
-                                        // R7-④).
-                                        for (
-                                          var index = 0;
-                                          index < frame.project.tracks.length;
-                                          index++
-                                        )
-                                          ..._railRows.railRowsForTrack(
-                                            frame.project.tracks[index],
-                                            index,
-                                          ),
-                                      ],
-                                    ),
+                                    newPass: _rows.railPass,
                                   ),
                                 ),
                                 // The row selection, over the LAYER area
@@ -2963,12 +2975,12 @@ const double _conteRowHeight = 30;
 /// 진행해보고 결정하자」.
 const double _cameraRowHeight = 30;
 
-/// A twirled-down lane's height — every lane, the Audio lane included: the
-/// timeline draws all its rows at one height, and the labels and the strips
-/// share it (the rail and strips columns must stay height-synced).
+/// A twirled-down lane's height — every lane: the timeline draws all its
+/// rows at one height, and the labels and the strips share it (the rail and
+/// strips columns must stay height-synced).
 /// ↩️The Audio lane stood taller as an enlarged waveform strip until F-101
-/// made it the timeline's own lane; the cut-fade envelope's own height went
-/// with that row before.
+/// made it the timeline's own lane (it went with I-140); the cut-fade
+/// envelope's own height went with that row before.
 const double _laneHeight = 26;
 
 /// The three rows above as they stand where the panel is shown — each the
@@ -3079,8 +3091,12 @@ class _StoryboardLabelShell extends StatelessWidget {
       // holds a tap in the arena so scroll slop over a row behaves the way
       // it always has. A display-only row holds none, inert as it was.
       holds: onTap != null,
-      child: Container(
+      // The timeline row's plate too. The lit row is a NAME, as the
+      // timeline's is (I-57): a key there while the row was lit, gone when
+      // it was not, remade the row's content whenever the selection moved.
+      child: RowPlate(
         key: rowKey,
+        name: active ? 'storyboard-selected-row' : null,
         width: StoryboardPanel.railWidthIn(context),
         height: height,
         padding: const EdgeInsets.only(right: layerRailEndPadding),
@@ -3096,15 +3112,8 @@ class _StoryboardLabelShell extends StatelessWidget {
                   bottom: BorderSide(color: colorScheme.outlineVariant),
                 ),
               ),
-        child: Semantics(
-          key: active
-              ? const ValueKey<String>('storyboard-selected-row')
-              : null,
-          label: semanticsLabel,
-          container: true,
-          explicitChildNodes: true,
-          child: child,
-        ),
+        label: semanticsLabel,
+        child: child,
       ),
     );
   }
@@ -3319,6 +3328,7 @@ class _StoryboardRailHead extends KeptPiece {
     required this.active,
     required this.fxState,
     this.chromeless = false,
+    this.depth = 0,
     this.hasLanes = false,
     this.lanesExpanded = false,
     this.onToggleLanes,
@@ -3362,6 +3372,11 @@ class _StoryboardRailHead extends KeptPiece {
   final bool active;
   final LayerFxState fxState;
   final bool chromeless;
+
+  /// How far the row hangs in — the timeline row's indent
+  /// ([TimelineLayerControlsRow.depth]): a conte row filed in a 공정
+  /// folder, one level per folder (I-99).
+  final int depth;
   final bool hasLanes;
   final bool lanesExpanded;
 
@@ -3437,6 +3452,7 @@ class _StoryboardRailHead extends KeptPiece {
     active,
     fxState,
     chromeless,
+    depth,
     hasLanes,
     lanesExpanded,
     onToggleLanes != null,
@@ -3477,6 +3493,7 @@ class _StoryboardRailHead extends KeptPiece {
     final openMixer = onOpenLayerMixer;
     return TimelineLayerControlsRow(
       chromeless: chromeless,
+      depth: depth,
       keyPrefix: 'storyboard',
       layer: layer,
       active: active,
@@ -4664,10 +4681,10 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
 }
 
 /// One lane's frame band on the shared substrate — the timeline grid's own
-/// row for whatever the lane is: the Audio lane's waveform band
-/// ([SeAudioLaneFrameRow]) or a property lane's key markers
-/// ([TimelineLaneFrameRow]), told apart by [laneIsSeAudio] exactly as the
-/// timeline tells them apart (F-101).
+/// lane row ([TimelineLaneFrameRow]), its key markers drawn as the timeline
+/// draws them (F-101). ↩️It was the Audio lane's waveform band or a property
+/// lane's, told apart as the timeline told them apart, until the band went
+/// (I-140).
 ///
 /// ↩️It said 「rendered PER CUT (the audio lane's remount pattern)」, which
 /// R4b had already retired: the band runs the track's global axis in one row.
@@ -4679,11 +4696,8 @@ class _StoryboardLaneStripRow extends StatelessWidget {
     required this.width,
     required this.height,
     required this.timelineScale,
-    required this.projectFrameRate,
     this.laneEdit,
     this.laneRange,
-    this.audioLane,
-    this.audioPeaksFor,
   });
 
   final String rowKey;
@@ -4705,18 +4719,12 @@ class _StoryboardLaneStripRow extends StatelessWidget {
   /// Its label's height ([_StoryboardRowHeights.lane]) — one row.
   final double height;
   final TimelineScale timelineScale;
-  final ProjectFrameRate projectFrameRate;
   final PropertyLaneEditCallbacks? laneEdit;
 
   /// Wires the band's range-select/move gesture (the timeline's lane
   /// machinery, carrier-routed in the session) — an S row's lanes too
   /// (R5 ③b); null keeps the band display-only.
   final TimelineLaneRangeCallbacks? laneRange;
-
-  /// The Audio band's sound edits and the peaks it draws — what the
-  /// timeline's SE rows take. A property lane reads neither.
-  final TimelineAudioLaneCallbacks? audioLane;
-  final AudioPeaks? Function(String filePath)? audioPeaksFor;
 
   @override
   Widget build(BuildContext context) {
@@ -4732,50 +4740,21 @@ class _StoryboardLaneStripRow extends StatelessWidget {
     final frames = timelineScale.pixelsPerFrame <= 0
         ? 0
         : timelineScale.frameAt(width);
-    final onSetClipOffset = audioLane?.onSetClipOffset;
-    final onSetClipFades = audioLane?.onSetClipFades;
     return SizedBox(
       key: ValueKey<String>(rowKey),
       width: width,
       height: height,
-      child: laneIsSeAudio(lane)
-          ? SeAudioLaneFrameRow(
-              layer: carrier,
-              frameStartIndex: 0,
-              frameEndIndexExclusive: frames,
-              leadingFrameSpacerWidth: 0,
-              trailingFrameSpacerWidth: 0,
-              metrics: metrics,
-              frameRate: projectFrameRate,
-              audioPeaksFor: audioPeaksFor,
-              // The span keys ride the row's id, as they did on the Audio
-              // lane this band replaced.
-              keyPrefix: 'storyboard-${carrier.id}',
-              onSetClipOffset: onSetClipOffset == null
-                  ? null
-                  : (clipIndex, offsetFrames) =>
-                        onSetClipOffset(carrier.id, clipIndex, offsetFrames),
-              offsetDrag: audioLane?.offsetDrag,
-              onSetClipFades: onSetClipFades == null
-                  ? null
-                  : (clipIndex, fadeIn, fadeOut) => onSetClipFades(
-                      carrier.id,
-                      clipIndex,
-                      fadeIn,
-                      fadeOut,
-                    ),
-            )
-          : TimelineLaneFrameRow(
-              layer: carrier,
-              lane: lane,
-              frameStartIndex: 0,
-              frameEndIndexExclusive: frames,
-              leadingFrameSpacerWidth: 0,
-              trailingFrameSpacerWidth: 0,
-              metrics: metrics,
-              laneRange: laneRange,
-              keyPrefix: 'storyboard',
-            ),
+      child: TimelineLaneFrameRow(
+        layer: carrier,
+        lane: lane,
+        frameStartIndex: 0,
+        frameEndIndexExclusive: frames,
+        leadingFrameSpacerWidth: 0,
+        trailingFrameSpacerWidth: 0,
+        metrics: metrics,
+        laneRange: laneRange,
+        keyPrefix: 'storyboard',
+      ),
     );
   }
 }

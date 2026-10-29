@@ -13,7 +13,8 @@ import '../widgets/app_window.dart';
 /// ⛔EVERY label gets a field, including 用紙's worker: leaving one out
 /// would be a 「~는 제외한다」 rule nobody asked for.
 /// ↩️The user has asked since (2026-10-05, F-291: 「용지라는 스태프는
-/// 없음」): every label but 用紙's — paper is nobody's work. And
+/// 없음」): every label but 用紙's — paper is nobody's work — and
+/// (2026-10-28, F-291: 「미술이란 항목 통째로. 필요없음」) but 美術's. And
 /// (2026-10-08, F-291-Q1) each window the stages its holder keeps: the
 /// work the conte's, a cut every other.
 Map<LayerMark, TextEditingController> staffFieldsOf(
@@ -47,6 +48,8 @@ class StaffProcessFolds extends StatefulWidget {
     required this.fields,
     required this.keyPrefix,
     this.onSubmitted,
+    this.open = staffFoldsOpenAtFirst,
+    this.onOpenChanged,
   });
 
   /// The window's fields, one per label ([staffFieldsOf]).
@@ -58,12 +61,19 @@ class StaffProcessFolds extends StatefulWidget {
   /// Enter in a field.
   final VoidCallback? onSubmitted;
 
+  /// The stages whose folds are open as the window opens — a cut's, as 컷
+  /// 설정 last saved them (`CutMetadata.openStaffFolds`).
+  final Set<LayerProcess> open;
+
+  /// The stages open now, each time a fold is opened or shut.
+  final ValueChanged<Set<LayerProcess>>? onOpenChanged;
+
   @override
   State<StaffProcessFolds> createState() => _StaffProcessFoldsState();
 }
 
 class _StaffProcessFoldsState extends State<StaffProcessFolds> {
-  final Set<LayerProcess> _folded = {};
+  late final Set<LayerProcess> _open = {...widget.open};
 
   @override
   Widget build(BuildContext context) {
@@ -71,8 +81,8 @@ class _StaffProcessFoldsState extends State<StaffProcessFolds> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // A process with no field here has no fold: 用紙, and the stages the
-        // other holder keeps ([staffFieldsOf]).
+        // A process with no field here has no fold: 用紙 and 美術, and the
+        // stages the other holder keeps ([staffFieldsOf]).
         for (final process in LayerProcess.values)
           if (widget.fields.keys.any((mark) => mark.process == process))
             _fold(process, strings),
@@ -87,7 +97,7 @@ class _StaffProcessFoldsState extends State<StaffProcessFolds> {
       for (final mark in widget.fields.keys)
         if (mark.process == process) mark,
     ];
-    final open = !_folded.contains(process);
+    final open = _open.contains(process);
     final prefix = widget.keyPrefix;
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
@@ -99,13 +109,16 @@ class _StaffProcessFoldsState extends State<StaffProcessFolds> {
         ]),
         expansion: (
           expanded: open,
-          onToggle: () => setState(() {
-            if (open) {
-              _folded.add(process);
-            } else {
-              _folded.remove(process);
-            }
-          }),
+          onToggle: () {
+            setState(() {
+              if (open) {
+                _open.remove(process);
+              } else {
+                _open.add(process);
+              }
+            });
+            widget.onOpenChanged?.call(Set.unmodifiable(_open));
+          },
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,

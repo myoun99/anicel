@@ -4,6 +4,7 @@ import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/conte_group.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -67,6 +68,59 @@ void main() {
     expect(appeared.single.id, isNot(added.id), reason: 'ids stay per-cut');
     expect(appeared.single.name, added.name);
     expect(appeared.single.kind, added.kind);
+  });
+
+  // 🗣️I-138 (유저 2026-10-28): an animation row is born with its first cel,
+  // and an unnamed cel is no other cut's — F-98: 「이름이 같아야만
+  // 링크되도록. 이름 안정해지면 별개것임」.
+  test('a drawing row added to a 겸용 cut is born with a first cel OF ITS '
+      'OWN in every cut — one bank, each lane on its own cel', () {
+    final pair = makeLinkedPair();
+    final sourceIdsBefore = {
+      for (final layer in cutById(pair.source).layers) layer.id,
+    };
+
+    session.layerStack.addLayerOfKind(LayerKind.animation);
+    final added = session.activeLayer!;
+    final copy = cutById(
+      pair.source,
+    ).layers.singleWhere((layer) => !sourceIdsBefore.contains(layer.id));
+
+    FrameId celOn(Layer row) => row.timeline[0]!.frameId!;
+    expect(
+      [
+        for (final row in [added, copy])
+          [
+            for (final entry in row.timeline.entries)
+              if (!entry.value.ghost) (entry.key, entry.value.length),
+          ],
+      ],
+      [
+        [(0, 1)],
+        [(0, 1)],
+      ],
+      reason: 'each cut\'s row is born as a new project\'s layer A is',
+    );
+    expect(celOn(copy), isNot(celOn(added)), reason: 'a cel of its own');
+    for (final row in [added, copy]) {
+      expect(
+        {for (final cel in row.frames) cel.id},
+        {celOn(added), celOn(copy)},
+        reason: 'the one bank every member holds',
+      );
+    }
+
+    session.undo();
+    session.redo();
+    expect(
+      celOn(
+        cutById(
+          pair.source,
+        ).layers.singleWhere((layer) => layer.id == copy.id),
+      ),
+      celOn(copy),
+      reason: 'a redo brings the same planned cel',
+    );
   });
 
   test('undo removes the mirrored row from every sibling', () {

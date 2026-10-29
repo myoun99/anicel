@@ -31,6 +31,7 @@ import 'package:anicel/src/ui/timeline/timeline_silhouette_painter.dart';
 
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/solid_png_fixture.dart';
+import '../../helpers/stand_in_movie.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/three_frame_gif.dart';
@@ -289,7 +290,7 @@ void main() {
     final (:session, :row, :next) = await open(
       tester,
       next: 'take.mp4',
-      nextBytes: const [0, 0, 0, 24],
+      nextBytes: standInMovieBytes,
     );
 
     final silhouette = await dragOnto(tester, row, next);

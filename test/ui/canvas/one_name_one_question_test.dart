@@ -44,10 +44,10 @@ void main() {
 
     test('it scales the blur and leaves colour alone', () {
       final full = resolveCompositeEffectPaint([
-        ResolvedLayerEffect(kind: EffectKind.blur, values: const [12, 12]),
+        ResolvedLayerEffect(kind: EffectKind.blur, values: const [12, 0]),
       ]);
       final half = resolveCompositeEffectPaint(
-        [ResolvedLayerEffect(kind: EffectKind.blur, values: const [12, 12])],
+        [ResolvedLayerEffect(kind: EffectKind.blur, values: const [12, 0])],
         space: const DrawSpace.preScaled(0.5),
       );
       expect(full.outsetPixels, 12);
@@ -113,7 +113,7 @@ void main() {
           'route started spelling the ratio out again',
     );
     expect(
-      source.contains('image.width / canvasExtent'),
+      source.contains('image.width / extent.width'),
       isTrue,
       reason: 'and it is still derived rather than passed',
     );

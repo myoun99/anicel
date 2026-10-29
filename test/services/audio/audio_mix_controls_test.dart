@@ -8,6 +8,8 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/models/se_sound.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/audio/audio_mixer_reference.dart';
 
@@ -133,8 +135,8 @@ void main() {
     expect(audioClipVolumeAt(clip, 100), 0.0, reason: 'the end is silence');
   });
 
-  test('the SE layer model carries fader/pan and the clip carries curve/'
-      'envelope through JSON', () {
+  test('the SE row carries its keyed volume and its pan, and the clip its '
+      'gain, through JSON', () {
     final layer = Layer(
       id: const LayerId('se'),
       name: 'S1',
@@ -144,35 +146,26 @@ void main() {
       ],
       timeline: {0: const TimelineExposure.drawing(FrameId('f'), length: 4)},
       audioClips: [
-        AudioClip(
-          filePath: 'a.wav',
-          frameId: const FrameId('f'),
-          fadeCurve: AudioFadeCurve.equalPower,
-          volumeKeys: [
-            const AudioVolumeKey(frame: 0, gain: 1),
-            const AudioVolumeKey(frame: 4, gain: 0.5),
-          ],
-        ),
+        AudioClip(filePath: 'a.wav', frameId: const FrameId('f'), gain: 0.7),
       ],
-      audioGain: 0.8,
-      audioPan: -0.5,
+      seSound: SeSound(
+        pan: -0.5,
+        volume: PropertyTrack<double>(
+          keys: {0: const PropertyKey(1.0), 4: const PropertyKey(0.5)},
+        ),
+      ),
     );
     final reopened = Layer.fromJson(layer.toJson());
-    expect(reopened.audioGain, 0.8);
-    expect(reopened.audioPan, -0.5);
-    final clip = reopened.audioClips.single;
-    expect(clip.fadeCurve, AudioFadeCurve.equalPower);
-    expect(clip.volumeKeys, const [
-      AudioVolumeKey(frame: 0, gain: 1),
-      AudioVolumeKey(frame: 4, gain: 0.5),
-    ]);
+    expect(reopened.seSound, layer.seSound);
+    expect(reopened.seSound.pan, -0.5);
+    expect(reopened.seSound.volumeAt(4), 0.5);
+    expect(reopened.audioClips.single.gain, 0.7);
     // Defaults stay OUT of the JSON — legacy files keep their bytes.
     final plain = Layer(
       id: const LayerId('p'),
       name: 'P',
       frames: const [],
     ).toJson();
-    expect(plain.containsKey('audioGain'), isFalse);
-    expect(plain.containsKey('audioPan'), isFalse);
+    expect(plain.containsKey('seSound'), isFalse);
   });
 }

@@ -40,19 +40,19 @@ void main() {
     );
   }
 
-  ResolvedLayerEffect key(
-    EffectKind kind, {
+  // The Color Key: Key Colors, or Keep Colors with [keep] (I-132-Q2).
+  ResolvedLayerEffect key({
+    bool keep = false,
     int red = 0,
     int green = 0,
     int blue = 0,
     double tolerance = 0,
     double amount = 100,
   }) => ResolvedLayerEffect(
-    kind: kind,
+    kind: EffectKind.colorKey,
     values: [
-      red.toDouble(),
-      green.toDouble(),
-      blue.toDouble(),
+      if (keep) 1 else 0,
+      (0xFF000000 | red << 16 | green << 8 | blue).toDouble(),
       tolerance,
       amount,
     ],
@@ -61,8 +61,7 @@ void main() {
   group('CelColorKey', () {
     test('tolerance is the largest single-channel gap, not the distance', () {
       final erase = CelColorKey.fromResolved(
-        key(EffectKind.deleteColor, red: 100, green: 100, blue: 100,
-            tolerance: 10),
+        key(red: 100, green: 100, blue: 100, tolerance: 10),
       )!;
       // Every channel 10 away: Chebyshev says 10, inside. A Euclidean
       // metric would call this 17.3 and let the pixel through — that
@@ -73,42 +72,44 @@ void main() {
       expect(erase.matches(100, 100, 111), isFalse);
     });
 
-    test('keep is the same comparison with the answer inverted', () {
-      final erase = CelColorKey.fromResolved(
-        key(EffectKind.deleteColor, red: 255),
-      )!;
-      final keep = CelColorKey.fromResolved(
-        key(EffectKind.keepColor, red: 255),
-      )!;
-      expect(erase.alphaFor(255, 0, 0, 200), 0);
-      expect(erase.alphaFor(0, 0, 0, 200), 200);
-      expect(keep.alphaFor(255, 0, 0, 200), 200);
-      expect(keep.alphaFor(0, 0, 0, 200), 0);
+    test('keep gives back what its run took, by the same comparison', () {
+      final erase = CelColorKey.fromResolved(key(red: 255))!;
+      final keep = CelColorKey.fromResolved(key(keep: true, red: 255))!;
+      expect(erase.alphaFor(255, 0, 0, 200, original: 200), 0);
+      expect(erase.alphaFor(0, 0, 0, 200, original: 200), 200);
+      // 🚨I-132-Q2 (유저 2026-10-27 「하나로 + AE 뜻」): a keep gives back,
+      // and erases nothing — ↩️it erased every pixel its colour did not
+      // name.
+      expect(keep.alphaFor(255, 0, 0, 0, original: 200), 200);
+      expect(keep.alphaFor(0, 0, 0, 0, original: 200), 0);
+      expect(keep.alphaFor(0, 0, 0, 200, original: 200), 200);
+      // Nothing taken before it: nothing to give back.
+      expect(keep.alphaFor(255, 0, 0, 200, original: 200), 200);
     });
 
     test('Amount folds into the one pass instead of a second draw', () {
-      final half = CelColorKey.fromResolved(
-        key(EffectKind.deleteColor, amount: 50),
-      )!;
+      final half = CelColorKey.fromResolved(key(amount: 50))!;
       // 🚨A two-pass mix would ACCUMULATE alpha here (the rule 6 bug):
       // 200 over 200 at half strength comes back ABOVE 200, not below it.
-      expect(half.alphaFor(0, 0, 0, 200), 100);
-      expect(half.alphaFor(0, 0, 0, 255), 128);
+      expect(half.alphaFor(0, 0, 0, 200, original: 200), 100);
+      expect(half.alphaFor(0, 0, 0, 255, original: 255), 128);
+      // A keep at half gives back half of what was taken.
+      final halfBack = CelColorKey.fromResolved(key(keep: true, amount: 50))!;
+      expect(halfBack.alphaFor(0, 0, 0, 0, original: 200), 100);
+      expect(halfBack.alphaFor(0, 0, 0, 100, original: 200), 150);
     });
 
     test('an already-empty pixel is never woken up', () {
-      final keep = CelColorKey.fromResolved(
-        key(EffectKind.keepColor, red: 255),
-      )!;
+      final keep = CelColorKey.fromResolved(key(keep: true, red: 255))!;
       // Color bytes under a zero alpha are arbitrary; a keep must not read
       // them as ink and hand back an alpha.
-      expect(keep.alphaFor(255, 0, 0, 0), 0);
+      expect(keep.alphaFor(255, 0, 0, 0, original: 0), 0);
     });
 
     test('Amount 0 is the no-op an added effect must be', () {
       final fresh = LayerEffect.defaults(
         id: const EffectId('fx'),
-        kind: EffectKind.deleteColor,
+        kind: EffectKind.colorKey,
       );
       final resolved = resolveLayerEffectsAt(effects: [fresh], frameIndex: 0);
       expect(
@@ -128,7 +129,7 @@ void main() {
         }),
       ]);
       final keyed = celSurfaceWithSourceEffects(surface, [
-        key(EffectKind.deleteColor, red: 255, green: 255, blue: 255),
+        key(red: 255, green: 255, blue: 255),
       ]);
       expect(pixelAt(keyed, origin, 0, 0)[3], 0);
       expect(pixelAt(keyed, origin, 1, 0), [10, 20, 30, 255]);
@@ -141,7 +142,7 @@ void main() {
         }),
       ]);
       final keyed = celSurfaceWithSourceEffects(surface, [
-        key(EffectKind.deleteColor, red: 255, green: 255, blue: 255),
+        key(red: 255, green: 255, blue: 255),
       ]);
       // ★The destructive verb's undo recipe depends on this: an RGB
       // comparison re-selects exactly the same pixels after the pass.
@@ -160,7 +161,7 @@ void main() {
         untouched,
       ]);
       final keyed = celSurfaceWithSourceEffects(surface, [
-        key(EffectKind.deleteColor, red: 255, green: 255, blue: 255),
+        key(red: 255, green: 255, blue: 255),
       ]);
       expect(identical(keyed.tileAt(neighbour), untouched.tile), isTrue);
       expect(identical(keyed.tileAt(origin), surface.tileAt(origin)), isFalse);
@@ -177,7 +178,7 @@ void main() {
       expect(
         identical(
           celSurfaceWithSourceEffects(surface, [
-            key(EffectKind.deleteColor, amount: 0),
+            key(amount: 0),
           ]),
           surface,
         ),
@@ -193,7 +194,7 @@ void main() {
         }),
       ]);
       final effects = [
-        key(EffectKind.deleteColor, red: 255, green: 255, blue: 255),
+        key(red: 255, green: 255, blue: 255),
       ];
       final first = celSurfaceWithSourceEffects(surface, effects);
       final second = celSurfaceWithSourceEffects(surface, effects);
@@ -206,7 +207,7 @@ void main() {
         (0, 0): [255, 255, 255, 255],
       }).tile;
       ResolvedLayerEffect white() =>
-          key(EffectKind.deleteColor, red: 255, green: 255, blue: 255);
+          key(red: 255, green: 255, blue: 255);
 
       final first = celTileWithSourceEffects(tile, [white()], 256);
       final second = celTileWithSourceEffects(tile, [white()], 256);
@@ -225,7 +226,7 @@ void main() {
       }).tile;
 
       final keyed = celTileWithSourceEffects(tile, [
-        key(EffectKind.deleteColor, red: 255, green: 255, blue: 255),
+        key(red: 255, green: 255, blue: 255),
       ], 256);
 
       expect(identical(keyedCopyOf(tile), keyed), isTrue);
@@ -244,11 +245,10 @@ void main() {
         }),
       ]);
       final tight = celSurfaceWithSourceEffects(surface, [
-        key(EffectKind.deleteColor, red: 255, green: 255, blue: 255),
+        key(red: 255, green: 255, blue: 255),
       ]);
       final loose = celSurfaceWithSourceEffects(surface, [
         key(
-          EffectKind.deleteColor,
           red: 255,
           green: 255,
           blue: 255,
@@ -266,7 +266,7 @@ void main() {
 
       // And back again: the first values are recomputed, not stale.
       final again = celSurfaceWithSourceEffects(surface, [
-        key(EffectKind.deleteColor, red: 255, green: 255, blue: 255),
+        key(red: 255, green: 255, blue: 255),
       ]);
       expect(pixelAt(again, origin, 1, 0)[3], 255);
     });
@@ -280,29 +280,56 @@ void main() {
         }),
       ]);
       final keyed = celSurfaceWithSourceEffects(surface, [
-        key(EffectKind.deleteColor, red: 255, green: 255, blue: 255),
-        key(EffectKind.deleteColor, red: 255),
+        key(red: 255, green: 255, blue: 255),
+        key(red: 255),
       ]);
       expect(pixelAt(keyed, origin, 0, 0)[3], 0);
       expect(pixelAt(keyed, origin, 1, 0)[3], 0);
       expect(pixelAt(keyed, origin, 2, 0)[3], 255);
+    });
+
+    test('a keep gives back what the keys before it took — by Amount, and '
+        'only of its colour (I-132-Q2)', () {
+      final surface = surfaceOf([
+        tileWith(origin, {
+          (0, 0): [255, 0, 0, 200],
+          (1, 0): [255, 255, 255, 255],
+        }),
+      ]);
+      final keyed = celSurfaceWithSourceEffects(surface, [
+        // Everything away: tolerance 255 names every colour.
+        key(tolerance: 255),
+        key(keep: true, red: 255, amount: 50),
+      ]);
+      expect(pixelAt(keyed, origin, 0, 0), [255, 0, 0, 100]);
+      expect(pixelAt(keyed, origin, 1, 0)[3], 0, reason: 'not its colour');
+      // ⛔And a keep with nothing taken before it changes nothing.
+      expect(
+        pixelAt(
+          celSurfaceWithSourceEffects(surface, [key(keep: true, red: 255)]),
+          origin,
+          0,
+          0,
+        ),
+        [255, 0, 0, 200],
+      );
     });
   });
 
   group('the chain the composite can honour', () {
     test('splitSourceEffects keeps each half in its own order', () {
       final effects = [
-        key(EffectKind.deleteColor),
-        ResolvedLayerEffect(kind: EffectKind.blur, values: const [4, 4]),
+        key(),
+        ResolvedLayerEffect(kind: EffectKind.blur, values: const [4, 0]),
       ];
       final split = splitSourceEffects(effects);
-      expect(split.source.single.kind, EffectKind.deleteColor);
+      expect(split.source.single.kind, EffectKind.colorKey);
       expect(split.paint.single.kind, EffectKind.blur);
     });
 
     test('a chain with no keys is handed straight through', () {
       final effects = [
-        ResolvedLayerEffect(kind: EffectKind.blur, values: const [4, 4]),
+        ResolvedLayerEffect(kind: EffectKind.blur, values: const [4, 0]),
       ];
       expect(identical(splitSourceEffects(effects).paint, effects), isTrue);
     });
@@ -314,34 +341,34 @@ void main() {
       // chain has painted so far.
       final blur = ResolvedLayerEffect(
         kind: EffectKind.blur,
-        values: const [4, 4],
+        values: const [4, 0],
       );
       final key = ResolvedLayerEffect(
-        kind: EffectKind.deleteColor,
-        values: const [0, 0, 0, 0, 100],
+        kind: EffectKind.colorKey,
+        values: const [0, 0xFF000000, 100],
       );
       final split = splitSourceEffects([key, blur, key]);
-      expect(split.source.map((e) => e.kind), [EffectKind.deleteColor]);
+      expect(split.source.map((e) => e.kind), [EffectKind.colorKey]);
       expect(split.paint.map((e) => e.kind), [
         EffectKind.blur,
-        EffectKind.deleteColor,
+        EffectKind.colorKey,
       ]);
     });
 
     test('a chain that opens with paint has no CPU half at all', () {
       final blur = ResolvedLayerEffect(
         kind: EffectKind.blur,
-        values: const [4, 4],
+        values: const [4, 0],
       );
       final key = ResolvedLayerEffect(
-        kind: EffectKind.deleteColor,
-        values: const [0, 0, 0, 0, 100],
+        kind: EffectKind.colorKey,
+        values: const [0, 0xFF000000, 100],
       );
       final split = splitSourceEffects([blur, key]);
       expect(split.source, isEmpty);
       expect(split.paint.map((e) => e.kind), [
         EffectKind.blur,
-        EffectKind.deleteColor,
+        EffectKind.colorKey,
       ]);
     });
 
@@ -357,7 +384,7 @@ void main() {
       );
       final colorKey = LayerEffect.defaults(
         id: const EffectId('key'),
-        kind: EffectKind.deleteColor,
+        kind: EffectKind.colorKey,
       );
       final row = Layer(
         id: const LayerId('row'),
@@ -368,7 +395,7 @@ void main() {
       );
       expect(row.effects.map((e) => e.kind).toList(), [
         EffectKind.blur,
-        EffectKind.deleteColor,
+        EffectKind.colorKey,
       ]);
     });
   });

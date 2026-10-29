@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/persistence/file_type_groups.dart';
 import 'package:anicel/src/services/persistence/provider_documents.dart';
+import 'package:anicel/src/services/persistence/settings_file.dart';
 import 'package:anicel/src/services/shortcuts/program_keymap.dart'
     show shortcutFileExtensions;
 
@@ -38,6 +39,30 @@ void main() {
     expect(openedAs('/work/Face.OTF'), OpenedAs.font);
     expect(openedAs('/work/default.KHC'), OpenedAs.shortcuts);
     expect(openedAs('/work/Take3.MOV'), OpenedAs.media);
+  });
+
+  test('I-142: our own settings files — a palette goes into the palettes, '
+      'a shortcut preset where every shortcut file goes', () {
+    expect(openedAs('/work/팔레트 1.$anicelPaletteExtension'), OpenedAs.palette);
+    expect(openedAs('/work/Mine.ANIPALETTE'), OpenedAs.palette);
+    expect(
+      openedAs('/work/Clip Studio based.$anicelShortcutExtension'),
+      OpenedAs.shortcuts,
+    );
+    expect(openableExtensions, contains(anicelPaletteExtension));
+    expect(openableExtensions, contains(anicelShortcutExtension));
+  });
+
+  // 🗣️I-142-Q1: 「읽기는 「파일 열기」 하나」 · Q6: 「임포트 창에 설정 파일의
+  // 행으로」.
+  test('I-142: every setting\'s file opens as settings, which the import '
+      'window lists as rows', () {
+    expect(
+      openedAs('/work/Anicel 설정.$anicelSettingsExtension'),
+      OpenedAs.settings,
+    );
+    expect(openedAs('/work/Mine.ANISETTINGS'), OpenedAs.settings);
+    expect(openableExtensions, contains(anicelSettingsExtension));
   });
 
   test('media is what the pool names a kind for — the same judgement, not a '

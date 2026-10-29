@@ -16,6 +16,7 @@ import 'blends_in_place.dart';
 import 'display_resample.dart';
 import 'landing_preview.dart';
 import 'tile_origin.dart';
+import 'tile_pages.dart';
 import 'tile_picture_budget.dart';
 import 'tiles_under_rect.dart';
 import 'viewport_canvas_transform.dart';
@@ -228,6 +229,7 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
       scale: resolvedViewport == null
           ? 1
           : displayScaleOf(resolvedViewport.zoom, devicePixelRatio),
+      pixelRatio: devicePixelRatio,
     );
     canvas.restore();
   }
@@ -336,6 +338,11 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// box mean of a block of tiles, drawn at `none` — until one-picture-
   /// per-frame ②-5b-2 (유저 D7-2-Q2 「배율이 어떻든 항상 원본 한장」).
   ///
+  /// [pixelRatio] is how many device pixels a unit of [canvas]'s space
+  /// lands on past its transform — the screen's ratio on screen, 1 into a
+  /// raster — the grid each coordinate's edge is cut on where the grid of
+  /// coordinates falls off it ([cutOnThePixelGrid]).
+  ///
   /// [float] is a selection's lifted float, drawn over this surface's
   /// coordinates ([RowFloat]) — and with it this painter's own
   /// [landingPreview].
@@ -343,6 +350,7 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
     Canvas canvas, {
     Paint? layerPaint,
     double scale = 1,
+    required double pixelRatio,
     RowFloat? float,
   }) =>
       // Constructed PER PAINT: the pass keeps one paint's state in `late
@@ -351,6 +359,7 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
         canvas,
         layerPaint: layerPaint,
         scale: scale,
+        pixelRatio: pixelRatio,
         float: float,
       );
 

@@ -24,8 +24,8 @@ import 'axis_bar_gesture.dart';
 ///
 /// ⚠️ONE WIDGET for every drag verb that sits on a control: the dock
 /// splitter (which wrote these four lines by hand first), the block edge's
-/// comma grip, the cut end, the sound's span in the SE audio lane, and every
-/// scrollbar's lane (`AppScrollbar`, F-202). The
+/// comma grip, the cut end, and every scrollbar's lane (`AppScrollbar`,
+/// F-202). The
 /// dense rows' chrome routes its grips by rect instead of mounting widgets,
 /// so it wears the recogniser half directly (`TimelineRowEditChromeLayer`).
 /// ⛔It is deliberately NOT inside `AxisGestureDetector`: the rail's swipe
@@ -102,10 +102,14 @@ class OwningAxisGrip extends RecognizerBox<DragGestureRecognizer> {
   @override
   RenderRecognizerBox<DragGestureRecognizer> createRenderObject(
     BuildContext context,
-  ) => _RenderOwningAxisGrip()..wear(this);
+  ) => RenderOwningAxisGrip()..wear(this);
 }
 
 /// The grip's ONE box: the recogniser offered the down, then the claim
 /// ([HoldsDragVerb]) — the order the claim and the detector under it kept.
-class _RenderOwningAxisGrip extends RenderRecognizerBox<DragGestureRecognizer>
+///
+/// Open to a grip that is more than its press — the value bar's says its
+/// cursor, its wheel and its value too (`FieldSlider`) — so that one is
+/// this box and not boxes around it.
+class RenderOwningAxisGrip extends RenderRecognizerBox<DragGestureRecognizer>
     with HoldsDragVerb {}

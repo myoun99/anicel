@@ -5,12 +5,14 @@ import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/se_name_tag.dart';
+import 'package:anicel/src/models/se_sound.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectLaneId;
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart';
+import 'package:anicel/src/ui/timeline/se_sound_lane_policy.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// **F-374 — a lane span reaches every home it holds lanes of.**
@@ -23,13 +25,13 @@ import 'package:flutter_test/flutter_test.dart';
 /// then worked the fx chain alone or the transform alone, and a span of
 /// the name tag's lanes made, took and named nothing.
 void main() {
-  final blurLane = effectLaneId(const EffectId('e1'), 'blurX');
+  final blurLane = effectLaneId(const EffectId('e1'), 'blurriness');
 
   LayerEffect blur(Map<int, PropertyKey<double>> keys) => LayerEffect(
     id: const EffectId('e1'),
     kind: EffectKind.blur,
     parameters: {
-      'blurX': EffectParameter(track: PropertyTrack<double>(keys: keys)),
+      'blurriness': EffectParameter(track: PropertyTrack<double>(keys: keys)),
     },
   );
 
@@ -65,7 +67,7 @@ void main() {
       .layerById(row.id)!
       .effects
       .single
-      .parameters['blurX']!
+      .parameters['blurriness']!
       .track
       .keys
       .keys
@@ -138,14 +140,14 @@ void main() {
         10: const PropertyKey<double>(10, incoming: EaseSide()),
       }),
     ]);
-    final shown = s.layerById(cel.id)!.effects.single.parameters['blurX']!;
+    final shown = s.layerById(cel.id)!.effects.single.parameters['blurriness']!;
     final before = {for (var f = 1; f < 10; f += 1) f: shown.resolveAt(f)};
     final lane = span(cel, [blurLane], 1, 10);
     s.laneRangeSelection.value = lane;
 
     s.laneVerbs.createLaneKeysForSelection(lane);
 
-    final made = s.layerById(cel.id)!.effects.single.parameters['blurX']!;
+    final made = s.layerById(cel.id)!.effects.single.parameters['blurriness']!;
     expect(
       {for (var f = 1; f < 10; f += 1) f: made.track.keyAt(f)!.value},
       before,
@@ -299,5 +301,92 @@ void main() {
     expect(s.laneVerbs.removeLaneKeysForSelection(lane), isFalse);
     expect(positionKeys(s, cel), {3});
     expect(blurKeys(s, cel), {3});
+  });
+
+  /// The default project's first SE row — a track's — its sound [sound].
+  Layer soundedSe(EditorSessionManager s, SeSound sound) {
+    final se = s.activeTrack.seLayers.first;
+    s.cutCommandCoordinator.setSeSound(layerId: se.id, seSound: sound);
+    return se;
+  }
+
+  PropertyTrack<double> volumeOf(EditorSessionManager s) =>
+      s.activeTrack.seLayers.first.seSound.volume;
+
+  test('🎯a span over the 「오디오」 Volume makes keys there, and Delete takes '
+      'them — one undo each (I-140)', () {
+    final s = session();
+    final se = soundedSe(
+      s,
+      SeSound(
+        volume: PropertyTrack<double>(keys: {3: const PropertyKey(0.5)}),
+      ),
+    );
+    final made = span(se, [seSoundVolumeLaneId], 5, 7);
+    s.laneRangeSelection.value = made;
+
+    s.laneVerbs.createLaneKeysForSelection(made);
+    expect(volumeOf(s).keys.keys, [3, 5, 6]);
+    expect(volumeOf(s).keyAt(5)!.value, 0.5, reason: 'as it plays');
+
+    final taken = span(se, [seSoundVolumeLaneId], 2, 6);
+    s.laneRangeSelection.value = taken;
+    expect(s.laneVerbs.removeLaneKeysForSelection(taken), isTrue);
+    expect(volumeOf(s).keys.keys, [6]);
+
+    s.undo();
+    expect(volumeOf(s).keys.keys, [3, 5, 6]);
+    s.undo();
+    expect(volumeOf(s).keys.keys, [3]);
+  });
+
+  test('🎯a span over the name tag\'s Size and the Volume makes keys in both '
+      'homes, and the 「오디오」 header stands for its Volume — one undo', () {
+    final s = session();
+    final se = taggedSe(
+      s,
+      SeNameTagTrack(
+        fontSize: PropertyTrack<double>(
+          keys: {3: const PropertyKey<double>(20)},
+        ),
+      ),
+    );
+    final lane = span(se, [seSoundGroupLaneId, seNameTagSizeLaneId], 5, 6);
+    s.laneRangeSelection.value = lane;
+
+    s.laneVerbs.createLaneKeysForSelection(lane);
+
+    expect(volumeOf(s).keys.keys, [5]);
+    expect(volumeOf(s).keyAt(5)!.value, 1.0, reason: 'as recorded');
+    expect(tagKeysOf(s).fontSize.keys.keys, [3, 5]);
+    s.undo();
+    expect(volumeOf(s).keys.keys, isEmpty);
+    expect(tagKeysOf(s).fontSize.keys.keys, [3], reason: 'one step');
+  });
+
+  test('a span over the Pan alone makes no key — it is one value', () {
+    final s = session();
+    final se = soundedSe(s, const SeSound(pan: -0.5));
+    final lane = span(se, [seSoundPanLaneId], 2, 4);
+    s.laneRangeSelection.value = lane;
+    final depth = s.historyManager.undoCount;
+
+    s.laneVerbs.createLaneKeysForSelection(lane);
+    expect(s.activeTrack.seLayers.first.seSound, const SeSound(pan: -0.5));
+    expect(s.historyManager.undoCount, depth, reason: 'nothing to undo');
+  });
+
+  test('the key window names the Volume\'s keys', () {
+    final s = session();
+    final se = soundedSe(
+      s,
+      SeSound(
+        volume: PropertyTrack<double>(keys: {3: const PropertyKey(0.5)}),
+      ),
+    );
+    s.laneRangeSelection.value = span(se, [seSoundVolumeLaneId], 3, 4);
+
+    expect(s.laneVerbs.setLaneKeyNamesForSelection('N'), isFalse);
+    expect(volumeOf(s).keyAt(3)!.name, 'N');
   });
 }

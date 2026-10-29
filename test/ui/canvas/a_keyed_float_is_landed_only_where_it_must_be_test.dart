@@ -13,6 +13,7 @@ import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/ui/canvas/landing_preview.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
+import 'package:anicel/src/ui/canvas/text/cel_text_float.dart';
 
 /// transform-float-skips-colour-key — ON A ROW THAT KEYS A COLOUR AWAY, A
 /// FLOAT IS SHOWN AS ITS LANDING ONLY WHERE ITS OWN PIXELS ARE NOT IT.
@@ -32,8 +33,8 @@ void main() {
   const tile = 32;
   final keys = [
     ResolvedLayerEffect(
-      kind: EffectKind.deleteColor,
-      values: [64, 192, 96, 10, 100],
+      kind: EffectKind.colorKey,
+      values: [0, 0xFF40C060, 10, 100],
     ),
   ];
 
@@ -102,7 +103,7 @@ void main() {
   /// The alpha [preview] draws at ([x], [y]) of the canvas, over nothing.
   Future<int> alphaAt(LandingPreview preview, int x, int y) async {
     final recorder = PictureRecorder();
-    preview.paintInto(Canvas(recorder));
+    preview.paintInto(Canvas(recorder), pixelRatio: 1);
     final picture = recorder.endRecording();
     final image = await picture.toImage(canvasSize.width, canvasSize.height);
     picture.dispose();
@@ -146,8 +147,8 @@ void main() {
     final (:float, cel: _) = floatOver(empty);
     final another = [
       ResolvedLayerEffect(
-        kind: EffectKind.deleteColor,
-        values: [200, 20, 20, 10, 100],
+        kind: EffectKind.colorKey,
+        values: [0, 0xFFC81414, 10, 100],
       ),
     ];
 
@@ -198,8 +199,8 @@ void main() {
     final (:float, :cel) = floatOver(tileOf(255), alpha: 128);
     final idle = [
       ResolvedLayerEffect(
-        kind: EffectKind.deleteColor,
-        values: [64, 192, 96, 10, 0],
+        kind: EffectKind.colorKey,
+        values: [0, 0xFF40C060, 10, 0],
       ),
     ];
 
@@ -213,6 +214,69 @@ void main() {
 
     expect(float.shownOn(keys).preview, same(float));
     expect(cel.asked, 0);
+  });
+
+  test('every way a float is shown cuts its edge on the DEVICE\'s grid — at '
+      'a ratio of 2, through the surface it floats over too', () async {
+    // the-walk-draws-off-the-grid-on-impeller (10-28): a float is laid on
+    // the screen under a view at 110% off the grid, recorded in logical
+    // pixels and laid on the device's as the engine's root lays it. At
+    // (8, 8)–(40, 40) its edges fall at device 28.2 · 98.6 and 24.2 · 94.6;
+    // cut on the logical grid instead, the far ones would land a device
+    // pixel short.
+    final (:float, cel: _) = floatOver(empty);
+    final another = [
+      ResolvedLayerEffect(
+        kind: EffectKind.colorKey,
+        values: [0, 0xFFC81414, 10, 100],
+      ),
+    ];
+    final keyed = float.shownOn(another).preview;
+    expect(keyed, isNot(same(float)), reason: '⛔premise: it is keyed');
+    for (final (route, paint) in <(String, void Function(Canvas))>[
+      ('itself', (canvas) => float.paintInto(canvas, pixelRatio: 2)),
+      ('keyed', (canvas) => keyed.paintInto(canvas, pixelRatio: 2)),
+      (
+        'a text in hand',
+        (canvas) => CelTextFloat(
+          held: float,
+          above: null,
+        ).paintInto(canvas, pixelRatio: 2),
+      ),
+      (
+        'over a surface',
+        (canvas) => floatPainter(empty, const []).paintContentInto(
+          canvas,
+          pixelRatio: 2,
+          float: (preview: float, canvasToRow: null),
+        ),
+      ),
+    ]) {
+      final recorder = PictureRecorder();
+      paint(
+        Canvas(recorder, const Rect.fromLTWH(0, 0, 64, 64))
+          ..translate(5.3, 3.3)
+          ..scale(1.1),
+      );
+      final device = PictureRecorder();
+      Canvas(device)
+        ..scale(2)
+        ..drawPicture(recorder.endRecording());
+      final image = await device.endRecording().toImage(128, 128);
+      final bytes = (await image.toByteData())!;
+      image.dispose();
+      for (var y = 0; y < 128; y += 1) {
+        for (var x = 0; x < 128; x += 1) {
+          final inside = x >= 28 && x <= 98 && y >= 24 && y <= 94;
+          expect(
+            bytes.getUint8((y * 128 + x) * 4 + 3),
+            inside ? 255 : 0,
+            reason: '$route ($x,$y): wholly the float inside the '
+                'pixel-centre cut on the device\'s grid, nothing past it',
+          );
+        }
+      }
+    }
   });
 }
 
@@ -239,7 +303,7 @@ class _Landing implements LandingPreview {
   Rect get drawnWorldRect => const Rect.fromLTWH(8, 8, 32, 32);
 
   @override
-  void paintInto(Canvas canvas) {}
+  void paintInto(Canvas canvas, {required double pixelRatio}) {}
 }
 
 /// A cel under a float, counting the landings it is asked for.

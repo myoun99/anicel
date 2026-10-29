@@ -1484,16 +1484,19 @@ QA_EXPORT void qa_premultiply_rgba_rows(
   }
 }
 
-// A row's colour keys over straight pixels, IN PLACE (ABI 49): every alpha
-// what the keys leave it, every colour as it was - and 1 when any alpha
-// changed, 0 when none did.
+// A row's colour keys over straight pixels, IN PLACE (ABI 49, 58): every
+// alpha what the keys leave it, every colour as it was - and 1 when any
+// alpha changed, 0 when none did.
 //
 // ⛔NO KEY IS DEFINED HERE. Which keys name a pixel, and what each leaves of
 // an alpha it erases, are TABLES the Dart side makes from the one definition
 // (`CelColorKey`, lib/src/services/cel_source_effect_pass.dart): bit k of
 // red[r], green[g] and blue[b] says key k is within its tolerance of the
-// pixel in that channel, bit k of [keeps] that key k keeps what it names
-// instead, and alpha_maps[k * 256 + a] is what key k leaves of an alpha a.
+// pixel in that channel, bit k of [restores] that key k gives back what the
+// run erased of what it names instead (AE's Keep Colors, I-132-Q2), and
+// alpha_maps[k * 256 + a] is what key k leaves of an alpha a. [originals]
+// is the run's input, whose alphas a restore gives back to - [pixels]
+// itself in a run's first call; a pixel empty there stays empty.
 // So the float32 mix the shader shares (`shaders/colour_key.frag`) stays
 // computed in one place, and this walks as the Dart walk does, byte for byte
 // (`the_keys_walk_the_same_in_c_test`). Thirty-two keys at most a call; a
@@ -1505,26 +1508,29 @@ QA_EXPORT void qa_premultiply_rgba_rows(
 // (board a-stroke-on-a-keyed-row-shows-its-tiles-unkeyed).
 QA_EXPORT int32_t qa_key_rgba(
     uint8_t* pixels,
+    const uint8_t* originals,
     int32_t pixel_count,
     const uint32_t* red,
     const uint32_t* green,
     const uint32_t* blue,
-    uint32_t keeps,
+    uint32_t restores,
     const uint8_t* alpha_maps) {
   int32_t changed = 0;
   for (int32_t i = 0; i < pixel_count; i += 1) {
     uint8_t* pixel = pixels + (ptrdiff_t)i * 4;
-    const int32_t alpha = pixel[3];
-    if (alpha == 0) {
+    // Read before the write below: [originals] may be [pixels].
+    const int32_t original = originals[(ptrdiff_t)i * 4 + 3];
+    if (original == 0) {
       continue;
     }
-    uint32_t erasing =
-        (red[pixel[0]] & green[pixel[1]] & blue[pixel[2]]) ^ keeps;
+    const int32_t alpha = pixel[3];
+    uint32_t naming = red[pixel[0]] & green[pixel[1]] & blue[pixel[2]];
+    uint32_t restoring = restores;
     int32_t next = alpha;
-    for (const uint8_t* map = alpha_maps; erasing != 0 && next != 0;
-         erasing >>= 1, map += 256) {
-      if (erasing & 1u) {
-        next = map[next];
+    for (const uint8_t* map = alpha_maps; naming != 0;
+         naming >>= 1, restoring >>= 1, map += 256) {
+      if (naming & 1u) {
+        next = (restoring & 1u) ? original - map[original - next] : map[next];
       }
     }
     if (next != alpha) {
@@ -6950,4 +6956,7 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // so a dot lays the same ink wherever it lies. Sizeof moves.
 // v58: qa_blur_dab and qa_blur_result_tile - the blur brush (I-75): a dab
 // rewrites the picture under it, read through a qa_blur_tile table.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 58; }
+// v59: qa_key_rgba gains originals, and its keeps bitmask is restores - a
+// key gives back what its run erased of what it names (AE's Keep Colors,
+// I-132-Q2) instead of erasing what it does not name.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 59; }

@@ -1,6 +1,7 @@
 import 'dart:async' show unawaited;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show ServicesBinding;
 
 import '../../models/app_language.dart';
 import '../../services/input/wintab_pen_service.dart';
@@ -19,6 +20,9 @@ import '../../services/persistence/app_memory_settings.dart';
 import '../../services/persistence/app_ui_scale_store.dart';
 import '../../services/persistence/app_workspace_colors_store.dart';
 import '../../services/persistence/audio_sync_settings_store.dart';
+import '../../services/persistence/usage_stats_store.dart';
+import '../../services/usage_stats/aptabase_client.dart';
+import '../../services/usage_stats/usage_stats.dart';
 import '../../models/app_input_settings.dart';
 import '../../models/audio_sync_settings.dart';
 import '../text/app_strings.dart';
@@ -69,6 +73,8 @@ class EditorAppSettings {
     AppFrameCountSettingsStore? frameCountSettingsStore,
     AppCameraPathSettingsStore? cameraPathSettingsStore,
     AppPixelVerbSettingsStore? pixelVerbSettingsStore,
+    UsageStatsStore? usageStatsStore,
+    AptabaseClient? usageStatsClient,
     Iterable<String> Function()? deviceLanguageCodes,
   }) : _languageSettingsStore = languageSettingsStore,
        _deviceLanguageCodes = deviceLanguageCodes ?? _platformLanguageCodes,
@@ -83,7 +89,9 @@ class EditorAppSettings {
        _frameGridSettingsStore = frameGridSettingsStore,
        _frameCountSettingsStore = frameCountSettingsStore,
        _cameraPathSettingsStore = cameraPathSettingsStore,
-       _pixelVerbSettingsStore = pixelVerbSettingsStore;
+       _pixelVerbSettingsStore = pixelVerbSettingsStore,
+       _usageStatsStore = usageStatsStore,
+       _usageStatsClient = usageStatsClient;
 
   /// Starts every restore, in the order the session started them in.
   ///
@@ -103,7 +111,34 @@ class EditorAppSettings {
     unawaited(_restoreFrameCountSettings());
     unawaited(_restoreCameraPathSettings());
     unawaited(_restorePixelVerbSettings());
+    unawaited(usageStats.restore());
   }
+
+  // --- Usage statistics (I-70) ----------------------------------------------
+
+  /// Injectable persistence; null (tests) keeps the answer in memory.
+  final UsageStatsStore? _usageStatsStore;
+
+  /// Where the statistics go; null sends under the release's App Key —
+  /// which no build but a release has, so nothing leaves a test.
+  final AptabaseClient? _usageStatsClient;
+
+  /// Whether this device sends usage statistics, and the sending — ONE
+  /// answer the question at launch and Preferences' switch both give
+  /// (I-70). The shell reports the launch and each return to the app to it.
+  late final UsageStats usageStats = UsageStats(
+    store: _usageStatsStore,
+    client: _usageStatsClient,
+    locale: () => languageSettings.value.programLanguage.languageCode,
+    osLocale: _platformLanguageTag,
+  );
+
+  /// The device's own language, as the platform names it (`ko-KR`,
+  /// `zh-Hans-CN`) — for the usage statistics (유저 2026-10-29 09:1x).
+  /// Through the binding's dispatcher, which a test can set, rather than
+  /// [PlatformDispatcher.instance], which it cannot.
+  static String _platformLanguageTag() =>
+      ServicesBinding.instance.platformDispatcher.locale.toLanguageTag();
 
   // --- Frame grid (block frame lines, 2026-09-24) ---------------------------
 
@@ -281,6 +316,12 @@ class EditorAppSettings {
   void setUiScale(double scale) =>
       _publish(AppUiScale.value, AppUiScale.snap(scale), _uiScaleStore?.save);
 
+  /// The UI scale read again from its file — the one read after `main()`'s:
+  /// a settings file's put in place (I-142), where the jump the start avoids
+  /// is what was asked for.
+  Future<void> rereadUiScale() async =>
+      _restored(AppUiScale.value, await _uiScaleStore?.load());
+
   // --- Language settings (UI-R10 #7) ----------------------------------------
 
   /// Injectable persistence; null (tests) keeps the in-memory defaults.
@@ -442,9 +483,11 @@ class EditorAppSettings {
 
   /// [languageSettings] is NOT disposed here: it lives on [AppText],
   /// app-wide, and outlives this object (as the accent settings do). The
-  /// A/V offset and the peg settings are this object's own, so they go.
+  /// A/V offset, the peg settings and the usage statistics' switch are this
+  /// object's own, so they go.
   void dispose() {
     audioSyncSettings.dispose();
     onionSkinSettings.dispose();
+    usageStats.dispose();
   }
 }

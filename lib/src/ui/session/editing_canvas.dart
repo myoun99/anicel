@@ -51,7 +51,14 @@ class EditingCanvas {
     required List<ResolvedLayerEffect> Function(CutId cutId, int frameIndex)
     cutEffectsAt,
     required TransformPose? Function(BrushFrameKey key) movieLaidAt,
-  }) : _cutEffectsAt = cutEffectsAt,
+    required Map<LayerId, List<CutFrameCompositeGhost>> Function(
+      Cut cut,
+      int frameIndex,
+      TimelineDragPreview? dragPreview,
+    )
+    ghostsAt,
+  }) : _ghostsAt = ghostsAt,
+       _cutEffectsAt = cutEffectsAt,
        _project = project,
        _selection = selection,
        _changes = changes,
@@ -66,6 +73,14 @@ class EditingCanvas {
   /// (`MovieCelHydrator.laidAt`) — the stack moves it to where its row's
   /// reference fx stands now ([EditingStackMap]).
   final TransformPose? Function(BrushFrameKey key) _movieLaidAt;
+
+  /// Each onion row's ghosts at a cut's frame (`OnionSkin.ghostsAt`).
+  final Map<LayerId, List<CutFrameCompositeGhost>> Function(
+    Cut cut,
+    int frameIndex,
+    TimelineDragPreview? dragPreview,
+  )
+  _ghostsAt;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -104,6 +119,45 @@ class EditingCanvas {
   })
   get stack => _stackAtThePlayhead(_selection.activeLayerId);
 
+  /// [stack] with each onion row's ghosts directly under its drawing
+  /// (`OnionSkinPlacement.inPlace`) — the one picture a canvas standing in
+  /// place shows, and the one its pen's steps are patched into.
+  ({
+    List<CompositeNode<CanvasStackRow>> nodes,
+    double activeLayerOpacity,
+    List<ResolvedLayerEffect> activeSourceEffects,
+  })
+  get stackWithItsGhosts =>
+      _stackAtThePlayhead(_selection.activeLayerId, ghostsInPlace: true);
+
+  /// The onion ghosts a canvas standing on [cut]'s frame [frameIndex] lays
+  /// over its picture (`OnionSkinPlacement.onTop`), each onion row's in
+  /// stack order — drawn as the same ghosts are in place.
+  List<CompositeNode<CanvasStackRow>> ghostsOverAt(Cut cut, int frameIndex) {
+    final dragPreview = _dragPreview.value;
+    return EditingStackMap(
+      opacityVerbs: _opacityVerbs,
+      project: _project,
+      cut: cut,
+      stackCut: cut,
+      dragPreview: dragPreview,
+      frameIndex: frameIndex,
+      activeLayerId: null,
+      movieLaidAt: _movieLaidAt,
+    ).mapTree(
+      readingTheirRows(
+        [
+          for (final ghosts in _ghostsAt(cut, frameIndex, dragPreview).values)
+            for (final ghost in ghosts)
+              CompositeLeaf<CutFrameCompositeRow>(ghost),
+        ],
+        cut: cut,
+        frameIndex: frameIndex,
+        liveLayerId: null,
+      ),
+    );
+  }
+
   /// [stack] as a RUN shows it: the same tree with no row standing live. A
   /// run draws on nothing, so the frame is the picture the warmer made of
   /// it ahead of the playhead (`FramePictures`), keyed by this tree — the
@@ -127,12 +181,23 @@ class EditingCanvas {
   /// ⚠️The track's SE rows join the open cut's frames only: their clones are
   /// the open cut's window ([TrackSeDisplay.trackSeWindow]), and another
   /// cut's would stand where they do not.
-  List<CompositeNode<CanvasStackRow>> playedStackAt(Cut cut, int frameIndex) =>
-      [
+  ///
+  /// [ghostsInPlace] asks it as a canvas standing in place shows it
+  /// ([stackWithItsGhosts]) — what the warmer lays ahead of a scrub.
+  List<CompositeNode<CanvasStackRow>> playedStackAt(
+    Cut cut,
+    int frameIndex, {
+    bool ghostsInPlace = false,
+  }) => [
         ..._underTheCutsFx(
           cut.id,
           frameIndex,
-          stackAt(cut: cut, frameIndex: frameIndex, drawingLayerId: null).nodes,
+          stackAt(
+            cut: cut,
+            frameIndex: frameIndex,
+            drawingLayerId: null,
+            ghosts: ghostsInPlace ? _ghostsAt(cut, frameIndex, null) : null,
+          ).nodes,
         ),
         if (cut.id == _project.activeCutOrNull?.id)
           ..._trackSeDisplayNodes(
@@ -148,7 +213,7 @@ class EditingCanvas {
     double activeLayerOpacity,
     List<ResolvedLayerEffect> activeSourceEffects,
   })
-  _stackAtThePlayhead(LayerId? drawingLayerId) {
+  _stackAtThePlayhead(LayerId? drawingLayerId, {bool ghostsInPlace = false}) {
     final cut = _project.activeCutOrNull;
     if (cut == null) {
       return (
@@ -182,6 +247,7 @@ class EditingCanvas {
       dragPreview: dragPreview,
       frameIndex: frameIndex,
       drawingLayerId: drawingLayerId,
+      ghosts: ghostsInPlace ? _ghostsAt(cut, frameIndex, dragPreview) : null,
     );
     final nodes = <CompositeNode<CanvasStackRow>>[
       ..._underTheCutsFx(cut.id, frameIndex, drawn.nodes),
@@ -213,7 +279,8 @@ class EditingCanvas {
   /// canvas's opacity drag preview); [cut] is what the brush holds. The live
   /// row stands in the tree only when it takes brush input and shows the cel
   /// the brush holds; otherwise it composites like any other. [dragPreview]
-  /// is the drag [stackCut] shows, if any ([EditingStackMap.dragPreview]).
+  /// is the drag [stackCut] shows, if any ([EditingStackMap.dragPreview]);
+  /// [ghosts], each onion row's where they lie in place.
   ({
     List<CompositeNode<CanvasStackRow>> nodes,
     double activeLayerOpacity,
@@ -225,6 +292,7 @@ class EditingCanvas {
     TimelineDragPreview? dragPreview,
     required int frameIndex,
     required LayerId? drawingLayerId,
+    Map<LayerId, List<CutFrameCompositeGhost>>? ghosts,
   }) {
     final shown = stackCut ?? cut;
     final walk = EditingStackMap(
@@ -247,6 +315,7 @@ class EditingCanvas {
         liveLayerId: drawing != null && layerAcceptsBrushInput(drawing)
             ? drawingLayerId
             : null,
+        ghostsOf: ghosts == null ? null : (row) => ghosts[row.id] ?? const [],
       ),
     );
     return (

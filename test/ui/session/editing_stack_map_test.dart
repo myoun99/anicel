@@ -60,7 +60,7 @@ void main() {
       LayerBlendMode.add,
     );
     s.effectsAndFx.updateLayerEffects(s.activeLayer!.id, [
-      effect(EffectKind.deleteColor, 'amount', 100),
+      effect(EffectKind.colorKey, 'amount', 100),
     ]);
     return s;
   }
@@ -157,7 +157,7 @@ void main() {
 
     expect(
       map.activeSourceEffects.map((effect) => effect.kind),
-      [EffectKind.deleteColor],
+      [EffectKind.colorKey],
       reason:
           'the row you are DRAWING on is painted tile by tile by the '
           'brush panel\'s own painter, which never applies the colour '
@@ -172,7 +172,7 @@ void main() {
     s.selectFrameIndex(0);
     s.createDrawingAtCurrentFrame();
     s.effectsAndFx.updateLayerEffects(s.activeLayer!.id, [
-      effect(EffectKind.blur, 'blurX', 8),
+      effect(EffectKind.blur, 'blurriness', 8),
     ]);
     final (map, _) = stackOf(s);
 
@@ -261,7 +261,7 @@ void main() {
       expect(map.activeLayerOpacity, closeTo(0.5, 1e-9));
       expect(
         map.activeSourceEffects.map((effect) => effect.kind),
-        [EffectKind.deleteColor],
+        [EffectKind.colorKey],
       );
     });
 

@@ -14,7 +14,6 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
-import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
@@ -73,7 +72,6 @@ Layer _numbered(String id) => Layer(
     LayerEffect(
       id: _number,
       kind: EffectKind.celNumber,
-      ink: PropertyTrack<int>(keys: const {}),
     ),
   ],
 );
@@ -146,7 +144,7 @@ final _popups = <_Popup>[
     button: (grid) => find.byKey(
       ValueKey<String>(
         '${grid.prefix}-lane-color-a2-'
-        '${effectLaneId(_number, effectInkLane)}',
+        '${effectLaneId(_number, 'ink')}',
       ),
     ),
     window: find.byKey(

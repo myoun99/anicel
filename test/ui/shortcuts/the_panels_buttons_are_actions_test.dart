@@ -59,6 +59,7 @@ const panelButtons = [
   EditorActionIds.timesheetDataMode,
   EditorActionIds.conteFormat,
   EditorActionIds.envelopeFormat,
+  EditorActionIds.paletteNew,
   ...toolSettingsButtons,
 ];
 
@@ -322,6 +323,7 @@ void main() {
         '표기 시트 / 데이터 시트',
       );
       expect(editorActionLabel(EditorActionIds.textDeleteText), '텍스트 삭제');
+      expect(editorActionLabel(EditorActionIds.paletteNew), '새 팔레트');
       // The button's own words — or, where the button's alone would say
       // less in a list of every key (초기화 · 반전), its tool's name with
       // them.
@@ -447,6 +449,33 @@ void main() {
       await tester.sendKeyEvent(k);
       await tester.pumpAndSettle();
       expect(asked, 2);
+    });
+
+    testWidgets('the palette panel\'s ＋ makes a palette — whatever tool is '
+        'in hand (I-131)', (tester) async {
+      Finder named(int n) => find.byKey(ValueKey<String>('palette-p$n-name'));
+      await pumpHome(tester);
+      await pressKeyOf(tester, EditorActionIds.paletteNew);
+
+      final colour = find.byKey(const ValueKey<String>('tool-color-button'));
+      await tester.ensureVisible(colour);
+      await tester.pumpAndSettle();
+      await tester.tap(colour);
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('panel-tab-color-palette')),
+      );
+      await tester.pumpAndSettle();
+      expect(named(1), findsOneWidget, reason: '⛔premise: the panel shows');
+      expect(named(2), findsNothing, reason: 'it was shut: no ＋ to press');
+
+      await tester.sendKeyEvent(k);
+      await tester.pumpAndSettle();
+      expect(named(2), findsOneWidget);
+      await takeUp(tester, 'select');
+      await tester.sendKeyEvent(k);
+      await tester.pumpAndSettle();
+      expect(named(3), findsOneWidget);
     });
 
     testWidgets('the text tool\'s 🗑 takes the text in hand off its cel — '

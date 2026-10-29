@@ -25,6 +25,7 @@ class AppConfirmDialog extends StatelessWidget {
     this.windowKey,
     this.width,
     this.details = const [],
+    this.opensOnItsYes = true,
   });
 
   final String title;
@@ -50,12 +51,16 @@ class AppConfirmDialog extends StatelessWidget {
   /// 🗣️F-479 (유저 2026-10-26): 「탭 안눌러도 포커스 바로 닫기에 있어서
   /// 엔터로 닫기 눌러지게」 — the window opens with the keyboard on the one
   /// that does what it asks: its emphasized action, or its ONE way out
-  /// ([_openingOnItsYes]). The keyboard stops at these alone: what the
-  /// sentence is about is there to read ([DetailsDisclosure]).
+  /// ([_openingOnItsYes]) — unless [opensOnItsYes] is false. The keyboard
+  /// stops at these alone: what the sentence is about is there to read
+  /// ([DetailsDisclosure]).
   final List<AppWindowAction> actions;
 
   final Key? windowKey;
   final double? width;
+
+  /// See [ConfirmQuestion.opensOnItsYes].
+  final bool opensOnItsYes;
 
   @override
   Widget build(BuildContext context) {
@@ -83,7 +88,7 @@ class AppConfirmDialog extends StatelessWidget {
                 ],
               ],
             ),
-      actions: _openingOnItsYes(actions),
+      actions: opensOnItsYes ? _openingOnItsYes(actions) : actions,
     );
   }
 }
@@ -391,6 +396,7 @@ class ConfirmQuestion {
     required this.message,
     this.titleIcon,
     this.details = const [],
+    this.opensOnItsYes = true,
   });
 
   /// ⛔THE THREE KEYS ARE ONE NAME (see [confirmDialogKeys]), so they ride
@@ -405,6 +411,18 @@ class ConfirmQuestion {
   /// See [AppConfirmDialog.details] — the uses a media pool remove would
   /// take with it, for one (F-118).
   final List<NoticeDetails> details;
+
+  /// Whether the window opens with the keyboard on its yes, as F-479 has
+  /// every one do ([AppConfirmDialog.actions]). False is the question only
+  /// a deliberate press may answer: it opens on neither button, so Enter
+  /// answers nothing — and its yes still wears its accent, as where a
+  /// window opens is not what its buttons look like.
+  ///
+  /// 🗣️I-70-Q6 (유저 2026-10-29: 「포커스 없음」) — the usage statistics'
+  /// consent, the one window that asks it (`usage_stats_question.dart`).
+  /// It rides with the question, not the route, so a flow that builds
+  /// [confirmWindow] inside a dialog of its own keeps it too.
+  final bool opensOnItsYes;
 }
 
 /// Asks a yes/no question in the app's own window and answers what the
@@ -479,6 +497,7 @@ Widget confirmWindow(
   titleIcon: question.titleIcon,
   message: question.message,
   details: question.details,
+  opensOnItsYes: question.opensOnItsYes,
   actions: confirmActions(
     context,
     keys: question.keys,

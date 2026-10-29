@@ -21,6 +21,7 @@ import 'layer_process.dart';
 import 'media_reference.dart';
 import 'non_negative_index_map.dart';
 import 'se_name_tag.dart';
+import 'se_sound.dart';
 import 'storyboard_coverage.dart' show storyboardConteStart;
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
@@ -46,8 +47,7 @@ class Layer {
     this.lanesExpanded = false,
     Set<String> expandedLaneGroups = const {},
     this.muted = false,
-    this.audioGain = 1.0,
-    this.audioPan = 0.0,
+    this.seSound = const SeSound(),
     this.opacity = 1.0,
     this.blendMode = LayerBlendMode.normal,
     this.kind = LayerKind.animation,
@@ -139,15 +139,12 @@ class Layer {
   /// clips of muted layers, the waveforms keep displaying.
   final bool muted;
 
-  /// The SE row's track fader (AUDIO-PRO R1): multiplies every clip on
-  /// this layer. 1.0 = unity; applied exactly by the mixer (headroom, no
-  /// platform clamp), like clip gain.
-  final double audioGain;
-
-  /// The SE row's pan, -1 (left) .. +1 (right), equal-power law. 0 =
-  /// center. Applied on the device mixer path; the platform-player
-  /// fallback cannot pan (honest limitation, like exact gain before it).
-  final double audioPan;
+  /// The SE row's sound — its volume over time and its pan, the 「오디오」
+  /// group of its twirl-down (I-140). Multiplies every clip on the row,
+  /// applied exactly by the mixer (headroom, no platform clamp); the pan
+  /// reaches the device mixer path alone — the platform-player fallback
+  /// cannot pan.
+  final SeSound seSound;
 
   final double opacity;
 
@@ -308,8 +305,7 @@ class Layer {
     bool? lanesExpanded,
     Set<String>? expandedLaneGroups,
     bool? muted,
-    double? audioGain,
-    double? audioPan,
+    SeSound? seSound,
     double? opacity,
     LayerBlendMode? blendMode,
     LayerKind? kind,
@@ -341,8 +337,7 @@ class Layer {
       lanesExpanded: lanesExpanded ?? this.lanesExpanded,
       expandedLaneGroups: expandedLaneGroups ?? this.expandedLaneGroups,
       muted: muted ?? this.muted,
-      audioGain: audioGain ?? this.audioGain,
-      audioPan: audioPan ?? this.audioPan,
+      seSound: seSound ?? this.seSound,
       opacity: opacity ?? this.opacity,
       blendMode: blendMode ?? this.blendMode,
       kind: kind ?? this.kind,
@@ -401,8 +396,7 @@ class Layer {
     if (expandedLaneGroups.isNotEmpty)
       'expandedLaneGroups': [...expandedLaneGroups]..sort(),
     if (muted) 'muted': true,
-    if (audioGain != 1.0) 'audioGain': audioGain,
-    if (audioPan != 0.0) 'audioPan': audioPan,
+    if (seSound != const SeSound()) 'seSound': seSound.toJson(),
     'opacity': opacity,
     // Default normal omitted — pre-blend files read back unchanged.
     if (blendMode != LayerBlendMode.normal) 'blendMode': blendMode.toJson(),
@@ -458,8 +452,9 @@ class Layer {
           laneId as String,
       },
       muted: json['muted'] as bool? ?? false,
-      audioGain: (json['audioGain'] as num?)?.toDouble() ?? 1.0,
-      audioPan: (json['audioPan'] as num?)?.toDouble() ?? 0.0,
+      seSound: json['seSound'] is Map<String, dynamic>
+          ? SeSound.fromJson(json['seSound'] as Map<String, dynamic>)
+          : const SeSound(),
       opacity: (json['opacity'] as num).toDouble(),
       blendMode: LayerBlendMode.fromJson(json['blendMode']),
       kind: json.containsKey('kind')
@@ -541,8 +536,7 @@ class Layer {
           listEquals(other.audioClips, audioClips) &&
           other.isVisible == isVisible &&
           other.muted == muted &&
-          other.audioGain == audioGain &&
-          other.audioPan == audioPan &&
+          other.seSound == seSound &&
           other.opacity == opacity &&
           other.blendMode == blendMode &&
           other.kind == kind &&
@@ -594,7 +588,7 @@ class Layer {
       Object.hashAllUnordered(expandedLaneGroups),
     ),
     muted,
-    Object.hash(audioGain, audioPan),
+    seSound,
     // Folded with opacity: Object.hash caps at 20 positional args.
     Object.hash(opacity, blendMode),
     kind,
@@ -757,9 +751,25 @@ bool layerTakesSheetCelColumn(Layer layer) =>
 /// 타임시트용지패널의 CELL란에 표시하도록. 액션란에는 표시안함. 동화의 어떤
 /// 수정공정이던 CELL란표시」 · 10-21, F-431: 「시아게 공정쪽 레이어도
 /// 동일하게 CELL란에 등록」).
-bool layerTakesTheCelBlock(Layer layer) => switch (layer.mark.process) {
-  LayerProcess.inbetween || LayerProcess.finish => true,
-  _ => false,
+bool layerTakesTheCelBlock(Layer layer) =>
+    celStageOf(layer) != LayerProcess.key;
+
+/// The stage a cel row's drawings are counted under on paper, by its
+/// colour label whatever its revise: 動画 ([LayerProcess.inbetween]) and
+/// 仕上げ ([LayerProcess.finish]) — the CELL block's rows — and 原画
+/// ([LayerProcess.key]) for every other: the ACTION block's.
+///
+/// 🗣️F-498 (유저 2026-10-29): 「원화 세는건 타임시트용지패널이랑 맞추고
+/// (액션란이 원화), 동화도 그거 맞추고(셀란. 이 경우는 색라벨이 동화쪽일때만.
+/// 어떤 수정이던.). 시아게도 색라벨 맞춰서. 이런 법 하나로 통일. 뭐가 원화,
+/// 뭐가 동화로 인식되는지 라는 법」 — the sheet's two blocks
+/// ([layerTakesTheCelBlock]) and the cut envelope's counts
+/// (`cutEnvelopeCelCounts`) read this one answer. ↩️The envelope counted
+/// every cel row's drawings as 原画 and estimated its 動画 off them.
+LayerProcess celStageOf(Layer layer) => switch (layer.mark.process) {
+  LayerProcess.inbetween => LayerProcess.inbetween,
+  LayerProcess.finish => LayerProcess.finish,
+  _ => LayerProcess.key,
 };
 
 /// D24 후반: whether this layer marks a BOOK on the sheet — an image row

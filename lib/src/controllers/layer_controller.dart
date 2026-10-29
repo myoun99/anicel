@@ -171,7 +171,12 @@ class LayerController {
     _activeLayerId = layerId;
   }
 
-  void addLayer({required Layer layer, int? insertionIndex}) {
+  /// [bornWithACel]: see `planAddLayersCommandInput`.
+  void addLayer({
+    required Layer layer,
+    int? insertionIndex,
+    bool bornWithACel = false,
+  }) {
     final cutId = _cutId;
     if (cutId == null) {
       return; // Gap state: nowhere to add (the UI stands down too).
@@ -185,6 +190,7 @@ class LayerController {
         cutId: cutId,
         layer: layer,
         insertionIndex: insertionIndex ?? insertionIndexAboveActiveLayer(),
+        bornWithACel: bornWithACel,
       ),
     );
     _activeLayerId = layer.id;
@@ -439,26 +445,6 @@ class LayerController {
         layerId: layerId,
         debugLabel: 'Toggle layer mute',
         apply: (layer) => layer.copyWith(muted: !layer.muted),
-      ),
-    );
-  }
-
-  /// The SE row's track fader + pan (AUDIO-PRO R1) — mix state alongside
-  /// [toggleLayerMuted], and an edit for the same reason: it changes what
-  /// the film sounds like. It wrote straight to the repository until
-  /// 2026-09-25, when the mixer learned to set a whole row selection at
-  /// once (유저: 「소리 … 선택범위 레이어 모두 적용. 언두하나」) — one undo
-  /// needs something to undo.
-  void setLayerAudio({required LayerId layerId, double? gain, double? pan}) {
-    _historyManager.execute(
-      UpdateLayerDisplayCommand(
-        repository: _repository,
-        layerId: layerId,
-        debugLabel: 'Set layer audio',
-        apply: (layer) => layer.copyWith(
-          audioGain: gain == null ? null : (gain < 0.0 ? 0.0 : gain),
-          audioPan: pan?.clamp(-1.0, 1.0),
-        ),
       ),
     );
   }

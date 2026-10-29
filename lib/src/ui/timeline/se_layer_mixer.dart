@@ -7,9 +7,6 @@ import '../editor_session_manager.dart';
 import '../session/session_row_button_presses.dart';
 import '../theme/app_theme.dart';
 import '../widgets/anchored_popup.dart';
-import '../text/readout_text.dart';
-import '../widgets/field_slider.dart';
-import '../widgets/settings_rows.dart';
 import '../input/control_press_claim.dart';
 
 /// The SE row's mixer, opened by pressing the row's SPEAKER (R10 R3).
@@ -21,11 +18,16 @@ import '../input/control_press_claim.dart';
 /// every rail in this app is one. On touch the mixer was unreachable.
 ///
 /// So the speaker stops being a toggle and becomes a door — mute moves
-/// inside with solo, the fader and the pan, and every rail that mounts the
-/// speaker gets the same four controls instead of the timeline rails
-/// getting a menu and the storyboard rail getting nothing.
+/// inside with solo, and every rail that mounts the speaker gets the same
+/// controls instead of the timeline rails getting a menu and the storyboard
+/// rail getting nothing. ↩️The fader and the pan stood here too, until the
+/// row's volume and pan became its 「오디오」 group's lanes, the volume keyed
+/// (I-140: 「음소거버튼은 내부에 있던 게인이나 이런 필요없어지는것들은 삭제」).
 const double seLayerMixerWidth = 236;
-const double seLayerMixerHeight = 224;
+
+/// What the window stands, for where it opens (above or below the speaker):
+/// the margin, the title's line, the gap, the buttons' 26 and the margin.
+const double seLayerMixerHeight = 72;
 
 Future<void> showSeLayerMixer(
   BuildContext anchorContext, {
@@ -52,14 +54,7 @@ class _SeLayerMixer extends StatefulWidget {
 }
 
 class _SeLayerMixerState extends State<_SeLayerMixer> {
-  /// The live drag values. Gain and pan write on RELEASE (the commit-on-
-  /// release rule the opacity bars follow): a write is an undo step and
-  /// re-uploads the whole live audio schedule, neither a per-move price.
-  /// Mute and solo are discrete and land immediately.
-  double? _gainDrag;
-  double? _panDrag;
-
-  /// All four controls press as the speaker that opened the window: inside
+  /// Both controls press as the speaker that opened the window: inside
   /// a row selection they set every selected SE row.
   SessionRowButtonPresses get _presses =>
       SessionRowButtonPresses(widget.session);
@@ -76,10 +71,10 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
 
   @override
   Widget build(BuildContext context) {
-    // The session is the single source for all four: mute/gain/pan are
-    // Layer fields, solo is session-only monitoring state that is never
-    // saved and never exported. Listening to both keeps the window honest
-    // when something else moves them.
+    // The session is the single source for both: mute is a Layer field,
+    // solo is session-only monitoring state that is never saved and never
+    // exported. Listening to both keeps the window honest when something
+    // else moves them.
     return AnimatedBuilder(
       animation: Listenable.merge([
         widget.session,
@@ -99,8 +94,6 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
     final strings = widget.session.uiStrings;
     final soloed = widget.session.visibilitySolo.soloedSeLayerIds.value
         .contains(layer.id);
-    final gain = _gainDrag ?? layer.audioGain.clamp(0.0, 2.0);
-    final pan = _panDrag ?? layer.audioPan.clamp(-1.0, 1.0);
 
     // ⛔No `Material` of its own — the anchored popup carries the window
     // now (R4 #8).
@@ -140,78 +133,9 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          FieldSlider(
-            key: const ValueKey<String>('se-mixer-gain'),
-            min: 0,
-            max: 2,
-            value: gain,
-            label: strings.audioGainLabel,
-            // A gain of 1 is 100%: the bar reads the multiplier as a
-            // percentage, which is the unit the mixer's own scale is drawn
-            // in.
-            unit: '%',
-            displayScale: 100,
-            onChanged: (value) => setState(() => _gainDrag = value),
-            onChangeEnd: (value) {
-              setState(() => _gainDrag = null);
-              _presses.setGain(widget.layerId, value);
-            },
-          ),
-          const SizedBox(height: 6),
-          settingsHelpTooltip(
-            // The one honest caveat this window owes the user: pan reaches
-            // the sound only on the device-mixer path. The platform-player
-            // fallback sets volume and drops pan entirely.
-            //
-            // 🐛It was drawn in `AppColors.hairline` — the BORDER token,
-            // 0xFF37393C, on a 0xFF303336 surface. A caveat nobody can read
-            // is not a caveat.
-            //
-            // F-2 (유저 2026-08-24): and now it is not a LINE either. It is a
-            // caveat about the control, so it belongs ON the control — a
-            // reader who wants it hovers, and the popup gets its line back.
-            // ⚠️Not treated as the warning exception: nothing is at risk
-            // here, it is a limitation of what the knob reaches.
-            strings.layerAudioPanHelp,
-            FieldSlider(
-              key: const ValueKey<String>('se-mixer-pan'),
-              min: -1,
-              max: 1,
-              // Whole per cents, which is what it writes (`L37`): a bar
-              // holds the numbers it writes (F-488), and without these it
-              // held tenths of its range — L30, L40 — under a whole per cent.
-              displayScale: 100,
-              divisions: 200,
-              value: pan,
-              label: strings.audioPanLabel,
-              // A balance, not a quantity: the bar leaves CENTRE toward the
-              // side it is panned to, so hard left reads as "fully left"
-              // rather than as an empty fader.
-              fillOrigin: 0,
-              // ⚠️An exception to the bar's own number, and one the F-34
-              // card named: a pan is a SIDE and a distance, `L50`/`R50`,
-              // so the sign becomes a letter and never a minus.
-              valueTextBuilder: (pan, _) => _panText(pan),
-              onChanged: (value) => setState(() => _panDrag = value),
-              onChangeEnd: (value) {
-                setState(() => _panDrag = null);
-                _presses.setPan(widget.layerId, value);
-              },
-            ),
-          ),
         ],
       ),
     );
-  }
-
-  static String _panText(double pan) {
-    if (pan == 0) {
-      return 'C';
-    }
-    return pan < 0
-        ? 'L${readoutText(-pan * 100, decimals: 0)}'
-        : 'R${readoutText(pan * 100, decimals: 0)}';
   }
 }
 

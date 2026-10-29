@@ -51,6 +51,18 @@ void main() {
     expect(CanvasTouchContacts.aFingerDownBesides(null), isFalse);
   });
 
+  test('a finger holds a MOVE\'s Shift beside a pen\'s or a mouse\'s drag '
+      '— a finger\'s own drag takes none (I-136, as the stamp\'s '
+      'I-121-Q1)', () {
+    bool holds({required bool byTouch}) =>
+        CanvasTouchContacts.aFingerHoldsAMovesShift(byTouch: byTouch);
+    expect(holds(byTouch: false), isFalse);
+    down(1);
+
+    expect(holds(byTouch: false), isTrue);
+    expect(holds(byTouch: true), isFalse);
+  });
+
   group('a finger leaving', () {
     late List<bool> heard;
 

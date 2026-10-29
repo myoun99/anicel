@@ -80,6 +80,7 @@ void main() {
   ) async {
     await tester.runAsync(() async {
       final image = await service.renderThroughCamera(
+        canvasSize: canvasSize,
         layers: [
           CutFrameCompositeLayer(
             surface: surfaceWithParkedRedPixel(),
@@ -119,6 +120,7 @@ void main() {
   ) async {
     await tester.runAsync(() async {
       final image = await service.renderThroughCamera(
+        canvasSize: canvasSize,
         layers: [
           CutFrameCompositeLayer(
             surface: surfaceWithParkedRedPixel(),
@@ -150,6 +152,7 @@ void main() {
   ) async {
     await tester.runAsync(() async {
       final image = await service.renderThroughCamera(
+        canvasSize: canvasSize,
         layers: [
           CutFrameCompositeLayer(
             surface: surfaceWithRedPixelAt(1, 2),
@@ -173,6 +176,7 @@ void main() {
   ) async {
     await tester.runAsync(() async {
       final image = await service.renderThroughCamera(
+        canvasSize: canvasSize,
         layers: const [],
         // Camera centered at the canvas corner: most of the view is outside.
         pose: CameraPose(center: CanvasPoint(x: 0, y: 0)),
@@ -189,6 +193,7 @@ void main() {
       'camera (composite-time apply)', (tester) async {
     await tester.runAsync(() async {
       final image = await service.renderThroughCamera(
+        canvasSize: canvasSize,
         layers: [
           CutFrameCompositeLayer(
             surface: surfaceWithRedPixelAt(1, 2),
@@ -214,6 +219,7 @@ void main() {
   testWidgets('camera zoom 2 magnifies around the pose center', (tester) async {
     await tester.runAsync(() async {
       final image = await service.renderThroughCamera(
+        canvasSize: canvasSize,
         layers: [
           CutFrameCompositeLayer(
             surface: surfaceWithRedPixelAt(3, 3),
@@ -238,6 +244,7 @@ void main() {
   ) async {
     await tester.runAsync(() async {
       final image = await service.renderThroughCamera(
+        canvasSize: canvasSize,
         layers: [
           CutFrameCompositeLayer(
             // One pixel right of center: canvas (5..6, 4..5).
@@ -273,6 +280,7 @@ void main() {
       pixels[offset + 2] = 0x80;
       pixels[offset + 3] = 255;
       final image = await service.renderThroughCamera(
+        canvasSize: canvasSize,
         layers: [
           CutFrameCompositeLayer(
             surface: BitmapSurface(
@@ -319,6 +327,7 @@ void main() {
       // a camera panned away from it clipped members the view plainly
       // showed. Camera centered at (6,6) with a member at (6,6): visible.
       final image = await service.renderThroughCamera(
+        canvasSize: canvasSize,
         nodes: [
           CompositeGroup<CutFrameCompositeLayer>(
             children: [
@@ -368,6 +377,7 @@ void main() {
   testWidgets('layer opacity blends into the background', (tester) async {
     await tester.runAsync(() async {
       final image = await service.renderThroughCamera(
+        canvasSize: canvasSize,
         layers: [
           CutFrameCompositeLayer(
             surface: surfaceWithRedPixelAt(1, 1),
@@ -392,6 +402,7 @@ void main() {
   ) async {
     await tester.runAsync(() async {
       final image = await service.renderThroughCamera(
+        canvasSize: canvasSize,
         layers: [
           CutFrameCompositeLayer(
             // Left half red? Just one pixel; use scale factor 0.5:
@@ -422,6 +433,7 @@ void main() {
       expect(awaited(), 1, reason: 'LIVENESS: an awaited upload is counted');
 
       final image = await service.renderThroughCamera(
+        canvasSize: canvasSize,
         layers: [CutFrameCompositeLayer(surface: surface, opacity: 1)],
         pose: CameraPose(center: CanvasPoint(x: 4, y: 4)),
         cameraFrameSize: canvasSize,

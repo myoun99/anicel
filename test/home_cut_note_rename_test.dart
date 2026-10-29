@@ -292,6 +292,61 @@ Line 8''';
     expect(await activeCutIdOf(tester), const CutId('default-cut-1'));
   });
 
+  // 🗣️F-291 (유저 2026-10-28): 「컷 대상으로 한 이름편집에서 신이란 항목을
+  // 위에 둬서 거기서도 편집가능 … 텍스트 선택된상태는 지금처럼 컷의 이름에
+  // 가도록. 신은 그리고 이름 비울수있음」.
+  testWidgets('the rename window holds the cut\'s scene over its name — the '
+      'name keeps the focus and its selection — and both land as ONE undo '
+      'step; the scene empties', (WidgetTester tester) async {
+    await tester.pumpWidget(const AnicelApp());
+    const sceneKey = ValueKey<String>('rename-cut-scene-field');
+    const nameKey = ValueKey<String>('rename-cut-text-field');
+    const confirmKey = ValueKey<String>('rename-cut-confirm-button');
+
+    await openRenameCutDialog(tester);
+    expect(
+      tester.getTopLeft(find.byKey(sceneKey)).dy,
+      lessThan(tester.getTopLeft(find.byKey(nameKey)).dy),
+      reason: 'over the name',
+    );
+    final name = tester.widget<EditableText>(
+      find.descendant(
+        of: find.byKey(nameKey),
+        matching: find.byType(EditableText),
+      ),
+    );
+    expect(name.focusNode.hasFocus, isTrue);
+    expect(
+      name.controller.selection,
+      const TextSelection(baseOffset: 0, extentOffset: 1),
+      reason: 'the name, 「1」, selected',
+    );
+
+    await tester.enterText(find.byKey(sceneKey), 'S2');
+    await tester.enterText(find.byKey(nameKey), 'C9');
+    await tester.tap(find.byKey(confirmKey));
+    await tester.pumpAndSettle();
+    await showTimelinePanel(tester);
+    await expectActiveCutName(tester, 'C9');
+    expect(activeCutSceneOf(tester), 'S2');
+
+    await tapUndoButton(tester);
+    await expectActiveCutName(tester, '1');
+    expect(activeCutSceneOf(tester), isEmpty, reason: 'ONE step');
+    await tapRedoButton(tester);
+
+    await openRenameCutDialog(tester);
+    expect(
+      tester.widget<TextField>(find.byKey(sceneKey)).controller!.text,
+      'S2',
+    );
+    await tester.enterText(find.byKey(sceneKey), '');
+    await tester.tap(find.byKey(confirmKey));
+    await tester.pumpAndSettle();
+    expect(activeCutSceneOf(tester), isEmpty);
+    await expectActiveCutName(tester, 'C9');
+  });
+
   testWidgets('ignores empty rename cut input', (WidgetTester tester) async {
     await tester.pumpWidget(const AnicelApp());
 

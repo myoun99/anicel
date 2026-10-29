@@ -231,5 +231,37 @@ void main() {
 
       expect(sliderValue(tester), closeTo(0.4, 1e-9));
     });
+
+    testWidgets('the bar carries its row\'s name, and stands right under '
+        'the preview it follows — no box between that only names or only '
+        'hands down a context', (tester) async {
+      final preview = ValueNotifier<({Set<LayerId> layerIds, double opacity})?>(
+        null,
+      );
+      addTearDown(preview.dispose);
+
+      await pump(
+        tester,
+        layerOpacityField(
+          layer: row('a', opacity: 0.4),
+          keyPrefix: 'timeline',
+          dragPreview: preview,
+          onChanged: (_, _) {},
+        ),
+      );
+
+      expect(
+        tester.widget<FieldSlider>(find.byType(FieldSlider)).name,
+        'timeline-layer-opacity-a',
+      );
+      final follows = tester.element(
+        find.byType(
+          ValueListenableBuilder<({Set<LayerId> layerIds, double opacity})?>,
+        ),
+      );
+      final children = <Element>[];
+      follows.visitChildren(children.add);
+      expect(children.single.widget, isA<FieldSlider>());
+    });
   });
 }

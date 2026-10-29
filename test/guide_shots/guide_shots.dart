@@ -26,9 +26,10 @@ import 'dart:ui' as ui;
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderBox, RenderRepaintBoundary;
-import 'package:flutter/services.dart' show FontLoader, LogicalKeyboardKey;
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/attached_placement.dart';
@@ -61,6 +62,8 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/app_window.dart' show AppWindow;
+import 'package:anicel/src/ui/widgets/content_scrollbar.dart';
+import 'package:anicel/src/ui/widgets/empty_state_text.dart';
 
 import '../helpers/app_faces.dart';
 import '../helpers/home_page_probes.dart' show tapToolbarButton;
@@ -83,16 +86,92 @@ late Directory scratch;
 /// 'monospace' (the frame counter, the export window's file lines) is left
 /// to the system on purpose ([AppTypography]). A test has no system faces
 /// and drew boxes, so the app's own first face stands in.
-Future<void> loadMonospace() async {
-  final loader = FontLoader('monospace');
-  for (final path in [
-    AppTypography.bundledFiles.regular,
-    AppTypography.bundledFiles.bold,
-  ]) {
-    final bytes = File(path).readAsBytesSync();
-    loader.addFont(Future.value(ByteData.view(bytes.buffer)));
+Future<void> loadMonospace() =>
+    loadFace('monospace', weightsOf(AppTypography.bundledFiles));
+
+/// The faces a run in [language] draws in: the app's own — and for
+/// Chinese, which the app leaves to the OS ([AppTypography.familyFor]), the
+/// faces a Chinese Windows PC shows it in.
+///
+/// There Segoe UI, the face Windows' text theme names, draws the Latin, and
+/// a character a face lacks falls back to the PC's Chinese UI face,
+/// Microsoft YaHei UI. A test has no system faces and no fallback between
+/// faces (the first run drew every letter as a box), so YaHei UI — whose
+/// Latin is drawn after Segoe UI's — stands where Windows would reach it:
+/// under the theme's name, and behind BIZ UDPGothic in Nanum Gothic's place
+/// for the canvas's letters. Hangul, which Nanum or Windows would draw, is
+/// boxes in a Chinese run: YaHei UI has none.
+///
+/// ⛔Test-only on purpose: the app's Chinese face is the OS's until the user
+/// decides on bundling one, and the guide shows what that OS shows.
+Future<void> loadTheFacesOf(AppLanguage language) async {
+  if (language != AppLanguage.zhHans) {
+    return loadTheAppFaces();
   }
-  await loader.load();
+  final fonts = '${Platform.environment['WINDIR'] ?? r'C:\Windows'}/Fonts';
+  final yaHeiUi = [
+    for (final file in ['msyh.ttc', 'msyhbd.ttc'])
+      _secondFace(File('$fonts/$file').readAsBytesSync()),
+  ];
+  await loadFace(
+    AppTypography.bundledFamily,
+    weightsOf(AppTypography.bundledFiles),
+  );
+  await loadFace(AppTypography.bundledFallback.single, yaHeiUi);
+  await loadFace(_windowsFace, yaHeiUi);
+}
+
+/// The face Windows' text theme names — Segoe UI.
+final _windowsFace = Typography.material2021(
+  platform: TargetPlatform.windows,
+).black.bodyMedium!.fontFamily!;
+
+/// [theme] with the face Windows prints a face-less style in named where
+/// its slots name none.
+///
+/// The slots that set a whole text style ([AppTypography.inTheAppFace]) name
+/// no face in Chinese, which the app leaves to the OS: a Windows PC prints
+/// them in Segoe UI, its default, and a test in its own boxes — no face
+/// loaded under any name reaches a style that names none (measured). In
+/// every other language they name the app's face and this leaves them be.
+ThemeData _facedAsOnWindows(ThemeData theme) {
+  TextStyle? named(TextStyle? style) =>
+      style?.copyWith(fontFamily: style.fontFamily ?? _windowsFace);
+  ButtonStyle? button(ButtonStyle? style) => style?.copyWith(
+    textStyle: WidgetStateProperty.resolveWith(
+      (states) => named(style.textStyle?.resolve(states)),
+    ),
+  );
+  return theme.copyWith(
+    textButtonTheme: TextButtonThemeData(
+      style: button(theme.textButtonTheme.style),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: button(theme.filledButtonTheme.style),
+    ),
+    tooltipTheme: theme.tooltipTheme.copyWith(
+      textStyle: named(theme.tooltipTheme.textStyle),
+    ),
+  );
+}
+
+/// The second face of a font collection, as a collection of one: a loaded
+/// collection is read at its first face, and in `msyh.ttc` that is
+/// Microsoft YaHei — YaHei UI is the second.
+///
+/// The header is `ttcf`, a version, a count and an offset per face, and
+/// each face's tables stay where they are (offsets from the file's start),
+/// so the one entry pointed at the second face is the whole change.
+/// Version 1 has nothing after the offsets.
+ByteData _secondFace(Uint8List collection) {
+  final data = ByteData.sublistView(collection);
+  if (data.getUint32(0) != 0x74746366 || data.getUint32(8) < 2) {
+    throw StateError('not a collection of two faces or more');
+  }
+  return data
+    ..setUint32(4, 0x00010000)
+    ..setUint32(8, 1)
+    ..setUint32(12, data.getUint32(16));
 }
 
 final shotKey = GlobalKey();
@@ -171,13 +250,19 @@ Future<void> pumpApp(
     programLanguage: language,
     notationLanguage: language,
   );
+  // The app's own defaults, not the test corpus's touch-as-pen: the guide
+  // shows Preferences as a new install opens them.
+  AppInput.settings.value = const AppInputSettings();
+  addTearDown(
+    () => AppInput.settings.value = AppInputSettings.testCorpusBaseline,
+  );
   scratch = Directory.systemTemp.createTempSync('anicel_guide_');
   deleteAfterSessionEnds(scratch);
   await tester.pumpWidget(
     RepaintBoundary(
       key: shotKey,
       child: MaterialApp(
-        theme: buildAppTheme(),
+        theme: _facedAsOnWindows(buildAppTheme()),
         debugShowCheckedModeBanner: false,
         home: HomePage(initialProject: project),
       ),
@@ -381,12 +466,28 @@ Words wordsFor(AppLanguage language) => switch (language) {
     field: '野原',
     bounce: 'ポン',
   ),
-  _ => (
+  AppLanguage.en => (
     speaker: 'Ball',
     line: 'Boing!',
     shadow: 'Shadow',
     field: 'Field',
     bounce: 'Boing',
+  ),
+  // French sets its `!` off with a space — a no-break one, so the `!`
+  // never starts a line of its own.
+  AppLanguage.fr => (
+    speaker: 'Balle',
+    line: 'Boing !',
+    shadow: 'Ombre',
+    field: 'Prairie',
+    bounce: 'Boing',
+  ),
+  AppLanguage.zhHans => (
+    speaker: '皮球',
+    line: '嘭！',
+    shadow: '影子',
+    field: '原野',
+    bounce: '嘭',
   ),
 };
 
@@ -769,6 +870,770 @@ Rect keyed(WidgetTester tester, List<String> prefixes) {
   return all!;
 }
 
+/// The widgets keyed or named exactly [handle].
+Finder byHandle(String handle) => find.byElementPredicate((e) {
+  final key = e.widget.key;
+  return (key is ValueKey<String> && key.value == handle) ||
+      nameOf(e) == handle;
+});
+
+/// Where the one widget keyed or named exactly [handle] stands.
+Rect handleRect(WidgetTester tester, String handle) =>
+    tester.getRect(byHandle(handle).first);
+
+/// [target] scrolled in as far as it takes and no further: the timeline's
+/// command bar runs past the dock in a longer language, and what lies past
+/// either edge comes in at that edge — what is on screen does not move.
+Future<void> bringIn(WidgetTester tester, Finder target) async {
+  for (final policy in [
+    ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+    ScrollPositionAlignmentPolicy.keepVisibleAtStart,
+  ]) {
+    await Scrollable.ensureVisible(
+      tester.element(target.first),
+      alignmentPolicy: policy,
+    );
+  }
+  await tester.pump();
+}
+
+/// Each of [handles] as a picture of its own, `icon-<handle>.png` — a
+/// button's face for the table row that says what it does (law-사이트,
+/// 유저 2026-10-28: 「도구 막대 이런거 브러시 설명같은거 다 브러시 아이콘 스샷
+/// 첨부해서 설명하면 알기쉬우니까 최대한 스샷으로」).
+Future<void> iconShots(WidgetTester tester, List<String> handles) async {
+  for (final handle in handles) {
+    await bringIn(tester, byHandle(handle));
+    await shot(
+      tester,
+      'icon-$handle',
+      rect: handleRect(tester, handle),
+      ratio: 2,
+    );
+  }
+}
+
+/// The panel rail group [railId] holds, as `<name>.png`: alone on its rail
+/// and as tall as what it shows, up to the rail — then the rail as it was.
+///
+/// Open under its neighbour, a lower panel ran past the rail's bottom and
+/// its picture came out cut off below its first two rows.
+Future<void> railPanelShot(
+  WidgetTester tester,
+  String railId,
+  String name,
+) => _aloneOnRail(tester, railId, () => _grownShot(tester, railId, name));
+
+/// Each of [tabs] of the rail group [railId] as `panel-<tab>.png`, alone on
+/// its rail as in [railPanelShot] — and the group back on its first tab,
+/// the one every group ships on.
+Future<void> railTabShots(
+  WidgetTester tester,
+  String railId,
+  List<String> tabs,
+) => _aloneOnRail(tester, railId, () async {
+  for (final tab in tabs) {
+    await tester.tap(byKey('panel-tab-$tab'));
+    await settleReal(tester, 4);
+    await _grownShot(tester, railId, 'panel-$tab');
+  }
+  await tester.tap(byKey('panel-tab-${tabs.first}'));
+  await settleReal(tester, 4);
+});
+
+/// Runs [shoot] with the rail group [railId] the one open on its rail, then
+/// opens and shuts the groups back as they were.
+Future<void> _aloneOnRail(
+  WidgetTester tester,
+  String railId,
+  Future<void> Function() shoot,
+) async {
+  final toggled = [
+    ..._openRailGroups(railId.substring(0, 'rail-L'.length))
+        .where((id) => id != railId),
+    if (byKey('rail-group-body-$railId').evaluate().isEmpty) railId,
+  ];
+  for (final id in toggled) {
+    await tester.tap(byKey(railGroupButtonKey(id)));
+    await tester.pump();
+  }
+  await settleReal(tester);
+  await shoot();
+  for (final id in toggled) {
+    await tester.tap(byKey(railGroupButtonKey(id)));
+    await tester.pump();
+  }
+  await settleReal(tester, 4);
+}
+
+/// The open rail group [railId] as `<name>.png`, pulled as tall as what it
+/// shows for the picture and put back after.
+Future<void> _grownShot(
+  WidgetTester tester,
+  String railId,
+  String name,
+) async {
+  final body = byKey('rail-group-body-$railId');
+  final grip = byKey('dock-resize-$railId-height');
+  final before = tester.getRect(body).height;
+  final hidden = _hiddenBelow(body);
+  if (hidden > 0) {
+    await tester.drag(grip, Offset(0, hidden));
+    await settleReal(tester, 4);
+  }
+  await shot(tester, name, rect: tester.getRect(body), ratio: 2);
+  final grown = tester.getRect(body).height - before;
+  if (grown > 0) {
+    await tester.drag(grip, Offset(0, -grown));
+    await settleReal(tester, 4);
+  }
+}
+
+/// The rail groups open on the rail whose ids start with [side].
+List<String> _openRailGroups(String side) => [
+  for (final element in find.byElementPredicate((e) {
+    final key = e.widget.key;
+    return key is ValueKey<String> &&
+        key.value.startsWith('rail-group-body-$side');
+  }).evaluate())
+    (element.widget.key! as ValueKey<String>).value.substring(
+      'rail-group-body-'.length,
+    ),
+];
+
+/// How much of what [body] shows lies below its bottom: the most any one
+/// of its up-and-down scrollers can still scroll.
+double _hiddenBelow(Finder body) => [
+  0.0,
+  for (final element in find
+      .descendant(of: body, matching: find.byType(Scrollable))
+      .evaluate())
+    if ((element as StatefulElement).state case final ScrollableState s
+        when s.position.axis == Axis.vertical)
+      s.position.maxScrollExtent,
+].reduce(math.max);
+
+/// The tool rail's buttons, top to bottom: the history and view buttons,
+/// then the tools.
+const railButtons = [
+  'undo-button',
+  'redo-button',
+  'rail-onion-skin-button',
+  'rail-deselect-button',
+  'rail-confirm-button',
+  'rail-visibility-solo-button',
+];
+const toolNames = [
+  'brush',
+  'eraser',
+  'eyedropper',
+  'fill',
+  'text',
+  'shape',
+  'guide',
+  'select',
+  'move',
+  'cut',
+];
+
+/// Every tool rail button's face, and for each tool the two panels that
+/// follow it — its library (rail-L1) and its settings (rail-L2) — as
+/// `tool-<name>-library.png` · `tool-<name>-settings.png`. A library that
+/// says it holds nothing is not pictured.
+Future<void> toolShots(WidgetTester tester) async {
+  await iconShots(tester, [
+    ...railButtons,
+    for (final tool in toolNames) 'tool-$tool-button',
+  ]);
+  for (final tool in toolNames) {
+    // The eraser's two panels are the brush's, pixel for pixel.
+    if (tool == 'eraser') {
+      continue;
+    }
+    await tester.tap(byKey('tool-$tool-button'));
+    await settleReal(tester, 4);
+    // With no guide the guide tool's two panels are an empty line each:
+    // one of each kind, the perspective one picked, shows what they hold.
+    final made = tool == 'guide' ? await _addGuides(tester) : 0;
+    final saysEmpty = find
+        .descendant(
+          of: byKey('rail-group-body-rail-L1'),
+          matching: find.byType(EmptyStateText),
+        )
+        .evaluate()
+        .isNotEmpty;
+    if (!saysEmpty) {
+      await railPanelShot(tester, 'rail-L1', 'tool-$tool-library');
+    }
+    await railPanelShot(tester, 'rail-L2', 'tool-$tool-settings');
+    for (var i = 0; i < made; i += 1) {
+      await tester.tap(byKey('undo-button'));
+      await settleReal(tester, 4);
+    }
+  }
+  final guidesLeft = find.byElementPredicate((e) {
+    final key = e.widget.key;
+    return key is ValueKey<String> && key.value.startsWith('guide-row-');
+  });
+  if (guidesLeft.evaluate().isNotEmpty) {
+    throw StateError('the guides made for the guide tool outlived its shots');
+  }
+  await tester.tap(byKey('tool-brush-button'));
+  await settleReal(tester, 4);
+}
+
+/// Every rail button's face; the right rail's panels tab by tab — the
+/// colour panel's three ways of picking, the onion skin and the tool size;
+/// and the canvas's view pill with each of its buttons.
+Future<void> panelShots(WidgetTester tester) async {
+  await iconShots(tester, [for (final id in railIds) railGroupButtonKey(id)]);
+  await railTabShots(tester, 'rail-R1', [
+    'color-wheel',
+    'color-rgb',
+    'color-palette',
+  ]);
+  await railTabShots(tester, 'rail-R4', ['onion-skin', 'tool-size']);
+  // A sheet panel carries a canvas and a view pill of its own, the same
+  // buttons under the same keys: with every rail group shut, the floor's
+  // is the only one.
+  final open = _openRailGroups('rail-');
+  for (final id in open) {
+    await tester.tap(byKey(railGroupButtonKey(id)));
+    await tester.pump();
+  }
+  await settleReal(tester);
+  await shot(
+    tester,
+    'view-pill',
+    rect: keyed(tester, viewButtons).inflate(6),
+    ratio: 2,
+  );
+  await iconShots(tester, viewButtons);
+  for (final id in open) {
+    await tester.tap(byKey(railGroupButtonKey(id)));
+    await tester.pump();
+  }
+  await settleReal(tester, 4);
+}
+
+/// The rail groups as they ship, left then right, top to bottom.
+const railIds = [
+  'rail-L1',
+  'rail-L2',
+  'rail-R1',
+  'rail-R2',
+  'rail-R3',
+  'rail-R4',
+  'rail-R5',
+];
+
+/// The canvas view pill's buttons, left to right.
+const viewButtons = [
+  'canvas-viewport-fit',
+  'canvas-viewport-reset',
+  'canvas-viewport-zoom-out',
+  'canvas-viewport-zoom-in',
+  'canvas-viewport-rotate-ccw',
+  'canvas-viewport-rotate-cw',
+  'canvas-viewport-rotate-reset',
+  'canvas-viewport-flip',
+  'canvas-viewport-flip-vertical',
+  'canvas-paper-color-button',
+  'canvas-pasteboard-color-button',
+  'canvas-backdrop-color-button',
+];
+
+/// The timeline's command pills — each whole, each button's face, and the
+/// menu the layer pill opens from its name — and the transport buttons
+/// beside them.
+Future<void> timelineShots(WidgetTester tester) async {
+  for (final pill in ['layer', 'frame', 'shared']) {
+    await bringIn(tester, byHandle('timeline-toolbar-$pill-group'));
+    await shot(
+      tester,
+      'pill-$pill',
+      rect: handleRect(tester, 'timeline-toolbar-$pill-group').inflate(2),
+      ratio: 2,
+    );
+  }
+  await iconShots(tester, [
+    'timeline-toolbar-add-layer-button',
+    ...framePillButtons,
+    ...sharedPillButtons,
+    ...transportButtons,
+  ]);
+  await barToItsStart(tester);
+  await tester.tap(byKey('timeline-layer-menu-button'));
+  await settleReal(tester, 4);
+  await shot(
+    tester,
+    'menu-layer',
+    rect: keyed(tester, [
+      'timeline-layer-menu-button',
+      'timeline-detach-layer-button',
+      'timeline-rasterize-layer-button',
+      'toggle-storyboard-layer-button',
+    ]).inflate(8),
+    ratio: 2,
+  );
+  await closeWindow(tester);
+}
+
+/// The ball layer's row in the rail, its cells from the label to the
+/// blend, as `layer-row.png`; and the top strip's two menus, each open
+/// under its button, as `menu-project.png` · `menu-settings.png`.
+Future<void> rowAndMenuShots(WidgetTester tester) async {
+  await shot(
+    tester,
+    'layer-row',
+    rect: handleRect(tester, 'timeline-layer-row-$ballLayer').inflate(2),
+    ratio: 2,
+  );
+  for (final menu in ['project', 'settings']) {
+    await tester.tap(byKey('top-strip-$menu-button'));
+    await settleReal(tester, 4);
+    await shot(
+      tester,
+      'menu-$menu',
+      rect: keyed(tester, ['top-strip-$menu-button', 'menu-']).inflate(8),
+      ratio: 2,
+    );
+    await closeWindow(tester);
+  }
+}
+
+/// The settings menu with each of its drawers open over it, as
+/// `menu-<drawer>.png`; the work settings window as `work-settings.png`;
+/// and each tab of Preferences as `prefs-<tab>.png`, as tall as it is.
+Future<void> settingsShots(WidgetTester tester) async {
+  for (final (drawer, rows) in [
+    ('project-settings', 'project-settings-'),
+    ('window-panels', 'panels-menu-item-'),
+  ]) {
+    await tester.tap(byKey('top-strip-settings-button'));
+    await settleReal(tester, 4);
+    await tester.tap(byKey('menu-$drawer'));
+    await settleReal(tester, 4);
+    await shot(
+      tester,
+      'menu-$drawer',
+      rect: keyed(tester, ['top-strip-settings-button', 'menu-', rows])
+          .inflate(8),
+      ratio: 2,
+    );
+    await _closeMenus(tester);
+  }
+
+  await tester.tap(byKey('top-strip-settings-button'));
+  await settleReal(tester, 4);
+  await tester.tap(byKey('menu-work-settings'));
+  await settle(tester, 10);
+  await settleReal(tester, 4);
+  await shot(
+    tester,
+    'work-settings',
+    rect: windowBody(tester, byKey('work-settings-window')),
+    ratio: 2,
+  );
+  await closeWindow(tester);
+
+  await tester.tap(byKey('top-strip-settings-button'));
+  await settleReal(tester, 4);
+  await tester.tap(byKey('menu-edit-preferences'));
+  await settle(tester, 10);
+  await settleReal(tester, 4);
+  for (final tab in [
+    'input',
+    'autosave',
+    'audio',
+    'language',
+    'display',
+    'memory',
+  ]) {
+    final key = byKey('preferences-section-$tab');
+    if (key.evaluate().isEmpty) continue;
+    await tester.tap(key);
+    await settleReal(tester, 4);
+    await scrolledWindowShot(
+      tester,
+      'prefs-$tab',
+      byKey('preferences-dialog'),
+    );
+  }
+  await tester.tap(byKey('preferences-close'));
+  await settleReal(tester, 4);
+}
+
+/// The effects button's menu as `menu-effects.png`; then the ball layer
+/// with a blur and two position keys, its lanes open (`lanes.png`), the
+/// second key's edit window (`key-edit.png`) and the transform graph
+/// (`lane-graph.png`) — and all of it taken away again.
+Future<void> effectsShots(WidgetTester tester) async {
+  final s = sessionOf(tester);
+  final history = s.historyManager;
+  final before = history.undoCount;
+  final layer = ballLayer.value;
+  s.selectLayer(ballLayer);
+  await settleReal(tester, 4);
+  await openEffectsMenu(tester);
+  await shot(
+    tester,
+    'menu-effects',
+    rect: keyed(
+      tester,
+      ['timeline-effects-button', 'add-effect-'],
+    ).inflate(12),
+    ratio: 2,
+  );
+  // An effect added shows itself: the row's lanes open with it.
+  await tester.tap(byKey('add-effect-blur'));
+  await settleReal(tester, 4);
+  await barToItsStart(tester);
+  final lanes = find.named('timeline-lane-toggle-$layer');
+  final twirl = find.named('timeline-lane-group-toggle-$layer-transform-group');
+  if (twirl.evaluate().isEmpty) {
+    await tester.tap(lanes);
+    await settleReal(tester, 4);
+  }
+  // The Transform group opens folded. Its rows are built as they scroll
+  // in, so each is brought in first.
+  await tester.ensureVisible(twirl);
+  await settleReal(tester, 4);
+  await tester.tap(twirl);
+  await settleReal(tester, 4);
+  final position = byKey('timeline-lane-key-toggle-$layer-position');
+  await tester.ensureVisible(position);
+  await settleReal(tester, 4);
+  // The first key by its ◆, the second by a value typed where the lane has
+  // keys — elsewhere, so the graph has a slope to show.
+  s.selectFrameIndex(4);
+  await settleReal(tester, 4);
+  await tester.tap(position);
+  await settleReal(tester, 4);
+  s.selectFrameIndex(16);
+  s.laneVerbs.setLaneValueAt(
+    ballLayer,
+    'position',
+    16,
+    '1300, 540',
+    frameIsGlobal: false,
+    description: 'Set Position at frame 17',
+    scaleLinked: false,
+  );
+  await settleReal(tester, 4);
+  await shot(tester, 'lanes', rect: bottomDock(tester), ratio: 2);
+
+  final second = byKey('timeline-lane-key-$layer-position-16');
+  await tester.ensureVisible(second);
+  await settleReal(tester, 4);
+  await tester.tap(second);
+  await settleReal(tester, 4);
+  await tester.tap(byKey('shared-edit-button'));
+  await settle(tester, 10);
+  await settleReal(tester, 4);
+  await shot(
+    tester,
+    'key-edit',
+    rect: windowBody(tester, find.byType(AppWindow).last),
+    ratio: 2,
+  );
+  await closeWindow(tester);
+
+  final graph = find.named('timeline-lane-group-graph-$layer-transform-group');
+  await tester.ensureVisible(graph);
+  await settleReal(tester, 4);
+  await tester.tap(graph);
+  await settleReal(tester, 4);
+  await shot(tester, 'lane-graph', rect: bottomDock(tester), ratio: 2);
+  await tester.tap(graph);
+  await settleReal(tester, 4);
+
+  // Back to before the blur: what opened the lanes went with it, or they
+  // are shut by hand.
+  while (history.undoCount > before) {
+    await tester.tap(byKey('undo-button'));
+    await settleReal(tester, 4);
+  }
+  if (twirl.evaluate().isNotEmpty) {
+    await tester.ensureVisible(lanes);
+    await settleReal(tester, 4);
+    await tester.tap(lanes);
+    await settleReal(tester, 4);
+  }
+  s.selectFrameIndex(9);
+  await settleReal(tester, 4);
+  await barToItsStart(tester);
+}
+
+/// The bar's Fx button brought in and pressed: the bar scrolls once it runs
+/// past the dock, as it does in a longer language.
+Future<void> openEffectsMenu(WidgetTester tester) async {
+  final fx = byKey('timeline-effects-button');
+  await bringIn(tester, fx);
+  await tester.tap(fx);
+  await settleReal(tester, 4);
+}
+
+/// The command bar scrolled back to its start, where it opens.
+Future<void> barToItsStart(WidgetTester tester) async {
+  final bar = find
+      .ancestor(of: byKey('cut-menu-button'), matching: find.byType(Scrollable))
+      .evaluate()
+      .map((e) => (e as StatefulElement).state as ScrollableState)
+      .firstWhere((s) => s.position.axis == Axis.horizontal);
+  bar.position.jumpTo(0);
+  await settleReal(tester, 4);
+}
+
+/// The ball in a folder (`folder.png`); an adjustment layer with a blur over
+/// it (`adjustment-layer.png`); the cut pill's menu (`menu-cut.png`); and a
+/// linked cut made from cut 1, beside it on the storyboard
+/// (`linked-cut.png`) — each taken away again before the next.
+Future<void> layerKindShots(WidgetTester tester) async {
+  final s = sessionOf(tester);
+  final history = s.historyManager;
+  final before = history.undoCount;
+  Future<void> undoAll() async {
+    while (history.undoCount > before) {
+      await tester.tap(byKey('undo-button'));
+      await settleReal(tester, 4);
+    }
+    s.selectLayer(ballLayer);
+    s.selectFrameIndex(9);
+    await settleReal(tester, 4);
+  }
+
+  s.selectLayer(ballLayer);
+  await settleReal(tester, 4);
+  s.folders.groupActiveLayerIntoFolder();
+  await settleReal(tester, 4);
+  await shot(tester, 'folder', rect: timelineRows(tester), ratio: 2);
+  await undoAll();
+
+  await tester.tap(byKey('timeline-toolbar-add-layer-menu'));
+  await settleReal(tester, 4);
+  await tester.tap(byKey('add-layer-kind-adjustment'));
+  await settleReal(tester, 4);
+  await openEffectsMenu(tester);
+  await tester.tap(byKey('add-effect-blur'));
+  await settleReal(tester, 4);
+  await barToItsStart(tester);
+  await shot(tester, 'adjustment-layer', rect: timelineRows(tester), ratio: 2);
+  await undoAll();
+
+  await tester.tap(byKey('cut-menu-button'));
+  await settleReal(tester, 4);
+  await shot(
+    tester,
+    'menu-cut',
+    rect: menuShot(tester, [
+      'cut-menu-button',
+      'edit-cut-note-button',
+      'cut-mark-button',
+      'cut-settings-button',
+      'resize-cut-canvas-button',
+      'add-cut-create-linked',
+      'convert-cut-to-linked-button',
+    ], 0),
+    ratio: 2,
+  );
+  await tester.tap(byKey('add-cut-create-linked'));
+  await settleReal(tester, 4);
+  await tester.tap(byKey('timeline-mode-storyboard-button'));
+  await settleReal(tester);
+  final board = bottomDock(tester);
+  await shot(
+    tester,
+    'linked-cut',
+    rect: Rect.fromLTRB(
+      board.left,
+      board.top,
+      board.right,
+      keyed(tester, ['storyboard-track-label-row-']).bottom + 16,
+    ),
+    ratio: 2,
+  );
+  await tester.tap(byKey('timeline-mode-timeline-button'));
+  await settleReal(tester);
+  s.selectCut(cut1);
+  await undoAll();
+}
+
+/// Escape until no menu is left open: a drawer shuts before its menu.
+Future<void> _closeMenus(WidgetTester tester) async {
+  for (var i = 0; i < 3 && _openMenuRows().isNotEmpty; i++) {
+    await closeWindow(tester);
+  }
+}
+
+Iterable<Element> _openMenuRows() => find.byElementPredicate((e) {
+  final key = e.widget.key;
+  return key is ValueKey<String> && key.value.startsWith('menu-');
+}).evaluate();
+
+/// An open window's body as `<name>.png`, what its scroller hides below
+/// pieced on under it: the content as tall as it is. Its scrollbar's lane is
+/// left empty — nothing is left to scroll in the picture.
+Future<void> scrolledWindowShot(
+  WidgetTester tester,
+  String name,
+  Finder window,
+) async {
+  const ratio = 2.0;
+  final body = windowBody(tester, window);
+  final bar = find
+      .descendant(of: window, matching: find.byType(ContentScrollbar))
+      .first;
+  final scroller = find
+      .descendant(of: bar, matching: find.byType(Scrollable))
+      .first;
+  final position = tester.state<ScrollableState>(scroller).position;
+  final hidden = position.maxScrollExtent;
+  if (hidden == 0) {
+    // Down to the content and its padding: a short tab left the window's
+    // fixed height empty below it.
+    final scroll = tester.widget<SingleChildScrollView>(
+      find.descendant(of: bar, matching: find.byType(SingleChildScrollView))
+          .first,
+    );
+    final content = tester.getRect(find.byWidget(scroll.child!));
+    final padding = scroll.padding?.resolve(TextDirection.ltr).bottom ?? 0;
+    await shot(
+      tester,
+      name,
+      rect: Rect.fromLTRB(
+        body.left,
+        body.top,
+        body.right,
+        math.min(body.bottom, content.bottom + padding),
+      ),
+      ratio: ratio,
+    );
+    return;
+  }
+  final view = tester.getRect(scroller);
+  final lane = Rect.fromLTRB(
+    view.right,
+    view.top,
+    tester.getRect(bar).right,
+    view.bottom,
+  );
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
+  // [from]'s [src] (screen) drawn into [dst] (the picture), both logical.
+  void put(ui.Image from, Rect src, Rect dst) => canvas.drawImageRect(
+    from,
+    Rect.fromLTRB(
+      src.left * ratio,
+      src.top * ratio,
+      src.right * ratio,
+      src.bottom * ratio,
+    ),
+    Rect.fromLTRB(
+      (dst.left - body.left) * ratio,
+      (dst.top - body.top) * ratio,
+      (dst.right - body.left) * ratio,
+      (dst.bottom - body.top) * ratio,
+    ),
+    Paint(),
+  );
+  var last = (await tester.runAsync(() => _capture(tester, ratio: ratio)))!;
+  // [r]'s columns between [top] and [bottom].
+  Rect band(Rect r, double top, double bottom) =>
+      Rect.fromLTRB(r.left, top, r.right, bottom);
+  final above = band(body, body.top, view.bottom);
+  put(last, above, above);
+  // The window's sides down the hidden part, and the lane empty top to
+  // bottom: the last row of each, stretched — the thumb never reaches it.
+  final edge = band(body, view.bottom - 1 / ratio, view.bottom);
+  put(last, edge, band(body, view.bottom, view.bottom + hidden));
+  put(
+    last,
+    band(lane, edge.top, edge.bottom),
+    band(lane, view.top, view.bottom + hidden),
+  );
+  var shown = view.height;
+  while (shown < view.height + hidden) {
+    final offset = math.min(shown, hidden);
+    position.jumpTo(offset);
+    await settleReal(tester, 4);
+    last = (await tester.runAsync(() => _capture(tester, ratio: ratio)))!;
+    put(
+      last,
+      band(view, view.top + shown - offset, view.bottom),
+      band(view, view.top + shown, view.top + offset + view.height),
+    );
+    shown = offset + view.height;
+  }
+  if (body.bottom > view.bottom) {
+    put(
+      last,
+      band(body, view.bottom, body.bottom),
+      band(body, view.bottom + hidden, body.bottom + hidden),
+    );
+  }
+  position.jumpTo(0);
+  await settleReal(tester, 4);
+  await tester.runAsync(() async {
+    final picture = await recorder.endRecording().toImage(
+      (body.width * ratio).round(),
+      ((body.height + hidden) * ratio).round(),
+    );
+    await _write(picture, name);
+  });
+}
+
+/// The frame pill's buttons, left to right.
+const framePillButtons = [
+  'new-frame-button',
+  'blank-exposure-button',
+  'auto-frame-toggle-button',
+  'toggle-mark-one-button',
+  'toggle-mark-button',
+  'mark-every-button',
+  'push-blocks-button',
+  'pull-blocks-button',
+  'set-comma-1-button',
+  'set-comma-2-button',
+  'set-comma-3-button',
+  'set-comma-4-button',
+  'set-comma-n-button',
+];
+
+/// The shared pill's buttons, left to right.
+const sharedPillButtons = [
+  'shared-edit-button',
+  'shared-auto-name-button',
+  'shared-cut-button',
+  'shared-copy-button',
+  'shared-paste-independent-button',
+  'shared-paste-linked-button',
+  'shared-unlink-button',
+  'shared-duplicate-button',
+  'shared-merge-button',
+  'shared-delete-button',
+  'shared-colour-edit-button',
+];
+
+/// The timeline's transport, left to right.
+const transportButtons = [
+  'playback-skip-to-start-button',
+  'playback-play-button',
+  'playback-loop-toggle',
+  'timeline-camera-view-button',
+  'playback-record-voice-button',
+];
+
+/// One symmetry guide and one perspective guide, the second picked as an
+/// added guide is: how many undos take them away again.
+Future<int> _addGuides(WidgetTester tester) async {
+  await tester.tap(byKey('guide-add-symmetry'));
+  await settleReal(tester, 4);
+  await tester.tap(byKey('guide-add-perspective'));
+  await settleReal(tester, 4);
+  return 2;
+}
+
 /// How wide a menu's picture is: the menu and the rows it was opened over.
 const menuShotWidth = 820.0;
 
@@ -808,14 +1673,17 @@ Future<void> closeWindow(WidgetTester tester) async {
 /// Every scene of the guide in [language] — the body of a `<lang>_test.dart`.
 void guideShots(AppLanguage language) {
   setUpAll(() async {
-    await loadTheAppFaces();
+    await loadTheFacesOf(language);
     await loadMonospace();
     await loadIcons();
   });
 
   test(
     'guide shortcuts, ${language.name}',
-    () => writeShortcutTable(outRoot, language),
+    () {
+      writeShortcutTable(outRoot, language);
+      writeShortcutKeymap(outRoot);
+    },
   );
 
   testWidgets(
@@ -838,6 +1706,8 @@ void guideShots(AppLanguage language) {
       await settleReal(tester);
       await shot(tester, 'overview');
       await shot(tester, 'toolbar', rect: toolbarRow(tester), ratio: 2);
+      await toolShots(tester);
+      await panelShots(tester);
 
       // The panels' edges, pointed at: lit where a drag resizes.
       await hoverShot(
@@ -863,6 +1733,11 @@ void guideShots(AppLanguage language) {
         ),
       );
       await shot(tester, 'timeline', rect: timelineRows(tester), ratio: 2);
+      await timelineShots(tester);
+      await rowAndMenuShots(tester);
+      await settingsShots(tester);
+      await effectsShots(tester);
+      await layerKindShots(tester);
 
       // The conte layer: its row stood on, in its second panel.
       s.selectLayer(conte1);

@@ -1,16 +1,19 @@
 import '../core/collection_equality.dart';
+import 'canvas_point.dart';
 import 'canvas_size.dart';
+import 'layer_id.dart';
 import 'property_track.dart';
 import 'string_id.dart';
 import 'transform_track.dart'
     show
         TransformNamedChanges,
         TransformPose,
-        TransformPropertyId,
         TransformTrack,
         argbKeySpace,
         doubleKeySpace,
         layerIdentityPose,
+        menuKeySpace,
+        resolveAnchorTrackAtTime,
         transformLaneOf,
         transformNamedKeyChanges,
         transformPropertyOfLaneId,
@@ -30,8 +33,8 @@ final class EffectId extends StringId {
 /// whose math is exact on every backend: the color kinds fold into one
 /// `ui.ColorFilter.matrix` and the blur is `ui.ImageFilter.blur`, so the
 /// editing canvas, playback, the camera view and the exported video all
-/// produce the same pixels without a shader (which `ImageFilter.shader`
-/// would have made Impeller-only).
+/// produce the same pixels. The directional blur is a box a fragment shader
+/// draws, a raster at a time (`ShadedEffect`), on every one of those routes.
 ///
 /// The COLOR KEYS (I-8) keep that premise by running on the CPU over the
 /// cel's own tile bytes instead — see [runsOnSourcePixels]. A threshold
@@ -119,21 +122,80 @@ enum EffectKind {
     isBasic: false,
     staysOnItsRow: false,
   ),
+
+  /// AE's Gaussian Blur: `blurriness` each way along its `blurDimensions`.
+  ///
+  /// 🗣️I-132-Q3 (유저 2026-10-27): 「가우시안 · 방향 · 방사형 · 카메라 렌즈」 —
+  /// this blur, Blur Width and Height, was a Gaussian already, so it takes
+  /// AE's name and items: one Blurriness and the menu of the dimensions it
+  /// runs along, where two radii stood. Its math stays (🗣️I-132-Q4:
+  /// 「식은 지금대로」) — Blurriness is the radius the width and height were.
+  /// The range is ours: no help page gives AE's.
   blur(
     'blur',
-    label: 'Blur',
+    label: 'Gaussian Blur',
     parameters: [
       EffectParameterSpec(
-        id: 'blurX',
-        label: 'Blur Width',
+        id: 'blurriness',
+        label: 'Blurriness',
         defaultValue: 0,
         minimum: 0,
         maximum: 500,
         unit: EffectParameterUnit.pixels,
       ),
+      EffectParameterSpec.choice(
+        id: 'blurDimensions',
+        label: 'Blur Dimensions',
+        choices: [
+          EffectChoice(
+            id: 'horizontalAndVertical',
+            label: 'Horizontal and Vertical',
+          ),
+          EffectChoice(id: 'horizontal', label: 'Horizontal'),
+          EffectChoice(id: 'vertical', label: 'Vertical'),
+        ],
+      ),
+      // Past the paper's edge the blur reads the edge's own pixels, and
+      // what it draws stays on the paper — 🗣️I-132-Q14 (유저 2026-10-28):
+      // the edge is the paper's (canvas's), on a layer and a folder alike,
+      // AE's comp-sized solid and precomp; artwork on the pasteboard stays
+      // out of sight while it is on. Off, as AE's is.
+      EffectParameterSpec.flag(
+        id: 'repeatEdgePixels',
+        label: 'Repeat Edge Pixels',
+      ),
+    ],
+    spreadsPixels: true,
+    runsOnSourcePixels: false,
+    drawsItsOwnPicture: false,
+    isBasic: false,
+    staysOnItsRow: false,
+  ),
+
+  /// Every pixel the average of the line through it — AE's Directional
+  /// Blur, a box [blurLength] long (`directionalBlurPasses`).
+  ///
+  /// 🗣️I-132-Q3 (유저 2026-10-27): 「가우시안 · 방향 · 방사형 · 카메라 렌즈」,
+  /// AE's names and items. ★DIRECTION READS AS AN ANGLE DIAL: 0° up,
+  /// clockwise, so 0° blurs up and down — 🗣️I-132-Q8 (유저 2026-10-27):
+  /// 「0° 에서 세로로 번진다」; no help page says it. Its help does say the
+  /// blur goes both ways from a pixel, so 0° and 180° are one blur. The
+  /// length's range is ours: no help page gives AE's.
+  directionalBlur(
+    'directionalBlur',
+    label: 'Directional Blur',
+    parameters: [
       EffectParameterSpec(
-        id: 'blurY',
-        label: 'Blur Height',
+        id: 'direction',
+        label: 'Direction',
+        defaultValue: 0,
+        minimum: -180,
+        maximum: 180,
+        unit: EffectParameterUnit.degrees,
+      ),
+      EffectParameterSpec(
+        id: 'blurLength',
+        label: 'Blur Length',
         defaultValue: 0,
         minimum: 0,
         maximum: 500,
@@ -147,24 +209,216 @@ enum EffectKind {
     staysOnItsRow: false,
   ),
 
-  /// Erase every pixel whose color is within [tolerance] of the key color.
-  deleteColor(
-    'deleteColor',
-    label: 'Delete Color',
-    parameters: colorKeyParameterSpecs,
-    spreadsPixels: false,
-    runsOnSourcePixels: true,
+  /// Every pixel the average of the arc through it about its `center`
+  /// (Spin) or of the ray through it from there (Zoom) — AE's Radial Blur
+  /// (`radialBlurPasses`).
+  ///
+  /// 🗣️I-132-Q3 (유저 2026-10-27): 「가우시안 · 방향 · 방사형 · 카메라 렌즈」,
+  /// AE's items: Amount, Center, Type, and the antialiasing menu
+  /// (🗣️I-132-Q13 a: 「메뉴를 둔다 — 드래프트는 표본을 줄여 빠르게」). The
+  /// centre is a point of its own (🗣️I-132-Q12 b: 「효과 매개변수에 「점」
+  /// 종류를 새로」). Adobe's help says Spin's Amount is degrees and Zoom's a
+  /// length; the length's form is ours (🗣️I-132-Q4 「식은 지금대로」) — the
+  /// streak a percent of the pixel's way from the centre — and so is the
+  /// range: no help page gives AE's. The menu's words are ours
+  /// (🗣️I-132-Q11 a), as the card asked them.
+  radialBlur(
+    'radialBlur',
+    label: 'Radial Blur',
+    parameters: [
+      EffectParameterSpec(
+        id: 'amount',
+        label: 'Amount',
+        defaultValue: 0,
+        minimum: 0,
+        maximum: 100,
+      ),
+      EffectParameterSpec.point(id: 'center', label: 'Center'),
+      EffectParameterSpec.choice(
+        id: 'type',
+        label: 'Type',
+        choices: [
+          EffectChoice(id: 'spin', label: 'Spin'),
+          EffectChoice(id: 'zoom', label: 'Zoom'),
+        ],
+      ),
+      EffectParameterSpec.choice(
+        id: 'antialiasing',
+        label: 'Antialiasing',
+        choices: [
+          EffectChoice(id: 'best', label: 'Best'),
+          EffectChoice(id: 'draft', label: 'Draft'),
+        ],
+      ),
+    ],
+    spreadsPixels: true,
+    runsOnSourcePixels: false,
     drawsItsOwnPicture: false,
     isBasic: false,
     staysOnItsRow: false,
   ),
 
-  /// Erase every pixel whose color is NOT within [tolerance] of the key
-  /// color — the same comparison with the answer inverted, which is why
-  /// the two share [colorKeyParameterSpecs] rather than repeating it.
-  keepColor(
-    'keepColor',
-    label: 'Keep Color',
+  /// Every pixel the mean of the pixels about it its iris covers — AE's
+  /// Camera Lens Blur (`cameraLensBlurPasses`): a polygon of its Shape,
+  /// Blur Radius out, rounded, squeezed and turned by the iris's
+  /// properties, its light pushed out to its edge by the Diffraction
+  /// Fringe.
+  ///
+  /// 🗣️I-132-Q3 (유저 2026-10-27): 「가우시안 · 방향 · 방사형 · 카메라 렌즈」,
+  /// AE's names and items — Adobe's help (read 2026-10-28): a blur radius
+  /// up to 500; Iris Properties Shape, Roundness, Aspect Ratio, Rotation
+  /// and Diffraction Fringe, whose 100 is a natural halo and 500 all the
+  /// blur's energy on the ring; Repeat Edge Pixels. 🗣️I-132-Q15 a: 「모든
+  /// 모양을 정확히 — 행 누적합」. The iris's forms are ours (🗣️I-132-Q4 b),
+  /// and so are the ranges the help does not give, and the shape's words
+  /// (🗣️I-132-Q11 a). The Square begins it (🗣️I-132-Q19 a): AE's first
+  /// word is a Fast Rectangle, which drawn exact is the Square.
+  ///
+  /// Its Highlight and Use Linear Working Space, as the help has them: the
+  /// gain boosts what lies past the threshold, the saturation keeps the
+  /// boost's colour, and the light is read linear (`lens_light.glsl`, the
+  /// forms ours). ⚠️The help gives no range or first value for the three:
+  /// a threshold of 0…255 that begins at 255 and a gain and saturation of
+  /// 0…100 that begin at 0 are the ones an Adobe community post's SDK code
+  /// reads them with (2026-10-28) — the help's own threshold of 1, which
+  /// leaves no highlight, is the 255 of an 8-bit picture.
+  ///
+  /// Its Blur Map, as the help has it: a Layer whose Channel sets each
+  /// pixel's radius, in focus at its Blur Focal Distance, inverted by
+  /// Invert Blur Map. 🗣️I-132-Q16 a: the layer is a row of the cut
+  /// ([EffectParameterUnit.layer]). 🗣️I-132-Q21 a: it is read where the
+  /// row shows — so no Placement, the help's way to set it over the
+  /// picture. 🗣️I-132-Q22 a: one level — a map's own blur map is not read.
+  /// 🗣️I-132-Q23 a: 「꺼도 맵으로 읽는다」 — its row's eye does not hide it.
+  /// 🗣️I-132-Q24 b: 「넣는다 — 화면에 보이는 그대로」 — its opacity is in
+  /// what is read.
+  cameraLensBlur(
+    'cameraLensBlur',
+    label: 'Camera Lens Blur',
+    parameters: [
+      EffectParameterSpec(
+        id: 'blurRadius',
+        label: 'Blur Radius',
+        defaultValue: 0,
+        minimum: 0,
+        maximum: 500,
+        unit: EffectParameterUnit.pixels,
+      ),
+      EffectParameterSpec.choice(
+        id: 'irisShape',
+        label: 'Shape',
+        choices: [
+          EffectChoice(id: 'triangle', label: 'Triangle'),
+          EffectChoice(id: 'square', label: 'Square'),
+          EffectChoice(id: 'pentagon', label: 'Pentagon'),
+          EffectChoice(id: 'hexagon', label: 'Hexagon'),
+          EffectChoice(id: 'heptagon', label: 'Heptagon'),
+          EffectChoice(id: 'octagon', label: 'Octagon'),
+          EffectChoice(id: 'nonagon', label: 'Nonagon'),
+          EffectChoice(id: 'decagon', label: 'Decagon'),
+        ],
+        defaultValue: 1,
+      ),
+      EffectParameterSpec(
+        id: 'irisRoundness',
+        label: 'Roundness',
+        defaultValue: 0,
+        minimum: 0,
+        maximum: 100,
+      ),
+      EffectParameterSpec(
+        id: 'irisAspectRatio',
+        label: 'Aspect Ratio',
+        defaultValue: 1,
+        minimum: 0.1,
+        maximum: 10,
+      ),
+      EffectParameterSpec(
+        id: 'irisRotation',
+        label: 'Rotation',
+        defaultValue: 0,
+        minimum: -180,
+        maximum: 180,
+        unit: EffectParameterUnit.degrees,
+      ),
+      EffectParameterSpec(
+        id: 'irisDiffractionFringe',
+        label: 'Diffraction Fringe',
+        defaultValue: 0,
+        minimum: 0,
+        maximum: 500,
+      ),
+      EffectParameterSpec.layer(id: 'blurMapLayer', label: 'Blur Map Layer'),
+      EffectParameterSpec.choice(
+        id: 'blurMapChannel',
+        label: 'Blur Map Channel',
+        choices: [
+          EffectChoice(id: 'luminance', label: 'Luminance'),
+          EffectChoice(id: 'red', label: 'Red'),
+          EffectChoice(id: 'green', label: 'Green'),
+          EffectChoice(id: 'blue', label: 'Blue'),
+          EffectChoice(id: 'alpha', label: 'Alpha'),
+        ],
+      ),
+      EffectParameterSpec(
+        id: 'blurFocalDistance',
+        label: 'Blur Focal Distance',
+        defaultValue: 0,
+        minimum: 0,
+        maximum: 255,
+      ),
+      EffectParameterSpec.flag(id: 'invertBlurMap', label: 'Invert Blur Map'),
+      EffectParameterSpec(
+        id: 'highlightGain',
+        label: 'Highlight Gain',
+        defaultValue: 0,
+        minimum: 0,
+        maximum: 100,
+      ),
+      EffectParameterSpec(
+        id: 'highlightThreshold',
+        label: 'Highlight Threshold',
+        defaultValue: 255,
+        minimum: 0,
+        maximum: 255,
+      ),
+      EffectParameterSpec(
+        id: 'highlightSaturation',
+        label: 'Highlight Saturation',
+        defaultValue: 0,
+        minimum: 0,
+        maximum: 100,
+      ),
+      // The Gaussian's own (🗣️I-132-Q14 a): past the paper's edge the iris
+      // reads the edge's pixels, and what it draws stays on the paper.
+      EffectParameterSpec.flag(
+        id: 'repeatEdgePixels',
+        label: 'Repeat Edge Pixels',
+      ),
+      EffectParameterSpec.flag(
+        id: 'useLinearWorkingSpace',
+        label: 'Use Linear Working Space',
+      ),
+    ],
+    spreadsPixels: true,
+    runsOnSourcePixels: false,
+    drawsItsOwnPicture: false,
+    isBasic: false,
+    staysOnItsRow: false,
+  ),
+
+  /// THE colour key: its Key Operation erases every pixel within the
+  /// tolerance of the key colour (Key Colors), or gives back what the keys
+  /// before it erased of those (Keep Colors) — AE's Linear Color Key
+  /// (`CelColorKey`).
+  ///
+  /// 🗣️I-132-Q2 (유저 2026-10-27): 「하나로 + AE 뜻」. ↩️Two kinds, Delete
+  /// Color and Keep Color, the second erasing every pixel the key did NOT
+  /// name — AE keeps a colour by keying it twice, all out and then the
+  /// colour back.
+  colorKey(
+    'colorKey',
+    label: 'Color Key',
     parameters: colorKeyParameterSpecs,
     spreadsPixels: false,
     runsOnSourcePixels: true,
@@ -181,13 +435,29 @@ enum EffectKind {
   /// 적는 거야. 그래서 fx 로 하는 거고」 · 「체인 위치 고정 반대 — 블러 걸고
   /// 싶은 상황을 막는 제한」: a link of the chain like any other, so what
   /// follows it reads the letters too. 10-24 (I-65-Q1 a): 「레이어 이름 + 셀
-  /// 번호(A1) — 이름 없는 그림은 A●」 — ↩️「A○」 since F-469 (기본마크 = 마크1).
+  /// 번호(A1) — 이름 없는 그림은 A●」 — the mark the unnamed head wears,
+  /// picked in Preferences ▸ Display since F-489 (● to begin with).
+  /// ↩️「A○」 from F-469 (기본마크 = 마크1) to F-489.
   celNumber(
     'celNumber',
     label: 'Cel Number',
-    // Where the letters stand, how big and in what colour are the effect's
-    // [LayerEffect.stand] and [LayerEffect.ink], not parameters.
-    parameters: [],
+    // Where the letters stand and how big is the effect's
+    // [LayerEffect.stand], not parameters.
+    parameters: [
+      // 🗣️F-477 (유저 2026-10-26): 「se행의 이름표fx의 이름 잉크같은것처럼
+      // 색 컬러팝오버로 고르는거 그대로 사용하라고. 쓸데없이 빨강파랑초록
+      // 나누지말고」 — ONE colour lane, unkeyed the text tool's own black
+      // (`TextLetterStyle.color`). ↩️Three number lanes, Red · Green · Blue
+      // — the colour keys' shape, which I-65-Q1's 「색 키 고르는것」 was read
+      // as; nobody asked for it. ↩️Then `LayerEffect.ink`, a lane beside
+      // the parameters, until the colour key's colour was one too
+      // (I-132-Q10): one kind of lane now, keyed in [LayerEffect.colors].
+      EffectParameterSpec.color(
+        id: 'ink',
+        label: 'Ink',
+        defaultValue: 0xFF000000,
+      ),
+    ],
     spreadsPixels: false,
     runsOnSourcePixels: false,
     drawsItsOwnPicture: true,
@@ -314,6 +584,66 @@ enum EffectParameterUnit {
   /// playback cache renders at a reduced raster and must scale these, or a
   /// half-size preview would show a double-strength blur.
   pixels,
+
+  /// One of the parameter's [EffectParameterSpec.choices] — the value is
+  /// the number of the word, the lane a menu, its keys steps
+  /// ([menuKeySpace]). 🗣️I-132-Q6 (유저 2026-10-27): 「레인 하나 — 값이
+  /// 메뉴, 키프레임은 계단」 — AE's pop-up properties, a colour key's Key
+  /// Operation the first.
+  choice,
+
+  /// An ARGB colour — keyed as an SE name tag's inks are, in their key space
+  /// ([argbKeySpace]) and their type: its keys are [LayerEffect.colors]',
+  /// not numbers in [LayerEffect.parameters], so a paste pairs them with a
+  /// colour's alone (`laneKeysSpliced` asks the keys' type). The lane is
+  /// the shared colour swatch, and unkeyed the spec's default — a colour
+  /// has no static value, as the ink never had.
+  ///
+  /// 🗣️I-132-Q10 (유저 2026-10-27): 「합친다 — 키 색상 = 색 레인 하나(셀
+  /// 번호 · 이름표 잉크와 같은 컬러 팝오버)」 · 「ae 기준으로 맞춤」 — and
+  /// F-477 (10-26) before it, for the cel number's: 「쓸데없이 빨강파랑초록
+  /// 나누지말고」.
+  color,
+
+  /// On or off — AE's checkbox, whose value is 1 or 0 to a script (Adobe's
+  /// community, read 2026-10-28) as a menu's is the number of its word. So
+  /// it is a number here too: its keys step ([menuKeySpace]) and pair with
+  /// a number's when pasted, as a menu's do. The lane is a flag's ring —
+  /// the value cell IS the control, a tap flips it (F-22).
+  flag,
+
+  /// A point on the row's paper — keyed as a transform's Position is, in
+  /// its lane's own words: its keys are [LayerEffect.points]', a track
+  /// whose Position alone is keyed, so it keys, walks a path, takes a
+  /// value, resets and names as Position does, and the canvas places it
+  /// with a cross. Unkeyed it rests where a row does: the paper's middle.
+  ///
+  /// 🗣️I-132-Q12 b (유저 2026-10-28): 「효과 매개변수에 「점」 종류를 새로」 —
+  /// a point of each effect's own (a radial blur's centre, a lens flare's
+  /// later), where a cel number's stand is the picture it draws.
+  point,
+
+  /// Another row of the effect's cut, or none — no number and NO KEYS: its
+  /// row is [LayerEffect.layers]', the one value at every frame. The lane
+  /// is a menu, as a [choice]'s, of none and the cut's rows by name.
+  ///
+  /// 🗣️I-132-Q16 a (유저 2026-10-28): 「「레이어」는 같은 컷의 행을 고르는
+  /// 메뉴(없음 + 행 이름들, 키 없음)」 — a camera lens blur's blur map the
+  /// first. A row that is not the cut's — deleted, or an effect pasted
+  /// into another cut — reads as none, as a dangling attach does
+  /// (`attachedBaseOf`).
+  layer,
+}
+
+/// One word of a menu parameter ([EffectParameterUnit.choice]).
+class EffectChoice {
+  const EffectChoice({required this.id, required this.label});
+
+  /// What the word's strings are keyed by (`effectChoice.<id>`).
+  final String id;
+
+  /// The English word, the one a table without it reads.
+  final String label;
 }
 
 /// One parameter of one effect kind: its id, label, default and range.
@@ -326,52 +656,169 @@ class EffectParameterSpec {
     required this.label,
     required this.defaultValue,
     required this.minimum,
-    required this.maximum,
+    required double maximum,
     this.unit = EffectParameterUnit.number,
-  });
+  }) : assert(
+         unit != EffectParameterUnit.choice &&
+             unit != EffectParameterUnit.color &&
+             unit != EffectParameterUnit.flag &&
+             unit != EffectParameterUnit.point &&
+             unit != EffectParameterUnit.layer,
+         'A menu is EffectParameterSpec.choice, a colour '
+         'EffectParameterSpec.color, a flag EffectParameterSpec.flag, a '
+         'point EffectParameterSpec.point and a row EffectParameterSpec.layer '
+         '— none has a range of its own.',
+       ),
+       _maximum = maximum,
+       choices = const [];
+
+  /// A menu of [choices], the word [defaultValue] counts to — the first
+  /// unless it says — chosen until a key or a value says otherwise.
+  const EffectParameterSpec.choice({
+    required this.id,
+    required this.label,
+    required this.choices,
+    int defaultValue = 0,
+  }) : defaultValue = defaultValue + 0.0,
+       minimum = 0,
+       _maximum = null,
+       unit = EffectParameterUnit.choice;
+
+  /// A colour ([EffectParameterUnit.color]), [defaultValue] until a key or a
+  /// value says otherwise — any ARGB there is.
+  const EffectParameterSpec.color({
+    required this.id,
+    required this.label,
+    required int defaultValue,
+  }) : defaultValue = defaultValue + 0.0,
+       minimum = 0,
+       _maximum = 0xFFFFFFFF + 0.0,
+       unit = EffectParameterUnit.color,
+       choices = const [];
+
+  /// A flag ([EffectParameterUnit.flag]), off until a key or a value says
+  /// otherwise.
+  const EffectParameterSpec.flag({required this.id, required this.label})
+    : defaultValue = 0,
+      minimum = 0,
+      _maximum = 1,
+      unit = EffectParameterUnit.flag,
+      choices = const [];
+
+  /// A point ([EffectParameterUnit.point]): no number at all — its keys
+  /// are [LayerEffect.points]'.
+  const EffectParameterSpec.point({required this.id, required this.label})
+    : defaultValue = 0,
+      minimum = 0,
+      _maximum = 0,
+      unit = EffectParameterUnit.point,
+      choices = const [];
+
+  /// A row of the effect's cut ([EffectParameterUnit.layer]): no number and
+  /// no keys — its row is [LayerEffect.layers]', none until one is picked.
+  const EffectParameterSpec.layer({required this.id, required this.label})
+    : defaultValue = 0,
+      minimum = 0,
+      _maximum = 0,
+      unit = EffectParameterUnit.layer,
+      choices = const [];
 
   final String id;
   final String label;
   final double defaultValue;
   final double minimum;
-  final double maximum;
+  final double? _maximum;
   final EffectParameterUnit unit;
+
+  /// The words a menu parameter holds one of; empty for a number.
+  final List<EffectChoice> choices;
+
+  /// The largest value — a menu's last word.
+  double get maximum => _maximum ?? (choices.length - 1).toDouble();
+
+  /// Whether the value steps from key to key: nothing lies between two of a
+  /// menu's words, nor between on and off.
+  bool get _steps =>
+      unit == EffectParameterUnit.choice || unit == EffectParameterUnit.flag;
+
+  /// How the value walks between two keys: a menu and a flag step, a number
+  /// lerps. A colour's keys are not numbers, and walk in [argbKeySpace].
+  KeyValueSpace<double> get keySpace {
+    assert(
+      unit != EffectParameterUnit.color &&
+          unit != EffectParameterUnit.point &&
+          unit != EffectParameterUnit.layer,
+      'A colour keys in argbKeySpace, over LayerEffect.colors, a point as a '
+      'Position does, over LayerEffect.points, and a row not at all.',
+    );
+    return _steps ? menuKeySpace : doubleKeySpace;
+  }
+
+  /// How a key made on this lane leaves — a step's holds, so its mark says
+  /// the step [keySpace] takes; null where a key leaves as it always has.
+  KeyExit? get keyExit => _steps ? KeyExit.hold : null;
 
   double clamp(double value) => value.clamp(minimum, maximum).toDouble();
 }
 
-/// The color keys' parameters — ONE list for both kinds, because erase and
-/// keep are the same comparison with the answer inverted. Two copies would
-/// be two places to add the next knob to.
+/// Whether a flag's [value] is on ([EffectParameterUnit.flag]): the nearer
+/// of 0 and 1, as a menu reads the nearer of its words — a number pasted on
+/// is either.
+bool effectFlagIsOn(double value) => value >= 0.5;
+
+/// The ids of every kind's colour parameters ([EffectParameterUnit.color])
+/// — what a lane read off its id alone holds, as a copy's off another row
+/// is read.
+final Set<String> effectColorParameters = {
+  for (final kind in EffectKind.values)
+    for (final spec in kind.parameters)
+      if (spec.unit == EffectParameterUnit.color) spec.id,
+};
+
+/// The ids of every kind's points ([EffectParameterUnit.point]) — what a
+/// lane read off its id alone holds, as [effectColorParameters] is.
+final Set<String> effectPointParameters = {
+  for (final kind in EffectKind.values)
+    for (final spec in kind.parameters)
+      if (spec.unit == EffectParameterUnit.point) spec.id,
+};
+
+/// The ids of every kind's rows ([EffectParameterUnit.layer]) — lanes that
+/// keep no keys, read off their id alone as [effectColorParameters] are.
+final Set<String> effectLayerParameters = {
+  for (final kind in EffectKind.values)
+    for (final spec in kind.parameters)
+      if (spec.unit == EffectParameterUnit.layer) spec.id,
+};
+
+/// The colour key's parameters ([EffectKind.colorKey]).
 ///
-/// 유저 2026-08-27 named the shape: *「블러 3개 있는것처럼 새로운 fx를
-/// 만들잔거야」* — a color is three of the `double` parameters the lane
-/// substrate already animates, not a new parameter TYPE. Keying the color
-/// itself therefore comes out keyframable for free.
+/// 🗣️I-132-Q10 (유저 2026-10-27): its colour is ONE colour lane
+/// ([EffectParameterUnit.color]) — 「ae 기준으로 맞춤. 대체 어느 기준으로
+/// 빨강파랑초록 나눳는지 의문일정도」. ↩️Three number lanes, Key Red · Key
+/// Green · Key Blue, from 유저 2026-08-27's *「블러 3개 있는것처럼 새로운 fx를
+/// 만들잔거야」* read as 「a colour is three of the `double` parameters the
+/// lane substrate already animates, not a new parameter TYPE」.
 const List<EffectParameterSpec> colorKeyParameterSpecs = [
-  // 0…255, the byte range the eyedropper and the surface both speak. ⛔NOT
-  // 0…100: a key color typed from a picked pixel has to round-trip exactly,
-  // and a percentage cannot say 137.
-  EffectParameterSpec(
-    id: 'keyRed',
-    label: 'Key Red',
-    defaultValue: 0,
-    minimum: 0,
-    maximum: 255,
+  // AE's Key Operation — a menu lane (I-132-Q6 a): what the key does to the
+  // pixels it names. First, as AE's help sets it first (keying-effects,
+  // read 2026-10-27: Key Operation, then Match Colors, then the colour);
+  // the panel's own order the help does not give.
+  EffectParameterSpec.choice(
+    id: 'keyOperation',
+    label: 'Key Operation',
+    choices: [
+      EffectChoice(id: 'keyColors', label: 'Key Colors'),
+      EffectChoice(id: 'keepColors', label: 'Keep Colors'),
+    ],
   ),
-  EffectParameterSpec(
-    id: 'keyGreen',
-    label: 'Key Green',
-    defaultValue: 0,
-    minimum: 0,
-    maximum: 255,
-  ),
-  EffectParameterSpec(
-    id: 'keyBlue',
-    label: 'Key Blue',
-    defaultValue: 0,
-    minimum: 0,
-    maximum: 255,
+  // The bytes the eyedropper and the surface both speak, so a key colour
+  // picked off a pixel round-trips exactly. Its alpha names nothing: a key
+  // compares red, green and blue (`CelColorKey.matches`).
+  EffectParameterSpec.color(
+    id: 'keyColor',
+    label: 'Key Color',
+    defaultValue: 0xFF000000,
   ),
   // How far a pixel may sit from the key color and still count as it —
   // the largest single-channel difference, in bytes. 0 means exact.
@@ -422,15 +869,22 @@ class EffectParameter {
   bool get isAnimated => track.isNotEmpty;
 
   /// The value at [frameIndex] — the key track when it has keys, the
-  /// static value otherwise.
-  double resolveAt(int frameIndex) => resolveAtTime(frameIndex.toDouble());
+  /// static value otherwise, walking between keys as [space] does — a
+  /// spec's own ([EffectParameterSpec.keySpace]): a menu steps.
+  double resolveAt(
+    int frameIndex, {
+    KeyValueSpace<double> space = doubleKeySpace,
+  }) => resolveAtTime(frameIndex.toDouble(), space: space);
 
   /// [resolveAt] at a [time] between frames as well — a header graph's
   /// curve (I-89 ③).
-  double resolveAtTime(double time) => track.resolveAtTime(
+  double resolveAtTime(
+    double time, {
+    KeyValueSpace<double> space = doubleKeySpace,
+  }) => track.resolveAtTime(
     time: time,
     orElse: () => value,
-    space: doubleKeySpace,
+    space: space,
   );
 
   EffectParameter copyWith({double? value, PropertyTrack<double>? track}) =>
@@ -487,27 +941,46 @@ class LayerEffect {
   /// composite cache key, the autosave dirty check and the thumbnail
   /// signature.
   ///
-  /// [stand] and [ink] are normalized the same way: a kind that draws no
-  /// picture of its own holds neither, whatever it was handed.
+  /// [colors], [points], [layers] and [stand] are normalized the same way:
+  /// a colour, a point or a row the kind declares is materialized (unkeyed,
+  /// or none, where it was missing), and a kind that draws no picture of
+  /// its own stands none, whatever it was handed.
   LayerEffect({
     required this.id,
     required this.kind,
     this.enabled = true,
     Map<String, EffectParameter>? parameters,
+    Map<String, PropertyTrack<int>>? colors,
+    Map<String, TransformTrack>? points,
+    Map<String, LayerId?>? layers,
     TransformTrack? stand,
-    PropertyTrack<int>? ink,
   }) : parameters = Map.unmodifiable({
          for (final spec in kind.parameters)
-           spec.id:
-               parameters?[spec.id] ??
-               EffectParameter(value: spec.defaultValue),
+           if (spec.unit != EffectParameterUnit.color &&
+               spec.unit != EffectParameterUnit.point &&
+               spec.unit != EffectParameterUnit.layer)
+             spec.id:
+                 parameters?[spec.id] ??
+                 EffectParameter(value: spec.defaultValue),
+       }),
+       colors = Map.unmodifiable({
+         for (final spec in kind.parameters)
+           if (spec.unit == EffectParameterUnit.color)
+             spec.id: colors?[spec.id] ?? PropertyTrack<int>.empty(),
+       }),
+       points = Map.unmodifiable({
+         for (final spec in kind.parameters)
+           if (spec.unit == EffectParameterUnit.point)
+             spec.id: points?[spec.id] ?? TransformTrack.empty(),
+       }),
+       layers = Map.unmodifiable({
+         for (final spec in kind.parameters)
+           if (spec.unit == EffectParameterUnit.layer)
+             spec.id: layers?[spec.id],
        }),
        stand = kind.drawsItsOwnPicture && stand != null
            ? stand
-           : TransformTrack.empty(),
-       ink = kind.drawsItsOwnPicture && ink != null
-           ? ink
-           : PropertyTrack<int>.empty();
+           : TransformTrack.empty();
 
   /// A fresh effect of [kind], every parameter at its spec default — what
   /// "Add effect" creates (an effect you just added must change nothing
@@ -525,10 +998,29 @@ class LayerEffect {
   /// effect resolves to nothing at all — it keeps its keys for later.
   final bool enabled;
 
-  /// Parameter id → parameter, always the kind's FULL spec set (see the
-  /// constructor). A parameter added to a spec later therefore appears at
-  /// its default on old data, with no migration.
+  /// Parameter id → parameter, always the kind's FULL spec set of numbers
+  /// (see the constructor) — its colours are [colors]. A parameter added to
+  /// a spec later therefore appears at its default on old data, with no
+  /// migration.
   final Map<String, EffectParameter> parameters;
+
+  /// Colour id → the KEYS of that colour's ONE lane ([EffectParameterUnit
+  /// .color]), every colour the kind declares: as an SE row's name tag keys
+  /// its name's ink (`SeNameTagTrack.nameInk`), in the same key space
+  /// ([argbKeySpace]) and type. Unkeyed, the spec's default ([effectColorAt]).
+  final Map<String, PropertyTrack<int>> colors;
+
+  /// Point id → the KEYS of that point's ONE lane ([EffectParameterUnit
+  /// .point]), every point the kind declares: a transform's track whose
+  /// Position alone is keyed — so the transform's own verbs key it, walk
+  /// it and name it, as they do [stand]'s ([transformLaneAt]). Unkeyed,
+  /// the paper's middle ([effectPointOnPaper]).
+  final Map<String, TransformTrack> points;
+
+  /// Row id → the row of the effect's cut that row parameter
+  /// ([EffectParameterUnit.layer]) names, every row parameter the kind
+  /// declares — null for none. No keys: one row at every frame.
+  final Map<String, LayerId?> layers;
 
   /// Where the picture a kind that draws its own ([EffectKind
   /// .drawsItsOwnPicture]) stands on the row's paper, and how big — the KEYS
@@ -542,22 +1034,6 @@ class LayerEffect {
   /// 08-07: 「위치는 기본값으로 — 기본 트랜스폼 fx 의 위치 기준, 늘 하던 대로
   /// 공통된 거 사용」.
   final TransformTrack stand;
-
-  /// The colour a kind that draws its own picture draws it in — the KEYS of
-  /// ONE colour lane, as an SE row's name tag keys its name's ink
-  /// (`SeNameTagTrack.nameInk`), read in the same key space
-  /// ([argbKeySpace]). Unkeyed, the text tool's own black
-  /// ([effectInkAtRest]). Empty for every other kind.
-  ///
-  /// 🗣️F-477 (유저 2026-10-26): 「se행의 이름표fx의 이름 잉크같은것처럼 색
-  /// 컬러팝오버로 고르는거 그대로 사용하라고. 쓸데없이 빨강파랑초록
-  /// 나누지말고」. ↩️It was three number lanes, Red · Green · Blue — the
-  /// colour keys' shape ([colorKeyParameterSpecs]), which I-65-Q1's 「색 키
-  /// 고르는것」 was read as; nobody asked for it.
-  final PropertyTrack<int> ink;
-
-  /// Whether lane [lane] is this effect's [ink].
-  bool inksOn(String lane) => kind.drawsItsOwnPicture && lane == effectInkLane;
 
   /// The named parameter. Non-null for every id the kind declares (the
   /// constructor materializes them); an id from another kind answers a
@@ -576,16 +1052,20 @@ class LayerEffect {
     EffectKind? kind,
     bool? enabled,
     Map<String, EffectParameter>? parameters,
+    Map<String, PropertyTrack<int>>? colors,
+    Map<String, TransformTrack>? points,
+    Map<String, LayerId?>? layers,
     TransformTrack? stand,
-    PropertyTrack<int>? ink,
   }) {
     return LayerEffect(
       id: id ?? this.id,
       kind: kind ?? this.kind,
       enabled: enabled ?? this.enabled,
       parameters: parameters ?? this.parameters,
+      colors: colors ?? this.colors,
+      points: points ?? this.points,
+      layers: layers ?? this.layers,
       stand: stand ?? this.stand,
-      ink: ink ?? this.ink,
     );
   }
 
@@ -595,28 +1075,64 @@ class LayerEffect {
     return copyWith(parameters: {...parameters, parameterId: parameter});
   }
 
-  /// The property of [stand] lane [lane] is — a stand lane, by the transform
-  /// lane's id ([effectStandLanes]) — on a kind that draws its own picture;
-  /// null for every other lane: a parameter's.
-  TransformPropertyId? standLaneOf(String lane) =>
-      kind.drawsItsOwnPicture && effectStandLanes.contains(lane)
-      ? transformPropertyOfLaneId(lane)
-      : null;
+  /// [colors] with colour [colorId]'s keys replaced, [withParameter]'s twin.
+  LayerEffect withColor(String colorId, PropertyTrack<int> keys) {
+    return copyWith(colors: {...colors, colorId: keys});
+  }
 
-  /// The keys lane [lane] of this effect holds — a parameter's by its id,
-  /// a stand lane's ([standLaneOf]), the [ink]'s — read without knowing
-  /// their value type; null for a lane the effect has not.
-  PropertyTrack<Object?>? laneTrack(String lane) => switch (standLaneOf(lane)) {
-    final property? => transformLaneOf(stand, property),
-    null when inksOn(lane) => ink,
-    null => parameters[lane]?.track,
-  };
+  /// [layers] with row parameter [layerId] naming [row] — none for null.
+  LayerEffect withLayer(String layerId, LayerId? row) {
+    return copyWith(layers: {...layers, layerId: row});
+  }
+
+
+  /// The keys lane [lane] keeps as a transform's lane, and which lane of
+  /// theirs it is, by the transform lane's id: where a kind that draws its
+  /// own picture stands it — a stand lane, by that id ([effectStandLanes])
+  /// — or one of its [points], their Position; null for every other lane:
+  /// a parameter's or a colour's.
+  ///
+  /// ⛔ONE QUESTION for both: every verb that keys, values, resets, walks
+  /// or names such a lane asks it here and hands the answer to the
+  /// transform's own verbs — 🗣️I-65-Q2 「공용화된거 사용하면서」.
+  ({TransformTrack keys, String lane})? transformLaneAt(String lane) {
+    if (points[lane] case final keys?) {
+      return (keys: keys, lane: 'position');
+    }
+    if (kind.drawsItsOwnPicture && effectStandLanes.contains(lane)) {
+      return (keys: stand, lane: lane);
+    }
+    return null;
+  }
+
+  /// [keys] put back where lane [lane] keeps them ([transformLaneAt]) —
+  /// [stand] or the point's; this effect as it is for any other lane.
+  LayerEffect withTransformKeysAt(String lane, TransformTrack keys) =>
+      points.containsKey(lane)
+      ? copyWith(points: {...points, lane: keys})
+      : transformLaneAt(lane) == null
+      ? this
+      : copyWith(stand: keys);
+
+  /// The keys lane [lane] of this effect holds — a parameter's or a
+  /// colour's by its id, a transform's lane ([transformLaneAt]) — read
+  /// without knowing their value type; null for a lane the effect has not.
+  PropertyTrack<Object?>? laneTrack(String lane) =>
+      switch (transformLaneAt(lane)) {
+        (:final keys, lane: final kept) => transformLaneOf(
+          keys,
+          transformPropertyOfLaneId(kept)!,
+        ),
+        // A row keeps no keys: its lane's track is an empty one.
+        null when layers.containsKey(lane) => PropertyTrack<Object?>.empty(),
+        null => colors[lane] ?? parameters[lane]?.track,
+      };
 
   /// Every lane of this effect, in the order its rows show them: where it
-  /// stands first ([effectStandLanes]), as a transform's lanes lead, and
-  /// its [ink], then its parameters.
+  /// stands first ([effectStandLanes]), as a transform's lanes lead, then
+  /// its parameters.
   List<String> get lanes => [
-    if (kind.drawsItsOwnPicture) ...[...effectStandLanes, effectInkLane],
+    if (kind.drawsItsOwnPicture) ...effectStandLanes,
     for (final spec in kind.parameters) spec.id,
   ];
 
@@ -631,13 +1147,31 @@ class LayerEffect {
             entry.value.track.isNotEmpty)
           entry.key: entry.value.toJson(),
     },
+    if (colors.values.any((keys) => keys.isNotEmpty))
+      'colors': {
+        for (final entry in colors.entries)
+          if (entry.value.isNotEmpty)
+            entry.key: entry.value.toJson((value) => value),
+      },
+    if (points.values.any((keys) => keys.isNotEmpty))
+      'points': {
+        for (final entry in points.entries)
+          if (entry.value.isNotEmpty) entry.key: entry.value.toJson(),
+      },
+    if (layers.values.any((row) => row != null))
+      'layers': {
+        for (final MapEntry(key: id, value: row) in layers.entries)
+          if (row != null) id: row.toJson(),
+      },
     if (stand.isNotEmpty) 'stand': stand.toJson(),
-    if (ink.isNotEmpty) 'ink': ink.toJson((value) => value),
   };
 
   factory LayerEffect.fromJson(Map<String, dynamic> json) {
     final kind = EffectKind.fromJson(json['kind']);
     final rawParameters = json['parameters'] as Map<String, dynamic>? ?? {};
+    final rawColors = json['colors'] as Map<String, dynamic>? ?? {};
+    final rawPoints = json['points'] as Map<String, dynamic>? ?? {};
+    final rawLayers = json['layers'] as Map<String, dynamic>? ?? {};
     final stand = json['stand'] as Map<String, dynamic>?;
     // The constructor fills whatever the file left out.
     return LayerEffect(
@@ -650,11 +1184,24 @@ class LayerEffect {
             entry.value as Map<String, dynamic>,
           ),
       },
+      colors: {
+        for (final entry in rawColors.entries)
+          entry.key: PropertyTrack.fromJson(
+            entry.value as List?,
+            (value) => (value! as num).toInt(),
+          ),
+      },
+      points: {
+        for (final entry in rawPoints.entries)
+          entry.key: TransformTrack.fromJson(
+            entry.value as Map<String, dynamic>,
+          ),
+      },
+      layers: {
+        for (final entry in rawLayers.entries)
+          entry.key: LayerId.fromJson(entry.value as Map<String, dynamic>),
+      },
       stand: stand == null ? null : TransformTrack.fromJson(stand),
-      ink: PropertyTrack.fromJson(
-        json['ink'] as List?,
-        (value) => (value! as num).toInt(),
-      ),
     );
   }
 
@@ -666,8 +1213,10 @@ class LayerEffect {
           other.kind == kind &&
           other.enabled == enabled &&
           mapEquals(other.parameters, parameters) &&
-          other.stand == stand &&
-          other.ink == ink;
+          mapEquals(other.colors, colors) &&
+          mapEquals(other.points, points) &&
+          mapEquals(other.layers, layers) &&
+          other.stand == stand;
 
   @override
   int get hashCode => Object.hash(
@@ -678,8 +1227,16 @@ class LayerEffect {
       for (final entry in parameters.entries)
         Object.hash(entry.key, entry.value),
     ]),
+    Object.hashAll([
+      for (final entry in colors.entries) Object.hash(entry.key, entry.value),
+    ]),
+    Object.hashAll([
+      for (final entry in points.entries) Object.hash(entry.key, entry.value),
+    ]),
+    Object.hashAll([
+      for (final entry in layers.entries) Object.hash(entry.key, entry.value),
+    ]),
     stand,
-    ink,
   );
 
   @override
@@ -699,19 +1256,31 @@ class ResolvedLayerEffect {
     required this.kind,
     required List<double> values,
     this.stand,
-    this.ink,
-  }) : values = List.unmodifiable(values);
+    Map<String, CanvasPoint?> points = const {},
+    Map<String, LayerId?> layers = const {},
+  }) : values = List.unmodifiable(values),
+       points = Map.unmodifiable(points),
+       layers = Map.unmodifiable(layers);
 
   final EffectKind kind;
+
+  /// A point's or a row's is its spec's 0: neither is a number ([points],
+  /// [layers]).
   final List<double> values;
 
   /// Where a kind that draws its own picture stands it at this frame
   /// ([LayerEffect.stand] sampled); null for every other kind.
   final EffectStand? stand;
 
-  /// The ARGB colour a kind that draws its own picture draws it in at this
-  /// frame ([LayerEffect.ink] sampled); null for every other kind.
-  final int? ink;
+  /// Where each of the kind's points stands at this frame
+  /// ([LayerEffect.points] sampled, [effectPointAt]) — null for one at
+  /// rest, the paper's middle, which the paper says ([effectPointOnPaper]).
+  final Map<String, CanvasPoint?> points;
+
+  /// The row each of the kind's row parameters names ([LayerEffect.layers])
+  /// — null for none. Its id alone: what that row draws at this frame is
+  /// the cut's to say, and its signature's.
+  final Map<String, LayerId?> layers;
 
   double parameter(String id) {
     final specs = kind.parameters;
@@ -721,6 +1290,25 @@ class ResolvedLayerEffect {
     }
     return index < values.length ? values[index] : specs[index].defaultValue;
   }
+
+  /// The ARGB colour parameter [id] holds ([EffectParameterUnit.color]).
+  int color(String id) => parameter(id).toInt();
+
+  /// Whether the flag parameter [id] is on ([EffectParameterUnit.flag]).
+  bool flag(String id) => effectFlagIsOn(parameter(id));
+
+  /// This sample naming no row ([layers]) — as a row a chain reads wears
+  /// its own: 🗣️I-132-Q22 a, a blur map's own blur map is not read.
+  ResolvedLayerEffect get namingNoRow =>
+      layers.values.every((row) => row == null)
+      ? this
+      : ResolvedLayerEffect(
+          kind: kind,
+          values: values,
+          stand: stand,
+          points: points,
+          layers: {for (final parameter in layers.keys) parameter: null},
+        );
 
   /// Whether this sample changes any pixel. An effect resolved to its
   /// defaults is dropped by the resolver, so nothing downstream ever pays
@@ -751,14 +1339,42 @@ class ResolvedLayerEffect {
           other.kind == kind &&
           listEquals(other.values, values) &&
           other.stand == stand &&
-          other.ink == ink;
+          mapEquals(other.points, points) &&
+          mapEquals(other.layers, layers);
 
   @override
-  int get hashCode => Object.hash(kind, Object.hashAll(values), stand, ink);
+  int get hashCode => Object.hash(
+    kind,
+    Object.hashAll(values),
+    stand,
+    Object.hashAll([
+      for (final entry in points.entries) Object.hash(entry.key, entry.value),
+    ]),
+    Object.hashAll([
+      for (final entry in layers.entries) Object.hash(entry.key, entry.value),
+    ]),
+  );
 
   @override
-  String toString() => 'ResolvedLayerEffect($kind, $values, $stand, $ink)';
+  String toString() =>
+      'ResolvedLayerEffect($kind, $values, $stand, $points, $layers)';
 }
+
+/// Where point [keys] ([LayerEffect.points]) stand at [time], a frame or
+/// between two — their Position walked as a transform's is — null while
+/// unkeyed: then the point rests where a row does, which only the paper
+/// says ([effectPointOnPaper]).
+CanvasPoint? effectPointAt(TransformTrack keys, double time) =>
+    resolveAnchorTrackAtTime(keys.position, time);
+
+/// Where [point] — one sampled ([effectPointAt]) — stands on [paper]: where
+/// its keys put it, or at rest where a row does ([layerIdentityPose]), the
+/// paper's middle.
+///
+/// 🗣️08-07: 「위치는 기본값으로 — 기본 트랜스폼 fx 의 위치 기준, 늘 하던 대로
+/// 공통된 거 사용」.
+CanvasPoint effectPointOnPaper(CanvasPoint? point, CanvasSize paper) =>
+    point ?? layerIdentityPose(paper).center;
 
 /// Where the picture of an effect that draws its own stands at one time:
 /// [LayerEffect.stand]'s keys and the time to read them at — a frame, or
@@ -789,20 +1405,34 @@ TransformPose effectStandPose(EffectStand stand, CanvasSize paper) =>
       orElse: () => layerIdentityPose(paper),
     );
 
-/// The lane of [LayerEffect.ink] — after where the effect stands, as an SE
-/// name tag's inks follow its letters' size.
-const String effectInkLane = 'ink';
+/// Colour [keys] at [time], a frame or between two, walking channel by
+/// channel ([argbKeySpace]) — unkeyed, [rest].
+int effectColorAt(PropertyTrack<int> keys, double time, {required int rest}) =>
+    keys.resolveAtTime(time: time, orElse: () => rest, space: argbKeySpace);
 
-/// What an unkeyed [LayerEffect.ink] draws in: opaque black, the text
-/// tool's own ink (`TextLetterStyle.color`).
-const int effectInkAtRest = 0xFF000000;
-
-/// [ink] at [time], a frame or between two — unkeyed, [effectInkAtRest].
-int effectInkAt(PropertyTrack<int> ink, double time) => ink.resolveAtTime(
-  time: time,
-  orElse: () => effectInkAtRest,
-  space: argbKeySpace,
-);
+/// What lane [spec] of [effect] holds at [time], a frame or between two, as
+/// the number [ResolvedLayerEffect.values] carries: a colour its ARGB
+/// ([effectColorAt]), a point or a row its spec's 0 — neither is a number
+/// ([ResolvedLayerEffect.points], [ResolvedLayerEffect.layers]) — any
+/// other its parameter's walk.
+double effectValueAt(
+  LayerEffect effect,
+  EffectParameterSpec spec,
+  double time,
+) => switch (effect.colors[spec.id]) {
+  final keys? => effectColorAt(
+    keys,
+    time,
+    rest: spec.defaultValue.toInt(),
+  ).toDouble(),
+  null
+      when spec.unit == EffectParameterUnit.point ||
+          spec.unit == EffectParameterUnit.layer =>
+    spec.defaultValue,
+  null => effect
+      .parameterOf(spec.id)
+      .resolveAtTime(time, space: spec.keySpace),
+};
 
 /// Samples [effects] at [frameIndex], dropping the disabled ones and the
 /// ones that resolve to a no-op. An empty result is the overwhelmingly
@@ -824,14 +1454,16 @@ List<ResolvedLayerEffect> resolveLayerEffectsAt({
       kind: effect.kind,
       values: [
         for (final spec in specs)
-          spec.clamp(effect.parameterOf(spec.id).resolveAt(frameIndex)),
+          spec.clamp(effectValueAt(effect, spec, frameIndex.toDouble())),
       ],
       stand: effect.kind.drawsItsOwnPicture
           ? effectStandAt(effect.stand, frameIndex.toDouble())
           : null,
-      ink: effect.kind.drawsItsOwnPicture
-          ? effectInkAt(effect.ink, frameIndex.toDouble())
-          : null,
+      points: {
+        for (final MapEntry(key: id, value: keys) in effect.points.entries)
+          id: effectPointAt(keys, frameIndex.toDouble()),
+      },
+      layers: effect.layers,
     );
     if (sample.isNoOp) {
       continue;
@@ -914,12 +1546,21 @@ List<NamedEffectKeyChange> namedEffectKeyChanges(
       // two would drift.
       moved(entry.key, movedNamedKeys(oldTrack, entry.value.track));
     }
-    // Where it stands is read as a transform's keys are, by the
-    // transform's own reading of them.
+    for (final MapEntry(key: lane, value: keys) in effect.colors.entries) {
+      if (old.colors[lane] case final oldKeys?) {
+        moved(lane, movedNamedKeys(oldKeys, keys));
+      }
+    }
+    // Where it stands and its points are read as a transform's keys are,
+    // by the transform's own reading of them.
     final stand = transformNamedKeyChanges(old.stand, effect.stand);
     moved('position', stand.position);
     moved('scale', stand.scale);
-    moved(effectInkLane, movedNamedKeys(old.ink, effect.ink));
+    for (final MapEntry(key: lane, value: keys) in effect.points.entries) {
+      if (old.points[lane] case final oldKeys?) {
+        moved(lane, transformNamedKeyChanges(oldKeys, keys).position);
+      }
+    }
   }
   return changes;
 }
@@ -973,7 +1614,10 @@ double effectParameterValueAtTime(
 ) {
   for (final effect in effects) {
     if (effect.id == effectId) {
-      return effect.parameterOf(parameterId).resolveAtTime(time);
+      return switch (effect.kind.parameterSpec(parameterId)) {
+        final spec? => effectValueAt(effect, spec, time),
+        null => effect.parameterOf(parameterId).resolveAtTime(time),
+      };
     }
   }
   return 0;
@@ -1012,25 +1656,30 @@ LayerEffect? _withNamedValue(
   NamedEffectKeyChange change,
 ) {
   final named = {change.name: change.held};
-  if (effect.inksOn(change.lane)) {
-    return effect.copyWith(ink: effect.ink.withNamedKeys(named.cast()));
-  }
-  switch (effect.standLaneOf(change.lane)) {
-    case TransformPropertyId.position:
-      return effect.copyWith(
-        stand: transformTrackWithNamedKeys(
-          effect.stand,
+  switch (effect.transformLaneAt(change.lane)) {
+    case (:final keys, lane: 'position'):
+      return effect.withTransformKeysAt(
+        change.lane,
+        transformTrackWithNamedKeys(
+          keys,
           TransformNamedChanges(position: named.cast()),
         ),
       );
-    case TransformPropertyId.scale:
-      return effect.copyWith(
-        stand: transformTrackWithNamedKeys(
-          effect.stand,
+    case (:final keys, lane: 'scale'):
+      return effect.withTransformKeysAt(
+        change.lane,
+        transformTrackWithNamedKeys(
+          keys,
           TransformNamedChanges(scale: named.cast()),
         ),
       );
     case _:
+      if (effect.colors[change.lane] case final keys?) {
+        return effect.withColor(
+          change.lane,
+          keys.withNamedKeys(named.cast()),
+        );
+      }
       final parameter = effect.parameters[change.lane];
       if (parameter == null) {
         return null;
@@ -1044,6 +1693,29 @@ LayerEffect? _withNamedValue(
       );
   }
 }
+
+/// [effects] with every row they name ([LayerEffect.layers]) put through
+/// [rowOf] — a copy's, whose rows are the copies of its source's (a
+/// duplicated cut's, a linked cut's): what [rowOf] answers null for, they
+/// name none. [effects] themselves where they name none.
+///
+/// ⛔ONE WAY a copy re-names its effects' rows, beside the attach pointer
+/// (`attachedToLayerId`) it re-names at every site that copies rows.
+List<LayerEffect> effectsWithRowsRenamed(
+  List<LayerEffect> effects,
+  LayerId? Function(LayerId row) rowOf,
+) => effects.every((effect) => effect.layers.values.every((row) => row == null))
+    ? effects
+    : [
+        for (final effect in effects)
+          effect.copyWith(
+            layers: {
+              for (final MapEntry(key: id, value: row)
+                  in effect.layers.entries)
+                id: row == null ? null : rowOf(row),
+            },
+          ),
+      ];
 
 /// [shape]'s chain STRUCTURE — which effects, in what order, each on or
 /// off — laid over [onto]'s own parameter values and keyframe tracks.

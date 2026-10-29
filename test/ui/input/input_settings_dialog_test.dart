@@ -7,7 +7,6 @@ import 'package:anicel/src/ui/dialogs/input_settings_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/text/app_strings.dart' show AppText;
 import 'package:anicel/src/models/app_input_settings.dart';
-import 'package:anicel/src/ui/widgets/owning_axis_grip.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/content_scrollbar.dart';
@@ -252,7 +251,7 @@ void main() {
     await pumpDialog(tester);
     final bar = find.descendant(
       of: find.byKey(const ValueKey<String>('settings-snap-rotation')),
-      matching: find.byType(OwningAxisGrip),
+      matching: find.byType(FieldSliderTrack),
     );
     await tester.ensureVisible(bar);
     await tester.pumpAndSettle();

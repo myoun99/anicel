@@ -1,7 +1,6 @@
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/theme/text_on_ground.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
-import 'package:anicel/src/ui/widgets/owning_axis_grip.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -39,7 +38,7 @@ void main() {
     // stepper and half the widget is no longer half the bar.
     final track = find.descendant(
       of: find.byType(FieldSlider),
-      matching: find.byType(OwningAxisGrip),
+      matching: find.byType(FieldSliderTrack),
     );
     expect(
       track,
@@ -70,7 +69,7 @@ void main() {
     );
     final track = find.descendant(
       of: find.byType(FieldSlider),
-      matching: find.byType(OwningAxisGrip),
+      matching: find.byType(FieldSliderTrack),
     );
     expect(track, paints..rect(color: AppColors.textDim));
 

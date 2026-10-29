@@ -64,7 +64,7 @@ void main() {
   }
 
   bool pictured(BitmapSurface surface) =>
-      surface.tiles.values.every((tile) => cache.imageFor(tile) != null);
+      surface.tiles.values.every((tile) => cache.heldFor(tile) != null);
 
   Future<void> letTheWarmRun(WidgetTester tester) async {
     for (var i = 0; i < 4; i += 1) {

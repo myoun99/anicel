@@ -453,11 +453,12 @@ void main() {
     expect(s.activeCutOrNull!.layers.length, cutLayersBefore + 1);
     expect(s.activeTrack.seLayers.length, seBefore, reason: 'no S row here');
 
-    // Comma 3 retimes the ACTIVE block at the playhead — never the cut.
+    // Comma 3 retimes the ACTIVE block at the playhead — never the cut —
+    // here the cel the row was born with on frame 0 (I-138).
     final durationBefore = s.activeCutOrNull!.duration;
     s.selectFrameIndex(0);
-    s.createDrawingAtCurrentFrame();
     await tester.pumpAndSettle();
+    expect(s.activeLayer!.timeline[0]?.frameId, isNotNull);
     await tester.tap(find.byKey(const ValueKey<String>('set-comma-3-button')));
     await tester.pumpAndSettle();
     expect(s.activeLayer!.timeline[0]!.length, 3);

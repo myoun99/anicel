@@ -266,21 +266,54 @@ bool displayEdgeAntiAliased(
 /// A turned or projected space has no edge on the grid: [rect] comes back
 /// as it is.
 ui.Rect cutOnThePixelGrid(ui.Canvas canvas, ui.Rect rect, double pixelRatio) {
-  final m = canvas.getTransform();
-  if (m[1] != 0 || m[4] != 0 || m[3] != 0 || m[7] != 0 || m[15] != 1) {
+  final grid = _pixelGridOf(canvas, pixelRatio);
+  if (grid == null) {
     return rect;
   }
-  final (sx, sy) = (m[0] * pixelRatio, m[5] * pixelRatio);
-  final (tx, ty) = (m[12] * pixelRatio, m[13] * pixelRatio);
-  if (sx == 0 || sy == 0) {
-    return rect;
-  }
+  final (:sx, :sy, :tx, :ty) = grid;
   double cut(double value, double scale, double origin) =>
       (((value * scale + origin) - 0.5).ceilToDouble() - origin) / scale;
   return ui.Rect.fromPoints(
     ui.Offset(cut(rect.left, sx, tx), cut(rect.top, sy, ty)),
     ui.Offset(cut(rect.right, sx, tx), cut(rect.bottom, sy, ty)),
   );
+}
+
+/// Whether an edge of a grid of [cell]-wide squares from the origin of
+/// [canvas]'s space falls inside a pixel — where an engine that blends every
+/// edge it is handed blends it, and [cutOnThePixelGrid] would move it — with
+/// [pixelRatio] as there. A turned or projected space has no edge on the
+/// grid to fall off: false.
+bool cellsFallOffThePixelGrid(
+  ui.Canvas canvas,
+  double cell,
+  double pixelRatio,
+) {
+  final grid = _pixelGridOf(canvas, pixelRatio);
+  if (grid == null) {
+    return false;
+  }
+  final (:sx, :sy, :tx, :ty) = grid;
+  bool off(double pixels) => pixels != pixels.roundToDouble();
+  return off(tx) || off(ty) || off(sx * cell) || off(sy * cell);
+}
+
+/// [canvas]'s space on its pixels — each axis's scale and origin, carried
+/// past the canvas's own transform by [pixelRatio] — or null where the space
+/// is turned, projected or flat and has no edge on the grid.
+({double sx, double sy, double tx, double ty})? _pixelGridOf(
+  ui.Canvas canvas,
+  double pixelRatio,
+) {
+  final m = canvas.getTransform();
+  if (m[1] != 0 || m[4] != 0 || m[3] != 0 || m[7] != 0 || m[15] != 1) {
+    return null;
+  }
+  final (sx, sy) = (m[0] * pixelRatio, m[5] * pixelRatio);
+  if (sx == 0 || sy == 0) {
+    return null;
+  }
+  return (sx: sx, sy: sy, tx: m[12] * pixelRatio, ty: m[13] * pixelRatio);
 }
 
 /// [rect] with its edge cut as the display law says: as it is where the
@@ -342,6 +375,10 @@ void drawOnTheDisplay(
 /// and only what it fills is cut ([drawShadedRect]), so moving the edge
 /// moves no texel. Every pixel inside the cut rect has its centre inside
 /// [dst], so nothing past the image is ever shown.
+///
+/// [paint] is what else the image is laid with — a layer's opacity, blend
+/// and colour riding the draw — as `drawImageRect` would take it; the image
+/// is its shader for the draw, and no edge of it is anti-aliased.
 void drawImageRectOnThePixelGrid(
   ui.Canvas canvas,
   ui.Image image,
@@ -349,6 +386,7 @@ void drawImageRectOnThePixelGrid(
   ui.Rect dst, {
   required ui.FilterQuality filterQuality,
   required double pixelRatio,
+  ui.Paint? paint,
 }) {
   final sx = dst.width / src.width;
   final sy = dst.height / src.height;
@@ -369,7 +407,7 @@ void drawImageRectOnThePixelGrid(
     drawShadedRect(
       canvas,
       cutOnThePixelGrid(canvas, dst, pixelRatio),
-      ui.Paint()
+      (paint == null ? ui.Paint() : ui.Paint.from(paint))
         ..shader = shader
         ..isAntiAlias = false,
     );

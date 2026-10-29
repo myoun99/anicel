@@ -5,6 +5,7 @@ import '../../models/bitmap_surface.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/sheet_marks.dart';
 import '../../services/cel_surface_as_shown.dart';
+import '../../services/playback/frame_demand.dart' show FrameGhosts;
 import '../../services/viewport_transform_matrix.dart';
 import '../canvas/bitmap_surface_painter.dart';
 import '../playback/camera_shot.dart' show outlineThrough;
@@ -169,6 +170,7 @@ class ContePictureLive extends StatelessWidget {
                 cut: picture.cut,
                 frameIndex: picture.frame,
                 paintPaper: false,
+                ghosts: FrameGhosts.none,
               ),
               nodes: drawn.nodes,
               viewport: viewportOfSimilarity(canvasToBox)!,

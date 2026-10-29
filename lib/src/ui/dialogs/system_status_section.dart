@@ -4,8 +4,10 @@ import '../diagnostics/memory_census.dart';
 import '../editor_session_manager.dart';
 import '../../services/diagnostics/memory_black_box.dart';
 import '../../services/runtime_path_report.dart';
+import '../../services/usage_stats/usage_stats.dart';
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart';
+import 'usage_stats_switch_row.dart';
 
 /// Preferences ▸ System: the live runtime-path report — which
 /// implementation each switchable subsystem is ACTUALLY running (native
@@ -17,11 +19,24 @@ import '../theme/app_theme.dart';
 /// both the developer and end users can see the silent choices and look
 /// them up. Fallback rows tint amber — a packaging problem becomes a
 /// visible state instead of a mystery slowdown.
+///
+/// Above the report, the usage statistics' switch (I-70-Q3: on or off any
+/// time in 환경설정): what the app tells about itself, beside what it is
+/// running — the tab that already answers 「what is going on inside the
+/// app」, rather than a tab of its own for one row.
 class SystemStatusSection extends StatelessWidget {
-  const SystemStatusSection({super.key, required this.openSessions});
+  const SystemStatusSection({
+    super.key,
+    required this.openSessions,
+    required this.usageStats,
+  });
 
   /// Every open project — the census adds them all up (I-7).
   final Iterable<EditorSessionManager> openSessions;
+
+  /// What the usage statistics' switch turns on or off
+  /// ([UsageStatsSwitchRow]).
+  final UsageStats usageStats;
 
   @override
   Widget build(BuildContext context) {
@@ -31,6 +46,8 @@ class SystemStatusSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
+        UsageStatsSwitchRow(usageStats: usageStats),
+        const SizedBox(height: 10),
         Text(
           AppText.strings.systemStatusHelp,
           style: const TextStyle(fontSize: 11, color: AppColors.textDim),

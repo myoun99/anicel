@@ -4,8 +4,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/app_frame_grid_settings.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
+import 'package:anicel/src/models/inbetween_mark.dart';
 import 'package:anicel/src/ui/dialogs/display_settings_section.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
+import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
+    show editorActionLabel;
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/ui_scale.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
@@ -241,6 +245,60 @@ void main() {
           touchDragOneFinger: CanvasTouchDragAction.flip,
           drawingCursor: DrawingCursor.brush,
         ),
+      );
+    });
+  });
+
+  // 🗣️F-489 (유저 2026-10-27): 「이름 없는 블록의 기본 마크1,2인지
+  // 설정할수있게 … 환경설정에서 바꾸도록. 화면 탭에서? 그런건 판단 맡기고 …
+  // 기본값은 마크2로 둠」.
+  group('the unnamed block\'s mark', () {
+    final picker = find.byKey(const ValueKey<String>('settings-unnamed-mark'));
+    String row(InbetweenMark mark) => 'settings-unnamed-mark-${mark.name}';
+
+    setUp(() => AppFrameGridSettings.settings.value =
+        const AppFrameGridSettings());
+    tearDown(() => AppFrameGridSettings.settings.value =
+        const AppFrameGridSettings());
+
+    testWidgets('is a list of the two marks, each by its button\'s name, '
+        'mark 2 picked out of the box', (tester) async {
+      await pump(tester);
+      expect(find.text(AppText.strings.unnamedMarkLabel), findsOneWidget);
+      expect(
+        [
+          for (final item in rowsOf(tester, picker)) (item.keyValue, item.label),
+        ],
+        [
+          for (final mark in InbetweenMark.values)
+            (row(mark), editorActionLabel(markToggleActionOf(mark))),
+        ],
+      );
+      expect(pickedIn(tester, picker), [row(InbetweenMark.two)]);
+      expect(
+        said(tester, picker),
+        editorActionLabel(EditorActionIds.frameToggleMarkTwo),
+      );
+    });
+
+    testWidgets('a pick sets the live setting, touching nothing else it '
+        'holds, and the button says it', (tester) async {
+      AppFrameGridSettings.settings.value = const AppFrameGridSettings(
+        blockFrameLines: true,
+      );
+      await pump(tester);
+      await pick(tester, picker, row(InbetweenMark.one));
+      expect(
+        AppFrameGridSettings.settings.value,
+        const AppFrameGridSettings(
+          blockFrameLines: true,
+          unnamedMark: InbetweenMark.one,
+        ),
+      );
+      expect(pickedIn(tester, picker), [row(InbetweenMark.one)]);
+      expect(
+        said(tester, picker),
+        editorActionLabel(EditorActionIds.frameToggleMarkOne),
       );
     });
   });

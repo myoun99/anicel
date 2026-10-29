@@ -14,6 +14,9 @@ class _LayerGridRailRows {
 
   final _LayerTimelineGridState _state;
 
+  /// What the rail keeps of its rows while only the window moves.
+  final WindowMoveKeep _keep = WindowMoveKeep();
+
   LayerRailExtent get _railExtent =>
       _state.widget.railExtent ??
       (_state._ownedRailExtent ??= LayerRailExtent());
@@ -122,10 +125,13 @@ class _LayerGridRailRows {
     _RowWindow window,
     int index,
   ) => window.edges.extentOf(index) > 0
-      ? Named(
-          _railRowName(rows[index]),
-          key: window.berths.keyOf(rows[index]),
-          child: _railRowMemoized(rows[index], window.berths),
+      ? _keep.row(
+          window.berths.keyOf(rows[index]),
+          () => Named(
+            _railRowName(rows[index]),
+            key: window.berths.keyOf(rows[index]),
+            child: _railRowMemoized(rows[index], window.berths),
+          ),
         )
       : null;
 
@@ -217,6 +223,7 @@ class _LayerGridRailRows {
     final pinnedIndex = window.pinnedIndex;
     final pinnedBefore = window.pinnedBefore;
     final pinnedAfter = window.pinnedAfter;
+    _keep.lay(window.pass);
     return LayerRailWindow(
       axis: Axis.horizontal,
       rail: _railExtent,

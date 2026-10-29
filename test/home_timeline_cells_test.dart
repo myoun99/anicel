@@ -327,7 +327,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expectCellMark('default-layer-1', 0, unnamedDrawingMark);
-      expectCellText('default-layer-2', 0, 'X');
+      // B keeps the one cel it was born with (I-138) — the press wrote A.
+      expectCellMark('default-layer-2', 0, unnamedDrawingMark);
+      expectCellText('default-layer-2', 1, 'X');
       expect(anyCellSemanticsLabel('default-layer-1', 'drawing start'), isTrue);
       expect(
         anyCellSemanticsLabel('default-layer-1', 'inbetween mark 2'),

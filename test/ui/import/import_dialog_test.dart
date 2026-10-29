@@ -27,9 +27,10 @@ import '../../helpers/psd_fixture.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/staged_carry.dart';
+import '../../helpers/stand_in_movie.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
-import '../../helpers/number_pad_keyboard.dart';
+import '../../helpers/import_span.dart';
 
 /// Empties [file], once nothing else holds it mapped.
 ///
@@ -114,22 +115,6 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// Types [first] into the preview's IN and [last] into its OUT, each as
-  /// a hand does — one-based, as they stand on screen.
-  Future<void> keepSpan(WidgetTester tester, int first, int last) async {
-    for (final (end, at) in [('in', first), ('out', last)]) {
-      await tester.tap(find.byKey(ValueKey<String>('transport-$end-edit')));
-      await tester.pump();
-      await openThePadsKeyboard(tester);
-      await tester.enterText(
-        find.byKey(ValueKey<String>('transport-$end-input')),
-        '$at',
-      );
-      await tester.testTextInput.receiveAction(TextInputAction.done);
-      await tester.pumpAndSettle();
-    }
-  }
-
   testWidgets('🎯a cut folder counts its scans into the run\'s % (F-282-Q1)', (
     tester,
   ) async {
@@ -170,6 +155,34 @@ void main() {
       counted.where((fraction) => fraction > 0 && fraction < 1),
       isNotEmpty,
       reason: 'its scans were counted on the way, not only its end',
+    );
+    s.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('🗣️F-494: the window\'s line names what a file is going '
+      'through — a carried file\'s bytes held — and lets go once it is '
+      'through (「하고있는 과정을 투명하게」)', (tester) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final path = await tester.runAsync(() => writePng('ref.png'));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ImportDialog(session: s, initialPaths: [path!]),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    final lines = watchTheLine(tester);
+    await pumpPastTheWaitWindow(tester);
+
+    expect(
+      lines,
+      ['', AppText.strings.imStepCarrying, ''],
+      reason: 'a row carries its file at first (seedImportSettings), so the '
+          'one long thing this file goes through is its bytes being held',
     );
     s.playbackRig.prerenderScheduler.cancel();
   });
@@ -267,7 +280,7 @@ void main() {
   group('the media pool is a destination', () {
     Future<String> writeMovie() async {
       final file = File('${tempDir.path}${Platform.pathSeparator}ref.mp4');
-      await file.writeAsBytes(const [0, 0, 0, 24]);
+      await file.writeAsBytes(standInMovieBytes);
       return file.path;
     }
 
@@ -603,17 +616,11 @@ void main() {
     await pickCell(tester, column: 'into', path: pdfPath, option: 'newCut');
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    final counted = watchTheBar(tester);
+    final lines = watchTheLine(tester);
     await tester.pump();
     await tester.pump();
-    final window = find.byType(AppProgressDialog);
-    expect(window, findsOneWidget);
-    final progress = tester.widget<AppProgressDialog>(window).progress;
-    final counted = <double>[];
-    progress.addListener(() {
-      if (progress.value.fraction case final fraction?) {
-        counted.add(fraction);
-      }
-    });
+    expect(find.byType(AppProgressDialog), findsOneWidget);
     await pumpPastTheWaitWindow(tester);
 
     expect(
@@ -621,6 +628,15 @@ void main() {
       isNotEmpty,
       reason: 'its pages were counted on the way, not only its end',
     );
+    // 🗣️F-494: what it went through, in the order its door does it, each
+    // an even share of the file's: its bytes held, then its four pages.
+    expect(lines, [
+      '',
+      AppText.strings.imStepCarrying,
+      AppText.strings.imStepRasterizing,
+      '',
+    ]);
+    expectOneBar(counted, [0.5, 0.625, 0.75, 0.875, 1]);
     s.playbackRig.prerenderScheduler.cancel();
   });
 
@@ -708,7 +724,7 @@ void main() {
   group('the file table', () {
     Future<String> writeMovie(String name) async {
       final file = File('${tempDir.path}${Platform.pathSeparator}$name');
-      await file.writeAsBytes(const [0, 0, 0, 24]);
+      await file.writeAsBytes(standInMovieBytes);
       return file.path;
     }
 
@@ -864,6 +880,7 @@ void main() {
       );
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+      final lines = watchTheLine(tester);
       await pumpPastTheWaitWindow(tester);
       // Waits for what landed, as every run here does. ↩️It waited for
       // 「Importing…」 to go, which a run that imported never does: it ends
@@ -884,6 +901,11 @@ void main() {
         find.text('Nothing imported.'),
         findsNothing,
         reason: 'a placement IS an import — the batch counted it',
+      );
+      expect(
+        lines,
+        ['', AppText.strings.imStepCarrying, ''],
+        reason: '🗣️F-494: carried as it placed, by its own door',
       );
       session.playbackRig.prerenderScheduler.cancel();
     });
@@ -1137,10 +1159,20 @@ void main() {
     await pickCell(tester, column: 'into', path: pdfPath, option: 'newCut');
 
     // Pages three and four of five.
-    await keepSpan(tester, 3, 4);
+    await keepImportSpan(tester, 3, 4);
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    final lines = watchTheLine(tester);
     await pumpPastTheWaitWindow(tester);
+    // 🗣️F-494: the cut named from its start — a page range's says nothing
+    // until it is done — then the piece's door, as a whole file's.
+    expect(lines, [
+      '',
+      AppText.strings.imStepWritingSpan,
+      AppText.strings.imStepCarrying,
+      AppText.strings.imStepRasterizing,
+      '',
+    ]);
     // The CUT lands before its pages are drawn — the structure is
     // committed first and the bakes follow — so waiting for the cut alone
     // would read the render log half-written.
@@ -1227,7 +1259,7 @@ void main() {
     );
     await tester.pump();
     await pickCell(tester, column: 'into', path: pdfPath, option: 'newCut');
-    await keepSpan(tester, 3, 4);
+    await keepImportSpan(tester, 3, 4);
     final bake = find.byKey(ValueKey<String>('import-cell-bake-$pdfPath'));
     await tester.ensureVisible(bake);
     await tester.pumpAndSettle();
@@ -1295,13 +1327,29 @@ void main() {
     await tester.pump();
 
     // Pages two and three of five.
-    await keepSpan(tester, 2, 3);
+    await keepImportSpan(tester, 2, 3);
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    final lines = watchTheLine(tester);
+    final counted = watchTheBar(tester);
     await pumpPastTheWaitWindow(tester);
     List<MediaAsset> pool() => s.repository.requireProject().mediaAssets;
     await settleAsync(tester, () => pool().isNotEmpty);
     await tester.pumpAndSettle();
+
+    // 🗣️F-494: the cut is named from its start — a page range's says
+    // nothing until it is done — and then the piece's holding.
+    expect(lines, [
+      '',
+      AppText.strings.imStepWritingSpan,
+      '',
+      AppText.strings.imStepCarrying,
+      '',
+    ]);
+    // Each an even share of the file's: the cut the first half, the
+    // holding the second — the piece read twice, its first read a half
+    // of the holding (`mediaBlobReadsAtMost`).
+    expectOneBar(counted, [0, 0.75, 1]);
 
     expect(cutFrom, [(pdfPath, 1, 2)], reason: 'cut out of the original');
     expect(
@@ -2041,7 +2089,7 @@ void main() {
         tester,
         [pdf!],
         poolOnly: true,
-        asked: () => keepSpan(tester, 2, 3),
+        asked: () => keepImportSpan(tester, 2, 3),
       );
       Finder inNotice(String text) =>
           find.descendant(of: notice, matching: find.text(text));
@@ -2232,5 +2280,45 @@ void main() {
     // before the linked one registers — then the placed two, from half the
     // bar.
     expectOneBar(told, [0.25, 0.5, 0.75, 1]);
+  });
+
+  testWidgets('a kept file the pool already holds still fills its share — '
+      'said outright, as its holding holds nothing — before the linked one '
+      'registers (F-282-Q1)', (tester) async {
+    final (held, linked) = (await tester.runAsync(
+      () async => (await writePng('held.png'), await writePng('linked.png')),
+    ))!;
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    await tester.runAsync(
+      () => session.mediaPool.importMediaFiles([held], copyIntoProject: true),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ImportDialog(
+            session: session,
+            initialPaths: [held, linked],
+            poolOnly: true,
+          ),
+        ),
+      ),
+    );
+    await settleLoadedPages(tester);
+    await pickCell(tester, column: 'file', path: linked, option: 'reference');
+
+    final told = watchTheBar(tester);
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    await pumpPastTheWaitWindow(tester);
+    session.playbackRig.prerenderScheduler.cancel();
+
+    expectOneBar(told, [0, 0.5, 1]);
+    expect(
+      told.where((fraction) => fraction > 0 && fraction < 0.5),
+      isEmpty,
+      reason: 'the held file holds nothing again: $told',
+    );
   });
 }

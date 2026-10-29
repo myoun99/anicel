@@ -232,6 +232,7 @@ void main() {
       await tester.runAsync(() async {
         const service = CameraFrameRenderService();
         final image = await service.renderThroughCamera(
+          canvasSize: canvasSize,
           layers: [CutFrameCompositeLayer(surface: surface, opacity: 1)],
           pose: pose,
           cameraFrameSize: canvasSize,

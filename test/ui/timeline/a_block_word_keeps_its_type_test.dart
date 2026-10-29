@@ -318,7 +318,7 @@ void main() {
       for (final cell in zooms) {
         final painter = runLabels(cell);
         final spy = _PaintedBoxes();
-        painter.paint(spy, Size(cell * 16, rowExtent));
+        painter.paintWords(spy, Size(cell * 16, rowExtent));
         final labels = painter.runLabels();
         expect(spy.boxes, hasLength(labels.length), reason: 'fixture');
         for (var i = 0; i < labels.length; i += 1) {
@@ -373,7 +373,7 @@ void main() {
         baseTextStyle: base,
       );
       final spy = _PaintedBoxes();
-      painter.paint(spy, const Size(cell * 16, rowExtent));
+      painter.paintWords(spy, const Size(cell * 16, rowExtent));
       expect(spy.xScales.single, 1, reason: 'the gap gave the pixel');
     });
   });
@@ -921,7 +921,7 @@ void main() {
         baseTextStyle: base,
       );
       final spy = _PaintedBoxes();
-      painter.paint(spy, Size(edge(16), rowExtent));
+      painter.paintWords(spy, Size(edge(16), rowExtent));
       final labels = painter.runLabels();
       expect(labels, isNotEmpty, reason: 'fixture');
       expect(spy.boxes, hasLength(labels.length), reason: 'fixture');

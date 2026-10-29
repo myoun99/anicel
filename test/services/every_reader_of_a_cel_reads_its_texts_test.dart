@@ -192,8 +192,14 @@ void main() {
 
   group('the seam', () {
     ResolvedLayerEffect eraseColor(List<int> rgb) => ResolvedLayerEffect(
-      kind: EffectKind.deleteColor,
-      values: [rgb[0].toDouble(), rgb[1].toDouble(), rgb[2].toDouble(), 0, 100],
+      kind: EffectKind.colorKey,
+      // Key Colors, the colour's own three bytes — not its alpha.
+      values: [
+        0,
+        (0xFF000000 | rgb[0] << 16 | rgb[1] << 8 | rgb[2]).toDouble(),
+        0,
+        100,
+      ],
     );
 
     test('lays the texts and then keys: a colour key names a letter\'s '

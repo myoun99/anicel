@@ -252,7 +252,7 @@ void main() {
       double? blurred(int frame) => now()
           .effects
           .single
-          .parameters['blurX']!
+          .parameters['blurriness']!
           .track
           .keys[frame]
           ?.value;
@@ -262,7 +262,7 @@ void main() {
 
       select('opacity', 10, 13);
       pill.pasteIndependentFrame();
-      select(effectLaneId(blur, 'blurX'), 10, 13);
+      select(effectLaneId(blur, 'blurriness'), 10, 13);
       pill.pasteIndependentFrame();
 
       expect((held('opacity', 10), held('opacity', 12)), (1.0, 0.0));
@@ -306,14 +306,14 @@ void main() {
       final blur = now().effects.single.id;
       s.laneVerbs.setLaneValueAt(
         before.id,
-        effectLaneId(blur, 'blurX'),
+        effectLaneId(blur, 'blurriness'),
         4,
         '40',
         frameIsGlobal: false,
         description: 'Type',
         scaleLinked: false,
       );
-      standOn(effectLaneId(blur, 'blurX'), at: 4);
+      standOn(effectLaneId(blur, 'blurriness'), at: 4);
       pill.copyFrame();
 
       standOn('opacity', at: 9);
@@ -397,9 +397,43 @@ void main() {
     );
   });
 
+  // I-132-Q10: a colour key's colour is a colour lane as a cel number's ink
+  // is — keyed in one type, so the paste's 「같은 종류의 데이터끼리」 holds.
+  test('a colour goes on a colour alone — a key colour on a cel number\'s '
+      'ink as it is, on an opacity neither paste lit', () {
+    s.effectsAndFx.addEffectToActiveLayer(EffectKind.colorKey);
+    s.effectsAndFx.addEffectToActiveLayer(EffectKind.celNumber);
+    final [key, number] = [for (final effect in now().effects) effect.id];
+    s.laneVerbs.setLaneValueAt(
+      before.id,
+      effectLaneId(key, 'keyColor'),
+      3,
+      '#C80A1E',
+      frameIsGlobal: false,
+      description: 'Type',
+      scaleLinked: false,
+    );
+    standOn(effectLaneId(key, 'keyColor'), at: 3);
+    pill.copyFrame();
+    final opacity = now().transformTrack.opacity;
+
+    standOn('opacity', at: 8);
+    expect(
+      (pill.canPasteIndependentFrame, pill.canPasteLinkedFrame),
+      (false, false),
+    );
+    pill.pasteIndependentFrame();
+    expect(now().transformTrack.opacity, opacity);
+
+    standOn(effectLaneId(number, 'ink'), at: 8);
+    expect(pill.canPasteIndependentFrame, isTrue);
+    pill.pasteIndependentFrame();
+    expect(now().effects.last.colors['ink']!.keys[8]?.value, 0xFFC80A1E);
+  });
+
   group('where none of the copied lanes is there', () {
-    late EffectId blurA;
-    late EffectId blurB;
+    late EffectId gradeA;
+    late EffectId gradeB;
     double? keyed(EffectId effect, String parameter, int frame) => now()
         .effects
         .firstWhere((it) => it.id == effect)
@@ -419,24 +453,24 @@ void main() {
         );
 
     setUp(() {
-      s.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
-      s.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
-      blurA = now().effects.first.id;
-      blurB = now().effects.last.id;
+      s.effectsAndFx.addEffectToActiveLayer(EffectKind.brightnessContrast);
+      s.effectsAndFx.addEffectToActiveLayer(EffectKind.brightnessContrast);
+      gradeA = now().effects.first.id;
+      gradeB = now().effects.last.id;
     });
 
     test('several pair with the lanes in order, as a frame copy\'s rows '
         'pair with a band\'s', () {
-      type(blurA, 'blurX', 4, '1');
-      type(blurA, 'blurY', 4, '2');
-      expect(keyed(blurA, 'blurY', 4), 2, reason: '⛔전제');
-      standOn(effectGroupLaneId(blurA), at: 4);
+      type(gradeA, 'brightness', 4, '1');
+      type(gradeA, 'contrast', 4, '2');
+      expect(keyed(gradeA, 'contrast', 4), 2, reason: '⛔전제');
+      standOn(effectGroupLaneId(gradeA), at: 4);
       pill.copyFrame();
 
-      standOn(effectGroupLaneId(blurB), at: 6);
+      standOn(effectGroupLaneId(gradeB), at: 6);
       pill.pasteIndependentFrame();
 
-      expect((keyed(blurB, 'blurX', 6), keyed(blurB, 'blurY', 6)), (1, 2));
+      expect((keyed(gradeB, 'brightness', 6), keyed(gradeB, 'contrast', 6)), (1, 2));
     });
 
     test('one goes on every lane of its kind — 「모든 행에 같은 것을」', () {
@@ -444,11 +478,11 @@ void main() {
       standOn('rotation', at: 20);
       pill.copyFrame();
 
-      standOn(effectGroupLaneId(blurB), at: 10);
+      standOn(effectGroupLaneId(gradeB), at: 10);
       pill.pasteIndependentFrame();
 
       expect(
-        (keyed(blurB, 'blurX', 10), keyed(blurB, 'blurY', 10)),
+        (keyed(gradeB, 'brightness', 10), keyed(gradeB, 'contrast', 10)),
         (0.5, 0.5),
       );
     });

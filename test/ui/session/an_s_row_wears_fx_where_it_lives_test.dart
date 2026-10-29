@@ -55,19 +55,19 @@ void main() {
 
     session.laneVerbs.toggleLaneKeyAt(
       se,
-      effectLaneId(effect.id, 'blurX'),
+      effectLaneId(effect.id, 'blurriness'),
       3,
       frameIsGlobal: false,
       description: 'Blur keyframe',
     );
 
     expect(
-      seRow().effects.single.parameters['blurX']!.track.keys.keys.toList(),
+      seRow().effects.single.parameters['blurriness']!.track.keys.keys.toList(),
       [cut2Start + 3],
     );
     session.undo();
     expect(
-      seRow().effects.single.parameters['blurX']!.track.keys,
+      seRow().effects.single.parameters['blurriness']!.track.keys,
       isEmpty,
       reason: 'one undo takes the key back',
     );
@@ -79,7 +79,7 @@ void main() {
     final blur = seRow().effects.single;
     session.laneVerbs.toggleLaneKeyAt(
       se,
-      effectLaneId(blur.id, 'blurX'),
+      effectLaneId(blur.id, 'blurriness'),
       2,
       frameIsGlobal: false,
       description: 'Blur keyframe',
@@ -93,7 +93,7 @@ void main() {
       EffectKind.hueSaturation,
     ]);
     expect(
-      effects.first.parameters['blurX']!.track.keys.keys.toList(),
+      effects.first.parameters['blurriness']!.track.keys.keys.toList(),
       [cut2Start + 2],
     );
   });

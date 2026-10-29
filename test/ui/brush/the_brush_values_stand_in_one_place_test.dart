@@ -357,9 +357,12 @@ void main() {
         lessThanOrEqualTo(room.width),
         reason: written.last,
       );
+      // And the two pixels above and below it still there — the box grows
+      // as its LARGEST letters' line grows (F-493: the opacity's 「100」 is
+      // written at 12 where the size's 「2000.0」 is at 8).
       expect(
-        line.getMaxIntrinsicHeight(double.infinity),
-        lessThanOrEqualTo(room.height),
+        room.height - line.getMaxIntrinsicHeight(double.infinity),
+        greaterThanOrEqualTo(4),
         reason: '${written.last}: its line grown with the OS text',
       );
     }

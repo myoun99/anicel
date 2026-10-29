@@ -7,6 +7,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cel_text.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart';
@@ -86,11 +87,11 @@ void main() {
   /// [patterned] ink mix into it, and nowhere else much.
   LayerEffect inkKey() => LayerEffect(
     id: const EffectId('text-tool-key'),
-    kind: EffectKind.deleteColor,
+    kind: EffectKind.colorKey,
+    colors: {
+      'keyColor': PropertyTrack<int>.empty().withKey(0, 0xFFA06464),
+    },
     parameters: {
-      'keyRed': EffectParameter(value: 160),
-      'keyGreen': EffectParameter(value: 100),
-      'keyBlue': EffectParameter(value: 100),
       'tolerance': EffectParameter(value: 80),
       'amount': EffectParameter(value: 100),
     },
@@ -281,9 +282,11 @@ void main() {
           effects: [
             LayerEffect(
               id: const EffectId('text-tool-key'),
-              kind: EffectKind.deleteColor,
+              kind: EffectKind.colorKey,
+              colors: {
+                'keyColor': PropertyTrack<int>.empty().withKey(0, 0xFFFF0000),
+              },
               parameters: {
-                'keyRed': EffectParameter(value: 255),
                 'amount': EffectParameter(value: 100),
               },
             ),
@@ -340,12 +343,16 @@ void main() {
 
     testWidgets('🚨keyed AGAIN while a text is in hand, it floats through '
         'the row\'s new keys — and so do the texts above it', (tester) async {
-      LayerEffect keyOf({double red = 0, double green = 0}) => LayerEffect(
+      LayerEffect keyOf({int red = 0, int green = 0}) => LayerEffect(
         id: const EffectId('text-tool-key'),
-        kind: EffectKind.deleteColor,
+        kind: EffectKind.colorKey,
+        colors: {
+          'keyColor': PropertyTrack<int>.empty().withKey(
+            0,
+            0xFF000000 | red << 16 | green << 8,
+          ),
+        },
         parameters: {
-          'keyRed': EffectParameter(value: red),
-          'keyGreen': EffectParameter(value: green),
           'amount': EffectParameter(value: 100),
         },
       );
@@ -490,7 +497,7 @@ void main() {
       final recorder = ui.PictureRecorder();
       final canvas = ui.Canvas(recorder)
         ..clipRect(const ui.Rect.fromLTWH(0, 0, 64, 48));
-      painter.paintContentInto(canvas);
+      painter.paintContentInto(canvas, pixelRatio: 1);
       final picture = recorder.endRecording();
       final image = await picture.toImage(64, 48);
       picture.dispose();
@@ -573,8 +580,8 @@ void main() {
         'in their place (F-344-Q3)', () async {
       final keys = [
         ResolvedLayerEffect(
-          kind: EffectKind.deleteColor,
-          values: const [128, 128, 128, 100, 100],
+          kind: EffectKind.colorKey,
+          values: const [0, 0xFF808080, 100, 100],
         ),
       ];
       // Ink everywhere but (2, 2), where the text lands over nothing.

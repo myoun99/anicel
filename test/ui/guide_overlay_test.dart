@@ -1,10 +1,12 @@
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
+import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/guide_overlay.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:flutter/gestures.dart' show PointerDeviceKind, PointerDownEvent;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 
 CanvasPoint _point(double x, double y) => CanvasPoint(x: x, y: y);
@@ -355,6 +357,141 @@ void main() {
         isNotNull,
         reason: 'the pen edits guides as before',
       );
+    });
+  });
+
+  // 🗣️I-136 (유저 2026-10-27): 「캔버스에서 어떤 조작 할때도 쉬프트 통해
+  // 누른상태면 한쪽으로만. 즉 x,y가 있다치면 x 안건들고 y만 이동」.
+  group('Shift keeps a handle that MOVES a point to one way (I-136)', () {
+    setUp(CanvasTouchContacts.reset);
+    tearDown(CanvasTouchContacts.reset);
+
+    /// [guides] with the handle under [from] dragged by [by] — Shift held
+    /// through it when [shift].
+    Future<CutGuides> drag(
+      WidgetTester tester,
+      CutGuides guides,
+      Offset from,
+      Offset by, {
+      bool shift = true,
+      PointerDeviceKind kind = PointerDeviceKind.mouse,
+    }) async {
+      CutGuides? live;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: GuideEditLayer(
+              guides: guides,
+              viewport: CanvasViewport(),
+              onGuidesChanged: (next) => live = next,
+              onGuidesCommitted: (_) {},
+            ),
+          ),
+        ),
+      );
+      final origin = tester.getTopLeft(find.byType(GuideEditLayer));
+      if (shift) {
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      }
+      final hand = await tester.startGesture(origin + from, kind: kind);
+      await tester.pump();
+      await hand.moveBy(by);
+      await tester.pump();
+      await hand.up();
+      await tester.pump();
+      if (shift) {
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      }
+      return live!;
+    }
+
+    (double, double) originOf(CutGuides guides) {
+      final origin = _shapeOf(guides).axis.origin;
+      return (origin.x, origin.y);
+    }
+
+    testWidgets('the origin goes across alone, from where it STOOD — a '
+        'press off its middle does not pull it under the pen', (
+      tester,
+    ) async {
+      final moved = await drag(
+        tester,
+        _symmetry(),
+        const Offset(103, 102),
+        const Offset(40, 15),
+      );
+
+      expect(originOf(moved), (140.0, 100.0));
+    });
+
+    testWidgets('↩️without Shift the handle stands under the pen', (
+      tester,
+    ) async {
+      final moved = await drag(
+        tester,
+        _symmetry(),
+        const Offset(103, 102),
+        const Offset(40, 15),
+        shift: false,
+      );
+
+      expect(originOf(moved), (143.0, 117.0));
+    });
+
+    testWidgets('a vanishing point keeps to one way', (tester) async {
+      final moved = await drag(
+        tester,
+        _perspective(constrainToEyeLevel: false),
+        const Offset(400, 100),
+        const Offset(5, 30),
+      );
+
+      final point =
+          _perspectiveOf(moved).vanishingPoints.first as VanishingPointAt;
+      expect((point.point.x, point.point.y), (400.0, 130.0));
+    });
+
+    testWidgets('an ANGLE\'s handle turns a line, and Shift is not its', (
+      tester,
+    ) async {
+      final guides = _symmetry();
+      final turn = guideHandles(guides).firstWhere(
+        (handle) => handle.kind == GuideHandleKind.axisAngle,
+      );
+      final at = Offset(turn.position.x, turn.position.y);
+
+      final held = await drag(tester, guides, at, const Offset(30, 5));
+      final free = await drag(
+        tester,
+        guides,
+        at,
+        const Offset(30, 5),
+        shift: false,
+      );
+
+      expect(
+        _shapeOf(held).axis.angleDegrees,
+        _shapeOf(free).axis.angleDegrees,
+      );
+    });
+
+    testWidgets('a finger resting beside a PEN\'s drag is its Shift', (
+      tester,
+    ) async {
+      CanvasTouchContacts.noteAppWide(
+        const PointerDownEvent(pointer: 90, kind: PointerDeviceKind.touch),
+      );
+
+      final moved = await drag(
+        tester,
+        _symmetry(),
+        const Offset(100, 100),
+        const Offset(40, 15),
+        shift: false,
+        kind: PointerDeviceKind.stylus,
+      );
+
+      expect(originOf(moved), (140.0, 100.0));
     });
   });
 }

@@ -3,6 +3,9 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/se_dialogue_spacing.dart';
+import 'package:anicel/src/models/se_line_type.dart';
+import 'package:anicel/src/ui/text/dialogue_fit_layout.dart';
 import 'package:anicel/src/ui/text/dialogue_fit_paint.dart';
 import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart';
@@ -34,6 +37,9 @@ void main() {
     String words = dialogue,
     int framesFreeBefore = 0,
     double left = 0,
+    String? name = 'ドア',
+    SeLineType? delivery,
+    int shownFrom = 0,
   }) async {
     var shown = width;
     late StateSetter setState;
@@ -42,7 +48,9 @@ void main() {
       axis: Axis.horizontal,
       frames: frames,
       dialogue: words,
-      seName: 'ドア',
+      seName: name,
+      delivery: delivery,
+      shownFrom: shownFrom,
       framesFreeBefore: framesFreeBefore,
     );
     await tester.pumpWidget(
@@ -122,7 +130,7 @@ void main() {
 
     expect(rebuilt, isNot(contains(DialogueFitText)));
     expect(
-      rebuilt.where((type) => '$type' == '_SeNameBox'),
+      rebuilt.where((type) => '$type' == '_SeHeadWord'),
       isEmpty,
       reason: 'the chip is laid out again, not built again',
     );
@@ -132,7 +140,7 @@ void main() {
   testWidgets('🚨and the chip still narrows with the words — laid out at the '
       'length it is given', (tester) async {
     final resize = await mount(tester, width: 400);
-    final natural = dialogueNaturalExtent(
+    final longest = dialogueLongestGlyph(
       dialogue,
       axis: Axis.horizontal,
       style: dialogueFitStyle(
@@ -148,7 +156,13 @@ void main() {
       await tester.pump();
       final place = seNameChipPlace(
         width,
-        dialogueExtent: natural,
+        longestGlyph: longest,
+        glyphRoom: dialogueGlyphSlots(
+          glyphCount: dialogue.characters.length,
+          frames: 4,
+          mainExtent: width,
+          spacing: SeDialogueSpacing.standard,
+        ).first.roomExtent,
         roomBefore: 0,
       );
       expect(place.outside, isFalse, reason: '⛔premise: no room before it');
@@ -203,7 +217,7 @@ void main() {
     await tester.pump();
     expect(tester.getRect(chip).left, closeTo(40, 1e-6), reason: 'in');
     expect(tester.getRect(words).left, closeTo(40, 1e-6));
-    expect(rebuilt.where((type) => '$type' == '_SeNameBox'), isEmpty);
+    expect(rebuilt.where((type) => '$type' == '_SeHeadWord'), isEmpty);
   });
 
   // 🗣️F-444 (유저 2026-10-23): 「배경 바탕색 삭제하고, 심플하게 하얀색 텍스트
@@ -248,7 +262,251 @@ void main() {
     resize(100);
     await tester.pump();
     await expectOut();
-    expect(rebuilt.where((type) => '$type' == '_SeNameBox'), isEmpty);
+    expect(rebuilt.where((type) => '$type' == '_SeHeadWord'), isEmpty);
+  });
+
+  // 🗣️F-496 (유저 2026-10-28): 「ON은 표시안하고 OFF랑 MONO도 se블록에 표시.
+  // 타임시트 용지패널처럼 이름 앞이니까 이름 왼쪽에. 이름이랑 같은텍스트/규칙.
+  // 공간없으면 이름이 블록안에 첫부분에 들어가니까, 그 경우 이름 오른쪽에
+  // 검정색으로. 대사랑 겹쳐도 문제없음」.
+  group('F-496: the delivery beside the name', () {
+    Finder said(SeLineType type) =>
+        find.bySemanticsLabel('SE delivery ${type.label}');
+    Finder name() => find.bySemanticsLabel('SE name ドア');
+
+    /// How [rect] is written: white, on a tint, or in ink of another
+    /// colour than either over the row's ground.
+    Future<({bool white, bool tinted, bool inked})> look(
+      WidgetTester tester,
+      Rect rect,
+    ) async {
+      final pixels = await pixelsOver(tester, rect);
+      return (
+        white: pixels.any(white),
+        tinted: pixels.any(tinted),
+        inked: pixels.any(
+          (pixel) => pixel != rowGround && !white(pixel) && !tinted(pixel),
+        ),
+      );
+    }
+
+    testWidgets('ON writes nothing beside the name; OFF and MONO do', (
+      tester,
+    ) async {
+      for (final type in SeLineType.values) {
+        await mount(tester, width: 100, frames: 10, delivery: type);
+        expect(
+          find.bySemanticsLabel(RegExp('SE delivery')),
+          type.writtenOut ? findsOneWidget : findsNothing,
+          reason: type.name,
+        );
+        expect(name(), findsOneWidget, reason: 'the name, either way');
+      }
+    });
+
+    testWidgets('🚨with room before its block for both, it stands LEFT of '
+        'the name, white on the row; a zoom that takes that room lays it '
+        'right of the name, in the block\'s ink — building nothing', (
+      tester,
+    ) async {
+      // Ten frames of 10, four of them free before: room for two chips.
+      final resize = await mount(
+        tester,
+        width: 100,
+        frames: 10,
+        words: 'あい',
+        framesFreeBefore: 4,
+        left: 60,
+        delivery: SeLineType.off,
+      );
+      final rebuilt = <Type>[];
+      debugOnRebuildDirtyWidget = (element, builtOnce) =>
+          rebuilt.add(element.widget.runtimeType);
+      addTearDown(() => debugOnRebuildDirtyWidget = null);
+      final off = said(SeLineType.off);
+      expect(tester.getRect(name()).right, closeTo(60, 1e-6), reason: '⛔전제');
+      expect(tester.getRect(off).width, seNameBoxExtent);
+      expect(
+        tester.getRect(off).right,
+        closeTo(tester.getRect(name()).left, 1e-6),
+        reason: 'just before the name',
+      );
+      final out = await look(tester, tester.getRect(off));
+      expect([out.white, out.tinted], [true, false], reason: 'the name\'s');
+
+      // Frames of 6: four of them hold 24 — the name, not both.
+      resize(60);
+      await tester.pump();
+      expect(tester.getRect(name()).right, closeTo(60, 1e-6), reason: '⛔전제');
+      expect(tester.getRect(off).left, closeTo(60, 1e-6), reason: 'after it');
+      final on = await look(tester, tester.getRect(off));
+      expect(
+        [on.white, on.tinted, on.inked],
+        [false, false, true],
+        reason: 'the block\'s ink, on no ground of its own',
+      );
+      expect(rebuilt.where((type) => '$type' == '_SeHeadWord'), isEmpty);
+    });
+
+    testWidgets('with no room before its block, the name takes its head and '
+        'the delivery stands right after it, over the words', (tester) async {
+      await mount(
+        tester,
+        width: 100,
+        frames: 10,
+        words: 'あい',
+        delivery: SeLineType.mono,
+      );
+      final mono = tester.getRect(said(SeLineType.mono));
+      expect(tester.getRect(name()).left, closeTo(0, 1e-6), reason: '⛔전제');
+      expect(mono.left, closeTo(seNameBoxExtent, 1e-6));
+      expect(
+        mono.overlaps(tester.getRect(find.byType(DialogueFitText))),
+        isTrue,
+        reason: '「대사랑 겹쳐도 문제없음」',
+      );
+      final written = await look(tester, mono);
+      expect([written.white, written.tinted, written.inked], [
+        false,
+        false,
+        true,
+      ]);
+    });
+
+    testWidgets('a nameless block writes it where the name would stand — '
+        'before the block white, on its head on no tint', (tester) async {
+      await mount(
+        tester,
+        width: 100,
+        frames: 10,
+        words: 'あい',
+        framesFreeBefore: 2,
+        left: 40,
+        name: null,
+        delivery: SeLineType.off,
+      );
+      final off = said(SeLineType.off);
+      expect(tester.getRect(off).right, closeTo(40, 1e-6));
+      final out = await look(tester, tester.getRect(off));
+      expect([out.white, out.tinted], [true, false]);
+
+      await mount(
+        tester,
+        width: 100,
+        frames: 10,
+        words: 'あい',
+        name: null,
+        delivery: SeLineType.off,
+      );
+      expect(tester.getRect(off).left, closeTo(0, 1e-6));
+      final on = await look(tester, tester.getRect(off));
+      expect([on.white, on.tinted, on.inked], [false, false, true]);
+    });
+
+    testWidgets('a line seen from past its head writes both at the head it '
+        'is seen from, the tint the name\'s alone', (tester) async {
+      await mount(
+        tester,
+        width: 100,
+        frames: 10,
+        words: 'あい',
+        shownFrom: 4,
+        delivery: SeLineType.off,
+      );
+      final chip = tester.getRect(name());
+      final off = tester.getRect(said(SeLineType.off));
+      expect(chip.left, closeTo(40, 1e-6));
+      expect(off.left, closeTo(40 + seNameBoxExtent, 1e-6));
+      expect((await look(tester, chip)).tinted, isTrue);
+      expect((await look(tester, off)).tinted, isFalse);
+      expect(
+        (await look(tester, Rect.fromLTRB(0, 0, chip.left, row))).tinted,
+        isFalse,
+        reason: 'nor over the frames an earlier cut holds',
+      );
+    });
+
+    testWidgets('a nameless span built again with what it had, and not laid '
+        'again, still writes its delivery white before its block', (
+      tester,
+    ) async {
+      Widget at(String dialogue) => MaterialApp(
+        home: Scaffold(
+          backgroundColor: rowGround,
+          body: RepaintBoundary(
+            key: shot,
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 40),
+                child: SizedBox(
+                  width: 100,
+                  height: row,
+                  child: SeSpanVisual(
+                    layer: anSeRow(),
+                    axis: Axis.horizontal,
+                    frames: 10,
+                    dialogue: dialogue,
+                    delivery: SeLineType.off,
+                    framesFreeBefore: 2,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpWidget(at('あい'));
+      // An equal dialogue, another instance of the span: built, not laid.
+      await tester.pumpWidget(at('あい'));
+      final off = tester.getRect(said(SeLineType.off));
+      expect(off.right, closeTo(40, 1e-6), reason: '⛔전제: out');
+      final out = await look(tester, off);
+      expect([out.white, out.tinted], [true, false]);
+    });
+
+    testWidgets('the same span seen from another head, or named no more, '
+        'lays its words and tint again', (tester) async {
+      Widget at({required int shownFrom, String? name = 'ドア'}) =>
+          MaterialApp(
+            home: Scaffold(
+              backgroundColor: rowGround,
+              body: RepaintBoundary(
+                key: shot,
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: SizedBox(
+                    width: 100,
+                    height: row,
+                    child: SeSpanVisual(
+                      layer: anSeRow(),
+                      axis: Axis.horizontal,
+                      frames: 10,
+                      dialogue: 'あい',
+                      seName: name,
+                      delivery: SeLineType.off,
+                      shownFrom: shownFrom,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+      final off = said(SeLineType.off);
+      await tester.pumpWidget(at(shownFrom: 0));
+      expect(tester.getRect(name()).left, closeTo(0, 1e-6), reason: '⛔전제');
+
+      await tester.pumpWidget(at(shownFrom: 4));
+      expect(tester.getRect(name()).left, closeTo(40, 1e-6));
+      expect(tester.getRect(off).left, closeTo(40 + seNameBoxExtent, 1e-6));
+      const head = Rect.fromLTWH(0, 0, seNameBoxExtent, row);
+      expect((await look(tester, head)).tinted, isFalse, reason: 'moved');
+
+      await tester.pumpWidget(at(shownFrom: 4, name: null));
+      expect(tester.getRect(off).left, closeTo(40, 1e-6));
+      final there = await look(tester, tester.getRect(off));
+      expect(there.tinted, isFalse, reason: 'no name, no tint');
+    });
   });
 
   testWidgets('a span built again with what it had, and not laid again, '
@@ -425,7 +683,7 @@ void main() {
       color: Colors.black,
     );
     final chip = find.bySemanticsLabel('SE name ドア');
-    double naturalIn(double width) => dialogueNaturalExtent(
+    double longestIn(double width) => dialogueLongestGlyph(
       dialogue,
       axis: Axis.vertical,
       style: style,
@@ -433,13 +691,19 @@ void main() {
     );
     double chipIn(double width) => seNameChipPlace(
       60,
-      dialogueExtent: naturalIn(width),
+      longestGlyph: longestIn(width),
+      glyphRoom: dialogueGlyphSlots(
+        glyphCount: dialogue.characters.length,
+        frames: 4,
+        mainExtent: 60,
+        spacing: SeDialogueSpacing.standard,
+      ).first.roomExtent,
       roomBefore: 0,
     ).chip;
     expect(
       chipIn(10),
       isNot(closeTo(chipIn(40), 1e-6)),
-      reason: '⛔premise: the width across moves the dialogue\'s length, '
+      reason: '⛔premise: the width across moves the glyphs\' length, '
           'and with it the chip',
     );
 

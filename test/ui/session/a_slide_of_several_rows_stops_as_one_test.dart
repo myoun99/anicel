@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/drags/frame_range_move_drag.dart';
 import 'package:anicel/src/ui/session/frame_range_move_drag.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
+import '../../helpers/an_empty_drawing_row.dart';
 
 /// A RIGID GROUP HAS ONE DELTA.
 ///
@@ -274,7 +275,7 @@ void main() {
       'after it commits nothing, not the keys alone', () {
     final (s, row, camera) = _aBlockAndACameraKey();
     // A second row for the block to hop to.
-    s.layerStack.addLayer();
+    addAnEmptyDrawingRow(s);
     final other = s.activeLayer!.id;
     List<int> cameraKeys() =>
         s.requireActiveCut.camera.track.position.keys.keys.toList();

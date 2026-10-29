@@ -62,6 +62,7 @@ import '../../helpers/fake_video_backend.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/poll_until.dart';
 import '../../helpers/solid_png_fixture.dart';
+import '../../helpers/stand_in_movie.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/three_frame_gif.dart';
 
@@ -972,8 +973,8 @@ void main() {
       tempDir = await Directory.systemTemp.createTemp('anicel-i68-movie');
       moviePath = '${tempDir.path}${Platform.pathSeparator}take3.mov';
       otherPath = '${tempDir.path}${Platform.pathSeparator}take4.mov';
-      await File(moviePath).writeAsBytes(const [0, 0, 0, 24]);
-      await File(otherPath).writeAsBytes(const [0, 0, 0, 24]);
+      await File(moviePath).writeAsBytes(standInMovieBytes);
+      await File(otherPath).writeAsBytes(standInMovieBytes);
     });
 
     tearDown(() async {

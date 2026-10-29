@@ -155,6 +155,7 @@ import 'session/key_clipboard.dart';
 import 'session/text_clipboard.dart';
 import 'session/active_cut_controllers.dart';
 import 'session/layer_stack.dart';
+import 'session/layer_merging.dart';
 import 'session/layer_verbs.dart';
 import 'session/cut_verbs.dart';
 import 'session/rail_view.dart';
@@ -535,7 +536,21 @@ class EditorSessionManager extends ChangeNotifier
     // as the rig is made, and the canvas's own making reaches the rig
     // (opacity verbs → transitions → camera → the scrub) — a stack overflow
     // the moment any part of the session is first asked for.
-    stackOf: (cut, frameIndex) => editingCanvas.playedStackAt(cut, frameIndex),
+    stackOf: (picture) => switch (picture.ghosts) {
+      FrameGhosts.none => editingCanvas.playedStackAt(
+        picture.cut,
+        picture.frameIndex,
+      ),
+      FrameGhosts.alone => editingCanvas.ghostsOverAt(
+        picture.cut,
+        picture.frameIndex,
+      ),
+      FrameGhosts.inPlace => editingCanvas.playedStackAt(
+        picture.cut,
+        picture.frameIndex,
+        ghostsInPlace: true,
+      ),
+    },
   );
 
   /// ⚠️`void` and `async`: the playback controller does not wait for this,
@@ -679,6 +694,7 @@ class EditorSessionManager extends ChangeNotifier
                       cut: position.cut,
                       frameIndex: position.localFrameIndex,
                       paintPaper: true,
+                      ghosts: FrameGhosts.none,
                     ),
                 ];
               }
@@ -691,6 +707,7 @@ class EditorSessionManager extends ChangeNotifier
                     // is on its paper; a track over it is not
                     // (`CanvasTrackStackView`).
                     paintPaper: shown.isBottomTrack,
+                    ghosts: FrameGhosts.none,
                   ),
               ],
         playlistFrameOf: alone
@@ -791,6 +808,17 @@ class EditorSessionManager extends ChangeNotifier
   // A collaborator (session/layer_verbs.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
   late final LayerVerbs layerVerbs = LayerVerbs(project: this, selection: this, changes: this, controllers: activeCutControllers, renderCaches: renderCaches, rowSelection: rowSelectionVerbs);
+
+  // ── the merge (I-78): its own object, in its own file ───────────────
+  late final LayerMerging layerMerging = LayerMerging(
+    project: this,
+    changes: this,
+    frameIds: this,
+    renderCaches: renderCaches,
+    rowSelection: rowSelectionVerbs,
+    rangeSelections: rangeSelections,
+    layerVerbs: layerVerbs,
+  );
 
   // ── the cut's row stack: its own object ─────────────────────────────
   //
@@ -1854,6 +1882,8 @@ class EditorSessionManager extends ChangeNotifier
       enabled: effectsAndFx.isCutFxEnabled(cutId),
     ),
     movieLaidAt: (key) => movieCels.laidAt(key),
+    ghostsAt: (cut, frameIndex, dragPreview) =>
+        onionSkin.ghostsAt(cut, frameIndex, dragPreview),
   );
 
   // ── the opacity verbs: their own object, in their own file ──────────
@@ -2216,7 +2246,7 @@ class EditorSessionManager extends ChangeNotifier
   // A collaborator (session/folders_and_attachments.dart): the folder and
   // attach VERBS — grouping, dissolving, mounting, the 어태치 해제 and the
   // fold twirl — with the state each one reads.
-  late final FoldersAndAttachments folders = FoldersAndAttachments(project: this, selection: this, changes: this, controllers: activeCutControllers, layerIds: layerIds, activeCut: _activeCutEdits, handOffOnFold: standing.handOffOnFold, keepStandingShown: standing.keepStandingShown);
+  late final FoldersAndAttachments folders = FoldersAndAttachments(project: this, selection: this, changes: this, controllers: activeCutControllers, layerIds: layerIds, activeCut: _activeCutEdits, handOffOnFolderFold: standing.handOffCurrentRowOnFolderFold, keepStandingShown: standing.keepStandingShown);
 
   // The layer switches (Round 6): eye, mute, audio, blend mode, target kind.
   late final LayerSwitchVerbs layerSwitches = LayerSwitchVerbs(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, storyboardCursor: storyboardCursor);
@@ -2449,8 +2479,6 @@ class EditorSessionManager extends ChangeNotifier
     frameIds: this,
     timeline: this,
     layerIds: layerIds,
-    layerIndexAboveActive: () =>
-        activeCutControllers.layerController.insertionIndexAboveActiveLayer(),
     acceptsPlacedFrames: acceptsPlacedFrames,
   );
 
@@ -3213,6 +3241,19 @@ class EditorSessionManager extends ChangeNotifier
     }
   }
 
+  /// 🗣️I-78 — WHAT the shared MERGE would merge right now: the selected
+  /// rows it makes one, else the band's blocks it makes one per row
+  /// (round ③, Q4) — the pill's one ladder ([pillSubjectOn], T25). A band
+  /// of cuts on the panel whose noun they are holds nothing a merge takes.
+  PillSubject mergeSubjectFor({required bool cutsAreThisPanels}) =>
+      pillSubjectOn(
+        cuts:
+            cutsAreThisPanels &&
+            storyboardRows.storyboardSelectedCutIds.isNotEmpty,
+        layers: () => layerMerging.mergesSelection,
+        cells: () => layerMerging.mergesBand,
+      );
+
   /// 🚨I-45 — WHAT the link-independent button would unlink right now, on
   /// the TIMELINE: the selected linked rows, else the frame axis.
   ///
@@ -3588,8 +3629,6 @@ class EditorSessionManager extends ChangeNotifier
     project: this,
     selection: this,
     changes: this,
-    controllers: activeCutControllers,
-    dragPreview: dragPreview,
   );
 
   // ── the pool's content fingerprints: their own object ────────────────

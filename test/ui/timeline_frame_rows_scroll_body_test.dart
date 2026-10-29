@@ -9,6 +9,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
+import 'package:anicel/src/ui/timeline/row_berths.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_rows_scroll_body.dart';
@@ -80,6 +81,29 @@ void main() {
       expect(timelineCellInWindow(tester, layerId.value, 0), isTrue);
       expect(timelineCellInWindow(tester, layerId.value, 2), isTrue);
       expect(timelineCellInWindow(tester, layerId.value, 3), isFalse);
+    });
+
+    testWidgets('③: a row stays as built through its pass — but the view\'s '
+        'breadth, laid below the grid\'s build, is a pass of its own', (
+      tester,
+    ) async {
+      final layers = [_layer('layer-a')];
+      final pass = Object();
+      final seats = RowBerths();
+      Widget row() => tester.widget(find.named('timeline-row-layer-a-cells'));
+      Widget body(double breadth) => _body(
+        layers: layers,
+        pass: pass,
+        seats: seats,
+        viewportMainExtent: breadth,
+      );
+
+      await tester.pumpWidget(body(300));
+      final built = row();
+      await tester.pumpWidget(body(300));
+      expect(row(), same(built), reason: 'the same pass, the same breadth');
+      await tester.pumpWidget(body(600));
+      expect(row(), isNot(same(built)), reason: 'the view grew: laid afresh');
     });
 
     testWidgets('renders empty layer placeholder without rows or cells', (
@@ -413,6 +437,9 @@ Widget _body({
   ValueChanged<LayerId>? onSelectLayer,
   ValueChanged<int>? onSelectFrame,
   TimelineRangeGestureCallbacks? rangeGesture,
+  Object? pass,
+  RowBerths? seats,
+  double viewportMainExtent = 0,
 }) {
   final rows = buildTimelineDisplayRows(
     layers: layers,
@@ -424,7 +451,11 @@ Widget _body({
       body: Material(
         child: TimelineFrameRowsScrollBody(
           rows: rows,
-          berths: berthsInOrder(rows),
+          pass: pass ?? Object(),
+          berths:
+              seats?.berthsFor(rows, world: const Object()) ??
+              berthsInOrder(rows),
+          viewportMainExtent: viewportMainExtent,
           edges: timelineRowEdgesOf(rows, metrics),
           hooks: TimelineGridHooks(
             activeLayerId: null,

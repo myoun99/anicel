@@ -6,7 +6,7 @@ import '../text/app_strings.dart';
 import '../text/full_width_numerals.dart';
 import 'anchored_popup.dart';
 import 'app_icon_button.dart';
-import 'inline_numeric_field.dart';
+import 'inline_edit_field.dart';
 import 'selected_text_controller.dart';
 
 /// What a typed number takes besides its digits — which of the pad's keys
@@ -24,7 +24,7 @@ typedef NumberPadKeys = ({bool minus, bool point});
 /// 텍스트 클릭하면 직접 키보드로 수정할수있게 텍스트 선택된상태 들어감 …
 /// 디자인 자체는 따라하면 안되니 우리식으로 재 디자인」.
 ///
-/// It types as the field types ([InlineNumericField], whose law it keeps):
+/// It types as the field types ([InlineEditField], whose law it keeps):
 /// the number opens whole — selected, though nothing shows it and no
 /// keyboard rises — so the first key replaces it; ✓ or Enter commits, a
 /// press outside commits what was typed and drops an untouched number,
@@ -200,7 +200,7 @@ class _NumberPadState extends State<_NumberPad> {
   }
 
   /// Closed from outside — a press away from it: what was typed commits,
-  /// an untouched number does not ([InlineNumericField]'s law).
+  /// an untouched number does not ([InlineEditField]'s law).
   void _closedFromOutside() {
     if (_settled) {
       return;
@@ -259,7 +259,7 @@ class _NumberPadState extends State<_NumberPad> {
       _NumberPad._numberStyle,
     );
     final number = _keyboard
-        ? InlineNumericField(
+        ? InlineEditField(
             fieldKey: widget.fieldKey,
             controller: _controller,
             groupId: _region,

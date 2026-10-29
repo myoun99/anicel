@@ -1,5 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../services/persistence/file_type_groups.dart'
+    show FileTypeGroups;
+import '../../services/persistence/settings_room_file.dart';
 import '../editor_session_manager.dart';
 import '../widgets/app_window.dart';
 import '../widgets/content_scrollbar.dart';
@@ -9,11 +14,13 @@ import 'display_settings_section.dart';
 import 'input_settings_dialog.dart' show InputSettingsSection;
 import 'language_settings_dialog.dart' show LanguageSettingsSection;
 import 'memory_settings_section.dart';
+import 'settings_file_export.dart';
 import 'system_status_section.dart';
 import '../text/app_strings.dart';
 
 /// SAVE-1: the unified Preferences dialog — Input, Autosave, Audio,
-/// Language, Display and System (the runtime-path report)
+/// Language, Display and System (the runtime-path report, under the usage
+/// statistics' switch — I-70)
 /// as sections of ONE window (the old per-domain Edit menu entries
 /// collapsed here; their dialogs remain as thin wrappers around the same
 /// section widgets for tests and deep links).
@@ -97,6 +104,7 @@ class _PreferencesDialogState extends State<_PreferencesDialog> {
     ),
     PreferencesSection.system => SystemStatusSection(
       openSessions: widget.openSessions,
+      usageStats: widget.session.appSettings.usageStats,
     ),
     PreferencesSection.memory => MemorySettingsSection(
       session: widget.session,
@@ -141,6 +149,24 @@ class _PreferencesDialogState extends State<_PreferencesDialog> {
           child: _bodyOf(_section),
         ),
       ),
+      // 🗣️I-142-Q1 (유저 2026-10-29): 「환경설정 창에 「설정 전부
+      // 내보내기」」 — every setting that travels, as one file 「파일 열기」
+      // reads back.
+      leadingActions: [
+        AppWindowAction(
+          label: AppText.strings.settingsExportAll,
+          actionKey: const ValueKey<String>('preferences-export-all'),
+          onPressed: () => unawaited(
+            handSettingsFileToUser(
+              context,
+              name: AppText.strings.settingsAllFileName,
+              type: FileTypeGroups.anicelSettings,
+              contents: () =>
+                  settingsFileOfTheRoom(travellingSettingsEntries),
+            ),
+          ),
+        ),
+      ],
       actions: [
         AppWindowAction(
           label: AppText.strings.commonClose,

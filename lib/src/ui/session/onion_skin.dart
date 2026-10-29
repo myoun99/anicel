@@ -1,19 +1,20 @@
 import 'package:flutter/foundation.dart';
 
 import '../../models/attached_layer_resolve.dart';
+import '../../models/cut.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/onion_skin_settings.dart';
 import '../../models/project.dart';
-import '../canvas/canvas_layer_stack_view.dart';
 import '../../services/commands/link_mirror.dart' show conteHeadTargets;
+import '../../services/cut_frame_composite_plan.dart'
+    show CutFrameCompositeGhost, chainWornBy;
 import '../../services/onion_skin_plan.dart';
 import '../../services/project_lookup.dart' show layerAnywhereOrNull;
 import '../timeline/timeline_drag_preview.dart'
-    show TimelineDragPreview, celPixelsOf, cutShowingDragPreview;
-import 'active_cut_controllers.dart';
+    show TimelineDragPreview, cutShowingDragPreview;
 import 'session_roles.dart';
 
 /// The ONION SKIN — which layers ghost, the sweep over the displayed ones,
@@ -39,19 +40,22 @@ class OnionSkin {
     required ProjectAccess project,
     required SelectionAccess selection,
     required ChangeSink changes,
-    required ActiveCutControllers controllers,
-    required ValueListenable<TimelineDragPreview?> dragPreview,
   }) : _project = project,
        _selection = selection,
-       _changes = changes,
-       _controllers = controllers,
-       _dragPreview = dragPreview;
+       _changes = changes {
+    layerIds.addListener(_warmAgain);
+    settings.addListener(_warmAgain);
+  }
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
-  final ActiveCutControllers _controllers;
-  final ValueListenable<TimelineDragPreview?> _dragPreview;
+
+  /// 🚨THE GHOSTS ARE MADE AHEAD AS THE FRAMES ARE ([ghostsAt]), so what
+  /// they are planned from is asked of the warmer again when it changes —
+  /// as an edit of the cut is. Neither is in the project: no command of
+  /// the cut's warms for them.
+  void _warmAgain() => _changes.warmActiveCut();
 
   /// The peg settings — the app's one notifier (see the class doc), so the
   /// canvas underlay and the onion panel subscribe without whole-session
@@ -67,6 +71,7 @@ class OnionSkin {
 
   /// Releases the layer set; the session's teardown calls it.
   void dispose() {
+    settings.removeListener(_warmAgain);
     layerIds.dispose();
   }
 
@@ -217,36 +222,33 @@ class OnionSkin {
   bool get canToggleOnionSkin =>
       _selection.activeLayer?.kind.takesOnionSkin ?? false;
 
-  /// Whose effect chain a ghost of [layer] wears: an ATTACH row wears its
-  /// BASE's (W5), everyone else their own.
+  /// The ghosts of [committed]'s frame [frameIndex], each onion row's under
+  /// its id in layer-stack order: every onion-enabled VISIBLE drawing layer
+  /// contributes its plan (unique drawings, peg opacities, side tints) —
+  /// laid over the frame or in place, the same ghosts
+  /// (`EditingCanvas.ghostsOverAt`, `EditingCanvas.stackWithItsGhosts`).
   ///
-  /// The same carrier rule the active-row node applies — named once so the
-  /// two cannot answer differently for the same row.
-  static Layer _onionFxCarrier(Layer layer, List<Layer> layers) {
-    if (!isAttachedLayer(layer)) {
-      return layer;
-    }
-    return attachedBaseOf(layer, layers) ?? layer;
-  }
-
-  /// The ghost frames to composite at the playhead: every onion-enabled
-  /// VISIBLE drawing layer contributes its plan (unique drawings, peg
-  /// opacities, side tints) in layer-stack order.
-  ///
-  /// Planned from the cut as a drag in flight shows it, like the picture
-  /// they ghost around (canvas-follows-block-moves) — a block moved past the
+  /// Planned from the cut as [dragPreview] shows it, like the picture they
+  /// ghost around (canvas-follows-block-moves) — a block moved past the
   /// playhead moves its ghost with it, and one carried onto another row
   /// ghosts the pixels where they still are ([celPixelsOf]).
-  List<CanvasLayerImageRequest> onionSkinCanvasRequests() {
+  ///
+  /// 🚨ONE ANSWER, AT ANY FRAME: the canvas asks it at the playhead and the
+  /// warmer ahead of it (`FramePictures.stackOf`), so the picture laid
+  /// ahead is the one a scrub stands on. ↩️It answered at the playhead
+  /// alone, and every frame a scrub crossed laid its ghosts on the spot.
+  Map<LayerId, List<CutFrameCompositeGhost>> ghostsAt(
+    Cut committed,
+    int frameIndex,
+    TimelineDragPreview? dragPreview,
+  ) {
     final pegs = settings.value;
-    final committed = _project.activeCutOrNull;
     final enabledIds = _ghosting;
-    if (committed == null || enabledIds.isEmpty) {
-      return const [];
+    if (enabledIds.isEmpty) {
+      return const {};
     }
-    final dragPreview = _dragPreview.value;
     final cut = cutShowingDragPreview(committed, dragPreview);
-    return [
+    return {
       for (final layer in cut.layers)
         // A ghost is that layer's artwork, so it is shown exactly when the
         // layer is: hiding the FOLDER used to leave its members' onion skins
@@ -254,33 +256,36 @@ class OnionSkin {
         if (enabledIds.contains(layer.id) &&
             cut.layers.rowVisible(layer) &&
             layer.kind.takesOnionSkin)
-          // The row as the rows show it: a SYNCED attach row plans from its
-          // mirror of the base, whose cels are its own (F-183 ①).
-          for (final plan in planOnionSkin(
-            layer: attachedRowAsShown(layer, cut.layers),
-            frameIndex: _controllers.timelineController.currentFrameIndex,
-            settings: pegs,
-          ))
-            if (celPixelsOf(dragPreview, layer.id, plan.frameId)
-                case (:final row, :final cel))
-            CanvasLayerImageRequest(
-              frameKey: _project.brushFrameKeyForCut(cut, row, cel),
-              opacity: plan.opacity,
-              tint: plan.tint,
-              // ✅유저 2026-08-27 (I-8-Q5): a ghost shows the pixels the
-              // screen shows. It used to carry NO chain, which read as a
-              // design ("editing scaffolding") but was really the Colors
-              // tint owning the paint's one color-filter slot — the fold in
-              // `resolveCompositeEffectPaint` retired that constraint.
-              //
-              // Sampled at the GHOST's own frame, and read off the attach
-              // BASE where there is one — an attach row wears its base's fx
-              // (W5), the same carrier rule the active-row node uses.
-              effects: resolveLayerEffectsAt(
-                effects: _onionFxCarrier(layer, cut.layers).effects,
+          layer.id: [
+            // The row as the rows show it: a SYNCED attach row plans from
+            // its mirror of the base, whose cels are its own (F-183 ①).
+            for (final plan in planOnionSkin(
+              layer: attachedRowAsShown(layer, cut.layers),
+              frameIndex: frameIndex,
+              settings: pegs,
+            ))
+              CutFrameCompositeGhost(
+                layer: layer,
+                frameId: plan.frameId,
                 frameIndex: plan.frameIndex,
+                opacity: plan.opacity,
+                tint: plan.tint,
+                // ✅유저 2026-08-27 (I-8-Q5): a ghost shows the pixels the
+                // screen shows. It used to carry NO chain, which read as a
+                // design ("editing scaffolding") but was really the Colors
+                // tint owning the paint's one color-filter slot — the fold
+                // in `resolveCompositeEffectPaint` retired that constraint.
+                //
+                // Sampled at the GHOST's own frame: the chain the composite
+                // lays the row with ([chainWornBy]). ↩️A carrier rule of its
+                // own read the attach BASE's whole chain — its cel number
+                // too, which the screen never shows on an attach row.
+                effects: resolveLayerEffectsAt(
+                  effects: chainWornBy(cut, layer),
+                  frameIndex: plan.frameIndex,
+                ),
               ),
-            ),
-    ];
+          ],
+    };
   }
 }

@@ -5,7 +5,8 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'frame_window_semantics.dart';
 
-import '../../models/frame.dart' show drawingHeadOf;
+import '../../models/frame.dart'
+    show InbetweenMark, defaultUnnamedDrawingMark, drawingHeadOf;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -142,6 +143,7 @@ class TimelineRowCellsPainter extends CustomPainter
     this.coverageIdentity,
     this.paperGround,
     this.blockFrameLines = false,
+    this.unnamedMark = defaultUnnamedDrawingMark,
     this.framesPerSecond = 0,
     this.shown = true,
   }) : super(
@@ -306,6 +308,11 @@ class TimelineRowCellsPainter extends CustomPainter
   /// host has no grid to continue.
   @override
   final bool blockFrameLines;
+
+  /// The mark a drawing with no name wears where its block starts — the
+  /// host law's answer ([TimelineGridLaw], Preferences ▸ Display, F-489).
+  @override
+  final InbetweenMark unnamedMark;
 
   /// The counting fps — which of those lines are SECOND lines.
   @override
@@ -488,8 +495,11 @@ class TimelineRowCellsPainter extends CustomPainter
       // cel names, exactly like before — the SHEET alone carries the
       // repeat-word convention (UI-R14 #3 rolled the timeline back).
       writing = switch (exposureState) {
-        TimelineCellExposureState.drawingStart =>
-          drawingHeadOf(frameName, kind: layer.kind),
+        TimelineCellExposureState.drawingStart => drawingHeadOf(
+          frameName,
+          kind: layer.kind,
+          unnamedMark: unnamedMark,
+        ),
         _ when exposureState.isMark => timelineDotWriting(exposureState),
         _ => timelineCellWritesNothing,
       };
@@ -498,6 +508,7 @@ class TimelineRowCellsPainter extends CustomPainter
         layer: layer,
         exposureState: exposureState,
         emptyRunStart: emptyRunStart,
+        unnamedMark: unnamedMark,
         frameName: frameName,
       );
     }
@@ -1473,6 +1484,7 @@ class TimelineRowCellsPainter extends CustomPainter
     // like any other (a theme change moves it).
     paperGround,
     blockFrameLines,
+    unnamedMark,
     framesPerSecond,
     shown,
     devicePixelRatio,
@@ -1765,6 +1777,7 @@ class _RowCellsPicture extends StatelessWidget {
       paperGround: law?.ground,
       // And whether its lines cross the paper, in its own cadence.
       blockFrameLines: law?.blockFrameLines ?? false,
+      unnamedMark: TimelineGridLaw.unnamedMarkOf(context),
       framesPerSecond: law?.framesPerSecond ?? 0,
       // I-129: the eye its rail shows — heard past the row memo, as the
       // rail's own plate and name hear it.

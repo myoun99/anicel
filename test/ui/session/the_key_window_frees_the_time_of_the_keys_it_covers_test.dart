@@ -82,17 +82,17 @@ void main() {
     final layerId = session.activeLayer!.id;
     session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
     final effect = session.activeLayer!.effects.single;
-    final parameter = effect.parameterOf('blurX');
+    final parameter = effect.parameterOf('blurriness');
     session.effectsAndFx.updateLayerEffects(layerId, [
       effect.withParameter(
-        'blurX',
+        'blurriness',
         EffectParameter(
           value: parameter.value,
           track: parameter.track.withKey(0, 1).withKey(2, 5).withKey(8, 3),
         ),
       ),
     ]);
-    select([effectLaneId(effect.id, 'blurX')], 0, 9);
+    select([effectLaneId(effect.id, 'blurriness')], 0, 9);
     expect(laneVerbs.canNameLaneKeys, isTrue, reason: '⛔전제: it covers them');
     expect(laneVerbs.laneKeyRovingForSelection, isEmpty);
     expect(

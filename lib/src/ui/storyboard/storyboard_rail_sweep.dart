@@ -143,9 +143,8 @@ class _StoryboardRailSweep {
     );
   }
 
-  /// [row]'s group fold, as its label is told: a conte row's by its seat
-  /// ([_conteHeadFolds]), its attach group's on the layer it has in hand;
-  /// no other row of this rail folds.
+  /// [row]'s group fold, as its label is told
+  /// ([_StoryboardRailRows._conteGroupFoldOf]).
   ///
   /// ⛔MUTANT SURVIVES (F-475, 2026-10-27): pressing by the row's own id
   /// reddens nothing — the host's press finds the layer in hand itself
@@ -153,29 +152,13 @@ class _StoryboardRailSweep {
   /// row's own twirl does (`layerIdNow`), so the stroke and the press
   /// cannot part.
   TimelineGroupFold _foldOf(TimelineDisplayRow row) {
-    final toggle = _widget.onToggleAttachGroup;
-    final held = _held(row.layer.id);
+    final fold = _rows._conteGroupFoldOf(row.layer.id);
+    final toggle = fold.onToggle;
     return (
-      has: _folds(row),
-      expanded: !_widget.collapsedAttachBaseIds.contains(held),
+      has: fold.has,
+      expanded: fold.expanded,
       onToggle: toggle == null ? null : (rowId) => toggle(_held(rowId)),
     );
-  }
-
-  /// Whether [row] folds rows of its own: a conte row by its seat
-  /// ([_conteHeadFolds]).
-  bool _folds(TimelineDisplayRow row) {
-    final rowId = row.layer.id;
-    return switch ((
-      trackIdOfConteRow(rowId),
-      conteRowSeatOf(LayerRowAddress(rowId)),
-    )) {
-      (final trackId?, final seat?) => switch (_rows._trackNamed(trackId)) {
-        final track? => _conteHeadFolds(track, seat),
-        null => false,
-      },
-      _ => false,
-    };
   }
 
   /// Whether [rowId]'s row is handed the sheet toggle — what its label

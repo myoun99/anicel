@@ -59,6 +59,8 @@ class TvpImportPlan {
 /// Builds the cut for [parsed]. [resolveFile] turns a block's file key
 /// into something the session can read — for the .tvpp reader that is a
 /// synthetic slot key resolved against the file bytes at bake time.
+/// [unnamedMark] is the mark every dot wears, as the door heard the pick
+/// (`AppFrameGridSettings.unnamedMark`).
 ///
 /// 🪦A `fit` (default 1:1) rode on every planned bake here, and the door
 /// never read it: a clip's cels are decoded tile for tile at the clip's
@@ -67,6 +69,7 @@ TvpImportPlan planTvpImport({
   required TvpImportClip parsed,
   required String Function(String relativePath) resolveFile,
   required ImportIdMint mint,
+  required InbetweenMark unnamedMark,
   String? cutName,
 }) {
   final warnings = [...parsed.warnings];
@@ -149,12 +152,13 @@ TvpImportPlan planTvpImport({
         frameId,
         length: block.length,
         // A TVPaint mark carries a colour, never which of the two marks it
-        // is, so every one reads as the default mark — 🗣️I-130-csp-import-Q2
-        // (유저 2026-10-27): 「모를 때는 ○마크1」. ↩️Mark 2, the ● there was
-        // before I-130, until then.
+        // is, so every one wears the mark an unnamed drawing wears — the
+        // pick in Preferences ▸ Display, 🗣️F-489-Q1 (유저 2026-10-27
+        // 「둘 다 따라간다」). ↩️Mark 1, the ○, with no choice
+        // (I-130-csp-import-Q2 「모를 때는 ○마크1」); mark 2, the ● there
+        // was before I-130, until then.
         breakdownMarks: {
-          for (final offset in block.breakdownOffsets)
-            offset: defaultInbetweenMark,
+          for (final offset in block.breakdownOffsets) offset: unnamedMark,
         },
       );
     }

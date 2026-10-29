@@ -118,9 +118,9 @@ void main() {
 
   group('the sheets print OFF and MONO, never ON', () {
     test('one answer for both sheets', () {
-      expect(SeLineType.on.printsOnSheets, isFalse);
-      expect(SeLineType.off.printsOnSheets, isTrue);
-      expect(SeLineType.mono.printsOnSheets, isTrue);
+      expect(SeLineType.on.writtenOut, isFalse);
+      expect(SeLineType.off.writtenOut, isTrue);
+      expect(SeLineType.mono.writtenOut, isTrue);
     });
 
     test('the conte dialogue column: speaker(TYPE)「line」', () {

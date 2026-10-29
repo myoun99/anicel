@@ -11,11 +11,14 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
+import 'package:anicel/src/services/persistence/save_stretch.dart';
 import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/wait_window.dart';
 
 /// 🚨★★★**「READY」 BEFORE THE PICKER, 「SAVED」 ONLY AFTER IT** (F-57).
 ///
@@ -88,7 +91,7 @@ void main() {
                 // ⛔The real writer cannot run here — see
                 // [ProjectArchiveWriter]. Marker bytes so the assertion
                 // below can tell the staged archive from an empty husk.
-                writeArchive: (path, report) async {
+                writeArchive: (path, report, _) async {
                   File(path).writeAsBytesSync(const [7, 7, 7, 7]);
                   report(1);
                   return (
@@ -176,6 +179,101 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('🗣️F-494: the window before the picker names the stretch the '
+      'write is in, as a save\'s window does', (tester) async {
+    FolderPicker.debugFileExporter =
+        ({required String sourcePath, String? suggestedName}) async =>
+            FolderGrant.granted(
+              path: '${placedFolder.path}/scene.anicel',
+              kind: GrantKind.file,
+            );
+    final named = Completer<void>();
+    final letWriteEnd = Completer<void>();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => promptSaveProjectAs(
+                context,
+                session,
+                writeArchive: (path, report, say) async {
+                  say(SaveStretch.media);
+                  named.complete();
+                  await letWriteEnd.future;
+                  File(path).writeAsBytesSync(const [7, 7, 7, 7]);
+                  report(1);
+                  return (
+                    mediaInFile: const <String>{},
+                    fontsInFile: const <String>{},
+                    cleanAsOf: session.projectFile.editCount,
+                  );
+                },
+              ),
+              child: const Text('go'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('go'));
+    for (var frame = 0; frame < 400 && !named.isCompleted; frame += 1) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await tester.pump();
+
+    expect(named.isCompleted, isTrue, reason: 'fixture: the write began');
+    expect(
+      find.text(AppText.strings.saveStepMedia),
+      findsOneWidget,
+      reason: 'the staging write is a whole save: its line says what it is '
+          'writing, not 「준비 중」 for its whole length',
+    );
+
+    letWriteEnd.complete();
+    for (var frame = 0; frame < 400; frame += 1) {
+      await tester.pump(const Duration(milliseconds: 16));
+      if (find.text(AppText.strings.saveProgressDone).evaluate().isNotEmpty) {
+        break;
+      }
+    }
+    await tester.pump(appProgressDoneLinger * 2);
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('🗣️F-494: the app\'s own writer tells the window before the '
+      'picker the stretches it writes', (tester) async {
+    drawOnCurrentFrame(session);
+    final placed = '${placedFolder.path}/scene.anicel';
+    FolderPicker.debugFileExporter =
+        ({required String sourcePath, String? suggestedName}) async =>
+            FolderGrant.granted(path: placed, kind: GrantKind.file);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => promptSaveProjectAs(context, session),
+              child: const Text('go'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('go'));
+    final lines = watchTheLine(tester);
+    await settleBehindTheWaitWindow(
+      tester,
+      () => session.projectFile.path == placed,
+    );
+    await tester.pump(appProgressDoneLinger * 2);
+    await tester.pumpAndSettle();
+
+    expect(session.projectFile.path, placed, reason: 'fixture: it saved');
+    expect(lines, contains(AppText.strings.saveStepCels));
+  });
+
   testWidgets('🚨a Save As the picker PLACED says what the staged copy could '
       'not carry (F-72)', (tester) async {
     FolderPicker.debugFileExporter =
@@ -201,7 +299,7 @@ void main() {
               onPressed: () => promptSaveProjectAs(
                 context,
                 session,
-                writeArchive: (path, report) async {
+                writeArchive: (path, report, _) async {
                   File(path).writeAsBytesSync(const [7, 7, 7, 7]);
                   // What the real writer reports when a cel's only copy
                   // was in a file that has gone.

@@ -29,22 +29,22 @@ void main() {
   setUpAll(ColourKeyShader.load);
 
   ResolvedLayerEffect blur(double radius) =>
-      ResolvedLayerEffect(kind: EffectKind.blur, values: [radius, radius]);
+      ResolvedLayerEffect(kind: EffectKind.blur, values: [radius, 0]);
 
   ResolvedLayerEffect deleteRed() => ResolvedLayerEffect(
-    kind: EffectKind.deleteColor,
-    values: const [255, 0, 0, 0, 100],
+    kind: EffectKind.colorKey,
+    values: const [0, 0xFFFF0000, 0, 100],
   );
 
   ResolvedLayerEffect deleteWhite() => ResolvedLayerEffect(
-    kind: EffectKind.deleteColor,
-    // key = white, tolerance 0, amount 100.
-    values: const [255, 255, 255, 0, 100],
+    kind: EffectKind.colorKey,
+    // Key Colors, key = white, tolerance 0, amount 100.
+    values: const [0, 0xFFFFFFFF, 0, 100],
   );
 
   group('the plan follows the chain', () {
     test('a chain with no keys is still ONE draw', () {
-      final plan = resolveCompositeEffectPlan([blur(3)]);
+      final plan = resolveCompositeEffectPlan([blur(3)], paper: Rect.zero);
       expect(plan.isSingleDraw, isTrue);
       expect(plan.preSteps, isEmpty);
       expect(plan.finalPaint.isNotEmpty, isTrue);
@@ -53,9 +53,12 @@ void main() {
     test('key then blur is ONE step — a paint carries both', () {
       // A `ui.Paint` applies its shader, then its colour filter, then its
       // image filter, so the key can lead the same draw the blur rides.
-      final plan = resolveCompositeEffectPlan([deleteWhite(), blur(3)]);
+      final plan = resolveCompositeEffectPlan(
+        [deleteWhite(), blur(3)],
+        paper: Rect.zero,
+      );
       expect(plan.preSteps.length, 1);
-      expect(plan.preSteps.single.key, isNotNull);
+      expect(_keysOf(plan.preSteps.single), hasLength(1));
       expect(plan.preSteps.single.then, isEmpty);
       // The blur stayed on the final draw, where it always was.
       expect(plan.finalPaint.isNotEmpty, isTrue);
@@ -63,11 +66,14 @@ void main() {
     });
 
     test('blur then key is TWO steps, and the first has no key', () {
-      final plan = resolveCompositeEffectPlan([blur(3), deleteWhite()]);
+      final plan = resolveCompositeEffectPlan(
+        [blur(3), deleteWhite()],
+        paper: Rect.zero,
+      );
       expect(plan.preSteps.length, 2);
-      expect(plan.preSteps.first.key, isNull);
+      expect(plan.preSteps.first.lead, isNull);
       expect(plan.preSteps.first.then.map((e) => e.kind), [EffectKind.blur]);
-      expect(plan.preSteps.last.key, isNotNull);
+      expect(_keysOf(plan.preSteps.last), hasLength(1));
       // Nothing follows the key, so the composite draw carries nothing.
       expect(plan.finalPaint.isEmpty, isTrue);
       expect(plan.outsetPixels, greaterThan(0));
@@ -77,18 +83,21 @@ void main() {
       // "Add effect" promises to change nothing, and a raster that changes
       // nothing is still a raster.
       final fresh = ResolvedLayerEffect(
-        kind: EffectKind.deleteColor,
-        values: const [255, 255, 255, 0, 0],
+        kind: EffectKind.colorKey,
+        values: const [0, 0xFFFFFFFF, 0, 0],
       );
-      final plan = resolveCompositeEffectPlan([fresh, blur(3)]);
+      final plan = resolveCompositeEffectPlan(
+        [fresh, blur(3)],
+        paper: Rect.zero,
+      );
       expect(plan.isSingleDraw, isTrue);
     });
   });
 
 
-  test('a step feeds the NEXT one, not the original', () async {
+  test('a key feeds the NEXT one, not the original', () async {
     // 🚨THE CHAIN'S CHAIN. Two keys in a row: the second has to see what the
-    // first left. A renderer that handed every step the ORIGINAL image would
+    // first left. A renderer that handed every key the ORIGINAL image would
     // still key SOMETHING, so a comparison of two orders cannot see it —
     // this counts what survived instead.
     const side = 32;
@@ -101,14 +110,20 @@ void main() {
       straight[i * 4 + 3] = 255;
     }
     final source = await _imageFrom(straight, side, side);
-    final plan = resolveCompositeEffectPlan([deleteWhite(), deleteRed()]);
-    expect(plan.preSteps.length, 2, reason: 'two keys, two steps');
+    final plan = resolveCompositeEffectPlan(
+      [deleteWhite(), deleteRed()],
+      paper: Rect.zero,
+    );
+    expect(
+      _keysOf(plan.preSteps.single),
+      hasLength(2),
+      reason: 'two keys standing together: one run, one step',
+    );
     final stepped = applyEffectSteps(
       source: source,
       steps: plan.preSteps,
-      pixelWidth: side,
-      pixelHeight: side,
       imageScale: 1,
+      paper: _whole(source),
     );
     final bytes = await _bytesOf(stepped, side);
     if (!identical(stepped, source)) {
@@ -129,6 +144,148 @@ void main() {
     );
   });
 
+  test('keys a painted effect stands between are two runs', () {
+    final plan = resolveCompositeEffectPlan([
+      deleteWhite(),
+      blur(3),
+      deleteRed(),
+    ], paper: Rect.zero);
+    expect(plan.preSteps, hasLength(2));
+    expect(_keysOf(plan.preSteps.first), hasLength(1));
+    expect(plan.preSteps.first.then.map((e) => e.kind), [EffectKind.blur]);
+    expect(_keysOf(plan.preSteps.last), hasLength(1));
+  });
+
+  test("what follows a run rides its LAST key's draw", () async {
+    // A red block on nothing; white then red keyed, a blur, and a key of a
+    // colour that is not there — so the blur is a step's. Ridden by the
+    // first key's draw it would spread the red before the second key took
+    // it, and the spill past the block, over nothing, is no pixel the red
+    // key names.
+    const side = 32;
+    final straight = Uint8List(side * side * 4);
+    for (var y = 8; y < 24; y++) {
+      for (var x = 8; x < 24; x++) {
+        straight[(y * side + x) * 4] = 255;
+        straight[(y * side + x) * 4 + 3] = 255;
+      }
+    }
+    final plan = resolveCompositeEffectPlan([
+      deleteWhite(),
+      deleteRed(),
+      blur(3),
+      ResolvedLayerEffect(
+        kind: EffectKind.colorKey,
+        values: const [0, 0xFF00FF00, 0, 100],
+      ),
+    ], paper: Rect.zero);
+    expect(_keysOf(plan.preSteps.first), hasLength(2), reason: 'fixture');
+    expect(plan.preSteps.first.then.map((e) => e.kind), [EffectKind.blur]);
+    final source = await _imageFrom(straight, side, side);
+    final stepped = applyEffectSteps(
+      source: source,
+      steps: plan.preSteps,
+      imageScale: 1,
+      paper: _whole(source),
+    );
+    final bytes = await _bytesOf(stepped, side);
+    stepped.dispose();
+    source.dispose();
+    var ink = 0;
+    for (var i = 3; i < bytes.length; i += 4) {
+      if (bytes[i] != 0) {
+        ink += 1;
+      }
+    }
+    expect(ink, 0, reason: 'the red is gone before the blur spreads it');
+  });
+
+  final eraseAll = ResolvedLayerEffect(
+    kind: EffectKind.colorKey,
+    values: const [0, 0xFF000000, 255, 100],
+  );
+  final keepHalfOfWhite = ResolvedLayerEffect(
+    kind: EffectKind.colorKey,
+    values: const [1, 0xFFFFFFFF, 0, 50],
+  );
+
+  /// White on the left half, red on the right, through [chain] — the
+  /// alphas the eyedropper's reading ([pixelThroughChain]) gives, and how
+  /// many pixels the composite's run of shaders draws otherwise.
+  Future<({Set<int> alphas, int mismatches})> keptOnTheGpu(
+    List<ResolvedLayerEffect> chain,
+  ) async {
+    const side = 32;
+    final straight = Uint8List(side * side * 4);
+    for (var i = 0; i < side * side; i++) {
+      final white = (i % side) < side ~/ 2;
+      straight[i * 4] = 255;
+      straight[i * 4 + 1] = white ? 255 : 0;
+      straight[i * 4 + 2] = white ? 255 : 0;
+      straight[i * 4 + 3] = 255;
+    }
+    final source = await _imageFrom(straight, side, side);
+    final stepped = applyEffectSteps(
+      source: source,
+      steps: resolveCompositeEffectPlan(
+        chain,
+        paper: _whole(source),
+      ).preSteps,
+      imageScale: 1,
+      paper: _whole(source),
+    );
+    final bytes = await _bytesOf(stepped, side);
+    if (!identical(stepped, source)) {
+      stepped.dispose();
+    }
+    source.dispose();
+    final alphas = <int>{};
+    var mismatches = 0;
+    for (var i = 0; i < side * side; i++) {
+      final expected = pixelThroughChain(
+        chain,
+        red: straight[i * 4],
+        green: straight[i * 4 + 1],
+        blue: straight[i * 4 + 2],
+        alpha: straight[i * 4 + 3],
+      ).alpha;
+      alphas.add(expected);
+      if (bytes[i * 4 + 3] != expected) {
+        mismatches += 1;
+      }
+    }
+    return (alphas: alphas, mismatches: mismatches);
+  }
+
+  test('a keep gives back what its run took — on the GPU as the in-order '
+      'reading has it (I-132-Q2)', () async {
+    // Everything away, then half of white back: white stands at half, red
+    // stays away.
+    final (:alphas, :mismatches) = await keptOnTheGpu([
+      eraseAll,
+      keepHalfOfWhite,
+    ]);
+    expect(alphas, {0, 127}, reason: '⛔liveness: red away, white half back');
+    expect(mismatches, 0);
+  });
+
+  test('a keep past a painted effect gives back to its own run — the '
+      'eyedropper reads it as the GPU draws it', () async {
+    // The brightening stands between, so the keep is a run of its own over
+    // what the erase left: nothing to give back. White stays white under
+    // it, so only the run decides.
+    final (:alphas, :mismatches) = await keptOnTheGpu([
+      eraseAll,
+      ResolvedLayerEffect(
+        kind: EffectKind.brightnessContrast,
+        values: const [20, 0],
+      ),
+      keepHalfOfWhite,
+    ]);
+    expect(alphas, {0});
+    expect(mismatches, 0);
+  });
+
   test('a LAYER image takes its steps too', () async {
     // The other place a chain is drawn. A key under a blur has to reach a
     // single layer's cached image exactly as it reaches a folder's raster.
@@ -147,6 +304,7 @@ void main() {
       canvas,
       pieces: [(image: source, worldRect: const Rect.fromLTWH(0, 0, 32, 32))],
       extent: const Rect.fromLTWH(0, 0, 32, 32),
+      paper: const Rect.fromLTWH(0, 0, 32, 32),
       placement: null,
       opacity: 1,
       blendMode: LayerBlendMode.normal,
@@ -174,6 +332,30 @@ void main() {
     );
   });
 
+  test('a KEYED chain below full mix crossfades too — no matrix keys', () {
+    // ↩️A chain of colour and a key folded into one matrix below full mix:
+    // the key went unpainted — keyed at 100 % and gone at 99.
+    ResolvedLayerEffect brighten() => ResolvedLayerEffect(
+      kind: EffectKind.brightnessContrast,
+      values: const [40, 0],
+    );
+    for (final effects in [
+      [brighten(), deleteWhite()],
+      [deleteWhite(), brighten()],
+      [deleteWhite()],
+    ]) {
+      final pass = resolveAdjustmentScopePass(
+        bounds: const Rect.fromLTWH(0, 0, 32, 32),
+        effects: effects,
+        mix: 0.5,
+        paper: const Rect.fromLTWH(0, 0, 32, 32),
+      );
+      final kinds = [for (final effect in effects) effect.kind.name];
+      expect(pass.crossfades, isTrue, reason: '$kinds');
+      expect(pass.preSteps, isNotEmpty, reason: '$kinds: the key is a step');
+    }
+  });
+
   test('the crossfade blits the RAW scope for its unfiltered pass', () {
     // 🚨THE MIX HAS TO BE ABLE TO FADE THE KEY. Both passes blitting the
     // keyed raster would key at full strength however low the mix went, and
@@ -183,6 +365,7 @@ void main() {
       bounds: const Rect.fromLTWH(0, 0, 32, 32),
       effects: [blur(3), deleteWhite()],
       mix: 0.5,
+      paper: const Rect.fromLTWH(0, 0, 32, 32),
     );
     expect(pass.crossfades, isTrue, reason: 'fixture: a spatial chain below 1');
     expect(pass.preSteps, isNotEmpty, reason: 'fixture: the key is a step');
@@ -223,13 +406,12 @@ void main() {
     }
     Future<Uint8List> render(List<ResolvedLayerEffect> chain) async {
       final source = await _imageFrom(straight, side, side);
-      final plan = resolveCompositeEffectPlan(chain);
+      final plan = resolveCompositeEffectPlan(chain, paper: _whole(source));
       final stepped = applyEffectSteps(
         source: source,
         steps: plan.preSteps,
-        pixelWidth: side,
-        pixelHeight: side,
         imageScale: 1,
+        paper: _whole(source),
       );
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
@@ -314,7 +496,17 @@ Future<ui.Image> _imageFrom(Uint8List straight, int width, int height) {
   return done.future;
 }
 
+/// All of [image] — the paper, where the picture is the whole of it.
+Rect _whole(ui.Image image) =>
+    Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
+
 Future<Uint8List> _bytesOf(ui.Image image, int side) async {
   final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
   return bytes!.buffer.asUint8List();
 }
+
+/// The keys [step] opens with — none unless its lead is a run of them.
+List<Object> _keysOf(CompositeEffectStep step) => switch (step.lead) {
+  KeyRun(:final keys) => keys,
+  _ => const [],
+};

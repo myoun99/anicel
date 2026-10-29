@@ -88,10 +88,19 @@ const double layerRailLeadingWidth =
 /// than at each control: a control added later is covered by construction.
 /// ⛔An EMPTY slot stays grabbable on purpose — reserved space is not a
 /// button, and this rail reserves a great deal of it.
+///
+/// A swipe column is a control already, so it stands as the slot itself
+/// ([RailSwipeColumnSlot]) rather than inside one.
 Widget layerRailSlot(Axis axis, double extent, [Widget? child]) =>
-    child == null
-    ? alongBox(axis, extent)
-    : RowControlSurface(axis: axis, extent: extent, child: child);
+    switch (child) {
+      null => alongBox(axis, extent),
+      final RailSwipeColumnPointer column => RailSwipeColumnSlot(
+        axis: axis,
+        extent: extent,
+        column: column,
+      ),
+      _ => RowControlSurface(axis: axis, extent: extent, child: child),
+    };
 
 /// A rail button's box, tight to its slot: [slot] along the rail, [across]
 /// the other way. The rail's law, read off the onion column rather than

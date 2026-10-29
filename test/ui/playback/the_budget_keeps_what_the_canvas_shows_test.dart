@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -94,7 +95,12 @@ void main() {
   }
 
   FramePictureKey keyOf(FramePictures pictures, String name) => pictures
-      .keyOf((cut: cut, frameIndex: names.indexOf(name), paintPaper: true));
+      .keyOf((
+        cut: cut,
+        frameIndex: names.indexOf(name),
+        paintPaper: true,
+        ghosts: FrameGhosts.none,
+      ));
 
   Future<void> makePictures(FramePictures pictures) async {
     for (final frame in [0, 1, 2]) {
@@ -102,6 +108,7 @@ void main() {
         cut: cut,
         frameIndex: frame,
         paintPaper: true,
+        ghosts: FrameGhosts.none,
       ), shouldAbort: () => false);
     }
   }

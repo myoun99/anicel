@@ -1,11 +1,12 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_video_decoder.dart';
 import 'package:anicel/src/native/qa_video_encoder.dart';
 
+import '../../helpers/decode_audio_file.dart';
+import '../../helpers/encoded_movie.dart';
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/project_scratch_folder.dart';
 
@@ -42,48 +43,28 @@ void main() {
   test('🚨twelve pictures with three seconds of sound are twelve frames, and '
       'the last of them is a picture', () {
     final decoder = QaVideoDecoder.instance;
-    final encoder = QaVideoEncoder.instance;
-    if (decoder == null ||
-        !decoder.isSupported ||
-        encoder == null ||
-        !encoder.isSupported) {
+    if (decoder == null || !decoder.isSupported) {
       return;
     }
     final directory = Directory.systemTemp.createTempSync('qa_movie_length');
     deleteAfterSessionEnds(directory);
     final path = '${directory.path}${Platform.pathSeparator}movie.mp4';
-    const rate = 48000;
-    const perFrame = rate ~/ 24;
-    expect(
-      encoder.open(
-        path: path,
-        width: 64,
-        height: 48,
-        fpsNumerator: 24,
-        fpsDenominator: 1,
-        sampleRate: rate,
-        channels: 2,
-      ),
-      isTrue,
-      reason: encoder.lastError,
-    );
     // Seventy-two frames' worth of sound, the first twelve with a picture
-    // each.
-    for (var frame = 0; frame < 72; frame += 1) {
-      if (frame < 12) {
-        final grey = Uint8List(64 * 48 * 4)..fillRange(0, 64 * 48 * 4, 128);
-        expect(encoder.writeFrame(grey), isTrue, reason: encoder.lastError);
-      }
-      final pcm = Int16List(perFrame * 2);
-      for (var index = 0; index < perFrame; index += 1) {
-        // A quiet tone, so the codec has something to keep.
-        final value = (index % 48 < 24 ? 2000 : -2000);
-        pcm[index * 2] = value;
-        pcm[index * 2 + 1] = value;
-      }
-      expect(encoder.writeAudio(pcm, perFrame), isTrue);
+    // each — a quiet tone, so the codec has something to keep.
+    if (!writeEncodedMovie(
+      path,
+      frames: 12,
+      sampleRate: 48000,
+      sound: (sample) => sample % 48 < 24 ? 2000 : -2000,
+      soundFrames: 72,
+    )) {
+      return;
     }
-    expect(encoder.finish(), isTrue, reason: encoder.lastError);
+    // ⛔The premise: the sound DOES run three seconds — sixty frames past
+    // the pictures — or a count of twelve would say nothing.
+    final sound = decodeAudioFile(path);
+    expect(sound, isNotNull);
+    expect(sound!.length / sound.sampleRate, closeTo(3, 0.1));
 
     final document = decoder.openDocument(path);
     expect(document, isNotNull, reason: decoder.lastError);

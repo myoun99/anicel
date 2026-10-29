@@ -51,13 +51,13 @@ void main() {
     final layerId = session.activeLayer!.id;
     session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
     final effectId = layerOf(layerId).effects.single.id;
-    final laneId = effectLaneId(effectId, 'blurX');
+    final laneId = effectLaneId(effectId, 'blurriness');
 
     keyLaneRange(layerId, laneId, 1, 3);
 
     final after = layerOf(layerId);
     expect(
-      after.effects.single.parameterOf('blurX').track.keys.keys,
+      after.effects.single.parameterOf('blurriness').track.keys.keys,
       containsAll(<int>[1, 2, 3]),
       reason:
           'an effect lane keys the EFFECT chain — a scope that calls '

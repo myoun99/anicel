@@ -9,6 +9,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/se_dialogue_spacing.dart';
 import 'package:anicel/src/models/se_line_type.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
@@ -157,8 +158,11 @@ void main() {
         ..selectFrameIndex(1);
       b.seEntries.updateSelectedSeEntry(
         dialogue: 'from B',
-        seName: 'B',
-        seTypes: SeLineTypes.allOn,
+        fields: (
+          seName: 'B',
+          seTypes: SeLineTypes.allOn,
+          spacing: SeDialogueSpacing.standard,
+        ),
       );
 
       a.copyFrameAtCurrentFrame();

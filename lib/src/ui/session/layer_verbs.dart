@@ -683,28 +683,29 @@ class LayerVerbs {
   }
 
   /// Inserts a NEW ROW the way one joins the stack above the active layer:
-  /// aimed at the slot above it and placed by [newRowPlacement], the one
-  /// answer every door that makes a row takes — Add Layer, a file let go
-  /// on the canvas, a file let go between two rail rows. Its two structural
-  /// rules (an attach group is indivisible; a new row joins the folder of
-  /// the row below it) are written there, with why.
+  /// aimed at the slot above it — inside it, where it is a folder — and
+  /// placed by [newRowPlacement], the one answer every door that makes a
+  /// row takes — Add Layer, a file let go on the canvas, a file let go
+  /// between two rail rows. Its structural rules (an attach group is
+  /// indivisible; a new row joins the folder of the row below it, or the
+  /// folder stood on) are written there, with why.
   void addRowAboveActive(Layer Function(Cut cut) build) =>
       addRow(build, placementAboveActive);
 
-  /// Where [addRowAboveActive] places a new row in [stack].
+  /// Where [addRowAboveActive] places a new row in [stack]
+  /// ([newRowPlacementOn]).
   ({int index, LayerId? folderId}) placementAboveActive(List<Layer> stack) =>
-      newRowPlacement(
-        stack,
-        _controllers.layerController.insertionIndexAboveActiveLayer(),
-      );
+      newRowPlacementOn(stack, _controllers.layerController.activeLayerId);
 
   /// Inserts a NEW ROW in the active cut where [placeIn] places it in the
   /// cut's stack — above the active layer ([placementAboveActive]), or at
   /// a cut's conte row's birthplace (`conteRowPlacement`, F-369).
+  /// [bornWithACel]: see `LayerController.addLayer`.
   void addRow(
     Layer Function(Cut cut) build,
-    ({int index, LayerId? folderId}) Function(List<Layer> stack) placeIn,
-  ) {
+    ({int index, LayerId? folderId}) Function(List<Layer> stack) placeIn, {
+    bool bornWithACel = false,
+  }) {
     final cut = _project.requireActiveCut;
     final placement = placeIn(cut.layers);
     final built = build(cut);
@@ -713,6 +714,7 @@ class LayerVerbs {
           ? built
           : built.copyWith(folderId: placement.folderId),
       insertionIndex: placement.index,
+      bornWithACel: bornWithACel,
     );
   }
 }

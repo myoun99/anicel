@@ -1,0 +1,1135 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/attached_mode.dart';
+import 'package:anicel/src/models/attached_placement.dart';
+import 'package:anicel/src/models/audio_clip.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/layer_folder.dart' show createFolderLayer;
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/media_reference.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
+import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_run_behavior.dart';
+import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/services/editing/layer_merge_plan.dart';
+
+import '../../helpers/run_edge_fixtures.dart';
+
+/// 🗣️I-78 (유저 2026-10-06 · 10-07 · 10-28): MERGE makes the rows it takes
+/// one row — a picture wherever what they show changes (Q3 · Q6), named by
+/// the topmost cel shown there (Q10 · Q11), the folder becoming the row
+/// when it alone is taken (Q5), hidden rows baked shown (Q7).
+void main() {
+  /// A row named [id] standing [blocks] — `start: cel name` — each cel held
+  /// to the next block's start, the last one [lastLength] long.
+  Layer row(
+    String id,
+    Map<int, String> blocks, {
+    int lastLength = 2,
+    LayerKind kind = LayerKind.animation,
+    String? inside,
+    bool isVisible = true,
+    LayerBlendMode blendMode = LayerBlendMode.normal,
+    TransformTrack? transformTrack,
+  }) {
+    final starts = blocks.keys.toList()..sort();
+    final names = {...blocks.values};
+    return Layer(
+      id: LayerId(id),
+      name: id,
+      kind: kind,
+      folderId: inside == null ? null : LayerId(inside),
+      isVisible: isVisible,
+      blendMode: blendMode,
+      transformTrack: transformTrack,
+      frames: [
+        for (final name in names)
+          Frame(
+            id: FrameId('$id-$name'),
+            duration: 1,
+            name: name,
+            strokes: const [],
+          ),
+      ],
+      timeline: {
+        for (final (index, start) in starts.indexed)
+          start: TimelineExposure.drawing(
+            FrameId('$id-${blocks[start]}'),
+            length: index + 1 < starts.length
+                ? starts[index + 1] - start
+                : lastLength,
+          ),
+      },
+    );
+  }
+
+  Cut cutOf(List<Layer> layers) => Cut(
+    id: const CutId('c'),
+    name: '1',
+    duration: 24,
+    canvasSize: const CanvasSize(width: 64, height: 36),
+    layers: layers,
+  );
+
+  /// What MERGE makes of [cut]'s rows [ids] — its pictures drawn over the
+  /// wall [reach] stands, the canvas itself unless a test says otherwise.
+  LayerMergePlan? merge(
+    Cut cut,
+    List<String> ids, {
+    Set<String> linked = const {},
+    PasteboardReach reach = PasteboardReach.none,
+  }) {
+    final taking = takeRowsToMerge(
+      cut: cut,
+      selected: {for (final id in ids) LayerId(id)},
+      isLinked: (row) => linked.contains(row.id.value),
+    );
+    var minted = 0;
+    return taking == null
+        ? null
+        : planLayerMerge(
+            taking,
+            revisionOf: (_, _) => 0,
+            mintFrameId: (_) => FrameId('m${minted++}'),
+            reach: reach,
+          );
+  }
+
+  /// `start: (length, cel name)` of every block [layer] stands.
+  Map<int, (int, String?)> blocksOf(Layer layer) => {
+    for (final MapEntry(:key, :value) in layer.timeline.entries)
+      key: (value.length!, layer.frameById(value.frameId!)?.name),
+  };
+
+  /// The row [id] of [layers].
+  Layer rowOf(List<Layer> layers, String id) =>
+      layers.firstWhere((row) => row.id.value == id);
+
+  /// The cut the result's pictures are drawn from.
+  Cut bakedOf(LayerMergePlan plan) => plan.pictures
+      .firstWhere((picture) => picture.rowId == plan.result.id)
+      .from;
+
+  /// A SYNCED attach row named [id] riding [base], its cel `R<n>` showing
+  /// wherever [base]'s cel `<n>` does.
+  Layer synced(String id, Layer base) => Layer(
+    id: LayerId(id),
+    name: id,
+    attachedToLayerId: base.id,
+    timeline: const {},
+    frames: [
+      for (final cel in base.frames)
+        Frame(
+          id: FrameId('$id-${cel.name}'),
+          duration: 1,
+          name: 'R${cel.name}',
+          strokes: const [],
+        ),
+    ],
+    baseFrameLinks: {
+      for (final cel in base.frames) cel.id: FrameId('$id-${cel.name}'),
+    },
+  );
+
+  group('a picture wherever what the rows show changes', () {
+    test('the topmost row\'s cel names it, and where the topmost shows '
+        'nothing the one under it does (Q10 · Q11)', () {
+      final plan = merge(
+        cutOf([
+          row('b', {0: 'B1'}, lastLength: 8),
+          row('a', {0: 'A1'}, lastLength: 4),
+        ]),
+        ['a', 'b'],
+      )!;
+
+      expect(blocksOf(plan.result), {0: (4, 'A1'), 4: (4, 'B1')});
+      expect([for (final p in plan.pictures) p.frameIndex], [0, 4]);
+    });
+
+    test('a cel the rows under it change beneath splits, the rest wearing '
+        'its name\'s tail', () {
+      final plan = merge(
+        cutOf([
+          row('b', {0: 'B1', 2: 'B2', 4: 'B3'}),
+          row('a', {0: 'A1'}, lastLength: 6),
+        ]),
+        ['a', 'b'],
+      )!;
+
+      expect(blocksOf(plan.result), {
+        0: (2, 'A1'),
+        2: (2, 'A1-2'),
+        4: (2, 'A1-3'),
+      });
+    });
+
+    test('the same pictures shown again are the same cel', () {
+      final plan = merge(
+        cutOf([
+          row('b', {0: 'B1'}, lastLength: 6),
+          row('a', {0: 'A1', 2: 'A2', 4: 'A1'}),
+        ]),
+        ['a', 'b'],
+      )!;
+
+      expect(blocksOf(plan.result), {
+        0: (2, 'A1'),
+        2: (2, 'A2'),
+        4: (2, 'A1'),
+      });
+      expect(
+        plan.result.timeline[0]!.frameId,
+        plan.result.timeline[4]!.frameId,
+      );
+      expect(plan.result.frames, hasLength(2));
+    });
+
+    test('a key that moves the row inside a hold parts it there — what '
+        'shows is baked, never the keys (Q6)', () {
+      final moving = TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>.empty()
+            .withKey(0, CanvasPoint(x: 0, y: 0))
+            .withKey(2, CanvasPoint(x: 8, y: 0)),
+      );
+      final plan = merge(
+        cutOf([
+          row('b', {0: 'B1'}, lastLength: 4),
+          row('a', {0: 'A1'}, lastLength: 4, transformTrack: moving),
+        ]),
+        ['a', 'b'],
+      )!;
+
+      expect(blocksOf(plan.result), {
+        0: (1, 'A1'),
+        1: (1, 'A1-2'),
+        2: (2, 'A1-3'),
+      }, reason: 'still from the last key on');
+      expect(plan.result.transformTrack.isEmpty, isTrue);
+    });
+
+    test('a frame no row shows anything at is empty in the result too', () {
+      final plan = merge(
+        cutOf([
+          row('b', {6: 'B1'}),
+          row('a', {0: 'A1'}),
+        ]),
+        ['a', 'b'],
+      )!;
+
+      expect(blocksOf(plan.result), {0: (2, 'A1'), 6: (2, 'B1')});
+    });
+  });
+
+  group('the row it makes', () {
+    test('wears the topmost row\'s name and stands where it stood — the '
+        'rows it took are gone, the rest stay where they were', () {
+      final plan = merge(
+        cutOf([
+          row('under', {0: 'U1'}),
+          row('c', {0: 'C1'}),
+          row('b', {0: 'B1'}),
+          row('a', {0: 'A1'}, blendMode: LayerBlendMode.multiply),
+        ]),
+        ['c', 'b', 'a'],
+      )!;
+
+      expect(plan.result.id, const LayerId('a'));
+      expect([for (final row in plan.layers) row.id.value], ['under', 'a']);
+      expect(
+        [plan.result.name, plan.result.blendMode, plan.result.isVisible],
+        ['a', LayerBlendMode.normal, true],
+      );
+      expect(plan.changes, {LayerMergeChange.blend});
+    });
+
+    test('a hidden row is baked shown (Q7)', () {
+      final plan = merge(
+        cutOf([
+          row('b', {0: 'B1'}, isVisible: false),
+          row('a', {0: 'A1'}, isVisible: false),
+        ]),
+        ['a', 'b'],
+      )!;
+
+      expect([for (final layer in bakedOf(plan).layers) layer.isVisible], [
+        true,
+        true,
+      ]);
+      expect(plan.result.isVisible, isTrue);
+      expect(plan.pictures, hasLength(1));
+    });
+
+    test('an image that comes to hold more than one picture is a drawing '
+        'row, and one that holds one stays an image', () {
+      final two = merge(
+        cutOf([
+          row('b', {0: 'B1', 2: 'B2'}),
+          row('a', {0: 'A1'}, lastLength: 4, kind: LayerKind.image),
+        ]),
+        ['a', 'b'],
+      )!;
+      final one = merge(
+        cutOf([
+          row('b', {0: 'B1'}),
+          row('a', {0: 'A1'}, kind: LayerKind.image),
+        ]),
+        ['a', 'b'],
+      )!;
+
+      expect([two.result.kind, one.result.kind], [
+        LayerKind.animation,
+        LayerKind.image,
+      ]);
+    });
+
+    test('one picture row alone, or rows that paint no drawing, merge '
+        'nothing', () {
+      final cut = cutOf([
+        row('b', {0: 'B1'}),
+        row('se', {0: 'S1'}, kind: LayerKind.se),
+        row('a', {0: 'A1'}),
+      ]);
+
+      expect(merge(cut, ['a']), isNull);
+      expect(merge(cut, ['a', 'se']), isNull);
+    });
+  });
+
+  group('a folder', () {
+    test('taken alone, it is everything under it as one row, and the '
+        'folder becomes the row (Q5)', () {
+      final plan = merge(
+        cutOf([
+          row('b', {0: 'B1'}, inside: 'F'),
+          row('a', {0: 'A1'}, lastLength: 4, inside: 'F'),
+          createFolderLayer(id: const LayerId('F'), name: 'Folder'),
+        ]),
+        ['F'],
+      )!;
+
+      expect(plan.result.id, const LayerId('F'));
+      expect([for (final row in plan.layers) row.id.value], ['F']);
+      expect(
+        [plan.result.kind, plan.result.name, plan.result.folderId],
+        [LayerKind.animation, 'Folder', null],
+      );
+      expect(blocksOf(plan.result), {0: (2, 'A1'), 2: (2, 'A1-2')});
+    });
+
+    test('taken, it takes everything it holds — a folder inside it and that '
+        'folder\'s rows with the rest', () {
+      final plan = merge(
+        cutOf([
+          row('b', {0: 'B1'}, inside: 'G'),
+          createFolderLayer(
+            id: const LayerId('G'),
+            name: 'G',
+            parentId: const LayerId('F'),
+          ),
+          row('a', {0: 'A1'}, inside: 'F'),
+          createFolderLayer(id: const LayerId('F'), name: 'F'),
+        ]),
+        ['F'],
+      )!;
+
+      expect(plan.result.id, const LayerId('F'));
+      expect([for (final row in plan.layers) row.id.value], ['F']);
+    });
+
+    test('the folder the result stands in lays its look over it after the '
+        'merge, so it is not baked; a folder under that is', () {
+      final outer = createFolderLayer(
+        id: const LayerId('P'),
+        name: 'P',
+      ).copyWith(opacity: 0.5);
+      final inner = createFolderLayer(
+        id: const LayerId('G'),
+        name: 'G',
+        parentId: const LayerId('P'),
+      );
+      final plan = merge(
+        cutOf([
+          row('b', {0: 'B1'}, inside: 'G'),
+          inner,
+          row('a', {0: 'A1'}, inside: 'P'),
+          outer,
+        ]),
+        ['a', 'b'],
+      )!;
+
+      expect(
+        [
+          for (final layer in bakedOf(plan).layers)
+            (layer.id.value, layer.folderId?.value),
+        ],
+        [('b', 'G'), ('G', null), ('a', null)],
+      );
+      expect(plan.result.folderId, const LayerId('P'));
+      expect(plan.changes, isEmpty);
+    });
+
+    test('a row from outside the folder the result stands in is warned of '
+        'when that folder lays a look', () {
+      final plan = merge(
+        cutOf([
+          row('b', {0: 'B1'}),
+          row('a', {0: 'A1'}, inside: 'P'),
+          createFolderLayer(
+            id: const LayerId('P'),
+            name: 'P',
+          ).copyWith(opacity: 0.5),
+        ]),
+        ['a', 'b'],
+      )!;
+
+      expect(plan.changes, {LayerMergeChange.folder});
+    });
+  });
+
+  group('an attach row the merge does not take rides the result (Q8)', () {
+    test('🎯a synced one takes a cel for each of the result\'s — named by '
+        'the cel it showed there — and is drawn alone, wearing its base, '
+        'the base itself hidden', () {
+      final base = row('a', {0: '1', 4: '2'}, lastLength: 4);
+      final plan = merge(
+        cutOf([
+          row('b', {0: 'B1', 2: 'B2'}, lastLength: 6),
+          base,
+          synced('r', base).copyWith(
+            isVisible: false,
+            opacity: 0.5,
+            blendMode: LayerBlendMode.multiply,
+            clipsToBelow: true,
+          ),
+        ]),
+        ['a', 'b'],
+      )!;
+
+      expect(blocksOf(plan.result), {
+        0: (2, '1'),
+        2: (2, '1-2'),
+        4: (4, '2'),
+      });
+      final rider = rowOf(plan.layers, 'r');
+      expect(rider.attachedToLayerId, const LayerId('a'));
+      expect(rider.timeline, isEmpty, reason: 'it rides the result');
+      expect(
+        [rider.isVisible, rider.opacity, rider.blendMode, rider.clipsToBelow],
+        [false, 0.5, LayerBlendMode.multiply, true],
+        reason: 'what is its own stays on its row',
+      );
+      expect(
+        [for (final cel in rider.frames) (cel.id.value, cel.name)],
+        [
+          ('attach-mirror-r-m0', 'R1'),
+          ('attach-mirror-r-m1', 'R1-2'),
+          ('attach-mirror-r-m2', 'R2'),
+        ],
+      );
+      expect(rider.baseFrameLinks, {
+        for (final cel in plan.result.frames)
+          cel.id: FrameId('attach-mirror-r-${cel.id.value}'),
+      });
+      expect([for (final row in plan.layers) row.id.value], ['a', 'r']);
+      final drawn = [
+        for (final picture in plan.pictures)
+          if (picture.rowId == rider.id) picture,
+      ];
+      expect([for (final picture in drawn) picture.frameIndex], [0, 2, 4]);
+      expect(
+        [
+          for (final row in drawn.first.from.layers)
+            (
+              row.id.value,
+              row.isVisible,
+              row.opacity,
+              row.blendMode,
+              row.clipsToBelow,
+            ),
+        ],
+        [
+          ('a', false, 1.0, LayerBlendMode.normal, false),
+          ('r', true, 1.0, LayerBlendMode.normal, false),
+        ],
+        reason: 'and is laid on the pictures as it was, so none of it is '
+            'baked',
+      );
+    });
+
+    test('a synced one\'s cel where it showed nothing is an empty cel, '
+        'drawn of nothing', () {
+      final base = row('a', {0: '1', 2: '2'});
+      final plan = merge(
+        cutOf([
+          row('b', {0: 'B1'}, lastLength: 4),
+          base,
+          synced('r', base).copyWith(
+            baseFrameLinks: {base.frames.first.id: const FrameId('r-1')},
+          ),
+        ]),
+        ['a', 'b'],
+      )!;
+
+      final rider = rowOf(plan.layers, 'r');
+      expect([for (final cel in rider.frames) cel.name], ['R1', null]);
+      expect(
+        [
+          for (final picture in plan.pictures)
+            if (picture.rowId == rider.id) picture.frameIndex,
+        ],
+        [0],
+      );
+    });
+
+    test('a base that shows nothing still holds a cel wherever its synced '
+        'rider shows one', () {
+      final base = row('a', {0: '1'}).copyWith(opacity: 0);
+      final plan = merge(
+        cutOf([row('b', {}), base, synced('r', base)]),
+        ['a', 'b'],
+      )!;
+
+      expect(plan.result.frames, hasLength(1));
+      expect(rowOf(plan.layers, 'r').frames, hasLength(1));
+    });
+
+    test('a free one keeps its own timing, its cels parted wherever what '
+        'it wore of its base changes', () {
+      final moving = TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>.empty()
+            .withKey(1, CanvasPoint(x: 32, y: 18))
+            .withKey(2, CanvasPoint(x: 40, y: 18)),
+      );
+      final base = row('a', {0: '1'}, lastLength: 4, transformTrack: moving);
+      final free = row('r', {1: 'R1'}, kind: LayerKind.image).copyWith(
+        attachedToLayerId: base.id,
+        attachedMode: AttachedMode.free,
+      );
+      final plan = merge(
+        cutOf([row('b', {0: 'B1'}, lastLength: 4), base, free]),
+        ['a', 'b'],
+      )!;
+
+      final rider = rowOf(plan.layers, 'r');
+      expect(rider.attachedMode, AttachedMode.free);
+      expect(rider.attachedToLayerId, const LayerId('a'));
+      expect(blocksOf(rider), {1: (1, 'R1'), 2: (1, 'R1-2')});
+      expect(rider.kind, LayerKind.animation, reason: 'an image no more');
+    });
+
+    test('one taken with its base is merged, and the other rides', () {
+      final base = row('a', {0: '1'});
+      final plan = merge(
+        cutOf([synced('under', base), base, synced('over', base)]),
+        ['a', 'under'],
+      )!;
+
+      expect([for (final row in plan.layers) row.id.value], ['a', 'over']);
+      expect(rowOf(plan.layers, 'over').attachedToLayerId, const LayerId('a'));
+      expect(plan.changes, isEmpty, reason: 'it covers no picture it did not');
+    });
+
+    /// 🗣️I-78-Q13 (유저 2026-10-28): 「위쪽 어태치 그대로 결과 행 위에 붙는다
+    /// (+경고)」.
+    test('🎯the base\'s group is led around the result wherever the base '
+        'stood, and a rider led over a picture is warned of', () {
+      final base = row('base', {0: '1'});
+      final plan = merge(
+        cutOf([
+          row('c', {0: 'C1'}),
+          base,
+          synced('r', base),
+          row('a', {0: 'A1'}),
+        ]),
+        ['a', 'base', 'c'],
+      )!;
+
+      expect([for (final row in plan.layers) row.id.value], ['a', 'r']);
+      expect(rowOf(plan.layers, 'r').attachedToLayerId, const LayerId('a'));
+      expect(plan.changes, {LayerMergeChange.riderOver});
+    });
+
+    test('one riding below is led under it, warned of where it goes under '
+        'a picture', () {
+      final base = row('base', {0: '1'});
+      final cut = cutOf([
+        row('c', {0: 'C1'}),
+        synced('r', base).copyWith(attachedPlacement: AttachedPlacement.below),
+        base,
+        row('a', {0: 'A1'}),
+      ]);
+      final plan = merge(cut, ['a', 'base', 'c'])!;
+
+      expect([for (final row in plan.layers) row.id.value], ['r', 'a']);
+      expect(plan.changes, {LayerMergeChange.riderUnder});
+      expect(
+        merge(cut, ['a', 'base'])!.changes,
+        isEmpty,
+        reason: 'no picture it took stood under it',
+      );
+    });
+
+    test('one led out of its base\'s folder stands in the result\'s', () {
+      final base = row('base', {0: '1'}, inside: 'F');
+      final plan = merge(
+        cutOf([
+          base,
+          synced('r', base).copyWith(folderId: const LayerId('F')),
+          createFolderLayer(id: const LayerId('F'), name: 'F'),
+          row('a', {0: 'A1'}),
+        ]),
+        ['a', 'base'],
+      )!;
+
+      expect([for (final row in plan.layers) row.id.value], ['F', 'a', 'r']);
+      expect(rowOf(plan.layers, 'r').folderId, isNull);
+    });
+
+    test('the folder that gathers a group\'s riders is led with them, '
+        'holding them still', () {
+      final base = row('a', {0: '1'});
+      final plan = merge(
+        cutOf([
+          row('b', {0: 'B1'}),
+          base,
+          synced('r', base).copyWith(folderId: const LayerId('O')),
+          createFolderLayer(id: const LayerId('O'), name: 'O'),
+        ]),
+        ['a', 'b'],
+      )!;
+
+      expect([for (final row in plan.layers) row.id.value], ['a', 'r', 'O']);
+      expect(rowOf(plan.layers, 'r').folderId, const LayerId('O'));
+    });
+
+    test('the topmost taken from inside that folder stands in it, as any '
+        'topmost row does, and the folder is the result\'s now', () {
+      final base = row('base', {0: '1'});
+      Layer gathered(String id) =>
+          synced(id, base).copyWith(folderId: const LayerId('O'));
+      final plan = merge(
+        cutOf([
+          base,
+          gathered('r'),
+          gathered('s'),
+          createFolderLayer(id: const LayerId('O'), name: 'O'),
+        ]),
+        ['base', 'r'],
+      )!;
+
+      expect([for (final row in plan.layers) row.id.value], ['r', 's', 'O']);
+      expect([for (final row in plan.layers) row.folderId?.value], [
+        'O',
+        'O',
+        null,
+      ]);
+    });
+
+    /// 🗣️I-78-Q14 (유저 2026-10-28): 「보이던 그대로 같이 굽는다」.
+    test('🎯one chosen without its base is baked wearing it, and stands just '
+        'outside the group when it is the topmost', () {
+      final base = row('base', {0: '1'}, lastLength: 4);
+      final plan = merge(
+        cutOf([
+          row('c', {0: 'C1'}),
+          row('b', {0: 'B1'}),
+          base,
+          synced('r', base),
+          synced('s', base),
+        ]),
+        ['b', 'c', 'r'],
+      )!;
+
+      expect(plan.result.id, const LayerId('r'));
+      expect(plan.result.attachedToLayerId, isNull);
+      expect(blocksOf(plan.result), {0: (2, 'R1'), 2: (2, 'R1-2')});
+      expect([for (final row in plan.layers) row.id.value], [
+        'base',
+        's',
+        'r',
+      ]);
+      expect(
+        [
+          for (final row in bakedOf(plan).layers) (row.id.value, row.isVisible),
+        ],
+        [('c', true), ('b', true), ('base', false), ('r', true)],
+      );
+      expect(plan.changes, isEmpty);
+    });
+
+    test('one riding below stands just under the group, over the rows left '
+        'under it', () {
+      final base = row('base', {0: '1'});
+      Layer under(String id) => synced(
+        id,
+        base,
+      ).copyWith(attachedPlacement: AttachedPlacement.below);
+      final plan = merge(
+        cutOf([
+          row('c', {0: 'C1'}),
+          row('k', {0: 'K1'}),
+          under('r'),
+          under('s'),
+          base,
+        ]),
+        ['c', 'r'],
+      )!;
+
+      expect([for (final row in plan.layers) row.id.value], [
+        'k',
+        'r',
+        's',
+        'base',
+      ]);
+    });
+
+    test('the folder that gathered it stays where it stood, and the result '
+        'stands past the group as it stood, in the base\'s folder', () {
+      final base = row('base', {0: '1'});
+      final plan = merge(
+        cutOf([
+          row('c', {0: 'C1'}),
+          base,
+          synced('r', base).copyWith(folderId: const LayerId('O')),
+          createFolderLayer(id: const LayerId('O'), name: 'O'),
+        ]),
+        ['c', 'r'],
+      )!;
+
+      expect([for (final row in plan.layers) row.id.value], [
+        'base',
+        'O',
+        'r',
+      ]);
+      expect(plan.result.folderId, isNull);
+    });
+
+    test('one taken below the topmost row goes as any row does', () {
+      final base = row('base', {0: '1'});
+      final plan = merge(
+        cutOf([base, synced('r', base), row('a', {0: 'A1'})]),
+        ['a', 'r'],
+      )!;
+
+      expect([for (final row in plan.layers) row.id.value], ['base', 'a']);
+      expect(blocksOf(plan.result), {0: (2, 'A1')});
+    });
+
+    test('a base one of whose riders this round passes over is passed over '
+        'too: the rider would be baked anew', () {
+      final base = row('base', {0: '1'});
+      final plan = merge(
+        cutOf([
+          row('c', {0: 'C1'}),
+          row('b', {0: 'B1'}),
+          base,
+          synced('r', base),
+        ]),
+        ['base', 'b', 'c'],
+        linked: {'r'},
+      )!;
+
+      expect(plan.result.id, const LayerId('b'));
+      expect([for (final row in plan.layers) row.id.value], ['b', 'base', 'r']);
+    });
+  });
+
+  test('a 겸용 row is passed over: another cut shows its cels', () {
+    final cut = cutOf([
+      row('c', {0: 'C1'}),
+      row('b', {0: 'B1'}),
+      row('a', {0: 'A1'}),
+    ]);
+
+    final plan = merge(cut, ['a', 'b', 'c'], linked: {'b'})!;
+
+    expect([for (final row in plan.layers) row.id.value], ['b', 'a']);
+  });
+
+  /// 🗣️I-78-Q15 (유저 2026-10-28): 「참조도 그대로 병합한다」.
+  group('a reference row is baked as it shows', () {
+    /// A reference row showing a [width] × [height] file at the canvas's
+    /// centre at [scale], moved by [moves] — its pixels laid [laidAt], at
+    /// the centre unless a test says otherwise.
+    Layer still(
+      int width,
+      int height, {
+      double scale = 1,
+      TransformTrack? moves,
+      CanvasPoint? laidAt,
+    }) {
+      final centre = CanvasPoint(x: 32, y: 18);
+      return row(
+        'still',
+        {0: 'P1'},
+        kind: LayerKind.image,
+        transformTrack: moves,
+      ).copyWith(
+        mediaReference: MediaReference(
+          assetPath: 'paper.png',
+          pose: TransformPose(center: centre, scaleX: scale, scaleY: scale),
+          laid: TransformPose(center: laidAt ?? centre),
+          pictureSize: CanvasSize(width: width, height: height),
+        ),
+      );
+    }
+    Cut around(Layer still) =>
+        cutOf([row('b', {0: 'B1'}), still, row('a', {0: 'A1'})]);
+
+    test('🎯and where its file lies past the wall, what lies there is '
+        'warned of', () {
+      final plan = merge(around(still(640, 360)), ['a', 'b', 'still'])!;
+
+      expect([for (final row in plan.layers) row.id.value], ['a']);
+      expect([for (final layer in bakedOf(plan).layers) layer.id.value], [
+        'b',
+        'still',
+        'a',
+      ]);
+      expect(plan.changes, {LayerMergeChange.wall});
+    });
+
+    test('one laid inside the wall, to its edges, is not', () {
+      final plan = merge(around(still(64, 36)), ['a', 'still'])!;
+
+      expect(plan.changes, isEmpty);
+    });
+
+    test('the wall is the one its pictures are drawn over: a file past the '
+        'canvas that the pasteboard holds is not', () {
+      final cut = around(still(96, 54));
+
+      expect(merge(cut, ['a', 'still'])!.changes, {LayerMergeChange.wall});
+      expect(
+        merge(cut, ['a', 'still'], reach: PasteboardReach.whole)!.changes,
+        isEmpty,
+      );
+    });
+
+    test('it is read where the row shows the file: laid past the wall and '
+        'shown inside it, nothing is cut; laid inside and moved past it by '
+        'the row\'s keys, what lies there is', () {
+      final moved = TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>.empty().withKey(
+          0,
+          CanvasPoint(x: 64, y: 18),
+        ),
+      );
+
+      for (final shownInside in [
+        still(640, 360, scale: 0.1),
+        still(64, 36, laidAt: CanvasPoint(x: 632, y: 18)),
+      ]) {
+        expect(merge(around(shownInside), ['a', 'still'])!.changes, isEmpty);
+      }
+      expect(
+        merge(around(still(64, 36, moves: moved)), ['a', 'still'])!.changes,
+        {LayerMergeChange.wall},
+      );
+    });
+
+    test('one not shown at a frame the merge draws cuts nothing', () {
+      final unshown = still(640, 360).copyWith(timeline: const {});
+
+      expect(merge(around(unshown), ['a', 'b', 'still'])!.changes, isEmpty);
+    });
+
+    test('a base worn hidden shows no file to cut', () {
+      final base = still(640, 360);
+      final plan = merge(
+        cutOf([row('c', {0: 'C1'}), base, synced('r', base)]),
+        ['c', 'r'],
+      )!;
+
+      expect(plan.changes, isEmpty);
+    });
+  });
+
+  /// 🗣️I-78-Q4 (유저 2026-10-07): 「한 행의 여러 블록을 레이어랑 같은 규칙으로
+  /// 제일 왼쪽 블록에 합침 … 각 행이 판단해서 이건 병합이 가능한 상태서만
+  /// 작동하도록」.
+  group('a row\'s blocks a band holds (Q4)', () {
+    /// What a press of MERGE makes of [cut]'s blocks at [starts], by row.
+    BlockMergePlan? mergeBlocks(
+      Cut cut,
+      Map<String, List<int>> starts, {
+      Set<String> linked = const {},
+    }) {
+      final taking = takeBlocksToMerge(
+        cut: cut,
+        blockStarts: {
+          for (final MapEntry(:key, :value) in starts.entries)
+            LayerId(key): value,
+        },
+        isLinked: (row) => linked.contains(row.id.value),
+      );
+      var minted = 0;
+      return taking == null
+          ? null
+          : planBlockMerge(
+              taking,
+              mintFrameId: (_) => FrameId('m${minted++}'),
+            );
+    }
+
+    /// The cel each of [picture]'s layers holds, bottom → top.
+    List<String> laidOf(BlockMergePicture picture) => [
+      for (final layer in picture.layers)
+        layer.layers.single.frames.single.id.value,
+    ];
+
+    /// [id]'s blocks `start: (length, cel name)`, each [marks] as given.
+    Layer marked(
+      String id,
+      Map<int, (int, String)> blocks, {
+      Map<int, TimelineRunEdgeMark> starting = const {},
+      Map<int, TimelineRunEdgeMark> ending = const {},
+    }) => row(id, {
+      for (final MapEntry(:key, :value) in blocks.entries) key: value.$2,
+    }).copyWith(
+      timeline: {
+        for (final MapEntry(:key, :value) in blocks.entries)
+          key: TimelineExposure.drawing(
+            FrameId('$id-${value.$2}'),
+            length: value.$1,
+            startEdge: starting[key] ?? TimelineRunEdgeMark.none,
+            endEdge: ending[key] ?? TimelineRunEdgeMark.none,
+          ),
+      },
+    );
+
+    test('🎯they become one where the leftmost stood, over the run they '
+        'make — the frames between them too — a new cel named as the '
+        'leftmost is, laid of theirs with the leftmost on top', () {
+      final plan = mergeBlocks(
+        cutOf([
+          marked('a', {0: (2, 'A1'), 4: (2, 'A2'), 6: (2, 'A3')}),
+        ]),
+        {
+          'a': [4, 0],
+        },
+      )!;
+
+      final merged = rowOf(plan.layers, 'a');
+      expect(blocksOf(merged), {0: (6, 'A1'), 6: (2, 'A3')});
+      expect([for (final cel in merged.frames) cel.id.value], [
+        'a-A3',
+        'm0',
+      ], reason: 'a cel only the run showed goes, as a delete takes it');
+      final picture = plan.pictures.single;
+      expect((picture.rowId, picture.frameId), (
+        const LayerId('a'),
+        const FrameId('m0'),
+      ));
+      expect(laidOf(picture), ['a-A2', 'a-A1']);
+    });
+
+    test('a cel shown past the run stays, and the new one wears its name\'s '
+        'tail; a cel the run shows twice is laid once', () {
+      final cut = cutOf([
+        row('a', {0: 'A1', 2: 'A2', 4: 'A1'}),
+      ]);
+
+      final some = mergeBlocks(cut, {
+        'a': [0, 2],
+      })!;
+      final all = mergeBlocks(cut, {
+        'a': [0, 2, 4],
+      })!;
+
+      expect(blocksOf(rowOf(some.layers, 'a')), {0: (4, 'A1-2'), 4: (2, 'A1')});
+      expect([for (final cel in rowOf(some.layers, 'a').frames) cel.id.value], [
+        'a-A1',
+        'm0',
+      ]);
+      expect(blocksOf(rowOf(all.layers, 'a')), {0: (6, 'A1')});
+      expect(laidOf(all.pictures.single), ['a-A2', 'a-A1']);
+    });
+
+    test('the run keeps its outer edges: on each side the mode of the '
+        'carrier nearest it — one standing inside its run too, as a hold set '
+        'before frames were glued on past it does — and a bound one of them '
+        'claimed', () {
+      Layer mergedOf(Layer row, List<int> starts) =>
+          rowOf(mergeBlocks(cutOf([row]), {'a': starts})!.layers, 'a');
+
+      // Two runs, the frame at 4 between them.
+      final held = mergedOf(
+        marked(
+          'a',
+          {0: (2, 'A1'), 2: (2, 'A2'), 5: (2, 'A3'), 7: (2, 'A4')},
+          starting: {2: holdMark, 5: repeatMark},
+          ending: {0: holdMark, 5: repeatMark},
+        ),
+        [0, 2, 5, 7],
+      );
+      final bounded = mergedOf(
+        marked(
+          'a',
+          {0: (2, 'A1'), 2: (2, 'A2'), 4: (2, 'A3')},
+          ending: {2: boundMark, 4: repeatMark},
+        ),
+        [0, 2],
+      );
+
+      expect((held.timeline[0]!.startEdge, held.timeline[0]!.endEdge), (
+        holdMark,
+        repeatMark,
+      ));
+      expect(
+        (bounded.timeline[0]!.endEdge, bounded.timeline[4]!.endEdge),
+        (boundMark, repeatMark),
+        reason: 'A3\'s repeat still starts at the block A2 became',
+      );
+    });
+
+    test('a cel that goes takes its sounds with it (REC1-A)', () {
+      final plan = mergeBlocks(
+        cutOf([
+          row('a', {0: 'A1', 2: 'A2', 4: 'A3'}).copyWith(
+            audioClips: [
+              for (final cel in ['A1', 'A3'])
+                AudioClip(filePath: 'take.wav', frameId: FrameId('a-$cel')),
+            ],
+          ),
+        ]),
+        {
+          'a': [0, 2],
+        },
+      )!;
+
+      expect(
+        [
+          for (final clip in rowOf(plan.layers, 'a').audioClips)
+            clip.frameId.value,
+        ],
+        ['a-A3'],
+      );
+    });
+
+    test('each row merges on its own, and a row that cannot is passed '
+        'over: one block, a 겸용 row, a synced attach row', () {
+      final base = row('a', {0: 'A1', 2: 'A2'});
+      final cut = cutOf([
+        row('c', {0: 'C1', 2: 'C2'}),
+        row('b', {0: 'B1', 2: 'B2'}),
+        base,
+        synced('r', base),
+      ]);
+
+      final plan = mergeBlocks(cut, {
+        'a': [0, 2],
+        'b': [0, 2],
+        'c': [0, 2],
+      }, linked: {'c'})!;
+
+      expect([for (final row in plan.rows) row.id.value], ['b', 'a', 'r']);
+      expect([for (final row in plan.layers) row.id.value], [
+        'c',
+        'b',
+        'a',
+        'r',
+      ]);
+      expect(blocksOf(rowOf(plan.layers, 'b')), {0: (4, 'B1')});
+      expect(blocksOf(rowOf(plan.layers, 'c')), blocksOf(cut.layers.first));
+      expect(
+        mergeBlocks(cut, {
+          'a': [2],
+          'c': [0, 2],
+          'r': [0, 2],
+        }, linked: {'c'}),
+        isNull,
+      );
+    });
+
+    test('a synced attach row riding it merges along: a mirror of the new '
+        'cel laid of its own, its mirrors of the cels that go gone', () {
+      final base = row('a', {0: '1', 2: '2', 4: '3'});
+      final plan = mergeBlocks(cutOf([base, synced('r', base)]), {
+        'a': [0, 2],
+      })!;
+
+      final rider = rowOf(plan.layers, 'r');
+      expect(rider.baseFrameLinks, {
+        const FrameId('a-3'): const FrameId('r-3'),
+        const FrameId('m0'): const FrameId('attach-mirror-r-m0'),
+      });
+      expect([for (final cel in rider.frames) (cel.id.value, cel.name)], [
+        ('r-3', 'R3'),
+        ('attach-mirror-r-m0', 'R1'),
+      ]);
+      final drawn = plan.pictures.last;
+      expect((drawn.rowId, drawn.frameId), (
+        rider.id,
+        const FrameId('attach-mirror-r-m0'),
+      ));
+      expect(laidOf(drawn), ['r-2', 'r-1']);
+    });
+
+    test('a synced one showing nothing over the run — its link there to a '
+        'cel it no longer has — is drawn of nothing, and its cels the merge '
+        'did not unlink stay', () {
+      final base = row('a', {0: '1', 2: '2', 4: '3'});
+      final plan = mergeBlocks(
+        cutOf([
+          base,
+          synced('r', base).copyWith(
+            baseFrameLinks: {
+              const FrameId('a-1'): const FrameId('r-gone'),
+              const FrameId('a-3'): const FrameId('r-3'),
+            },
+          ),
+        ]),
+        {
+          'a': [0, 2],
+        },
+      )!;
+
+      expect([for (final picture in plan.pictures) picture.rowId.value], [
+        'a',
+      ]);
+      expect([for (final cel in rowOf(plan.layers, 'r').frames) cel.id.value], [
+        'r-1',
+        'r-2',
+        'r-3',
+        'attach-mirror-r-m0',
+      ]);
+    });
+
+    test('a cel of its that a cel the base keeps still shows stays, and the '
+        'new mirror wears its name\'s tail', () {
+      final base = row('a', {0: '1', 2: '2', 4: '3'});
+      final plan = mergeBlocks(
+        cutOf([
+          base,
+          synced('r', base).copyWith(
+            baseFrameLinks: {
+              const FrameId('a-1'): const FrameId('r-1'),
+              const FrameId('a-2'): const FrameId('r-2'),
+              const FrameId('a-3'): const FrameId('r-1'),
+            },
+          ),
+        ]),
+        {
+          'a': [0, 2],
+        },
+      )!;
+
+      expect(
+        [
+          for (final cel in rowOf(plan.layers, 'r').frames)
+            (cel.id.value, cel.name),
+        ],
+        [('r-1', 'R1'), ('r-3', 'R3'), ('attach-mirror-r-m0', 'R1-2')],
+      );
+    });
+  });
+}

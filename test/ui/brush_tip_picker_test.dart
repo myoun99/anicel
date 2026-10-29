@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_settings_row.dart';
 import 'package:anicel/src/models/brush_tip_entry.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
@@ -32,7 +33,10 @@ void main() {
     BrushToolState? initial,
     VoidCallback? onTipImportRequested,
   }) async {
-    var state = initial ?? BrushToolState.defaults;
+    // Every row shown: the three pickers are what this pins.
+    var state = (initial ?? BrushToolState.defaults).copyWith(
+      shown: BrushSettingsRow.values.toSet(),
+    );
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

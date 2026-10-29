@@ -79,7 +79,9 @@ enum CelPixelVerb {
       blue: argbBlue(argb),
       tolerance: tolerance,
       amount: 1,
-      keepsMatches: this == CelPixelVerb.keepColour,
+      operation: this == CelPixelVerb.keepColour
+          ? CelKeyOperation.eraseOthers
+          : CelKeyOperation.eraseMatches,
     );
   }
 }
@@ -1011,7 +1013,7 @@ CelPixelStage _stageOf(_Pass pass) {
             green: selector.green,
             blue: selector.blue,
             tolerance: selector.tolerance,
-            keepsMatches: selector.keepsMatches,
+            keepsMatches: selector.operation == CelKeyOperation.eraseOthers,
           ),
     threshold: threshold,
   );

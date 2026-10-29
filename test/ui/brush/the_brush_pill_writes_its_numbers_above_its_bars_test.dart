@@ -209,43 +209,130 @@ void main() {
     }
   });
 
-  testWidgets('the two readouts are one fixed size — 「2000.0」 whole at 8 and '
-      'a pixel either side, as I-135-Q1 took it — and write their number at '
-      '8, on a line 8 tall, in their middle, whatever the number', (
-    tester,
-  ) async {
-    final brushTool = await pumpPill(tester);
-    final context = tester.element(readout('size'));
-    final atEight = FieldSlider.valueStyleIn(
-      context,
-    )!.copyWith(fontSize: 8, height: 1);
-    final fixed = Size(
-      TextMeasure(context, atEight).size('2000.0').width.ceilToDouble() + 2,
-      12,
-    );
+  // 🗣️F-493 (유저 2026-10-28): 「4자리(99.9 등 숫자2개+점+숫자하나)를 지금의
+  // 길이에서 최대치로 키우도록. 즉 0.1이나 99.9나 텍스트크기 똑같고(지금보다는
+  // 큼.), 100넘어가면 작아지고, 1000넘어가면 또 작아지는 방식으로 가변으로
+  // 크기조절. 불투명도도 규칙은 통일」.
+  group('the two readouts are one fixed box — 「2000.0」 whole at 8 and a '
+      'pixel either side, as I-135-Q1 took it — and their letters', () {
+    /// The letters' size where [side]'s readout says what it says now.
+    double? lettersOf(WidgetTester tester, String side) =>
+        tester.widget<Text>(wordsOf(side)).style?.fontSize;
 
-    for (final (size, opacity) in [
-      (BrushToolState.minSize, 0.0),
-      (12.3, 0.5),
-      (BrushToolState.maxSize, 1.0),
-    ]) {
+    Future<void> hold(
+      WidgetTester tester,
+      ValueNotifier<BrushToolState> brushTool,
+      double size,
+      double opacity,
+    ) async {
       brushTool.value = brushTool.value
           .withActiveSize(size)
           .withActiveOpacity(opacity);
       await tester.pump();
-      for (final side in sides) {
-        expect(tester.getSize(readout(side)), fixed, reason: '$side, $size');
-        expect(tester.widget<Text>(wordsOf(side)).style?.fontSize, 8);
-        // The line as tall as its letters — not the theme's 1.45, which
-        // sinks the digits a pixel and more under the box's middle.
-        expect(tester.getSize(wordsOf(side)).height, 8, reason: side);
-        final words = tester.getCenter(wordsOf(side));
-        final box = tester.getCenter(readout(side));
-        expect(words.dx, closeTo(box.dx, 0.5), reason: '$side: centred');
-        expect(words.dy, closeTo(box.dy, 0.5), reason: '$side: centred');
-      }
     }
-    expect(tester.widget<Text>(wordsOf('size')).data, '2000.0');
+
+    testWidgets('as large as the box lets four letters be — 「0.7」 and '
+        '「99.9」 alike, and the opacity\'s 「0」, 「50」 and 「100」 with them '
+        '— smaller at five (「100.0」) and smaller again at six (「2000.0」)', (
+      tester,
+    ) async {
+      final brushTool = await pumpPill(tester);
+      await hold(tester, brushTool, BrushToolState.minSize, 0);
+      final four = lettersOf(tester, 'size')!;
+      expect(four, greaterThan(8), reason: '「지금보다는 큼」');
+      expect(lettersOf(tester, 'opacity'), four, reason: '「0」');
+
+      for (final (size, opacity, saysSize, saysOpacity) in [
+        (99.9, 0.5, '99.9', '50'),
+        (12.3, 1.0, '12.3', '100'),
+      ]) {
+        await hold(tester, brushTool, size, opacity);
+        expect(numberOf(tester, 'size'), saysSize, reason: '⛔premise');
+        expect(numberOf(tester, 'opacity'), saysOpacity, reason: '⛔premise');
+        expect(lettersOf(tester, 'size'), four, reason: saysSize);
+        expect(lettersOf(tester, 'opacity'), four, reason: saysOpacity);
+      }
+
+      await hold(tester, brushTool, 100, 1);
+      expect(numberOf(tester, 'size'), '100.0', reason: '⛔premise');
+      final five = lettersOf(tester, 'size')!;
+      expect(five, lessThan(four), reason: '「100넘어가면 작아지고」');
+
+      await hold(tester, brushTool, BrushToolState.maxSize, 1);
+      expect(numberOf(tester, 'size'), '2000.0', reason: '⛔premise');
+      expect(
+        lettersOf(tester, 'size'),
+        lessThan(five),
+        reason: '「1000넘어가면 또 작아지는」',
+      );
+    });
+
+    testWidgets('each size the largest whole one at which every number of '
+        'its length stands whole in the box — a pixel more, the widest '
+        'would not', (
+      tester,
+    ) async {
+      final brushTool = await pumpPill(tester);
+      final context = tester.element(readout('size'));
+      final box = tester.getSize(readout('size')).width - 2;
+      final style = FieldSlider.valueStyleIn(context)!.copyWith(height: 1);
+      double widestAt(double letters, String shape) =>
+          TextMeasure(context, style.copyWith(fontSize: letters)).widest(
+            everyDigitIn((digit) => shape.replaceAll('0', digit)),
+          );
+
+      for (final (size, shape) in [
+        (12.3, '00.0'),
+        (100.0, '000.0'),
+        (1000.0, '0000.0'),
+      ]) {
+        await hold(tester, brushTool, size, 1);
+        final letters = lettersOf(tester, 'size')!;
+        expect(widestAt(letters, shape), lessThanOrEqualTo(box), reason: shape);
+        expect(letters, letters.roundToDouble(), reason: '$shape: whole');
+        expect(widestAt(letters + 1, shape), greaterThan(box), reason: shape);
+      }
+    });
+
+    testWidgets('the box stands as it stood whatever the number, as tall as '
+        'the largest letters and the two pixels above and below them, and '
+        'the number on a line as tall as its letters in its middle', (
+      tester,
+    ) async {
+      final brushTool = await pumpPill(tester);
+      final context = tester.element(readout('size'));
+      final atEight = FieldSlider.valueStyleIn(
+        context,
+      )!.copyWith(fontSize: 8, height: 1);
+      await hold(tester, brushTool, 12.3, 0.5);
+      final fixed = Size(
+        TextMeasure(context, atEight).size('2000.0').width.ceilToDouble() + 2,
+        lettersOf(tester, 'size')! + 4,
+      );
+
+      for (final (size, opacity) in [
+        (BrushToolState.minSize, 0.0),
+        (12.3, 0.5),
+        (100.0, 0.5),
+        (BrushToolState.maxSize, 1.0),
+      ]) {
+        await hold(tester, brushTool, size, opacity);
+        for (final side in sides) {
+          expect(tester.getSize(readout(side)), fixed, reason: '$side, $size');
+          // The line as tall as its letters — not the theme's 1.45, which
+          // sinks the digits a pixel and more under the box's middle.
+          expect(
+            tester.getSize(wordsOf(side)).height,
+            lettersOf(tester, side),
+            reason: side,
+          );
+          final words = tester.getCenter(wordsOf(side));
+          final box = tester.getCenter(readout(side));
+          expect(words.dx, closeTo(box.dx, 0.5), reason: '$side: centred');
+          expect(words.dy, closeTo(box.dy, 0.5), reason: '$side: centred');
+        }
+      }
+    });
   });
 
   testWidgets('a press on a readout opens its bar\'s number pad, as its '

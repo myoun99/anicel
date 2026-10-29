@@ -43,13 +43,14 @@ class CelNumberLetters {
 /// named [rowName] of [kind]: the row's name and the drawing's number run
 /// together — 「A」 and 「1」 write 「A1」 — the drawing's number as its
 /// block's head says it ([celNumberOrMark]): an unnamed animation drawing
-/// writes the in-between mark, 「A○」, and an unnamed drawing of any other
-/// kind nothing after the row's name.
+/// writes the in-between mark its head wears — 「A●」 until another is
+/// picked — and an unnamed drawing of any other kind nothing after the
+/// row's name.
 ///
 /// 🗣️I-65-Q1 a (유저 2026-10-24): 「레이어 이름 + 셀 번호(A1) — 이름 없는
-/// 그림은 A●」. ↩️「A●」 until F-469 (10-25 「기본마크, 앞으로 마크1 사용 …
-/// 다른곳도 같은곳있으면 확인해서 법 통일」): the mark is the unnamed head's,
-/// `unnamedDrawingMark`.
+/// 그림은 A●」. The mark is the unnamed head's, `unnamedDrawingMark`: the
+/// one Preferences ▸ Display picks since F-489, ● to begin with. ↩️「A○」
+/// from F-469 (10-25 「기본마크, 앞으로 마크1 사용」) to F-489.
 String celNumberText({
   required String rowName,
   required String? drawingName,

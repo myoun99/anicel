@@ -1220,7 +1220,7 @@ void main() {
           activeCutId: cutA.id,
         );
 
-        fixture.coordinator.renameCut(cutId: cutB.id, newName: 'Cut A');
+        fixture.coordinator.renameCuts({cutB.id: 'Cut A'});
 
         expect(requireCut(fixture.project, cutA.id).name, 'Cut A');
         expect(requireCut(fixture.project, cutB.id).name, 'Cut A');

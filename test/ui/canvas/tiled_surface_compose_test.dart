@@ -123,13 +123,13 @@ void main() {
 
       final cache = BitmapTileImageCache();
       expect(
-        surface.tiles.values.every((tile) => cache.imageFor(tile) == null),
+        surface.tiles.values.every((tile) => cache.heldFor(tile) == null),
         isTrue,
         reason: 'fixture: nothing has pictured these tiles',
       );
       final now = composeTiledSurfaceImageNow(surface, reuse: cache);
       expect(
-        surface.tiles.values.every((tile) => cache.imageFor(tile) != null),
+        surface.tiles.values.every((tile) => cache.heldFor(tile) != null),
         isTrue,
         reason: 'the pictures it made are the cache\'s: the next compose of '
             'this cel — the next edit — pays for the tiles that changed',
@@ -411,7 +411,7 @@ void main() {
       expect(awaited(), 1, reason: 'not one more, on either road');
       expect(atOnce, inTurn);
       expect(
-        surface.tiles.values.every((tile) => cache.imageFor(tile) == null),
+        surface.tiles.values.every((tile) => cache.heldFor(tile) == null),
         isTrue,
         reason: 'the pictures were each compose\'s own, and went with it',
       );

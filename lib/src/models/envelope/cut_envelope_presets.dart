@@ -107,7 +107,9 @@ List<EnvelopeBox> _cutLine(int index, double top) {
       contentSize: 14,
     ),
     // The length cell is ONE box (one ink home); the three readings sit on
-    // top of it without borders of their own.
+    // top of it without borders of their own, each centred in its place
+    // (🗣️F-498, 유저 2026-10-29: 「초수칸 내부 텍스트가 오른쪽정렬임. 각
+    // 위치 중앙정렬」 — ↩️seconds and frames hugged their right edges).
     EnvelopeBox(id: 'cut-$index-length', rect: _a(91, top, 177, height)),
     EnvelopeBox(
       id: 'cut-$index-seconds',
@@ -116,7 +118,6 @@ List<EnvelopeBox> _cutLine(int index, double top) {
       contentKind: EnvelopeContentKind.text,
       binding: '{cut[$index].seconds}',
       contentSize: 14,
-      contentAlign: EnvelopeAlign.right,
       takesInk: false,
     ),
     EnvelopeBox(
@@ -134,7 +135,6 @@ List<EnvelopeBox> _cutLine(int index, double top) {
       contentKind: EnvelopeContentKind.text,
       binding: '{cut[$index].frames}',
       contentSize: 14,
-      contentAlign: EnvelopeAlign.right,
       takesInk: false,
     ),
   ];
@@ -155,6 +155,65 @@ const List<(String, double, double, String, LayerMark?)> _staffColumns = [
   ('scan', 169, 48, 'スキャン', null),
   ('tracePaint', 217, 51, 'トレス・ペイント', null),
 ];
+
+/// One 担当 column: its printed head, its worker's name, then what it
+/// counts of each cel and of the 計.
+List<EnvelopeBox> _staffColumn(
+  (String, double, double, String, LayerMark?) column,
+) {
+  final (id, x, width, head, worker) = column;
+  final count = _celCountOf(head);
+  final counts = count == null
+      ? EnvelopeContentKind.blank
+      : EnvelopeContentKind.text;
+  return [
+    EnvelopeBox(
+      id: 'staff-head-$head',
+      rect: _a(x, 290, width, 16),
+      label: head,
+      labelSize: head.length > 4 ? 7 : 9,
+      takesInk: false,
+    ),
+    EnvelopeBox(
+      id: 'staff-name-$id',
+      rect: _a(x, 306, width, 22),
+      contentKind: worker == null
+          ? EnvelopeContentKind.blank
+          : EnvelopeContentKind.text,
+      binding: worker == null ? null : '{staff.${worker.keySlug}.name}',
+      contentSize: 10,
+    ),
+    for (var row = 0; row < _celRowCount; row += 1)
+      EnvelopeBox(
+        id: 'cel-$row-$head',
+        rect: _a(x, _celRowTop + row * _celRowHeight, width, _celRowHeight),
+        contentKind: counts,
+        binding: count == null ? null : '{cel[$row].$count}',
+        contentSize: 11,
+      ),
+    EnvelopeBox(
+      id: 'cel-total-$head',
+      rect: _a(x, 470, width, 15),
+      contentKind: counts,
+      binding: count == null ? null : '{total.$count}',
+      contentSize: 11,
+    ),
+  ];
+}
+
+/// The count a 担当 column prints per cel — the stage its head names
+/// (`cutEnvelopeCelCounts`) — or null for a column the pen fills.
+///
+/// 🗣️F-498 (유저 2026-10-29): 「원화란엔 제대로 원화만 세고, 동화/시아게등
+/// 제대로 그 공정것만 셈 … 시아게도 색라벨 맞춰서」 — トレス・ペイント is
+/// the paper form's 仕上げ column. ↩️It printed nothing, and 動画 an
+/// estimate off the 原画.
+String? _celCountOf(String head) => switch (head) {
+  '原画' => 'genga',
+  '動画' => 'douga',
+  'トレス・ペイント' => 'shiage',
+  _ => null,
+};
 
 /// Cel rows: eight printed rows, the count the real sheet has room for.
 const int _celRowCount = 8;
@@ -217,51 +276,7 @@ List<EnvelopeBox> _analogBoxes() => [
     labelSize: 9,
   ),
 
-  for (final (id, x, width, head, worker) in _staffColumns) ...[
-    EnvelopeBox(
-      id: 'staff-head-$head',
-      rect: _a(x, 290, width, 16),
-      label: head,
-      labelSize: head.length > 4 ? 7 : 9,
-      takesInk: false,
-    ),
-    EnvelopeBox(
-      id: 'staff-name-$id',
-      rect: _a(x, 306, width, 22),
-      contentKind: worker == null
-          ? EnvelopeContentKind.blank
-          : EnvelopeContentKind.text,
-      binding: worker == null ? null : '{staff.${worker.keySlug}.name}',
-      contentSize: 10,
-    ),
-    for (var row = 0; row < _celRowCount; row += 1)
-      EnvelopeBox(
-        id: 'cel-$row-$head',
-        rect: _a(x, _celRowTop + row * _celRowHeight, width, _celRowHeight),
-        contentKind: head == '原画' || head == '動画'
-            ? EnvelopeContentKind.text
-            : EnvelopeContentKind.blank,
-        binding: switch (head) {
-          '原画' => '{cel[$row].genga}',
-          '動画' => '{cel[$row].douga}',
-          _ => null,
-        },
-        contentSize: 11,
-      ),
-    EnvelopeBox(
-      id: 'cel-total-$head',
-      rect: _a(x, 470, width, 15),
-      contentKind: head == '原画' || head == '動画'
-          ? EnvelopeContentKind.text
-          : EnvelopeContentKind.blank,
-      binding: switch (head) {
-        '原画' => '{total.genga}',
-        '動画' => '{total.douga}',
-        _ => null,
-      },
-      contentSize: 11,
-    ),
-  ],
+  for (final column in _staffColumns) ..._staffColumn(column),
 
   // Right block: BG, 解像度 (dpi over scan/offset), 3D, 特効, 撮影.
   EnvelopeBox(
@@ -411,6 +426,12 @@ List<EnvelopeBox> _digitalBoxes() => [
 ///
 /// ⛔The stamp row binds nothing — the same law as the paper 봉투's
 /// approval boxes ([_approval]).
+///
+/// 🗣️F-498 (유저 2026-10-29): 「헤더의 공정이름이 칸에서 삐져나와있음」 —
+/// the head holds its label with the paper form's head margins (16, as
+/// its staff heads), and the stamp row gives up the same so the
+/// correction rows stay where they were. ↩️10 tall: a 9.5 label hung
+/// 3 down ran past the stamp row's rule.
 List<EnvelopeBox> _digitalCheck({
   required String prefix,
   required double left,
@@ -418,8 +439,8 @@ List<EnvelopeBox> _digitalCheck({
   required List<String> heads,
 }) {
   const double columnWidth = 60;
-  const double headHeight = 10;
-  const double stampHeight = 62;
+  const double headHeight = 16;
+  const double stampHeight = 56;
   const double rowHeight = 21;
   const corrections = <String>['シート修正', 'セル修正', '原図修正', 'frame修正'];
   return [

@@ -191,6 +191,15 @@ CutId? cutWritingRow(
   required CutId? standing,
 }) => cutIdOfLayer(project, layerId) ?? standing;
 
+/// [attachRowWearsBaseComposite] asked of the cut holding [layer], wherever
+/// it is — what a lane verb names a row by id from. A track's own row, which
+/// no cut holds, wears nothing of a base's.
+bool rowWearsBaseComposite(Project project, Layer layer) {
+  final cutId = cutIdOfLayer(project, layer.id);
+  final cut = cutId == null ? null : cutPositionOf(project, cutId)?.cut;
+  return cut != null && attachRowWearsBaseComposite(layer, cut.layers);
+}
+
 /// The space [layer] is posed in ([LayerKind.poseSpace]): the project's
 /// shot, or the canvas of the cut writing it ([cutWritingRow]) — null for a
 /// cut's row with no cut to be posed in.

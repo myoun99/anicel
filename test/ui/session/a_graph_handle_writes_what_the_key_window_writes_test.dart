@@ -205,29 +205,29 @@ void main() {
 
   test('an effect\'s header range holds its parameters\' keys', () {
     final row = session.activeLayer!.id;
-    session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
-    final blur = layerOf(row).effects.single;
+    session.effectsAndFx.addEffectToActiveLayer(EffectKind.brightnessContrast);
+    final grade = layerOf(row).effects.single;
     PropertyTrack<double> eased(double to) => PropertyTrack<double>()
         .withKey(0, 0, outgoing: const EaseSide())
         .withKey(8, to);
     session.effectsAndFx.updateLayerEffects(row, [
-      blur
-          .withParameter('blurX', EffectParameter(track: eased(16)))
-          .withParameter('blurY', EffectParameter(track: eased(4))),
+      grade
+          .withParameter('brightness', EffectParameter(track: eased(16)))
+          .withParameter('contrast', EffectParameter(track: eased(4))),
     ]);
-    KeyExit blurLeaving(String parameter) => layerOf(
+    KeyExit gradeLeaving(String parameter) => layerOf(
       row,
     ).effects.single.parameterOf(parameter).track.keyAt(0)!.outgoing;
 
-    pull(row, effectLaneId(blur.id, 'blurX'), 0, pulled);
-    expect(blurLeaving('blurX'), pulledEase);
-    expect(blurLeaving('blurY'), const EaseSide(), reason: 'nothing selected');
+    pull(row, effectLaneId(grade.id, 'brightness'), 0, pulled);
+    expect(gradeLeaving('brightness'), pulledEase);
+    expect(gradeLeaving('contrast'), const EaseSide(), reason: 'nothing selected');
     session.undo();
 
-    select(row, lanes: [effectGroupLaneId(blur.id)], start: 0, end: 9);
-    pull(row, effectLaneId(blur.id, 'blurX'), 0, pulled);
-    expect(blurLeaving('blurX'), pulledEase);
-    expect(blurLeaving('blurY'), pulledEase, reason: 'the header holds it');
+    select(row, lanes: [effectGroupLaneId(grade.id)], start: 0, end: 9);
+    pull(row, effectLaneId(grade.id, 'brightness'), 0, pulled);
+    expect(gradeLeaving('brightness'), pulledEase);
+    expect(gradeLeaving('contrast'), pulledEase, reason: 'the header holds it');
   });
 
   test('a handle in flight is shown, not written; let go of, it is dropped; '

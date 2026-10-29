@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/cut_warm_extent.dart';
+import '../../models/onion_skin_settings.dart';
 import '../../services/playback/frame_demand.dart';
 import '../../core/dev_profile.dart';
 import 'playback_pictures.dart';
@@ -80,7 +81,14 @@ class PlaybackPrerenderScheduler {
     this.room,
     this.beforeCompose,
     this.idleDelay = const Duration(milliseconds: 400),
+    this.onionPlacement = _onTop,
   });
+
+  static OnionSkinPlacement _onTop() => OnionSkinPlacement.onTop;
+
+  /// Where the ghosts of a canvas standing on the frames warmed lie
+  /// ([StandingDemand.placement]) — asked as each demand is made.
+  final OnionSkinPlacement Function() onionPlacement;
 
   /// What a frame's picture is, where the screen looks for it — what is
   /// made, what [has] counts, and what a picture that threw is remembered by.
@@ -158,10 +166,10 @@ class PlaybackPrerenderScheduler {
 
   /// ⛔A picture that already threw at this exact content is not missing:
   /// nothing about it changed, and the open blocks — so it is not paid for
-  /// again ([PlaybackPictures.failed]).
+  /// again ([PictureState.gaveUp]).
   DemandedPicture? _firstMissing(List<DemandedPicture> shown) {
     for (final picture in shown) {
-      if (!pictures.has(picture) && !pictures.failed(picture)) {
+      if (pictures.standingOf(picture).state == PictureState.toCome) {
         return picture;
       }
     }
@@ -194,6 +202,7 @@ class PlaybackPrerenderScheduler {
         nextCutId: next == null ? null : followedByCutId,
         nextFrameCount: next == null ? 0 : cutWarmFrameCount(next),
         resolveCut: resolveCut,
+        placement: onionPlacement(),
       ),
     );
   }

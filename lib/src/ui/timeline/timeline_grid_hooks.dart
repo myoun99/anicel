@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../models/camera_instruction.dart';
+import '../../models/cut_id.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -25,7 +26,6 @@ import 'timeline_exposure_comma_drag_policy.dart';
 import 'lane_graph.dart' show LaneGraphVerbs, LaneGraphsView;
 import 'lane_graph_seats.dart' show LaneGraphLine, seatLaneGraphs;
 import 'property_lane_model.dart';
-import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
 import 'timeline_row_filter.dart';
 import 'timeline_ruler_cursor_overlay.dart' show ReadyRunsIn;
 import 'timeline_section_policy.dart';
@@ -91,7 +91,7 @@ class TimelineGridHooks {
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.showSeconds = false,
     this.onShowSecondsChanged,
-    this.audioLane,
+    this.onDropMediaAssetOnSeBlock,
     this.onDropMediaAssetOnLayer,
     this.acceptsMediaAssetOnLayer,
     this.onHoverMediaAssetOnLayer,
@@ -152,6 +152,7 @@ class TimelineGridHooks {
     this.dragPreview,
     this.opacityDragPreview,
     this.spillInLeadFrames = const {},
+    this.cutId,
     this.cutEndDrag,
     this.substrateGeneration = '',
     this.memoAux = const TimelineRowMemoAux(),
@@ -290,8 +291,11 @@ class TimelineGridHooks {
   /// axis it relabels. Null leaves the corner as a plain spacer.
   final ValueChanged<bool>? onShowSecondsChanged;
 
-  /// What the audio lane may ask the session to do; null = display-only.
-  final TimelineAudioLaneCallbacks? audioLane;
+  /// A media-browser sound dropped on an SE block: linked to that block's
+  /// instance. Null mounts no drop place. ↩️It rode the audio lane's
+  /// callbacks, which went with the lane (I-140).
+  final void Function(LayerId layerId, int blockStartFrame, String path)?
+  onDropMediaAssetOnSeBlock;
 
   /// A media-browser row dropped on a DRAWING layer: the window opens with
   /// this cut and this layer already answered.
@@ -574,6 +578,10 @@ class TimelineGridHooks {
   /// block's start grip stands down, and an SE row draws `~` at the cut
   /// start; F-113: its waveform starts that far into the sound).
   final Map<LayerId, int> spillInLeadFrames;
+
+  /// The cut the rows are seen in — what an SE block's delivery is read in
+  /// ([SeLineTypes.inCut], F-386 · F-496). Null for a grid in no cut.
+  final CutId? cutId;
 
   /// End-line drag hooks (UI-R18 #14): the red cut-end boundary grows a
   /// grip that end-trims the ACTIVE cut through the session's trim

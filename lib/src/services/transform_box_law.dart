@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../core/one_way.dart';
 import '../core/wrap_degrees.dart';
 import '../models/canvas_point.dart';
 import 'selection_affine.dart';
@@ -25,6 +26,36 @@ abstract final class TransformBoxLaw {
   /// already-open box did not, which split the law by whether a box was open.
   static CanvasPoint wholePixels(CanvasPoint travel) =>
       CanvasPoint(x: travel.x.roundToDouble(), y: travel.y.roundToDouble());
+
+  /// A HAND drag's [travel] kept to the one way it went further — across
+  /// or down, the other part left at 0 ([keptToOneWay]) — what a drag that
+  /// moves something takes while Shift is held, or the finger it reads as
+  /// Shift.
+  ///
+  /// 🗣️I-136 (유저 2026-10-27): 「카메라 이동할때나 fx의 트랜스폼
+  /// 이동할때등 캔버스에서 어떤 조작 할때도 쉬프트 통해 누른상태면
+  /// 한쪽으로만. 즉 x,y가 있다치면 x 안건들고 y만 이동한다던가」. ONE step
+  /// for every drag on the canvas that MOVES something — the selection and
+  /// the box it opens, a row's box (its position, its anchor, a path's
+  /// tangent; the camera, a reference, an effect, a sheet photo), a warp
+  /// point, a text's box and cross, a guide's point. Asked at every move:
+  /// held before the press and pressed during the drag are one question.
+  ///
+  /// ⚠️Before [wholePixels], so the part left out stays exactly 0.
+  static CanvasPoint oneWay(CanvasPoint travel) {
+    final (x, y) = keptToOneWay(travel.x, travel.y);
+    return CanvasPoint(x: x, y: y);
+  }
+
+  /// [pointer] where the hand would be had it gone from [press] only the
+  /// one way it went further ([oneWay]) — for a drag that reads the
+  /// pointer itself rather than its travel.
+  static CanvasPoint oneWayFrom(CanvasPoint press, CanvasPoint pointer) {
+    final moved = oneWay(
+      CanvasPoint(x: pointer.x - press.x, y: pointer.y - press.y),
+    );
+    return CanvasPoint(x: press.x + moved.x, y: press.y + moved.y);
+  }
 
   /// The pointer's angle about [centre], in CANVAS degrees (clockwise, y
   /// down).

@@ -515,7 +515,7 @@ void main() {
     // handed to the new shape's tile.
     final landed = celOf(env.coordinator).tileAt(TileCoord(x: 0, y: 0))!;
     expect(
-      BitmapTileImageCache.instance.imageFor(landed),
+      BitmapTileImageCache.instance.heldFor(landed)?.image,
       isNot(same(oldPicture)),
     );
   });

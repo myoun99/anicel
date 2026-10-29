@@ -18,7 +18,7 @@ import 'package:anicel/src/services/commands/cut_command_coordinator.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/services/composite_effect_paint.dart'    show        CompositeEffectPaint,        blurSigmaPerRadius,        resolveCompositeEffectPaint,        resolveCompositeEffectPlan;
+import 'package:anicel/src/services/composite_effect_paint.dart'    show        CompositeEffectPaint,        CompositeEffectStep,        KeyRun,        blurSigmaPerRadius,        resolveCompositeEffectPaint,        resolveCompositeEffectPlan;
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart' show effectGroupLaneId;
 import 'package:anicel/src/ui/track_effect_paint_policy.dart';
 
@@ -53,19 +53,18 @@ LayerEffect _blur({double radius = 9}) => LayerEffect(
   id: const EffectId('fx-blur'),
   kind: EffectKind.blur,
   parameters: {
-    'blurX': EffectParameter(value: radius),
-    'blurY': EffectParameter(value: radius),
+    'blurriness': EffectParameter(value: radius),
   },
 );
 
 /// A colour key on the V row — the shape that used to make the policy throw.
 LayerEffect _deleteWhite() => LayerEffect(
   id: const EffectId('fx-key'),
-  kind: EffectKind.deleteColor,
+  kind: EffectKind.colorKey,
+  colors: {
+    'keyColor': PropertyTrack<int>.empty().withKey(0, 0xFFFFFFFF),
+  },
   parameters: {
-    'keyRed': EffectParameter(value: 255),
-    'keyGreen': EffectParameter(value: 255),
-    'keyBlue': EffectParameter(value: 255),
     'tolerance': EffectParameter(value: 0),
     'amount': EffectParameter(value: 100),
   },
@@ -187,12 +186,12 @@ void main() {
       final chain = trackEffectsAt([_deleteWhite()], 0);
       expect(chain, hasLength(1), reason: 'fixture: the key survived');
 
-      final plan = resolveCompositeEffectPlan(chain);
+      final plan = resolveCompositeEffectPlan(chain, paper: ui.Rect.zero);
       expect(
         plan.preSteps, hasLength(1),
         reason: 'the key rides its own raster, like a group or a layer image',
       );
-      expect(plan.preSteps.single.key, isNotNull);
+      expect(_keysOf(plan.preSteps.single), hasLength(1));
       expect(
         plan.finalPaint.isEmpty,
         isTrue,
@@ -203,17 +202,18 @@ void main() {
     test('a key UNDER a painted effect keeps both, in that order', () {
       final plan = resolveCompositeEffectPlan(
         trackEffectsAt([_brightness(), _deleteWhite()], 0),
+        paper: ui.Rect.zero,
       );
       expect(plan.preSteps, hasLength(2));
       expect(
-        plan.preSteps.first.key,
+        plan.preSteps.first.lead,
         isNull,
         reason: 'the darken runs first, with no key of its own',
       );
       expect(plan.preSteps.first.then, hasLength(1));
       expect(
-        plan.preSteps.last.key,
-        isNotNull,
+        _keysOf(plan.preSteps.last),
+        hasLength(1),
         reason: 'and the key sees what the darken made — order is free here '
             'too, the same law the layer rows got in #1312',
       );
@@ -361,3 +361,9 @@ void main() {
     );
   });
 }
+
+/// The keys [step] opens with — none unless its lead is a run of them.
+List<Object> _keysOf(CompositeEffectStep step) => switch (step.lead) {
+  KeyRun(:final keys) => keys,
+  _ => const [],
+};

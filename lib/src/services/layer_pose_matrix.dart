@@ -1,7 +1,8 @@
-import 'dart:ui' show Rect;
+import 'dart:ui' show Offset, Rect, Size;
 
 import 'package:vector_math/vector_math_64.dart' show Matrix4;
 
+import '../core/point_bounds.dart';
 import '../core/turn_trig.dart';
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
@@ -119,6 +120,17 @@ List<CanvasPoint> placedCorners(LayerPlacement placement, Rect rect) => [
   ])
     placement.apply(CanvasPoint(x: corner.dx, y: corner.dy)),
 ];
+
+/// The canvas rect [placement] lays a [picture]-sized picture's pixels over
+/// — its four corners' bounds, so a turned picture is covered whole.
+Rect placedBounds(LayerPlacement placement, CanvasSize picture) =>
+    pointsBounds([
+      for (final corner in placedCorners(
+        placement,
+        Offset.zero & Size(picture.width.toDouble(), picture.height.toDouble()),
+      ))
+        Offset(corner.x, corner.y),
+    ]);
 
 /// [placement] as the matrix a `Canvas` takes. [rasterScale] restates the
 /// same canvas-space placement in a scaled raster (a level of the display's

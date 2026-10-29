@@ -9,6 +9,8 @@ import 'package:flutter/services.dart' show SystemNavigator;
 
 import 'dialogs/app_confirm_dialog.dart';
 import 'dialogs/behind_the_wait_window.dart' show stepBehindTheWaitWindow;
+import 'dialogs/launch_notice_window.dart' show showLaunchNoticeIfDue;
+import 'dialogs/usage_stats_question.dart' show askUsageStatsIfUnanswered;
 import '../services/flutter_test_run.dart';
 import '../controllers/default_project_helpers.dart';
 import '../models/frame.dart' show InbetweenMark;
@@ -21,6 +23,7 @@ import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
 import '../services/font_library_service.dart';
 import '../services/last_stroke_slot.dart';
+import '../services/launch_notice.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/failed_save_copies.dart';
 import '../services/persistence/folder_grant.dart'
@@ -41,6 +44,8 @@ import '../services/persistence/app_memory_settings_store.dart';
 import '../services/persistence/recent_projects.dart';
 import '../services/persistence/recent_projects_store.dart';
 import '../services/persistence/audio_sync_settings_store.dart';
+import '../services/persistence/usage_stats_store.dart';
+import '../services/usage_stats/aptabase_client.dart';
 import '../services/persistence/autosave_clock.dart';
 import '../services/persistence/session_scratch.dart';
 import '../services/persistence/project_autosave_service.dart';
@@ -85,6 +90,7 @@ import 'timeline/frame_panel_transport.dart' show panelTransportFor;
 import 'timeline/instance_editor_commands.dart'
     show autoNameWithWindow, editOnPanel;
 import 'timeline/layer_name_commands.dart' show deleteRowSelectionWithDialog;
+import 'timeline/merge_layer_rows.dart';
 import 'timeline/timeline_action_toolbar.dart'
     show showMarkEveryDialog, showTimelineCommaCountDialog;
 import 'timeline/timeline_bar_menus.dart';
@@ -127,6 +133,9 @@ class HomePage extends StatefulWidget {
     this.tipLibraryService,
     this.fontLibraryService,
     this.languageSettingsStore,
+    this.launchNotice,
+    this.usageStatsStore,
+    this.usageStatsClient,
     this.battery,
     this.handedAtLaunch = const [],
   });
@@ -159,6 +168,23 @@ class HomePage extends StatefulWidget {
   /// Where the program language is restored from, beside the two services
   /// above. Null reads the saved file outside tests and nothing inside them.
   final AppLanguageSettingsStore? languageSettingsStore;
+
+  /// What this build says at launch ([showLaunchNoticeIfDue]). Null opens
+  /// the bundled notice on the saved file outside tests, and nothing inside
+  /// them — a test that measures the launch hands one in.
+  final LaunchNotice? launchNotice;
+
+  /// Where the usage statistics' answer is restored from (I-70), beside
+  /// [languageSettingsStore]: null reads the saved file outside tests and
+  /// nothing inside them — where nothing is asked at launch either, as no
+  /// notice is shown ([launchNotice]); a test that measures the question
+  /// hands one in.
+  final UsageStatsStore? usageStatsStore;
+
+  /// Where the usage statistics go. Null sends under the release's App Key,
+  /// which no test has — a test that measures what a launch sends hands one
+  /// in, with [usageStatsStore].
+  final AptabaseClient? usageStatsClient;
 
   /// The device's battery for the top strip's end ([DeviceBattery.shown],
   /// which the app hands in) — null on a device without one, and in a test
@@ -234,7 +260,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     frameCountSettingsStore: _unlessTesting(AppFrameCountSettingsStore.new),
     cameraPathSettingsStore: _unlessTesting(AppCameraPathSettingsStore.new),
     pixelVerbSettingsStore: _unlessTesting(AppPixelVerbSettingsStore.new),
+    usageStatsStore: _usageStatsStore,
+    usageStatsClient: widget.usageStatsClient,
   )..restore();
+
+  /// Where the usage statistics' answer is kept — restored by the app's
+  /// settings, and what the question at launch is asked of
+  /// ([_showLaunchWindows]).
+  late final UsageStatsStore? _usageStatsStore =
+      widget.usageStatsStore ?? _unlessTesting(UsageStatsStore.new);
   final WorkspacePanelsMenuController _panelsMenu =
       WorkspacePanelsMenuController();
 
@@ -271,10 +305,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// nothing in the workspace reads a colour any more.
   final ValueNotifier<int> _colorWheelBackground = ValueNotifier(0xFFFFFFFF);
 
-  /// The pinned palette + recent colours (P4), persisted app-side — which is
-  /// itself an argument for it living here rather than beside a panel.
+  /// The palettes + recent colours (P4 → I-131), persisted app-side — which
+  /// is itself an argument for it living here rather than beside a panel.
   final ValueNotifier<ColorPaletteState> _colorPalette = ValueNotifier(
-    const ColorPaletteState(),
+    ColorPaletteState.starter(AppText.strings.paletteNumbered(1)),
   );
   ColorPaletteFileService? _paletteService;
 
@@ -432,9 +466,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     door: _workspaceDoor,
     keyRoad: _keyRoad,
     brushTool: _brushTool,
-    colorBackground: _colorWheelBackground,
-    colorPalette: _colorPalette,
-    onColorPaletteChanged: _setColorPalette,
     battery: widget.battery,
   );
 
@@ -515,11 +546,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     AppText.settings.addListener(_relabel);
     _paletteService = _unlessTesting(ColorPaletteFileService.new);
     unawaited(
-      _paletteService?.loadOrDefaults().then((palette) {
-        if (mounted) {
-          _colorPalette.value = palette;
-        }
-      }),
+      _paletteService
+          ?.loadOrDefaults(starterName: AppText.strings.paletteNumbered(1))
+          .then((palette) {
+            if (mounted) {
+              _colorPalette.value = palette;
+            }
+          }),
     );
     // Apple Pencil double-tap (PEN-5): honor the user's SYSTEM Pencil
     // preference — the switch actions toggle brush↔eraser; the palette/
@@ -580,6 +613,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // And what the platform hands the running app, while this window is
     // here — a second Anicel's files, another app's share ([HandedFiles]).
     HandedFiles.listen(_openHanded);
+    final launchNotice =
+        widget.launchNotice ?? _unlessTesting(LaunchNotice.new);
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _showLaunchWindows(launchNotice),
+    );
+    // I-70: this launch, to the usage statistics (nothing while they are
+    // off) — once the saved language is back: the events name it.
+    unawaited(
+      _appSettings.languageRestored.then(
+        (_) => _appSettings.usageStats.reportLaunch(),
+      ),
+    );
     // 🪦No tool-switch guard, and no hook to announce one.
     //
     // R26 #13 put one here: the transform tool refused to be SELECTED with
@@ -605,6 +650,29 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _appSettings.languageRestored.then(
       (_) => _workspaceDoor.openHanded(handed),
     ),
+  );
+
+  /// What a launch opens, one window after the other: this build's
+  /// [notice] if it is due, then the usage statistics' question if it was
+  /// never answered — after the first frame, and once the saved language is
+  /// back, for the reason [_openHanded] waits: each window is written in
+  /// the program language as it opens.
+  ///
+  /// 🗣️유저 2026-10-29 08:1x (「따로 묻는 작은 창」): the question after the
+  /// notice closes, or alone when the notice is not due.
+  ///
+  /// ⚠️Each is opened from its store, as `_unlessTesting` hands them out: a
+  /// test that hands neither in sees neither, and one that measures the
+  /// launch hands its own in.
+  void _showLaunchWindows(LaunchNotice? notice) => unawaited(
+    _appSettings.languageRestored.then((_) async {
+      if (notice != null && mounted) {
+        await showLaunchNoticeIfDue(context, notice);
+      }
+      if (_usageStatsStore != null && mounted) {
+        await askUsageStatsIfUnanswered(context, _appSettings.usageStats);
+      }
+    }),
   );
 
   /// R9-rest: this device's font library is about to let go of [files].
@@ -897,8 +965,23 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// back to it.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      unawaited(_warnIfProjectFileVanished(_session));
+    switch (state) {
+      case AppLifecycleState.resumed:
+        unawaited(_warnIfProjectFileVanished(_session));
+        // I-70: a day the app is in front on is a day it was used — a run
+        // that crossed midnight UTC, or a send that failed earlier today.
+        unawaited(_appSettings.usageStats.reportResume());
+      // ⚖️INACTIVE IS STILL IN FRONT for the hourly `in_use` (2026-10-29,
+      // this lane): what stops it is what 관제 relayed — 「paused / hidden /
+      // minimized」 — and inactive is a desktop window whenever another one
+      // has the focus (the reference beside the canvas), and every return
+      // passes through it on the way to resumed.
+      case AppLifecycleState.hidden ||
+          AppLifecycleState.paused ||
+          AppLifecycleState.detached:
+        _appSettings.usageStats.reportAway();
+      case AppLifecycleState.inactive:
+        break;
     }
   }
 
@@ -1299,6 +1382,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         _workingPanel.unlinkPress?.call();
       case EditorActionIds.editDuplicate:
         _workingPanel.duplicatePress?.call();
+      case EditorActionIds.editMerge:
+        if (_workingPanel.canMerge) {
+          unawaited(
+            mergeSelectionSubject(
+              context,
+              _session,
+              _workingPanel.mergeSubject,
+            ),
+          );
+        }
       case EditorActionIds.editDelete:
         // R9-rest: the thing in hand first — Delete takes a text held by
         // its box off its cel, and only with none in hand is it the

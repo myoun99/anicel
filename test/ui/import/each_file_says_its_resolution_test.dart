@@ -17,6 +17,7 @@ import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/psd_fixture.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
+import '../../helpers/stand_in_movie.dart';
 import '../../helpers/temp_dir.dart';
 
 /// 🚨The import and placement window says each file's resolution (F-375,
@@ -85,7 +86,7 @@ void main() {
     final paths = [
       picture,
       write('layout.psd', buildPsd(width: 640, height: 480)),
-      write('cut.mp4', const [0, 0, 0, 24]),
+      write('cut.mp4', standInMovieBytes),
       write('conte.pdf', const [0x25, 0x50, 0x44, 0x46]),
       write('se.wav', const [0x52, 0x49, 0x46, 0x46]),
     ];
@@ -142,7 +143,7 @@ void main() {
     final folder = Directory(
       '${tempDir.path}${Platform.pathSeparator}c001',
     )..createSync();
-    final movie = write('cut.mp4', const [0, 0, 0, 24]);
+    final movie = write('cut.mp4', standInMovieBytes);
     await open(tester, [folder.path, movie]);
 
     await lendBothClocks(tester, rounds: 10, step: step);

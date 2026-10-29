@@ -3,6 +3,7 @@ import 'dart:ui' show Picture;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
@@ -57,7 +58,12 @@ void main() {
   ) async {
     final images = LayerFrameImageCache(frameStore: BrushFrameStore());
     addTearDown(images.dispose);
-    final store = FramePictureStore<FramePictureKey>(gpu: WritesNeverLand());
+    // Its picture held on its way: the page is drawn as it stands meanwhile
+    // — what a commit composed whole. (A page a pen stands on is made a
+    // picture of, first-stroke-on-a-new-project-trails 2026-10-28.)
+    final store = FramePictureStore<FramePictureKey>(
+      gpu: WritesNeverLand()..holdsRenders = true,
+    );
     addTearDown(store.dispose);
     final run = runOver(
       images,
@@ -65,7 +71,7 @@ void main() {
       canvasSize: canvasSize,
       stackOf: (_) => const [],
     );
-    final picture = (cut: cut, frameIndex: 0, paintPaper: true);
+    final picture = (cut: cut, frameIndex: 0, paintPaper: true, ghosts: FrameGhosts.none);
     final LiveRows live = (
       activeSurfacePainter: BitmapSurfacePainter(
         surface: BitmapSurface(canvasSize: canvasSize, tileSize: 16),

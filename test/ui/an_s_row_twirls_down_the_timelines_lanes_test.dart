@@ -159,7 +159,11 @@ void main() {
 
     expect(
       timeline,
-      containsAll(<String>['se-audio', 'name-tag-group', 'transform-group']),
+      containsAll(<String>[
+        'sound-group',
+        'name-tag-group',
+        'transform-group',
+      ]),
       reason: 'the timeline row carries every family this test compares',
     );
     expect(

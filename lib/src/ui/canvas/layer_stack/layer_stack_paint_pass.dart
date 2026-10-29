@@ -338,7 +338,7 @@ class _LayerStackPaintPass {
   /// ([HeldSubtreeRasters.holdOnly]).
   void paintFrame(Canvas into) {
     switch (_painter.held) {
-      case (:final rasters, keeps: true):
+      case (:final rasters, keeps: true, below: _):
         rasters.holdOnly(() => _paintFrame(into));
       case _:
         _paintFrame(into);
@@ -346,21 +346,61 @@ class _LayerStackPaintPass {
   }
 
   void _paintFrame(Canvas into) {
-    _standInTheWorld(within: _reachOf(into, Rect.largest));
+    final reach = _reachOf(into, Rect.largest);
+    // ⛔Not stood wider by what the chains read: each folder reads its
+    // rows past this by its own spread, and its rows' buffers follow it
+    // ([_slotBufferBounds]). ↩️Stood that much wider (`a97a2196c`), a
+    // folder inside a blurred one rastered past the patch by the spread
+    // twice (card a-step-drawn-in-place-reads-short-of-the-one-picture).
+    _standInTheWorld(within: reach);
     final extent = wholeLevelPixelsOutward(_contentExtent, 0);
     if (extent.isEmpty) {
       return;
     }
-    _held = switch (_painter.held) {
-      (:final rasters, :final keeps) => (
+    final held = _painter.held;
+    if (held?.below == BelowThePen.inCells) {
+      _LayerStackPaintPass(_painter)._paintCells(held!.rasters, under: reach);
+    }
+    _held = switch (held) {
+      (:final rasters, :final keeps, :final below) => (
         rasters: rasters,
         keyOf: _drawsOf,
         drawnOn: _drawnOn,
         keeps: keeps,
+        below: below,
+        cells: null,
       ),
       null => null,
     };
     _paintCutWhereItEnds(into, extent, shownWithin: extent);
+  }
+
+  /// Draws the cells under [under] of what lies below the pen that are
+  /// not held, and keeps them ([BelowThePen.cellsOnly]) — and nothing
+  /// else: the frame stood in the world as far past them as its chains
+  /// read ([readsPastOf]), so each is the pixels the frame's one picture of
+  /// it holds there, wherever a step cut it.
+  void _paintCells(HeldSubtreeRasters rasters, {required Rect under}) {
+    final readsPast = readsPastOf(
+      _rootNodes,
+      paper: _painter.canvasSize.canvasRect,
+    );
+    _standInTheWorld(within: belowCellsCovering(under).inflate(readsPast));
+    final extent = wholeLevelPixelsOutward(_contentExtent, 0);
+    if (extent.isEmpty) {
+      return;
+    }
+    _held = (
+      rasters: rasters,
+      keyOf: _drawsOf,
+      drawnOn: _drawnOn,
+      keeps: false,
+      below: BelowThePen.cellsOnly,
+      cells: (over: under, readsPast: readsPast),
+    );
+    final recorder = ui.PictureRecorder();
+    _paintCutWhereItEnds(Canvas(recorder), extent, shownWithin: extent);
+    recorder.endRecording().dispose();
   }
 
   /// The frame composed into [into] and cut where it ends — at [edge], the
@@ -491,7 +531,17 @@ class _LayerStackPaintPass {
   };
 
   /// What the live slot's own raster covers, in the SLOT's space: the rect
-  /// the same layer drawn as an image covers, where the view can see it.
+  /// the same layer drawn as an image covers, where [within] — what the
+  /// buffer holding the row reads — can see it.
+  ///
+  /// 🚨[within], NOT THE VIEW: a folder that blurs reads its rows past what
+  /// is shown by its spread, so a row's raster that stopped at the view
+  /// stopped short of it — a row blurred on its own in a blurred folder
+  /// beside a step's edge came out 12 to 47/255 off the frame laid whole.
+  /// ↩️`a97a2196c` stood the whole walk that much wider instead, and a
+  /// folder inside the blurred one then rastered past it by the spread
+  /// twice (card a-step-drawn-in-place-reads-short-of-the-one-picture,
+  /// 2026-10-29).
   ///
   /// 🚨★★★THE IMAGE ROW'S RECT, BY THE IMAGE ROW'S QUESTION (F-243). A
   /// row drawn as an image — the camera's, so the export's (↩️the playback
@@ -515,16 +565,21 @@ class _LayerStackPaintPass {
   /// posed row in an advanced blend took this route — ↩️until such a row
   /// painted normal over its backdrop; a colour key below a painted effect
   /// and add's `plus` on a buffered row still take it).
-  Rect _slotBufferBounds(_SurfaceSlot slot, _SurfaceRowPaint paint) {
+  Rect _slotBufferBounds(
+    _SurfaceSlot slot,
+    _SurfaceRowPaint paint,
+    Rect within,
+  ) {
     final intoSlot = slot.canvasToSlot;
     final view = intoSlot == null
-        ? _visibleCanvasRect
-        : MatrixUtils.transformRect(intoSlot, _visibleCanvasRect);
+        ? within
+        : MatrixUtils.transformRect(intoSlot, within);
     final drawn = slot.extent;
     final covered =
         inkCropDrawsTheSame(
           placement: paint.placement,
           effects: paint.effects,
+          paper: _canvasRect,
         )
         ? drawn
         : drawn.expandToInclude(_canvasRect);
@@ -543,6 +598,10 @@ class _LayerStackPaintPass {
         CompositeAdjustment(:final children) => _activeRowIn(children),
         CompositeBackdropBlend(:final children) => _activeRowIn(children),
         CompositeClip(:final children) => _activeRowIn(children),
+        // The row drawn on, read by another's chain, is the same row
+        // there — its keys, where it lies — and the one place it stands
+        // where its eye is off (🗣️I-132-Q23 a).
+        CompositeReadsRows(:final children) => _activeRowIn(children),
         // The base it paints again stands in the clip already, and the row
         // a cel number is written on as its own leaf.
         CompositeOpaque() || CompositeCelNumber() => null,
@@ -684,6 +743,7 @@ class _LayerStackPaintPass {
       placementOf: _placementOf,
       shownWithin: _shownWithin,
       held: _held,
+      paper: _canvasRect,
     ),
   );
 
@@ -691,30 +751,46 @@ class _LayerStackPaintPass {
   /// the same picture playback composes (route parity). The wrap straddles
   /// the live-surface node too, which HAS a placement and no image — that
   /// is why the wrap and the draw are separate helpers rather than one.
-  void _paintRow(Canvas canvas, _PaintRow row, double rasterScale) =>
-      withLayerPlacement(
-        canvas,
-        placement: _placementOf(row),
-        body: () {
-          switch (row) {
-            case _PaintPaper():
-              _paintPaperInto(canvas, intoTheBuffer: _composingTheBuffer);
-            case final _SurfaceRow row:
-              _paintSurfaceRow(canvas, _slotOf(row), row.paint, rasterScale);
-          }
-        },
-      );
+  void _paintRow(
+    Canvas canvas,
+    _PaintRow row,
+    double rasterScale,
+    RowPainter? rows,
+    Rect within,
+  ) => withLayerPlacement(
+    canvas,
+    placement: _placementOf(row),
+    body: () {
+      switch (row) {
+        case _PaintPaper():
+          _paintPaperInto(canvas);
+        case final _SurfaceRow row:
+          _paintSurfaceRow(
+            canvas,
+            _slotOf(row),
+            row.paint,
+            rasterScale,
+            rows: rowsUnderPlacement(rows, row.placement),
+            within: within,
+          );
+      }
+    },
+  );
 
   /// A surface layer — the live one, or one a lift holds beside it (I-37 ·
   /// F-329): drawn straight onto the canvas when its paint can ride the
   /// draws, through one buffer when it cannot (an outset effect,
-  /// overlapping coverage, a float overlay, or pre-steps).
+  /// overlapping coverage, a float overlay, or pre-steps) — [rows] what
+  /// paints the rows its chain reads in the slot, null for none, and
+  /// [within] what of the canvas the buffer holding it reads.
   void _paintSurfaceRow(
     Canvas canvas,
     _SurfaceSlot slot,
     _SurfaceRowPaint paint,
-    double rasterScale,
-  ) {
+    double rasterScale, {
+    RowPainter? rows,
+    required Rect within,
+  }) {
     final (:opacity, :blendMode, :effects, :tint, placement: _) = paint;
     // The live surface, drawn by the SAME painter the standalone
     // interactive view uses — the canvas is already
@@ -744,7 +820,11 @@ class _LayerStackPaintPass {
     // fades the whole ghost. Folded into the same matrix as the row's colour
     // effects (I-8-Q5: the ghost shows what the screen shows), as
     // [drawPosedLayerImage] folds it for a row's image.
-    final activePlan = resolveCompositeEffectPlan(effects, tint: tint);
+    final activePlan = resolveCompositeEffectPlan(
+      effects,
+      tint: tint,
+      paper: _canvasRect,
+    );
     final activeEffects = activePlan.finalPaint;
     final activePaint = layerCompositePaint(
       opacity: opacity,
@@ -823,6 +903,7 @@ class _LayerStackPaintPass {
           // 1:1 in the level's pixels (4c) — until one-picture-per-frame
           // ②-5b-2.
           scale: rasterScale,
+          pixelRatio: _pixelRatio,
           // 🚨TS1: the selection's FLOAT belongs here, right on top of
           // the surface it was lifted out of and UNDER everything
           // above that row. Drawn inside this slot's clip and its
@@ -885,7 +966,7 @@ class _LayerStackPaintPass {
     // each pixel of a pan, and another way than the frame's picture
     // (🔬Windows app: 3–4/255 pan to pan, 4–6/255 from the picture). On
     // the grid the row's step is told as a folder's is
-    // (`_whereTheLiveRowShows`), so a stroke patches the frame's picture
+    // (`_whereAChangeShows`), so a stroke patches the frame's picture
     // as far as its spread reaches and a pan draws the picture — where the
     // row drawn on had the whole view drawn as it stands at every paint.
     final spreads = activePlan.outsetPixels > 0;
@@ -893,14 +974,18 @@ class _LayerStackPaintPass {
       drawSubtreeAsImage(
         canvas: canvas,
         bounds: effectBufferBounds(
-          _slotBufferBounds(slot, paint),
+          _slotBufferBounds(slot, paint, within),
           activePlan.outsetPixels,
         ),
         rasterScale: rasterScale,
         paintSubtree: (into, _) => paintLiveBody(into),
         compose: (blit) => blit(activePaint),
         steps: activePlan.preSteps,
+        // The canvas, in the slot as it is in the canvas: the slot is the
+        // row before its pose.
+        paper: _canvasRect,
         cell: rasterCellFor(activePlan.outsetPixels),
+        rows: rows,
       );
     } else {
       if (needsBuffer) {
@@ -913,8 +998,8 @@ class _LayerStackPaintPass {
     }
   }
 
-  /// The paper, [intoTheBuffer] or straight onto the screen (the walk).
-  void _paintPaperInto(Canvas into, {required bool intoTheBuffer}) {
+  /// The paper, into the buffer or straight onto the screen (the walk).
+  void _paintPaperInto(Canvas into) {
     if (!_painter.paintPaper) {
       return;
     }
@@ -929,7 +1014,7 @@ class _LayerStackPaintPass {
       // The display law's edge (F-67-paper-edge): on the buffer's own
       // pixels inside it, on the screen's on the walk.
       antiAlias: _displayEdgeAntiAliased,
-      pixelRatio: intoTheBuffer ? 1 : _painter.devicePixelRatio,
+      pixelRatio: _pixelRatio,
     );
   }
 
@@ -945,9 +1030,15 @@ class _LayerStackPaintPass {
       : _painter.nodes;
 
   /// Whether the content being painted is the display buffer's — a raster
-  /// aligned to canvas space, where a level image lands texel for texel —
-  /// rather than the walk's screen ([_paintImageNode]).
+  /// aligned to canvas space — rather than the walk's screen ([_pixelRatio]).
   bool _composingTheBuffer = false;
+
+  /// Device pixels a unit of the space the content is drawn in lands on past
+  /// its transform: 1 into the buffer, whose transform lands on its own
+  /// pixels, and the screen's ratio on the walk — the grid every edge the
+  /// display law cuts is cut on ([cutOnThePixelGrid]).
+  double get _pixelRatio =>
+      _composingTheBuffer ? 1 : _painter.devicePixelRatio;
 
   /// Where the recording being made is shown — whole, once, cut by nothing
   /// else: the display buffer's rect on the visible canvas while it is
@@ -976,22 +1067,39 @@ class _LayerStackPaintPass {
   /// The paper draws what it is laid with, where, on which edge
   /// ([_paintPaperInto]) — at the buffer's own ratio, as a frame's picture
   /// is drawn: what lies below a pen holds it ([SubtreeHolding.drawnOn]).
+  ///
+  /// 🚨A NODE THE PAPER LIES IN draws its rows and the paper: a blend at
+  /// the bottom of the frame reads the paper in its backdrop
+  /// ([onUnderlay]), the one place it can lie, so the rows signed and the
+  /// paper say all it draws. ↩️It stood for no cel there, and what lies
+  /// below a pen over such a row had no key: 🔬S5_BA cut 352 (67 rows, a
+  /// multiply row under the one drawn on) drew three pictures again each
+  /// step — p50 28.7ms from step to screen against 6.6 with only the drawn
+  /// row on (10-28, the whole app, Windows, profile).
   Object? _drawsOf(CompositeNode<_PaintRow> node) {
-    if (node case CompositeLeaf(payload: _PaintPaper())) {
-      return (
-        paper: _painter.paperBackground,
-        on: _canvasRect,
-        antiAlias: _displayEdgeAntiAliased,
-      );
-    }
-    if (holdsRow(node, (row) => _signatureOf(row) == null)) {
+    if (holdsRow(
+      node,
+      (row) => row is! _PaintPaper && _signatureOf(row) == null,
+    )) {
       return null;
     }
-    return switch (CutFrameCompositeSignature.of(
-      mapCompositeLeaves([node], _signatureOf),
-      canvasSize: _painter.canvasSize,
-    ).nodes) {
-      [final only] => only,
+    final paper = holdsRow(node, (row) => row is _PaintPaper)
+        ? (
+            paper: _painter.paperBackground,
+            on: _canvasRect,
+            antiAlias: _displayEdgeAntiAliased,
+          )
+        : null;
+    return switch ((
+      paper,
+      CutFrameCompositeSignature.of(
+        mapCompositeLeaves([node], _signatureOf),
+        canvasSize: _painter.canvasSize,
+      ).nodes,
+    )) {
+      (final paper?, []) => paper,
+      (null, [final only]) => only,
+      (final paper?, [final only]) => (paper: paper, rows: only),
       _ => null,
     };
   }

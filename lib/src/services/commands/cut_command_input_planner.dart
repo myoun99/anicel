@@ -7,6 +7,7 @@ import '../../models/cut_id.dart';
 import '../../models/layer_folder.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
+import '../../models/layer_effect.dart' show effectsWithRowsRenamed;
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project.dart';
@@ -270,6 +271,18 @@ CreateLinkedCutCommandInputPlan planCreateLinkedCutCommandInput({
 bool _bornWithAFreshPanel(Layer layer) =>
     layer.kind.coversWithoutGaps && !isAttachedLayer(layer);
 
+/// Whether each 겸용 copy of [layer] is born with a cel of its own: a row of
+/// a covering kind always is ([_bornWithAFreshPanel]), and an animation row
+/// Add Layer makes ([bornWithACel]) is, with its first cel — 🗣️I-138 (유저
+/// 2026-10-28): 「애니메이션 레이어 생성시 … 프레임 1개 생성되는걸로」, and
+/// an unnamed cel is no other cut's (F-98 above). A row PUT in the cut — a
+/// paste, an import — brings its pictures, and its copies take its lane.
+bool _copiesBornWithACelOfTheirOwn(
+  Layer layer, {
+  required bool bornWithACel,
+}) =>
+    _bornWithAFreshPanel(layer) || (bornWithACel && !isAttachedLayer(layer));
+
 class ConvertToLinkedCutCommandInputPlan {
   const ConvertToLinkedCutCommandInputPlan({
     required this.unionLayerIdMap,
@@ -520,9 +533,9 @@ class AddLayerCommandInputPlan {
 }
 
 /// Plans a layer CREATION across 겸용 cuts: one fresh layer id per sibling
-/// cut, its anchors resolved to that cut's own rows, the fresh panel a row
-/// born with a frame is born with there ([_bornWithAFreshPanel]), plus the
-/// link group they join.
+/// cut, its anchors resolved to that cut's own rows, the cel of its own a
+/// row born with a frame is born with there
+/// ([_copiesBornWithACelOfTheirOwn]), plus the link group they join.
 ///
 /// Kinds that do not link into a 겸용 cut plan no mirrors — the per-use SE
 /// and direction fixtures already exist in every cut
@@ -539,10 +552,12 @@ AddLayerCommandInputPlan planAddLayerCommandInput({
   required Project project,
   required CutId cutId,
   required Layer layer,
+  bool bornWithACel = false,
 }) => planAddLayersCommandInput(
   project: project,
   cutId: cutId,
   layers: [layer],
+  bornWithACel: bornWithACel,
 ).single;
 
 /// [layers] added to [cutId] in ONE step, each planned as
@@ -557,10 +572,14 @@ AddLayerCommandInputPlan planAddLayerCommandInput({
 ///
 /// ⚠️The rows' own ids are taken before any copy's: a pasted row's is the
 /// project's first free `layer-N`, the very id the first copy would get.
+///
+/// [bornWithACel]: [layers] are made here, each with its first cel — Add
+/// Layer — rather than put in the cut ([_copiesBornWithACelOfTheirOwn]).
 List<AddLayerCommandInputPlan> planAddLayersCommandInput({
   required Project project,
   required CutId cutId,
   required List<Layer> layers,
+  bool bornWithACel = false,
 }) {
   final siblings = linkedCutSiblings(project, cutId: cutId);
   if (siblings.isEmpty) {
@@ -592,7 +611,15 @@ List<AddLayerCommandInputPlan> planAddLayersCommandInput({
             layerId: copyId,
             folderId: copyOf(layer.folderId, sibling),
             attachedToLayerId: copyOf(layer.attachedToLayerId, sibling),
-            coveringFrameId: _bornWithAFreshPanel(layer)
+            effects: effectsWithRowsRenamed(
+              layer.effects,
+              (row) => copyOf(row, sibling),
+            ),
+            bornCelId:
+                _copiesBornWithACelOfTheirOwn(
+                  layer,
+                  bornWithACel: bornWithACel,
+                )
                 ? mintFrameId(copyId)
                 : null,
           ),
@@ -678,11 +705,13 @@ Command plannedAddLayerCommand({
   required CutId cutId,
   required Layer layer,
   int? insertionIndex,
+  bool bornWithACel = false,
 }) {
   final plan = planAddLayerCommandInput(
     project: repository.requireProject(),
     cutId: cutId,
     layer: layer,
+    bornWithACel: bornWithACel,
   );
   return AddLayerCommand(
     repository: repository,

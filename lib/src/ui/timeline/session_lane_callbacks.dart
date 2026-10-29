@@ -2,12 +2,12 @@ import 'package:flutter/foundation.dart' show ValueNotifier;
 
 import '../../models/key_side.dart' show KeySidesEdit;
 import '../../models/layer.dart' show Layer;
+import '../../models/layer_id.dart' show LayerId;
 import '../../models/timeline_row_address.dart' show LaneRowAddress;
 import '../brush/transform_tool_options.dart';
 import '../editor_session_manager.dart';
 import 'property_lane_model.dart'
     show PropertyLaneEditCallbacks, PropertyLaneRow;
-import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
 
 /// A rail's lane edits wired to [session] — the one wiring behind the
 /// timeline's lanes and the storyboard's S rows (F-101). [frameIsGlobal] is
@@ -46,9 +46,6 @@ PropertyLaneEditCallbacks sessionLaneEditCallbacks(
           frameIsGlobal: frameIsGlobal,
           description: '${lane.label} keyframe at frame ${frameIndex + 1}',
         ),
-    // The SE audio lane has no value field any more — a block's offset is
-    // edited in its own edit window (유저 2026-09-27) — so every value that
-    // arrives here is a property's.
     onSetValue: (layer, lane, frameIndex, input) =>
         session.laneVerbs.setLaneValueAt(
           layer.id,
@@ -116,26 +113,15 @@ _atTheKey(
   frameIsGlobal: frameIsGlobal,
 );
 
-/// The sound edits an SE row's audio band takes, wired to [session] — the
-/// one object the timeline's rows and the storyboard's S rows hand over
-/// (F-101: the storyboard's Audio lane took the offset alone, so a take's
-/// fades could not be dragged there).
-TimelineAudioLaneCallbacks sessionAudioLaneCallbacks(
-  EditorSessionManager session,
-) => TimelineAudioLaneCallbacks(
-  // Media-browser drops: link the dragged sound to the block.
-  onDropMediaAsset: (layerId, blockStartFrame, path) =>
-      session.mediaPool.linkMediaAssetToSeBlock(
-        layerId: layerId,
-        blockStartFrame: blockStartFrame,
-        path: path,
-      ),
-  onSetClipOffset: session.audioClips.setAudioClipOffset,
-  onSetClipFades: (layerId, clipIndex, fadeIn, fadeOut) =>
-      session.audioClips.setAudioClipFades(
-        layerId,
-        clipIndex,
-        fadeInFrames: fadeIn,
-        fadeOutFrames: fadeOut,
-      ),
-);
+/// A media-browser sound dropped on an SE block, linked to that block by
+/// [session] — the one wiring the timeline's rows and the storyboard's S rows
+/// hand over (F-101). ↩️It rode in the SE audio lane's callbacks with the
+/// lane's offset and fade drags, until the lane went (I-140).
+void Function(LayerId layerId, int blockStartFrame, String path)
+sessionSeBlockDrop(EditorSessionManager session) =>
+    (layerId, blockStartFrame, path) =>
+        session.mediaPool.linkMediaAssetToSeBlock(
+          layerId: layerId,
+          blockStartFrame: blockStartFrame,
+          path: path,
+        );

@@ -68,6 +68,93 @@ void main() {
     expect(newRowPlacement(below, 1), (index: 2, folderId: null));
   });
 
+  // 🗣️F-492 (유저 2026-10-27): 「폴더위에 서서 레이어만들때 폴더 안에서
+  // 만들도록 서있는상태는 유지」.
+  group('a row made standing on one', () {
+    final stack = [
+      row('a'),
+      row('m1', folder: 'F'),
+      row('m2', folder: 'F'),
+      row('F', kind: LayerKind.folder),
+      row('C'),
+    ];
+
+    test('goes above a row, in that row\'s folder', () {
+      expect(
+        newRowPlacementOn(stack, const LayerId('m1')),
+        (index: 2, folderId: const LayerId('F')),
+      );
+      expect(
+        newRowPlacementOn(stack, const LayerId('C')),
+        (index: 5, folderId: null),
+      );
+    });
+
+    test('goes INTO a folder, at the top of what it holds — the folder '
+        'steps up over it, and the stack stays a sound one', () {
+      final placement = newRowPlacementOn(stack, const LayerId('F'));
+      expect(placement, (index: 3, folderId: const LayerId('F')));
+      final joined = [
+        ...stack.sublist(0, placement.index),
+        row('new', folder: 'F'),
+        ...stack.sublist(placement.index),
+      ];
+      expect(folderStructureProblem(joined), isNull);
+      expect(joined[4].id, const LayerId('F'), reason: 'right above it');
+    });
+
+    test('into an EMPTY folder, and into a folder inside a folder', () {
+      final empty = [row('a'), row('E', kind: LayerKind.folder), row('C')];
+      expect(
+        newRowPlacementOn(empty, const LayerId('E')),
+        (index: 1, folderId: const LayerId('E')),
+      );
+
+      final nested = [
+        row('m', folder: 'I'),
+        row('I', kind: LayerKind.folder, folder: 'O'),
+        row('O', kind: LayerKind.folder),
+      ];
+      final placement = newRowPlacementOn(nested, const LayerId('I'));
+      expect(placement, (index: 1, folderId: const LayerId('I')));
+      expect(
+        folderStructureProblem([
+          ...nested.sublist(0, placement.index),
+          row('new', folder: 'I'),
+          ...nested.sublist(placement.index),
+        ]),
+        isNull,
+      );
+    });
+
+    test('⛔goes ABOVE an attach organizer, as above any row — what is in '
+        'one rides its base, and a new row rides nothing', () {
+      final organized = [
+        row('B'),
+        row('R', ridesOn: 'B', folder: 'O'),
+        row('O', kind: LayerKind.folder),
+        row('Y'),
+      ];
+      expect(
+        attachOrganizerBaseOf(organized[2], organized),
+        const LayerId('B'),
+        reason: '⛔premise: O organizes B\'s attaches',
+      );
+      expect(
+        newRowPlacementOn(organized, const LayerId('O')),
+        (index: 3, folderId: null),
+      );
+    });
+
+    test('standing on nothing in the stack, it goes on top', () {
+      expect(newRowPlacementOn(stack, null), (index: 5, folderId: null));
+      expect(
+        newRowPlacementOn(stack, const LayerId('track-se')),
+        (index: 5, folderId: null),
+      );
+    });
+  });
+
   test('an aim past either end is the end', () {
     final stack = [row('A')];
 

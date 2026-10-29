@@ -81,7 +81,12 @@ class ToolSettingsPanel extends StatelessWidget {
     this.cutPieceSlot,
     this.onCutPasteAtOrigin,
     this.onRegisterCutPieceAsTip,
+    this.brushDetailAt,
   });
+
+  /// Where the brush detail window stands — see
+  /// [BrushSettingsPanel.detailAt].
+  final ValueNotifier<Offset?>? brushDetailAt;
 
   /// The active cut's guides, and which one the tool is editing. Null
   /// handler = the panel shows but cannot change them (hosts with no cut).
@@ -248,6 +253,7 @@ class ToolSettingsPanel extends StatelessWidget {
       onTipImportRequested: onTipImportRequested,
       onRenameTip: onRenameTip,
       onDeleteTip: onDeleteTip,
+      detailAt: brushDetailAt,
     ),
     CanvasTool.fill => _FillSettings(
       options: fillOptions,

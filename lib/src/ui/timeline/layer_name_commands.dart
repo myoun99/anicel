@@ -193,12 +193,24 @@ Future<void> _askRowsName(
 /// refuses an empty one inline — deciding that is what the prompt window
 /// is for — so a caller-side re-check was a second copy of the dialog's
 /// own law, and the copy is the thing that drifts.
+///
+/// The window's scene (F-291) is held here as it is typed, and lands with
+/// the name, ONE undo step.
 Future<void> renameActiveCutWithDialog(
   BuildContext context,
   EditorSessionManager session,
-) => askAboutThenCommit<Cut, String>(
-  context,
-  session.activeCutOrNull, // Gap state: no cut to rename.
-  dialog: (cut) => RenameCutDialog(initialName: cut.name),
-  commit: session.cutVerbs.renameActiveCut,
-);
+) {
+  final cut = session.activeCutOrNull; // Gap state: no cut to rename.
+  var scene = cut?.metadata.scene ?? '';
+  return askAboutThenCommit<Cut, String>(
+    context,
+    cut,
+    dialog: (cut) => RenameCutDialog(
+      initialName: cut.name,
+      initialScene: cut.metadata.scene,
+      onSceneChanged: (typed) => scene = typed,
+    ),
+    commit: (name) =>
+        session.cutVerbs.renameActiveCut(name, scene: scene.trim()),
+  );
+}

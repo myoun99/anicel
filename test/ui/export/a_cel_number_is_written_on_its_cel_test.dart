@@ -68,14 +68,13 @@ void main() {
   final number = LayerEffect(
     id: const EffectId('number'),
     kind: EffectKind.celNumber,
-    ink: PropertyTrack<int>.empty().withKey(0, 0xFFFF0000),
+    colors: {'ink': PropertyTrack<int>.empty().withKey(0, 0xFFFF0000)},
   );
   final blur = LayerEffect(
     id: const EffectId('blur'),
     kind: EffectKind.blur,
     parameters: {
-      'blurX': EffectParameter(value: 4),
-      'blurY': EffectParameter(value: 4),
+      'blurriness': EffectParameter(value: 4),
     },
   );
 
@@ -138,6 +137,7 @@ void main() {
           await const CameraFrameRenderService(
             background: ui.Color(0x00000000),
           ).renderThroughCamera(
+            canvasSize: canvas,
             nodes: planCutFrameCompositeTree(
               cut: Cut(
                 id: cutId,

@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/block_shift.dart';
+import '../../helpers/an_empty_drawing_row.dart';
 
 /// 🚨F-264 — a shove leaves the selection that aimed it where it stands.
 ///
@@ -142,7 +142,7 @@ void main() {
     final lower = s.activeLayer!.id;
     s.selectFrameIndex(4);
     s.createDrawingAtCurrentFrame();
-    s.layerStack.addLayerOfKind(LayerKind.animation);
+    addAnEmptyDrawingRow(s);
     final upper = s.activeLayer!.id;
     s.selectFrameIndex(4);
     s.createDrawingAtCurrentFrame();

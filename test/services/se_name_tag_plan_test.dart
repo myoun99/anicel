@@ -269,13 +269,13 @@ void main() {
         LayerEffect(
           id: const EffectId('blur'),
           kind: EffectKind.blur,
-          parameters: {'blurX': EffectParameter(value: 4)},
+          parameters: {'blurriness': EffectParameter(value: 4)},
         ),
         LayerEffect(
           id: const EffectId('off'),
           kind: EffectKind.blur,
           enabled: false,
-          parameters: {'blurY': EffectParameter(value: 9)},
+          parameters: {'blurriness': EffectParameter(value: 9)},
         ),
       ],
     );
@@ -283,7 +283,7 @@ void main() {
     final plain = resolve([seRow(id: 's1', name: 'S1', seName: 'タモツ')]);
 
     expect(tag.effects, hasLength(1), reason: 'the switched-off one drops');
-    expect(tag.effects.single.parameter('blurX'), 4);
+    expect(tag.effects.single.parameter('blurriness'), 4);
     // The effects change what is drawn, so the repaint has to know …
     expect(
       seNameTagSignature(

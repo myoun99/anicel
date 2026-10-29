@@ -35,18 +35,18 @@ void main() {
   setUpAll(ColourKeyShader.load);
 
   ResolvedLayerEffect key() => ResolvedLayerEffect(
-    kind: EffectKind.deleteColor,
-    values: const [0, 0, 0, 0, 100],
+    kind: EffectKind.colorKey,
+    values: const [0, 0xFF000000, 0, 100],
   );
 
   ResolvedLayerEffect blur({double radius = 4}) =>
-      ResolvedLayerEffect(kind: EffectKind.blur, values: [radius, radius]);
+      ResolvedLayerEffect(kind: EffectKind.blur, values: [radius, 0]);
 
   /// A chain whose STEP carries a blur: a key, then a blur, then a second key
   /// — the only shape that puts painted state inside a step rather than on
   /// the final draw.
   CompositeEffectPlan chainWithABlurInsideAStep() =>
-      resolveCompositeEffectPlan([key(), blur(), key()]);
+      resolveCompositeEffectPlan([key(), blur(), key()], paper: Rect.zero);
 
   ui.Image dot(int side) {
     final recorder = ui.PictureRecorder();
@@ -88,13 +88,15 @@ void main() {
     final atFull = steppedForChain(
       image: source,
       plan: plan,
-      canvasExtent: 64,
+      extent: const Rect.fromLTWH(0, 0, 64, 64),
+      paper: const Rect.fromLTWH(0, 0, 64, 64),
     );
     addTearDown(atFull.dispose);
     final atHalf = steppedForChain(
       image: source,
       plan: plan,
-      canvasExtent: 32,
+      extent: const Rect.fromLTWH(0, 0, 32, 32),
+      paper: const Rect.fromLTWH(0, 0, 32, 32),
     );
     addTearDown(atHalf.dispose);
 
@@ -116,15 +118,15 @@ void main() {
     final derived = steppedForChain(
       image: source,
       plan: plan,
-      canvasExtent: 64,
+      extent: const Rect.fromLTWH(0, 0, 64, 64),
+      paper: const Rect.fromLTWH(0, 0, 64, 64),
     );
     addTearDown(derived.dispose);
     final spelled = applyEffectSteps(
       source: source,
       steps: plan.preSteps,
-      pixelWidth: source.width,
-      pixelHeight: source.height,
       imageScale: 1,
+      paper: const Rect.fromLTWH(0, 0, 64, 64),
     );
     addTearDown(spelled.dispose);
 
@@ -138,13 +140,21 @@ void main() {
   test('a single-draw chain hands the image straight back', () {
     // ⛔IDENTITY, not equality: the caller disposes only what differs, so a
     // copy here would leak the caller into disposing the cache's image.
-    final plan = resolveCompositeEffectPlan([blur()]);
+    final plan = resolveCompositeEffectPlan(
+      [blur()],
+      paper: const Rect.fromLTWH(0, 0, 8, 8),
+    );
     expect(plan.isSingleDraw, isTrue, reason: 'fixture: no key, no step');
     final source = dot(8);
     addTearDown(source.dispose);
     expect(
       identical(
-        steppedForChain(image: source, plan: plan, canvasExtent: 8),
+        steppedForChain(
+          image: source,
+          plan: plan,
+          extent: const Rect.fromLTWH(0, 0, 8, 8),
+          paper: const Rect.fromLTWH(0, 0, 8, 8),
+        ),
         source,
       ),
       isTrue,
@@ -155,7 +165,12 @@ void main() {
     final plan = chainWithABlurInsideAStep();
     final source = dot(8);
     addTearDown(source.dispose);
-    final out = steppedForChain(image: source, plan: plan, canvasExtent: 0);
+    final out = steppedForChain(
+      image: source,
+      plan: plan,
+      extent: Rect.zero,
+      paper: Rect.zero,
+    );
     addTearDown(out.dispose);
     expect(out.width, 8, reason: 'a degenerate extent still produces a raster');
   });

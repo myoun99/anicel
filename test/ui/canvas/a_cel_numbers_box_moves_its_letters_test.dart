@@ -123,7 +123,7 @@ void main() {
       expect(box.cross, isNull, reason: 'no anchor point');
     }
 
-    s.standOnRow(LaneRowAddress(row.id, effectLaneId(id, effectInkLane)));
+    s.standOnRow(LaneRowAddress(row.id, effectLaneId(id, 'ink')));
     await tester.pump();
     expect(boxOf(tester), isNull, reason: 'a colour is not grabbed on canvas');
     await wrapUp(tester, s);
@@ -228,7 +228,7 @@ void main() {
     const blur = EffectId('blur');
     final effects = [LayerEffect.defaults(id: blur, kind: EffectKind.blur)];
     expect(effectBoxedOn(effects, effectGroupLaneId(blur)), isNull);
-    expect(effectBoxedOn(effects, effectLaneId(blur, 'blurX')), isNull);
+    expect(effectBoxedOn(effects, effectLaneId(blur, 'blurriness')), isNull);
   });
 
   testWidgets('a run shows the film: no box while it plays', (tester) async {

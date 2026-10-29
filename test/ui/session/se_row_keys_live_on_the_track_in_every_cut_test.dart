@@ -69,7 +69,7 @@ void main() {
       expandedGroupKeys: {laneGroupKey(se.id, transformGroupHeaderLane.laneId)},
     );
     final rotation = lanes.singleWhere((lane) => lane.laneId == 'rotation');
-    expect(rotation.valueLabel!(0), '30.00°');
+    expect(rotation.valueLabel!(0), '0x+30.00°');
     expect(
       rotation.keyedFrames,
       isEmpty,

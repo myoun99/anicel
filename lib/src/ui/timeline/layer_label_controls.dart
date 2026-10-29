@@ -33,6 +33,7 @@ import '../widgets/named.dart';
 import '../widgets/rail_glyph_button.dart';
 import '../text/text_line.dart' show textLineTypeIn;
 import 'layer_plate_words.dart';
+import 'row_control_surface.dart';
 
 /// Layer-label chip controls shared by both timeline orientations
 /// (horizontal rows and XSheet column headers): the timesheet-output toggle
@@ -761,38 +762,34 @@ class LayerVisibilityToggleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: size,
-      height: 26,
-      child: RailGlyphButton(
-        name: name,
-        tooltip: tooltip ?? _showHide(AppText.strings),
-        // The rail's slot, promised by the column skeleton — see
-        // [AppIconButtonBox].
-        size: AppIconButtonBox(width: size, height: 26, iconSize: iconSize),
-        glyph: RailIconGlyph(
-          isVisible ? Icons.visibility : Icons.visibility_off,
-          // 🚨F-58 (유저): 「비지블off일경우 색라벨이 불투명도가 낮아지는데.
-          // 이거 멋대로 추가한건데 맘에드니 채용. 근데 내가말한건 **비지블off시
-          // 비지블버튼 자체를 비활성화색(어둡게)** 하란거였음. 그러니 작업하고,
-          // 추가적으로 **비지블버튼은 다른곳에서도 쓰니까 공용화/통일화**시켜서
-          // 결과적으로 다른곳도 비활성화시 비활성화색 되도록」.
-          //
-          // ★HERE, so 「결과적으로 다른곳도」 is automatic rather than five
-          // edits. ⚠️[AppColors.offAlpha] is the app's ONE off language —
-          // the alpha the onion and fx icons already wear — so a hidden row
-          // reads as off in one language rather than in three.
-          //
-          // F-185: a row a folder above has hidden keeps its own glyph and
-          // wears that same off colour — 「on인채로 두되, 색만 비활성화색으로」.
-          color: isVisible && !hiddenAbove
-              ? null
-              : IconTheme.of(
-                  context,
-                ).color?.withValues(alpha: AppColors.offAlpha),
-        ),
-        onPressed: onToggle,
+    return RailGlyphButton(
+      name: name,
+      tooltip: tooltip ?? _showHide(AppText.strings),
+      // The rail's slot, promised by the column skeleton — see
+      // [AppIconButtonBox].
+      size: AppIconButtonBox(width: size, height: 26, iconSize: iconSize),
+      glyph: RailIconGlyph(
+        isVisible ? Icons.visibility : Icons.visibility_off,
+        // 🚨F-58 (유저): 「비지블off일경우 색라벨이 불투명도가 낮아지는데.
+        // 이거 멋대로 추가한건데 맘에드니 채용. 근데 내가말한건 **비지블off시
+        // 비지블버튼 자체를 비활성화색(어둡게)** 하란거였음. 그러니 작업하고,
+        // 추가적으로 **비지블버튼은 다른곳에서도 쓰니까 공용화/통일화**시켜서
+        // 결과적으로 다른곳도 비활성화시 비활성화색 되도록」.
+        //
+        // ★HERE, so 「결과적으로 다른곳도」 is automatic rather than five
+        // edits. ⚠️[AppColors.offAlpha] is the app's ONE off language —
+        // the alpha the onion and fx icons already wear — so a hidden row
+        // reads as off in one language rather than in three.
+        //
+        // F-185: a row a folder above has hidden keeps its own glyph and
+        // wears that same off colour — 「on인채로 두되, 색만 비활성화색으로」.
+        color: isVisible && !hiddenAbove
+            ? null
+            : IconTheme.of(
+                context,
+              ).color?.withValues(alpha: AppColors.offAlpha),
       ),
+      onPressed: onToggle,
     );
   }
 }
@@ -803,9 +800,11 @@ class LayerVisibilityToggleButton extends StatelessWidget {
 /// layers, folders and storyboard cuts. It is deliberately id-agnostic:
 /// a per-type wrapper is how the copies started.
 ///
-/// Tight SizedBox: the M3 IconButton otherwise inflates its layout box to
-/// the 48px minimum tap target and overflows the row (same gotcha as the
-/// timesheet toggle).
+/// ↩️A tight `SizedBox` stood over it, here and over the eye and the sheet
+/// toggle, while the face was an M3 `IconButton` that grew to a 48px tap
+/// target. The face holds its own promised box now ([AppIconButtonBox] is
+/// tight), and the box over it was an element on every rail row on every
+/// panel reopen (card frame-panels-build-in-one-frame, 2026-10-28).
 class FxToggleButton extends StatelessWidget {
   const FxToggleButton({
     super.key,
@@ -848,25 +847,21 @@ class FxToggleButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final mixed = state == LayerFxState.mixed;
-    return SizedBox(
-      width: size,
-      height: 26,
-      child: RailGlyphButton(
-        name: name,
-        tooltip: _tooltipFor(AppText.strings),
-        // ⚠️The word sizes itself, so the box's iconSize reaches nothing
-        // here — it is passed honest rather than zero.
-        size: AppIconButtonBox(width: size, height: 26, iconSize: 16),
-        glyph: RailTextGlyph(
-          'fx',
-          style: fxGlyphStyle(
-            context: context,
-            active: state != LayerFxState.off,
-            mixed: mixed,
-          ),
+    return RailGlyphButton(
+      name: name,
+      tooltip: _tooltipFor(AppText.strings),
+      // ⚠️The word sizes itself, so the box's iconSize reaches nothing
+      // here — it is passed honest rather than zero.
+      size: AppIconButtonBox(width: size, height: 26, iconSize: 16),
+      glyph: RailTextGlyph(
+        'fx',
+        style: fxGlyphStyle(
+          context: context,
+          active: state != LayerFxState.off,
+          mixed: mixed,
         ),
-        onPressed: onToggle,
       ),
+      onPressed: onToggle,
     );
   }
 }
@@ -975,29 +970,24 @@ class LayerTimesheetToggleButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    // Tight SizedBox: the M3 IconButton otherwise inflates its layout box to
-    // the 48px minimum tap target, overflowing the XSheet header column.
-    return SizedBox(
-      width: layerTimesheetSlotWidth,
-      height: layerTimesheetSlotWidth,
-      child: RailGlyphButton(
-        name: '$keyPrefix-layer-timesheet-$layerId',
-        tooltip: onTimesheet
-            ? AppText.strings.railRemoveFromTimesheet
-            : AppText.strings.railAddToTimesheet,
-        size: const AppIconButtonBox(
-          width: layerTimesheetSlotWidth,
-          height: layerTimesheetSlotWidth,
-          iconSize: 16,
-        ),
-        glyph: RailIconGlyph(
-          onTimesheet ? Icons.table_chart : Icons.table_chart_outlined,
-          color: onTimesheet
-              ? AppColors.accent
-              : colorScheme.onSurface.withValues(alpha: 0.35),
-        ),
-        onPressed: () => onToggle(layerIdNow(context, layerId)),
+    // No box over the face — it holds its own ([FxToggleButton] has why).
+    return RailGlyphButton(
+      name: '$keyPrefix-layer-timesheet-$layerId',
+      tooltip: onTimesheet
+          ? AppText.strings.railRemoveFromTimesheet
+          : AppText.strings.railAddToTimesheet,
+      size: const AppIconButtonBox(
+        width: layerTimesheetSlotWidth,
+        height: layerTimesheetSlotWidth,
+        iconSize: 16,
       ),
+      glyph: RailIconGlyph(
+        onTimesheet ? Icons.table_chart : Icons.table_chart_outlined,
+        color: onTimesheet
+            ? AppColors.accent
+            : colorScheme.onSurface.withValues(alpha: 0.35),
+      ),
+      onPressed: () => onToggle(layerIdNow(context, layerId)),
     );
   }
 }
@@ -1680,10 +1670,61 @@ enum RailSwipeColumn {
 
 /// [RailSwipeColumnPointer]'s box: the strong claim, and the column it
 /// tells a press is in ([railSwipeColumnPressedBy]).
-class RenderRailSwipeColumnPointer extends RenderDragVerbClaim {
+class RenderRailSwipeColumnPointer extends RenderDragVerbClaim
+    with _SaysItsColumn {
   RenderRailSwipeColumnPointer(this.column, {required super.behavior});
 
+  @override
   RailSwipeColumn column;
+}
+
+/// A swipe column standing in its rail slot ([layerRailSlot]): the slot
+/// ([RowControlSurface]) and the column ([RailSwipeColumnPointer]) as ONE
+/// box, where the slot held the column's box.
+///
+/// ★The two were two boxes of one size — the slot is tight along the rail
+/// and takes its button's extent across it, and every button a column
+/// holds fills its box — so a press lands in both or in neither, and the
+/// box over the button was an element on every column of every rail row on
+/// every panel reopen (card frame-panels-build-in-one-frame, 2026-10-28).
+class RailSwipeColumnSlot extends RowControlSurface {
+  RailSwipeColumnSlot({
+    super.key,
+    required super.axis,
+    required super.extent,
+    required RailSwipeColumnPointer column,
+  }) : column = column.column,
+       super(child: column.child!);
+
+  final RailSwipeColumn column;
+
+  @override
+  RenderRailSwipeColumnSlot createRenderObject(BuildContext context) =>
+      RenderRailSwipeColumnSlot(along, column);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    covariant RenderRailSwipeColumnSlot renderObject,
+  ) {
+    super.updateRenderObject(context, renderObject);
+    renderObject.column = column;
+  }
+}
+
+/// [RailSwipeColumnSlot]'s box: a filled slot that holds its column's
+/// drag and says its column, as [RenderRailSwipeColumnPointer] does.
+class RenderRailSwipeColumnSlot extends RenderRowControlSurface
+    with HoldsDragVerb, _SaysItsColumn {
+  RenderRailSwipeColumnSlot(super.along, this.column);
+
+  @override
+  RailSwipeColumn column;
+}
+
+/// The column a box says a press is in, after its claim has spoken.
+mixin _SaysItsColumn on HoldsDragVerb {
+  RailSwipeColumn get column;
 
   @override
   void handleEvent(PointerEvent event, BoxHitTestEntry entry) {

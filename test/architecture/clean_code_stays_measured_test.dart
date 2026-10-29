@@ -720,7 +720,113 @@ void main() {
   /// bundled to fit: the session reads the switch from the tool and the
   /// paper from the row's cut, each at the call (`LaneVerbs`), so a value
   /// of the two would be built at every call first.
-  const wideSignatures = 427;
+  /// ⚠️426 → 427 on 2026-10-28 under the same ceiling (F-489 — 유저
+  /// 2026-10-27: 「이름 없는 블록의 기본 마크1,2인지 설정할수있게」):
+  /// `timelineCellMarker` (five) takes the mark an unnamed drawing wears,
+  /// as the row's host heard the pick. 🔬`clean_code_diff` against the
+  /// lane's base (`f2d4f1e21`) named that one added and nothing gone.
+  /// ⛔Not bundled to fit: the name and the mark meet only in the head's
+  /// one case ([drawingHeadOf]), and a value of the two would be built for
+  /// every cell first.
+  ///
+  /// ⚠️427 → 428 on 2026-10-28 under the same ceiling (F-489-Q1 — 유저
+  /// 2026-10-27 「둘 다 따라간다」): `planTvpImport` (five) takes the mark a
+  /// TVPaint dot wears, as its door heard the pick — the planner is pure
+  /// and reads no setting. 🔬`clean_code_diff` against the lane's base
+  /// (`7111911e6`) named that one added and nothing gone. ⛔Not bundled to
+  /// fit: the clip, the file key, the mint and the mark are each the
+  /// door's own, at the one call.
+  ///
+  /// ⚠️428 → 432 on 2026-10-28, four named as the rule above asks (I-132-Q3
+  /// — AE's Radial Blur, its centre a point of its own, Q12 b).
+  /// `_effectPictureBox` (eight) and `_effectPointBox` (seven) are the two
+  /// boxes an effect declares — a cel number's letters, a point's cross —
+  /// the halves of `_effectBox`, which went under sixty lines with them:
+  /// each takes what every box of the host takes (its frame, view and
+  /// canvas size), where the row shows, the effect's name and its landing
+  /// (`_EffectLanding`), and its own — the row and the number sampled, or
+  /// the point. `radialBlurPasses` (six) takes the centre as the pass's
+  /// own two fields, which way it blurs, how far, how finely (the farthest
+  /// a pixel lies) and Draft. `resolveAdjustmentScopePass` (five) gained the
+  /// paper, as every plan did: how far a radial blur reaches is how far the
+  /// paper's farthest corner lies from its centre. 🔬`clean_code_diff`
+  /// against master (`2dc3430ce`, at 428) named those four added and
+  /// nothing gone. ⛔Not bundled to fit: each is handed on at the one call
+  /// it is read at, so a value of them would be taken apart there.
+  ///
+  /// ⚠️432 → 434 on 2026-10-28, two named as the rule above asks
+  /// (the-walk-draws-off-the-grid-on-impeller): `BitmapSurfacePainter
+  /// .paintContentInto` and `_SurfacePaintPass.paintContentInto` (five
+  /// each) take `pixelRatio`, the device pixels a unit of the canvas's space
+  /// lands on past its transform — the grid a coordinate's edge is cut on
+  /// where its grid falls off the pixels, which no caller may leave to a
+  /// default (a wrong one cuts on the logical grid). 🔬`clean_code_diff`
+  /// against master (`d36fa35ba`, at 432) named those two added and
+  /// nothing gone.
+  /// ⛔Not bundled with `scale` to fit: the scale is the row's before its
+  /// pose and picks the filter, the ratio is the canvas's past every
+  /// transform and picks the grid — one value of the two would answer two
+  /// questions.
+  ///
+  /// ⚠️434 → 435 on 2026-10-28, one named as the rule above asks (I-131,
+  /// the palette's fold and lock): `NamedPalette._with` (five) is a
+  /// palette's copy — every field it has, the folded and the locked among
+  /// them — the copyWith idiom the rule leaves out, under a private name.
+  /// ⛔Not split to fit: a copy that takes half the fields is two copies.
+  ///
+  /// ⚠️435 → 436 on 2026-10-29, one named as the rule above asks (I-138,
+  /// an animation row born with its first cel): `plannedAddLayerCommand`
+  /// (five) takes `bornWithACel` — whether each 겸용 copy is born with a
+  /// cel of its own — beside the row, its cut, its slot and the repository.
+  /// ⛔Not bundled into the row: it is a fact of the ADD, not of the layer
+  /// (the same row pasted hands its copies its lane).
+  ///
+  /// ⚠️436 → 445 on 2026-10-29, nine named as the rule above asks (I-132
+  /// ⑫b·⑫c — a camera lens blur reads its blur map off the row it names,
+  /// where that row shows, 🗣️Q16 a · Q21 a). `_CompositeTreeWalk._group`
+  /// and `._adjustment` (six each) take what the walk hands a folder or an
+  /// adjustment whose chain reads rows (`CompositeReadsRows`): the painter
+  /// of those rows and the node it is held as — the one the cells below a
+  /// pen were kept under. `._reading` (six) is the one that hands them: the
+  /// reader, the rows, where it is held. `effectPropertyLanes` (five) takes
+  /// the cut's rows a row parameter's menu names. `_LayerStackPaintPass
+  /// ._paintSurfaceRow`, `steppedForChain`, `applyEffectSteps`,
+  /// `_stepDraws` and `_leadDraws` (five each) carry the rows a step reads
+  /// from the walk down to the pass that gathers by them — the painter,
+  /// then the row laid on the step's grid. 🔬`clean_code_diff` against
+  /// master (`2a9750ac3`, at 436) named those nine added and nothing gone.
+  /// ⛔Not bundled to fit: the row a step reads is the step's, the space,
+  /// paper and width it rasters at the chain's — one value of them would
+  /// answer two questions; so would one of where a node is held (its cells
+  /// kept) and what it reads (drawn afresh, kept nowhere).
+  ///
+  /// ⚠️445 → 448 on 2026-10-29, three named as the rule above asks (F-494 —
+  /// 유저 2026-10-28: 「하고있는 과정을 투명하게 … 퍼센테이지에 반영하면서」).
+  /// `TrimmedPieces.cut` and `writeMovieSpan` (five each) take who hears
+  /// how far a movie's piece is encoded — the wait that stood behind the
+  /// import window at 0% (61 s of a 3.4GB file's two minutes) — beside the
+  /// file, its kind or its piece's path, and the span kept and its clock.
+  /// `_movieSoundAlone` (five) hands a movie brought as its sound alone to
+  /// the sound's door with what the movie's door was handed for it, who
+  /// hears its bytes held among them. 🔬`clean_code_diff` against master
+  /// (`b885cdce4`, at 435) named those three added and nothing gone; the
+  /// door's save roads took the two reporters as one value instead
+  /// (`_SaveTold`), and the blob's writer stayed as it was — its reads are
+  /// measured from outside, as an append's are (`mediaBlobReadsAtMost`).
+  /// ⛔Not bundled to fit: the in and out are read off a row's settings one
+  /// by one at each call, and a value of them and the reporter would be
+  /// taken apart again inside the cut. (Measured at 435 → 438 on its own
+  /// lane; it landed after I-132 ⑫b·⑫c, so it counts on from 445.)
+  ///
+  /// ⚠️448 → 450 on 2026-10-29, two named as the rule above asks (card
+  /// a-step-drawn-in-place-reads-short-of-the-one-picture): a composite
+  /// route's row painter takes what of the canvas the buffer holding the
+  /// row reads — `_LayerStackPaintPass._paintRow` and the camera render's
+  /// `paintRow` (five each), the one type both fill. A row's raster that
+  /// stopped at what is shown stopped short of what a blurred folder
+  /// reads past it. ⛔Not bundled to fit: where the row is read is the
+  /// walk's, the rows its chain reads are its own.
+  const wideSignatures = 450;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -1036,7 +1142,42 @@ void main() {
   /// against the lane's base (`e059586e1`) named those two and no other.
   /// ⛔Not split to fit: it is one record of what this rail reads and
   /// presses, field for field the grids' (`timelineRailSwipeHooks`).
-  const longBodies = 415;
+  ///
+  /// ⚠️409 → 411 on 2026-10-28 under the same ceiling (F-489 — the mark an
+  /// unnamed block wears is a pick): `TimelineRowCellsPainter
+  /// ._resolveCellModelAt` (63) hands the pick to the head's two writers —
+  /// a ghost's and every other cell's — and `_RowCellsPicture.build` (61)
+  /// hands the row the pick its grid law heard. 🔬`clean_code_diff`
+  /// against the lane's base (`f2d4f1e21`) named those two and no other
+  /// (the Display section's grows none: its two grid rows read the one
+  /// setting under one listener). ⛔Not split to fit: each is the one
+  /// table of what a cell writes, and of what a row is drawn by.
+  ///
+  /// ⚠️415 → 414 on 2026-10-28, following one down (I-132-Q12 b):
+  /// `_effectBox` went under the line as a point's cross came beside a cel
+  /// number's box — the wide signatures' note names the two halves.
+  ///
+  /// ⚠️414 → 413 on 2026-10-28, following one down (I-131): the brush
+  /// rail's `_buildRailFresh` went with its reorderable list into
+  /// `StandOnReorderList`, which the palette panel stands on too.
+  ///
+  /// ⚠️413 → 416 on 2026-10-29, four named and one gone, as the rule above
+  /// asks (I-132 ⑫b·⑫c — a lens blur's blur map names a row of its cut).
+  /// `withTheRowsTheyRead` (70) is new: how each kind of node is laid anew
+  /// with the rows its chain reads beside it, as the fold
+  /// (`mapCompositeLeaves`) lays each kind with its leaves mapped.
+  /// `CutCommandCoordinator.layerEffectsCommands` (70) crossed carrying a
+  /// chain to another cut with the rows it names renamed to that cut's.
+  /// `_nodeSignaturesOf` (62) crossed with the case of a node that reads
+  /// rows, and `LinkDuplicateLayerCommand._laid` (62) with a copy's
+  /// effects naming the copies of the rows they named.
+  /// `_LayerStackPainter._whereTheRowShows` went under as each node it
+  /// stands in came to be asked of by `_whereItShowsIn`. 🔬`clean_code_diff`
+  /// against master (`2a9750ac3`, at 413) named those four added and that
+  /// one gone. ⛔Not split to fit: each is one table — of a node's kinds,
+  /// of what every row a chain's write reaches takes, of a member's copy
+  /// field for field.
+  const longBodies = 416;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
@@ -1380,7 +1521,36 @@ void main() {
   /// `blurs`). 🔬`clean_code_diff` against the lane's base (`635015833`)
   /// names this one and no other class. ⛔Not split to fit: a brush's
   /// settings are one value, and the method is one more field of it.
-  const longClasses = 76;
+  ///
+  /// ⚠️76 → 77 on 2026-10-28, ONE name: `FramePictures` crossed (600 → 606)
+  /// when a frame's three questions — there, given up on, its red — came to
+  /// be read off one walk of its stack (`standingOf`, card frame-panels-
+  /// build-in-one-frame: the storyboard's bar walked every span of the film
+  /// two or three times whenever the panel was shown again). It stood AT
+  /// 600, and the ladder the three read is one helper now (`_stateAt`)
+  /// where `partsToMake` and `gaveUpAt` each wrote it. 🔬`clean_code_diff`
+  /// against the lane's base (`84a5c6197`) names this one and no other
+  /// class. ⛔Not split to fit: it is the one keeper of a frame's picture
+  /// and the key it is kept under.
+  ///
+  /// ⚠️77 → 78 on 2026-10-28, ONE name: `_FramePictureViewState` crossed
+  /// (600 → 601) when a stroke's step came to keep the cells of what lies
+  /// below its pen (card a-scrub-prepares-every-frame-it-crosses): once a
+  /// step is patched in, the frames' pictures give way to what it kept
+  /// (`FramePictures.giveWayToSteps`). 🔬`clean_code_diff` against the
+  /// lane's base (`95cd93423`) names this one and no other class. ⛔Not
+  /// split to fit: the step is patched in here, and so is told here.
+  ///
+  /// ⚠️78 → 79 on 2026-10-29, ONE name: `_CompositeTreeWalk` crossed
+  /// (552 → 623) when a node whose chain reads rows came to be walked
+  /// (I-132 ⑫c, 🗣️Q21 a — a lens blur's blur map read where its row
+  /// shows): the rows painted afresh into the step that reads them
+  /// (`_painterOf`), the reader handed them (`_reading`), and the pen's
+  /// cells kept through it. 🔬`clean_code_diff` against master
+  /// (`2a9750ac3`) names this one and no other class. ⛔Not split to fit:
+  /// the walk is one recursion over the tree, and a node that reads rows is
+  /// one more kind of node in it.
+  const longClasses = 79;
 
   late CleanCodeScan scan;
   setUpAll(() {

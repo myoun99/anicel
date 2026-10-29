@@ -6,6 +6,7 @@ import '../../models/cut_id.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
+import '../../models/layer_effect.dart' show effectsWithRowsRenamed;
 import '../../models/layer_id.dart';
 import '../../models/layer_link_join.dart';
 import '../../models/layer_link_registry.dart';
@@ -369,6 +370,7 @@ class ConvertToLinkedCutCommand implements Command {
     required _ConvertSide into,
     required List<LayerId> onlyIds,
   }) {
+    final copies = <LayerId>{};
     for (final sourceId in _ridersAfterTheRest(from.layers, onlyIds)) {
       final index = from.layers.indexWhere((layer) => layer.id == sourceId);
       final planned = _plannedCopy(from, into, sourceId);
@@ -386,6 +388,7 @@ class ConvertToLinkedCutCommand implements Command {
         registry: LayerLinkRegistry(groups: groups),
       );
       into.layers.insert(_landingIndex(into.layers, copy), copy);
+      copies.add(copy.id);
       groups = linkGroupsJoined(
         groups,
         origin: LayerLinkMember(
@@ -400,6 +403,24 @@ class ConvertToLinkedCutCommand implements Command {
         ),
         plannedGroupId: newGroupIdBySource[sourceId],
       );
+    }
+    // The rows a copy's effects name, at their counterparts in [into] —
+    // known once every copy is made, as a copy's base is
+    // ([_seatedOnItsBase]); one that reaches no row there names none.
+    final registry = LayerLinkRegistry(groups: groups);
+    for (final (index, row) in into.layers.indexed) {
+      if (copies.contains(row.id)) {
+        into.layers[index] = row.copyWith(
+          effects: effectsWithRowsRenamed(
+            row.effects,
+            (named) => registry.counterpartIn(
+              cutId: from.cutId,
+              layerId: named,
+              targetCutId: into.cutId,
+            ),
+          ),
+        );
+      }
     }
     return groups;
   }

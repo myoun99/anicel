@@ -67,6 +67,31 @@ T withLayerPlacement<T>(
   }
 }
 
+/// [rows] — painting rows where a walk draws them — as a row placed by
+/// [placement] reads them: in its own space, before its pose, so a row
+/// read is read where it shows (🗣️I-132-Q21 a). [rasterScale] as
+/// [withLayerPlacement]'s. Null for a placement that collapses its row,
+/// which shows nothing and so reads nothing.
+RowPainter? rowsUnderPlacement(
+  RowPainter? rows,
+  LayerPlacement? placement, {
+  double rasterScale = 1,
+}) {
+  if (rows == null || placement == null) {
+    return rows;
+  }
+  final back = canvasToArtwork(placement);
+  if (back == null) {
+    return null;
+  }
+  return (into, row, scale) => withLayerPlacement(
+    into,
+    placement: back,
+    rasterScale: rasterScale,
+    body: () => rows(into, row, scale),
+  );
+}
+
 /// One layer's image, posed, faded, blended, filtered and drawn.
 ///
 /// [pieces] are the image and where its pixels belong in canvas space — one
@@ -90,6 +115,13 @@ T withLayerPlacement<T>(
 /// images that way and their output is held to the pixel by composite
 /// parity suites, so switching them to the general path is a change of
 /// rendered bytes and does not belong in a convergence.
+///
+/// [paper] is where the row's paper lies in canvas space — the edge a blur
+/// of its chain that repeats it reads past ([PaperEdgeEffect]): the
+/// canvas, as on every route (I-132-Q14 a).
+///
+/// [rows] paint the rows its chain reads where the [canvas] lies, before
+/// the pose ([rowsUnderPlacement]); null for none.
 ///
 /// [texelScale] is how many target pixels one canvas unit is on [canvas]
 /// when [canvas] is a pixel raster whose grid is aligned to canvas space —
@@ -120,9 +152,16 @@ void drawPosedLayerImage(
   double rasterScale = 1,
   required double? texelScale,
   required ui.FilterQuality filterQuality,
+  required ui.Rect paper,
   int? tint,
   bool Function(ui.Rect worldRect, ui.Image image)? drawAtOriginWhen,
+  RowPainter? rows,
 }) {
+  final read = rowsUnderPlacement(
+    rows,
+    placement,
+    rasterScale: rasterScale,
+  );
   withLayerPlacement(
     canvas,
     placement: placement,
@@ -154,6 +193,7 @@ void drawPosedLayerImage(
             ? DrawSpace.canvas
             : DrawSpace.preScaled(rasterScale),
         tint: tint,
+        paper: paper,
       );
       plan.finalPaint.applyTo(paint);
       final copyScale = placement == null ? texelScale : null;
@@ -172,7 +212,9 @@ void drawPosedLayerImage(
         final stepped = steppedForChain(
           image: laid.image,
           plan: plan,
-          canvasExtent: laid.worldRect.width,
+          extent: laid.worldRect,
+          paper: paper,
+          rows: read,
         );
         // 🚨★★★A TEXEL COPY RESAMPLES NOTHING, SO IT IS DRAWN AT `none` (유저
         // 2026-09-24 「통일해서」). The law the 1:1 blits beside it already keep
@@ -246,7 +288,9 @@ void drawPosedLayerImage(
         seen: _seenBy(
           canvas,
           rasterScale,
-        ).inflate(resolveCompositeEffectPlan(effects).outsetPixels),
+        ).inflate(
+          resolveCompositeEffectPlan(effects, paper: paper).outsetPixels,
+        ),
         extent: extent,
         levels: _levelsReadBy(canvas, rasterScale, _texelsOf(pieces)),
         draw: draw,
@@ -397,11 +441,16 @@ int debugPiecesDrawnApart = 0;
 /// over the whole area did not close it. Such a row paints normal over its
 /// backdrop now (a-blurred-folder-cut-by-the-view-moves-on-vulkan), so a
 /// row's blend is `srcOver` or `plus` and never asks.
+///
+/// [paper] is where the paper lies, which the chain's reach is read on
+/// ([resolveCompositeEffectPlan]).
 bool inkCropDrawsTheSame({
   required LayerPlacement? placement,
   required List<ResolvedLayerEffect> effects,
+  required ui.Rect paper,
 }) =>
-    placement == null && resolveCompositeEffectPlan(effects).outsetPixels == 0;
+    placement == null &&
+    resolveCompositeEffectPlan(effects, paper: paper).outsetPixels == 0;
 
 /// What a draw lays down: the [stored] image at its world rect where that is
 /// exact, and otherwise the image its extent stands for — laid back byte for

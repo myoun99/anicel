@@ -4,6 +4,7 @@ import '../../models/cut_id.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
+import '../../models/layer_effect.dart' show effectsWithRowsRenamed;
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/stroke.dart';
@@ -61,8 +62,9 @@ Layer duplicateLayerAsIndependentCopy({
   // [duplicateFrameContent] documents: every field NOT listed here is
   // silently reset to its default. The R6 audit found nine already lost —
   // blendMode, folderId (so a duplicated cut FLATTENED every folder),
-  // seNameTag, clipsToBelow, runBehaviors, collapsed, audioGain,
-  // audioPan and attachedMode. Anything added to [Layer] belongs here.
+  // seNameTag, clipsToBelow, runBehaviors, collapsed, the mixer's gain
+  // and pan (the row's sound since I-140) and attachedMode. Anything
+  // added to [Layer] belongs here.
   return Layer(
     id: newLayerId,
     name: newName,
@@ -90,8 +92,7 @@ Layer duplicateLayerAsIndependentCopy({
     lanesExpanded: source.lanesExpanded,
     expandedLaneGroups: source.expandedLaneGroups,
     muted: source.muted,
-    audioGain: source.audioGain,
-    audioPan: source.audioPan,
+    seSound: source.seSound,
     opacity: source.opacity,
     blendMode: source.blendMode,
     kind: kind ?? source.kind,
@@ -103,8 +104,12 @@ Layer duplicateLayerAsIndependentCopy({
     seNameTag: source.seNameTag,
     transformTrack: source.transformTrack,
     // The effect chain is layer state like the transform track (R6): a
-    // duplicated cut keeps its 촬영 work.
-    effects: source.effects,
+    // duplicated cut keeps its 촬영 work. The rows it names remap as the
+    // attach pointer does, below.
+    effects: effectsWithRowsRenamed(
+      source.effects,
+      (row) => layerIdMap[row] ?? row,
+    ),
     instructions: source.instructions,
     audioClips: [
       for (final clip in source.audioClips)

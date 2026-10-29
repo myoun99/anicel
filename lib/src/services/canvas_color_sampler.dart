@@ -1,5 +1,4 @@
 import '../core/argb_channels.dart';
-import '../core/color_matrix.dart';
 import '../core/floor_math.dart';
 import '../models/bitmap_surface.dart';
 import '../models/canvas_point.dart';
@@ -9,11 +8,9 @@ import '../models/layer_effect.dart';
 import '../models/layer_id.dart';
 import '../models/project_background.dart';
 import '../models/tile_coord.dart';
-import 'composite_effect_paint.dart'
-    show resolveColorMatrixIgnoringSpatial;
+import 'composite_effect_paint.dart' show pixelThroughChain;
 import 'layer_pose_matrix.dart' show canvasToArtwork;
 import 'canvas_read_source.dart';
-import 'cel_source_effect_pass.dart';
 import 'cel_text_laying.dart';
 import 'cut_frame_composite_plan.dart';
 
@@ -62,28 +59,32 @@ int? surfacePixelRgba(BitmapSurface surface, int x, int y) {
   );
 }
 
-/// An ADJUSTMENT row's colour matrix as the eyedropper should apply it, or
-/// null when the row filters nothing this walk can answer (hidden,
-/// bypassed, mix 0, or a chain with no colour in it).
+/// A stack laid up so far, PREMULTIPLIED: its colour and its coverage.
+typedef _Stack = ({double r, double g, double b, double coverage});
+
+/// What an ADJUSTMENT row makes of [stack] — everything laid up below it —
+/// as the paint routes grade its scope: its chain run over the pixel in
+/// the chain's order, as a row's own runs ([pixelThroughChain]), and that
+/// crossfaded with the pixel by the row's MIX ([resolveAdjustmentScopePass]).
+/// Null when the row filters nothing this walk can answer (hidden, in a
+/// hidden folder, mix 0, nothing laid up to grade).
 ///
-/// The MIX folds into the matrix exactly as it does on the paint routes
-/// ([resolveAdjustmentScopePass]), so the number the eyedropper reports and
-/// the pixel on screen come from the same arithmetic.
+/// ↩️It folded the chain's colour matrices alone, so a key on an adjustment
+/// row picked as if it were not there — the row's own chain had been read
+/// in its order since the keys became one (I-132 ⑥), the adjustment's not.
 ///
 /// ⚠️ The row's SCOPE is approximated by "everything accumulated so far",
 /// which is this sampler's existing flat-path fidelity: it already ignores
 /// group buffers and blend modes. An adjustment inside a buffering folder
 /// therefore reads as if it applied to the whole stack below.
-List<double>? _adjustmentColorMatrix({
+_Stack? _throughAdjustment(
+  _Stack stack, {
   required Layer adjustment,
   required Cut cut,
   required int frameIndex,
 }) {
-  if (!adjustment.isVisible) {
-    return null;
-  }
   final mix = adjustment.opacity.clamp(0.0, 1.0).toDouble();
-  if (mix <= 0) {
+  if (!adjustment.isVisible || mix <= 0 || stack.coverage <= 0) {
     return null;
   }
   if (!resolveFolderChainAt(
@@ -93,15 +94,22 @@ List<double>? _adjustmentColorMatrix({
   ).visible) {
     return null;
   }
-  final effects = resolveLayerEffectsAt(
-    effects: adjustment.effects,
-    frameIndex: frameIndex,
+  final (:r, :g, :b, :coverage) = stack;
+  final graded = pixelThroughChain(
+    resolveLayerEffectsAt(effects: adjustment.effects, frameIndex: frameIndex),
+    red: r / coverage,
+    green: g / coverage,
+    blue: b / coverage,
+    alpha: coverage * 255,
   );
-  final matrix = resolveColorMatrixIgnoringSpatial(effects);
-  if (matrix == null) {
-    return null;
-  }
-  return lerpColorMatrixFromIdentity(matrix, mix);
+  final gradedCoverage = graded.alpha / 255;
+  double mixed(double from, double to) => from + (to - from) * mix;
+  return (
+    r: mixed(r, graded.red * gradedCoverage),
+    g: mixed(g, graded.green * gradedCoverage),
+    b: mixed(b, graded.blue * gradedCoverage),
+    coverage: mixed(coverage, gradedCoverage),
+  );
 }
 
 /// The canvas point mapped into [entry]'s ARTWORK space — the inverse of
@@ -124,13 +132,9 @@ CanvasPoint? _artworkPointFor(
 
 /// [entry]'s pixel under [point] as it SHOWS — through its pose, with its
 /// cel's letters laid (유저 2026-10-06: 「셀의 그림이랑 정확히 동일」) and
-/// its colour keys run: the pixel, and its alpha byte once keyed. Null
-/// where it has none.
-///
-/// The keys go first, for the same reason they do in the composite — they
-/// are a source-pixel pass, and a pixel they erased contributes nothing at
-/// all rather than contributing a filtered colour.
-({int rgba, int alphaByte})? _shownPixelAt(
+/// its own chain run over it in the chain's order ([pixelThroughChain]):
+/// its straight colour, and its alpha byte. Null where it has none.
+({double red, double green, double blue, int alpha})? _shownPixelAt(
   CutFrameCompositeEntry entry,
   CanvasPoint point,
   LayerFrameSurfaceResolver surfaceResolver,
@@ -148,15 +152,12 @@ CanvasPoint? _artworkPointFor(
   if (rgba == null || rgba == 0) {
     return null;
   }
-  return (
-    rgba: rgba,
-    alphaByte: celSourceEffectAlphaFor(
-      entry.effects,
-      red: (rgba >> 24) & 0xFF,
-      green: (rgba >> 16) & 0xFF,
-      blue: (rgba >> 8) & 0xFF,
-      alpha: rgba & 0xFF,
-    ),
+  return pixelThroughChain(
+    entry.effects,
+    red: (rgba >> 24) & 0xFF,
+    green: (rgba >> 16) & 0xFF,
+    blue: (rgba >> 8) & 0xFF,
+    alpha: rgba & 0xFF,
   );
 }
 
@@ -169,7 +170,7 @@ double _coverageAt(
 ) {
   var covered = 0.0;
   for (final entry in cutBy) {
-    final alphaByte = _shownPixelAt(entry, point, surfaceResolver)?.alphaByte;
+    final alphaByte = _shownPixelAt(entry, point, surfaceResolver)?.alpha;
     if (alphaByte != null) {
       final alpha = alphaByte / 255.0;
       covered = alpha + covered * (1 - alpha);
@@ -244,30 +245,15 @@ int sampleCompositeColor({
       }
       // Nothing accumulated = nothing to grade, which is exactly when the
       // composite tree emits no adjustment node either.
-      if (coverage <= 0) {
-        continue;
+      if (_throughAdjustment(
+            (r: r, g: g, b: b, coverage: coverage),
+            adjustment: layer,
+            cut: cut,
+            frameIndex: frameIndex,
+          )
+          case final graded?) {
+        (:r, :g, :b, :coverage) = graded;
       }
-      final matrix = _adjustmentColorMatrix(
-        adjustment: layer,
-        cut: cut,
-        frameIndex: frameIndex,
-      );
-      if (matrix == null) {
-        continue;
-      }
-      // The matrix works on STRAIGHT colour, so un-premultiply, filter,
-      // re-premultiply. Coverage is untouched: a colour matrix leaves alpha
-      // alone by construction.
-      final filtered = applyColorMatrixToStraightColor(
-        matrix,
-        r / coverage,
-        g / coverage,
-        b / coverage,
-        coverage * 255,
-      );
-      r = filtered.r * coverage;
-      g = filtered.g * coverage;
-      b = filtered.b * coverage;
       continue;
     }
     final entry = entryByLayerId[layer.id];
@@ -284,14 +270,15 @@ int sampleCompositeColor({
     // screen. What separates the two modes is WHOSE pixels are read, not
     // whether they are finished: an ADJUSTMENT row is a different row and
     // still stays out of the layer mode (above).
+    //
+    // The row's own chain filters its pixel BEFORE its opacity meets the
+    // stack — the same order the paint routes use.
     final shown = _shownPixelAt(entry, point, surfaceResolver);
     if (shown == null) {
       continue;
     }
-    final (:rgba, :alphaByte) = shown;
-    var sourceR = ((rgba >> 24) & 0xFF).toDouble();
-    var sourceG = ((rgba >> 16) & 0xFF).toDouble();
-    var sourceB = ((rgba >> 8) & 0xFF).toDouble();
+    final (red: sourceR, green: sourceG, blue: sourceB, alpha: alphaByte) =
+        shown;
     // A row that clips to the layer below shows where its base is, at the
     // base's strength (I-92) — in the whole picture. The base is another
     // row, so a read of one row reads it as drawn, as with an adjustment.
@@ -309,25 +296,6 @@ int sampleCompositeColor({
     final alpha = alphaByte / 255.0 * entry.opacity * cutTo;
     if (alpha <= 0) {
       continue;
-    }
-    // The row's own chain filters its pixel BEFORE its opacity meets the
-    // stack — the same order the paint routes use.
-    //
-    // The LENIENT resolver: a chain of [brightness, blur] still reports
-    // the brightness. The strict one exists so a PAINT route can never
-    // mistake a colour matrix for the whole chain.
-    final matrix = resolveColorMatrixIgnoringSpatial(entry.effects);
-    if (matrix != null) {
-      final filtered = applyColorMatrixToStraightColor(
-        matrix,
-        sourceR,
-        sourceG,
-        sourceB,
-        alphaByte.toDouble(),
-      );
-      sourceR = filtered.r;
-      sourceG = filtered.g;
-      sourceB = filtered.b;
     }
     // Premultiplied src-over, coverage tracked alongside.
     r = sourceR * alpha + r * (1 - alpha);

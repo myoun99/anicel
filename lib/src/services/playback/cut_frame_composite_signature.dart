@@ -329,6 +329,55 @@ final class CompositeCelNumberSignature extends CompositeNodeSignature {
   String toString() => 'CompositeCelNumberSignature($letters, on: $on)';
 }
 
+/// A node that reads rows' identity (🗣️I-132-Q16 a): the node, and each
+/// row it reads as the nodes that draw it — a stroke on a blur map's row
+/// is a different picture of the row it blurs.
+final class CompositeReadsRowsSignature extends CompositeNodeSignature {
+  CompositeReadsRowsSignature({
+    required this.node,
+    required Map<LayerId, List<CompositeNodeSignature>> rows,
+  }) : rows = Map.unmodifiable({
+         for (final MapEntry(key: row, value: drawn) in rows.entries)
+           row: List<CompositeNodeSignature>.unmodifiable(drawn),
+       });
+
+  final CompositeNodeSignature node;
+  final Map<LayerId, List<CompositeNodeSignature>> rows;
+
+  /// As [CompositeReadsRows.children]: the rows read are rows of the frame.
+  @override
+  List<CompositeNodeSignature> get children => [
+    node,
+    for (final drawn in rows.values) ...drawn,
+  ];
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CompositeReadsRowsSignature &&
+          other.node == node &&
+          other.rows.length == rows.length &&
+          rows.entries.every(
+            (entry) => switch (other.rows[entry.key]) {
+              final drawn? => listEquals(drawn, entry.value),
+              null => false,
+            },
+          );
+
+  @override
+  int get hashCode => Object.hash(
+    CompositeReadsRowsSignature,
+    node,
+    Object.hashAll([
+      for (final MapEntry(key: row, value: drawn) in rows.entries)
+        Object.hash(row, Object.hashAll(drawn)),
+    ]),
+  );
+
+  @override
+  String toString() => 'CompositeReadsRowsSignature($node, rows: $rows)';
+}
+
 /// Identity of a composited cut frame's pixels.
 ///
 /// A cached composite is valid iff its stored signature equals the freshly
@@ -378,6 +427,7 @@ class CutFrameCompositeSignature {
         case CompositeClipSignature():
         case CompositeOpaqueSignature():
         case CompositeCelNumberSignature():
+        case CompositeReadsRowsSignature():
           break;
       }
     }
@@ -428,6 +478,11 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
       // composite that is already wrong.
       CutFrameCompositeLiveRow() => throw StateError(
         'The composite signature has no key for a live row.',
+      ),
+      // Nor for a ghost: the film has none, and only the editing canvas
+      // lays one.
+      CutFrameCompositeGhost() => throw StateError(
+        'The composite signature has no key for an onion ghost.',
       ),
       final CutFrameCompositeEntry entry => CompositeLayerSignature(
         layerId: entry.layer.id,
@@ -498,6 +553,14 @@ List<CompositeNodeSignature> _nodeSignaturesOf(
         CompositeCelNumberSignature(
           on: _nodeSignaturesOf([on]).single,
           letters: letters,
+        ),
+      CompositeReadsRows(node: final reader, :final rows) =>
+        CompositeReadsRowsSignature(
+          node: _nodeSignaturesOf([reader]).single,
+          rows: {
+            for (final MapEntry(key: row, value: drawn) in rows.entries)
+              row: _nodeSignaturesOf(drawn),
+          },
         ),
     },
 ];

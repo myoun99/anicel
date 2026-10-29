@@ -57,6 +57,8 @@ void main() {
             walk(children);
           case CompositeClip(:final children):
             walk(children);
+          case CompositeReadsRows(:final children):
+            walk(children);
           case CompositeLeaf():
           case CompositeOpaque():
           case CompositeCelNumber():
@@ -349,7 +351,7 @@ void main() {
     session.effectsAndFx.updateTrackEffects(track.id, [
       LayerEffect.defaults(id: effectId, kind: EffectKind.blur),
     ]);
-    final laneId = effectLaneId(effectId, 'blurX');
+    final laneId = effectLaneId(effectId, 'blurriness');
 
     session.laneVerbs.previewLaneValueAt(
       trackTransformLaneCarrierId(track.id),
@@ -366,11 +368,11 @@ void main() {
     );
     expect(shown, isNotNull);
     expect(
-      effectParameterValueAt(shown!, effectId, 'blurX', 0),
+      effectParameterValueAt(shown!, effectId, 'blurriness', 0),
       12,
     );
     expect(
-      effectParameterValueAt(session.activeTrack.effects, effectId, 'blurX', 0),
+      effectParameterValueAt(session.activeTrack.effects, effectId, 'blurriness', 0),
       isNot(12),
       reason: 'the track itself is untouched',
     );

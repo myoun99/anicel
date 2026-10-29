@@ -7,6 +7,7 @@ import '../../../core/rgba_premultiply.dart';
 import '../../../core/sync_image_upload.dart';
 import '../../../models/dirty_region.dart';
 import '../deferred_image_disposal.dart';
+import '../display_resample.dart' show drawImageRectOnThePixelGrid;
 import '../landing_preview.dart';
 import '../selection_float_overlay.dart';
 
@@ -57,9 +58,9 @@ class CelTextFloat implements LandingPreview {
   }
 
   @override
-  void paintInto(Canvas canvas) {
-    held.paintInto(canvas);
-    above?.paintInto(canvas);
+  void paintInto(Canvas canvas, {required double pixelRatio}) {
+    held.paintInto(canvas, pixelRatio: pixelRatio);
+    above?.paintInto(canvas, pixelRatio: pixelRatio);
   }
 
   @override
@@ -135,12 +136,21 @@ class CelTextLanding implements LandingPreview {
     picture.height.toDouble(),
   );
 
+  /// Its edge cut on the grid, as the coordinates it stands over are
+  /// (`drawImageRectOnThePixelGrid`).
   @override
-  void paintInto(Canvas canvas) => canvas.drawImage(
-    picture,
-    Offset(left.toDouble(), top.toDouble()),
-    _replacing,
-  );
+  void paintInto(Canvas canvas, {required double pixelRatio}) {
+    final size = Size(picture.width.toDouble(), picture.height.toDouble());
+    drawImageRectOnThePixelGrid(
+      canvas,
+      picture,
+      Offset.zero & size,
+      Offset(left.toDouble(), top.toDouble()) & size,
+      filterQuality: FilterQuality.none,
+      pixelRatio: pixelRatio,
+      paint: _replacing,
+    );
+  }
 
   /// Lets [picture] go — past the frames that may still draw it
   /// ([DeferredImageDisposer]).

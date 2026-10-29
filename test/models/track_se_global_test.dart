@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/audio_clip.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -12,8 +13,13 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/se_name_tag.dart';
+import 'package:anicel/src/models/se_sound.dart';
 import 'package:anicel/src/models/track_se_window.dart';
 import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/ui/timeline/effect_lane_editing.dart'
+    show effectLaneLens;
+import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
+    show effectLaneId;
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart'
     show seNameTagLaneDisplayOrder, seNameTagLaneLens;
 
@@ -254,7 +260,7 @@ void main() {
       id: const EffectId('fx-1'),
       kind: EffectKind.blur,
       parameters: {
-        'blurX': EffectParameter(
+        'blurriness': EffectParameter(
           track: keys.entries.fold<PropertyTrack<double>>(
             PropertyTrack<double>(),
             (track, entry) => track.withKey(entry.key, entry.value),
@@ -272,11 +278,11 @@ void main() {
       effects: [effect],
     );
 
-    PropertyTrack<double> blurXOf(List<LayerEffect> effects) =>
-        effects.single.parameters['blurX']!.track;
+    PropertyTrack<double> blurrinessOf(List<LayerEffect> effects) =>
+        effects.single.parameters['blurriness']!.track;
 
     test('global keys arrive on the cut-local axis', () {
-      final local = blurXOf(
+      final local = blurrinessOf(
         window.displayLayer(withEffect(blurWith({40: 7}))).effects,
       );
       expect(local.keys.keys.toList(), [20]);
@@ -284,7 +290,7 @@ void main() {
     });
 
     test('a key from an EARLIER cut is dropped, not folded onto frame 0', () {
-      final local = blurXOf(
+      final local = blurrinessOf(
         window.displayLayer(withEffect(blurWith({8: 99, 20: 3}))).effects,
       );
       expect(local.keys.keys.toList(), [0]);
@@ -299,9 +305,51 @@ void main() {
       const first = TrackSeWindow(cutStartFrame: 0, cutDurationFrames: 24);
       final layer = withEffect(blurWith({0: 1, 6: 2}));
       expect(
-        blurXOf(first.displayLayer(layer).effects).keys.keys.toList(),
+        blurrinessOf(first.displayLayer(layer).effects).keys.keys.toList(),
         [0, 6],
       );
+    });
+
+    test('🚨EVERY lane of every effect arrives on the cut-local axis — read '
+        'through the lane table, so a lane the rebase leaves out keeps its '
+        'global frame', () {
+      PropertyTrack<T> at40<T>(T value) =>
+          PropertyTrack<T>(keys: {40: PropertyKey(value)});
+      for (final kind in EffectKind.values) {
+        final effect = LayerEffect(
+          id: const EffectId('fx-1'),
+          kind: kind,
+          parameters: {
+            for (final spec in kind.parameters)
+              spec.id: EffectParameter(track: at40(1.0)),
+          },
+          colors: {
+            for (final spec in kind.parameters)
+              spec.id: at40(0xFF000000),
+          },
+          stand: TransformTrack.empty().copyWith(
+            position: at40(CanvasPoint(x: 1, y: 1)),
+            scale: at40(CanvasPoint(x: 1, y: 1)),
+          ),
+          // I-132-Q12 b: and a point, kept as a Position is.
+          points: {
+            for (final spec in kind.parameters)
+              spec.id: TransformTrack.empty().copyWith(
+                position: at40(CanvasPoint(x: 1, y: 1)),
+              ),
+          },
+        );
+        final rebased = window.displayLayer(withEffect(effect)).effects;
+        for (final lane in effect.lanes) {
+          final laneId = effectLaneId(effect.id, lane);
+          expect(
+            effectLaneLens(laneId)!.keyFrames(rebased),
+            // 🗣️I-132-Q16 a: a row's lane keeps no keys to rebase.
+            effectLayerParameters.contains(lane) ? isEmpty : {20},
+            reason: '${kind.name}: $lane',
+          );
+        }
+      }
     });
   });
 
@@ -374,6 +422,61 @@ void main() {
           reason: laneId,
         );
       }
+    });
+  });
+
+  group('the display clone rebases the row\'s SOUND onto the cut (I-140)', () {
+    const window = TrackSeWindow(cutStartFrame: 12, cutDurationFrames: 24);
+
+    Layer soundRow(SeSound sound) => Layer(
+      id: const LayerId('se-1'),
+      name: 'S1',
+      kind: LayerKind.se,
+      frames: const [],
+      timeline: const {},
+      seSound: sound,
+    );
+
+    test('the Volume\'s keys move onto the cut-local axis, the ones an '
+        'earlier cut made are dropped, and the Pan rides as it is', () {
+      final rebased = window
+          .displayLayer(
+            soundRow(
+              SeSound(
+                pan: -0.4,
+                volume: PropertyTrack<double>(
+                  keys: {
+                    4: const PropertyKey(0.2),
+                    12: const PropertyKey(0.5),
+                    20: const PropertyKey(1.5),
+                  },
+                ),
+              ),
+            ),
+          )
+          .seSound;
+
+      expect(rebased.volume.keys.keys, [0, 8]);
+      expect(rebased.volume.keyAt(8)!.value, 1.5);
+      expect(rebased.pan, -0.4);
+    });
+
+    test('a window at the track\'s start and an unkeyed sound keep the '
+        'sound as it was', () {
+      final keyed = SeSound(
+        volume: PropertyTrack<double>(keys: {3: const PropertyKey(0.5)}),
+      );
+      expect(
+        const TrackSeWindow(
+          cutStartFrame: 0,
+          cutDurationFrames: 24,
+        ).displayLayer(soundRow(keyed)).seSound,
+        keyed,
+      );
+      expect(
+        window.displayLayer(soundRow(const SeSound(pan: 0.3))).seSound,
+        const SeSound(pan: 0.3),
+      );
     });
   });
 }

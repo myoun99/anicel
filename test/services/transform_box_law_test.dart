@@ -16,6 +16,26 @@ void main() {
     });
   });
 
+  // 🗣️I-136 (유저 2026-10-27): 「x,y가 있다치면 x 안건들고 y만 이동」.
+  group('oneWay', () {
+    test('keeps the travel across, or down — whichever went further', () {
+      final across = TransformBoxLaw.oneWay(CanvasPoint(x: 30.4, y: -20.6));
+      final down = TransformBoxLaw.oneWay(CanvasPoint(x: 5, y: -40));
+
+      expect((across.x, across.y), (30.4, 0.0));
+      expect((down.x, down.y), (0.0, -40.0));
+    });
+
+    test('from a press, the point straight across or down from it', () {
+      final kept = TransformBoxLaw.oneWayFrom(
+        CanvasPoint(x: 100, y: 50),
+        CanvasPoint(x: 112, y: 90),
+      );
+
+      expect((kept.x, kept.y), (100.0, 90.0));
+    });
+  });
+
   group('turn', () {
     final centre = CanvasPoint(x: 100, y: 100);
 

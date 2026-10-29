@@ -22,6 +22,7 @@ import 'package:anicel/src/services/persistence/app_memory_settings.dart';
 import 'package:anicel/src/services/persistence/app_onion_skin_settings_store.dart';
 import 'package:anicel/src/services/persistence/app_pixel_verb_settings_store.dart';
 import 'package:anicel/src/models/onion_skin_settings.dart';
+import 'package:anicel/src/models/app_ui_scale.dart';
 import 'package:anicel/src/services/persistence/app_ui_scale_store.dart';
 import 'package:anicel/src/services/persistence/app_workspace_colors_store.dart';
 import 'package:anicel/src/services/persistence/audio_sync_settings_store.dart';
@@ -179,18 +180,25 @@ void main() {
         tintAfter: 0xFF0000FF,
         mode: OnionSkinMode.images,
         step: OnionSkinStep.frames,
+        // Not the default (in place, onion-ghosts-in-place-Q2 pending).
+        placement: OnionSkinPlacement.onTop,
       ),
     );
     first.setUiScale(1.25);
     // The block frame lines (유저 2026-09-24) — a user setting, app-wide like
     // the accents; ON here because OFF is the default a lost store returns
-    // (↩️the other way round until 2026-10-01, 「기본값 off로」).
+    // (↩️the other way round until 2026-10-01, 「기본값 off로」). And the mark
+    // an unnamed drawing wears beside it (F-489) — the ○, because the ● is
+    // the default.
     appSettingsOf(first).setFrameGridSettings(
-      const AppFrameGridSettings(blockFrameLines: true),
+      const AppFrameGridSettings(
+        blockFrameLines: true,
+        unnamedMark: InbetweenMark.one,
+      ),
     );
     // The count window's entry (I-24-open-entry) and the mark-every window's
-    // mark (I-130-Q2) — seconds+frames and the ●, because frames and the ○
-    // are the defaults a lost store returns (F-469).
+    // mark (I-130-Q2) — seconds+frames and a pick, because frames and no
+    // pick are what a lost store returns (F-489-Q1).
     appSettingsOf(first).setFrameCountSettings(
       const AppFrameCountSettings(
         lastEntry: FrameCountEntry.secondsPlusFrames,
@@ -255,6 +263,8 @@ void main() {
           AppSave.settings.value.periodicSnapshotMinutes == 7 &&
           AppMemory.settings.value.allowanceBytes == 3 << 30 &&
           AppFrameGridSettings.settings.value.blockFrameLines &&
+          AppFrameGridSettings.settings.value.unnamedMark ==
+              InbetweenMark.one &&
           AppFrameCountSettings.settings.value.lastEveryMark ==
               InbetweenMark.two &&
           CameraPathSettings.settings.value.tickEvery == 6 &&
@@ -270,7 +280,13 @@ void main() {
     expect(AppInput.settings.value.pressureCurve, penResponse);
     expect(AppSave.settings.value.periodicSnapshotMinutes, 7);
     expect(AppMemory.settings.value.allowanceBytes, 3 << 30);
-    expect(AppFrameGridSettings.settings.value.blockFrameLines, isTrue);
+    expect(
+      AppFrameGridSettings.settings.value,
+      const AppFrameGridSettings(
+        blockFrameLines: true,
+        unnamedMark: InbetweenMark.one,
+      ),
+    );
     expect(
       AppFrameCountSettings.settings.value,
       const AppFrameCountSettings(
@@ -307,6 +323,10 @@ void main() {
     expect(second.onionSkin.settings.value.beforePegs[1].opacity, 0.5);
     expect(second.onionSkin.settings.value.tintAfter, 0xFF0000FF);
     expect(second.onionSkin.settings.value.step, OnionSkinStep.frames);
+    expect(
+      second.onionSkin.settings.value.placement,
+      OnionSkinPlacement.onTop,
+    );
     expect(
       second.onionSkin.settings.value.beforePegs.length,
       OnionSkinSettings.maxPegs,
@@ -434,6 +454,26 @@ void main() {
     expect(AppColors.accentSettings.value, const AppAccentSettings());
     expect(AppWorkspaceColors.settings.value, const AppWorkspaceColors());
     expect(appSettingsOf(session).audioSyncSettings.value, AudioSyncSettings.defaults);
+  });
+
+  // I-142: a settings file put in place brings its UI scale — read again
+  // from its file, as `main()` reads it before the first frame.
+  test('the UI scale is read again from its file, and the next set that '
+      'changes nothing writes nothing', () async {
+    final directory = await Directory.systemTemp.createTemp('qa-ui-scale');
+    deleteAfterSessionEnds(directory);
+    final store = AppUiScaleStore(filePath: '${directory.path}/ui.json');
+    final settings = EditorAppSettings(uiScaleStore: store);
+    addTearDown(settings.dispose);
+    addTearDown(() => AppUiScale.value.value = AppUiScale.defaultScale);
+    await store.save(1.25);
+
+    await settings.rereadUiScale();
+
+    expect(AppUiScale.value.value, 1.25);
+    await store.save(0.75);
+    settings.setUiScale(1.25);
+    expect(await store.load(), 0.75, reason: 'held as read: nothing to write');
   });
 
   /// ⛔**THE PANEL MUST NOT WRITE THE NOTIFIER.** 🧪A mutant that put

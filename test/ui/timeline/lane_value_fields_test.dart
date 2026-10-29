@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
 import 'package:anicel/src/ui/text/readout_text.dart';
@@ -59,6 +61,61 @@ void main() {
     });
   });
 
+  group('an angle is its turns and its degrees (I-132-Q17)', () {
+    test('as After Effects writes one, every digit on the degrees', () {
+      expect(
+        [
+          for (final degrees in const [0.0, 90, 450, -90, -450, -360, 720])
+            turnsReadoutText(degrees.toDouble()),
+        ],
+        [
+          '0x+0.00°',
+          '0x+90.00°',
+          '1x+90.00°',
+          '0x-90.00°',
+          '-1x-90.00°',
+          '-1x+0.00°',
+          '2x+0.00°',
+        ],
+      );
+      expect(
+        turnsReadoutText(359.999),
+        '1x+0.00°',
+        reason: 'on the readout grid first, so a whole turn is one',
+      );
+    });
+
+    test('two boxes, rejoined as they were, with no comma', () {
+      final parts = readoutParts('1x+90.00°');
+      expect(parts, [
+        (number: '1', unit: 'x'),
+        (number: '+90.00', unit: '°'),
+      ]);
+      expect(readsTurns(parts), isTrue);
+      expect(joinReadoutParts(parts), '1x+90.00°');
+      expect(
+        columnValueOf(
+          joinReadoutParts([parts.first, (number: '-30', unit: '°')]),
+        ),
+        330,
+        reason: 'a box typed: the turns kept, the degrees its own',
+      );
+    });
+
+    test('⛔what is no angle is not read as one', () {
+      expect(readsTurns(readoutParts('120, 45')), isFalse);
+      expect(readoutParts('12 px'), [(number: '12', unit: ' px')]);
+      expect(readoutParts('2x'), [(number: '2', unit: 'x')]);
+      expect(readsTurns(readoutParts('2x')), isFalse);
+      expect(
+        readoutParts('1920x1080'),
+        [(number: '1920', unit: 'x1080')],
+        reason: 'a size: what follows its x is no angle',
+      );
+      expect(columnValueOf('12 px'), 12, reason: 'the x of px leads no turns');
+    });
+  });
+
   group('the split is reversible, for every label this app prints', () {
     /// 🚨The round trip is what lets the commit path stay untouched: what
     /// leaves the editor is the same text form every lane parser has always
@@ -98,8 +155,67 @@ void main() {
 
     test('effect lanes, every unit', () {
       for (final unit in EffectParameterUnit.values) {
-        roundTrips(
-          formatEffectLaneValue(
+        // I-132-Q12 b: a point is no number — its row prints it as a
+        // Position's does.
+        if (unit == EffectParameterUnit.point) {
+          roundTrips(
+            transformPositionLane(
+              TransformTrack.empty(),
+              laneId: 'p',
+              label: 'P',
+              poseAt: (_) =>
+                  TransformPose(center: CanvasPoint(x: 120, y: 45.5)),
+            ).valueLabel!(0),
+          );
+          continue;
+        }
+        // I-132-Q16 a: nor is a row — its lane prints the row it names by
+        // its name, or none.
+        if (unit == EffectParameterUnit.layer) {
+          final lens = LayerEffect.defaults(
+            id: const EffectId('lens'),
+            kind: EffectKind.cameraLensBlur,
+          );
+          final rows = [
+            Layer(id: const LayerId('a'), name: 'Layer 2', frames: const []),
+          ];
+          for (final named in [null, const LayerId('a')]) {
+            final lane = effectPropertyLanes(
+              [lens.withLayer('blurMapLayer', named)],
+              cutRows: rows,
+              isExpanded: (_) => true,
+            ).firstWhere(
+              (lane) => lane.laneId == effectLaneId(lens.id, 'blurMapLayer'),
+            );
+            roundTrips(lane.valueLabel!(0));
+          }
+          continue;
+        }
+        final (spec, value) = switch (unit) {
+          EffectParameterUnit.choice => (
+            const EffectParameterSpec.choice(
+              id: 'p',
+              label: 'P',
+              choices: [
+                EffectChoice(id: 'one', label: 'One'),
+                EffectChoice(id: 'two', label: 'Two Words'),
+              ],
+            ),
+            1.0,
+          ),
+          EffectParameterUnit.color => (
+            const EffectParameterSpec.color(
+              id: 'p',
+              label: 'P',
+              defaultValue: 0xFF000000,
+            ),
+            0xFFC80A1E.toDouble(),
+          ),
+          EffectParameterUnit.flag => (
+            const EffectParameterSpec.flag(id: 'p', label: 'P'),
+            1.0,
+          ),
+          _ => (
             EffectParameterSpec(
               id: 'p',
               label: 'P',
@@ -110,7 +226,8 @@ void main() {
             ),
             12.5,
           ),
-        );
+        };
+        roundTrips(formatEffectLaneValue(spec, value));
       }
     });
 

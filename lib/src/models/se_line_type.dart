@@ -1,5 +1,6 @@
 import '../core/collection_equality.dart' show mapEquals;
 import 'cut_id.dart';
+import 'se_dialogue_spacing.dart';
 
 /// An SE block's DELIVERY (I-20): the speaker on screen, off it, or inside
 /// their own head.
@@ -18,13 +19,16 @@ enum SeLineType {
   /// What every surface prints — the trade's own words, in every language.
   final String label;
 
-  /// Whether the SHEETS print it — the timesheet over the name and the
-  /// conte sheet's dialogue column.
+  /// Whether it is written out where ON goes without saying — the
+  /// timesheet over the name, the conte sheet's dialogue column and an SE
+  /// block's name on the timeline, the X-sheet and the conte panel.
   ///
   /// 🗣️유저 (I-20-Q2 덧말): 「ON일때는 타임시트 이름위랑 콘티용지에는
   /// 표시하지않음. 캔버스에는 표시. 즉 OFF거나 MONO일때만 타임시트/콘티에
-  /// 표시」. ONE answer for both sheets; the canvas prints every type.
-  bool get printsOnSheets => this != SeLineType.on;
+  /// 표시」. ONE answer for every such place; the canvas prints every type.
+  /// 🗣️F-496 (유저 2026-10-28): 「타임라인패널도 … 동일하게 ON은
+  /// 표시안하고 OFF랑 MONO도 se블록에 표시」.
+  bool get writtenOut => this != SeLineType.on;
 
   /// Read back from a file; anything unknown — and an absent field — is ON,
   /// the delivery a block that never chose has.
@@ -131,7 +135,11 @@ final class SeLineTypes {
   String toString() => 'SeLineTypes(${own.name}, $byCut)';
 }
 
-/// An SE block's own fields besides its dialogue — the speaker's name and
-/// the delivery in each cut — written together with the dialogue, as one
-/// edit.
-typedef SeEntryFields = ({String? seName, SeLineTypes seTypes});
+/// An SE block's own fields besides its dialogue — the speaker's name, the
+/// delivery in each cut and where the dialogue's glyphs stand (F-496) —
+/// written together with the dialogue, as one edit.
+typedef SeEntryFields = ({
+  String? seName,
+  SeLineTypes seTypes,
+  SeDialogueSpacing spacing,
+});

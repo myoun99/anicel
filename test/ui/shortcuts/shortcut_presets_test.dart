@@ -871,53 +871,69 @@ void main() {
   });
 
   group('the guide\'s shortcut page', () {
-    /// The page's sections by their `## ` heading.
-    Map<String, String> sectionsOf(String markdown) => {
-      for (final section in markdown.split('\n## ').skip(1))
-        section.substring(0, section.indexOf('\n')): section,
-    };
+    /// The action [label] names on [page]'s row for it.
+    String actionOn(String page, String label) {
+      final row = page
+          .split('\n')
+          .singleWhere((line) => line.startsWith('| $label |'));
+      return RegExp('data-k="([^"]+)"').firstMatch(row)!.group(1)!;
+    }
 
-    /// The row of [section] that names [action].
-    String rowOf(String section, String action) => section
-        .split('\n')
-        .singleWhere((line) => line.startsWith('| $action |'));
+    /// The keys [preset] ships for [action] in the guide's keymap, each as
+    /// a PC and as a Mac spell it; empty when it ships none.
+    List<List<String>> keysOf(String action, ShortcutPreset preset) {
+      final keys = shortcutKeymap()['keys']! as Map<String, Object?>;
+      final presets =
+          (keys[action] ?? const <String, Object?>{}) as Map<String, Object?>;
+      return (presets[preset.name] ?? const <List<String>>[])
+          as List<List<String>>;
+    }
 
-    test('writes every preset\'s keys under its name', () {
-      final sections = sectionsOf(shortcutTableMarkdown(AppLanguage.ko));
-      expect(sections.keys, ['Anicel', '클립 스튜디오 기반', 'TVPaint 기반']);
-      final anicel = sections['Anicel']!;
-      final clipStudio = sections['클립 스튜디오 기반']!;
-      final tvpaint = sections['TVPaint 기반']!;
-
-      const fill = '채우기 도구';
-      expect(rowOf(anicel, fill), '| $fill | <kbd>F</kbd> |');
-      expect(rowOf(clipStudio, fill), '| $fill | <kbd>G</kbd> |');
-      expect(rowOf(tvpaint, fill), '| $fill | <kbd>G</kbd> |');
-      const onion = '어니언 스킨 켜기/끄기';
-      expect(rowOf(anicel, onion), contains('<kbd>T</kbd>'));
-      // A row with no key under a preset is not written there.
-      final english = sectionsOf(shortcutTableMarkdown(AppLanguage.en));
-      const screen = 'Blend: Screen';
+    test('the keymap holds every preset\'s keys for an action', () {
+      final page = shortcutTableMarkdown(AppLanguage.ko);
+      final fill = actionOn(page, '채우기 도구');
+      expect(keysOf(fill, ShortcutPreset.anicel), [
+        ['F', 'F'],
+      ]);
+      expect(keysOf(fill, ShortcutPreset.clipStudio), [
+        ['G', 'G'],
+      ]);
+      expect(keysOf(fill, ShortcutPreset.tvpaint), [
+        ['G', 'G'],
+      ]);
+      final onion = actionOn(page, '어니언 스킨 켜기/끄기');
+      expect(
+        keysOf(onion, ShortcutPreset.anicel),
+        anyElement(equals(['T', 'T'])),
+      );
       // I-31: the list's first twelve take F1–F12 in its order — Clip
       // Studio's since brush-fidelity-Q5, where linear burn and subtract
       // stand before screen. ↩️It was F8 in the list before them.
-      expect(rowOf(english['Anicel']!, screen), contains('<kbd>F10</kbd>'));
-      expect(english['Clip Studio based'], isNot(contains('| $screen |')));
-      // A key that is another one on a Mac is written both ways.
+      final screen = actionOn(
+        shortcutTableMarkdown(AppLanguage.en),
+        'Blend: Screen',
+      );
+      expect(keysOf(screen, ShortcutPreset.anicel), [
+        ['F10', 'F10'],
+      ]);
+      // A preset that puts no key on an action has nothing under it.
+      expect(keysOf(screen, ShortcutPreset.clipStudio), isEmpty);
+      // A key that is another one on a Mac is written both ways, the PC's
+      // first.
+      final saveAs = actionOn(page, '다른 이름으로 저장');
       expect(
-        rowOf(clipStudio, '다른 이름으로 저장'),
-        contains('<kbd class="k-mac">⌥⇧S</kbd>'),
+        keysOf(saveAs, ShortcutPreset.clipStudio),
+        anyElement(equals(['Alt+Shift+S', '⌥⇧S'])),
       );
     });
 
-    test('⛔fixture premise: the page names its groups under each preset', () {
+    test('⛔fixture premise: the page names actions once, one table a '
+        'group, never a key', () {
       final page = shortcutTableMarkdown(AppLanguage.en);
-      expect(sectionsOf(page).keys, [
-        'Anicel',
-        'Clip Studio based',
-        'TVPaint based',
-      ]);
-      expect('\n### Canvas › Tools\n'.allMatches(page), hasLength(3));
+      expect('\n## '.allMatches(page), isEmpty);
+      expect('\n### Canvas › Tools\n'.allMatches(page), hasLength(1));
+      expect(page, isNot(contains('<kbd')));
+      expect(actionOn(page, 'Blend: Screen'), isNotEmpty);
     });
   });
 }

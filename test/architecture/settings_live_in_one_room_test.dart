@@ -108,12 +108,14 @@ const _builtOnlyOutsideTests = <String, String>{
   'frame_grid_settings.json': 'HomePage, _unlessTesting',
   'input_settings.json': 'HomePage, _unlessTesting',
   'language_settings.json': 'HomePage, _unlessTesting',
+  'launch_notice.json': 'HomePage, _unlessTesting',
   'memory_settings.json': 'HomePage, _unlessTesting',
   'onion_skin_settings.json': 'HomePage, _unlessTesting',
   'pixel_verb_settings.json': 'HomePage, _unlessTesting',
   'save_settings.json': 'HomePage, _unlessTesting',
   'shortcut_overrides.json': 'HomePage, _unlessTesting',
   'ui_scale.json': 'HomePage, _unlessTesting — and the two main()s',
+  'usage_stats.json': 'HomePage, _unlessTesting',
   'window.json':
       'main(), WindowPlace and WindowFullScreen.restore — a test names its '
       'file',

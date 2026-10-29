@@ -58,6 +58,57 @@
 		</dict>
 		<dict>
 			<key>UTTypeIdentifier</key>
+			<string>com.myoun.anicel.palette</string>
+			<key>UTTypeDescription</key>
+			<string>Anicel Palette</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>anipalette</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.myoun.anicel.shortcut</string>
+			<key>UTTypeDescription</key>
+			<string>Anicel Shortcut Preset</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>anishortcut</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.myoun.anicel.settings</string>
+			<key>UTTypeDescription</key>
+			<string>Anicel Settings</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>anisettings</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
 			<string>com.myoun.anicel.project</string>
 			<key>UTTypeDescription</key>
 			<string>Anicel Project</string>

@@ -27,6 +27,22 @@ class _SurfacePaintPass {
   late final bool _reduced = _scale < 1;
   late final Rect _visibleRect;
 
+  /// Device pixels a unit of the canvas's space lands on past its transform
+  /// ([cutOnThePixelGrid]) — the screen's ratio on screen, 1 into a raster.
+  late final double _pixelRatio;
+
+  /// Whether each coordinate's picture is laid with its edge cut on the
+  /// pixel grid rather than where it falls ([_drawImageAtTile]).
+  late final bool _tilesCutOnTheGrid;
+
+  /// Whether the layer's paint goes around the cut coordinates as one layer
+  /// rather than riding each of them ([paintContentInto]).
+  late final bool _layerAroundTheCut;
+
+  /// The slots of pages this paint lays a page at a time — null where they
+  /// are laid one by one ([paintContentInto]).
+  late final SlotsByPage? _slotsByPage;
+
   /// The float the caller handed in — a selection's, from the row's slot.
   late final RowFloat? _float;
 
@@ -59,17 +75,20 @@ class _SurfacePaintPass {
   /// it otherwise applies the layer twice wherever two draws overlap, which
   /// looks like a darkened seam rather than an error.
   ///
-  /// [scale] is how many device pixels this paint lands on a canvas pixel
-  /// ([BitmapSurfacePainter.paintContentInto]).
+  /// [scale] is how many device pixels this paint lands on a canvas pixel,
+  /// and [pixelRatio] how many a unit of [canvas]'s space lands on past its
+  /// transform ([BitmapSurfacePainter.paintContentInto]).
   void paintContentInto(
     Canvas canvas, {
     Paint? layerPaint,
     double scale = 1,
+    required double pixelRatio,
     RowFloat? float,
   }) {
     _canvas = canvas;
     _layerPaint = layerPaint;
     _scale = scale;
+    _pixelRatio = pixelRatio;
     _float = float == null || float.preview.drawnWorldRect.isEmpty
         ? null
         : float;
@@ -124,10 +143,43 @@ class _SurfacePaintPass {
     // until one-picture-per-frame ②-5b-2 — a reduced one from level tiles
     // at the level's residual, and between 50% and 100% the tiles
     // themselves, nearest.
+    final filterQuality = filterQualityForDisplayScale(_scale);
+    // 🚨★★★A COORDINATE'S EDGE IS ONE MORE TEXEL BOUNDARY
+    // (the-walk-draws-off-the-grid-on-impeller, 2026-10-28). Under nearest
+    // sampling on an axis-aligned space the boundary between two
+    // coordinates is decided per pixel by its centre, as every boundary
+    // inside a picture is ([displayEdgeAntiAliased]) — but each coordinate
+    // is its own draw, and where the grid falls inside a pixel Impeller's
+    // MSAA covers that pixel by both draws' samples, whatever the paint
+    // says: 🔬150% on the walk, a line's pixels on the canvas's edge 64
+    // grey for black, and 137% riding an add 129 pixels up to 23 apart from
+    // the buffer (`--enable-impeller`). So there each edge is cut on the
+    // grid, as the paper's and the buffer's blit are. ⛔Only there: the
+    // cut lays the picture through a shader under a clip, and into a
+    // buffer at the canvas's own resolution — every frame's picture and
+    // every step's patch — the grid lands whole and `drawImage` is the
+    // same pixels.
+    _tilesCutOnTheGrid =
+        filterQuality == FilterQuality.none &&
+        cellsFallOffThePixelGrid(
+          _canvas,
+          _painter.surface.tileSize.toDouble(),
+          pixelRatio,
+        );
+    // 🚨A COLOUR MATRIX DOES NOT RIDE A CUT (10-28). A coordinate cut on
+    // the grid is laid through a shader, and Impeller applies a paint's
+    // colour matrix to a shader's colours not as it does to an image's:
+    // 🔬a ghost's tint and a brighten, 3,264–3,736 of 4,096 pixels apart up
+    // to 223/255, where the same matrix on a layer around the shader is 0
+    // apart (`--enable-impeller`). There the layer's paint goes around the
+    // coordinates as one layer — the buffer a ride stands for, the same
+    // pixels by their disjoint coverage (`the_layer_rides_the_draws_test`).
+    _layerAroundTheCut =
+        _tilesCutOnTheGrid && _layerPaint?.colorFilter != null;
     _tileImagePaint = Paint()
-      ..filterQuality = filterQualityForDisplayScale(_scale)
+      ..filterQuality = filterQuality
       ..isAntiAlias = false;
-    if (_layerPaint != null) {
+    if (_layerPaint != null && !_layerAroundTheCut) {
       // The layer rides every draw instead of a buffer around them.
       _tileImagePaint
         ..color = _layerPaint.color
@@ -135,6 +187,20 @@ class _SurfacePaintPass {
         ..colorFilter = _layerPaint.colorFilter
         ..imageFilter = _layerPaint.imageFilter;
     }
+    // 🚨★★★A PAGE'S SLOTS IN ONE DRAW, WHERE THAT IS THE SAME PIXELS
+    // (frame-composite-draws-each-tile-on-its-own, 2026-10-28) — [SlotsByPage]
+    // has the measurement: not where a colour matrix rides, whose alpha
+    // Impeller rounds apart in an atlas, nor where a coordinate is cut,
+    // which lays each through a shader. There each slot is laid by itself,
+    // as its own picture would be. ⛔An image filter is no answer measured:
+    // it never rides (a spreading one buffers the layer), and one that did
+    // would act on the page's draw as a whole.
+    _slotsByPage =
+        _tilesCutOnTheGrid ||
+            _tileImagePaint.colorFilter != null ||
+            _tileImagePaint.imageFilter != null
+        ? null
+        : SlotsByPage();
     // R27 #2: the walk below is visible-only, so every coordinate it
     // reaches already shows — no separate visibility test is needed.
     _visibleRect = _painter._visibleCanvasRect(_canvas, _storableRect);
@@ -164,10 +230,16 @@ class _SurfacePaintPass {
         doAntiAlias: false,
       );
     }
+    if (_layerAroundTheCut) {
+      _canvas.saveLayer(_visibleRect, _layerPaint!);
+    }
     _paintVisibleTiles();
 
     _paintOverlay();
 
+    if (_layerAroundTheCut) {
+      _canvas.restore();
+    }
     if (landing != null) {
       _canvas.restore();
     }
@@ -222,6 +294,10 @@ class _SurfacePaintPass {
       _painter.pictureBudget.shown(_painter.lineage, covered.tile);
       _coordinates.paint(covered.coord);
     }
+    // The slots go down here, a page at a time, under nothing the walk
+    // drew: the coordinates are disjoint, so the order among them is no
+    // pixel's business.
+    _slotsByPage?.drawInto(_canvas, _tileImagePaint);
     final overlay = _overlay;
     if (overlay == null || !_overlayReplacesCoords) {
       return;
@@ -247,14 +323,62 @@ class _SurfacePaintPass {
     );
   }
 
-  /// THE tile draw: [image], one tile's worth of pixels — a coordinate's
-  /// picture — at [coord]'s origin on the surface's grid.
+  /// A committed tile's [picture] at [coord]: a texture of its own as any
+  /// tile image ([_drawImageAtTile]); a slot of a page with the page's
+  /// others where they go together ([_slotsByPage]), else by itself.
+  void _drawPictureAtTile(TilePicture picture, TileCoord coord) {
+    switch (picture) {
+      case OwnTilePicture(:final image):
+        _drawImageAtTile(image, coord);
+      case final TileSlot slot:
+        final together = _slotsByPage;
+        if (together == null) {
+          _lay(slot.image, slot.source, coord);
+        } else {
+          together.add(
+            slot,
+            tileCoordOriginOffset(coord, _painter.surface.tileSize),
+          );
+        }
+    }
+  }
+
+  /// [image], one tile's worth of pixels — a coordinate's picture — at
+  /// [coord]'s origin ([_lay]).
   void _drawImageAtTile(ui.Image image, TileCoord coord) =>
-      _canvas.drawImage(
-        image,
-        tileCoordOriginOffset(coord, _painter.surface.tileSize),
-        _tileImagePaint,
-      );
+      _lay(image, null, coord);
+
+  /// THE tile draw: [source] of [image] — the whole of it where null — at
+  /// [coord]'s origin on the surface's grid, its edge cut on the pixel grid
+  /// where the grid falls off it ([_tilesCutOnTheGrid]).
+  void _lay(ui.Image image, Rect? source, TileCoord coord) {
+    final origin = tileCoordOriginOffset(coord, _painter.surface.tileSize);
+    if (!_tilesCutOnTheGrid) {
+      if (source == null) {
+        _canvas.drawImage(image, origin, _tileImagePaint);
+      } else {
+        _canvas.drawImageRect(
+          image,
+          source,
+          origin & source.size,
+          _tileImagePaint,
+        );
+      }
+      return;
+    }
+    final from =
+        source ??
+        Offset.zero & Size(image.width.toDouble(), image.height.toDouble());
+    drawImageRectOnThePixelGrid(
+      _canvas,
+      image,
+      from,
+      origin & from.size,
+      filterQuality: FilterQuality.none,
+      pixelRatio: _pixelRatio,
+      paint: _tileImagePaint,
+    );
+  }
 
   /// The paint a LIVE PREVIEW OF A BRUSH LANDING draws with: a pre-blended
   /// overlay blits (src where it replaces the committed tiles), an erasing
@@ -330,12 +454,12 @@ class _SurfacePaintPass {
     for (final float in _floats) {
       final toRow = float.canvasToRow;
       if (toRow == null) {
-        float.preview.paintInto(_canvas);
+        float.preview.paintInto(_canvas, pixelRatio: _pixelRatio);
         continue;
       }
       _canvas.save();
       _canvas.transform(toRow.storage);
-      float.preview.paintInto(_canvas);
+      float.preview.paintInto(_canvas, pixelRatio: _pixelRatio);
       _canvas.restore();
     }
   }
@@ -416,7 +540,9 @@ class _SurfacePaintPass {
     final atFull = Canvas(recorder)
       ..translate(-region.left, -region.top)
       ..clipRect(region);
-    _SurfacePaintPass(_painter).paintContentInto(atFull, float: _float);
+    _SurfacePaintPass(
+      _painter,
+    ).paintContentInto(atFull, pixelRatio: 1, float: _float);
     final picture = recorder.endRecording();
     try {
       return picture.toImageSync(region.width.round(), region.height.round());

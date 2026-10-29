@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -10,6 +11,7 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/row_transform_box.dart';
 import 'package:anicel/src/ui/input/control_press_claim.dart'
     show SurfaceDragClaim;
@@ -1236,6 +1238,126 @@ void main() {
       await tester.dragFrom(const Offset(20, 20), const Offset(10, 0));
       await tester.pumpAndSettle();
       expect(ends, [CanvasPoint(x: 30, y: 20)]);
+    });
+  });
+
+  // 🗣️I-136 (유저 2026-10-27): 「캔버스에서 어떤 조작 할때도 쉬프트 통해
+  // 누른상태면 한쪽으로만. 즉 x,y가 있다치면 x 안건들고 y만 이동」.
+  group('Shift keeps what the box MOVES to one way (I-136)', () {
+    setUp(CanvasTouchContacts.reset);
+    tearDown(CanvasTouchContacts.reset);
+
+    /// A drag from [from] by [by], Shift held through it.
+    Future<void> shiftDrag(
+      WidgetTester tester,
+      Offset from,
+      Offset by,
+    ) async {
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.dragFrom(from, by);
+      await tester.pumpAndSettle();
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    }
+
+    testWidgets('the inside moves the position across alone, or down alone '
+        '— whichever the hand went further', (tester) async {
+      final moves = <CanvasPoint>[];
+      await pumpBox(tester, box(moves: moves));
+
+      const inside = Offset(150, 100);
+      await shiftDrag(tester, inside, const Offset(30.4, -20.6));
+      await shiftDrag(tester, inside, const Offset(5, -40));
+
+      expect(moves, [
+        CanvasPoint(x: 230, y: 150),
+        CanvasPoint(x: 200, y: 110),
+      ]);
+    });
+
+    testWidgets('the cross and a path\'s knob keep to one way too', (
+      tester,
+    ) async {
+      final anchors = <CanvasPoint>[];
+      final behinds = <CanvasPoint>[];
+      await pumpBox(
+        tester,
+        box(
+          anchors: anchors,
+          tangents: [
+            (
+              at: CanvasPoint(x: 20, y: 20),
+              ahead: null,
+              behind: (
+                at: CanvasPoint(x: 20, y: 280),
+                landing: into(behinds),
+              ),
+            ),
+          ],
+        ),
+      );
+
+      await shiftDrag(tester, pivot, const Offset(30, -10));
+      await shiftDrag(tester, const Offset(20, 280), const Offset(10, -20));
+
+      expect(anchors, [CanvasPoint(x: 230, y: 150)]);
+      expect(behinds, [CanvasPoint(x: 20, y: 260)]);
+    });
+
+    testWidgets('pressed DURING the drag it keeps the drag from there on — '
+        'held before the press and pressed after are one question', (
+      tester,
+    ) async {
+      final moves = <CanvasPoint>[];
+      final shown = <CanvasPoint>[];
+      await pumpBox(
+        tester,
+        RowTransformBox(
+          corners: corners,
+          pose: TransformPose(center: anchor),
+          pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
+          viewport: CanvasViewport(),
+          presses: RowBoxPresses.viewport,
+          onCancelled: () {},
+          move: into(moves, shown: shown),
+        ),
+      );
+
+      final hand = await tester.startGesture(
+        const Offset(150, 100),
+        kind: PointerDeviceKind.mouse,
+      );
+      await hand.moveBy(const Offset(20, 0));
+      await hand.moveBy(const Offset(10, 15));
+      await tester.pump();
+      expect(shown.last, CanvasPoint(x: 230, y: 165), reason: 'the premise');
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await hand.moveBy(const Offset(1, 0));
+      await hand.up();
+      await tester.pumpAndSettle();
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+
+      expect(moves, [CanvasPoint(x: 231, y: 150)]);
+    });
+
+    testWidgets('a finger resting beside a MOUSE\'s drag is its Shift — the '
+        'tablet\'s key', (tester) async {
+      final moves = <CanvasPoint>[];
+      await pumpBox(tester, box(moves: moves));
+      CanvasTouchContacts.noteAppWide(
+        const PointerDownEvent(pointer: 90, kind: PointerDeviceKind.touch),
+      );
+
+      final hand = await tester.startGesture(
+        const Offset(150, 100),
+        kind: PointerDeviceKind.mouse,
+      );
+      await hand.moveBy(const Offset(30, 0));
+      await hand.moveBy(const Offset(0, 12));
+      await hand.up();
+      await tester.pumpAndSettle();
+
+      expect(moves, [CanvasPoint(x: 230, y: 150)]);
     });
   });
 }

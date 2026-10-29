@@ -90,6 +90,9 @@ void main() {
         // it is named so a live row showing up in a plain resolve reads as
         // a wrong id rather than as a silent skip.
         return [layer.id.value];
+      // Nor is a ghost asked for here: named as the live row is.
+      case CompositeLeaf(payload: CutFrameCompositeGhost(:final layer)):
+        return [layer.id.value];
       case CompositeGroup<CutFrameCompositeRow>(:final children):
       case CompositeAdjustment<CutFrameCompositeRow>(:final children):
       case CompositeBackdropBlend<CutFrameCompositeRow>(:final children):
@@ -97,6 +100,9 @@ void main() {
       case CompositeOpaque<CutFrameCompositeRow>(:final children):
       case CompositeCelNumber<CutFrameCompositeRow>(:final children):
         return [for (final child in children) ...idsUnder(child)];
+      // The rows it reads stand where they stand, not under it.
+      case CompositeReadsRows<CutFrameCompositeRow>(:final node):
+        return idsUnder(node);
     }
   }
 

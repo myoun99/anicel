@@ -12,7 +12,7 @@ library;
 import 'package:flutter/foundation.dart';
 import 'dart:math' as math;
 
-import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
+import '../../models/se_sound.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/project.dart';
@@ -24,6 +24,12 @@ import '../../services/playback/playback_frame_mapping.dart';
 import '../audio/audio_conform_store.dart';
 import '../audio/sound_cannot_play.dart';
 
+/// One point of a scheduled sound's volume line: at [frame] — counted from
+/// the entry's own start — the line passes [gain].
+/// Linear between points and held past the ends, as the mixer's envelope
+/// is; an empty line is unity.
+typedef ScheduledVolumePoint = ({int frame, double gain});
+
 /// A clip laid out on a run's frame axis, end clamped at the run's end.
 class ScheduledAudioClip {
   const ScheduledAudioClip({
@@ -32,11 +38,8 @@ class ScheduledAudioClip {
     required this.endFrameExclusive,
     this.offsetFrames = 0,
     this.gain = 1.0,
-    this.fadeInFrames = 0,
-    this.fadeOutFrames = 0,
     this.pan = 0.0,
-    this.fadeCurve = AudioFadeCurve.linear,
-    this.volumeKeys = const [],
+    this.volume = const [],
   });
 
   /// ONE SPAN, LAID ON AN OUTPUT AXIS — the mapping the playback walk and
@@ -44,41 +47,34 @@ class ScheduledAudioClip {
   /// export plan's own header says the mix must be "the SAME schedule
   /// shape playback consumes", which was a promise kept by hand twice).
   ///
-  /// Envelope keys anchor to the SPAN start; a clipped lead shifts them
-  /// (possibly negative — before the window).
-  ///
-  /// The layer fader multiplies in HERE (one gain per entry) so no
-  /// consumer ever re-consults the layer.
-  ///
-  /// The fades are NUMBERS the caller computes: playback passes the
-  /// clip's own, and the export bakes its anchoring into them. That
-  /// difference is a value, not a mode.
+  /// The ROW's sound ([SeSound]) is laid in HERE, so no consumer ever
+  /// re-consults the layer: a keyed volume becomes the entry's [volume]
+  /// line, read off the row at the frames the entry sounds — [clippedLead]
+  /// frames into the span.
   factory ScheduledAudioClip.ofSpan(
     SeAudioSpan span, {
     required int startFrame,
     required int endFrameExclusive,
     required int clippedLead,
-    required double layerGain,
-    required double layerPan,
-    required int fadeInFrames,
-    required int fadeOutFrames,
-  }) => ScheduledAudioClip(
-    filePath: span.clip.filePath,
-    startFrame: startFrame,
-    endFrameExclusive: endFrameExclusive,
-    offsetFrames: clippedLead + span.clip.offsetFrames,
-    gain: layerGain * span.clip.gain,
-    fadeInFrames: fadeInFrames,
-    fadeOutFrames: fadeOutFrames,
-    pan: layerPan,
-    fadeCurve: span.clip.fadeCurve,
-    volumeKeys: clippedLead == 0
-        ? span.clip.volumeKeys
-        : [
-            for (final key in span.clip.volumeKeys)
-              AudioVolumeKey(frame: key.frame - clippedLead, gain: key.gain),
-          ],
-  );
+    required SeSound sound,
+  }) {
+    final first = span.startFrame + clippedLead;
+    return ScheduledAudioClip(
+      filePath: span.clip.filePath,
+      startFrame: startFrame,
+      endFrameExclusive: endFrameExclusive,
+      offsetFrames: clippedLead + span.clip.offsetFrames,
+      gain: span.clip.gain,
+      pan: sound.pan,
+      volume: sound.isKeyed
+          ? _volumeLine(
+              sound,
+              from: first,
+              frames: endFrameExclusive - startFrame,
+            )
+          : const [],
+    );
+  }
 
   final String filePath;
   final int startFrame;
@@ -87,25 +83,16 @@ class ScheduledAudioClip {
   /// Frames skipped into the file where the block starts (the clip's trim).
   final int offsetFrames;
 
-  /// The clip's volume envelope (see [AudioClip]); fades anchor to this
-  /// schedule entry's own start/end. [gain] already carries the LAYER
-  /// fader multiplied in (AUDIO-PRO R1) — consumers never re-consult the
-  /// layer.
+  /// The clip's own gain (`AudioClip.gain`); the row's volume is [volume].
   final double gain;
-  final int fadeInFrames;
-  final int fadeOutFrames;
 
-  /// The layer's pan, -1..1 equal-power (AUDIO-PRO R1); applied by the
-  /// device mixer path only.
+  /// The row's pan, -1..1 equal-power; applied by the device mixer path
+  /// only.
   final double pan;
 
-  /// The shape both fades take.
-  final AudioFadeCurve fadeCurve;
-
-  /// The clip's volume envelope keys, frames RELATIVE TO THIS ENTRY's
-  /// start (a trimmed entry shifts them, possibly negative — the ramp's
-  /// early part simply sits before the audible window).
-  final List<AudioVolumeKey> volumeKeys;
+  /// The row's keyed volume along this entry ([ScheduledVolumePoint]) —
+  /// empty while the row's volume does not change.
+  final List<ScheduledVolumePoint> volume;
 
   @override
   bool operator ==(Object other) =>
@@ -115,11 +102,8 @@ class ScheduledAudioClip {
       other.endFrameExclusive == endFrameExclusive &&
       other.offsetFrames == offsetFrames &&
       other.gain == gain &&
-      other.fadeInFrames == fadeInFrames &&
-      other.fadeOutFrames == fadeOutFrames &&
       other.pan == pan &&
-      other.fadeCurve == fadeCurve &&
-      listEquals(other.volumeKeys, volumeKeys);
+      listEquals(other.volume, volume);
 
   @override
   int get hashCode => Object.hash(
@@ -128,20 +112,50 @@ class ScheduledAudioClip {
     endFrameExclusive,
     offsetFrames,
     gain,
-    fadeInFrames,
-    fadeOutFrames,
     pan,
-    fadeCurve,
-    Object.hashAll(volumeKeys),
+    Object.hashAll(volume),
   );
 
   @override
   String toString() =>
       'ScheduledAudioClip(filePath: $filePath, startFrame: $startFrame, '
       'endFrameExclusive: $endFrameExclusive, offsetFrames: $offsetFrames, '
-      'gain: $gain, fadeInFrames: $fadeInFrames, '
-      'fadeOutFrames: $fadeOutFrames, pan: $pan, '
-      'fadeCurve: ${fadeCurve.name}, volumeKeys: $volumeKeys)';
+      'gain: $gain, pan: $pan, volume: $volume)';
+}
+
+/// [sound]'s volume over the [frames] an entry sounds from the row's frame
+/// [from], as the entry's line: the value at every frame from its first to
+/// its end — a line between frames, as the mixer draws it — less every
+/// point that stands on the line its neighbours draw, so a keyed ramp is
+/// its two ends.
+///
+/// ⚠️Every frame, not every key: a key may ease, and the mixer's line is
+/// straight, so a curve between two keys is met at each frame it passes.
+List<ScheduledVolumePoint> _volumeLine(
+  SeSound sound, {
+  required int from,
+  required int frames,
+}) {
+  final points = [
+    for (var at = 0; at <= frames; at += 1)
+      (frame: at, gain: sound.volumeAt((from + at) * 1.0)),
+  ];
+  final line = <ScheduledVolumePoint>[];
+  for (var index = 0; index < points.length; index += 1) {
+    final point = points[index];
+    if (line.isNotEmpty && index + 1 < points.length) {
+      final before = line.last;
+      final after = points[index + 1];
+      final share =
+          (point.frame - before.frame) / (after.frame - before.frame);
+      final onTheLine = before.gain + (after.gain - before.gain) * share;
+      if ((point.gain - onTheLine).abs() < 1e-9) {
+        continue;
+      }
+    }
+    line.add(point);
+  }
+  return line;
 }
 
 /// The frames a file covers at [rate], read off [durationSecondsFor] —
@@ -281,12 +295,7 @@ ScheduledAudioClip? _spanInWindow(
     startFrame: startFrame,
     endFrameExclusive: endFrameExclusive,
     clippedLead: clippedLead,
-    layerGain: layer.audioGain,
-    layerPan: layer.audioPan,
-    // Playback plays the clip's own ramps: nothing is trimmed off the
-    // front here, so there is nothing to re-anchor.
-    fadeInFrames: span.clip.fadeInFrames,
-    fadeOutFrames: span.clip.fadeOutFrames,
+    sound: layer.seSound,
   );
 }
 
@@ -313,13 +322,6 @@ AudioMixSchedule audioMixScheduleFrom({
   required ProjectFrameRate rate,
   required int sampleRate,
 }) {
-  // Envelope keys may sit BEFORE the entry (a trimmed lead shifted them
-  // negative); frameToSample clamps at zero, so negatives convert through
-  // their magnitude.
-  int signedFrameToSample(int frame) => frame >= 0
-      ? rate.frameToSample(frame, sampleRate)
-      : -rate.frameToSample(-frame, sampleRate);
-
   final sourceIndexByPath = <String, int>{};
   final sourcePaths = <String>[];
   final clips = <AudioMixClip>[];
@@ -336,16 +338,13 @@ AudioMixSchedule audioMixScheduleFrom({
         endSample: rate.frameToSample(clip.endFrameExclusive, sampleRate),
         sourceOffset: rate.frameToSample(clip.offsetFrames, sampleRate),
         gain: clip.gain,
-        fadeInSamples: rate.frameToSample(clip.fadeInFrames, sampleRate),
-        fadeOutSamples: rate.frameToSample(clip.fadeOutFrames, sampleRate),
         panLeft: pan.left,
         panRight: pan.right,
-        fadeCurve: clip.fadeCurve.index,
         envelope: [
-          for (final key in clip.volumeKeys)
+          for (final point in clip.volume)
             AudioEnvelopePoint(
-              sample: signedFrameToSample(key.frame),
-              gain: key.gain,
+              sample: rate.frameToSample(point.frame, sampleRate),
+              gain: point.gain,
             ),
         ],
       ),

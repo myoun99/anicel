@@ -31,6 +31,9 @@ class ColorWheelPanel extends StatefulWidget {
 
   final ValueChanged<int> onColorChanged;
 
+  /// The margin round the wheel — all of the panel that does not shrink.
+  static const double inset = 12;
+
   // R10 R5: the BACKGROUND slot left with the swatch pair. This panel
   // only ever knew about it to draw the pair and to swap — both of which
   // are the tool rail's now — so keeping the parameters would have been
@@ -75,7 +78,7 @@ class _ColorWheelPanelState extends State<ColorWheelPanel> {
     // panel was the one thing that did not, and it moved whenever the
     // panel was resized.
     return Padding(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(ColorWheelPanel.inset),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final square = math.min(constraints.maxWidth, constraints.maxHeight);

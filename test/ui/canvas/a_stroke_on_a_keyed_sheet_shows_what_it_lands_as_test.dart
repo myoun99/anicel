@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/layer_effect.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 
 import '../../helpers/cel_text_tool_harness.dart';
@@ -27,11 +28,14 @@ void main() {
   /// [paper] taken away.
   LayerEffect paperKey() => LayerEffect(
     id: const EffectId('paper-key'),
-    kind: EffectKind.deleteColor,
+    kind: EffectKind.colorKey,
+    colors: {
+      'keyColor': PropertyTrack<int>.empty().withKey(
+        0,
+        0xFF000000 | paper[0] << 16 | paper[1] << 8 | paper[2],
+      ),
+    },
     parameters: {
-      'keyRed': EffectParameter(value: paper[0].toDouble()),
-      'keyGreen': EffectParameter(value: paper[1].toDouble()),
-      'keyBlue': EffectParameter(value: paper[2].toDouble()),
       'tolerance': EffectParameter(value: 10),
       'amount': EffectParameter(value: 100),
     },

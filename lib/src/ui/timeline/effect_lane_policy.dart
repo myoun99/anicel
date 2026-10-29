@@ -1,7 +1,9 @@
 import 'dart:ui' show Offset;
 
 import '../../models/key_mark.dart';
+import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
+import '../../models/layer_id.dart';
 import '../../models/transform_track.dart' show TransformPose, laneWalksAPath;
 import '../text/app_strings.dart';
 import '../text/model_vocabulary.dart';
@@ -9,7 +11,9 @@ import '../text/readout_text.dart';
 import '../theme/lane_curve_palette.dart';
 import 'property_lane_model.dart';
 import 'scale_lane_form.dart';
-import 'transform_lane_policy.dart' show transformPropertyLanes;
+import 'se_name_tag_lane_editing.dart' show parseBoolInput;
+import 'transform_lane_policy.dart'
+    show transformPositionLane, transformPropertyLanes;
 
 // EFFECT LANES (R6) on the same lane substrate the Transform group uses.
 //
@@ -60,44 +64,58 @@ String effectLaneId(EffectId effectId, String parameterId) =>
 }
 
 /// Whether the keys of effect lane [laneId] walk a path: where an effect
-/// stands its picture, as a transform's Position does ([laneWalksAPath]);
-/// a parameter's never do. Asked of the id alone, as a copy's lanes and a
-/// range's are — no parameter is named as such a lane is
-/// ([effectStandLanes]).
+/// stands its picture, and a point — a Position of its own — as a
+/// transform's Position does ([laneWalksAPath]); a parameter's never do.
+/// Asked of the id alone, as a copy's lanes and a range's are — no
+/// parameter is named as such a lane is ([effectStandLanes],
+/// [effectPointParameters]).
 bool effectLaneWalksAPath(String laneId) =>
     switch (parseEffectLaneId(laneId)) {
       (effectId: _, parameterId: final lane?)
           when effectStandLanes.contains(lane) =>
         laneWalksAPath(lane),
+      (effectId: _, parameterId: final lane?)
+          when effectPointParameters.contains(lane) =>
+        laneWalksAPath('position'),
       _ => false,
     };
 
-/// The effect of [effects] whose picture the CANVAS's box drives while
-/// [laneId] is stood on — R5 #10, 「an fx declares its own manipulators」
-/// (`canvasManipulatorsForLane`): an effect that draws its own picture, on
-/// and drawing, declares the box over it on its header and on the lanes of
-/// where it stands ([effectStandLanes]), as a transform's header and its
-/// Position and Scale declare the row's. Its colour, and every lane of any
-/// other effect, declare none. Null for every other lane.
+/// The effect of [effects] the CANVAS's box drives while [laneId] is stood
+/// on, and the [lane] of it whose keys the box moves — R5 #10, 「an fx
+/// declares its own manipulators」 (`canvasManipulatorsForLane`): an
+/// effect on and drawing declares, on its header and on the lanes its
+/// keys keep as a transform's ([LayerEffect.transformLaneAt]), the box
+/// over the picture it draws — where it stands — as a transform's header
+/// and its Position and Scale declare the row's; or a point's cross — on
+/// its header, its first point's. Its colours and numbers, and every lane
+/// of any other effect, declare none. Null for every other lane.
 ///
 /// 🗣️F-477 (유저 2026-10-26): 「fx헤더에 서있으면 트랜스폼처럼 조작할수있는거
 /// 캔버스에 뜨고 조작가능하고, 키에 서도 해당 키 조작가능한거면 가능할수
 /// 있게」. ↩️Only the transform's lanes declared one, so a cel number's
 /// header and its Position and Scale drew nothing on the canvas.
-LayerEffect? effectBoxedOn(List<LayerEffect> effects, String? laneId) {
+({LayerEffect effect, String lane})? effectBoxedOn(
+  List<LayerEffect> effects,
+  String? laneId,
+) {
   final address = laneId == null ? null : parseEffectLaneId(laneId);
   if (address == null) {
     return null;
   }
-  final lane = address.parameterId;
   for (final effect in effects) {
-    if (effect.id == address.effectId) {
-      return effect.kind.drawsItsOwnPicture &&
-              effect.enabled &&
-              (lane == null || effect.standLaneOf(lane) != null)
-          ? effect
-          : null;
+    if (effect.id != address.effectId) {
+      continue;
     }
+    final lane =
+        address.parameterId ??
+        (effect.kind.drawsItsOwnPicture
+            ? effectStandLanes.first
+            : effect.points.keys.firstOrNull);
+    return effect.enabled &&
+            lane != null &&
+            effect.transformLaneAt(lane) != null
+        ? (effect: effect, lane: lane)
+        : null;
   }
   return null;
 }
@@ -110,16 +128,23 @@ LayerEffect? effectBoxedOn(List<LayerEffect> effects, String? laneId) {
 /// [valueAt] resolves a parameter's value at a time — the blue value
 /// column's at its frame, a header graph's curve between frames too (I-89
 /// ③); the caller owns it because the sample must come from the same
-/// resolver the composite uses. [standAt] is where an effect stands its
-/// picture at a time ([effectStandPose]) — the caller knows the paper.
-/// Null for either leaves its lanes unvalued: a rail with no cut to read
-/// them in.
+/// resolver the composite uses. [standAt] is where the keys a lane of an
+/// effect keeps as a transform's ([LayerEffect.transformLaneAt]) stand at
+/// a time — where it stands its picture, a point ([effectStandPose]) —
+/// the caller knows the paper. Null for either leaves its lanes unvalued:
+/// a rail with no cut to read them in.
+///
+/// [cutRows] are the rows a row parameter ([EffectParameterUnit.layer])
+/// may name: the cut's — 🗣️I-132-Q16 a 「같은 컷의 행」 — none for a
+/// track's chain, which is no cut's.
 List<PropertyLaneRow> effectPropertyLanes(
   List<LayerEffect> effects, {
+  List<Layer> cutRows = const [],
   required bool Function(EffectId effectId) isExpanded,
   double Function(EffectId effectId, String parameterId, double time)?
   valueAt,
-  TransformPose Function(EffectId effectId, double time)? standAt,
+  TransformPose Function(EffectId effectId, String lane, double time)?
+  standAt,
 }) {
   if (effects.isEmpty) {
     return const [];
@@ -156,32 +181,70 @@ List<PropertyLaneRow> effectPropertyLanes(
       continue;
     }
     if (effect.kind.drawsItsOwnPicture) {
-      rows
-        ..addAll(_standLanes(effect, standAt))
-        ..add(_inkLane(effect, valued: valueAt != null));
+      rows.addAll(_standLanes(effect, standAt));
     }
     for (final (index, spec) in effect.kind.parameters.indexed) {
-      final parameter = effect.parameterOf(spec.id);
+      // A point is a Position of its own: the transform's row of it.
+      if (effect.points[spec.id] case final point?) {
+        final lane = spec.id;
+        rows.add(
+          transformPositionLane(
+            point,
+            laneId: effectLaneId(effect.id, lane),
+            label: spec.labelFor(AppText.language),
+            poseAt: standAt == null
+                ? null
+                : (time) => standAt(effect.id, lane, time),
+          ),
+        );
+        continue;
+      }
+      if (effect.layers.containsKey(spec.id)) {
+        rows.add(_rowLane(effect, spec, cutRows));
+        continue;
+      }
+      // A colour's keys are its own ([LayerEffect.colors]); a number's its
+      // parameter's.
+      final keys = effect.laneTrack(spec.id)!;
+      final valueKind = switch (spec.unit) {
+        EffectParameterUnit.choice => PropertyLaneValueKind.choice,
+        // As an SE name tag's inks are: the shared colour swatch.
+        EffectParameterUnit.color => PropertyLaneValueKind.color,
+        // As a name tag's Bold is: a ring a tap flips.
+        EffectParameterUnit.flag => PropertyLaneValueKind.boolean,
+        _ => PropertyLaneValueKind.number,
+      };
+      // A menu has nothing between its words to scrub through, nor a line
+      // to lay on a header graph — a flag's lane, with words for a ring.
+      // Nor has a colour: its line would be a number no one reads. Nor, of
+      // course, a flag.
+      final numbered = valueKind == PropertyLaneValueKind.number;
       rows.add(
         PropertyLaneRow(
           laneId: effectLaneId(effect.id, spec.id),
           label: spec.labelFor(AppText.language),
-          keyMarks: keyMarksOf(parameter.track),
-          keyNames: parameter.track.namedKeysByFrame,
+          keyMarks: keyMarksOf(keys),
+          keyNames: keys.namedKeysByFrame,
+          valueKind: valueKind,
+          choices: [
+            for (final choice in spec.choices)
+              choice.labelFor(AppText.language),
+          ],
           valueLabel: valueAt == null
               ? null
               : (frameIndex) => formatEffectLaneValue(
                   spec,
                   valueAt(effect.id, spec.id, frameIndex.toDouble()),
                 ),
-          scrubValue: (label, delta) =>
-              scrubEffectLaneValue(spec, label, delta),
-          curve: valueAt == null
+          scrubValue: !numbered
+              ? null
+              : (label, delta) => scrubEffectLaneValue(spec, label, delta),
+          curve: valueAt == null || !numbered
               ? null
               : (
                   parts: [LaneCurvePalette.effectParameter(index)],
                   at: (time) => [valueAt(effect.id, spec.id, time)],
-                  sides: parameter.track.sidesByFrame,
+                  sides: keys.sidesByFrame,
                   way: null,
                 ),
         ),
@@ -190,6 +253,49 @@ List<PropertyLaneRow> effectPropertyLanes(
   }
   return rows;
 }
+
+/// The lane of row parameter [spec] of [effect] ([EffectParameterUnit
+/// .layer]): a menu, as a choice's, of none and [cutRows] by name, whose
+/// pick writes the row's id ([effectLaneRowText]) — one row at every
+/// frame, and no keys to walk to, as the SE audio lane has none
+/// (🗣️I-132-Q16 a: 「없음 + 행 이름들, 키 없음」).
+PropertyLaneRow _rowLane(
+  LayerEffect effect,
+  EffectParameterSpec spec,
+  List<Layer> cutRows,
+) {
+  final named = effectLaneRowNamed(effect.layers[spec.id], cutRows);
+  final none = AppText.strings.commonNone;
+  return PropertyLaneRow(
+    laneId: effectLaneId(effect.id, spec.id),
+    label: spec.labelFor(AppText.language),
+    keyMarks: const {},
+    showsKeyNavigator: false,
+    valueKind: PropertyLaneValueKind.choice,
+    choices: [none, for (final row in cutRows) row.name],
+    choiceValues: [
+      effectLaneRowText(null),
+      for (final row in cutRows) effectLaneRowText(row.id),
+    ],
+    choiceHeld: effectLaneRowText(named?.id),
+    valueLabel: (_) => named?.name ?? none,
+  );
+}
+
+/// The row of [rows] that [row] names — null for none, and for a row that
+/// is not among them: deleted, or named in another cut, it reads as none,
+/// as a dangling attach does (`attachedBaseOf`).
+Layer? effectLaneRowNamed(LayerId? row, List<Layer> rows) =>
+    row == null ? null : rows.where((layer) => layer.id == row).firstOrNull;
+
+/// What a row parameter's lane writes for [row]: its id's value, or the
+/// empty text for none — read back by [effectLaneRowOf].
+String effectLaneRowText(LayerId? row) => row?.value ?? '';
+
+/// The row [input] names, as a row parameter's lane writes it
+/// ([effectLaneRowText]) — null for none.
+LayerId? effectLaneRowOf(String input) =>
+    input.isEmpty ? null : LayerId(input);
 
 /// How the Scale lane where an effect stands its picture reads and is
 /// typed: a layer's two, as the transform's (「트랜스폼에 있는거처럼」).
@@ -203,7 +309,8 @@ const ScaleLaneForm effectStandScaleForm = TwoScales();
 /// 키. 공용화된거 사용하면서」.
 List<PropertyLaneRow> _standLanes(
   LayerEffect effect,
-  TransformPose Function(EffectId effectId, double time)? standAt,
+  TransformPose Function(EffectId effectId, String lane, double time)?
+  standAt,
 ) {
   final ids = {
     for (final lane in effectStandLanes) effectLaneId(effect.id, lane),
@@ -212,30 +319,15 @@ List<PropertyLaneRow> _standLanes(
     for (final row in transformPropertyLanes(
       effect.stand,
       scaleForm: effectStandScaleForm,
-      poseAt: standAt == null ? null : (time) => standAt(effect.id, time),
+      // Any lane of the stand names its keys.
+      poseAt: standAt == null
+          ? null
+          : (time) => standAt(effect.id, effectStandLanes.first, time),
       laneIdOf: (lane) => effectLaneId(effect.id, lane),
     ))
       if (ids.contains(row.laneId)) row,
   ];
 }
-
-/// [effect]'s lane of the colour it draws its picture in ([LayerEffect
-/// .ink]): a colour lane, as an SE name tag's inks are — the value cell the
-/// shared colour swatch, no line on a header graph. Unvalued where [valued]
-/// is not, as the parameters' lanes are.
-PropertyLaneRow _inkLane(LayerEffect effect, {required bool valued}) =>
-    PropertyLaneRow(
-      laneId: effectLaneId(effect.id, effectInkLane),
-      label: AppText.strings.effectParameterName(effectInkLane, 'Ink'),
-      keyMarks: keyMarksOf(effect.ink),
-      keyNames: effect.ink.namedKeysByFrame,
-      valueKind: PropertyLaneValueKind.color,
-      valueLabel: valued
-          ? (frameIndex) => formatLaneColorValue(
-              effectInkAt(effect.ink, frameIndex.toDouble()),
-            )
-          : null,
-    );
 
 /// The display order of ONE effect's member lanes — the order the rail
 /// draws them under the effect's group header ([LayerEffect.lanes]).
@@ -256,16 +348,40 @@ List<String> effectLaneDisplayOrder(LayerEffect effect) => [
 String formatEffectLaneValue(EffectParameterSpec spec, double value) {
   return switch (spec.unit) {
     EffectParameterUnit.number => columnValueText(value),
-    EffectParameterUnit.degrees => '${columnValueText(value)}°',
+    EffectParameterUnit.degrees => turnsReadoutText(value),
     EffectParameterUnit.pixels => '${columnValueText(value)} px',
+    EffectParameterUnit.choice =>
+      spec.choices[spec.clamp(value).round()].labelFor(AppText.language),
+    EffectParameterUnit.color => formatLaneColorValue(value.toInt()),
+    EffectParameterUnit.flag => flagLaneWord(effectFlagIsOn(value)),
+    // A point prints as the transform's Position does, on its own row
+    // ([transformPositionLane]) — it is no number to print here; a row by
+    // its name ([_rowLane]).
+    EffectParameterUnit.point || EffectParameterUnit.layer => '',
   };
 }
 
 /// Parses what the value editor accepts for [spec]: the bare number, with
-/// or without its unit suffix, clamped to the parameter's range. Null on a
-/// parse failure (the editor then ignores the input, like the transform
-/// lanes).
+/// or without its unit suffix, clamped to the parameter's range — or, on a
+/// menu, one of its words, in the program's language or the model's
+/// English — on a flag, `on` or `off` as its ring writes them. Null on a
+/// parse failure (the editor then ignores the input,
+/// like the transform lanes).
 double? parseEffectLaneValue(EffectParameterSpec spec, String input) {
+  if (spec.unit == EffectParameterUnit.choice) {
+    final word = input.trim();
+    final index = spec.choices.indexWhere(
+      (choice) =>
+          choice.labelFor(AppText.language) == word || choice.label == word,
+    );
+    return index < 0 ? null : index.toDouble();
+  }
+  if (spec.unit == EffectParameterUnit.flag) {
+    return switch (parseBoolInput(input)) {
+      final on? => on ? 1 : 0,
+      null => null,
+    };
+  }
   final value = columnValueOf(input);
   if (value == null) {
     return null;
@@ -273,9 +389,10 @@ double? parseEffectLaneValue(EffectParameterSpec spec, String input) {
   return spec.clamp(value);
 }
 
-/// AE-style value scrubbing: the horizontal drag drives the number, in the
-/// same text form the value editor parses (the release commits through the
-/// ordinary onSetValue path, so one drag is one undo).
+/// AE-style value scrubbing: the horizontal drag drives the number — an
+/// angle's two boxes their own ([scrubbedAngle]) — in the same text form
+/// the value editor parses (the release commits through the ordinary
+/// onSetValue path, so one drag is one undo).
 String? scrubEffectLaneValue(
   EffectParameterSpec spec,
   String currentLabel,
@@ -285,8 +402,8 @@ String? scrubEffectLaneValue(
   if (current == null) {
     return null;
   }
-  return formatEffectLaneValue(
-    spec,
-    spec.clamp(scrubbedNumber(current, dragDelta)),
-  );
+  final scrubbed = spec.unit == EffectParameterUnit.degrees
+      ? scrubbedAngle(current, dragDelta)
+      : scrubbedNumber(current, dragDelta);
+  return formatEffectLaneValue(spec, spec.clamp(scrubbed));
 }

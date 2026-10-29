@@ -163,7 +163,7 @@ class FramePictureStore<K extends Object> {
   /// it is.
   ///
   /// 🚨★★★IN PLACE, NEVER OVER — the display buffer's two lessons. The
-  /// patch is drawn on nothing, a picture of [rect] alone ([_recorded]),
+  /// patch is drawn on nothing, a picture of [rect] alone ([recordedOver]),
   /// and its texels replace the picture's. ↩️The buffer recomposed a
   /// region OVER the pixels it carried: ink not fully opaque blended with
   /// its own previous frame unless the region was cleared first, and where
@@ -204,7 +204,7 @@ class FramePictureStore<K extends Object> {
       _letGo(entry);
       return false;
     }
-    final asked = _Patch<K>(from, to, widened, _recorded(widened, draw));
+    final asked = _Patch<K>(from, to, widened, recordedOver(widened, draw));
     _becoming[to] = (entry: entry, patch: asked);
     entry.renders = entry.renders.then((_) => _renderPatch(entry, asked));
     return true;
@@ -337,7 +337,7 @@ class FramePictureStore<K extends Object> {
       return null;
     }
     final image = await _rendered(
-      _recorded(extent, lay.frame.draw),
+      recordedOver(extent, lay.frame.draw),
       extent.width.toInt(),
       extent.height.toInt(),
     );
@@ -453,6 +453,19 @@ class FramePictureStore<K extends Object> {
   /// answered at the submission rather than its completion: fastest on the
   /// main PC (3.0 ms), but 190 late on the Surface. ⛔Not the deepest level
   /// or the patch rastered at once (`toImageSync`): later on both.
+  ///
+  /// ⛔⛔TWO WAITS A BATCH, TRIED AGAIN AND REVERTED (2026-10-28, card
+  /// s5-stroke-trails-on-the-heavy-cut ②b, 유저 답 「쓰기 왕복을 줄인다
+  /// (구조는 그대로)」): each patch laid whole at the top of one run with
+  /// the halvings under it, the patch and the deepest level rastered at
+  /// once, the base copied texture to texture and the levels through one
+  /// buffer, in one submission (`0fee89202`..`2defd8c03`). The main PC
+  /// under load: a step p50 73–87 → 42–54 ms. The Surface Pro 11 (release,
+  /// mouse, six runs in turn, S5_BA cut 352 and a new project alike): a
+  /// step showed 16 ms later — p50 33 → 50 ms, p90 49 → 67 ms — and vsync
+  /// to raster end p50 2.9–4.7 → 11.3–14.2 ms, the UI and the raster
+  /// themselves unchanged. 🚨The main PC does not speak for the Surface
+  /// here: measure a change to these waits there before it lands.
   Future<bool> _written(_Entry<K> entry, List<_Texels> batch) async {
     final picture = entry.picture;
     final patched = entry.patchedLevels;
@@ -711,7 +724,7 @@ Iterable<_PictureRead> _rowsOf(
 
 /// A picture of what [draw] draws over [rect] in world coordinates, with
 /// [rect]'s top left at its origin.
-ui.Picture _recorded(ui.Rect rect, void Function(ui.Canvas canvas) draw) {
+ui.Picture recordedOver(ui.Rect rect, void Function(ui.Canvas canvas) draw) {
   final recorder = ui.PictureRecorder();
   final canvas = ui.Canvas(recorder)
     ..translate(-rect.left, -rect.top)

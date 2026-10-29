@@ -16,13 +16,17 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 /// The effect lanes' side of the shared lane substrate (R6): the addresses,
 /// the rows, and the pure key edits the host commits as one undo.
 void main() {
-  LayerEffect blur({double x = 0, double y = 0, String id = 'e1'}) =>
+  LayerEffect blur({
+    double blurriness = 0,
+    double dimensions = 0,
+    String id = 'e1',
+  }) =>
       LayerEffect(
         id: EffectId(id),
         kind: EffectKind.blur,
         parameters: {
-          'blurX': EffectParameter(value: x),
-          'blurY': EffectParameter(value: y),
+          'blurriness': EffectParameter(value: blurriness),
+          'blurDimensions': EffectParameter(value: dimensions),
         },
       );
 
@@ -32,10 +36,10 @@ void main() {
   group('lane addresses', () {
     test('round-trip, and never collide with the transform lane ids', () {
       const effectId = EffectId('e1');
-      final laneId = effectLaneId(effectId, 'blurX');
+      final laneId = effectLaneId(effectId, 'blurriness');
       final address = parseEffectLaneId(laneId);
       expect(address!.effectId, effectId);
-      expect(address.parameterId, 'blurX');
+      expect(address.parameterId, 'blurriness');
 
       final header = parseEffectLaneId(effectGroupLaneId(effectId));
       expect(header!.effectId, effectId);
@@ -45,7 +49,7 @@ void main() {
         expect(parseEffectLaneId(transformLane), isNull, reason: transformLane);
       }
       expect(parseEffectLaneId(transformGroupHeaderLane.laneId), isNull);
-      expect(parseEffectLaneId('se-audio'), isNull);
+      expect(parseEffectLaneId('sound:volume'), isNull);
     });
 
     test('malformed addresses answer null instead of a wrong effect', () {
@@ -62,12 +66,12 @@ void main() {
         id: const EffectId('e1'),
         kind: EffectKind.blur,
         parameters: {
-          'blurX': EffectParameter(
+          'blurriness': EffectParameter(
             track: PropertyTrack<double>(
               keys: {3: const PropertyKey<double>(4)},
             ),
           ),
-          'blurY': EffectParameter(
+          'blurDimensions': EffectParameter(
             track: PropertyTrack<double>(
               keys: {7: const PropertyKey<double>(2)},
             ),
@@ -87,7 +91,7 @@ void main() {
         id: const EffectId('e1'),
         kind: EffectKind.blur,
         parameters: {
-          'blurX': EffectParameter(
+          'blurriness': EffectParameter(
             track: PropertyTrack<double>(
               keys: {
                 3: const PropertyKey<double>(4, outgoing: KeyExit.hold),
@@ -99,7 +103,7 @@ void main() {
       );
       final rows = effectPropertyLanes([held], isExpanded: (_) => true);
       final lane = rows.singleWhere(
-        (row) => row.laneId == effectLaneId(const EffectId('e1'), 'blurX'),
+        (row) => row.laneId == effectLaneId(const EffectId('e1'), 'blurriness'),
       );
       expect(lane.keyMarks, {
         3: const SidesKeyMark(
@@ -148,12 +152,12 @@ void main() {
 
     test('the value column formats per unit and parses back', () {
       final rows = effectPropertyLanes(
-        [blur(x: 8)],
+        [blur(blurriness: 8)],
         isExpanded: (_) => true,
         valueAt: (effectId, parameterId, frameIndex) =>
-            parameterId == 'blurX' ? 8 : 0,
+            parameterId == 'blurriness' ? 8 : 0,
       );
-      final lane = rows.firstWhere((row) => row.label == 'Blur Width');
+      final lane = rows.firstWhere((row) => row.label == 'Blurriness');
       expect(lane.valueLabel!(0), '8.00 px');
       final spec = EffectKind.blur.parameters.first;
       expect(parseEffectLaneValue(spec, '8.00 px'), 8);
@@ -166,17 +170,94 @@ void main() {
       );
     });
 
+    test('a MENU lane reads its word, takes a word back, and is no number '
+        '(I-132-Q6)', () {
+      final key = LayerEffect.defaults(
+        id: const EffectId('k'),
+        kind: EffectKind.colorKey,
+      );
+      final rows = effectPropertyLanes(
+        [key],
+        isExpanded: (_) => true,
+        valueAt: (effectId, parameterId, frameIndex) =>
+            parameterId == 'keyOperation' ? 1 : 0,
+      );
+      final lane = rows.firstWhere((row) => row.label == 'Key Operation');
+      expect(lane.valueKind, PropertyLaneValueKind.choice);
+      expect(lane.choices, ['Key Colors', 'Keep Colors']);
+      expect(lane.valueLabel!(0), 'Keep Colors');
+      expect(lane.scrubValue, isNull, reason: 'nothing between two words');
+      final spec = EffectKind.colorKey.parameterSpec('keyOperation')!;
+      expect(parseEffectLaneValue(spec, 'Keep Colors'), 1);
+      expect(parseEffectLaneValue(spec, 'Key Colors'), 0);
+      expect(parseEffectLaneValue(spec, '1'), isNull);
+    });
+
+    test('a FLAG lane is a ring that reads on and off, takes them back, and '
+        'is no number (I-132-Q14)', () {
+      final rows = effectPropertyLanes(
+        [blur()],
+        isExpanded: (_) => true,
+        valueAt: (effectId, parameterId, frameIndex) =>
+            parameterId == 'repeatEdgePixels' ? frameIndex : 0.0,
+      );
+      final lane = rows.firstWhere(
+        (row) => row.label == 'Repeat Edge Pixels',
+      );
+      expect(lane.valueKind, PropertyLaneValueKind.boolean);
+      expect(lane.valueLabel!(0), flagLaneWord(false));
+      expect(lane.valueLabel!(1), flagLaneWord(true));
+      expect(lane.scrubValue, isNull, reason: 'nothing between on and off');
+      expect(lane.curve, isNull);
+      final spec = EffectKind.blur.parameterSpec('repeatEdgePixels')!;
+      expect(parseEffectLaneValue(spec, flagLaneWord(true)), 1);
+      expect(parseEffectLaneValue(spec, flagLaneWord(false)), 0);
+      expect(parseEffectLaneValue(spec, 'wide'), isNull);
+      // A number pasted on reads as the nearer of the two.
+      expect(formatEffectLaneValue(spec, 0.4), flagLaneWord(false));
+      expect(formatEffectLaneValue(spec, 0.6), flagLaneWord(true));
+    });
+
     test('scrubbing moves the value in the form the editor parses', () {
       final spec = EffectKind.hueSaturation.parameters.first;
-      expect(scrubEffectLaneValue(spec, '10°', const Offset(20, 0)), '20.00°');
+      // An angle: its degrees box hands its travel down, its turns box
+      // across ([scrubbedAngle]).
       expect(
-        scrubEffectLaneValue(spec, '10°', const Offset(-100, 0)),
-        '-40.00°',
+        scrubEffectLaneValue(spec, '0x+10°', const Offset(0, 20)),
+        '0x+20.00°',
       );
-      // Clamped at the spec edge, never past it.
       expect(
-        scrubEffectLaneValue(spec, '170°', const Offset(200, 0)),
-        '180.00°',
+        scrubEffectLaneValue(spec, '0x+10°', const Offset(0, -100)),
+        '0x-40.00°',
+      );
+      // Clamped at the spec edge, never past it — a whole turn too.
+      expect(
+        scrubEffectLaneValue(spec, '0x+170°', const Offset(0, 200)),
+        '0x+180.00°',
+      );
+      expect(
+        scrubEffectLaneValue(spec, '0x+10°', const Offset(2, 0)),
+        '0x+180.00°',
+      );
+      final strength = EffectKind.blur.parameters.first;
+      expect(
+        scrubEffectLaneValue(strength, '8.00 px', const Offset(4, 0)),
+        '10.00 px',
+        reason: 'a number that is no angle scrubs across, as it did',
+      );
+    });
+
+    test('an angle reads its turns and degrees, and takes them back '
+        '(I-132-Q17)', () {
+      final spec = EffectKind.hueSaturation.parameters.first;
+      expect(formatEffectLaneValue(spec, 90), '0x+90.00°');
+      expect(formatEffectLaneValue(spec, -90), '0x-90.00°');
+      expect(parseEffectLaneValue(spec, '0x-90.00°'), -90);
+      expect(parseEffectLaneValue(spec, '-30'), -30, reason: 'or bare');
+      expect(
+        parseEffectLaneValue(spec, '1x+0°'),
+        180,
+        reason: 'clamped to the spec',
       );
     });
   });
@@ -260,19 +341,19 @@ void main() {
     test(
       'the diamond toggles a key at the RESOLVED value, then removes it',
       () {
-        final effects = [blur(x: 6)];
+        final effects = [blur(blurriness: 6)];
         final keyed = effectsWithLaneKeyToggled(
           effects,
-          laneId: effectLaneId(const EffectId('e1'), 'blurX'),
+          laneId: effectLaneId(const EffectId('e1'), 'blurriness'),
           frameIndex: 4,
         )!;
-        expect(keyed.single.parameterOf('blurX').track.keyAt(4)!.value, 6);
+        expect(keyed.single.parameterOf('blurriness').track.keyAt(4)!.value, 6);
         final unkeyed = effectsWithLaneKeyToggled(
           keyed,
-          laneId: effectLaneId(const EffectId('e1'), 'blurX'),
+          laneId: effectLaneId(const EffectId('e1'), 'blurriness'),
           frameIndex: 4,
         )!;
-        expect(unkeyed.single.parameterOf('blurX').track.isEmpty, isTrue);
+        expect(unkeyed.single.parameterOf('blurriness').track.isEmpty, isTrue);
       },
     );
 
@@ -280,12 +361,12 @@ void main() {
         'rule with the transform lanes, which key unconditionally', () {
       final edited = effectsWithLaneValueEdited(
         [blur()],
-        laneId: effectLaneId(const EffectId('e1'), 'blurX'),
+        laneId: effectLaneId(const EffectId('e1'), 'blurriness'),
         frameIndex: 7,
         input: '9',
         scaleLinked: false,
       )!;
-      final parameter = edited.single.parameterOf('blurX');
+      final parameter = edited.single.parameterOf('blurriness');
 
       expect(parameter.track.keyAt(7)!.value, 9);
       expect(parameter.isAnimated, isTrue);
@@ -296,48 +377,123 @@ void main() {
       expect(parameter.resolveAt(999), 9);
       // The static slot SURVIVES (the user's note: an AE stopwatch would
       // switch off into it) — the edit simply no longer writes it.
-      expect(parameter.value, blur().parameterOf('blurX').value);
+      expect(parameter.value, blur().parameterOf('blurriness').value);
     });
 
     test('a value edit KEYS at the playhead once animated (AE rule)', () {
       final animated = effectsWithLaneKeyToggled(
-        [blur(x: 6)],
-        laneId: effectLaneId(const EffectId('e1'), 'blurX'),
+        [blur(blurriness: 6)],
+        laneId: effectLaneId(const EffectId('e1'), 'blurriness'),
         frameIndex: 0,
       )!;
       final edited = effectsWithLaneValueEdited(
         animated,
-        laneId: effectLaneId(const EffectId('e1'), 'blurX'),
+        laneId: effectLaneId(const EffectId('e1'), 'blurriness'),
         frameIndex: 5,
         input: '9',
         scaleLinked: false,
       )!;
-      expect(edited.single.parameterOf('blurX').track.keyAt(5)!.value, 9);
+      expect(edited.single.parameterOf('blurriness').track.keyAt(5)!.value, 9);
     });
+
+    // Every parameter whose value steps — a menu's word (I-132-Q6
+    // 「키프레임은 계단」), a flag's on and off (I-132-Q14) — one law.
+    final stepping = [
+      for (final kind in EffectKind.values)
+        for (final spec in kind.parameters)
+          if (spec.unit == EffectParameterUnit.choice ||
+              spec.unit == EffectParameterUnit.flag)
+            (kind: kind, spec: spec),
+    ];
+    // The word its value cell writes for 1: a menu's second word, the ring's
+    // `on`.
+    String wordForOne(EffectParameterSpec spec) =>
+        spec.unit == EffectParameterUnit.flag
+        ? flagLaneWord(true)
+        : spec.choices[1].label;
+
+    test('⛔전제: both a menu and a flag step', () {
+      expect(
+        {for (final (:spec, kind: _) in stepping) spec.unit},
+        {EffectParameterUnit.choice, EffectParameterUnit.flag},
+      );
+    });
+
+    for (final (:kind, :spec) in stepping) {
+      test('${kind.name}.${spec.id}: its keys are steps — by its space, '
+          'whatever sides a key wears', () {
+        // Plain linear keys, as a paste from a number lane would bring them.
+        LayerEffect keyed(String parameterId) => LayerEffect(
+          id: const EffectId('k'),
+          kind: kind,
+          parameters: {
+            parameterId: EffectParameter(
+              track: PropertyTrack<double>(
+                keys: {
+                  0: const PropertyKey<double>(0),
+                  10: const PropertyKey<double>(1),
+                },
+              ),
+            ),
+          },
+        );
+        double at(String parameterId, int frame) => effectParameterValueAt(
+          [keyed(parameterId)],
+          const EffectId('k'),
+          parameterId,
+          frame,
+        );
+
+        expect(at(spec.id, 9), 0);
+        expect(at(spec.id, 10), 1);
+        // ⛔The control: the same keys on a number lane of the kind pass
+        // between.
+        final number = kind.parameters.firstWhere(
+          (other) => other.unit == EffectParameterUnit.number ||
+              other.unit == EffectParameterUnit.pixels,
+        );
+        expect(at(number.id, 5), closeTo(0.5, 1e-9));
+      });
+
+      test('${kind.name}.${spec.id}: a pick keys its word, leaving the key '
+          'a hold', () {
+        final laneId = effectLaneId(const EffectId('k'), spec.id);
+        final edited = effectsWithLaneValueEdited(
+          [LayerEffect.defaults(id: const EffectId('k'), kind: kind)],
+          laneId: laneId,
+          frameIndex: 4,
+          input: wordForOne(spec),
+          scaleLinked: false,
+        )!;
+        final key = edited.single.parameterOf(spec.id).track.keyAt(4)!;
+        expect(key.value, 1);
+        expect(key.outgoing, KeyExit.hold);
+      });
+    }
 
     test('the toggle keys and unkeys like the transform lanes', () {
       // The single-key MOVE left with the key marker's private drag
       // (2026-08-08). Re-timing is the span's move now (`LaneHome.shifted`)
       // — select the span, move the span. ↩️A remover of its own went when
       // a span's Delete became one edit for every home (F-374).
-      final laneId = effectLaneId(const EffectId('e1'), 'blurX');
+      final laneId = effectLaneId(const EffectId('e1'), 'blurriness');
       var effects = effectsWithLaneKeyToggled(
-        [blur(x: 6)],
+        [blur(blurriness: 6)],
         laneId: laneId,
         frameIndex: 9,
       )!;
-      expect(effects.single.parameterOf('blurX').track.keyAt(9)!.value, 6);
+      expect(effects.single.parameterOf('blurriness').track.keyAt(9)!.value, 6);
 
       effects = effectsWithLaneKeyToggled(
         effects,
         laneId: laneId,
         frameIndex: 9,
       )!;
-      expect(effects.single.parameterOf('blurX').track.isEmpty, isTrue);
+      expect(effects.single.parameterOf('blurriness').track.isEmpty, isTrue);
     });
 
     test('every edit answers null on a lane it does not own', () {
-      final effects = [blur(x: 6)];
+      final effects = [blur(blurriness: 6)];
       const foreign = 'position';
       expect(
         effectsWithLaneKeyToggled(effects, laneId: foreign, frameIndex: 0),
@@ -356,7 +512,7 @@ void main() {
       expect(
         effectsWithLaneKeyToggled(
           effects,
-          laneId: effectLaneId(const EffectId('gone'), 'blurX'),
+          laneId: effectLaneId(const EffectId('gone'), 'blurriness'),
           frameIndex: 0,
         ),
         isNull,
@@ -375,8 +531,8 @@ void main() {
 
     test("the key window's write gives an effect's keys a pick's sides "
         "alone: a path and a roving time are a position's", () {
-      final laneId = effectLaneId(const EffectId('e1'), 'blurX');
-      var effects = [blur(x: 6)];
+      final laneId = effectLaneId(const EffectId('e1'), 'blurriness');
+      var effects = [blur(blurriness: 6)];
       for (final frame in [0, 4, 8]) {
         effects = effectsWithLaneKeyToggled(
           effects,
@@ -394,7 +550,7 @@ void main() {
           roving: true,
         ),
       )!;
-      for (final key in written.single.parameterOf('blurX').track.keys.values) {
+      for (final key in written.single.parameterOf('blurriness').track.keys.values) {
         expect(key.outgoing, KeyExit.hold);
         expect(key.path, KeyPath.straight);
         expect(key.roving, isFalse);
@@ -402,10 +558,10 @@ void main() {
     });
 
     test('an edit leaves the OTHER effects identical', () {
-      final effects = [blur(x: 6, id: 'a'), hue(id: 'b')];
+      final effects = [blur(blurriness: 6, id: 'a'), hue(id: 'b')];
       final edited = effectsWithLaneValueEdited(
         effects,
-        laneId: effectLaneId(const EffectId('a'), 'blurX'),
+        laneId: effectLaneId(const EffectId('a'), 'blurriness'),
         frameIndex: 0,
         input: '3',
         scaleLinked: false,
@@ -419,7 +575,7 @@ void main() {
         effectLaneId(const EffectId('e1'), parameter);
 
     List<LayerEffect> withKeys(Map<String, Map<int, double>> lanes) {
-      var effects = [blur()];
+      var effects = [hue(id: 'e1')];
       for (final lane in lanes.entries) {
         for (final key in lane.value.entries) {
           effects = effectsWithLaneValueEdited(
@@ -440,42 +596,42 @@ void main() {
 
     test('shifts every ranged key of every spanned lane by one delta', () {
       final effects = withKeys({
-        'blurX': {2: 4, 3: 6},
-        'blurY': {2: 1},
+        'hue': {2: 4, 3: 6},
+        'saturation': {2: 1},
       });
       final moved = laneSpanKeysShifted(
         effects,
-        laneIds: [laneOf('blurX'), laneOf('blurY')],
+        laneIds: [laneOf('hue'), laneOf('saturation')],
         lensOf: effectLaneLens,
         rangeStartIndex: 2,
         rangeEndIndexExclusive: 4,
         frameDelta: 5,
       )!;
-      expect(moved.single.parameterOf('blurX').track.keys.keys, [7, 8]);
-      expect(moved.single.parameterOf('blurY').track.keys.keys, [7]);
+      expect(moved.single.parameterOf('hue').track.keys.keys, [7, 8]);
+      expect(moved.single.parameterOf('saturation').track.keys.keys, [7]);
     });
 
     test('a blocked landing vetoes the WHOLE move (all-or-nothing)', () {
       final effects = withKeys({
-        'blurX': {2: 4, 6: 9},
-        'blurY': {2: 1},
+        'hue': {2: 4, 6: 9},
+        'saturation': {2: 1},
       });
       expect(
         laneSpanKeysShifted(
           effects,
-          laneIds: [laneOf('blurX'), laneOf('blurY')],
+          laneIds: [laneOf('hue'), laneOf('saturation')],
           lensOf: effectLaneLens,
           rangeStartIndex: 2,
           rangeEndIndexExclusive: 3,
           frameDelta: 4,
         ),
         isNull,
-        reason: 'blurX would land on its own unshifted key at 6',
+        reason: 'hue would land on its own unshifted key at 6',
       );
       expect(
         laneSpanKeysShifted(
           effects,
-          laneIds: [laneOf('blurX')],
+          laneIds: [laneOf('hue')],
           lensOf: effectLaneLens,
           rangeStartIndex: 2,
           rangeEndIndexExclusive: 3,
@@ -488,25 +644,25 @@ void main() {
 
     test('a lane with no ranged key rides along without blocking', () {
       final effects = withKeys({
-        'blurX': {2: 4},
+        'hue': {2: 4},
       });
       final moved = laneSpanKeysShifted(
         effects,
-        laneIds: [laneOf('blurX'), laneOf('blurY')],
+        laneIds: [laneOf('hue'), laneOf('saturation')],
         lensOf: effectLaneLens,
         rangeStartIndex: 2,
         rangeEndIndexExclusive: 3,
         frameDelta: 1,
       )!;
-      expect(moved.single.parameterOf('blurX').track.keys.keys, [3]);
+      expect(moved.single.parameterOf('hue').track.keys.keys, [3]);
     });
 
     test('the navigator reads a lane\'s keys, and a header its union', () {
       final effects = withKeys({
-        'blurX': {2: 4},
-        'blurY': {8: 1},
+        'hue': {2: 4},
+        'saturation': {8: 1},
       });
-      expect(effectLaneKeyFrames(effects, laneOf('blurX')), {2});
+      expect(effectLaneKeyFrames(effects, laneOf('hue')), {2});
       expect(
         effectLaneKeyFrames(effects, effectGroupLaneId(const EffectId('e1'))),
         {2, 8},
@@ -554,13 +710,13 @@ void main() {
     // resolve. The value a lane SHOWS and a key FREEZES comes from one
     // function now, so a fourth surface cannot quietly answer differently.
     test('it resolves the named parameter, in the chain it is given', () {
-      final effects = [blur(x: 6), hue()];
+      final effects = [blur(blurriness: 6), hue()];
       expect(
-        effectParameterValueAt(effects, const EffectId('e1'), 'blurX', 0),
+        effectParameterValueAt(effects, const EffectId('e1'), 'blurriness', 0),
         6,
       );
       expect(
-        effectParameterValueAt(effects, const EffectId('e1'), 'blurX', 999),
+        effectParameterValueAt(effects, const EffectId('e1'), 'blurriness', 999),
         6,
         reason: 'an unanimated parameter is the same at every frame',
       );
@@ -568,23 +724,23 @@ void main() {
 
     test('and it answers per FRAME once the parameter is animated', () {
       final keyed = effectsWithLaneKeyToggled(
-        [blur(x: 6)],
-        laneId: effectLaneId(const EffectId('e1'), 'blurX'),
+        [blur(blurriness: 6)],
+        laneId: effectLaneId(const EffectId('e1'), 'blurriness'),
         frameIndex: 4,
       )!;
       final animated = effectsWithLaneValueEdited(
         keyed,
-        laneId: effectLaneId(const EffectId('e1'), 'blurX'),
+        laneId: effectLaneId(const EffectId('e1'), 'blurriness'),
         frameIndex: 10,
         input: '12',
         scaleLinked: false,
       )!;
       expect(
-        effectParameterValueAt(animated, const EffectId('e1'), 'blurX', 4),
+        effectParameterValueAt(animated, const EffectId('e1'), 'blurriness', 4),
         6,
       );
       expect(
-        effectParameterValueAt(animated, const EffectId('e1'), 'blurX', 10),
+        effectParameterValueAt(animated, const EffectId('e1'), 'blurriness', 10),
         12,
       );
     });
@@ -593,9 +749,9 @@ void main() {
         'lane can outlive the effect it names', () {
       expect(
         effectParameterValueAt(
-          [blur(x: 6)],
+          [blur(blurriness: 6)],
           const EffectId('gone'),
-          'blurX',
+          'blurriness',
           0,
         ),
         0,

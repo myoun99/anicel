@@ -24,6 +24,10 @@ import 'package:anicel/src/ui/widgets/app_window.dart' show AppWindowField;
 ///
 /// A test that treated them alike would let one drift into the other's
 /// rule without anything going red.
+/// The cut rename window on [name], in no scene.
+RenameCutDialog _renameCut(String name) =>
+    RenameCutDialog(initialName: name, initialScene: '', onSceneChanged: (_) {});
+
 void main() {
   group('the rename dialogs', () {
     testWidgets('a cut rename pops the TRIMMED name', (tester) async {
@@ -37,7 +41,7 @@ void main() {
                   onPressed: () async {
                     popped = await showDialog<Object?>(
                       context: context,
-                      builder: (_) => const RenameCutDialog(initialName: 'A1'),
+                      builder: (_) => _renameCut('A1'),
                     );
                   },
                   child: const Text('open'),
@@ -73,7 +77,7 @@ void main() {
                   onPressed: () async {
                     popped = await showDialog<Object?>(
                       context: context,
-                      builder: (_) => const RenameCutDialog(initialName: 'A1'),
+                      builder: (_) => _renameCut('A1'),
                     );
                     closed = true;
                   },
@@ -209,7 +213,7 @@ void main() {
                   onPressed: () async {
                     popped = await showDialog<Object?>(
                       context: context,
-                      builder: (_) => const RenameCutDialog(initialName: 'A1'),
+                      builder: (_) => _renameCut('A1'),
                     );
                     closed = true;
                   },
@@ -418,7 +422,7 @@ void main() {
 
     testWidgets('a cut rename accepts through -confirm-button, not '
         '-ok-button', (tester) async {
-      await pump(tester, const RenameCutDialog(initialName: 'A1'));
+      await pump(tester, _renameCut('A1'));
       expectKeys(tester, [
         'rename-cut-dialog',
         'rename-cut-text-field',
@@ -456,7 +460,7 @@ void main() {
         strings.tlLayer,
       ),
       (
-        const RenameCutDialog(initialName: 'C1'),
+        _renameCut('C1'),
         strings.editNameAction,
         strings.tlCut,
       ),
@@ -480,11 +484,14 @@ void main() {
           find.text(title),
           findsOneWidget,
         );
+        // The field the title names — the cut's scene over a cut's name
+        // (F-291) is a field of its own, and its cap says which.
+        final named = find.byWidgetPredicate(
+          (widget) => widget is AppWindowField && widget.emphasized,
+        );
+        expect(named, findsOneWidget, reason: 'fixture');
         expect(
-          find.descendant(
-            of: find.byType(AppWindowField),
-            matching: find.byType(Text),
-          ),
+          find.descendant(of: named, matching: find.byType(Text)),
           findsNothing,
           reason: 'the field stands alone under the title that names it',
         );

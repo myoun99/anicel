@@ -5,7 +5,7 @@ import 'separable_blend_mode.dart';
 import 'brush_input_source.dart';
 import 'brush_mixing_method.dart';
 import 'brush_pressure_curve.dart';
-import 'brush_settings_group.dart';
+import 'brush_settings_row.dart';
 import 'brush_shape.dart';
 import 'brush_tip_mask.dart';
 import 'brush_tip_order.dart';
@@ -58,7 +58,7 @@ class BrushSettings {
     double paintDensity = 1.0,
     double colorStretch = 0.0,
     BrushCorrection correction = const BrushCorrection(),
-    this.folded = const {},
+    this.shown = BrushSettingsRow.shownByDefault,
   }) : shape = BrushShape(
          color: color,
          size: size,
@@ -112,7 +112,10 @@ class BrushSettings {
   /// back through the flat parameter list — the wholesale hop the stroke
   /// chain's converters take (D4). Values are re-validated so an illegal
   /// shape still throws here rather than downstream.
-  BrushSettings.fromShape(this.shape, {this.folded = const {}}) {
+  BrushSettings.fromShape(
+    this.shape, {
+    this.shown = BrushSettingsRow.shownByDefault,
+  }) {
     _validateShape(shape);
   }
 
@@ -120,10 +123,11 @@ class BrushSettings {
   /// stroke chain moves presets across as a whole [shape] (see [BrushShape]).
   final BrushShape shape;
 
-  /// The groups of this brush's settings that are folded in the panel —
-  /// the one thing a brush keeps that is not how it paints, so it stands
-  /// beside [shape] rather than in it (F-418-Q10).
-  final Set<BrushSettingsGroup> folded;
+  /// The rows of this brush's settings the tool settings panel shows (I-141,
+  /// [BrushSettingsRow]) — the one thing a brush keeps that is not how it
+  /// paints, so it stands beside [shape] rather than in it, as the folded
+  /// groups it replaced did (F-418-Q10).
+  final Set<BrushSettingsRow> shown;
 
   int get color => shape.color;
   double get size => shape.size;
@@ -253,7 +257,7 @@ class BrushSettings {
     double? paintDensity,
     double? colorStretch,
     BrushCorrection? correction,
-    Set<BrushSettingsGroup>? folded,
+    Set<BrushSettingsRow>? shown,
   }) {
     return BrushSettings(
       color: color ?? this.color,
@@ -306,7 +310,7 @@ class BrushSettings {
       paintDensity: paintDensity ?? this.paintDensity,
       colorStretch: colorStretch ?? this.colorStretch,
       correction: correction ?? this.correction,
-      folded: folded ?? this.folded,
+      shown: shown ?? this.shown,
     );
   }
 
@@ -383,11 +387,14 @@ class BrushSettings {
     // before the brush held its correction round-trips byte-identically.
     if (correction != const BrushCorrection())
       'correction': correction.toJson(),
-    // Written only when a group is folded, for the same reason.
-    if (folded.isNotEmpty)
-      'folded': [
-        for (final group in BrushSettingsGroup.values)
-          if (folded.contains(group)) group.name,
+    // Written only off the three every brush shows, for the same reason —
+    // and so a brush handed back to them leaves no key for the hand's
+    // overlay to keep. An EMPTY list is written: it is a brush showing
+    // nothing, not one that never said.
+    if (!_sameRows(shown, BrushSettingsRow.shownByDefault))
+      'shown': [
+        for (final row in BrushSettingsRow.values)
+          if (shown.contains(row)) row.name,
       ],
   };
 
@@ -469,9 +476,12 @@ class BrushSettings {
       paintDensity: (json['paintDensity'] as num?)?.toDouble() ?? 1.0,
       colorStretch: (json['colorStretch'] as num?)?.toDouble() ?? 0.0,
       correction: BrushCorrection.fromJson(json['correction']),
-      folded: {
-        for (final name in json['folded'] as List<dynamic>? ?? const [])
-          ?BrushSettingsGroup.values.asNameMap()[name],
+      shown: switch (json['shown']) {
+        final List<dynamic> names => {
+          for (final name in names)
+            ?BrushSettingsRow.values.asNameMap()[name],
+        },
+        _ => BrushSettingsRow.shownByDefault,
       },
     );
   }
@@ -481,18 +491,20 @@ class BrushSettings {
       identical(this, other) ||
       other is BrushSettings &&
           other.shape == shape &&
-          other.folded.length == folded.length &&
-          other.folded.containsAll(folded);
+          _sameRows(other.shown, shown);
 
   @override
   int get hashCode => Object.hash(
     shape,
-    Object.hashAllUnordered(folded),
+    Object.hashAllUnordered(shown),
   );
 
   @override
-  String toString() => 'BrushSettings(shape: $shape, folded: $folded)';
+  String toString() => 'BrushSettings(shape: $shape, shown: $shown)';
 }
+
+bool _sameRows(Set<BrushSettingsRow> a, Set<BrushSettingsRow> b) =>
+    a.length == b.length && a.containsAll(b);
 
 /// Throws [ArgumentError] if any parameter in [shape] is outside the model's
 /// legal range. Shared by both constructors so the preset payload validates

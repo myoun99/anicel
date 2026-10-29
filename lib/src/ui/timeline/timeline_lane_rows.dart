@@ -1,8 +1,11 @@
+import '../widgets/angle_dial.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/boolean_dot.dart';
 import '../widgets/drag_value_label.dart';
 import '../widgets/field_slider.dart' show FieldSlider;
 import '../widgets/instant_tap_region.dart';
+import '../widgets/panel_flyout.dart'
+    show PanelFlyoutButton, PanelFlyoutChoice, PanelFlyoutValueChoices;
 import '../widgets/rail_glyph_button.dart';
 import '../widgets/scale_chain_button.dart';
 import '../widgets/tick_layer.dart';
@@ -37,7 +40,13 @@ import '../../models/se_name_tag.dart' show SeNameTag;
 import 'se_name_tag_lane_preview.dart' show SeNameTagLanePreview;
 import '../text/app_strings.dart' show AppText;
 import '../text/readout_text.dart'
-    show ReadoutPart, joinReadoutParts, readoutParts;
+    show
+        ReadoutPart,
+        columnValueOf,
+        joinReadoutParts,
+        readoutParts,
+        readsTurns,
+        turnsReadoutText;
 import 'layer_rail_columns.dart'
     show
         LayerFoldTwirl,
@@ -497,6 +506,41 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
         ),
       );
     }
+    // 🗣️I-132-Q6 (유저 2026-10-27): 「레인 하나 — 값이 메뉴, 키프레임은
+    // 계단」. A menu value has no digits to scrub or type, so the cell is
+    // the app's one list picker, and a pick keys the word there.
+    if (lane.valueKind == PropertyLaneValueKind.choice &&
+        laneEdit?.onSetValue != null) {
+      final words = lane.choices;
+      final values = lane.choiceValues.isEmpty ? words : lane.choiceValues;
+      final held = lane.choiceHeld ?? valueLabel;
+      return Padding(
+        padding: const EdgeInsets.only(right: FieldSlider.handsReach),
+        child: PanelFlyoutButton(
+          key: ValueKey<String>(
+            '$_keyPrefix-lane-choice-${layer.id}-${lane.laneId}',
+          ),
+          label: valueLabel,
+          expand: true,
+          axis: widget.axis,
+          entriesBuilder: () => [
+            for (var index = 0; index < words.length; index++) index,
+          ].asFlyoutValueChoices(
+            current: values.indexOf(held),
+            choiceOf: (index) => PanelFlyoutChoice(
+              key: '$_keyPrefix-lane-choice-${layer.id}-${lane.laneId}-$index',
+              label: words[index],
+            ),
+            onPicked: (index) => laneEdit!.onSetValue!.call(
+              layer,
+              lane,
+              _frame,
+              values[index],
+            ),
+          ),
+        ),
+      );
+    }
     return _valueBoxes(valueLabel);
   }
 
@@ -517,32 +561,85 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// ↩️The value was blue text shrunk into an 80px column and stacked in
   /// lines down the sheet; a tap opened a field for each number in its
   /// place, and one drag moved both numbers.
+  ///
+  /// An angle ([readsTurns]) is its turns and its degrees, unnamed, the
+  /// dial before them ([_withDial]).
   Widget _valueBoxes(String valueLabel) {
     final parts = readoutParts(valueLabel);
+    final turns = readsTurns(parts);
     // A pair prints its unit once, after its second number (`150, 80%` —
     // After Effects' print); each box of the pair wears it.
     final pairUnit = parts.last.unit;
+    Widget box(int index, ReadoutPart part) => DragValueLabel.box(
+      keyValue: _valueKey(index),
+      inputKeyValue: _valueFieldKey(index),
+      name: parts.length == 2 && !turns ? _pairNames[index] : null,
+      text: '${part.number}${part.unit.isEmpty ? pairUnit : part.unit}',
+      turned: widget.axis == Axis.vertical,
+      enabled: widget.laneEdit?.onSetValue != null,
+      onOperationStart: () => _startScrub(valueLabel),
+      onDragDelta: (pixels) => _scrubPart(index, pixels),
+      onOperationEnd: _endScrub,
+      onEditSubmit: (typed) => _typePart(parts, index, typed),
+    );
     return Row(
       children: [
         for (final (index, part) in parts.indexed) ...[
           if (index > 0) const SizedBox(width: layerLaneValueBoxGap),
           Flexible(
-            child: DragValueLabel.box(
-              keyValue: _valueKey(index),
-              inputKeyValue: _valueFieldKey(index),
-              name: parts.length == 2 ? _pairNames[index] : null,
-              text: '${part.number}${part.unit.isEmpty ? pairUnit : part.unit}',
-              turned: widget.axis == Axis.vertical,
-              enabled: widget.laneEdit?.onSetValue != null,
-              onOperationStart: () => _startScrub(valueLabel),
-              onDragDelta: (pixels) => _scrubPart(index, pixels),
-              onOperationEnd: _endScrub,
-              onEditSubmit: (typed) => _typePart(parts, index, typed),
-            ),
+            child: turns && index == 0
+                ? _withDial(box(index, part), valueLabel)
+                : box(index, part),
           ),
         ],
       ],
     );
+  }
+
+  /// The angle's dial ([AngleDial]) and its [turns] box after it, in the
+  /// place a pair's first box has: the turns are a few digits, and the
+  /// degrees keep the second's whole place, so the columns stay columns.
+  ///
+  /// 🗣️I-132-Q18 b (유저 2026-10-28): 「레인 줄에 작은 다이얼」. A turn of it
+  /// is one operation, as a scrub is: shown as it goes, written once on the
+  /// release. Upright in the sheet, which stands the value cell up.
+  Widget _withDial(Widget turns, String valueLabel) {
+    return Row(
+      children: [
+        RotatedBox(
+          quarterTurns: widget.axis == Axis.vertical ? 3 : 0,
+          child: AngleDial(
+            key: ValueKey<String>(
+              '$_keyPrefix-lane-dial-${layer.id}-${lane.laneId}',
+            ),
+            degrees: columnValueOf(valueLabel) ?? 0,
+            enabled: widget.laneEdit?.onSetValue != null,
+            onTurnStart: () => _startScrub(valueLabel),
+            onTurned: _turnDial,
+            onTurnEnd: _endScrub,
+          ),
+        ),
+        const SizedBox(width: layerLaneValueBoxGap),
+        Expanded(child: turns),
+      ],
+    );
+  }
+
+  /// The angle where the scrub began, turned [degrees] further by the dial.
+  void _turnDial(double degrees) {
+    final base = switch (_scrubBaseLabel) {
+      final label? => columnValueOf(label),
+      null => null,
+    };
+    if (base == null) {
+      return;
+    }
+    final value = turnsReadoutText(base + degrees);
+    if (value == _scrubbed) {
+      return;
+    }
+    _scrubbed = value;
+    widget.laneEdit?.onPreviewValue?.call(layer, lane, _frame, value);
   }
 
   /// Where a ring or a swatch stands in the column: at its END, where every

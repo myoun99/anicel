@@ -20,10 +20,12 @@ import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
+import '../../models/layer_process.dart';
 import '../../models/timeline_repeat.dart' show rederiveRunBehaviors;
 import '../../models/media_asset.dart';
 import '../../models/pasteboard_bounds.dart' show PasteboardSize;
 import '../../models/se_name_tag.dart';
+import '../../models/se_sound.dart';
 import '../../models/project.dart';
 import '../../models/property_track.dart' show PropertyKey;
 import '../../models/project_background.dart';
@@ -75,6 +77,8 @@ import 'update_cut_camera_command.dart';
 import 'linked_cut_field_command.dart';
 import 'update_cut_mark_command.dart';
 import 'update_cut_sheet_kind_command.dart';
+import 'update_cut_scene_command.dart';
+import 'update_cut_staff_folds_command.dart';
 import 'update_cut_staff_name_command.dart';
 import 'update_cut_note_command.dart';
 import 'update_track_display_command.dart';
@@ -82,6 +86,7 @@ import 'update_track_effects_command.dart';
 import 'update_layer_audio_clips_command.dart';
 import 'update_se_name_tag_command.dart';
 import 'update_layer_reference_fx_command.dart';
+import 'update_layer_se_sound_command.dart';
 import 'update_layer_timeline_command.dart';
 import 'update_layer_transform_enabled_command.dart';
 import 'update_layer_kind_command.dart';
@@ -220,9 +225,11 @@ class CutCommandCoordinator {
     contentOffset: contentOffset,
     report: report,
   );
-  void renameCut({required CutId cutId, required String newName}) =>
-      _cuts.renameCut(cutId: cutId, newName: newName);
   void renameCuts(Map<CutId, String> names) => _cuts.renameCuts(names);
+  void setCutScene({required CutId cutId, required String scene}) =>
+      _cuts.setCutScene(cutId: cutId, scene: scene);
+  void nameCut({required CutId cutId, required String name, String? scene}) =>
+      _cuts.nameCut(cutId: cutId, name: name, scene: scene);
   void commitCutDurationDrag({
     required Map<CutId, int> beforeDurations,
     required Map<CutId, int> afterDurations,
@@ -242,7 +249,12 @@ class CutCommandCoordinator {
   void setCutStaffNames({
     required List<CutId> cutIds,
     required Map<LayerMark, String> names,
-  }) => _cuts.setCutStaffNames(cutIds: cutIds, names: names);
+    Set<LayerProcess>? openFolds,
+  }) => _cuts.setCutStaffNames(
+    cutIds: cutIds,
+    names: names,
+    openFolds: openFolds,
+  );
   void setCutMark({required List<CutId> cutIds, required LayerMark mark}) =>
       _cuts.setCutMark(cutIds: cutIds, mark: mark);
   void setTimesheetFormat({
@@ -957,6 +969,20 @@ class CutCommandCoordinator {
   Layer _requireLayerAnywhere(LayerId layerId) =>
       requireLayerAnywhere(repository.requireProject(), layerId);
 
+  /// The SE row [layerId] names, refused for any other kind with what
+  /// belongs on SE rows only ([what]) — the one guard the row's clips, its
+  /// name tag and its sound are written behind (I-140).
+  ///
+  /// Anywhere lookup — the SE rows are TRACK fixtures (S1·S2), not in the
+  /// cut's layer list (UI-R7 #4: media drops onto them dead-ended here).
+  Layer _requireSeRow(LayerId layerId, String what) {
+    final layer = _requireLayerAnywhere(layerId);
+    if (layer.kind != LayerKind.se) {
+      throw StateError('$what belong on SE layers only.');
+    }
+    return layer;
+  }
+
   void setLayerTimesheet({
     // Nullable (B5③): the storyboard rail flips TRACK fixtures' flags from
     // a gap, where no cut is active — the write is layer-addressed and
@@ -1051,12 +1077,7 @@ class CutCommandCoordinator {
     required List<AudioClip> audioClips,
     String description = 'Edit audio clips',
   }) {
-    // Anywhere lookup — the SE rows are TRACK fixtures (S1·S2), not in the
-    // cut's layer list (UI-R7 #4: media drops onto them dead-ended here).
-    final layer = requireLayerAnywhere(repository.requireProject(), layerId);
-    if (layer.kind != LayerKind.se) {
-      throw StateError('Audio clips belong on SE layers only.');
-    }
+    final layer = _requireSeRow(layerId, 'Audio clips');
     if (listEquals(layer.audioClips, audioClips)) {
       return;
     }
@@ -1079,20 +1100,34 @@ class CutCommandCoordinator {
     required SeNameTag? seNameTag,
     String description = 'Edit SE name tag',
   }) {
-    // Anywhere lookup, like the audio clips above — SE rows are TRACK
-    // fixtures and the cut-scoped read throws for them.
-    final layer = _requireLayerAnywhere(layerId);
-    if (layer.kind != LayerKind.se) {
-      throw StateError('Name tags belong on SE layers only.');
-    }
     _executeIfChanged(
-      subject: layer,
+      subject: _requireSeRow(layerId, 'Name tags'),
       value: seNameTag,
       read: (layer) => layer.seNameTag,
       command: (_) => UpdateSeNameTagCommand(
         repository: repository,
         layerId: layerId,
         seNameTag: seNameTag,
+        description: description,
+      ),
+    );
+  }
+
+  /// Sets an SE row's sound — its volume keys and its pan (I-140); one undo
+  /// step, no-op when unchanged.
+  void setSeSound({
+    required LayerId layerId,
+    required SeSound seSound,
+    String description = 'Edit SE sound',
+  }) {
+    _executeIfChanged(
+      subject: _requireSeRow(layerId, 'Row sounds'),
+      value: seSound,
+      read: (layer) => layer.seSound,
+      command: (_) => UpdateLayerSeSoundCommand(
+        repository: repository,
+        layerId: layerId,
+        seSound: seSound,
         description: description,
       ),
     );
@@ -1432,7 +1467,20 @@ class CutCommandCoordinator {
         ...() {
           final current = _requireLayerAnywhere(target.layerId).effects;
           final isSource = target.cutId == cutId && target.layerId == layerId;
-          final shaped = effectChainWithSharedShape(authored, onto: current);
+          // What crosses to another cut names that cut's rows: an effect
+          // that arrives whole, and a kind's values that mirror.
+          final carried = target.cutId == cutId
+              ? authored
+              : effectsWithRowsRenamed(
+                  authored,
+                  (row) => linkCounterpartIn(
+                    project,
+                    cutId: cutId,
+                    layerId: row,
+                    targetCutId: target.cutId,
+                  ),
+                );
+          final shaped = effectChainWithSharedShape(carried, onto: current);
           // The source takes the write as authored; a sibling takes only
           // the shape unless its kind mirrors values too — plus whatever
           // the named links carry. A row that only wears the head takes
@@ -1442,7 +1490,7 @@ class CutCommandCoordinator {
               : !linked.contains(target)
               ? shaped
               : mirrorsValuesToo
-              ? authored
+              ? carried
               : effectsWithNamedValues(shaped, namedChanges);
           return listEquals(current, next)
               ? const <Command>[]

@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -122,7 +123,12 @@ void main() {
       under: const Color(0xFF000000),
       view: FramePictureView(
         run: run,
-        picture: (cut: cut, frameIndex: frame, paintPaper: false),
+        picture: (
+          cut: cut,
+          frameIndex: frame,
+          paintPaper: false,
+          ghosts: FrameGhosts.none,
+        ),
         nodes: [
           for (final ghost in ghosts)
             CompositeLeaf<CanvasStackRow>(

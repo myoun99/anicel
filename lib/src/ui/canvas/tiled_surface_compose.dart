@@ -28,6 +28,7 @@ import 'raster_picture.dart';
 import 'surface_region_picture.dart';
 import 'tile_blocks.dart';
 import 'tile_origin.dart';
+import 'tile_pages.dart';
 
 /// A composed surface image plus the CANVAS-SPACE rect it covers — in
 /// [pieces], each with the rect it covers: ONE, over the whole rect, inside
@@ -262,11 +263,27 @@ class _TileLaying {
   final ui.Canvas canvas;
   final ui.Rect over;
   final ui.Paint _paint = ui.Paint()..filterQuality = ui.FilterQuality.none;
+  final SlotsByPage _slots = SlotsByPage();
 
   /// Lays [picture] with its top-left at the canvas-space [origin] — a
-  /// tile's ([tileOriginOffset]) or a block's.
+  /// block's.
   void lay(ui.Offset origin, ui.Image picture) =>
       canvas.drawImage(picture, origin, _paint);
+
+  /// Lays a tile's [picture] with its top-left at the canvas-space [origin]
+  /// ([tileOriginOffset]) — a slot of a page with the page's others, when
+  /// the laying is done ([finish]).
+  void layTile(ui.Offset origin, TilePicture picture) {
+    switch (picture) {
+      case OwnTilePicture(:final image):
+        lay(origin, image);
+      case final TileSlot slot:
+        _slots.add(slot, origin);
+    }
+  }
+
+  /// Lays the slots, a page at a time — before the recording ends.
+  void finish() => _slots.drawInto(canvas, _paint);
 
   int get width => over.width.round();
   int get height => over.height.round();
@@ -325,6 +342,7 @@ Future<ui.Image?> _composeAsync(
       );
     }
 
+    laying.finish();
     final picture = recorder.endRecording();
     recorderClosed = true;
     try {
@@ -362,16 +380,16 @@ bool _layHeldPictures(
   if (reuse == null) {
     return false;
   }
-  final held = <ui.Image>[];
+  final held = <TilePicture>[];
   for (final placed in block.tiles) {
-    final image = reuse.imageFor(placed.tile);
-    if (image == null) {
+    final picture = reuse.heldFor(placed.tile);
+    if (picture == null) {
       return false;
     }
-    held.add(image);
+    held.add(picture);
   }
   for (var index = 0; index < held.length; index += 1) {
-    laying.lay(tileOriginOffset(block.tiles[index]), held[index]);
+    laying.layTile(tileOriginOffset(block.tiles[index]), held[index]);
   }
   return true;
 }
@@ -409,8 +427,9 @@ ui.Image composeTiledSurfaceImageNow(
           // A pasteboard tile: nothing of it lands on the canvas.
           continue;
         }
-        laying.lay(origin, reuse.pictureFor(tile));
+        laying.layTile(origin, reuse.pictureFor(tile));
       }
+      laying.finish();
       return rasterPicture(recorder, laying.width, laying.height);
     },
   );

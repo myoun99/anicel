@@ -123,7 +123,12 @@ void main() {
   bool held(EditorSessionManager s, int frameIndex) => s
       .playbackRig
       .framePictures
-      .has((cut: s.activeCutOrNull!, frameIndex: frameIndex, paintPaper: true));
+      .has((
+        cut: s.activeCutOrNull!,
+        frameIndex: frameIndex,
+        paintPaper: true,
+        ghosts: FrameGhosts.none,
+      ));
 
   test('the transport is ATTACHED: the controller holds an audio clock to '
       'read, so a run can ride the samples instead of the wall clock', () {
@@ -534,7 +539,12 @@ void main() {
           for (final frame in [0, 2])
             store.bytesOf(
               rig.framePictures.keyOf(
-                (cut: s.requireActiveCut, frameIndex: frame, paintPaper: true),
+                (
+                  cut: s.requireActiveCut,
+                  frameIndex: frame,
+                  paintPaper: true,
+                  ghosts: FrameGhosts.none,
+                ),
               ),
             )!,
         ];
@@ -574,11 +584,21 @@ void main() {
         final rig = playbackRigOf(s);
         rig.playbackCache.debugSetPlaybackCacheBudgetBytes(4 * picture);
         await rig.framePictures.make(
-          (cut: s.requireActiveCut, frameIndex: 0, paintPaper: true),
+          (
+            cut: s.requireActiveCut,
+            frameIndex: 0,
+            paintPaper: true,
+            ghosts: FrameGhosts.none,
+          ),
           shouldAbort: () => false,
         );
         final shown = rig.framePictures.keyOf(
-          (cut: s.requireActiveCut, frameIndex: 0, paintPaper: true),
+          (
+            cut: s.requireActiveCut,
+            frameIndex: 0,
+            paintPaper: true,
+            ghosts: FrameGhosts.none,
+          ),
         );
         s.renderCaches.framePictureStore.retainPin(shown);
         addTearDown(() => s.renderCaches.framePictureStore.releasePin(shown));

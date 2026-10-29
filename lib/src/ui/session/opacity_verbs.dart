@@ -62,7 +62,7 @@ class OpacityVerbs {
   /// The display opacity the editing stack (and the interactive view's
   /// dimming) uses for [layer]: the shared composite semantics — an attach
   /// layer multiplies its own static opacity with its BASE's animated
-  /// Opacity sample (fx shared), a regular layer with its own.
+  /// Opacity sample (fx shared, [fxCarrierOf]), a regular layer with its own.
   /// The active row's opacity for a view that draws it ALONE — the
   /// interactive canvas during a ruler scrub, where nothing else composites
   /// it and no folder buffer stands above it.
@@ -79,8 +79,7 @@ class OpacityVerbs {
   /// other row honoured the folder. Same shape as the rest of this round:
   /// the active row answered a question differently from everyone else.
   double stackLayerOpacity(Layer layer, List<Layer> layers, int frameIndex) {
-    final base = isAttachedLayer(layer) ? attachedBaseOf(layer, layers) : null;
-    final fxCarrier = base ?? layer;
+    final fxCarrier = fxCarrierOf(layer, layers) ?? layer;
     var opacity = layer.opacity;
     // The animated Opacity is a TRANSFORM property, so its own group's
     // switch decides it — not the row master (R8).

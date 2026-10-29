@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../models/app_frame_grid_settings.dart';
 import '../../models/app_input_settings.dart';
+import '../../models/inbetween_mark.dart';
 import '../editor_session_manager.dart';
+import '../shortcuts/editor_action_registry.dart' show markToggleActionOf;
+import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
 import '../text/app_strings.dart';
 import '../ui_scale.dart';
 import '../widgets/panel_flyout.dart';
@@ -10,9 +13,9 @@ import '../widgets/settings_rows.dart';
 import 'accent_settings_dialog.dart';
 
 /// Preferences ▸ Display: the interface scale (R11), the accent colour, the
-/// cursor the drawing tools wear (I-54), and whether the frame lines cross
-/// a block's paper (유저 2026-09-24) — each a row of the one shape
-/// ([SettingsRow]).
+/// cursor the drawing tools wear (I-54), whether the frame lines cross a
+/// block's paper (유저 2026-09-24), and which mark a block with no name
+/// wears (F-489) — each a row of the one shape ([SettingsRow]).
 ///
 /// A LADDER, not a slider (유저 확정 2026-08-21: "배율을 사다리로"). Six
 /// stops around 100%, which is where a hand actually lands — and a
@@ -73,14 +76,35 @@ class DisplaySettingsSection extends StatelessWidget {
         ),
         ValueListenableBuilder<AppFrameGridSettings>(
           valueListenable: AppFrameGridSettings.settings,
-          builder: (context, grid, _) => SettingsSwitchRow(
-            tileKey: const ValueKey<String>('settings-block-frame-lines'),
-            label: strings.blockFrameLinesLabel,
-            value: grid.blockFrameLines,
-            onChanged: (shown) => session.appSettings.setFrameGridSettings(
-              grid.copyWith(blockFrameLines: shown),
-            ),
-          ),
+          builder: (context, grid, _) => _frameGridRows(grid),
+        ),
+      ],
+    );
+  }
+
+  /// The rows of how the frame grid draws ([AppFrameGridSettings]): the
+  /// lines inside a block, and the mark an unnamed block wears (F-489).
+  Widget _frameGridRows(AppFrameGridSettings grid) {
+    final strings = AppText.strings;
+    void pick(AppFrameGridSettings next) =>
+        session.appSettings.setFrameGridSettings(next);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SettingsSwitchRow(
+          tileKey: const ValueKey<String>('settings-block-frame-lines'),
+          label: strings.blockFrameLinesLabel,
+          value: grid.blockFrameLines,
+          onChanged: (shown) => pick(grid.copyWith(blockFrameLines: shown)),
+        ),
+        settingsEnumPickerRow(
+          keyValue: 'settings-unnamed-mark',
+          label: strings.unnamedMarkLabel,
+          value: grid.unnamedMark,
+          values: InbetweenMark.values,
+          labelOf: (mark) => editorActionLabel(markToggleActionOf(mark)),
+          onPicked: (mark) => pick(grid.copyWith(unnamedMark: mark)),
         ),
       ],
     );

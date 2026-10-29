@@ -15,7 +15,6 @@ import 'lane_row_slice.dart';
 import 'memo_token.dart';
 import 'property_lane_model.dart';
 import 'row_berths.dart';
-import 'se_audio_lane.dart' show SeAudioLaneFrameRow, laneIsSeAudio;
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_frame_cells_row.dart';
@@ -183,6 +182,7 @@ BerthWorld timelineCellsRowWorld(
     drawnFrameCount: hooks.runFrames,
     // F-113: the waveform's start moves with it.
     spillInLeadFrames: hooks.spillInLeadFrames[row.layer.id],
+    cutId: hooks.cutId,
     // The sparse rows' EXTERNAL inputs (UI-R20 #4): the camera track / the
     // instruction registry.
     coverageIdentity: ByIdentity(
@@ -270,7 +270,7 @@ Widget timelineCellsRowFrom(TimelineDisplayRow row, TimelineCellsRowGrid grid) {
     seClipMarkerTooltip: hooks.seClipMarkerTooltip,
     projectFrameRate: hooks.projectFrameRate,
     showSeconds: hooks.showSeconds,
-    audioLane: hooks.audioLane,
+    onDropMediaAssetOnSeBlock: hooks.onDropMediaAssetOnSeBlock,
     onDropMediaAssetOnLayer: hooks.onDropMediaAssetOnLayer,
     acceptsMediaAssetOnLayer: hooks.acceptsMediaAssetOnLayer,
     onHoverMediaAssetOnLayer: hooks.onHoverMediaAssetOnLayer,
@@ -279,6 +279,7 @@ Widget timelineCellsRowFrom(TimelineDisplayRow row, TimelineCellsRowGrid grid) {
     rangeGesture: grid.rangeGesture,
     runEdit: hooks.runEdit,
     spillInLeadFrames: world.spillInLeadFrames,
+    cutId: world.cutId,
     windowBucket: grid.windowBucket,
     viewportMainExtent: grid.viewportMainExtent,
     nextPage: grid.nextPage,
@@ -334,9 +335,9 @@ typedef TimelineLaneRowSpan = ({
 });
 
 /// [row]'s lane at [layer] — the gate's, so a drag step shows its preview —
-/// as [grid] lays its rows over [span]: the SE audio lane or a property
-/// lane, the timeline's rows as they are and the x-sheet's columns turned
-/// on their side.
+/// as [grid] lays its rows over [span]: the timeline's rows as they are and
+/// the x-sheet's columns turned on their side. ↩️A lane was the SE audio
+/// lane's waveform band or a property lane's, until the band went (I-140).
 ///
 /// 🚨ONE builder for both grids (`lane-rows-built-twice`, 2026-10-01). Each
 /// wrote both rows out from the same hooks, and they differed only in the
@@ -349,9 +350,6 @@ Widget timelineLaneRowFrom(
   TimelineLaneRowSpan span,
 ) {
   final hooks = grid.hooks;
-  final audioLane = hooks.audioLane;
-  final onSetClipOffset = audioLane?.onSetClipOffset;
-  final onSetClipFades = audioLane?.onSetClipFades;
   // A lane the enlarged graph folds is laid as a row of its strip (I-89
   // ③D) — the metrics are what carry a lane row's extent across — so its
   // keys stay in the strip, as small as a cell that tight makes any mark
@@ -361,47 +359,24 @@ Widget timelineLaneRowFrom(
           layerRowHeight: timelineDisplayRowExtent(row, grid.metrics),
         )
       : grid.metrics;
-  return laneIsSeAudio(row.lane!)
-      ? SeAudioLaneFrameRow(
-          axis: grid.axis,
-          keyPrefix: grid.keyPrefix,
-          layer: layer,
-          frameStartIndex: span.startIndex,
-          frameEndIndexExclusive: span.endIndexExclusive,
-          leadingFrameSpacerWidth: span.leadingSpacer,
-          trailingFrameSpacerWidth: span.trailingSpacer,
-          metrics: metrics,
-          frameRate: hooks.projectFrameRate,
-          audioPeaksFor: hooks.audioPeaksFor,
-          spillInLeadFrames: hooks.spillInLeadFrames[layer.id],
-          onSetClipOffset: onSetClipOffset == null
-              ? null
-              : (clipIndex, offsetFrames) =>
-                    onSetClipOffset(layer.id, clipIndex, offsetFrames),
-          offsetDrag: audioLane?.offsetDrag,
-          onSetClipFades: onSetClipFades == null
-              ? null
-              : (clipIndex, fadeIn, fadeOut) =>
-                    onSetClipFades(layer.id, clipIndex, fadeIn, fadeOut),
-        )
-      : TimelineLaneFrameRow(
-          axis: grid.axis,
-          keyPrefix: grid.keyPrefix,
-          layer: layer,
-          // R10: the previewed lane while a key drag is in flight. A grid
-          // with no lanes hands back the committed row (`laneAsPreviewed`).
-          lane: previewedLaneRow(
-            row: row,
-            previewLayer: layer,
-            lanesForLayer: hooks.lanesOf,
-          ),
-          frameStartIndex: span.startIndex,
-          frameEndIndexExclusive: span.endIndexExclusive,
-          leadingFrameSpacerWidth: span.leadingSpacer,
-          trailingFrameSpacerWidth: span.trailingSpacer,
-          metrics: metrics,
-          laneRange: span.laneRange,
-        );
+  return TimelineLaneFrameRow(
+    axis: grid.axis,
+    keyPrefix: grid.keyPrefix,
+    layer: layer,
+    // R10: the previewed lane while a key drag is in flight. A grid
+    // with no lanes hands back the committed row (`laneAsPreviewed`).
+    lane: previewedLaneRow(
+      row: row,
+      previewLayer: layer,
+      lanesForLayer: hooks.lanesOf,
+    ),
+    frameStartIndex: span.startIndex,
+    frameEndIndexExclusive: span.endIndexExclusive,
+    leadingFrameSpacerWidth: span.leadingSpacer,
+    trailingFrameSpacerWidth: span.trailingSpacer,
+    metrics: metrics,
+    laneRange: span.laneRange,
+  );
 }
 
 /// What a grid keeps of its cells rows, berth by berth.

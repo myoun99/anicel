@@ -29,7 +29,6 @@ import '../../timeline/timeline_drag_preview.dart';
 import '../../timeline/timeline_section_policy.dart';
 import '../active_cut_controllers.dart';
 import '../block_move_commands.dart';
-import '../folder_bands.dart' show folderBandsFollowing;
 import '../folders_and_attachments.dart';
 import '../lane_edit_subject.dart' show LaneEdit;
 import '../lane_verbs.dart';
@@ -1155,7 +1154,7 @@ class FrameRangeMoveDrag {
       final drawn = _project.activeCutDrawnFrameCount;
       _publishStep(
         BlockMoveDragPreview(
-          previewLayers: _withFolderBands({
+          previewLayers: {
             selection.layerId: rederiveRunBehaviors(
               plan.sourceAfter,
               drawnFrameCount: drawn,
@@ -1164,7 +1163,7 @@ class FrameRangeMoveDrag {
               plan.targetAfter!,
               drawnFrameCount: drawn,
             ),
-          }),
+          },
           rekeys: plan.rekeys,
         ),
         lanes,
@@ -1730,7 +1729,7 @@ class FrameRangeMoveDrag {
     };
     _publishStep(
       BlockMoveDragPreview(
-        previewLayers: _withFolderBands({
+        previewLayers: {
           if (plan != null)
             for (final entry in plan.layersAfter.entries)
               entry.key: rederiveRunBehaviors(
@@ -1748,7 +1747,7 @@ class FrameRangeMoveDrag {
               entry.value,
               drawnFrameCount: _project.activeCutDrawnFrameCount,
             ),
-        }),
+        },
         rekeys: plan?.rekeys ?? const [],
         // C2: the SE passengers' global forms, for the storyboard strips.
         previewGlobalLayers: {
@@ -1815,14 +1814,6 @@ class FrameRangeMoveDrag {
     _dropPreviewChannels();
     _liveSpan = _selectionBefore;
   }
-
-  /// [rows] with, beside them, the band of every folder one of them stands
-  /// in: a folder's row shows what its rows make together (F-311), so it
-  /// follows the hand as they do ([folderBandsFollowing]).
-  Map<LayerId, Layer> _withFolderBands(Map<LayerId, Layer> rows) => {
-    ...rows,
-    ...folderBandsFollowing(_project.layers, rows),
-  };
 
   /// Clears every channel this drag publishes to. They live OUTSIDE the
   /// drag (on the session and its collaborators), so dropping the object
@@ -2060,7 +2051,7 @@ class FrameRangeMoveDrag {
     _plan = plan;
     _publishStep(
       BlockMoveDragPreview(
-        previewLayers: _withFolderBands({
+        previewLayers: {
           plan.sourceAfter.id: rederiveRunBehaviors(
             plan.sourceAfter,
             drawnFrameCount: _project.activeCutDrawnFrameCount,
@@ -2070,7 +2061,7 @@ class FrameRangeMoveDrag {
               plan.targetAfter!,
               drawnFrameCount: _project.activeCutDrawnFrameCount,
             ),
-        }),
+        },
         rekeys: plan.rekeys,
       ),
       lanes,
@@ -2353,7 +2344,7 @@ class FrameRangeMoveDrag {
     }
     _publishStep(
       BlockMoveDragPreview(
-        previewLayers: _withFolderBands(previewLayers),
+        previewLayers: previewLayers,
         previewGlobalLayers: previewGlobalLayers,
       ),
       riders.lanes,

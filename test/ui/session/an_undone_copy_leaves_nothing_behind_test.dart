@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/session/layer_clipboard.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/pill_row_clipboard.dart';
+import '../../helpers/an_empty_drawing_row.dart';
 
 /// 🚨AN ID FREE IN THE PROJECT IS NOT FREE IN THE SESSION.
 ///
@@ -78,7 +79,7 @@ void main() {
 
   /// A row whose one cel was never drawn on, standing where it was made.
   Layer blankRow() {
-    session.layerStack.addLayerOfKind(LayerKind.animation);
+    addAnEmptyDrawingRow(session);
     session.createDrawingAtCurrentFrame();
     final row = session.activeLayer!;
     expect(row.frames, hasLength(1), reason: 'fixture: a cel');

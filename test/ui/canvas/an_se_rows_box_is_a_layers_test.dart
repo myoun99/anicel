@@ -215,7 +215,7 @@ void main() {
       LayerEffect(
         id: const EffectId('blur'),
         kind: EffectKind.blur,
-        parameters: {'blurX': EffectParameter(value: 2)},
+        parameters: {'blurriness': EffectParameter(value: 2)},
       ),
     ]);
     final view = CanvasViewCommands();
@@ -333,7 +333,7 @@ void main() {
       expect((await colourAt(tag(), beside)).a, 0);
       final blurred = tag(
         effects: [
-          ResolvedLayerEffect(kind: EffectKind.blur, values: const [12, 12]),
+          ResolvedLayerEffect(kind: EffectKind.blur, values: const [12, 0]),
         ],
       );
       expect((await colourAt(blurred, beside)).a, greaterThan(0));
@@ -347,10 +347,32 @@ void main() {
       expect((await colourAt(tag(), far)).a, 0);
       final blurred = tag(
         effects: [
-          ResolvedLayerEffect(kind: EffectKind.blur, values: const [90, 90]),
+          ResolvedLayerEffect(kind: EffectKind.blur, values: const [90, 0]),
         ],
       );
       expect((await colourAt(blurred, far)).a, greaterThan(0));
+    });
+
+    test('through the row\'s blur repeating the paper\'s edge — the canvas\'s '
+        'edge, not the tag\'s (I-132-Q14 a)', () async {
+      // The box laid across the paper's left edge, two pixels past it.
+      final box = tagBox();
+      final shift = -box.left - 2;
+      ResolvedSeNameTag across({required bool repeats}) => tag(
+        inShot: LayerPlacement(1, 0, 0, 1, shift, 0),
+        effects: [
+          ResolvedLayerEffect(
+            kind: EffectKind.blur,
+            values: [12, 0, if (repeats) 1 else 0],
+          ),
+        ],
+      );
+      final atTheEdge = Offset(0, box.center.dy);
+      expect((await colourAt(across(repeats: false), atTheEdge)).a, lessThan(1));
+      expect((await colourAt(across(repeats: true), atTheEdge)).a, 1);
+      // Inside the paper it spreads past the box, as it does off.
+      final beside = box.centerRight + Offset(shift + 4, 0);
+      expect((await colourAt(across(repeats: true), beside)).a, greaterThan(0));
     });
 
     test('through the row\'s blur — the picture it blurs is its drawing '
@@ -362,7 +384,7 @@ void main() {
             effects: [
               ResolvedLayerEffect(
                 kind: EffectKind.blur,
-                values: [radius, radius],
+                values: [radius, 0],
               ),
             ],
           ),
@@ -445,8 +467,8 @@ void main() {
       final keyed = tag(
         effects: [
           ResolvedLayerEffect(
-            kind: EffectKind.deleteColor,
-            values: const [0xC9, 0x5C, 0x5C, 8, 100],
+            kind: EffectKind.colorKey,
+            values: const [0, 0xFFC95C5C, 8, 100],
           ),
         ],
       );

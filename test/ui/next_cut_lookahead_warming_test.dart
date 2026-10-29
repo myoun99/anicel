@@ -1,5 +1,6 @@
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/models/brush_frame_cache_invalidation.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -109,7 +110,12 @@ void main() {
       // What a run of the cut would show, as the screen counts it — the
       // canvas's own pictures since playback-plays-the-screen-material.
       bool made(Cut cut) =>
-          session.playbackRig.framePictures.has((cut: cut, frameIndex: 0, paintPaper: true));
+          session.playbackRig.framePictures.has((
+            cut: cut,
+            frameIndex: 0,
+            paintPaper: true,
+            ghosts: FrameGhosts.none,
+          ));
       expect(made(first), isTrue, reason: 'the active cut warms first');
       expect(
         made(second),

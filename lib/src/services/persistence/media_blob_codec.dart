@@ -114,6 +114,15 @@ import 'anicel_payload_codec.dart';
 /// once already. See the doc above for the measurement that chose it.
 const int mediaBlockBytes = 512 * 1024;
 
+/// How many times [writeMediaBlob] may read its file end to end: once
+/// framing it, and once more copying it as it is when the framing did not
+/// pay — each from its first byte.
+///
+/// Declared as `anicelAppendStreamPasses` is, for what measures the write
+/// from outside through the `readInto` it hands over (F-494: a carried
+/// 3.4GB movie took 56 s here behind a bar at 0%).
+const int mediaBlobReadsAtMost = 2;
+
 /// What a framed entry's name ends with.
 ///
 /// 🚨★★★**THE NAME SAYS IT, not a byte at the front** — the same answer
@@ -268,6 +277,7 @@ class MediaBlobHeader {
 /// [readInto] is `MediaByteSource.readIntoSync`'s shape — the one the
 /// archive writer already streams through — so a caller holding an open
 /// handle passes it straight in rather than reopening once a block.
+/// ⚠️Each read goes from the file's first byte on ([mediaBlobReadsAtMost]).
 ({String path, bool framed}) writeMediaBlob({
   required String basePath,
   required int length,

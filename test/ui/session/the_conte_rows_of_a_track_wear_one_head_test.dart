@@ -21,6 +21,8 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/commands/link_mirror.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
+import '../../helpers/onion_ghosts.dart';
+
 /// 🗣️I-73 (유저 2026-10-08): 「콘티레이어 권고한대로 머리만 한벌 ok.
 /// 맘에드는생각이야. 겸용컷이랑 같은 느낌이네」 · 「6. 이거만 눈이랑
 /// 불투명도조차 링크하도록. 그거마저 머리로서 하나로되도록 통일 프레임
@@ -524,7 +526,7 @@ void main() {
       session.selectFrameIndex(6);
       session.createDrawingAtCurrentFrame();
       expect(
-        session.onionSkin.onionSkinCanvasRequests(),
+        ghostRequestsAt(session),
         isEmpty,
         reason: '⛔전제: nothing ghosts yet',
       );
@@ -533,7 +535,7 @@ void main() {
 
       expect(
         [
-          for (final request in session.onionSkin.onionSkinCanvasRequests())
+          for (final request in ghostRequestsAt(session))
             request.frameKey.layerId,
         ],
         [const LayerId('b-conte')],

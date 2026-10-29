@@ -6,10 +6,10 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/attached_layer_resolve.dart';
-import 'package:anicel/src/ui/timeline/layer_row_drag.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
+import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 
 import '../../helpers/named_finders.dart';
 
@@ -89,17 +89,51 @@ layers: layers,
     return state.position.maxScrollExtent;
   }
 
+  /// The layers whose rows the grid shows over its whole scroll — swept a
+  /// viewport at a time, since it builds no row past its viewport.
+  Future<Set<LayerId>> rowsAcrossTheScroll(WidgetTester tester) async {
+    final position = tester
+        .state<ScrollableState>(
+          find
+              .descendant(
+                of: find.byKey(
+                  const ValueKey<String>('timeline-vertical-scroll-viewport'),
+                ),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        )
+        .position;
+    final shown = <LayerId>{};
+    for (var at = 0.0; ; at += position.viewportDimension / 2) {
+      position.jumpTo(at.clamp(0.0, position.maxScrollExtent));
+      await tester.pump();
+      shown.addAll([
+        for (final row in tester.widgetList<TimelineLayerControlsRow>(
+          find.byType(TimelineLayerControlsRow),
+        ))
+          row.layer.id,
+      ]);
+      if (at >= position.maxScrollExtent) {
+        break;
+      }
+    }
+    position.jumpTo(0);
+    await tester.pump();
+    return shown;
+  }
+
   testWidgets('접었다 펼치면 스크롤 범위가 어태치 세 행만큼 자란다', (tester) async {
     await tester.pumpWidget(grid(collapsed: {const LayerId('B')}));
     await tester.pumpAndSettle();
     final folded = verticalExtentOf(tester);
-    final foldedRows = tester.widgetList(find.byType(LayerRowDragTarget)).length;
+    final foldedRows = (await rowsAcrossTheScroll(tester)).length;
     expect(folded, greaterThan(0), reason: '⛔스크롤이 아예 없으면 빈 것을 쟀다');
 
     await tester.pumpWidget(grid(collapsed: const {}));
     await tester.pumpAndSettle();
     final open = verticalExtentOf(tester);
-    final openRows = tester.widgetList(find.byType(LayerRowDragTarget)).length;
+    final openRows = (await rowsAcrossTheScroll(tester)).length;
 
     // 🚨계측기 먼저: 접기가 실제로 행을 줄이지 않았다면 「범위가 같다」는
     // 아무것도 말하지 않는다.

@@ -365,6 +365,46 @@ void main() {
       );
     });
 
+    // An adjustment's chain picks as a row's does — in its order, keys and
+    // all ([pixelThroughChain]). ↩️It read the chain's colour matrices
+    // alone, so a key on an adjustment row picked as if it were not there.
+    test('an ADJUSTMENT row\'s key takes what it keys out of the pick, in '
+        'the chain\'s order', () {
+      final deleteBlack = LayerEffect(
+        id: const EffectId('key'),
+        kind: EffectKind.colorKey,
+        parameters: {'amount': EffectParameter(value: 100)},
+      );
+      Layer adjustment(List<LayerEffect> effects) => createAdjustmentLayer(
+        id: const LayerId('fx'),
+        name: 'FX1',
+      ).copyWith(effects: effects);
+      int pick(List<LayerEffect> effects, {double mix = 1}) =>
+          (sample([
+                drawing(),
+                adjustment(effects).copyWith(opacity: mix),
+              ], ink: 0xFF000000) >>
+              16) &
+          0xFF;
+      const paper = (canvasPaperColor >> 16) & 0xFF;
+      expect(pick([deleteBlack]), paper);
+      expect(
+        pick([deleteBlack, brightness(20, id: 'bc')]),
+        paper,
+        reason: 'keyed, then graded: nothing is left to grade',
+      );
+      expect(
+        pick([brightness(20, id: 'bc'), deleteBlack]),
+        closeTo(51, 1),
+        reason: 'graded, then keyed: it is black no longer',
+      );
+      expect(
+        pick([deleteBlack], mix: 0.5),
+        closeTo(paper / 2, 1),
+        reason: 'at half mix, half of it keyed',
+      );
+    });
+
     test('the grade lands on the STACK, never on the paper under it', () {
       // Every paint route computes filter(stack) over paper — the
       // adjustment's saveLayer wraps the scope and the background is drawn
@@ -402,7 +442,7 @@ void main() {
           LayerEffect(
             id: const EffectId('b'),
             kind: EffectKind.blur,
-            parameters: {'blurX': EffectParameter(value: 4)},
+            parameters: {'blurriness': EffectParameter(value: 4)},
           ),
         ],
       );

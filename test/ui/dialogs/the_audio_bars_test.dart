@@ -30,6 +30,12 @@ void main() {
   Future<EditorSessionManager> pumpSection(WidgetTester tester) async {
     final manager = session();
     addTearDown(manager.dispose);
+    // The input bars answer only with the consent on (I-137).
+    manager.appSettings.setAudioSyncSettings(
+      manager.appSettings.audioSyncSettings.value.copyWith(
+        microphoneAllowed: true,
+      ),
+    );
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

@@ -13,7 +13,9 @@ import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/se_name_tag.dart';
+import 'package:anicel/src/models/se_sound.dart';
 import 'package:anicel/src/models/exposure_memo.dart';
 import 'package:anicel/src/models/stroke.dart';
 import 'package:anicel/src/models/stroke_id.dart';
@@ -211,14 +213,18 @@ void main() {
               collapsed: true,
               lanesExpanded: true,
               expandedLaneGroups: const {'transform-group'},
-              audioGain: 0.4,
-              audioPan: -0.6,
+              seSound: SeSound(
+                pan: -0.6,
+                volume: PropertyTrack<double>(
+                  keys: {3: const PropertyKey(0.4)},
+                ),
+              ),
               seNameTag: const SeNameTag(),
               effects: [
                 LayerEffect(
                   id: const EffectId('fx-1'),
                   kind: EffectKind.blur,
-                  parameters: {'blurX': EffectParameter(value: 7)},
+                  parameters: {'blurriness': EffectParameter(value: 7)},
                 ),
               ],
             ),
@@ -248,10 +254,10 @@ void main() {
         expect(copy.collapsed, isTrue);
         expect(copy.lanesExpanded, isTrue);
         expect(copy.expandedLaneGroups, {'transform-group'});
-        expect(copy.audioGain, 0.4);
-        expect(copy.audioPan, -0.6);
+        expect(copy.seSound.pan, -0.6);
+        expect(copy.seSound.volumeAt(3), 0.4);
         expect(copy.seNameTag, isNotNull);
-        expect(copy.effects.single.parameterOf('blurX').value, 7);
+        expect(copy.effects.single.parameterOf('blurriness').value, 7);
         // Run behaviours used to be addressed by FRAME ID and had to be
         // remapped onto the copy's cels, or the next rederive dropped them.
         // Since F-134 the mark rides the block itself: the copied block

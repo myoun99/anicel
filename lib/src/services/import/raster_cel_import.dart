@@ -268,7 +268,7 @@ Future<BitmapSurface> layCelPicture({
   int tileSize = defaultCelTileSize,
   bool whole = false,
 }) async {
-  final placed = _placedBounds(placement, picture.size);
+  final placed = placedBounds(placement, picture.size);
   final laid = whole && !placed.isEmpty
       ? DirtyRegion.wholePixelsOf(placed)
       : null;
@@ -729,18 +729,6 @@ Future<List<PlacedTile>> _laidBlockOf(
     raster.dispose();
   }
 }
-
-/// The canvas rect [placement] lays a [picture]-sized picture's pixels over
-/// — its four corners' bounds, so a turned picture is covered whole.
-ui.Rect _placedBounds(LayerPlacement placement, CanvasSize picture) =>
-    pointsBounds([
-      for (final corner in placedCorners(
-        placement,
-        ui.Offset.zero &
-            ui.Size(picture.width.toDouble(), picture.height.toDouble()),
-      ))
-        ui.Offset(corner.x, corner.y),
-    ]);
 
 /// Bakes [tiles] — a decoded picture already cut into cel tiles of
 /// [defaultCelTileSize], straight RGBA, by their place in tiles — as [key]'s

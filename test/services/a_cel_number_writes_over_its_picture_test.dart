@@ -37,7 +37,7 @@ void main() {
   LayerEffect blur(String id) => LayerEffect(
     id: EffectId(id),
     kind: EffectKind.blur,
-    parameters: {'blurX': EffectParameter(value: 3)},
+    parameters: {'blurriness': EffectParameter(value: 3)},
   );
 
   LayerEffect number(
@@ -50,7 +50,9 @@ void main() {
     kind: EffectKind.celNumber,
     enabled: enabled,
     stand: stand,
-    ink: ink == null ? null : PropertyTrack<int>.empty().withKey(0, ink),
+    colors: {
+      if (ink != null) 'ink': PropertyTrack<int>.empty().withKey(0, ink),
+    },
   );
 
   Layer drawing({
@@ -319,8 +321,10 @@ void main() {
     );
     expect(
       lettersOf(drawing(frameName: null, effects: [number('n')])).text,
-      'A○',
-      reason: '↩️「A●」 until F-469: 「기본마크, 앞으로 마크1 사용」',
+      'A●',
+      reason:
+          'the unnamed head\'s mark, mark 2 until another is picked (F-489) '
+          '— ↩️「A○」 from F-469 「기본마크, 앞으로 마크1 사용」',
     );
   });
 

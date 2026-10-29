@@ -9,6 +9,9 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/audio_input_monitor.dart';
 import 'package:anicel/src/ui/playback/audio_recorder.dart';
 import 'package:anicel/src/ui/timeline/frame_panel_transport.dart';
+import 'package:anicel/src/ui/widgets/field_slider.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
+import 'package:anicel/src/ui/widgets/settings_rows.dart';
 
 import '../../helpers/boolean_dot_probe.dart';
 import '../../helpers/dart_sources.dart';
@@ -226,6 +229,66 @@ void main() {
 
     bool allowedIn(EditorSessionManager session) =>
         session.appSettings.audioSyncSettings.value.microphoneAllowed;
+
+    // I-137 (유저 2026-10-28): 「마이크 허용 안하면 밑의 입력이나 입력레벨
+    // 마이크게인 이런거 사실상 의미없으니 비활성화」.
+    testWidgets('off, every row only a take reads stands INERT where it '
+        'stands — and answers once it is on; the output rows never wait', (
+      tester,
+    ) async {
+      final session = await pumpAudioSection(tester, meter: _Meter());
+      Finder byKey(String key) => find.byKey(ValueKey<String>(key));
+      bool pickerLive(String key) =>
+          tester.widget<PanelFlyoutButton>(byKey(key)).enabled;
+      bool barLive(String key) =>
+          tester.widget<FieldSlider>(byKey(key)).onChanged != null;
+      bool switchLive(String key) =>
+          tester
+              .widget<SettingsSwitchRow>(
+                find.ancestor(
+                  of: byKey(key),
+                  matching: find.byType(SettingsSwitchRow),
+                ),
+              )
+              .onChanged !=
+          null;
+      // The row's words dim with its control — a picker's and a bar's as
+      // a switch row's do.
+      bool wordsLive(String key) => tester
+          .widget<SettingsRow>(
+            find.ancestor(of: byKey(key), matching: find.byType(SettingsRow)),
+          )
+          .enabled;
+      List<bool> inputRows() => [
+        pickerLive('settings-audio-input-device'),
+        wordsLive('settings-audio-input-device'),
+        wordsLive('settings-input-meter'),
+        barLive('settings-mic-gain-slider'),
+        wordsLive('settings-mic-gain-slider'),
+        pickerLive('settings-input-channel-mode'),
+        wordsLive('settings-input-channel-mode'),
+        switchLive('settings-denoise-voice'),
+        switchLive('settings-clipping-notice'),
+        barLive('settings-count-in-slider'),
+        wordsLive('settings-count-in-slider'),
+        switchLive('settings-cue-beeps'),
+        switchLive('settings-streamer'),
+      ];
+
+      expect(allowedIn(session), isFalse, reason: 'the premise');
+      expect(inputRows(), everyElement(isFalse));
+      expect(pickerLive('settings-audio-output-device'), isTrue);
+      expect(wordsLive('settings-audio-output-device'), isTrue);
+
+      session.appSettings.setAudioSyncSettings(
+        session.appSettings.audioSyncSettings.value.copyWith(
+          microphoneAllowed: true,
+        ),
+      );
+      await tester.pump();
+      expect(inputRows(), everyElement(isTrue));
+      expect(pickerLive('settings-audio-output-device'), isTrue);
+    });
 
     testWidgets('turning it on asks the OS — its no turns it back off, the '
         'meter opens only on its yes — and turning it off asks nothing and '

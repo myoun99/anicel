@@ -7,7 +7,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/frame.dart'
-    show InbetweenMark, unnamedDrawingMark;
+    show InbetweenMark, defaultUnnamedDrawingMark;
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -23,10 +23,12 @@ TimelineCellWriting _marker(
   TimelineCellExposureState state, {
   bool emptyRunStart = false,
   String? frameName,
+  InbetweenMark unnamedMark = defaultUnnamedDrawingMark,
 }) => timelineCellMarker(
   layer: _layer(kind),
   exposureState: state,
   emptyRunStart: emptyRunStart,
+  unnamedMark: unnamedMark,
   frameName: frameName,
 );
 
@@ -82,7 +84,7 @@ void main() {
       );
       expect(
         _marker(LayerKind.animation, TimelineCellExposureState.drawingStart),
-        _mark(unnamedDrawingMark),
+        _mark(defaultUnnamedDrawingMark),
       );
       expect(
         _marker(
@@ -90,7 +92,7 @@ void main() {
           TimelineCellExposureState.drawingStart,
           frameName: '',
         ),
-        _mark(unnamedDrawingMark),
+        _mark(defaultUnnamedDrawingMark),
       );
       expect(
         _marker(
@@ -98,7 +100,7 @@ void main() {
           TimelineCellExposureState.drawingStart,
           frameName: '  ',
         ),
-        _mark(unnamedDrawingMark),
+        _mark(defaultUnnamedDrawingMark),
         reason: 'a blank name is no name — the sheet wears the mark for it too',
       );
     });
@@ -142,18 +144,21 @@ void main() {
   });
 
   test('🗣️an unnamed head and the dot inside a block are ONE mark, as data '
-      '(유저 2026-09-24: 「중간나누기 마크1로서 작동했으면」)', () {
-    final head = _marker(
-      LayerKind.animation,
-      TimelineCellExposureState.drawingStart,
-    ).mark;
-    final dot = _marker(
-      LayerKind.animation,
-      TimelineCellExposureState.markOneHeld,
-    ).mark;
-    // ↩️The mark the quote calls 마크1 was mark 2 once I-130 swapped the
-    // names; F-469 (유저 2026-10-27) put the unnamed head on mark 1 again.
-    expect(head, InbetweenMark.one);
-    expect(dot, InbetweenMark.one);
+      '(유저 2026-09-24: 「중간나누기 마크1로서 작동했으면」) — whichever the row '
+      'is handed (F-489)', () {
+    for (final (mark, dotted) in [
+      (InbetweenMark.one, TimelineCellExposureState.markOneHeld),
+      (InbetweenMark.two, TimelineCellExposureState.markTwoHeld),
+    ]) {
+      final head = _marker(
+        LayerKind.animation,
+        TimelineCellExposureState.drawingStart,
+        unnamedMark: mark,
+      ).mark;
+      final dot = _marker(LayerKind.animation, dotted).mark;
+      expect(head, mark);
+      expect(dot, head);
+    }
+    // ↩️The head wore mark 1 alone from F-469 to F-489, mark 2 before.
   });
 }

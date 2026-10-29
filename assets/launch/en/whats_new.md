@@ -1,0 +1,31 @@
+## What's new in this version
+
+- **Send Feedback** — send us feedback from the ⚙ Settings menu, as text alone or with screenshots and videos. Your device and the build are filled in for you.
+- **Send usage statistics (optional)** — turn it on in the window that asks at first launch or in Preferences ▸ System, and the app sends anonymously, when it opens and about once an hour while you use it, that it is in use, and once a day a range for how many of the last 28 days it was used — with the OS, device model, device language, build and app language. It starts off, and no drawings, files or the name you gave the device are sent.
+- **Build number** — shown beside the title of the notice at launch and in About Anicel in the ⚙ menu.
+- **Work settings, reworked** — the timesheet's artist field now carries the rough key artist's name. Each cut can have its own scene (SCENE) in Cut settings, and each cut remembers which sections you opened or closed.
+- **Palettes, reworked** — tap an empty swatch to put the current color in it, and drag swatches to move or swap them. Palettes can be renamed, folded, reordered and locked.
+- **Exporting palettes and shortcut presets** — export a palette from its menu, or a shortcut preset from its row in the Shortcuts window, as a file, and bring it back in with Open. Opened on another device, Ctrl and ⌘ are read as that device presses them.
+- **Every setting as one file** — export all your settings as one file (.anisettings) from the bottom of the Preferences window; open it with Open and pick, setting by setting, what goes in. Only what you bring in is replaced.
+- **Cut envelope** — key, in-between and finish counts follow the same rule as the timesheet (in-betweens are the cels whose color label is on the in-between side). The digital envelope's stage names fit their boxes, and the analog envelope's seconds sit in the middle of theirs.
+- **Timesheet column names** — up to three full-width characters show as they are; longer names shrink to fit, and only past that end in "…".
+- **Import and save progress** — the import and save windows say what they are doing (re-encoding a movie, keeping a file in the project, writing media …) and how far along they are. Keeping part of a large movie no longer sits at 0% the whole time.
+- **Audio Fx** — every sound row has an **Audio** group: key the volume frame by frame to make fades, and set the pan. Video export plays them the same way. They replace the old waveform lane and clip fades.
+- **Viewer panel** — while playback waits for the next picture, the picture stays and a loading mark shows in the middle.
+- **Blur map for Camera Lens Blur** — pick a row or folder of the cut as the blur map, and the blur varies from place to place with that picture's brightness, as with After Effects' blur map. Cel exports carry it too.
+- **Onion skin** — ghosts now sit where their layer is, so the layers above cover them. Switch back to ghosts over everything (On top) in the Onion skin panel.
+- **Shift keeps to one direction** — hold Shift while dragging on the canvas with the camera, a transform, the move tool and more, and it moves only across or only up and down. On a tablet, keeping another finger on the screen does the same.
+- **Conte** — attach layers on the conte can be grouped in a folder and folded, and each can have its own effects.
+- **Dialogue on the conte sheet** — each panel's (conte block's) dialogue box holds only the characters that stand on it. An SE block spanning several cuts or panels is split panel by panel, breaking off at a gap between cuts and picking up after it.
+- **SE blocks** — double-click a block to set where its dialogue starts and how many frames each character takes; on the timesheet the characters then stand on those frames. An SE block carried over from the previous cut shows its name at the head of this cut, with OFF or MONO beside it when it is (on the timeline and on the sheet).
+- **New layers in a folder** — with a folder selected, a new layer goes to the top inside that folder, and the new layer is selected.
+- **Merging layers** — select several rows and press Merge to make them one row (the picture goes onto a new cel of the top row, and one undo brings it back). A merge that would change how they look asks first.
+- **A new animation layer** comes with one cel, on the cut's first frame, ready to draw on.
+- **Brush settings panel** — it shows only the settings you choose. Open **Brush Details** with the panel's wrench button, and use each setting's eye button to show it in the panel or hide it. You can keep drawing while the window is open.
+- **Mark of an unnamed block** — choose ○ or ● in Preferences ▸ Display.
+- **Preferences ▸ Audio** — without microphone access, the input settings are grayed out.
+- **Brush size numbers** are shown larger.
+- **Grass brush** — the decoration grass now stamps tufts fanning out from one foot, instead of blades lined up in a column.
+- **Color Key on adjustment layers** — the eyedropper now picks the keyed colour through an adjustment layer with a Color Key, and the key no longer drops out when the layer's mix is below 100%.
+- **Speed** — fixed lines trailing behind the pen on heavy cuts, a stutter right after Show all, and scrubbing that fell behind. Fast scrolling through the timeline and the conte stutters less.
+- While you drag the end of a block inside a folder, the folder row's block follows at once. Fixed broken picture edges on some devices. Also fixed: while drawing near a blurred row inside a blurred folder, the picture no longer looks off.

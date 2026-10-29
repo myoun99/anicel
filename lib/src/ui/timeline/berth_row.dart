@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 
+import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_row_address.dart';
@@ -123,6 +124,10 @@ typedef BerthWorld = ({
   /// How far into its block the cut's frame 0 already is (UI-R7 #6) — null
   /// when nothing spills in.
   int? spillInLeadFrames,
+
+  /// The cut the row is seen in, where an SE block reads its delivery
+  /// (F-386 · F-496) — null for a row in no cut.
+  CutId? cutId,
 
   /// ㉘: what the row's coverage follows when it is not the layer.
   ByIdentity<Object?> coverageIdentity,

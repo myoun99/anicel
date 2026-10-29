@@ -1,10 +1,15 @@
 import '../../models/cut_id.dart';
+import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
+import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_link_registry.dart';
 import '../../models/project.dart';
+import '../../models/timeline_exposure.dart';
 import '../command.dart';
+import '../editing/cut_duplicate_helpers.dart'
+    show duplicateFrameContent, remapTimelineExposure;
 import '../editing/default_layer_helpers.dart' show coveringCelFor;
 import '../project_lookup.dart';
 import '../project_repository.dart';
@@ -26,7 +31,8 @@ class AddLayerMirror {
     required this.layerId,
     this.folderId,
     this.attachedToLayerId,
-    this.coveringFrameId,
+    required this.effects,
+    this.bornCelId,
   });
 
   final CutId cutId;
@@ -38,9 +44,15 @@ class AddLayerMirror {
   /// The sibling's own attach base, when the source rides one.
   final LayerId? attachedToLayerId;
 
-  /// The fresh panel this copy is born covering its cut with, when the row
-  /// is one born with a frame (F-99) — null for a row born empty.
-  final FrameId? coveringFrameId;
+  /// The source's effects, naming the sibling's own rows where they name
+  /// the source's ([effectsWithRowsRenamed]).
+  final List<LayerEffect> effects;
+
+  /// The cel of its own this copy is born with, when the row is one born
+  /// with a frame — a covering row's fresh panel over ITS cut (F-99), an
+  /// animation row's first cel (I-138) — null for a row whose copies take
+  /// the source's lane.
+  final FrameId? bornCelId;
 }
 
 /// Adds a layer, and the same layer to every 겸용 (linked) sibling cut in
@@ -55,7 +67,8 @@ class AddLayerMirror {
 /// per-use, mirrored properties fan out through [linkMirrorTargets].
 ///
 /// ↩️A ROW BORN WITH A FRAME IS BORN WITH ITS OWN IN EVERY CUT — the conte
-/// row and the image row ([AddLayerMirror.coveringFrameId]). The copies
+/// row and the image row, and an animation row Add Layer makes, born with
+/// its first cel (I-138) ([AddLayerMirror.bornCelId]). The copies
 /// used to start on the source's own cel, an UNNAMED picture the cuts
 /// shared: 유저 2026-09-12 (F-98) 「이미지 레이어는 이름이 없는 상태인데도
 /// 겸용컷이랑 링크되는데, 그게아니라 애니메이션 레이어랑 똑같이 이름이
@@ -105,15 +118,18 @@ class AddLayerCommand implements Command {
       final source = requireCut(project, cutId);
       final sourceIndex = insertionIndex ?? source.layers.length;
 
-      // Each copy's own panel over ITS cut, and the one bank every member
-      // holds: the source's cels and all of the panels.
+      // Each copy's own cel — a panel over ITS cut, or the source's first
+      // cel under the copy's id — and the one bank every member holds: the
+      // source's cels and all of the copies'.
       final panels = {
         for (final mirror in mirrors)
-          if (mirror.coveringFrameId case final panel?)
-            mirror.layerId: coveringCelFor(
-              frameId: panel,
-              cutDuration: requireCut(project, mirror.cutId).duration,
-            ),
+          if (mirror.bornCelId case final cel?)
+            mirror.layerId: layer.kind.coversWithoutGaps
+                ? coveringCelFor(
+                    frameId: cel,
+                    cutDuration: requireCut(project, mirror.cutId).duration,
+                  )
+                : _firstCelAs(cel),
       };
       final row = panels.isEmpty
           ? layer
@@ -142,6 +158,7 @@ class AddLayerCommand implements Command {
             // its copies outside too.
             folderId: mirror.folderId,
             attachedToLayerId: mirror.attachedToLayerId,
+            effects: mirror.effects,
             // Null keeps the source's lane — a row born empty.
             timeline: panels[mirror.layerId]?.timeline,
           ),
@@ -181,6 +198,24 @@ class AddLayerCommand implements Command {
         ),
       );
     });
+  }
+
+  /// The first cel [layer] was born with, under [frameId]: a copy's own,
+  /// the ＋ press the source's was — not a second spelling of a drawing.
+  ({Frame frame, Map<int, TimelineExposure> timeline}) _firstCelAs(
+    FrameId frameId,
+  ) {
+    final born = layer.frames.single;
+    return (
+      frame: duplicateFrameContent(frame: born, newFrameId: frameId),
+      timeline: {
+        for (final MapEntry(:key, :value) in layer.timeline.entries)
+          key: remapTimelineExposure(
+            exposure: value,
+            frameIdMap: {born.id: frameId},
+          ),
+      },
+    );
   }
 
   static Project _withLayerInserted(

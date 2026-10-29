@@ -106,6 +106,7 @@ class AppWindow extends StatelessWidget {
     this.footerBetween,
     this.footerNote,
     this.onClose,
+    this.onTitleDrag,
     this.width,
     this.minWidth = 264,
     this.maxWidth = 720,
@@ -161,6 +162,11 @@ class AppWindow extends StatelessWidget {
 
   /// Null hides the close button (a window that must be answered).
   final VoidCallback? onClose;
+
+  /// Moves the window by its title bar — a window its HOST places
+  /// ([FloatingAppWindow]) rather than the dialog route, which centres it
+  /// inside its inset. Null for a window the route places.
+  final GestureDragUpdateCallback? onTitleDrag;
 
   /// A fixed width, or null to size between [minWidth] and [maxWidth].
   final double? width;
@@ -229,6 +235,9 @@ class AppWindow extends StatelessWidget {
     final body = Padding(padding: bodyPadding, child: this.body);
     return Dialog(
       key: windowKey,
+      // A window the hand places stands where it was put, not inside the
+      // route's inset ([onTitleDrag]).
+      insetPadding: onTitleDrag == null ? null : EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
         constraints: BoxConstraints(
@@ -278,17 +287,7 @@ class AppWindow extends StatelessWidget {
             Icon(titleIcon, size: 14, color: AppColors.accent),
             const SizedBox(width: 8),
           ],
-          Expanded(
-            child: Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: colorScheme.onSurface,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
+          Expanded(child: _titleHandle(title, theme)),
           if (onClose != null)
             AppIconButton(
               keyValue: 'app-window-close',
@@ -299,6 +298,30 @@ class AppWindow extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+
+  /// The title — and, for a window the hand places, what moves it: the
+  /// bar's own gesture, the whole of the bar but its close button.
+  Widget _titleHandle(String title, ThemeData theme) {
+    final text = Text(
+      title,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: theme.textTheme.labelMedium?.copyWith(
+        color: theme.colorScheme.onSurface,
+        fontWeight: FontWeight.w500,
+      ),
+    );
+    final onTitleDrag = this.onTitleDrag;
+    if (onTitleDrag == null) {
+      return text;
+    }
+    return GestureDetector(
+      key: const ValueKey<String>('app-window-title-drag'),
+      behavior: HitTestBehavior.opaque,
+      onPanUpdate: onTitleDrag,
+      child: Align(alignment: Alignment.centerLeft, child: text),
     );
   }
 

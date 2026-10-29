@@ -5,8 +5,8 @@ import '../editor_session_manager.dart';
 
 /// Where the words typed into a paper's box land — ONE set of roads for
 /// every paper, because the papers print the same values: the work's
-/// episode and title (the values its settings show), a cut's name, and a
-/// stage's worker on a cut (the name 컷 설정 shows).
+/// episode and title (the values its settings show), a cut's name and its
+/// scene, and a stage's worker on a cut (the name 컷 설정 shows).
 ///
 /// 🗣️I-127-Q2 (유저 2026-10-27): 「같은 값을 찍는 칸은 전부 — 타임시트
 /// 머리와 같은 길」 — the envelope's boxes write by the roads the
@@ -37,6 +37,10 @@ class PaperWrites {
   /// [stage]'s worker on [cut] (I-112 · I-127-Q1).
   void staffName(CutId cut, LayerMark stage, String name) =>
       _session.cutVerbs.setCutStaffName(cut, stage, name);
+
+  /// [cut]'s scene (F-291) — empty clears it, as a scene may be none.
+  void scene(CutId cut, String scene) =>
+      _session.cutVerbs.setCutScene(cut, scene);
 
   void _work(TimesheetInfo Function(TimesheetInfo info) edit) =>
       _session.updateTimesheetInfo(edit(_session.timesheetInfo));

@@ -58,7 +58,7 @@ void main() {
       } else {
         final written = File('${tempDir.path}$sep$name');
         await written.parent.create(recursive: true);
-        await written.writeAsBytes(const [0, 0, 0, 24]);
+        await written.writeAsBytes(const [1, 2, 3]);
       }
     }
     return '${tempDir.path}$sep$root';

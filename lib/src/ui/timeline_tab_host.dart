@@ -233,7 +233,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   /// every layer (unified layer controls): the camera rides the cut camera
   /// track, every other kind its own layer track (applied at composite
   /// time; SE transforms move the canvas dialogue, instruction transforms
-  /// are authored state for parity). SE layers append their audio lane.
+  /// are authored state for parity). SE layers lead with their 「오디오」
+  /// group.
   /// R26 #3: maps a lane select-drag's cross-row delta onto the layer's
   /// DISPLAYED lane list (the same one the grids render) and returns the
   /// A plain tap on a property band: STAND there (R10).
@@ -600,15 +601,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             seClipMarkerTooltip: _session.appSettings.audioSyncSettings.value.clippingNotice
                 ? _session.uiStrings.recordClipMarkerTooltip
                 : null,
-            // Everything the audio lane may ask of the session, bound once
-            // here instead of threaded as six parameters through the panel
-            // and both grids.
-            //
-            // The slide edit previews LOCALLY in the lane span (its own
-            // painter, no session traffic per move) and commits ONE undo on
-            // release — the repo-live drag session rebuilt every panel per
-            // move and made the slide feel heavy (R5-⑧); the session drag
-            // API stays for callers that need the cross-panel mirror.
             onDropMediaAssetOnLayer: widget.onPlaceMediaAsset,
             // The same question the drop's door asks, asked while the file
             // only hovers — so the chip wears the answer before the release.
@@ -622,9 +614,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             onLeaveMediaAssetOnLayer: _session.mediaPlacement.clear,
             onDropMediaAssetBetweenLayers:
                 widget.onPlaceMediaAssetBetweenLayers,
-            // The SE rows' sound edits — the storyboard's S rows take the same
-            // object (F-101).
-            audioLane: sessionAudioLaneCallbacks(_session),
+            // A sound dropped on an SE block — the storyboard's S rows take the
+            // same wiring (F-101).
+            onDropMediaAssetOnSeBlock: sessionSeBlockDrop(_session),
             onAddLayer: _session.layerStack.addLayer,
             isLayerSoloed: (layerId) => _session
                 .visibilitySolo
@@ -877,6 +869,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // the transition row's mark answers the same way.
             spillInLeadFrames:
                 _session.activeCutSpan.activeCutSpillInLeadFrames,
+            // Where a track SE block reads its delivery (F-496).
+            cutId: _session.activeCutId,
             // The rail legend's bulk sweeps + the section brackets' flyout —
             // all session-backed (R-toolbar round); the R2 filter/dim/opacity
             // facets ride the same struct.

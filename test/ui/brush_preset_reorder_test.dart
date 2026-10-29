@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/brush_group.dart';
 import 'package:anicel/src/models/brush_group_id.dart';
 import 'package:anicel/src/models/brush_preset.dart';
 import 'package:anicel/src/models/brush_preset_id.dart';
@@ -99,68 +98,6 @@ void main() {
 
       expect(_ids(moved), ['b', 'w1', 'w2', 'w3', 'a']);
       expect(moved.last.groupId, _ink);
-    });
-  });
-
-  group('moveBrushGroupInLibrary', () {
-    const groups = [
-      BrushGroup(id: BrushGroupId('g1'), name: 'One'),
-      BrushGroup(id: BrushGroupId('g2'), name: 'Two'),
-      BrushGroup(id: BrushGroupId('g3'), name: 'Three'),
-    ];
-
-    List<String> ids(List<BrushGroup> groups) => [
-      for (final group in groups) group.id.value,
-    ];
-
-    test('moves a group before an anchor', () {
-      final moved = moveBrushGroupInLibrary(
-        groups: groups,
-        movedId: const BrushGroupId('g3'),
-        insertBeforeId: const BrushGroupId('g1'),
-      );
-
-      expect(ids(moved), ['g3', 'g1', 'g2']);
-    });
-
-    test('appends when no anchor is given', () {
-      final moved = moveBrushGroupInLibrary(
-        groups: groups,
-        movedId: const BrushGroupId('g1'),
-      );
-
-      expect(ids(moved), ['g2', 'g3', 'g1']);
-    });
-
-    test('a missing anchor appends', () {
-      final moved = moveBrushGroupInLibrary(
-        groups: groups,
-        movedId: const BrushGroupId('g1'),
-        insertBeforeId: const BrushGroupId('missing'),
-      );
-
-      expect(ids(moved), ['g2', 'g3', 'g1']);
-    });
-
-    test('an unknown moved id returns the list unchanged', () {
-      final moved = moveBrushGroupInLibrary(
-        groups: groups,
-        movedId: const BrushGroupId('missing'),
-      );
-
-      expect(moved, same(groups));
-    });
-
-    test('anchoring on itself is a no-op ordering', () {
-      final moved = moveBrushGroupInLibrary(
-        groups: groups,
-        movedId: const BrushGroupId('g2'),
-        insertBeforeId: const BrushGroupId('g2'),
-      );
-
-      // Its own id is not in the remaining list, so it appends rather than
-      // vanishing — order changes, membership does not.
-      expect(ids(moved), ['g1', 'g3', 'g2']);
     });
   });
 }

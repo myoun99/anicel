@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_selection_bands.dart'
     show TimelineRowSelectionBands;
 import 'package:anicel/src/ui/session/row_selection.dart';
+import 'package:anicel/src/ui/widgets/row_plate.dart';
 
 import '../../helpers/named_finders.dart';
 
@@ -552,15 +553,13 @@ void main() {
         orElse: () => s.layers.firstWhere((layer) => layer.id != activeId),
       );
       Color groundOf(LayerId id) {
-        final container = tester.widget<Container>(
-          find
-              .descendant(
-                of: find.named('timeline-layer-row-$id'),
-                matching: find.byType(Container),
-              )
-              .first,
+        final plate = tester.widget<RowPlate>(
+          find.descendant(
+            of: find.named('timeline-layer-row-$id'),
+            matching: find.byType(RowPlate),
+          ),
         );
-        return (container.decoration! as BoxDecoration).color!;
+        return plate.decoration!.color!;
       }
 
       final row = find.named('timeline-layer-row-${target.id}');

@@ -23,8 +23,8 @@ import '../layout/device_grid.dart';
 /// there is — a peg can't be on and invisible at once.
 ///
 /// Above the graph: what a peg step counts (drawing blocks or raw frames),
-/// the Colors/Images mode, and each side's tint on the shared color-wheel
-/// swatch.
+/// the Colors/Images mode, where the ghosts lie (on top or in place), and
+/// each side's tint on the shared color-wheel swatch.
 ///
 /// There is NO master switch (UI-R17 #5): onion applies PER LAYER via the
 /// timeline rows' toggles — this panel only shapes the ghosts.
@@ -52,6 +52,12 @@ class OnionSkinPanel extends StatelessWidget {
     OnionSkinMode.colors => 'Colors',
     OnionSkinMode.images => 'Images',
   };
+
+  static String _placementLabel(OnionSkinPlacement placement) =>
+      switch (placement) {
+        OnionSkinPlacement.onTop => 'On top',
+        OnionSkinPlacement.inPlace => 'In place',
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -112,6 +118,24 @@ class OnionSkinPanel extends StatelessWidget {
                       onPicked: (mode) =>
                           onChanged(settings.copyWith(mode: mode)),
                     ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: PanelFlyoutButton(
+                    key: const ValueKey<String>('onion-placement-button'),
+                    label: _placementLabel(settings.placement),
+                    tooltip: AppText.strings.onionPlacementHelp,
+                    expand: true,
+                    entriesBuilder: () =>
+                        OnionSkinPlacement.values.asFlyoutChoices(
+                          current: settings.placement,
+                          keyPrefix: 'onion-placement-',
+                          labelOf: _placementLabel,
+                          onPicked: (placement) => onChanged(
+                            settings.copyWith(placement: placement),
+                          ),
+                        ),
                   ),
                 ),
                 const SizedBox(width: 8),

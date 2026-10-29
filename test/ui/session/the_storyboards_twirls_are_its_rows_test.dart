@@ -273,7 +273,7 @@ void main() {
         'a member of a V row\'s fx group — to its header',
         carrier,
         fx,
-        effectLaneId(blur, 'blurX'),
+        effectLaneId(blur, 'blurriness'),
       ),
     ]) {
       test(name, () {

@@ -29,7 +29,10 @@ final class _HeldPictures implements PlaybackPictures {
       has(picture) ? const {} : {picture.frameIndex};
 
   @override
-  bool failed(DemandedPicture picture) => false;
+  PictureStanding standingOf(DemandedPicture picture) => (
+    state: has(picture) ? PictureState.there : PictureState.toCome,
+    cannotRead: false,
+  );
 
   @override
   void noteFailure(DemandedPicture picture) {}
@@ -81,7 +84,12 @@ void main() {
         totalFrames: 8,
         loops: () => true,
         playhead: () => playhead,
-        picturesOf: (frame) => [(cut: cut, frameIndex: frame, paintPaper: true)],
+        picturesOf: (frame) => [(
+          cut: cut,
+          frameIndex: frame,
+          paintPaper: true,
+          ghosts: FrameGhosts.none,
+        )],
         playlistFrameOf: (_, frame) => frame,
       ),
     );

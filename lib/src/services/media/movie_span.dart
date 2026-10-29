@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../../core/progress_share.dart';
 import '../../models/kept_span.dart';
 import '../../models/movie_clock.dart';
 import '../../models/project_frame_rate.dart';
@@ -29,11 +30,17 @@ import 'media_byte_source.dart';
 /// ([int16PcmOfFrames]), handed to the encoder frame by frame.
 ///
 /// Uses the encoder's own budget, as the export does by default.
+///
+/// [onProgress] hears the frames written, as 0–1 — the work there is
+/// (🔬F-494, 2026-10-28: two minutes of a 3.4GB 1080p movie took 61 s here,
+/// 55 of them this loop, the decode and the encode half each; reading the
+/// span's sound before it, 5).
 ({KeptSpan? kept, String? failure}) writeMovieSpan(
   String sourcePath,
   String piecePath, {
   required ({int inFrame, int? outFrame}) trim,
   required ProjectClock clock,
+  void Function(double fraction)? onProgress,
 }) {
   final decoder = QaVideoDecoder.instance;
   final encoder = QaVideoEncoder.instance;
@@ -110,6 +117,7 @@ import 'media_byte_source.dart';
         if (!encoder.writeFrame(rgba) || !writeSoundOf(at)) {
           return (kept: null, failure: encoder.lastError);
         }
+        onProgress?.call(doneShare(at - kept.first + 1, kept.count));
       }
       finished = encoder.finish();
       return finished

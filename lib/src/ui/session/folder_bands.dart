@@ -1,71 +1,10 @@
 import 'package:flutter/foundation.dart';
 import '../../models/layer_folder.dart';
-import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/timeline_exposure.dart';
-import '../../models/timeline_run_behavior.dart';
 import '../timeline/property_lane_model.dart'
-    show folderAggregateRuns, folderGhostRuns;
-import '../timeline/timeline_drag_preview.dart' show rowShownWhileMoved;
+    show folderBandOf, folderBandStandsFor;
 import 'session_roles.dart';
-
-/// [folder]'s row as the grids render it — its BAND: the folder carrying, as
-/// an ordinary timeline, the blocks its [members] make together
-/// ([folderAggregateRuns]) and, where none of them stands a block, the
-/// ghosts they project ([folderGhostRuns]).
-///
-/// Its entries resolve to no Frame on purpose: nothing composites a folder
-/// band, it only paints. A ghost is stamped the way a row's own is, so the
-/// shared cells painter draws a hold's dash here as it does there. The
-/// stamp's SIDE is the row's business — a band paints the mode, and
-/// nothing reads its side.
-Layer folderBandOf(Layer folder, Iterable<Layer> members) {
-  final runs = folderAggregateRuns(members);
-  FrameId celAt(int start) => FrameId('band:${folder.id.value}:$start');
-  return folder.copyWith(
-    timeline: {
-      for (final run in runs)
-        run.start: TimelineExposure.drawing(
-          celAt(run.start),
-          length: run.endExclusive - run.start,
-        ),
-      for (final ghost in folderGhostRuns(members, runs))
-        ghost.start: TimelineExposure.drawing(
-          celAt(ghost.start),
-          length: ghost.endExclusive - ghost.start,
-          ghostOf: TimelineRunEdgeGhost(
-            side: TimelineRunEdgeSide.end,
-            mode: ghost.mode,
-          ),
-        ),
-    },
-  );
-}
-
-/// The bands of the folders of [stack] that hold a row [shown] shows moved
-/// — each as the band its rows make where the drag has them. A folder's row
-/// is what its rows hold (F-311), so it follows the hand as they do: each
-/// row read as it shows ([rowShownWhileMoved]), a mirror by its base (F-467).
-Map<LayerId, Layer> folderBandsFollowing(
-  List<Layer> stack,
-  Map<LayerId, Layer> shown,
-) {
-  final index = LayerFolderIndex(stack);
-  Layer? moved(Layer member) =>
-      rowShownWhileMoved(member, (layerId) => shown[layerId]);
-  return {
-    for (final folder in stack)
-      if (folder.kind.groupsLayers)
-        if ([
-          for (final member in index.subtreeMembersOf(folder.id))
-            (member: member, moved: moved(member)),
-        ] case final members when members.any((row) => row.moved != null))
-          folder.id: folderBandOf(folder, [
-            for (final row in members) row.moved ?? row.member,
-          ]),
-  };
-}
 
 /// The FOLDER BANDS — which layer a folder's band stands on, who its members
 /// are and which runs it shows — as a cache that knows what it was built
@@ -141,6 +80,9 @@ class FolderBands {
       if (cached != null &&
           identical(cached.source, layer) &&
           mapEquals(cached.band.timeline, band.timeline)) {
+        // Kept for what it shows, it stands for the rows under it now — a
+        // drag reads it from them (`rowShownWhileMoved`).
+        folderBandStandsFor(cached.band, members);
         continue;
       }
       _folderBandCache[layer.id] = (

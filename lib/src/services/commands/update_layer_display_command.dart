@@ -36,7 +36,7 @@ import '../project_repository.dart';
 /// 독립적으로 하고」): they are the link group's again and have their own
 /// commands, `UpdateLayerBlendModeCommand` and `UpdateLayerOpacityCommand`.
 /// What is written here is what stayed each use's own — the eye and an SE
-/// row's mix.
+/// row's mute.
 ///
 /// ↩️THE TWIRL LEFT TOO (유저 2026-10-05, F-302: 「겸용컷 … 폴더/어태치
 /// 접기/펼치기 버튼도 공유 … 펼친 상태 접힌 상태 공유하라는것. 법통일」): a
@@ -129,38 +129,23 @@ class UpdateLayerDisplayCommand implements Command {
 /// already whatever the previous commands left. Tracking which single
 /// field moved would be a second thing to keep in sync for no gain.
 ///
-/// The SE row's fader and pan joined on 2026-09-25: they change what the
-/// film SOUNDS like, which is the reason mute is here (유저 the same day:
-/// 「소리 … 선택범위 레이어 모두 적용. 언두하나」).
+/// ↩️The SE row's fader and pan joined on 2026-09-25 — they change what
+/// the film SOUNDS like, which is the reason mute is here — and left when
+/// the row's volume and pan became its 「오디오」 group's lanes (I-140).
 ///
 /// ⛔The blend, the static opacity and the fold are not among them (F-278 ·
 /// F-302): other commands write those, through the link group, so a
 /// snapshot of one here would be a value this command never set putting
 /// itself back over one those commands did.
 class _DisplayState {
-  const _DisplayState({
-    required this.isVisible,
-    required this.muted,
-    required this.audioGain,
-    required this.audioPan,
-  });
+  const _DisplayState({required this.isVisible, required this.muted});
 
-  factory _DisplayState.of(Layer layer) => _DisplayState(
-    isVisible: layer.isVisible,
-    muted: layer.muted,
-    audioGain: layer.audioGain,
-    audioPan: layer.audioPan,
-  );
+  factory _DisplayState.of(Layer layer) =>
+      _DisplayState(isVisible: layer.isVisible, muted: layer.muted);
 
   final bool isVisible;
   final bool muted;
-  final double audioGain;
-  final double audioPan;
 
-  Layer restoreOnto(Layer layer) => layer.copyWith(
-    isVisible: isVisible,
-    muted: muted,
-    audioGain: audioGain,
-    audioPan: audioPan,
-  );
+  Layer restoreOnto(Layer layer) =>
+      layer.copyWith(isVisible: isVisible, muted: muted);
 }

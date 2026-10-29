@@ -27,7 +27,7 @@ void main() {
     return session;
   }
 
-  test('a FOLDER row accepts Delete Color and Keep Color', () {
+  test('a FOLDER row accepts the Color Key — twice, to key and to keep', () {
     final session = sessionWithFolder();
     final folder = session.activeCutOrNull!.layers.folderLayers.single;
     session.selectLayer(folder.id);
@@ -35,16 +35,16 @@ void main() {
     // whatever happened to be selected.
     expect(session.activeLayer?.id, folder.id, reason: 'fixture');
     expect(
-      session.effectsAndFx.canAddEffectToActiveLayer(EffectKind.deleteColor),
+      session.effectsAndFx.canAddEffectToActiveLayer(EffectKind.colorKey),
       isTrue,
     );
 
-    session.effectsAndFx.addEffectToActiveLayer(EffectKind.deleteColor);
-    session.effectsAndFx.addEffectToActiveLayer(EffectKind.keepColor);
+    session.effectsAndFx.addEffectToActiveLayer(EffectKind.colorKey);
+    session.effectsAndFx.addEffectToActiveLayer(EffectKind.colorKey);
     final after = session.activeCutOrNull!.layers.folderLayers.single;
     expect(after.effects.map((e) => e.kind).toList(), [
-      EffectKind.deleteColor,
-      EffectKind.keepColor,
+      EffectKind.colorKey,
+      EffectKind.colorKey,
     ]);
   });
 
@@ -58,7 +58,7 @@ void main() {
     expect(session.activeLayer?.id, drawing.id, reason: 'fixture');
 
     session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
-    session.effectsAndFx.addEffectToActiveLayer(EffectKind.deleteColor);
+    session.effectsAndFx.addEffectToActiveLayer(EffectKind.colorKey);
     final after = session.activeCutOrNull!.layers.firstWhere(
       (layer) => layer.id == drawing.id,
     );
@@ -67,7 +67,7 @@ void main() {
     // honour; the composite honours it now.
     expect(after.effects.map((e) => e.kind).toList(), [
       EffectKind.blur,
-      EffectKind.deleteColor,
+      EffectKind.colorKey,
     ]);
   });
 }

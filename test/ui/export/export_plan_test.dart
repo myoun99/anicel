@@ -11,6 +11,8 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/models/se_sound.dart';
 import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -523,6 +525,52 @@ void main() {
       ]);
     });
 
+    test('a track row\'s volume is read on the track\'s axis — a ramp keyed '
+        'from cut a sounds where it has climbed to in cut b', () {
+      final proj = project([
+        Track(
+          id: const TrackId('track'),
+          name: 'Track',
+          seLayers: [
+            seLayer('se-x', file: 'x.wav', start: 8, length: 8).copyWith(
+              seSound: SeSound(
+                volume: PropertyTrack<double>(
+                  keys: {
+                    0: const PropertyKey(0.0),
+                    20: const PropertyKey(1.0),
+                  },
+                ),
+              ),
+            ),
+          ],
+          cuts: [cut('a', duration: 10), cut('b', duration: 10)],
+        ),
+      ]);
+      final b = proj.tracks.first.cuts[1];
+
+      final clips = buildExportAudioPlan(
+        plan: [
+          for (var index = 0; index <= 9; index += 1)
+            ExportFrameTask(cut: b, frameIndex: index),
+        ],
+        project: proj,
+      );
+
+      final clip = clips.single;
+      expect([clip.startFrame, clip.endFrameExclusive, clip.offsetFrames], [
+        0,
+        6,
+        2,
+      ]);
+      expect([for (final point in clip.volume) point.frame], [0, 6]);
+      expect(
+        clip.volume.first.gain,
+        closeTo(0.5, 1e-9),
+        reason: 'track frame 10, half way up the ramp — not cut b\'s 0',
+      );
+      expect(clip.volume.last.gain, closeTo(0.8, 1e-9));
+    });
+
     test('🚨the block before must be on the SAME track — two tracks whose '
         'axes happen to line up are still two runs', () {
       final proj = project([
@@ -636,8 +684,8 @@ void main() {
       ]);
     });
 
-    test('gain and fades land on the plan; a range starting mid-fade keeps '
-        'the fade-in remainder', () {
+    test('the clip gain and the row volume land on the plan; a range '
+        'starting mid-ramp reads the volume from where it starts', () {
       final shapedCut = cut(
         'a',
         duration: 10,
@@ -648,10 +696,13 @@ void main() {
                 filePath: 'a.wav',
                 frameId: const FrameId('se-a1-frame'),
                 gain: 1.5,
-                fadeInFrames: 4,
-                fadeOutFrames: 2,
               ),
             ],
+            seSound: SeSound(
+              volume: PropertyTrack<double>(
+                keys: {2: const PropertyKey(0.0), 6: const PropertyKey(1.0)},
+              ),
+            ),
           ),
         ],
       );
@@ -669,14 +720,16 @@ void main() {
           startFrame: 2,
           endFrameExclusive: 10,
           gain: 1.5,
-          fadeInFrames: 4,
-          fadeOutFrames: 2,
+          volume: [
+            (frame: 0, gain: 0.0),
+            (frame: 4, gain: 1.0),
+            (frame: 8, gain: 1.0),
+          ],
         ),
       ]);
 
-      // Frames 4..9: the range trims 2 of the 4 fade-in frames — the
-      // remainder ramps from the trimmed start; the fade-out anchors to
-      // the audible end as before.
+      // Frames 4..9: the range trims 2 frames off the ramp's head — the
+      // line starts at the volume frame 4 has, half way up.
       final rangedPlan = buildExportFramePlan(
         project: project([
           Track(id: const TrackId('track'), name: 'Track', cuts: [shapedCut]),
@@ -693,8 +746,11 @@ void main() {
           endFrameExclusive: 6,
           offsetFrames: 2,
           gain: 1.5,
-          fadeInFrames: 2,
-          fadeOutFrames: 2,
+          volume: [
+            (frame: 0, gain: 0.5),
+            (frame: 2, gain: 1.0),
+            (frame: 6, gain: 1.0),
+          ],
         ),
       ]);
     });

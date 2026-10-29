@@ -15,6 +15,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/se_dialogue_spacing.dart';
 import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
@@ -118,6 +119,9 @@ void main() {
         duration: 1,
         name: dialogue,
         seName: 'SE',
+        // Nine frames a glyph: the 25 glyphs reach every half of the 240
+        // rows (F-496 ③).
+        seSpacing: const SeDialogueSpacing(komaPerGlyph: 9),
         strokes: const [],
       ),
     ],
@@ -328,11 +332,13 @@ void main() {
     var above = 0;
     // The band over the half's first row line, short of the glyph whose
     // centre is this half's: a glyph shows WHOLE in the window holding its
-    // centre (F-358, 10-17), and laid over the whole span (10-19 「대사가
-    // 1코마부터」) the eighth one's centre falls on the line itself (25
-    // glyphs over 240 rows: 9.6 a glyph), so half of it stands over it.
-    // What may not stand here is the earlier half's share. ↩️The band ran
-    // to two pixels over the line while the words began under the name box.
+    // centre (F-358, 10-17), and nine frames a glyph (F-496 ③) the ninth
+    // one stands on the half's first row, centred on it, so a glyph taller
+    // than the row reaches over the line. What may not stand here is the
+    // earlier half's share. ↩️The band ran to two pixels over the line
+    // while the words began under the name box. ↩️Until F-496 ③ the words
+    // were spread over the whole span (9.6 rows a glyph) and the eighth
+    // one's centre fell on the line itself.
     for (var y = 60 - 16; y < 60 - 8; y += 1) {
       for (var x = 0; x < width; x += 1) {
         final i = (y * width + x) * 4;

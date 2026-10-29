@@ -251,8 +251,8 @@ class _Walk {
   /// What the drawing canvas's row is painted through: the white specks
   /// every stroke leaves go, so every tile it paints is a keyed copy.
   static final _deleteWhite = ResolvedLayerEffect(
-    kind: EffectKind.deleteColor,
-    values: const [255, 255, 255, 0, 100],
+    kind: EffectKind.colorKey,
+    values: const [0, 0xFFFFFFFF, 0, 100],
   );
 
   final WidgetTester tester;
@@ -472,5 +472,5 @@ class _Walk {
 
 /// How many of [surface]'s tiles have their own picture.
 int _pictured(BitmapSurface surface) => surface.tiles.values
-    .where((tile) => BitmapTileImageCache.instance.imageFor(tile) != null)
+    .where((tile) => BitmapTileImageCache.instance.heldFor(tile) != null)
     .length;

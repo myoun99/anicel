@@ -67,6 +67,10 @@ dependencies:
   # 그대로 — GPU 를 거치지 않는 디코더」). Already in the lock through pdf;
   # named here because lib now imports it.
   image: ^4.9.1
+  # The feedback forms open in the system browser (I-139). Already in the
+  # lock through pdfrx, every platform registered; named here because lib
+  # now imports it.
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:
@@ -117,6 +121,22 @@ flutter:
   assets:
     - assets/fonts/
     - assets/licenses/
+    # The window the app opens at launch (LaunchNoticeSection), one folder
+    # per language. ⚠️A folder entry takes the files IN it and no
+    # subfolder, so each language is listed — a language missing here is a
+    # notice that fails to load, which `launch_notice_test` asks.
+    - assets/launch/en/
+    - assets/launch/ja/
+    - assets/launch/ko/
+    - assets/launch/fr/
+    - assets/launch/zhHans/
+    # 🚨A FILE A SHADER #includes, LISTED SO A CHANGE TO IT REBUILDS THEM.
+    # Nothing loads it. flutter rebuilds the compiled shaders only when a
+    # listed asset is newer than them (`flutter test`'s `_needsRebuild`,
+    # the build's asset depfile) — and an include is no shader of its own.
+    # 🔬10-28: nine mutants of this file lived, every test drawing with the
+    # shaders compiled before them.
+    - shaders/lens_light.glsl
 
   # 🚨THE APP UI's OWN FACE (유저 확정 2026-08-28). The app used to have no
   # font of its own and wore whatever the OS handed it, so the same screen
@@ -145,6 +165,10 @@ flutter:
   shaders:
     - shaders/colour_key.frag
     - shaders/layer_blend.frag
+    - shaders/directional_blur.frag
+    - shaders/row_sum.frag
+    - shaders/iris_table.frag
+    - shaders/iris_gather.frag
 
   # To add assets to your application, add an assets section, like this:
   # assets:

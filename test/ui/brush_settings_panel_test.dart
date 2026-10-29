@@ -6,6 +6,7 @@ import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
+import 'package:anicel/src/models/brush_settings_row.dart';
 import 'package:anicel/src/models/brush_shape.dart' show BrushMaskSlot;
 import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/models/brush_texture_mode.dart';
@@ -905,11 +906,16 @@ final _paper = BrushTipMask(
 /// The settings panel, scrolled, starting from [initial] and kept as each
 /// change leaves it: what it holds now is the answer of the function given
 /// back.
+///
+/// The brush shows every row: what these pin is each row, and which rows a
+/// brush shows is `a_brush_shows_the_settings_it_chose_test`'s (I-141).
 Future<BrushToolState Function()> _pumpPanel(
   WidgetTester tester, {
   BrushToolState? initial,
 }) async {
-  var state = initial ?? BrushToolState.defaults;
+  var state = (initial ?? BrushToolState.defaults).copyWith(
+    shown: BrushSettingsRow.values.toSet(),
+  );
   await tester.pumpWidget(
     MaterialApp(
       home: Scaffold(

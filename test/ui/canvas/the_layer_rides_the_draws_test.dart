@@ -1,3 +1,6 @@
+@Tags(['impeller'])
+library;
+
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'dart:async';
 import 'dart:typed_data';
@@ -58,11 +61,15 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// advanced blend never rides (pinned below), and the blend compared here is
 /// the one besides srcOver that still does — add.
 ///
-/// ⚠️THE TILE PAINT IS WHY IT HOLDS. `isAntiAlias = false` +
-/// `FilterQuality.none` is what makes adjacent tiles disjoint in DEVICE
+/// ⚠️THE TILE PAINT IS WHY IT HOLDS. `FilterQuality.none` and each tile's
+/// edge on the pixel grid are what make adjacent tiles disjoint in DEVICE
 /// pixels, not only in canvas units. A first draft of this comparison used
 /// the default paint and saw seams at fractional scale — that was the
-/// probe's antialiasing, not the painter's.
+/// probe's antialiasing, not the painter's. ↩️`isAntiAlias = false` was
+/// the edge's half until 10-28: Impeller's MSAA covers a pixel by the
+/// samples whatever the flag, and at 1.37 here 129 pixels came out up to
+/// 23 apart under `--enable-impeller` — so where the tiles' grid falls off
+/// the pixels, each tile is cut on them (`_drawImageAtTile`).
 void main() {
   const canvasSize = CanvasSize(width: 64, height: 64);
   const tileSize = 16;
@@ -126,6 +133,7 @@ void main() {
     painter.paintContentInto(
       canvas,
       layerPaint: buffered ? null : layerPaint(),
+      pixelRatio: 1,
     );
     canvas.restore();
     if (buffered) {
@@ -266,6 +274,23 @@ void main() {
       await expectSamePixels('scale 0.63', addHalf, scale: 0.63, phase: 0.17);
       await expectSamePixels('scale 2', addHalf, scale: 2);
       await expectSamePixels('phase 0.5', addHalf, phase: 0.5);
+      // 🚨A colour matrix rides as one layer where the tiles are cut on the
+      // grid (10-28): through each tile's shader Impeller took it otherwise,
+      // up to 223/255.
+      Paint brightenHalf() => Paint()
+        ..color = const Color(0x80000000)
+        ..colorFilter = const ColorFilter.matrix(<double>[
+          1.2, 0, 0, 0, 10, //
+          0, 1.1, 0, 0, 5,
+          0, 0, 0.9, 0, 0,
+          0, 0, 0, 1, 0,
+        ]);
+      await expectSamePixels(
+        'a colour matrix at 1.37',
+        brightenHalf,
+        scale: 1.37,
+        phase: 0.42,
+      );
     });
   });
 
@@ -594,7 +619,7 @@ void main() {
       // pixel.
       BitmapTileImageCache.instance.pictureFor(sharedTile);
       expect(
-        BitmapTileImageCache.instance.imageFor(sharedTile),
+        BitmapTileImageCache.instance.heldFor(sharedTile),
         isNotNull,
         reason: 'fixture premise: the tile draws from its own picture',
       );
@@ -655,7 +680,7 @@ void main() {
         effects: [
           ResolvedLayerEffect(
             kind: EffectKind.blur,
-            values: const [4, 4],
+            values: const [4, 0],
           ),
         ],
       );
@@ -800,8 +825,8 @@ void main() {
             values: const [10, 0],
           ),
           ResolvedLayerEffect(
-            kind: EffectKind.keepColor,
-            values: const [240, 192, 32, 60, 100],
+            kind: EffectKind.colorKey,
+            values: const [0, 0xFFF0C020, 60, 100],
           ),
         ],
         opacity: 1,
@@ -1026,9 +1051,58 @@ class _ClippedRecordingCanvas extends TestRecordingCanvas {
 
   final Rect bounds;
 
+  /// The transform a draw can ask for — a coordinate's edge is cut on the
+  /// grid it lands on (`cutOnThePixelGrid`) — kept beside the calls.
+  final List<Matrix4> _transforms = [Matrix4.identity()];
+
   @override
   Rect getLocalClipBounds() => bounds;
 
   @override
   Rect getDestinationClipBounds() => bounds;
+
+  @override
+  Float64List getTransform() => Float64List.fromList(_transforms.last.storage);
+
+  @override
+  void save() {
+    _transforms.add(_transforms.last.clone());
+    super.save();
+  }
+
+  @override
+  void saveLayer(Rect? bounds, Paint paint) {
+    _transforms.add(_transforms.last.clone());
+    super.saveLayer(bounds, paint);
+  }
+
+  @override
+  void restore() {
+    _transforms.removeLast();
+    super.restore();
+  }
+
+  @override
+  void translate(double dx, double dy) {
+    _transforms.last.translateByDouble(dx, dy, 0, 1);
+    noSuchMethod(Invocation.method(#translate, [dx, dy]));
+  }
+
+  @override
+  void scale(double sx, [double? sy]) {
+    _transforms.last.scaleByDouble(sx, sy ?? sx, 1, 1);
+    noSuchMethod(Invocation.method(#scale, [sx, sy]));
+  }
+
+  @override
+  void rotate(double radians) {
+    _transforms.last.rotateZ(radians);
+    noSuchMethod(Invocation.method(#rotate, [radians]));
+  }
+
+  @override
+  void transform(Float64List matrix4) {
+    _transforms.last.multiply(Matrix4.fromFloat64List(matrix4));
+    noSuchMethod(Invocation.method(#transform, [matrix4]));
+  }
 }

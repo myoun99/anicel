@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/app_language.dart';
 import '../../models/timesheet_info.dart' show WorkPicture;
 import '../../models/timesheet_sheet_kind.dart';
+import '../../services/persistence/save_stretch.dart';
 import '../audio/sound_cannot_play.dart' show SoundCannotPlay;
 
 /// The LIVE program/notation languages, app-wide — the same shape
@@ -126,6 +127,11 @@ enum AppStrings {
   String effectParameterName(String id, String fallback) =>
       _values['effectParameter.$id'] ?? fallback;
 
+  /// A word of a menu parameter, by its id (I-132-Q6) — the contract
+  /// [effectKindName] follows.
+  String effectChoiceName(String id, String fallback) =>
+      _values['effectChoice.$id'] ?? fallback;
+
   /// A key side's kind, by the enum value's `name` (I-89 ②) — the contract
   /// [layerProcessName] keeps: the English is the model's, the rest are
   /// here. ↩️Rows of their own (`keyInterpolationLinear` · `…Hold`) while the
@@ -175,6 +181,25 @@ enum AppStrings {
   String get launchStagePlugins => _s('launchStagePlugins');
   String get launchStageApp => _s('launchStageApp');
   String get launchStageFirstFrame => _s('launchStageFirstFrame');
+
+  /// The window the app opens at launch (유저 2026-10-28: 「앱 실행시 앱
+  /// 설명 넣고싶어. 다음부터 표시안함버튼있고」) — its words are the bundled
+  /// files' (`LaunchNoticeSection`); these are its frame.
+  String get launchNoticeTitle => _s('launchNoticeTitle');
+  String get launchNoticeDontShowAgain => _s('launchNoticeDontShowAgain');
+
+  /// The usage statistics' one switch (I-70), in Preferences ▸ System, and
+  /// what it sends, as its tooltip.
+  String get usageStatsSend => _s('usageStatsSend');
+  String get usageStatsHelp => _s('usageStatsHelp');
+
+  /// The usage statistics' question at launch (유저 2026-10-29: 「따로 묻는
+  /// 작은 창」): the ask, then [usageStatsHelp], then where it changes.
+  String get usageStatsTitle => _s('usageStatsTitle');
+  String get usageStatsAsk => _s('usageStatsAsk');
+  String get usageStatsChangeLater => _s('usageStatsChangeLater');
+  String get usageStatsDontSend => _s('usageStatsDontSend');
+  String get usageStatsDoSend => _s('usageStatsDoSend');
 
   /// The timeline/timesheet gap empty state.
   String get noCutSelected => _s('noCutSelected');
@@ -297,7 +322,6 @@ enum AppStrings {
   String get layerAudioTitle => _s('layerAudioTitle');
   String get audioGainLabel => _s('audioGainLabel');
   String get audioPanLabel => _s('audioPanLabel');
-  String get layerAudioPanHelp => _s('layerAudioPanHelp');
   String get audioMute => _s('audioMute');
   String get audioSolo => _s('audioSolo');
 
@@ -307,6 +331,10 @@ enum AppStrings {
   String get fpsAudioBody => _s('fpsAudioBody');
   String get fpsAudioKeep => _s('fpsAudioKeep');
   String get fpsAudioPull => _s('fpsAudioPull');
+
+  // --- Send feedback (I-139): the two forms the window chooses between ---
+  String get feedbackTextOnly => _s('feedbackTextOnly');
+  String get feedbackWithFiles => _s('feedbackWithFiles');
 
   // --- The pending selection-move prompt (R17-①) ---
 
@@ -388,6 +416,8 @@ enum AppStrings {
   String get seNameLabel => _s('seNameLabel');
   String get seTypeLabel => _s('seTypeLabel');
   String get seDialogueLabel => _s('seDialogueLabel');
+  String get seDialogueOffsetLabel => _s('seDialogueOffsetLabel');
+  String get seKomaPerGlyphLabel => _s('seKomaPerGlyphLabel');
   String get seLinkedAudioLabel => _s('seLinkedAudioLabel');
   String get seLinkedAudioNone => _s('seLinkedAudioNone');
   String get seUnlinkAudio => _s('seUnlinkAudio');
@@ -524,6 +554,31 @@ enum AppStrings {
   String get saveProgressDone => _s('saveProgressDone');
   String get savePrepareRunning => _s('savePrepareRunning');
   String get savePrepareDone => _s('savePrepareDone');
+
+  /// The stretch of a save the wait window's line names while it runs
+  /// (F-494, [SaveStretch]): the media taken out set aside, the cels, the
+  /// carried files checked, the media, the sounds converted for playback,
+  /// the fonts, the file's gaps closed, the file handed back to its document.
+  String get saveStepKeepingLeftBehind => _s('saveStepKeepingLeftBehind');
+  String get saveStepCels => _s('saveStepCels');
+  String get saveStepChecking => _s('saveStepChecking');
+  String get saveStepMedia => _s('saveStepMedia');
+  String get saveStepConforms => _s('saveStepConforms');
+  String get saveStepFonts => _s('saveStepFonts');
+  String get saveStepCompacting => _s('saveStepCompacting');
+  String get saveStepHandingBack => _s('saveStepHandingBack');
+
+  /// What a save's window says while it is in [stretch].
+  String saveStep(SaveStretch stretch) => switch (stretch) {
+    SaveStretch.keepingLeftBehind => saveStepKeepingLeftBehind,
+    SaveStretch.cels => saveStepCels,
+    SaveStretch.checking => saveStepChecking,
+    SaveStretch.media => saveStepMedia,
+    SaveStretch.conforms => saveStepConforms,
+    SaveStretch.fonts => saveStepFonts,
+    SaveStretch.compacting => saveStepCompacting,
+    SaveStretch.handingBack => saveStepHandingBack,
+  };
   String get openProgressRunning => _s('openProgressRunning');
   String get openProgressDone => _s('openProgressDone');
 
@@ -729,6 +784,7 @@ enum AppStrings {
   // --- Display (R11) ---
   String get uiScaleLabel => _s('uiScaleLabel');
   String get blockFrameLinesLabel => _s('blockFrameLinesLabel');
+  String get unnamedMarkLabel => _s('unnamedMarkLabel');
   String get drawingCursorLabel => _s('drawingCursorLabel');
   String get drawingCursorBrush => _s('drawingCursorBrush');
   String get drawingCursorPen => _s('drawingCursorPen');
@@ -835,7 +891,8 @@ enum AppStrings {
   String tlReferenceSourceShort(int frames) =>
       _s('tlReferenceSourceShort').replaceFirst('{n}', '$frames');
 
-  String get tlAudioLane => _s('tlAudioLane');
+  String get tlAudioGroup => _s('tlAudioGroup');
+  String get tlSoundVolume => _s('tlSoundVolume');
   String get tlNameTagGroup => _s('tlNameTagGroup');
   String get tlReferenceGroup => _s('tlReferenceGroup');
   String get tlTransformGroup => _s('tlTransformGroup');
@@ -933,6 +990,19 @@ enum AppStrings {
   String get tlAttachDropsFxTitle => _s('tlAttachDropsFxTitle');
   String get tlAttachDropsFxBody => _s('tlAttachDropsFxBody');
   String get tlAttachDropsFxRows => _s('tlAttachDropsFxRows');
+
+  /// The merge's warning (I-78-Q1 「포토샵 · 클튜처럼 (+경고)」): the merged
+  /// row can hold one blend, so what it looks like over the rows under it
+  /// may change — each line one way it may.
+  String get tlMergeChangesTitle => _s('tlMergeChangesTitle');
+  String get tlMergeChangesBody => _s('tlMergeChangesBody');
+  String get tlMergeChanges => _s('tlMergeChanges');
+  String get tlMergeChangeBlend => _s('tlMergeChangeBlend');
+  String get tlMergeChangeClip => _s('tlMergeChangeClip');
+  String get tlMergeChangeFolder => _s('tlMergeChangeFolder');
+  String get tlMergeChangeRiderOver => _s('tlMergeChangeRiderOver');
+  String get tlMergeChangeRiderUnder => _s('tlMergeChangeRiderUnder');
+  String get tlMergeChangeWall => _s('tlMergeChangeWall');
 
   /// ⛔No trailing '…' on a BAR BUTTON's writing (B9, 유저 2026-08-17:
   /// 「심플하게 編集」) — this one and [tlSetCommasN] wore it and read as
@@ -1108,6 +1178,36 @@ enum AppStrings {
   String get transportNextFrame => _s('transportNextFrame');
   String get colorRecent => _s('colorRecent');
   String get colorBackgroundSwap => _s('colorBackgroundSwap');
+  String get paletteViewCompact => _s('paletteViewCompact');
+  String get paletteViewCards => _s('paletteViewCards');
+  String get paletteNew => _s('paletteNew');
+
+  /// A new palette's name, 「팔레트 N」 (I-131-Q2), and back: the number a
+  /// name of that pattern carries, null for any other name — both read off
+  /// the one template, so the two cannot disagree.
+  String paletteNumbered(int number) =>
+      _s('paletteNumberedTemplate').replaceAll('{n}', '$number');
+  int? paletteNumberOf(String name) {
+    final template = RegExp.escape(_s('paletteNumberedTemplate'));
+    final number = RegExp(
+      '^${template.replaceAll(RegExp.escape('{n}'), r'(\d+)')}\$',
+    ).firstMatch(name)?.group(1);
+    return number == null ? null : int.parse(number);
+  }
+
+  String get paletteMakeDefault => _s('paletteMakeDefault');
+  String get paletteDuplicate => _s('paletteDuplicate');
+  String get paletteExport => _s('paletteExport');
+  String paletteBrought(String name) =>
+      _s('paletteBroughtTemplate').replaceAll('{name}', name);
+  String paletteCopyName(String name) =>
+      _s('paletteCopyTemplate').replaceAll('{name}', name);
+  String get paletteDeleteTitle => _s('paletteDeleteTitle');
+  String paletteDeleteBody(String name) =>
+      _s('paletteDeleteTemplate').replaceAll('{name}', name);
+  String get paletteRemoveCurrent => _s('paletteRemoveCurrent');
+  String get paletteLock => _s('paletteLock');
+  String get paletteMore => _s('paletteMore');
   String get penPressureTitle => _s('penPressureTitle');
   String get brushDynamicsTitle => _s('brushDynamicsTitle');
   String get curveSourcePressure => _s('curveSourcePressure');
@@ -1151,6 +1251,7 @@ enum AppStrings {
   String get onionAfterTint => _s('onionAfterTint');
   String get onionGhostColorHelp => _s('onionGhostColorHelp');
   String get onionPegCountHelp => _s('onionPegCountHelp');
+  String get onionPlacementHelp => _s('onionPlacementHelp');
 
   // --- The shortcut editor ---
   String get shortcutTitle => _s('shortcutTitle');
@@ -1183,6 +1284,9 @@ enum AppStrings {
           .replaceAll('{skipped}', '$skipped');
   String shortcutFileUnreadable(String name) =>
       _s('shortcutFileUnreadableTemplate').replaceAll('{name}', name);
+  String get shortcutPresetExport => _s('shortcutPresetExport');
+  String shortcutPresetBrought(String name) =>
+      _s('shortcutPresetBroughtTemplate').replaceAll('{name}', name);
 
   // --- Playback transport and the sheet page rail ---
   String get playbackMode => _s('playbackMode');
@@ -1505,6 +1609,14 @@ enum AppStrings {
   String get imStatusImporting => _s('imStatusImporting');
   String get imStatusNothing => _s('imStatusNothing');
   String get imStatusDone => _s('imStatusDone');
+
+  /// The stretch of a run the wait window's line names while it reports
+  /// (F-494): a trimmed movie's piece encoded again, another kind's span
+  /// written out, a file's bytes carried in, its cels rasterized.
+  String get imStepRecoding => _s('imStepRecoding');
+  String get imStepWritingSpan => _s('imStepWritingSpan');
+  String get imStepCarrying => _s('imStepCarrying');
+  String get imStepRasterizing => _s('imStepRasterizing');
   String get imFolderGone => _s('imFolderGone');
   String imFolderUnreadable(String reason) =>
       _s('imFolderUnreadableTemplate').replaceAll('{reason}', reason);
@@ -1744,6 +1856,9 @@ enum AppStrings {
   String get brGroupScattering => _s('brGroupScattering');
   String get brGroupTexture => _s('brGroupTexture');
   String get brGroupCorrection => _s('brGroupCorrection');
+  String get brDetailTitle => _s('brDetailTitle');
+  String get brShowInPanel => _s('brShowInPanel');
+  String get brHideFromPanel => _s('brHideFromPanel');
 
   String get brBlend => _s('brBlend');
   String get brBlendMode => _s('brBlendMode');
@@ -1789,8 +1904,29 @@ enum AppStrings {
   String get brExportSelected => _s('brExportSelected');
   String get brExportGroup => _s('brExportGroup');
   String get brExportNothing => _s('brExportNothing');
-  String brExportPlaceUnchosen(Object error) =>
-      _s('brExportPlaceUnchosenTemplate').replaceAll('{error}', '$error');
+  String fileExportPlaceUnchosen(Object error) =>
+      _s('fileExportPlaceUnchosenTemplate').replaceAll('{error}', '$error');
+
+  /// A settings file (I-142) — one palette's, one shortcut preset's — and
+  /// what came of writing it.
+  String settingsExported(String name) =>
+      _s('settingsExportedTemplate').replaceAll('{name}', name);
+  String settingsExportNotWritten(Object error) =>
+      _s('settingsExportNotWrittenTemplate').replaceAll('{error}', '$error');
+
+  /// The preferences window's 「설정 전부 내보내기」 (I-142-Q1), and the name
+  /// its file is offered under.
+  String get settingsExportAll => _s('settingsExportAll');
+  String get settingsAllFileName => _s('settingsAllFileName');
+
+  /// A settings file's rows in the import window (I-142-Q6 · Q9): the two
+  /// settings no window of their own names, the Into answer that puts a row
+  /// in place, what that costs, and a row this build cannot read.
+  String get settingsRowFrameCount => _s('settingsRowFrameCount');
+  String get settingsRowWorkspaceLayout => _s('settingsRowWorkspaceLayout');
+  String get imIntoSettings => _s('imIntoSettings');
+  String get imSettingsGoInPlace => _s('imSettingsGoInPlace');
+  String get imSettingsUnreadable => _s('imSettingsUnreadable');
   String brExportNotWritten(Object error) =>
       _s('brExportNotWrittenTemplate').replaceAll('{error}', '$error');
   String brExportedOne(String name) =>
@@ -1968,6 +2104,26 @@ enum AppStrings {
     'launchStagePlugins': 'Registering plugins',
     'launchStageApp': 'Preparing app',
     'launchStageFirstFrame': 'Drawing first screen',
+    'launchNoticeTitle': 'About this build',
+    'launchNoticeDontShowAgain': "Don't show again",
+    'usageStatsSend': 'Send usage statistics',
+    'usageStatsHelp':
+        'When on, the app sends anonymously, when it opens and about once '
+        'an hour while you use it, that it is in use — with the OS and its '
+        'version, the device model, the device language, the app build and '
+        'the app language. Once a day it also sends how many of the last 28 '
+        'days it was used (new, 1–2, 3 or more). Nothing that identifies '
+        'you is sent: no drawings or projects, no file names, no names, not '
+        'the name you gave the device. Turning it off also deletes the '
+        'record kept on this device.',
+    'usageStatsTitle': 'Usage statistics',
+    'usageStatsAsk':
+        'Send usage statistics? Turning them on helps the development of '
+        'Anicel.',
+    'usageStatsChangeLater':
+        'You can change this any time in Preferences ▸ System.',
+    'usageStatsDontSend': "Don't send",
+    'usageStatsDoSend': 'Send',
     'programLanguageLabel': 'Program language',
     'notationLanguageLabel': 'Notation language',
     'programLanguageHelp': 'Menus, panels and labels.',
@@ -2037,8 +2193,6 @@ enum AppStrings {
     'layerAudioTitle': 'Layer Audio',
     'audioGainLabel': 'Gain',
     'audioPanLabel': 'Pan',
-    'layerAudioPanHelp':
-        'Pan applies on the device mixer path (equal-power law).',
     'audioMute': 'Mute',
     'audioSolo': 'Solo',
     'fpsAudioTitleTemplate': '{from} → {to}: what happens to sound?',
@@ -2046,6 +2200,8 @@ enum AppStrings {
         'These two rates differ by 0.1% in real speed, and audio exists in real seconds — it cannot stay both frame-exact and time-exact.\n\n• Keep audio timing: sounds keep their real seconds; their frame positions drift by 0.1% (about one frame every 42 seconds).\n\n• Pull audio 0.1%: sounds are resampled by the exact pulldown ratio (an inaudible pitch change — the standard telecine conform) so every sound keeps its exact frame span.',
     'fpsAudioKeep': 'Keep audio timing',
     'fpsAudioPull': 'Pull audio 0.1%',
+    'feedbackTextOnly': 'Text only',
+    'feedbackWithFiles': 'With screenshots / videos (Google sign-in)',
     'selectionClosePolygon': 'Close shape',
     'selectionInvert': 'Invert Selection Beyond Canvas',
     'selectionInvertInCanvas': 'Invert Selection in Canvas',
@@ -2086,6 +2242,8 @@ enum AppStrings {
     'seNameLabel': 'Name (speaker — blank hides the box)',
     'seTypeLabel': 'Type',
     'seDialogueLabel': 'Dialogue',
+    'seDialogueOffsetLabel': 'Dialogue offset',
+    'seKomaPerGlyphLabel': 'Frames per character',
     'seLinkedAudioLabel': 'Linked audio',
     'seLinkedAudioNone': 'None',
     'seUnlinkAudio': 'Unlink',
@@ -2175,6 +2333,14 @@ enum AppStrings {
     'saveProgressDone': 'Saved',
     'savePrepareRunning': 'Preparing…',
     'savePrepareDone': 'Ready',
+    'saveStepKeepingLeftBehind': 'Setting aside the media taken out…',
+    'saveStepCels': 'Writing cels…',
+    'saveStepChecking': 'Checking the files to carry…',
+    'saveStepMedia': 'Writing media…',
+    'saveStepConforms': 'Writing the sound converted for playback…',
+    'saveStepFonts': 'Writing fonts…',
+    'saveStepCompacting': 'Closing up the gaps in the file…',
+    'saveStepHandingBack': 'Handing the file back to its document…',
     'openProgressRunning': 'Opening…',
     'openProgressDone': 'Opened',
     'openWaitingCloudTemplate': 'Downloading from the cloud · {sec}s',
@@ -2386,6 +2552,7 @@ enum AppStrings {
         'only inside that file.',
     'uiScaleLabel': 'Interface scale',
     'blockFrameLinesLabel': 'Frame lines inside blocks',
+    'unnamedMarkLabel': 'Mark of an unnamed block',
     'drawingCursorLabel': 'Cursor',
     'drawingCursorBrush': 'Brush',
     'drawingCursorPen': 'Pen',
@@ -2512,6 +2679,20 @@ enum AppStrings {
     'transportNextFrame': 'Next frame',
     'colorRecent': 'Recent',
     'colorBackgroundSwap': 'Background colour (tap to swap)',
+    'paletteViewCompact': 'Compact',
+    'paletteViewCards': 'Cards',
+    'paletteNew': 'New palette',
+    'paletteNumberedTemplate': 'Palette {n}',
+    'paletteMakeDefault': 'Make default',
+    'paletteDuplicate': 'Duplicate',
+    'paletteExport': 'Export',
+    'paletteBroughtTemplate': 'Added the palette "{name}".',
+    'paletteCopyTemplate': '{name} copy',
+    'paletteDeleteTitle': 'Delete palette',
+    'paletteDeleteTemplate': 'Delete the palette "{name}"?',
+    'paletteRemoveCurrent': 'Remove the current colour',
+    'paletteLock': 'Lock the palette',
+    'paletteMore': 'More',
     'penPressureTitle': 'Pen pressure',
     'brushDynamicsTitle': 'Response',
     'curveSourcePressure': 'Pressure',
@@ -2548,6 +2729,7 @@ enum AppStrings {
     'onionAfterTint': 'After tint',
     'onionGhostColorHelp': 'How the ghosts are colored',
     'onionPegCountHelp': 'What one peg counts',
+    'onionPlacementHelp': 'Where the ghosts lie',
     'shortcutTitle': 'Keyboard shortcuts',
     'shortcutResetAll': 'Reset all',
     'shortcutFileImportedTemplate':
@@ -2559,6 +2741,8 @@ enum AppStrings {
     'shortcutPresetDelete': 'Delete preset',
     'shortcutPresetRename': 'Rename preset',
     'shortcutPresetDuplicate': 'Duplicate preset',
+    'shortcutPresetExport': 'Export preset',
+    'shortcutPresetBroughtTemplate': 'Added the preset "{name}".',
     'shortcutPresetCopyTemplate': '{name} copy',
     'shortcutPresetDeleteTemplate': 'Delete the preset "{name}"?',
     'shortcutFileUnreadableTemplate':
@@ -2779,6 +2963,10 @@ enum AppStrings {
     'imStatusImporting': 'Importing…',
     'imStatusNothing': 'Nothing imported.',
     'imStatusDone': 'Imported',
+    'imStepRecoding': 'Re-encoding the trimmed movie…',
+    'imStepWritingSpan': 'Writing the trimmed span to a file…',
+    'imStepCarrying': 'Keeping the file inside the project…',
+    'imStepRasterizing': 'Rasterizing into cels…',
     'imFolderGone': 'That folder is gone.',
     'imFolderUnreadableTemplate': 'Could not read the folder: {reason}',
     'imCutFolderUnreadable': 'Could not read that folder.',
@@ -2958,6 +3146,9 @@ enum AppStrings {
     'brGroupScattering': 'Scattering',
     'brGroupTexture': 'Texture',
     'brGroupCorrection': 'Correction',
+    'brDetailTitle': 'Brush Details',
+    'brShowInPanel': 'Show in the panel',
+    'brHideFromPanel': 'Hide from the panel',
     'brBlend': 'Blend',
     'brBlendMode': 'Brush blend mode',
     'brDualBlend': 'Dual blend',
@@ -2994,7 +3185,18 @@ enum AppStrings {
     'brExportSelected': 'Export brush',
     'brExportGroup': 'Export brush group',
     'brExportNothing': 'There is nothing to export here.',
-    'brExportPlaceUnchosenTemplate': 'Could not choose where to save: {error}',
+    'fileExportPlaceUnchosenTemplate': 'Could not choose where to save: {error}',
+    'settingsExportedTemplate': 'Exported "{name}".',
+    'settingsExportNotWrittenTemplate': 'Could not write the file: {error}',
+    'settingsExportAll': 'Export all settings',
+    'settingsAllFileName': 'Anicel settings',
+    'settingsRowFrameCount': 'Frame count entry',
+    'settingsRowWorkspaceLayout': 'Workspace layout',
+    'imIntoSettings': 'Settings',
+    'imSettingsGoInPlace':
+        'What goes into Settings replaces what is there now — '
+        'the current ones will be gone.',
+    'imSettingsUnreadable': 'Unreadable',
     'brExportNotWrittenTemplate': 'Could not write the brush file: {error}',
     'brExportedOneTemplate': 'Exported "{name}".',
     'brExportedManyTemplate': 'Exported {count} brushes.',
@@ -3118,7 +3320,8 @@ enum AppStrings {
     'tlLayerReference': 'Reference',
     'tlReferenceSourceShort': 'Runs {n} frames past the source',
     'tlSelectedLayers': 'Selected layers',
-    'tlAudioLane': 'Audio',
+    'tlAudioGroup': 'Audio',
+    'tlSoundVolume': 'Volume',
     'tlNameTagGroup': 'Name Tag',
     'tlReferenceGroup': 'Reference',
     'tlTransformGroup': 'Transform',
@@ -3183,6 +3386,20 @@ enum AppStrings {
     'tlDropDetachAttach': 'detach',
     'tlAttachDropsFxRows': 'Layers that lose their fx',
     'tlAttachDropsFxTitle': 'Attaching drops its fx',
+    'tlMergeChangesTitle': 'Merging may change how it looks',
+    'tlMergeChangesBody':
+        'The merged layer may look different over the layers under it.',
+    'tlMergeChanges': 'What changes',
+    'tlMergeChangeBlend':
+        'A layer blends in its own mode — the merged layer is Normal',
+    'tlMergeChangeClip':
+        'A selected layer and one not selected are joined by clipping',
+    'tlMergeChangeFolder':
+        "The merged layer's folder lays its look over layers from outside it",
+    'tlMergeChangeRiderOver': 'An attached layer comes to cover other pictures',
+    'tlMergeChangeRiderUnder': 'An attached layer goes under other pictures',
+    'tlMergeChangeWall':
+        "A reference's picture past the pasteboard is cut off",
     'tlAttachDropsFxBody':
         'An attached layer keeps no fx of its own. Continuing discards the existing fx. Continue?',
     'tlPush': 'Push (open frames)',
@@ -3224,6 +3441,21 @@ enum AppStrings {
     'launchStagePlugins': 'プラグイン登録',
     'launchStageApp': 'アプリ準備',
     'launchStageFirstFrame': '最初の画面を描画',
+    'launchNoticeTitle': 'ご案内',
+    'launchNoticeDontShowAgain': '次回から表示しない',
+    'usageStatsSend': '利用統計を送信',
+    'usageStatsHelp':
+        'オンにすると、アプリを開いたときと使っている間の約1時間ごとに、使用中であることを'
+        'OSとそのバージョン・端末の機種名・端末の言語・アプリのビルド・アプリの言語とともに'
+        '匿名で送信します。'
+        '1日1回、直近28日間に使った日数の区分（初回 / 1〜2日 / 3日以上）も送信します。'
+        '絵・プロジェクト・ファイル名・名前・端末に付けた名前など、あなたを特定できる'
+        'ものは送信しません。オフにすると、この端末に残した記録も削除します。',
+    'usageStatsTitle': '利用統計',
+    'usageStatsAsk': '利用統計を送信しますか？オンにしていただくと、Anicel の開発の助けになります。',
+    'usageStatsChangeLater': '環境設定 ▸ システムでいつでも変更できます。',
+    'usageStatsDontSend': '送信しない',
+    'usageStatsDoSend': '送信する',
     'programLanguageLabel': 'プログラム言語',
     'notationLanguageLabel': '表記言語',
     'programLanguageHelp': 'メニュー・パネル・ラベルの言語。',
@@ -3290,7 +3522,6 @@ enum AppStrings {
     'layerAudioTitle': 'レイヤーオーディオ',
     'audioGainLabel': 'ゲイン',
     'audioPanLabel': 'パン',
-    'layerAudioPanHelp': 'パンはデバイスミキサー経路で適用されます（等パワー則）。',
     'audioMute': 'ミュート',
     'audioSolo': 'ソロ',
     'fpsAudioTitleTemplate': '{from} → {to}：音はどうしますか？',
@@ -3298,6 +3529,8 @@ enum AppStrings {
         'この2つのレートは実速度が0.1%異なり、音は実時間で存在します — コマ厳密と時間厳密を両立することはできません。\n\n• 音のタイミングを維持：音は実時間を保ち、コマ位置が0.1%ずれます（約42秒ごとに1コマ）。\n\n• 音を0.1%プル：正確なプルダウン比でリサンプルします（聴き取れないピッチ変化 — テレシネの標準コンフォーム）。全ての音がコマ範囲を維持します。',
     'fpsAudioKeep': '音のタイミングを維持',
     'fpsAudioPull': '音を0.1%プル',
+    'feedbackTextOnly': 'テキストのみ',
+    'feedbackWithFiles': 'スクリーンショット・動画つき（Google ログイン）',
     'selectionClosePolygon': '形を閉じる',
     'selectionInvert': 'カンバス外も選択範囲を反転',
     'selectionInvertInCanvas': 'カンバス内で選択範囲を反転',
@@ -3337,6 +3570,8 @@ enum AppStrings {
     'seNameLabel': '名前（話者 — 空欄でボックス非表示）',
     'seTypeLabel': 'タイプ',
     'seDialogueLabel': 'セリフ',
+    'seDialogueOffsetLabel': 'セリフのオフセット',
+    'seKomaPerGlyphLabel': '1文字のコマ数',
     'seLinkedAudioLabel': 'リンクされた音声',
     'seLinkedAudioNone': 'なし',
     'seUnlinkAudio': 'リンクを解除',
@@ -3430,6 +3665,14 @@ enum AppStrings {
     'saveProgressDone': '保存しました',
     'savePrepareRunning': '準備中…',
     'savePrepareDone': '準備完了',
+    'saveStepKeepingLeftBehind': '外したメディアを退避中…',
+    'saveStepCels': 'セルを書き込み中…',
+    'saveStepChecking': '格納するファイルを確認中…',
+    'saveStepMedia': 'メディアを書き込み中…',
+    'saveStepConforms': '再生用に変換した音声を書き込み中…',
+    'saveStepFonts': 'フォントを書き込み中…',
+    'saveStepCompacting': 'ファイルの空きを詰めています…',
+    'saveStepHandingBack': '元の書類にファイルを渡しています…',
     'openProgressRunning': '読み込み中…',
     'openProgressDone': '読み込みました',
     'openWaitingCloudTemplate': 'クラウドから受信中 · {sec}秒',
@@ -3518,6 +3761,7 @@ enum AppStrings {
     'menuAction.edit-knee-at-one': '画面解像度バッファ',
     'menuAction.edit-show-unpainted-tiles': '描画されなかったタイルを表示',
     'shortcutAction.help-about': 'Anicel について',
+    'shortcutAction.help-send-feedback': 'フィードバックを送る',
     'fileOpenTitle': 'プロジェクトを開く',
     'fileStorageOffNotice':
         'ストレージへのアクセスがオフです — アプリフォルダの外にある'
@@ -3678,6 +3922,7 @@ enum AppStrings {
         'このプロジェクトのファイルが見つかりません — 削除か移動された可能性があります。ゴミ箱に残っていれば今すぐ戻してください。保存済みの絵はそのファイルの中にしかありません。',
     'uiScaleLabel': 'UIの大きさ',
     'blockFrameLinesLabel': 'ブロック内のフレーム線',
+    'unnamedMarkLabel': '名前のないブロックのマーク',
     'drawingCursorLabel': 'カーソル',
     'drawingCursorBrush': 'ブラシ',
     'drawingCursorPen': 'ペン',
@@ -3778,6 +4023,7 @@ enum AppStrings {
     'shortcutShelf.timesheet': 'タイムシート',
     'shortcutShelf.conteSheet': 'コンテ用紙',
     'shortcutShelf.envelope': 'カット袋',
+    'shortcutShelf.palette': 'パレット',
     'shortcutPreset.clipStudio': 'CLIP STUDIO ベース',
     'shortcutPreset.tvpaint': 'TVPaint ベース',
     'shortcutAction.frame-previous': '前のフレーム',
@@ -3854,6 +4100,7 @@ enum AppStrings {
     'shortcutAction.edit-unlink': 'リンクから独立',
     'shortcutAction.edit-delete': '削除',
     'shortcutAction.edit-duplicate': '複製',
+    'shortcutAction.edit-merge': '結合',
     'shortcutAction.edit-replace-colour': '色変換',
     'shortcutAction.edit-clear-pixels': 'ピクセル消去',
     'shortcutAction.edit-binarize': '2値化',
@@ -3897,23 +4144,66 @@ enum AppStrings {
     'blendMode.luminosity': '輝度',
     'effectKind.brightnessContrast': '輝度＆コントラスト',
     'effectKind.hueSaturation': '色相/彩度',
-    'effectKind.blur': 'ぼかし',
-    'effectKind.deleteColor': '色削除',
-    'effectKind.keepColor': '色残し',
+    'effectKind.blur': 'ブラー（ガウス）',
+    'effectKind.directionalBlur': 'ブラー（方向）',
+    'effectKind.radialBlur': 'ブラー（放射状）',
+    'effectKind.cameraLensBlur': 'ブラー（カメラレンズ）',
+    'effectKind.colorKey': 'カラーキー',
     'effectKind.celNumber': 'セル番号',
     'effectParameter.brightness': '輝度',
     'effectParameter.contrast': 'コントラスト',
     'effectParameter.hue': 'マスターの色相',
     'effectParameter.saturation': 'マスターの彩度',
     'effectParameter.lightness': 'マスターの明度',
-    'effectParameter.blurX': 'ぼかしの幅',
-    'effectParameter.blurY': 'ぼかしの高さ',
-    'effectParameter.keyRed': 'キー色の赤',
-    'effectParameter.keyGreen': 'キー色の緑',
-    'effectParameter.keyBlue': 'キー色の青',
+    'effectParameter.blurriness': 'ブラー',
+    'effectParameter.blurDimensions': 'ブラーの方向',
+    'effectParameter.repeatEdgePixels': 'エッジピクセルを繰り返す',
+    'effectParameter.direction': '方向',
+    'effectParameter.blurLength': 'ブラーの長さ',
+    'effectParameter.keyColor': 'キー色',
     'effectParameter.ink': '色',
     'effectParameter.tolerance': '許容値',
     'effectParameter.amount': '適用量',
+    'effectParameter.keyOperation': 'キー操作',
+    'effectParameter.center': '中心',
+    'effectParameter.type': '種類',
+    'effectParameter.antialiasing': 'アンチエイリアス',
+    'effectParameter.blurRadius': 'ブラーの半径',
+    'effectParameter.irisShape': 'シェイプ',
+    'effectParameter.irisRoundness': '真円率',
+    'effectParameter.irisAspectRatio': '縦横比',
+    'effectParameter.irisRotation': '回転',
+    'effectParameter.irisDiffractionFringe': '回折フリンジ',
+    'effectParameter.blurMapLayer': 'ブラーマップのレイヤー',
+    'effectParameter.blurMapChannel': 'ブラーマップのチャンネル',
+    'effectParameter.blurFocalDistance': 'ブラーの焦点距離',
+    'effectParameter.invertBlurMap': 'ブラーマップを反転',
+    'effectParameter.highlightGain': 'ハイライトのゲイン',
+    'effectParameter.highlightThreshold': 'ハイライトのしきい値',
+    'effectParameter.highlightSaturation': 'ハイライトの彩度',
+    'effectParameter.useLinearWorkingSpace': 'リニア化された作業スペースを使用',
+    'effectChoice.keyColors': 'キーカラー',
+    'effectChoice.keepColors': 'カラー維持',
+    'effectChoice.horizontalAndVertical': '水平および垂直',
+    'effectChoice.horizontal': '水平',
+    'effectChoice.vertical': '垂直',
+    'effectChoice.spin': '回転',
+    'effectChoice.zoom': 'ズーム',
+    'effectChoice.best': '最高',
+    'effectChoice.draft': 'ドラフト',
+    'effectChoice.triangle': '三角形',
+    'effectChoice.square': '正方形',
+    'effectChoice.pentagon': '五角形',
+    'effectChoice.hexagon': '六角形',
+    'effectChoice.heptagon': '七角形',
+    'effectChoice.octagon': '八角形',
+    'effectChoice.nonagon': '九角形',
+    'effectChoice.decagon': '十角形',
+    'effectChoice.luminance': '輝度',
+    'effectChoice.red': '赤',
+    'effectChoice.green': '緑',
+    'effectChoice.blue': '青',
+    'effectChoice.alpha': 'アルファ',
     'selectionMode.replace': '新規選択',
     'selectionMode.add': '追加選択',
     'selectionMode.subtract': '部分解除',
@@ -3980,6 +4270,20 @@ enum AppStrings {
     'transportNextFrame': '次のフレーム',
     'colorRecent': '最近',
     'colorBackgroundSwap': '背景色（タップで入れ替え）',
+    'paletteViewCompact': 'コンパクト',
+    'paletteViewCards': 'カード',
+    'paletteNew': '新しいパレット',
+    'paletteNumberedTemplate': 'パレット {n}',
+    'paletteMakeDefault': 'デフォルトにする',
+    'paletteDuplicate': '複製',
+    'paletteExport': '書き出し',
+    'paletteBroughtTemplate': 'パレット「{name}」を追加しました。',
+    'paletteCopyTemplate': '{name} のコピー',
+    'paletteDeleteTitle': 'パレットを削除',
+    'paletteDeleteTemplate': 'パレット「{name}」を削除しますか？',
+    'paletteRemoveCurrent': '今の色を外す',
+    'paletteLock': 'パレットをロック',
+    'paletteMore': 'その他',
     'penPressureTitle': '筆圧',
     'brushDynamicsTitle': '入り抜き',
     'curveSourcePressure': '筆圧',
@@ -4016,6 +4320,7 @@ enum AppStrings {
     'onionAfterTint': '後の色',
     'onionGhostColorHelp': 'ゴーストの色付け方',
     'onionPegCountHelp': '1段が数えるもの',
+    'onionPlacementHelp': 'ゴーストの置き場所',
     'shortcutTitle': 'キーボードショートカット',
     'shortcutResetAll': 'すべてリセット',
     'shortcutFileImportedTemplate':
@@ -4027,6 +4332,8 @@ enum AppStrings {
     'shortcutPresetDelete': 'プリセットを削除',
     'shortcutPresetRename': 'プリセット名を変更',
     'shortcutPresetDuplicate': 'プリセットを複製',
+    'shortcutPresetExport': 'プリセットを書き出し',
+    'shortcutPresetBroughtTemplate': 'プリセット「{name}」を追加しました。',
     'shortcutPresetCopyTemplate': '{name} のコピー',
     'shortcutPresetDeleteTemplate': 'プリセット「{name}」を削除しますか？',
     'shortcutFileUnreadableTemplate':
@@ -4328,6 +4635,10 @@ enum AppStrings {
     'imStatusImporting': 'インポート中…',
     'imStatusNothing': '何もインポートされませんでした。',
     'imStatusDone': 'インポートしました',
+    'imStepRecoding': 'トリミングした動画を再エンコード中…',
+    'imStepWritingSpan': '切り出した範囲をファイルに書き出し中…',
+    'imStepCarrying': 'ファイルをプロジェクトに埋め込み中…',
+    'imStepRasterizing': 'セルにラスタライズ中…',
     'imFolderGone': 'そのフォルダーは見つかりません。',
     'imFolderUnreadableTemplate': 'フォルダーを読めませんでした: {reason}',
     'imCutFolderUnreadable': 'そのフォルダーを読めませんでした。',
@@ -4505,6 +4816,9 @@ enum AppStrings {
     'brGroupScattering': '散布',
     'brGroupTexture': '質感',
     'brGroupCorrection': '補正',
+    'brDetailTitle': 'ブラシ詳細',
+    'brShowInPanel': 'パネルに表示',
+    'brHideFromPanel': 'パネルに表示しない',
     'shortcutAction.frame-auto-create': 'フレーム自動生成',
     'brBlend': '合成',
     'brBlendMode': 'ブラシの合成モード',
@@ -4599,6 +4913,7 @@ enum AppStrings {
     'builtinTip.builtin-flake': '雪の結晶',
     'builtinTip.builtin-ring': 'リング',
     'builtinTip.builtin-leaf': '葉',
+    'builtinTip.builtin-grass-clump': '草むら',
     'builtinTip.builtin-paper-grain': '紙目',
     'builtinTip.builtin-canvas-weave': 'キャンバス目',
     'builtinTip.builtin-cold-press': 'コールドプレス紙',
@@ -4636,7 +4951,16 @@ enum AppStrings {
     'brExportSelected': 'ブラシを書き出し',
     'brExportGroup': 'ブラシグループを書き出し',
     'brExportNothing': '書き出すブラシがありません。',
-    'brExportPlaceUnchosenTemplate': '保存先を選べませんでした: {error}',
+    'fileExportPlaceUnchosenTemplate': '保存先を選べませんでした: {error}',
+    'settingsExportedTemplate': '「{name}」を書き出しました。',
+    'settingsExportNotWrittenTemplate': 'ファイルを書き込めませんでした: {error}',
+    'settingsExportAll': '設定をすべて書き出す',
+    'settingsAllFileName': 'Anicel 設定',
+    'settingsRowFrameCount': 'コマ数の入力方式',
+    'settingsRowWorkspaceLayout': 'ワークスペース配置',
+    'imIntoSettings': '設定',
+    'imSettingsGoInPlace': '「設定」に入れる項目は、今の設定が消えます。',
+    'imSettingsUnreadable': '読めません',
     'brExportNotWrittenTemplate': 'ブラシファイルを書き込めませんでした: {error}',
     'brExportedOneTemplate': '「{name}」を書き出しました。',
     'brExportedManyTemplate': 'ブラシを{count}個書き出しました。',
@@ -4792,7 +5116,8 @@ enum AppStrings {
     'tlLayerReference': '参照',
     'tlReferenceSourceShort': '素材より{n}フレーム長い',
     'tlSelectedLayers': '選択したレイヤー',
-    'tlAudioLane': '音声',
+    'tlAudioGroup': '音声',
+    'tlSoundVolume': '音量',
     'tlNameTagGroup': 'ネームタグ',
     'tlReferenceGroup': '参照',
     'tlTransformGroup': 'トランスフォーム',
@@ -4865,6 +5190,15 @@ enum AppStrings {
     'shortcutAction.layer-detach': 'アタッチを解除',
     'tlAttachDropsFxRows': 'fx を失うレイヤー',
     'tlAttachDropsFxTitle': 'アタッチすると fx が失われます',
+    'tlMergeChangesTitle': '結合すると見た目が変わることがあります',
+    'tlMergeChangesBody': '結合したレイヤーは、下のレイヤーの上で違って見えることがあります。',
+    'tlMergeChanges': '変わるもの',
+    'tlMergeChangeBlend': '通常以外の合成モードが含まれています — 結合したレイヤーは通常になります',
+    'tlMergeChangeClip': '選んだレイヤーと選んでいないレイヤーがクリッピングでつながっています',
+    'tlMergeChangeFolder': '結合したレイヤーが入るフォルダーの効果が、フォルダーの外から来たレイヤーにもかかります',
+    'tlMergeChangeRiderOver': 'アタッチレイヤーがほかの絵を覆うようになります',
+    'tlMergeChangeRiderUnder': 'アタッチレイヤーがほかの絵の下に入ります',
+    'tlMergeChangeWall': '参照の絵のペーストボードの外の部分が切り取られます',
     'tlAttachDropsFxBody': 'アタッチレイヤーは自分の fx を持ちません。続けると既存の fx は失われます。実行しますか？',
     'tlPush': '押し出し（コマを開ける）',
     'tlPull': '詰め（コマを詰める）',
@@ -4905,6 +5239,22 @@ enum AppStrings {
     'launchStagePlugins': '플러그인 등록',
     'launchStageApp': '앱 준비',
     'launchStageFirstFrame': '첫 화면 그리기',
+    'launchNoticeTitle': '안내',
+    'launchNoticeDontShowAgain': '다음부터 표시 안 함',
+    'usageStatsSend': '사용 통계 보내기',
+    'usageStatsHelp':
+        '켜 두면 앱을 열 때와 쓰는 동안 약 1시간마다 한 번, 쓰고 있다는 것을 '
+        'OS와 그 버전 · 기기 모델명 · 기기 언어 · 앱 빌드 · 앱 언어와 함께 '
+        '익명으로 보냅니다. 하루 한 번은 최근 28일 중 쓴 날의 구간'
+        '(처음 / 1–2일 / 3일 이상)도 보냅니다. '
+        '그림 · 프로젝트 · 파일 이름 · 이름 · 기기에 붙인 이름 등 '
+        '사용자를 알아볼 수 있는 것은 보내지 않습니다. '
+        '끄면 이 기기에 남긴 기록도 지웁니다.',
+    'usageStatsTitle': '사용 통계',
+    'usageStatsAsk': '사용 통계를 보내시겠습니까? 켜 주시면 Anicel 개발에 도움이 됩니다.',
+    'usageStatsChangeLater': '환경설정 ▸ 시스템에서 언제든 바꿀 수 있습니다.',
+    'usageStatsDontSend': '보내지 않기',
+    'usageStatsDoSend': '보내기',
     'programLanguageLabel': '프로그램 언어',
     'notationLanguageLabel': '표기용 언어',
     'programLanguageHelp': '메뉴·패널·라벨의 언어.',
@@ -4971,7 +5321,6 @@ enum AppStrings {
     'layerAudioTitle': '레이어 오디오',
     'audioGainLabel': '게인',
     'audioPanLabel': '팬',
-    'layerAudioPanHelp': '팬은 장치 믹서 경로에서 적용됩니다(등파워 법칙).',
     'audioMute': '음소거',
     'audioSolo': '솔로',
     'fpsAudioTitleTemplate': '{from} → {to}: 소리는 어떻게 할까요?',
@@ -4979,6 +5328,8 @@ enum AppStrings {
         '두 레이트는 실제 속도가 0.1% 다르고, 소리는 실시간으로 존재합니다 — 프레임 정확과 시간 정확을 동시에 지킬 수 없습니다.\n\n• 오디오 타이밍 유지: 소리는 실시간을 지키고, 프레임 위치가 0.1% 어긋납니다(약 42초마다 1프레임).\n\n• 오디오 0.1% 당김: 정확한 풀다운 비율로 리샘플합니다(들리지 않는 피치 변화 — 텔레시네 표준 컨폼). 모든 소리가 프레임 범위를 유지합니다.',
     'fpsAudioKeep': '오디오 타이밍 유지',
     'fpsAudioPull': '오디오 0.1% 당김',
+    'feedbackTextOnly': '글만 보내기',
+    'feedbackWithFiles': '사진·동영상 포함 (Google 로그인)',
     'selectionClosePolygon': '도형 닫기',
     'selectionInvert': '캔버스 밖도 선택 반전',
     'selectionInvertInCanvas': '캔버스 안 선택 반전',
@@ -5018,6 +5369,8 @@ enum AppStrings {
     'seNameLabel': '이름 (화자 — 비우면 박스 숨김)',
     'seTypeLabel': '타입',
     'seDialogueLabel': '대사',
+    'seDialogueOffsetLabel': '대사 오프셋',
+    'seKomaPerGlyphLabel': '글자별 코마',
     'seLinkedAudioLabel': '링크된 오디오',
     'seLinkedAudioNone': '없음',
     'seUnlinkAudio': '링크 해제',
@@ -5111,6 +5464,14 @@ enum AppStrings {
     'saveProgressDone': '저장 완료',
     'savePrepareRunning': '준비 중…',
     'savePrepareDone': '준비 완료',
+    'saveStepKeepingLeftBehind': '빠진 미디어를 옮겨 두는 중…',
+    'saveStepCels': '셀을 쓰는 중…',
+    'saveStepChecking': '품을 파일을 확인하는 중…',
+    'saveStepMedia': '미디어를 쓰는 중…',
+    'saveStepConforms': '재생용으로 변환한 소리를 쓰는 중…',
+    'saveStepFonts': '글꼴을 쓰는 중…',
+    'saveStepCompacting': '파일의 빈 자리를 메우는 중…',
+    'saveStepHandingBack': '원래 문서로 파일을 넘기는 중…',
     'openProgressRunning': '여는 중…',
     'openProgressDone': '열기 완료',
     'openWaitingCloudTemplate': '클라우드에서 내려받는 중 · {sec}초',
@@ -5194,6 +5555,7 @@ enum AppStrings {
     'menuAction.edit-knee-at-one': '화면 해상도 버퍼',
     'menuAction.edit-show-unpainted-tiles': '그려지지 않은 타일 표시',
     'shortcutAction.help-about': 'Anicel 정보',
+    'shortcutAction.help-send-feedback': '의견 보내기',
     'fileOpenTitle': '프로젝트 열기',
     'fileStorageOffNotice':
         '저장소 접근이 꺼져 있습니다 — 앱 폴더 바깥의 프로젝트에는 '
@@ -5352,6 +5714,7 @@ enum AppStrings {
         '이 프로젝트의 파일이 사라졌습니다 — 지워졌거나 옮겨졌습니다. 휴지통에 아직 있다면 지금 되살리세요. 이미 저장했던 그림들은 그 파일 안에만 있습니다.',
     'uiScaleLabel': 'UI 크기',
     'blockFrameLinesLabel': '블록 안 프레임선',
+    'unnamedMarkLabel': '이름 없는 블록의 마크',
     'drawingCursorLabel': '커서',
     'drawingCursorBrush': '브러시',
     'drawingCursorPen': '펜',
@@ -5452,6 +5815,7 @@ enum AppStrings {
     'shortcutShelf.timesheet': '타임시트',
     'shortcutShelf.conteSheet': '콘티 용지',
     'shortcutShelf.envelope': '컷 봉투',
+    'shortcutShelf.palette': '팔레트',
     'shortcutPreset.clipStudio': '클립 스튜디오 기반',
     'shortcutPreset.tvpaint': 'TVPaint 기반',
     'shortcutAction.frame-previous': '이전 프레임',
@@ -5528,6 +5892,7 @@ enum AppStrings {
     'shortcutAction.edit-unlink': '링크 독립',
     'shortcutAction.edit-delete': '삭제',
     'shortcutAction.edit-duplicate': '복제',
+    'shortcutAction.edit-merge': '병합',
     'shortcutAction.edit-replace-colour': '색 변환',
     'shortcutAction.edit-clear-pixels': '픽셀 비우기',
     'shortcutAction.edit-binarize': '2치화',
@@ -5571,23 +5936,66 @@ enum AppStrings {
     'blendMode.luminosity': '광도',
     'effectKind.brightnessContrast': '명도 및 대비',
     'effectKind.hueSaturation': '색조/채도',
-    'effectKind.blur': '흐림 효과',
-    'effectKind.deleteColor': '색 삭제',
-    'effectKind.keepColor': '색 남기기',
+    'effectKind.blur': '가우시안 흐림',
+    'effectKind.directionalBlur': '방향 흐림',
+    'effectKind.radialBlur': '방사형 흐림',
+    'effectKind.cameraLensBlur': '카메라 렌즈 흐림',
+    'effectKind.colorKey': '색상 키',
     'effectKind.celNumber': '셀 번호',
     'effectParameter.brightness': '명도',
     'effectParameter.contrast': '대비',
     'effectParameter.hue': '마스터 색조',
     'effectParameter.saturation': '마스터 채도',
     'effectParameter.lightness': '마스터 밝기',
-    'effectParameter.blurX': '흐림 너비',
-    'effectParameter.blurY': '흐림 높이',
-    'effectParameter.keyRed': '키 색 빨강',
-    'effectParameter.keyGreen': '키 색 초록',
-    'effectParameter.keyBlue': '키 색 파랑',
+    'effectParameter.blurriness': '흐림 정도',
+    'effectParameter.blurDimensions': '흐림 방향',
+    'effectParameter.repeatEdgePixels': '가장자리 픽셀 반복',
+    'effectParameter.direction': '방향',
+    'effectParameter.blurLength': '흐림 길이',
+    'effectParameter.keyColor': '키 색',
     'effectParameter.ink': '잉크',
     'effectParameter.tolerance': '허용차',
     'effectParameter.amount': '적용량',
+    'effectParameter.keyOperation': '키 작업',
+    'effectParameter.center': '중심',
+    'effectParameter.type': '유형',
+    'effectParameter.antialiasing': '안티앨리어스',
+    'effectParameter.blurRadius': '흐림 반경',
+    'effectParameter.irisShape': '모양',
+    'effectParameter.irisRoundness': '원형률',
+    'effectParameter.irisAspectRatio': '종횡비',
+    'effectParameter.irisRotation': '회전',
+    'effectParameter.irisDiffractionFringe': '에돌이 줄무늬',
+    'effectParameter.blurMapLayer': '흐림 맵 레이어',
+    'effectParameter.blurMapChannel': '흐림 맵 채널',
+    'effectParameter.blurFocalDistance': '흐림 초점 거리',
+    'effectParameter.invertBlurMap': '흐림 맵 반전',
+    'effectParameter.highlightGain': '하이라이트 증폭',
+    'effectParameter.highlightThreshold': '하이라이트 문턱',
+    'effectParameter.highlightSaturation': '하이라이트 채도',
+    'effectParameter.useLinearWorkingSpace': '선형 작업 공간 사용',
+    'effectChoice.keyColors': '키 색상',
+    'effectChoice.keepColors': '색상 유지',
+    'effectChoice.horizontalAndVertical': '가로 및 세로',
+    'effectChoice.horizontal': '가로',
+    'effectChoice.vertical': '세로',
+    'effectChoice.spin': '회전',
+    'effectChoice.zoom': '확대/축소',
+    'effectChoice.best': '최고',
+    'effectChoice.draft': '드래프트',
+    'effectChoice.triangle': '삼각형',
+    'effectChoice.square': '사각형',
+    'effectChoice.pentagon': '오각형',
+    'effectChoice.hexagon': '육각형',
+    'effectChoice.heptagon': '칠각형',
+    'effectChoice.octagon': '팔각형',
+    'effectChoice.nonagon': '구각형',
+    'effectChoice.decagon': '십각형',
+    'effectChoice.luminance': '광도',
+    'effectChoice.red': '빨강',
+    'effectChoice.green': '녹색',
+    'effectChoice.blue': '파랑',
+    'effectChoice.alpha': '알파',
     // R26 #16 — the user's own words for the four selection modes
     // (「갱신/추가/삭제/선택중」), moved here from the enum.
     'selectionMode.replace': '갱신',
@@ -5655,6 +6063,20 @@ enum AppStrings {
     'transportNextFrame': '다음 프레임',
     'colorRecent': '최근',
     'colorBackgroundSwap': '배경색 (눌러서 교체)',
+    'paletteViewCompact': '작게',
+    'paletteViewCards': '카드',
+    'paletteNew': '새 팔레트',
+    'paletteNumberedTemplate': '팔레트 {n}',
+    'paletteMakeDefault': '기본 팔레트로',
+    'paletteDuplicate': '복제',
+    'paletteExport': '내보내기',
+    'paletteBroughtTemplate': '「{name}」 팔레트를 추가했습니다.',
+    'paletteCopyTemplate': '{name} 사본',
+    'paletteDeleteTitle': '팔레트 삭제',
+    'paletteDeleteTemplate': '「{name}」 팔레트를 삭제할까요?',
+    'paletteRemoveCurrent': '지금 색 빼기',
+    'paletteLock': '팔레트 잠금',
+    'paletteMore': '더 보기',
     'penPressureTitle': '필압',
     'brushDynamicsTitle': '반응',
     'curveSourcePressure': '필압',
@@ -5691,6 +6113,7 @@ enum AppStrings {
     'onionAfterTint': '이후 색',
     'onionGhostColorHelp': '고스트에 색을 입히는 방식',
     'onionPegCountHelp': '한 칸이 세는 단위',
+    'onionPlacementHelp': '고스트가 놓이는 자리',
     'shortcutTitle': '키보드 단축키',
     'shortcutResetAll': '모두 초기화',
     'shortcutFileImportedTemplate':
@@ -5702,6 +6125,8 @@ enum AppStrings {
     'shortcutPresetDelete': '프리셋 삭제',
     'shortcutPresetRename': '프리셋 이름 바꾸기',
     'shortcutPresetDuplicate': '프리셋 복제',
+    'shortcutPresetExport': '프리셋 내보내기',
+    'shortcutPresetBroughtTemplate': '「{name}」 프리셋을 추가했습니다.',
     'shortcutPresetCopyTemplate': '{name} 복사본',
     'shortcutPresetDeleteTemplate': '「{name}」 프리셋을 삭제할까요?',
     'shortcutFileUnreadableTemplate':
@@ -6000,6 +6425,10 @@ enum AppStrings {
     'imStatusImporting': '임포트하는 중…',
     'imStatusNothing': '임포트된 것이 없습니다.',
     'imStatusDone': '임포트 완료',
+    'imStepRecoding': '잘라 낸 동영상을 다시 인코딩하는 중…',
+    'imStepWritingSpan': '잘라 낸 구간을 파일로 쓰는 중…',
+    'imStepCarrying': '파일을 프로젝트에 품는 중…',
+    'imStepRasterizing': '셀로 래스터라이즈하는 중…',
     'imFolderGone': '그 폴더가 없어졌습니다.',
     'imFolderUnreadableTemplate': '폴더를 읽지 못했습니다: {reason}',
     'imCutFolderUnreadable': '그 폴더를 읽지 못했습니다.',
@@ -6171,6 +6600,9 @@ enum AppStrings {
     'brGroupScattering': '살포',
     'brGroupTexture': '질감',
     'brGroupCorrection': '보정',
+    'brDetailTitle': '브러시 상세',
+    'brShowInPanel': '패널에 보이기',
+    'brHideFromPanel': '패널에서 숨기기',
     'shortcutAction.frame-auto-create': '프레임 자동 생성',
     'brBlend': '합성',
     'brBlendMode': '브러시 합성 모드',
@@ -6266,6 +6698,7 @@ enum AppStrings {
     'builtinTip.builtin-flake': '눈송이',
     'builtinTip.builtin-ring': '고리',
     'builtinTip.builtin-leaf': '잎',
+    'builtinTip.builtin-grass-clump': '풀포기',
     'builtinTip.builtin-paper-grain': '종이 결',
     'builtinTip.builtin-canvas-weave': '캔버스 결',
     'builtinTip.builtin-cold-press': '콜드프레스 종이',
@@ -6303,7 +6736,16 @@ enum AppStrings {
     'brExportSelected': '브러시 내보내기',
     'brExportGroup': '브러시 그룹 내보내기',
     'brExportNothing': '내보낼 브러시가 없습니다.',
-    'brExportPlaceUnchosenTemplate': '저장할 곳을 고르지 못했습니다: {error}',
+    'fileExportPlaceUnchosenTemplate': '저장할 곳을 고르지 못했습니다: {error}',
+    'settingsExportedTemplate': '「{name}」 내보냈습니다.',
+    'settingsExportNotWrittenTemplate': '파일을 쓰지 못했습니다: {error}',
+    'settingsExportAll': '설정 전부 내보내기',
+    'settingsAllFileName': 'Anicel 설정',
+    'settingsRowFrameCount': '프레임 수 입력 방식',
+    'settingsRowWorkspaceLayout': '작업공간 배치',
+    'imIntoSettings': '설정',
+    'imSettingsGoInPlace': '「설정」에 넣는 항목은 지금 것이 사라집니다.',
+    'imSettingsUnreadable': '읽을 수 없음',
     'brExportNotWrittenTemplate': '브러시 파일을 쓰지 못했습니다: {error}',
     'brExportedOneTemplate': '브러시 「{name}」 내보냈습니다.',
     'brExportedManyTemplate': '브러시 {count}개를 내보냈습니다.',
@@ -6459,7 +6901,8 @@ enum AppStrings {
     'tlLayerReference': '참조',
     'tlReferenceSourceShort': '원본보다 {n}프레임 깁니다',
     'tlSelectedLayers': '선택한 레이어',
-    'tlAudioLane': '오디오',
+    'tlAudioGroup': '오디오',
+    'tlSoundVolume': '볼륨',
     'tlNameTagGroup': '이름표',
     'tlReferenceGroup': '참조',
     'tlTransformGroup': '변형',
@@ -6533,6 +6976,15 @@ enum AppStrings {
     'shortcutAction.layer-detach': '어태치 해제',
     'tlAttachDropsFxRows': 'fx 가 사라지는 레이어',
     'tlAttachDropsFxTitle': '어태치하면 fx 가 사라집니다',
+    'tlMergeChangesTitle': '병합하면 겉보기가 달라질 수 있습니다',
+    'tlMergeChangesBody': '병합한 레이어는 그 아래 레이어 위에서 다르게 보일 수 있습니다.',
+    'tlMergeChanges': '달라지는 것',
+    'tlMergeChangeBlend': '표준이 아닌 합성 모드가 섞여 있습니다 — 병합한 레이어는 표준이 됩니다',
+    'tlMergeChangeClip': '고른 레이어와 고르지 않은 레이어가 클리핑으로 이어져 있습니다',
+    'tlMergeChangeFolder': '병합한 레이어가 놓일 폴더의 효과가 그 폴더 밖에서 온 레이어에도 걸립니다',
+    'tlMergeChangeRiderOver': '어태치 레이어가 다른 그림을 덮게 됩니다',
+    'tlMergeChangeRiderUnder': '어태치 레이어가 다른 그림 밑으로 들어갑니다',
+    'tlMergeChangeWall': '참조 그림의 페이스트보드 밖 부분이 잘립니다',
     'tlAttachDropsFxBody':
         '어태치된 레이어는 자기 fx 를 갖지 않습니다. 계속하면 기존 fx 가 사라집니다. 실행하겠습니까?',
     'tlPush': '밀기(칸 열기)',
@@ -6574,6 +7026,27 @@ enum AppStrings {
     'launchStagePlugins': 'Enregistrement des plugins',
     'launchStageApp': "Préparation de l'application",
     'launchStageFirstFrame': 'Affichage du premier écran',
+    'launchNoticeTitle': 'À propos de cette version',
+    'launchNoticeDontShowAgain': 'Ne plus afficher',
+    'usageStatsSend': "Envoyer des statistiques d'utilisation",
+    'usageStatsHelp':
+        "Activé, l'app envoie de façon anonyme, à son ouverture et environ "
+        "une fois par heure pendant que vous l'utilisez, qu'elle est "
+        "utilisée — avec le système et sa version, le modèle de l'appareil, "
+        "la langue de l'appareil, la version de l'app et la langue de l'app. "
+        'Une fois par jour, elle envoie aussi le nombre de jours '
+        "d'utilisation sur les 28 derniers (nouveau, 1–2, 3 ou plus). "
+        "Rien qui vous identifie n'est envoyé : ni dessins ni projets, "
+        "ni noms de fichiers, ni noms, ni le nom donné à l'appareil. Le "
+        "désactiver efface aussi l'historique gardé sur cet appareil.",
+    'usageStatsTitle': "Statistiques d'utilisation",
+    'usageStatsAsk':
+        "Envoyer des statistiques d'utilisation ? Les activer aide au "
+        "développement d'Anicel.",
+    'usageStatsChangeLater':
+        'Vous pouvez changer cela à tout moment dans Préférences ▸ Système.',
+    'usageStatsDontSend': 'Ne pas envoyer',
+    'usageStatsDoSend': 'Envoyer',
     'programLanguageLabel': 'Langue du programme',
     'notationLanguageLabel': 'Langue de notation',
     'programLanguageHelp': 'Menus, panneaux et libellés.',
@@ -6644,8 +7117,6 @@ enum AppStrings {
     'layerAudioTitle': 'Audio du calque',
     'audioGainLabel': 'Gain',
     'audioPanLabel': 'Panoramique',
-    'layerAudioPanHelp':
-        'Le panoramique s\'applique sur la voie du mixeur natif (loi à puissance constante).',
     'audioMute': 'Muet',
     'audioSolo': 'Solo',
     'fpsAudioTitleTemplate': '{from} → {to} : que faire du son ?',
@@ -6653,6 +7124,8 @@ enum AppStrings {
         'Ces deux cadences diffèrent de 0,1 % en vitesse réelle, et le son existe en secondes réelles — il ne peut pas rester à la fois exact à l\'image et exact au temps.\n\n• Garder le timing audio : les sons gardent leurs secondes réelles ; leurs positions d\'image dérivent de 0,1 % (environ une image toutes les 42 secondes).\n\n• Tirer l\'audio de 0,1 % : les sons sont rééchantillonnés au rapport de pulldown exact (variation de hauteur inaudible — la conformation télécinéma standard) et chaque son garde sa plage d\'images exacte.',
     'fpsAudioKeep': 'Garder le timing audio',
     'fpsAudioPull': 'Tirer l\'audio de 0,1 %',
+    'feedbackTextOnly': 'Texte seul',
+    'feedbackWithFiles': 'Avec captures / vidéos (connexion Google)',
     'selectionClosePolygon': 'Fermer la forme',
     'selectionInvert': 'Inverser la sélection au-delà du canevas',
     'selectionInvertInCanvas': 'Inverser la sélection dans le canevas',
@@ -6694,6 +7167,8 @@ enum AppStrings {
     'seNameLabel': 'Nom (locuteur — vide masque le cadre)',
     'seTypeLabel': 'Type',
     'seDialogueLabel': 'Dialogue',
+    'seDialogueOffsetLabel': 'Décalage du dialogue',
+    'seKomaPerGlyphLabel': 'Images par caractère',
     'seLinkedAudioLabel': 'Audio lié',
     'seLinkedAudioNone': 'Aucun',
     'seUnlinkAudio': 'Dissocier',
@@ -6795,6 +7270,14 @@ enum AppStrings {
     'saveProgressDone': 'Enregistré',
     'savePrepareRunning': 'Préparation…',
     'savePrepareDone': 'Prêt',
+    'saveStepKeepingLeftBehind': 'Mise de côté des médias retirés…',
+    'saveStepCels': 'Écriture des cellulos…',
+    'saveStepChecking': 'Vérification des fichiers à intégrer…',
+    'saveStepMedia': 'Écriture des médias…',
+    'saveStepConforms': 'Écriture du son converti pour la lecture…',
+    'saveStepFonts': 'Écriture des polices…',
+    'saveStepCompacting': 'Comblement des vides du fichier…',
+    'saveStepHandingBack': 'Remise du fichier à son document…',
     'resizeProgressRunning': 'Redimensionnement…',
     'resizeProgressDone': 'Redimensionné',
     'bakeProgressRunning': 'Pixellisation…',
@@ -6881,6 +7364,7 @@ enum AppStrings {
     'menuAction.edit-knee-at-one': "Tampon à la résolution de l'écran",
     'menuAction.edit-show-unpainted-tiles': 'Afficher les tuiles non peintes',
     'shortcutAction.help-about': 'À propos de Anicel',
+    'shortcutAction.help-send-feedback': 'Envoyer un avis',
     'fileOpenTitle': 'Ouvrir un projet',
     'fileStorageOffNotice':
         "L'accès au stockage est désactivé — les projets hors du dossier de "
@@ -7161,6 +7645,7 @@ enum AppStrings {
     'shortcutShelf.timesheet': 'Feuille de temps',
     'shortcutShelf.conteSheet': 'Feuille de conte',
     'shortcutShelf.envelope': 'Enveloppe de plan',
+    'shortcutShelf.palette': 'Palette',
     'shortcutPreset.clipStudio': 'Base Clip Studio',
     'shortcutPreset.tvpaint': 'Base TVPaint',
     'shortcutAction.frame-previous': 'Image précédente',
@@ -7242,6 +7727,7 @@ enum AppStrings {
     'shortcutAction.edit-unlink': 'Rendre indépendant',
     'shortcutAction.edit-delete': 'Supprimer',
     'shortcutAction.edit-duplicate': 'Dupliquer',
+    'shortcutAction.edit-merge': 'Fusionner',
     'shortcutAction.edit-replace-colour': 'Remplacer la couleur',
     'shortcutAction.edit-clear-pixels': 'Effacer les pixels',
     'shortcutAction.edit-binarize': 'Binariser',
@@ -7285,23 +7771,66 @@ enum AppStrings {
     'blendMode.luminosity': 'Luminosité',
     'effectKind.brightnessContrast': 'Luminosité/Contraste',
     'effectKind.hueSaturation': 'Teinte/Saturation',
-    'effectKind.blur': 'Flou',
-    'effectKind.deleteColor': 'Supprimer la couleur',
-    'effectKind.keepColor': 'Conserver la couleur',
+    'effectKind.blur': 'Flou gaussien',
+    'effectKind.directionalBlur': 'Flou directionnel',
+    'effectKind.radialBlur': 'Flou radial',
+    'effectKind.cameraLensBlur': 'Flou objectif appareil photo',
+    'effectKind.colorKey': 'Masquage par couleur',
     'effectKind.celNumber': 'Numéro de cellulo',
     'effectParameter.brightness': 'Luminosité',
     'effectParameter.contrast': 'Contraste',
     'effectParameter.hue': 'Teinte globale',
     'effectParameter.saturation': 'Saturation globale',
     'effectParameter.lightness': 'Luminosité globale',
-    'effectParameter.blurX': 'Largeur du flou',
-    'effectParameter.blurY': 'Hauteur du flou',
-    'effectParameter.keyRed': 'Rouge de la clé',
-    'effectParameter.keyGreen': 'Vert de la clé',
-    'effectParameter.keyBlue': 'Bleu de la clé',
+    'effectParameter.blurriness': 'Flou',
+    'effectParameter.blurDimensions': 'Dimensions du flou',
+    'effectParameter.repeatEdgePixels': 'Répéter les pixels du contour',
+    'effectParameter.direction': 'Direction',
+    'effectParameter.blurLength': 'Longueur du flou',
+    'effectParameter.keyColor': 'Couleur de la clé',
     'effectParameter.ink': 'Encre',
     'effectParameter.tolerance': 'Tolérance',
     'effectParameter.amount': 'Quantité',
+    'effectParameter.keyOperation': 'Opération',
+    'effectParameter.center': 'Centre',
+    'effectParameter.type': 'Type',
+    'effectParameter.antialiasing': 'Anticrénelage',
+    'effectParameter.blurRadius': 'Rayon du flou',
+    'effectParameter.irisShape': 'Forme',
+    'effectParameter.irisRoundness': 'Arrondi',
+    'effectParameter.irisAspectRatio': 'Format',
+    'effectParameter.irisRotation': 'Rotation',
+    'effectParameter.irisDiffractionFringe': 'Frange de diffraction',
+    'effectParameter.blurMapLayer': 'Calque de la carte de flou',
+    'effectParameter.blurMapChannel': 'Couche de la carte de flou',
+    'effectParameter.blurFocalDistance': 'Distance focale du flou',
+    'effectParameter.invertBlurMap': 'Inverser la carte de flou',
+    'effectParameter.highlightGain': 'Gain des tons clairs',
+    'effectParameter.highlightThreshold': 'Seuil des tons clairs',
+    'effectParameter.highlightSaturation': 'Saturation des tons clairs',
+    'effectParameter.useLinearWorkingSpace': "Utiliser l'espace de travail linéaire",
+    'effectChoice.keyColors': 'Masquer',
+    'effectChoice.keepColors': 'Conserver',
+    'effectChoice.horizontalAndVertical': 'Horizontale et verticale',
+    'effectChoice.horizontal': 'Horizontale',
+    'effectChoice.vertical': 'Verticale',
+    'effectChoice.spin': 'Rotation',
+    'effectChoice.zoom': 'Zoom',
+    'effectChoice.best': 'Optimal',
+    'effectChoice.draft': 'Brouillon',
+    'effectChoice.triangle': 'Triangle',
+    'effectChoice.square': 'Carré',
+    'effectChoice.pentagon': 'Pentagone',
+    'effectChoice.hexagon': 'Hexagone',
+    'effectChoice.heptagon': 'Heptagone',
+    'effectChoice.octagon': 'Octogone',
+    'effectChoice.nonagon': 'Ennéagone',
+    'effectChoice.decagon': 'Décagone',
+    'effectChoice.luminance': 'Luminance',
+    'effectChoice.red': 'Rouge',
+    'effectChoice.green': 'Vert',
+    'effectChoice.blue': 'Bleu',
+    'effectChoice.alpha': 'Alpha',
     'selectionMode.replace': 'Nouvelle sélection',
     'selectionMode.add': 'Ajouter à la sélection',
     'selectionMode.subtract': 'Soustraire de la sélection',
@@ -7376,6 +7905,20 @@ enum AppStrings {
     'transportNextFrame': 'Image suivante',
     'colorRecent': 'Récentes',
     'colorBackgroundSwap': 'Couleur de fond (toucher pour échanger)',
+    'paletteViewCompact': 'Compact',
+    'paletteViewCards': 'Cartes',
+    'paletteNew': 'Nouvelle palette',
+    'paletteNumberedTemplate': 'Palette {n}',
+    'paletteMakeDefault': 'Définir par défaut',
+    'paletteDuplicate': 'Dupliquer',
+    'paletteExport': 'Exporter',
+    'paletteBroughtTemplate': 'Palette « {name} » ajoutée.',
+    'paletteCopyTemplate': 'Copie de {name}',
+    'paletteDeleteTitle': 'Supprimer la palette',
+    'paletteDeleteTemplate': 'Supprimer la palette « {name} » ?',
+    'paletteRemoveCurrent': 'Retirer la couleur actuelle',
+    'paletteLock': 'Verrouiller la palette',
+    'paletteMore': 'Plus',
     'penPressureTitle': 'Pression du stylet',
     'brushDynamicsTitle': 'Réponse',
     'curveSourcePressure': 'Pression',
@@ -7412,6 +7955,7 @@ enum AppStrings {
     'onionAfterTint': 'Teinte après',
     'onionGhostColorHelp': 'Comment les fantômes sont colorés',
     'onionPegCountHelp': 'Ce que compte un cran',
+    'onionPlacementHelp': 'Où se placent les fantômes',
     'shortcutTitle': 'Raccourcis clavier',
     'shortcutResetAll': 'Tout réinitialiser',
     'shortcutFileImportedTemplate':
@@ -7423,6 +7967,8 @@ enum AppStrings {
     'shortcutPresetDelete': 'Supprimer le préréglage',
     'shortcutPresetRename': 'Renommer le préréglage',
     'shortcutPresetDuplicate': 'Dupliquer le préréglage',
+    'shortcutPresetExport': 'Exporter le préréglage',
+    'shortcutPresetBroughtTemplate': 'Préréglage « {name} » ajouté.',
     'shortcutPresetCopyTemplate': 'Copie de {name}',
     'shortcutPresetDeleteTemplate': 'Supprimer le préréglage « {name} » ?',
     'shortcutFileUnreadableTemplate':
@@ -7797,6 +8343,10 @@ enum AppStrings {
     'imStatusImporting': 'Importation…',
     'imStatusNothing': 'Rien n’a été importé.',
     'imStatusDone': 'Importé',
+    'imStepRecoding': 'Réencodage de la vidéo découpée…',
+    'imStepWritingSpan': 'Écriture de la plage découpée dans un fichier…',
+    'imStepCarrying': 'Intégration du fichier au projet…',
+    'imStepRasterizing': 'Pixellisation en cellulos…',
     'imFolderGone': 'Ce dossier n’existe plus.',
     'imFolderUnreadableTemplate': 'Impossible de lire le dossier : {reason}',
     'imCutFolderUnreadable': 'Impossible de lire ce dossier.',
@@ -7976,6 +8526,9 @@ enum AppStrings {
     'brGroupScattering': 'Dispersion',
     'brGroupTexture': 'Texture',
     'brGroupCorrection': 'Correction',
+    'brDetailTitle': 'Détails de la brosse',
+    'brShowInPanel': 'Afficher dans le panneau',
+    'brHideFromPanel': 'Masquer du panneau',
     'shortcutAction.frame-auto-create': "Création auto d'images",
     'brBlend': 'Fusion',
     'brBlendMode': 'Mode de fusion du pinceau',
@@ -8078,6 +8631,7 @@ enum AppStrings {
     'builtinTip.builtin-flake': 'Flocon',
     'builtinTip.builtin-ring': 'Anneau',
     'builtinTip.builtin-leaf': 'Feuille',
+    'builtinTip.builtin-grass-clump': "Touffe d'herbe",
     'builtinTip.builtin-paper-grain': 'Grain du papier',
     'builtinTip.builtin-canvas-weave': 'Trame de toile',
     'builtinTip.builtin-cold-press': 'Papier grain fin',
@@ -8117,8 +8671,19 @@ enum AppStrings {
     'brExportSelected': 'Exporter la brosse',
     'brExportGroup': 'Exporter le groupe',
     'brExportNothing': 'Aucune brosse à exporter ici.',
-    'brExportPlaceUnchosenTemplate':
+    'fileExportPlaceUnchosenTemplate':
         'Impossible de choisir où enregistrer : {error}',
+    'settingsExportedTemplate': 'Exporté : « {name} ».',
+    'settingsExportNotWrittenTemplate':
+        'Impossible d’écrire le fichier : {error}',
+    'settingsExportAll': 'Exporter toutes les préférences',
+    'settingsAllFileName': 'Préférences Anicel',
+    'settingsRowFrameCount': 'Saisie des durées',
+    'settingsRowWorkspaceLayout': 'Disposition de l’espace de travail',
+    'imIntoSettings': 'Préférences',
+    'imSettingsGoInPlace':
+        'Ce qui va dans Préférences remplace l’actuel — il sera perdu.',
+    'imSettingsUnreadable': 'Illisible',
     'brExportNotWrittenTemplate':
         'Impossible d’écrire le fichier de brosses : {error}',
     'brExportedOneTemplate': 'Brosse exportée : « {name} ».',
@@ -8252,7 +8817,8 @@ enum AppStrings {
     'tlLayerReference': 'Référence',
     'tlReferenceSourceShort': 'Dépasse la source de {n} images',
     'tlSelectedLayers': 'Calques sélectionnés',
-    'tlAudioLane': 'Audio',
+    'tlAudioGroup': 'Audio',
+    'tlSoundVolume': 'Volume',
     'tlNameTagGroup': 'Étiquette',
     'tlReferenceGroup': 'Référence',
     'tlTransformGroup': 'Transformation',
@@ -8325,6 +8891,21 @@ enum AppStrings {
     'shortcutAction.layer-detach': 'Détacher de la base',
     'tlAttachDropsFxRows': 'Calques qui perdent leur fx',
     'tlAttachDropsFxTitle': 'Le fx sera perdu',
+    'tlMergeChangesTitle': 'La fusion peut changer le rendu',
+    'tlMergeChangesBody':
+        'Le calque fusionné peut changer sur les calques en dessous.',
+    'tlMergeChanges': 'Ce qui change',
+    'tlMergeChangeBlend':
+        'Un calque a son propre mode de fusion — le résultat sera Normal',
+    'tlMergeChangeClip':
+        'Un écrêtage relie un calque choisi à un calque non choisi',
+    'tlMergeChangeFolder':
+        "Le dossier du résultat s'applique à des calques venus d'ailleurs",
+    'tlMergeChangeRiderOver':
+        "Un calque attaché recouvrira d'autres dessins",
+    'tlMergeChangeRiderUnder': "Un calque attaché passera sous d'autres dessins",
+    'tlMergeChangeWall':
+        "La partie d'une référence hors du fond est coupée",
     'tlAttachDropsFxBody':
         'Une couche attachée ne garde pas son propre fx. Continuer supprimera le fx existant. Continuer ?',
     'tlPush': 'Pousser (ouvrir des images)',
@@ -8369,6 +8950,20 @@ enum AppStrings {
     'launchStagePlugins': '注册插件',
     'launchStageApp': '准备应用',
     'launchStageFirstFrame': '绘制首个画面',
+    'launchNoticeTitle': '本版本说明',
+    'launchNoticeDontShowAgain': '不再显示',
+    'usageStatsSend': '发送使用统计',
+    'usageStatsHelp':
+        '开启后，会在打开应用时以及使用期间大约每小时一次，匿名发送“正在使用”，'
+        '并附带操作系统及其版本、设备型号、设备语言、应用版本号和应用语言。每天一次还会'
+        '发送最近 28 天内使用天数的区间（首次 / 1–2 天 / 3 天以上）。不会发送画作、项目、'
+        '文件名、名称、您给设备起的名字等任何能识别您的信息。关闭后也会删除本设备上'
+        '保存的记录。',
+    'usageStatsTitle': '使用统计',
+    'usageStatsAsk': '要发送使用统计吗？开启后将有助于 Anicel 的开发。',
+    'usageStatsChangeLater': '可随时在偏好设置 ▸ 系统中更改。',
+    'usageStatsDontSend': '不发送',
+    'usageStatsDoSend': '发送',
     'programLanguageLabel': '程序语言',
     'notationLanguageLabel': '标注语言',
     'programLanguageHelp': '菜单、面板与标签的语言。',
@@ -8433,7 +9028,6 @@ enum AppStrings {
     'layerAudioTitle': '图层音频',
     'audioGainLabel': '增益',
     'audioPanLabel': '声像',
-    'layerAudioPanHelp': '声像在原生混音器路径上生效（等功率法则）。',
     'audioMute': '静音',
     'audioSolo': '独奏',
     'fpsAudioTitleTemplate': '{from} → {to}：声音怎么办？',
@@ -8441,6 +9035,8 @@ enum AppStrings {
         '这两个帧率的实际速度相差 0.1%，而声音存在于真实时间中 — 无法同时保持帧精确与时间精确。\n\n• 保持音频时间：声音保持真实秒数；帧位置漂移 0.1%（约每 42 秒一帧）。\n\n• 拉伸音频 0.1%：按精确的 pulldown 比例重采样（听不出的音高变化 — 电视电影的标准做法），每个声音保持其精确的帧范围。',
     'fpsAudioKeep': '保持音频时间',
     'fpsAudioPull': '拉伸音频 0.1%',
+    'feedbackTextOnly': '仅文字',
+    'feedbackWithFiles': '附截图 / 视频（需登录 Google）',
     'selectionClosePolygon': '闭合形状',
     'selectionInvert': '反选到画布之外',
     'selectionInvertInCanvas': '在画布内反选',
@@ -8477,6 +9073,8 @@ enum AppStrings {
     'seNameLabel': '名称（说话者 — 留空则隐藏名条）',
     'seTypeLabel': '类型',
     'seDialogueLabel': '台词',
+    'seDialogueOffsetLabel': '台词偏移',
+    'seKomaPerGlyphLabel': '每字帧数',
     'seLinkedAudioLabel': '已链接音频',
     'seLinkedAudioNone': '无',
     'seUnlinkAudio': '解除链接',
@@ -8566,6 +9164,14 @@ enum AppStrings {
     'saveProgressDone': '已保存',
     'savePrepareRunning': '正在准备…',
     'savePrepareDone': '准备完成',
+    'saveStepKeepingLeftBehind': '正在暂存移除的媒体…',
+    'saveStepCels': '正在写入赛璐珞…',
+    'saveStepChecking': '正在校验要内嵌的文件…',
+    'saveStepMedia': '正在写入媒体…',
+    'saveStepConforms': '正在写入为播放转换的音频…',
+    'saveStepFonts': '正在写入字体…',
+    'saveStepCompacting': '正在填补文件中的空隙…',
+    'saveStepHandingBack': '正在将文件交还给原文档…',
     'resizeProgressRunning': '正在调整尺寸…',
     'resizeProgressDone': '已调整尺寸',
     'bakeProgressRunning': '正在栅格化…',
@@ -8644,6 +9250,7 @@ enum AppStrings {
     'menuAction.edit-knee-at-one': '屏幕分辨率缓冲区',
     'menuAction.edit-show-unpainted-tiles': '显示未绘制的图块',
     'shortcutAction.help-about': '关于 Anicel',
+    'shortcutAction.help-send-feedback': '发送反馈',
     'fileOpenTitle': '打开项目',
     'fileStorageOffNotice': '存储访问已关闭 — 应用文件夹之外的项目需要"所有文件"权限。',
     'fileOpenSettings': '打开设置',
@@ -8875,6 +9482,7 @@ enum AppStrings {
     'shortcutShelf.timesheet': '摄影表',
     'shortcutShelf.conteSheet': '分镜用纸',
     'shortcutShelf.envelope': '卡袋',
+    'shortcutShelf.palette': '色板',
     'shortcutPreset.clipStudio': '基于 CLIP STUDIO',
     'shortcutPreset.tvpaint': '基于 TVPaint',
     'shortcutAction.frame-previous': '上一帧',
@@ -8951,6 +9559,7 @@ enum AppStrings {
     'shortcutAction.edit-unlink': '取消链接',
     'shortcutAction.edit-delete': '删除',
     'shortcutAction.edit-duplicate': '创建副本',
+    'shortcutAction.edit-merge': '合并',
     'shortcutAction.edit-replace-colour': '替换颜色',
     'shortcutAction.edit-clear-pixels': '清空像素',
     'shortcutAction.edit-binarize': '二值化',
@@ -8994,23 +9603,66 @@ enum AppStrings {
     'blendMode.luminosity': '明度',
     'effectKind.brightnessContrast': '亮度和对比度',
     'effectKind.hueSaturation': '色相/饱和度',
-    'effectKind.blur': '模糊',
-    'effectKind.deleteColor': '删除颜色',
-    'effectKind.keepColor': '保留颜色',
+    'effectKind.blur': '高斯模糊',
+    'effectKind.directionalBlur': '定向模糊',
+    'effectKind.radialBlur': '径向模糊',
+    'effectKind.cameraLensBlur': '相机镜头模糊',
+    'effectKind.colorKey': '颜色键',
     'effectKind.celNumber': '赛璐珞编号',
     'effectParameter.brightness': '亮度',
     'effectParameter.contrast': '对比度',
     'effectParameter.hue': '主色相',
     'effectParameter.saturation': '主饱和度',
     'effectParameter.lightness': '主亮度',
-    'effectParameter.blurX': '模糊宽度',
-    'effectParameter.blurY': '模糊高度',
-    'effectParameter.keyRed': '键色红',
-    'effectParameter.keyGreen': '键色绿',
-    'effectParameter.keyBlue': '键色蓝',
+    'effectParameter.blurriness': '模糊度',
+    'effectParameter.blurDimensions': '模糊方向',
+    'effectParameter.repeatEdgePixels': '重复边缘像素',
+    'effectParameter.direction': '方向',
+    'effectParameter.blurLength': '模糊长度',
+    'effectParameter.keyColor': '键色',
     'effectParameter.ink': '颜色',
     'effectParameter.tolerance': '容差',
     'effectParameter.amount': '数量',
+    'effectParameter.keyOperation': '主要操作',
+    'effectParameter.center': '中心',
+    'effectParameter.type': '类型',
+    'effectParameter.antialiasing': '抗锯齿',
+    'effectParameter.blurRadius': '模糊半径',
+    'effectParameter.irisShape': '形状',
+    'effectParameter.irisRoundness': '圆度',
+    'effectParameter.irisAspectRatio': '长宽比',
+    'effectParameter.irisRotation': '旋转',
+    'effectParameter.irisDiffractionFringe': '衍射条纹',
+    'effectParameter.blurMapLayer': '模糊图图层',
+    'effectParameter.blurMapChannel': '模糊图通道',
+    'effectParameter.blurFocalDistance': '模糊焦距',
+    'effectParameter.invertBlurMap': '反转模糊图',
+    'effectParameter.highlightGain': '高光增益',
+    'effectParameter.highlightThreshold': '高光阈值',
+    'effectParameter.highlightSaturation': '高光饱和度',
+    'effectParameter.useLinearWorkingSpace': '使用线性工作空间',
+    'effectChoice.keyColors': '主色',
+    'effectChoice.keepColors': '保持颜色',
+    'effectChoice.horizontalAndVertical': '水平和垂直',
+    'effectChoice.horizontal': '水平',
+    'effectChoice.vertical': '垂直',
+    'effectChoice.spin': '旋转',
+    'effectChoice.zoom': '缩放',
+    'effectChoice.best': '最佳',
+    'effectChoice.draft': '草稿',
+    'effectChoice.triangle': '三角形',
+    'effectChoice.square': '正方形',
+    'effectChoice.pentagon': '五边形',
+    'effectChoice.hexagon': '六边形',
+    'effectChoice.heptagon': '七边形',
+    'effectChoice.octagon': '八边形',
+    'effectChoice.nonagon': '九边形',
+    'effectChoice.decagon': '十边形',
+    'effectChoice.luminance': '明亮度',
+    'effectChoice.red': '红色',
+    'effectChoice.green': '绿色',
+    'effectChoice.blue': '蓝色',
+    'effectChoice.alpha': 'Alpha',
     'selectionMode.replace': '新选区',
     'selectionMode.add': '添加到选区',
     'selectionMode.subtract': '从选区减去',
@@ -9073,6 +9725,20 @@ enum AppStrings {
     'transportNextFrame': '下一帧',
     'colorRecent': '最近',
     'colorBackgroundSwap': '背景色（点按交换）',
+    'paletteViewCompact': '紧凑',
+    'paletteViewCards': '卡片',
+    'paletteNew': '新建调色板',
+    'paletteNumberedTemplate': '调色板 {n}',
+    'paletteMakeDefault': '设为默认',
+    'paletteDuplicate': '复制',
+    'paletteExport': '导出',
+    'paletteBroughtTemplate': '已添加调色板“{name}”。',
+    'paletteCopyTemplate': '{name} 副本',
+    'paletteDeleteTitle': '删除调色板',
+    'paletteDeleteTemplate': '要删除调色板“{name}”吗？',
+    'paletteRemoveCurrent': '移除当前颜色',
+    'paletteLock': '锁定调色板',
+    'paletteMore': '更多',
     'penPressureTitle': '笔压',
     'brushDynamicsTitle': '响应',
     'curveSourcePressure': '笔压',
@@ -9109,6 +9775,7 @@ enum AppStrings {
     'onionAfterTint': '之后色调',
     'onionGhostColorHelp': '残影的着色方式',
     'onionPegCountHelp': '一格所计的单位',
+    'onionPlacementHelp': '残影的位置',
     'shortcutTitle': '键盘快捷键',
     'shortcutResetAll': '全部重置',
     'shortcutFileImportedTemplate':
@@ -9119,6 +9786,8 @@ enum AppStrings {
     'shortcutPresetDelete': '删除预设',
     'shortcutPresetRename': '重命名预设',
     'shortcutPresetDuplicate': '复制预设',
+    'shortcutPresetExport': '导出预设',
+    'shortcutPresetBroughtTemplate': '已添加预设“{name}”。',
     'shortcutPresetCopyTemplate': '{name} 副本',
     'shortcutPresetDeleteTemplate': '要删除预设“{name}”吗？',
     'shortcutFileUnreadableTemplate': '{name}：此文件中没有可读取的快捷键。',
@@ -9405,6 +10074,10 @@ enum AppStrings {
     'imStatusImporting': '正在导入…',
     'imStatusNothing': '没有导入任何内容。',
     'imStatusDone': '已导入',
+    'imStepRecoding': '正在重新编码裁剪后的视频…',
+    'imStepWritingSpan': '正在将裁剪的范围写入文件…',
+    'imStepCarrying': '正在将文件内嵌到项目…',
+    'imStepRasterizing': '正在栅格化为赛璐珞…',
     'imFolderGone': '该文件夹已不存在。',
     'imFolderUnreadableTemplate': '无法读取文件夹：{reason}',
     'imCutFolderUnreadable': '无法读取该文件夹。',
@@ -9573,6 +10246,9 @@ enum AppStrings {
     'brGroupScattering': '散布',
     'brGroupTexture': '纹理',
     'brGroupCorrection': '修正',
+    'brDetailTitle': '笔刷详细设置',
+    'brShowInPanel': '在面板中显示',
+    'brHideFromPanel': '在面板中隐藏',
     'shortcutAction.frame-auto-create': '自动创建帧',
     'brBlend': '混合',
     'brBlendMode': '画笔混合模式',
@@ -9664,6 +10340,7 @@ enum AppStrings {
     'builtinTip.builtin-flake': '雪花',
     'builtinTip.builtin-ring': '圆环',
     'builtinTip.builtin-leaf': '叶子',
+    'builtinTip.builtin-grass-clump': '草丛',
     'builtinTip.builtin-paper-grain': '纸纹',
     'builtinTip.builtin-canvas-weave': '画布纹',
     'builtinTip.builtin-cold-press': '冷压纸',
@@ -9701,7 +10378,16 @@ enum AppStrings {
     'brExportSelected': '导出画笔',
     'brExportGroup': '导出画笔组',
     'brExportNothing': '这里没有可导出的画笔。',
-    'brExportPlaceUnchosenTemplate': '无法选择保存位置：{error}',
+    'fileExportPlaceUnchosenTemplate': '无法选择保存位置：{error}',
+    'settingsExportedTemplate': '已导出“{name}”。',
+    'settingsExportNotWrittenTemplate': '无法写入文件：{error}',
+    'settingsExportAll': '导出全部设置',
+    'settingsAllFileName': 'Anicel 设置',
+    'settingsRowFrameCount': '帧数输入方式',
+    'settingsRowWorkspaceLayout': '工作区布局',
+    'imIntoSettings': '设置',
+    'imSettingsGoInPlace': '放入“设置”的项目会替换当前设置，当前设置将丢失。',
+    'imSettingsUnreadable': '无法读取',
     'brExportNotWrittenTemplate': '无法写入画笔文件：{error}',
     'brExportedOneTemplate': '已导出画笔“{name}”。',
     'brExportedManyTemplate': '已导出 {count} 个画笔。',
@@ -9821,7 +10507,8 @@ enum AppStrings {
     'tlLayerReference': '引用',
     'tlReferenceSourceShort': '超出素材{n}帧',
     'tlSelectedLayers': '所选图层',
-    'tlAudioLane': '音频',
+    'tlAudioGroup': '音频',
+    'tlSoundVolume': '音量',
     'tlNameTagGroup': '名字条',
     'tlReferenceGroup': '参照',
     'tlTransformGroup': '变换',
@@ -9895,6 +10582,15 @@ enum AppStrings {
     'shortcutAction.layer-detach': '解除附属',
     'tlAttachDropsFxRows': '将失去 fx 的图层',
     'tlAttachDropsFxTitle': '附属后将失去 fx',
+    'tlMergeChangesTitle': '合并后外观可能会改变',
+    'tlMergeChangesBody': '合并后的图层叠在下方图层上时可能看起来不同。',
+    'tlMergeChanges': '会改变的内容',
+    'tlMergeChangeBlend': '含有非正常的混合模式 — 合并后的图层为正常',
+    'tlMergeChangeClip': '选中的图层与未选中的图层之间有剪贴关系',
+    'tlMergeChangeFolder': '合并后图层所在文件夹的效果也会作用于来自文件夹外的图层',
+    'tlMergeChangeRiderOver': '附属图层会盖住其他画面',
+    'tlMergeChangeRiderUnder': '附属图层会被压到其他画面下面',
+    'tlMergeChangeWall': '参照图片超出底板的部分会被裁掉',
     'tlAttachDropsFxBody': '附属图层不保留自身的 fx。继续将丢弃现有的 fx。要继续吗？',
     'tlPush': '推出（空出帧）',
     'tlPull': '拉回（收拢帧）',

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
 import '../../models/app_frame_grid_settings.dart';
+import '../../models/inbetween_mark.dart';
 import '../theme/app_theme.dart';
 import 'axis_turn.dart';
 import 'timeline_cell_style.dart';
@@ -461,9 +462,10 @@ Color? timelineGridGroundOver({
 /// ⛔Do not read the ground off `colorScheme` at the point of use. That
 /// guess is right three times in four, which is the worst kind of wrong.
 ///
-/// It carries the user's grid preference too ([AppFrameGridSettings]) —
-/// read HERE, so every row under a host sees the same answer and no host
-/// has to remember to hand it down.
+/// It carries the user's grid preferences too ([AppFrameGridSettings]) —
+/// the frame lines and the mark an unnamed drawing wears — read HERE, so
+/// every row under a host sees the same answer and no host has to
+/// remember to hand it down.
 class TimelineGridLaw extends StatelessWidget {
   const TimelineGridLaw({
     super.key,
@@ -494,19 +496,28 @@ class TimelineGridLaw extends StatelessWidget {
             ground: ground,
             framesPerSecond: framesPerSecond,
             blockFrameLines: settings.blockFrameLines,
+            unnamedMark: settings.unnamedMark,
           ),
           child: child!,
         ),
         child: child,
       );
+
+  /// The mark an unnamed drawing wears under [context] — the app's own
+  /// pick where no host states a law.
+  static InbetweenMark unnamedMarkOf(BuildContext context) =>
+      maybeOf(context)?.unnamedMark ??
+      AppFrameGridSettings.settings.value.unnamedMark;
 }
 
-/// What a host's grid law says: the ground, the counting fps, and whether
-/// the frame lines cross a block's paper.
+/// What a host's grid law says: the ground, the counting fps, whether the
+/// frame lines cross a block's paper, and the mark an unnamed drawing
+/// wears.
 typedef TimelineGridLawData = ({
   Color? ground,
   int framesPerSecond,
   bool blockFrameLines,
+  InbetweenMark unnamedMark,
 });
 
 class _TimelineGridLawScope extends InheritedWidget {

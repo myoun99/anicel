@@ -834,6 +834,60 @@ void main() {
     expect(_layerOf(session, 'a').attachedToLayerId, const LayerId('b'));
   });
 
+  testWidgets('a row mounted on the CONTE keeps its fx, so the drop asks '
+      'nothing (I-99)', (tester) async {
+    // 유저 2026-10-28: 「애초에 기준이랑 어태치랑 fx 완전독립」 — a row riding
+    // the conte authors its own fx, so mounting one throws nothing away.
+    final project = _project();
+    final cut = project.tracks.single.cuts.single;
+    await _pumpApp(
+      tester,
+      project: project.copyWith(
+        tracks: [
+          project.tracks.single.copyWith(
+            cuts: [
+              cut.copyWith(
+                layers: [
+                  for (final layer in cut.layers)
+                    if (layer.id == const LayerId('b'))
+                      layer.copyWith(kind: LayerKind.storyboard)
+                    else
+                      layer,
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    final session = _sessionOf(tester);
+    session.laneVerbs.updateLayerTransformTrack(
+      const LayerId('a'),
+      TransformTrack(
+        keyframes: {0: TransformPose(center: CanvasPoint(x: 3, y: 4))},
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final row = _railRowGrip('a');
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    await _selectRow(tester, row);
+    final gesture = await tester.startGesture(tester.getCenter(row));
+    await tester.pump(const Duration(milliseconds: 16));
+    await gesture.moveBy(const Offset(0, -28));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('attach-drops-fx-dialog')),
+      findsNothing,
+    );
+    expect(_layerOf(session, 'a').attachedToLayerId, const LayerId('b'));
+    expect(_layerOf(session, 'a').transformTrack.isNotEmpty, isTrue);
+  });
+
   testWidgets('⑤ the mirror: a row carried DOWN onto a base rides ABOVE it', (
     tester,
   ) async {

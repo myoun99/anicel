@@ -278,6 +278,26 @@ void main() {
     expect(find.text('Images'), findsOneWidget);
   });
 
+  testWidgets('where the ghosts lie is picked beside them — on top of the '
+      'frame or in place (onion-ghosts-in-place)', (tester) async {
+    final read = await pumpPanel(tester);
+    expect(read().placement, OnionSkinPlacement.inPlace);
+    expect(find.text('In place'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('onion-placement-button')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('onion-placement-onTop')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(read().placement, OnionSkinPlacement.onTop);
+    expect(find.text('On top'), findsOneWidget);
+    expect(read().beforePegs.first.opacity, 0.4, reason: 'the falloff stays');
+  });
+
   testWidgets('at the minimum dock width the strip still lays out — the '
       'bars stand their digits one to a cell, so none step aside', (
     tester,

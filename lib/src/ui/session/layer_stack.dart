@@ -16,6 +16,8 @@
 
 import 'package:flutter/foundation.dart';
 
+import '../../controllers/timeline_controller.dart'
+    show layerBornWithItsFirstCel;
 import '../../models/brush_frame_key.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
@@ -174,19 +176,29 @@ class LayerStack {
         // cut — one cell, edge to edge. There is no "X" in their world,
         // so they never start empty and then have to be filled. (An image
         // row can be EMPTIED afterwards, F-98 — its birth is unchanged:
-        // 「생성하면 기본적으로 프레임 생성되는건 그대로」.)
+        // 「생성하면 기본적으로 프레임 생성되는건 그대로」.) An animation row
+        // is born with its first cel, as a new project's layer A is (I-138).
         _layerVerbs.addRow(
-          (cut) => bornRowOfKind(
-            kind,
-            layerId: layerId,
-            coveringFrameId: () => _frameIds.mintFrameId(layerId),
-            cut: cut,
-          ),
+          (cut) {
+            final born = bornRowOfKind(
+              kind,
+              layerId: layerId,
+              coveringFrameId: () => _frameIds.mintFrameId(layerId),
+              cut: cut,
+            );
+            return kind.coversWithoutGaps
+                ? born
+                : layerBornWithItsFirstCel(
+                    born,
+                    _frameIds.mintFrameId(layerId),
+                  );
+          },
           // A cut's conte row is born at the bottom of ACTION, from this
           // door as from the conte's own (F-369, [conteRowPlacement]).
           kind == LayerKind.storyboard
               ? conteRowPlacement
               : _layerVerbs.placementAboveActive,
+          bornWithACel: true,
         );
       case LayerKind.adjustment:
         // R6b: a real row you ADD (unlike a folder), joining the stack
@@ -296,7 +308,7 @@ class LayerStack {
       // one member's empty block stood beside another's bare cells, the
       // bare cells turned the folder white. Grey is where no member holds a
       // PICTURE ([_blockIsDrawnAt]) — each member read where a drag in
-      // flight has it, as the band itself is (`folderBandsFollowing`).
+      // flight has it, as the band itself is (`rowShownWhileMoved`).
       return _anyMemberOf(
         layer,
         (member) => _blockIsDrawnAt(member, frameIndex) ?? false,

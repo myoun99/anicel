@@ -10,9 +10,9 @@ import 'timeline_se_row_visual.dart';
 ///
 /// 🗣️An unnamed drawing's head and a dot inside a block are marks of ONE
 /// kind, as data (유저 2026-09-24: 「데이터적으로도 같은 취급시키는거
-/// 맞지?」): the head answers [unnamedDrawingMark] here ([drawingHeadOf]),
-/// not a glyph standing in for a name, so every surface draws it as it
-/// draws the dot.
+/// 맞지?」): the head answers the unnamed drawing's mark here
+/// ([drawingHeadOf]), not a glyph standing in for a name, so every surface
+/// draws it as it draws the dot.
 typedef TimelineCellWriting = ({String word, InbetweenMark? mark});
 
 /// A cell that neither writes nor marks.
@@ -31,10 +31,14 @@ TimelineCellWriting timelineDotWriting(TimelineCellExposureState state) =>
 /// stopped the X at the playback range — the rule the user retired on
 /// 2026-08-02 (an empty run starts where it starts). Two spellings of one
 /// law drift; this is the one.
+///
+/// [unnamedMark] is the mark a drawing with no name wears, as the row's
+/// host heard it (Preferences ▸ Display, F-489).
 TimelineCellWriting timelineCellMarker({
   required Layer layer,
   required TimelineCellExposureState exposureState,
   required bool emptyRunStart,
+  required InbetweenMark unnamedMark,
   String? frameName,
 }) {
   const nothing = timelineCellWritesNothing;
@@ -71,7 +75,11 @@ TimelineCellWriting timelineCellMarker({
               layer.kind.carriesInstructions ||
               layer.kind == LayerKind.camera
           ? nothing
-          : drawingHeadOf(frameName, kind: layer.kind),
+          : drawingHeadOf(
+              frameName,
+              kind: layer.kind,
+              unnamedMark: unnamedMark,
+            ),
     TimelineCellExposureState.held => nothing,
     TimelineCellExposureState.markOneHeld ||
     TimelineCellExposureState.markTwoHeld => timelineDotWriting(exposureState),

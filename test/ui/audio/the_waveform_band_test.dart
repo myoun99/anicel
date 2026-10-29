@@ -12,17 +12,18 @@ import 'package:anicel/src/ui/timeline/axis_turn.dart' show rectAlong;
 /// 2026-09-05).
 ///
 /// It is a painter, so it is pinned by PIXELS: what the band covers, where
-/// it starts once the clip is trimmed into the file, and how the volume
-/// envelope narrows it. A test asserting on the painter's fields instead
+/// it starts once the clip is trimmed into the file, and how the clip's
+/// gain narrows it. A test asserting on the painter's fields instead
 /// would pass while the drawing moved.
 ///
 /// ⚠️The two edge CLAMPS (a bucket landing before 0 or past the window)
 /// resisted every fixture: the band is a filled polygon, so moving a
 /// vertex just off-canvas leaves the same region covered — even with a
-/// fade measuring from the clamped position. Measured 2026-09-05; they
-/// shape the vertex list rather than the pixels, so what pins them is
-/// reading the code, not this file. Said here so the next reader does not
-/// take their mutants' survival for "the clamps do nothing".
+/// fade measuring from the clamped position, while the band drew fades
+/// (they went with I-140). Measured 2026-09-05; they shape the vertex list
+/// rather than the pixels, so what pins them is reading the code, not this
+/// file. Said here so the next reader does not take their mutants' survival
+/// for "the clamps do nothing".
 void main() {
   const size = 64.0;
   const rate = ProjectFrameRate.fps24;
@@ -74,8 +75,6 @@ void main() {
     Axis axis = Axis.horizontal,
     int leadingFrames = 0,
     double gain = 1.0,
-    int fadeInFrames = 0,
-    int fadeOutFrames = 0,
   }) => WaveformPainter(
     peaks: peaks ?? loud(),
     frameRate: rate,
@@ -84,8 +83,6 @@ void main() {
     axis: axis,
     leadingFrames: leadingFrames,
     gain: gain,
-    fadeInFrames: fadeInFrames,
-    fadeOutFrames: fadeOutFrames,
   );
 
   test('⛔empty peaks paint NOTHING — a clip still loading is not a flat '
@@ -131,22 +128,6 @@ void main() {
     expect(overdriven, plain, reason: 'capped, not clipped by the row edge');
   });
 
-  test('🚨a FADE IN ramps the band up from the span start — the near edge '
-      'is thinner than the middle', () async {
-    final pixels = await paint(painter(fadeInFrames: 12));
-
-    expect(inkInColumn(pixels, 1), lessThan(inkInColumn(pixels, 30)));
-  });
-
-  test('a FADE OUT ramps it down toward the audible end', () async {
-    final pixels = await paint(painter(fadeOutFrames: 12));
-
-    expect(
-      inkInColumn(pixels, size.toInt() - 2),
-      lessThan(inkInColumn(pixels, 30)),
-    );
-  });
-
   test('🚨a TRIMMED clip starts its envelope mid-file — the band stays '
       'aligned with what actually plays, and does not open a gap that '
       'shifts with every dragged frame', () async {
@@ -160,22 +141,6 @@ void main() {
       reason:
           'the edge sample is clamped onto the window rather than '
           'dropped, so the band does not start a bucket short',
-    );
-  });
-
-  test('🚨a clip LONGER than the window ends its band ON the window edge — '
-      'the last sample is clamped there rather than drawn past it, which '
-      'is what keeps the fade landing where the eye expects', () async {
-    final pixels = await paint(
-      painter(peaks: peaksOf(List<double>.filled(16, 1)), fadeOutFrames: 6),
-    );
-
-    expect(
-      inkInColumn(pixels, size.toInt() - 1),
-      lessThan(inkInColumn(pixels, 30)),
-      reason:
-          'the fade is measured at the CLAMPED position, so the far '
-          'edge is thin; measured past the edge it would still be full',
     );
   });
 

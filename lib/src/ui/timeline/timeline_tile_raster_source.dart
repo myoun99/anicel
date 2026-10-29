@@ -135,6 +135,10 @@ abstract interface class TimelineTileRasterSource {
   /// 유저 2026-09-24) — baked into the tile, so part of the look.
   bool get blockFrameLines;
 
+  /// The mark a drawing with no name wears (Preferences ▸ Display, F-489)
+  /// — baked into the tile, so part of the look.
+  InbetweenMark get unnamedMark;
+
   /// The counting fps: a second boundary's line is the strongest, so with
   /// [blockFrameLines] on it is part of the look too.
   int get framesPerSecond;

@@ -390,7 +390,7 @@ void main() {
     // nowhere on screen.
     LayerEffect deleteBlack() => LayerEffect(
       id: const EffectId('key'),
-      kind: EffectKind.deleteColor,
+      kind: EffectKind.colorKey,
       parameters: {'amount': EffectParameter(value: 100)},
     );
 

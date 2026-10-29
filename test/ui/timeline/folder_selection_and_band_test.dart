@@ -6,7 +6,6 @@ import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/ui/session/folder_bands.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 
 /// R28 #11/#12: the folder row stops behaving like a second kind of row.

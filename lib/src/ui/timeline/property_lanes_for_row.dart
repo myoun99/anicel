@@ -12,9 +12,10 @@ import 'property_lane_model.dart';
 import 'reference_lane_policy.dart'
     show referenceGroupLaneId, referencePropertyLanes;
 import 'scale_lane_form.dart';
-import 'se_audio_lane.dart' show seAudioLanesFor;
 import 'se_name_tag_lane_policy.dart'
     show seNameTagGroupLaneId, seNameTagPropertyLanes;
+import 'se_sound_lane_policy.dart'
+    show seSoundGroupLaneId, seSoundPropertyLanes;
 import 'transform_lane_policy.dart'
     show
         transformGroupHeaderLane,
@@ -46,8 +47,9 @@ import 'transform_lane_policy.dart'
 ///    track's S row its defaults. Null leaves the pose and anchor lanes
 ///    without a value.
 ///
-/// [rows] are the rows the attach question is asked among. No session is
-/// read here, so a rail that has none — the storyboard panel — asks it too.
+/// [rows] are the rows the attach question is asked among, and the ones
+/// an effect's row parameter may name. No session is read here, so a rail
+/// that has none — the storyboard panel — asks it too.
 ///
 /// The camera row is not read here: its lanes are the cut's camera track,
 /// which only a cut's rail stands on (`timelineLanesForLayer`).
@@ -60,7 +62,8 @@ List<PropertyLaneRow> propertyLanesForRow({
 }) {
   final source = valueSourceAt;
   // Attach rows ride their BASE's transform/opacity lanes (W5 fx sharing)
-  // — no lanes of their own in v1. R9: the 공정 ORGANIZER folder joins
+  // — no lanes of their own; a row riding the conte authors its own fx and
+  // has them (I-99). R9: the 공정 ORGANIZER folder joins
   // them. It follows its base like its members do, so a transform or
   // effect chain here would be a second answer competing with the base's;
   // leaving the lanes up while the label has no fx switch would also let a
@@ -149,6 +152,7 @@ List<PropertyLaneRow> propertyLanesForRow({
     }
     return effectPropertyLanes(
       layer.effects,
+      cutRows: rows,
       isExpanded: (effectId) => expandedGroupKeys.contains(
         laneGroupKey(layer.id, effectGroupLaneId(effectId)),
       ),
@@ -163,18 +167,20 @@ List<PropertyLaneRow> propertyLanesForRow({
                 at.time,
               );
             },
-      // Where an effect stands its picture rests in the middle of the frame
-      // an unkeyed pose sits in, as the row's own transform does.
+      // Where an effect stands its picture, and a point, rests in the
+      // middle of the frame an unkeyed pose sits in, as the row's own
+      // transform does.
       standAt: centre == null || source == null
           ? null
-          : (effectId, time) {
+          : (effectId, lane, time) {
               final at = _sourceAtTime(source, time);
-              final stand = at.layer.effects
+              final keys = at.layer.effects
                   .where((effect) => effect.id == effectId)
                   .firstOrNull
-                  ?.stand;
+                  ?.transformLaneAt(lane)
+                  ?.keys;
               return effectStandPose(
-                effectStandAt(stand ?? TransformTrack.empty(), at.time),
+                effectStandAt(keys ?? TransformTrack.empty(), at.time),
                 centre,
               );
             },
@@ -189,15 +195,27 @@ List<PropertyLaneRow> propertyLanesForRow({
         'a camera row reads its cut — ask timelineLanesForLayer',
       );
     case LayerKind.se:
-      // Audio controls lead the SE twirl-down (the row's main tool); the
+      // The row's sound leads the SE twirl-down (the row's main tool); the
       // Transform group sits below, collapsed by default.
       //
       // R5 #7: the NAME TAG group is Transform's SIBLING — not a member of
       // it, and not an effect. The row simply HAS one, the way it has a
-      // transform track, so it sits directly above Transform.
+      // transform track, so it sits directly above Transform. I-140: so
+      // does its 「오디오」 group, where its waveform lane stood.
       final nameTag = layer.seNameTag ?? const SeNameTag();
       return [
-        ...seAudioLanesFor(layer),
+        ...seSoundPropertyLanes(
+          layer.seSound,
+          expanded: expandedGroupKeys.contains(
+            laneGroupKey(layer.id, seSoundGroupLaneId),
+          ),
+          volumeAt: source == null
+              ? null
+              : (time) {
+                  final at = _sourceAtTime(source, time);
+                  return at.layer.seSound.volumeAt(at.time);
+                },
+        ),
         ...layerEffectLanes(),
         ...seNameTagPropertyLanes(
           nameTag,

@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import '../../services/cel_source_effect_pass.dart';
+import 'loaded_fragment_program.dart';
 
 /// 🚨★★★ONE COLOUR KEY, TWO PROCESSORS.
 ///
@@ -21,62 +22,56 @@ import '../../services/cel_source_effect_pass.dart';
 class ColourKeyShader {
   ColourKeyShader._();
 
-  static const String assetKey = 'shaders/colour_key.frag';
+  static final _program = LoadedFragmentProgram(
+    'shaders/colour_key.frag',
+    whyAwaited:
+        'A composite that reached a colour key with no program would have '
+        'to drop the effect, so the load is a prerequisite of offering the '
+        'effect at all.',
+  );
 
-  static ui.FragmentProgram? _program;
+  /// Whether [shaderFor] can be called ([LoadedFragmentProgram.isReady]).
+  static bool get isReady => _program.isReady;
 
-  /// Whether [shaderFor] can be called. False until [load] completes.
-  ///
-  /// ⚠️`FragmentProgram.fromAsset` is async and a paint is not, so the
-  /// program has to be in hand before the first frame that needs it. A
-  /// composite that reached a colour key with no program would have to drop
-  /// the effect, and a dropped effect is the screen lying about the file.
-  static bool get isReady => _program != null;
-
-  /// Loads the program. Idempotent; safe to call from app start and from a
-  /// test's setUp.
-  static Future<void> load() async {
-    _program ??= await ui.FragmentProgram.fromAsset(assetKey);
-  }
+  /// Loads the program ([LoadedFragmentProgram.load]).
+  static Future<void> load() => _program.load();
 
   /// Releases the loaded program so a test can prove the unloaded path.
-  static void debugUnload() {
-    _program = null;
-  }
+  static void debugUnload() => _program.debugUnload();
 
   /// A shader that reads [source] and answers [key] for every pixel of a
-  /// [width] x [height] draw.
+  /// draw [source]'s size, 1:1 at the identity ([applyEffectSteps]),
+  /// [original] being its run's input — [source] itself for the run's first
+  /// key ([CelColorKey.alphaFor]).
   ///
   /// ⚠️The caller owns the returned shader and must `dispose()` it after the
   /// draw that used it is recorded.
   static ui.FragmentShader shaderFor({
     required ui.Image source,
+    required ui.Image original,
     required CelColorKey key,
-    required double width,
-    required double height,
   }) {
-    final program = _program;
-    if (program == null) {
-      throw StateError(
-        'ColourKeyShader.load() has not completed. A composite that reached a '
-        'colour key with no program would have to drop the effect, so the '
-        'load is a prerequisite of offering the effect at all.',
-      );
-    }
-    final shader = program.fragmentShader();
+    // The button's 색 유지 edits bytes through its own kernel; no chain
+    // holds a key that erases what its colour does not name.
+    assert(key.operation != CelKeyOperation.eraseOthers);
+    final shader = _program.shader();
     // ⛔Indices are declaration order, floats only — a sampler takes no float
     // slot. Getting this wrong does not throw; it silently keys on the wrong
     // numbers, which is why the proof sweeps values rather than trusting the
     // layout.
-    shader.setFloat(0, width);
-    shader.setFloat(1, height);
+    shader.setFloat(0, source.width.toDouble());
+    shader.setFloat(1, source.height.toDouble());
     shader.setFloat(2, key.red.toDouble());
     shader.setFloat(3, key.green.toDouble());
     shader.setFloat(4, key.blue.toDouble());
     shader.setFloat(5, key.tolerance.toDouble());
     shader.setFloat(6, key.amount);
-    shader.setFloat(7, key.keepsMatches ? 1 : 0);
+    shader.setFloat(
+      7,
+      key.operation == CelKeyOperation.restoreMatches ? 1 : 0,
+    );
     shader.setImageSampler(0, source);
+    shader.setImageSampler(1, original);
     return shader;
   }
 }

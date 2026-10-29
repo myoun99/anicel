@@ -31,6 +31,7 @@ class AppPromptDialog extends StatefulWidget {
     this.extra,
     this.fieldTrailing,
     this.width,
+    this.lead,
   });
 
   /// The same window with its four keys derived from ONE name:
@@ -63,6 +64,7 @@ class AppPromptDialog extends StatefulWidget {
     this.extra,
     this.fieldTrailing,
     this.width,
+    this.lead,
   }) : windowKey = ValueKey<String>('$keyPrefix-dialog'),
        fieldKey = ValueKey<String>('$keyPrefix-text-field'),
        cancelKey = ValueKey<String>('$keyPrefix-cancel-button'),
@@ -72,6 +74,11 @@ class AppPromptDialog extends StatefulWidget {
   /// edit as the name, so the two are confirmed together rather than
   /// through two dialogs in a row.
   final Widget? extra;
+
+  /// Optional content ABOVE the field, confirmed with it like [extra] — the
+  /// cut's scene over its name (F-291: 「신이란 항목을 위에 둬서」). The
+  /// field keeps the focus and its selection.
+  final Widget? lead;
 
   /// Optional content BESIDE the field, on its right — the key window's
   /// TYPE (F-17: 「이름변경이랑 오른쪽에 유니언 타입 변경」). Confirmed with
@@ -167,6 +174,10 @@ class _AppPromptDialogState extends State<AppPromptDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (widget.lead != null) ...[
+            widget.lead!,
+            const SizedBox(height: 10),
+          ],
           AppWindowField(
             label: widget.fieldLabel,
             emphasized: true,

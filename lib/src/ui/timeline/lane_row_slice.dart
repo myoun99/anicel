@@ -3,6 +3,7 @@ import '../../models/layer_kind.dart';
 import 'effect_lane_policy.dart' show parseEffectLaneId;
 import 'reference_lane_policy.dart' show laneIsReference;
 import 'se_name_tag_lane_policy.dart' show laneIsSeNameTag;
+import 'se_sound_lane_policy.dart' show laneIsSeSound;
 import 'transform_lane_policy.dart' show transformGroupHeaderLane;
 
 /// What a LANE ROW of [layer] shows for [laneId] — the object whose identity
@@ -21,9 +22,10 @@ import 'transform_lane_policy.dart' show transformGroupHeaderLane;
 ///
 /// ⛔ANYTHING THIS DOES NOT KNOW ANSWERS WITH THE WHOLE LAYER — a lane family
 /// added later, the camera row (whose lanes are the cut's camera, read
-/// through the session: its marker is a fresh clone per step), the audio
-/// lane (its band is the row's blocks) — so a row nobody taught this rebuilds
-/// exactly as it always did. Only a WRONG answer here can leave a row stale.
+/// through the session: its marker is a fresh clone per step) — so a row
+/// nobody taught this rebuilds exactly as it always did. Only a WRONG
+/// answer here can leave a row stale. ↩️The SE audio lane answered so too
+/// (its band was the row's blocks), until it went (I-140).
 Object laneRowSlice(Layer layer, String laneId) {
   if (layer.kind == LayerKind.camera) {
     return layer;
@@ -44,6 +46,9 @@ Object laneRowSlice(Layer layer, String laneId) {
   if (laneId == transformGroupHeaderLane.laneId) {
     return track;
   }
+  if (laneIsSeSound(laneId)) {
+    return layer.seSound;
+  }
   if (laneIsSeNameTag(laneId)) {
     return layer.seNameTag ?? layer;
   }
@@ -62,10 +67,11 @@ Object laneRowSlice(Layer layer, String laneId) {
       if (parameterId == null) {
         return effect;
       }
-      // Where the effect stands its picture is a transform's lane of its
-      // own, and its colour a lane of its own too.
-      return effect.standLaneOf(parameterId) == null &&
-              !effect.inksOn(parameterId)
+      // Where the effect stands its picture and its points are a
+      // transform's lanes of their own, and its colours lanes of their own
+      // too.
+      return effect.transformLaneAt(parameterId) == null &&
+              effect.colors[parameterId] == null
           ? effect.parameters[parameterId] ?? effect
           : effect.laneTrack(parameterId)!;
     }

@@ -8,6 +8,7 @@ import '../../models/canvas_viewport.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/transform_track.dart';
 import '../../services/canvas_selection_shape.dart';
+import '../../services/input/modifier_keys.dart' show ModifierKeys;
 import '../../services/transform_box_law.dart';
 import '../input/finger_mode_devices.dart';
 import '../input/hit_gate.dart';
@@ -17,6 +18,7 @@ import '../timeline/memo_token.dart';
 import '../widgets/axis_bar_gesture.dart';
 import 'box_chrome.dart';
 import 'box_press.dart';
+import 'canvas_touch_contacts.dart';
 import 'canvas_viewport_offset.dart';
 
 /// Where one grab of a row's box lands the value it drives: shown while the
@@ -405,6 +407,20 @@ class _RowTransformBoxState extends State<RowTransformBox> {
   CanvasPoint _travel(Offset local) => widget.viewport
       .viewportDeltaToCanvasDelta(dx: local.dx - _press.dx, dy: local.dy - _press.dy);
 
+  /// [_travel] for a grab that MOVES something — the inside, the cross, a
+  /// path's tangent: kept to one way on the canvas while Shift is held
+  /// (I-136, [TransformBoxLaw.oneWay]) — the key, or a finger beside a
+  /// pen's or a mouse's drag ([CanvasTouchContacts.aFingerHoldsAMovesShift]).
+  /// Asked at every move: held before the press and pressed during the
+  /// drag are one question.
+  CanvasPoint _movedTravel(Offset local) {
+    final travel = _travel(local);
+    final held =
+        ModifierKeys.isShiftPressed ||
+        CanvasTouchContacts.aFingerHoldsAMovesShift(byTouch: _touchDrag);
+    return held ? TransformBoxLaw.oneWay(travel) : travel;
+  }
+
   void _update(DragUpdateDetails details) {
     final start = _start;
     final grab = _grab;
@@ -417,7 +433,7 @@ class _RowTransformBoxState extends State<RowTransformBox> {
     final local = details.localPosition;
     switch (grab) {
       case BoxPress.inside:
-        final travel = TransformBoxLaw.wholePixels(_travel(local));
+        final travel = TransformBoxLaw.wholePixels(_movedTravel(local));
         _show(
           widget.move!,
           CanvasPoint(x: start.center.x + travel.x, y: start.center.y + travel.y),
@@ -466,7 +482,7 @@ class _RowTransformBoxState extends State<RowTransformBox> {
     CanvasPoint from,
     Offset local,
   ) {
-    final travel = _travel(local);
+    final travel = _movedTravel(local);
     _show(
       landing,
       CanvasPoint(x: from.x + travel.x, y: from.y + travel.y),

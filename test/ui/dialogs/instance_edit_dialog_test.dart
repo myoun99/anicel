@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_frame_grid_settings.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/inbetween_mark.dart';
+import 'package:anicel/src/models/se_dialogue_spacing.dart';
 import 'package:anicel/src/models/se_line_type.dart';
 import 'package:anicel/src/ui/dialogs/instance_edit_preview.dart';
 import 'package:anicel/src/ui/dialogs/instruction_event_dialog.dart';
@@ -149,6 +154,140 @@ void main() {
     expect(result!.seTypes.own, SeLineType.off);
   });
 
+  // 🗣️F-496 (유저 2026-10-28): 「OFF랑 MONO도 se블록에 표시」 — and the
+  // preview is the block, in the cut the pills set (F-386).
+  testWidgets('SE dialog: the preview writes the delivery of the cut the '
+      'pills set, and nothing for ON', (tester) async {
+    Cut cut(String id) => Cut(
+      id: CutId(id),
+      name: id,
+      duration: 4,
+      canvasSize: const CanvasSize(width: 640, height: 360),
+      layers: const [],
+    );
+    await _openDialog<SeInstanceDialogResult>(
+      tester,
+      SeInstanceDialog(
+        initialSeName: 'A',
+        initialSeTypes: SeLineTypes(
+          byCut: {const CutId('cut-2'): SeLineType.mono},
+        ),
+        cuts: [cut('cut-1'), cut('cut-2')],
+        initialCutId: const CutId('cut-2'),
+      ),
+      (_) {},
+    );
+    final said = find.bySemanticsLabel(RegExp('^SE delivery'));
+    expect(find.bySemanticsLabel('SE delivery MONO'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey<String>('se-type-on')));
+    await tester.pump();
+    expect(said, findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey<String>('se-type-off')));
+    await tester.pump();
+    expect(find.bySemanticsLabel('SE delivery OFF'), findsOneWidget);
+  });
+
+  // 🗣️F-496 ③ (유저 2026-10-28): 「대사 오프셋/글자별 코마 기능 …
+  // 글자별 코마는 기본값 3코마, 오프셋은 기본값 0」.
+  testWidgets('SE dialog: the offset and the frames a glyph open on the '
+      'block\'s own, lay the preview\'s block as they are typed, and come '
+      'back on OK', (tester) async {
+    const opened = SeDialogueSpacing(offset: 1, komaPerGlyph: 2);
+    const typedIn = SeDialogueSpacing(offset: 4, komaPerGlyph: 5);
+    SeInstanceDialogResult? result;
+    await _openDialog<SeInstanceDialogResult>(
+      tester,
+      const SeInstanceDialog(
+        initialDialogue: 'あいう',
+        initialSpacing: opened,
+        blockFrames: 30,
+      ),
+      (r) => result = r,
+    );
+    final offset = find.byKey(const ValueKey('se-dialogue-offset-field'));
+    final koma = find.byKey(const ValueKey('se-koma-per-glyph-field'));
+    String typed(Finder field) =>
+        tester.widget<TextField>(field).controller!.text;
+    DialogueFitText preview() => tester.widget<DialogueFitText>(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('instance-edit-preview')),
+        matching: find.byType(DialogueFitText),
+      ),
+    );
+
+    expect((typed(offset), typed(koma)), ('1', '2'));
+    expect(preview().spacing, opened);
+    expect(
+      preview().frames,
+      30,
+      reason: 'the block as long as it is — the spacing counts in its frames',
+    );
+
+    await tester.enterText(offset, '4');
+    await tester.enterText(koma, '5');
+    await tester.pump();
+    expect(preview().spacing, typedIn);
+
+    await tester.enterText(koma, '');
+    await tester.pump();
+    expect(
+      preview().spacing.komaPerGlyph,
+      5,
+      reason: 'a field typed empty keeps what it last counted',
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instance-edit-ok-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(result!.spacing, typedIn);
+  });
+
+  testWidgets('SE dialog: a new block opens on the standard — from its '
+      'first frame, three a glyph', (tester) async {
+    SeInstanceDialogResult? result;
+    await _openDialog<SeInstanceDialogResult>(
+      tester,
+      const SeInstanceDialog(creating: true),
+      (r) => result = r,
+    );
+    String typed(String key) =>
+        tester.widget<TextField>(find.byKey(ValueKey(key))).controller!.text;
+    expect(
+      (typed('se-dialogue-offset-field'), typed('se-koma-per-glyph-field')),
+      ('0', '3'),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instance-edit-ok-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(result!.spacing, SeDialogueSpacing.standard);
+  });
+
+  testWidgets('SE dialog: the window opens with the keyboard on the '
+      'dialogue — the counts beside it do not take it', (tester) async {
+    await _openDialog<SeInstanceDialogResult>(
+      tester,
+      const SeInstanceDialog(creating: true),
+      (_) {},
+    );
+    bool focused(String key) => tester
+        .widget<EditableText>(
+          find.descendant(
+            of: find.byKey(ValueKey<String>(key)),
+            matching: find.byType(EditableText),
+          ),
+        )
+        .focusNode
+        .hasFocus;
+    expect(focused('se-dialogue-field'), isTrue);
+    for (final key in ['se-dialogue-offset-field', 'se-koma-per-glyph-field']) {
+      expect(focused(key), isFalse, reason: key);
+    }
+  });
+
   testWidgets('SE dialog cancel pops nothing', (tester) async {
     SeInstanceDialogResult? result = const SeInstanceDialogResult(
       seName: 'sentinel',
@@ -291,6 +430,37 @@ void main() {
         reason: 'switch $shown: a line at each koma boundary inside the '
             'block, or none',
       );
+    }
+  });
+
+  // 🗣️F-489 — the preview asks the row painter, so it wears the unnamed
+  // mark the user picked as the rows do.
+  testWidgets('the preview\'s rows wear the unnamed mark picked', (
+    tester,
+  ) async {
+    addTearDown(
+      () => AppFrameGridSettings.settings.value = const AppFrameGridSettings(),
+    );
+    for (final mark in InbetweenMark.values) {
+      AppFrameGridSettings.settings.value = AppFrameGridSettings(
+        unnamedMark: mark,
+      );
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Center(
+            child: SizedBox(
+              width: 500,
+              child: InstanceEditPreview.se(
+                axis: Axis.horizontal,
+                dialogue: '대사',
+                seName: '',
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(previewCellsOf(tester).unnamedMark, mark);
     }
   });
 }

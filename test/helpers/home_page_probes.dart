@@ -569,6 +569,10 @@ Future<CutId> activeCutIdOf(WidgetTester tester) async {
   return _sessionOf(tester).activeCutId!;
 }
 
+/// The active cut's scene (F-291).
+String activeCutSceneOf(WidgetTester tester) =>
+    _sessionOf(tester).requireActiveCut.metadata.scene;
+
 Future<void> tapCutCommandButton(
   WidgetTester tester,
   ValueKey<String> key,

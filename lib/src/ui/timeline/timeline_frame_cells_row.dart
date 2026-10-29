@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../models/timeline_empty_gaps.dart' show emptyGapsBetween;
 import '../../models/attached_layer_resolve.dart';
 import '../../models/camera_instruction.dart';
+import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/sound_cannot_play.dart';
@@ -31,7 +32,6 @@ import 'timeline_beat_lines.dart' show TimelineGridLaw, timelineRowPaperExtent;
 import 'timeline_frame_span_layout.dart';
 import 'property_lane_model.dart' show PropertyLaneRow;
 import 'timeline_lane_rows.dart' show timelineUnionKeyMarkerSpans;
-import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
 import 'timeline_row_cells_painter.dart';
 import 'timeline_row_edit_chrome.dart';
 import 'timeline_row_run_labels_painter.dart';
@@ -72,11 +72,12 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.onLeaveMediaAssetOnLayer,
     this.seClipMarkerTooltip,
     this.showSeconds = false,
-    this.audioLane,
+    this.onDropMediaAssetOnSeBlock,
     this.commaDrag,
     this.rangeGesture,
     this.runEdit,
     this.spillInLeadFrames,
+    this.cutId,
     this.windowBucket,
     this.viewportMainExtent = 0,
     this.nextPage,
@@ -226,9 +227,10 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// (R26 #7) follow it.
   final bool showSeconds;
 
-  /// What the audio lane may ask the session to do; this row uses the
-  /// clip-remove menu and the media drop target. Null = display-only.
-  final TimelineAudioLaneCallbacks? audioLane;
+  /// A media-browser sound dropped on one of this row's SE blocks
+  /// ([TimelineGridHooks.onDropMediaAssetOnSeBlock]).
+  final void Function(LayerId layerId, int blockStartFrame, String path)?
+  onDropMediaAssetOnSeBlock;
 
   /// Comma-drag hooks; null hides the block edge grips.
   final TimelineCommaDragCallbacks? commaDrag;
@@ -252,6 +254,10 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// the cut before is drawn from this cut's frame 0.
   final int? spillInLeadFrames;
 
+  /// The cut the row is seen in ([BerthWorld.cutId]): an SE block writes
+  /// its delivery there (F-496).
+  final CutId? cutId;
+
   /// What the row draws now ([BerthRow.shows]) — the row as it was built,
   /// where no berth stands above it.
   _Shows _showsAt(BuildContext context) {
@@ -266,6 +272,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
             substrateGeneration: substrateGeneration,
             drawnFrameCount: drawnFrameCount,
             spillInLeadFrames: spillInLeadFrames,
+            cutId: cutId,
             coverageIdentity: ByIdentity(coverageIdentity),
             seAudioPeaks: const ByList([]),
             seSoundsCannotPlay: const ByList([]),
@@ -489,7 +496,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     if (!layerKindUsesSeSheetCells(layer.kind)) return const [];
     final peaksFor = audioPeaksFor;
     final clipTooltip = seClipMarkerTooltip;
-    final onDropAsset = audioLane?.onDropMediaAsset;
+    final onDropAsset = onDropMediaAssetOnSeBlock;
     final spillInLeadFrames = shows.world.spillInLeadFrames;
     return [
       if (peaksFor != null)
@@ -510,6 +517,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
         frameEndIndexExclusive: frames.frameEndIndexExclusive,
         axis: axis,
         spillInLeadFrames: spillInLeadFrames,
+        cutId: shows.world.cutId,
         keyPrefix: keyPrefix,
       ),
       ...timelineRowSoundWarningOverlays(

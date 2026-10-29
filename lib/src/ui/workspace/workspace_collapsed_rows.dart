@@ -511,6 +511,7 @@ class _WorkspaceCollapsedRows {
             // at frame 0 (F-358).
             spillInLeadFrames:
                 session.activeCutSpan.activeCutSpillInLeadFrames[layer.id],
+            cutId: session.activeCutId,
             geometry: geometry,
             crossAxisExtent: collapsedRowHeight(),
             exposureStateForLayer: session.exposureStateForLayer,

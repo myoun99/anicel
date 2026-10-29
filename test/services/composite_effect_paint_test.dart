@@ -16,8 +16,11 @@ void main() {
         values: [brightness, contrast],
       );
 
-  ResolvedLayerEffect blur({double x = 0, double y = 0}) =>
-      ResolvedLayerEffect(kind: EffectKind.blur, values: [x, y]);
+  ResolvedLayerEffect blur(double blurriness, {int dimensions = 0}) =>
+      ResolvedLayerEffect(
+        kind: EffectKind.blur,
+        values: [blurriness, dimensions.toDouble()],
+      );
 
   test('an empty chain is no paint work at all', () {
     final plan = resolveCompositeEffectPaint(const []);
@@ -69,7 +72,7 @@ void main() {
   test('a blur moves the whole chain onto imageFilter', () {
     final plan = resolveCompositeEffectPaint([
       colour(brightness: 20),
-      blur(x: 6),
+      blur(6, dimensions: 1),
     ]);
     expect(plan.imageFilter, isNotNull);
     expect(
@@ -80,14 +83,15 @@ void main() {
     expect(plan.isNotEmpty, isTrue);
   });
 
-  test('the blur outset is the radius — what a group buffer must grow by', () {
-    expect(resolveCompositeEffectPaint([blur(x: 6, y: 2)]).outsetPixels, 6);
-    expect(resolveCompositeEffectPaint([blur(x: 1, y: 9)]).outsetPixels, 9);
+  test('the blur outset is the blurriness, whichever way it runs — what a '
+      'group buffer must grow by', () {
+    expect(resolveCompositeEffectPaint([blur(6)]).outsetPixels, 6);
+    expect(resolveCompositeEffectPaint([blur(9, dimensions: 2)]).outsetPixels, 9);
     const bounds = ui.Rect.fromLTWH(0, 0, 10, 10);
     expect(
       effectBufferBounds(
         bounds,
-        resolveCompositeEffectPaint([blur(x: 4)]).outsetPixels,
+        resolveCompositeEffectPaint([blur(4)]).outsetPixels,
       ),
       const ui.Rect.fromLTWH(-4, -4, 18, 18),
     );
@@ -101,9 +105,29 @@ void main() {
     );
   });
 
+  test('🗣️I-132-Q3: Blur Dimensions says which way the blurriness runs', () {
+    ui.ImageFilter? filterOf(int dimensions) =>
+        resolveCompositeEffectPaint([
+          blur(4, dimensions: dimensions),
+        ]).imageFilter;
+    ui.ImageFilter gaussian(double x, double y) => ui.ImageFilter.blur(
+      sigmaX: x * blurSigmaPerRadius,
+      sigmaY: y * blurSigmaPerRadius,
+      tileMode: ui.TileMode.decal,
+    );
+    expect(filterOf(0), gaussian(4, 4), reason: 'Horizontal and Vertical');
+    expect(filterOf(1), gaussian(4, 0), reason: 'Horizontal');
+    expect(filterOf(2), gaussian(0, 4), reason: 'Vertical');
+    expect(
+      resolveCompositeEffectPaint([blur(0, dimensions: 2)]).isEmpty,
+      isTrue,
+      reason: 'no blurriness is no blur, whichever way it would run',
+    );
+  });
+
   test('the draw space scales the BLUR and leaves colour alone', () {
-    final full = resolveCompositeEffectPaint([blur(x: 12)]);
-    final half = resolveCompositeEffectPaint([blur(x: 12)], space: const DrawSpace.preScaled(0.5));
+    final full = resolveCompositeEffectPaint([blur(12, dimensions: 1)]);
+    final half = resolveCompositeEffectPaint([blur(12, dimensions: 1)], space: const DrawSpace.preScaled(0.5));
     expect(half.outsetPixels, 6);
     expect(full.outsetPixels, 12);
     expect(
@@ -131,7 +155,7 @@ void main() {
     expect(colourPaint.imageFilter, isNull);
 
     final blurPaint = ui.Paint();
-    resolveCompositeEffectPaint([blur(x: 3)]).applyTo(blurPaint);
+    resolveCompositeEffectPaint([blur(3)]).applyTo(blurPaint);
     expect(blurPaint.imageFilter, isNotNull);
     expect(blurPaint.colorFilter, isNull);
 

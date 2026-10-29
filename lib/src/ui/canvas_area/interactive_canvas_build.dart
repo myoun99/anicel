@@ -290,9 +290,9 @@ class _InteractiveCanvasBuild {
             session.currentFrameIndex,
           )
         : null;
-    // An effect that draws its own picture declares ITS box (F-477) — on
-    // its own switch, as the transform's box is on the transform's
-    // ([effectBoxedOn]).
+    // An effect that draws its own picture declares ITS box (F-477), and a
+    // point its cross (I-132-Q12 b) — on its own switch, as the
+    // transform's box is on the transform's ([effectBoxedOn]).
     final effectBox =
         activeLayer != null &&
             standing is LaneRowAddress &&
@@ -771,32 +771,48 @@ class _InteractiveCanvasBuild {
     }
     final rig = session.playbackRig;
     final standing = !_canvasPlays;
+    // R16-⑥: no cut in a gap — no paper (per-cut papers make anything else
+    // confusing; the void is the truth). Standing, the pictures the warmer
+    // lays ahead of it: the frame with its ghosts in place, or the frame and
+    // the ghosts over it. No ghosts in a run: a ghost is editing
+    // scaffolding, as a guide is, and the film has none.
+    final shown = standingPicturesOf(
+      cut,
+      session.currentFrameIndex,
+      session.onionSkin.settings.value.placement,
+      paintPaper: !_inGap,
+    );
+    final frameShown = standing
+        ? shown.frame
+        : (
+            cut: cut,
+            frameIndex: session.currentFrameIndex,
+            paintPaper: !_inGap,
+            ghosts: FrameGhosts.none,
+          );
     // MERGED: the whole tree, active layer included, so a folder's group
     // buffer encloses the layer being drawn on — asked afresh at each
     // build: a drag in flight, a run's step ([_followingDragAndRun]).
     final nodes = _inGap
         ? const <CompositeNode<CanvasStackRow>>[]
-        : standing
-        ? session.editingCanvas.stack.nodes
-        : session.editingCanvas.playingStack.nodes;
+        : !standing
+        ? session.editingCanvas.playingStack.nodes
+        : frameShown.ghosts == FrameGhosts.inPlace
+        ? session.editingCanvas.stackWithItsGhosts.nodes
+        : session.editingCanvas.stack.nodes;
     // 🚨ONE VIEW, STANDING AND PLAYING (one-picture-per-frame ②-3): the
     // canvas standing on a frame and a run playing it show the frame's one
     // picture, through the same view — pressing Play changes nothing on the
     // screen and makes nothing again. The paper-stays-put split under a cut
     // pose went with the V row's transform: nothing poses the whole cut on
     // the editing canvas, so the layers draw straight.
+    final drawnLive = _celsDrawnLive(nodes);
     final picture = FramePictureView(
       run: (
         landings: rig.prerenderScheduler.landings,
         pictures: rig.framePictures,
       ),
-      // R16-⑥: no cut in a gap — no paper (per-cut papers make anything
-      // else confusing; the void is the truth).
-      picture: (
-        cut: cut,
-        frameIndex: session.currentFrameIndex,
-        paintPaper: !_inGap,
-      ),
+      picture: frameShown,
       nodes: nodes,
       viewport: viewport,
       // Standing, the canvas draws the row a pen is on live — TS1: the
@@ -814,13 +830,11 @@ class _InteractiveCanvasBuild {
           : null,
       laysWhatItMisses: standing,
       wholeFrames: !standing,
+      // The cel you were drawing is a ghost in this picture on the frame you
+      // step to, where the ghosts lie in place.
+      drawnLive: drawnLive,
     );
-    // No ghosts in a run: a ghost is editing scaffolding, as a guide is, and
-    // the film has none. A gap parking shows the VOID (R16-⑥): no ghosts
-    // either.
-    final ghosts = standing && !_inGap
-        ? session.onionSkin.onionSkinCanvasRequests()
-        : const <CanvasLayerImageRequest>[];
+    final over = shown.over;
     return DeviceGridProbe(
       child: Stack(
         fit: StackFit.expand,
@@ -833,13 +847,13 @@ class _InteractiveCanvasBuild {
           // nothing drawn live, while the ghosts were stacked from their
           // rows' images, which a stack of none made nothing of; a picture
           // view is asked its frame at every step of the run.
-          if (standing)
+          if (standing && over != null)
             _ghostsOver(
               session,
-              cut,
-              ghosts,
+              over,
+              _inGap ? const [] : rig.framePictures.stackOf(over),
               viewport,
-              drawnLive: _celsDrawnLive(nodes),
+              drawnLive: drawnLive,
             ),
         ],
       ),
@@ -857,10 +871,12 @@ class _InteractiveCanvasBuild {
         cel,
   };
 
-  /// 🚨THE ONION GHOSTS LIE OVER THE FRAME'S ONE PICTURE — over its paper
-  /// and every row, at their tint and opacity as before
-  /// (one-picture-per-frame-Q1 = a, 유저 2026-10-24 「한 장 위에 얹는다」),
-  /// and a scrub shows them as it crosses frames.
+  /// 🚨WHERE THEY LIE ON TOP (`OnionSkinPlacement.onTop`), THE ONION GHOSTS
+  /// LIE OVER THE FRAME'S ONE PICTURE — over its paper and every row, at
+  /// their tint and opacity as before (one-picture-per-frame-Q1 = a, 유저
+  /// 2026-10-24 「한 장 위에 얹는다」), and a scrub shows them as it crosses
+  /// frames. In place, they are in the frame's picture itself
+  /// (`EditingCanvas.stackWithItsGhosts`, onion-ghosts-in-place).
   ///
   /// 🚨THE GHOSTS ARE ONE PICTURE TOO, made and drawn as the frame's is
   /// ([FramePictureView]): composed once at the canvas's own resolution,
@@ -877,10 +893,13 @@ class _InteractiveCanvasBuild {
   /// adjustment around it — and, for a day, in what clips to a base (I-92)
   /// — placed by `stackNodesWithGhosts`: no room for that between the rows
   /// of one picture, so a ghost is not cut by a clip's base either.
+  ///
+  /// 🚨STACKED AS THE WARMER STACKS THEM ([FramePictures.stackOf]): the
+  /// pictures it lays ahead of a scrub are the ones the scrub stands on.
   Widget _ghostsOver(
     EditorSessionManager session,
-    Cut cut,
-    List<CanvasLayerImageRequest> ghosts,
+    DemandedPicture ghosts,
+    List<CompositeNode<CanvasStackRow>> nodes,
     CanvasViewport viewport, {
     required Set<BrushFrameKey> drawnLive,
   }) => FramePictureView(
@@ -888,12 +907,8 @@ class _InteractiveCanvasBuild {
       landings: session.playbackRig.prerenderScheduler.landings,
       pictures: session.playbackRig.framePictures,
     ),
-    picture: (
-      cut: cut,
-      frameIndex: session.currentFrameIndex,
-      paintPaper: false,
-    ),
-    nodes: [for (final ghost in ghosts) CompositeLeaf<CanvasStackRow>(ghost)],
+    picture: ghosts,
+    nodes: nodes,
     viewport: viewport,
     laysWhatItMisses: true,
     wholeFrames: false,
@@ -1222,10 +1237,12 @@ class _HostFrame {
   /// file it shows, where its reference says (`_referenceBoxShown`).
   final bool referenceBox;
 
-  /// The effect of the active row whose own picture the canvas's box
-  /// drives — a cel number's letters, while its header or where it stands
-  /// is stood on (F-477, [effectBoxedOn]); null on every other lane.
-  final LayerEffect? effectBox;
+  /// The effect of the active row the canvas's box drives, and the lane
+  /// whose keys it moves — a cel number's letters, while its header or
+  /// where it stands is stood on (F-477), a point's cross while its lane
+  /// or its header is (I-132-Q12 b) — [effectBoxedOn]; null on every other
+  /// lane.
+  final ({LayerEffect effect, String lane})? effectBox;
 
   /// The active layer's ink at the playhead, while [boxGrabbable] or
   /// [crossGrabbable] — null on a cel that shows nothing.

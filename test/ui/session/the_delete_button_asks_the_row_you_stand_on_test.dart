@@ -114,7 +114,7 @@ void main() {
 
     test('🚨standing on its header or a parameter with no key, Delete has '
         'nothing to take — standing is not a range, so the effect stays', () {
-      for (final laneId in [effectGroupLaneId(blur), effectLaneId(blur, 'blurX')]) {
+      for (final laneId in [effectGroupLaneId(blur), effectLaneId(blur, 'blurriness')]) {
         standOn(laneId);
 
         expect(
@@ -131,9 +131,9 @@ void main() {
 
     test('🚨a RANGE over its header removes the effect, and one undo brings '
         'it back with its keys', () {
-      standOn(effectLaneId(blur, 'blurX'));
+      standOn(effectLaneId(blur, 'blurriness'));
       session.cellInstances.createInstancesForSelection();
-      final keys = now().effects.single.parameterOf('blurX').track.keys;
+      final keys = now().effects.single.parameterOf('blurriness').track.keys;
       expect(keys, isNotEmpty, reason: 'premise: a key for the undo to bring back');
 
       session.updateLaneRangeSelectionDrag(
@@ -154,17 +154,17 @@ void main() {
 
       session.undo();
 
-      expect(now().effects.single.parameterOf('blurX').track.keys, keys);
+      expect(now().effects.single.parameterOf('blurriness').track.keys, keys);
     });
 
     test('a range over a PARAMETER lane takes its keys and leaves the effect',
         () {
-      standOn(effectLaneId(blur, 'blurX'));
+      standOn(effectLaneId(blur, 'blurriness'));
       session.cellInstances.createInstancesForSelection();
 
       session.updateLaneRangeSelectionDrag(
         layerId: before.id,
-        laneId: effectLaneId(blur, 'blurX'),
+        laneId: effectLaneId(blur, 'blurriness'),
         anchorIndex: 0,
         headIndex: 5,
         spanLaneIds: const [],
@@ -172,7 +172,7 @@ void main() {
       session.deleteSelectionSubject(cutsAreThisPanels: false);
 
       expect(now().effects.map((effect) => effect.id), [blur]);
-      expect(now().effects.single.parameterOf('blurX').track.keys, isEmpty);
+      expect(now().effects.single.parameterOf('blurriness').track.keys, isEmpty);
     });
   });
 }

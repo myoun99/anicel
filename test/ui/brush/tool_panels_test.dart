@@ -918,11 +918,11 @@ void main() {
           ),
         ),
       );
-      // Size left for the top strip, so the signature control is now the
-      // first knob a preset DOES carry and a hand does not reach for
-      // mid-stroke.
+      // The panel itself: which of its rows stand is the brush's to say
+      // (I-141). ↩️The flow bar stood for it, as the first knob a preset
+      // carries once size left for the top strip.
       expect(
-        find.byKey(const ValueKey<String>('brush-tool-flow-slider')),
+        find.byKey(const ValueKey<String>('brush-settings-panel')),
         findsOneWidget,
       );
     });

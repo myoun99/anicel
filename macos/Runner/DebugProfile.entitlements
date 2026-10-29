@@ -10,6 +10,9 @@
 	<true/>
 	<key>com.apple.security.network.server</key>
 	<true/>
+	<!-- I-70: see Release.entitlements. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
 	<!-- PICK-1: without user-selected.read-write the panel still OPENS under
 	     the sandbox and then every read and write of what the user picked
 	     fails - a failure mode that looks like a bug in our save code rather

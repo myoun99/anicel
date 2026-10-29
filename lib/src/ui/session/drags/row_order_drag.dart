@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
-import '../../../models/attached_layer_resolve.dart' show layerHasFxToLose;
+import '../../../models/attached_layer_resolve.dart'
+    show attachRowWearsBaseComposite, layerHasFxToLose;
 import '../../../models/attached_mode.dart';
 import '../../../models/cut.dart';
 import '../../../models/cut_id.dart';
@@ -125,7 +126,8 @@ class RowOrderDrag {
   /// The rows this drop would MOUNT that carry fx of their own.
   ///
   /// 🚨An attach row authors no fx ([attachRowWearsBaseComposite] gates the
-  /// switch, the Transform group and the Effects groups), so mounting one
+  /// switch, the Transform group and the Effects groups — but a row riding
+  /// the conte authors its own, I-99), so mounting one
   /// that HAS fx throws it away. 유저 2026-08-29 asked to be told first —
   /// 「기존 fx가 사라집니다. 실행하겠습니까?」 — and only when there is
   /// something to lose, because a dialog nobody needed is a dialog people
@@ -144,7 +146,13 @@ class RowOrderDrag {
     return [
       for (final mount in plan.attach.mounts)
         if (byId[mount.layerId] case final layer?)
-          if (layerHasFxToLose(layer)) layer,
+          if (layerHasFxToLose(layer) &&
+              // A row mounted on the conte keeps wearing its own (I-99).
+              attachRowWearsBaseComposite(
+                layer.copyWith(attachedToLayerId: mount.baseId),
+                cut.layers,
+              ))
+            layer,
     ];
   }
 
@@ -402,11 +410,16 @@ class RowOrderDrag {
   /// Everything past the intent is [resolveLayerDropOnRow]'s, which hands
   /// the ordinary resolver the same stack — so an on-row landing and a gap
   /// landing cannot disagree about what is legal.
+  ///
+  /// [drawnTarget] is the row the rail lights for [targetId] where it names
+  /// that row otherwise — a conte row's address, as [drawnAs] is its
+  /// subject's.
   void updateLayerRowDropOnRow(
     List<Layer> displayLayers,
     int slot,
-    LayerId targetId,
-  ) {
+    LayerId targetId, {
+    LayerId? drawnTarget,
+  }) {
     final subject = _subject;
     final cut = _activeCutOrNull();
     // Track-owned SE rows re-order a flat list of their own and hold
@@ -459,7 +472,7 @@ class RowOrderDrag {
       subject: _drawn,
       caretSlot: -1,
       legal: true,
-      onRowTarget: targetId,
+      onRowTarget: drawnTarget ?? targetId,
       joinLabel: _rowDropLabel(cut.id, cut.layers, subject.layerId, plan),
     );
   }

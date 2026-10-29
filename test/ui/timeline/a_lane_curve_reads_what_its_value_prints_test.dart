@@ -19,6 +19,8 @@ import 'package:anicel/src/ui/timeline/property_lanes_for_row.dart';
 import 'package:anicel/src/ui/timeline/scale_lane_form.dart' show TwoScales;
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart'
     show seNameTagGroupLaneId;
+import 'package:anicel/src/ui/timeline/se_sound_lane_policy.dart'
+    show seSoundGroupLaneId;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -41,14 +43,14 @@ void main() {
     rotation: PropertyTrack<double>().withKey(0, 0).withKey(8, 45),
     opacity: PropertyTrack<double>().withKey(0, 1).withKey(8, 0.25),
   );
-  final blur = LayerEffect(
-    id: const EffectId('blur'),
-    kind: EffectKind.blur,
+  final grade = LayerEffect(
+    id: const EffectId('grade'),
+    kind: EffectKind.brightnessContrast,
     parameters: {
-      'blurX': EffectParameter(
+      'brightness': EffectParameter(
         track: PropertyTrack<double>().withKey(0, 0).withKey(8, 16),
       ),
-      'blurY': EffectParameter(value: 4),
+      'contrast': EffectParameter(value: 4),
     },
   );
   final layer = Layer(
@@ -56,7 +58,7 @@ void main() {
     name: 'A',
     frames: const [],
     transformTrack: track,
-    effects: [blur],
+    effects: [grade],
   );
 
   /// [row]'s lanes, every group open — read off [source] where one is
@@ -69,7 +71,7 @@ void main() {
     rows: [row],
     expandedGroupKeys: {
       laneGroupKey(row.id, transformGroupHeaderLane.laneId),
-      laneGroupKey(row.id, effectGroupLaneId(blur.id)),
+      laneGroupKey(row.id, effectGroupLaneId(grade.id)),
       laneGroupKey(row.id, seNameTagGroupLaneId),
     },
     valueSourceAt: source ?? (frame) => (layer: row, frame: frame),
@@ -86,8 +88,8 @@ void main() {
         if (lane.curve != null) lane,
     ];
     expect([for (final lane in drawn) lane.laneId], [
-      effectLaneId(blur.id, 'blurX'),
-      effectLaneId(blur.id, 'blurY'),
+      effectLaneId(grade.id, 'brightness'),
+      effectLaneId(grade.id, 'contrast'),
       'anchor-point',
       'position',
       'scale',
@@ -97,10 +99,15 @@ void main() {
     for (final lane in drawn) {
       for (var frame = 0; frame <= 10; frame += 1) {
         final numbers = lane.curve!.at(frame.toDouble());
-        final printed = readoutParts(lane.valueLabel!(frame));
+        final label = lane.valueLabel!(frame);
+        final printed = readoutParts(label);
         expect(
           [for (final number in numbers) columnValueText(number)],
-          [for (final part in printed) part.number],
+          readsTurns(printed)
+              // An angle prints its turns and degrees: the number they
+              // come to.
+              ? [columnValueText(columnValueOf(label)!)]
+              : [for (final part in printed) part.number],
           reason: '${lane.laneId} at $frame',
         );
         expect(numbers, hasLength(lane.curve!.parts.length));
@@ -131,8 +138,8 @@ void main() {
         'scale': [pose.scale.x * 100, pose.scale.y * 100],
         'rotation': [pose.rotationDegrees],
         'opacity': [opacity * 100],
-        effectLaneId(blur.id, 'blurX'): [
-          effectParameterValueAt(layer.effects, blur.id, 'blurX', frame),
+        effectLaneId(grade.id, 'brightness'): [
+          effectParameterValueAt(layer.effects, grade.id, 'brightness', frame),
         ],
       };
       expect(
@@ -195,12 +202,12 @@ void main() {
       0: straight,
       8: (incoming: const EaseSide(), outgoing: KeySide.linear),
     });
-    expect(laneOf(lanes, effectLaneId(blur.id, 'blurX')).curve!.sides, {
+    expect(laneOf(lanes, effectLaneId(grade.id, 'brightness')).curve!.sides, {
       0: straight,
       8: straight,
     });
     expect(
-      laneOf(lanes, effectLaneId(blur.id, 'blurY')).curve!.sides,
+      laneOf(lanes, effectLaneId(grade.id, 'contrast')).curve!.sides,
       isEmpty,
       reason: 'a value no key holds',
     );
@@ -235,7 +242,7 @@ void main() {
     );
 
     expect(rotation.curve!.at(2.5).single, closeTo(25, 1e-9));
-    expect(rotation.valueLabel!(2), '20.00°');
+    expect(rotation.valueLabel!(2), '0x+20.00°');
   });
 
   test('each number is drawn in its own colour — a point across and down, '
@@ -246,8 +253,8 @@ void main() {
     };
     const point = [LaneCurvePalette.across, LaneCurvePalette.down];
     expect(partsOf(lanesOf(layer)), {
-      effectLaneId(blur.id, 'blurX'): [LaneCurvePalette.effectParameter(0)],
-      effectLaneId(blur.id, 'blurY'): [LaneCurvePalette.effectParameter(1)],
+      effectLaneId(grade.id, 'brightness'): [LaneCurvePalette.effectParameter(0)],
+      effectLaneId(grade.id, 'contrast'): [LaneCurvePalette.effectParameter(1)],
       'anchor-point': point,
       'position': point,
       'scale': [LaneCurvePalette.scale, LaneCurvePalette.scaleDown],
@@ -277,8 +284,8 @@ void main() {
     expect(laneOf(camera, 'scale').curve!.at(3), [100]);
   });
 
-  test('a header heads a graph where its lanes stand as one — Transform\'s '
-      'and each effect\'s', () {
+  test('a header heads a graph where its lanes stand as one — Transform\'s, '
+      'each effect\'s and an S row\'s 「오디오」 (I-140: its audio fx)', () {
     final se = Layer(
       id: const LayerId('se'),
       name: 'SE',
@@ -291,8 +298,9 @@ void main() {
           if (lane.isGroupHeader) lane.laneId: lane.headsAGraph,
       },
       {
-        effectGroupLaneId(blur.id): true,
+        effectGroupLaneId(grade.id): true,
         transformGroupHeaderLane.laneId: true,
+        seSoundGroupLaneId: true,
         seNameTagGroupLaneId: false,
       },
     );

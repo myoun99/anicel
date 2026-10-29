@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../controllers/default_project_helpers.dart'
     show newUntitledProject;
+import '../../core/build_stamp.dart';
 import '../../core/path_names.dart';
 import '../../services/persistence/anicel_project_archive.dart';
 import '../../services/persistence/app_documents.dart';
@@ -15,13 +16,13 @@ import '../../services/persistence/file_type_groups.dart';
 import '../../services/persistence/folder_grant.dart';
 import '../../services/persistence/provider_documents.dart';
 import '../../services/persistence/save_failure.dart';
+import '../../services/persistence/save_stretch.dart';
 import '../../services/persistence/recent_projects.dart';
 import '../../services/persistence/recent_projects_store.dart';
 import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/app_progress_dialog.dart';
 import '../../native/device_battery.dart';
 import '../../native/window_full_screen.dart';
-import '../../services/color_palette_file_service.dart';
 import '../brush/brush_tool_state.dart';
 import '../brush/brush_value_group.dart';
 import '../brush/tools_panel.dart' show RailButton;
@@ -43,6 +44,7 @@ import '../widgets/setting_source_button.dart';
 import '../widgets/strip_group_rule.dart';
 import '../dialogs/folder_pick_flow.dart';
 import '../dialogs/dialog_verb.dart';
+import '../dialogs/feedback_window.dart';
 import '../dialogs/preferences_dialog.dart';
 import '../dialogs/work_settings_window.dart';
 import '../debug/input_inspector.dart';
@@ -96,9 +98,6 @@ class EditorTopStrip extends StatelessWidget {
     this.door,
     this.keyRoad,
     this.brushTool,
-    this.colorBackground,
-    this.colorPalette,
-    this.onColorPaletteChanged,
     this.battery,
   });
 
@@ -135,19 +134,6 @@ class EditorTopStrip extends StatelessWidget {
   ///
   /// Null leaves the right end empty (passive hosts and focused tests).
   final ValueNotifier<BrushToolState>? brushTool;
-
-  /// The colour control's other two pieces: the spare (background) slot and
-  /// the pinned palette. The FOREGROUND colour is not here — it rides
-  /// [brushTool], which is where a colour has always lived.
-  ///
-  /// All three are null together in practice; the colour button needs the
-  /// set, so a host that supplies part of it gets no button.
-  final ValueNotifier<int>? colorBackground;
-  final ValueNotifier<ColorPaletteState>? colorPalette;
-
-  /// Palette writes go back through the host because they PERSIST — the
-  /// strip must not learn where a palette file lives.
-  final ValueChanged<ColorPaletteState>? onColorPaletteChanged;
 
   /// The device's battery, at the strip's very end (I-103-Q1) — null on a
   /// device without one, which keeps no place for it ([DeviceBattery]).
@@ -765,8 +751,21 @@ class EditorTopStrip extends StatelessWidget {
       label: editorActionLabel(EditorActionIds.about),
       shortcuts: const [EditorActionIds.about],
       icon: Icons.info_outline,
-      onPressed: () =>
-          showAboutDialog(context: context, applicationName: 'Anicel'),
+      // 🗣️app-version-shown (유저 2026-10-29): 「위치는 환경설정
+      // 애니셀정보버튼 창 안에도 적음」 — this row's window says the build,
+      // the line the launch notice's title carries.
+      onPressed: () => showAboutDialog(
+        context: context,
+        applicationName: 'Anicel',
+        applicationVersion: buildStamp,
+      ),
+    ),
+    _item(
+      id: 'help-send-feedback',
+      label: editorActionLabel(EditorActionIds.sendFeedback),
+      shortcuts: const [EditorActionIds.sendFeedback],
+      icon: Icons.feedback_outlined,
+      onPressed: () => showFeedbackWindow(context),
     ),
   ];
 
@@ -1726,8 +1725,9 @@ Future<bool> saveProjectShowingProgress(
   // 좋을듯」. Until the write first counts, the save is gathering what it
   // writes — on this isolate, and for a heavy session long — and the
   // window's changing line says so; the first count hands the line back to
-  // the running label.
-  final preparing = ValueNotifier<String>(AppText.strings.savePrepareRunning);
+  // the running label, and each stretch after it names itself (🗣️F-494,
+  // 유저 2026-10-28: 「저장중 말고 … 하고있는 과정을 보여주는식으로」).
+  final line = _SaveLine(AppText.strings.savePrepareRunning);
   try {
     await runWithAppProgress<void>(
       context: context,
@@ -1736,15 +1736,16 @@ Future<bool> saveProjectShowingProgress(
       runningLabel: AppText.strings.saveProgressRunning,
       doneLabel: AppText.strings.saveProgressDone,
       windowKey: const ValueKey<String>('save-progress-dialog'),
-      runningStatus: preparing,
+      runningStatus: line,
       task: (report) =>
           session.projectDoor.saveProjectToFile(
             path,
             asked: SaveAsked.byAPerson,
             onProgress: (fraction) {
-              preparing.value = '';
+              line.counted();
               report(fraction);
             },
+            onStretch: line.say,
           ),
     );
     if (context.mounted) {
@@ -1762,7 +1763,33 @@ Future<bool> saveProjectShowingProgress(
     }
     return false;
   } finally {
-    preparing.dispose();
+    line.dispose();
+  }
+}
+
+/// The running line of a save's window: [gathering] until the save first
+/// counts or names a stretch, the running label at its first count, and
+/// the stretch under way once one is named ([SaveStretch]).
+///
+/// ⚠️A count does not take a stretch's name back: the media set aside
+/// count on this isolate after their stretch was named, and the write
+/// names its own when it moves on.
+class _SaveLine extends ValueNotifier<String> {
+  _SaveLine(super.gathering);
+
+  bool _named = false;
+
+  /// The save counted.
+  void counted() {
+    if (!_named) {
+      value = '';
+    }
+  }
+
+  /// The save is in [stretch] now.
+  void say(SaveStretch stretch) {
+    _named = true;
+    value = AppText.strings.saveStep(stretch);
   }
 }
 
@@ -2045,7 +2072,8 @@ void _tellWhatTheSaveCouldNotCarry(
 }
 
 /// Writes the whole live session to [stagingPath] and answers what it wrote
-/// — [ProjectFileDoor.writeArchiveCopy] in production.
+/// — [ProjectFileDoor.writeArchiveCopy] in production — telling `report`
+/// how far it is and `say` which [SaveStretch] it is in.
 ///
 /// 🚨★★★**A SEAM BECAUSE THE WRITER CANNOT RUN UNDER A FAKE CLOCK**, not
 /// because anyone wanted a choice about who writes the archive.
@@ -2063,6 +2091,7 @@ typedef ProjectArchiveWriter =
     Future<StagedArchive> Function(
       String stagingPath,
       void Function(double) report,
+      void Function(SaveStretch stretch) say,
     );
 
 Future<void> promptSaveProjectAs(
@@ -2089,12 +2118,16 @@ Future<void> promptSaveProjectAs(
   StagedArchive? staged;
   final write =
       writeArchive ??
-      (String path, void Function(double) report) =>
-          session.projectDoor.writeArchiveCopy(
-            path,
-            asked: SaveAsked.byAPerson,
-            onProgress: report,
-          );
+      (
+        String path,
+        void Function(double) report,
+        void Function(SaveStretch stretch) say,
+      ) => session.projectDoor.writeArchiveCopy(
+        path,
+        asked: SaveAsked.byAPerson,
+        onProgress: report,
+        onStretch: say,
+      );
   // 🪦ONE CALL, not two. An injected picker used to get its own branch
   // here, and that branch re-answered the suffix question the pick already
   // answers (F-14) — a second spelling of one law, kept alive by a seam
@@ -2119,17 +2152,26 @@ Future<void> promptSaveProjectAs(
     // person cancels there, the file this window just announced as
     // 「saved」is deleted. Announcing the end of the WRITE as the end of
     // the SAVE told them a thing that could still be undone.
-    stageArchive: (stagingPath) => runWithAppProgress<void>(
-      context: context,
-      title: AppText.strings.commonSave,
-      titleIcon: Icons.save_outlined,
-      runningLabel: AppText.strings.savePrepareRunning,
-      doneLabel: AppText.strings.savePrepareDone,
-      windowKey: const ValueKey<String>('save-progress-dialog'),
-      task: (report) async {
-        staged = await write(stagingPath, report);
-      },
-    ),
+    // Its line names each stretch of the write, as a save's does (F-494).
+    stageArchive: (stagingPath) async {
+      final line = _SaveLine('');
+      try {
+        await runWithAppProgress<void>(
+          context: context,
+          title: AppText.strings.commonSave,
+          titleIcon: Icons.save_outlined,
+          runningLabel: AppText.strings.savePrepareRunning,
+          doneLabel: AppText.strings.savePrepareDone,
+          windowKey: const ValueKey<String>('save-progress-dialog'),
+          runningStatus: line,
+          task: (report) async {
+            staged = await write(stagingPath, report, line.say);
+          },
+        );
+      } finally {
+        line.dispose();
+      }
+    },
   );
   if (pick == null || !context.mounted) {
     return;

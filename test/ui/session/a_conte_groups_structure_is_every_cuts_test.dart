@@ -374,14 +374,17 @@ void main() {
         ],
       ),
     );
-    expect(groupOf(session, a), asItWas);
+    // 🗣️I-99: 「콘티행은 어태치폴더 못가진다는데 그게 일단 버그임」 — the
+    // folder holds a seat of its own, over the row it files, in every cut.
+    expect(groupOf(session, a), ['3:org', ...asItWas]);
+    expect(groupOf(session, b), ['3:org', ...asItWas]);
     expect(
       cutIn(session, b).layers.byId(const LayerId('b-over2'))!.folderId,
       isNotNull,
       reason: '⛔전제: b files its over2 in its row of the folder',
     );
 
-    // A new row filed in ORG, under over2: the group's second seat.
+    // A new row filed in ORG, under over2: the group's second row.
     final layers = cutIn(session, a).layers;
     session.cutCommandCoordinator.historyManager.execute(
       plannedAddLayerCommand(
@@ -396,12 +399,12 @@ void main() {
 
     expect(
       groupOf(session, a),
-      ['3:over2', '2:new', '1:over1', '0:conte', '-1:under'],
+      ['4:org', '3:over2', '2:new', '1:over1', '0:conte', '-1:under'],
       reason: '⛔전제',
     );
     expect(
       groupOf(session, b),
-      ['3:over2', '2:new', '1:over1', '0:conte', '-1:under'],
+      ['4:org', '3:over2', '2:new', '1:over1', '0:conte', '-1:under'],
     );
     final born = conteRowAtSeat(cutIn(session, b), 2)!;
     expect(

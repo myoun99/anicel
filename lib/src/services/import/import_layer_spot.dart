@@ -38,8 +38,8 @@ sealed class ImportLayerSpot {
 
 /// A new layer directly above the active one — a drop on the canvas.
 ///
-/// The slot is Add Layer's own ([LayerController.insertionIndexAboveActiveLayer]),
-/// not a second reading of "above".
+/// The slot is Add Layer's own (`newRowPlacementOn` — inside the active row
+/// where it is a folder, F-492), not a second reading of "above".
 final class AboveActiveLayerSpot extends ImportLayerSpot {
   const AboveActiveLayerSpot();
 

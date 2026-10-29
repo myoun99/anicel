@@ -229,13 +229,15 @@ enum StaffHolder {
   /// The work (작품 설정): the conte — one book for the whole work.
   work,
 
-  /// Each cut (컷 설정): every other stage, whose people change from cut
-  /// to cut.
+  /// Each cut (컷 설정): every other stage with staff, whose people change
+  /// from cut to cut.
   cut,
 }
 
 /// Who keeps [process]'s staff — null for 用紙, which is nobody's work
-/// (유저 2026-10-05, F-291: 「용지라는 스태프는 없음」).
+/// (유저 2026-10-05, F-291: 「용지라는 스태프는 없음」), and for 美術
+/// (유저 2026-10-28, F-291: 「컷 설정의 미술 항목 전부 삭제. 작업자나
+/// 연출이나 포함해서 미술이란 항목 통째로. 필요없음」). The labels keep both.
 ///
 /// 🗣️유저 2026-10-08 (F-291-Q1): 「원화 작업자나 시아게는 컷마다 다름 …
 /// 공통적인 부분인 제목/화수/회사로고/표지그림등만 남겨두고, 스태프는 콘티만
@@ -243,10 +245,15 @@ enum StaffHolder {
 /// stage's name and a cut's own name stood over it (09-25: 작품 설정에는
 /// 기본값, 컷 설정에는 컷별 이름).
 StaffHolder? staffHolderOf(LayerProcess process) => switch (process) {
-  LayerProcess.paper => null,
+  LayerProcess.paper || LayerProcess.art => null,
   LayerProcess.conte => StaffHolder.work,
   _ => StaffHolder.cut,
 };
+
+/// The stages whose staff fold opens before anyone has opened or shut one
+/// — 🗣️유저 2026-10-28 (F-291): 「항목들 기본적으로 접힌상태이도록. 디폴트가.
+/// 러프원화만 열린상태로」.
+const Set<LayerProcess> staffFoldsOpenAtFirst = {LayerProcess.roughKey};
 
 /// A staff map as a file holds it: each stage's name by its key
 /// ([LayerMark.keySlug]).

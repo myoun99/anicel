@@ -64,7 +64,7 @@ void main() {
     effects: effects,
   );
 
-  final blur = [ResolvedLayerEffect(kind: EffectKind.blur, values: [4, 4])];
+  final blur = [ResolvedLayerEffect(kind: EffectKind.blur, values: [4, 0])];
 
   const service = CameraFrameRenderService();
 
@@ -73,6 +73,7 @@ void main() {
     CameraView view,
   ) async {
     final image = await service.renderThroughCamera(
+      canvasSize: canvasSize,
       nodes: nodes,
       pose: view.pose,
       cameraFrameSize: view.frameSize,

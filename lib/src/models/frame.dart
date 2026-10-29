@@ -1,56 +1,28 @@
 import '../core/collection_equality.dart';
 import 'frame_id.dart';
 import '../core/copy_with_sentinel.dart';
+import 'app_frame_grid_settings.dart';
+import 'inbetween_mark.dart';
 import 'layer_kind.dart';
+import 'se_dialogue_spacing.dart';
 import 'se_line_type.dart';
 import 'stroke.dart';
 
-/// THE in-between marks (中割) as DATA — what a cell carries, not a glyph it
-/// prints: two marks, one in-between. 🗣️I-130 (유저 2026-10-25): 「지금의
-/// 속이 찬 점을 마크2, 속이 빈 그냥 선으로 된 원을 마크1. 이 순서는 토에이
-/// 디지털 타임시트, 클튜를 기반으로 확인했음 … 현재로서 두 마크가 다른
-/// 기능한다거나 그런건없음. 일단은 모양이 다를뿐인 같은 중간나누기임」.
-///
-/// ↩️유저 2026-09-24 had named them the other way round — 「중간나누기
-/// 마크1로서 작동했으면 … 마크2는 토에이 타임시트에 속이 빈 동그라미」 — and
-/// until I-130 there was the one value, the filled ●. ↩️F-149 (유저
-/// 2026-09-16: 「일단 이름 없는 기본상태를 속이 찬 동그라미로 통일적용. 추후
-/// 두번째 중간나누기 마크(속이 빈)를 활용할지도 모르겠지만 당장은 제거」)
-/// retired the hollow ○ the unnamed drawing printed; it is back as mark 1.
-enum InbetweenMark {
-  /// Mark 1 — the hollow ○, a line round it.
-  one,
-
-  /// Mark 2 — the filled ●.
-  two;
-
-  /// The mark written as TEXT — a file name, a menu, a notice. Surfaces that
-  /// draw draw its shape instead. The one place either glyph is spelled.
-  String get glyph => switch (this) {
-    InbetweenMark.one => '○',
-    InbetweenMark.two => '●',
-  };
-}
-
-/// THE DEFAULT MARK — the one worn wherever nothing says which of the two:
-/// an unnamed drawing's head ([unnamedDrawingMark]), the mark-every window
-/// before one is picked, and a dot a file marks without saying which (the
-/// TVPaint import; the Clip Studio one reads each label's kind since
-/// I-130-csp-import-Q1).
-///
-/// 🗣️F-469 (유저 2026-10-25): 「이름없는 프레임의 기본마크, 앞으로 마크1 사용.
-/// 지금 마크2인 채운 점 사용되고있음. 다른곳도 같은곳있으면 확인해서 법
-/// 통일」. 🗣️I-130-csp-import-Q2 (유저 2026-10-27): an imported dot whose
-/// kind its file does not say is the same law — 「모를 때는 ○마크1」.
-const InbetweenMark defaultInbetweenMark = InbetweenMark.one;
+export 'inbetween_mark.dart';
 
 /// The mark a drawing without a cel number wears where the number would
-/// stand — [defaultInbetweenMark], drawn as the mark inside a block is
-/// (유저 2026-09-24), on the sheet, the timeline, the flip HUD, the
-/// storyboard and in a save's notice — on every row but one whose picture
-/// is the layer ([drawingHeadOf]). ↩️Mark 2, the filled ● (F-149), until
-/// F-469.
-const InbetweenMark unnamedDrawingMark = defaultInbetweenMark;
+/// stand — the one Preferences ▸ Display picks
+/// ([AppFrameGridSettings.unnamedMark], F-489), drawn as the mark inside a
+/// block is (유저 2026-09-24), on the sheet, the timeline, the flip HUD,
+/// the storyboard and in a save's notice — on every row but one whose
+/// picture is the layer ([drawingHeadOf]).
+///
+/// Read LIVE by what writes it at once ([celNumberOrMark]); a surface that
+/// draws it is handed it by its host, which hears the pick, so it is drawn
+/// again when the pick changes. ↩️Mark 1, the ○, with no choice (F-469);
+/// mark 2, the filled ●, before that (F-149).
+InbetweenMark get unnamedDrawingMark =>
+    AppFrameGridSettings.settings.value.unnamedMark;
 
 /// What a drawing's head wears where its block starts: a [word] — its cel
 /// number — or, with none, a [mark].
@@ -58,26 +30,29 @@ typedef DrawingHead = ({String word, InbetweenMark? mark});
 
 /// What a drawing named [name] on a row of [kind] wears where its block
 /// starts, as DATA: its cel number, or — with none — no word, and
-/// [unnamedDrawingMark] on the one kind whose unnamed drawing is an
-/// in-between ([LayerKind.unnamedDrawingIsInbetween], animation); nothing at
-/// all on every other kind (유저 2026-09-26: 「애니메이션 이외 레이어는
-/// 이름없으면 진짜 이름없도록 통일」 — 09-25 the image layer first: 「중간나누기
-/// 마크가아니라 이름을 안보이게」).
+/// [unnamedMark] on the one kind whose unnamed drawing is an in-between
+/// ([LayerKind.unnamedDrawingIsInbetween], animation); nothing at all on
+/// every other kind (유저 2026-09-26: 「애니메이션 이외 레이어는 이름없으면
+/// 진짜 이름없도록 통일」 — 09-25 the image layer first: 「중간나누기 마크가아니라
+/// 이름을 안보이게」).
 ///
 /// 🚨ONE ANSWER for every surface that shows a drawing's head — the
 /// timeline's rows, the flip window, the folded strip, the storyboard's
 /// panels, the sheet — so the mark it wears is the mark of the dot inside a
 /// block, drawn by the same code (유저 2026-09-24). The [kind] is required
-/// so that no surface can answer for a row without asking what it is.
-DrawingHead drawingHeadOf(String? name, {required LayerKind kind}) =>
-    switch (celNumberOf(name)) {
-      final celNumber? => (word: celNumber, mark: null),
-      null when kind.unnamedDrawingIsInbetween => (
-        word: '',
-        mark: unnamedDrawingMark,
-      ),
-      null => (word: '', mark: null),
-    };
+/// so that no surface can answer for a row without asking what it is, and
+/// [unnamedMark] — [unnamedDrawingMark], as the surface's host heard it —
+/// so that none can draw the mark without being drawn again when it is
+/// picked anew.
+DrawingHead drawingHeadOf(
+  String? name, {
+  required LayerKind kind,
+  required InbetweenMark unnamedMark,
+}) => switch (celNumberOf(name)) {
+  final celNumber? => (word: celNumber, mark: null),
+  null when kind.unnamedDrawingIsInbetween => (word: '', mark: unnamedMark),
+  null => (word: '', mark: null),
+};
 
 /// The cel number a drawing named [name] prints: [name] trimmed, or null
 /// when nothing is left of it.
@@ -119,11 +94,15 @@ bool isWrittenDrawingName(String? name) =>
     name?.startsWith(_writtenNameMark) ?? false;
 
 /// What a drawing named [name] on a row of [kind] WRITES where its block
-/// starts, as TEXT — a file name, a notice: [drawingHeadOf], its mark
-/// spelled as its glyph. A surface that draws asks [drawingHeadOf] and
-/// draws the mark.
+/// starts, as TEXT — a file name, a notice: [drawingHeadOf], its mark the
+/// one picked now ([unnamedDrawingMark]) spelled as its glyph. A surface
+/// that draws asks [drawingHeadOf] and draws the mark.
 String celNumberOrMark(String? name, {required LayerKind kind}) {
-  final head = drawingHeadOf(name, kind: kind);
+  final head = drawingHeadOf(
+    name,
+    kind: kind,
+    unnamedMark: unnamedDrawingMark,
+  );
   return head.mark?.glyph ?? head.word;
 }
 
@@ -141,6 +120,7 @@ class Frame {
     this.name,
     this.seName,
     this.seTypes = SeLineTypes.allOn,
+    this.seSpacing = SeDialogueSpacing.standard,
     this.filePicture,
   }) : strokes = List.unmodifiable(strokes);
 
@@ -172,6 +152,11 @@ class Frame {
   /// a surface says which cut it shows ([SeLineTypes.inCut]).
   final SeLineTypes seTypes;
 
+  /// SE rows only: where the dialogue starts on its block and how many
+  /// frames each glyph takes (F-496 ③) — what every drawing carries and
+  /// ignores.
+  final SeDialogueSpacing seSpacing;
+
   /// REFERENCE rows only: which picture of the row's file this cel is — a
   /// still's one, a GIF's frame, a PDF's page — counted in the FILE, so the
   /// cel can be made from it again where the row's reference fx stands it
@@ -190,6 +175,7 @@ class Frame {
     Object? name = copyWithSentinel,
     Object? seName = copyWithSentinel,
     SeLineTypes? seTypes,
+    SeDialogueSpacing? seSpacing,
     Object? filePicture = copyWithSentinel,
   }) {
     return Frame(
@@ -201,6 +187,7 @@ class Frame {
           ? this.seName
           : seName as String?,
       seTypes: seTypes ?? this.seTypes,
+      seSpacing: seSpacing ?? this.seSpacing,
       filePicture: identical(filePicture, copyWithSentinel)
           ? this.filePicture
           : filePicture as int?,
@@ -216,6 +203,7 @@ class Frame {
     // ON is the absent field — every drawing, and every block that never
     // chose, reads back as ON.
     ...seTypes.toJson(),
+    ...seSpacing.toJson(),
     if (filePicture != null) 'filePicture': filePicture,
   };
 
@@ -229,6 +217,7 @@ class Frame {
       name: json['name'] as String?,
       seName: json['seName'] as String?,
       seTypes: SeLineTypes.fromJson(json),
+      seSpacing: SeDialogueSpacing.fromJson(json),
       filePicture: json['filePicture'] as int?,
     );
   }
@@ -242,6 +231,7 @@ class Frame {
           other.name == name &&
           other.seName == seName &&
           other.seTypes == seTypes &&
+          other.seSpacing == seSpacing &&
           other.filePicture == filePicture &&
           listEquals(other.strokes, strokes);
 
@@ -252,6 +242,7 @@ class Frame {
     name,
     seName,
     seTypes,
+    seSpacing,
     filePicture,
     Object.hashAll(strokes),
   );
@@ -259,6 +250,6 @@ class Frame {
   @override
   String toString() =>
       'Frame(id: $id, duration: $duration, name: $name, '
-      'seName: $seName, seTypes: $seTypes, '
+      'seName: $seName, seTypes: $seTypes, seSpacing: $seSpacing, '
       'strokes: $strokes)';
 }

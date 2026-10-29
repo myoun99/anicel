@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/se_dialogue_spacing.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
@@ -570,6 +571,8 @@ void main() {
                 text: 'あいう',
                 axis: axis,
                 color: const Color(0xFF000000),
+                frames: 9,
+                spacing: SeDialogueSpacing.standard,
               ),
             ),
           ),

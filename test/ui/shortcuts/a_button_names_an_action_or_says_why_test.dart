@@ -46,6 +46,12 @@ const ledger = <String, Why>{
   "brush/guide_panels.dart | 'guide-delete-\${guide.id.value}'": Why.aRow,
   "brush/guide_panels.dart | 'guide-remove'": Why.aRow,
   "brush/guide_panels.dart | 'guide-rename-\${guide.id.value}'": Why.aRow,
+  // A palette's − (I-131): it takes the current colour out of the palette
+  // whose name row it stands on.
+  "color/color_palettes.dart | 'palette-\${palette.id}-remove'": Why.aRow,
+  // A palette's lock (I-131, 10-28): it locks the palette whose name row it
+  // stands on.
+  "color/color_palettes.dart | 'palette-\${palette.id}-lock'": Why.aRow,
   "media/media_pool_panel.dart | 'media-asset-in-use-\${asset.path}'":
       Why.aRow,
   "menu/editor_top_strip.dart | 'project-tab-close-\$index'": Why.aRow,
@@ -120,14 +126,24 @@ const ledger = <String, Why>{
   'menu/editor_top_strip.dart | keyValue': Why.aSecondLevel,
   "timeline/timeline_action_toolbar.dart | 'timeline-effects-button'":
       Why.aSecondLevel,
+  // A palette's ⋯ (I-131): it opens that palette's menu.
+  "color/color_palettes.dart | 'palette-\${palette.id}-more'":
+      Why.aSecondLevel,
   // The cut pill's name cell, read alone since its ＋ is zoned apart from
   // it round the cut's name (F-463) — the fx pill's door.
   "cut_command_group.dart | 'cut-menu-button'": Why.aSecondLevel,
+  // The brush settings' wrench (I-141): it opens the brush's detail window
+  // and runs nothing.
+  "brush/brush_settings_panel.dart | 'brush-detail-button'":
+      Why.aSecondLevel,
 
   // ── IN A WINDOW ─────────────────────────────────────────────────────
   "brush/brush_tip_picker.dart | 'brush-tip-delete'": Why.inAWindow,
   "brush/brush_tip_picker.dart | 'brush-tip-picker-add'": Why.inAWindow,
   "brush/brush_tip_picker.dart | 'brush-tip-rename'": Why.inAWindow,
+  // A palette colour's delete, in that colour's double-click window
+  // (I-131, 10-28).
+  "color/color_palettes.dart | 'palette-place-delete'": Why.inAWindow,
   "debug/input_inspector.dart | 'input-inspector-clear'": Why.inAWindow,
   "debug/input_inspector.dart | 'input-inspector-close'": Why.inAWindow,
   "dialogs/audio_settings_section.dart | 'settings-audio-report-refresh'":

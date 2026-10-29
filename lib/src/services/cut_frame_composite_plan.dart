@@ -14,6 +14,7 @@ import '../models/layer_effect.dart';
 import '../models/layer_folder.dart';
 import '../models/layer_id.dart';
 import '../models/movie_cel.dart';
+import '../models/property_track.dart';
 import '../models/timeline_coverage.dart';
 import '../models/transform_track.dart';
 import 'layer_pose_matrix.dart' show pictureMoved;
@@ -331,6 +332,85 @@ final class CutFrameCompositeLiveRow extends CutFrameCompositeRow {
   );
 }
 
+/// An onion GHOST of [layer]: its cel [frameId] of another frame, at a
+/// peg's [opacity] and [tint] (`planOnionSkin`).
+///
+/// 🚨THE PLAN PLACES IT, as it places the live row: directly under the
+/// row's own drawing, in its folder and cut by its clip, whether or not the
+/// row shows a cel here (onion-ghosts-in-place-Q1 = a, 유저 2026-10-26 —
+/// [resolveCutFrameCompositeTree]'s `ghostsOf`). ↩️The canvas slid the
+/// ghosts in under the row a pen was on by hand (`stackNodesWithGhosts`,
+/// retired 2026-10-25), so it had no place for a row that showed no cel.
+///
+/// ⚠️ONLY THE EDITING CANVAS ASKS FOR ONE. Playback, export and the cache
+/// signature pass no ghosts, but they switch over it, as over a live row.
+final class CutFrameCompositeGhost extends CutFrameCompositeRow {
+  const CutFrameCompositeGhost({
+    required this.layer,
+    required this.frameId,
+    required this.frameIndex,
+    required this.opacity,
+    this.tint,
+    this.blendMode = LayerBlendMode.normal,
+    this.effects = const [],
+  });
+
+  /// The onion row the ghost is of.
+  final Layer layer;
+
+  /// The cel it shows, of the frame its peg reaches.
+  final FrameId frameId;
+
+  /// The frame its peg reaches — where its chain is sampled, and the rows
+  /// that chain reads are read ([readingTheirRows]).
+  final int frameIndex;
+
+  @override
+  final double opacity;
+
+  /// The side's tint (onion-skin Colors mode); null shows the artwork's own
+  /// colours.
+  final int? tint;
+
+  @override
+  final LayerBlendMode blendMode;
+
+  /// The chain the row's pixels wear, sampled at the ghost's own frame.
+  @override
+  final List<ResolvedLayerEffect> effects;
+
+  @override
+  CutFrameCompositeGhost withPaint(RowPaint paint) => CutFrameCompositeGhost(
+    layer: layer,
+    frameId: frameId,
+    frameIndex: frameIndex,
+    opacity: paint.opacity,
+    tint: tint,
+    blendMode: paint.blendMode,
+    effects: paint.effects,
+  );
+
+  @override
+  CutFrameCompositeGhost paintedNormal() => CutFrameCompositeGhost(
+    layer: layer,
+    frameId: frameId,
+    frameIndex: frameIndex,
+    opacity: opacity,
+    tint: tint,
+    effects: effects,
+  );
+
+  @override
+  CutFrameCompositeGhost paintedAsClipBase() => CutFrameCompositeGhost(
+    layer: layer,
+    frameId: frameId,
+    frameIndex: frameIndex,
+    opacity: 1,
+    tint: tint,
+    effects: effects,
+  );
+}
+
 /// Whether [folder] must compose into its own buffer at [frameIndex].
 ///
 /// Three things, and only three, fail to distribute over compositing:
@@ -428,6 +508,18 @@ bool _isClipBase(Cut cut, Layer row) {
     }
   }
   return false;
+}
+
+/// The outermost folder around [row] that a row clips to ([_isClipBase]),
+/// or null where none is.
+Layer? _clipBaseAround(Cut cut, Layer row) {
+  Layer? outermost;
+  for (final folder in cut.layers.ancestryOf(row.folderId)) {
+    if (_isClipBase(cut, folder)) {
+      outermost = folder;
+    }
+  }
+  return outermost;
 }
 
 /// [row]'s place in [cut]'s stack — by id, as a row's identity is.
@@ -754,10 +846,10 @@ LayerPlacement? layerReferenceSpaceAt({
   canvasSize: cut.canvasSize,
 );
 
-/// The row whose transform places [layer]: its base, for an attach row.
-Layer _fxCarrierOf(Cut cut, Layer layer) => isAttachedLayer(layer)
-    ? (attachedBaseOf(layer, cut.layers) ?? layer)
-    : layer;
+/// The row whose transform places [layer] ([fxCarrierOf]) — the row itself
+/// where its base is gone.
+Layer _fxCarrierOf(Cut cut, Layer layer) =>
+    fxCarrierOf(layer, cut.layers) ?? layer;
 
 /// The move [layer]'s REFERENCE FX makes at [frameIndex]: the file's
 /// picture from where its pixels are laid ([MediaReference.laid]) to where
@@ -858,8 +950,9 @@ LayerPlacement? placementUnderFolders({
 /// ATTACH LAYERS (W5) ride their base: the cel resolves through the base's
 /// exposure + the cell link, the POSE and the animated-opacity sample come
 /// from the BASE's transform track (fx shared — the base's fx switch
-/// governs both), while the eye, static opacity and cels stay the attach
-/// layer's own. VISIBILITY is fully independent (UI-R24 #5): hiding the
+/// governs both; a row riding the conte wears its own, [fxCarrierOf]),
+/// while the eye, static opacity and cels stay the attach layer's own.
+/// VISIBILITY is fully independent (UI-R24 #5): hiding the
 /// base hides ONLY the base's own picture — its attach rows keep
 /// compositing under their own eyes. Dangling links contribute nothing.
 /// The layer list keeps attach layers adjacent to their base, so plain
@@ -978,7 +1071,7 @@ Frame? _celOf(Layer layer, Layer? base, int frameIndex) =>
       );
 
 /// [layer] as a row that paints a picture of its own: the row whose fx it
-/// wears — itself, or its base for an attach row — and that base. Null for
+/// wears ([fxCarrierOf]), and the base an attach row's cels ride. Null for
 /// a row that paints nothing of its own: a folder composites its MEMBERS,
 /// whose picture its eye, opacity, blend and FX reach through
 /// [resolveFolderChainAt] (flat) or a [CompositeGroup] (tree); an
@@ -988,11 +1081,11 @@ Frame? _celOf(Layer layer, Layer? base, int frameIndex) =>
   if (!layer.kind.paintsArtwork) {
     return null;
   }
-  if (!isAttachedLayer(layer)) {
-    return (carrier: layer, base: null);
+  final carrier = fxCarrierOf(layer, cut.layers);
+  if (carrier == null) {
+    return null;
   }
-  final base = attachedBaseOf(layer, cut.layers);
-  return base == null ? null : (carrier: base, base: base);
+  return (carrier: carrier, base: attachedBaseOf(layer, cut.layers));
 }
 
 /// The effect chain [layer] wears in [cut]: its own — or, for an attach
@@ -1272,6 +1365,11 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
   /// — see that class for why the plan and not the canvas places it. Null
   /// for every route that composites stored pixels only.
   LayerId? liveLayerId,
+
+  /// Each row's onion ghosts where a canvas lays them IN PLACE
+  /// ([CutFrameCompositeGhost]), bottom → top. Null for every route that
+  /// composites the film.
+  List<CutFrameCompositeGhost> Function(Layer row)? ghostsOf,
 }) {
   // folder id (null = top level) → the nodes gathered under it so far.
   final childrenOf = <LayerId?, List<CompositeNode<CutFrameCompositeRow>>>{};
@@ -1352,30 +1450,39 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
       );
       continue;
     }
+    // A row's ghosts go first, so its drawing lies over them — never in what
+    // a clip cuts by, which they would widen: under the outermost folder
+    // around the row that is a clip base, else by themselves where the row
+    // stands alone (under a clip it is the base of), or onto the base it
+    // clips to, cut as it is. ↩️As I-92 had `stackNodesWithGhosts` place
+    // them.
+    final ghosts = ghostsOf?.call(layer) ?? const <CutFrameCompositeGhost>[];
+    final baseAround = ghosts.isEmpty ? null : _clipBaseAround(cut, layer);
+    for (final ghost in ghosts) {
+      final node = CompositeLeaf<CutFrameCompositeRow>(ghost);
+      if (baseAround != null) {
+        addTo(baseAround.folderId, node);
+        continue;
+      }
+      switch (clipTargetOf(cut, layer).placed) {
+        case ClipPlaced.alone:
+          addTo(layer.folderId, node);
+        case ClipPlaced.clipped:
+          place(layer, node);
+        case ClipPlaced.nowhere:
+          break;
+      }
+    }
     final row = _resolveLayerNode(cut, layer, (
       frameIndex: frameIndex,
       foldBufferedFolders: false,
       liveLayerId: liveLayerId,
     ));
     if (row != null) {
-      final [standing, ...over] = celNumberedRow(
-        paint: (
-          opacity: row.opacity,
-          blendMode: row.blendMode,
-          effects: row.effects,
-        ),
-        rowOf: row.withPaint,
-        text: celNumberText(
-          rowName: layer.name,
-          drawingName: switch (row) {
-            CutFrameCompositeEntry(:final frame) => frame.name,
-            // Drawn on where nothing is exposed yet: the drawing the pen
-            // makes, which is born unnamed.
-            CutFrameCompositeLiveRow() => null,
-          },
-          kind: layer.kind,
-        ),
-        paper: cut.canvasSize,
+      final [standing, ...over] = _rowNodes(
+        cut,
+        layer,
+        row,
         asOnePicture: meetsAClip(cut, layer),
       );
       place(layer, standing);
@@ -1388,13 +1495,190 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
   }
   // A row in an advanced blend goes over a picture of its scope — once
   // the tree is whole, because a scope is then simply a list (the law's own
-  // doc says why).
-  return List.unmodifiable(
+  // doc says why) — and the rows a chain reads beside it, once that is.
+  return readingTheirRows(
     composeOverTheirBackdrops(
       childrenOf[null] ?? const <CompositeNode<CutFrameCompositeRow>>[],
       blendOf: (row) => row.blendMode,
       paintedNormal: (row) => row.paintedNormal(),
     ),
+    cut: cut,
+    frameIndex: frameIndex,
+    liveLayerId: liveLayerId,
+  );
+}
+
+/// [row] — [layer]'s, at a frame — as its nodes in a tree, bottom → top:
+/// its picture, and the letters of a cel number its chain writes
+/// ([celNumberedRow]).
+List<CompositeNode<CutFrameCompositeRow>> _rowNodes(
+  Cut cut,
+  Layer layer,
+  CutFrameCompositeRow row, {
+  required bool asOnePicture,
+}) => celNumberedRow(
+  paint: (opacity: row.opacity, blendMode: row.blendMode, effects: row.effects),
+  rowOf: row.withPaint,
+  text: celNumberText(
+    rowName: layer.name,
+    drawingName: switch (row) {
+      CutFrameCompositeEntry(:final frame) => frame.name,
+      // Drawn on where nothing is exposed yet: the drawing the pen
+      // makes, which is born unnamed.
+      CutFrameCompositeLiveRow() => null,
+      CutFrameCompositeGhost() => throw StateError(
+        'a row resolves to its own node, never to a ghost',
+      ),
+    },
+    kind: layer.kind,
+  ),
+  paper: cut.canvasSize,
+  asOnePicture: asOnePicture,
+);
+
+/// [nodes] of [cut]'s frame [frameIndex] with each whose own chain reads
+/// rows of the cut — a camera lens blur's blur map (🗣️I-132-Q16 a) —
+/// reading them ([withTheRowsTheyRead]): each as it draws there by itself
+/// ([_rowAsRead]), a ghost's at the frame its peg reaches — a ghost shows
+/// what the screen shows there (I-8-Q5). [liveLayerId] as
+/// [resolveCutFrameCompositeTree]'s.
+List<CompositeNode<CutFrameCompositeRow>> readingTheirRows(
+  List<CompositeNode<CutFrameCompositeRow>> nodes, {
+  required Cut cut,
+  required int frameIndex,
+  required LayerId? liveLayerId,
+}) => withTheRowsTheyRead(
+  nodes,
+  effectsOf: (row) => row.effects,
+  drawnOf: (row, by) => switch (by) {
+    CutFrameCompositeGhost(frameIndex: final at) => _rowAsRead(
+      cut,
+      row,
+      frameIndex: at,
+      liveLayerId: null,
+    ),
+    _ => _rowAsRead(
+      cut,
+      row,
+      frameIndex: frameIndex,
+      liveLayerId: liveLayerId,
+    ),
+  },
+);
+
+/// Row [id] of [cut] at [frameIndex] as a chain that reads it reads it: as
+/// it draws there by itself ([layerDrawingAt]) — where it lies
+/// (🗣️I-132-Q21 a), its eye not asked (🗣️I-132-Q23 a), at its own strength
+/// (🗣️I-132-Q24 b), on nothing, so in no blend — and naming no row of its
+/// own (🗣️I-132-Q22 a). Nothing where it exposes no cel, save the row
+/// drawn on ([liveLayerId]); a folder as what it holds ([_folderAsRead]);
+/// null for no row of the cut or one that paints nothing of its own, which
+/// reads as none.
+List<CompositeNode<CutFrameCompositeRow>>? _rowAsRead(
+  Cut cut,
+  LayerId id, {
+  required int frameIndex,
+  required LayerId? liveLayerId,
+}) {
+  final layer = cut.layers.byId(id);
+  if (layer != null && layer.kind.groupsLayers) {
+    return _folderAsRead(
+      cut,
+      layer,
+      frameIndex: frameIndex,
+      liveLayerId: liveLayerId,
+    );
+  }
+  final drawing = layer == null
+      ? null
+      : layerDrawingAt(cut: cut, layer: layer, frameIndex: frameIndex);
+  if (layer == null || drawing == null) {
+    return null;
+  }
+  final (:frame, :render) = drawing;
+  final effects = [for (final effect in render.effects) effect.namingNoRow];
+  final row = switch (frame) {
+    final frame? => CutFrameCompositeEntry(
+      layer: layer,
+      frame: frame,
+      opacity: render.opacity,
+      placement: render.placement,
+      effects: effects,
+    ),
+    null when layer.id == liveLayerId => CutFrameCompositeLiveRow(
+      layer: layer,
+      render: (
+        opacity: render.opacity,
+        blendMode: LayerBlendMode.normal,
+        placement: render.placement,
+        effects: effects,
+      ),
+    ),
+    null => null,
+  };
+  return row == null
+      ? const []
+      : _rowNodes(cut, layer, row, asOnePicture: false);
+}
+
+/// Folder [folder] of [cut] at [frameIndex] as a chain that reads it reads
+/// it: what it holds composed as it composes it, its own strength and
+/// chain on that (🗣️I-132-Q25 a 「폴더는 안의 행들을 합친 그림으로 읽는다」)
+/// — and otherwise as a row is read ([_rowAsRead]): under the poses of the
+/// folders above it and none of their strength, blend, chain or eye, its
+/// own eye not asked, on nothing, so in no blend, and naming no row, it or
+/// any row it holds (one level).
+///
+/// The cut's one tree laid ([resolveCutFrameCompositeTree]) with every row
+/// but the folder's hidden: the stack's structure as it stands, so a row it
+/// holds that rides a base outside it rides it still (a base's eye never
+/// reaches its attach rows). The folder and those above it pass through
+/// and clip nowhere, nor does a row hidden, so none buffers but for what
+/// the folder's own strength and chain ask ([folderNeedsCompositeBuffer]).
+List<CompositeNode<CutFrameCompositeRow>> _folderAsRead(
+  Cut cut,
+  Layer folder, {
+  required int frameIndex,
+  required LayerId? liveLayerId,
+}) {
+  final above = {
+    for (final layer in cut.layers.ancestryOf(folder.folderId)) layer.id,
+  };
+  final held = {
+    for (final layer in cut.layers.subtreeMembersOf(folder.id)) layer.id,
+  };
+  Layer alone(Layer layer) {
+    final namingNone = layer.copyWith(
+      effects: effectsWithRowsRenamed(layer.effects, (_) => null),
+    );
+    if (layer.id == folder.id) {
+      return namingNone.copyWith(
+        isVisible: true,
+        blendMode: LayerBlendMode.passThrough,
+        clipsToBelow: false,
+      );
+    }
+    if (above.contains(layer.id)) {
+      return layer.copyWith(
+        isVisible: true,
+        opacity: 1,
+        blendMode: LayerBlendMode.passThrough,
+        clipsToBelow: false,
+        effects: const [],
+        transformTrack: layer.transformTrack.copyWith(
+          opacity: PropertyTrack<double>(),
+        ),
+      );
+    }
+    return held.contains(layer.id)
+        ? namingNone
+        : namingNone.copyWith(isVisible: false, clipsToBelow: false);
+  }
+
+  return resolveCutFrameCompositeTree(
+    cut: cut.copyWith(layers: [for (final layer in cut.layers) alone(layer)]),
+    frameIndex: frameIndex,
+    liveLayerId: liveLayerId,
   );
 }
 
@@ -1406,6 +1690,36 @@ List<CompositeNode<CutFrameCompositeLayer>> planCutFrameCompositeTree({
   required Cut cut,
   required int frameIndex,
   required LayerFrameSurfaceResolver surfaceResolver,
+}) => _withSurfaces(
+  resolveCutFrameCompositeTree(cut: cut, frameIndex: frameIndex),
+  cut: cut,
+  surfaceResolver: surfaceResolver,
+);
+
+/// Row [row] of [cut] at [frameIndex] as a chain that reads it reads it
+/// ([_rowAsRead]), its surfaces resolved as [planCutFrameCompositeTree]
+/// resolves them: what a route that lays a row by itself hands
+/// [withTheRowsTheyRead]. Null for no row there.
+List<CompositeNode<CutFrameCompositeLayer>>? planRowAsRead({
+  required Cut cut,
+  required LayerId row,
+  required int frameIndex,
+  required LayerFrameSurfaceResolver surfaceResolver,
+}) => switch (_rowAsRead(cut, row, frameIndex: frameIndex, liveLayerId: null)) {
+  final read? => _withSurfaces(
+    read,
+    cut: cut,
+    surfaceResolver: surfaceResolver,
+  ),
+  null => null,
+};
+
+/// [nodes] of [cut] with each leaf's surface resolved by [surfaceResolver]
+/// ([planCutFrameCompositeTree]).
+List<CompositeNode<CutFrameCompositeLayer>> _withSurfaces(
+  List<CompositeNode<CutFrameCompositeRow>> nodes, {
+  required Cut cut,
+  required LayerFrameSurfaceResolver surfaceResolver,
 }) {
   CutFrameCompositeLayer? layerOf(
     CutFrameCompositeRow row,
@@ -1416,7 +1730,8 @@ List<CompositeNode<CutFrameCompositeLayer>> planCutFrameCompositeTree({
     // with; every other route resolves surfaces from stored frames.
     // Reached here it would be a caller handing a live row to a route
     // that cannot draw it, so it contributes nothing rather than guessing.
-    CutFrameCompositeLiveRow() => null,
+    // Nor has the film a ghost: only the editing canvas lays one.
+    CutFrameCompositeLiveRow() || CutFrameCompositeGhost() => null,
     CutFrameCompositeEntry() => switch (surfaceOf(row)) {
       final surface? => CutFrameCompositeLayer(
         surface: surface,
@@ -1431,7 +1746,7 @@ List<CompositeNode<CutFrameCompositeLayer>> planCutFrameCompositeTree({
 
   return List.unmodifiable(
     mapCompositeLeaves(
-      resolveCutFrameCompositeTree(cut: cut, frameIndex: frameIndex),
+      nodes,
       (row) => layerOf(
         row,
         (entry) => surfaceResolver(entry.layer, entry.frame),

@@ -463,24 +463,6 @@ class SessionRowButtonPresses {
     description: 'Toggle solo',
   );
 
-  void setGain(LayerId pressed, double gain) => _setAudio(
-    pressed,
-    (id) => session.layerSwitches.setLayerAudio(layerId: id, gain: gain),
-  );
-
-  void setPan(LayerId pressed, double pan) => _setAudio(
-    pressed,
-    (id) => session.layerSwitches.setLayerAudio(layerId: id, pan: pan),
-  );
-
-  void _setAudio(LayerId pressed, void Function(LayerId id) set) =>
-      session.rowSelectionVerbs.pickAcross(pressed, (id) {
-        final layer = _row(id);
-        if (layer != null && _hasMixer(layer)) {
-          set(id);
-        }
-      }, description: 'Set layer audio');
-
   /// The rows the speaker is drawn on (`_muteButton` in the rail row).
   static bool _hasMixer(Layer layer) => layer.kind == LayerKind.se;
 

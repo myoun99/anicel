@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -178,7 +179,12 @@ void main() {
               // The canvas standing on its frame's one picture.
               child: FramePictureView(
                 run: pictures(),
-                picture: (cut: cut(), frameIndex: 0, paintPaper: true),
+                picture: (
+                  cut: cut(),
+                  frameIndex: 0,
+                  paintPaper: true,
+                  ghosts: FrameGhosts.none,
+                ),
                 nodes: const [
                   CompositeLeaf<CanvasStackRow>(
                     CanvasActiveLayerRow(opacity: 1),

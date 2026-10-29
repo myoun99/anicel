@@ -4,11 +4,11 @@ import 'dart:typed_data';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/media_asset.dart';
-import 'package:anicel/src/native/qa_video_encoder.dart';
 import 'package:anicel/src/services/audio/wav16_header.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/encoded_movie.dart';
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -90,38 +90,24 @@ void main() {
     }, skip: skip);
 
     test('a movie is cut in a worker that finds the engine', () async {
-      final encoder = QaVideoEncoder.instance;
-      if (encoder == null || !encoder.isSupported) {
+      final movie = inTemp('take.mp4');
+      if (!writeEncodedMovie(movie, frames: 6)) {
         return;
       }
-      final movie = inTemp('take.mp4');
-      expect(
-        encoder.open(
-          path: movie,
-          width: 64,
-          height: 48,
-          fpsNumerator: 24,
-          fpsDenominator: 1,
-          sampleRate: 44100,
-          channels: 2,
-        ),
-        isTrue,
-        reason: encoder.lastError,
-      );
-      for (var frame = 0; frame < 6; frame += 1) {
-        final rgba = Uint8List(64 * 48 * 4)..fillRange(0, 64 * 48 * 4, 128);
-        expect(encoder.writeFrame(rgba), isTrue, reason: encoder.lastError);
-      }
-      expect(encoder.finish(), isTrue, reason: encoder.lastError);
 
+      final heard = <double>[];
       final cut = await session().trimmedPieces.cut(
         movie,
         MediaAssetKind.video,
         inFrame: 1,
         outFrame: 3,
+        onProgress: heard.add,
       );
 
       expect(cut?.frames, 3);
+      // 🗣️F-494: the encode is the wait — a minute for two minutes of a
+      // big movie — and the window hears it frame by frame from the worker.
+      expect(heard, [closeTo(1 / 3, 1e-9), closeTo(2 / 3, 1e-9), 1]);
     }, skip: skip);
   });
 }

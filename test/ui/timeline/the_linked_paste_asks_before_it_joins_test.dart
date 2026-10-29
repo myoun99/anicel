@@ -4,7 +4,6 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -12,6 +11,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/home_page_probes.dart';
+import '../../helpers/an_empty_drawing_row.dart';
 
 /// 🗣️I-71 (유저 2026-10-05): 「다른레이어에 붙여넣을때 … 링크붙여넣기
 /// 가능하게. 동작은 말한대로 이름 유지되는붙여넣기. 해당행동시 기존에 이름
@@ -48,7 +48,7 @@ void main() {
     s.selectFrameIndex(0);
     s.createDrawingAtCurrentFrame();
     expect(s.frameVerbs.renameSelectedFrame('X'), isNull, reason: '⛔전제');
-    s.layerStack.addLayerOfKind(LayerKind.animation);
+    addAnEmptyDrawingRow(s);
     final to = s.activeLayer!.id;
     s.selectFrameIndex(0);
     s.createDrawingAtCurrentFrame();

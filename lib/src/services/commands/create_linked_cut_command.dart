@@ -6,6 +6,7 @@ import '../../models/cut_id.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
+import '../../models/layer_effect.dart' show effectsWithRowsRenamed;
 import '../../models/layer_id.dart';
 import '../../models/layer_link_join.dart';
 import '../../models/layer_link_registry.dart';
@@ -244,6 +245,8 @@ class CreateLinkedCutCommand implements Command {
           ? null
           : _requireCopyId(layer.attachedToLayerId!),
       folderId: layer.folderId == null ? null : layerIdMap[layer.folderId!],
+      // A row its effects name that does not come along names none.
+      effects: effectsWithRowsRenamed(layer.effects, (row) => layerIdMap[row]),
       // Sounds are per-use; drawing layers should carry none,
       // but strip defensively.
       audioClips: const [],

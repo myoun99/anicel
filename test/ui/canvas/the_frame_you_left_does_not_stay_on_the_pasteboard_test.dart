@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -131,6 +132,7 @@ void main() {
           cut: cut,
           frameIndex: cel == a ? 0 : 1,
           paintPaper: true,
+          ghosts: FrameGhosts.none,
         );
         final nodes = stackOn(cel);
         await tester.pumpWidget(

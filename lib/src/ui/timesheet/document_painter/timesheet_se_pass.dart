@@ -82,11 +82,11 @@ class _TimesheetSePass {
   /// under it.
   ///
   /// 🗣️F-358: a sound that spilled in from an earlier cut began [lead] rows
-  /// before this one. Its HEAD — the opening bar, the delivery, the name
-  /// box — is that cut's, and this row shows the words the block's one
-  /// layout lays here ([paintSeDialogueShare]). ↩️It opened the block again
-  /// at row 0, with the name box, and spread the whole line over the rows
-  /// the cut had left.
+  /// before this one. Its opening bar is that cut's, and this row shows the
+  /// words the block's one layout lays here ([paintSeDialogueShare]).
+  /// ↩️It opened the block again at row 0 and spread the whole line over
+  /// the rows the cut had left. Over its first row it wears its delivery in
+  /// this cut (F-386) and its name (F-496), as a block opening there does.
   void paintSeEntryStart(
     Canvas canvas, {
     required TimesheetCell cell,
@@ -101,9 +101,12 @@ class _TimesheetSePass {
     // Off the bar by a bar's width: a sound closing on the row above
     // closes with its own bar there, under the name.
     final nameTop = cellTop - 2 - _nameBoxHeight;
-    // A spill-in wears no bar and no name — its head is an earlier cut's
-    // (F-358).
-    final named = lead == 0 && (cell.seName ?? '').isNotEmpty;
+    // A spill-in wears no bar — its head is an earlier cut's (F-358) — but
+    // its name, where this cut's rows begin. 🗣️F-496 (유저 2026-10-28):
+    // 「넘어간 다음 컷도 이름도 보이게 … S3라는 글자가 가려질수도있는데
+    // 그래도 문제없음」. ↩️It wore no name either, and the cut it ran into
+    // showed words nobody was named for.
+    final named = (cell.seName ?? '').isNotEmpty;
     if (lead == 0) {
       paintSeRedBar(
         canvas,
@@ -183,7 +186,7 @@ class _TimesheetSePass {
 
   /// 🗣️I-20 (유저 2026-09-30): the delivery over the name — 「타임시트에도
   /// 이름 위에 빨간 가로선 위에 배경색없이 텍스트만」 — and only where the
-  /// sheets print it (「OFF거나 MONO일때만」, [SeLineType.printsOnSheets]).
+  /// sheets print it (「OFF거나 MONO일때만」, [SeLineType.writtenOut]).
   /// On the half's first row the row above IS the column's title, and it
   /// lands there on purpose: 「1콤마부터 대사 나올땐 … 1콤마의 위(SE1이나
   /// SE2 이런글자)에 겹치도록」. ↩️F-358 (10-19) gave that place to the name
@@ -195,7 +198,7 @@ class _TimesheetSePass {
     required Offset boundary,
     required double maxWidth,
   }) {
-    if (delivery == null || !delivery.printsOnSheets) {
+    if (delivery == null || !delivery.writtenOut) {
       return;
     }
     _painter._text(
@@ -253,7 +256,8 @@ class _TimesheetSePass {
     // lay them ([seNameChipPlace]): a glyph stands on the same frame here
     // as on the rows. ↩️They began under the name box and kept off both
     // ends by a pad, a fraction of a frame from the rows' place.
-    final spanBottom = spanTop + (lead + (start.spanLength ?? 1)) * rowHeight;
+    final frames = lead + (start.spanLength ?? 1);
+    final spanBottom = spanTop + frames * rowHeight;
     // The window: this half's rows of the span.
     final top = math.max(spanTop, cellTop);
     final bottom = math.min(spanBottom, cellTop + (rowCount - row) * rowHeight);
@@ -265,6 +269,8 @@ class _TimesheetSePass {
       start.label ?? '',
       topCenter: Offset(centerX, spanTop),
       extent: spanBottom - spanTop,
+      frames: frames,
+      spacing: start.seSpacing ?? SeDialogueSpacing.standard,
       shownFrom: top - spanTop,
       shownTo: bottom - spanTop,
       style: _painter.face.copyWith(

@@ -12,6 +12,7 @@ import '../../models/layer_kind.dart';
 import '../../models/property_track.dart'
     show KeyExit, KeyPath, KeySide, KeySidesEdit, KeyTypePick, PropertyKey;
 import '../../models/se_name_tag.dart' show SeNameTag, SeNameTagTrack;
+import '../../models/se_sound.dart' show SeSound;
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/track_camera_row.dart' show isTrackCameraRow;
@@ -19,7 +20,8 @@ import '../../models/track_projection_row.dart' show projectionRowUnder;
 import '../../models/track_transitions.dart' show cutDrawnFrameCount;
 import '../../models/track_transform_lane_carrier.dart';
 import '../../services/camera_pose_resolver.dart';
-import '../../services/project_lookup.dart' show rowPoseSpace;
+import '../../services/project_lookup.dart'
+    show rowPoseSpace, rowWearsBaseComposite;
 import '../storyboard_layer_policy.dart' show projectedLayerInHand;
 import '../timeline/effect_lane_editing.dart'
     show
@@ -30,9 +32,9 @@ import '../timeline/effect_lane_editing.dart'
         effectsWithLaneKeysWritten,
         effectsWithLaneValueEdited,
         effectsWithRemoved,
-        effectsWithStandEdited;
+        effectsWithTransformKeysEdited;
 import '../timeline/effect_lane_policy.dart'
-    show effectGroupLaneId, effectLaneDisplayOrder, parseEffectLaneId;
+    show effectLaneDisplayOrder, parseEffectLaneId;
 import '../timeline/reference_lane_policy.dart'
     show
         laneIsReference,
@@ -60,6 +62,18 @@ import '../timeline/se_name_tag_lane_policy.dart'
         seNameTagLaneDisplayOrder,
         seNameTagLaneTakesSides,
         seNameTagLaneUsesName;
+import '../timeline/se_sound_lane_editing.dart'
+    show
+        seSoundWithGroupReset,
+        seSoundWithLaneKeyToggled,
+        seSoundWithLaneKeysWritten,
+        seSoundWithLaneValueEdited;
+import '../timeline/se_sound_lane_policy.dart'
+    show
+        laneIsSeSound,
+        seSoundGroupLaneId,
+        seSoundLaneDisplayOrder,
+        seSoundLaneUsesName;
 import '../timeline/property_lane_model.dart'
     show LaneKeyValues, PropertyLaneRow, laneGroupKey;
 import '../timeline/property_lanes_for_row.dart' show propertyLanesForRow;
@@ -248,6 +262,10 @@ class LaneVerbs {
       // for its three (F-374).
       if (laneId == seNameTagGroupLaneId) {
         seNameTagLaneDisplayOrder.forEach(add);
+        continue;
+      }
+      if (laneId == seSoundGroupLaneId) {
+        seSoundLaneDisplayOrder.forEach(add);
         continue;
       }
       if (laneId == referenceGroupLaneId) {
@@ -543,6 +561,12 @@ class LaneVerbs {
     return _project.rowWrittenById(layerId);
   }
 
+  /// Whether [layer]'s fx are its base's — no lane of its own for a verb to
+  /// work ([rowWearsBaseComposite]). ↩️The verbs asked 「an attach row」,
+  /// which a row riding the conte is without wearing its base's (I-99).
+  bool _wearsBaseFx(Layer layer) =>
+      rowWearsBaseComposite(_project.repository.requireProject(), layer);
+
   /// The playhead as [layerId]'s own lanes key it — the frame half of
   /// [laneVerbLayerFor]. A track-SE row is on the global axis, so the
   /// cut-local cursor has to be translated before it can name a key.
@@ -618,6 +642,8 @@ class LaneVerbs {
       edits: (
         nameTag: (tag, frame) =>
             seNameTagWithLaneKeyToggled(tag, laneId: laneId, frameIndex: frame),
+        sound: (sound, frame) =>
+            seSoundWithLaneKeyToggled(sound, laneId: laneId, frameIndex: frame),
         effects: (layer, effects, frame) => effectsWithLaneKeyToggled(
           effects,
           laneId: laneId,
@@ -717,6 +743,12 @@ class LaneVerbs {
       frameIndex: frame,
       input: input,
     ),
+    sound: (sound, frame) => seSoundWithLaneValueEdited(
+      sound,
+      laneId: laneId,
+      frameIndex: frame,
+      input: input,
+    ),
     effects: (_, effects, frame) => effectsWithLaneValueEdited(
       effects,
       laneId: laneId,
@@ -807,6 +839,12 @@ class LaneVerbs {
     if (laneIsSeNameTag(laneId)) {
       return LaneEdit(
         nameTag: edits.nameTag(from.seNameTag ?? const SeNameTag(), frame),
+      );
+    }
+    // I-140: so is the row's sound.
+    if (laneIsSeSound(laneId)) {
+      return LaneEdit(
+        sound: edits.sound(from.seSound ?? const SeSound(), frame),
       );
     }
     if (parseEffectLaneId(laneId) != null) {
@@ -900,45 +938,48 @@ class LaneVerbs {
     TransformTrack Function(TransformTrack track, int frameIndex) edit,
   ) => _previewAtPlayhead(layerId, edit, reference: true);
 
-  /// A canvas box's drag landing where [effectId] of [layerId] stands its
-  /// picture (F-477): the same ONE key at the playhead a transform's box
-  /// writes, on the effect's own Position and Scale — one undo.
-  void editEffectStandAtPlayhead(
+  /// A canvas box's drag landing on the keys effect lane [laneId] of
+  /// [layerId] keeps as a transform's — where its effect stands its
+  /// picture (F-477), or a point (I-132-Q12 b): the same ONE key at the
+  /// playhead a transform's box writes, on the effect's own Position and
+  /// Scale — one undo.
+  void editEffectKeysAtPlayhead(
     LayerId layerId,
-    EffectId effectId,
+    String laneId,
     TransformTrack Function(TransformTrack track, int frameIndex) edit, {
     required String description,
   }) => _commitLaneEdit(
-    _effectStandEditAtPlayhead(layerId, effectId, edit),
+    _effectKeysEditAtPlayhead(layerId, laneId, edit),
     description: description,
   );
 
-  /// The effect's box mid-drag: the edit [editEffectStandAtPlayhead] would
+  /// The effect's box mid-drag: the edit [editEffectKeysAtPlayhead] would
   /// write at the release, shown on the preview channel.
-  void previewEffectStandAtPlayhead(
+  void previewEffectKeysAtPlayhead(
     LayerId layerId,
-    EffectId effectId,
+    String laneId,
     TransformTrack Function(TransformTrack track, int frameIndex) edit,
-  ) => _previewLaneEdit(_effectStandEditAtPlayhead(layerId, effectId, edit));
+  ) => _previewLaneEdit(_effectKeysEditAtPlayhead(layerId, laneId, edit));
 
-  /// [edit] of where [effectId] stands, at the playhead on [layerId]'s own
-  /// axis — through the one dispatch every lane verb takes ([_laneEditAt]),
-  /// on the effect's header.
-  ({Layer layer, LaneEdit edit})? _effectStandEditAtPlayhead(
+  /// [edit] of the keys effect lane [laneId] keeps as a transform's, at
+  /// the playhead on [layerId]'s own axis — through the one dispatch every
+  /// lane verb takes ([_laneEditAt]).
+  ({Layer layer, LaneEdit edit})? _effectKeysEditAtPlayhead(
     LayerId layerId,
-    EffectId effectId,
+    String laneId,
     TransformTrack Function(TransformTrack track, int frameIndex) edit,
   ) => _laneEditAt(
     layerId,
-    effectGroupLaneId(effectId),
+    laneId,
     _controllers.timelineController.currentFrameIndex,
     frameIsGlobal: false,
     edits: (
       nameTag: (_, _) => null,
-      effects: (_, effects, frame) => effectsWithStandEdited(
+      sound: (_, _) => null,
+      effects: (_, effects, frame) => effectsWithTransformKeysEdited(
         effects,
-        effectId,
-        (stand) => edit(stand, frame),
+        laneId,
+        (keys) => edit(keys, frame),
       ),
       transform: (_, _, _, {required reference}) => null,
     ),
@@ -1009,6 +1050,7 @@ class LaneVerbs {
     seNameTag: layer.kind == LayerKind.se
         ? (layer.seNameTag ?? const SeNameTag())
         : null,
+    seSound: layer.kind == LayerKind.se ? layer.seSound : null,
     commit: (next, why) => _commitRowLanes(layer, next, description: why),
     preview: (next) => _laneEditPreview(layer, next),
   );
@@ -1213,6 +1255,22 @@ class LaneVerbs {
     _changes.notifyChanged();
   }
 
+  /// The lane path's SOUND commit (I-140) — the name tag's twin: the row's
+  /// volume keys and its pan go home together, to the SE row wherever it
+  /// lives.
+  void _commitLaneSeSound(
+    Layer layer,
+    SeSound sound, {
+    required String description,
+  }) {
+    _project.cutCommandCoordinator.setSeSound(
+      layerId: layer.id,
+      seSound: sound,
+      description: description,
+    );
+    _changes.notifyChanged();
+  }
+
   /// Where [layer]'s TRANSFORM lanes live — asked ONCE for the commit and
   /// the preview below, which switch on it exhaustively: a home added here
   /// is a compile error in both until each says what it does there.
@@ -1267,6 +1325,9 @@ class LaneVerbs {
   }) => _project.historyManager.runAsOneStep(description, () {
     if (edit.nameTag case final tag?) {
       _commitLaneSeNameTag(layer, tag, description: description);
+    }
+    if (edit.sound case final sound?) {
+      _commitLaneSeSound(layer, sound, description: description);
     }
     if (edit.effects case final effects?) {
       _commitLaneEffects(layer, effects, description: description);
@@ -1335,6 +1396,9 @@ class LaneVerbs {
     var row = effects == null ? layer : layer.copyWith(effects: effects);
     if (edit.nameTag case final tag?) {
       row = row.copyWith(seNameTag: tag);
+    }
+    if (edit.sound case final sound?) {
+      row = row.copyWith(seSound: sound);
     }
     final reference = layer.mediaReference;
     if (edit.transform.reference case final fx? when reference != null) {
@@ -1503,7 +1567,7 @@ class LaneVerbs {
   /// each verb then worked the effect chain or the transform, never both.
   _SpanScope? _laneVerbScope(TimelineLaneSelection lane) {
     final layer = laneVerbLayerFor(lane.layerId);
-    if (layer == null || isAttachedLayer(layer)) {
+    if (layer == null || _wearsBaseFx(layer)) {
       return null;
     }
     final targets = _laneVerbTargetsFor(
@@ -1546,6 +1610,7 @@ class LaneVerbs {
       ..._coveredKeys(homes.reference, lane, canRove: roves),
       ..._coveredKeys(homes.effects, lane, canRove: effectLaneKeyCanRove),
       ..._coveredKeys(homes.nameTag, lane, takesSides: seNameTagLaneTakesSides),
+      ..._coveredKeys(homes.sound, lane),
     ];
   }
 
@@ -1582,19 +1647,15 @@ class LaneVerbs {
       return null;
     }
     return [
-      for (final (:laneId, :keys) in [
-        ...homes.own.keysWhere(lane.contains),
-        ...homes.reference.keysWhere(lane.contains),
-        ...homes.effects.keysWhere(lane.contains),
-        ...homes.nameTag.keysWhere(lane.contains),
-      ])
-        (
-          laneId: laneId,
-          keys: {
-            for (final MapEntry(key: frame, value: key) in keys.entries)
-              frame - lane.startIndex: key,
-          },
-        ),
+      for (final home in rowLaneHomesInOrder(homes))
+        for (final (:laneId, :keys) in home.keysWhere(lane.contains))
+          (
+            laneId: laneId,
+            keys: {
+              for (final MapEntry(key: frame, value: key) in keys.entries)
+                frame - lane.startIndex: key,
+            },
+          ),
     ];
   }
 
@@ -1867,6 +1928,7 @@ class LaneVerbs {
       nameTag: scope.subject.nameTagWith(
         pastedOn(homes.nameTag, namedIn(homes.nameTag, holders.nameTag)),
       ),
+      sound: pastedOn(homes.sound, namedIn(homes.sound, holders.sound)),
     );
     return (edit: edit, joins: joins);
   }
@@ -1875,12 +1937,7 @@ class LaneVerbs {
   /// of keys pairs its lanes with ([_keysPairedWith]), in the order a copy
   /// reads them ([laneKeysCopiedFrom]).
   static List<_PastedLane> _pasteTargetsOf(RowLaneHomes homes) => [
-    for (final LaneHome<Object?> home in [
-      homes.own,
-      homes.reference,
-      homes.effects,
-      homes.nameTag,
-    ])
+    for (final home in rowLaneHomesInOrder(homes))
       for (final laneId in home.laneIds) (home: home, laneId: laneId),
   ];
 
@@ -2252,6 +2309,18 @@ class LaneVerbs {
           ),
         ),
       ),
+      sound: written(
+        homes.sound,
+        (laneId, frames) => holders.sound(laneId, asked!, frames),
+        (sound, laneId, frames, holder) => seSoundWithLaneKeysWritten(
+          sound,
+          laneId: laneId,
+          frames: frames,
+          naming: named,
+          adoptFrom: holder,
+          pick: pick,
+        ),
+      ),
     );
     if (taken) {
       return (taken: true, edit: null);
@@ -2265,8 +2334,8 @@ class LaneVerbs {
   /// What already holds a name on each home's lanes of [scope], outside the
   /// frames given — the keys a key joining the name takes. Each home is its
   /// own naming space: a row's own lanes and its effects name across its
-  /// 겸용 link group, a reference fx's (F-374) and a name tag's on
-  /// themselves alone. Null where the name is free.
+  /// 겸용 link group, a reference fx's (F-374), a name tag's and a row's
+  /// 「오디오」 on themselves alone. Null where the name is free.
   ///
   /// The key window's naming reads it ([_laneKeysWriteOver]) and so does a
   /// 링크 붙여넣기 of keys ([_laneKeysPasted], F-388): one answer to 「who
@@ -2276,6 +2345,7 @@ class LaneVerbs {
     final cutId = _activeCut.cutOfRow(layer.id);
     final fx = scope.homes.reference.keys;
     final tag = scope.homes.nameTag.keys;
+    final sound = scope.homes.sound.keys;
     return (
       own: (laneId, name, frames) => _laneTransformHoldingName(
         layer,
@@ -2307,6 +2377,10 @@ class LaneVerbs {
       nameTag: (laneId, name, frames) =>
           seNameTagLaneUsesName(tag, laneId, name, excludeFrames: frames)
           ? tag
+          : null,
+      sound: (laneId, name, frames) =>
+          seSoundLaneUsesName(sound, laneId, name, excludeFrames: frames)
+          ? sound
           : null,
     );
   }
@@ -2377,11 +2451,12 @@ class LaneVerbs {
   /// property into an animated one behind the user's back.
   ///
   /// [headerLaneId] names the group: the transform header resets the
-  /// transform track, an `fx-group:` header its own effect, and the two
-  /// fixed groups' headers the SE row's name tag and a reference row's fx.
+  /// transform track, an `fx-group:` header its own effect, and the fixed
+  /// groups' headers the SE row's name tag, its 「오디오」 and a reference
+  /// row's fx.
   bool resetLaneGroup(LayerId layerId, String headerLaneId) {
     final layer = laneVerbLayerFor(layerId);
-    if (layer == null || isAttachedLayer(layer)) {
+    if (layer == null || _wearsBaseFx(layer)) {
       return false;
     }
     final span = _selection.laneRangeSelection.value;
@@ -2424,6 +2499,20 @@ class LaneVerbs {
         return false;
       }
       _commitLaneSeNameTag(layer, tag, description: 'Reset group');
+      return true;
+    }
+    if (headerLaneId == seSoundGroupLaneId) {
+      final sound = layer.kind == LayerKind.se
+          ? seSoundWithGroupReset(
+              layer.seSound,
+              frameIndexes: frames,
+              keyedFramesOnly: scoped,
+            )
+          : null;
+      if (sound == null) {
+        return false;
+      }
+      _commitLaneSeSound(layer, sound, description: 'Reset group');
       return true;
     }
     if (headerLaneId == referenceGroupLaneId) {
@@ -2615,7 +2704,7 @@ class LaneVerbs {
   List<BandLane> bandLanesRiding() => [
     for (final span in _bandLaneSpans())
       if (laneVerbLayerFor(span.layerId) case final row?
-          when !isAttachedLayer(row))
+          when !_wearsBaseFx(row))
         if (laneIdsAMoveCarries(
               laneEditSubjectOf(row),
               span,
@@ -2805,7 +2894,7 @@ class LaneVerbs {
     Iterable<String> laneIds,
   ) {
     final layer = laneVerbLayerFor(layerId);
-    if (layer == null || isAttachedLayer(layer)) {
+    if (layer == null || _wearsBaseFx(layer)) {
       return const [];
     }
     final ids = <EffectId>[];
@@ -2875,6 +2964,14 @@ class LaneVerbs {
                   )?.track,
           ),
         ),
+        sound: homes.sound.keyedAt(
+          frames,
+          (sound, laneId, frame) => seSoundWithLaneKeyToggled(
+            sound,
+            laneId: laneId,
+            frameIndex: frame,
+          ),
+        ),
       ),
       description: 'Create keys',
     );
@@ -2885,6 +2982,7 @@ class LaneVerbs {
 /// leaves that family alone. Which one runs is [LaneVerbs]' dispatch.
 typedef _LaneEdits = ({
   SeNameTag? Function(SeNameTag tag, int frame) nameTag,
+  SeSound? Function(SeSound sound, int frame) sound,
   // [layer]: the row wearing [effects] — the paper they stand on
   // ([LaneVerbs._paperOf]).
   List<LayerEffect>? Function(
@@ -2942,6 +3040,7 @@ typedef _NameHolders = ({
   effects,
   SeNameTagTrack? Function(String laneId, String name, Set<int> frames)
   nameTag,
+  SeSound? Function(String laneId, String name, Set<int> frames) sound,
 });
 
 typedef _SpanScope = ({

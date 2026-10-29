@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -152,6 +153,7 @@ void main() {
           cut: cut,
           frameIndex: 0,
           paintPaper: true,
+          ghosts: FrameGhosts.none,
         ), shouldAbort: () => false);
         await pumpEventQueue();
         expect(
@@ -164,7 +166,12 @@ void main() {
       for (final cel in ['a', 'b', 'c']) {
         expect(store.hotBakedSurfaceOrNull(keyOf(cel)), isNotNull);
       }
-      expect(pictures.has((cut: cut, frameIndex: 0, paintPaper: true)), isTrue);
+      expect(pictures.has((
+        cut: cut,
+        frameIndex: 0,
+        paintPaper: true,
+        ghosts: FrameGhosts.none,
+      )), isTrue);
     });
   });
 
@@ -184,6 +191,7 @@ void main() {
           cut: cut,
           frameIndex: 0,
           paintPaper: true,
+          ghosts: FrameGhosts.none,
         ), shouldAbort: () => true),
         isFalse,
       );

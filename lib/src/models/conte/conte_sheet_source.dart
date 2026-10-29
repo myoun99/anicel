@@ -114,26 +114,35 @@ class ConteCameraKey {
   final String label;
 }
 
-/// A line of dialogue, as the sheet reads it. Dialogue lives on the SE
+/// A line of dialogue as one panel writes it. Dialogue lives on the SE
 /// blocks and nowhere else (design G): the block's frame NAME is the line,
-/// its `seName` the speaker.
+/// its `seName` the speaker — and a panel writes the part of the line that
+/// stands on its frames (F-501).
 class ConteDialogueLine {
   const ConteDialogueLine({
     required this.startFrame,
     required this.text,
     this.speaker = '',
     this.delivery = SeLineType.on,
+    this.opens = true,
+    this.closes = true,
   });
 
-  /// Cut-LOCAL, clipped to the cut. A line that begins in an earlier cut
-  /// arrives here clipped to 0 and marked [continuedFromPrevious].
+  /// Cut-LOCAL: the frame the part's first glyph stands on, inside the
+  /// panel that writes it.
   final int startFrame;
   final String text;
   final String speaker;
 
   /// The line's delivery (I-20) — written after the speaker when the sheets
-  /// print it ([SeLineType.printsOnSheets]).
+  /// print it ([SeLineType.writtenOut]).
   final SeLineType delivery;
+
+  /// Whether this part begins the line as the sheet writes it — the
+  /// speaker and `「` before it — or carries on what the panel before
+  /// wrote; and whether it ends it, `」` after it (F-501).
+  final bool opens;
+  final bool closes;
 
   /// The sheet's own rendering: `speaker「line」`, the shape a Japanese
   /// conte's DIALOGUE column uses. An unnamed speaker prints the line bare.
@@ -141,11 +150,15 @@ class ConteDialogueLine {
   /// 🗣️I-20-Q2 (유저 2026-09-30): 「콘티 대사 칸에도 찍는다 — 이름 뒤 괄호」 —
   /// `speaker(OFF)「line」`, and only OFF · MONO (「ON일때는 … 콘티용지에는
   /// 표시하지않음」). A delivery with no speaker still says whose voice it is
-  /// not: `(OFF)「line」`.
+  /// not: `(OFF)「line」`. 🗣️F-501: 「이어지면 앞의 이름이랑 대사 표시 글자가
+  /// 안적힘」 — `speaker「ab` in one panel, `cd」` in the next.
   String get printed {
-    final said = delivery.printsOnSheets ? '(${delivery.label})' : '';
+    final said = delivery.writtenOut ? '(${delivery.label})' : '';
     final who = '$speaker$said';
-    return who.isEmpty ? text : '$who「$text」';
+    if (who.isEmpty) {
+      return text;
+    }
+    return '${opens ? '$who「' : ''}$text${closes ? '」' : ''}';
   }
 }
 

@@ -17,6 +17,7 @@ import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/psd_fixture.dart';
 import '../../helpers/solid_png_fixture.dart';
+import '../../helpers/stand_in_movie.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/the_file_itself.dart';
 
@@ -138,7 +139,7 @@ void main() {
   ) async {
     final backend = FakeVideoBackend(width: 1920, height: 1080);
     debugVideoDecodeBackend = backend;
-    final movie = write('cut.mp4', const [0, 0, 0, 24]);
+    final movie = write('cut.mp4', standInMovieBytes);
 
     expect(await sizeOf(tester, MediaAssetKind.video, movie), (1920, 1080));
     expect([for (final at in backend.openedAt) at.path], [movie]);
@@ -168,7 +169,7 @@ void main() {
     ))!;
     final files = {
       MediaAssetKind.image: png,
-      MediaAssetKind.video: write('cut.mp4', const [0, 0, 0, 24]),
+      MediaAssetKind.video: write('cut.mp4', standInMovieBytes),
       MediaAssetKind.pdf: write('conte.pdf', const [0x25, 0x50, 0x44, 0x46]),
     };
     for (final MapEntry(key: kind, value: path) in files.entries) {

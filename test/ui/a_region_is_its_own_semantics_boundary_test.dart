@@ -61,22 +61,25 @@ void main() {
     expect(semantics.container, isTrue);
   });
 
+  // The bar's node is said by the box its grip is (2026-10-28), not by a
+  // [Semantics] widget — so it is read off the tree: the node the track's
+  // box belongs to is a slider's, and it is the BAR's alone. Merged into a
+  // node above, the node found would be that region's, a box bigger than
+  // the bar.
   testWidgets('every value bar is a boundary of its own', (tester) async {
+    final semantics = tester.ensureSemantics();
     await pumpHome(tester);
     final bars = find.byType(FieldSlider);
     expect(bars, findsWidgets, reason: "premise: the brush's bars stand");
-    bool isTheSlider(Widget widget) =>
-        widget is Semantics && widget.properties.slider == true;
     for (final bar in bars.evaluate()) {
-      final semantics = tester.widget<Semantics>(
-        find
-            .descendant(
-              of: find.byElementPredicate((element) => identical(element, bar)),
-              matching: find.byWidgetPredicate(isTheSlider),
-            )
-            .first,
+      final track = find.descendant(
+        of: find.byElementPredicate((element) => identical(element, bar)),
+        matching: find.byType(FieldSliderTrack),
       );
-      expect(semantics.container, isTrue);
+      final node = tester.getSemantics(track);
+      expect(node.getSemanticsData().flagsCollection.isSlider, isTrue);
+      expect(node.rect, Offset.zero & tester.getSize(track));
     }
+    semantics.dispose();
   });
 }

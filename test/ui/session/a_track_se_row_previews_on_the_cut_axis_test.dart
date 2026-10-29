@@ -109,7 +109,7 @@ void main() {
     expect(rotation.keyedFrames, {7, 8});
     expect(
       rotation.valueLabel!(7),
-      '30.00°',
+      '0x+30.00°',
       reason: 'the value column reads the drag in its GLOBAL form',
     );
 
@@ -128,7 +128,7 @@ void main() {
     final track = base.tracks.first;
     final se = track.seLayers.first;
     const effectId = EffectId('fx-se-blur');
-    final laneId = effectLaneId(effectId, 'blurX');
+    final laneId = effectLaneId(effectId, 'blurriness');
     final firstDuration = track.cuts.first.duration;
     var effects = [LayerEffect.defaults(id: effectId, kind: EffectKind.blur)];
     for (final frame in [firstDuration + 2, firstDuration + 3]) {
@@ -175,7 +175,7 @@ void main() {
       timelineDragPreviewLayerFor(
         preview,
         se.id,
-      )!.effects.single.parameterOf('blurX').track.keys.keys.toList(),
+      )!.effects.single.parameterOf('blurriness').track.keys.keys.toList(),
       [7, 8],
       reason: 'cut-local: the active cut starts at $firstDuration',
     );
@@ -183,7 +183,7 @@ void main() {
       timelineDragPreviewGlobalLayerFor(
         preview,
         se.id,
-      )!.effects.single.parameterOf('blurX').track.keys.keys.toList(),
+      )!.effects.single.parameterOf('blurriness').track.keys.keys.toList(),
       [firstDuration + 7, firstDuration + 8],
     );
 

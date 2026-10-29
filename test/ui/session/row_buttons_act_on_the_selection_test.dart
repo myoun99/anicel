@@ -306,32 +306,6 @@ void main() {
       expect([r.row(r.s1).muted, r.row(r.s2).muted], [false, false]);
     });
 
-    test('the fader and the pan set every selected SE row — one undo each; '
-        'a drawing row in the selection is passed by', () {
-      final r = _Rig();
-      r.select([r.s1, r.s2, r.a]);
-
-      r.presses.setGain(r.s1, 0.5);
-      r.presses.setPan(r.s1, -0.4);
-
-      expect([r.row(r.s1).audioGain, r.row(r.s2).audioGain], [0.5, 0.5]);
-      expect([r.row(r.s1).audioPan, r.row(r.s2).audioPan], [-0.4, -0.4]);
-      expect(
-        [r.row(r.a).audioGain, r.row(r.a).audioPan],
-        [1.0, 0.0],
-        reason: 'a cel has no speaker, so no fader to set',
-      );
-      r.s.undo();
-      expect(
-        [r.row(r.s1).audioPan, r.row(r.s2).audioPan],
-        [0.0, 0.0],
-        reason: 'an edit of what the film sounds like undoes, like mute',
-      );
-      expect([r.row(r.s1).audioGain, r.row(r.s2).audioGain], [0.5, 0.5]);
-      r.s.undo();
-      expect([r.row(r.s1).audioGain, r.row(r.s2).audioGain], [1.0, 1.0]);
-    });
-
     test('solo inside the selection solos every selected SE row, and '
         'leaves nothing to undo', () {
       final r = _Rig();
@@ -349,11 +323,9 @@ void main() {
       r.select([r.s2, r.a]);
 
       r.presses.toggleMute(r.s1);
-      r.presses.setGain(r.s1, 0.25);
       r.presses.toggleSolo(r.s1);
 
       expect([r.row(r.s1).muted, r.row(r.s2).muted], [true, false]);
-      expect([r.row(r.s1).audioGain, r.row(r.s2).audioGain], [0.25, 1.0]);
       expect(r.s.visibilitySolo.soloedSeLayerIds.value, {r.s1});
     });
   });

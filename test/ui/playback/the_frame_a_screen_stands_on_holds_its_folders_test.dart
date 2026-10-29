@@ -131,7 +131,12 @@ void main() {
       draw(s, rowsOf[at][0], 10);
       draw(s, rowsOf[at][1], 20);
     }
-    return (cut: s.requireActiveCut, frameIndex: 0, paintPaper: true);
+    return (
+      cut: s.requireActiveCut,
+      frameIndex: 0,
+      paintPaper: true,
+      ghosts: FrameGhosts.none,
+    );
   }
 
   /// Laid for a canvas that stands on it to draw.
@@ -228,6 +233,60 @@ void main() {
     });
   });
 
+  testWidgets('🚨the frame laid for the canvas that stands on it is not drawn '
+      'again to hold its nodes as the screen takes it — one laid ahead is, '
+      'and one whose held were let go of since', (tester) async {
+    await tester.runAsync(() async {
+      /// How many rasters holding the nodes of [s]'s frame [stood] draws.
+      Future<int> holding(
+        EditorSessionManager s,
+        DemandedPicture stood,
+      ) async {
+        final pictures = s.playbackRig.framePictures;
+        debugSubtreeRasterCount = 0;
+        await pictures.holdNodesOf(
+          pictures.stackOf(stood),
+          stood,
+          shouldAbort: () => false,
+        );
+        return debugSubtreeRasterCount;
+      }
+
+      /// A session whose line has no room for the folder: every frame
+      /// drawn whole draws it.
+      EditorSessionManager noRoom() {
+        final s = session();
+        addTearDown(s.dispose);
+        s.playbackRig.playbackCache.lend(1 << 40);
+        return s;
+      }
+
+      final ahead = noRoom();
+      final laidAhead = drawn(ahead);
+      await ahead.playbackRig.framePictures.make(
+        laidAhead,
+        shouldAbort: () => false,
+      );
+      expect(await holding(ahead, laidAhead), 1, reason: '⛔premise');
+      expect(await holding(ahead, laidAhead), 0, reason: 'held since');
+
+      final standing = noRoom();
+      final stood = drawn(standing);
+      await shown(standing, stood);
+      expect(await holding(standing, stood), 0);
+
+      final warned = session();
+      addTearDown(warned.dispose);
+      final atWarning = drawn(warned);
+      await shown(warned, atWarning);
+      final pictures = warned.playbackRig.framePictures;
+      expect(pictures.heldNodes, hasLength(1), reason: '⛔premise');
+      warned.playbackRig.playbackCache.respondToMemoryPressure();
+      expect(await holding(warned, atWarning), 1);
+      expect(pictures.heldNodes, hasLength(1));
+    });
+  });
+
   testWidgets('⚖️each node held is a page at the most, and as many are held '
       'as the playback line has room for', (tester) async {
     await tester.runAsync(() async {
@@ -236,6 +295,7 @@ void main() {
         drawSubtreeAsImage(
           canvas: ui.Canvas(recorder),
           bounds: bounds,
+          paper: bounds,
           rasterScale: 1,
           paintSubtree: (into, _) => into.drawPaint(Paint()),
           compose: (blit) => blit(Paint()),
@@ -294,7 +354,12 @@ void main() {
       final pictures = s.playbackRig.framePictures;
       final store = s.renderCaches.framePictureStore;
       final stood = drawn(s);
-      final ahead = (cut: stood.cut, frameIndex: 0, paintPaper: false);
+      final ahead = (
+        cut: stood.cut,
+        frameIndex: 0,
+        paintPaper: false,
+        ghosts: FrameGhosts.none,
+      );
       await pictures.make(ahead, shouldAbort: () => false);
       await shown(s, stood);
       expect(store.estimatedBytes, 2 * picture, reason: '⛔premise: laid');
@@ -351,8 +416,9 @@ void main() {
   testWidgets('⚖️what lies below the pen held is no room for the nodes over '
       'it', (tester) async {
     await tester.runAsync(() async {
-      /// The bytes held below the pen and in all, standing on a frame with
-      /// a folder under the pen and one over it, on a line of [line].
+      /// The bytes held below the pen and in all, the frame laid for a
+      /// canvas that stands on it with a folder under the pen and one over
+      /// it, on a line of [line].
       Future<({int below, int all})> heldOn({int? line}) async {
         final s = session(count: 2, withPen: true);
         addTearDown(s.dispose);
@@ -374,7 +440,12 @@ void main() {
               _ => node,
             },
         ];
-        await pictures.holdNodesOf(nodes, stood, shouldAbort: () => false);
+        await pictures.makeShown(
+          nodes,
+          stood,
+          shouldAbort: () => false,
+          keepsNodes: true,
+        );
         return (
           below: pictures.heldNodes.heldBelowBytes,
           all: pictures.heldNodes.heldBytes,
@@ -426,7 +497,12 @@ void main() {
       line.respondToMemoryPressure();
       expect(pictures.heldNodes, hasLength(0));
 
-      await shown(s, (cut: picture.cut, frameIndex: 0, paintPaper: false));
+      await shown(s, (
+        cut: picture.cut,
+        frameIndex: 0,
+        paintPaper: false,
+        ghosts: FrameGhosts.none,
+      ));
       expect(pictures.heldNodes, hasLength(1), reason: '⛔premise');
       s.dispose();
       expect(pictures.heldNodes, hasLength(0));
