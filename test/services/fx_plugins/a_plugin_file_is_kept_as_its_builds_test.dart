@@ -130,7 +130,8 @@ void main() {
       expect(kept.native, isNull);
     });
 
-    test('an index naming a path, or a file no build is, is no plugin', () async {
+    test('an index naming a path, or a file no build is, is no '
+        'plugin', () async {
       final kept = await library.keep(
         readFxPluginBundle(both, abi: Abi.windowsX64)!,
         description,
