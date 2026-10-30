@@ -82,7 +82,12 @@ import 'timeline/timeline_grid_frame.dart';
 import 'timeline/lane_graph.dart'
     show LaneGraphVerbs, LaneGraphsView, TimelineGraphSeat;
 import 'timeline/lane_graph_seats.dart'
-    show LaneGraphLine, laneGraphHeadedBy, laneGraphLineAmong, seatLaneGraphs;
+    show
+        LaneGraphLine,
+        laneBandStandsOn,
+        laneGraphHeadedBy,
+        laneGraphLineAmong,
+        seatLaneGraphs;
 import 'timeline/timeline_lane_graph.dart'
     show LaneGraphGrid, laneGraphFrameSide, laneGraphLines, timelineRowBuiltNow;
 import 'timeline/timeline_section_runs.dart'

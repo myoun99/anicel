@@ -6,6 +6,7 @@ import '../../models/range_snap.dart' show StandingUnit;
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
+import 'lane_graph_seats.dart' show laneBandStandsOn;
 import 'property_lane_model.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_drag_preview.dart';
@@ -17,7 +18,6 @@ import 'timeline_playhead.dart';
 import 'timeline_row_edges.dart';
 import '../text/app_strings.dart' show AppText;
 import '../widgets/tick_layer.dart';
-import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
 
 /// Everything of a timeline grid that moves with the frame cursor — the
 /// standing wash, the playhead, the selection bands and the standing cell's
@@ -348,7 +348,7 @@ class TimelineCursorLayer extends StatelessWidget {
   bool _laneRowInBand(TimelineDisplayRow row, TimelineLaneSelection laneRange) {
     final lane = row.lane;
     return lane != null &&
-        laneSelectionCoversBandRow(laneRange, row.layer.id, lane.laneId);
+        laneBandStandsOn(laneRange, row.layer.id, lane.laneId, seat: row.graph);
   }
 
   /// The display row of the lane the user stands on, if standing on one.

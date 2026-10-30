@@ -1567,10 +1567,11 @@ class _StoryboardRailRows {
               return slot.bandRow &&
                   laneRow != null &&
                   laneRow.layerId == subjectId &&
-                  laneSelectionCoversBandRow(
+                  laneBandStandsOn(
                     selection,
                     subjectId,
                     laneRow.laneId,
+                    seat: slot.graph,
                   );
             },
             span: (
@@ -1656,7 +1657,12 @@ class _StoryboardRailRows {
       final lane = slot.laneRow;
       if (lane != null &&
           lane.layerId == rowId &&
-          laneSelectionCoversBandRow(selection, selection.layerId, lane.laneId)) {
+          laneBandStandsOn(
+            selection,
+            selection.layerId,
+            lane.laneId,
+            seat: slot.graph,
+          )) {
         covered.add((top: y, bottom: y + slot.height));
       }
       y += slot.height;

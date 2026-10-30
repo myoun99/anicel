@@ -1,11 +1,14 @@
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/timeline_frame_range.dart'
+    show TimelineLaneSelection;
 import '../../models/timeline_row_address.dart';
 import 'lane_graph.dart';
 import 'property_lane_model.dart';
 import 'timeline_current_row.dart' show laneGroupOf;
-import 'transform_lane_policy.dart' show transformGroupHeaderLane;
+import 'transform_lane_policy.dart'
+    show laneSelectionCoversBandRow, transformGroupHeaderLane;
 
 /// The key of the header graph a row HEADS (I-89 ③) — a Transform or
 /// effect header's own ([PropertyLaneRow.headsAGraph]), or the camera
@@ -20,6 +23,24 @@ String? laneGraphHeadedBy(Layer layer, PropertyLaneRow? lane) {
       ? laneGroupKey(layer.id, transformGroupHeaderLane.laneId)
       : null;
 }
+
+/// Whether a lane selection's BAND stands on [laneId]'s row on [layerId]:
+/// where the selection covers the row ([laneSelectionCoversBandRow]) and
+/// the row shows its cells — not where [seat], the open graph it is seated
+/// in, draws it.
+///
+/// 🗣️F-514 (유저 2026-10-30): 「fx 그래프 조절하려고 선택범위 작동시 프레임
+/// 칸에 선택범위가 작동해버림 … 이건 발생안하는게 의도라고 생각함. 맞나? 잘
+/// 모르니 맡김」. A graph's box picks as a lane selection (I-3-Q3 「레인 칸
+/// 선택으로」) and goes on doing so, for every verb that reads it. What goes
+/// is the band laid over the graph, marking cells it does not draw: a graph
+/// shows what it picked itself, by its keys and the box round them.
+bool laneBandStandsOn(
+  TimelineLaneSelection? selection,
+  LayerId layerId,
+  String laneId, {
+  required TimelineGraphSeat? seat,
+}) => seat == null && laneSelectionCoversBandRow(selection, layerId, laneId);
 
 /// The key a row's PIN is pressed with (I-89 ③) — a lane that draws a
 /// curve ([PropertyLaneRow.curve], never a header's) — or null for a row

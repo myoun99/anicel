@@ -20,9 +20,15 @@ import 'package:anicel/src/models/track_camera_row.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart' show StoryboardPanel;
+import 'package:anicel/src/ui/timeline/lane_graph.dart'
+    show LaneGraph, LaneGraphsView;
+import 'package:anicel/src/ui/timeline/property_lane_model.dart'
+    show laneGroupKey;
 import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
     show TimelineLaneKeyMarker, timelineLaneKeyMarkerSizeOf;
+import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
+    show transformGroupHeaderLane;
 
 import '../../helpers/named_finders.dart';
 import '../../helpers/storyboard_host.dart';
@@ -655,6 +661,38 @@ void main() {
       expect(band.left, closeTo(10 * ppf(tester), 0.01));
       expect(band.right, closeTo(24 * ppf(tester), 0.01));
       expect((band.top, band.height), (0, strip.height));
+    });
+
+    // 🗣️F-514 (유저 2026-10-30): a graph shows what it picked itself.
+    testWidgets('🎯a lane in an open graph wears no band, and what it picks '
+        'stands', (tester) async {
+      final session = await pumpPanel(tester);
+      await sweep(
+        tester,
+        at(tester, 'position', 10),
+        at(tester, 'position', 40),
+      );
+      final band = find.byWidgetPredicate(
+        (widget) =>
+            widget.key is ValueKey<String> &&
+            (widget.key! as ValueKey<String>).value.startsWith(
+              'storyboard-projection-lane-range-selection-',
+            ),
+      );
+      expect(band, findsOneWidget, reason: 'fixture: its strip wears it');
+      final picked = session.laneRangeSelection.value;
+
+      session.railView.laneGraphs.value = LaneGraphsView(
+        open: {
+          laneGroupKey(rowId, transformGroupHeaderLane.laneId):
+              const LaneGraph(),
+        },
+      );
+      await tester.pumpAndSettle();
+
+      expect(laneStrip('position'), findsNothing, reason: 'fixture: seated');
+      expect(band, findsNothing);
+      expect(session.laneRangeSelection.value, picked);
     });
 
     testWidgets('a sweep down across the lanes spans them, and the band runs '

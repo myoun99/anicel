@@ -12,6 +12,8 @@ import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_frame_range.dart'
+    show TimelineLaneSelection;
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_camera_row.dart'
@@ -40,6 +42,8 @@ import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
     show TimelineGridSheet;
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
     show LaneEditPreview, TimelineDragPreview;
+import 'package:anicel/src/ui/timeline/timeline_frame_range_gesture.dart'
+    show TimelineLaneRangeHooks;
 import 'package:anicel/src/ui/timeline/timeline_lane_graph.dart'
     show
         LaneGraphPicture,
@@ -143,6 +147,7 @@ void main() {
     bool laneEdits = false,
     ValueListenable<TimelineDragPreview?>? dragPreview,
     double pixelsPerFrame = 12,
+    TimelineLaneRangeHooks? laneRange,
   }) async {
     final session = EditorSessionManager(initialProject: project);
     addTearDown(session.dispose);
@@ -176,6 +181,7 @@ void main() {
                 poseDisplaySize: const CanvasSize(width: 640, height: 360),
                 rowSelection: rowSelection,
                 dragPreview: dragPreview,
+                laneRange: laneRange,
                 laneGraphs: graphs,
                 laneGraphVerbs: presses.laneGraphVerbs,
                 layerLaneEdit: edits,
@@ -222,6 +228,45 @@ void main() {
         (layer: line.layer.id, lane: line.lane.laneId),
     ];
   }
+
+  // 🗣️F-514 (유저 2026-10-30): a graph shows what it picked itself.
+  testWidgets('🎯a lane in an open graph wears no band, whatever is picked '
+      'on it', (tester) async {
+    final key = laneGroupKey(s1, transform);
+    final picked = ValueNotifier<TimelineLaneSelection?>(
+      const TimelineLaneSelection(
+        layerId: s1,
+        laneId: 'position',
+        startIndex: 2,
+        endIndexExclusive: 6,
+      ),
+    );
+    addTearDown(picked.dispose);
+    final session = await pump(
+      tester,
+      project(),
+      laneRange: TimelineLaneRangeHooks(
+        selection: picked,
+        onSelectUpdate: (_, _, _, _, _) {},
+        onTapAt: (_, _, _) {},
+        onTapClear: () {},
+        onMoveBegin: () => false,
+        onMoveUpdate: (_, {stretch, values, landings}) {},
+        onMoveEnd: () {},
+        onMoveCancel: () {},
+      ),
+    );
+    const band = ValueKey<String>('storyboard-lane-range-selection');
+    expect(find.byKey(band), findsOneWidget, reason: 'fixture: a lane\'s');
+
+    session.railView.laneGraphs.value = LaneGraphsView(
+      open: {key: const LaneGraph()},
+    );
+    await tester.pumpAndSettle();
+
+    expect(graphOf(key), findsOneWidget);
+    expect(find.byKey(band), findsNothing);
+  });
 
   testWidgets('an S row\'s open graph stands where its lanes are, as tall '
       'as the timeline\'s — the rail and the sheet stand as far beside it', (
