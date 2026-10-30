@@ -852,6 +852,37 @@ void main() {
         expect(standing(tester) - from, const Offset(50, 40));
       });
 
+      testWidgets('after a pinch, one finger pulls it as ever — and it '
+          'coasts', (tester) async {
+        await pumpSheet(tester);
+        await pinch(tester);
+        await tester.flingFrom(
+          onTheCells(tester),
+          const Offset(-160, -120),
+          2400,
+        );
+        final released = standing(tester);
+        await tester.pumpAndSettle();
+        final rested = standing(tester);
+
+        expect(
+          [rested.dx > released.dx, rested.dy > released.dy],
+          [true, true],
+        );
+      });
+
+      testWidgets('a pinch after the zoom was moved elsewhere zooms from '
+          'where it stands, not from where the last pinch left it', (
+        tester,
+      ) async {
+        await pumpSheet(tester);
+        await pinch(tester);
+        zoom.value = TimelineZoomLimits.referencePixelsPerFrame;
+        await tester.pumpAndSettle();
+
+        expect(await pinch(tester), closeTo(1.5, 0.005));
+      });
+
       testWidgets('⛔two fingers on its layer area zoom nothing — they pull '
           'it as one finger does', (tester) async {
         await pumpSheet(tester);
@@ -897,6 +928,27 @@ void main() {
         );
       });
 
+      testWidgets('one finger set to 「내비게이트」 on the canvas pulls it as '
+          'ever, and it coasts — a pinch is two fingers', (tester) async {
+        AppInput.settings.value = const AppInputSettings(
+          touchDragOneFinger: CanvasTouchDragAction.navigate,
+        );
+        await pumpSheet(tester);
+        await tester.flingFrom(
+          onTheCells(tester),
+          const Offset(-160, -120),
+          2400,
+        );
+        final released = standing(tester);
+        await tester.pumpAndSettle();
+        final rested = standing(tester);
+
+        expect(
+          [rested.dx > released.dx, rested.dy > released.dy],
+          [true, true],
+        );
+      });
+
       testWidgets("⛔a pen and a finger zoom nothing — a pinch is fingers'", (
         tester,
       ) async {
@@ -909,31 +961,91 @@ void main() {
           '— let go, it coasts on neither way', (tester) async {
         await pumpSheet(tester);
         final cells = onTheCells(tester);
-        final pulling = await tester.startGesture(
-          cells - const Offset(40, 0),
-          kind: PointerDeviceKind.touch,
-          pointer: 20,
-        );
-        for (var i = 0; i < 5; i += 1) {
-          await pulling.moveBy(const Offset(-40, -30));
-          await tester.pump(const Duration(milliseconds: 8));
+
+        /// A finger flicked on the slant from the sheet's start — another
+        /// landing on it and lifting while it pulls, when [joined] — and
+        /// let go: where the sheet stood then, and where it came to rest.
+        Future<(Offset, Offset)> flick({required bool joined}) async {
+          for (final key in [sheet.outer, sheet.inner]) {
+            positionOf(tester, key).jumpTo(0);
+          }
+          await tester.pump();
+          final pulling = await tester.startGesture(
+            cells - const Offset(40, 0),
+            kind: PointerDeviceKind.touch,
+            pointer: 20,
+          );
+          for (var i = 1; i <= 5; i += 1) {
+            await pulling.moveBy(
+              const Offset(-40, -30),
+              timeStamp: Duration(milliseconds: 8 * i),
+            );
+            await tester.pump(const Duration(milliseconds: 8));
+          }
+          if (joined) {
+            final joining = await tester.startGesture(
+              cells + const Offset(40, 0),
+              kind: PointerDeviceKind.touch,
+              pointer: 21,
+            );
+            await joining.up();
+          }
+          final released = standing(tester);
+          await pulling.up();
+          await tester.pumpAndSettle();
+          return (released, standing(tester));
         }
-        final joining = await tester.startGesture(
-          cells + const Offset(40, 0),
-          kind: PointerDeviceKind.touch,
-          pointer: 21,
+
+        final (pulled, coasted) = await flick(joined: false);
+        expect(
+          [coasted.dx > pulled.dx, coasted.dy > pulled.dy],
+          [true, true],
+          reason: '⛔premise: the pull alone coasts',
         );
-        await joining.up();
-        final released = standing(tester);
-        await pulling.up();
-        await tester.pumpAndSettle();
+        final (released, rested) = await flick(joined: true);
 
         expect(
           [released.dx, released.dy],
           everyElement(greaterThan(0)),
           reason: '⛔premise: the first finger pulled it',
         );
-        expect(standing(tester), released);
+        expect(rested, released);
+      });
+
+      testWidgets('a second finger landing on one that had only twitched '
+          'takes the sheet before any pull — let go, it coasts on neither '
+          'way', (tester) async {
+        await pumpSheet(tester);
+        final cells = onTheCells(tester);
+        final twitching = await tester.startGesture(
+          cells - const Offset(40, 0),
+          kind: PointerDeviceKind.touch,
+          pointer: 20,
+        );
+        // Under the slop along either axis, over it on the slant: the
+        // flick a pull would have coasted on.
+        for (var i = 1; i <= 5; i += 1) {
+          await twitching.moveBy(
+            const Offset(-3, -3),
+            timeStamp: Duration(milliseconds: 4 * i),
+          );
+          await tester.pump(const Duration(milliseconds: 4));
+        }
+        expect(
+          standing(tester),
+          Offset.zero,
+          reason: '⛔premise: no pull had begun',
+        );
+        final joining = await tester.startGesture(
+          cells + const Offset(40, 0),
+          kind: PointerDeviceKind.touch,
+          pointer: 21,
+        );
+        await joining.up();
+        await twitching.up();
+        await tester.pumpAndSettle();
+
+        expect(standing(tester), Offset.zero);
       });
 
       testWidgets('a finger landing on a pinch before the sheet is built '
