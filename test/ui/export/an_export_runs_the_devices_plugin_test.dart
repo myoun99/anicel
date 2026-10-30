@@ -12,6 +12,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
+import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -57,12 +58,16 @@ void main() {
     },
   );
 
-  /// A cut of one row showing [oneRed], wearing [effects] — on a device
-  /// whose installed plugins are [plugins].
+  /// A cut of one row showing [oneRed], wearing [effects] — in a folder
+  /// wearing [folder] where one is named, on a track whose V row wears
+  /// [track] — on a device whose installed plugins are [plugins].
   EditorSessionManager sessionOn(
     InstalledFxPlugins plugins, {
     required List<LayerEffect> effects,
+    List<LayerEffect>? folder,
+    List<LayerEffect> track = const [],
   }) {
+    const inFolder = LayerId('folder');
     final s = EditorSessionManager(
       fxPlugins: plugins,
       initialProject: Project(
@@ -73,6 +78,7 @@ void main() {
           Track(
             id: const TrackId('track'),
             name: 'Track',
+            effects: track,
             cuts: [
               Cut(
                 id: const CutId('cut'),
@@ -88,7 +94,13 @@ void main() {
                       0: TimelineExposure.drawing(drawing, length: 1),
                     },
                     effects: effects,
+                    folderId: folder == null ? null : inFolder,
                   ),
+                  if (folder != null)
+                    createFolderLayer(
+                      id: inFolder,
+                      name: 'folder',
+                    ).copyWith(effects: folder),
                 ],
               ),
             ],
@@ -148,14 +160,21 @@ void main() {
             .draw(),
       };
 
-  /// The red's place in what [draw] makes of the cut — and whether the
-  /// pixel left of it is red.
-  Future<({bool atTen, bool atEleven})> redIn(
+  /// Where the red is, by column, on its row in what [draw] makes of the
+  /// cut ([sessionOn]).
+  Future<List<int>> redIn(
     Future<ui.Image> Function(EditorSessionManager s, Cut cut) draw,
     InstalledFxPlugins plugins, {
     required List<LayerEffect> effects,
+    List<LayerEffect>? folder,
+    List<LayerEffect> track = const [],
   }) async {
-    final s = sessionOn(plugins, effects: effects);
+    final s = sessionOn(
+      plugins,
+      effects: effects,
+      folder: folder,
+      track: track,
+    );
     final image = await draw(s, s.requireActiveCut);
     final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
     final columns = image.width;
@@ -166,8 +185,18 @@ void main() {
       return bytes[at] == 255 && bytes[at + 1] == 0 && bytes[at + 3] == 255;
     }
 
-    return (atTen: isRed(10), atEleven: isRed(11));
+    return [
+      for (var x = 0; x < columns; x += 1)
+        if (isRed(x)) x,
+    ];
   }
+
+  final shift = shiftingFxPluginLayerEffect();
+  final again = LayerEffect.defaults(
+    id: const EffectId('again'),
+    kind: EffectKind.plugin,
+    plugin: shiftingFxPluginDescription,
+  );
 
   for (final MapEntry(key: road, value: draw) in roads.entries) {
     testWidgets('🎯$road runs the plugin this device has installed', (
@@ -177,17 +206,46 @@ void main() {
       await tester.runAsync(() async {
         expect(
           await redIn(draw, plugins, effects: const []),
-          (atTen: true, atEleven: false),
+          [10],
           reason: '⛔CONTROL: with no plugin the red stands where it is drawn',
         );
         expect(
-          await redIn(draw, plugins, effects: [shiftingFxPluginLayerEffect()]),
-          (atTen: false, atEleven: true),
+          await redIn(draw, plugins, effects: [shift]),
+          [11],
           reason: 'the plugin moved it one to the right',
+        );
+        expect(
+          await redIn(draw, plugins, effects: [shift, again]),
+          [12],
+          reason: '🗣️I-132-Q34 a 「어디에 걸어도 돌고」: and one past it, over '
+              'what that made — the render waits for it',
         );
       });
     });
   }
+
+  testWidgets('🗣️I-132-Q34 a: a film runs one on a folder\'s chain and on the '
+      'V row\'s', (tester) async {
+    final plugins = await installedShiftingFxPlugin(tester);
+    final film = roads['a frame of the film']!;
+    await tester.runAsync(() async {
+      expect(
+        await redIn(film, plugins, effects: const [], folder: const []),
+        [10],
+        reason: '⛔CONTROL: in a folder with nothing on it',
+      );
+      expect(
+        await redIn(film, plugins, effects: const [], folder: [shift]),
+        [11],
+        reason: 'on the folder',
+      );
+      expect(
+        await redIn(film, plugins, effects: const [], track: [shift]),
+        [11],
+        reason: 'on the V row',
+      );
+    });
+  });
 
   testWidgets('the session binds the plugin reading each row it names as '
       'the store holds that row\'s cel', (tester) async {

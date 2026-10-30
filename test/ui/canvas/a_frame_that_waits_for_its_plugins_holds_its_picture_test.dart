@@ -161,8 +161,11 @@ void main() {
           coord.y * tileSize + y + 0.5,
         );
         if (inside(at)) {
-          pixels.setRange((y * tileSize + x) * 4, (y * tileSize + x) * 4 + 4,
-              colour);
+          pixels.setRange(
+            (y * tileSize + x) * 4,
+            (y * tileSize + x) * 4 + 4,
+            colour,
+          );
         }
       }
     }
@@ -279,7 +282,10 @@ void main() {
     return true;
   }
 
-  for (final (name, waits) in [('waits for a plugin', true), ('runs none', false)]) {
+  for (final (name, waits) in [
+    ('waits for a plugin', true),
+    ('runs none', false),
+  ]) {
     List<CompositeNode<CanvasStackRow>> nodesOf() =>
         inAFolder(waits ? [aPlugin(ShiftingFxPlugin(by: 2))] : const []);
 
