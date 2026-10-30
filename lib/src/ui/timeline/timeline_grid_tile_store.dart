@@ -496,7 +496,7 @@ class TimelineGridTileStore {
     final waited = [..._stretched.entries];
     _stretched.clear();
     for (final MapEntry(:key, value: request) in waited) {
-      if (!passed(request) && !_inFlight.contains(key)) {
+      if (!passed(request)) {
         _enqueue(key, request);
       }
     }
