@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/widgets.dart';
 
 import '../../core/tree_nodes.dart';
@@ -18,6 +19,7 @@ import '../canvas/canvas_layer_stack_view.dart'
         StackedFrame,
         waitsForItsPlugins;
 import '../canvas/display_resample.dart';
+import '../canvas/outline_clipper.dart';
 import '../canvas/viewport_canvas_transform.dart';
 import '../effective_device_pixel_ratio.dart';
 import 'frame_picture_store.dart';
@@ -73,6 +75,7 @@ class FramePictureView extends StatefulWidget {
     this.alreadyShown = false,
     this.drawnLive = const {},
     this.ground,
+    this.cut,
   });
 
   final StackRun run;
@@ -139,13 +142,21 @@ class FramePictureView extends StatefulWidget {
   /// too (one-picture-per-frame ②-5b-1).
   final Set<BrushFrameKey> drawnLive;
 
-  /// The colour laid under what the view draws, where it draws anything.
+  /// The colour laid across the view under what it draws, where it draws
+  /// anything — past [cut] too.
   ///
   /// 🗣️F-215 · I-132-Q34 a: none while it draws nothing — a frame that
   /// waits for its plugins, its picture not made yet — so what it took over
   /// from shows meanwhile: the conte's print, the last finished picture
   /// (「on하든off하든 바뀌는게 없어야」 · 「직전 완성 그림에 머문다」).
   final Color? ground;
+
+  /// The outline what the view draws is cut to, on screen — the canvas in
+  /// a conte picture's camera frame — and not its [ground], which lies
+  /// across the whole view as the print's does: cut to it too, the print a
+  /// live picture takes over from showed past the canvas (🔬F-215's switch
+  /// pin, 10-31). Null: nothing is cut.
+  final List<Offset>? cut;
 
   @override
   State<FramePictureView> createState() => _FramePictureViewState();
@@ -857,6 +868,7 @@ class _FramePictureViewState extends State<FramePictureView> {
           standing: _standing,
           waits: _waits,
           ground: widget.ground,
+          cut: widget.cut,
           catchUp: _catchUp,
           viewport: widget.viewport,
           devicePixelRatio: EffectiveDevicePixelRatio.of(context),
@@ -875,6 +887,7 @@ class _FramePicturePainter extends CustomPainter {
     required this.standing,
     required this.waits,
     required this.ground,
+    required this.cut,
     required this.catchUp,
     required this.viewport,
     required this.devicePixelRatio,
@@ -897,6 +910,9 @@ class _FramePicturePainter extends CustomPainter {
   /// Laid under what is drawn, where anything is ([FramePictureView.ground]).
   final Color? ground;
 
+  /// What is drawn is cut to, and not [ground] ([FramePictureView.cut]).
+  final List<Offset>? cut;
+
   /// Puts what the live rows moved into [standing] or the picture shown
   /// before it is read ([_FramePictureViewState._catchUp]).
   final VoidCallback catchUp;
@@ -912,6 +928,9 @@ class _FramePicturePainter extends CustomPainter {
     final ground = this.ground;
     if (ground != null && (shown != null || asItStands != null)) {
       canvas.drawColor(ground, BlendMode.srcOver);
+    }
+    if (cut case final corners?) {
+      canvas.clipPath(OutlineClipper(corners).getClip(size));
     }
     if (shown case (:final picture, :final image)) {
       applyViewportTransform(
@@ -957,6 +976,7 @@ class _FramePicturePainter extends CustomPainter {
       !identical(oldDelegate.asItStands, asItStands) ||
       oldDelegate.waits != waits ||
       oldDelegate.ground != ground ||
+      !listEquals(oldDelegate.cut, cut) ||
       oldDelegate.viewport != viewport ||
       oldDelegate.devicePixelRatio != devicePixelRatio;
 }
