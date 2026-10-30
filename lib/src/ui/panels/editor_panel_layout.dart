@@ -236,6 +236,30 @@ class EditorPanelLayoutModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Moves [fromDockId]'s whole group into [toDockId], which holds nothing:
+  /// its tabs, the one in front, and the extent it was left at — a group
+  /// keeps its own size wherever it goes. No-op when either is not so.
+  void moveGroup({required String fromDockId, required String toDockId}) {
+    final group = _docks[fromDockId];
+    if (group == null ||
+        !_docks.containsKey(toDockId) ||
+        _docks[toDockId] != null) {
+      return;
+    }
+    _docks[toDockId] = group;
+    _docks[fromDockId] = null;
+    // The slot's size was the group that left it, not the one arriving.
+    final extent = _dockExtents.remove(fromDockId);
+    final stale = _dockExtents.remove(toDockId);
+    if (extent != null) {
+      _dockExtents[toDockId] = extent;
+    }
+    if (extent != null || stale != null) {
+      extentRevision.value += 1;
+    }
+    notifyListeners();
+  }
+
   /// Hides a panel: removes its tab from the layout entirely (a dock
   /// emptied this way collapses). Reopen via [addTab].
   void removeTab(String tabId) {

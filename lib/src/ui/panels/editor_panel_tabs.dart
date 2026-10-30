@@ -11,7 +11,6 @@ import '../widgets/drag_chip.dart';
 import '../widgets/grip_band.dart';
 import '../widgets/kept_tail_row.dart';
 import '../widgets/overflow_scrollers.dart';
-import '../widgets/owning_draggable.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/static_raster.dart';
 import '../widgets/superellipse_clip.dart';
@@ -36,6 +35,7 @@ class EditorPanelTab {
     this.stillRaster = true,
     this.sparesSplitters = true,
     this.collapsedExtent = 0,
+    this.canvasBase = false,
     this.contentIdentity,
   });
 
@@ -126,6 +126,16 @@ class EditorPanelTab {
   /// for their command bar's height and keep working while folded.
   final double collapsedExtent;
 
+  /// Whether this panel is a CANVAS-BASE panel — one whose content is a
+  /// canvas panel standing on the canvas base (`BrushCanvasPanel
+  /// .canvasBase`): the sheets and the viewers.
+  ///
+  /// 🗣️I-147 (유저 2026-10-30): 「캔버스베이스 패널들. 즉 콘티용지나
+  /// 타임시트나 컷봉투나 서브뷰어나 이런것들. 상단띠 통해 배경에 깔수있게」 —
+  /// these, and only these, may lie on the floor: they are what the top
+  /// strip's floor buttons hold.
+  final bool canvasBase;
+
   /// What this tab's content is built FOR — null for a tab whose builder
   /// is the same whatever happens. The open content ([OpenTabContent]) is
   /// handed back only while this stays the same; see [builtFor].
@@ -149,6 +159,7 @@ class EditorPanelTab {
       stillRaster: stillRaster,
       sparesSplitters: sparesSplitters,
       collapsedExtent: collapsedExtent,
+      canvasBase: canvasBase,
       contentIdentity: identity,
     );
   }
@@ -879,7 +890,7 @@ class _TabStripTailDropRegion extends StatelessWidget {
 /// rule was already on, and its THICKNESS is what says which thing it is
 /// saying: 2px for a state you read, 6px for a handle you can reach. The
 /// colour ladder underneath is the app's one grip ladder, unchanged.
-class _PanelTabButton extends StatefulWidget {
+class _PanelTabButton extends StatelessWidget {
   const _PanelTabButton({
     super.key,
     required this.label,
@@ -927,45 +938,10 @@ class _PanelTabButton extends StatefulWidget {
   // 「2px for a state, 6px for a handle, and the target is 8 either way」 is
   // exactly the drift this repo keeps paying for.
 
-  @override
-  State<_PanelTabButton> createState() => _PanelTabButtonState();
-}
-
-class _PanelTabButtonState extends State<_PanelTabButton> {
-  bool _gripHovered = false;
-  bool _dragging = false;
-
-  bool get _armed => widget.dragData != null;
-
-  /// Thick when there is something to grab, thin when it is only offering
-  /// itself.
-  double get _bandExtent =>
-      _armed && (_dragging || _gripHovered) ? GripBand.reach : GripBand.rest;
-
-  /// The app's one grip ladder ([GripBand.ink]), and NOTHING ELSE (유저,
-  /// R3 #9).
-  ///
-  /// ⛔The ACTIVE rung is gone. The band used to turn accent for the open
-  /// tab, which meant the tab you were most likely to want to drag was the
-  /// one tab whose band could never say "you may drag me" — the two signals
-  /// were sharing one surface and the louder one always won. Which panel is
-  /// open is still said twice over without it: the selected tab wears the
-  /// body's own fill and its glyph is accent.
-  ///
-  /// A tab that cannot be lifted has no band at all, which is why the
-  /// `_armed` gate stays here rather than moving into the ladder.
-  Color _bandColor(bool panelHovered) => _armed
-      ? GripBand.ink(
-          nearby: panelHovered,
-          hovered: _gripHovered,
-          active: _dragging,
-        )
-      : Colors.transparent;
-
   /// The tab's silhouette: rounded on the edge AWAY from the panel body,
   /// square where it meets it.
   RoundedSuperellipseBorder _shape() => AppShapes.containerRadius(
-    widget.stripAtBottom
+    stripAtBottom
         ? const BorderRadius.vertical(
             bottom: Radius.circular(AppShapes.wellRadius),
           )
@@ -977,88 +953,26 @@ class _PanelTabButtonState extends State<_PanelTabButton> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final foreground = widget.selected
+    final foreground = selected
         ? colorScheme.primary
         : colorScheme.onSurfaceVariant;
 
-    Widget grip = MouseRegion(
-      cursor: _armed ? SystemMouseCursors.grab : SystemMouseCursors.basic,
-      onEnter: (_) => setState(() => _gripHovered = true),
-      onExit: (_) => setState(() => _gripHovered = false),
-      child: SizedBox(
-        key: widget.gripKey,
-        height: GripBand.hitExtent,
-        // The TARGET is a constant 8px of the edge; the band inside it
-        // grows toward the frame, so a pointer resting on the grip never
-        // finds the thing it is over moving out from under it.
-        //
-        // The band itself starts where an outline over that edge ends
-        // (F-257, [EditorPanelTabs.stripEdgeOutline]) — the target does
-        // not move for it.
-        child: Padding(
-          padding: widget.stripAtBottom
-              ? EdgeInsets.only(bottom: widget.edgeOutline)
-              : EdgeInsets.only(top: widget.edgeOutline),
-          child: Align(
-            alignment: widget.stripAtBottom
-                ? Alignment.bottomCenter
-                : Alignment.topCenter,
-            child: ValueListenableBuilder<bool>(
-              valueListenable: widget.panelHovered,
-              builder: (context, panelHovered, _) => SizedBox(
-                // BOTH axes, not just the height. `Align` hands its child
-                // LOOSE constraints, and a `ColoredBox` with no child takes
-                // `constraints.smallest` — so a band told only how THICK to
-                // be laid out 0px wide. It was coloured correctly, on the
-                // right edge, climbing the right ladder, and invisible: the
-                // whole handle simply did not exist on screen (유저, R4 #6).
-                //
-                // ⚠️Third time this trap has bitten: R1a collapsed a grip's
-                // HEIGHT the same way. A `ColoredBox` is a leaf — it never
-                // has a size of its own to fall back on.
-                width: double.infinity,
-                height: _bandExtent,
-                child: ColoredBox(color: _bandColor(panelHovered)),
-              ),
-            ),
-          ),
-        ),
-      ),
+    // The app's one lifting band ([LiftingGripBand]) — the strip's buttons
+    // wear it too (I-147).
+    final grip = LiftingGripBand<EditorPanelTabDragData>(
+      gripKey: gripKey,
+      data: dragData,
+      // Every drag's chip, hung where every drag hangs it (I-39) — this
+      // one sat centred on the pointer, a look of its own.
+      feedback: DragChip(items: [(icon: icon, label: label)]),
+      nearby: panelHovered,
+      atBottom: stripAtBottom,
+      edgeOutline: edgeOutline,
+      onLifted: onTabDragChanged,
     );
-    final data = widget.dragData;
-    if (data != null) {
-      // 🚨F-126 (유저 2026-09-13: 「마우스로는 움직여서 패널 위치
-      // 도킹가능한데 펜으로는 불가능. 이유 확인해서 법 통일」): the tab's own
-      // [ControlPressClaim] below takes the arena on the first movement, and
-      // since `e3c1a9f4` put it on the tab a stock `Draggable` lost the grip's
-      // drag to it for a pen, whose slop is eighteen pixels — a mouse's is
-      // one, so its drag was accepted in the same move. [OwningDraggable]
-      // asks on the first move too, and the grip is DEEPER than the claim, so
-      // it is asked first and wins for every device.
-      grip = OwningDraggable<EditorPanelTabDragData>(
-        data: data,
-        maxSimultaneousDrags: 1,
-        // The avatar origin IS the pointer, so drop regions can split
-        // themselves into exact before/after halves from the drag offset.
-        dragAnchorStrategy: pointerDragAnchorStrategy,
-        // Every drag's chip, hung where every drag hangs it (I-39) — this
-        // one sat centred on the pointer, a look of its own.
-        feedback: DragChip(items: [(icon: widget.icon, label: widget.label)]),
-        onDragStarted: () {
-          setState(() => _dragging = true);
-          widget.onTabDragChanged?.call(data);
-        },
-        // onDragEnd covers completion AND cancellation.
-        onDragEnd: (_) {
-          setState(() => _dragging = false);
-          widget.onTabDragChanged?.call(null);
-        },
-        child: grip,
-      );
-    }
 
     return AppTooltip(
-      message: widget.label,
+      message: label,
       // Manual trigger: hover tooltips still work, but no long-press
       // recognizer competes with drag lifts.
       triggerMode: TooltipTriggerMode.manual,
@@ -1066,10 +980,10 @@ class _PanelTabButtonState extends State<_PanelTabButton> {
       // PANEL being hovered, not this button, and the InkWell already
       // paints its own hover for the button itself.
       child: ControlPressClaim(
-        onPressed: widget.onPressed,
+        onPressed: onPressed,
         child: InkWell(
           mouseCursor: AppCursors.press,
-          onTap: silentPress(widget.onPressed),
+          onTap: silentPress(onPressed),
           // THE SELECTED TAB IS THE PANEL'S FOOT, not a chip lying on the
           // sill. It wears the body's own fill and rounds only the corners
           // AWAY from the body, so the seam between them disappears and the
@@ -1098,7 +1012,7 @@ class _PanelTabButtonState extends State<_PanelTabButton> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   decoration: ShapeDecoration(
-                    color: widget.selected
+                    color: selected
                         ? colorScheme.surface
                         : Colors.transparent,
                     shape: _shape(),
@@ -1106,8 +1020,8 @@ class _PanelTabButtonState extends State<_PanelTabButton> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(widget.icon, size: 16, color: foreground),
-                      if (widget.locked) ...[
+                      Icon(icon, size: 16, color: foreground),
+                      if (locked) ...[
                         const SizedBox(width: 3),
                         Icon(Icons.lock, size: 9, color: colorScheme.primary),
                       ],
@@ -1117,8 +1031,8 @@ class _PanelTabButtonState extends State<_PanelTabButton> {
                 Positioned(
                   left: 0,
                   right: 0,
-                  top: widget.stripAtBottom ? null : 0,
-                  bottom: widget.stripAtBottom ? 0 : null,
+                  top: stripAtBottom ? null : 0,
+                  bottom: stripAtBottom ? 0 : null,
                   child: grip,
                 ),
               ],

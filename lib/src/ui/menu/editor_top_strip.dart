@@ -803,6 +803,17 @@ class EditorTopStrip extends StatelessWidget {
         const StripGroupRule(),
         const SizedBox(width: StripGroupRule.margin),
         _FloorSwitch(panelsMenu: panelsMenu),
+        // 🗣️I-147 (유저 2026-10-30): 「상단띠에서 배경에 붙은 고정패널이랑
+        // 변동이랑 구분하기위해 사이에 세로선추가. 환경설정/캔버스패널 사이에
+        // 있는 같은 세로선」 — the floor's own two before it, which nothing
+        // moves, and the buttons whose panels lie on the floor after it.
+        const SizedBox(width: StripGroupRule.margin),
+        const StripGroupRule(),
+        const SizedBox(width: StripGroupRule.margin),
+        ListenableBuilder(
+          listenable: panelsMenu,
+          builder: (context, _) => panelsMenu.floorGroups(context),
+        ),
         const SizedBox(width: 6),
         Expanded(
           // The brush's values stand here only where the workspace says

@@ -62,6 +62,14 @@ class WorkspacePanelsMenuController extends ChangeNotifier {
   List<WorkspaceFloorTab> Function()? _floorTabs;
   void Function(String tabId)? _floorTabSelector;
 
+  /// The top strip's floor BUTTONS after its second rule — the groups whose
+  /// panels lie on the floor one at a time (I-147). Built by the workspace:
+  /// they are its strip buttons, with its bands and its drops.
+  Widget floorGroups(BuildContext context) =>
+      _floorGroups?.call(context) ?? const SizedBox.shrink();
+
+  WidgetBuilder? _floorGroups;
+
   /// Which edge the FLOATING REGION is docked to — the timeline and the
   /// paper panels it switches between.
   ///
@@ -129,6 +137,7 @@ class WorkspacePanelsMenuController extends ChangeNotifier {
     String? Function()? floorTabId,
     List<WorkspaceFloorTab> Function()? floorTabs,
     void Function(String tabId)? floorTabSelector,
+    WidgetBuilder? floorGroups,
     bool Function()? regionOnTop,
     void Function(bool onTop)? regionMover,
     bool Function()? brushValuesOnStrip,
@@ -146,6 +155,7 @@ class WorkspacePanelsMenuController extends ChangeNotifier {
     _floorTabId = floorTabId;
     _floorTabs = floorTabs;
     _floorTabSelector = floorTabSelector;
+    _floorGroups = floorGroups;
     _regionOnTop = regionOnTop;
     _regionMover = regionMover;
     _brushValuesOnStrip = brushValuesOnStrip;
@@ -176,6 +186,7 @@ class WorkspacePanelsMenuController extends ChangeNotifier {
     _floorTabId = null;
     _floorTabs = null;
     _floorTabSelector = null;
+    _floorGroups = null;
     _regionOnTop = null;
     _regionMover = null;
     _brushValuesOnStrip = null;

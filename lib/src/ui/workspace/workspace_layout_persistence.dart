@@ -73,6 +73,7 @@ class _WorkspaceLayoutPersistence {
         _state._railToolsOnly.value = false;
       });
       _state._layout.restore(docks: _EditorWorkspaceState._defaultDocks());
+      _state._laidFloorTab.value = null;
     });
   }
 
@@ -128,6 +129,12 @@ class _WorkspaceLayoutPersistence {
         dockExtents: restored.dockExtents,
       );
     });
+    // What lay on the floor, as long as it still stands on the top strip
+    // ([_EditorWorkspaceState._mutatingLayout] lets go of anything else).
+    _state._mutatingLayout(() {
+      final laid = payload[_laidFloorTabKey];
+      _state._laidFloorTab.value = laid is String ? laid : null;
+    });
     for (final entry in _state._railExtents.entries) {
       entry.value.value = restored.railExtents[entry.key];
     }
@@ -157,6 +164,11 @@ class _WorkspaceLayoutPersistence {
 
   /// The layout file's key for where the brush detail window was left.
   static const _brushDetailAtKey = 'brushDetailAt';
+
+  /// The layout file's key for the panel laid on the floor out of a top
+  /// strip group ([_EditorWorkspaceState._laidFloorTab]) — absent while the
+  /// floor holds its own.
+  static const _laidFloorTabKey = 'laidFloorTab';
 
   /// A point as the file kept it — `[x, y]` — or null for anything else,
   /// which opens the window where a window that was never moved opens.
@@ -251,5 +263,6 @@ class _WorkspaceLayoutPersistence {
     // Absent until the window has been moved, by the rail extents' rule.
     if (_state._brushDetailAt.value case final at?)
       _brushDetailAtKey: [at.dx, at.dy],
+    _laidFloorTabKey: ?_state._laidFloorTab.value,
   };
 }

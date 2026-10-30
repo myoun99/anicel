@@ -124,6 +124,8 @@ import 'widgets/app_scrollbar.dart';
 import 'widgets/static_raster.dart';
 import 'widgets/superellipse_clip.dart';
 import 'widgets/tick_layer.dart';
+import 'widgets/drag_chip.dart';
+import 'widgets/grip_band.dart' show LiftingGripBand;
 import 'keyed_keep_alive_stack.dart';
 import 'sliced_value_listenable_builder.dart';
 import 'timeline/memo_token.dart' show ByList;
@@ -515,6 +517,17 @@ class EditorWorkspace extends StatefulWidget {
   static String railGroupId({required bool right, required int slot}) =>
       'rail-${right ? 'R' : 'L'}$slot';
 
+  /// The dock holding one of the TOP STRIP's groups — the buttons after
+  /// its second rule, whose panels lie on the floor rather than beside it.
+  /// [slot] is 1-based, from the same pool size as a rail's
+  /// ([railSlots]): the strip is the rail turned sideways.
+  ///
+  /// 🗣️I-147 (유저 2026-10-30): 「캔버스베이스 패널들 … 상단띠 통해 배경에
+  /// 깔수있게 … 깔 때는 하나씩만 여는거니까」 — the floor shows one of
+  /// them at a time, so a group here is never OPEN beside the drawing; it
+  /// is LAID ([_EditorWorkspaceState._laidFloorTab]).
+  static String topGroupId({required int slot}) => 'top-$slot';
+
   /// 레일당 폭 하나 (유저 확정): every group on a rail shares one width, so
   /// widening one widens them all and the rail reads as a column rather
   /// than as a stack of differently-sized boxes.
@@ -678,6 +691,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       EditorWorkspace.railGroupId(right: false, slot: slot): null,
     for (var slot = 5; slot <= EditorWorkspace.railSlots; slot += 1)
       EditorWorkspace.railGroupId(right: true, slot: slot): null,
+    // The top strip's floor groups (I-147), the same pool — every one EMPTY:
+    // 🗣️I-147-Q3 c (유저 2026-10-30): 「지금 자리 그대로 — 상단 띠의 그 자리는
+    // 처음엔 비어 있다」. A button stands there once its band carries it
+    // there; until then the sheets and the sub viewer open beside the
+    // drawing from the right strip, as they did.
+    for (var slot = 1; slot <= EditorWorkspace.railSlots; slot += 1)
+      EditorWorkspace.topGroupId(slot: slot): null,
     // 도구띠: 툴라이브러리 버튼, 그 밑에 툴설정 버튼 (유저 확정, R3 #10).
     // They used to be two tabs of one group, which made them one button
     // and hid one behind the other.
@@ -821,6 +841,34 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   final ValueNotifier<EditorPanelTabDragData?> _draggingTab = ValueNotifier(
     null,
   );
+
+  /// The strip BUTTON in flight, carried by its band (null = none) — the
+  /// strips raise their empty slot for it only while this is set.
+  final ValueNotifier<_StripGroupDragData?> _draggingGroup = ValueNotifier(
+    null,
+  );
+
+  /// Whether the pointer is on each strip — the first rung its buttons'
+  /// bands climb, as a tab's climbs when its panel is under the pointer.
+  final ({
+    ValueNotifier<bool> left,
+    ValueNotifier<bool> right,
+    ValueNotifier<bool> top,
+  })
+  _stripNearby = (
+    left: ValueNotifier(false),
+    right: ValueNotifier(false),
+    top: ValueNotifier(false),
+  );
+
+  /// The panel laid on the floor out of a top strip group — null while the
+  /// floor holds its own two, the canvas and the main viewer, whichever is
+  /// in front of [EditorWorkspace.centerGroupId].
+  ///
+  /// A TAB, not a slot: a group moved to another slot keeps lying there,
+  /// and one moved off the top strip, or emptied, stops ([_laidFloorDockId]
+  /// asks where the tab is now, and [_mutatingLayout] lets go of it).
+  final ValueNotifier<String?> _laidFloorTab = ValueNotifier(null);
 
   /// Drag-locked tabs (the canvas by default: a stray drag must not undock
   /// the drawing surface — unlock via the lock glyph on its tab).
@@ -1266,12 +1314,19 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     );
     // So is where the brush detail window was left: its title bar moves it.
     _brushDetailAt.addListener(_layoutPersistence.scheduleLayoutSave);
+    // And what lies on the floor (I-147).
+    _laidFloorTab.addListener(_layoutPersistence.scheduleLayoutSave);
     widget.panelsMenu?.attach(
       entriesProvider: _panelMenuEntries,
       toggler: _togglePanelVisibility,
       // The brush's place too: the strip shows the brush's values or not
       // by it, where the region's place is read only when its row opens.
-      relay: Listenable.merge([_layout, _brushValuesOnStrip, _railToolsOnly]),
+      relay: Listenable.merge([
+        _layout,
+        _brushValuesOnStrip,
+        _railToolsOnly,
+        _laidFloorTab,
+      ]),
       layoutReset: _layoutPersistence.resetWorkspaceLayout,
       toolRailOnRight: () =>
           _layout.tabsIn(EditorWorkspace.toolRightGroupId).isNotEmpty,
@@ -1286,6 +1341,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           ),
       ],
       floorTabSelector: _tabs.selectFloorTab,
+      floorGroups: (context) => _docks.buildFloorGroupButtons(),
       regionOnTop: () => _regionOnTop,
       regionMover: (onTop) {
         if (_regionOnTop == onTop) {
@@ -1854,6 +1910,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _mainViewer.dispose();
     _subViewer.dispose();
     _draggingTab.dispose();
+    _draggingGroup.dispose();
+    _stripNearby
+      ..left.dispose()
+      ..right.dispose()
+      ..top.dispose();
+    _laidFloorTab.dispose();
     widget.layerNav?.unbind(this);
     widget.barCommands?.unbind(this);
     widget.doorCommands?.unbind(this);
@@ -1886,11 +1948,26 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   void _mutatingLayout(VoidCallback mutate) {
     final before = _framePanelsInFront();
     mutate();
+    // The laid panel left the top strip — moved beside the drawing, closed —
+    // so the floor is its own two again, and stays so when it comes back.
+    if (_laidFloorDockId() == EditorWorkspace.centerGroupId) {
+      _laidFloorTab.value = null;
+    }
     final cameForward = _framePanelsInFront().difference(before);
     if (cameForward.contains(EditorWorkspace.storyboardTabId)) {
       clampPlayheadForStoryboard(widget.session);
     }
     cameForward.forEach(_revealThePlayheadOn);
+  }
+
+  /// The dock lying on the floor: the top strip group [_laidFloorTab] is in,
+  /// or the floor's own ([EditorWorkspace.centerGroupId]).
+  String _laidFloorDockId() {
+    final laid = _laidFloorTab.value;
+    final at = laid == null ? null : _layout.locateTab(laid);
+    return at != null && _WorkspaceRail.isTopSlot(at.dockId)
+        ? at.dockId
+        : EditorWorkspace.centerGroupId;
   }
 
   /// The frame panels in front of a dock that shows.
@@ -2545,7 +2622,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       // panel once per drag frame, which is what made dragging a divider
       // feel heavy. Sizes ride `_layout.extentRevision` and are read inside
       // the two builders that actually consume them.
-      listenable: Listenable.merge([_layout, _timelineOrientation]),
+      listenable: Listenable.merge([
+        _layout,
+        _timelineOrientation,
+        // What lies on the floor is what the floor is built from.
+        _laidFloorTab,
+      ]),
       builder: (context, _) => _workspace(context),
     );
   }
@@ -2628,7 +2710,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                       // tall as that row (F-322).
                       _foldedStoryboard.fold,
                     ]),
-                    child: _docks.buildCenterDock(),
+                    child: _docks.buildFloorDock(),
                     builder: (context, floor) =>
                         _floorFor(context, floor, room, constraints),
                   ),
@@ -3227,21 +3309,41 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 /// It is also a DROP target: dragging a panel onto it puts that panel in this
 /// group. That is the only way to build a group, which is why the strip must
 /// not scroll — a scrolling strip would take the drag first.
+///
+/// 🗣️I-147 (유저 2026-10-30): and it wears the panel tab's band along its top
+/// edge, inside its own square ([LiftingGripBand]) — 「버튼을 길게하는게
+/// 아니라 … 버튼내에서 공간나누던가해서 오버레이로 위에 띠」 — which lifts
+/// the button with every panel it holds to another strip's empty slot. The
+/// empty slot wears none: it holds nothing to lift, and it takes a lifted
+/// button as it takes a panel.
 class _RailGroupButton extends StatelessWidget {
   const _RailGroupButton({
     required this.railId,
     required this.open,
     required this.tabs,
+    required this.nearby,
     required this.dragging,
     required this.onPressed,
     required this.onTabDropped,
+    this.carried,
+    this.onGroupDropped,
+    this.onLifted,
     this.face,
   });
 
   final String railId;
   final bool open;
   final List<EditorPanelTab> tabs;
+
+  /// Whether the pointer is on the strip — the band's first rung.
+  final ValueListenable<bool> nearby;
+
+  /// The panel in flight that this button would take — null when none is,
+  /// or when the one that is may not stand here.
   final EditorPanelTabDragData? dragging;
+
+  /// The strip button in flight, for the empty slot that would take it.
+  final _StripGroupDragData? carried;
 
   /// Drawn INSTEAD of the glyph, for a group whose state is what the button
   /// should be saying — the colour pair.
@@ -3251,12 +3353,31 @@ class _RailGroupButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final ValueChanged<EditorPanelTabDragData> onTabDropped;
 
+  /// Where a carried button lands — the empty slot's alone.
+  final ValueChanged<_StripGroupDragData>? onGroupDropped;
+
+  /// Told what this button's band carries as it is lifted, null as it lands.
+  final ValueChanged<_StripGroupDragData?>? onLifted;
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final tooltip = tabs.isEmpty
         ? AppText.strings.panelNewGroup
         : [for (final tab in tabs) tab.label].join(' · ');
+    final band = tabs.isEmpty
+        ? null
+        : LiftingGripBand<_StripGroupDragData>(
+            gripKey: ValueKey<String>('rail-group-band-$railId'),
+            data: _StripGroupDragData(railId),
+            feedback: DragChip(
+              items: [
+                for (final tab in tabs) (icon: tab.icon, label: tab.label),
+              ],
+            ),
+            nearby: nearby,
+            onLifted: onLifted,
+          );
     final button = face == null
         ? RailButton(
             keyValue: 'rail-group-$railId',
@@ -3264,6 +3385,7 @@ class _RailGroupButton extends StatelessWidget {
             icon: tabs.isEmpty ? Icons.add : tabs.first.icon,
             selected: open,
             onPressed: onPressed,
+            band: band,
           )
         : AppTooltip(
             message: tooltip,
@@ -3283,37 +3405,71 @@ class _RailGroupButton extends StatelessWidget {
                   // wears a face is the same square as every other.
                   child: SizedBox.square(
                     dimension: ToolsPanel.buttonExtent,
-                    child: face,
+                    child: Stack(
+                      children: [
+                        Positioned.fill(child: face!),
+                        if (band != null)
+                          Positioned(left: 0, right: 0, top: 0, child: band),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
           );
-    if (dragging == null) {
-      return button;
-    }
-    return DragTarget<EditorPanelTabDragData>(
-      onAcceptWithDetails: (details) => onTabDropped(details.data),
-      builder: (context, candidate, rejected) {
-        final hovered = candidate.isNotEmpty;
-        return DecoratedBox(
-          position: DecorationPosition.foreground,
-          decoration: ShapeDecoration(
-            shape: AppShapes.control(
-              ToolsPanel.buttonExtent,
-              side: BorderSide(
-                color: hovered
-                    ? colorScheme.primary
-                    : colorScheme.primary.withValues(alpha: 0.45),
-                width: hovered ? 1.5 : 1,
-              ),
+    final takesPanel = dragging == null
+        ? button
+        : DragTarget<EditorPanelTabDragData>(
+            onAcceptWithDetails: (details) => onTabDropped(details.data),
+            builder: (context, candidate, rejected) => _offered(
+              colorScheme,
+              hovered: candidate.isNotEmpty,
+              child: button,
             ),
-          ),
-          child: button,
-        );
-      },
+          );
+    final landing = onGroupDropped;
+    if (carried == null || landing == null) {
+      return takesPanel;
+    }
+    return DragTarget<_StripGroupDragData>(
+      onAcceptWithDetails: (details) => landing(details.data),
+      builder: (context, candidate, rejected) => _offered(
+        colorScheme,
+        hovered: candidate.isNotEmpty,
+        child: takesPanel,
+      ),
     );
   }
+
+  /// [child] outlined as a place something in flight may land.
+  Widget _offered(
+    ColorScheme colorScheme, {
+    required bool hovered,
+    required Widget child,
+  }) => DecoratedBox(
+    position: DecorationPosition.foreground,
+    decoration: ShapeDecoration(
+      shape: AppShapes.control(
+        ToolsPanel.buttonExtent,
+        side: BorderSide(
+          color: hovered
+              ? colorScheme.primary
+              : colorScheme.primary.withValues(alpha: 0.45),
+          width: hovered ? 1.5 : 1,
+        ),
+      ),
+    ),
+    child: child,
+  );
+}
+
+/// A strip BUTTON in flight — carried by its band ([LiftingGripBand]) with
+/// every panel it holds (I-147).
+class _StripGroupDragData {
+  const _StripGroupDragData(this.groupId);
+
+  /// The slot the button stood in as it was lifted.
+  final String groupId;
 }
 
 /// The workspace's resolved geometry for one layout pass — what the rail
