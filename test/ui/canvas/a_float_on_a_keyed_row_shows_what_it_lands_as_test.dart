@@ -824,7 +824,8 @@ void main() {
         final c = await open(
           tester,
           projectOf(rows, keyed: false, plugin: true),
-          fxPlugins: await installedShiftingFxPlugin(tester),
+          // Far past where the float lands: the landing is the cel.
+          fxPlugins: await installedShiftingFxPlugin(tester, by: 40),
         );
         expect(
           theCanvasRowRunsAPlugin(tester),
@@ -848,54 +849,57 @@ void main() {
   }
 
   for (final rows in [_Rows.live, _Rows.range]) {
-    testWidgets('${rows.name}: a sheet warped on keyed rows whose chain runs '
-        'a PLUGIN shows what it lands as once the device lets the plugin go '
-        'with the box open — the landing and the hole asked again', (
-      tester,
-    ) async {
-      final plugins = await installedShiftingFxPlugin(tester);
-      final c = await open(
+    for (final warped in [false, true]) {
+      final how = warped ? 'warped' : 'dragged';
+      testWidgets('${rows.name}: a sheet $how on keyed rows whose chain runs '
+          'a PLUGIN shows what it lands as once the device lets the plugin go '
+          'with the box open — the landing and the hole asked again', (
         tester,
-        projectOf(rows, keyed: true, plugin: true),
-        fxPlugins: plugins,
-      );
-      final region = await sheets(tester, c, rows);
-      if (rows == _Rows.range) {
-        // Ink on B the box does not hold: B's hole shows it, through
-        // its chain.
-        final b = Rect.fromLTWH(c.dx + 40, c.dy - 64, 120, 120);
-        final apart = Rect.fromLTWH(c.dx + 40, c.dy + 130, 40, 40);
-        await lay(
+      ) async {
+        final plugins = await installedShiftingFxPlugin(tester, by: 40);
+        final c = await open(
           tester,
-          keyB,
-          b.expandToInclude(apart),
-          (x, y) => sheet(b, x, y) ?? sheet(apart, x, y),
+          projectOf(rows, keyed: true, plugin: true),
+          fxPlugins: plugins,
         );
-        await settle(tester);
-      }
-      final drawn = await composite(tester);
+        final region = await sheets(tester, c, rows);
+        if (rows == _Rows.range) {
+          // Ink on B the box does not hold: B's hole shows it, through
+          // its chain.
+          final b = Rect.fromLTWH(c.dx + 40, c.dy - 64, 120, 120);
+          final apart = Rect.fromLTWH(c.dx + 40, c.dy + 130, 40, 40);
+          await lay(
+            tester,
+            keyB,
+            b.expandToInclude(apart),
+            (x, y) => sheet(b, x, y) ?? sheet(apart, x, y),
+          );
+          await settle(tester);
+        }
+        final drawn = await composite(tester);
 
-      expectLandsAsCarried(
-        await carry(
-          tester,
-          rows,
-          region: region,
-          warps: [movedAndScaled],
-          whileOpen: () async {
-            await tester.runAsync(
-              () => plugins.uninstall(shiftingFxPluginDescription.id),
-            );
-            await settle(tester);
-            expect(
-              theCanvasRowRunsAPlugin(tester),
-              isFalse,
-              reason: '⛔fixture: the plugin is gone from the canvas',
-            );
-          },
-        ),
-        drawn,
-      );
-    });
+        expectLandsAsCarried(
+          await carry(
+            tester,
+            rows,
+            region: region,
+            warps: [if (warped) movedAndScaled],
+            whileOpen: () async {
+              await tester.runAsync(
+                () => plugins.uninstall(shiftingFxPluginDescription.id),
+              );
+              await settle(tester);
+              expect(
+                theCanvasRowRunsAPlugin(tester),
+                isFalse,
+                reason: '⛔fixture: the plugin is gone from the canvas',
+              );
+            },
+          ),
+          drawn,
+        );
+      });
+    }
   }
 
   testWidgets('⛔CONTROL: on a row that keys nothing a sheet floats as its '
