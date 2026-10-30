@@ -298,6 +298,27 @@ bool cellsFallOffThePixelGrid(
   return off(tx) || off(ty) || off(sx * cell) || off(sy * cell);
 }
 
+/// The point of [canvas]'s space nearest its origin where the edges of its
+/// pixels cross, for a raster of [scale] pixels to a unit of the space laid
+/// on it 1:1 — the scale that says how many of the canvas's pixels a unit
+/// covers past its transform, the screen's ratio on the screen and 1 in a
+/// raster. A grid counted from here ([rectOutwardOnGrid]'s `origin`) is the
+/// canvas's pixels; a turned or projected space has no edge on the grid,
+/// and its grid is counted from the origin.
+ui.Offset pixelGridOriginAt(ui.Canvas canvas, double scale) {
+  final space = _pixelGridOf(canvas, 1);
+  if (space == null) {
+    return ui.Offset.zero;
+  }
+  final (:sx, :sy, :tx, :ty) = space;
+  double from(double translation, double unit) {
+    final pixels = translation * scale / unit.abs();
+    return (pixels.roundToDouble() - pixels) / (unit.sign * scale);
+  }
+
+  return ui.Offset(from(tx, sx), from(ty, sy));
+}
+
 /// [canvas]'s space on its pixels — each axis's scale and origin, carried
 /// past the canvas's own transform by [pixelRatio] — or null where the space
 /// is turned, projected or flat and has no edge on the grid.

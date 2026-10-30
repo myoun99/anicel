@@ -9,6 +9,8 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/composite_tree.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/rgba_color.dart';
@@ -19,6 +21,7 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_resample.dart';
 import 'package:anicel/src/ui/canvas/landing_preview.dart';
+import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/canvas/stage_planes_painter.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_float.dart';
@@ -53,6 +56,8 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// whole edge is cut the same with or without anti-aliasing, and the pins
 /// below would pass on nothing).
 void main() {
+  // A blend over its backdrop is composed by its shader.
+  setUpAll(LayerBlendShader.load);
   const canvasSize = CanvasSize(width: 4, height: 4);
   const paper = ProjectBackground.color(0xFF00FF00);
   const zoom = 1.1;
@@ -130,6 +135,10 @@ void main() {
     bool ink = true,
     bool live = true,
     BitmapSurfacePainter? surface,
+    List<CompositeNode<CanvasStackRow>> nodes = const [
+      CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
+    ],
+    CanvasViewport? view,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -141,16 +150,12 @@ void main() {
               width: logical.width,
               height: logical.height,
               child: TheFrameAsItStands(
-                nodes: const [
-                  CompositeLeaf<CanvasStackRow>(
-                    CanvasActiveLayerRow(opacity: 1),
-                  ),
-                ],
+                nodes: nodes,
                 imageCache: LayerFrameImageCache(
                   frameStore: BrushFrameStore(),
                 ),
                 canvasSize: canvasSize,
-                viewport: viewport,
+                viewport: view ?? viewport,
                 activeSurfacePainter: live
                     ? surface ?? cornerInkSurface(ink: ink)
                     : null,
@@ -513,6 +518,104 @@ void main() {
         reason: 'the walk cuts each edge on the pixel the buffer does',
       );
     });
+
+    // the-walk-family-cuts-the-rest-on-the-grid (10-30): a node the walk
+    // draws as a picture of its own lay on a grid counted from the canvas's
+    // origin, which the view's phase puts inside a device pixel above 100%
+    // — so its blit resampled each texel once more and blended its edge.
+    // 🔬A folder at half strength: 18 of 256 pixels apart from the buffer at
+    // 125% (a seam of the ink a pixel off, 16/255 of it past the page), 12 at
+    // 150%; at a ratio of 2, 10 · 5 · 12 of 1,024 at 125 · 137 · 150%.
+    const leaf = CompositeLeaf<CanvasStackRow>(
+      CanvasActiveLayerRow(opacity: 1),
+    );
+    final pictures = <String, List<CompositeNode<CanvasStackRow>>>{
+      'a folder': const [
+        CompositeGroup<CanvasStackRow>(
+          children: [leaf],
+          opacity: 0.5,
+          blendMode: LayerBlendMode.normal,
+        ),
+      ],
+      'a blend over its backdrop': const [
+        CompositeBackdropBlend<CanvasStackRow>(
+          backdrop: [],
+          source: leaf,
+          blendMode: LayerBlendMode.multiply,
+        ),
+      ],
+      'a clip': const [
+        CompositeClip<CanvasStackRow>(
+          base: leaf,
+          scope: [],
+          opacity: 0.5,
+          blendMode: LayerBlendMode.normal,
+        ),
+      ],
+      'an adjustment': [
+        CompositeAdjustment<CanvasStackRow>(
+          children: const [leaf],
+          effects: [
+            ResolvedLayerEffect(
+              kind: EffectKind.brightnessContrast,
+              values: [20, 0],
+            ),
+          ],
+          mix: 0.5,
+        ),
+      ],
+    };
+    for (final MapEntry(key: picture, value: nodes) in pictures.entries) {
+      for (final (ratio, zoom, turned) in [
+        (1.0, 1.25, false),
+        (1.0, 1.37, false),
+        (1.0, 1.5, false),
+        (2.0, 0.625, false),
+        (2.0, 0.685, false),
+        (2.0, 0.75, false),
+        // Turned over, the canvas's space runs the other way from its
+        // origin: the grid is counted back from it.
+        (1.0, 1.25, true),
+        (2.0, 0.75, true),
+      ]) {
+        testWidgets('$picture the walk draws lies on the device\'s pixels — '
+            '${(zoom * ratio * 100).round()}% at a ratio of $ratio'
+            '${turned ? ', turned over' : ''}', (tester) async {
+          tester.view.devicePixelRatio = ratio;
+          addTearDown(tester.view.resetDevicePixelRatio);
+          final view = CanvasViewport(
+            zoom: zoom,
+            panX: turned ? 10 : 5,
+            panY: 3,
+            flipHorizontal: turned,
+          );
+          final buffered = await pumpEditingStack(
+            tester,
+            surface: seamedInkSurface(),
+            nodes: nodes,
+            view: view,
+          );
+          final bufferedBytes = (await tester.runAsync(
+            () => rasterize(buffered, ratio: ratio),
+          ))!;
+          final walk = await pumpEditingStack(
+            tester,
+            disableBuffer: true,
+            surface: seamedInkSurface(),
+            nodes: nodes,
+            view: view,
+          );
+          final bytes = (await tester.runAsync(
+            () => rasterize(walk, everyEdgeBlended: true, ratio: ratio),
+          ))!;
+          expect(
+            bytes,
+            equals(bufferedBytes),
+            reason: 'the picture lands each texel where the buffer does',
+          );
+        });
+      }
+    }
 
     test('a grid whole in the canvas\'s space and not on the device\'s — '
         'the ratio decides', () async {
