@@ -82,7 +82,9 @@ class FlutterGpuFramePictures implements FramePictureGpu {
   /// formats, which `flutter_gpu` names `unknown` — zero bytes a texel. A
   /// write into one sized its buffer and its spans at zero and never came
   /// back: build 1083's trace, 2026-10-30, no write into a picture answered
-  /// on either.
+  /// on either. iOS now renders without it (`FLTEnableWideGamut` false in
+  /// its Info.plist, F-509-Q7); a Mac on Apple silicon with a P3 screen
+  /// still renders with it — its embedder reads no such key (engine 3.47.4).
   static bool sizes(gpu.PixelFormat format) => format.bytesPerBlock > 0;
 
   @override
