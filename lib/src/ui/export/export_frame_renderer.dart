@@ -279,6 +279,14 @@ class ExportFrameRenderer {
     surfaceOf: (layer, frame) => _surfaceFor(cut, layer, frame),
   );
 
+  /// How this render reads [cut]'s cels ([CelReading]): each as it
+  /// reads it ([_surfaceFor]), through the plugins it runs
+  /// ([_pluginsOf]).
+  CelReading _readingOf(Cut cut) => (
+    surfaces: (layer, frame) => _surfaceFor(cut, layer, frame),
+    plugins: _pluginsOf(cut),
+  );
+
   BitmapSurface? _surfaceFor(Cut cut, Layer layer, Frame frame) {
     // 🚨A MOVIE's pictures are read through, never held here: a movie is a
     // full-canvas picture per FRAME, and the store's budget decides how long
@@ -653,8 +661,7 @@ class ExportFrameRenderer {
         cut: _cutForRender(cut),
         row: row,
         frameIndex: task.frameIndex,
-        surfaceResolver: (layer, frame) => _surfaceFor(cut, layer, frame),
-        plugins: _pluginsOf(cut),
+        reading: _readingOf(cut),
       ),
     );
   }
@@ -784,8 +791,7 @@ class ExportFrameRenderer {
   ) => planCutFrameCompositeTree(
     cut: _cutForRender(task.cut),
     frameIndex: task.frameIndex,
-    surfaceResolver: (layer, frame) => _surfaceFor(task.cut, layer, frame),
-    plugins: _pluginsOf(task.cut),
+    reading: _readingOf(task.cut),
   );
 
   /// The BACKDROP ground (R3b) under a video frame — null when nothing is
@@ -1409,13 +1415,10 @@ class ExportFrameRenderer {
       stack.addAll(over);
     }
     final cutOf = Map<CutFrameCompositeLayer, Cut>.identity();
+    final frameIndex = celGroupFirstExposure(task);
     final shown = mapCompositeLeaves<_CelLaid, CutFrameCompositeLayer>(
       stack,
-      (laid) => _laidInTheCel(
-        laid,
-        cutOf: cutOf,
-        frameIndex: celGroupFirstExposure(task),
-      ),
+      (laid) => _laidInTheCel(laid, cutOf: cutOf, frameIndex: frameIndex),
     );
     return renderService.renderThroughCamera(
       nodes: _readingOnPaper(
@@ -1425,7 +1428,7 @@ class ExportFrameRenderer {
           paintedNormal: (layer) => layer.paintedNormal(),
         ),
         cutOf: cutOf,
-        frameIndex: celGroupFirstExposure(task),
+        frameIndex: frameIndex,
       ),
       pose: cel.view.pose,
       cameraFrameSize: cel.view.frameSize,
@@ -1655,8 +1658,7 @@ class ExportFrameRenderer {
         cut: _onPaper(cut),
         row: row,
         frameIndex: frameIndex,
-        surfaceResolver: (layer, frame) => _surfaceFor(cut, layer, frame),
-        plugins: _pluginsOf(cut),
+        reading: _readingOf(cut),
       ),
       null => null,
     },

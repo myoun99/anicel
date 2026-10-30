@@ -223,10 +223,9 @@ void main() {
       ]);
       final flat = visit(cut: posed, frameIndex: 0).single.placement;
       final tree = planCutFrameCompositeTree(
-        plugins: null,
         cut: posed,
         frameIndex: 0,
-        surfaceResolver: resolver,
+        reading: (surfaces: resolver, plugins: null),
       );
 
       expect(flat, isNotNull);

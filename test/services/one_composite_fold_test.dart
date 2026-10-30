@@ -77,10 +77,9 @@ void main() {
     Cut source,
     Set<String> artwork,
   ) => planCutFrameCompositeTree(
-    plugins: null,
     cut: source,
     frameIndex: 0,
-    surfaceResolver: resolverFor(artwork),
+    reading: (surfaces: resolverFor(artwork), plugins: null),
   );
 
   group('a leaf that resolves to nothing drops', () {

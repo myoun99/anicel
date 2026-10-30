@@ -243,13 +243,12 @@ void main() {
   group('the surface plan', () {
     test('carries the chain to the paint routes, leaves and groups alike', () {
       final nodes = planCutFrameCompositeTree(
-        plugins: null,
         cut: cut([
           drawingLayer(id: 'a', folder: 'f', effects: [blur(3)]),
           folderRow('f', effects: [brightness(10)]),
         ]),
         frameIndex: 0,
-        surfaceResolver: (layer, frame) => null,
+        reading: (surfaces: (layer, frame) => null, plugins: null),
       );
       // No artwork resolved, so the group drops — the point is that it did
       // not throw.

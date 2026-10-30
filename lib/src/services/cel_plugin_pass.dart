@@ -27,7 +27,7 @@ import '../models/fx_plugin_run.dart';
 import '../models/layer_effect.dart';
 import '../models/layer_id.dart';
 import '../models/placed_tile.dart';
-import '../models/tile_coord.dart';
+import '../models/tiles_covering.dart';
 import 'brush_stroke_blend.dart' show bitmapSurfaceRegionPixels;
 import 'cel_text_laying.dart';
 
@@ -189,8 +189,9 @@ DirtyRegion _inflated(DirtyRegion region, int by) => DirtyRegion(
 
 /// [straight] — the plugin's picture over [input] — as [surface]'s tiles:
 /// every tile of [input] the picture keeps ([BitmapSurface.containsTileCoord]),
-/// the clear ones dropped. Nothing outside [input] held ink
-/// ([_contentOf]), so the picture is the whole cel.
+/// the clear ones dropped ([BitmapSurface.putMaterializedTiles]). Nothing
+/// outside [input] held ink ([_contentOf]), so the picture is the whole
+/// cel.
 BitmapSurface _surfaceOf(
   BitmapSurface surface,
   Uint8List straight,
@@ -198,43 +199,28 @@ BitmapSurface _surfaceOf(
 ) {
   final size = surface.tileSize;
   final tiles = <PlacedTile>[];
-  final (:firstX, :lastX, :firstY, :lastY) = input.tileRange(tileSize: size);
-  for (var y = firstY; y <= lastY; y += 1) {
-    for (var x = firstX; x <= lastX; x += 1) {
-      final coord = TileCoord(x: x, y: y);
-      if (!surface.containsTileCoord(coord)) {
-        continue;
-      }
-      final within = input.intersection(
-        DirtyRegion(
-          left: x * size,
-          top: y * size,
-          rightExclusive: (x + 1) * size,
-          bottomExclusive: (y + 1) * size,
-        ),
-      )!;
-      final pixels = Uint8List(size * size * 4);
-      final rowBytes = within.width * 4;
-      for (var row = within.top; row < within.bottomExclusive; row += 1) {
-        final to = ((row - y * size) * size + within.left - x * size) * 4;
-        pixels.setRange(
-          to,
-          to + rowBytes,
-          straight,
-          ((row - input.top) * input.width + within.left - input.left) * 4,
-        );
-      }
-      tiles.add((coord: coord, tile: BitmapTile(size: size, pixels: pixels)));
+  for (final span in tileSpansOf(input, tileSize: size)) {
+    if (!surface.containsTileCoord(span.coord)) {
+      continue;
     }
+    final pixels = Uint8List(size * size * 4);
+    final rowBytes = (span.rightExclusive - span.left) * 4;
+    for (var row = span.top; row < span.bottomExclusive; row += 1) {
+      final to =
+          ((row - span.worldTop) * size + span.left - span.worldLeft) * 4;
+      pixels.setRange(
+        to,
+        to + rowBytes,
+        straight,
+        ((row - input.top) * input.width + span.left - input.left) * 4,
+      );
+    }
+    tiles.add((
+      coord: span.coord,
+      tile: BitmapTile(size: size, pixels: pixels),
+    ));
   }
-  return BitmapSurface(
-    canvasSize: surface.canvasSize,
-    pasteboardReach: surface.pasteboardReach,
-    tileSize: size,
-    texts: surface.texts,
-    photos: surface.photos,
-    laidBounds: surface.laidBounds,
-  ).putMaterializedTiles(tiles);
+  return surface.putMaterializedTiles(tiles);
 }
 
 Uint8List _premultiplied(Uint8List straight) {

@@ -139,7 +139,6 @@ void main() {
           ).renderThroughCamera(
             canvasSize: canvas,
             nodes: planCutFrameCompositeTree(
-              plugins: null,
               cut: Cut(
                 id: cutId,
                 name: 'Cut',
@@ -148,7 +147,10 @@ void main() {
                 canvasSize: canvas,
               ),
               frameIndex: 0,
-              surfaceResolver: (_, _) => BitmapSurface(canvasSize: canvas),
+              reading: (
+                surfaces: (_, _) => BitmapSurface(canvasSize: canvas),
+                plugins: null,
+              ),
             ),
             pose: view.pose,
             cameraFrameSize: view.frameSize,

@@ -92,10 +92,9 @@ void main() {
 
   List<CompositeNode<CutFrameCompositeLayer>> planOf(Layer layer) =>
       planCutFrameCompositeTree(
-        plugins: null,
         cut: cutOf(layer),
         frameIndex: 0,
-        surfaceResolver: (_, _) => surface,
+        reading: (surfaces: (_, _) => surface, plugins: null),
       );
 
   List<String> kindsOf(List<ResolvedLayerEffect> effects) => [
@@ -201,10 +200,9 @@ void main() {
     List<CompositeNode<CutFrameCompositeLayer>> planOfRows(
       List<Layer> layers,
     ) => planCutFrameCompositeTree(
-      plugins: null,
       cut: cutOf(numbered).copyWith(layers: layers),
       frameIndex: 0,
-      surfaceResolver: (_, _) => surface,
+      reading: (surfaces: (_, _) => surface, plugins: null),
     );
     final asBase = planOfRows([
       numbered,
@@ -269,10 +267,9 @@ void main() {
     expect(kindsOf(worn), ['blur', 'blur']);
     expect(chainWornBy(cut, base), base.effects);
     final nodes = planCutFrameCompositeTree(
-      plugins: null,
       cut: cut,
       frameIndex: 0,
-      surfaceResolver: (_, _) => surface,
+      reading: (surfaces: (_, _) => surface, plugins: null),
     );
     // The number is the base's: one group, and the attached row a leaf.
     expect(nodes.whereType<_Group>(), hasLength(1));
@@ -292,10 +289,9 @@ void main() {
       'nowhere else in the tree (F-481)', () {
     List<CompositeNode<CutFrameCompositeLayer>> blankPlanOf(Layer layer) =>
         planCutFrameCompositeTree(
-          plugins: null,
           cut: cutOf(layer),
           frameIndex: 0,
-          surfaceResolver: (_, _) => null,
+          reading: (surfaces: (_, _) => null, plugins: null),
         );
     expect(blankPlanOf(drawing()), isEmpty, reason: 'no number: it drops');
     final nodes = blankPlanOf(drawing(effects: [number('n')]));

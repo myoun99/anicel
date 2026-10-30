@@ -153,6 +153,14 @@ double _ownStrengthAt(Layer layer, Layer carrier, int frameIndex) =>
 typedef LayerFrameSurfaceResolver =
     BitmapSurface? Function(Layer layer, Frame frame);
 
+/// How a route reads each row's cel: its surface ([surfaces]), and
+/// what runs the plugins the row's chain runs ([plugins]) — null for a
+/// route that runs none.
+typedef CelReading = ({
+  LayerFrameSurfaceResolver surfaces,
+  FxPluginBinding? plugins,
+});
+
 /// One ROW that paints in a cut frame's composite tree, bottom → top: an
 /// entry resolved from stored pixels, or the row being DRAWN ON with none
 /// exposed here.
@@ -1688,18 +1696,16 @@ List<CompositeNode<CutFrameCompositeRow>> _folderAsRead(
 /// that drops with them (an empty buffer is a wasted saveLayer) — save one
 /// a cel number is written on, which stands bare ([mapCompositeLeaves]).
 ///
-/// [plugins] runs each plugin a row's chain runs ([FxPluginBinding]).
+/// [reading]: how each row's cel is read ([CelReading]).
 List<CompositeNode<CutFrameCompositeLayer>> planCutFrameCompositeTree({
   required Cut cut,
   required int frameIndex,
-  required LayerFrameSurfaceResolver surfaceResolver,
-  required FxPluginBinding? plugins,
+  required CelReading reading,
 }) => _withSurfaces(
   resolveCutFrameCompositeTree(cut: cut, frameIndex: frameIndex),
   cut: cut,
   frameIndex: frameIndex,
-  surfaceResolver: surfaceResolver,
-  plugins: plugins,
+  reading: reading,
 );
 
 /// Row [row] of [cut] at [frameIndex] as a chain that reads it reads it
@@ -1710,27 +1716,24 @@ List<CompositeNode<CutFrameCompositeLayer>>? planRowAsRead({
   required Cut cut,
   required LayerId row,
   required int frameIndex,
-  required LayerFrameSurfaceResolver surfaceResolver,
-  required FxPluginBinding? plugins,
+  required CelReading reading,
 }) => switch (_rowAsRead(cut, row, frameIndex: frameIndex, liveLayerId: null)) {
   final read? => _withSurfaces(
     read,
     cut: cut,
     frameIndex: frameIndex,
-    surfaceResolver: surfaceResolver,
-    plugins: plugins,
+    reading: reading,
   ),
   null => null,
 };
 
-/// [nodes] of [cut] with each leaf's surface resolved by [surfaceResolver]
+/// [nodes] of [cut] with each leaf's surface read by [reading]
 /// ([planCutFrameCompositeTree]).
 List<CompositeNode<CutFrameCompositeLayer>> _withSurfaces(
   List<CompositeNode<CutFrameCompositeRow>> nodes, {
   required Cut cut,
   required int frameIndex,
-  required LayerFrameSurfaceResolver surfaceResolver,
-  required FxPluginBinding? plugins,
+  required CelReading reading,
 }) {
   CutFrameCompositeLayer? layerOf(
     CutFrameCompositeRow row,
@@ -1750,7 +1753,7 @@ List<CompositeNode<CutFrameCompositeLayer>> _withSurfaces(
         blendMode: row.blendMode,
         placement: row.placement,
         effects:
-            plugins?.call(
+            reading.plugins?.call(
               row.effects,
               cut: cut,
               row: row.layer,
@@ -1767,7 +1770,7 @@ List<CompositeNode<CutFrameCompositeLayer>> _withSurfaces(
       nodes,
       (row) => layerOf(
         row,
-        (entry) => surfaceResolver(entry.layer, entry.frame),
+        (entry) => reading.surfaces(entry.layer, entry.frame),
       ),
       bare: (row) =>
           layerOf(row, (_) => BitmapSurface(canvasSize: cut.canvasSize)),

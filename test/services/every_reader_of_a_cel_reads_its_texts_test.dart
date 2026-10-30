@@ -179,10 +179,9 @@ void main() {
 
       final leaf =
           planCutFrameCompositeTree(
-                plugins: null,
                 cut: cut,
                 frameIndex: 0,
-                surfaceResolver: (_, _) => resolved,
+                reading: (surfaces: (_, _) => resolved, plugins: null),
               ).single
               as CompositeLeaf<CutFrameCompositeLayer>;
 

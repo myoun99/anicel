@@ -15,7 +15,7 @@ import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'temp_dir.dart';
+import 'project_scratch_folder.dart';
 
 /// A run of [runner] at [frame], reading [rows].
 FxPluginRun fxPluginRunOf(
@@ -67,7 +67,7 @@ Future<InstalledFxPlugins> installedShiftingFxPlugin(
 }) async {
   final description = as ?? shiftingFxPluginDescription;
   final room = Directory.systemTemp.createTempSync('anicel_fx_shift_');
-  addTearDown(() => deleteTempQuietly(room));
+  deleteAfterSessionEnds(room);
   final plugins = InstalledFxPlugins(
     service: FxPluginLibraryService(directoryPath: '${room.path}/fx'),
     // The stand-in's module is its description's text.

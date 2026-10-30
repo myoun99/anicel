@@ -510,8 +510,7 @@ void main() {
       final nodes = planCutFrameCompositeTree(
         cut: cutOf([a]),
         frameIndex: 0,
-        surfaceResolver: (layer, frame) => cel,
-        plugins: binding,
+        reading: (surfaces: (layer, frame) => cel, plugins: binding),
       );
       final layer = (nodes.single as CompositeLeaf<CutFrameCompositeLayer>)
           .payload;
