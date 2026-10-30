@@ -34,7 +34,16 @@ enum BrushPressureTarget {
   /// as the press grows — a pencil's grain filling as it darkens (F-456).
   /// Under the paper's height (`BrushTextureMode.height`) it is how deep the
   /// dab reaches into the paper instead.
-  textureDensity;
+  textureDensity,
+
+  /// 絵の具量 and 絵の具濃度 — a mixing brush's load and the strength of
+  /// what it lays, with the same 影響元 Clip Studio gives size (gouache card
+  /// Q9 = a, 유저 2026-10-30 「필압 줄을 넣는다」): its 불투명 수채 · 투명
+  /// 수채 · 구아슈 press their load from 0, so a light touch smears and a
+  /// hard one lays the brush's own colour. Read per dab by the mixer
+  /// (`BrushGroundColorMixer`), not carried on the dab.
+  paintAmount,
+  paintDensity;
 
   /// Whether a curve on this setting may go PAST its base — 傾き's 最大値.
   /// Clip Studio offers it where the base is not already the most there is

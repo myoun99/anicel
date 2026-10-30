@@ -278,6 +278,45 @@ void main() {
       }
     });
 
+    testWidgets('a mixing brush throws its ランダム 絵の具濃度 from the '
+        'stroke\'s own dice: the same press, the same throws (gouache card '
+        'Q9)', (tester) async {
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(
+        _app(
+          _view(
+            _sessionState(width: 32),
+            results.add,
+            inputSettings: BrushEditCanvasInputSettings.fromShape(
+              BrushShape(
+                size: 4,
+                mixesGroundColor: true,
+                curves: {
+                  (BrushPressureTarget.paintDensity, BrushInputSource.random):
+                      BrushPressureCurve.linearFrom(0.0),
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      Future<List<int>> alphasLaid() async {
+        final gesture = await tester.startGesture(
+          canvasGlobalOffset(tester, const Offset(3, 3)),
+          pointer: 1,
+        );
+        await gesture.moveTo(canvasGlobalOffset(tester, const Offset(28, 3)));
+        await gesture.up();
+        await tester.pump();
+        return [for (final dab in results.last) dab.color >>> 24];
+      }
+
+      final first = await alphasLaid();
+      expect(first.length, greaterThan(4), reason: 'a line, not a dot');
+      expect(first.toSet().length, greaterThan(1), reason: 'thrown');
+      expect(await alphasLaid(), first);
+    });
+
     testWidgets('a brush that does not mix keeps its own colour', (
       tester,
     ) async {

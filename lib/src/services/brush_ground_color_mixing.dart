@@ -1,7 +1,11 @@
+import 'dart:math' as math;
+
 import '../models/brush_dab.dart';
 import '../core/argb_channels.dart';
+import '../models/brush_pressure_curve.dart';
 import '../models/brush_shape.dart';
 import 'brush_dab_share.dart';
+import 'brush_pressure_dynamics.dart';
 
 /// The colour already on the cel under a dab, as the mixer needs it.
 ///
@@ -40,9 +44,14 @@ typedef BrushGroundColorSampler =
 /// That ordering is now load-bearing: the rasterizers may never reorder or
 /// parallelise dabs within a stroke.
 class BrushGroundColorMixer {
-  BrushGroundColorMixer({required this.shape});
+  BrushGroundColorMixer({required this.shape, this.random});
 
   final BrushShape shape;
+
+  /// The ランダム row's dice for 絵の具量 and 絵の具濃度 — the stroke's own,
+  /// as [applyBrushInputDynamics] takes its. Without them that row is
+  /// skipped.
+  final math.Random? random;
 
   /// The paint currently on the brush. Null until the first dab seeds it
   /// from the brush colour.
@@ -82,8 +91,12 @@ class BrushGroundColorMixer {
   ///   colour on top, at 絵の具濃度 as before.
   /// 🔬Against the sample's stroke centres every 20px (RGB RMS): 유채 92 →
   /// 12, 진한 수채 124 → 25. 불투명 · 투명 수채 and 구아슈 stay ~45–70 under
-  /// every law tried: their 絵の具量 follows pressure in Clip Studio (minimum
-  /// 0), which the import does not read yet.
+  /// every law tried. Their 絵の具量 · 絵の具濃度 follow the pen in Clip
+  /// Studio, and since Q9 those rows come in ([_ofDab]): at the steady
+  /// press that fits each best, 불투명 수채 71 → 42, 구아슈 54 → 52, 진한
+  /// 수채 25 → 22, 유채 12 as it was, but 투명 수채 44 → 69 — its 濃度
+  /// falls with the press from 0, and the sample was drawn at no press we
+  /// know. The constants were not fitted again.
   /// ↩️Until then the reservoir was never refilled — a blue oil brush that
   /// crossed red was red to the end of the stroke — and the stretch was how
   /// much a stamp lifted.
@@ -101,8 +114,6 @@ class BrushGroundColorMixer {
       return dabs;
     }
     final stretch = shape.colorStretch.clamp(0.0, 1.0);
-    final amount = shape.paintAmount.clamp(0.0, 1.0);
-    final density = shape.paintDensity.clamp(0.0, 1.0);
     final pickPerStamp = (1.0 - stretch) * _pickPerStamp;
 
     final mixed = <BrushDab>[];
@@ -112,7 +123,22 @@ class BrushGroundColorMixer {
       final ground = sample(dab.center.x, dab.center.y, dab.size / 2.0);
       final _Paint deposit;
       final double thickness;
-      if (amount > 0.0) {
+      // ⚠️DRY IS THE BRUSH'S, NOT THE DAB'S — my reading, not the user's: a
+      // 絵の具量 its curve presses down to 0 is a loaded brush laying none
+      // of its own colour this dab, still laying what it carries at its
+      // 絵の具濃度; only a 絵の具量 set to 0 makes the 수채 섞기 that lays
+      // nothing on bare canvas.
+      if (shape.paintAmount > 0.0) {
+        final amount = _ofDab(
+          dab,
+          BrushPressureTarget.paintAmount,
+          shape.paintAmount,
+        );
+        final density = _ofDab(
+          dab,
+          BrushPressureTarget.paintDensity,
+          shape.paintDensity,
+        );
         var carried = _reservoir ?? drawing;
         // Bare canvas has no colour to lift; the brush keeps what it holds.
         if (ground.coverage > 0.0) {
@@ -147,6 +173,15 @@ class BrushGroundColorMixer {
     }
     return mixed;
   }
+
+  /// [target]'s setting for [dab]: the brush's [base], through the curves
+  /// the dab's inputs reach — size's and flow's own reading
+  /// ([brushInputFactor]).
+  double _ofDab(BrushDab dab, BrushPressureTarget target, double base) =>
+      (base * brushInputFactor(dab, shape, target, random: random)).clamp(
+        0.0,
+        1.0,
+      );
 }
 
 /// What a whole stamp lifts of the ground at 色延び 0 ([BrushGroundColorMixer]

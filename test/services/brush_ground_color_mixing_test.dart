@@ -1,13 +1,19 @@
+import 'dart:math' as math;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_input_source.dart';
+import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_shape.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/services/brush_ground_color_mixing.dart';
+import 'package:anicel/src/services/brush_preset_defaults.dart';
 
-/// A dab carrying [color]; only colour, position and size matter here. It
-/// stands for no path, so it takes a whole stamp's pickup and refill.
-BrushDab dabAt(double x, int color) => BrushDab(
+/// A dab carrying [color]; only colour, position, size and [pressure] matter
+/// here. It stands for no path, so it takes a whole stamp's pickup and
+/// refill.
+BrushDab dabAt(double x, int color, {double pressure = 1.0}) => BrushDab(
   center: CanvasPoint(x: x, y: 0),
   color: color,
   size: 10,
@@ -15,7 +21,7 @@ BrushDab dabAt(double x, int color) => BrushDab(
   flow: 1.0,
   hardness: 1.0,
   tipShape: BrushTipShape.round,
-  pressure: 1.0,
+  pressure: pressure,
   sequence: 0,
 );
 
@@ -198,6 +204,99 @@ void main() {
       ).apply([dabAt(0, red), dabAt(10, red)], sample: groundOf(blue));
 
       expect(laid.map(alphaOf), [0, 0]);
+    });
+  });
+
+  group('絵の具量 and 絵の具濃度 follow the pen (gouache card Q9 = a)', () {
+    // 유저 2026-10-30 「필압 줄을 넣는다」 — the same rows size and flow
+    // have; Clip Studio's 불투명 수채 · 투명 수채 · 구아슈 carry them.
+    BrushShape pressing(BrushPressureTarget target, BrushInputSource source) =>
+        BrushShape(
+          mixesGroundColor: true,
+          curves: {(target, source): BrushPressureCurve.linearFrom(0.0)},
+        );
+
+    test('a lighter touch lays thinner paint', () {
+      final shape = pressing(
+        BrushPressureTarget.paintDensity,
+        BrushInputSource.pressure,
+      );
+      final light = BrushGroundColorMixer(
+        shape: shape,
+      ).apply([dabAt(0, red, pressure: 0.5)], sample: bare).single;
+      final hard = BrushGroundColorMixer(
+        shape: shape,
+      ).apply([dabAt(0, red, pressure: 1.0)], sample: bare).single;
+
+      expect(alphaOf(light), 0x80);
+      expect(alphaOf(hard), 0xFF);
+    });
+
+    test('🎯a lighter touch lays less of its own colour over what it '
+        'crosses', () {
+      final shape = pressing(
+        BrushPressureTarget.paintAmount,
+        BrushInputSource.pressure,
+      );
+      int redLaid(double pressure) => redOf(
+        BrushGroundColorMixer(shape: shape)
+            .apply(
+              [dabAt(0, black, pressure: pressure)],
+              sample: groundOf(white),
+            )
+            .single,
+      );
+
+      expect(redLaid(0.2), greaterThan(redLaid(1.0)));
+    });
+
+    test('⚠️a load pressed down to nothing still lays what the brush '
+        'carries — dry is the brush\'s 絵の具量, not the dab\'s', () {
+      final laid = BrushGroundColorMixer(
+        shape: pressing(
+          BrushPressureTarget.paintAmount,
+          BrushInputSource.pressure,
+        ),
+      ).apply([dabAt(0, red, pressure: 0.0)], sample: bare).single;
+
+      expect(laid.color, red);
+    });
+
+    test('the ランダム row throws the stroke\'s own dice, and is skipped '
+        'without them', () {
+      final shape = pressing(
+        BrushPressureTarget.paintDensity,
+        BrushInputSource.random,
+      );
+      final dabs = [for (var i = 0; i < 4; i += 1) dabAt(i * 10.0, red)];
+      final dice = math.Random(7);
+
+      expect(
+        BrushGroundColorMixer(
+          shape: shape,
+          random: math.Random(7),
+        ).apply(dabs, sample: bare).map(alphaOf),
+        [for (var i = 0; i < 4; i += 1) (dice.nextDouble() * 255).round()],
+      );
+      expect(
+        BrushGroundColorMixer(
+          shape: shape,
+        ).apply(dabs, sample: bare).map(alphaOf),
+        everyElement(0xFF),
+      );
+    });
+
+    test('the built-in mixing brushes keep their values, with no such '
+        'row', () {
+      final pressed = [
+        for (final preset in defaultBrushPresets)
+          for (final (target, _) in preset.settings.shape.curves.keys)
+            if (target == BrushPressureTarget.paintAmount ||
+                target == BrushPressureTarget.paintDensity)
+              preset.id.value,
+      ];
+
+      expect(pressed, isEmpty);
     });
   });
 }

@@ -370,6 +370,8 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
     BrushPressureTarget.roundness => AppText.strings.brRoundness,
     BrushPressureTarget.spacing => AppText.strings.brSpacing,
     BrushPressureTarget.textureDensity => AppText.strings.brTextureDensity,
+    BrushPressureTarget.paintAmount => AppText.strings.brPaintAmount,
+    BrushPressureTarget.paintDensity => AppText.strings.brPaintDensity,
   };
 
   String _nameOf(BrushInputSource source) => switch (source) {

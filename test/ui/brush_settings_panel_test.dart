@@ -662,6 +662,38 @@ void main() {
       );
     });
 
+    for (final target in [
+      BrushPressureTarget.paintAmount,
+      BrushPressureTarget.paintDensity,
+    ]) {
+      testWidgets('${target.name} takes a pen curve of its own (gouache '
+          'card Q9 = a)', (tester) async {
+        final read = await _pumpPanel(
+          tester,
+          initial: BrushToolState.defaults.copyWith(mixesGroundColor: true),
+        );
+        final curveButton = find.byKey(
+          ValueKey<String>('brush-tool-pressure-${target.name}'),
+        );
+        await tester.ensureVisible(curveButton);
+        await tester.tap(curveButton);
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const ValueKey<String>('curve-source-pressure')),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          read().toInputSettings().shape.curveFor(
+            target,
+            BrushInputSource.pressure,
+          ),
+          BrushPressureCurve.identity(),
+        );
+        expect(tester.takeException(), isNull);
+      });
+    }
+
     testWidgets('the angle\'s random turn reaches the engine — from the '
         'window behind the button beside the angle (F-176-Q6)', (
       tester,

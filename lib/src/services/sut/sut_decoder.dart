@@ -307,7 +307,8 @@ BrushSettings _settingsFromVariant(
   // ★Thickness IS roundness here and Interval IS spacing, so their effectors
   // land on those settings' rows (F-176-Q2) — ランダム included, which is what
   // stops a textured stamp brush looking stamped and breaks up the even beat
-  // of its dabs.
+  // of its dabs. MixColor and MixAlpha are 絵の具量 and 絵の具濃度, as the
+  // knobs below read them (gouache card Q9 = a).
   final curves = <BrushDynamicsKey, BrushPressureCurve>{
     for (final (target, column) in const [
       (BrushPressureTarget.size, 'BrushSizeEffector'),
@@ -315,6 +316,8 @@ BrushSettings _settingsFromVariant(
       (BrushPressureTarget.flow, 'BrushFlowEffector'),
       (BrushPressureTarget.roundness, 'BrushThicknessEffector'),
       (BrushPressureTarget.spacing, 'BrushIntervalEffector'),
+      (BrushPressureTarget.paintAmount, 'BrushMixColorEffector'),
+      (BrushPressureTarget.paintDensity, 'BrushMixAlphaEffector'),
     ])
       for (final entry in _effectorCurves(variant[column]).entries)
         (target, entry.key): entry.value,

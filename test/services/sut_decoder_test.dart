@@ -238,6 +238,11 @@ void main() {
     int? dualUseSpray,
     double? dualSpraySize,
     int? dualSprayDensity,
+    // Gouache card Q9: 絵の具量's and 絵の具濃度's own 影響元.
+    int mixColorEffectorFlags = 0x00,
+    int mixColorEffectorMinimum = 0,
+    int mixAlphaEffectorFlags = 0x00,
+    int mixAlphaEffectorMinimum = 0,
   }) async {
     // Unique per call: a test that builds several fixtures would otherwise
     // reopen the first one and fail on its existing tables.
@@ -275,7 +280,8 @@ void main() {
         BrushRevisionByViewScale INTEGER, BrushRevisionBezier INTEGER,
         DualBrushCompositeMode INTEGER, DualInterval REAL,
         DualThickness INTEGER, DualRotation REAL, DualUseSpray INTEGER,
-        DualSpraySize REAL, DualSprayDensity INTEGER);
+        DualSpraySize REAL, DualSprayDensity INTEGER,
+        BrushMixColorEffector BLOB, BrushMixAlphaEffector BLOB);
       CREATE TABLE MaterialFile(_PW_ID INTEGER PRIMARY KEY,
         CatalogPath TEXT, OriginalPath TEXT, FileData BLOB);
     ''');
@@ -310,11 +316,12 @@ void main() {
       'BrushUseRevision, BrushRevision, BrushRevisionBySpeed, '
       'BrushRevisionByViewScale, BrushRevisionBezier, '
       'DualBrushCompositeMode, DualInterval, DualThickness, DualRotation, '
-      'DualUseSpray, DualSpraySize, DualSprayDensity) '
+      'DualUseSpray, DualSpraySize, DualSprayDensity, '
+      'BrushMixColorEffector, BrushMixAlphaEffector) '
       'VALUES (9, 80, 50.0, 60, 70, 15.0, 40, 200.0, 1, ?, ?, ?, ?, '
       '?, 200.0, 4, ?, 182.0, 90, 1, -40, 30, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
       '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
-      '?, ?)',
+      '?, ?, ?, ?)',
       [
         tipArray ?? patternArray(catalogPath),
         sizeEffector ??
@@ -379,6 +386,14 @@ void main() {
         dualUseSpray,
         dualSpraySize,
         dualSprayDensity,
+        effector(
+          mixColorEffectorFlags,
+          minimumPercent: mixColorEffectorMinimum,
+        ),
+        effector(
+          mixAlphaEffectorFlags,
+          minimumPercent: mixAlphaEffectorMinimum,
+        ),
       ],
     );
     // Round brush without pattern data.
@@ -1555,6 +1570,38 @@ void main() {
     expect(s.paintAmount, closeTo(0.9, 1e-9));
     expect(s.paintDensity, closeTo(1.0, 1e-9));
     expect(s.colorStretch, closeTo(0.3, 1e-9));
+  });
+
+  test('絵の具量 and 絵の具濃度 bring their own 影響元 (gouache card Q9)', () async {
+    // Clip Studio's 불투명 수채 presses its 絵の具量 from 0; 진한 수채 its
+    // 絵の具濃度 from 50.
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      useWaterColor: 1,
+      mixColorEffectorFlags: 0x10,
+      mixColorEffectorMinimum: 0,
+      mixAlphaEffectorFlags: 0x10,
+      mixAlphaEffectorMinimum: 50,
+    );
+    final s = (await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    )).presets.first.settings;
+
+    expect(
+      s.shape.curveFor(
+        BrushPressureTarget.paintAmount,
+        BrushInputSource.pressure,
+      ),
+      BrushPressureCurve.linearFrom(0.0),
+    );
+    expect(
+      s.shape.curveFor(
+        BrushPressureTarget.paintDensity,
+        BrushInputSource.pressure,
+      ),
+      BrushPressureCurve.linearFrom(0.5),
+    );
   });
 
   test('mixing knobs stay inert when the gate is off', () async {
