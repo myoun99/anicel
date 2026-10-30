@@ -532,6 +532,9 @@ class FramePictureStore<K extends Object> {
   /// answered at the submission rather than its completion: fastest on the
   /// main PC (3.0 ms), but 190 late on the Surface. ⛔Not the deepest level
   /// or the patch rastered at once (`toImageSync`): later on both.
+  /// ⚠️A bench's numbers, nothing on a screen: in the app itself the main
+  /// PC takes about 33 ms from a step to the picture, 8 ms of it the patch's
+  /// render, a third of it each raster below (F-512, 2026-10-30).
   ///
   /// ⛔⛔TWO WAITS A BATCH, TRIED AGAIN AND REVERTED (2026-10-28, card
   /// s5-stroke-trails-on-the-heavy-cut ②b, 유저 답 「쓰기 왕복을 줄인다
