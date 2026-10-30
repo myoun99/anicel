@@ -44,20 +44,21 @@ class _StoryboardFolded {
     for (var index = 0; index < tracks.length; index += 1) {
       for (final slot in rows._trackGroupRowGeometry(tracks[index])) {
         if (_standingAddressOf(slot) == standing) {
-          return _rowOf(project, tracks[index], index, slot, standing);
+          return _rowOf(project, index, slot, standing);
         }
       }
     }
     return null;
   }
 
+  /// [slot] of [project]'s [trackIndex]th track, stood on as [standing].
   StoryboardFoldedRow? _rowOf(
     Project project,
-    Track track,
     int trackIndex,
     _StoryboardRailSlot slot,
     TimelineRowAddress standing,
   ) {
+    final track = project.tracks[trackIndex];
     if (slot.row is TrackRowAddress) {
       return null;
     }
@@ -76,7 +77,7 @@ class _StoryboardFolded {
       for (final entry in buildStoryboardTimelineLayout(project))
         if (entry.trackId == track.id) entry,
     ];
-    final strip = _stripOf(project, track, trackIndex, slot, entries);
+    final strip = _stripOf(project, trackIndex, slot, entries);
     return (
       height: slot.height,
       snapshot: snapshot,
@@ -89,11 +90,11 @@ class _StoryboardFolded {
   /// [slot]'s label and strip — the rail's own widgets for its kind.
   _FoldedStrip _stripOf(
     Project project,
-    Track track,
     int trackIndex,
     _StoryboardRailSlot slot,
     List<StoryboardTimelineLayoutEntry> entries,
   ) {
+    final track = project.tracks[trackIndex];
     if (slot.standRow case final stood?) {
       return switch (trackConteRowOf(stood.layerId)) {
         final conte? => _conte(track, conte.seat, entries, slot.height),
