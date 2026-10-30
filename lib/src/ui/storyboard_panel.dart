@@ -688,6 +688,7 @@ class StoryboardPanel extends StatefulWidget {
     this.pixelsPerFrame = 8,
     this.onPixelsPerFrameChanged,
     this.rulerView = FrameRulerView.frames,
+    this.rulerPages,
     this.onRulerViewChanged,
     this.railExtent,
     this.frameAxisOffset,
@@ -1143,6 +1144,10 @@ class StoryboardPanel extends StatefulWidget {
   /// and the cut totals with them: frames (`48`) or seconds+frames (`2+0`)
   /// ([showSeconds]).
   final FrameRulerView rulerView;
+
+  /// The conte book's pages — where the page view's ruler starts again
+  /// (I-81-Q3 「콘티용지패널의 페이지 기준」); null off it.
+  final TimelineRulerPages? rulerPages;
 
   /// Whether a length reads as seconds+frames ([FrameRulerView.seconds]).
   bool get showSeconds => rulerView.seconds;
@@ -2771,6 +2776,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                     onEdgeAutoPan: _scroll.autoPanRulerEdge,
                     framesPerSecond: _countingFps,
                     rulerView: widget.rulerView,
+                    rulerPages: widget.rulerPages,
                   ),
                 ),
               ),
@@ -2814,6 +2820,7 @@ class _StoryboardRuler extends StatefulWidget {
     this.onEdgeAutoPan,
     this.framesPerSecond = 24,
     this.rulerView = FrameRulerView.frames,
+    this.rulerPages,
   });
 
   final double width;
@@ -2868,6 +2875,7 @@ class _StoryboardRuler extends StatefulWidget {
   /// display cycles 1..fps here exactly like the timeline — UI-R11 #10).
   final int framesPerSecond;
   final FrameRulerView rulerView;
+  final TimelineRulerPages? rulerPages;
 
   @override
   State<_StoryboardRuler> createState() => _StoryboardRulerState();
@@ -3007,9 +3015,8 @@ class _StoryboardRulerState extends State<_StoryboardRuler> {
                 metrics: metrics,
                 onSelectFrame: (_) {},
                 framesPerSecond: widget.framesPerSecond,
-                // No pages yet: where the track's pages begin waits on
-                // I-81-Q3, so the page view counts here as frames.
                 rulerView: widget.rulerView,
+                pages: widget.rulerPages,
                 windowBucket: widget.windowBucket,
                 viewportMainExtent: widget.viewportWidth,
               ),

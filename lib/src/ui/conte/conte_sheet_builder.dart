@@ -8,6 +8,7 @@ import '../../models/camera_moves.dart' show CameraMove, cameraMoves;
 import '../../models/camera_work_marks.dart'
     show CameraKeyRole, cameraKeyLabel;
 import '../../models/conte/conte_camera_lines.dart';
+import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
@@ -100,6 +101,37 @@ ConteSheetSource buildConteSheetSource(Project project, {String? olWord}) {
     blankPage: info.conteBlankPage,
     fixedText: info.conteFixedText,
   );
+}
+
+/// Where the pages of [project]'s conte book begin on its track — its first
+/// on frame 0, and each after it on its first cell: the pages the
+/// storyboard's ruler counts by under the page view.
+///
+/// 🗣️I-81-Q3 (유저 2026-10-30): 「콘티용지패널의 페이지 기준」. The book is
+/// laid here as the conte panel lays it, on the camera's [aspect].
+///
+/// A film has one track (전제 8); a file carrying more has its first's
+/// pages read, the book's front, since every track starts on frame 0 and
+/// one ruler cannot count two.
+List<int> contePageHeadsOf(Project project, {required double aspect}) {
+  final starts = {
+    for (final entry in buildStoryboardTimelineLayout(project))
+      if (entry.trackIndex == 0) entry.cutId.value: entry.startFrame,
+  };
+  final pages = layoutConteSheet(
+    buildConteSheetSource(project),
+    metrics: ConteSheetMetrics.ofWork(
+      project.timesheetInfo,
+      cameraAspect: aspect,
+    ),
+  );
+  return [
+    0,
+    for (final page in pages.skip(1))
+      for (final cell in page.cells.take(1))
+        if (starts[cell.cutId] case final start?)
+          start + cell.source.startFrame,
+  ];
 }
 
 ConteCutSource _cutSource(

@@ -132,7 +132,7 @@ class TimelinePanel extends StatefulWidget {
     this.onPixelsPerFrameChanged,
     this.onZoomFit,
     this.rulerView = FrameRulerView.frames,
-    this.sheetPageFrames,
+    this.sheetPages,
     this.onRulerViewChanged,
     this.timelineRailExtent,
     this.xsheetRailExtent,
@@ -514,9 +514,9 @@ class TimelinePanel extends StatefulWidget {
   final FrameRulerView rulerView;
   final ValueChanged<FrameRulerView>? onRulerViewChanged;
 
-  /// How many frames a page of the open cut's X-sheet holds — where the
-  /// page view's rulers start again; null with no cut open.
-  final int? sheetPageFrames;
+  /// The pages of the open cut's X-sheet — where the page view's rulers
+  /// start again; null with no cut open.
+  final TimelineRulerPages? sheetPages;
 
   /// The two grids' rail windows. SEPARATE by the user's decision: the
   /// sheet's stood-up header block and the timeline's rail are sized
@@ -730,7 +730,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       seClipMarkerTooltip: widget.seClipMarkerTooltip,
       projectFrameRate: widget.projectFrameRate,
       rulerView: widget.rulerView,
-      sheetPageFrames: widget.sheetPageFrames,
+      sheetPages: widget.sheetPages,
       onRulerViewChanged: widget.onRulerViewChanged,
       onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
       onDropMediaAssetOnSeBlock: widget.onDropMediaAssetOnSeBlock,

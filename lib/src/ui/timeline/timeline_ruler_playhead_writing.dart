@@ -9,7 +9,6 @@ import 'memo_token.dart';
 import 'timeline_frame_ruler_painter.dart';
 import 'timeline_frame_window.dart';
 import 'timeline_glyph_cache.dart';
-import 'timeline_grid_metrics.dart' show timelineFirstOnStride;
 
 /// The playhead's own writing on a ruler strip, and what of the strip's
 /// writing it stands on (I-16).
@@ -52,12 +51,7 @@ timelineRulerPlayheadWriting({
   // The frames the strip writes at, walked as the strip walks them
   // ([TimelineRulerScale.paintWindow]): I-22 ③ — the neighbourhood is
   // ~1,200 frames at 0.16px, and a frame off the stride holds no writing.
-  final step = scale.writingStep;
-  for (
-    var frameIndex = timelineFirstOnStride(reach.startIndex, step);
-    frameIndex < reach.endIndexExclusive;
-    frameIndex += step
-  ) {
+  for (final frameIndex in scale.framesWrittenIn(reach)) {
     for (final glyph in scale.writtenAt(layout, frameIndex, current: false)) {
       final rect = glyph.rect;
       if (pair.any((mine) => mine.rect.overlaps(rect))) {

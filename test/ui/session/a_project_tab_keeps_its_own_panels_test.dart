@@ -134,7 +134,7 @@ void main() {
     // I-81-Q1 「그 컷의 X시트 장을 따른다」: the open cut's paper, six
     // seconds at 24.
     final ruler = timelineRulerPainter(tester).scale;
-    expect(ruler.pageFrames, 144);
+    expect(ruler.pages, const TimelineRulerPages.every(144));
     expect(ruler.modelAt(0).secondsLabel, '0 p1');
 
     final second = projects.open(createDefaultProject());

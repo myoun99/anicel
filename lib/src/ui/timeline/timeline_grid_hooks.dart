@@ -92,7 +92,7 @@ class TimelineGridHooks {
     this.seClipMarkerTooltip,
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.rulerView = FrameRulerView.frames,
-    this.sheetPageFrames,
+    this.sheetPages,
     this.onRulerViewChanged,
     this.onPixelsPerFrameChanged,
     this.onDropMediaAssetOnSeBlock,
@@ -293,9 +293,9 @@ class TimelineGridHooks {
   /// Whether a length reads as seconds+frames ([FrameRulerView.seconds]).
   bool get showSeconds => rulerView.seconds;
 
-  /// How many frames a page of the open cut's X-sheet holds — where the
-  /// page view's ruler starts again; null with no cut open.
-  final int? sheetPageFrames;
+  /// The pages of the open cut's X-sheet — where the page view's ruler
+  /// starts again; null with no cut open.
+  final TimelineRulerPages? sheetPages;
 
   /// The display's pick moved OUT of the command bar and onto the grid's
   /// top-left corner cell (the rail-window round) — it belongs beside the

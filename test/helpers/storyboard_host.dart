@@ -26,6 +26,7 @@ Future<EditorSessionManager> pumpStoryboardHost(
   Size surface = const Size(1500, 800),
   double pixelsPerFrame = PanelViewMemory.defaultStoryboardPixelsPerFrame,
   ValueChanged<double> onPixelsPerFrameChanged = _unheard,
+  FrameRulerView rulerView = FrameRulerView.frames,
 }) async {
   final session = EditorSessionManager(initialProject: project);
   addTearDown(session.dispose);
@@ -35,6 +36,7 @@ Future<EditorSessionManager> pumpStoryboardHost(
     surface: surface,
     pixelsPerFrame: pixelsPerFrame,
     onPixelsPerFrameChanged: onPixelsPerFrameChanged,
+    rulerView: rulerView,
   );
   return session;
 }
@@ -56,6 +58,7 @@ Future<void> pumpStoryboardHostOn(
   double pixelsPerFrame = PanelViewMemory.defaultStoryboardPixelsPerFrame,
   ValueChanged<double> onPixelsPerFrameChanged = _unheard,
   StoryboardRowsChannel? rowsChannel,
+  FrameRulerView rulerView = FrameRulerView.frames,
 }) async {
   await tester.binding.setSurfaceSize(surface);
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -77,7 +80,7 @@ Future<void> pumpStoryboardHostOn(
             rail: TabRailWiring.of(session),
             pixelsPerFrame: pixelsPerFrame,
             onPixelsPerFrameChanged: onPixelsPerFrameChanged,
-            rulerView: FrameRulerView.frames,
+            rulerView: rulerView,
             onRulerViewChanged: (_) {},
             thumbnails: null,
             rowsChannel: rowsChannel,

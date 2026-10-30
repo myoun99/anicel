@@ -428,13 +428,15 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   /// selection when the pressed row is in it.
   SessionRowButtonPresses get _rowPresses => SessionRowButtonPresses(_session);
 
-  /// How many frames a page of the open cut's X-sheet holds — where the
-  /// page view's rulers start again (I-81); null with no cut open.
-  int? get _sheetPageFrames => switch (_session.activeCutOrNull) {
+  /// The pages of the open cut's X-sheet — where the page view's rulers
+  /// start again (I-81); null with no cut open.
+  TimelineRulerPages? get _sheetPages => switch (_session.activeCutOrNull) {
     null => null,
-    final cut => sheetPageFramesOf(
-      cut,
-      _session.projectSettings.projectFrameRate.countingBase,
+    final cut => TimelineRulerPages.every(
+      sheetPageFramesOf(
+        cut,
+        _session.projectSettings.projectFrameRate.countingBase,
+      ),
     ),
   };
 
@@ -829,7 +831,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
             onZoomFit: widget.onZoomFit,
             rulerView: widget.rulerView,
-            sheetPageFrames: _sheetPageFrames,
+            sheetPages: _sheetPages,
             onRulerViewChanged: widget.onRulerViewChanged,
             timelineRailExtent: widget.timelineRailExtent,
             xsheetRailExtent: widget.xsheetRailExtent,

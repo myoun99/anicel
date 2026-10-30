@@ -31,7 +31,9 @@ void main() {
           onSelectFrame: (_) {},
           framesPerSecond: 24,
           rulerView: rulerView,
-          pageFrames: pageFrames,
+          pages: pageFrames == null
+              ? null
+              : TimelineRulerPages.every(pageFrames),
         ),
       ),
     ),

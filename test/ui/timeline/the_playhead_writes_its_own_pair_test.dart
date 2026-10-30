@@ -49,7 +49,7 @@ void main() {
         : XSheetFrameRailPainter.numberType,
     secondsFontSize: axis == Axis.horizontal ? 9 : 8,
     rulerView: rulerView,
-    pageFrames: pageFrames,
+    pages: pageFrames == null ? null : TimelineRulerPages.every(pageFrames),
   );
 
   String textOf(TimelineGlyphPlacement glyph) => glyph.painter.plainText;

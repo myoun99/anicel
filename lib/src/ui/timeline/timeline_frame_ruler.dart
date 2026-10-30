@@ -24,7 +24,7 @@ class TimelineFrameRuler extends StatelessWidget {
     required this.onSelectFrame,
     this.framesPerSecond = 24,
     this.rulerView = FrameRulerView.frames,
-    this.pageFrames,
+    this.pages,
     this.windowBucket,
     this.viewportMainExtent = 0,
     this.dragPreview,
@@ -46,8 +46,8 @@ class TimelineFrameRuler extends StatelessWidget {
   final FrameRulerView rulerView;
 
   /// How many frames a page of the cut's X-sheet holds
-  /// ([TimelineRulerScale.pageFrames]); null on the storyboard's.
-  final int? pageFrames;
+  /// ([TimelineRulerScale.pages]).
+  final TimelineRulerPages? pages;
 
   /// PRO-TIMELINE scrolling (UI-R15→R16): the strip windows itself off
   /// the quantized bucket — pass the full bounds, repaint per crossing.
@@ -97,7 +97,7 @@ class TimelineFrameRuler extends StatelessWidget {
           onSelectFrame: onSelectFrame,
           framesPerSecond: framesPerSecond,
           rulerView: rulerView,
-          pageFrames: pageFrames,
+          pages: pages,
           windowBucket: windowBucket,
           viewportMainExtent: viewportMainExtent,
           playhead: playhead,

@@ -921,7 +921,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
                             onSelectFrame: _railScrub.selectClampedFrame,
                             framesPerSecond: _countingFps,
                             rulerView: widget.hooks.rulerView,
-                            pageFrames: widget.hooks.sheetPageFrames,
+                            pages: widget.hooks.sheetPages,
                             windowBucket: _frameWindowBucket,
                             viewportMainExtent: bodyViewportHeight,
                           ),
@@ -1330,7 +1330,7 @@ class _XSheetFrameNumberRail extends StatelessWidget {
     required this.onSelectFrame,
     this.framesPerSecond = 24,
     this.rulerView = FrameRulerView.frames,
-    this.pageFrames,
+    this.pages,
     this.windowBucket,
     this.viewportMainExtent = 0,
     this.playhead,
@@ -1347,8 +1347,8 @@ class _XSheetFrameNumberRail extends StatelessWidget {
   final FrameRulerView rulerView;
 
   /// How many frames a page of the cut's X-sheet holds — where the page
-  /// view starts the rail's numbers again ([TimelineRulerScale.pageFrames]).
-  final int? pageFrames;
+  /// view starts the rail's numbers again ([TimelineRulerScale.pages]).
+  final TimelineRulerPages? pages;
 
   /// PRO-TIMELINE scrolling (UI-R15→R16): the painter windows itself off
   /// the quantized bucket — pass full bounds, repaint per span crossing.
@@ -1389,7 +1389,7 @@ class _XSheetFrameNumberRail extends StatelessWidget {
       secondsFontSize: 8,
       framesPerSecond: framesPerSecond,
       rulerView: rulerView,
-      pageFrames: pageFrames,
+      pages: pages,
       windowBucket: windowBucket,
       viewportMainExtent: viewportMainExtent,
       // The RAIL grays its past-playback tail where the ruler does

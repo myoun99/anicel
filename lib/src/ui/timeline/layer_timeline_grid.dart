@@ -1161,9 +1161,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
                                                         rulerView: widget
                                                             .hooks
                                                             .rulerView,
-                                                        pageFrames: widget
+                                                        pages: widget
                                                             .hooks
-                                                            .sheetPageFrames,
+                                                            .sheetPages,
                                                         windowBucket:
                                                             _frameWindowBucket,
                                                         viewportMainExtent:

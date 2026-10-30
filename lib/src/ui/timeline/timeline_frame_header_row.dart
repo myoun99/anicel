@@ -33,7 +33,7 @@ class TimelineFrameHeaderRow extends StatelessWidget {
     required this.onSelectFrame,
     this.framesPerSecond = 24,
     this.rulerView = FrameRulerView.frames,
-    this.pageFrames,
+    this.pages,
     this.windowBucket,
     this.viewportMainExtent = 0,
     this.playhead,
@@ -63,8 +63,8 @@ class TimelineFrameHeaderRow extends StatelessWidget {
   final FrameRulerView rulerView;
 
   /// How many frames a page of the cut's X-sheet holds
-  /// ([TimelineRulerScale.pageFrames]); null on the storyboard's.
-  final int? pageFrames;
+  /// ([TimelineRulerScale.pages]).
+  final TimelineRulerPages? pages;
 
   /// The playhead the strip writes its own pair at (I-16), on a layer of
   /// its own above the strip — a null VALUE writes none; a strip without
@@ -96,7 +96,7 @@ class TimelineFrameHeaderRow extends StatelessWidget {
       secondsFontSize: 9,
       framesPerSecond: framesPerSecond,
       rulerView: rulerView,
-      pageFrames: pageFrames,
+      pages: pages,
       windowBucket: windowBucket,
       viewportMainExtent: viewportMainExtent,
     );

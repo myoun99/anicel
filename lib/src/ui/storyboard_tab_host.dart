@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../core/identity_memo.dart';
 import '../models/cut_id.dart';
 import '../models/layer.dart' show LayerStackQueries;
 import '../models/layer_id.dart';
@@ -12,6 +13,7 @@ import '../models/track_id.dart';
 import '../models/working_panel.dart';
 import '../services/import/import_layer_spot.dart';
 import 'camera/camera_path_settings_rows.dart' show showCameraPathSettings;
+import 'conte/conte_sheet_builder.dart' show contePageHeadsOf;
 import 'storyboard/cut_link_window.dart';
 import 'timeline/frame_ruler_view.dart';
 import 'timeline/instance_editor_commands.dart';
@@ -161,6 +163,25 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// Where the storyboard's axes stand — the project's, saved with it
   /// (F-267), and held above the panel so a fold keeps them (F-143).
   PanelViewMemory get _axes => _session.panelViews;
+
+  final _contePages = IdentityMemo<TimelineRulerPages>();
+
+  /// The conte book's pages for the ruler to count by, laid only under the
+  /// page view (I-81-Q3) and again only when the work changes.
+  TimelineRulerPages? get _rulerPages {
+    if (widget.rulerView != FrameRulerView.pages) {
+      return null;
+    }
+    final project = _session.repository.requireProject();
+    final aspect = _session.camera.cameraFrameAspect;
+    return _contePages.resolve(
+      identity: project,
+      key: aspect,
+      build: () => TimelineRulerPages.startingAt(
+        contePageHeadsOf(project, aspect: aspect),
+      ),
+    );
+  }
 
   /// The rows' buttons as a press asks them — the timeline rail's own
   /// wiring, spread over the row selection when the pressed row is in it.
@@ -790,6 +811,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     trackLaneHeight: rail.trackLaneHeight,
                     onResizeTrackLanes: widget.onResizeTrackLanes,
                     rulerView: widget.rulerView,
+                    rulerPages: _rulerPages,
                     onRulerViewChanged: widget.onRulerViewChanged,
                     railExtent: widget.railExtent,
                     frameAxisOffset:

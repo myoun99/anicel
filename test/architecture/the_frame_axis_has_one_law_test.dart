@@ -42,8 +42,8 @@ void main() {
       'how wide six frames and a second are — thresholds, not positions',
     ),
     'lib/src/ui/timeline/timeline_frame_ruler_painter.dart': (
-      2,
-      'how wide a second and a page are, for the labels\' spacing (I-81)',
+      1,
+      'how wide a second is, for the labels\' spacing',
     ),
     'lib/src/ui/timeline/timeline_grid_metrics.dart': (
       1,

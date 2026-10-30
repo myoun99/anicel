@@ -24,6 +24,7 @@ void main() {
     required double cell,
     required int frames,
     FrameRulerView rulerView = FrameRulerView.frames,
+    TimelineRulerPages pages = const TimelineRulerPages.every(144),
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -41,7 +42,7 @@ void main() {
               ),
               onSelectFrame: (_) {},
               rulerView: rulerView,
-              pageFrames: 144,
+              pages: pages,
             ),
           ),
         ),
@@ -204,6 +205,25 @@ void main() {
             );
           }
         }
+      }
+    }
+  });
+
+  // I-81-Q3: a book's pages stand on no stride; the walk visits them.
+  testWidgets('a book\'s page marks are found as the whole window would', (
+    tester,
+  ) async {
+    const pages = TimelineRulerPages.startingAt([0, 100, 130, 301, 460, 700]);
+    for (final cell in [0.5, 2.4, 8.0, 24.0]) {
+      final scale = await rulerOf(
+        tester,
+        cell: cell,
+        frames: 900,
+        rulerView: FrameRulerView.pages,
+        pages: pages,
+      );
+      for (final frame in [0, 101, 131, 303, 700, 899]) {
+        expectTheWindowsFinding(scale, frame, '${cell}px · playhead $frame');
       }
     }
   });

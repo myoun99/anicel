@@ -40,6 +40,7 @@ void main() {
     int framesPerSecond = 24,
     FrameRulerView rulerView = FrameRulerView.frames,
     int? pageFrames,
+    TimelineRulerPages? pages,
     ValueNotifier<int>? windowBucket,
     double viewportMainExtent = 0,
     Color? pastPlaybackWash,
@@ -59,7 +60,9 @@ void main() {
     secondsFontSize: axis == Axis.horizontal ? 9 : 8,
     framesPerSecond: framesPerSecond,
     rulerView: rulerView,
-    pageFrames: pageFrames,
+    pages:
+        pages ??
+        (pageFrames == null ? null : TimelineRulerPages.every(pageFrames)),
     windowBucket: windowBucket,
     viewportMainExtent: viewportMainExtent,
     pastPlaybackWash: pastPlaybackWash,
@@ -356,7 +359,7 @@ void main() {
       int page = 144,
     }) => scale(
       rulerView: FrameRulerView.pages,
-      pageFrames: page,
+      pages: TimelineRulerPages.every(page),
       frameEndIndexExclusive: frames,
       playbackFrameCount: frames,
       metrics: TimelineGridMetrics.defaults.copyWith(frameCellWidth: cell),
@@ -395,7 +398,11 @@ void main() {
         frameIndex: frame,
         framesPerSecond: 24,
         everySeconds: every,
-        pages: (frames: 144, everyPages: everyPages, clearFrames: clear),
+        pages: (
+          heads: [for (var head = 0; head < 1440; head += 144) head],
+          everyPages: everyPages,
+          clearFrames: clear,
+        ),
       );
       expect(at(96, every: 2), '4');
       expect(at(120), '5');
@@ -451,6 +458,135 @@ void main() {
       final pages = paged();
       expect(pages.widestNumberFrameBefore(200), 143);
       expect(pages.frameNumberLabel(143), '144');
+    });
+
+    group('I-81-Q3: a book\'s pages, of many lengths', () {
+      TimelineRulerScale book({
+        double cell = 48,
+        int frames = 432,
+        List<int> heads = const [0, 100, 130, 300],
+      }) => scale(
+        rulerView: FrameRulerView.pages,
+        pages: TimelineRulerPages.startingAt(heads),
+        frameEndIndexExclusive: frames,
+        playbackFrameCount: frames,
+        metrics: TimelineGridMetrics.defaults.copyWith(frameCellWidth: cell),
+      );
+
+      test('the numbers start again at each page\'s head', () {
+        final strip = book();
+        expect(
+          [for (final at in [0, 99, 100, 129, 130, 299, 300, 431])
+            strip.frameNumberLabel(at)],
+          ['1', '100', '1', '30', '1', '170', '1', '132'],
+        );
+      });
+
+      test('each head writes its page, beside the second where it stands '
+          'on one; a second that would run into a mark stands down', () {
+        final strip = book();
+        expect(strip.modelAt(0).secondsLabel, '0 p1');
+        expect(strip.modelAt(100).secondsLabel, 'p2');
+        expect(strip.modelAt(130).secondsLabel, 'p3');
+        expect(strip.modelAt(72).secondsLabel, '3');
+        expect(strip.modelAt(96).secondsLabel, '', reason: 'before p2');
+        expect(strip.modelAt(120).secondsLabel, '', reason: 'before p3');
+        expect(strip.modelAt(144).secondsLabel, '6');
+        final onASecond = book(heads: const [0, 120]);
+        expect(onASecond.modelAt(120).secondsLabel, '5 p2');
+      });
+
+      test('marks thin by the closest two they would stand apart', () {
+        const heads = [0, 10, 20, 400, 410, 800];
+        final strip = book(cell: 1, frames: 900, heads: heads);
+        expect(strip.pagesLabelEvery, 5, reason: 'two pages are 20px');
+        expect(strip.modelAt(0).secondsLabel, endsWith('p1'));
+        expect(strip.modelAt(800).secondsLabel, endsWith('p6'));
+        expect(strip.modelAt(400).secondsLabel, isNot(contains('p')));
+        expect(
+          book(cell: 1, frames: 900, heads: const [0, 400, 800])
+              .pagesLabelEvery,
+          1,
+          reason: 'pages that hold their marks each write one',
+        );
+      });
+
+      test('the walk visits the marks too, in order, and nothing twice', () {
+        final strip = book(cell: 4, heads: const [0, 100, 130, 288, 300]);
+        final walked = strip
+            .framesWrittenIn((startIndex: 90, endIndexExclusive: 305))
+            .toList();
+        expect(strip.writingStep, greaterThan(1), reason: 'premise');
+        expect(walked, [...walked.toSet().toList()..sort()]);
+        expect(walked, containsAll(const [100, 130, 288, 300]));
+        expect(walked.first, greaterThanOrEqualTo(90));
+        expect(walked.last, lessThan(305));
+        expect(
+          walked.where((frame) => frame % strip.writingStep != 0).toList(),
+          const [100, 130],
+          reason: 'off the stride, only the heads',
+        );
+        expect(
+          strip.framesWrittenIn((startIndex: 301, endIndexExclusive: 302)),
+          isEmpty,
+        );
+      });
+
+      test('the walk leaves a thinned page out', () {
+        const heads = [0, 10, 20, 400, 410, 800];
+        final strip = book(cell: 1, frames: 900, heads: heads);
+        final walked = strip.framesWrittenIn((
+          startIndex: 1,
+          endIndexExclusive: 900,
+        ));
+        final step = strip.writingStep;
+        expect(
+          walked.where((frame) => frame % step != 0),
+          step.gcd(800) == step ? isEmpty : const [800],
+        );
+        expect(walked, isNot(contains(10)));
+      });
+
+      test('the widest number stands at the end of the longest page', () {
+        final strip = book();
+        expect(strip.widestNumberFrameBefore(432), 299);
+        expect(strip.frameNumberLabel(299), '170');
+        expect(strip.widestNumberFrameBefore(200), 99);
+        expect(strip.widestNumberFrameBefore(50), 49);
+        expect(
+          book(heads: const [0, 100]).widestNumberFrameBefore(200),
+          199,
+          reason: 'two alike: the later',
+        );
+      });
+
+      test('pages compare by where they begin', () {
+        expect(book(), book());
+        expect(book(), isNot(book(heads: const [0, 100, 130, 301])));
+        expect(
+          const TimelineRulerPages.every(144),
+          isNot(const TimelineRulerPages.every(72)),
+        );
+      });
+
+      test('a strip takes the pages that begin on it, and never none', () {
+        const sheet = TimelineRulerPages.every(144);
+        expect(sheet.headsBefore(300), [0, 144, 288]);
+        expect(sheet.headsBefore(288), [0, 144]);
+        expect(sheet.headsBefore(0), [0]);
+        const pages = TimelineRulerPages.startingAt([0, 100, 200]);
+        expect(pages.headsBefore(150), [0, 100]);
+        expect(pages.headsBefore(0), [0]);
+      });
+
+      test('a page is the last head at or before its frame', () {
+        const heads = [0, 100, 130];
+        expect(
+          [for (final at in [0, 99, 100, 129, 130, 9999])
+            timelinePageAt(heads, at)],
+          [0, 0, 1, 1, 2, 2],
+        );
+      });
     });
 
     test('off the page view a strip writes every page it would have', () {
@@ -776,7 +912,7 @@ void main() {
           ? TimelineFrameRulerPainter.numberType
           : XSheetFrameRailPainter.numberType,
       rulerView: rulerView,
-      pageFrames: pageFrames,
+      pages: pageFrames == null ? null : TimelineRulerPages.every(pageFrames),
     );
     // I-81: the page view of a 6-second sheet and of a 3-second one.
     const views = <(FrameRulerView, int?)>[
@@ -818,15 +954,17 @@ void main() {
       }
     });
 
-    test('every frame a strip writes at is on its writing step', () {
+    test('every frame a strip writes at is one it walks', () {
       for (final axis in Axis.values) {
         for (final (view, page) in views) {
           final strip = wide(axis: axis, rulerView: view, pageFrames: page);
-          final step = strip.writingStep;
+          final walked = strip
+              .framesWrittenIn((startIndex: 0, endIndexExclusive: 14400))
+              .toSet();
           for (var frame = 0; frame < 14400; frame += 1) {
             final writing = strip.writingAt(frame, current: false);
             if (writing.number.isNotEmpty || writing.second.isNotEmpty) {
-              expect(frame % step, 0, reason: '$axis $view frame $frame');
+              expect(walked, contains(frame), reason: '$axis $view $frame');
             }
           }
         }
