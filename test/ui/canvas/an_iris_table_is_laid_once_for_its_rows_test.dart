@@ -186,10 +186,10 @@ void main() {
   testWidgets('what the table kept weighs — a float a channel — is the '
       'memory census\'s', (tester) async {
     final source = await imageOf(tester);
-    await gathered(tester, source, passOf());
+    // Radius 8.6, no map: its whole rows, 8 either way — 17, two texels
+    // each — a line of them and a line of the level's head.
+    await gathered(tester, source, passOf(radius: 8.6));
     final kept = IrisBlurShader.debugKeptTable!;
-    // Radius 8, no map: 17 rows two texels each, a line of them and a line
-    // of the level's head.
     expect((kept.width, kept.height), (34, 2));
     expect(IrisBlurShader.tableBytes, 34 * 2 * 16);
     expect(

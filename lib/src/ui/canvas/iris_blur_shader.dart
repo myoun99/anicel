@@ -184,7 +184,7 @@ class IrisBlurShader {
       ..setFloat(1, height.toDouble())
       ..setFloat(2, layout.rowsALine.toDouble())
       ..setFloat(3, layout.linesALevel.toDouble())
-      ..setFloat(4, rows.radius.floor().toDouble())
+      ..setFloat(4, layout.reach.toDouble())
       ..setFloat(5, rows.radius)
       ..setFloat(6, layout.levels.toDouble())
       ..setFloat(7, levels?.focal ?? 0)
@@ -208,10 +208,12 @@ class IrisBlurShader {
     }
   }
 
-  /// How [rows]' table is laid: its levels, each [linesALevel] lines of
-  /// [rowsALine] rows — two texels a row, so a line is never wider than
-  /// 2048 — and from line [heads] on their heads, [headLines] of them.
+  /// How [rows]' table is laid: its rows [reach] either way of a pixel, its
+  /// levels, each [linesALevel] lines of [rowsALine] rows — two texels a
+  /// row, so a line is never wider than 2048 — and from line [heads] on
+  /// their heads, [headLines] of them.
   static ({
+    int reach,
     int levels,
     int rowsALine,
     int linesALevel,
@@ -219,11 +221,13 @@ class IrisBlurShader {
     int headLines,
   })
   _layoutOf(IrisRows rows) {
-    final count = 2 * rows.radius.floor() + 1;
+    final reach = rows.radius.floor();
+    final count = 2 * reach + 1;
     final rowsALine = math.min(count, 1024);
     final levels = rows.levels == null ? 1 : 256;
     final linesALevel = (count / rowsALine).ceil();
     return (
+      reach: reach,
       levels: levels,
       rowsALine: rowsALine,
       linesALevel: linesALevel,
