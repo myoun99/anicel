@@ -119,67 +119,76 @@ final class FxPluginDescription {
       RegExp(r'^[A-Za-z0-9_.\-]+$').hasMatch(name);
 
   static EffectParameterSpec? _parameterOf(Object? json) {
-    if (json case {
+    if (json case final Map<Object?, Object?> fields && {
       'id': final String id,
       'kind': final String kind,
       'label': final String label,
     } when _isName(id)) {
-      return switch ((kind, json)) {
-        ('number' || 'angle', {
-          'default': final num initial,
-          'min': final num low,
-          'max': final num high,
-        }) when low <= initial && initial <= high =>
-          EffectParameterSpec(
-            id: id,
-            label: label,
-            ownWords: true,
-            defaultValue: initial.toDouble(),
-            minimum: low.toDouble(),
-            maximum: high.toDouble(),
-            unit: kind == 'angle'
-                ? EffectParameterUnit.degrees
-                : EffectParameterUnit.number,
-          ),
-        ('color', {'default': [
-          final num r,
-          final num g,
-          final num b,
-          final num a,
-        ]}) when [r, g, b, a].every((c) => 0 <= c && c <= 1) =>
-          EffectParameterSpec.color(
-            id: id,
-            label: label,
-            ownWords: true,
-            defaultValue: _argbOf(r, g, b, a),
-          ),
-        ('point', _) => EffectParameterSpec.point(
-          id: id,
-          label: label,
-          ownWords: true,
-        ),
-        ('checkbox', {'default': final bool on}) =>
-          EffectParameterSpec.flag(
-            id: id,
-            label: label,
-            on: on,
-            ownWords: true,
-          ),
-        ('menu', {
-          'choices': final List<dynamic> words,
-          'default': final int initial,
-        }) =>
-          _menuOf(id, label, words, initial),
-        ('layer', _) => EffectParameterSpec.layer(
-          id: id,
-          label: label,
-          ownWords: true,
-        ),
-        _ => null,
-      };
+      return _specOfKind(kind, id, label, fields);
     }
     return null;
   }
+
+  /// The spec a parameter of [kind] describes with the rest of its
+  /// [fields] — null where the fields its kind needs are not there, or not
+  /// in range.
+  static EffectParameterSpec? _specOfKind(
+    String kind,
+    String id,
+    String label,
+    Map<Object?, Object?> fields,
+  ) => switch ((kind, fields)) {
+    ('number' || 'angle', {
+      'default': final num initial,
+      'min': final num low,
+      'max': final num high,
+    }) when low <= initial && initial <= high =>
+      EffectParameterSpec(
+        id: id,
+        label: label,
+        ownWords: true,
+        defaultValue: initial.toDouble(),
+        minimum: low.toDouble(),
+        maximum: high.toDouble(),
+        unit: kind == 'angle'
+            ? EffectParameterUnit.degrees
+            : EffectParameterUnit.number,
+      ),
+    ('color', {'default': [
+      final num r,
+      final num g,
+      final num b,
+      final num a,
+    ]}) when [r, g, b, a].every((c) => 0 <= c && c <= 1) =>
+      EffectParameterSpec.color(
+        id: id,
+        label: label,
+        ownWords: true,
+        defaultValue: _argbOf(r, g, b, a),
+      ),
+    ('point', _) => EffectParameterSpec.point(
+      id: id,
+      label: label,
+      ownWords: true,
+    ),
+    ('checkbox', {'default': final bool on}) => EffectParameterSpec.flag(
+      id: id,
+      label: label,
+      on: on,
+      ownWords: true,
+    ),
+    ('menu', {
+      'choices': final List<dynamic> words,
+      'default': final int initial,
+    }) =>
+      _menuOf(id, label, words, initial),
+    ('layer', _) => EffectParameterSpec.layer(
+      id: id,
+      label: label,
+      ownWords: true,
+    ),
+    _ => null,
+  };
 
   static EffectParameterSpec? _menuOf(
     String id,
