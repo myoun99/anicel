@@ -42,11 +42,12 @@ class _WorkspaceFoldedStoryboard {
   void bindSession(EditorSessionManager session) {
     unbindSession();
     _session = session;
+    // ⛔Not the row selection: it picks which lanes a graph draws, and
+    // moves no row and no extent.
     _heard = Listenable.merge([
       session.standing.currentRowListenable,
       session,
       session.railView.drawn,
-      session.rowSelection,
     ])..addListener(_follow);
     _follow();
   }

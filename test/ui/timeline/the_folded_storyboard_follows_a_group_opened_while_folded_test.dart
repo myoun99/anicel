@@ -2,13 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/working_panel.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/session/session_row_button_presses.dart';
 import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
 
 /// The folded storyboard is the row it stands on, at that row's height
 /// (F-322) — in the frame the row changes in. Stood on a lane of a closed
@@ -16,7 +19,9 @@ import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 /// opened over the lane, or the group twirled down — and the fold is the
 /// lane at once: its overlay and the room the region keeps for it at the
 /// lane row's height — a graph seats the lane at that extent, as the open
-/// rail draws it. ↩️Both stayed the V row's until some other notify (card
+/// rail draws it. So for a stand that moves alone (lane to lane, no session
+/// notify) and an edit that hides the row (the session alone).
+/// ↩️Both stayed the V row's until some other notify (card
 /// a-folded-conte-row-keeps-its-height-through-a-graph): the fold read the
 /// panel's copy of the rail, which the panel had not been given yet, and
 /// the room heard the stand alone.
@@ -44,6 +49,91 @@ void main() {
       expect(fold.room(), fold.laneHeight, reason: 'the region keeps it');
     });
   }
+
+  testWidgets('a stand moved from lane to lane — no session notify — folds '
+      'to the lane it lands on in the same frame', (tester) async {
+    final fold = await _foldedOnALaneOfAClosedGroup(tester);
+    fold.presses.toggleLaneGroup(fold.group);
+    await tester.pumpAndSettle();
+    final before = fold.shownRow();
+
+    final session = _Heard(fold.session);
+    fold.session.standOnRow(
+      LaneRowAddress(fold.s2, 'position'),
+      panel: WorkingPanel.storyboard,
+    );
+    session.stop();
+    await tester.pump();
+    final folded = fold.shownRow();
+    await tester.pumpAndSettle();
+
+    expect(
+      session.notified,
+      isFalse,
+      reason: '⛔전제: in one S row the stand moves on its own notifier',
+    );
+    expect(
+      folded,
+      isNot(before),
+      reason: 'LIVENESS: the fold shows another lane',
+    );
+    expect(folded, fold.shownRow(), reason: 'the fold is that lane at once');
+  });
+
+  testWidgets('the row the fold stands on filtered out by an edit — the '
+      'session alone — folds to what is left in the same frame', (
+    tester,
+  ) async {
+    final fold = await _foldedOnALaneOfAClosedGroup(tester);
+    fold.presses.toggleLaneGroup(fold.group);
+    fold.session.railView.rowFilter.value = const TimelineRowFilter(
+      fxOnly: true,
+    );
+    await tester.pumpAndSettle();
+    final before = fold.overlayHeight();
+    expect(before, fold.laneHeight, reason: '⛔전제: the fold is the lane');
+
+    final stand = fold.session.standing.currentRowListenable.value;
+    var drawn = false;
+    void heard() => drawn = true;
+    fold.session.railView.drawn.addListener(heard);
+    fold.presses.toggleFx(fold.s2);
+    fold.session.railView.drawn.removeListener(heard);
+    await tester.pump();
+    final folded = (overlay: fold.overlayHeight(), room: fold.room());
+    await tester.pumpAndSettle();
+
+    expect(
+      (drawn, fold.session.standing.currentRowListenable.value),
+      (false, stand),
+      reason: '⛔전제: the rail\'s view and the stand stay as they were',
+    );
+    expect(
+      fold.overlayHeight(),
+      isNot(fold.laneHeight),
+      reason: 'LIVENESS: its S row filtered out, the lane is not drawn',
+    );
+    expect(
+      folded,
+      (overlay: fold.overlayHeight(), room: fold.room()),
+      reason: 'the fold is laid in the frame of the edit',
+    );
+    expect(folded.room, folded.overlay, reason: 'the region keeps it');
+  });
+}
+
+/// Whether [session] notified between its making and [stop].
+class _Heard {
+  _Heard(this._session) {
+    _session.addListener(_hear);
+  }
+
+  final ChangeNotifier _session;
+  bool notified = false;
+
+  void _hear() => notified = true;
+
+  void stop() => _session.removeListener(_hear);
 }
 
 /// What opens the group of the lane stood on.
@@ -57,13 +147,16 @@ enum _Opening {
   };
 }
 
-
 typedef _Fold = ({
+  EditorSessionManager session,
   SessionRowButtonPresses presses,
+  LayerId s1,
+  LayerId s2,
   String group,
   double laneHeight,
   double Function() overlayHeight,
   double Function() room,
+  String? Function() shownRow,
 });
 
 /// The storyboard folded while it stands on S2's rotation lane, its
@@ -117,10 +210,15 @@ Future<_Fold> _foldedOnALaneOfAClosedGroup(WidgetTester tester) async {
   await tester.pumpAndSettle();
   final overlay = find.byType(CollapsedRowOverlay);
   return (
+    session: session,
     presses: presses,
+    s1: s1,
+    s2: s2,
     group: group,
     laneHeight: laneHeight,
     overlayHeight: () => tester.widget<CollapsedRowOverlay>(overlay).height,
     room: () => tester.getSize(overlay).height,
+    shownRow: () =>
+        tester.widget<CollapsedRowOverlay>(overlay).snapshot.currentRow?.name,
   );
 }
