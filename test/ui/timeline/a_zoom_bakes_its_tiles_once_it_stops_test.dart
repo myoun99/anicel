@@ -447,4 +447,19 @@ void main() {
     );
     expect(await pollUntil(() => landings == 3), isTrue);
   });
+
+  test('a repaint at the extent the zoom already waits at does not put '
+      'the stop off', () async {
+    if (skipped()) {
+      return;
+    }
+    store.debugZoomSettles = const Duration(seconds: 3);
+    await baked(24);
+
+    ask(16);
+    await Future<void>.delayed(const Duration(seconds: 2));
+    ask(16);
+    await Future<void>.delayed(const Duration(milliseconds: 2200));
+    expect(landings, 2, reason: 'stopped 3s after the step, not the repaint');
+  });
 }

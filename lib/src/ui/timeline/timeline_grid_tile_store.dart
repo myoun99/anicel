@@ -154,12 +154,17 @@ class TimelineGridTileStore {
   /// zoom-step-lays-out-five-times-the-07-25-count-Q1: 「줌이 멈출 때까지
   /// 늘린 옛 타일만 보여 준다」): shown, each its old tile scaled, and rastered
   /// at the new cell extent once the zoom has stood still for
-  /// [debugZoomSettles] — once, however many steps it took.
+  /// [debugZoomSettles] — once, however many steps it took within the
+  /// band a tile stretches across ([_stretches]); a step past it rasters
+  /// then, as before.
   ///
   /// ↩️Each step queued every shown span at its own extent, and the drain
   /// rastered them in the frames after it: 🔬~145 tiles a step on S5_BA's
   /// cut 352 (64 rows, profile, 10-30), ~41ms of UI thread a step, so a
   /// held zoom key stuttered — and the next step threw them away.
+  /// 🔬Held key, steps 33ms apart (3 rounds of 4 in · 8 out · 4 in, same
+  /// cut, 10-30): tiles landed 5,085 → 3,178, frames past 33ms 37 → 28,
+  /// p99 84 → 53ms; on a loaded machine 2,190 → 1,436, p99 509 → 198ms.
   final LinkedHashMap<String, _TileRequest> _stretched =
       LinkedHashMap<String, _TileRequest>();
 
@@ -294,7 +299,6 @@ class TimelineGridTileStore {
     _warmSpan.micros = 0;
     _drainsRunning = 0;
     _stretched.clear();
-    _zoomStops?.cancel();
     _zooming.clear();
     _stoodAt.clear();
     _epoch += 1;
@@ -362,8 +366,6 @@ class TimelineGridTileStore {
     _askedBy[row] = (painter: painter, ratio: devicePixelRatio);
     final entry = _touched(key);
     if (entry != null && _shows(entry, asked)) {
-      // A zoom that came back to this tile's extent stretches it no more.
-      _stretched.remove(key);
       return entry.image;
     }
     // 🚨F-314 (유저 2026-10-08: 「코마 바꿀때 +나 N이나 코마텍스트 이런 위젯이랑
@@ -515,7 +517,6 @@ class TimelineGridTileStore {
     }
     final key = asked.key;
     _pending.take(key);
-    _stretched.remove(key);
     _warming.remove(key);
     _ahead.remove(key);
     if (_inFlight.contains(key)) {
@@ -611,7 +612,6 @@ class TimelineGridTileStore {
   }
 
   void _enqueue(String key, _TileRequest request) {
-    _stretched.remove(key);
     _pending.keep(key, request);
     if (!_drainScheduled) {
       _drainScheduled = true;
