@@ -148,6 +148,22 @@ void main() {
       expect(fade(), before, reason: '⛔전제: so the release leaves it');
     });
 
+    test('…and counts the のりしろ before it while the hand is down — its '
+        'drawn end and the name across it', () {
+      final (session, first, length) = twoCuts();
+      session.transitions.updateTransitionInstructions({
+        length - 6: const InstructionEvent(instructionId: 'ol', length: 12),
+      });
+      final second = session.repository.requireProject().tracks.first.cuts[1];
+      session.selectCut(second.id);
+      final span = session.activeCutSpan;
+
+      holdTheEnd(session, first, -3);
+      expect(span.activeCutDrawnFrameCount, second.duration + 6);
+      expect(span.activeCutNoriShiroLabel, isNotEmpty);
+      session.edgeDrag.endCutEdgeDrag();
+    });
+
     test('an F.O pulled over drops its screen while the hand is down, as '
         'its release refuses it', () {
       final (session, first, length) = twoCuts();
@@ -186,6 +202,35 @@ void main() {
 
       heldAsReleased(session, first, -3, drawnEnd, before: drawnEnd());
     });
+  });
+
+  test("the cut view's line answers for the row it shows: a cut's drag "
+      'leaves it the committed one, so a refused F.O keeps its line', () {
+    final (session, first, length) = twoCuts();
+    final second = session.repository.requireProject().tracks.first.cuts[1];
+    final end = length + second.duration;
+    session.transitions.updateTransitionInstructions({
+      end - 2: const InstructionEvent(instructionId: 'fo', length: 4),
+    });
+    session.selectCut(second.id);
+    final transitions = session.transitions;
+    final shown =
+        transitions.trackTransitionDisplayLayer.instructions.keys.single;
+    String? line() => transitions.transitionCrossingWarningInCutAt(shown);
+    expect(
+      line(),
+      AppText.strings.tlTransitionCrossingWarning,
+      reason: "⛔전제: it crosses its cut's end",
+    );
+
+    holdTheEnd(session, first, -3);
+    expect(
+      transitions.trackTransitionDisplayLayer.instructions.keys.single,
+      shown,
+      reason: '⛔전제: the cut view shows the committed row',
+    );
+    expect(line(), AppText.strings.tlTransitionCrossingWarning);
+    session.edgeDrag.endCutEdgeDrag();
   });
 
   testWidgets("the conte's transition block stands where the drag carries "
