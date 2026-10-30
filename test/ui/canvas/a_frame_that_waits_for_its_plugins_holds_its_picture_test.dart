@@ -57,12 +57,20 @@ void main() {
   const under = Color(0xFF203040);
   const ink = [0x00, 0x40, 0x00, 0xFF];
   const stroke = [0x40, 0x00, 0x00, 0xFF];
+  const other = [0x00, 0x00, 0x40, 0xFF];
   const key = BrushFrameKey(
     projectId: ProjectId('p'),
     trackId: TrackId('t'),
     cutId: CutId('c'),
     layerId: LayerId('inked'),
     frameId: FrameId('f'),
+  );
+  const over = BrushFrameKey(
+    projectId: ProjectId('p'),
+    trackId: TrackId('t'),
+    cutId: CutId('c'),
+    layerId: LayerId('over'),
+    frameId: FrameId('o'),
   );
   final cut = Cut(
     id: key.cutId,
@@ -75,6 +83,12 @@ void main() {
         name: 'Inked',
         frames: [Frame(id: key.frameId, duration: 1, strokes: const [])],
         timeline: {0: TimelineExposure.drawing(key.frameId, length: 1)},
+      ),
+      Layer(
+        id: over.layerId,
+        name: 'Over',
+        frames: [Frame(id: over.frameId, duration: 1, strokes: const [])],
+        timeline: {0: TimelineExposure.drawing(over.frameId, length: 1)},
       ),
     ],
   );
@@ -94,6 +108,22 @@ void main() {
   ) => [
     CompositeGroup<CanvasStackRow>(
       children: const [live],
+      opacity: 1,
+      blendMode: LayerBlendMode.normal,
+      effects: effects,
+    ),
+  ];
+
+  /// The row a pen is on, under a folder whose chain is [effects] holding
+  /// another row, [over].
+  List<CompositeNode<CanvasStackRow>> overThePen(
+    List<ResolvedLayerEffect> effects,
+  ) => [
+    live,
+    CompositeGroup<CanvasStackRow>(
+      children: const [
+        CompositeLeaf(CanvasLayerImageRequest(frameKey: over, opacity: 1)),
+      ],
       opacity: 1,
       blendMode: LayerBlendMode.normal,
       effects: effects,
@@ -205,6 +235,17 @@ void main() {
             TileCoord(x: 0, y: 0),
             ink,
             (at) => const Rect.fromLTRB(4, 4, 8, 8).contains(at),
+          ),
+        },
+      ),
+      over: BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: tileSize,
+        tiles: {
+          TileCoord(x: 0, y: 1): tileOf(
+            TileCoord(x: 0, y: 1),
+            other,
+            (at) => const Rect.fromLTRB(4, 20, 8, 24).contains(at),
           ),
         },
       ),
@@ -457,13 +498,13 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  /// The columns the ink shows in on [shot].
-  Set<int> inkColumnsOf(Shot shot) => {
+  /// The columns [colour] shows in on [shot].
+  Set<int> inkColumnsOf(Shot shot, {List<int> colour = ink}) => {
     for (var at = 0; at < shot.rgba.length; at += 4)
-      if (shot.rgba[at] == ink[0] &&
-          shot.rgba[at + 1] == ink[1] &&
-          shot.rgba[at + 2] == ink[2] &&
-          shot.rgba[at + 3] == ink[3])
+      if (shot.rgba[at] == colour[0] &&
+          shot.rgba[at + 1] == colour[1] &&
+          shot.rgba[at + 2] == colour[2] &&
+          shot.rgba[at + 3] == colour[3])
         at ~/ 4 % shot.width,
   };
 
@@ -489,25 +530,36 @@ void main() {
     return shotOf(tester, screen);
   }
 
-  testWidgets('a frame that waits for a plugin is shown as its plugin made '
-      'it', (tester) async {
-    final asDrawn = inkColumnsOf(
-      await shownOnceMade(tester, inAFolder(const [])),
-    );
-    expect(asDrawn, isNotEmpty, reason: '⛔CONTROL: the ink, as drawn');
+  // 🚨Over the pen's row as well as round it: a folder that holds no row the
+  // pen is on is drawn whole and held for the pen's steps
+  // ([HeldSubtreeRasters]), and one held with its step drawn as if off
+  // would be cut from by the next round, which then never met the step.
+  for (final (where, nodesOf, colour) in [
+    ('round the pen\'s row', inAFolder, ink),
+    ('over the pen\'s row', overThePen, other),
+  ]) {
+    testWidgets('a frame that waits for a plugin $where is shown as its '
+        'plugin made it', (tester) async {
+      final asDrawn = inkColumnsOf(
+        await shownOnceMade(tester, nodesOf(const [])),
+        colour: colour,
+      );
+      expect(asDrawn, isNotEmpty, reason: '⛔CONTROL: the ink, as drawn');
 
-    final shown = inkColumnsOf(
-      await shownOnceMade(
-        tester,
-        inAFolder([aPlugin(ShiftingFxPlugin(by: 2))]),
-      ),
-    );
+      final shown = inkColumnsOf(
+        await shownOnceMade(
+          tester,
+          nodesOf([aPlugin(ShiftingFxPlugin(by: 2))]),
+        ),
+        colour: colour,
+      );
 
-    // Two canvas pixels to the right, as many of the screen's each.
-    final by = 2 * tester.view.devicePixelRatio.round();
-    expect(shown, {for (final column in asDrawn) column + by});
-    await tester.pumpWidget(const SizedBox());
-  });
+      // Two canvas pixels to the right, as many of the screen's each.
+      final by = 2 * tester.view.devicePixelRatio.round();
+      expect(shown, {for (final column in asDrawn) column + by});
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
 
   testWidgets('a frame that waits for a plugin, handed another whose picture '
       'is not there yet, stays on the picture it showed', (tester) async {

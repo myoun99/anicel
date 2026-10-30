@@ -48,17 +48,18 @@ void main() {
   );
 
   /// [chain] over [source] as the steps a route draws it in, recorded —
-  /// the paper lying [on] its pixels.
+  /// the paper lying [on] its pixels, [scale] of them a canvas pixel.
   ui.Picture recorded(
     ui.Image source,
     List<ResolvedLayerEffect> chain, {
     Rect on = paper,
+    double scale = 1,
   }) {
     final plan = resolveCompositeEffectPlan(chain, paper: on);
     final image = applyEffectSteps(
       source: source,
       steps: plan.preSteps,
-      imageScale: 1,
+      imageScale: scale,
       paper: on,
     );
     final recorder = ui.PictureRecorder();
@@ -137,56 +138,75 @@ void main() {
     picture.dispose();
   });
 
-  test('handed its picture where it lies on the paper, and each row it '
-      'names on the same grid, as the row\'s own cel holds it', () async {
-    final reading = FxPluginDescription.fromJson({
-      ...shiftingFxPluginDescription.toJson(),
-      'params': [
-        {'id': 'map', 'kind': 'layer', 'label': 'Map'},
-      ],
-    })!;
-    const green = [0, 200, 0, 255];
-    const map = LayerId('map');
-    final runner = ShiftingFxPlugin(by: 0);
-    final effect = ResolvedLayerEffect(
-      kind: EffectKind.plugin,
-      plugin: reading,
-      values: const [0],
-      layers: const {'map': map},
-      run: fxPluginRunOf(
-        runner,
-        rows: {
-          // A cel of the paper's size, green at its (1, 0).
-          map: BitmapSurface(
-            canvasSize: const CanvasSize(width: 4, height: height),
-            tileSize: 4,
-            tiles: {
-              TileCoord(x: 0, y: 0): BitmapTile(
-                size: 4,
-                pixels: Uint8List(4 * 4 * 4)..setAll(4, green),
-              ),
-            },
-          ),
+  for (final (scale, greens) in [
+    (1.0, {3}),
+    (2.0, {4, 5}),
+  ]) {
+    test('handed its picture where it lies on the paper, and each row it '
+        'names on the same grid, as the row\'s own cel holds it — $scale of '
+        'its pixels a canvas pixel', () async {
+      final reading = FxPluginDescription.fromJson({
+        ...shiftingFxPluginDescription.toJson(),
+        'params': [
+          {'id': 'map', 'kind': 'layer', 'label': 'Map'},
+        ],
+      })!;
+      const green = [0, 200, 0, 255];
+      const map = LayerId('map');
+      final runner = ShiftingFxPlugin(by: 0);
+      final effect = ResolvedLayerEffect(
+        kind: EffectKind.plugin,
+        plugin: reading,
+        values: const [0],
+        layers: const {'map': map},
+        run: fxPluginRunOf(
+          runner,
+          rows: {
+            // A cel green at its (1, 0).
+            map: BitmapSurface(
+              canvasSize: const CanvasSize(width: 4, height: height),
+              tileSize: 4,
+              tiles: {
+                TileCoord(x: 0, y: 0): BitmapTile(
+                  size: 4,
+                  pixels: Uint8List(4 * 4 * 4)..setAll(4, green),
+                ),
+              },
+            ),
+          },
+        ),
+      );
+      final picture = source();
+
+      // The paper two pixels into the picture: its first pixel lies two
+      // left of the paper's.
+      final made = await FxPluginStages.recordedThrough(
+        () => recorded(
+          picture,
+          [effect],
+          on: const Rect.fromLTWH(2, 0, 4, 2),
+          scale: scale,
+        ),
+        discard: (made) => made.dispose(),
+      );
+      made.dispose();
+      picture.dispose();
+
+      expect(runner.inputs.single, (left: -2, top: 0, width: width, height: 2));
+      final row = runner.lastLayers.single;
+      expect((row.left, row.top, row.width, row.height), (-2, 0, width, 2));
+      bool isGreen(int x) =>
+          row.pixels.sublist(x * 4, x * 4 + 4).join(',') == green.join(',');
+      expect(
+        {
+          for (var x = 0; x < width; x += 1)
+            if (isGreen(x)) x,
         },
-      ),
-    );
-    final picture = source();
-
-    // The paper two pixels into the picture: its first pixel lies two left
-    // of the paper's.
-    final made = await FxPluginStages.recordedThrough(
-      () => recorded(picture, [effect], on: const Rect.fromLTWH(2, 0, 4, 2)),
-      discard: (made) => made.dispose(),
-    );
-    made.dispose();
-    picture.dispose();
-
-    expect(runner.inputs.single, (left: -2, top: 0, width: width, height: 2));
-    final row = runner.lastLayers.single;
-    expect((row.left, row.top, row.width, row.height), (-2, 0, width, 2));
-    expect(row.pixels.sublist(3 * 4, 4 * 4), green, reason: 'the cel\'s (1, 0)');
-    expect(row.pixels.sublist(0, 4), clear, reason: 'left of the paper');
-  });
+        greens,
+        reason: 'the cel\'s (1, 0), where it lies on this grid',
+      );
+    });
+  }
 
   for (final (what, rows, metAs)
       in [
