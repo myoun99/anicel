@@ -1588,9 +1588,10 @@ void main() {
   /// X시트 장을 따른다」 · Q4 「초 옆에 페이지 넘어가는곳마다 p1 p2」): the
   /// page a strip counts its numbers by, its marks thinned on the seconds'
   /// ladder and kept clear of the seconds, and the widest of them for the
-  /// playhead's reach. 🔬`clean_code_diff` against master names this one
-  /// and no other class. ⛔Not split to fit: the scale is the one answer to
-  /// what a strip writes and where, and the page is one more way it counts.
+  /// playhead's reach. 🔬`clean_code_diff` against master (`a76bef68a`)
+  /// names this one and no other class. ⛔Not split to fit: the scale is the
+  /// one answer to what a strip writes and where, and the page is one more
+  /// way it counts.
   const longClasses = 81;
 
   late CleanCodeScan scan;
