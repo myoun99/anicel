@@ -7,7 +7,6 @@ import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project_frame_rate.dart';
-import '../cel_source_effect_pass.dart' show splitSourceEffects;
 import '../cut_frame_composite_plan.dart'
     show LayerFrameSurfaceResolver, layerDrawingAt;
 
@@ -17,9 +16,9 @@ import '../cut_frame_composite_plan.dart'
 /// reads as [surfaceOf] holds its cel.
 ///
 /// 🗣️I-132-Q34 a (유저 2026-10-30): 「어디에 걸어도 돌고」 — every plugin of
-/// the chain, not the head's alone ([runningPluginIndex] runs that one over
-/// the cel's own pixels; the rest run over what the chain made before them,
-/// `PluginEffect`).
+/// the chain, not the head's alone: that one runs over the cel's own pixels
+/// (`splitSourceEffects`), the rest over what the chain made before them
+/// (`PluginEffect`).
 FxPluginBinding deviceFxPluginBinding({
   required FxPluginRunner? Function(FxPluginDescription plugin) runnerFor,
   required ProjectFrameRate frameRate,
@@ -58,53 +57,25 @@ FxPluginBinding deviceFxPluginBinding({
   ]);
 };
 
-/// Where in [effects] — the chain of a row of [kind], resolved at a frame —
-/// a plugin runs: the index of the one that does, null where none does.
-///
-/// 🗣️I-132-Q32 b: a plugin runs on a cel row, at the head of its chain or
-/// after nothing but colour keys ([splitSourceEffects]); 「폴더 · 조정 ·
-/// 이미지 행에 걸면 그 플러그인은 걸리지 않은 채」. A folder's and an
-/// adjustment's chains never reach the binding, which asks this of the rows
-/// the plan reads cels of; they are named here because the header that
-/// warns of a plugin standing where none runs asks this same rule
-/// ([pluginStandsIdle]).
-int? runningPluginIndex(List<ResolvedLayerEffect> effects, LayerKind kind) {
-  if (kind == LayerKind.image || kind.groupsLayers || kind.filtersBelow) {
-    return null;
-  }
-  final at = splitSourceEffects(effects).source.length - 1;
-  return at >= 0 && effects[at].kind == EffectKind.plugin ? at : null;
-}
-
 /// Whether [chain]'s effect [effectId] — a plugin's, switched on — stands
-/// where no plugin runs at [frameIndex]: 🗣️I-132-Q33 c 「머리 이름 뒤에 경고
-/// 글자를 늘 둔다」.
+/// where no plugin runs: 🗣️I-132-Q33 c 「머리 이름 뒤에 경고 글자를 늘
+/// 둔다」.
 ///
-/// Asked of the chain up to it, resolved as the plan resolves a row's
-/// ([resolveLayerEffectsAt]), by the rule the binding runs plugins by
-/// ([runningPluginIndex]): whether a plugin runs is settled by what stands
-/// before it. A plugin is never dropped as changing nothing, so one that is
-/// on is the last of what that resolves to. [kind] is the kind of the row
-/// whose chain it is — null for a chain that is no row's (a track's), which
-/// no plugin runs on.
+/// 🗣️I-132-Q34 a ran every plugin of a chain the binding is handed — a
+/// row's that the plan reads cels or images of. ⏳A folder's, an
+/// adjustment's and a track's never reach it yet, so one there stands
+/// idle: [kind] is the kind of the row whose chain it is, null for a chain
+/// that is no row's (a track's).
 bool pluginStandsIdle(
   List<LayerEffect> chain,
   EffectId effectId, {
   required LayerKind? kind,
-  required int frameIndex,
 }) {
   final at = chain.indexWhere((effect) => effect.id == effectId);
   if (at < 0 || chain[at].kind != EffectKind.plugin || !chain[at].enabled) {
     return false;
   }
-  if (kind == null) {
-    return true;
-  }
-  final resolved = resolveLayerEffectsAt(
-    effects: chain.sublist(0, at + 1),
-    frameIndex: frameIndex,
-  );
-  return runningPluginIndex(resolved, kind) != resolved.length - 1;
+  return kind == null || kind.groupsLayers || kind.filtersBelow;
 }
 
 /// [row]'s own picture at [frameIndex] of [cut] — the cel exposed there as

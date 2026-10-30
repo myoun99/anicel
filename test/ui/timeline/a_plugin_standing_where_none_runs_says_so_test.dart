@@ -8,7 +8,6 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
-import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -73,10 +72,12 @@ void main() {
     test('a plugin\'s header answers whether it stands idle; an app fx\'s '
         'header and a rail not told where it reads asks nothing', () {
       final blurred = rowOf([blur(EffectParameter(value: 3)), plugin]);
+      // 🗣️I-132-Q34 a: past an app fx on a cel row it runs.
       expect(headerOf(blurred, source: itself(blurred)).pluginIdleAt!(0),
+          isFalse);
+      final folder = rowOf([plugin], kind: LayerKind.folder);
+      expect(headerOf(folder, source: itself(folder)).pluginIdleAt!(0),
           isTrue);
-      final alone = rowOf([plugin]);
-      expect(headerOf(alone, source: itself(alone)).pluginIdleAt!(0), isFalse);
       expect(
         headerOf(
           blurred,
@@ -88,42 +89,31 @@ void main() {
       expect(headerOf(blurred).pluginIdleAt, isNull);
     });
 
-    test('it is asked of the row and frame the rail reads values off — a '
-        'projection\'s chain and kind, at its frame', () {
-      // Nothing at frame 0, a blur from frame 1.
-      final keyed = rowOf([
-        blur(
-          EffectParameter(
-            track: PropertyTrack<double>().withKey(0, 0).withKey(1, 10),
-          ),
-        ),
-        plugin,
-      ]);
-      expect(headerOf(keyed, source: itself(keyed)).pluginIdleAt!(0), isFalse);
-      expect(headerOf(keyed, source: itself(keyed)).pluginIdleAt!(1), isTrue);
-      expect(
-        headerOf(keyed, source: (frame) => (layer: keyed, frame: frame + 1))
-            .pluginIdleAt!(0),
-        isTrue,
-        reason: 'the frame the rail frame reads',
-      );
+    test('it is asked of the row the rail reads values off — a '
+        'projection\'s chain and kind', () {
       final alone = rowOf([plugin]);
-      expect(
-        headerOf(alone, source: (frame) => (layer: keyed, frame: 1))
-            .pluginIdleAt!(0),
-        isTrue,
-        reason: 'the chain of the row read',
-      );
+      expect(headerOf(alone, source: itself(alone)).pluginIdleAt!(0), isFalse);
       expect(
         headerOf(
           alone,
           source: (frame) => (
-            layer: rowOf([plugin], kind: LayerKind.image),
+            layer: rowOf([plugin], kind: LayerKind.folder),
             frame: frame,
           ),
         ).pluginIdleAt!(0),
         isTrue,
         reason: 'the kind of the row read',
+      );
+      expect(
+        headerOf(
+          alone,
+          source: (frame) => (
+            layer: rowOf([plugin.copyWith(enabled: false)]),
+            frame: frame,
+          ),
+        ).pluginIdleAt!(0),
+        isFalse,
+        reason: 'the chain of the row read: its plugin switched off',
       );
     });
 
@@ -148,7 +138,7 @@ void main() {
                   name: 'c',
                   duration: 4,
                   canvasSize: const CanvasSize(width: 64, height: 36),
-                  layers: [rowOf([blur(EffectParameter(value: 3)), plugin])],
+                  layers: [rowOf([plugin], kind: LayerKind.folder)],
                 ),
               ],
             ),

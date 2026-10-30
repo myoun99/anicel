@@ -14,11 +14,11 @@ import 'package:flutter_test/flutter_test.dart';
 import '../helpers/a_plugin_that_shifts.dart';
 
 /// 🗣️I-132-Q33 c 「머리 이름 뒤에 경고 글자를 늘 둔다」: a plugin's header
-/// warns where it stands idle ([pluginStandsIdle]) — and where that is, is
-/// the binding's to say, by the one rule both ask ([runningPluginIndex]).
+/// warns where it stands idle ([pluginStandsIdle]) — where the binding is
+/// handed no chain to run it in, as 🗣️I-132-Q34 a left it.
 /// So every row kind × chain × frame here is asked of the header and of
 /// the binding, by whether it ran the plugin; and where it runs is held to
-/// 🗣️I-132-Q32 b on its own, so the two cannot agree on a wrong answer.
+/// 🗣️I-132-Q34 a on its own, so the two cannot agree on a wrong answer.
 void main() {
   final other = FxPluginDescription.fromJson({
     'spec': 1,
@@ -100,16 +100,20 @@ void main() {
     );
   }
 
-  test('🎯the header warns exactly where the binding runs no plugin — every '
-      'row kind that wears a chain, every chain, at two frames', () {
+  /// The rows whose chains the plan hands the binding: the ones it reads
+  /// cels or images of. ⏳A folder's and an adjustment's are not yet.
+  bool bound(LayerKind kind) => !kind.groupsLayers && !kind.filtersBelow;
+
+  test('🎯the header warns exactly where no plugin runs — every row kind that '
+      'wears a chain, every chain, at two frames', () {
     var asked = 0;
     for (final kind in LayerKind.values.where((kind) => kind.hasLayerEffects)) {
       for (final MapEntry(key: name, value: chain) in chains.entries) {
         final on = chain.singleWhere((effect) => effect.id == p).enabled;
         for (final frame in [0, 1]) {
           expect(
-            pluginStandsIdle(chain, p, kind: kind, frameIndex: frame),
-            on && !ran(chain, kind, frame),
+            pluginStandsIdle(chain, p, kind: kind),
+            on && !(bound(kind) && ran(chain, kind, frame)),
             reason: '$kind · $name · frame $frame',
           );
           asked += 1;
@@ -119,69 +123,34 @@ void main() {
     expect(asked, greaterThan(chains.length * 2 * 5), reason: '⛔premise');
   });
 
-  test('where it runs (🗣️I-132-Q32 b): on a cel row, at the head of its '
-      'chain or after keys alone, switched on — as each frame resolves it', () {
-    Map<String, bool> idleAt(int frame) => {
-      for (final MapEntry(key: name, value: chain) in chains.entries)
-        name: pluginStandsIdle(
-          chain,
-          p,
-          kind: LayerKind.animation,
-          frameIndex: frame,
-        ),
-    };
-    expect(idleAt(0), {
-      'alone': false,
-      'after a key': false,
-      'after a blur': true,
-      'after a blur switched off': false,
-      'after a blur of nothing': false,
-      'after a blur keyed up from nothing': false,
-      'after another plugin': true,
-      'switched off': false,
-    });
-    expect(idleAt(1)['after a blur keyed up from nothing'], isTrue);
-    expect(
-      pluginStandsIdle(
-        chains['after another plugin']!,
-        const EffectId('q'),
-        kind: LayerKind.animation,
-        frameIndex: 0,
-      ),
-      isFalse,
-      reason: 'the first of two runs',
-    );
+  test('where it runs (🗣️I-132-Q34 a 「어디에 걸어도 돌고」): wherever it stands '
+      'in a cel row\'s chain or an image row\'s, switched on', () {
+    for (final kind in [LayerKind.animation, LayerKind.image]) {
+      for (final MapEntry(key: name, value: chain) in chains.entries) {
+        final on = chain.singleWhere((effect) => effect.id == p).enabled;
+        for (final frame in [0, 1]) {
+          expect(ran(chain, kind, frame), on, reason: '$kind · $name');
+        }
+      }
+    }
   });
 
-  test('「폴더 · 조정 · 이미지 행에 걸면 그 플러그인은 걸리지 않은 채」 — nor on a '
-      'chain that is no row\'s (a track\'s); one switched off warns '
-      'nowhere', () {
-    final resolved = resolveLayerEffectsAt(effects: [plugin], frameIndex: 0);
-    for (final kind in [
-      LayerKind.image,
-      LayerKind.folder,
-      LayerKind.adjustment,
-    ]) {
+  test('⏳a folder\'s, an adjustment\'s and a track\'s chain runs none yet — '
+      'one switched off warns nowhere', () {
+    for (final kind in [LayerKind.folder, LayerKind.adjustment]) {
       expect(
-        pluginStandsIdle([plugin], p, kind: kind, frameIndex: 0),
+        pluginStandsIdle([plugin], p, kind: kind),
         isTrue,
         reason: '$kind',
       );
-      expect(runningPluginIndex(resolved, kind), isNull, reason: '$kind');
     }
-    expect(runningPluginIndex(resolved, LayerKind.animation), 0);
     expect(
-      pluginStandsIdle([plugin], p, kind: null, frameIndex: 0),
+      pluginStandsIdle([plugin], p, kind: null),
       isTrue,
       reason: 'a track\'s chain',
     );
     expect(
-      pluginStandsIdle(
-        [plugin.copyWith(enabled: false)],
-        p,
-        kind: null,
-        frameIndex: 0,
-      ),
+      pluginStandsIdle([plugin.copyWith(enabled: false)], p, kind: null),
       isFalse,
     );
   });
@@ -190,12 +159,12 @@ void main() {
     final chain = chains['after a blur']!;
     for (final id in [const EffectId('b'), const EffectId('gone')]) {
       expect(
-        pluginStandsIdle(chain, id, kind: LayerKind.animation, frameIndex: 0),
+        pluginStandsIdle(chain, id, kind: LayerKind.folder),
         isFalse,
         reason: '$id',
       );
       expect(
-        pluginStandsIdle(chain, id, kind: null, frameIndex: 0),
+        pluginStandsIdle(chain, id, kind: null),
         isFalse,
         reason: '$id on a track',
       );

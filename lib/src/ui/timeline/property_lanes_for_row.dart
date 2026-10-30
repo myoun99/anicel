@@ -203,7 +203,6 @@ List<PropertyLaneRow> propertyLanesForRow({
                 at.layer.effects,
                 effectId,
                 kind: at.layer.kind,
-                frameIndex: at.frame,
               );
             },
     );

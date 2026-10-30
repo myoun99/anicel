@@ -129,7 +129,6 @@ class _StoryboardRailRows {
         track.effects,
         effectId,
         kind: null,
-        frameIndex: frameIndex,
       ),
     );
   }

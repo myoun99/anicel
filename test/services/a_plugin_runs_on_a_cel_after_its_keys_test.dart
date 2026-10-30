@@ -489,20 +489,20 @@ void main() {
       expect(bound(a, const [], 0).single.run!.rows, isEmpty);
     });
 
-    test('runs none after an app effect, on an image row, or where the '
-        'device has not the plugin', () {
+    test('runs one after an app effect and on an image row too (🗣️I-132-Q34 '
+        'a 「어디에 걸어도 돌고」) — none where the device has not the plugin', () {
       final blurred = row('a', effects: [
         LayerEffect.defaults(id: const EffectId('b'), kind: EffectKind.blur)
             .withParameter('blurriness', EffectParameter(value: 3)),
         pluginOn(),
       ]);
       expect(
-        [for (final e in bound(blurred, const [], 0)) e.run],
-        [null, null],
+        [for (final e in bound(blurred, const [], 0)) e.run != null],
+        [false, true],
       );
 
       final image = row('a', kind: LayerKind.image, effects: [pluginOn()]);
-      expect(bound(image, const [], 0).single.run, isNull);
+      expect(bound(image, const [], 0).single.run, isNotNull);
 
       final elsewhere = deviceFxPluginBinding(
         runnerFor: (_) => null,
