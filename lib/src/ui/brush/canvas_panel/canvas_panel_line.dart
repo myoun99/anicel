@@ -53,9 +53,9 @@ class _CanvasPanelLine {
   /// The press the line lands at when it lets go, and what it pressed with.
   ({int pointer, double pressure})? _press;
 
-  /// What the press that landed the line now landing pressed with — the
-  /// next line's start ([heard]) — until that stroke is heard, or the next
-  /// press goes down ([press]).
+  /// What the press that landed the last line pressed with — the next
+  /// line's start ([heard]) — until the next press goes down ([press]):
+  /// every stroke heard here began with a press the census heard.
   double? _landingPress;
 
   /// Whether a line of this hand is on screen — what a take-back takes.
@@ -96,7 +96,6 @@ class _CanvasPanelLine {
       at: _state._selectionSeat.pointOnTheCanvas(end),
       pressure: _landingPress ?? stroke.sourceDabs.lastOrNull?.pressure ?? 1,
     );
-    _landingPress = null;
     refresh();
   }
 
@@ -165,7 +164,7 @@ class _CanvasPanelLine {
     }
     _setTrails(const [], shown: false);
     // Before the landing: a line laid and landed in one go is heard inside
-    // it.
+    // it, and one that waits for its cel a frame later.
     _landingPress = press.pressure;
     _state._landTraced(copies, asStroke: true, pressure: _from!.pressure);
   }
