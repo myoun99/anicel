@@ -1271,9 +1271,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       case EditorActionIds.layerAdd:
         _workingPanel.addLayer();
       // F-455: the cut pill's ＋ by key — its button's own press, which
-      // makes no cut where it has no place for one.
+      // opens no window where it has no place for a cut (I-100).
       case EditorActionIds.cutNew:
-        newCutPress(_session)?.call();
+        newCutPress(context, _session)?.call();
       // I-130: ○ and ● by key — their buttons' presses.
       case EditorActionIds.frameToggleMarkOne:
         final panel = _workingPanel;

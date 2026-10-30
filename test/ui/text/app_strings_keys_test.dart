@@ -821,7 +821,7 @@ void main() {
     'brNewGroupName': (s) => s.brNewGroupName,
     'brNewPresetName': (s) => s.brNewPresetName,
     'brGroupNameField': (s) => s.brGroupNameField,
-    'brCreate': (s) => s.brCreate,
+    'commonCreate': (s) => s.commonCreate,
     'brRenameBrush': (s) => s.brRenameBrush,
     'brBrushNameField': (s) => s.brBrushNameField,
     'brGroupNameEmpty': (s) => s.brGroupNameEmpty,

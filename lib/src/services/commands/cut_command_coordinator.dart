@@ -160,20 +160,22 @@ class CutCommandCoordinator {
     // the classic anchor: right of the active cut, else the track's end.
     ({int? index, int leadingGapFrames, int? duration})? placement,
     CutId? cutId,
+    String? name,
   }) => _cuts.createCut(
     trackId: trackId,
     canvasSize: canvasSize,
     placement: placement,
     cutId: cutId,
+    name: name,
   );
 
-  /// The cut [createCut] would make with the same words, named [cutId] —
-  /// not made.
+  /// The cut [createCut] would make with the same words, named [cutId] (or
+  /// a fresh id) — not made.
   Cut plannedCut({
     required TrackId trackId,
     CanvasSize? canvasSize,
     ({int? index, int leadingGapFrames, int? duration})? placement,
-    required CutId cutId,
+    CutId? cutId,
   }) => _cuts
       .createCutCommand(
         trackId: trackId,

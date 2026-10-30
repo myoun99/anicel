@@ -1834,7 +1834,7 @@ enum AppStrings {
 
   String get brBrushesTitle => _s('brBrushesTitle');
   String get brGroupNameField => _s('brGroupNameField');
-  String get brCreate => _s('brCreate');
+  String get commonCreate => _s('commonCreate');
   String get brRenameBrush => _s('brRenameBrush');
   String get brBrushNameField => _s('brBrushNameField');
   String get brGroupNameEmpty => _s('brGroupNameEmpty');
@@ -3141,7 +3141,7 @@ enum AppStrings {
     'shapeToolRatioLock': 'Lock ratio',
     'brBrushesTitle': 'Brushes',
     'brGroupNameField': 'Group name',
-    'brCreate': 'Create',
+    'commonCreate': 'Create',
     'brRenameBrush': 'Rename brush',
     'brBrushNameField': 'Brush name',
     'brGroupNameEmpty': 'Group name cannot be empty.',
@@ -4821,7 +4821,7 @@ enum AppStrings {
     'shapeToolRatioLock': '比率を固定',
     'brBrushesTitle': 'ブラシ',
     'brGroupNameField': 'グループ名',
-    'brCreate': '作成',
+    'commonCreate': '作成',
     'brRenameBrush': 'ブラシ名を変更',
     'brBrushNameField': 'ブラシ名',
     'brGroupNameEmpty': 'グループ名は空にできません。',
@@ -6617,7 +6617,7 @@ enum AppStrings {
     'shapeToolRatioLock': '비율 고정',
     'brBrushesTitle': '브러시',
     'brGroupNameField': '그룹 이름',
-    'brCreate': '만들기',
+    'commonCreate': '만들기',
     'brRenameBrush': '브러시 이름 변경',
     'brBrushNameField': '브러시 이름',
     'brGroupNameEmpty': '그룹 이름은 비워 둘 수 없습니다.',
@@ -8554,7 +8554,7 @@ enum AppStrings {
     'shapeToolRatioLock': 'Verrouiller les proportions',
     'brBrushesTitle': 'Brosses',
     'brGroupNameField': 'Nom du groupe',
-    'brCreate': 'Créer',
+    'commonCreate': 'Créer',
     'brRenameBrush': 'Renommer la brosse',
     'brBrushNameField': 'Nom de la brosse',
     'brGroupNameEmpty': 'Le nom du groupe ne peut pas être vide.',
@@ -10325,7 +10325,7 @@ enum AppStrings {
     'shapeToolRatioLock': '锁定比例',
     'brBrushesTitle': '画笔',
     'brGroupNameField': '组名称',
-    'brCreate': '创建',
+    'commonCreate': '创建',
     'brRenameBrush': '重命名画笔',
     'brBrushNameField': '画笔名称',
     'brGroupNameEmpty': '组名称不能为空。',

@@ -32,6 +32,7 @@ class AppPromptDialog extends StatefulWidget {
     this.fieldTrailing,
     this.width,
     this.lead,
+    this.extraHolds = true,
   });
 
   /// The same window with its four keys derived from ONE name:
@@ -65,6 +66,7 @@ class AppPromptDialog extends StatefulWidget {
     this.fieldTrailing,
     this.width,
     this.lead,
+    this.extraHolds = true,
   }) : windowKey = ValueKey<String>('$keyPrefix-dialog'),
        fieldKey = ValueKey<String>('$keyPrefix-text-field'),
        cancelKey = ValueKey<String>('$keyPrefix-cancel-button'),
@@ -74,6 +76,11 @@ class AppPromptDialog extends StatefulWidget {
   /// edit as the name, so the two are confirmed together rather than
   /// through two dialogs in a row.
   final Widget? extra;
+
+  /// Whether [extra] holds what it can be confirmed with — false while it
+  /// holds what it cannot (a size out of range in the new cut window):
+  /// the confirm greys out and Enter confirms nothing.
+  final bool extraHolds;
 
   /// Optional content ABOVE the field, confirmed with it like [extra] — the
   /// cut's scene over its name (F-291: 「신이란 항목을 위에 둬서」). The
@@ -131,6 +138,9 @@ class _AppPromptDialogState extends State<AppPromptDialog> {
   }
 
   void _submit() {
+    if (!widget.extraHolds) {
+      return;
+    }
     final value = _controller.text.trim();
     final emptyError = widget.emptyError;
     if (value.isEmpty && emptyError != null) {
@@ -215,7 +225,7 @@ class _AppPromptDialogState extends State<AppPromptDialog> {
           label: widget.confirmLabel,
           actionKey: widget.confirmKey,
           emphasis: AppWindowActionEmphasis.primary,
-          onPressed: _submit,
+          onPressed: widget.extraHolds ? _submit : null,
         ),
       ],
     );

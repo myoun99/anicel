@@ -10,6 +10,7 @@ import 'editor_command_actions.dart';
 import 'dialogs/behind_the_wait_window.dart';
 import 'dialogs/dialog_verb.dart';
 import 'dialogs/canvas_size_dialog.dart';
+import 'dialogs/new_cut_dialog.dart';
 import 'editor_session_manager.dart';
 import 'session/canvas_adjust.dart';
 import 'shortcuts/editor_action_registry.dart';
@@ -141,16 +142,39 @@ Future<void> landCanvasAdjust(
   }
 }
 
-/// What the cut pill's ＋ does when pressed — make a cut where it stands —
-/// or null where it has no place to put one ([CutPlacement.canCreateCut],
+/// What the cut pill's ＋ does when pressed — open the new cut window
+/// ([NewCutDialog]) and make the cut it confirms where the ＋ stands — or
+/// null where it has no place to put one ([CutPlacement.canCreateCut],
 /// #18): the button and its key read this one answer.
 ///
 /// 🗣️F-455 (유저 2026-10-23): 「컷 종류버튼의 새 컷은 +버튼이랑 겹치니
 /// 삭제 … 종류버튼에 들어갈거 없으니 잠정적으로 삭제. 필요해질때 다시 만듬」
 /// — the ＋ wears no band. ↩️Its band offered 새 컷 (the ＋'s own verb a
 /// second time) and 겸용컷 만들기, which went to [cutMenuEntries].
-VoidCallback? newCutPress(EditorSessionManager session) =>
-    session.cutPlacement.canCreateCut ? session.cutVerbs.createCut : null;
+VoidCallback? newCutPress(
+  BuildContext context,
+  EditorSessionManager session,
+) => session.cutPlacement.canCreateCut
+    ? () => unawaited(_askNewCut(context, session))
+    : null;
+
+/// The window offers the cut [CutVerbs.createCut] makes unasked — its name
+/// where it lands, A4 200dpi — and the cut is made as the window leaves it.
+Future<void> _askNewCut(BuildContext context, EditorSessionManager session) {
+  final planned = session.cutVerbs.plannedNewCut;
+  var size = planned?.canvasSize;
+  return askAboutThenCommit<Cut, String>(
+    context,
+    planned,
+    dialog: (cut) => NewCutDialog(
+      initialName: cut.name,
+      initialSize: cut.canvasSize,
+      onSizeChanged: (typed) => size = typed,
+    ),
+    commit: (name) =>
+        session.cutVerbs.createCut(name: name, canvasSize: size),
+  );
+}
 
 /// The cut pill's menu as it opens. [context] is where a row's window opens
 /// from — the pill's, or the shell's when a key presses the row.
@@ -291,7 +315,7 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
       // ([newCutPress] has why).
       tooltip: editorActionLabel(EditorActionIds.cutNew),
       shortcuts: const [EditorActionIds.cutNew],
-      onPressed: newCutPress(session),
+      onPressed: newCutPress(context, session),
     ),
     // ⛔THE CUT DELETE IS GONE (T24, 유저 2026-08-13: 「컷알약 삭제버튼
     // 일단 삭제. 공통버튼에 존재하니까」). ⑰'s one delete has it.

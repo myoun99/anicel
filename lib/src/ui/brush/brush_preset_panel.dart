@@ -440,7 +440,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
         titleIcon: Icons.create_new_folder_outlined,
         fieldLabel: AppText.strings.brGroupNameField,
         initialValue: AppText.strings.brNewGroupName,
-        confirmLabel: AppText.strings.brCreate,
+        confirmLabel: AppText.strings.commonCreate,
         emptyError: AppText.strings.brGroupNameEmpty,
       ),
       commit: onCreated,

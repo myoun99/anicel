@@ -106,7 +106,7 @@ void main() {
 
     await expectCutOrder(tester, ['default-cut-1']);
 
-    await tapCutCommandButton(tester, const ValueKey<String>('new-cut-button'));
+    await makeCutWithItsWindow(tester);
 
     final second = (await activeCutIdOf(tester)).value;
     await expectCutOrder(tester, ['default-cut-1', second]);
