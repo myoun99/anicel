@@ -84,7 +84,7 @@ void main() {
   });
 
   testWidgets('I-81 page view: the numbers start again at the page, whose '
-      'head writes the page on the top line', (tester) async {
+      'head writes the page beside its second', (tester) async {
     await tester.pumpWidget(
       harness(rulerView: FrameRulerView.pages, pageFrames: 24),
     );
@@ -92,7 +92,7 @@ void main() {
     expect(timelineHeaderModel(tester, 23).label, '24');
     expect(timelineHeaderModel(tester, 24).label, '1');
     expect(timelineHeaderModel(tester, 25).label, '2');
-    expect(timelineHeaderModel(tester, 24).secondsLabel, 'p2');
+    expect(timelineHeaderModel(tester, 24).secondsLabel, '1 p2');
     expect(timelineHeaderModel(tester, 23).secondsLabel, '');
   });
 

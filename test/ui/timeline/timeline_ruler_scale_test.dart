@@ -369,47 +369,76 @@ void main() {
       expect(strip.modelAt(145).label, '2');
     });
 
-    test('a page\'s head writes the page, and its seconds count from it', () {
+    // 🗣️I-81-Q4 (유저 2026-10-30): 「페이지뷰는 초 옆에 페이지 넘어가는곳마다
+    // p1 p2라고 쓸뿐임 그 외는 프레임뷰랑 똑같음. 프레임숫자가 페이지마다
+    // 초기화되는정도」. ↩️The seconds counted again from each page's head,
+    // which wrote its page instead.
+    test('a page\'s head writes its page beside its second, and the seconds '
+        'are the frames view\'s', () {
       final strip = paged();
       expect(strip.secondsLabelEverySeconds, 1, reason: 'the premise');
-      expect(strip.modelAt(0).secondsLabel, 'p1');
+      expect(strip.modelAt(0).secondsLabel, '0 p1');
       expect(strip.modelAt(24).secondsLabel, '1');
-      expect(strip.modelAt(144).secondsLabel, 'p2');
-      expect(strip.modelAt(168).secondsLabel, '1');
-      expect(strip.modelAt(264).secondsLabel, '5');
+      expect(strip.modelAt(144).secondsLabel, '6 p2');
+      expect(strip.modelAt(168).secondsLabel, '7');
+      expect(strip.modelAt(264).secondsLabel, '11');
     });
 
-    test('a second within a rung of the next page\'s head writes nothing', () {
-      String at(int frame, {required int every}) => timelineRulerSecondsLabel(
+    test('a second that would run into a page\'s mark writes nothing — '
+        'within a rung before it, within its clear frames after', () {
+      String at(
+        int frame, {
+        int every = 1,
+        int everyPages = 1,
+        int clear = 1,
+      }) => timelineRulerSecondsLabel(
         frameIndex: frame,
         framesPerSecond: 24,
         everySeconds: every,
-        pages: (frames: 144, everyPages: 1),
+        pages: (frames: 144, everyPages: everyPages, clearFrames: clear),
       );
       expect(at(96, every: 2), '4');
-      expect(at(120, every: 1), '5');
+      expect(at(120), '5');
       expect(
-        at(120, every: 2),
+        at(120, every: 5),
         '',
-        reason: 'p2 stands a second on, and a rung is two',
+        reason: 'p2 stands a second on, and a rung is five',
       );
+      expect(at(168, clear: 24), '7');
+      expect(at(168, clear: 25), '', reason: 'p2 takes more than a second');
+      expect(at(144, every: 5), 'p2', reason: 'a head off the rung');
+      expect(at(144, everyPages: 2), '6', reason: 'a page left unwritten');
+      expect(at(288, everyPages: 2), '12 p3');
     });
 
-    test('past where a page holds its mark, every Nth page writes it — '
-        'and the number under it', () {
+    test('past where a page holds its mark, every Nth page writes it; the '
+        'numbers stand where the frames view\'s do, each its page\'s', () {
       final strip = paged(cell: 1 / 8, frames: 14400, page: 72);
       final every = strip.pagesLabelEvery;
       expect(every, greaterThan(1), reason: 'the premise');
       expect(timelineSecondStrideLadder, contains(every));
-      expect(strip.modelAt(0).secondsLabel, 'p1');
-      expect(strip.modelAt(72 * every).secondsLabel, 'p${every + 1}');
-      expect(strip.modelAt(72 * every).label, '1');
-      expect(strip.modelAt(72).secondsLabel, isEmpty);
+      expect(strip.modelAt(0).secondsLabel, endsWith('p1'));
       expect(
-        strip.modelAt(72).label,
-        isEmpty,
-        reason: 'no number stands under a page left unwritten',
+        strip.modelAt(72 * every).secondsLabel,
+        endsWith('p${every + 1}'),
       );
+      expect(strip.modelAt(72).secondsLabel, isNot(contains('p')));
+      final framesView = scale(
+        frameEndIndexExclusive: 14400,
+        playbackFrameCount: 14400,
+        metrics: TimelineGridMetrics.defaults.copyWith(frameCellWidth: 1 / 8),
+      );
+      var written = 0;
+      for (var frame = 0; frame < 14400; frame += 1) {
+        final there = framesView.modelAt(frame).label;
+        expect(
+          strip.modelAt(frame).label,
+          there.isEmpty ? isEmpty : '${frame % 72 + 1}',
+          reason: 'frame $frame',
+        );
+        written += there.isEmpty ? 0 : 1;
+      }
+      expect(written, greaterThan(1), reason: 'the premise');
     });
 
     test('the widest number stands at the end of the last whole run — of a '

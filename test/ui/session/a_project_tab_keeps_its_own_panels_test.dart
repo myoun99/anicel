@@ -135,7 +135,7 @@ void main() {
     // seconds at 24.
     final ruler = timelineRulerPainter(tester).scale;
     expect(ruler.pageFrames, 144);
-    expect(ruler.modelAt(0).secondsLabel, 'p1');
+    expect(ruler.modelAt(0).secondsLabel, '0 p1');
 
     final second = projects.open(createDefaultProject());
     await tester.pumpAndSettle();

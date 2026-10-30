@@ -43,42 +43,47 @@ import '../text/word_condensation.dart';
 /// [TimelineRulerScale.secondsLabelEverySeconds]); counted from 0, so the
 /// head always writes.
 ///
-/// Under the page view ([pages], I-81) the seconds count again from each
-/// page's head, as the paper's do (유저 2026-10-06: 「페이지마다 1초,2초,
-/// 12프레임 등 초나 프레임 표시가 장수마다 리셋되는데」), and the head
-/// itself writes the page ([timelinePageMark]) — 「p1 p2라는식으로 룰러에
-/// 적는다」 — every `everyPages`-th page's only, past where a page holds
-/// its mark ([TimelineRulerScale.pagesLabelEvery], I-22's 「겹칠때 생략」).
-/// ⚠️Mine: a second within a rung of the next page's head writes nothing,
-/// so the page's mark keeps the room the rung measured.
+/// Under the page view ([pages], I-81) the seconds are the frames view's,
+/// and a page's head writes the page beside its second ([timelinePageMark])
+/// — 🗣️I-81-Q4 (유저 2026-10-30): 「페이지뷰는 초 옆에 페이지 넘어가는곳마다
+/// p1 p2라고 쓸뿐임 그 외는 프레임뷰랑 똑같음」 — every `everyPages`-th
+/// page's only, past where a page holds its mark
+/// ([TimelineRulerScale.pagesLabelEvery], I-22's 「겹칠때 생략」). A second
+/// that would run into a page's mark writes nothing: within a rung before
+/// it, or within its `clearFrames` after. ⚠️Mine: the mark after its
+/// second, a space between (`6 p2`). ↩️The seconds counted again from each
+/// page's head, which wrote its page instead — 유저 10-06 「초나 프레임
+/// 표시가 장수마다 리셋되는데」, of the paper, read as the ruler's two lines.
 String timelineRulerSecondsLabel({
   required int frameIndex,
   required int framesPerSecond,
   int everySeconds = 1,
-  ({int frames, int everyPages})? pages,
+  TimelinePageMarks? pages,
 }) {
   final rung = timelineSecondFrames(framesPerSecond) * everySeconds;
-  if (pages == null) {
-    return frameIndex % rung == 0
-        ? timelineRulerSecondOf(
-            frameIndex: frameIndex,
-            framesPerSecond: framesPerSecond,
-          )
-        : '';
-  }
-  final (:frames, :everyPages) = pages;
-  final inPage = frameIndex % frames;
-  if (inPage == 0) {
-    final page = frameIndex ~/ frames;
-    return page % everyPages == 0 ? timelinePageMark(page) : '';
-  }
-  return inPage % rung == 0 && frames - inPage >= rung
+  final second = frameIndex % rung == 0
       ? timelineRulerSecondOf(
-          frameIndex: inPage,
+          frameIndex: frameIndex,
           framesPerSecond: framesPerSecond,
         )
       : '';
+  if (pages == null) {
+    return second;
+  }
+  final (:frames, :everyPages, :clearFrames) = pages;
+  final marked = frames * everyPages;
+  final sinceMark = frameIndex % marked;
+  if (sinceMark == 0) {
+    final mark = timelinePageMark(frameIndex ~/ frames);
+    return second.isEmpty ? mark : '$second $mark';
+  }
+  return sinceMark >= clearFrames && marked - sinceMark >= rung ? second : '';
 }
+
+/// How the page view writes its pages' marks ([timelineRulerSecondsLabel]):
+/// a page's frames, every how many pages a mark is written, and how many
+/// frames past one the next second keeps clear of it.
+typedef TimelinePageMarks = ({int frames, int everyPages, int clearFrames});
 
 /// The page [pageIndex] (from 0) as the page view writes it: `p1`, `p2` …
 /// (I-81 「p1 p2라는식으로 룰러에 적는다」).
@@ -368,8 +373,10 @@ final Expando<int> _labelEveryFramesOf = Expando<int>('labelEveryFrames');
 /// [TimelineRulerScale.secondsLabelEverySeconds], measured once per scale.
 final Expando<int> _secondsLabelEveryOf = Expando<int>('secondsLabelEvery');
 
-/// [TimelineRulerScale.pagesLabelEvery], measured once per scale.
-final Expando<int> _pagesLabelEveryOf = Expando<int>('pagesLabelEvery');
+/// [TimelineRulerScale._pageMarks], measured once per scale.
+final Expando<TimelinePageMarks> _pageMarksOf = Expando<TimelinePageMarks>(
+  'pageMarks',
+);
 
 /// [TimelineRulerScale.writtenAt]: what each scale has laid out, by layout,
 /// frame and whether it is the playhead's pair.
@@ -475,8 +482,9 @@ final class TimelineRulerScale {
   final FrameRulerView rulerView;
 
   /// How many frames a page of the strip's cut's X-sheet holds — where the
-  /// page view starts the strip's numbers and seconds again (I-81-Q1 「그
-  /// 컷의 X시트 장을 따른다」). Null on a strip that is no one cut's — the
+  /// page view starts the strip's numbers again and writes the page's mark
+  /// (I-81-Q1 「그 컷의 X시트 장을 따른다」). Null on a strip that is no one
+  /// cut's — the
   /// storyboard's, which counts on as the frames view does until I-81-Q3
   /// says where its pages begin.
   final int? pageFrames;
@@ -494,14 +502,6 @@ final class TimelineRulerScale {
     FrameRulerView.secondsPlusFrames => timelineSecondFrames(framesPerSecond),
     _ => _page,
   };
-
-  /// Where [frameIndex] stands in the stretch the numbers count over — its
-  /// page under the page view, the strip otherwise: where the cadence
-  /// ([labelEveryFrames]) is counted from.
-  int _inCount(int frameIndex) {
-    final page = _page;
-    return page == null ? frameIndex : frameIndex % page;
-  }
 
   /// PRO-TIMELINE scrolling (UI-R15→R16): with these set the strip
   /// windows ITSELF off the quantized bucket (repaint once per span
@@ -546,8 +546,9 @@ final class TimelineRulerScale {
   /// and how big is the strip's own ([TimelineFrameRulerPainter.glyphsAt],
   /// `XSheetFrameRailPainter.glyphsAt`); what is written is this.
   ///
-  /// ⚠️Mine: under the page view the playhead writes the PAGE it stands in
-  /// on the seconds line (`p2`), its number in that page under it.
+  /// The page view's pair is the frames view's, its number in its page
+  /// (I-81-Q4 「그 외는 프레임뷰랑 똑같음」). ↩️It wrote the page it stood in
+  /// on the seconds line (`p2`).
   ({String number, String second}) writingAt(
     int frameIndex, {
     required bool current,
@@ -556,15 +557,12 @@ final class TimelineRulerScale {
       final model = modelAt(frameIndex);
       return (number: model.label, second: model.secondsLabel);
     }
-    final page = _page;
     return (
       number: frameNumberLabel(frameIndex),
-      second: page == null
-          ? timelineRulerSecondOf(
-              frameIndex: frameIndex,
-              framesPerSecond: framesPerSecond,
-            )
-          : timelinePageMark(frameIndex ~/ page),
+      second: timelineRulerSecondOf(
+        frameIndex: frameIndex,
+        framesPerSecond: framesPerSecond,
+      ),
     );
   }
 
@@ -800,45 +798,52 @@ final class TimelineRulerScale {
 
   /// Every how many SECONDS the seconds line writes a mark — the rung of
   /// the seconds ladder ([timelineSecondsHolding]) whose span holds the
-  /// widest mark this strip writes there ([_widestSecondsMark]). Every
-  /// second, at every zoom the old floor allowed; I-22's 「겹칠때 생략」
-  /// past that.
+  /// widest second this strip writes ([_widestMark]). Every second, at
+  /// every zoom the old floor allowed; I-22's 「겹칠때 생략」 past that.
   int get secondsLabelEverySeconds =>
       _secondsLabelEveryOf[this] ??= timelineSecondsHolding(
-        _widestSecondsMark(),
-        timelineSecondFrames(framesPerSecond) * metrics.frameCellWidth,
+        _widestMark(timelineSecondsMark(_lastFrame ~/ _secondFrames)),
+        _secondFrames * metrics.frameCellWidth,
       );
 
-  /// Every how many PAGES the page view writes a page's mark — the rung of
-  /// the same ladder whose span of pages holds the widest mark, the
-  /// question [secondsLabelEverySeconds] asks of seconds; 1 off it.
-  int get pagesLabelEvery {
+  /// Every how many PAGES the page view writes a page's mark; 1 off it.
+  int get pagesLabelEvery => _pageMarks?.everyPages ?? 1;
+
+  /// The page view's marks, measured once per scale: the rung of the
+  /// seconds' ladder whose span of pages holds the widest mark a page's head
+  /// writes — its last page beside its last second — the question
+  /// [secondsLabelEverySeconds] asks of seconds, and the frames that mark
+  /// takes. Null off the page view.
+  TimelinePageMarks? get _pageMarks {
     final page = _page;
-    return page == null
-        ? 1
-        : _pagesLabelEveryOf[this] ??= timelineSecondsHolding(
-            _widestSecondsMark(),
-            page * metrics.frameCellWidth,
-          );
+    if (page == null) {
+      return null;
+    }
+    return _pageMarksOf[this] ??= () {
+      final widest = _widestMark(
+        '${timelineSecondsMark(_lastFrame ~/ _secondFrames)} '
+        '${timelinePageMark(_lastFrame ~/ page)}',
+      );
+      return (
+        frames: page,
+        everyPages: timelineSecondsHolding(
+          widest,
+          page * metrics.frameCellWidth,
+        ),
+        clearFrames: (widest / metrics.frameCellWidth).ceil(),
+      );
+    }();
   }
 
-  /// The widest mark the seconds line writes, set in [secondsFontSize] and
-  /// measured along [axis], with [timelineMarkGap] to the next: the strip's
-  /// last second — and under the page view, the wider of its last page's
-  /// mark and a page's last second, the marks it writes instead.
-  double _widestSecondsMark() {
-    final type = timelineSecondsType(face, secondsFontSize);
-    final second = timelineSecondFrames(framesPerSecond);
-    final last = math.max(0, frameEndIndexExclusive - 1);
-    final page = _page;
-    final widest = page == null
-        ? _widestWritten(type, timelineSecondsMark(last ~/ second))
-        : math.max(
-            _widestWritten(type, timelinePageMark(last ~/ page)),
-            _widestWritten(type, timelineSecondsMark((page - 1) ~/ second)),
-          );
-    return widest + timelineMarkGap;
-  }
+  int get _secondFrames => timelineSecondFrames(framesPerSecond);
+
+  int get _lastFrame => math.max(0, frameEndIndexExclusive - 1);
+
+  /// [written] as wide as the seconds line can set it ([_widestWritten], in
+  /// [secondsFontSize]), with [timelineMarkGap] to the next mark.
+  double _widestMark(String written) =>
+      _widestWritten(timelineSecondsType(face, secondsFontSize), written) +
+      timelineMarkGap;
 
   /// The widest [written] this strip can set in [type] — every digit of it
   /// written as the widest digit, so a face with proportional figures
@@ -890,8 +895,7 @@ final class TimelineRulerScale {
   /// The resolved per-cell model — the probe surface.
   ///
   /// R9 #4: the cadence is the SHARED one ([labelEveryFrames], on the
-  /// paper-timesheet ladder anchored at frame 1 — of each page, under the
-  /// page view). The rail was a transposed
+  /// paper-timesheet ladder anchored at frame 1). The rail was a transposed
   /// re-implementation of the horizontal ruler and had never called it —
   /// so zooming out crowded every row's number into the next, while the
   /// horizontal ruler thinned out correctly. A ruler is a SCALE, not cell
@@ -903,24 +907,16 @@ final class TimelineRulerScale {
   /// -1 once the overlay took the tint, so only the tests ever saw it.
   TimelineRulerHeaderModel modelAt(int frameIndex) {
     final outside = frameIndex >= playbackFrameCount;
-    final page = _page;
-    final inCount = _inCount(frameIndex);
-    final secondsLabel = timelineRulerSecondsLabel(
-      everySeconds: secondsLabelEverySeconds,
-      frameIndex: frameIndex,
-      framesPerSecond: framesPerSecond,
-      pages: page == null ? null : (frames: page, everyPages: pagesLabelEvery),
-    );
-    // ⚠️Mine: a page head's number stands under the page's mark, as past a
-    // second the numbers stand under the seconds' (I-102 「서로 기준은
-    // 같도록」) — a head whose mark is left out ([pagesLabelEvery]) writes
-    // neither.
-    final underItsMark = page == null || inCount != 0 || secondsLabel != '';
-    final labeled = inCount % labelEveryFrames == 0 && underItsMark;
+    final labeled = frameIndex % labelEveryFrames == 0;
     return TimelineRulerHeaderModel(
       frameIndex: frameIndex,
       label: labeled ? frameNumberLabel(frameIndex) : '',
-      secondsLabel: secondsLabel,
+      secondsLabel: timelineRulerSecondsLabel(
+        everySeconds: secondsLabelEverySeconds,
+        frameIndex: frameIndex,
+        framesPerSecond: framesPerSecond,
+        pages: _pageMarks,
+      ),
       outsidePlaybackRange: outside,
       background: outside
           ? (pastPlaybackWash ?? colorScheme.surface)

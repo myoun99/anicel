@@ -236,7 +236,8 @@ void main() {
     // (feedback #12).
     expect(placeInALine(), '0+15');
 
-    // ⚠️Mine, until I-81-Q4: the page view names a place as frames.
+    // I-81-Q4 「그 외는 프레임뷰랑 똑같음」: the page view names a place as
+    // the frames view does.
     await pick(FrameRulerView.pages);
     expect(placeInALine(), '15');
 

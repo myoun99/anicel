@@ -17,7 +17,8 @@ enum FrameRulerView {
   secondsPlusFrames('seconds'),
 
   /// The frames view, the numbers restarting at each page of the cut's
-  /// X-sheet — `p1`, `p2` … on the seconds line.
+  /// X-sheet — `p1`, `p2` … beside the second at each page's head (I-81-Q4
+  /// 「초 옆에 페이지 넘어가는곳마다 p1 p2라고 쓸뿐임」).
   pages('pages');
 
   const FrameRulerView(this.jsonValue);
