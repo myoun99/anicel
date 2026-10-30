@@ -2940,36 +2940,38 @@ class ExportDialogState extends State<ExportDialog> {
     final taken = {for (final cel in cels) cel.fileName.toLowerCase()};
     String claim(String name) =>
         claimedOutputName(name, taken, keyOf: (name) => name.toLowerCase());
-    final paths = <({Cut cut, String fileName})>[
-      if (ae.guideCamera)
-        for (final cut in cuts)
-          if (CameraPath.of(cut, _session.camera.cameraFrameSize) != null)
-            (
-              cut: cut,
-              fileName: claim(
-                '${sanitizeExportFileComponent(cut.name)}_camera.png',
-              ),
-            ),
-    ];
+    final paths = ae.guideCamera
+        ? _aeCameraPaths(cuts, claim)
+        : const <({Cut cut, String fileName})>[];
+    String fileNameFor(int index) => index < cels.length
+        ? cels[index].fileName
+        : paths[index - cels.length].fileName;
+    // The script lays what the run wrote ([aeLaidOf]).
+    final wrote = <String>{};
     return _runImageExport(
       count: cels.length + paths.length,
-      renderImage: (index) => index < cels.length
-          ? renderer.renderCelGroup(
-              cels[index],
-              spec.sizeMode,
-              guideColor: guideInk,
-            )
-          : renderer.cameraPathOf(paths[index - cels.length].cut) ??
-                Future.value(),
-      fileNameFor: (index) => index < cels.length
-          ? cels[index].fileName
-          : paths[index - cels.length].fileName,
+      renderImage: (index) async {
+        final image = await (index < cels.length
+            ? renderer.renderCelGroup(
+                cels[index],
+                spec.sizeMode,
+                guideColor: guideInk,
+              )
+            : renderer.cameraPathOf(paths[index - cels.length].cut) ??
+                  Future.value());
+        if (image != null) {
+          wrote.add(fileNameFor(index));
+        }
+        return image;
+      },
+      fileNameFor: fileNameFor,
       thenWrite: [
         () => _writeAeScript(
-          plan,
+          aeLaidOf(plan, wrote),
           scope: spec.scope,
           cameraPaths: {
-            for (final (:cut, :fileName) in paths) cut.id: fileName,
+            for (final (:cut, :fileName) in paths)
+              if (wrote.contains(fileName)) cut.id: fileName,
           },
           claim: claim,
         ),
@@ -2977,6 +2979,20 @@ class ExportDialogState extends State<ExportDialog> {
       says: _Tally.files,
     );
   }
+
+  /// The camera's path of each of [cuts] whose camera moves, a file named
+  /// by its cut ([claim]).
+  List<({Cut cut, String fileName})> _aeCameraPaths(
+    Iterable<Cut> cuts,
+    String Function(String name) claim,
+  ) => [
+    for (final cut in cuts)
+      if (CameraPath.of(cut, _session.camera.cameraFrameSize) != null)
+        (
+          cut: cut,
+          fileName: claim('${sanitizeExportFileComponent(cut.name)}_camera.png'),
+        ),
+  ];
 
   /// The script of [plan]'s cuts, named after what [scope] covers, over
   /// the [cameraPaths] already written — and the sound of each cut beside

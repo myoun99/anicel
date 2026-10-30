@@ -4,6 +4,9 @@ import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/services/export/ae_script.dart';
 
 void main() {
+  /// A transform property's path from its layer starts at the group.
+  const tf = '"ADBE Transform Group"';
+
   AeTransform still({
     List<double> anchor = const [4, 4],
     List<double> position = const [4, 4],
@@ -64,9 +67,14 @@ void main() {
       ]);
       expect(
         script,
-        contains('keys(L[0], "ADBE Rotate Z", [0, 5, 10], [0, 50, 50]);'),
+        contains(
+          'keys(L[0], [$tf, "ADBE Rotate Z"], [0, 5, 10], [0, 50, 50]);',
+        ),
       );
-      expect(script, contains('hold(L[0], "ADBE Scale", [100, 100]);'));
+      expect(
+        script,
+        contains('hold(L[0], [$tf, "ADBE Scale"], [100, 100]);'),
+      );
     });
 
     test('a moving anchor is keyed at every frame — it is spatial', () {
@@ -88,7 +96,7 @@ void main() {
       expect(
         script,
         contains(
-          'keys(L[0], "ADBE Anchor Point", [0, 1, 2], '
+          'keys(L[0], [$tf, "ADBE Anchor Point"], [0, 1, 2], '
           '[[0, 0], [2, 0], [4, 0]]);',
         ),
       );
@@ -117,13 +125,16 @@ void main() {
       expect(script, contains('split(L[0]);'));
       expect(
         script,
-        contains('keys(L[0], "ADBE Position_0", [0, 4], [0, 4]);'),
+        contains('keys(L[0], [$tf, "ADBE Position_0"], [0, 4], [0, 4]);'),
       );
       expect(
         script,
-        contains('keys(L[0], "ADBE Position_1", [0, 2, 3, 4], [0, 0, 7, 7]);'),
+        contains(
+          'keys(L[0], [$tf, "ADBE Position_1"], [0, 2, 3, 4], '
+          '[0, 0, 7, 7]);',
+        ),
       );
-      expect(script, isNot(contains('"ADBE Position",')));
+      expect(script, isNot(contains('(L[0], [$tf, "ADBE Position"]')));
     });
   });
 
@@ -192,7 +203,9 @@ void main() {
       // The parent is set before the values, which are in its space.
       expect(
         script.indexOf('parent(L[1], L[0]);'),
-        lessThan(script.indexOf('hold(L[1], "ADBE Anchor Point"')),
+        lessThan(
+          script.indexOf('hold(L[1], [$tf, "ADBE Anchor Point"]'),
+        ),
       );
     });
 
@@ -294,5 +307,73 @@ void main() {
       expect(formatAeNumber(1.23456789), '1.2346');
       expect(formatAeNumber(0.10000), '0.1');
     });
+  });
+
+  test('a layer\'s effects are After Effects\' own, each by its place among '
+      'the layer\'s — its values, its mix, its switch', () {
+    final script = scriptOf([
+      compOf([
+        AeLayer(
+          name: 'A',
+          source: const AeNullSource(),
+          effects: [
+            const AeEffect(
+              matchName: 'ADBE Gaussian Blur 2',
+              values: {
+                'ADBE Gaussian Blur 2-0001': AeChannel.still([11.7]),
+              },
+            ),
+            AeEffect(
+              matchName: 'ADBE Linear Color Key2',
+              values: {
+                'ADBE Linear Color Key2-0005': AeChannel.sampled(
+                  3,
+                  (frame) => [frame * 10.0],
+                ),
+              },
+              opacity: const AeChannel.still([40]),
+              enabled: false,
+            ),
+          ],
+        ),
+      ]),
+    ]);
+    const parade = '"ADBE Effect Parade"';
+    expect(script, contains('fx(L[0], "ADBE Gaussian Blur 2");'));
+    expect(
+      script,
+      contains('hold(L[0], [$parade, 1, "ADBE Gaussian Blur 2-0001"], 11.7);'),
+    );
+    expect(script, contains('fx(L[0], "ADBE Linear Color Key2");'));
+    expect(
+      script,
+      contains(
+        'keys(L[0], [$parade, 2, "ADBE Linear Color Key2-0005"], [0, 2], '
+        '[0, 20]);',
+      ),
+    );
+    expect(
+      script,
+      contains(
+        'hold(L[0], [$parade, 2, "ADBE Effect Built In Params", '
+        '"ADBE Effect Mask Opacity"], 40);',
+      ),
+    );
+    expect(script, contains('prop(L[0], [$parade, 2]).enabled = false;'));
+    expect(script, isNot(contains('prop(L[0], [$parade, 1]).enabled')));
+    // A value past what After Effects takes is its end there — it throws
+    // otherwise (checked there, 2026-10-30); here, that the script says so.
+    expect(
+      script,
+      contains('if (at.hasMax && value > at.maxValue) { return at.maxValue; }'),
+    );
+  });
+
+  test('an adjustment row is an adjustment layer', () {
+    final script = scriptOf([
+      compOf(const [AeLayer(name: 'Grade', source: AeAdjustmentSource())]),
+    ]);
+    expect(script, contains('L[0] = adjustment(C[0]);'));
+    expect(script, contains('layer.adjustmentLayer = true;'));
   });
 }

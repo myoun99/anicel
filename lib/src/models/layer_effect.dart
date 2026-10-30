@@ -1372,7 +1372,20 @@ List<ResolvedLayerEffect> resolveLayerEffectsAt({
     if (!effect.enabled) {
       continue;
     }
-    final sample = ResolvedLayerEffect(
+    final sample = sampleLayerEffectAt(effect, frameIndex);
+    if (sample.isNoOp) {
+      continue;
+    }
+    resolved.add(sample);
+  }
+  return resolved.isEmpty ? const [] : List.unmodifiable(resolved);
+}
+
+/// [effect] sampled at [frameIndex] — every lane, whether or not the
+/// sample changes a pixel ([resolveLayerEffectsAt] drops the ones that do
+/// not, and the switched-off ones).
+ResolvedLayerEffect sampleLayerEffectAt(LayerEffect effect, int frameIndex) =>
+    ResolvedLayerEffect(
       kind: effect.kind,
       plugin: effect.plugin,
       values: [
@@ -1388,13 +1401,6 @@ List<ResolvedLayerEffect> resolveLayerEffectsAt({
       },
       layers: effect.layers,
     );
-    if (sample.isNoOp) {
-      continue;
-    }
-    resolved.add(sample);
-  }
-  return resolved.isEmpty ? const [] : List.unmodifiable(resolved);
-}
 
 /// Whether any of [effects] spreads pixels beyond their own coverage — the
 /// blur question the folder-buffer decision and the dirty-bounds math ask.

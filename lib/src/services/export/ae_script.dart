@@ -94,6 +94,12 @@ final class AeSound extends AeLayerSource {
   final String path;
 }
 
+/// An adjustment layer: no picture — its [AeLayer.effects] work on every
+/// layer under it, its opacity their mix (an adjustment row).
+final class AeAdjustmentSource extends AeLayerSource {
+  const AeAdjustmentSource();
+}
+
 /// One layer of a comp.
 class AeLayer {
   const AeLayer({
@@ -105,10 +111,14 @@ class AeLayer {
     this.parent,
     this.timeRemap = const [],
     this.guide = false,
+    this.effects = const [],
   });
 
   final String name;
   final AeLayerSource source;
+
+  /// After Effects' effects on it, first applied first.
+  final List<AeEffect> effects;
 
   /// Whether it is After Effects' guide layer: seen in the comp's window,
   /// never in a render — 🗣️ae-script-export-Q3 (유저 2026-10-16) 「AE 가이드
@@ -146,6 +156,24 @@ class AeTransform {
   final AeChannel scale;
   final AeChannel rotation;
   final AeChannel opacity;
+}
+
+/// One of After Effects' effects on a layer, by its [matchName]: its
+/// properties' values over the comp, each by its own match name, and its
+/// [opacity] — the effect's mix with what it was handed (Compositing
+/// Options › Effect Opacity), a percent; null leaves it whole.
+class AeEffect {
+  const AeEffect({
+    required this.matchName,
+    required this.values,
+    this.opacity,
+    this.enabled = true,
+  });
+
+  final String matchName;
+  final Map<String, AeChannel> values;
+  final AeChannel? opacity;
+  final bool enabled;
 }
 
 /// One property's value over a comp: the one value it holds, or its value
@@ -326,6 +354,8 @@ class _AeScriptWriter {
         _out.writeln('  $id = $compId.layers.addNull($compId.duration);');
       case AeSound(:final path):
         _out.writeln('  $id = $compId.layers.add(${_footageOf(path)});');
+      case AeAdjustmentSource():
+        _out.writeln('  $id = adjustment($compId);');
     }
     _out.writeln('  $id.name = ${_string(layer.name)};');
     if (layer.timeRemap.isNotEmpty) {
@@ -341,6 +371,9 @@ class _AeScriptWriter {
     final transform = layer.transform;
     if (transform != null) {
       _writeTransform(id, transform);
+    }
+    for (final (index, effect) in layer.effects.indexed) {
+      _writeEffect(id, index + 1, effect);
     }
     if (layer.blend != LayerBlendMode.normal &&
         layer.blend != LayerBlendMode.passThrough) {
@@ -365,40 +398,70 @@ class _AeScriptWriter {
   void _writeTransform(String id, AeTransform transform) {
     // Every one is written, its default too: a value is in its parent's
     // space, and AE moved it when the parent was set.
-    _channel(id, 'ADBE Anchor Point', transform.anchor, everyFrame: true);
+    _channel(id, _transformAt('ADBE Anchor Point'), transform.anchor,
+        everyFrame: true);
     final position = transform.position;
     if (position.frames case final frames?) {
       _out.writeln('  split($id);');
       _channel(
         id,
-        'ADBE Position_0',
+        _transformAt('ADBE Position_0'),
         AeChannel._frames([for (final value in frames) [value[0]]]),
       );
       _channel(
         id,
-        'ADBE Position_1',
+        _transformAt('ADBE Position_1'),
         AeChannel._frames([for (final value in frames) [value[1]]]),
       );
     } else {
-      _channel(id, 'ADBE Position', position);
+      _channel(id, _transformAt('ADBE Position'), position);
     }
-    _channel(id, 'ADBE Scale', transform.scale);
-    _channel(id, 'ADBE Rotate Z', transform.rotation);
-    _channel(id, 'ADBE Opacity', transform.opacity);
+    _channel(id, _transformAt('ADBE Scale'), transform.scale);
+    _channel(id, _transformAt('ADBE Rotate Z'), transform.rotation);
+    _channel(id, _transformAt('ADBE Opacity'), transform.opacity);
   }
 
-  /// [channel] onto [property] of layer [id]: its one value, or keys —
-  /// at every frame for a spatial property ([everyFrame]), else only where
-  /// a line through the frames around bends, so the linear keys still give
+  /// [effect], the [index]th on layer [id] (from 1).
+  void _writeEffect(String id, int index, AeEffect effect) {
+    _out.writeln('  fx($id, ${_string(effect.matchName)});');
+    for (final MapEntry(key: name, value: channel) in effect.values.entries) {
+      _channel(id, ['ADBE Effect Parade', index, name], channel);
+    }
+    if (effect.opacity case final opacity?) {
+      _channel(id, [
+        'ADBE Effect Parade',
+        index,
+        'ADBE Effect Built In Params',
+        'ADBE Effect Mask Opacity',
+      ], opacity);
+    }
+    if (!effect.enabled) {
+      _out.writeln(
+        '  prop($id, ${_pathText(['ADBE Effect Parade', index])})'
+        '.enabled = false;',
+      );
+    }
+  }
+
+  static List<Object> _transformAt(String name) => [
+    'ADBE Transform Group',
+    name,
+  ];
+
+  /// [channel] onto the property at [path] under layer [id] — match names,
+  /// or an effect's place among the layer's: its one value, or keys — at
+  /// every frame for a spatial property ([everyFrame]), else only where a
+  /// line through the frames around bends, so the linear keys still give
   /// every frame its own value.
   void _channel(
     String id,
-    String property,
+    List<Object> path,
     AeChannel channel, {
     bool everyFrame = false,
   }) {
+    final at = _pathText(path);
     if (channel.value case final value?) {
-      _out.writeln('  hold($id, "$property", ${_value(value)});');
+      _out.writeln('  hold($id, $at, ${_value(value)});');
       return;
     }
     final frames = channel.frames!;
@@ -407,10 +470,15 @@ class _AeScriptWriter {
         if (everyFrame || _bends(frames, frame)) frame,
     ];
     _out.writeln(
-      '  keys($id, "$property", [${kept.join(', ')}], '
+      '  keys($id, $at, [${kept.join(', ')}], '
       '[${[for (final frame in kept) _value(frames[frame])].join(', ')}]);',
     );
   }
+
+  static String _pathText(List<Object> path) => '[${[
+    for (final step in path)
+      if (step is String) _string(step) else '$step',
+  ].join(', ')}]';
 
   static String _value(List<double> value) => value.length == 1
       ? formatAeNumber(value.single)
@@ -463,6 +531,11 @@ String _string(String text) {
 }
 
 /// The functions every script calls — the rules [writeAeScript] names.
+///
+/// `fit`: a value past what After Effects' property takes is its end —
+/// After Effects throws for it, and the script stops there (measured in
+/// After Effects 2025, 2026-10-30: Brightness ±150, Effect Opacity 0…100).
+/// The nearest it has is its end (ae-script-export-Q5).
 const String _helpers = r'''
   function t(frame) { return frame * RATE_D / RATE_N; }
   var here = new File($.fileName).parent;
@@ -485,21 +558,50 @@ const String _helpers = r'''
     layer.outPoint = t(frame + length);
     return layer;
   }
-  function tf(layer, name) {
-    return layer.property("ADBE Transform Group").property(name);
+  function prop(layer, path) {
+    var at = layer;
+    for (var i = 0; i < path.length; i += 1) { at = at.property(path[i]); }
+    return at;
   }
-  function hold(layer, name, value) { tf(layer, name).setValue(value); }
-  function keys(layer, name, frames, values) {
+  function fit(at, value) {
+    if (typeof value !== "number") { return value; }
+    if (at.hasMin && value < at.minValue) { return at.minValue; }
+    if (at.hasMax && value > at.maxValue) { return at.maxValue; }
+    return value;
+  }
+  function hold(layer, path, value) {
+    prop(layer, path).setValue(fit(prop(layer, path), value));
+  }
+  function keys(layer, path, frames, values) {
     var times = [];
+    var fitted = [];
     var i;
-    for (i = 0; i < frames.length; i += 1) { times.push(t(frames[i])); }
-    tf(layer, name).setValuesAtTimes(times, values);
-    for (i = 1; i <= tf(layer, name).numKeys; i += 1) {
-      tf(layer, name).setInterpolationTypeAtKey(i,
-        KeyframeInterpolationType.LINEAR, KeyframeInterpolationType.LINEAR);
+    for (i = 0; i < frames.length; i += 1) {
+      times.push(t(frames[i]));
+      fitted.push(fit(prop(layer, path), values[i]));
+    }
+    prop(layer, path).setValuesAtTimes(times, fitted);
+    for (i = 1; i <= prop(layer, path).numKeys; i += 1) {
+      if (prop(layer, path).isInterpolationTypeValid(
+          KeyframeInterpolationType.LINEAR)) {
+        prop(layer, path).setInterpolationTypeAtKey(i,
+          KeyframeInterpolationType.LINEAR, KeyframeInterpolationType.LINEAR);
+      }
     }
   }
-  function split(layer) { tf(layer, "ADBE Position").dimensionsSeparated = true; }
+  function split(layer) {
+    prop(layer, ["ADBE Transform Group", "ADBE Position"])
+      .dimensionsSeparated = true;
+  }
+  function fx(layer, name) {
+    layer.property("ADBE Effect Parade").addProperty(name);
+  }
+  function adjustment(into) {
+    var layer = into.layers.addSolid([1, 1, 1], "adjustment", into.width,
+      into.height, 1, into.duration);
+    layer.adjustmentLayer = true;
+    return layer;
+  }
   function parent(layer, to) {
     if (layer.setParentWithJump) { layer.setParentWithJump(to); }
     else { layer.parent = to; }

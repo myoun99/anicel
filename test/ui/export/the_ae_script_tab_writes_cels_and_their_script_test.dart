@@ -219,6 +219,10 @@ void main() {
       expect(script, contains('footage("$cel")'));
     }
     expect(script, contains('comp("CUT1 canvas", 8, 8, 2, bin)'));
+    // The direction's block has no drawing: planned, yet drawn as nothing
+    // and written nowhere — and After Effects stops the whole script at a
+    // file that is not there (2026-10-30).
+    expect(script, isNot(contains('_Camera_PAN.png')));
     expect(script, contains('comp("CUT1", 32, 18, 2, bin)'));
     session.playbackRig.prerenderScheduler.cancel();
   });

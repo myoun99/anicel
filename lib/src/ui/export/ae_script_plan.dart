@@ -4,15 +4,21 @@ import '../../models/cut_id.dart';
 import '../../models/export_cel_kind.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
+import '../../models/layer_effect.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/timeline_coverage.dart';
-import '../../models/transform_track.dart' show resolveOpacityTrackAt;
 import '../../services/commands/link_mirror.dart'
     show linkCounterpartIn, linkedCutGroupInTrackOrder;
 import '../../services/cut_frame_composite_plan.dart'
-    show folderNeedsCompositeBuffer, layerOwnPlacementAt, resolveFolderOpacityAt;
+    show
+        chainWornBy,
+        folderNeedsCompositeBuffer,
+        layerDrawingAt,
+        layerOwnPlacementAt,
+        resolveFolderOpacityAt;
+import '../../services/export/ae_effects.dart';
 import '../../services/export/ae_script.dart';
 import '../canvas/canvas_look.dart' show CanvasCamera;
 import 'ae_keyframe_data.dart' show aeCameraSampleOf;
@@ -30,7 +36,11 @@ import 'export_cels_selection.dart' show exportCelKindOf;
 /// — 🗣️유저 2026-07-25 「일반적으로 타임리맵」, a layer a block turned down.
 /// A folder that passes its rows through is a null they are parented to;
 /// one the app composites as one picture ([folderNeedsCompositeBuffer]) is
-/// a comp of its own. Q2 「날것으로 — 이펙트 없이」: no effect is carried.
+/// a comp of its own, and an adjustment row an adjustment layer. Q2
+/// 「날것으로 — 이펙트 없이」 and Q5 「앱 계산은 앱 것 — AE 탭은 가장 가까운
+/// AE 이펙트로」: a cel is its drawing alone, and an effect AE has a kin of
+/// is that AE effect on the layer ([aeEffectOf]); one it has none of is
+/// not carried.
 /// Q4 「넣는다 — 앱이 놓은 그대로 WAV 로」: the camera comp sounds the cut.
 /// Q3 「AE 가이드 레이어로 따로」: a direction row and the camera's path are
 /// guides of the canvas comp — seen while working, never rendered.
@@ -98,6 +108,32 @@ List<AeComp> aeCompsOf({
 /// along them, and its camera's path drawn over its canvas: each a file
 /// beside the script, or null where the cut has none.
 typedef AeCutRun = ({int frames, String? sound, String? cameraPath});
+
+/// [plan] as its script lays it: a cel [wrote] holds no file of refused,
+/// no picture. The run writes no file for a cel none of whose rows has
+/// artwork, though the plan planned it — a direction's block with no
+/// drawing, a frame drawn on by nothing — and After Effects stops the
+/// whole script at a file that is not there (2026-10-30, a direction row
+/// with no drawing).
+ExportCelGroupPlan aeLaidOf(ExportCelGroupPlan plan, Set<String> wrote) =>
+    ExportCelGroupPlan(
+      sheets: [
+        for (final sheet in plan.sheets)
+          if (!sheet.written || wrote.contains(sheet.fileName))
+            sheet
+          else
+            ExportCelSheet(
+              cut: sheet.cut,
+              row: sheet.row,
+              frame: sheet.frame,
+              celName: sheet.celName,
+              word: sheet.word,
+              look: sheet.look,
+              refused: ExportCelRefusal.noPicture,
+            ),
+      ],
+      documents: plan.documents,
+    );
 
 /// The cuts [aeCompsOf] lays a camera comp for, in its order — the ones a
 /// caller writes a sound for.
@@ -332,6 +368,13 @@ class _CanvasLaying {
         }
         continue;
       }
+      if (row.kind.filtersBelow) {
+        final adjustment = _adjustmentLayer(row);
+        if (adjustment.effects.isNotEmpty) {
+          shown.add((row, (_) => adjustment));
+        }
+        continue;
+      }
       final bank = banks[row.id];
       if (bank != null) {
         final holds = _holdsOf(row, bank);
@@ -383,6 +426,7 @@ class _CanvasLaying {
           resolveFolderOpacityAt(folder: folder, frameIndex: frame) *
           _passedStrength(folder, frame),
     ),
+    effects: _effectsOf(folder.effects),
   );
 
   /// A row's cels: its cel comp a frame at a time where [holds] says.
@@ -405,13 +449,46 @@ class _CanvasLaying {
       transform: _transformOf(
         carrier,
         opacity: (frame) =>
-            (carrier.transformEnabled
-                ? resolveOpacityTrackAt(carrier.transformTrack.opacity, frame)
-                : 1.0) *
+            (layerDrawingAt(cut: cut, layer: row, frameIndex: frame)
+                    ?.render
+                    .opacity ??
+                1.0) *
             _passedStrength(row, frame),
       ),
+      effects: _effectsOf(chainWornBy(cut, row)),
     );
   }
+
+  /// An adjustment row: its effects over every layer under it in the comp,
+  /// at its strength — their mix.
+  AeLayer _adjustmentLayer(Layer row) {
+    final canvas = cut.canvasSize;
+    final middle = [canvas.width / 2, canvas.height / 2];
+    return AeLayer(
+      name: row.name,
+      source: const AeAdjustmentSource(),
+      enabled: cut.layers.rowVisible(row),
+      transform: AeTransform(
+        anchor: AeChannel.still(middle),
+        position: AeChannel.still(middle),
+        scale: const AeChannel.still([100, 100]),
+        rotation: const AeChannel.still([0]),
+        opacity: AeChannel.sampled(
+          frames,
+          (frame) => [
+            (row.opacity * _passedStrength(row, frame) * 100).clamp(0.0, 100.0),
+          ],
+        ),
+      ),
+      effects: _effectsOf(row.effects),
+    );
+  }
+
+  /// [chain] as After Effects' nearest effects (Q5) — the ones it has.
+  List<AeEffect> _effectsOf(List<LayerEffect> chain) => [
+    for (final effect in chain)
+      ?aeEffectOf(effect, frames: frames, paper: cut.canvasSize),
+  ];
 
   /// The strength the folders passing [row] through lend it at [frame] —
   /// a null has none to give, so each row takes it on.

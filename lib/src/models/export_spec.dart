@@ -752,7 +752,8 @@ class AeScriptExportSpec extends ExportTabSpec {
   ExportTab get tab => ExportTab.aeScript;
 
   /// [cels] as the tab writes them: PNG keeping its alpha, the canvas
-  /// whole — the canvas comp's size — no FX (Q2 「날것으로 — 이펙트 없이」),
+  /// whole — the canvas comp's size — no FX baked (Q2 「날것으로 — 이펙트
+  /// 없이」; Q5 lays them as AE's own effects),
   /// no paper (Q1), and of the kinds the rows' alone.
   CelsExportSpec get written => cels.copyWith(
     format: const ExportFormatSelection(kind: ExportMediaKind.still),
