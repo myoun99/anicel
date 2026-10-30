@@ -40,7 +40,7 @@ void main() {
   });
 
   test('the script fills every value the manifest leaves open', () {
-    final open = RegExp(r'@([A-Z_]+)@')
+    final open = RegExp('@([A-Z_]+)@')
         .allMatches(manifest)
         .map((m) => m[1]!)
         .toSet();
@@ -52,7 +52,7 @@ void main() {
 
   test('the version is one the Store takes: four parts, the first not 0, '
       'the fourth 0', () {
-    final version = RegExp(r'^version="([^"]+)"', multiLine: true)
+    final version = RegExp('^version="([^"]+)"', multiLine: true)
         .firstMatch(script)
         ?.group(1);
     expect(version, isNotNull, reason: 'the script names it on one line');
