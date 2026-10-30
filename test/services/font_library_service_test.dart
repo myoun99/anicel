@@ -165,21 +165,31 @@ void main() {
         'HANDED — the one that asks whether it is a name of its own', () {
       // A verb added later that wrote `'$directoryPath/$file'` for itself
       // would pass every test here: none of them knows it exists. The
-      // other two joins name nothing they were handed — the index's own
-      // file, and what a new name is minted from.
-      final joins = [
-        for (final line in File(
-          'lib/src/services/font_library_service.dart',
-        ).readAsLinesSync())
+      // library's own joins name nothing they were handed — the index's
+      // own file, and what a new name is minted from; a handed name is
+      // joined by the folder it keeps its faces in (`NamedFileFolder`,
+      // which the fx plugins' library keeps its builds in too).
+      List<String> joinsIn(String path) => [
+        for (final line in File(path).readAsLinesSync())
           if (!line.trimLeft().startsWith('//') &&
               RegExp(r'\$\{?directoryPath\}?/').hasMatch(line))
             line.trim(),
       ];
 
-      expect(joins, [
+      expect(joinsIn('lib/src/services/font_library_service.dart'), [
         r"String get indexPath => '$directoryPath/index.json';",
-        r"isFontLibraryFileName(file) ? '$directoryPath/$file' : null;",
         r"return mintMediaCarry('$directoryPath/$face.$extension');",
+      ]);
+      expect(
+        joinsIn('lib/src/services/fx_plugins/fx_plugin_library_service.dart'),
+        [
+          r"String get indexPath => '$directoryPath/index.json';",
+          r"'$directoryPath/'",
+        ],
+      );
+      expect(joinsIn('lib/src/services/persistence/named_file_folder.dart'), [
+        'String? pathOf(String file) => '
+            r"isName(file) ? '$directoryPath/$file' : null;",
       ]);
     });
 

@@ -1,10 +1,10 @@
 import 'dart:ffi' show Abi;
-import 'dart:io';
 import 'dart:typed_data';
 
 import '../../models/fx_plugin_description.dart';
 import '../../models/media_asset.dart' show isOneStoredName, mintMediaCarry;
 import '../persistence/app_support_path.dart';
+import '../persistence/named_file_folder.dart';
 import '../persistence/versioned_settings_file.dart';
 import 'fx_plugin_bundle.dart';
 
@@ -44,12 +44,15 @@ class FxPluginLibraryService {
 
   String get indexPath => '$directoryPath/index.json';
 
+  /// The folder, holding the builds under names of its own
+  /// ([isFxPluginLibraryFileName]) — nothing is kept, read or deleted under
+  /// another ([NamedFileFolder.pathOf], board `law-저장`).
+  NamedFileFolder get _folder =>
+      NamedFileFolder(directoryPath, isName: isFxPluginLibraryFileName);
+
   /// Where the library keeps a file called [file] — null where [file] is
-  /// not a name of its own ([isFxPluginLibraryFileName]). ⛔THE ONE LINE
-  /// THAT JOINS THE FOLDER AND A NAME IT WAS HANDED (board `law-저장`):
-  /// what the index says reaches the disk through here or not at all.
-  String? pathOf(String file) =>
-      isFxPluginLibraryFileName(file) ? '$directoryPath/$file' : null;
+  /// not a name of its own. What a native build is opened from.
+  String? pathOf(String file) => _folder.pathOf(file);
 
   /// The installed plugins, in the order they were installed. A missing or
   /// unreadable index is no plugins, never an error; an entry whose
@@ -113,58 +116,27 @@ class FxPluginLibraryService {
       '${id.length > _idLettersKept ? id.substring(0, _idLettersKept) : id}',
     );
     final wasm = '$stem.wasm';
-    await _write(wasm, bundle.wasm);
+    await _folder.write(wasm, bundle.wasm);
     final nativeBytes = bundle.native;
     final entry = fxPluginNativeEntryFor(abi ?? Abi.current());
     String? native;
     if (nativeBytes != null && entry != null) {
       native = '$stem.${entry.split('.').last}';
-      await _write(native, nativeBytes);
+      await _folder.write(native, nativeBytes);
     }
     return (wasm: wasm, native: native, description: description);
   }
 
   /// The bytes of [file], or null when it is gone or unreadable — a plugin
   /// that cannot be read is a plugin this device does not have.
-  Future<Uint8List?> read(String file) async {
-    final path = pathOf(file);
-    if (path == null) {
-      return null;
-    }
-    try {
-      return await File(path).readAsBytes();
-    } on Object {
-      return null;
-    }
-  }
+  Future<Uint8List?> read(String file) => _folder.read(file);
 
-  /// Removes [plugin]'s files. A file that will not delete stays on disk;
-  /// the index has dropped it, so nothing reads it.
+  /// Removes [plugin]'s files — the index has dropped it, so what will not
+  /// delete is read by nothing.
   Future<void> delete(InstalledFxPlugin plugin) async {
     for (final file in [plugin.wasm, ?plugin.native]) {
-      final path = pathOf(file);
-      if (path == null) {
-        continue;
-      }
-      try {
-        final target = File(path);
-        if (await target.exists()) {
-          await target.delete();
-        }
-      } on Object {
-        // Left on disk, read by nothing.
-      }
+      await _folder.delete(file);
     }
-  }
-
-  Future<void> _write(String file, Uint8List bytes) async {
-    final path = pathOf(file);
-    if (path == null) {
-      throw ArgumentError.value(file, 'file', 'is not a name of the library');
-    }
-    final target = File(path);
-    await target.parent.create(recursive: true);
-    await target.writeAsBytes(bytes, flush: true);
   }
 }
 
