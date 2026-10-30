@@ -3,9 +3,10 @@
 // 유저 2026-09-08, after drawing Clip Studio's G펜 at all four settings:
 // 「굵기 안바꾸고 가장자리만 조이는거였어」. ↩️I-50 (2026-09-30) split what a
 // step means by tip: an analytic round tip is GIVEN an edge ([edge]) wide
-// inside its rim, every other tip keeps the contrast ladder. Which one a dab
-// takes, and what the ladder does to a coverage, is pinned with the law
-// itself (`brush_edge_law_test.dart`); here are the numbers it reads.
+// inside its rim, a square keeps the contrast ladder, and a raster tip takes
+// its coverage as it is. Which one a dab takes, and what the ladder does to
+// a coverage, is pinned with the law itself (`brush_edge_law_test.dart`);
+// here are the numbers it reads.
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/brush_anti_alias.dart';

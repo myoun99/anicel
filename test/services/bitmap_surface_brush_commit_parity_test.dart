@@ -998,6 +998,28 @@ void main() {
       }
     });
 
+    test('every EDGE step agrees on a soft square, the one tip the contrast '
+        'ladder still reaches', () {
+      for (final antiAlias in BrushAntiAlias.values) {
+        expectParity(
+          surface: blankSurface(tileSize: 256),
+          sequence: strokeOf([
+            for (var i = 0; i < 3; i += 1)
+              dab(
+                x: 64.7 + i * 12.3,
+                y: 60.2 + i * 5.1,
+                size: 58,
+                hardness: 0.4,
+                tipShape: BrushTipShape.square,
+                antiAlias: antiAlias,
+                sequence: i,
+              ),
+          ]),
+          reason: 'square edge $antiAlias',
+        );
+      }
+    });
+
     test('a channel that lands on an exact half rounds away from zero', () {
       final opaque = materializeBrushDabSequenceOnBitmapSurface(
         surface: blankSurface(),

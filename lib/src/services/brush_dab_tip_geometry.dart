@@ -96,17 +96,27 @@ typedef BrushEdgeLaw = ({bool threshold, double contrast});
 ///
 /// 없음 cuts at half coverage whatever the tip. Any other step: an ANALYTIC
 /// round tip already carries its edge in its profile ([RoundTipProfile])
-/// and takes its coverage as it is; every other tip keeps the contrast
-/// ladder ([BrushAntiAlias.contrast]) — a raster tip has no distance to its
-/// edge to widen, and a square's edge was never made wider by the step.
+/// and takes its coverage as it is, and so does a raster tip, whose greys
+/// are its picture and not its edge. Only a square keeps the contrast
+/// ladder ([BrushAntiAlias.contrast]) — its edge was never made wider by
+/// the step.
+///
+/// 🚨★★★A RASTER TIP LEFT THE LADDER (board
+/// imported-water-blend-lays-almost-nothing, 2026-10-30, 유저 「표본을
+/// 넣는다」). The ladder pivots on half coverage, so 1단계 wiped every grey
+/// under 0.375: Clip Studio's 수채 섞기, at 1단계 with a tip that peaks at
+/// 0.63 and averages 0.05, drew next to nothing. The user's stroke of that
+/// brush holds the tip's coverage as it is, row for row.
+/// ↩️I-50 left raster tips on the ladder for want of a distance to widen;
+/// nothing measured had put them there (`f28307f54`: 4 and 2 are 「a
+/// geometric placing, not a measurement」).
 BrushEdgeLaw brushDabEdgeLaw(BrushDab dab) {
   final contrast = dab.antiAlias.contrast;
   if (contrast == null) {
     return (threshold: true, contrast: 1.0);
   }
-  final carriesItsEdge =
-      dab.tipMask == null && dab.tipShape == BrushTipShape.round;
-  return (threshold: false, contrast: carriesItsEdge ? 1.0 : contrast);
+  final isSquare = dab.tipShape == BrushTipShape.square;
+  return (threshold: false, contrast: isSquare ? contrast : 1.0);
 }
 
 /// Whether [tip] holds an EDGE that does not pile under [law] — an analytic
