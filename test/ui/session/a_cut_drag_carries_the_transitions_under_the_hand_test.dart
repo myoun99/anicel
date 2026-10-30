@@ -161,6 +161,16 @@ void main() {
       heldAsReleased(session, first, -4, veils, before: veils());
     });
 
+    test('…and the ruler stops naming it while the hand is down', () {
+      final (session, first, length) = twoCuts();
+      session.transitions.updateTransitionInstructions({
+        length - 6: const InstructionEvent(instructionId: 'fo', length: 4),
+      });
+      String named() => session.activeCutSpan.activeCutNoriShiroLabel;
+
+      heldAsReleased(session, first, -4, named, before: named());
+    });
+
     test("the ruler's drawn end keeps the O.L's のりしろ past the end the "
         'hand holds', () {
       final (session, first, length) = twoCuts();
