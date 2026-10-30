@@ -208,16 +208,19 @@ void main() {
       }
     });
 
-    test('🗣️the grades throw a crumb of lead at random, turned all the way, '
-        'on a paper reached deeper the harder they press (F-462 ②)', () {
+    test('🗣️the grades throw a cloud of lead at random, turned all the way, '
+        'laid apart on a touch of multiplied paper (F-462 ②, F-511)', () {
       // 유저 2026-10-25: 「클튜 연필브러시들은 육각형식으로 안하니까 그거
       // 참고해서 다시 개편. 육각형같은거 잊어도됨」 · 「클튜브러시 그대로
       // 참고하되 따라한 느낌만 안나도록 참고해서 우리방식대로 재구현」.
+      // 2026-10-30: 「제발 질감으로 억지로 표현하려하지마. 브러시 팁으로서
+      // 표현하라고」 · 「아예 질감을 없애란게 아니고 클튜정도로」.
       for (final id in [
         'builtin-hard-pencil',
         'builtin-pencil',
         'builtin-soft-pencil',
         'builtin-dark-pencil',
+        'builtin-colored-pencil',
       ]) {
         final settings = byId(id).settings;
         expect(settings.tips, pencilCrumbBrushTipMasks, reason: id);
@@ -228,21 +231,31 @@ void main() {
           'builtin-graphite-tooth',
           reason: id,
         );
-        // ↩️F-456 multiplied it: a lead only paled and laid smooth.
-        expect(settings.textureMode, BrushTextureMode.height, reason: id);
-        final reach = settings.shape.curves[(
-          BrushPressureTarget.textureDensity,
-          BrushInputSource.pressure,
-        )]!;
-        expect(reach.evaluate(0.0), lessThan(0.75), reason: '$id touched');
-        expect(reach.evaluate(1.0), 1.0, reason: '$id pressed');
+        // ↩️F-462 ② cut it by its height, reached deeper by the pressure:
+        // the paper did all the grain.
+        expect(settings.textureMode, BrushTextureMode.multiply, reason: id);
+        expect(settings.textureDensity, lessThan(0.15), reason: id);
+        expect(
+          settings.shape.curves.keys.map((key) => key.$1),
+          isNot(contains(BrushPressureTarget.textureDensity)),
+          reason: id,
+        );
+        // ↩️At the finest spacing the flecks fill to a band.
+        expect(settings.spacing, greaterThanOrEqualTo(0.1), reason: id);
       }
-      // Wax spreads over the tooth where graphite catches its peaks: the
-      // colored pencil throws the crumbs on a multiplied paper.
-      final colored = byId('builtin-colored-pencil').settings;
-      expect(colored.tips, pencilCrumbBrushTipMasks);
-      expect(colored.tipOrder, BrushTipOrder.random);
-      expect(colored.textureMode, BrushTextureMode.multiply);
+      // The softer the lead, the closer its dabs.
+      expect(
+        [
+          for (final id in [
+            'builtin-hard-pencil',
+            'builtin-pencil',
+            'builtin-soft-pencil',
+            'builtin-dark-pencil',
+          ])
+            byId(id).settings.spacing,
+        ],
+        orderedEquals([0.3, 0.25, 0.2, 0.15]),
+      );
     });
 
     test('🚨the tilted pencil wears the lead upright to flat, three faces a '
@@ -474,7 +487,14 @@ void main() {
       'builtin-chalk-preset': grain,
       // ↩️Board F-218 put the graphite grades and the tilted pencil on the
       // grain tip; F-433 moved their grain to the paper, so they lay at the
-      // finest step again. The two pencils the user made keep theirs.
+      // finest step. F-511 moved the graphite grades' back to the tip, whose
+      // flecks fill to a band at that step. The tilted pencil stays on it.
+      'builtin-hard-pencil': grain,
+      'builtin-pencil': grain,
+      'builtin-soft-pencil': grain,
+      'builtin-dark-pencil': grain,
+      'builtin-colored-pencil': grain,
+      // The two pencils the user made keep theirs.
       'builtin-mechanical-pencil': 'the user\'s own sharp, at its own step',
       'builtin-coloring-pencil':
           'the user\'s own colouring pencil, at its own step',

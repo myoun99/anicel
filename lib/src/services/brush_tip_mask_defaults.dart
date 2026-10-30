@@ -161,18 +161,27 @@ final List<BrushTipMask> pencilLeadBrushTipMasks = List.unmodifiable([
 /// pencil wears as its `tipsPerTurn`.
 const int pencilLeadFacesPerStep = 3;
 
-/// 🗣️THE CRUMBS A LEAD LEAVES (F-462 ②, 유저 2026-10-25: 「클튜
-/// 연필브러시들은 육각형식으로 안하니까 그거 참고해서 다시 개편. 육각형같은거
-/// 잊어도됨」). Three lumpy rounds, each its own outline, whole through most of
-/// its reach and easing to the rim, its face mottled — the way Clip Studio's
-/// pencils draw: a few irregular tips thrown at random, each turned at
-/// random, the paper's tooth doing the grain. The mottle is what moves the
-/// grain dab to dab: under a paper worked by its height a texel the last dab
-/// reached short of is reached by the next, so a line laid again fills in.
+/// 🗣️THE GRAIN IS THE TIP'S (F-511, 유저 2026-10-30: 「제발 질감으로 억지로
+/// 표현하려하지마. 브러시 팁으로서 표현하라고」 · 「아예 질감을 없애란게 아니고
+/// 클튜정도로」). Three clouds of graphite flecks, thin toward the rim and
+/// bare in patches, so a dab lays specks and a line of them reads as pencil
+/// with the paper off. ↩️F-462 ② made them lumpy rounds, solid and mottled:
+/// the paper's tooth did all the grain, and with it off the grades laid a
+/// smooth band. 🔬Clip Studio's real pencil, read through our importer and
+/// drawn at 11–40 px beside these, is a cloud too: a tip 57% empty laid every
+/// 16% of its size, on 8% of paper, and on or off the paper its line looks
+/// the same. ⛔These are ours, generated here; nothing of that file's bitmap
+/// is in them (유저: 「그대로 베끼면 문제될거같으니 진짜 참고만 해서 개선」).
 ///
-/// ⚠️64 texels, not the lead faces' 256: a pencil is a few pixels across,
-/// and the tip sampler has no minification filter (F-462 ③'s tuft, the same
-/// finding) — a 256 rim would stair there.
+/// ⚠️256 texels, not 64: a fleck is a few texels. ↩️F-462 ② stayed at 64
+/// because a solid rim stairs through the sampler's lack of a minification
+/// filter (F-462 ③'s tuft); a cloud has no rim to stair, and at a pencil's
+/// few pixels a sample lands on a fleck or does not, which is the grain.
+///
+/// ⚠️THE IDS OUTLIVE THE LOOK, against F-456's 「a new look is a new id」: a
+/// saved library holds the grades by these ids, and an id it cannot answer
+/// would drop them to a round tip until the user resets it. Their settings
+/// come with the reset (`BrushPresetFileService.libraryVersion`'s note).
 final List<BrushTipMask> pencilCrumbBrushTipMasks = List.unmodifiable([
   for (var crumb = 0; crumb < 3; crumb += 1) _generatePencilCrumbMask(crumb),
 ]);
@@ -830,30 +839,57 @@ double _superReach(double u, double v, int order) {
   return reach;
 }
 
-/// One crumb of [pencilCrumbBrushTipMasks]: a round whose reach a slow noise
-/// moves in and out by a quarter — its lumps — whole out to 0.7 of it, then
-/// easing as `(1 - s²)²` to the rim, every texel of it mottled down by up to
-/// three tenths.
+const int _crumbMaskSize = 256;
+
+/// The flecks thrown at a cloud, before its patches and rim take their share.
+const int _crumbSpecks = 1000;
+
+/// A fleck of [strength]: flat, its last two fifths easing out, so it holds
+/// its dark at a dab's scale and does not stair at a large one.
+_DiscLaw _crumbSpeck(int strength) => (x, y, dx, edge) =>
+    edge < 0.6 ? strength.toDouble() : strength * (1.0 - edge) / 0.4;
+
+/// One cloud of [pencilCrumbBrushTipMasks]: flecks thrown evenly over a
+/// round, each kept by a chance a slow noise moves — its bare patches — and
+/// the rim thins. A fleck is a disc and a smaller one beside it, turned at
+/// random, so a big dab shows crumbs rather than polka dots.
 BrushTipMask _generatePencilCrumbMask(int crumb) {
-  const centre = _maskSize / 2.0;
-  const radius = _maskSize / 2.0 - 1.5;
-  final lumps = _seamlessValueNoise(5, 0xC0B + crumb * 77);
-  final mottle = _seamlessValueNoise(16, 0x3A7 + crumb * 131);
-  return _textureMask('builtin-pencil-crumb-$crumb', (x, y, index) {
-    final u = (x + 0.5 - centre) / radius;
-    final v = (y + 0.5 - centre) / radius;
-    final reach =
-        math.sqrt(u * u + v * v) * (1.0 + (lumps[index] - 0.5) * 0.5);
-    if (reach >= 1.0) {
-      return 0.0;
+  const size = _crumbMaskSize;
+  const centre = size / 2.0;
+  const radius = size / 2.0 - 8.0;
+  final alpha = Uint8List(size * size);
+  final draws = _Draws(0x5CA7 + crumb * 101);
+  final patches = _seamlessValueNoise(6, 0xC0B + crumb * 77, size: size);
+  for (var speck = 0; speck < _crumbSpecks; speck += 1) {
+    final angle = draws.next() * 2.0 * math.pi;
+    final reach = math.sqrt(draws.next());
+    final x = centre + math.cos(angle) * reach * radius;
+    final y = centre + math.sin(angle) * reach * radius;
+    final grit = draws.next();
+    final dot = _crumbSpeck(205 + (draws.next() * 50).round());
+    final turn = draws.next() * 2.0 * math.pi;
+    final keep = draws.next();
+    final patch = patches[y.floor() * size + x.floor()];
+    final rim = reach * reach * reach * reach;
+    if (keep > (patch * 1.4 + 0.1) * (1.0 - rim * 0.75)) {
+      continue;
     }
-    var cover = 1.0;
-    if (reach > 0.7) {
-      final s = (reach - 0.7) / 0.3;
-      cover = (1.0 - s * s) * (1.0 - s * s);
-    }
-    return 255.0 * cover * (0.7 + 0.3 * mottle[index]);
-  });
+    final fleck = 2.6 + grit * grit * 3.4;
+    _stampDisc(alpha, x, y, fleck, dot, size: size);
+    _stampDisc(
+      alpha,
+      x + math.cos(turn) * fleck,
+      y + math.sin(turn) * fleck,
+      fleck * 0.7,
+      dot,
+      size: size,
+    );
+  }
+  return BrushTipMask(
+    id: 'builtin-pencil-crumb-$crumb',
+    size: size,
+    alpha: alpha,
+  );
 }
 
 /// Graphite tooth ([graphiteToothTextureMask]): per texel a hashed speck
@@ -1021,10 +1057,11 @@ void _stampDisc(
   double centerX,
   double centerY,
   double radius,
-  _DiscLaw law,
-) {
-  final (left, right) = _texelSpan(centerX, radius, _maskSize);
-  final (top, bottom) = _texelSpan(centerY, radius, _maskSize);
+  _DiscLaw law, {
+  int size = _maskSize,
+}) {
+  final (left, right) = _texelSpan(centerX, radius, size);
+  final (top, bottom) = _texelSpan(centerY, radius, size);
   for (var y = top; y <= bottom; y += 1) {
     for (var x = left; x <= right; x += 1) {
       final dx = x + 0.5 - centerX;
@@ -1034,7 +1071,7 @@ void _stampDisc(
         continue;
       }
       final value = law(x, y, dx, distance / radius).round();
-      final offset = y * _maskSize + x;
+      final offset = y * size + x;
       alpha[offset] = math.max(alpha[offset], value.clamp(0, 255));
     }
   }
