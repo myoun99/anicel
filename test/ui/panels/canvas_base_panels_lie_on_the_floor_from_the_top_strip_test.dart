@@ -18,6 +18,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/panel_finders.dart';
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/rail_group_button.dart';
+import '../../helpers/settings_flyout.dart' show tapPanelsDrawerRow;
 import '../../helpers/settle_async.dart';
 
 /// 🗣️I-147 (유저 2026-10-30): 「캔버스베이스 패널들 … 상단띠 통해 배경에
@@ -149,6 +150,16 @@ void main() {
       expect(railGroupButton(top(slot)), findsOneWidget, reason: top(slot));
     }
     expect(railGroupButton(top(4)), findsNothing);
+    // The rule's margin stands before them, as on its other side.
+    final first = tester.getRect(railGroupButton(top(1)));
+    final ruleFinder = find.byType(StripGroupRule);
+    final rule = [
+      for (var i = 0; i < ruleFinder.evaluate().length; i += 1)
+        tester.getRect(ruleFinder.at(i)),
+    ].where((rect) => rect.right <= first.left).reduce(
+      (a, b) => a.right > b.right ? a : b,
+    );
+    expect(first.left - rule.right, StripGroupRule.margin);
     expect(find.byType(TimesheetTabHost), findsOneWidget);
     expect(mainCanvasPanel(), findsNothing);
     // The timesheet lies on the floor: the whole room the floor has.
@@ -171,6 +182,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(ConteTabHost), findsOneWidget);
     expect(find.byType(TimesheetTabHost), findsNothing);
+    // The button of what lies on the floor reads open, as a rail's does.
+    bool open(String groupId) => tester
+        .widget<RailButton>(
+          find.ancestor(
+            of: railGroupButton(groupId),
+            matching: find.byType(RailButton),
+          ),
+        )
+        .selected;
+    expect([open(top(1)), open(top(2)), open(top(3))], [false, true, false]);
 
     await tester.tap(railGroupButton(top(3)));
     await tester.pumpAndSettle();
@@ -246,6 +267,44 @@ void main() {
     expect(railGroupButton(top(2)), findsNothing);
     expect(railGroupButton(leftSlot(3)), findsOneWidget);
     expect(find.byType(ConteTabHost), findsOneWidget, reason: 'lands open');
+  });
+
+  testWidgets('a group carried onto a side button joins it with its own front '
+      'panel in front', (tester) async {
+    await pumpApp(tester);
+    await carry(
+      tester,
+      sheets,
+      () => railGroupButton(onion),
+      nudge: const Offset(0, 30),
+    );
+    expect(railGroupButton(sheets), findsNothing);
+    expect(find.byType(TimesheetTabHost), findsOneWidget);
+    expect(find.byType(CutEnvelopeTabHost), findsNothing);
+  });
+
+  testWidgets('no panel but the floor\'s own two lies on an emptied floor — '
+      '「캔버스패널이랑 메인뷰어패널은 지금처럼 배경고정」', (tester) async {
+    await pumpApp(tester);
+    await tapPanelsDrawerRow(tester, 'panels-menu-item-canvas');
+    await tapPanelsDrawerRow(tester, 'panels-menu-item-media-viewer');
+    expect(mainCanvasPanel(), findsNothing);
+    if (find.byType(TimesheetTabHost).evaluate().isEmpty) {
+      await tester.tap(railGroupButton(sheets));
+      await tester.pumpAndSettle();
+    }
+    final sheet = find.byKey(const ValueKey<String>('panel-grip-timesheet'));
+    final gesture = await tester.startGesture(tester.getCenter(sheet));
+    await tester.pump(const Duration(milliseconds: 20));
+    await gesture.moveBy(const Offset(-30, 0));
+    await tester.pump();
+    await gesture.moveTo(const Offset(500, 500));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(sheet, findsOneWidget, reason: 'still a tab of its group');
+    expect(tester.getRect(find.byType(TimesheetTabHost)).width, lessThan(800));
   });
 
   testWidgets('the panel that lay on the floor leaving the top strip gives '
