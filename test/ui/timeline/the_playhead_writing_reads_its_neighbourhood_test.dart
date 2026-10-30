@@ -196,51 +196,85 @@ void main() {
             frames: frames,
             rulerView: view,
           );
-          final window = scale.visibleWindow();
           for (final frame in [0, frames ~/ 2, frames - 1]) {
-            final where =
-                '${view.name} · $frames frames · '
-                '${cell}px · playhead $frame';
-            final writing = timelineRulerPlayheadWriting(
-              scale: scale,
-              frame: frame,
-              layout: TimelineFrameRulerPainter.glyphsAt,
+            expectTheWindowsFinding(
+              scale,
+              frame,
+              '${view.name} · $frames frames · ${cell}px · playhead $frame',
             );
-            final pair = writing.pair.map((glyph) => glyph.rect).toList();
-            final covered = <Rect>[];
-            final standing = <TimelineGlyphPlacement>[];
-            for (
-              var frameIndex = window.startIndex;
-              frameIndex < window.endIndexExclusive;
-              frameIndex += 1
-            ) {
-              for (final glyph in TimelineFrameRulerPainter.glyphsAt(
-                scale,
-                frameIndex,
-                current: false,
-              )) {
-                if (pair.any((rect) => rect.overlaps(glyph.rect))) {
-                  covered.add(glyph.rect);
-                } else {
-                  standing.add(glyph);
-                }
-              }
-            }
-            expect(writing.covered, covered, reason: where);
-            final kept = writing.standing.map((glyph) => glyph.rect).toSet();
-            for (final glyph in standing) {
-              if (covered.any((rect) => rect.overlaps(glyph.rect))) {
-                expect(
-                  kept,
-                  contains(glyph.rect),
-                  reason: '$where: a standing glyph that reaches into what '
-                      'stands down is rewritten after the uncovering',
-                );
-              }
-            }
           }
         }
       }
     }
   });
+
+  // I-81-Q4: a page's head writes its page beside its second, and a
+  // hundred pages in that is wider than any pair the playhead writes there.
+  testWidgets('a page\'s mark a hundred pages in is found as the whole '
+      'window would', (tester) async {
+    for (final cell in [8.0, 24.0]) {
+      final scale = await rulerOf(
+        tester,
+        cell: cell,
+        frames: 14600,
+        rulerView: FrameRulerView.pages,
+      );
+      expect(
+        scale.modelAt(14400).secondsLabel,
+        '10:00 p101',
+        reason: 'fixture',
+      );
+      for (final frame in [14401, 14403, 14406, 14410]) {
+        expectTheWindowsFinding(scale, frame, '${cell}px · playhead $frame');
+      }
+    }
+  });
+}
+
+/// What the playhead's writing at [frame] finds of [scale]'s — what it
+/// covers, and what it rewrites over the uncovering — is what a walk of the
+/// whole window would find.
+void expectTheWindowsFinding(
+  TimelineRulerScale scale,
+  int frame,
+  String where,
+) {
+  final window = scale.visibleWindow();
+  final writing = timelineRulerPlayheadWriting(
+    scale: scale,
+    frame: frame,
+    layout: TimelineFrameRulerPainter.glyphsAt,
+  );
+  final pair = writing.pair.map((glyph) => glyph.rect).toList();
+  final covered = <Rect>[];
+  final standing = <TimelineGlyphPlacement>[];
+  for (
+    var frameIndex = window.startIndex;
+    frameIndex < window.endIndexExclusive;
+    frameIndex += 1
+  ) {
+    for (final glyph in TimelineFrameRulerPainter.glyphsAt(
+      scale,
+      frameIndex,
+      current: false,
+    )) {
+      if (pair.any((rect) => rect.overlaps(glyph.rect))) {
+        covered.add(glyph.rect);
+      } else {
+        standing.add(glyph);
+      }
+    }
+  }
+  expect(writing.covered, covered, reason: where);
+  final kept = writing.standing.map((glyph) => glyph.rect).toSet();
+  for (final glyph in standing) {
+    if (covered.any((rect) => rect.overlaps(glyph.rect))) {
+      expect(
+        kept,
+        contains(glyph.rect),
+        reason: '$where: a standing glyph that reaches into what stands '
+            'down is rewritten after the uncovering',
+      );
+    }
+  }
 }
