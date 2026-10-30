@@ -193,38 +193,37 @@ typedef _CameraReading = ({
 final SignedMemo<_CameraReading, List<_CellCamera>> _cellCameras =
     SignedMemo('conte cell cameras');
 
-/// [cells]' cameras, a [_CellCamera] to each — the path and the moves of
-/// [cut] read once, whatever the number of its cells.
+/// What every cell of a cut reads off its camera, read once.
+typedef _CutCamera = ({
+  int conteStart,
+  CameraPath? path,
+  Map<int, String> names,
+  List<CameraMove> moves,
+});
+
+/// [cells]' cameras, a [_CellCamera] to each, off [cut]'s [_CutCamera].
 List<_CellCamera> _cellCamerasOf(
   Cut cut,
   List<StoryboardCoverageCell> cells,
   Project project,
 ) {
-  final conteStart = storyboardConteStart(
-    storyboardLayerForCut(cut)?.timeline,
+  final camera = (
+    conteStart: storyboardConteStart(storyboardLayerForCut(cut)?.timeline),
+    path: CameraPath.of(cut, project.cameraSize),
+    names: transformKeyAgreedNames(cut.camera.track),
+    moves: _movesWrittenOn(cut),
   );
-  final path = CameraPath.of(cut, project.cameraSize);
-  final names = transformKeyAgreedNames(cut.camera.track);
-  final moves = _movesWrittenOn(cut);
   return [
     for (final cell in cells)
       (
-        work: _cameraWorkIn(
-          cut,
-          cell,
-          project.cameraSize,
-          conteStart: conteStart,
-          path: path,
-          names: names,
-        ),
+        work: _cameraWorkIn(cut, cell, project.cameraSize, camera),
         // Over the cut's frames the cell shows — the span its camera work
         // is read over.
         lines: _cameraLinesIn(
-          moves,
+          camera,
           project,
-          keyNames: names,
-          from: conteStart + cell.startIndex,
-          to: conteStart + cell.endIndexExclusive,
+          from: camera.conteStart + cell.startIndex,
+          to: camera.conteStart + cell.endIndexExclusive,
         ),
       ),
   ];
@@ -359,25 +358,26 @@ List<CameraMove> _movesWrittenOn(Cut cut) =>
     ? const <CameraMove>[]
     : cameraMoves(cut.camera.track);
 
-/// What [moves] do over the frames [from] to [to], a line to each stretch
+/// What [camera] does over the frames [from] to [to], a line to each stretch
 /// ([conteCameraStretches]) in [project]'s glossary and count.
 List<String> _cameraLinesIn(
-  List<CameraMove> moves,
+  _CutCamera camera,
   Project project, {
-  required Map<int, String> keyNames,
   required int from,
   required int to,
-}) {
-  return [
-    for (final stretch in conteCameraStretches(moves, from: from, to: to))
-      conteCameraLine(
-        stretch,
-        defById: project.cameraInstructions.defById,
-        keyNames: keyNames,
-        framesPerSecond: project.frameRate.countingBase,
-      ),
-  ];
-}
+}) => [
+  for (final stretch in conteCameraStretches(
+    camera.moves,
+    from: from,
+    to: to,
+  ))
+    conteCameraLine(
+      stretch,
+      defById: project.cameraInstructions.defById,
+      keyNames: camera.names,
+      framesPerSecond: project.frameRate.countingBase,
+    ),
+];
 
 /// What the camera does while [cell] is on screen: its frame at the cell's
 /// first and last frames and at each key between, as playback shows them
@@ -401,26 +401,24 @@ List<String> _cameraLinesIn(
 ConteCameraWork? _cameraWorkIn(
   Cut cut,
   StoryboardCoverageCell cell,
-  CanvasSize cameraFrameSize, {
-  required int conteStart,
-  required CameraPath? path,
-  required Map<int, String> names,
-}) {
+  CanvasSize cameraFrameSize,
+  _CutCamera camera,
+) {
   if (cut.layers.cameraWorkBypassed) {
     return null;
   }
   final frames = cameraFramesShown(
     cut,
     cameraFrameSize,
-    first: conteStart + cell.startIndex,
-    last: conteStart + cell.endIndexExclusive - 1,
+    first: camera.conteStart + cell.startIndex,
+    last: camera.conteStart + cell.endIndexExclusive - 1,
   );
   final corners = [for (final frame in frames) frame.corners];
   if (corners.every((frame) => listEquals(frame, corners.first))) {
     return null;
   }
   final trails =
-      path?.cornerTrailsBetween(
+      camera.path?.cornerTrailsBetween(
         frames.first.frameIndex,
         frames.last.frameIndex,
       ) ??
@@ -433,7 +431,7 @@ ConteCameraWork? _cameraWorkIn(
         _cameraKey(
           frame.corners,
           CameraKeyRole.at(index, frames.length),
-          names[frame.frameIndex],
+          camera.names[frame.frameIndex],
           frame.frameIndex,
         ),
     ],
