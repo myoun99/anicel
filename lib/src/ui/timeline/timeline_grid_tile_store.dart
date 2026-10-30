@@ -150,6 +150,39 @@ class TimelineGridTileStore {
 
   bool _drainScheduled = false;
 
+  /// 🗣️THE SPANS A ZOOM LEFT STRETCHED WAIT FOR IT TO STOP (유저 2026-10-30,
+  /// zoom-step-lays-out-five-times-the-07-25-count-Q1: 「줌이 멈출 때까지
+  /// 늘린 옛 타일만 보여 준다」): shown, each its old tile scaled, and rastered
+  /// at the new cell extent once the zoom has stood still for
+  /// [debugZoomSettles] — once, however many steps it took.
+  ///
+  /// ↩️Each step queued every shown span at its own extent, and the drain
+  /// rastered them in the frames after it: 🔬~145 tiles a step on S5_BA's
+  /// cut 352 (64 rows, profile, 10-30), ~41ms of UI thread a step, so a
+  /// held zoom key stuttered — and the next step threw them away.
+  final LinkedHashMap<String, _TileRequest> _stretched =
+      LinkedHashMap<String, _TileRequest>();
+
+  /// Each axis's zoom under way: the cell extent its latest step asked at,
+  /// and what ends it [debugZoomSettles] after the step that set it.
+  final Map<Axis, ({double extent, Timer stops})> _zooms =
+      <Axis, ({double extent, Timer stops})>{};
+
+  /// The cell extent each axis last stood still at. A stretched span asked
+  /// for at it is no step of a zoom — a row asking again after the zoom
+  /// stopped, before its tile landed — and is queued as any other.
+  final Map<Axis, double> _stoodAt = <Axis, double>{};
+
+  /// How long a zoom stands still before what it stretched is rastered —
+  /// the user's example, 「예: 0.15초」.
+  static const Duration zoomSettles = Duration(milliseconds: 150);
+
+  /// [zoomSettles] — longer in a test that steps a zoom on a real clock,
+  /// where a loaded machine could stretch a step's gap past it.
+  /// ⚠️TEST ONLY.
+  @visibleForTesting
+  Duration debugZoomSettles = zoomSettles;
+
   /// The latest painter each row's paint asked through, with the device
   /// pixel ratio it asked at — whom a warm-up asks for its next page
   /// ([warmTheNextPage]).
@@ -215,7 +248,10 @@ class TimelineGridTileStore {
   /// green alone (2026-09-03). Idle is the store's word, not a timer's.
   @visibleForTesting
   bool get debugBusy =>
-      _drainsRunning > 0 || _pending.isNotEmpty || _warmScheduled;
+      _drainsRunning > 0 ||
+      _pending.isNotEmpty ||
+      _warmScheduled ||
+      _stretched.isNotEmpty;
 
   /// The substrate generation the LIVE paints carry — the newest
   /// [TimelineTileRasterSource.substrateGeneration] a [tileFor] call has
@@ -254,6 +290,12 @@ class TimelineGridTileStore {
     _askedWhileWarm.clear();
     _warmSpan.micros = 0;
     _drainsRunning = 0;
+    _stretched.clear();
+    for (final zoom in _zooms.values) {
+      zoom.stops.cancel();
+    }
+    _zooms.clear();
+    _stoodAt.clear();
     _epoch += 1;
   }
 
@@ -278,9 +320,10 @@ class TimelineGridTileStore {
   /// The substrate tile for [painter]'s span starting at [spanStartIndex]:
   /// the one it holds where that shows the span, one baked in this call
   /// where the span's look or content moved — or a stand-in while a word
-  /// it sets is baked the first time, scaled while a zoom's raster lands,
-  /// and null for a cold span (the classic paint covers this frame). What
-  /// is not baked here is scheduled off the paint phase.
+  /// it sets is baked the first time, scaled while a zoom is under way and
+  /// until its raster lands, and null for a cold span (the classic paint
+  /// covers this frame). What is not baked here is scheduled off the paint
+  /// phase — what a zoom stretched, once it stops.
   ui.Image? tileFor({
     required TimelineTileRasterSource painter,
     required int spanStartIndex,
@@ -318,6 +361,8 @@ class TimelineGridTileStore {
     _askedBy[row] = (painter: painter, ratio: devicePixelRatio);
     final entry = _touched(key);
     if (entry != null && _shows(entry, asked)) {
+      // A zoom that came back to this tile's extent stretches it no more.
+      _stretched.remove(key);
       return entry.image;
     }
     // 🚨F-314 (유저 2026-10-08: 「코마 바꿀때 +나 N이나 코마텍스트 이런 위젯이랑
@@ -352,11 +397,19 @@ class TimelineGridTileStore {
     // drains beside each other. Its landing repaints the row, which asks
     // then if the look moved meanwhile.
     // A span a warm-up still holds becomes a shown one's to raster first; one
-    // a warm-up has in flight tells this row when it lands.
+    // a warm-up has in flight tells this row when it lands. One a zoom under
+    // way stretched waits for it to stop ([_stretched]).
+    final stretched = stale == null && entry != null && _stretches(entry, asked)
+        ? entry
+        : null;
     if (!_inFlight.contains(key)) {
       _warming.remove(key);
       _ahead.remove(key);
-      _enqueue(key, asked);
+      if (stretched != null && _zoomUnderWay(painter)) {
+        _waitForTheZoom(key, asked);
+      } else {
+        _enqueue(key, asked);
+      }
     } else if (_warmInFlight.contains(key)) {
       _askedWhileWarm.add(key);
     }
@@ -386,23 +439,81 @@ class TimelineGridTileStore {
     if (stale != null) {
       return stale.image;
     }
-    // R27 #10: a ZOOM step changes the geometry of every visible tile at
-    // once, and dropping all of them to the classic Dart pass is what
-    // made zooming crawl. The tile covers the SAME frames either way and
-    // the painter draws it into a `dst` rect built from the CURRENT
-    // geometry — so the stale raster simply scales, the way every pro
-    // timeline shows a stretched last frame while the real one renders.
-    // Bounded so an extreme jump (a 10× slider throw) still takes the
-    // crisp path rather than showing mush.
-    if (entry != null &&
-        entry.substrateGeneration == painter.substrateGeneration &&
-        entry.spanEndIndexExclusive == spanEndIndexExclusive &&
-        entry.devicePixelRatio == devicePixelRatio &&
+    return stretched?.image;
+  }
+
+  /// Whether [entry] may stand in for [asked], scaled — its geometry but for
+  /// the cell extent, which a zoom moved by no more than twice.
+  ///
+  /// R27 #10: a ZOOM step changes the geometry of every visible tile at
+  /// once, and dropping all of them to the classic Dart pass is what
+  /// made zooming crawl. The tile covers the SAME frames either way and
+  /// the painter draws it into a `dst` rect built from the CURRENT
+  /// geometry — so the stale raster simply scales, the way every pro
+  /// timeline shows a stretched last frame while the real one renders.
+  /// Bounded so an extreme jump (a 10× slider throw) still takes the
+  /// crisp path rather than showing mush.
+  static bool _stretches(_TileEntry entry, _TileRequest asked) {
+    final painter = asked.painter;
+    return entry.substrateGeneration == painter.substrateGeneration &&
+        entry.spanEndIndexExclusive == asked.spanEndIndexExclusive &&
+        entry.devicePixelRatio == asked.devicePixelRatio &&
         entry.crossAxisExtent == painter.crossAxisExtent &&
-        _withinRescaleBand(entry.frameCellExtent, painter.frameCellExtent)) {
-      return entry.image;
+        _withinRescaleBand(entry.frameCellExtent, painter.frameCellExtent);
+  }
+
+  /// Whether [painter]'s axis is zooming: its cells ask at another extent
+  /// than they last stood still at — at that one there is nothing to wait
+  /// for.
+  bool _zoomUnderWay(TimelineTileRasterSource painter) =>
+      _stoodAt[painter.axis] != painter.frameCellExtent;
+
+  /// Holds [asked] — a span the zoom stretched — until the zoom stops, the
+  /// newest ask of it last; a step at a new extent puts the stop off again.
+  void _waitForTheZoom(String key, _TileRequest asked) {
+    _pending.take(key);
+    _stretched.remove(key);
+    _stretched[key] = asked;
+    final axis = asked.painter.axis;
+    final extent = asked.painter.frameCellExtent;
+    if (_zooms[axis]?.extent == extent) {
+      return;
     }
-    return null;
+    _zooms[axis]?.stops.cancel();
+    _zooms[axis] = (
+      extent: extent,
+      stops: Timer(debugZoomSettles, () => _zoomStopped(axis)),
+    );
+  }
+
+  /// [axis]'s zoom stood still: what it stretched is rastered at the extent
+  /// it stopped at — a span a paint asked for there — and what a step
+  /// asked at another extent is let go, a raster for nothing: of the
+  /// stretched, and of the spans past the windows' edges ([warmAhead]).
+  /// ⛔Not of the next pages' ([_warming]): a run's warm-up is playback's
+  /// to order (card playback-draws-frames-the-film-did-not-change-in,
+  /// 브러시/렌더링 10-24), and this card did not take it up.
+  void _zoomStopped(Axis axis) {
+    final zoom = _zooms.remove(axis);
+    if (zoom == null) {
+      return;
+    }
+    _stoodAt[axis] = zoom.extent;
+    bool passed(_TileRequest request) =>
+        request.painter.axis == axis &&
+        request.painter.frameCellExtent != zoom.extent;
+    _ahead.removeWhere((_, request) => passed(request));
+    final waited = [
+      for (final waiting in _stretched.entries)
+        if (waiting.value.painter.axis == axis) waiting,
+    ];
+    for (final MapEntry(:key, value: request) in waited) {
+      _stretched.remove(key);
+      if (!passed(request) && !_inFlight.contains(key)) {
+        _enqueue(key, request);
+      }
+    }
+    _startWarming();
   }
 
   /// Bakes [asked]'s span in this call and keeps it — the picture the paint
@@ -416,6 +527,7 @@ class TimelineGridTileStore {
     }
     final key = asked.key;
     _pending.take(key);
+    _stretched.remove(key);
     _warming.remove(key);
     _ahead.remove(key);
     if (_inFlight.contains(key)) {
@@ -511,6 +623,7 @@ class TimelineGridTileStore {
   }
 
   void _enqueue(String key, _TileRequest request) {
+    _stretched.remove(key);
     _pending.keep(key, request);
     if (!_drainScheduled) {
       _drainScheduled = true;
@@ -767,6 +880,7 @@ class TimelineGridTileStore {
     final key = request.key;
     if (_inFlight.contains(key) ||
         _pending.containsKey(key) ||
+        _stretched.containsKey(key) ||
         _ahead.containsKey(key) ||
         queue.containsKey(key)) {
       return;
@@ -792,9 +906,10 @@ class TimelineGridTileStore {
 
   /// Where a warm-up takes its next span from: past the windows' edges
   /// while any is left there, then the next pages' while it has [pageTiles]
-  /// of them left to take — and nowhere while a shown span waits.
+  /// of them left to take — and nowhere while a shown span waits, for its
+  /// raster or for the zoom that stretched it to stop ([_stretched]).
   LinkedHashMap<String, _TileRequest>? _warmQueue(int pageTiles) {
-    if (_pending.isNotEmpty) {
+    if (_pending.isNotEmpty || _stretched.isNotEmpty) {
       return null;
     }
     if (_ahead.isNotEmpty) {
