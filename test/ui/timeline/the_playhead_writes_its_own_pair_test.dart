@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/text/word_condensation.dart';
+import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_header_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_ruler_painter.dart';
 import 'package:anicel/src/ui/text/laid_out_glyph.dart';
@@ -30,7 +31,8 @@ void main() {
   TimelineRulerScale scaleOf({
     Axis axis = Axis.horizontal,
     double cell = 24,
-    bool showSeconds = false,
+    FrameRulerView rulerView = FrameRulerView.frames,
+    int? pageFrames,
     int frames = 120,
   }) => TimelineRulerScale(
     axis: axis,
@@ -46,7 +48,8 @@ void main() {
         ? TimelineFrameRulerPainter.numberType
         : XSheetFrameRailPainter.numberType,
     secondsFontSize: axis == Axis.horizontal ? 9 : 8,
-    showSeconds: showSeconds,
+    rulerView: rulerView,
+    pages: pageFrames == null ? null : TimelineRulerPages.every(pageFrames),
   );
 
   String textOf(TimelineGlyphPlacement glyph) => glyph.painter.plainText;
@@ -126,9 +129,20 @@ void main() {
       expect(rulerWriting(scaleOf(), 23).pair.map(textOf), ['24', '0']);
       expect(rulerWriting(scaleOf(), 24).pair.map(textOf), ['25', '1']);
       expect(
-        rulerWriting(scaleOf(showSeconds: true), 30).pair.map(textOf),
+        rulerWriting(
+          scaleOf(rulerView: FrameRulerView.secondsPlusFrames),
+          30,
+        ).pair.map(textOf),
         ['7', '1'],
       );
+    });
+
+    // I-81-Q4 「그 외는 프레임뷰랑 똑같음」. ↩️It wrote the page it stood in.
+    test('I-81: under the page view it writes the second it stands in, as '
+        'the frames view does, and its number in its page', () {
+      final pages = scaleOf(rulerView: FrameRulerView.pages, pageFrames: 48);
+      expect(rulerWriting(pages, 47).pair.map(textOf), ['48', '1']);
+      expect(rulerWriting(pages, 50).pair.map(textOf), ['3', '2']);
     });
 
     test('the rail writes the pair on a frame its cadence skips', () {

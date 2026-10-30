@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/conte/conte_camera_room.dart';
 import 'package:anicel/src/models/conte/conte_sheet_form.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_presets.dart';
 import 'package:anicel/src/models/layer_mark.dart';
@@ -314,6 +315,36 @@ void main() {
       expect(
         restored.copyWith(conteCover: false).conteFixedText,
         isFalse,
+        reason: 'another change keeps it',
+      );
+      expect(info, isNot(TimesheetInfo.empty), reason: 'one undo step');
+      expect(info.hashCode, isNot(TimesheetInfo.empty.hashCode));
+    });
+
+    // 🗣️유저 2026-10-30: 「그리고 기본값은 칸 안에가 되도록」.
+    test('I-82: a moving camera\'s cell keeps its box unless the format lets '
+        'it grow, and grown travels with the work', () {
+      expect(TimesheetInfo.empty.conteCameraRoom, ConteCameraRoom.inCell);
+      expect(
+        TimesheetInfo.fromJson(const {'conteCameraRoom': 'unknown'})
+            .conteCameraRoom,
+        ConteCameraRoom.inCell,
+      );
+      expect(
+        TimesheetInfo.empty.toJson().containsKey('conteCameraRoom'),
+        isFalse,
+      );
+      final info = TimesheetInfo.empty.copyWith(
+        conteCameraRoom: ConteCameraRoom.grows,
+      );
+
+      final restored = TimesheetInfo.fromJson(info.toJson());
+
+      expect(restored, info);
+      expect(restored.conteCameraRoom, ConteCameraRoom.grows);
+      expect(
+        restored.copyWith(conteCover: false).conteCameraRoom,
+        ConteCameraRoom.grows,
         reason: 'another change keeps it',
       );
       expect(info, isNot(TimesheetInfo.empty), reason: 'one undo step');

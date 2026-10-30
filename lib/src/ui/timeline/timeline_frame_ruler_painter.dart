@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../core/bounded_memo.dart';
 import '../../core/neighbour_pairs.dart';
 import 'axis_turn.dart' show extentAlong, offsetAlong, startAlong;
+import 'frame_ruler_view.dart';
 import 'frame_window_semantics.dart';
 
 import 'timeline_beat_lines.dart';
@@ -41,19 +42,92 @@ import '../text/word_condensation.dart';
 /// Every [everySeconds]-th second only (I-22 — the strip's measured rung,
 /// [TimelineRulerScale.secondsLabelEverySeconds]); counted from 0, so the
 /// head always writes.
+///
+/// Under the page view ([pages], I-81) the seconds are the frames view's,
+/// and a page's head writes the page beside its second ([timelinePageMark])
+/// — 🗣️I-81-Q4 (유저 2026-10-30): 「페이지뷰는 초 옆에 페이지 넘어가는곳마다
+/// p1 p2라고 쓸뿐임 그 외는 프레임뷰랑 똑같음」 — every `everyPages`-th
+/// page's only, past where the pages hold their marks
+/// ([TimelineRulerScale.pagesLabelEvery], I-22's 「겹칠때 생략」). A second
+/// that would run into a page's mark writes nothing: within a rung before
+/// it, or within its `clearFrames` after. ⚠️Mine: the mark after its
+/// second, a space between (`6 p2`). ↩️The seconds counted again from each
+/// page's head, which wrote its page instead — 유저 10-06 「초나 프레임
+/// 표시가 장수마다 리셋되는데」, of the paper, read as the ruler's two lines.
 String timelineRulerSecondsLabel({
   required int frameIndex,
   required int framesPerSecond,
   int everySeconds = 1,
-}) =>
-    frameIndex %
-            (timelineSecondFrames(framesPerSecond) * everySeconds) ==
-        0
-    ? timelineRulerSecondOf(
-        frameIndex: frameIndex,
-        framesPerSecond: framesPerSecond,
-      )
-    : '';
+  TimelinePageMarks? pages,
+}) {
+  final rung = timelineSecondFrames(framesPerSecond) * everySeconds;
+  final second = frameIndex % rung == 0
+      ? timelineRulerSecondOf(
+          frameIndex: frameIndex,
+          framesPerSecond: framesPerSecond,
+        )
+      : '';
+  if (pages == null) {
+    return second;
+  }
+  final (:heads, :everyPages, :clearFrames) = pages;
+  final page = timelinePageAt(heads, frameIndex);
+  final marked = page - page % everyPages;
+  final sinceMark = frameIndex - heads[marked];
+  if (sinceMark == 0) {
+    final mark = timelinePageMark(marked);
+    return second.isEmpty ? mark : '$second $mark';
+  }
+  final next = marked + everyPages;
+  final clearOfNext = next >= heads.length || heads[next] - frameIndex >= rung;
+  return sinceMark >= clearFrames && clearOfNext ? second : '';
+}
+
+/// How the page view writes its pages' marks ([timelineRulerSecondsLabel]):
+/// the frames the pages begin on ([TimelineRulerPages]), every how many
+/// pages a mark is written, and how many frames past one the next second
+/// keeps clear of it.
+typedef TimelinePageMarks = ({
+  List<int> heads,
+  int everyPages,
+  int clearFrames,
+});
+
+/// The page of [heads] (from 0) [frameIndex] lies in — the last, past
+/// them all.
+int timelinePageAt(List<int> heads, int frameIndex) {
+  var first = 0;
+  var last = heads.length - 1;
+  while (first < last) {
+    final middle = (first + last + 1) ~/ 2;
+    if (heads[middle] <= frameIndex) {
+      first = middle;
+    } else {
+      last = middle - 1;
+    }
+  }
+  return first;
+}
+
+/// The last frame before [end] of the longest of the pages beginning on
+/// [heads], as far as it runs before [end] — the later of two alike.
+int _longestPageEndBefore(List<int> heads, int end) {
+  var longest = 0;
+  var last = end - 1;
+  for (final (page, head) in heads.indexed) {
+    final next = page + 1 < heads.length ? heads[page + 1] : end;
+    final stop = math.min(next, end);
+    if (stop - head >= longest) {
+      longest = stop - head;
+      last = stop - 1;
+    }
+  }
+  return last;
+}
+
+/// The page [pageIndex] (from 0) as the page view writes it: `p1`, `p2` …
+/// (I-81 「p1 p2라는식으로 룰러에 적는다」).
+String timelinePageMark(int pageIndex) => 'p${pageIndex + 1}';
 
 /// The second [frameIndex] lies in, counted from 0 like the marks — what
 /// the playhead writes on the seconds line wherever it stands (I-16); the
@@ -86,16 +160,16 @@ String timelineSecondsMark(int seconds) {
       : '${minutes ~/ 60}:${twoDigits(minutes % 60)}:$ss';
 }
 
-/// The NUMBER the ruler writes at [frameIndex]: absolute and 1-based, or
-/// 1..fps repeating per second under [showSeconds] — beside
-/// [timelineRulerSecondOf], the other line of the same scale.
+/// The NUMBER the ruler writes at [frameIndex]: 1-based, counted again
+/// every [restartsEvery] frames — absolute where it is null, 1..fps in
+/// each second under the seconds display, 1..a page under the page view
+/// (I-81) — beside [timelineRulerSecondOf], the other line of the same
+/// scale.
 String timelineRulerFrameNumberOf({
   required int frameIndex,
-  required int framesPerSecond,
-  required bool showSeconds,
-}) => showSeconds
-    ? '${frameIndex % timelineSecondFrames(framesPerSecond) + 1}'
-    : '${frameIndex + 1}';
+  int? restartsEvery,
+}) =>
+    '${(restartsEvery == null ? frameIndex : frameIndex % restartsEvery) + 1}';
 
 /// A FRAME'S PLACE as one word — what the ruler writes over it: its number,
 /// and under the seconds display the second it lies in before it (`15`,
@@ -117,8 +191,7 @@ String timelineFramePlaceLabel({
 }) {
   final number = timelineRulerFrameNumberOf(
     frameIndex: frameIndex,
-    framesPerSecond: framesPerSecond,
-    showSeconds: showSeconds,
+    restartsEvery: showSeconds ? timelineSecondFrames(framesPerSecond) : null,
   );
   if (!showSeconds) {
     return number;
@@ -340,6 +413,11 @@ final Expando<int> _labelEveryFramesOf = Expando<int>('labelEveryFrames');
 /// [TimelineRulerScale.secondsLabelEverySeconds], measured once per scale.
 final Expando<int> _secondsLabelEveryOf = Expando<int>('secondsLabelEvery');
 
+/// [TimelineRulerScale._pageMarks], measured once per scale.
+final Expando<TimelinePageMarks> _pageMarksOf = Expando<TimelinePageMarks>(
+  'pageMarks',
+);
+
 /// [TimelineRulerScale.writtenAt]: what each scale has laid out, by layout,
 /// frame and whether it is the playhead's pair.
 final Expando<
@@ -387,7 +465,8 @@ final class TimelineRulerScale {
     required this.numberType,
     required this.secondsFontSize,
     this.framesPerSecond = 24,
-    this.showSeconds = false,
+    this.rulerView = FrameRulerView.frames,
+    this.pages,
     this.windowBucket,
     this.viewportMainExtent = 0,
     this.pastPlaybackWash,
@@ -437,9 +516,24 @@ final class TimelineRulerScale {
 
   final int framesPerSecond;
 
-  /// Seconds display mode: the bottom line repeats 1..fps per second
-  /// instead of counting absolute frames.
-  final bool showSeconds;
+  /// How the strip counts ([FrameRulerView]): the seconds display repeats
+  /// 1..fps on the bottom line per second, the page view counts from 1 in
+  /// each of [pages], instead of counting absolute frames.
+  final FrameRulerView rulerView;
+
+  /// The pages the strip counts by — where the page view starts its
+  /// numbers again and writes each page's mark: the X-sheet's of the
+  /// strip's cut (I-81-Q1 「그 컷의 X시트 장을 따른다」), the conte book's on
+  /// the storyboard's (I-81-Q3 「콘티용지패널의 페이지 기준」). Null with no
+  /// cut open, where the page view counts as the frames view does.
+  final TimelineRulerPages? pages;
+
+  /// Every how many frames the bottom line's number starts again at 1, on
+  /// a strip that counts a run of one length: the seconds display's.
+  int? get _numberRestartsEvery => switch (rulerView) {
+    FrameRulerView.secondsPlusFrames => timelineSecondFrames(framesPerSecond),
+    _ => null,
+  };
 
   /// PRO-TIMELINE scrolling (UI-R15→R16): with these set the strip
   /// windows ITSELF off the quantized bucket (repaint once per span
@@ -483,6 +577,10 @@ final class TimelineRulerScale {
   /// cadence says, the second whatever the boundary says. WHERE each goes
   /// and how big is the strip's own ([TimelineFrameRulerPainter.glyphsAt],
   /// `XSheetFrameRailPainter.glyphsAt`); what is written is this.
+  ///
+  /// The page view's pair is the frames view's, its number in its page
+  /// (I-81-Q4 「그 외는 프레임뷰랑 똑같음」). ↩️It wrote the page it stood in
+  /// on the seconds line (`p2`).
   ({String number, String second}) writingAt(
     int frameIndex, {
     required bool current,
@@ -598,7 +696,7 @@ final class TimelineRulerScale {
 
   /// A strip's window, both passes — the ruler's across and the rail's
   /// down, one code: the paper ([paintPaperIn]), then the marks, only on
-  /// the frames a mark can stand on ([writingStep]), each where the strip's
+  /// the frames a mark can stand on ([framesWrittenIn]), each where the strip's
   /// own [layout] sets it.
   ///
   /// Self-windowing (UI-R15): only the frames under the live viewport
@@ -609,12 +707,7 @@ final class TimelineRulerScale {
   void paintWindow(Canvas canvas, TimelineRulerGlyphLayout layout) {
     final window = visibleWindow();
     paintPaperIn(canvas, window);
-    final step = writingStep;
-    for (
-      var frameIndex = timelineFirstOnStride(window.startIndex, step);
-      frameIndex < window.endIndexExclusive;
-      frameIndex += step
-    ) {
+    for (final frameIndex in framesWrittenIn(window)) {
       for (final glyph in writtenAt(layout, frameIndex, current: false)) {
         glyph.paint(canvas);
       }
@@ -732,23 +825,59 @@ final class TimelineRulerScale {
 
   /// Every how many SECONDS the seconds line writes a mark — the rung of
   /// the seconds ladder ([timelineSecondsHolding]) whose span holds the
-  /// widest second this strip writes, set in [secondsFontSize] and measured
-  /// along [axis], with [timelineMarkGap] to the next. Every second, at
+  /// widest second this strip writes ([_widestMark]). Every second, at
   /// every zoom the old floor allowed; I-22's 「겹칠때 생략」 past that.
   int get secondsLabelEverySeconds =>
-      _secondsLabelEveryOf[this] ??= _measuredSecondsLabelEvery();
+      _secondsLabelEveryOf[this] ??= timelineSecondsHolding(
+        _widestMark(timelineSecondsMark(_lastFrame ~/ _secondFrames)),
+        _secondFrames * metrics.frameCellWidth,
+      );
 
-  int _measuredSecondsLabelEvery() {
-    final second = timelineSecondFrames(framesPerSecond);
-    final widest = timelineSecondsMark(
-      math.max(0, frameEndIndexExclusive - 1) ~/ second,
-    );
-    return timelineSecondsHolding(
-      _widestWritten(timelineSecondsType(face, secondsFontSize), widest) +
-          timelineMarkGap,
-      second * metrics.frameCellWidth,
-    );
+  /// Every how many PAGES the page view writes a page's mark; 1 off it.
+  int get pagesLabelEvery => _pageMarks?.everyPages ?? 1;
+
+  /// The page view's marks, measured once per scale: the pages' heads, the
+  /// rung of the seconds' ladder on which every pair of marks stands apart
+  /// by the widest mark a page's head writes — its last page beside its
+  /// last second — the question [secondsLabelEverySeconds] asks of seconds,
+  /// and the frames that mark takes. Null off the page view, and with no
+  /// pages to count.
+  TimelinePageMarks? get _pageMarks {
+    final pages = this.pages;
+    if (pages == null || rulerView != FrameRulerView.pages) {
+      return null;
+    }
+    return _pageMarksOf[this] ??= () {
+      final heads = pages.headsBefore(frameEndIndexExclusive);
+      final widest = _widestMark(
+        '${timelineSecondsMark(_lastFrame ~/ _secondFrames)} '
+        '${timelinePageMark(heads.length - 1)}',
+      );
+      final frames = widest / metrics.frameCellWidth;
+      return (
+        heads: heads,
+        everyPages: timelineLadderRung((every) {
+          for (var mark = every; mark < heads.length; mark += every) {
+            if (heads[mark] - heads[mark - every] < frames) {
+              return false;
+            }
+          }
+          return true;
+        }),
+        clearFrames: frames.ceil(),
+      );
+    }();
   }
+
+  int get _secondFrames => timelineSecondFrames(framesPerSecond);
+
+  int get _lastFrame => math.max(0, frameEndIndexExclusive - 1);
+
+  /// [written] as wide as the seconds line can set it ([_widestWritten], in
+  /// [secondsFontSize]), with [timelineMarkGap] to the next mark.
+  double _widestMark(String written) =>
+      _widestWritten(timelineSecondsType(face, secondsFontSize), written) +
+      timelineMarkGap;
 
   /// The widest [written] this strip can set in [type] — every digit of it
   /// written as the widest digit, so a face with proportional figures
@@ -784,13 +913,46 @@ final class TimelineRulerScale {
         modelAt(frameIndex).label.isEmpty ? null : 'frame ${frameIndex + 1}',
   );
 
-  /// The step every frame this strip writes at is a multiple of — the gcd
-  /// of the number cadence ([labelEveryFrames]) and the seconds'
-  /// ([secondsLabelEverySeconds]) — so a painter walking it writes every
-  /// mark and visits no cell that has none.
+  /// The step every number and second this strip writes stands on — the
+  /// gcd of the number cadence ([labelEveryFrames]) and the seconds'
+  /// ([secondsLabelEverySeconds]) — so a painter walking it writes them
+  /// all and visits no cell that has none.
   int get writingStep => labelEveryFrames.gcd(
     timelineSecondFrames(framesPerSecond) * secondsLabelEverySeconds,
   );
+
+  /// The frames of [window] this strip writes at, in order: [writingStep]'s
+  /// and the page view's marks, which stand where their pages begin and on
+  /// no stride of a book's pages of many lengths.
+  Iterable<int> framesWrittenIn(
+    ({int startIndex, int endIndexExclusive}) window,
+  ) sync* {
+    final (startIndex: start, endIndexExclusive: end) = window;
+    final step = writingStep;
+    var onStride = timelineFirstOnStride(start, step);
+    final marks = _pageMarks;
+    final heads = marks?.heads ?? const <int>[];
+    final every = marks?.everyPages ?? 1;
+    var mark = timelinePageAt(heads, start);
+    mark -= mark % every;
+    while (mark < heads.length && heads[mark] < start) {
+      mark += every;
+    }
+    while (true) {
+      final head = mark < heads.length ? heads[mark] : end;
+      final next = math.min(onStride, head);
+      if (next >= end) {
+        return;
+      }
+      yield next;
+      if (head == next) {
+        mark += every;
+      }
+      if (onStride == next) {
+        onStride += step;
+      }
+    }
+  }
 
   /// The resolved per-cell model — the probe surface.
   ///
@@ -815,6 +977,7 @@ final class TimelineRulerScale {
         everySeconds: secondsLabelEverySeconds,
         frameIndex: frameIndex,
         framesPerSecond: framesPerSecond,
+        pages: _pageMarks,
       ),
       outsidePlaybackRange: outside,
       background: outside
@@ -834,17 +997,24 @@ final class TimelineRulerScale {
       );
 
   /// The bottom-line number at [frameIndex]: absolute and 1-based, or
-  /// 1..fps repeating per second in [showSeconds] mode.
+  /// counted again each second or each page as [rulerView] has it.
   String frameNumberLabel(int frameIndex) => timelineRulerFrameNumberOf(
-    frameIndex: frameIndex,
-    framesPerSecond: framesPerSecond,
-    showSeconds: showSeconds,
+    frameIndex: frameIndex - _pageHeadOf(frameIndex),
+    restartsEvery: _numberRestartsEvery,
   );
 
+  /// The frame the page [frameIndex] lies in begins on — 0 where the strip
+  /// counts no pages.
+  int _pageHeadOf(int frameIndex) => switch (_pageMarks?.heads) {
+    final heads? => heads[timelinePageAt(heads, frameIndex)],
+    null => 0,
+  };
+
   /// The last frame before [endIndexExclusive] carrying the WIDEST number
-  /// this strip writes: in [showSeconds] the frame whose label is the fps
-  /// itself — the widest of the 1..fps run [frameNumberLabel] repeats — and
-  /// otherwise the window's last frame, whose absolute number is longest.
+  /// this strip writes: where the count starts again — each second, each
+  /// page — the last frame of the longest run, whose number is its length,
+  /// the widest [frameNumberLabel] writes; otherwise the window's last
+  /// frame, whose absolute number is longest.
   ///
   /// 🚨★★★ONE PLACE, BESIDE [frameNumberLabel]. A surface that measured
   /// this for itself would divide by the rate again, which is exactly the
@@ -853,11 +1023,15 @@ final class TimelineRulerScale {
   /// other counting from 1. What the scale writes and how wide it can be
   /// are the same object's question.
   int widestNumberFrameBefore(int endIndexExclusive) {
-    if (!showSeconds) {
+    final heads = _pageMarks?.heads;
+    if (heads != null) {
+      return _longestPageEndBefore(heads, endIndexExclusive);
+    }
+    final run = _numberRestartsEvery;
+    if (run == null) {
       return endIndexExclusive - 1;
     }
-    final safeFps = timelineSecondFrames(framesPerSecond);
-    return (endIndexExclusive ~/ safeFps) * safeFps - 1;
+    return (endIndexExclusive ~/ run) * run - 1;
   }
 
   // Value-compared, never `identical`: Theme.of(context).colorScheme
@@ -881,7 +1055,8 @@ final class TimelineRulerScale {
           other.numberType == numberType &&
           other.secondsFontSize == secondsFontSize &&
           other.framesPerSecond == framesPerSecond &&
-          other.showSeconds == showSeconds &&
+          other.rulerView == rulerView &&
+          other.pages == pages &&
           identical(other.windowBucket, windowBucket) &&
           other.viewportMainExtent == viewportMainExtent &&
           other.colorScheme == colorScheme;
@@ -900,7 +1075,8 @@ final class TimelineRulerScale {
     numberType,
     secondsFontSize,
     framesPerSecond,
-    showSeconds,
+    rulerView,
+    pages,
     identityHashCode(windowBucket),
     viewportMainExtent,
     colorScheme,

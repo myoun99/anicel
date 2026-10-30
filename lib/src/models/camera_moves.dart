@@ -12,8 +12,8 @@ typedef CameraMove = ({int from, int to, String term, bool turning});
 const cameraTurnTerm = 'rotate';
 
 /// The glossary's id for a camera standing still
-/// (`CameraInstructionSet.standard`): what the conte writes where no move
-/// is (I-93, `conteCameraLine`).
+/// (`CameraInstructionSet.standard`): what the conte writes beside a move,
+/// where the same cell has none (I-93, `conteCameraStretches`).
 const cameraFixTerm = 'fix';
 
 /// THE CAMERA'S MOVES AS THE SHEET NAMES THEM (I-73 ⑤): each stretch

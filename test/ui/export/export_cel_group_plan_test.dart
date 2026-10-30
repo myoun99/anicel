@@ -29,6 +29,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 
+import '../../helpers/every_frame_drawn.dart';
 import '../../helpers/export_cels_alone.dart';
 
 void main() {
@@ -128,6 +129,7 @@ void main() {
   }) => buildExportCelGroupPlan(
     project: projectWith(layers),
     activeCutId: const CutId('cut'),
+    drawn: everyFrameDrawn,
     spec: spec,
     overrides: overrides,
   );
@@ -491,6 +493,7 @@ void main() {
     final built = buildExportCelGroupPlan(
       project: project,
       activeCutId: const CutId('c1'),
+      drawn: everyFrameDrawn,
       spec: const CelsExportSpec(
         scope: ExportScopeKind.project,
         naming: ExportCelNaming(includeCutName: true),
@@ -791,6 +794,7 @@ void main() {
     final built = buildExportCelGroupPlan(
       project: project,
       activeCutId: const CutId('c1'),
+      drawn: everyFrameDrawn,
       spec: const CelsExportSpec(scope: ExportScopeKind.project),
       overrides: ExportProjectOverrides().withCutIncluded(
         const CutId('c2'),
@@ -850,6 +854,7 @@ void main() {
     final built = buildExportCelGroupPlan(
       project: project,
       activeCutId: const CutId('c2'),
+      drawn: everyFrameDrawn,
       spec: const CelsExportSpec(
         scope: ExportScopeKind.project,
         naming: ExportCelNaming(includeCutName: true),
@@ -862,6 +867,7 @@ void main() {
     final fromSibling = buildExportCelGroupPlan(
       project: project,
       activeCutId: const CutId('c2'),
+      drawn: everyFrameDrawn,
       spec: const CelsExportSpec(naming: ExportCelNaming(includeCutName: true)),
     );
     expect(files(fromSibling), ['C1-C2_A1.png']);
@@ -965,6 +971,7 @@ void main() {
     }) => buildExportCelGroupPlan(
       project: linked,
       activeCutId: CutId(activeCut),
+      drawn: everyFrameDrawn,
       spec: CelsExportSpec(scope: scope),
     );
 
@@ -1057,6 +1064,7 @@ void main() {
         final built = buildExportCelGroupPlan(
           project: both,
           activeCutId: CutId(standingOn),
+          drawn: everyFrameDrawn,
           spec: const CelsExportSpec(),
         );
         expect(
@@ -1116,6 +1124,7 @@ void main() {
         final built = buildExportCelGroupPlan(
           project: riders,
           activeCutId: CutId(standingOn),
+          drawn: everyFrameDrawn,
           spec: const CelsExportSpec(),
         );
         expect(
@@ -1141,6 +1150,7 @@ void main() {
       final bare = buildExportCelGroupPlan(
         project: linked,
         activeCutId: const CutId('c1'),
+        drawn: everyFrameDrawn,
         spec: const CelsExportSpec(applyPaper: false),
       );
 
@@ -1191,6 +1201,7 @@ void main() {
       final built = buildExportCelGroupPlan(
         project: linked,
         activeCutId: const CutId('c2'),
+        drawn: everyFrameDrawn,
         spec: const CelsExportSpec(),
         overrides: ExportProjectOverrides().withCelsDelta(
           const CutId('c2'),
@@ -1234,6 +1245,7 @@ void main() {
       final built = buildExportCelGroupPlan(
         project: unshown,
         activeCutId: const CutId('c2'),
+        drawn: everyFrameDrawn,
         spec: const CelsExportSpec(),
       );
 
@@ -1464,6 +1476,24 @@ void main() {
         'B 1': 'written',
         'B 2': 'noPicture',
       });
+    });
+
+    test('🐞a cel the timeline greys is no cel either — asked of the row in '
+        'the cut that shows it, as the block asks', () {
+      final asked = <(String, String, String)>[];
+      final built = buildExportCelGroupPlan(
+        project: projectWith([
+          base('a', 'A', [frame('f1'), frame('f2')]),
+        ]),
+        activeCutId: const CutId('cut'),
+        drawn: (cut, row, cel) {
+          asked.add((cut.id.value, row.value, cel.value));
+          return cel != const FrameId('f2');
+        },
+        spec: celsAlone,
+      );
+      expect(answers(built), {'A 1': 'written', 'A 2': 'noPicture'});
+      expect(asked, containsAll([('cut', 'a', 'f1'), ('cut', 'a', 'f2')]));
     });
 
     test('rows stacked under one name: the unnamed picture after the first '
@@ -1871,6 +1901,7 @@ void main() {
     }) => buildExportCelGroupPlan(
       project: projectWith(one),
       activeCutId: const CutId('cut'),
+      drawn: everyFrameDrawn,
       spec: spec,
       overrides: overrides,
       sheetPagesOf: (cut) => pages,
@@ -2083,6 +2114,7 @@ void main() {
           buildExportCelGroupPlan(
             project: project,
             activeCutId: CutId(standingOn),
+            drawn: everyFrameDrawn,
             spec: documents.copyWith(scope: scope),
           );
 
@@ -2132,6 +2164,7 @@ void main() {
       final c2Off = buildExportCelGroupPlan(
         project: project,
         activeCutId: const CutId('c2'),
+        drawn: everyFrameDrawn,
         spec: documents.copyWith(scope: ExportScopeKind.project),
         overrides: ExportProjectOverrides().withCelsDelta(
           const CutId('c2'),
@@ -2153,6 +2186,7 @@ void main() {
       final foldered = buildExportCelGroupPlan(
         project: project,
         activeCutId: const CutId('c2'),
+        drawn: everyFrameDrawn,
         spec: documents.copyWith(
           scope: ExportScopeKind.project,
           naming: const ExportCelNaming(cutFolder: true),

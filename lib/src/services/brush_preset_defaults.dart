@@ -259,27 +259,6 @@ Map<BrushDynamicsKey, BrushPressureCurve> _toothRow(double heaviest) => {
       ], minimum: heaviest),
 };
 
-/// 🗣️HOW DEEP A LEAD REACHES INTO THE PAPER, by the pen's pressure (F-462 ②,
-/// 유저 2026-10-25: 「클튜브러시 그대로 참고하되 따라한 느낌만 안나도록
-/// 참고해서 우리방식대로 재구현」). Under a paper worked by its height
-/// (`BrushTextureMode.height`) the density is the reach: the row climbs from
-/// [lightest] of the brush's at the faintest touch, which catches only the
-/// paper's peaks and breaks the line into grain, to all of it at the
-/// hardest. Clip Studio's pencils cut their paper so, dab by dab (紙質
-/// 減算 · 描点ごとに適用 — the user's screenshots on
-/// `the-gouache-is-a-round-with-a-weave` Q1).
-///
-/// ↩️F-456 left the height for a multiplied tooth (유저 2026-10-23:
-/// 「결여가 너무 일정함(같은부분 다시 그려도 결여된 픽셀이 안채워짐)」): under
-/// F-451 every dab laid one smooth face, so it reached the same texels however
-/// often it was laid. The crumbs' mottle moves the reach dab to dab now
-/// ([pencilCrumbBrushTipMasks]); multiplied, a lead only paled and laid
-/// smooth.
-Map<BrushDynamicsKey, BrushPressureCurve> _reachRow(double lightest) => {
-  (BrushPressureTarget.textureDensity, BrushInputSource.pressure):
-      BrushPressureCurve.linearFrom(lightest),
-};
-
 /// The built-ins as the library seeds them: each as made below, showing in
 /// the panel what its group's brushes show ([_shownByGroup]).
 final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
@@ -328,7 +307,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
     settings: BrushSettings(
       size: 8,
       hardness: 1.0,
-      spacing: BrushShape.minSpacing,
+      spacing: BrushShape.generalSpacing,
       sizePressureCurve: BrushPressureCurve.identity(),
     ),
   ),
@@ -342,7 +321,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       // centre.
       hardness: 0.0,
       flow: 0.6992,
-      spacing: BrushShape.minSpacing,
+      spacing: BrushShape.generalSpacing,
       opacityPressureCurve: BrushPressureCurve.identity(),
     ),
   ),
@@ -394,13 +373,29 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
   // turned at random, and cut their paper dab by dab. These do it with parts
   // of their own: three crumbs ([pencilCrumbBrushTipMasks]) thrown at random
   // and turned all the way round, on the graphite tooth worked by its height
-  // and reached deeper the harder the pen presses ([_reachRow]) — so each
+  // and reached deeper the harder the pen presses — so each
   // density is how deep a full press reaches, and the softer the lead the
   // deeper. The lead's six footprints and the lean rows are the tilted
   // pencil's alone. 🔬Drawn beside the user's Clip Studio 鉛筆 line
   // (`pencil_subtract`, the dual-off column, by eye): multiplied, the grades
   // laid a smooth tone under a faint tooth; cut by the height they break
   // into its dense speck, a light line into scattered grain.
+  //
+  // ↩️THE GRAIN IS THE TIP'S, AND THE PAPER ONLY TOUCHES IT (F-511, 유저
+  // 2026-10-30: 「설정의 질감으로 연필느낌 얼버무린다니까? … 질감을 꺼도
+  // 팁자체가 연필느낌나게 … 브러시 팁으로서 표현하라고 몇번을말해」 · 「아예
+  // 질감을 없애란게 아니고 클튜정도로」). With the paper off the crumbs above
+  // laid a smooth band at the finest spacing. Now they are clouds of flecks
+  // ([pencilCrumbBrushTipMasks]) laid far enough apart to keep their specks,
+  // the softer the lead the closer, on a tenth of multiplied paper, and
+  // pressure moves the flow as a real lead does, so a line laid again fills
+  // in. 🔬Measured against the Clip Studio files the user gave, through our
+  // importer at 11–40 px (`F-511` card): 리얼 연필 lays a tip 57% empty every
+  // 16% of its size on 8% of paper, and its size row runs from nothing.
+  //
+  // ↩️AT THE GENERAL STEP (유저 F-511, 2026-10-30: 「연필시리즈들 간격이 너무
+  // 길어. 5%로 하자」): the grades no longer take a gap of their own by the
+  // softness of the lead.
   BrushPreset(
     id: const BrushPresetId('builtin-hard-pencil'),
     name: '2H Pencil',
@@ -408,19 +403,17 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
     settings: BrushSettings(
       size: 3,
       hardness: 1.0,
-      flow: 0.5,
+      flow: 1.0,
       opacity: 0.6,
-      spacing: BrushShape.minSpacing,
+      spacing: BrushShape.generalSpacing,
       tips: pencilCrumbBrushTipMasks,
       tipOrder: BrushTipOrder.random,
       angleJitter: 1.0,
       textureMaskSource: graphiteToothTextureMask,
-      textureScale: 1.0,
-      textureDensity: 0.88,
-      textureMode: BrushTextureMode.height,
-      sizePressureCurve: BrushPressureCurve.linearFrom(0.5),
-      opacityPressureCurve: BrushPressureCurve.linearFrom(0.85),
-      curves: _reachRow(0.6),
+      textureScale: 0.4,
+      textureDensity: 0.06,
+      sizePressureCurve: BrushPressureCurve.linearFrom(0.08),
+      flowPressureCurve: BrushPressureCurve.linearFrom(0.4),
     ),
   ),
   BrushPreset(
@@ -430,19 +423,17 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
     settings: BrushSettings(
       size: 4,
       hardness: 0.95,
-      flow: 0.5,
+      flow: 1.0,
       opacity: 0.75,
-      spacing: BrushShape.minSpacing,
+      spacing: BrushShape.generalSpacing,
       tips: pencilCrumbBrushTipMasks,
       tipOrder: BrushTipOrder.random,
       angleJitter: 1.0,
       textureMaskSource: graphiteToothTextureMask,
-      textureScale: 1.0,
-      textureDensity: 0.92,
-      textureMode: BrushTextureMode.height,
-      sizePressureCurve: BrushPressureCurve.linearFrom(0.4),
-      opacityPressureCurve: BrushPressureCurve.linearFrom(0.8),
-      curves: _reachRow(0.62),
+      textureScale: 0.4,
+      textureDensity: 0.08,
+      sizePressureCurve: BrushPressureCurve.linearFrom(0.08),
+      flowPressureCurve: BrushPressureCurve.linearFrom(0.4),
     ),
   ),
   BrushPreset(
@@ -452,19 +443,17 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
     settings: BrushSettings(
       size: 6,
       hardness: 0.85,
-      flow: 0.55,
+      flow: 1.0,
       opacity: 0.88,
-      spacing: BrushShape.minSpacing,
+      spacing: BrushShape.generalSpacing,
       tips: pencilCrumbBrushTipMasks,
       tipOrder: BrushTipOrder.random,
       angleJitter: 1.0,
       textureMaskSource: graphiteToothTextureMask,
-      textureScale: 1.1,
-      textureDensity: 0.96,
-      textureMode: BrushTextureMode.height,
-      sizePressureCurve: BrushPressureCurve.linearFrom(0.35),
-      opacityPressureCurve: BrushPressureCurve.linearFrom(0.75),
-      curves: _reachRow(0.65),
+      textureScale: 0.4,
+      textureDensity: 0.1,
+      sizePressureCurve: BrushPressureCurve.linearFrom(0.08),
+      flowPressureCurve: BrushPressureCurve.linearFrom(0.4),
     ),
   ),
   BrushPreset(
@@ -474,33 +463,26 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
     settings: BrushSettings(
       size: 8,
       hardness: 0.75,
-      flow: 0.6,
-      spacing: BrushShape.minSpacing,
+      flow: 1.0,
+      spacing: BrushShape.generalSpacing,
       tips: pencilCrumbBrushTipMasks,
       tipOrder: BrushTipOrder.random,
       angleJitter: 1.0,
       textureMaskSource: graphiteToothTextureMask,
-      textureScale: 1.2,
-      textureDensity: 1.0,
-      textureMode: BrushTextureMode.height,
-      sizePressureCurve: BrushPressureCurve.linearFrom(0.3),
-      opacityPressureCurve: BrushPressureCurve.linearFrom(0.7),
-      curves: _reachRow(0.7),
+      textureScale: 0.4,
+      textureDensity: 0.12,
+      sizePressureCurve: BrushPressureCurve.linearFrom(0.08),
+      flowPressureCurve: BrushPressureCurve.linearFrom(0.4),
     ),
   ),
-  // 🚨THE USER'S OWN SHARP (유저 F-433, 2026-10-21: 「프리셋 기본 샤프 연필,
-  // 내가 만든 샤프로 교체」). The values are what their exported brush
-  // (`シャープ.anibrush`) carried — the preset as shipped, with what their hand
-  // had set laid over it: the finer size, step and pressure rows, the
-  // canvas weave at full density and no anti-alias. Its tilt is left as
-  // they made it: a lead this thin has no side to lean on.
-  // 🗣️All but its blend (F-433-Q1, 유저 2026-10-21: 「뒤에는 내가 잘못
-  // 지정한채로 내보낸거임. 블렌드는 표준. 기본aa는 없음」) — the file's 뒤에
-  // (behind) was a slip, so it blends like every pencil.
-  // ↩️No anti-alias was barred from every preset (board F-218, 09-28: a
-  // pixel line is the 없음 step any brush can take), and the same answer
-  // lifted it: 「aa없는 프리셋을 금지한다고 내가 발언했다면 지금 철회함.
-  // 브러시 개성에 맞춰서 없거나 1단계거나 다르게 하는거 가능. 중요한건 개성」.
+  // ↩️THE SHARP'S LEAD IS THE GRADES', AND THE ONE IT WAS IS A PEN (유저 F-511,
+  // 2026-10-30: 「샤프는 지금상태에서 추가로 팁 … 연필1 그냥 넣자. 그러고
+  // 질감도 다른 연필처럼 개편한거 통일. 간격도 마찬가지고. 안티앨리어스는
+  // 1로」 · 「기존 샤프브러시는 연필이라기엔 이상했지만 브러시자체로선
+  // 좋으니까 펜 그룹에 넣자」). The size and the pressure rows are still the
+  // ones the user exported (Mechanical Pen's note); the rest is the grades':
+  // the first of their crumbs turned all the way round, on their paper at
+  // HB's density, the lead a sharp is sold with.
   BrushPreset(
     id: const BrushPresetId('builtin-mechanical-pencil'),
     name: 'Mechanical Pencil',
@@ -508,35 +490,37 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
     settings: BrushSettings(
       size: 1.5,
       hardness: 1.0,
-      spacing: 0.0207,
-      textureMaskSource: canvasWeaveTextureMask,
-      textureScale: 1.0,
-      textureDensity: 1.0,
+      spacing: BrushShape.generalSpacing,
+      tips: [pencilCrumbBrushTipMasks.first],
+      angleJitter: 1.0,
+      textureMaskSource: graphiteToothTextureMask,
+      textureScale: 0.4,
+      textureDensity: 0.08,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.7083),
       opacityPressureCurve: BrushPressureCurve.linearFrom(0.4821),
-      antiAlias: BrushAntiAlias.none,
+      antiAlias: BrushAntiAlias.low,
     ),
   ),
-  // The colored pencil throws the graphite's crumbs (F-462 ②) but keeps its
-  // paper MULTIPLIED — my call, not the user's: wax spreads over the tooth
-  // where graphite only catches its peaks, so it pales and fills instead of
-  // breaking into grain, and the two stay apart in the picker.
+  // The colored pencil throws the graphite's clouds with no
+  // grade's ceiling — wax fills in where graphite grains — and its pressure
+  // runs the flow from nothing (F-511: 색연필.sut's own rows, on no paper; a
+  // tenth here so it sits on the same sheet as the leads).
   BrushPreset(
     id: const BrushPresetId('builtin-colored-pencil'),
     name: 'Colored Pencil',
     groupId: _pencilGroup,
     settings: BrushSettings(
       size: 6,
-      flow: 0.4,
-      spacing: BrushShape.minSpacing,
+      flow: 0.7,
+      spacing: BrushShape.generalSpacing,
       tips: pencilCrumbBrushTipMasks,
       tipOrder: BrushTipOrder.random,
       angleJitter: 1.0,
+      sizePressureCurve: BrushPressureCurve.linearFrom(0.5),
+      flowPressureCurve: BrushPressureCurve.identity(),
       textureMaskSource: graphiteToothTextureMask,
-      textureScale: 1.4,
-      textureDensity: 0.9,
-      opacityPressureCurve: BrushPressureCurve.identity(),
-      curves: _toothRow(0.65),
+      textureScale: 0.4,
+      textureDensity: 0.12,
     ),
   ),
   // 🚨THE USER'S COLOURING PENCIL (유저 F-433: 「색연필 샤프도 내가 만든거
@@ -601,7 +585,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       size: 48,
       hardness: 1.0,
       flow: 0.35,
-      spacing: BrushShape.minSpacing,
+      spacing: BrushShape.generalSpacing,
       rotationMode: BrushTipRotationMode.penTilt,
       tips: pencilLeadBrushTipMasks,
       tipOrder: BrushTipOrder.lean,
@@ -642,7 +626,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       size: 22,
       hardness: 0.9,
       flow: 1.0,
-      spacing: 0.1,
+      spacing: BrushShape.generalSpacing,
       tips: [chalkBrushTipMask],
       // The EDGE is what varies, not the fill: roundness jitter chews the
       // silhouette while the dual grain keeps the inside from going flat.
@@ -670,7 +654,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
     settings: BrushSettings(
       size: 10,
       hardness: 1.0,
-      spacing: BrushShape.minSpacing,
+      spacing: BrushShape.generalSpacing,
       // The nib that snaps open under pressure: little happens early, then
       // the line swells fast.
       sizePressureCurve: BrushPressureCurve(const [
@@ -687,7 +671,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
     settings: BrushSettings(
       size: 3,
       hardness: 1.0,
-      spacing: BrushShape.minSpacing,
+      spacing: BrushShape.generalSpacing,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.45),
     ),
   ),
@@ -708,7 +692,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
     settings: BrushSettings(
       size: 14,
       hardness: 0.7,
-      spacing: BrushShape.minSpacing,
+      spacing: BrushShape.generalSpacing,
       flowPressureCurve: BrushPressureCurve.linearFrom(0.6),
       sizePressureCurve: BrushPressureCurve(const [
         BrushCurvePoint(0.0, 0.02),
@@ -725,7 +709,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
     settings: BrushSettings(
       size: 14,
       hardness: 0.9,
-      spacing: BrushShape.minSpacing,
+      spacing: BrushShape.generalSpacing,
       roundness: 0.3,
       angleDegrees: 45,
       sizePressureCurve: BrushPressureCurve.identity(),
@@ -747,7 +731,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       hardness: 0.9,
       opacity: 0.8,
       flow: 0.6,
-      spacing: BrushShape.minSpacing,
+      spacing: BrushShape.generalSpacing,
       blendMode: BrushBlendMode.multiply,
       roundness: 0.45,
       angleDegrees: 45,
@@ -765,7 +749,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       size: 7,
       hardness: 1.0,
       flow: 1.0,
-      spacing: BrushShape.minSpacing,
+      spacing: BrushShape.generalSpacing,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.55),
     ),
   ),
@@ -781,7 +765,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       size: 3,
       hardness: 1.0,
       flow: 1.0,
-      spacing: BrushShape.minSpacing,
+      spacing: BrushShape.generalSpacing,
     ),
   ),
   BrushPreset(
@@ -792,7 +776,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       size: 10,
       hardness: 1.0,
       flow: 0.95,
-      spacing: 0.05,
+      spacing: BrushShape.generalSpacing,
       // The break in the line is the dual tip, not the flow: a hard nib
       // running out of ink skips, it does not fade. Thrown a third of a tip
       // off the line, the grain lands thin in places and the nib skips
@@ -803,6 +787,37 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       dualAngleJitter: 1.0,
       dualScatterRadiusRatio: 0.3,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.3),
+    ),
+  ),
+  // 🚨THE USER'S OWN SHARP (유저 F-433, 2026-10-21: 「프리셋 기본 샤프 연필,
+  // 내가 만든 샤프로 교체」). The values are what their exported brush
+  // (`シャープ.anibrush`) carried — the preset as shipped, with what their hand
+  // had set laid over it: the finer size, step and pressure rows, the
+  // canvas weave at full density and no anti-alias. Its tilt is left as
+  // they made it: a lead this thin has no side to lean on.
+  // 🗣️All but its blend (F-433-Q1, 유저 2026-10-21: 「뒤에는 내가 잘못
+  // 지정한채로 내보낸거임. 블렌드는 표준. 기본aa는 없음」) — the file's 뒤에
+  // (behind) was a slip, so it blends like every pencil.
+  // ↩️No anti-alias was barred from every preset (board F-218, 09-28: a
+  // pixel line is the 없음 step any brush can take), and the same answer
+  // lifted it: 「aa없는 프리셋을 금지한다고 내가 발언했다면 지금 철회함.
+  // 브러시 개성에 맞춰서 없거나 1단계거나 다르게 하는거 가능. 중요한건 개성」.
+  // ↩️It stood with the pencils until F-511, and is kept as it was (see
+  // Mechanical Pencil).
+  BrushPreset(
+    id: const BrushPresetId('builtin-mechanical-pen'),
+    name: 'Mechanical Pen',
+    groupId: _penGroup,
+    settings: BrushSettings(
+      size: 1.5,
+      hardness: 1.0,
+      spacing: 0.0207,
+      textureMaskSource: canvasWeaveTextureMask,
+      textureScale: 1.0,
+      textureDensity: 1.0,
+      sizePressureCurve: BrushPressureCurve.linearFrom(0.7083),
+      opacityPressureCurve: BrushPressureCurve.linearFrom(0.4821),
+      antiAlias: BrushAntiAlias.none,
     ),
   ),
 
@@ -855,7 +870,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
     settings: BrushSettings(
       size: 22,
       flow: 0.6,
-      spacing: 0.1,
+      spacing: BrushShape.generalSpacing,
       tips: [chalkBrushTipMask],
       textureMaskSource: canvasWeaveTextureMask,
       textureScale: 1.4,
@@ -883,7 +898,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
     settings: BrushSettings(
       size: 16,
       flow: 0.8996,
-      spacing: 0.07,
+      spacing: BrushShape.generalSpacing,
       tips: [grainBrushTipMask],
       textureMaskSource: canvasWeaveTextureMask,
       textureScale: 0.9,
@@ -898,7 +913,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
     settings: BrushSettings(
       size: 26,
       flow: 0.8233,
-      spacing: 0.08,
+      spacing: BrushShape.generalSpacing,
       // ⚠️Roundness squashes a MASKED tip too — the mask sampler divides by
       // it the same way the analytic ellipse does — and the panel's tip icon
       // draws the ellipse, so the row shows the flat edge.
@@ -929,7 +944,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       hardness: 0.3,
       flow: 0.5774,
       opacity: 0.8,
-      spacing: BrushShape.minSpacing,
+      spacing: BrushShape.generalSpacing,
       opacityPressureCurve: BrushPressureCurve.identity(),
     ),
   ),
@@ -946,7 +961,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       // filled (measured as it shipped, board F-218).
       flow: 0.4261,
       opacity: 0.8,
-      spacing: BrushShape.minSpacing,
+      spacing: BrushShape.generalSpacing,
       textureMaskSource: coldPressTextureMask,
       textureScale: 1.0,
       textureDensity: 1.0,
@@ -961,7 +976,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       size: 34,
       flow: 0.5775,
       opacity: 0.8,
-      spacing: 0.05,
+      spacing: BrushShape.generalSpacing,
       // The wet edge lives in the TIP, not in a new engine field.
       tips: [wetBlotBrushTipMask],
       angleJitter: 1.0,
@@ -988,7 +1003,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       hardness: 0.6,
       flow: 0.9375,
       opacity: 0.9,
-      spacing: BrushShape.minSpacing,
+      spacing: BrushShape.generalSpacing,
       // ↩️Was 0.95 · 0.5441 (Pastel's note).
       mixesGroundColor: true,
       colorStretch: 0.1,
@@ -1006,7 +1021,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       hardness: 0.35,
       flow: 0.6392,
       opacity: 0.75,
-      spacing: BrushShape.minSpacing,
+      spacing: BrushShape.generalSpacing,
       // A wide flat sable held square to the paper: the angle stays put so
       // the band keeps one width across the sweep.
       //
@@ -1034,7 +1049,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
     settings: BrushSettings(
       size: 22,
       flow: 0.9375,
-      spacing: 0.05,
+      spacing: BrushShape.generalSpacing,
       roundness: 0.3,
       angleDegrees: 45,
       tips: [bristleBrushTipMask],
@@ -1060,7 +1075,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       size: 20,
       hardness: 0.85,
       flow: 0.9784,
-      spacing: BrushShape.minSpacing,
+      spacing: BrushShape.generalSpacing,
       textureMaskSource: paperGrainTextureMask,
       textureScale: 1.5,
       textureMode: BrushTextureMode.height,
@@ -1085,7 +1100,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
     settings: BrushSettings(
       size: 26,
       flow: 0.9975,
-      spacing: BrushShape.minSpacing,
+      spacing: BrushShape.generalSpacing,
       tips: [bristleBrushTipMask],
       // Bristles rake along the stroke, so the tip turns with it.
       rotationMode: BrushTipRotationMode.direction,
@@ -1111,7 +1126,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
     settings: BrushSettings(
       size: 34,
       hardness: 1.0,
-      spacing: 0.05,
+      spacing: BrushShape.generalSpacing,
       // A blade has ONE width, so it carries no pressure curve at all — the
       // edge is the mark.
       roundness: 0.12,
@@ -1163,7 +1178,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       flow: 0.2259,
       opacity: 0.9,
       // Tight spacing is what makes an airbrush build rather than band.
-      spacing: BrushShape.minSpacing,
+      spacing: BrushShape.generalSpacing,
       opacityPressureCurve: BrushPressureCurve.identity(),
     ),
   ),
@@ -1180,7 +1195,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       hardness: 0.35,
       flow: 0.51,
       opacity: 0.85,
-      spacing: 0.05,
+      spacing: BrushShape.generalSpacing,
       // Small grit thrown far, two at a stamp, and short of full density,
       // so the spray's soft body shows between (the second tip's way: Rough
       // Pencil's note).
@@ -1204,7 +1219,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       size: 24,
       hardness: 0.35,
       flow: 0.91,
-      spacing: 0.05,
+      spacing: BrushShape.generalSpacing,
       mixesGroundColor: true,
       // 🗣️A BLENDER IS DRY (gouache card Q8, 2026-10-30): it carries no paint
       // of its own, as Clip Studio's 수채 섞기 — 「필압 최대로 그려도 색이 안
@@ -1229,7 +1244,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       size: 34,
       hardness: 0.12,
       flow: 0.51,
-      spacing: 0.05,
+      spacing: BrushShape.generalSpacing,
       textureMaskSource: paperGrainTextureMask,
       textureScale: 2.6,
       textureDensity: 0.6,
@@ -1250,7 +1265,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
     settings: BrushSettings(
       size: 14,
       flow: 0.5111,
-      spacing: 0.05,
+      spacing: BrushShape.generalSpacing,
       tips: [grainBrushTipMask],
       textureMaskSource: paperGrainTextureMask,
       textureScale: 1.3,
@@ -1278,7 +1293,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       size: 40,
       hardness: 0.3,
       flow: 0.3,
-      spacing: BrushShape.minSpacing,
+      spacing: BrushShape.generalSpacing,
       mixesGroundColor: true,
       mixingMethod: BrushMixingMethod.blur,
       flowPressureCurve: BrushPressureCurve.identity(),
@@ -1357,7 +1372,7 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
       size: 20,
       hardness: 1.0,
       flow: 0.9775,
-      spacing: 0.05,
+      spacing: BrushShape.generalSpacing,
       // A little larger than the tip, and turned at random (the second
       // tip's way: Rough Pencil's note).
       dualMask: chalkBrushTipMask,

@@ -5,8 +5,9 @@ import '../models/bitmap_tile.dart';
 import '../models/cel_text.dart';
 import '../models/dirty_region.dart';
 import '../models/layer_effect.dart';
+import '../models/tile_coord.dart';
 import 'bitmap_surface_geometry.dart'
-    show bitmapSurfaceContentBounds, celTextPlateSurface;
+    show bitmapSurfaceContentBounds, celTextPlateMoved, celTextPlateSurface;
 import 'brush_stroke_blend.dart' show bitmapSurfaceRegionPixels;
 import 'cel_source_effect_pass.dart';
 import 'cel_text_laying.dart';
@@ -96,6 +97,15 @@ void celStraightTileAsShown(
   required List<CelText> above,
   required List<ResolvedLayerEffect> effects,
 }) {
+  if (celSourcePlugin(effects) != null) {
+    // The cel under the hand is drawn with the texts above the carried one
+    // still on it.
+    return celLandingShownWhole(
+      under: under.withTexts([...under.texts, ...above]),
+      landed: _textLanded(under, carried, above),
+      effects: effects,
+    );
+  }
   final region = _landingRegion(under, carried);
   if (region == null) {
     return null;
@@ -115,6 +125,71 @@ void celStraightTileAsShown(
   }
   celSourceEffectsOverStraight(straight, effects);
   return (region: region, straight: straight);
+}
+
+/// THE SEAM, WHERE WHAT A HAND CARRIES WILL LAND ON A ROW WHOSE CHAIN RUNS
+/// A PLUGIN (🗣️I-132-Q32 b): the plugin may change the cel anywhere, so the
+/// landing's picture is the whole cel as it will show once [landed] stands
+/// in place of [under] — over every pixel either shows, so it covers the
+/// cel under the hand wherever that is drawn. Null where neither shows any.
+({DirtyRegion region, Uint8List straight})? celLandingShownWhole({
+  required BitmapSurface under,
+  required BitmapSurface landed,
+  required List<ResolvedLayerEffect> effects,
+}) {
+  final shown = celSurfaceAsShown(landed, effects);
+  DirtyRegion? box;
+  for (final picture in [celSurfaceAsShown(under, effects), shown]) {
+    final size = picture.tileSize;
+    for (final coord in picture.tiles.keys) {
+      final tile = DirtyRegion(
+        left: coord.x * size,
+        top: coord.y * size,
+        rightExclusive: (coord.x + 1) * size,
+        bottomExclusive: (coord.y + 1) * size,
+      );
+      box = box?.union(tile) ?? tile;
+    }
+  }
+  final region = box?.intersection(
+    DirtyRegion.wholePixelsOf(under.storableRect),
+  );
+  return region == null
+      ? null
+      : (region: region, straight: bitmapSurfaceRegionPixels(shown, region));
+}
+
+/// [under] with [carried] landed on it and [above] over that, laid as a
+/// cel's texts are ([celTileWithPlatesLaid]) — what [celTextLandingAsShown]
+/// stamps over a region, over the whole cel.
+BitmapSurface _textLanded(
+  BitmapSurface under,
+  CelTextPixels carried,
+  List<CelText> above,
+) {
+  final laid = celSurfaceWithTextsLaid(under);
+  final plates = <TileCoord, List<BitmapTile>>{};
+  void add(Map<TileCoord, BitmapTile> plate) {
+    for (final MapEntry(key: coord, value: tile) in plate.entries) {
+      (plates[coord] ??= []).add(tile);
+    }
+  }
+
+  add(
+    celTextPlateMoved(
+      carried,
+      canvasSize: under.canvasSize,
+      pasteboardReach: under.pasteboardReach,
+      tileSize: under.tileSize,
+    ),
+  );
+  for (final text in above) {
+    add(text.plate);
+  }
+  return laid.withRebuiltTiles({
+    for (final MapEntry(key: coord, value: over) in plates.entries)
+      coord: ?celTileWithPlatesLaid(laid.tileAt(coord), over, under.tileSize),
+  });
 }
 
 /// The box round every pixel of [carried]'s plate that holds ink, where a

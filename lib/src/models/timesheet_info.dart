@@ -1,4 +1,5 @@
 import '../core/collection_equality.dart';
+import 'conte/conte_camera_room.dart';
 import 'conte/conte_sheet_form.dart';
 import 'envelope/cut_envelope_presets.dart';
 import 'layer_mark.dart';
@@ -41,6 +42,7 @@ class TimesheetInfo {
     this.conteForm = ConteSheetForm.analog,
     this.conteOutlined = true,
     this.conteFixedText = true,
+    this.conteCameraRoom = ConteCameraRoom.standard,
   });
 
   static const TimesheetInfo empty = TimesheetInfo();
@@ -135,6 +137,11 @@ class TimesheetInfo {
   /// the work. ⚠️Mine: written unless taken out.
   final bool conteFixedText;
 
+  /// How much of the sheet a cell whose camera moves takes, for every cut
+  /// that does not say ([ConteCameraRoom], `CutMetadata.conteCameraRoom`) —
+  /// the format window's (I-82-Q1 「서식 전체 + 컷마다 덮어쓰기」).
+  final ConteCameraRoom conteCameraRoom;
+
   /// The name for [mark]'s work, or empty when nobody is set — so a form
   /// binding never has to null-check.
   String staffNameFor(LayerMark mark) => staff[mark.keySlug] ?? '';
@@ -161,6 +168,7 @@ class TimesheetInfo {
     ConteSheetForm? conteForm,
     bool? conteOutlined,
     bool? conteFixedText,
+    ConteCameraRoom? conteCameraRoom,
   }) {
     return TimesheetInfo(
       title: title ?? this.title,
@@ -186,6 +194,7 @@ class TimesheetInfo {
       conteForm: conteForm ?? this.conteForm,
       conteOutlined: conteOutlined ?? this.conteOutlined,
       conteFixedText: conteFixedText ?? this.conteFixedText,
+      conteCameraRoom: conteCameraRoom ?? this.conteCameraRoom,
     );
   }
 
@@ -216,6 +225,8 @@ class TimesheetInfo {
     if (conteForm != ConteSheetForm.analog) 'conteForm': conteForm.name,
     if (!conteOutlined) 'conteOutlined': false,
     if (!conteFixedText) 'conteFixedText': false,
+    if (conteCameraRoom != ConteCameraRoom.standard)
+      'conteCameraRoom': conteCameraRoom.name,
   };
 
   factory TimesheetInfo.fromJson(Map<String, dynamic> json) {
@@ -244,6 +255,9 @@ class TimesheetInfo {
       conteForm: ConteSheetForm.named(json['conteForm']),
       conteOutlined: json['conteOutlined'] as bool? ?? true,
       conteFixedText: json['conteFixedText'] as bool? ?? true,
+      conteCameraRoom:
+          ConteCameraRoom.named(json['conteCameraRoom']) ??
+          ConteCameraRoom.standard,
     );
   }
 
@@ -264,6 +278,7 @@ class TimesheetInfo {
           other.conteForm == conteForm &&
           other.conteOutlined == conteOutlined &&
           other.conteFixedText == conteFixedText &&
+          other.conteCameraRoom == conteCameraRoom &&
           mapEquals(other.staff, staff) &&
           other.hiddenFields.length == hiddenFields.length &&
           other.hiddenFields.containsAll(hiddenFields);
@@ -283,6 +298,7 @@ class TimesheetInfo {
     conteForm,
     conteOutlined,
     conteFixedText,
+    conteCameraRoom,
     Object.hashAllUnordered(
       staff.entries.map((entry) => Object.hash(entry.key, entry.value)),
     ),

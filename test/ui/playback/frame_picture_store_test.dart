@@ -3,12 +3,19 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/rgba_image_bytes.dart';
+import 'package:anicel/src/services/composite_effect_paint.dart'
+    show resolveCompositeEffectPlan;
+import 'package:anicel/src/ui/canvas/subtree_image_composite.dart'
+    show applyEffectSteps;
+import 'package:anicel/src/ui/debug/input_inspector.dart';
 import 'package:anicel/src/ui/playback/frame_picture_gpu.dart';
 import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:flutter/foundation.dart' show FlutterError;
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/a_plugin_that_shifts.dart';
 import '../../helpers/poll_until.dart';
 
 /// The store's logic — keys, the patch grid, which levels a patch writes,
@@ -126,6 +133,114 @@ void main() {
       expect(gpu.recorded, hasLength(greaterThan(2)));
       expect(gpu.recorded.every((picture) => picture.debugDisposed), isTrue);
       store.dispose();
+    });
+
+    group('🗣️I-132-Q34 a 「결과가 올 때까지 … 머문다」: over a plugin\'s step', () {
+      const paper = ui.Rect.fromLTWH(0, 0, 8, 8);
+
+      /// What draws red at (0, 0) through a plugin moving it two to the
+      /// right — a step only a recording that waits runs — and how often
+      /// it was drawn.
+      ({void Function(ui.Canvas) draw, int Function() draws, ShiftingFxPlugin
+          runner}) throughAPlugin() {
+        final recorder = ui.PictureRecorder();
+        ui.Canvas(recorder).drawRect(
+          const ui.Rect.fromLTWH(0, 0, 1, 1),
+          ui.Paint()..color = red,
+        );
+        final dot = recorder.endRecording().toImageSync(8, 8);
+        addTearDown(dot.dispose);
+        final runner = ShiftingFxPlugin(by: 2);
+        final steps = resolveCompositeEffectPlan([
+          ResolvedLayerEffect(
+            kind: EffectKind.plugin,
+            plugin: shiftingFxPluginDescription,
+            values: const [],
+            run: fxPluginRunOf(runner),
+          ),
+        ], paper: paper).preSteps;
+        var draws = 0;
+        return (
+          draw: (canvas) {
+            draws += 1;
+            final image = applyEffectSteps(
+              source: dot,
+              steps: steps,
+              imageScale: 1,
+              paper: paper,
+            );
+            canvas.drawImage(image, ui.Offset.zero, ui.Paint());
+            if (!identical(image, dot)) {
+              image.dispose();
+            }
+          },
+          draws: () => draws,
+          runner: runner,
+        );
+      }
+
+      test('a frame laid is laid as its plugin made it, drawn again once '
+          'that has run', () async {
+        final store = FramePictureStore<String>(gpu: _RecordingGpu());
+        final (:draw, :draws, :runner) = throughAPlugin();
+
+        final picture = (await store.lay('a', (
+          extent: paper,
+          outside: const ui.Color(0xFFFFFFFF),
+          draw: draw,
+        )))!;
+
+        expect((draws(), runner.renders), (2, 1));
+        final texels = await picture.image.toByteData();
+        expect(texels!.getUint32(2 * 4), 0xFF0000FF, reason: 'red, moved');
+        expect(texels.getUint32(0), 0, reason: 'none where it was drawn');
+        store.dispose();
+      });
+
+      test('it goes in as its plugin made it, drawn again once that has '
+          'run', () async {
+        final gpu = _RecordingGpu()..holdWrites = true;
+        final store = FramePictureStore<String>(gpu: gpu);
+        await _layed(store, 'a', 1024);
+        final (:draw, :draws, :runner) = throughAPlugin();
+
+        store.patch(from: 'a', to: 'b', rect: paper, draw: draw);
+        expect(draws(), 1, reason: 'drawn as it is asked for');
+        expect(await pollUntil(() => gpu.bases.isNotEmpty), isTrue);
+
+        expect((draws(), runner.renders), (2, 1));
+        final texels = await gpu.bases.single.single.source.toByteData();
+        expect(texels!.getUint32(2 * 4), 0xFF0000FF, reason: 'red, moved');
+        expect(texels.getUint32(0), 0, reason: 'none where it was drawn');
+        await _landAll(gpu, store);
+        expect(store.peek('b'), isNotNull);
+        store.dispose();
+      });
+
+      test('where what it drew is gone before its plugin has run, it does '
+          'not go in, and its picture goes', () async {
+        final gpu = _RecordingGpu();
+        final store = FramePictureStore<String>(gpu: gpu);
+        await _layed(store, 'a', 1024);
+        final (:draw, :draws, :runner) = throughAPlugin();
+        var gone = false;
+
+        store.patch(
+          from: 'a',
+          to: 'b',
+          rect: paper,
+          draw: draw,
+          gone: () => gone,
+        );
+        gone = true;
+
+        expect(await store.landingOf('b'), isFalse);
+        expect(draws(), 1, reason: 'not drawn again');
+        expect(runner.renders, 1, reason: '⛔premise: the round came');
+        expect(store.peek('a'), isNull);
+        expect(store.peek('b'), isNull);
+        store.dispose();
+      });
     });
 
     test('lets go of its texels once they are in its picture', () async {
@@ -409,6 +524,45 @@ void main() {
       expect(store.peek('b'), isNull);
       expect(await pollUntil(() => picture.image.debugDisposed), isTrue);
       store.dispose();
+    });
+
+    test('the input inspector says how the writes went — ok, failed and '
+        'threw, counted while it is hidden too (F-509)', () async {
+      _reported();
+      addTearDown(InputInspector.reset);
+      List<int> tally() => [
+        for (final number in RegExp(
+          r'\d+',
+        ).allMatches(InputInspector.pinned['picture writes']!))
+          int.parse(number[0]!),
+      ];
+      Future<void> write(_RecordingGpu gpu) async {
+        final store = FramePictureStore<String>(gpu: gpu);
+        await _layed(store, 'a', 256);
+        store.patch(
+          from: 'a',
+          to: 'b',
+          rect: const ui.Rect.fromLTWH(0, 0, 8, 8),
+          draw: fill,
+        );
+        await store.landingOf('b');
+        store.dispose();
+      }
+
+      await write(_RecordingGpu());
+      expect(InputInspector.pinned, isEmpty, reason: 'hidden, it pins nothing');
+
+      InputInspector.visible.value = true;
+      await write(_RecordingGpu());
+      final [ok, failed, threw] = tally();
+      expect(ok, greaterThanOrEqualTo(2), reason: 'the hidden one counts');
+
+      await write(_RecordingGpu());
+      expect(tally(), [ok + 1, failed, threw]);
+      await write(_RecordingGpu()..writesLand = false);
+      expect(tally(), [ok + 1, failed + 1, threw]);
+      await write(_RecordingGpu()..writesThrow = StateError('unsized texels'));
+      expect(tally(), [ok + 1, failed + 1, threw + 1]);
     });
 
     test('the GPU threw writing lets go of the picture and answers every '

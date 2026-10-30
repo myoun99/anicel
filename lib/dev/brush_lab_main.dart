@@ -519,6 +519,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
       _event(
         PointerDownEvent(
           pointer: pointer,
+          timeStamp: _clock.elapsed,
           kind: PointerDeviceKind.stylus,
           position: position,
           pressure: 0.8,
@@ -527,6 +528,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
       _event(
         PointerUpEvent(
           pointer: pointer,
+          timeStamp: _clock.elapsed,
           kind: PointerDeviceKind.stylus,
           position: position,
         ),
@@ -569,6 +571,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     _event(
       PointerDownEvent(
         pointer: pointer,
+        timeStamp: _clock.elapsed,
         kind: PointerDeviceKind.stylus,
         position: position,
         pressure: 0.8,
@@ -577,6 +580,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     _event(
       PointerUpEvent(
         pointer: pointer,
+        timeStamp: _clock.elapsed,
         kind: PointerDeviceKind.stylus,
         position: position,
       ),
@@ -636,6 +640,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
       _event(
         PointerDownEvent(
           pointer: pointerC,
+          timeStamp: _clock.elapsed,
           kind: PointerDeviceKind.stylus,
           position: positionC,
           pressure: 0.8,
@@ -644,6 +649,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
       _event(
         PointerUpEvent(
           pointer: pointerC,
+          timeStamp: _clock.elapsed,
           kind: PointerDeviceKind.stylus,
           position: positionC,
         ),
@@ -770,6 +776,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     _event(
       PointerDownEvent(
         pointer: pointer,
+        timeStamp: _clock.elapsed,
         kind: PointerDeviceKind.stylus,
         position: start,
         pressure: 0.8,
@@ -788,6 +795,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
         _event(
           PointerMoveEvent(
             pointer: pointer,
+            timeStamp: _clock.elapsed,
             kind: PointerDeviceKind.stylus,
             position: position,
             delta: position - previous,
@@ -799,6 +807,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     _event(
       PointerUpEvent(
         pointer: pointer,
+        timeStamp: _clock.elapsed,
         kind: PointerDeviceKind.stylus,
         position: position,
       ),
@@ -822,6 +831,10 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
     }
     return BrushTipMask(id: id, size: size, alpha: alpha);
   }
+
+  /// When a sample came, as the engine stamps one: a stroke steadies by
+  /// them, and samples all stamped zero laid nothing past the first.
+  final Stopwatch _clock = Stopwatch()..start();
 
   void _event(PointerEvent event) {
     WidgetsBinding.instance.handlePointerEvent(event);

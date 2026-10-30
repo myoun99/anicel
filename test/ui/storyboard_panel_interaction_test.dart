@@ -44,6 +44,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart'
     show StoryboardThumbnailResolver;
 import 'package:anicel/src/ui/storyboard_panel.dart';
+import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/ui/timeline/timeline_double_tap.dart'
     show TimelineDoubleTapGate;
 import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
@@ -1175,7 +1176,7 @@ void main() {
         ]),
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
-        showSeconds: true,
+        rulerView: FrameRulerView.secondsPlusFrames,
         projectFrameRate: ProjectFrameRate.fps24,
       );
       expect(requireCutBlock(tester, 'cut-b').total, '1+0');
@@ -2056,7 +2057,7 @@ Future<void> _pumpStoryboardPanel(
   VoidCallback? onScrubEnd,
   StoryboardThumbnailResolver? thumbnailFor,
   double pixelsPerFrame = 8,
-  bool showSeconds = false,
+  FrameRulerView rulerView = FrameRulerView.frames,
   ProjectFrameRate projectFrameRate = ProjectFrameRate.fps24,
   ScrollBehavior? scrollBehavior,
   void Function(TrackId trackId, int globalFrame)? onEditCutBlock,
@@ -2111,7 +2112,7 @@ Future<void> _pumpStoryboardPanel(
               ? null
               : fixedThumbnails(thumbnailFor),
           pixelsPerFrame: pixelsPerFrame,
-          showSeconds: showSeconds,
+          rulerView: rulerView,
           projectFrameRate: projectFrameRate,
           onEditCutBlock: onEditCutBlock,
           onEditConteBlock: onEditConteBlock,

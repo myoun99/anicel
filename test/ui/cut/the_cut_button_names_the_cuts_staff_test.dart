@@ -7,6 +7,7 @@ import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/ui/cut_command_group.dart';
 import 'package:anicel/src/ui/dialogs/cut_settings_window.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 
 /// 🗣️유저 2026-10-08 (F-291-Q1): 「원화 작업자나 시아게는 컷마다 다름 …
 /// 스태프는 콘티만 남겨둠. 나머진 삭제. 나머진 컷마다 스태프설정」. The cut
@@ -235,5 +236,15 @@ void main() {
     await cancel(tester);
     expect(answered, isTrue);
     expect(answer, isNull);
+  });
+
+  testWidgets('I-82 (10-31): a cut\'s camera room moved to the conte format '
+      'window — 컷 설정 keeps no row of it', (tester) async {
+    await pumpCutButton(tester);
+    expect(
+      find.byKey(const ValueKey<String>('cut-settings-window')),
+      findsOneWidget,
+    );
+    expect(find.text(AppText.strings.conteCameraRoom), findsNothing);
   });
 }

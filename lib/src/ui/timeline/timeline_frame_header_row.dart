@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../text/app_face.dart';
 import 'timeline_frame_coordinate_policy.dart' show frameRangeVisibleWidth;
+import 'frame_ruler_view.dart';
 import 'timeline_frame_ruler_painter.dart';
 import 'timeline_ruler_playhead_writing.dart';
 import 'timeline_grid_metrics.dart';
@@ -31,7 +32,8 @@ class TimelineFrameHeaderRow extends StatelessWidget {
     required this.metrics,
     required this.onSelectFrame,
     this.framesPerSecond = 24,
-    this.showSeconds = false,
+    this.rulerView = FrameRulerView.frames,
+    this.pages,
     this.windowBucket,
     this.viewportMainExtent = 0,
     this.playhead,
@@ -57,9 +59,12 @@ class TimelineFrameHeaderRow extends StatelessWidget {
   /// The project fps — the seconds line ticks on its boundaries.
   final int framesPerSecond;
 
-  /// Seconds display mode: the bottom line repeats 1..fps per second
-  /// instead of counting absolute frames.
-  final bool showSeconds;
+  /// How the strip counts ([TimelineRulerScale.rulerView]).
+  final FrameRulerView rulerView;
+
+  /// How many frames a page of the cut's X-sheet holds
+  /// ([TimelineRulerScale.pages]).
+  final TimelineRulerPages? pages;
 
   /// The playhead the strip writes its own pair at (I-16), on a layer of
   /// its own above the strip — a null VALUE writes none; a strip without
@@ -90,7 +95,8 @@ class TimelineFrameHeaderRow extends StatelessWidget {
       numberType: TimelineFrameRulerPainter.numberType,
       secondsFontSize: 9,
       framesPerSecond: framesPerSecond,
-      showSeconds: showSeconds,
+      rulerView: rulerView,
+      pages: pages,
       windowBucket: windowBucket,
       viewportMainExtent: viewportMainExtent,
     );

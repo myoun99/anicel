@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/panel_view_memory.dart';
@@ -25,6 +26,7 @@ Future<EditorSessionManager> pumpStoryboardHost(
   Size surface = const Size(1500, 800),
   double pixelsPerFrame = PanelViewMemory.defaultStoryboardPixelsPerFrame,
   ValueChanged<double> onPixelsPerFrameChanged = _unheard,
+  FrameRulerView rulerView = FrameRulerView.frames,
 }) async {
   final session = EditorSessionManager(initialProject: project);
   addTearDown(session.dispose);
@@ -34,6 +36,7 @@ Future<EditorSessionManager> pumpStoryboardHost(
     surface: surface,
     pixelsPerFrame: pixelsPerFrame,
     onPixelsPerFrameChanged: onPixelsPerFrameChanged,
+    rulerView: rulerView,
   );
   return session;
 }
@@ -55,6 +58,7 @@ Future<void> pumpStoryboardHostOn(
   double pixelsPerFrame = PanelViewMemory.defaultStoryboardPixelsPerFrame,
   ValueChanged<double> onPixelsPerFrameChanged = _unheard,
   StoryboardRowsChannel? rowsChannel,
+  FrameRulerView rulerView = FrameRulerView.frames,
 }) async {
   await tester.binding.setSurfaceSize(surface);
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -76,8 +80,8 @@ Future<void> pumpStoryboardHostOn(
             rail: TabRailWiring.of(session),
             pixelsPerFrame: pixelsPerFrame,
             onPixelsPerFrameChanged: onPixelsPerFrameChanged,
-            showSeconds: false,
-            onShowSecondsChanged: (_) {},
+            rulerView: rulerView,
+            onRulerViewChanged: (_) {},
             thumbnails: null,
             rowsChannel: rowsChannel,
           ),

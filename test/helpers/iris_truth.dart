@@ -98,7 +98,7 @@ IrisCover irisLaidCoverOf(
 typedef IrisTable = ({Float32List texels, int width, int levels});
 
 Future<IrisTable> irisTableOf(WidgetTester tester, IrisGatherPass pass) async {
-  final table = IrisBlurShader.tableFor(pass);
+  final table = IrisBlurShader.tableFor(pass.rows);
   addTearDown(table.dispose);
   final bytes = (await tester.runAsync(
     () => table.toByteData(format: ui.ImageByteFormat.rawExtendedRgba128),

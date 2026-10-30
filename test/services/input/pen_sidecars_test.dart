@@ -8,7 +8,7 @@ import 'package:anicel/src/services/input/platform_pen_channel_service.dart';
 import 'package:anicel/src/services/input/raw_pen_input_service.dart';
 import 'package:anicel/src/services/input/wintab_pen_service.dart';
 
-/// PEN-4: the macOS/Linux channel sidecars + the cross-platform facade.
+/// PEN-4: the macOS channel sidecar + the cross-platform facade.
 void main() {
   tearDown(() {
     PenSidecars.debugReset();

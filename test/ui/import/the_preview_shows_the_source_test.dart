@@ -3,13 +3,19 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
+import 'package:anicel/src/services/media/video_decode_worker.dart';
+import 'package:anicel/src/services/media/viewer_document.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_preview.dart';
 import 'package:anicel/src/ui/media/document_preview_panel.dart';
+import 'package:anicel/src/ui/media/open_viewer_document.dart';
+import 'package:anicel/src/ui/widgets/empty_state_text.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
+import '../../helpers/fake_video_backend.dart';
 import '../../helpers/import_preview_probe.dart';
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/settle_async.dart';
@@ -29,6 +35,8 @@ import '../../helpers/the_file_itself.dart';
 ///
 /// ⛔「A range that changes nothing is a control that lies」 — the IN/OUT
 /// ends appear only where they bite: a multi-frame source being PLACED.
+///
+/// And what the viewer's door refuses, the well says, as the viewer does.
 void main() {
   late EditorSessionManager session;
 
@@ -173,5 +181,72 @@ void main() {
     await settleLoadedPages(tester);
     expect(loading, findsNothing);
     expect(tester.importPreviewImage, isNotNull, reason: 'its picture is up');
+  });
+
+  testWidgets('🐞a movie the decoder will not open says so in the well, '
+      'with the decoder\'s reason, as the viewer does — and the next file '
+      'takes the sentence down', (tester) async {
+    // 유저 2026-10-30 (Galaxy Tab, build 1084): a black well counting
+    // 1 / 1, and nothing said why until Import was pressed.
+    debugVideoDecodeBackend = FakeVideoBackend(
+      refusal: 'could not open the container',
+    );
+    addTearDown(() => debugVideoDecodeBackend = null);
+    final refused = find.byKey(
+      const ValueKey<String>('import-preview-refused'),
+    );
+    final dir = await tester.runAsync(
+      () => Directory.systemTemp.createTemp('anicel-preview'),
+    );
+    deleteAfterSessionEnds(dir!);
+    final movie = '${dir.path}/take.mp4';
+    await tester.runAsync(() => File(movie).writeAsBytes(const [0, 0, 0, 0]));
+    await pump(tester, path: movie);
+    await settleLoadedPages(tester);
+    expect(refused, findsOneWidget);
+    expect(
+      tester.widget<EmptyStateText>(refused).text,
+      viewerCouldNotOpen(
+        const ViewerDocumentException('could not open the container'),
+      ),
+      reason: 'the media viewer\'s sentence for the same open, the '
+          'decoder\'s words under it',
+    );
+
+    final png = await tester.runAsync(
+      () => writeSolidPng(dir, 'a.png', width: 4, height: 4),
+    );
+    await pump(tester, path: png);
+    await settleLoadedPages(tester);
+    expect(tester.importPreviewImage, isNotNull, reason: 'premise');
+    expect(refused, findsNothing);
+
+    await pump(tester, path: movie);
+    await settleLoadedPages(tester);
+    expect(refused, findsOneWidget, reason: 'premise');
+    await pump(tester);
+    expect(refused, findsNothing, reason: 'nothing selected says nothing');
+  });
+
+  testWidgets('a build with no movie reader says which absence, as the '
+      'viewer does', (tester) async {
+    debugVideoDecodeBackend = FakeVideoBackend(supported: false);
+    addTearDown(() => debugVideoDecodeBackend = null);
+    final dir = await tester.runAsync(
+      () => Directory.systemTemp.createTemp('anicel-preview'),
+    );
+    deleteAfterSessionEnds(dir!);
+    final movie = '${dir.path}/take.mp4';
+    await tester.runAsync(() => File(movie).writeAsBytes(const [0, 0, 0, 0]));
+    await pump(tester, path: movie);
+    await settleLoadedPages(tester);
+    expect(
+      tester
+          .widget<EmptyStateText>(
+            find.byKey(const ValueKey<String>('import-preview-refused')),
+          )
+          .text,
+      viewerNothingOpens(MediaAssetKind.video),
+    );
   });
 }

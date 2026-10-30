@@ -7,10 +7,12 @@ import 'package:flutter/material.dart';
 import '../models/camera_instruction.dart' show CameraInstructionDef;
 import '../models/layer.dart';
 import '../models/layer_id.dart';
+import '../models/sheet_sources.dart' show sheetPageFramesOf;
 import '../models/timeline_row_address.dart';
 import '../models/working_panel.dart';
 import 'panels/working_panel_surface.dart';
 import 'camera/camera_path_settings_rows.dart' show showCameraPathSettings;
+import 'timeline/frame_ruler_view.dart';
 import 'timeline/layer_link_window.dart';
 import 'timeline/layer_reference_popover.dart';
 import 'timeline/movie_source_shortfall.dart';
@@ -70,8 +72,8 @@ class TimelineTabHost extends StatefulWidget {
     this.pixelsPerFrameListenable,
     required this.onPixelsPerFrameChanged,
     this.onZoomFit,
-    required this.showSeconds,
-    required this.onShowSecondsChanged,
+    required this.rulerView,
+    required this.onRulerViewChanged,
     this.timelineRailExtent,
     this.xsheetRailExtent,
     required this.rail,
@@ -106,8 +108,8 @@ class TimelineTabHost extends StatefulWidget {
 
   /// The zoom fit (I-111) — the workspace's, which keeps the zoom.
   final VoidCallback? onZoomFit;
-  final bool showSeconds;
-  final ValueChanged<bool> onShowSecondsChanged;
+  final FrameRulerView rulerView;
+  final ValueChanged<FrameRulerView> onRulerViewChanged;
 
   /// The two grids' rail window sizes (workspace-owned so they survive a
   /// tab switch AND a restart).
@@ -425,6 +427,18 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   /// The rail rows' buttons as a press asks them — spread over the row
   /// selection when the pressed row is in it.
   SessionRowButtonPresses get _rowPresses => SessionRowButtonPresses(_session);
+
+  /// The pages of the open cut's X-sheet — where the page view's rulers
+  /// start again (I-81); null with no cut open.
+  TimelineRulerPages? get _sheetPages => switch (_session.activeCutOrNull) {
+    null => null,
+    final cut => TimelineRulerPages.every(
+      sheetPageFramesOf(
+        cut,
+        _session.projectSettings.projectFrameRate.countingBase,
+      ),
+    ),
+  };
 
   @override
   Widget build(BuildContext context) => RailSweepHistory(
@@ -816,8 +830,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             pixelsPerFrame: pixelsPerFrame,
             onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
             onZoomFit: widget.onZoomFit,
-            showSeconds: widget.showSeconds,
-            onShowSecondsChanged: widget.onShowSecondsChanged,
+            rulerView: widget.rulerView,
+            sheetPages: _sheetPages,
+            onRulerViewChanged: widget.onRulerViewChanged,
             timelineRailExtent: widget.timelineRailExtent,
             xsheetRailExtent: widget.xsheetRailExtent,
             timelineFrameAxisOffset:

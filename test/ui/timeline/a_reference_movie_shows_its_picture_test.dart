@@ -31,15 +31,6 @@ import '../../helpers/poll_until.dart';
 import '../../helpers/stand_in_movie.dart';
 import '../../helpers/temp_dir.dart';
 
-/// A reader that will not open anything — a take that is not there.
-class _Refusing extends FakeVideoBackend {
-  @override
-  Future<({int token, QaVideoInfo info})?> open(
-    String path, {
-    ({int offset, int length, bool framed})? span,
-  }) async => null;
-}
-
 /// A reader that hands every open its own token, and remembers what was put
 /// back.
 class _Counting extends FakeVideoBackend {
@@ -251,7 +242,9 @@ void main() {
     tester,
   ) async {
     final (s, layer) = await placed(tester, FakeVideoBackend(frameCount: 24));
-    debugVideoDecodeBackend = _Refusing();
+    debugVideoDecodeBackend = FakeVideoBackend(
+      refusal: 'could not open the container',
+    );
     final gone = layer.copyWith(
       mediaReference: layer.mediaReference!.copyWith(
         assetPath: '${moviePath}_gone.mov',

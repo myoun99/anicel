@@ -46,8 +46,24 @@ class _WorkspaceRail {
   ];
 
   /// The slots of one rail that HOLD something — the buttons that exist.
-  List<String> _railGroups({required bool right}) => [
-    for (final id in _railSlotIds(right: right))
+  List<String> _railGroups({required bool right}) =>
+      _filled(_railSlotIds(right: right));
+
+  /// The top strip's slots, in order, whatever is in them
+  /// ([EditorWorkspace.topGroupId]).
+  static List<String> _topSlotIds() => [
+    for (var slot = 1; slot <= EditorWorkspace.railSlots; slot += 1)
+      EditorWorkspace.topGroupId(slot: slot),
+  ];
+
+  /// Whether [dockId] is one of the top strip's slots.
+  static bool isTopSlot(String dockId) => dockId.startsWith('top-');
+
+  /// The top strip's slots that HOLD something — its floor buttons.
+  List<String> _topGroups() => _filled(_topSlotIds());
+
+  List<String> _filled(List<String> slots) => [
+    for (final id in slots)
       if (_state._layout.tabsIn(id).isNotEmpty) id,
   ];
 
@@ -59,9 +75,107 @@ class _WorkspaceRail {
   ];
 
   /// Whether [dockId] is on screen: every dock but a rail group the user
-  /// closed.
-  bool dockShows(String dockId) =>
-      !dockId.startsWith('rail-') || _state._openRails.contains(dockId);
+  /// closed, and of the floor's — its own and the top strip's groups — the
+  /// one lying there.
+  bool dockShows(String dockId) {
+    if (dockId.startsWith('rail-')) {
+      return _state._openRails.contains(dockId);
+    }
+    if (isTopSlot(dockId) || dockId == EditorWorkspace.centerGroupId) {
+      return _state._laidFloorDockId() == dockId;
+    }
+    return true;
+  }
+
+  /// Lays [tabId] — a panel of a top strip group — on the floor, in front
+  /// of its group; null gives the floor back to its own two.
+  void layOnTheFloor(String? tabId) {
+    _state._mutatingLayout(() {
+      if (tabId != null) {
+        final at = _state._layout.locateTab(tabId);
+        if (at == null || !isTopSlot(at.dockId)) {
+          return;
+        }
+        _state._layout.selectTab(at.dockId, tabId);
+      }
+      _state._laidFloorTab.value = tabId;
+    });
+    _state._claimPanelOf(tabId);
+  }
+
+  /// A strip button pressed: a rail's opens or closes its group beside the
+  /// drawing; the top strip's lays its group on the floor — 「깔 때는
+  /// 하나씩만 여는거니까」 (I-147), so pressed again it stays.
+  void _pressStripGroup(String groupId) {
+    if (isTopSlot(groupId)) {
+      layOnTheFloor(_state._layout.activeTabIn(groupId));
+    } else {
+      _toggleRailGroup(groupId);
+    }
+  }
+
+  /// A strip button carried by its band to [toId] — an empty slot of any
+  /// strip, or a rail's button — with every panel it holds (🗣️I-147:
+  /// 「해당 버튼들 패널들 통째로 옮길수있도록」), as a panel dropped there
+  /// goes ([_dropIntoRailGroup]: one verb for the slot and the button).
+  ///
+  /// It lands showing, as a placed panel does ([ensureRailOpen]): open
+  /// beside the drawing, or on the top strip its front panel laid.
+  void carryGroupTo({required String fromId, required String toId}) {
+    final front = _state._layout.activeTabIn(fromId);
+    if (front == null) {
+      return;
+    }
+    _state._mutatingLayout(() {
+      _placeCarried(fromId: fromId, toId: toId, front: front);
+      _state._rebuild(() => _state._openRails.remove(fromId));
+    });
+    _landShowing(front);
+  }
+
+  /// 🗣️I-147-Q2 a (유저 2026-10-30): onto a rail's button what it holds
+  /// JOINS that group, its front panel in front; 「상단 띠에서는 패널마다
+  /// 버튼 하나」 — into the top strip a group of several stands as a button
+  /// per panel, in the strip's empty slots; anywhere else it moves whole,
+  /// its size with it ([EditorPanelLayoutModel.moveGroup]).
+  void _placeCarried({
+    required String fromId,
+    required String toId,
+    required String front,
+  }) {
+    final layout = _state._layout;
+    final tabs = layout.tabsIn(fromId);
+    if (layout.tabsIn(toId).isNotEmpty) {
+      // ⚠️[setToolRailOnRight] appends a group the same way — two, so not
+      // one body yet (CLAUDE.md, the rule of three): the third merges them.
+      for (final tabId in tabs) {
+        layout.moveTab(
+          tabId: tabId,
+          toDockId: toId,
+          insertIndex: layout.tabsIn(toId).length,
+        );
+      }
+      layout.selectTab(toId, front);
+    } else if (isTopSlot(toId) && tabs.length > 1) {
+      for (final tabId in tabs) {
+        if (_state._docks._emptyTopSlot() case final slot?) {
+          layout.moveTab(tabId: tabId, toDockId: slot, insertIndex: 0);
+        }
+      }
+    } else {
+      layout.moveGroup(fromDockId: fromId, toDockId: toId);
+    }
+  }
+
+  /// [tabId], carried with its button, showing where it landed.
+  void _landShowing(String tabId) {
+    final at = _state._layout.locateTab(tabId);
+    if (at != null) {
+      ensureRailOpen(at.dockId);
+      _state._claimPanelIfFront(tabId, at.dockId);
+    }
+    _state._layoutPersistence.scheduleLayoutSave();
+  }
 
   void _toggleRailGroup(String railId) {
     final opening = !_state._openRails.contains(railId);
@@ -263,11 +377,20 @@ class _WorkspaceRail {
   /// dropped there, reopened from the Panels menu, or revealed by a browser
   /// "open". So every path that places a panel comes through here rather
   /// than each remembering on its own.
+  ///
+  /// On the floor, somewhere is what lies there: a top strip group is laid,
+  /// and the floor's own dock takes the floor back.
   void ensureRailOpen(String dockId) {
     if (dockShows(dockId)) {
       return;
     }
-    _openRailGroup(dockId);
+    if (dockId == EditorWorkspace.centerGroupId) {
+      layOnTheFloor(null);
+    } else if (isTopSlot(dockId)) {
+      layOnTheFloor(_state._layout.activeTabIn(dockId));
+    } else {
+      _openRailGroup(dockId);
+    }
   }
 
   /// Opens the rail group [railId] — a change to what the docks show
@@ -348,11 +471,12 @@ class _WorkspaceRail {
     );
   }
 
-  /// A panel dropped on a rail button JOINS that group and opens it —
-  /// dropping something out of sight would be a silent move.
+  /// A panel dropped on a strip button JOINS that group and shows it —
+  /// dropping something out of sight would be a silent move. A top strip
+  /// button's group shows by lying on the floor ([ensureRailOpen]).
   void _dropIntoRailGroup(String railId, EditorPanelTabDragData data) {
     _state._placeTab(data, railId, _state._layout.tabsIn(railId).length);
-    _openRailGroup(railId);
+    ensureRailOpen(railId);
   }
 
   /// One rail group's height: what it was left at, floored by what its
@@ -790,7 +914,7 @@ class _WorkspaceRail {
       // the window.
       //
       // The BOTTOM dock keeps its zone (`_buildBottomDock`) and so does an
-      // emptied floor (`_buildCenterDock`) — those two have no strip button
+      // emptied floor (`buildFloorDock`) — those two have no strip button
       // standing in for them, so removing their band would leave a panel
       // dropped there with no way back.
       return const SizedBox.shrink();

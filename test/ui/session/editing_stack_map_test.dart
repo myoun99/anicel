@@ -80,6 +80,7 @@ void main() {
       frameIndex: 0,
       activeLayerId: s.activeLayerId,
       movieLaidAt: s.movieCels.laidAt,
+      plugins: null,
     );
     return (
       map,
@@ -201,6 +202,7 @@ void main() {
         frameIndex: frameIndex,
         activeLayerId: s.activeLayerId,
         movieLaidAt: s.movieCels.laidAt,
+        plugins: null,
       );
       return (
         map,
@@ -348,5 +350,111 @@ void main() {
           'so asking a second time somewhere else is how the panel and '
           'the stack come to disagree',
     );
+  });
+
+  group('🗣️I-132-Q32 b: every row it hands on carries its plugin\'s run', () {
+    /// What a binding made of a chain at [frameIndex]: one key that says
+    /// the frame it was bound at.
+    ResolvedLayerEffect boundAt(int frameIndex) => ResolvedLayerEffect(
+      kind: EffectKind.colorKey,
+      values: [frameIndex.toDouble(), 0, 0, 100],
+    );
+    List<ResolvedLayerEffect> marking(
+      List<ResolvedLayerEffect> effects, {
+      required Cut cut,
+      required int frameIndex,
+    }) => [boundAt(frameIndex)];
+
+    EditingStackMap mapOf(EditorSessionManager s) => EditingStackMap(
+      opacityVerbs: s.opacityVerbs,
+      project: s,
+      cut: s.activeCutOrNull!,
+      stackCut: s.activeCutOrNull!,
+      frameIndex: 0,
+      activeLayerId: s.activeLayerId,
+      movieLaidAt: s.movieCels.laidAt,
+      plugins: marking,
+    );
+
+    test('the row drawn on where it shows nothing yet — what its first '
+        'stroke is shown through', () {
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(s.dispose);
+      s.selectFrameIndex(0);
+      final map = mapOf(s);
+
+      final nodes = map.mapTree(
+        resolveCutFrameCompositeTree(
+          cut: s.activeCutOrNull!,
+          frameIndex: 0,
+          liveLayerId: s.activeLayerId,
+        ),
+      );
+
+      expect(
+        rowsIn(nodes).whereType<CanvasActiveLayerRow>(),
+        isNotEmpty,
+        reason: '⛔fixture: the row stands in the stack with no cel',
+      );
+      expect(activeRowIn(nodes).effects, [boundAt(0)]);
+      expect(map.activeSourceEffects, [boundAt(0)]);
+    });
+
+    test('an onion ghost, at its own frame', () {
+      final s = sessionOnADressedRow();
+      final row = s.activeLayer!;
+      final map = mapOf(s);
+
+      final nodes = map.mapTree(
+        resolveCutFrameCompositeTree(
+          cut: s.activeCutOrNull!,
+          frameIndex: 0,
+          ghostsOf: (of) => [
+            if (of.id == row.id)
+              CutFrameCompositeGhost(
+                layer: of,
+                frameId: s.selectedFrame!.id,
+                frameIndex: 3,
+                opacity: 0.4,
+              ),
+          ],
+        ),
+      );
+
+      expect(
+        rowsIn(nodes).whereType<CanvasGhostImageRequest>().single.effects,
+        [boundAt(3)],
+      );
+    });
+
+    test('a folder\'s chain and an adjustment\'s (🗣️I-132-Q34 a 「어디에 걸어도 '
+        '돌고」)', () {
+      final s = sessionOnADressedRow();
+      final blur = [ResolvedLayerEffect(kind: EffectKind.blur, values: [3])];
+      final nodes = mapOf(s).mapTree([
+        CompositeAdjustment(
+          children: [
+            CompositeGroup(
+              children: resolveCutFrameCompositeTree(
+                cut: s.activeCutOrNull!,
+                frameIndex: 0,
+              ),
+              opacity: 1,
+              blendMode: LayerBlendMode.normal,
+              effects: blur,
+            ),
+          ],
+          effects: blur,
+          mix: 1,
+        ),
+      ]);
+
+      final adjustment = nodes.single as CompositeAdjustment<CanvasStackRow>;
+      expect(adjustment.effects, [boundAt(0)]);
+      expect(
+        (adjustment.children.single as CompositeGroup<CanvasStackRow>).effects,
+        [boundAt(0)],
+      );
+    });
   });
 }

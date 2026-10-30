@@ -852,6 +852,16 @@ extension LayerStackQueries on List<Layer> {
   /// camera shows the canvas centred, whatever its keys say.
   bool get cameraWorkBypassed => cameraLayer?.transformEnabled == false;
 
+  /// Whether the cut's camera work prints on paper — the camera row's sheet
+  /// switch: the timesheet's CAM column and the conte's ACTION lines read
+  /// this one answer.
+  ///
+  /// 🗣️I-93 (유저 2026-10-30): 「se가 해당 행 시트off하면 콘티용지나 타임시트등
+  /// 기록되는곳에서 사라지듯이 액션쪽도 카메라레이어 움직임인거니까 그거
+  /// 시트off되면 사라지게」 — the SE row's law ([layerPrintsSheetLines]) for
+  /// the camera's. ↩️The conte read every camera, switch or not.
+  bool get cameraOnSheet => cameraLayer?.onTimesheet ?? true;
+
   /// The camera row's stack index, or -1.
   int get cameraIndex {
     for (var index = 0; index < length; index += 1) {

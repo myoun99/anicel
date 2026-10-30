@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
@@ -82,8 +83,8 @@ void main() {
               pixelsPerFrame: zoom.value,
               pixelsPerFrameListenable: zoom,
               onPixelsPerFrameChanged: (value) => zoom.value = value,
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
+              rulerView: FrameRulerView.frames,
+              onRulerViewChanged: (_) {},
             ),
           ),
         ),

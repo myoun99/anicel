@@ -29,6 +29,7 @@ import 'package:anicel/src/ui/widgets/app_scrollbar_lane.dart';
 import 'package:anicel/src/ui/widgets/app_window.dart';
 
 import '../../helpers/app_faces.dart';
+import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/export_preview_probe.dart';
@@ -74,7 +75,7 @@ void main() {
   /// C1 and C2 sharing rows A and B. C1 shows A 1 and B 2; C2 shows A 2
   /// and B 1 — so standing on either cut, each bundle's FIRST cel comes
   /// from a different cut than the other bundle's.
-  EditorSessionManager linkedPair() => EditorSessionManager(
+  EditorSessionManager linkedPair() => inkEveryCel(EditorSessionManager(
     initialProject: Project(
       id: const ProjectId('project'),
       name: 'Project',
@@ -117,7 +118,7 @@ void main() {
         ],
       ),
     ),
-  );
+  ));
 
   Future<void> pumpCels(
     WidgetTester tester,

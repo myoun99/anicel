@@ -391,7 +391,7 @@ class _CutCommands {
   /// cut's own, and a stage every cut already has so is no step at all —
   /// with, where the window was saved with them, the folds it opens on
   /// ([openFolds], F-291-Q4: each of [cutIds]' own).
-  void setCutStaffNames({
+  void saveCutSettings({
     required List<CutId> cutIds,
     required Map<LayerMark, String> names,
     Set<LayerProcess>? openFolds,
@@ -423,39 +423,6 @@ class _CutCommands {
           open: openFolds,
         ),
     ]);
-  }
-
-  /// The 타임시트 서식 window's save: the work's sheet format and the paper
-  /// of the cut the sheet shows ([cutId]; none in the gap) — each only if
-  /// it changed, ONE undo step together ([HistoryManager.runAsOneStep]).
-  void setTimesheetFormat({
-    required TimesheetInfo info,
-    CutId? cutId,
-    TimesheetSheetKind? kind,
-  }) {
-    final repository = _coordinator.repository;
-    final history = _coordinator.historyManager;
-    final project = repository.requireProject();
-    history.runAsOneStep('Set timesheet format', () {
-      if (project.timesheetInfo != info) {
-        history.execute(
-          UpdateTimesheetInfoCommand(repository: repository, info: info),
-        );
-      }
-      if (cutId != null &&
-          kind != null &&
-          LinkedCutFieldCommand.linkedCutsOf(project, [cutId]).any(
-            (id) => requireCut(project, id).metadata.sheetKind != kind,
-          )) {
-        history.execute(
-          UpdateCutSheetKindCommand(
-            repository: repository,
-            cutIds: [cutId],
-            kind: kind,
-          ),
-        );
-      }
-    });
   }
 
   /// Sets the 색 라벨 of [cutIds] — and of each one's 겸용 siblings — as ONE

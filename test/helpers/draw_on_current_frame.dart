@@ -41,6 +41,29 @@ void inkTheCurrentCel(EditorSessionManager s) {
   );
 }
 
+/// A dab of ink into every cel of [s]'s film — each frame of each row of
+/// each cut — for a test whose frames stand for drawings: the export
+/// window's Cels list calls a cel the timeline greys 「그림 없음」
+/// (cels-tab-lists-a-blank-cel-as-written-Q1).
+EditorSessionManager inkEveryCel(EditorSessionManager s) {
+  for (final track in s.repository.requireProject().tracks) {
+    for (final cut in track.cuts) {
+      for (final row in cut.layers) {
+        for (final cel in row.frames) {
+          inkCel(
+            s,
+            s.brushFrameKeyForCut(cut, row.id, cel.id),
+            canvasSize: cut.canvasSize,
+            at: CanvasPoint(x: 1, y: 1),
+            size: 2,
+          );
+        }
+      }
+    }
+  }
+  return s;
+}
+
 /// A dab of ink, [size] across at [at], into [key]'s cel — any cel of [s]'s,
 /// the one stood on or not — the way [inkTheCurrentCel] puts its own.
 void inkCel(

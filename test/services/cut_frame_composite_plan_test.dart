@@ -225,7 +225,7 @@ void main() {
       final tree = planCutFrameCompositeTree(
         cut: posed,
         frameIndex: 0,
-        surfaceResolver: resolver,
+        reading: (surfaces: resolver, plugins: null),
       );
 
       expect(flat, isNotNull);

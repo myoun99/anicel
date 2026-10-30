@@ -26,6 +26,7 @@ import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart'
     show defaultCutCanvasSize;
+import 'package:anicel/src/services/fx_plugins/installed_fx_plugins.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
@@ -35,6 +36,7 @@ import 'package:anicel/src/ui/canvas/display_resample.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_float.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 
+import '../../helpers/a_plugin_that_shifts.dart';
 import '../../helpers/cel_text_tool_harness.dart';
 import '../../helpers/key_chords.dart';
 import '../../helpers/panel_finders.dart';
@@ -87,9 +89,20 @@ void main() {
 
   /// The text tool's project — its row A — and for [rows] a row B beside
   /// it, both in a folder for [_Rows.folder]; every row wearing [ground]'s
-  /// key when [keyed], and A posed by [pose].
-  Project projectOf(_Rows rows, {required bool keyed, TransformPose? pose}) {
-    final base = textToolProject(effects: [if (keyed) groundKey()]);
+  /// key when [keyed] and the stand-in plugin when [plugin], and A posed
+  /// by [pose].
+  Project projectOf(
+    _Rows rows, {
+    required bool keyed,
+    bool plugin = false,
+    TransformPose? pose,
+  }) {
+    final base = textToolProject(
+      effects: [
+        if (keyed) groundKey(),
+        if (plugin) shiftingFxPluginLayerEffect(),
+      ],
+    );
     final track = base.tracks.single;
     final cut = track.cuts.single;
     final a = cut.layers.single;
@@ -283,13 +296,15 @@ void main() {
   /// samples the frame's picture from its chain (F-240) — with the text
   /// tool in hand, and the canvas pixel in the middle of what can be seen
   /// of it. ↩️Past a halving the rows were drawn as level tiles, until
-  /// one-picture-per-frame ②-5b-2.
+  /// one-picture-per-frame ②-5b-2. [fxPlugins]: the device's installed
+  /// plugins.
   Future<Offset> open(
     WidgetTester tester,
     Project project, {
     bool zoomedOut = false,
+    InstalledFxPlugins? fxPlugins,
   }) async {
-    await pumpTextToolApp(tester, project: project);
+    await pumpTextToolApp(tester, project: project, fxPlugins: fxPlugins);
     sessionOf(tester).selectLayer(textToolLayerId);
     await settle(tester);
     final view = tester
@@ -381,7 +396,8 @@ void main() {
   /// [twice], by as much again — which floats the lifted pixels
   /// themselves; or by [warps]' numbers in Ctrl+T's box, one after
   /// another, which floats the picture each resamples them to. The
-  /// composite while it is carried, and once its confirm has landed it.
+  /// composite while it is carried — once [whileOpen] has done what it
+  /// does with the box open — and once its confirm has landed it.
   ///
   /// The hand takes hold while no box is open, so its press opens one as
   /// the move; its second hold is in the box that opened — the box's own
@@ -399,6 +415,7 @@ void main() {
     required Rect region,
     List<TransformValues Function(TransformValues now)> warps = const [],
     bool twice = false,
+    Future<void> Function()? whileOpen,
   }) async {
     final hold = holdIn(tester, region);
     final step = handFor(tester, 40, 30);
@@ -477,6 +494,10 @@ void main() {
       everyElement(isTrue),
       reason: 'a box writes nothing until it is confirmed (F-116)',
     );
+    if (whileOpen != null) {
+      await whileOpen();
+      await settle(tester);
+    }
     final carried = await composite(tester);
     commands.applyTransform();
     await settle(tester);
@@ -790,6 +811,97 @@ void main() {
         drawn,
       );
     });
+  }
+
+  // ── 🗣️I-132-Q32 b: rows whose chain runs a plugin, dragged and warped. ──
+
+  for (final rows in _Rows.values) {
+    for (final warped in [false, true]) {
+      final how = warped ? 'warped' : 'dragged';
+      testWidgets('${rows.name}: a sheet $how by the box on rows whose chain '
+          'runs a PLUGIN shows what it lands as — the whole cel the plugin '
+          'makes', (tester) async {
+        final c = await open(
+          tester,
+          projectOf(rows, keyed: false, plugin: true),
+          // Past the stamp a float lands as — the box it was carried in,
+          // 60 round the sheets, scaled up too — so that only a landing
+          // made on the whole cel shows where the sheet goes.
+          fxPlugins: await installedShiftingFxPlugin(tester, by: 100),
+        );
+        expect(
+          theCanvasRowRunsAPlugin(tester),
+          isTrue,
+          reason: '⛔fixture: the device\'s plugin runs on the canvas',
+        );
+        final region = await sheets(tester, c, rows);
+        final drawn = await composite(tester);
+
+        expectLandsAsCarried(
+          await carry(
+            tester,
+            rows,
+            region: region,
+            warps: [if (warped) movedAndScaled],
+          ),
+          drawn,
+        );
+      });
+    }
+  }
+
+  for (final rows in [_Rows.live, _Rows.range]) {
+    for (final warped in [false, true]) {
+      final how = warped ? 'warped' : 'dragged';
+      testWidgets('${rows.name}: a sheet $how on keyed rows whose chain runs '
+          'a PLUGIN shows what it lands as once the device lets the plugin go '
+          'with the box open — the landing and the hole asked again', (
+        tester,
+      ) async {
+        final plugins = await installedShiftingFxPlugin(tester, by: 40);
+        final c = await open(
+          tester,
+          projectOf(rows, keyed: true, plugin: true),
+          fxPlugins: plugins,
+        );
+        final region = await sheets(tester, c, rows);
+        if (rows == _Rows.range) {
+          // Ink on B the box does not hold: B's hole shows it, through
+          // its chain.
+          final b = Rect.fromLTWH(c.dx + 40, c.dy - 64, 120, 120);
+          final apart = Rect.fromLTWH(c.dx + 40, c.dy + 130, 40, 40);
+          await lay(
+            tester,
+            keyB,
+            b.expandToInclude(apart),
+            (x, y) => sheet(b, x, y) ?? sheet(apart, x, y),
+          );
+          await settle(tester);
+        }
+        final drawn = await composite(tester);
+
+        expectLandsAsCarried(
+          await carry(
+            tester,
+            rows,
+            region: region,
+            warps: [if (warped) movedAndScaled],
+            whileOpen: () async {
+              await tester.runAsync(
+                () => plugins.uninstall(shiftingFxPluginDescription.id),
+              );
+              await settle(tester);
+              expect(
+                theCanvasRowRunsAPlugin(tester),
+                isFalse,
+                reason: '⛔fixture: the plugin is gone from the canvas',
+              );
+            },
+          ),
+          drawn,
+        );
+      });
+    }
   }
 
   testWidgets('⛔CONTROL: on a row that keys nothing a sheet floats as its '

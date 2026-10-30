@@ -16,6 +16,7 @@ import '../../models/export_format_selection.dart';
 import '../../models/export_spec.dart' show ExportLayerFx;
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
+import '../../models/fx_plugin_binding.dart';
 import '../../models/import/import_warning.dart'
     show ImportWarning, layerEffectsNotApplied, unsupportedLayerKind;
 import '../../models/layer.dart';
@@ -29,6 +30,7 @@ import '../../services/brush_frame_store.dart' show CelRead;
 import '../../models/composite_tree.dart';
 import '../../services/cel_numbered_row.dart';
 import '../../services/cut_frame_composite_plan.dart';
+import '../../services/fx_plugins/device_fx_plugin_binding.dart';
 import '../../services/layer_as_output.dart';
 import '../../services/layer_pose_matrix.dart' show LayerPlacement;
 import '../text/se_name_tag_paint.dart';
@@ -268,6 +270,23 @@ class ExportFrameRenderer {
     }
   }
 
+  /// What runs the plugins [cut]'s chains run in this render
+  /// ([deviceFxPluginBinding]): the device's builds, the project's frame
+  /// rate, and the rows' cels as this render reads them ([_surfaceFor]).
+  FxPluginBinding _pluginsOf(Cut cut) => deviceFxPluginBinding(
+    runnerFor: session.fxPlugins.runnerFor,
+    frameRate: session.repository.requireProject().frameRate,
+    surfaceOf: (layer, frame) => _surfaceFor(cut, layer, frame),
+  );
+
+  /// How this render reads [cut]'s cels ([CelReading]): each as it
+  /// reads it ([_surfaceFor]), through the plugins it runs
+  /// ([_pluginsOf]).
+  CelReading _readingOf(Cut cut) => (
+    surfaces: (layer, frame) => _surfaceFor(cut, layer, frame),
+    plugins: _pluginsOf(cut),
+  );
+
   BitmapSurface? _surfaceFor(Cut cut, Layer layer, Frame frame) {
     // 🚨A MOVIE's pictures are read through, never held here: a movie is a
     // full-canvas picture per FRAME, and the store's budget decides how long
@@ -398,13 +417,21 @@ class ExportFrameRenderer {
 
   /// [cut]'s V row chain at [globalFrame] — the frame's place on the track's
   /// own axis (R4) — laid as [_trackFxLaid] says: what every route that
-  /// draws a cut lays under its picture.
-  List<ResolvedLayerEffect> _trackChainAt(Cut cut, int globalFrame) =>
-      trackEffectsAt(
-        session.effectsAndFx.trackEffectsForCut(cut.id),
-        globalFrame,
-        enabled: _trackFxLaid(cut.id),
-      );
+  /// draws a cut lays under its picture. Its plugins run as the cut's rows'
+  /// do (🗣️I-132-Q34 a), reading [cut]'s rows at its own [frameIndex].
+  List<ResolvedLayerEffect> _trackChainAt(
+    Cut cut,
+    int globalFrame, {
+    required int frameIndex,
+  }) => _pluginsOf(cut)(
+    trackEffectsAt(
+      session.effectsAndFx.trackEffectsForCut(cut.id),
+      globalFrame,
+      enabled: _trackFxLaid(cut.id),
+    ),
+    cut: cut,
+    frameIndex: frameIndex,
+  );
 
   /// [task]'s cut's V row chain at the task's place on the track
   /// ([_trackChainAt]).
@@ -412,6 +439,7 @@ class ExportFrameRenderer {
       _trackChainAt(
         task.cut,
         session.rowSpans.trackGlobalFrameOf(task.cut.id, task.frameIndex),
+        frameIndex: task.frameIndex,
       );
 
   /// The V row chain under a STILL of [task] — as a video's frame lays it
@@ -618,7 +646,11 @@ class ExportFrameRenderer {
           opacity: paint.opacity,
           blendMode: paint.blendMode,
           placement: drawing.render.placement,
-          effects: paint.effects,
+          effects: _pluginsOf(cut)(
+            paint.effects,
+            cut: cut,
+            frameIndex: task.frameIndex,
+          ),
         ),
         text: celNumberText(
           rowName: layer.name,
@@ -637,7 +669,7 @@ class ExportFrameRenderer {
         cut: _cutForRender(cut),
         row: row,
         frameIndex: task.frameIndex,
-        surfaceResolver: (layer, frame) => _surfaceFor(cut, layer, frame),
+        reading: _readingOf(cut),
       ),
     );
   }
@@ -767,7 +799,7 @@ class ExportFrameRenderer {
   ) => planCutFrameCompositeTree(
     cut: _cutForRender(task.cut),
     frameIndex: task.frameIndex,
-    surfaceResolver: (layer, frame) => _surfaceFor(task.cut, layer, frame),
+    reading: _readingOf(task.cut),
   );
 
   /// The BACKDROP ground (R3b) under a video frame — null when nothing is
@@ -1189,7 +1221,11 @@ class ExportFrameRenderer {
                   // The V row's chain on this contribution, keys included —
                   // the dissolve weights what the chain made, not what it
                   // started from.
-                  _trackChainAt(contribution.cut, shared.globalFrame),
+                  _trackChainAt(
+                    contribution.cut,
+                    shared.globalFrame,
+                    frameIndex: contribution.localFrameIndex,
+                  ),
                 ),
               ),
               weight: shared.weights[i].clamp(0.0, 1.0),
@@ -1284,7 +1320,11 @@ class ExportFrameRenderer {
     final view = _viewFor(cut, frameIndex, ExportSizeMode.camera);
     // Track effects at the frame's GLOBAL position (R4) — the stack's
     // own axis.
-    final trackEffects = _trackChainAt(cut, position.globalFrameIndex);
+    final trackEffects = _trackChainAt(
+      cut,
+      position.globalFrameIndex,
+      frameIndex: frameIndex,
+    );
     // The stage belongs to the bottom covered TRACK, and to every
     // contribution of it: an O.L is a 場面転換, so the arriving cut brings
     // its own paper and the weights cross-fade the whole screen. Keyed to
@@ -1391,9 +1431,10 @@ class ExportFrameRenderer {
       stack.addAll(over);
     }
     final cutOf = Map<CutFrameCompositeLayer, Cut>.identity();
+    final frameIndex = celGroupFirstExposure(task);
     final shown = mapCompositeLeaves<_CelLaid, CutFrameCompositeLayer>(
       stack,
-      (laid) => _laidInTheCel(laid, cutOf: cutOf),
+      (laid) => _laidInTheCel(laid, cutOf: cutOf, frameIndex: frameIndex),
     );
     return renderService.renderThroughCamera(
       nodes: _readingOnPaper(
@@ -1403,7 +1444,7 @@ class ExportFrameRenderer {
           paintedNormal: (layer) => layer.paintedNormal(),
         ),
         cutOf: cutOf,
-        frameIndex: celGroupFirstExposure(task),
+        frameIndex: frameIndex,
       ),
       pose: cel.view.pose,
       cameraFrameSize: cel.view.frameSize,
@@ -1474,7 +1515,11 @@ class ExportFrameRenderer {
               nodes: _readingOnPaper(
                 mapCompositeLeaves(
                   _celNumbered(row, _alone(row.effects), asOnePicture: false),
-                  (laid) => _laidInTheCel(laid, cutOf: cutOf),
+                  (laid) => _laidInTheCel(
+        laid,
+        cutOf: cutOf,
+        frameIndex: celGroupFirstExposure(task),
+      ),
                 ),
                 cutOf: cutOf,
                 frameIndex: celGroupFirstExposure(task),
@@ -1591,13 +1636,18 @@ class ExportFrameRenderer {
   CutFrameCompositeLayer _laidInTheCel(
     _CelLaid laid, {
     required Map<CutFrameCompositeLayer, Cut> cutOf,
+    required int frameIndex,
   }) {
     final layer = CutFrameCompositeLayer(
       surface: laid.row.surface,
       opacity: laid.paint.opacity,
       blendMode: laid.paint.blendMode,
       placement: laid.row.placement,
-      effects: laid.paint.effects,
+      effects: _pluginsOf(laid.row.cut)(
+        laid.paint.effects,
+        cut: laid.row.cut,
+        frameIndex: frameIndex,
+      ),
     );
     cutOf[layer] = laid.row.cut;
     return layer;
@@ -1623,7 +1673,7 @@ class ExportFrameRenderer {
         cut: _onPaper(cut),
         row: row,
         frameIndex: frameIndex,
-        surfaceResolver: (layer, frame) => _surfaceFor(cut, layer, frame),
+        reading: _readingOf(cut),
       ),
       null => null,
     },
@@ -1707,11 +1757,31 @@ class ExportFrameRenderer {
   CameraOverlayPass? _cameraWorkOver(
     ExportCelGroupTask task,
     CameraView view,
-  ) {
-    final cut = task.listedCut;
-    final path = task.cameraLaid
-        ? CameraPath.of(cut, session.camera.cameraFrameSize)
-        : null;
+  ) => task.cameraLaid ? _cameraPathOver(task.listedCut, view) : null;
+
+  /// [cut]'s camera path alone, on nothing, over its whole canvas — what a
+  /// cel of it in the canvas's size lays with the camera's work
+  /// ([_cameraWorkOver]); null where the camera moves nothing. The AE
+  /// Script tab's guide over the canvas comp (ae-script-export-Q3).
+  Future<ui.Image>? cameraPathOf(Cut cut) {
+    final view = cameraViewOver(cut.canvasSize.canvasRect);
+    final pass = _cameraPathOver(cut, view);
+    if (pass == null) {
+      return null;
+    }
+    return _transparentRenderService.renderThroughCamera(
+      nodes: const [],
+      pose: view.pose,
+      cameraFrameSize: view.frameSize,
+      canvasSize: cut.canvasSize,
+      overlayPass: pass,
+    );
+  }
+
+  /// [cut]'s camera path as [_cameraWorkOver] lays it through [view] — null
+  /// where the camera moves nothing ([CameraPath.of]).
+  CameraOverlayPass? _cameraPathOver(Cut cut, CameraView view) {
+    final path = CameraPath.of(cut, session.camera.cameraFrameSize);
     if (path == null) {
       return null;
     }

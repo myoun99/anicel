@@ -313,7 +313,7 @@ void main() {
           image.dispose();
           return data!.buffer.asUint8List();
         }))!;
-        return _alphaAt(bytes, size.width.ceil(), at) > 0;
+        return _inkAt(bytes, size.width.ceil(), at);
       }
 
       expect(await showsInk(), isFalse);
@@ -471,5 +471,10 @@ void main() {
   });
 }
 
-int _alphaAt(Uint8List rgba, int width, Offset at) =>
-    rgba[(at.dy.floor() * width + at.dx.floor()) * 4 + 3];
+/// Whether [rgba] holds ink at [at]: something drawn, and not the ground
+/// the live picture lays under what it draws (`FramePictureView.ground`).
+bool _inkAt(Uint8List rgba, int width, Offset at) {
+  final i = (at.dy.floor() * width + at.dx.floor()) * 4;
+  return rgba[i + 3] > 0 &&
+      (rgba[i] != 0xFF || rgba[i + 1] != 0xFF || rgba[i + 2] != 0xFF);
+}

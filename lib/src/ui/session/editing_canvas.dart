@@ -4,6 +4,7 @@ import '../../models/composite_tree.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
+import '../../models/fx_plugin_binding.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_folder.dart';
@@ -57,7 +58,9 @@ class EditingCanvas {
       TimelineDragPreview? dragPreview,
     )
     ghostsAt,
+    required FxPluginBinding Function(Cut cut) pluginsIn,
   }) : _ghostsAt = ghostsAt,
+       _pluginsIn = pluginsIn,
        _cutEffectsAt = cutEffectsAt,
        _project = project,
        _selection = selection,
@@ -73,6 +76,10 @@ class EditingCanvas {
   /// (`MovieCelHydrator.laidAt`) — the stack moves it to where its row's
   /// reference fx stands now ([EditingStackMap]).
   final TransformPose? Function(BrushFrameKey key) _movieLaidAt;
+
+  /// What runs the plugins a cut's chains run on this canvas
+  /// (`EditorSessionManager.fxPluginsIn`).
+  final FxPluginBinding Function(Cut cut) _pluginsIn;
 
   /// Each onion row's ghosts at a cut's frame (`OnionSkin.ghostsAt`).
   final Map<LayerId, List<CutFrameCompositeGhost>> Function(
@@ -144,6 +151,7 @@ class EditingCanvas {
       frameIndex: frameIndex,
       activeLayerId: null,
       movieLaidAt: _movieLaidAt,
+      plugins: _pluginsIn(cut),
     ).mapTree(
       readingTheirRows(
         [
@@ -190,7 +198,7 @@ class EditingCanvas {
     bool ghostsInPlace = false,
   }) => [
         ..._underTheCutsFx(
-          cut.id,
+          cut,
           frameIndex,
           stackAt(
             cut: cut,
@@ -250,7 +258,7 @@ class EditingCanvas {
       ghosts: ghostsInPlace ? _ghostsAt(cut, frameIndex, dragPreview) : null,
     );
     final nodes = <CompositeNode<CanvasStackRow>>[
-      ..._underTheCutsFx(cut.id, frameIndex, drawn.nodes),
+      ..._underTheCutsFx(stackCut, frameIndex, drawn.nodes),
       // Track-owned SE rows join as their cut-local display clones — they
       // composite read-only like before the ownership move (their
       // transform tracks are stripped, so the plain resolve path
@@ -304,6 +312,7 @@ class EditingCanvas {
       frameIndex: frameIndex,
       activeLayerId: drawingLayerId,
       movieLaidAt: _movieLaidAt,
+      plugins: _pluginsIn(cut),
     );
     final drawing = drawingLayerId == null
         ? null
@@ -337,11 +346,21 @@ class EditingCanvas {
   /// ⛔Here and not in [stackAt]: a conte picture's live stack walks that
   /// too, and its printed picture is the cut's composite, which carries no
   /// V row.
+  ///
+  /// Its plugins run as the cut's rows' do (🗣️I-132-Q34 a), reading [cut]'s
+  /// rows at [frameIndex].
   List<CompositeNode<CanvasStackRow>> _underTheCutsFx(
-    CutId cutId,
+    Cut cut,
     int frameIndex,
     List<CompositeNode<CanvasStackRow>> cutNodes,
-  ) => underTheCutsFx(cutNodes, _cutEffectsAt(cutId, frameIndex));
+  ) => underTheCutsFx(
+    cutNodes,
+    _pluginsIn(cut)(
+      _cutEffectsAt(cut.id, frameIndex),
+      cut: cut,
+      frameIndex: frameIndex,
+    ),
+  );
 
   /// [source] with the DRAGGED rows' opacity substituted in — display
   /// only, so the canvas follows an opacity drag without a repo write per

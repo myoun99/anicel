@@ -9,6 +9,7 @@ import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 
+import '../../helpers/a_plugin_that_shifts.dart';
 import '../../helpers/cel_text_tool_harness.dart';
 
 /// card a-stroke-on-a-keyed-row-shows-its-tiles-unkeyed — A STROKE DRAWN
@@ -65,6 +66,47 @@ void main() {
     return cel.putTiles(placed);
   }
 
+  /// The canvas over a page laid on the cel, before a pen stroke over it,
+  /// while it is drawn and once it has landed.
+  Future<({Uint8List before, Uint8List drawing, Uint8List landed})>
+  strokeOverPage(WidgetTester tester) async {
+    // The text tool's layer says where the canvas is on the screen.
+    await takeTextTool(tester);
+    final c = canvasPixelInView(tester);
+    final page = Rect.fromLTWH(c.dx - 96, c.dy - 96, 192, 192);
+    final from = onScreen(tester, c.dx, c.dy);
+    coordinatorOf(
+      tester,
+    ).restoreSurfaceSnapshot(textToolKey, pageOn(celOf(tester), page));
+    await tester.tap(find.byKey(const ValueKey<String>('tool-brush-button')));
+    await pumpFrames(tester, 12);
+    final stored = celOf(tester);
+    final before = await canvasRaster(tester, page);
+
+    final pen = await tester.startGesture(
+      from,
+      kind: PointerDeviceKind.stylus,
+    );
+    await tester.pump();
+    for (var i = 1; i <= 6; i += 1) {
+      await pen.moveTo(from + Offset(6.0 * i, 4.0 * i));
+      await tester.pump();
+    }
+    await pumpFrames(tester, 12);
+    final drawing = await canvasRaster(tester, page);
+    await pen.up();
+    await pumpFrames(tester, 12);
+    final landed = await canvasRaster(tester, page);
+
+    expect(drawing, isNot(before), reason: '⛔CONTROL: the stroke shows');
+    expect(
+      identical(celOf(tester), stored),
+      isFalse,
+      reason: '⛔CONTROL: the stroke landed on the cel',
+    );
+    return (before: before, drawing: drawing, landed: landed);
+  }
+
   for (final keyed in [true, false]) {
     testWidgets('🚨a stroke on a page whose paper the row keys away shows '
         'what it lands as while the pen is down — keyed $keyed', (
@@ -74,47 +116,36 @@ void main() {
         tester,
         project: textToolProject(effects: [if (keyed) paperKey()]),
       );
-      // The text tool's layer says where the canvas is on the screen.
-      await takeTextTool(tester);
-      final c = canvasPixelInView(tester);
-      final page = Rect.fromLTWH(c.dx - 96, c.dy - 96, 192, 192);
-      final from = onScreen(tester, c.dx, c.dy);
-      coordinatorOf(
-        tester,
-      ).restoreSurfaceSnapshot(textToolKey, pageOn(celOf(tester), page));
-      await tester.tap(find.byKey(const ValueKey<String>('tool-brush-button')));
-      await pumpFrames(tester, 12);
-      final stored = celOf(tester);
-      final before = await canvasRaster(tester, page);
+
+      final (:before, :drawing, :landed) = await strokeOverPage(tester);
+
       expect(before.sublist(0, 4), rule, reason: '⛔fixture: the page shows');
       expect(
         before.sublist(4 * 192, 4 * 192 + 4),
         keyed ? isNot(paper) : paper,
         reason: '⛔fixture: the row keys its paper away, or does not',
       );
-
-      final pen = await tester.startGesture(
-        from,
-        kind: PointerDeviceKind.stylus,
-      );
-      await tester.pump();
-      for (var i = 1; i <= 6; i += 1) {
-        await pen.moveTo(from + Offset(6.0 * i, 4.0 * i));
-        await tester.pump();
-      }
-      await pumpFrames(tester, 12);
-      final drawing = await canvasRaster(tester, page);
-      await pen.up();
-      await pumpFrames(tester, 12);
-      final landed = await canvasRaster(tester, page);
-
-      expect(drawing, isNot(before), reason: '⛔CONTROL: the stroke shows');
-      expect(
-        identical(celOf(tester), stored),
-        isFalse,
-        reason: '⛔CONTROL: the stroke landed on the cel',
-      );
       expect(drawing, landed, reason: 'what is drawn is what lands');
     });
   }
+
+  testWidgets('🚨a stroke on a row whose chain runs a PLUGIN shows what it '
+      'lands as while the pen is down — the whole cel the plugin makes, from '
+      'the plugin this device has installed (🗣️I-132-Q32 b)', (tester) async {
+    await pumpTextToolApp(
+      tester,
+      project: textToolProject(effects: [shiftingFxPluginLayerEffect()]),
+      fxPlugins: await installedShiftingFxPlugin(tester),
+    );
+
+    final (:before, :drawing, :landed) = await strokeOverPage(tester);
+
+    expect(
+      [before.sublist(0, 4), before.sublist(4, 8)],
+      [isNot(rule), rule],
+      reason: '⛔fixture: the plugin runs on the canvas — the page shows one '
+          'pixel to the right',
+    );
+    expect(drawing, landed, reason: 'what is drawn is what lands');
+  });
 }

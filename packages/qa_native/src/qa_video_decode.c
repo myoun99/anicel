@@ -921,6 +921,7 @@ static int32_t qa_backend_read(int64_t index, uint8_t* rgba) {
 #include <media/NdkMediaCodec.h>
 #include <media/NdkMediaExtractor.h>
 #include <media/NdkMediaFormat.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include <stdbool.h>  // the release/advance signatures
@@ -968,6 +969,16 @@ static void qa_backend_close(void) {
 
 static int32_t qa_backend_supported(void) { return 1; }
 
+/// How much of the file open on [fd] a movie [length] bytes long covers: that
+/// span, or — a whole file, [length] 0 — all of it. 0 when it cannot tell.
+static off64_t qa_droid_span_of(int fd, int64_t length) {
+  if (length > 0) {
+    return (off64_t)length;
+  }
+  struct stat file;
+  return fstat(fd, &file) == 0 ? (off64_t)file.st_size : 0;
+}
+
 static int32_t qa_backend_open(const char* path,
                                int64_t offset,
                                int64_t length,
@@ -981,9 +992,19 @@ static int32_t qa_backend_open(const char* path,
     qa_decode_set_error("could not open the container");
     return 0;
   }
-  // A FRAMED span is served through a source of our own; a plain span opens
-  // by descriptor; a whole file opens by path. The last two are the
-  // extractor's own front doors — nothing is wrapped, copied or unpacked.
+  // A FRAMED span is served through a source of our own; anything else opens
+  // by descriptor — a plain span over its range, a whole file over all of
+  // it ([qa_droid_span_of]). That is the extractor's own front door for a
+  // range of a file: nothing is wrapped, copied or unpacked.
+  //
+  // 🐞A whole file opened by PATH until 2026-10-30 (`setDataSource`), a door
+  // the threads that decode cannot use: it makes an HTTP service through
+  // JNI, which only a thread the JVM knows can do, and every decode runs on
+  // a Dart worker's thread. Every movie picked as a file failed to open
+  // (logcat 「http service must be created from Java thread」, measured in
+  // build 1084 on an API 37 emulator) — the import window's preview stood
+  // black and the import placed nothing (유저 10-30, Galaxy Tab). The sound's
+  // decoder had always opened by descriptor (qa_audio_decode.c).
   media_status_t sourced;
   if (length > 0 && framed) {
     // ⚠️Kept in the slot AT ONCE: every failure below hands the slot to
@@ -996,20 +1017,22 @@ static int32_t qa_backend_open(const char* path,
     }
     sourced = AMediaExtractor_setDataSourceCustom(
         extractor, qa_ndk_served_span_source(g_droid_dec.served));
-  } else if (length > 0) {
+  } else {
     const int fd = open(path, O_RDONLY);
-    if (fd < 0) {
+    const off64_t span = fd < 0 ? 0 : qa_droid_span_of(fd, length);
+    if (span <= 0) {
+      if (fd >= 0) {
+        close(fd);
+      }
       AMediaExtractor_delete(extractor);
       qa_decode_set_error("could not open the container");
       return 0;
     }
     sourced = AMediaExtractor_setDataSourceFd(extractor, fd, (off64_t)offset,
-                                              (off64_t)length);
+                                              span);
     // ⚠️CLOSED EITHER WAY. `setDataSourceFd` dups what it needs, so holding
     // this open would leak one descriptor per movie opened.
     close(fd);
-  } else {
-    sourced = AMediaExtractor_setDataSource(extractor, path);
   }
   if (sourced != AMEDIA_OK) {
     AMediaExtractor_delete(extractor);

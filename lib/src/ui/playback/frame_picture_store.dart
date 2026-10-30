@@ -10,6 +10,8 @@ import '../../models/rgba_image_bytes.dart';
 import '../../services/playback/let_go_wanted_latest.dart';
 import '../canvas/display_resample.dart'
     show frameGridOutward, wholeLevelPixelsOutward;
+import '../canvas/fx_plugin_stages.dart';
+import '../debug/input_inspector.dart' show InputInspector;
 import 'frame_picture_gpu.dart';
 
 /// A patch's texels, rendered, on their way into its picture at [rect].
@@ -214,11 +216,17 @@ class FramePictureStore<K extends Object> {
   /// the next step replaces and the pen's lift hands on or lets go of
   /// (brush/rendering, 2026-10-24). A lay's drawing waits for its turn —
   /// its key is the frame's signature, so what it draws does not change.
+  ///
+  /// 🗣️I-132-Q34 a: a plugin's step in it is waited for as a lay's is
+  /// ([_recordedThrough]) — [draw] called again once the step has run,
+  /// unless [gone] says what it draws is gone by then: the patch does not
+  /// go in, and its picture is let go.
   bool patch({
     required K from,
     required K to,
     required ui.Rect rect,
     required void Function(ui.Canvas canvas) draw,
+    bool Function()? gone,
   }) {
     final entry = _entries[from] ?? _becoming[from]?.entry;
     if (entry == null) {
@@ -229,7 +237,12 @@ class FramePictureStore<K extends Object> {
       _letGo(entry);
       return false;
     }
-    final asked = _Patch<K>(from, to, widened, recordedOver(widened, draw));
+    final asked = _Patch<K>(
+      from,
+      to,
+      widened,
+      _recordedThrough(widened, draw, gone: gone)..ignore(),
+    );
     _becoming[to] = (entry: entry, patch: asked);
     entry.renders = entry.renders.then((_) => _renderPatch(entry, asked));
     return true;
@@ -362,8 +375,14 @@ class FramePictureStore<K extends Object> {
     if (extent.isEmpty) {
       return null;
     }
+    // The frame's key is its signature, so what it draws is the same
+    // however often it is drawn.
+    final recorded = await _recordedThrough(extent, lay.frame.draw);
+    if (recorded == null) {
+      return null;
+    }
     final image = await _rendered(
-      recordedOver(extent, lay.frame.draw),
+      recorded,
       extent.width.toInt(),
       extent.height.toInt(),
     );
@@ -386,9 +405,16 @@ class FramePictureStore<K extends Object> {
   /// it is answered, and the renders behind it go on — as a write that
   /// throws ([_writeWaiting]).
   Future<void> _renderPatch(_Entry<K> entry, _Patch<K> asked) async {
-    final recorded = asked.recorded;
+    final recording = asked.recorded;
     final ui.Image? image;
     try {
+      final recorded = await recording;
+      if (recording != null && recorded == null) {
+        // What it drew was gone before its plugins had run ([patch]).
+        _letGo(entry);
+        asked.answer(landed: false);
+        return;
+      }
       image = recorded == null
           ? null
           : await _rendered(
@@ -506,6 +532,9 @@ class FramePictureStore<K extends Object> {
   /// answered at the submission rather than its completion: fastest on the
   /// main PC (3.0 ms), but 190 late on the Surface. ⛔Not the deepest level
   /// or the patch rastered at once (`toImageSync`): later on both.
+  /// ⚠️A bench's numbers, nothing on a screen: in the app itself the main
+  /// PC takes about 33 ms from a step to the picture, 8 ms of it the patch's
+  /// render, a third of it each raster below (F-512, 2026-10-30).
   ///
   /// ⛔⛔TWO WAITS A BATCH, TRIED AGAIN AND REVERTED (2026-10-28, card
   /// s5-stroke-trails-on-the-heavy-cut ②b, 유저 답 「쓰기 왕복을 줄인다
@@ -540,17 +569,19 @@ class FramePictureStore<K extends Object> {
     final image = run.image;
     try {
       return entry.gone ||
-          await _gpu.write(
-            entry.held!,
-            [
-              for (final patch in batch)
-                (
-                  source: patch.image,
-                  x: _xOf(picture, patch.rect),
-                  y: _yOf(picture, patch.rect),
-                ),
-            ],
-            image == null ? null : (run: image, spans: run.spans),
+          await _PictureWrites.answered(
+            _gpu.write(
+              entry.held!,
+              [
+                for (final patch in batch)
+                  (
+                    source: patch.image,
+                    x: _xOf(picture, patch.rect),
+                    y: _yOf(picture, patch.rect),
+                  ),
+              ],
+              image == null ? null : (run: image, spans: run.spans),
+            ),
           );
     } finally {
       image?.dispose();
@@ -686,6 +717,7 @@ class FramePictureStore<K extends Object> {
 /// Reports [error], thrown while [doing] — what a [FramePictureStore] goes
 /// on from as not done.
 void _report(Object error, StackTrace stack, String doing) {
+  _PictureWrites.threw();
   FlutterError.reportError(
     FlutterErrorDetails(
       exception: error,
@@ -693,6 +725,42 @@ void _report(Object error, StackTrace stack, String doing) {
       library: 'frame picture store',
       context: ErrorDescription(doing),
     ),
+  );
+}
+
+/// 🔬HOW A DEVICE SAYS WHETHER ITS STROKES GO IN — the input inspector's
+/// `picture writes` line (관제 2026-10-30, F-509): a write that does not go
+/// in leaves its frame drawn as it stands, right and slow, and nothing else
+/// on screen tells that from a stroke written into its picture.
+///
+/// ⚠️Counted whether or not the card is shown ([InputInspector.arrivals]
+/// says why): opened after the strokes, its first line is the session's.
+abstract final class _PictureWrites {
+  static int _ok = 0;
+  static int _failed = 0;
+  static int _threw = 0;
+
+  /// [write], its answer counted. One the engine refuses throws before it
+  /// has one to give: [threw].
+  static Future<bool> answered(Future<bool> write) async {
+    final done = await write;
+    if (done) {
+      _ok += 1;
+    } else {
+      _failed += 1;
+    }
+    _show();
+    return done;
+  }
+
+  static void threw() {
+    _threw += 1;
+    _show();
+  }
+
+  static void _show() => InputInspector.pin(
+    'picture writes',
+    'picture writes ok $_ok · failed $_failed · threw $_threw',
   );
 }
 
@@ -793,6 +861,21 @@ Iterable<_PictureRead> _rowsOf(
   }
 }
 
+/// [recordedOver] with every plugin's step met in it run — 🗣️I-132-Q34 a
+/// (유저 2026-10-30): 「결과가 올 때까지 그 프레임의 직전 완성 그림에
+/// 머문다」, so a frame's picture, laid or patched, WAITS for its plugins
+/// ([FxPluginStages]). The first recording is made before this answers;
+/// [gone], asked before each after it, says what [draw] draws is gone — and
+/// then there is no picture.
+Future<ui.Picture?> _recordedThrough(
+  ui.Rect rect,
+  void Function(ui.Canvas canvas) draw, {
+  bool Function()? gone,
+}) => FxPluginStages.recordedThrough(
+  () => gone?.call() ?? false ? null : recordedOver(rect, draw),
+  discard: (picture) => picture?.dispose(),
+);
+
 /// A picture of what [draw] draws over [rect] in world coordinates, with
 /// [rect]'s top left at its origin.
 ui.Picture recordedOver(ui.Rect rect, void Function(ui.Canvas canvas) draw) {
@@ -857,8 +940,10 @@ class _Patch<K> {
   final K to;
   final ui.Rect rect;
 
-  /// What the patch draws — none for a [FramePictureStore.move].
-  final ui.Picture? recorded;
+  /// What the patch draws, its plugins run — none for a
+  /// [FramePictureStore.move], and null once it comes where what it drew
+  /// was gone ([FramePictureStore.patch]).
+  final Future<ui.Picture?>? recorded;
 
   /// Answered true once [to] answers with the patch's texels — or false
   /// once its picture is let go before that ([FramePictureStore._letGo]),

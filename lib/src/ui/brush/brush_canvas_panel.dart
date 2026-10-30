@@ -158,6 +158,12 @@ part 'canvas_panel/viewport_bottom_bar_build.dart';
 part 'canvas_panel/canvas_panel_build.dart';
 part 'canvas_panel/canvas_panel_control_holds.dart';
 
+/// What the row being drawn on shows its cel through, as a painter made
+/// for the cel holds it: its colour keys' values, and the plugin its chain
+/// runs ([celSourcePlugin]) — a plugin's picture moves with its frame and
+/// the rows it reads, none of which changes the cel.
+typedef _ShownThrough = ({String keys, ResolvedLayerEffect? plugin});
+
 /// A reframe request for [BrushCanvasPanel.autoFrame]: whenever [token]
 /// changes between widget updates the panel fits the viewport around
 /// [rect] (canvas space) — the media viewer's framing of a document it
@@ -702,7 +708,7 @@ class BrushCanvasPanel extends StatefulWidget {
   /// field with `!identical(...)` (↩️as `FramePictureView`'s live rows are
   /// compared now, `_sameLive`), so the comparison could never answer false
   /// and every rebuild of this panel re-composited the whole stack.
-  ({BitmapSurface surface, BrushFrameKey key, String fx})?
+  ({BitmapSurface surface, BrushFrameKey key, _ShownThrough fx})?
   _activeSurfaceIdentityFor(BrushFrameEditingCoordinator coordinator) {
     if (activeStrokeOverlayModel == null) {
       return null;
@@ -713,7 +719,10 @@ class BrushCanvasPanel extends StatefulWidget {
       // The colour keys' VALUES join the token: they change no surface and
       // no cel, so without them dragging Tolerance would keep serving the
       // painter built at the old value.
-      fx: celSourceEffectSignature(activeSourceEffects).join(','),
+      fx: (
+        keys: celSourceEffectSignature(activeSourceEffects).join(','),
+        plugin: celSourcePlugin(activeSourceEffects),
+      ),
     );
   }
 
@@ -1290,7 +1299,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// The token is what the painter DRAWS — the surface it reads and the cel
   /// it is scoped to. A commit swaps the surface and the memo falls.
   BitmapSurfacePainter? _memoActiveSurfacePainter;
-  ({BitmapSurface surface, BrushFrameKey key, String fx})?
+  ({BitmapSurface surface, BrushFrameKey key, _ShownThrough fx})?
   _activeSurfacePainterToken;
 
   // ── the tool cursor: its own object, in its own file ────────────────

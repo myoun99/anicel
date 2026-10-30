@@ -684,7 +684,7 @@ class BrushToolState {
   static const double defaultSize = 10.0;
   static const double defaultOpacity = 1.0;
   static const int defaultColor = 0xFF000000;
-  static const double defaultSpacing = 0.25;
+  static const double defaultSpacing = BrushShape.generalSpacing;
   static const double defaultHardness = 1.0;
   static const double defaultFlow = 1.0;
   static const double minRoundness = 0.05;

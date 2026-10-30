@@ -68,10 +68,13 @@ void main() {
       canvasSize: canvasSize,
     ),
     frameIndex: 0,
-    surfaceResolver: (layer, frame) =>
-        artwork == null || artwork.contains(layer.id.value)
-        ? BitmapSurface(canvasSize: canvasSize)
-        : null,
+    reading: (
+      surfaces: (layer, frame) =>
+          artwork == null || artwork.contains(layer.id.value)
+          ? BitmapSurface(canvasSize: canvasSize)
+          : null,
+      plugins: null,
+    ),
   );
 
   // ↩️'a row the GPU has a blend for stays a row' — multiply did, until

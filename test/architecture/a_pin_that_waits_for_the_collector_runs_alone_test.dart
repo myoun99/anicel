@@ -252,6 +252,7 @@ void main() {
         '.github/workflows/linux-release.yml',
         '.github/workflows/macos-developer-id.yml',
         '.github/workflows/testflight.yml',
+        '.github/workflows/windows-arm64-release.yml',
         'tool/lane.sh',
       ]);
     });

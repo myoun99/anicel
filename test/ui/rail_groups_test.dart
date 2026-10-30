@@ -131,23 +131,48 @@ void main() {
       expect(leftButton.bottom, lessThan(leftStrip.bottom - 100));
     });
 
-    testWidgets('a strip button has NO grip — the panel it opens carries the '
-        'only one', (tester) async {
-      // R1 gave every strip button an 8px lift zone. Nothing was wired to
-      // it: it painted, it took the grab cursor, and dragging it moved
-      // nothing. 유저 정정 — the button is a switch, the tab is the handle.
+    testWidgets('a group button\'s band MOVES the group — and a tool button '
+        'wears none', (tester) async {
+      // ↩️R2 #5 (유저 정정): R1 gave every strip button an 8px lift zone and
+      // nothing was wired to it — it painted, it took the grab cursor, and
+      // dragging it moved nothing. 🗣️I-147 (유저 2026-10-30) gave the GROUP
+      // buttons the tab's band again, and this time it carries the button
+      // with its panels (canvas_base_panels_lie_on_the_floor_from_the_top_
+      // strip_test). A band that moves nothing is still the R2 #5 bug.
       await pumpApp(tester);
+      final band = find.byKey(
+        const ValueKey<String>(
+          'rail-group-band-${EditorWorkspace.leftGroupId}',
+        ),
+      );
+      final firstEmptyRight = EditorWorkspace.railGroupId(
+        right: true,
+        slot: 6,
+      );
+      final gesture = await tester.startGesture(tester.getCenter(band));
+      await tester.pump(const Duration(milliseconds: 20));
+      await gesture.moveBy(const Offset(30, 0));
+      await tester.pump();
+      await gesture.moveTo(tester.getCenter(railGroupButton(firstEmptyRight)));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(railGroupButton(EditorWorkspace.leftGroupId), findsNothing);
+      expect(railGroupButton(firstEmptyRight), findsOneWidget);
+      expect(find.byType(BrushPresetPanel), findsOneWidget);
 
+      // The tools are switches, not places.
       expect(
-        find.byKey(
-          const ValueKey<String>(
-            'rail-grip-rail-group-${EditorWorkspace.leftGroupId}',
+        find.descendant(
+          of: find.byKey(const ValueKey<String>('tool-brush-button')),
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget.key is ValueKey<String> &&
+                (widget.key! as ValueKey<String>).value.startsWith(
+                  'rail-group-band-',
+                ),
           ),
         ),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const ValueKey<String>('rail-grip-tool-brush-button')),
         findsNothing,
       );
     });

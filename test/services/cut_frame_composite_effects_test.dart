@@ -248,7 +248,7 @@ void main() {
           folderRow('f', effects: [brightness(10)]),
         ]),
         frameIndex: 0,
-        surfaceResolver: (layer, frame) => null,
+        reading: (surfaces: (layer, frame) => null, plugins: null),
       );
       // No artwork resolved, so the group drops — the point is that it did
       // not throw.

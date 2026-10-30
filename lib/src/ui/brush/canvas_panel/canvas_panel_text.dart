@@ -136,8 +136,13 @@ class _CanvasPanelText implements CelTextToolHost {
   /// 레이어는 지금처럼 GPU 플로트」) — there the float already lands as it is
   /// shown, but for partly clear pixels over ink, one apart at most, and
   /// it costs nothing per move of the hand.
+  ///
+  /// 🗣️I-132-Q32 b: and on a row whose chain runs a plugin, which may
+  /// change the cel anywhere — its landing is the whole cel's
+  /// ([celTextLandingAsShown]).
   bool get _floatsTheLanding =>
-      celSourceEffectSignature(_state.widget.activeSourceEffects).isNotEmpty;
+      celSourceEffectSignature(_state.widget.activeSourceEffects).isNotEmpty ||
+      celSourcePlugin(_state.widget.activeSourceEffects) != null;
 
   // ── the float ───────────────────────────────────────────────────────
 
@@ -149,7 +154,7 @@ class _CanvasPanelText implements CelTextToolHost {
 
   /// The cel the painter of the hole was made for, which is the cel the
   /// float is made over until that painter is made again.
-  ({BitmapSurface surface, BrushFrameKey key, String fx})? _floatOn;
+  ({BitmapSurface surface, BrushFrameKey key, _ShownThrough fx})? _floatOn;
 
   /// Makes [float] over [identity], the cel the painter is drawing now —
   /// asked as that painter is chosen, so the hole and what floats over it
@@ -157,7 +162,9 @@ class _CanvasPanelText implements CelTextToolHost {
   ///
   /// A write during build is safe here for the selection layer's reason
   /// (`_publishFloats`): a repaint is all it triggers.
-  void floatOver(({BitmapSurface surface, BrushFrameKey key, String fx})? on) {
+  void floatOver(
+    ({BitmapSurface surface, BrushFrameKey key, _ShownThrough fx})? on,
+  ) {
     _floatOn = on;
     _float();
   }
@@ -194,7 +201,7 @@ class _CanvasPanelText implements CelTextToolHost {
   /// — or when the row's keys are.
   CelTextLanding? _landingOf(
     CelTextFloating floating,
-    ({BitmapSurface surface, BrushFrameKey key, String fx}) on,
+    ({BitmapSurface surface, BrushFrameKey key, _ShownThrough fx}) on,
   ) {
     final (:pixels, :under, :above) = floating;
     final kept = _landing;
@@ -221,7 +228,7 @@ class _CanvasPanelText implements CelTextToolHost {
   ({
     CelTextPixels of,
     BitmapSurface under,
-    String fx,
+    _ShownThrough fx,
     CelTextLanding? shown,
   })?
   _landing;
@@ -234,7 +241,7 @@ class _CanvasPanelText implements CelTextToolHost {
 
   CelTextFloat _floatOf(
     CelTextFloating floating,
-    ({BitmapSurface surface, BrushFrameKey key, String fx}) on,
+    ({BitmapSurface surface, BrushFrameKey key, _ShownThrough fx}) on,
   ) {
     final (:pixels, under: _, :above) = floating;
     // The pasteboard: what crosses it is cut there, as it is on the cel.
@@ -258,7 +265,7 @@ class _CanvasPanelText implements CelTextToolHost {
   /// ([celSurfaceAsShown]).
   BitmapSurfacePainter _heldPainter(
     Map<TileCoord, BitmapTile> plate,
-    ({BitmapSurface surface, BrushFrameKey key, String fx}) on,
+    ({BitmapSurface surface, BrushFrameKey key, _ShownThrough fx}) on,
   ) {
     final kept = _held;
     if (kept != null && identical(kept.of, plate) && kept.fx == on.fx) {
@@ -277,12 +284,12 @@ class _CanvasPanelText implements CelTextToolHost {
     return painter;
   }
 
-  ({Object of, String fx, BitmapSurfacePainter painter})? _held;
+  ({Object of, _ShownThrough fx, BitmapSurfacePainter painter})? _held;
 
   /// The painter of the texts above the one in hand, made once for them.
   BitmapSurfacePainter _abovePainter(
     List<CelText> above,
-    ({BitmapSurface surface, BrushFrameKey key, String fx}) on,
+    ({BitmapSurface surface, BrushFrameKey key, _ShownThrough fx}) on,
   ) {
     final kept = _above;
     if (kept != null && identical(kept.of, above) && kept.fx == on.fx) {
@@ -301,7 +308,7 @@ class _CanvasPanelText implements CelTextToolHost {
     return painter;
   }
 
-  ({Object of, String fx, BitmapSurfacePainter painter})? _above;
+  ({Object of, _ShownThrough fx, BitmapSurfacePainter painter})? _above;
 
   Widget layer() => Positioned.fill(
     child: CelTextToolLayer(

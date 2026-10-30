@@ -8,6 +8,7 @@ import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
+import '../models/fx_plugin_binding.dart';
 import '../models/layer.dart';
 import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart';
@@ -151,6 +152,14 @@ double _ownStrengthAt(Layer layer, Layer carrier, int frameIndex) =>
 /// brush store's paint commands); `null` when the frame has no artwork.
 typedef LayerFrameSurfaceResolver =
     BitmapSurface? Function(Layer layer, Frame frame);
+
+/// How a route reads each row's cel: its surface ([surfaces]), and
+/// what runs the plugins the row's chain runs ([plugins]) — null for a
+/// route that runs none.
+typedef CelReading = ({
+  LayerFrameSurfaceResolver surfaces,
+  FxPluginBinding? plugins,
+});
 
 /// One ROW that paints in a cut frame's composite tree, bottom → top: an
 /// entry resolved from stored pixels, or the row being DRAWN ON with none
@@ -1686,14 +1695,17 @@ List<CompositeNode<CutFrameCompositeRow>> _folderAsRead(
 /// entries whose frame has no artwork drop out, and a group left empty by
 /// that drops with them (an empty buffer is a wasted saveLayer) — save one
 /// a cel number is written on, which stands bare ([mapCompositeLeaves]).
+///
+/// [reading]: how each row's cel is read ([CelReading]).
 List<CompositeNode<CutFrameCompositeLayer>> planCutFrameCompositeTree({
   required Cut cut,
   required int frameIndex,
-  required LayerFrameSurfaceResolver surfaceResolver,
+  required CelReading reading,
 }) => _withSurfaces(
   resolveCutFrameCompositeTree(cut: cut, frameIndex: frameIndex),
   cut: cut,
-  surfaceResolver: surfaceResolver,
+  frameIndex: frameIndex,
+  reading: reading,
 );
 
 /// Row [row] of [cut] at [frameIndex] as a chain that reads it reads it
@@ -1704,23 +1716,27 @@ List<CompositeNode<CutFrameCompositeLayer>>? planRowAsRead({
   required Cut cut,
   required LayerId row,
   required int frameIndex,
-  required LayerFrameSurfaceResolver surfaceResolver,
+  required CelReading reading,
 }) => switch (_rowAsRead(cut, row, frameIndex: frameIndex, liveLayerId: null)) {
   final read? => _withSurfaces(
     read,
     cut: cut,
-    surfaceResolver: surfaceResolver,
+    frameIndex: frameIndex,
+    reading: reading,
   ),
   null => null,
 };
 
-/// [nodes] of [cut] with each leaf's surface resolved by [surfaceResolver]
-/// ([planCutFrameCompositeTree]).
+/// [nodes] of [cut] with each leaf's surface read by [reading]
+/// ([planCutFrameCompositeTree]), and every chain's plugins run as it says.
 List<CompositeNode<CutFrameCompositeLayer>> _withSurfaces(
   List<CompositeNode<CutFrameCompositeRow>> nodes, {
   required Cut cut,
-  required LayerFrameSurfaceResolver surfaceResolver,
+  required int frameIndex,
+  required CelReading reading,
 }) {
+  List<ResolvedLayerEffect> bound(List<ResolvedLayerEffect> chain) =>
+      reading.plugins?.call(chain, cut: cut, frameIndex: frameIndex) ?? chain;
   CutFrameCompositeLayer? layerOf(
     CutFrameCompositeRow row,
     BitmapSurface? Function(CutFrameCompositeEntry entry) surfaceOf,
@@ -1738,7 +1754,7 @@ List<CompositeNode<CutFrameCompositeLayer>> _withSurfaces(
         opacity: row.opacity,
         blendMode: row.blendMode,
         placement: row.placement,
-        effects: row.effects,
+        effects: bound(row.effects),
       ),
       null => null,
     },
@@ -1749,10 +1765,11 @@ List<CompositeNode<CutFrameCompositeLayer>> _withSurfaces(
       nodes,
       (row) => layerOf(
         row,
-        (entry) => surfaceResolver(entry.layer, entry.frame),
+        (entry) => reading.surfaces(entry.layer, entry.frame),
       ),
       bare: (row) =>
           layerOf(row, (_) => BitmapSurface(canvasSize: cut.canvasSize)),
+      chains: bound,
     ),
   );
 }

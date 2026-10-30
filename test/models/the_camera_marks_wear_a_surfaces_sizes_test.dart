@@ -35,7 +35,6 @@ void main() {
       CameraMarkedKey(
         corners: corners,
         role: CameraKeyRole.first,
-        framed: true,
         label: label,
       ),
     ],

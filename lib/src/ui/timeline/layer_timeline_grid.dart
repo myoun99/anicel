@@ -1043,9 +1043,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
                                         barWidth:
                                             _metrics.verticalScrollbarWidth,
                                         height: headerHeight,
-                                        showSeconds: widget.hooks.showSeconds,
-                                        onShowSecondsChanged:
-                                            widget.hooks.onShowSecondsChanged,
+                                        rulerView: widget.hooks.rulerView,
+                                        onRulerViewChanged:
+                                            widget.hooks.onRulerViewChanged,
                                         // The legend rides INSIDE the rail's
                                         // window: it is the rail's own top row,
                                         // not a strip beside it, so one cut and
@@ -1158,9 +1158,12 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
                                                             _rulerScrub.selectClampedFrame,
                                                         framesPerSecond:
                                                             _countingFps,
-                                                        showSeconds: widget
+                                                        rulerView: widget
                                                             .hooks
-                                                            .showSeconds,
+                                                            .rulerView,
+                                                        pages: widget
+                                                            .hooks
+                                                            .sheetPages,
                                                         windowBucket:
                                                             _frameWindowBucket,
                                                         viewportMainExtent:

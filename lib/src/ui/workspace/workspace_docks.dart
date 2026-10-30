@@ -2,7 +2,8 @@ part of '../editor_workspace.dart';
 
 /// The WORKSPACE DOCKS — where a panel tab may dock, the edge, bottom and
 /// centre docks the workspace builds, the bottom dock's height and its
-/// collapse, and the rail buttons — as their own object.
+/// collapse — as their own object. The buttons down the edge docks are the
+/// strips' ([_WorkspaceStripButtons]).
 ///
 /// 🚨A collaborator carved out of `_EditorWorkspaceState` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: nine State members shared,
@@ -15,8 +16,14 @@ class _WorkspaceDocks {
 
   /// The first EMPTY slot of a rail, or null when the pool is full. This is
   /// where a panel dropped on the rail's "new group" target lands.
-  String? _emptyRailSlot({required bool right}) {
-    for (final id in _WorkspaceRail._railSlotIds(right: right)) {
+  String? _emptyRailSlot({required bool right}) =>
+      _emptySlotOf(_WorkspaceRail._railSlotIds(right: right));
+
+  /// The top strip's, as a rail's ([_emptyRailSlot]).
+  String? _emptyTopSlot() => _emptySlotOf(_WorkspaceRail._topSlotIds());
+
+  String? _emptySlotOf(List<String> slots) {
+    for (final id in slots) {
       if (_state._layout.tabsIn(id).isEmpty) {
         return id;
       }
@@ -32,7 +39,36 @@ class _WorkspaceDocks {
         !_EditorWorkspaceState._edgeDockTabIds.contains(data.tabId)) {
       return false;
     }
+    if (!_placeHolds(dockId, [data.tabId])) {
+      return false;
+    }
+    // 🗣️I-147-Q2 a (유저 2026-10-30): 「상단 띠에서는 패널마다 버튼 하나 —
+    // 버튼이 곧 바닥의 탭」 — a top strip button holds one panel, so it takes
+    // none on top of it; a panel comes to the strip by its empty slot.
+    if (_WorkspaceRail.isTopSlot(dockId) &&
+        _state._layout.tabsIn(dockId).isNotEmpty) {
+      return false;
+    }
     return _state._layout.canMoveTab(tabId: data.tabId, toDockId: dockId);
+  }
+
+  /// Whether [tabIds] may stand in [dockId] by what the place is for:
+  ///
+  /// 🗣️I-147 (유저 2026-10-30): 「캔버스패널이랑 메인뷰어패널은 지금처럼
+  /// 배경고정. 못움직임」 — the floor's own two stand in its dock and nowhere
+  /// else, and nothing else stands there; and 「캔버스베이스 패널들 … 상단띠
+  /// 통해 배경에 깔수있게」 — a top strip group holds canvas-base panels
+  /// alone ([EditorPanelTab.canvasBase]), since what it holds lies on the
+  /// floor.
+  bool _placeHolds(String dockId, List<String> tabIds) {
+    const homes = _EditorWorkspaceState._floorHomeTabIds;
+    final floor = dockId == EditorWorkspace.centerGroupId;
+    return tabIds.every(
+      (tabId) =>
+          homes.contains(tabId) == floor &&
+          (!_WorkspaceRail.isTopSlot(dockId) ||
+              _state._tabs.tabFor(tabId).canvasBase),
+    );
   }
 
   /// A dock's stacked sections with the PS/AE-style drop feedback.
@@ -144,10 +180,12 @@ class _WorkspaceDocks {
             // with nothing marking it.
             if (hasTools && (groups.isNotEmpty || emptySlot != null))
               _stripDivider(_state.context),
-            _buildRailButtons(
-              right: right,
+            _state._strips.build(
               groups: groups,
               emptySlot: emptySlot,
+              nearby: right
+                  ? _state._stripNearby.right
+                  : _state._stripNearby.left,
             ),
           ],
         ),
@@ -172,70 +210,6 @@ class _WorkspaceDocks {
     padding: const EdgeInsets.only(left: 3),
     child: ToolsPanel.groupDivider(context),
   );
-
-  /// The rail's group buttons.
-  ///
-  /// 띠는 스크롤하지 않는다 (유저 확정): a strip that scrolls hands drags to
-  /// its scroll arena before the buttons ever see them, and dragging a
-  /// panel ONTO a button is how a group is made. So the column is plain —
-  /// eight slots is the pool, and eight 42px buttons fit any window tall
-  /// enough to draw in.
-  Widget _buildRailButtons({
-    required bool right,
-    required List<String> groups,
-    required String? emptySlot,
-  }) {
-    return ValueListenableBuilder<EditorPanelTabDragData?>(
-      valueListenable: _state._draggingTab,
-      builder: (context, dragging, _) {
-        return Padding(
-          padding: const EdgeInsets.only(left: 3, top: 4, bottom: 6),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final railId in groups) ...[
-                _RailGroupButton(
-                  railId: railId,
-                  open: _state._openRails.contains(railId),
-                  tabs: [
-                    for (final tabId in _state._layout.tabsIn(railId))
-                      _state._tabs.tabFor(tabId),
-                  ],
-                  // The COLOUR group's button is the swatch itself. The
-                  // strip's swatch was the one place the two colours you
-                  // paint with were readable without opening anything, and
-                  // moving the picker to a rail would have taken that with
-                  // it — so the button that opens the picker shows them,
-                  // and tapping the back slot still swaps (⛔there is no
-                  // swap glyph: that would be the same verb twice).
-                  face: _state._rail._colorRailFace(railId),
-                  dragging: dragging,
-                  onPressed: () => _state._rail._toggleRailGroup(railId),
-                  onTabDropped: (data) =>
-                      _state._rail._dropIntoRailGroup(railId, data),
-                ),
-                const SizedBox(height: 4),
-              ],
-              // The one empty slot on offer, and only while something is in
-              // flight: a permanently visible "+" would be a button that
-              // does nothing until you happen to be dragging.
-              if (emptySlot != null && dragging != null)
-                _RailGroupButton(
-                  railId: emptySlot,
-                  open: false,
-                  tabs: const [],
-                  dragging: dragging,
-                  onPressed: null,
-                  onTabDropped: (data) =>
-                      _state._rail._dropIntoRailGroup(emptySlot, data),
-                ),
-            ],
-          ),
-        );
-      },
-    );
-  }
 
   /// The canvas keeps at least this much of the workspace's height, the
   /// way [minCenterWidth] keeps it width against the side docks. The bottom
@@ -518,10 +492,15 @@ class _WorkspaceDocks {
     );
   }
 
-  /// The center dock hosts the canvas tab by default. Unlike the edge
-  /// docks it always occupies its region — when emptied it stays a
-  /// full-size drop surface.
-  Widget buildCenterDock() {
+  /// The FLOOR: the center dock — the canvas by default — or the top strip
+  /// group laid there ([_EditorWorkspaceState._laidFloorDockId]). Unlike
+  /// the edge docks it always occupies its region — the center emptied
+  /// stays a full-size surface.
+  Widget buildFloorDock() {
+    final laid = _state._laidFloorDockId();
+    if (laid != EditorWorkspace.centerGroupId) {
+      return buildDockHost(laid, chromeless: true);
+    }
     if (_state._layout.tabsIn(EditorWorkspace.centerGroupId).isEmpty) {
       return _emptyDockZone(
         EditorWorkspace.centerGroupId,

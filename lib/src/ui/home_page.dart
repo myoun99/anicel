@@ -135,6 +135,7 @@ class HomePage extends StatefulWidget {
     this.presetFileService,
     this.tipLibraryService,
     this.fontLibraryService,
+    this.fxPlugins,
     this.languageSettingsStore,
     this.launchNotice,
     this.usageStatsStore,
@@ -168,6 +169,11 @@ class HomePage extends StatefulWidget {
   /// Where the fonts this device was brought are kept — a test that brings
   /// one hands in a library on its own directory.
   final FontLibraryService? fontLibraryService;
+
+  /// The fx plugins this device has installed — null keeps the app's own;
+  /// a test that installs one hands in a list on its own directory, which
+  /// stays its to let go of.
+  final InstalledFxPlugins? fxPlugins;
 
   /// Where the program language is restored from, beside the two services
   /// above. Null reads the saved file outside tests and nothing inside them.
@@ -244,7 +250,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// The fx plugins this device has installed (I-132) — ONE for every open
   /// project, as the clipboard is: a plugin installed in one tab is in
   /// every tab's Fx list.
-  final InstalledFxPlugins _fxPlugins = InstalledFxPlugins();
+  late final InstalledFxPlugins _fxPlugins =
+      widget.fxPlugins ?? InstalledFxPlugins();
 
   /// The tool a temporary hold sprang from — the app's, beside the tool
   /// ([ToolHoldMemory]).
@@ -1065,7 +1072,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       ..removeListener(_followProjectOnScreen)
       ..dispose();
     _appSettings.dispose();
-    _fxPlugins.dispose();
+    if (widget.fxPlugins == null) {
+      _fxPlugins.dispose();
+    }
     _panelsMenu.removeListener(_showPanelsToShortcuts);
     _panelsMenu.dispose();
     _brushTool.dispose();

@@ -141,6 +141,20 @@ enum IrisMapChannel {
 /// it where it [inverts], lies from [focal], over 255.
 typedef IrisMap = ({IrisMapChannel channel, double focal, bool inverts});
 
+/// What a camera lens blur's table of its iris's rows is laid of
+/// (`iris_table.frag`), and all it is laid of: its [radius], its iris's
+/// shape — [sides], [roundness], [aspect], [rotation] — and where it reads
+/// a blur map its [levels]: the map's focal distance and whether it
+/// inverts. Its fringe, paper, light and the map's channel are the gather's.
+typedef IrisRows = ({
+  double radius,
+  int sides,
+  double roundness,
+  double aspect,
+  double rotation,
+  ({double focal, bool inverts})? levels,
+});
+
 /// A camera lens blur's iris gathered out of its row sums
 /// (`shaders/iris_gather.frag`, after [RowSumPass]es): every pixel the
 /// mean of the pixels the iris covers about it — the ones of each row two
@@ -172,6 +186,19 @@ final class IrisGatherPass extends ShadedPass {
 
   /// How many rows the iris spans either way of its pixel, at the most.
   int get reach => radius.floor();
+
+  /// What its table of rows is laid of ([IrisRows]).
+  IrisRows get rows => (
+    radius: radius,
+    sides: iris.sides,
+    roundness: iris.roundness,
+    aspect: iris.aspect,
+    rotation: iris.rotation,
+    levels: switch (map) {
+      final map? => (focal: map.focal, inverts: map.inverts),
+      null => null,
+    },
+  );
 
   /// This pass reading no blur map: every pixel at the whole [radius] —
   /// where the row it reads is none to what draws it.

@@ -209,4 +209,63 @@ void main() {
     expect(session.timesheetInfo.conteFixedText, isTrue);
     expect(written(), isTrue);
   });
+
+  testWidgets('I-82: how much a moving camera\'s cell takes is picked in the '
+      'same window — every cut takes it on save, a cut that keeps its own '
+      'keeps that, and each undo takes one back', (tester) async {
+    // I-82-Q1 「서식 전체 + 컷마다 덮어쓰기」.
+    await pumpHost(tester);
+    List<ConteCameraRoom> rooms() => [
+      for (final cut
+          in tester
+              .widget<ConteBookPage>(find.byType(ConteBookPage).first)
+              .source
+              .cuts)
+        cut.cameraRoom,
+    ];
+    String roomShown() => tester
+        .widget<PanelFlyoutButton>(
+          find.byKey(const ValueKey<String>('conte-format-camera-room')),
+        )
+        .label;
+    expect(rooms(), isNotEmpty, reason: 'fixture');
+    expect(rooms(), everyElement(ConteCameraRoom.inCell));
+
+    await tap(tester, 'conte-format-button');
+    expect(roomShown(), AppText.strings.conteCameraRoomInCell);
+    await tap(tester, 'conte-format-camera-room');
+    await tap(tester, 'conte-format-camera-room-grows');
+    expect(
+      rooms(),
+      everyElement(ConteCameraRoom.inCell),
+      reason: 'nothing before save',
+    );
+    await tap(tester, 'conte-format-save-button');
+
+    expect(session.timesheetInfo.conteCameraRoom, ConteCameraRoom.grows);
+    expect(rooms(), everyElement(ConteCameraRoom.grows));
+
+    // The window says what the sheet is now.
+    await tap(tester, 'conte-format-button');
+    expect(roomShown(), AppText.strings.conteCameraRoomGrows);
+    await tap(tester, 'conte-format-cancel-button');
+
+    // The window's 컷 설정 row.
+    await tap(tester, 'conte-format-button');
+    await tap(tester, 'conte-format-cut-camera-room');
+    await tap(tester, 'conte-format-cut-camera-room-inCell');
+    await tap(tester, 'conte-format-save-button');
+    expect(
+      rooms().first,
+      ConteCameraRoom.inCell,
+      reason: 'the cut\'s own over the format\'s',
+    );
+
+    session.undo();
+    await tester.pumpAndSettle();
+    expect(rooms(), everyElement(ConteCameraRoom.grows));
+    session.undo();
+    await tester.pumpAndSettle();
+    expect(rooms(), everyElement(ConteCameraRoom.inCell));
+  });
 }

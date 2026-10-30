@@ -21,6 +21,7 @@ import '../../services/layer_pose_paint.dart' show applyCameraProjection;
 import '../../services/viewport_transform_matrix.dart'
     show viewportOfSimilarity;
 import '../canvas/display_resample.dart';
+import '../canvas/fx_plugin_stages.dart';
 import '../canvas/image_pieces.dart';
 import '../canvas/layer_image_draw.dart';
 import '../canvas/paper_background.dart' show paintProjectPaper;
@@ -275,12 +276,6 @@ class CameraFrameRenderService {
       resolvedOutput.width.toDouble(),
       resolvedOutput.height.toDouble(),
     );
-    final recorder = ui.PictureRecorder();
-    // Bounded by the frame's pixels, so a draw into it can ask what it can
-    // land on (`drawPosedLayerImage`, a picture in pieces).
-    final canvas = Canvas(recorder, frame);
-    canvas.drawRect(frame, Paint()..color = background);
-
     // The canvas region this render can SEE, in CANVAS space — the space
     // the canvas is now in: the output rect pulled back through the camera
     // projection ([cameraFrameCornersInCanvas]), which is exactly the
@@ -392,53 +387,67 @@ class CameraFrameRenderService {
       }
     }
 
-    canvas.save();
-    if (cutsToTheCanvas) {
-      final cut = shotClipOnScreen(
-        outlineThrough(canvasSize, projection),
-        // An output pixel is the device's.
-        1,
-      );
-      canvas.clipPath(
-        Path()..addPolygon(cut.corners, true),
-        doAntiAlias: cut.behavior == Clip.antiAlias,
-      );
-    }
-    applyCameraProjection(
-      canvas,
-      pose,
-      cameraFrameSize,
-      outputSize: resolvedOutput,
-    );
-    // What of the tree lies within what reads it: the shot at the top, and
-    // under a folder that folder's buffer, which a blur on it reads past
-    // the shot ([subtreeBufferBounds]).
-    paintCompositeTree(
-      canvas,
-      tree,
-      rasterScale: cameraRasterScale,
-      within: visible,
-      route: (
-        paintRow: paintRow,
-        extentOf: extentOf,
-        placementOf: placementOf,
-        shownWithin: null,
-        held: null,
-        paper: canvasSize.canvasRect,
-      ),
-    );
-    canvas.restore();
-    if (overlayPass != null) {
+    ui.Picture recorded() {
+      final recorder = ui.PictureRecorder();
+      // Bounded by the frame's pixels, so a draw into it can ask what it can
+      // land on (`drawPosedLayerImage`, a picture in pieces).
+      final canvas = Canvas(recorder, frame);
+      canvas.drawRect(frame, Paint()..color = background);
+      canvas.save();
+      if (cutsToTheCanvas) {
+        final cut = shotClipOnScreen(
+          outlineThrough(canvasSize, projection),
+          // An output pixel is the device's.
+          1,
+        );
+        canvas.clipPath(
+          Path()..addPolygon(cut.corners, true),
+          doAntiAlias: cut.behavior == Clip.antiAlias,
+        );
+      }
       applyCameraProjection(
         canvas,
         pose,
         cameraFrameSize,
         outputSize: resolvedOutput,
       );
-      overlayPass(canvas, cameraRasterScale);
+      // What of the tree lies within what reads it: the shot at the top,
+      // and under a folder that folder's buffer, which a blur on it reads
+      // past the shot ([subtreeBufferBounds]).
+      paintCompositeTree(
+        canvas,
+        tree,
+        rasterScale: cameraRasterScale,
+        within: visible,
+        route: (
+          paintRow: paintRow,
+          extentOf: extentOf,
+          placementOf: placementOf,
+          shownWithin: null,
+          held: null,
+          paper: canvasSize.canvasRect,
+        ),
+      );
+      canvas.restore();
+      if (overlayPass != null) {
+        applyCameraProjection(
+          canvas,
+          pose,
+          cameraFrameSize,
+          outputSize: resolvedOutput,
+        );
+        overlayPass(canvas, cameraRasterScale);
+      }
+      return recorder.endRecording();
     }
 
-    final picture = recorder.endRecording();
+    // 🗣️I-132-Q34 a (유저 2026-10-30): a plugin's step in the tree runs over
+    // what its chain made before it, and every render made here WAITS for
+    // it — a film's frame, a panel's picture ([FxPluginStages]).
+    final picture = await FxPluginStages.recordedThrough(
+      recorded,
+      discard: (made) => made.dispose(),
+    );
     try {
       return await picture.toImage(resolvedOutput.width, resolvedOutput.height);
     } finally {

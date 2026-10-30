@@ -6,12 +6,14 @@ import '../../core/draw_space.dart';
 import '../../core/lru.dart';
 import '../../models/composite_tree.dart';
 import '../../models/layer_blend_mode.dart';
+import '../../models/layer_effect.dart' show ResolvedLayerEffect;
 import '../../models/layer_id.dart';
 import '../../models/rgba_image_bytes.dart';
 import 'colour_key_shader.dart';
 import 'directional_blur_shader.dart';
 import 'iris_blur_shader.dart';
 import 'display_resample.dart';
+import 'fx_plugin_stages.dart';
 import 'layer_blend_shader.dart';
 import '../../services/composite_effect_paint.dart';
 import '../../services/shaded_passes.dart';
@@ -445,6 +447,7 @@ void drawSubtreeAsImage({
     );
     return;
   }
+  final unrun = FxPluginStages.unrun;
   final recorder = ui.PictureRecorder();
   paintSubtree(plan.recordInto(recorder), plan.scale);
   _finishSubtreeRaster(
@@ -456,6 +459,7 @@ void drawSubtreeAsImage({
     paper: paper,
     held: held,
     rows: rows,
+    unrunBefore: unrun,
   );
 }
 
@@ -1160,6 +1164,11 @@ _Laying _laidStep(
           .then(then, layers: layers);
     }
   }
+  if (lead case PluginEffect(:final effect)) {
+    return laying
+        .ranThrough(effect, scale: space.scale, paper: paper)
+        .then(then, layers: layers);
+  }
   // The row its lead reads, on the step's grid — alive until what reads it
   // is recorded.
   final read = switch (lead) {
@@ -1315,6 +1324,28 @@ class _Laying {
     return next;
   }
 
+  /// The picture through [effect]'s plugin, as the stages a waiting route
+  /// records through make it ([FxPluginStages.ranOver]) — itself where
+  /// there are none, or the plugin's picture is still to come.
+  _Laying ranThrough(
+    ResolvedLayerEffect effect, {
+    required double scale,
+    required Rect paper,
+  }) {
+    final image = this.image();
+    final ran = FxPluginStages.ranOver(
+      image,
+      effect,
+      scale: scale,
+      paper: paper,
+    );
+    if (ran == null) {
+      return this;
+    }
+    _releaseImage(image);
+    return _Laying(source).._image = ran;
+  }
+
   /// The paper cut out of the picture and drawn through [blur], as the
   /// bottom of the next picture — a Gaussian's Repeat Edge Pixels on the
   /// paper's edge (🗣️I-132-Q14 a, [PaperEdgeEffect]).
@@ -1466,7 +1497,8 @@ typedef _LeadDraw = ({
 
 /// The shaders [lead] draws at [space], with [paper] where the paper lies
 /// there, over rasters [rasterWidth] wide — none for a step that only
-/// paints, nor for a blur on the paper ([PaperEdgeEffect]) — [row] the
+/// paints, nor for a blur on the paper ([PaperEdgeEffect]) or a plugin
+/// ([PluginEffect], `_Laying.ranThrough`) — [row] the
 /// row it reads on their grid, null for none.
 List<_LeadDraw> _leadDraws(
   EffectStepLead? lead, {
@@ -1475,7 +1507,7 @@ List<_LeadDraw> _leadDraws(
   required int rasterWidth,
   required ui.Image? row,
 }) => switch (lead) {
-  null || PaperEdgeEffect() => const [],
+  null || PaperEdgeEffect() || PluginEffect() => const [],
   KeyRun(:final keys) => [
     for (final key in keys)
       (
@@ -1574,6 +1606,7 @@ void _finishSubtreeRaster({
   required Rect paper,
   SubtreeHold? held,
   RowPainter? rows,
+  required int unrunBefore,
 }) {
   assert(() {
     debugSubtreeRasterCount += 1;
@@ -1608,7 +1641,13 @@ void _finishSubtreeRaster({
       ),
     );
   } finally {
-    if (held != null && held.keeps && !plan.magnifies) {
+    // ⛔Not with a plugin's step in it drawn as if off ([FxPluginStages.
+    // unrun]): the next round of the recording that missed it would cut
+    // from this and never meet the step again.
+    if (held != null &&
+        held.keeps &&
+        !plan.magnifies &&
+        FxPluginStages.unrun == unrunBefore) {
       held._keep((plan: plan, raster: raster, image: image));
     }
     // ⚠️Safe HERE and nowhere earlier: the draws put the image into this

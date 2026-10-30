@@ -1426,12 +1426,17 @@ void main() {
     );
   });
 
-  test('the copy of the database it read from is gone afterwards', () {
-    readClipDocument(fixture(), scratch: folder);
+  test('the copy of the database it read from is made in the room it is '
+      'handed, and gone from it afterwards', () {
+    final room = Directory('${folder.path}/room');
     expect(
-      folder.listSync().where((entry) => entry.path.endsWith('.db')),
-      isEmpty,
+      () => readClipDocument(fixture(), scratch: room),
+      throwsA(isA<FileSystemException>()),
+      reason: 'a room that is not there is no room — the copy went there',
     );
+    room.createSync();
+    readClipDocument(fixture(), scratch: room);
+    expect(room.listSync(), isEmpty);
   });
 
   // 🗣️I-130-csp-import-Q1 (유저 2026-10-27): 「새로 만든것임. 기밀아니고」 —

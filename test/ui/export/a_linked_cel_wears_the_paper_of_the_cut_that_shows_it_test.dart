@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 
+import '../../helpers/every_frame_drawn.dart';
 import '../../helpers/no_guides_laid.dart';
 
 /// 🚨F-300 (유저 2026-10-05): 「겸용컷에서 BG 이미지레이어가 2장있는데 … 현재
@@ -163,6 +164,7 @@ void main() {
         final plan = buildExportCelGroupPlan(
           project: session.repository.requireProject(),
           activeCutId: CutId(standingOn),
+          drawn: everyFrameDrawn,
           spec: const CelsExportSpec(),
         );
         Future<((int, int, int, int), (int, int, int, int))> shot(

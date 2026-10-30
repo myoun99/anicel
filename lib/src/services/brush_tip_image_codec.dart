@@ -14,10 +14,7 @@ export '../models/brush_tip_mask.dart' show maxBrushTipMaskSide;
 
 /// Reads a PNG (or any format the engine decodes) as a brush tip mask.
 ///
-/// Coverage is alpha shaped by darkness: a black-on-transparent tip resolves
-/// to its own alpha, a black-on-white opaque scan resolves to inverted
-/// luminance. If that yields nothing at all — a white-on-transparent tip —
-/// the alpha channel alone stands in. The result is downscaled past
+/// Coverage is [brushTipCoverageOfRgba]'s. The result is downscaled past
 /// [maxBrushTipMaskSide] and padded to the centered square the engine's
 /// samplers require.
 ///
@@ -40,31 +37,9 @@ Future<BrushTipMask> decodeBrushTipImage(
     if (byteData == null) {
       throw const FormatException('image pixels unavailable');
     }
-    final rgba = byteData.buffer.asUint8List();
-    final width = image.width;
-    final height = image.height;
-
-    final gray = Uint8List(width * height);
-    var sum = 0;
-    for (var index = 0; index < gray.length; index += 1) {
-      final r = rgba[index * 4];
-      final g = rgba[index * 4 + 1];
-      final b = rgba[index * 4 + 2];
-      final a = rgba[index * 4 + 3];
-      final luminance = (r * 299 + g * 587 + b * 114) ~/ 1000;
-      final value = a * (255 - luminance) ~/ 255;
-      gray[index] = value;
-      sum += value;
-    }
-    if (sum == 0) {
-      for (var index = 0; index < gray.length; index += 1) {
-        gray[index] = rgba[index * 4 + 3];
-      }
-    }
-
     return brushTipMaskFromCoverage(
-      gray,
-      size: (width: width, height: height),
+      brushTipCoverageOfRgba(byteData.buffer.asUint8List()),
+      size: (width: image.width, height: image.height),
       id: id,
     );
   } finally {

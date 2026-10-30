@@ -7,6 +7,8 @@ import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../widgets/static_raster.dart';
 import '../layout/device_grid.dart';
+import '../theme/app_theme.dart' show AppShapes;
+import '../widgets/superellipse_clip.dart';
 
 /// The Photoshop/Clip-Studio style tool switcher (brush ⇄ eraser): a
 /// dockable PANEL whose home is a slim vertical edge dock, so it lives on
@@ -243,11 +245,16 @@ class ToolsPanel extends StatelessWidget {
 /// Public because the rail is no longer only tools — undo, redo and the
 /// onion toggle are handed in by the host and have to be the SAME button,
 /// or the column stops reading as one grid.
-/// ⛔A strip button has NO grip (유저 정정, R2 #5). It grew one in R1 on the
-/// reading that every button on a strip should be liftable; the panel it
-/// opens already has a draggable tab, so the second handle was a promise
-/// with nothing behind it — it painted, it took the cursor, and dragging it
-/// moved nothing. Opening the group and dragging its tab is the one way.
+/// 🔄A strip button that holds panels wears a GRIP again — [band] (🗣️I-147,
+/// 유저 2026-10-30: 「이 버튼 자체 탭 띠는 공용으로 다른 사이드띠에도
+/// 쓸수있게해서 해당 버튼들 패널들 통째로 옮길수있도록」): the panel tab's
+/// band, inside the button's own box, and it lifts the button with every
+/// panel it holds.
+/// ↩️It had none (유저 정정, R2 #5). It grew one in R1 on the reading that
+/// every button on a strip should be liftable, and dragging it moved
+/// nothing — a promise with nothing behind it, while the panel it opened
+/// already had a draggable tab. ⚠️What changed is that dragging it now
+/// MOVES something; a band that moves nothing is still the R2 #5 bug.
 class RailButton extends StatelessWidget {
   const RailButton({
     super.key,
@@ -257,6 +264,7 @@ class RailButton extends StatelessWidget {
     required this.selected,
     required this.onPressed,
     this.shortcuts = const [],
+    this.band,
   });
 
   final String keyValue;
@@ -270,6 +278,10 @@ class RailButton extends StatelessWidget {
 
   /// The actions this square presses — [AppIconButton.shortcuts].
   final List<String> shortcuts;
+
+  /// The band laid along the square's top edge, inside it and inside its
+  /// press (`LiftingGripBand`) — null for a button that lifts nothing.
+  final Widget? band;
 
   @override
   Widget build(BuildContext context) {
@@ -286,7 +298,22 @@ class RailButton extends StatelessWidget {
       tooltip: tooltip,
       isSelected: selected,
       size: AppIconButtonSize.tool,
-      icon: Icon(icon),
+      icon: switch (band) {
+        null => Icon(icon),
+        // The whole square, so the band runs its full width, cut by the
+        // square's own corners as the tab's band is cut by the tab's.
+        final band => SizedBox.expand(
+          child: SuperellipseClip(
+            shape: AppShapes.control(AppIconButtonSize.tool.height),
+            child: Stack(
+              children: [
+                Center(child: Icon(icon)),
+                Positioned(left: 0, right: 0, top: 0, child: band),
+              ],
+            ),
+          ),
+        ),
+      },
       onPressed: onPressed,
       shortcuts: shortcuts,
     );

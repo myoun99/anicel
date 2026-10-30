@@ -48,6 +48,7 @@ import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import '../../helpers/app_faces.dart';
 import '../../helpers/boolean_dot_probe.dart';
 import '../../helpers/cel_photo_fixture.dart';
+import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/export_preview_probe.dart';
 import '../../helpers/native_engine_path.dart';
@@ -789,21 +790,71 @@ void main() {
   });
 
   group('cels tab', () {
-    testWidgets('pattern preview names the first cel; empty cels skip',
-        (tester) async {
+    void inkA(EditorSessionManager session, String cel) => inkCel(
+      session,
+      session.brushFrameKeyForCut(
+        session.cutById(const CutId('cut'))!,
+        const LayerId('layer'),
+        FrameId(cel),
+      ),
+      canvasSize: const CanvasSize(width: 8, height: 8),
+      at: CanvasPoint(x: 4, y: 4),
+      size: 2,
+    );
+
+    // cels-tab-lists-a-blank-cel-as-written-Q1 (유저 2026-10-30: 「목록에서
+    // 미리 뺀다」): the list answered by the frame and the run skipped a cel
+    // with no ink after, so the count it showed was not the count written.
+    testWidgets('🐞a cel the timeline greys is out of the list before the '
+        'run — the first file named is the first one inked, and the run '
+        'writes the count the list shows', (tester) async {
+      final session = exportSession();
+      addTearDown(session.dispose);
+      inkA(session, 'f2');
       final state = await pumpDialog(
         tester,
-        exportSession(),
+        session,
         exportDirectoryPicker: () async => temp.path,
       );
       await switchTab(tester, 'cels');
-      expect(tester.exportFirstFileName, 'A1.png');
+      expect(tester.exportFirstFileName, 'A2.png');
+      expect(
+        [for (final (_, written) in tester.celsBoardBlocksOf('layer')) written],
+        [false, true],
+      );
+      final counted = tester
+          .widget<Text>(find.byKey(const ValueKey<String>('export-cels-count')))
+          .data;
+      expect(counted, '2 files', reason: 'A2 and the timesheet');
 
       await tester.runAsync(state.export);
       await tester.pump();
-      // The fixture cels carry no strokes — renders resolve empty, files
-      // skip, and the summary says so.
-      expect(statusText(tester), contains('empty skipped'));
+      expect(filesWrittenUnder(temp), ['A2.png', '_TSCut.png']);
+      expect(statusText(tester), 'Exported 2 files.');
+    });
+
+    testWidgets('🚨a cel inked under the window joins the list — the '
+        'project is the same one, and the list asks again', (tester) async {
+      final session = exportSession();
+      addTearDown(session.dispose);
+      inkA(session, 'f2');
+      final project = session.repository.requireProject();
+      await pumpDialog(tester, session);
+      await switchTab(tester, 'cels');
+      expect(tester.exportFirstFileName, 'A2.png', reason: 'premise');
+
+      inkA(session, 'f1');
+      await tester.pump();
+      expect(
+        session.repository.requireProject(),
+        same(project),
+        reason: 'premise: the film is the one it was',
+      );
+      expect(tester.exportFirstFileName, 'A1.png');
+      expect(
+        [for (final (_, written) in tester.celsBoardBlocksOf('layer')) written],
+        [true, true],
+      );
     });
   });
 

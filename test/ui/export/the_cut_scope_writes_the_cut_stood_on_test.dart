@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 
+import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/files_written_under.dart';
 import '../../helpers/project_scratch_folder.dart';
@@ -80,7 +81,7 @@ void main() {
   /// C1 and C2 a 겸용 pair, C3 a cut alone; [unticked] are the cuts the
   /// scope grid has out.
   EditorSessionManager film({Set<String> unticked = const {}}) =>
-      EditorSessionManager(
+      inkEveryCel(EditorSessionManager(
         initialProject: Project(
           id: const ProjectId('project'),
           name: 'Project',
@@ -116,7 +117,7 @@ void main() {
             excludedCutIds: {for (final id in unticked) CutId(id)},
           ),
         ),
-      );
+      ));
 
   /// The Cels tab writing its cels, the timesheet and the cut envelope.
   const threeKinds = {
@@ -210,7 +211,7 @@ void main() {
   }
 
   testWidgets('…and the RUN writes them: standing on C2 with its tick off, '
-      'the pair\'s sheets and its envelope land on disk', (
+      'the pair\'s cels, its sheets and its envelope land on disk', (
     tester,
   ) async {
     final temp = Directory.systemTemp.createTempSync('qa-cut-scope');
@@ -228,13 +229,7 @@ void main() {
     await tester.runAsync(state.export);
     await tester.pump();
 
-    // (The fixture's cels are drawn on nothing, and a cel with no picture
-    // is no file.)
-    expect(filesWrittenUnder(temp), [
-      '_CUTC1_envelope.png',
-      '_TSC1.png',
-      '_TSC2.png',
-    ]);
+    expect(filesWrittenUnder(temp), [...pair]..sort());
     session.playbackRig.prerenderScheduler.cancel();
   });
 
@@ -253,7 +248,12 @@ void main() {
     expect(count(tester), '8 files');
     await tester.runAsync(state.export);
     await tester.pump();
+    // The count the list shows is the count on disk
+    // (cels-tab-lists-a-blank-cel-as-written-Q1).
     expect(filesWrittenUnder(temp), [
+      'A1.png',
+      'A1_2.png',
+      'A2.png',
       '_CUTC1_envelope.png',
       '_CUTC3_envelope.png',
       '_TSC1.png',

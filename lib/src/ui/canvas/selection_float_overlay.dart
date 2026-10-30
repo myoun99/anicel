@@ -12,7 +12,10 @@ import '../../models/layer_effect.dart';
 import '../../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
 import '../../services/cel_source_effect_pass.dart'
-    show celSourceEffectSignature, sameCelSourceEffectSignature;
+    show
+        celSourceEffectSignature,
+        celSourcePlugin,
+        sameCelSourceEffectSignature;
 import '../../services/cel_surface_as_shown.dart';
 import '../../services/cel_text_laying.dart' show celTextPlatesOver;
 import 'bitmap_surface_painter.dart';
@@ -192,7 +195,10 @@ class SelectionFloatPaint implements LandingPreview {
     if (lands == null || holed == null) {
       return itself;
     }
-    final keyed = celSourceEffectSignature(keys).isNotEmpty;
+    // A plugin may change the cel anywhere (🗣️I-132-Q32 b): a float on a
+    // row that runs one is always its landing.
+    final plugin = celSourcePlugin(keys) != null;
+    final keyed = celSourceEffectSignature(keys).isNotEmpty || plugin;
     final onGrid = lands.on.onCanvasGrid;
     final rect = drawnWorldRect;
     // Under a pose a rect of the float is no rect of the cel, so a cel that
@@ -205,6 +211,7 @@ class SelectionFloatPaint implements LandingPreview {
     final floatSurface = surface?.surface;
     final landsOnNothing =
         floatSurface != null &&
+        !plugin &&
         onGrid &&
         !textUnder &&
         !(_holdsPartlyClearPixels(lands.stamp) && _inkTouches(holed, rect));

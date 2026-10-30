@@ -9,7 +9,6 @@ import 'memo_token.dart';
 import 'timeline_frame_ruler_painter.dart';
 import 'timeline_frame_window.dart';
 import 'timeline_glyph_cache.dart';
-import 'timeline_grid_metrics.dart' show timelineFirstOnStride;
 
 /// The playhead's own writing on a ruler strip, and what of the strip's
 /// writing it stands on (I-16).
@@ -52,12 +51,7 @@ timelineRulerPlayheadWriting({
   // The frames the strip writes at, walked as the strip walks them
   // ([TimelineRulerScale.paintWindow]): I-22 ③ — the neighbourhood is
   // ~1,200 frames at 0.16px, and a frame off the stride holds no writing.
-  final step = scale.writingStep;
-  for (
-    var frameIndex = timelineFirstOnStride(reach.startIndex, step);
-    frameIndex < reach.endIndexExclusive;
-    frameIndex += step
-  ) {
+  for (final frameIndex in scale.framesWrittenIn(reach)) {
     for (final glyph in scale.writtenAt(layout, frameIndex, current: false)) {
       final rect = glyph.rect;
       if (pair.any((mine) => mine.rect.overlaps(rect))) {
@@ -81,10 +75,11 @@ timelineRulerPlayheadWriting({
 /// reaches into a covered one) cannot touch it.
 ///
 /// The widest glyph is read off the pair written where the window's writing
-/// runs longest — its last frame, and in seconds mode the last frame whose
-/// number is the fps — in the playhead's bold, never narrower than the
-/// strip's own ink at the same size. Four pixels of slack cover the strip's
-/// insets.
+/// runs longest — its last frame, and where the count starts again (the
+/// seconds display, the page view) the last frame whose number is the
+/// longest ([TimelineRulerScale.widestNumberFrameBefore]) — in the
+/// playhead's bold, never narrower than the strip's own ink at the same
+/// size. Four pixels of slack cover the strip's insets.
 ({int startIndex, int endIndexExclusive}) _writingReach({
   required TimelineRulerScale scale,
   required int frame,
@@ -108,18 +103,22 @@ timelineRulerPlayheadWriting({
     return widest;
   }
 
-  final lastFullSecond = scale.widestNumberFrameBefore(
+  final widestNumber = scale.widestNumberFrameBefore(
     window.endIndexExclusive,
   );
   var widest = 0.0;
-  for (final probe in [
+  for (final probe in {
     window.endIndexExclusive - 1,
-    if (scale.showSeconds && lastFullSecond >= window.startIndex)
-      lastFullSecond,
-  ]) {
+    if (widestNumber >= window.startIndex) widestNumber,
+  }) {
     final extent = widestOf(scale.writtenAt(layout, probe, current: true));
     widest = extent > widest ? extent : widest;
   }
+  // ⛔No probe of the page view's marks (`17 p3`, I-81-Q4): a mark is its
+  // second and a page beside it, wider than any glyph a pair writes but
+  // narrower than the pair and the two widest the reach already allows.
+  // A probe for it survived its own mutant (10-30); the pin a hundred
+  // pages in is what keeps that true.
   final cells = ((widestOf(pair) + 2 * widest + 4) / cell).ceil() + 1;
   final start = frame - cells;
   final end = frame + cells + 1;

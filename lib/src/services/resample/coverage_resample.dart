@@ -25,8 +25,9 @@ import 'resample_kernel.dart';
 /// shrinking 4× reads 4 source pixels while a fixed 4-tap bilinear reads
 /// 4 whatever the reduction and aliases. The user's criterion was "do it
 /// the way professional tools do it; the tip's appearance changing is
-/// fine". Every tip mask in the app minifies through here now, and there
-/// is no second minification filter left to drift from it.
+/// fine". Every tip mask in the app minifies through here now, and no tip
+/// has a second minification filter left to drift from it. A baked word's
+/// box is another filter, on purpose, and says why (`boxFilterA8`).
 ///
 /// ★WHY A CONVERSION AND NOT A GRAY ENTRY POINT IN THE KERNEL — the
 /// honest cost, decided 2026-09-07. The kernel is RGBA8 and this is

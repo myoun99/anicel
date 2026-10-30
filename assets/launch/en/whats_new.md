@@ -1,14 +1,25 @@
 ## What's new in this version
 
-- **Drawing on iPhone and iPad** — a stroke drawn on an empty frame did not show while you drew it and only appeared after going to another frame and back. Fixed.
-- **New cut window** — the cut pill's ＋ and its shortcut open a window to pick the name and the canvas size. The default size is A4 at 200 dpi (2340 × 1654), and a new cut no longer copies the open cut's size. Making a linked cut opens the same window, with the size locked to the original cut's.
-- **Fixed lines on the conte** — the top of each panel's action column now writes the camera's moves (FIX, PAN, T.U, T.B, 回転) with their lengths (seconds + frames), and transitions such as O.L, F.I and F.O. An O.L is written on the cut before it, like “c1 × c2 カットO.L (1+0)”. Turn them off with Fixed text in the Conte sheet format. A camera that only turns is now written as 回転 instead of PAN.
-- **Graph key snapping** — with the Snap button on the header graph's tool row, a dragged key snaps to other keys' times and values, the playhead, and the cut's start and end. Holding Ctrl (⌘) while dragging does the opposite.
-- **AE Script export** — the AE Script tab in the export window writes the cels as PNG together with a .jsx that builds the compositions when run in After Effects, and the cut's sound as WAV.
-- **Merging blocks** — blocks on a conte row can be merged too (that row in that cut only). A conte panel with conte rows synced to it merges together with them.
-- **Number fields** — the frame count, the auto-naming start number, and the dialogue offset and frames per character in the SE window all change in the same number field, by dragging, ± or the pencil. In seconds + frames, frames past the fps carry into seconds.
-- **Two-finger zoom** — spread or pinch two fingers on the timeline's frames to zoom.
-- **S row total volume** — the S row's total volume can be set from inside the speaker button too.
-- **Getting started** — the first-launch window also picks the appearance (Dark or Light).
-- **Speed** — playing or scrubbing with every lane open is now as light as with them folded, and zooming the timeline repeatedly stutters less. Drawing on a moved, scaled or flipped layer is lighter too.
-- Fixed: after changing the accent color some buttons kept the old color; transitions did not follow a cut while it was dragged; with the conte panel folded, opening a graph did not resize the folded row; at zooms such as 125% or 150% the edges of folder, blend and clip rows shifted by a pixel or bled onto the pasteboard.
+## New
+
+- **Guides in the AE script** — the AE script lays the camera's path and directions as guide layers over the canvas comp.
+- **Effects in the AE script** — a row with Brightness & Contrast, Hue/Saturation, a Gaussian, Directional, Radial or Camera Lens Blur, or Color Key gets the nearest After Effects effect, with its values carried over.
+- **Camera moves in the conte** — "Camera moves" in Conte sheet format chooses whether the cell grows or the move stays inside it. The default is "Keep in the cell": the cell keeps its size and shows the whole move scaled down. "Cut settings" under it overrides that for the current cut or the selected cuts alone.
+- **Page view on the ruler** — the button at the timeline ruler's left corner chooses Frames, Seconds+frames or Pages. On Pages the numbers restart with each timesheet page, and the turn of a page reads like "p2". The Conte panel's ruler counts by conte sheet pages.
+- **Lay a panel on the floor** — drag the Conte Sheet, Timesheet, Cut envelope or Sub Viewer to the top strip and it gets a button; pressing it lays that panel where the canvas sits. The canvas button brings the canvas back.
+
+## Improved
+
+- **Strokes on iPhone and iPad** — a stroke writes only what changed into the frame's picture instead of redrawing the whole frame, and pictures take half the memory. In exchange, P3 photos and videos display as sRGB.
+- **Pencils** — the 2H, HB, 2B and 4B pencils, the colored pencil and the mechanical pencil are rebuilt. The pencil feel now comes from the brush tip rather than the paper texture, so the grain stays with the texture off. Brush presets now default to 5% spacing, and the old mechanical pencil stays on in the Pen group as Mechanical Pen. The new settings arrive with "Reset brush library".
+- **Camera lines in the conte** — a move's line names its two keys, like "1f-5f T.U", or "A-B T.U" when they have names. FIX appears only before and after a camera move, and a cell where the camera does nothing stays blank. Turning the camera row off the sheet clears these lines and the timesheet's CAM column together. The camera rectangles in a cell are drawn at every key, as on the canvas.
+- **Imported brushes** — a .sut brush's real tip is read, and its flow-by-spacing setting follows the file. Anti-aliasing no longer clears a tip's greys. Brushes imported before need importing again.
+
+## Fixed
+
+- **Strokes falling behind the cursor** — the longer the stroke, the further the line fell behind; it now keeps up.
+- **Video import on Android** — importing a video left the preview black and made no new cut or layer.
+- The AE script stopped at a cel with no picture, and a row's opacity went missing.
+- Z straight lines in a row each take the pressure of the press before.
+- The export's Cels tab leaves out cels with no picture, so its count matches the files written.
+- Tapping a conte sheet's content cell in a cut with no storyboard layer now says why.

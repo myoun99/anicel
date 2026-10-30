@@ -5,7 +5,6 @@ import 'dart:typed_data';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/media_asset.dart';
-import 'package:anicel/src/native/qa_video_decoder.dart' show QaVideoInfo;
 import 'package:anicel/src/services/media/held_viewer_document.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
@@ -468,7 +467,10 @@ void main() {
 
     for (final (what, backend) in [
       ('no reader in this build', FakeVideoBackend(supported: false)),
-      ('a reader that cannot read it', _RefusingBackend()),
+      (
+        'a reader that cannot read it',
+        FakeVideoBackend(refusal: 'no decoder for this codec'),
+      ),
     ]) {
       testWidgets('a movie that never opens — $what — gives its range back at '
           'once', (tester) async {
@@ -501,15 +503,6 @@ void main() {
       });
     }
   });
-}
-
-/// A decoder that is there and cannot read this movie.
-class _RefusingBackend extends FakeVideoBackend {
-  @override
-  Future<({int token, QaVideoInfo info})?> open(
-    String path, {
-    ({int offset, int length, bool framed})? span,
-  }) async => null;
 }
 
 /// A decoder that says when it has closed.

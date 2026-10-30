@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -110,19 +111,26 @@ void main() {
     });
   });
 
-  group('the frames↔seconds display (F-354)', () {
-    test('round-trips through the JSON', () {
-      final back = ProjectResume.fromJson(
-        const ProjectResume(showSeconds: true).toJson(),
+  group('the rulers\' count (F-354 · I-81)', () {
+    test('round-trips through the JSON, each of the three', () {
+      for (final view in FrameRulerView.values) {
+        final back = ProjectResume.fromJson(
+          ProjectResume(rulerView: view).toJson(),
+        );
+        expect(back.rulerView, view);
+      }
+      expect(
+        ProjectResume.none.toJson().containsKey('frameRuler'),
+        isFalse,
+        reason: 'frames, the count a new project has, is not written',
       );
-      expect(back.showSeconds, isTrue);
     });
 
-    test('🚨a display that cannot be read writes frames', () {
-      for (final unreadable in ['true', 1, null]) {
+    test('🚨a count that cannot be read counts frames', () {
+      for (final unreadable in ['true', 1, null, 'page']) {
         expect(
-          ProjectResume.fromJson({'showSeconds': unreadable}).showSeconds,
-          isFalse,
+          ProjectResume.fromJson({'frameRuler': unreadable}).rulerView,
+          FrameRulerView.frames,
           reason: '$unreadable',
         );
       }

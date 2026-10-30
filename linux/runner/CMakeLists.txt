@@ -10,7 +10,6 @@ add_executable(${BINARY_NAME}
   "main.cc"
   "launch_splash.cc"
   "my_application.cc"
-  "pen_sidecar.cc"
   "picture_cursors.cc"
   "window_full_screen.cc"
   "window_place.cc"

@@ -834,7 +834,24 @@ void main() {
   /// id named ahead; three went over and one came under elsewhere on the
   /// trunk. ⛔Not bundled to fit: the id is the conte's, named before its
   /// stroke, and the name the window's — two callers, two questions.
-  const wideSignatures = 452;
+  ///
+  /// ⚠️452 → 454 on 2026-10-30, named as the rule above asks (F-509-Q10):
+  /// `flutter_gpu_copies.dart`'s `_copyBufferToTexture` (eleven) and
+  /// `_copyTextureToBuffer` (eight) are two natives' signatures, the
+  /// engine's and not ours to narrow — a test holds them to the SDK's.
+  ///
+  /// ⚠️454 → 456 on 2026-10-31, two named as the rule above asks (I-132,
+  /// 🗣️Q34 a 「어디에 걸어도 돌고, 결과가 올 때까지 … 직전 완성 그림에
+  /// 머문다」): `_mapCompositeLeaves` (five) took what a folder's or an
+  /// adjustment's chain becomes on its route (`chains` — its plugins bound
+  /// to their runs, as `map` binds a row's), and `FramePictureStore.patch`
+  /// (five) whether what its drawing draws is gone by the time its plugins
+  /// have run (`gone` — a step re-recorded over a stack handed anew would
+  /// draw what is let go of). 🔬`clean_code_diff` against master
+  /// (`edd34ba45`) names those two added and nothing gone. ⛔Not bundled to
+  /// fit: the leaf, the bare row and the chain are three kinds of node, and
+  /// the drawing and whether it still stands are two questions.
+  const wideSignatures = 456;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -1577,7 +1594,25 @@ void main() {
   /// through `_emptyStacks`, which `clear` wrote out and now shares.
   /// 🔬`clean_code_diff` against master (`d7cbaccdc`) names this one and
   /// no other class. ⛔Not split to fit: the stacks are the history.
-  const longClasses = 80;
+  ///
+  /// ⚠️80 → 81 on 2026-10-30, ONE name: `TimelineRulerScale` crossed (549
+  /// → 614) when the rulers came to count a third way (I-81, 🗣️Q1 「그 컷의
+  /// X시트 장을 따른다」 · Q4 「초 옆에 페이지 넘어가는곳마다 p1 p2」): the
+  /// page a strip counts its numbers by, and its marks thinned on the
+  /// seconds' ladder and kept clear of the seconds. 🔬`clean_code_diff`
+  /// against master (`a76bef68a`) names this one and no other class.
+  /// ⛔Not split to fit: the scale is the one answer to what a strip writes
+  /// and where, and the page is one more way it counts.
+  ///
+  /// ⚠️81 → 82 on 2026-10-31, ONE name: `FramePictureStore` crossed again
+  /// (587 → 611) when a frame's picture came to wait for its plugins (I-132,
+  /// 🗣️Q34 a 「결과가 올 때까지 그 프레임의 직전 완성 그림에 머문다」): a
+  /// lay and a patch are recorded through them (`_recordedThrough`), and a
+  /// patch whose drawing is gone before they have run lets its picture go
+  /// unlanded. 🔬`clean_code_diff` against master (`edd34ba45`) names this
+  /// one and no other class. ⛔Not split to fit: the store is the one that
+  /// records what goes in, and waiting is how it records now.
+  const longClasses = 82;
 
   late CleanCodeScan scan;
   setUpAll(() {

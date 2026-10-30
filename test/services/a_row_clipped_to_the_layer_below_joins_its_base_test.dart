@@ -82,11 +82,15 @@ void main() {
   }) => planCutFrameCompositeTree(
     cut: cutOf(layers),
     frameIndex: 0,
-    // A surface per row, each its own — so a leaf says whose it is.
-    surfaceResolver: (layer, frame) =>
-        artwork == null || artwork.contains(layer.id.value)
-        ? (_surfaces[layer.id.value] ??= BitmapSurface(canvasSize: canvasSize))
-        : null,
+    reading: (
+      // A surface per row, each its own — so a leaf says whose it is.
+      surfaces: (layer, frame) =>
+          artwork == null || artwork.contains(layer.id.value)
+          ? (_surfaces[layer.id.value] ??=
+                BitmapSurface(canvasSize: canvasSize))
+          : null,
+      plugins: null,
+    ),
   );
 
   String whose(CompositeNode<CutFrameCompositeLayer> node) => switch (node) {

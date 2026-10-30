@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
@@ -87,8 +88,8 @@ void main() {
     onOrientationChanged: (_) {},
     pixelsPerFrame: 24,
     onPixelsPerFrameChanged: (_) {},
-    showSeconds: false,
-    onShowSecondsChanged: (_) {},
+    rulerView: FrameRulerView.frames,
+    onRulerViewChanged: (_) {},
     rail: TabRailWiring.of(session),
   );
 
@@ -99,8 +100,8 @@ void main() {
     session: session,
     pixelsPerFrame: 12,
     onPixelsPerFrameChanged: (_) {},
-    showSeconds: false,
-    onShowSecondsChanged: (_) {},
+    rulerView: FrameRulerView.frames,
+    onRulerViewChanged: (_) {},
     thumbnails: null,
     rail: TabRailWiring.of(session),
   );

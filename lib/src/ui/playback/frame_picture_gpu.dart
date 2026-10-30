@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter_gpu/gpu.dart' as gpu;
 
+import 'flutter_gpu_copies.dart';
+
 /// One write into a frame picture's base level: [source] laid whole at
 /// ([x], [y]) — texel for texel, a copy, not a draw.
 typedef BaseWrite = ({ui.Image source, int x, int y});
@@ -27,8 +29,7 @@ abstract interface class FramePictureGpu {
 
   /// The texture behind [image], to write into where it stands — null where
   /// the engine has no GPU context to write with (Skia: the devices that
-  /// render with it are out of the release, skia-devices-out-of-release),
-  /// or no write into it could be sized ([FlutterGpuFramePictures.sizes]).
+  /// render with it are out of the release, skia-devices-out-of-release).
   Object? hold(ui.Image image);
 
   /// The mip levels [held]'s texture has: the base and every halving down
@@ -55,6 +56,17 @@ abstract interface class FramePictureGpu {
 /// (`doesSupportFramebufferRenderMipmap` false on the Surface Pro 11).
 /// Both kinds landed and showed under `FilterQuality.medium` at every zoom
 /// from 1/2 to 1/128 there (2026-10-24).
+///
+/// ⛔NOT A TEXTURE A LEVEL (F-509-Q11, 유저 2026-10-30 「큰 공사라도 성능적으로
+/// 확실하면 하고싶으니」 · 「그럼 재고」): levels as textures of their own,
+/// written texture to texture, would take no buffer. Measured on the Surface
+/// Pro 11 (profile, GLES, 64 px patches over a noise frame, 120 steps, three
+/// rounds, nothing else running; probe `canvas-base-probes/f509-levels`): a
+/// step into its picture at p50 4.5–5.5 ms as it is, 3.7–5.3 so, and
+/// 3.6–4.8 with no level written at all — a millisecond at most, for every
+/// platform's picture store built again and a zoomed-out view drawn from a
+/// level picked by hand. ⚠️A light frame: what a copy out waits for grows
+/// with the GPU's work before it (D7-2), so a heavy scene may give more.
 class FlutterGpuFramePictures implements FramePictureGpu {
   @override
   Future<ui.Image> render(ui.Picture picture, int width, int height) =>
@@ -68,22 +80,28 @@ class FlutterGpuFramePictures implements FramePictureGpu {
     } on Exception {
       return null;
     }
-    final texture = gpu.Texture.fromImage(context, image);
-    return sizes(texture.format) ? texture : null;
+    return gpu.Texture.fromImage(context, image);
   }
 
-  /// Whether `flutter_gpu` knows how many bytes a texel of [format] takes —
-  /// what a write into the levels under the base copies through a buffer
-  /// by ([write]).
+  /// How many bytes a texel of [format] takes — what a write into the levels
+  /// under the base copies through a buffer by ([write]).
   ///
-  /// 🚨★★★A PICTURE IN A FORMAT IT CANNOT SIZE IS NOT HELD: its frame is
-  /// drawn as it stands (F-509). An iPhone's or iPad's Impeller renders
-  /// with wide gamut by default, its pictures in Apple's extended-range
-  /// formats, which `flutter_gpu` names `unknown` — zero bytes a texel. A
-  /// write into one sized its buffer and its spans at zero and never came
+  /// 🚨★★★`unknown` IS 8 (F-509-Q9 · Q10, 유저 2026-10-30): an offscreen
+  /// picture is `unknown` only where the screen renders with wide gamut, and
+  /// both Apple surfaces do that in `BGRA10_XR` alone (iOS `FlutterView.mm`,
+  /// macOS `FlutterSurface.mm`, engine 3.47.4). `flutter_gpu` has no name
+  /// for it and calls it zero bytes a texel. A write sized so never came
   /// back: build 1083's trace, 2026-10-30, no write into a picture answered
-  /// on either.
-  static bool sizes(gpu.PixelFormat format) => format.bytesPerBlock > 0;
+  /// on an iPhone or iPad. iOS now renders without wide gamut
+  /// (`FLTEnableWideGamut` false in its Info.plist, F-509-Q7); a Mac on
+  /// Apple silicon with a P3 screen still renders with it — its embedder
+  /// reads no such key. Should this be wrong the engine refuses the length,
+  /// and the write goes as one not done ([FramePictureStore]).
+  ///
+  /// ↩️Such a picture was not held, its frame drawn as it stands
+  /// (`f2495686f`) — correct, and a whole frame drawn at every step.
+  static int bytesPerTexel(gpu.PixelFormat format) =>
+      format == gpu.PixelFormat.unknown ? 8 : format.bytesPerBlock;
 
   @override
   int levelsOf(Object held) => (held as gpu.Texture).mipLevelCount;
@@ -115,18 +133,15 @@ class FlutterGpuFramePictures implements FramePictureGpu {
     LevelWrites levels,
   ) {
     final source = gpu.Texture.fromImage(context, levels.run);
-    final bytes = source.getMipLevelSizeInBytes(0);
-    final perTexel = bytes ~/ (source.width * source.height);
+    final perTexel = bytesPerTexel(source.format);
     final buffer = context.createDeviceBuffer(
       gpu.StorageMode.devicePrivate,
-      bytes,
+      source.width * source.height * perTexel,
     );
-    commands.copyTextureToBuffer(
-      gpu.TextureRegion(source),
-      gpu.BufferView(buffer, offsetInBytes: 0, lengthInBytes: bytes),
-    );
+    copyTextureIntoBuffer(commands, source, buffer);
     for (final (:start, :width, :height, :x, :y, :level) in levels.spans) {
-      commands.copyBufferToTexture(
+      copyBufferIntoTexture(
+        commands,
         gpu.BufferView(
           buffer,
           offsetInBytes: start * perTexel,

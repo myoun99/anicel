@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:sqlite3/sqlite3.dart';
 
 import '../../models/frame.dart' show InbetweenMark;
+import '../persistence/sqlite_bytes.dart';
 import 'clip_cmt.dart';
 import 'clip_container.dart';
 import 'clip_layer_effects.dart';
@@ -346,25 +347,18 @@ final class ClipDocument {
   final List<String> warnings;
 }
 
-/// [path]'s structure: its embedded database is copied into [scratch],
-/// read, and deleted again.
+/// [path]'s structure: its embedded database, read as every SQLite file
+/// the app reads from bytes is ([readSqliteBytes]) — its copy made in
+/// [scratch].
 ClipDocument readClipDocument(String path, {required Directory scratch}) {
   final file = File(path).openSync();
   try {
     final container = ClipContainer.indexOf(file);
-    final copy = File(
-      '${scratch.path}/clip-${DateTime.now().microsecondsSinceEpoch}.db',
-    )..writeAsBytesSync(readClipPlace(file, container.database), flush: true);
-    try {
-      final database = sqlite3.open(copy.path, mode: OpenMode.readOnly);
-      try {
-        return _DocumentReader(database, file, container).read();
-      } finally {
-        database.close();
-      }
-    } finally {
-      copy.deleteSync();
-    }
+    return readSqliteBytes(
+      readClipPlace(file, container.database),
+      (database) => _DocumentReader(database, file, container).read(),
+      within: scratch,
+    );
   } finally {
     file.closeSync();
   }

@@ -42,11 +42,12 @@ void main() {
       }
     }
 
-    // Self-check: the scan sees the shape it is looking for — the three
-    // drag sources the app has today.
+    // Self-check: the scan sees the shape it is looking for — the drag
+    // sources the app has today: the pool, the band that lifts a panel's
+    // tab and a strip's button (I-147), and the live ones.
     expect(found.keys, containsAll(<String>[
       'lib/src/ui/media/media_pool_panel.dart',
-      'lib/src/ui/panels/editor_panel_tabs.dart',
+      'lib/src/ui/widgets/grip_band.dart',
       ...live.keys,
     ]));
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_header_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_ruler_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_glyph_cache.dart';
@@ -22,7 +23,8 @@ void main() {
     WidgetTester tester, {
     required double cell,
     required int frames,
-    bool showSeconds = false,
+    FrameRulerView rulerView = FrameRulerView.frames,
+    TimelineRulerPages pages = const TimelineRulerPages.every(144),
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -39,7 +41,8 @@ void main() {
                 frameCellWidth: cell,
               ),
               onSelectFrame: (_) {},
-              showSeconds: showSeconds,
+              rulerView: rulerView,
+              pages: pages,
             ),
           ),
         ),
@@ -182,60 +185,118 @@ void main() {
 
   testWidgets('what the neighbourhood finds is what the whole window would '
       'find', (tester) async {
-    for (final showSeconds in [false, true]) {
-      for (final frames in [120, 3000]) {
+    // I-81: a page of 6 seconds — the X-sheet a cut of 24fps prints.
+    for (final view in FrameRulerView.values) {
+      // 2885: past a whole page by five frames — the last frame's number
+      // (5) is narrower than the widest the strip writes (144).
+      for (final frames in [120, 2885, 3000]) {
         for (final cell in [0.16, 0.5, 1.0, 2.4, 8.0, 24.0]) {
           final scale = await rulerOf(
             tester,
             cell: cell,
             frames: frames,
-            showSeconds: showSeconds,
+            rulerView: view,
           );
-          final window = scale.visibleWindow();
           for (final frame in [0, frames ~/ 2, frames - 1]) {
-            final where =
-                '${showSeconds ? 'seconds' : 'frames'} · $frames frames · '
-                '${cell}px · playhead $frame';
-            final writing = timelineRulerPlayheadWriting(
-              scale: scale,
-              frame: frame,
-              layout: TimelineFrameRulerPainter.glyphsAt,
+            expectTheWindowsFinding(
+              scale,
+              frame,
+              '${view.name} · $frames frames · ${cell}px · playhead $frame',
             );
-            final pair = writing.pair.map((glyph) => glyph.rect).toList();
-            final covered = <Rect>[];
-            final standing = <TimelineGlyphPlacement>[];
-            for (
-              var frameIndex = window.startIndex;
-              frameIndex < window.endIndexExclusive;
-              frameIndex += 1
-            ) {
-              for (final glyph in TimelineFrameRulerPainter.glyphsAt(
-                scale,
-                frameIndex,
-                current: false,
-              )) {
-                if (pair.any((rect) => rect.overlaps(glyph.rect))) {
-                  covered.add(glyph.rect);
-                } else {
-                  standing.add(glyph);
-                }
-              }
-            }
-            expect(writing.covered, covered, reason: where);
-            final kept = writing.standing.map((glyph) => glyph.rect).toSet();
-            for (final glyph in standing) {
-              if (covered.any((rect) => rect.overlaps(glyph.rect))) {
-                expect(
-                  kept,
-                  contains(glyph.rect),
-                  reason: '$where: a standing glyph that reaches into what '
-                      'stands down is rewritten after the uncovering',
-                );
-              }
-            }
           }
         }
       }
     }
   });
+
+  // I-81-Q3: a book's pages stand on no stride; the walk visits them.
+  testWidgets('a book\'s page marks are found as the whole window would', (
+    tester,
+  ) async {
+    const pages = TimelineRulerPages.startingAt([0, 100, 130, 301, 460, 700]);
+    for (final cell in [0.5, 2.4, 8.0, 24.0]) {
+      final scale = await rulerOf(
+        tester,
+        cell: cell,
+        frames: 900,
+        rulerView: FrameRulerView.pages,
+        pages: pages,
+      );
+      for (final frame in [0, 101, 131, 303, 700, 899]) {
+        expectTheWindowsFinding(scale, frame, '${cell}px · playhead $frame');
+      }
+    }
+  });
+
+  // I-81-Q4: a page's head writes its page beside its second, and a
+  // hundred pages in that is wider than any pair the playhead writes there
+  // — but within the reach the pair and two widest glyphs allow, which is
+  // why the walk probes no mark of its own (a probe survived its mutant).
+  testWidgets('a page\'s mark a hundred pages in is found as the whole '
+      'window would', (tester) async {
+    for (final cell in [8.0, 24.0]) {
+      final scale = await rulerOf(
+        tester,
+        cell: cell,
+        frames: 14600,
+        rulerView: FrameRulerView.pages,
+      );
+      expect(
+        scale.modelAt(14400).secondsLabel,
+        '10:00 p101',
+        reason: 'fixture',
+      );
+      for (final frame in [14401, 14403, 14406, 14410]) {
+        expectTheWindowsFinding(scale, frame, '${cell}px · playhead $frame');
+      }
+    }
+  });
+}
+
+/// What the playhead's writing at [frame] finds of [scale]'s — what it
+/// covers, and what it rewrites over the uncovering — is what a walk of the
+/// whole window would find.
+void expectTheWindowsFinding(
+  TimelineRulerScale scale,
+  int frame,
+  String where,
+) {
+  final window = scale.visibleWindow();
+  final writing = timelineRulerPlayheadWriting(
+    scale: scale,
+    frame: frame,
+    layout: TimelineFrameRulerPainter.glyphsAt,
+  );
+  final pair = writing.pair.map((glyph) => glyph.rect).toList();
+  final covered = <Rect>[];
+  final standing = <TimelineGlyphPlacement>[];
+  for (
+    var frameIndex = window.startIndex;
+    frameIndex < window.endIndexExclusive;
+    frameIndex += 1
+  ) {
+    for (final glyph in TimelineFrameRulerPainter.glyphsAt(
+      scale,
+      frameIndex,
+      current: false,
+    )) {
+      if (pair.any((rect) => rect.overlaps(glyph.rect))) {
+        covered.add(glyph.rect);
+      } else {
+        standing.add(glyph);
+      }
+    }
+  }
+  expect(writing.covered, covered, reason: where);
+  final kept = writing.standing.map((glyph) => glyph.rect).toSet();
+  for (final glyph in standing) {
+    if (covered.any((rect) => rect.overlaps(glyph.rect))) {
+      expect(
+        kept,
+        contains(glyph.rect),
+        reason: '$where: a standing glyph that reaches into what stands '
+            'down is rewritten after the uncovering',
+      );
+    }
+  }
 }

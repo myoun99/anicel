@@ -573,7 +573,9 @@ Uint8List rasterizeBrushStrokeSample(
         // nothing moves nothing. Showing the blur itself needs something
         // under it to smear — I-75 round ⓑ (설계 10-27).
         blurs: false,
-        pathStep: stretch.isFinite ? stretch : null,
+        pathStep: settings.adjustsFlowBySpacing && stretch.isFinite
+            ? stretch
+            : null,
       ),
       shape: settings.shape,
     );

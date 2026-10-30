@@ -627,12 +627,26 @@ List<CompositeNode<L>> withTheRowsTheyRead<L>(
 /// drops no row that is there leaves [bare] out; where it answers null,
 /// the letters go with the row.
 ///
+/// [chains] is what a folder's or an adjustment's chain becomes on this
+/// route, as [map] says what a row's does — its plugins bound to their runs
+/// (🗣️I-132-Q34 a 「어디에 걸어도 돌고」); each as it stands where null.
+///
 /// Perf: one pass per node per frame — tens of nodes, never per pixel.
 List<CompositeNode<M>> mapCompositeLeaves<L, M>(
   List<CompositeNode<L>> nodes,
   M? Function(L payload) map, {
   M? Function(L payload)? bare,
-}) => _mapCompositeLeaves<L, M>(nodes, map, bare: bare, kept: Map.identity());
+  List<ResolvedLayerEffect> Function(List<ResolvedLayerEffect> chain)? chains,
+}) => _mapCompositeLeaves<L, M>(
+  nodes,
+  map,
+  bare: bare,
+  chains: chains ?? _asItStands,
+  kept: Map.identity(),
+);
+
+List<ResolvedLayerEffect> _asItStands(List<ResolvedLayerEffect> chain) =>
+    chain;
 
 /// [mapCompositeLeaves], with [kept] the nodes a later node points back at
 /// — a clip's base ([CompositeOpaque.of]), a row a cel number is written on
@@ -642,10 +656,12 @@ List<CompositeNode<M>> _mapCompositeLeaves<L, M>(
   List<CompositeNode<L>> nodes,
   M? Function(L payload) map, {
   required M? Function(L payload)? bare,
+  required List<ResolvedLayerEffect> Function(List<ResolvedLayerEffect>)
+  chains,
   required Map<CompositeNode<L>, CompositeNode<M>?> kept,
 }) {
   List<CompositeNode<M>> fold(List<CompositeNode<L>> list) =>
-      _mapCompositeLeaves(list, map, bare: bare, kept: kept);
+      _mapCompositeLeaves(list, map, bare: bare, chains: chains, kept: kept);
   CompositeLeaf<M>? bareOf(CompositeLeaf<L> row) =>
       switch (bare?.call(row.payload)) {
         final payload? => CompositeLeaf<M>(payload),
@@ -678,7 +694,7 @@ List<CompositeNode<M>> _mapCompositeLeaves<L, M>(
             children: List.unmodifiable(mapped),
             opacity: opacity,
             blendMode: blendMode,
-            effects: effects,
+            effects: chains(effects),
           ),
         );
       case CompositeAdjustment<L>(:final children, :final effects, :final mix):
@@ -689,7 +705,7 @@ List<CompositeNode<M>> _mapCompositeLeaves<L, M>(
         out.add(
           CompositeAdjustment<M>(
             children: List.unmodifiable(mapped),
-            effects: effects,
+            effects: chains(effects),
             mix: mix,
           ),
         );

@@ -246,12 +246,16 @@ class WritesLand extends RendersHeld {
   /// what comes to the screen meanwhile.
   void Function()? beforeTheNextLands;
 
+  /// How many patches went into a picture, each write's together.
+  int patchesWritten = 0;
+
   @override
   Future<bool> write(
     Object held,
     List<BaseWrite> base,
     LevelWrites? levels,
   ) async {
+    patchesWritten += base.length;
     final written = await _gpu.write(held, base, levels);
     final meanwhile = beforeTheNextLands;
     beforeTheNextLands = null;

@@ -735,7 +735,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       document = await _openDocument(request);
     } on Object catch (error) {
       if (mounted && generation == _generation) {
-        setState(() => _message = _couldNotOpen(error));
+        setState(() => _message = viewerCouldNotOpen(error));
       }
       return;
     }
@@ -745,7 +745,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     }
     setState(() {
       if (document == null) {
-        _message = _nothingOpensFor(request.kind);
+        _message = viewerNothingOpens(request.kind);
       } else {
         _document = document;
         _loadedToken = generation;
@@ -848,7 +848,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
         fresh = await _openDocument(request, hold: (_) => was.again());
       } on Object catch (error) {
         if (mounted && identical(_document, standIn)) {
-          setState(() => _message = _couldNotOpen(error));
+          setState(() => _message = viewerCouldNotOpen(error));
         }
         return;
       }
@@ -860,7 +860,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
         // Nothing opens it now: the stand-in reads nothing, and the panel
         // says so the way a first open would (audit 09-25 — it said
         // nothing).
-        setState(() => _message = _nothingOpensFor(request.kind));
+        setState(() => _message = viewerNothingOpens(request.kind));
         return;
       }
       _takeUp(fresh, request);
@@ -868,33 +868,6 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       reopened.complete();
     }
   }
-
-  /// What the panel says when a document will not open.
-  ///
-  /// 🚨WHY, under the sentence that says WHAT. The engines answer with a
-  /// reason — 「this file has no readable video stream」, 「no decoder for
-  /// this codec」 — and the viewer used to drop it on the floor, so every
-  /// unreadable file looked identical to every other one.
-  /// ⚠️The detail is the engine's own words and is not translated; the
-  /// export path made the same call with the encoder's.
-  static String _couldNotOpen(Object error) =>
-      '${AppText.strings.mediaViewerLoadFailed}\n$error';
-
-  /// What the panel says when this build has nothing that opens a [kind] —
-  /// the honest-absence states, each saying WHICH absence: a build without a
-  /// PDF rasterizer or without a video reader is a missing engine the user
-  /// can act on (a different build). ⛔One message for all of them would
-  /// send someone hunting for a codec they do not need.
-  static String _nothingOpensFor(MediaAssetKind kind) => switch (kind) {
-    MediaAssetKind.pdf => AppText.strings.mediaViewerNoPdfRenderer,
-    MediaAssetKind.video => AppText.strings.mediaViewerNoVideoDecoder,
-    // 🪦Audio moved off this line in 2026-09-08: it HAS a picture now (its
-    // waveform), so an absence here is a conform that could not be built —
-    // a file this build cannot decode, which is the same sentence a missing
-    // video reader gets.
-    MediaAssetKind.audio => AppText.strings.mediaViewerNoAudioDecoder,
-    MediaAssetKind.image => AppText.strings.mediaViewerCannotDisplay,
-  };
 
   /// [fresh] in place of the document shown, for the same [request] — and
   /// followed in its turn.

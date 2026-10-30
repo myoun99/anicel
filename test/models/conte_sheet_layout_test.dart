@@ -1,4 +1,5 @@
-import 'dart:ui' show Size;
+import 'dart:math' as math;
+import 'dart:ui' show Rect, Size;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/conte/conte_page_marks.dart';
@@ -31,6 +32,7 @@ ConteCutSource _cut(
   durationFrames: duration,
   cumulativeEndFrames: cumulativeEnd,
   cells: cells,
+  cameraRoom: ConteCameraRoom.grows,
 );
 
 void main() {
@@ -363,7 +365,11 @@ void main() {
       final cell = pageOf([_cell(0, 24, camera: work)]).cells.single;
       expect(conteCameraPictureRowsMax, 4);
       expect(cell.rowSpan, 4);
-      final plan = conteCameraPlan(metrics, work);
+      final plan = conteCameraPlan(
+        metrics,
+        work,
+        room: ConteCameraRoom.grows,
+      );
       final slot = cell.pictureRect.deflate(metrics.silhouetteBorder);
       expect(
         work.field.height * plan.scale,
@@ -419,7 +425,11 @@ void main() {
             'this sweep would stand in the time column',
       );
       expect(
-        conteCameraPlan(metrics, conteCameraPan(across: 0.9)).scale,
+        conteCameraPlan(
+          metrics,
+          conteCameraPan(across: 0.9),
+          room: ConteCameraRoom.grows,
+        ).scale,
         lessThan(metrics.windowHeight / 1080),
         reason: 'so it is laid smaller than a screen a window',
       );
@@ -452,6 +462,103 @@ void main() {
       );
       expect(cell.rowSpan, 2);
       expect(cell.wordsTop, closeTo(metrics.rowTop(1), 1e-9));
+    });
+
+    // 🗣️I-82 (유저 2026-10-06: 「얼마나 카메라 이동하던 픽쳐칸 안에서만
+    // 표현(그림이나 카메라를 작게해서)하는 옵션」; I-82-Q1 10-30 「서식 전체 +
+    // 컷마다 덮어쓰기」).
+    ContePlacedCell keptIn(ConteCameraWork? work) => layoutConteSheet(
+      ConteSheetSource(
+        cuts: [
+          ConteCutSource(
+            cutId: const CutId('0'),
+            name: '0',
+            durationFrames: 24,
+            cumulativeEndFrames: 24,
+            cells: [_cell(0, 24, camera: work)],
+            cameraRoom: ConteCameraRoom.inCell,
+          ),
+        ],
+      ),
+      metrics: metrics,
+    ).first.cells.single;
+
+    final sweeps = [
+      conteCameraPan(down: 1),
+      conteCameraPan(down: 6),
+      conteCameraPan(across: 0.3),
+      conteCameraPan(across: 3),
+    ];
+
+    // 🗣️유저 2026-10-30: 「픽쳐칸의 사각형은 항상 고정크기고 … 지금 좌우로
+    // 움직임있을때 픽쳐 칸 실루엣이 좌우로 길어지거나 줄거나 함」.
+    test('🎯I-82: a cut that keeps its cells keeps a still cell\'s box '
+        'whatever its camera does — one row, the picture column, its words '
+        'beside it', () {
+      final still = keptIn(null).pictureRect;
+      expect(
+        still,
+        Rect.fromLTRB(
+          metrics.pictureLeft,
+          metrics.rowTop(0),
+          metrics.actionLeft,
+          metrics.rowTop(1),
+        ),
+        reason: 'fixture: the whole cell',
+      );
+      for (final work in sweeps) {
+        final cell = keptIn(work);
+        final where = '${work.field}';
+        expect(cell.rowSpan, 1, reason: where);
+        expect(cell.pictureRect, still, reason: where);
+        expect(cell.wordsTop, metrics.rowTop(0), reason: where);
+        expect(
+          cell.actionRect.left,
+          closeTo(metrics.actionLeft, 1e-9),
+          reason: where,
+        );
+      }
+    });
+
+    test('I-82: kept in its box, the whole sweep is laid in the window, as '
+        'large as the window holds it, in its middle', () {
+      for (final work in sweeps) {
+        final cell = keptIn(work);
+        final slot = contePictureSlot(cell, metrics);
+        final frame = contePictureOf(cell, metrics).frame;
+        final where = '${work.field}';
+        expect(
+          frame.width / frame.height,
+          closeTo(work.field.width / work.field.height, 1e-9),
+          reason: 'the sweep\'s own shape: $where',
+        );
+        expect(
+          math.max(frame.width / slot.width, frame.height / slot.height),
+          closeTo(1, 1e-9),
+          reason: 'it reaches the window on one side and no further: $where',
+        );
+        expect(frame.center.dx, closeTo(slot.center.dx, 1e-9), reason: where);
+        expect(frame.center.dy, closeTo(slot.center.dy, 1e-9), reason: where);
+        expect(
+          frame.width / work.field.width,
+          closeTo(
+            conteCameraPlan(
+              metrics,
+              work,
+              room: ConteCameraRoom.inCell,
+            ).scale,
+            1e-9,
+          ),
+          reason: 'the plan says the paper it takes: $where',
+        );
+      }
+    });
+
+    test('a camera that stands still lays its cell alike either way', () {
+      expect(
+        conteCameraPlan(metrics, null, room: ConteCameraRoom.inCell),
+        conteCameraPlan(metrics, null, room: ConteCameraRoom.grows),
+      );
     });
 
     test('a sweep wider than the page is laid smaller: its picture stops '

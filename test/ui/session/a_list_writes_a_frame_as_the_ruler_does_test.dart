@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -94,13 +95,13 @@ void main() {
           'ruler over it',
     );
 
-    session.panelViews.showSeconds.value = true;
+    session.panelViews.rulerView.value = FrameRulerView.secondsPlusFrames;
     expect(uses(), ['Video · S1 · 0+15']);
 
     session.projectSettings.setProjectFps(12);
     expect(uses(), ['Video · S1 · 1+3'], reason: 'a second is twelve now');
 
-    session.panelViews.showSeconds.value = false;
+    session.panelViews.rulerView.value = FrameRulerView.frames;
     expect(uses(), ['Video · S1 · 15']);
   });
 }

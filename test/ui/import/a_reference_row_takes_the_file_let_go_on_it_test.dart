@@ -16,7 +16,6 @@ import 'package:anicel/src/models/reference_swap.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/transform_pose.dart';
-import 'package:anicel/src/native/qa_video_decoder.dart' show QaVideoInfo;
 import 'package:anicel/src/services/import/import_layer_spot.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart'
@@ -538,7 +537,9 @@ void main() {
 
     testWidgets('a movie that does not open is a file that does not read — '
         'nothing changes, and the drop says so', (tester) async {
-      debugVideoDecodeBackend = _NothingOpens();
+      debugVideoDecodeBackend = FakeVideoBackend(
+        refusal: 'could not open the container',
+      );
       addTearDown(() => debugVideoDecodeBackend = null);
       final session = EditorSessionManager(
         initialProject: createDefaultProject(),
@@ -569,13 +570,4 @@ void main() {
       );
     });
   });
-}
-
-/// A decoder that opens no movie at all.
-class _NothingOpens extends FakeVideoBackend {
-  @override
-  Future<({int token, QaVideoInfo info})?> open(
-    String path, {
-    ({int offset, int length, bool framed})? span,
-  }) async => null;
 }

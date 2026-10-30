@@ -59,8 +59,9 @@ typedef BrushTipEdge = ({
 /// drew every line a pixel and more too thick; the lines fit a ramp that
 /// ENDS at the rim — so the rim is the thickness that holds, and the
 /// half-coverage width narrows with the step as Clip Studio's does. The
-/// ladder `k` below stays for every other tip: a raster tip has no distance
-/// to its edge to widen, and a square's edge was never widened.
+/// ladder `k` below stays for a square, whose edge was never widened.
+/// ↩️It stayed for a raster tip too, until the greys of a pale tip turned
+/// out to be what it was wiping ([brushDabEdgeLaw] has the measure).
 enum BrushAntiAlias {
   /// 없음 — a hard edge. The ramp collapses to a threshold at half
   /// coverage, which is the cut this engine already uses for its own hard
@@ -72,18 +73,18 @@ enum BrushAntiAlias {
   /// F-218 retired that preset).
   none,
 
-  /// 1단계 — `k = 4` off a round tip.
+  /// 1단계 — `k = 4` on a square.
   low,
 
-  /// 2단계 — `k = 2` off a round tip.
+  /// 2단계 — `k = 2` on a square.
   medium,
 
-  /// 3단계 — `k = 1` off a round tip, the ramp it always had; on a round
-  /// tip the widest edge ([edge]). A brush that says nothing is here.
+  /// 3단계 — `k = 1` on a square, the ramp it always had; on a round tip
+  /// the widest edge ([edge]). A brush that says nothing is here.
   high;
 
-  /// The contrast factor every tip but an analytic round one takes, or
-  /// `null` for [none]'s threshold (`brushDabEdgeLaw` says which applies).
+  /// The contrast factor a square takes, or `null` for [none]'s threshold
+  /// (`brushDabEdgeLaw` says which applies).
   double? get contrast => switch (this) {
     none => null,
     low => 4.0,

@@ -65,6 +65,7 @@ class BrushSettings {
     double paintAmount = 1.0,
     double paintDensity = 1.0,
     double colorStretch = 0.0,
+    bool adjustsFlowBySpacing = true,
     BrushCorrection correction = const BrushCorrection(),
     this.shown = BrushSettingsRow.shownByDefault,
   }) : shape = BrushShape(
@@ -119,6 +120,7 @@ class BrushSettings {
          paintAmount: paintAmount,
          paintDensity: paintDensity,
          colorStretch: colorStretch,
+         adjustsFlowBySpacing: adjustsFlowBySpacing,
          correction: correction,
        ) {
     _validateShape(shape);
@@ -236,6 +238,9 @@ class BrushSettings {
   double get paintDensity => shape.paintDensity;
   double get colorStretch => shape.colorStretch;
 
+  /// See [BrushShape.adjustsFlowBySpacing].
+  bool get adjustsFlowBySpacing => shape.adjustsFlowBySpacing;
+
   /// The line's correction — see [BrushShape.correction].
   BrushCorrection get correction => shape.correction;
 
@@ -290,6 +295,7 @@ class BrushSettings {
     double? paintAmount,
     double? paintDensity,
     double? colorStretch,
+    bool? adjustsFlowBySpacing,
     BrushCorrection? correction,
     Set<BrushSettingsRow>? shown,
   }) {
@@ -352,6 +358,7 @@ class BrushSettings {
       paintAmount: paintAmount ?? this.paintAmount,
       paintDensity: paintDensity ?? this.paintDensity,
       colorStretch: colorStretch ?? this.colorStretch,
+      adjustsFlowBySpacing: adjustsFlowBySpacing ?? this.adjustsFlowBySpacing,
       correction: correction ?? this.correction,
       shown: shown ?? this.shown,
     );
@@ -438,6 +445,9 @@ class BrushSettings {
       'paintDensity': paintDensity,
       'colorStretch': colorStretch,
     },
+    // Off its default only, so a preset saved before it round-trips
+    // byte-identically.
+    if (!adjustsFlowBySpacing) 'adjustsFlowBySpacing': false,
     // Written only off its default, as the tip order is — a preset saved
     // before the brush held its correction round-trips byte-identically.
     if (correction != const BrushCorrection())
@@ -546,6 +556,7 @@ class BrushSettings {
       paintAmount: (json['paintAmount'] as num?)?.toDouble() ?? 1.0,
       paintDensity: (json['paintDensity'] as num?)?.toDouble() ?? 1.0,
       colorStretch: (json['colorStretch'] as num?)?.toDouble() ?? 0.0,
+      adjustsFlowBySpacing: json['adjustsFlowBySpacing'] as bool? ?? true,
       correction: BrushCorrection.fromJson(json['correction']),
       shown: switch (json['shown']) {
         final List<dynamic> names => {

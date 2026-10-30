@@ -11,7 +11,11 @@ import 'input/pen_readings.dart';
 /// interval is based on the materialized brush size and editor-session spacing
 /// ratio, never finer than [finestDabStep].
 class BrushDabInterpolator {
-  const BrushDabInterpolator();
+  const BrushDabInterpolator({this.adjustsFlowBySpacing = true});
+
+  /// See `BrushShape.adjustsFlowBySpacing`: without it a dab carries no
+  /// [BrushDab.pathStep], and lays whole.
+  final bool adjustsFlowBySpacing;
 
   double spacingForBrushSize(double brushSize, double spacingRatio) {
     if (!brushSize.isFinite || brushSize <= 0 || !spacingRatio.isFinite) {
@@ -99,7 +103,7 @@ class BrushDabInterpolator {
         // (board `one-pixel-steps-change-a-brush-with-its-size`, the first
         // try): a stamp baked per pace would have baked a new mask per move.
         // The share is read in the kernel now, so nothing is baked.
-        pathStep: distance / stepCount,
+        pathStep: adjustsFlowBySpacing ? distance / stepCount : null,
       );
     });
   }

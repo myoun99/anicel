@@ -11,6 +11,7 @@ import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart';
 import '../models/layer_id.dart';
 import 'camera_lens_blur_passes.dart';
+import 'cel_plugin_pass.dart' show fxPluginRowsOf, fxPluginValuesOf;
 import 'cel_source_effect_pass.dart';
 import 'directional_blur_passes.dart';
 import 'shaded_passes.dart';
@@ -291,6 +292,15 @@ final class _PaperEdgePart extends _PaintPart {
   final double reach;
 }
 
+/// A plugin's effect: a step of its own over the picture before it, read
+/// back from the GPU ([PluginEffect]), [reach] past its input.
+final class _PluginPart extends _PaintPart {
+  const _PluginPart({required this.reach});
+
+  /// How far past its input it paints, as its plugin says.
+  final double reach;
+}
+
 /// A kind no paint carries: the chain is split before a paint is resolved.
 final class _SplitPart extends _PaintPart {
   const _SplitPart(this.splitBy);
@@ -359,11 +369,46 @@ _PaintPart _paintPartOf(
       'A cel number splits the chain before a paint is resolved — see '
       'celNumberedRow.',
     ),
-    // ⏳NOT DRAWN YET: where a plugin reads its input — a cel's own pixels
-    // at once, or any step's picture read back from the GPU — is
-    // I-132-Q32's to say (2026-10-30). Until then it changes no pixel.
-    EffectKind.plugin => const _NoPart(),
+    // 🗣️I-132-Q34 a (유저 2026-10-30): 「어디에 걸어도 돌고」 — a plugin
+    // past a cel's own pixels (`splitSourceEffects` runs one at the head)
+    // runs over the picture the chain made before it, read back.
+    EffectKind.plugin => _pluginPart(effect, space, paper),
   };
+}
+
+/// A plugin's step ([PluginEffect]), reaching as far as its plugin says at
+/// [space]'s scale — where it has a run on this device
+/// ([ResolvedLayerEffect.run]); none where it has not, or where its plugin
+/// cannot say: drawn as if off, as a plugin that fails.
+_PaintPart _pluginPart(
+  ResolvedLayerEffect effect,
+  DrawSpace space,
+  ui.Rect? paper,
+) {
+  final run = effect.run;
+  if (run == null) {
+    return const _NoPart();
+  }
+  final canvas = paper == null
+      ? const CanvasSize(width: 0, height: 0)
+      : CanvasSize(
+          width: (paper.width / space.scale).round(),
+          height: (paper.height / space.scale).round(),
+        );
+  final values = fxPluginValuesOf(
+    effect,
+    paper: canvas,
+    rows: fxPluginRowsOf(effect, run),
+  );
+  final reach = run.runner.reach(values, (
+    frameIndex: run.moment.frameIndex,
+    time: run.moment.time,
+    frameRate: run.moment.frameRate,
+    scale: space.scale,
+  ));
+  return reach == null
+      ? const _NoPart()
+      : _PluginPart(reach: math.max(0, reach).toDouble());
 }
 
 /// A Gaussian: a filter the composite draw carries, or a step where it
@@ -625,11 +670,11 @@ CompositeEffectPaint resolveCompositeEffectPaint(
       // looks exactly like "the artist set Amount to 0".
       case _SplitPart(:final splitBy):
         assert(false, splitBy);
-      case _StepPart() || _PaperEdgePart():
+      case _StepPart() || _PaperEdgePart() || _PluginPart():
         assert(
           false,
-          'A shaded effect and a blur on the paper are steps of their own — '
-          'see resolveCompositeEffectPlan.',
+          'A shaded effect, a blur on the paper and a plugin are steps of '
+          'their own — see resolveCompositeEffectPlan.',
         );
       case _NoPart():
         break;
@@ -721,6 +766,17 @@ final class PaperEdgeEffect extends EffectStepLead {
 
   /// ⛔UNRESOLVED, as [ShadedEffect.effect]: its radius belongs to the
   /// raster the step runs in, and the paper to where that raster lies.
+  final ResolvedLayerEffect effect;
+}
+
+/// A plugin's effect past a cel's own pixels (🗣️I-132-Q34 a), run over the
+/// step's input read back from the GPU — where a route can wait for it
+/// (`FxPluginStages`); drawn as if off where it cannot.
+final class PluginEffect extends EffectStepLead {
+  const PluginEffect(this.effect);
+
+  /// The sample with its run ([ResolvedLayerEffect.run]); the step's scale
+  /// is the raster's, given where it runs.
   final ResolvedLayerEffect effect;
 }
 
@@ -826,6 +882,7 @@ CompositeEffectPlan resolveCompositeEffectPlan(
       )) {
         _StepPart(:final reach) => (ShadedEffect(effect), reach),
         _PaperEdgePart(:final reach) => (PaperEdgeEffect(effect), reach),
+        _PluginPart(:final reach) => (PluginEffect(effect), reach),
         _ => (null, 0.0),
       };
       if (lead == null) {

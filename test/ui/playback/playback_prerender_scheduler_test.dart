@@ -919,9 +919,18 @@ void main() {
         final images = LayerFrameImageCache(frameStore: store);
         final gpu = _RastersInTurn();
         final asked = <FrameId>{};
+        // What the walk asks, and the picture a raster let through brings
+        // back, COME — and are waited for as anything that comes is: by
+        // time, to the one ceiling (poll_until.dart). They were read a fixed
+        // 50 ms after, and a crowded batch read one before it came
+        // (prerender-asks-past-flake, 2026-10-30 — on the Surface the ask
+        // came 7–8 ms after alone, up to 14 in a crowded batch).
+        Future<void> askedFor(List<FrameId> frames) =>
+            pollUntil(() => asked.containsAll(frames));
         Future<void> letThrough(FrameId frame) async {
+          final before = gpu.rastered;
           gpu.letThrough(int.parse(frame.value.substring(1)));
-          await Future<void>.delayed(const Duration(milliseconds: 50));
+          await pollUntil(() => gpu.rastered > before);
         }
 
         final scheduler = PlaybackPrerenderScheduler(
@@ -946,7 +955,9 @@ void main() {
                 cutId == const CutId('cut') ? frameIndex : null,
           ),
         );
-        await Future<void>.delayed(const Duration(milliseconds: 50));
+        await askedFor([
+          for (var index = 0; index < 3; index += 1) FrameId('f$index'),
+        ]);
         expect(
           asked,
           {for (var index = 0; index < 3; index += 1) FrameId('f$index')},
@@ -954,6 +965,7 @@ void main() {
         );
 
         await letThrough(const FrameId('f0'));
+        await askedFor([const FrameId('f3')]);
         expect(
           asked,
           contains(const FrameId('f3')),
@@ -962,6 +974,7 @@ void main() {
 
         await letThrough(const FrameId('f1'));
         await letThrough(const FrameId('f2'));
+        await askedFor([const FrameId('f4'), const FrameId('f5')]);
         expect(
           asked,
           containsAll([const FrameId('f4'), const FrameId('f5')]),

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -82,7 +83,7 @@ void main() {
     // drawing's name.
     expect(replaced(), ['2 · A · 1 · 1', '2 · A · 2 · 2']);
 
-    s.panelViews.showSeconds.value = true;
+    s.panelViews.rulerView.value = FrameRulerView.secondsPlusFrames;
     expect(
       replaced(),
       ['2 · A · 1 · 0+1', '2 · A · 2 · 0+2'],

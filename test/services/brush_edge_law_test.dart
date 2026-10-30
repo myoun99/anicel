@@ -2,10 +2,15 @@
 //
 // Two laws share the four steps (I-50, 유저 2026-09-30 「경도와 따로 — 단계마다
 // 고정 폭」): an analytic round tip already carries its edge — in its
-// profile (`RoundTipProfile`) — and takes its coverage as it is; every
-// other tip keeps the contrast ladder, which tightens the edge WITHOUT
-// moving the half-coverage radius (유저 2026-09-08 「굵기 안바꾸고 가장자리만
+// profile (`RoundTipProfile`) — and takes its coverage as it is; a square
+// keeps the contrast ladder, which tightens the edge WITHOUT moving the
+// half-coverage radius (유저 2026-09-08 「굵기 안바꾸고 가장자리만
 // 조이는거였어」). 없음 cuts at half coverage whatever the tip.
+//
+// ↩️A raster tip kept the ladder too, until its greys turned out to be what
+// the ladder wiped (board imported-water-blend-lays-almost-nothing,
+// 2026-10-30): it takes its coverage as it is, as a round tip does.
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -14,6 +19,7 @@ import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/services/brush_dab_coverage.dart';
 import 'package:anicel/src/services/brush_dab_tip_geometry.dart';
 import 'package:anicel/src/services/brush_tip_stamp_cache.dart';
 
@@ -42,9 +48,11 @@ void main() {
     alpha: Uint8List.fromList(List.filled(16, 200)),
   );
 
-  /// [coverage] as a raster-tipped dab at [step] lands it.
-  double ladder(BrushAntiAlias step, double coverage) =>
-      brushEdgeApplied(brushDabEdgeLaw(dab(step, tipMask: rasterTip)), coverage);
+  /// [coverage] as a square dab at [step] lands it.
+  double ladder(BrushAntiAlias step, double coverage) => brushEdgeApplied(
+    brushDabEdgeLaw(dab(step, tipShape: BrushTipShape.square)),
+    coverage,
+  );
 
   group('which law a dab takes', () {
     test('an analytic round tip takes its coverage as it is at every step '
@@ -77,17 +85,40 @@ void main() {
       expect(low.coverage, isNot(high.coverage));
     });
 
-    test('a raster tip keeps the ladder — resolved or not', () {
+    test('a raster tip takes its coverage as it is at every step but 없음 — '
+        'resolved or not', () {
       for (final step in [BrushAntiAlias.low, BrushAntiAlias.medium]) {
         final raw = dab(step, tipMask: rasterTip);
         final resolved = BrushTipStampCache().resolveDab(raw);
         expect(resolved.tipMask, same(rasterTip), reason: 'premise');
-        expect(brushDabEdgeLaw(raw).contrast, step.contrast, reason: '$step');
+        expect(brushDabEdgeLaw(raw).contrast, 1.0, reason: '$step');
         expect(
           brushDabEdgeLaw(resolved).contrast,
-          step.contrast,
+          1.0,
           reason: '$step resolved',
         );
+      }
+    });
+
+    test('🚨a pale tip is not wiped — its greys are its picture, not an edge',
+        () {
+      // Clip Studio's 수채 섞기 at 1단계: the ladder took every grey under
+      // 0.375 to nothing, and its tip peaks at 0.63 and averages 0.05.
+      const grey = 64;
+      final pale = BrushTipMask(
+        id: 'pale',
+        size: 4,
+        alpha: Uint8List.fromList(List.filled(16, grey)),
+      );
+      for (final step in [
+        BrushAntiAlias.low,
+        BrushAntiAlias.medium,
+        BrushAntiAlias.high,
+      ]) {
+        final laid = brushPixelCoveragesForDab(
+          dab(step, tipMask: pale),
+        ).map((pixel) => pixel.coverage).reduce(math.max);
+        expect(laid, closeTo(grey / 255, 0.002), reason: '$step');
       }
     });
 
@@ -112,7 +143,7 @@ void main() {
   });
 
   group('the ladder', () {
-    test('3단계 is the ramp a raster tip always had', () {
+    test('3단계 is the ramp a square always had', () {
       for (final coverage in [0.0, 0.13, 0.5, 0.87, 1.0]) {
         expect(ladder(BrushAntiAlias.high, coverage), coverage);
       }

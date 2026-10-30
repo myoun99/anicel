@@ -86,6 +86,7 @@ class BrushShape {
     this.paintAmount = 1.0,
     this.paintDensity = 1.0,
     this.colorStretch = 0.0,
+    this.adjustsFlowBySpacing = true,
     this.correction = const BrushCorrection(),
   });
 
@@ -99,6 +100,13 @@ class BrushShape {
   /// whatever this is (`finestDabStep`), so a small brush pays nothing for
   /// it.
   static const double minSpacing = 0.01;
+
+  /// The step a brush lays its dabs at unless its look needs a gap of its
+  /// own, as a fraction of its size. 유저 2026-10-30: 「연필시리즈들 간격이
+  /// 너무 길어. 5%로 하자. 그냥 다른 프리셋도 그렇고 특별한일없으면 기본값 다
+  /// 5%로해도될듯」 — which replaces 2026-09-24's 「일반적인 설정으론 최소치로
+  /// 두자」 ([minSpacing]).
+  static const double generalSpacing = 0.05;
 
   /// The widest [spacing]: four tip sizes between dabs.
   static const double maxSpacing = 4.0;
@@ -377,6 +385,19 @@ class BrushShape {
   /// other way round.
   final double colorStretch;
 
+  /// Whether this brush's dabs lay their share of a stamp (`stampShareOf`)
+  /// rather than each stamp whole, however close they lie — the file's
+  /// `BrushAdjustFlowByInterval` on a brush from Clip Studio.
+  ///
+  /// 🗣️A BRUSH THAT CAME IN SAYING NO KEEPS IT (유저 2026-10-31, board
+  /// imported-water-blend-lays-almost-nothing Q3 「파일 값을 따른다」 — no
+  /// panel row: 「화면에 새 옵션은 만들지 않는다」). 📏수채 섞기 stores 0, and
+  /// the user's sample of it matches with its stamps whole, a section of 88
+  /// to the sample's 87, against 56 with the share. ⚠️One brush measured.
+  /// Every other brush lays its share — the law of 2026-10-01 beside
+  /// `stampShareOf`.
+  final bool adjustsFlowBySpacing;
+
   /// How the line this brush draws is corrected — Clip Studio's 補正, the
   /// brush's own (F-418-Q6).
   final BrushCorrection correction;
@@ -481,6 +502,7 @@ class BrushShape {
       paintAmount: paintAmount,
       paintDensity: paintDensity,
       colorStretch: colorStretch,
+      adjustsFlowBySpacing: adjustsFlowBySpacing,
       correction: correction,
       rotationMode: rotationMode,
       angleJitter: angleJitter,
@@ -555,6 +577,7 @@ class BrushShape {
     double? paintAmount,
     double? paintDensity,
     double? colorStretch,
+    bool? adjustsFlowBySpacing,
     BrushCorrection? correction,
   }) {
     return BrushShape(
@@ -602,6 +625,7 @@ class BrushShape {
       paintAmount: paintAmount ?? this.paintAmount,
       paintDensity: paintDensity ?? this.paintDensity,
       colorStretch: colorStretch ?? this.colorStretch,
+      adjustsFlowBySpacing: adjustsFlowBySpacing ?? this.adjustsFlowBySpacing,
       correction: correction ?? this.correction,
     );
   }
@@ -655,6 +679,7 @@ class BrushShape {
           other.paintAmount == paintAmount &&
           other.paintDensity == paintDensity &&
           other.colorStretch == colorStretch &&
+          other.adjustsFlowBySpacing == adjustsFlowBySpacing &&
           other.correction == correction;
 
   @override
@@ -703,6 +728,7 @@ class BrushShape {
     paintAmount,
     paintDensity,
     colorStretch,
+    adjustsFlowBySpacing,
     correction,
   ]);
 

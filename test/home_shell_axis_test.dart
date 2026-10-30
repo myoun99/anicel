@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/main.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/layout/device_grid_safe_area.dart';
+import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 
 import 'ui/timeline/timeline_ruler_probe.dart';
 
@@ -218,18 +219,29 @@ void main() {
         .framePlaceLabel(14);
     expect(placeInALine(), '15');
 
-    await tapToolbarButton(
-      tester,
-      const ValueKey<String>('timeline-time-display-toggle-button'),
-    );
+    // I-81-Q2: the corner lists the counts, and a pick turns the rulers.
+    Future<void> pick(FrameRulerView view) async {
+      await tapToolbarButton(
+        tester,
+        const ValueKey<String>('timeline-time-display-toggle-button'),
+      );
+      await tester.tap(
+        find.byKey(ValueKey<String>('frame-ruler-view-${view.name}')),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await pick(FrameRulerView.secondsPlusFrames);
     // Frame 15 at 24fps in conte notation — bare digits, the sheet's own
     // (feedback #12).
     expect(placeInALine(), '0+15');
 
-    await tapToolbarButton(
-      tester,
-      const ValueKey<String>('timeline-time-display-toggle-button'),
-    );
+    // I-81-Q4 「그 외는 프레임뷰랑 똑같음」: the page view names a place as
+    // the frames view does.
+    await pick(FrameRulerView.pages);
+    expect(placeInALine(), '15');
+
+    await pick(FrameRulerView.frames);
     expect(placeInALine(), '15');
   });
 

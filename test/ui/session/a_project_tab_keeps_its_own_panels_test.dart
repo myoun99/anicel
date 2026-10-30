@@ -14,9 +14,11 @@ import 'package:anicel/src/ui/session/panel_view_memory.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_window.dart'
-    show TimelineSecondsToggleCorner;
+    show TimelineRulerViewCorner;
+import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 
 import '../../helpers/scrollable_of.dart';
+import '../timeline/timeline_ruler_probe.dart' show timelineRulerPainter;
 
 /// F-267 (유저 2026-10-01): 「콘티패널,타임라인패널 스크롤상태, 콘티패널,
 /// 그리고 각 컷들 줌 상태도 프로젝트 파일에 기록해서 다시 열면 그대로
@@ -110,34 +112,47 @@ void main() {
   });
 
   testWidgets('🚨a project tab writes its frames as IT was left — the '
-      'seconds display is the project\'s, not the window\'s (F-354)', (
+      'rulers\' count is the project\'s, not the window\'s (F-354)', (
     tester,
   ) async {
     final projects = await openWindow(tester, createDefaultProject());
-    final toggle = find.byKey(
+    final corner = find.byKey(
       const ValueKey<String>('timeline-time-display-toggle-button'),
     );
-    bool showsSeconds() =>
-        tester.widget<TimelineSecondsToggleCorner>(toggle).showSeconds;
+    FrameRulerView shown() =>
+        tester.widget<TimelineRulerViewCorner>(corner).rulerView;
 
     final first = projects.active;
-    await tester.tap(toggle);
+    await tester.tap(corner);
     await tester.pumpAndSettle();
-    expect(showsSeconds(), isTrue, reason: 'premise: the press turned it');
-    expect(first.panelViews.showSeconds.value, isTrue);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('frame-ruler-view-pages')),
+    );
+    await tester.pumpAndSettle();
+    expect(shown(), FrameRulerView.pages, reason: 'premise: the pick took');
+    expect(first.panelViews.rulerView.value, FrameRulerView.pages);
+    // I-81-Q1 「그 컷의 X시트 장을 따른다」: the open cut's paper, six
+    // seconds at 24.
+    final ruler = timelineRulerPainter(tester).scale;
+    expect(ruler.pages, const TimelineRulerPages.every(144));
+    expect(ruler.modelAt(0).secondsLabel, '0 p1');
 
     final second = projects.open(createDefaultProject());
     await tester.pumpAndSettle();
     expect(projects.active, same(second), reason: 'premise: B is in front');
     expect(
-      showsSeconds(),
-      isFalse,
+      shown(),
+      FrameRulerView.frames,
       reason: 'B was never turned — it writes frames',
     );
 
     projects.activate(first);
     await tester.pumpAndSettle();
-    expect(showsSeconds(), isTrue, reason: 'and A comes back as it was left');
+    expect(
+      shown(),
+      FrameRulerView.pages,
+      reason: 'and A comes back as it was left',
+    );
   });
 
   for (final (sheet, viewportKey, rail, project, button) in [

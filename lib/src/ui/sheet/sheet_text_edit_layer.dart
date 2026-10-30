@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../models/canvas_viewport.dart';
 import '../input/control_press_claim.dart';
+import '../widgets/cursor_notice.dart' show cursorNotices;
 
 /// How a sheet sets the words of a [SheetTextTarget] — the form the field
 /// types them in, so the editing happens on the printed glyphs.
@@ -34,6 +35,7 @@ class SheetTextTarget {
     required this.style,
     required this.onCommitted,
     this.form = SheetTextForm.paragraph,
+    this.refusal,
   });
 
   /// How the sheet sets these words.
@@ -60,6 +62,11 @@ class SheetTextTarget {
 
   /// Called with the new words — only when they changed.
   final ValueChanged<String> onCommitted;
+
+  /// Why a tap here opens no field, said at the cursor as a press on a
+  /// window that refuses the pen says it — null where the words are the
+  /// sheet's to take.
+  final String? refusal;
 }
 
 /// Tap-to-edit on a sheet: a tap on one of [targets] swaps in a TextField
@@ -217,7 +224,14 @@ class _SheetTextEditLayerState extends State<SheetTextEditLayer> {
 
   Widget _tapZone(SheetTextTarget target) {
     final rect = _onScreen(target.box);
-    void onTap() => _beginEdit(target);
+    void onTap() {
+      if (target.refusal case final refusal?) {
+        cursorNotices.show(refusal);
+        return;
+      }
+      _beginEdit(target);
+    }
+
     return Positioned(
       key: ValueKey<String>(target.keyValue),
       left: rect.left,

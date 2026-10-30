@@ -18,6 +18,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
+import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_run_labels_painter.dart';
@@ -191,7 +192,10 @@ void main() {
       ],
     );
 
-    Future<Track> pump(WidgetTester tester) async {
+    Future<Track> pump(
+      WidgetTester tester, {
+      FrameRulerView view = FrameRulerView.secondsPlusFrames,
+    }) async {
       await tester.binding.setSurfaceSize(const Size(1400, 700));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final shown = project();
@@ -202,7 +206,7 @@ void main() {
               project: shown,
               activeCutId: const CutId('cut-1'),
               pixelsPerFrame: 12,
-              showSeconds: true,
+              rulerView: view,
             ),
           ),
         ),
@@ -223,6 +227,16 @@ void main() {
       await pump(tester);
 
       expect(labelsOf(labelsOn(tester, seLayerId)), [(1, '0+3'), (6, '0+4')]);
+    });
+
+    // I-81 (유저 2026-10-06 「기본 프레임뷰랑 똑같지만」): the page view
+    // counts the ruler again at each page, and a length as frames.
+    testWidgets('under the page view a block prints its length in frames', (
+      tester,
+    ) async {
+      await pump(tester, view: FrameRulerView.pages);
+
+      expect(labelsOf(labelsOn(tester, seLayerId)), [(1, '3'), (6, '4')]);
     });
 
     testWidgets('🚨a transition span prints its length', (tester) async {

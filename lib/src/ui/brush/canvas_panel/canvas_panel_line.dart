@@ -17,6 +17,14 @@ part of '../brush_canvas_panel.dart';
 /// the pressure of the last dab the last stroke laid, the whole way. ↩️It
 /// was laid at full, as the shape tool's line is, which no pen pressed.
 ///
+/// 🗣️F-513 (유저 2026-10-30): 「z를 여러번 하면 매번 직전 찍은 필압? 기준으로
+/// 해야하는데 z로 찍는건 그 기준에 안들어가서 … z로 찍다가 중간에 마우스로
+/// 찍고 다시z누르면 진해져있어야하는데」 — the click that lands a line is a
+/// press of its own: the NEXT line is laid at what it pressed with, read as
+/// a stroke reads its pen ([ShapeShow.pressureOf]). ↩️The next line took
+/// the landed line's dabs, which are its start's, so a run of lines kept
+/// the first stroke's pressure whatever pressed them.
+///
 /// ★THE SHAPE TOOL'S LINE FROM ANOTHER START, not one like it: that tool's
 /// own drag ([MarqueeDrag] of a [CanvasShapeKind.line]) begun at the last
 /// stroke's end instead of at a press — its end where the hand is, kept to
@@ -42,8 +50,13 @@ class _CanvasPanelLine {
   /// landed is a stroke, so its end is the next one's start.
   ({CanvasPoint at, double pressure})? _from;
 
-  /// The press the line lands at when it lets go.
-  int? _press;
+  /// The press the line lands at when it lets go, and what it pressed with.
+  ({int pointer, double pressure})? _press;
+
+  /// What the press that landed the last line pressed with — the next
+  /// line's start ([heard]) — until the next press goes down ([press]):
+  /// every stroke heard here began with a press the census heard.
+  double? _landingPress;
 
   /// Whether a line of this hand is on screen — what a take-back takes.
   /// ⛔Without it every aim out of force would take back the drawing
@@ -71,9 +84,9 @@ class _CanvasPanelLine {
   }
 
   /// [stroke] has landed: where its path ended, at its last dab's pressure
-  /// (full where it laid none, as a stroke opens), is the next line's
-  /// start. A mark with no path (a fill, a stamp) leaves the start where it
-  /// was.
+  /// (full where it laid none, as a stroke opens) — or, a line of this
+  /// hand, at the press that landed it — is the next line's start. A mark
+  /// with no path (a fill, a stamp) leaves the start where it was.
   void heard(BrushStrokeCommitData stroke) {
     final end = stroke.end;
     if (end == null) {
@@ -81,7 +94,7 @@ class _CanvasPanelLine {
     }
     _from = (
       at: _state._selectionSeat.pointOnTheCanvas(end),
-      pressure: stroke.sourceDabs.lastOrNull?.pressure ?? 1,
+      pressure: _landingPress ?? stroke.sourceDabs.lastOrNull?.pressure ?? 1,
     );
     refresh();
   }
@@ -116,21 +129,30 @@ class _CanvasPanelLine {
 
   /// The census heard [event] go down: a primary press while the line is
   /// in force and aimed is the line's, and lands it where it lets go.
+  ///
+  /// Any press is a stroke of its own: a landing heard by no one — a row
+  /// that takes no strokes, a cel that never came — leaves its press for no
+  /// stroke to take.
   void press(PointerDownEvent event) {
+    _landingPress = null;
     if (!inForce.value ||
         _state._toolCursorHover.value == null ||
         _state._strokeActive ||
         !canvasPrimaryDown(event.buttons)) {
       return;
     }
-    _press = event.pointer;
+    _press = (
+      pointer: event.pointer,
+      pressure: _state._shapeShow.now?.pressureOf(event) ?? 1,
+    );
   }
 
   /// The census heard [event] let go: the line's press lands it there — a
   /// cancelled one takes it back. A press the line went out of force under
   /// is no longer its own ([refresh]): 「도중에 … 키를 떼면 취소임」.
   void letGo(PointerEvent event) {
-    if (event.pointer != _press) {
+    final press = _press;
+    if (press == null || event.pointer != press.pointer) {
       return;
     }
     _press = null;
@@ -141,6 +163,9 @@ class _CanvasPanelLine {
       return;
     }
     _setTrails(const [], shown: false);
+    // Before the landing: a line laid and landed in one go is heard inside
+    // it, and one that waits for its cel a frame later.
+    _landingPress = press.pressure;
     _state._landTraced(copies, asStroke: true, pressure: _from!.pressure);
   }
 

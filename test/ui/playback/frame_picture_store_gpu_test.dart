@@ -4,6 +4,7 @@ library;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:anicel/src/ui/playback/flutter_gpu_copies.dart';
 import 'package:anicel/src/ui/playback/frame_picture_gpu.dart';
 import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:flutter_gpu/gpu.dart' as gpu;
@@ -227,16 +228,61 @@ void main() {
     skip: noFlutterGpu,
   );
 
-  test('a picture in a format flutter_gpu cannot size is not held — no '
-      'write into it is sized at nothing (F-509)', () {
-    expect(FlutterGpuFramePictures.sizes(gpu.PixelFormat.unknown), isFalse);
+  test('a texel flutter_gpu has no name for is BGRA10_XR, eight bytes — a '
+      'write into it is not sized at nothing (F-509-Q9)', () {
+    expect(FlutterGpuFramePictures.bytesPerTexel(gpu.PixelFormat.unknown), 8);
     for (final format in [
       gpu.PixelFormat.r8g8b8a8UNormInt,
       gpu.PixelFormat.b8g8r8a8UNormInt,
     ]) {
-      expect(FlutterGpuFramePictures.sizes(format), isTrue, reason: '$format');
+      expect(FlutterGpuFramePictures.bytesPerTexel(format), 4);
     }
   });
+
+  test(
+    'past the Dart check the engine still refuses a length that is not the '
+    "region's (F-509-Q10)",
+    () {
+      final context = gpu.gpuContext;
+      final texture = context.createTexture(
+        gpu.StorageMode.devicePrivate,
+        4,
+        4,
+        format: gpu.PixelFormat.r8g8b8a8UNormInt,
+      );
+      final buffer = context.createDeviceBuffer(
+        gpu.StorageMode.devicePrivate,
+        4 * 4 * 4,
+      );
+      void copy(int lengthInBytes) => copyBufferIntoTexture(
+        context.createCommandBuffer(),
+        gpu.BufferView(
+          buffer,
+          offsetInBytes: 0,
+          lengthInBytes: lengthInBytes,
+        ),
+        gpu.TextureRegion(texture, width: 4, height: 4),
+      );
+
+      copy(4 * 4 * 4);
+      expect(() => copy(4 * 4 * 4 - 1), throwsException);
+
+      void copyOut(gpu.DeviceBuffer into) =>
+          copyTextureIntoBuffer(context.createCommandBuffer(), texture, into);
+
+      copyOut(buffer);
+      expect(
+        () => copyOut(
+          context.createDeviceBuffer(
+            gpu.StorageMode.devicePrivate,
+            4 * 4 * 4 - 1,
+          ),
+        ),
+        throwsException,
+      );
+    },
+    skip: noFlutterGpu,
+  );
 }
 
 /// [image] at every level of its chain, as a zoomed-out view draws it:

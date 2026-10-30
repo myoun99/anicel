@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_header_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 
@@ -10,7 +11,10 @@ import 'timeline_ruler_probe.dart';
 /// the 1..fps cycle in seconds mode; no quote notation anywhere). The
 /// strip is painterized (UI-R13 #1): the lines probe as painter models.
 void main() {
-  Widget harness({required bool showSeconds}) => MaterialApp(
+  Widget harness({
+    required FrameRulerView rulerView,
+    int? pageFrames,
+  }) => MaterialApp(
     home: Scaffold(
       body: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -26,7 +30,10 @@ void main() {
           ),
           onSelectFrame: (_) {},
           framesPerSecond: 24,
-          showSeconds: showSeconds,
+          rulerView: rulerView,
+          pages: pageFrames == null
+              ? null
+              : TimelineRulerPages.every(pageFrames),
         ),
       ),
     ),
@@ -34,7 +41,7 @@ void main() {
 
   testWidgets('frame mode: absolute numbers below, the second index on '
       'its boundary above', (tester) async {
-    await tester.pumpWidget(harness(showSeconds: false));
+    await tester.pumpWidget(harness(rulerView: FrameRulerView.frames));
 
     expect(timelineHeaderModel(tester, 22).label, '23');
     expect(timelineHeaderModel(tester, 24).label, '25');
@@ -50,7 +57,9 @@ void main() {
   });
 
   testWidgets('seconds mode: the bottom line cycles 1..fps', (tester) async {
-    await tester.pumpWidget(harness(showSeconds: true));
+    await tester.pumpWidget(
+      harness(rulerView: FrameRulerView.secondsPlusFrames),
+    );
 
     expect(
       timelineHeaderModel(tester, 22).label,
@@ -74,5 +83,28 @@ void main() {
       '2',
       reason: 'the cycle, never absolute 26',
     );
+  });
+
+  testWidgets('I-81 page view: the numbers start again at the page, whose '
+      'head writes the page beside its second', (tester) async {
+    await tester.pumpWidget(
+      harness(rulerView: FrameRulerView.pages, pageFrames: 24),
+    );
+
+    expect(timelineHeaderModel(tester, 23).label, '24');
+    expect(timelineHeaderModel(tester, 24).label, '1');
+    expect(timelineHeaderModel(tester, 25).label, '2');
+    expect(timelineHeaderModel(tester, 24).secondsLabel, '1 p2');
+    expect(timelineHeaderModel(tester, 23).secondsLabel, '');
+  });
+
+  testWidgets('a page length is no page view — the frames view counts on '
+      'through it', (tester) async {
+    await tester.pumpWidget(
+      harness(rulerView: FrameRulerView.frames, pageFrames: 24),
+    );
+
+    expect(timelineHeaderModel(tester, 24).label, '25');
+    expect(timelineHeaderModel(tester, 24).secondsLabel, '1');
   });
 }

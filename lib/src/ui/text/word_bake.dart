@@ -305,6 +305,15 @@ typedef BoxFilterSpan = ({double origin, double step});
 /// sixteen source pixels a pixel (`kResampleRadiusCeiling`) Blend stops
 /// averaging, which a narrowing to a twentieth asks of a 9px name — its
 /// ink came out from a fifth short to a third over.
+///
+/// ⛔NOT A PICTURE'S OWN MIP CHAIN EITHER (`display_resample.dart`), which
+/// would spare a paint the wait for its bake. A chain halves both axes at
+/// once, and a word narrows along its line alone: 🧪measured 2026-10-30
+/// (the app's face on Impeller, 52 words × types × narrowings, one raster
+/// through each, `medium`), 34 came out on more rows than this leaves — a
+/// 12px 「12」 narrowed to a quarter inks all 14 rows of its box for 9, peak
+/// 76 for 214, the blur of F-297 back. Even narrowed by a half both ways its
+/// levels stand half a texel off these windows, the margin being one pixel.
 Uint8List boxFilterA8(
   Uint8List src,
   int sw,
@@ -388,10 +397,10 @@ double? wordBakePixelRatio() {
 /// run, 2026-10-01): a glyph drawn through `canvas.scale(0.1, 1)` comes out
 /// as black and white specks — the engine samples the narrowed glyph
 /// without averaging it. A glyph IMAGE drawn smaller by the GPU specked the
-/// same way, from a picture or from decoded pixels alike (no mips for
-/// either); only a raster averaged on the CPU — the tiles' bake — came out
-/// smooth. So a narrowed word on a screen is drawn from that bake, as a
-/// tile word is.
+/// same way, from a picture or from decoded pixels alike, at `low`; only a
+/// raster averaged on the CPU — the tiles' bake — came out smooth. So a
+/// narrowed word on a screen is drawn from that bake, as a tile word is.
+/// (`medium` does not speck, and is no answer either: [boxFilterA8].)
 ///
 /// Only where the bake would differ: a word whose narrowed type is under
 /// [legibleBakeSize] ([wordIsBaked]). Anything the rasteriser draws well is

@@ -16,6 +16,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
 import 'package:anicel/src/ui/audio/sound_cannot_play.dart';
 import 'package:anicel/src/ui/timeline/berth_row.dart';
+import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cells_row_facts.dart';
@@ -131,7 +132,7 @@ void main() {
     SoundCannotPlay? Function(String)? cannotPlay,
     CameraInstructionDef? Function(String)? defById,
     PropertyLaneRow? Function(Layer)? unionLaneFor,
-    bool showSeconds = false,
+    FrameRulerView rulerView = FrameRulerView.frames,
     void Function(LayerId)? onSelectLayer,
   }) => (
     TimelineDisplayRow.layer(row ?? drawing, layerIndex: 0),
@@ -162,7 +163,7 @@ void main() {
         soundCannotPlay: cannotPlay,
         instructionDefById: defById,
         unionLaneForLayer: unionLaneFor,
-        showSeconds: showSeconds,
+        rulerView: rulerView,
       ),
       metrics: metrics,
       geometry: geometry,
@@ -246,7 +247,10 @@ void main() {
     'hasActivateCell': (told(), told(onActivateCell: activate)),
     'dragPreview': (told(), told(dragPreview: previewB)),
     'seClipMarkerTooltip': (told(), told(seClipMarkerTooltip: 'clipped')),
-    'showSeconds': (told(), told(showSeconds: true)),
+    'showSeconds': (
+      told(),
+      told(rulerView: FrameRulerView.secondsPlusFrames),
+    ),
     // What a kept row's pictures ask again when the world moves (I-57).
     'audioPeaksFor': (told(), told(peaksFor: landedB)),
     'soundCannotPlay': (told(), told(cannotPlay: plays)),

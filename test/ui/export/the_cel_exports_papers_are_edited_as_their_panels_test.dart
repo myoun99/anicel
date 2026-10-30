@@ -47,6 +47,7 @@ import 'package:anicel/src/ui/timesheet/timesheet_ink_layer.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_paper.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/export_preview_probe.dart';
 import '../../helpers/paper_editing_kit.dart';
 
@@ -70,7 +71,7 @@ void main() {
       Frame(id: FrameId(id), duration: 1, strokes: const [], name: name);
 
   /// One cut, 301: a KEY row A with two cels.
-  EditorSessionManager film() => EditorSessionManager(
+  EditorSessionManager film() => inkEveryCel(EditorSessionManager(
     initialProject: Project(
       id: const ProjectId('project'),
       name: 'Project',
@@ -100,7 +101,7 @@ void main() {
         ),
       ],
     ),
-  );
+  ));
 
   const everything = CelsExportSpec(
     kinds: {ExportCelKind.cel, ExportCelKind.timesheet, ExportCelKind.envelope},

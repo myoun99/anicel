@@ -14,10 +14,13 @@ import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/fx_plugins/installed_fx_plugins.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import 'package:anicel/src/ui/track_effect_paint_policy.dart';
+
+import '../../helpers/a_plugin_that_shifts.dart';
 
 /// playback-plays-the-screen-material ④ (10-09): the V row's fx filter the
 /// cut's picture on the canvas you stand on, as they do in playback, on the
@@ -34,8 +37,15 @@ void main() {
     parameters: {'brightness': EffectParameter(value: 0.5)},
   );
 
-  EditorSessionManager session({bool fxEnabled = true}) =>
+  /// The V row wearing [effects] — [brightness] where none are named — on
+  /// a device whose installed plugins are [plugins].
+  EditorSessionManager session({
+    bool fxEnabled = true,
+    List<LayerEffect>? effects,
+    InstalledFxPlugins? plugins,
+  }) =>
       EditorSessionManager(
+        fxPlugins: plugins,
         initialProject: Project(
           id: const ProjectId('p'),
           name: 'P',
@@ -44,7 +54,7 @@ void main() {
             Track(
               id: const TrackId('t'),
               name: 'V1',
-              effects: [brightness],
+              effects: effects ?? [brightness],
               fxEnabled: fxEnabled,
               cuts: [
                 Cut(
@@ -91,6 +101,25 @@ void main() {
       expect(group!.effects, trackEffectsAt([brightness], 0));
       expect(group.opacity, 1);
       expect(group.children, isNotEmpty, reason: 'the cut\'s row is inside');
+    }
+  });
+
+  testWidgets('🗣️I-132-Q34 a 「어디에 걸어도 돌고」: a plugin on the V row '
+      'runs on the canvas, at the playhead and ahead of it', (tester) async {
+    final plugins = await installedShiftingFxPlugin(tester);
+    final s = session(
+      effects: [shiftingFxPluginLayerEffect()],
+      plugins: plugins,
+    );
+    addTearDown(s.dispose);
+
+    for (final nodes in [
+      s.editingCanvas.stack.nodes,
+      s.editingCanvas.playedStackAt(s.requireActiveCut, 0),
+    ]) {
+      final chain = groupOf(nodes)!.effects;
+      expect(chain.map((effect) => effect.kind), [EffectKind.plugin]);
+      expect(chain.single.run, isNotNull, reason: 'bound to its run');
     }
   });
 

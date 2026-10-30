@@ -234,7 +234,7 @@ class _WorkspaceCollapsedRows {
                     rowAddress: TrackRowAddress(track.id),
                     colorScheme: Theme.of(context).colorScheme,
                     baseTextStyle: DefaultTextStyle.of(context).style,
-                    showSeconds: _state._showSecondsDisplay.value,
+                    showSeconds: _state._rulerView.value.seconds,
                     countingBase:
                         session.projectSettings.projectFrameRate.countingBase,
                     // D15 ③: the thumbnails come from the store the panel
@@ -414,7 +414,7 @@ class _WorkspaceCollapsedRows {
       _state._railExtents[LayerRailId.timeline],
       _state._storyboardPixelsPerFrame,
       _state._storyboardTrackLaneHeight,
-      _state._showSecondsDisplay,
+      _state._rulerView,
       _state._railExtents[LayerRailId.storyboard],
     ]);
     _collapsedCelContent = TimelineCelContentSource(

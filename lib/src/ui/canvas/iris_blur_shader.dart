@@ -1,6 +1,10 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
+import '../../core/lru.dart';
+import '../../models/rgba_image_bytes.dart';
 import '../../services/camera_lens_blur_passes.dart';
 import '../../services/shaded_passes.dart';
 import 'loaded_fragment_program.dart';
@@ -34,6 +38,40 @@ class IrisBlurShader {
     'shaders/iris_gather.frag',
     whyAwaited: _whyAwaited,
   );
+
+  /// 🚨THE TABLE LAST LAID, KEPT FOR THE NEXT GATHER OF THE SAME ROWS: a
+  /// table is its [IrisRows] alone, and every gather laid its own — a
+  /// stroke's every patch, a playback's every frame, over an iris that had
+  /// not changed. 🔬Surface Pro 11 (2026-10-31, release,
+  /// `tool/probe/iris_table_probe_main.dart`): a table took 0.05–0.4ms at a
+  /// radius of 8–40, 1.2ms at 150, 4–5ms at 500 and 11–14ms at 1500, beside
+  /// a gather of 3–64ms over 512² to 1920×1080.
+  ///
+  /// ⚖️ONE: a miss lays it as before, and what is held between gathers is
+  /// the one table a gather held while it drew. ⛔Not one for each iris a
+  /// cut draws: two lens blurs that differ still lay theirs at each draw —
+  /// keeping more is holding past what a draw holds, which the old-device
+  /// memory policy leaves to the user, not to this cache.
+  ///
+  /// ⚠️Let go of while a recorded picture's shader still reads it: safe —
+  /// a shader holds its own claim on what it was bound.
+  static final Lru<IrisRows, ui.Image> _kept = Lru(
+    entryCap: () => 1,
+    costOf: _bytesOf,
+    letGo: (_, table) => table.dispose(),
+  );
+
+  /// What the table kept weighs — the memory census's `lensBlurTables`.
+  static int get tableBytes => _kept.held;
+
+  /// The table kept, or null.
+  @visibleForTesting
+  static ui.Image? get debugKeptTable =>
+      _kept.isEmpty ? null : _kept.values.last;
+
+  /// A float a channel: four times a picture of bytes.
+  static int _bytesOf(ui.Image table) =>
+      4 * estimatedImageBytes(table.width, table.height);
 
   /// Whether [rowSumFor], [tableFor] and [gatherFor] can be called
   /// ([LoadedFragmentProgram.isReady]).
@@ -89,8 +127,9 @@ class IrisBlurShader {
       (map == null) == (pass.map == null),
       'a pass that reads a blur map is drawn with one, and only it',
     );
-    final layout = _layoutOf(pass);
-    final table = tableFor(pass);
+    final rows = pass.rows;
+    final layout = _layoutOf(rows);
+    final table = _kept.resolve(rows, () => tableFor(rows));
     // The paper's pixels in the raster, first to last; where none is, the
     // first lies past the last and the cut draws nothing.
     final paper =
@@ -124,42 +163,39 @@ class IrisBlurShader {
       ..setFloat(21, channel?.b ?? 0)
       ..setFloat(22, channel?.a ?? 0)
       ..setFloat(23, layout.heads.toDouble());
-    // ⚠️Safe once bound: the shader holds its own claim on the table.
-    table.dispose();
     return shader;
   }
 
-  /// [pass]'s rows as `iris_gather.frag` reads them, laid by
-  /// `iris_table.frag` in floats: each of its levels — one, or a blur
-  /// map's 256 — [_layoutOf]'s lines, two texels a row, each a span's left
-  /// and right column in red and green; then from line `heads` a texel a
-  /// level, its reach and the centres its outline and its core cover.
+  /// [rows] as `iris_gather.frag` reads them, laid by `iris_table.frag` in
+  /// floats: each of its levels — one, or a blur map's 256 — [_layoutOf]'s
+  /// lines, two texels a row, each a span's left and right column in red
+  /// and green; then from line `heads` a texel a level, its reach and the
+  /// centres its outline and its core cover.
   ///
   /// ⚠️The caller owns the returned image.
-  static ui.Image tableFor(IrisGatherPass pass) {
-    final layout = _layoutOf(pass);
-    final map = pass.map;
-    final iris = pass.iris;
+  static ui.Image tableFor(IrisRows rows) {
+    final layout = _layoutOf(rows);
+    final levels = rows.levels;
     final width = layout.rowsALine * 2;
     final height = layout.heads + layout.headLines;
-    final halfSide = math.pi / iris.sides;
+    final halfSide = math.pi / rows.sides;
     final shader = _table.shader()
       ..setFloat(0, width.toDouble())
       ..setFloat(1, height.toDouble())
       ..setFloat(2, layout.rowsALine.toDouble())
       ..setFloat(3, layout.linesALevel.toDouble())
-      ..setFloat(4, pass.reach.toDouble())
-      ..setFloat(5, pass.radius)
+      ..setFloat(4, layout.reach.toDouble())
+      ..setFloat(5, rows.radius)
       ..setFloat(6, layout.levels.toDouble())
-      ..setFloat(7, map?.focal ?? 0)
-      ..setFloat(8, (map?.inverts ?? false) ? 1 : 0)
-      ..setFloat(9, iris.sides.toDouble())
-      ..setFloat(10, iris.roundness)
-      ..setFloat(11, iris.aspect)
+      ..setFloat(7, levels?.focal ?? 0)
+      ..setFloat(8, (levels?.inverts ?? false) ? 1 : 0)
+      ..setFloat(9, rows.sides.toDouble())
+      ..setFloat(10, rows.roundness)
+      ..setFloat(11, rows.aspect)
       // ⚠️Turned here, in doubles: a GPU's sin and cos miss by too much
       // (the shader's uniforms say how much).
-      ..setFloat(12, math.cos(iris.rotation))
-      ..setFloat(13, math.sin(iris.rotation))
+      ..setFloat(12, math.cos(rows.rotation))
+      ..setFloat(13, math.sin(rows.rotation))
       ..setFloat(14, math.cos(halfSide))
       ..setFloat(15, math.sin(halfSide))
       ..setFloat(16, math.cos(2 * halfSide))
@@ -172,22 +208,26 @@ class IrisBlurShader {
     }
   }
 
-  /// How [pass]'s table is laid: its levels, each [linesALevel] lines of
-  /// [rowsALine] rows — two texels a row, so a line is never wider than
-  /// 2048 — and from line [heads] on their heads, [headLines] of them.
+  /// How [rows]' table is laid: its rows [reach] either way of a pixel, its
+  /// levels, each [linesALevel] lines of [rowsALine] rows — two texels a
+  /// row, so a line is never wider than 2048 — and from line [heads] on
+  /// their heads, [headLines] of them.
   static ({
+    int reach,
     int levels,
     int rowsALine,
     int linesALevel,
     int heads,
     int headLines,
   })
-  _layoutOf(IrisGatherPass pass) {
-    final rows = 2 * pass.reach + 1;
-    final rowsALine = math.min(rows, 1024);
-    final levels = pass.map == null ? 1 : 256;
-    final linesALevel = (rows / rowsALine).ceil();
+  _layoutOf(IrisRows rows) {
+    final reach = rows.radius.floor();
+    final count = 2 * reach + 1;
+    final rowsALine = math.min(count, 1024);
+    final levels = rows.levels == null ? 1 : 256;
+    final linesALevel = (count / rowsALine).ceil();
     return (
+      reach: reach,
       levels: levels,
       rowsALine: rowsALine,
       linesALevel: linesALevel,

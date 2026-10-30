@@ -9,8 +9,10 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
@@ -23,6 +25,8 @@ import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/export/ae_script.dart';
 import 'package:anicel/src/ui/export/ae_script_plan.dart';
 import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
+
+import '../../helpers/every_frame_drawn.dart';
 
 void main() {
   const key = LayerMark(process: LayerProcess.key);
@@ -98,6 +102,7 @@ void main() {
     List<Layer> layers, {
     CameraPose Function(Cut cut, int frame)? cameraPoseAt,
     String? sound,
+    String? cameraPath,
   }) {
     final project = projectWith(layers);
     return aeCompsOf(
@@ -105,6 +110,7 @@ void main() {
       plan: buildExportCelGroupPlan(
         project: project,
         activeCutId: const CutId('cut'),
+        drawn: everyFrameDrawn,
         spec: const AeScriptExportSpec().written,
       ),
       camera: (
@@ -113,7 +119,8 @@ void main() {
             (_, _) => CameraPose(center: CanvasPoint(x: 4, y: 4)),
         frameSize: const CanvasSize(width: 4, height: 2),
       ),
-      runOf: (cut) => (frames: cut.duration, sound: sound),
+      runOf: (cut) =>
+          (frames: cut.duration, sound: sound, cameraPath: cameraPath),
     );
   }
 
@@ -311,5 +318,100 @@ void main() {
       everyElement(isNot(isA<AeSound>())),
       reason: 'a cut that sounds nothing has no sound layer',
     );
+  });
+
+  test('a direction row is a guide of the canvas comp — seen, never '
+      'rendered — the other rows are not', () {
+    final comps = compsOf([
+      row('a', blocks: {0: ('1', 6)}),
+      row('d', blocks: {0: ('1', 3)}).copyWith(kind: LayerKind.instruction),
+    ]);
+    final canvasComp = compNamed(comps, 'C1 canvas');
+    expect(layerNamed(canvasComp, 'D').guide, isTrue);
+    expect(layerNamed(canvasComp, 'A').guide, isFalse);
+  });
+
+  test('a cut\'s camera path is a guide over its whole canvas comp, on top',
+      () {
+    final comps = compsOf([
+      row('a', blocks: {0: ('1', 6)}),
+    ], cameraPath: 'C1_camera.png');
+    final path = compNamed(comps, 'C1 canvas').layers.last;
+    expect(path.guide, isTrue);
+    final still = path.source as AeStill;
+    expect((still.path, still.frame, still.length), ('C1_camera.png', 0, 6));
+    expect(
+      compNamed(compsOf([
+        row('a', blocks: {0: ('1', 6)}),
+      ]), 'C1 canvas').layers.map((layer) => layer.guide),
+      everyElement(isFalse),
+      reason: 'a cut with no path has no guide of it',
+    );
+  });
+
+  LayerEffect blurOf(double blurriness) => LayerEffect(
+    id: const EffectId('blur'),
+    kind: EffectKind.blur,
+    parameters: {'blurriness': EffectParameter(value: blurriness)},
+  );
+
+  test('a row\'s effects are After Effects\' nearest on its layer — the '
+      'chain the row wears (Q5)', () {
+    final comps = compsOf([
+      row('a', blocks: {0: ('1', 6)}).copyWith(effects: [blurOf(10)]),
+    ]);
+    final effects = layerNamed(compNamed(comps, 'C1 canvas'), 'A').effects;
+    expect(effects.map((effect) => effect.matchName), ['ADBE Gaussian Blur 2']);
+  });
+
+  test('a row is as strong as the app lays it apart — its own opacity in '
+      'too', () {
+    final comps = compsOf([
+      row('a', blocks: {0: ('1', 6)}).copyWith(opacity: 0.5),
+    ]);
+    final transform = layerNamed(compNamed(comps, 'C1 canvas'), 'A')
+        .transform!;
+    expect(transform.opacity.value, [50]);
+  });
+
+  test('an adjustment row is an adjustment layer over the rows under it, '
+      'its strength the mix — none where AE has none of its effects', () {
+    final comps = compsOf([
+      row('a', blocks: {0: ('1', 6)}),
+      Layer(
+        id: const LayerId('g'),
+        name: 'G',
+        kind: LayerKind.adjustment,
+        frames: const [],
+        opacity: 0.25,
+        effects: [blurOf(20)],
+      ),
+      Layer(
+        id: const LayerId('n'),
+        name: 'N',
+        kind: LayerKind.adjustment,
+        frames: const [],
+        effects: [
+          LayerEffect(id: const EffectId('n'), kind: EffectKind.celNumber),
+        ],
+      ),
+    ]);
+    final canvasComp = compNamed(comps, 'C1 canvas');
+    expect(canvasComp.layers.map((layer) => layer.name), ['A', 'G']);
+    final grade = layerNamed(canvasComp, 'G');
+    expect(grade.source, isA<AeAdjustmentSource>());
+    expect(grade.transform!.opacity.value, [25]);
+    expect(grade.effects.single.matchName, 'ADBE Gaussian Blur 2');
+  });
+
+  test('a folder that is a picture of its own wears its effects on its '
+      'comp\'s layer', () {
+    final comps = compsOf([
+      folder('f').copyWith(effects: [blurOf(10)]),
+      row('a', blocks: {0: ('1', 6)}, folder: 'f'),
+    ]);
+    final f = layerNamed(compNamed(comps, 'C1 canvas'), 'F');
+    expect(f.source, isA<AeCompSource>());
+    expect(f.effects.single.matchName, 'ADBE Gaussian Blur 2');
   });
 }

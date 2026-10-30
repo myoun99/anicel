@@ -2,6 +2,7 @@ import '../../models/brush_frame_key.dart';
 import '../../models/composite_tree.dart';
 import '../../models/cut.dart';
 import '../../models/frame_id.dart';
+import '../../models/fx_plugin_binding.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
@@ -36,10 +37,12 @@ class EditingStackMap {
     required this.frameIndex,
     required this.activeLayerId,
     required TransformPose? Function(BrushFrameKey key) movieLaidAt,
+    required FxPluginBinding? plugins,
     this.dragPreview,
   }) : _opacityVerbs = opacityVerbs,
        _project = project,
-       _movieLaidAt = movieLaidAt;
+       _movieLaidAt = movieLaidAt,
+       _plugins = plugins;
 
   final OpacityVerbs _opacityVerbs;
   final ProjectAccess _project;
@@ -57,6 +60,20 @@ class EditingStackMap {
   /// (`MovieCelHydrator.laidAt`) — a moved reference fx shows the picture
   /// it has until the move's own is decoded.
   final TransformPose? Function(BrushFrameKey key) _movieLaidAt;
+
+  /// What runs the plugins the chains run ([FxPluginBinding]) — so every
+  /// row the stack hands on carries its plugin's run, the row drawn on and
+  /// a ghost at its own frame among them, and every folder and adjustment.
+  final FxPluginBinding? _plugins;
+
+  /// [effects] — a chain of [stackCut] at [frameIndex] — with its plugins
+  /// run.
+  List<ResolvedLayerEffect> _bound(
+    List<ResolvedLayerEffect> effects,
+    int frameIndex,
+  ) =>
+      _plugins?.call(effects, cut: stackCut, frameIndex: frameIndex) ??
+      effects;
 
   double activeLayerOpacity = 1.0;
 
@@ -82,6 +99,7 @@ class EditingStackMap {
       CutFrameCompositeEntry() => _leaf(row),
       CutFrameCompositeGhost() => _ghost(row),
     },
+    chains: (chain) => _bound(chain, frameIndex),
   );
 
   /// An onion ghost, from its cel where a drag shows its pixels
@@ -94,7 +112,7 @@ class EditingStackMap {
       opacity: ghost.opacity,
       blendMode: ghost.blendMode,
       tint: ghost.tint,
-      effects: ghost.effects,
+      effects: _bound(ghost.effects, ghost.frameIndex),
     );
   }
 
@@ -124,7 +142,8 @@ class EditingStackMap {
       stackCut.layers,
       frameIndex,
     );
-    activeSourceEffects = splitSourceEffects(node.render.effects).source;
+    final effects = _bound(node.render.effects, frameIndex);
+    activeSourceEffects = splitSourceEffects(effects).source;
     if (_heldCel != null) {
       return null;
     }
@@ -132,7 +151,7 @@ class EditingStackMap {
       opacity: node.render.opacity,
       blendMode: node.render.blendMode,
       placement: node.render.placement,
-      effects: node.render.effects,
+      effects: effects,
     );
   }
 
@@ -183,6 +202,7 @@ class EditingStackMap {
   /// are the ROW's, and the panel wraps the live surface in them: an opacity
   /// that fell to the default would unwrap it and remount it twice per drag.
   CanvasStackRow _leaf(CutFrameCompositeEntry entry) {
+    final effects = _bound(entry.effects, frameIndex);
     final active =
         entry.layer.id == activeLayerId && layerAcceptsBrushInput(entry.layer);
     if (active) {
@@ -199,7 +219,7 @@ class EditingStackMap {
               stackCut.layers,
               frameIndex,
             );
-      activeSourceEffects = splitSourceEffects(entry.effects).source;
+      activeSourceEffects = splitSourceEffects(effects).source;
     }
     final pixels = celPixelsOf(dragPreview, entry.layer.id, entry.frame.id);
     final key = _project.brushFrameKeyForCut(cut, pixels.row, pixels.cel);
@@ -212,7 +232,7 @@ class EditingStackMap {
         opacity: entry.opacity,
         blendMode: entry.blendMode,
         placement: _whereTheFileStands(entry, key),
-        effects: entry.effects,
+        effects: effects,
       );
     }
     return CanvasActiveLayerRow(
@@ -231,7 +251,7 @@ class EditingStackMap {
       // editing canvas only.
       blendMode: entry.blendMode,
       placement: entry.placement,
-      effects: entry.effects,
+      effects: effects,
     );
   }
 }

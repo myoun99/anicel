@@ -170,26 +170,57 @@ class _CanvasPanelLift {
       return null;
     }
     final signature = celSourceEffectSignature(keys);
+    final plugin = celSourcePlugin(keys);
     final kept = cel.landing;
     if (kept != null &&
         identical(kept.stamp.stamp, stampDab.stamp) &&
         kept.stamp.center == stampDab.center &&
-        listEquals(kept.keys, signature)) {
+        listEquals(kept.keys, signature) &&
+        kept.plugin == plugin) {
       return kept.shown;
     }
     cel.letTheLandingGo();
     final landed = _landedOn(cel, stampDab);
     final shown = landed == null
         ? null
-        : CelTextLanding.of(
-            landed.region,
-            bitmapSurfaceRegionPixels(
-              celSurfaceAsShown(landed.surface, keys),
-              landed.region,
-            ),
-          );
-    cel.landing = (stamp: stampDab, keys: signature, shown: shown);
+        : _landingPicture(key, landed, keys, plugin: plugin);
+    cel.landing = (
+      stamp: stampDab,
+      keys: signature,
+      plugin: plugin,
+      shown: shown,
+    );
     return shown;
+  }
+
+  /// The picture of [landed] — [key]'s cel as a confirm leaves it — as its
+  /// row shows it ([celSurfaceAsShown]): over the region it lands in, or,
+  /// where the row's chain runs a [plugin], over the whole cel
+  /// ([celLandingShownWhole], 🗣️I-132-Q32 b) — null where nothing shows.
+  CelTextLanding? _landingPicture(
+    BrushFrameKey key,
+    ({BitmapSurface surface, DirtyRegion region}) landed,
+    List<ResolvedLayerEffect> keys, {
+    required ResolvedLayerEffect? plugin,
+  }) {
+    final holed = holedSurfaceFor(key);
+    if (plugin == null || holed == null) {
+      return CelTextLanding.of(
+        landed.region,
+        bitmapSurfaceRegionPixels(
+          celSurfaceAsShown(landed.surface, keys),
+          landed.region,
+        ),
+      );
+    }
+    final whole = celLandingShownWhole(
+      under: holed,
+      landed: landed.surface,
+      effects: keys,
+    );
+    return whole == null
+        ? null
+        : CelTextLanding.of(whole.region, whole.straight);
   }
 
   /// [cel] as it will stand once [stampDab] — on the canvas — lands on it,
@@ -595,7 +626,13 @@ class _LiftedCel {
   /// ([_CanvasPanelLift.landingShownOn]): the stamp it was made for, the
   /// keys it was made through, and the landing — null where it lands
   /// nowhere.
-  ({BrushDab stamp, List<double> keys, CelTextLanding? shown})? landing;
+  ({
+    BrushDab stamp,
+    List<double> keys,
+    ResolvedLayerEffect? plugin,
+    CelTextLanding? shown,
+  })?
+  landing;
 
   /// The landing last made is shown no more.
   void letTheLandingGo() {

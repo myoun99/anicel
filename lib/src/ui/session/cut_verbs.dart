@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show ValueNotifier;
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_resize_anchor.dart';
 import '../../models/canvas_size.dart';
+import '../../models/conte/conte_camera_room.dart';
 import '../../models/conte/conte_ink_keys.dart'
     show conteInkRowIdOf, conteInkRowKey;
 import '../../models/cut.dart';
@@ -16,6 +17,7 @@ import '../../models/layer_mark.dart';
 import '../../models/layer_process.dart';
 import '../../models/track_id.dart';
 import '../../models/timesheet_document.dart' show sheetArtistMark;
+import '../../models/timesheet_info.dart';
 import '../../models/timesheet_ink_keys.dart' show timesheetInkKeyOfCut;
 import '../../services/brush_frame_store.dart' show BrushFrameStore;
 import '../../services/command.dart' show WorkAhead;
@@ -302,7 +304,7 @@ class CutVerbs {
   void setCutStaffName(CutId cutId, LayerMark stage, String name) =>
       _activeCut.onCutQuietly(
         cutId,
-        (cutId) => _project.cutCommandCoordinator.setCutStaffNames(
+        (cutId) => _project.cutCommandCoordinator.saveCutSettings(
           cutIds: [cutId],
           names: {stage: name},
         ),
@@ -378,7 +380,7 @@ class CutVerbs {
   /// Names each stage of [names] on every addressed cut — and on each one's
   /// 겸용 siblings — and opens [openFolds] on every addressed cut's own, as
   /// ONE undo step; every other stage keeps each cut's own (컷 설정's save).
-  void setAddressedCutStaff(
+  void saveAddressedCutSettings(
     Map<LayerMark, String> names, {
     Set<LayerProcess>? openFolds,
   }) {
@@ -386,10 +388,25 @@ class CutVerbs {
     if (cutIds.isEmpty) {
       return;
     }
-    _project.cutCommandCoordinator.setCutStaffNames(
+    _project.cutCommandCoordinator.saveCutSettings(
       cutIds: cutIds,
       names: names,
       openFolds: openFolds,
+    );
+    _changes.notifyChanged();
+  }
+
+  /// The 콘티 용지 서식 window's save: the work's [info], and [cameraRoom]
+  /// on every addressed cut — and on each one's 겸용 siblings — where one
+  /// was picked, as ONE undo step. In the gap, the work's alone.
+  void saveConteFormat(
+    TimesheetInfo info, {
+    ({ConteCameraRoom? to})? cameraRoom,
+  }) {
+    _project.cutCommandCoordinator.setConteFormat(
+      info: info,
+      cutIds: addressedCutIds,
+      cameraRoom: cameraRoom,
     );
     _changes.notifyChanged();
   }

@@ -6,6 +6,21 @@
 	<true/>
 	<key>FLTEnableFlutterGPU</key>
 	<true/>
+	<!-- F-509-Q7 (user, 2026-10-30: "넓은 색 영역은 끄자"): wide gamut OFF.
+	     Left on (the engine's default when the key is absent), every
+	     picture.toImage comes out in the screen's extended-range format
+	     (BGRA10_XR), which flutter_gpu names `unknown` - zero bytes a texel -
+	     so no write into a frame picture can be sized and every frame is
+	     drawn as it stands (FlutterGpuFramePictures.sizes). Off, pictures
+	     are BGRA8: written into where they stand, at half the memory. What
+	     it costs: P3 photos and video show clamped to sRGB; the canvas
+	     itself is 8-bit sRGB and loses nothing. Engine 3.47.4 (9584c67):
+	     ios FlutterDartProject.mm reads this key, defaulting to YES. The
+	     macOS embedder reads no such key - it turns wide gamut on wherever
+	     Impeller runs on an Apple3+ GPU with a P3 screen - so the macOS
+	     plist carries none. -->
+	<key>FLTEnableWideGamut</key>
+	<false/>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>CFBundleDevelopmentRegion</key>

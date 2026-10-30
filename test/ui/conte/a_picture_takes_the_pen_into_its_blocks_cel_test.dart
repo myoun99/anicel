@@ -4,9 +4,11 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/a_plugin_that_shifts.dart';
 import '../../helpers/cel_photo_fixture.dart';
 import '../../helpers/conte_book.dart';
 import '../../helpers/device_viewport.dart';
+import '../../helpers/settle_async.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -37,9 +39,12 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
+import 'package:anicel/src/services/fx_plugins/installed_fx_plugins.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
+import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart'
+    show waitsForItsPlugins;
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/canvas/viewport_canvas_transform.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
@@ -549,7 +554,8 @@ void main() {
     final centre = pageTopLeft + cell.pictureRect.center;
     final at = tester.renderObject<RenderBox>(live).globalToLocal(centre);
 
-    /// The live composite's own painter, rasterized: is there ink at [at]?
+    /// The live composite's own painter, rasterized: is there ink at [at] —
+    /// anything but the ground it lays under what it draws?
     Future<bool> showsInk() async {
       final painter = tester
           .widgetList<CustomPaint>(
@@ -572,7 +578,7 @@ void main() {
         image.dispose();
         return data!.buffer.asUint8List();
       }))!;
-      return _alphaAt(bytes, size.width.ceil(), at) > 0;
+      return _inkAt(bytes, size.width.ceil(), at);
     }
 
     expect(await showsInk(), isFalse, reason: 'an empty cel');
@@ -667,16 +673,18 @@ void main() {
 
     /// The cut framed by its camera at [zoom] about the canvas's middle,
     /// held still over its one block — two keys at one place are no camera
-    /// work — or panning on to [last]; its conte row posed by [rowPose], its
+    /// work — or panning on to [last]; its conte row posed by [rowPose] and
+    /// wearing [effects], its
     /// block's handwriting named [inkId].
     Project framed({
       required double zoom,
       TransformPose? rowPose,
       CameraPose? last,
       String? inkId,
+      List<LayerEffect> effects = const [],
     }) {
       final pose = CameraPose(center: CanvasPoint(x: 320, y: 180), zoom: zoom);
-      final base = cut();
+      final base = cut(effects: effects);
       final block = base.layers.single;
       final row = inkId == null
           ? block
@@ -808,8 +816,14 @@ void main() {
 
       /// The pool files the band's photos are drawn from (I-97).
       SheetImageLookup? imageFor,
+
+      /// This device's plugins, where its own are not the ones asked.
+      InstalledFxPlugins? fxPlugins,
     }) async {
-      session = EditorSessionManager(initialProject: project);
+      session = EditorSessionManager(
+        initialProject: project,
+        fxPlugins: fxPlugins,
+      );
       addTearDown(session.dispose);
       final rows = BrushFrameStore();
       final ink = ConteInkController(rowStore: rows);
@@ -985,6 +999,67 @@ void main() {
       brushOn.value = false;
       await tester.pumpAndSettle();
       expect(live, findsNothing, reason: 'and it goes with the brush');
+    });
+
+    testWidgets('🗣️F-215 · I-132-Q34 a: a frame that waits for its plugins '
+        'shows the print it took over from until its picture is made — then '
+        'the live one, on the print\'s ground', (tester) async {
+      final plugins = await installedShiftingFxPlugin(tester);
+      final printed = (await tester.runAsync(() async {
+        final recorder = ui.PictureRecorder();
+        Canvas(recorder).drawColor(const Color(0xFFFF0000), BlendMode.src);
+        return recorder.endRecording().toImage(64, 36);
+      }))!;
+      addTearDown(printed.dispose);
+      final slot = await pumpPanel(
+        tester,
+        framed(
+          zoom: 2,
+          // A plugin past the cel's own pixels: a step, waited for.
+          effects: [
+            LayerEffect(
+              id: const EffectId('bright'),
+              kind: EffectKind.brightnessContrast,
+              parameters: {'brightness': EffectParameter(value: 0.5)},
+            ),
+            shiftingFxPluginLayerEffect(),
+          ],
+        ),
+        printed: printed,
+        fxPlugins: plugins,
+      );
+      final empty = within(slot, 0.55, 0.6);
+      expect(
+        (await shoot(tester)).colorAt(empty),
+        const Color(0xFFFF0000),
+        reason: '⛔premise: the print',
+      );
+
+      brushOn.value = true;
+      final live = find.byKey(
+        const ValueKey<String>('conte-picture-live-picture-39-0'),
+      );
+      final on = await shoot(tester);
+      expect(
+        waitsForItsPlugins(tester.widget<FramePictureView>(live).nodes),
+        isTrue,
+        reason: '⛔premise: the live picture took over, and waits',
+      );
+      expect(on.colorAt(empty), const Color(0xFFFF0000));
+
+      final view = tester.widget<FramePictureView>(live);
+      final pictures = session.playbackRig.framePictures;
+      final key = pictures.keyOfStack(view.nodes, view.picture);
+      expect(
+        await settleAsync(tester, () => pictures.store.bytesOf(key) != null),
+        isTrue,
+        reason: 'LIVENESS: its picture is made',
+      );
+      expect(
+        (await shoot(tester)).colorAt(empty),
+        const Color(0xFFFFFFFF),
+        reason: 'the live picture, on the ground the print stands on',
+      );
     });
 
     testWidgets('🗣️F-215: the brush switch moves no pixel — the band\'s '
@@ -1380,8 +1455,13 @@ void main() {
   });
 }
 
-int _alphaAt(Uint8List rgba, int width, Offset at) =>
-    rgba[(at.dy.floor() * width + at.dx.floor()) * 4 + 3];
+/// Whether [at] in [rgba] holds anything but the print's ground: drawn and
+/// not opaque white ([exportFrameGround]).
+bool _inkAt(Uint8List rgba, int width, Offset at) {
+  final i = (at.dy.floor() * width + at.dx.floor()) * 4;
+  return rgba[i + 3] > 0 &&
+      (rgba[i] != 0xFF || rgba[i + 1] != 0xFF || rgba[i + 2] != 0xFF);
+}
 
 /// A capture of the screen, read at LOGICAL points.
 class _Screen {

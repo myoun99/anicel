@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/widgets.dart';
 
 import '../../core/tree_nodes.dart';
@@ -15,8 +16,10 @@ import '../canvas/canvas_layer_stack_view.dart'
         LiftedRowPainters,
         LiveRows,
         LiveSurfaceTokens,
-        StackedFrame;
+        StackedFrame,
+        waitsForItsPlugins;
 import '../canvas/display_resample.dart';
+import '../canvas/outline_clipper.dart';
 import '../canvas/viewport_canvas_transform.dart';
 import '../effective_device_pixel_ratio.dart';
 import 'frame_picture_store.dart';
@@ -71,6 +74,8 @@ class FramePictureView extends StatefulWidget {
     this.wholeFrames = true,
     this.alreadyShown = false,
     this.drawnLive = const {},
+    this.ground,
+    this.cut,
   });
 
   final StackRun run;
@@ -136,6 +141,22 @@ class FramePictureView extends StatefulWidget {
   /// ↩️`CanvasLayerStackView.drawnLive`, until the ghosts were one picture
   /// too (one-picture-per-frame ②-5b-1).
   final Set<BrushFrameKey> drawnLive;
+
+  /// The colour laid across the view under what it draws, where it draws
+  /// anything — past [cut] too.
+  ///
+  /// 🗣️F-215 · I-132-Q34 a: none while it draws nothing — a frame that
+  /// waits for its plugins, its picture not made yet — so what it took over
+  /// from shows meanwhile: the conte's print, the last finished picture
+  /// (「on하든off하든 바뀌는게 없어야」 · 「직전 완성 그림에 머문다」).
+  final Color? ground;
+
+  /// The outline what the view draws is cut to, on screen — the canvas in
+  /// a conte picture's camera frame — and not its [ground], which lies
+  /// across the whole view as the print's does: cut to it too, the print a
+  /// live picture takes over from showed past the canvas (🔬F-215's switch
+  /// pin, 10-31). Null: nothing is cut.
+  final List<Offset>? cut;
 
   @override
   State<FramePictureView> createState() => _FramePictureViewState();
@@ -207,8 +228,27 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// (F-130).
   LiveSurfaceTokens? _held;
 
+  /// Whether a step is on its way into the picture shown ([_writeIn]) — what
+  /// the change behind it waits for ([_catchUp]), in every frame.
+  ///
+  /// ↩️A frame that waits for its plugins ([_waits]) had a gate of its own
+  /// (`_writingThrough`, I-132-Q34 a) until F-512 put every frame behind
+  /// this one: the same gate, set and let go where this is — but it held
+  /// the last of a stroke back while the stroke's landing moved the picture
+  /// too, which F-512 found leaves the frame's own key short of it.
+  bool _stepOnItsWay = false;
+
   /// Whether the frame is drawn as it stands in place of the picture shown.
   final _DrawnAsItStands _standing = _DrawnAsItStands();
+
+  /// 🗣️I-132-Q34 a (유저 2026-10-30): 「결과가 올 때까지 그 프레임의 직전
+  /// 완성 그림에 머문다」 — whether the frame holds a plugin's step that only
+  /// a picture made waiting for it draws ([waitsForItsPlugins]). Such a
+  /// frame is never drawn as it stands: the picture shown stays until the
+  /// next is there, and its live rows' changes go into it one patch at a
+  /// time, as every frame's do ([_stepOnItsWay]) — a stroke shown late by
+  /// its plugins' time.
+  bool _waits = false;
 
   /// The cel the pen is on, as the key of the picture shown read it.
   CelAsOf? _drawnOn;
@@ -302,6 +342,7 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// [_onScreen]).
   void _standLive({bool Function(BrushFrameKey cel)? onScreen}) {
     _stoodBy = _pictures.keyAsItStands(widget.nodes, widget.picture);
+    _waits = waitsForItsPlugins(widget.nodes);
     _liveChanges = null;
     _live = null;
     _onScreen = const {};
@@ -403,7 +444,7 @@ class _FramePictureViewState extends State<FramePictureView> {
     if (widget.laysWhatItMisses) {
       _make(key);
     }
-    if (!widget.wholeFrames) {
+    if (!widget.wholeFrames && !_waits) {
       // Drawn as it stands until its picture is there.
       _letGo(_store);
       _showing = key;
@@ -669,6 +710,22 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// frame's one picture, which every screen showing that frame draws — and
   /// the build patched it back. ↩️The display buffer measured at its paint
   /// too (`_planMiss`).
+  ///
+  /// 🚨★★★ONE STEP ON ITS WAY AT A TIME ([_stepOnItsWay]): what moves while
+  /// one goes in stays out of [_held], and goes in as one patch the paint
+  /// after it lands. ↩️Each paint asked for its own, and a patch takes the
+  /// store longer than a vsync, so the queue grew for as long as the pen
+  /// moved and the line fell further behind it the longer it was (F-512, 유저
+  /// 2026-10-30 「선이 커서 뒤로 처진다」). 🔬Main PC, 144 Hz, 2544×1361, a
+  /// new project, input to raster done, p50 / p90: fitted 757 / 1346 ms →
+  /// 49 / 60 ms, at 100% 2111 / 3168 ms → 41 / 54 ms, a frame every vsync
+  /// again (it was every other one). ⛔Not until the step is rendered
+  /// rather than in: 61 / 77 ms fitted, its batches behind it instead.
+  ///
+  /// ⛔NOT WHILE A STROKE'S LANDING MOVES THE PICTURE ([_moving]): the last
+  /// of the stroke goes in now, under the key it moves to ([_moves]) — left
+  /// to wait, another frame stood on in that time would leave the frame's
+  /// own key with a picture short of it for good.
   void _catchUp() {
     final live = _live;
     final shown = _shown;
@@ -690,6 +747,9 @@ class _FramePictureViewState extends State<FramePictureView> {
     }
     if (!live.steady) {
       _standing.whole = true;
+      return;
+    }
+    if (_stepOnItsWay && _moving == null) {
       return;
     }
     final moved = live.movedSince(held);
@@ -731,7 +791,14 @@ class _FramePictureViewState extends State<FramePictureView> {
       return;
     }
     final to = _keptUnder(key, _held);
-    if (!_store.patch(from: _keptAs!, to: to, rect: rect, draw: drawing.draw)) {
+    if (!_store.patch(
+      from: _keptAs!,
+      to: to,
+      rect: rect,
+      draw: drawing.draw,
+      // Drawn again once its plugins have run, by the frame still standing.
+      gone: () => !mounted || !identical(_live, live),
+    )) {
       _standing.whole = true;
       return;
     }
@@ -742,8 +809,10 @@ class _FramePictureViewState extends State<FramePictureView> {
     // picture let go on the way (a write the GPU threw on, F-509). ⛔Not
     // the picture until the next change: a step that did not go in showed
     // only once another came after it.
+    _stepOnItsWay = true;
     unawaited(
       _store.landingOf(to)!.then((landed) {
+        _stepOnItsWay = false;
         if (!mounted) {
           return;
         }
@@ -793,9 +862,13 @@ class _FramePictureViewState extends State<FramePictureView> {
         painter: _FramePicturePainter(
           shown: _shown,
           // ⛔Not the stored cels where the view draws rows live: a frame of
-          // no row is a page the pen may be drawing on.
-          asItStands: _live ?? _asItStands,
+          // no row is a page the pen may be drawing on — nor the live rows
+          // of a frame that waits for its plugins.
+          asItStands: _waits ? _asItStands : _live ?? _asItStands,
           standing: _standing,
+          waits: _waits,
+          ground: widget.ground,
+          cut: widget.cut,
           catchUp: _catchUp,
           viewport: widget.viewport,
           devicePixelRatio: EffectiveDevicePixelRatio.of(context),
@@ -812,6 +885,9 @@ class _FramePicturePainter extends CustomPainter {
     required this.shown,
     required this.asItStands,
     required this.standing,
+    required this.waits,
+    required this.ground,
+    required this.cut,
     required this.catchUp,
     required this.viewport,
     required this.devicePixelRatio,
@@ -827,6 +903,16 @@ class _FramePicturePainter extends CustomPainter {
   /// Whether the frame is drawn as it stands in place of [shown].
   final _DrawnAsItStands standing;
 
+  /// Whether the frame waits for its plugins: [shown] stays, whatever
+  /// [standing] says ([_FramePictureViewState._waits]).
+  final bool waits;
+
+  /// Laid under what is drawn, where anything is ([FramePictureView.ground]).
+  final Color? ground;
+
+  /// What is drawn is cut to, and not [ground] ([FramePictureView.cut]).
+  final List<Offset>? cut;
+
   /// Puts what the live rows moved into [standing] or the picture shown
   /// before it is read ([_FramePictureViewState._catchUp]).
   final VoidCallback catchUp;
@@ -838,7 +924,14 @@ class _FramePicturePainter extends CustomPainter {
     catchUp();
     canvas.save();
     canvas.clipRect(Offset.zero & size);
-    final shown = standing.whole ? null : this.shown;
+    final shown = standing.whole && !waits ? null : this.shown;
+    final ground = this.ground;
+    if (ground != null && (shown != null || asItStands != null)) {
+      canvas.drawColor(ground, BlendMode.srcOver);
+    }
+    if (cut case final corners?) {
+      canvas.clipPath(OutlineClipper(corners).getClip(size));
+    }
     if (shown case (:final picture, :final image)) {
       applyViewportTransform(
         canvas,
@@ -881,6 +974,9 @@ class _FramePicturePainter extends CustomPainter {
   bool shouldRepaint(_FramePicturePainter oldDelegate) =>
       !identical(oldDelegate.shown?.image, shown?.image) ||
       !identical(oldDelegate.asItStands, asItStands) ||
+      oldDelegate.waits != waits ||
+      oldDelegate.ground != ground ||
+      !listEquals(oldDelegate.cut, cut) ||
       oldDelegate.viewport != viewport ||
       oldDelegate.devicePixelRatio != devicePixelRatio;
 }

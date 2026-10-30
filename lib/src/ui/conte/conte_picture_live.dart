@@ -152,55 +152,48 @@ class ContePictureLive extends StatelessWidget {
     // The overlay shows its pictures in place of the painter's tiles below,
     // so through the chain they are shown through.
     window.overlay.sourceEffects = drawn.activeSourceEffects;
-    return Stack(
-      children: [
-        const Positioned.fill(child: ColoredBox(color: exportFrameGround)),
-        Positioned.fill(
-          child: ClipPath(
-            clipper: OutlineClipper(
-              outlineThrough(picture.cut.canvasSize, canvasToBox),
-            ),
-            child: FramePictureView(
-              key: ValueKey<String>('conte-picture-live-${window.id}'),
-              run: (
-                landings: session.playbackRig.prerenderScheduler.landings,
-                pictures: session.playbackRig.framePictures,
-              ),
-              picture: (
-                cut: picture.cut,
-                frameIndex: picture.frame,
-                paintPaper: false,
-                ghosts: FrameGhosts.none,
-              ),
-              nodes: drawn.nodes,
-              viewport: viewportOfSimilarity(canvasToBox)!,
-              live: (
-                activeSurfacePainter: BitmapSurfacePainter(
-                  surface: celSurfaceAsShown(
-                    surfaceOf(picture),
-                    drawn.activeSourceEffects,
-                  ),
-                  overlayModel: window.overlay,
-                  showTransparentBackground: false,
-                  lineage: (window.key.layerId, window.key.frameId),
-                ),
-                floatOverlay: null,
-                liftedRows: const {},
-              ),
-              laysWhatItMisses: true,
-              // The page prints this picture under it: taking over from the
-              // print, the live one may not go blank for the frames its
-              // picture takes to make — it is drawn as it stands meanwhile
-              // (F-215, 유저 2026-09-28: 「브러시 허용 on시 … 그림이
-              // 사라졌다가 다시 렌더되서 보이기시작. on하든off하든 바뀌는게
-              // 없어야」) — from every cel it draws, read for its first
-              // frame.
-              wholeFrames: false,
-              alreadyShown: true,
-            ),
+    return FramePictureView(
+      key: ValueKey<String>('conte-picture-live-${window.id}'),
+      run: (
+        landings: session.playbackRig.prerenderScheduler.landings,
+        pictures: session.playbackRig.framePictures,
+      ),
+      picture: (
+        cut: picture.cut,
+        frameIndex: picture.frame,
+        paintPaper: false,
+        ghosts: FrameGhosts.none,
+      ),
+      nodes: drawn.nodes,
+      viewport: viewportOfSimilarity(canvasToBox)!,
+      live: (
+        activeSurfacePainter: BitmapSurfacePainter(
+          surface: celSurfaceAsShown(
+            surfaceOf(picture),
+            drawn.activeSourceEffects,
           ),
+          overlayModel: window.overlay,
+          showTransparentBackground: false,
+          lineage: (window.key.layerId, window.key.frameId),
         ),
-      ],
+        floatOverlay: null,
+        liftedRows: const {},
+      ),
+      laysWhatItMisses: true,
+      // The page prints this picture under it: taking over from the
+      // print, the live one may not go blank for the frames its picture
+      // takes to make — it is drawn as it stands meanwhile (F-215, 유저
+      // 2026-09-28: 「브러시 허용 on시 … 그림이 사라졌다가 다시 렌더되서
+      // 보이기시작. on하든off하든 바뀌는게 없어야」) — from every cel it
+      // draws, read for its first frame.
+      wholeFrames: false,
+      alreadyShown: true,
+      // The ground the print stands on, across the camera's frame under
+      // what the live one draws — none while it draws nothing (a frame
+      // that waits for its plugins, its picture not made yet), so the print
+      // shows — and the layers cut at the canvas, as the print's are.
+      ground: exportFrameGround,
+      cut: outlineThrough(picture.cut.canvasSize, canvasToBox),
     );
   }
 

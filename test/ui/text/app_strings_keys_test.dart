@@ -345,6 +345,7 @@ void main() {
     'memoryItemTileImages': (s) => s.memoryItemTileImages,
     'memoryItemEnginePool': (s) => s.memoryItemEnginePool,
     'memoryItemEngineScratch': (s) => s.memoryItemEngineScratch,
+    'memoryItemLensBlurTables': (s) => s.memoryItemLensBlurTables,
     'containerAreaSettings': (s) => s.containerAreaSettings,
     'containerAreaDiagnostics': (s) => s.containerAreaDiagnostics,
     'containerAreaSessionScratch': (s) => s.containerAreaSessionScratch,
@@ -419,6 +420,11 @@ void main() {
     'conteOutlineOn': (s) => s.conteOutlineOn,
     'conteOutlineOff': (s) => s.conteOutlineOff,
     'conteFixedText': (s) => s.conteFixedText,
+    'conteCameraRoom': (s) => s.conteCameraRoom,
+    'conteCameraRoomGrows': (s) => s.conteCameraRoomGrows,
+    'conteCameraRoomInCell': (s) => s.conteCameraRoomInCell,
+    'conteCameraRoomAsSheet': (s) => s.conteCameraRoomAsSheet,
+    'conteCameraRoomAll': (s) => s.conteCameraRoomAll,
     'envelopeFormatTitle': (s) => s.envelopeFormatTitle,
     'envelopeForm': (s) => s.envelopeForm,
     'sheetModeNotation': (s) => s.sheetModeNotation,
@@ -1131,6 +1137,7 @@ void main() {
     'frameCountEntryFrames': (s) => s.frameCountEntryFrames,
     'frameCountEntrySecondsPlusFrames': (s) =>
         s.frameCountEntrySecondsPlusFrames,
+    'frameRulerPages': (s) => s.frameRulerPages,
     // I-18: 자동 이름 지정's start number.
     'autoNameStartField': (s) => s.autoNameStartField,
     'projectFpsTitle': (s) => s.projectFpsTitle,

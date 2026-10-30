@@ -34,6 +34,15 @@ import '../../helpers/placement_reading.dart';
 /// 0.815 of its resolution. The test engine shrinks nothing (65536×1 comes
 /// back whole), which is what lets these pins stand a cel at a side of 64 and
 /// hold what it makes in pieces to what the same cel makes whole.
+
+/// How far a rounding of the draw's quad moves a byte of the test's noise on
+/// the test's Vulkan, at the most ([expectShownAsWhole]).
+const int _roundingMoves = 9;
+
+/// How far the engine's blur lands a row's byte from the whole's when the
+/// part it blurs is the smaller input, at the most ([expectShownAsWhole]).
+const int _blurRatioMoves = 60;
+
 void main() {
   setUpAll(LayerBlendShader.load);
 
@@ -101,16 +110,60 @@ void main() {
   /// [shown] is [whole] byte for byte — or, drawn through a pose, a
   /// rounding apart at a few pixels and no more. 🔬Measured 2026-10-21:
   /// posed at half, 1 byte of 7680 one apart; posed and blurred, 2 of 4032.
-  /// A pose resamples, and the sampler reads where it is in the part laid,
-  /// not in the whole — a smaller texture rounds its coordinates
-  /// differently, the reason a posed crop gets its whole laid back
-  /// ([inkCropDrawsTheSame]). A picture past the side has no whole to lay
-  /// back on the device, so the rounding stays.
+  /// A pose resamples, and the part is drawn from a quad of its own — a
+  /// smaller quad rounds its texture coordinates differently, the reason a
+  /// posed crop gets its whole laid back ([inkCropDrawsTheSame]). A picture
+  /// past the side has no whole to lay back on the device, so the rounding
+  /// stays.
+  ///
+  /// 🔬ON IMPELLER THAT ROUNDING IS LARGER, and reaches every resample, so
+  /// the test's Impeller is held to what a rounding can do rather than to a
+  /// byte (impeller-sweep-canvas-reds, 공통 2026-10-30). Measured on noise,
+  /// the same turned draw: the part under its own quad is up to 6/255 from
+  /// the whole on the test's Vulkan and 2 on the Windows app's GLES, a few
+  /// pixels flipping to their neighbour under `none`; under the WHOLE's
+  /// quad, 3 bytes of 3024 by 1 on both — so it is the quad, not the texture
+  /// (a bigger texture under one quad is 1 apart) and not an edge (the bytes
+  /// lie all over the frame). ⛔No draw takes that quad: `drawImageRect`
+  /// cuts a source past its image back to the part's, and an image shader
+  /// over the whole's lands up to 68/255 from `drawImageRect` on GLES.
+  /// A rounding moved no byte past [_roundingMoves] but those flips, under
+  /// 2% of them; a part laid a texel off moves most of them.
+  ///
+  /// 🗣️A row's blur between two levels of the camera is held to
+  /// [_blurRatioMoves] alone, and only on Impeller (유저 2026-10-30, board
+  /// impeller-sweep-canvas-reds-Q1: 「받아들인다」): the engine's blur scales
+  /// its input by a size rounded up (`gaussian_blur_filter_contents.cc`), so
+  /// a smaller part blurs at another ratio. 🔬237 of these 640 bytes moved,
+  /// by up to 56 here and 58 on the Windows app's GLES, under a blur of noise.
   void expectShownAsWhole(
     Uint8List shown,
     Uint8List whole, {
     required bool posed,
+    bool blursAtAnotherRatio = false,
   }) {
+    if (ui.ImageFilter.isShaderFilterSupported) {
+      if (blursAtAnotherRatio) {
+        expect(
+          differences(shown, whole).most <= _blurRatioMoves,
+          isTrue,
+          reason: differ(shown, whole),
+        );
+        return;
+      }
+      var moved = 0;
+      for (var index = 0; index < shown.length; index += 1) {
+        if ((shown[index] - whole[index]).abs() > _roundingMoves) {
+          moved += 1;
+        }
+      }
+      expect(
+        moved <= shown.length ~/ 50,
+        isTrue,
+        reason: '$moved moved past a rounding: ${differ(shown, whole)}',
+      );
+      return;
+    }
     if (!posed) {
       expect(shown, whole, reason: differ(shown, whole));
       return;
@@ -607,6 +660,10 @@ void main() {
               inPieces,
               whole,
               posed: scene.contains('posed') || through.turns,
+              blursAtAnotherRatio:
+                  camera == 'square at two fifths' &&
+                  (scene == 'inside blurred' ||
+                      scene == 'the three over each other'),
             );
           });
         });

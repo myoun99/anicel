@@ -45,6 +45,7 @@ import '../../services/stroke_stabilizer.dart';
 import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
 import '../../models/brush_edit_canvas_input_settings.dart';
+import '../../models/brush_shape.dart';
 import 'brush_edit_canvas_view.dart';
 import 'canvas_press.dart';
 import 'canvas_tool_holds.dart';
@@ -134,6 +135,11 @@ abstract interface class ShapeShow {
   /// Takes back whatever is shown or being laid: the drag ended without a
   /// shape.
   void drop();
+
+  /// The pressure a stroke of this view reads off [press] — what the click
+  /// that lands the line from the last stroke counts as pressed with
+  /// (F-513).
+  double pressureOf(PointerDownEvent press);
 }
 
 /// The view a shape lands in where the content is not one cel — a sheet's

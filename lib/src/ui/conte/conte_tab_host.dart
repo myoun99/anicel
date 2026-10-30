@@ -486,10 +486,11 @@ class _ConteTabHostState extends State<ConteTabHost> {
   /// The book's front — its cover and the blank page behind it — in the
   /// sheet's format window (I-59: 「콘티 용지패널의 설정버튼안에」, then
   /// I-93: 「타임시트처럼 전용 설정창」), kept with the work as one undo step,
-  /// and printed as shown, since the export lays the same book.
+  /// and printed as shown, since the export lays the same book — with the
+  /// room picked for [_formatCuts], the same step.
   Future<void> _editFormat() {
     final info = _session.timesheetInfo;
-    return askThenCommit<ConteFormat>(
+    return askThenCommit<ConteFormatSave>(
       context,
       dialog: (_) => ConteFormatWindow(
         initial: (
@@ -498,17 +499,39 @@ class _ConteTabHostState extends State<ConteTabHost> {
           cover: info.conteCover,
           blankPage: info.conteBlankPage,
           fixedText: info.conteFixedText,
+          cameraRoom: info.conteCameraRoom,
         ),
+        cuts: _formatCuts(),
       ),
-      commit: (format) => _session.updateTimesheetInfo(
+      commit: (save) => _session.cutVerbs.saveConteFormat(
         _session.timesheetInfo.copyWith(
-          conteForm: format.form,
-          conteOutlined: format.outlined,
-          conteCover: format.cover,
-          conteBlankPage: format.blankPage,
-          conteFixedText: format.fixedText,
+          conteForm: save.format.form,
+          conteOutlined: save.format.outlined,
+          conteCover: save.format.cover,
+          conteBlankPage: save.format.blankPage,
+          conteFixedText: save.format.fixedText,
+          conteCameraRoom: save.format.cameraRoom,
         ),
+        cameraRoom: save.cutCameraRoom,
       ),
+    );
+  }
+
+  /// The cuts the format window's 컷 설정 row is about
+  /// ([CutVerbs.addressedCutIds], as the cut button's picks are): the
+  /// current one by its name, a range by its count, none in the gap.
+  ConteFormatCuts? _formatCuts() {
+    final cutIds = _session.cutVerbs.addressedCutIds;
+    final cut = cutIds.isEmpty ? null : _session.cutById(cutIds.first);
+    if (cut == null) {
+      return null;
+    }
+    final strings = AppText.strings;
+    return (
+      words: cutIds.length == 1
+          ? strings.conteCameraRoomCurrentCut(cut.name)
+          : strings.conteCameraRoomSelectedCuts(cutIds.length),
+      room: cut.metadata.conteCameraRoom,
     );
   }
 
@@ -615,6 +638,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
               session: _session,
               pictureFor: _pictureFor,
               onSelectCell: _selectCell,
+              wordsRefusalOf: _wordsRefusalOf,
               drawing: _drawing,
               strokeHold: _strokeHold,
               imageFor: widget.imageFor,
@@ -712,10 +736,11 @@ class _ConteTabHostState extends State<ConteTabHost> {
   /// 없으면 프레임이 없다고뜨는데 이런 메시지 제대로 표시. 콘티레이어가
   /// 없다고」). Null while its 「프레임 자동 생성」 is on and the stroke makes
   /// what is missing.
-  String? _refusalFor(CutId cutId) {
-    if (_session.autoFrame.autoCreates) {
-      return null;
-    }
+  String? _refusalFor(CutId cutId) =>
+      _session.autoFrame.autoCreates ? null : _whatTheCutLacks(cutId);
+
+  /// What a cell of [cutId] with no block lacks, in the canvas's words.
+  String _whatTheCutLacks(CutId cutId) {
     final strings = AppStrings.of(
       _session.languageSettings.value.programLanguage,
     );
@@ -757,6 +782,11 @@ class _ConteTabHostState extends State<ConteTabHost> {
   /// Why [cell]'s band takes no ink ([_refusalFor]).
   String? _refusalOfCell(ContePlacedCell cell) =>
       _refusalFor(CutId(cell.cutId));
+
+  /// Why [cell], with no block, takes no words: whatever 「프레임 자동
+  /// 생성」 says, a tap on its words makes nothing to keep them.
+  String _wordsRefusalOf(ContePlacedCell cell) =>
+      _whatTheCutLacks(CutId(cell.cutId));
 
   /// [pictures]' windows — each of [pages]' own — moved to where their
   /// page lies.

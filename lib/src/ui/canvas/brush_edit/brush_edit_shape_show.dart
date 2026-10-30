@@ -182,6 +182,14 @@ class _BrushEditShapeShow implements ShapeShow {
     _dropTheStroke();
   }
 
+  /// The stroke's own reading ([_BrushEditPressure.pressureOf]) — device,
+  /// driver stream and curve alike. ⚠️A press reads before a Pencil has
+  /// measured, so on an iPad it is the force the contact pressed with:
+  /// the stand-in a stroke waits past has nothing after it to wait for.
+  @override
+  double pressureOf(PointerDownEvent press) =>
+      _state._pressure.pressureOf(press).pressure;
+
   void _dropTheArea() {
     _wanted = null;
     _laying = null;

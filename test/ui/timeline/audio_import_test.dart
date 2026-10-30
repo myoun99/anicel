@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -342,8 +343,8 @@ void main() {
                     onOrientationChanged: (_) {},
                     pixelsPerFrame: 48,
                     onPixelsPerFrameChanged: (_) {},
-                    showSeconds: false,
-                    onShowSecondsChanged: (_) {},
+                    rulerView: FrameRulerView.frames,
+                    onRulerViewChanged: (_) {},
                     onPlaceMediaAsset: (layerId, frameIndex, path) =>
                         placedInstead = (layerId, frameIndex, path),
                   ),
@@ -472,8 +473,8 @@ void main() {
                     onOrientationChanged: (_) {},
                     pixelsPerFrame: 48,
                     onPixelsPerFrameChanged: (_) {},
-                    showSeconds: false,
-                    onShowSecondsChanged: (_) {},
+                    rulerView: FrameRulerView.frames,
+                    onRulerViewChanged: (_) {},
                     onPlaceMediaAsset: (layerId, frameIndex, path) =>
                         placed = (layerId, frameIndex, path),
                   ),
@@ -765,8 +766,8 @@ void main() {
                     onOrientationChanged: (_) {},
                     pixelsPerFrame: 48,
                     onPixelsPerFrameChanged: (_) {},
-                    showSeconds: false,
-                    onShowSecondsChanged: (_) {},
+                    rulerView: FrameRulerView.frames,
+                    onRulerViewChanged: (_) {},
                     onPlaceMediaAsset: (layerId, frameIndex, path) {
                       droppedLayer = layerId;
                       droppedFrame = frameIndex;

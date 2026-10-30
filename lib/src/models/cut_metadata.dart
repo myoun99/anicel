@@ -1,4 +1,6 @@
 import '../core/collection_equality.dart';
+import '../core/copy_with_sentinel.dart';
+import 'conte/conte_camera_room.dart';
 import 'layer_mark.dart';
 import 'layer_process.dart';
 import 'timesheet_sheet_kind.dart';
@@ -11,6 +13,7 @@ class CutMetadata {
     this.sheetKind = TimesheetSheetKind.sixSeconds,
     this.scene = '',
     this.openStaffFolds = staffFoldsOpenAtFirst,
+    this.conteCameraRoom,
   });
 
   const CutMetadata.empty()
@@ -19,7 +22,8 @@ class CutMetadata {
       staff = const {},
       sheetKind = TimesheetSheetKind.sixSeconds,
       scene = '',
-      openStaffFolds = staffFoldsOpenAtFirst;
+      openStaffFolds = staffFoldsOpenAtFirst,
+      conteCameraRoom = null;
 
   /// The memo written on each page of the cut's timesheet, by page —
   /// trailing blanks left off ([withPageNote]).
@@ -89,6 +93,12 @@ class CutMetadata {
   /// the names, ONE undo step; a cancelled window keeps what was saved.
   final Set<LayerProcess> openStaffFolds;
 
+  /// How much of the conte sheet this cut's cells take where its camera
+  /// moves — null where the cut takes the format window's
+  /// (`TimesheetInfo.conteCameraRoom`): I-82-Q1 (유저 2026-10-30) 「서식
+  /// 전체 + 컷마다 덮어쓰기」.
+  final ConteCameraRoom? conteCameraRoom;
+
   /// [mark]'s name on this cut, or empty when nobody is set.
   String staffNameFor(LayerMark mark) => staff[mark.keySlug] ?? '';
 
@@ -103,6 +113,7 @@ class CutMetadata {
     TimesheetSheetKind? sheetKind,
     String? scene,
     Set<LayerProcess>? openStaffFolds,
+    Object? conteCameraRoom = copyWithSentinel,
   }) {
     return CutMetadata(
       pageNotes: pageNotes ?? this.pageNotes,
@@ -111,6 +122,9 @@ class CutMetadata {
       sheetKind: sheetKind ?? this.sheetKind,
       scene: scene ?? this.scene,
       openStaffFolds: openStaffFolds ?? this.openStaffFolds,
+      conteCameraRoom: identical(conteCameraRoom, copyWithSentinel)
+          ? this.conteCameraRoom
+          : conteCameraRoom as ConteCameraRoom?,
     );
   }
 
@@ -126,6 +140,7 @@ class CutMetadata {
         for (final process in LayerProcess.values)
           if (openStaffFolds.contains(process)) process.jsonValue,
       ],
+    if (conteCameraRoom case final room?) 'conteCameraRoom': room.name,
     // The per-cut fade TARGET (FO/WO) is gone (R3b) — legacy 'fadeTarget'
     // keys are ignored on read. ↩️F-192: the black or white a fade clears
     // from or closes to is the TERM's (F.x black, W.x white —
@@ -150,6 +165,7 @@ class CutMetadata {
         }),
         _ => staffFoldsOpenAtFirst,
       },
+      conteCameraRoom: ConteCameraRoom.named(json['conteCameraRoom']),
     );
   }
 
@@ -162,7 +178,8 @@ class CutMetadata {
           mapEquals(other.staff, staff) &&
           other.sheetKind == sheetKind &&
           other.scene == scene &&
-          setEquals(other.openStaffFolds, openStaffFolds);
+          setEquals(other.openStaffFolds, openStaffFolds) &&
+          other.conteCameraRoom == conteCameraRoom;
 
   @override
   int get hashCode => Object.hash(
@@ -174,11 +191,13 @@ class CutMetadata {
     sheetKind,
     scene,
     Object.hashAllUnordered(openStaffFolds),
+    conteCameraRoom,
   );
 
   @override
   String toString() =>
       'CutMetadata(pageNotes: $pageNotes, '
       'mark: $mark, staff: $staff, sheetKind: $sheetKind, scene: $scene, '
-      'openStaffFolds: $openStaffFolds)';
+      'openStaffFolds: $openStaffFolds, '
+      'conteCameraRoom: $conteCameraRoom)';
 }

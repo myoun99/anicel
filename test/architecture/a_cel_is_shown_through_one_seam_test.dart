@@ -119,6 +119,30 @@ void main() {
     );
   });
 
+  /// 🗣️I-132-Q32 b: a plugin runs where the keys run, after them — so it
+  /// is one more step of the keys' pass, and a route that ran it alone
+  /// would show a cel through the plugin without its texts or its keys.
+  test('nothing under lib/ runs a plugin over a cel but the keys\' pass', () {
+    const door = 'celSurfaceThroughPlugin(';
+    const declared = 'BitmapSurface celSurfaceThroughPlugin(';
+    final calls = [
+      for (final file in dartFilesUnder('lib'))
+        for (final line in file.readAsStringSync().split('\n'))
+          if (line.contains(door) &&
+              !line.trimLeft().startsWith('//') &&
+              !line.trimLeft().startsWith(declared))
+            '${file.path.replaceAll(r'\', '/')}: ${line.trim()}',
+    ];
+    expect(calls, hasLength(1));
+    expect(calls.single, startsWith('$keysPass: '));
+    expect(
+      File(
+        'lib/src/services/cel_plugin_pass.dart',
+      ).readAsStringSync(),
+      contains(declared),
+    );
+  });
+
   test('fixture: the pass is declared where this test thinks it is', () {
     final source = File(keysPass).readAsStringSync();
     for (final declared in doors.values) {

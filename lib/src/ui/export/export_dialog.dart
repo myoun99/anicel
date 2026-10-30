@@ -341,6 +341,11 @@ class ExportDialogState extends State<ExportDialog> {
         frameUnderThePlayhead(_session)?.cut;
   });
 
+  /// A cel crossed between empty and drawn under the window — the editor's
+  /// undo is the window's (I-127) and the project stays the same one — so
+  /// the Cels list asks again which cels hold a picture ([_celGroupPlan]).
+  void _heardCels() => setState(() {});
+
   @override
   void initState() {
     super.initState();
@@ -377,6 +382,7 @@ class ExportDialogState extends State<ExportDialog> {
     }
     _syncControllersFromSpecs();
     _filmNews.addListener(_heardFilm);
+    _session.layerStack.celTintRevision.addListener(_heardCels);
     unawaited(_restoreFromStore());
   }
 
@@ -401,6 +407,7 @@ class ExportDialogState extends State<ExportDialog> {
   @override
   void dispose() {
     _filmNews.dispose();
+    _session.layerStack.celTintRevision.removeListener(_heardCels);
     _progress.dispose();
     _sequenceFileController.dispose();
     _imageFileController.dispose();
@@ -926,13 +933,6 @@ class ExportDialogState extends State<ExportDialog> {
   ExportProjectOverrides get _overrides =>
       _session.repository.requireProject().exportOverrides;
 
-  /// The Cels tab's label-group plan (v10: 파일 = 라벨×셀번호 1장,
-  /// 기준+어태치 합성) — rules, then the per-cut manual delta, then the
-  /// project-side cut checks.
-  ///
-  /// Memoized on what it reads — the project (what the hand did to a cut's
-  /// list is the project's) and the spec: the board, the preview, the
-  /// headline and the lines under the picture each ask for it every build.
   /// The cel picking the window shows and plans with: the Cels tab's, or
   /// the AE Script tab's as it writes its cels (ae-script-export-Q1: 「셀부분
   /// 선택하는 동작은 셀 탭 그대로 사용하되」 — one list, each tab its own
@@ -945,26 +945,39 @@ class ExportDialogState extends State<ExportDialog> {
   bool get _picksCels =>
       _tab == ExportTab.cels || _tab == ExportTab.aeScript;
 
+  /// The Cels tab's label-group plan (v10: 파일 = 라벨×셀번호 1장,
+  /// 기준+어태치 합성) — rules, then the per-cut manual delta, then the
+  /// project-side cut checks.
+  ///
+  /// Memoized on what it reads — the project (what the hand did to a cut's
+  /// list is the project's), the spec, and which cels hold a picture (the
+  /// timeline tint's number, [_heardCels]): the board, the preview, the
+  /// headline and the lines under the picture each ask for it every build.
   ExportCelGroupPlan _celGroupPlan() {
     final spec = _celsSpec;
     final project = _session.repository.requireProject();
+    final drawnAt = _session.layerStack.celTintRevision.value;
     final cached = _celPlanCache;
-    if (cached != null && identical(cached.$1, project) && cached.$2 == spec) {
-      return cached.$3;
+    if (cached != null &&
+        identical(cached.$1, project) &&
+        cached.$2 == spec &&
+        cached.$3 == drawnAt) {
+      return cached.$4;
     }
     final plan = buildExportCelGroupPlan(
       project: project,
       activeCutId: _activeCut.id,
       spec: spec,
+      drawn: _session.layerStack.celHoldsAPicture,
       overrides: _overrides,
       fileExtension: spec.format.stillFormat.fileExtension,
       sheetPagesOf: _sheetPagesOf,
     );
-    _celPlanCache = (project, spec, plan);
+    _celPlanCache = (project, spec, drawnAt, plan);
     return plan;
   }
 
-  (Object, CelsExportSpec, ExportCelGroupPlan)? _celPlanCache;
+  (Object, CelsExportSpec, int, ExportCelGroupPlan)? _celPlanCache;
 
   AppLanguage get _notationLanguage =>
       _session.languageSettings.value.notationLanguage;
@@ -2919,10 +2932,13 @@ class ExportDialogState extends State<ExportDialog> {
   }
 
   /// The AE Script tab's run: the cels the list shows bright, written as
-  /// the tab writes them ([AeScriptExportSpec.written]), then the script
-  /// that lays them out in After Effects beside them ([aeCompsOf]).
+  /// the tab writes them ([AeScriptExportSpec.written]), the camera's path
+  /// of each cut it lays as a guide ([AeScriptExportSpec.guideCamera]), then
+  /// the script that lays them out in After Effects beside them
+  /// ([aeCompsOf]).
   Future<String> _exportAeScript() {
-    final spec = _specs.aeScript.written;
+    final ae = _specs.aeScript;
+    final spec = ae.written;
     final plan = _celGroupPlan();
     final renderer = ExportFrameRenderer.forFormat(
       session: _session,
@@ -2931,25 +2947,74 @@ class ExportDialogState extends State<ExportDialog> {
     );
     final guideInk = guideColorOf(context);
     final cels = plan.writtenCels;
+    final cuts = aeCutsOf(_session.repository.requireProject(), plan);
+    // What goes beside the cels is named by its cut, bumped past the cels'
+    // names and each other's — as the disk tells names apart.
+    final taken = {for (final cel in cels) cel.fileName.toLowerCase()};
+    String claim(String name) =>
+        claimedOutputName(name, taken, keyOf: (name) => name.toLowerCase());
+    final paths = ae.guideCamera
+        ? _aeCameraPaths(cuts, claim)
+        : const <({Cut cut, String fileName})>[];
+    String fileNameFor(int index) => index < cels.length
+        ? cels[index].fileName
+        : paths[index - cels.length].fileName;
+    // The script lays what the run wrote ([aeLaidOf]).
+    final wrote = <String>{};
     return _runImageExport(
-      count: cels.length,
-      renderImage: (index) =>
-          renderer.renderCelGroup(
-            cels[index],
-            spec.sizeMode,
-            guideColor: guideInk,
-          ),
-      fileNameFor: (index) => cels[index].fileName,
-      thenWrite: [() => _writeAeScript(plan, scope: spec.scope)],
+      count: cels.length + paths.length,
+      renderImage: (index) async {
+        final image = await (index < cels.length
+            ? renderer.renderCelGroup(
+                cels[index],
+                spec.sizeMode,
+                guideColor: guideInk,
+              )
+            : renderer.cameraPathOf(paths[index - cels.length].cut) ??
+                  Future.value());
+        if (image != null) {
+          wrote.add(fileNameFor(index));
+        }
+        return image;
+      },
+      fileNameFor: fileNameFor,
+      thenWrite: [
+        () => _writeAeScript(
+          aeLaidOf(plan, wrote),
+          scope: spec.scope,
+          cameraPaths: {
+            for (final (:cut, :fileName) in paths)
+              if (wrote.contains(fileName)) cut.id: fileName,
+          },
+          claim: claim,
+        ),
+      ],
       says: _Tally.files,
     );
   }
 
-  /// The script of [plan]'s cels, named after what [scope] covers, and the
-  /// sound of each cut it lays beside it ([_writeAeSounds]).
+  /// The camera's path of each of [cuts] whose camera moves, a file named
+  /// by its cut ([claim]).
+  List<({Cut cut, String fileName})> _aeCameraPaths(
+    Iterable<Cut> cuts,
+    String Function(String name) claim,
+  ) => [
+    for (final cut in cuts)
+      if (CameraPath.of(cut, _session.camera.cameraFrameSize) != null)
+        (
+          cut: cut,
+          fileName: claim('${sanitizeExportFileComponent(cut.name)}_camera.png'),
+        ),
+  ];
+
+  /// The script of [plan]'s cuts, named after what [scope] covers, over
+  /// the [cameraPaths] already written — and the sound of each cut beside
+  /// it ([_writeAeSounds]), named by [claim].
   Future<void> _writeAeScript(
     ExportCelGroupPlan plan, {
     required ExportScopeKind scope,
+    required Map<CutId, String> cameraPaths,
+    required String Function(String name) claim,
   }) async {
     final project = _session.repository.requireProject();
     final name = unnamedExportName(
@@ -2964,6 +3029,7 @@ class ExportDialogState extends State<ExportDialog> {
     final sounds = await _writeAeSounds(
       aeCutsOf(project, plan),
       framesOf: framesOf,
+      claim: claim,
     );
     final script = AeScript(
       name: name,
@@ -2977,7 +3043,11 @@ class ExportDialogState extends State<ExportDialog> {
           poseOf: _session.camera.cameraPoseForCut,
           frameSize: _session.camera.cameraFrameSize,
         ),
-        runOf: (cut) => (frames: framesOf(cut), sound: sounds[cut.id]),
+        runOf: (cut) => (
+          frames: framesOf(cut),
+          sound: sounds[cut.id],
+          cameraPath: cameraPaths[cut.id],
+        ),
       ),
     );
     final file = File(_joinLocation('$name.jsx'));
@@ -2986,20 +3056,16 @@ class ExportDialogState extends State<ExportDialog> {
   }
 
   /// Each of [cuts]' sound as the app plays it over the frames its comps
-  /// run ([framesOf]), a WAV beside the script by the cut's name — keyed by
-  /// the cut. A cut that sounds nothing has none.
+  /// run ([framesOf]), a WAV beside the script by the cut's name ([claim])
+  /// — keyed by the cut. A cut that sounds nothing has none.
   Future<Map<CutId, String>> _writeAeSounds(
     Iterable<Cut> cuts, {
     required int Function(Cut cut) framesOf,
+    required String Function(String name) claim,
   }) async {
     final sounds = <CutId, String>{};
-    final taken = <String>{};
     for (final cut in cuts) {
-      final fileName = claimedOutputName(
-        '${sanitizeExportFileComponent(cut.name)}.wav',
-        taken,
-        keyOf: (name) => name.toLowerCase(),
-      );
+      final fileName = claim('${sanitizeExportFileComponent(cut.name)}.wav');
       final run = [
         for (var frame = 0; frame < framesOf(cut); frame += 1)
           ExportFrameTask(cut: cut, frameIndex: frame),
@@ -4108,24 +4174,49 @@ class ExportDialogState extends State<ExportDialog> {
           _celRuleCaption(strings.exLayerFilter),
           const SizedBox(height: 3),
           _celFilters(spec),
-          if (_tab == ExportTab.cels) ...[
-            const SizedBox(height: 6),
-            _celRuleCaption(strings.exApply),
-            const SizedBox(height: 3),
-            PillStrip(
-              items: [
-                _specSwitch(
-                  'export-cels-apply-paper',
-                  strings.exPaperLabel,
-                  spec.applyPaper,
-                  () => spec.copyWith(applyPaper: !spec.applyPaper),
-                ),
-              ],
-            ),
-          ],
+          ..._celLayRules(spec),
         ],
       ),
     );
+  }
+
+  /// What the tab lays with what it writes: the Cels tab its paper, the AE
+  /// Script tab its guides — the camera's path over the canvas comp (Q3);
+  /// its directions are a kind above, laid as guides too.
+  List<Widget> _celLayRules(CelsExportSpec spec) {
+    final strings = AppText.strings;
+    final ae = _specs.aeScript;
+    final (caption, lay) = switch (_tab) {
+      ExportTab.cels => (
+        strings.exApply,
+        _specSwitch(
+          'export-cels-apply-paper',
+          strings.exPaperLabel,
+          spec.applyPaper,
+          () => spec.copyWith(applyPaper: !spec.applyPaper),
+        ),
+      ),
+      ExportTab.aeScript => (
+        strings.exLayGuides,
+        _pill(
+          keyValue: 'export-ae-camera-path',
+          label: strings.cameraPath,
+          selected: ae.guideCamera,
+          onPick: () =>
+              _updateSpec(ae.copyWith(guideCamera: !ae.guideCamera)),
+        ),
+      ),
+      ExportTab.sequence || ExportTab.image || ExportTab.conte => (null, null),
+    };
+    if (caption == null || lay == null) {
+      return const [];
+    }
+    return [
+      const SizedBox(height: 6),
+      _celRuleCaption(caption),
+      const SizedBox(height: 3),
+      PillStrip(items: [lay]),
+    ];
   }
 
   static const EdgeInsets _celRulesPadding = EdgeInsets.fromLTRB(8, 5, 8, 5);

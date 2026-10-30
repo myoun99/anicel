@@ -208,16 +208,19 @@ void main() {
       }
     });
 
-    test('🗣️the grades throw a crumb of lead at random, turned all the way, '
-        'on a paper reached deeper the harder they press (F-462 ②)', () {
+    test('🗣️the grades throw a cloud of lead at random, turned all the way, '
+        'on a touch of multiplied paper (F-462 ②, F-511)', () {
       // 유저 2026-10-25: 「클튜 연필브러시들은 육각형식으로 안하니까 그거
       // 참고해서 다시 개편. 육각형같은거 잊어도됨」 · 「클튜브러시 그대로
       // 참고하되 따라한 느낌만 안나도록 참고해서 우리방식대로 재구현」.
+      // 2026-10-30: 「제발 질감으로 억지로 표현하려하지마. 브러시 팁으로서
+      // 표현하라고」 · 「아예 질감을 없애란게 아니고 클튜정도로」.
       for (final id in [
         'builtin-hard-pencil',
         'builtin-pencil',
         'builtin-soft-pencil',
         'builtin-dark-pencil',
+        'builtin-colored-pencil',
       ]) {
         final settings = byId(id).settings;
         expect(settings.tips, pencilCrumbBrushTipMasks, reason: id);
@@ -228,21 +231,35 @@ void main() {
           'builtin-graphite-tooth',
           reason: id,
         );
-        // ↩️F-456 multiplied it: a lead only paled and laid smooth.
-        expect(settings.textureMode, BrushTextureMode.height, reason: id);
-        final reach = settings.shape.curves[(
-          BrushPressureTarget.textureDensity,
-          BrushInputSource.pressure,
-        )]!;
-        expect(reach.evaluate(0.0), lessThan(0.75), reason: '$id touched');
-        expect(reach.evaluate(1.0), 1.0, reason: '$id pressed');
+        // ↩️F-462 ② cut it by its height, reached deeper by the pressure:
+        // the paper did all the grain.
+        expect(settings.textureMode, BrushTextureMode.multiply, reason: id);
+        expect(settings.textureDensity, lessThan(0.15), reason: id);
+        expect(
+          settings.shape.curves.keys.map((key) => key.$1),
+          isNot(contains(BrushPressureTarget.textureDensity)),
+          reason: id,
+        );
+        // Pressure moves the flow, so a line laid again fills in.
+        final flow = settings.shape.flowPressureCurve;
+        expect(flow?.evaluate(1.0), 1.0, reason: id);
+        expect(flow?.evaluate(0.0), lessThan(0.5), reason: id);
+        // 유저 2026-10-30: 「연필시리즈들 간격이 너무 길어. 5%로 하자」.
+        expect(settings.spacing, BrushShape.generalSpacing, reason: id);
       }
-      // Wax spreads over the tooth where graphite catches its peaks: the
-      // colored pencil throws the crumbs on a multiplied paper.
-      final colored = byId('builtin-colored-pencil').settings;
-      expect(colored.tips, pencilCrumbBrushTipMasks);
-      expect(colored.tipOrder, BrushTipOrder.random);
-      expect(colored.textureMode, BrushTextureMode.multiply);
+      for (final id in [
+        'builtin-hard-pencil',
+        'builtin-pencil',
+        'builtin-soft-pencil',
+        'builtin-dark-pencil',
+      ]) {
+        // The size runs all but from nothing, as the lead's point does.
+        expect(
+          byId(id).settings.shape.sizePressureCurve?.evaluate(0.0),
+          lessThan(0.1),
+          reason: id,
+        );
+      }
     });
 
     test('🚨the tilted pencil wears the lead upright to flat, three faces a '
@@ -275,9 +292,45 @@ void main() {
       }
     });
 
-    test('🚨the sharp is the user\'s own, as they exported it (F-433)', () {
-      // 유저: 「프리셋 기본 샤프 연필, 내가 만든 샤프로 교체」.
-      final sharp = byId('builtin-mechanical-pencil').settings;
+    test('🗣️the sharp\'s lead is the grades\', on the size and the pressure '
+        'the user exported (F-511)', () {
+      // 유저 2026-10-30: 「샤프는 지금상태에서 추가로 팁 … 연필1 그냥 넣자.
+      // 그러고 질감도 다른 연필처럼 개편한거 통일. 간격도 마찬가지고.
+      // 안티앨리어스는 1로」.
+      final sharp = byId('builtin-mechanical-pencil');
+      final settings = sharp.settings;
+      expect(sharp.groupId, byId('builtin-pencil').groupId);
+      expect(settings.tips, [pencilCrumbBrushTipMasks.first]);
+      expect(settings.angleJitter, 1.0);
+      expect(settings.textureMaskSource?.id, 'builtin-graphite-tooth');
+      expect(settings.textureMode, BrushTextureMode.multiply);
+      expect(
+        settings.textureScale,
+        byId('builtin-pencil').settings.textureScale,
+      );
+      expect(
+        settings.textureDensity,
+        byId('builtin-pencil').settings.textureDensity,
+      );
+      expect(settings.spacing, BrushShape.generalSpacing);
+      expect(settings.antiAlias, BrushAntiAlias.low);
+      final pen = byId('builtin-mechanical-pen').settings;
+      expect(settings.size, pen.size);
+      expect(settings.shape.sizePressureCurve, pen.shape.sizePressureCurve);
+      expect(
+        settings.shape.opacityPressureCurve,
+        pen.shape.opacityPressureCurve,
+      );
+    });
+
+    test('🚨the user\'s own sharp is a pen now, as they exported it (F-433, '
+        'F-511)', () {
+      // 유저: 「프리셋 기본 샤프 연필, 내가 만든 샤프로 교체」 · 2026-10-30:
+      // 「기존 샤프브러시는 연필이라기엔 이상했지만 브러시자체로선 좋으니까 펜
+      // 그룹에 넣자」.
+      final pen = byId('builtin-mechanical-pen');
+      final sharp = pen.settings;
+      expect(pen.groupId, byId('builtin-g-pen').groupId);
       expect(sharp.size, 1.5);
       expect(sharp.spacing, 0.0207);
       expect(sharp.textureMaskSource?.id, 'builtin-canvas-weave');
@@ -463,34 +516,21 @@ void main() {
     );
   });
 
-  test('a general brush lays its dabs at the finest spacing — only a brush '
+  test('a general brush lays its dabs at the general step — only a brush '
       'whose look IS the gap keeps one of its own', () {
-    // 유저 2026-09-24: 「지금 프리셋 브러시들 간격이 너무 멀어서 일반적인
-    // 설정으론 최소치로 두자. 간격이 필요한 특수한거만 둬도되고」.
-    // Measured 2026-09-24 on the sample stroke at an 87 px tip: at 1% a grain
-    // or bristle tip's texture fell to 16–51% of what it had.
-    const grain = 'its grain is the gap between stamps';
+    // 유저 2026-10-30: 「연필시리즈들 간격이 너무 길어. 5%로 하자. 그냥 다른
+    // 프리셋도 그렇고 특별한일없으면 기본값 다 5%로해도될듯」. ↩️2026-09-24
+    // had it at the finest: 「일반적인 설정으론 최소치로 두자. 간격이 필요한
+    // 특수한거만 둬도되고」.
+    expect(BrushShape.generalSpacing, 0.05);
     const ownGap = <String, String>{
-      'builtin-chalk-preset': grain,
-      // ↩️Board F-218 put the graphite grades and the tilted pencil on the
-      // grain tip; F-433 moved their grain to the paper, so they lay at the
-      // finest step again. The two pencils the user made keep theirs.
-      'builtin-mechanical-pencil': 'the user\'s own sharp, at its own step',
+      // 📏F-511: at 5% its strokes fill to a black band; the others on a
+      // grain tip kept theirs.
+      'builtin-chalk-preset': 'its grain is the gap between stamps',
+      // The two brushes the user made keep theirs.
+      'builtin-mechanical-pen': 'the user\'s own sharp, at its own step',
       'builtin-coloring-pencil':
           'the user\'s own colouring pencil, at its own step',
-      'builtin-dry-ink': grain,
-      'builtin-pastel': grain,
-      'builtin-crayon': grain,
-      'builtin-graphite-stick': grain,
-      'builtin-wet-watercolor': grain,
-      'builtin-flat-bristle': grain,
-      'builtin-palette-knife': grain,
-      'builtin-grit-spray': grain,
-      'builtin-blending-stump': grain,
-      'builtin-rough-edge': grain,
-      'builtin-concrete': grain,
-      'builtin-blender': 'a blender picks colour up once per dab',
-      'builtin-water-blend': 'a blender picks colour up once per dab',
       'builtin-charcoal': 'its spacing jitter needs a gap to scatter',
       'builtin-dry-brush': 'its spacing jitter needs a gap to scatter',
       'builtin-splatter-preset': 'a decoration: separate marks',
@@ -508,13 +548,13 @@ void main() {
       if (why == null) {
         expect(
           preset.settings.spacing,
-          BrushShape.minSpacing,
+          BrushShape.generalSpacing,
           reason: '${preset.name} is a general brush',
         );
       } else {
         expect(
           preset.settings.spacing,
-          greaterThan(BrushShape.minSpacing),
+          isNot(BrushShape.generalSpacing),
           reason: '${preset.name} keeps its gap — $why',
         );
       }

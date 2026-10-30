@@ -69,7 +69,7 @@ Future<void> _editCutSettings(
   context,
   session.cutVerbs.addressedCutMetadata,
   dialog: (cut) => CutSettingsWindow(cut: cut),
-  commit: (save) => session.cutVerbs.setAddressedCutStaff(
+  commit: (save) => session.cutVerbs.saveAddressedCutSettings(
     save.names,
     openFolds: save.openFolds,
   ),

@@ -4,6 +4,8 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/ui/timeline/lane_graph.dart'
+    show LaneGraph, TimelineGraphSeat;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cursor_layer.dart';
@@ -53,7 +55,9 @@ void main() {
     WidgetTester tester, {
     TimelineFrameRangeSelection? cells,
     TimelineLaneSelection? lanes,
+    List<TimelineDisplayRow>? rows,
   }) async {
+    final drawn = rows ?? rowsWithLanes();
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -67,8 +71,8 @@ void main() {
               children: [
                 TimelineCursorLayer(
                   frameCursor: ValueNotifier<int>(0),
-                  rows: rowsWithLanes(),
-                  edges: timelineRowEdgesOf(rowsWithLanes(), metrics),
+                  rows: drawn,
+                  edges: timelineRowEdgesOf(drawn, metrics),
                   activeLayerId: const LayerId('a'),
                   frameStartIndex: 0,
                   frameEndIndexExclusive: 20,
@@ -99,6 +103,61 @@ void main() {
     );
     return box.decoration as BoxDecoration;
   }
+
+  // 🗣️F-514 (유저 2026-10-30): a graph shows what it picked itself.
+  testWidgets('a lane seated in an open graph wears no band, and the row '
+      'beside it does', (tester) async {
+    const seat = TimelineGraphSeat(
+      groupKey: 'group',
+      graph: LaneGraph(),
+      lanes: ['position', 'scale'],
+      picked: [],
+      pinned: [],
+    );
+    final plain = rowsWithLanes();
+    final rows = [
+      plain[0],
+      plain[1].seatedIn(seat),
+      plain[2].seatedIn(seat),
+      plain[3],
+    ];
+    final edges = timelineRowEdgesOf(rows, metrics);
+
+    await pump(
+      tester,
+      rows: rows,
+      lanes: const TimelineLaneSelection(
+        layerId: LayerId('a'),
+        laneId: 'position',
+        laneIds: ['position', 'scale', 'opacity'],
+        startIndex: 2,
+        endIndexExclusive: 5,
+      ),
+    );
+
+    final band = tester.getRect(
+      find.byKey(const ValueKey<String>('timeline-lane-range-selection')),
+    );
+    expect(band.height, edges.unitSpanOf(3).extent);
+    expect(band.top, edges.unitSpanOf(3).start);
+
+    await pump(
+      tester,
+      rows: rows,
+      lanes: const TimelineLaneSelection(
+        layerId: LayerId('a'),
+        laneId: 'position',
+        laneIds: ['position', 'scale'],
+        startIndex: 2,
+        endIndexExclusive: 5,
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey<String>('timeline-lane-range-selection')),
+      findsNothing,
+    );
+  });
 
   testWidgets('the lane band and the cell band are the SAME decoration', (
     tester,

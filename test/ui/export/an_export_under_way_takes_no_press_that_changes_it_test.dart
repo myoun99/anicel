@@ -52,6 +52,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_ink_layer.dart';
 import 'package:anicel/src/ui/widgets/app_scrollbar.dart';
 
+import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/export_format_pick.dart';
 import '../../helpers/paper_editing_kit.dart';
 import '../../helpers/poll_until.dart';
@@ -149,7 +150,7 @@ void main() {
   /// perspective guide — so every tab has something to offer, the Cels
   /// tab's band, stack and laying pills too — and CUT2 beside it, so the
   /// Cels list has a cut to pick.
-  EditorSessionManager session() => EditorSessionManager(
+  EditorSessionManager session() => inkEveryCel(EditorSessionManager(
     initialProject: Project(
       id: const ProjectId('project'),
       name: 'Project',
@@ -261,7 +262,7 @@ void main() {
       ],
       createdAt: DateTime.utc(2026),
     ),
-  );
+  ));
 
   Finder keyed(String key) => find.byKey(ValueKey<String>(key));
 

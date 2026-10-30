@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -70,8 +71,8 @@ Future<void> _openStoryboardAtFloor(WidgetTester tester) async {
             rail: TabRailWiring.of(manager),
             pixelsPerFrame: 12,
             onPixelsPerFrameChanged: (_) {},
-            showSeconds: false,
-            onShowSecondsChanged: (_) {},
+            rulerView: FrameRulerView.frames,
+            onRulerViewChanged: (_) {},
             trackLaneHeight: StoryboardPanel.minTrackLaneHeight,
             thumbnails: null,
           ),

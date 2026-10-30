@@ -61,7 +61,8 @@ typedef CutFieldWrite<T> =
 /// [cut] carrying [sibling]'s value of every field a 겸용 pair shares — each
 /// field a [LinkedCutFieldCommand] writes onto the pair as one: the drawing
 /// guides (`SetCutGuidesCommand`), the colour label (`UpdateCutMarkCommand`),
-/// the sheet it prints on (`UpdateCutSheetKindCommand`) and its staff
+/// the sheet it prints on (`UpdateCutSheetKindCommand`), the room its conte
+/// cells take (`UpdateCutConteCameraRoomCommand`) and its staff
 /// (`UpdateCutStaffNameCommand`). A cut made 겸용 of another starts with
 /// them, so the pair is one answer from its first frame.
 ///
@@ -73,6 +74,7 @@ Cut withLinkedCutFieldsOf(Cut cut, Cut sibling) => cut.copyWith(
   metadata: cut.metadata.copyWith(
     mark: sibling.metadata.mark,
     sheetKind: sibling.metadata.sheetKind,
+    conteCameraRoom: sibling.metadata.conteCameraRoom,
     staff: sibling.metadata.staff,
   ),
 );

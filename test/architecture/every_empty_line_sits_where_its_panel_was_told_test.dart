@@ -26,6 +26,9 @@ const _panels = <String, List<String>>{
   'lib/src/ui/export/export_preset_rail.dart': ['list'],
   'lib/src/ui/export/export_preview_panel.dart': ['stage'],
   'lib/src/ui/export/export_queue_column.dart': ['list'],
+  // Why the viewer's door gave no picture, in the picture's place — as the
+  // media viewer says it (2026-10-30).
+  'lib/src/ui/import/import_preview.dart': ['stage'],
   'lib/src/ui/media/media_pool_panel.dart': ['list'],
   'lib/src/ui/media/media_viewer_tab_host.dart': ['stage'],
   'lib/src/ui/timeline/layer_grid/layer_grid_rail_rows.dart': ['list'],

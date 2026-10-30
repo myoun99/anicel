@@ -27,6 +27,7 @@ import '../media/viewer_pages_and_run.dart';
 import '../media/viewer_sound.dart';
 import '../media/waveform_marks_painter.dart';
 import '../theme/app_theme.dart';
+import '../widgets/empty_state_text.dart';
 import '../widgets/transport_bar.dart';
 
 /// The import window's right-hand zone: the selected file, and the bar that
@@ -154,6 +155,19 @@ class _ImportPreviewState extends State<ImportPreview>
   /// until it lands, or turns out to be nothing this window reads.
   bool _opening = false;
 
+  /// What stands in the picture's place when the door gave none — the media
+  /// viewer's own sentence for the same open ([viewerCouldNotOpen],
+  /// [viewerNothingOpens]) — or null while nothing was refused.
+  ///
+  /// 🐞The zone stood empty instead, under 「shows nothing rather than an
+  /// error nobody asked for — what cannot be imported is already named in
+  /// the footer」 (2026-08-14, when it showed pictures alone and a movie or a
+  /// PDF could not be shown at all). The footer names nothing until Import
+  /// is pressed, so a movie the device could not open stood as a black well
+  /// counting 1 / 1, and Import then said only that it could not be imported
+  /// (유저 2026-10-30, Galaxy Tab, build 1084).
+  String? _refusal;
+
   /// The page under the playhead: a movie's project frame, a PDF's page, a
   /// GIF's frame. A sound's playhead is its run's seconds instead
   /// ([MediaRun.soundSeconds]) — a waveform is one page.
@@ -206,6 +220,7 @@ class _ImportPreviewState extends State<ImportPreview>
     _run.letGo();
     _rasters.clear();
     _page = 0;
+    _refusal = null;
     final document = _document;
     _document = null;
     if (document != null) {
@@ -238,7 +253,11 @@ class _ImportPreviewState extends State<ImportPreview>
     // so the press that plays it finds the sound already there.
     final key = normalizedMediaPath(path);
     final kind = asSound ? MediaAssetKind.audio : mediaAssetKindForPath(key);
+    // A run is pictures; a file of no medium's kind asks nothing, so it is
+    // refused nothing.
+    final asked = run != null ? MediaAssetKind.image : kind;
     ViewerDocument? document;
+    String? refusal;
     try {
       document = run != null
           ? await PictureRunDocument.open(run, hold: widget.holdBytes)
@@ -251,11 +270,12 @@ class _ImportPreviewState extends State<ImportPreview>
               soundPeaks: widget.soundPeaks,
               projectClock: (rate: widget.frameRate, speed: widget.audioSpeed),
             );
-    } on Object {
-      // A file being written as we look at it, a movie this build cannot
-      // read: the zone shows nothing rather than an error nobody asked
-      // for. What cannot be imported is already named in the footer.
+      if (document == null && asked != null) {
+        refusal = viewerNothingOpens(asked);
+      }
+    } on Object catch (error) {
       document = null;
+      refusal = viewerCouldNotOpen(error);
     }
     if (!mounted || !stillAsked()) {
       unawaited(document?.dispose());
@@ -263,6 +283,7 @@ class _ImportPreviewState extends State<ImportPreview>
     }
     setState(() {
       _document = document;
+      _refusal = refusal;
       _opening = false;
     });
   }
@@ -334,7 +355,7 @@ class _ImportPreviewState extends State<ImportPreview>
       pagesAndRun: _pagesAndRun,
       document: shown,
       page: shown == null ? 0 : _page.clamp(0, shown.pageCount - 1),
-      nothing: _opening ? _loading : const SizedBox.shrink(),
+      nothing: _opening ? _loading : _refused(),
       // The app's ONE transparency checker under a picture — the export
       // preview's own, shared (유저 2026-09-11: 「임포트의 미리보기에서
       // 배경이 투명한파일은 출력창의 미리보기에서 쓰는 … 격자무늬 그대로
@@ -360,6 +381,22 @@ class _ImportPreviewState extends State<ImportPreview>
   static const Widget _loading = ViewerPageLoading(
     key: ValueKey<String>('import-preview-loading'),
   );
+
+  /// Why the door gave no picture ([_refusal]), where the picture would be
+  /// — or nothing.
+  Widget _refused() {
+    final refusal = _refusal;
+    return refusal == null
+        ? const SizedBox.shrink()
+        : Padding(
+            padding: const EdgeInsets.all(24),
+            child: EmptyStateText(
+              refusal,
+              key: const ValueKey<String>('import-preview-refused'),
+              place: EmptyStatePlace.stage,
+            ),
+          );
+  }
 
   /// A sound's marks over its band — the viewer's ([WaveformMarksPainter]):
   /// where the playhead stands, and the span IN/OUT keep, washed as the

@@ -10,6 +10,7 @@ import '../../models/camera_instruction.dart';
 import '../../models/camera_pose.dart';
 import '../../models/canvas_resize_anchor.dart';
 import '../../models/canvas_size.dart';
+import '../../models/conte/conte_camera_room.dart';
 import '../../models/cut.dart';
 import '../../models/cut_camera.dart';
 import '../../models/cut_id.dart';
@@ -75,6 +76,7 @@ import 'update_camera_instruction_set_command.dart';
 import 'update_cut_camera_command.dart';
 import 'linked_cut_field_command.dart';
 import 'update_cut_mark_command.dart';
+import 'update_cut_conte_camera_room_command.dart';
 import 'update_cut_sheet_kind_command.dart';
 import 'update_cut_scene_command.dart';
 import 'update_cut_staff_folds_command.dart';
@@ -247,11 +249,11 @@ class CutCommandCoordinator {
     required int page,
     required String note,
   }) => _cuts.updateCutNote(cutId: cutId, page: page, note: note);
-  void setCutStaffNames({
+  void saveCutSettings({
     required List<CutId> cutIds,
     required Map<LayerMark, String> names,
     Set<LayerProcess>? openFolds,
-  }) => _cuts.setCutStaffNames(
+  }) => _cuts.saveCutSettings(
     cutIds: cutIds,
     names: names,
     openFolds: openFolds,
@@ -262,7 +264,20 @@ class CutCommandCoordinator {
     required TimesheetInfo info,
     CutId? cutId,
     TimesheetSheetKind? kind,
-  }) => _cuts.setTimesheetFormat(info: info, cutId: cutId, kind: kind);
+  }) => _projectSettings.setTimesheetFormat(
+    info: info,
+    cutId: cutId,
+    kind: kind,
+  );
+  void setConteFormat({
+    required TimesheetInfo info,
+    required List<CutId> cutIds,
+    ({ConteCameraRoom? to})? cameraRoom,
+  }) => _projectSettings.setConteFormat(
+    info: info,
+    cutIds: cutIds,
+    cameraRoom: cameraRoom,
+  );
   void commitCutMoveReorder({
     required TrackId trackId,
     required List<CutId> order,

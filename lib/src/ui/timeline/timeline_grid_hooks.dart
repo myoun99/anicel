@@ -28,6 +28,7 @@ import 'lane_graph.dart' show LaneGraphVerbs, LaneGraphsView;
 import 'lane_graph_seats.dart' show LaneGraphLine, seatLaneGraphs;
 import 'property_lane_model.dart';
 import 'timeline_row_filter.dart';
+import 'frame_ruler_view.dart';
 import 'timeline_ruler_cursor_overlay.dart' show ReadyRunsIn;
 import 'timeline_section_policy.dart';
 import '../../models/project_frame_rate.dart';
@@ -90,8 +91,9 @@ class TimelineGridHooks {
     this.soundCannotPlay,
     this.seClipMarkerTooltip,
     this.projectFrameRate = ProjectFrameRate.fps24,
-    this.showSeconds = false,
-    this.onShowSecondsChanged,
+    this.rulerView = FrameRulerView.frames,
+    this.sheetPages,
+    this.onRulerViewChanged,
     this.onPixelsPerFrameChanged,
     this.onDropMediaAssetOnSeBlock,
     this.onDropMediaAssetOnLayer,
@@ -283,15 +285,22 @@ class TimelineGridHooks {
 
   final ProjectFrameRate projectFrameRate;
 
-  /// The ruler's bottom-line mode (UI-R10 #27): seconds display repeats
-  /// 1..fps per second instead of absolute frame numbers. The block
-  /// duration labels share it (R26 #7).
-  final bool showSeconds;
+  /// How the ruler counts (UI-R10 #27 · I-81): the seconds display repeats
+  /// 1..fps per second, the page view 1..a page, instead of absolute frame
+  /// numbers. The block duration labels share it (R26 #7) — [showSeconds].
+  final FrameRulerView rulerView;
 
-  /// The seconds toggle moved OUT of the command bar and onto the grid's
+  /// Whether a length reads as seconds+frames ([FrameRulerView.seconds]).
+  bool get showSeconds => rulerView.seconds;
+
+  /// The pages of the open cut's X-sheet — where the page view's ruler
+  /// starts again; null with no cut open.
+  final TimelineRulerPages? sheetPages;
+
+  /// The display's pick moved OUT of the command bar and onto the grid's
   /// top-left corner cell (the rail-window round) — it belongs beside the
   /// axis it relabels. Null leaves the corner as a plain spacer.
-  final ValueChanged<bool>? onShowSecondsChanged;
+  final ValueChanged<FrameRulerView>? onRulerViewChanged;
 
   /// The panel's zoom writer — the readout's and the zoom keys' — which a
   /// pinch on the grid writes through too (F-506, [SheetZoom]). Null names

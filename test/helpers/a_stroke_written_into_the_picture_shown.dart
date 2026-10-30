@@ -401,6 +401,87 @@ void aStrokeIsWrittenIntoThePictureShown({
     overlay.dispose();
   }, skip: skipped);
 
+  testWidgets('🚨the steps a pen takes while one is on its way wait for it and '
+      'go in as ONE patch — no queue grows behind the pen (F-512)', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const lineage = 'steps-wait-for-the-one-on-its-way';
+    final cels = storeWithTheCel();
+    final images = LayerFrameImageCache(frameStore: cels);
+    addTearDown(images.dispose);
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+    final live = BitmapSurfacePainter(
+      surface: BrushFrameDisplayCacheService(
+        frameStore: cels,
+        canvasSize: canvasSize,
+      ).prepareFramePreview(key).previewSurface,
+      overlayModel: overlay,
+      showTransparentBackground: false,
+      lineage: lineage,
+    );
+    final gpu = WritesLand();
+    final store = FramePictureStore<FramePictureKey>(gpu: gpu);
+    addTearDown(store.dispose);
+    final run = runOf(images, store);
+    final picture = run.pictures.keyOfStack(nodes, frame);
+    final view = CanvasViewport();
+
+    await pump(tester, run, key: const ValueKey(0), view: view, live: live);
+    expect(
+      await settleAsync(tester, () => store.bytesOf(picture) != null),
+      isTrue,
+      reason: 'LIVENESS: the frame\'s picture is made',
+    );
+    await lendBothClocks(tester, rounds: 2);
+
+    void step(TileCoord at) => overlay.showResultTiles([
+      PromotedStrokeTile(at, tileOf(at, stroke, (_) => true), 1),
+    ]);
+
+    gpu.holdsRenders = true;
+    addTearDown(gpu.letAllThrough);
+    step(TileCoord(x: 0, y: 0));
+    await tester.pump();
+    final first = store.landingOf(keptByTheCanvas(tester, picture));
+    expect(first, isNotNull, reason: 'LIVENESS: the first is on its way');
+
+    step(TileCoord(x: 1, y: 0));
+    await tester.pump();
+    step(TileCoord(x: 0, y: 1));
+    await tester.pump();
+
+    gpu.letAllThrough();
+    await inThePicture(tester, first);
+    await inThePicture(
+      tester,
+      store.landingOf(keptByTheCanvas(tester, picture)),
+    );
+    expect(
+      gpu.patchesWritten,
+      2,
+      reason: 'the first step, and the two behind it as one',
+    );
+    expect(
+      differences(
+        await asItStands(
+          tester,
+          images,
+          picture: picture,
+          view: view,
+          live: live,
+        ),
+        await onScreen(tester),
+      ),
+      isEmpty,
+      reason: 'and all three are in the picture',
+    );
+
+    await tester.pumpWidget(const SizedBox());
+    overlay.dispose();
+  }, skip: skipped);
+
   testWidgets('🚨a step whose write throws shows at the paint after it is '
       'answered — the frame drawn as it stands, not the picture without it '
       '(F-509)', (tester) async {
@@ -893,6 +974,19 @@ void aStrokeIsWrittenIntoThePictureShown({
       isNot(contains(after)),
       reason: 'moved where it stands, not laid anew',
     );
+    // What the lift changed goes in behind the move, and a step waits for
+    // the one before it.
+    expect(
+      await settleAsync(
+        tester,
+        () =>
+            store.landingOf(after) == null &&
+            store.landingOf(keptByTheCanvas(tester, after)) == null,
+      ),
+      isTrue,
+      reason: 'LIVENESS: what the lift changed is in',
+    );
+    await tester.pump();
 
     // Its patch stays on its way, to be seen going in.
     gpu.holdsRenders = true;

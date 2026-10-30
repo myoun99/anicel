@@ -20,7 +20,7 @@ void main() {
 
         expect(
           state.toInputSettings(),
-          BrushEditCanvasInputSettings(size: 10, spacing: 0.25),
+          BrushEditCanvasInputSettings(size: 10, spacing: 0.05),
         );
       },
     );
@@ -395,6 +395,15 @@ void main() {
       expect(state.dualScatterCount, first.scatterCount);
       expect(state.dualScatterCount, 16);
     });
+  });
+
+  test('a brush that adjusts no flow keeps it through the tool (Q3)', () {
+    final state = BrushToolState.fromBrushSettings(
+      BrushSettings(adjustsFlowBySpacing: false),
+    ).copyWith(size: 30);
+
+    expect(state.toBrushSettings().adjustsFlowBySpacing, isFalse);
+    expect(state.toInputSettings().shape.adjustsFlowBySpacing, isFalse);
   });
 
   group('ground-colour mixing', () {

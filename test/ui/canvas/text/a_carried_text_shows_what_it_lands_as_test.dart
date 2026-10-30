@@ -5,12 +5,16 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cel_text.dart';
+import 'package:anicel/src/models/dirty_region.dart';
+import 'package:anicel/src/models/fx_plugin_run.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart';
+import 'package:anicel/src/services/brush_stroke_blend.dart'
+    show bitmapSurfaceRegionPixels;
 import 'package:anicel/src/services/cel_surface_as_shown.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/colour_key_shader.dart';
@@ -22,6 +26,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../../helpers/a_plugin_that_shifts.dart';
 import '../../../helpers/cel_text_tool_harness.dart';
 
 /// 🚨★★★F-344 — WHILE A HAND CARRIES A TEXT, THE CANVAS SHOWS WHAT IT
@@ -126,41 +131,120 @@ void main() {
     await pumpFrames(tester);
   }
 
+  /// A text typed at the middle of the canvas and dragged by its box: the
+  /// canvas over the region round it while the hand carries it — [floats]
+  /// what the canvas floats there — and once it has landed, read at
+  /// [level] — [whileHeld] done while the hand holds it.
+  Future<({Uint8List carried, Uint8List landed})> dragged(
+    WidgetTester tester, {
+    required int level,
+    required Matcher floats,
+    Future<void> Function()? whileHeld,
+  }) async {
+    await takeTextTool(tester);
+    final c = canvasPixelInView(tester);
+    await clickAt(tester, c.dx, c.dy);
+    await typeText(tester, 'hi');
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await pumpFrames(tester);
+    final region = regionAround(c);
+
+    final mouse = await pressAt(tester, c.dx + 10, c.dy + 30);
+    await mouse.moveTo(onScreen(tester, c.dx + 40, c.dy + 50));
+    await tester.pump();
+    await mouse.moveTo(onScreen(tester, c.dx + 87, c.dy + 71));
+    await tester.pump();
+    if (whileHeld != null) {
+      await whileHeld();
+      await pumpFrames(tester);
+    }
+    expect(canvasFloat(tester), floats, reason: '⛔fixture');
+    final carried = await canvasRaster(tester, region, level: level);
+    await mouse.up();
+    await pumpFrames(tester);
+    final landed = await canvasRaster(tester, region, level: level);
+
+    expect(
+      celOf(tester).texts.single.content.anchor,
+      isNot(CanvasPoint(x: c.dx, y: c.dy)),
+      reason: '⛔fixture: it moved',
+    );
+    expect(
+      differing(landed, Uint8List(landed.length)),
+      greaterThan(0),
+      reason: '⛔fixture: it is drawn',
+    );
+    return (carried: carried, landed: landed);
+  }
+
   for (final level in [0, 1]) {
     final zoom = '${100 >> level}%';
 
     testWidgets('a text dragged by its box shows at $zoom the bytes it lands '
         'as', (tester) async {
       await pumpTextToolApp(tester);
-      await takeTextTool(tester);
-      final c = canvasPixelInView(tester);
-      await clickAt(tester, c.dx, c.dy);
-      await typeText(tester, 'hi');
-      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-      await pumpFrames(tester);
-      final region = regionAround(c);
 
-      final mouse = await pressAt(tester, c.dx + 10, c.dy + 30);
-      await mouse.moveTo(onScreen(tester, c.dx + 40, c.dy + 50));
-      await tester.pump();
-      await mouse.moveTo(onScreen(tester, c.dx + 87, c.dy + 71));
-      await tester.pump();
-      expect(canvasFloat(tester), isA<CelTextFloat>(), reason: '⛔fixture');
-      final carried = await canvasRaster(tester, region, level: level);
-      await mouse.up();
-      await pumpFrames(tester);
-      final landed = await canvasRaster(tester, region, level: level);
+      final (:carried, :landed) = await dragged(
+        tester,
+        level: level,
+        floats: isA<CelTextFloat>(),
+      );
 
-      expect(
-        celOf(tester).texts.single.content.anchor,
-        isNot(CanvasPoint(x: c.dx, y: c.dy)),
-        reason: '⛔fixture: it moved',
+      expect(differing(carried, landed), 0);
+    });
+
+    testWidgets('🚨on a row whose chain runs a PLUGIN a text dragged by its '
+        'box shows at $zoom the bytes it lands as — what floats is its '
+        'landing (🗣️I-132-Q32 b)', (tester) async {
+      await pumpTextToolApp(
+        tester,
+        project: textToolProject(effects: [shiftingFxPluginLayerEffect()]),
+        fxPlugins: await installedShiftingFxPlugin(tester),
       );
       expect(
-        differing(landed, Uint8List(landed.length)),
-        greaterThan(0),
-        reason: '⛔fixture: it is drawn',
+        theCanvasRowRunsAPlugin(tester),
+        isTrue,
+        reason: '⛔fixture: the device\'s plugin runs on the canvas',
       );
+
+      final (:carried, :landed) = await dragged(
+        tester,
+        level: level,
+        floats: isA<CelTextLanding>(),
+      );
+
+      expect(differing(carried, landed), 0);
+    });
+
+    testWidgets('on a row that keys and runs a PLUGIN a text carried at '
+        '$zoom shows the bytes it lands as once the device lets the plugin '
+        'go while the hand holds it', (tester) async {
+      final plugins = await installedShiftingFxPlugin(tester);
+      await pumpTextToolApp(
+        tester,
+        project: textToolProject(
+          effects: [inkKey(), shiftingFxPluginLayerEffect()],
+        ),
+        fxPlugins: plugins,
+      );
+
+      final (:carried, :landed) = await dragged(
+        tester,
+        level: level,
+        floats: isA<CelTextLanding>(),
+        whileHeld: () async {
+          await tester.runAsync(
+            () => plugins.uninstall(shiftingFxPluginDescription.id),
+          );
+          await pumpFrames(tester);
+          expect(
+            theCanvasRowRunsAPlugin(tester),
+            isFalse,
+            reason: '⛔fixture: the plugin is gone from the canvas',
+          );
+        },
+      );
+
       expect(differing(carried, landed), 0);
     });
 
@@ -575,41 +659,49 @@ void main() {
       expect(most, lessThanOrEqualTo(1), reason: '$apart bytes apart');
     });
 
-    test('🚨on a row with a colour KEY, a carried text over INK shows what '
-        'it lands as to the byte — the landing floats, the texts above it '
-        'in their place (F-344-Q3)', () async {
-      final keys = [
-        ResolvedLayerEffect(
-          kind: EffectKind.colorKey,
-          values: const [0, 0xFF808080, 100, 100],
-        ),
-      ];
-      // Ink everywhere but (2, 2), where the text lands over nothing.
+    /// Text [id] of the tests, its pixels [plate].
+    CelText text(int id, Map<TileCoord, BitmapTile> plate) => CelText(
+      id: id,
+      content: CelTextContent(
+        spans: const [
+          CelTextSpan(text: 'ab', style: TextLetterStyle(fontSize: 8)),
+        ],
+        anchor: CanvasPoint(x: 16.0 * id, y: 16),
+      ),
+      plate: plate,
+    );
+
+    /// A text carried over ink — everywhere but tile (2, 2), where it lands
+    /// over nothing — on a cel with a text under it and one over it: the
+    /// cel without the carried text and the one over it ([under]), what the
+    /// hand carries, and the cel once it has landed ([landed]).
+    ({
+      BitmapSurface under,
+      BitmapSurface landed,
+      CelText below,
+      CelText above,
+      CelTextPixels hand,
+    })
+    carriedOverInk() {
       final drawing = {
         for (var y = 0; y < 3; y += 1)
           for (var x = 0; x < 4; x += 1)
             if (x != 2 || y != 2)
               TileCoord(x: x, y: y): patterned(x + y * 4, tile, clear: 3),
       };
-      CelText text(int id, Map<TileCoord, BitmapTile> plate) => CelText(
-        id: id,
-        content: CelTextContent(
-          spans: const [
-            CelTextSpan(text: 'ab', style: TextLetterStyle(fontSize: 8)),
-          ],
-          anchor: CanvasPoint(x: 16.0 * id, y: 16),
-        ),
-        plate: plate,
-      );
       final below = text(1, {
         TileCoord(x: 0, y: 1): patterned(30, tile, clear: 4),
         TileCoord(x: 1, y: 1): patterned(31, tile, clear: 6),
       });
-      final plate = {
-        TileCoord(x: 1, y: 1): patterned(20, tile, clear: 5),
-        TileCoord(x: 2, y: 1): patterned(21, tile, clear: 7),
-        TileCoord(x: 1, y: 2): patterned(22, tile, clear: 2),
-      };
+      final hand = (
+        plate: {
+          TileCoord(x: 1, y: 1): patterned(20, tile, clear: 5),
+          TileCoord(x: 2, y: 1): patterned(21, tile, clear: 7),
+          TileCoord(x: 1, y: 2): patterned(22, tile, clear: 2),
+        },
+        dx: 5,
+        dy: 3,
+      );
       final above = text(3, {
         TileCoord(x: 2, y: 1): patterned(40, tile, clear: 2),
         TileCoord(x: 2, y: 2): patterned(41, tile, clear: 3),
@@ -625,7 +717,7 @@ void main() {
         text(
           2,
           celTextPlateMoved(
-            (plate: plate, dx: 5, dy: 3),
+            hand,
             canvasSize: canvasSize,
             pasteboardReach: PasteboardReach.whole,
             tileSize: tile,
@@ -633,9 +725,28 @@ void main() {
         ),
         above,
       ]);
+      return (
+        under: under,
+        landed: landed,
+        below: below,
+        above: above,
+        hand: hand,
+      );
+    }
+
+    test('🚨on a row with a colour KEY, a carried text over INK shows what '
+        'it lands as to the byte — the landing floats, the texts above it '
+        'in their place (F-344-Q3)', () async {
+      final keys = [
+        ResolvedLayerEffect(
+          kind: EffectKind.colorKey,
+          values: const [0, 0xFF808080, 100, 100],
+        ),
+      ];
+      final (:under, :landed, :below, :above, :hand) = carriedOverInk();
       final made = celTextLandingAsShown(
         under: under,
-        carried: (plate: plate, dx: 5, dy: 3),
+        carried: hand,
         above: [above],
         effects: keys,
       )!;
@@ -667,10 +778,13 @@ void main() {
                       BitmapSurface(
                         canvasSize: canvasSize,
                         tileSize: tile,
-                        tiles: plate,
+                        tiles: hand.plate,
                       ),
                     ),
-                    surfaceOffset: CanvasPoint(x: 5, y: 3),
+                    surfaceOffset: CanvasPoint(
+                      x: hand.dx.toDouble(),
+                      y: hand.dy.toDouble(),
+                    ),
                     clip: wall,
                   ),
                   above: SelectionFloatPaint(
@@ -695,5 +809,164 @@ void main() {
       );
       expect(differing(carried, after), 0);
     });
+
+    test('🚨on a row whose chain runs a PLUGIN, a carried text over INK '
+        'shows what it lands as to the byte — the landing is the whole cel '
+        'the plugin makes of it (🗣️I-132-Q32 b)', () async {
+      final shifted = [shiftingFxPluginEffect()];
+      final (:under, :landed, :below, :above, :hand) = carriedOverInk();
+      final made = celTextLandingAsShown(
+        under: under,
+        carried: hand,
+        above: [above],
+        effects: shifted,
+      )!;
+      final landing = CelTextLanding.of(made.region, made.straight);
+      addTearDown(landing.picture.dispose);
+      final hole = celSurfaceAsShown(under.withTexts([below, above]), shifted);
+      final shown = celSurfaceAsShown(landed, shifted);
+
+      final carried = await paint(
+        painterOf(hole, landing: ValueNotifier(landing)),
+      );
+      final after = await paint(painterOf(shown));
+
+      final (:left, :top, :rightExclusive, :bottomExclusive) =
+          bitmapSurfaceContentBounds(
+            BitmapSurface(
+              canvasSize: canvasSize,
+              tileSize: tile,
+              tiles: celTextPlateMoved(
+                hand,
+                canvasSize: canvasSize,
+                pasteboardReach: PasteboardReach.whole,
+                tileSize: tile,
+              ),
+            ),
+          )!;
+      final ink = DirtyRegion(
+        left: left,
+        top: top,
+        rightExclusive: rightExclusive,
+        bottomExclusive: bottomExclusive,
+      );
+      final overInkAlone = CelTextLanding.of(
+        ink,
+        bitmapSurfaceRegionPixels(shown, ink),
+      );
+      addTearDown(overInkAlone.picture.dispose);
+      expect(
+        differing(
+          await paint(painterOf(hole, landing: ValueNotifier(overInkAlone))),
+          after,
+        ),
+        greaterThan(0),
+        reason: '⛔premise: landed over its ink alone, as a key lands it, the '
+            'text shows the hole where the plugin moves it past its ink',
+      );
+      expect(differing(carried, after), 0);
+    });
+
+    test('🚨on a row whose PLUGIN reads the whole picture, a carried text '
+        'shows what it lands as wherever the cel changes — here it shows '
+        'nothing once red is anywhere (🗣️I-132-Q32 b)', () async {
+      final effects = [
+        ResolvedLayerEffect(
+          kind: EffectKind.plugin,
+          // Any description with no parameters; the runner is the plugin.
+          plugin: shiftingFxPluginDescription,
+          values: const [],
+          run: fxPluginRunOf(_NothingOnceItHoldsRed()),
+        ),
+      ];
+      /// A tile of [rgba] — whole, or at its first pixel alone.
+      BitmapTile tileOf(List<int> rgba, {required bool whole}) {
+        final px = Uint8List(BitmapTile.bytesFor(tile));
+        for (var i = 0; i < (whole ? tile * tile : 1); i += 1) {
+          px.setAll(i * 4, rgba);
+        }
+        return BitmapTile(size: tile, pixels: px);
+      }
+
+      final above = text(3, {
+        TileCoord(x: 2, y: 1): tileOf(const [0, 0, 255, 255], whole: true),
+      });
+      final under = BitmapSurface(canvasSize: canvasSize, tileSize: tile);
+      final hand = (
+        plate: {
+          TileCoord(x: 1, y: 1): tileOf(const [255, 0, 0, 255], whole: false),
+        },
+        dx: 0,
+        dy: 0,
+      );
+      final landed = under.withTexts([
+        text(
+          2,
+          celTextPlateMoved(
+            hand,
+            canvasSize: canvasSize,
+            pasteboardReach: PasteboardReach.whole,
+            tileSize: tile,
+          ),
+        ),
+        above,
+      ]);
+      final made = celTextLandingAsShown(
+        under: under,
+        carried: hand,
+        above: [above],
+        effects: effects,
+      );
+      expect(made, isNotNull, reason: 'the cel under the hand changes');
+      final landing = CelTextLanding.of(made!.region, made.straight);
+      addTearDown(landing.picture.dispose);
+      final hole = celSurfaceAsShown(under.withTexts([above]), effects);
+
+      final after = await paint(painterOf(celSurfaceAsShown(landed, effects)));
+
+      expect(
+        differing(await paint(painterOf(hole)), after),
+        greaterThan(0),
+        reason: '⛔premise: the text above shows while the red is in hand, '
+            'and nothing once it lands',
+      );
+      expect(
+        differing(
+          await paint(painterOf(hole, landing: ValueNotifier(landing))),
+          after,
+        ),
+        0,
+      );
+    });
   });
+}
+
+/// Shows the picture as it is, or nothing at all once a pixel of it is
+/// opaque red — a plugin whose every pixel hangs on the whole picture, as
+/// an auto-levels does.
+final class _NothingOnceItHoldsRed implements FxPluginRunner {
+  @override
+  int? reach(Float64List values, FxPluginMoment moment) => 0;
+
+  @override
+  Uint8List? render({
+    required FxPluginPicture input,
+    required Float64List values,
+    required List<FxPluginPicture> layers,
+    required FxPluginMoment moment,
+  }) {
+    final pixels = input.pixels;
+    for (var at = 0; at < pixels.length; at += 4) {
+      if (pixels[at] == 255 &&
+          pixels[at + 1] == 0 &&
+          pixels[at + 2] == 0 &&
+          pixels[at + 3] == 255) {
+        return Uint8List(pixels.length);
+      }
+    }
+    return Uint8List.fromList(pixels);
+  }
+
+  @override
+  void close() {}
 }

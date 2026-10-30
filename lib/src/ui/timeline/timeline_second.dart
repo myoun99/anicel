@@ -38,14 +38,21 @@ const List<int> timelineSecondStrideLadder = [
 /// [markExtent] — the frame ladder's question, asked in seconds.
 int timelineSecondsHolding(double markExtent, double secondExtent) {
   assert(markExtent.isFinite && secondExtent > 0);
-  for (final seconds in timelineSecondStrideLadder) {
-    if (markExtent <= seconds * secondExtent) {
-      return seconds;
+  return timelineLadderRung((seconds) => markExtent <= seconds * secondExtent);
+}
+
+/// The densest rung of [timelineSecondStrideLadder] (doubling on past its
+/// top) that [holds] — the pages' question too, which is not one length
+/// (`TimelineRulerScale.pagesLabelEvery`).
+int timelineLadderRung(bool Function(int rung) holds) {
+  for (final rung in timelineSecondStrideLadder) {
+    if (holds(rung)) {
+      return rung;
     }
   }
-  var seconds = timelineSecondStrideLadder.last;
-  while (markExtent > seconds * secondExtent) {
-    seconds *= 2;
+  var rung = timelineSecondStrideLadder.last;
+  while (!holds(rung)) {
+    rung *= 2;
   }
-  return seconds;
+  return rung;
 }

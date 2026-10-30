@@ -13,27 +13,17 @@ class _WorkspaceTabs {
   final _EditorWorkspaceState _state;
 
   /// What the top strip's floor switch offers, in strip order: the two
-  /// homes, then anything else actually lying down there.
+  /// homes, which nothing moves ([_WorkspaceDocks._canDockAccept]).
   ///
-  /// 🚨 That tail is not a nicety, it closes a trap. The floor has NO tab
-  /// strip ([_state._docks.buildCenterDock] builds it `chromeless`), so a panel
-  /// dragged onto the center dock has no button anywhere — and the Panels
-  /// menu reports it as OPEN, so the only thing that menu offers for it is
-  /// CLOSING it. Listing whatever is down there is what makes it reachable
-  /// again, for every panel and not just the viewers.
-  ///
-  /// Deliberately NOT a static list with the sub viewer added to it: that
-  /// spelling would give the sub viewer a permanent button meaning "pull
-  /// me off the rail and onto the floor", which is the opposite of what a
-  /// panel that exists to sit beside the drawing is for.
-  List<String> floorTabIds() {
-    final onTheFloor = _state._layout.tabsIn(EditorWorkspace.centerGroupId);
-    return [
-      ..._EditorWorkspaceState._floorHomeTabIds,
-      for (final tabId in onTheFloor)
-        if (!_EditorWorkspaceState._floorHomeTabIds.contains(tabId)) tabId,
-    ];
-  }
+  /// ↩️It listed anything else lying in the center dock after them: the
+  /// floor has no tab strip, so a panel dragged there had no button
+  /// anywhere. 🗣️I-147 (유저 2026-10-30: 「캔버스패널이랑 메인뷰어패널은
+  /// 지금처럼 배경고정. 못움직임」) closed the center to every other panel,
+  /// and a panel lies on the floor from a top strip group of its own — the
+  /// sub viewer too, which this list had kept off the floor because it
+  /// exists to sit beside the drawing; the user listed it among the panels
+  /// to lay, and where its button stands says which it does.
+  List<String> floorTabIds() => _EditorWorkspaceState._floorHomeTabIds;
 
   void closeTab(String tabId) {
     _state._mutatingLayout(() => _state._layout.removeTab(tabId));
@@ -157,6 +147,7 @@ class _WorkspaceTabs {
       label: label,
       icon: icon,
       locked: locked,
+      canvasBase: true,
       builder: (context) => ListenableBuilder(
         // The request, the position and the viewport are the HOST's own
         // subscriptions (the page read moves with the view, F-201) — so
@@ -920,7 +911,7 @@ class _WorkspaceTabs {
               // Zoom (_timelinePixelsPerFrame) is NOT merged here (UI-R6
               // #4): the host scopes it to the panel subtree, so a zoom
               // step skips this whole tab rebuild.
-              _state._showSecondsDisplay,
+              _state._rulerView,
               _state.widget.session.railView.drawn,
             ]),
             host: (context) => TimelineTabHost(
@@ -989,9 +980,9 @@ class _WorkspaceTabs {
               pixelsPerFrameListenable: _state._timelinePixelsPerFrame,
               onPixelsPerFrameChanged: _state._setTimelineZoom,
               onZoomFit: _state._fitTimelineZoom,
-              showSeconds: _state._showSecondsDisplay.value,
-              onShowSecondsChanged: (show) {
-                _state._showSecondsDisplay.value = show;
+              rulerView: _state._rulerView.value,
+              onRulerViewChanged: (view) {
+                _state._rulerView.value = view;
               },
               timelineRailExtent: _state._railExtents[LayerRailId.timeline],
               xsheetRailExtent: _state._railExtents[LayerRailId.xsheet],
@@ -1037,7 +1028,7 @@ class _WorkspaceTabs {
               // row's (F-360) — a header graph (I-89 ①) and the filter.
               _state.widget.session.railView.drawn,
               _state._storyboardTrackLaneHeight,
-              _state._showSecondsDisplay,
+              _state._rulerView,
             ]),
             host: (context) => StoryboardTabHost(
               session: _state.widget.session,
@@ -1063,9 +1054,9 @@ class _WorkspaceTabs {
               pixelsPerFrame: _state._storyboardPixelsPerFrame.value,
               onPixelsPerFrameChanged: _state._setStoryboardZoom,
               onZoomFit: _state._fitStoryboardZoom,
-              showSeconds: _state._showSecondsDisplay.value,
-              onShowSecondsChanged: (show) {
-                _state._showSecondsDisplay.value = show;
+              rulerView: _state._rulerView.value,
+              onRulerViewChanged: (view) {
+                _state._rulerView.value = view;
               },
               railExtent: _state._railExtents[LayerRailId.storyboard],
               // ⛔No steppers any more (B7): the V rows' splitter is the
@@ -1099,6 +1090,7 @@ class _WorkspaceTabs {
           buttonKey: const ValueKey<String>('timeline-mode-conte-button'),
           minContentHeight: _state._minContentHeightFor(tabId),
           locked: locked,
+          canvasBase: true,
           // The sheet reads the project and the SAME picture store the
           // storyboard strip draws from, so a cell and its strip panel are
           // one render rather than two that must be kept in step.
@@ -1146,6 +1138,7 @@ class _WorkspaceTabs {
           buttonKey: const ValueKey<String>('timeline-mode-envelope-button'),
           minContentHeight: _state._minContentHeightFor(tabId),
           locked: locked,
+          canvasBase: true,
           // _brushTool is deliberately NOT merged (R18 UI-3): only the ink
           // overlay consumes it, through its own boundary builder.
           builder: (context) => _panelHost(
@@ -1189,6 +1182,7 @@ class _WorkspaceTabs {
           label: AppText.strings.panelTimesheet,
           icon: Icons.table_chart_outlined,
           locked: locked,
+          canvasBase: true,
           // Manages its own seams: the sheet's two strata are baked
           // separately so a content change never re-records the grid,
           // and the playhead and ink windows sit ABOVE both bakes so
@@ -1239,7 +1233,7 @@ class _WorkspaceTabs {
 
   /// Which panel is currently lying on the floor.
   String? activeFloorTabId() =>
-      _state._layout.activeTabIn(EditorWorkspace.centerGroupId);
+      _state._layout.activeTabIn(_state._laidFloorDockId());
 
   /// The top strip's canvas/viewer switch: swap what the app is lying on.
   ///
@@ -1250,16 +1244,20 @@ class _WorkspaceTabs {
   /// selected would be a dead button for exactly the people whose layout
   /// predates it. Fetching it back is what makes the switch mean the same
   /// thing every time it is pressed.
+  ///
+  /// Pressed while a top strip group lies there, it takes the floor back.
   void selectFloorTab(String tabId) {
     _state._claimPanelOf(tabId);
     final tabs = _state._layout.tabsIn(EditorWorkspace.centerGroupId);
     if (tabs.contains(tabId)) {
       _state._mutatingLayout(() {
+        _state._laidFloorTab.value = null;
         _state._layout.selectTab(EditorWorkspace.centerGroupId, tabId);
       });
       return;
     }
     _state._mutatingLayout(() {
+      _state._laidFloorTab.value = null;
       // A panel CLOSED from the Panels list is in no dock at all, and
       // `moveTab` moves only what it can already locate — so pressing
       // 캔버스 after closing the canvas did nothing whatsoever, and the

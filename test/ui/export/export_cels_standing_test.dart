@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_cels_board.dart';
 import 'package:anicel/src/ui/export/export_cels_selection.dart';
 
+import '../../helpers/every_frame_drawn.dart';
 import '../../helpers/export_cels_alone.dart';
 import 'package:anicel/src/ui/export/export_cels_standing.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
@@ -94,6 +95,7 @@ void main() {
         createdAt: DateTime.utc(2026),
       ),
       activeCutId: cutId,
+      drawn: everyFrameDrawn,
       spec: spec,
       overrides: overrides,
     );

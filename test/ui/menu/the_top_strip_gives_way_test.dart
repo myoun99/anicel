@@ -11,7 +11,8 @@
 // ⚠️In the app's faces or not at all ([loadTheAppFaces]): in the test font
 // every glyph is a square, the bars' writing asks for more than the full bar,
 // and there is nothing to narrow — the middle standing never happens.
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart'
+    show ValueListenable, precisionErrorTolerance;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
@@ -547,7 +548,9 @@ void main() {
           final strip = tester.getRect(theStrip);
           expect(
             strip.right - at.right,
-            lessThanOrEqualTo(3),
+            // A sum of the strip's widths, read as a `RenderFlex` reads its
+            // own overflow: 3.000000000000057 at 360 is the end padding.
+            lessThanOrEqualTo(3 + precisionErrorTolerance),
             reason: 'nothing stands after it — at $width',
           );
           expect(

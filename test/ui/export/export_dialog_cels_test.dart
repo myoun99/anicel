@@ -47,6 +47,7 @@ import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
+import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/export_preview_probe.dart';
@@ -117,7 +118,7 @@ void main() {
     CutCamera? camera,
     CutGuides? guides,
   }) {
-    return EditorSessionManager(
+    final session = EditorSessionManager(
       initialProject: Project(
         id: const ProjectId('project'),
         name: 'Project',
@@ -211,6 +212,7 @@ void main() {
         createdAt: DateTime.utc(2026),
       ),
     );
+    return inkEveryCel(session);
   }
 
   /// A perspective guide on CUT1's paper — hidden where [visible] is false.

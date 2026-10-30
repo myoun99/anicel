@@ -33,18 +33,20 @@ void main() {
   ];
 
   test('every bundled mask is 64 a side with an alpha per cell — but the '
-      'twenty-two that need 256', () {
+      'twenty-five that need 256', () {
     // Board F-218: a 64-texel tile scaled up to read as paper repeats every
     // couple of centimetres of a stroke (see `coldPressTextureMask`). F-433:
     // the lead's side is a hard edge at any dab size, the graphite tooth a
     // speck of a pixel or two, and the flecks a few texels long. F-451 and
-    // F-456: the lead's faces, whose edge is where a line breaks.
+    // F-456: the lead's faces, whose edge is where a line breaks. F-511: the
+    // crumbs' flecks, a few texels each.
     final wide = {
       'builtin-cold-press',
       'builtin-pencil-side',
       'builtin-graphite-tooth',
       'builtin-color-clumps',
       for (final lead in pencilLeadBrushTipMasks) lead.id,
+      for (final crumb in pencilCrumbBrushTipMasks) crumb.id,
     };
     for (final mask in masks) {
       final side = wide.contains(mask.id) ? 256 : 64;
@@ -110,10 +112,11 @@ void main() {
       'builtin-pencil-face-5-0': 14873228,
       'builtin-pencil-face-5-1': 14743196,
       'builtin-pencil-face-5-2': 14982888,
-      // Measured 2026-10-29 as they first shipped (F-462 ②).
-      'builtin-pencil-crumb-0': 519671,
-      'builtin-pencil-crumb-1': 529614,
-      'builtin-pencil-crumb-2': 469662,
+      // Measured 2026-10-30, when they thinned to 300 flecks for the 5% step
+      // (F-511).
+      'builtin-pencil-crumb-0': 1493455,
+      'builtin-pencil-crumb-1': 1298212,
+      'builtin-pencil-crumb-2': 1381520,
     };
 
     expect(

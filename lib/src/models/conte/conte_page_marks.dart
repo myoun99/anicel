@@ -453,13 +453,18 @@ Rect contePictureSlot(ContePlacedCell cell, ConteSheetMetrics m) =>
 /// 코마에서 보여주고」), as large as its slot holds it, from the top of the
 /// slot (H48: 「위쪽정렬로 배치」) — the plan's own scale
 /// ([ConteCameraPlan.scale]) where the black stands round it, a slot the
-/// picture's size; larger where none does.
+/// picture's size; larger where none does. A cell that keeps its box
+/// ([ConteCameraRoom.inCell], I-82) contains it as it contains a still
+/// camera's shape. ⚠️Mine: in the middle of the window, as a still
+/// camera stands in it, with paper round it.
 SheetPicture contePictureOf(ContePlacedCell cell, ConteSheetMetrics m) {
   final slot = contePictureSlot(cell, m);
   final work = cell.source.camera;
   final Rect frame;
   if (work == null) {
     frame = containRect(Size(m.cameraAspect, 1), slot);
+  } else if (cell.cameraRoom == ConteCameraRoom.inCell) {
+    frame = containRect(work.field.size, slot);
   } else {
     final scale = math.min(
       slot.width / work.field.width,
@@ -500,16 +505,19 @@ int contePictureRenderWidth(
 /// over the picture, and over a live picture again, where it covers it.
 ///
 /// The trail each corner of the frame draws, the canvas's own (「궤도는
-/// 중앙이아니라 각 꼭짓점 4개 전부야」); the first key's frame in IN's green
-/// and the last's in OUT's red, and no frame for a key between (「첫/끝 키
-/// 말고 중간키는 실루엣을 안그려」, kept 2026-10-12 — I-89-Q14 B); every key
-/// crossed at its frame's centre and labelled at its top-left corner,
-/// turned with the frame (「기운 틀의 모서리. 각도 그대로따라감」), as the
-/// canvas and the export write a key (유저 2026-10-12: 「카메라
-/// 출력궤도랑 완전통일해서 … 중간키들도 표시하고」 · 「아까처럼 중앙에 두자 …
-/// 즉 법 통일」) — a key between where its frame would be (「원래
-/// 위치해야할곳에 위치시키고 틀만 안보이게」). Labels may overlap (「글자
-/// 겹치는거 어쩔수없는거니까」).
+/// 중앙이아니라 각 꼭짓점 4개 전부야」); every key framed — the first in IN's
+/// green, the last in OUT's red — crossed at its frame's centre and
+/// labelled at its top-left corner, turned with the frame (「기운 틀의
+/// 모서리. 각도 그대로따라감」), as the canvas and the export write a key
+/// (유저 2026-10-12: 「카메라 출력궤도랑 완전통일해서 … 중간키들도
+/// 표시하고」 · 「아까처럼 중앙에 두자 … 즉 법 통일」). Labels may overlap
+/// (「글자 겹치는거 어쩔수없는거니까」).
+///
+/// 🗣️I-82 (유저 2026-10-31): 「지금 콘티용지패널 카메라 사각형 보여주는거,
+/// 처음이랑 끝만 사각형 보여주는데, 카메라레이어가 캔버스에서 키마다
+/// 보여주는거처럼 법 통일해서 콘티용지패널도 그렇게하자.」 ↩️A key between
+/// drew no frame (「첫/끝 키 말고 중간키는 실루엣을 안그려」, kept 2026-10-12
+/// — I-89-Q14 B).
 ///
 /// ↩️Only a named key between was crossed, at its corner (유저 2026-10-01,
 /// H55: 「s가 어딨는지 … 알기어렵잖아. 그래서 무언가 s의 꼭짓점에
@@ -534,7 +542,6 @@ Iterable<SheetMark> conteCameraMarksOf(
         CameraMarkedKey(
           corners: onPaper(key.corners),
           role: key.role,
-          framed: key.role != CameraKeyRole.between,
           label: key.label,
         ),
     ],

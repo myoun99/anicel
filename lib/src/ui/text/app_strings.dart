@@ -741,6 +741,7 @@ enum AppStrings {
   String get memoryItemTileImages => _s('memoryItemTileImages');
   String get memoryItemEnginePool => _s('memoryItemEnginePool');
   String get memoryItemEngineScratch => _s('memoryItemEngineScratch');
+  String get memoryItemLensBlurTables => _s('memoryItemLensBlurTables');
 
   /// What sits outside the allowance — the rows named in [items] — as one
   /// sentence (유저 2026-09-16, memory-allowance-Q2).
@@ -854,6 +855,15 @@ enum AppStrings {
   String get conteOutlineOn => _s('conteOutlineOn');
   String get conteOutlineOff => _s('conteOutlineOff');
   String get conteFixedText => _s('conteFixedText');
+  String get conteCameraRoom => _s('conteCameraRoom');
+  String get conteCameraRoomGrows => _s('conteCameraRoomGrows');
+  String get conteCameraRoomInCell => _s('conteCameraRoomInCell');
+  String get conteCameraRoomAsSheet => _s('conteCameraRoomAsSheet');
+  String get conteCameraRoomAll => _s('conteCameraRoomAll');
+  String conteCameraRoomCurrentCut(String name) =>
+      _s('conteCameraRoomCurrentCutTemplate').replaceAll('{name}', name);
+  String conteCameraRoomSelectedCuts(int count) =>
+      _s('conteCameraRoomSelectedCutsTemplate').replaceAll('{count}', '$count');
   String get envelopeFormatTitle => _s('envelopeFormatTitle');
   String get envelopeForm => _s('envelopeForm');
   String get sheetModeNotation => _s('sheetModeNotation');
@@ -2146,6 +2156,7 @@ enum AppStrings {
   String get frameCountEntryFrames => _s('frameCountEntryFrames');
   String get frameCountEntrySecondsPlusFrames =>
       _s('frameCountEntrySecondsPlusFrames');
+  String get frameRulerPages => _s('frameRulerPages');
 
   /// 자동 이름 지정's one field (I-18): the number the first block takes.
   String get autoNameStartField => _s('autoNameStartField');
@@ -2552,6 +2563,7 @@ enum AppStrings {
     'memoryItemTileImages': 'Canvas tile images',
     'memoryItemEnginePool': 'Drawing engine tile pool',
     'memoryItemEngineScratch': 'Drawing engine scratch',
+    'memoryItemLensBlurTables': 'Camera Lens Blur tables',
     'memoryOutsideAllowanceTemplate':
         'Outside the allowance, because no ceiling can be set on it: '
         '{items}.',
@@ -2666,6 +2678,13 @@ enum AppStrings {
     'conteOutlineOn': 'On',
     'conteOutlineOff': 'Off',
     'conteFixedText': 'Fixed text',
+    'conteCameraRoom': 'Camera moves',
+    'conteCameraRoomGrows': 'Grow the cell',
+    'conteCameraRoomInCell': 'Keep in the cell',
+    'conteCameraRoomAsSheet': 'As the format',
+    'conteCameraRoomAll': 'Overall settings',
+    'conteCameraRoomCurrentCutTemplate': 'Current cut ({name})',
+    'conteCameraRoomSelectedCutsTemplate': 'Selected cuts ({count})',
     'envelopeFormatTitle': 'Envelope format',
     'envelopeForm': 'Form',
     'sheetModeNotation': 'Notation Sheet (repeat/hold words)',
@@ -3531,6 +3550,7 @@ enum AppStrings {
     'markEveryField': 'Interval',
     'frameCountEntryFrames': 'Frames',
     'frameCountEntrySecondsPlusFrames': 'Seconds+frames',
+    'frameRulerPages': 'Pages',
     'projectFpsTitle': 'Project frame rate',
     'projectFpsField': 'Frames per second',
     'autoNameStartField': 'Start number',
@@ -3969,6 +3989,7 @@ enum AppStrings {
     'memoryItemTileImages': 'キャンバスのタイル画像',
     'memoryItemEnginePool': '描画エンジンのタイルプール',
     'memoryItemEngineScratch': '描画エンジンの作業バッファ',
+    'memoryItemLensBlurTables': 'ブラー（カメラレンズ）の表',
     'memoryOutsideAllowanceTemplate': '割り当ての外（上限を掛けられないもの）: {items}',
     'containerAreaSettings': '設定',
     'containerAreaDiagnostics': '診断ログ',
@@ -4052,6 +4073,13 @@ enum AppStrings {
     'conteOutlineOn': 'あり',
     'conteOutlineOff': 'なし',
     'conteFixedText': '固定テキスト',
+    'conteCameraRoom': 'カメラワーク',
+    'conteCameraRoomGrows': 'コマを広げる',
+    'conteCameraRoomInCell': 'コマ内に収める',
+    'conteCameraRoomAsSheet': '様式どおり',
+    'conteCameraRoomAll': '全体設定',
+    'conteCameraRoomCurrentCutTemplate': '現在のカット({name})',
+    'conteCameraRoomSelectedCutsTemplate': '選択中のカット({count})',
     'envelopeFormatTitle': 'カット袋書式',
     'envelopeForm': '様式',
     'sheetModeNotation': '表記シート（リピート・止めの文字）',
@@ -4969,6 +4997,7 @@ enum AppStrings {
     'builtinBrush.builtin-kabura-pen': 'カブラペン',
     'builtinBrush.builtin-technical-pen': 'ミリペン',
     'builtinBrush.builtin-dry-ink': 'かすれインク',
+    'builtinBrush.builtin-mechanical-pen': 'シャーペン',
     'builtinBrush.builtin-chalk-preset': 'チョーク',
     'builtinBrush.builtin-charcoal': '木炭',
     'builtinBrush.builtin-pastel': 'パステル',
@@ -5348,6 +5377,7 @@ enum AppStrings {
     'markEveryField': '間隔',
     'frameCountEntryFrames': 'コマ数',
     'frameCountEntrySecondsPlusFrames': '秒+コマ',
+    'frameRulerPages': 'ページ',
     'projectFpsTitle': 'プロジェクトのフレームレート',
     'projectFpsField': '1秒あたりのフレーム数',
     'autoNameStartField': '開始番号',
@@ -5780,6 +5810,7 @@ enum AppStrings {
     'memoryItemTileImages': '캔버스 타일 이미지',
     'memoryItemEnginePool': '그리기 엔진 타일 풀',
     'memoryItemEngineScratch': '그리기 엔진 작업 버퍼',
+    'memoryItemLensBlurTables': '카메라 렌즈 흐림 표',
     'memoryOutsideAllowanceTemplate': '허용치 밖(천장을 걸 수 없는 것): {items}',
     'containerAreaSettings': '설정',
     'containerAreaDiagnostics': '진단 로그',
@@ -5863,6 +5894,13 @@ enum AppStrings {
     'conteOutlineOn': '적용',
     'conteOutlineOff': '미적용',
     'conteFixedText': '고정 텍스트',
+    'conteCameraRoom': '카메라 움직임',
+    'conteCameraRoomGrows': '칸을 키운다',
+    'conteCameraRoomInCell': '칸 안에',
+    'conteCameraRoomAsSheet': '서식 따름',
+    'conteCameraRoomAll': '전체 설정',
+    'conteCameraRoomCurrentCutTemplate': '현재 컷({name})',
+    'conteCameraRoomSelectedCutsTemplate': '선택한 컷({count}개)',
     'envelopeFormatTitle': '컷 봉투 서식',
     'envelopeForm': '양식',
     'sheetModeNotation': '표기 시트(반복·止め 글자)',
@@ -6773,6 +6811,7 @@ enum AppStrings {
     'builtinBrush.builtin-kabura-pen': '카부라 펜',
     'builtinBrush.builtin-technical-pen': '밀리 펜',
     'builtinBrush.builtin-dry-ink': '마른 잉크',
+    'builtinBrush.builtin-mechanical-pen': '샤프펜',
     'builtinBrush.builtin-chalk-preset': '초크',
     'builtinBrush.builtin-charcoal': '목탄',
     'builtinBrush.builtin-pastel': '파스텔',
@@ -7153,6 +7192,7 @@ enum AppStrings {
     'markEveryField': '간격',
     'frameCountEntryFrames': '프레임',
     'frameCountEntrySecondsPlusFrames': '초+코마',
+    'frameRulerPages': '페이지',
     'projectFpsTitle': '프로젝트 프레임레이트',
     'projectFpsField': '초당 프레임 수',
     'autoNameStartField': '시작 번호',
@@ -7615,6 +7655,7 @@ enum AppStrings {
     'memoryItemTileImages': 'Images des tuiles du canevas',
     'memoryItemEnginePool': 'Réserve de tuiles du moteur de dessin',
     'memoryItemEngineScratch': 'Tampons de travail du moteur de dessin',
+    'memoryItemLensBlurTables': "Tables du flou d'objectif",
     'memoryOutsideAllowanceTemplate':
         "Hors de l'allocation, faute de plafond possible : {items}.",
     'containerAreaSettings': 'Réglages',
@@ -7712,6 +7753,13 @@ enum AppStrings {
     'conteOutlineOn': 'Oui',
     'conteOutlineOff': 'Non',
     'conteFixedText': 'Texte fixe',
+    'conteCameraRoom': 'Mouvements de caméra',
+    'conteCameraRoomGrows': 'Agrandir la case',
+    'conteCameraRoomInCell': 'Dans la case',
+    'conteCameraRoomAsSheet': 'Selon le modèle',
+    'conteCameraRoomAll': 'Réglages généraux',
+    'conteCameraRoomCurrentCutTemplate': 'Plan actuel ({name})',
+    'conteCameraRoomSelectedCutsTemplate': 'Plans sélectionnés ({count})',
     'envelopeFormatTitle': 'Format de l\'enveloppe',
     'envelopeForm': 'Modèle',
     'sheetModeNotation': 'Feuille de notation (répétition / maintien)',
@@ -8725,6 +8773,7 @@ enum AppStrings {
     'builtinBrush.builtin-kabura-pen': 'Plume Kabura',
     'builtinBrush.builtin-technical-pen': 'Stylo technique',
     'builtinBrush.builtin-dry-ink': 'Encre sèche',
+    'builtinBrush.builtin-mechanical-pen': 'Stylo porte-mine',
     'builtinBrush.builtin-chalk-preset': 'Craie',
     'builtinBrush.builtin-charcoal': 'Fusain',
     'builtinBrush.builtin-pastel': 'Pastel',
@@ -9140,6 +9189,7 @@ enum AppStrings {
     'markEveryField': 'Intervalle',
     'frameCountEntryFrames': 'Images',
     'frameCountEntrySecondsPlusFrames': 'Secondes+images',
+    'frameRulerPages': 'Pages',
     'projectFpsTitle': 'Fréquence du projet',
     'projectFpsField': 'Images par seconde',
     'autoNameStartField': 'Numéro de départ',
@@ -9539,6 +9589,7 @@ enum AppStrings {
     'memoryItemTileImages': '画布图块图像',
     'memoryItemEnginePool': '绘图引擎图块池',
     'memoryItemEngineScratch': '绘图引擎工作缓冲区',
+    'memoryItemLensBlurTables': '相机镜头模糊表',
     'memoryOutsideAllowanceTemplate': '配额之外（无法设上限）：{items}',
     'containerAreaSettings': '设置',
     'containerAreaDiagnostics': '诊断日志',
@@ -9609,6 +9660,13 @@ enum AppStrings {
     'conteOutlineOn': '有',
     'conteOutlineOff': '无',
     'conteFixedText': '固定文本',
+    'conteCameraRoom': '镜头运动',
+    'conteCameraRoomGrows': '扩大格子',
+    'conteCameraRoomInCell': '收在格内',
+    'conteCameraRoomAsSheet': '按样式',
+    'conteCameraRoomAll': '整体设置',
+    'conteCameraRoomCurrentCutTemplate': '当前镜头({name})',
+    'conteCameraRoomSelectedCutsTemplate': '已选镜头({count}个)',
     'envelopeFormatTitle': '卡袋版式',
     'envelopeForm': '样式',
     'sheetModeNotation': '标注表（重复·保持文字）',
@@ -10493,6 +10551,7 @@ enum AppStrings {
     'builtinBrush.builtin-kabura-pen': '镝笔',
     'builtinBrush.builtin-technical-pen': '针管笔',
     'builtinBrush.builtin-dry-ink': '枯墨',
+    'builtinBrush.builtin-mechanical-pen': '自动笔',
     'builtinBrush.builtin-chalk-preset': '粉笔',
     'builtinBrush.builtin-charcoal': '炭笔',
     'builtinBrush.builtin-pastel': '色粉',
@@ -10890,6 +10949,7 @@ enum AppStrings {
     'markEveryField': '间隔',
     'frameCountEntryFrames': '帧数',
     'frameCountEntrySecondsPlusFrames': '秒+帧',
+    'frameRulerPages': '页',
     'projectFpsTitle': '项目帧率',
     'projectFpsField': '每秒帧数',
     'autoNameStartField': '起始编号',

@@ -79,7 +79,7 @@ void main() {
   ) => planCutFrameCompositeTree(
     cut: source,
     frameIndex: 0,
-    surfaceResolver: resolverFor(artwork),
+    reading: (surfaces: resolverFor(artwork), plugins: null),
   );
 
   group('a leaf that resolves to nothing drops', () {

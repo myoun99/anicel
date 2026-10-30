@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Which tests exercise the native engine — the ONE answer to that question.
 #
-# Four places ask it: the TestFlight build, the Mac build, the Linux build,
-# and `lane.sh land` when a lane touched the C sources. Copies of a selector
-# drift apart, and a local gate that picks a different set from the CI it stands
-# in for is testing something else while printing the same green. Chosen by
-# what a test IMPORTS rather than from a list, so a new parity test joins
-# without anybody remembering to add it.
+# Five places ask it: the TestFlight build, the Mac build, the Linux build, the
+# Windows ARM64 build, and `lane.sh land` when a lane touched the C sources.
+# Copies of a selector drift apart, and a local gate that picks a different set
+# from the CI it stands in for is testing something else while printing the same
+# green. Chosen by what a test IMPORTS rather than from a list, so a new parity
+# test joins without anybody remembering to add it.
 #
-# All four hand what it prints to `tool/affected_tests.dart --files-from`:
+# All five hand what it prints to `tool/affected_tests.dart --files-from`:
 # WHICH files is this script's answer, HOW they run is the run plan's.
 #
 # Prints one path per line, sorted, relative to the repository root.

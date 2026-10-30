@@ -754,7 +754,12 @@ class _BrushEditStroke {
     BrushStrokeCommitData data,
   ) {
     final overlay = _state._overlay._overlayModel;
-    for (final entry in promoted) {
+    // On a row that runs a plugin the landed cel is pictured whole, as it
+    // is shown ([ActiveStrokeOverlayModel.handsTilesOver]).
+    final handed = overlay.handsTilesOver
+        ? promoted
+        : const <PromotedStrokeTile>[];
+    for (final entry in handed) {
       // ★The tile the coordinate SHOWS once this lands — the committed tile,
       // or it with the cel's texts laid over (R9-rest): the overlay has
       // been showing exactly that tile's pixels, so that is the tile its
@@ -786,7 +791,9 @@ class _BrushEditStroke {
     required int sequence,
   }) {
     final reading = _state._dabFromPosition(at, sequence: sequence);
-    return const BrushDabInterpolator().interpolate(
+    return BrushDabInterpolator(
+      adjustsFlowBySpacing: _strokeShape.adjustsFlowBySpacing,
+    ).interpolate(
       previous: previous,
       nextRaw: reading,
       firstSequence: sequence,
@@ -802,12 +809,12 @@ class _BrushEditStroke {
   /// always yields one or two dabs (it returns nothing at all when the move
   /// is shorter than one step), so rolling once per segment lands in the
   /// same place without threading a random source through it.
-  double spacingAt(BrushDab reading) => brushSpacingFor(
-    reading,
-    (_state._activeStrokeInputSettings ?? _state.widget.inputSettings())
-        .shape,
-    random: _state._spacingRandom,
-  );
+  double spacingAt(BrushDab reading) =>
+      brushSpacingFor(reading, _strokeShape, random: _state._spacingRandom);
+
+  BrushShape get _strokeShape =>
+      (_state._activeStrokeInputSettings ?? _state.widget.inputSettings())
+          .shape;
 
   void endStrokeInput() {
     _state.widget.onActiveStrokeChanged?.call(StrokeInFlight.none);

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -16,6 +17,7 @@ import 'package:anicel/src/models/separable_blend_mode.dart';
 import 'package:anicel/src/services/sut/sut_decoder.dart';
 import 'package:sqlite3/sqlite3.dart';
 import '../helpers/temp_dir.dart';
+import 'import/clip_test_builder.dart';
 
 /// The 最小値 of [s]'s ランダム row for [target], or null when it has none.
 double? randomFloor(BrushSettings s, BrushPressureTarget target) =>
@@ -35,6 +37,13 @@ void main() {
   });
 
   tearDown(() => deleteTempQuietly(tempDirectory));
+
+  /// What [result] says of anything but its previews: the fixture's
+  /// materials hold a preview alone, and each says so.
+  List<String> noted(SutImportResult result) => [
+    for (final warning in result.warnings)
+      if (!warning.endsWith('imported from its preview.')) warning,
+  ];
 
   /// An effector blob as Clip Studio writes one: a 44-byte header — the
   /// flags at `int[2]`, the four 最小値 at `int[3..6]`, the two graph
@@ -281,7 +290,8 @@ void main() {
         DualBrushCompositeMode INTEGER, DualInterval REAL,
         DualThickness INTEGER, DualRotation REAL, DualUseSpray INTEGER,
         DualSpraySize REAL, DualSprayDensity INTEGER,
-        BrushMixColorEffector BLOB, BrushMixAlphaEffector BLOB);
+        BrushMixColorEffector BLOB, BrushMixAlphaEffector BLOB,
+        BrushAdjustFlowByInterval INTEGER);
       CREATE TABLE MaterialFile(_PW_ID INTEGER PRIMARY KEY,
         CatalogPath TEXT, OriginalPath TEXT, FileData BLOB);
     ''');
@@ -487,7 +497,7 @@ void main() {
       sourceName: 'fixture',
     );
 
-    expect(result.warnings, isEmpty);
+    expect(noted(result), isEmpty);
     expect(result.presets, hasLength(2));
 
     final sampled = result.presets.first;
@@ -553,12 +563,108 @@ void main() {
       sourceName: 'fixture',
     );
 
-    expect(result.warnings, isEmpty);
+    expect(noted(result), isEmpty);
     expect(
       result.presets.first.settings.tipMask!.alpha[1 * 6 + 2],
       255,
       reason: 'the inked image, not the blank one before it',
     );
+  });
+
+  group('📏the tip itself (Q4)', () {
+    /// [fixture]'s tip material holding [material] for its FileData.
+    void holding(String fixture, Uint8List material) {
+      sqlite3.open(fixture)
+        ..execute('UPDATE MaterialFile SET FileData = ?', [material])
+        ..close();
+    }
+
+    test('a material that reads comes in from the tip, not its preview, and '
+        'says nothing', () async {
+      final path = await buildFixture(tipPng: await blackPng(4, 4));
+      final plane = Uint8List(40 * 20)..fillRange(0, 40 * 20, 200);
+      holding(
+        path,
+        sutMaterialBytes({
+          'data/material_0.layer': sutMaterialLayerBytes(
+            tempDirectory,
+            offscreens: [
+              (
+                attribute: offscreenAttributeBytes(
+                  width: 40,
+                  height: 20,
+                  columns: 1,
+                  rows: 1,
+                  colourChannels: 0,
+                ),
+                blocks: blockRecordsBytes({
+                  0: Uint8List(256 * 256)
+                    ..setAll(0, [
+                      for (var y = 0; y < 20; y += 1) ...[
+                        ...plane.sublist(y * 40, (y + 1) * 40),
+                        ...Uint8List(216),
+                      ],
+                    ]),
+                }),
+              ),
+            ],
+          ),
+          'thumbnail/thumbnail.png': await blackPng(4, 4),
+        }),
+      );
+
+      final result = await decodeSutBrushFile(
+        filePath: path,
+        sourceName: 'fixture',
+      );
+
+      expect(result.warnings, isEmpty);
+      final mask = result.presets.first.settings.tipMask!;
+      expect(mask.size, 40, reason: 'the tip\'s 40, not the preview\'s 4');
+      expect(mask.alpha.reduce(math.max), 200);
+    });
+
+    test('a material that does not read comes in from its preview, and says '
+        'so', () async {
+      final path = await buildFixture(tipPng: await blackPng(6, 4));
+
+      final result = await decodeSutBrushFile(
+        filePath: path,
+        sourceName: 'fixture',
+      );
+
+      expect(result.presets.first.settings.tipMask, isNotNull);
+      expect(
+        result.warnings,
+        contains(
+          'Brush "테스트 브러시": tip bitmap could not be read from its material; '
+          'imported from its preview.',
+        ),
+      );
+    });
+  });
+
+  group('🗣️BrushAdjustFlowByInterval (Q3)', () {
+    Future<bool> adjustsFlow(int? stored) async {
+      final path = await buildFixture(tipPng: await blackPng(4, 4));
+      sqlite3.open(path)
+        ..execute('UPDATE Variant SET BrushAdjustFlowByInterval = ?', [stored])
+        ..close();
+      final result = await decodeSutBrushFile(
+        filePath: path,
+        sourceName: 'fixture',
+      );
+      return result.presets.first.settings.adjustsFlowBySpacing;
+    }
+
+    test('0 lays each stamp whole', () async {
+      expect(await adjustsFlow(0), isFalse);
+    });
+
+    test('1 lays its share, as a file without the column does', () async {
+      expect(await adjustsFlow(1), isTrue);
+      expect(await adjustsFlow(null), isTrue);
+    });
   });
 
   test('a material that holds a blank image alone comes in without it, and '
@@ -611,7 +717,7 @@ void main() {
       sourceName: 'fixture',
     );
 
-    expect(result.warnings, isEmpty);
+    expect(noted(result), isEmpty);
     final tips = result.presets.first.settings.tips;
     expect([for (final tip in tips) tip.size], [8, 4, 8, 6]);
     const base = 'sut-0102030405060708090a0b0c0d0e0f10-tip';
@@ -642,7 +748,7 @@ void main() {
       sourceName: 'fixture',
     );
 
-    expect(result.warnings, isEmpty);
+    expect(noted(result), isEmpty);
     final tips = result.presets.first.settings.tips;
     expect([for (final tip in tips) tip.size], [6]);
   });
@@ -682,7 +788,7 @@ void main() {
         filePath: path,
         sourceName: 'fixture',
       );
-      expect(result.warnings, isEmpty, reason: '$stored');
+      expect(noted(result), isEmpty, reason: '$stored');
       orders.add(result.presets.first.settings.tipOrder);
     }
 
@@ -708,7 +814,7 @@ void main() {
     );
 
     expect(result.presets.first.settings.tipOrder, BrushTipOrder.repeat);
-    expect(result.warnings, [contains('BrushPatternOrderType 9')]);
+    expect(noted(result), [contains('BrushPatternOrderType 9')]);
   });
 
   test('a dual tip naming two images keeps the first, and says so', () async {
@@ -727,7 +833,7 @@ void main() {
     );
 
     expect(result.presets.first.settings.dualMask!.size, 10);
-    expect(result.warnings, [contains('only the first is used')]);
+    expect(noted(result), [contains('only the first is used')]);
   });
 
   test('the effector response curve imports as a curve', () async {
@@ -1110,7 +1216,7 @@ void main() {
 
     expect(result.presets.first.settings.dualMask, isNull);
     expect(
-      result.warnings,
+      noted(result),
       [
         'Brush "테스트 브러시": dual brush tip at 通常 draws as no dual tip; '
             'imported without it.',
@@ -1129,7 +1235,7 @@ void main() {
       sourceName: 'fixture',
     );
 
-    expect(result.warnings, isEmpty);
+    expect(noted(result), isEmpty);
     final s = result.presets.first.settings;
     expect(s.dualMask, isNotNull);
     expect(s.dualCompositeMode, SeparableBlendMode.darken);
@@ -1256,7 +1362,7 @@ void main() {
       result.presets.first.settings.blendMode,
       BrushBlendMode.multiply,
     );
-    expect(result.warnings, isEmpty);
+    expect(noted(result), isEmpty);
   });
 
   test('a normal composite mode imports as 通常', () async {
@@ -1286,7 +1392,7 @@ void main() {
         entry.value,
         reason: 'menu index ${entry.key}',
       );
-      expect(result.warnings, isEmpty, reason: 'menu index ${entry.key}');
+      expect(noted(result), isEmpty, reason: 'menu index ${entry.key}');
     }
   }
 
@@ -1389,7 +1495,7 @@ void main() {
         entry.value,
         reason: 'AntiAlias ${entry.key}',
       );
-      expect(result.warnings, isEmpty, reason: 'AntiAlias ${entry.key}');
+      expect(noted(result), isEmpty, reason: 'AntiAlias ${entry.key}');
     }
   }, timeout: const Timeout(Duration(minutes: 2)));
 
@@ -1406,7 +1512,7 @@ void main() {
     );
 
     expect(result.presets.first.settings.antiAlias, BrushAntiAlias.high);
-    expect(result.warnings, isEmpty);
+    expect(noted(result), isEmpty);
   });
 
   test('an anti-alias level outside the four warns rather than guessing', () async {
@@ -1635,7 +1741,7 @@ void main() {
     );
 
     expect(result.presets.first.settings.size, 500.0);
-    expect(result.warnings, isEmpty);
+    expect(noted(result), isEmpty);
   });
 
   test('an unrecognised size unit warns instead of mis-scaling', () async {

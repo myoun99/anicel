@@ -17,6 +17,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
+import 'package:anicel/src/models/sheet_sources.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/models/timesheet_sheet_kind.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
@@ -162,5 +163,30 @@ void main() {
     // first page's right half on the 6-second one.
     expect(three.positionOfFrame(80), (page: 1, half: 0, row: 8));
     expect(six.positionOfFrame(80), (page: 0, half: 1, row: 8));
+  });
+
+  // I-81-Q1 (유저 2026-10-30): the timeline's page view 「그 컷의 X시트
+  // 장을 따른다」 — the page the cut's sheet prints, crowded cels included.
+  test('the page the timeline counts by is the page the sheet prints', () {
+    for (final cut in [
+      _cut(cels: 3),
+      _cut(cels: 3, kind: TimesheetSheetKind.threeSeconds),
+      _cut(cels: 9),
+      _cut(cels: 1, inbetweens: 9),
+    ]) {
+      for (final fps in [24, 30]) {
+        expect(
+          sheetPageFramesOf(cut, fps),
+          TimesheetDocument.fromCut(
+            cut: cut,
+            projectName: 'P',
+            fps: fps,
+          ).pageFrameCount,
+          reason: '${cut.layers.length} rows at $fps fps',
+        );
+      }
+    }
+    expect(sheetPageFramesOf(_cut(cels: 3), 24), 144);
+    expect(sheetPageFramesOf(_cut(cels: 9), 24), 72);
   });
 }

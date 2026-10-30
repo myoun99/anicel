@@ -194,5 +194,48 @@ void main() {
       final json = model.toJson();
       expect((json['docks']! as Map).containsKey('right'), isFalse);
     });
+
+    test('moveGroup carries a whole group — its tabs, its front tab and its '
+        'size — into an empty dock (I-147)', () {
+      final model = _model()
+        ..setDockExtent('left', 420)
+        // The size the slot's last group was left at, which is not the
+        // arriving group's.
+        ..setDockExtent('right', 250);
+      var notified = 0;
+      model.addListener(() => notified += 1);
+
+      model.moveGroup(fromDockId: 'left', toDockId: 'right');
+
+      expect(model.tabsIn('left'), isEmpty);
+      expect(model.tabsIn('right'), ['tools', 'brushes', 'camera']);
+      expect(model.activeTabIn('right'), 'brushes');
+      expect(model.dockExtent('right', fallback: 0), 420);
+      expect(model.hasDockExtent('left'), isFalse);
+      expect(notified, 1);
+
+      // A group of its own, with no size of its own, leaves the slot's.
+      model
+        ..setDockExtent('left', 300)
+        ..moveGroup(fromDockId: 'bottom', toDockId: 'left');
+      expect(model.tabsIn('left'), ['timeline', 'storyboard']);
+      expect(model.hasDockExtent('left'), isFalse);
+    });
+
+    test('moveGroup does nothing into a dock that holds a group, from one '
+        'that holds none, or to a dock it does not know', () {
+      final model = _model();
+      var notified = 0;
+      model.addListener(() => notified += 1);
+
+      model
+        ..moveGroup(fromDockId: 'left', toDockId: 'bottom')
+        ..moveGroup(fromDockId: 'right', toDockId: 'left')
+        ..moveGroup(fromDockId: 'left', toDockId: 'nowhere');
+
+      expect(model.tabsIn('left'), ['tools', 'brushes', 'camera']);
+      expect(model.tabsIn('bottom'), ['timeline', 'storyboard']);
+      expect(notified, 0);
+    });
   });
 }

@@ -241,12 +241,12 @@ const kNearConfigImports = 0;
 /// why there is nothing to run.
 ///
 /// 🚨THE PARITY RUNS GO IN BATCHES TOO ([runInBatches]; parity-runs-crowd-
-/// the-collector-pins, 2026-10-17). Four places run the native parity list — `lane.sh
-/// native` and the TestFlight, Mac and Linux builds — and each ran it as ONE
-/// `xargs flutter test`, its collector pins in the very crowd the plan keeps
-/// them out of: `tile_images_are_counted` lost its 64 bytes inside a parity
-/// batch (2026-09-11). They hand the list here instead, so how a list is
-/// run is written once.
+/// the-collector-pins, 2026-10-17). Five places run the native parity list —
+/// `lane.sh native` and the TestFlight, Mac, Linux and Windows ARM64 builds —
+/// and each ran it as ONE `xargs flutter test`, its collector pins in the very
+/// crowd the plan keeps them out of: `tile_images_are_counted` lost its 64
+/// bytes inside a parity batch (2026-09-11). They hand the list here instead,
+/// so how a list is run is written once.
 ///
 /// ⛔A list naming nothing is REFUSED, never run: to `flutter test` an empty
 /// selection is the whole suite, and a list that came back empty would turn

@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 
 import '../../models/fx_plugin_description.dart';
+import '../../models/fx_plugin_run.dart';
 import '../../models/project.dart';
 import '../../native/qa_fx_plugin_host.dart';
 import '../project_lookup.dart' show projectLayersAnywhere;
@@ -13,6 +16,14 @@ typedef FxPluginDescribed = ({String? text, String? refusal});
 
 /// Asks a plugin's module who it is.
 typedef FxPluginDescriber = FxPluginDescribed Function(Uint8List wasm);
+
+/// Opens [plugin], as [library] keeps it, to run — null where it will not
+/// open.
+typedef FxPluginOpener =
+    FxPluginRunner? Function(
+      InstalledFxPlugin plugin,
+      FxPluginLibraryService library,
+    );
 
 /// Asks the person whether to install the plugin that says [description]
 /// of itself — [native]: its file has a native build for this device,
@@ -59,17 +70,24 @@ final class FxPluginInstalled extends FxPluginInstall {
 ///
 /// The files and their index are [FxPluginLibraryService]'s. A plugin is
 /// asked who it is by its MODULE, in the sandbox, and shown to the person
-/// before anything is kept; its native build is never opened here
-/// (anicel_fx_plugin.h, THE FILE).
+/// before anything is kept; its native build is opened only to run it, once
+/// they have said yes (anicel_fx_plugin.h, THE FILE).
 class InstalledFxPlugins extends ChangeNotifier {
   InstalledFxPlugins({
     FxPluginLibraryService? service,
     FxPluginDescriber? describe,
+    FxPluginOpener? open,
   }) : _service = service ?? FxPluginLibraryService(),
-       _describe = describe ?? describeFxPluginModule;
+       _describe = describe ?? describeFxPluginModule,
+       _open = open ?? openInstalledFxPlugin;
 
   final FxPluginLibraryService _service;
   final FxPluginDescriber _describe;
+  final FxPluginOpener _open;
+
+  /// The plugins opened to run, by id — null for one that would not open,
+  /// so it is not tried again each frame.
+  final Map<String, FxPluginRunner?> _runners = {};
   List<InstalledFxPlugin> _plugins = const [];
   bool _disposed = false;
 
@@ -96,6 +114,25 @@ class InstalledFxPlugins extends ChangeNotifier {
   /// id ([install]).
   bool has(FxPluginDescription plugin) =>
       _plugins.any((installed) => installed.description.id == plugin.id);
+
+  /// This device's build of [plugin] opened to run ([openInstalledFxPlugin])
+  /// — null where the device has it not ([has]) or it will not open.
+  ///
+  /// Opened the first time it is asked, and kept until the plugin is
+  /// replaced, uninstalled or this list goes: a frame that runs it pays no
+  /// open.
+  FxPluginRunner? runnerFor(FxPluginDescription plugin) {
+    final installed = _plugins
+        .where((installed) => installed.description.id == plugin.id)
+        .firstOrNull;
+    if (installed == null) {
+      return null;
+    }
+    return _runners.putIfAbsent(plugin.id, () => _open(installed, _service));
+  }
+
+  /// Closes plugin [id]'s opened build, if it has one.
+  void _letGo(String id) => _runners.remove(id)?.close();
 
   /// The plugins [project]'s effects are of that this device has not
   /// ([has]) — each once, as the project first names it — asked once the
@@ -152,6 +189,7 @@ class InstalledFxPlugins extends ChangeNotifier {
     ]);
     await _service.saveIndex(_plugins);
     if (previous != null) {
+      _letGo(previous.description.id);
       await _service.delete(previous);
     }
     if (!_disposed) {
@@ -175,6 +213,7 @@ class InstalledFxPlugins extends ChangeNotifier {
       for (final plugin in _plugins)
         if (!identical(plugin, gone)) plugin,
     ]);
+    _letGo(id);
     notifyListeners();
     await _service.saveIndex(_plugins);
     await _service.delete(gone);
@@ -183,7 +222,41 @@ class InstalledFxPlugins extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    for (final id in [..._runners.keys]) {
+      _letGo(id);
+    }
     super.dispose();
+  }
+}
+
+/// [plugin] opened through the engine's host: its native build where this
+/// device has one (🗣️I-132-Q5 b), its module everywhere else — null where
+/// there is no host, or it will not open.
+///
+/// ⚠️The module is read here, at once: what asks for a runner is a frame
+/// being drawn, and it is read the first time only
+/// ([InstalledFxPlugins.runnerFor]).
+FxPluginRunner? openInstalledFxPlugin(
+  InstalledFxPlugin plugin,
+  FxPluginLibraryService library,
+) {
+  final host = QaFxPluginHost.instance;
+  if (host == null) {
+    return null;
+  }
+  if (plugin.native case final native?) {
+    if (library.pathOf(native) case final path?) {
+      return host.openNative(path).plugin;
+    }
+  }
+  final path = library.pathOf(plugin.wasm);
+  if (path == null) {
+    return null;
+  }
+  try {
+    return host.openWasm(File(path).readAsBytesSync()).plugin;
+  } on FileSystemException {
+    return null;
   }
 }
 

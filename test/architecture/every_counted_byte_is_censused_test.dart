@@ -495,4 +495,13 @@ const _imageHolders = <String, String>{
       'round trip, never drawn: ↩️billed with their picture while they were '
       'drawn over it until its levels were in, up to 64 at a time (F-465, '
       '2026-10-26)',
+
+  // — 2026-10-31, a camera lens blur's table kept for its next gather.
+  'lib/src/ui/canvas/iris_blur_shader.dart → _kept': 'counted:tableBytes',
+
+  // — 2026-10-31, a plugin anywhere in a chain (I-132-Q34 a).
+  'lib/src/ui/canvas/fx_plugin_stages.dart → _stages':
+      'one recording through its plugins: each step\'s input read back and '
+      'what its plugin made, the stages made and let go of by the one call '
+      'that records (recordedThrough) — the working set of a render',
 };
