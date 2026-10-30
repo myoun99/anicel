@@ -112,15 +112,23 @@ class ActiveCutSpan {
   /// ★The same number the sheet pages by and prints in parentheses
   /// (`2+0 (2+12)`), read from the same derivation — the ruler's blue line and
   /// the sheet's row count cannot disagree about how much there is to draw.
+  ///
+  /// Its のりしろ is the cut's as a drag in flight lays it
+  /// ([Transitions.activeCutPlaceShown]), beside its committed 尺: the drawn
+  /// end adds a dragged end itself (`timelineDrawnEndPreviewFrameCount`).
   int get activeCutDrawnFrameCount {
     final cut = _project.activeCutOrNull;
-    if (cut == null) {
+    final place = _transitions.activeCutPlaceShown;
+    if (cut == null || place == null) {
       return activeCutPlaybackFrameCount;
     }
-    return drawnFramesOfCutAt(
-      cut: cut,
-      cutStart: _project.activeCutGlobalStartFrame,
-      spans: _transitions.activeTrackTransitionSpans,
+    return drawnFrameCountOf(
+      cut,
+      cutTransitionHandles(
+        cutStart: place.start,
+        cutEnd: place.end,
+        spans: _transitions.activeTrackTransitionSpans,
+      ),
     );
   }
 
@@ -131,20 +139,21 @@ class ActiveCutSpan {
   /// Every span that FIRES on this cut is named, not just one: head and tail
   /// handles add up, so with a transition at each boundary no single term set
   /// the length and claiming one would be a half-truth.
+  ///
+  /// Of the cut as a drag in flight lays it, with the spans the drag
+  /// carries ([Transitions.activeCutPlaceShown]).
   String get activeCutNoriShiroLabel {
-    final cut = _project.activeCutOrNull;
-    if (cut == null) {
+    final place = _transitions.activeCutPlaceShown;
+    if (place == null) {
       return '';
     }
-    final start = _project.activeCutGlobalStartFrame;
-    final end = start + cut.duration;
     final terms = <String>[];
     for (final entry
         in _transitions.activeTrackTransitionRowShown.instructions.entries) {
       if (!transitionSpanFires(
         span: _transitions.transitionSpanOf(entry),
-        cutStart: start,
-        cutEnd: end,
+        cutStart: place.start,
+        cutEnd: place.end,
       )) {
         continue;
       }

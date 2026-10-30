@@ -21,7 +21,9 @@ import '../timeline/timeline_drag_preview.dart'
     show
         TimelineDragPreview,
         camerasAsReleased,
-        timelineDragPreviewGlobalLayerFor;
+        timelineDragPreviewGlobalLayerFor,
+        timelineDragPreviewLayerFor,
+        timelineDragPreviewTrack;
 import 'session_roles.dart';
 import 'camera.dart';
 import 'transition_row_names.dart';
@@ -112,6 +114,37 @@ class Transitions {
     final row = _selection.activeTrack.transitionLayer;
     return timelineDragPreviewGlobalLayerFor(_dragPreview.value, row.id) ?? row;
   }
+
+  /// Where the open cut stands on the active track as a drag in flight
+  /// lays the cuts ([timelineDragPreviewTrack]) — its place, its end and
+  /// the track frame its own frame 0 shows — or null with no cut open
+  /// there. Every answer that reads [activeTrackTransitionRowShown] against
+  /// the cut reads it against this: a cut's trim or move carries the spans
+  /// with the boundaries, and read against the cuts where they stood, an
+  /// O.L carried with a trimmed end sat where the end used to be
+  /// (transitions-follow-a-cut-drag-live).
+  ({int start, int end, int mediaStart})? get activeCutPlaceShown {
+    final cutId = _project.activeCutId;
+    for (final placed in cutSpansOf(_activeTrackLaid)) {
+      if (placed.cut.id == cutId) {
+        final lead = cutTransitionHandles(
+          cutStart: placed.startFrame,
+          cutEnd: placed.endFrame,
+          spans: activeTrackTransitionSpans,
+        ).head;
+        return (
+          start: placed.startFrame,
+          end: placed.endFrame,
+          mediaStart: placed.startFrame - lead,
+        );
+      }
+    }
+    return null;
+  }
+
+  /// The active track with its cuts where a drag in flight lays them.
+  Track get _activeTrackLaid =>
+      timelineDragPreviewTrack(_selection.activeTrack, _dragPreview.value);
 
   /// The track that owns [layerId] as its TRANSITION row, on any track.
   Track? trackTransitionOwner(LayerId layerId) {
@@ -305,11 +338,18 @@ class Transitions {
   /// carries it, the walk that projected the drag's row
   /// ([_inFlightProjectionOf]). ↩️It read the committed row's walk only, so
   /// the line kept its answer until the release wrote one.
+  ///
+  /// Of the row the cut view shows, that is: a drag of the row's own spans
+  /// hands the cut view its form ([previewFormsOf]); a cut's trim or move
+  /// carries the row on the track's axis alone, and the cut view still
+  /// shows the committed one (transitions-follow-a-cut-drag-live).
   String? transitionCrossingWarningInCutAt(int projectedStartKey) {
     final row = activeTrackTransitionRowShown;
-    final crossing = identical(row, _selection.activeTrack.transitionLayer)
-        ? _openCutProjection.crossing
-        : _inFlightProjectionOf(row).crossing;
+    final shownThere =
+        timelineDragPreviewLayerFor(_dragPreview.value, row.id) != null;
+    final crossing = shownThere
+        ? _inFlightProjectionOf(row).crossing
+        : _openCutProjection.crossing;
     return crossing.contains(projectedStartKey)
         ? AppText.strings.tlTransitionCrossingWarning
         : null;
@@ -372,7 +412,9 @@ class Transitions {
   /// gap-anchored fade has no owner, is already inert today, and stays
   /// quietly unmarked.
   ///
-  /// Of the row as it is shown, as the cut view's is (F-495).
+  /// Of the row as it is shown, as the cut view's is (F-495) — over the
+  /// cuts as they are shown, which a cut's drag lays with the row
+  /// ([activeCutPlaceShown]).
   String? transitionCrossingWarningAtGlobalKey(int globalStartKey) {
     final event = activeTrackTransitionRowShown.instructions[globalStartKey];
     if (event == null) {
@@ -382,7 +424,7 @@ class Transitions {
     if (transitionSidesOf(span.mark) == TransitionSides.both) {
       return null;
     }
-    for (final placed in cutSpansOf(_selection.activeTrack)) {
+    for (final placed in cutSpansOf(_activeTrackLaid)) {
       if (oneSidedSpanOwnsCut(
         span: span,
         cutStart: placed.startFrame,
