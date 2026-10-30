@@ -848,9 +848,11 @@ void main() {
   }
 
   for (final rows in [_Rows.live, _Rows.range]) {
-    testWidgets('${rows.name}: a sheet carried on keyed rows whose chain runs '
+    testWidgets('${rows.name}: a sheet warped on keyed rows whose chain runs '
         'a PLUGIN shows what it lands as once the device lets the plugin go '
-        'with the box open', (tester) async {
+        'with the box open — the landing and the hole asked again', (
+      tester,
+    ) async {
       final plugins = await installedShiftingFxPlugin(tester);
       final c = await open(
         tester,
@@ -858,6 +860,19 @@ void main() {
         fxPlugins: plugins,
       );
       final region = await sheets(tester, c, rows);
+      if (rows == _Rows.range) {
+        // Ink on B the box does not hold: B's hole shows it, through
+        // its chain.
+        final b = Rect.fromLTWH(c.dx + 40, c.dy - 64, 120, 120);
+        final apart = Rect.fromLTWH(c.dx + 40, c.dy + 130, 40, 40);
+        await lay(
+          tester,
+          keyB,
+          b.expandToInclude(apart),
+          (x, y) => sheet(b, x, y) ?? sheet(apart, x, y),
+        );
+        await settle(tester);
+      }
       final drawn = await composite(tester);
 
       expectLandsAsCarried(
@@ -865,6 +880,7 @@ void main() {
           tester,
           rows,
           region: region,
+          warps: [movedAndScaled],
           whileOpen: () async {
             await tester.runAsync(
               () => plugins.uninstall(shiftingFxPluginDescription.id),
