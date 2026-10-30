@@ -3,7 +3,7 @@
 #
 # 유저 2026-10-02 (board, linux-target-Q1): 「회차마다 리눅스 빌드도 rel 에」 —
 # every release round hands out a Linux build beside the Mac zip, the Windows
-# zip and the APK, and it wears the round's TestFlight number like they do.
+# zip and the Play bundle, and it wears the round's TestFlight number like they do.
 # Linux has been a target since 2026-07-19, but until this file nothing had
 # ever compiled the APP for it: CI builds and tests the C engine on Ubuntu,
 # never `flutter build linux`.
