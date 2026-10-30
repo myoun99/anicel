@@ -359,7 +359,10 @@ class _SheetTextEditLayerState extends State<SheetTextEditLayer> {
 
   /// Where [target]'s words stand printed, in paper units: the printer's
   /// layout of them in [SheetTextTarget.textRect], and a paper unit round
-  /// it for the edges of the glyphs.
+  /// it for the edges of the glyphs — but none above the rect: the printer
+  /// clips the words to it (`SheetWords`), and a sheet may print right over
+  /// it. ⚠️Mine (I-93): the conte's fixed lines end where a cell's typed
+  /// words begin, and the unit above hid the foot of the last one.
   Rect _printedWords(SheetTextTarget target) {
     final slot = target.textRect;
     final line = target.form.isLine;
@@ -380,6 +383,9 @@ class _SheetTextEditLayerState extends State<SheetTextEditLayer> {
       painter.height,
     );
     painter.dispose();
-    return printed.inflate(1).intersect(slot.inflate(1));
+    final room = slot.inflate(1);
+    return printed
+        .inflate(1)
+        .intersect(Rect.fromLTRB(room.left, slot.top, room.right, room.bottom));
   }
 }

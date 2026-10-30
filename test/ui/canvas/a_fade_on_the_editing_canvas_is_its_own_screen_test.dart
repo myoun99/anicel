@@ -7,6 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/project_background.dart';
+import 'package:anicel/src/models/timeline_coverage.dart'
+    show TimelineBlockEdge;
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -135,6 +137,44 @@ void main() {
     await pumpArea(tester, s);
     final [paper] = await count(tester, [isPaper]);
     expect(paper, greaterThan(1000));
+    await drainWarming(tester);
+  });
+
+  // transitions-follow-a-cut-drag-live: the canvas reads the fade against
+  // the cut as a drag of it lays it, and is painted again as it does.
+  testWidgets("an F.O a cut's end is pulled in over: its screen leaves the "
+      'canvas while the hand is still down', (tester) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.projectSettings.setProjectBackground(
+      const ProjectBackground.color(paperArgb),
+    );
+    s.projectSettings.setProjectBackdrop(0xFFFF0000);
+    s.cutVerbs.createCut();
+    final first = s.repository.requireProject().tracks.first.cuts.first;
+    s.selectCut(first.id);
+    s.transitions.updateTransitionInstructions({
+      first.duration - 6: const InstructionEvent(
+        instructionId: 'fo',
+        length: 4,
+      ),
+    });
+    s.selectFrameIndex(first.duration - 5);
+    await pumpArea(tester, s);
+    final [before] = await count(tester, [isPaper]);
+
+    expect(
+      s.edgeDrag.beginCutEdgeDrag(
+        cutId: first.id,
+        edge: TimelineBlockEdge.end,
+      ),
+      isTrue,
+    );
+    s.edgeDrag.updateCutEdgeDrag(-4);
+    await tester.pump();
+    final [held] = await count(tester, [isPaper]);
+    expect(held, greaterThan(before + 1000));
+    s.edgeDrag.endCutEdgeDrag();
     await drainWarming(tester);
   });
 }

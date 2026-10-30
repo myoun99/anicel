@@ -3,7 +3,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
-import '../timeline/axis_turn.dart' show offsetAlong;
+import '../timeline/axis_turn.dart' show offsetAlong, partAlong;
 import 'hit_path.dart';
 import 'wheel_law.dart';
 
@@ -51,6 +51,21 @@ PanSlide? panSlideUnder(PointerEvent event, {RenderBox? within}) {
 /// the sheet but those along the slide's axis — the slide moves that way.
 bool panMoves(ScrollPosition position, PanSlide? slide) =>
     position.axis != slide?.axis;
+
+/// Moves [position] by the part of [delta] along its axis, with the hand:
+/// the content goes with it — dragging down shows what was above — as far
+/// as it can scroll. What a pan that drives no drag of the scroller's own
+/// moves it by: the canvas's pan on a panel ([PanelPanDriver]) and a
+/// sheet's pinch ([TwoAxisDrag]).
+void scrollWithHand(ScrollPosition position, Offset delta) {
+  final to = (position.pixels - partAlong(position.axis, delta)).clamp(
+    position.minScrollExtent,
+    position.maxScrollExtent,
+  );
+  if (to != position.pixels) {
+    position.jumpTo(to);
+  }
+}
 
 /// Where a press lands on [slide]: everywhere in its box, over whatever it
 /// holds — it takes nothing from the hit test.

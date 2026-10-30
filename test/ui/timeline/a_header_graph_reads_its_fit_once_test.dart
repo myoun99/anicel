@@ -39,6 +39,7 @@ void main() {
       );
       final geometry = ValueNotifier(
         const TimelineFrameGeometry(
+          viewExtentPx: 240.0,
           frameCellExtent: 24,
           frameStartIndex: 0,
           frameEndIndexExclusive: 48,
@@ -60,9 +61,10 @@ void main() {
         frameAxis: (
           geometry: geometry,
           windowBucket: bucket,
-          viewportMainExtent: 240.0,
           axis: Axis.horizontal,
           laneExtent: timelineLayerRowHeight,
+          playhead: null,
+          frameCount: 0,
         ),
       );
       int readsOfAPaint() {

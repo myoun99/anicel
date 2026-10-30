@@ -167,8 +167,16 @@ Future<void> tapStoryboardCutBlock(WidgetTester tester, String cutId) async {
 /// minted for the run (`mintCutId`), so a test names the cut it made, never
 /// a number it expects.
 Future<String> createSecondCut(WidgetTester tester) async {
-  await tapCutCommandButton(tester, const ValueKey<String>('new-cut-button'));
+  await makeCutWithItsWindow(tester);
   return (await activeCutIdOf(tester)).value;
+}
+
+/// The new-cut button pressed and its window confirmed as it opens — the
+/// name and the canvas it offers (I-100).
+Future<void> makeCutWithItsWindow(WidgetTester tester) async {
+  await tapCutCommandButton(tester, const ValueKey<String>('new-cut-button'));
+  await tester.tap(find.byKey(const ValueKey<String>('new-cut-ok-button')));
+  await tester.pumpAndSettle();
 }
 
 /// The id of the drawing row [createSecondCutWithADrawingRow] makes: the

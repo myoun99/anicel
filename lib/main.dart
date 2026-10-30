@@ -1,12 +1,7 @@
 import 'dart:async' show unawaited;
-import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/foundation.dart'
-    show
-        LicenseEntryWithLineBreaks,
-        LicenseRegistry,
-        TargetPlatform,
-        defaultTargetPlatform;
+    show LicenseEntryWithLineBreaks, LicenseRegistry;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'
     show SystemChrome, SystemUiMode, rootBundle;
@@ -39,7 +34,7 @@ import 'src/services/diagnostics/memory_black_box.dart';
 import 'src/ui/theme/app_scroll_behavior.dart';
 import 'src/ui/text/app_strings.dart';
 import 'src/ui/theme/app_theme.dart';
-import 'src/ui/theme/color_mode_rederive.dart';
+import 'src/ui/theme/app_colors_rederive.dart';
 import 'src/ui/ui_scale.dart';
 import 'src/ui/ui_scale_binding.dart';
 
@@ -136,6 +131,12 @@ Future<void> main(List<String> handedAtLaunch) async {
     yield LicenseEntryWithLineBreaks(const [
       'PDFium',
     ], await rootBundle.loadString('assets/licenses/LICENSE-PDFium.txt'));
+    // Wasmtime is linked into the engine (the fx plugins' sandbox, I-132):
+    // Apache 2.0 with LLVM exceptions — shipped with the binary as PDFium's
+    // is, so the notice goes wherever the code does.
+    yield LicenseEntryWithLineBreaks(const [
+      'Wasmtime',
+    ], await rootBundle.loadString('assets/licenses/LICENSE-Wasmtime.txt'));
   });
   unawaited(AppStorage.ensureInitialized());
   // Probe PDFium once at startup (loads the bundled library, ~ms): the
@@ -171,10 +172,7 @@ Future<void> main(List<String> handedAtLaunch) async {
     // so a stored scale — even one equal to the default — is never
     // reconsidered. The branch structure IS the guarantee: there is no path
     // from here that can overwrite a value the user chose.
-    AppUiScale.value.value = AppUiScale.firstRunScaleFor(
-      PlatformDispatcher.instance.implicitView?.devicePixelRatio ?? 1.0,
-      android: defaultTargetPlatform == TargetPlatform.android,
-    );
+    AppUiScale.value.value = AppUiScale.firstRunScaleHere();
   }
   // AWAITED like the scale, and for its reason (I-103-Q2: 「다음 실행 때도
   // 기억한다」): a window the last run left full screen opens full screen,
@@ -227,9 +225,10 @@ class AnicelApp extends StatelessWidget {
     // The theme rides the LIVE accent settings (UI-R22 #5). ↩️Not the input
     // settings: their rebuild re-derived nothing but a whole-app theme lerp
     // (auto-frame-toggle-hitch, 2026-09-29 — see [buildAppTheme]).
-    // Their palette (I-143) is read past the theme too, so a switch of it
-    // rebuilds and repaints everything ([ColorModeRederive]).
-    return ColorModeRederive(child: _themed());
+    // Their palette (I-143) and accent (F-508) are read past the theme too,
+    // so a switch of either rebuilds and repaints everything
+    // ([AppColorsRederive]).
+    return AppColorsRederive(child: _themed());
   }
 
   Widget _themed() {

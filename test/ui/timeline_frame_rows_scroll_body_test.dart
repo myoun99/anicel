@@ -83,8 +83,12 @@ void main() {
       expect(timelineCellInWindow(tester, layerId.value, 3), isFalse);
     });
 
-    testWidgets('③: a row stays as built through its pass — but the view\'s '
-        'breadth, laid below the grid\'s build, is a pass of its own', (
+    /// ↩️The view's breadth was a pass of its own — 「the view grew: laid
+    /// afresh」 — and so every pixel the rail splitter or the dock moved
+    /// built every row of cells again (row-extent-drag-rebuilds-every-
+    /// visible-row). It reaches the kept row through the live geometry now.
+    testWidgets('③: a row stays as built through its pass, the view\'s '
+        'breadth reaching it through the geometry it follows', (
       tester,
     ) async {
       final layers = [_layer('layer-a')];
@@ -103,7 +107,12 @@ void main() {
       await tester.pumpWidget(body(300));
       expect(row(), same(built), reason: 'the same pass, the same breadth');
       await tester.pumpWidget(body(600));
-      expect(row(), isNot(same(built)), reason: 'the view grew: laid afresh');
+      expect(row(), same(built), reason: 'the view grew: the row is kept');
+      expect(
+        timelineRowCellsPainterFor(tester, 'layer-a').viewportMainExtent,
+        600,
+        reason: 'and its picture is cut for the view it stands in now',
+      );
     });
 
     testWidgets('renders empty layer placeholder without rows or cells', (

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -166,6 +167,7 @@ void main() {
         },
         valueSourceAt: (frame) => (layer: row, frame: frame),
         poseCentre: paper,
+        hasPlugin: null,
       );
       String shown(String lane) =>
           lanes.singleWhere((it) => it.laneId == lane).valueLabel!(0);
@@ -244,7 +246,7 @@ void main() {
       ];
 
       expect(lens.keysOf(effects).keys, [3]);
-      expect(lens.numberShown(5), isNull);
+      expect(lens.numberShown(effects, 5), isNull);
       expect(lens.numberHeld(effects, 5), isNull);
       final shifted = lens.update(
         effects,
@@ -257,7 +259,7 @@ void main() {
       );
     });
 
-    test('it walks a path, read off its id alone, and a key between two '
+    test('it walks a path, asked of its effect, and a key between two '
         'may rove', () {
       final effects = [
         radial(
@@ -269,8 +271,11 @@ void main() {
         ),
       ];
 
-      expect(effectLaneWalksAPath(center), isTrue);
-      expect(effectLaneWalksAPath(effectLaneId(id, 'amount')), isFalse);
+      expect(effectLaneWalksAPath(effects, center), isTrue);
+      expect(
+        effectLaneWalksAPath(effects, effectLaneId(id, 'amount')),
+        isFalse,
+      );
       expect(effectLaneKeyCanRove(effects, center, 4), isTrue);
       expect(effectLaneKeyCanRove(effects, center, 0), isFalse);
       final written = effectsWithLaneKeysWritten(
@@ -375,17 +380,40 @@ void main() {
     });
   });
 
-  test('no parameter of any kind is named as a point is, but a point — the '
-      'id alone tells them apart', () {
-    for (final kind in EffectKind.values) {
-      for (final spec in kind.parameters) {
-        expect(
-          effectPointParameters.contains(spec.id),
-          spec.unit == EffectParameterUnit.point,
-          reason: '${kind.name}.${spec.id}',
-        );
-        expect(effectStandLanes, isNot(contains(spec.id)));
-      }
-    }
+  // I-132: a plugin's ids are its own — one may be an id of the app's of
+  // another unit, so a lane is what its effect says, never its id.
+  test('a plugin\'s number named as the app\'s point is a number, and its '
+      'point named as the app\'s number walks a path', () {
+    final plugin = FxPluginDescription.fromJson({
+      'spec': 1,
+      'id': 'com.example.swap',
+      'name': 'Swap',
+      'vendor': 'Example',
+      'version': '1',
+      'can': ['cpu'],
+      'params': [
+        {
+          'id': 'center',
+          'kind': 'number',
+          'label': 'Centre',
+          'default': 0,
+          'min': 0,
+          'max': 10,
+        },
+        {'id': 'amount', 'kind': 'point', 'label': 'Amount'},
+      ],
+    })!;
+    final effects = [
+      LayerEffect.defaults(id: id, kind: EffectKind.plugin, plugin: plugin),
+    ];
+    final number = effectLaneId(id, 'center');
+    final point = effectLaneId(id, 'amount');
+
+    expect(effectLaneWalksAPath(effects, number), isFalse);
+    expect(effectLaneLens(number)!.numberShown(effects, 5), 5);
+    expect(effectLaneLens(number)!.numberHeld(effects, 50), 10);
+    expect(effectLaneWalksAPath(effects, point), isTrue);
+    expect(effectLaneLens(point)!.numberShown(effects, 5), isNull);
+    expect(effectLaneLens(point)!.numberHeld(effects, 5), isNull);
   });
 }

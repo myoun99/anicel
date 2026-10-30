@@ -54,6 +54,13 @@ extension EffectKindWords on EffectKind {
       AppStrings.of(language).effectKindName(jsonValue, label);
 }
 
+/// An effect's name — its kind's, or a plugin's in its own words
+/// ([EffectParameterSpec.ownWords]'s reason).
+extension LayerEffectWords on LayerEffect {
+  String labelFor(AppLanguage language) =>
+      plugin?.name ?? kind.labelFor(language);
+}
+
 /// A key side's kind — the key window's choices (I-89 ②).
 extension KeySideKindWords on KeySideKind {
   String labelFor(AppLanguage language) =>
@@ -109,15 +116,19 @@ extension LayerMarkWords on LayerMark {
 /// An effect parameter's lane name, by the id its spec carries — the spec
 /// holds its English for the reason the kinds do. F-37 (유저 2026-09-15,
 /// F-37-Q1): 「전부 번역 — 레인 이름도 한국어로」.
+/// A plugin's parameter is named in its own words ([EffectParameterSpec
+/// .ownWords]).
 extension EffectParameterSpecWords on EffectParameterSpec {
-  String labelFor(AppLanguage language) =>
-      AppStrings.of(language).effectParameterName(id, label);
+  String labelFor(AppLanguage language) => ownWords
+      ? label
+      : AppStrings.of(language).effectParameterName(id, label);
 }
 
-/// A word of a menu parameter (I-132-Q6).
+/// A word of a menu parameter (I-132-Q6) — a plugin's in its own.
 extension EffectChoiceWords on EffectChoice {
-  String labelFor(AppLanguage language) =>
-      AppStrings.of(language).effectChoiceName(id, label);
+  String labelFor(AppLanguage language) => ownWords
+      ? label
+      : AppStrings.of(language).effectChoiceName(id, label);
 }
 
 extension SelectionCombineModeWords on SelectionCombineMode {

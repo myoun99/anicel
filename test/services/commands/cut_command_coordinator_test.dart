@@ -161,6 +161,23 @@ void main() {
         ],
       );
 
+      /// [linkFixtureCut] with its attach group in a folder, as a drop
+      /// leaves one (R5 #14): the folder row right above the run it holds.
+      /// ↩️These tests made it with the coordinator's old folder-from-layer
+      /// verb (layer-menu-strings-outlive-their-entries-Q3).
+      const folderId = LayerId('folder-1');
+      Cut folderedLinkFixtureCut() => _cut(
+        id: 'cut-1',
+        layers: [
+          for (final layer in linkFixtureCut().layers)
+            if (layer.id.value == 'unrelated') ...[
+              createFolderLayer(id: folderId, name: 'Folder 1'),
+              layer,
+            ] else
+              layer.copyWith(folderId: folderId),
+        ],
+      );
+
       test('duplicates the WHOLE attach group as a FREE group with the '
           'same FrameIds and names, and registers link pairs', () {
         final fixture = _fixture(
@@ -862,34 +879,25 @@ void main() {
         expect(layerOf(baseCopyId).kind, LayerKind.animation);
       });
 
-      test('createFolderFromLayer folds the WHOLE attach group into a new '
-          'folder (contiguity free); dissolve releases; both undo', () {
+      test('dissolve releases a folder\'s whole attach group; undo brings '
+          'the folder back around it', () {
         final fixture = _fixture(
           _project(
             tracks: [
-              _track(id: 'track-1', name: 'V', cuts: [linkFixtureCut()]),
+              _track(
+                id: 'track-1',
+                name: 'V',
+                cuts: [folderedLinkFixtureCut()],
+              ),
             ],
           ),
           activeCutId: const CutId('cut-1'),
         );
 
-        final folderId = fixture.coordinator.createFolderFromLayer(
-          cutId: const CutId('cut-1'),
-          // The attach member folds its whole group.
-          layerId: const LayerId('color'),
-        )!;
-
         Cut cut() => requireCut(fixture.project, const CutId('cut-1'));
         Layer layerOf(String id) =>
             cut().layers.firstWhere((layer) => layer.id.value == id);
-        expect(cut().layers.folderLayers.single.id, folderId);
-        expect(cut().layers.folderLayers.single.name, 'Folder 1');
-        expect(layerOf('base').folderId, folderId);
-        expect(layerOf('color').folderId, folderId);
-        expect(layerOf('unrelated').folderId, isNull);
-        // The folder ROW sits directly above its member run — the stack
-        // position the group buffer walks.
-        expect(folderStructureProblem(cut().layers), isNull);
+        expect(folderStructureProblem(cut().layers), isNull, reason: '⛔전제');
 
         fixture.coordinator.dissolveFolder(
           cutId: const CutId('cut-1'),
@@ -897,24 +905,27 @@ void main() {
         );
         expect(cut().layers.folderLayers, isEmpty);
         expect(layerOf('base').folderId, isNull);
+        expect(layerOf('color').folderId, isNull);
 
         fixture.historyManager.undo();
         expect(cut().layers.folderLayers.single.id, folderId);
         expect(layerOf('base').folderId, folderId);
+        expect(layerOf('color').folderId, folderId);
+        expect(layerOf('unrelated').folderId, isNull);
         expect(folderStructureProblem(cut().layers), isNull);
-
-        fixture.historyManager.undo();
-        expect(cut().layers.folderLayers, isEmpty);
-        expect(layerOf('base').folderId, isNull);
       });
 
-      test('folder structure MIRRORS over 겸용 cuts: create appears around '
-          'the counterparts, rename follows, dissolve follows — each one '
-          'undo', () {
+      test('folder structure MIRRORS over 겸용 cuts: the linked cut holds '
+          'its own folder around the counterparts, rename follows, dissolve '
+          'follows — each one undo', () {
         final fixture = _fixture(
           _project(
             tracks: [
-              _track(id: 'track-1', name: 'V', cuts: [linkFixtureCut()]),
+              _track(
+                id: 'track-1',
+                name: 'V',
+                cuts: [folderedLinkFixtureCut()],
+              ),
             ],
           ),
           activeCutId: const CutId('cut-1'),
@@ -927,11 +938,6 @@ void main() {
             .cutsFor(const TrackId('track-1'))
             .firstWhere((cut) => cut.name == 'linked')
             .id;
-
-        final folderId = fixture.coordinator.createFolderFromLayer(
-          cutId: const CutId('cut-1'),
-          layerId: const LayerId('base'),
-        )!;
 
         Cut origin() => requireCut(fixture.project, const CutId('cut-1'));
         Cut linked() => requireCut(fixture.project, linkedCutId);
@@ -981,7 +987,11 @@ void main() {
         final fixture = _fixture(
           _project(
             tracks: [
-              _track(id: 'track-1', name: 'V', cuts: [linkFixtureCut()]),
+              _track(
+                id: 'track-1',
+                name: 'V',
+                cuts: [folderedLinkFixtureCut()],
+              ),
             ],
           ),
           activeCutId: const CutId('cut-1'),
@@ -994,10 +1004,6 @@ void main() {
             .cutsFor(const TrackId('track-1'))
             .firstWhere((cut) => cut.name == 'linked')
             .id;
-        final folderId = fixture.coordinator.createFolderFromLayer(
-          cutId: const CutId('cut-1'),
-          layerId: const LayerId('base'),
-        )!;
         Cut origin() => requireCut(fixture.project, const CutId('cut-1'));
         Cut linked() => requireCut(fixture.project, linkedCutId);
         List<String> names(Cut cut) => [
@@ -1050,7 +1056,11 @@ void main() {
         final fixture = _fixture(
           _project(
             tracks: [
-              _track(id: 'track-1', name: 'V', cuts: [linkFixtureCut()]),
+              _track(
+                id: 'track-1',
+                name: 'V',
+                cuts: [folderedLinkFixtureCut()],
+              ),
             ],
           ),
           activeCutId: const CutId('cut-1'),
@@ -1063,10 +1073,6 @@ void main() {
             .cutsFor(const TrackId('track-1'))
             .firstWhere((cut) => cut.name == 'linked')
             .id;
-        final folderId = fixture.coordinator.createFolderFromLayer(
-          cutId: const CutId('cut-1'),
-          layerId: const LayerId('base'),
-        )!;
 
         final track = TransformTrack(
           keyframes: {

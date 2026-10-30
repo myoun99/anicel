@@ -1,12 +1,12 @@
-// THE REPOSITORY'S TRACK EDITS: A REORDER PAST THE END IS A NO-OP, A
-// REMOVAL OF A TRACK IT DOES NOT HOLD IS REFUSED, AND A TRANSITION LAYER
-// LANDS ON ITS OWN TRACK ONLY.
+// THE REPOSITORY'S TRACK EDITS: A REORDER PAST THE END IS A NO-OP, AND A
+// TRANSITION LAYER LANDS ON ITS OWN TRACK ONLY.
 //
-// Three survivors of the mutation campaign (2026-09-03): the reorder guard's
-// `>=` became `>` (an index one past the end slipped through), the removal
-// check's `==` became `!=` (a missing track passed and a found one threw),
-// and the transition write's `==` became `!=` (every OTHER track took the
-// layer) — none noticed. These pins do.
+// Survivors of the mutation campaign (2026-09-03): the reorder guard's `>=`
+// became `>` (an index one past the end slipped through), and the
+// transition write's `==` became `!=` (every OTHER track took the layer) —
+// none noticed. These pins do. ↩️A third pinned the track removal, which
+// went with the track add no screen ever called
+// (layer-menu-strings-outlive-their-entries-Q2).
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/layer.dart';
@@ -41,23 +41,6 @@ void main() {
     test('a slot one past the end is refused and the order stays', () {
       final repository = ProjectRepository(initialProject: _twoTracks());
       repository.reorderTrack(fromIndex: 0, toIndex: 2);
-      expect(_order(repository), [const TrackId('a'), const TrackId('b')]);
-    });
-  });
-
-  group('removeTrack', () {
-    test('removes the track it names', () {
-      final repository = ProjectRepository(initialProject: _twoTracks());
-      repository.removeTrack(const TrackId('a'));
-      expect(_order(repository), [const TrackId('b')]);
-    });
-
-    test('a track the project does not hold is refused', () {
-      final repository = ProjectRepository(initialProject: _twoTracks());
-      expect(
-        () => repository.removeTrack(const TrackId('zz')),
-        throwsStateError,
-      );
       expect(_order(repository), [const TrackId('a'), const TrackId('b')]);
     });
   });

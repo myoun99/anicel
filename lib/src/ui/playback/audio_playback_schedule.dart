@@ -50,7 +50,7 @@ class ScheduledAudioClip {
   /// The ROW's sound ([SeSound]) is laid in HERE, so no consumer ever
   /// re-consults the layer: a keyed volume becomes the entry's [volume]
   /// line, read off the row at the frames the entry sounds — [clippedLead]
-  /// frames into the span.
+  /// frames into the span — and its total multiplies into the [gain].
   factory ScheduledAudioClip.ofSpan(
     SeAudioSpan span, {
     required int startFrame,
@@ -64,7 +64,7 @@ class ScheduledAudioClip {
       startFrame: startFrame,
       endFrameExclusive: endFrameExclusive,
       offsetFrames: clippedLead + span.clip.offsetFrames,
-      gain: span.clip.gain,
+      gain: span.clip.gain * sound.totalVolume,
       pan: sound.pan,
       volume: sound.isKeyed
           ? _volumeLine(
@@ -83,7 +83,8 @@ class ScheduledAudioClip {
   /// Frames skipped into the file where the block starts (the clip's trim).
   final int offsetFrames;
 
-  /// The clip's own gain (`AudioClip.gain`); the row's volume is [volume].
+  /// The clip's own gain (`AudioClip.gain`) times the row's total; the
+  /// row's keyed volume is [volume].
   final double gain;
 
   /// The row's pan, -1..1 equal-power; applied by the device mixer path

@@ -543,6 +543,18 @@ mixin RepaintOnWordBakes on CustomPainter implements WordBakeWaiter {
     letGo: (_, picture) => picture.dispose(),
   );
 
+  /// Lets go of every kept picture — a project closing: what a picture is
+  /// drawn from ([pictureKey]) holds its rows' cel answers, and through them
+  /// that project's whole session (F-505, measured: the holder of a closed
+  /// tab once its timeline tiles let go). The project on screen sets its
+  /// rows again.
+  static void clearKeptPictures() {
+    for (final picture in _pictures.values) {
+      picture.dispose();
+    }
+    _pictures.clear();
+  }
+
   /// What [paint] is to any other painter.
   void paintWords(Canvas canvas, Size size);
 

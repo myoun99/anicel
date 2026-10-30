@@ -237,9 +237,11 @@ void main() {
     });
 
     testWidgets('a mixing brush deposits the colour it lifted', (tester) async {
-      // A black brush releasing half its paint over a white cel lands
-      // halfway between the two. Driven through a real pointer stroke so
-      // the whole placement chain is exercised, not just the mixer.
+      // A black brush over a white cel lands grey: neither its own colour
+      // nor the cel's. Driven through a real pointer stroke so the whole
+      // placement chain is exercised, not just the mixer — whose numbers
+      // are its own test's. ↩️Pinned halfway (0x808080) under the mixer
+      // that never refilled.
       final results = <List<BrushDab>>[];
       await tester.pumpWidget(
         _app(
@@ -269,8 +271,50 @@ void main() {
       expect(results, hasLength(1));
       expect(results.single, isNotEmpty);
       for (final dab in results.single) {
-        expect(dab.color, 0xFF808080);
+        final grey = dab.color & 0xFF;
+        expect(dab.color >>> 24, 0xFF);
+        expect(dab.color & 0xFFFFFF, grey * 0x010101, reason: 'a grey');
+        expect(grey, inExclusiveRange(0, 255), reason: 'lifted, and laid');
       }
+    });
+
+    testWidgets('a mixing brush throws its ランダム 絵の具濃度 from the '
+        'stroke\'s own dice: the same press, the same throws (gouache card '
+        'Q9)', (tester) async {
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(
+        _app(
+          _view(
+            _sessionState(width: 32),
+            results.add,
+            inputSettings: BrushEditCanvasInputSettings.fromShape(
+              BrushShape(
+                size: 4,
+                mixesGroundColor: true,
+                curves: {
+                  (BrushPressureTarget.paintDensity, BrushInputSource.random):
+                      BrushPressureCurve.linearFrom(0.0),
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      Future<List<int>> alphasLaid() async {
+        final gesture = await tester.startGesture(
+          canvasGlobalOffset(tester, const Offset(3, 3)),
+          pointer: 1,
+        );
+        await gesture.moveTo(canvasGlobalOffset(tester, const Offset(28, 3)));
+        await gesture.up();
+        await tester.pump();
+        return [for (final dab in results.last) dab.color >>> 24];
+      }
+
+      final first = await alphasLaid();
+      expect(first.length, greaterThan(4), reason: 'a line, not a dot');
+      expect(first.toSet().length, greaterThan(1), reason: 'thrown');
+      expect(await alphasLaid(), first);
     });
 
     testWidgets('a brush that does not mix keeps its own colour', (

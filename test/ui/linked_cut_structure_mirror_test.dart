@@ -12,6 +12,7 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId, effectLaneId;
+import '../helpers/a_folder_made_by_hand.dart';
 
 /// 겸용컷 STRUCTURE mirroring: layer existence is shared structure, so a
 /// row created in one use site appears in every sibling ("존재는 공유,
@@ -228,7 +229,7 @@ void main() {
   test('a row created inside a folder lands in the SIBLING\'s own folder, '
       'not the origin cut\'s', () {
     final pair = makeLinkedPair();
-    session.folders.groupActiveLayerIntoFolder();
+    groupTheActiveRowIntoAFolder(session);
     final sourceIdsBefore = {
       for (final layer in cutById(pair.source).layers) layer.id,
     };

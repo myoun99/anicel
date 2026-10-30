@@ -7,6 +7,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/range_selections.dart';
 import 'package:anicel/src/ui/session/row_spans.dart';
+import '../../helpers/a_folder_made_by_hand.dart';
 
 /// WHAT A ROW SPANS — the four reads every snap, gate and D40 verb asks of
 /// a row before it selects anything: the folder band's aggregate runs, the
@@ -36,7 +37,7 @@ void main() {
     final s = session();
     s.createDrawingAtCurrentFrame();
     final memberId = s.activeLayer!.id;
-    s.folders.groupActiveLayerIntoFolder();
+    groupTheActiveRowIntoAFolder(s);
     final folder = s.layers.firstWhere(
       (layer) => layer.kind == LayerKind.folder,
     );

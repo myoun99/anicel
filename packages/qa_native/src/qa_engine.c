@@ -7047,4 +7047,4 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // carries it from both planes (qa_dual_view_rows). qa_dab_spec drops the
 // per-dab dual mask - dual_density, dual_one_minus_density, dual_size,
 // dual_composite_mode and its lattices. Sizeof moves, both structs.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 60; }
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 61; }

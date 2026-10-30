@@ -275,7 +275,10 @@ class _BrushEditStroke {
     );
     _state._lastDirectionDegrees = null;
     _state._previousBaseDab = null;
-    final mixer = BrushGroundColorMixer(shape: strokeSettings.shape);
+    final mixer = BrushGroundColorMixer(
+      shape: strokeSettings.shape,
+      random: math.Random(dice + 6),
+    );
     _state._groundMixer = mixer.isActive ? mixer : null;
     _state._groundSampler = _state._groundMixer == null
         ? null

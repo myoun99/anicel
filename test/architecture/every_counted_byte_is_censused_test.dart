@@ -245,7 +245,9 @@ const _notCensused = <String, String>{
 /// or an `Expando` hanging them on other objects (the tile cache does:
 /// found by widening this the day it was written, 2026-09-11), or the core
 /// `Lru` (2026-10-16: the sheets' images and the storyboard's panels moved
-/// onto it, card every-bounded-cache-is-one-lru) and `BakeOnceLru` (the
+/// onto it, card every-bounded-cache-is-one-lru — and on again 10-30, to
+/// the viewer's holding; the held subtree rasters keep one) and
+/// `BakeOnceLru` (the
 /// baked words', the brush list's strokes — 2026-10-17). Record keys
 /// are allowed — `Map<(A, B), ui.Image>` is still a holder.
 /// Crude on purpose, like [_counter]: a holder that hides from this also
@@ -407,8 +409,6 @@ final _partOf = RegExp("^part of '([^']+)';", multiLine: true);
 /// census test holds that counter to the census); anything else is why it
 /// is not a holding the readout should carry.
 const _imageHolders = <String, String>{
-  'lib/src/ui/storyboard_cut_thumbnail_store.dart → _images':
-      'counted:thumbnailBytes',
   'lib/src/ui/storyboard_cut_blocks_painter.dart → thumbnails':
       'a cut block borrows one picture per cell from the storyboard '
       'thumbnail store, which owns and counts them (thumbnailBytes); the '
@@ -418,8 +418,6 @@ const _imageHolders = <String, String>{
   'lib/src/ui/canvas/bitmap_tile_image_cache.dart → _pictures':
       'counted:liveImageBytes',
   'lib/src/ui/canvas/tile_pages.dart → _open': 'counted:liveBytes',
-  'lib/src/ui/sheet/sheet_image_cache.dart → _images':
-      'counted:decodedBytes',
   'lib/src/ui/sheet/sheet_image_cache.dart → _pictures':
       'one export render\'s media images (SheetImageRun), read for that '
       'render and let go when it ends — the working set of a render, as '
@@ -446,10 +444,12 @@ const _imageHolders = <String, String>{
       'counted:estimatedBytes',
   'lib/src/ui/widgets/static_raster.dart → census': 'counted:censusBytes',
   // … or pushed to where the census reads them …
-  'lib/src/ui/media/page_rasters.dart → _cache':
-      'a viewer\'s pages: every change in them reports their total '
-      '(_report) onto RenderCaches.viewerRasterBytesByViewer, which the '
-      'census reads (viewerRasterBytes)',
+  'lib/src/ui/media/shown_rasters.dart → _held':
+      'every picture drawn as large as it is shown — a viewer\'s pages, the '
+      'storyboard\'s panels, the sheets\' images: every change in what is '
+      'held reports its total (_report) to where the census reads it '
+      '(viewerRasterBytes, storyboardThumbnailBytes, sheetImageBytes) — '
+      '↩️until 10-30 three fields, each its own holding',
   'lib/src/ui/export/held_rows.dart → _rows':
       'an export run\'s row pictures: every change in what they hold is '
       'told to playback\'s line (onHeld, PlaybackCacheBudget.lend), which '

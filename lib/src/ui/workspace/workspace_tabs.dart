@@ -306,20 +306,27 @@ class _WorkspaceTabs {
           locked: locked,
           // Sliced (R18 UI-1): only an actual TOOL change reshapes this
           // panel — color/size/knob tweaks must not rebuild it.
-          builder: (context) =>
-              SlicedValueListenableBuilder<BrushToolState, CanvasTool>(
-                valueListenable: _state._brushTool,
-                slice: (state) => state.tool,
-                builder: (context, toolState) => ToolsPanel(
-                  tool: toolState.tool,
-                  // Applied at PRESS time, not build time: the rail memory is
-                  // the notifier's, not state this builder is sliced on.
-                  onPress: _state._pressTool,
-                  // The between-strokes group. Its own listeners, so undoing
-                  // does not rebuild the tool column above it.
-                  historyControls: _state._rail._railHistoryControls(),
+          // I-128: the shortcut buttons stand above the tools unless the
+          // workspace holds the strip to its tools alone.
+          builder: (context) => ValueListenableBuilder<bool>(
+            valueListenable: _state._railToolsOnly,
+            builder: (context, toolsOnly, _) =>
+                SlicedValueListenableBuilder<BrushToolState, CanvasTool>(
+                  valueListenable: _state._brushTool,
+                  slice: (state) => state.tool,
+                  builder: (context, toolState) => ToolsPanel(
+                    tool: toolState.tool,
+                    // Applied at PRESS time, not build time: the rail memory
+                    // is the notifier's, not state this builder is sliced on.
+                    onPress: _state._pressTool,
+                    // The between-strokes group. Its own listeners, so
+                    // undoing does not rebuild the tool column above it.
+                    historyControls: toolsOnly
+                        ? null
+                        : _state._rail._railHistoryControls(),
+                  ),
                 ),
-              ),
+          ),
         );
       case EditorWorkspace.colorWheelTabId:
         return _colorTab(

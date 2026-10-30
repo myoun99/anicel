@@ -9,6 +9,7 @@ import '../../models/track_transform_lane_carrier.dart';
 import '../../services/project_lookup.dart'
     show cutPositionOf, cutWritingRow, layerAnywhereOrNull, rowTwirlsOf;
 import '../editor_session_manager.dart';
+import '../text/readout_text.dart' show columnValueText;
 import '../timeline/layer_label_controls.dart'
     show LayerMarkEdit, layerKindShowsOpacityControl, layerRowWearsFxSwitch;
 import '../timeline/lane_graph.dart'
@@ -16,6 +17,7 @@ import '../timeline/lane_graph.dart'
 import '../timeline/layer_rail_columns.dart' show layerRailEyeIsOn;
 import '../timeline/property_lane_model.dart'
     show laneGroupKey, parseLaneGroupKey;
+import '../timeline/se_sound_lane_policy.dart' show seSoundTotalVolumeLaneId;
 import '../timeline/timeline_lane_provider.dart' show timelineLanesForLayer;
 
 /// The rail rows' buttons wired to [session] as a PRESS on one row asks
@@ -225,6 +227,7 @@ class SessionRowButtonPresses {
     enlarge: enlargeLaneGraph,
     pen: penLaneGraph,
     transformBox: transformBoxLaneGraph,
+    snap: snapLaneGraph,
   );
 
   /// A group's HEADER GRAPH on or off, by the group's key — on every use of
@@ -299,29 +302,49 @@ class SessionRowButtonPresses {
   void plotLaneGraph(String groupKey, LaneGraphMode mode) =>
       _reshapeLaneGraph(groupKey, (graph) => graph.copyWith(mode: mode));
 
-  /// A group's open graph's PEN taken up or put down (I-3 ④), on every use
-  /// of its row — what the pressed one has, all of them turned to the
-  /// other. View state, no undo.
-  void penLaneGraph(String groupKey) {
-    final pressed = session.railView.laneGraphs.value.open[groupKey];
-    if (pressed == null) {
-      return;
-    }
-    _reshapeLaneGraph(groupKey, (graph) => graph.copyWith(pen: !pressed.pen));
-  }
+  /// A group's open graph's PEN taken up or put down (I-3 ④)
+  /// ([_turnLaneGraphSwitch]).
+  void penLaneGraph(String groupKey) => _turnLaneGraphSwitch(
+    groupKey,
+    (graph) => graph.pen,
+    (graph, on) => graph.copyWith(pen: on),
+  );
 
   /// A group's open graph's TRANSFORM BOX shown or hidden (AE's 「Show
-  /// Transform Box」), on every use of its row — what the pressed one has,
-  /// all of them turned to the other. View state, no undo.
-  void transformBoxLaneGraph(String groupKey) {
+  /// Transform Box」) ([_turnLaneGraphSwitch]).
+  void transformBoxLaneGraph(String groupKey) => _turnLaneGraphSwitch(
+    groupKey,
+    (graph) => graph.transformBox,
+    (graph, on) => graph.copyWith(transformBox: on),
+  );
+
+  /// A group's open graph's SNAP turned on or off (AE's 「Snap」,
+  /// graph-key-drag-snaps) ([_turnLaneGraphSwitch]).
+  void snapLaneGraph(String groupKey) => _turnLaneGraphSwitch(
+    groupKey,
+    (graph) => graph.snap,
+    (graph, on) => graph.copyWith(snap: on),
+  );
+
+  /// ONE SWITCH of a group's open graph turned — its pen, its transform
+  /// box, its snap — on every use of its row: what the pressed one has
+  /// ([isOn]), all of them turned to the other ([turnedTo]). View state, no
+  /// undo.
+  ///
+  /// The pen and the box spelled this twice, kept a pair by the rule of
+  /// three (`one_algorithm_one_place_test`, 88 → 89); the snap is the third
+  /// switch, and the three are this one.
+  void _turnLaneGraphSwitch(
+    String groupKey,
+    bool Function(LaneGraph graph) isOn,
+    LaneGraph Function(LaneGraph graph, bool on) turnedTo,
+  ) {
     final pressed = session.railView.laneGraphs.value.open[groupKey];
     if (pressed == null) {
       return;
     }
-    _reshapeLaneGraph(
-      groupKey,
-      (graph) => graph.copyWith(transformBox: !pressed.transformBox),
-    );
+    final on = !isOn(pressed);
+    _reshapeLaneGraph(groupKey, (graph) => turnedTo(graph, on));
   }
 
   /// How far a group's open graph stands along the rail — its grip's — on
@@ -462,6 +485,25 @@ class SessionRowButtonPresses {
     flip: session.visibilitySolo.toggleLayerSolo,
     description: 'Toggle solo',
   );
+
+  /// The window's bar (I-145-Q1 「따로 한 값 — 두 입구」): the row's Total,
+  /// written as a value typed into its 「오디오」 group's lane is — one field,
+  /// two doors. The Total holds no keys, so the frame names nothing.
+  void setTotalVolume(LayerId pressed, double share) =>
+      session.rowSelectionVerbs.pickAcross(pressed, (id) {
+        final layer = _row(id);
+        if (layer != null && _hasMixer(layer)) {
+          session.laneVerbs.setLaneValueAt(
+            id,
+            seSoundTotalVolumeLaneId,
+            0,
+            columnValueText(share * 100),
+            frameIsGlobal: true,
+            description: 'Set total volume',
+            scaleLinked: false,
+          );
+        }
+      }, description: 'Set total volume');
 
   /// The rows the speaker is drawn on (`_muteButton` in the rail row).
   static bool _hasMixer(Layer layer) => layer.kind == LayerKind.se;

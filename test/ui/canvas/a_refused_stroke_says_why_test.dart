@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/panel_finders.dart' show visibleCanvasPoint;
+import '../../helpers/a_folder_made_by_hand.dart';
 
 /// 🗣️F-242 (유저 2026-09-29): 「그림 못그리는 이유 명확화. 지금 비지블off인
 /// 프레임에서 그리려해도 프레임이 존재안한다고 뜨는데 그런부분 원인 제대로
@@ -84,7 +85,7 @@ void main() {
     session.createDrawingAtCurrentFrame();
     await tester.pumpAndSettle();
     final layerId = session.activeLayerId!;
-    session.folders.groupActiveLayerIntoFolder();
+    groupTheActiveRowIntoAFolder(session);
     await tester.pumpAndSettle();
     final folderId = session.activeCutOrNull!.layers.folderLayers.single.id;
     session.layerSwitches.toggleLayerVisibility(folderId);

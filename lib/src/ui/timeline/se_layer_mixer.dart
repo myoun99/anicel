@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/se_sound.dart';
 import '../../services/project_lookup.dart' show layerAnywhereOrNull;
 import '../editor_session_manager.dart';
 import '../session/session_row_button_presses.dart';
 import '../theme/app_theme.dart';
 import '../widgets/anchored_popup.dart';
+import '../widgets/field_slider.dart';
 import '../input/control_press_claim.dart';
 
 /// The SE row's mixer, opened by pressing the row's SPEAKER (R10 R3).
@@ -23,11 +25,17 @@ import '../input/control_press_claim.dart';
 /// rail getting nothing. ↩️The fader and the pan stood here too, until the
 /// row's volume and pan became its 「오디오」 group's lanes, the volume keyed
 /// (I-140: 「음소거버튼은 내부에 있던 게인이나 이런 필요없어지는것들은 삭제」).
+/// 🗣️I-145 (유저 2026-10-30): 「위치는 전처럼 스피커버튼안에 볼륨 … 오디오fx
+/// 에서도 조절하고 스피커버튼에서도 총 볼륨 조절」 — the fader is back, as
+/// the group's Total: one value with two doors (Q1 「따로 한 값 — 두 입구」).
 const double seLayerMixerWidth = 236;
 
 /// What the window stands, for where it opens (above or below the speaker):
-/// the margin, the title's line, the gap, the buttons' 26 and the margin.
-const double seLayerMixerHeight = 72;
+/// the margin, the title's line, the gap, the buttons' 26, the gap, the
+/// bar and the margin.
+const double seLayerMixerHeight = 72 + _barGap + FieldSlider.defaultHeight;
+
+const double _barGap = 8;
 
 Future<void> showSeLayerMixer(
   BuildContext anchorContext, {
@@ -54,7 +62,13 @@ class _SeLayerMixer extends StatefulWidget {
 }
 
 class _SeLayerMixerState extends State<_SeLayerMixer> {
-  /// Both controls press as the speaker that opened the window: inside
+  /// The Total as the bar is dragged. It writes on RELEASE (the commit-on-
+  /// release rule the opacity bars follow): a write is an undo step and
+  /// re-uploads the whole live audio schedule, neither a per-move price.
+  /// Mute and solo are discrete and land immediately.
+  double? _totalDrag;
+
+  /// Every control presses as the speaker that opened the window: inside
   /// a row selection they set every selected SE row.
   SessionRowButtonPresses get _presses =>
       SessionRowButtonPresses(widget.session);
@@ -71,10 +85,10 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
 
   @override
   Widget build(BuildContext context) {
-    // The session is the single source for both: mute is a Layer field,
-    // solo is session-only monitoring state that is never saved and never
-    // exported. Listening to both keeps the window honest when something
-    // else moves them.
+    // The session is the single source for all three: mute and the Total
+    // are the Layer's, solo is session-only monitoring state that is never
+    // saved and never exported. Listening to both keeps the window honest
+    // when something else moves them.
     return AnimatedBuilder(
       animation: Listenable.merge([
         widget.session,
@@ -132,6 +146,23 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: _barGap),
+          FieldSlider(
+            key: const ValueKey<String>('se-mixer-total-volume'),
+            min: 0,
+            max: SeSound.maxVolume,
+            value: _totalDrag ?? layer.seSound.totalVolume,
+            // The group's lane's own name: one value, two doors.
+            label: strings.tlSoundTotalVolume,
+            // A share of 1 is 100%: the bar reads it as the lane prints it.
+            unit: '%',
+            displayScale: 100,
+            onChanged: (value) => setState(() => _totalDrag = value),
+            onChangeEnd: (value) {
+              setState(() => _totalDrag = null);
+              _presses.setTotalVolume(widget.layerId, value);
+            },
           ),
         ],
       ),

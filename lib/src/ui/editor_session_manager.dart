@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../services/flutter_test_run.dart';
 import '../services/font_library_service.dart';
+import '../services/fx_plugins/installed_fx_plugins.dart';
 import '../services/persistence/failed_save_copies.dart';
 import '../services/persistence/media_staging_store.dart';
 import '../services/persistence/open_project_file.dart';
@@ -78,6 +79,7 @@ import 'session/block_shift.dart';
 import 'session/cut_shift.dart';
 import 'session/history_pictures.dart';
 import 'text/app_strings.dart';
+import 'text/word_bake.dart' show RepaintOnWordBakes;
 import '../models/track_frame_axis.dart';
 import '../models/storyboard_timeline_layout.dart';
 import '../services/command.dart' show WorkAhead;
@@ -211,6 +213,7 @@ class EditorSessionManager extends ChangeNotifier
     AudioConformStore? audioConformStore,
     MediaStagingStore? mediaStagingStore,
     FontLibraryService? fontLibrary,
+    InstalledFxPlugins? fxPlugins,
     ImageCache? frameworkImageCache,
     FailedSaveCopies? failedSaveCopies,
     AppClipboard? appClipboard,
@@ -224,6 +227,8 @@ class EditorSessionManager extends ChangeNotifier
        _appClipboard = appClipboard ?? AppClipboard(),
        _fileIsOpenElsewhere = fileIsOpenElsewhere,
        _ownsAppSettings = appSettings == null,
+       fxPlugins = fxPlugins ?? InstalledFxPlugins(),
+       _ownsFxPlugins = fxPlugins == null,
        appSettings = appSettings ?? (EditorAppSettings()..restore()),
        repository = ProjectRepository(initialProject: initialProject) {
     historyManager = HistoryManager()
@@ -272,6 +277,10 @@ class EditorSessionManager extends ChangeNotifier
     // person chose — set now, and again whenever the allowance moves.
     _applyCacheBudgets(enforce: false);
     AppMemory.settings.addListener(_applyCacheBudgets);
+    // A plugin installed or taken off greys or ungreys the effects of it
+    // this project's rails draw (🗣️I-132-Q28 a 「설치하면 그대로 다시
+    // 걸린다」) — the app's one list, so every open project hears it.
+    this.fxPlugins.addListener(notifyListeners);
   }
 
   /// What follows the playhead — the cut a run plays, the cut under it and
@@ -317,6 +326,15 @@ class EditorSessionManager extends ChangeNotifier
   /// one is shared by every open project and released by the shell that
   /// made it (I-7); a session built without one made it for itself.
   final bool _ownsAppSettings;
+
+  /// The fx plugins this device has installed (I-132) — the app's one,
+  /// which every open project lists from, or this session's own, empty,
+  /// where none was handed it (a test's).
+  final InstalledFxPlugins fxPlugins;
+
+  /// Whether [fxPlugins] is this session's own to let go of, as
+  /// [_ownsAppSettings] says of [appSettings].
+  final bool _ownsFxPlugins;
 
   /// The program + notation languages — a value-only channel (widgets
   /// subscribe where they read strings; no whole-session notify).
@@ -1649,6 +1667,12 @@ class EditorSessionManager extends ChangeNotifier
       if (_ownsAppSettings) {
         appSettings.dispose();
       }
+      // Off the app's list, which outlives this project, before one of its
+      // own is let go.
+      fxPlugins.removeListener(notifyListeners);
+      if (_ownsFxPlugins) {
+        fxPlugins.dispose();
+      }
     },
     visibilitySolo.dispose,
     editingFrameCursor.dispose,
@@ -1686,6 +1710,8 @@ class EditorSessionManager extends ChangeNotifier
     // first holder of a closed tab). The project on screen bakes its own
     // again.
     TimelineGridTileStore.instance.clear,
+    // So do the rows' kept pictures, by what each was drawn from.
+    RepaintOnWordBakes.clearKeptPictures,
     canvasStroke.dispose,
     historyManager.dispose,
   ];
@@ -1781,7 +1807,6 @@ class EditorSessionManager extends ChangeNotifier
   // second envelope waiting to drift.
   late final ActiveCutEdits _activeCutEdits = ActiveCutEdits(
     project: this,
-    selection: this,
     timeline: this,
     changes: this,
   );

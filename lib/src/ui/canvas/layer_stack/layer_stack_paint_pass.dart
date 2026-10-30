@@ -293,12 +293,12 @@ class _LayerStackPaintPass {
     // the rest (유저 2026-08-15, 「페이스트보드도 룰러할때 보이게」).
     switch (_composeDisplayBuffer(_contentExtent)) {
       case null:
-        _paintContent(
+        // The direct walk is cut where the frame ends as the buffer is.
+        _paintCutWhereItEnds(
           canvas,
-          // The direct walk draws under the viewport transform, so a group
-          // that rasterises itself has to match the CTM it is drawn into.
-          intoTheBuffer: false,
-          rasterScale: _displayScale,
+          wholeLevelPixelsOutward(_contentExtent, 0),
+          shownWithin: null,
+          onTheScreen: true,
         );
       case (:final image, :final rect):
         _blitBuffer(canvas, image, rect);
@@ -405,23 +405,45 @@ class _LayerStackPaintPass {
 
   /// The frame composed into [into] and cut where it ends — at [edge], the
   /// page and every row's content: an effect's spread past every row is cut
-  /// there, in the frame's picture ([paintFrame]) and in the display buffer
-  /// that draws it as it stands ([_composeDisplayBuffer]), whatever either
-  /// image holds past it. 🚨ONE CUT FOR BOTH: the buffer that came to end
-  /// on the picture's grid past the page ([frameGridOutward]) and kept no
-  /// cut of its own laid a blurred row's spread there, which the picture
-  /// does not hold (🔬a blur beside ink on the pasteboard, 9 pixels up to
-  /// 50/255 at 100%, from F-465's grid on — 2026-10-26, bisected).
+  /// there, in the frame's picture ([paintFrame]), in the display buffer
+  /// that draws it as it stands ([_composeDisplayBuffer]) and on the screen
+  /// the walk draws it on ([onTheScreen]), whatever any of them holds past
+  /// it. 🚨ONE CUT FOR ALL: the buffer that came to end on the picture's
+  /// grid past the page ([frameGridOutward]) and kept no cut of its own laid
+  /// a blurred row's spread there, which the picture does not hold (🔬a blur
+  /// beside ink on the pasteboard, 9 pixels up to 50/255 at 100%, from
+  /// F-465's grid on — 2026-10-26, bisected). ↩️The walk kept none until
+  /// the-walk-family-cuts-the-rest-on-the-grid: 🔬a blurred row's ink at the
+  /// page's corner, 16 pixels of its spread past the page at 100% that the
+  /// buffer cut. The edge is cut as the display cuts the canvas's
+  /// ([clipToTheDisplayEdge]) — on the screen's pixels on the walk, on the
+  /// raster's own, where it lands whole, everywhere else.
+  ///
+  /// Everything this stack is, in CANVAS space — the paper and the layers
+  /// over it — is this ONE body for the screen and every raster: a second
+  /// copy is how "the buffer path draws something slightly different"
+  /// starts.
   void _paintCutWhereItEnds(
     Canvas into,
     Rect edge, {
-    required Rect shownWithin,
+    required Rect? shownWithin,
+    bool onTheScreen = false,
   }) {
     _shownWithin = shownWithin;
-    into
-      ..save()
-      ..clipRect(edge);
-    _paintContent(into, intoTheBuffer: true, rasterScale: 1);
+    _screen = onTheScreen ? into : null;
+    into.save();
+    clipToTheDisplayEdge(
+      into,
+      edge,
+      antiAlias: _displayEdgeAntiAliased,
+      pixelRatio: _pixelRatioOf(into),
+    );
+    _paintNodes(
+      into,
+      _rootNodes,
+      onTheScreen ? _displayScale : 1,
+      _visibleCanvasRect,
+    );
     into.restore();
     _shownWithin = null;
   }
@@ -890,7 +912,15 @@ class _LayerStackPaintPass {
     // stroke redraws every step.
     void paintLiveBody(Canvas into) {
       into.save();
-      into.clipRect(slot.painter.storableRect);
+      // Its wall cuts its pixels as the display cuts the canvas's edge —
+      // ↩️at a fraction of a pixel on the walk until
+      // the-walk-family-cuts-the-rest-on-the-grid.
+      clipToTheDisplayEdge(
+        into,
+        slot.painter.storableRect,
+        antiAlias: _displayEdgeAntiAliased,
+        pixelRatio: _pixelRatioOf(into),
+      );
         slot.painter.paintContentInto(
           into,
           layerPaint: ridingPaint,
@@ -903,7 +933,7 @@ class _LayerStackPaintPass {
           // 1:1 in the level's pixels (4c) — until one-picture-per-frame
           // ②-5b-2.
           scale: rasterScale,
-          pixelRatio: _pixelRatio,
+          pixelRatio: _pixelRatioOf(into),
           // 🚨TS1: the selection's FLOAT belongs here, right on top of
           // the surface it was lifted out of and UNDER everything
           // above that row. Drawn inside this slot's clip and its
@@ -1014,7 +1044,7 @@ class _LayerStackPaintPass {
       // The display law's edge (F-67-paper-edge): on the buffer's own
       // pixels inside it, on the screen's on the walk.
       antiAlias: _displayEdgeAntiAliased,
-      pixelRatio: _pixelRatio,
+      pixelRatio: _pixelRatioOf(into),
     );
   }
 
@@ -1029,16 +1059,24 @@ class _LayerStackPaintPass {
       ? onUnderlay(_painter.nodes, const _PaintPaper())
       : _painter.nodes;
 
-  /// Whether the content being painted is the display buffer's — a raster
-  /// aligned to canvas space — rather than the walk's screen ([_pixelRatio]).
-  bool _composingTheBuffer = false;
+  /// The screen the walk draws the content straight onto — null while the
+  /// content is composed into the buffer or a frame's picture
+  /// ([_paintCutWhereItEnds]).
+  Canvas? _screen;
 
-  /// Device pixels a unit of the space the content is drawn in lands on past
-  /// its transform: 1 into the buffer, whose transform lands on its own
-  /// pixels, and the screen's ratio on the walk — the grid every edge the
-  /// display law cuts is cut on ([cutOnThePixelGrid]).
-  double get _pixelRatio =>
-      _composingTheBuffer ? 1 : _painter.devicePixelRatio;
+  /// Device pixels a unit of [into]'s space lands on past its transform —
+  /// the grid every edge the display law cuts is cut on
+  /// ([cutOnThePixelGrid]): the screen's ratio on the screen, and 1 in every
+  /// raster, whose transform lands on its own pixels — the buffer, a frame's
+  /// picture, and a picture the walk draws a node in.
+  ///
+  /// ↩️It was the screen's ratio wherever the buffer was not being composed,
+  /// in a picture the walk drew a folder in too, until
+  /// the-walk-family-cuts-the-rest-on-the-grid: there a row's edges were
+  /// cut on half its pixels at a ratio of 2 — 🔬at 137%, the ink of a row
+  /// in a folder 5 pixels past the page, apart from the buffer.
+  double _pixelRatioOf(Canvas into) =>
+      identical(into, _screen) ? _painter.devicePixelRatio : 1;
 
   /// Where the recording being made is shown — whole, once, cut by nothing
   /// else: the display buffer's rect on the visible canvas while it is
@@ -1117,23 +1155,9 @@ class _LayerStackPaintPass {
     _PaintLiftedSurface() || _PaintPaper() => false,
   };
 
-  /// Everything this stack is, in CANVAS space: the paper and then the
-  /// layers over it — against the screen directly (the walk) or into the
-  /// display buffer's recorder ([intoTheBuffer]). Those are the two halves
-  /// of stage 2 and they must be the same body — a second copy is how "the
-  /// buffer path draws something slightly different" starts.
-  void _paintContent(
-    Canvas into, {
-    required bool intoTheBuffer,
-    required double rasterScale,
-  }) {
-    _composingTheBuffer = intoTheBuffer;
-    _paintNodes(into, _rootNodes, rasterScale, _visibleCanvasRect);
-  }
-
-  /// Rasterises [_paintContent] over [bounds] at CANVAS resolution, whatever
-  /// the zoom — or null when the stack should just paint itself onto the
-  /// screen.
+  /// Rasterises the frame ([_paintCutWhereItEnds]) over [bounds] at CANVAS
+  /// resolution, whatever the zoom — or null when the stack should just
+  /// paint itself onto the screen.
   ///
   /// Null is not a failure: an empty viewport (nothing on screen yet) and a
   /// buffer too large to be worth allocating are both cases where the

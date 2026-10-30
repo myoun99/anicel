@@ -637,6 +637,7 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
       max: 1,
       keyValue: 'brush-tool-paint-amount-slider',
       onChanged: (value) => onChanged(state.copyWith(paintAmount: value)),
+      trailing: _pressureButton(BrushPressureTarget.paintAmount),
     ),
     BrushSettingsRow.paintDensity => _PanelSlider(
       label: AppText.strings.brPaintDensity,
@@ -647,6 +648,7 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
       max: 1,
       keyValue: 'brush-tool-paint-density-slider',
       onChanged: (value) => onChanged(state.copyWith(paintDensity: value)),
+      trailing: _pressureButton(BrushPressureTarget.paintDensity),
     ),
     BrushSettingsRow.colorStretch => _PanelSlider(
       label: AppText.strings.brColorStretch,

@@ -46,6 +46,7 @@ void main() {
     addTearDown(cursor.dispose);
     final geometry = ValueNotifier(
       const TimelineFrameGeometry(
+        viewExtentPx: 400.0,
         frameCellExtent: 24,
         frameStartIndex: 0,
         frameEndIndexExclusive: frames,
@@ -71,7 +72,6 @@ void main() {
       metrics: TimelineGridMetrics.defaults,
       geometry: geometry,
       windowBucket: null,
-      viewportMainExtent: 400.0,
       frameAxisController: null,
       nextPage: null,
       rangeGesture: null,

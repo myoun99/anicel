@@ -14,6 +14,9 @@ import 'shortcut_presets.dart';
 import 'shortcut_settings_store.dart';
 import 'touch_shortcuts.dart';
 
+/// The layout an install opens on ([EditorShortcutBindings.preset]).
+const ShortcutLayout _startingPreset = ShortcutPreset.clipStudio;
+
 /// The LIVE shortcut bindings: the keys of the preset in use merged with the
 /// user's persisted overrides. Notifies on every change so the app-level
 /// Shortcuts map, the menu labels and the settings dialog all rebuild
@@ -99,7 +102,7 @@ class EditorShortcutBindings extends ChangeNotifier {
   /// a device whose keys were never changed has none — it opens here too, as
   /// the question said it would.
   ShortcutLayout get preset => _preset;
-  ShortcutLayout _preset = ShortcutPreset.clipStudio;
+  ShortcutLayout _preset = _startingPreset;
 
   /// The presets the user made, in the order they were made (I-107).
   List<UserShortcutPreset> get userPresets => _userPresets;
@@ -559,26 +562,33 @@ class EditorShortcutBindings extends ChangeNotifier {
   }
 
   /// Loads the persisted preset and overrides, as
-  /// [shortcutSettingsFromPayload] reads them.
+  /// [shortcutSettingsFromPayload] reads them — or, where the file holds
+  /// none, the keys an install opens on: [_startingPreset], nothing
+  /// recorded. With no [store] (a test), what is held stays.
+  ///
+  /// 🗣️I-142-Q3 (유저 2026-10-29): 「전부 갈아끼운다」 — a settings file
+  /// that put the keys back at their defaults puts them back here.
+  /// ↩️Nothing read kept the keys as they were (10-29).
   Future<void> restore() async {
-    final saved = shortcutSettingsFromPayload(
-      await store?.load(),
-      keeps: keeps,
-    );
-    if (saved == null) {
+    final store = this.store;
+    if (store == null) {
       return;
     }
-    _userPresets = List.unmodifiable(saved.userPresets);
-    _preset = saved.inUse;
+    final saved = shortcutSettingsFromPayload(
+      await store.load(),
+      keeps: keeps,
+    );
+    _userPresets = List.unmodifiable(saved?.userPresets ?? const []);
+    _preset = saved?.inUse ?? _startingPreset;
     for (final MapEntry(key: preset, value: overrides)
         in _overridesByPreset.entries) {
       overrides
         ..clear()
-        ..addAll(saved.recorded[preset]!);
+        ..addAll(saved?.recorded[preset] ?? const {});
     }
     _touchOverrides
       ..clear()
-      ..addAll(saved.touch);
+      ..addAll(saved?.touch ?? const {});
     notifyListeners();
   }
 

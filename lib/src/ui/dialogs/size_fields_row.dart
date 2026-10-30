@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../models/canvas_size.dart';
+import '../../services/editing/default_cut_helpers.dart'
+    show defaultCutCanvasSize;
 import '../text/app_strings.dart';
 import '../text/full_width_numerals.dart';
 import '../text/pixel_size_label.dart';
@@ -25,7 +27,10 @@ class SizeFieldsRow extends StatelessWidget {
   final String keyPrefix;
   final TextEditingController widthController;
   final TextEditingController heightController;
-  final VoidCallback onChanged;
+
+  /// A number typed. Null where the size is fixed — the fields show it
+  /// and take nothing (a 겸용 cut's, its source's, 🗣️I-100-Q1).
+  final VoidCallback? onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -43,7 +48,8 @@ class SizeFieldsRow extends StatelessWidget {
               autofocus: true,
               keyboardType: TextInputType.number,
               inputFormatters: halfWidthDigitsOnly,
-              onChanged: (_) => onChanged(),
+              enabled: onChanged != null,
+              onChanged: (_) => onChanged?.call(),
             ),
           ),
         ),
@@ -60,7 +66,8 @@ class SizeFieldsRow extends StatelessWidget {
               controller: heightController,
               keyboardType: TextInputType.number,
               inputFormatters: halfWidthDigitsOnly,
-              onChanged: (_) => onChanged(),
+              enabled: onChanged != null,
+              onChanged: (_) => onChanged?.call(),
             ),
           ),
         ),
@@ -86,15 +93,35 @@ const videoSizePresets = <SizePreset>[
   (name: '4K', size: CanvasSize(width: 3840, height: 2160)),
 ];
 
-/// Under a size window's fields: its presets as one list ([PanelFlyoutButton])
-/// and 「캔버스에서 조정」, which closes the window and hands the size to the
+/// The paper's sizes — a canvas window's first.
+///
+/// 🗣️I-79-Q4 (유저 2026-10-08): 「용지 크기 + 영상 크기」 — A4 across at
+/// 150, 200 (a new cut's, [defaultCutCanvasSize]) and 300 dpi. 「현장마다
+/// 용지 크기 다름 … 용지는 특히 홀수만 아니면됨」: a studio types its own,
+/// and no size here is odd.
+const paperSizePresets = <SizePreset>[
+  (name: 'A4 150dpi', size: CanvasSize(width: 1754, height: 1240)),
+  (name: 'A4 200dpi', size: defaultCutCanvasSize),
+  (name: 'A4 300dpi', size: CanvasSize(width: 3508, height: 2480)),
+];
+
+/// What a cut's canvas is offered, in the canvas size window and the new
+/// cut window alike: the paper's, a line, then the video's.
+///
+/// 🗣️I-79 (유저 2026-10-06): 「프리셋은 리스트팝오버로서 여러 프리셋
+/// 준비하고」 — the app's one picking list ([SizePresetsButton]).
+/// ↩️They were four chips in a row.
+const canvasSizePresetGroups = [paperSizePresets, videoSizePresets];
+
+/// Under a size window's fields: its presets ([SizePresetsButton]) and
+/// 「캔버스에서 조정」, which closes the window and hands the size to the
 /// canvas ([onAdjustOnCanvas]) — the canvas size window's (I-79) and the
-/// camera size window's (I-80), keyed `<keyPrefix>-presets` and
-/// `<keyPrefix>-adjust-on-canvas`.
+/// camera size window's (I-80), keyed `<keyPrefix>-adjust-on-canvas`.
 ///
 /// ⛔The button stands where a window has nothing to hand over, dead: a
 /// control that came and went with its caller would be UI popping into
-/// existence.
+/// existence. A window that never hands a size to a canvas — the new cut
+/// window, whose cut is not made yet — wears the list alone.
 class SizePresetsRow extends StatelessWidget {
   const SizePresetsRow({
     super.key,
@@ -106,34 +133,10 @@ class SizePresetsRow extends StatelessWidget {
   });
 
   final String keyPrefix;
-
-  /// The sizes the list offers, a line between two groups; each row keyed
-  /// `<keyPrefix>-preset-<width>x<height>`.
   final List<List<SizePreset>> groups;
-
-  /// The size the fields hold — its row is marked.
   final CanvasSize? entered;
-
-  /// A row picked: the fields take its size.
   final ValueChanged<CanvasSize> onPicked;
-
   final VoidCallback? onAdjustOnCanvas;
-
-  List<PanelFlyoutEntry> _rows() => [
-    for (final (index, group) in groups.indexed) ...[
-      if (index > 0) const PanelFlyoutDivider(),
-      ...group.asFlyoutValueChoices(
-        current: group.where((preset) => preset.size == entered).firstOrNull,
-        choiceOf: (preset) => PanelFlyoutChoice(
-          key: '$keyPrefix-preset-${preset.size.width}x${preset.size.height}',
-          label:
-              '${preset.name} '
-              '${pixelSizeLabel(preset.size.width, preset.size.height)}',
-        ),
-        onPicked: (preset) => onPicked(preset.size),
-      ),
-    ],
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -146,10 +149,11 @@ class SizePresetsRow extends StatelessWidget {
           };
     return Row(
       children: [
-        PanelFlyoutButton(
-          key: ValueKey<String>('$keyPrefix-presets'),
-          label: AppText.strings.canvasSizePresets,
-          entriesBuilder: _rows,
+        SizePresetsButton(
+          keyPrefix: keyPrefix,
+          groups: groups,
+          entered: entered,
+          onPicked: onPicked,
         ),
         const SizedBox(width: 8),
         ControlPressClaim(
@@ -163,4 +167,53 @@ class SizePresetsRow extends StatelessWidget {
       ],
     );
   }
+}
+
+/// A size window's presets as one list ([PanelFlyoutButton]), keyed
+/// `<keyPrefix>-presets`.
+class SizePresetsButton extends StatelessWidget {
+  const SizePresetsButton({
+    super.key,
+    required this.keyPrefix,
+    required this.groups,
+    required this.entered,
+    required this.onPicked,
+  });
+
+  final String keyPrefix;
+
+  /// The sizes the list offers, a line between two groups; each row keyed
+  /// `<keyPrefix>-preset-<width>x<height>`.
+  final List<List<SizePreset>> groups;
+
+  /// The size the fields hold — its row is marked.
+  final CanvasSize? entered;
+
+  /// A row picked: the fields take its size. Null where the size is fixed
+  /// ([SizeFieldsRow.onChanged]): the list stands, dead.
+  final ValueChanged<CanvasSize>? onPicked;
+
+  List<PanelFlyoutEntry> _rows() => [
+    for (final (index, group) in groups.indexed) ...[
+      if (index > 0) const PanelFlyoutDivider(),
+      ...group.asFlyoutValueChoices(
+        current: group.where((preset) => preset.size == entered).firstOrNull,
+        choiceOf: (preset) => PanelFlyoutChoice(
+          key: '$keyPrefix-preset-${preset.size.width}x${preset.size.height}',
+          label:
+              '${preset.name} '
+              '${pixelSizeLabel(preset.size.width, preset.size.height)}',
+        ),
+        onPicked: (preset) => onPicked?.call(preset.size),
+      ),
+    ],
+  ];
+
+  @override
+  Widget build(BuildContext context) => PanelFlyoutButton(
+    key: ValueKey<String>('$keyPrefix-presets'),
+    label: AppText.strings.canvasSizePresets,
+    enabled: onPicked != null,
+    entriesBuilder: _rows,
+  );
 }

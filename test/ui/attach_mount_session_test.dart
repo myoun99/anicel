@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/session/folders_and_attachments.dart';
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
     show LayerRowSubject;
 import '../helpers/an_empty_drawing_row.dart';
+import '../helpers/a_folder_made_by_hand.dart';
 
 /// P3's 어태치 해제, which has to leave the group's run and the 공정 folder
 /// behind it, and the mounts the DRAG commits.
@@ -110,7 +111,7 @@ void main() {
     s.createDrawingAtCurrentFrame();
     foldersOf(s).addAttachedLayer(AttachedPlacement.above);
     final attachId = s.activeLayer!.id;
-    foldersOf(s).groupActiveAttachIntoFolder();
+    groupTheActiveAttachIntoAFolder(s);
     final organizerId = _rows(s)
         .firstWhere((layer) => layer.kind == LayerKind.folder)
         .id;

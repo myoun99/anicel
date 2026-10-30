@@ -103,6 +103,7 @@ import '../services/audio/conform_wav_export.dart';
 import '../services/persistence/file_type_groups.dart';
 import 'dialogs/app_prompt_dialog.dart';
 import 'dialogs/folder_pick_flow.dart';
+import 'dialogs/fx_plugin_install_flow.dart';
 import 'dialogs/app_confirm_dialog.dart'
     show
         ConfirmChoice,
@@ -195,6 +196,9 @@ import 'workspace/workspace_bar_commands.dart';
 import 'workspace/workspace_door_commands.dart';
 import '../services/persistence/folder_grant.dart' show FolderGrant, handedPath;
 import '../services/persistence/settings_file.dart' show SettingsFile;
+import '../services/persistence/app_export_settings.dart'
+    show AppExport, AppExportSettings;
+import '../services/persistence/app_export_settings_store.dart';
 import '../services/persistence/settings_room_file.dart'
     show putSettingsIntoTheRoom, settingsRoomPath;
 import 'timeline/timeline_panel.dart' show TimelinePanel;
@@ -1266,7 +1270,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       toggler: _togglePanelVisibility,
       // The brush's place too: the strip shows the brush's values or not
       // by it, where the region's place is read only when its row opens.
-      relay: Listenable.merge([_layout, _brushValuesOnStrip]),
+      relay: Listenable.merge([_layout, _brushValuesOnStrip, _railToolsOnly]),
       layoutReset: _layoutPersistence.resetWorkspaceLayout,
       toolRailOnRight: () =>
           _layout.tabsIn(EditorWorkspace.toolRightGroupId).isNotEmpty,
@@ -1295,6 +1299,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           return;
         }
         _brushValuesOnStrip.value = onStrip;
+        _layoutPersistence.scheduleLayoutSave();
+      },
+      railToolsOnly: () => _railToolsOnly.value,
+      railToolsOnlySetter: (toolsOnly) {
+        if (_railToolsOnly.value == toolsOnly) {
+          return;
+        }
+        _railToolsOnly.value = toolsOnly;
         _layoutPersistence.scheduleLayoutSave();
       },
       regionFolder: _toggleRegionFolded,
@@ -1848,6 +1860,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     widget.panelsMenu?.detach();
     // After the bridge lets go: its relay listens to it.
     _brushValuesOnStrip.dispose();
+    _railToolsOnly.dispose();
     _layoutPersistence._layoutSaveTimer?.cancel();
     _layout.removeListener(_layoutPersistence.scheduleLayoutSave);
     _layout.extentRevision.removeListener(_layoutPersistence.scheduleLayoutSave);
@@ -2149,6 +2162,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// workspace and the canvas inside it both follow it.
   final ValueNotifier<bool> _brushValuesOnStrip = ValueNotifier<bool>(false);
 
+  /// Whether the tool strip holds its tools alone — false, the default,
+  /// stands the shortcut buttons above them
+  /// ([WorkspacePanelsMenuController.railToolsOnly], I-128).
+  final ValueNotifier<bool> _railToolsOnly = ValueNotifier<bool>(false);
+
   /// How close to the rail's width counts as "the same", so the edge lands on
   /// the pass-through boundary instead of just beside it.
   ///
@@ -2296,7 +2314,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   /// THE ONE DOOR, with what this workspace holds for it (F-282): the
   /// shell's Open door for projects, the import window, the brush library,
-  /// the fonts, the shortcut presets and the palettes.
+  /// the fonts, the shortcut presets, the palettes and the fx plugins.
   OpenedFilesDoor get _door => OpenedFilesDoor(
     openProjects: widget.onOpenProjects,
     importWindow: (picked, {required toPool}) =>
@@ -2332,6 +2350,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       }
       return said;
     },
+    bringFxPlugins: (name, bytes) =>
+        installFxPluginFile(context, widget.session.fxPlugins, name, bytes),
   );
 
   /// The top strip's 「파일 열기」 — and the media panel's ＋, which
@@ -2438,7 +2458,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       case SettingsReader.shortcuts:
         await EditorShortcutScope.peek(context)?.restore();
       case SettingsReader.layout:
-        await _layoutPersistence.restoreLayout();
+        // 🗣️I-142-Q3 (유저 2026-10-29): 「전부 갈아끼운다」 — no arrangement
+        // saved is the factory one. ↩️Nothing read kept the arrangement as
+        // it was (10-29).
+        if (!await _layoutPersistence.restoreLayout() && mounted) {
+          _layoutPersistence.resetWorkspaceLayout();
+        }
       case SettingsReader.palette:
         final palette = await ColorPaletteFileService(
           filePath: settingsRoomPath(ColorPaletteFileService.fileName),
@@ -2454,7 +2479,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         await _brushPresets.recallHandSettings(replacing: true);
         _brushPresets.selectOpeningPreset();
       case SettingsReader.exportWindow:
-        break;
+        // The window reads its file as it opens, and where the file holds
+        // none it opens on the live value — this run's, not the defaults
+        // the file was put back at (I-142-Q3).
+        AppExport.settings.value =
+            await AppExportSettingsStore().load() ?? AppExportSettings();
     }
   }
 
@@ -2596,7 +2625,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                       _bottomInsetOverride,
                       // The folded storyboard is the row it stands on, as
                       // tall as that row (F-322).
-                      _foldedStoryboard.stand,
+                      _foldedStoryboard.fold,
                     ]),
                     child: _docks.buildCenterDock(),
                     builder: (context, floor) =>

@@ -136,6 +136,34 @@ Future<void> _scrollTo(WidgetTester tester, double offset) async {
 
 Finder _key(String name) => find.byKey(ValueKey<String>(name));
 
+/// Narrows the storyboard's rail until the view's last cell and the window's
+/// overscan end on a span's edge — where a window ends least past the view
+/// ([timelineFrameWindowFor]) — and answers the view's breadth.
+Future<double> _viewEndingOnASpan(WidgetTester tester) async {
+  double view() => _frameAreas(tester).first.viewportDimension;
+  int short() =>
+      timelineFrameWindowFor(
+        bucket: 0,
+        cellExtent: 2,
+        viewportExtent: view(),
+      ).endIndexExclusive -
+      (timelineFrameWindowSpanFor(2) +
+          (view() / 2).ceil() +
+          timelineFrameWindowOverscanCells);
+  final gesture = await tester.startGesture(
+    tester.getCenter(_key('storyboard-rail-splitter')),
+  );
+  // Past any slop first, so the step after it is taken whole.
+  await gesture.moveBy(const Offset(-24, 0));
+  await tester.pump();
+  await gesture.moveBy(Offset(-2.0 * short(), 0));
+  await tester.pump();
+  await gesture.up();
+  await tester.pumpAndSettle();
+  expect(short(), 0, reason: '⛔전제: the view ends on a span, overscan too');
+  return view();
+}
+
 void main() {
   testWidgets('an S row builds the pieces of the sounds its window reaches '
       '— and a sound further on once the view goes there', (tester) async {
@@ -178,8 +206,12 @@ void main() {
     // Where the window ends at the last pixel of a bucket: the view is two
     // cells and a hair short of it there — what a chip's eight frames reach
     // past.
+    //
+    // ↩️A window reaches whole spans now (storyboard-strips-build-on-every-
+    // view-pixel, 10-30), so it ends that close only for a view whose last
+    // cell and overscan end ON a span's edge ([_viewEndingOnASpan]).
     await _open(tester, _project(far: 3000));
-    final viewportWidth = _frameAreas(tester).first.viewportDimension;
+    final viewportWidth = await _viewEndingOnASpan(tester);
     final bucketWidth = timelineFrameWindowSpanFor(2) * 2.0;
     final offset = bucketWidth * 10 - 1;
     expect(
@@ -197,6 +229,11 @@ void main() {
     final edge = window.endIndexExclusive;
 
     await _open(tester, _project(far: edge));
+    expect(
+      await _viewEndingOnASpan(tester),
+      viewportWidth,
+      reason: '⛔전제: the view the window was cut for',
+    );
     await _scrollTo(tester, offset);
     expect(
       _key('storyboard-se-paper-se-row-1-$edge'),

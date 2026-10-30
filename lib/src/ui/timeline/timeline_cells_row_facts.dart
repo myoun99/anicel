@@ -60,16 +60,10 @@ typedef TimelineCellsRowFacts = ({
   TimelineFrameGeometry? geometry,
   double crossAxisExtent,
   ProjectFrameRate projectFrameRate,
-  // THE RESIZE LAW (device report 2026-08-17): the painted rows' request
-  // set — the frame window their painters draw and request substrate
-  // tiles for — is computed FROM this scalar, frozen into the painter at
-  // build time. A viewport that widens must therefore rebuild the row,
-  // or the newly exposed cells stay outside every request set forever:
-  // opening a project in a small window and enlarging it left the new
-  // width's blocks unrendered until a cut round-trip rebuilt the rows.
-  // Zoom steps do not move it (it is a pixel quantity), so the zoom
-  // memo-keep this record exists for is untouched.
-  double viewportMainExtent,
+  // ↩️THE RESIZE LAW's view extent stood here (device report 2026-08-17):
+  // the painters' request set was cut from a build-time scalar, so a
+  // widened view had to build the row again. It rides the live geometry
+  // now ([TimelineFrameGeometry.viewExtentPx]) — a kept row repaints on it.
   TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
@@ -119,7 +113,6 @@ typedef TimelineCellsRowGrid = ({
   // layout now, so every kind rides the window.
   ValueNotifier<TimelineFrameGeometry> geometry,
   ValueListenable<int>? windowBucket,
-  double viewportMainExtent,
   // The frame axis' scrollable — what a header graph's guest tags read
   // where they paint, to stand in the view while its picture scrolls under
   // them (I-89 ③). Null where the host has none: the view stands at the
@@ -152,7 +145,6 @@ TimelineCellsRowFacts timelineCellsRowFacts(
     geometry: null,
     crossAxisExtent: grid.metrics.layerRowHeight,
     projectFrameRate: hooks.projectFrameRate,
-    viewportMainExtent: grid.viewportMainExtent,
     exposureStateForLayer: hooks.exposureStateForLayer,
     frameNameForLayer: hooks.frameNameForLayer,
     hasCommaDrag: hooks.commaDrag != null,
@@ -281,7 +273,6 @@ Widget timelineCellsRowFrom(TimelineDisplayRow row, TimelineCellsRowGrid grid) {
     spillInLeadFrames: world.spillInLeadFrames,
     cutId: world.cutId,
     windowBucket: grid.windowBucket,
-    viewportMainExtent: grid.viewportMainExtent,
     nextPage: grid.nextPage,
     stepsUntilShown: hooks.stepsUntilShown,
     substrateGeneration: world.substrateGeneration,

@@ -1,5 +1,5 @@
-// THE SE ROW'S MIXER: THE SPEAKER OPENS IT, AND ITS MUTE AND SOLO BUTTONS
-// LAND ON THE SESSION AT ONCE.
+// THE SE ROW'S MIXER: THE SPEAKER OPENS IT, ITS MUTE AND SOLO BUTTONS LAND
+// ON THE SESSION AT ONCE, AND ITS BAR WRITES THE ROW'S TOTAL AT THE RELEASE.
 //
 // No test named this file (audit 2026-09-03) although every rail that
 // mounts the speaker opens it. These pins open it on an SE row of the
@@ -15,6 +15,9 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/se_layer_mixer.dart';
+import 'package:anicel/src/ui/timeline/se_sound_lane_policy.dart'
+    show seSoundTotalVolumeLaneId;
+import 'package:anicel/src/ui/widgets/field_slider.dart';
 
 void main() {
   testWidgets('mute and solo press through to the session', (tester) async {
@@ -64,6 +67,94 @@ void main() {
       expect(_row(session, id).muted, isTrue, reason: '$id is selected');
     }
     expect(session.visibilitySolo.soloedSeLayerIds.value, ses.toSet());
+  });
+
+  // 🗣️I-145 (유저 2026-10-30): 「위치는 전처럼 스피커버튼안에 볼륨. 즉
+  // 오디오fx에서도 조절하고 스피커버튼에서도 총 볼륨 조절」 — Q1 「따로 한 값
+  // — 두 입구」.
+  group('the bar is the row\'s Total — the 「오디오」 group\'s lane', () {
+    late EditorSessionManager session;
+    late List<LayerId> ses;
+
+    setUp(() {
+      session = EditorSessionManager(initialProject: createDefaultProject());
+      ses = [
+        for (final layer
+            in session.repository.requireProject().tracks.single.seLayers)
+          layer.id,
+      ];
+    });
+    tearDown(() => session.dispose());
+
+    final bar = find.byKey(const ValueKey<String>('se-mixer-total-volume'));
+
+    double total(LayerId id) => _row(session, id).seSound.totalVolume;
+
+    String lane(LayerId id) => session.laneVerbs.laneValueAt(
+      id,
+      seSoundTotalVolumeLaneId,
+      0,
+      frameIsGlobal: true,
+    )!;
+
+    testWidgets('🎯released, it writes the Total of every selected SE row '
+        'as one undo, and the lane reads what it wrote', (tester) async {
+      session.rowSelection.value = [for (final id in ses) LayerRowAddress(id)];
+      await _openMixer(tester, session, ses.first);
+      expect(tester.widget<FieldSlider>(bar).value, 1.0, reason: 'CONTROL');
+
+      tester.widget<FieldSlider>(bar).onChangeEnd!(0.5);
+      await tester.pumpAndSettle();
+
+      for (final id in ses) {
+        expect(total(id), 0.5, reason: '$id is selected');
+        expect(lane(id), '50.00%', reason: 'one field, two doors');
+      }
+      session.undo();
+      for (final id in ses) {
+        expect(total(id), 1.0, reason: 'one undo for the whole press');
+      }
+    });
+
+    testWidgets('a drag moves the bar and writes at the release alone', (
+      tester,
+    ) async {
+      final se = ses.first;
+      await _openMixer(tester, session, se);
+      final drag = await tester.startGesture(tester.getCenter(bar));
+      await drag.moveBy(const Offset(-30, 0));
+      await drag.moveBy(const Offset(-30, 0));
+      await tester.pump();
+      expect(
+        tester.widget<FieldSlider>(bar).value,
+        lessThan(1.0),
+        reason: 'CONTROL: the bar follows the hand',
+      );
+      expect(total(se), 1.0, reason: 'nothing written while it moves');
+
+      await drag.up();
+      await tester.pumpAndSettle();
+      expect(total(se), lessThan(1.0));
+      expect(tester.widget<FieldSlider>(bar).value, total(se));
+    });
+
+    testWidgets('a value typed into the lane stands on the bar', (
+      tester,
+    ) async {
+      final se = ses.first;
+      await _openMixer(tester, session, se);
+      session.laneVerbs.setLaneValueAt(
+        se,
+        seSoundTotalVolumeLaneId,
+        3,
+        '30',
+        frameIsGlobal: true,
+        description: 'Type',
+        scaleLinked: false,
+      );
+      await tester.pumpAndSettle();
+      expect(tester.widget<FieldSlider>(bar).value, closeTo(0.3, 1e-9));
+    });
   });
 }
 

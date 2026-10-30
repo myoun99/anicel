@@ -44,6 +44,7 @@ void main() {
   late List<Uint8List> fontsGot;
   late Map<String, Uint8List> shortcutsGot;
   late Map<String, Uint8List> palettesGot;
+  late Map<String, Uint8List> fxPluginsGot;
 
   OpenedFilesDoor door() {
     windowGot = [];
@@ -53,6 +54,7 @@ void main() {
     fontsGot = [];
     shortcutsGot = {};
     palettesGot = {};
+    fxPluginsGot = {};
     return OpenedFilesDoor(
       openProjects: (picks) async {
         done.add('projects');
@@ -82,6 +84,11 @@ void main() {
         done.add('palettes');
         palettesGot[name] = bytes;
         return 'colours from $name';
+      },
+      bringFxPlugins: (name, bytes) async {
+        done.add('fx plugins');
+        fxPluginsGot[name] = bytes;
+        return 'a plugin from $name';
       },
     );
   }
@@ -143,6 +150,8 @@ void main() {
     // preset where every shortcut file goes.
     final palette = fileNamed('Skin.anipalette', [6]);
     final preset = fileNamed('Mine.anishortcut', [8]);
+    // I-132: an fx plugin into this device's plugins.
+    final plugin = fileNamed('Invert.anifx', [3]);
     // 🗣️I-142-Q6: every setting's file comes in as the import window's
     // rows.
     final settings = fileNamed('Anicel 설정.anisettings', [5]);
@@ -156,12 +165,14 @@ void main() {
       brush,
       font,
       preset,
+      plugin,
     ]);
 
     expect(done, [
       'brushes',
       'font',
       'palettes',
+      'fx plugins',
       'shortcuts',
       'notice',
       'window',
@@ -169,6 +180,9 @@ void main() {
     ]);
     expect(palettesGot, {
       'Skin.anipalette': [6],
+    });
+    expect(fxPluginsGot, {
+      'Invert.anifx': [3],
     });
     expect([for (final grant in windowGot) grant.path], [
       picture.path,

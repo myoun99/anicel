@@ -316,7 +316,9 @@ void main() {
   });
 
   testWidgets('its tools turn the graph of the camera in hand — the plot '
-      'pill, the pen, the transform box, and the enlarging', (tester) async {
+      'pill, the pen, the transform box, the snap, and the enlarging', (
+    tester,
+  ) async {
     final session = await pumpHost(tester, cameras(), twirl: 'a-cam');
     SessionRowButtonPresses(session).toggleLaneGraph(inHand);
     await tester.pumpAndSettle();
@@ -345,12 +347,37 @@ void main() {
     expect(graphs(session).open[inHand]!.transformBox, isFalse);
 
     await tester.tap(
+      find.byKey(ValueKey<String>('storyboard-lane-graph-snap-$cameraGraph')),
+    );
+    await tester.pumpAndSettle();
+    expect(graphs(session).open[inHand]!.snap, isTrue);
+
+    await tester.tap(
       find.byKey(
         ValueKey<String>('storyboard-lane-graph-enlarge-$cameraGraph'),
       ),
     );
     await tester.pumpAndSettle();
     expect(graphs(session).open[inHand]!.enlarged, isTrue);
+  });
+
+  // graph-key-drag-snaps: this rail's frames are the track's.
+  testWidgets('a key carried on it snaps by the track\'s playhead and by the '
+      'movie\'s end, where the end line stands', (tester) async {
+    final session = await pumpHost(tester, cameras(), twirl: 'a-cam');
+    SessionRowButtonPresses(session).toggleLaneGraph(inHand);
+    await tester.pumpAndSettle();
+
+    final frames = tester
+        .widget<LaneGraphPicture>(
+          find.descendant(
+            of: graphOf(cameraGraph),
+            matching: find.byType(LaneGraphPicture),
+          ),
+        )
+        .frameAxis;
+    expect(frames.playhead, same(session.playheadCursors.trackFrame));
+    expect(frames.frameCount, 64, reason: 'c ends on 64');
   });
 
   testWidgets('what it draws follows the row selection of the row\'s own '

@@ -8,7 +8,8 @@ import '../../models/canvas_shape_kind.dart';
 import '../../models/export_format_selection.dart' show ExportStillFormat;
 import '../../models/inbetween_mark.dart';
 import '../../models/layer_blend_mode.dart';
-import '../../models/layer_effect.dart' show EffectKind;
+import '../../models/layer_effect.dart'
+    show EffectKind, effectKindsAddedAlone;
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../models/pixel_clipboard_verb.dart';
@@ -391,11 +392,13 @@ String addLayerKindActionLabel(LayerKind kind, AppLanguage language) {
   return '$add: ${kind.labelFor(language)}';
 }
 
-/// The fx pill's rows as actions, one per [EffectKind] — the menu lists
-/// every kind, always (it dims what the row cannot take), and so does this.
-/// The action's name is the row's own: 「{name} 추가」.
+/// The fx pill's rows as actions, one per kind added alone
+/// ([effectKindsAddedAlone]) — the menu lists every one, always (it dims
+/// what the row cannot take), and so does this. The action's name is the
+/// row's own: 「{name} 추가」. A plugin's row is no action: which plugins
+/// there are is this device's, not the shortcut list's.
 List<EditorActionDefinition> _addEffectActions() => [
-  for (final kind in EffectKind.values)
+  for (final kind in effectKindsAddedAlone)
     EditorActionDefinition.composed(
       id: addEffectActionId(kind),
       name: (language) => addEffectActionLabel(kind, language),
@@ -677,9 +680,11 @@ List<EditorActionDefinition> _projectSettingsActions() {
 }
 
 String addEffectActionLabel(EffectKind kind, AppLanguage language) =>
-    AppStrings.of(
-      language,
-    ).tlAddEffectTemplate.replaceAll('{name}', kind.labelFor(language));
+    addEffectLabel(kind.labelFor(language), language);
+
+/// 「{name} 추가」 — an Fx list's row, of a kind or of a plugin.
+String addEffectLabel(String name, AppLanguage language) =>
+    AppStrings.of(language).tlAddEffectTemplate.replaceAll('{name}', name);
 
 /// The formats 「다른 이름으로 저장」 writes a picture in, in its second
 /// level's order after the project — its rows and their actions are both
@@ -939,6 +944,10 @@ abstract final class EditorActionIds {
   /// Where the brush's values stand — the top strip, or the canvas's pill
   /// (I-34).
   static const brushValuesOnStrip = 'window-brush-values-on-strip';
+
+  /// Whether the tool strip holds its tools alone — no shortcut buttons
+  /// (undo, redo, onion, solo …) above them (I-128).
+  static const railToolsOnly = 'window-rail-tools-only';
 
   /// The window's full screen (I-103-Q2) — the desktops' only.
   static const fullScreen = 'window-full-screen';
@@ -2233,6 +2242,16 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.brushValuesOnStrip,
     label: 'Brush values on the top strip',
+    shelf: ShortcutShelf.panels,
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  // 🗣️I-128 (유저 2026-10-25): 「이 숏컷 버튼 안쓰는 사람 위해서 설정의 패널에
+  // 해당 영역 끌수있게 옵션 제공」 — named, as its neighbours, for the
+  // state that is not the default.
+  const EditorActionDefinition(
+    id: EditorActionIds.railToolsOnly,
+    label: 'Tools only on the tool strip',
     shelf: ShortcutShelf.panels,
     defaultActivators: [],
     menuRow: true,

@@ -2,6 +2,7 @@ import 'dart:ui' show ClipOp;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_accents.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -20,10 +21,13 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/axis_turn.dart' show sizedAlong;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerMarkColor;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
+import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
+    show TimelineGridLaw;
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineJoiningLineWidth;
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
@@ -74,27 +78,31 @@ void main() {
     int frameStartIndex = 0,
     int frameEndIndexExclusive = 20,
     Axis axis = Axis.horizontal,
+    Color? ground,
   }) async {
+    Widget band = TimelineLaneFrameRow(
+      layer: layer,
+      lane: lane,
+      frameStartIndex: frameStartIndex,
+      frameEndIndexExclusive: frameEndIndexExclusive,
+      leadingFrameSpacerWidth: 0,
+      trailingFrameSpacerWidth: 0,
+      metrics: metrics,
+      axis: axis,
+    );
+    if (ground != null) {
+      band = TimelineGridLaw(
+        ground: ground,
+        framesPerSecond: 24,
+        child: band,
+      );
+    }
     await tester.pumpWidget(
       MaterialApp(
         home: Material(
           child: Align(
             alignment: Alignment.topLeft,
-            child: sizedAlong(
-              axis,
-              along: 480,
-              across: 40,
-              child: TimelineLaneFrameRow(
-                layer: layer,
-                lane: lane,
-                frameStartIndex: frameStartIndex,
-                frameEndIndexExclusive: frameEndIndexExclusive,
-                leadingFrameSpacerWidth: 0,
-                trailingFrameSpacerWidth: 0,
-                metrics: metrics,
-                axis: axis,
-              ),
-            ),
+            child: sizedAlong(axis, along: 480, across: 40, child: band),
           ),
         ),
       ),
@@ -171,6 +179,23 @@ void main() {
         moreOrLessEquals(timelineJoiningLineWidth, epsilon: 1e-6),
       );
       expect(stroke.color.toARGB32(), layerMarkColor(layer.mark).toARGB32());
+    });
+
+    testWidgets('on the light palette too, over its ground, the label as it '
+        'is (I-143: 「색라벨 진하게한거면 너무 진하니까 그냥 기존이랑 똑같이」)', (
+      tester,
+    ) async {
+      AppColors.accentSettings.value = const AppAccentSettings(
+        mode: AppColorMode.light,
+      );
+      addTearDown(
+        () => AppColors.accentSettings.value = const AppAccentSettings(),
+      );
+      await pumpBand(tester, laneOf({3, 14}), ground: AppPalette.light.surface);
+      expect(
+        strokeOf(tester).color.toARGB32(),
+        layerMarkColor(layer.mark).toARGB32(),
+      );
     });
 
     testWidgets('nothing before the first key, nothing after the last', (

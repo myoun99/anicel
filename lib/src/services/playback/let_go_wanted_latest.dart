@@ -16,10 +16,12 @@
 /// budget keeps in two copies is a law that can come to mean two things
 /// (playback-plays-the-screen-material, 10-09).
 ///
-/// ⛔Not for a cache no step wants anything of — a sheet's images, the
-/// storyboard's panels, a brush's tip masks: that one is an `Lru`
-/// (`core/lru.dart`), this order with nothing wanted — the least recently
-/// used first, never the newest — kept by its map, with no sort.
+/// ⛔Not for a cache no step wants anything of — a brush's tip masks: that
+/// one is an `Lru` (`core/lru.dart`), this order with nothing wanted — the
+/// least recently used first, never the newest — kept by its map, with no
+/// sort. ↩️A sheet's images and the storyboard's panels were `Lru`s too;
+/// they are held as the viewer's pages are since 10-30 (`ShownRasters` —
+/// 유저 「붙잡는 곳 하나」), wanted by no step, so by this order.
 bool letGoWantedLatest<E>({
   required Iterable<E> entries,
   required int heldBytes,

@@ -356,6 +356,7 @@ void main() {
                           enlarge: (_) {},
                           pen: (_) {},
                           transformBox: (_) {},
+                          snap: (_) {},
                         )
                       : null,
                   seat: graphs ? seat : null,
@@ -553,6 +554,7 @@ void main() {
                         enlarge: (_) {},
                         pen: (_) {},
                         transformBox: (_) {},
+                        snap: (_) {},
                       )
                     : null,
                 seat: graphs ? seat : null,

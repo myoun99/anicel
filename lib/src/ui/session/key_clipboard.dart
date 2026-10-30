@@ -138,7 +138,7 @@ class KeyClipboard {
   /// The keys in hand, lane by lane, as frames from the copy's first —
   /// empty when the hand holds none.
   Map<String, Set<int>> get bankedKeyFrames => {
-    for (final (:laneId, :keys) in _board._copy?.lanes ?? const <LaneKeys>[])
-      laneId: keys.keys.toSet(),
+    for (final lane in _board._copy?.lanes ?? const <LaneKeys>[])
+      lane.laneId: lane.keys.keys.toSet(),
   };
 }

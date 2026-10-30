@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import '../models/font_face_facts.dart';
 import '../models/media_asset.dart' show isOneStoredName, mintMediaCarry;
 import 'persistence/app_support_path.dart';
+import 'persistence/named_file_folder.dart';
 import 'persistence/versioned_settings_file.dart';
 
 /// One font file in the library: the name it is kept under in the library's
@@ -46,16 +47,11 @@ class FontLibraryService {
 
   String get indexPath => '$directoryPath/index.json';
 
-  /// Where the library keeps a file called [file] — or null when [file] is
-  /// not a name of its own ([isFontLibraryFileName]): nothing is kept, read
-  /// or deleted under such a name.
-  ///
-  /// ⛔THE ONE LINE THAT JOINS THE FOLDER AND A NAME IT WAS HANDED (board
-  /// `law-저장`, as the room's `_pathInTheRoom` is its): an index is a file
-  /// on a disk and a project is a file from anywhere, and what either says
-  /// reaches the disk through here or not at all.
-  String? _pathOf(String file) =>
-      isFontLibraryFileName(file) ? '$directoryPath/$file' : null;
+  /// The folder, holding its faces under names of its own
+  /// ([isFontLibraryFileName]) — nothing is kept, read or deleted under
+  /// another ([NamedFileFolder.pathOf], board `law-저장`).
+  NamedFileFolder get _folder =>
+      NamedFileFolder(directoryPath, isName: isFontLibraryFileName);
 
   /// A name to keep a file of [facts]' face under, [extension] at its end
   /// ([mintFontLibraryFileName]) — minted, so never one a file was kept
@@ -76,7 +72,7 @@ class FontLibraryService {
   /// DISK is asked, not the index: the bytes are what is wanted, and a
   /// name means one set of them for good.
   String? pathOfFontHeld(String file) {
-    final path = _pathOf(file);
+    final path = _folder.pathOf(file);
     return path != null && File(path).existsSync() ? path : null;
   }
 
@@ -110,53 +106,19 @@ class FontLibraryService {
         },
       );
 
-  /// Writes [bytes] as the library's copy of a face, under [file]. The
-  /// caller owns the index; this only puts the file on disk.
-  ///
-  /// ⚠️[file] is a name the library minted ([mintFileName]); one that is
-  /// not a name of its own is the caller's mistake and is refused, rather
-  /// than written where nothing would read it back.
-  Future<void> writeFont(String file, Uint8List bytes) async {
-    final path = _pathOf(file);
-    if (path == null) {
-      throw ArgumentError.value(file, 'file', 'is not a name of the library');
-    }
-    final target = File(path);
-    await target.parent.create(recursive: true);
-    await target.writeAsBytes(bytes, flush: true);
-  }
+  /// Writes [bytes] as the library's copy of a face, under [file] — a name
+  /// the library minted ([mintFileName]). The caller owns the index; this
+  /// only puts the file on disk.
+  Future<void> writeFont(String file, Uint8List bytes) =>
+      _folder.write(file, bytes);
 
   /// The bytes of [file], or null when it is gone or unreadable — a face
   /// that cannot be read is a face this device does not have.
-  Future<Uint8List?> readFont(String file) async {
-    final path = _pathOf(file);
-    if (path == null) {
-      return null;
-    }
-    try {
-      return await File(path).readAsBytes();
-    } on Object {
-      return null;
-    }
-  }
+  Future<Uint8List?> readFont(String file) => _folder.read(file);
 
   /// Removes a face's file. A missing file is not an error — the index is
   /// the record that matters, and it is written by the caller.
-  Future<void> deleteFont(String file) async {
-    final path = _pathOf(file);
-    if (path == null) {
-      return;
-    }
-    try {
-      final target = File(path);
-      if (await target.exists()) {
-        await target.delete();
-      }
-    } on Object {
-      // A file that will not delete stays on disk; the index has already
-      // dropped it, so nothing reads it.
-    }
-  }
+  Future<void> deleteFont(String file) => _folder.delete(file);
 }
 
 /// A name for a font file the library at [directoryPath] is about to keep:

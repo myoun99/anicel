@@ -1,43 +1,7 @@
-import 'dart:async';
-import 'dart:ui' as ui;
-
-import 'package:flutter/foundation.dart' show VoidCallback;
-
 import '../../models/canvas_size.dart';
 import '../../models/rgba_image_bytes.dart' show estimatedImageBytes;
 import '../../services/media/viewer_document.dart';
-import '../../services/playback/let_go_wanted_latest.dart';
-import '../../services/straight_rgba_image.dart' show decodedImageStillWanted;
-import 'viewer_raster_budget.dart';
-
-/// One lazily rendered page: the raster and the scale it was rendered at
-/// (stale-while-revalidate — a wrong-scale image still draws while the
-/// right one renders).
-class _RenderedPage {
-  const _RenderedPage({required this.scale, required this.image});
-
-  final double scale;
-  final ui.Image image;
-}
-
-/// What was last asked of the document for one (page, scale).
-///
-/// 🚨★★★**LANDED IS NOT A VALUE HERE — IT IS THE ABSENCE OF ONE**, because
-/// a landed render lives in the page cache and this map is about what is
-/// still owed. What this type exists to separate is the other two, which
-/// were both spelled 「not in the set」 before 2026-09-08. See
-/// [PageRasters._renders].
-enum _RenderAsk {
-  /// Out with the document, no answer yet.
-  asking,
-
-  /// The document refused this one. ⛔It is remembered until the play tick
-  /// forgets it: asking again the instant it fails is a loop, and never
-  /// asking again is a viewer that cannot recover when the frame becomes
-  /// readable — and recovery is the law here (유저 2026-08-31, 「로드할때까지
-  /// 멈춰있어야지」, which is a WAIT and not a surrender).
-  failed,
-}
+import 'shown_rasters.dart';
 
 /// THE PAGES A SURFACE DRAWS, AS RASTERS — asked of the document one at a
 /// time at the scale the view draws them, kept under the device's budget,
@@ -48,249 +12,62 @@ enum _RenderAsk {
 /// viewer's, and the import window's preview (import-preview-plays-silent,
 /// 2026-09-29: 「뷰어패널이랑 통일할거하면서」). It lived inside the viewer,
 /// and a second surface that plays would have been a second copy of it.
-class PageRasters {
+///
+/// How it holds them is every shown picture's ([ShownRasters]); what is its
+/// own is the document it asks, the scale a page is drawn at, and the order
+/// a page goes in.
+class PageRasters extends ShownRasters<int, double> {
   PageRasters({
-    required this.budget,
+    required super.budget,
     required ViewerDocument? Function() document,
-    required int? Function(int page) wantedAt,
-    required void Function(VoidCallback fn) rebuild,
-    required bool Function() mounted,
-    required void Function(int bytes) report,
+    required super.wantedAt,
+    required super.rebuild,
+    required super.mounted,
+    required super.report,
   }) : _document = document,
-       _wantedAt = wantedAt,
-       _rebuild = rebuild,
-       _mounted = mounted,
-       _report = report;
-
-  /// What this device affords the page cache, and where a memory warning
-  /// puts it — see [ViewerRasterBudget].
-  ///
-  /// ⚠️Built with the surface, so a test that wants a tight one sets
-  /// [ViewerRasterBudget.debugPageBytesOverride] BEFORE the panel mounts;
-  /// pumping the same widget again reuses this budget.
-  final ViewerRasterBudget budget;
+       super(lastUsed: _byPage);
 
   /// The document shown — the surface's, asked when a page goes out.
   final ViewerDocument? Function() _document;
-
-  /// How many steps on a cached page is next wanted, null where it is not —
-  /// the surface's answer, since only it knows where the playhead stands
-  /// and whether it is running.
-  final int? Function(int page) _wantedAt;
-  final void Function(VoidCallback fn) _rebuild;
-  final bool Function() _mounted;
-
-  /// Where the total goes after every change — the memory census cannot
-  /// reach into a surface ([RenderCaches.viewerRasterBytesByViewer]).
-  final void Function(int bytes) _report;
-
-  final Map<int, _RenderedPage> _cache = {};
-
-  /// The pages the view shows now — every one on screen in a book, the
-  /// page in a document that turns its own. Set where they are drawn;
-  /// the cache never lets one of them go ([evictToBudget]).
-  Set<int> shown = const {};
 
   /// The render scale the last build chose. The buffer measures readiness
   /// in the unit the cache is keyed by, and only build knows the zoom —
   /// the timer that asks cannot work it out.
   double? scale;
 
-  /// What a cut's read holds while it is out (I-14): billed to [budget]
-  /// beside the page cache, and reported to the census with it.
-  int extraBytes = 0;
-
-  /// What has been asked of the document, one entry per (page, scale) —
-  /// landings remove their own entry, so a stale landing can never wipe a
-  /// newer one.
-  ///
-  /// 🚨★★★**A RENDER HAS THREE OUTCOMES AND THIS USED TO HAVE ROOM FOR
-  /// TWO.** It was a `Set`, so ABSENT answered both 「nobody has asked」 and
-  /// 「the last ask failed, so asking again right now is fine」 — and the
-  /// failure arm below cleared the marker inside a `setState`. That rebuild
-  /// re-entered `build`, which asks for the same page again, which fails
-  /// again, which rebuilds: measured at eleven asks for one unreadable frame
-  /// across three ticks, throttled by nothing but how fast the decoder can
-  /// say no. On the tablets this app is written for
-  /// ([[old-device-support-policy]]) that is a spinning CPU under a picture
-  /// that is not moving.
-  final Map<(int, double), _RenderAsk> _renders = {};
-
-  /// Guards every landing against a document turned away since.
-  int _generation = 0;
-
-  /// The raster [page] has, at whatever scale it landed — a blurrier render
-  /// of the SAME page is not a lie about which frame this is.
-  ui.Image? imageOf(int page) => _cache[page]?.image;
-
-  /// Whether a render is out with the document right now.
-  ///
-  /// ⛔Not `_renders.isNotEmpty`: a FAILED entry is remembered until the
-  /// next tick, and counting it as in-flight would stop the read-ahead from
-  /// ever issuing anything again.
-  bool get rendering => _renders.values.any((ask) => ask == _RenderAsk.asking);
-
-  /// Whether [page] is ready to draw at [scale].
-  bool readyAt(int page, double scale) {
-    final cached = _cache[page];
-    return cached != null && cached.scale == scale;
-  }
-
-  /// Forgets every refusal, so the next ask goes out — the play tick's
-  /// retry clock, and a turn of the page by hand.
-  void forgetRefusals() =>
-      _renders.removeWhere((_, ask) => ask == _RenderAsk.failed);
+  /// Pages are wanted alike only behind a run that plays — none is shown
+  /// again — and among those the lowest goes first: the farthest behind, as
+  /// a run that plays forward left them. ⛔Not who landed first: a page read
+  /// by hand before the run would go before the frames the run had just
+  /// played (tried 10-10).
+  static int _byPage(int page) => page;
 
   /// Asks the document for [pageIndex] at [at], unless it is cached at
   /// that scale or already asked.
   void ensureRendered(int pageIndex, double at) {
     final document = _document();
-    if (document == null || readyAt(pageIndex, at)) {
+    if (document == null) {
       return;
     }
-    // One entry PER (page, scale): a shared single slot got wiped by
-    // whichever render landed first, and the wipe re-issued duplicates
-    // of work already queued on PDFium's serial worker.
-    //
-    // 🚨An entry of EITHER kind stops the ask — in flight means 「already
-    // out」 and failed means 「not until the clock says so」. See [_renders].
-    if (_renders.containsKey((pageIndex, at))) {
-      return;
-    }
-    _renders[(pageIndex, at)] = _RenderAsk.asking;
-    final generation = _generation;
-    final CanvasSize(:width, :height) = pagePixelSize(
-      document,
-      pageIndex,
-      at: at,
-    );
-    unawaited(() async {
-      final image = await decodedImageStillWanted(
-        document.renderPage(pageIndex, width: width, height: height),
-        wanted: () => _mounted() && generation == _generation,
-        // ⛔NO `setState` on this road. Nothing the eye can see changed — the
-        // page that was not there is still not there — and the rebuild is
-        // exactly what made a refused frame ask again immediately, and
-        // again, for as long as it kept being refused. The retry belongs to
-        // the play tick, which is the clock that actually needs the frame.
-        onFailed: () {
-          if (_mounted() && generation == _generation) {
-            _renders[(pageIndex, at)] = _RenderAsk.failed;
-          }
-        },
+    ask(pageIndex, at, () {
+      final CanvasSize(:width, :height) = pagePixelSize(
+        document,
+        pageIndex,
+        at: at,
       );
-      if (image == null) {
-        return;
-      }
-      _rebuild(() {
-        _renders.remove((pageIndex, at));
-        _cache[pageIndex]?.image.dispose();
-        _cache[pageIndex] = _RenderedPage(scale: at, image: image);
-        evictToBudget(keeping: pageIndex);
-      });
-    }());
-  }
-
-  /// Drops cached pages, the one wanted latest first, until the cache fits
-  /// [ViewerRasterBudget.byteBudget] — and answers what it holds.
-  ///
-  /// 🚨THE ORDER PLAYBACK'S CACHES LET GO BY, IN THEIR CODE
-  /// ([letGoWantedLatest]; viewer-plays-by-the-one-playback-law, ②).
-  /// ↩️This drain spelled it again: the farthest page from the one on
-  /// screen, by a measure of its own.
-  ///
-  /// 🚨[keeping] is never evicted. A raster that has just LANDED for a
-  /// page already paged away from is itself the farthest entry, and an
-  /// eviction that could drop it would throw away the render it was
-  /// called to install — the old count-based drain excluded it for the
-  /// same reason.
-  ///
-  /// ⚠️Bytes, not entries. Four pages meant a quarter of a gigabyte for a
-  /// big PDF and under a megabyte for thumbnails; the bound has to be in
-  /// the unit that runs out.
-  int evictToBudget({required int keeping}) {
-    // ⛔Never a page on screen: in a book several are (F-201), and one let
-    // go would only be rendered again for the next frame. So the drain
-    // ends when only those are left — over the budget by what the
-    // screen shows, which no eviction could give back.
-    _letGo(maxBytes: budget.byteBudget, kept: {keeping, ...shown});
-    return _heldBytes();
+      return document.renderPage(pageIndex, width: width, height: height);
+    });
   }
 
   /// Makes room for [page] at [at] by letting go of the pages wanted LATER
-  /// than [step] — the canvas's room, the same law ([letGoWantedLatest]
-  /// with `laterThan`): a page is asked for only by letting go of pages
-  /// wanted after it — and answers whether it fits.
+  /// than [step] ([makeRoom]) — and answers whether it fits.
   bool makeRoomFor(int page, double at, {required int step}) {
     final document = _document();
     if (document == null) {
       return false;
     }
     final CanvasSize(:width, :height) = pagePixelSize(document, page, at: at);
-    return _letGo(
-      maxBytes: budget.byteBudget - estimatedImageBytes(width, height),
-      kept: shown,
-      laterThan: step,
-    );
-  }
-
-  int _heldBytes() {
-    var total = 0;
-    for (final page in _cache.values) {
-      total += ViewerRasterBudget.costOf(page.image);
-    }
-    return total;
-  }
-
-  /// Lets pages go, the one wanted latest first, until what is held is at
-  /// or under [maxBytes] — never one of [kept], nor one wanted at or before
-  /// [laterThan] — and answers whether it got there.
-  bool _letGo({required int maxBytes, required Set<int> kept, int? laterThan}) {
-    var total = _heldBytes();
-    final fits = letGoWantedLatest(
-      entries: [
-        for (final entry in _cache.entries)
-          if (!kept.contains(entry.key)) entry,
-      ],
-      // A cut's read is billed beside the pages (I-14), so they make room.
-      heldBytes: total + extraBytes,
-      maxBytes: maxBytes,
-      wantedAt: (entry) => _wantedAt(entry.key),
-      // Pages are wanted alike only behind a run that plays — none is shown
-      // again — and among those the lowest goes first: the farthest behind,
-      // as a run that plays forward left them. ⛔Not who landed first: a
-      // page read by hand before the run would go before the frames the run
-      // had just played (tried 10-10).
-      lastUsed: (entry) => entry.key,
-      bytesOf: (entry) => ViewerRasterBudget.costOf(entry.value.image),
-      letGo: (entry) {
-        _cache.remove(entry.key);
-        total -= ViewerRasterBudget.costOf(entry.value.image);
-        entry.value.image.dispose();
-      },
-      laterThan: laterThan,
-    );
-    // Every path that changes the cache ends here or in [clear].
-    _report(total + extraBytes);
-    return fits;
-  }
-
-  /// The OS said memory is tight: the budget halves
-  /// ([ViewerRasterBudget.respondToMemoryPressure]) and the cache sheds down
-  /// to it — never [keeping], the page being looked at.
-  void heardMemoryPressure({required int keeping}) {
-    if (!budget.respondToMemoryPressure()) {
-      return;
-    }
-    _rebuild(() => evictToBudget(keeping: keeping));
-  }
-
-  /// A new document takes the place of the one these pages came from, for
-  /// the same bytes: what is drawn stays, and a render still out on the old
-  /// one lands nowhere and is asked of the new.
-  void turnAway() {
-    _generation += 1;
-    _renders.clear();
+    return makeRoom(estimatedImageBytes(width, height), step: step);
   }
 
   /// Nothing kept — the document is gone, or draws its pages another way.
@@ -298,15 +75,9 @@ class PageRasters {
   /// ↩️A change of look kept the picture that was up, HELD OVER until a
   /// page of the new look landed (the export window's preview) — F-315
   /// (유저 2026-10-08) asked for the loading widget in its place.
+  @override
   void clear() {
-    _generation += 1;
-    for (final page in _cache.values) {
-      page.image.dispose();
-    }
-    _cache.clear();
-    _renders.clear();
+    super.clear();
     scale = null;
-    shown = const {};
-    _report(0);
   }
 }

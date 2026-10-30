@@ -1,11 +1,11 @@
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
-import '../../models/app_accents.dart';
 import 'app_theme.dart';
 
-/// Holds [child] and, the moment the palette changes (I-143), builds and
-/// paints the whole app again — once.
+/// Holds [child] and, the moment the colours worn change — the palette
+/// (I-143) or the accent (F-508) — builds and paints the whole app again,
+/// once.
 ///
 /// ⚠️The chrome reads [AppColors] where it builds and where it paints, not
 /// from an inherited theme: a const subtree is never rebuilt by its parent,
@@ -13,37 +13,31 @@ import 'app_theme.dart';
 /// repaint. Without this a switch left every part nothing else touched in
 /// the old palette — a screen half dark and half light until each part
 /// happened to rebuild.
-class ColorModeRederive extends StatefulWidget {
-  const ColorModeRederive({super.key, required this.child});
+///
+/// ↩️It walked for the palette only, and a new accent left the add-layer
+/// and stabilizer buttons in the old one until a hover rebuilt them
+/// (F-508). The accent is picked from a row of swatches, one press at a
+/// time, so the walk costs no more there than on the palette's switch.
+class AppColorsRederive extends StatefulWidget {
+  const AppColorsRederive({super.key, required this.child});
 
   final Widget child;
 
   @override
-  State<ColorModeRederive> createState() => _ColorModeRederiveState();
+  State<AppColorsRederive> createState() => _AppColorsRederiveState();
 }
 
-class _ColorModeRederiveState extends State<ColorModeRederive> {
-  AppColorMode _mode = AppColors.mode;
-
+class _AppColorsRederiveState extends State<AppColorsRederive> {
   @override
   void initState() {
     super.initState();
-    AppColors.accentSettings.addListener(_changed);
+    AppColors.accentSettings.addListener(rederiveEverything);
   }
 
   @override
   void dispose() {
-    AppColors.accentSettings.removeListener(_changed);
+    AppColors.accentSettings.removeListener(rederiveEverything);
     super.dispose();
-  }
-
-  void _changed() {
-    final mode = AppColors.mode;
-    if (mode == _mode) {
-      return;
-    }
-    _mode = mode;
-    rederiveEverything();
   }
 
   @override

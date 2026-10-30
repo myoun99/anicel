@@ -8,6 +8,7 @@ import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/conte_key.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -661,6 +662,135 @@ void main() {
       expect(s.layerMerging.planOfSelection()!.changes, {
         LayerMergeChange.wall,
       });
+    });
+  });
+
+  /// 🗣️I-78-Q20 (유저 2026-10-30): 「트랙의 모든 컷에서 같이 병합」.
+  group("the conte's rows", () {
+    const other = CutId('cut2');
+
+    /// A cut [id] of the conte [base] — one panel over both frames — and,
+    /// riding it synced, the track's rows `K1` and `K2` as [rows] names
+    /// them.
+    Cut conteCut(CutId id, String base, (String, String) rows) {
+      final conte = row(base).copyWith(kind: LayerKind.storyboard);
+      Layer onIt(String rowId, String key) => Layer(
+        id: LayerId(rowId),
+        name: rowId,
+        kind: LayerKind.storyboard,
+        attachedToLayerId: conte.id,
+        conteKey: ConteKey(key),
+        frames: [
+          Frame(id: FrameId('$rowId-1'), duration: 1, name: '1', strokes: []),
+        ],
+        baseFrameLinks: {FrameId('$base-1'): FrameId('$rowId-1')},
+        timeline: const {},
+      );
+      return Cut(
+        id: id,
+        name: id.value,
+        duration: 2,
+        canvasSize: canvasSize,
+        layers: [
+          conte,
+          onIt(rows.$1, 'K1'),
+          onIt(rows.$2, 'K2'),
+          createCameraLayer(cutId: id),
+        ],
+      );
+    }
+
+    testWidgets("🎯merge in every cut of the track — each cut's result its "
+        'own picture, riding its conte, the track keeping one row of them — '
+        'and one undo gives every cut back', (tester) async {
+      final s = EditorSessionManager(
+        initialProject: Project(
+          id: const ProjectId('project'),
+          name: 'Project',
+          cameraSize: canvasSize,
+          tracks: [
+            Track(
+              id: const TrackId('track'),
+              name: 'Track',
+              cuts: [
+                conteCut(cutId, 's', ('k1', 'k2')),
+                conteCut(other, 't', ('j1', 'j2')),
+              ],
+            ),
+          ],
+          createdAt: DateTime.utc(2026),
+        ),
+      );
+      addTearDown(s.dispose);
+      for (final (cut, id, coord, rgba) in [
+        (cutId, 'k1', TileCoord(x: 1, y: 0), red),
+        (cutId, 'k2', TileCoord(x: 2, y: 0), green),
+        (other, 'j1', TileCoord(x: 1, y: 0), blue),
+      ]) {
+        bakeCelSurface(
+          s.renderCaches.brushFrameStore,
+          s.brushFrameKeyForCut(s.cutById(cut)!, LayerId(id), FrameId('$id-1')),
+          inkAt([coord], rgba),
+        );
+      }
+      s.rowSelection.value = const [
+        LayerRowAddress(LayerId('k1')),
+        LayerRowAddress(LayerId('k2')),
+      ];
+      final before = {
+        for (final id in [cutId, other]) id: s.cutById(id)!.layers,
+      };
+      final context = await hostedContext(tester);
+
+      unawaited(mergeLayerRows(context, s));
+      await settleBehindTheWaitWindow(
+        tester,
+        () =>
+            s.requireActiveCut.layers.byId(const LayerId('k1')) == null &&
+            windowGone(),
+      );
+
+      /// The picture the result [id] of [cut] shows over its conte's panel.
+      BitmapSurface shown(CutId cut, String id) {
+        final at = s.cutById(cut)!;
+        final result = at.layers.byId(LayerId(id))!;
+        final conte = at.layers.byId(result.attachedToLayerId!)!;
+        return s.renderCaches.brushFrameStore.bakedSurfaceOrNull(
+          s.brushFrameKeyForCut(
+            at,
+            result.id,
+            result.baseFrameLinks[conte.frames.single.id]!,
+          ),
+          read: CelRead.look,
+        )!;
+      }
+
+      expect([at(shown(cutId, 'k2'), 20, 5), at(shown(cutId, 'k2'), 36, 5)], [
+        red,
+        green,
+      ]);
+      expect(at(shown(other, 'j2'), 20, 5), blue);
+      expect(
+        at(shown(other, 'j2'), 36, 5)?[3] ?? 0,
+        0,
+        reason: "that cut's own rows, not the pressed one's",
+      );
+      expect(s.cutById(other)!.layers.byId(const LayerId('j1')), isNull);
+      expect(
+        [
+          for (final entry
+              in s.repository.requireProject().tracks.single.conte.entries)
+            entry.key,
+        ],
+        [const ConteKey('K2')],
+        reason: 'one row of the track',
+      );
+
+      s.undo();
+      expect({
+        for (final id in [cutId, other]) id: s.cutById(id)!.layers,
+      }, before);
+      s.playbackRig.prerenderScheduler.cancel();
     });
   });
 

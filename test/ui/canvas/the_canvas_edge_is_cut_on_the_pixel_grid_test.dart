@@ -9,6 +9,9 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/composite_tree.dart';
+import 'package:anicel/src/models/dirty_region.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/rgba_color.dart';
@@ -19,6 +22,7 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_resample.dart';
 import 'package:anicel/src/ui/canvas/landing_preview.dart';
+import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/canvas/stage_planes_painter.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_float.dart';
@@ -53,6 +57,8 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// whole edge is cut the same with or without anti-aliasing, and the pins
 /// below would pass on nothing).
 void main() {
+  // A blend over its backdrop is composed by its shader.
+  setUpAll(LayerBlendShader.load);
   const canvasSize = CanvasSize(width: 4, height: 4);
   const paper = ProjectBackground.color(0xFF00FF00);
   const zoom = 1.1;
@@ -118,6 +124,39 @@ void main() {
     );
   }
 
+  /// Ink across the pasteboard's wall a quarter of the canvas out — whole
+  /// coordinates a pixel past each wall at 1 and 5, so the wall cuts each
+  /// inside it — as a picture the pasteboard holds past the page.
+  BitmapSurfacePainter wallInkSurface() {
+    BitmapTile inked() {
+      var tile = BitmapTile.blank(size: 2);
+      for (var y = 0; y < 2; y += 1) {
+        for (var x = 0; x < 2; x += 1) {
+          tile = writeRgbaColorToBitmapTile(
+            tile: tile,
+            x: x,
+            y: y,
+            color: RgbaColor(r: 255, g: 0, b: 0, a: 255),
+          );
+        }
+      }
+      return tile;
+    }
+
+    return BitmapSurfacePainter(
+      surface: BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: 2,
+        pasteboardReach: PasteboardReach.quarter,
+        tiles: {
+          TileCoord(x: -1, y: 0): inked(),
+          TileCoord(x: 2, y: 1): inked(),
+        },
+      ),
+      showTransparentBackground: false,
+    );
+  }
+
   /// [disableBuffer] takes the DIRECT WALK instead of the buffer blit: the
   /// paper rect and the tiles drawn straight under the viewport transform,
   /// which is the route a frame falls to when the buffer is refused.
@@ -130,6 +169,10 @@ void main() {
     bool ink = true,
     bool live = true,
     BitmapSurfacePainter? surface,
+    List<CompositeNode<CanvasStackRow>> nodes = const [
+      CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
+    ],
+    CanvasViewport? view,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -141,16 +184,12 @@ void main() {
               width: logical.width,
               height: logical.height,
               child: TheFrameAsItStands(
-                nodes: const [
-                  CompositeLeaf<CanvasStackRow>(
-                    CanvasActiveLayerRow(opacity: 1),
-                  ),
-                ],
+                nodes: nodes,
                 imageCache: LayerFrameImageCache(
                   frameStore: BrushFrameStore(),
                 ),
                 canvasSize: canvasSize,
-                viewport: viewport,
+                viewport: view ?? viewport,
                 activeSurfacePainter: live
                     ? surface ?? cornerInkSurface(ink: ink)
                     : null,
@@ -513,6 +552,295 @@ void main() {
         reason: 'the walk cuts each edge on the pixel the buffer does',
       );
     });
+
+    // the-walk-family-cuts-the-rest-on-the-grid (10-30): a node the walk
+    // draws as a picture of its own lay on a grid counted from the canvas's
+    // origin, which the view's phase puts inside a device pixel above 100%
+    // — so its blit resampled each texel once more and blended its edge.
+    // 🔬A folder at half strength: 18 of 256 pixels apart from the buffer at
+    // 125% (a seam of the ink a pixel off, 16/255 of it past the page), 12 at
+    // 150%; at a ratio of 2, 10 · 5 · 12 of 1,024 at 125 · 137 · 150%.
+    const leaf = CompositeLeaf<CanvasStackRow>(
+      CanvasActiveLayerRow(opacity: 1),
+    );
+    final pictures = <String, List<CompositeNode<CanvasStackRow>>>{
+      'a folder': const [
+        CompositeGroup<CanvasStackRow>(
+          children: [leaf],
+          opacity: 0.5,
+          blendMode: LayerBlendMode.normal,
+        ),
+      ],
+      'a blend over its backdrop': const [
+        CompositeBackdropBlend<CanvasStackRow>(
+          backdrop: [],
+          source: leaf,
+          blendMode: LayerBlendMode.multiply,
+        ),
+      ],
+      'a clip': const [
+        CompositeClip<CanvasStackRow>(
+          base: leaf,
+          scope: [],
+          opacity: 0.5,
+          blendMode: LayerBlendMode.normal,
+        ),
+      ],
+      'an adjustment': [
+        CompositeAdjustment<CanvasStackRow>(
+          children: const [leaf],
+          effects: [
+            ResolvedLayerEffect(
+              kind: EffectKind.brightnessContrast,
+              values: [20, 0],
+            ),
+          ],
+          mix: 0.5,
+        ),
+      ],
+    };
+    // At a fraction of a pixel each way: above 100% on the logical grid, at
+    // a ratio of 2 on the device's.
+    const offTheGrid = [
+      (1.0, 1.25, false),
+      (1.0, 1.37, false),
+      (1.0, 1.5, false),
+      (2.0, 0.625, false),
+      (2.0, 0.685, false),
+      (2.0, 0.75, false),
+      // Turned over, the canvas's space runs the other way from its
+      // origin: the grid is counted back from it.
+      (1.0, 1.25, true),
+      (2.0, 0.75, true),
+    ];
+    String atTheView(double ratio, double zoom, {bool turned = false}) =>
+        '${(zoom * ratio * 100).round()}% at a ratio of $ratio'
+        '${turned ? ', turned over' : ''}';
+    CanvasViewport turnedOrNot(double zoom, bool turned) => CanvasViewport(
+      zoom: zoom,
+      panX: turned ? 10 : 5,
+      panY: 3,
+      flipHorizontal: turned,
+    );
+
+    /// What the walk draws of [surface] under [nodes] at [view] on a screen
+    /// of [ratio], every edge blended, laid byte for byte where the buffer
+    /// lays it.
+    Future<void> expectTheWalkWhereTheBufferIs(
+      WidgetTester tester, {
+      required BitmapSurfacePainter Function() surface,
+      required List<CompositeNode<CanvasStackRow>> nodes,
+      required CanvasViewport view,
+      required double ratio,
+    }) async {
+      tester.view.devicePixelRatio = ratio;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final buffered = await pumpEditingStack(
+        tester,
+        surface: surface(),
+        nodes: nodes,
+        view: view,
+      );
+      final bufferedBytes = (await tester.runAsync(
+        () => rasterize(buffered, ratio: ratio),
+      ))!;
+      final walk = await pumpEditingStack(
+        tester,
+        disableBuffer: true,
+        surface: surface(),
+        nodes: nodes,
+        view: view,
+      );
+      final bytes = (await tester.runAsync(
+        () => rasterize(walk, everyEdgeBlended: true, ratio: ratio),
+      ))!;
+      expect(
+        bytes,
+        equals(bufferedBytes),
+        reason: 'the walk lands each texel where the buffer does',
+      );
+    }
+
+    for (final MapEntry(key: picture, value: nodes) in pictures.entries) {
+      for (final (ratio, zoom, turned) in offTheGrid) {
+        testWidgets('$picture the walk draws lies on the device\'s pixels — '
+            '${atTheView(ratio, zoom, turned: turned)}', (tester) async {
+          await expectTheWalkWhereTheBufferIs(
+            tester,
+            surface: seamedInkSurface,
+            nodes: nodes,
+            view: turnedOrNot(zoom, turned),
+            ratio: ratio,
+          );
+        });
+      }
+    }
+
+    // ②The pasteboard's wall cuts a picture laid past it where the buffer's
+    // raster of the cel ends — ↩️the walk clipped it at a fraction of a
+    // pixel: 🔬5 · 6 of 256 pixels apart from the buffer at 125 · 150%, 5 of
+    // 1,024 at a ratio of 2 at 125% (10-30).
+    for (final (ratio, zoom, turned) in offTheGrid) {
+      testWidgets('the pasteboard\'s wall the walk cuts a picture at lies on '
+          'the device\'s pixels — ${atTheView(ratio, zoom, turned: turned)}', (
+        tester,
+      ) async {
+        await expectTheWalkWhereTheBufferIs(
+          tester,
+          surface: wallInkSurface,
+          nodes: const [leaf],
+          view: turnedOrNot(zoom, turned),
+          ratio: ratio,
+        );
+      });
+    }
+
+    // ③Where the frame ends — the page and every row's content — the walk
+    // cuts what spreads past it, as the buffer's raster ends there.
+    // ↩️It drew it whole: 🔬a blur at the page's corner 16 of 256 pixels
+    // apart from the buffer at 100% (10-30).
+    for (final (ratio, zoom) in [(1.0, 1.0), (2.0, 0.5)]) {
+      testWidgets('what spreads past where the frame ends the walk cuts '
+          'there — ${atTheView(ratio, zoom)}', (tester) async {
+        await expectTheWalkWhereTheBufferIs(
+          tester,
+          surface: cornerInkSurface,
+          nodes: [
+            CompositeLeaf<CanvasStackRow>(
+              CanvasActiveLayerRow(
+                opacity: 1,
+                effects: [
+                  ResolvedLayerEffect(kind: EffectKind.blur, values: [3, 0]),
+                ],
+              ),
+            ),
+          ],
+          view: CanvasViewport(zoom: zoom, panX: 5, panY: 3),
+          ratio: ratio,
+        );
+      });
+    }
+
+    /// [surface] as a sheet's window lays a cel — by its painter alone, at
+    /// [view] on a screen of [ratio], [landing] over it — every edge
+    /// blended.
+    Future<Uint8List> paintedAlone(
+      BitmapSurface surface, {
+      required CanvasViewport view,
+      required double ratio,
+      LandingPreview? landing,
+    }) => rasterize(
+      BitmapSurfacePainter(
+        surface: surface,
+        viewport: view,
+        devicePixelRatio: ratio,
+        landingPreview: landing == null ? null : ValueNotifier(landing),
+        showTransparentBackground: false,
+      ),
+      everyEdgeBlended: true,
+      ratio: ratio,
+    );
+
+    BitmapTile inkedColumn(int x) {
+      var tile = BitmapTile.blank(size: 2);
+      for (var y = 0; y < 2; y += 1) {
+        tile = writeRgbaColorToBitmapTile(
+          tile: tile,
+          x: x,
+          y: y,
+          color: RgbaColor(r: 255, g: 0, b: 0, a: 255),
+        );
+      }
+      return tile;
+    }
+
+    Future<ui.Image> redPicture(int width, int height) {
+      final recorder = ui.PictureRecorder();
+      Canvas(recorder).drawRect(
+        Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+        Paint()..color = const Color(0xFFFF0000),
+      );
+      return recorder.endRecording().toImage(width, height);
+    }
+
+    // ②The painter alone cuts its cel at the wall where the walk does: the
+    // coordinates [wallInkSurface] holds past it, against the ones inside
+    // it with the wall far off.
+    for (final (ratio, zoom, turned) in offTheGrid) {
+      test('the pasteboard\'s wall a cel laid alone is cut at lies on the '
+          'device\'s pixels — ${atTheView(ratio, zoom, turned: turned)}',
+          () async {
+        final view = turnedOrNot(zoom, turned);
+        final inside = BitmapSurface(
+          canvasSize: canvasSize,
+          tileSize: 2,
+          pasteboardReach: PasteboardReach.whole,
+          tiles: {
+            TileCoord(x: -1, y: 0): inkedColumn(1),
+            TileCoord(x: 2, y: 1): inkedColumn(0),
+          },
+        );
+        expect(
+          await paintedAlone(
+            wallInkSurface().surface,
+            view: view,
+            ratio: ratio,
+          ),
+          equals(await paintedAlone(inside, view: view, ratio: ratio)),
+          reason: 'the wall cuts on the pixel each coordinate\'s own edge '
+              'is cut on',
+        );
+      });
+    }
+
+    // ②A landing — a text, a float — is cut at the pasteboard where a file's
+    // picture widens the cel past it (F-374-Q8), on the grid as the
+    // landing's own edge is: a picture across both walls, against the part
+    // of it inside them with the walls far off.
+    for (final (ratio, zoom, turned) in offTheGrid) {
+      test('the pasteboard\'s wall a landing is cut at lies on the device\'s '
+          'pixels — ${atTheView(ratio, zoom, turned: turned)}', () async {
+        final view = turnedOrNot(zoom, turned);
+        BitmapSurface laidWide(PasteboardReach reach) => BitmapSurface(
+          canvasSize: canvasSize,
+          tileSize: 2,
+          pasteboardReach: reach,
+          tiles: const {},
+          laidBounds: DirtyRegion.fromXYWH(
+            x: -4,
+            y: -4,
+            width: 12,
+            height: 12,
+          ),
+        );
+        expect(
+          await paintedAlone(
+            laidWide(PasteboardReach.quarter),
+            view: view,
+            ratio: ratio,
+            landing: CelTextLanding(
+              picture: await redPicture(8, 2),
+              left: -2,
+              top: 1,
+            ),
+          ),
+          equals(
+            await paintedAlone(
+              laidWide(PasteboardReach.whole),
+              view: view,
+              ratio: ratio,
+              landing: CelTextLanding(
+                picture: await redPicture(6, 2),
+                left: -1,
+                top: 1,
+              ),
+            ),
+          ),
+          reason: 'the wall cuts the landing on the pixel its own edge is '
+              'cut on',
+        );
+      });
+    }
 
     test('a grid whole in the canvas\'s space and not on the device\'s — '
         'the ratio decides', () async {

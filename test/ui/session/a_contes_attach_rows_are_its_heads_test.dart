@@ -20,6 +20,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/commands/link_mirror.dart'
     show existenceMirrorTargets;
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import '../../helpers/a_folder_made_by_hand.dart';
 
 /// 🗣️I-73 — the drawn proposal 유저 took on 2026-10-08: 「머리 — 이름 ·
 /// 라벨 · 블렌드 · 불투명도 · 눈 · 어태치 구성 · fx 구성 — 트랙의 모든
@@ -310,7 +311,7 @@ void main() {
         ]),
       ]);
       standOn(session, 'a', 'a-over');
-      session.folders.groupActiveAttachIntoFolder();
+      groupTheActiveAttachIntoAFolder(session);
       standOn(session, 'a', 'a-over');
       final organizer = cutIn(
         session,
@@ -695,7 +696,7 @@ void main() {
       final session = sessionOf(twoCutsWithRiders());
       for (final cut in const ['a', 'b']) {
         standOn(session, cut, '$cut-over');
-        session.folders.groupActiveAttachIntoFolder();
+        groupTheActiveAttachIntoAFolder(session);
       }
       List<LayerKind> kindsIn(String cut) => [
         for (final layer in cutIn(session, cut).layers) layer.kind,

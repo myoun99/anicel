@@ -7,12 +7,12 @@ import 'package:anicel/src/models/project.dart'
 import 'package:anicel/src/ui/canvas/stage_planes_painter.dart'
     show stageColorOnScreen;
 import 'package:anicel/src/ui/theme/app_theme.dart';
-import 'package:anicel/src/ui/theme/color_mode_rederive.dart';
+import 'package:anicel/src/ui/theme/app_colors_rederive.dart';
 import 'package:anicel/src/ui/theme/text_on_ground.dart'
     show textOnLightGroundColor;
 
 /// 🗣️I-143: a switch of the palette reaches every colour on screen at once
-/// ([ColorModeRederive]) — the parts nothing else would touch included.
+/// ([AppColorsRederive]) — the parts nothing else would touch included.
 void main() {
   tearDown(
     () => AppColors.accentSettings.value = const AppAccentSettings(),
@@ -24,7 +24,7 @@ void main() {
   testWidgets('a const subtree that reads a token is built again', (
     tester,
   ) async {
-    await tester.pumpWidget(const ColorModeRederive(child: _Plate()));
+    await tester.pumpWidget(const AppColorsRederive(child: _Plate()));
     Color plate() => tester.widget<ColoredBox>(find.byKey(_Plate.box)).color;
     expect(plate(), AppPalette.dark.surface);
 
@@ -38,7 +38,7 @@ void main() {
   ) async {
     final painted = <Color>[];
     await tester.pumpWidget(
-      ColorModeRederive(
+      AppColorsRederive(
         child: CustomPaint(
           size: const Size.square(10),
           painter: _KeepsItsPicture(painted),
@@ -52,18 +52,22 @@ void main() {
     expect(painted, [AppPalette.dark.surface, AppPalette.light.surface]);
   });
 
-  testWidgets('an accent picked builds nothing again', (tester) async {
-    var builds = 0;
-    await tester.pumpWidget(
-      ColorModeRederive(child: _Counted(() => builds += 1)),
-    );
-    expect(builds, 1);
+  /// 🗣️F-508 (유저 2026-10-30): a new accent stayed on the add-layer and
+  /// stabilizer buttons in the old colour until a hover. ↩️This pinned the
+  /// opposite — 'the walk is for the palette, not the accent' — a rule
+  /// nobody asked for.
+  testWidgets('an accent picked reaches a const subtree that reads it', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const AppColorsRederive(child: _AccentPlate()));
+    Color plate() =>
+        tester.widget<ColoredBox>(find.byKey(_AccentPlate.box)).color;
+    expect(plate(), const AppAccentSettings().accent);
 
-    AppColors.accentSettings.value = const AppAccentSettings(
-      accent: Color(0xFF5B9BD5),
-    );
+    const picked = Color(0xFF5B9BD5);
+    AppColors.accentSettings.value = const AppAccentSettings(accent: picked);
     await tester.pump();
-    expect(builds, 1, reason: 'the walk is for the palette, not the accent');
+    expect(plate(), picked);
   });
 
   test('the theme is built of the palette worn', () {
@@ -110,16 +114,14 @@ class _Plate extends StatelessWidget {
       ColoredBox(key: box, color: AppColors.surface);
 }
 
-class _Counted extends StatelessWidget {
-  const _Counted(this.onBuild);
+class _AccentPlate extends StatelessWidget {
+  const _AccentPlate();
 
-  final VoidCallback onBuild;
+  static const box = ValueKey<String>('accent-plate');
 
   @override
-  Widget build(BuildContext context) {
-    onBuild();
-    return const SizedBox.shrink();
-  }
+  Widget build(BuildContext context) =>
+      ColoredBox(key: box, color: AppColors.accent);
 }
 
 class _KeepsItsPicture extends CustomPainter {

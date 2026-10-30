@@ -1,5 +1,6 @@
 import '../../models/app_frame_grid_settings.dart';
 import '../../models/cut.dart';
+import '../../models/sheet_sources.dart';
 import '../../models/timesheet_document.dart';
 import '../../services/export/xdts_builder.dart';
 import '../editor_session_manager.dart';
@@ -70,3 +71,18 @@ String cutXdtsContent(
   cutStartFrame: cutStartFrame,
   transitionSpans: session.transitions.activeTrackTransitionSpans,
 );
+
+/// How many rows [cut]'s sheet runs — its XDTS's duration, read off the
+/// same projection with the same track rows ([cutXdtsContent]): the conte
+/// 尺 and the のりしろ an O.L asks of either side. What a cut's AE comps run
+/// (ae-script-export).
+int cutSheetFrameCount(
+  EditorSessionManager session, {
+  required Cut cut,
+  required int cutStartFrame,
+}) => SheetSources.of(
+  cut: cut,
+  trackSeLayers: session.activeTrack.seLayers,
+  cutStartFrame: cutStartFrame,
+  transitionSpans: session.transitions.activeTrackTransitionSpans,
+).drawnFrameCount;

@@ -1,116 +1,20 @@
 part of '../cut_command_coordinator.dart';
 
-/// THE FOLDER AND ATTACHMENT COMMANDS — a folder from a layer, the
-/// organizer folder an attach lives in, dissolving one, and attaching a
-/// layer to another — as their own object.
+/// THE FOLDER AND ATTACHMENT COMMANDS — dissolving a folder and attaching
+/// a layer to another — as their own object.
 ///
 /// 🚨A collaborator carved out of `CutCommandCoordinator` (the audit's SRP
 /// cut, 2026-09-02). Measured before cutting: three coordinator members
 /// shared. It reaches the coordinator through `_coordinator`.
+///
+/// ↩️It made folders too — one from a layer's whole attach group, and an
+/// attach organizer around one attach row — for the two menu verbs R5 #14
+/// took away. A folder is made empty from Add Layer and filled by a drop
+/// now (layer-menu-strings-outlive-their-entries-Q3).
 class _FolderAndAttachmentCommands {
   _FolderAndAttachmentCommands(this._coordinator);
 
   final CutCommandCoordinator _coordinator;
-
-  /// 폴더 생성: folds [layerId]'s whole attach group into a new folder ROW
-  /// inserted directly above the group (attach groups never split across a
-  /// folder boundary; the group is a contiguous stack run — belows and
-  /// their organizer folder rows included). Only the slice's TOP-LEVEL
-  /// rows re-folder: attach rows inside an ORGANIZER ([연출]/[작감]…) keep
-  /// their organizer, which is itself a member — inner structure survives
-  /// the fold. Mirrors into 겸용 cuts. Returns the new folder layer's id
-  /// in [cutId], null when the layer can't fold (non-drawing kinds).
-  ///
-  /// Renaming the folder afterwards is just [_coordinator.renameLayer] — a folder is a
-  /// layer, so it needs no command of its own.
-  LayerId? createFolderFromLayer({
-    required CutId cutId,
-    required LayerId layerId,
-    String? name,
-  }) {
-    final project = _coordinator.repository.requireProject();
-    final cut = requireCut(project, cutId);
-    final source = requireLayer(project, cutId: cutId, layerId: layerId);
-    if (source.kind != LayerKind.animation) {
-      return null;
-    }
-    final baseId = attachBaseIdOf(source);
-    final base = requireLayer(project, cutId: cutId, layerId: baseId);
-    final slice = attachedGroupSlice(baseId, cut.layers);
-    final memberIds = [
-      for (final layer in slice)
-        if (layer.folderId == base.folderId) layer.id,
-    ];
-    final plan = planCreateFolderCommandInput(
-      project: project,
-      cutId: cutId,
-      memberLayerIds: memberIds,
-    );
-
-    _coordinator.historyManager.execute(
-      CreateFolderCommand(
-        repository: _coordinator.repository,
-        cutId: cutId,
-        name: name ?? nextFolderName(cut),
-        memberLayerIds: memberIds,
-        folderIdByCut: plan.folderIdByCut,
-        groupId: plan.folderGroupId,
-      ),
-    );
-    return plan.folderIdByCut[cutId];
-  }
-
-  /// 공정 폴더 생성: wraps ONE attach row in an ORGANIZER folder
-  /// ([연출]/[작감]…) INSIDE its attach group. The attach relation stays
-  /// direct to the base — the folder organizes and display-controls only.
-  /// Siblings join through [EditorSessionManager.addAttachedLayer]'s
-  /// sibling rule (adding from a row inside an organizer lands next to
-  /// it).
-  ///
-  /// 🪦It used to add 「Organizers are FLAT: a row already inside one
-  /// refuses (null)」 — #786's own rule, lifted by 유저 2026-08-29
-  /// (「어태치 폴더 중첩도 허용하는 방향으로 가자 … 싹 다 통일」). The
-  /// refusal is gone from the verb as well as from the gate: a menu that
-  /// greys out is a different bug from a verb that silently returns null,
-  /// and leaving one of the two behind is how the rule comes back.
-  ///
-  /// Still deliberately PER-CUT — no 겸용 mirror, no link-group membership.
-  /// ⚠️The flat rule was one of two reasons given for that and is no longer
-  /// available; the standing one is that an unlinked folder row keeps
-  /// deletes and dissolves from fanning out into other cuts' structures.
-  LayerId? createAttachOrganizerFolder({
-    required CutId cutId,
-    required LayerId layerId,
-    String? name,
-  }) {
-    final project = _coordinator.repository.requireProject();
-    final cut = requireCut(project, cutId);
-    final source = requireLayer(project, cutId: cutId, layerId: layerId);
-    if (!isAttachedLayer(source)) {
-      return null;
-    }
-    final memberIds = [source.id];
-    final plan = planCreateFolderCommandInput(
-      project: project,
-      cutId: cutId,
-      memberLayerIds: memberIds,
-    );
-    final folderId = plan.folderIdByCut[cutId]!;
-    _coordinator.historyManager.execute(
-      CreateFolderCommand(
-        repository: _coordinator.repository,
-        cutId: cutId,
-        name: name ?? nextFolderName(cut),
-        memberLayerIds: memberIds,
-        // Origin cut only: mirror cuts are deliberately excluded (see
-        // the doc above) — the command skips any cut absent from this
-        // map.
-        folderIdByCut: {cutId: folderId},
-        groupId: plan.folderGroupId,
-      ),
-    );
-    return folderId;
-  }
 
   /// 폴더 해산: releases members to the parent and removes the folder row
   /// (layers stay). Mirrors into 겸용 cuts.

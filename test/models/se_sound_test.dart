@@ -51,6 +51,23 @@ void main() {
     expect(SeSound.fromJson(const {}), const SeSound());
   });
 
+  // 🗣️I-145-Q1 (유저 2026-10-30): 「따로 한 값 — 두 입구」.
+  test('the total is one value over the keys — 100 % unless set, written '
+      'only when set, and read back inside 0–200 %', () {
+    expect(const SeSound().totalVolume, 1.0);
+    const quiet = SeSound(totalVolume: 0.4);
+    expect(quiet.toJson(), {'totalVolume': 0.4});
+    expect(SeSound.fromJson(quiet.toJson()), quiet);
+    expect(quiet, isNot(const SeSound()));
+    expect(
+      const SeSound().copyWith(pan: 0.5).copyWith(totalVolume: 0.4),
+      const SeSound(pan: 0.5, totalVolume: 0.4),
+      reason: 'copyWith keeps what it was not given',
+    );
+    expect(SeSound.fromJson(const {'totalVolume': 5}).totalVolume, 2.0);
+    expect(SeSound.fromJson(const {'totalVolume': -1}).totalVolume, 0.0);
+  });
+
   test('an empty volume is no volume — one sound, however it was made', () {
     expect(SeSound(volume: PropertyTrack<double>.empty()), const SeSound());
     expect(

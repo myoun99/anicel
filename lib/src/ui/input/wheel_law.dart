@@ -64,13 +64,19 @@ void handleWheelExclusively(
   if (event is! PointerScrollEvent) {
     return;
   }
-  final echoOfATouch = CanvasTouchContacts.appWideCount > 0;
+  final echoOfATouch = wheelIsATouchsEcho;
   GestureBinding.instance.pointerSignalResolver.register(event, (resolved) {
     if (resolved is PointerScrollEvent && !echoOfATouch) {
       handle(resolved);
     }
   });
 }
+
+/// Whether a wheel turning now is a finger's echo — a finger is down
+/// anywhere in the app ([handleWheelExclusively] says why): the one
+/// question every surface that takes a notch and drops it asks, a sheet's
+/// scrollers too (`PenFriendlyScrollPosition`).
+bool get wheelIsATouchsEcho => CanvasTouchContacts.appWideCount > 0;
 
 /// How far [event]'s notch pushes along [axis] — the part a scroll view
 /// along it would take: a mouse wheel turned with one of [flipKeys] held

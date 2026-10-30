@@ -25,6 +25,13 @@ const int _ink = conteInkArgb;
 /// edits them in place.
 const double conteCellTextSize = 8.5;
 
+/// The conte's line, as many times its words' size: the panel's text style
+/// (`conteTextStyle`), the PDF and the cover set every line so.
+const double conteLineHeight = 1.25;
+
+/// One line of a cell's words — a cell's fixed lines stand one apart.
+const double _cellLine = conteCellTextSize * conteLineHeight;
+
 const int _rule = 0xFF404040;
 
 /// The paper — inside a picture window too: an empty window, the canvas
@@ -204,8 +211,8 @@ class _CoverSlots {
 
   Rect get staff => _across(cuts.bottom + _closingGap, closingSize);
 
-  // The conte's 1.25 line: a slot one line tall.
-  static double _line(double size) => size * 1.25;
+  // The conte's line: a slot one line tall.
+  static double _line(double size) => size * conteLineHeight;
 
   Rect _across(double top, double size) =>
       Rect.fromLTWH(_m.marginX, top, _m.bodyWidth, _line(size));
@@ -537,7 +544,8 @@ Iterable<SheetMark> conteCameraMarksOf(
 }
 
 /// One cell: its window grown with its camera work, its picture, the
-/// camera's work written on it and its two text columns.
+/// camera's work written on it and its two text columns — the ACTION
+/// column its fixed lines first, the words typed there under them.
 Iterable<SheetMark> _cell(
   ConteSheetMetrics m,
   ConteSheetSource source,
@@ -546,10 +554,12 @@ Iterable<SheetMark> _cell(
   yield* _cameraWork(m, cell);
   yield contePictureOf(cell, m);
   yield* conteCameraMarksOf(cell, m);
+  final action = cell.actionRect.deflate(4);
+  yield* _fixedLines(source, cell, action);
   yield SheetWords(
     SheetPaintLayer.content,
     text: cell.source.action,
-    slot: cell.actionRect.deflate(4),
+    slot: _below(action, conteActionWordsDrop(source, cell)),
     size: conteCellTextSize,
     argb: _ink,
   );
@@ -561,6 +571,60 @@ Iterable<SheetMark> _cell(
     argb: _ink,
   );
 }
+
+/// The lines [cell]'s ACTION column writes over the words typed there: what
+/// the camera does while the cell is on ([ConteCellSource.cameraLines],
+/// I-93) and under them the transitions written there
+/// ([ConteCellSource.transitionLines], I-93-Q1) — or none where the work
+/// leaves them out ([ConteSheetSource.fixedText]).
+List<String> conteFixedLinesOf(
+  ConteSheetSource source,
+  ContePlacedCell cell,
+) => source.fixedText
+    ? [...cell.source.cameraLines, ...cell.source.transitionLines]
+    : const [];
+
+/// How far below the top of its ACTION words [cell]'s typed words begin:
+/// under its fixed lines ([conteFixedLinesOf]), a conte line each. The ONE
+/// number the page prints the words by and the field types them at, so
+/// the typing stands on the printed words — no one types into the fixed
+/// lines (유저 2026-10-12, I-93: 「이 고정텍스트는 지울수없도록?」).
+double conteActionWordsDrop(ConteSheetSource source, ContePlacedCell cell) =>
+    conteFixedLinesOf(source, cell).length * _cellLine;
+
+/// [cell]'s fixed lines in [slot], its ACTION words' slot: from its top a
+/// conte line each, each on one line, never broken, in the words' ink
+/// (I-93: 「각 FIX PAN 이런거마다 개행되고」).
+Iterable<SheetMark> _fixedLines(
+  ConteSheetSource source,
+  ContePlacedCell cell,
+  Rect slot,
+) sync* {
+  for (final (index, text) in conteFixedLinesOf(source, cell).indexed) {
+    final line = _below(slot, index * _cellLine);
+    yield SheetWords(
+      SheetPaintLayer.content,
+      text: text,
+      slot: Rect.fromLTRB(
+        line.left,
+        line.top,
+        line.right,
+        math.min(line.top + _cellLine, line.bottom),
+      ),
+      size: conteCellTextSize,
+      argb: _ink,
+      fit: SheetWordsFit.oneLine,
+    );
+  }
+}
+
+/// [slot] from [drop] below its top — none of it past its bottom.
+Rect _below(Rect slot, double drop) => Rect.fromLTRB(
+  slot.left,
+  math.min(slot.top + drop, slot.bottom),
+  slot.right,
+  slot.bottom,
+);
 
 /// Camera work makes the cell ONE window over its rows and into the
 /// columns it claims ([conteCameraPlan]) — a box no larger than its

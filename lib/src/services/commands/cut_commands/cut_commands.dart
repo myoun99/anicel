@@ -24,23 +24,27 @@ class _CutCommands {
     // the classic anchor: right of the active cut, else the track's end.
     ({int? index, int leadingGapFrames, int? duration})? placement,
     CutId? cutId,
+    String? name,
   }) => _coordinator.historyManager.execute(
     createCutCommand(
       trackId: trackId,
       canvasSize: canvasSize,
       placement: placement,
       cutId: cutId,
+      name: name,
     ),
   );
 
   /// The command [createCut] runs, not run: its cut is the cut it makes.
   /// [cutId] names that cut ahead — the conte's next cut is drawn into
-  /// before it exists (H44).
+  /// before it exists (H44). [name] is the one the new cut window gave it
+  /// (I-100); none takes the one where it lands ([nextCutNameAfter]).
   CreateCutCommand createCutCommand({
     required TrackId trackId,
     CanvasSize? canvasSize,
     ({int? index, int leadingGapFrames, int? duration})? placement,
     CutId? cutId,
+    String? name,
   }) {
     final project = _coordinator.repository.requireProject();
     final anchor = placement == null
@@ -59,7 +63,7 @@ class _CutCommands {
       // born with. A new cut is bare now (F-211), and its id is all there
       // is to name.
       cutId: cutId ?? mintCutId(),
-      name: nextCutNameAfter(project, anchor.referenceName),
+      name: name ?? nextCutNameAfter(project, anchor.referenceName),
       index: anchor.index,
       leadingGapFrames: placement?.leadingGapFrames ?? 0,
       duration: placement?.duration,

@@ -70,19 +70,30 @@ class _WorkspaceLayoutPersistence {
         _state._bottomDockCollapsed = false;
         _state._regionOnTop = false;
         _state._brushValuesOnStrip.value = false;
+        _state._railToolsOnly.value = false;
       });
       _state._layout.restore(docks: _EditorWorkspaceState._defaultDocks());
     });
   }
 
-  Future<void> restoreLayout() async {
+  /// The arrangement the layout file holds, put in place — answering
+  /// whether there was one: false where the file holds none, or none this
+  /// build reads, and the workspace stands as it was. With no file to read
+  /// (a test) there is nothing to stand by: true, and nothing changes.
+  ///
+  /// ⚠️No arrangement is the factory one, and at the start the workspace
+  /// stands so already — so nothing is put back here: a first read that
+  /// lands late would undo what the hand did meanwhile (the storyboard tab
+  /// a test had opened, 2026-10-30). Read AGAIN, the workspace may stand
+  /// elsewhere, and its reader puts it back ([resetWorkspaceLayout]).
+  Future<bool> restoreLayout() async {
     final store = _layoutStore;
     if (store == null) {
-      return;
+      return true;
     }
     final payload = await store.load();
     if (payload == null || !_state.mounted) {
-      return;
+      return false;
     }
     final restored = restoreWorkspaceLayout(
       payload: payload,
@@ -97,33 +108,21 @@ class _WorkspaceLayoutPersistence {
       },
     );
     if (restored == null || !_state.mounted) {
-      return;
+      return false;
     }
-    final openRails = payload['openRails'];
     _state._rebuild(() {
       _state._lockedTabIds = restored.lockedTabIds;
       _state._bottomDockCollapsed = payload['bottomCollapsed'] == true;
       _state._regionOnTop = payload['regionOnTop'] == true;
       _state._brushValuesOnStrip.value =
           payload['brushValuesOnStrip'] == true;
+      _state._railToolsOnly.value = payload['railToolsOnly'] == true;
       final savedInset = payload['bottomInset'];
       if (savedInset is num && savedInset.isFinite && savedInset >= 0) {
         _state._bottomInsetOverride.value = savedInset.toDouble();
       }
       _restoreBrushPresetView(payload['brushPresetView']);
-      if (openRails is List) {
-        // Filtered against the POOL, not taken on trust: a file written by
-        // a build with a different pool size would otherwise leave open
-        // ids that name nothing.
-        final known = {
-          ..._WorkspaceRail._railSlotIds(right: false),
-          ..._WorkspaceRail._railSlotIds(right: true),
-        };
-        _state._openRails = {
-          for (final id in openRails)
-            if (id is String && known.contains(id)) id,
-        };
-      }
+      _restoreOpenRails(payload['openRails']);
       _state._layout.restore(
         docks: restored.docks,
         dockExtents: restored.dockExtents,
@@ -134,6 +133,26 @@ class _WorkspaceLayoutPersistence {
     }
     _restoreTrackLaneHeight(payload[_storyboardTrackLaneHeightKey]);
     _state._brushDetailAt.value = _restoredPoint(payload[_brushDetailAtKey]);
+    return true;
+  }
+
+  /// The rails' open slots as the file kept them; absent, they stay as
+  /// they stand.
+  void _restoreOpenRails(Object? saved) {
+    if (saved is! List) {
+      return;
+    }
+    // Filtered against the POOL, not taken on trust: a file written by a
+    // build with a different pool size would otherwise leave open ids that
+    // name nothing.
+    final known = {
+      ..._WorkspaceRail._railSlotIds(right: false),
+      ..._WorkspaceRail._railSlotIds(right: true),
+    };
+    _state._openRails = {
+      for (final id in saved)
+        if (id is String && known.contains(id)) id,
+    };
   }
 
   /// The layout file's key for where the brush detail window was left.
@@ -227,6 +246,7 @@ class _WorkspaceLayoutPersistence {
     'openRails': _state._openRails.toList(),
     'regionOnTop': _state._regionOnTop,
     'brushValuesOnStrip': _state._brushValuesOnStrip.value,
+    'railToolsOnly': _state._railToolsOnly.value,
     'brushPresetView': _state._brushPresetView.value.toJson(),
     // Absent until the window has been moved, by the rail extents' rule.
     if (_state._brushDetailAt.value case final at?)

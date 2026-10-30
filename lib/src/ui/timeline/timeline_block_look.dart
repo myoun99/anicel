@@ -227,6 +227,12 @@ TimelineBlockFace timelineRowFaceOf(
 
 /// The look of what [layer]'s row draws in its colour label
 /// ([timelineRowFaceOf]), with words in [ink] — the block's own by default.
+///
+/// 🗣️I-143 (유저 2026-10-30): 「색라벨 진하게한거면 너무 진하니까 그냥
+/// 기존이랑 똑같이」 — on the light palette too the label is worn as it is,
+/// where it is drawn straight on the ground as well. ↩️-Q7 darkened those
+/// marks (keys, the line between them, the word over it) to stand 3:1
+/// there, as the accent does.
 TimelineBlockLook timelineRowLookOf(
   BuildContext context,
   Layer layer, {

@@ -1,5 +1,7 @@
 import 'package:flutter/widgets.dart';
 
+import 'wheel_law.dart' show wheelIsATouchsEcho;
+
 /// PEN-10: a scroll position that keeps its children HITTABLE through a
 /// coasting (ballistic/driven) activity while a pen is nearby.
 ///
@@ -46,6 +48,19 @@ class PenFriendlyScrollPosition extends ScrollPositionWithSingleContext {
   });
 
   bool _penNearby = false;
+
+  /// 🚨A WHEEL THAT A FINGER MADE IS NOBODY'S NOTCH ([wheelIsATouchsEcho]):
+  /// the scroller under the pointer still takes it — its [Scrollable] has
+  /// registered for it — and drops it. A sheet's pinch (F-506) zooms and
+  /// moves it with the fingers, and Windows sends the same pinch again as a
+  /// wheel at its centroid, which scrolled the rows under it.
+  @override
+  void pointerScroll(double delta) {
+    if (wheelIsATouchsEcho) {
+      return;
+    }
+    super.pointerScroll(delta);
+  }
 
   /// Marked by [StylusGlideStop] on stylus hover/down (cleared shortly
   /// after the pen's last event): while set, coasting activities stop

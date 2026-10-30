@@ -76,6 +76,23 @@ void main() {
     );
   });
 
+  // 🗣️I-89 (유저 2026-10-10): 「그리고 회전은 모아트기준대로 하자」.
+  test('a turn is written 回転, before the move it rides with', () {
+    CameraPose turned(double degrees, {double zoom = 1}) => CameraPose(
+      center: CanvasPoint(x: 0, y: 0),
+      zoom: zoom,
+      rotationDegrees: degrees,
+    );
+    final document = sheetOf({
+      2: at(0),
+      8: turned(30),
+      14: turned(60, zoom: 2),
+    });
+    final cells = document.columns[cameraColumnOf(document)].cells;
+
+    expect((cells[5].label, cells[11].label), ('回転', '回転 T.U'));
+  });
+
   test('a stretch of one row names its move on its first key', () {
     final document = sheetOf({
       2: at(0),

@@ -16,13 +16,13 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/commands/create_folder_command.dart';
 import 'package:anicel/src/services/commands/create_linked_cut_command.dart';
 import 'package:anicel/src/services/commands/cut_command_coordinator.dart';
 import 'package:anicel/src/services/editing/editing_session_state.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/services/project_repository.dart';
+import '../../helpers/a_folder_written_around_a_row.dart';
 
 void main() {
   const linkedCutId = CutId('linked-cut');
@@ -52,14 +52,12 @@ void main() {
       coveringFrameIdBySource: const {},
     ).execute();
     // The folder exists on the SOURCE cut only: the sibling never got one.
-    CreateFolderCommand(
-      repository: repository,
+    writeAFolderAround(
+      repository,
       cutId: source.id,
-      name: 'Folder',
-      memberLayerIds: [sourceLayer.id],
-      folderIdByCut: {source.id: folderId},
-      groupId: 'folder-group',
-    ).execute();
+      member: sourceLayer.id,
+      folderId: folderId,
+    );
   });
 
   test('a move into the unmirrored folder produces no sibling command', () {

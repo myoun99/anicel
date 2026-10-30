@@ -3,6 +3,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import '../helpers/a_folder_made_by_hand.dart';
 
 /// R9 #1 and #9 — the rows that are not ordinary cel rows.
 ///
@@ -26,7 +27,7 @@ void main() {
       final session = makeSession();
       session.createDrawingAtCurrentFrame();
       final member = session.activeLayer!;
-      session.folders.groupActiveLayerIntoFolder();
+      groupTheActiveRowIntoAFolder(session);
 
       final folder = session.layers.firstWhere(
         (layer) => layer.kind == LayerKind.folder,

@@ -46,7 +46,6 @@ import 'cut_command_input_planner.dart';
 import 'convert_to_linked_cut_command.dart';
 import 'convert_to_linked_cut_plan.dart';
 import 'create_cut_command.dart';
-import 'create_folder_command.dart';
 import 'create_linked_cut_command.dart';
 import 'dissolve_folder_command.dart';
 import 'link_mirror.dart'
@@ -161,20 +160,22 @@ class CutCommandCoordinator {
     // the classic anchor: right of the active cut, else the track's end.
     ({int? index, int leadingGapFrames, int? duration})? placement,
     CutId? cutId,
+    String? name,
   }) => _cuts.createCut(
     trackId: trackId,
     canvasSize: canvasSize,
     placement: placement,
     cutId: cutId,
+    name: name,
   );
 
-  /// The cut [createCut] would make with the same words, named [cutId] —
-  /// not made.
+  /// The cut [createCut] would make with the same words, named [cutId] (or
+  /// a fresh id) — not made.
   Cut plannedCut({
     required TrackId trackId,
     CanvasSize? canvasSize,
     ({int? index, int leadingGapFrames, int? duration})? placement,
-    required CutId cutId,
+    CutId? cutId,
   }) => _cuts
       .createCutCommand(
         trackId: trackId,
@@ -463,6 +464,9 @@ class CutCommandCoordinator {
   // library). The coordinator keeps the public commands as forwarders.
   _LinkCommands get _links => _LinkCommands(this);
 
+  ({String name, CanvasSize canvasSize}) plannedLinkedCut({
+    required CutId sourceCutId,
+  }) => _links.plannedLinkedCut(sourceCutId: sourceCutId);
   void createLinkedCut({required CutId sourceCutId, String? name}) =>
       _links.createLinkedCut(sourceCutId: sourceCutId, name: name);
   void unlinkLayer({required CutId cutId, required LayerId layerId}) =>
@@ -505,24 +509,6 @@ class CutCommandCoordinator {
   _FolderAndAttachmentCommands get _folders =>
       _FolderAndAttachmentCommands(this);
 
-  LayerId? createFolderFromLayer({
-    required CutId cutId,
-    required LayerId layerId,
-    String? name,
-  }) => _folders.createFolderFromLayer(
-    cutId: cutId,
-    layerId: layerId,
-    name: name,
-  );
-  LayerId? createAttachOrganizerFolder({
-    required CutId cutId,
-    required LayerId layerId,
-    String? name,
-  }) => _folders.createAttachOrganizerFolder(
-    cutId: cutId,
-    layerId: layerId,
-    name: name,
-  );
   void dissolveFolder({required CutId cutId, required LayerId folderId}) =>
       _folders.dissolveFolder(cutId: cutId, folderId: folderId);
   List<Command> layerAttachmentCommands({
@@ -654,9 +640,14 @@ class CutCommandCoordinator {
       );
       return;
     }
+    // ⚠️An organizer made by dropping an EMPTY folder on the group carries
+    // the relation on its own row (F-139), so it is one of [attachedRows]
+    // already — deleted twice, the second delete found nothing and threw.
     final organizerRows = [
       for (final row in cut.layers)
-        if (attachOrganizerBaseOf(row, cut.layers) == layerId) row,
+        if (row.attachedToLayerId != layerId &&
+            attachOrganizerBaseOf(row, cut.layers) == layerId)
+          row,
     ];
     historyManager.executeAsOneStep(
       'Delete layer ${layer.name} and its attach layers',
@@ -1322,7 +1313,7 @@ class CutCommandCoordinator {
         );
         if (mirrorFolder == null) {
           // The folder this row joined has no counterpart there — the
-          // structures have diverged, and folder_mirror's rule is to stand
+          // structures have diverged, and the mirrors' rule is to stand
           // down rather than guess.
           translatable = false;
           break;

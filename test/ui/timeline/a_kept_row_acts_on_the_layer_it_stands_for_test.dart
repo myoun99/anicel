@@ -609,6 +609,7 @@ Widget _panel(
           enlarge: (_) {},
           pen: (_) {},
           transformBox: (_) {},
+          snap: (_) {},
         ),
         onToggleLayerCollapsed: (id) => hear('fold', id),
         onToggleAttachGroup: (id) => hear('attach', id),

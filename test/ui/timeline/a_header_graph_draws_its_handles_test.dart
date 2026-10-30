@@ -63,6 +63,7 @@ void main() {
       },
       valueSourceAt: (frame) => (layer: row, frame: frame),
       poseCentre: const CanvasSize(width: 400, height: 300),
+      hasPlugin: null,
     );
     return (
       layer: row,
@@ -79,6 +80,7 @@ void main() {
   setUp(() {
     geometry = ValueNotifier(
       const TimelineFrameGeometry(
+        viewExtentPx: 48 * cell,
         frameCellExtent: cell,
         frameStartIndex: 0,
         frameEndIndexExclusive: 48,
@@ -105,9 +107,10 @@ void main() {
     frameAxis: (
       geometry: geometry,
       windowBucket: bucket,
-      viewportMainExtent: 48 * cell,
       axis: axis,
       laneExtent: timelineLayerRowHeight,
+      playhead: null,
+      frameCount: 0,
     ),
   );
 
@@ -206,6 +209,7 @@ void main() {
 
     bucket.value = 0;
     geometry.value = const TimelineFrameGeometry(
+      viewExtentPx: 48 * cell,
       frameCellExtent: cell,
       frameStartIndex: 0,
       frameEndIndexExclusive: 15,
@@ -231,6 +235,7 @@ void main() {
     // A zoom the window does not see: the cut's 48 frames bound it at
     // either zoom.
     geometry.value = const TimelineFrameGeometry(
+      viewExtentPx: 48 * cell,
       frameCellExtent: 14,
       frameStartIndex: 0,
       frameEndIndexExclusive: 48,

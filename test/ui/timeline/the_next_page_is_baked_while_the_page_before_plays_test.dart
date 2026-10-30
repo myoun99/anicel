@@ -88,6 +88,7 @@ void main() {
   }) => TimelineRowCellsPainter(
     layer: rowLayer(id, length: length),
     geometry: testFrameGeometry(
+      viewExtentPx: viewport,
       frameCellExtent: cell,
       frameEndIndexExclusive: builtFrames,
     ),
@@ -98,7 +99,6 @@ void main() {
     tileStore: store,
     substrateGeneration: 'warm',
     windowBucket: bucket,
-    viewportMainExtent: viewport,
     nextPage: nextPage ?? () => turnFrom(bucket),
   );
 
@@ -238,6 +238,7 @@ void main() {
     final unbucketed = TimelineRowCellsPainter(
       layer: rowLayer('whole'),
       geometry: testFrameGeometry(
+        viewExtentPx: viewport,
         frameCellExtent: cell,
         frameEndIndexExclusive: frames,
       ),
@@ -246,7 +247,6 @@ void main() {
       colorScheme: const ColorScheme.dark(),
       baseTextStyle: const TextStyle(fontSize: 11),
       tileStore: store,
-      viewportMainExtent: viewport,
       nextPage: () => turnFrom(bucket),
     );
     expect(

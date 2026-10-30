@@ -28,6 +28,8 @@ class ConteCellSource {
     this.inkId,
     this.action = '',
     this.camera,
+    this.cameraLines = const [],
+    this.transitionLines = const [],
   });
 
   /// Cut-LOCAL frames.
@@ -53,6 +55,15 @@ class ConteCellSource {
   /// decides how much of the sheet the cell's picture takes and what is
   /// drawn over it.
   final ConteCameraWork? camera;
+
+  /// What the camera does while the cell is on, as its ACTION column writes
+  /// it over the words typed there — a line to each move and each stretch
+  /// it stands still, `PAN (0+11)` (`conteCameraStretches`, I-93).
+  final List<String> cameraLines;
+
+  /// The transitions the cell's ACTION column writes under [cameraLines] —
+  /// `c1 × c2 カットO.L (1+0)` (`conteTransitionLine`, I-93-Q1).
+  final List<String> transitionLines;
 
   int get lengthFrames => endFrameExclusive - startFrame;
 }
@@ -200,6 +211,7 @@ class ConteSheetSource {
     this.framesPerSecond = 24,
     this.cover = true,
     this.blankPage = true,
+    this.fixedText = true,
   });
 
   final List<ConteCutSource> cuts;
@@ -229,6 +241,12 @@ class ConteSheetSource {
   /// the same front.
   final bool cover;
   final bool blankPage;
+
+  /// Whether a cell writes its camera's lines and its transitions over its
+  /// ACTION words ([ConteCellSource.cameraLines] ·
+  /// [ConteCellSource.transitionLines]) — the work's choice
+  /// (`TimesheetInfo.conteFixedText`), read here for the same reason.
+  final bool fixedText;
 
   /// The cut [cutId] names. Every cut a layout placed is here.
   ConteCutSource cutById(String cutId) =>

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/progress_share.dart';
 import '../../models/cut.dart';
+import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/pasteboard_bounds.dart' show PasteboardWall;
@@ -127,24 +128,34 @@ Future<void> mergeBlocks(
 }
 
 /// Each of [plan]'s pictures drawn of the cut it is made from, laid on its
-/// new cel.
+/// new cel in the cut that keeps it ([LayerMergePicture.into]) — a merge
+/// of a track's conte rows lays each cut's own (I-78-Q20), one cut's after
+/// another's.
 Future<void> _layPictures(
   EditorSessionManager session,
   LayerMergePlan plan,
   void Function(double) report,
 ) async {
-  final laying = _Laying(session, plan.cut);
-  try {
-    for (final (index, picture) in plan.pictures.indexed) {
-      await laying.lay(
-        picture.rowId,
-        picture.frameId,
-        await laying.draw(picture.from, picture.frameIndex),
-      );
-      report(doneShare(index + 1, plan.pictures.length));
+  final byCut = <CutId, List<LayerMergePicture>>{};
+  for (final picture in plan.pictures) {
+    (byCut[picture.into.id] ??= []).add(picture);
+  }
+  var laid = 0;
+  for (final pictures in byCut.values) {
+    final laying = _Laying(session, pictures.first.into);
+    try {
+      for (final picture in pictures) {
+        await laying.lay(
+          picture.rowId,
+          picture.frameId,
+          await laying.draw(picture.from, picture.frameIndex),
+        );
+        laid += 1;
+        report(doneShare(laid, plan.pictures.length));
+      }
+    } finally {
+      laying.dispose();
     }
-  } finally {
-    laying.dispose();
   }
 }
 

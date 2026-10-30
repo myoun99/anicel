@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/app_window.dart' show AppWindowField;
+import 'package:anicel/src/ui/widgets/window_number.dart';
 
 import '../../helpers/home_page_probes.dart';
 
@@ -19,7 +20,8 @@ import '../../helpers/home_page_probes.dart';
 ///
 /// The N button's window, as the button opens it: titled with what the
 /// press re-times, its field bare under that title, opened on the length
-/// already there with all of it selected.
+/// already there — either way it is given, each number the window number
+/// (F-507-Q1) showing its part.
 void main() {
   const nButton = ValueKey<String>('set-comma-n-button');
 
@@ -44,23 +46,22 @@ void main() {
     AppText.strings.windowTitleOn(AppText.strings.setLengthAction, target),
   );
 
-  TextEditingValue valueOf(WidgetTester tester, String key) => tester
-      .widget<TextField>(find.byKey(ValueKey<String>(key)))
-      .controller!
-      .value;
-
-  TextEditingValue allSelected(String text) => TextEditingValue(
-    text: text,
-    selection: TextSelection(baseOffset: 0, extentOffset: text.length),
-  );
+  String shown(WidgetTester tester, String key) => tester
+      .widget<Text>(
+        find.descendant(
+          of: find.byKey(ValueKey<String>(key)),
+          matching: find.byType(Text),
+        ),
+      )
+      .data!;
 
   Future<void> cancel(WidgetTester tester) async {
     await tester.tap(find.text(AppText.strings.commonCancel));
     await tester.pumpAndSettle();
   }
 
-  testWidgets('on a cel: a frame\'s length, opened on its length with all '
-      'of it selected — either way it is typed', (tester) async {
+  testWidgets('on a cel: a frame\'s length, opened on its length — either '
+      'way it is given', (tester) async {
     final s = await pumpHome(tester);
     s.selectFrameIndex(0);
     s.createDrawingAtCurrentFrame();
@@ -70,13 +71,10 @@ void main() {
 
     await tapToolbarButton(tester, nButton);
     expect(titledFor(AppText.strings.tlFrame), findsOneWidget);
-    expect(valueOf(tester, 'set-comma-n-field'), allSelected('${fps + 2}'));
+    expect(shown(tester, 'set-comma-n-field'), '${fps + 2}');
     expect(
-      find.descendant(
-        of: find.byType(AppWindowField),
-        matching: find.byType(Text),
-      ),
-      findsNothing,
+      tester.widget<AppWindowField>(find.byType(AppWindowField)).label,
+      isNull,
       reason: '「노출 프레임수라는 텍스트 필요없어보임」',
     );
     await cancel(tester);
@@ -85,8 +83,8 @@ void main() {
       lastEntry: FrameCountEntry.secondsPlusFrames,
     );
     await tapToolbarButton(tester, nButton);
-    expect(valueOf(tester, 'set-comma-n-seconds-field'), allSelected('1'));
-    expect(valueOf(tester, 'set-comma-n-koma-field'), allSelected('2'));
+    expect(shown(tester, 'set-comma-n-seconds-field'), '1');
+    expect(shown(tester, 'set-comma-n-koma-field'), '2');
     await cancel(tester);
     s.playbackRig.prerenderScheduler.cancel();
   });
@@ -101,8 +99,8 @@ void main() {
     await tapToolbarButton(tester, nButton);
     expect(titledFor(AppText.strings.tlCut), findsOneWidget);
     expect(
-      valueOf(tester, 'set-comma-n-field'),
-      allSelected('${s.requireActiveCut.duration}'),
+      shown(tester, 'set-comma-n-field'),
+      '${s.requireActiveCut.duration}',
     );
     await cancel(tester);
     s.playbackRig.prerenderScheduler.cancel();
@@ -119,13 +117,13 @@ void main() {
 
     await tapToolbarButton(tester, nButton);
     expect(titledFor(AppText.strings.tlKindTransition), findsOneWidget);
-    expect(valueOf(tester, 'set-comma-n-field'), allSelected('1'));
+    expect(shown(tester, 'set-comma-n-field'), '1');
     await cancel(tester);
     s.playbackRig.prerenderScheduler.cancel();
   });
 
-  testWidgets('a band over a cel and a sound names both, and opens empty '
-      'where their lengths differ', (tester) async {
+  testWidgets('a band over a cel and a sound names both, and opens on no '
+      'number where their lengths differ', (tester) async {
     final s = await pumpHome(tester);
     final sound = s.activeTrack.seLayers.first.id;
     s.selectLayer(sound);
@@ -151,7 +149,10 @@ void main() {
       titledFor('${strings.tlFrame} · ${strings.tlKindSe}'),
       findsOneWidget,
     );
-    expect(valueOf(tester, 'set-comma-n-field').text, isEmpty);
+    expect(
+      shown(tester, 'set-comma-n-field'),
+      WindowNumber.noAgreedNumber,
+    );
     await cancel(tester);
     s.playbackRig.prerenderScheduler.cancel();
   });

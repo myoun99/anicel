@@ -1,38 +1,24 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/models/attached_placement.dart';
-import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
-import 'package:anicel/src/models/cut.dart';
-import 'package:anicel/src/services/editing/editing_session_state.dart';
-import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/session/active_cut_edits.dart';
-import 'package:anicel/src/ui/session/session_roles.dart';
 import '../../helpers/pill_row_clipboard.dart';
 
-/// FOUR VERBS, ONE ENVELOPE: gate, take the ACTIVE row's id, run one
-/// coordinator command keyed by (cutId, layerId), then refresh KEEPING
-/// THAT ROW ACTIVE and notify.
+/// THE ROW YOU ACTED ON STAYS ACTIVE: unlinking a row leaves you standing
+/// on it.
 ///
-/// The trailing step is the one that goes missing when the envelope is
-/// written out four times — the cut left/right verbs (gone since F-455)
-/// carried a comment recording exactly that loss. Pinned here for all four
-/// before they were folded onto one call.
-///
-/// ↩️Two of the four have left it since: 링크 해제 went to the link window
-/// (I-25), and 링크 복제 is the shared pill's linked PASTE (I-77), which
-/// stands on what it put down as a paste does. The unlink pin below stays,
-/// for the row verb the window presses.
+/// ↩️Four verbs once shared one envelope — gate, take the ACTIVE row's id,
+/// run one coordinator command, then refresh KEEPING THAT ROW ACTIVE — and
+/// this file pinned the envelope for all four. They have all left it: 링크
+/// 해제 went to the link window (I-25), 링크 복제 is the shared pill's
+/// linked PASTE (I-77), and 폴더 생성 · 공정 폴더 생성 went with their menu
+/// entries (R5 #14) — a folder is made empty and filled by a drop
+/// (layer-menu-strings-outlive-their-entries-Q3). The unlink pin stays, for
+/// the row verb the window presses.
 void main() {
-  EditorSessionManager session() {
+  test('unlink leaves you standing on the row you unlinked', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
-    return s;
-  }
-
-  test('unlink leaves you standing on the row you unlinked', () {
-    final s = session();
     final layer = s.layers.firstWhere((l) => l.kind == LayerKind.animation).id;
     s.selectLayer(layer);
     linkDuplicateActiveRow(s);
@@ -47,172 +33,4 @@ void main() {
 
     expect(s.activeLayerId, layer);
   });
-
-  test('폴더 생성 leaves you on the LAYER, not on the folder it made', () {
-    final s = session();
-    final layer = s.layers.firstWhere((l) => l.kind == LayerKind.animation).id;
-    s.selectLayer(layer);
-    expect(s.folders.canGroupActiveLayerIntoFolder, isTrue);
-
-    s.folders.groupActiveLayerIntoFolder();
-
-    expect(s.activeLayerId, layer);
-    expect(
-      s.requireActiveCut.layers.any((l) => l.kind == LayerKind.folder),
-      isTrue,
-      reason: 'premise: the folder really was made',
-    );
-  });
-
-  test('공정 폴더 생성 leaves you on the ATTACH row', () {
-    final s = session();
-    s.createDrawingAtCurrentFrame();
-    s.folders.addAttachedLayer(AttachedPlacement.above);
-    final attach = s.activeLayer!.id;
-    expect(s.folders.canGroupActiveAttachIntoFolder, isTrue);
-
-    s.folders.groupActiveAttachIntoFolder();
-
-    expect(s.activeLayerId, attach);
-    expect(
-      s.requireActiveCut.layers.firstWhere((l) => l.id == attach).folderId,
-      isNotNull,
-      reason: 'premise: the organizer really wrapped it',
-    );
-  });
-
-  /// The envelope names the row it STARTED on, not whatever the selection
-  /// happens to be after the command ran. Today the two coincide —
-  /// `refreshAfterCutCommand` falls back to `activeLayerId` — so the four
-  /// verbs above cannot tell the difference; this drives the envelope
-  /// directly, where they can.
-  test('the refresh is told the row the verb started on', () {
-    final s = session();
-    final rows = s.requireActiveCut.layers;
-    final first = rows.first;
-    final second = rows.last;
-    expect(first.id, isNot(second.id), reason: 'premise: two rows');
-
-    final selection = _StandingOn(first);
-    final changes = _RecordingChanges();
-    final edits = ActiveCutEdits(
-      project: s,
-      timeline: _OneCut(s.requireActiveCut),
-      selection: selection,
-      changes: changes,
-    );
-
-    var ran = 0;
-    edits.onActiveLayer(
-      when: true,
-      command: (cutId, layerId) {
-        ran += 1;
-        expect(layerId, first.id);
-        expect(cutId, s.requireActiveCut.id);
-        // The command re-seats the selection, as a cut command may.
-        selection.standing = second;
-      },
-    );
-
-    expect(ran, 1);
-    expect(
-      changes.preferred,
-      first.id,
-      reason: '⛔the row the verb acted on, not the one left standing',
-    );
-    expect(changes.refreshes, 1);
-    expect(changes.notifies, 1);
-  });
-
-  test('a closed gate runs nothing at all — no command, no refresh, no '
-      'notify', () {
-    final s = session();
-    final changes = _RecordingChanges();
-    final edits = ActiveCutEdits(
-      project: s,
-      timeline: _OneCut(s.requireActiveCut),
-      selection: _StandingOn(s.requireActiveCut.layers.first),
-      changes: changes,
-    );
-
-    edits.onActiveLayer(when: false, command: (_, _) => fail('gated out'));
-
-    expect(changes.refreshes, 0);
-    expect(changes.notifies, 0);
-  });
-
-  test('a closed gate on a real verb changes nothing', () {
-    final s = session();
-    final instruction = s.layers
-        .where((l) => l.kind != LayerKind.animation)
-        .map((l) => l.id)
-        .firstOrNull;
-    if (instruction == null) {
-      return; // The default project has only animation rows here.
-    }
-    s.selectLayer(instruction);
-    final before = s.requireActiveCut.layers.length;
-
-    if (!s.folders.canGroupActiveLayerIntoFolder) {
-      s.folders.groupActiveLayerIntoFolder();
-      expect(s.requireActiveCut.layers.length, before);
-      expect(s.activeLayerId, LayerId(instruction.value));
-    }
-  });
-}
-
-/// Only [activeLayer] is read by the envelope; the rest of the role is
-/// forwarded so the fake does not have to restate an interface it is not
-/// about.
-class _StandingOn implements SelectionAccess {
-  _StandingOn(this.standing);
-
-  Layer standing;
-
-  @override
-  Layer? get activeLayer => standing;
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
-
-/// The envelope reads the cut id in ONE place — the editing session's
-/// `activeCutId` — for the row arm as much as for the cut arms.
-class _OneCut implements TimelineAccess {
-  _OneCut(this._cut);
-
-  final Cut _cut;
-
-  @override
-  EditingSessionState get editingSession =>
-      EditingSessionState(activeCutId: _cut.id);
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
-
-class _RecordingChanges implements ChangeSink {
-  LayerId? preferred;
-  int refreshes = 0;
-  int notifies = 0;
-
-  @override
-  void notifyChanged() => notifies += 1;
-
-  @override
-  void refreshAfterCutCommand({
-    LayerId? preferredActiveLayerId,
-    int? preferredFrameIndex,
-    bool reveal = false,
-    bool filterSparesStanding = true,
-  }) {
-    refreshes += 1;
-    preferred = preferredActiveLayerId;
-  }
-
-  @override
-  void refreshLiveAudioSchedule() {}
-
-  @override
-  void warmActiveCut() {}
 }

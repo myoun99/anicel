@@ -66,6 +66,7 @@ void main() {
       },
       valueSourceAt: (frame) => (layer: layer, frame: frame),
       poseCentre: const CanvasSize(width: 400, height: 300),
+      hasPlugin: null,
     );
     return (
       layer: layer,
@@ -98,6 +99,7 @@ void main() {
   setUp(() {
     geometry = ValueNotifier(
       const TimelineFrameGeometry(
+        viewExtentPx: 48 * cell,
         frameCellExtent: cell,
         frameStartIndex: 0,
         frameEndIndexExclusive: 48,
@@ -141,9 +143,10 @@ void main() {
               frameAxis: (
                 geometry: geometry,
                 windowBucket: bucket,
-                viewportMainExtent: 48 * cell,
                 axis: Axis.horizontal,
                 laneExtent: timelineLayerRowHeight,
+                playhead: null,
+                frameCount: 0,
               ),
               edits: null,
               mode: LaneGraphMode.value,
@@ -512,9 +515,10 @@ void main() {
         frameAxis: (
           geometry: geometry,
           windowBucket: bucket,
-          viewportMainExtent: 48 * cell,
           axis: Axis.horizontal,
           laneExtent: timelineLayerRowHeight,
+          playhead: null,
+          frameCount: 0,
         ),
         box: box,
         transformBox: transformBox,

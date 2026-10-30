@@ -192,7 +192,6 @@ StoryboardCutBlocksPainter storyboardCutBlocksPainterFor({
   required double devicePixelRatio,
   ValueListenable<int>? windowBucket,
   Set<CutId> linkedCutIds = const {},
-  double viewportMainExtent = 0,
 }) => StoryboardCutBlocksPainter(
   entries: entries,
   // The STRIP's content: the cut's panels, under the coverage rule — the
@@ -213,7 +212,6 @@ StoryboardCutBlocksPainter storyboardCutBlocksPainterFor({
   thumbnails: thumbnails,
   devicePixelRatio: devicePixelRatio,
   windowBucket: windowBucket,
-  viewportMainExtent: viewportMainExtent,
 );
 
 /// The hover channel for hosts that have no pointer to hover with — a
@@ -284,7 +282,6 @@ class StoryboardCutBlocksPainter extends CustomPainter
     this.thumbnails,
     required this.devicePixelRatio,
     this.windowBucket,
-    this.viewportMainExtent = 0,
   }) : super(
          repaint: Listenable.merge([
            geometry,
@@ -352,7 +349,10 @@ class StoryboardCutBlocksPainter extends CustomPainter
   final double devicePixelRatio;
 
   final ValueListenable<int>? windowBucket;
-  final double viewportMainExtent;
+
+  /// How far the view reaches along the frames — the live geometry's, so a
+  /// widened view repaints the strip ([TimelineFrameGeometry.viewExtentPx]).
+  double get viewportMainExtent => geometry.value.viewExtentPx;
 
   static const double _padding = 4;
 
@@ -1026,7 +1026,6 @@ class StoryboardCutBlocksPainter extends CustomPainter
     countingBase,
     showThumbnails,
     devicePixelRatio,
-    viewportMainExtent,
   );
 
   // 🚨ONLY WHAT THE SENTENCE READS (I-57, 10-14) — where a block lies and

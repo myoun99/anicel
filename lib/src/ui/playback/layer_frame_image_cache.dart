@@ -55,11 +55,22 @@ class LayerFrameImageCache {
   });
 
   /// Whether [storedSurfaceOrNull] would read nothing for [key]: its stored
-  /// pixels at [canvasSize] are read and laid out already.
+  /// pixels at [canvasSize] are read and laid out already — or it is a
+  /// movie's, decoded at [canvasSize].
+  ///
+  /// 🐞A DECODED MOVIE IS IN HAND, though banked nowhere: its picture is
+  /// the movie tier's (`BrushFrameStore.storeRebuiltDisplayCache` keeps no
+  /// copy), and [storedSurfaceOrNull] hands it over at once. ↩️Asked of the
+  /// bank alone until 2026-10-30, a movie was never in hand — and left out
+  /// of the frame as it stands (`FramePictures.frameAsItStands`), the body
+  /// a step on a row above it is patched into the frame's picture by
+  /// (저장's hand-over on the 23.976 `.mov` card, read in the code).
   bool storedSurfaceIsInHand(
     BrushFrameKey key, {
     required CanvasSize canvasSize,
-  }) => _previews(canvasSize).preparedFramePreviewOrNull(key) != null;
+  }) =>
+      _previews(canvasSize).preparedFramePreviewOrNull(key) != null ||
+      frameStore.hasMovieCel(key, canvasSize);
 
   BrushFrameDisplayCacheService _previews(CanvasSize canvasSize) =>
       BrushFrameDisplayCacheService(

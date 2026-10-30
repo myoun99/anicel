@@ -1,10 +1,11 @@
 import 'dart:ui' show Offset;
 
+import '../../models/fx_plugin_description.dart';
 import '../../models/key_mark.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
-import '../../models/transform_track.dart' show TransformPose, laneWalksAPath;
+import '../../models/transform_track.dart' show TransformPose;
 import '../text/app_strings.dart';
 import '../text/model_vocabulary.dart';
 import '../text/readout_text.dart';
@@ -63,23 +64,6 @@ String effectLaneId(EffectId effectId, String parameterId) =>
   );
 }
 
-/// Whether the keys of effect lane [laneId] walk a path: where an effect
-/// stands its picture, and a point — a Position of its own — as a
-/// transform's Position does ([laneWalksAPath]); a parameter's never do.
-/// Asked of the id alone, as a copy's lanes and a range's are — no
-/// parameter is named as such a lane is ([effectStandLanes],
-/// [effectPointParameters]).
-bool effectLaneWalksAPath(String laneId) =>
-    switch (parseEffectLaneId(laneId)) {
-      (effectId: _, parameterId: final lane?)
-          when effectStandLanes.contains(lane) =>
-        laneWalksAPath(lane),
-      (effectId: _, parameterId: final lane?)
-          when effectPointParameters.contains(lane) =>
-        laneWalksAPath('position'),
-      _ => false,
-    };
-
 /// The effect of [effects] the CANVAS's box drives while [laneId] is stood
 /// on, and the [lane] of it whose keys the box moves — R5 #10, 「an fx
 /// declares its own manipulators」 (`canvasManipulatorsForLane`): an
@@ -137,6 +121,11 @@ bool effectLaneWalksAPath(String laneId) =>
 /// [cutRows] are the rows a row parameter ([EffectParameterUnit.layer])
 /// may name: the cut's — 🗣️I-132-Q16 a 「같은 컷의 행」 — none for a
 /// track's chain, which is no cut's.
+///
+/// [hasPlugin] says whether this device has the plugin an effect is of
+/// (`InstalledFxPlugins.has`) — the header of one it has not greys
+/// ([PropertyLaneRow.pluginNotOnDevice]). Null on a rail that is not told
+/// the device's plugins: its headers read as the app's own.
 List<PropertyLaneRow> effectPropertyLanes(
   List<LayerEffect> effects, {
   List<Layer> cutRows = const [],
@@ -145,6 +134,7 @@ List<PropertyLaneRow> effectPropertyLanes(
   valueAt,
   TransformPose Function(EffectId effectId, String lane, double time)?
   standAt,
+  bool Function(FxPluginDescription plugin)? hasPlugin,
 }) {
   if (effects.isEmpty) {
     return const [];
@@ -159,12 +149,16 @@ List<PropertyLaneRow> effectPropertyLanes(
         // F-37 (유저 2026-09-15, F-37-Q1: 「전부 번역 — 레인 이름도
         // 한국어로」): the effect's name in the program language — the same
         // words its Add entry reads.
-        label: effect.kind.labelFor(AppText.language),
+        label: effect.labelFor(AppText.language),
         // AE's per-effect eyeball: the header carries this effect's own
         // on/off switch as the shared `fx` glyph. A bypassed effect keeps
         // its keys and says so HERE, rather than looking like a broken
         // parameter.
         groupEnabled: effect.enabled,
+        pluginNotOnDevice: switch ((effect.plugin, hasPlugin)) {
+          (final plugin?, final has?) => !has(plugin),
+          _ => false,
+        },
         // The header carries its members' key union (UI-R20 #13), so one
         // glance finds the effect's keys while it stays collapsed — with
         // the marks they wear and the names they carry, the same unions the
@@ -183,7 +177,7 @@ List<PropertyLaneRow> effectPropertyLanes(
     if (effect.kind.drawsItsOwnPicture) {
       rows.addAll(_standLanes(effect, standAt));
     }
-    for (final (index, spec) in effect.kind.parameters.indexed) {
+    for (final (index, spec) in effect.specs.indexed) {
       // A point is a Position of its own: the transform's row of it.
       if (effect.points[spec.id] case final point?) {
         final lane = spec.id;

@@ -725,6 +725,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       projectFrameRate: widget.projectFrameRate,
       showSeconds: widget.showSeconds,
       onShowSecondsChanged: widget.onShowSecondsChanged,
+      onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
       onDropMediaAssetOnSeBlock: widget.onDropMediaAssetOnSeBlock,
       onDropMediaAssetOnLayer: widget.onDropMediaAssetOnLayer,
       acceptsMediaAssetOnLayer: widget.acceptsMediaAssetOnLayer,

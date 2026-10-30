@@ -19,6 +19,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_conte_laying.dart' show isConteFill;
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import '../../helpers/a_folder_made_by_hand.dart';
 
 /// 🗣️F-343 (유저 2026-10-14): 「콘티행을 확실하게 글로벌행으로」 — the
 /// track's conte structure, as the session's verbs and its history meet it.
@@ -159,7 +160,7 @@ void main() {
       final before = projectOf(session);
       standOn(session, 'a', 'a-over');
 
-      session.folders.groupActiveAttachIntoFolder();
+      groupTheActiveAttachIntoAFolder(session);
       expect(
         [
           for (final layer in cutIn(session, 'b').layers)

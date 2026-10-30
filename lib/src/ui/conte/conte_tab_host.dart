@@ -40,6 +40,7 @@ import '../timeline/memo_token.dart' show ByIdentity;
 import '../dialogs/conte_format_window.dart';
 import '../dialogs/dialog_verb.dart';
 import '../text/app_strings.dart';
+import '../timesheet/cut_sheet_document.dart' show sheetOlWord;
 import '../widgets/app_icon_button.dart';
 import '../widgets/page_turn_bar.dart' show viewerPage;
 import 'conte_book_page.dart';
@@ -292,20 +293,23 @@ class _ConteTabHostState extends State<ConteTabHost> {
   (ConteSheetSource, List<ContePageLayout>) _resolveSheet() {
     final project = _session.repository.requireProject();
     final aspect = _session.camera.cameraFrameAspect;
+    final olWord = sheetOlWord(_session);
     return _sheet.resolve(
       identity: project,
-      key: aspect,
-      build: () => _laidOut(project, aspect),
+      key: (aspect, olWord),
+      build: () => _laidOut(project, aspect, olWord: olWord),
     );
   }
 
   /// [project] as the conte prints it, cells shaped by the camera's
-  /// [aspect]: the source it reads, and the book it lays.
+  /// [aspect] and an O.L printed as [olWord]: the source it reads, and the
+  /// book it lays.
   static (ConteSheetSource, List<ContePageLayout>) _laidOut(
     Project project,
-    double aspect,
-  ) {
-    final source = buildConteSheetSource(project);
+    double aspect, {
+    required String olWord,
+  }) {
+    final source = buildConteSheetSource(project, olWord: olWord);
     return (
       source,
       layoutConteBook(
@@ -441,16 +445,18 @@ class _ConteTabHostState extends State<ConteTabHost> {
   ) {
     final project = _session.repository.requireProject();
     final aspect = _session.camera.cameraFrameAspect;
+    final olWord = sheetOlWord(_session);
     final next = _nextSheet.resolve(
       identity: project,
-      key: (aspect, _session.activeCutOrNull?.canvasSize),
+      key: (aspect, _session.activeCutOrNull?.canvasSize, olWord),
       build: () {
         final next = _session.autoFrame.nextConteCut();
         if (next == null) {
           return null;
         }
         final withNext = _withCutAtTheEnd(project, next.trackId, next.cut);
-        return (project: withNext, pages: _laidOut(withNext, aspect).$2);
+        final pages = _laidOut(withNext, aspect, olWord: olWord).$2;
+        return (project: withNext, pages: pages);
       },
     );
     return next == null
@@ -491,6 +497,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
           outlined: info.conteOutlined,
           cover: info.conteCover,
           blankPage: info.conteBlankPage,
+          fixedText: info.conteFixedText,
         ),
       ),
       commit: (format) => _session.updateTimesheetInfo(
@@ -499,6 +506,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
           conteOutlined: format.outlined,
           conteCover: format.cover,
           conteBlankPage: format.blankPage,
+          conteFixedText: format.fixedText,
         ),
       ),
     );

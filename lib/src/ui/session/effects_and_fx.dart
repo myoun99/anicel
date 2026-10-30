@@ -1,6 +1,7 @@
 import '../../models/attached_layer_resolve.dart'
     show attachRowWearsBaseComposite;
 import '../../models/cut_id.dart';
+import '../../models/fx_plugin_description.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
@@ -104,28 +105,64 @@ class EffectsAndFx {
   /// SE row's active row is its cut's projection, whose keys sit on the
   /// cut's frames — appending to that would write them back onto the
   /// track's row at the wrong frames.
-  void addEffectToActiveLayer(EffectKind kind) {
+  void addEffectToActiveLayer(
+    EffectKind kind, {
+    FxPluginDescription? plugin,
+  }) {
     if (canAddEffectToActiveLayer(kind)) {
       _appendToActiveLayer([
-        (id) => LayerEffect.defaults(id: id, kind: kind),
-      ], description: 'Add ${kind.label}');
+        (id) => LayerEffect.defaults(id: id, kind: kind, plugin: plugin),
+      ], description: 'Add ${LayerEffect.labelOf(kind, plugin)}');
     }
   }
 
-  /// Whether the active row takes any of [effects] — each by the gate an
-  /// add of its kind keeps ([canAddEffectToActiveLayer]).
-  bool canAddEffectCopiesToActiveLayer(List<LayerEffect> effects) =>
-      effects.any((effect) => canAddEffectToActiveLayer(effect.kind));
+  /// Whether [holder]'s chain can take an effect of [kind] — the active
+  /// row's gate or the V row's.
+  bool canAddEffect(EffectChainHolder holder, EffectKind kind) =>
+      switch (holder) {
+        ActiveRowChain() => canAddEffectToActiveLayer(kind),
+        TrackChain(:final trackId) => canAddEffectToTrack(trackId, kind),
+      };
+
+  /// Adds an effect of [kind] to [holder]'s chain — of [plugin], for a
+  /// plugin's ([EffectKind.plugin]).
+  void addEffect(
+    EffectChainHolder holder,
+    EffectKind kind, {
+    FxPluginDescription? plugin,
+  }) => switch (holder) {
+    ActiveRowChain() => addEffectToActiveLayer(kind, plugin: plugin),
+    TrackChain(:final trackId) => addEffectToTrack(
+      trackId,
+      kind,
+      plugin: plugin,
+    ),
+  };
+
+  /// Whether [holder]'s chain takes any of [effects] — each by the gate an
+  /// add of its kind keeps ([canAddEffect]).
+  bool canAddEffectCopies(
+    EffectChainHolder holder,
+    List<LayerEffect> effects,
+  ) => effects.any((effect) => canAddEffect(holder, effect.kind));
 
   /// 🗣️F-476-Q1 (유저 2026-10-27, 「b + 복제도」): a paste of effects is an
-  /// ADD of them — each the active row takes, a copy under an id of its
+  /// ADD of them — each [holder]'s chain takes, a copy under an id of its
   /// own, at the end of its chain, shown as an add shows it. One undo.
-  void addEffectCopiesToActiveLayer(List<LayerEffect> effects) =>
-      _appendToActiveLayer([
-        for (final effect in effects)
-          if (canAddEffectToActiveLayer(effect.kind))
-            (id) => effect.copyWith(id: id),
-      ], description: 'Paste effects');
+  void addEffectCopies(EffectChainHolder holder, List<LayerEffect> effects) {
+    final made = [
+      for (final effect in effects)
+        if (canAddEffect(holder, effect.kind))
+          (EffectId id) => effect.copyWith(id: id),
+    ];
+    const description = 'Paste effects';
+    switch (holder) {
+      case ActiveRowChain():
+        _appendToActiveLayer(made, description: description);
+      case TrackChain(:final trackId):
+        _appendToTrack(trackId, made, description: description);
+    }
+  }
 
   /// Appends what [made] makes, each under an id minted for the row, to the
   /// active row's chain, and shows them ([showEffects]) — one undo.
@@ -390,37 +427,56 @@ class EffectsAndFx {
     _changes.notifyChanged();
   }
 
-  /// Adds an effect to the V row's chain. Its id is minted as a layer's is
-  /// ([mintEffectId]) — off the TRACK id, since that is what carries the
-  /// chain.
-  /// Shown as a layer's is: the row's lanes — its lane carrier's — and
-  /// the effect's header open in the same undo step (F-396).
-  ///
-  /// A kind that draws a cel number ([EffectKind.drawsItsOwnPicture]) is
-  /// not taken, by the law the row gate keeps ([canAddEffectToActiveLayer]):
-  /// the V row has no drawing whose number the letters would print.
-  void addEffectToTrack(TrackId trackId, EffectKind kind) {
+  /// Whether [trackId]'s V row can take an effect of [kind]: a track that
+  /// is there, and not a kind that draws a cel number
+  /// ([EffectKind.drawsItsOwnPicture]), by the law the row gate keeps
+  /// ([canAddEffectToActiveLayer]): the V row has no drawing whose number
+  /// the letters would print.
+  bool canAddEffectToTrack(TrackId trackId, EffectKind kind) =>
+      _project.trackById(trackId) != null && !kind.drawsItsOwnPicture;
+
+  /// Adds an effect to the V row's chain, as [addEffectToActiveLayer] does
+  /// to a layer's.
+  void addEffectToTrack(
+    TrackId trackId,
+    EffectKind kind, {
+    FxPluginDescription? plugin,
+  }) {
+    if (canAddEffectToTrack(trackId, kind)) {
+      _appendToTrack(trackId, [
+        (id) => LayerEffect.defaults(id: id, kind: kind, plugin: plugin),
+      ], description: 'Add ${LayerEffect.labelOf(kind, plugin)}');
+    }
+  }
+
+  /// Appends what [made] makes to [trackId]'s chain, as
+  /// [_appendToActiveLayer] does to the active row's. The ids are minted off
+  /// the TRACK id, since that is what carries the chain, and the effects are
+  /// shown on the row's lane carrier ([trackTransformLaneCarrierId]).
+  void _appendToTrack(
+    TrackId trackId,
+    List<LayerEffect Function(EffectId id)> made, {
+    required String description,
+  }) {
     final track = _project.trackById(trackId);
-    if (track == null || kind.drawsItsOwnPicture) {
+    if (track == null || made.isEmpty) {
       return;
     }
-    final effect = LayerEffect.defaults(
-      id: mintEffectId(trackId.value),
-      kind: kind,
-    );
-    final description = 'Add ${kind.label}';
-    _project.historyManager.executeAsOneStep(description, [
-      UpdateTrackEffectsCommand(
-        repository: _project.repository,
-        trackId: trackId,
-        effects: effectsWithAdded(track.effects, effect),
-        description: description,
-      ),
-      ?_laneGroupShown(
-        trackTransformLaneCarrierId(trackId),
-        effectGroupLaneId(effect.id),
-      ),
-    ]);
+    final effects = [
+      for (final make in made) make(mintEffectId(trackId.value)),
+    ];
+    final history = _project.historyManager;
+    history.runAsOneStep(description, () {
+      history.execute(
+        UpdateTrackEffectsCommand(
+          repository: _project.repository,
+          trackId: trackId,
+          effects: effects.fold(track.effects, effectsWithAdded),
+          description: description,
+        ),
+      );
+      showEffects(trackTransformLaneCarrierId(trackId), effects);
+    });
     _changes.refreshAfterCutCommand();
     _changes.notifyChanged();
   }
@@ -514,4 +570,27 @@ class EffectsAndFx {
   void setAllLayersFxBypassed(bool bypassed) {
     _setLayerFxSwitches(_project.layers, enabled: !bypassed);
   }
+}
+
+/// The row whose chain an add of effects lands on — the fx menu's, and a
+/// paste of effects, which is an add of them (F-476-Q1).
+sealed class EffectChainHolder {
+  const EffectChainHolder();
+}
+
+/// The cut's ACTIVE row ([EffectsAndFx.addEffectToActiveLayer]).
+final class ActiveRowChain extends EffectChainHolder {
+  const ActiveRowChain();
+}
+
+/// [trackId]'s V row ([EffectsAndFx.addEffectToTrack]).
+///
+/// 🗣️layer-menu-strings-outlive-their-entries-Q1 (유저 2026-10-30, 「공용
+/// Fx 가 V행도 받는다」): B7 took the V row's own fx pill away as the same
+/// button as the shared Fx (08-17), and the shared one only added to the
+/// active row — so nothing reached the V row's chain.
+final class TrackChain extends EffectChainHolder {
+  const TrackChain(this.trackId);
+
+  final TrackId trackId;
 }

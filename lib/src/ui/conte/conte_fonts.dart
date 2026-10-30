@@ -2,13 +2,14 @@ import 'dart:ui' show Color;
 
 import 'package:flutter/painting.dart' show FontWeight, TextStyle;
 
+import '../../models/conte/conte_page_marks.dart' show conteLineHeight;
 import '../theme/app_theme.dart';
 
 /// The conte's one text style: the sheet's ink, the app's BUNDLED faces
 /// ([AppTypography.bundledFamily] and its fallback — 유저 2026-09-25: 「글꼴
-/// 앱에서 정한거 통일하는거 해주고」), the 1.25 line the PDF's `_lineHeight`
-/// mirrors. The panel colours it; the PDF only measures with it, so [color]
-/// stays optional.
+/// 앱에서 정한거 통일하는거 해주고」), the conte's line ([conteLineHeight]),
+/// which the PDF sets its lines by too. The panel colours it; the PDF only
+/// measures with it, so [color] stays optional.
 ///
 /// ONE pair of faces serves both surfaces: the PDF embeds the files
 /// `pubspec.yaml` declares under these names, and the engine loaded those
@@ -22,7 +23,7 @@ TextStyle conteTextStyle(double size, {bool bold = false, Color? color}) =>
     TextStyle(
       color: color,
       fontSize: size,
-      height: 1.25,
+      height: conteLineHeight,
       fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
       fontFamily: AppTypography.bundledFamily,
       fontFamilyFallback: AppTypography.bundledFallback,

@@ -254,14 +254,29 @@ int rasterCellFor(double outsetPixels) =>
 ///
 /// [within] cuts the image to the part of [bounds] that can land — what the
 /// canvas still shows — on the same grid: the scale is still the whole
-/// [bounds]' and the grid is counted from the origin, so a part samples
+/// [bounds]' and the grid is counted from the same point, so a part samples
 /// where the whole would.
+///
+/// 🚨★★★THE GRID IS THE PIXELS OF WHAT IT IS LAID ON
+/// (the-walk-family-cuts-the-rest-on-the-grid, 2026-10-30). Counted from the
+/// origin of the space, it fell where the view's phase puts the canvas's
+/// origin — inside a device pixel above 100% (F-83) — so the 1:1 blit
+/// resampled every texel once more and blended the image's edge: 🔬a folder
+/// on the walk at 125% (4×4 canvas) 18 of 256 pixels apart from the buffer,
+/// a seam of its ink one pixel off and 16/255 of it past the page; 12 at
+/// 150%, and at a ratio of 2, 10 and 12 of 1,024 at 125 and 150%. Counted
+/// from where [onto]'s pixels have an edge ([pixelGridOriginAt] — the
+/// raster lies on them 1:1, so its scale says where they are), the raster
+/// is those pixels: what draws into it falls where it would on them, and
+/// the blit lays each where it is. A cell's grid moves with the view's pan
+/// as the origin did — a whole pixel for a whole pixel.
 SubtreeRasterPlan? _planSubtreeRaster({
   required Rect bounds,
   required double rasterScale,
   int maxPixelSide = maxSubtreeRasterSide,
   Rect within = Rect.largest,
   int cell = 1,
+  Canvas? onto,
 }) {
   // 🚨THE SNAP IS PART OF THE CAP. Clamping the scale alone left the cap off
   // by one: `side * scale` landed exactly on the cap and then the OUTWARD
@@ -284,6 +299,7 @@ SubtreeRasterPlan? _planSubtreeRaster({
   final destination = rectOutwardOnGrid(
     bounds.intersect(within),
     scale / cell,
+    origin: onto == null ? Offset.zero : pixelGridOriginAt(onto, scale),
   );
   final width = (destination.width * scale).round();
   final height = (destination.height * scale).round();
@@ -402,6 +418,7 @@ void drawSubtreeAsImage({
     rasterScale: rasterScale,
     maxPixelSide: maxPixelSide,
     cell: cell,
+    onto: canvas,
   );
   if (plan == null) {
     return;
@@ -804,6 +821,7 @@ void drawBlendOverBackdrop({
     rasterScale: rasterScale,
     maxPixelSide: maxPixelSide,
     within: canvas.getLocalClipBounds(),
+    onto: canvas,
   );
   if (plan == null) {
     return;

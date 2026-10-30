@@ -37,18 +37,27 @@ const String anicelSettingsExtension = 'anisettings';
 const int settingsFileVersion = 1;
 
 /// What a settings file holds: its [documents] by their stores' file names,
-/// and the other [files] of an entry that is a folder — the brush tips'
-/// pictures — by their names under the settings room (`brush_tips/<id>.png`).
+/// the other [files] of an entry that is a folder — the brush tips'
+/// pictures — by their names under the settings room (`brush_tips/<id>.png`),
+/// and the entries it holds [atDefaults]: ones its settings room held
+/// nothing of, which is what each store reads as its defaults.
+///
+/// 🗣️I-142-Q3 (유저 2026-10-29): 「전부 갈아끼운다」 — 「통째로 바뀐다(백업
+/// 복원처럼)」. ↩️A setting at its defaults used to be left out of the file
+/// as nothing to say (10-29), so one changed after the export stayed changed
+/// when the file was read back: the hands-on verify's accent colour.
 typedef SettingsFile = ({
   Map<String, Map<String, dynamic>> documents,
   Map<String, Uint8List> files,
+  Set<String> atDefaults,
 });
 
-/// [documents], by their stores' file names, and [files] as a settings
-/// file's text.
+/// [documents], by their stores' file names, [files] and the entries
+/// [atDefaults] as a settings file's text.
 String encodeSettingsFile(
   Map<String, Map<String, dynamic>> documents, {
   Map<String, Uint8List> files = const {},
+  Set<String> atDefaults = const {},
 }) => jsonEncode({
   'anicelSettings': settingsFileVersion,
   'documents': documents,
@@ -57,6 +66,7 @@ String encodeSettingsFile(
       for (final MapEntry(:key, :value) in files.entries)
         key: base64Encode(value),
     },
+  if (atDefaults.isNotEmpty) 'atDefaults': [...atDefaults]..sort(),
 });
 
 /// The documents [source] holds by their stores' file names, or null where
@@ -87,6 +97,11 @@ SettingsFile? readSettingsFile(String source) {
         if (decoded['files'] case final Map<String, dynamic> files)
           for (final MapEntry(:key, :value) in files.entries)
             if (value is String) key: ?_bytesOf(value),
+      },
+      atDefaults: {
+        if (decoded['atDefaults'] case final List<dynamic> entries)
+          for (final entry in entries)
+            if (entry is String) entry,
       },
     );
   }

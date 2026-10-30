@@ -180,9 +180,9 @@ void main() {
       // resolved paint, and `resolveCompositeEffectPaint` REFUSES a
       // source-pixel effect — by assert. So a track chain with a colour key
       // in it threw, exactly as the live layer's did until #1314. It was
-      // unreachable only because nothing calls `addEffectToTrack`; "no
-      // caller" is not a design, and the next round to add that menu would
-      // have shipped an assert.
+      // unreachable only while nothing called `addEffectToTrack`; "no
+      // caller" is not a design, and the round that let the fx menu reach
+      // the V row would have shipped an assert.
       final chain = trackEffectsAt([_deleteWhite()], 0);
       expect(chain, hasLength(1), reason: 'fixture: the key survived');
 

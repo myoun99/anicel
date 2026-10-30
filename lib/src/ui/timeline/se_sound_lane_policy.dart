@@ -20,10 +20,12 @@ const String seSoundGroupLaneId = 'sound-group';
 
 /// The member lane ids, in display order.
 const String seSoundVolumeLaneId = 'sound:volume';
+const String seSoundTotalVolumeLaneId = 'sound:total';
 const String seSoundPanLaneId = 'sound:pan';
 
 const List<String> seSoundLaneDisplayOrder = [
   seSoundVolumeLaneId,
+  seSoundTotalVolumeLaneId,
   seSoundPanLaneId,
 ];
 
@@ -35,8 +37,9 @@ bool laneIsSeSound(String? laneId) =>
 
 /// The sound group's lane table: where each member's keys live on the row's
 /// sound — the sound's twin of `seNameTagLaneLens`, and the group's arm of
-/// every lane verb over a span. The Volume alone: the Pan is ONE value
-/// (I-140-Q3 「이번엔 한 값」), so it holds no keys to reach. Null for the
+/// every lane verb over a span. The Volume alone: the Total and the Pan are
+/// ONE value each (I-145-Q1, I-140-Q3 「이번엔 한 값」), so they hold no keys
+/// to reach. Null for the
 /// header and for any id that is not a member lane.
 PropertyLaneLens<SeSound, Object?>? seSoundLaneLens(String laneId) =>
     switch (laneId) {
@@ -155,6 +158,16 @@ List<PropertyLaneRow> seSoundPropertyLanes(
               ),
       ),
       PropertyLaneRow(
+        laneId: seSoundTotalVolumeLaneId,
+        label: AppText.strings.tlSoundTotalVolume,
+        keyMarks: const {},
+        // One value (I-145-Q1), the speaker's window's bar: nothing to key.
+        showsKeyNavigator: false,
+        valueLabel: (_) =>
+            '${columnValueText(_percentOf(sound.totalVolume))}%',
+        scrubValue: scrubSeSoundVolume,
+      ),
+      PropertyLaneRow(
         laneId: seSoundPanLaneId,
         label: AppText.strings.audioPanLabel,
         keyMarks: const {},
@@ -167,8 +180,9 @@ List<PropertyLaneRow> seSoundPropertyLanes(
   ];
 }
 
-/// The Volume scrubbed by a drag on its readout, at the rate every number
-/// lane scrubs at ([scrubbedNumber]), held inside 0–200 %.
+/// The Volume — or the Total, read alike — scrubbed by a drag on its
+/// readout, at the rate every number lane scrubs at ([scrubbedNumber]),
+/// held inside 0–200 %.
 String? scrubSeSoundVolume(String currentLabel, Offset dragDelta) {
   final percent = columnValueOf(currentLabel);
   if (percent == null) {

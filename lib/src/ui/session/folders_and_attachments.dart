@@ -150,44 +150,11 @@ class FoldersAndAttachments {
     _changes.notifyChanged();
   }
 
-  bool get canGroupActiveLayerIntoFolder =>
-      _selection.activeLayer != null &&
-      _selection.activeLayer!.kind == LayerKind.animation;
-
-  /// 폴더 생성: folds the active layer's whole attach group into a new
-  /// folder row (mirrors into 겸용 cuts through the coordinator).
-  void groupActiveLayerIntoFolder() => _activeCut.onActiveLayer(
-    when: canGroupActiveLayerIntoFolder,
-    command: (cutId, layerId) => _project.cutCommandCoordinator
-        .createFolderFromLayer(cutId: cutId, layerId: layerId),
-  );
-
-  /// Whether the active layer can be wrapped in an ATTACH-ORGANIZER
-  /// folder ([연출]/[작감]… — 공정별 묶음): an attach row, and that is all.
-  ///
-  /// 🪦The second clause used to be 「and not already inside one」 —
-  /// organizers were deliberately FLAT (#786, the brush groups' precedent).
-  /// 유저 2026-08-29 lifted it: 「어태치 폴더 중첩도 허용하는 방향으로 가자
-  /// … 어태치폴더랑 일반폴더랑 규칙다른것도 많을거같은데 … 싹 다 통일」.
-  ///
-  /// 🚨It had to go from HERE too, not only from the drag. The drop policy
-  /// stopped refusing nested folders in the same round, so this gate was
-  /// the same question answered two ways — the menu said no to what the
-  /// drag said yes to. A plain folder's gate ([canGroupActiveLayerIntoFolder])
-  /// never had the clause, which is the shape both now share.
-  bool get canGroupActiveAttachIntoFolder {
-    final active = _selection.activeLayer;
-    return active != null && isAttachedLayer(active);
-  }
-
-  /// 공정 폴더 생성: wraps the active ATTACH row in an organizer folder
-  /// inside its group. Siblings join via [addAttachedLayer]'s sibling
-  /// rule; renaming is plain [LayerVerbs.renameLayer].
-  void groupActiveAttachIntoFolder() => _activeCut.onActiveLayer(
-    when: canGroupActiveAttachIntoFolder,
-    command: (cutId, layerId) => _project.cutCommandCoordinator
-        .createAttachOrganizerFolder(cutId: cutId, layerId: layerId),
-  );
+  // ↩️폴더 생성 · 공정 폴더 생성 stood here — the active row (or attach
+  // row) wrapped in a new folder. R5 #14 took their menu entries: a folder
+  // is made EMPTY from Add Layer and filled by dropping rows on it, and
+  // the drop makes an organizer too (F-139). The verbs outlived their
+  // doors and went in layer-menu-strings-outlive-their-entries-Q3.
 
   void dissolveFolder(LayerId folderId) => _activeCut.onActiveCut(
     (cutId) => _project.cutCommandCoordinator.dissolveFolder(

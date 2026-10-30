@@ -58,7 +58,7 @@ final barRows = [
   EditorActionIds.layerAttachSyncedAbove,
   EditorActionIds.layerAttachSyncedBelow,
   EditorActionIds.frameSelectRowSpan,
-  for (final kind in EffectKind.values) addEffectActionId(kind),
+  for (final kind in effectKindsAddedAlone) addEffectActionId(kind),
 ];
 
 /// The shared pill's colour edit list — actions since 2026-09-13 and I-55,
@@ -153,7 +153,7 @@ void main() {
         reason: 'a button of the pill, not a row of a menu',
       );
       expect(ids.sublist(theSwitch + 1), [
-        for (final kind in EffectKind.values) addEffectActionId(kind),
+        for (final kind in effectKindsAddedAlone) addEffectActionId(kind),
       ]);
     });
 
@@ -414,6 +414,10 @@ void main() {
       );
       final cuts = cutsOf(tester);
       await pressKeyOf(tester, EditorActionIds.cutCreateLinked);
+      // Its window asks first (I-100-Q1), as the row's does.
+      expect(cutsOf(tester), cuts);
+      await tester.tap(find.byKey(const ValueKey('new-cut-ok-button')));
+      await tester.pumpAndSettle();
       expect(cutsOf(tester), cuts + 1);
     });
 
@@ -640,6 +644,9 @@ void main() {
       expect(lit(), isTrue);
       final made = cutsOf(tester);
       await pressKeyOf(tester, EditorActionIds.cutNew);
+      // The ＋ asks the new cut's name and canvas first (I-100).
+      await tester.tap(find.byKey(const ValueKey<String>('new-cut-ok-button')));
+      await tester.pumpAndSettle();
       expect(cutsOf(tester), made + 1, reason: '⛔LIVENESS: the key makes one');
       session.undo();
       await tester.pumpAndSettle();
@@ -658,7 +665,12 @@ void main() {
 
       final cuts = cutsOf(tester);
       await pressKeyOf(tester, EditorActionIds.cutNew);
-      expect(cutsOf(tester), cuts, reason: 'and the key is the ＋\'s');
+      expect(
+        find.byKey(const ValueKey<String>('new-cut-ok-button')),
+        findsNothing,
+        reason: 'and the key is the ＋\'s',
+      );
+      expect(cutsOf(tester), cuts);
     });
   });
 }

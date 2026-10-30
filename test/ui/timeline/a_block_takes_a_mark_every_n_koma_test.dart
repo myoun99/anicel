@@ -28,6 +28,7 @@ import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart' show Pill;
 import 'package:anicel/src/ui/text/app_strings.dart';
 
+import '../../helpers/number_pad_keyboard.dart';
 import '../../helpers/run_edge_fixtures.dart';
 
 /// 🗣️I-58 (유저 2026-10-01): 「중간나누기 마크 자동추가. 대상은 중간나누기
@@ -413,10 +414,7 @@ void main() {
   final window = find.byKey(const ValueKey<String>('mark-every-dialog'));
 
   Future<void> typeAndApply(WidgetTester tester, String count) async {
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('mark-every-field')),
-      count,
-    );
+    await typeOnThePad(tester, 'mark-every-field', count);
     await tester.tap(find.byKey(const ValueKey<String>('mark-every-apply')));
     await tester.pumpAndSettle();
   }

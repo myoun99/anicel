@@ -200,6 +200,14 @@ void main() {
     // ×1, where the layer snapped out to the raster pokes past the clip.
     final upright = <String, (Matrix4?, double, int, bool)>{
       'at the identity': (null, 1, side, true),
+      // The raster's grid is the pixels it lands on, wherever the canvas's
+      // origin falls (the-walk-family-cuts-the-rest-on-the-grid).
+      'half a pixel off the origin': (
+        Matrix4.translationValues(0.5, 0.5, 0),
+        1,
+        side + 2,
+        true,
+      ),
       'a buffer\'s pixels at ×2': (
         Matrix4.diagonal3Values(2, 2, 1)..setTranslationRaw(6, 4, 0),
         2,
@@ -247,12 +255,17 @@ void main() {
         transform: Matrix4.diagonal3Values(-1, 1, 1)
           ..setTranslationRaw(64, 0, 0),
       ),
-      // Shown well past the layer, so the half pixel alone says no.
+      // Clipped and shown well past the layer, so the pixels alone say no: a
+      // raster the cap magnifies cannot lie on them. ↩️A half pixel alone
+      // said it until a raster's grid came to be the pixels it lands on
+      // (the-walk-family-cuts-the-rest-on-the-grid) — there it is read in
+      // the frame now ('half a pixel off the origin' above).
       'off a whole pixel': () => landed(
-        clip: whole,
+        clip: const Rect.fromLTWH(-8, -8, 80, 80),
         rasterScale: 1,
         transform: Matrix4.translationValues(0.5, 0, 0),
         shownWithin: const Rect.fromLTWH(-8, -8, 80, 80),
+        cap: side ~/ 2,
       ),
       'where it is shown cut': () => landed(
         clip: whole,

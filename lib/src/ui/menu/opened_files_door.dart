@@ -24,6 +24,7 @@ typedef SortedOpen = ({
   List<FolderGrant> shortcuts,
   List<FolderGrant> palettes,
   List<FolderGrant> settings,
+  List<FolderGrant> fxPlugins,
   List<String> refused,
 });
 
@@ -31,8 +32,9 @@ typedef SortedOpen = ({
 /// picture · movie · sound · PDF, a FOLDER (a cut folder) and a settings
 /// file come in through the import window, a brush goes to the brush
 /// library, a font
-/// to this device's fonts, a program's shortcut files into a preset and a
-/// palette into the palettes — and what nothing opens is named.
+/// to this device's fonts, a program's shortcut files into a preset, a
+/// palette into the palettes and an fx plugin into this device's plugins —
+/// and what nothing opens is named.
 SortedOpen sortOpened(List<FolderGrant> handed) {
   final projects = <ProjectPick>[];
   final media = <FolderGrant>[];
@@ -41,6 +43,7 @@ SortedOpen sortOpened(List<FolderGrant> handed) {
   final shortcuts = <FolderGrant>[];
   final palettes = <FolderGrant>[];
   final settings = <FolderGrant>[];
+  final fxPlugins = <FolderGrant>[];
   final refused = <String>[];
   for (final grant in handed) {
     final named = grant.document?.uri ?? grant.path;
@@ -64,6 +67,8 @@ SortedOpen sortOpened(List<FolderGrant> handed) {
         shortcuts.add(grant);
       case OpenedAs.settings:
         settings.add(grant);
+      case OpenedAs.fxPlugin:
+        fxPlugins.add(grant);
       case OpenedAs.palette:
         palettes.add(grant);
       case null:
@@ -80,6 +85,7 @@ SortedOpen sortOpened(List<FolderGrant> handed) {
     shortcuts: shortcuts,
     palettes: palettes,
     settings: settings,
+    fxPlugins: fxPlugins,
     refused: refused,
   );
 }
@@ -131,6 +137,7 @@ final class OpenedFilesDoor {
     required this.bringFont,
     required this.bringShortcuts,
     required this.bringPalettes,
+    required this.bringFxPlugins,
   });
 
   /// Opens each pick in a tab of its own — the shell's Open door, which
@@ -160,6 +167,11 @@ final class OpenedFilesDoor {
   /// (I-142) — what to say of it.
   final Future<String?> Function(String name, Uint8List bytes) bringPalettes;
 
+  /// Installs the fx plugin file [name], holding [bytes], once the person
+  /// has said yes to what it says of itself (I-132) — what to say of it.
+  final Future<String?> Function(String name, Uint8List bytes)
+  bringFxPlugins;
+
   /// Takes [handed] in, each where the judgement sends it.
   Future<void> open(
     BuildContext context,
@@ -181,6 +193,8 @@ final class OpenedFilesDoor {
       for (final grant in sorted.fonts)
         await _bring(grant, (_, bytes) => bringFont(bytes)),
       for (final grant in sorted.palettes) await _bring(grant, bringPalettes),
+      for (final grant in sorted.fxPlugins)
+        await _bring(grant, bringFxPlugins),
       for (final (:name, :bytes) in shortcuts)
         if (bytes == null) AppText.strings.imUnreadable(name),
       if (shortcuts.any((file) => file.bytes != null))

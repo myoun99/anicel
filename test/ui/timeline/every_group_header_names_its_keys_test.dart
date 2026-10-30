@@ -30,7 +30,7 @@ void main() {
     );
   });
 
-  for (final kind in EffectKind.values) {
+  for (final kind in effectKindsAddedAlone) {
     test('${kind.name}: the header and every member', () {
       final effect = LayerEffect(
         id: const EffectId('e'),
@@ -63,7 +63,7 @@ void main() {
       expect(lanes.first.isGroupHeader, isTrue, reason: '⛔전제');
       for (final lane in lanes) {
         // 🗣️I-132-Q16 a: a row's lane keeps no keys — none to name.
-        final keyless = effectLayerParameters.any(
+        final keyless = effect.layers.keys.any(
           (id) => lane.laneId == effectLaneId(effect.id, id),
         );
         expect(

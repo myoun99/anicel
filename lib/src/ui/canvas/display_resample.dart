@@ -298,6 +298,27 @@ bool cellsFallOffThePixelGrid(
   return off(tx) || off(ty) || off(sx * cell) || off(sy * cell);
 }
 
+/// The point of [canvas]'s space nearest its origin where the edges of its
+/// pixels cross, for a raster of [scale] pixels to a unit of the space laid
+/// on it 1:1 — the scale that says how many of the canvas's pixels a unit
+/// covers past its transform, the screen's ratio on the screen and 1 in a
+/// raster. A grid counted from here ([rectOutwardOnGrid]'s `origin`) is the
+/// canvas's pixels; a turned or projected space has no edge on the grid,
+/// and its grid is counted from the origin.
+ui.Offset pixelGridOriginAt(ui.Canvas canvas, double scale) {
+  final space = _pixelGridOf(canvas, 1);
+  if (space == null) {
+    return ui.Offset.zero;
+  }
+  final (:sx, :sy, :tx, :ty) = space;
+  double from(double translation, double unit) {
+    final pixels = translation * scale / unit.abs();
+    return (pixels.roundToDouble() - pixels) / (unit.sign * scale);
+  }
+
+  return ui.Offset(from(tx, sx), from(ty, sy));
+}
+
 /// [canvas]'s space on its pixels — each axis's scale and origin, carried
 /// past the canvas's own transform by [pixelRatio] — or null where the space
 /// is turned, projected or flat and has no edge on the grid.
@@ -325,6 +346,20 @@ ui.Rect displayEdgeRect(
   required bool antiAlias,
   required double pixelRatio,
 }) => antiAlias ? rect : cutOnThePixelGrid(canvas, rect, pixelRatio);
+
+/// [canvas] clipped to [rect], its edge cut as the display law says
+/// ([displayEdgeRect]) — a wall, or where a frame ends, cuts what lies on
+/// both sides of it where the display cuts the canvas's own edge
+/// (the-walk-family-cuts-the-rest-on-the-grid).
+void clipToTheDisplayEdge(
+  ui.Canvas canvas,
+  ui.Rect rect, {
+  required bool antiAlias,
+  required double pixelRatio,
+}) => canvas.clipRect(
+  displayEdgeRect(canvas, rect, antiAlias: antiAlias, pixelRatio: pixelRatio),
+  doAntiAlias: antiAlias,
+);
 
 /// [image]'s [src] laid over [dst] as the display lays an image it is
 /// handed: one at canvas resolution of the world [viewport] shows on a

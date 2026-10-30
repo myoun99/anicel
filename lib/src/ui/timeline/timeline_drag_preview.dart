@@ -392,10 +392,18 @@ class CutTrimDragPreview extends TimelineDragPreview {
     this.previewOrder = const {},
     this.previewLayers = const {},
     this.previewCameras = const {},
+    this.previewGlobalLayers = const {},
   });
 
   final Map<CutId, int> previewDurations;
   final Map<CutId, int> previewGaps;
+
+  /// The tracks' transition rows the release carries with the cuts it
+  /// re-lays ([transitionRowFollowingItsCuts]), by id — what the hosts of
+  /// the track's axis read ([timelineDragPreviewGlobalLayerFor]), so the
+  /// spans ride the boundary under the hand (transitions-follow-a-cut-drag-
+  /// live).
+  final Map<LayerId, Layer> previewGlobalLayers;
 
   /// Rows re-keyed by the same drag. The storyboard row and its cut's
   /// LENGTH are one thing (design D): shrinking the cut's first panel
@@ -422,6 +430,7 @@ class CutTrimDragPreview extends TimelineDragPreview {
       mapEquals(other.previewGaps, previewGaps) &&
       mapEquals(other.previewLayers, previewLayers) &&
       mapEquals(other.previewCameras, previewCameras) &&
+      mapEquals(other.previewGlobalLayers, previewGlobalLayers) &&
       mapOfListsEquals(other.previewOrder, previewOrder);
 
   @override
@@ -435,8 +444,9 @@ class CutTrimDragPreview extends TimelineDragPreview {
 /// [drawn] as its release will leave the rows: the project it previews,
 /// settled the way the write settles it
 /// ([ProjectRepository.settledAsWritten]), every row that pass derived
-/// again joining the drag's own — and every camera whose end key it
-/// carried (I-73-camera-row-Q4).
+/// again joining the drag's own — every camera whose end key it carried
+/// (I-73-camera-row-Q4), and every transition row it carried with the cuts
+/// ([CutTrimDragPreview.previewGlobalLayers]).
 ///
 /// 🗣️F-227: the のりしろ holds and the conte start an O.L asks of the cuts
 /// it joins belong to the write, which reads them off the new layout.
@@ -447,9 +457,12 @@ CutTrimDragPreview cutTrimPreviewAsReleased(
   ProjectRepository repository,
   CutTrimDragPreview drawn,
 ) {
-  final draft = _projectWithCutTrimPreview(repository.requireProject(), drawn);
-  final derived = _derivedAgain(draft, repository.settledAsWritten(draft));
-  return derived.rows.isEmpty && derived.cameras.isEmpty
+  final project = repository.requireProject();
+  final draft = _projectWithCutTrimPreview(project, drawn);
+  final settled = repository.settledAsWritten(draft);
+  final derived = _derivedAgain(draft, settled);
+  final carried = _transitionsCarried(project, settled);
+  return derived.rows.isEmpty && derived.cameras.isEmpty && carried.isEmpty
       ? drawn
       : CutTrimDragPreview(
           previewDurations: drawn.previewDurations,
@@ -457,8 +470,20 @@ CutTrimDragPreview cutTrimPreviewAsReleased(
           previewOrder: drawn.previewOrder,
           previewLayers: {...drawn.previewLayers, ...derived.rows},
           previewCameras: {...drawn.previewCameras, ...derived.cameras},
+          previewGlobalLayers: carried,
         );
 }
+
+/// The tracks' transition rows [settled] holds as other instances than
+/// [project] does, by id. The settle maps tracks in place.
+Map<LayerId, Layer> _transitionsCarried(Project project, Project settled) => {
+  for (final (index, track) in settled.tracks.indexed)
+    if (!identical(
+      track.transitionLayer,
+      project.tracks[index].transitionLayer,
+    ))
+      track.transitionLayer.id: track.transitionLayer,
+};
 
 /// The cameras [draft] would leave otherwise than they stand once a write
 /// settled it ([ProjectRepository.settledAsWritten]) — what a drag that
@@ -672,7 +697,9 @@ TransformTrack? timelineDragPreviewCameraTrackFor(
 /// C2 (2026-08-17): a BLOCK MOVE answers here too. The storyboard SE rows
 /// resolve every drag through this one function, and the move used to be
 /// the one drag with no global form — so an edge drag followed the hand
-/// live while a move sat still until release, on the same row.
+/// live while a move sat still until release, on the same row. So does a
+/// cut's trim or move, with the transition rows it carries: they stood on
+/// the old boundary until the release carried them (F-495).
 Layer? timelineDragPreviewGlobalLayerFor(
   TimelineDragPreview? preview,
   LayerId layerId,
@@ -681,6 +708,9 @@ Layer? timelineDragPreviewGlobalLayerFor(
     return preview.globalPreviewLayer;
   }
   if (preview is BlockMoveDragPreview) {
+    return preview.previewGlobalLayers[layerId];
+  }
+  if (preview is CutTrimDragPreview) {
     return preview.previewGlobalLayers[layerId];
   }
   if (preview is LaneEditPreview && preview.row?.id == layerId) {
@@ -727,6 +757,16 @@ Project _projectWithCutTrimPreview(Project project, CutTrimDragPreview trim) {
       ? resized
       : _projectWithLayersSubstituted(resized, trim.previewLayers);
 }
+
+/// [track] as [preview] lays it: a cut's trim or move puts its cuts where
+/// the release will and carries its transition row with them
+/// ([_trackWithCutTrimPreview]) — else [track] itself. ⚠️Not its cuts'
+/// rows ([CutTrimDragPreview.previewLayers]): the track's own axis, where
+/// its cuts stand and its spans with them.
+Track timelineDragPreviewTrack(Track track, TimelineDragPreview? preview) =>
+    preview is CutTrimDragPreview
+    ? _trackWithCutTrimPreview(track, preview)
+    : track;
 
 /// One track under a cut edge drag — and its transition row carried the way
 /// the release will carry it (`TransitionsRideTheCuts`, 유저 2026-08-10:

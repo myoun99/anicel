@@ -24,16 +24,13 @@ import 'session_roles.dart';
 class ActiveCutEdits {
   ActiveCutEdits({
     required ProjectAccess project,
-    required SelectionAccess selection,
     required TimelineAccess timeline,
     required ChangeSink changes,
   }) : _project = project,
-       _selection = selection,
        _timeline = timeline,
        _changes = changes;
 
   final ProjectAccess _project;
-  final SelectionAccess _selection;
   final TimelineAccess _timeline;
   final ChangeSink _changes;
 
@@ -110,32 +107,9 @@ class ActiveCutEdits {
     _changes.notifyChanged();
   }
 
-  /// The ACTIVE-ROW arm: refuse unless the verb's own gate says yes, take
-  /// the ACTIVE row's id, run one coordinator command keyed by
-  /// (cut, layer), then refresh KEEPING THAT ROW ACTIVE and notify.
-  ///
-  /// Four verbs across two collaborators wrote it out by hand — 링크 복제,
-  /// 링크 해제, 폴더 생성, 공정 폴더 생성. What differs between them is a bool
-  /// getter and a two-argument command, and both are values. (↩️The two
-  /// link verbs have left since — I-25, I-77 — and the two folder verbs
-  /// are what it serves.)
-  ///
-  /// ⚠️The trailing step is the one that goes missing when an envelope is
-  /// copied: the cut left/right verbs (gone since F-455) carried a comment
-  /// recording exactly that loss. It has one writer now.
-  void onActiveLayer({
-    required bool when,
-    required void Function(CutId cutId, LayerId layerId) command,
-  }) {
-    if (!when) {
-      return;
-    }
-    // A non-null active layer implies an active cut (the gap state has no
-    // rows at all), which every one of these gates already establishes.
-    final layerId = _selection.activeLayer!.id;
-    onActiveCutQuietly((cutId) {
-      command(cutId, layerId);
-      _changes.refreshAfterCutCommand(preferredActiveLayerId: layerId);
-    });
-  }
+  // ↩️An ACTIVE-ROW arm stood here — gate, take the active row's id, run
+  // one command, refresh keeping that row active — for four row verbs
+  // (링크 복제 · 링크 해제 · 폴더 생성 · 공정 폴더 생성). All four have left
+  // it (I-25, I-77, layer-menu-strings-outlive-their-entries-Q3), and it
+  // went with the last.
 }

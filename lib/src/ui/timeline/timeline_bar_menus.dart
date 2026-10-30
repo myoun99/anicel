@@ -12,6 +12,7 @@ import '../../models/pixel_verb_settings.dart';
 import '../../services/cel_pixel_overwrite.dart' show CelPixelVerb;
 import '../cut_command_group.dart';
 import '../editor_session_manager.dart';
+import '../session/effects_and_fx.dart' show EffectChainHolder;
 import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/app_strings.dart';
@@ -180,10 +181,11 @@ class TimelineBarMenus {
   List<PanelFlyoutEntry> effects() {
     // B8: the chain shown and edited here is the CUT's active layer's — the
     // timeline panel's noun, and the storyboard's where a projection row
-    // stands on it (I-99, [ToolbarPanelContext.servesActiveEffects]).
-    // Elsewhere on the storyboard every entry greys out honestly: a lit
-    // entry would edit a row that panel is not showing.
-    final serves = panel.servesActiveEffects;
+    // stands on it (I-99) — or the V row's, stood on there
+    // ([ToolbarPanelContext.effectChainHolder]). Elsewhere on the storyboard
+    // every entry greys out honestly: a lit entry would edit a row that
+    // panel is not showing.
+    final holder = panel.effectChainHolder;
     // ⛔NO REMOVE ENTRIES (F-87, 유저 2026-09-12: 「fx 헤더 선택범위로 선택한채로
     // 삭제누르면 해당 fx 삭제. 그리고 fx버튼에 있는 해당 fx 삭제버튼은
     // 필요없으니 삭제하고 관련로직 싹 제거」): an effect is removed by a range
@@ -195,15 +197,59 @@ class TimelineBarMenus {
       // ("Dimmed with nothing to act on, never hidden") — a menu that grew
       // and shrank under the pointer would make the artist look for an
       // entry that is simply not there today.
-      for (final kind in EffectKind.values)
+      for (final kind in effectKindsAddedAlone)
         PanelFlyoutItem(
           keyValue: 'add-effect-${kind.jsonValue}',
           label: editorActionLabel(addEffectActionId(kind)),
           shortcuts: [addEffectActionId(kind)],
           icon: Icons.auto_fix_high_outlined,
           enabled:
-              serves && session.effectsAndFx.canAddEffectToActiveLayer(kind),
-          onSelected: () => session.effectsAndFx.addEffectToActiveLayer(kind),
+              holder != null && session.effectsAndFx.canAddEffect(holder, kind),
+          onSelected: holder == null
+              ? null
+              : () => session.effectsAndFx.addEffect(holder, kind),
+        ),
+      ..._plugins(holder),
+    ];
+  }
+
+  /// The plugins this device has installed (I-132), under their own
+  /// heading — each added as an effect of it, and deleted off the device
+  /// from its row, as the text tool's list keeps this device's fonts. None
+  /// of either, heading included, on a device that has none.
+  List<PanelFlyoutEntry> _plugins(EffectChainHolder? holder) {
+    final installed = session.fxPlugins;
+    if (installed.plugins.isEmpty) {
+      return const [];
+    }
+    final canAdd =
+        holder != null &&
+        session.effectsAndFx.canAddEffect(holder, EffectKind.plugin);
+    return [
+      const PanelFlyoutDivider(),
+      PanelFlyoutHeader(AppText.strings.fxPluginsOfDevice),
+      for (final (:description, wasm: _, native: _) in installed.plugins)
+        PanelFlyoutItem(
+          keyValue: 'add-effect-plugin-${description.id}',
+          label: addEffectLabel(description.name, AppText.language),
+          icon: Icons.extension_outlined,
+          enabled: canAdd,
+          onSelected: holder == null
+              ? null
+              : () => session.effectsAndFx.addEffect(
+                  holder,
+                  EffectKind.plugin,
+                  plugin: description,
+                ),
+          actions: [
+            PanelFlyoutRowAction(
+              keyValue: 'add-effect-plugin-${description.id}-delete',
+              icon: Icons.delete_outline,
+              tooltip: AppText.strings.fxPluginDelete,
+              does: PanelFlyoutActionDoes.deletes,
+              onPressed: () => unawaited(installed.uninstall(description.id)),
+            ),
+          ],
         ),
     ];
   }

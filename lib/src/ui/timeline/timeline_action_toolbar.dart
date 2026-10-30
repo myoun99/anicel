@@ -173,7 +173,7 @@ Future<int?> _askFrameCount(
   ),
 );
 
-/// The count window: the count typed as frames or as seconds+frames
+/// The count window: the count given as frames or as seconds+frames
 /// ([FrameCountField], I-24), popped as frames.
 class _FrameCountWindow extends StatefulWidget {
   const _FrameCountWindow({
@@ -194,6 +194,10 @@ class _FrameCountWindow extends StatefulWidget {
   final IconData titleIcon;
   final String? field;
   final int framesPerSecond;
+
+  /// The count the window opens on — the length already there
+  /// (I-24-open-entry: 「길이 설정도 기존 길이 띄워둔다」); null opens it
+  /// showing none, which applies nothing until a number is given.
   final int? initialCount;
 
   /// The entry the window opens on.
@@ -208,7 +212,7 @@ class _FrameCountWindow extends StatefulWidget {
 }
 
 class _FrameCountWindowState extends State<_FrameCountWindow> {
-  int? _count;
+  late int? _count = widget.initialCount;
   late InbetweenMark? _mark = widget.mark?.picked;
 
   void _apply() => Navigator.of(context).pop(_count);
@@ -232,10 +236,9 @@ class _FrameCountWindowState extends State<_FrameCountWindow> {
         keyPrefix: widget.keyPrefix,
         label: widget.field,
         framesPerSecond: widget.framesPerSecond,
-        onChanged: (count) => _count = count,
-        onSubmitted: _apply,
+        count: _count,
+        onChanged: (count) => setState(() => _count = count),
         initialEntry: widget.entry,
-        initialCount: widget.initialCount,
         onEntryChanged: widget.onEntryChanged,
         beside: mark == null
             ? null
@@ -262,6 +265,9 @@ class _FrameCountWindowState extends State<_FrameCountWindow> {
           actionKey: ValueKey<String>('${widget.keyPrefix}-apply'),
           emphasis: AppWindowActionEmphasis.primary,
           onPressed: _apply,
+          // Enter applies, as it did while the count was a typed field —
+          // the window opens with the keyboard on Apply (F-479).
+          autofocus: true,
         ),
       ],
     );

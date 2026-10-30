@@ -86,7 +86,6 @@ class TimelineRowRunLabelsPainter extends CustomPainter
     required this.baseTextStyle,
     this.axis = Axis.horizontal,
     this.windowBucket,
-    this.viewportMainExtent = 0,
     this.shown = true,
     this.celContent,
     this.paperGround,
@@ -125,7 +124,12 @@ class TimelineRowRunLabelsPainter extends CustomPainter
   /// the window reaches (95ms of a 769ms scroll sample at 24px, profile).
   /// Null keeps the whole row, for a host that shows all of it.
   final ValueListenable<int>? windowBucket;
-  final double viewportMainExtent;
+
+  /// How far the view reaches along the frames — the live geometry's, so a
+  /// widened view repaints the row ([TimelineFrameGeometry.viewExtentPx]).
+  /// The kept picture keys on it with the rest of the geometry
+  /// ([pictureKey]).
+  double get viewportMainExtent => geometry.value.viewExtentPx;
 
   /// The ambient text style the row sits in — the app's face. The number
   /// is printed the way the block's NAME is ([timelineBlockWordStyle]).
@@ -348,7 +352,6 @@ class TimelineRowRunLabelsPainter extends CustomPainter
         // built again hands a new one over the same window, and the kept
         // picture ([pictureKey]) is that row's to draw.
         windowBucket?.value,
-        viewportMainExtent,
         timelineBlockRowFacts(_blockRow),
       );
   // ↩️The cel-content comparison went with F-24 (the ink had read the

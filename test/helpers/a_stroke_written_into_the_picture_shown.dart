@@ -401,6 +401,97 @@ void aStrokeIsWrittenIntoThePictureShown({
     overlay.dispose();
   }, skip: skipped);
 
+  testWidgets('🚨a step whose write throws shows at the paint after it is '
+      'answered — the frame drawn as it stands, not the picture without it '
+      '(F-509)', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const lineage = 'a-step-whose-write-throws';
+    final cels = storeWithTheCel();
+    final images = LayerFrameImageCache(frameStore: cels);
+    addTearDown(images.dispose);
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+    final live = BitmapSurfacePainter(
+      surface: BrushFrameDisplayCacheService(
+        frameStore: cels,
+        canvasSize: canvasSize,
+      ).prepareFramePreview(key).previewSurface,
+      overlayModel: overlay,
+      showTransparentBackground: false,
+      lineage: lineage,
+    );
+    final gpu = WritesThrow();
+    final store = FramePictureStore<FramePictureKey>(gpu: gpu);
+    addTearDown(store.dispose);
+    final run = runOf(images, store);
+    final picture = run.pictures.keyOfStack(nodes, frame);
+    final view = CanvasViewport(panX: 8, panY: 4);
+
+    await pump(tester, run, key: const ValueKey(0), view: view, live: live);
+    expect(
+      await settleAsync(tester, () => store.bytesOf(picture) != null),
+      isTrue,
+      reason: 'LIVENESS: the frame\'s picture is made',
+    );
+    await lendBothClocks(tester, rounds: 2);
+    final before = await onScreen(tester);
+
+    gpu.holdsRenders = true;
+    addTearDown(gpu.letAllThrough);
+    final stroked = TileCoord(
+      x: strokeAt.left ~/ tileSize,
+      y: strokeAt.top ~/ tileSize,
+    );
+    overlay.showResultTiles([
+      PromotedStrokeTile(
+        stroked,
+        tileAt(stroked, (at) => strokeAt.contains(at) ? stroke : inkOf(at)),
+        1,
+      ),
+    ]);
+    await tester.pump();
+    final step = store.landingOf(keptByTheCanvas(tester, picture));
+    expect(step, isNotNull, reason: '⛔premise: on its way into the picture');
+    bool? landed;
+    step!.then((now) => landed = now).ignore();
+    gpu.letAllThrough();
+    expect(
+      await settleAsync(tester, () => landed != null),
+      isTrue,
+      reason: 'LIVENESS: a step whose write threw is answered',
+    );
+    expect(landed, isFalse, reason: '⛔premise: it never went in');
+    expect(
+      tester.takeException(),
+      isA<StateError>(),
+      reason: 'the throw is reported, not swallowed',
+    );
+    await tester.pump();
+    final stepped = await onScreen(tester);
+    expect(
+      differences(before, stepped),
+      isNotEmpty,
+      reason: 'the step shows at the paint after it is answered',
+    );
+    expect(
+      differences(
+        await asItStands(
+          tester,
+          images,
+          picture: picture,
+          view: view,
+          live: live,
+        ),
+        stepped,
+      ),
+      isEmpty,
+      reason: 'drawn as it stands',
+    );
+
+    await tester.pumpWidget(const SizedBox());
+    overlay.dispose();
+  }, skip: skipped);
+
   for (final painted in [true, false]) {
     testWidgets('🚨the next stroke\'s step while the picture moves to the '
         'frame\'s next key is written into it there, and shows once it is in '

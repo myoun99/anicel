@@ -17,6 +17,7 @@ class _XSheetGridFrameScroll {
     frameCellExtent: _state._metrics.frameCellWidth,
     frameStartIndex: 0,
     frameEndIndexExclusive: renderedFrameCount,
+    viewExtentPx: _state._frameViewportExtent,
   );
 
   TimelineFrameGeometry _windowedFrameGeometryValue() {

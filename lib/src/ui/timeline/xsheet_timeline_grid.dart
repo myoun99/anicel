@@ -60,7 +60,6 @@ import 'timeline_ruler_norishiro_boundary.dart';
 import 'timeline_section_policy.dart';
 import 'timeline_section_runs.dart';
 import 'timeline_vertical_scrollbar_rail.dart';
-import 'timeline_virtualization_plan.dart';
 import 'timeline_visible_range.dart';
 import 'timeline_lane_graph.dart' show timelineFrameSide, timelineRowBuiltNow;
 import 'timeline_row_edges.dart';
@@ -86,8 +85,8 @@ part 'xsheet_grid/xsheet_grid_reveal.dart';
 /// The transposition is a metrics trick: the frame axis runs vertically, so
 /// [_metrics.frameCellWidth] is the frame ROW height and
 /// [_metrics.layerRowHeight] is the layer COLUMN width. Every policy the
-/// horizontal grid uses — frame range, offset resolution, virtualization
-/// plan, coordinate conversion, cell style/block visuals, selected exposure
+/// horizontal grid uses — frame range, offset resolution, the frame window,
+/// coordinate conversion, cell style/block visuals, selected exposure
 /// range, playhead visibility, cut-end boundary — is reused unchanged with
 /// the axes swapped; only the thin widget composition differs.
 class XSheetTimelineGrid extends StatefulWidget {
@@ -518,27 +517,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
   /// The berths of the columns the pass in flight DRAWS.
   late RowBerthMap _berths;
 
-  /// The shared virtualization plan with the frame axis fed through the
-  /// "horizontal" inputs (the axes are swapped in this grid). Read INSIDE
-  /// the window-bucket subscribers (UI-R9 #12a): scroll pixels re-window
-  /// nothing. Was a local function of build; two slots call it.
-  TimelineVirtualizationPlan _framePlan(
-    double bodyViewportHeight,
-    List<TimelineDisplayRow> entries,
-  ) => calculateTimelineVirtualizationPlan(
-    horizontalScrollOffset: _frameScroll.effectiveFrameScrollOffset(
-      requestedOffset: _frameAxisOffset.value,
-      viewportExtent: bodyViewportHeight,
-    ),
-    verticalScrollOffset: 0,
-    viewportWidth: bodyViewportHeight,
-    viewportHeight: 0,
-    frameCellWidth: _metrics.frameCellWidth,
-    layerRowHeight: _metrics.layerRowHeight,
-    frameCount: _frameScroll.renderedFrameCount,
-    layerCount: entries.length,
-  );
-
   Widget _buildRailSplitter(_SheetGeometry geometry) {
     final availableHeaderExtent = geometry.availableHeaderExtent;
     final naturalHeaderBlockExtent = geometry.naturalHeaderBlockExtent;
@@ -582,37 +560,38 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
         axisDirection: AxisDirection.down,
         child: SizedBox(
           height: geometry.totalFrameContentHeight,
-          // Pixels scroll the real viewport; only cell crossings re-window
-          // the columns (UI-R9 #12a).
-          child: ValueListenableBuilder<int>(
-            valueListenable: _frameWindowBucket,
-            builder: (context, _, _) {
-              final plan = _framePlan(bodyViewportHeight, entries);
-              final edges = geometry.columnEdges;
-              // The timeline's stack, turned on its side: the grid sheet
-              // under the columns (D32, I-44), the cursor layer over them,
-              // and where the film stops stated over everything (the user's
-              // layer order).
-              return TimelineFrameGridStack(
-                axis: Axis.vertical,
-                rowsBody: _rowBerths.counting(
-                  _columns.buildColumns(
-                    entries,
-                    edges,
-                    plan,
-                    bodyViewportHeight,
-                  ),
-                ),
-                gridSheet: _buildGridSheet(entries, edges),
-                playheadExtent: geometry.totalFrameContentHeight,
-                playhead: _buildCursorLayer(entries, edges, plan),
-                cutEndDrag: widget.hooks.cutEndDrag,
-                dragPreview: widget.hooks.dragPreview,
-                frameCellExtent: _metrics.frameCellWidth,
-                playbackFrameCount: widget.hooks.playbackFrameCount,
-                noriShiro: widget.hooks.noriShiro,
-              );
-            },
+          // The timeline's stack, turned on its side: the grid sheet under
+          // the columns (D32, I-44), the cursor layer over them, and where
+          // the film stops stated over everything (the user's layer order).
+          //
+          // 🚨Built for the full frames, as the timeline's rows body is — a
+          // scroll rebuilds nothing here: the columns and the cursor window
+          // themselves off the bucket. ↩️The stack sat in a builder of the
+          // bucket and handed the lanes and the cursor its window, so every
+          // crossing built the whole frame body again
+          // (xsheet-bucket-crossing-rebuilds-the-frame-body, 10-30).
+          child: TimelineFrameGridStack(
+            axis: Axis.vertical,
+            rowsBody: _rowBerths.counting(
+              _columns.buildColumns(
+                entries,
+                geometry.columnEdges,
+                bodyViewportHeight,
+                geometry.totalFrameContentHeight,
+              ),
+            ),
+            gridSheet: _buildGridSheet(entries, geometry.columnEdges),
+            playheadExtent: geometry.totalFrameContentHeight,
+            playhead: _buildCursorLayer(
+              entries,
+              geometry.columnEdges,
+              bodyViewportHeight,
+            ),
+            cutEndDrag: widget.hooks.cutEndDrag,
+            dragPreview: widget.hooks.dragPreview,
+            frameCellExtent: _metrics.frameCellWidth,
+            playbackFrameCount: widget.hooks.playbackFrameCount,
+            noriShiro: widget.hooks.noriShiro,
           ),
         ),
       ),
@@ -620,13 +599,13 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
   }
 
   /// The cursor layer carries the playhead + selection visuals; ticks
-  /// repaint it alone.
+  /// repaint it alone. Over the full frames, windowed off the bucket — the
+  /// timeline's own (`LayerTimelineGrid._buildPlayhead`).
   Widget _buildCursorLayer(
     List<TimelineDisplayRow> entries,
     TimelineRowEdges edges,
-    TimelineVirtualizationPlan plan,
+    double bodyViewportHeight,
   ) {
-    final frameRange = plan.frameRange;
     return TimelineCursorLayer(
       axis: Axis.vertical,
       currentRow: widget.hooks.currentRowHooks?.currentRow,
@@ -639,11 +618,13 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
       rows: entries,
       edges: edges,
       activeLayerId: widget.hooks.activeLayerId,
-      frameStartIndex: frameRange.startIndex,
-      frameEndIndexExclusive: frameRange.endIndexExclusive,
-      leadingFrameSpacerWidth: plan.leadingFrameSpacerWidth,
+      frameStartIndex: 0,
+      frameEndIndexExclusive: _frameScroll.renderedFrameCount,
+      leadingFrameSpacerWidth: 0,
       metrics: _metrics,
       crossAxisExtent: edges.total,
+      windowBucket: _frameWindowBucket,
+      viewportMainExtent: bodyViewportHeight,
     );
   }
 
@@ -1143,10 +1124,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
             // inside that bracket.
             final sectionRuns = timelineSectionRuns(drawnEntries);
 
-            // The shared virtualization plan with the frame axis fed through the
-            // "horizontal" inputs (the axes are swapped in this grid). Computed
-            // INSIDE the window-bucket subscribers (UI-R9 #12a): scroll pixels
-            // re-window nothing.
             final totalFrameContentHeight = _frameScroll._totalFrameContentHeight;
             final cutEndBoundaryOffset = timelineCutEndBoundaryX(
               playbackFrameCount: widget.hooks.playbackFrameCount,
@@ -1294,6 +1271,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
                                         _layerScrollController,
                                         _frameScrollController,
                                       ],
+                                      zoom: widget.hooks.zoomAt(
+                                        _metrics.frameCellWidth,
+                                      ),
                                       child: _buildLayerHorizontalViewport(
                                         colorScheme,
                                         // THE drawing entrance — the columns

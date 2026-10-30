@@ -76,6 +76,7 @@ void main() {
     },
     valueSourceAt: source ?? (frame) => (layer: row, frame: frame),
     poseCentre: canvas,
+    hasPlugin: null,
   );
 
   PropertyLaneRow laneOf(List<PropertyLaneRow> lanes, String laneId) =>

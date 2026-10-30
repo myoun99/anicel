@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/session/effects_and_fx.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_editing.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
 import 'package:anicel/src/models/composite_tree.dart';
+import '../helpers/a_folder_made_by_hand.dart';
 
 /// The R6 effect chain through the SESSION — the wiring the timeline host
 /// drives: add, edit, undo, and the editing canvas reading it back.
@@ -259,7 +260,7 @@ void main() {
       [EffectKind.celNumber],
     );
 
-    session.folders.groupActiveLayerIntoFolder();
+    groupTheActiveRowIntoAFolder(session);
     final folder = session.requireActiveCut.layers.folderLayers.single;
     session.selectLayer(folder.id);
     expect(
@@ -398,7 +399,7 @@ void main() {
       // scope with nothing in it — a silent no-op of the whole feature.
       session.createDrawingAtCurrentFrame();
       final member = session.activeLayer!;
-      session.folders.groupActiveLayerIntoFolder();
+      groupTheActiveRowIntoAFolder(session);
       session.selectLayer(member.id);
       session.layerStack.addLayerOfKind(LayerKind.adjustment);
 

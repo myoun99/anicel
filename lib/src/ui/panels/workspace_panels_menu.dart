@@ -95,6 +95,23 @@ class WorkspacePanelsMenuController extends ChangeNotifier {
   bool Function()? _brushValuesOnStrip;
   void Function(bool onStrip)? _brushValuesMover;
 
+  /// Whether the tool strip holds its tools alone — without the shortcut
+  /// buttons (undo, redo, onion, solo …) and the rule under them.
+  ///
+  /// 🗣️I-128 (유저 2026-10-25): 「이 숏컷 버튼 안쓰는 사람 위해서 설정의 패널에
+  /// 해당 영역 끌수있게 옵션 제공. 조작단축버튼이랑 도구 버튼 사이의 가로
+  /// 구분선도 그 경우 없어도되니 사라지도록」. It rides the layout, as the
+  /// brush's values do.
+  bool get railToolsOnly => _railToolsOnly?.call() ?? false;
+
+  bool get canSetRailToolsOnly => _railToolsOnlySetter != null;
+
+  void setRailToolsOnly(bool toolsOnly) =>
+      _railToolsOnlySetter?.call(toolsOnly);
+
+  bool Function()? _railToolsOnly;
+  void Function(bool toolsOnly)? _railToolsOnlySetter;
+
   /// The floating region's fold — its chevron's press, and its key's (I-40).
   void toggleRegionFolded() => _regionFolder?.call();
 
@@ -116,6 +133,8 @@ class WorkspacePanelsMenuController extends ChangeNotifier {
     void Function(bool onTop)? regionMover,
     bool Function()? brushValuesOnStrip,
     void Function(bool onStrip)? brushValuesMover,
+    bool Function()? railToolsOnly,
+    void Function(bool toolsOnly)? railToolsOnlySetter,
     VoidCallback? regionFolder,
   }) {
     _relay?.removeListener(notifyListeners);
@@ -131,6 +150,8 @@ class WorkspacePanelsMenuController extends ChangeNotifier {
     _regionMover = regionMover;
     _brushValuesOnStrip = brushValuesOnStrip;
     _brushValuesMover = brushValuesMover;
+    _railToolsOnly = railToolsOnly;
+    _railToolsOnlySetter = railToolsOnlySetter;
     _regionFolder = regionFolder;
     _relay = relay..addListener(notifyListeners);
     // Attach runs inside the workspace's initState — mid-build. The menu
@@ -159,6 +180,8 @@ class WorkspacePanelsMenuController extends ChangeNotifier {
     _regionMover = null;
     _brushValuesOnStrip = null;
     _brushValuesMover = null;
+    _railToolsOnly = null;
+    _railToolsOnlySetter = null;
     _regionFolder = null;
   }
 }

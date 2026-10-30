@@ -17,6 +17,7 @@ import '../models/conte_group.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/frame_id.dart';
+import '../models/fx_plugin_description.dart';
 import '../models/layer.dart';
 import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart'
@@ -244,7 +245,8 @@ import 'timeline/timeline_tile_raster_source.dart'
 import 'effective_device_pixel_ratio.dart' show EffectiveDevicePixelRatio;
 import 'timeline/timeline_cell_exposure_state.dart'
     show timelineOwnCelNameAt, timelineOwnCelsStateAt;
-import 'timeline/timeline_frame_window.dart' show visibleFrameWindowFor;
+import 'timeline/timeline_frame_window.dart'
+    show timelineFrameWindowReachFor, visibleFrameWindowFor;
 import 'timeline/memo_token.dart'
     show ByIdentity, ByList, BySet, Kept, KeptPiece, keptWhileSame;
 import 'repaint_props.dart';
@@ -627,6 +629,33 @@ typedef ConteCelContent = ({
   ValueListenable<int> revision,
 });
 
+/// What the rail lays its rows from ([_StoryboardRailRows]) — which rows it
+/// shows, which lanes they twirl down, where those sit and how tall each
+/// is: this panel's own fields ([StoryboardPanel.railInputs]), or the
+/// session's as they are now ([StoryboardPanel.railNow]).
+///
+/// 🚨ONE record, so the folded row is laid by the table the open rail lays
+/// from inputs this panel has not been given yet: the workspace builds the
+/// fold before it rebuilds this panel. ↩️A graph opened over the lane the
+/// fold stood on left the fold the V row, at the V row's height (card
+/// a-folded-conte-row-keeps-its-height-through-a-graph).
+typedef StoryboardRailInputs = ({
+  Project project,
+  CutId? activeCutId,
+  TimelineRowAddress? selectedRow,
+  ValueListenable<List<TimelineRowAddress>>? rowSelection,
+  Set<LayerId> expandedLaneLayerIds,
+  Set<String> expandedLaneGroupKeys,
+  LaneGraphsView laneGraphs,
+  Set<TimelineSection> hiddenSections,
+  TimelineRowFilter rowFilter,
+  Set<LayerId> collapsedAttachBaseIds,
+  LayerFxState Function(LayerId layerId)? layerFxStateOf,
+  LayerFxState Function(Track track)? trackFxStateOf,
+  CanvasSize? poseDisplaySize,
+  double trackLaneHeight,
+});
+
 class StoryboardPanel extends StatefulWidget {
   const StoryboardPanel({
     super.key,
@@ -654,6 +683,7 @@ class StoryboardPanel extends StatefulWidget {
     this.trackLaneHeight = defaultTrackLaneHeight,
     this.onResizeTrackLanes,
     this.pixelsPerFrame = 8,
+    this.onPixelsPerFrameChanged,
     this.showSeconds = false,
     this.onShowSecondsChanged,
     this.railExtent,
@@ -683,6 +713,7 @@ class StoryboardPanel extends StatefulWidget {
     this.layerLaneEdit,
     this.cutLaneEdit,
     this.poseDisplaySize,
+    this.hasFxPlugin,
     this.onSetCutFade,
     this.onToggleLayerVisibility,
     this.onOpenLayerMixer,
@@ -711,6 +742,7 @@ class StoryboardPanel extends StatefulWidget {
     this.laneGraphs = LaneGraphsView.none,
     this.laneGraphVerbs,
     this.laneGraphsNow,
+    this.railNow,
     this.trackFxStateOf,
     this.onToggleTrackFx,
     this.onToggleTrackEffectEnabled,
@@ -1099,6 +1131,11 @@ class StoryboardPanel extends StatefulWidget {
   /// slider drives it).
   final double pixelsPerFrame;
 
+  /// The host's zoom writer — the readout's and the zoom keys' — which a
+  /// pinch on the sheet writes through too (F-506). Null names no zoom, and
+  /// fingers only move the sheet.
+  final ValueChanged<double>? onPixelsPerFrameChanged;
+
   /// Conte-sheet time display for the cut totals: frames (`48f`) or
   /// seconds+frames (`2+00`), toggled from the grid's top-left corner.
   final bool showSeconds;
@@ -1269,6 +1306,11 @@ class StoryboardPanel extends StatefulWidget {
   /// bake use). Null hides the V lanes' values.
   final CanvasSize? poseDisplaySize;
 
+  /// Whether this device has the plugin an effect is of — the effect
+  /// headers of one it has not grey, as the timeline's do (I-132-Q28).
+  /// Null greys none.
+  final bool Function(FxPluginDescription plugin)? hasFxPlugin;
+
   /// Commits a cut-fade handle drag (one undo); null makes the Opacity
   /// lane display-only. The fade is transparency (R3b) — no per-cut
   /// target color rides along any more.
@@ -1381,6 +1423,30 @@ class StoryboardPanel extends StatefulWidget {
   /// [layerOnTimesheetOf] is: a press on a graph or pin button opens it,
   /// and the new set reaches this widget only on the next build.
   final LaneGraphsView Function()? laneGraphsNow;
+
+  /// A LIVE read of what the rail lays its rows from ([railInputs]) — for
+  /// the folded row ([StoryboardRowsChannel.foldedRowFor]), which the
+  /// workspace builds before this widget is handed the new ones. Null
+  /// reads [railInputs].
+  final StoryboardRailInputs Function()? railNow;
+
+  /// What the rail lays its rows from, as this widget was handed it.
+  StoryboardRailInputs get railInputs => (
+    project: project,
+    activeCutId: activeCutId,
+    selectedRow: selectedRow,
+    rowSelection: rowSelection,
+    expandedLaneLayerIds: expandedLaneLayerIds,
+    expandedLaneGroupKeys: expandedLaneGroupKeys,
+    laneGraphs: laneGraphs,
+    hiddenSections: hiddenSections,
+    rowFilter: rowFilter,
+    collapsedAttachBaseIds: collapsedAttachBaseIds,
+    layerFxStateOf: layerFxStateOf,
+    trackFxStateOf: trackFxStateOf,
+    poseDisplaySize: poseDisplaySize,
+    trackLaneHeight: trackLaneHeight,
+  );
 
   /// The timeline's rail legend over this panel's rail (UI-R5): same
   /// bulk flyouts + master opacity bar, acting on the ACTIVE cut's layers
@@ -2044,6 +2110,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           ) +
           _frameAxis.trailingFrames +
           _viewportFillFrameCells,
+      viewExtentPx: _stripViewportWidth,
     );
     // SE rows are built OUTSIDE the drag-preview builder from the RAW
     // project (R10-③): their content is track-global, so a cut trim
@@ -2272,6 +2339,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
               ).copyWith(scrollbars: false),
               child: TwoAxisDrag(
                 axes: [_verticalController, _horizontalController],
+                zoom: sheetZoom(
+                  widget.pixelsPerFrame,
+                  widget.projectFrameRate,
+                  widget.onPixelsPerFrameChanged,
+                ),
                 child: SingleChildScrollView(
                   key: const ValueKey<String>(
                     'storyboard-vertical-viewport',
@@ -3730,7 +3802,6 @@ TimelineRangeGestureCallbacks _storyboardBandCallbacks({
 mixin _StoryboardRowRunLabels {
   TimelineFrameGeometryHandle get frameGeometry;
   ValueListenable<int> get windowBucket;
-  double get viewportWidth;
   bool get showSeconds;
   ProjectFrameRate get projectFrameRate;
   double get height;
@@ -3758,7 +3829,6 @@ mixin _StoryboardRowRunLabels {
             countingBase: projectFrameRate.countingBase,
             baseTextStyle: DefaultTextStyle.of(context).style,
             windowBucket: windowBucket,
-            viewportMainExtent: viewportWidth,
             shown: shown ?? RailEyes.of(context, layer).shown,
             celContent: celContent,
             paperGround: TimelineGridLaw.maybeOf(context)?.ground,
@@ -3792,7 +3862,6 @@ class _StoryboardTransitionRow extends KeptPiece
     required this.timelineScale,
     required this.frameGeometry,
     required this.windowBucket,
-    required this.viewportWidth,
     required this.showSeconds,
     required this.projectFrameRate,
     this.defById,
@@ -3823,8 +3892,6 @@ class _StoryboardTransitionRow extends KeptPiece
   final TimelineFrameGeometryHandle frameGeometry;
   @override
   final ValueListenable<int> windowBucket;
-  @override
-  final double viewportWidth;
   @override
   final bool showSeconds;
   @override
@@ -3872,7 +3939,6 @@ class _StoryboardTransitionRow extends KeptPiece
     timelineScale.minBlockWidth,
     ByIdentity(frameGeometry),
     ByIdentity(windowBucket),
-    viewportWidth,
     showSeconds,
     projectFrameRate,
     ByList([
@@ -4151,7 +4217,9 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
   /// The panel's window, as the V row's blocks painter takes it.
   @override
   final ValueListenable<int> windowBucket;
-  @override
+
+  /// How far the panel's view reaches — what the window the row's pieces
+  /// are built for reaches past its bucket ([_window]).
   final double viewportWidth;
   @override
   final bool showSeconds;
@@ -4177,7 +4245,13 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
     projectFrameRate,
     ByIdentity(frameGeometry),
     ByIdentity(windowBucket),
-    viewportWidth,
+    // By the window it reaches, not the breadth: a view a pixel wider keeps
+    // its window, and the pieces built for it stand
+    // (storyboard-strips-build-on-every-view-pixel).
+    timelineFrameWindowReachFor(
+      viewportExtent: viewportWidth,
+      cellExtent: timelineScale.pixelsPerFrame,
+    ),
     showSeconds,
     ByList([
       if (layer case final layer?)
@@ -5063,7 +5137,6 @@ class _StoryboardTrackRow extends KeptPiece {
     required this.hoveredCutId,
     this.standingCutId,
     required this.windowBucket,
-    required this.viewportWidth,
     required this.showSeconds,
     required this.projectFrameRate,
     this.railSweepAt,
@@ -5120,10 +5193,10 @@ class _StoryboardTrackRow extends KeptPiece {
   /// ([StoryboardCutBlocksPainter.standingCutId]).
   final ValueListenable<CutId?>? standingCutId;
 
-  /// The shared window inputs (UI-R16): the blocks painter draws — and asks
-  /// for thumbnails — only inside the visible span.
+  /// The shared window (UI-R16): the blocks painter draws — and asks for
+  /// thumbnails — only inside the visible span, as far as the live
+  /// geometry's view reaches.
   final ValueListenable<int> windowBucket;
-  final double viewportWidth;
 
   final bool showSeconds;
   final ProjectFrameRate projectFrameRate;
@@ -5184,7 +5257,6 @@ class _StoryboardTrackRow extends KeptPiece {
       // The blocks' own window: the row spans the whole film, and the grips
       // are drawn where the view can reach, as the blocks under them are.
       windowBucket: windowBucket,
-      viewportMainExtent: viewportWidth,
       // No layer: these blocks are cuts, and the row has no run edges for a
       // LayerId to name.
       layerId: null,
@@ -5334,7 +5406,6 @@ class _StoryboardTrackRow extends KeptPiece {
     ByIdentity(hoveredCutId),
     ByIdentity(standingCutId),
     ByIdentity(windowBucket),
-    viewportWidth,
     showSeconds,
     projectFrameRate,
     thumbnails,
@@ -5378,7 +5449,6 @@ class _StoryboardTrackRow extends KeptPiece {
       thumbnails: thumbnails,
       devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
       windowBucket: windowBucket,
-      viewportMainExtent: viewportWidth,
       linkedCutIds: linkedCutIds,
     );
 

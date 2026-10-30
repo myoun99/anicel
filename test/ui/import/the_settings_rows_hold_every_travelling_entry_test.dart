@@ -16,7 +16,8 @@ void main() {
   SettingsFile holding(
     Map<String, Map<String, dynamic>> documents, {
     Map<String, Uint8List> files = const {},
-  }) => (documents: documents, files: files);
+    Set<String> atDefaults = const {},
+  }) => (documents: documents, files: files, atDefaults: atDefaults);
 
   SettingsRow row(String id) => settingsRows.singleWhere((row) => row.id == id);
 
@@ -67,6 +68,17 @@ void main() {
           'accent_settings.json': {'version': 1},
         }),
       ),
+      isTrue,
+    );
+  });
+
+  // 🗣️I-142-Q3: 「전부 갈아끼운다」 — a setting at its defaults comes too.
+  test('a row is held by an entry the file holds at its defaults', () {
+    final atDefaults = holding({}, atDefaults: {'accent_settings.json'});
+    expect(row('accent_settings.json').heldBy(atDefaults), isTrue);
+    expect(row('ui_scale.json').heldBy(atDefaults), isFalse);
+    expect(
+      row('brushes').heldBy(holding({}, atDefaults: {'brush_tips'})),
       isTrue,
     );
   });

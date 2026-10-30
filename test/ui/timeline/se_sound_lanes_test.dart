@@ -82,6 +82,34 @@ void main() {
       expect(pan.showsKeyNavigator, isFalse, reason: 'one value (Q3)');
     });
 
+    // 🗣️I-145-Q1 (유저 2026-10-30): 「따로 한 값 — 두 입구」.
+    test('the Total reads its one value in per cents, between the Volume and '
+        'the Pan, and keys nothing', () {
+      final lanes = seSoundPropertyLanes(
+        SeSound(
+          totalVolume: 0.4,
+          volume: PropertyTrack<double>(keys: {4: const PropertyKey(0.5)}),
+        ),
+        expanded: true,
+        volumeAt: null,
+      );
+      expect(lanes.map((lane) => lane.laneId), [
+        seSoundGroupLaneId,
+        seSoundVolumeLaneId,
+        seSoundTotalVolumeLaneId,
+        seSoundPanLaneId,
+      ]);
+      final total = lanes.firstWhere(
+        (lane) => lane.laneId == seSoundTotalVolumeLaneId,
+      );
+      expect(total.valueLabel!(4), '40.00%');
+      expect(total.valueLabel!(9), '40.00%', reason: 'one value, any frame');
+      expect(total.keyMarks, isEmpty);
+      expect(total.showsKeyNavigator, isFalse);
+      expect(total.curve, isNull, reason: 'nothing over time to draw');
+      expect(total.scrubValue!('100.00%', const Offset(100000, 0)), '200.00%');
+    });
+
     test('where the rail has nothing to read the volume in, it shows no '
         'value and no line', () {
       final volume = seSoundPropertyLanes(
@@ -187,6 +215,13 @@ void main() {
       expect(typed(seSoundPanLaneId, 'L30'), const SeSound(pan: -0.3));
       expect(typed(seSoundPanLaneId, 'left'), isNull);
       expect(typed(seSoundGroupLaneId, '50'), isNull);
+      expect(
+        typed(seSoundTotalVolumeLaneId, '80%'),
+        const SeSound(totalVolume: 0.8),
+        reason: 'the Total is the row\'s one value, as the Pan is',
+      );
+      expect(typed(seSoundTotalVolumeLaneId, '250')!.totalVolume, 2.0);
+      expect(typed(seSoundTotalVolumeLaneId, 'loud'), isNull);
     });
 
     test('Reset puts a keyed Volume at 100 % where it stands — keeping its '
@@ -222,6 +257,14 @@ void main() {
         ),
         const SeSound(),
         reason: 'an unkeyed Volume already plays at 100 %',
+      );
+      expect(
+        seSoundWithGroupReset(
+          const SeSound(totalVolume: 0.4),
+          frameIndexes: [2],
+        ),
+        const SeSound(),
+        reason: 'the Total goes back to 100 %',
       );
       expect(
         seSoundWithGroupReset(const SeSound(), frameIndexes: [2]),

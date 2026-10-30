@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -308,6 +309,32 @@ void main() {
     expect(_effectsOf(session, 'y'), [EffectKind.blur]);
   });
 
+  testWidgets('a plugin\'s effect is listed by its plugin\'s name (I-132)', (
+    tester,
+  ) async {
+    final session = _session();
+    session.effectsAndFx.addEffectToActiveLayer(
+      EffectKind.plugin,
+      plugin: FxPluginDescription.fromJson({
+        'spec': 1,
+        'id': 'com.example.glow',
+        'name': 'Glow',
+        'vendor': 'Example',
+        'version': '1',
+        'can': ['cpu'],
+        'params': [],
+      }),
+    );
+    _select(session, [
+      const LayerRowAddress(LayerId('x')),
+      _header(session, EffectKind.plugin),
+    ]);
+
+    await pressDelete(tester, session);
+
+    expect(find.text('y · Glow'), findsOneWidget);
+  });
+
   /// 🗣️F-476-Q1 (유저 2026-10-27): 「b + 복제도」 — the pill's copy, cut,
   /// paste and duplicate take the effects the rail names as its delete does.
   group('copy · cut · paste · duplicate (F-476-Q1)', () {
@@ -387,18 +414,16 @@ void main() {
       expect(_effectsOf(session, 'x'), [EffectKind.hueSaturation]);
     });
 
-    test('effects in hand light no link paste, and the storyboard\'s paste '
-        'stays dark as its fx menu\'s add does', () {
+    // ↩️It pinned the storyboard's paste dark here, as its fx menu's add
+    // was on the V row it stands on. The add takes the V row now (-Q1), and
+    // so does the paste: the_conte_panel_adds_fx_as_the_timeline_does_test.
+    test('effects in hand light no link paste', () {
       final session = _session();
       _select(session, [_header(session, EffectKind.blur)]);
       TimelineToolbarPanelContext(session).copyFrame();
       session.selectLayer(const LayerId('x'));
 
       expect(TimelineToolbarPanelContext(session).canPasteLinkedFrame, isFalse);
-      expect(
-        StoryboardToolbarPanelContext(session).canPasteIndependentFrame,
-        isFalse,
-      );
     });
 
     test('one copy in hand: effects let the rows go, and rows the effects', () {

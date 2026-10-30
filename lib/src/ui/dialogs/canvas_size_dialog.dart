@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../models/canvas_resize_anchor.dart';
 import '../../models/canvas_size.dart';
-import '../../services/editing/default_cut_helpers.dart'
-    show defaultCutCanvasSize;
 import '../widgets/app_window.dart';
 import 'size_fields_row.dart';
 import '../text/app_strings.dart';
@@ -72,6 +70,21 @@ class CanvasSizeDialog extends StatefulWidget {
     return value;
   }
 
+  /// The size typed into [width] × [height] ([SizeFieldsRow]), or null
+  /// while either is not a dimension ([parseDimension]) — what every size
+  /// window confirms: this one, the camera's and the new cut's.
+  static CanvasSize? enteredSize(
+    TextEditingController width,
+    TextEditingController height,
+  ) {
+    final across = parseDimension(width.text);
+    final down = parseDimension(height.text);
+    if (across == null || down == null) {
+      return null;
+    }
+    return CanvasSize(width: across, height: down);
+  }
+
   final CanvasSize initialSize;
 
   /// Opens the canvas's adjust ON the canvas, the window closing to show
@@ -84,23 +97,6 @@ class CanvasSizeDialog extends StatefulWidget {
 }
 
 class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
-  /// The sizes the presets list offers, each with its name: the paper's,
-  /// a line, then the video's ([videoSizePresets]).
-  ///
-  /// 🗣️I-79 (유저 2026-10-06): 「프리셋은 리스트팝오버로서 여러 프리셋
-  /// 준비하고」 — the app's one picking list ([SizePresetsRow]).
-  /// ↩️They were four chips in a row.
-  ///
-  /// 🗣️I-79-Q4 (유저 2026-10-08): 「용지 크기 + 영상 크기」 — A4 across at
-  /// 150, 200 (a new cut's, [defaultCutCanvasSize]) and 300 dpi, then
-  /// HD · FHD · 2K · 4K. 「현장마다 용지 크기 다름 … 용지는 특히 홀수만
-  /// 아니면됨」: a studio types its own, and no size here is odd.
-  static const _paperPresets = <SizePreset>[
-    (name: 'A4 150dpi', size: CanvasSize(width: 1754, height: 1240)),
-    (name: 'A4 200dpi', size: defaultCutCanvasSize),
-    (name: 'A4 300dpi', size: CanvasSize(width: 3508, height: 2480)),
-  ];
-
   late final TextEditingController _widthController = TextEditingController(
     text: '${widget.initialSize.width}',
   );
@@ -116,17 +112,11 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
     super.dispose();
   }
 
-  CanvasResizeRequest? get _enteredRequest {
-    final width = CanvasSizeDialog.parseDimension(_widthController.text);
-    final height = CanvasSizeDialog.parseDimension(_heightController.text);
-    if (width == null || height == null) {
-      return null;
-    }
-    return CanvasResizeRequest(
-      size: CanvasSize(width: width, height: height),
-      anchor: _anchor,
-    );
-  }
+  CanvasResizeRequest? get _enteredRequest => switch (CanvasSizeDialog
+      .enteredSize(_widthController, _heightController)) {
+    final size? => CanvasResizeRequest(size: size, anchor: _anchor),
+    null => null,
+  };
 
   void _applyPreset(CanvasSize size) {
     setState(() {
@@ -160,7 +150,7 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
           const SizedBox(height: 12),
           SizePresetsRow(
             keyPrefix: 'canvas-size',
-            groups: const [_paperPresets, videoSizePresets],
+            groups: canvasSizePresetGroups,
             entered: enteredRequest?.size,
             onPicked: _applyPreset,
             onAdjustOnCanvas: widget.onAdjustOnCanvas,

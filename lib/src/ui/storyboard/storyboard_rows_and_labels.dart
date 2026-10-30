@@ -972,7 +972,6 @@ class _StoryboardRowsAndLabels {
       timelineScale: scale,
       frameGeometry: _state._frameGeometry,
       windowBucket: _state._horizontalWindowBucket,
-      viewportWidth: _state._stripViewportWidth,
       showSeconds: _state.widget.showSeconds,
       projectFrameRate: _state.widget.projectFrameRate,
       defById: _state.widget.transitionDefById,

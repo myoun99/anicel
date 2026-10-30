@@ -111,15 +111,4 @@ void main() {
       );
     });
   });
-
-  group('formatAeNumber', () {
-    test('integers bare, fractions trimmed to four decimals', () {
-      expect(formatAeNumber(960), '960');
-      expect(formatAeNumber(-45), '-45');
-      expect(formatAeNumber(970.5), '970.5');
-      expect(formatAeNumber(150.25), '150.25');
-      expect(formatAeNumber(1.23456789), '1.2346');
-      expect(formatAeNumber(0.10000), '0.1');
-    });
-  });
 }

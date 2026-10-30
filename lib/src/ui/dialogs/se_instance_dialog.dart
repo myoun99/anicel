@@ -175,8 +175,9 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
   /// The deliveries picked in this sitting, applied on OK.
   late SeLineTypes _seTypes = widget.initialSeTypes;
 
-  /// The glyphs' spacing typed in this sitting, applied on OK — a count
-  /// cleared to be typed again keeps the last one until it is.
+  /// The glyphs' spacing given in this sitting, applied on OK — what its
+  /// counts show, so a koma per glyph moved under one shows the one the
+  /// spacing keeps ([SeDialogueSpacing]).
   late SeDialogueSpacing _spacing = widget.initialSpacing;
 
   /// The cut the type pills set — null only for a block in no cut.
@@ -265,22 +266,17 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
     Widget count(
       String keyPrefix,
       String label,
-      int initial,
-      SeDialogueSpacing Function(int count) typed,
+      int shown,
+      SeDialogueSpacing Function(int count) given,
     ) => Expanded(
       child: FrameCountField(
         keyPrefix: keyPrefix,
         label: label,
         framesPerSecond: widget.frameRate.countingBase,
         initialEntry: AppFrameCountSettings.settings.value.lastEntry,
-        initialCount: initial,
+        count: shown,
         onEntryChanged: widget.onCountEntryChanged,
-        autofocus: false,
-        onChanged: (count) {
-          if (count != null) {
-            setState(() => _spacing = typed(count));
-          }
-        },
+        onChanged: (count) => setState(() => _spacing = given(count)),
       ),
     );
     return Row(

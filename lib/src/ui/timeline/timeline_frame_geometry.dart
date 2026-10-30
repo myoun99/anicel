@@ -23,9 +23,36 @@ class TimelineFrameGeometry {
     required this.frameEndIndexExclusive,
     this.leadingFrameSpacerWidth = 0,
     this.trailingFrameSpacerWidth = 0,
-    this.windowOriginPx = 0,
-    this.windowExtentPx = 0,
+    this.viewExtentPx = 0,
+  }) : windowOriginPx = 0,
+       windowExtentPx = 0;
+
+  const TimelineFrameGeometry._windowed({
+    required this.frameCellExtent,
+    required this.frameStartIndex,
+    required this.frameEndIndexExclusive,
+    required this.leadingFrameSpacerWidth,
+    required this.trailingFrameSpacerWidth,
+    required this.viewExtentPx,
+    required this.windowOriginPx,
+    required this.windowExtentPx,
   });
+
+  /// How far along the frames the VIEW reaches — the panel's breadth beside
+  /// its rail — and so how many frames a row's painters draw and bake from
+  /// the bucket they stand in ([visibleFrameWindowFor]). Zero where nothing
+  /// was measured.
+  ///
+  /// 🚨THE RESIZE LAW (device report 2026-08-17): a view that widens must
+  /// reach every row's request set, or the newly exposed cells stay outside
+  /// it — a project opened in a small window and enlarged left the new
+  /// width's blocks unrendered. It rides here, live, rather than as a
+  /// build-time scalar of each painter (row-extent-drag-rebuilds-every-
+  /// visible-row, 2026-10-30): ↩️as a scalar it was a memo key, and every
+  /// pixel the rail splitter, the dock or the window moved missed every
+  /// row's memo at once and built every row of cells again (299 widgets a
+  /// splitter step on the default project). A kept row repaints on it.
+  final double viewExtentPx;
 
   /// Main-axis extent of one frame cell (cell width in the horizontal
   /// timeline, frame row height in the X-sheet).
@@ -111,19 +138,39 @@ class TimelineFrameGeometry {
   }
 
   /// The same geometry seen through a window starting at [originPx] and
-  /// [extentPx] wide. Only the owner (the rows body) calls this.
+  /// [extentPx] wide, over the same view. Only the owner (the rows body)
+  /// calls this.
   TimelineFrameGeometry windowed({
     required double originPx,
     required double extentPx,
-  }) => TimelineFrameGeometry(
+  }) => TimelineFrameGeometry._windowed(
     frameCellExtent: frameCellExtent,
     frameStartIndex: frameStartIndex,
     frameEndIndexExclusive: frameEndIndexExclusive,
     leadingFrameSpacerWidth: leadingFrameSpacerWidth - originPx,
     trailingFrameSpacerWidth: trailingFrameSpacerWidth,
+    viewExtentPx: viewExtentPx,
     windowOriginPx: originPx,
     windowExtentPx: extentPx,
   );
+
+  /// Whether a row laid out under [other] stands laid out under this: all
+  /// a layout reads the same — where the window stands along the content
+  /// and how far the view reaches are read where the row paints, never
+  /// where its pieces are laid ([TimelineFrameAxisRenderMixin]).
+  ///
+  /// The content's own spacer is compared within a hair: [windowed] takes
+  /// the origin off it, and adding it back is not exact for every origin.
+  bool laysOutAs(TimelineFrameGeometry other) =>
+      other.frameCellExtent == frameCellExtent &&
+      other.frameStartIndex == frameStartIndex &&
+      other.frameEndIndexExclusive == frameEndIndexExclusive &&
+      ((other.leadingFrameSpacerWidth + other.windowOriginPx) -
+                  (leadingFrameSpacerWidth + windowOriginPx))
+              .abs() <
+          1e-6 &&
+      other.trailingFrameSpacerWidth == trailingFrameSpacerWidth &&
+      other.windowExtentPx == windowExtentPx;
 
   @override
   bool operator ==(Object other) =>
@@ -133,6 +180,7 @@ class TimelineFrameGeometry {
       other.frameEndIndexExclusive == frameEndIndexExclusive &&
       other.leadingFrameSpacerWidth == leadingFrameSpacerWidth &&
       other.trailingFrameSpacerWidth == trailingFrameSpacerWidth &&
+      other.viewExtentPx == viewExtentPx &&
       other.windowOriginPx == windowOriginPx &&
       other.windowExtentPx == windowExtentPx;
 
@@ -143,6 +191,7 @@ class TimelineFrameGeometry {
     frameEndIndexExclusive,
     leadingFrameSpacerWidth,
     trailingFrameSpacerWidth,
+    viewExtentPx,
     windowOriginPx,
     windowExtentPx,
   );
@@ -151,7 +200,8 @@ class TimelineFrameGeometry {
   String toString() =>
       'TimelineFrameGeometry(cell $frameCellExtent, '
       '[$frameStartIndex, $frameEndIndexExclusive), '
-      'spacers $leadingFrameSpacerWidth/$trailingFrameSpacerWidth'
+      'spacers $leadingFrameSpacerWidth/$trailingFrameSpacerWidth, '
+      'view $viewExtentPx'
       '${isWindowed ? ', window $windowOriginPx+$windowExtentPx' : ''})';
 }
 
@@ -233,12 +283,41 @@ mixin TimelineFrameAxisRenderMixin on RenderBox {
       return;
     }
     if (attached) {
-      current?.removeListener(markNeedsLayout);
-      value.addListener(markNeedsLayout);
+      current?.removeListener(_follow);
+      value.addListener(_follow);
     }
     _geometryHandle = value;
     markNeedsLayout();
   }
+
+  /// What the last layout was laid under ([layOutUnder]).
+  TimelineFrameGeometry? _laidOutUnder;
+
+  /// The geometry a layout reads — remembered, so that a window moving
+  /// along the content alone is answered with a paint ([_follow]).
+  TimelineFrameGeometry layOutUnder() => _laidOutUnder = geometry.value;
+
+  /// 🚨A WINDOW THAT MOVED IS PAINTED, NOT LAID OUT
+  /// (frame-axis-box-at-window-size, 2026-10-30): where the window stands
+  /// is read where the row paints, hit-tests and says where its pieces are,
+  /// so a crossing lays nothing out. ↩️Every row's box and every span layer
+  /// in it was laid out again at each crossing past the window's margin —
+  /// 43 on the timeline, 76 on the sheet (24 layers, measured) — each
+  /// measuring its semantics again with it.
+  void _follow() {
+    final laid = _laidOutUnder;
+    if (laid != null && geometry.value.laysOutAs(laid)) {
+      markNeedsPaint();
+      markNeedsSemanticsUpdate();
+      return;
+    }
+    markNeedsLayout();
+  }
+
+  /// Where the window stands along the content, as an offset — what a
+  /// piece laid out free of it is painted back by.
+  Offset get windowShift =>
+      offsetAlong(axis, along: geometry.value.windowOriginPx, across: 0);
 
   double _crossAxisExtent = 0;
   double get crossAxisExtent => _crossAxisExtent;
@@ -263,12 +342,12 @@ mixin TimelineFrameAxisRenderMixin on RenderBox {
   @override
   void attach(PipelineOwner owner) {
     super.attach(owner);
-    _geometryHandle!.addListener(markNeedsLayout);
+    _geometryHandle!.addListener(_follow);
   }
 
   @override
   void detach() {
-    _geometryHandle!.removeListener(markNeedsLayout);
+    _geometryHandle!.removeListener(_follow);
     super.detach();
   }
 }
@@ -307,24 +386,20 @@ class RenderTimelineFrameAxisBox extends RenderProxyBox
   Size _outerSize(BoxConstraints constraints) =>
       constraints.constrain(_sizeFor(geometry.value.contentMainExtent));
 
-  /// Where the child sits inside this box.
-  Offset get _childOffset {
-    final origin = geometry.value.windowOriginPx;
-    if (origin == 0) {
-      return Offset.zero;
-    }
-    return offsetAlong(axis, along: origin, across: 0);
-  }
+  /// Where the child sits inside this box — read live, so a window that
+  /// moved paints it there without a layout ([TimelineFrameAxisRenderMixin]).
+  Offset get _childOffset => windowShift;
 
   @override
   void performLayout() {
+    final frames = layOutUnder();
     final child = this.child;
     if (child == null) {
       size = _outerSize(constraints);
       return;
     }
     child.layout(_innerConstraints(constraints), parentUsesSize: true);
-    size = geometry.value.isWindowed ? _outerSize(constraints) : child.size;
+    size = frames.isWindowed ? _outerSize(constraints) : child.size;
   }
 
   @override

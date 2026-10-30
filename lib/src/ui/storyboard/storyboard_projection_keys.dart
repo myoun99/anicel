@@ -142,7 +142,6 @@ mixin _StoryboardProjectionKeys on Widget {
           starts: [for (final reach in reaches) reach.entry.startFrame],
           geometry: frameGeometry,
           windowBucket: windowBucket,
-          viewportWidth: viewportWidth,
         ),
         Positioned.fill(
           child: IgnorePointer(
@@ -183,7 +182,6 @@ mixin _StoryboardProjectionKeys on Widget {
             crossAxisExtent: height,
             colorScheme: Theme.of(context).colorScheme,
             windowBucket: windowBucket,
-            viewportMainExtent: viewportWidth,
           ),
         ),
       ),

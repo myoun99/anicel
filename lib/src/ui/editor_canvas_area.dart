@@ -621,9 +621,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
 
   /// Every row of the open cut and of its track as a drag shows it, in both
   /// forms, the pictures it moves among cels with no row changing (F-330,
-  /// [celPixelsOf]) and the camera the canvas draws — equal while the drag
-  /// changes none of them (a movie's end, a sound's silhouette on an SE
-  /// cell, a V track's chain, another cut's rows).
+  /// [celPixelsOf]), the camera the canvas draws and where the open cut
+  /// stands as the drag lays it — the fade reads the spans against that
+  /// ([Transitions.activeCutPlaceShown]) — equal while the drag changes
+  /// none of them (a movie's end, a sound's silhouette on an SE cell, a V
+  /// track's chain, another cut's rows).
   ///
   /// ⚠️A new reader of the channel on the canvas reads rows by the same two
   /// functions ([timelineDragPreviewLayerFor], [timelineDragPreviewGlobalLayerFor])
@@ -646,6 +648,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       if (preview case BlockMoveDragPreview(:final picturesMoved))
         picturesMoved,
       session.camera.activeCutCameraTrack,
+      if (session.transitions.activeCutPlaceShown case final place?) ...[
+        place.start,
+        place.end,
+        place.mediaStart,
+      ],
     ]);
   }
 
@@ -1443,7 +1450,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       effects: [boxed.effect],
       frameIndex: at.frame,
     ).single;
-    final name = '${row.name} ${boxed.effect.kind.label}';
+    final name = '${row.name} ${boxed.effect.label}';
     return boxed.effect.kind.drawsItsOwnPicture
         ? _effectPictureBox(
             frame,

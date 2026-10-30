@@ -9,6 +9,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/a_folder_made_by_hand.dart';
 
 /// 🚨F-81 (유저 2026-09-11): 「일반 폴더의 내부 레이어에 이름영역 왼쪽에 ㅣ
 /// 아이콘? 있는데 너무 어두우니 좀 더 밝게. 그리고 이 아이콘이 어태치폴더의 내부
@@ -115,7 +116,7 @@ void main() {
     await tester.pumpAndSettle();
     final groupBase = session.activeLayer!.attachedToLayerId!;
 
-    session.folders.groupActiveAttachIntoFolder();
+    groupTheActiveAttachIntoAFolder(session);
     await tester.pumpAndSettle();
     final attachFolder = session.activeCutOrNull!.layers.folderLayers.single.id;
     session.selectLayer(attachFolder);

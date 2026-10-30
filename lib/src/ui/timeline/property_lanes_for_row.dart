@@ -1,5 +1,6 @@
 import '../../models/attached_layer_resolve.dart';
 import '../../models/canvas_size.dart';
+import '../../models/fx_plugin_description.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart'
     show effectParameterValueAtTime, effectStandAt, effectStandPose;
@@ -49,7 +50,11 @@ import 'transform_lane_policy.dart'
 ///
 /// [rows] are the rows the attach question is asked among, and the ones
 /// an effect's row parameter may name. No session is read here, so a rail
-/// that has none — the storyboard panel — asks it too.
+/// that has none — the storyboard panel — asks it too; and for the same
+/// reason [hasPlugin] comes in — whether this device has the plugin an
+/// effect is of, the app's one list that every rail reads alike
+/// (I-132-Q28). Null on a rail that is not told it: its effect headers read
+/// as the app's own.
 ///
 /// The camera row is not read here: its lanes are the cut's camera track,
 /// which only a cut's rail stands on (`timelineLanesForLayer`).
@@ -59,6 +64,7 @@ List<PropertyLaneRow> propertyLanesForRow({
   required Set<String> expandedGroupKeys,
   required ({Layer layer, int frame}) Function(int frameIndex)? valueSourceAt,
   required CanvasSize? poseCentre,
+  required bool Function(FxPluginDescription plugin)? hasPlugin,
 }) {
   final source = valueSourceAt;
   // Attach rows ride their BASE's transform/opacity lanes (W5 fx sharing)
@@ -184,6 +190,7 @@ List<PropertyLaneRow> propertyLanesForRow({
                 centre,
               );
             },
+      hasPlugin: hasPlugin,
     );
   }
 

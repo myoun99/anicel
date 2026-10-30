@@ -470,14 +470,12 @@ class ExportCelFileNamer {
   /// `[folders][base].[extension]`, bumped (`_2`, `_3`…) past every name
   /// the run has handed out ([bumpedOutputName]).
   String _unused(String folders, String base, String extension) {
-    final name = '$base.$extension';
-    var fileName = '$folders$name';
-    var bump = 2;
-    while (!_used.add(fileName)) {
-      fileName = '$folders${bumpedOutputName(name, bump, isFolder: false)}';
-      bump += 1;
-    }
-    return fileName;
+    final name = claimedOutputName(
+      '$base.$extension',
+      _used,
+      keyOf: (name) => '$folders$name',
+    );
+    return '$folders$name';
   }
 }
 
@@ -494,6 +492,22 @@ String bumpedOutputName(String name, int bump, {required bool isFolder}) {
   return dot <= 0
       ? '${name}_$bump'
       : '${name.substring(0, dot)}_$bump${name.substring(dot)}';
+}
+
+/// [name] as [taken] lets it stand — itself, or its first bump
+/// ([bumpedOutputName]) [taken] does not hold — held in [taken] from now on
+/// by [keyOf] of it: where it goes and how the disk tells names apart.
+String claimedOutputName(
+  String name,
+  Set<String> taken, {
+  required String Function(String name) keyOf,
+  bool isFolder = false,
+}) {
+  var claimed = name;
+  for (var bump = 2; !taken.add(keyOf(claimed)); bump += 1) {
+    claimed = bumpedOutputName(name, bump, isFolder: isFolder);
+  }
+  return claimed;
 }
 
 /// Makes a cut/layer name safe as a file-name component: characters Windows

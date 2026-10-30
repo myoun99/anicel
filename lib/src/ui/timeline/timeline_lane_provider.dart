@@ -53,6 +53,7 @@ List<PropertyLaneRow> timelineLanesForLayer({
       layer,
       standing: session.activeCutId,
     ),
+    hasPlugin: session.fxPlugins.has,
   );
 }
 

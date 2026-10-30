@@ -330,7 +330,13 @@ void main() {
   /// answered in the other four languages by id
   /// (`shortcutAction.window-brush-values-on-strip`). The ceiling stood at
   /// the count (138) when it came.
-  const untranslatedElsewhere = 139;
+  ///
+  /// 140 (I-128, the tool strip's shortcut buttons off, 2026-10-30): the
+  /// English row of one new registry action, 「Tools only on the tool
+  /// strip」 — answered in the other four languages by id
+  /// (`shortcutAction.window-rail-tools-only`). The ceiling stood at the
+  /// count (139) when it came.
+  const untranslatedElsewhere = 140;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');

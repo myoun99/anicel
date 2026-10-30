@@ -4,6 +4,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer_effect.dart';
@@ -73,6 +74,29 @@ void main() {
     expect(a, b);
     expect(a.hashCode, b.hashCode);
     expect(a, isNot(reordered));
+  });
+
+  test('a cut trim carrying the transition row otherwise reads as changed', () {
+    final row = createDefaultProject().tracks.first.transitionLayer;
+    CutTrimDragPreview carrying(int start) => CutTrimDragPreview(
+      previewDurations: const {},
+      previewGlobalLayers: {
+        row.id: row.copyWith(
+          instructions: {
+            start: const InstructionEvent(instructionId: 'ol', length: 12),
+          },
+        ),
+      },
+    );
+    final three = carrying(3);
+    expect(
+      three,
+      CutTrimDragPreview(
+        previewDurations: const {},
+        previewGlobalLayers: three.previewGlobalLayers,
+      ),
+    );
+    expect(three, isNot(carrying(4)));
   });
 
   // The camera keys a block move carries ride as the camera's TRACK

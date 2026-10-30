@@ -121,6 +121,7 @@ const List<String> appSettingsEntries = <String>[
   'export_settings.json',
   'fonts',
   'frame_count_settings.json',
+  'fx_plugins',
   'frame_grid_settings.json',
   'input_settings.json',
   'language_settings.json',

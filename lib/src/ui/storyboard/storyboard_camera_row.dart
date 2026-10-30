@@ -119,7 +119,12 @@ class _StoryboardCameraRow extends KeptPiece
     timelineScale.minBlockWidth,
     ByIdentity(frameGeometry),
     ByIdentity(windowBucket),
-    viewportWidth,
+    // By the window its keys are built for, not the breadth — the S rows'
+    // own reason ([_StoryboardSeRow.facts]).
+    timelineFrameWindowReachFor(
+      viewportExtent: viewportWidth,
+      cellExtent: timelineScale.pixelsPerFrame,
+    ),
     instructionDefById,
     onRowFramePress != null,
     onCameraCutPress != null,
@@ -261,7 +266,6 @@ class StoryboardCameraRowPainter extends CustomPainter with RepaintOnProps {
     required this.crossAxisExtent,
     required this.colorScheme,
     required this.windowBucket,
-    required this.viewportMainExtent,
   }) : super(repaint: Listenable.merge([geometry, windowBucket]));
 
   final List<CameraRowReach> reaches;
@@ -269,7 +273,10 @@ class StoryboardCameraRowPainter extends CustomPainter with RepaintOnProps {
   final double crossAxisExtent;
   final ColorScheme colorScheme;
   final ValueListenable<int> windowBucket;
-  final double viewportMainExtent;
+
+  /// How far the view reaches along the frames — the live geometry's, so a
+  /// widened view repaints the row ([TimelineFrameGeometry.viewExtentPx]).
+  double get viewportMainExtent => geometry.value.viewExtentPx;
 
   /// The のりしろ's wash — the drawn proposal's 30%.
   static const double noriShiroWashAlpha = 0.3;
@@ -395,6 +402,5 @@ class StoryboardCameraRowPainter extends CustomPainter with RepaintOnProps {
     ]),
     crossAxisExtent,
     colorScheme,
-    viewportMainExtent,
   );
 }

@@ -13,6 +13,7 @@ import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 
 import '../../helpers/named_finders.dart';
 import '../../helpers/timeline_host.dart';
+import '../../helpers/a_folder_made_by_hand.dart';
 
 /// 🚨★★★ 유저 #1 (2026-08-14): 「액티브 레이어가 아닌 **다른 레이어의 버튼
 /// 누르면 작동안함.** 불투명도 슬라이더는 **한번 움직이고 드래그가 풀림.**
@@ -335,7 +336,7 @@ void main() {
           // is pressed on a row that is neither active nor holding the
           // active.
           session.layerStack.addLayerOfKind(LayerKind.animation);
-          session.folders.groupActiveLayerIntoFolder();
+          groupTheActiveRowIntoAFolder(session);
           session.selectLayer(
             session.layers
                 .firstWhere(

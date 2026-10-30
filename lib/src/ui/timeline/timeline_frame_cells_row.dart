@@ -79,7 +79,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.spillInLeadFrames,
     this.cutId,
     this.windowBucket,
-    this.viewportMainExtent = 0,
     this.nextPage,
     this.stepsUntilShown,
     this.substrateGeneration = '',
@@ -134,7 +133,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// keys its widget tests pin.
   final String keyPrefix;
 
-  /// PRO-TIMELINE scrolling (UI-R15→R16): with these set, the row builds
+  /// PRO-TIMELINE scrolling (UI-R15→R16): with this set and the geometry's
+  /// view measured ([TimelineFrameGeometry.viewExtentPx]), the row builds
   /// ONCE for the FULL frame bounds — the painter windows itself off the
   /// quantized [windowBucket] (repaint once per span crossing, pure
   /// translation between), the sparse widget-cell kinds re-window their
@@ -142,7 +142,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// writing) position content-absolutely. Null keeps the classic
   /// pre-windowed contract.
   final ValueListenable<int>? windowBucket;
-  final double viewportMainExtent;
 
   /// Where a playing run's next turn stands the frame axis
   /// ([TimelineCellsRowGrid.nextPage]) — the page the painter bakes ahead.
@@ -649,7 +648,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
     crossAxisExtent: crossAxisExtent,
     axis: axis,
     windowBucket: windowBucket,
-    viewportMainExtent: viewportMainExtent,
     nextPage: nextPage,
     stepsUntilShown: stepsUntilShown,
     substrateGeneration: substrateGeneration,
@@ -701,7 +699,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
       axis: axis,
       // The cells' window: the labels print the blocks it reaches (I-22).
       windowBucket: windowBucket,
-      viewportMainExtent: viewportMainExtent,
       // Each number on its block as the cells draw the block (I-129): the
       // row's eye, its cels and the host's ground, as they take them.
       shown: RailEyes.of(context, layer).shown,
@@ -783,7 +780,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
             // The cells' window: what the chrome draws, as the cells under
             // it.
             windowBucket: windowBucket,
-            viewportMainExtent: viewportMainExtent,
             // The row closes its LayerId into the identity-free grip hooks —
             // the chrome layer serves cut rows too now, and a grip drag is
             // the same gesture on both.

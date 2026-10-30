@@ -75,27 +75,52 @@ class CutVerbs {
   final ChangeSink _changes;
   final TimelineAccess _timeline;
 
-  void createCut() {
+  /// The cut [createCut] makes when it is told nothing — what the new cut
+  /// window offers (I-100): the name the cut takes where it lands, and the
+  /// new cut's canvas, A4 200dpi. Null where the ＋ has no place for one.
+  Cut? get plannedNewCut {
+    final plan = _placement.cutCreationPlan;
+    if (plan == null) {
+      return null;
+    }
+    return _project.cutCommandCoordinator.plannedCut(
+      trackId: plan.trackId,
+      placement: _landingOf(plan),
+    );
+  }
+
+  /// Makes a cut where the ＋ has its place ([CutPlacement.cutCreationPlan]),
+  /// named [name] at [canvasSize] — what the new cut window confirms.
+  ///
+  /// 🗣️I-100 (유저 2026-10-14): 「새 컷 만들때, 지금 현재컷? 기준으로 크기
+  /// 정하는데, 그게아니라 앞으로는 컷 만들기 버튼 누르면 컷 생성창 열려서,
+  /// 거기서 이름(기본값 넣어줌), 캔버스 사이즈(기본값 a4 200dpi) 정하도록.
+  /// 거기서 정한값으로 만들어짐」. ↩️A new cut took the active cut's canvas,
+  /// as new scenes in TVPaint/Clip Studio take the project's.
+  void createCut({String? name, CanvasSize? canvasSize}) {
     final plan = _placement.cutCreationPlan;
     if (plan == null) {
       return;
     }
     _project.cutCommandCoordinator.createCut(
       trackId: plan.trackId,
-      // New cuts inherit the active cut's canvas size, like new scenes in
-      // TVPaint/Clip Studio inherit the project size.
-      canvasSize: _project.activeCutOrNull?.canvasSize,
-      placement: plan.index == null
-          ? null
-          : (
-              index: plan.index,
-              leadingGapFrames: plan.leadingGapFrames,
-              duration: plan.duration,
-            ),
+      canvasSize: canvasSize,
+      placement: _landingOf(plan),
+      name: name,
     );
     _changes.refreshAfterCutCommand();
     _changes.notifyChanged();
   }
+
+  static ({int? index, int leadingGapFrames, int? duration})? _landingOf(
+    ({TrackId trackId, int? index, int leadingGapFrames, int? duration}) plan,
+  ) => plan.index == null
+      ? null
+      : (
+          index: plan.index,
+          leadingGapFrames: plan.leadingGapFrames,
+          duration: plan.duration,
+        );
 
   void resizeActiveCutCanvas(
     CanvasSize canvasSize, {
@@ -462,11 +487,25 @@ class CutVerbs {
     _changes.notifyChanged();
   }
 
+  /// What the new cut window offers for a 겸용 cut of the active cut
+  /// (🗣️I-100-Q1, [CutCommandCoordinator.plannedLinkedCut]) — null with no
+  /// active cut.
+  ({String name, CanvasSize canvasSize})? get plannedLinkedCut =>
+      switch (_timeline.editingSession.activeCutId) {
+        null => null,
+        final cutId => _project.cutCommandCoordinator.plannedLinkedCut(
+          sourceCutId: cutId,
+        ),
+      };
+
   /// 겸용컷 생성: a new cut whose drawing layers are all LINKED to the
-  /// active cut's (empty timelines — same pictures, own timing).
-  void createLinkedCutFromActiveCut() => _activeCut.onActiveCut(
-    (cutId) =>
-        _project.cutCommandCoordinator.createLinkedCut(sourceCutId: cutId),
+  /// active cut's (empty timelines — same pictures, own timing), named
+  /// [name] — what the new cut window confirms.
+  void createLinkedCutFromActiveCut({String? name}) => _activeCut.onActiveCut(
+    (cutId) => _project.cutCommandCoordinator.createLinkedCut(
+      sourceCutId: cutId,
+      name: name,
+    ),
   );
 
   /// 겸용 변경 preview: what linking the active cut with [targetCutId]

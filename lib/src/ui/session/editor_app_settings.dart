@@ -168,9 +168,10 @@ class EditorAppSettings {
   /// The LIVE value lives app-wide on [AppFrameGridSettings.settings] — every
   /// grid host's law reads it there; the session only restores/persists.
   Future<void> _restoreFrameGridSettings() async {
-    _restored(
+    await _restore(
       AppFrameGridSettings.settings,
-      await _frameGridSettingsStore?.load(),
+      _frameGridSettingsStore?.load,
+      const AppFrameGridSettings(),
     );
   }
 
@@ -188,9 +189,10 @@ class EditorAppSettings {
   /// The LIVE value lives app-wide on [AppFrameCountSettings.settings] — the
   /// count window opens on it; the session only restores/persists.
   Future<void> _restoreFrameCountSettings() async {
-    _restored(
+    await _restore(
       AppFrameCountSettings.settings,
-      await _frameCountSettingsStore?.load(),
+      _frameCountSettingsStore?.load,
+      const AppFrameCountSettings(),
     );
   }
 
@@ -208,9 +210,10 @@ class EditorAppSettings {
   /// The LIVE value lives app-wide on [CameraPathSettings.settings] — the
   /// canvas draws by it; the session only restores/persists.
   Future<void> _restoreCameraPathSettings() async {
-    _restored(
+    await _restore(
       CameraPathSettings.settings,
-      await _cameraPathSettingsStore?.load(),
+      _cameraPathSettingsStore?.load,
+      const CameraPathSettings(),
     );
   }
 
@@ -228,9 +231,10 @@ class EditorAppSettings {
   /// The LIVE value lives app-wide on [PixelVerbSettings.settings] — a verb
   /// reads it at its press; the session only restores/persists.
   Future<void> _restorePixelVerbSettings() async {
-    _restored(
+    await _restore(
       PixelVerbSettings.settings,
-      await _pixelVerbSettingsStore?.load(),
+      _pixelVerbSettingsStore?.load,
+      const PixelVerbSettings(),
     );
   }
 
@@ -262,7 +266,11 @@ class EditorAppSettings {
       ValueNotifier<OnionSkinSettings>(const OnionSkinSettings());
 
   Future<void> _restoreOnionSkinSettings() async {
-    _restored(onionSkinSettings, await _onionSkinSettingsStore?.load());
+    await _restore(
+      onionSkinSettings,
+      _onionSkinSettingsStore?.load,
+      const OnionSkinSettings(),
+    );
   }
 
   void setOnionSkinSettings(OnionSkinSettings settings) => _publish(
@@ -324,6 +332,33 @@ class EditorAppSettings {
     _held[live] = restored;
   }
 
+  /// What [load] reads ([_restored]) — or, where its store holds nothing,
+  /// [defaults], as the app starts with, and nothing held: the first commit
+  /// writes, as at the start. With no [load] (a test), the live value stays.
+  ///
+  /// 🗣️I-142-Q3 (유저 2026-10-29): 「전부 갈아끼운다」 — a settings file
+  /// that put a setting back at its defaults puts the app back at them.
+  /// ↩️Nothing read kept the live value: read again after such a file, a
+  /// setting changed since stayed changed (the hands-on verify's accent
+  /// colour, 10-29), and so did whatever the session held of it — a commit
+  /// back to that value was then never written.
+  Future<void> _restore<T>(
+    ValueNotifier<T> live,
+    Future<T?> Function()? load,
+    T defaults,
+  ) async {
+    if (load == null) {
+      return;
+    }
+    final restored = await load();
+    if (restored != null) {
+      _restored(live, restored);
+      return;
+    }
+    live.value = defaults;
+    _held.remove(live);
+  }
+
   /// ⚠️**Persist only — there is no `_restoreUiScale` above.** Every other
   /// setting here restores asynchronously and the app repaints when it
   /// lands; the UI scale decides how large the window's contents are laid
@@ -339,8 +374,12 @@ class EditorAppSettings {
   /// The UI scale read again from its file — the one read after `main()`'s:
   /// a settings file's put in place (I-142), where the jump the start avoids
   /// is what was asked for.
-  Future<void> rereadUiScale() async =>
-      _restored(AppUiScale.value, await _uiScaleStore?.load());
+  Future<void> rereadUiScale() =>
+      _restore(
+        AppUiScale.value,
+        _uiScaleStore?.load,
+        AppUiScale.firstRunScaleHere(),
+      );
 
   // --- Language settings (UI-R10 #7) ----------------------------------------
 
@@ -412,7 +451,11 @@ class EditorAppSettings {
   /// The LIVE accents live app-wide on [AppColors.accentSettings] (the
   /// theme root rebuilds off it); the session only restores/persists.
   Future<void> _restoreAccentSettings() async {
-    _restored(AppColors.accentSettings, await _accentSettingsStore?.load());
+    await _restore(
+      AppColors.accentSettings,
+      _accentSettingsStore?.load,
+      const AppAccentSettings(),
+    );
   }
 
   void setAccentSettings(AppAccentSettings settings) =>
@@ -428,7 +471,11 @@ class EditorAppSettings {
   /// travels with the project (R28 #9 reversed by the user, 2026-07-29).
   /// This restore keeps the stored default alive for the next project.
   Future<void> _restoreWorkspaceColors() async {
-    _restored(AppWorkspaceColors.settings, await _workspaceColorsStore?.load());
+    await _restore(
+      AppWorkspaceColors.settings,
+      _workspaceColorsStore?.load,
+      const AppWorkspaceColors(),
+    );
   }
 
   /// Remembers a pasteboard choice as the app-level default for the NEXT
@@ -453,7 +500,11 @@ class EditorAppSettings {
     // that demotion is this side's half. Without it the dead choice
     // reloads on the next launch — with no working pointer to undo it.
     WintabPenService.instance.persistSettings = setInputSettings;
-    _restored(AppInput.settings, await _inputSettingsStore?.load());
+    await _restore(
+      AppInput.settings,
+      _inputSettingsStore?.load,
+      const AppInputSettings(),
+    );
   }
 
   void setInputSettings(AppInputSettings settings) =>
@@ -465,7 +516,11 @@ class EditorAppSettings {
   final AppSaveSettingsStore? _saveSettingsStore;
 
   Future<void> _restoreSaveSettings() async {
-    _restored(AppSave.settings, await _saveSettingsStore?.load());
+    await _restore(
+      AppSave.settings,
+      _saveSettingsStore?.load,
+      const AppSaveSettings(),
+    );
   }
 
   void setSaveSettings(AppSaveSettings settings) =>
@@ -477,7 +532,11 @@ class EditorAppSettings {
   final AppMemorySettingsStore? _memorySettingsStore;
 
   Future<void> _restoreMemorySettings() async {
-    _restored(AppMemory.settings, await _memorySettingsStore?.load());
+    await _restore(
+      AppMemory.settings,
+      _memorySettingsStore?.load,
+      const AppMemorySettings(),
+    );
   }
 
   void setMemorySettings(AppMemorySettings settings) =>
@@ -495,7 +554,11 @@ class EditorAppSettings {
       ValueNotifier<AudioSyncSettings>(AudioSyncSettings.defaults);
 
   Future<void> _restoreAudioSyncSettings() async {
-    _restored(audioSyncSettings, await _audioSyncSettingsStore?.load());
+    await _restore(
+      audioSyncSettings,
+      _audioSyncSettingsStore?.load,
+      AudioSyncSettings.defaults,
+    );
   }
 
   void setAudioSyncSettings(AudioSyncSettings settings) =>

@@ -636,6 +636,18 @@ class EditorTopStrip extends StatelessWidget {
                 )
               : null,
         ),
+        // 🗣️I-128 (유저 2026-10-25): the shortcut buttons off the tool strip,
+        // and the rule under them with them.
+        _item(
+          id: 'window-rail-tools-only',
+          label: editorActionLabel(EditorActionIds.railToolsOnly),
+          shortcuts: const [EditorActionIds.railToolsOnly],
+          icon: Icons.handyman_outlined,
+          checked: panelsMenu.railToolsOnly,
+          onPressed: panelsMenu.canSetRailToolsOnly
+              ? () => panelsMenu.setRailToolsOnly(!panelsMenu.railToolsOnly)
+              : null,
+        ),
         // 🗣️I-103-Q2 (유저 2026-10-16): 「데스크톱만 켜고 끄기, 모바일은
         // 지금처럼 늘 전체 화면」 — a row on the three desktops and none on
         // the iPad and Android, where there is nothing to switch. Its mark

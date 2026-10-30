@@ -212,7 +212,11 @@ void main() {
         ];
 
         expect(lens.keyFrames(effects), {3});
-        expect(lens.numberShown(5), isNull, reason: 'a colour, not a number');
+        expect(
+          lens.numberShown(effects, 5),
+          isNull,
+          reason: 'a colour, not a number',
+        );
         expect(lens.numberHeld(effects, 5), isNull);
         final shifted = lens.update(
           effects,
@@ -244,7 +248,7 @@ void main() {
   test('a number lane still takes a number', () {
     final lens = effectLaneLens(effectLaneId(id, 'tolerance'))!;
     final effects = [LayerEffect(id: id, kind: EffectKind.colorKey)];
-    expect(lens.numberShown(5), 5);
+    expect(lens.numberShown(effects, 5), 5);
     expect(lens.numberHeld(effects, 500), 255, reason: 'clamped to its range');
   });
 

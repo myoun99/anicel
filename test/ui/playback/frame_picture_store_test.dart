@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 import 'package:anicel/src/models/rgba_image_bytes.dart';
 import 'package:anicel/src/ui/playback/frame_picture_gpu.dart';
 import 'package:anicel/src/ui/playback/frame_picture_store.dart';
+import 'package:flutter/foundation.dart' show FlutterError;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/poll_until.dart';
@@ -66,6 +67,7 @@ void main() {
         ),
         isTrue,
       );
+      final landing = store.landingOf('b')!;
       // A lay of the key a patch is moving to waits for the patch.
       final laid = store.lay('b', over(picture.extent));
       expect(await pollUntil(() => gpu.bases.isNotEmpty), isTrue);
@@ -83,6 +85,7 @@ void main() {
       expect(store.peek('b'), isNull);
       gpu.releaseWrite();
       expect(await laid, same(picture));
+      expect(await landing, isTrue, reason: 'in');
       expect(store.peek('a'), isNull);
       store.dispose();
     });
@@ -401,10 +404,69 @@ void main() {
         rect: const ui.Rect.fromLTWH(0, 0, 8, 8),
         draw: fill,
       );
-      await store.landingOf('b');
+      expect(await store.landingOf('b'), isFalse, reason: 'not in');
       expect(store.peek('a'), isNull);
       expect(store.peek('b'), isNull);
       expect(await pollUntil(() => picture.image.debugDisposed), isTrue);
+      store.dispose();
+    });
+
+    test('the GPU threw writing lets go of the picture and answers every '
+        'patch on its way, none in — the throw reported (F-509)', () async {
+      final reported = _reported();
+      final gpu = _RecordingGpu()..writesThrow = StateError('unsized texels');
+      final store = FramePictureStore<String>(gpu: gpu);
+      final picture = await _layed(store, 'a', 256);
+      final landings = <Future<bool>>[];
+      // A stroke's two steps — the first no longer the last asked for to
+      // its key — and its lift.
+      for (final from in ['a', 'b']) {
+        store.patch(
+          from: from,
+          to: 'b',
+          rect: const ui.Rect.fromLTWH(0, 0, 8, 8),
+          draw: fill,
+        );
+        landings.add(store.landingOf('b')!);
+      }
+      store.move(from: 'b', to: 'c');
+      landings.add(store.landingOf('c')!);
+      for (final landing in landings) {
+        expect(await patiently(landing), isFalse, reason: 'not in');
+      }
+      expect(store.peek('a'), isNull);
+      expect(store.peek('b'), isNull);
+      expect(store.peek('c'), isNull);
+      expect(await pollUntil(() => picture.image.debugDisposed), isTrue);
+      expect(reported, [isA<StateError>()]);
+      store.dispose();
+    });
+
+    test('that threw rendering lets go of the picture and is answered, none '
+        'in — so is a patch behind it, and both throws reported', () async {
+      final reported = _reported();
+      final gpu = _RecordingGpu();
+      final store = FramePictureStore<String>(gpu: gpu);
+      final picture = await _layed(store, 'a', 256);
+      gpu.rendersThrow = StateError('no raster');
+      final landings = <Future<bool>>[];
+      for (final from in ['a', 'b']) {
+        store.patch(
+          from: from,
+          to: 'b',
+          rect: const ui.Rect.fromLTWH(0, 0, 8, 8),
+          draw: fill,
+        );
+        landings.add(store.landingOf('b')!);
+      }
+      for (final landing in landings) {
+        expect(await patiently(landing), isFalse, reason: 'not in');
+      }
+      expect(store.peek('a'), isNull);
+      expect(store.peek('b'), isNull);
+      expect(await pollUntil(() => picture.image.debugDisposed), isTrue);
+      expect(reported, [isA<StateError>(), isA<StateError>()]);
+      expect(gpu.bases, isEmpty, reason: 'nothing written');
       store.dispose();
     });
 
@@ -545,6 +607,16 @@ Future<FramePicture> _layed(
       canvas.drawPaint(ui.Paint()..color = const ui.Color(0xFF0000FF)),
 )))!;
 
+/// What the store reports as it goes on ([FlutterError.onError]) from here
+/// to the end of the test.
+List<Object> _reported() {
+  final reported = <Object>[];
+  final was = FlutterError.onError;
+  FlutterError.onError = (details) => reported.add(details.exception);
+  addTearDown(() => FlutterError.onError = was);
+  return reported;
+}
+
 /// Lets every held write go until the store has nothing left to write.
 Future<void> _landAll(
   _RecordingGpu gpu,
@@ -585,6 +657,12 @@ class _RecordingGpu implements FramePictureGpu {
   /// What every write answers: whether the GPU did it.
   bool writesLand = true;
 
+  /// What every write throws as it is asked, where anything.
+  Error? writesThrow;
+
+  /// What every render throws as it is asked, where anything.
+  Error? rendersThrow;
+
   final List<(int, int)> rendered = [];
   final List<ui.Picture> recorded = [];
   final List<List<BaseWrite>> bases = [];
@@ -609,6 +687,9 @@ class _RecordingGpu implements FramePictureGpu {
 
   @override
   Future<ui.Image> render(ui.Picture picture, int width, int height) {
+    if (rendersThrow case final thrown?) {
+      throw thrown;
+    }
     recorded.add(picture);
     if (!holdRenders) {
       rendered.add((width, height));
@@ -622,8 +703,10 @@ class _RecordingGpu implements FramePictureGpu {
     return done.future;
   }
 
+  /// The texture behind [image], held as a handle of its own: the store
+  /// lets go of the picture's image once a write gives it another.
   @override
-  Object? hold(ui.Image image) => gpu ? image : null;
+  Object? hold(ui.Image image) => gpu ? image.clone() : null;
 
   @override
   int levelsOf(Object held) {
@@ -632,7 +715,13 @@ class _RecordingGpu implements FramePictureGpu {
   }
 
   @override
+  ui.Image imageOf(Object held) => (held as ui.Image).clone();
+
+  @override
   Future<bool> write(Object held, List<BaseWrite> base, LevelWrites? levels) {
+    if (writesThrow case final thrown?) {
+      throw thrown;
+    }
     bases.add(base);
     if (levels case (:final run, :final spans)) {
       levelWrites.add((run: (run.width, run.height), spans: spans));

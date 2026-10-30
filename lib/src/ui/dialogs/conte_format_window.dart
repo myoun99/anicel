@@ -8,13 +8,15 @@ import '../widgets/pill_strip.dart';
 import 'dialog_verb.dart';
 
 /// What the 「콘티 용지 서식」 window answers: the form the sheet is printed
-/// in and whether its pictures stand in the black, and the front the conte
-/// book is printed with — its cover, and the blank page behind it.
+/// in and whether its pictures stand in the black, the front the conte
+/// book is printed with — its cover, and the blank page behind it — and
+/// whether a cell writes what its camera does (I-93).
 typedef ConteFormat = ({
   ConteSheetForm form,
   bool outlined,
   bool cover,
   bool blankPage,
+  bool fixedText,
 });
 
 /// 「콘티 용지 서식」: the conte sheet's settings, in a window of their own
@@ -46,6 +48,7 @@ class _ConteFormatWindowState extends State<ConteFormatWindow> {
   late bool _outlined = widget.initial.outlined;
   late bool _cover = widget.initial.cover;
   late bool _blankPage = widget.initial.blankPage;
+  late bool _fixedText = widget.initial.fixedText;
 
   static String _formName(ConteSheetForm form) => switch (form) {
     ConteSheetForm.analog => AppText.strings.conteFormAnalog,
@@ -74,6 +77,20 @@ class _ConteFormatWindowState extends State<ConteFormatWindow> {
       on: on,
       words: (on: strings.conteFrontIn, off: strings.conteFrontOut),
       onChanged: onChanged,
+    );
+  }
+
+  /// Whether each cell writes what its camera does over its ACTION words
+  /// (🗣️I-93, 유저 2026-10-12: 「고정텍스트 표기할지 안할지 콘티용지패널에
+  /// 설정할수있도록」).
+  Widget _fixedTextSwitch() {
+    final strings = AppText.strings;
+    return TogglePill(
+      keyValue: 'conte-format-fixed-text',
+      on: _fixedText,
+      // ⚠️Mine: the outline's words — a plain on and off in every language.
+      words: (on: strings.conteOutlineOn, off: strings.conteOutlineOff),
+      onChanged: (on) => setState(() => _fixedText = on),
     );
   }
 
@@ -126,6 +143,7 @@ class _ConteFormatWindowState extends State<ConteFormatWindow> {
                 (on) => setState(() => _blankPage = on),
               ),
             ),
+            _field(strings.conteFixedText, _fixedTextSwitch()),
           ],
         ),
       ),
@@ -142,5 +160,6 @@ class _ConteFormatWindowState extends State<ConteFormatWindow> {
     outlined: _outlined,
     cover: _cover,
     blankPage: _blankPage,
+    fixedText: _fixedText,
   );
 }

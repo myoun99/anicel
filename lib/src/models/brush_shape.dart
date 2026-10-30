@@ -362,15 +362,19 @@ class BrushShape {
   /// see [BrushMixingMethod.blur].
   bool get blurs => mixesGroundColor && mixingMethod == BrushMixingMethod.blur;
 
-  /// How much of the reservoir reaches the canvas, 0..1 — Clip Studio's
-  /// 물감량. At 0 the dab leaves the ground untouched.
+  /// How much drawing colour the brush is loaded with, 0..1 — Clip Studio's
+  /// 물감량: how soon it comes back to its own colour after picking another
+  /// up. At 0 it is dry and lays only what it picked up
+  /// (`BrushGroundColorMixer`).
   final double paintAmount;
 
   /// Strength of the deposited paint, 0..1 — Clip Studio's 물감 농도.
   final double paintDensity;
 
-  /// How strongly the reservoir takes on the colour under the brush, 0..1 —
-  /// Clip Studio's 색 늘이기. This is what smears colour along a stroke.
+  /// How far a colour picked up is drawn out, 0..1 — Clip Studio's 색 늘이기:
+  /// the higher, the less a dab lifts of what it crosses, so what the brush
+  /// carries lingers. ↩️Until 2026-10-30 it was how much a dab lifted — the
+  /// other way round.
   final double colorStretch;
 
   /// How the line this brush draws is corrected — Clip Studio's 補正, the

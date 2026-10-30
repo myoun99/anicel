@@ -4,8 +4,10 @@ import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/widgets.dart' show StringCharacters;
 
 import '../../models/canvas_size.dart';
+import '../../models/camera_moves.dart' show CameraMove, cameraMoves;
 import '../../models/camera_work_marks.dart'
     show CameraKeyRole, cameraKeyLabel;
+import '../../models/conte/conte_camera_lines.dart';
 import '../../models/conte/conte_sheet_source.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
@@ -19,6 +21,12 @@ import '../../models/timeline_coverage.dart';
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
 import '../../models/track.dart';
 import '../../models/track_id.dart';
+import '../../models/track_transitions.dart' show transitionSpanOfEvent;
+import '../../models/transition_geometry.dart'
+    show TransitionSides, oneSidedSpanAppliesToCut, transitionSidesOf;
+import '../../models/transition_names.dart'
+    show transitionCutsJoined, transitionRowNamedByItsCuts;
+import '../text/app_strings.dart';
 import '../../services/camera_frame_corners.dart'
     show cameraFramesBounds, cameraFramesShown;
 import '../../services/camera_path.dart' show CameraPath;
@@ -34,7 +42,10 @@ import '../../models/storyboard_timeline_layout.dart';
 /// dialogue is the SE blocks', the number is the cut's name, and the times
 /// are the storyboard layout's global frames. Nothing on the sheet is
 /// authored anywhere but where it already lived.
-ConteSheetSource buildConteSheetSource(Project project) {
+///
+/// [olWord] is the word an O.L prints as — the sheet's, in the notation
+/// language (`sheetOlWord`, F-229); the program's where none is given.
+ConteSheetSource buildConteSheetSource(Project project, {String? olWord}) {
   final layout = buildStoryboardTimelineLayout(project);
   final cellsOf = [
     for (final entry in layout)
@@ -44,6 +55,10 @@ ConteSheetSource buildConteSheetSource(Project project) {
       ),
   ];
   final panels = _panelsOnTheirTracks(layout, cellsOf);
+  final transitions = _transitionsOf(
+    project,
+    olWord: olWord ?? AppText.strings.tlTransitionCutOl,
+  );
   final cuts = <ConteCutSource>[];
   for (final (index, entry) in layout.indexed) {
     final track = project.tracks.firstWhere(
@@ -51,16 +66,20 @@ ConteSheetSource buildConteSheetSource(Project project) {
     );
     cuts.add(
       _cutSource(
-        cut: entry.cut,
-        name: entry.cut.name,
+        entry,
         cells: cellsOf[index],
-        endFrame: entry.endFrame,
         dialogue: _dialogueOf(track, (
           id: entry.cut.id,
           start: entry.startFrame,
           panels: panels[index],
         )),
-        cameraFrameSize: project.cameraSize,
+        transitionLines: _transitionLinesOn(
+          entry,
+          cellsOf[index],
+          transitions[track.id]!,
+          project,
+        ),
+        project: project,
       ),
     );
   }
@@ -79,45 +98,133 @@ ConteSheetSource buildConteSheetSource(Project project) {
     framesPerSecond: project.frameRate.countingBase,
     cover: info.conteCover,
     blankPage: info.conteBlankPage,
+    fixedText: info.conteFixedText,
   );
 }
 
-ConteCutSource _cutSource({
-  required Cut cut,
-  required String name,
+ConteCutSource _cutSource(
+  StoryboardTimelineLayoutEntry entry, {
   required List<StoryboardCoverageCell> cells,
-  required int endFrame,
   required List<ConteDialogueLine> dialogue,
-  required CanvasSize cameraFrameSize,
+  required List<List<String>> transitionLines,
+  required Project project,
+}) => ConteCutSource(
+  cutId: entry.cut.id,
+  name: entry.cut.name,
+  durationFrames: entry.cut.duration,
+  cumulativeEndFrames: entry.endFrame,
+  cells: [
+    for (final (index, cell) in cells.indexed)
+      _cellSource(
+        cut: entry.cut,
+        cell: cell,
+        transitionLines: transitionLines[index],
+        project: project,
+      ),
+  ],
+  dialogue: dialogue,
+);
+
+/// A track's transition row named by its cuts, as the sheet prints it
+/// (`transitionRowNamedByItsCuts`), and its cuts on its axis.
+typedef _TrackTransitions = ({
+  Layer row,
+  List<({Cut cut, int startFrame, int endFrame})> placed,
+});
+
+/// Each of [project]'s tracks' transitions ([_TrackTransitions]), by track.
+Map<TrackId, _TrackTransitions> _transitionsOf(
+  Project project, {
+  required String olWord,
 }) {
-  final storyboard = storyboardLayerForCut(cut);
-  return ConteCutSource(
-    cutId: cut.id,
-    name: name,
-    durationFrames: cut.duration,
-    cumulativeEndFrames: endFrame,
-    cells: [
-      for (final cell in cells)
-        _cellSource(
-          cut: cut,
-          cell: cell,
-          storyboard: storyboard,
-          cameraFrameSize: cameraFrameSize,
+  final byTrack = <TrackId, _TrackTransitions>{};
+  for (final track in project.tracks) {
+    final placed = cutSpansOf(track).toList();
+    byTrack[track.id] = (
+      row: transitionRowNamedByItsCuts(
+        row: track.transitionLayer,
+        cuts: placed,
+        vocabulary: project.cameraInstructions,
+        olWord: olWord,
+      ),
+      placed: placed,
+    );
+  }
+  return byTrack;
+}
+
+/// The transitions [track] writes on [entry]'s [cells] (I-93-Q1), a list
+/// to each cell, in the order they start (the row keeps its spans so): an
+/// O.L on the last cell of the cut it leaves — 「앞 컷에만」, nowhere on the
+/// cut it enters — and a fade, which only applies inside its own cut
+/// ([oneSidedSpanAppliesToCut]), on the cell of it the fade starts in.
+///
+/// ⚠️Mine: an O.L out of a gap leaves no cut, so no conte writes it.
+List<List<String>> _transitionLinesOn(
+  StoryboardTimelineLayoutEntry entry,
+  List<StoryboardCoverageCell> cells,
+  _TrackTransitions track,
+  Project project,
+) {
+  final lines = [for (final _ in cells) <String>[]];
+  if (cells.isEmpty) {
+    return lines;
+  }
+  for (final entryOfRow in track.row.instructions.entries) {
+    final span = transitionSpanOfEvent(entryOfRow, project.cameraInstructions);
+    final cell = switch (transitionSidesOf(span.mark)) {
+      TransitionSides.both =>
+        transitionCutsJoined(
+                  track.placed,
+                  start: span.start,
+                  end: span.start + span.length,
+                ).leaving?.id ==
+                entry.cutId
+            ? cells.length - 1
+            : null,
+      _ =>
+        oneSidedSpanAppliesToCut(
+              span: span,
+              cutStart: entry.startFrame,
+              cutEnd: entry.endFrame,
+            )
+            ? _cellHolding(cells, span.start - entry.startFrame)
+            : null,
+    };
+    if (cell != null) {
+      lines[cell].add(
+        conteTransitionLine(
+          entryOfRow.value,
+          defById: project.cameraInstructions.defById,
+          framesPerSecond: project.frameRate.countingBase,
         ),
-    ],
-    dialogue: dialogue,
-  );
+      );
+    }
+  }
+  return lines;
+}
+
+/// The index of the cell of [cells] holding [frame], one of their frames —
+/// the first where it lies before them, the last where it lies past them.
+int _cellHolding(List<StoryboardCoverageCell> cells, int frame) {
+  for (final (index, cell) in cells.indexed) {
+    if (frame < cell.endIndexExclusive) {
+      return index;
+    }
+  }
+  return cells.length - 1;
 }
 
 ConteCellSource _cellSource({
   required Cut cut,
   required StoryboardCoverageCell cell,
-  required Layer? storyboard,
-  required CanvasSize cameraFrameSize,
+  required List<String> transitionLines,
+  required Project project,
 }) {
   // The cell counts the conte's frames; the row, the camera and the picture
   // count the cut's, which begin that much earlier in a cut an O.L arrives
   // into (F-227).
+  final storyboard = storyboardLayerForCut(cut);
   final conteStart = storyboardConteStart(storyboard?.timeline);
   final exposure = storyboard?.timeline[conteStart + cell.startIndex];
   return ConteCellSource(
@@ -130,8 +237,48 @@ ConteCellSource _cellSource({
       _ => null,
     },
     action: exposure?.memo?.actionMemo ?? '',
-    camera: _cameraWorkIn(cut, cell, cameraFrameSize, conteStart: conteStart),
+    camera: _cameraWorkIn(
+      cut,
+      cell,
+      project.cameraSize,
+      conteStart: conteStart,
+    ),
+    // Over the cut's frames the cell shows — the span its camera work is
+    // read over.
+    cameraLines: _cameraLinesIn(
+      cut,
+      project,
+      from: conteStart + cell.startIndex,
+      to: conteStart + cell.endIndexExclusive,
+    ),
+    transitionLines: transitionLines,
   );
+}
+
+/// What [cut]'s camera does over its frames [from] to [to], a line to each
+/// stretch ([conteCameraStretches]) in [project]'s glossary and count.
+///
+/// ⚠️Mine: a camera whose work is bypassed stands still — the camera row's
+/// switch shows the canvas centred — so it is FIX throughout, as a camera
+/// with no key is (I-93: 「값이 동일해서 안움직이고 있거나 키가 없는
+/// 부분」).
+List<String> _cameraLinesIn(
+  Cut cut,
+  Project project, {
+  required int from,
+  required int to,
+}) {
+  final moves = cut.layers.cameraWorkBypassed
+      ? const <CameraMove>[]
+      : cameraMoves(cut.camera.track);
+  return [
+    for (final stretch in conteCameraStretches(moves, from: from, to: to))
+      conteCameraLine(
+        stretch,
+        defById: project.cameraInstructions.defById,
+        framesPerSecond: project.frameRate.countingBase,
+      ),
+  ];
 }
 
 /// What the camera does while [cell] is on screen: its frame at the cell's

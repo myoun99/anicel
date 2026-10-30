@@ -1,15 +1,19 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/attached_layer_resolve.dart'
+    show attachedMirrorCelId;
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/conte_key.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_folder.dart' show createFolderLayer;
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -1052,6 +1056,476 @@ void main() {
     });
   });
 
+  /// 🗣️I-78-Q20 (유저 2026-10-30): 「트랙의 모든 컷에서 같이 병합」 — the
+  /// option's 「콘티가 있는 컷마다 그 컷의 두 행을 그 컷의 타이밍대로 보이던
+  /// 그대로 합친다 … 결과는 트랙 구조에서 맨 위 행 자리에 서고 모든 컷이 같은
+  /// 구조를 유지 … 콘티 행과 보통 행이 섞이면 콘티 행은 건너뛴다」.
+  group("the conte's rows merge in every cut of its track (Q20)", () {
+    /// A cut's conte [id]: its panel `1` over frames 0–1, `2` over 2–3.
+    Layer conte(String id) =>
+        row(id, {0: '1', 2: '2'}, kind: LayerKind.storyboard);
+
+    /// [id] riding [base] as the track's conte row [key] — synced, its cel
+    /// `R<n>` showing wherever [base]'s `<n>` does — filed [inside].
+    Layer onIt(String id, Layer base, String key, {String? inside}) =>
+        synced(id, base).copyWith(
+          kind: LayerKind.storyboard,
+          conteKey: ConteKey(key),
+          folderId: inside == null ? null : LayerId(inside),
+        );
+
+    /// The mirror of [conteCel] the result kept under [row] holds.
+    FrameId mirror(String row, String conteCel) =>
+        attachedMirrorCelId(LayerId(row), FrameId(conteCel));
+
+    test('🎯chosen alone, they merge in every cut that has the conte — '
+        "each cut's own, by its own timing — and the result rides the conte "
+        "as the topmost one's row of the track, following its panels", () {
+      final s = conte('s');
+      final t = conte('t');
+      final plan = merge(
+        cutOf([s, onIt('k1', s, 'K1'), onIt('k2', s, 'K2')]),
+        ['k1', 'k2'],
+        elsewhere: [
+          cutOf(id: 'd', [t, onIt('j1', t, 'K1'), onIt('j2', t, 'K2')]),
+        ],
+      )!;
+
+      final result = plan.result;
+      expect([for (final row in plan.layers) row.id.value], ['s', 'k2']);
+      expect(
+        [result.attachedToLayerId, result.conteKey, result.kind],
+        [s.id, const ConteKey('K2'), LayerKind.storyboard],
+      );
+      expect(result.attachedMode, AttachedMode.synced);
+      expect(result.timeline, isEmpty, reason: 'its timing the conte\'s');
+      expect(result.baseFrameLinks, {
+        const FrameId('s-1'): mirror('k2', 's-1'),
+        const FrameId('s-2'): mirror('k2', 's-2'),
+      });
+      expect([for (final cel in result.frames) cel.name], ['R1', 'R2']);
+      final (:cut, :layers) = plan.others.single;
+      expect(cut.id, const CutId('d'));
+      expect([for (final row in layers) row.id.value], ['t', 'j2']);
+      final there = rowOf(layers, 'j2');
+      expect(
+        [there.attachedToLayerId, there.conteKey, there.name],
+        [t.id, const ConteKey('K2'), 'k2'],
+      );
+      expect(there.baseFrameLinks, {
+        const FrameId('t-1'): mirror('j2', 't-1'),
+        const FrameId('t-2'): mirror('j2', 't-2'),
+      }, reason: 'its own cels — the cuts are no 겸용 pair');
+      expect(
+        plan.links.groups,
+        isEmpty,
+        reason: "a track's conte rows are no link (conteHeadTargets)",
+      );
+      expect([
+        for (final picture in plan.pictures)
+          '${picture.into.id.value}/${picture.rowId.value}',
+      ], ['c/k2', 'c/k2', 'd/j2', 'd/j2']);
+    });
+
+    test('one keeping a timing of its own leaves the result one of its own — '
+        'a cel wherever what they show changes', () {
+      final s = conte('s');
+      final plan = merge(
+        cutOf([
+          s,
+          row('k1', {0: 'F1'}, lastLength: 4, kind: LayerKind.storyboard)
+              .copyWith(
+                attachedToLayerId: s.id,
+                attachedMode: AttachedMode.free,
+                conteKey: const ConteKey('K1'),
+              ),
+          onIt('k2', s, 'K2'),
+        ]),
+        ['k1', 'k2'],
+      )!;
+
+      expect(plan.result.attachedMode, AttachedMode.free);
+      expect(plan.result.baseFrameLinks, isEmpty);
+      expect(blocksOf(plan.result), {0: (2, 'R1'), 2: (2, 'R2')});
+    });
+
+    test('what the conte lays over them — its keys, its fx — is not baked: '
+        'the result wears it after, riding it as they did', () {
+      final s = conte('s').copyWith(
+        transformTrack: TransformTrack.empty().copyWith(
+          position: PropertyTrack<CanvasPoint>.empty().withKey(
+            0,
+            CanvasPoint(x: 8, y: 0),
+          ),
+        ),
+        effects: [
+          LayerEffect(
+            id: const EffectId('fx'),
+            kind: EffectKind.brightnessContrast,
+          ),
+        ],
+      );
+      final plan = merge(
+        cutOf([s, onIt('k1', s, 'K1'), onIt('k2', s, 'K2')]),
+        ['k1', 'k2'],
+      )!;
+
+      final worn = rowOf(bakedOf(plan).layers, 's');
+      expect(
+        [worn.isVisible, worn.transformTrack.isEmpty, worn.effects],
+        [false, isTrue, isEmpty],
+      );
+      expect(rowOf(plan.layers, 's'), s, reason: 'the conte as it was');
+    });
+
+    test('⛔chosen with rows of the cut\'s own, they are passed over — and '
+        'with one row of its own, nothing merges', () {
+      final s = conte('s');
+      final layers = [
+        s,
+        onIt('k1', s, 'K1'),
+        onIt('k2', s, 'K2'),
+        row('n1', {0: 'N1'}),
+        row('n2', {0: 'N2'}),
+      ];
+
+      final plan = merge(cutOf(layers), ['n1', 'n2', 'k1', 'k2'])!;
+      expect([for (final row in plan.layers) row.id.value], [
+        's',
+        'k1',
+        'k2',
+        'n2',
+      ]);
+      expect(merge(cutOf(layers), ['n1', 'k1', 'k2']), isNull);
+    });
+
+    test('the conte itself chosen with them is passed over — no row of the '
+        "cut's own a merge takes while a row rides it", () {
+      final s = conte('s');
+      final plan = merge(
+        cutOf([s, onIt('k1', s, 'K1'), onIt('k2', s, 'K2')]),
+        ['s', 'k1', 'k2'],
+      )!;
+
+      expect([for (final row in plan.layers) row.id.value], ['s', 'k2']);
+    });
+
+    /// The track's 공정 folder `KP` [id], named [name].
+    Layer filing(String id, {String name = 'Lines'}) => createFolderLayer(
+      id: LayerId(id),
+      name: name,
+    ).copyWith(conteKey: const ConteKey('KP'));
+
+    test('a 공정 folder taken is the row (Q5) — wearing its name, kept in '
+        "every cut as the topmost picture row's row of the track: a folder "
+        'filing nothing, the structure forgets', () {
+      final s = conte('s');
+      final t = conte('t');
+      final plan = merge(
+        cutOf([
+          s,
+          onIt('k1', s, 'K1', inside: 'P'),
+          onIt('k2', s, 'K2', inside: 'P'),
+          filing('P'),
+        ]),
+        ['P'],
+        elsewhere: [
+          cutOf(id: 'd', [
+            t,
+            onIt('j1', t, 'K1', inside: 'Q'),
+            onIt('j2', t, 'K2', inside: 'Q'),
+            filing('Q'),
+          ]),
+        ],
+      )!;
+
+      expect([for (final row in plan.layers) row.id.value], ['s', 'k2']);
+      expect([for (final row in plan.others.single.layers) row.id.value], [
+        't',
+        'j2',
+      ]);
+      expect(
+        [
+          plan.result.name,
+          plan.result.conteKey,
+          plan.result.kind,
+          plan.result.folderId,
+        ],
+        ['Lines', const ConteKey('K2'), LayerKind.storyboard, null],
+      );
+    });
+
+    test('chosen inside a 공정 folder, under the conte, the result stays '
+        'filed there and rides under it', () {
+      final s = conte('s');
+      Layer under(String id, String key) => onIt(
+        id,
+        s,
+        key,
+        inside: 'P',
+      ).copyWith(attachedPlacement: AttachedPlacement.below);
+      final plan = merge(
+        cutOf([under('k1', 'K1'), under('k2', 'K2'), filing('P'), s]),
+        ['k1', 'k2'],
+      )!;
+
+      expect([for (final row in plan.layers) row.id.value], ['k2', 'P', 's']);
+      expect(
+        [plan.result.folderId, plan.result.attachedPlacement],
+        [const LayerId('P'), AttachedPlacement.below],
+      );
+    });
+
+    test("a 겸용 pair's 공정 folder: each cut's result is its keeper's self "
+        'there, the cels kept where the table keeps the keeper\'s', () {
+      final s = conte('s');
+      final k1 = onIt('k1', s, 'K1', inside: 'P');
+      final k2 = onIt('k2', s, 'K2', inside: 'P');
+      Layer self(Layer row, String id) => row.copyWith(
+        id: LayerId(id),
+        folderId: row.folderId == null ? null : const LayerId('P2'),
+        attachedToLayerId: row.attachedToLayerId == null
+            ? null
+            : const LayerId('s2'),
+      );
+      final plan = merge(
+        cutOf([s, k1, k2, filing('P')]),
+        ['P'],
+        elsewhere: [
+          cutOf(id: 'd', [
+            self(s, 's2'),
+            self(k1, 'k1d'),
+            self(k2, 'k2d'),
+            filing('P2'),
+          ]),
+        ],
+        links: [
+          ['c/s', 'd/s2'],
+          ['c/k1', 'd/k1d'],
+          ['d/k2d', 'c/k2'],
+          ['c/P', 'd/P2'],
+        ],
+      )!;
+
+      expect([for (final row in plan.others.single.layers) row.id.value], [
+        's2',
+        'k2d',
+      ]);
+      expect(plan.links.groups.last.members, const [
+        LayerLinkMember(
+          trackId: TrackId('t'),
+          cutId: CutId('d'),
+          layerId: LayerId('k2d'),
+        ),
+        LayerLinkMember(
+          trackId: TrackId('t'),
+          cutId: CutId('c'),
+          layerId: LayerId('k2'),
+        ),
+      ]);
+    });
+
+    test('a pair linked by another of its rows: the cut the keeper has no '
+        "self in keeps its own keeper's id, not its folder's", () {
+      final s = conte('s');
+      final t = conte('t');
+      final plan = merge(
+        cutOf([
+          s,
+          onIt('k1', s, 'K1', inside: 'P'),
+          onIt('k2', s, 'K2', inside: 'P'),
+          filing('P'),
+        ]),
+        ['P'],
+        elsewhere: [
+          cutOf(id: 'd', [
+            t,
+            onIt('j1', t, 'K1', inside: 'Q'),
+            onIt('j2', t, 'K2', inside: 'Q'),
+            filing('Q'),
+          ]),
+        ],
+        links: [
+          ['c/k1', 'd/j1'],
+        ],
+      )!;
+
+      expect([for (final row in plan.others.single.layers) row.id.value], [
+        't',
+        'j2',
+      ]);
+      expect(
+        [
+          for (final member in plan.links.groups.single.members)
+            '${member.cutId.value}/${member.layerId.value}',
+        ],
+        ['c/k2', 'd/j2'],
+      );
+    });
+
+    test('two 겸용 pairs on the track merge as two layers — each a row of '
+        'the link table of its own', () {
+      Cut pair(String cut, String conteId, String prefix) {
+        final base = conte(conteId);
+        return cutOf(id: cut, [
+          base,
+          onIt('${prefix}1', base, 'K1'),
+          onIt('${prefix}2', base, 'K2'),
+        ]);
+      }
+
+      final plan = merge(
+        pair('c', 's', 'k'),
+        ['k1', 'k2'],
+        elsewhere: [
+          pair('d', 's', 'k').copyWith(
+            layers: [
+              for (final row in pair('d', 's', 'k').layers)
+                row.copyWith(
+                  id: LayerId('${row.id.value}d'),
+                  attachedToLayerId: row.attachedToLayerId == null
+                      ? null
+                      : const LayerId('sd'),
+                ),
+            ],
+          ),
+          pair('e', 'u', 'm'),
+          pair('f', 'u', 'm').copyWith(
+            layers: [
+              for (final row in pair('f', 'u', 'm').layers)
+                row.copyWith(
+                  id: LayerId('${row.id.value}f'),
+                  attachedToLayerId: row.attachedToLayerId == null
+                      ? null
+                      : const LayerId('uf'),
+                ),
+            ],
+          ),
+        ],
+        links: [
+          for (final (one, other, rows) in const [
+            ('c', 'd', ['s', 'k1', 'k2']),
+            ('e', 'f', ['u', 'm1', 'm2']),
+          ])
+            for (final row in rows) ['$one/$row', '$other/$row$other'],
+        ],
+      )!;
+
+      expect(plan.links.groups, hasLength(4), reason: "the contes' kept");
+      expect({for (final group in plan.links.groups) group.id}, hasLength(4));
+      expect(
+        [
+          for (final group in plan.links.groups.skip(2))
+            [for (final member in group.members) member.layerId.value],
+        ],
+        [
+          ['k2', 'k2d'],
+          ['m2', 'm2f'],
+        ],
+      );
+    });
+
+    test("🎯a 겸용 pair's cuts merge as ONE layer — one bank, one row of the "
+        'link table — and a cut of the track no pair links, as its own', () {
+      final s = conte('s');
+      final k1 = onIt('k1', s, 'K1');
+      final k2 = onIt('k2', s, 'K2');
+      Layer self(Layer row, String id) => row.copyWith(
+        id: LayerId(id),
+        attachedToLayerId: row.attachedToLayerId == null
+            ? null
+            : const LayerId('s2'),
+      );
+      final u = conte('u');
+      final plan = merge(
+        cutOf([s, k1, k2]),
+        ['k1', 'k2'],
+        elsewhere: [
+          cutOf(id: 'd', [self(s, 's2'), self(k1, 'k1d'), self(k2, 'k2d')]),
+          cutOf(id: 'e', [u, onIt('m1', u, 'K1'), onIt('m2', u, 'K2')]),
+        ],
+        links: [
+          ['c/s', 'd/s2'],
+          ['c/k1', 'd/k1d'],
+          ['c/k2', 'd/k2d'],
+        ],
+      )!;
+
+      Layer resultIn(String cut, String id) => rowOf(
+        plan.others.firstWhere((other) => other.cut.id == CutId(cut)).layers,
+        id,
+      );
+      expect(resultIn('d', 'k2d').frames, plan.result.frames);
+      expect(resultIn('d', 'k2d').baseFrameLinks, plan.result.baseFrameLinks);
+      expect(resultIn('e', 'm2').baseFrameLinks, {
+        const FrameId('u-1'): mirror('m2', 'u-1'),
+        const FrameId('u-2'): mirror('m2', 'u-2'),
+      });
+      expect(plan.links.groups.last.members, const [
+        LayerLinkMember(
+          trackId: TrackId('t'),
+          cutId: CutId('c'),
+          layerId: LayerId('k2'),
+        ),
+        LayerLinkMember(
+          trackId: TrackId('t'),
+          cutId: CutId('d'),
+          layerId: LayerId('k2d'),
+        ),
+      ]);
+      expect(plan.links.groups, hasLength(2), reason: "the contes' kept");
+      expect([
+        for (final picture in plan.pictures)
+          '${picture.into.id.value}/${picture.rowId.value}',
+      ], ['c/k2', 'c/k2', 'e/m2', 'e/m2']);
+    });
+
+    test('a panel shown as two pictures leaves the result a timing of its '
+        'own — a cel of the conte has one mirror', () {
+      final s = conte('s');
+      final plan = merge(
+        cutOf([
+          s,
+          onIt('k1', s, 'K1', inside: 'P'),
+          onIt('k2', s, 'K2', inside: 'P'),
+          createFolderLayer(id: const LayerId('P'), name: 'P').copyWith(
+            conteKey: const ConteKey('KP'),
+            transformTrack: TransformTrack.empty().copyWith(
+              position: PropertyTrack<CanvasPoint>.empty()
+                  .withKey(0, CanvasPoint(x: 0, y: 0))
+                  .withKey(1, CanvasPoint(x: 8, y: 0)),
+            ),
+          ),
+        ]),
+        ['P'],
+      )!;
+
+      expect(plan.result.attachedMode, AttachedMode.free);
+      expect(blocksOf(plan.result), {
+        0: (1, 'R1'),
+        1: (1, 'R1-2'),
+        2: (2, 'R2'),
+      });
+    });
+
+    test('…and one picture shown over two panels does too', () {
+      final s = conte('s');
+      Layer onBoth(String id, String key) => onIt(id, s, key).copyWith(
+        baseFrameLinks: {
+          const FrameId('s-1'): FrameId('$id-1'),
+          const FrameId('s-2'): FrameId('$id-1'),
+        },
+      );
+      final plan = merge(
+        cutOf([s, onBoth('k1', 'K1'), onBoth('k2', 'K2')]),
+        ['k1', 'k2'],
+      )!;
+
+      expect(plan.result.attachedMode, AttachedMode.free);
+      expect(blocksOf(plan.result), {0: (4, 'R1')});
+    });
+  });
+
   /// 🗣️I-78-Q15 (유저 2026-10-28): 「참조도 그대로 병합한다」.
   group('a reference row is baked as it shows', () {
     /// A reference row showing a [width] × [height] file at the canvas's
@@ -1513,6 +1987,55 @@ void main() {
         ],
         [('r-1', 'R1'), ('r-3', 'R3'), ('attach-mirror-r-m0', 'R1-2')],
       );
+    });
+
+    group("🗣️the conte's rows merge their blocks too — the cut's row alone "
+        '(Q21)', () {
+      /// A cut's conte: its panel `1` over frames 0–1, `2` over 2–3.
+      final conte = row('s', {0: '1', 2: '2'}, kind: LayerKind.storyboard);
+
+      /// The track's conte row `K1` riding [conte] on a timing of its own.
+      final free = row('k', {
+        0: 'K1',
+        2: 'K2',
+      }, kind: LayerKind.storyboard).copyWith(
+        attachedToLayerId: conte.id,
+        attachedMode: AttachedMode.free,
+        conteKey: const ConteKey('K1'),
+      );
+
+      /// The track's conte row `K2`, synced on [conte].
+      final onIt = synced('j', conte).copyWith(
+        kind: LayerKind.storyboard,
+        conteKey: const ConteKey('K2'),
+      );
+      final cut = cutOf([conte, free, onIt]);
+
+      test('a conte row of its own timing makes its blocks one, staying the '
+          "track's row it was", () {
+        final plan = mergeBlocks(cut, {
+          'k': [0, 2],
+        })!;
+
+        expect([for (final row in plan.rows) row.id.value], ['k']);
+        final merged = rowOf(plan.layers, 'k');
+        expect(blocksOf(merged), {0: (4, 'K1')});
+        expect(
+          [merged.conteKey, merged.attachedToLayerId, merged.attachedMode],
+          [const ConteKey('K1'), conte.id, AttachedMode.free],
+        );
+      });
+
+      test('the conte merges its panels, the rows synced on it along — a '
+          'row of its own timing riding it stays as it is', () {
+        final plan = mergeBlocks(cut, {
+          's': [0, 2],
+        })!;
+
+        expect([for (final row in plan.rows) row.id.value], ['s', 'j']);
+        expect(blocksOf(rowOf(plan.layers, 's')), {0: (4, '1')});
+        expect(rowOf(plan.layers, 'k'), free);
+      });
     });
   });
 }

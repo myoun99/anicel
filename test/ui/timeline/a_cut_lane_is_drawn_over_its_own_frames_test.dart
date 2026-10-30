@@ -35,6 +35,7 @@ void main() {
     // as they are counted.
     geometry = ValueNotifier(
       const TimelineFrameGeometry(
+        viewExtentPx: 76 * cell,
         frameCellExtent: cell,
         frameStartIndex: 20,
         frameEndIndexExclusive: 96,
@@ -58,6 +59,7 @@ void main() {
       },
       valueSourceAt: (frame) => (layer: layer, frame: frame),
       poseCentre: const CanvasSize(width: 400, height: 300),
+      hasPlugin: null,
     );
     return (
       layer: layer,
@@ -76,9 +78,10 @@ void main() {
     frameAxis: (
       geometry: geometry,
       windowBucket: null,
-      viewportMainExtent: size.width,
       axis: Axis.horizontal,
       laneExtent: timelineLayerRowHeight,
+      playhead: null,
+      frameCount: 0,
     ),
   );
 

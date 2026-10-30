@@ -3,17 +3,17 @@
 //
 // No test named this command file (audit 2026-09-04); the folder menu
 // reached it through the session. These pins drive it directly on one cut,
-// on a folder CreateFolderCommand just made.
+// on a folder written in around one row.
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/services/commands/create_folder_command.dart';
 import 'package:anicel/src/services/commands/dissolve_folder_command.dart';
 import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/services/project_repository.dart';
+import '../../helpers/a_folder_written_around_a_row.dart';
 
 void main() {
   const folderId = LayerId('folder-under-test');
@@ -25,14 +25,12 @@ void main() {
     repository = ProjectRepository(initialProject: createDefaultProject());
     cut = repository.requireProject().tracks.first.cuts.first;
     member = cut.layers.first;
-    CreateFolderCommand(
-      repository: repository,
+    writeAFolderAround(
+      repository,
       cutId: cut.id,
-      name: 'Folder',
-      memberLayerIds: [member.id],
-      folderIdByCut: {cut.id: folderId},
-      groupId: 'group-under-test',
-    ).execute();
+      member: member.id,
+      folderId: folderId,
+    );
   });
 
   List<Layer> layers() => requireCut(repository.requireProject(), cut.id).layers;

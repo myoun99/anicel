@@ -40,6 +40,7 @@ class TimesheetInfo {
     this.conteBlankPage = true,
     this.conteForm = ConteSheetForm.analog,
     this.conteOutlined = true,
+    this.conteFixedText = true,
   });
 
   static const TimesheetInfo empty = TimesheetInfo();
@@ -128,6 +129,12 @@ class TimesheetInfo {
   final ConteSheetForm conteForm;
   final bool conteOutlined;
 
+  /// Whether each conte cell writes what the camera does while it is on
+  /// over its ACTION words — the format window's (유저 2026-10-12, I-93:
+  /// 「고정텍스트 표기할지 안할지 콘티용지패널에 설정할수있도록」), kept with
+  /// the work. ⚠️Mine: written unless taken out.
+  final bool conteFixedText;
+
   /// The name for [mark]'s work, or empty when nobody is set — so a form
   /// binding never has to null-check.
   String staffNameFor(LayerMark mark) => staff[mark.keySlug] ?? '';
@@ -153,6 +160,7 @@ class TimesheetInfo {
     bool? conteBlankPage,
     ConteSheetForm? conteForm,
     bool? conteOutlined,
+    bool? conteFixedText,
   }) {
     return TimesheetInfo(
       title: title ?? this.title,
@@ -177,6 +185,7 @@ class TimesheetInfo {
       conteBlankPage: conteBlankPage ?? this.conteBlankPage,
       conteForm: conteForm ?? this.conteForm,
       conteOutlined: conteOutlined ?? this.conteOutlined,
+      conteFixedText: conteFixedText ?? this.conteFixedText,
     );
   }
 
@@ -206,6 +215,7 @@ class TimesheetInfo {
     if (!conteBlankPage) 'conteBlankPage': false,
     if (conteForm != ConteSheetForm.analog) 'conteForm': conteForm.name,
     if (!conteOutlined) 'conteOutlined': false,
+    if (!conteFixedText) 'conteFixedText': false,
   };
 
   factory TimesheetInfo.fromJson(Map<String, dynamic> json) {
@@ -233,6 +243,7 @@ class TimesheetInfo {
       conteBlankPage: json['conteBlankPage'] as bool? ?? true,
       conteForm: ConteSheetForm.named(json['conteForm']),
       conteOutlined: json['conteOutlined'] as bool? ?? true,
+      conteFixedText: json['conteFixedText'] as bool? ?? true,
     );
   }
 
@@ -252,6 +263,7 @@ class TimesheetInfo {
           other.conteBlankPage == conteBlankPage &&
           other.conteForm == conteForm &&
           other.conteOutlined == conteOutlined &&
+          other.conteFixedText == conteFixedText &&
           mapEquals(other.staff, staff) &&
           other.hiddenFields.length == hiddenFields.length &&
           other.hiddenFields.containsAll(hiddenFields);
@@ -270,6 +282,7 @@ class TimesheetInfo {
     conteBlankPage,
     conteForm,
     conteOutlined,
+    conteFixedText,
     Object.hashAllUnordered(
       staff.entries.map((entry) => Object.hash(entry.key, entry.value)),
     ),

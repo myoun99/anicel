@@ -61,23 +61,50 @@ int timelineFrameWindowBucketOf({
 
 /// The frame window a consumer must keep materialized for [bucket]:
 /// every cell the viewport can reveal while the offset stays anywhere in
-/// the bucket's span, plus overscan. Unclamped — callers intersect with
-/// their own frame bounds.
+/// the bucket's span, plus overscan, out to the edge of the span it ends
+/// in ([_spansReached]). Unclamped — callers intersect with their own frame
+/// bounds.
 ({int startIndex, int endIndexExclusive}) timelineFrameWindowFor({
   required int bucket,
   required double cellExtent,
   required double viewportExtent,
 }) {
   final span = timelineFrameWindowSpanFor(cellExtent);
-  final viewportCells = cellExtent <= 0
-      ? 0
-      : (viewportExtent / cellExtent).ceil();
   return (
     startIndex: bucket * span - timelineFrameWindowOverscanCells,
     endIndexExclusive:
-        (bucket + 1) * span + viewportCells + timelineFrameWindowOverscanCells,
+        (bucket + _spansReached(cellExtent, viewportExtent)) * span,
   );
 }
+
+/// How many spans a window covers from its bucket's first cell: the bucket's
+/// own, the viewport's cells and the overscan past them — rounded UP to a
+/// whole span.
+///
+/// 🚨Rounded so a view a pixel wider or narrower keeps its window, as an
+/// offset a pixel on keeps its bucket (storyboard-strips-build-on-every-
+/// view-pixel, 2026-10-30): the storyboard's strips build their pieces for
+/// the window, and every pixel of a rail splitter's drag built them all
+/// again. A window now ends on a span's edge, where the cells' tiles are cut
+/// (`timelineFrameWindowSpanFor`) — so a row bakes the tiles it baked.
+int _spansReached(double cellExtent, double viewportExtent) {
+  final span = timelineFrameWindowSpanFor(cellExtent);
+  final viewportCells = cellExtent <= 0
+      ? 0
+      : (viewportExtent / cellExtent).ceil();
+  final cells = span + viewportCells + timelineFrameWindowOverscanCells;
+  return (cells + span - 1) ~/ span;
+}
+
+/// What a piece built for the window keys on in place of the view's breadth
+/// ([visibleFrameWindowFor]): the spans the window reaches, and 0 where
+/// there is no window — two breadths with one reach give one window.
+int timelineFrameWindowReachFor({
+  required double viewportExtent,
+  required double cellExtent,
+}) => viewportExtent <= 0 || cellExtent <= 0
+    ? 0
+    : _spansReached(cellExtent, viewportExtent);
 
 /// The frame window a painter actually draws: the bucket's window clipped
 /// to the painter's own [frameStartIndex, frameEndIndexExclusive), or the

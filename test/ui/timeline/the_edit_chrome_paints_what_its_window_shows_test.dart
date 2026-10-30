@@ -58,6 +58,7 @@ void main() {
         includeRunEdges: false,
       ),
       geometry: testFrameGeometry(
+        viewExtentPx: 480,
         frameCellExtent: 24,
         frameEndIndexExclusive: 1200,
       ),
@@ -68,7 +69,6 @@ void main() {
       draggingGripId: null,
       devicePixelRatio: 1,
       windowBucket: window,
-      viewportMainExtent: 480,
     );
     Iterable<Rect> drawnGrips() {
       final canvas = TestRecordingCanvas();
@@ -83,9 +83,9 @@ void main() {
     expect(painter.targets, hasLength(600), reason: 'premise: every edge');
     final atStart = drawnGrips();
     expect(atStart, isNotEmpty, reason: 'premise: the window has grips');
-    // Bucket 0 of a 20-cell viewport reaches frame 26
-    // ([timelineFrameWindowFor]).
-    expect(atStart.where((grip) => grip.left > 26 * 24.0), isEmpty);
+    // Bucket 0 of a 20-cell viewport reaches frame 26, and on to the edge of
+    // its four-cell span: 28 ([timelineFrameWindowFor]).
+    expect(atStart.where((grip) => grip.left > 28 * 24.0), isEmpty);
 
     var repaints = 0;
     painter.addListener(() => repaints += 1);
@@ -114,6 +114,7 @@ void main() {
               layer: layer,
               drawnFrameCount: 1200,
               geometry: testFrameGeometry(
+                viewExtentPx: 480,
                 frameCellExtent: 24,
                 frameEndIndexExclusive: 1200,
               ),
@@ -128,7 +129,6 @@ void main() {
                 onCancel: () {},
               ),
               windowBucket: ValueNotifier<int>(0),
-              viewportMainExtent: 480,
             ),
           ),
         ),

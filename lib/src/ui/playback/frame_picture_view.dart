@@ -343,9 +343,10 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// brought one into hand and [frame] is still the one standing.
   ///
   /// 🚨STOOD AGAIN ONLY FOR WHAT THE READ BROUGHT INTO HAND. A cel no read
-  /// brings in — a movie's, decoded or not: its picture is the movie tier's
-  /// and banked nowhere (`BrushFrameStore.storeRebuiltDisplayCache`) — or
-  /// one whose bytes would not thaw answered the read at once, and the frame
+  /// brings in — a movie's not decoded yet, its decode the hydrator's (and
+  /// a decoded one, banked nowhere, until it was in hand: 2026-10-30,
+  /// `LayerFrameImageCache.storedSurfaceIsInHand`) — or one whose bytes
+  /// would not thaw answered the read at once, and the frame
   /// stood again and read again in the same microtask, for ever: from
   /// 2026-10-25 (one picture per frame) the app hung the moment a movie
   /// stood on the canvas (🐞10-30, the hands-on verify's 23.976 `.mov` —
@@ -409,6 +410,19 @@ class _FramePictureViewState extends State<FramePictureView> {
     }
   }
 
+  /// The picture shown was written into — by this view's stroke or
+  /// another's: drawn from here on by the image it is now
+  /// ([FramePicture.image]: a picture written into is a new image, or the
+  /// screen of an iPhone or iPad is not drawn again where it changed,
+  /// F-509).
+  void _written() {
+    final (:picture, :image) = _shown!;
+    setState(() {
+      image.dispose();
+      _shown = (picture: picture, image: picture.image.clone());
+    });
+  }
+
   /// Shows [there], the picture of [key] — the one shown already where a
   /// stroke's landing moved it here, what it holds of the live rows kept.
   void _take(FramePictureKey key, FramePicture there) {
@@ -427,6 +441,7 @@ class _FramePictureViewState extends State<FramePictureView> {
     _store.retainPin(key);
     _keptAs = key;
     _shown = (picture: there, image: image);
+    there.addListener(_written);
     _showing = key;
     _drawnOn = _celNow();
     _standing.whole = false;
@@ -722,12 +737,20 @@ class _FramePictureViewState extends State<FramePictureView> {
     }
     _pictures.giveWayToSteps();
     _keepAs(to);
-    // Shown once its texels are in the picture, at every level.
+    // Shown once its texels are in the picture, at every level — or, where
+    // they never went in, the frame as it stands from the paint after: the
+    // picture let go on the way (a write the GPU threw on, F-509). ⛔Not
+    // the picture until the next change: a step that did not go in showed
+    // only once another came after it.
     unawaited(
-      _store.landingOf(to)!.then((_) {
-        if (mounted) {
-          _repaint.value += 1;
+      _store.landingOf(to)!.then((landed) {
+        if (!mounted) {
+          return;
         }
+        if (!landed && identical(_shown?.picture, picture)) {
+          _standing.whole = true;
+        }
+        _repaint.value += 1;
       }),
     );
   }
@@ -738,7 +761,8 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// the frame's stored pixels is no picture of the frame's
   /// ([FramePictureKey.standingOn]).
   void _letGo(FramePictureStore<FramePictureKey> store) {
-    if (_shown case (:final image, picture: _)) {
+    if (_shown case (:final image, :final picture)) {
+      picture.removeListener(_written);
       image.dispose();
       final kept = _keptAs!;
       store.releasePin(kept);

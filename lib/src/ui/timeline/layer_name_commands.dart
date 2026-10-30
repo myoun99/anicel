@@ -13,7 +13,7 @@ import '../dialogs/rename_cut_dialog.dart';
 import '../dialogs/rename_layer_dialog.dart';
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
-import '../text/model_vocabulary.dart' show EffectKindWords;
+import '../text/model_vocabulary.dart' show LayerEffectWords;
 
 /// The two LAYER dialogs the command bar's layer pill opens.
 ///
@@ -102,7 +102,7 @@ DeleteLayerDialog _deleteWindowFor(
       for (final (:row, effects: named) in effects)
         for (final effect in row.effects)
           if (named.contains(effect.id))
-            '${row.name} · ${effect.kind.labelFor(language)}',
+            '${row.name} · ${effect.labelFor(language)}',
     ],
   );
 }

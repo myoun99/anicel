@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart' show ValueNotifier;
 
 import '../../models/attached_layer_resolve.dart';
 import '../../models/transform_track.dart';
-import '../../models/cut.dart' show Cut;
 import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -118,9 +117,9 @@ class OpacityVerbs {
       _activeCutTransitionAnswer(
         frameIndex: frameIndex,
         nothing: 1,
-        answer: (cut, start, globalFrame) => cutTransitionRampAt(
+        answer: (start, end, globalFrame) => cutTransitionRampAt(
           cutStart: start,
-          cutEnd: start + cut.duration,
+          cutEnd: end,
           spans: _transitions.activeTrackTransitionSpans,
           globalFrame: globalFrame,
         ),
@@ -133,9 +132,9 @@ class OpacityVerbs {
       _activeCutTransitionAnswer(
         frameIndex: frameIndex,
         nothing: const [],
-        answer: (cut, start, globalFrame) => cutTransitionVeilsAt(
+        answer: (start, end, globalFrame) => cutTransitionVeilsAt(
           cutStart: start,
-          cutEnd: start + cut.duration,
+          cutEnd: end,
           spans: _transitions.activeTrackTransitionSpans,
           globalFrame: globalFrame,
         ),
@@ -147,19 +146,20 @@ class OpacityVerbs {
   T _activeCutTransitionAnswer<T>({
     required int? frameIndex,
     required T nothing,
-    required T Function(Cut cut, int cutStart, int globalFrame) answer,
+    required T Function(int cutStart, int cutEnd, int globalFrame) answer,
   }) {
-    final cut = _project.activeCutOrNull;
-    if (cut == null) {
+    final place = _transitions.activeCutPlaceShown;
+    if (place == null) {
       return nothing;
     }
     // Where the cut STANDS, which a span is measured against — and the
     // track frame the cut's own frame plays at, which is not that far in
-    // when an O.L arrives into the cut.
+    // when an O.L arrives into the cut. Both as a drag in flight lays the
+    // cut, with the spans it carries.
     return answer(
-      cut,
-      _project.activeCutGlobalStartFrame,
-      _project.activeCutMediaStartFrame +
+      place.start,
+      place.end,
+      place.mediaStart +
           (frameIndex ?? _controllers.timelineController.currentFrameIndex),
     );
   }

@@ -28,7 +28,6 @@ void main() {
     geometry: geometry,
     colorScheme: const ColorScheme.light(),
     windowBucket: bucket,
-    viewportMainExtent: size.width,
   );
 
   /// The line as it was drawn before: cut at each start, each dash a draw
@@ -79,6 +78,8 @@ void main() {
         frameCellExtent: 7.3,
         frameStartIndex: 0,
         frameEndIndexExclusive: 1000,
+        // The row's width ([size]).
+        viewExtentPx: 120,
       ),
     );
     bucket = ValueNotifier<int>(0);

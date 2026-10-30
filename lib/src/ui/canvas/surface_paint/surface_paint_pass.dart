@@ -440,7 +440,15 @@ class _SurfacePaintPass {
     final wider = _painter.surface.laidBounds != null;
     if (wider) {
       _canvas.save();
-      _canvas.clipRect(_painter.surface.pasteboard.rect);
+      // Cut as a float's own edge is, on the grid (`CelTextLanding`) —
+      // ↩️at a fraction of a pixel until
+      // the-walk-family-cuts-the-rest-on-the-grid.
+      clipToTheDisplayEdge(
+        _canvas,
+        _painter.surface.pasteboard.rect,
+        antiAlias: false,
+        pixelRatio: _pixelRatio,
+      );
     }
     _paintFloat();
     if (wider) {

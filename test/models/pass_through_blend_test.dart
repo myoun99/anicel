@@ -5,6 +5,7 @@ import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import '../helpers/a_folder_made_by_hand.dart';
 
 /// PASS THROUGH (통과) — Photoshop's and CSP's default group mode, and
 /// ours. A folder made to tidy the stack must not change one pixel;
@@ -69,7 +70,7 @@ void main() {
     addTearDown(s.dispose);
     s.createDrawingAtCurrentFrame();
     final memberId = s.activeLayer!.id;
-    s.folders.groupActiveLayerIntoFolder();
+    groupTheActiveRowIntoAFolder(s);
     final folderId = s.activeCutOrNull!.layers.folderLayers.single.id;
 
     // Default (pass-through): the member keeps its own normal blend.

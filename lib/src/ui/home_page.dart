@@ -23,6 +23,7 @@ import '../native/qa_native_engine.dart';
 import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
 import '../services/font_library_service.dart';
+import '../services/fx_plugins/installed_fx_plugins.dart';
 import '../services/last_stroke_slot.dart';
 import '../services/launch_notice.dart';
 import '../services/memory_pressure_budget.dart';
@@ -239,6 +240,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// (I-7, 유저 2026-09-26: 「탭사이에 복사나 붙여넣기 뭐든 가능. 앱 전체에
   /// 하나」).
   final AppClipboard _clipboard = AppClipboard();
+
+  /// The fx plugins this device has installed (I-132) — ONE for every open
+  /// project, as the clipboard is: a plugin installed in one tab is in
+  /// every tab's Fx list.
+  final InstalledFxPlugins _fxPlugins = InstalledFxPlugins();
 
   /// The tool a temporary hold sprang from — the app's, beside the tool
   /// ([ToolHoldMemory]).
@@ -541,6 +547,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // that opens a project gets its own list rather than the developer's.
     // Sync, because the menu reads this while BUILDING.
     AppRecent.projects.value = RecentProjectsStore().load();
+    unawaited(_fxPlugins.load());
     _projects = OpenProjects(
       first: widget.initialProject ?? newUntitledProject(),
       openSession: _openSession,
@@ -709,6 +716,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       frameworkImageCache: PaintingBinding.instance.imageCache,
       failedSaveCopies: _failedSaveCopies,
       appClipboard: _clipboard,
+      fxPlugins: _fxPlugins,
       // The library the workspace lists its fonts from, so a project is
       // saved with the files a person sees in that list.
       fontLibrary: widget.fontLibraryService,
@@ -1057,6 +1065,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       ..removeListener(_followProjectOnScreen)
       ..dispose();
     _appSettings.dispose();
+    _fxPlugins.dispose();
     _panelsMenu.removeListener(_showPanelsToShortcuts);
     _panelsMenu.dispose();
     _brushTool.dispose();
@@ -1271,9 +1280,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       case EditorActionIds.layerAdd:
         _workingPanel.addLayer();
       // F-455: the cut pill's ＋ by key — its button's own press, which
-      // makes no cut where it has no place for one.
+      // opens no window where it has no place for a cut (I-100).
       case EditorActionIds.cutNew:
-        newCutPress(_session)?.call();
+        newCutPress(context, _session)?.call();
       // I-130: ○ and ● by key — their buttons' presses.
       case EditorActionIds.frameToggleMarkOne:
         final panel = _workingPanel;

@@ -79,6 +79,7 @@ void main() {
   }) => TimelineRowCellsPainter(
     layer: layer,
     geometry: testFrameGeometry(
+      viewExtentPx: viewport,
       frameCellExtent: cell,
       frameEndIndexExclusive: 40,
     ),
@@ -90,7 +91,6 @@ void main() {
     tileStore: store,
     substrateGeneration: 'g1',
     windowBucket: bucket,
-    viewportMainExtent: viewport,
   );
 
   /// The name's laid-out width, through the painter's own style.

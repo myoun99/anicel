@@ -1,15 +1,16 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../models/app_frame_count_settings.dart' show FrameCountEntry;
 import '../../models/project_frame_rate.dart';
 import '../text/app_strings.dart';
-import '../text/full_width_numerals.dart';
 import 'app_window.dart';
 import 'pill_strip.dart';
-import 'selected_text_controller.dart';
+import 'window_number.dart';
 
-/// A count of frames, typed either way — the entry switch above, the field
-/// or fields under it.
+/// A count of frames, given either way — the entry switch above, the number
+/// or numbers under it.
 ///
 /// 🗣️I-24 (유저 2026-09-14): 「코마 수 설정창에서 기존처럼 프레임수로 정하는거랑
 /// 추가로 초수+코마로 조절하는거 신설. 버튼으로 각각 옵션 변경가능. 초수+코마는
@@ -19,25 +20,30 @@ import 'selected_text_controller.dart';
 /// so this is the field, and a window that asks for a count of frames asks
 /// with it.
 ///
-/// Switching the entry carries what was typed across: 30 frames at 24 fps
-/// read `1` + `6`, and back.
+/// Each number is the window number ([WindowNumber]) — dragged, stepped or
+/// typed: 🗣️F-507-Q1 (유저 2026-10-30 「칸마다 드래그 숫자 — 전환은
+/// 그대로」). The koma counts on past the rate into the seconds and back,
+/// since both are one count; the count stops at zero, as digits alone
+/// leave typing no sign.
+///
+/// Switching the entry shows the same count the other way: 30 frames at 24
+/// fps read `1` + `6`, and back.
 class FrameCountField extends StatefulWidget {
   const FrameCountField({
     super.key,
     required this.keyPrefix,
     required this.framesPerSecond,
+    required this.count,
     required this.onChanged,
     this.label,
-    this.onSubmitted,
     this.initialEntry = FrameCountEntry.frames,
-    this.initialCount,
     this.onEntryChanged,
     this.beside,
-    this.autofocus = true,
   });
 
   /// `<keyPrefix>-field` (frames), `-seconds-field` and `-koma-field`
-  /// (seconds+frames), `-entry-frames` and `-entry-seconds` (the switch).
+  /// (seconds+frames) — each a [WindowNumber]'s key base —
+  /// `-entry-frames` and `-entry-seconds` (the switch).
   final String keyPrefix;
 
   /// The cap over the field; null where the window's title already says
@@ -49,29 +55,22 @@ class FrameCountField extends StatefulWidget {
   /// The COUNTING base (`ProjectFrameRate.countingBase`).
   final int framesPerSecond;
 
-  /// The count typed so far — null while nothing countable is typed.
-  final ValueChanged<int?> onChanged;
-  final VoidCallback? onSubmitted;
-  final FrameCountEntry initialEntry;
+  /// The count shown — its host's, built again with what [onChanged] gave;
+  /// null where there is none to show ([WindowNumber.value]).
+  final int? count;
 
-  /// The count the field opens on, selected either way it is typed — the
-  /// length already there (I-24-open-entry: 「길이 설정도 기존 길이
-  /// 띄워둔다」). Null opens it empty.
-  final int? initialCount;
+  /// The count a number was just moved or typed to, never below zero.
+  final ValueChanged<int> onChanged;
+  final FrameCountEntry initialEntry;
 
   /// The entry the switch was just moved to — what a window remembers to
   /// open on next time (I-24-open-entry).
   final ValueChanged<FrameCountEntry>? onEntryChanged;
 
-  /// What stands beside the number, either way it is typed — the mark the
+  /// What stands beside the number, either way it is given — the mark the
   /// mark-every window lays: 🗣️I-130-Q2 (유저 2026-10-25 「간격 숫자 옆에
   /// ○ / ● 고르기」). Null on every other count window.
   final Widget? beside;
-
-  /// Whether the count takes the keyboard as the window opens — the count
-  /// window's one question; false in a window that asks it beside others
-  /// (the SE window's dialogue, F-496).
-  final bool autofocus;
 
   @override
   State<FrameCountField> createState() => _FrameCountFieldState();
@@ -79,101 +78,59 @@ class FrameCountField extends StatefulWidget {
 
 class _FrameCountFieldState extends State<FrameCountField> {
   late FrameCountEntry _entry = widget.initialEntry;
-  late final _split = switch (widget.initialCount) {
-    null => null,
-    final count => durationSecondsAndFrames(count, widget.framesPerSecond),
-  };
-  late final _frames = selectedTextController(
-    widget.initialCount?.toString() ?? '',
-  );
-  late final _seconds = selectedTextController(
-    _split?.seconds.toString() ?? '',
-  );
-  late final _koma = selectedTextController(_split?.frames.toString() ?? '');
 
-  @override
-  void dispose() {
-    _frames.dispose();
-    _seconds.dispose();
-    _koma.dispose();
-    super.dispose();
-  }
-
-  int? get _count => switch (_entry) {
-    FrameCountEntry.frames => halfWidthInt(_frames.text),
-    FrameCountEntry.secondsPlusFrames =>
-      _seconds.text.isEmpty && _koma.text.isEmpty
-          ? null
-          : framesOfSecondsAndFrames(
-              halfWidthInt(_seconds.text) ?? 0,
-              halfWidthInt(_koma.text) ?? 0,
-              widget.framesPerSecond,
-            ),
-  };
-
-  void _changed() => widget.onChanged(_count);
+  void _set(int count) => widget.onChanged(math.max(0, count));
 
   void _switchTo(FrameCountEntry entry) {
     if (entry == _entry) {
       return;
     }
-    final count = _count;
-    setState(() {
-      _entry = entry;
-      if (count == null) {
-        return;
-      }
-      switch (entry) {
-        case FrameCountEntry.frames:
-          _frames.text = '$count';
-        case FrameCountEntry.secondsPlusFrames:
-          final split = durationSecondsAndFrames(count, widget.framesPerSecond);
-          _seconds.text = '${split.seconds}';
-          _koma.text = '${split.frames}';
-      }
-    });
+    setState(() => _entry = entry);
     widget.onEntryChanged?.call(entry);
-    _changed();
   }
 
-  TextField _numberField(
-    String key,
-    TextEditingController controller, {
-    bool autofocus = false,
-  }) => TextField(
-    key: ValueKey<String>(key),
-    controller: controller,
-    autofocus: autofocus,
-    keyboardType: TextInputType.number,
-    inputFormatters: halfWidthDigitsOnly,
-    onChanged: (_) => _changed(),
-    onSubmitted: (_) => widget.onSubmitted?.call(),
-  );
-
-  /// The field or fields the count is typed in, as the entry has it.
-  Widget _number(String prefix) => switch (_entry) {
-    FrameCountEntry.frames => _numberField(
-      '$prefix-field',
-      _frames,
-      autofocus: widget.autofocus,
-    ),
-    FrameCountEntry.secondsPlusFrames => Row(
+  /// The number or numbers the count is given in, as the entry has it.
+  Widget _number(String prefix) {
+    final fps = widget.framesPerSecond;
+    final count = widget.count;
+    if (_entry == FrameCountEntry.frames) {
+      return WindowNumber(
+        keyValue: '$prefix-field',
+        value: count,
+        onChanged: _set,
+      );
+    }
+    final split = count == null ? null : durationSecondsAndFrames(count, fps);
+    final seconds = split?.seconds ?? 0;
+    final koma = split?.frames ?? 0;
+    return Row(
       children: [
         Expanded(
-          child: _numberField(
-            '$prefix-seconds-field',
-            _seconds,
-            autofocus: widget.autofocus,
+          child: WindowNumber(
+            keyValue: '$prefix-seconds-field',
+            value: split?.seconds,
+            width: _splitWidth,
+            onChanged: (to) => _set(
+              framesOfSecondsAndFrames(math.max(0, to), koma, fps),
+            ),
           ),
         ),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 8),
-          child: Text('+'),
+        const Text('+'),
+        Expanded(
+          child: WindowNumber(
+            keyValue: '$prefix-koma-field',
+            value: split?.frames,
+            width: _splitWidth,
+            onChanged: (to) => _set(framesOfSecondsAndFrames(seconds, to, fps)),
+          ),
         ),
-        Expanded(child: _numberField('$prefix-koma-field', _koma)),
       ],
-    ),
-  };
+    );
+  }
+
+  /// A seconds or koma number's face: two numbers and their hands share the
+  /// row one stands in.
+  static const double _splitWidth = 48;
 
   @override
   Widget build(BuildContext context) {

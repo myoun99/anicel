@@ -1,5 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/audio_clip.dart';
+import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
+import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/models/se_audio_spans.dart';
+import 'package:anicel/src/models/se_sound.dart';
 import 'package:anicel/src/ui/playback/audio_playback_schedule.dart';
 
 void main() {
@@ -71,5 +76,39 @@ void main() {
         [0, 1, 0],
       );
     });
+  });
+
+  // 🗣️I-145-Q1 (유저 2026-10-30): 「따로 한 값 — 두 입구」 — the row's
+  // Total over its keys, a pro tool's fader over its track keys.
+  test('a span carries the clip\'s gain times the row\'s Total, and the '
+      'keyed volume beside it', () {
+    final span = SeAudioSpan(
+      clip: AudioClip(
+        filePath: 'a.wav',
+        frameId: const FrameId('f'),
+        gain: 1.5,
+      ),
+      clipIndex: 0,
+      startFrame: 2,
+      lengthFrames: 8,
+    );
+    final scheduled = ScheduledAudioClip.ofSpan(
+      span,
+      startFrame: 2,
+      endFrameExclusive: 10,
+      clippedLead: 0,
+      sound: SeSound(
+        totalVolume: 0.5,
+        volume: PropertyTrack<double>(
+          keys: {2: const PropertyKey(0.0), 6: const PropertyKey(1.0)},
+        ),
+      ),
+    );
+    expect(scheduled.gain, 0.75);
+    expect(scheduled.volume, [
+      (frame: 0, gain: 0.0),
+      (frame: 4, gain: 1.0),
+      (frame: 8, gain: 1.0),
+    ], reason: 'the keys stay the keys');
   });
 }

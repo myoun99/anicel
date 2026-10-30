@@ -16,6 +16,7 @@ import '../../models/import/import_warning.dart' show ImportWarning;
 import '../../services/audio/audio_mixer_reference.dart' show AudioMixSource;
 import '../../services/brush_frame_store.dart' show CelRead;
 import '../../services/camera_path.dart' show CameraPath;
+import '../../services/export/ae_script.dart' show AeScript, writeAeScript;
 import '../sheet/sheet_image_cache.dart' show SheetImageRun, readSheetImage;
 import '../../services/persistence/app_export_settings.dart';
 import '../../services/persistence/app_export_settings_store.dart';
@@ -49,6 +50,7 @@ import '../conte/conte_words_in.dart';
 import '../envelope/cut_envelope_builder.dart';
 import 'export_envelope_render.dart';
 import 'conte_pdf_writer.dart';
+import 'ae_script_plan.dart';
 import 'export_audio_mix.dart';
 import 'export_cel_group_plan.dart';
 import 'export_cels_board.dart';
@@ -364,7 +366,14 @@ class ExportDialogState extends State<ExportDialog> {
       // on, so the window opens project-scoped.
       _specs = _specs
           .withSpec(_specs.sequence.copyWith(scope: ExportScopeKind.project))
-          .withSpec(_specs.cels.copyWith(scope: ExportScopeKind.project));
+          .withSpec(_specs.cels.copyWith(scope: ExportScopeKind.project))
+          .withSpec(
+            _specs.aeScript.copyWith(
+              cels: _specs.aeScript.cels.copyWith(
+                scope: ExportScopeKind.project,
+              ),
+            ),
+          );
     }
     _syncControllersFromSpecs();
     _filmNews.addListener(_heardFilm);
@@ -453,14 +462,19 @@ class ExportDialogState extends State<ExportDialog> {
   }
 
   void _updateSpec(ExportTabSpec spec) {
-    setState(() => _specs = _specs.withSpec(spec));
+    // The Cels list writes the picking it shows — on the AE Script tab,
+    // that tab's ([_celsSpec]).
+    final written = spec is CelsExportSpec && _tab == ExportTab.aeScript
+        ? _specs.aeScript.copyWith(cels: spec)
+        : spec;
+    setState(() => _specs = _specs.withSpec(written));
     _persist();
     _settleStanding();
   }
 
   void _syncControllersFromSpecs() {
     _namingBaseController.text = _specs.sequence.naming.baseName;
-    _celSuffixController.text = _specs.cels.naming.suffix;
+    _celSuffixController.text = _celsSpec.naming.suffix;
     _syncCelPrefixFields();
   }
 
@@ -470,7 +484,7 @@ class ExportDialogState extends State<ExportDialog> {
   void _syncCelPrefixFields() {
     for (final MapEntry(key: kind, value: controller)
         in _celPrefixControllers.entries) {
-      controller.text = _specs.cels.naming.prefixOf(kind);
+      controller.text = _celsSpec.naming.prefixOf(kind);
     }
   }
 
@@ -557,7 +571,7 @@ class ExportDialogState extends State<ExportDialog> {
         identical(cached.$2, cut)) {
       return cached.$3;
     }
-    final rows = ExportCelsListing(cut, _specs.cels).rows(plan);
+    final rows = ExportCelsListing(cut, _celsSpec).rows(plan);
     _celRowsCache = (plan, cut, rows);
     return rows;
   }
@@ -590,6 +604,7 @@ class ExportDialogState extends State<ExportDialog> {
         directions: _celDirections(cut, standing.sheetIn(rows)),
         camera: _celCamera(cut, standing.sheetIn(rows)),
         guides: _celGuides(cut, standing.sheetIn(rows)),
+        laysOver: _tab == ExportTab.cels,
       ),
       rows: rows,
       standing: row?.idValue,
@@ -614,7 +629,7 @@ class ExportDialogState extends State<ExportDialog> {
         if (row != null)
           for (final layer in ExportCelsListing(
             cut,
-            _specs.cels,
+            _celsSpec,
           ).stackOf(row, _celsSelectionOf(cut, withDelta: false)))
             (layer: layer, on: selection.includes(layer)),
       ],
@@ -918,8 +933,20 @@ class ExportDialogState extends State<ExportDialog> {
   /// Memoized on what it reads — the project (what the hand did to a cut's
   /// list is the project's) and the spec: the board, the preview, the
   /// headline and the lines under the picture each ask for it every build.
+  /// The cel picking the window shows and plans with: the Cels tab's, or
+  /// the AE Script tab's as it writes its cels (ae-script-export-Q1: 「셀부분
+  /// 선택하는 동작은 셀 탭 그대로 사용하되」 — one list, each tab its own
+  /// picking).
+  CelsExportSpec get _celsSpec => _tab == ExportTab.aeScript
+      ? _specs.aeScript.written
+      : _specs.cels;
+
+  /// Whether the tab stood on writes the cels the Cels list picks.
+  bool get _picksCels =>
+      _tab == ExportTab.cels || _tab == ExportTab.aeScript;
+
   ExportCelGroupPlan _celGroupPlan() {
-    final spec = _specs.cels;
+    final spec = _celsSpec;
     final project = _session.repository.requireProject();
     final cached = _celPlanCache;
     if (cached != null && identical(cached.$1, project) && cached.$2 == spec) {
@@ -1010,7 +1037,10 @@ class ExportDialogState extends State<ExportDialog> {
     if (cached != null && identical(cached.$1, project)) {
       return (cached.$2, cached.$3);
     }
-    final source = buildConteSheetSource(project);
+    final source = buildConteSheetSource(
+      project,
+      olWord: sheetOlWord(_session),
+    );
     final pages = layoutConteBook(
       source,
       metrics: ConteSheetMetrics.ofWork(
@@ -1408,7 +1438,7 @@ class ExportDialogState extends State<ExportDialog> {
   ExportPreviewDocument? _previewDocument() => switch (_tab) {
     ExportTab.sequence => _sequencePreview(),
     ExportTab.image => _imagePreview(),
-    ExportTab.cels => _celsPreview(),
+    ExportTab.cels || ExportTab.aeScript => _celsPreview(),
     ExportTab.conte => _contePreview(),
   };
 
@@ -1416,7 +1446,7 @@ class ExportDialogState extends State<ExportDialog> {
   int _previewPage() => switch (_tab) {
     ExportTab.sequence => _sequencePosition,
     ExportTab.image => _currentImageFrame(),
-    ExportTab.cels => math.max(0, _celPages().at),
+    ExportTab.cels || ExportTab.aeScript => math.max(0, _celPages().at),
     ExportTab.conte => _contePosition,
   };
 
@@ -1431,7 +1461,7 @@ class ExportDialogState extends State<ExportDialog> {
         _imageFrame = page;
       case ExportTab.conte:
         _contePosition = page;
-      case ExportTab.cels:
+      case ExportTab.cels || ExportTab.aeScript:
         break;
     }
   });
@@ -1529,7 +1559,7 @@ class ExportDialogState extends State<ExportDialog> {
       for (final sheet in pages) _sheetPicture(sheet, face, guideInk),
     ];
     return ExportPreviewDocument(
-      subject: (ExportTab.cels, cut.id),
+      subject: (_tab, cut.id),
       // Every setting that changes a picture is in its look: two papers of
       // the same cut must not share a render.
       look: [for (final picture in pictures) picture.look].join('\n'),
@@ -1537,7 +1567,7 @@ class ExportDialogState extends State<ExportDialog> {
       pageCount: pages.length,
       // A cel is open where its format says; a document is its paper.
       opensAlpha:
-          _specs.cels.format.wantsAlpha && pages.first is ExportCelSheet,
+          _celsSpec.format.wantsAlpha && pages.first is ExportCelSheet,
       sizeOf: (page) => pictures[page].size,
       renderAt: (page, size) => pictures[page].render(size),
     );
@@ -1570,7 +1600,7 @@ class ExportDialogState extends State<ExportDialog> {
     Future<ui.Image?> Function(CanvasSize size) render,
   })
   _sheetPicture(ExportListSheet sheet, TextStyle face, Color guideInk) {
-    final spec = _specs.cels;
+    final spec = _celsSpec;
     if (sheet is ExportCelSheet) {
       final renderer = _previewRendererFor(
         // The preview shows what the export writes — same switch.
@@ -1713,7 +1743,7 @@ class ExportDialogState extends State<ExportDialog> {
             : (name: _sequenceFileNameFor(page - kept.first), absent: false);
       case ExportTab.image:
         return (name: _firstOutputFile().name, absent: false);
-      case ExportTab.cels:
+      case ExportTab.cels || ExportTab.aeScript:
         final (cut: _, :pages, :at) = _celPages();
         if (at < 0) {
           return (name: null, absent: false);
@@ -1748,7 +1778,7 @@ class ExportDialogState extends State<ExportDialog> {
   /// behind the board's back — the nearest one left is, and it STAYS stood
   /// on (유저 2026-10-06: 「서있는 상태나 마찬가지지」).
   void _settleStanding() {
-    if (_tab == ExportTab.cels) {
+    if (_picksCels) {
       _celStanding = _celsList().standing;
     }
   }
@@ -1777,7 +1807,7 @@ class ExportDialogState extends State<ExportDialog> {
       return (name: lone, more: false);
     }
     switch (_tab) {
-      case ExportTab.cels:
+      case ExportTab.cels || ExportTab.aeScript:
         final written = _celGroupPlan().writtenFileNames;
         return (name: written.firstOrNull, more: written.length > 1);
       case ExportTab.conte:
@@ -1791,7 +1821,7 @@ class ExportDialogState extends State<ExportDialog> {
 
   /// What the two surfaces say when the tab writes nothing — the cel tab
   /// counts cels, every other tab counts cuts.
-  String _nothingToWriteText() => _tab == ExportTab.cels
+  String _nothingToWriteText() => _picksCels
       ? AppText.strings.exNoCels
       : AppText.strings.exNoCuts;
 
@@ -1842,7 +1872,7 @@ class ExportDialogState extends State<ExportDialog> {
         ).isNotEmpty;
       case ExportTab.image:
         return true;
-      case ExportTab.cels:
+      case ExportTab.cels || ExportTab.aeScript:
         return _celGroupPlan().length > 0;
       case ExportTab.conte:
         return _conteSheet().$2.isNotEmpty;
@@ -2049,10 +2079,12 @@ class ExportDialogState extends State<ExportDialog> {
         ..sort((a, b) => a.path.compareTo(b.path));
       for (final output in made) {
         final name = fileNameOfPath(output.path);
-        var own = name;
-        for (var bump = 2; !taken.add(own.toLowerCase()); bump += 1) {
-          own = bumpedOutputName(name, bump, isFolder: output is Directory);
-        }
+        final own = claimedOutputName(
+          name,
+          taken,
+          keyOf: (name) => name.toLowerCase(),
+          isFolder: output is Directory,
+        );
         outputs.add(
           own == name
               ? output.path
@@ -2087,6 +2119,8 @@ class ExportDialogState extends State<ExportDialog> {
         return _exportCels();
       case ExportTab.conte:
         return _exportConte();
+      case ExportTab.aeScript:
+        return _exportAeScript();
     }
   }
 
@@ -2121,7 +2155,8 @@ class ExportDialogState extends State<ExportDialog> {
   /// it is empty — the name shown behind it: what the export covers
   /// ([unnamedExportName]). The sequence covers the cut or the project, as
   /// its scope says; the image, the cut it is a frame of; the conte, the
-  /// project. Null for the cels tab, whose files a rule names.
+  /// project. Null for the cels tab and the AE Script tab, whose files a
+  /// rule names.
   ({TextEditingController controller, String unnamed})? _nameFieldOf(
     ExportTab tab,
   ) {
@@ -2144,7 +2179,7 @@ class ExportDialogState extends State<ExportDialog> {
         controller: _conteFileController,
         unnamed: unnamedExportName(project),
       ),
-      ExportTab.cels => null,
+      ExportTab.cels || ExportTab.aeScript => null,
     };
   }
 
@@ -2883,6 +2918,99 @@ class ExportDialogState extends State<ExportDialog> {
     );
   }
 
+  /// The AE Script tab's run: the cels the list shows bright, written as
+  /// the tab writes them ([AeScriptExportSpec.written]), then the script
+  /// that lays them out in After Effects beside them ([aeCompsOf]).
+  Future<String> _exportAeScript() {
+    final spec = _specs.aeScript.written;
+    final plan = _celGroupPlan();
+    final renderer = ExportFrameRenderer.forFormat(
+      session: _session,
+      layerFx: spec.layerFx,
+      format: spec.format,
+    );
+    final guideInk = guideColorOf(context);
+    final cels = plan.writtenCels;
+    return _runImageExport(
+      count: cels.length,
+      renderImage: (index) =>
+          renderer.renderCelGroup(
+            cels[index],
+            spec.sizeMode,
+            guideColor: guideInk,
+          ),
+      fileNameFor: (index) => cels[index].fileName,
+      thenWrite: [() => _writeAeScript(plan, scope: spec.scope)],
+      says: _Tally.files,
+    );
+  }
+
+  /// The script of [plan]'s cels, named after what [scope] covers, and the
+  /// sound of each cut it lays beside it ([_writeAeSounds]).
+  Future<void> _writeAeScript(
+    ExportCelGroupPlan plan, {
+    required ExportScopeKind scope,
+  }) async {
+    final project = _session.repository.requireProject();
+    final name = unnamedExportName(
+      project,
+      cut: scope == ExportScopeKind.cut ? _activeCut : null,
+    );
+    int framesOf(Cut cut) => cutSheetFrameCount(
+      _session,
+      cut: cut,
+      cutStartFrame: _trackStartOf(cut),
+    );
+    final sounds = await _writeAeSounds(
+      aeCutsOf(project, plan),
+      framesOf: framesOf,
+    );
+    final script = AeScript(
+      name: name,
+      rate: project.frameRate,
+      comps: aeCompsOf(
+        project: project,
+        plan: plan,
+        // The camera as the screen holds it: the comp IS the camera's
+        // work, whatever the cels were written through.
+        camera: (
+          poseOf: _session.camera.cameraPoseForCut,
+          frameSize: _session.camera.cameraFrameSize,
+        ),
+        runOf: (cut) => (frames: framesOf(cut), sound: sounds[cut.id]),
+      ),
+    );
+    final file = File(_joinLocation('$name.jsx'));
+    await file.parent.create(recursive: true);
+    await file.writeAsString(writeAeScript(script), flush: true);
+  }
+
+  /// Each of [cuts]' sound as the app plays it over the frames its comps
+  /// run ([framesOf]), a WAV beside the script by the cut's name — keyed by
+  /// the cut. A cut that sounds nothing has none.
+  Future<Map<CutId, String>> _writeAeSounds(
+    Iterable<Cut> cuts, {
+    required int Function(Cut cut) framesOf,
+  }) async {
+    final sounds = <CutId, String>{};
+    final taken = <String>{};
+    for (final cut in cuts) {
+      final fileName = claimedOutputName(
+        '${sanitizeExportFileComponent(cut.name)}.wav',
+        taken,
+        keyOf: (name) => name.toLowerCase(),
+      );
+      final run = [
+        for (var frame = 0; frame < framesOf(cut); frame += 1)
+          ExportFrameTask(cut: cut, frameIndex: frame),
+      ];
+      if (await _writeAudioMix(run, _joinLocation(fileName))) {
+        sounds[cut.id] = fileName;
+      }
+    }
+    return sounds;
+  }
+
   /// The digital sheet of a cut's timesheet, at [sheet]'s file.
   Future<void> _writeXdts(ExportDocumentSheet sheet) async {
     final cut = sheet.of;
@@ -2899,24 +3027,32 @@ class ExportDialogState extends State<ExportDialog> {
   /// Renders the SE mix to a temp WAV through the same mixer playback
   /// uses; null = nothing audible (video-only encode).
   Future<String?> _renderAudioMix(List<ExportFrameTask> videoPlan) async {
+    final path =
+        '${Directory.systemTemp.path}${Platform.pathSeparator}'
+        'qa_export_mix_${DateTime.now().microsecondsSinceEpoch}.wav';
+    return await _writeAudioMix(videoPlan, path) ? path : null;
+  }
+
+  /// The SE mix of [plan]'s frames, written to [path] as a WAV through the
+  /// same mixer playback uses — false, and nothing written, when nothing
+  /// there is audible.
+  Future<bool> _writeAudioMix(List<ExportFrameTask> plan, String path) async {
     final schedule = buildExportAudioPlan(
-      plan: videoPlan,
+      plan: plan,
       project: _session.repository.requireProject(),
     );
     if (schedule.isEmpty) {
-      return null;
+      return false;
     }
     final store = _session.audioConformStore;
     for (final clip in schedule) {
       await store.ensureFor(clip.filePath);
     }
-    final path =
-        '${Directory.systemTemp.path}${Platform.pathSeparator}'
-        'qa_export_mix_${DateTime.now().microsecondsSinceEpoch}.wav';
-    final written = await writeExportAudioMixWav(
+    await File(path).parent.create(recursive: true);
+    return writeExportAudioMixWav(
       schedule: schedule,
       rate: _session.projectSettings.projectFrameRate,
-      totalFrames: videoPlan.length,
+      totalFrames: plan.length,
       sampleRate: store.projectSampleRate,
       resolveSource: (filePath) async {
         final entry = await store.ensureFor(filePath);
@@ -2931,7 +3067,6 @@ class ExportDialogState extends State<ExportDialog> {
       outputPath: path,
       log: debugPrint,
     );
-    return written ? path : null;
   }
 
   void cancelExport() {
@@ -3061,6 +3196,9 @@ class ExportDialogState extends State<ExportDialog> {
         return _conteSheet().$2.length == 1 ? _contePageFileName(0, 1) : null;
       case ExportTab.image:
         // A lone file by its format, answered above.
+        return null;
+      case ExportTab.aeScript:
+        // Never one: the script goes with the cels it names.
         return null;
     }
   }
@@ -3255,7 +3393,11 @@ class ExportDialogState extends State<ExportDialog> {
         tabKey: ValueKey<String>('export-tab-${tab.jsonValue}'),
         enabled: !_isExporting,
         onSelected: () {
-          setState(() => _tab = tab);
+          setState(() {
+            _tab = tab;
+            // The naming fields show the picking of the tab stood on.
+            _syncControllersFromSpecs();
+          });
           _settleStanding();
         },
       ),
@@ -3503,7 +3645,7 @@ class ExportDialogState extends State<ExportDialog> {
           ),
           // The Cels tab's list stands under its preview (유저 2026-10-06:
           // 「가로/아래가 좋고」).
-          if (_tab == ExportTab.cels) ...[
+          if (_picksCels) ...[
             const SizedBox(height: 6),
             _celsBoard(),
           ],
@@ -3592,6 +3734,7 @@ class ExportDialogState extends State<ExportDialog> {
       ExportTab.sequence => _sequenceModules(),
       ExportTab.image => _imageModules(),
       ExportTab.cels => _celsModules(),
+      ExportTab.aeScript => _aeScriptModules(),
       ExportTab.conte => _conteModules(),
     };
     // A plain scroll view (not a lazy list): a handful of modules, and
@@ -3784,7 +3927,7 @@ class ExportDialogState extends State<ExportDialog> {
   ExportCelsSelection _celsSelectionOf(Cut cut, {bool withDelta = true}) =>
       resolveExportCelsSelection(
         cut: cut,
-        spec: _specs.cels,
+        spec: _celsSpec,
         delta: withDelta ? _overrides.deltaFor(cut.id) : null,
       );
 
@@ -3928,7 +4071,7 @@ class ExportDialogState extends State<ExportDialog> {
   /// ↩️They were the 「셀」 module of the settings column, a column away from
   /// the rows they switch.
   Widget _celRules(Cut cut) {
-    final spec = _specs.cels;
+    final spec = _celsSpec;
     final strings = AppText.strings;
     return Padding(
       padding: _celRulesPadding,
@@ -3943,8 +4086,12 @@ class ExportDialogState extends State<ExportDialog> {
           // one strip, its documents in a strip under them (drawn so in the
           // F-289 mock).
           _celKindStrip(spec, documents: false),
-          const SizedBox(height: 3),
-          _celKindStrip(spec, documents: true),
+          // The AE Script tab writes no document and lays no paper
+          // ([AeScriptExportSpec.written]).
+          if (_tab == ExportTab.cels) ...[
+            const SizedBox(height: 3),
+            _celKindStrip(spec, documents: true),
+          ],
           Divider(height: 11, color: Theme.of(context).dividerColor),
           _celRuleCaption(strings.exLabel),
           const SizedBox(height: 3),
@@ -3961,19 +4108,21 @@ class ExportDialogState extends State<ExportDialog> {
           _celRuleCaption(strings.exLayerFilter),
           const SizedBox(height: 3),
           _celFilters(spec),
-          const SizedBox(height: 6),
-          _celRuleCaption(strings.exApply),
-          const SizedBox(height: 3),
-          PillStrip(
-            items: [
-              _specSwitch(
-                'export-cels-apply-paper',
-                strings.exPaperLabel,
-                spec.applyPaper,
-                () => spec.copyWith(applyPaper: !spec.applyPaper),
-              ),
-            ],
-          ),
+          if (_tab == ExportTab.cels) ...[
+            const SizedBox(height: 6),
+            _celRuleCaption(strings.exApply),
+            const SizedBox(height: 3),
+            PillStrip(
+              items: [
+                _specSwitch(
+                  'export-cels-apply-paper',
+                  strings.exPaperLabel,
+                  spec.applyPaper,
+                  () => spec.copyWith(applyPaper: !spec.applyPaper),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -3998,9 +4147,12 @@ class ExportDialogState extends State<ExportDialog> {
       ]);
 
   /// The kinds of one strip of 「내보낼 종류」: the cut's documents, or its
-  /// rows'.
-  static Iterable<ExportCelKind> _celKinds({required bool documents}) =>
-      ExportCelKind.values.where((kind) => kind.isDocument == documents);
+  /// rows' — of the ones the tab stood on writes.
+  Iterable<ExportCelKind> _celKinds({required bool documents}) =>
+      (_tab == ExportTab.aeScript
+              ? AeScriptExportSpec.rowKinds
+              : ExportCelKind.values)
+          .where((kind) => kind.isDocument == documents);
 
   /// One strip of 「내보낼 종류」 ([_celKinds]).
   Widget _celKindStrip(CelsExportSpec spec, {required bool documents}) =>
@@ -4217,6 +4369,21 @@ class ExportDialogState extends State<ExportDialog> {
         keyPrefix: 'export-cels-apply-fx',
         layerFx: spec.layerFx,
         onChanged: (fx) => _updateSpec(spec.copyWith(layerFx: fx)),
+      ),
+    ];
+  }
+
+  /// The AE Script tab's column: the cels' names and the scope — the Cels
+  /// tab's own modules over this tab's picking ([_celsSpec]). Its format,
+  /// size, FX and paper are not asked ([AeScriptExportSpec.written]).
+  List<Widget> _aeScriptModules() {
+    final spec = _celsSpec;
+    return [
+      _celNamingAccordion(spec),
+      _scopeAccordion(
+        scope: spec.scope,
+        onChanged: (scope) => _updateSpec(spec.copyWith(scope: scope)),
+        child: spec.scope == ExportScopeKind.project ? _scopeCutGrid() : null,
       ),
     ];
   }

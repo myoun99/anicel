@@ -209,8 +209,20 @@ class WritesNeverLand extends RendersHeld {
   }
 
   @override
+  ui.Image imageOf(Object held) =>
+      throw StateError('a write that never lands gives no image');
+
+  @override
   Future<bool> write(Object held, List<BaseWrite> base, LevelWrites? levels) =>
       Completer<bool>().future;
+}
+
+/// A GPU whose every write throws as it is asked — as `flutter_gpu`'s did
+/// into an iPhone's or iPad's picture (F-509): no patch goes in.
+class WritesThrow extends WritesNeverLand {
+  @override
+  Future<bool> write(Object held, List<BaseWrite> base, LevelWrites? levels) =>
+      throw StateError('a texel of no size');
 }
 
 /// The app's own writes into a frame's picture ([FlutterGpuFramePictures]):
@@ -226,6 +238,9 @@ class WritesLand extends RendersHeld {
 
   @override
   int levelsOf(Object held) => _gpu.levelsOf(held);
+
+  @override
+  ui.Image imageOf(Object held) => _gpu.imageOf(held);
 
   /// Runs once, as the next write is in and before the store hears of it:
   /// what comes to the screen meanwhile.
@@ -268,6 +283,13 @@ final String? noFlutterGpu = () {
 /// into the picture's texture in place, so a capture here shows them
 /// whether or not the view painted again — only the frame says the screen
 /// will (🔬its repaint taken out, every pixel pin still passed).
+///
+/// 🚨★★★And that every frame view draws its picture's image AS IT IS NOW
+/// ([FramePicture.image]) — a frame is not enough on an iPhone or iPad,
+/// whose screen is drawn again only where its drawing changed, an image
+/// told apart by its identity: a view drawing the image it drew before the
+/// write showed the write nowhere there (F-509), and every capture here
+/// would still show it.
 Future<void> inThePicture(WidgetTester tester, Future<void>? landing) async {
   expect(landing, isNotNull, reason: '⛔premise: on its way into a picture');
   var landed = false;
@@ -285,4 +307,20 @@ Future<void> inThePicture(WidgetTester tester, Future<void>? landing) async {
   );
   expect(framed, isTrue, reason: 'the view asks for the frame that shows it');
   await tester.pump();
+  final views = find.descendant(
+    of: find.byType(FramePictureView),
+    matching: find.byType(CustomPaint),
+  );
+  for (final paint in tester.widgetList<CustomPaint>(views)) {
+    final shown =
+        (paint.painter as dynamic).shown
+            as ({FramePicture picture, ui.Image image})?;
+    if (shown case (:final picture, :final image)) {
+      expect(
+        image.isCloneOf(picture.image),
+        isTrue,
+        reason: 'a view draws its picture as it is now, not as it was drawn',
+      );
+    }
+  }
 }

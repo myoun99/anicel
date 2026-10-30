@@ -10,6 +10,7 @@ import '../../models/layer_kind.dart';
 import '../../models/timeline_row_address.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/sound_cannot_play.dart';
+import '../input/two_axis_drag.dart' show SheetZoom, sheetZoom;
 import 'layer_label_controls.dart' show LayerMarkEdit;
 import 'layer_rail_columns.dart' show LayerRailOptionalColumns;
 import 'layer_row_drag.dart';
@@ -91,6 +92,7 @@ class TimelineGridHooks {
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.showSeconds = false,
     this.onShowSecondsChanged,
+    this.onPixelsPerFrameChanged,
     this.onDropMediaAssetOnSeBlock,
     this.onDropMediaAssetOnLayer,
     this.acceptsMediaAssetOnLayer,
@@ -290,6 +292,15 @@ class TimelineGridHooks {
   /// top-left corner cell (the rail-window round) — it belongs beside the
   /// axis it relabels. Null leaves the corner as a plain spacer.
   final ValueChanged<bool>? onShowSecondsChanged;
+
+  /// The panel's zoom writer — the readout's and the zoom keys' — which a
+  /// pinch on the grid writes through too (F-506, [SheetZoom]). Null names
+  /// no zoom, and fingers only move the grid.
+  final ValueChanged<double>? onPixelsPerFrameChanged;
+
+  /// What a pinch on a grid laid out at [pixelsPerFrame] zooms.
+  SheetZoom? zoomAt(double pixelsPerFrame) =>
+      sheetZoom(pixelsPerFrame, projectFrameRate, onPixelsPerFrameChanged);
 
   /// A media-browser sound dropped on an SE block: linked to that block's
   /// instance. Null mounts no drop place. ↩️It rode the audio lane's

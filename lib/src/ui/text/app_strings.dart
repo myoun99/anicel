@@ -853,6 +853,7 @@ enum AppStrings {
   String get conteOutline => _s('conteOutline');
   String get conteOutlineOn => _s('conteOutlineOn');
   String get conteOutlineOff => _s('conteOutlineOff');
+  String get conteFixedText => _s('conteFixedText');
   String get envelopeFormatTitle => _s('envelopeFormatTitle');
   String get envelopeForm => _s('envelopeForm');
   String get sheetModeNotation => _s('sheetModeNotation');
@@ -902,6 +903,7 @@ enum AppStrings {
 
   String get tlAudioGroup => _s('tlAudioGroup');
   String get tlSoundVolume => _s('tlSoundVolume');
+  String get tlSoundTotalVolume => _s('tlSoundTotalVolume');
   String get tlNameTagGroup => _s('tlNameTagGroup');
   String get tlReferenceGroup => _s('tlReferenceGroup');
   String get tlTransformGroup => _s('tlTransformGroup');
@@ -1351,6 +1353,7 @@ enum AppStrings {
   String get exImage => _s('exImage');
   String get exVideo => _s('exVideo');
   String get exCels => _s('exCels');
+  String get exAeScript => _s('exAeScript');
   String get exFormat => _s('exFormat');
   String get exOptions => _s('exOptions');
   String get exNaming => _s('exNaming');
@@ -1610,8 +1613,12 @@ enum AppStrings {
   String get imNotClip => _s('imNotClip');
 
   /// What an import's warnings notice opens with, over the lists of what
-  /// did not come in (F-370) — a converted project's on the Open door, the
-  /// import window's run or pick alike (F-370-Q1).
+  /// did not come in as it was (F-370) — a converted project's on the Open
+  /// door, the import window's run or pick alike (F-370-Q1).
+  ///
+  /// 🗣️F-503 (유저 2026-10-29: 「지금은 그림을 못읽었다는걸로 보이니까
+  /// 잠금상태만 바꼇다고 투명하게하자」): ↩️it said something had not come
+  /// in, over lists whose layers all had — only their lock had not.
   String get imLeftBehind => _s('imLeftBehind');
   String get imFileUnreadable => _s('imFileUnreadable');
   String imNotFound(String path) =>
@@ -1748,6 +1755,38 @@ enum AppStrings {
   String fontBrought(String family) =>
       _s('fontBroughtTemplate').replaceAll('{family}', family);
 
+  /// I-132: an fx plugin's file opened like any other — the question what
+  /// it says of itself is put with, and what it came to.
+  String get fxPluginInstallTitle => _s('fxPluginInstallTitle');
+  String get fxPluginInstall => _s('fxPluginInstall');
+  String fxPluginInstallBody(String name, String vendor, String version) =>
+      _s('fxPluginInstallBodyTemplate')
+          .replaceAll('{name}', name)
+          .replaceAll('{vendor}', vendor)
+          .replaceAll('{version}', version);
+  String fxPluginReplaces(String version) =>
+      _s('fxPluginReplacesTemplate').replaceAll('{version}', version);
+
+  /// ⚠️A warning: a native build runs outside the sandbox.
+  String get fxPluginRunsNatively => _s('fxPluginRunsNatively');
+  String fxPluginInstalled(String name) =>
+      _s('fxPluginInstalledTemplate').replaceAll('{name}', name);
+  String fxPluginUnreadable(String file) =>
+      _s('fxPluginUnreadableTemplate').replaceAll('{file}', file);
+  String fxPluginUnopened(String file, String why) =>
+      _s('fxPluginUnopenedTemplate')
+          .replaceAll('{file}', file)
+          .replaceAll('{why}', why);
+  String get fxPluginsOfDevice => _s('fxPluginsOfDevice');
+  String get fxPluginDelete => _s('fxPluginDelete');
+
+  /// What an opened project's effects are of that this device has not
+  /// (🗣️I-132-Q28 a, 「열 때 경고 한 줄(「없는 플러그인: 이름」)」).
+  String fxPluginsNotOnDevice(List<String> names) =>
+      _s(
+        'fxPluginsNotOnDeviceTemplate',
+      ).replaceAll('{names}', names.join(', '));
+
   /// Why a picked file was not taken as a font.
   String get textToolFontUnreadable => _s('textToolFontUnreadable');
   String get textToolFontIsTheApps => _s('textToolFontIsTheApps');
@@ -1806,7 +1845,7 @@ enum AppStrings {
 
   String get brBrushesTitle => _s('brBrushesTitle');
   String get brGroupNameField => _s('brGroupNameField');
-  String get brCreate => _s('brCreate');
+  String get commonCreate => _s('commonCreate');
   String get brRenameBrush => _s('brRenameBrush');
   String get brBrushNameField => _s('brBrushNameField');
   String get brGroupNameEmpty => _s('brGroupNameEmpty');
@@ -2073,6 +2112,8 @@ enum AppStrings {
   String get laneGraphPenOn => _s('laneGraphPenOn');
   String get laneGraphTransformBox => _s('laneGraphTransformBox');
   String get laneGraphTransformBoxOn => _s('laneGraphTransformBoxOn');
+  String get laneGraphSnap => _s('laneGraphSnap');
+  String get laneGraphSnapOn => _s('laneGraphSnapOn');
   String get railClipOn => _s('railClipOn');
   String get railClip => _s('railClip');
   String get tlLayerMark => _s('tlLayerMark');
@@ -2624,6 +2665,7 @@ enum AppStrings {
     'conteOutline': 'Black frame round pictures',
     'conteOutlineOn': 'On',
     'conteOutlineOff': 'Off',
+    'conteFixedText': 'Fixed text',
     'envelopeFormatTitle': 'Envelope format',
     'envelopeForm': 'Form',
     'sheetModeNotation': 'Notation Sheet (repeat/hold words)',
@@ -2828,6 +2870,7 @@ enum AppStrings {
     'exImage': 'Image',
     'exVideo': 'Video',
     'exCels': 'Cels',
+    'exAeScript': 'AE Script',
     'exFormat': 'Format',
     'exOptions': 'Options',
     'exNaming': 'Naming',
@@ -2899,7 +2942,7 @@ enum AppStrings {
     'exRealSheet': 'Real sheet',
     'imNotTvpp': 'This file cannot be read as a TVPaint project.',
     'imNotClip': 'This file cannot be read as a CLIP STUDIO PAINT file.',
-    'imLeftBehind': 'Not everything could be imported.',
+    'imLeftBehind': 'Not everything came in as it was.',
     'imWarningCount': '{n} warnings',
     'imWarningCountOne': '{n} warning',
     'imFileUnreadable':
@@ -3113,7 +3156,7 @@ enum AppStrings {
     'shapeToolRatioLock': 'Lock ratio',
     'brBrushesTitle': 'Brushes',
     'brGroupNameField': 'Group name',
-    'brCreate': 'Create',
+    'commonCreate': 'Create',
     'brRenameBrush': 'Rename brush',
     'brBrushNameField': 'Brush name',
     'brGroupNameEmpty': 'Group name cannot be empty.',
@@ -3241,6 +3284,24 @@ enum AppStrings {
     'brImportUnreadable': 'This file could not be read as a brush file.',
     'brImportPickFailedTemplate': 'Could not open the file: {error}',
     'fontBroughtTemplate': 'Added the font "{family}" to this device.',
+    'fxPluginInstallTitle': 'Install FX plugin',
+    'fxPluginInstall': 'Install',
+    'fxPluginInstallBodyTemplate':
+        'Install "{name}" {version} from {vendor}?',
+    'fxPluginReplacesTemplate':
+        'It replaces version {version} on this device.',
+    'fxPluginRunsNatively':
+        'This plugin includes code that runs directly on this device, '
+        'outside the sandbox. Install it only if you trust where it came '
+        'from.',
+    'fxPluginInstalledTemplate': 'Installed the FX plugin "{name}".',
+    'fxPluginUnreadableTemplate':
+        '"{file}" is not an FX plugin this app can read.',
+    'fxPluginUnopenedTemplate':
+        '"{file}" could not be opened as an FX plugin on this device: {why}',
+    'fxPluginsOfDevice': 'Plugins on this device',
+    'fxPluginDelete': 'Delete plugin',
+    'fxPluginsNotOnDeviceTemplate': 'Plugins not on this device: {names}',
     'brImportedOneTemplate': 'Imported 1 brush from "{file}".',
     'brImportedManyTemplate': 'Imported {count} brushes from "{file}".',
     'brImportWarningsTemplate': '{summary} ({count} entries with warnings)',
@@ -3341,6 +3402,8 @@ enum AppStrings {
     'laneGraphPenOn': 'Pen (on)',
     'laneGraphTransformBox': 'Transform box',
     'laneGraphTransformBoxOn': 'Transform box (on)',
+    'laneGraphSnap': 'Snap',
+    'laneGraphSnapOn': 'Snap (on)',
     'railClipOn': 'Clip to layer below (on)',
     'railClip': 'Clip to layer below',
     'tlLayerMark': 'Layer mark',
@@ -3359,6 +3422,7 @@ enum AppStrings {
     'tlSelectedLayers': 'Selected layers',
     'tlAudioGroup': 'Audio',
     'tlSoundVolume': 'Volume',
+    'tlSoundTotalVolume': 'Total volume',
     'tlNameTagGroup': 'Name Tag',
     'tlReferenceGroup': 'Reference',
     'tlTransformGroup': 'Transform',
@@ -3770,6 +3834,7 @@ enum AppStrings {
     'shortcutAction.window-tool-rail-right': 'ツールバーを右端に',
     'shortcutAction.window-region-on-top': 'タイムライン領域を上に',
     'shortcutAction.window-brush-values-on-strip': 'ブラシの値を上部のバーに',
+    'shortcutAction.window-rail-tools-only': 'ツールバーはツールだけ',
     'shortcutAction.window-full-screen': '全画面表示',
     'shortcutAction.window-region-fold': 'タイムライン領域を畳む / 開く',
     'shortcutAction.window-reset-layout': 'ワークスペース配置をリセット',
@@ -3986,6 +4051,7 @@ enum AppStrings {
     'conteOutline': '画面の黒枠',
     'conteOutlineOn': 'あり',
     'conteOutlineOff': 'なし',
+    'conteFixedText': '固定テキスト',
     'envelopeFormatTitle': 'カット袋書式',
     'envelopeForm': '様式',
     'sheetModeNotation': '表記シート（リピート・止めの文字）',
@@ -4171,6 +4237,7 @@ enum AppStrings {
     'effectKind.cameraLensBlur': 'ブラー（カメラレンズ）',
     'effectKind.colorKey': 'カラーキー',
     'effectKind.celNumber': 'セル番号',
+    'effectKind.plugin': 'プラグイン',
     'effectParameter.brightness': '輝度',
     'effectParameter.contrast': 'コントラスト',
     'effectParameter.hue': 'マスターの色相',
@@ -4411,6 +4478,7 @@ enum AppStrings {
     'exImage': '画像',
     'exVideo': '動画',
     'exCels': 'セル',
+    'exAeScript': 'AEスクリプト',
     'exFormat': '形式',
     'exOptions': 'オプション',
     'exNaming': '命名',
@@ -4481,7 +4549,7 @@ enum AppStrings {
     'exRealSheet': '実寸用紙',
     'imNotTvpp': 'このファイルはTVPaintプロジェクトとして読めません。',
     'imNotClip': 'このファイルはCLIP STUDIO PAINTのファイルとして読めません。',
-    'imLeftBehind': '一部を取り込めませんでした。',
+    'imLeftBehind': '一部をそのままの形では取り込めませんでした。',
     'imWarningCount': '警告 {n} 件',
     'imWarningCountOne': '警告 {n} 件',
     'imFileUnreadable': 'ファイルを読めませんでした — クラウド上のファイルなら、少し後にもう一度お試しください。',
@@ -4502,7 +4570,7 @@ enum AppStrings {
     'importWarning.clippingNotApplied': '{name}: クリッピングマスクは適用しませんでした。',
     'importWarning.layerEffectsNotApplied': '{name}: レイヤー効果は適用しませんでした。',
     'importWarning.layerMaskNotApplied': '{name}: レイヤーマスクは適用しませんでした。',
-    'importWarning.lockNotImported': '{name}: ロックは読み込みませんでした。',
+    'importWarning.lockNotImported': '{name}: ロックを外して読み込みました。',
     'importWarning.psdBlend': '{name}: 描画モード「{mode}」に相当するものがありません — 通常にしました。',
     'importWarning.folderNothing': 'このフォルダーに取り込めるセルや画像はありませんでした。',
     'importWarning.folderNoCutNumber': 'フォルダー名にカット番号が見つかりません。',
@@ -4776,7 +4844,7 @@ enum AppStrings {
     'shapeToolRatioLock': '比率を固定',
     'brBrushesTitle': 'ブラシ',
     'brGroupNameField': 'グループ名',
-    'brCreate': '作成',
+    'commonCreate': '作成',
     'brRenameBrush': 'ブラシ名を変更',
     'brBrushNameField': 'ブラシ名',
     'brGroupNameEmpty': 'グループ名は空にできません。',
@@ -5001,6 +5069,21 @@ enum AppStrings {
     'brImportUnreadable': 'このファイルはブラシファイルとして読み込めませんでした。',
     'brImportPickFailedTemplate': 'ファイルを開けませんでした: {error}',
     'fontBroughtTemplate': 'フォント「{family}」をこの端末に読み込みました。',
+    'fxPluginInstallTitle': 'FXプラグインをインストール',
+    'fxPluginInstall': 'インストール',
+    'fxPluginInstallBodyTemplate':
+        '{vendor} の「{name}」{version} をインストールしますか？',
+    'fxPluginReplacesTemplate': 'この端末のバージョン {version} と置き換わります。',
+    'fxPluginRunsNatively':
+        'このプラグインには、サンドボックスの外でこの端末上で直接動くコードが'
+        '含まれています。入手元を信頼できる場合だけインストールしてください。',
+    'fxPluginInstalledTemplate': 'FXプラグイン「{name}」をインストールしました。',
+    'fxPluginUnreadableTemplate': '「{file}」は読み込めるFXプラグインではありません。',
+    'fxPluginUnopenedTemplate':
+        '「{file}」をこの端末でFXプラグインとして開けませんでした: {why}',
+    'fxPluginsOfDevice': 'このデバイスのプラグイン',
+    'fxPluginDelete': 'プラグインを削除',
+    'fxPluginsNotOnDeviceTemplate': 'このデバイスにないプラグイン: {names}',
     'brImportedOneTemplate': '「{file}」からブラシを1個読み込みました。',
     'brImportedManyTemplate': '「{file}」からブラシを{count}個読み込みました。',
     'brImportWarningsTemplate': '{summary}（警告のある項目 {count}件）',
@@ -5101,6 +5184,8 @@ enum AppStrings {
     'laneGraphPenOn': 'ペン（オン）',
     'laneGraphTransformBox': '変形ボックス',
     'laneGraphTransformBoxOn': '変形ボックス（オン）',
+    'laneGraphSnap': 'スナップ',
+    'laneGraphSnapOn': 'スナップ（オン）',
     'railClipOn': '下のレイヤーでクリッピング（オン）',
     'railClip': '下のレイヤーでクリッピング',
     'tlLayerMark': 'レイヤーマーク',
@@ -5151,6 +5236,7 @@ enum AppStrings {
     'tlSelectedLayers': '選択したレイヤー',
     'tlAudioGroup': '音声',
     'tlSoundVolume': '音量',
+    'tlSoundTotalVolume': '全体の音量',
     'tlNameTagGroup': 'ネームタグ',
     'tlReferenceGroup': '参照',
     'tlTransformGroup': 'トランスフォーム',
@@ -5561,6 +5647,7 @@ enum AppStrings {
     'shortcutAction.window-tool-rail-right': '툴 바를 오른쪽에',
     'shortcutAction.window-region-on-top': '타임라인 영역을 위로',
     'shortcutAction.window-brush-values-on-strip': '브러시 값을 상단띠로',
+    'shortcutAction.window-rail-tools-only': '툴 바에 도구만',
     'shortcutAction.window-full-screen': '전체 창 모드',
     'shortcutAction.window-region-fold': '타임라인 영역 접기 / 펼치기',
     'shortcutAction.window-reset-layout': '작업공간 배치 초기화',
@@ -5775,6 +5862,7 @@ enum AppStrings {
     'conteOutline': '화면 검은 외곽선',
     'conteOutlineOn': '적용',
     'conteOutlineOff': '미적용',
+    'conteFixedText': '고정 텍스트',
     'envelopeFormatTitle': '컷 봉투 서식',
     'envelopeForm': '양식',
     'sheetModeNotation': '표기 시트(반복·止め 글자)',
@@ -5960,6 +6048,7 @@ enum AppStrings {
     'effectKind.cameraLensBlur': '카메라 렌즈 흐림',
     'effectKind.colorKey': '색상 키',
     'effectKind.celNumber': '셀 번호',
+    'effectKind.plugin': '플러그인',
     'effectParameter.brightness': '명도',
     'effectParameter.contrast': '대비',
     'effectParameter.hue': '마스터 색조',
@@ -6199,6 +6288,7 @@ enum AppStrings {
     'exImage': '이미지',
     'exVideo': '동영상',
     'exCels': '셀',
+    'exAeScript': 'AE 스크립트',
     'exFormat': '형식',
     'exOptions': '옵션',
     'exNaming': '이름 규칙',
@@ -6269,7 +6359,7 @@ enum AppStrings {
     'exRealSheet': '실측 용지',
     'imNotTvpp': 'TVPaint 프로젝트로 읽을 수 없는 파일입니다.',
     'imNotClip': 'CLIP STUDIO PAINT 파일로 읽을 수 없는 파일입니다.',
-    'imLeftBehind': '가져오지 못한 것이 있습니다.',
+    'imLeftBehind': '그대로 가져오지 못한 것이 있습니다.',
     'imWarningCount': '경고 {n}가지',
     'imWarningCountOne': '경고 {n}가지',
     'imFileUnreadable': '파일을 읽지 못했습니다 — 클라우드의 파일이면 잠시 후 다시 시도해 주세요.',
@@ -6290,7 +6380,7 @@ enum AppStrings {
     'importWarning.clippingNotApplied': '{name}: 클리핑 마스크는 적용하지 않았습니다.',
     'importWarning.layerEffectsNotApplied': '{name}: 레이어 효과는 적용하지 않았습니다.',
     'importWarning.layerMaskNotApplied': '{name}: 레이어 마스크는 적용하지 않았습니다.',
-    'importWarning.lockNotImported': '{name}: 잠금은 가져오지 않았습니다.',
+    'importWarning.lockNotImported': '{name}: 잠금을 푼 채로 가져왔습니다.',
     'importWarning.psdBlend': '{name}: 블렌드 모드 "{mode}" 에 해당하는 것이 없습니다 — 보통으로 설정했습니다.',
     'importWarning.folderNothing': '이 폴더에 가져올 수 있는 셀이나 그림이 없습니다.',
     'importWarning.folderNoCutNumber': '폴더 이름에서 컷 번호를 찾지 못했습니다.',
@@ -6558,7 +6648,7 @@ enum AppStrings {
     'shapeToolRatioLock': '비율 고정',
     'brBrushesTitle': '브러시',
     'brGroupNameField': '그룹 이름',
-    'brCreate': '만들기',
+    'commonCreate': '만들기',
     'brRenameBrush': '브러시 이름 변경',
     'brBrushNameField': '브러시 이름',
     'brGroupNameEmpty': '그룹 이름은 비워 둘 수 없습니다.',
@@ -6783,6 +6873,20 @@ enum AppStrings {
     'brImportUnreadable': '이 파일은 브러시 파일로 읽을 수 없습니다.',
     'brImportPickFailedTemplate': '파일을 열지 못했습니다: {error}',
     'fontBroughtTemplate': '「{family}」 글꼴을 이 기기에 가져왔습니다.',
+    'fxPluginInstallTitle': 'FX 플러그인 설치',
+    'fxPluginInstall': '설치',
+    'fxPluginInstallBodyTemplate': '{vendor}의 「{name}」 {version}을(를) 설치할까요?',
+    'fxPluginReplacesTemplate': '이 기기의 {version} 버전을 대신합니다.',
+    'fxPluginRunsNatively':
+        '이 플러그인에는 샌드박스 밖에서 이 기기에서 직접 실행되는 코드가 들어 '
+        '있습니다. 출처를 믿을 수 있을 때만 설치하세요.',
+    'fxPluginInstalledTemplate': 'FX 플러그인 「{name}」을(를) 설치했습니다.',
+    'fxPluginUnreadableTemplate': '「{file}」은(는) 읽을 수 있는 FX 플러그인이 아닙니다.',
+    'fxPluginUnopenedTemplate':
+        '「{file}」을(를) 이 기기에서 FX 플러그인으로 열 수 없습니다: {why}',
+    'fxPluginsOfDevice': '이 기기의 플러그인',
+    'fxPluginDelete': '플러그인 삭제',
+    'fxPluginsNotOnDeviceTemplate': '없는 플러그인: {names}',
     'brImportedOneTemplate': '「{file}」에서 브러시 1개를 가져왔습니다.',
     'brImportedManyTemplate': '「{file}」에서 브러시 {count}개를 가져왔습니다.',
     'brImportWarningsTemplate': '{summary} (경고가 있는 항목 {count}개)',
@@ -6883,6 +6987,8 @@ enum AppStrings {
     'laneGraphPenOn': '펜 (켜짐)',
     'laneGraphTransformBox': '변형 상자',
     'laneGraphTransformBoxOn': '변형 상자 (켜짐)',
+    'laneGraphSnap': '스냅',
+    'laneGraphSnapOn': '스냅 (켜짐)',
     'railClipOn': '아래 레이어로 클리핑 (켜짐)',
     'railClip': '아래 레이어로 클리핑',
     'tlLayerMark': '레이어 마크',
@@ -6933,6 +7039,7 @@ enum AppStrings {
     'tlSelectedLayers': '선택한 레이어',
     'tlAudioGroup': '오디오',
     'tlSoundVolume': '볼륨',
+    'tlSoundTotalVolume': '총 볼륨',
     'tlNameTagGroup': '이름표',
     'tlReferenceGroup': '참조',
     'tlTransformGroup': '변형',
@@ -7369,6 +7476,8 @@ enum AppStrings {
     'shortcutAction.window-region-on-top': 'Zone de timeline en haut',
     'shortcutAction.window-brush-values-on-strip':
         'Valeurs du pinceau dans le bandeau du haut',
+    'shortcutAction.window-rail-tools-only':
+        "Seulement les outils dans la barre d'outils",
     'shortcutAction.window-full-screen': 'Plein écran',
     'shortcutAction.window-region-fold': 'Replier / déplier la zone de timeline',
     'shortcutAction.window-reset-layout': "Réinitialiser l'espace de travail",
@@ -7602,6 +7711,7 @@ enum AppStrings {
     'conteOutline': 'Cadre noir des images',
     'conteOutlineOn': 'Oui',
     'conteOutlineOff': 'Non',
+    'conteFixedText': 'Texte fixe',
     'envelopeFormatTitle': 'Format de l\'enveloppe',
     'envelopeForm': 'Modèle',
     'sheetModeNotation': 'Feuille de notation (répétition / maintien)',
@@ -7792,6 +7902,7 @@ enum AppStrings {
     'effectKind.cameraLensBlur': "Flou d'objectif",
     'effectKind.colorKey': 'Masquage par couleur',
     'effectKind.celNumber': 'Numéro de cellulo',
+    'effectKind.plugin': 'Plug-in',
     'effectParameter.brightness': 'Luminosité',
     'effectParameter.contrast': 'Contraste',
     'effectParameter.hue': 'Teinte globale',
@@ -8043,6 +8154,7 @@ enum AppStrings {
     'exImage': 'Image',
     'exVideo': 'Vidéo',
     'exCels': 'Cellulos',
+    'exAeScript': 'Script AE',
     'exFormat': 'Format',
     'exOptions': 'Options',
     'exNaming': 'Nommage',
@@ -8115,7 +8227,7 @@ enum AppStrings {
     'imNotTvpp': 'Ce fichier ne peut pas être lu comme un projet TVPaint.',
     'imNotClip':
         'Ce fichier ne peut pas être lu comme un fichier CLIP STUDIO PAINT.',
-    'imLeftBehind': 'Tout n’a pas pu être importé.',
+    'imLeftBehind': 'Tout n’a pas pu être importé tel quel.',
     'imWarningCount': '{n} avertissements',
     'imWarningCountOne': '{n} avertissement',
     'imFileUnreadable':
@@ -8150,7 +8262,7 @@ enum AppStrings {
     'importWarning.clippingNotApplied': '{name} : masque d\'écrêtage non appliqué.',
     'importWarning.layerEffectsNotApplied': '{name} : effets de calque non appliqués.',
     'importWarning.layerMaskNotApplied': '{name} : masque de fusion non appliqué.',
-    'importWarning.lockNotImported': '{name} : verrouillage non importé.',
+    'importWarning.lockNotImported': '{name} : importé déverrouillé.',
     'importWarning.psdBlend':
         '{name} : le mode de fusion « {mode} » n\'a pas d\'équivalent — réglé '
         'sur normal.',
@@ -8481,7 +8593,7 @@ enum AppStrings {
     'shapeToolRatioLock': 'Verrouiller les proportions',
     'brBrushesTitle': 'Brosses',
     'brGroupNameField': 'Nom du groupe',
-    'brCreate': 'Créer',
+    'commonCreate': 'Créer',
     'brRenameBrush': 'Renommer la brosse',
     'brBrushNameField': 'Nom de la brosse',
     'brGroupNameEmpty': 'Le nom du groupe ne peut pas être vide.',
@@ -8720,6 +8832,26 @@ enum AppStrings {
         'Ce fichier n’a pas pu être lu comme un fichier de brosses.',
     'brImportPickFailedTemplate': 'Impossible d’ouvrir le fichier : {error}',
     'fontBroughtTemplate': 'Police « {family} » ajoutée à cet appareil.',
+    'fxPluginInstallTitle': 'Installer le plug-in FX',
+    'fxPluginInstall': 'Installer',
+    'fxPluginInstallBodyTemplate':
+        'Installer « {name} » {version} de {vendor} ?',
+    'fxPluginReplacesTemplate':
+        'Il remplace la version {version} de cet appareil.',
+    'fxPluginRunsNatively':
+        'Ce plug-in contient du code qui s’exécute directement sur cet '
+        'appareil, hors du bac à sable. Ne l’installez que si vous faites '
+        'confiance à sa provenance.',
+    'fxPluginInstalledTemplate': 'Plug-in FX « {name} » installé.',
+    'fxPluginUnreadableTemplate':
+        '« {file} » n’est pas un plug-in FX lisible par cette application.',
+    'fxPluginUnopenedTemplate':
+        '« {file} » n’a pas pu être ouvert comme plug-in FX sur cet '
+        'appareil : {why}',
+    'fxPluginsOfDevice': 'Plug-ins de cet appareil',
+    'fxPluginDelete': 'Supprimer le plug-in',
+    'fxPluginsNotOnDeviceTemplate':
+        'Plug-ins absents de cet appareil : {names}',
     'brImportedOneTemplate': '1 brosse importée depuis « {file} ».',
     'brImportedManyTemplate': '{count} brosses importées depuis « {file} ».',
     'brImportWarningsTemplate':
@@ -8812,6 +8944,8 @@ enum AppStrings {
     'laneGraphPenOn': 'Plume (activée)',
     'laneGraphTransformBox': 'Boîte de transformation',
     'laneGraphTransformBoxOn': 'Boîte de transformation (activée)',
+    'laneGraphSnap': 'Magnétisme',
+    'laneGraphSnapOn': 'Magnétisme (activé)',
     'railClipOn': 'Masque d’écrêtage sur le calque inférieur (activé)',
     'railClip': 'Masque d’écrêtage sur le calque inférieur',
     'tlLayerMark': 'Repère de calque',
@@ -8846,6 +8980,7 @@ enum AppStrings {
     'tlSelectedLayers': 'Calques sélectionnés',
     'tlAudioGroup': 'Audio',
     'tlSoundVolume': 'Volume',
+    'tlSoundTotalVolume': 'Volume global',
     'tlNameTagGroup': 'Étiquette',
     'tlReferenceGroup': 'Référence',
     'tlTransformGroup': 'Transformation',
@@ -9288,6 +9423,7 @@ enum AppStrings {
     'shortcutAction.window-tool-rail-right': '工具条在右侧',
     'shortcutAction.window-region-on-top': '时间轴区域置顶',
     'shortcutAction.window-brush-values-on-strip': '画笔数值放在顶部栏',
+    'shortcutAction.window-rail-tools-only': '工具条只放工具',
     'shortcutAction.window-full-screen': '全屏',
     'shortcutAction.window-region-fold': '折叠 / 展开时间轴区域',
     'shortcutAction.window-reset-layout': '重置工作区布局',
@@ -9472,6 +9608,7 @@ enum AppStrings {
     'conteOutline': '画面黑框',
     'conteOutlineOn': '有',
     'conteOutlineOff': '无',
+    'conteFixedText': '固定文本',
     'envelopeFormatTitle': '卡袋版式',
     'envelopeForm': '样式',
     'sheetModeNotation': '标注表（重复·保持文字）',
@@ -9656,6 +9793,7 @@ enum AppStrings {
     'effectKind.cameraLensBlur': '相机镜头模糊',
     'effectKind.colorKey': '颜色键',
     'effectKind.celNumber': '赛璐珞编号',
+    'effectKind.plugin': '插件',
     'effectParameter.brightness': '亮度',
     'effectParameter.contrast': '对比度',
     'effectParameter.hue': '主色相',
@@ -9886,6 +10024,7 @@ enum AppStrings {
     'exImage': '图像',
     'exVideo': '视频',
     'exCels': '赛璐珞',
+    'exAeScript': 'AE 脚本',
     'exFormat': '格式',
     'exOptions': '选项',
     'exNaming': '命名',
@@ -9956,7 +10095,7 @@ enum AppStrings {
     'exRealSheet': '实际纸张',
     'imNotTvpp': '该文件无法作为 TVPaint 项目读取。',
     'imNotClip': '该文件无法作为 CLIP STUDIO PAINT 文件读取。',
-    'imLeftBehind': '部分内容未能导入。',
+    'imLeftBehind': '部分内容未能按原样导入。',
     'imWarningCount': '{n} 条警告',
     'imWarningCountOne': '{n} 条警告',
     'imFileUnreadable': '无法读取该文件——如果文件在云端，请稍后重试。',
@@ -9977,7 +10116,7 @@ enum AppStrings {
     'importWarning.clippingNotApplied': '{name}：未应用剪贴蒙版。',
     'importWarning.layerEffectsNotApplied': '{name}：未应用图层效果。',
     'importWarning.layerMaskNotApplied': '{name}：未应用图层蒙版。',
-    'importWarning.lockNotImported': '{name}：未导入锁定。',
+    'importWarning.lockNotImported': '{name}：已解除锁定后导入。',
     'importWarning.psdBlend': '{name}：混合模式“{mode}”没有对应项——已设为正常。',
     'importWarning.folderNothing': '该文件夹中没有可导入的赛璐珞或图片。',
     'importWarning.folderNoCutNumber': '文件夹名中找不到镜头编号。',
@@ -10234,7 +10373,7 @@ enum AppStrings {
     'shapeToolRatioLock': '锁定比例',
     'brBrushesTitle': '画笔',
     'brGroupNameField': '组名称',
-    'brCreate': '创建',
+    'commonCreate': '创建',
     'brRenameBrush': '重命名画笔',
     'brBrushNameField': '画笔名称',
     'brGroupNameEmpty': '组名称不能为空。',
@@ -10454,6 +10593,17 @@ enum AppStrings {
     'brImportUnreadable': '无法将此文件读取为画笔文件。',
     'brImportPickFailedTemplate': '无法打开文件：{error}',
     'fontBroughtTemplate': '已将字体“{family}”导入此设备。',
+    'fxPluginInstallTitle': '安装 FX 插件',
+    'fxPluginInstall': '安装',
+    'fxPluginInstallBodyTemplate': '要安装 {vendor} 的“{name}” {version} 吗？',
+    'fxPluginReplacesTemplate': '它将替换此设备上的 {version} 版本。',
+    'fxPluginRunsNatively': '此插件包含在沙盒之外、直接在此设备上运行的代码。仅在信任其来源时安装。',
+    'fxPluginInstalledTemplate': '已安装 FX 插件“{name}”。',
+    'fxPluginUnreadableTemplate': '“{file}”不是可读取的 FX 插件。',
+    'fxPluginUnopenedTemplate': '无法在此设备上将“{file}”作为 FX 插件打开：{why}',
+    'fxPluginsOfDevice': '此设备的插件',
+    'fxPluginDelete': '删除插件',
+    'fxPluginsNotOnDeviceTemplate': '此设备上没有的插件：{names}',
     'brImportedOneTemplate': '已从“{file}”导入 1 个画笔。',
     'brImportedManyTemplate': '已从“{file}”导入 {count} 个画笔。',
     'brImportWarningsTemplate': '{summary}（{count} 项有警告）',
@@ -10554,6 +10704,8 @@ enum AppStrings {
     'laneGraphPenOn': '钢笔（开）',
     'laneGraphTransformBox': '变换框',
     'laneGraphTransformBoxOn': '变换框（开）',
+    'laneGraphSnap': '吸附',
+    'laneGraphSnapOn': '吸附（开）',
     'railClipOn': '用下一图层剪贴（开）',
     'railClip': '用下一图层剪贴',
     'tlLayerMark': '图层标记',
@@ -10568,6 +10720,7 @@ enum AppStrings {
     'tlSelectedLayers': '所选图层',
     'tlAudioGroup': '音频',
     'tlSoundVolume': '音量',
+    'tlSoundTotalVolume': '总音量',
     'tlNameTagGroup': '名字条',
     'tlReferenceGroup': '参照',
     'tlTransformGroup': '变换',

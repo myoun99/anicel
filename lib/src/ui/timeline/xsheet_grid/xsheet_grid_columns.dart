@@ -56,8 +56,8 @@ class _XSheetGridColumns {
   /// is built every pass.
   Widget _gatedColumn(
     TimelineDisplayRow entry,
-    TimelineVirtualizationPlan plan,
     TimelineCellsRowGrid grid,
+    double totalFrameContentHeight,
   ) {
     // 🚨F-244: a layer of the column's own size, as the horizontal rows have
     // — a drag step rebuilds the dragged column in ITS scope, not the grid's.
@@ -69,13 +69,13 @@ class _XSheetGridColumns {
       key: _state._berths.keyOf(entry),
       child: SizedBox(
         width: timelineDisplayRowExtent(entry, _state._metrics),
-        height: plan.totalFrameContentWidth,
+        height: totalFrameContentHeight,
         child: entry.isLane
             ? timelineGatedRow(
                 entry,
                 grid.hooks.dragPreview,
                 (context, layer) =>
-                    timelineLaneRowFrom(entry, layer, grid, _laneSpan(plan)),
+                    timelineLaneRowFrom(entry, layer, grid, _laneSpan),
               )
             : keptTimelineCellsRow(_kept, _state._berths, entry, grid),
       ),
@@ -84,13 +84,14 @@ class _XSheetGridColumns {
 
   final KeptTimelineCellsRows _kept = KeptTimelineCellsRows();
 
-  /// The frames the sheet lays its lane columns over — its plan's window
-  /// and room — and their selection domain ([timelineLaneRowFrom]).
-  TimelineLaneRowSpan _laneSpan(TimelineVirtualizationPlan plan) => (
-    startIndex: plan.frameRange.startIndex,
-    endIndexExclusive: plan.frameRange.endIndexExclusive,
-    leadingSpacer: plan.leadingFrameSpacerWidth,
-    trailingSpacer: plan.trailingFrameSpacerWidth,
+  /// The frames the sheet lays its lane columns over — all of them, as the
+  /// timeline's rows body lays its lanes (a lane windows itself off the
+  /// bucket) — and their selection domain ([timelineLaneRowFrom]).
+  TimelineLaneRowSpan get _laneSpan => (
+    startIndex: 0,
+    endIndexExclusive: _state._frameScroll.renderedFrameCount,
+    leadingSpacer: 0,
+    trailingSpacer: 0,
     laneRange: _state._laneRange,
   );
 
@@ -102,12 +103,11 @@ class _XSheetGridColumns {
   /// bucket (repaint per span crossing), so the bucket pass diffs
   /// identical params and records nothing; the sparse widget-cell kinds
   /// re-window internally under the same bucket.
-  TimelineCellsRowGrid _cellsRowGrid(double viewportExtent) => (
+  TimelineCellsRowGrid _cellsRowGrid() => (
     hooks: _state.widget.hooks,
     metrics: _state._metrics,
     geometry: _state._frameScroll.publishFrameGeometry(),
     windowBucket: _state._frameWindowBucket,
-    viewportMainExtent: viewportExtent,
     frameAxisController: _state._frameScrollController,
     nextPage: _state._nextPage,
     rangeGesture: _state._rangeGesture,
@@ -126,20 +126,20 @@ class _XSheetGridColumns {
   Widget buildColumns(
     List<TimelineDisplayRow> entries,
     TimelineRowEdges edges,
-    TimelineVirtualizationPlan plan,
     double bodyViewportHeight,
+    double totalFrameContentHeight,
   ) {
     // Recorded for the window, which is recomputed on bucket crossings —
     // outside any build. ⚠️Before the geometry is published: the window is
     // laid over this extent.
     _state._frameViewportExtent = bodyViewportHeight;
-    final grid = _cellsRowGrid(bodyViewportHeight);
+    final grid = _cellsRowGrid();
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: timelineFrameSide(
         (rows: entries, first: 0, edges: edges, kept: timelineRowBuiltNow),
         grid,
-        cells: (entry) => _gatedColumn(entry, plan, grid),
+        cells: (entry) => _gatedColumn(entry, grid, totalFrameContentHeight),
         laneRange: _state._laneRange,
       ),
     );
