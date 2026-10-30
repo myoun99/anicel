@@ -1,25 +1,19 @@
 import 'package:flutter/material.dart';
 
-import '../../models/conte/conte_camera_room.dart';
 import '../../models/cut_metadata.dart';
 import '../../models/layer_mark.dart';
 import '../../models/layer_process.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
-import '../widgets/panel_flyout.dart';
-import 'conte_format_window.dart' show conteCameraRoomName;
 import 'dialog_verb.dart';
 import 'staff_process_folds.dart';
 
 /// What 컷 설정's 저장 gives: the stages whose [names] were changed — every
-/// other stage keeps each cut's own — the folds it was saved with
-/// ([openFolds], F-291-Q4 「파일에, 저장 버튼을 누를 때만」), and the room
-/// the cuts' conte cells take where it was changed ([conteCameraRoom] —
-/// null where it was not, its `to` null for the format window's; I-82).
+/// other stage keeps each cut's own — and the folds it was saved with
+/// ([openFolds], F-291-Q4 「파일에, 저장 버튼을 누를 때만」).
 typedef CutSettingsSave = ({
   Map<LayerMark, String> names,
   Set<LayerProcess> openFolds,
-  ({ConteCameraRoom? to})? conteCameraRoom,
 });
 
 /// 컷 설정 — who does each stage's work on the cuts it is about: a name per
@@ -46,21 +40,6 @@ class _CutSettingsWindowState extends State<CutSettingsWindow> {
 
   late Set<LayerProcess> _open = widget.cut.openStaffFolds;
 
-  late ConteCameraRoom? _cameraRoom = widget.cut.conteCameraRoom;
-
-  /// How much a moving camera's cell takes on this cut — the format
-  /// window's (null) or one of its own (I-82-Q1 「서식 전체 + 컷마다
-  /// 덮어쓰기」), the one picked lit.
-  List<PanelFlyoutEntry> _cameraRooms() =>
-      <ConteCameraRoom?>[null, ...ConteCameraRoom.values].asFlyoutValueChoices(
-        current: _cameraRoom,
-        choiceOf: (room) => PanelFlyoutChoice(
-          key: 'cut-settings-camera-room-${room?.name ?? 'format'}',
-          label: conteCameraRoomName(room),
-        ),
-        onPicked: (room) => setState(() => _cameraRoom = room),
-      );
-
   @override
   void dispose() {
     for (final field in _staff.values) {
@@ -77,9 +56,6 @@ class _CutSettingsWindowState extends State<CutSettingsWindow> {
             mark: field.text.trim(),
       },
       openFolds: _open,
-      conteCameraRoom: _cameraRoom == widget.cut.conteCameraRoom
-          ? null
-          : (to: _cameraRoom),
     ));
   }
 
@@ -95,30 +71,12 @@ class _CutSettingsWindowState extends State<CutSettingsWindow> {
       // ⛔No scroller of its own: `AppWindow` scrolls its body.
       body: SizedBox(
         width: 400,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          spacing: 12,
-          children: [
-            StaffProcessFolds(
-              fields: _staff,
-              keyPrefix: 'cut-settings',
-              onSubmitted: _submit,
-              open: widget.cut.openStaffFolds,
-              onOpenChanged: (open) => _open = open,
-            ),
-            AppWindowField(
-              label: strings.conteCameraRoom,
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: PanelFlyoutButton(
-                  key: const ValueKey<String>('cut-settings-camera-room'),
-                  label: conteCameraRoomName(_cameraRoom),
-                  entriesBuilder: _cameraRooms,
-                ),
-              ),
-            ),
-          ],
+        child: StaffProcessFolds(
+          fields: _staff,
+          keyPrefix: 'cut-settings',
+          onSubmitted: _submit,
+          open: widget.cut.openStaffFolds,
+          onOpenChanged: (open) => _open = open,
         ),
       ),
       actions: saveActions(context, prefix: 'cut-settings', onSave: _submit),

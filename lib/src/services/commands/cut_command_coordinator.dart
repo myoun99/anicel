@@ -253,12 +253,10 @@ class CutCommandCoordinator {
     required List<CutId> cutIds,
     required Map<LayerMark, String> names,
     Set<LayerProcess>? openFolds,
-    ({ConteCameraRoom? to})? conteCameraRoom,
   }) => _cuts.saveCutSettings(
     cutIds: cutIds,
     names: names,
     openFolds: openFolds,
-    conteCameraRoom: conteCameraRoom,
   );
   void setCutMark({required List<CutId> cutIds, required LayerMark mark}) =>
       _cuts.setCutMark(cutIds: cutIds, mark: mark);
@@ -267,6 +265,15 @@ class CutCommandCoordinator {
     CutId? cutId,
     TimesheetSheetKind? kind,
   }) => _cuts.setTimesheetFormat(info: info, cutId: cutId, kind: kind);
+  void setConteFormat({
+    required TimesheetInfo info,
+    required List<CutId> cutIds,
+    ({ConteCameraRoom? to})? cameraRoom,
+  }) => _cuts.setConteFormat(
+    info: info,
+    cutIds: cutIds,
+    cameraRoom: cameraRoom,
+  );
   void commitCutMoveReorder({
     required TrackId trackId,
     required List<CutId> order,

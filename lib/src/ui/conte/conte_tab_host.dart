@@ -486,10 +486,11 @@ class _ConteTabHostState extends State<ConteTabHost> {
   /// The book's front — its cover and the blank page behind it — in the
   /// sheet's format window (I-59: 「콘티 용지패널의 설정버튼안에」, then
   /// I-93: 「타임시트처럼 전용 설정창」), kept with the work as one undo step,
-  /// and printed as shown, since the export lays the same book.
+  /// and printed as shown, since the export lays the same book — with the
+  /// room picked for [_formatCuts], the same step.
   Future<void> _editFormat() {
     final info = _session.timesheetInfo;
-    return askThenCommit<ConteFormat>(
+    return askThenCommit<ConteFormatSave>(
       context,
       dialog: (_) => ConteFormatWindow(
         initial: (
@@ -500,17 +501,37 @@ class _ConteTabHostState extends State<ConteTabHost> {
           fixedText: info.conteFixedText,
           cameraRoom: info.conteCameraRoom,
         ),
+        cuts: _formatCuts(),
       ),
-      commit: (format) => _session.updateTimesheetInfo(
+      commit: (save) => _session.cutVerbs.saveConteFormat(
         _session.timesheetInfo.copyWith(
-          conteForm: format.form,
-          conteOutlined: format.outlined,
-          conteCover: format.cover,
-          conteBlankPage: format.blankPage,
-          conteFixedText: format.fixedText,
-          conteCameraRoom: format.cameraRoom,
+          conteForm: save.format.form,
+          conteOutlined: save.format.outlined,
+          conteCover: save.format.cover,
+          conteBlankPage: save.format.blankPage,
+          conteFixedText: save.format.fixedText,
+          conteCameraRoom: save.format.cameraRoom,
         ),
+        cameraRoom: save.cutCameraRoom,
       ),
+    );
+  }
+
+  /// The cuts the format window's 컷 설정 row is about
+  /// ([CutVerbs.addressedCutIds], as the cut button's picks are): the
+  /// current one by its name, a range by its count, none in the gap.
+  ConteFormatCuts? _formatCuts() {
+    final cutIds = _session.cutVerbs.addressedCutIds;
+    final cut = cutIds.isEmpty ? null : _session.cutById(cutIds.first);
+    if (cut == null) {
+      return null;
+    }
+    final strings = AppText.strings;
+    return (
+      words: cutIds.length == 1
+          ? strings.conteCameraRoomCurrentCut(cut.name)
+          : strings.conteCameraRoomSelectedCuts(cutIds.length),
+      room: cut.metadata.conteCameraRoom,
     );
   }
 

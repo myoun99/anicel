@@ -72,7 +72,6 @@ Future<void> _editCutSettings(
   commit: (save) => session.cutVerbs.saveAddressedCutSettings(
     save.names,
     openFolds: save.openFolds,
-    conteCameraRoom: save.conteCameraRoom,
   ),
 );
 

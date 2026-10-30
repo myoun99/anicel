@@ -424,6 +424,7 @@ void main() {
     'conteCameraRoomGrows': (s) => s.conteCameraRoomGrows,
     'conteCameraRoomInCell': (s) => s.conteCameraRoomInCell,
     'conteCameraRoomAsSheet': (s) => s.conteCameraRoomAsSheet,
+    'conteCameraRoomAll': (s) => s.conteCameraRoomAll,
     'envelopeFormatTitle': (s) => s.envelopeFormatTitle,
     'envelopeForm': (s) => s.envelopeForm,
     'sheetModeNotation': (s) => s.sheetModeNotation,

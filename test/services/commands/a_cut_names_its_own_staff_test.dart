@@ -322,16 +322,17 @@ void main() {
         requireCut(repository.requireProject(), id).metadata.conteCameraRoom;
 
     test('is the format\'s until a save gives the cuts it is about their '
-        'own — a 겸용 sibling too — in the names\' ONE undo step', () {
+        'own — a 겸용 sibling too — in the work format\'s ONE undo step', () {
       final (:repository, :cuts, :history) = fixture();
+      final before = repository.requireProject().timesheetInfo;
       for (final id in [cut1, cut2, cut3]) {
         expect(roomOf(repository, id), isNull, reason: '$id');
       }
 
-      cuts.saveCutSettings(
+      cuts.setConteFormat(
+        info: before.copyWith(conteCover: !before.conteCover),
         cutIds: const [cut1, cut3],
-        names: {layout: '林'},
-        conteCameraRoom: (to: ConteCameraRoom.inCell),
+        cameraRoom: (to: ConteCameraRoom.inCell),
       );
       for (final id in [cut1, cut2, cut3]) {
         expect(roomOf(repository, id), ConteCameraRoom.inCell, reason: '$id');
@@ -342,29 +343,30 @@ void main() {
       for (final id in [cut1, cut2, cut3]) {
         expect(roomOf(repository, id), isNull, reason: '$id');
       }
-      expect(staffOf(repository, cut3), {'layout': '清'});
+      expect(repository.requireProject().timesheetInfo, before);
     });
 
     test('a null gives the pair back to the format; a room every cut '
         'already keeps is no step', () {
       final (:repository, :cuts, :history) = fixture();
-      cuts.saveCutSettings(
+      final info = repository.requireProject().timesheetInfo;
+      cuts.setConteFormat(
+        info: info,
         cutIds: const [cut3],
-        names: const {},
-        conteCameraRoom: (to: null),
+        cameraRoom: (to: null),
       );
       expect(history.canUndo, isFalse);
 
-      cuts.saveCutSettings(
+      cuts.setConteFormat(
+        info: info,
         cutIds: const [cut2],
-        names: const {},
-        conteCameraRoom: (to: ConteCameraRoom.grows),
+        cameraRoom: (to: ConteCameraRoom.grows),
       );
       expect(roomOf(repository, cut1), ConteCameraRoom.grows);
-      cuts.saveCutSettings(
+      cuts.setConteFormat(
+        info: info,
         cutIds: const [cut2],
-        names: const {},
-        conteCameraRoom: (to: null),
+        cameraRoom: (to: null),
       );
       expect((roomOf(repository, cut1), roomOf(repository, cut2)), (
         null,

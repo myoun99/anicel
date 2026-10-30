@@ -859,6 +859,11 @@ enum AppStrings {
   String get conteCameraRoomGrows => _s('conteCameraRoomGrows');
   String get conteCameraRoomInCell => _s('conteCameraRoomInCell');
   String get conteCameraRoomAsSheet => _s('conteCameraRoomAsSheet');
+  String get conteCameraRoomAll => _s('conteCameraRoomAll');
+  String conteCameraRoomCurrentCut(String name) =>
+      _s('conteCameraRoomCurrentCutTemplate').replaceAll('{name}', name);
+  String conteCameraRoomSelectedCuts(int count) =>
+      _s('conteCameraRoomSelectedCutsTemplate').replaceAll('{count}', '$count');
   String get envelopeFormatTitle => _s('envelopeFormatTitle');
   String get envelopeForm => _s('envelopeForm');
   String get sheetModeNotation => _s('sheetModeNotation');
@@ -2677,6 +2682,9 @@ enum AppStrings {
     'conteCameraRoomGrows': 'Grow the cell',
     'conteCameraRoomInCell': 'Keep in the cell',
     'conteCameraRoomAsSheet': 'As the format',
+    'conteCameraRoomAll': 'Overall settings',
+    'conteCameraRoomCurrentCutTemplate': 'Current cut ({name})',
+    'conteCameraRoomSelectedCutsTemplate': 'Selected cuts ({count})',
     'envelopeFormatTitle': 'Envelope format',
     'envelopeForm': 'Form',
     'sheetModeNotation': 'Notation Sheet (repeat/hold words)',
@@ -4069,6 +4077,9 @@ enum AppStrings {
     'conteCameraRoomGrows': 'コマを広げる',
     'conteCameraRoomInCell': 'コマ内に収める',
     'conteCameraRoomAsSheet': '様式どおり',
+    'conteCameraRoomAll': '全体設定',
+    'conteCameraRoomCurrentCutTemplate': '現在のカット({name})',
+    'conteCameraRoomSelectedCutsTemplate': '選択中のカット({count})',
     'envelopeFormatTitle': 'カット袋書式',
     'envelopeForm': '様式',
     'sheetModeNotation': '表記シート（リピート・止めの文字）',
@@ -5887,6 +5898,9 @@ enum AppStrings {
     'conteCameraRoomGrows': '칸을 키운다',
     'conteCameraRoomInCell': '칸 안에',
     'conteCameraRoomAsSheet': '서식 따름',
+    'conteCameraRoomAll': '전체 설정',
+    'conteCameraRoomCurrentCutTemplate': '현재 컷({name})',
+    'conteCameraRoomSelectedCutsTemplate': '선택한 컷({count}개)',
     'envelopeFormatTitle': '컷 봉투 서식',
     'envelopeForm': '양식',
     'sheetModeNotation': '표기 시트(반복·止め 글자)',
@@ -7743,6 +7757,9 @@ enum AppStrings {
     'conteCameraRoomGrows': 'Agrandir la case',
     'conteCameraRoomInCell': 'Dans la case',
     'conteCameraRoomAsSheet': 'Selon le modèle',
+    'conteCameraRoomAll': 'Réglages généraux',
+    'conteCameraRoomCurrentCutTemplate': 'Plan actuel ({name})',
+    'conteCameraRoomSelectedCutsTemplate': 'Plans sélectionnés ({count})',
     'envelopeFormatTitle': 'Format de l\'enveloppe',
     'envelopeForm': 'Modèle',
     'sheetModeNotation': 'Feuille de notation (répétition / maintien)',
@@ -9647,6 +9664,9 @@ enum AppStrings {
     'conteCameraRoomGrows': '扩大格子',
     'conteCameraRoomInCell': '收在格内',
     'conteCameraRoomAsSheet': '按样式',
+    'conteCameraRoomAll': '整体设置',
+    'conteCameraRoomCurrentCutTemplate': '当前镜头({name})',
+    'conteCameraRoomSelectedCutsTemplate': '已选镜头({count}个)',
     'envelopeFormatTitle': '卡袋版式',
     'envelopeForm': '样式',
     'sheetModeNotation': '标注表（重复·保持文字）',

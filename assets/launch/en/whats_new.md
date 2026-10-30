@@ -4,7 +4,7 @@
 
 - **Guides in the AE script** — the AE script lays the camera's path and directions as guide layers over the canvas comp.
 - **Effects in the AE script** — a row with Brightness & Contrast, Hue/Saturation, a Gaussian, Directional, Radial or Camera Lens Blur, or Color Key gets the nearest After Effects effect, with its values carried over.
-- **Camera moves in the conte** — "Camera moves" in Conte sheet format and in Cut settings chooses whether the cell grows or the move stays inside it. The default is "Keep in the cell": the cell keeps its size and shows the whole move scaled down. Cut settings overrides it for that cut alone.
+- **Camera moves in the conte** — "Camera moves" in Conte sheet format chooses whether the cell grows or the move stays inside it. The default is "Keep in the cell": the cell keeps its size and shows the whole move scaled down. "Cut settings" under it overrides that for the current cut or the selected cuts alone.
 - **Page view on the ruler** — the button at the timeline ruler's left corner chooses Frames, Seconds+frames or Pages. On Pages the numbers restart with each timesheet page, and the turn of a page reads like "p2".
 
 ## Improved

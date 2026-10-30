@@ -4,7 +4,7 @@
 
 - **Guides dans le script AE** — le script AE pose la trajectoire de la caméra et les directions en calques guides au-dessus de la composition du canevas.
 - **Effets dans le script AE** — une rangée avec Luminosité/Contraste, Teinte/Saturation, un flou gaussien, directionnel, radial ou d'objectif, ou Masquage par couleur reçoit l'effet After Effects le plus proche, avec ses valeurs.
-- **Mouvements de caméra dans le conte** — « Mouvements de caméra », dans Format de la feuille de conte et dans Réglages du plan, choisit d'agrandir la case ou de garder le mouvement dedans. Par défaut, « Dans la case » : la case garde sa taille et montre tout le mouvement réduit. Réglages du plan ne remplace le choix que pour ce plan.
+- **Mouvements de caméra dans le conte** — « Mouvements de caméra », dans Format de la feuille de conte, choisit d'agrandir la case ou de garder le mouvement dedans. Par défaut, « Dans la case » : la case garde sa taille et montre tout le mouvement réduit. « Réglages du plan », juste en dessous, ne remplace le choix que pour le plan actuel ou les plans sélectionnés.
 - **Vue par pages de la règle** — le bouton à l'angle gauche de la règle de la timeline choisit entre Images, Secondes+images et Pages. En Pages, la numérotation repart à chaque page de la feuille de temps et le changement de page s'inscrit sous la forme « p2 ».
 
 ## Améliorations

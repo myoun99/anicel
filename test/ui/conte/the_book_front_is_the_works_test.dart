@@ -250,12 +250,11 @@ void main() {
     expect(roomShown(), AppText.strings.conteCameraRoomGrows);
     await tap(tester, 'conte-format-cancel-button');
 
-    // 컷 설정's save, as its window gives it.
-    session.cutVerbs.saveAddressedCutSettings(
-      const {},
-      conteCameraRoom: (to: ConteCameraRoom.inCell),
-    );
-    await tester.pumpAndSettle();
+    // The window's 컷 설정 row.
+    await tap(tester, 'conte-format-button');
+    await tap(tester, 'conte-format-cut-camera-room');
+    await tap(tester, 'conte-format-cut-camera-room-inCell');
+    await tap(tester, 'conte-format-save-button');
     expect(
       rooms().first,
       ConteCameraRoom.inCell,
