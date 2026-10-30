@@ -52,7 +52,9 @@ import '../../helpers/settle_async.dart';
 /// Beside each, the same frame with no plugin, as it always was.
 void main() {
   const tileSize = 16;
-  const canvasSize = CanvasSize(width: 32, height: 32);
+  // ⚠️Wide enough that a folder drawn whole with a plugin's reach on it
+  // is held: none is past a page ([HeldSubtreeRasters]).
+  const canvasSize = CanvasSize(width: 128, height: 128);
   const viewSize = Size(48, 40);
   const under = Color(0xFF203040);
   const ink = [0x00, 0x40, 0x00, 0xFF];
