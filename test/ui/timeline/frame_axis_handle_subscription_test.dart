@@ -13,20 +13,25 @@ import 'package:anicel/src/ui/timeline/timeline_frame_span_layout.dart';
 /// A handle that counts its listeners, so a swap can be seen to let the
 /// old handle go — a stale subscription changes nothing on screen (layout
 /// reads the current handle), it only leaks a listener per swap.
+///
+/// It counts the listeners it HOLDS: ↩️it counted the calls, so letting go
+/// of a listener it never held — the wrong one — read as letting go.
 class _CountingHandle extends ValueNotifier<TimelineFrameGeometry> {
   _CountingHandle(super.value);
 
-  int listeners = 0;
+  final List<VoidCallback> _held = [];
+
+  int get listeners => _held.length;
 
   @override
   void addListener(VoidCallback listener) {
-    listeners += 1;
+    _held.add(listener);
     super.addListener(listener);
   }
 
   @override
   void removeListener(VoidCallback listener) {
-    listeners -= 1;
+    _held.remove(listener);
     super.removeListener(listener);
   }
 }
