@@ -389,11 +389,12 @@ class _FramePictureViewState extends State<FramePictureView> {
     if (key == _showing || key == _moving) {
       return;
     }
-    // 🚨A PAGE A PEN DRAWS ON IS A PICTURE TOO ([FramePictures.makeShown]):
-    // drawn as it stood, each step of its first stroke composed the whole
-    // view (🔬Surface Pro 11, step → ink p50 117–123 ms, 2026-10-28).
-    if (_pictures.gaveUpAt(key) ||
-        (_pictures.drawsOnlyItsPage(key) && widget.live == null)) {
+    // ↩️F-509 A/B (2026-10-30, a device build only): a page alone is drawn
+    // as it stands again, a pen on it or not, as build 1079 drew it — the
+    // first stroke on a blank frame showed nowhere on iPhone and iPad from
+    // build 1080, which made it a picture the pen's steps patch into
+    // (ade59f70d).
+    if (_pictures.gaveUpAt(key) || _pictures.drawsOnlyItsPage(key)) {
       _standAsStored(key);
       return;
     }

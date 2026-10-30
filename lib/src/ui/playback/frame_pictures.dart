@@ -515,7 +515,9 @@ class FramePictures implements PlaybackPictures {
     final drawing = heldFilm == null
         ? made.frame.drawing
         : _overTheFilm(made.frame, () => store.peek(heldFilm));
-    if ((keepsNodes || !drawsOnlyItsPage(key)) &&
+    // ↩️F-509 A/B: no picture of a page alone, as in build 1079 — the view
+    // draws it as it stands ([FramePictureView]).
+    if (!drawsOnlyItsPage(key) &&
         !await _lay(
           key,
           keeps ? _thenHeldAllOf(heldNodes, key, drawing) : drawing,
