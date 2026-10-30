@@ -3,6 +3,8 @@ import 'dart:ui' show Offset, Rect, Size;
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/widgets.dart' show StringCharacters;
 
+import '../../core/signed_memo.dart';
+import '../../models/camera_instruction.dart' show CameraInstructionSet;
 import '../../models/canvas_size.dart';
 import '../../models/camera_moves.dart' show CameraMove, cameraMoves;
 import '../../models/camera_work_marks.dart'
@@ -140,26 +142,93 @@ ConteCutSource _cutSource(
   required List<ConteDialogueLine> dialogue,
   required List<List<String>> transitionLines,
   required Project project,
-}) => ConteCutSource(
-  cutId: entry.cut.id,
-  name: entry.cut.name,
-  durationFrames: entry.cut.duration,
-  cumulativeEndFrames: entry.endFrame,
-  cells: [
-    for (final (index, cell) in cells.indexed)
-      _cellSource(
-        cut: entry.cut,
-        cell: cell,
-        transitionLines: transitionLines[index],
-        project: project,
+}) {
+  final cameras = _cellCameras.resolve(
+    entry.cut,
+    (
+      frameSize: project.cameraSize,
+      glossary: project.cameraInstructions,
+      framesPerSecond: project.frameRate.countingBase,
+    ),
+    () => _cellCamerasOf(entry.cut, cells, project),
+  );
+  return ConteCutSource(
+    cutId: entry.cut.id,
+    name: entry.cut.name,
+    durationFrames: entry.cut.duration,
+    cumulativeEndFrames: entry.endFrame,
+    cells: [
+      for (final (index, cell) in cells.indexed)
+        _cellSource(
+          cut: entry.cut,
+          cell: cell,
+          camera: cameras[index],
+          transitionLines: transitionLines[index],
+        ),
+    ],
+    dialogue: dialogue,
+    // I-82-Q1: the cut's own room, or the format window's.
+    cameraRoom:
+        entry.cut.metadata.conteCameraRoom ??
+        project.timesheetInfo.conteCameraRoom,
+  );
+}
+
+/// What a cut's camera does on one of its cells: the work drawn on the
+/// picture ([_cameraWorkIn]), the lines written beside it ([_cameraLinesIn]).
+typedef _CellCamera = ({ConteCameraWork? work, List<String> lines});
+
+/// All [_CellCamera] asks of the work beyond the cut itself.
+typedef _CameraReading = ({
+  CanvasSize frameSize,
+  CameraInstructionSet glossary,
+  int framesPerSecond,
+});
+
+/// Each cut's cameras, kept on the cut: any edit lays the whole book again,
+/// and a camera that moves is the book's dearest reading (a 400-cut work
+/// spent 1000ms here of its 1080ms, measured 2026-10-31), while only the cut
+/// an edit touched comes back a new object. A cut's cells are its own
+/// timeline's, so the cut's identity answers for them.
+final SignedMemo<_CameraReading, List<_CellCamera>> _cellCameras =
+    SignedMemo('conte cell cameras');
+
+/// [cells]' cameras, a [_CellCamera] to each — the path and the moves of
+/// [cut] read once, whatever the number of its cells.
+List<_CellCamera> _cellCamerasOf(
+  Cut cut,
+  List<StoryboardCoverageCell> cells,
+  Project project,
+) {
+  final conteStart = storyboardConteStart(
+    storyboardLayerForCut(cut)?.timeline,
+  );
+  final path = CameraPath.of(cut, project.cameraSize);
+  final names = transformKeyAgreedNames(cut.camera.track);
+  final moves = _movesWrittenOn(cut);
+  return [
+    for (final cell in cells)
+      (
+        work: _cameraWorkIn(
+          cut,
+          cell,
+          project.cameraSize,
+          conteStart: conteStart,
+          path: path,
+          names: names,
+        ),
+        // Over the cut's frames the cell shows — the span its camera work
+        // is read over.
+        lines: _cameraLinesIn(
+          moves,
+          project,
+          keyNames: names,
+          from: conteStart + cell.startIndex,
+          to: conteStart + cell.endIndexExclusive,
+        ),
       ),
-  ],
-  dialogue: dialogue,
-  // I-82-Q1: the cut's own room, or the format window's.
-  cameraRoom:
-      entry.cut.metadata.conteCameraRoom ??
-      project.timesheetInfo.conteCameraRoom,
-);
+  ];
+}
 
 /// A track's transition row named by its cuts, as the sheet prints it
 /// (`transitionRowNamedByItsCuts`), and its cuts on its axis.
@@ -254,8 +323,8 @@ int _cellHolding(List<StoryboardCoverageCell> cells, int frame) {
 ConteCellSource _cellSource({
   required Cut cut,
   required StoryboardCoverageCell cell,
+  required _CellCamera camera,
   required List<String> transitionLines,
-  required Project project,
 }) {
   // The cell counts the conte's frames; the row, the camera and the picture
   // count the cut's, which begin that much earlier in a cut an O.L arrives
@@ -273,41 +342,32 @@ ConteCellSource _cellSource({
       _ => null,
     },
     action: exposure?.memo?.actionMemo ?? '',
-    camera: _cameraWorkIn(
-      cut,
-      cell,
-      project.cameraSize,
-      conteStart: conteStart,
-    ),
-    // Over the cut's frames the cell shows — the span its camera work is
-    // read over.
-    cameraLines: _cameraLinesIn(
-      cut,
-      project,
-      from: conteStart + cell.startIndex,
-      to: conteStart + cell.endIndexExclusive,
-    ),
+    camera: camera.work,
+    cameraLines: camera.lines,
     transitionLines: transitionLines,
   );
 }
 
-/// What [cut]'s camera does over its frames [from] to [to], a line to each
-/// stretch ([conteCameraStretches]) in [project]'s glossary and count —
-/// none off the sheet ([LayerStackQueries.cameraOnSheet], I-93).
+/// The moves [cut]'s camera writes on its cells: none off the sheet
+/// ([LayerStackQueries.cameraOnSheet], I-93).
 ///
 /// ⚠️Mine: a camera whose work is bypassed stands still — the camera row's
 /// switch shows the canvas centred — so it writes what a camera with no
 /// key does (I-93: 「값이 동일해서 안움직이고 있거나 키가 없는 부분」).
+List<CameraMove> _movesWrittenOn(Cut cut) =>
+    cut.layers.cameraWorkBypassed || !cut.layers.cameraOnSheet
+    ? const <CameraMove>[]
+    : cameraMoves(cut.camera.track);
+
+/// What [moves] do over the frames [from] to [to], a line to each stretch
+/// ([conteCameraStretches]) in [project]'s glossary and count.
 List<String> _cameraLinesIn(
-  Cut cut,
+  List<CameraMove> moves,
   Project project, {
+  required Map<int, String> keyNames,
   required int from,
   required int to,
 }) {
-  final moves = cut.layers.cameraWorkBypassed || !cut.layers.cameraOnSheet
-      ? const <CameraMove>[]
-      : cameraMoves(cut.camera.track);
-  final keyNames = transformKeyAgreedNames(cut.camera.track);
   return [
     for (final stretch in conteCameraStretches(moves, from: from, to: to))
       conteCameraLine(
@@ -343,6 +403,8 @@ ConteCameraWork? _cameraWorkIn(
   StoryboardCoverageCell cell,
   CanvasSize cameraFrameSize, {
   required int conteStart,
+  required CameraPath? path,
+  required Map<int, String> names,
 }) {
   if (cut.layers.cameraWorkBypassed) {
     return null;
@@ -358,12 +420,11 @@ ConteCameraWork? _cameraWorkIn(
     return null;
   }
   final trails =
-      CameraPath.of(cut, cameraFrameSize)?.cornerTrailsBetween(
+      path?.cornerTrailsBetween(
         frames.first.frameIndex,
         frames.last.frameIndex,
       ) ??
       const <List<Offset>>[];
-  final names = transformKeyAgreedNames(cut.camera.track);
   return ConteCameraWork(
     screen: _widestFrame(corners),
     field: _wholePixelsAround(cameraFramesBounds([...corners, ...trails])),
