@@ -258,16 +258,14 @@ class _ConteFormatWindowState extends State<ConteFormatWindow> {
           ],
         ),
       ),
-      actions: saveActions(
-        context,
-        prefix: 'conte-format',
-        onSave: () => Navigator.of(context).pop<ConteFormatSave>((
-          format: _edited,
-          cutCameraRoom: _cutCameraRoom,
-        )),
-      ),
+      actions: saveActions(context, prefix: 'conte-format', onSave: _save),
     );
   }
+
+  void _save() => Navigator.of(context).pop<ConteFormatSave>((
+    format: _edited,
+    cutCameraRoom: _cutCameraRoom,
+  ));
 
   ConteFormat get _edited => (
     form: _form,

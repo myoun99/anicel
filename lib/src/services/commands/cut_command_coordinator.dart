@@ -264,12 +264,16 @@ class CutCommandCoordinator {
     required TimesheetInfo info,
     CutId? cutId,
     TimesheetSheetKind? kind,
-  }) => _cuts.setTimesheetFormat(info: info, cutId: cutId, kind: kind);
+  }) => _projectSettings.setTimesheetFormat(
+    info: info,
+    cutId: cutId,
+    kind: kind,
+  );
   void setConteFormat({
     required TimesheetInfo info,
     required List<CutId> cutIds,
     ({ConteCameraRoom? to})? cameraRoom,
-  }) => _cuts.setConteFormat(
+  }) => _projectSettings.setConteFormat(
     info: info,
     cutIds: cutIds,
     cameraRoom: cameraRoom,
