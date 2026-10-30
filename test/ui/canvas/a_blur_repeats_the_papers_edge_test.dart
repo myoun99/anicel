@@ -146,8 +146,11 @@ void main() {
 
       final onBytes = await bytesOf(tester, on);
       final offBytes = await bytesOf(tester, offImage);
+      // The pixel beside the ink: Impeller's Gaussian, the product's, ends
+      // nearer than Skia's — three pixels off the ink it is 0 there, 7/255
+      // under Skia (2026-10-30), on and off alike.
       expect(
-        alphaAt(onBytes, 32, 9, 16),
+        alphaAt(onBytes, 32, 11, 16),
         greaterThan(0),
         reason: 'it spreads past the ink, inside the paper',
       );
@@ -357,7 +360,9 @@ void main() {
       ) async {
         final on = await rendered(tester, whole: false, repeats: true);
         final off = await rendered(tester, whole: false, repeats: false);
-        expect(alphaAt(on, 16, 5, 8), greaterThan(0), reason: 'past the dot');
+        // Beside the dot, as the step's ink: Impeller's Gaussian ends nearer
+        // than Skia's.
+        expect(alphaAt(on, 16, 6, 8), greaterThan(0), reason: 'past the dot');
         for (var i = 0; i < on.length; i += 1) {
           expect(on[i], closeTo(off[i], 1), reason: 'byte $i');
         }
