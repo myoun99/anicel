@@ -20,6 +20,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/font_library_service.dart';
+import 'package:anicel/src/services/fx_plugins/installed_fx_plugins.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/cel_text_laying.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
@@ -204,6 +205,10 @@ Future<void> pumpTextToolApp(
   /// The fonts this device was brought; null leaves the workspace to its
   /// own library — the test sandbox, which is empty.
   FontLibraryService? fonts,
+
+  /// The fx plugins this device has installed; null leaves the app its
+  /// own, which has none.
+  InstalledFxPlugins? fxPlugins,
 }) async {
   debugCelTextBaker = engine ? null : boxFillingBake;
   addTearDown(() => debugCelTextBaker = null);
@@ -214,6 +219,7 @@ Future<void> pumpTextToolApp(
       home: HomePage(
         initialProject: project ?? textToolProject(),
         fontLibraryService: fonts,
+        fxPlugins: fxPlugins,
       ),
     ),
   );

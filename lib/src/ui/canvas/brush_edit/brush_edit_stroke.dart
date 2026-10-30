@@ -754,7 +754,12 @@ class _BrushEditStroke {
     BrushStrokeCommitData data,
   ) {
     final overlay = _state._overlay._overlayModel;
-    for (final entry in promoted) {
+    // On a row that runs a plugin the landed cel is pictured whole, as it
+    // is shown ([ActiveStrokeOverlayModel.handsTilesOver]).
+    final handed = overlay.handsTilesOver
+        ? promoted
+        : const <PromotedStrokeTile>[];
+    for (final entry in handed) {
       // ★The tile the coordinate SHOWS once this lands — the committed tile,
       // or it with the cel's texts laid over (R9-rest): the overlay has
       // been showing exactly that tile's pixels, so that is the tile its

@@ -26,6 +26,8 @@ import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/services/fx_plugins/device_fx_plugin_binding.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/a_plugin_that_shifts.dart';
+
 /// 🗣️I-132-Q32 b (유저 2026-10-30 「b 로 첫 판」): a plugin runs at the head
 /// of a cel row's chain — after nothing but colour keys — over the whole
 /// cel, at the seam every route shows a cel through, its run bound where
@@ -141,11 +143,11 @@ void main() {
 
   group('the pass', () {
     test('moves a pixel across a tile\'s edge — the cel is one picture', () {
-      final runner = _Shift();
+      final runner = ShiftingFxPlugin();
       final cel = celWith({(3, 1): red});
 
       final shown = celSurfaceAsShown(cel, [
-        plugin(run: _runOf(runner)),
+        plugin(run: fxPluginRunOf(runner)),
       ]);
 
       expect(pixelOf(shown, 4, 1), red);
@@ -161,7 +163,7 @@ void main() {
 
       final shown = celSurfaceAsShown(cel, [
         key(),
-        plugin(run: _runOf(_Shift())),
+        plugin(run: fxPluginRunOf(ShiftingFxPlugin())),
       ]);
 
       expect(pixelOf(shown, 2, 1), red);
@@ -170,10 +172,10 @@ void main() {
 
     test('hands the plugin premultiplied pixels and reads its back '
         'straight', () {
-      final runner = _Shift(by: 0);
+      final runner = ShiftingFxPlugin(by: 0);
       final cel = celWith({(5, 2): [200, 100, 50, 128]});
 
-      final shown = celSurfaceAsShown(cel, [plugin(run: _runOf(runner))]);
+      final shown = celSurfaceAsShown(cel, [plugin(run: fxPluginRunOf(runner))]);
 
       // No reach: the paper itself.
       const at = (2 * 8 + 5) * 4;
@@ -183,9 +185,9 @@ void main() {
 
     test('a layer parameter reads its row\'s own picture where the canvas '
         'puts it, its place in the frame\'s values', () {
-      final runner = _Shift(by: 0);
+      final runner = ShiftingFxPlugin(by: 0);
       final map = celWith({(6, 0): green});
-      final run = _runOf(runner, rows: {const LayerId('m'): map});
+      final run = fxPluginRunOf(runner, rows: {const LayerId('m'): map});
 
       celSurfaceAsShown(celWith({(0, 0): red}), [
         plugin(by: 0, map: const LayerId('m'), run: run),
@@ -200,20 +202,20 @@ void main() {
 
     test('a row it names with no cel there is a clear picture; one not in '
         'its cut is none', () {
-      final runner = _Shift(by: 0);
+      final runner = ShiftingFxPlugin(by: 0);
 
       celSurfaceAsShown(celWith({(0, 0): red}), [
         plugin(
           by: 0,
           map: const LayerId('m'),
-          run: _runOf(runner, rows: {const LayerId('m'): null}),
+          run: fxPluginRunOf(runner, rows: {const LayerId('m'): null}),
         ),
       ]);
       expect(runner.lastValues[4], 0);
       expect(runner.lastLayers.single.pixels.every((byte) => byte == 0), isTrue);
 
       celSurfaceAsShown(celWith({(1, 0): red}), [
-        plugin(by: 0, map: const LayerId('gone'), run: _runOf(runner)),
+        plugin(by: 0, map: const LayerId('gone'), run: fxPluginRunOf(runner)),
       ]);
       expect(runner.lastValues[4], -1);
       expect(runner.lastLayers, isEmpty);
@@ -221,28 +223,28 @@ void main() {
 
     test('runs once a picture and sample — again for another frame, value '
         'or row', () {
-      final runner = _Shift();
+      final runner = ShiftingFxPlugin();
       final cel = celWith({(1, 1): red});
       final map = celWith({(2, 2): red});
-      final run = _runOf(runner, rows: {const LayerId('m'): map});
+      final run = fxPluginRunOf(runner, rows: {const LayerId('m'): map});
 
       celSurfaceAsShown(cel, [plugin(map: const LayerId('m'), run: run)]);
       celSurfaceAsShown(cel, [
         plugin(
           map: const LayerId('m'),
-          run: _runOf(runner, rows: {const LayerId('m'): map}),
+          run: fxPluginRunOf(runner, rows: {const LayerId('m'): map}),
         ),
       ]);
       expect(runner.renders, 1, reason: 'an equal run is the same sample');
 
       celSurfaceAsShown(cel, [
-        plugin(map: const LayerId('m'), run: _runOf(runner, frame: 1)),
+        plugin(map: const LayerId('m'), run: fxPluginRunOf(runner, frame: 1)),
       ]);
       celSurfaceAsShown(cel, [plugin(by: 2, map: const LayerId('m'), run: run)]);
       celSurfaceAsShown(cel, [
         plugin(
           map: const LayerId('m'),
-          run: _runOf(runner, rows: {const LayerId('m'): celWith({})}),
+          run: fxPluginRunOf(runner, rows: {const LayerId('m'): celWith({})}),
         ),
       ]);
       expect(runner.renders, 4);
@@ -254,7 +256,7 @@ void main() {
       expect(identical(celSurfaceAsShown(cel, [plugin()]), cel), isTrue);
       expect(
         identical(
-          celSurfaceAsShown(cel, [plugin(run: _runOf(_Shift(fails: true)))]),
+          celSurfaceAsShown(cel, [plugin(run: fxPluginRunOf(ShiftingFxPlugin(fails: true)))]),
           cel,
         ),
         isTrue,
@@ -262,7 +264,7 @@ void main() {
       expect(
         identical(
           celSurfaceAsShown(cel, [
-            plugin(run: _runOf(_Shift(reachFails: true))),
+            plugin(run: fxPluginRunOf(ShiftingFxPlugin(reachFails: true))),
           ]),
           cel,
         ),
@@ -272,7 +274,7 @@ void main() {
 
     test('is never asked of a tile', () {
       final tile = BitmapTile.blank(size: tileSize);
-      final effects = [plugin(run: _runOf(_Shift()))];
+      final effects = [plugin(run: fxPluginRunOf(ShiftingFxPlugin()))];
       expect(
         () => celTileAsShown(tile, null, effects, tileSize),
         throwsA(isA<AssertionError>()),
@@ -332,7 +334,7 @@ void main() {
   });
 
   group('the binding', () {
-    final shift = _Shift();
+    final shift = ShiftingFxPlugin();
     Layer row(
       String id, {
       List<LayerEffect> effects = const [],
@@ -463,68 +465,4 @@ void main() {
       );
     });
   });
-}
-
-FxPluginRun _runOf(
-  FxPluginRunner runner, {
-  Map<LayerId, BitmapSurface?> rows = const {},
-  int frame = 0,
-}) => FxPluginRun(
-  runner: runner,
-  moment: (frameIndex: frame, time: frame / 24, frameRate: 24, scale: 1),
-  rows: rows,
-);
-
-/// Moves every pixel right by its first value — reaching that far — or by
-/// [by] where it is told one.
-final class _Shift implements FxPluginRunner {
-  _Shift({this.by, this.fails = false, this.reachFails = false});
-
-  final int? by;
-  final bool fails;
-  final bool reachFails;
-  int renders = 0;
-  final List<({int left, int top, int width, int height})> inputs = [];
-  late Uint8List lastInput;
-  late Float64List lastValues;
-  late List<FxPluginPicture> lastLayers;
-
-  @override
-  int? reach(Float64List values, FxPluginMoment moment) =>
-      reachFails ? null : by ?? values[0].toInt();
-
-  @override
-  Uint8List? render({
-    required FxPluginPicture input,
-    required Float64List values,
-    required List<FxPluginPicture> layers,
-    required FxPluginMoment moment,
-  }) {
-    renders += 1;
-    inputs.add((
-      left: input.left,
-      top: input.top,
-      width: input.width,
-      height: input.height,
-    ));
-    lastInput = input.pixels;
-    lastValues = values;
-    lastLayers = layers;
-    if (fails) {
-      return null;
-    }
-    final shift = by ?? values[0].toInt();
-    final out = Uint8List(input.pixels.length);
-    for (var y = 0; y < input.height; y += 1) {
-      for (var x = shift; x < input.width; x += 1) {
-        final to = (y * input.width + x) * 4;
-        final from = to - shift * 4;
-        out.setRange(to, to + 4, input.pixels, from);
-      }
-    }
-    return out;
-  }
-
-  @override
-  void close() {}
 }

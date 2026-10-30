@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/a_plugin_that_shifts.dart';
 import '../../helpers/cel_text_fixture.dart';
 
 /// 🚨★★★A STROKE ON A ROW THAT KEYS ITS COLOURS SHOWS THROUGH THE KEYS
@@ -334,6 +335,65 @@ void main() {
         );
       }
     }
+  });
+
+  group('🗣️I-132-Q32 b: on a row whose chain runs a plugin', () {
+    final shifted = [shiftingFxPluginEffect()];
+
+    Future<void> expectShows(
+      ActiveStrokeOverlayModel model,
+      BitmapSurface landed,
+      BitmapSurface base,
+    ) async {
+      final before = celSurfaceAsShown(base, shifted);
+      final coords = {...landed.tiles.keys, ...before.tiles.keys};
+      expect(model.tileImages.keys.toSet(), coords);
+      for (final coord in coords) {
+        expect(
+          await bytesOfPicture(model.tileImages[coord]!),
+          landed.tileAt(coord) == null
+              ? List.filled(tileSize * tileSize * 4, 0)
+              : pictured(landed.tileAt(coord)!),
+          reason: '$coord',
+        );
+      }
+      expect(model.handsTilesOver, isFalse);
+    }
+
+    test('a stroke shows the whole cel it makes, run through the plugin — '
+        'every coordinate, the ones it never touched too', () async {
+      final base = cel();
+      final model = overlayOn(base, shifted);
+      final promoted = promotedBy(stroke(model), base);
+
+      await expectShows(model, landedAsShown(base, promoted, shifted), base);
+      expect(model.handsTilesOver, isFalse);
+    });
+
+    test('so does a fill — and a coordinate the plugin leaves clear shows '
+        'clear where the cel showed ink', () async {
+      final base = cel();
+      final model = overlayOn(base, shifted);
+      final blank = BitmapTile.blank(size: tileSize);
+
+      model.showResultTiles([PromotedStrokeTile(sheet, blank, 1)]);
+
+      final landed = landedAsShown(base, {sheet: blank}, shifted);
+      expect(celSurfaceAsShown(base, shifted).tileAt(sheet), isNotNull);
+      await expectShows(model, landed, base);
+    });
+
+    test('a shape is not made ahead a few tiles at a time', () {
+      final model = overlayOn(cel(), shifted);
+      final rasterizer = BrushLiveStrokeRasterizer(
+        pasteboard: celTextTestCanvas.pasteboardAt(PasteboardReach.whole),
+        tileSize: tileSize,
+      );
+      rasterizer.blendFrom(strokeDabs(), from: 0);
+
+      expect(model.stageRegion(source: rasterizer, coords: [sheet]), isFalse);
+      expect(model.stagedCount, 0);
+    });
   });
 }
 

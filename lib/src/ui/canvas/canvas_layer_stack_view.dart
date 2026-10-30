@@ -469,17 +469,24 @@ final class StackedFrame {
 final class LiftedRowPainters {
   final Map<
     BrushFrameKey,
-    ({BitmapSurface surface, List<double> keys, BitmapSurfacePainter painter})
+    ({
+      BitmapSurface surface,
+      List<double> keys,
+      ResolvedLayerEffect? plugin,
+      BitmapSurfacePainter painter,
+    })
   >
   _held = {};
 
   /// [lifted] as [request]'s row draws it.
   _LiftedRowPaint _of(CanvasLayerImageRequest request, LiftedCel lifted) {
     final keys = celSourceEffectSignature(request.sourceEffects);
+    final plugin = celSourcePlugin(request.sourceEffects);
     final held = _held[request.frameKey];
     if (held != null &&
         identical(held.surface, lifted.surface) &&
-        listEquals(held.keys, keys)) {
+        listEquals(held.keys, keys) &&
+        held.plugin == plugin) {
       return (surface: held.painter, float: lifted.float);
     }
     final painter = BitmapSurfacePainter(
@@ -493,6 +500,7 @@ final class LiftedRowPainters {
     _held[request.frameKey] = (
       surface: lifted.surface,
       keys: keys,
+      plugin: plugin,
       painter: painter,
     );
     return (surface: painter, float: lifted.float);

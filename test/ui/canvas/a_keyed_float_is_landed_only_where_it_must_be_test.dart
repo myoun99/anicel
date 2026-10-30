@@ -15,6 +15,8 @@ import 'package:anicel/src/ui/canvas/landing_preview.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_float.dart';
 
+import '../../helpers/a_plugin_that_shifts.dart';
+
 /// transform-float-skips-colour-key — ON A ROW THAT KEYS A COLOUR AWAY, A
 /// FLOAT IS SHOWN AS ITS LANDING ONLY WHERE ITS OWN PIXELS ARE NOT IT.
 ///
@@ -185,6 +187,19 @@ void main() {
 
     expect(float.shownOn(keys).preview, same(_landing));
     expect(cel.asked, 1);
+  });
+
+  test('🗣️I-132-Q32 b: on a row whose chain runs a plugin a float is the '
+      'landing, even an opaque one over nothing — the plugin may change '
+      'the cel anywhere', () {
+    final (:float, :cel) = floatOver(empty);
+
+    expect(float.shownOn([shiftingFxPluginEffect()]).preview, same(_landing));
+    expect(
+      float.shownOn([...keys, shiftingFxPluginEffect()]).preview,
+      same(_landing),
+    );
+    expect(cel.asked, 2);
   });
 
   test('⛔CONTROL: on a row that keys nothing, a float is itself', () {
