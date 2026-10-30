@@ -81,10 +81,11 @@ timelineRulerPlayheadWriting({
 /// reaches into a covered one) cannot touch it.
 ///
 /// The widest glyph is read off the pair written where the window's writing
-/// runs longest — its last frame, and in seconds mode the last frame whose
-/// number is the fps — in the playhead's bold, never narrower than the
-/// strip's own ink at the same size. Four pixels of slack cover the strip's
-/// insets.
+/// runs longest — its last frame, and where the count starts again (the
+/// seconds display, the page view) the last frame whose number is the
+/// longest ([TimelineRulerScale.widestNumberFrameBefore]) — in the
+/// playhead's bold, never narrower than the strip's own ink at the same
+/// size. Four pixels of slack cover the strip's insets.
 ({int startIndex, int endIndexExclusive}) _writingReach({
   required TimelineRulerScale scale,
   required int frame,
@@ -108,15 +109,14 @@ timelineRulerPlayheadWriting({
     return widest;
   }
 
-  final lastFullSecond = scale.widestNumberFrameBefore(
+  final widestNumber = scale.widestNumberFrameBefore(
     window.endIndexExclusive,
   );
   var widest = 0.0;
-  for (final probe in [
+  for (final probe in {
     window.endIndexExclusive - 1,
-    if (scale.showSeconds && lastFullSecond >= window.startIndex)
-      lastFullSecond,
-  ]) {
+    if (widestNumber >= window.startIndex) widestNumber,
+  }) {
     final extent = widestOf(scale.writtenAt(layout, probe, current: true));
     widest = extent > widest ? extent : widest;
   }

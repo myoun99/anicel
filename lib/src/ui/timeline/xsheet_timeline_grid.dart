@@ -68,6 +68,7 @@ import 'timeline_frame_grid_stack.dart';
 import 'timeline_grid_sheet.dart';
 import 'timeline_layer_controls_row.dart';
 import '../layout/device_grid_scroll_controller.dart';
+import 'frame_ruler_view.dart';
 import 'timeline_grid_hooks.dart';
 import 'timeline_grid_legend_rail.dart';
 import 'timeline_swipe_columns.dart';
@@ -919,7 +920,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
                             metrics: _metrics,
                             onSelectFrame: _railScrub.selectClampedFrame,
                             framesPerSecond: _countingFps,
-                            showSeconds: widget.hooks.showSeconds,
+                            rulerView: widget.hooks.rulerView,
+                            pageFrames: widget.hooks.sheetPageFrames,
                             windowBucket: _frameWindowBucket,
                             viewportMainExtent: bodyViewportHeight,
                           ),
@@ -1154,14 +1156,14 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
                       height: layerAxisScrollbarExtent,
                       child: Row(
                         children: [
-                          TimelineSecondsToggleCorner(
+                          TimelineRulerViewCorner(
                             key: const ValueKey<String>(
                               'xsheet-time-display-toggle-button',
                             ),
                             width: _metrics.verticalScrollbarWidth,
                             height: layerAxisScrollbarExtent,
-                            showSeconds: widget.hooks.showSeconds,
-                            onChanged: widget.hooks.onShowSecondsChanged,
+                            rulerView: widget.hooks.rulerView,
+                            onChanged: widget.hooks.onRulerViewChanged,
                           ),
                           SizedBox(width: _metrics.layerControlsWidth),
                           Expanded(
@@ -1327,7 +1329,8 @@ class _XSheetFrameNumberRail extends StatelessWidget {
     required this.metrics,
     required this.onSelectFrame,
     this.framesPerSecond = 24,
-    this.showSeconds = false,
+    this.rulerView = FrameRulerView.frames,
+    this.pageFrames,
     this.windowBucket,
     this.viewportMainExtent = 0,
     this.playhead,
@@ -1341,7 +1344,11 @@ class _XSheetFrameNumberRail extends StatelessWidget {
   final TimelineGridMetrics metrics;
   final ValueChanged<int> onSelectFrame;
   final int framesPerSecond;
-  final bool showSeconds;
+  final FrameRulerView rulerView;
+
+  /// How many frames a page of the cut's X-sheet holds — where the page
+  /// view starts the rail's numbers again ([TimelineRulerScale.pageFrames]).
+  final int? pageFrames;
 
   /// PRO-TIMELINE scrolling (UI-R15→R16): the painter windows itself off
   /// the quantized bucket — pass full bounds, repaint per span crossing.
@@ -1381,7 +1388,8 @@ class _XSheetFrameNumberRail extends StatelessWidget {
       numberType: XSheetFrameRailPainter.numberType,
       secondsFontSize: 8,
       framesPerSecond: framesPerSecond,
-      showSeconds: showSeconds,
+      rulerView: rulerView,
+      pageFrames: pageFrames,
       windowBucket: windowBucket,
       viewportMainExtent: viewportMainExtent,
       // The RAIL grays its past-playback tail where the ruler does

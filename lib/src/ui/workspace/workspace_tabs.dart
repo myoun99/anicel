@@ -920,7 +920,7 @@ class _WorkspaceTabs {
               // Zoom (_timelinePixelsPerFrame) is NOT merged here (UI-R6
               // #4): the host scopes it to the panel subtree, so a zoom
               // step skips this whole tab rebuild.
-              _state._showSecondsDisplay,
+              _state._rulerView,
               _state.widget.session.railView.drawn,
             ]),
             host: (context) => TimelineTabHost(
@@ -989,9 +989,9 @@ class _WorkspaceTabs {
               pixelsPerFrameListenable: _state._timelinePixelsPerFrame,
               onPixelsPerFrameChanged: _state._setTimelineZoom,
               onZoomFit: _state._fitTimelineZoom,
-              showSeconds: _state._showSecondsDisplay.value,
-              onShowSecondsChanged: (show) {
-                _state._showSecondsDisplay.value = show;
+              rulerView: _state._rulerView.value,
+              onRulerViewChanged: (view) {
+                _state._rulerView.value = view;
               },
               timelineRailExtent: _state._railExtents[LayerRailId.timeline],
               xsheetRailExtent: _state._railExtents[LayerRailId.xsheet],
@@ -1037,7 +1037,7 @@ class _WorkspaceTabs {
               // row's (F-360) — a header graph (I-89 ①) and the filter.
               _state.widget.session.railView.drawn,
               _state._storyboardTrackLaneHeight,
-              _state._showSecondsDisplay,
+              _state._rulerView,
             ]),
             host: (context) => StoryboardTabHost(
               session: _state.widget.session,
@@ -1063,9 +1063,9 @@ class _WorkspaceTabs {
               pixelsPerFrame: _state._storyboardPixelsPerFrame.value,
               onPixelsPerFrameChanged: _state._setStoryboardZoom,
               onZoomFit: _state._fitStoryboardZoom,
-              showSeconds: _state._showSecondsDisplay.value,
-              onShowSecondsChanged: (show) {
-                _state._showSecondsDisplay.value = show;
+              rulerView: _state._rulerView.value,
+              onRulerViewChanged: (view) {
+                _state._rulerView.value = view;
               },
               railExtent: _state._railExtents[LayerRailId.storyboard],
               // ⛔No steppers any more (B7): the V rows' splitter is the

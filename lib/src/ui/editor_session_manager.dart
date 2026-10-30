@@ -1425,7 +1425,9 @@ class EditorSessionManager extends ChangeNotifier
   String framePlaceLabel(int frameIndex) => timelineFramePlaceLabel(
     frameIndex: frameIndex,
     framesPerSecond: projectSettings.projectFrameRate.countingBase,
-    showSeconds: panelViews.showSeconds.value,
+    // ⚠️Mine: the page view writes a place as the frames view does until
+    // I-81-Q4 answers how a list names a page.
+    showSeconds: panelViews.rulerView.value.seconds,
   );
 
   // ── the track SE display: its own object, in its own file ───────────

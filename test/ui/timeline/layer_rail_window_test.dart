@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/ui/timeline/axis_turn.dart' show acrossBox;
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart';
+import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_window.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
@@ -326,20 +327,20 @@ void main() {
     });
   });
 
-  group('TimelineSecondsToggleCorner', () {
-    testWidgets('the corner cell toggles the frame axis notation', (
-      tester,
-    ) async {
-      var showSeconds = false;
+  group('TimelineRulerViewCorner', () {
+    // 🗣️I-81-Q2 (유저 2026-10-30 「누르면 셋이 든 목록이 뜬다」).
+    testWidgets('a press on the corner lists the three counts, and a pick '
+        'turns the frame axis', (tester) async {
+      var view = FrameRulerView.frames;
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
             body: StatefulBuilder(
-              builder: (context, setState) => TimelineSecondsToggleCorner(
+              builder: (context, setState) => TimelineRulerViewCorner(
                 width: 16,
                 height: 28,
-                showSeconds: showSeconds,
-                onChanged: (value) => setState(() => showSeconds = value),
+                rulerView: view,
+                onChanged: (value) => setState(() => view = value),
               ),
             ),
           ),
@@ -348,10 +349,27 @@ void main() {
 
       expect(tester.getSize(find.byType(InkWell)).width, 16);
       expect(find.byIcon(Icons.timer_outlined), findsOneWidget);
-      await tester.tap(find.byType(InkWell));
-      await tester.pump();
-      expect(showSeconds, isTrue);
-      expect(find.byIcon(Icons.timer), findsOneWidget);
+      for (final (pick, icon) in [
+        (FrameRulerView.secondsPlusFrames, Icons.timer),
+        (FrameRulerView.pages, Icons.description_outlined),
+        (FrameRulerView.frames, Icons.timer_outlined),
+      ]) {
+        await tester.tap(find.byType(InkWell).first);
+        await tester.pumpAndSettle();
+        for (final each in FrameRulerView.values) {
+          expect(
+            find.byKey(ValueKey<String>('frame-ruler-view-${each.name}')),
+            findsOneWidget,
+            reason: 'the list holds all three',
+          );
+        }
+        await tester.tap(
+          find.byKey(ValueKey<String>('frame-ruler-view-${pick.name}')),
+        );
+        await tester.pumpAndSettle();
+        expect(view, pick);
+        expect(find.byIcon(icon), findsOneWidget, reason: '$pick');
+      }
     });
 
     testWidgets('without a setter the corner is a plain spacer', (
@@ -360,10 +378,10 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
-            body: TimelineSecondsToggleCorner(
+            body: TimelineRulerViewCorner(
               width: 16,
               height: 28,
-              showSeconds: false,
+              rulerView: FrameRulerView.frames,
               onChanged: null,
             ),
           ),
@@ -372,26 +390,30 @@ void main() {
       expect(find.byType(InkWell), findsNothing);
     });
 
-    testWidgets('I-102: the corner names the display a press turns to, in '
-        'the program\'s language', (tester) async {
+    testWidgets('I-102: the corner names the count it shows, in the '
+        'program\'s language', (tester) async {
       AppText.settings.value = const AppLanguageSettings(
         programLanguage: AppLanguage.ko,
       );
       addTearDown(() => AppText.settings.value = const AppLanguageSettings());
-      Widget corner({required bool showSeconds}) => MaterialApp(
+      Widget corner(FrameRulerView view) => MaterialApp(
         home: Scaffold(
-          body: TimelineSecondsToggleCorner(
+          body: TimelineRulerViewCorner(
             width: 16,
             height: 28,
-            showSeconds: showSeconds,
+            rulerView: view,
             onChanged: (_) {},
           ),
         ),
       );
-      await tester.pumpWidget(corner(showSeconds: false));
-      expect(find.tooltipSaying('초+코마'), findsOneWidget);
-      await tester.pumpWidget(corner(showSeconds: true));
-      expect(find.tooltipSaying('프레임'), findsOneWidget);
+      for (final (view, name) in [
+        (FrameRulerView.frames, '프레임'),
+        (FrameRulerView.secondsPlusFrames, '초+코마'),
+        (FrameRulerView.pages, '페이지'),
+      ]) {
+        await tester.pumpWidget(corner(view));
+        expect(find.tooltipSaying(name), findsOneWidget, reason: '$view');
+      }
     });
   });
 }

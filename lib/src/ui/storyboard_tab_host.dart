@@ -13,6 +13,7 @@ import '../models/working_panel.dart';
 import '../services/import/import_layer_spot.dart';
 import 'camera/camera_path_settings_rows.dart' show showCameraPathSettings;
 import 'storyboard/cut_link_window.dart';
+import 'timeline/frame_ruler_view.dart';
 import 'timeline/instance_editor_commands.dart';
 import 'timeline/layer_name_commands.dart';
 import 'timeline/rail_column_swipe.dart' show RailSweepHistory;
@@ -60,8 +61,8 @@ class StoryboardTabHost extends StatefulWidget {
     required this.pixelsPerFrame,
     required this.onPixelsPerFrameChanged,
     this.onZoomFit,
-    required this.showSeconds,
-    required this.onShowSecondsChanged,
+    required this.rulerView,
+    required this.onRulerViewChanged,
     this.railExtent,
     this.trackLaneHeight = StoryboardPanel.defaultTrackLaneHeight,
     this.onResizeTrackLanes,
@@ -122,8 +123,8 @@ class StoryboardTabHost extends StatefulWidget {
 
   /// The zoom fit (I-111) — the workspace's, which keeps the zoom.
   final VoidCallback? onZoomFit;
-  final bool showSeconds;
-  final ValueChanged<bool> onShowSecondsChanged;
+  final FrameRulerView rulerView;
+  final ValueChanged<FrameRulerView> onRulerViewChanged;
 
   /// This panel's rail window size (workspace-owned so it survives a tab
   /// switch AND a restart).
@@ -788,8 +789,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
                     trackLaneHeight: rail.trackLaneHeight,
                     onResizeTrackLanes: widget.onResizeTrackLanes,
-                    showSeconds: widget.showSeconds,
-                    onShowSecondsChanged: widget.onShowSecondsChanged,
+                    rulerView: widget.rulerView,
+                    onRulerViewChanged: widget.onRulerViewChanged,
                     railExtent: widget.railExtent,
                     frameAxisOffset:
                         _axes.frameAxisOffsets[LayerRailId.storyboard],

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -155,8 +156,8 @@ void main() {
       onOrientationChanged: (_) {},
       pixelsPerFrame: 48,
       onPixelsPerFrameChanged: (_) {},
-      showSeconds: false,
-      onShowSecondsChanged: (_) {},
+      rulerView: FrameRulerView.frames,
+      onRulerViewChanged: (_) {},
       onPlaceMediaAsset: (_, _, _) {},
       onPlaceMediaAssetBetweenLayers: (_, _, _) {},
     ),
@@ -178,8 +179,8 @@ void main() {
       rail: TabRailWiring.of(s),
       pixelsPerFrame: 8,
       onPixelsPerFrameChanged: (_) {},
-      showSeconds: false,
-      onShowSecondsChanged: (_) {},
+      rulerView: FrameRulerView.frames,
+      onRulerViewChanged: (_) {},
       thumbnails: null,
       onPlaceMediaAsset: (_, spot) => placed.add(spot),
     ),

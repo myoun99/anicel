@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -345,7 +346,7 @@ void main() {
     reopened.dispose();
   });
 
-  test('🚨the frames↔seconds display comes back with the file — through the '
+  test('🚨the rulers\' count comes back with the file — through the '
       'append, and turned back too — and turning it is no edit (F-354, 유저 '
       '2026-10-13: 「초+코마 표시 설정한게 저장되도록. 파일안에. 열렸을때 '
       '같은상태 유지하고싶어서」)', () async {
@@ -355,7 +356,7 @@ void main() {
       asked: SaveAsked.byAPerson,
     );
     final steps = s.historyManager.undoCount;
-    s.panelViews.showSeconds.value = true;
+    s.panelViews.rulerView.value = FrameRulerView.secondsPlusFrames;
     expect(
       s.historyManager.undoCount,
       steps,
@@ -373,7 +374,10 @@ void main() {
     s.dispose();
 
     final reopened = await openedSession(projectPath);
-    expect(reopened.panelViews.showSeconds.value, isTrue);
+    expect(
+      reopened.panelViews.rulerView.value,
+      FrameRulerView.secondsPlusFrames,
+    );
     expect(
       reopened.framePlaceLabel(30),
       timelineFramePlaceLabel(
@@ -384,17 +388,27 @@ void main() {
       reason: 'a list that names a frame writes it as the ruler does',
     );
     expect(reopened.projectFile.hasUnsavedChanges, isFalse);
-    reopened.panelViews.showSeconds.value = false;
+    // 🗣️I-81: the third count, the page view, keeps too.
+    reopened.panelViews.rulerView.value = FrameRulerView.pages;
     await reopened.projectDoor.saveProjectToFile(
       projectPath,
       asked: SaveAsked.byAPerson,
     );
     reopened.dispose();
 
+    final paged = await openedSession(projectPath);
+    expect(paged.panelViews.rulerView.value, FrameRulerView.pages);
+    paged.panelViews.rulerView.value = FrameRulerView.frames;
+    await paged.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    paged.dispose();
+
     final again = await openedSession(projectPath);
     expect(
-      again.panelViews.showSeconds.value,
-      isFalse,
+      again.panelViews.rulerView.value,
+      FrameRulerView.frames,
       reason: 'turned back to frames, the file keeps that too',
     );
     again.dispose();
@@ -461,8 +475,8 @@ void main() {
       expect(offset.value, 0);
     }
     expect(
-      reopened.panelViews.showSeconds.value,
-      isFalse,
+      reopened.panelViews.rulerView.value,
+      FrameRulerView.frames,
       reason: 'frames, as a new project writes them',
     );
     reopened.dispose();

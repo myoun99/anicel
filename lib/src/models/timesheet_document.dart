@@ -423,10 +423,7 @@ class TimesheetDocument {
     final drawnFrameCount = sources.drawnFrameCount;
     final actionLayers = sources.actionLayers;
     final cellLayers = sources.cellLayers;
-    final sheetKind = sheetKindFor(
-      cut.metadata.sheetKind,
-      celColumns: sources.celColumnsAcross,
-    );
+    final sheetKind = printedSheetKindOf(cut, sources);
     final celColumnCount = sheetKind.celColumns;
     final pageFrameCount = (pageSeconds ?? sheetKind.pageSeconds) * fps;
     final pageCount = timesheetPageCount(drawnFrameCount, pageFrameCount);

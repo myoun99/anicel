@@ -20,9 +20,9 @@ void main() {
     final builders = <String>[
       for (final file in dartFilesUnder('lib'))
         if (file.readAsStringSync() case final source
-            when source.contains('TimelineSecondsToggleCorner(') &&
+            when source.contains('TimelineRulerViewCorner(') &&
                 // Its own constructor's declaration.
-                !source.contains('class TimelineSecondsToggleCorner '))
+                !source.contains('class TimelineRulerViewCorner '))
           libPath(file),
     ]..sort();
     expect(builders, [

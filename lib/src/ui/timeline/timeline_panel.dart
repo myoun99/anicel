@@ -57,6 +57,7 @@ import 'timeline_section_policy.dart';
 import 'xsheet_timeline_grid.dart';
 
 import '../../models/project_frame_rate.dart';
+import 'frame_ruler_view.dart';
 import 'timeline_grid_hooks.dart';
 import 'timeline_grid_legend.dart';
 
@@ -130,8 +131,9 @@ class TimelinePanel extends StatefulWidget {
     this.pixelsPerFrame = TimelinePanel.defaultPixelsPerFrame,
     this.onPixelsPerFrameChanged,
     this.onZoomFit,
-    this.showSeconds = false,
-    this.onShowSecondsChanged,
+    this.rulerView = FrameRulerView.frames,
+    this.sheetPageFrames,
+    this.onRulerViewChanged,
     this.timelineRailExtent,
     this.xsheetRailExtent,
     this.timelineFrameAxisOffset,
@@ -507,10 +509,14 @@ class TimelinePanel extends StatefulWidget {
   /// ([TimelineViewCluster.onZoomFit]).
   final VoidCallback? onZoomFit;
 
-  /// Frames↔seconds display toggle, shared by the timeline's axes and the
-  /// storyboard cut totals (conte-sheet `s+ff` notation).
-  final bool showSeconds;
-  final ValueChanged<bool>? onShowSecondsChanged;
+  /// How the frame rulers count (I-81), shared by the timeline's axes and
+  /// the storyboard cut totals (conte-sheet `s+ff` notation).
+  final FrameRulerView rulerView;
+  final ValueChanged<FrameRulerView>? onRulerViewChanged;
+
+  /// How many frames a page of the open cut's X-sheet holds — where the
+  /// page view's rulers start again; null with no cut open.
+  final int? sheetPageFrames;
 
   /// The two grids' rail windows. SEPARATE by the user's decision: the
   /// sheet's stood-up header block and the timeline's rail are sized
@@ -723,8 +729,9 @@ class _TimelinePanelState extends State<TimelinePanel> {
       soundCannotPlay: widget.soundCannotPlay,
       seClipMarkerTooltip: widget.seClipMarkerTooltip,
       projectFrameRate: widget.projectFrameRate,
-      showSeconds: widget.showSeconds,
-      onShowSecondsChanged: widget.onShowSecondsChanged,
+      rulerView: widget.rulerView,
+      sheetPageFrames: widget.sheetPageFrames,
+      onRulerViewChanged: widget.onRulerViewChanged,
       onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
       onDropMediaAssetOnSeBlock: widget.onDropMediaAssetOnSeBlock,
       onDropMediaAssetOnLayer: widget.onDropMediaAssetOnLayer,

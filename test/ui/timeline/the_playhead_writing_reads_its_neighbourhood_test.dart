@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_header_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_ruler_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_glyph_cache.dart';
@@ -22,7 +23,7 @@ void main() {
     WidgetTester tester, {
     required double cell,
     required int frames,
-    bool showSeconds = false,
+    FrameRulerView rulerView = FrameRulerView.frames,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -39,7 +40,8 @@ void main() {
                 frameCellWidth: cell,
               ),
               onSelectFrame: (_) {},
-              showSeconds: showSeconds,
+              rulerView: rulerView,
+              pageFrames: 144,
             ),
           ),
         ),
@@ -182,19 +184,20 @@ void main() {
 
   testWidgets('what the neighbourhood finds is what the whole window would '
       'find', (tester) async {
-    for (final showSeconds in [false, true]) {
+    // I-81: a page of 6 seconds — the X-sheet a cut of 24fps prints.
+    for (final view in FrameRulerView.values) {
       for (final frames in [120, 3000]) {
         for (final cell in [0.16, 0.5, 1.0, 2.4, 8.0, 24.0]) {
           final scale = await rulerOf(
             tester,
             cell: cell,
             frames: frames,
-            showSeconds: showSeconds,
+            rulerView: view,
           );
           final window = scale.visibleWindow();
           for (final frame in [0, frames ~/ 2, frames - 1]) {
             final where =
-                '${showSeconds ? 'seconds' : 'frames'} · $frames frames · '
+                '${view.name} · $frames frames · '
                 '${cell}px · playhead $frame';
             final writing = timelineRulerPlayheadWriting(
               scale: scale,

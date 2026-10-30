@@ -2150,6 +2150,7 @@ enum AppStrings {
   String get frameCountEntryFrames => _s('frameCountEntryFrames');
   String get frameCountEntrySecondsPlusFrames =>
       _s('frameCountEntrySecondsPlusFrames');
+  String get frameRulerPages => _s('frameRulerPages');
 
   /// 자동 이름 지정's one field (I-18): the number the first block takes.
   String get autoNameStartField => _s('autoNameStartField');
@@ -3539,6 +3540,7 @@ enum AppStrings {
     'markEveryField': 'Interval',
     'frameCountEntryFrames': 'Frames',
     'frameCountEntrySecondsPlusFrames': 'Seconds+frames',
+    'frameRulerPages': 'Pages',
     'projectFpsTitle': 'Project frame rate',
     'projectFpsField': 'Frames per second',
     'autoNameStartField': 'Start number',
@@ -5360,6 +5362,7 @@ enum AppStrings {
     'markEveryField': '間隔',
     'frameCountEntryFrames': 'コマ数',
     'frameCountEntrySecondsPlusFrames': '秒+コマ',
+    'frameRulerPages': 'ページ',
     'projectFpsTitle': 'プロジェクトのフレームレート',
     'projectFpsField': '1秒あたりのフレーム数',
     'autoNameStartField': '開始番号',
@@ -7169,6 +7172,7 @@ enum AppStrings {
     'markEveryField': '간격',
     'frameCountEntryFrames': '프레임',
     'frameCountEntrySecondsPlusFrames': '초+코마',
+    'frameRulerPages': '페이지',
     'projectFpsTitle': '프로젝트 프레임레이트',
     'projectFpsField': '초당 프레임 수',
     'autoNameStartField': '시작 번호',
@@ -9160,6 +9164,7 @@ enum AppStrings {
     'markEveryField': 'Intervalle',
     'frameCountEntryFrames': 'Images',
     'frameCountEntrySecondsPlusFrames': 'Secondes+images',
+    'frameRulerPages': 'Pages',
     'projectFpsTitle': 'Fréquence du projet',
     'projectFpsField': 'Images par seconde',
     'autoNameStartField': 'Numéro de départ',
@@ -10914,6 +10919,7 @@ enum AppStrings {
     'markEveryField': '间隔',
     'frameCountEntryFrames': '帧数',
     'frameCountEntrySecondsPlusFrames': '秒+帧',
+    'frameRulerPages': '页',
     'projectFpsTitle': '项目帧率',
     'projectFpsField': '每秒帧数',
     'autoNameStartField': '起始编号',

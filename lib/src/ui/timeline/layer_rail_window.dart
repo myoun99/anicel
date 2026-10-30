@@ -16,7 +16,6 @@
 /// answer had to be common to all three surfaces.
 library;
 
-import '../widgets/app_tooltip.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -26,13 +25,14 @@ import '../layout/render_shifted_child.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_scrollbar.dart';
 import '../widgets/dock_edge_splitter.dart';
+import '../widgets/panel_flyout.dart'
+    show PanelFlyoutChoices, PanelFlyoutTrigger;
 import 'axis_turn.dart';
+import 'frame_ruler_view.dart';
 import 'layer_rail_columns.dart';
 import 'memo_token.dart' show KeptPiece;
 import 'timeline_grid_metrics.dart';
-import '../input/control_press_claim.dart';
 import '../input/pan_slide.dart';
-import '../theme/app_theme.dart';
 
 /// The narrowest window the user can drag to: the leading cluster (the
 /// section band and every control slot before the name) plus enough of the
@@ -582,28 +582,51 @@ class LayerRailSplitter extends KeptPiece {
 }
 
 /// The grid's corner cell, over the layer-axis bar past the splitter
-/// (`timeline_grid_frame.dart`): the frames↔seconds toggle.
+/// (`timeline_grid_frame.dart`): how the ruler counts ([FrameRulerView]) —
+/// a press opens the list of the three.
 ///
 /// It used to sit in the command bar between the frame counter and the
 /// zoom slider. It moved here whole (the user's word was "완전 이동")
 /// because the corner is where the two axes meet, and what the button
 /// changes is how the frame axis LABELS itself.
-class TimelineSecondsToggleCorner extends KeptPiece {
-  const TimelineSecondsToggleCorner({
+///
+/// 🗣️I-81-Q2 (유저 2026-10-30 「누르면 셋이 든 목록이 뜬다」). ↩️A press
+/// turned frames ↔ seconds+frames, the two there were.
+class TimelineRulerViewCorner extends KeptPiece {
+  const TimelineRulerViewCorner({
     super.key = const ValueKey<String>('timeline-time-display-toggle-button'),
-    required this.showSeconds,
+    required this.rulerView,
     required this.onChanged,
     required this.width,
     required this.height,
   });
 
-  final bool showSeconds;
-  final ValueChanged<bool>? onChanged;
+  final FrameRulerView rulerView;
+  final ValueChanged<FrameRulerView>? onChanged;
   final double width;
   final double height;
 
   @override
-  Object? get facts => (showSeconds, onChanged != null, width, height);
+  Object? get facts => (rulerView, onChanged != null, width, height);
+
+  /// 🗣️I-102 (유저 2026-10-15): 「초+코마 표시 토글버튼 로컬라이즈
+  /// 안되있으니 해주고」 — each count in the words the frame-count entry
+  /// names the first two by.
+  static String nameOf(FrameRulerView view) {
+    final strings = AppText.strings;
+    return switch (view) {
+      FrameRulerView.frames => strings.frameCountEntryFrames,
+      FrameRulerView.secondsPlusFrames =>
+        strings.frameCountEntrySecondsPlusFrames,
+      FrameRulerView.pages => strings.frameRulerPages,
+    };
+  }
+
+  static IconData _iconOf(FrameRulerView view) => switch (view) {
+    FrameRulerView.frames => Icons.timer_outlined,
+    FrameRulerView.secondsPlusFrames => Icons.timer,
+    FrameRulerView.pages => Icons.description_outlined,
+  };
 
   @override
   Widget buildKept(BuildContext context) {
@@ -612,33 +635,28 @@ class TimelineSecondsToggleCorner extends KeptPiece {
     if (onChanged == null) {
       return SizedBox(width: width, height: height);
     }
-    final strings = AppText.strings;
-    // 🗣️I-102 (유저 2026-10-15): 「초+코마 표시 토글버튼 로컬라이즈
-    // 안되있으니 해주고」 — the display a press turns to, in the words the
-    // frame-count entry names the two displays by.
-    return AppTooltip(
-      message: showSeconds
-          ? strings.frameCountEntryFrames
-          : strings.frameCountEntrySecondsPlusFrames,
-      child: ControlPressClaim(
-        onPressed: () => onChanged(!showSeconds),
-        child: InkWell(
-          mouseCursor: AppCursors.press,
-          onTap: silentPress(() => onChanged(!showSeconds)),
-          child: SizedBox(
-            width: width,
-            height: height,
-            child: Center(
-              child: Icon(
-                showSeconds ? Icons.timer : Icons.timer_outlined,
-                // The corner is only as wide as a scrollbar lane, so the
-                // glyph is the compact one.
-                size: 13,
-                color: showSeconds
-                    ? colorScheme.primary
-                    : colorScheme.onSurfaceVariant,
-              ),
-            ),
+    return PanelFlyoutTrigger(
+      tooltip: nameOf(rulerView),
+      padding: EdgeInsets.zero,
+      entriesBuilder: () => FrameRulerView.values.asFlyoutChoices(
+        current: rulerView,
+        keyPrefix: 'frame-ruler-view-',
+        labelOf: nameOf,
+        iconOf: _iconOf,
+        onPicked: onChanged,
+      ),
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: Center(
+          child: Icon(
+            _iconOf(rulerView),
+            // The corner is only as wide as a scrollbar lane, so the
+            // glyph is the compact one.
+            size: 13,
+            color: rulerView == FrameRulerView.frames
+                ? colorScheme.onSurfaceVariant
+                : colorScheme.primary,
           ),
         ),
       ),

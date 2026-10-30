@@ -187,7 +187,7 @@ class ProjectFileDoor {
 
   /// Whose conte zoom, panel scrolls and frames display a save keeps and an
   /// open puts back ([ProjectResume.storyboardZoom],
-  /// [ProjectResume.frameAxisOffsets], [ProjectResume.showSeconds]).
+  /// [ProjectResume.frameAxisOffsets], [ProjectResume.rulerView]).
   final PanelViewMemory _panelViews;
 
   /// Whose header graphs and pinned lanes a save keeps and an open puts
@@ -931,7 +931,7 @@ class ProjectFileDoor {
     layerAxisOffsets: PanelViewMemory.awayFromTheStart(
       _panelViews.layerAxisOffsets,
     ),
-    showSeconds: _panelViews.showSeconds.value,
+    rulerView: _panelViews.rulerView.value,
     laneGraphs: _laneGraphs.value,
     mediaFileViews: _mediaFileViews.views,
   );
@@ -1222,7 +1222,7 @@ class ProjectFileDoor {
       _panelViews.layerAxisOffsets,
       resume.layerAxisOffsets,
     );
-    _panelViews.showSeconds.value = resume.showSeconds;
+    _panelViews.rulerView.value = resume.rulerView;
     // The header graphs and their pins as they stood (F-360-Q1) — each on a
     // row the project still has: a new row's id is minted afresh every
     // session, skipping only the ids in use, so a graph kept for a row

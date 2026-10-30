@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/panel_view_memory.dart';
@@ -76,8 +77,8 @@ Future<void> pumpStoryboardHostOn(
             rail: TabRailWiring.of(session),
             pixelsPerFrame: pixelsPerFrame,
             onPixelsPerFrameChanged: onPixelsPerFrameChanged,
-            showSeconds: false,
-            onShowSecondsChanged: (_) {},
+            rulerView: FrameRulerView.frames,
+            onRulerViewChanged: (_) {},
             thumbnails: null,
             rowsChannel: rowsChannel,
           ),

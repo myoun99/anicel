@@ -54,7 +54,7 @@ void main() {
   /// the splitter and the rail's scrollbar are among them.
   List<RenderObject> chrome(WidgetTester tester, {required String panel}) {
     for (final kind in [
-      TimelineSecondsToggleCorner,
+      TimelineRulerViewCorner,
       LayerRailSplitter,
       LayerRailScrollbar,
     ]) {
@@ -80,7 +80,7 @@ void main() {
   ) {
     expect(
       frame.rebuilt,
-      contains(TimelineSecondsToggleCorner),
+      contains(TimelineRulerViewCorner),
       reason: 'premise: the grid built its chrome again',
     );
     for (final piece in pieces) {
@@ -185,7 +185,7 @@ void main() {
     await tester.pumpAndSettle();
     final pieces = [
       for (final kind in [
-        TimelineSecondsToggleCorner,
+        TimelineRulerViewCorner,
         LayerRailSplitter,
         LayerRailScrollbar,
       ])

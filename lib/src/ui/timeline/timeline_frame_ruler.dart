@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/cut_id.dart';
 import '../widgets/tick_layer.dart';
+import 'frame_ruler_view.dart';
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_frame_header_row.dart';
@@ -22,7 +23,8 @@ class TimelineFrameRuler extends StatelessWidget {
     required this.metrics,
     required this.onSelectFrame,
     this.framesPerSecond = 24,
-    this.showSeconds = false,
+    this.rulerView = FrameRulerView.frames,
+    this.pageFrames,
     this.windowBucket,
     this.viewportMainExtent = 0,
     this.dragPreview,
@@ -41,7 +43,12 @@ class TimelineFrameRuler extends StatelessWidget {
   final TimelineGridMetrics metrics;
   final ValueChanged<int> onSelectFrame;
   final int framesPerSecond;
-  final bool showSeconds;
+  final FrameRulerView rulerView;
+
+  /// How many frames a page of the cut's X-sheet holds
+  /// ([TimelineRulerScale.pageFrames]); null on the storyboard's.
+  final int? pageFrames;
+
   /// PRO-TIMELINE scrolling (UI-R15→R16): the strip windows itself off
   /// the quantized bucket — pass the full bounds, repaint per crossing.
   final ValueListenable<int>? windowBucket;
@@ -89,7 +96,8 @@ class TimelineFrameRuler extends StatelessWidget {
           metrics: metrics,
           onSelectFrame: onSelectFrame,
           framesPerSecond: framesPerSecond,
-          showSeconds: showSeconds,
+          rulerView: rulerView,
+          pageFrames: pageFrames,
           windowBucket: windowBucket,
           viewportMainExtent: viewportMainExtent,
           playhead: playhead,

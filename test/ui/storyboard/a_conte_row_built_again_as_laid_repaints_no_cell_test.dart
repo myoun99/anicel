@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
+import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/conte_track_fixture.dart';
@@ -19,8 +20,8 @@ import '../../helpers/conte_track_fixture.dart';
 void main() {
   testWidgets('built again for its seconds, the conte row\'s cells have '
       'nothing to paint again and nothing to say again', (tester) async {
-    final showSeconds = ValueNotifier<bool>(false);
-    addTearDown(showSeconds.dispose);
+    final rulerView = ValueNotifier(FrameRulerView.frames);
+    addTearDown(rulerView.dispose);
     // F-357: with the unworked-block tint on, as the storyboard tab gives it.
     final revision = ValueNotifier<int>(0);
     addTearDown(revision.dispose);
@@ -33,12 +34,12 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: ValueListenableBuilder<bool>(
-            valueListenable: showSeconds,
-            builder: (_, seconds, _) => StoryboardPanel(
+          body: ValueListenableBuilder<FrameRulerView>(
+            valueListenable: rulerView,
+            builder: (_, view, _) => StoryboardPanel(
               project: project,
               activeCutId: const CutId('cut-1'),
-              showSeconds: seconds,
+              rulerView: view,
               conteCelContent: content,
             ),
           ),
@@ -60,7 +61,7 @@ void main() {
     expect(before.layer.timeline, isNotEmpty, reason: 'premise: panels');
     expect(before.celContent, isNotNull, reason: 'premise: the tint');
 
-    showSeconds.value = true;
+    rulerView.value = FrameRulerView.secondsPlusFrames;
     await tester.pump();
     final after = conteCells();
 

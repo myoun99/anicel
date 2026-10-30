@@ -75,6 +75,7 @@ import 'timeline/rail_eyes.dart'
     show RailEye, RailEyeShown, RailEyes, railEyesOf;
 import 'timeline/rail_column_swipe.dart';
 import 'timeline/layer_rail_window.dart';
+import 'timeline/frame_ruler_view.dart';
 import 'timeline/timeline_grid_frame.dart';
 import 'timeline/lane_graph.dart'
     show LaneGraphVerbs, LaneGraphsView, TimelineGraphSeat;
@@ -684,8 +685,8 @@ class StoryboardPanel extends StatefulWidget {
     this.onResizeTrackLanes,
     this.pixelsPerFrame = 8,
     this.onPixelsPerFrameChanged,
-    this.showSeconds = false,
-    this.onShowSecondsChanged,
+    this.rulerView = FrameRulerView.frames,
+    this.onRulerViewChanged,
     this.railExtent,
     this.frameAxisOffset,
     this.layerAxisOffset,
@@ -1136,14 +1137,18 @@ class StoryboardPanel extends StatefulWidget {
   /// fingers only move the sheet.
   final ValueChanged<double>? onPixelsPerFrameChanged;
 
-  /// Conte-sheet time display for the cut totals: frames (`48f`) or
-  /// seconds+frames (`2+00`), toggled from the grid's top-left corner.
-  final bool showSeconds;
+  /// How the rulers count (I-81), picked from the grid's top-left corner —
+  /// and the cut totals with them: frames (`48`) or seconds+frames (`2+0`)
+  /// ([showSeconds]).
+  final FrameRulerView rulerView;
 
-  /// The toggle itself, in the corner over the layer-axis scrollbar (it
+  /// Whether a length reads as seconds+frames ([FrameRulerView.seconds]).
+  bool get showSeconds => rulerView.seconds;
+
+  /// The pick itself, in the corner over the layer-axis scrollbar (it
   /// used to be a command-bar button shared with the timeline). Null
   /// leaves the corner blank.
-  final ValueChanged<bool>? onShowSecondsChanged;
+  final ValueChanged<FrameRulerView>? onRulerViewChanged;
 
   /// This rail's window size, set by the splitter beside it and persisted
   /// by the workspace. Null = a session-local one of our own.
@@ -2645,8 +2650,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       ),
       barWidth: StoryboardPanel._scrollbarLaneWidth,
       height: bandHeight,
-      showSeconds: widget.showSeconds,
-      onShowSecondsChanged: widget.onShowSecondsChanged,
+      rulerView: widget.rulerView,
+      onRulerViewChanged: widget.onRulerViewChanged,
       // The timeline's legend header over the rail (UI-R5
       // storyboard unification): same slots, same flyouts —
       // and now inside the rail's own window, so the legend is
@@ -2763,7 +2768,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                     readyRunsIn: widget.readyRunsIn,
                     onEdgeAutoPan: _scroll.autoPanRulerEdge,
                     framesPerSecond: _countingFps,
-                    showSeconds: widget.showSeconds,
+                    rulerView: widget.rulerView,
                   ),
                 ),
               ),
@@ -2806,7 +2811,7 @@ class _StoryboardRuler extends StatefulWidget {
     required this.readyRunsIn,
     this.onEdgeAutoPan,
     this.framesPerSecond = 24,
-    this.showSeconds = false,
+    this.rulerView = FrameRulerView.frames,
   });
 
   final double width;
@@ -2860,7 +2865,7 @@ class _StoryboardRuler extends StatefulWidget {
   /// The two-line ruler's parameters (UI-R10 #27, unified: the seconds
   /// display cycles 1..fps here exactly like the timeline — UI-R11 #10).
   final int framesPerSecond;
-  final bool showSeconds;
+  final FrameRulerView rulerView;
 
   @override
   State<_StoryboardRuler> createState() => _StoryboardRulerState();
@@ -3000,7 +3005,9 @@ class _StoryboardRulerState extends State<_StoryboardRuler> {
                 metrics: metrics,
                 onSelectFrame: (_) {},
                 framesPerSecond: widget.framesPerSecond,
-                showSeconds: widget.showSeconds,
+                // No pages yet: where the track's pages begin waits on
+                // I-81-Q3, so the page view counts here as frames.
+                rulerView: widget.rulerView,
                 windowBucket: widget.windowBucket,
                 viewportMainExtent: widget.viewportWidth,
               ),

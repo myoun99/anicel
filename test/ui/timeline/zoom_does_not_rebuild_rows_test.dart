@@ -8,6 +8,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
@@ -65,7 +66,7 @@ void main() {
   Widget harness(
     List<Layer> layers,
     double cellWidth, {
-    bool showSeconds = false,
+    FrameRulerView rulerView = FrameRulerView.frames,
     PropertyLaneRow? Function(Layer layer)? unionLaneForLayer,
   }) {
     final rows = [
@@ -97,7 +98,7 @@ void main() {
                 onLayerOpacityChanged: (_, _) {},
                 onToggleLayerTimesheet: (_) {},
                 onLayerMarkSelected: (_, _) {},
-                showSeconds: showSeconds,
+                rulerView: rulerView,
                 unionLaneForLayer: unionLaneForLayer,
               ),
               frameStartIndex: 0,
@@ -266,7 +267,9 @@ void main() {
     final before = rowWidget(tester, 'a');
     expect(labelTexts(), ['4']);
 
-    await tester.pumpWidget(harness(layers, 24, showSeconds: true));
+    await tester.pumpWidget(
+      harness(layers, 24, rulerView: FrameRulerView.secondsPlusFrames),
+    );
 
     expect(
       identical(rowWidget(tester, 'a'), before),

@@ -148,6 +148,7 @@ import '../models/storyboard_timeline_layout.dart' show movieEndFrames;
 import '../models/timeline_row_address.dart';
 import '../models/working_panel.dart';
 import 'timeline/collapsed_row_overlay.dart';
+import 'timeline/frame_ruler_view.dart';
 import 'timeline/layer_label_controls.dart'
     show layerRailColumnWidthsIn;
 import 'timeline/rail_eyes.dart' show RailEyes;
@@ -1053,12 +1054,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         ceiling: _storyboardLaneCeiling(context),
       );
 
-  /// Shared frames↔seconds display toggle (conte-sheet 초+コマ notation) —
-  /// the PROJECT's, held by the session and saved beside its file
-  /// (`PanelViewMemory.showSeconds`, F-354). ↩️It was the window's, one for
-  /// every tab.
-  ValueNotifier<bool> get _showSecondsDisplay =>
-      widget.session.panelViews.showSeconds;
+  /// How the frame rulers count, shared by every frame panel (frames ·
+  /// conte-sheet 초+コマ · pages, I-81) — the PROJECT's, held by the session
+  /// and saved beside its file (`PanelViewMemory.rulerView`, F-354).
+  /// ↩️It was the window's, one for every tab.
+  ValueNotifier<FrameRulerView> get _rulerView =>
+      widget.session.panelViews.rulerView;
 
   /// Each frame panel's layer-rail WINDOW size, set by its splitter.
   ///

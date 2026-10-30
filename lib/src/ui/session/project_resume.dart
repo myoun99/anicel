@@ -3,6 +3,7 @@ import '../../models/layer_id.dart';
 import '../../models/playback_mode.dart';
 import '../../services/persistence/anicel_project_archive.dart'
     show anicelObjectMapField;
+import '../timeline/frame_ruler_view.dart';
 import '../timeline/lane_graph.dart'
     show LaneGraph, LaneGraphMode, LaneGraphsView;
 import 'media_file_views.dart' show MediaFileView;
@@ -42,7 +43,7 @@ class ProjectResume {
     this.storyboardZoom,
     this.frameAxisOffsets = const {},
     this.layerAxisOffsets = const {},
-    this.showSeconds = false,
+    this.rulerView = FrameRulerView.frames,
     this.laneGraphs = LaneGraphsView.none,
     this.mediaFileViews = const {},
   });
@@ -84,11 +85,11 @@ class ProjectResume {
   /// pixels (F-267); a rail left at its start is not here.
   final Map<String, double> layerAxisOffsets;
 
-  /// Whether the frame panels write a frame as seconds+frames (초+코마 표시,
-  /// F-354 — `PanelViewMemory.showSeconds`): a view setting kept here as the
-  /// zooms are. Turning it is no edit, and the file still keeps it; a file
-  /// that says nothing writes frames.
-  final bool showSeconds;
+  /// How the frame panels count a frame (초+코마 표시 · 페이지, F-354 · I-81 —
+  /// `PanelViewMemory.rulerView`): a view setting kept here as the zooms
+  /// are. Turning it is no edit, and the file still keeps it; a file that
+  /// says nothing counts frames.
+  final FrameRulerView rulerView;
 
   /// The header graphs standing open — how tall, plotting what, enlarged or
   /// not, their pen up or not, their transform box shown or not, their snap
@@ -118,7 +119,8 @@ class ProjectResume {
     if (storyboardZoom != null) 'storyboardZoom': storyboardZoom,
     if (frameAxisOffsets.isNotEmpty) 'frameAxisOffsets': frameAxisOffsets,
     if (layerAxisOffsets.isNotEmpty) 'layerAxisOffsets': layerAxisOffsets,
-    if (showSeconds) 'showSeconds': true,
+    if (rulerView != FrameRulerView.frames)
+      'frameRuler': rulerView.jsonValue,
     if (laneGraphs.open.isNotEmpty)
       'laneGraphs': {
         for (final MapEntry(:key, value: graph) in laneGraphs.open.entries)
@@ -163,7 +165,7 @@ class ProjectResume {
       storyboardZoom: _positive(json['storyboardZoom']),
       frameAxisOffsets: _positiveByName(json['frameAxisOffsets']),
       layerAxisOffsets: _positiveByName(json['layerAxisOffsets']),
-      showSeconds: json['showSeconds'] == true,
+      rulerView: FrameRulerView.fromJson(json['frameRuler']),
       laneGraphs: LaneGraphsView(
         open: {
           for (final MapEntry(:key, :value)

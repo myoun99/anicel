@@ -1,7 +1,8 @@
 import 'package:flutter/widgets.dart';
 
+import 'frame_ruler_view.dart';
 import 'layer_rail_window.dart'
-    show LayerRailSplitter, TimelineSecondsToggleCorner;
+    show LayerRailSplitter, TimelineRulerViewCorner;
 
 // THE GRID'S FRAME, said once for the panels that lay a grid in it — the
 // timeline's and the conte panel's:
@@ -23,8 +24,8 @@ import 'layer_rail_window.dart'
 // (`export_cels_board.dart`), in the export lane's hands.
 
 /// The frame's top row: the legend in the rail's window, the splitter's
-/// column, the corner over the layer-axis bar — the frames↔seconds
-/// toggle — and the ruler.
+/// column, the corner over the layer-axis bar — the ruler's count
+/// (I-81) — and the ruler.
 class TimelineGridHeaderRow extends StatelessWidget {
   const TimelineGridHeaderRow({
     super.key,
@@ -32,8 +33,8 @@ class TimelineGridHeaderRow extends StatelessWidget {
     required this.ruler,
     required this.barWidth,
     required this.height,
-    required this.showSeconds,
-    required this.onShowSecondsChanged,
+    required this.rulerView,
+    required this.onRulerViewChanged,
     this.cornerKey = const ValueKey<String>(
       'timeline-time-display-toggle-button',
     ),
@@ -43,8 +44,8 @@ class TimelineGridHeaderRow extends StatelessWidget {
   final Widget ruler;
   final double barWidth;
   final double height;
-  final bool showSeconds;
-  final ValueChanged<bool>? onShowSecondsChanged;
+  final FrameRulerView rulerView;
+  final ValueChanged<FrameRulerView>? onRulerViewChanged;
   final Key cornerKey;
 
   @override
@@ -53,12 +54,12 @@ class TimelineGridHeaderRow extends StatelessWidget {
     children: [
       legend,
       const SizedBox(width: LayerRailSplitter.thickness),
-      TimelineSecondsToggleCorner(
+      TimelineRulerViewCorner(
         key: cornerKey,
         width: barWidth,
         height: height,
-        showSeconds: showSeconds,
-        onChanged: onShowSecondsChanged,
+        rulerView: rulerView,
+        onChanged: onRulerViewChanged,
       ),
       Expanded(child: ruler),
     ],

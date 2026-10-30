@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../timeline/frame_ruler_view.dart';
 import '../timeline/layer_rail_window.dart' show LayerRailId;
 import '../timeline/timeline_zoom_limits.dart' show TimelineZoomLimits;
 
@@ -29,8 +30,9 @@ class PanelViewMemory {
   static const double defaultStoryboardPixelsPerFrame =
       400 * TimelineZoomLimits.referencePixelsPerFrame / 1000;
 
-  /// The frames↔seconds DISPLAY (초+코마 표시): how a frame's place and a
-  /// length are written — the rulers, the block words, and every list that
+  /// How the frame rulers count ([FrameRulerView]: frames, seconds+frames
+  /// or pages, I-81) — the DISPLAY (초+코마 표시) that writes a frame's
+  /// place and a length: the rulers, the block words, and every list that
   /// names a frame (`ProjectAccess.framePlaceLabel`).
   ///
   /// 🗣️F-354 (유저 2026-10-13): 「초+코마 표시 설정한게 저장되도록. 파일안에.
@@ -40,7 +42,9 @@ class PanelViewMemory {
   /// (유저 2026-10-04: 「이런 표기는 초+코마 표기로 바꾼거에 대응하도록 법
   /// 통일」), the workspace's — where the lists the session's verbs write
   /// could not read it. The session holds this, so they still can.
-  final ValueNotifier<bool> showSeconds = ValueNotifier(false);
+  final ValueNotifier<FrameRulerView> rulerView = ValueNotifier(
+    FrameRulerView.frames,
+  );
 
   /// Where each frame grid's FRAME axis is scrolled to, in pixels at that
   /// grid's own zoom, one per rail ([LayerRailId]): the grid and its folded
@@ -77,7 +81,7 @@ class PanelViewMemory {
 
   void dispose() {
     storyboardPixelsPerFrame.dispose();
-    showSeconds.dispose();
+    rulerView.dispose();
     for (final offset in [
       ...frameAxisOffsets.values,
       ...layerAxisOffsets.values,

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -314,13 +315,13 @@ void main() {
       ['$where · 3 · 3', '$where · 4 · 4'],
       reason: 'both collisions listed',
     );
-    s.panelViews.showSeconds.value = true;
+    s.panelViews.rulerView.value = FrameRulerView.secondsPlusFrames;
     expect(
       naming.plan(naming.timelineTargets!, from: 1).joinLines,
       ['$where · 3 · 0+3', '$where · 4 · 0+4'],
       reason: 'the notice follows the seconds display',
     );
-    s.panelViews.showSeconds.value = false;
+    s.panelViews.rulerView.value = FrameRulerView.frames;
     expect(plan.rows.single.joins, {three: one, four: two});
     expect(reads(s, row, 4), ['1', '2', '3', '4'], reason: 'nothing written');
 

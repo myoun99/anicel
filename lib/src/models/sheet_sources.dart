@@ -1,6 +1,7 @@
 import 'cut.dart';
 import 'layer.dart';
 import 'layer_kind.dart';
+import 'timesheet_sheet_kind.dart';
 import 'track_se_window.dart';
 import 'transition_geometry.dart';
 
@@ -237,3 +238,14 @@ String sheetBookLabel(Layer layer) {
   final picture = shown == null ? null : layer.frameById(shown);
   return '${layer.name}${picture?.celNumber ?? ''}';
 }
+
+/// The paper [cut] prints its timesheet on: the kind it chose, while a
+/// strip holds the cel columns its [sources] lay ([sheetKindFor]).
+TimesheetSheetKind printedSheetKindOf(Cut cut, SheetSources sources) =>
+    sheetKindFor(cut.metadata.sheetKind, celColumns: sources.celColumnsAcross);
+
+/// How many frames a page of [cut]'s timesheet holds at [fps] — its paper's
+/// ([printedSheetKindOf]), the page the timeline's page view counts by:
+/// 🗣️I-81-Q1 (유저 2026-10-30 「그 컷의 X시트 장을 따른다」).
+int sheetPageFramesOf(Cut cut, int fps) =>
+    printedSheetKindOf(cut, SheetSources.of(cut: cut)).pageSeconds * fps;

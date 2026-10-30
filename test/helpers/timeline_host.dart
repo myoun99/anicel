@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -100,8 +101,8 @@ Future<Widget> _timelineTab(
     pixelsPerFrame: zoom.value,
     pixelsPerFrameListenable: zoom,
     onPixelsPerFrameChanged: (next) => zoom.value = next,
-    showSeconds: false,
-    onShowSecondsChanged: (_) {},
+    rulerView: FrameRulerView.frames,
+    onRulerViewChanged: (_) {},
     timelineRailExtent: railExtents[LayerRailId.timeline],
     xsheetRailExtent: railExtents[LayerRailId.xsheet],
     rail: TabRailWiring.of(session),
