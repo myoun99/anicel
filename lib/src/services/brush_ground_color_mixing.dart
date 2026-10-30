@@ -121,57 +121,76 @@ class BrushGroundColorMixer {
       final sourceArgb = dab.color;
       final drawing = _Paint.of(sourceArgb);
       final ground = sample(dab.center.x, dab.center.y, dab.size / 2.0);
-      final _Paint deposit;
-      final double thickness;
       // ⚠️DRY IS THE BRUSH'S, NOT THE DAB'S — my reading, not the user's: a
       // 絵の具量 its curve presses down to 0 is a loaded brush laying none
       // of its own colour this dab, still laying what it carries at its
       // 絵の具濃度; only a 絵の具量 set to 0 makes the 수채 섞기 that lays
       // nothing on bare canvas.
-      if (shape.paintAmount > 0.0) {
-        final amount = _ofDab(
-          dab,
-          BrushPressureTarget.paintAmount,
-          shape.paintAmount,
-        );
-        final density = _ofDab(
-          dab,
-          BrushPressureTarget.paintDensity,
-          shape.paintDensity,
-        );
-        var carried = _reservoir ?? drawing;
-        // Bare canvas has no colour to lift; the brush keeps what it holds.
-        if (ground.coverage > 0.0) {
-          carried = carried.towards(
-            _Paint.of(ground.rgb),
-            _pickedUp(dab, pickPerStamp * ground.coverage),
-          );
-        }
-        carried = carried.towards(
-          drawing,
-          _pickedUp(dab, amount * amount * _refillPerStamp),
-        );
-        _reservoir = carried;
-        deposit = carried.towards(drawing, amount * _drawingLaid);
-        thickness = density;
-      } else {
-        final take = _pickedUp(dab, pickPerStamp);
-        final held = _held + (ground.coverage - _held) * take;
-        if (held > 0.0) {
-          final lifted = _Paint.of(ground.rgb);
-          _reservoir = (_reservoir ?? lifted).towards(
-            lifted,
-            ground.coverage * take / held,
-          );
-        }
-        _held = held;
-        deposit = _reservoir ?? drawing;
-        thickness = held;
-      }
+      final (:deposit, :thickness) = shape.paintAmount > 0.0
+          ? _laidLoaded(dab, drawing, ground, pickPerStamp)
+          : _laidDry(dab, drawing, ground, pickPerStamp);
       final alpha = (argbAlpha(sourceArgb) * thickness).round().clamp(0, 255);
       mixed.add(dab.copyWith(color: (alpha << 24) | deposit.rgb));
     }
     return mixed;
+  }
+
+  /// What a loaded brush lays at [dab] over [ground] — the reservoir picks
+  /// the ground up and is refilled with [drawing] by the dab's 絵の具量, and
+  /// lays at its 絵の具濃度 ([apply]).
+  _Laid _laidLoaded(
+    BrushDab dab,
+    _Paint drawing,
+    BrushGroundSample ground,
+    double pickPerStamp,
+  ) {
+    final amount = _ofDab(
+      dab,
+      BrushPressureTarget.paintAmount,
+      shape.paintAmount,
+    );
+    var carried = _reservoir ?? drawing;
+    // Bare canvas has no colour to lift; the brush keeps what it holds.
+    if (ground.coverage > 0.0) {
+      carried = carried.towards(
+        _Paint.of(ground.rgb),
+        _pickedUp(dab, pickPerStamp * ground.coverage),
+      );
+    }
+    carried = carried.towards(
+      drawing,
+      _pickedUp(dab, amount * amount * _refillPerStamp),
+    );
+    _reservoir = carried;
+    return (
+      deposit: carried.towards(drawing, amount * _drawingLaid),
+      thickness: _ofDab(
+        dab,
+        BrushPressureTarget.paintDensity,
+        shape.paintDensity,
+      ),
+    );
+  }
+
+  /// What a dry brush lays at [dab] over [ground] — what it picked up, as
+  /// thick as it holds it ([apply]).
+  _Laid _laidDry(
+    BrushDab dab,
+    _Paint drawing,
+    BrushGroundSample ground,
+    double pickPerStamp,
+  ) {
+    final take = _pickedUp(dab, pickPerStamp);
+    final held = _held + (ground.coverage - _held) * take;
+    if (held > 0.0) {
+      final lifted = _Paint.of(ground.rgb);
+      _reservoir = (_reservoir ?? lifted).towards(
+        lifted,
+        ground.coverage * take / held,
+      );
+    }
+    _held = held;
+    return (deposit: _reservoir ?? drawing, thickness: held);
   }
 
   /// [target]'s setting for [dab]: the brush's [base], through the curves
@@ -183,6 +202,9 @@ class BrushGroundColorMixer {
         1.0,
       );
 }
+
+/// What a dab lays: the colour, and how thick of its alpha.
+typedef _Laid = ({_Paint deposit, double thickness});
 
 /// What a whole stamp lifts of the ground at 色延び 0 ([BrushGroundColorMixer]
 /// — fitted to the user's Clip Studio strokes).
