@@ -539,14 +539,19 @@ void main() {
         );
         expect(frame.center.dx, closeTo(slot.center.dx, 1e-9), reason: where);
         expect(frame.center.dy, closeTo(slot.center.dy, 1e-9), reason: where);
+        expect(
+          frame.width / work.field.width,
+          closeTo(
+            conteCameraPlan(
+              metrics,
+              work,
+              room: ConteCameraRoom.inCell,
+            ).scale,
+            1e-9,
+          ),
+          reason: 'the plan says the paper it takes: $where',
+        );
       }
-      const room = ConteCameraRoom.inCell;
-      final tall = conteCameraPan(down: 1);
-      expect(
-        tall.field.height * conteCameraPlan(metrics, tall, room: room).scale,
-        closeTo(metrics.windowHeight, 1e-9),
-        reason: 'two screens tall: as tall as the window',
-      );
     });
 
     test('a camera that stands still lays its cell alike either way', () {
