@@ -238,6 +238,28 @@ void main() {
     expect(answer, isNull);
   });
 
+  testWidgets('I-82: the camera room picked in 컷 설정 is the cut\'s on '
+      'save — one undo gives it back to the format', (tester) async {
+    final session = await pumpCutButton(tester);
+    await tapInView(
+      tester,
+      find.byKey(const ValueKey<String>('cut-settings-camera-room')),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('cut-settings-camera-room-inCell')),
+    );
+    await tester.pumpAndSettle();
+    await save(tester);
+    expect(
+      session.activeCutOrNull!.metadata.conteCameraRoom,
+      ConteCameraRoom.inCell,
+    );
+
+    session.undo();
+    await tester.pumpAndSettle();
+    expect(session.activeCutOrNull!.metadata.conteCameraRoom, isNull);
+  });
+
   // I-82-Q1 「서식 전체 + 컷마다 덮어쓰기」: the format window sets how much
   // a moving camera's cell takes, and a cut may keep its own.
   testWidgets('I-82: the camera room lists the format\'s and both of a '
@@ -296,6 +318,14 @@ void main() {
     cut = cut.copyWith(conteCameraRoom: ConteCameraRoom.inCell);
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(button),
+        matching: find.text('Keep in the cell'),
+      ),
+      findsOneWidget,
+      reason: 'the cut\'s own',
+    );
     await pick('format');
     await save(tester);
     expect(
