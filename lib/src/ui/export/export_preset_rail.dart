@@ -37,6 +37,7 @@ class ExportPresetRail extends StatelessWidget {
     ExportTab.image => AppText.strings.exImage,
     ExportTab.cels => AppText.strings.exCels,
     ExportTab.conte => AppText.strings.panelConte,
+    ExportTab.aeScript => AppText.strings.exAeScript,
   };
 
   /// One-line rule summary under the preset name.
@@ -53,6 +54,9 @@ class ExportPresetRail extends StatelessWidget {
       ExportConteFormat.pdf => AppText.strings.exVectorPdf,
       ExportConteFormat.pageImage => AppText.strings.exPageImage,
     },
+    AeScriptExportSpec() =>
+      '${exportCelLabelText(spec.cels.label)} · '
+          '${exportCelFilterSummary(spec.cels)}',
   };
 
   @override

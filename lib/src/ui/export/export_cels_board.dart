@@ -770,6 +770,7 @@ class ExportCelsBand extends StatelessWidget {
     required this.directions,
     this.camera = const (laid: false, onPressed: null),
     this.guides = const (laid: false, onPressed: null),
+    this.laysOver = true,
   });
 
   final Widget cutPicker;
@@ -785,6 +786,11 @@ class ExportCelsBand extends StatelessWidget {
   final List<ExportCelsDirection> directions;
   final ExportCelsLaying camera;
   final ExportCelsLaying guides;
+
+  /// Whether the tab lays anything over its cels — the AE Script tab lays
+  /// none: a direction goes over the shot as a guide of its own there
+  /// (ae-script-export-Q3 「AE 가이드 레이어로 따로」).
+  final bool laysOver;
 
   @override
   Widget build(BuildContext context) {
@@ -807,7 +813,11 @@ class ExportCelsBand extends StatelessWidget {
           const SizedBox(width: 8),
           ..._steps(),
           const SizedBox(width: 8),
-          Expanded(child: _laying(guideColorOf(context))),
+          Expanded(
+            child: laysOver
+                ? _laying(guideColorOf(context))
+                : const SizedBox.shrink(),
+          ),
         ],
       ),
     );

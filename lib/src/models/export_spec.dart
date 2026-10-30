@@ -23,7 +23,11 @@ enum ExportTab {
   sequence,
   image,
   cels,
-  conte;
+  conte,
+
+  /// ae-script-export (유저 2026-10-15): the cels and a script that lays
+  /// them out in After Effects ([AeScriptExportSpec]).
+  aeScript;
 
   String get jsonValue => name;
 
@@ -162,6 +166,7 @@ ExportTabSpec exportTabSpecFromJson(ExportTab tab, Map<String, dynamic> json) {
     ExportTab.image => ImageExportSpec.fromJson(json),
     ExportTab.cels => CelsExportSpec.fromJson(json),
     ExportTab.conte => ConteExportSpec.fromJson(json),
+    ExportTab.aeScript => AeScriptExportSpec.fromJson(json),
   };
 }
 
@@ -706,6 +711,92 @@ class ConteExportSpec extends ExportTabSpec {
   int get hashCode => Object.hash(format, image);
 }
 
+/// The AE Script tab (ae-script-export): the rows' cels as the Cels tab
+/// picks them, written raw beside a script that lays them out in After
+/// Effects (`buildAeScript`).
+///
+/// 🗣️ae-script-export-Q1 (유저 2026-10-15): 「셀 탭에서 내보내는게아니라 그냥 ae
+/// 스크립트? 탭을 새로 만들어서 거기서 셀부분 선택하는 동작은 셀 탭 그대로
+/// 사용하되, 용지 적용은 필요없으니 그런부분 없앤다던가? 아무튼 재사용할거
+/// 재사용하되 해당 탭의 기능에 맞춰서 개조하는느낌?」 — so the picking is a
+/// Cels spec's, this tab's own ([cels]), and what a delivery cel adds over
+/// the drawing is not asked ([written]).
+class AeScriptExportSpec extends ExportTabSpec {
+  const AeScriptExportSpec({this.cels = defaultCels});
+
+  /// The kinds of row a comp lays. A document is no row, and a direction
+  /// is laid over the shot as a guide (Q3 「AE 가이드 레이어로 따로」), not as
+  /// a cel of it.
+  static const Set<ExportCelKind> rowKinds = {
+    ExportCelKind.cel,
+    ExportCelKind.conte,
+    ExportCelKind.art,
+  };
+
+  /// The cels and the art: what a comp is made of.
+  static const CelsExportSpec defaultCels = CelsExportSpec(
+    kinds: {ExportCelKind.cel, ExportCelKind.art},
+  );
+
+  /// How the tab picks its cels — a Cels spec's picking, the rest left at
+  /// its defaults ([picking]).
+  final CelsExportSpec cels;
+
+  @override
+  ExportTab get tab => ExportTab.aeScript;
+
+  /// [cels] as the tab writes them: PNG keeping its alpha, the canvas
+  /// whole — the canvas comp's size — no FX (Q2 「날것으로 — 이펙트 없이」),
+  /// no paper (Q1), and of the kinds the rows' alone.
+  CelsExportSpec get written => cels.copyWith(
+    format: const ExportFormatSelection(kind: ExportMediaKind.still),
+    sizeMode: ExportSizeMode.canvas,
+    layerFx: ExportLayerFx.off,
+    applyPaper: false,
+    kinds: cels.kinds.intersection(rowKinds),
+  );
+
+  /// [spec]'s picking — its kinds, its label and take, its filters, its
+  /// scope and its naming — the rest of it left at the defaults: what this
+  /// tab keeps of a Cels spec.
+  static CelsExportSpec picking(CelsExportSpec spec) =>
+      const CelsExportSpec().copyWith(
+        naming: spec.naming,
+        kinds: spec.kinds,
+        label: spec.label,
+        take: spec.take,
+        base: spec.base,
+        attach: spec.attach,
+        sheetOnly: spec.sheetOnly,
+        scope: spec.scope,
+      );
+
+  AeScriptExportSpec copyWith({CelsExportSpec? cels}) =>
+      AeScriptExportSpec(cels: picking(cels ?? this.cels));
+
+  @override
+  Map<String, dynamic> toJson() => {
+    if (cels != defaultCels) 'cels': picking(cels).toJson(),
+  };
+
+  static AeScriptExportSpec fromJson(Map<String, dynamic> json) =>
+      AeScriptExportSpec(
+        cels: switch (json['cels']) {
+          final Map<String, dynamic> cels => picking(
+            CelsExportSpec.fromJson(cels),
+          ),
+          _ => defaultCels,
+        },
+      );
+
+  @override
+  bool operator ==(Object other) =>
+      other is AeScriptExportSpec && other.cels == cels;
+
+  @override
+  int get hashCode => cels.hashCode;
+}
+
 /// The dialog's last-used spec per tab (app state, persisted with the
 /// presets in the export settings file).
 class ExportTabSpecs {
@@ -714,18 +805,21 @@ class ExportTabSpecs {
     this.image = const ImageExportSpec(),
     this.cels = const CelsExportSpec(),
     this.conte = const ConteExportSpec(),
+    this.aeScript = const AeScriptExportSpec(),
   });
 
   final SequenceExportSpec sequence;
   final ImageExportSpec image;
   final CelsExportSpec cels;
   final ConteExportSpec conte;
+  final AeScriptExportSpec aeScript;
 
   ExportTabSpec specFor(ExportTab tab) => switch (tab) {
     ExportTab.sequence => sequence,
     ExportTab.image => image,
     ExportTab.cels => cels,
     ExportTab.conte => conte,
+    ExportTab.aeScript => aeScript,
   };
 
   ExportTabSpecs withSpec(ExportTabSpec spec) => switch (spec) {
@@ -733,6 +827,7 @@ class ExportTabSpecs {
     ImageExportSpec() => copyWith(image: spec),
     CelsExportSpec() => copyWith(cels: spec),
     ConteExportSpec() => copyWith(conte: spec),
+    AeScriptExportSpec() => copyWith(aeScript: spec),
   };
 
   ExportTabSpecs copyWith({
@@ -740,11 +835,13 @@ class ExportTabSpecs {
     ImageExportSpec? image,
     CelsExportSpec? cels,
     ConteExportSpec? conte,
+    AeScriptExportSpec? aeScript,
   }) => ExportTabSpecs(
     sequence: sequence ?? this.sequence,
     image: image ?? this.image,
     cels: cels ?? this.cels,
     conte: conte ?? this.conte,
+    aeScript: aeScript ?? this.aeScript,
   );
 
   Map<String, dynamic> toJson() => {
@@ -752,6 +849,7 @@ class ExportTabSpecs {
     'image': image.toJson(),
     'cels': cels.toJson(),
     'conte': conte.toJson(),
+    'aeScript': aeScript.toJson(),
   };
 
   static ExportTabSpecs fromJson(Map<String, dynamic> json) => ExportTabSpecs(
@@ -767,6 +865,11 @@ class ExportTabSpecs {
     conte: json['conte'] == null
         ? const ConteExportSpec()
         : ConteExportSpec.fromJson(json['conte'] as Map<String, dynamic>),
+    aeScript: json['aeScript'] == null
+        ? const AeScriptExportSpec()
+        : AeScriptExportSpec.fromJson(
+            json['aeScript'] as Map<String, dynamic>,
+          ),
   );
 
   @override
@@ -776,8 +879,9 @@ class ExportTabSpecs {
           other.sequence == sequence &&
           other.image == image &&
           other.cels == cels &&
-          other.conte == conte;
+          other.conte == conte &&
+          other.aeScript == aeScript;
 
   @override
-  int get hashCode => Object.hash(sequence, image, cels, conte);
+  int get hashCode => Object.hash(sequence, image, cels, conte, aeScript);
 }

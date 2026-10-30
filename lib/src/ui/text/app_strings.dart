@@ -1353,6 +1353,7 @@ enum AppStrings {
   String get exImage => _s('exImage');
   String get exVideo => _s('exVideo');
   String get exCels => _s('exCels');
+  String get exAeScript => _s('exAeScript');
   String get exFormat => _s('exFormat');
   String get exOptions => _s('exOptions');
   String get exNaming => _s('exNaming');
@@ -2869,6 +2870,7 @@ enum AppStrings {
     'exImage': 'Image',
     'exVideo': 'Video',
     'exCels': 'Cels',
+    'exAeScript': 'AE Script',
     'exFormat': 'Format',
     'exOptions': 'Options',
     'exNaming': 'Naming',
@@ -4476,6 +4478,7 @@ enum AppStrings {
     'exImage': '画像',
     'exVideo': '動画',
     'exCels': 'セル',
+    'exAeScript': 'AEスクリプト',
     'exFormat': '形式',
     'exOptions': 'オプション',
     'exNaming': '命名',
@@ -6285,6 +6288,7 @@ enum AppStrings {
     'exImage': '이미지',
     'exVideo': '동영상',
     'exCels': '셀',
+    'exAeScript': 'AE 스크립트',
     'exFormat': '형식',
     'exOptions': '옵션',
     'exNaming': '이름 규칙',
@@ -8150,6 +8154,7 @@ enum AppStrings {
     'exImage': 'Image',
     'exVideo': 'Vidéo',
     'exCels': 'Cellulos',
+    'exAeScript': 'Script AE',
     'exFormat': 'Format',
     'exOptions': 'Options',
     'exNaming': 'Nommage',
@@ -10019,6 +10024,7 @@ enum AppStrings {
     'exImage': '图像',
     'exVideo': '视频',
     'exCels': '赛璐珞',
+    'exAeScript': 'AE 脚本',
     'exFormat': '格式',
     'exOptions': '选项',
     'exNaming': '命名',

@@ -2,9 +2,11 @@ import '../../models/camera_pose.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut_camera.dart';
 import '../../services/camera_pose_resolver.dart';
+import '../../services/export/ae_script.dart' show formatAeNumber;
 
-// ⚠️NO DOOR CALLS THIS NOW, ON PURPOSE. 🗣️F-455 (유저 2026-10-23) took the
-// cut menu's 「카메라 AE 키프레임 복사」 away for 「다른 카드에서 선택한 행
+// ⚠️NO DOOR CALLS THE WRITER NOW, ON PURPOSE (the AE Script tab reads the
+// camera through [aeCameraSampleOf] alone). 🗣️F-455 (유저 2026-10-23) took
+// the cut menu's 「카메라 AE 키프레임 복사」 away for 「다른 카드에서 선택한 행
 // ae복사(애니메이션행의 경우 트랜스폼이나 노출같은거 다 포함해서)로 폭넓게
 // 구현할것임」 — the writer and the camera's bake below are what that copy
 // starts from. ⛔Not dead code to sweep: the copy of a row is coming.
@@ -115,7 +117,7 @@ List<AeTransformSample> bakeCameraAeSamples({
 }) {
   return [
     for (var frame = 0; frame < frameCount; frame += 1)
-      _sampleFromPose(
+      aeCameraSampleOf(
         frame,
         resolveCameraPoseAt(
           camera: camera,
@@ -126,7 +128,11 @@ List<AeTransformSample> bakeCameraAeSamples({
   ];
 }
 
-AeTransformSample _sampleFromPose(int frame, CameraPose pose) {
+/// [pose] as the AE layer that looks through the camera: the canvas
+/// anchored at the camera's centre and pinned to the comp's, scaled by its
+/// zoom and turned against it — the class doc's mapping, ONE spelling for
+/// the clipboard's bake and the AE Script tab's camera comp.
+AeTransformSample aeCameraSampleOf(int frame, CameraPose pose) {
   return AeTransformSample(
     frame: frame,
     anchorX: pose.center.x,
@@ -134,18 +140,4 @@ AeTransformSample _sampleFromPose(int frame, CameraPose pose) {
     scalePercent: pose.zoom * 100,
     rotationDegrees: -pose.rotationDegrees,
   );
-}
-
-/// AE-friendly number text: integers bare, fractions trimmed to at most
-/// four decimals without trailing zeros.
-String formatAeNumber(double value) {
-  if (value == value.roundToDouble()) {
-    return value.round().toString();
-  }
-  var text = value.toStringAsFixed(4);
-  text = text.replaceFirst(RegExp(r'0+$'), '');
-  if (text.endsWith('.')) {
-    text = text.substring(0, text.length - 1);
-  }
-  return text;
 }
