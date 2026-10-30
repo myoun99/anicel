@@ -212,8 +212,14 @@ void main() {
       await store.landingOf('after');
 
       expect(store.peek('after'), same(picture));
-      expect(picture.image, same(drawn));
-      expect(told, 0);
+      // ⚠️Told by identity, not `same`: a mismatch would print the image a
+      // write let go of.
+      expect(
+        identical(picture.image, drawn),
+        isTrue,
+        reason: 'a move writes no texel: the image a screen drew stands',
+      );
+      expect(told, 0, reason: 'no screen is told of a move');
       store.dispose();
     },
     skip: noFlutterGpu,
