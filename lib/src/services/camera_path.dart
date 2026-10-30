@@ -210,8 +210,7 @@ class CameraPath {
 /// ([CameraPath.cornerTrailsBetween]), and at every key its frame with the
 /// cross at its centre and its label at its top-left corner
 /// ([CameraMarkedKey]), in the colour its place among all the camera's keys
-/// gives it. The conte's paper frames its first and last alone
-/// (`conteCameraMarksOf`).
+/// gives it — as the conte's paper writes a cell's (`conteCameraMarksOf`).
 ///
 /// A label is the key's name, else the frame it stands on
 /// ([cameraKeyLabel]; 「사각형있는건 A가 왼쪽위인거처럼 24f도
@@ -242,7 +241,6 @@ Iterable<SheetMark> cameraPathMarks(
           CameraMarkedKey(
             corners: [for (final corner in key.corners) place(corner)],
             role: key.role,
-            framed: true,
             label: cameraKeyLabel(key.name, key.frameIndex),
             beside: _eitherSide(path, key.frameIndex, 1, place),
           ),

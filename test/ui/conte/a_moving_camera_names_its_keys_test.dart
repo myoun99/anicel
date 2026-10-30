@@ -167,8 +167,7 @@ void main() {
   });
 
   test('a key between is written whether it has a name or not (유저 '
-      '2026-10-12: 「중간키들도 표시하고」 — ↩️only a named one was) — its '
-      'frame is never drawn, its label stands where it would be', () {
+      '2026-10-12: 「중간키들도 표시하고」 — ↩️only a named one was)', () {
     final three = CutCamera(
       keyframes: {0: at(80, 45), 6: at(160, 90), 12: at(240, 45)},
     );

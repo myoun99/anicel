@@ -5,7 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/conte/conte_page_marks.dart';
 import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
-import 'package:anicel/src/models/camera_work_marks.dart' show CameraKeyRole;
+import 'package:anicel/src/models/camera_work_marks.dart'
+    show CameraKeyRole, cameraBetweenArgb;
 import 'package:anicel/src/models/conte/conte_sheet_source.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/sheet_marks.dart';
@@ -251,9 +252,9 @@ void main() {
     );
   });
 
-  test('a key between draws no frame (「첫/끝 키 말고 중간키는 실루엣을 '
-      '안그려」), and its name stands where its frame\'s corner would be '
-      '(「원래 위치해야할곳에 위치시키고 틀만 안보이게」)', () {
+  test('🎯every key draws its frame, a key between too, as the canvas draws '
+      'it (I-82, 유저 2026-10-31: 「카메라레이어가 캔버스에서 키마다 '
+      '보여주는거처럼 법 통일」), and its name stands inside its corner', () {
     List<Offset> frameAt(double x) => [
       Offset(x, 0),
       Offset(x + 1920, 0),
@@ -288,18 +289,32 @@ void main() {
     );
     final marks = printed([moving(work)]).marks;
     final picture = marks.whereType<SheetPicture>().single;
-    expect(
-      marks.whereType<SheetStroke>().where((stroke) => stroke.closed),
-      hasLength(2),
-      reason: 'the first and the last frames only',
-    );
+    final frames = [
+      for (final stroke in marks.whereType<SheetStroke>())
+        if (stroke.closed) stroke,
+    ];
+    expect(frames, hasLength(3), reason: 'a frame to each key');
+    expect(frames.map((frame) => frame.argb), [
+      green,
+      cameraBetweenArgb,
+      red,
+    ]);
+    for (final (index, frame) in frames.indexed) {
+      for (final (corner, point) in frame.points.indexed) {
+        expectPoint(
+          point,
+          onPaper(picture, work, corners[index][corner]),
+          'key $index, corner $corner',
+        );
+      }
+    }
     final between = marks.whereType<SheetWords>().singleWhere(
       (words) => words.text == 'B',
     );
     expectPoint(
       between.slot.topLeft,
       onPaper(picture, work, corners[1].first) + const Offset(2, 2),
-      'inside the corner its frame would have',
+      'inside its frame\'s corner',
     );
     expect(between.argb, isNot(anyOf(green, red)));
     expect(between.argb >>> 24, 0xFF, reason: 'a name in full ink (H47)');

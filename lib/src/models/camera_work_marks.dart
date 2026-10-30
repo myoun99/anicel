@@ -92,7 +92,6 @@ class CameraMarkedKey {
   const CameraMarkedKey({
     required this.corners,
     required this.role,
-    required this.framed,
     required this.label,
     this.beside = const [],
   });
@@ -103,9 +102,6 @@ class CameraMarkedKey {
   final List<Offset> corners;
 
   final CameraKeyRole role;
-
-  /// Whether its frame is drawn.
-  final bool framed;
 
   /// What is written at its frame's top-left corner, inside it and turned
   /// with it ([cameraKeyLabel]) — or, a point having no corner to write it
@@ -153,7 +149,8 @@ class CameraMarkSizes {
 }
 
 /// [trails], and over them each of [keys]: its frame, its cross and its
-/// label — at [sizes], in [layer].
+/// label — at [sizes], in [layer]. A key is all three on every surface
+/// (I-82), so no surface can write one without its frame.
 Iterable<SheetMark> cameraWorkMarks({
   required Iterable<List<Offset>> trails,
   required Iterable<CameraMarkedKey> keys,
@@ -170,7 +167,7 @@ Iterable<SheetMark> cameraWorkMarks({
   }
   for (final key in keys) {
     final argb = cameraKeyArgb(key.role);
-    if (key.framed && !cameraPlaceIsAPoint(key.corners)) {
+    if (!cameraPlaceIsAPoint(key.corners)) {
       yield SheetStroke(
         layer,
         points: key.corners,
