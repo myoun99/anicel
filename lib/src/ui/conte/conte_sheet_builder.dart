@@ -55,14 +55,10 @@ ConteSheetSource buildConteSheetSource(Project project, {String? olWord}) {
       ),
   ];
   final panels = _panelsOnTheirTracks(layout, cellsOf);
-  final transitions = {
-    for (final track in project.tracks)
-      track.id: _transitionsOf(
-        track,
-        project,
-        olWord: olWord ?? AppText.strings.tlTransitionCutOl,
-      ),
-  };
+  final transitions = _transitionsOf(
+    project,
+    olWord: olWord ?? AppText.strings.tlTransitionCutOl,
+  );
   final cuts = <ConteCutSource>[];
   for (final (index, entry) in layout.indexed) {
     final track = project.tracks.firstWhere(
@@ -70,10 +66,8 @@ ConteSheetSource buildConteSheetSource(Project project, {String? olWord}) {
     );
     cuts.add(
       _cutSource(
-        cut: entry.cut,
-        name: entry.cut.name,
+        entry,
         cells: cellsOf[index],
-        endFrame: entry.endFrame,
         dialogue: _dialogueOf(track, (
           id: entry.cut.id,
           start: entry.startFrame,
@@ -108,34 +102,28 @@ ConteSheetSource buildConteSheetSource(Project project, {String? olWord}) {
   );
 }
 
-ConteCutSource _cutSource({
-  required Cut cut,
-  required String name,
+ConteCutSource _cutSource(
+  StoryboardTimelineLayoutEntry entry, {
   required List<StoryboardCoverageCell> cells,
-  required int endFrame,
   required List<ConteDialogueLine> dialogue,
   required List<List<String>> transitionLines,
   required Project project,
-}) {
-  final storyboard = storyboardLayerForCut(cut);
-  return ConteCutSource(
-    cutId: cut.id,
-    name: name,
-    durationFrames: cut.duration,
-    cumulativeEndFrames: endFrame,
-    cells: [
-      for (final (index, cell) in cells.indexed)
-        _cellSource(
-          cut: cut,
-          cell: cell,
-          storyboard: storyboard,
-          transitionLines: transitionLines[index],
-          project: project,
-        ),
-    ],
-    dialogue: dialogue,
-  );
-}
+}) => ConteCutSource(
+  cutId: entry.cut.id,
+  name: entry.cut.name,
+  durationFrames: entry.cut.duration,
+  cumulativeEndFrames: entry.endFrame,
+  cells: [
+    for (final (index, cell) in cells.indexed)
+      _cellSource(
+        cut: entry.cut,
+        cell: cell,
+        transitionLines: transitionLines[index],
+        project: project,
+      ),
+  ],
+  dialogue: dialogue,
+);
 
 /// A track's transition row named by its cuts, as the sheet prints it
 /// (`transitionRowNamedByItsCuts`), and its cuts on its axis.
@@ -144,21 +132,25 @@ typedef _TrackTransitions = ({
   List<({Cut cut, int startFrame, int endFrame})> placed,
 });
 
-_TrackTransitions _transitionsOf(
-  Track track,
+/// Each of [project]'s tracks' transitions ([_TrackTransitions]), by track.
+Map<TrackId, _TrackTransitions> _transitionsOf(
   Project project, {
   required String olWord,
 }) {
-  final placed = cutSpansOf(track).toList();
-  return (
-    row: transitionRowNamedByItsCuts(
-      row: track.transitionLayer,
-      cuts: placed,
-      vocabulary: project.cameraInstructions,
-      olWord: olWord,
-    ),
-    placed: placed,
-  );
+  final byTrack = <TrackId, _TrackTransitions>{};
+  for (final track in project.tracks) {
+    final placed = cutSpansOf(track).toList();
+    byTrack[track.id] = (
+      row: transitionRowNamedByItsCuts(
+        row: track.transitionLayer,
+        cuts: placed,
+        vocabulary: project.cameraInstructions,
+        olWord: olWord,
+      ),
+      placed: placed,
+    );
+  }
+  return byTrack;
 }
 
 /// The transitions [track] writes on [entry]'s [cells] (I-93-Q1), a list
@@ -226,13 +218,13 @@ int _cellHolding(List<StoryboardCoverageCell> cells, int frame) {
 ConteCellSource _cellSource({
   required Cut cut,
   required StoryboardCoverageCell cell,
-  required Layer? storyboard,
   required List<String> transitionLines,
   required Project project,
 }) {
   // The cell counts the conte's frames; the row, the camera and the picture
   // count the cut's, which begin that much earlier in a cut an O.L arrives
   // into (F-227).
+  final storyboard = storyboardLayerForCut(cut);
   final conteStart = storyboardConteStart(storyboard?.timeline);
   final exposure = storyboard?.timeline[conteStart + cell.startIndex];
   return ConteCellSource(
