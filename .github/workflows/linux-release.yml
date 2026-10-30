@@ -86,14 +86,23 @@ jobs:
       # have something to load. Here the plugin build leaves a standalone .so
       # in the bundle, made by Flutter's clang rather than the gcc build the
       # CI shards test — so the file handed out is the file checked.
+      # The pins take the engine where its build left it, beside what that
+      # build makes with it (test/helpers/native_engine_path.dart) — not
+      # the bundle's copy, which holds only what ships (run 41038440055).
+      # So they run on the plugin build's .so once `cmp` shows it is the
+      # bundle's own bytes: the bundle copies it unchanged (install(FILES)),
+      # and a build that ever stops doing so fails here rather than checks
+      # another file.
       - name: Parity against the shipped engine
         env:
-          QA_ENGINE_PATH: ${{ github.workspace }}/build/linux/x64/release/bundle/lib/libqa_engine.so
           # A missing engine must FAIL rather than skip: a skipped parity
           # suite and a passing one look identical in a summary.
           QA_REQUIRE_NATIVE: '1'
         run: |
           set -euo pipefail
+          built=build/linux/x64/release/plugins/qa_native/shared/libqa_engine.so
+          cmp "$built" build/linux/x64/release/bundle/lib/libqa_engine.so
+          export QA_ENGINE_PATH="$GITHUB_WORKSPACE/$built"
           bash tool/native_parity_tests.sh > "$RUNNER_TEMP/parity.txt"
           echo "parity subset: $(wc -l < "$RUNNER_TEMP/parity.txt") of $(find test -name '*_test.dart' | wc -l) files"
           # Run by the run plan, as every list run goes: the pins that wait

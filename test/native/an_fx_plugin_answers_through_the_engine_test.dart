@@ -172,7 +172,8 @@ void main() {
   }, skip: skip);
 }
 
-/// The sample plugin the engine's build makes in its own folder.
+/// The sample plugin the engine's build makes in its own folder — where
+/// QA_ENGINE_PATH points ([nativeEngineLibraryPathOrNull]).
 String? _sampleBeside(String libraryPath) {
   final folder = File(libraryPath).parent.path;
   final name = Platform.isWindows
