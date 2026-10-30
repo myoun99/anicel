@@ -32,13 +32,16 @@ import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
 /// 🚨A STEP UNDER A FOLDER OR AN ADJUSTMENT THAT SPREADS IS TOLD BY ITS
 /// SPREAD — where it moved, grown by as far as each chain it passes
-/// through reads past a pixel, the row's own chain among them — and a step
-/// on a row posed is not told at all ([StackedFrame.movedSince]): a canvas
-/// that stands patches the first into its picture and draws the frame as it
-/// stands for the second (one-picture-per-frame, 유저 2026-10-25 「원본 기준
-/// 위에서 푼다」). ↩️A spread anywhere over the row was not told, and the
-/// row's own until it read its spread off the canvas's grid
-/// (nested-folder-buffers-read-past-the-view-Q1 = c).
+/// through reads past a pixel, the row's own chain among them; a step on a
+/// row posed along the axes with no chain of its own, through its pose —
+/// and one on a row turned off them, or posed under a chain of its own, is
+/// not told at all ([StackedFrame.movedSince]): a canvas that stands
+/// patches the first into its picture and draws the frame as it stands for
+/// the second (one-picture-per-frame, 유저 2026-10-25 「원본 기준 위에서
+/// 푼다」). ↩️A spread anywhere over the row was not told, and the row's own
+/// until it read its spread off the canvas's grid
+/// (nested-folder-buffers-read-past-the-view-Q1 = c); no pose was told
+/// until 2026-10-30.
 ///
 /// The width is asserted, not that a rect came: a rect that is not grown
 /// by the spread still comes, and patches a step whose blur it cuts.
@@ -118,8 +121,14 @@ void main() {
   CompositeNode<CanvasStackRow> row({
     GuideTransform? placement,
     List<ResolvedLayerEffect> effects = const [],
+    LayerBlendMode blendMode = LayerBlendMode.normal,
   }) => CompositeLeaf<CanvasStackRow>(
-    CanvasActiveLayerRow(opacity: 1, placement: placement, effects: effects),
+    CanvasActiveLayerRow(
+      opacity: 1,
+      placement: placement,
+      effects: effects,
+      blendMode: blendMode,
+    ),
   );
 
   CompositeNode<CanvasStackRow> blurredFolder(
@@ -176,9 +185,69 @@ void main() {
     expect(moved.dirty, const Rect.fromLTRB(-5, -5, 13, 13));
   });
 
-  testWidgets('⛔a posed row is not told', (tester) async {
+  // The tile where each pose lays it, and the hairline past it.
+  for (final (name, pose, dirty) in [
+    ('moved', const GuideTransform(1, 0, 0, 1, 3, 0), const Rect.fromLTRB(
+      2,
+      -1,
+      12,
+      9,
+    )),
+    ('doubled', const GuideTransform(2, 0, 0, 2, 0, 0), const Rect.fromLTRB(
+      -1,
+      -1,
+      17,
+      17,
+    )),
+    ('flipped', const GuideTransform(-1, 0, 0, 1, 24, 0), const Rect.fromLTRB(
+      15,
+      -1,
+      25,
+      9,
+    )),
+    ('turned a quarter', const GuideTransform(0, 1, -1, 0, 8, 2),
+        const Rect.fromLTRB(-1, 1, 9, 11)),
+  ]) {
+    testWidgets('a row $name: told where its pose lays the step', (
+      tester,
+    ) async {
+      final moved = await aDabUnder(tester, [row(placement: pose)]);
+      expect(moved.located, isTrue);
+      expect(moved.dirty, dirty);
+    });
+  }
+
+  testWidgets('⛔a row doubled that blurs of its own is not told', (
+    tester,
+  ) async {
     final moved = await aDabUnder(tester, [
-      row(placement: const GuideTransform(1, 0, 0, 1, 3, 0)),
+      row(placement: const GuideTransform(2, 0, 0, 2, 0, 0), effects: blur),
+    ]);
+    expect(moved.located, isFalse);
+  });
+
+  testWidgets('⛔a row doubled that adds is not told', (tester) async {
+    final moved = await aDabUnder(tester, [
+      row(
+        placement: const GuideTransform(2, 0, 0, 2, 0, 0),
+        blendMode: LayerBlendMode.add,
+      ),
+    ]);
+    expect(moved.located, isFalse);
+  });
+
+  testWidgets('a row that adds, unposed: told where the step is', (
+    tester,
+  ) async {
+    final moved = await aDabUnder(tester, [
+      row(blendMode: LayerBlendMode.add),
+    ]);
+    expect(moved.dirty, const Rect.fromLTRB(-1, -1, 9, 9));
+  });
+
+  testWidgets('⛔a row turned off the axes is not told', (tester) async {
+    final moved = await aDabUnder(tester, [
+      row(placement: const GuideTransform(0.8, 0.6, -0.6, 0.8, 3, 0)),
     ]);
     expect(moved.located, isFalse);
   });
@@ -316,11 +385,10 @@ void main() {
       expect(moved.dirty, const Rect.fromLTRB(-9, -9, 17, 17));
     });
 
-    testWidgets('⛔read by a posed row: not told, as the posed row itself', (
-      tester,
-    ) async {
+    testWidgets('⛔read by a posed row: not told — its chain reads past a '
+        'pixel, as a posed row\'s own does', (tester) async {
       final moved = await aDabUnder(tester, [
-        reading(placement: const GuideTransform(1, 0, 0, 1, 3, 0)),
+        reading(placement: const GuideTransform(2, 0, 0, 2, 0, 0)),
       ]);
       expect(moved.located, isFalse);
     });

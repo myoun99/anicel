@@ -1061,17 +1061,6 @@ final class _LayerStackPainter {
         _whereTheRowShows(node.children, rect, isRow, paper: paper);
     switch (node) {
       case CompositeLeaf(payload: final _SurfaceRow row):
-        // ⛔A POSE is not told. 🔬Told through it, the step's patch came
-        // apart from the frame drawn as it stands (Impeller tester,
-        // 2026-10-27): the row turned by 30° and enlarged 2.5×, a few
-        // pixels on the seam of the stroke's tile up to 4/255 at every
-        // view, patched there or over the whole picture alike. Why is not
-        // read through — the frame laid before the step and the frame drawn
-        // as it stands agreed to the pixel, and the patch draws the same
-        // body. ↩️The pose was refused as putting the row's pixels
-        // somewhere else entirely, which its placement can tell: it is the
-        // patch that does not agree.
-        //
         // A chain of the row's own that spreads is told by its spread, as a
         // folder's is: the row reads it off a raster on the canvas's grid
         // (`_LayerStackPaintPass._paintSurfaceRow`). ↩️It was not told until
@@ -1079,9 +1068,7 @@ final class _LayerStackPainter {
         // 2026-10-27): its blur rode a `saveLayer` the patch's clip cut,
         // and at 200% the patch came apart from the frame along the
         // stroke's tile by a band 2.5 canvas pixels wide.
-        return row.placement == null
-            ? _spreadBy(row.effects, rect, paper)
-            : null;
+        return _spreadThroughItsPose(row, rect, paper);
       case CompositeGroup(:final effects):
       case CompositeAdjustment(:final effects):
         return switch (inside()) {
@@ -1134,7 +1121,8 @@ final class _LayerStackPainter {
 
   /// [at] — where what [reader]'s chain reads changed — as far past as that
   /// chain reads past a pixel; null where that cannot be told: a posed
-  /// row's, as for the row itself ([_whereItShowsIn]).
+  /// row's, whose chain of its own reads past a pixel as a reader's does
+  /// ([_spreadThroughItsPose]).
   static Rect? _readerSpreads(
     CompositeNode<_PaintRow> reader,
     Rect at,
@@ -1152,6 +1140,49 @@ final class _LayerStackPainter {
     CompositeCelNumber() ||
     CompositeReadsRows() => null,
   };
+
+  /// [rect] — a change in [row]'s artwork — where it shows on the canvas:
+  /// grown by as far as its own chain reads past a pixel on an unposed row;
+  /// through its pose where the pose keeps the axes
+  /// ([GuideTransform.keepsTheAxes]) and the row wears no chain of its own
+  /// and blends normal; null otherwise — told nothing, the frame drawn as
+  /// it stands.
+  ///
+  /// ⛔A POSED ROW'S OWN CHAIN OR BLEND IS NOT TOLD. 🔬A blur of its own on
+  /// a row enlarged 2.5× came apart from the frame laid whole by 1–2/255
+  /// over the whole of its spread at every view — its raster as large as
+  /// the patch, as a blur under a clip comes apart by the size of what it
+  /// reads (a-blur-under-a-clip-cuts-its-edge-on-vulkan-Q1); the same row
+  /// adding (`plus`) by up to 8/255 along a line of the patch (the tester's
+  /// Vulkan, 2026-10-30).
+  ///
+  /// ⛔A TURN THAT LEAVES THE AXES IS NOT TOLD. 🔬Impeller covers an edge
+  /// that does not lie along the pixel grid by what falls on each side of
+  /// it, and where a sample lies on it depends on the size of the raster it
+  /// is drawn into — not on where the raster's origin is (the tester's
+  /// Vulkan, 2026-10-30: four tiles of one page turned by 30° and enlarged
+  /// 2.5×, by one `drawAtlas` or a `drawImageRect` each, drawn again from
+  /// another origin into a raster of the same size 0 apart, into one of
+  /// another size 5–6 pixels apart by up to 8/255; the tester's Skia, which
+  /// cuts an edge by a pixel's centre, a pixel by 32). A patch is a raster
+  /// of its own size, so on a turned row its tiles' seams came apart from
+  /// the frame laid whole — a few pixels on them at every view, patched
+  /// where the step moved or over the whole picture alike. A pose that
+  /// keeps the axes lays every edge along the grid, and its patch is the
+  /// frame laid whole (moved, halved, stretched, enlarged, flipped, turned
+  /// a quarter, at half opacity, in a blurred folder: 0 apart, and the
+  /// 1/255 the tester halves a level by at 50% on a 1.5 screen).
+  /// ↩️Every pose was refused until then (2026-10-27).
+  static Rect? _spreadThroughItsPose(_SurfaceRow row, Rect rect, Rect paper) =>
+      switch (row.placement) {
+        null => _spreadBy(row.effects, rect, paper),
+        final placed
+            when placed.keepsTheAxes &&
+                row.effects.isEmpty &&
+                row.blendMode == LayerBlendMode.normal =>
+          MatrixUtils.transformRect(placementMatrix(placed), rect),
+        _ => null,
+      };
 
   /// [rect] grown by as far as [effects] read past a pixel, on [paper].
   static Rect _spreadBy(

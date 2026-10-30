@@ -30,6 +30,11 @@ class GuideTransform {
   /// Nothing but a move: every direction is left as it is.
   bool get isPureTranslation => a == 1 && b == 0 && c == 0 && d == 1;
 
+  /// Whether every line along an axis stays along one — a move, a scale, a
+  /// flip, a quarter turn: an edge of a rect it lays stays an edge along
+  /// the pixel grid's rows or columns. No other turn, no shear.
+  bool get keepsTheAxes => (b == 0 && c == 0) || (a == 0 && d == 0);
+
   /// Whether this copy is a REFLECTION rather than a rotation — the sign of
   /// the determinant. Asymmetric brush tips read this to know they are
   /// drawing left-handed.
