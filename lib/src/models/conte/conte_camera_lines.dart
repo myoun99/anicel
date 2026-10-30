@@ -29,8 +29,10 @@ typedef ConteCameraStretch = ({CameraMove? move, int frames});
 /// 아님. 카메라움직임 발생해서 그게 기록되고 그 다음에 픽스인부분이 있으면
 /// 적어주는것임. 즉 패널중간에 움직이기 시작하면 해당패널에서 픽스적어주고,
 /// PAN같은거적어줌. 패널내에서 끝나고 멈춰있는 카메라일때도 PAN같은거 적고
-/// 다음 FIX. 패널에서 카메라 아무것도 안했으면 안적는다」. ↩️Every cell wrote
-/// its FIX, the whole cell long where the camera stood still.
+/// 다음 FIX. 패널에서 카메라 아무것도 안했으면 안적는다」 — and a cell after
+/// a move that ends on the last frame of the one before it too, 🗣️I-93-Q2:
+/// 「안 적는다 — 아무것도 안 한 패널은 언제나 빈칸」. ↩️Every cell wrote its
+/// FIX, the whole cell long where the camera stood still.
 ///
 /// ⚠️Mine: a move holds its frames from its first key to the frame before
 /// the next move starts — and its end key too where no move starts there,

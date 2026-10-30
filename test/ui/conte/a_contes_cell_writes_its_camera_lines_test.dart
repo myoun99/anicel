@@ -134,9 +134,11 @@ void main() {
     ]);
   });
 
-  test('a move that ends on its panel's last frame leaves the panel after '
-      'it blank, and one that starts on a panel's first the panel before '
-      'it', () {
+  // 🗣️I-93-Q2 (유저 2026-10-30): 「안 적는다 — 아무것도 안 한 패널은 언제나
+  // 빈칸」.
+  test('a move that ends on the last frame of its panel leaves the panel '
+      'after it blank, and one that starts on the first of a panel the '
+      'panel before it', () {
     expect(linesOf({0: at(0), 11: at(40)}, lengths: const [12, 12]), [
       ['PAN (0+12)'],
       <String>[],
@@ -201,8 +203,8 @@ void main() {
     );
   });
 
-  test('a camera off the sheet writes nothing, however it moves — the SE '
-      'row's law (F-345)', () {
+  test('a camera off the sheet writes nothing, however it moves — the law '
+      'of an SE row (F-345)', () {
     expect(linesOf({5: at(0), 15: at(40)}, onSheet: false), [<String>[]]);
     expect(
       linesOf({5: at(0), 15: at(40)}, lengths: const [12, 12], onSheet: false),
