@@ -1,3 +1,4 @@
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -11,7 +12,8 @@ import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/text/app_strings.dart' show AppText;
+import 'package:anicel/src/ui/text/app_strings.dart'
+    show AppStrings, AppText;
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
@@ -175,7 +177,7 @@ void main() {
     Future<ValueNotifier<int?>> pumpHeader(
       WidgetTester tester, {
       String label = 'Shift',
-      double width = 600,
+      double along = 600,
       Axis axis = Axis.horizontal,
     }) async {
       final cursor = ValueNotifier<int?>(0);
@@ -198,8 +200,8 @@ void main() {
                 metrics: TimelineGridMetrics.defaults,
                 frameCursor: cursor,
                 axis: axis,
-                width: axis == Axis.horizontal ? width : 40,
-                height: axis == Axis.horizontal ? 40 : 400,
+                width: axis == Axis.horizontal ? along : 40,
+                height: axis == Axis.horizontal ? 40 : along,
               ),
             ),
           ),
@@ -242,7 +244,7 @@ void main() {
       final cursor = await pumpHeader(
         tester,
         label: 'A plugin with a long, long name',
-        width: 330,
+        along: 330,
       );
       cursor.value = 2;
       await tester.pump();
@@ -252,6 +254,23 @@ void main() {
           .didExceedMaxLines;
       expect(cut('A plugin with a long, long name'), isTrue);
       expect(cut(warning), isFalse);
+    });
+
+    testWidgets('narrower than its warning, the warning is cut too — and '
+        'nothing runs past the header, on either axis', (tester) async {
+      // 250 leaves the name's room ~120 on either axis (the rest is the
+      // header's controls), under the ~195 the warning takes.
+      for (final axis in [Axis.vertical, Axis.horizontal]) {
+        final cursor = await pumpHeader(tester, axis: axis, along: 250);
+        cursor.value = 2;
+        await tester.pump();
+        expect(tester.takeException(), isNull, reason: '$axis');
+      }
+      expect(
+        tester.renderObject<RenderParagraph>(find.text(warning))
+            .didExceedMaxLines,
+        isTrue,
+      );
     });
 
     testWidgets('stood up on the sheet, the warning stands under the name', (
@@ -271,6 +290,13 @@ void main() {
         4,
       );
     });
+  });
+
+  test('it says so in the words the answer gave (🗣️I-132-Q33 c)', () {
+    expect(
+      AppStrings.of(AppLanguage.ko).fxPluginIdleHere,
+      '⚠ 이 자리에서는 돌지 않음',
+    );
   });
 
   testWidgets('a plugin on a track\'s chain stands idle on the storyboard', (
