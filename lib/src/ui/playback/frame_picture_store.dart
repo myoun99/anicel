@@ -10,6 +10,7 @@ import '../../models/rgba_image_bytes.dart';
 import '../../services/playback/let_go_wanted_latest.dart';
 import '../canvas/display_resample.dart'
     show frameGridOutward, wholeLevelPixelsOutward;
+import '../debug/input_inspector.dart' show InputInspector;
 import 'frame_picture_gpu.dart';
 
 /// A patch's texels, rendered, on their way into its picture at [rect].
@@ -540,17 +541,19 @@ class FramePictureStore<K extends Object> {
     final image = run.image;
     try {
       return entry.gone ||
-          await _gpu.write(
-            entry.held!,
-            [
-              for (final patch in batch)
-                (
-                  source: patch.image,
-                  x: _xOf(picture, patch.rect),
-                  y: _yOf(picture, patch.rect),
-                ),
-            ],
-            image == null ? null : (run: image, spans: run.spans),
+          await _PictureWrites.answered(
+            _gpu.write(
+              entry.held!,
+              [
+                for (final patch in batch)
+                  (
+                    source: patch.image,
+                    x: _xOf(picture, patch.rect),
+                    y: _yOf(picture, patch.rect),
+                  ),
+              ],
+              image == null ? null : (run: image, spans: run.spans),
+            ),
           );
     } finally {
       image?.dispose();
@@ -686,6 +689,7 @@ class FramePictureStore<K extends Object> {
 /// Reports [error], thrown while [doing] — what a [FramePictureStore] goes
 /// on from as not done.
 void _report(Object error, StackTrace stack, String doing) {
+  _PictureWrites.threw();
   FlutterError.reportError(
     FlutterErrorDetails(
       exception: error,
@@ -693,6 +697,42 @@ void _report(Object error, StackTrace stack, String doing) {
       library: 'frame picture store',
       context: ErrorDescription(doing),
     ),
+  );
+}
+
+/// 🔬HOW A DEVICE SAYS WHETHER ITS STROKES GO IN — the input inspector's
+/// `picture writes` line (관제 2026-10-30, F-509): a write that does not go
+/// in leaves its frame drawn as it stands, right and slow, and nothing else
+/// on screen tells that from a stroke written into its picture.
+///
+/// ⚠️Counted whether or not the card is shown ([InputInspector.arrivals]
+/// says why): opened after the strokes, its first line is the session's.
+abstract final class _PictureWrites {
+  static int _ok = 0;
+  static int _failed = 0;
+  static int _threw = 0;
+
+  /// [write], its answer counted. One the engine refuses throws before it
+  /// has one to give: [threw].
+  static Future<bool> answered(Future<bool> write) async {
+    final done = await write;
+    if (done) {
+      _ok += 1;
+    } else {
+      _failed += 1;
+    }
+    _show();
+    return done;
+  }
+
+  static void threw() {
+    _threw += 1;
+    _show();
+  }
+
+  static void _show() => InputInspector.pin(
+    'picture writes',
+    'picture writes ok $_ok · failed $_failed · threw $_threw',
   );
 }
 

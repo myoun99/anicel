@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:anicel/src/models/rgba_image_bytes.dart';
+import 'package:anicel/src/ui/debug/input_inspector.dart';
 import 'package:anicel/src/ui/playback/frame_picture_gpu.dart';
 import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:flutter/foundation.dart' show FlutterError;
@@ -409,6 +410,45 @@ void main() {
       expect(store.peek('b'), isNull);
       expect(await pollUntil(() => picture.image.debugDisposed), isTrue);
       store.dispose();
+    });
+
+    test('the input inspector says how the writes went — ok, failed and '
+        'threw, counted while it is hidden too (F-509)', () async {
+      _reported();
+      addTearDown(InputInspector.reset);
+      List<int> tally() => [
+        for (final number in RegExp(
+          r'\d+',
+        ).allMatches(InputInspector.pinned['picture writes']!))
+          int.parse(number[0]!),
+      ];
+      Future<void> write(_RecordingGpu gpu) async {
+        final store = FramePictureStore<String>(gpu: gpu);
+        await _layed(store, 'a', 256);
+        store.patch(
+          from: 'a',
+          to: 'b',
+          rect: const ui.Rect.fromLTWH(0, 0, 8, 8),
+          draw: fill,
+        );
+        await store.landingOf('b');
+        store.dispose();
+      }
+
+      await write(_RecordingGpu());
+      expect(InputInspector.pinned, isEmpty, reason: 'hidden, it pins nothing');
+
+      InputInspector.visible.value = true;
+      await write(_RecordingGpu());
+      final [ok, failed, threw] = tally();
+      expect(ok, greaterThanOrEqualTo(2), reason: 'the hidden one counts');
+
+      await write(_RecordingGpu());
+      expect(tally(), [ok + 1, failed, threw]);
+      await write(_RecordingGpu()..writesLand = false);
+      expect(tally(), [ok + 1, failed + 1, threw]);
+      await write(_RecordingGpu()..writesThrow = StateError('unsized texels'));
+      expect(tally(), [ok + 1, failed + 1, threw + 1]);
     });
 
     test('the GPU threw writing lets go of the picture and answers every '
