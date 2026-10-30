@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
+import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 import '../helpers/app_shortcuts.dart';
@@ -221,6 +222,30 @@ void main() {
         session.activeCutOrNull?.canvasSize,
         const CanvasSize(width: 1000, height: 500),
       );
+    });
+
+    testWidgets('where the ＋ has no place for a cut it stands dead (#18) — '
+        'no window to open', (tester) async {
+      final session = await pump(tester);
+      VoidCallback? plusPress() => tester
+          .widget<AppIconButton>(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is AppIconButton &&
+                  widget.keyValue == 'new-cut-button',
+            ),
+          )
+          .onPressed;
+      expect(plusPress(), isNotNull, reason: '⛔전제');
+
+      session.trackFrameRangeSelection.value = const TrackFrameRangeSelection(
+        trackId: TrackId('track'),
+        anchorRow: TrackRowAddress(TrackId('track')),
+        startFrame: 2,
+        endFrameExclusive: 5,
+      );
+      await tester.pumpAndSettle();
+      expect(plusPress(), isNull);
     });
 
     testWidgets('its cancel makes nothing', (tester) async {
