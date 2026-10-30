@@ -186,7 +186,9 @@ void main() {
       'find', (tester) async {
     // I-81: a page of 6 seconds — the X-sheet a cut of 24fps prints.
     for (final view in FrameRulerView.values) {
-      for (final frames in [120, 3000]) {
+      // 2885: past a whole page by five frames — the last frame's number
+      // (5) is narrower than the widest the strip writes (144).
+      for (final frames in [120, 2885, 3000]) {
         for (final cell in [0.16, 0.5, 1.0, 2.4, 8.0, 24.0]) {
           final scale = await rulerOf(
             tester,

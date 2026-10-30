@@ -412,6 +412,18 @@ void main() {
       );
     });
 
+    test('the widest number stands at the end of the last whole run — of a '
+        'second, of a page — and at the last frame where nothing restarts',
+        () {
+      expect(scale().widestNumberFrameBefore(200), 199);
+      final seconds = scale(rulerView: FrameRulerView.secondsPlusFrames);
+      expect(seconds.widestNumberFrameBefore(200), 191);
+      expect(seconds.frameNumberLabel(191), '24');
+      final pages = paged();
+      expect(pages.widestNumberFrameBefore(200), 143);
+      expect(pages.frameNumberLabel(143), '144');
+    });
+
     test('off the page view a strip writes every page it would have', () {
       expect(scale(pageFrames: 72).pagesLabelEvery, 1);
     });

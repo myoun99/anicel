@@ -369,6 +369,14 @@ void main() {
         await tester.pumpAndSettle();
         expect(view, pick);
         expect(find.byIcon(icon), findsOneWidget, reason: '$pick');
+        final scheme = Theme.of(tester.element(find.byIcon(icon))).colorScheme;
+        expect(
+          tester.widget<Icon>(find.byIcon(icon)).color,
+          pick == FrameRulerView.frames
+              ? scheme.onSurfaceVariant
+              : scheme.primary,
+          reason: '$pick: a count other than the frames lights the corner',
+        );
       }
     });
 

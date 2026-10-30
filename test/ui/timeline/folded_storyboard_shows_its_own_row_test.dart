@@ -10,6 +10,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
+import 'package:anicel/src/ui/timeline/frame_ruler_view.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 
 /// D15 (유저 2026-08-21): 「①트랙이 보여야 하는데 프레임이 보임 ②심지어
@@ -29,6 +30,7 @@ import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 Future<void> _pumpFolded(
   WidgetTester tester, {
   required bool storyboard,
+  FrameRulerView? rulerView,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1500, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -36,6 +38,20 @@ Future<void> _pumpFolded(
     MaterialApp(home: HomePage(initialProject: createDefaultProject())),
   );
   await tester.pumpAndSettle();
+  // Picked on the timeline's corner: the rulers share one count, and the
+  // storyboard has no corner of its own.
+  if (rulerView != null) {
+    await tester.tap(
+      find.byKey(
+        const ValueKey<String>('timeline-time-display-toggle-button'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(ValueKey<String>('frame-ruler-view-${rulerView.name}')),
+    );
+    await tester.pumpAndSettle();
+  }
   if (storyboard) {
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
@@ -151,6 +167,19 @@ void main() {
       reason: '↩️it was the theme\'s labelSmall, a style no other block '
           'word reads',
     );
+  });
+
+  testWidgets('the folded row writes a length as the rulers count — under '
+      'the seconds display, seconds and koma', (tester) async {
+    await _pumpFolded(
+      tester,
+      storyboard: true,
+      rulerView: FrameRulerView.secondsPlusFrames,
+    );
+    final painter =
+        tester.widget<CustomPaint>(_cutBlocks()).painter!
+            as StoryboardCutBlocksPainter;
+    expect(painter.showSeconds, isTrue);
   });
 
   testWidgets('D15 ③: thumbnails are ON in the folded row, because the same '
