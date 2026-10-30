@@ -20,7 +20,7 @@
 	     Impeller runs on an Apple3+ GPU with a P3 screen - so the macOS
 	     plist carries none. -->
 	<key>FLTEnableWideGamut</key>
-	<false/>
+	<true/>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>CFBundleDevelopmentRegion</key>
