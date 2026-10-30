@@ -209,7 +209,9 @@ void main() {
   });
 
   // I-81-Q4: a page's head writes its page beside its second, and a
-  // hundred pages in that is wider than any pair the playhead writes there.
+  // hundred pages in that is wider than any pair the playhead writes there
+  // — but within the reach the pair and two widest glyphs allow, which is
+  // why the walk probes no mark of its own (a probe survived its mutant).
   testWidgets('a page\'s mark a hundred pages in is found as the whole '
       'window would', (tester) async {
     for (final cell in [8.0, 24.0]) {

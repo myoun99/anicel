@@ -120,13 +120,11 @@ timelineRulerPlayheadWriting({
     final extent = widestOf(scale.writtenAt(layout, probe, current: true));
     widest = extent > widest ? extent : widest;
   }
-  // The page view's head writes its page beside its second (`17 p3`,
-  // I-81-Q4) — wider than any pair the playhead writes.
-  final pageMark = scale.pageMarkFrameBefore(window.endIndexExclusive);
-  if (pageMark != null && pageMark >= window.startIndex) {
-    final extent = widestOf(scale.writtenAt(layout, pageMark, current: false));
-    widest = extent > widest ? extent : widest;
-  }
+  // ⛔No probe of the page view's marks (`17 p3`, I-81-Q4): a mark is its
+  // second and a page beside it, wider than any glyph a pair writes but
+  // narrower than the pair and the two widest the reach already allows.
+  // A probe for it survived its own mutant (10-30); the pin a hundred
+  // pages in is what keeps that true.
   final cells = ((widestOf(pair) + 2 * widest + 4) / cell).ceil() + 1;
   final start = frame - cells;
   final end = frame + cells + 1;

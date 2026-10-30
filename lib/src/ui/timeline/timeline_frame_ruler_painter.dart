@@ -809,17 +809,6 @@ final class TimelineRulerScale {
   /// Every how many PAGES the page view writes a page's mark; 1 off it.
   int get pagesLabelEvery => _pageMarks?.everyPages ?? 1;
 
-  /// The last frame before [endIndexExclusive] whose seconds line writes a
-  /// page's mark — the widest mark the page view writes; null off it.
-  int? pageMarkFrameBefore(int endIndexExclusive) {
-    final marks = _pageMarks;
-    if (marks == null || endIndexExclusive <= 0) {
-      return null;
-    }
-    final marked = marks.frames * marks.everyPages;
-    return (endIndexExclusive - 1) ~/ marked * marked;
-  }
-
   /// The page view's marks, measured once per scale: the rung of the
   /// seconds' ladder whose span of pages holds the widest mark a page's head
   /// writes — its last page beside its last second — the question
