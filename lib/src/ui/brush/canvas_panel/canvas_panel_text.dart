@@ -162,7 +162,9 @@ class _CanvasPanelText implements CelTextToolHost {
   ///
   /// A write during build is safe here for the selection layer's reason
   /// (`_publishFloats`): a repaint is all it triggers.
-  void floatOver(({BitmapSurface surface, BrushFrameKey key, _ShownThrough fx})? on) {
+  void floatOver(
+    ({BitmapSurface surface, BrushFrameKey key, _ShownThrough fx})? on,
+  ) {
     _floatOn = on;
     _float();
   }

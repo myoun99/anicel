@@ -32,8 +32,9 @@ import 'brush_stroke_blend.dart' show bitmapSurfaceRegionPixels;
 import 'cel_text_laying.dart';
 
 /// [surface] — a cel's picture, its texts laid and its keys applied —
-/// through [effect], a plugin's effect with its run ([ResolvedLayerEffect.run]);
-/// [surface] itself where it has none, or where the plugin fails.
+/// through [effect], a plugin's effect with its run
+/// ([ResolvedLayerEffect.run]); [surface] itself where it has none, or
+/// where the plugin fails.
 ///
 /// ⛔Called by the source pass alone (`celSurfaceWithSourceEffects`), for
 /// that pass's reason: a route that ran the plugin itself would be a route

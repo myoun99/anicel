@@ -175,7 +175,9 @@ void main() {
       final runner = ShiftingFxPlugin(by: 0);
       final cel = celWith({(5, 2): [200, 100, 50, 128]});
 
-      final shown = celSurfaceAsShown(cel, [plugin(run: fxPluginRunOf(runner))]);
+      final shown = celSurfaceAsShown(cel, [
+        plugin(run: fxPluginRunOf(runner)),
+      ]);
 
       // No reach: the paper itself.
       const at = (2 * 8 + 5) * 4;
@@ -212,7 +214,10 @@ void main() {
         ),
       ]);
       expect(runner.lastValues[4], 0);
-      expect(runner.lastLayers.single.pixels.every((byte) => byte == 0), isTrue);
+      expect(
+        runner.lastLayers.single.pixels.every((byte) => byte == 0),
+        isTrue,
+      );
 
       celSurfaceAsShown(celWith({(1, 0): red}), [
         plugin(by: 0, map: const LayerId('gone'), run: fxPluginRunOf(runner)),
@@ -240,7 +245,9 @@ void main() {
       celSurfaceAsShown(cel, [
         plugin(map: const LayerId('m'), run: fxPluginRunOf(runner, frame: 1)),
       ]);
-      celSurfaceAsShown(cel, [plugin(by: 2, map: const LayerId('m'), run: run)]);
+      celSurfaceAsShown(cel, [
+        plugin(by: 2, map: const LayerId('m'), run: run),
+      ]);
       celSurfaceAsShown(cel, [
         plugin(
           map: const LayerId('m'),
@@ -256,7 +263,9 @@ void main() {
       expect(identical(celSurfaceAsShown(cel, [plugin()]), cel), isTrue);
       expect(
         identical(
-          celSurfaceAsShown(cel, [plugin(run: fxPluginRunOf(ShiftingFxPlugin(fails: true)))]),
+          celSurfaceAsShown(cel, [
+            plugin(run: fxPluginRunOf(ShiftingFxPlugin(fails: true))),
+          ]),
           cel,
         ),
         isTrue,
@@ -410,7 +419,10 @@ void main() {
             .withParameter('blurriness', EffectParameter(value: 3)),
         pluginOn(),
       ]);
-      expect([for (final e in bound(blurred, const [], 0)) e.run], [null, null]);
+      expect(
+        [for (final e in bound(blurred, const [], 0)) e.run],
+        [null, null],
+      );
 
       final image = row('a', kind: LayerKind.image, effects: [pluginOn()]);
       expect(bound(image, const [], 0).single.run, isNull);

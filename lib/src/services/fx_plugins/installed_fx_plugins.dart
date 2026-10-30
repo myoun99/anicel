@@ -234,7 +234,8 @@ class InstalledFxPlugins extends ChangeNotifier {
 /// there is no host, or it will not open.
 ///
 /// ⚠️The module is read here, at once: what asks for a runner is a frame
-/// being drawn, and it is read the first time only ([InstalledFxPlugins.runnerFor]).
+/// being drawn, and it is read the first time only
+/// ([InstalledFxPlugins.runnerFor]).
 FxPluginRunner? openInstalledFxPlugin(
   InstalledFxPlugin plugin,
   FxPluginLibraryService library,
