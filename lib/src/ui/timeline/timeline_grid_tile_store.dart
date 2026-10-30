@@ -486,7 +486,6 @@ class TimelineGridTileStore {
   /// to order (card playback-draws-frames-the-film-did-not-change-in,
   /// 브러시/렌더링 10-24), and this card did not take it up.
   void _zoomStopped() {
-    _zoomStops = null;
     for (final MapEntry(key: row, value: extent) in _zooming.entries) {
       _stoodAt[row] = _askedBy[row]?.painter.frameCellExtent ?? extent;
     }

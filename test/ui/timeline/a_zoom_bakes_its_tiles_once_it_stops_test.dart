@@ -364,4 +364,87 @@ void main() {
     expect(await pollUntil(() => landings == 2), isTrue);
     expect(ask(16)!.width, 4 * 16 * 2);
   });
+
+  test('a zoom that came back stands where its paint last asked — a '
+      'warm-up a step asked is let go', () async {
+    if (skipped()) {
+      return;
+    }
+    store.debugZoomSettles = const Duration(seconds: 2);
+    final old = await baked(24);
+
+    ask(16);
+    store.warmAhead(
+      painter: at(16),
+      spanStartIndex: 4,
+      spanEndIndexExclusive: 8,
+      devicePixelRatio: 2.0,
+    );
+    await aWhile();
+    expect(ask(24), same(old));
+    await Future<void>.delayed(const Duration(seconds: 3));
+    expect(landings, 1, reason: 'the span past the edge was asked at 16');
+  });
+
+  test('a warm-up the zoom held goes on when it stops, though nothing it '
+      'stretched is left to raster', () async {
+    if (skipped()) {
+      return;
+    }
+    store.debugZoomSettles = const Duration(seconds: 2);
+    await baked(24);
+    await baked(12, start: 4);
+
+    ask(16);
+    store.warmAhead(
+      painter: at(12),
+      spanStartIndex: 8,
+      spanEndIndexExclusive: 12,
+      devicePixelRatio: 2.0,
+    );
+    await aWhile();
+    expect(landings, 2, reason: '⛔전제: the warm-up waits for the stop');
+    expect(ask(12, start: 4), isNotNull, reason: 'the row stands at 12');
+    expect(await pollUntil(() => landings == 3), isTrue);
+  });
+
+  test('a second zoom after one that came back stops as any other', () async {
+    if (skipped()) {
+      return;
+    }
+    store.debugZoomSettles = const Duration(seconds: 2);
+    final old = await baked(24);
+    ask(16);
+    expect(ask(24), same(old));
+    await Future<void>.delayed(const Duration(seconds: 3));
+
+    ask(16);
+    expect(await pollUntil(() => landings == 2), isTrue);
+    expect(ask(16)!.width, 4 * 16 * 2);
+  });
+
+  test('another row\'s warm-up is not let go at this row\'s stop', () async {
+    if (skipped()) {
+      return;
+    }
+    store.debugZoomSettles = const Duration(seconds: 2);
+    await baked(24);
+
+    ask(16);
+    store.warmAhead(
+      painter: at(
+        24,
+        of: Layer(
+          id: const LayerId('layer-b'),
+          name: 'B',
+          frames: layer.frames,
+          timeline: layer.timeline,
+        ),
+      ),
+      spanStartIndex: 0,
+      spanEndIndexExclusive: 4,
+      devicePixelRatio: 2.0,
+    );
+    expect(await pollUntil(() => landings == 3), isTrue);
+  });
 }
