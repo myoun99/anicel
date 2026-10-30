@@ -21,6 +21,12 @@ import '../../models/timeline_coverage.dart';
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
 import '../../models/track.dart';
 import '../../models/track_id.dart';
+import '../../models/track_transitions.dart' show transitionSpanOfEvent;
+import '../../models/transition_geometry.dart'
+    show TransitionSides, oneSidedSpanAppliesToCut, transitionSidesOf;
+import '../../models/transition_names.dart'
+    show transitionCutsJoined, transitionRowNamedByItsCuts;
+import '../text/app_strings.dart';
 import '../../services/camera_frame_corners.dart'
     show cameraFramesBounds, cameraFramesShown;
 import '../../services/camera_path.dart' show CameraPath;
@@ -36,7 +42,10 @@ import '../../models/storyboard_timeline_layout.dart';
 /// dialogue is the SE blocks', the number is the cut's name, and the times
 /// are the storyboard layout's global frames. Nothing on the sheet is
 /// authored anywhere but where it already lived.
-ConteSheetSource buildConteSheetSource(Project project) {
+///
+/// [olWord] is the word an O.L prints as — the sheet's, in the notation
+/// language (`sheetOlWord`, F-229); the program's where none is given.
+ConteSheetSource buildConteSheetSource(Project project, {String? olWord}) {
   final layout = buildStoryboardTimelineLayout(project);
   final cellsOf = [
     for (final entry in layout)
@@ -46,6 +55,14 @@ ConteSheetSource buildConteSheetSource(Project project) {
       ),
   ];
   final panels = _panelsOnTheirTracks(layout, cellsOf);
+  final transitions = {
+    for (final track in project.tracks)
+      track.id: _transitionsOf(
+        track,
+        project,
+        olWord: olWord ?? AppText.strings.tlTransitionCutOl,
+      ),
+  };
   final cuts = <ConteCutSource>[];
   for (final (index, entry) in layout.indexed) {
     final track = project.tracks.firstWhere(
@@ -62,6 +79,12 @@ ConteSheetSource buildConteSheetSource(Project project) {
           start: entry.startFrame,
           panels: panels[index],
         )),
+        transitionLines: _transitionLinesOn(
+          entry,
+          cellsOf[index],
+          transitions[track.id]!,
+          project,
+        ),
         project: project,
       ),
     );
@@ -91,6 +114,7 @@ ConteCutSource _cutSource({
   required List<StoryboardCoverageCell> cells,
   required int endFrame,
   required List<ConteDialogueLine> dialogue,
+  required List<List<String>> transitionLines,
   required Project project,
 }) {
   final storyboard = storyboardLayerForCut(cut);
@@ -100,11 +124,12 @@ ConteCutSource _cutSource({
     durationFrames: cut.duration,
     cumulativeEndFrames: endFrame,
     cells: [
-      for (final cell in cells)
+      for (final (index, cell) in cells.indexed)
         _cellSource(
           cut: cut,
           cell: cell,
           storyboard: storyboard,
+          transitionLines: transitionLines[index],
           project: project,
         ),
     ],
@@ -112,10 +137,99 @@ ConteCutSource _cutSource({
   );
 }
 
+/// A track's transition row named by its cuts, as the sheet prints it
+/// (`transitionRowNamedByItsCuts`), and its cuts on its axis.
+typedef _TrackTransitions = ({
+  Layer row,
+  List<({Cut cut, int startFrame, int endFrame})> placed,
+});
+
+_TrackTransitions _transitionsOf(
+  Track track,
+  Project project, {
+  required String olWord,
+}) {
+  final placed = cutSpansOf(track).toList();
+  return (
+    row: transitionRowNamedByItsCuts(
+      row: track.transitionLayer,
+      cuts: placed,
+      vocabulary: project.cameraInstructions,
+      olWord: olWord,
+    ),
+    placed: placed,
+  );
+}
+
+/// The transitions [track] writes on [entry]'s [cells] (I-93-Q1), a list
+/// to each cell, in the order they start: an O.L on the last cell of the
+/// cut it leaves — 「앞 컷에만」, nowhere on the cut it enters — and a fade,
+/// which only applies inside its own cut ([oneSidedSpanAppliesToCut]), on
+/// the cell of it the fade starts in.
+///
+/// ⚠️Mine: an O.L out of a gap leaves no cut, so no conte writes it.
+List<List<String>> _transitionLinesOn(
+  StoryboardTimelineLayoutEntry entry,
+  List<StoryboardCoverageCell> cells,
+  _TrackTransitions track,
+  Project project,
+) {
+  final lines = [for (final _ in cells) <String>[]];
+  if (cells.isEmpty) {
+    return lines;
+  }
+  final timed = track.row.instructions.entries.toList()
+    ..sort((a, b) => a.key.compareTo(b.key));
+  for (final entryOfRow in timed) {
+    final span = transitionSpanOfEvent(entryOfRow, project.cameraInstructions);
+    final cell = switch (transitionSidesOf(span.mark)) {
+      TransitionSides.both =>
+        transitionCutsJoined(
+                  track.placed,
+                  start: span.start,
+                  end: span.start + span.length,
+                ).leaving?.id ==
+                entry.cutId
+            ? cells.length - 1
+            : null,
+      _ =>
+        oneSidedSpanAppliesToCut(
+              span: span,
+              cutStart: entry.startFrame,
+              cutEnd: entry.endFrame,
+            )
+            ? _cellHolding(cells, span.start - entry.startFrame)
+            : null,
+    };
+    if (cell != null) {
+      lines[cell].add(
+        conteTransitionLine(
+          entryOfRow.value,
+          defById: project.cameraInstructions.defById,
+          framesPerSecond: project.frameRate.countingBase,
+        ),
+      );
+    }
+  }
+  return lines;
+}
+
+/// The index of the cell of [cells] holding [frame], one of their frames —
+/// the first where it lies before them, the last where it lies past them.
+int _cellHolding(List<StoryboardCoverageCell> cells, int frame) {
+  for (final (index, cell) in cells.indexed) {
+    if (frame < cell.endIndexExclusive) {
+      return index;
+    }
+  }
+  return cells.length - 1;
+}
+
 ConteCellSource _cellSource({
   required Cut cut,
   required StoryboardCoverageCell cell,
   required Layer? storyboard,
+  required List<String> transitionLines,
   required Project project,
 }) {
   // The cell counts the conte's frames; the row, the camera and the picture
@@ -147,6 +261,7 @@ ConteCellSource _cellSource({
       from: conteStart + cell.startIndex,
       to: conteStart + cell.endIndexExclusive,
     ),
+    transitionLines: transitionLines,
   );
 }
 

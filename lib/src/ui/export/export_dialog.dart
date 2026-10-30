@@ -1010,7 +1010,10 @@ class ExportDialogState extends State<ExportDialog> {
     if (cached != null && identical(cached.$1, project)) {
       return (cached.$2, cached.$3);
     }
-    final source = buildConteSheetSource(project);
+    final source = buildConteSheetSource(
+      project,
+      olWord: sheetOlWord(_session),
+    );
     final pages = layoutConteBook(
       source,
       metrics: ConteSheetMetrics.ofWork(

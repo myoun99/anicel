@@ -29,6 +29,7 @@ class ConteCellSource {
     this.action = '',
     this.camera,
     this.cameraLines = const [],
+    this.transitionLines = const [],
   });
 
   /// Cut-LOCAL frames.
@@ -59,6 +60,10 @@ class ConteCellSource {
   /// it over the words typed there — a line to each move and each stretch
   /// it stands still, `PAN (0+11)` (`conteCameraStretches`, I-93).
   final List<String> cameraLines;
+
+  /// The transitions the cell's ACTION column writes under [cameraLines] —
+  /// `c1 × c2 カットO.L (1+0)` (`conteTransitionLine`, I-93-Q1).
+  final List<String> transitionLines;
 
   int get lengthFrames => endFrameExclusive - startFrame;
 }
@@ -237,8 +242,9 @@ class ConteSheetSource {
   final bool cover;
   final bool blankPage;
 
-  /// Whether a cell writes its camera's lines over its ACTION words
-  /// ([ConteCellSource.cameraLines]) — the work's choice
+  /// Whether a cell writes its camera's lines and its transitions over its
+  /// ACTION words ([ConteCellSource.cameraLines] ·
+  /// [ConteCellSource.transitionLines]) — the work's choice
   /// (`TimesheetInfo.conteFixedText`), read here for the same reason.
   final bool fixedText;
 

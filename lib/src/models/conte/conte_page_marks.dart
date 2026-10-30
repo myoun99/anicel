@@ -574,12 +574,15 @@ Iterable<SheetMark> _cell(
 
 /// The lines [cell]'s ACTION column writes over the words typed there: what
 /// the camera does while the cell is on ([ConteCellSource.cameraLines],
-/// I-93), or none where the work leaves them out
-/// ([ConteSheetSource.fixedText]).
+/// I-93) and under them the transitions written there
+/// ([ConteCellSource.transitionLines], I-93-Q1) — or none where the work
+/// leaves them out ([ConteSheetSource.fixedText]).
 List<String> conteFixedLinesOf(
   ConteSheetSource source,
   ContePlacedCell cell,
-) => source.fixedText ? cell.source.cameraLines : const [];
+) => source.fixedText
+    ? [...cell.source.cameraLines, ...cell.source.transitionLines]
+    : const [];
 
 /// How far below the top of its ACTION words [cell]'s typed words begin:
 /// under its fixed lines ([conteFixedLinesOf]), a conte line each. The ONE

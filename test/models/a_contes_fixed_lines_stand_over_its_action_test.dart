@@ -21,6 +21,7 @@ void main() {
 
   ConteSheetSource sourceOf(
     List<String> lines, {
+    List<String> transitions = const [],
     bool fixedText = true,
   }) => ConteSheetSource(
     fixedText: fixedText,
@@ -37,6 +38,7 @@ void main() {
             pictureFrame: 0,
             action: action,
             cameraLines: lines,
+            transitionLines: transitions,
           ),
         ],
       ),
@@ -123,6 +125,28 @@ void main() {
       expect(words.where((each) => each.text == text), isEmpty, reason: text);
     }
     expect(wordsSaying(words, action).slot, cell.actionRect.deflate(4));
+  });
+
+  test('🗣️its transitions stand under its camera lines, a line each, the '
+      'words under them — and go with them when the sheet leaves them out '
+      '(I-93-Q1)', () {
+    const transitions = ['WI (0+2)', 'c1 × c2 カットO.L (0+12)'];
+    final source = sourceOf(camera, transitions: transitions);
+    final (:cell, :words) = printed(source);
+    final slot = cell.actionRect.deflate(4);
+
+    for (final (index, text) in transitions.indexed) {
+      final at = camera.length + index;
+      expect(
+        wordsSaying(words, text).slot.top,
+        closeTo(slot.top + at * line, 1e-9),
+        reason: text,
+      );
+    }
+    expect(conteActionWordsDrop(source, cell), closeTo(5 * line, 1e-9));
+
+    final out = sourceOf(camera, transitions: transitions, fixedText: false);
+    expect(conteFixedLinesOf(out, printed(out).cell), isEmpty);
   });
 
   test('lines that outrun the column end at its foot, and the words typed '

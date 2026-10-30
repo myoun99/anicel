@@ -76,3 +76,38 @@ String conteCameraLine(
   final length = secondsPlusFramesLabel(stretch.frames, framesPerSecond);
   return '$word ($length)';
 }
+
+/// What a conte line writes between the two cuts an O.L joins: a cross,
+/// as the conte draws an O.L across the line between two cut panels.
+///
+/// ⚠️Mine: 「컷이름사이에 ol처럼 보이는 특수문자 넣으면 좋고」 (I-93-Q1) —
+/// `×`, which both of the app's typefaces carry, so the sheet and its PDF
+/// print the same glyph.
+const conteTransitionCross = '×';
+
+/// A TRANSITION as its cut's ACTION column writes it: the cuts it joins,
+/// crossed ([conteTransitionCross]), what it says ([InstructionEvent
+/// .displayLabel] — the O.L's word, or a fade's term in the glossary
+/// [defById] reads) and how long it lasts, whole — `c1 × c2 カットO.L (1+0)`.
+/// A fade joins no cuts: `FO (0+12)`.
+///
+/// 🗣️I-93-Q1 (유저 2026-10-30): 「앞 컷에만, 전체 길이로」 + 「대상도
+/// 적어주는거 잊지말고. c1 c2 カットO.L (1+0) 이런식」. [event] is the one
+/// its row names by its cuts (`transitionRowNamedByItsCuts`), as the sheet
+/// prints it.
+String conteTransitionLine(
+  InstructionEvent event, {
+  required CameraInstructionDef? Function(String id) defById,
+  required int framesPerSecond,
+}) {
+  final ends = [
+    for (final end in [event.valueA, event.valueB])
+      if (end != null && end.isNotEmpty) end,
+  ];
+  final word = event.displayLabel(event.defIn(defById));
+  final length = secondsPlusFramesLabel(event.length, framesPerSecond);
+  return [
+    if (ends.isNotEmpty) ends.join(' $conteTransitionCross '),
+    '$word ($length)',
+  ].join(' ');
+}

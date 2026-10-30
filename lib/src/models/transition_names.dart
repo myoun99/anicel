@@ -42,7 +42,11 @@ Layer transitionRowNamedByItsCuts({
     final span = transitionSpanOfEvent(entry, vocabulary);
     final twoSided = transitionSidesOf(span.mark) == TransitionSides.both;
     final ends = twoSided
-        ? _cutsJoined(placed, start: span.start, end: span.start + span.length)
+        ? transitionCutsJoined(
+            placed,
+            start: span.start,
+            end: span.start + span.length,
+          )
         : null;
     final text = twoSided ? olWord : null;
     final from = ends?.leaving == null ? null : transitionEndName(ends!.leaving!);
@@ -65,8 +69,9 @@ String transitionEndName(Cut cut) => 'c${cut.name}';
 
 /// The cut whose END `[start, end)` crosses and the cut whose START it
 /// crosses — the crossing test [transitionSpanFires] makes for a cut's
-/// boundaries.
-({Cut? leaving, Cut? entering}) _cutsJoined(
+/// boundaries. The ends an O.L is named by, and the cut the conte writes
+/// it on (I-93-Q1).
+({Cut? leaving, Cut? entering}) transitionCutsJoined(
   List<({Cut cut, int startFrame, int endFrame})> placed, {
   required int start,
   required int end,
