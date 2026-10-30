@@ -203,7 +203,12 @@ final class ProjectOpenDoor {
       return;
     }
     projects.adopt(session);
-    await _afterOpened(context, pick, staged: opened.value.staged);
+    await _afterOpened(
+      context,
+      pick,
+      session: session,
+      staged: opened.value.staged,
+    );
   }
 
   /// The read itself, from wherever the bytes are, and the session born for
@@ -243,11 +248,13 @@ final class ProjectOpenDoor {
     return (session: session, staged: source.staged);
   }
 
-  /// The three things that follow a SUCCESSFUL open: Recents, the word
-  /// about a staged copy, the word about a legacy assets folder.
+  /// The four things that follow a SUCCESSFUL open: Recents, the word
+  /// about a staged copy, the word about the plugins this device has not,
+  /// the word about a legacy assets folder.
   Future<void> _afterOpened(
     BuildContext context,
     ProjectPick pick, {
+    required EditorSessionManager session,
     required bool staged,
   }) async {
     final path = pick.path;
@@ -276,6 +283,10 @@ final class ProjectOpenDoor {
         return;
       }
     }
+    await _sayPluginsNotOnDevice(context, session);
+    if (!context.mounted) {
+      return;
+    }
     // A project from a build that kept its media in a sibling folder.
     // Said AFTER the open, because a file that failed to parse has no
     // media to absorb and the folder is still the only copy. A provider
@@ -296,6 +307,30 @@ final class ProjectOpenDoor {
         ),
       );
     }
+  }
+
+  /// 🗣️I-132-Q28 a: 「열 때 경고 한 줄(「없는 플러그인: 이름」)」 — the
+  /// plugins the opened project's effects are of that this device has not,
+  /// by name, once. Their lanes stay as they were, greyed, and draw nothing
+  /// until one is installed.
+  Future<void> _sayPluginsNotOnDevice(
+    BuildContext context,
+    EditorSessionManager session,
+  ) async {
+    final missing = await session.fxPlugins.missingFrom(
+      session.repository.requireProject(),
+    );
+    if (missing.isEmpty || !context.mounted) {
+      return;
+    }
+    await showAppNotice(
+      context,
+      windowKey: const ValueKey<String>('fx-plugins-not-on-device-notice'),
+      title: AppText.strings.commonNotice,
+      message: AppText.strings.fxPluginsNotOnDevice([
+        for (final plugin in missing) plugin.name,
+      ]),
+    );
   }
 
   /// A file that converts into a project of its own opens AS A PROJECT, in

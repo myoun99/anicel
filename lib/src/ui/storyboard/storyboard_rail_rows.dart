@@ -123,6 +123,7 @@ class _StoryboardRailRows {
         parameterId,
         time,
       ),
+      hasPlugin: _state.widget.hasFxPlugin,
     );
   }
 
@@ -187,6 +188,7 @@ class _StoryboardRailRows {
       // lanes take it — never from "the cut that happens to be open", which
       // made another track's S row show its values as defaults.
       poseCentre: _in.poseDisplaySize,
+      hasPlugin: _state.widget.hasFxPlugin,
     );
   }
 
@@ -551,6 +553,7 @@ class _StoryboardRailRows {
     expandedGroupKeys: _in.expandedLaneGroupKeys,
     valueSourceAt: valued ? (frame) => (layer: row, frame: frame) : null,
     poseCentre: valued ? cut.canvasSize : null,
+    hasPlugin: _state.widget.hasFxPlugin,
   );
 
   /// The lanes [track]'s conte row at [seat] twirls down: those of its row
@@ -595,6 +598,7 @@ class _StoryboardRailRows {
         },
         valueSourceAt: (frame) => (layer: row, frame: frame),
         poseCentre: cut.canvasSize,
+        hasPlugin: _state.widget.hasFxPlugin,
       ),
       eyeOf: (cut, row) => headEye ?? _cutsOwnEye(cut, row),
     );

@@ -17,6 +17,7 @@ import '../models/conte_group.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/frame_id.dart';
+import '../models/fx_plugin_description.dart';
 import '../models/layer.dart';
 import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart'
@@ -712,6 +713,7 @@ class StoryboardPanel extends StatefulWidget {
     this.layerLaneEdit,
     this.cutLaneEdit,
     this.poseDisplaySize,
+    this.hasFxPlugin,
     this.onSetCutFade,
     this.onToggleLayerVisibility,
     this.onOpenLayerMixer,
@@ -1303,6 +1305,11 @@ class StoryboardPanel extends StatefulWidget {
   /// (the camera's output frame — the same space playback and the MP4
   /// bake use). Null hides the V lanes' values.
   final CanvasSize? poseDisplaySize;
+
+  /// Whether this device has the plugin an effect is of — the effect
+  /// headers of one it has not grey, as the timeline's do (I-132-Q28).
+  /// Null greys none.
+  final bool Function(FxPluginDescription plugin)? hasFxPlugin;
 
   /// Commits a cut-fade handle drag (one undo); null makes the Opacity
   /// lane display-only. The fade is transparency (R3b) — no per-cut

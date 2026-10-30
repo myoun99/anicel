@@ -277,6 +277,10 @@ class EditorSessionManager extends ChangeNotifier
     // person chose — set now, and again whenever the allowance moves.
     _applyCacheBudgets(enforce: false);
     AppMemory.settings.addListener(_applyCacheBudgets);
+    // A plugin installed or taken off greys or ungreys the effects of it
+    // this project's rails draw (🗣️I-132-Q28 a 「설치하면 그대로 다시
+    // 걸린다」) — the app's one list, so every open project hears it.
+    this.fxPlugins.addListener(notifyListeners);
   }
 
   /// What follows the playhead — the cut a run plays, the cut under it and
@@ -1663,6 +1667,9 @@ class EditorSessionManager extends ChangeNotifier
       if (_ownsAppSettings) {
         appSettings.dispose();
       }
+      // Off the app's list, which outlives this project, before one of its
+      // own is let go.
+      fxPlugins.removeListener(notifyListeners);
       if (_ownsFxPlugins) {
         fxPlugins.dispose();
       }

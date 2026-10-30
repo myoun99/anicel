@@ -1190,6 +1190,9 @@ class LaneVerbs {
             },
             valueSourceAt: (frame) => (layer: layer, frame: frame),
             poseCentre: null,
+            // The lane a verb edits, not one drawn: a header's grey is no
+            // part of what it reads.
+            hasPlugin: null,
           );
     for (final lane in lanes) {
       if (lane.laneId == laneId) {

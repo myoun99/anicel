@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/fx_plugin_description.dart';
+import 'package:anicel/src/models/layer_effect.dart' show EffectKind;
 import 'package:anicel/src/services/persistence/recent_projects.dart';
 import 'package:anicel/src/services/persistence/recent_projects_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -11,6 +13,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/open_projects.dart';
+import 'package:anicel/src/ui/session/effects_and_fx.dart' show TrackChain;
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'package:anicel/src/ui/text/app_strings.dart';
 import '../../helpers/os_file_drop.dart';
@@ -51,10 +54,22 @@ void main() {
     return path;
   }
 
-  /// A project file that really opens.
-  Future<String> projectNamed(WidgetTester tester, String name) async {
+  /// A project file that really opens — its track wearing an effect of
+  /// [plugin], where one is named.
+  Future<String> projectNamed(
+    WidgetTester tester,
+    String name, {
+    FxPluginDescription? plugin,
+  }) async {
     final path = '${spelled(folder.path)}/$name';
     final session = EditorSessionManager(initialProject: createDefaultProject());
+    if (plugin != null) {
+      session.effectsAndFx.addEffect(
+        TrackChain(session.repository.requireProject().tracks.first.id),
+        EffectKind.plugin,
+        plugin: plugin,
+      );
+    }
     await tester.runAsync(
       () => session.projectDoor.saveProjectToFile(
         path,
@@ -93,6 +108,9 @@ void main() {
   }
 
   final waitWindow = find.byKey(const ValueKey<String>('open-progress-dialog'));
+  final pluginsNotHere = find.byKey(
+    const ValueKey<String>('fx-plugins-not-on-device-notice'),
+  );
 
   /// The paths the import window was handed — the door's grants.
   List<String?> handedTo(WidgetTester tester) => [
@@ -113,6 +131,33 @@ void main() {
     expect(projects.sessions.length, 2, reason: 'it opened, beside the first');
     expect(spelled(projects.active.projectFile.path!), path);
     expect(find.byType(ImportDialog), findsNothing);
+    expect(pluginsNotHere, findsNothing, reason: 'it wears none');
+  });
+
+  testWidgets('a project wearing a plugin this device has not is told so '
+      'after it opens — by the plugin\'s name (🗣️I-132-Q28)', (tester) async {
+    final glow = FxPluginDescription.fromJson({
+      'spec': 1,
+      'id': 'com.example.glow',
+      'name': 'Glow',
+      'vendor': 'Example',
+      'version': '1',
+      'can': ['cpu'],
+      'params': <Object?>[],
+    })!;
+    final path = await projectNamed(tester, 'Cut 12.anicel', plugin: glow);
+    await pumpApp(tester);
+
+    await drop(tester, [path]);
+    await until(tester, () => pluginsNotHere.evaluate().isNotEmpty);
+
+    expect(
+      find.descendant(
+        of: pluginsNotHere,
+        matching: find.text(AppText.strings.fxPluginsNotOnDevice(['Glow'])),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('a project with the folder older builds kept beside it is '

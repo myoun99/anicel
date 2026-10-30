@@ -1779,6 +1779,13 @@ enum AppStrings {
   String get fxPluginsOfDevice => _s('fxPluginsOfDevice');
   String get fxPluginDelete => _s('fxPluginDelete');
 
+  /// What an opened project's effects are of that this device has not
+  /// (🗣️I-132-Q28 a, 「열 때 경고 한 줄(「없는 플러그인: 이름」)」).
+  String fxPluginsNotOnDevice(List<String> names) =>
+      _s(
+        'fxPluginsNotOnDeviceTemplate',
+      ).replaceAll('{names}', names.join(', '));
+
   /// Why a picked file was not taken as a font.
   String get textToolFontUnreadable => _s('textToolFontUnreadable');
   String get textToolFontIsTheApps => _s('textToolFontIsTheApps');
@@ -3292,6 +3299,7 @@ enum AppStrings {
         '"{file}" could not be opened as an FX plugin on this device: {why}',
     'fxPluginsOfDevice': 'Plugins on this device',
     'fxPluginDelete': 'Delete plugin',
+    'fxPluginsNotOnDeviceTemplate': 'Plugins not on this device: {names}',
     'brImportedOneTemplate': 'Imported 1 brush from "{file}".',
     'brImportedManyTemplate': 'Imported {count} brushes from "{file}".',
     'brImportWarningsTemplate': '{summary} ({count} entries with warnings)',
@@ -5072,6 +5080,7 @@ enum AppStrings {
         '「{file}」をこの端末でFXプラグインとして開けませんでした: {why}',
     'fxPluginsOfDevice': 'このデバイスのプラグイン',
     'fxPluginDelete': 'プラグインを削除',
+    'fxPluginsNotOnDeviceTemplate': 'このデバイスにないプラグイン: {names}',
     'brImportedOneTemplate': '「{file}」からブラシを1個読み込みました。',
     'brImportedManyTemplate': '「{file}」からブラシを{count}個読み込みました。',
     'brImportWarningsTemplate': '{summary}（警告のある項目 {count}件）',
@@ -6873,6 +6882,7 @@ enum AppStrings {
         '「{file}」을(를) 이 기기에서 FX 플러그인으로 열 수 없습니다: {why}',
     'fxPluginsOfDevice': '이 기기의 플러그인',
     'fxPluginDelete': '플러그인 삭제',
+    'fxPluginsNotOnDeviceTemplate': '없는 플러그인: {names}',
     'brImportedOneTemplate': '「{file}」에서 브러시 1개를 가져왔습니다.',
     'brImportedManyTemplate': '「{file}」에서 브러시 {count}개를 가져왔습니다.',
     'brImportWarningsTemplate': '{summary} (경고가 있는 항목 {count}개)',
@@ -8835,6 +8845,8 @@ enum AppStrings {
         'appareil : {why}',
     'fxPluginsOfDevice': 'Plug-ins de cet appareil',
     'fxPluginDelete': 'Supprimer le plug-in',
+    'fxPluginsNotOnDeviceTemplate':
+        'Plug-ins absents de cet appareil : {names}',
     'brImportedOneTemplate': '1 brosse importée depuis « {file} ».',
     'brImportedManyTemplate': '{count} brosses importées depuis « {file} ».',
     'brImportWarningsTemplate':
@@ -10585,6 +10597,7 @@ enum AppStrings {
     'fxPluginUnopenedTemplate': '无法在此设备上将“{file}”作为 FX 插件打开：{why}',
     'fxPluginsOfDevice': '此设备的插件',
     'fxPluginDelete': '删除插件',
+    'fxPluginsNotOnDeviceTemplate': '此设备上没有的插件：{names}',
     'brImportedOneTemplate': '已从“{file}”导入 1 个画笔。',
     'brImportedManyTemplate': '已从“{file}”导入 {count} 个画笔。',
     'brImportWarningsTemplate': '{summary}（{count} 项有警告）',

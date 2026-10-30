@@ -892,13 +892,18 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
 
   /// 'Transform', 'Gaussian Blur' — property names a person reads, so they
   /// stand up on the sheet (user, 2026-08-08).
+  ///
+  /// An effect of a plugin this device has not greys as the rail's off
+  /// glyphs do (🗣️I-132-Q28 a 「회색으로 남고」).
   Widget _headerLabel(ColorScheme colorScheme) => readableText(
     widget.axis,
     lane.label,
     style: TextStyle(
       fontSize: 12,
       fontWeight: FontWeight.w600,
-      color: colorScheme.onSurface,
+      color: lane.pluginNotOnDevice
+          ? colorScheme.onSurface.withValues(alpha: 0.35)
+          : colorScheme.onSurface,
     ),
   );
 

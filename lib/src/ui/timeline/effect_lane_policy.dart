@@ -1,5 +1,6 @@
 import 'dart:ui' show Offset;
 
+import '../../models/fx_plugin_description.dart';
 import '../../models/key_mark.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
@@ -120,6 +121,11 @@ String effectLaneId(EffectId effectId, String parameterId) =>
 /// [cutRows] are the rows a row parameter ([EffectParameterUnit.layer])
 /// may name: the cut's — 🗣️I-132-Q16 a 「같은 컷의 행」 — none for a
 /// track's chain, which is no cut's.
+///
+/// [hasPlugin] says whether this device has the plugin an effect is of
+/// (`InstalledFxPlugins.has`) — the header of one it has not greys
+/// ([PropertyLaneRow.pluginNotOnDevice]). Null on a rail that is not told
+/// the device's plugins: its headers read as the app's own.
 List<PropertyLaneRow> effectPropertyLanes(
   List<LayerEffect> effects, {
   List<Layer> cutRows = const [],
@@ -128,6 +134,7 @@ List<PropertyLaneRow> effectPropertyLanes(
   valueAt,
   TransformPose Function(EffectId effectId, String lane, double time)?
   standAt,
+  bool Function(FxPluginDescription plugin)? hasPlugin,
 }) {
   if (effects.isEmpty) {
     return const [];
@@ -148,6 +155,10 @@ List<PropertyLaneRow> effectPropertyLanes(
         // its keys and says so HERE, rather than looking like a broken
         // parameter.
         groupEnabled: effect.enabled,
+        pluginNotOnDevice: switch ((effect.plugin, hasPlugin)) {
+          (final plugin?, final has?) => !has(plugin),
+          _ => false,
+        },
         // The header carries its members' key union (UI-R20 #13), so one
         // glance finds the effect's keys while it stays collapsed — with
         // the marks they wear and the names they carry, the same unions the

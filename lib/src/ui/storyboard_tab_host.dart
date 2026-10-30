@@ -1040,6 +1040,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                         ),
                     laneGroupOnOf: _session.laneVerbs.isLaneGroupOn,
                     poseDisplaySize: rail.poseDisplaySize,
+                    hasFxPlugin: _session.fxPlugins.has,
                     // No onSetCutFade: the fade handles went with the V row's
                     // transform. F.I/F.O spans on the transition row are the
                     // fade now — an always-visible row rather than two twirls

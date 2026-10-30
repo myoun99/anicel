@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart';
 
 import '../../models/fx_plugin_description.dart';
+import '../../models/project.dart';
 import '../../native/qa_fx_plugin_host.dart';
+import '../project_lookup.dart' show projectLayersAnywhere;
 import 'fx_plugin_bundle.dart';
 import 'fx_plugin_library_service.dart';
 
@@ -71,17 +73,47 @@ class InstalledFxPlugins extends ChangeNotifier {
   List<InstalledFxPlugin> _plugins = const [];
   bool _disposed = false;
 
+  Future<void>? _loading;
+
   /// In the order they were installed.
   List<InstalledFxPlugin> get plugins => _plugins;
 
-  /// Reads which plugins this device has.
-  Future<void> load() async {
+  /// Reads which plugins this device has — once: a caller after the first
+  /// waits for the same read, as [missingFrom] does.
+  Future<void> load() => _loading ??= _read();
+
+  Future<void> _read() async {
     final plugins = await _service.loadIndex();
     if (_disposed) {
       return;
     }
     _plugins = plugins;
     notifyListeners();
+  }
+
+  /// Whether this device has [plugin]: one of its id, whatever its
+  /// version — as an install of a plugin takes the place of the one of its
+  /// id ([install]).
+  bool has(FxPluginDescription plugin) =>
+      _plugins.any((installed) => installed.description.id == plugin.id);
+
+  /// The plugins [project]'s effects are of that this device has not
+  /// ([has]) — each once, as the project first names it — asked once the
+  /// device is read: what the open door says of a project as it opens
+  /// (🗣️I-132-Q28 a, 「열 때 경고 한 줄」), which may be before the app's
+  /// first read is done.
+  Future<List<FxPluginDescription>> missingFrom(Project project) async {
+    await load();
+    final missing = <String, FxPluginDescription>{};
+    for (final effect in [
+      for (final track in project.tracks) ...track.effects,
+      for (final row in projectLayersAnywhere(project)) ...row.effects,
+    ]) {
+      if (effect.plugin case final plugin? when !has(plugin)) {
+        missing.putIfAbsent(plugin.id, () => plugin);
+      }
+    }
+    return List.unmodifiable(missing.values);
   }
 
   /// Installs the plugin [bytes] hold, once [confirm] says yes — one this

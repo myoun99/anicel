@@ -108,6 +108,7 @@ class PropertyLaneRow {
     this.isGroupHeader = false,
     this.groupExpanded = false,
     this.groupEnabled,
+    this.pluginNotOnDevice = false,
     this.headsAGraph = false,
     this.previewText,
     this.stretchWords = const [],
@@ -238,6 +239,12 @@ class PropertyLaneRow {
   /// `fx` glyph — AE's per-effect eyeball (R6). Null = this group has no
   /// switch (the Transform group; the row's one fx switch covers it).
   final bool? groupEnabled;
+
+  /// Group headers only: the effect is of a plugin this device has not —
+  /// 🗣️I-132-Q28 a 「Fx 목록에 그 fx 가 회색으로 남고 값 · 키도 그대로」:
+  /// the header greys, its lanes stay as they were, and it draws nothing
+  /// until a plugin of its id is installed.
+  final bool pluginNotOnDevice;
 }
 
 /// A word over the stretch of a lane from its key on [from] to the next, on
