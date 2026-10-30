@@ -4,7 +4,9 @@ library;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:anicel/src/ui/playback/frame_picture_gpu.dart';
 import 'package:anicel/src/ui/playback/frame_picture_store.dart';
+import 'package:flutter_gpu/gpu.dart' as gpu;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/a_canvas_standing_on_a_frame.dart' show noFlutterGpu;
@@ -224,6 +226,17 @@ void main() {
     },
     skip: noFlutterGpu,
   );
+
+  test('a picture in a format flutter_gpu cannot size is not held — no '
+      'write into it is sized at nothing (F-509)', () {
+    expect(FlutterGpuFramePictures.sizes(gpu.PixelFormat.unknown), isFalse);
+    for (final format in [
+      gpu.PixelFormat.r8g8b8a8UNormInt,
+      gpu.PixelFormat.b8g8r8a8UNormInt,
+    ]) {
+      expect(FlutterGpuFramePictures.sizes(format), isTrue, reason: '$format');
+    }
+  });
 }
 
 /// [image] at every level of its chain, as a zoomed-out view draws it:

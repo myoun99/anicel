@@ -2,7 +2,8 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart' show ChangeNotifier;
+import 'package:flutter/foundation.dart'
+    show ChangeNotifier, ErrorDescription, FlutterError, FlutterErrorDetails;
 
 import '../../core/pin_counts.dart';
 import '../../models/rgba_image_bytes.dart';
@@ -252,7 +253,8 @@ class FramePictureStore<K extends Object> {
 
   /// Completes once the last patch or [move] asked for to [key] is in its
   /// picture, and [key] answers with it — null where none is on its way.
-  Future<void>? landingOf(K key) => _becoming[key]?.patch.moved;
+  /// Answers whether it went in: false where its picture was let go first.
+  Future<bool>? landingOf(K key) => _becoming[key]?.patch.moved;
 
   /// Answers once every patch asked for is in its picture.
   Future<void> settled() async {
@@ -380,15 +382,26 @@ class FramePictureStore<K extends Object> {
     return entry.picture;
   }
 
+  /// A patch whose render throws cannot go in: its picture is let go and
+  /// it is answered, and the renders behind it go on — as a write that
+  /// throws ([_writeWaiting]).
   Future<void> _renderPatch(_Entry<K> entry, _Patch<K> asked) async {
     final recorded = asked.recorded;
-    final image = recorded == null
-        ? null
-        : await _rendered(
-            recorded,
-            asked.rect.width.toInt(),
-            asked.rect.height.toInt(),
-          );
+    final ui.Image? image;
+    try {
+      image = recorded == null
+          ? null
+          : await _rendered(
+              recorded,
+              asked.rect.width.toInt(),
+              asked.rect.height.toInt(),
+            );
+    } on Object catch (error, stack) {
+      _report(error, stack, 'rendering a patch into a frame picture');
+      _letGo(entry);
+      asked.answer(landed: false);
+      return;
+    }
     entry.waiting.add((patch: asked, image: image));
     entry.writes = entry.writes.then((_) => _writeWaiting(entry));
   }
@@ -401,6 +414,17 @@ class FramePictureStore<K extends Object> {
   /// 11 a 3840² picture took about 57 ms to land one patch — five waits on
   /// the GPU — so a stroke patching every vsync fell 600 patches behind.
   /// Patches that render while a batch is written wait for the next one.
+  ///
+  /// 🚨★★★A WRITE THAT THROWS DID NOT WRITE: its picture is let go and
+  /// every patch of the batch answered, as where the GPU answers it did
+  /// not (F-509). Let out, the throw left [_Entry.writes] failed for good —
+  /// every write chained behind it skipped, no patch into the picture ever
+  /// answered, the screen showing the picture as it was before the stroke.
+  /// On an iPhone and iPad that was every stroke into a picture: no write
+  /// into one came back in build 1083's trace, their pictures in a format
+  /// `flutter_gpu` cannot size ([FlutterGpuFramePictures.hold]) — 유저 실기
+  /// 2026-10-30 「빈블록에서 그릴땐 획 몇번하든 안보임 … 그려져있는 상태에서
+  /// 첫획은 보임. 두번째획부턴 안보임」.
   Future<void> _writeWaiting(_Entry<K> entry) async {
     if (entry.waiting.isEmpty) {
       return;
@@ -416,6 +440,9 @@ class FramePictureStore<K extends Object> {
       if (texels.isNotEmpty && !entry.gone) {
         written = await _written(entry, texels);
       }
+    } on Object catch (error, stack) {
+      _report(error, stack, 'writing patches into a frame picture');
+      written = false;
     } finally {
       for (final patch in texels) {
         patch.image.dispose();
@@ -543,7 +570,7 @@ class FramePictureStore<K extends Object> {
       }
       _entries[asked.to] = entry;
     }
-    asked.answer();
+    asked.answer(landed: !entry.gone);
   }
 
   /// The picture's deepest patched level with [batch] in it: the level as
@@ -637,17 +664,35 @@ class FramePictureStore<K extends Object> {
   }
 
   void _letGo(_Entry<K> entry) {
+    // Once: its image goes with it. A patch rendering behind one that threw
+    // lets go of a picture let go already.
+    if (entry.gone) {
+      return;
+    }
     entry.gone = true;
     _entries.removeWhere((_, value) => value == entry);
     _becoming.removeWhere((_, value) {
       if (value.entry != entry) {
         return false;
       }
-      value.patch.answer();
+      value.patch.answer(landed: false);
       return true;
     });
     // The GPU may still be writing it: let go once its writes are done.
     unawaited(entry.writes.whenComplete(entry.picture.image.dispose));
+  }
+
+  /// Reports [error], thrown while [doing] — what the store goes on from
+  /// as not done.
+  static void _report(Object error, StackTrace stack, String doing) {
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stack,
+        library: 'frame picture store',
+        context: ErrorDescription(doing),
+      ),
+    );
   }
 }
 
@@ -815,19 +860,19 @@ class _Patch<K> {
   /// What the patch draws — none for a [FramePictureStore.move].
   final ui.Picture? recorded;
 
-  /// Answered once [to] answers with the patch's texels — or once its
-  /// picture is let go before that ([FramePictureStore._letGo]), whichever
-  /// comes first ([answer]).
-  Future<void> get moved => _moved.future;
-  final Completer<void> _moved = Completer<void>();
+  /// Answered true once [to] answers with the patch's texels — or false
+  /// once its picture is let go before that ([FramePictureStore._letGo]),
+  /// whichever comes first ([answer]).
+  Future<bool> get moved => _moved.future;
+  final Completer<bool> _moved = Completer<bool>();
 
   /// 🚨ONCE, whoever answers first. The picture let go answered whoever
   /// waited, and the patch behind it in the queue answered again on its
   /// turn: the second answer threw out of the store into whatever let the
   /// picture go — a box's undo, a pixel verb, a paste (2026-10-25).
-  void answer() {
+  void answer({required bool landed}) {
     if (!_moved.isCompleted) {
-      _moved.complete();
+      _moved.complete(landed);
     }
   }
 }

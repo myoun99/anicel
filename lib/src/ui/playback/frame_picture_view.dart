@@ -737,12 +737,20 @@ class _FramePictureViewState extends State<FramePictureView> {
     }
     _pictures.giveWayToSteps();
     _keepAs(to);
-    // Shown once its texels are in the picture, at every level.
+    // Shown once its texels are in the picture, at every level — or, where
+    // they never went in, the frame as it stands from the paint after: the
+    // picture let go on the way (a write the GPU threw on, F-509). ⛔Not
+    // the picture until the next change: a step that did not go in showed
+    // only once another came after it.
     unawaited(
-      _store.landingOf(to)!.then((_) {
-        if (mounted) {
-          _repaint.value += 1;
+      _store.landingOf(to)!.then((landed) {
+        if (!mounted) {
+          return;
         }
+        if (!landed && identical(_shown?.picture, picture)) {
+          _standing.whole = true;
+        }
+        _repaint.value += 1;
       }),
     );
   }

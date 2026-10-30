@@ -217,6 +217,14 @@ class WritesNeverLand extends RendersHeld {
       Completer<bool>().future;
 }
 
+/// A GPU whose every write throws as it is asked — as `flutter_gpu`'s did
+/// into an iPhone's or iPad's picture (F-509): no patch goes in.
+class WritesThrow extends WritesNeverLand {
+  @override
+  Future<bool> write(Object held, List<BaseWrite> base, LevelWrites? levels) =>
+      throw StateError('a texel of no size');
+}
+
 /// The app's own writes into a frame's picture ([FlutterGpuFramePictures]):
 /// a step seen on its way into the picture, then in it.
 ///

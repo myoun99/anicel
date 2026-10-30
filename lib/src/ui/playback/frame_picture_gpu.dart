@@ -27,7 +27,8 @@ abstract interface class FramePictureGpu {
 
   /// The texture behind [image], to write into where it stands — null where
   /// the engine has no GPU context to write with (Skia: the devices that
-  /// render with it are out of the release, skia-devices-out-of-release).
+  /// render with it are out of the release, skia-devices-out-of-release),
+  /// or no write into it could be sized ([FlutterGpuFramePictures.sizes]).
   Object? hold(ui.Image image);
 
   /// The mip levels [held]'s texture has: the base and every halving down
@@ -67,8 +68,22 @@ class FlutterGpuFramePictures implements FramePictureGpu {
     } on Exception {
       return null;
     }
-    return gpu.Texture.fromImage(context, image);
+    final texture = gpu.Texture.fromImage(context, image);
+    return sizes(texture.format) ? texture : null;
   }
+
+  /// Whether `flutter_gpu` knows how many bytes a texel of [format] takes —
+  /// what a write into the levels under the base copies through a buffer
+  /// by ([write]).
+  ///
+  /// 🚨★★★A PICTURE IN A FORMAT IT CANNOT SIZE IS NOT HELD: its frame is
+  /// drawn as it stands (F-509). An iPhone's or iPad's Impeller renders
+  /// with wide gamut by default, its pictures in Apple's extended-range
+  /// formats, which `flutter_gpu` names `unknown` — zero bytes a texel. A
+  /// write into one sized its buffer and its spans at zero and never came
+  /// back: build 1083's trace, 2026-10-30, no write into a picture answered
+  /// on either.
+  static bool sizes(gpu.PixelFormat format) => format.bytesPerBlock > 0;
 
   @override
   int levelsOf(Object held) => (held as gpu.Texture).mipLevelCount;
