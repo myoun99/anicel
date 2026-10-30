@@ -122,19 +122,7 @@ class _WorkspaceLayoutPersistence {
         _state._bottomInsetOverride.value = savedInset.toDouble();
       }
       _restoreBrushPresetView(payload['brushPresetView']);
-      if (payload['openRails'] case final List openRails) {
-        // Filtered against the POOL, not taken on trust: a file written by
-        // a build with a different pool size would otherwise leave open
-        // ids that name nothing.
-        final known = {
-          ..._WorkspaceRail._railSlotIds(right: false),
-          ..._WorkspaceRail._railSlotIds(right: true),
-        };
-        _state._openRails = {
-          for (final id in openRails)
-            if (id is String && known.contains(id)) id,
-        };
-      }
+      _restoreOpenRails(payload['openRails']);
       _state._layout.restore(
         docks: restored.docks,
         dockExtents: restored.dockExtents,
@@ -146,6 +134,25 @@ class _WorkspaceLayoutPersistence {
     _restoreTrackLaneHeight(payload[_storyboardTrackLaneHeightKey]);
     _state._brushDetailAt.value = _restoredPoint(payload[_brushDetailAtKey]);
     return true;
+  }
+
+  /// The rails' open slots as the file kept them; absent, they stay as
+  /// they stand.
+  void _restoreOpenRails(Object? saved) {
+    if (saved is! List) {
+      return;
+    }
+    // Filtered against the POOL, not taken on trust: a file written by a
+    // build with a different pool size would otherwise leave open ids that
+    // name nothing.
+    final known = {
+      ..._WorkspaceRail._railSlotIds(right: false),
+      ..._WorkspaceRail._railSlotIds(right: true),
+    };
+    _state._openRails = {
+      for (final id in saved)
+        if (id is String && known.contains(id)) id,
+    };
   }
 
   /// The layout file's key for where the brush detail window was left.
