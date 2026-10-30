@@ -240,8 +240,25 @@ void main() {
           isNot(contains(BrushPressureTarget.textureDensity)),
           reason: id,
         );
+        // Pressure moves the flow, so a line laid again fills in.
+        final flow = settings.shape.flowPressureCurve;
+        expect(flow?.evaluate(1.0), 1.0, reason: id);
+        expect(flow?.evaluate(0.0), lessThan(0.5), reason: id);
         // ↩️At the finest spacing the flecks fill to a band.
         expect(settings.spacing, greaterThanOrEqualTo(0.1), reason: id);
+      }
+      for (final id in [
+        'builtin-hard-pencil',
+        'builtin-pencil',
+        'builtin-soft-pencil',
+        'builtin-dark-pencil',
+      ]) {
+        // The size runs all but from nothing, as the lead's point does.
+        expect(
+          byId(id).settings.shape.sizePressureCurve?.evaluate(0.0),
+          lessThan(0.1),
+          reason: id,
+        );
       }
       // The softer the lead, the closer its dabs.
       expect(
