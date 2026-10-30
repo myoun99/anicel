@@ -208,6 +208,10 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// (F-130).
   LiveSurfaceTokens? _held;
 
+  /// Whether a step is on its way into the picture shown ([_writeIn]) — what
+  /// the change behind it waits for ([_catchUp]).
+  bool _stepOnItsWay = false;
+
   /// Whether the frame is drawn as it stands in place of the picture shown.
   final _DrawnAsItStands _standing = _DrawnAsItStands();
 
@@ -685,6 +689,22 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// frame's one picture, which every screen showing that frame draws — and
   /// the build patched it back. ↩️The display buffer measured at its paint
   /// too (`_planMiss`).
+  ///
+  /// 🚨★★★ONE STEP ON ITS WAY AT A TIME ([_stepOnItsWay]): what moves while
+  /// one goes in stays out of [_held], and goes in as one patch the paint
+  /// after it lands. ↩️Each paint asked for its own, and a patch takes the
+  /// store longer than a vsync, so the queue grew for as long as the pen
+  /// moved and the line fell further behind it the longer it was (F-512, 유저
+  /// 2026-10-30 「선이 커서 뒤로 처진다」). 🔬Main PC, 144 Hz, 2544×1361, a
+  /// new project, input to raster done, p50 / p90: fitted 757 / 1346 ms →
+  /// 49 / 60 ms, at 100% 2111 / 3168 ms → 41 / 54 ms, a frame every vsync
+  /// again (it was every other one). ⛔Not until the step is rendered
+  /// rather than in: 61 / 77 ms fitted, its batches behind it instead.
+  ///
+  /// ⛔NOT WHILE A STROKE'S LANDING MOVES THE PICTURE ([_moving]): the last
+  /// of the stroke goes in now, under the key it moves to ([_moves]) — left
+  /// to wait, another frame stood on in that time would leave the frame's
+  /// own key with a picture short of it for good.
   void _catchUp() {
     final live = _live;
     final shown = _shown;
@@ -710,6 +730,9 @@ class _FramePictureViewState extends State<FramePictureView> {
     }
     if (!live.steady) {
       _standing.whole = true;
+      return;
+    }
+    if (_stepOnItsWay && _moving == null) {
       return;
     }
     final moved = live.movedSince(held);
@@ -770,8 +793,10 @@ class _FramePictureViewState extends State<FramePictureView> {
     // picture let go on the way (a write the GPU threw on, F-509). ⛔Not
     // the picture until the next change: a step that did not go in showed
     // only once another came after it.
+    _stepOnItsWay = true;
     unawaited(
       _store.landingOf(to)!.then((landed) {
+        _stepOnItsWay = false;
         if (!mounted) {
           return;
         }
