@@ -167,6 +167,15 @@ void main() {
     );
     await press(tester, 'n-seconds-field-step-up');
     expect((split24(), split(tester)), (24, ('1', '0')));
+
+    await tester.pumpWidget(const SizedBox());
+    final komaFirst = await pumpField(
+      tester,
+      count: null,
+      entry: FrameCountEntry.secondsPlusFrames,
+    );
+    await press(tester, 'n-koma-field-step-up');
+    expect((komaFirst(), split(tester)), (1, ('0', '1')));
   });
 
   testWidgets('a drag along a number moves it — the seconds a second a unit', (
