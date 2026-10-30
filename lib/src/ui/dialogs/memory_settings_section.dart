@@ -108,6 +108,7 @@ class _MemorySettingsSectionState extends State<MemorySettingsSection> {
       'tileImages' => strings.memoryItemTileImages,
       'enginePool' => strings.memoryItemEnginePool,
       'engineScratch' => strings.memoryItemEngineScratch,
+      'lensBlurTables' => strings.memoryItemLensBlurTables,
       _ => id,
     };
   }

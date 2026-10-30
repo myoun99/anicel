@@ -10,6 +10,7 @@ import '../../services/cut_piece_slot.dart';
 import '../../services/last_stroke_slot.dart';
 import '../brush/brush_stroke_preview_cache.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
+import '../canvas/iris_blur_shader.dart';
 import '../editor_session_manager.dart';
 import '../text/word_bake.dart';
 import '../timeline/timeline_grid_tile_store.dart';
@@ -353,6 +354,13 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
       MemoryCensusItem(
         id: 'timelineTiles',
         bytes: TimelineGridTileStore.instance.tileImageBytes,
+      ),
+    // The table of a camera lens blur's iris last laid, the app's one,
+    // kept for the next gather of the same iris (2026-10-31).
+    if (textures)
+      MemoryCensusItem(
+        id: 'lensBlurTables',
+        bytes: IrisBlurShader.tableBytes,
       ),
     // A movie kept as a reference, decoded where it is shown. Its pictures
     // live in the cel store and are paid from the drawings' hot budget —

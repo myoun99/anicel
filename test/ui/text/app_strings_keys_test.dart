@@ -345,6 +345,7 @@ void main() {
     'memoryItemTileImages': (s) => s.memoryItemTileImages,
     'memoryItemEnginePool': (s) => s.memoryItemEnginePool,
     'memoryItemEngineScratch': (s) => s.memoryItemEngineScratch,
+    'memoryItemLensBlurTables': (s) => s.memoryItemLensBlurTables,
     'containerAreaSettings': (s) => s.containerAreaSettings,
     'containerAreaDiagnostics': (s) => s.containerAreaDiagnostics,
     'containerAreaSessionScratch': (s) => s.containerAreaSessionScratch,
