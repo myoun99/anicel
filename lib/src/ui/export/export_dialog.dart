@@ -4145,46 +4145,49 @@ class ExportDialogState extends State<ExportDialog> {
           _celRuleCaption(strings.exLayerFilter),
           const SizedBox(height: 3),
           _celFilters(spec),
-          if (_tab == ExportTab.cels) ...[
-            const SizedBox(height: 6),
-            _celRuleCaption(strings.exApply),
-            const SizedBox(height: 3),
-            PillStrip(
-              items: [
-                _specSwitch(
-                  'export-cels-apply-paper',
-                  strings.exPaperLabel,
-                  spec.applyPaper,
-                  () => spec.copyWith(applyPaper: !spec.applyPaper),
-                ),
-              ],
-            ),
-          ],
-          // Where the Cels tab applies its paper, the AE Script tab lays its
-          // guides: the camera's path over the canvas comp (Q3). Its
-          // directions are a kind above, laid as guides too.
-          if (_tab == ExportTab.aeScript) ...[
-            const SizedBox(height: 6),
-            _celRuleCaption(strings.exLayGuides),
-            const SizedBox(height: 3),
-            PillStrip(
-              items: [
-                _pill(
-                  keyValue: 'export-ae-camera-path',
-                  label: strings.cameraPath,
-                  selected: _specs.aeScript.guideCamera,
-                  onPick: () => _updateSpec(
-                    _specs.aeScript.copyWith(
-                      guideCamera: !_specs.aeScript.guideCamera,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
+          ..._celLayRules(spec),
         ],
       ),
     );
+  }
+
+  /// What the tab lays with what it writes: the Cels tab its paper, the AE
+  /// Script tab its guides — the camera's path over the canvas comp (Q3);
+  /// its directions are a kind above, laid as guides too.
+  List<Widget> _celLayRules(CelsExportSpec spec) {
+    final strings = AppText.strings;
+    final ae = _specs.aeScript;
+    final (caption, lay) = switch (_tab) {
+      ExportTab.cels => (
+        strings.exApply,
+        _specSwitch(
+          'export-cels-apply-paper',
+          strings.exPaperLabel,
+          spec.applyPaper,
+          () => spec.copyWith(applyPaper: !spec.applyPaper),
+        ),
+      ),
+      ExportTab.aeScript => (
+        strings.exLayGuides,
+        _pill(
+          keyValue: 'export-ae-camera-path',
+          label: strings.cameraPath,
+          selected: ae.guideCamera,
+          onPick: () =>
+              _updateSpec(ae.copyWith(guideCamera: !ae.guideCamera)),
+        ),
+      ),
+      ExportTab.sequence || ExportTab.image || ExportTab.conte => (null, null),
+    };
+    if (caption == null || lay == null) {
+      return const [];
+    }
+    return [
+      const SizedBox(height: 6),
+      _celRuleCaption(caption),
+      const SizedBox(height: 3),
+      PillStrip(items: [lay]),
+    ];
   }
 
   static const EdgeInsets _celRulesPadding = EdgeInsets.fromLTRB(8, 5, 8, 5);
