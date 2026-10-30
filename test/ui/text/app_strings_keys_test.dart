@@ -792,7 +792,6 @@ void main() {
     'fxPluginRunsNatively': (s) => s.fxPluginRunsNatively,
     'fxPluginsOfDevice': (s) => s.fxPluginsOfDevice,
     'fxPluginDelete': (s) => s.fxPluginDelete,
-    'fxPluginIdleHere': (s) => s.fxPluginIdleHere,
     'toolSelect': (s) => s.toolSelect,
     'toolTransform': (s) => s.toolTransform,
     'toolShapeFill': (s) => s.toolShapeFill,

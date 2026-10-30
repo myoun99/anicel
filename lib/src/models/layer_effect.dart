@@ -1214,8 +1214,8 @@ class ResolvedLayerEffect {
 
   /// What a plugin's effect is run with at this frame ([FxPluginRun]) —
   /// null for every other kind, and for a plugin's where it does not run:
-  /// 🗣️I-132-Q32 b, on a cel row with nothing before it but colour keys,
-  /// on a device that has the plugin (`bindFxPluginRun`). A plugin's
+  /// 🗣️I-132-Q34 a, anywhere in any chain, on a route that binds it, on a
+  /// device that has the plugin (`deviceFxPluginBinding`). A plugin's
   /// effect without one changes no pixel.
   final FxPluginRun? run;
 

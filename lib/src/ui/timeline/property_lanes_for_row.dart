@@ -8,8 +8,6 @@ import '../../models/layer_kind.dart';
 import '../../models/reference_swap.dart' show referenceRedrawFor;
 import '../../models/se_name_tag.dart' show SeNameTag;
 import '../../models/transform_track.dart';
-import '../../services/fx_plugins/device_fx_plugin_binding.dart'
-    show pluginStandsIdle;
 import 'effect_lane_policy.dart' show effectGroupLaneId, effectPropertyLanes;
 import 'property_lane_model.dart';
 import 'reference_lane_policy.dart'
@@ -193,18 +191,6 @@ List<PropertyLaneRow> propertyLanesForRow({
               );
             },
       hasPlugin: hasPlugin,
-      // Asked of the row and frame its values are read off, as the plan
-      // reads the chain it runs a plugin in.
-      idleAt: source == null
-          ? null
-          : (effectId, frameIndex) {
-              final at = source(frameIndex);
-              return pluginStandsIdle(
-                at.layer.effects,
-                effectId,
-                kind: at.layer.kind,
-              );
-            },
     );
   }
 

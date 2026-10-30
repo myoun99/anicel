@@ -216,7 +216,6 @@ void main() {
           .fxPluginsIn(cut)(
             resolveLayerEffectsAt(effects: row.effects, frameIndex: 0),
             cut: cut,
-            row: row,
             frameIndex: 0,
           )
           .single

@@ -1791,11 +1791,6 @@ enum AppStrings {
         'fxPluginsNotOnDeviceTemplate',
       ).replaceAll('{names}', names.join(', '));
 
-  /// After the name of a plugin's effect that stands where no plugin runs
-  /// (🗣️I-132-Q33 c 「머리 이름 뒤에 경고 글자를 늘 둔다」, 「⚠ 이 자리에서는
-  /// 돌지 않음」).
-  String get fxPluginIdleHere => _s('fxPluginIdleHere');
-
   /// Why a picked file was not taken as a font.
   String get textToolFontUnreadable => _s('textToolFontUnreadable');
   String get textToolFontIsTheApps => _s('textToolFontIsTheApps');
@@ -3316,7 +3311,6 @@ enum AppStrings {
     'fxPluginsOfDevice': 'Plugins on this device',
     'fxPluginDelete': 'Delete plugin',
     'fxPluginsNotOnDeviceTemplate': 'Plugins not on this device: {names}',
-    'fxPluginIdleHere': '⚠ Does not run here',
     'brImportedOneTemplate': 'Imported 1 brush from "{file}".',
     'brImportedManyTemplate': 'Imported {count} brushes from "{file}".',
     'brImportWarningsTemplate': '{summary} ({count} entries with warnings)',
@@ -5105,7 +5099,6 @@ enum AppStrings {
     'fxPluginsOfDevice': 'このデバイスのプラグイン',
     'fxPluginDelete': 'プラグインを削除',
     'fxPluginsNotOnDeviceTemplate': 'このデバイスにないプラグイン: {names}',
-    'fxPluginIdleHere': '⚠ ここでは動きません',
     'brImportedOneTemplate': '「{file}」からブラシを1個読み込みました。',
     'brImportedManyTemplate': '「{file}」からブラシを{count}個読み込みました。',
     'brImportWarningsTemplate': '{summary}（警告のある項目 {count}件）',
@@ -6915,7 +6908,6 @@ enum AppStrings {
     'fxPluginsOfDevice': '이 기기의 플러그인',
     'fxPluginDelete': '플러그인 삭제',
     'fxPluginsNotOnDeviceTemplate': '없는 플러그인: {names}',
-    'fxPluginIdleHere': '⚠ 이 자리에서는 돌지 않음',
     'brImportedOneTemplate': '「{file}」에서 브러시 1개를 가져왔습니다.',
     'brImportedManyTemplate': '「{file}」에서 브러시 {count}개를 가져왔습니다.',
     'brImportWarningsTemplate': '{summary} (경고가 있는 항목 {count}개)',
@@ -8887,7 +8879,6 @@ enum AppStrings {
     'fxPluginDelete': 'Supprimer le plug-in',
     'fxPluginsNotOnDeviceTemplate':
         'Plug-ins absents de cet appareil : {names}',
-    'fxPluginIdleHere': '⚠ Sans effet à cette place',
     'brImportedOneTemplate': '1 brosse importée depuis « {file} ».',
     'brImportedManyTemplate': '{count} brosses importées depuis « {file} ».',
     'brImportWarningsTemplate':
@@ -10646,7 +10637,6 @@ enum AppStrings {
     'fxPluginsOfDevice': '此设备的插件',
     'fxPluginDelete': '删除插件',
     'fxPluginsNotOnDeviceTemplate': '此设备上没有的插件：{names}',
-    'fxPluginIdleHere': '⚠ 在此处不运行',
     'brImportedOneTemplate': '已从“{file}”导入 1 个画笔。',
     'brImportedManyTemplate': '已从“{file}”导入 {count} 个画笔。',
     'brImportWarningsTemplate': '{summary}（{count} 项有警告）',

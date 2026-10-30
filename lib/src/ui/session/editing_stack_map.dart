@@ -61,23 +61,18 @@ class EditingStackMap {
   /// it has until the move's own is decoded.
   final TransformPose? Function(BrushFrameKey key) _movieLaidAt;
 
-  /// What runs the plugins the rows' chains run ([FxPluginBinding]) — so
-  /// every row the stack hands on carries its plugin's run, the row drawn
-  /// on and a ghost at its own frame among them.
+  /// What runs the plugins the chains run ([FxPluginBinding]) — so every
+  /// row the stack hands on carries its plugin's run, the row drawn on and
+  /// a ghost at its own frame among them, and every folder and adjustment.
   final FxPluginBinding? _plugins;
 
-  /// [effects] — [row]'s chain at [frameIndex] — with its plugin run.
+  /// [effects] — a chain of [stackCut] at [frameIndex] — with its plugins
+  /// run.
   List<ResolvedLayerEffect> _bound(
-    Layer row,
     List<ResolvedLayerEffect> effects,
     int frameIndex,
   ) =>
-      _plugins?.call(
-        effects,
-        cut: stackCut,
-        row: row,
-        frameIndex: frameIndex,
-      ) ??
+      _plugins?.call(effects, cut: stackCut, frameIndex: frameIndex) ??
       effects;
 
   double activeLayerOpacity = 1.0;
@@ -104,6 +99,7 @@ class EditingStackMap {
       CutFrameCompositeEntry() => _leaf(row),
       CutFrameCompositeGhost() => _ghost(row),
     },
+    chains: (chain) => _bound(chain, frameIndex),
   );
 
   /// An onion ghost, from its cel where a drag shows its pixels
@@ -116,7 +112,7 @@ class EditingStackMap {
       opacity: ghost.opacity,
       blendMode: ghost.blendMode,
       tint: ghost.tint,
-      effects: _bound(ghost.layer, ghost.effects, ghost.frameIndex),
+      effects: _bound(ghost.effects, ghost.frameIndex),
     );
   }
 
@@ -146,7 +142,7 @@ class EditingStackMap {
       stackCut.layers,
       frameIndex,
     );
-    final effects = _bound(node.layer, node.render.effects, frameIndex);
+    final effects = _bound(node.render.effects, frameIndex);
     activeSourceEffects = splitSourceEffects(effects).source;
     if (_heldCel != null) {
       return null;
@@ -206,7 +202,7 @@ class EditingStackMap {
   /// are the ROW's, and the panel wraps the live surface in them: an opacity
   /// that fell to the default would unwrap it and remount it twice per drag.
   CanvasStackRow _leaf(CutFrameCompositeEntry entry) {
-    final effects = _bound(entry.layer, entry.effects, frameIndex);
+    final effects = _bound(entry.effects, frameIndex);
     final active =
         entry.layer.id == activeLayerId && layerAcceptsBrushInput(entry.layer);
     if (active) {

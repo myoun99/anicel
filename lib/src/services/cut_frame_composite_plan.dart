@@ -1728,13 +1728,15 @@ List<CompositeNode<CutFrameCompositeLayer>>? planRowAsRead({
 };
 
 /// [nodes] of [cut] with each leaf's surface read by [reading]
-/// ([planCutFrameCompositeTree]).
+/// ([planCutFrameCompositeTree]), and every chain's plugins run as it says.
 List<CompositeNode<CutFrameCompositeLayer>> _withSurfaces(
   List<CompositeNode<CutFrameCompositeRow>> nodes, {
   required Cut cut,
   required int frameIndex,
   required CelReading reading,
 }) {
+  List<ResolvedLayerEffect> bound(List<ResolvedLayerEffect> chain) =>
+      reading.plugins?.call(chain, cut: cut, frameIndex: frameIndex) ?? chain;
   CutFrameCompositeLayer? layerOf(
     CutFrameCompositeRow row,
     BitmapSurface? Function(CutFrameCompositeEntry entry) surfaceOf,
@@ -1752,14 +1754,7 @@ List<CompositeNode<CutFrameCompositeLayer>> _withSurfaces(
         opacity: row.opacity,
         blendMode: row.blendMode,
         placement: row.placement,
-        effects:
-            reading.plugins?.call(
-              row.effects,
-              cut: cut,
-              row: row.layer,
-              frameIndex: frameIndex,
-            ) ??
-            row.effects,
+        effects: bound(row.effects),
       ),
       null => null,
     },
@@ -1774,6 +1769,7 @@ List<CompositeNode<CutFrameCompositeLayer>> _withSurfaces(
       ),
       bare: (row) =>
           layerOf(row, (_) => BitmapSurface(canvasSize: cut.canvasSize)),
+      chains: bound,
     ),
   );
 }

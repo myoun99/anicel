@@ -198,7 +198,7 @@ class EditingCanvas {
     bool ghostsInPlace = false,
   }) => [
         ..._underTheCutsFx(
-          cut.id,
+          cut,
           frameIndex,
           stackAt(
             cut: cut,
@@ -258,7 +258,7 @@ class EditingCanvas {
       ghosts: ghostsInPlace ? _ghostsAt(cut, frameIndex, dragPreview) : null,
     );
     final nodes = <CompositeNode<CanvasStackRow>>[
-      ..._underTheCutsFx(cut.id, frameIndex, drawn.nodes),
+      ..._underTheCutsFx(stackCut, frameIndex, drawn.nodes),
       // Track-owned SE rows join as their cut-local display clones — they
       // composite read-only like before the ownership move (their
       // transform tracks are stripped, so the plain resolve path
@@ -346,11 +346,21 @@ class EditingCanvas {
   /// ⛔Here and not in [stackAt]: a conte picture's live stack walks that
   /// too, and its printed picture is the cut's composite, which carries no
   /// V row.
+  ///
+  /// Its plugins run as the cut's rows' do (🗣️I-132-Q34 a), reading [cut]'s
+  /// rows at [frameIndex].
   List<CompositeNode<CanvasStackRow>> _underTheCutsFx(
-    CutId cutId,
+    Cut cut,
     int frameIndex,
     List<CompositeNode<CanvasStackRow>> cutNodes,
-  ) => underTheCutsFx(cutNodes, _cutEffectsAt(cutId, frameIndex));
+  ) => underTheCutsFx(
+    cutNodes,
+    _pluginsIn(cut)(
+      _cutEffectsAt(cut.id, frameIndex),
+      cut: cut,
+      frameIndex: frameIndex,
+    ),
+  );
 
   /// [source] with the DRAGGED rows' opacity substituted in — display
   /// only, so the canvas follows an opacity drag without a repo write per

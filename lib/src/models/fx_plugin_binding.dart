@@ -1,9 +1,9 @@
 import 'cut.dart';
-import 'layer.dart';
 import 'layer_effect.dart';
 
 /// What binds a plugin's effect to its run ([ResolvedLayerEffect.run]):
-/// [effects] — [row]'s chain at [frameIndex] of [cut] — with the plugin
+/// [effects] — a chain of [cut] at its frame [frameIndex], a row's, a
+/// folder's, an adjustment's or the V row's over the cut — with each plugin
 /// that runs there run, and [effects] itself where none does.
 ///
 /// Handed to the plan where a route can say what a plugin runs with — a
@@ -14,6 +14,5 @@ typedef FxPluginBinding =
     List<ResolvedLayerEffect> Function(
       List<ResolvedLayerEffect> effects, {
       required Cut cut,
-      required Layer row,
       required int frameIndex,
     });

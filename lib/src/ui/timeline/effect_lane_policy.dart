@@ -126,11 +126,6 @@ String effectLaneId(EffectId effectId, String parameterId) =>
 /// (`InstalledFxPlugins.has`) — the header of one it has not greys
 /// ([PropertyLaneRow.pluginNotOnDevice]). Null on a rail that is not told
 /// the device's plugins: its headers read as the app's own.
-///
-/// [idleAt] says whether a plugin's effect stands where no plugin runs at a
-/// frame (`pluginStandsIdle`) — its header greys and says so
-/// ([PropertyLaneRow.pluginIdleAt]). Null on a rail not told where its
-/// chain is read, as [valueAt] is.
 List<PropertyLaneRow> effectPropertyLanes(
   List<LayerEffect> effects, {
   List<Layer> cutRows = const [],
@@ -140,7 +135,6 @@ List<PropertyLaneRow> effectPropertyLanes(
   TransformPose Function(EffectId effectId, String lane, double time)?
   standAt,
   bool Function(FxPluginDescription plugin)? hasPlugin,
-  bool Function(EffectId effectId, int frameIndex)? idleAt,
 }) {
   if (effects.isEmpty) {
     return const [];
@@ -164,11 +158,6 @@ List<PropertyLaneRow> effectPropertyLanes(
         pluginNotOnDevice: switch ((effect.plugin, hasPlugin)) {
           (final plugin?, final has?) => !has(plugin),
           _ => false,
-        },
-        pluginIdleAt: switch ((effect.kind, idleAt)) {
-          (EffectKind.plugin, final idle?) => (frameIndex) =>
-              idle(effect.id, frameIndex),
-          _ => null,
         },
         // The header carries its members' key union (UI-R20 #13), so one
         // glance finds the effect's keys while it stays collapsed — with

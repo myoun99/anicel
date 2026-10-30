@@ -124,12 +124,6 @@ class _StoryboardRailRows {
         time,
       ),
       hasPlugin: _state.widget.hasFxPlugin,
-      // No row's chain: a plugin runs on none of it.
-      idleAt: (effectId, frameIndex) => pluginStandsIdle(
-        track.effects,
-        effectId,
-        kind: null,
-      ),
     );
   }
 

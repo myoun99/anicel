@@ -464,7 +464,6 @@ void main() {
         binding(
           resolveLayerEffectsAt(effects: a.effects, frameIndex: at),
           cut: cutOf([...others, a]),
-          row: a,
           frameIndex: at,
         );
 
@@ -514,7 +513,6 @@ void main() {
         elsewhere(
           resolveLayerEffectsAt(effects: a.effects, frameIndex: 0),
           cut: cutOf([a]),
-          row: a,
           frameIndex: 0,
         ).single.run,
         isNull,
@@ -524,7 +522,7 @@ void main() {
     test('runs none on a chain of keys alone', () {
       final a = row('a');
       final keys = [key()];
-      expect(binding(keys, cut: cutOf([a]), row: a, frameIndex: 0), keys);
+      expect(binding(keys, cut: cutOf([a]), frameIndex: 0), keys);
     });
 
     test('the plan runs it on every row it lays — and a plugin\'s sample '

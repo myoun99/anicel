@@ -59,8 +59,6 @@ import 'canvas/flip_hud_rows.dart';
 import 'canvas/view_hand.dart';
 import 'storyboard/storyboard_rows_channel.dart';
 import '../services/audio/audio_peaks_extractor.dart';
-import '../services/fx_plugins/device_fx_plugin_binding.dart'
-    show pluginStandsIdle;
 import 'audio/sound_cannot_play.dart' show SoundCannotPlay, soundCannotPlayIn;
 import 'storyboard_cut_blocks_painter.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;

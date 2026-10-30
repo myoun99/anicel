@@ -240,8 +240,8 @@ class CelColorKey {
 /// 🗣️AND A PLUGIN RIGHT AFTER THEM, ONE (I-132-Q32 b, 유저 2026-10-30: 「b
 /// 로 첫 판」): 「셀 행에서 fx 줄 맨 앞(앞에 색상 키만 있어도 됨)일 때 돈다 —
 /// 색상 키의 CPU 길과 같은 자리」. A plugin anywhere else — under another
-/// effect, a second one — paints nothing (`composite_effect_paint`'s
-/// `_NoPart`) until a road for it is added (Q32 c: a).
+/// effect, a second one — runs as a step over what the chain made before
+/// it (`PluginEffect`, 🗣️I-132-Q34 a 「어디에 걸어도 돌고」).
 ({List<ResolvedLayerEffect> source, List<ResolvedLayerEffect> paint})
 splitSourceEffects(List<ResolvedLayerEffect> effects) {
   if (effects.isEmpty) {

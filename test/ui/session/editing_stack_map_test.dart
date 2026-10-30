@@ -7,7 +7,6 @@ import 'package:anicel/src/models/attached_layer_resolve.dart'
 import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut.dart';
-import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -363,7 +362,6 @@ void main() {
     List<ResolvedLayerEffect> marking(
       List<ResolvedLayerEffect> effects, {
       required Cut cut,
-      required Layer row,
       required int frameIndex,
     }) => [boundAt(frameIndex)];
 
@@ -426,6 +424,36 @@ void main() {
       expect(
         rowsIn(nodes).whereType<CanvasGhostImageRequest>().single.effects,
         [boundAt(3)],
+      );
+    });
+
+    test('a folder\'s chain and an adjustment\'s (🗣️I-132-Q34 a 「어디에 걸어도 '
+        '돌고」)', () {
+      final s = sessionOnADressedRow();
+      final blur = [ResolvedLayerEffect(kind: EffectKind.blur, values: [3])];
+      final nodes = mapOf(s).mapTree([
+        CompositeAdjustment(
+          children: [
+            CompositeGroup(
+              children: resolveCutFrameCompositeTree(
+                cut: s.activeCutOrNull!,
+                frameIndex: 0,
+              ),
+              opacity: 1,
+              blendMode: LayerBlendMode.normal,
+              effects: blur,
+            ),
+          ],
+          effects: blur,
+          mix: 1,
+        ),
+      ]);
+
+      final adjustment = nodes.single as CompositeAdjustment<CanvasStackRow>;
+      expect(adjustment.effects, [boundAt(0)]);
+      expect(
+        (adjustment.children.single as CompositeGroup<CanvasStackRow>).effects,
+        [boundAt(0)],
       );
     });
   });

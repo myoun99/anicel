@@ -417,13 +417,21 @@ class ExportFrameRenderer {
 
   /// [cut]'s V row chain at [globalFrame] — the frame's place on the track's
   /// own axis (R4) — laid as [_trackFxLaid] says: what every route that
-  /// draws a cut lays under its picture.
-  List<ResolvedLayerEffect> _trackChainAt(Cut cut, int globalFrame) =>
-      trackEffectsAt(
-        session.effectsAndFx.trackEffectsForCut(cut.id),
-        globalFrame,
-        enabled: _trackFxLaid(cut.id),
-      );
+  /// draws a cut lays under its picture. Its plugins run as the cut's rows'
+  /// do (🗣️I-132-Q34 a), reading [cut]'s rows at its own [frameIndex].
+  List<ResolvedLayerEffect> _trackChainAt(
+    Cut cut,
+    int globalFrame, {
+    required int frameIndex,
+  }) => _pluginsOf(cut)(
+    trackEffectsAt(
+      session.effectsAndFx.trackEffectsForCut(cut.id),
+      globalFrame,
+      enabled: _trackFxLaid(cut.id),
+    ),
+    cut: cut,
+    frameIndex: frameIndex,
+  );
 
   /// [task]'s cut's V row chain at the task's place on the track
   /// ([_trackChainAt]).
@@ -431,6 +439,7 @@ class ExportFrameRenderer {
       _trackChainAt(
         task.cut,
         session.rowSpans.trackGlobalFrameOf(task.cut.id, task.frameIndex),
+        frameIndex: task.frameIndex,
       );
 
   /// The V row chain under a STILL of [task] — as a video's frame lays it
@@ -640,7 +649,6 @@ class ExportFrameRenderer {
           effects: _pluginsOf(cut)(
             paint.effects,
             cut: cut,
-            row: layer,
             frameIndex: task.frameIndex,
           ),
         ),
@@ -1213,7 +1221,11 @@ class ExportFrameRenderer {
                   // The V row's chain on this contribution, keys included —
                   // the dissolve weights what the chain made, not what it
                   // started from.
-                  _trackChainAt(contribution.cut, shared.globalFrame),
+                  _trackChainAt(
+                    contribution.cut,
+                    shared.globalFrame,
+                    frameIndex: contribution.localFrameIndex,
+                  ),
                 ),
               ),
               weight: shared.weights[i].clamp(0.0, 1.0),
@@ -1308,7 +1320,11 @@ class ExportFrameRenderer {
     final view = _viewFor(cut, frameIndex, ExportSizeMode.camera);
     // Track effects at the frame's GLOBAL position (R4) — the stack's
     // own axis.
-    final trackEffects = _trackChainAt(cut, position.globalFrameIndex);
+    final trackEffects = _trackChainAt(
+      cut,
+      position.globalFrameIndex,
+      frameIndex: frameIndex,
+    );
     // The stage belongs to the bottom covered TRACK, and to every
     // contribution of it: an O.L is a 場面転換, so the arriving cut brings
     // its own paper and the weights cross-fade the whole screen. Keyed to
@@ -1630,7 +1646,6 @@ class ExportFrameRenderer {
       effects: _pluginsOf(laid.row.cut)(
         laid.paint.effects,
         cut: laid.row.cut,
-        row: laid.row.layer,
         frameIndex: frameIndex,
       ),
     );

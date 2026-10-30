@@ -894,61 +894,18 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// stand up on the sheet (user, 2026-08-08).
   ///
   /// An effect of a plugin this device has not greys as the rail's off
-  /// glyphs do (🗣️I-132-Q28 a 「회색으로 남고」); so does one standing where
-  /// no plugin runs at the frame the cursor is on, and it says so after its
-  /// name (🗣️I-132-Q33 c 「머리 이름 뒤에 경고 글자를 늘 둔다」).
-  Widget _headerLabel(ColorScheme colorScheme) => switch (lane.pluginIdleAt) {
-    final idleAt? => _onTheFrame(
-      idleAt,
-      (context, idle) => _headerName(colorScheme, idle: idle),
+  /// glyphs do (🗣️I-132-Q28 a 「회색으로 남고」).
+  Widget _headerLabel(ColorScheme colorScheme) => readableText(
+    widget.axis,
+    lane.label,
+    style: TextStyle(
+      fontSize: 12,
+      fontWeight: FontWeight.w600,
+      color: lane.pluginNotOnDevice
+          ? colorScheme.onSurface.withValues(alpha: 0.35)
+          : colorScheme.onSurface,
     ),
-    null => _headerName(colorScheme, idle: false),
-  };
-
-  /// The header's name, and after it the warning of a plugin standing
-  /// [idle]. The warning keeps its room and the name is cut first — 「머리
-  /// 폭이 좁으면 이름이 그만큼 잘린다」 (Q33 c) — and neither runs past the
-  /// header: the warning is held to the room the two have.
-  Widget _headerName(ColorScheme colorScheme, {required bool idle}) {
-    final name = readableText(
-      widget.axis,
-      lane.label,
-      style: TextStyle(
-        fontSize: 12,
-        fontWeight: FontWeight.w600,
-        color: lane.pluginNotOnDevice || idle
-            ? colorScheme.onSurface.withValues(alpha: 0.35)
-            : colorScheme.onSurface,
-      ),
-    );
-    if (!idle) {
-      return name;
-    }
-    final horizontal = widget.axis == Axis.horizontal;
-    return LayoutBuilder(
-      builder: (context, room) => Flex(
-        direction: widget.axis,
-        children: [
-          Flexible(child: name),
-          ConstrainedBox(
-            constraints: horizontal
-                ? BoxConstraints(maxWidth: room.maxWidth)
-                : BoxConstraints(maxHeight: room.maxHeight),
-            child: Padding(
-              padding: horizontal
-                  ? const EdgeInsets.only(left: 4)
-                  : const EdgeInsets.only(top: 4),
-              child: readableText(
-                widget.axis,
-                AppText.strings.fxPluginIdleHere,
-                style: TextStyle(fontSize: 10, color: colorScheme.error),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  );
 
   /// R5 #7: the group's switch sits in the LAYER ROW'S fx column, through
   /// the layer row's own skeleton. R6 put it straight after the label, which
