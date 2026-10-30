@@ -430,8 +430,9 @@ int debugPiecesDrawnApart = 0;
 /// cropped:
 /// · laid down texel for texel through `srcOver` or `plus`, with any opacity
 ///   or colour filter, the two are the same bytes on all three;
-/// · posed, the sampler's coordinates are normalised by the texture's size,
-///   so a smaller texture rounds differently on every GPU engine;
+/// · posed, a draw is rastered from its own quad, and a smaller quad rounds
+///   its texture coordinates differently on every GPU engine (🔬2026-10-30:
+///   under the whole's quad the crop is 3 bytes of 3024 apart, by 1);
 /// · a blur reads the texture's bounds.
 /// Each of those gets the whole image; the whole image laid back from the
 /// crop draws the same bytes as the whole composed, on all three.
