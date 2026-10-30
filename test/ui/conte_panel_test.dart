@@ -5,6 +5,8 @@ import '../helpers/conte_book.dart';
 import '../helpers/device_viewport.dart';
 import '../helpers/frame_census.dart';
 import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/models/camera_instruction.dart'
+    show InstructionEvent;
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -39,6 +41,7 @@ import 'package:anicel/src/ui/conte/conte_words_in.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
 import 'package:anicel/src/ui/storyboard_layer_policy.dart';
+import 'package:anicel/src/ui/text/app_strings.dart' show AppStrings;
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppTypography;
 import '../helpers/number_pad_keyboard.dart';
 
@@ -112,8 +115,9 @@ Future<EditorSessionManager> _pumpConte(
   ConteInkController? inkController,
   ValueListenable<BrushToolState>? brushToolState,
   bool brushAllowed = false,
+  Project? project,
 }) async {
-  final session = EditorSessionManager(initialProject: _project());
+  final session = EditorSessionManager(initialProject: project ?? _project());
   addTearDown(session.dispose);
   await tester.binding.setSurfaceSize(const Size(900, 900));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -215,6 +219,41 @@ void main() {
     expect(
       painter().marks().whereType<SheetWords>().map((word) => word.text),
       containsAll(['내용', '대사']),
+    );
+  });
+
+  testWidgets("🗣️an O.L's fixed line prints the NOTATION language's word, "
+      'as the sheet does (I-93-Q1)', (tester) async {
+    final project = _project();
+    final track = project.tracks.single;
+    final session = await _pumpConte(
+      tester,
+      project: project.copyWith(
+        tracks: [
+          track.copyWith(
+            transitionLayer: track.transitionLayer.copyWith(
+              instructions: const {
+                8: InstructionEvent(instructionId: 'ol', length: 4),
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+    session.languageSettings.value = session.languageSettings.value.copyWith(
+      notationLanguage: AppLanguage.ko,
+      programLanguage: AppLanguage.en,
+    );
+    tester.element(find.byType(ConteTabHost)).markNeedsBuild();
+    await tester.pump();
+
+    final painter =
+        tester.widget<CustomPaint>(conteBodyForm()).painter!
+            as ContePagePainter;
+    final word = AppStrings.of(AppLanguage.ko).tlTransitionCutOl;
+    expect(
+      painter.marks().whereType<SheetWords>().map((mark) => mark.text),
+      contains('c39 × c40 $word (0+4)'),
     );
   });
 

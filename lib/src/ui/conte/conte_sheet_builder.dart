@@ -162,10 +162,10 @@ _TrackTransitions _transitionsOf(
 }
 
 /// The transitions [track] writes on [entry]'s [cells] (I-93-Q1), a list
-/// to each cell, in the order they start: an O.L on the last cell of the
-/// cut it leaves — 「앞 컷에만」, nowhere on the cut it enters — and a fade,
-/// which only applies inside its own cut ([oneSidedSpanAppliesToCut]), on
-/// the cell of it the fade starts in.
+/// to each cell, in the order they start (the row keeps its spans so): an
+/// O.L on the last cell of the cut it leaves — 「앞 컷에만」, nowhere on the
+/// cut it enters — and a fade, which only applies inside its own cut
+/// ([oneSidedSpanAppliesToCut]), on the cell of it the fade starts in.
 ///
 /// ⚠️Mine: an O.L out of a gap leaves no cut, so no conte writes it.
 List<List<String>> _transitionLinesOn(
@@ -178,9 +178,7 @@ List<List<String>> _transitionLinesOn(
   if (cells.isEmpty) {
     return lines;
   }
-  final timed = track.row.instructions.entries.toList()
-    ..sort((a, b) => a.key.compareTo(b.key));
-  for (final entryOfRow in timed) {
+  for (final entryOfRow in track.row.instructions.entries) {
     final span = transitionSpanOfEvent(entryOfRow, project.cameraInstructions);
     final cell = switch (transitionSidesOf(span.mark)) {
       TransitionSides.both =>
