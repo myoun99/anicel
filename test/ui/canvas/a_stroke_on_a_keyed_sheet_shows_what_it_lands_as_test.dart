@@ -1,5 +1,3 @@
-import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
@@ -7,17 +5,12 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
-import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/tile_coord.dart';
-import 'package:anicel/src/services/fx_plugins/fx_plugin_library_service.dart';
-import 'package:anicel/src/services/fx_plugins/installed_fx_plugins.dart';
-import 'package:archive/archive.dart';
 
 import '../../helpers/a_plugin_that_shifts.dart';
 import '../../helpers/cel_text_tool_harness.dart';
-import '../../helpers/temp_dir.dart';
 
 /// card a-stroke-on-a-keyed-row-shows-its-tiles-unkeyed — A STROKE DRAWN
 /// ON A ROW THAT KEYS A SHEET'S PAPER AWAY SHOWS WHAT IT LANDS AS, WHILE
@@ -139,50 +132,10 @@ void main() {
   testWidgets('🚨a stroke on a row whose chain runs a PLUGIN shows what it '
       'lands as while the pen is down — the whole cel the plugin makes, from '
       'the plugin this device has installed (🗣️I-132-Q32 b)', (tester) async {
-    final shift = FxPluginDescription.fromJson({
-      'spec': 1,
-      'id': 'test.shift',
-      'name': 'Shift',
-      'vendor': 'Test',
-      'version': '1',
-      'can': ['cpu'],
-      'params': <Object?>[],
-    })!;
-    final room = Directory.systemTemp.createTempSync('anicel_fx_stroke_');
-    addTearDown(() => deleteTempQuietly(room));
-    final plugins = InstalledFxPlugins(
-      service: FxPluginLibraryService(directoryPath: '${room.path}/fx'),
-      // The stand-in's module is its description's text.
-      describe: (wasm) => (text: utf8.decode(wasm), refusal: null),
-      open: (_, _) => ShiftingFxPlugin(by: 1),
-    );
-    addTearDown(plugins.dispose);
-    await tester.runAsync(() async {
-      await plugins.load();
-      await plugins.install(
-        ZipEncoder().encodeBytes(
-          Archive()..add(
-            ArchiveFile.bytes(
-              'plugin.wasm',
-              utf8.encode(jsonEncode(shift.toJson())),
-            ),
-          ),
-        ),
-        confirm: (_, {required native, required replacing}) async => true,
-      );
-    });
     await pumpTextToolApp(
       tester,
-      project: textToolProject(
-        effects: [
-          LayerEffect.defaults(
-            id: const EffectId('shift'),
-            kind: EffectKind.plugin,
-            plugin: shift,
-          ),
-        ],
-      ),
-      fxPlugins: plugins,
+      project: textToolProject(effects: [shiftingFxPluginLayerEffect()]),
+      fxPlugins: await installedShiftingFxPlugin(tester),
     );
 
     final (:before, :drawing, :landed) = await strokeOverPage(tester);

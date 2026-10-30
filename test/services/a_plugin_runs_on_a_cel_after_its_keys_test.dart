@@ -158,6 +158,59 @@ void main() {
       expect(runner.inputs.single, (left: -1, top: -1, width: 10, height: 6));
     });
 
+    test('takes in the ink past the paper too, and reaches no further than '
+        'the cel can hold — keeping no tile past its wall', () {
+      final runner = ShiftingFxPlugin(by: 0);
+      final past = BitmapSurface(
+        canvasSize: paper,
+        pasteboardReach: PasteboardReach.whole,
+        tileSize: tileSize,
+        tiles: {
+          // (-2, 1): on the pasteboard, left of the paper.
+          TileCoord(x: -1, y: 0): BitmapTile(
+            size: tileSize,
+            pixels: Uint8List(tileSize * tileSize * 4)..setAll(24, red),
+          ),
+        },
+      );
+
+      final shown = celSurfaceAsShown(past, [
+        plugin(run: fxPluginRunOf(runner)),
+      ]);
+
+      expect(runner.inputs.single, (left: -4, top: 0, width: 12, height: 4));
+      expect(shown.tileAt(TileCoord(x: -1, y: 0))!.pixels.sublist(24, 28), red);
+
+      final far = ShiftingFxPlugin(by: 1000);
+      celSurfaceAsShown(celWith({(1, 1): red}), [
+        plugin(run: fxPluginRunOf(far)),
+      ]);
+      expect(
+        far.inputs.single,
+        (left: -8, top: -8, width: 24, height: 20),
+        reason: 'as far as the cel is long, and no further',
+      );
+
+      final edge = celSurfaceAsShown(celWith({(7, 1): red}), [
+        plugin(run: fxPluginRunOf(ShiftingFxPlugin())),
+      ]);
+      expect(
+        edge.tiles.keys,
+        isEmpty,
+        reason: 'moved past the wall it is gone, as a stroke past it is',
+      );
+    });
+
+    test('a pixel the plugin leaves without cover is clear, whatever colour '
+        'it gives it', () {
+      final shown = celSurfaceAsShown(celWith({(1, 1): red}), [
+        plugin(run: fxPluginRunOf(_ColourWithoutCover())),
+      ]);
+
+      expect(pixelOf(shown, 1, 1), red);
+      expect(pixelOf(shown, 0, 0), [0, 0, 0, 0]);
+    });
+
     test('runs after the keys, over what they left', () {
       final cel = celWith({(1, 1): red, (2, 1): green});
 
@@ -444,6 +497,12 @@ void main() {
       );
     });
 
+    test('runs none on a chain of keys alone', () {
+      final a = row('a');
+      final keys = [key()];
+      expect(binding(keys, cut: cutOf([a]), row: a, frameIndex: 0), keys);
+    });
+
     test('the plan runs it on every row it lays — and a plugin\'s sample '
         'knows its frame where nothing binds it', () {
       final a = row('a', effects: [pluginOn()]);
@@ -477,4 +536,30 @@ void main() {
       );
     });
   });
+}
+
+/// Hands every pixel back as it came, but gives the ones without cover a
+/// colour — as a plugin told nothing of how a clear pixel is kept may.
+final class _ColourWithoutCover implements FxPluginRunner {
+  @override
+  int? reach(Float64List values, FxPluginMoment moment) => 0;
+
+  @override
+  Uint8List? render({
+    required FxPluginPicture input,
+    required Float64List values,
+    required List<FxPluginPicture> layers,
+    required FxPluginMoment moment,
+  }) {
+    final out = Uint8List.fromList(input.pixels);
+    for (var at = 0; at < out.length; at += 4) {
+      if (out[at + 3] == 0) {
+        out.fillRange(at, at + 3, 9);
+      }
+    }
+    return out;
+  }
+
+  @override
+  void close() {}
 }

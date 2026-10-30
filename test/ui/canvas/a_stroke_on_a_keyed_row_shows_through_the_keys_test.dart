@@ -394,6 +394,38 @@ void main() {
       expect(model.stageRegion(source: rasterizer, coords: [sheet]), isFalse);
       expect(model.stagedCount, 0);
     });
+
+    test('a stroke after a reset shows nothing of the one before it — the '
+        'cel may have lost it since (an undo)', () async {
+      final base = cel();
+      final model = overlayOn(base, shifted);
+      model.showResultTiles([
+        PromotedStrokeTile(sheet, BitmapTile.blank(size: tileSize), 1),
+      ]);
+      model
+        ..reset()
+        ..preBlendBase = base;
+
+      model.showResultTiles([PromotedStrokeTile(bare, sheetTile, 2)]);
+
+      await expectShows(
+        model,
+        landedAsShown(base, {bare: sheetTile}, shifted),
+        base,
+      );
+    });
+
+    test('a picture the cel no longer shows is let go', () {
+      final model = overlayOn(cel(), shifted);
+      model.showResultTiles([
+        PromotedStrokeTile(sheet, BitmapTile.blank(size: tileSize), 1),
+      ]);
+      final first = model.tileImages[sheet]!;
+
+      model.showResultTiles([PromotedStrokeTile(bare, sheetTile, 2)]);
+
+      expect(first.debugDisposed, isTrue);
+    });
   });
 }
 
