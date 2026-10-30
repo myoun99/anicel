@@ -211,6 +211,30 @@ void main() {
       expect(pixelOf(shown, 0, 0), [0, 0, 0, 0]);
     });
 
+    test('lays what the plugin draws round the cel where it drew it — in '
+        'its reach past the paper too', () {
+      final cel = BitmapSurface(
+        canvasSize: paper,
+        pasteboardReach: PasteboardReach.whole,
+        tileSize: tileSize,
+      );
+
+      final shown = celSurfaceAsShown(cel, [
+        plugin(run: fxPluginRunOf(_Fill(by: 1))),
+      ]);
+
+      // Row 1 of the tile left of the paper: its last pixel is x -1, in the
+      // plugin's reach; its first is x -4, past it.
+      final row = shown
+          .tileAt(TileCoord(x: -1, y: 0))!
+          .pixels
+          .sublist(tileSize * 4, tileSize * 8);
+      expect(
+        [row.sublist(12, 16), row.sublist(0, 4)],
+        [green, [0, 0, 0, 0]],
+      );
+    });
+
     test('runs after the keys, over what they left', () {
       final cel = celWith({(1, 1): red, (2, 1): green});
 
@@ -535,6 +559,33 @@ void main() {
       );
     });
   });
+}
+
+/// Reaches [by] past what it is handed and covers all of it in green.
+final class _Fill implements FxPluginRunner {
+  _Fill({required this.by});
+
+  final int by;
+
+  @override
+  int? reach(Float64List values, FxPluginMoment moment) => by;
+
+  @override
+  Uint8List? render({
+    required FxPluginPicture input,
+    required Float64List values,
+    required List<FxPluginPicture> layers,
+    required FxPluginMoment moment,
+  }) {
+    final out = Uint8List(input.pixels.length);
+    for (var at = 0; at < out.length; at += 4) {
+      out.setAll(at, const [0, 255, 0, 255]);
+    }
+    return out;
+  }
+
+  @override
+  void close() {}
 }
 
 /// Hands every pixel back as it came, but gives the ones without cover a

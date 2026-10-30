@@ -22,6 +22,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/fx_plugins/installed_fx_plugins.dart';
 import 'package:anicel/src/ui/canvas/iris_blur_shader.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
@@ -29,6 +30,7 @@ import 'package:anicel/src/ui/export/export_plan.dart';
 import 'package:anicel/src/ui/export/still_image_encoders.dart'
     show ExportLayerRow;
 
+import '../../helpers/a_plugin_that_shifts.dart';
 import '../../helpers/cels_parked_cold.dart';
 
 /// 🗣️I-132-Q16 a (유저 2026-10-28): a camera lens blur's blur map is a row of
@@ -88,13 +90,22 @@ void main() {
   /// The checker's row of a PSD of a cut where it wears what [scene] names:
   /// nothing (`sharp`), a lens blur of radius 4 with no map (`uniform`), or
   /// one whose map is the depth row (`mapped`) — or, [inAFolder], the
-  /// folder that holds it, darkening it all the way.
-  Future<Uint8List> drawn(String scene, {bool inAFolder = false}) async {
+  /// folder that holds it, darkening it all the way. The depth row shows
+  /// [map] where it is given one and wears [mapEffects], on a device
+  /// whose installed plugins are [plugins].
+  Future<Uint8List> drawn(
+    String scene, {
+    bool inAFolder = false,
+    BitmapSurface? map,
+    List<LayerEffect> mapEffects = const [],
+    InstalledFxPlugins? plugins,
+  }) async {
     final lens = LayerEffect.defaults(
       id: const EffectId('lens'),
       kind: EffectKind.cameraLensBlur,
     ).withParameter('blurRadius', EffectParameter(value: 4));
     final s = EditorSessionManager(
+      fxPlugins: plugins,
       initialProject: Project(
         id: const ProjectId('project'),
         name: 'Project',
@@ -110,7 +121,11 @@ void main() {
                 duration: 1,
                 canvasSize: canvas,
                 layers: [
-                  row('depth', folder: inAFolder ? 'f' : null),
+                  row(
+                    'depth',
+                    effects: mapEffects,
+                    folder: inAFolder ? 'f' : null,
+                  ),
                   if (inAFolder)
                     createFolderLayer(id: const LayerId('f'), name: 'f')
                         .copyWith(
@@ -148,7 +163,10 @@ void main() {
     addTearDown(s.dispose);
     final cut = s.requireActiveCut;
     parkCold(s.renderCaches.brushFrameStore, {
-      for (final (id, surface) in [('depth', depth), ('checker', checker)])
+      for (final (id, surface) in [
+        ('depth', map ?? depth),
+        ('checker', checker),
+      ])
         s.brushFrameKeyForCut(cut, LayerId(id), FrameId('$id-f')): surface,
     });
     final renderer = ExportFrameRenderer(session: s, keepsRowsApart: true);
@@ -200,4 +218,38 @@ void main() {
       });
     });
   }
+
+  testWidgets('🎯a map row whose chain runs a PLUGIN is read as the plugin '
+      'makes it — its seam where the plugin moved it (🗣️I-132-Q32 b)', (
+    tester,
+  ) async {
+    final plugins = await installedShiftingFxPlugin(tester, by: 8);
+    await tester.runAsync(() async {
+      // The depth row as the stand-in leaves it: moved right by 8, clear
+      // where nothing moved in.
+      final movedMap = surfaceOf(
+        (x, _) => x < 8
+            ? const [0, 0, 0, 0]
+            : x < seam + 8
+            ? const [0, 0, 0, 0xFF]
+            : const [0xFF, 0xFF, 0xFF, 0xFF],
+      );
+      final unmoved = await drawn('mapped');
+      final asMoved = await drawn('mapped', map: movedMap);
+      final throughThePlugin = await drawn(
+        'mapped',
+        mapEffects: [shiftingFxPluginLayerEffect()],
+        plugins: plugins,
+      );
+
+      var moves = 0;
+      for (var at = 0; at < unmoved.length; at += 1) {
+        if (unmoved[at] != asMoved[at]) {
+          moves += 1;
+        }
+      }
+      expect(moves, greaterThan(0), reason: '⛔premise: the seam shows');
+      expect(throughThePlugin, asMoved);
+    });
+  });
 }
