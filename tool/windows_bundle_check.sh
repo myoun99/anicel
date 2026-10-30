@@ -35,7 +35,12 @@ if [ ! -d "$BUNDLE" ]; then
 fi
 
 FLUTTER_ROOT="$(dirname "$(dirname "$(command -v flutter 2>/dev/null || echo /nonexistent/x/y)")")"
-ENGINE="$FLUTTER_ROOT/bin/cache/artifacts/engine/windows-x64-release/flutter_windows.dll"
+# The folder Flutter built into names the CPU, and its engine is another file.
+case "$BUNDLE" in
+  */arm64/*) ARCH=arm64 ;;
+  *) ARCH=x64 ;;
+esac
+ENGINE="$FLUTTER_ROOT/bin/cache/artifacts/engine/windows-$ARCH-release/flutter_windows.dll"
 
 fail=0
 say_fail() {

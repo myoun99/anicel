@@ -31,11 +31,12 @@ void main() {
     expect(own, isEmpty, reason: 'bash tool/release_build.sh <platform> <N>');
   });
 
-  test('the three release workflows build through it', () {
+  test('the four release workflows build through it', () {
     for (final name in const [
       '.github/workflows/testflight.yml',
       '.github/workflows/macos-developer-id.yml',
       '.github/workflows/linux-release.yml',
+      '.github/workflows/windows-arm64-release.yml',
     ]) {
       expect(
         File(name).readAsStringSync(),

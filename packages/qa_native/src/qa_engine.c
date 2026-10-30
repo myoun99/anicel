@@ -77,7 +77,7 @@ static inline int32_t qa_round_wide(double value) {
     (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 #define QA_SSE2 1
 #include <emmintrin.h>
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) || defined(_M_ARM64)
 #define QA_NEON 1
 #include <arm_neon.h>
 #endif
@@ -1703,8 +1703,10 @@ static inline int qa_tol_ok4(const uint8_t* rgba, qa_vec4 seed4, qa_vec4 tol4) {
   const uint8x16_t ok8 = vcleq_u8(d, tol4);
   const uint32x4_t ok32 =
       vceqq_u32(vreinterpretq_u32_u8(ok8), vdupq_n_u32(0xFFFFFFFFu));
-  const uint32x4_t weights = {1u, 2u, 4u, 8u};
-  return (int)vaddvq_u32(vandq_u32(ok32, weights));
+  // A table, not a brace-initialised vector: to MSVC every NEON type is one
+  // union, and braces fill its first member.
+  static const uint32_t weights[4] = {1u, 2u, 4u, 8u};
+  return (int)vaddvq_u32(vandq_u32(ok32, vld1q_u32(weights)));
 }
 #endif
 

@@ -1,0 +1,148 @@
+# 🪟THE WINDOWS BUILD FOR ARM PCs — a release bundle, checked against the
+# bytes every other platform draws, launched once, zipped.
+#
+# 유저 2026-10-30 (board, windows-arm64-build): 「일단 arm64가 지금 없으니까
+# 이거 빌드에넣고싶」 — Windows on ARM has been a target since 2026-07-07, and
+# nothing had ever compiled the app for it. It cannot be built on the desk:
+# Flutter builds Windows for the CPU it runs on, and both PCs here are x64.
+#
+# ⛔NO SCHEDULE AND NO PUSH TRIGGER, for the reason at the head of
+# `macos-developer-id.yml`: 132 runs in a day got the account suspended
+# (2026-08-31). One run per release round, asked for by hand.
+#
+# ⚠️NOBODY HERE OWNS AN ARM PC. This file proves the bundle builds, that every
+# binary in it is ARM64, that the engine it ships draws the bytes every other
+# platform draws, and that it opens its window on this runner. Whether a pen's
+# pressure arrives, or a real GPU keeps up, nobody has seen.
+name: Windows ARM64 (release bundle)
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: The build number to stamp — the release round's TestFlight number.
+        required: true
+        type: string
+
+env:
+  FLUTTER_VERSION: '3.47.4'
+
+jobs:
+  bundle:
+    name: Windows ARM64 bundle
+    runs-on: windows-11-arm
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      # 🚨NOT subosito/flutter-action. Flutter's only Windows archive is x64
+      # (no release in releases_windows.json says arm64), and the tool builds
+      # for the CPU its own Dart runs on — so under the emulator the whole
+      # job would stay green and hand out another x64 build. A checkout of
+      # the tag fetches its Dart for this machine instead, as long as the
+      # first run is a native process: PowerShell here, not bash, which may
+      # be x64 itself.
+      - name: Flutter for this CPU
+        shell: pwsh
+        run: |
+          git clone --depth 1 --branch "$env:FLUTTER_VERSION" https://github.com/flutter/flutter.git "$env:RUNNER_TEMP\flutter"
+          $bin = "$env:RUNNER_TEMP\flutter\bin"
+          & "$bin\flutter.bat" --version
+          $dart = & "$bin\dart.bat" --version
+          if ($dart -notmatch 'windows_arm64') {
+            Write-Output "::error::Dart is not native here: $dart"
+            exit 1
+          }
+          $bin | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+
+      - run: flutter pub get
+
+      # 🔢One number per round, read through env and never pasted into the
+      # script, as linux-release.yml does.
+      - name: Build Flutter Windows
+        env:
+          BUILD_NUMBER: ${{ inputs.build_number }}
+        run: |
+          bash tool/release_build.sh windows "$BUILD_NUMBER"
+
+      - name: The bundle's own check
+        run: bash tool/windows_bundle_check.sh build/windows/arm64/runner/Release
+
+      # One x64 library is enough to stop the app, and only on an ARM PC: a
+      # prebuilt fetched by a package's build hook comes as the hook chose.
+      - name: Every binary is ARM64
+        shell: pwsh
+        run: |
+          $wrong = Get-ChildItem build\windows\arm64\runner\Release -Recurse -Include *.exe, *.dll | Where-Object {
+            $bytes = [IO.File]::ReadAllBytes($_.FullName)
+            $header = [BitConverter]::ToInt32($bytes, 0x3C)
+            [BitConverter]::ToUInt16($bytes, $header + 4) -ne 0xAA64
+          }
+          if ($wrong) {
+            Write-Output "::error::not ARM64: $($wrong.Name -join ', ')"
+            exit 1
+          }
+
+      # The release path's parity check, as the Linux build runs it. The
+      # engine is read in the build folder, because the sample plugin the fx
+      # pin opens stands beside it there and not in the bundle; `cmp` holds it
+      # to the file the bundle ships, so the file checked is the file handed
+      # out. MSVC on ARM64 is a compiler nothing else here runs.
+      - name: Parity against the shipped engine
+        env:
+          QA_ENGINE_PATH: ${{ github.workspace }}/build/windows/arm64/plugins/qa_native/shared/Release/qa_engine.dll
+          # A missing engine must FAIL rather than skip: a skipped parity
+          # suite and a passing one look identical in a summary.
+          QA_REQUIRE_NATIVE: '1'
+        run: |
+          set -euo pipefail
+          cmp "$QA_ENGINE_PATH" build/windows/arm64/runner/Release/qa_engine.dll
+          bash tool/native_parity_tests.sh > "$RUNNER_TEMP/parity.txt"
+          echo "parity subset: $(wc -l < "$RUNNER_TEMP/parity.txt") of $(find test -name '*_test.dart' | wc -l) files"
+          # Run by the run plan, as every list run goes: the pins that wait
+          # for the collector alone and last (tool/affected_tests.dart).
+          dart run tool/affected_tests.dart --files-from "$RUNNER_TEMP/parity.txt"
+
+      # The launch the x64 zip gets on the desk: still alive after 15 s, with
+      # its window titled Anicel. It proves every library resolves and the
+      # runner makes its window — nothing about a pen, a real GPU or a speed.
+      - name: Launch
+        shell: pwsh
+        run: |
+          $app = Start-Process build\windows\arm64\runner\Release\Anicel.exe -PassThru
+          Start-Sleep -Seconds 15
+          $app.Refresh()
+          if ($app.HasExited) {
+            Write-Output "::error::the app was gone within 15 s"
+            exit 1
+          }
+          $title = $app.MainWindowTitle
+          Stop-Process -Id $app.Id -Force
+          if ($title -ne 'Anicel') {
+            Write-Output "::error::no window titled Anicel, got '$title'"
+            exit 1
+          }
+
+      # The folder as Anicel\, as the x64 zip holds it: the exe does not
+      # start without the DLLs and data\ beside it.
+      - name: Package
+        shell: pwsh
+        run: |
+          $pkg = "$env:RUNNER_TEMP\pkg"
+          New-Item -ItemType Directory $pkg | Out-Null
+          Copy-Item -Recurse build\windows\arm64\runner\Release "$pkg\Anicel"
+          Push-Location $pkg
+          & "$env:SystemRoot\System32\tar.exe" -a -cf "$env:RUNNER_TEMP\Anicel-windows-arm64.zip" Anicel
+          Pop-Location
+
+      # 90 days is the ceiling a public repository gets, as for the Mac zip.
+      - name: Upload the Windows ARM64 bundle
+        uses: actions/upload-artifact@v5
+        with:
+          name: anicel-windows-arm64
+          path: ${{ runner.temp }}/Anicel-windows-arm64.zip
+          if-no-files-found: error
+          retention-days: 90
