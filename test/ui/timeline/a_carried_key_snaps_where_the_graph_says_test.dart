@@ -16,6 +16,8 @@ import 'package:anicel/src/ui/timeline/lane_graph_box_stretch.dart'
     show laneGraphBoxHandleAt;
 import 'package:anicel/src/ui/timeline/lane_graph_seats.dart'
     show LaneGraphLine;
+import 'package:anicel/src/ui/timeline/lane_graph_snap.dart'
+    show LaneGraphCarry, LaneGraphSnapLine, laneGraphUnsnapped;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/property_lanes_for_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
@@ -449,5 +451,57 @@ void main() {
     expect(stretch.factor, closeTo((pulled - 8) / (30 - 8), 1e-9));
     expect(tester.renderObject(paint()), isNot(snapLine()));
     await gesture.up();
+  });
+
+  group('the carry and its line, alone', () {
+    /// The key on 8 carried, a frame [cell] pixels along, with [keys]
+    /// about it and the [playhead] — far apart across, so only time snaps.
+    LaneGraphCarry carry({
+      List<({int time, double across})> keys = const [],
+      int? playhead,
+    }) => LaneGraphCarry(
+      axis: Axis.horizontal,
+      frames: geometry,
+      alongOf: (time, frames) => time * frames.frameCellExtent,
+      key: (time: 8, across: 0),
+      keys: keys,
+      playhead: ValueNotifier(playhead),
+      frameCount: 0,
+    );
+
+    test('a hand as near two times takes the first the graph names — a '
+        'key\'s before the playhead\'s', () {
+      final carried = carry(
+        keys: [(time: 10, across: 500)],
+        playhead: 12,
+      ).carriedBy(const Offset(3 * cell, 0), oneWay: false, snapping: true);
+
+      expect(carried.snap.time, 10, reason: 'on 11, a frame from either');
+    });
+
+    test('its line is drawn again where the frames pan, and where it snaps '
+        'elsewhere — and only then', () {
+      final carried = carry();
+      final line = LaneGraphSnapLine(carried, (time: 10, across: null));
+      var told = 0;
+      void tell() => told += 1;
+      line.addListener(tell);
+      addTearDown(() => line.removeListener(tell));
+
+      geometry.value = const TimelineFrameGeometry(
+        viewExtentPx: 60 * cell,
+        frameCellExtent: cell,
+        frameStartIndex: 4,
+        frameEndIndexExclusive: 64,
+      );
+
+      expect(told, 1, reason: 'the frames panned');
+      expect(
+        line.shouldRepaint(LaneGraphSnapLine(carried, laneGraphUnsnapped)),
+        isTrue,
+      );
+      final again = LaneGraphSnapLine(carried, (time: 10, across: null));
+      expect(line.shouldRepaint(again), isFalse);
+    });
   });
 }
