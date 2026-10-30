@@ -1081,21 +1081,14 @@ class LayerEffect {
     final rawPoints = json['points'] as Map<String, dynamic>? ?? {};
     final rawLayers = json['layers'] as Map<String, dynamic>? ?? {};
     final stand = json['stand'] as Map<String, dynamic>?;
-    // A plugin's effect whose description is not a whole one is refused as
-    // an effect of a kind this app has not is ([EffectKind.fromJson]).
-    final plugin = kind == EffectKind.plugin
-        ? FxPluginDescription.fromJson(json['plugin']) ??
-              (throw ArgumentError.value(
-                json['plugin'],
-                'plugin',
-                'A plugin effect keeps a whole description of its plugin.',
-              ))
-        : null;
     // The constructor fills whatever the file left out.
     return LayerEffect(
       id: EffectId.fromJson(json['id'] as Map<String, dynamic>),
       kind: kind,
-      plugin: plugin,
+      // A plugin's effect whose description is not a whole one is refused
+      // there, as one with none is — as an effect of a kind this app has
+      // not is ([EffectKind.fromJson]).
+      plugin: FxPluginDescription.fromJson(json['plugin']),
       enabled: json['enabled'] as bool? ?? true,
       parameters: {
         for (final entry in rawParameters.entries)

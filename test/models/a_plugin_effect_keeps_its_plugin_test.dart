@@ -109,7 +109,36 @@ void main() {
     expect(sample.color('tint'), 0xFFFF0000);
     expect(sample.parameter('mode'), 1);
     expect(sample.layers, {'mask': null});
-    expect(sample.namingNoRow.plugin, effect.plugin);
+
+    final naming = resolveLayerEffectsAt(
+      effects: [effect.withLayer('mask', const LayerId('matte'))],
+      frameIndex: 0,
+    ).single;
+    expect(naming.layers, {'mask': const LayerId('matte')});
+    expect(naming.namingNoRow.layers, {'mask': null});
+    expect(naming.namingNoRow.plugin, effect.plugin);
+  });
+
+  test('its values are read as an app kind\'s are — held, and keyed', () {
+    final held = effectOf(
+      glow(),
+    ).withParameter('brightness', EffectParameter(value: 60));
+    final keyed = held.withParameter(
+      'brightness',
+      EffectParameter(
+        value: 60,
+        track: PropertyTrack<double>(
+          keys: {0: const PropertyKey<double>(0), 8: const PropertyKey(80)},
+        ),
+      ),
+    );
+    double at(LayerEffect effect, int frame) => resolveLayerEffectsAt(
+      effects: [effect],
+      frameIndex: frame,
+    ).single.parameter('brightness');
+
+    expect(at(held, 3), 60);
+    expect(at(keyed, 4), 40);
   });
 
   test('the project keeps it whole: written and read back it is the same '

@@ -72,6 +72,12 @@ const ledger = <String, Why>{
   "color/color_palettes.dart | 'palette-export'": Why.declined,
   "color/color_palettes.dart | 'palette-make-default'": Why.declined,
   "color/color_palettes.dart | 'palette-rename'": Why.declined,
+  // ⚠️MY READING of I-40-Q5's answer, as the palettes' above is of Q2's: a
+  // row per plugin this device has is a row per recent project — 「몇 번째
+  // 줄」 or 「그 플러그인」? (I-132)
+  'timeline/timeline_bar_menus.dart | '
+          "'add-effect-plugin-\${description.id}'":
+      Why.declined,
   // 🗣️I-40-Q3 (유저 2026-10-09, two viewers — which one would a key take?):
   // 「안만들기로했음」.
   "media/media_viewer_tab_host.dart | _key('register-asset-button')":

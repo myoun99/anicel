@@ -19,6 +19,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/fx_plugins/fx_plugin_library_service.dart';
 import 'package:anicel/src/services/fx_plugins/installed_fx_plugins.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/effects_and_fx.dart' show TrackChain;
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart'
     show addEffectLabel;
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -77,7 +78,10 @@ void main() {
     return plugins;
   }
 
-  EditorSessionManager sessionOn(InstalledFxPlugins plugins) {
+  EditorSessionManager sessionOn(
+    InstalledFxPlugins plugins, {
+    List<Layer> also = const [],
+  }) {
     final session = EditorSessionManager(
       fxPlugins: plugins,
       initialProject: Project(
@@ -113,6 +117,7 @@ void main() {
                       ),
                     },
                   ),
+                  ...also,
                 ],
               ),
             ],
@@ -194,6 +199,46 @@ void main() {
     expect(added.kind, EffectKind.plugin);
     expect(added.plugin, session.fxPlugins.plugins.single.description);
     expect(added.parameterOf('amount').value, 5);
+  });
+
+  test('the V row takes one as it takes an app kind', () async {
+    final session = sessionOn(await deviceWith(['a.b']));
+    final plugin = session.fxPlugins.plugins.single.description;
+
+    session.effectsAndFx.addEffect(
+      const TrackChain(TrackId('t1')),
+      EffectKind.plugin,
+      plugin: plugin,
+    );
+
+    final added = session.repository.requireProject().tracks.single.effects;
+    expect(added.single.plugin, plugin);
+    expect(chainOf(session), isEmpty, reason: 'not the active row\'s');
+  });
+
+  test('on a row that takes no effect its rows are dimmed, as the app '
+      'kinds\' are', () async {
+    final session = sessionOn(
+      await deviceWith(['a.b']),
+      also: [
+        Layer(
+          id: const LayerId('camera'),
+          name: 'Camera',
+          kind: LayerKind.camera,
+          frames: const [],
+        ),
+      ],
+    )..selectLayer(const LayerId('camera'));
+
+    expect(
+      listOf(session)
+          .whereType<PanelFlyoutItem>()
+          .singleWhere((row) => row.keyValue == 'add-effect-blur')
+          .enabled,
+      isFalse,
+      reason: '⛔전제',
+    );
+    expect(rowOf(session, 'a.b').enabled, isFalse);
   });
 
   test('its row\'s delete takes it off the device, and an effect of it '
