@@ -19,11 +19,16 @@ import 'versioned_settings_file.dart';
 /// and the usage statistics (I-70: a consent given on this device, the
 /// days THIS device was used, which the privacy policy keeps on it, and
 /// the events it still has to send).
+///
+/// ⚖️And the fx plugins (I-132, 2026-10-30), by Q2's word for the fonts —
+/// installed here: each is kept as the native build of THIS device beside
+/// its module, and installed only once a person here has said yes to it.
 const Set<String> settingsBoundToThisMachine = {
   'recent_projects.json',
   'window.json',
   'memory_settings.json',
   'fonts',
+  'fx_plugins',
   'launch_notice.json',
   'usage_stats.json',
 };

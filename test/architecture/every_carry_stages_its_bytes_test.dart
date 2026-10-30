@@ -198,6 +198,11 @@ const Set<String> _allowedFiles = {
   // bytes are in the app's keeping from that moment, which is what staging
   // is for.
   'lib/src/services/font_library_service.dart',
+  // The device's FX PLUGINS (I-132) are kept as the fonts are: the library
+  // mints the names a plugin's builds go under and writes them at once
+  // (`FxPluginLibraryService.keep`). No project asset is carried — what a
+  // project keeps of a plugin is its description, inside the effect.
+  'lib/src/services/fx_plugins/fx_plugin_library_service.dart',
   // Registering a font with a project copies nothing: its bytes ARE held —
   // in that library, immutable under a name that means them for good — and
   // the text that registers it lands in the middle of somebody's typing,
