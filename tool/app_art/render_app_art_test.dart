@@ -325,6 +325,22 @@ void main() {
     }
     write('windows/runner/resources/app_icon.ico', icoOf(ico));
 
+    // The Microsoft Store package's logos (store-distribution-plan-Q2,
+    // 유저 10-30 「MS 스토어도 지금 시작」), named as windows/msix/AppxManifest.xml
+    // names them; tool/msix_pack.sh indexes the qualifiers into resources.pri.
+    // The unplated sizes are the taskbar's and Start's, drawn as the .ico is.
+    const store = 'windows/msix/Assets';
+    write('$store/Square150x150Logo.scale-200.png',
+        await renderIcon(300, IconShape.rounded));
+    write('$store/Square44x44Logo.scale-200.png',
+        await renderIcon(88, IconShape.rounded));
+    for (final size in const [16, 24, 32, 48, 256]) {
+      write('$store/Square44x44Logo.targetsize-${size}_altform-unplated.png',
+          await renderIcon(size, IconShape.rounded));
+    }
+    write('$store/StoreLogo.scale-200.png',
+        await renderIcon(100, IconShape.rounded));
+
     // macOS: the template's sizes, named as Contents.json names them.
     for (final size in const [16, 32, 64, 128, 256, 512, 1024]) {
       write(
