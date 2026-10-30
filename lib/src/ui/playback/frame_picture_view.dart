@@ -218,7 +218,13 @@ class _FramePictureViewState extends State<FramePictureView> {
   LiveSurfaceTokens? _held;
 
   /// Whether a step is on its way into the picture shown ([_writeIn]) — what
-  /// the change behind it waits for ([_catchUp]).
+  /// the change behind it waits for ([_catchUp]), in every frame.
+  ///
+  /// ↩️A frame that waits for its plugins ([_waits]) had a gate of its own
+  /// (`_writingThrough`, I-132-Q34 a) until F-512 put every frame behind
+  /// this one: the same gate, set and let go where this is — but it held
+  /// the last of a stroke back while the stroke's landing moved the picture
+  /// too, which F-512 found leaves the frame's own key short of it.
   bool _stepOnItsWay = false;
 
   /// Whether the frame is drawn as it stands in place of the picture shown.
@@ -229,14 +235,9 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// a picture made waiting for it draws ([waitsForItsPlugins]). Such a
   /// frame is never drawn as it stands: the picture shown stays until the
   /// next is there, and its live rows' changes go into it one patch at a
-  /// time ([_writingThrough]) — a stroke shown late by its plugins' time.
+  /// time, as every frame's do ([_stepOnItsWay]) — a stroke shown late by
+  /// its plugins' time.
   bool _waits = false;
-
-  /// Whether a patch of a frame that [_waits] is on its way into the
-  /// picture shown: the changes after it wait to go in together, behind it
-  /// — one a step, each waiting for the plugins, would fall ever further
-  /// behind the pen.
-  bool _writingThrough = false;
 
   /// The cel the pen is on, as the key of the picture shown read it.
   CelAsOf? _drawnOn;
@@ -722,11 +723,7 @@ class _FramePictureViewState extends State<FramePictureView> {
     // still moving. ⛔Not left out until the move lands: the next stroke's
     // first steps were drawn nowhere.
     final key = _moving ?? _showing;
-    if (live == null ||
-        shown == null ||
-        key == null ||
-        _standing.whole ||
-        _writingThrough) {
+    if (live == null || shown == null || key == null || _standing.whole) {
       return;
     }
     final held = _held;
@@ -796,7 +793,6 @@ class _FramePictureViewState extends State<FramePictureView> {
     }
     _pictures.giveWayToSteps();
     _keepAs(to);
-    _writingThrough = _waits;
     // Shown once its texels are in the picture, at every level — or, where
     // they never went in, the frame as it stands from the paint after: the
     // picture let go on the way (a write the GPU threw on, F-509). ⛔Not
@@ -812,7 +808,6 @@ class _FramePictureViewState extends State<FramePictureView> {
         if (!landed && identical(_shown?.picture, picture)) {
           _standing.whole = true;
         }
-        _writingThrough = false;
         _repaint.value += 1;
       }),
     );

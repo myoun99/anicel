@@ -360,33 +360,6 @@ void main() {
       expect(onlyTheScreen(await shotOf(tester, screen)), waits);
     });
 
-    testWidgets('a frame that $name: a stroke\'s steps go in '
-        '${waits ? 'one patch at a time' : 'a patch a step'}', (tester) async {
-      final screen = GlobalKey();
-      final gpu = WritesNeverLand();
-      final (:store, :picture, :overlay, handAnew: _) = await standOn(
-        tester,
-        screen,
-        nodesOf(),
-        gpu,
-      );
-      expect(
-        await settleAsync(tester, () => store.bytesOf(picture) != null),
-        isTrue,
-        reason: 'LIVENESS: the frame\'s picture is made',
-      );
-      await lendBothClocks(tester, rounds: 2);
-
-      await aStep(tester, overlay, TileCoord(x: 0, y: 0));
-      final first = store.landingOf(keptByTheCanvas(tester, picture));
-      expect(first, isNotNull, reason: '⛔premise: the step is on its way');
-      await aStep(tester, overlay, TileCoord(x: 1, y: 1));
-      final after = store.landingOf(keptByTheCanvas(tester, picture));
-
-      expect(identical(after, first), waits);
-      await tester.pumpWidget(const SizedBox());
-    });
-
     testWidgets('a frame that $name: a step no patch can follow — past its '
         'picture — ${waits ? 'leaves the picture shown' : 'draws the frame '
                   'as it stands'}', (tester) async {
@@ -421,6 +394,8 @@ void main() {
     });
   }
 
+  // One step on its way at a time, as in every frame (F-512 — a frame that
+  // runs none is pinned by `a_stroke_written_into_the_picture_shown.dart`).
   testWidgets('a frame that waits for a plugin: once a step is in, the steps '
       'after it go in together, in the next patch', (tester) async {
     final screen = GlobalKey();
@@ -443,7 +418,7 @@ void main() {
     expect(
       identical(store.landingOf(keptByTheCanvas(tester, picture)), first),
       isTrue,
-      reason: '⛔premise: the second waits behind the first',
+      reason: 'the second waits behind the first',
     );
 
     expect(
