@@ -163,15 +163,18 @@ class TimelineGridTileStore {
   final LinkedHashMap<String, _TileRequest> _stretched =
       LinkedHashMap<String, _TileRequest>();
 
-  /// Each axis's zoom under way: the cell extent its latest step asked at,
-  /// and what ends it [debugZoomSettles] after the step that set it.
-  final Map<Axis, ({double extent, Timer stops})> _zooms =
-      <Axis, ({double extent, Timer stops})>{};
+  /// The rows a zoom is under way in, each with the cell extent its latest
+  /// stretched span was asked at — a row's own, as the timeline's and the
+  /// storyboard's run along one axis at two zooms.
+  final Map<String, double> _zooming = <String, double>{};
 
-  /// The cell extent each axis last stood still at. A stretched span asked
+  /// What ends the zoom [debugZoomSettles] after its latest step.
+  Timer? _zoomStops;
+
+  /// The cell extent each row last stood still at. A stretched span asked
   /// for at it is no step of a zoom — a row asking again after the zoom
   /// stopped, before its tile landed — and is queued as any other.
-  final Map<Axis, double> _stoodAt = <Axis, double>{};
+  final Map<String, double> _stoodAt = <String, double>{};
 
   /// How long a zoom stands still before what it stretched is rastered —
   /// the user's example, 「예: 0.15초」.
@@ -291,10 +294,8 @@ class TimelineGridTileStore {
     _warmSpan.micros = 0;
     _drainsRunning = 0;
     _stretched.clear();
-    for (final zoom in _zooms.values) {
-      zoom.stops.cancel();
-    }
-    _zooms.clear();
+    _zoomStops?.cancel();
+    _zooming.clear();
     _stoodAt.clear();
     _epoch += 1;
   }
@@ -405,7 +406,7 @@ class TimelineGridTileStore {
     if (!_inFlight.contains(key)) {
       _warming.remove(key);
       _ahead.remove(key);
-      if (stretched != null && _zoomUnderWay(painter)) {
+      if (stretched != null && _stoodAt[row] != painter.frameCellExtent) {
         _waitForTheZoom(key, asked);
       } else {
         _enqueue(key, asked);
@@ -462,57 +463,45 @@ class TimelineGridTileStore {
         _withinRescaleBand(entry.frameCellExtent, painter.frameCellExtent);
   }
 
-  /// Whether [painter]'s axis is zooming: its cells ask at another extent
-  /// than they last stood still at — at that one there is nothing to wait
-  /// for.
-  bool _zoomUnderWay(TimelineTileRasterSource painter) =>
-      _stoodAt[painter.axis] != painter.frameCellExtent;
-
-  /// Holds [asked] — a span the zoom stretched — until the zoom stops, the
-  /// newest ask of it last; a step at a new extent puts the stop off again.
+  /// Holds [asked] — a span the zoom stretched — until the zoom stops; a
+  /// step at a new extent of its row puts the stop off again.
   void _waitForTheZoom(String key, _TileRequest asked) {
     _pending.take(key);
-    _stretched.remove(key);
     _stretched[key] = asked;
-    final axis = asked.painter.axis;
     final extent = asked.painter.frameCellExtent;
-    if (_zooms[axis]?.extent == extent) {
+    if (_zooming[asked.row] == extent) {
       return;
     }
-    _zooms[axis]?.stops.cancel();
-    _zooms[axis] = (
-      extent: extent,
-      stops: Timer(debugZoomSettles, () => _zoomStopped(axis)),
-    );
+    _zooming[asked.row] = extent;
+    _zoomStops?.cancel();
+    _zoomStops = Timer(debugZoomSettles, _zoomStopped);
   }
 
-  /// [axis]'s zoom stood still: what it stretched is rastered at the extent
-  /// it stopped at — a span a paint asked for there — and what a step
-  /// asked at another extent is let go, a raster for nothing: of the
-  /// stretched, and of the spans past the windows' edges ([warmAhead]).
+  /// The zoom stood still: each row it ran in stands at the extent its
+  /// paint last asked at — a step back to a tile's own extent asks a tile
+  /// it shows — and what it stretched is rastered there. What a step asked
+  /// at another extent is let go, a raster for nothing: of the stretched,
+  /// and of the spans past the windows' edges ([warmAhead]).
   /// ⛔Not of the next pages' ([_warming]): a run's warm-up is playback's
   /// to order (card playback-draws-frames-the-film-did-not-change-in,
   /// 브러시/렌더링 10-24), and this card did not take it up.
-  void _zoomStopped(Axis axis) {
-    final zoom = _zooms.remove(axis);
-    if (zoom == null) {
-      return;
+  void _zoomStopped() {
+    _zoomStops = null;
+    for (final MapEntry(key: row, value: extent) in _zooming.entries) {
+      _stoodAt[row] = _askedBy[row]?.painter.frameCellExtent ?? extent;
     }
-    _stoodAt[axis] = zoom.extent;
     bool passed(_TileRequest request) =>
-        request.painter.axis == axis &&
-        request.painter.frameCellExtent != zoom.extent;
+        _zooming.containsKey(request.row) &&
+        request.painter.frameCellExtent != _stoodAt[request.row];
     _ahead.removeWhere((_, request) => passed(request));
-    final waited = [
-      for (final waiting in _stretched.entries)
-        if (waiting.value.painter.axis == axis) waiting,
-    ];
+    final waited = [..._stretched.entries];
+    _stretched.clear();
     for (final MapEntry(:key, value: request) in waited) {
-      _stretched.remove(key);
       if (!passed(request) && !_inFlight.contains(key)) {
         _enqueue(key, request);
       }
     }
+    _zooming.clear();
     _startWarming();
   }
 

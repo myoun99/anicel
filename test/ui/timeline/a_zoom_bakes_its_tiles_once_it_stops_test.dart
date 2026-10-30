@@ -331,4 +331,37 @@ void main() {
     ask(20);
     expect(await pollUntil(() => landings == 3), isTrue);
   });
+
+  test('a span queued at a jump and stretched by the next step waits for '
+      'the stop — the jump\'s raster is not made', () async {
+    if (skipped()) {
+      return;
+    }
+    store.debugZoomSettles = const Duration(seconds: 2);
+    await baked(24);
+
+    expect(ask(10), isNull, reason: '⛔전제: queued, past twice');
+    ask(16);
+    expect(await pollUntil(() => landings == 2), isTrue);
+    await Future<void>.delayed(const Duration(seconds: 3));
+    expect(landings, 2, reason: 'one raster, at the stop');
+    expect(ask(16)!.width, 4 * 16 * 2);
+  });
+
+  test('each step puts the stop off — a zoom that goes on is not stopped '
+      'by the time since its first step', () async {
+    if (skipped()) {
+      return;
+    }
+    store.debugZoomSettles = const Duration(seconds: 4);
+    await baked(24);
+
+    ask(20);
+    await Future<void>.delayed(const Duration(seconds: 3));
+    ask(16);
+    await Future<void>.delayed(const Duration(seconds: 2));
+    expect(landings, 1, reason: 'four seconds have not passed since a step');
+    expect(await pollUntil(() => landings == 2), isTrue);
+    expect(ask(16)!.width, 4 * 16 * 2);
+  });
 }
