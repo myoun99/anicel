@@ -16,35 +16,51 @@ class _WorkspaceFoldedStoryboard {
 
   final _EditorWorkspaceState _state;
 
-  /// Where the storyboard stands — which row the fold is, and so how tall a
-  /// room it keeps. A channel of its own: a stand rides the rows' notifier,
-  /// no session notify, and only the region's layout has to hear it — once
-  /// per row stood on, not per step of the timeline's
-  /// ([Standing.currentRowListenable] carries both panels').
-  final ValueNotifier<TimelineRowAddress?> stand = ValueNotifier(null);
+  /// Where the storyboard stands — which row the fold is — and how tall the
+  /// room it keeps for that row ([row]; null on the V row). A channel of its
+  /// own: a stand rides the rows' notifier, no session notify, and only the
+  /// region's layout has to hear it — once per row stood on, not per step
+  /// of the timeline's ([Standing.currentRowListenable] carries both
+  /// panels'). And once per change of how tall the rail lays that row: a
+  /// graph opened over the lane stood on, a twirl, a filter, an edit.
+  /// ↩️It heard the stand alone, and a graph opened over the lane the fold
+  /// stood on kept the V row's room (card
+  /// a-folded-conte-row-keeps-its-height-through-a-graph).
+  final ValueNotifier<({TimelineRowAddress? row, double? height})> fold =
+      ValueNotifier((row: null, height: null));
 
   EditorSessionManager? _session;
+  Listenable? _heard;
 
-  void _follow() => stand.value = _session?.standing.storyboardStandingRow;
+  void _follow() => fold.value = (
+    row: _session?.standing.storyboardStandingRow,
+    height: row()?.height,
+  );
 
-  /// Follows [session]'s stand — the workspace's door for the project
-  /// coming on screen (I-7).
+  /// Follows [session]'s stand and the rail it is laid on — the
+  /// workspace's door for the project coming on screen (I-7).
   void bindSession(EditorSessionManager session) {
     unbindSession();
     _session = session;
-    session.standing.currentRowListenable.addListener(_follow);
+    _heard = Listenable.merge([
+      session.standing.currentRowListenable,
+      session,
+      session.railView.drawn,
+      session.rowSelection,
+    ])..addListener(_follow);
     _follow();
   }
 
   /// Lets go of the project going behind.
   void unbindSession() {
-    _session?.standing.currentRowListenable.removeListener(_follow);
+    _heard?.removeListener(_follow);
+    _heard = null;
     _session = null;
   }
 
   void dispose() {
     unbindSession();
-    stand.dispose();
+    fold.dispose();
   }
 
   /// The row the folded storyboard stands on, as its panel builds it — null

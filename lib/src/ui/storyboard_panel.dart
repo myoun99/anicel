@@ -628,6 +628,33 @@ typedef ConteCelContent = ({
   ValueListenable<int> revision,
 });
 
+/// What the rail lays its rows from ([_StoryboardRailRows]) — which rows it
+/// shows, which lanes they twirl down, where those sit and how tall each
+/// is: this panel's own fields ([StoryboardPanel.railInputs]), or the
+/// session's as they are now ([StoryboardPanel.railNow]).
+///
+/// 🚨ONE record, so the folded row is laid by the table the open rail lays
+/// from inputs this panel has not been given yet: the workspace builds the
+/// fold before it rebuilds this panel. ↩️A graph opened over the lane the
+/// fold stood on left the fold the V row, at the V row's height (card
+/// a-folded-conte-row-keeps-its-height-through-a-graph).
+typedef StoryboardRailInputs = ({
+  Project project,
+  CutId? activeCutId,
+  TimelineRowAddress? selectedRow,
+  ValueListenable<List<TimelineRowAddress>>? rowSelection,
+  Set<LayerId> expandedLaneLayerIds,
+  Set<String> expandedLaneGroupKeys,
+  LaneGraphsView laneGraphs,
+  Set<TimelineSection> hiddenSections,
+  TimelineRowFilter rowFilter,
+  Set<LayerId> collapsedAttachBaseIds,
+  LayerFxState Function(LayerId layerId)? layerFxStateOf,
+  LayerFxState Function(Track track)? trackFxStateOf,
+  CanvasSize? poseDisplaySize,
+  double trackLaneHeight,
+});
+
 class StoryboardPanel extends StatefulWidget {
   const StoryboardPanel({
     super.key,
@@ -713,6 +740,7 @@ class StoryboardPanel extends StatefulWidget {
     this.laneGraphs = LaneGraphsView.none,
     this.laneGraphVerbs,
     this.laneGraphsNow,
+    this.railNow,
     this.trackFxStateOf,
     this.onToggleTrackFx,
     this.onToggleTrackEffectEnabled,
@@ -1388,6 +1416,30 @@ class StoryboardPanel extends StatefulWidget {
   /// [layerOnTimesheetOf] is: a press on a graph or pin button opens it,
   /// and the new set reaches this widget only on the next build.
   final LaneGraphsView Function()? laneGraphsNow;
+
+  /// A LIVE read of what the rail lays its rows from ([railInputs]) — for
+  /// the folded row ([StoryboardRowsChannel.foldedRowFor]), which the
+  /// workspace builds before this widget is handed the new ones. Null
+  /// reads [railInputs].
+  final StoryboardRailInputs Function()? railNow;
+
+  /// What the rail lays its rows from, as this widget was handed it.
+  StoryboardRailInputs get railInputs => (
+    project: project,
+    activeCutId: activeCutId,
+    selectedRow: selectedRow,
+    rowSelection: rowSelection,
+    expandedLaneLayerIds: expandedLaneLayerIds,
+    expandedLaneGroupKeys: expandedLaneGroupKeys,
+    laneGraphs: laneGraphs,
+    hiddenSections: hiddenSections,
+    rowFilter: rowFilter,
+    collapsedAttachBaseIds: collapsedAttachBaseIds,
+    layerFxStateOf: layerFxStateOf,
+    trackFxStateOf: trackFxStateOf,
+    poseDisplaySize: poseDisplaySize,
+    trackLaneHeight: trackLaneHeight,
+  );
 
   /// The timeline's rail legend over this panel's rail (UI-R5): same
   /// bulk flyouts + master opacity bar, acting on the ACTIVE cut's layers

@@ -30,14 +30,21 @@ class _StoryboardFolded {
 
   /// [standing] as the folded overlay shows it; null for the V row, and
   /// for a row this rail does not draw.
+  ///
+  /// Laid by the rail's own table from the rail's inputs as the session
+  /// holds them NOW ([StoryboardPanel.railNow]): the workspace asks before
+  /// this panel is rebuilt with them.
   StoryboardFoldedRow? rowFor(TimelineRowAddress standing) {
-    final tracks = _state.widget.project.tracks;
+    final rows = switch (_state.widget.railNow) {
+      final now? => _StoryboardRailRows(_state, inputs: now()),
+      null => _state._railRows,
+    };
+    final project = rows._in.project;
+    final tracks = project.tracks;
     for (var index = 0; index < tracks.length; index += 1) {
-      for (final slot in _state._railRows._trackGroupRowGeometry(
-        tracks[index],
-      )) {
+      for (final slot in rows._trackGroupRowGeometry(tracks[index])) {
         if (_standingAddressOf(slot) == standing) {
-          return _rowOf(tracks[index], index, slot, standing);
+          return _rowOf(project, tracks[index], index, slot, standing);
         }
       }
     }
@@ -45,6 +52,7 @@ class _StoryboardFolded {
   }
 
   StoryboardFoldedRow? _rowOf(
+    Project project,
     Track track,
     int trackIndex,
     _StoryboardRailSlot slot,
@@ -65,10 +73,10 @@ class _StoryboardFolded {
       );
     }
     final entries = [
-      for (final entry in buildStoryboardTimelineLayout(_state.widget.project))
+      for (final entry in buildStoryboardTimelineLayout(project))
         if (entry.trackId == track.id) entry,
     ];
-    final strip = _stripOf(track, trackIndex, slot, entries);
+    final strip = _stripOf(project, track, trackIndex, slot, entries);
     return (
       height: slot.height,
       snapshot: snapshot,
@@ -80,6 +88,7 @@ class _StoryboardFolded {
 
   /// [slot]'s label and strip — the rail's own widgets for its kind.
   _FoldedStrip _stripOf(
+    Project project,
     Track track,
     int trackIndex,
     _StoryboardRailSlot slot,
@@ -88,7 +97,7 @@ class _StoryboardFolded {
     if (slot.standRow case final stood?) {
       return switch (trackConteRowOf(stood.layerId)) {
         final conte? => _conte(track, conte.seat, entries, slot.height),
-        null => _camera(track, entries, slot.height),
+        null => _camera(project, track, entries, slot.height),
       };
     }
     if (slot.seSlot case final seSlot?) {
@@ -121,11 +130,12 @@ class _StoryboardFolded {
   );
 
   _FoldedStrip _camera(
+    Project project,
     Track track,
     List<StoryboardTimelineLayoutEntry> entries,
     double height,
   ) {
-    final instructions = _state.widget.project.cameraInstructions;
+    final instructions = project.cameraInstructions;
     return (
       rail: () => _state._rows._cameraLabel(track, chromeless: true),
       frames: (context, geometry) => _StoryboardCameraRow(

@@ -73,9 +73,30 @@ typedef _LaneHand = ({
 /// they are one. It reaches the State through `_state` and rebuilds
 /// through `_rebuild`.
 class _StoryboardRailRows {
-  _StoryboardRailRows(this._state);
+  _StoryboardRailRows(this._state, {StoryboardRailInputs? inputs})
+    : _inputs = inputs;
 
   final _StoryboardPanelState _state;
+
+  /// What the rows are laid from: the [inputs] this table was made for —
+  /// the folded row's, as the session holds them now
+  /// ([_StoryboardFolded.rowFor]) — or else the panel's own, read once per
+  /// widget it is handed.
+  StoryboardRailInputs get _in {
+    if (_inputs case final inputs?) {
+      return inputs;
+    }
+    final widget = _state.widget;
+    if (!identical(widget, _ownOf)) {
+      _ownOf = widget;
+      _own = widget.railInputs;
+    }
+    return _own;
+  }
+
+  final StoryboardRailInputs? _inputs;
+  StoryboardPanel? _ownOf;
+  late StoryboardRailInputs _own;
 
   LayerRailExtent get _railExtent =>
       _state.widget.railExtent ??
@@ -160,12 +181,12 @@ class _StoryboardRailRows {
       layer: layer,
       rows: track.seLayers,
       expandedGroupKeys:
-          expandedGroupKeys ?? _state.widget.expandedLaneGroupKeys,
+          expandedGroupKeys ?? _in.expandedLaneGroupKeys,
       valueSourceAt: (frameIndex) => (layer: layer, frame: frameIndex),
       // The display size comes from the SESSION, exactly as the V row's
       // lanes take it — never from "the cut that happens to be open", which
       // made another track's S row show its values as defaults.
-      poseCentre: _state.widget.poseDisplaySize,
+      poseCentre: _in.poseDisplaySize,
     );
   }
 
@@ -178,7 +199,7 @@ class _StoryboardRailRows {
   /// rows THIS rail draws — an S row per SE slot, a V row per track, and
   /// the camera row a track (I-73 ④ⓔ) — rather than a new idea about
   /// expansion.
-  bool get _anyLanesExpanded => _state.widget.project.tracks.any(
+  bool get _anyLanesExpanded => _in.project.tracks.any(
     (track) =>
         _ownTwirlsOf(track).any((twirl) => twirl.open) ||
         _cameraLanesOpen(track) ||
@@ -215,7 +236,7 @@ class _StoryboardRailRows {
       _state.context,
       expanded ? 'Expand all lanes' : 'Collapse all lanes',
       () {
-        for (final track in _state.widget.project.tracks) {
+        for (final track in _in.project.tracks) {
           _setTrackLanes(track, toggle, expanded: expanded);
         }
       },
@@ -273,7 +294,7 @@ class _StoryboardRailRows {
   /// Whether [track]'s S row at [slot] has its lanes twirled down: its SE
   /// row's own twirl, read as the timeline's SE row reads it.
   bool _seLanesOpen(Track track, int slot) => switch (_trackSeAt(track, slot)) {
-    final row? => _state.widget.expandedLaneLayerIds.contains(row.id),
+    final row? => _in.expandedLaneLayerIds.contains(row.id),
     null => false,
   };
 
@@ -354,7 +375,7 @@ class _StoryboardRailRows {
   /// (F-199: 「콘티패널도 타임라인이랑 동일하게 se나 카메라섹션 접을수있게
   /// 로직통일」). The V row belongs to no section and always shows.
   bool _sectionShown(TimelineSection section) =>
-      !_state.widget.hiddenSections.contains(section);
+      !_in.hiddenSections.contains(section);
 
   /// Whether the rail shows [track]'s transition row: its section is the one
   /// the timeline puts that row's kind in — the camera section — and the
@@ -405,7 +426,7 @@ class _StoryboardRailRows {
     Track track,
     TimelineRowAddress row,
   ) {
-    final activeCutId = _state.widget.activeCutId;
+    final activeCutId = _in.activeCutId;
     final inHand = projectionRowInHandOn(
       track.cuts,
       row,
@@ -435,7 +456,7 @@ class _StoryboardRailRows {
   /// that wear one head), so the row stays open across a gap, where no
   /// head is there to ask.
   bool _cameraLanesOpen(Track track) {
-    final open = _state.widget.expandedLaneLayerIds;
+    final open = _in.expandedLaneLayerIds;
     return open.isNotEmpty &&
         cameraHeadFamilyOf(track.cuts).any(open.contains);
   }
@@ -445,7 +466,7 @@ class _StoryboardRailRows {
   /// turn shuts them all, else the head's, else the track's first.
   LayerId? _cameraTwirlOf(Track track) {
     final cameras = cameraHeadFamilyOf(track.cuts);
-    final open = _state.widget.expandedLaneLayerIds;
+    final open = _in.expandedLaneLayerIds;
     return cameras.where(open.contains).firstOrNull ??
         _cameraHeadOf(track)?.id ??
         cameras.firstOrNull;
@@ -470,7 +491,7 @@ class _StoryboardRailRows {
   /// twirl as one, the twirl's command writing it on every one of them
   /// (F-360, `headMirrorTargets`).
   bool _conteLanesOpen(Track track, int seat) {
-    final open = _state.widget.expandedLaneLayerIds;
+    final open = _in.expandedLaneLayerIds;
     return open.isNotEmpty &&
         conteHeadFamilyAt(track.cuts, seat).any(open.contains);
   }
@@ -480,7 +501,7 @@ class _StoryboardRailRows {
   /// the turn shuts them all, else the head's.
   LayerId? _conteTwirlOf(Track track, int seat) {
     final rows = conteHeadFamilyAt(track.cuts, seat);
-    final open = _state.widget.expandedLaneLayerIds;
+    final open = _in.expandedLaneLayerIds;
     return rows.where(open.contains).firstOrNull ?? rows.firstOrNull;
   }
 
@@ -511,7 +532,7 @@ class _StoryboardRailRows {
         layerIndex: layers.indexOf(inHand.layer),
       ),
       layers: layers,
-      collapsedAttachBaseIds: _state.widget.collapsedAttachBaseIds,
+      collapsedAttachBaseIds: _in.collapsedAttachBaseIds,
       onToggleLayerCollapsed: toggle,
       onToggleAttachGroup: toggle,
     );
@@ -527,7 +548,7 @@ class _StoryboardRailRows {
   }) => propertyLanesForRow(
     layer: row,
     rows: cut.layers,
-    expandedGroupKeys: _state.widget.expandedLaneGroupKeys,
+    expandedGroupKeys: _in.expandedLaneGroupKeys,
     valueSourceAt: valued ? (frame) => (layer: row, frame: frame) : null,
     poseCentre: valued ? cut.canvasSize : null,
   );
@@ -597,18 +618,18 @@ class _StoryboardRailRows {
     required Layer? head,
     required LayerKind kind,
   }) {
-    final standing = _state.widget.selectedRow == address;
+    final standing = _in.selectedRow == address;
     return head == null
-        ? _state.widget.rowFilter.allowsRow(
+        ? _in.rowFilter.allowsRow(
             standing: standing,
             kind: kind,
             fxEnabled: true,
           )
-        : _state.widget.rowFilter.allowsLayerRow(
+        : _in.rowFilter.allowsLayerRow(
             head,
             standing: standing,
             fxEnabled: fxEnabledFromState(
-              _state.widget.layerFxStateOf?.call(head.id),
+              _in.layerFxStateOf?.call(head.id),
             ),
           );
   }
@@ -657,18 +678,18 @@ class _StoryboardRailRows {
             kind: LayerKind.storyboard,
           );
     }
-    final widget = _state.widget;
+    final rail = _in;
     final layers = head.cut.layers;
     return layerRowHiddenBy(
           head.row,
           folders: folders[head.cut] ??= LayerFolderIndex(layers),
           attachBaseId: attachGroupBaseOf(head.row, layers),
-          hiddenSections: widget.hiddenSections,
-          rowFilter: widget.rowFilter,
-          collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
-          standingLayerId: widget.selectedRow == address ? head.row.id : null,
+          hiddenSections: rail.hiddenSections,
+          rowFilter: rail.rowFilter,
+          collapsedAttachBaseIds: rail.collapsedAttachBaseIds,
+          standingLayerId: rail.selectedRow == address ? head.row.id : null,
           fxEnabledOf: (id) =>
-              fxEnabledFromState(widget.layerFxStateOf?.call(id)),
+              fxEnabledFromState(rail.layerFxStateOf?.call(id)),
         ) ==
         null;
   }
@@ -685,11 +706,11 @@ class _StoryboardRailRows {
   bool _filterAllowsSeRow(Track track, int slot) {
     final layer = _trackSeAt(track, slot);
     return layer == null ||
-        _state.widget.rowFilter.allowsLayerRow(
+        _in.rowFilter.allowsLayerRow(
           layer,
-          standing: _state.widget.selectedRow == LayerRowAddress(layer.id),
+          standing: _in.selectedRow == LayerRowAddress(layer.id),
           fxEnabled:
-              fxEnabledFromState(_state.widget.layerFxStateOf?.call(layer.id)),
+              fxEnabledFromState(_in.layerFxStateOf?.call(layer.id)),
         );
   }
 
@@ -703,10 +724,10 @@ class _StoryboardRailRows {
   /// When tracks gain a mark (the user means to), pass it here and the mark
   /// chip starts filtering V rows with no change to the rule.
   bool _filterAllowsTrackRow(Track track) =>
-      _state.widget.rowFilter.allowsRow(
-        standing: _state.widget.selectedRow == TrackRowAddress(track.id),
+      _in.rowFilter.allowsRow(
+        standing: _in.selectedRow == TrackRowAddress(track.id),
         fxEnabled:
-            fxEnabledFromState(_state.widget.trackFxStateOf?.call(track)),
+            fxEnabledFromState(_in.trackFxStateOf?.call(track)),
       );
 
   /// How tall ONE S ROW stands on the rail: the row, plus its lanes when
@@ -1136,7 +1157,7 @@ class _StoryboardRailRows {
         StoryboardTrackLabelRow(
           trackId: track.id,
           trackLabel: storyboardVideoRowName(index),
-          laneHeight: _state.widget.trackLaneHeight,
+          laneHeight: _in.trackLaneHeight,
           laneExpanded: track.lanesExpanded,
           // The row's verbs ask for the track as the panel holds it at the
           // press: the row is kept while what it shows holds, and it shows
@@ -1158,14 +1179,14 @@ class _StoryboardRailRows {
           // IS SELECTED — not "the active cut lives here", which is what the
           // cut block's own active border already says, and which could light
           // at the same time as an S row.
-          active: _state.widget.selectedRow == TrackRowAddress(track.id),
+          active: _in.selectedRow == TrackRowAddress(track.id),
           onSelectTrack: _state.widget.onSelectTrack == null
               ? null
               : () => _state.widget.onSelectTrack!(track.id),
           onSettledPress: _state.widget.onSettledPress,
           // R9 #21: the track's own display column.
           trackFxState:
-              _state.widget.trackFxStateOf?.call(track) ?? LayerFxState.on,
+              _in.trackFxStateOf?.call(track) ?? LayerFxState.on,
           onToggleTrackFx: _state.widget.onToggleTrackFx == null
               ? null
               : () => _actOnTrack(track.id, _state.widget.onToggleTrackFx),
@@ -1402,15 +1423,15 @@ class _StoryboardRailRows {
     List<StoryboardTimelineLayoutEntry> committed,
   ) {
     final committedRow =
-        _state.widget.project.tracks[trackIndex].transitionLayer;
+        _in.project.tracks[trackIndex].transitionLayer;
     if (preview == null) {
       return _TrackStrip(committed, committedRow);
     }
     final project = projectWithTimelineDragPreview(
-      _state.widget.project,
+      _in.project,
       preview,
     );
-    if (identical(project, _state.widget.project)) {
+    if (identical(project, _in.project)) {
       return _TrackStrip(committed, committedRow);
     }
     return _TrackStrip([
@@ -1605,7 +1626,7 @@ class _StoryboardRailRows {
       entries,
       transitionRowSpans(
         track.transitionLayer,
-        _state.widget.project.cameraInstructions,
+        _in.project.cameraInstructions,
       ),
     );
     final named = [
@@ -1723,7 +1744,7 @@ class _StoryboardRailRows {
   /// row's verb asks for at the press (I-57, 10-14): a TRACK closed over
   /// where the row was built would be the track as it stood then, before a
   /// cut came or an S row went, while the row showed nothing that changed.
-  Track? _trackNamed(TrackId trackId) => _state.widget.project.tracks
+  Track? _trackNamed(TrackId trackId) => _in.project.tracks
       .where((track) => track.id == trackId)
       .firstOrNull;
 
@@ -1834,7 +1855,7 @@ class _StoryboardRailRows {
   /// ([_StoryboardStanding.standingRowItem]) are both laid on.
   ({List<_StoryboardRailSlot> slots, TimelineRowEdges edges}) _railTable() {
     final slots = [
-      for (final track in _state.widget.project.tracks)
+      for (final track in _in.project.tracks)
         ..._trackGroupRowGeometry(track),
     ];
     return (
@@ -1856,7 +1877,7 @@ class _StoryboardRailRows {
   _RowsWindowTable _windowTableNow() {
     final slots = <_StoryboardRailSlot>[];
     final firstSlots = <int>[];
-    for (final track in _state.widget.project.tracks) {
+    for (final track in _in.project.tracks) {
       firstSlots.add(slots.length);
       slots.addAll(_trackGroupRowGeometry(track));
     }
@@ -1887,7 +1908,7 @@ class _StoryboardRailRows {
   int Function(double offset) selectRowDeltaFrom(TimelineRowAddress anchor) =>
       (offset) {
         final slots = [
-          for (final track in _state.widget.project.tracks)
+          for (final track in _in.project.tracks)
             ..._trackGroupRowGeometry(track),
         ];
         return _sweptOver(
@@ -1954,7 +1975,7 @@ class _StoryboardRailRows {
   ({TimelineRowEdges edges, List<_PointerRow> rows}) _pointerTable() {
     final slots = <TimelineRowSlot>[];
     final rows = <_PointerRow>[];
-    for (final track in _state.widget.project.tracks) {
+    for (final track in _in.project.tracks) {
       for (final slot in _trackGroupRowGeometry(track)) {
         if (_isRoom(slot)) {
           final last = slots.removeLast();
@@ -2148,7 +2169,7 @@ class _StoryboardRailRows {
   }) {
     final laneGround = timelineLaneGround(hostGround);
     final seating = _laneSeating;
-    final layout = buildStoryboardTimelineLayout(_state.widget.project);
+    final layout = buildStoryboardTimelineLayout(_in.project);
     final rows = <TimelineGridRow>[];
     final dashes = <TimelineGridDash>[];
     var edge = 0.0;
@@ -2260,7 +2281,7 @@ class _StoryboardRailRows {
   /// laid ([_LaneSeating]) — read once a build ([forgetLaneSeating]), as
   /// the rail, the strips and every gesture read one table.
   _LaneSeating get _laneSeating => _seating ??= _laneSeatingFor(
-    _state.widget.rowSelection?.value ?? const [],
+    _in.rowSelection?.value ?? const [],
   );
   _LaneSeating? _seating;
 
@@ -2285,7 +2306,7 @@ class _StoryboardRailRows {
   /// graphs by that: the key is changed ONCE, at the border — here, and
   /// back again for a press ([_laneGraphVerbs]).
   LaneGraphsView get _laneGraphs =>
-      _graphs ??= _graphsOnTheRows(_state.widget.laneGraphs);
+      _graphs ??= _graphsOnTheRows(_in.laneGraphs);
   LaneGraphsView? _graphs;
 
   /// [graphs] as this rail keys its rows ([_laneGraphs]): every key the
@@ -2322,7 +2343,7 @@ class _StoryboardRailRows {
   /// conte row at every seat the rail shows — by its own id, to the layer
   /// it has in hand ([_inHand]); none for a row no cut holds a layer for.
   Map<LayerId, LayerId> _projectionRowsInHand() => {
-    for (final track in _state.widget.project.tracks) ...{
+    for (final track in _in.project.tracks) ...{
       if (_inHand(track, LayerRowAddress(trackCameraRowId(track.id)))
           case final inHand?)
         trackCameraRowId(track.id): inHand.layer.id,
@@ -2423,7 +2444,7 @@ class _StoryboardRailRows {
   /// long as the rail's ([timelineRowEdgesOf]).
   _LaneSeating _laneSeatingFor(List<TimelineRowAddress> selected) {
     final lanes = [
-      for (final track in _state.widget.project.tracks)
+      for (final track in _in.project.tracks)
         for (final slot in _trackGroupSlots(track))
           if (slot.display case final row? when row.isLane) row,
     ];
@@ -2558,10 +2579,10 @@ class _StoryboardRailRows {
   /// and the のりしろ its transition row asks ([_onTheReaches] hears the
   /// same, row by row).
   List<CameraRowReach> _reachesNow(Track track) {
-    final index = _state.widget.project.tracks.indexOf(track);
+    final index = _in.project.tracks.indexOf(track);
     final preview = _state.widget.dragPreview?.value;
     final strip = _previewedStripFor(index, preview, [
-      for (final entry in buildStoryboardTimelineLayout(_state.widget.project))
+      for (final entry in buildStoryboardTimelineLayout(_in.project))
         if (entry.trackIndex == index) entry,
     ]);
     return _reachesOn(
@@ -2580,7 +2601,7 @@ class _StoryboardRailRows {
     entries,
     transitionRowSpans(
       transitionRow,
-      _state.widget.project.cameraInstructions,
+      _in.project.cameraInstructions,
     ),
   );
 
@@ -2589,7 +2610,7 @@ class _StoryboardRailRows {
   /// ([laneGraphLineAmong]); null for any other row's.
   LaneGraphLine? _laneGraphLineOf(String key) {
     final preview = _state.widget.dragPreview?.value;
-    for (final track in _state.widget.project.tracks) {
+    for (final track in _in.project.tracks) {
       final line =
           laneGraphLineAmong(
             key,
@@ -2684,7 +2705,7 @@ class _StoryboardRailRows {
       )),
       cells: (row) => strip(row, timelineDisplayRowExtent(row, metrics)),
     );
-    final selection = _state.widget.rowSelection;
+    final selection = _in.rowSelection;
     final laneRows = seating.rows.sublist(first, first + lanes.length);
     if (selection == null || !laneRows.any((row) => row.graph != null)) {
       return laid(seating.rows);
@@ -2797,7 +2818,7 @@ class _StoryboardRailRows {
         bandRow: false,
         lane: false,
         seSlot: null,
-        height: _state.widget.trackLaneHeight,
+        height: _in.trackLaneHeight,
         // Its subject is its TRACK, which its lane carrier stands for.
         display: TimelineDisplayRow.layer(
           _trackLaneCarrier(track),
@@ -2933,7 +2954,7 @@ class _StoryboardRailRows {
             onRowFramePress: _state.widget.onRowFramePress,
             onDropMediaAsset: _state.widget.onDropMediaAsset,
             acceptsMediaAsset: _state.widget.acceptsMediaAsset,
-            laneHeight: _state.widget.trackLaneHeight,
+            laneHeight: _in.trackLaneHeight,
             width: width,
             stripEdges: _state.widget.stripEdges,
             cutMove: _state.widget.cutMove,
@@ -2984,7 +3005,7 @@ class _StoryboardRailRows {
       frameGeometry: _state._frameGeometry,
       windowBucket: _state._horizontalWindowBucket,
       viewportWidth: _state._stripViewportWidth,
-      instructionDefById: _state.widget.project.cameraInstructions.defById,
+      instructionDefById: _in.project.cameraInstructions.defById,
       onRowFramePress: _state.widget.onRowFramePress,
       onCameraCutPress: _state.widget.onCameraCutPress,
       onEditCameraCell: _state.widget.onEditCameraCell,
@@ -3354,23 +3375,23 @@ class _StoryboardRailRows {
   /// window each — computed once per PANEL build and reused across
   /// drag-preview steps.
   List<List<List<Widget>>> _trackGlobalStripRowsByTrack() {
-    final layoutEntries = buildStoryboardTimelineLayout(_state.widget.project);
+    final layoutEntries = buildStoryboardTimelineLayout(_in.project);
     final scale = _state._scale;
     final contentWidth = _state._contentWidthFor(layoutEntries, scale);
     return [
-      for (var index = 0; index < _state.widget.project.tracks.length; index++)
+      for (var index = 0; index < _in.project.tracks.length; index++)
         [
           // Heads the group, matching the rail's row order.
-          if (_showsTransitionRow(_state.widget.project.tracks[index]))
+          if (_showsTransitionRow(_in.project.tracks[index]))
             [
               _state._rows.transitionStripRow(
-                _state.widget.project.tracks[index],
+                _in.project.tracks[index],
                 contentWidth,
                 scale,
               ),
             ],
           ..._seStripRowsForTrack(
-            _state.widget.project.tracks[index],
+            _in.project.tracks[index],
             index,
             contentWidth,
             scale,

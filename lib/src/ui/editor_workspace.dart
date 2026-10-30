@@ -2625,7 +2625,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                       _bottomInsetOverride,
                       // The folded storyboard is the row it stands on, as
                       // tall as that row (F-322).
-                      _foldedStoryboard.stand,
+                      _foldedStoryboard.fold,
                     ]),
                     child: _docks.buildCenterDock(),
                     builder: (context, floor) =>
