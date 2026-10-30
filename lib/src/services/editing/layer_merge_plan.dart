@@ -1046,7 +1046,9 @@ bool _isPicture(Layer row) => row.kind.isDrawingCel;
 /// - a row of the side it does not take of — the conte's rows, which merge
 ///   only among themselves ([takeRowsToMerge], 🗣️I-78-Q20), where it takes
 ///   the cut's own ([ofTheConte] false), and the cut's own where it takes
-///   the conte's,
+///   the conte's — and none where it takes of no side ([ofTheConte] null):
+///   a merge of each row's own blocks, which puts no row with another
+///   (🗣️I-78-Q21),
 /// - until the round that merges them comes — the card's order (I-78,
 ///   10-28), not a law of the verb — a row [staysFor] keeps: a 겸용 row a
 ///   band's blocks merge, and a row whose other selves cannot go with it
@@ -1067,10 +1069,10 @@ bool _standsDown(
   Layer row,
   List<Layer> layers,
   bool Function(Layer row) staysFor, {
-  required bool ofTheConte,
+  required bool? ofTheConte,
 }) =>
     staysFor(row) ||
-    (row.conteKey != null) != ofTheConte ||
+    (ofTheConte != null && (row.conteKey != null) != ofTheConte) ||
     row.timeline.values.any((exposure) => exposure.instruction != null) ||
     attachedLayersOf(row.id, layers).any(
       (rider) =>
@@ -1665,11 +1667,14 @@ final class BlockMergeTaking {
 /// What a press of MERGE takes of [cut]'s blocks starting at
 /// [blockStarts], by row — null where no row merges any.
 ///
-/// A row passes over as a merge of the cut's own rows passes it over
-/// ([_standsDown]) — a conte row among them, as every one was before
-/// I-78-Q20, which answered the merge of rows — and so does a row with one
-/// block in the band, or none. A synced attach row owns no blocks of its
-/// own: it merges as its base does.
+/// A row passes over as a merge of rows passes it over ([_standsDown]) —
+/// of either side: a conte row's blocks merge too, in that cut's row alone
+/// (🗣️I-78-Q21, 유저 10-30 「콘티 행도 블록 병합된다 — 그 컷의 그 행만」),
+/// since what a conte row holds is its cut's own (`Layer.conteKey`) — and
+/// so does a row with one block in the band, or none. A synced attach row
+/// owns no blocks of its own: it merges as its base does.
+/// ↩️A conte row passed over, as every one did before I-78-Q20 answered
+/// the merge of rows, until Q21 answered the merge of blocks.
 BlockMergeTaking? takeBlocksToMerge({
   required Cut cut,
   required Map<LayerId, List<int>> blockStarts,
@@ -1681,7 +1686,7 @@ BlockMergeTaking? takeBlocksToMerge({
           when starts.length > 1 &&
               _isPicture(row) &&
               !isSyncedAttachedLayer(row) &&
-              !_standsDown(row, cut.layers, isLinked, ofTheConte: false))
+              !_standsDown(row, cut.layers, isLinked, ofTheConte: null))
         row: starts,
   };
   return starts.isEmpty ? null : BlockMergeTaking._(cut, starts);

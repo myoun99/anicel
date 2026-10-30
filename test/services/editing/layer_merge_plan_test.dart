@@ -1988,5 +1988,54 @@ void main() {
         [('r-1', 'R1'), ('r-3', 'R3'), ('attach-mirror-r-m0', 'R1-2')],
       );
     });
+
+    group("🗣️the conte's rows merge their blocks too — the cut's row alone "
+        '(Q21)', () {
+      /// A cut's conte: its panel `1` over frames 0–1, `2` over 2–3.
+      final conte = row('s', {0: '1', 2: '2'}, kind: LayerKind.storyboard);
+
+      /// The track's conte row `K1` riding [conte] on a timing of its own.
+      final free = row('k', {
+        0: 'K1',
+        2: 'K2',
+      }, kind: LayerKind.storyboard).copyWith(
+        attachedToLayerId: conte.id,
+        attachedMode: AttachedMode.free,
+        conteKey: const ConteKey('K1'),
+      );
+
+      /// The track's conte row `K2`, synced on [conte].
+      final onIt = synced('j', conte).copyWith(
+        kind: LayerKind.storyboard,
+        conteKey: const ConteKey('K2'),
+      );
+      final cut = cutOf([conte, free, onIt]);
+
+      test('a conte row of its own timing makes its blocks one, staying the '
+          "track's row it was", () {
+        final plan = mergeBlocks(cut, {
+          'k': [0, 2],
+        })!;
+
+        expect([for (final row in plan.rows) row.id.value], ['k']);
+        final merged = rowOf(plan.layers, 'k');
+        expect(blocksOf(merged), {0: (4, 'K1')});
+        expect(
+          [merged.conteKey, merged.attachedToLayerId, merged.attachedMode],
+          [const ConteKey('K1'), conte.id, AttachedMode.free],
+        );
+      });
+
+      test('the conte merges its panels, the rows synced on it along — a '
+          'row of its own timing riding it stays as it is', () {
+        final plan = mergeBlocks(cut, {
+          's': [0, 2],
+        })!;
+
+        expect([for (final row in plan.rows) row.id.value], ['s', 'j']);
+        expect(blocksOf(rowOf(plan.layers, 's')), {0: (4, '1')});
+        expect(rowOf(plan.layers, 'k'), free);
+      });
+    });
   });
 }
