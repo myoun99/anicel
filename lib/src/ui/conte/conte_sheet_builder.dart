@@ -275,11 +275,13 @@ List<String> _cameraLinesIn(
   final moves = cut.layers.cameraWorkBypassed || !cut.layers.cameraOnSheet
       ? const <CameraMove>[]
       : cameraMoves(cut.camera.track);
+  final keyNames = transformKeyAgreedNames(cut.camera.track);
   return [
     for (final stretch in conteCameraStretches(moves, from: from, to: to))
       conteCameraLine(
         stretch,
         defById: project.cameraInstructions.defById,
+        keyNames: keyNames,
         framesPerSecond: project.frameRate.countingBase,
       ),
   ];

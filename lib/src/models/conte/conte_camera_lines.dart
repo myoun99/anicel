@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import '../camera_instruction.dart';
 import '../camera_moves.dart';
+import '../camera_work_marks.dart' show cameraKeyLabel;
 import '../project_frame_rate.dart' show secondsPlusFramesLabel;
 
 /// A stretch of a conte cell's frames as its ACTION column names it: the
@@ -72,21 +73,35 @@ List<ConteCameraStretch> conteCameraStretches(
       : const [];
 }
 
-/// [stretch] as its line reads: its move's word ([cameraMoveWord]) or the
-/// glossary's FIX ([cameraFixTerm]) — each in the glossary [defById]
-/// reads, so a term renamed there is written renamed — and how long it
-/// lasts in seconds and frames ([secondsPlusFramesLabel]): `FIX (0+5)`.
+/// [stretch] as its line reads: the two keys its move runs between, by
+/// what [keyNames] calls them or the frame they stand on
+/// ([cameraKeyLabel]), and its word ([cameraMoveWord]) — or the glossary's
+/// FIX ([cameraFixTerm]) alone — each in the glossary [defById] reads, so
+/// a term renamed there is written renamed, and how long it lasts in
+/// seconds and frames ([secondsPlusFramesLabel]): `1f-5f T.U (0+5)`,
+/// `A-B T.U (0+5)`, `FIX (0+5)`.
+///
+/// 🗣️I-93 (유저 2026-10-30): 「지금 T.U같은거 있으면 T.U만 적는데,
+/// 컷ol처럼 이런거 대상도 적도록. 픽스는 예외. 1f-5f T.U 이런식.
+/// 이름있으면 A-B T.U가 되겟고」.
+///
+/// ⚠️Mine: a move two cells share names its own two keys in each, though
+/// each writes only the frames it holds.
 String conteCameraLine(
   ConteCameraStretch stretch, {
   required CameraInstructionDef? Function(String id) defById,
+  required Map<int, String> keyNames,
   required int framesPerSecond,
 }) {
-  final move = stretch.move;
-  final word = move == null
-      ? instructionTermName(cameraFixTerm, defById(cameraFixTerm))
-      : cameraMoveWord(move, defById);
   final length = secondsPlusFramesLabel(stretch.frames, framesPerSecond);
-  return '$word ($length)';
+  final move = stretch.move;
+  if (move == null) {
+    final fix = instructionTermName(cameraFixTerm, defById(cameraFixTerm));
+    return '$fix ($length)';
+  }
+  final from = cameraKeyLabel(keyNames[move.from], move.from);
+  final to = cameraKeyLabel(keyNames[move.to], move.to);
+  return '$from-$to ${cameraMoveWord(move, defById)} ($length)';
 }
 
 /// What a conte line writes between the two cuts an O.L joins: a cross,

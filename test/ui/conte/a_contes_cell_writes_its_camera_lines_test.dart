@@ -20,6 +20,8 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
+import '../../helpers/camera_key_names.dart';
+
 /// 🗣️I-93 (유저 2026-10-12): 「콘티용지패널 내용란에 고정텍스트로 PAN이나
 /// TU나 추가로 콘티엔 시간정보가 같은 칸내에선 없으니 FIX부분 도 … 예를들어
 /// 1f부터 5f까지 키가 없고, 6f에 키가있고, 16f에 작아지는 키가 있고, 24f가
@@ -29,7 +31,9 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// own frames.
 ///
 /// 🗣️I-93 (유저 2026-10-30): 「패널에서 카메라 아무것도 안했으면 안적는다」 ·
-/// 「액션쪽도 카메라레이어 움직임인거니까 그거 시트off되면 사라지게」.
+/// 「액션쪽도 카메라레이어 움직임인거니까 그거 시트off되면 사라지게」 ·
+/// 「컷ol처럼 이런거 대상도 적도록. 픽스는 예외. 1f-5f T.U 이런식. 이름있으면
+/// A-B T.U가 되겟고」.
 void main() {
   CameraPose at(double x, {double zoom = 1, double turn = 0}) => CameraPose(
     center: CanvasPoint(x: x, y: 0),
@@ -37,15 +41,28 @@ void main() {
     rotationDegrees: turn,
   );
 
+  CutCamera called(CutCamera camera, int frame, String name) =>
+      cameraKeyNamed(
+        camera,
+        frame,
+        position: name,
+        scale: name,
+        rotation: name,
+      );
+
   /// The lines each cell of a 24-frame cut writes — one block to each of
-  /// [lengths], in order — whose camera is keyed [keys].
+  /// [lengths], in order — whose camera is keyed [keys] and named as
+  /// [named] names it.
   List<List<String>> linesOf(
     Map<int, CameraPose> keys, {
     List<int> lengths = const [24],
     bool bypassed = false,
     bool onSheet = true,
     CameraInstructionSet? glossary,
+    CutCamera Function(CutCamera camera)? named,
   }) {
+    final keyed = CutCamera(keyframes: keys);
+    final camera = named?.call(keyed) ?? keyed;
     final frames = <Frame>[];
     final timeline = <int, TimelineExposure>{};
     var start = 0;
@@ -70,7 +87,7 @@ void main() {
               name: '1',
               duration: 24,
               canvasSize: const CanvasSize(width: 640, height: 360),
-              camera: CutCamera(keyframes: keys),
+              camera: camera,
               layers: [
                 Layer(
                   id: const LayerId('sb'),
@@ -101,19 +118,56 @@ void main() {
   }
 
   test('🎯the user\'s example: no key 1f to 5f, a key on 6f and on 16f, the '
-      'cut ending on 24f — FIX (0+5), PAN (0+11), FIX (0+8)', () {
+      'cut ending on 24f — FIX (0+5), 6f-16f PAN (0+11), FIX (0+8)', () {
     // The 16f key the user called 「작아지는」 moves the camera here: the
     // rule settled on 10-08 calls a zoom T.U or T.B, and the user wrote PAN.
     expect(linesOf({5: at(0), 15: at(40)}), [
-      ['FIX (0+5)', 'PAN (0+11)', 'FIX (0+8)'],
+      ['FIX (0+5)', '6f-16f PAN (0+11)', 'FIX (0+8)'],
+    ]);
+  });
+
+  test('🎯a move names the two keys it runs between, by their names where '
+      'they have them — 「1f-5f T.U 이런식. 이름있으면 A-B T.U」 — and a FIX '
+      'names none', () {
+    final keys = {0: at(0), 4: at(0, zoom: 2)};
+
+    expect(linesOf(keys), [
+      ['1f-5f T.U (0+5)', 'FIX (0+19)'],
+    ]);
+    expect(
+      linesOf(keys, named: (camera) => called(called(camera, 0, 'A'), 4, 'B')),
+      [
+        ['A-B T.U (0+5)', 'FIX (0+19)'],
+      ],
+    );
+    expect(linesOf(keys, named: (camera) => called(camera, 4, 'B')), [
+      ['1f-B T.U (0+5)', 'FIX (0+19)'],
+    ]);
+  });
+
+  test('a key whose lanes disagree on its name is called by its frame, as '
+      'on every surface', () {
+    final lines = linesOf(
+      {0: at(0), 4: at(0, zoom: 2)},
+      named: (camera) => cameraKeyNamed(
+        camera,
+        4,
+        position: 'B',
+        scale: 'C',
+        rotation: 'B',
+      ),
+    );
+
+    expect(lines, [
+      ['1f-5f T.U (0+5)', 'FIX (0+19)'],
     ]);
   });
 
   test('a move two panels share is a line in each, as long as each holds '
       'it', () {
     expect(linesOf({6: at(0), 18: at(40)}, lengths: const [12, 12]), [
-      ['FIX (0+6)', 'PAN (0+6)'],
-      ['PAN (0+7)', 'FIX (0+5)'],
+      ['FIX (0+6)', '7f-19f PAN (0+6)'],
+      ['7f-19f PAN (0+7)', 'FIX (0+5)'],
     ]);
   });
 
@@ -121,16 +175,16 @@ void main() {
       'the move is in writes it where it stands', () {
     expect(linesOf({14: at(0), 20: at(40)}, lengths: const [12, 12]), [
       <String>[],
-      ['FIX (0+2)', 'PAN (0+7)', 'FIX (0+3)'],
+      ['FIX (0+2)', '15f-21f PAN (0+7)', 'FIX (0+3)'],
     ]);
   });
 
   test('a panel the move fills is that move alone, in every panel it '
       'fills', () {
     expect(linesOf({0: at(0), 23: at(40)}, lengths: const [8, 8, 8]), [
-      ['PAN (0+8)'],
-      ['PAN (0+8)'],
-      ['PAN (0+8)'],
+      ['1f-24f PAN (0+8)'],
+      ['1f-24f PAN (0+8)'],
+      ['1f-24f PAN (0+8)'],
     ]);
   });
 
@@ -140,12 +194,12 @@ void main() {
       'after it blank, and one that starts on the first of a panel the '
       'panel before it', () {
     expect(linesOf({0: at(0), 11: at(40)}, lengths: const [12, 12]), [
-      ['PAN (0+12)'],
+      ['1f-12f PAN (0+12)'],
       <String>[],
     ]);
     expect(linesOf({12: at(0), 23: at(40)}, lengths: const [12, 12]), [
       <String>[],
-      ['PAN (0+12)'],
+      ['13f-24f PAN (0+12)'],
     ]);
   });
 
@@ -154,7 +208,7 @@ void main() {
     expect(
       linesOf({0: at(0), 10: at(0, zoom: 2), 20: at(50, zoom: 2)}),
       [
-        ['T.U (0+10)', 'PAN (0+11)', 'FIX (0+3)'],
+        ['1f-11f T.U (0+10)', '11f-21f PAN (0+11)', 'FIX (0+3)'],
       ],
     );
   });
@@ -168,7 +222,7 @@ void main() {
         16: at(0, zoom: 0.5, turn: 40),
       }),
       [
-        ['回転 (0+8)', '回転 T.B (0+9)', 'FIX (0+7)'],
+        ['1f-9f 回転 (0+8)', '9f-17f 回転 T.B (0+9)', 'FIX (0+7)'],
       ],
     );
   });
@@ -186,7 +240,7 @@ void main() {
     );
 
     expect(linesOf({5: at(0), 15: at(40)}, glossary: renamed), [
-      ['止め (0+5)', 'PAN (0+11)', '止め (0+8)'],
+      ['止め (0+5)', '6f-16f PAN (0+11)', '止め (0+8)'],
     ]);
   });
 
@@ -278,7 +332,7 @@ void main() {
           cell.cameraLines,
       ],
       [
-        ['PAN (0+11)', 'FIX (0+9)'],
+        ['13f-23f PAN (0+11)', 'FIX (0+9)'],
         <String>[],
       ],
     );
