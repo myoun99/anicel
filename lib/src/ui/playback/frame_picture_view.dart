@@ -72,6 +72,7 @@ class FramePictureView extends StatefulWidget {
     this.wholeFrames = true,
     this.alreadyShown = false,
     this.drawnLive = const {},
+    this.ground,
   });
 
   final StackRun run;
@@ -137,6 +138,14 @@ class FramePictureView extends StatefulWidget {
   /// ↩️`CanvasLayerStackView.drawnLive`, until the ghosts were one picture
   /// too (one-picture-per-frame ②-5b-1).
   final Set<BrushFrameKey> drawnLive;
+
+  /// The colour laid under what the view draws, where it draws anything.
+  ///
+  /// 🗣️F-215 · I-132-Q34 a: none while it draws nothing — a frame that
+  /// waits for its plugins, its picture not made yet — so what it took over
+  /// from shows meanwhile: the conte's print, the last finished picture
+  /// (「on하든off하든 바뀌는게 없어야」 · 「직전 완성 그림에 머문다」).
+  final Color? ground;
 
   @override
   State<FramePictureView> createState() => _FramePictureViewState();
@@ -852,6 +861,7 @@ class _FramePictureViewState extends State<FramePictureView> {
           asItStands: _waits ? _asItStands : _live ?? _asItStands,
           standing: _standing,
           waits: _waits,
+          ground: widget.ground,
           catchUp: _catchUp,
           viewport: widget.viewport,
           devicePixelRatio: EffectiveDevicePixelRatio.of(context),
@@ -869,6 +879,7 @@ class _FramePicturePainter extends CustomPainter {
     required this.asItStands,
     required this.standing,
     required this.waits,
+    required this.ground,
     required this.catchUp,
     required this.viewport,
     required this.devicePixelRatio,
@@ -888,6 +899,9 @@ class _FramePicturePainter extends CustomPainter {
   /// [standing] says ([_FramePictureViewState._waits]).
   final bool waits;
 
+  /// Laid under what is drawn, where anything is ([FramePictureView.ground]).
+  final Color? ground;
+
   /// Puts what the live rows moved into [standing] or the picture shown
   /// before it is read ([_FramePictureViewState._catchUp]).
   final VoidCallback catchUp;
@@ -900,6 +914,10 @@ class _FramePicturePainter extends CustomPainter {
     canvas.save();
     canvas.clipRect(Offset.zero & size);
     final shown = standing.whole && !waits ? null : this.shown;
+    final ground = this.ground;
+    if (ground != null && (shown != null || asItStands != null)) {
+      canvas.drawColor(ground, BlendMode.srcOver);
+    }
     if (shown case (:final picture, :final image)) {
       applyViewportTransform(
         canvas,
@@ -943,6 +961,7 @@ class _FramePicturePainter extends CustomPainter {
       !identical(oldDelegate.shown?.image, shown?.image) ||
       !identical(oldDelegate.asItStands, asItStands) ||
       oldDelegate.waits != waits ||
+      oldDelegate.ground != ground ||
       oldDelegate.viewport != viewport ||
       oldDelegate.devicePixelRatio != devicePixelRatio;
 }

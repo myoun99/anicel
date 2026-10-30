@@ -154,7 +154,6 @@ class ContePictureLive extends StatelessWidget {
     window.overlay.sourceEffects = drawn.activeSourceEffects;
     return Stack(
       children: [
-        const Positioned.fill(child: ColoredBox(color: exportFrameGround)),
         Positioned.fill(
           child: ClipPath(
             clipper: OutlineClipper(
@@ -197,6 +196,10 @@ class ContePictureLive extends StatelessWidget {
               // frame.
               wholeFrames: false,
               alreadyShown: true,
+              // The ground the print stands on, under what the live one
+              // draws — none while it draws nothing (a frame that waits for
+              // its plugins, its picture not made yet), so the print shows.
+              ground: exportFrameGround,
             ),
           ),
         ),
