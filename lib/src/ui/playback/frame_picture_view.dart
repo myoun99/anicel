@@ -19,6 +19,7 @@ import '../canvas/canvas_layer_stack_view.dart'
 import '../canvas/display_resample.dart';
 import '../canvas/viewport_canvas_transform.dart';
 import '../effective_device_pixel_ratio.dart';
+import '../debug/input_inspector.dart';
 import 'frame_picture_store.dart';
 import 'frame_pictures.dart';
 import 'stacked_frame_picture.dart';
@@ -421,6 +422,7 @@ class _FramePictureViewState extends State<FramePictureView> {
       _showing = key;
       _moving = null;
       _drawnOn = _celNow();
+      if (widget.live != null) _count('takeSame');
       return;
     }
     final image = there.image.clone();
@@ -431,6 +433,14 @@ class _FramePictureViewState extends State<FramePictureView> {
     _showing = key;
     _drawnOn = _celNow();
     _standing.whole = false;
+    if (widget.live != null) {
+      _F509.taken(
+        'nodes=${key.signature.nodes.length} '
+        '${image.width}x${image.height} '
+        'at=${there.extent.left.round()},${there.extent.top.round()} '
+        'on=${_drawnOn == null ? '-' : '${_drawnOn!.drawn}@${_drawnOn!.revision}'}',
+      );
+    }
     _tell();
     if (widget.live != null) {
       _holdNodes();
@@ -564,8 +574,10 @@ class _FramePictureViewState extends State<FramePictureView> {
     // back: no screen told the two apart, F-473's mutants 2026-10-26.)
     final to = _keptUnder(key, _live?.tokens);
     if (_standing.whole || !_store.move(from: _keptAs!, to: to)) {
+      _count('moveNo');
       return false;
     }
+    _count('move');
     _keepAs(to);
     _moving = key;
     unawaited(
@@ -588,7 +600,17 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// 🚨A pen's row come to a picture that holds nothing of the live rows is
   /// told as its taking told them ([_tell]), with the cel the pen is on —
   /// untold, a blank page's first stroke was drawn as it stands, whole.
+  void _count(String what) {
+    if (widget.live != null) {
+      _F509.count(what);
+    }
+  }
+
   void _liveRowsHandedAnew() {
+    _F509.note(
+      'fpHanded shown=${_shown != null} held=${_held != null} '
+      'whole=${_standing.whole} pen=${widget.live?.activeSurfacePainter != null}',
+    );
     if (_shown != null) {
       if (_held == null) {
         _drawnOn = _celNow();
@@ -608,9 +630,11 @@ class _FramePictureViewState extends State<FramePictureView> {
     }
     final now = live.tokens;
     if (!live.steady || _showsUnstored(now)) {
+      _count(live.steady ? 'tellUnstored' : 'tellUnsteady');
       _standing.whole = true;
       return;
     }
+    _count('tellHeld');
     _held = now;
   }
 
@@ -663,6 +687,22 @@ class _FramePictureViewState extends State<FramePictureView> {
     // still moving. ⛔Not left out until the move lands: the next stroke's
     // first steps were drawn nowhere.
     final key = _moving ?? _showing;
+    if (widget.live != null) {
+      final now = _pictures.keyOfStack(widget.nodes, widget.picture);
+      final cel = _celDrawnOn();
+      final asOf = cel == null ? null : _pictures.celNow(cel);
+      InputInspector.pin(
+        'fpPaint',
+        'fpPaint whole=${_standing.whole} shown=${shown != null} '
+            'stands=${live != null} held=${_held != null} '
+            'moving=${_moving != null} same=${now == _showing} '
+            'nodes=${now.signature.nodes.length} '
+            'kept=${_keptAs?.standingFor != null} '
+            'cel=${asOf == null ? '-' : '${asOf.drawn}@${asOf.revision}'} '
+            'on=${_drawnOn == null ? '-' : '${_drawnOn!.drawn}@${_drawnOn!.revision}'} '
+            'hand=${cel == null ? '-' : _pictures.inHand(cel, widget.picture)}',
+      );
+    }
     if (live == null || shown == null || key == null || _standing.whole) {
       return;
     }
@@ -672,22 +712,27 @@ class _FramePictureViewState extends State<FramePictureView> {
       // where nothing is drawn live at all.
       _standing.whole =
           !live.steady || widget.live?.activeSurfacePainter != null;
+      _count(_standing.whole ? 'cuUnheldWhole' : 'cuUnheld');
       return;
     }
     if (!live.steady) {
+      _count('cuUnsteady');
       _standing.whole = true;
       return;
     }
     final moved = live.movedSince(held);
     final dirty = moved.dirty;
     if (!moved.located) {
+      _count('cuUnlocated');
       _standing.whole = true;
       return;
     }
     _held = moved.now;
     if (dirty == null || dirty.isEmpty) {
+      _count('cuSame');
       return;
     }
+    _count('cuDirty');
     _writeIn(key, shown.picture, live, dirty);
   }
 
@@ -709,23 +754,28 @@ class _FramePictureViewState extends State<FramePictureView> {
     final extent = picture.extent;
     final drawing = live.drawing;
     if (drawing.extent.intersect(extent) != drawing.extent) {
+      _count('wPast');
       _standing.whole = true;
       return;
     }
     final rect = dirty.intersect(extent);
     if (rect.isEmpty) {
+      _count('wEmpty');
       return;
     }
     final to = _keptUnder(key, _held);
     if (!_store.patch(from: _keptAs!, to: to, rect: rect, draw: drawing.draw)) {
+      _count('wRefused');
       _standing.whole = true;
       return;
     }
+    _count('wAsked');
     _pictures.giveWayToSteps();
     _keepAs(to);
     // Shown once its texels are in the picture, at every level.
     unawaited(
       _store.landingOf(to)!.then((_) {
+        _F509.count(mounted ? 'wLanded' : 'wLandedGone');
         if (mounted) {
           _repaint.value += 1;
         }
@@ -860,4 +910,28 @@ class _FramePicturePainter extends CustomPainter {
       !identical(oldDelegate.asItStands, asItStands) ||
       oldDelegate.viewport != viewport ||
       oldDelegate.devicePixelRatio != devicePixelRatio;
+}
+
+/// 🔬F-509 TRACE — a device build only, never landed: what the canvas's
+/// frame view did with the frame a pen drew on, counted on the input
+/// inspector's card since the picture it last took. 유저 2026-10-30: a stroke
+/// on a cel the first stroke made shows nowhere on iPhone and iPad until
+/// the frame is left and come back to; every test runner shows it.
+abstract final class _F509 {
+  static final Map<String, int> _counts = {};
+
+  static void count(String what) {
+    _counts[what] = (_counts[what] ?? 0) + 1;
+    InputInspector.pin(
+      'f509',
+      'f509 ${[for (final MapEntry(:key, :value) in _counts.entries) '$key=$value'].join(' ')}',
+    );
+  }
+
+  static void taken(String line) {
+    _counts.clear();
+    InputInspector.note('fpTake $line');
+  }
+
+  static void note(String line) => InputInspector.note(line);
 }

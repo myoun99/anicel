@@ -7,6 +7,7 @@ import '../../models/rgba_image_bytes.dart';
 import '../../services/playback/let_go_wanted_latest.dart';
 import '../canvas/display_resample.dart'
     show frameGridOutward, wholeLevelPixelsOutward;
+import '../debug/input_inspector.dart';
 import 'frame_picture_gpu.dart';
 
 /// A patch's texels, rendered, on their way into its picture at [rect].
@@ -197,13 +198,16 @@ class FramePictureStore<K extends Object> {
   }) {
     final entry = _entries[from] ?? _becoming[from]?.entry;
     if (entry == null) {
+      _F509s.count('pNoEntry');
       return false;
     }
     final widened = wholeLevelPixelsOutward(rect, entry.patchedLevels);
     if (entry.held == null || !_covers(entry.picture.extent, widened)) {
+      _F509s.count(entry.held == null ? 'pNoHeld' : 'pNoCover');
       _letGo(entry);
       return false;
     }
+    _F509s.count('pOk');
     final asked = _Patch<K>(from, to, widened, recordedOver(widened, draw));
     _becoming[to] = (entry: entry, patch: asked);
     entry.renders = entry.renders.then((_) => _renderPatch(entry, asked));
@@ -346,6 +350,7 @@ class FramePictureStore<K extends Object> {
       return null;
     }
     final held = _gpu.hold(image);
+    _F509s.count(held == null ? 'layNoHeld' : 'lay');
     final entry = _Entry<K>(
       FramePicture._(image, extent, lay.frame.outside),
       held: held,
@@ -397,6 +402,15 @@ class FramePictureStore<K extends Object> {
         patch.image.dispose();
       }
     }
+    _F509s.count(
+      texels.isEmpty
+          ? 'wbMove'
+          : entry.gone
+          ? 'wbGone'
+          : written
+          ? 'wbOk'
+          : 'wbFail',
+    );
     if (!written) {
       // Not in the picture: no key may answer with it.
       _letGo(entry);
@@ -611,6 +625,7 @@ class FramePictureStore<K extends Object> {
   }
 
   void _letGo(_Entry<K> entry) {
+    _F509s.count('letGo');
     entry.gone = true;
     _entries.removeWhere((_, value) => value == entry);
     _becoming.removeWhere((_, value) {
@@ -803,5 +818,20 @@ class _Patch<K> {
     if (!_moved.isCompleted) {
       _moved.complete();
     }
+  }
+}
+
+/// 🔬F-509 TRACE — a device build only, never landed: what the store did
+/// with the patches and lays asked of it, counted on the input inspector's
+/// card.
+abstract final class _F509s {
+  static final Map<String, int> _counts = {};
+
+  static void count(String what) {
+    _counts[what] = (_counts[what] ?? 0) + 1;
+    InputInspector.pin(
+      'f509s',
+      'f509s ${[for (final MapEntry(:key, :value) in _counts.entries) '$key=$value'].join(' ')}',
+    );
   }
 }
