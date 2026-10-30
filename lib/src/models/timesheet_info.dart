@@ -42,7 +42,7 @@ class TimesheetInfo {
     this.conteForm = ConteSheetForm.analog,
     this.conteOutlined = true,
     this.conteFixedText = true,
-    this.conteCameraRoom = ConteCameraRoom.grows,
+    this.conteCameraRoom = ConteCameraRoom.standard,
   });
 
   static const TimesheetInfo empty = TimesheetInfo();
@@ -225,7 +225,7 @@ class TimesheetInfo {
     if (conteForm != ConteSheetForm.analog) 'conteForm': conteForm.name,
     if (!conteOutlined) 'conteOutlined': false,
     if (!conteFixedText) 'conteFixedText': false,
-    if (conteCameraRoom != ConteCameraRoom.grows)
+    if (conteCameraRoom != ConteCameraRoom.standard)
       'conteCameraRoom': conteCameraRoom.name,
   };
 
@@ -257,7 +257,7 @@ class TimesheetInfo {
       conteFixedText: json['conteFixedText'] as bool? ?? true,
       conteCameraRoom:
           ConteCameraRoom.named(json['conteCameraRoom']) ??
-          ConteCameraRoom.grows,
+          ConteCameraRoom.standard,
     );
   }
 

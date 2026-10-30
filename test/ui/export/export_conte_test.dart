@@ -525,6 +525,10 @@ void main() {
             6: CameraPose(center: CanvasPoint(x: 32, y: 9)),
           },
         ),
+      ).copyWith(
+        timesheetInfo: TimesheetInfo.empty.copyWith(
+          conteCameraRoom: ConteCameraRoom.grows,
+        ),
       ),
     );
     addTearDown(session.dispose);

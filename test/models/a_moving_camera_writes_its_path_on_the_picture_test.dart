@@ -41,6 +41,7 @@ void main() {
       cuts: [
         for (final (index, cell) in cells.indexed)
           ConteCutSource(
+            cameraRoom: ConteCameraRoom.grows,
             cutId: CutId('$index'),
             name: '$index',
             durationFrames: 24,

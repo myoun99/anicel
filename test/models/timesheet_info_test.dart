@@ -321,29 +321,30 @@ void main() {
       expect(info.hashCode, isNot(TimesheetInfo.empty.hashCode));
     });
 
-    test('I-82: a moving camera\'s cell grows unless the format keeps it in, '
-        'and kept in travels with the work', () {
-      expect(TimesheetInfo.empty.conteCameraRoom, ConteCameraRoom.grows);
+    // 🗣️유저 2026-10-30: 「그리고 기본값은 칸 안에가 되도록」.
+    test('I-82: a moving camera\'s cell keeps its box unless the format lets '
+        'it grow, and grown travels with the work', () {
+      expect(TimesheetInfo.empty.conteCameraRoom, ConteCameraRoom.inCell);
       expect(
         TimesheetInfo.fromJson(const {'conteCameraRoom': 'unknown'})
             .conteCameraRoom,
-        ConteCameraRoom.grows,
+        ConteCameraRoom.inCell,
       );
       expect(
         TimesheetInfo.empty.toJson().containsKey('conteCameraRoom'),
         isFalse,
       );
       final info = TimesheetInfo.empty.copyWith(
-        conteCameraRoom: ConteCameraRoom.inCell,
+        conteCameraRoom: ConteCameraRoom.grows,
       );
 
       final restored = TimesheetInfo.fromJson(info.toJson());
 
       expect(restored, info);
-      expect(restored.conteCameraRoom, ConteCameraRoom.inCell);
+      expect(restored.conteCameraRoom, ConteCameraRoom.grows);
       expect(
         restored.copyWith(conteCover: false).conteCameraRoom,
-        ConteCameraRoom.inCell,
+        ConteCameraRoom.grows,
         reason: 'another change keeps it',
       );
       expect(info, isNot(TimesheetInfo.empty), reason: 'one undo step');

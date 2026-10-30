@@ -229,44 +229,44 @@ void main() {
         )
         .label;
     expect(rooms(), isNotEmpty, reason: 'fixture');
-    expect(rooms(), everyElement(ConteCameraRoom.grows));
+    expect(rooms(), everyElement(ConteCameraRoom.inCell));
 
     await tap(tester, 'conte-format-button');
-    expect(roomShown(), AppText.strings.conteCameraRoomGrows);
+    expect(roomShown(), AppText.strings.conteCameraRoomInCell);
     await tap(tester, 'conte-format-camera-room');
-    await tap(tester, 'conte-format-camera-room-inCell');
+    await tap(tester, 'conte-format-camera-room-grows');
     expect(
       rooms(),
-      everyElement(ConteCameraRoom.grows),
+      everyElement(ConteCameraRoom.inCell),
       reason: 'nothing before save',
     );
     await tap(tester, 'conte-format-save-button');
 
-    expect(session.timesheetInfo.conteCameraRoom, ConteCameraRoom.inCell);
-    expect(rooms(), everyElement(ConteCameraRoom.inCell));
+    expect(session.timesheetInfo.conteCameraRoom, ConteCameraRoom.grows);
+    expect(rooms(), everyElement(ConteCameraRoom.grows));
 
     // The window says what the sheet is now.
     await tap(tester, 'conte-format-button');
-    expect(roomShown(), AppText.strings.conteCameraRoomInCell);
+    expect(roomShown(), AppText.strings.conteCameraRoomGrows);
     await tap(tester, 'conte-format-cancel-button');
 
     // 컷 설정's save, as its window gives it.
     session.cutVerbs.saveAddressedCutSettings(
       const {},
-      conteCameraRoom: (to: ConteCameraRoom.grows),
+      conteCameraRoom: (to: ConteCameraRoom.inCell),
     );
     await tester.pumpAndSettle();
     expect(
       rooms().first,
-      ConteCameraRoom.grows,
+      ConteCameraRoom.inCell,
       reason: 'the cut\'s own over the format\'s',
     );
 
     session.undo();
     await tester.pumpAndSettle();
-    expect(rooms(), everyElement(ConteCameraRoom.inCell));
+    expect(rooms(), everyElement(ConteCameraRoom.grows));
     session.undo();
     await tester.pumpAndSettle();
-    expect(rooms(), everyElement(ConteCameraRoom.grows));
+    expect(rooms(), everyElement(ConteCameraRoom.inCell));
   });
 }

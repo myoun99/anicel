@@ -184,7 +184,7 @@ class ConteCutSource {
     required this.cumulativeEndFrames,
     required this.cells,
     this.dialogue = const [],
-    this.cameraRoom = ConteCameraRoom.grows,
+    this.cameraRoom = ConteCameraRoom.standard,
   }) : assert(cells.length > 0, 'Every cut has at least one cell.');
 
   final CutId cutId;

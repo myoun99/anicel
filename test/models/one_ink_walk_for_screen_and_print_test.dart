@@ -24,6 +24,7 @@ void main() {
     int startFrame = 0,
     int rowSpan = 1,
   }) => ContePlacedCell(
+    cameraRoom: ConteCameraRoom.standard,
     cutId: cutId,
     cutName: cutId,
     cellIndex: 0,

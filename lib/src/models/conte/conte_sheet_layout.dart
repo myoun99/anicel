@@ -237,6 +237,7 @@ class ContePlacedCell {
     required this.dialogueRect,
     required this.rowOnPage,
     this.rowSpan = 1,
+    required this.cameraRoom,
   });
 
   final String cutId;
@@ -276,6 +277,9 @@ class ContePlacedCell {
   /// ([ConteCameraPlan.wordsBelow]).
   double get wordsTop => actionRect.top;
 
+  /// How its cut lays a moving camera ([ConteCutSource.cameraRoom]).
+  final ConteCameraRoom cameraRoom;
+
   /// This cell with its text boxes ending at [action] and [dialogue] where
   /// those are given ([_wordsStopAtPictures]).
   ContePlacedCell _withWordsEndingAt({double? action, double? dialogue}) =>
@@ -284,6 +288,7 @@ class ContePlacedCell {
         cutName: cutName,
         cellIndex: cellIndex,
         source: source,
+        cameraRoom: cameraRoom,
         pictureRect: pictureRect,
         actionRect: action == null
             ? actionRect
@@ -365,31 +370,30 @@ typedef ConteCameraPlan = ({
 /// length too (「침범해서 공간없으면 아래칸을 쓰는게」 · 「초수도
 /// 다음코마에 넣으면되니까」 · 「내려갈땐 다 같이 내려가도록하자」).
 ///
-/// A cut that keeps its cells ([room] [ConteCameraRoom.inCell], I-82) asks
-/// the same law with the cell's own bounds — one row, and no further right
-/// than the picture column — so the sweep is laid as small as its window
-/// holds it, and the words stay beside it.
+/// A cut that keeps its cells ([room] [ConteCameraRoom.inCell], I-82) lays
+/// a still cell's box whatever its camera does, and the sweep as small as
+/// that box's window holds it; the words stay beside it.
 ConteCameraPlan conteCameraPlan(
   ConteSheetMetrics m,
   ConteCameraWork? work, {
-  ConteCameraRoom room = ConteCameraRoom.grows,
+  ConteCameraRoom room = ConteCameraRoom.standard,
 }) {
+  ConteCameraPlan cell(double scale) => (
+    pictureRows: 1,
+    pictureRight: m.actionLeft,
+    pictureHeight: m.rowHeight,
+    wordsBelow: false,
+    scale: scale,
+  );
   if (work == null) {
-    return (
-      pictureRows: 1,
-      pictureRight: m.actionLeft,
-      pictureHeight: m.rowHeight,
-      wordsBelow: false,
-      scale: 1,
-    );
+    return cell(1);
   }
-  final (rowsMax, reach) = switch (room) {
-    ConteCameraRoom.grows => (conteCameraPictureRowsMax, m.timeLeft),
-    ConteCameraRoom.inCell => (1, m.actionLeft),
-  };
+  if (room == ConteCameraRoom.inCell) {
+    return cell(_fieldScale(m, work, 1, reach: m.actionLeft));
+  }
   final screensTall = work.field.height / work.screen.height;
-  final rows = (screensTall - 1e-9).ceil().clamp(1, rowsMax);
-  final scale = _fieldScale(m, work, rows, reach: reach);
+  final rows = (screensTall - 1e-9).ceil().clamp(1, conteCameraPictureRowsMax);
+  final scale = _fieldScale(m, work, rows, reach: m.timeLeft);
   final right =
       m.pictureLeft + work.field.width * scale + 2 * m.silhouetteBorder;
   return (
@@ -694,6 +698,7 @@ List<ContePageLayout> layoutConteSheet(
           cutName: cut.name,
           cellIndex: index,
           source: cell,
+          cameraRoom: cut.cameraRoom,
           // At the top of the cell's rows (유저 2026-09-30, H48:
           // 「위쪽정렬로 배치」).
           pictureRect: Rect.fromLTRB(

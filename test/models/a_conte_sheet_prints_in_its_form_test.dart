@@ -26,6 +26,7 @@ ConteCellSource _cell(int start, int end, {ConteCameraWork? camera}) =>
     );
 
 ConteCutSource _cut(String id, List<ConteCellSource> cells) => ConteCutSource(
+  cameraRoom: ConteCameraRoom.grows,
   cutId: CutId(id),
   name: id,
   durationFrames: cells.last.endFrameExclusive,

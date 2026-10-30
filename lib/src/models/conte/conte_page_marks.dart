@@ -453,13 +453,18 @@ Rect contePictureSlot(ContePlacedCell cell, ConteSheetMetrics m) =>
 /// 코마에서 보여주고」), as large as its slot holds it, from the top of the
 /// slot (H48: 「위쪽정렬로 배치」) — the plan's own scale
 /// ([ConteCameraPlan.scale]) where the black stands round it, a slot the
-/// picture's size; larger where none does.
+/// picture's size; larger where none does. A cell that keeps its box
+/// ([ConteCameraRoom.inCell], I-82) contains it as it contains a still
+/// camera's shape. ⚠️Mine: in the middle of the window, as a still
+/// camera stands in it, with paper round it.
 SheetPicture contePictureOf(ContePlacedCell cell, ConteSheetMetrics m) {
   final slot = contePictureSlot(cell, m);
   final work = cell.source.camera;
   final Rect frame;
   if (work == null) {
     frame = containRect(Size(m.cameraAspect, 1), slot);
+  } else if (cell.cameraRoom == ConteCameraRoom.inCell) {
+    frame = containRect(work.field.size, slot);
   } else {
     final scale = math.min(
       slot.width / work.field.width,
