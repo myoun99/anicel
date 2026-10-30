@@ -462,6 +462,27 @@ final class StackedFrame {
   Rect? get whereTheGhostsShow => _painter._whereTheGhostsShow();
 }
 
+/// Whether [nodes] hold a plugin's step past a cel's own pixels — one run
+/// over what its chain made before it (`PluginEffect`, 🗣️I-132-Q34 a): a
+/// frame drawn whole only by a recording that waits for its plugins
+/// (`FxPluginStages`), and drawn as it stands with the step as if off.
+bool waitsForItsPlugins(List<CompositeNode<CanvasStackRow>> nodes) =>
+    preorderNodes(nodes).any(
+      (node) => switch (node) {
+        CompositeLeaf(payload: CanvasActiveLayerRow(:final paintEffects)) ||
+        CompositeLeaf(
+          payload: CanvasLayerImageRequest(:final paintEffects),
+        ) => _runsAPlugin(paintEffects),
+        CompositeGroup(:final effects) ||
+        CompositeAdjustment(:final effects) => _runsAPlugin(effects),
+        _ => false,
+      },
+    );
+
+bool _runsAPlugin(List<ResolvedLayerEffect> chain) => chain.any(
+  (effect) => effect.kind == EffectKind.plugin && effect.run != null,
+);
+
 /// The painters the rows a lift holds beside the live one are drawn by
 /// ([LiftedCel]), by cel — kept while a row's surface and keys stay what
 /// they were: a new painter is a new set of tile pictures, and a drag step

@@ -15,7 +15,8 @@ import '../canvas/canvas_layer_stack_view.dart'
         LiftedRowPainters,
         LiveRows,
         LiveSurfaceTokens,
-        StackedFrame;
+        StackedFrame,
+        waitsForItsPlugins;
 import '../canvas/display_resample.dart';
 import '../canvas/viewport_canvas_transform.dart';
 import '../effective_device_pixel_ratio.dart';
@@ -210,6 +211,20 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// Whether the frame is drawn as it stands in place of the picture shown.
   final _DrawnAsItStands _standing = _DrawnAsItStands();
 
+  /// 🗣️I-132-Q34 a (유저 2026-10-30): 「결과가 올 때까지 그 프레임의 직전
+  /// 완성 그림에 머문다」 — whether the frame holds a plugin's step that only
+  /// a picture made waiting for it draws ([waitsForItsPlugins]). Such a
+  /// frame is never drawn as it stands: the picture shown stays until the
+  /// next is there, and its live rows' changes go into it one patch at a
+  /// time ([_writingThrough]) — a stroke shown late by its plugins' time.
+  bool _waits = false;
+
+  /// Whether a patch of a frame that [_waits] is on its way into the
+  /// picture shown: the changes after it wait to go in together, behind it
+  /// — one a step, each waiting for the plugins, would fall ever further
+  /// behind the pen.
+  bool _writingThrough = false;
+
   /// The cel the pen is on, as the key of the picture shown read it.
   CelAsOf? _drawnOn;
 
@@ -302,6 +317,7 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// [_onScreen]).
   void _standLive({bool Function(BrushFrameKey cel)? onScreen}) {
     _stoodBy = _pictures.keyAsItStands(widget.nodes, widget.picture);
+    _waits = waitsForItsPlugins(widget.nodes);
     _liveChanges = null;
     _live = null;
     _onScreen = const {};
@@ -403,7 +419,7 @@ class _FramePictureViewState extends State<FramePictureView> {
     if (widget.laysWhatItMisses) {
       _make(key);
     }
-    if (!widget.wholeFrames) {
+    if (!widget.wholeFrames && !_waits) {
       // Drawn as it stands until its picture is there.
       _letGo(_store);
       _showing = key;
@@ -677,7 +693,11 @@ class _FramePictureViewState extends State<FramePictureView> {
     // still moving. ⛔Not left out until the move lands: the next stroke's
     // first steps were drawn nowhere.
     final key = _moving ?? _showing;
-    if (live == null || shown == null || key == null || _standing.whole) {
+    if (live == null ||
+        shown == null ||
+        key == null ||
+        _standing.whole ||
+        _writingThrough) {
       return;
     }
     final held = _held;
@@ -731,12 +751,20 @@ class _FramePictureViewState extends State<FramePictureView> {
       return;
     }
     final to = _keptUnder(key, _held);
-    if (!_store.patch(from: _keptAs!, to: to, rect: rect, draw: drawing.draw)) {
+    if (!_store.patch(
+      from: _keptAs!,
+      to: to,
+      rect: rect,
+      draw: drawing.draw,
+      // Drawn again once its plugins have run, by the frame still standing.
+      gone: () => !mounted || !identical(_live, live),
+    )) {
       _standing.whole = true;
       return;
     }
     _pictures.giveWayToSteps();
     _keepAs(to);
+    _writingThrough = _waits;
     // Shown once its texels are in the picture, at every level — or, where
     // they never went in, the frame as it stands from the paint after: the
     // picture let go on the way (a write the GPU threw on, F-509). ⛔Not
@@ -750,6 +778,7 @@ class _FramePictureViewState extends State<FramePictureView> {
         if (!landed && identical(_shown?.picture, picture)) {
           _standing.whole = true;
         }
+        _writingThrough = false;
         _repaint.value += 1;
       }),
     );
@@ -793,9 +822,11 @@ class _FramePictureViewState extends State<FramePictureView> {
         painter: _FramePicturePainter(
           shown: _shown,
           // ⛔Not the stored cels where the view draws rows live: a frame of
-          // no row is a page the pen may be drawing on.
-          asItStands: _live ?? _asItStands,
+          // no row is a page the pen may be drawing on — nor the live rows
+          // of a frame that waits for its plugins.
+          asItStands: _waits ? _asItStands : _live ?? _asItStands,
           standing: _standing,
+          waits: _waits,
           catchUp: _catchUp,
           viewport: widget.viewport,
           devicePixelRatio: EffectiveDevicePixelRatio.of(context),
@@ -812,6 +843,7 @@ class _FramePicturePainter extends CustomPainter {
     required this.shown,
     required this.asItStands,
     required this.standing,
+    required this.waits,
     required this.catchUp,
     required this.viewport,
     required this.devicePixelRatio,
@@ -827,6 +859,10 @@ class _FramePicturePainter extends CustomPainter {
   /// Whether the frame is drawn as it stands in place of [shown].
   final _DrawnAsItStands standing;
 
+  /// Whether the frame waits for its plugins: [shown] stays, whatever
+  /// [standing] says ([_FramePictureViewState._waits]).
+  final bool waits;
+
   /// Puts what the live rows moved into [standing] or the picture shown
   /// before it is read ([_FramePictureViewState._catchUp]).
   final VoidCallback catchUp;
@@ -838,7 +874,7 @@ class _FramePicturePainter extends CustomPainter {
     catchUp();
     canvas.save();
     canvas.clipRect(Offset.zero & size);
-    final shown = standing.whole ? null : this.shown;
+    final shown = standing.whole && !waits ? null : this.shown;
     if (shown case (:final picture, :final image)) {
       applyViewportTransform(
         canvas,
@@ -881,6 +917,7 @@ class _FramePicturePainter extends CustomPainter {
   bool shouldRepaint(_FramePicturePainter oldDelegate) =>
       !identical(oldDelegate.shown?.image, shown?.image) ||
       !identical(oldDelegate.asItStands, asItStands) ||
+      oldDelegate.waits != waits ||
       oldDelegate.viewport != viewport ||
       oldDelegate.devicePixelRatio != devicePixelRatio;
 }

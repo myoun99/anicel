@@ -216,11 +216,17 @@ class FramePictureStore<K extends Object> {
   /// the next step replaces and the pen's lift hands on or lets go of
   /// (brush/rendering, 2026-10-24). A lay's drawing waits for its turn —
   /// its key is the frame's signature, so what it draws does not change.
+  ///
+  /// 🗣️I-132-Q34 a: a plugin's step in it is waited for as a lay's is
+  /// ([_recordedThrough]) — [draw] called again once the step has run,
+  /// unless [gone] says what it draws is gone by then: the patch does not
+  /// go in, and its picture is let go.
   bool patch({
     required K from,
     required K to,
     required ui.Rect rect,
     required void Function(ui.Canvas canvas) draw,
+    bool Function()? gone,
   }) {
     final entry = _entries[from] ?? _becoming[from]?.entry;
     if (entry == null) {
@@ -231,7 +237,12 @@ class FramePictureStore<K extends Object> {
       _letGo(entry);
       return false;
     }
-    final asked = _Patch<K>(from, to, widened, recordedOver(widened, draw));
+    final asked = _Patch<K>(
+      from,
+      to,
+      widened,
+      _recordedThrough(widened, draw, gone: gone)..ignore(),
+    );
     _becoming[to] = (entry: entry, patch: asked);
     entry.renders = entry.renders.then((_) => _renderPatch(entry, asked));
     return true;
@@ -364,18 +375,11 @@ class FramePictureStore<K extends Object> {
     if (extent.isEmpty) {
       return null;
     }
-    // 🗣️I-132-Q34 a: a plugin anywhere in the frame runs over what its
-    // chain made before it, and a lay WAITS for it — the frame's key is its
-    // signature, so what it draws is the same however often it is drawn.
-    final stages = FxPluginStages();
-    final ui.Picture recorded;
-    try {
-      recorded = await stages.recordedThrough(
-        () => recordedOver(extent, lay.frame.draw),
-        discard: (picture) => picture.dispose(),
-      );
-    } finally {
-      stages.dispose();
+    // The frame's key is its signature, so what it draws is the same
+    // however often it is drawn.
+    final recorded = await _recordedThrough(extent, lay.frame.draw);
+    if (recorded == null) {
+      return null;
     }
     final image = await _rendered(
       recorded,
@@ -401,9 +405,16 @@ class FramePictureStore<K extends Object> {
   /// it is answered, and the renders behind it go on — as a write that
   /// throws ([_writeWaiting]).
   Future<void> _renderPatch(_Entry<K> entry, _Patch<K> asked) async {
-    final recorded = asked.recorded;
+    final recording = asked.recorded;
     final ui.Image? image;
     try {
+      final recorded = await recording;
+      if (recording != null && recorded == null) {
+        // What it drew was gone before its plugins had run ([patch]).
+        _letGo(entry);
+        asked.answer(landed: false);
+        return;
+      }
       image = recorded == null
           ? null
           : await _rendered(
@@ -847,6 +858,28 @@ Iterable<_PictureRead> _rowsOf(
   }
 }
 
+/// [recordedOver] with every plugin's step met in it run — 🗣️I-132-Q34 a
+/// (유저 2026-10-30): 「결과가 올 때까지 그 프레임의 직전 완성 그림에
+/// 머문다」, so a frame's picture, laid or patched, WAITS for its plugins
+/// ([FxPluginStages]). The first recording is made before this answers;
+/// [gone], asked before each after it, says what [draw] draws is gone — and
+/// then there is no picture.
+Future<ui.Picture?> _recordedThrough(
+  ui.Rect rect,
+  void Function(ui.Canvas canvas) draw, {
+  bool Function()? gone,
+}) async {
+  final stages = FxPluginStages();
+  try {
+    return await stages.recordedThrough(
+      () => gone?.call() ?? false ? null : recordedOver(rect, draw),
+      discard: (picture) => picture?.dispose(),
+    );
+  } finally {
+    stages.dispose();
+  }
+}
+
 /// A picture of what [draw] draws over [rect] in world coordinates, with
 /// [rect]'s top left at its origin.
 ui.Picture recordedOver(ui.Rect rect, void Function(ui.Canvas canvas) draw) {
@@ -911,8 +944,10 @@ class _Patch<K> {
   final K to;
   final ui.Rect rect;
 
-  /// What the patch draws — none for a [FramePictureStore.move].
-  final ui.Picture? recorded;
+  /// What the patch draws, its plugins run — none for a
+  /// [FramePictureStore.move], and null once it comes where what it drew
+  /// was gone ([FramePictureStore.patch]).
+  final Future<ui.Picture?>? recorded;
 
   /// Answered true once [to] answers with the patch's texels — or false
   /// once its picture is let go before that ([FramePictureStore._letGo]),
