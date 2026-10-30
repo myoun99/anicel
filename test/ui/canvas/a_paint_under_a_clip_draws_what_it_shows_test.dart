@@ -174,8 +174,13 @@ void main() {
   }))!;
 
   /// The pixels where [whole] — the world — and [cut] — [clip] alone —
-  /// differ inside [clip], as `(x, y): whole → cut` in world pixels.
-  List<String> differencesInsideTheClip(Uint8List whole, Uint8List cut) {
+  /// differ inside [clip] by more than [by] a channel, as
+  /// `(x, y): whole → cut` in world pixels.
+  List<String> differencesInsideTheClip(
+    Uint8List whole,
+    Uint8List cut, {
+    int by = 0,
+  }) {
     final out = <String>[];
     for (var y = 0; y < clip.height.toInt(); y += 1) {
       for (var x = 0; x < clip.width.toInt(); x += 1) {
@@ -185,7 +190,9 @@ void main() {
         final b = ((y * clip.width.toInt()) + x) * 4;
         final pixelA = whole.sublist(a, a + 4);
         final pixelB = cut.sublist(b, b + 4);
-        if (pixelA.indexed.any((entry) => entry.$2 != pixelB[entry.$1])) {
+        if (pixelA.indexed.any(
+          (entry) => (entry.$2 - pixelB[entry.$1]).abs() > by,
+        )) {
           out.add('($wx, $wy): $pixelA → $pixelB');
         }
       }
@@ -203,6 +210,14 @@ void main() {
 
   for (final MapEntry(key: name, value: scene) in scenes.entries) {
     final hasFolder = scene.any((node) => node is CompositeGroup);
+    // 🗣️a-blur-under-a-clip-cuts-its-edge-on-vulkan-Q1 = a (유저 2026-10-30
+    // 「1/255 를 받아들인다」): a folder's blur, on Impeller, a channel apart
+    // here and there inside the patch. 🔬The folder's raster is the same
+    // bytes both ways; Impeller blurs a raster of another size into values
+    // a 255th apart below the byte and lays them on the paper unrounded
+    // (2 and 9 of 64 pixels, 10-30). ⛔Not a slack for a row's own blur,
+    // or for Skia: those are exact.
+    final apart = hasFolder && ui.ImageFilter.isShaderFilterSupported ? 1 : 0;
 
     testWidgets('$name — into the picture: the same pixels inside a '
         'patch, and nothing drawn far past it', (tester) async {
@@ -225,7 +240,7 @@ void main() {
       final cutFolder = lastFolderRaster();
       final cut = await pixelsOf(tester, cutRecorder, clip);
 
-      final differing = differencesInsideTheClip(whole, cut);
+      final differing = differencesInsideTheClip(whole, cut, by: apart);
       expect(
         differing,
         isEmpty,
@@ -275,7 +290,7 @@ void main() {
       final cutFolder = lastFolderRaster();
       final cut = await pixelsOf(tester, cutRecorder, clip);
 
-      final differing = differencesInsideTheClip(whole, cut);
+      final differing = differencesInsideTheClip(whole, cut, by: apart);
       expect(
         differing,
         isEmpty,
