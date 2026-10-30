@@ -131,6 +131,71 @@ void main() {
       expect(identical(after.name, before.name), isTrue);
       expect(identical(after.value, before.value), isTrue);
     });
+
+    testWidgets('the ◆ fills on a keyed frame and empties off it', (
+      tester,
+    ) async {
+      final cursor = await pumpRow(tester, lane, at: 1);
+      Color? fill() => (tester
+              .widget<Container>(
+                find.descendant(
+                  of: keyButton,
+                  matching: find.byType(Container),
+                ),
+              )
+              .decoration! as BoxDecoration)
+          .color;
+      expect(fill(), Colors.transparent);
+
+      await moveTo(tester, cursor, 2);
+      expect(fill(), isNot(Colors.transparent));
+    });
+
+    testWidgets('the arrows go to the NEAREST key on either side', (
+      tester,
+    ) async {
+      final lane = PropertyLaneRow(
+        laneId: 'spin',
+        label: 'Spin',
+        keyMarks: const {
+          2: KeyMark.linear,
+          6: KeyMark.linear,
+          10: KeyMark.linear,
+          14: KeyMark.linear,
+        },
+        valueLabel: (_) => '10.00%',
+      );
+      final selected = <int>[];
+      final cursor = ValueNotifier<int?>(8);
+      addTearDown(cursor.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topLeft,
+              child: TimelineLaneControlsRow(
+                layer: layer,
+                lane: lane,
+                metrics: TimelineGridMetrics.defaults,
+                width: TimelineGridMetrics.defaults.layerControlsWidth,
+                height: TimelineGridMetrics.defaults.layerRowHeight,
+                frameCursor: cursor,
+                onSelectFrame: selected.add,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('timeline-lane-prev-key-a-spin')),
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('timeline-lane-next-key-a-spin')),
+      );
+
+      expect(selected, [6, 10]);
+    });
   });
 
   group('a group header', () {
@@ -169,6 +234,28 @@ void main() {
       expect(identical(tester.widget(preview), previewBefore), isFalse);
       expect(weight(tester), FontWeight.w700);
       expect(identical(tester.widget(name), nameBefore), isTrue);
+    });
+
+    testWidgets('the dialogue sample goes where Show Dialogue is off', (
+      tester,
+    ) async {
+      final lane = PropertyLaneRow(
+        laneId: 'tag',
+        label: 'Tag',
+        keyMarks: const {},
+        isGroupHeader: true,
+        previewText: (
+          name: '名前',
+          line: 'セリフ',
+          tagAt: (frame) => SeNameTag(showLine: frame < 3),
+        ),
+      );
+      final cursor = await pumpRow(tester, lane, at: 0);
+      final line = find.descendant(of: preview, matching: find.text('セリフ'));
+      expect(line, findsOneWidget);
+
+      await moveTo(tester, cursor, 3);
+      expect(line, findsNothing);
     });
   });
 }
