@@ -10,7 +10,7 @@
 ## Améliorations
 
 - **Traits sur iPhone et iPad** — un trait n'écrit plus que ce qui change, sans redessiner toute l'image, et les images prennent deux fois moins de mémoire. En contrepartie, les photos et vidéos P3 s'affichent en sRGB.
-- **Crayons** — les crayons 2H, HB, 2B et 4B et le crayon de couleur sont refaits. Le grain vient maintenant de la pointe de la brosse et non de la texture du papier : il reste même texture coupée. Les nouveaux réglages arrivent avec « Réinitialiser la bibliothèque ».
+- **Crayons** — les crayons 2H, HB, 2B et 4B, le crayon de couleur et le porte-mine sont refaits. Le grain vient maintenant de la pointe de la brosse et non de la texture du papier : il reste même texture coupée. L'espacement par défaut des préréglages passe à 5 %, et l'ancien porte-mine reste dans le groupe Plume sous le nom Stylo porte-mine. Les nouveaux réglages arrivent avec « Réinitialiser la bibliothèque ».
 - **Lignes de caméra du conte** — FIX ne s'écrit qu'avant et après un mouvement de caméra, et une case où la caméra ne fait rien reste vide. Retirer la rangée caméra de la feuille efface ces lignes et la colonne CAM de la feuille de temps.
 
 ## Corrections

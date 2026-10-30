@@ -10,7 +10,7 @@
 ## Improved
 
 - **Strokes on iPhone and iPad** — a stroke writes only what changed into the frame's picture instead of redrawing the whole frame, and pictures take half the memory. In exchange, P3 photos and videos display as sRGB.
-- **Pencils** — the 2H, HB, 2B and 4B pencils and the colored pencil are rebuilt. The pencil feel now comes from the brush tip rather than the paper texture, so the grain stays with the texture off. The new settings arrive with "Reset brush library".
+- **Pencils** — the 2H, HB, 2B and 4B pencils, the colored pencil and the mechanical pencil are rebuilt. The pencil feel now comes from the brush tip rather than the paper texture, so the grain stays with the texture off. Brush presets now default to 5% spacing, and the old mechanical pencil stays on in the Pen group as Mechanical Pen. The new settings arrive with "Reset brush library".
 - **Camera lines in the conte** — FIX appears only before and after a camera move, and a cell where the camera does nothing stays blank. Turning the camera row off the sheet clears these lines and the timesheet's CAM column together.
 
 ## Fixed

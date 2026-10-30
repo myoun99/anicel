@@ -100,6 +100,13 @@ class BrushShape {
   /// it.
   static const double minSpacing = 0.01;
 
+  /// The step a brush lays its dabs at unless its look needs a gap of its
+  /// own, as a fraction of its size. 유저 2026-10-30: 「연필시리즈들 간격이
+  /// 너무 길어. 5%로 하자. 그냥 다른 프리셋도 그렇고 특별한일없으면 기본값 다
+  /// 5%로해도될듯」 — which replaces 2026-09-24's 「일반적인 설정으론 최소치로
+  /// 두자」 ([minSpacing]).
+  static const double generalSpacing = 0.05;
+
   /// The widest [spacing]: four tip sizes between dabs.
   static const double maxSpacing = 4.0;
 

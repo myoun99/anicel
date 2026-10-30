@@ -173,6 +173,12 @@ const int pencilLeadFacesPerStep = 3;
 /// the same. ⛔These are ours, generated here; nothing of that file's bitmap
 /// is in them (유저: 「그대로 베끼면 문제될거같으니 진짜 참고만 해서 개선」).
 ///
+/// ↩️300 FLECKS, 86% EMPTY, NOT THE THOUSAND THEY STARTED AT (유저 2026-10-30:
+/// 「연필시리즈들 간격이 너무 길어. 5%로 하자」): twenty dabs cross a pixel at
+/// that step, and a cloud two-thirds empty filled to a band with grain at its
+/// rim. 📏At 40 px this one reads 0.41 by the grain test's measure, where the
+/// thousand read 0.46 at 25% and Clip Studio's real pencil 0.31.
+///
 /// ⚠️256 texels, not 64: a fleck is a few texels. ↩️F-462 ② stayed at 64
 /// because a solid rim stairs through the sampler's lack of a minification
 /// filter (F-462 ③'s tuft); a cloud has no rim to stair, and at a pencil's
@@ -842,7 +848,7 @@ double _superReach(double u, double v, int order) {
 const int _crumbMaskSize = 256;
 
 /// The flecks thrown at a cloud, before its patches and rim take their share.
-const int _crumbSpecks = 1000;
+const int _crumbSpecks = 300;
 
 /// A fleck of [strength]: flat, its last two fifths easing out, so it holds
 /// its dark at a dab's scale and does not stair at a large one.

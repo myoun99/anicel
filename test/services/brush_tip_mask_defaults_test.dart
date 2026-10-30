@@ -112,10 +112,11 @@ void main() {
       'builtin-pencil-face-5-0': 14873228,
       'builtin-pencil-face-5-1': 14743196,
       'builtin-pencil-face-5-2': 14982888,
-      // Measured 2026-10-30, when they turned into clouds of flecks (F-511).
-      'builtin-pencil-crumb-0': 4013946,
-      'builtin-pencil-crumb-1': 3596642,
-      'builtin-pencil-crumb-2': 3879240,
+      // Measured 2026-10-30, when they thinned to 300 flecks for the 5% step
+      // (F-511).
+      'builtin-pencil-crumb-0': 1493455,
+      'builtin-pencil-crumb-1': 1298212,
+      'builtin-pencil-crumb-2': 1381520,
     };
 
     expect(

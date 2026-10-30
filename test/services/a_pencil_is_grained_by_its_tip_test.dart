@@ -26,6 +26,7 @@ const _grades = [
   'builtin-soft-pencil',
   'builtin-dark-pencil',
   'builtin-colored-pencil',
+  'builtin-mechanical-pencil',
 ];
 
 BrushSettings _settingsOf(String id) =>
@@ -82,12 +83,12 @@ void main() {
     }
   });
 
-  test('each tip is a cloud of flecks, more than half of it empty, and none '
-      'is the next', () {
+  test('each tip is a cloud of flecks, thin enough to stay one at the general '
+      'step, and none is the next', () {
     double emptyShare(BrushTipMask tip) =>
         tip.alpha.where((level) => level == 0).length / tip.alpha.length;
     for (final tip in pencilCrumbBrushTipMasks) {
-      expect(emptyShare(tip), inInclusiveRange(0.55, 0.8), reason: tip.id);
+      expect(emptyShare(tip), inInclusiveRange(0.8, 0.9), reason: tip.id);
     }
     expect(
       pencilCrumbBrushTipMasks.map((tip) => tip.alpha.join()).toSet(),
