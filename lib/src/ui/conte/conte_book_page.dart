@@ -48,6 +48,7 @@ class ConteBookPage extends StatelessWidget {
     required this.session,
     required this.pictureFor,
     required this.onSelectCell,
+    required this.wordsRefusalOf,
     required this.drawing,
     required this.strokeHold,
     this.imageFor,
@@ -71,6 +72,9 @@ class ConteBookPage extends StatelessWidget {
 
   /// A cell's press: its cut, its storyboard row and its frame.
   final ValueChanged<ContePlacedCell> onSelectCell;
+
+  /// Why a cell with no block takes no words.
+  final String Function(ContePlacedCell cell) wordsRefusalOf;
 
   /// Whether the sheet takes ink now — the live windows' keys stand down
   /// in the printed ink while it does.
@@ -155,11 +159,12 @@ class ConteBookPage extends StatelessWidget {
   /// block-owned, so it travels with every move and copy, and a linked or
   /// same-named block keeps its own (「같은 이름의 콘티블록이랑 링크된다고
   /// 해도 내용물은 독립」: a link shares the drawing, never the timeline's
-  /// entries). A cell with no block has nowhere to keep them and offers no
-  /// target.
+  /// entries). A cell with no block has nowhere to keep them, and a tap on
+  /// it says why (유저 2026-10-30: 「콘티레이어 없을때 콘티용지의
+  /// 내용칸쪽 누르면 반응없는데 제대로 콘티레이어 있어야한다는 메시지? …
+  /// 그거 뜨도록」).
   List<SheetTextTarget> _actionTargets() => [
-    for (final cell in page.cells)
-      if (cell.source.frameId != null) _actionTarget(cell),
+    for (final cell in page.cells) _actionTarget(cell),
   ];
 
   /// [cell]'s ACTION target: the cell's own rows of the column — its words
@@ -195,6 +200,7 @@ class ConteBookPage extends StatelessWidget {
         cellIndex: cell.cellIndex,
         action: text,
       ),
+      refusal: cell.source.frameId == null ? wordsRefusalOf(cell) : null,
     );
   }
 

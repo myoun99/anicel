@@ -617,6 +617,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
               session: _session,
               pictureFor: _pictureFor,
               onSelectCell: _selectCell,
+              wordsRefusalOf: _wordsRefusalOf,
               drawing: _drawing,
               strokeHold: _strokeHold,
               imageFor: widget.imageFor,
@@ -714,10 +715,11 @@ class _ConteTabHostState extends State<ConteTabHost> {
   /// 없으면 프레임이 없다고뜨는데 이런 메시지 제대로 표시. 콘티레이어가
   /// 없다고」). Null while its 「프레임 자동 생성」 is on and the stroke makes
   /// what is missing.
-  String? _refusalFor(CutId cutId) {
-    if (_session.autoFrame.autoCreates) {
-      return null;
-    }
+  String? _refusalFor(CutId cutId) =>
+      _session.autoFrame.autoCreates ? null : _whatTheCutLacks(cutId);
+
+  /// What a cell of [cutId] with no block lacks, in the canvas's words.
+  String _whatTheCutLacks(CutId cutId) {
     final strings = AppStrings.of(
       _session.languageSettings.value.programLanguage,
     );
@@ -759,6 +761,11 @@ class _ConteTabHostState extends State<ConteTabHost> {
   /// Why [cell]'s band takes no ink ([_refusalFor]).
   String? _refusalOfCell(ContePlacedCell cell) =>
       _refusalFor(CutId(cell.cutId));
+
+  /// Why [cell], with no block, takes no words: whatever 「프레임 자동
+  /// 생성」 says, a tap on its words makes nothing to keep them.
+  String _wordsRefusalOf(ContePlacedCell cell) =>
+      _whatTheCutLacks(CutId(cell.cutId));
 
   /// [pictures]' windows — each of [pages]' own — moved to where their
   /// page lies.
