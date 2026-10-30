@@ -9,6 +9,7 @@ import '../widgets/panel_flyout.dart'
 import '../widgets/rail_glyph_button.dart';
 import '../widgets/scale_chain_button.dart';
 import '../widgets/tick_layer.dart';
+import '../sliced_value_listenable_builder.dart' show SlicedListenableBuilder;
 import '../input/control_press_claim.dart';
 import 'dart:math' as math;
 import 'dart:ui' show ClipOp;
@@ -36,7 +37,6 @@ import 'layer_label_controls.dart'
         railSelectedRowColor;
 import 'timeline_block_look.dart';
 import 'timeline_current_row.dart';
-import '../../models/se_name_tag.dart' show SeNameTag;
 import 'se_name_tag_lane_preview.dart' show SeNameTagLanePreview;
 import '../text/app_strings.dart' show AppText;
 import '../text/readout_text.dart'
@@ -255,11 +255,6 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   PropertyLaneRow get lane => widget.lane;
   String get _keyPrefix => widget.keyPrefix;
 
-  /// The preview's look at the playhead — resolved ONCE per build, since
-  /// both the sample text and the styles read it.
-  SeNameTag get _previewTag =>
-      lane.previewText!.tagAt(_frame);
-
   @override
   void dispose() {
     // A label taken away mid-scrub (its row folded under it) never sees the
@@ -272,24 +267,24 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     super.dispose();
   }
 
-  int? get _previousKeyFrame {
-    int? best;
-    for (final frame in lane.keyedFrames) {
-      if (frame < _frame && (best == null || frame > best)) {
-        best = frame;
+  /// The lane's keys about [frame] as its key buttons show them: whether
+  /// one stands on it, and the nearest before and after.
+  _KeysAround _keysAround(int frame) {
+    int? previous;
+    int? next;
+    for (final keyed in lane.keyedFrames) {
+      if (keyed < frame && (previous == null || keyed > previous)) {
+        previous = keyed;
+      }
+      if (keyed > frame && (next == null || keyed < next)) {
+        next = keyed;
       }
     }
-    return best;
-  }
-
-  int? get _nextKeyFrame {
-    int? best;
-    for (final frame in lane.keyedFrames) {
-      if (frame > _frame && (best == null || frame < best)) {
-        best = frame;
-      }
-    }
-    return best;
+    return (
+      keyed: lane.keyedFrames.contains(frame),
+      previous: previous,
+      next: next,
+    );
   }
 
   // AE-style value scrubbing, ONE NUMBER AT A TIME: a number's own box
@@ -373,10 +368,15 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
         ]),
       );
 
-  Widget _navigator(ColorScheme colorScheme) {
-    final keyedNow = lane.keyedFrames.contains(_frame);
-    final previousKey = _previousKeyFrame;
-    final nextKey = _nextKeyFrame;
+  Widget _navigator(ColorScheme colorScheme) => _onTheFrame(
+    _keysAround,
+    (context, keys) => _keyButtons(colorScheme, keys),
+  );
+
+  Widget _keyButtons(ColorScheme colorScheme, _KeysAround keys) {
+    final keyedNow = keys.keyed;
+    final previousKey = keys.previous;
+    final nextKey = keys.next;
     final onSelectFrame = widget.onSelectFrame;
     final laneEdit = widget.laneEdit;
 
@@ -435,6 +435,12 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       ],
     );
   }
+
+  /// The value cell at the cursor, built again when its label changes.
+  Widget _value() => _onTheFrame(
+    lane.valueLabel!,
+    (context, label) => _valueCell(label),
+  );
 
   /// The VALUE column: the property's value at the playhead — a flag's
   /// ring, a colour's swatch, or its numbers in boxes ([_valueBoxes]). A
@@ -699,12 +705,19 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   @override
   Widget build(BuildContext context) {
     final hooks = widget.currentRowHooks;
-    // 🚨A TICK LAYER (I-22 ③): the row shows its lane AT the cursor, so it
-    // rebuilds on every frame played. Its three hosts — the rail, the
-    // sheet's header, the storyboard's rail — each subscribed for it, and
-    // each rebuild landed bare in the host's layout scope: the rail laid
-    // out again and the panel around it repainted on every playback frame.
-    // It subscribes itself now, inside a layer of its own box's size.
+    // 🚨A TICK LAYER (I-22 ③): the row shows its lane AT the cursor. Its
+    // three hosts — the rail, the sheet's header, the storyboard's rail —
+    // each subscribed for it, and each rebuild landed bare in the host's
+    // layout scope: the rail laid out again and the panel around it
+    // repainted on every playback frame. It subscribes itself, inside a
+    // layer of its own box's size.
+    // 🚨T26 (2026-10-30, measured on the device with every lane open: play
+    // p95 22–29ms): only what SHOWS the frame listens to it — the value,
+    // the key buttons, a group's preview — each through the app's one law
+    // for "built again when what it shows changes" ([_onTheFrame]). A lane
+    // that holds still builds nothing as the playhead runs, a moving one
+    // its value alone, and the key buttons as a key is crossed.
+    // ↩️The whole row was built again on every frame the cursor moved to.
     return SizedBox(
       width: _cellWidth,
       height: _cellHeight,
@@ -715,34 +728,36 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
         // swipe columns standing beside them.
         child: PressFireScope(
           fireOn: PressFire.down,
-          child: _onTheCursor(
-            context,
-            hooks == null
-                ? (context) => _buildCell(context, null)
-                : (context) => ValueListenableBuilder<TimelineRowAddress?>(
-                    valueListenable: hooks.currentRow,
-                    builder: (context, currentRow, _) =>
-                        _buildCell(context, currentRow),
-                  ),
-          ),
+          child: hooks == null
+              ? _buildCell(context, null)
+              : ValueListenableBuilder<TimelineRowAddress?>(
+                  valueListenable: hooks.currentRow,
+                  builder: (context, currentRow, _) =>
+                      _buildCell(context, currentRow),
+                ),
         ),
       ),
     );
   }
 
-  /// The frame the row reads its lane at, current whenever [_onTheCursor]
-  /// builds.
+  /// The frame the cursor stands on now — read by what [_onTheFrame]
+  /// builds, and by a press when it lands.
   int get _frame => laneRowFrame(widget.frameCursor);
 
-  /// [cell], built again on every frame the cursor moves to.
-  Widget _onTheCursor(BuildContext context, WidgetBuilder cell) {
+  /// [builder] over what the row shows of the frame the cursor stands on
+  /// ([slice] of it), built again only when that changes.
+  Widget _onTheFrame<S>(
+    S Function(int frame) slice,
+    Widget Function(BuildContext context, S shown) builder,
+  ) {
     final cursor = widget.frameCursor;
     if (cursor == null) {
-      return cell(context);
+      return builder(context, slice(_frame));
     }
-    return ValueListenableBuilder<int?>(
-      valueListenable: cursor,
-      builder: (context, _, _) => cell(context),
+    return SlicedListenableBuilder<S>(
+      listenable: cursor,
+      slice: () => slice(_frame),
+      builder: builder,
     );
   }
 
@@ -967,16 +982,19 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     if (preview == null) return null;
     return Align(
       alignment: centerEndAlong(widget.axis),
-      child: SeNameTagLanePreview(
-        key: ValueKey<String>(
-          '$_keyPrefix-lane-group-preview-${layer.id}-${lane.laneId}',
+      child: _onTheFrame(
+        preview.tagAt,
+        (context, tag) => SeNameTagLanePreview(
+          key: ValueKey<String>(
+            '$_keyPrefix-lane-group-preview-${layer.id}-${lane.laneId}',
+          ),
+          name: preview.name,
+          // The dialogue SAMPLE follows the Show Dialogue member — the one
+          // thing a fixed-string preview does track.
+          line: tag.showLine ? preview.line : '',
+          tag: tag,
+          axis: widget.axis,
         ),
-        name: preview.name,
-        // The dialogue SAMPLE follows the Show Dialogue member — the one
-        // thing a fixed-string preview does track.
-        line: _previewTag.showLine ? preview.line : '',
-        tag: _previewTag,
-        axis: widget.axis,
       ),
     );
   }
@@ -996,7 +1014,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
         child: const SizedBox.shrink(),
       );
     }
-    final valueLabel = lane.valueLabel?.call(_frame);
+    final hasValue = lane.valueLabel != null;
     final seat = widget.seat;
     final drawn = seat == null
         ? null
@@ -1016,8 +1034,8 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       ),
     );
     final content = widget.axis == Axis.horizontal
-        ? _memberRow(colorScheme, label, valueLabel, drawn)
-        : _memberColumn(colorScheme, label, valueLabel, drawn);
+        ? _memberRow(colorScheme, label, drawn, hasValue: hasValue)
+        : _memberColumn(colorScheme, label, drawn, hasValue: hasValue);
     // Right after the section band, not an indent past it (F-409, 유저
     // 2026-10-19: 「fx(변형이든 카메라든 뭐든)의 멤버, < 마름모 > 이름 이거,
     // 이거 다 왼쪽정렬로 왼쪽에 붙어있도록. 공간만들고싶은거임」). ↩️It stood
@@ -1076,9 +1094,9 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   Widget _memberRow(
     ColorScheme colorScheme,
     Widget label,
-    String? valueLabel,
-    bool? drawn,
-  ) {
+    bool? drawn, {
+    required bool hasValue,
+  }) {
     final graphs = _drawsGraphs;
     return Row(
       children: [
@@ -1101,9 +1119,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           // Reserved even with nothing to show, so the column survives the
           // rows that carry no readout (the Excel-grid rule the control
           // slots already follow).
-          child: valueLabel == null
-              ? null
-              : _valueCell(valueLabel),
+          child: hasValue ? _value() : null,
         ),
       ],
     );
@@ -1223,15 +1239,15 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   Widget _memberColumn(
     ColorScheme colorScheme,
     Widget label,
-    String? valueLabel,
-    bool? drawn,
-  ) {
+    bool? drawn, {
+    required bool hasValue,
+  }) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final link = valueLabel == null ? null : _valueLink();
+        final link = hasValue ? _valueLink() : null;
         final shows = _stoodShows(
           constraints.maxHeight,
-          hasValue: valueLabel != null,
+          hasValue: hasValue,
           hasLink: link != null,
         );
         return Column(
@@ -1257,14 +1273,11 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
                 height: layerLanePinSlotWidth,
                 child: Center(child: _lanePin()),
               ),
-            if (shows.value && valueLabel != null) ...[
+            if (shows.value) ...[
               const SizedBox(height: _laneValueGap),
               SizedBox(
                 height: layerRailColumnWidthsIn(context).laneValue,
-                child: RotatedBox(
-                  quarterTurns: 1,
-                  child: _valueCell(valueLabel),
-                ),
+                child: RotatedBox(quarterTurns: 1, child: _value()),
               ),
             ],
           ],
@@ -1345,6 +1358,10 @@ typedef _StoodShows = ({
   bool pin,
   bool chips,
 });
+
+/// A lane's keys about the cursor's frame
+/// ([_TimelineLaneControlsRowState._keysAround]).
+typedef _KeysAround = ({bool keyed, int? previous, int? next});
 
 class _NavigatorButton extends StatelessWidget {
   const _NavigatorButton({
