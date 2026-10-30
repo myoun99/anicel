@@ -1,7 +1,7 @@
 import 'dart:ui' show Color, Offset;
 
 import '../../models/camera_instruction.dart'
-    show CameraInstructionDef, instructionTermName;
+    show CameraInstructionDef;
 import '../../models/camera_moves.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
@@ -119,7 +119,7 @@ PropertyLaneRow cameraUnionHeader(
       (
         from: move.from,
         to: move.to,
-        word: instructionTermName(move.term, defById(move.term)),
+        word: cameraMoveWord(move, defById),
       ),
   ],
 );

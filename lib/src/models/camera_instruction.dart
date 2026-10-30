@@ -228,6 +228,9 @@ class CameraInstructionSet {
       CameraInstructionDef(id: 'tb', name: 'T.B', iconKey: 'track-back'),
       CameraInstructionDef(id: 'qtu', name: 'Q T.U', iconKey: 'track-up'),
       CameraInstructionDef(id: 'qtb', name: 'Q T.B', iconKey: 'track-back'),
+      // 🗣️I-89 (유저 2026-10-10): 「회전은 모아트기준대로」 — the turn's
+      // own word, which a camera move names (`cameraMoves`).
+      CameraInstructionDef(id: 'rotate', name: '回転', iconKey: 'rotate'),
       // Transitions. Fades seed the sheet's wedge marks: the wedge is wide
       // where the screen is covered (FI/WI clear it, FO/WO close it).
       CameraInstructionDef(

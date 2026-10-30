@@ -856,7 +856,7 @@ class TimesheetDocument {
       if (move.to >= rowCount) {
         continue; // Its line is not on the sheet either.
       }
-      final word = instructionTermName(move.term, defById?.call(move.term));
+      final word = cameraMoveWord(move, (id) => defById?.call(id));
       for (var row = move.from; row < move.to; row += 1) {
         cells[row] = TimesheetCell(
           cells[row].kind,
