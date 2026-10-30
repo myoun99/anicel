@@ -1582,7 +1582,16 @@ void main() {
   /// through `_emptyStacks`, which `clear` wrote out and now shares.
   /// 🔬`clean_code_diff` against master (`d7cbaccdc`) names this one and
   /// no other class. ⛔Not split to fit: the stacks are the history.
-  const longClasses = 80;
+  ///
+  /// ⚠️80 → 81 on 2026-10-30, ONE name: `TimelineRulerScale` crossed (533
+  /// → 609) when the rulers came to count a third way (I-81, 🗣️Q1 「그 컷의
+  /// X시트 장을 따른다」): the page a strip counts by, where its numbers and
+  /// seconds start again, the page marks thinned on the seconds' ladder,
+  /// and the widest mark measured with them. 🔬`clean_code_diff` against
+  /// master (`522425ec4`) names this one and no other class. ⛔Not split to
+  /// fit: the scale is the one answer to what a strip writes and where, and
+  /// the page is one more way it counts.
+  const longClasses = 81;
 
   late CleanCodeScan scan;
   setUpAll(() {
