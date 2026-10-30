@@ -13,7 +13,7 @@ import 'package:anicel/src/ui/text/laid_out_glyph.dart';
 import 'package:anicel/src/ui/timeline/timeline_glyph_cache.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_second.dart'
-    show timelineSecondStrideLadder;
+    show timelineLadderRung, timelineSecondStrideLadder;
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart'
     show XSheetFrameRailPainter;
 
@@ -509,6 +509,17 @@ void main() {
           1,
           reason: 'pages that hold their marks each write one',
         );
+        expect(
+          book(cell: 1, frames: 1300, heads: const [0, 400, 800, 810, 1200])
+              .pagesLabelEvery,
+          2,
+          reason: 'the two that touch stand late in the book',
+        );
+      });
+
+      test('past the ladder\'s top the rung doubles on', () {
+        expect(timelineLadderRung((rung) => rung >= 600), 600);
+        expect(timelineLadderRung((rung) => rung >= 1000), 1200);
       });
 
       test('the walk visits the marks too, in order, and nothing twice', () {
