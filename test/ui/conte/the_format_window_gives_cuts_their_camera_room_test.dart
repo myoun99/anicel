@@ -98,6 +98,14 @@ void main() {
       .widget<PanelFlyoutButton>(find.byKey(ValueKey<String>(key)))
       .label;
 
+  /// The row the list lights.
+  String litRow(WidgetTester tester) => tester
+      .widget<PanelFlyoutButton>(find.byKey(const ValueKey<String>(button)))
+      .entriesBuilder()
+      .whereType<PanelFlyoutItem>()
+      .singleWhere((item) => item.selected)
+      .keyValue;
+
   void selectRange(String from, String to) {
     final axis = session.trackFrameAxis();
     session.updateStoryboardCutSelectionByFrame(
@@ -117,6 +125,7 @@ void main() {
     expect(find.text('Cut settings'), findsOneWidget);
     expect(find.text('Current cut (C12)'), findsOneWidget);
     expect(shownOn(tester, button), 'As the format');
+    expect(litRow(tester), '$button-format');
 
     await tap(tester, button);
     for (final room in ['format', 'grows', 'inCell']) {
@@ -135,6 +144,8 @@ void main() {
 
     await tap(tester, 'conte-format-button');
     await pick(tester, 'inCell');
+    expect(shownOn(tester, button), 'Keep in the cell', reason: 'the pick');
+    expect(litRow(tester), '$button-inCell');
     expect(roomOf('C12'), isNull, reason: 'nothing is written before save');
     await tap(tester, 'conte-format-cover');
     await save(tester);
@@ -145,6 +156,7 @@ void main() {
 
     await tap(tester, 'conte-format-button');
     expect(shownOn(tester, button), 'Keep in the cell', reason: 'its own');
+    expect(litRow(tester), '$button-inCell');
     await tap(tester, 'conte-format-cancel-button');
 
     session.undo();
