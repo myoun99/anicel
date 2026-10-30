@@ -8,6 +8,7 @@ import '../../helpers/a_plugin_that_shifts.dart';
 import '../../helpers/cel_photo_fixture.dart';
 import '../../helpers/conte_book.dart';
 import '../../helpers/device_viewport.dart';
+import '../../helpers/settle_async.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -1046,14 +1047,14 @@ void main() {
       );
       expect(on.colorAt(empty), const Color(0xFFFF0000));
 
-      var made = false;
-      for (var round = 0; round < 100 && !made; round += 1) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 10)),
-        );
-        made = (await shoot(tester)).colorAt(empty) != const Color(0xFFFF0000);
-      }
-      expect(made, isTrue, reason: 'LIVENESS: its picture is made');
+      final view = tester.widget<FramePictureView>(live);
+      final pictures = session.playbackRig.framePictures;
+      final key = pictures.keyOfStack(view.nodes, view.picture);
+      expect(
+        await settleAsync(tester, () => pictures.store.bytesOf(key) != null),
+        isTrue,
+        reason: 'LIVENESS: its picture is made',
+      );
       expect(
         (await shoot(tester)).colorAt(empty),
         const Color(0xFFFFFFFF),
