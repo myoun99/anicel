@@ -179,6 +179,24 @@ void main() {
         );
       }
 
+      test('a frame laid is laid as its plugin made it, drawn again once '
+          'that has run', () async {
+        final store = FramePictureStore<String>(gpu: _RecordingGpu());
+        final (:draw, :draws, :runner) = throughAPlugin();
+
+        final picture = (await store.lay('a', (
+          extent: paper,
+          outside: const ui.Color(0xFFFFFFFF),
+          draw: draw,
+        )))!;
+
+        expect((draws(), runner.renders), (2, 1));
+        final texels = await picture.image.toByteData();
+        expect(texels!.getUint32(2 * 4), 0xFF0000FF, reason: 'red, moved');
+        expect(texels.getUint32(0), 0, reason: 'none where it was drawn');
+        store.dispose();
+      });
+
       test('it goes in as its plugin made it, drawn again once that has '
           'run', () async {
         final gpu = _RecordingGpu()..holdWrites = true;

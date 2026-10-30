@@ -839,7 +839,19 @@ void main() {
   /// `flutter_gpu_copies.dart`'s `_copyBufferToTexture` (eleven) and
   /// `_copyTextureToBuffer` (eight) are two natives' signatures, the
   /// engine's and not ours to narrow — a test holds them to the SDK's.
-  const wideSignatures = 454;
+  ///
+  /// ⚠️454 → 456 on 2026-10-31, two named as the rule above asks (I-132,
+  /// 🗣️Q34 a 「어디에 걸어도 돌고, 결과가 올 때까지 … 직전 완성 그림에
+  /// 머문다」): `_mapCompositeLeaves` (five) took what a folder's or an
+  /// adjustment's chain becomes on its route (`chains` — its plugins bound
+  /// to their runs, as `map` binds a row's), and `FramePictureStore.patch`
+  /// (five) whether what its drawing draws is gone by the time its plugins
+  /// have run (`gone` — a step re-recorded over a stack handed anew would
+  /// draw what is let go of). 🔬`clean_code_diff` against master
+  /// (`edd34ba45`) names those two added and nothing gone. ⛔Not bundled to
+  /// fit: the leaf, the bare row and the chain are three kinds of node, and
+  /// the drawing and whether it still stands are two questions.
+  const wideSignatures = 456;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -1591,7 +1603,16 @@ void main() {
   /// against master (`a76bef68a`) names this one and no other class.
   /// ⛔Not split to fit: the scale is the one answer to what a strip writes
   /// and where, and the page is one more way it counts.
-  const longClasses = 81;
+  ///
+  /// ⚠️81 → 82 on 2026-10-31, ONE name: `FramePictureStore` crossed again
+  /// (587 → 611) when a frame's picture came to wait for its plugins (I-132,
+  /// 🗣️Q34 a 「결과가 올 때까지 그 프레임의 직전 완성 그림에 머문다」): a
+  /// lay and a patch are recorded through them (`_recordedThrough`), and a
+  /// patch whose drawing is gone before they have run lets its picture go
+  /// unlanded. 🔬`clean_code_diff` against master (`edd34ba45`) names this
+  /// one and no other class. ⛔Not split to fit: the store is the one that
+  /// records what goes in, and waiting is how it records now.
+  const longClasses = 82;
 
   late CleanCodeScan scan;
   setUpAll(() {

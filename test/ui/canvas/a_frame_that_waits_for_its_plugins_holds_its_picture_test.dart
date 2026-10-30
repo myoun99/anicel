@@ -1,4 +1,7 @@
+import 'dart:async';
+import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -27,6 +30,7 @@ import 'package:anicel/src/services/playback/frame_demand.dart'
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/playback/frame_picture_gpu.dart';
 import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart'
@@ -173,13 +177,14 @@ void main() {
   }
 
   /// A canvas standing on [nodes]' frame — its one row inked at (4..8,
-  /// 4..8) — over a store on [gpu]; what [screen] shows, and the overlay
-  /// its pen's steps are shown by.
+  /// 4..8) — over a store on [gpu]; what [screen] shows, the overlay its
+  /// pen's steps are shown by, and a hand of the pen's row anew.
   Future<
     ({
       FramePictureStore<FramePictureKey> store,
       FramePictureKey picture,
       ActiveStrokeOverlayModel overlay,
+      Future<void> Function() handAnew,
     })
   >
   standOn(
@@ -206,7 +211,7 @@ void main() {
     addTearDown(images.dispose);
     final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
     addTearDown(overlay.dispose);
-    final painter = BitmapSurfacePainter(
+    BitmapSurfacePainter aPainter() => BitmapSurfacePainter(
       surface: BrushFrameDisplayCacheService(
         frameStore: cels,
         canvasSize: canvasSize,
@@ -229,7 +234,7 @@ void main() {
       paintPaper: false,
       ghosts: FrameGhosts.none,
     );
-    await tester.pumpWidget(
+    Future<void> standWith(BitmapSurfacePainter painter) => tester.pumpWidget(
       onAScreen(
         screen,
         size: viewSize,
@@ -248,10 +253,12 @@ void main() {
         ),
       ),
     );
+    await standWith(aPainter());
     return (
       store: store,
       picture: run.pictures.keyOfStack(nodes, shown),
       overlay: overlay,
+      handAnew: () => standWith(aPainter()),
     );
   }
 
@@ -308,7 +315,7 @@ void main() {
         '${waits ? 'one patch at a time' : 'a patch a step'}', (tester) async {
       final screen = GlobalKey();
       final gpu = WritesNeverLand();
-      final (:store, :picture, :overlay) = await standOn(
+      final (:store, :picture, :overlay, handAnew: _) = await standOn(
         tester,
         screen,
         nodesOf(),
@@ -336,7 +343,7 @@ void main() {
                   'as it stands'}', (tester) async {
       final screen = GlobalKey();
       final gpu = WritesNeverLand();
-      final (:store, :picture, :overlay) = await standOn(
+      final (:store, :picture, :overlay, handAnew: _) = await standOn(
         tester,
         screen,
         nodesOf(),
@@ -363,5 +370,125 @@ void main() {
       );
       await tester.pumpWidget(const SizedBox());
     });
+  }
+
+  testWidgets('a frame that waits for a plugin: once a step is in, the steps '
+      'after it go in together, in the next patch', (tester) async {
+    final screen = GlobalKey();
+    final gpu = _WritesLandWhenLet();
+    final (:store, :picture, :overlay, handAnew: _) = await standOn(
+      tester,
+      screen,
+      inAFolder([aPlugin(ShiftingFxPlugin(by: 2))]),
+      gpu,
+    );
+    expect(
+      await settleAsync(tester, () => store.bytesOf(picture) != null),
+      isTrue,
+      reason: 'LIVENESS: the frame\'s picture is made',
+    );
+    await lendBothClocks(tester, rounds: 2);
+    await aStep(tester, overlay, TileCoord(x: 0, y: 0));
+    final first = store.landingOf(keptByTheCanvas(tester, picture));
+    await aStep(tester, overlay, TileCoord(x: 1, y: 1));
+    expect(
+      identical(store.landingOf(keptByTheCanvas(tester, picture)), first),
+      isTrue,
+      reason: '⛔premise: the second waits behind the first',
+    );
+
+    expect(
+      await settleAsync(tester, () => gpu.writesWaiting > 0),
+      isTrue,
+      reason: 'LIVENESS: the first comes to be written',
+    );
+    gpu.landOne();
+    expect(
+      await settleAsync(tester, () {
+        final now = store.landingOf(keptByTheCanvas(tester, picture));
+        return now != null && !identical(now, first);
+      }),
+      isTrue,
+      reason: 'the second goes in once the first is in',
+    );
+    gpu.landAll();
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a frame that waits for a plugin: a step whose frame stands no '
+      'more once its plugin has run does not go in', (tester) async {
+    final screen = GlobalKey();
+    final gpu = _WritesLandWhenLet()..landsAtOnce = true;
+    final nodes = inAFolder([aPlugin(ShiftingFxPlugin(by: 2))]);
+    final (:store, :picture, :overlay, :handAnew) = await standOn(
+      tester,
+      screen,
+      nodes,
+      gpu,
+    );
+    expect(
+      await settleAsync(tester, () => store.bytesOf(picture) != null),
+      isTrue,
+      reason: 'LIVENESS: the frame\'s picture is made',
+    );
+    await lendBothClocks(tester, rounds: 2);
+    await aStep(tester, overlay, TileCoord(x: 0, y: 0));
+    final step = store.landingOf(keptByTheCanvas(tester, picture));
+    expect(step, isNotNull, reason: '⛔premise: the step is on its way');
+
+    // The pen's row handed anew before the plugin has run: the frame the
+    // step was drawn by stands no more.
+    await handAnew();
+
+    bool? landed;
+    unawaited(step!.then((value) => landed = value));
+    expect(
+      await settleAsync(tester, () => landed != null),
+      isTrue,
+      reason: 'LIVENESS: answered',
+    );
+    expect(landed, isFalse);
+    await tester.pumpWidget(const SizedBox());
+  });
+}
+
+/// A GPU whose writes go in when let ([landOne]) — or at once, where it
+/// [landsAtOnce] — the texels taken for the picture's own.
+class _WritesLandWhenLet extends RendersHeld {
+  bool landsAtOnce = false;
+  final List<Completer<bool>> _writes = [];
+
+  int get writesWaiting => _writes.length;
+
+  void landOne() => _writes.removeAt(0).complete(true);
+
+  void landAll() {
+    landsAtOnce = true;
+    for (final write in _writes) {
+      write.complete(true);
+    }
+    _writes.clear();
+  }
+
+  @override
+  Object? hold(ui.Image image) => image.clone();
+
+  @override
+  int levelsOf(Object held) {
+    final image = held as ui.Image;
+    return math.max(image.width, image.height).bitLength;
+  }
+
+  @override
+  ui.Image imageOf(Object held) => (held as ui.Image).clone();
+
+  @override
+  Future<bool> write(Object held, List<BaseWrite> base, LevelWrites? levels) {
+    if (landsAtOnce) {
+      return Future.value(true);
+    }
+    final write = Completer<bool>();
+    _writes.add(write);
+    return write.future;
   }
 }

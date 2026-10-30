@@ -495,4 +495,10 @@ const _imageHolders = <String, String>{
       'round trip, never drawn: ↩️billed with their picture while they were '
       'drawn over it until its levels were in, up to 64 at a time (F-465, '
       '2026-10-26)',
+
+  // — 2026-10-31, a plugin anywhere in a chain (I-132-Q34 a).
+  'lib/src/ui/canvas/fx_plugin_stages.dart → _stages':
+      'one recording through its plugins (recordedThrough): each step\'s '
+      'input read back and what its plugin made, let go of the moment the '
+      'recording is made (dispose) — the working set of a render',
 };
