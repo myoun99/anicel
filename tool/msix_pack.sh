@@ -36,9 +36,9 @@ if [ -z "$store_name" ] || [ -z "$store_publisher" ] \
 fi
 
 # The Store refuses a first part of 0 and a fourth that is not 0, so the
-# app's 0.1.0+<N> cannot pass as it is. ⏳store-distribution-plan-Q3 is the
-# user's to answer; until then its recommendation, 1.0.<N>.0 — the round's
-# number, the one the About box and the feedback forms show.
+# app's 0.1.0+<N> cannot pass as it is. 🗣️유저 2026-10-30
+# (store-distribution-plan-Q3): 1.0.<N>.0 — the round's number, the one the
+# About box and the feedback forms show.
 if [ "$number" -gt 65535 ]; then
   echo "::error::a version part stops at 65535, got $number"
   exit 1
