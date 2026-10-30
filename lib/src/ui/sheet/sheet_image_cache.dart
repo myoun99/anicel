@@ -4,12 +4,12 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 
-import '../../core/lru.dart';
 import '../../native/qa_native_engine.dart';
 import '../../services/media/held_viewer_document.dart';
 import '../../services/media/image_viewer_document.dart';
 import '../../services/media/media_byte_source.dart' show HoldMediaBytes;
 import '../../services/media/viewer_document.dart';
+import '../media/shown_rasters.dart';
 import '../media/viewer_raster_budget.dart';
 
 /// What a sheet asks for a media image while it paints — the logo, a
@@ -116,9 +116,11 @@ Future<T?> _readSheetPicture<T extends Object>(
 /// for 「a handful」 of logos — a photo of 8000×6000 is 192MB whole, drawn
 /// in a cell a few hundred pixels wide.
 ///
-/// ⚠️THE SECOND OF ITS KIND: `StoryboardCutThumbnailStore` lists, runs and
-/// stands in the same way. Not shared — the rule of three (CLAUDE.md
-/// 절대명령 1): a third merges them.
+/// ↩️THE SECOND OF ITS KIND until 10-30: `StoryboardCutThumbnailStore`
+/// listed, ran and stood in the same way, and the rule of three (CLAUDE.md
+/// 절대명령 1) waited for a third. The viewer's pages were it, when the
+/// panels moved onto how they are held (유저 10-30 「붙잡는 곳 하나」): all
+/// three are held by [ShownRasters] now.
 class SheetImageCache extends ChangeNotifier {
   SheetImageCache({required SheetImageRead read, this.onHeldBytesChanged})
     : _read = read;
@@ -129,28 +131,23 @@ class SheetImageCache extends ChangeNotifier {
   /// that lives in the workspace — the storyboard store's shape.
   final void Function(int bytes)? onHeldBytesChanged;
 
-  /// What is held, the least recently asked for first — let go past the
-  /// budget in the ONE order a bounded cache lets go by ([Lru]), never the
-  /// newest, which a sheet just asked for.
-  ///
-  /// Disposed at once: a sheet asks while it paints, so no painter keeps
-  /// one past its paint — and a picture already recorded holds its own.
-  late final Lru<_SheetImageKey, ui.Image> _images = Lru(
-    limit: () => _budget.byteBudget,
-    costOf: ViewerRasterBudget.costOf,
-    letGo: (_, image) => image.dispose(),
+  /// What is held — let go past the budget the least recently asked for
+  /// first ([ShownRasters.use]), never the one just read. A file read whole
+  /// has one look, so a picture held is a picture ready.
+  late final ShownRasters<_SheetImageKey, ()> _images = ShownRasters(
+    budget: _budget,
+    // Nothing plays the sheets.
+    wantedAt: (_) => null,
+    lastUsed: (key) => _images.usedAt(key),
+    rebuild: (change) => change(),
+    mounted: () => !_disposed,
+    report: (bytes) => onHeldBytesChanged?.call(bytes),
+    ended: notifyListeners,
   );
 
   /// Paths that could not be read — never asked for again.
   final Set<String> _unreadable = {};
 
-  /// What the sheets asked for since the last read ended, in the order they
-  /// asked.
-  final Set<_SheetImageKey> _wanted = {};
-
-  /// Whether a read is out — no other starts until it lands.
-  bool _reading = false;
-  bool _nextScheduled = false;
   bool _disposed = false;
 
   /// One viewer's share of this device, halved by the memory warning.
@@ -159,7 +156,7 @@ class SheetImageCache extends ChangeNotifier {
   );
 
   /// What the held images cost resident, 4 bytes a pixel.
-  int get decodedBytes => _images.held;
+  int get decodedBytes => _images.heldBytes;
 
   /// [assetPath]'s picture [width] pixels wide (its own size where null):
   /// held, or the sharpest held of it at another width while that one is
@@ -170,93 +167,53 @@ class SheetImageCache extends ChangeNotifier {
     }
     final key = (path: assetPath, width: width);
     // Asked for: to the young end of the order things are let go in.
-    final held = _images.use(key);
+    _images.use(key);
+    final held = _images.imageOf(key);
     if (held != null) {
       return held;
     }
     if (!_unreadable.contains(assetPath)) {
-      _wanted.add(key);
-      _scheduleNext();
+      _images.want(key, (), () => _readOrUnreadable(key));
     }
-    return _standInFor(assetPath);
+    return _images.sharpestOf((other) => other.path == assetPath);
   }
 
-  /// The sharpest of [path]'s pictures held. Not moved in the order: a
-  /// stand-in stays as old as it was, so it is the first to go once the
-  /// width asked for is in.
-  ui.Image? _standInFor(String path) {
-    ui.Image? sharpest;
-    for (final MapEntry(:key, value: image) in _images.entries) {
-      if (key.path == path &&
-          (sharpest == null || image.width > sharpest.width)) {
-        sharpest = image;
-      }
-    }
-    return sharpest;
-  }
-
-  /// Starts the next read off the paint that asked — a microtask, so a
-  /// picture can land within a frame or two.
-  void _scheduleNext() {
-    if (_reading || _nextScheduled) {
-      return;
-    }
-    _nextScheduled = true;
-    scheduleMicrotask(_readNext);
-  }
-
-  void _readNext() {
-    _nextScheduled = false;
-    // Empty only when the cache was let go of before this ran.
-    if (_wanted.isEmpty) {
-      return;
-    }
-    final key = _wanted.first;
-    _wanted.remove(key);
-    _reading = true;
-    unawaited(() async {
-      ui.Image? image;
-      try {
-        image = await _read(key.path, key.width);
-      } finally {
-        // A read that threw is one that could not be read — and the error
-        // still reaches the zone, rather than leaving this stuck behind it.
-        _landed(key, image);
-      }
-    }());
-  }
-
-  /// A read is over: what it read is held (or its path remembered as
-  /// unreadable), the list goes, and the notify makes every sheet that asks
-  /// repaint and ask again for what it shows now — the next list.
-  void _landed(_SheetImageKey key, ui.Image? image) {
-    _reading = false;
-    if (_disposed) {
-      image?.dispose();
-      return;
+  /// [key]'s picture. One that cannot be read — null, or a read that threw
+  /// — marks its path, and is refused like a page the viewer cannot have:
+  /// what was read of the path before still shows. A read that threw is
+  /// reported, rather than lost behind the refusal.
+  Future<ui.Image> _readOrUnreadable(_SheetImageKey key) async {
+    final ui.Image? image;
+    try {
+      image = await _read(key.path, key.width);
+    } on Object catch (error, stack) {
+      _unreadable.add(key.path);
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stack,
+          library: 'sheet images',
+          context: ErrorDescription('reading the sheet image ${key.path}'),
+        ),
+      );
+      rethrow;
     }
     if (image == null) {
       _unreadable.add(key.path);
-    } else {
-      // Nothing is replaced: a key is read only while none is held, one
-      // read at a time.
-      _images.keep(key, image);
-      onHeldBytesChanged?.call(_images.held);
+      throw StateError('${key.path} cannot be read');
     }
-    _wanted.clear();
-    notifyListeners();
+    return image;
   }
 
   /// The OS says memory is tight: halve, never below one viewer page, and
   /// give back what no longer fits — see [ViewerRasterBudget].
   void respondToMemoryPressure() {
-    if (_disposed || !_budget.respondToMemoryPressure()) {
+    if (_disposed) {
       return;
     }
-    final before = _images.length;
-    _images.fit();
-    if (_images.length != before) {
-      onHeldBytesChanged?.call(_images.held);
+    final before = _images.heldBytes;
+    _images.heardMemoryPressure();
+    if (_images.heldBytes != before) {
       // A sheet still showing what went asks again — or for a stand-in.
       notifyListeners();
     }
@@ -265,12 +222,8 @@ class SheetImageCache extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    _wanted.clear();
-    for (final image in _images.values) {
-      image.dispose();
-    }
+    // Tells the census nothing is held.
     _images.clear();
-    onHeldBytesChanged?.call(0);
     super.dispose();
   }
 }

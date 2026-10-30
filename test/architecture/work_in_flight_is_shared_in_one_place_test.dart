@@ -57,6 +57,11 @@ const _notAnotherInFlight = <String, String>{
   'lib/src/ui/session/movie_cel_hydrator.dart: _opened':
       'no run in flight: a movie\'s open is KEPT, a failed one with it, so a '
       'movie that would not open is not asked again at every frame',
+  'lib/src/ui/media/shown_rasters.dart: _wanted':
+      'no run in flight: what a surface asked for while it painted, NOT '
+      'started — the renders it would start, of which one goes out when '
+      'none is (ShownRasters.want, the 09-28 tablet crash); the one out is '
+      'in _renders, and asked for again it is not started twice',
   'lib/src/ui/brush/drawing_cursor.dart: _lookCursorNames':
       'no run in flight: a look\'s cursor at a size is KEPT, as Windows keeps '
       'every cursor it is handed for the life of the window, and a refused '

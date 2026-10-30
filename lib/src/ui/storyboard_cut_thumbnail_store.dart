@@ -2,9 +2,7 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/scheduler.dart';
 
-import '../core/lru.dart';
 import '../core/signed_memo.dart';
 import '../models/brush_frame_cache_invalidation.dart';
 import '../models/cut.dart';
@@ -12,6 +10,7 @@ import '../models/cut_id.dart';
 import '../models/layer.dart';
 import '../native/qa_native_engine.dart';
 import '../services/playback/editor_cache_invalidation_hub.dart';
+import 'media/shown_rasters.dart';
 import 'media/viewer_raster_budget.dart';
 import 'media/viewer_render_tier.dart';
 
@@ -104,7 +103,8 @@ typedef StoryboardThumbnails = ({
 /// render runs, and when it ends the list is emptied: its landing repaints
 /// every surface that asks (they have to, to show it), and they ask again
 /// for exactly what they show NOW — a width the hand has already passed or
-/// a panel scrolled away is never rendered at all.
+/// a panel scrolled away is never rendered at all ([ShownRasters.want] —
+/// the law of every picture drawn as large as it is shown, since 10-30).
 ///
 /// Invalidation: a structural signature (canvas size, duration, per-layer
 /// visibility/opacity/frames/EXPOSURES, camera track, layer transforms and
@@ -127,10 +127,11 @@ typedef StoryboardThumbnails = ({
 /// are a view of the drawings that re-renders on demand, so they answer to
 /// the same device law and hear the same memory warning instead of a
 /// third number. The least recently asked-for picture goes first — which
-/// is also how a deleted cut's pictures leave.
+/// is also how a deleted cut's pictures leave. They are held as the
+/// viewer holds its pages ([ShownRasters] — 유저 10-30 「붙잡는 곳 하나」).
 class StoryboardCutThumbnailStore extends ChangeNotifier {
   StoryboardCutThumbnailStore({
-    required Future<ui.Image?> Function(
+    required Future<ui.Image> Function(
       Cut cut,
       int frameIndex,
       int width,
@@ -146,7 +147,10 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
     _hub?.addBrushFrameListener(_onBrushFrameInvalidated);
   }
 
-  final Future<ui.Image?> Function(
+  /// ↩️It could answer null — a panel with nothing to draw, remembered
+  /// apart from a picture. The camera-view render always answers a picture
+  /// (`ExportFrameRenderer.renderPicture`); only tests ever answered null.
+  final Future<ui.Image> Function(
     Cut cut,
     int frameIndex,
     int width,
@@ -160,41 +164,36 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
   final ui.Size Function() _originalSize;
   final EditorCacheInvalidationHub? _hub;
 
-  /// What is held, the least recently asked for first — let go past the
-  /// budget in the ONE order a bounded cache lets go by ([Lru]), never the
-  /// newest, which a panel just asked for.
-  late final Lru<StoryboardThumbnailKey, ui.Image> _images = Lru(
-    limit: () => _budget.byteBudget,
-    costOf: ViewerRasterBudget.costOf,
-    letGo: (key, image) {
-      _retire(image);
-      // 🚨The signature goes WITH the picture. Kept, it would tell the
-      // next [thumbnailFor] that this panel is already rendered, and the
-      // panel would stay an empty block for good.
-      _renderedSignatures.remove(key);
-    },
-  );
-  final Map<StoryboardThumbnailKey, String> _renderedSignatures = {};
+  /// What is held, each at the signature it was rendered at — let go past
+  /// the budget the least recently asked for first ([ShownRasters.use]),
+  /// never the one that just landed. A picture let go takes its signature
+  /// with it, so the next [thumbnailFor] renders it again: kept apart, the
+  /// signature told the panel it was already rendered, and it stayed an
+  /// empty block for good.
+  ///
+  /// ↩️A picture replaced or let go was disposed after the next frame, for
+  /// a `RawImage` of the previous build that might still draw it
+  /// (a83c0ad5f); the rows and the cells paint it since d676622b6, asking
+  /// on every paint, and a picture already painted holds its own.
+  late final ShownRasters<StoryboardThumbnailKey, String> _pictures =
+      ShownRasters(
+        budget: _budget,
+        // Nothing plays the panels.
+        wantedAt: (_) => null,
+        lastUsed: (key) => _pictures.usedAt(key),
+        rebuild: (change) => change(),
+        mounted: () => !_disposed,
+        report: (bytes) => onHeldBytesChanged?.call(bytes),
+        ended: notifyListeners,
+      );
   final Map<CutId, int> _editGenerations = {};
-
-  /// What the surfaces asked to have rendered since the last render ended,
-  /// in the order they asked — each with the cut and the signature it was
-  /// asked at.
-  final Map<StoryboardThumbnailKey, ({Cut cut, String signature})> _wanted =
-      {};
-
-  /// The one render running, if any. It is not asked for again while it
-  /// runs: its landing repaints the surfaces, which ask again then if the
-  /// panel moved on meanwhile.
-  StoryboardThumbnailKey? _rendering;
-  bool _nextScheduled = false;
   bool _disposed = false;
 
   /// Whether a picture a surface asked for is still to come: a render runs
   /// or waits to. What the conte's live pictures wait on before they stand
   /// down (F-215), and what a test waits on, as the timeline's tiles do —
   /// silence for N ms misreads a slow render for a finished one.
-  bool get pending => _rendering != null || _wanted.isNotEmpty;
+  bool get pending => _pictures.pending;
 
   /// Told whenever [thumbnailBytes] changes, so an owner the memory census
   /// CAN reach is able to report a store that lives in a widget State.
@@ -207,7 +206,7 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
   );
 
   /// What the held pictures cost resident, 4 bytes a pixel.
-  int get thumbnailBytes => _images.held;
+  int get thumbnailBytes => _pictures.heldBytes;
 
   /// What a surface takes to draw these pictures: [thumbnailFor], this
   /// store as what says one landed, and whether one is still to come.
@@ -240,135 +239,53 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
         region?.size ?? _originalSize(),
       ),
     );
-    final signature = _signatureFor(cut);
-    if (_renderedSignatures[key] != signature && key != _rendering) {
-      _wanted[key] = (cut: cut, signature: signature);
-      _scheduleNext();
-    }
     // Asked for: to the young end of the eviction order.
-    final held = _images.use(key);
-    if (held != null) {
-      return held;
-    }
-    return _standInFor(key);
+    _pictures
+      ..want(key, _signatureFor(cut), () => _rendered(cut, key))
+      ..use(key);
+    return _pictures.imageOf(key) ??
+        _pictures.sharpestOf(
+          (held) =>
+              held.cutId == key.cutId &&
+              held.frameIndex == key.frameIndex &&
+              held.region == key.region,
+        );
   }
 
-  /// The sharpest picture of [key]'s panel held at another width. Not
-  /// moved in the eviction order: a stand-in stays as old as it was, so it
-  /// is the first to go once the right width is in.
-  ui.Image? _standInFor(StoryboardThumbnailKey key) {
-    ui.Image? sharpest;
-    for (final entry in _images.entries) {
-      if (entry.key.cutId == key.cutId &&
-          entry.key.frameIndex == key.frameIndex &&
-          entry.key.region == key.region &&
-          (sharpest == null || entry.value.width > sharpest.width)) {
-        sharpest = entry.value;
-      }
-    }
-    return sharpest;
-  }
-
-  /// Starts the next render off the paint that asked — a microtask, so a
-  /// picture can land within a frame or two.
-  void _scheduleNext() {
-    if (_rendering != null || _nextScheduled) {
-      return;
-    }
-    _nextScheduled = true;
-    scheduleMicrotask(_renderNext);
-  }
-
-  /// The panel asked for first, rendered alone.
-  void _renderNext() {
-    _nextScheduled = false;
-    if (_disposed || _rendering != null || _wanted.isEmpty) {
-      return;
-    }
-    final key = _wanted.keys.first;
-    final ask = _wanted.remove(key)!;
-    _rendering = key;
-    unawaited(
+  /// [key]'s picture of [cut]. A failure is remembered at the signature it
+  /// was asked at: silently swallowing AND forgetting re-kicked the same
+  /// failing render on every rebuild (a hot loop behind a permanently empty
+  /// block). The next CONTENT change retries; the failure itself is
+  /// surfaced.
+  Future<ui.Image> _rendered(Cut cut, StoryboardThumbnailKey key) =>
       Future.sync(
-        () => _render(ask.cut, key.frameIndex, key.width, key.region),
-      ).then(
-        (image) => _landed(key, ask.signature, image),
-        onError: (Object error, StackTrace stack) {
-          // Remember the failed signature: silently swallowing AND
-          // forgetting re-kicked the same failing render on every
-          // rebuild (a hot loop behind a permanently empty block). The
-          // next CONTENT change retries; the failure itself is surfaced.
-          _renderedSignatures[key] = ask.signature;
-          FlutterError.reportError(
-            FlutterErrorDetails(
-              exception: error,
-              stack: stack,
-              library: 'storyboard thumbnails',
-              context: ErrorDescription(
-                'rendering the storyboard thumbnail for cut '
-                '${ask.cut.id.value} at frame ${key.frameIndex}',
-              ),
+        () => _render(cut, key.frameIndex, key.width, key.region),
+      ).onError<Object>((error, stack) {
+        FlutterError.reportError(
+          FlutterErrorDetails(
+            exception: error,
+            stack: stack,
+            library: 'storyboard thumbnails',
+            context: ErrorDescription(
+              'rendering the storyboard thumbnail for cut '
+              '${cut.id.value} at frame ${key.frameIndex}',
             ),
-          );
-          _renderEnded();
-        },
-      ),
-    );
-  }
-
-  void _landed(StoryboardThumbnailKey key, String signature, ui.Image? image) {
-    if (_disposed) {
-      image?.dispose();
-      return;
-    }
-    final previous = _images.take(key);
-    if (previous != null) {
-      _retire(previous);
-    }
-    if (image != null) {
-      _images.keep(key, image);
-    }
-    // A signature change DURING the render re-kicks on the repaint the
-    // notify below triggers.
-    _renderedSignatures[key] = signature;
-    // The budget follows the memory tab's allowance, read as it fits: a
-    // landing with no picture still gives back what a lowered one no
-    // longer holds.
-    _images.fit();
-    _reportHeldBytes();
-    _renderEnded();
-  }
-
-  /// A render is over, landed or failed: the list goes, and the notify
-  /// makes every surface that asks repaint and ask again for what it shows
-  /// now — which is the next list.
-  void _renderEnded() {
-    _rendering = null;
-    if (_disposed) {
-      return;
-    }
-    _wanted.clear();
-    notifyListeners();
-  }
+          ),
+        );
+        Error.throwWithStackTrace(error, stack);
+      });
 
   /// The OS says memory is tight: halve, never below one viewer page, and
   /// give back what no longer fits. Idempotent — see [ViewerRasterBudget].
   void respondToMemoryPressure() {
-    if (!_budget.respondToMemoryPressure()) {
-      return;
-    }
-    final before = _images.length;
-    _images.fit();
-    if (_images.length != before) {
-      _reportHeldBytes();
-      // Panels still showing an evicted picture must repaint before it is
-      // disposed — [_retire] waits for the next frame, and this notify is
-      // what puts a repaint into that frame.
+    final before = _pictures.heldBytes;
+    _pictures.heardMemoryPressure();
+    if (_pictures.heldBytes != before) {
+      // Panels still showing an evicted picture ask again — for another
+      // width of it, or to render it again.
       notifyListeners();
     }
   }
-
-  void _reportHeldBytes() => onHeldBytesChanged?.call(_images.held);
 
   /// Coalesces invalidation-driven notifies: a stroke commits MANY hub
   /// events, one microtask notify covers them all.
@@ -479,24 +396,12 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
     return digest;
   }
 
-  /// Disposes a replaced image AFTER the next frame paints: a RawImage from
-  /// the previous build may still reference it during the current one.
-  void _retire(ui.Image image) {
-    SchedulerBinding.instance.addPostFrameCallback((_) {
-      image.dispose();
-    });
-  }
-
   @override
   void dispose() {
     _disposed = true;
     _hub?.removeBrushFrameListener(_onBrushFrameInvalidated);
-    _wanted.clear();
-    for (final image in _images.values) {
-      image.dispose();
-    }
-    _images.clear();
-    _reportHeldBytes();
+    // Tells the census nothing is held.
+    _pictures.clear();
     super.dispose();
   }
 }

@@ -174,12 +174,12 @@ void main() {
     // Measured on the user's film: every panel on screen started its own
     // render in the paint that asked, and each thaws its cut's cels at the
     // canvas's full size — 104 at once while the V rows grew for a second.
-    final running = <Completer<ui.Image?>>[];
+    final running = <Completer<ui.Image>>[];
     var mostAtOnce = 0;
     final store = StoryboardCutThumbnailStore(
       originalSize: _original,
       render: (_, _, _, _) {
-        final render = Completer<ui.Image?>();
+        final render = Completer<ui.Image>();
         running.add(render);
         final open = running.where((each) => !each.isCompleted).length;
         mostAtOnce = open > mostAtOnce ? open : mostAtOnce;
@@ -221,12 +221,12 @@ void main() {
   testWidgets('🚨a width the hand has passed is never rendered — after each '
       'render, only what the surfaces show NOW is', (tester) async {
     final rendered = <(int, int)>[];
-    final running = <Completer<ui.Image?>>[];
+    final running = <Completer<ui.Image>>[];
     final store = StoryboardCutThumbnailStore(
       originalSize: _original,
       render: (_, frame, width, _) {
         rendered.add((frame, width));
-        final render = Completer<ui.Image?>();
+        final render = Completer<ui.Image>();
         running.add(render);
         return render.future;
       },
@@ -286,11 +286,11 @@ void main() {
       }
     }
 
-    final pending = <(int, int), Completer<ui.Image?>>{};
+    final pending = <(int, int), Completer<ui.Image>>{};
     final store = StoryboardCutThumbnailStore(
       originalSize: _original,
       render: (_, frame, width, _) =>
-          (pending[(frame, width)] = Completer<ui.Image?>()).future,
+          (pending[(frame, width)] = Completer<ui.Image>()).future,
     );
     addTearDown(store.dispose);
 
@@ -332,7 +332,7 @@ void main() {
   });
 
   testWidgets('layer visibility change re-renders — and the picture it '
-      'replaces is let go of once the next frame has painted', (tester) async {
+      'replaces is let go of at once', (tester) async {
     final rendered = <ui.Image>[];
     final store = StoryboardCutThumbnailStore(
       originalSize: _original,
@@ -350,9 +350,6 @@ void main() {
       store.thumbnailFor(cut(layerVisible: false), 0, shownHeight: 72);
       await Future<void>.delayed(const Duration(milliseconds: 20));
     });
-    // The retired first image disposes on the next frame.
-    tester.binding.scheduleFrame();
-    await tester.pump();
 
     expect(rendered, hasLength(2));
     expect(rendered.first.debugDisposed, isTrue, reason: 'the one replaced');
@@ -445,28 +442,6 @@ void main() {
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 20)),
     );
-  });
-
-  testWidgets('a null render result is cached, not retried per build', (
-    tester,
-  ) async {
-    var renderCount = 0;
-    final store = StoryboardCutThumbnailStore(
-      originalSize: _original,
-      render: (_, _, _, _) async {
-        renderCount += 1;
-        return null;
-      },
-    );
-    addTearDown(store.dispose);
-
-    await tester.runAsync(() async {
-      store.thumbnailFor(cut(), 0, shownHeight: 72);
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-      expect(store.thumbnailFor(cut(), 0, shownHeight: 72), isNull);
-    });
-
-    expect(renderCount, 1);
   });
 
   // R4-⑩ regression pins: everything the camera-view render consumes must
@@ -657,8 +632,6 @@ void main() {
           await Future<void>.delayed(const Duration(milliseconds: 20));
         }
       });
-      // Pictures let go are disposed after the next frame.
-      await tester.pump();
     }
 
     testWidgets('holds at most its budget: the least recently asked-for '
@@ -687,8 +660,8 @@ void main() {
       expect(store.thumbnailFor(cut(), 0, shownHeight: 72), isNotNull);
     });
 
-    testWidgets('a picture the budget lets go of is disposed once the next '
-        'frame has painted — a panel may draw it until then', (tester) async {
+    testWidgets('a picture the budget lets go of is disposed at once — a '
+        'panel asks for what it draws on every paint', (tester) async {
       final rendered = <ui.Image>[];
       final store = StoryboardCutThumbnailStore(
         originalSize: _original,
@@ -707,16 +680,6 @@ void main() {
         }
       });
       expect(rendered, hasLength(5));
-      expect(
-        rendered.first.debugDisposed,
-        isFalse,
-        reason: 'let go, but not before the next frame',
-      );
-
-      // The landing's notify repaints the panels that ask, which is what
-      // puts the next frame in — no panel listens here, so it is asked for.
-      tester.binding.scheduleFrame();
-      await tester.pump();
       expect(rendered.first.debugDisposed, isTrue, reason: 'let go of');
       expect(
         [for (final image in rendered.skip(1)) image.debugDisposed],
@@ -782,13 +745,12 @@ void main() {
       await tester.pump();
     });
 
-    testWidgets('a lowered allowance is given back at the next landing — a '
-        'landing with no picture too', (tester) async {
+    testWidgets('a lowered allowance is given back at the next landing', (
+      tester,
+    ) async {
       final store = StoryboardCutThumbnailStore(
         originalSize: _original,
-        // Frame 9 has nothing to draw.
-        render: (_, frame, _, _) async =>
-            frame == 9 ? null : await tinyImage(),
+        render: (_, _, _, _) => tinyImage(),
       );
       addTearDown(store.dispose);
       addTearDown(() => MemoryAllowance.factor.value = 1);

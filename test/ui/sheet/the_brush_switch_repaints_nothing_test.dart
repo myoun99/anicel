@@ -570,7 +570,7 @@ class _HeldPrints {
   _HeldPrints(EditorSessionManager session) {
     store = StoryboardCutThumbnailStore(
       render: (cut, frame, width, region) {
-        final render = Completer<ui.Image?>();
+        final render = Completer<ui.Image>();
         _renders.add(render);
         return render.future;
       },
@@ -580,7 +580,7 @@ class _HeldPrints {
   }
 
   late final StoryboardCutThumbnailStore store;
-  final List<Completer<ui.Image?>> _renders = [];
+  final List<Completer<ui.Image>> _renders = [];
 
   /// Lands the render still out, a copy of [print].
   void landOne(ui.Image print) => _renders

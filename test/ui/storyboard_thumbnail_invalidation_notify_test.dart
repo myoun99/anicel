@@ -24,7 +24,8 @@ void main() {
       final hub = EditorCacheInvalidationHub();
       final store = StoryboardCutThumbnailStore(
         originalSize: _original,
-        render: (_, _, _, _) async => null,
+        // Never asked here.
+        render: (_, _, _, _) => Completer<ui.Image>().future,
         invalidationHub: hub,
       );
       addTearDown(store.dispose);
