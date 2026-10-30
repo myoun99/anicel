@@ -14,15 +14,18 @@ import '../../helpers/temp_dir.dart';
 /// room as it stands, each store's document as its store wrote it (Q5), but
 /// for the four bound to this machine (Q2: 「기계에 묶인 넷은 넣지
 /// 않는다」) and the two that are this device's own — the launch notice's
-/// dismissal and the usage statistics (I-70).
+/// dismissal and the usage statistics (I-70) — and the fx plugins, installed
+/// here as the fonts are (I-132).
 void main() {
   test('what travels is the room but the recent projects, the window, the '
-      'memory, the fonts, the launch notice and the usage statistics', () {
+      'memory, the fonts, the fx plugins, the launch notice and the usage '
+      'statistics', () {
     expect(settingsBoundToThisMachine, {
       'recent_projects.json',
       'window.json',
       'memory_settings.json',
       'fonts',
+      'fx_plugins',
       'launch_notice.json',
       'usage_stats.json',
     });
