@@ -12,42 +12,49 @@ import '../cut_frame_composite_plan.dart'
     show LayerFrameSurfaceResolver, layerDrawingAt;
 
 /// The binding a route that knows the device and the project runs plugins
-/// by: each plugin through [runnerFor] — this device's build of it, null
-/// where it has none — at [frameRate], each row a plugin reads as
-/// [surfaceOf] holds its cel — where [runningPluginIndex] says one runs.
+/// by: each plugin of a row's chain through [runnerFor] — this device's
+/// build of it, null where it has none — at [frameRate], each row a plugin
+/// reads as [surfaceOf] holds its cel.
+///
+/// 🗣️I-132-Q34 a (유저 2026-10-30): 「어디에 걸어도 돌고」 — every plugin of
+/// the chain, not the head's alone ([runningPluginIndex] runs that one over
+/// the cel's own pixels; the rest run over what the chain made before them,
+/// `PluginEffect`).
 FxPluginBinding deviceFxPluginBinding({
   required FxPluginRunner? Function(FxPluginDescription plugin) runnerFor,
   required ProjectFrameRate frameRate,
   required LayerFrameSurfaceResolver surfaceOf,
 }) => (effects, {required cut, required row, required frameIndex}) {
-  final at = runningPluginIndex(effects, row.kind);
-  if (at == null) {
+  if (!effects.any((effect) => effect.kind == EffectKind.plugin)) {
     return effects;
   }
-  final plugin = effects[at];
-  final runner = runnerFor(plugin.plugin!);
-  if (runner == null) {
-    return effects;
+  ResolvedLayerEffect bound(ResolvedLayerEffect plugin) {
+    final runner = runnerFor(plugin.plugin!);
+    if (runner == null) {
+      return plugin;
+    }
+    return plugin.withRun(
+      FxPluginRun(
+        runner: runner,
+        moment: (
+          frameIndex: frameIndex,
+          time: frameRate.frameStartSeconds(frameIndex),
+          frameRate: frameRate.approximateFps,
+          // A cel's own pixels; a step past them runs at its raster's.
+          scale: 1,
+        ),
+        rows: {
+          for (final named in plugin.layers.values.nonNulls)
+            if (cut.layers.byId(named) case final read?)
+              named: _ownPictureAt(cut, read, frameIndex, surfaceOf),
+        },
+      ),
+    );
   }
-  final run = FxPluginRun(
-    runner: runner,
-    moment: (
-      frameIndex: frameIndex,
-      time: frameRate.frameStartSeconds(frameIndex),
-      frameRate: frameRate.approximateFps,
-      // A cel's own pixels: b runs on them before anything is drawn.
-      scale: 1,
-    ),
-    rows: {
-      for (final named in plugin.layers.values.nonNulls)
-        if (cut.layers.byId(named) case final read?)
-          named: _ownPictureAt(cut, read, frameIndex, surfaceOf),
-    },
-  );
+
   return List.unmodifiable([
-    ...effects.take(at),
-    plugin.withRun(run),
-    ...effects.skip(at + 1),
+    for (final effect in effects)
+      if (effect.kind == EffectKind.plugin) bound(effect) else effect,
   ]);
 };
 

@@ -10,6 +10,7 @@ import '../../models/rgba_image_bytes.dart';
 import '../../services/playback/let_go_wanted_latest.dart';
 import '../canvas/display_resample.dart'
     show frameGridOutward, wholeLevelPixelsOutward;
+import '../canvas/fx_plugin_stages.dart';
 import '../debug/input_inspector.dart' show InputInspector;
 import 'frame_picture_gpu.dart';
 
@@ -363,8 +364,21 @@ class FramePictureStore<K extends Object> {
     if (extent.isEmpty) {
       return null;
     }
+    // 🗣️I-132-Q34 a: a plugin anywhere in the frame runs over what its
+    // chain made before it, and a lay WAITS for it — the frame's key is its
+    // signature, so what it draws is the same however often it is drawn.
+    final stages = FxPluginStages();
+    final ui.Picture recorded;
+    try {
+      recorded = await stages.recordedThrough(
+        () => recordedOver(extent, lay.frame.draw),
+        discard: (picture) => picture.dispose(),
+      );
+    } finally {
+      stages.dispose();
+    }
     final image = await _rendered(
-      recordedOver(extent, lay.frame.draw),
+      recorded,
       extent.width.toInt(),
       extent.height.toInt(),
     );
