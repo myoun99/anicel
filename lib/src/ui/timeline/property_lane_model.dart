@@ -109,6 +109,7 @@ class PropertyLaneRow {
     this.groupExpanded = false,
     this.groupEnabled,
     this.pluginNotOnDevice = false,
+    this.pluginIdleAt,
     this.headsAGraph = false,
     this.previewText,
     this.stretchWords = const [],
@@ -245,6 +246,13 @@ class PropertyLaneRow {
   /// the header greys, its lanes stay as they were, and it draws nothing
   /// until a plugin of its id is installed.
   final bool pluginNotOnDevice;
+
+  /// Group headers only: whether, at a frame, the effect is a plugin's that
+  /// stands where no plugin runs (`pluginStandsIdle`) — 🗣️I-132-Q33 c
+  /// 「머리 이름 뒤에 경고 글자를 늘 둔다」: the header greys and says so after
+  /// its name. Null on every other header, and on a rail that is not told
+  /// where its chain is read.
+  final bool Function(int frameIndex)? pluginIdleAt;
 }
 
 /// A word over the stretch of a lane from its key on [from] to the next, on
