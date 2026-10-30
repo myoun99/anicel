@@ -432,7 +432,7 @@ void main() {
       store.move(from: 'b', to: 'c');
       landings.add(store.landingOf('c')!);
       for (final landing in landings) {
-        expect(await landing.timeout(_answered), isFalse, reason: 'not in');
+        expect(await patiently(landing), isFalse, reason: 'not in');
       }
       expect(store.peek('a'), isNull);
       expect(store.peek('b'), isNull);
@@ -460,7 +460,7 @@ void main() {
         landings.add(store.landingOf('b')!);
       }
       for (final landing in landings) {
-        expect(await landing.timeout(_answered), isFalse, reason: 'not in');
+        expect(await patiently(landing), isFalse, reason: 'not in');
       }
       expect(store.peek('a'), isNull);
       expect(store.peek('b'), isNull);
@@ -606,9 +606,6 @@ Future<FramePicture> _layed(
   draw: (canvas) =>
       canvas.drawPaint(ui.Paint()..color = const ui.Color(0xFF0000FF)),
 )))!;
-
-/// How long a patch may take to be answered before it never will be.
-const _answered = Duration(seconds: 5);
 
 /// What the store reports as it goes on ([FlutterError.onError]) from here
 /// to the end of the test.

@@ -681,19 +681,19 @@ class FramePictureStore<K extends Object> {
     // The GPU may still be writing it: let go once its writes are done.
     unawaited(entry.writes.whenComplete(entry.picture.image.dispose));
   }
+}
 
-  /// Reports [error], thrown while [doing] — what the store goes on from
-  /// as not done.
-  static void _report(Object error, StackTrace stack, String doing) {
-    FlutterError.reportError(
-      FlutterErrorDetails(
-        exception: error,
-        stack: stack,
-        library: 'frame picture store',
-        context: ErrorDescription(doing),
-      ),
-    );
-  }
+/// Reports [error], thrown while [doing] — what a [FramePictureStore] goes
+/// on from as not done.
+void _report(Object error, StackTrace stack, String doing) {
+  FlutterError.reportError(
+    FlutterErrorDetails(
+      exception: error,
+      stack: stack,
+      library: 'frame picture store',
+      context: ErrorDescription(doing),
+    ),
+  );
 }
 
 /// The levels a patch writes from its own texels: as many halvings as it
