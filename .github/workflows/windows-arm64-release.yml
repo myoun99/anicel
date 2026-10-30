@@ -12,8 +12,9 @@
 #
 # ⚠️NOBODY HERE OWNS AN ARM PC. This file proves the bundle builds, that every
 # binary in it is ARM64, that the engine it ships draws the bytes every other
-# platform draws, and that it opens its window on this runner. Whether a pen's
-# pressure arrives, or a real GPU keeps up, nobody has seen.
+# platform draws, that a .wasm plugin answers as its native twin does, and that
+# it opens its window on this runner. Whether a pen's pressure arrives, or a
+# real GPU keeps up, nobody has seen.
 name: Windows ARM64 (release bundle)
 
 on:
@@ -105,6 +106,20 @@ jobs:
           # Run by the run plan, as every list run goes: the pins that wait
           # for the collector alone and last (tool/affected_tests.dart).
           dart run tool/affected_tests.dart --files-from "$RUNNER_TEMP/parity.txt"
+
+      # Wasmtime writes ARM64 code as a plugin opens, which nothing else here
+      # does. The host's own test asks a native plugin and its WebAssembly twin
+      # the same questions, and passes without the twin when the build found
+      # no engine — so its word for that is a failure here.
+      - name: A .wasm answers as its native twin does
+        run: |
+          set -euo pipefail
+          out=$(build/windows/arm64/plugins/qa_native/shared/Release/qa_fx_plugin_test.exe)
+          echo "$out"
+          if grep -q 'no WebAssembly engine' <<< "$out"; then
+            echo "::error::this build has no WebAssembly engine"
+            exit 1
+          fi
 
       # The launch the x64 zip gets on the desk: still alive after 15 s, with
       # its window titled Anicel. It proves every library resolves and the
