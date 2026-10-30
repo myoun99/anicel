@@ -10,6 +10,9 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/sheet_paint_layer.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppTypography;
@@ -73,6 +76,43 @@ void main() {
       ],
       [for (var row = 2; row < 14; row += 1) row],
       reason: 'the key that ends a stretch begins the next; the last ends',
+    );
+  });
+
+  // The camera row's sheet switch: the one the conte's ACTION lines read
+  // too (`LayerStackQueries.cameraOnSheet`, I-93).
+  test('a camera off the sheet leaves its column blank', () {
+    List<TimesheetCell> cellsWith({required bool onSheet}) {
+      final document = TimesheetDocument.fromCut(
+        cut: Cut(
+          id: const CutId('cut'),
+          name: '1',
+          duration: 24,
+          canvasSize: const CanvasSize(width: 1920, height: 1080),
+          layers: [
+            Layer(
+              id: const LayerId('camera'),
+              name: 'Camera',
+              kind: LayerKind.camera,
+              frames: const [],
+              timeline: const {},
+              onTimesheet: onSheet,
+            ),
+          ],
+          camera: CutCamera(keyframes: moving),
+        ),
+        projectName: 'P',
+        fps: 24,
+        pageSeconds: 6,
+        instructionDefById: CameraInstructionSet.standard.defById,
+      );
+      return document.columns[cameraColumnOf(document)].cells;
+    }
+
+    expect(cellsWith(onSheet: true)[5].label, 'PAN', reason: 'fixture');
+    expect(
+      cellsWith(onSheet: false).map((cell) => cell.kind),
+      everyElement(TimesheetCellKind.empty),
     );
   });
 
