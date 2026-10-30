@@ -177,7 +177,7 @@ const int pencilLeadFacesPerStep = 3;
 /// 「연필시리즈들 간격이 너무 길어. 5%로 하자」): twenty dabs cross a pixel at
 /// that step, and a cloud two-thirds empty filled to a band with grain at its
 /// rim. 📏At 40 px this one reads 0.41 by the grain test's measure, where the
-/// thousand read 0.46 at 25% and Clip Studio's real pencil 0.31.
+/// thousand read 0.46 at 25% and Clip Studio's real pencil about 0.3.
 ///
 /// ⚠️256 texels, not 64: a fleck is a few texels. ↩️F-462 ② stayed at 64
 /// because a solid rim stairs through the sampler's lack of a minification
