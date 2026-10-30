@@ -232,6 +232,9 @@ void main() {
       ]),
     ]);
     expect(script, contains('L[0] = still(C[0], S[0], 0, 11);'));
+    // After Effects holds it that long — checked there (2026-10-30); here,
+    // that the script says so.
+    expect(script, contains('layer.outPoint = t(frame + length);'));
     expect(script, contains('L[0].guideLayer = true;'));
     expect(script, isNot(contains('L[1].guideLayer')));
   });
