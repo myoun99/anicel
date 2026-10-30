@@ -42,15 +42,17 @@ void main() {
       );
 
   /// The cells of a 24-frame cut whose camera is [camera] — a 160×90 camera
-  /// over a 640×360 canvas — one block to each of [lengths], in order.
+  /// over a 640×360 canvas — one block to each of [lengths], in order,
+  /// from the frame its conte starts on.
   List<ConteCellSource> cellsOf(
     CutCamera camera, {
     List<int> lengths = const [24],
     bool bypassed = false,
+    int conteStart = 0,
   }) {
     final frames = <Frame>[];
     final timeline = <int, TimelineExposure>{};
-    var at = 0;
+    var at = conteStart;
     for (final (index, length) in lengths.indexed) {
       final id = FrameId('f$index');
       frames.add(Frame(id: id, duration: 1, strokes: const []));
@@ -123,6 +125,16 @@ void main() {
       expect(actual[index].dy, closeTo(point.dy, 1e-9), reason: reason);
     }
   }
+
+  test('a conte that starts late reads the cut\'s frames its cell shows '
+      '(F-227) — the camera from there, not from the cut\'s head', () {
+    final work = cellsOf(
+      CutCamera(keyframes: {0: at(0, 0), 23: at(96, 0)}),
+      lengths: const [12],
+      conteStart: 12,
+    ).single.camera!;
+    expect(work.keys.map((key) => key.label), ['13f', '24f']);
+  });
 
   test('two keys in the cell, unnamed: each called by the frame it stands on '
       '(유저 2026-10-12: 「이름없으면 프레임이름+f. 즉 1f 12f」 — ↩️IN and '
