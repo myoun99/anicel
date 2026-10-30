@@ -251,6 +251,9 @@ void main() {
     });
   }
 
+  // ⚠️Told only where the picture's bytes are uploaded as they are
+  // (Impeller, `--enable-impeller`): the runner's Skia draws a clear pixel
+  // as nothing, whatever its colour (`pictureOf`).
   test('a pixel its plugin leaves clear is clear, whatever colour it gave '
       'it', () async {
     final runner = _LeavesColourInTheClear();
