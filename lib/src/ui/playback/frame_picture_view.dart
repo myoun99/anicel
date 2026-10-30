@@ -410,6 +410,19 @@ class _FramePictureViewState extends State<FramePictureView> {
     }
   }
 
+  /// The picture shown was written into — by this view's stroke or
+  /// another's: drawn from here on by the image it is now
+  /// ([FramePicture.image]: a picture written into is a new image, or the
+  /// screen of an iPhone or iPad is not drawn again where it changed,
+  /// F-509).
+  void _written() {
+    final (:picture, :image) = _shown!;
+    setState(() {
+      image.dispose();
+      _shown = (picture: picture, image: picture.image.clone());
+    });
+  }
+
   /// Shows [there], the picture of [key] — the one shown already where a
   /// stroke's landing moved it here, what it holds of the live rows kept.
   void _take(FramePictureKey key, FramePicture there) {
@@ -428,6 +441,7 @@ class _FramePictureViewState extends State<FramePictureView> {
     _store.retainPin(key);
     _keptAs = key;
     _shown = (picture: there, image: image);
+    there.addListener(_written);
     _showing = key;
     _drawnOn = _celNow();
     _standing.whole = false;
@@ -739,7 +753,8 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// the frame's stored pixels is no picture of the frame's
   /// ([FramePictureKey.standingOn]).
   void _letGo(FramePictureStore<FramePictureKey> store) {
-    if (_shown case (:final image, picture: _)) {
+    if (_shown case (:final image, :final picture)) {
+      picture.removeListener(_written);
       image.dispose();
       final kept = _keptAs!;
       store.releasePin(kept);

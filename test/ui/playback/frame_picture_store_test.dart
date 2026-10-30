@@ -622,14 +622,19 @@ class _RecordingGpu implements FramePictureGpu {
     return done.future;
   }
 
+  /// The texture behind [image], held as a handle of its own: the store
+  /// lets go of the picture's image once a write gives it another.
   @override
-  Object? hold(ui.Image image) => gpu ? image : null;
+  Object? hold(ui.Image image) => gpu ? image.clone() : null;
 
   @override
   int levelsOf(Object held) {
     final image = held as ui.Image;
     return levels ?? math.max(image.width, image.height).bitLength;
   }
+
+  @override
+  ui.Image imageOf(Object held) => (held as ui.Image).clone();
 
   @override
   Future<bool> write(Object held, List<BaseWrite> base, LevelWrites? levels) {

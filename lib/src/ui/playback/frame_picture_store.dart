@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show ChangeNotifier;
+
 import '../../core/pin_counts.dart';
 import '../../models/rgba_image_bytes.dart';
 import '../../services/playback/let_go_wanted_latest.dart';
@@ -55,18 +57,40 @@ typedef FrameDrawing = ({
 /// of any image draw — where a shader reading the original every frame
 /// cost 6–24 ms a frame at 50%, and any shader paint over that area did
 /// (D7-2).
-class FramePicture {
-  FramePicture._(this.image, this.extent, this.outside);
+///
+/// 🚨★★★A PICTURE WRITTEN INTO IS A NEW IMAGE — [image] is another after
+/// every write that lands in it, over the same texture (no texel copied),
+/// and its listeners are told: whatever draws it draws the one it is now.
+/// The engine takes an image for a value. On iPhone and iPad (Impeller,
+/// Metal) a screen is drawn again only where its drawing changed from the
+/// frame before, an image told apart by its identity alone
+/// (`DlImage::Equals`) — so a stroke written into the very image the
+/// screen drew went nowhere: invisible while drawn and after, until the
+/// frame was left and come back to (F-509, 유저 2026-10-30 「홍보 한참인데
+/// 진짜 비상사태」; 1079 from its second stroke, every stroke from 1080).
+/// Every runner and Windows draw the whole screen each frame, which hid it.
+class FramePicture extends ChangeNotifier {
+  FramePicture._(this._image, this.extent, this.outside);
 
   /// The frame, one texel a canvas pixel, texel (0, 0) at [extent]'s
-  /// top left.
-  final ui.Image image;
+  /// top left — as it is now.
+  ui.Image get image => _image;
+  ui.Image _image;
 
   /// Where [image] lies in the world — whole pixels, at least what was laid.
   final ui.Rect extent;
 
   /// The frame's colour everywhere outside [extent].
   final ui.Color outside;
+
+  /// [image] is [now] from here on — a write is in it — and the image it
+  /// was is let go of, once whoever listens has taken the new one.
+  void _written(ui.Image now) {
+    final was = _image;
+    _image = now;
+    notifyListeners();
+    was.dispose();
+  }
 }
 
 /// The frames' pictures, each under the identity of what it shows ([K]):
@@ -400,6 +424,8 @@ class FramePictureStore<K extends Object> {
     if (!written) {
       // Not in the picture: no key may answer with it.
       _letGo(entry);
+    } else if (texels.isNotEmpty && !entry.gone) {
+      entry.picture._written(_gpu.imageOf(entry.held!));
     }
     for (final (:patch, image: _) in batch) {
       _arrived(entry, patch);

@@ -34,6 +34,11 @@ abstract interface class FramePictureGpu {
   /// to one texel.
   int levelsOf(Object held);
 
+  /// A NEW image of [held]'s texture — another identity each time, the
+  /// texels shared, none copied ([FramePicture.image]: a picture written
+  /// into is a new image).
+  ui.Image imageOf(Object held);
+
   /// Lays [base] into [held]'s base level and then [levels] into the
   /// levels under it, each in order, in ONE submission, and answers once
   /// the GPU has done them all — after which every draw of the image sees
@@ -67,6 +72,9 @@ class FlutterGpuFramePictures implements FramePictureGpu {
 
   @override
   int levelsOf(Object held) => (held as gpu.Texture).mipLevelCount;
+
+  @override
+  ui.Image imageOf(Object held) => (held as gpu.Texture).asImage();
 
   @override
   Future<bool> write(Object held, List<BaseWrite> base, LevelWrites? levels) {

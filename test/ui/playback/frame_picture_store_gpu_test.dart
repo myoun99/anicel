@@ -149,6 +149,75 @@ void main() {
     },
     skip: noFlutterGpu,
   );
+
+  // 🚨★★★F-509 (iPhone and iPad, 1079–1083): the screen is drawn again only
+  // where its drawing changed, an image told apart by its identity — a
+  // write into the image a screen drew showed nowhere. Every runner draws
+  // the whole screen, so the pixels cannot pin it: the identity does.
+  test(
+    'a picture written into is a new image over the same texels, and says '
+    'so to whoever draws it',
+    () async {
+      final store = FramePictureStore<String>();
+      const extent = ui.Rect.fromLTWH(0, 0, side + 0.0, side + 0.0);
+      final picture = await store.lay('before', (
+        extent: extent,
+        outside: const ui.Color(0xFFFFFFFF),
+        draw: frame,
+      ));
+      // What a screen drew: a handle of its own on the image it was.
+      final drawn = picture!.image.clone();
+      var told = 0;
+      picture.addListener(() => told += 1);
+      expect(
+        store.patch(from: 'before', to: 'after', rect: patch, draw: withPatch),
+        isTrue,
+      );
+      await store.landingOf('after');
+
+      expect(store.peek('after'), same(picture));
+      expect(
+        picture.image.isCloneOf(drawn),
+        isFalse,
+        reason: 'the image drawn before the write is not the one after it',
+      );
+      expect(told, 1, reason: 'whoever draws it is told, once a write');
+      final before = await _levels(drawn);
+      final after = await _levels(picture.image);
+      expect(
+        _mostApart(before.first, after.first),
+        0,
+        reason: 'one texture, written once — no texel copied',
+      );
+      drawn.dispose();
+      store.dispose();
+    },
+    skip: noFlutterGpu,
+  );
+
+  test(
+    'a move that carries no texels leaves its picture the image it was',
+    () async {
+      final store = FramePictureStore<String>();
+      const extent = ui.Rect.fromLTWH(0, 0, side + 0.0, side + 0.0);
+      final picture = await store.lay('before', (
+        extent: extent,
+        outside: const ui.Color(0xFFFFFFFF),
+        draw: frame,
+      ));
+      final drawn = picture!.image;
+      var told = 0;
+      picture.addListener(() => told += 1);
+      expect(store.move(from: 'before', to: 'after'), isTrue);
+      await store.landingOf('after');
+
+      expect(store.peek('after'), same(picture));
+      expect(picture.image, same(drawn));
+      expect(told, 0);
+      store.dispose();
+    },
+    skip: noFlutterGpu,
+  );
 }
 
 /// [image] at every level of its chain, as a zoomed-out view draws it:
