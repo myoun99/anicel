@@ -1325,7 +1325,7 @@ void main() {
       ]);
     });
 
-    test("a pair linked by another of its rows: the cut the keeper has no "
+    test('a pair linked by another of its rows: the cut the keeper has no '
         "self in keeps its own keeper's id, not its folder's", () {
       final s = conte('s');
       final t = conte('t');
