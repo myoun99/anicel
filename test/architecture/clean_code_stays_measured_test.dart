@@ -834,7 +834,12 @@ void main() {
   /// id named ahead; three went over and one came under elsewhere on the
   /// trunk. ⛔Not bundled to fit: the id is the conte's, named before its
   /// stroke, and the name the window's — two callers, two questions.
-  const wideSignatures = 452;
+  ///
+  /// ⚠️452 → 454 on 2026-10-30, named as the rule above asks (F-509-Q10):
+  /// `flutter_gpu_copies.dart`'s `_copyBufferToTexture` (eleven) and
+  /// `_copyTextureToBuffer` (eight) are two natives' signatures, the
+  /// engine's and not ours to narrow — a test holds them to the SDK's.
+  const wideSignatures = 454;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

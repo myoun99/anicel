@@ -131,15 +131,19 @@ class FlutterGpuFramePictures implements FramePictureGpu {
     for (final (:start, :width, :height, :x, :y, :level) in levels.spans) {
       copyBufferIntoTexture(
         commands,
-        buffer,
-        offsetInBytes: start * perTexel,
-        lengthInBytes: width * height * perTexel,
-        destination: target,
-        x: x,
-        y: y,
-        width: width,
-        height: height,
-        mipLevel: level,
+        gpu.BufferView(
+          buffer,
+          offsetInBytes: start * perTexel,
+          lengthInBytes: width * height * perTexel,
+        ),
+        gpu.TextureRegion(
+          target,
+          x: x,
+          y: y,
+          width: width,
+          height: height,
+          mipLevel: level,
+        ),
       );
     }
   }

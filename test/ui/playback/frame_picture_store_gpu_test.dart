@@ -256,15 +256,12 @@ void main() {
       );
       void copy(int lengthInBytes) => copyBufferIntoTexture(
         context.createCommandBuffer(),
-        buffer,
-        offsetInBytes: 0,
-        lengthInBytes: lengthInBytes,
-        destination: texture,
-        x: 0,
-        y: 0,
-        width: 4,
-        height: 4,
-        mipLevel: 0,
+        gpu.BufferView(
+          buffer,
+          offsetInBytes: 0,
+          lengthInBytes: lengthInBytes,
+        ),
+        gpu.TextureRegion(texture, width: 4, height: 4),
       );
 
       copy(4 * 4 * 4);

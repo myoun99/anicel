@@ -77,42 +77,33 @@ external String? _copyTextureToBuffer(
   int destinationOffsetInBytes,
 );
 
-/// Records the copy of [lengthInBytes] of [source] from [offsetInBytes] into
-/// the [width] x [height] texels at ([x], [y]) of [destination]'s [mipLevel]
-/// — throwing what the engine refuses, as `flutter_gpu`'s own copy does.
+/// `flutter_gpu`'s `copyBufferToTexture`, [destination] whole in its width
+/// and height — throwing what the engine refuses, as that does.
 void copyBufferIntoTexture(
   gpu.CommandBuffer commands,
-  gpu.DeviceBuffer source, {
-  required int offsetInBytes,
-  required int lengthInBytes,
-  required gpu.Texture destination,
-  required int x,
-  required int y,
-  required int width,
-  required int height,
-  required int mipLevel,
-}) {
+  gpu.BufferView source,
+  gpu.TextureRegion destination,
+) {
   final refused = _copyBufferToTexture(
     commands,
-    source,
-    offsetInBytes,
-    lengthInBytes,
-    destination,
-    x,
-    y,
-    width,
-    height,
-    mipLevel,
-    0,
+    source.buffer,
+    source.offsetInBytes,
+    source.lengthInBytes,
+    destination.texture,
+    destination.x,
+    destination.y,
+    destination.width,
+    destination.height,
+    destination.mipLevel,
+    destination.slice,
   );
   if (refused != null) {
     throw Exception(refused);
   }
 }
 
-/// Records the copy of all of [source]'s base level to the start of
-/// [destination] — throwing what the engine refuses, as `flutter_gpu`'s own
-/// copy does.
+/// `flutter_gpu`'s `copyTextureToBuffer`, all of [source]'s base level to the
+/// start of [destination] — throwing what the engine refuses, as that does.
 void copyTextureIntoBuffer(
   gpu.CommandBuffer commands,
   gpu.Texture source,
