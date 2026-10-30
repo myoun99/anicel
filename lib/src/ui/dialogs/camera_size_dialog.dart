@@ -69,14 +69,8 @@ class _CameraSizeDialogState extends State<_CameraSizeDialog> {
     super.dispose();
   }
 
-  CanvasSize? get _enteredSize {
-    final width = CanvasSizeDialog.parseDimension(_widthController.text);
-    final height = CanvasSizeDialog.parseDimension(_heightController.text);
-    if (width == null || height == null) {
-      return null;
-    }
-    return CanvasSize(width: width, height: height);
-  }
+  CanvasSize? get _enteredSize =>
+      CanvasSizeDialog.enteredSize(_widthController, _heightController);
 
   void _applyPreset(CanvasSize size) {
     setState(() {

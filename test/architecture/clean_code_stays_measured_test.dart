@@ -826,7 +826,15 @@ void main() {
   /// stopped at what is shown stopped short of what a blurred folder
   /// reads past it. ⛔Not bundled to fit: where the row is read is the
   /// walk's, the rows its chain reads are its own.
-  const wideSignatures = 450;
+  ///
+  /// ⚠️450 → 452 on 2026-10-30, named as the rule above asks (card I-100,
+  /// the new cut window): a cut is made with the name its window was given
+  /// — `CutCommandCoordinator.createCut`, `_CutCommands.createCut` and
+  /// `_CutCommands.createCutCommand` (five each) took `name` beside the
+  /// id named ahead; three went over and one came under elsewhere on the
+  /// trunk. ⛔Not bundled to fit: the id is the conte's, named before its
+  /// stroke, and the name the window's — two callers, two questions.
+  const wideSignatures = 452;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

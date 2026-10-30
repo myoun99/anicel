@@ -70,6 +70,21 @@ class CanvasSizeDialog extends StatefulWidget {
     return value;
   }
 
+  /// The size typed into [width] × [height] ([SizeFieldsRow]), or null
+  /// while either is not a dimension ([parseDimension]) — what every size
+  /// window confirms: this one, the camera's and the new cut's.
+  static CanvasSize? enteredSize(
+    TextEditingController width,
+    TextEditingController height,
+  ) {
+    final across = parseDimension(width.text);
+    final down = parseDimension(height.text);
+    if (across == null || down == null) {
+      return null;
+    }
+    return CanvasSize(width: across, height: down);
+  }
+
   final CanvasSize initialSize;
 
   /// Opens the canvas's adjust ON the canvas, the window closing to show
@@ -97,17 +112,11 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
     super.dispose();
   }
 
-  CanvasResizeRequest? get _enteredRequest {
-    final width = CanvasSizeDialog.parseDimension(_widthController.text);
-    final height = CanvasSizeDialog.parseDimension(_heightController.text);
-    if (width == null || height == null) {
-      return null;
-    }
-    return CanvasResizeRequest(
-      size: CanvasSize(width: width, height: height),
-      anchor: _anchor,
-    );
-  }
+  CanvasResizeRequest? get _enteredRequest => switch (CanvasSizeDialog
+      .enteredSize(_widthController, _heightController)) {
+    final size? => CanvasResizeRequest(size: size, anchor: _anchor),
+    null => null,
+  };
 
   void _applyPreset(CanvasSize size) {
     setState(() {

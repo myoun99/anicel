@@ -49,14 +49,8 @@ class _NewCutDialogState extends State<NewCutDialog> {
     super.dispose();
   }
 
-  CanvasSize? get _entered {
-    final width = CanvasSizeDialog.parseDimension(_widthController.text);
-    final height = CanvasSizeDialog.parseDimension(_heightController.text);
-    if (width == null || height == null) {
-      return null;
-    }
-    return CanvasSize(width: width, height: height);
-  }
+  CanvasSize? get _entered =>
+      CanvasSizeDialog.enteredSize(_widthController, _heightController);
 
   void _sizeChanged() {
     setState(() {});
@@ -79,7 +73,9 @@ class _NewCutDialogState extends State<NewCutDialog> {
     return AppPromptDialog.keyed(
       keyPrefix: 'new-cut',
       title: editorActionLabel(EditorActionIds.cutNew),
-      titleIcon: Icons.add,
+      // Not the ＋ the button wears: every ＋ glyph is the add accent
+      // (`add_glyph_accent_test`), and a window's title is no button.
+      titleIcon: Icons.movie_outlined,
       fieldLabel: strings.commonNameField,
       initialValue: widget.initialName,
       confirmLabel: strings.commonCreate,
