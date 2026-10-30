@@ -191,21 +191,26 @@ void main() {
     // one dab a pixel apart laid. A preset's flow now says what one stamp
     // per tenth of its size lays, so at its own size its share of that must
     // lay the old amount.
+    // ↩️F-511 (10-30): the general step moved the ones that stood finer. A
+    // dab lays a bigger share, as many times more rarely: the flows did not
+    // move and neither did the pile (📏side by side, under 1% of ink).
+
     const before = {
-      'builtin-soft-brush': 0.394,
+      'builtin-soft-brush': 0.4515,
       'builtin-marker': 0.436,
-      'builtin-crayon': 0.8,
-      'builtin-graphite-stick': 0.75,
-      'builtin-watercolor': 0.265,
-      'builtin-analog-watercolor': 0.18,
+      'builtin-crayon': 0.7623,
+      'builtin-graphite-stick': 0.5796,
+      'builtin-pastel': 0.3675,
+      'builtin-watercolor': 0.3499,
+      'builtin-analog-watercolor': 0.2424,
       'builtin-wet-watercolor': 0.35,
-      'builtin-dense-watercolor': 0.716,
-      'builtin-flat-wash': 0.207,
+      'builtin-dense-watercolor': 0.75,
+      'builtin-flat-wash': 0.3993,
       'builtin-flat-bristle': 0.75,
       'builtin-gouache': 0.853,
-      'builtin-oil-brush': 0.9,
+      'builtin-oil-brush': 0.95,
       'builtin-dry-brush': 0.75,
-      'builtin-airbrush': 0.062,
+      'builtin-airbrush': 0.1202,
       'builtin-grit-spray': 0.3,
       'builtin-blender': 0.7,
       'builtin-water-blend': 0.3,
@@ -217,10 +222,10 @@ void main() {
       // it lays at its own size, not what it laid before. ↩️F-456 (10-24):
       // its flow fell from 0.9 to 0.35 with the other pencils', so the paper
       // still shows through a stroke laid once.
-      'builtin-shading-pencil': 0.0857,
+      'builtin-shading-pencil': 0.1938,
       // I-75 (10-27): the blur, made since — how far one dab at its own
       // size moves the picture toward its blur, not what it laid before.
-      'builtin-blur': 0.0853,
+      'builtin-blur': 0.1633,
     };
     final byId = {for (final p in defaultBrushPresets) p.id.value: p};
     for (final preset in defaultBrushPresets) {

@@ -522,6 +522,7 @@ void main() {
     // 프리셋도 그렇고 특별한일없으면 기본값 다 5%로해도될듯」. ↩️2026-09-24
     // had it at the finest: 「일반적인 설정으론 최소치로 두자. 간격이 필요한
     // 특수한거만 둬도되고」.
+    expect(BrushShape.generalSpacing, 0.05);
     const ownGap = <String, String>{
       // 📏F-511: at 5% its strokes fill to a black band; the others on a
       // grain tip kept theirs.

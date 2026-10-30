@@ -16,7 +16,7 @@ class BrushEditCanvasInputSettings {
     double opacity = 1.0,
     double flow = 1.0,
     double hardness = 1.0,
-    double spacing = 0.25,
+    double spacing = BrushShape.generalSpacing,
     BrushPressureCurve? sizePressureCurve,
     BrushPressureCurve? opacityPressureCurve,
     BrushPressureCurve? flowPressureCurve,
@@ -160,7 +160,7 @@ class BrushEditCanvasInputSettings {
   /// value now that the public constructor is a (non-const) factory.
   static const BrushEditCanvasInputSettings defaults =
       BrushEditCanvasInputSettings._raw(
-        shape: BrushShape(size: 1.0, spacing: 0.25),
+        shape: BrushShape(size: 1.0, spacing: BrushShape.generalSpacing),
         erase: false,
         blendMode: BrushBlendMode.color,
       );

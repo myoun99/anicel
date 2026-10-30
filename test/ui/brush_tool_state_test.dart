@@ -20,7 +20,7 @@ void main() {
 
         expect(
           state.toInputSettings(),
-          BrushEditCanvasInputSettings(size: 10, spacing: 0.25),
+          BrushEditCanvasInputSettings(size: 10, spacing: 0.05),
         );
       },
     );
