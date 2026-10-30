@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/text/app_strings.dart'
     show AppStrings, AppText;
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart' show sizeAlong;
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/property_lanes_for_row.dart';
@@ -182,6 +183,7 @@ void main() {
     }) async {
       final cursor = ValueNotifier<int?>(0);
       addTearDown(cursor.dispose);
+      final size = sizeAlong(axis, along: along, across: 40);
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -200,8 +202,8 @@ void main() {
                 metrics: TimelineGridMetrics.defaults,
                 frameCursor: cursor,
                 axis: axis,
-                width: axis == Axis.horizontal ? along : 40,
-                height: axis == Axis.horizontal ? 40 : along,
+                width: size.width,
+                height: size.height,
               ),
             ),
           ),
