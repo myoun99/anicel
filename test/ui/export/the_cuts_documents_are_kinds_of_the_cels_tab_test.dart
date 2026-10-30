@@ -35,6 +35,7 @@ import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
+import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/export_format_pick.dart';
 import '../../helpers/files_written_under.dart';
@@ -61,7 +62,8 @@ void main() {
       Frame(id: FrameId(id), duration: 1, strokes: const [], name: name);
 
   /// One cut, 301: a KEY row A with two cels.
-  EditorSessionManager film({int duration = 2}) => EditorSessionManager(
+  EditorSessionManager film({int duration = 2}) =>
+      inkEveryCel(EditorSessionManager(
     initialProject: Project(
       id: const ProjectId('project'),
       name: 'Project',
@@ -91,7 +93,7 @@ void main() {
         ),
       ],
     ),
-  );
+  ));
 
   /// A black dot on each of A's cels, so the run has pictures to write.
   void draw(EditorSessionManager session) {

@@ -16,6 +16,8 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 
+import '../../helpers/every_frame_drawn.dart';
+
 void main() {
   test('the cel plan carries the chosen extension, de-dup included (EX4)',
       () {
@@ -61,6 +63,7 @@ void main() {
     final plan = buildExportCelGroupPlan(
       project: project,
       activeCutId: const CutId('cut'),
+      drawn: everyFrameDrawn,
       spec: const CelsExportSpec(),
       fileExtension: 'jpg',
     );

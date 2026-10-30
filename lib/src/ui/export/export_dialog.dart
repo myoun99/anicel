@@ -341,6 +341,11 @@ class ExportDialogState extends State<ExportDialog> {
         frameUnderThePlayhead(_session)?.cut;
   });
 
+  /// A cel crossed between empty and drawn under the window — the editor's
+  /// undo is the window's (I-127) and the project stays the same one — so
+  /// the Cels list asks again which cels hold a picture ([_celGroupPlan]).
+  void _heardCels() => setState(() {});
+
   @override
   void initState() {
     super.initState();
@@ -377,6 +382,7 @@ class ExportDialogState extends State<ExportDialog> {
     }
     _syncControllersFromSpecs();
     _filmNews.addListener(_heardFilm);
+    _session.layerStack.celTintRevision.addListener(_heardCels);
     unawaited(_restoreFromStore());
   }
 
@@ -401,6 +407,7 @@ class ExportDialogState extends State<ExportDialog> {
   @override
   void dispose() {
     _filmNews.dispose();
+    _session.layerStack.celTintRevision.removeListener(_heardCels);
     _progress.dispose();
     _sequenceFileController.dispose();
     _imageFileController.dispose();
@@ -926,13 +933,6 @@ class ExportDialogState extends State<ExportDialog> {
   ExportProjectOverrides get _overrides =>
       _session.repository.requireProject().exportOverrides;
 
-  /// The Cels tab's label-group plan (v10: 파일 = 라벨×셀번호 1장,
-  /// 기준+어태치 합성) — rules, then the per-cut manual delta, then the
-  /// project-side cut checks.
-  ///
-  /// Memoized on what it reads — the project (what the hand did to a cut's
-  /// list is the project's) and the spec: the board, the preview, the
-  /// headline and the lines under the picture each ask for it every build.
   /// The cel picking the window shows and plans with: the Cels tab's, or
   /// the AE Script tab's as it writes its cels (ae-script-export-Q1: 「셀부분
   /// 선택하는 동작은 셀 탭 그대로 사용하되」 — one list, each tab its own
@@ -945,26 +945,39 @@ class ExportDialogState extends State<ExportDialog> {
   bool get _picksCels =>
       _tab == ExportTab.cels || _tab == ExportTab.aeScript;
 
+  /// The Cels tab's label-group plan (v10: 파일 = 라벨×셀번호 1장,
+  /// 기준+어태치 합성) — rules, then the per-cut manual delta, then the
+  /// project-side cut checks.
+  ///
+  /// Memoized on what it reads — the project (what the hand did to a cut's
+  /// list is the project's), the spec, and which cels hold a picture (the
+  /// timeline tint's number, [_heardCels]): the board, the preview, the
+  /// headline and the lines under the picture each ask for it every build.
   ExportCelGroupPlan _celGroupPlan() {
     final spec = _celsSpec;
     final project = _session.repository.requireProject();
+    final drawnAt = _session.layerStack.celTintRevision.value;
     final cached = _celPlanCache;
-    if (cached != null && identical(cached.$1, project) && cached.$2 == spec) {
-      return cached.$3;
+    if (cached != null &&
+        identical(cached.$1, project) &&
+        cached.$2 == spec &&
+        cached.$3 == drawnAt) {
+      return cached.$4;
     }
     final plan = buildExportCelGroupPlan(
       project: project,
       activeCutId: _activeCut.id,
       spec: spec,
+      drawn: _session.layerStack.celHoldsAPicture,
       overrides: _overrides,
       fileExtension: spec.format.stillFormat.fileExtension,
       sheetPagesOf: _sheetPagesOf,
     );
-    _celPlanCache = (project, spec, plan);
+    _celPlanCache = (project, spec, drawnAt, plan);
     return plan;
   }
 
-  (Object, CelsExportSpec, ExportCelGroupPlan)? _celPlanCache;
+  (Object, CelsExportSpec, int, ExportCelGroupPlan)? _celPlanCache;
 
   AppLanguage get _notationLanguage =>
       _session.languageSettings.value.notationLanguage;

@@ -24,6 +24,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
+import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/export_preview_probe.dart';
@@ -63,7 +64,7 @@ void main() {
   );
 
   /// Two cuts that share no layer: 001 draws A and B, 002 draws D and E.
-  EditorSessionManager twoCuts() => EditorSessionManager(
+  EditorSessionManager twoCuts() => inkEveryCel(EditorSessionManager(
     initialProject: Project(
       id: const ProjectId('project'),
       name: 'Project',
@@ -80,7 +81,7 @@ void main() {
         ),
       ],
     ),
-  );
+  ));
 
   Future<void> pumpCels(
     WidgetTester tester,

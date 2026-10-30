@@ -372,15 +372,29 @@ int celGroupFirstExposure(ExportCelGroupTask task) =>
     firstExposureOf(task.baseLayer, task.baseFrame.id) ?? 0;
 
 /// One cut as this export run sees it: the cut itself, the name its files
-/// carry (a 겸용 group's joined name), the run's namer and what the hand
-/// did to this cut. They travel together because every step of the walk
-/// needs all four.
+/// carry (a 겸용 group's joined name), the run's namer, what the hand did
+/// to this cut and which of its cels show anything ([CelDrawn]). They
+/// travel together because every step of the walk needs them.
 typedef _CutRun = ({
   Cut cut,
   String cutName,
   _NamingRun run,
   ExportCelsCutDelta? delta,
+  CelDrawn drawn,
 });
+
+/// Whether [row]'s cel [cel] in [cut] holds a picture — the timeline's own
+/// question, the one that greys an unworked block
+/// (`LayerStack.celHoldsAPicture`): a cel this list calls 「그림 없음」 is a
+/// block the timeline draws grey.
+///
+/// 🐞The plan answered with the FRAME alone until 2026-10-30. A frame with
+/// no ink stood in the list as a file to write, and the run skipped it and
+/// said so after (「N개 비어서 건너뜀」) — the count the list showed was not
+/// the count written. The user's answer
+/// (cels-tab-lists-a-blank-cel-as-written-Q1, 2026-10-30): 「목록에서 미리
+/// 뺀다」.
+typedef CelDrawn = bool Function(Cut cut, LayerId row, FrameId cel);
 
 /// One sheet per drawing of every bundle's AXIS in [cut] — the rows whose
 /// drawings are files.
@@ -711,7 +725,7 @@ Iterable<ExportCelSheet> _axisSheets(
       yield _refusedSheet(drawing, cut, ExportCelRefusal.notPlaced);
       continue;
     }
-    final refused = !_holdsAPicture(placed.shown.bundle, placed.frames)
+    final refused = !_holdsAPicture(placed, cut.drawn)
         ? ExportCelRefusal.noPicture
         : _unnamedIsFiledAlready(bundle.axis, drawing.celName, unnamedFiled)
         ? ExportCelRefusal.sameName
@@ -907,11 +921,17 @@ List<Frame> _inCelOrder(List<Frame> frames) {
   return [for (final (frame, _) in indexed) frame];
 }
 
-/// Whether this cel has anything to draw: 「그림이 존재하는 영역만 출력」.
+/// Whether this cel has anything to draw: 「그림이 존재하는 영역만 출력」 —
+/// a picture member whose frame there [drawn] says shows something.
 /// Applied paper does not count — a cel of paper alone is not a cel.
-bool _holdsAPicture(_CelBundle bundle, List<Frame?> frames) {
-  for (var i = 0; i < bundle.members.length; i += 1) {
-    if (bundle.pictureIds.contains(bundle.members[i].id) && frames[i] != null) {
+bool _holdsAPicture(_PlacedCel placed, CelDrawn drawn) {
+  final (:shown, baseFrame: _, :frames) = placed;
+  for (var i = 0; i < shown.bundle.members.length; i += 1) {
+    final member = shown.bundle.members[i];
+    final frame = frames[i];
+    if (shown.bundle.pictureIds.contains(member.id) &&
+        frame != null &&
+        drawn(shown.cut, member.id, frame.id)) {
       return true;
     }
   }
@@ -965,12 +985,13 @@ String celGroupCutName(Project project, Cut cut) {
 /// Builds the bundle cel plan for the Cels tab: rules → delta per cut (the
 /// resolver), one bundle per base whose stack holds a selected picture, one
 /// sheet per drawing of every listed row — a task where it is a cel that
-/// has a picture, a refusal where it is not ([_celSheetsFor]). Under the
-/// project scope a 겸용 group is walked once, from its owner cut.
+/// has a picture ([drawn]), a refusal where it is not ([_celSheetsFor]).
+/// Under the project scope a 겸용 group is walked once, from its owner cut.
 ExportCelGroupPlan buildExportCelGroupPlan({
   required Project project,
   required CutId activeCutId,
   required CelsExportSpec spec,
+  required CelDrawn drawn,
   ExportProjectOverrides? overrides,
   String fileExtension = 'png',
   int Function(Cut cut)? sheetPagesOf,
@@ -1006,6 +1027,7 @@ ExportCelGroupPlan buildExportCelGroupPlan({
       cutName: celGroupCutName(project, cut),
       run: run,
       delta: delta,
+      drawn: drawn,
     );
     sheets.addAll(_celSheetsFor(entry, selection));
     documents.addAll(

@@ -39,6 +39,7 @@ import 'package:anicel/src/ui/widgets/app_scrollbar_lane.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
+import '../../helpers/every_frame_drawn.dart';
 import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/named_finders.dart';
@@ -145,6 +146,7 @@ void main() {
         createdAt: DateTime.utc(2026),
       ),
       activeCutId: cutId,
+      drawn: everyFrameDrawn,
       spec: spec,
       overrides: overrides,
     );

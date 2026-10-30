@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/export/export_preview_document.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
+import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/export_format_pick.dart';
@@ -55,7 +56,7 @@ void main() {
       Frame(id: FrameId(id), duration: 1, strokes: const [], name: name);
 
   /// One cut, 301, three frames long: a KEY row A with two cels.
-  EditorSessionManager film() => EditorSessionManager(
+  EditorSessionManager film() => inkEveryCel(EditorSessionManager(
     initialProject: Project(
       id: const ProjectId('project'),
       name: 'Project',
@@ -85,7 +86,7 @@ void main() {
         ),
       ],
     ),
-  );
+  ));
 
   /// A black dot on each of A's cels, so there are pictures to show.
   void draw(EditorSessionManager session) {

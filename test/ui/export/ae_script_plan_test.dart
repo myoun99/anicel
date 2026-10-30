@@ -26,6 +26,8 @@ import 'package:anicel/src/services/export/ae_script.dart';
 import 'package:anicel/src/ui/export/ae_script_plan.dart';
 import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 
+import '../../helpers/every_frame_drawn.dart';
+
 void main() {
   const key = LayerMark(process: LayerProcess.key);
   const canvas = CanvasSize(width: 8, height: 8);
@@ -108,6 +110,7 @@ void main() {
       plan: buildExportCelGroupPlan(
         project: project,
         activeCutId: const CutId('cut'),
+        drawn: everyFrameDrawn,
         spec: const AeScriptExportSpec().written,
       ),
       camera: (
