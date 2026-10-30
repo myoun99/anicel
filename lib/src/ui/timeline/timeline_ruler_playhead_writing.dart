@@ -120,6 +120,13 @@ timelineRulerPlayheadWriting({
     final extent = widestOf(scale.writtenAt(layout, probe, current: true));
     widest = extent > widest ? extent : widest;
   }
+  // The page view's head writes its page beside its second (`17 p3`,
+  // I-81-Q4) — wider than any pair the playhead writes.
+  final pageMark = scale.pageMarkFrameBefore(window.endIndexExclusive);
+  if (pageMark != null && pageMark >= window.startIndex) {
+    final extent = widestOf(scale.writtenAt(layout, pageMark, current: false));
+    widest = extent > widest ? extent : widest;
+  }
   final cells = ((widestOf(pair) + 2 * widest + 4) / cell).ceil() + 1;
   final start = frame - cells;
   final end = frame + cells + 1;
