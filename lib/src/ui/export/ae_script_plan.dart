@@ -1,6 +1,4 @@
 import '../../models/attached_layer_resolve.dart' show fxCarrierOf;
-import '../../models/camera_pose.dart';
-import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
@@ -15,6 +13,7 @@ import '../../services/commands/link_mirror.dart'
 import '../../services/cut_frame_composite_plan.dart'
     show folderNeedsCompositeBuffer, layerOwnPlacementAt, resolveFolderOpacityAt;
 import '../../services/export/ae_script.dart';
+import '../canvas/canvas_look.dart' show CanvasCamera;
 import 'ae_keyframe_data.dart' show aeCameraSampleOf;
 import 'export_cel_group_plan.dart';
 
@@ -44,14 +43,13 @@ import 'export_cel_group_plan.dart';
 ///
 /// [framesOf] is how long a cut's comps run — its sheet's rows, the のりしろ
 /// an O.L asks included, as its XDTS ([cutSheetFrameCount]).
-/// [cameraPoseAt] is the camera the render looks through.
-AeScript buildAeScript({
+/// [camera] is the camera the render looks through. The script's name and
+/// rate are the caller's ([AeScript]).
+List<AeComp> aeCompsOf({
   required Project project,
   required ExportCelGroupPlan plan,
-  required String name,
-  required CanvasSize cameraFrameSize,
+  required CanvasCamera camera,
   required int Function(Cut cut) framesOf,
-  required CameraPose Function(Cut cut, int frameIndex) cameraPoseAt,
 }) {
   final comps = <AeComp>[];
   final laid = <CutId>{};
@@ -79,10 +77,10 @@ AeScript buildAeScript({
       );
       comps
         ..add(canvas)
-        ..add(_cameraComp(cut, canvas, cameraFrameSize, cameraPoseAt));
+        ..add(_cameraComp(cut, canvas, camera));
     }
   }
-  return AeScript(name: name, rate: project.frameRate, comps: comps);
+  return comps;
 }
 
 /// The cuts the plan lists cels in, in its order.
@@ -164,15 +162,11 @@ _Bank _bank(
 /// [cut]'s camera comp: the camera's frame, looking at [canvas] where the
 /// camera stands — anchored at its centre, turned against it and scaled
 /// by its zoom ([aeCameraSampleOf]).
-AeComp _cameraComp(
-  Cut cut,
-  AeComp canvas,
-  CanvasSize frameSize,
-  CameraPose Function(Cut cut, int frameIndex) cameraPoseAt,
-) {
+AeComp _cameraComp(Cut cut, AeComp canvas, CanvasCamera camera) {
+  final frameSize = camera.frameSize;
   final samples = [
     for (var frame = 0; frame < canvas.frames; frame += 1)
-      aeCameraSampleOf(frame, cameraPoseAt(cut, frame)),
+      aeCameraSampleOf(frame, camera.poseOf(cut, frame)),
   ];
   return AeComp(
     name: cut.name,
@@ -338,7 +332,7 @@ class _CutRun {
     source: AeCompSource(comp),
     parent: nulls[folder.folderId],
     blend: folder.blendMode,
-    enabled: folder.isVisible && _shownThrough(folder),
+    enabled: cut.layers.rowVisible(folder),
     transform: _transformOf(
       folder,
       opacity: (frame) =>
@@ -361,7 +355,7 @@ class _CutRun {
       timeRemap: holds,
       parent: nulls[row.folderId],
       blend: row.blendMode,
-      enabled: row.isVisible && _shownThrough(row),
+      enabled: cut.layers.rowVisible(row),
       transform: _transformOf(
         carrier,
         opacity: (frame) =>
@@ -372,11 +366,6 @@ class _CutRun {
       ),
     );
   }
-
-  /// Whether every folder passing [row] through is shown — a null shows
-  /// nothing, so it cannot hide what is parented to it.
-  bool _shownThrough(Layer row) =>
-      _passedBy(row).every((folder) => folder.isVisible);
 
   /// The strength the folders passing [row] through lend it at [frame] —
   /// a null has none to give, so each row takes it on.

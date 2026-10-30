@@ -16,7 +16,7 @@ import '../../models/import/import_warning.dart' show ImportWarning;
 import '../../services/audio/audio_mixer_reference.dart' show AudioMixSource;
 import '../../services/brush_frame_store.dart' show CelRead;
 import '../../services/camera_path.dart' show CameraPath;
-import '../../services/export/ae_script.dart' show writeAeScript;
+import '../../services/export/ae_script.dart' show AeScript, writeAeScript;
 import '../sheet/sheet_image_cache.dart' show SheetImageRun, readSheetImage;
 import '../../services/persistence/app_export_settings.dart';
 import '../../services/persistence/app_export_settings_store.dart';
@@ -2918,7 +2918,7 @@ class ExportDialogState extends State<ExportDialog> {
 
   /// The AE Script tab's run: the cels the list shows bright, written as
   /// the tab writes them ([AeScriptExportSpec.written]), then the script
-  /// that lays them out in After Effects beside them ([buildAeScript]).
+  /// that lays them out in After Effects beside them ([aeCompsOf]).
   Future<String> _exportAeScript() {
     final spec = _specs.aeScript.written;
     final plan = _celGroupPlan();
@@ -2953,19 +2953,24 @@ class ExportDialogState extends State<ExportDialog> {
       project,
       cut: scope == ExportScopeKind.cut ? _activeCut : null,
     );
-    final script = buildAeScript(
-      project: project,
-      plan: plan,
+    final script = AeScript(
       name: name,
-      cameraFrameSize: _session.camera.cameraFrameSize,
-      framesOf: (cut) => cutSheetFrameCount(
-        _session,
-        cut: cut,
-        cutStartFrame: _trackStartOf(cut),
+      rate: project.frameRate,
+      comps: aeCompsOf(
+        project: project,
+        plan: plan,
+        // The camera as the screen holds it: the comp IS the camera's
+        // work, whatever the cels were written through.
+        camera: (
+          poseOf: _session.camera.cameraPoseForCut,
+          frameSize: _session.camera.cameraFrameSize,
+        ),
+        framesOf: (cut) => cutSheetFrameCount(
+          _session,
+          cut: cut,
+          cutStartFrame: _trackStartOf(cut),
+        ),
       ),
-      // The camera as the screen holds it: the comp IS the camera's work,
-      // whatever the cels were written through.
-      cameraPoseAt: _session.camera.cameraPoseForCut,
     );
     final file = File(_joinLocation('$name.jsx'));
     await file.parent.create(recursive: true);

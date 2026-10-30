@@ -358,7 +358,7 @@ void main() {
       expect(ExportTabSpecs.fromJson(updated.toJson()), updated);
     });
 
-    test('the tabs are four — the timesheet and the cut envelope are no '
+    test('the tabs are five — the timesheet and the cut envelope are no '
         'tab, and what a file of an older build kept for them is left '
         'unread', () {
       expect(ExportTab.values, [
@@ -366,6 +366,7 @@ void main() {
         ExportTab.image,
         ExportTab.cels,
         ExportTab.conte,
+        ExportTab.aeScript,
       ]);
       expect(ExportTab.fromJsonOrNull('timesheet'), isNull);
       expect(ExportTab.fromJsonOrNull('envelope'), isNull);

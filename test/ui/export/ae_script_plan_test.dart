@@ -94,46 +94,47 @@ void main() {
     createdAt: DateTime.utc(2026),
   );
 
-  AeScript scriptOf(
+  List<AeComp> compsOf(
     List<Layer> layers, {
     CameraPose Function(Cut cut, int frame)? cameraPoseAt,
   }) {
     final project = projectWith(layers);
-    return buildAeScript(
+    return aeCompsOf(
       project: project,
       plan: buildExportCelGroupPlan(
         project: project,
         activeCutId: const CutId('cut'),
         spec: const AeScriptExportSpec().written,
       ),
-      name: 'C1',
-      cameraFrameSize: const CanvasSize(width: 4, height: 2),
+      camera: (
+        poseOf:
+            cameraPoseAt ??
+            (_, _) => CameraPose(center: CanvasPoint(x: 4, y: 4)),
+        frameSize: const CanvasSize(width: 4, height: 2),
+      ),
       framesOf: (cut) => cut.duration,
-      cameraPoseAt:
-          cameraPoseAt ??
-          (_, _) => CameraPose(center: CanvasPoint(x: 4, y: 4)),
     );
   }
 
-  AeComp compNamed(AeScript script, String name) =>
-      script.comps.singleWhere((comp) => comp.name == name);
+  AeComp compNamed(List<AeComp> comps, String name) =>
+      comps.singleWhere((comp) => comp.name == name);
 
   AeLayer layerNamed(AeComp comp, String name) =>
       comp.layers.singleWhere((layer) => layer.name == name);
 
   test('a cut is a canvas comp inside a camera comp, after the cel comps it '
       'shows', () {
-    final script = scriptOf([
+    final comps = compsOf([
       row('a', blocks: {0: ('1', 2)}),
     ]);
-    expect([for (final comp in script.comps) comp.name], [
+    expect([for (final comp in comps) comp.name], [
       'A cels',
       'C1 canvas',
       'C1',
     ]);
-    final canvasComp = compNamed(script, 'C1 canvas');
+    final canvasComp = compNamed(comps, 'C1 canvas');
     expect((canvasComp.width, canvasComp.height, canvasComp.frames), (8, 8, 6));
-    final camera = compNamed(script, 'C1');
+    final camera = compNamed(comps, 'C1');
     expect((camera.width, camera.height, camera.frames), (4, 2, 6));
     expect(
       (camera.layers.single.source as AeCompSource).comp,
@@ -143,15 +144,15 @@ void main() {
 
   test('a row is ONE layer: its cels a frame each, held where its blocks '
       'show them — and nothing where none does', () {
-    final script = scriptOf([
+    final comps = compsOf([
       row('a', blocks: {0: ('1', 2), 3: ('2', 2)}),
     ]);
-    final bank = compNamed(script, 'A cels');
+    final bank = compNamed(comps, 'A cels');
     expect(bank.frames, 3, reason: 'two cels and an empty frame');
     expect([
       for (final layer in bank.layers) (layer.source as AeStill).frame,
     ], [0, 1]);
-    final a = layerNamed(compNamed(script, 'C1 canvas'), 'A');
+    final a = layerNamed(compNamed(comps, 'C1 canvas'), 'A');
     expect((a.source as AeCompSource).comp, same(bank));
     expect(a.timeRemap, [
       (frame: 0, source: 0),
@@ -162,7 +163,7 @@ void main() {
   });
 
   test('a row\'s transform is its own pose, AE\'s values', () {
-    final script = scriptOf([
+    final comps = compsOf([
       row(
         'a',
         blocks: {0: ('1', 6)},
@@ -178,7 +179,7 @@ void main() {
         ),
       ),
     ]);
-    final transform = layerNamed(compNamed(script, 'C1 canvas'), 'A')
+    final transform = layerNamed(compNamed(comps, 'C1 canvas'), 'A')
         .transform!;
     expect(transform.anchor.value, [4, 4], reason: 'the canvas centre');
     expect(transform.position.value, [2, 3]);
@@ -188,7 +189,7 @@ void main() {
   });
 
   test('a pose that moves is a value a frame', () {
-    final script = scriptOf([
+    final comps = compsOf([
       row(
         'a',
         blocks: {0: ('1', 6)},
@@ -200,7 +201,7 @@ void main() {
         ),
       ),
     ]);
-    final position = layerNamed(compNamed(script, 'C1 canvas'), 'A')
+    final position = layerNamed(compNamed(comps, 'C1 canvas'), 'A')
         .transform!
         .position;
     expect(position.frames, hasLength(6));
@@ -210,7 +211,7 @@ void main() {
 
   test('a folder that passes its rows through is a null they hang on, on '
       'which its pose stands', () {
-    final script = scriptOf([
+    final comps = compsOf([
       row('a', blocks: {0: ('1', 6)}, folder: 'f'),
       folder(
         'f',
@@ -224,7 +225,7 @@ void main() {
         ),
       ),
     ]);
-    final canvasComp = compNamed(script, 'C1 canvas');
+    final canvasComp = compNamed(comps, 'C1 canvas');
     final f = layerNamed(canvasComp, 'F');
     expect(f.source, isA<AeNullSource>());
     expect(f.transform!.scale.value, [300, 100]);
@@ -239,12 +240,12 @@ void main() {
 
   test('a folder the app composites as one picture is a comp of its own, '
       'at its blend', () {
-    final script = scriptOf([
+    final comps = compsOf([
       row('b', blocks: {0: ('1', 6)}),
       row('a', blocks: {0: ('1', 6)}, folder: 'm'),
       folder('m', blend: LayerBlendMode.multiply),
     ]);
-    final canvasComp = compNamed(script, 'C1 canvas');
+    final canvasComp = compNamed(comps, 'C1 canvas');
     expect([for (final layer in canvasComp.layers) layer.name], ['B', 'M']);
     final m = layerNamed(canvasComp, 'M');
     expect(m.blend, LayerBlendMode.multiply);
@@ -252,14 +253,28 @@ void main() {
     expect(inner.tucked, isTrue);
     expect([for (final layer in inner.layers) layer.name], ['A']);
     expect(
-      script.comps.indexOf(inner),
-      lessThan(script.comps.indexOf(canvasComp)),
+      comps.indexOf(inner),
+      lessThan(comps.indexOf(canvasComp)),
       reason: 'a comp is made before the comp that shows it',
     );
   });
 
+  test('a layer is off where the app does not show its row — under a '
+      'folder switched off as well as by its own eye', () {
+    final comps = compsOf([
+      row('a', blocks: {0: ('1', 6)}, folder: 'f'),
+      folder('f').copyWith(isVisible: false),
+      row('b', blocks: {0: ('1', 6)}),
+      row('c', blocks: {0: ('1', 6)}).copyWith(isVisible: false),
+    ]);
+    final canvasComp = compNamed(comps, 'C1 canvas');
+    expect(layerNamed(canvasComp, 'A').enabled, isFalse);
+    expect(layerNamed(canvasComp, 'B').enabled, isTrue);
+    expect(layerNamed(canvasComp, 'C').enabled, isFalse);
+  });
+
   test('the camera comp looks at the canvas where the camera stands', () {
-    final script = scriptOf(
+    final comps = compsOf(
       [
         row('a', blocks: {0: ('1', 6)}),
       ],
@@ -269,7 +284,7 @@ void main() {
         rotationDegrees: 10,
       ),
     );
-    final look = compNamed(script, 'C1').layers.single.transform!;
+    final look = compNamed(comps, 'C1').layers.single.transform!;
     expect(look.anchor.frames!.first, [2, 4]);
     expect(look.anchor.frames!.last, [7, 4]);
     expect(look.position.value, [2, 1], reason: 'the camera comp\'s centre');

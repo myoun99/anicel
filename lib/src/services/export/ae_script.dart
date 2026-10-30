@@ -279,7 +279,7 @@ class _AeScriptWriter {
     for (final layer in comp.layers) {
       final layerId = 'L[${layers.length}]';
       layers[layer] = layerId;
-      _writeLayer(comp, id, layer, layerId, layers);
+      _writeLayer(id, layer, layers);
     }
     // The nulls on top, in the order they stand, as AE hands them over.
     final nulls = [
@@ -292,13 +292,10 @@ class _AeScriptWriter {
     _out.writeln('  L = [];');
   }
 
-  void _writeLayer(
-    AeComp comp,
-    String compId,
-    AeLayer layer,
-    String id,
-    Map<AeLayer, String> layers,
-  ) {
+  /// [layer], made in the comp [compId] names under the name [layers]
+  /// gave it.
+  void _writeLayer(String compId, AeLayer layer, Map<AeLayer, String> layers) {
+    final id = layers[layer]!;
     switch (layer.source) {
       case AeStill(:final path, :final frame):
         _out.writeln(

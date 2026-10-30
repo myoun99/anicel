@@ -588,6 +588,7 @@ void main() {
     'exImage': (s) => s.exImage,
     'exVideo': (s) => s.exVideo,
     'exCels': (s) => s.exCels,
+    'exAeScript': (s) => s.exAeScript,
     'exFormat': (s) => s.exFormat,
     'exOptions': (s) => s.exOptions,
     'exNaming': (s) => s.exNaming,
