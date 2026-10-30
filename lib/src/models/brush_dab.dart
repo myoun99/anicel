@@ -193,7 +193,9 @@ class BrushDab {
 
   /// How long a stretch of the stroke this dab stands for, in canvas
   /// pixels — the step the interpolator laid it at. NULL for the dab that
-  /// opens a stroke (a tap is only that) and for a dab not laid along a path.
+  /// opens a stroke (a tap is only that), for a dab not laid along a path,
+  /// and for every dab of a brush that lays its stamps whole
+  /// (`BrushShape.adjustsFlowBySpacing`).
   ///
   /// 🚨★★★EVERY DAB LAYS WHAT THIS STEP IS WORTH (유저 2026-10-01
   /// `one-pixel-steps-change-a-brush-with-its-size` A: 「엔진이 쌓임을 환산 —

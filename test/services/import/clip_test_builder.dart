@@ -491,6 +491,90 @@ const clipSchema = '''
     MainId INTEGER, CanvasId INTEGER, LayerId INTEGER, VectorData BLOB);
 ''';
 
+/// A brush material's `.layer` (memory `csp-clip-format-notes` §8): a C2F
+/// file of the database holding [offscreens] under [directory], [ciphered]
+/// bytes of it replaced by junk in a chunk of their own, the rest plain.
+///
+/// The tables ahead of `Offscreen` take the pages the cipher covers, as the
+/// real schema's do. [cipherOverRows] leaves them out, so the rows themselves
+/// lie where nothing can read them; [pagesCut] takes that many pages off the
+/// end, where a row's overflow lies.
+Uint8List sutMaterialLayerBytes(
+  Directory directory, {
+  required List<({Uint8List attribute, Uint8List blocks})> offscreens,
+  int pageSize = 1024,
+  int ciphered = 5120,
+  bool cipherOverRows = false,
+  int pagesCut = 0,
+}) {
+  final path = '${directory.path}/layer${directory.listSync().length}.db';
+  final database = sqlite3.open(path)
+    ..execute('PRAGMA page_size = $pageSize');
+  if (!cipherOverRows) {
+    for (var table = 0; table < 8; table += 1) {
+      database.execute('CREATE TABLE Ahead$table(_PW_ID INTEGER PRIMARY KEY)');
+    }
+    // A leaf of more cells than a smaller page has room for the pointers of,
+    // which is what a reader trying that size meets.
+    for (var row = 0; row < 540; row += 1) {
+      database.execute('INSERT INTO Ahead7 DEFAULT VALUES');
+    }
+  }
+  database.execute('''
+    CREATE TABLE Offscreen(_PW_ID INTEGER PRIMARY KEY, MainId INTEGER,
+      CanvasId INTEGER, LayerId INTEGER, Attribute BLOB, BlockData BLOB);
+  ''');
+  for (final offscreen in offscreens) {
+    database.execute(
+      'INSERT INTO Offscreen(MainId, CanvasId, LayerId, Attribute, BlockData) '
+      'VALUES (1, 1, 2, ?, ?)',
+      [offscreen.attribute, offscreen.blocks],
+    );
+  }
+  database.close();
+  final whole = File(path).readAsBytesSync();
+  Uint8List chunk(List<int> body) => (BytesBuilder()
+        ..add(_le32(body.length))
+        ..add(ascii.encode('dATA'))
+        ..add(body)
+        ..add(Uint8List(4)))
+      .toBytes();
+  return (BytesBuilder()
+        ..add([0x89, ...ascii.encode('C2F'), 0x0D, 0x0A, 0x1A, 0x0A])
+        ..add(ascii.encode('HEAD'))
+        ..add(Uint8List(8))
+        ..add(chunk([1, 0, ...Uint8List(8), ...List.filled(ciphered, 0xA5)]))
+        ..add(
+          chunk([
+            0,
+            0,
+            ...whole.sublist(ciphered, whole.length - pagesCut * pageSize),
+          ]),
+        )
+        ..add(_le32(0))
+        ..add(ascii.encode('TAIL')))
+      .toBytes();
+}
+
+/// A TAR of [files], name to bytes — a brush material's own shape
+/// (`catalog.zip` · `data/material_0.layer` · `thumbnail/thumbnail.png`).
+Uint8List sutMaterialBytes(Map<String, Uint8List> files) {
+  final out = BytesBuilder();
+  files.forEach((name, bytes) {
+    final head = Uint8List(512)..setRange(0, name.length, ascii.encode(name));
+    final size = bytes.length.toRadixString(8).padLeft(11, '0');
+    head
+      ..setRange(124, 135, ascii.encode(size))
+      ..setRange(257, 262, ascii.encode('ustar'));
+    out
+      ..add(head)
+      ..add(bytes)
+      ..add(Uint8List(-bytes.length % 512));
+  });
+  out.add(Uint8List(1024));
+  return out.toBytes();
+}
+
 /// One stroke record of a vector layer's data (memory
 /// `csp-clip-format-notes` §7): a [head]-byte head (88 or 92) and its
 /// [points] — x, y and the radius's factor there — with a curve tool's

@@ -16,7 +16,9 @@ import '../../models/brush_shape.dart';
 import '../../models/brush_tip_mask.dart';
 import '../../models/brush_tip_order.dart';
 import '../../models/import/import_warning.dart';
+import '../brush_tip_coverage.dart';
 import '../brush_tip_image_codec.dart';
+import 'sut_material_tip.dart';
 
 /// Result of decoding a Clip Studio Paint `.sut`/`.sutg` brush file.
 class SutImportResult {
@@ -42,9 +44,9 @@ class SutDecodeException extends ImportRefusal {
 /// `*Effector` values carry the input-source flags (0x10 pen pressure,
 /// 0x80 random -> the jitters). The dual tip rides `UseDualBrush` +
 /// `DualPatternImageArray`. Tip bitmaps live in `MaterialFile.FileData` (a CSP
-/// material archive containing PNGs; the largest PNG is the tip image,
-/// smaller ones are thumbnails), joined through the UTF-16 catalog path in
-/// `BrushPatternImageArray`. The Variant schema varies across CSP versions,
+/// material archive — [sutMaterialTipCoverage]), joined through the UTF-16
+/// catalog path in `BrushPatternImageArray`. The Variant schema varies across
+/// CSP versions,
 /// so every column read tolerates absence.
 Future<SutImportResult> decodeSutBrushFile({
   required String filePath,
@@ -398,6 +400,9 @@ BrushSettings _settingsFromVariant(
     paintAmount: paintAmount,
     paintDensity: paintDensity,
     colorStretch: colorStretch,
+    // A column an older file leaves out says nothing, and the brush lays its
+    // share as every other does.
+    adjustsFlowBySpacing: _intOf(variant['BrushAdjustFlowByInterval']) != 0,
     blendMode: _blendModeOf(
       variant['CompositeMode'],
       brushName: brushName,
@@ -1025,10 +1030,11 @@ List<({String path, Uint8List data})> _materialsNamedBy(
   return named;
 }
 
-/// [material]'s image as a mask, or `null` — with a warning — when it holds
-/// none that reads.
+/// [material]'s tip as a mask — the tip itself ([sutMaterialTipCoverage]),
+/// or, said aloud, its preview — or `null`, with a warning, when it holds
+/// neither.
 ///
-/// 🚨THE TIP IS THE LARGEST IMAGE THAT HOLDS ANYTHING. Clip Studio's own
+/// 🚨THE PREVIEW IS THE LARGEST IMAGE THAT HOLDS ANYTHING. Clip Studio's own
 /// 鉛筆 · デッサン鉛筆 · ガッシュ carry each tip twice at one size, a blank
 /// one first (measured 2026-10-25, board
 /// an-imported-pencil-drops-its-second-brush). ↩️The first of two equal
@@ -1038,6 +1044,14 @@ Future<BrushTipMask?> _tipMaskOf(
   required String id,
   required _BrushPart part,
 }) async {
+  final tip = sutMaterialTipCoverage(material.data);
+  if (tip != null) {
+    return brushTipMaskFromCoverage(
+      tip.coverage,
+      size: (width: tip.width, height: tip.height),
+      id: id,
+    );
+  }
   final pngs = _largestPngs(material.data);
   if (pngs.isEmpty) {
     _leftOut(part, 'material holds no readable image');
@@ -1052,6 +1066,10 @@ Future<BrushTipMask?> _tipMaskOf(
       return null;
     }
     if (mask.alpha.any((alpha) => alpha != 0)) {
+      part.warnings.add(
+        'Brush "${part.brushName}": ${part.describe} could not be read from '
+        'its material; imported from its preview.',
+      );
       return mask;
     }
   }
@@ -1085,8 +1103,8 @@ String _utf16Runs(Uint8List bytes) {
 }
 
 /// The largest embedded PNGs in a CSP material archive blob, in the order
-/// they lie — the tip image itself and any twin of its size; smaller PNGs
-/// are thumbnails.
+/// they lie — its preview and any twin of its size; smaller PNGs are
+/// smaller previews.
 List<Uint8List> _largestPngs(Uint8List data) {
   final best = <Uint8List>[];
   var bestArea = 0;

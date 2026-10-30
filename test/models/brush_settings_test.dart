@@ -1,7 +1,8 @@
-﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
+import 'package:anicel/src/models/brush_shape.dart';
 import 'package:anicel/src/models/brush_texture_mode.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
 import 'package:anicel/src/models/separable_blend_mode.dart';
@@ -102,6 +103,28 @@ void main() {
       );
 
       expect(BrushSettings.fromJson(brush.toJson()), brush);
+    });
+
+    test('a brush that adjusts no flow keeps it through the round trip, and '
+        'every other writes nothing for it (Q3)', () {
+      final whole = BrushSettings(adjustsFlowBySpacing: false);
+
+      expect(whole.toJson()['adjustsFlowBySpacing'], isFalse);
+      expect(
+        BrushSettings.fromJson(whole.toJson()).adjustsFlowBySpacing,
+        isFalse,
+      );
+      expect(BrushSettings().toJson(), isNot(contains('adjustsFlowBySpacing')));
+      expect(
+        BrushSettings.fromJson(BrushSettings().toJson()).adjustsFlowBySpacing,
+        isTrue,
+      );
+      expect(whole.copyWith(size: 30).adjustsFlowBySpacing, isFalse);
+      expect(
+        whole.shape.withMask(BrushMaskSlot.dual, null).adjustsFlowBySpacing,
+        isFalse,
+      );
+      expect(whole, isNot(BrushSettings()));
     });
 
     test('the paper\'s height survives the round trip, and a multiplied '

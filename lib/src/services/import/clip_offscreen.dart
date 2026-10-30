@@ -48,6 +48,10 @@ final class ClipOffscreenShape {
   /// One byte a pixel — a mask.
   bool get isSingleChannel => alphaChannels + colourChannels == 1;
 
+  /// An alpha plane and a gray one, a byte each a pixel — two of the sixteen
+  /// brush tips measured; no raster layer of the measured files.
+  bool get isGray => alphaChannels == 1 && colourChannels == 1;
+
   /// What a mask is where it stores no block, and past its edges: all shown
   /// for a [fill] that is not 0, else hidden (MoArt's reading — memory
   /// `csp-clip-format-notes` §2).
@@ -140,17 +144,40 @@ Map<int, Uint8List?> clipBlocksOf(Uint8List data) {
 Uint8List? clipColourRgba(
   ClipOffscreenShape shape,
   Map<int, Uint8List?> blocks,
-) {
-  if (!shape.isColour) {
-    return null;
-  }
+) => shape.isColour
+    ? _straightRgba(shape, blocks, stride: 4, rgb: const [2, 1, 0])
+    : null;
+
+/// A picture of an alpha and a gray plane ([ClipOffscreenShape.isGray]) as
+/// straight RGBA, [ClipOffscreenShape.width] × [ClipOffscreenShape.height];
+/// null for a picture of another channel bundle.
+///
+/// A block inflates to the alpha plane followed by the gray one, and stands
+/// where a colour picture's does.
+Uint8List? clipGrayRgba(
+  ClipOffscreenShape shape,
+  Map<int, Uint8List?> blocks,
+) => shape.isGray
+    ? _straightRgba(shape, blocks, stride: 1, rgb: const [0, 0, 0])
+    : null;
+
+/// [blocks] as straight RGBA, a block being its alpha plane and then
+/// [stride] bytes a pixel with its red, green and blue at the places [rgb]
+/// gives.
+Uint8List _straightRgba(
+  ClipOffscreenShape shape,
+  Map<int, Uint8List?> blocks, {
+  required int stride,
+  required List<int> rgb,
+}) {
   const side = clipBlockSide;
   const plane = side * side;
   final width = shape.width;
   final height = shape.height;
   final rgba = Uint8List(width * height * 4);
+  final [red, green, blue] = rgb;
   blocks.forEach((number, block) {
-    if (block == null || block.length != plane * 5) {
+    if (block == null || block.length != plane * (1 + stride)) {
       return;
     }
     final left = (number % shape.columns) * side;
@@ -158,11 +185,11 @@ Uint8List? clipColourRgba(
     for (var y = 0; y < side && top + y < height; y += 1) {
       for (var x = 0; x < side && left + x < width; x += 1) {
         final pixel = y * side + x;
-        final colour = plane + pixel * 4;
+        final colour = plane + pixel * stride;
         final out = ((top + y) * width + left + x) * 4;
-        rgba[out] = block[colour + 2];
-        rgba[out + 1] = block[colour + 1];
-        rgba[out + 2] = block[colour];
+        rgba[out] = block[colour + red];
+        rgba[out + 1] = block[colour + green];
+        rgba[out + 2] = block[colour + blue];
         rgba[out + 3] = block[pixel];
       }
     }

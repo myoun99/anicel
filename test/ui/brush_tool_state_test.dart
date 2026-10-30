@@ -397,6 +397,15 @@ void main() {
     });
   });
 
+  test('a brush that adjusts no flow keeps it through the tool (Q3)', () {
+    final state = BrushToolState.fromBrushSettings(
+      BrushSettings(adjustsFlowBySpacing: false),
+    ).copyWith(size: 30);
+
+    expect(state.toBrushSettings().adjustsFlowBySpacing, isFalse);
+    expect(state.toInputSettings().shape.adjustsFlowBySpacing, isFalse);
+  });
+
   group('ground-colour mixing', () {
     BrushSettings mixingPreset() => BrushSettings(
       mixesGroundColor: true,

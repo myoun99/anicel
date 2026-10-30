@@ -86,6 +86,7 @@ class BrushShape {
     this.paintAmount = 1.0,
     this.paintDensity = 1.0,
     this.colorStretch = 0.0,
+    this.adjustsFlowBySpacing = true,
     this.correction = const BrushCorrection(),
   });
 
@@ -384,6 +385,19 @@ class BrushShape {
   /// other way round.
   final double colorStretch;
 
+  /// Whether this brush's dabs lay their share of a stamp (`stampShareOf`)
+  /// rather than each stamp whole, however close they lie — the file's
+  /// `BrushAdjustFlowByInterval` on a brush from Clip Studio.
+  ///
+  /// 🗣️A BRUSH THAT CAME IN SAYING NO KEEPS IT (유저 2026-10-31, board
+  /// imported-water-blend-lays-almost-nothing Q3 「파일 값을 따른다」 — no
+  /// panel row: 「화면에 새 옵션은 만들지 않는다」). 📏수채 섞기 stores 0, and
+  /// the user's sample of it matches with its stamps whole, a section of 88
+  /// to the sample's 87, against 56 with the share. ⚠️One brush measured.
+  /// Every other brush lays its share — the law of 2026-10-01 beside
+  /// `stampShareOf`.
+  final bool adjustsFlowBySpacing;
+
   /// How the line this brush draws is corrected — Clip Studio's 補正, the
   /// brush's own (F-418-Q6).
   final BrushCorrection correction;
@@ -488,6 +502,7 @@ class BrushShape {
       paintAmount: paintAmount,
       paintDensity: paintDensity,
       colorStretch: colorStretch,
+      adjustsFlowBySpacing: adjustsFlowBySpacing,
       correction: correction,
       rotationMode: rotationMode,
       angleJitter: angleJitter,
@@ -562,6 +577,7 @@ class BrushShape {
     double? paintAmount,
     double? paintDensity,
     double? colorStretch,
+    bool? adjustsFlowBySpacing,
     BrushCorrection? correction,
   }) {
     return BrushShape(
@@ -609,6 +625,7 @@ class BrushShape {
       paintAmount: paintAmount ?? this.paintAmount,
       paintDensity: paintDensity ?? this.paintDensity,
       colorStretch: colorStretch ?? this.colorStretch,
+      adjustsFlowBySpacing: adjustsFlowBySpacing ?? this.adjustsFlowBySpacing,
       correction: correction ?? this.correction,
     );
   }
@@ -662,6 +679,7 @@ class BrushShape {
           other.paintAmount == paintAmount &&
           other.paintDensity == paintDensity &&
           other.colorStretch == colorStretch &&
+          other.adjustsFlowBySpacing == adjustsFlowBySpacing &&
           other.correction == correction;
 
   @override
@@ -710,6 +728,7 @@ class BrushShape {
     paintAmount,
     paintDensity,
     colorStretch,
+    adjustsFlowBySpacing,
     correction,
   ]);
 

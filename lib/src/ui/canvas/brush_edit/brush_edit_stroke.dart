@@ -791,7 +791,9 @@ class _BrushEditStroke {
     required int sequence,
   }) {
     final reading = _state._dabFromPosition(at, sequence: sequence);
-    return const BrushDabInterpolator().interpolate(
+    return BrushDabInterpolator(
+      adjustsFlowBySpacing: _strokeShape.adjustsFlowBySpacing,
+    ).interpolate(
       previous: previous,
       nextRaw: reading,
       firstSequence: sequence,
@@ -807,12 +809,12 @@ class _BrushEditStroke {
   /// always yields one or two dabs (it returns nothing at all when the move
   /// is shorter than one step), so rolling once per segment lands in the
   /// same place without threading a random source through it.
-  double spacingAt(BrushDab reading) => brushSpacingFor(
-    reading,
-    (_state._activeStrokeInputSettings ?? _state.widget.inputSettings())
-        .shape,
-    random: _state._spacingRandom,
-  );
+  double spacingAt(BrushDab reading) =>
+      brushSpacingFor(reading, _strokeShape, random: _state._spacingRandom);
+
+  BrushShape get _strokeShape =>
+      (_state._activeStrokeInputSettings ?? _state.widget.inputSettings())
+          .shape;
 
   void endStrokeInput() {
     _state.widget.onActiveStrokeChanged?.call(StrokeInFlight.none);

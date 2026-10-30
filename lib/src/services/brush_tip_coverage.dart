@@ -21,6 +21,35 @@ import 'resample/coverage_resample.dart';
   );
 }
 
+/// What the straight RGBA picture [rgba] lays as a tip: alpha shaped by
+/// darkness, so a black-on-transparent tip reads as its own alpha and a
+/// black-on-white scan as inverted luminance. Where that holds nothing at
+/// all — a white-on-transparent tip — the alpha alone stands in.
+///
+/// 🚨ONE reading for a picture that came as a PNG and one that came out of a
+/// Clip Studio material (`sutMaterialTipCoverage`): 📏the two-plane tips
+/// measured read through it to the ink of their own previews.
+Uint8List brushTipCoverageOfRgba(Uint8List rgba) {
+  final coverage = Uint8List(rgba.length ~/ 4);
+  var sum = 0;
+  for (var index = 0; index < coverage.length; index += 1) {
+    final r = rgba[index * 4];
+    final g = rgba[index * 4 + 1];
+    final b = rgba[index * 4 + 2];
+    final a = rgba[index * 4 + 3];
+    final luminance = (r * 299 + g * 587 + b * 114) ~/ 1000;
+    final value = a * (255 - luminance) ~/ 255;
+    coverage[index] = value;
+    sum += value;
+  }
+  if (sum == 0) {
+    for (var index = 0; index < coverage.length; index += 1) {
+      coverage[index] = rgba[index * 4 + 3];
+    }
+  }
+  return coverage;
+}
+
 /// [coverage] of [size] as a tip mask: fitted to [maxBrushTipMaskSide],
 /// read down through the app's one resampler when the fit shrank it, then
 /// squared and centred.
