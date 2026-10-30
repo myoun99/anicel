@@ -23,9 +23,13 @@ import 'wintab_pen_service.dart';
 ///
 /// - Windows: the Wintab service (user-switched, PEN-2). Consulted
 ///   FIRST and unconditionally (it self-gates on its setting).
-/// - macOS / Linux: the platform channel services (PEN-4), started
-///   unconditionally on their platform by [bind] — they only restore
-///   data the embedder drops today.
+/// - macOS: the platform channel service (PEN-4), started unconditionally
+///   there by [bind] — it only restores data the embedder drops today.
+/// - Linux: none. ↩️It had a channel too, from a GTK hook in the runner, until
+///   the embedder carried the pen itself (3.47, flutter/flutter#186831: a
+///   stylus's kind and its 0..1 pressure on the pointer event). A pressure on
+///   its own event cannot arrive late; the channel's could, and stood over it
+///   for 150ms (mac-linux-pen-sidecar-opening).
 ///
 /// The brush canvas asks [freshReading] per pointer sample; the
 /// input inspector lists [channelServices] readouts beside the Wintab
@@ -51,8 +55,6 @@ abstract final class PenSidecars {
     QaPenLedger.start();
     if (Platform.isMacOS) {
       channelServices.add(PlatformPenChannelService.macos()..start());
-    } else if (Platform.isLinux) {
-      channelServices.add(PlatformPenChannelService.linux()..start());
     }
   }
 
@@ -173,8 +175,8 @@ abstract final class PenSidecars {
   /// The freshest driver-side BUTTON state, as FLUTTER button bits; null =
   /// no sidecar speaks for this moment (use the pointer event's own).
   ///
-  /// Only Wintab answers: the macOS/Linux channel sidecars restore
-  /// pressure the embedder drops, not buttons.
+  /// Only Wintab answers: the macOS channel sidecar restores pressure the
+  /// embedder drops, not buttons.
   ///
   /// Wintab's bits are positional per cursor — bit 0 is the TIP, bit 1 the
   /// lower barrel switch, bit 2 the upper one — and Flutter spells the

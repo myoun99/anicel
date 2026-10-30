@@ -20,20 +20,16 @@ class PenChannelSample {
   final bool eraser;
 }
 
-/// The macOS/Linux pen sidecar consumer (pen program, PEN-4) — the
-/// Wintab service's channel-based sibling, one class for both:
-///
-/// - macOS ('qa_pen/macos'): the runner's NSEvent local monitor restores
-///   the tablet pressure/tilt Flutter's embedder drops
-///   (flutter/flutter#146387).
-/// - Linux ('qa_pen/linux'): the runner's GTK hook restores the pen data
-///   the embedder flattens to a mouse (flutter/flutter#63209).
+/// The macOS pen sidecar consumer (pen program, PEN-4) — the Wintab
+/// service's channel-based sibling: on 'qa_pen/macos' the runner's NSEvent
+/// local monitor restores the tablet pressure/tilt Flutter's embedder drops
+/// (flutter/flutter#146387).
 ///
 /// Same pressure-sidecar contract as Wintab: Flutter pointer events keep
 /// driving position/gestures; this stream only supplies the DRIVER's
 /// pressure, consulted per pointer sample through
 /// [freshContactPressure]. Unlike Windows (a user-facing service
-/// SWITCH), these start unconditionally on their platform — there is no
+/// SWITCH), it starts unconditionally on its platform — there is no
 /// second OS path to choose between; the sidecar only restores data the
 /// embedder loses today.
 class PlatformPenChannelService {
@@ -46,12 +42,9 @@ class PlatformPenChannelService {
   factory PlatformPenChannelService.macos() =>
       PlatformPenChannelService('qa_pen/macos', 'mac');
 
-  factory PlatformPenChannelService.linux() =>
-      PlatformPenChannelService('qa_pen/linux', 'gdk');
-
   final String channelName;
 
-  /// Short readout tag for the input inspector ('mac' / 'gdk').
+  /// Short readout tag for the input inspector ('mac').
   final String label;
 
   final Stream<dynamic>? _debugStream;

@@ -1,7 +1,6 @@
 #include "my_application.h"
 
 #include "launch_splash.h"
-#include "pen_sidecar.h"
 #include "picture_cursors.h"
 #include "window_full_screen.h"
 #include "window_place.h"
@@ -84,10 +83,6 @@ static void my_application_activate(GApplication* application) {
   fl_view_set_background_color(view, &background_color);
   gtk_widget_show(GTK_WIDGET(view));
   gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));
-
-  // The pen sidecar stream (PEN-4): restores pen pressure the embedder
-  // drops (flutter/flutter#63209).
-  qa_pen_sidecar_register(window, view);
 
   // The window's full screen (I-103-Q2), switched from Dart and reported
   // back.

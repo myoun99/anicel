@@ -105,11 +105,12 @@ PenLean? _carriedLean(PointerEvent event) {
 
 /// 🚨WHERE THE POINTER CARRIES NO LEAN AT ALL (checked 2026-09-27 on
 /// 3.47). Flutter's desktop embedder API has no tilt field: Windows reads
-/// POINTER_PEN_INFO's pressure and rotation and drops tiltX/tiltY, and
-/// macOS and Linux never see a pen. There a 0 is the field's default, not
-/// a pen held upright — the invented reading `brush-tilt-no-device-Q1`
-/// ruled out. Only iOS (UITouch's altitude) and Android (AXIS_TILT) carry
-/// the lean; everywhere else [_carriedLean] asks the platform's own record.
+/// POINTER_PEN_INFO's pressure and rotation and drops tiltX/tiltY, Linux's
+/// carries the same two (flutter/flutter#186831), and macOS never sees a pen.
+/// There a 0 is the field's default, not a pen held upright — the invented
+/// reading `brush-tilt-no-device-Q1` ruled out. Only iOS (UITouch's altitude)
+/// and Android (AXIS_TILT) carry the lean; everywhere else [_carriedLean] asks
+/// the platform's own record.
 bool get _pointerCarriesLean =>
     defaultTargetPlatform == TargetPlatform.iOS ||
     defaultTargetPlatform == TargetPlatform.android;
