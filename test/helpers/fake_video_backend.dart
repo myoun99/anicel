@@ -23,7 +23,16 @@ class FakeVideoBackend implements VideoDecodeBackend {
     this.width = 64,
     this.height = 36,
     this.paint,
+    this.refusal,
   });
+
+  /// Why this decoder cannot read the movie — its answer to [lastError] —
+  /// or null when it opens every one. A decoder that is there and cannot
+  /// read this movie opens nothing.
+  ///
+  /// ↩️Three tests each wrote that decoder of their own, the same
+  /// three lines (2026-10-30, the fourth asked for a reason too).
+  final String? refusal;
 
   final int frameCount;
   final int fpsNumerator;
@@ -63,6 +72,9 @@ class FakeVideoBackend implements VideoDecodeBackend {
     ({int offset, int length, bool framed})? span,
   }) async {
     openedAt.add((path: path, span: span));
+    if (refusal != null) {
+      return null;
+    }
     return (
       token: 1,
       info: QaVideoInfo(
@@ -92,7 +104,7 @@ class FakeVideoBackend implements VideoDecodeBackend {
   }
 
   @override
-  Future<String> lastError() async => 'fake backend';
+  Future<String> lastError() async => refusal ?? 'fake backend';
 
   @override
   Future<void> close(int token) async {}

@@ -8,6 +8,7 @@ import '../../services/media/project_clock_document.dart';
 import '../../services/media/video_viewer_document.dart';
 import '../../services/media/viewer_document.dart';
 import '../../services/pdf/pdf_render_service.dart';
+import '../text/app_strings.dart';
 import 'audio_viewer_document.dart';
 
 /// Opens whatever [kind] at [path] names, or null when this medium has
@@ -79,3 +80,32 @@ Future<ViewerDocument?> openViewerDocument(
           : AudioViewerDocument(peaks: peaks, color: AudioViewerDocument.ink);
   }
 }
+
+/// What a surface says in the picture's place when [openViewerDocument]
+/// threw [error] — the media viewer and the import window's preview alike.
+///
+/// 🚨WHY, under the sentence that says WHAT. The engines answer with a
+/// reason — 「this file has no readable video stream」, 「no decoder for
+/// this codec」 — and the viewer used to drop it on the floor, so every
+/// unreadable file looked identical to every other one.
+/// ⚠️The detail is the engine's own words and is not translated; the
+/// export path made the same call with the encoder's.
+String viewerCouldNotOpen(Object error) =>
+    '${AppText.strings.mediaViewerLoadFailed}\n$error';
+
+/// What a surface says when this build has nothing that opens a [kind] —
+/// [openViewerDocument] answered null. The honest-absence states, each
+/// saying WHICH absence: a build without a PDF rasterizer or without a
+/// video reader is a missing engine the user can act on (a different
+/// build). ⛔One message for all of them would send someone hunting for a
+/// codec they do not need.
+String viewerNothingOpens(MediaAssetKind kind) => switch (kind) {
+  MediaAssetKind.pdf => AppText.strings.mediaViewerNoPdfRenderer,
+  MediaAssetKind.video => AppText.strings.mediaViewerNoVideoDecoder,
+  // 🪦Audio moved off this line in 2026-09-08: it HAS a picture now (its
+  // waveform), so an absence here is a conform that could not be built —
+  // a file this build cannot decode, which is the same sentence a missing
+  // video reader gets.
+  MediaAssetKind.audio => AppText.strings.mediaViewerNoAudioDecoder,
+  MediaAssetKind.image => AppText.strings.mediaViewerCannotDisplay,
+};
