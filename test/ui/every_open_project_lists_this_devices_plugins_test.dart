@@ -70,6 +70,13 @@ void main() {
     expect(await settleAsync(tester, () => first.disposed), isTrue);
     expect(ChangeNotifier.debugAssertNotDisposed(second.fxPlugins), isTrue);
     expect(second.fxPlugins.plugins, hasLength(1));
+
+    await tester.pumpWidget(const SizedBox());
+    expect(
+      () => ChangeNotifier.debugAssertNotDisposed(second.fxPlugins),
+      throwsFlutterError,
+      reason: 'the app lets it go as it closes',
+    );
   });
 
   test('a session handed none keeps its own, and lets it go with itself', () {

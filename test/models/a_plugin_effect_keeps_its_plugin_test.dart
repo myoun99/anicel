@@ -157,6 +157,11 @@ void main() {
 
     final json = jsonDecode(jsonEncode(keyed.toJson())) as Map<String, dynamic>;
     expect(json['plugin'], describing());
+    expect(
+      effectOf(glow()).toJson()['parameters'],
+      isEmpty,
+      reason: 'a parameter at its plugin\'s default says nothing',
+    );
     final read = LayerEffect.fromJson(json);
 
     expect(read, keyed);

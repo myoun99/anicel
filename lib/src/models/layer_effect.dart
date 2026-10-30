@@ -955,7 +955,6 @@ class LayerEffect {
   LayerEffect copyWith({
     EffectId? id,
     EffectKind? kind,
-    FxPluginDescription? plugin,
     bool? enabled,
     Map<String, EffectParameter>? parameters,
     Map<String, PropertyTrack<int>>? colors,
@@ -966,7 +965,7 @@ class LayerEffect {
     return LayerEffect(
       id: id ?? this.id,
       kind: kind ?? this.kind,
-      plugin: plugin ?? this.plugin,
+      plugin: plugin,
       enabled: enabled ?? this.enabled,
       parameters: parameters ?? this.parameters,
       colors: colors ?? this.colors,
