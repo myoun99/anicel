@@ -13,6 +13,7 @@ import '../camera_work_marks.dart' show CameraKeyRole;
 import '../cut_id.dart';
 import '../frame_id.dart';
 import '../se_line_type.dart';
+import 'conte_camera_room.dart';
 
 /// One panel of a cut, as the sheet reads it.
 ///
@@ -182,6 +183,7 @@ class ConteCutSource {
     required this.cumulativeEndFrames,
     required this.cells,
     this.dialogue = const [],
+    this.cameraRoom = ConteCameraRoom.grows,
   }) : assert(cells.length > 0, 'Every cut has at least one cell.');
 
   final CutId cutId;
@@ -197,6 +199,10 @@ class ConteCutSource {
 
   final List<ConteCellSource> cells;
   final List<ConteDialogueLine> dialogue;
+
+  /// How much of the sheet its cells take where its camera moves — the
+  /// cut's own, or the format window's where it has none (I-82-Q1).
+  final ConteCameraRoom cameraRoom;
 }
 
 /// The whole sheet's content.

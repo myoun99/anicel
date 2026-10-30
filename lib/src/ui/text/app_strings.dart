@@ -854,6 +854,10 @@ enum AppStrings {
   String get conteOutlineOn => _s('conteOutlineOn');
   String get conteOutlineOff => _s('conteOutlineOff');
   String get conteFixedText => _s('conteFixedText');
+  String get conteCameraRoom => _s('conteCameraRoom');
+  String get conteCameraRoomGrows => _s('conteCameraRoomGrows');
+  String get conteCameraRoomInCell => _s('conteCameraRoomInCell');
+  String get conteCameraRoomAsSheet => _s('conteCameraRoomAsSheet');
   String get envelopeFormatTitle => _s('envelopeFormatTitle');
   String get envelopeForm => _s('envelopeForm');
   String get sheetModeNotation => _s('sheetModeNotation');
@@ -2666,6 +2670,10 @@ enum AppStrings {
     'conteOutlineOn': 'On',
     'conteOutlineOff': 'Off',
     'conteFixedText': 'Fixed text',
+    'conteCameraRoom': 'Camera moves',
+    'conteCameraRoomGrows': 'Grow the cell',
+    'conteCameraRoomInCell': 'Keep in the cell',
+    'conteCameraRoomAsSheet': 'As the format',
     'envelopeFormatTitle': 'Envelope format',
     'envelopeForm': 'Form',
     'sheetModeNotation': 'Notation Sheet (repeat/hold words)',
@@ -4052,6 +4060,10 @@ enum AppStrings {
     'conteOutlineOn': 'あり',
     'conteOutlineOff': 'なし',
     'conteFixedText': '固定テキスト',
+    'conteCameraRoom': 'カメラワーク',
+    'conteCameraRoomGrows': 'コマを広げる',
+    'conteCameraRoomInCell': 'コマ内に収める',
+    'conteCameraRoomAsSheet': '様式どおり',
     'envelopeFormatTitle': 'カット袋書式',
     'envelopeForm': '様式',
     'sheetModeNotation': '表記シート（リピート・止めの文字）',
@@ -5863,6 +5875,10 @@ enum AppStrings {
     'conteOutlineOn': '적용',
     'conteOutlineOff': '미적용',
     'conteFixedText': '고정 텍스트',
+    'conteCameraRoom': '카메라 움직임',
+    'conteCameraRoomGrows': '칸을 키운다',
+    'conteCameraRoomInCell': '칸 안에',
+    'conteCameraRoomAsSheet': '서식 따름',
     'envelopeFormatTitle': '컷 봉투 서식',
     'envelopeForm': '양식',
     'sheetModeNotation': '표기 시트(반복·止め 글자)',
@@ -7712,6 +7728,10 @@ enum AppStrings {
     'conteOutlineOn': 'Oui',
     'conteOutlineOff': 'Non',
     'conteFixedText': 'Texte fixe',
+    'conteCameraRoom': 'Mouvements de caméra',
+    'conteCameraRoomGrows': 'Agrandir la case',
+    'conteCameraRoomInCell': 'Dans la case',
+    'conteCameraRoomAsSheet': 'Selon le modèle',
     'envelopeFormatTitle': 'Format de l\'enveloppe',
     'envelopeForm': 'Modèle',
     'sheetModeNotation': 'Feuille de notation (répétition / maintien)',
@@ -9609,6 +9629,10 @@ enum AppStrings {
     'conteOutlineOn': '有',
     'conteOutlineOff': '无',
     'conteFixedText': '固定文本',
+    'conteCameraRoom': '镜头运动',
+    'conteCameraRoomGrows': '扩大格子',
+    'conteCameraRoomInCell': '收在格内',
+    'conteCameraRoomAsSheet': '按样式',
     'envelopeFormatTitle': '卡袋版式',
     'envelopeForm': '样式',
     'sheetModeNotation': '标注表（重复·保持文字）',

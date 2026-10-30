@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/conte/conte_camera_room.dart';
 import 'package:anicel/src/models/cut_metadata.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
@@ -235,5 +236,72 @@ void main() {
     await cancel(tester);
     expect(answered, isTrue);
     expect(answer, isNull);
+  });
+
+  // I-82-Q1 「서식 전체 + 컷마다 덮어쓰기」: the format window sets how much
+  // a moving camera's cell takes, and a cut may keep its own.
+  testWidgets('I-82: the camera room lists the format\'s and both of a '
+      'cut\'s own; a save gives it back only when it changed', (tester) async {
+    var cut = const CutMetadata();
+    CutSettingsSave? answer;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () async {
+              answer = await showDialog<CutSettingsSave>(
+                context: context,
+                builder: (_) => CutSettingsWindow(cut: cut),
+              );
+            },
+            child: const Text('open'),
+          ),
+        ),
+      ),
+    );
+    const button = ValueKey<String>('cut-settings-camera-room');
+    Finder entry(String name) =>
+        find.byKey(ValueKey<String>('cut-settings-camera-room-$name'));
+    Future<void> pick(String name) async {
+      await tapInView(tester, find.byKey(button));
+      await tester.tap(entry(name));
+      await tester.pumpAndSettle();
+    }
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(button),
+        matching: find.text('As the format'),
+      ),
+      findsOneWidget,
+      reason: 'a cut keeps none of its own',
+    );
+    await tapInView(tester, find.byKey(button));
+    for (final name in ['format', 'grows', 'inCell']) {
+      expect(entry(name), findsOneWidget, reason: name);
+    }
+    await tester.tap(entry('format'));
+    await tester.pumpAndSettle();
+    await save(tester);
+    expect(answer?.conteCameraRoom, isNull, reason: 'nothing changed');
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    await pick('inCell');
+    await save(tester);
+    expect(answer?.conteCameraRoom, (to: ConteCameraRoom.inCell));
+
+    cut = cut.copyWith(conteCameraRoom: ConteCameraRoom.inCell);
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    await pick('format');
+    await save(tester);
+    expect(
+      answer?.conteCameraRoom,
+      (to: null),
+      reason: 'given back to the format',
+    );
   });
 }

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/conte/conte_camera_room.dart';
 import 'package:anicel/src/models/conte/conte_sheet_form.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_presets.dart';
 import 'package:anicel/src/models/layer_mark.dart';
@@ -314,6 +315,35 @@ void main() {
       expect(
         restored.copyWith(conteCover: false).conteFixedText,
         isFalse,
+        reason: 'another change keeps it',
+      );
+      expect(info, isNot(TimesheetInfo.empty), reason: 'one undo step');
+      expect(info.hashCode, isNot(TimesheetInfo.empty.hashCode));
+    });
+
+    test('I-82: a moving camera\'s cell grows unless the format keeps it in, '
+        'and kept in travels with the work', () {
+      expect(TimesheetInfo.empty.conteCameraRoom, ConteCameraRoom.grows);
+      expect(
+        TimesheetInfo.fromJson(const {'conteCameraRoom': 'unknown'})
+            .conteCameraRoom,
+        ConteCameraRoom.grows,
+      );
+      expect(
+        TimesheetInfo.empty.toJson().containsKey('conteCameraRoom'),
+        isFalse,
+      );
+      final info = TimesheetInfo.empty.copyWith(
+        conteCameraRoom: ConteCameraRoom.inCell,
+      );
+
+      final restored = TimesheetInfo.fromJson(info.toJson());
+
+      expect(restored, info);
+      expect(restored.conteCameraRoom, ConteCameraRoom.inCell);
+      expect(
+        restored.copyWith(conteCover: false).conteCameraRoom,
+        ConteCameraRoom.inCell,
         reason: 'another change keeps it',
       );
       expect(info, isNot(TimesheetInfo.empty), reason: 'one undo step');

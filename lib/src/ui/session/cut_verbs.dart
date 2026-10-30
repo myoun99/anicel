@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show ValueNotifier;
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_resize_anchor.dart';
 import '../../models/canvas_size.dart';
+import '../../models/conte/conte_camera_room.dart';
 import '../../models/conte/conte_ink_keys.dart'
     show conteInkRowIdOf, conteInkRowKey;
 import '../../models/cut.dart';
@@ -302,7 +303,7 @@ class CutVerbs {
   void setCutStaffName(CutId cutId, LayerMark stage, String name) =>
       _activeCut.onCutQuietly(
         cutId,
-        (cutId) => _project.cutCommandCoordinator.setCutStaffNames(
+        (cutId) => _project.cutCommandCoordinator.saveCutSettings(
           cutIds: [cutId],
           names: {stage: name},
         ),
@@ -376,20 +377,23 @@ class CutVerbs {
   }
 
   /// Names each stage of [names] on every addressed cut — and on each one's
-  /// 겸용 siblings — and opens [openFolds] on every addressed cut's own, as
-  /// ONE undo step; every other stage keeps each cut's own (컷 설정's save).
-  void setAddressedCutStaff(
+  /// 겸용 siblings — opens [openFolds] on every addressed cut's own, and
+  /// gives them [conteCameraRoom] where the window changed it, as ONE undo
+  /// step; every other stage keeps each cut's own (컷 설정's save).
+  void saveAddressedCutSettings(
     Map<LayerMark, String> names, {
     Set<LayerProcess>? openFolds,
+    ({ConteCameraRoom? to})? conteCameraRoom,
   }) {
     final cutIds = addressedCutIds;
     if (cutIds.isEmpty) {
       return;
     }
-    _project.cutCommandCoordinator.setCutStaffNames(
+    _project.cutCommandCoordinator.saveCutSettings(
       cutIds: cutIds,
       names: names,
       openFolds: openFolds,
+      conteCameraRoom: conteCameraRoom,
     );
     _changes.notifyChanged();
   }

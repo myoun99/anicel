@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/conte/conte_camera_room.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
@@ -97,7 +98,8 @@ void main() {
   });
 
   test('🎯the new 겸용 cut starts with what its pair shares — the guides, '
-      'the label, the sheet and the staff every edit writes onto both', () {
+      'the label, the sheet, the conte cells\' room and the staff every '
+      'edit writes onto both', () {
     final guides = CutGuides(
       guides: [
         DrawingGuide(
@@ -120,6 +122,7 @@ void main() {
       metadata: source.metadata.copyWith(
         mark: mark,
         sheetKind: TimesheetSheetKind.threeSeconds,
+        conteCameraRoom: ConteCameraRoom.inCell,
         staff: staff,
       ),
     );
@@ -130,6 +133,7 @@ void main() {
     expect(linked.guides, guides);
     expect(linked.metadata.mark, mark);
     expect(linked.metadata.sheetKind, TimesheetSheetKind.threeSeconds);
+    expect(linked.metadata.conteCameraRoom, ConteCameraRoom.inCell);
     expect(linked.metadata.staff, staff);
   });
 }

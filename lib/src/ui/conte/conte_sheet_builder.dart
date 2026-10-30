@@ -123,6 +123,10 @@ ConteCutSource _cutSource(
       ),
   ],
   dialogue: dialogue,
+  // I-82-Q1: the cut's own room, or the format window's.
+  cameraRoom:
+      entry.cut.metadata.conteCameraRoom ??
+      project.timesheetInfo.conteCameraRoom,
 );
 
 /// A track's transition row named by its cuts, as the sheet prints it

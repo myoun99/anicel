@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/conte/conte_camera_room.dart';
 import '../../models/conte/conte_sheet_form.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
@@ -9,15 +10,25 @@ import 'dialog_verb.dart';
 
 /// What the 「콘티 용지 서식」 window answers: the form the sheet is printed
 /// in and whether its pictures stand in the black, the front the conte
-/// book is printed with — its cover, and the blank page behind it — and
-/// whether a cell writes what its camera does (I-93).
+/// book is printed with — its cover, and the blank page behind it —
+/// whether a cell writes what its camera does (I-93), and how much of the
+/// sheet a cell whose camera moves takes (I-82).
 typedef ConteFormat = ({
   ConteSheetForm form,
   bool outlined,
   bool cover,
   bool blankPage,
   bool fixedText,
+  ConteCameraRoom cameraRoom,
 });
+
+/// The words [room] is picked by — the format window's two, and 컷 설정's
+/// third for a cut that takes the format's (null).
+String conteCameraRoomName(ConteCameraRoom? room) => switch (room) {
+  ConteCameraRoom.grows => AppText.strings.conteCameraRoomGrows,
+  ConteCameraRoom.inCell => AppText.strings.conteCameraRoomInCell,
+  null => AppText.strings.conteCameraRoomAsSheet,
+};
 
 /// 「콘티 용지 서식」: the conte sheet's settings, in a window of their own
 /// as the timesheet's are (`TimesheetFormatWindow`). Pops the edited
@@ -33,7 +44,8 @@ typedef ConteFormat = ({
 /// The form is picked from a list, as the envelope's is (I-93: 「이런 프리셋
 /// 변경은 특히 앱 통틀어서 리스트 팝오버로」), and the outline is either
 /// form's (유저 2026-10-21, I-118: 「서식 옵션으로 공통적용되게 화면에 검은
-/// 외곽선 적용/미적용 버튼」).
+/// 외곽선 적용/미적용 버튼」). The camera's room is every cut's that does not
+/// take its own in 컷 설정 (I-82-Q1 「서식 전체 + 컷마다 덮어쓰기」).
 class ConteFormatWindow extends StatefulWidget {
   const ConteFormatWindow({super.key, required this.initial});
 
@@ -49,6 +61,7 @@ class _ConteFormatWindowState extends State<ConteFormatWindow> {
   late bool _cover = widget.initial.cover;
   late bool _blankPage = widget.initial.blankPage;
   late bool _fixedText = widget.initial.fixedText;
+  late ConteCameraRoom _cameraRoom = widget.initial.cameraRoom;
 
   static String _formName(ConteSheetForm form) => switch (form) {
     ConteSheetForm.analog => AppText.strings.conteFormAnalog,
@@ -67,6 +80,19 @@ class _ConteFormatWindowState extends State<ConteFormatWindow> {
     keyPrefix: 'conte-format-form-',
     labelOf: _formName,
     onPicked: (form) => setState(() => _form = form),
+  );
+
+  /// How much a moving camera's cell takes, the one picked lit — a list, as
+  /// the form is (I-93 「리스트 팝오버로」).
+  Widget _cameraRoomButton() => PanelFlyoutButton(
+    key: const ValueKey<String>('conte-format-camera-room'),
+    label: conteCameraRoomName(_cameraRoom),
+    entriesBuilder: () => ConteCameraRoom.values.asFlyoutChoices(
+      current: _cameraRoom,
+      keyPrefix: 'conte-format-camera-room-',
+      labelOf: conteCameraRoomName,
+      onPicked: (room) => setState(() => _cameraRoom = room),
+    ),
   );
 
   /// One page of the front, put in or left out.
@@ -144,6 +170,7 @@ class _ConteFormatWindowState extends State<ConteFormatWindow> {
               ),
             ),
             _field(strings.conteFixedText, _fixedTextSwitch()),
+            _field(strings.conteCameraRoom, _cameraRoomButton()),
           ],
         ),
       ),
@@ -161,5 +188,6 @@ class _ConteFormatWindowState extends State<ConteFormatWindow> {
     cover: _cover,
     blankPage: _blankPage,
     fixedText: _fixedText,
+    cameraRoom: _cameraRoom,
   );
 }

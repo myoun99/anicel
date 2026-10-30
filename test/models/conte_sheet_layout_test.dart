@@ -454,6 +454,79 @@ void main() {
       expect(cell.wordsTop, closeTo(metrics.rowTop(1), 1e-9));
     });
 
+    // 🗣️I-82 (유저 2026-10-06: 「얼마나 카메라 이동하던 픽쳐칸 안에서만
+    // 표현(그림이나 카메라를 작게해서)하는 옵션」; I-82-Q1 10-30 「서식 전체 +
+    // 컷마다 덮어쓰기」).
+    ContePlacedCell keptIn(ConteCameraWork work) => layoutConteSheet(
+      ConteSheetSource(
+        cuts: [
+          ConteCutSource(
+            cutId: const CutId('0'),
+            name: '0',
+            durationFrames: 24,
+            cumulativeEndFrames: 24,
+            cells: [_cell(0, 24, camera: work)],
+            cameraRoom: ConteCameraRoom.inCell,
+          ),
+        ],
+      ),
+      metrics: metrics,
+    ).first.cells.single;
+
+    test('I-82: a cut that keeps its cells lays any sweep in its own cell — '
+        'one row, the picture column, its words beside it', () {
+      for (final work in [
+        conteCameraPan(down: 1),
+        conteCameraPan(down: 6),
+        conteCameraPan(across: 0.3),
+        conteCameraPan(across: 3),
+      ]) {
+        final cell = keptIn(work);
+        final where = '${work.field}';
+        expect(cell.rowSpan, 1, reason: where);
+        final box = cell.pictureRect;
+        expect(box.left, closeTo(metrics.pictureLeft, 1e-9), reason: where);
+        expect(box.top, closeTo(metrics.rowTop(0), 1e-9), reason: where);
+        expect(box.right, lessThan(metrics.actionLeft + 1e-9), reason: where);
+        expect(box.bottom, lessThan(metrics.rowTop(1) + 1e-9), reason: where);
+        expect(cell.wordsTop, metrics.rowTop(0), reason: where);
+        expect(
+          cell.actionRect.left,
+          closeTo(metrics.actionLeft, 1e-9),
+          reason: where,
+        );
+      }
+    });
+
+    test('I-82: kept in its cell, a sweep is laid as large as the cell\'s '
+        'window holds it — the black only round the picture (H48)', () {
+      const room = ConteCameraRoom.inCell;
+      final tall = conteCameraPan(down: 1);
+      expect(
+        tall.field.height * conteCameraPlan(metrics, tall, room: room).scale,
+        closeTo(metrics.windowHeight, 1e-9),
+        reason: 'two screens tall: as tall as the window',
+      );
+      expect(
+        keptIn(tall).pictureRect.right,
+        lessThan(metrics.actionLeft - 1),
+        reason: 'and narrower than the column',
+      );
+      final wide = conteCameraPan(across: 3);
+      expect(
+        keptIn(wide).pictureRect.right,
+        closeTo(metrics.actionLeft, 1e-9),
+        reason: 'four screens wide: as wide as the picture column',
+      );
+    });
+
+    test('a camera that stands still lays its cell alike either way', () {
+      expect(
+        conteCameraPlan(metrics, null, room: ConteCameraRoom.inCell),
+        conteCameraPlan(metrics, null),
+      );
+    });
+
     test('a sweep wider than the page is laid smaller: its picture stops '
         'where the time column begins (↩️it was the page\'s right edge)', () {
       final cell = pageOf([

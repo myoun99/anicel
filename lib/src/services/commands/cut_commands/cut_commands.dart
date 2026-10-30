@@ -390,11 +390,14 @@ class _CutCommands {
   /// siblings, as ONE undo step — the stages it does not name keep each
   /// cut's own, and a stage every cut already has so is no step at all —
   /// with, where the window was saved with them, the folds it opens on
-  /// ([openFolds], F-291-Q4: each of [cutIds]' own).
-  void setCutStaffNames({
+  /// ([openFolds], F-291-Q4: each of [cutIds]' own), and where the window
+  /// changed it, the room their conte cells take ([conteCameraRoom] — its
+  /// `to` null for the format window's, I-82-Q1), on the 겸용 pair as one.
+  void saveCutSettings({
     required List<CutId> cutIds,
     required Map<LayerMark, String> names,
     Set<LayerProcess>? openFolds,
+    ({ConteCameraRoom? to})? conteCameraRoom,
   }) {
     final project = _coordinator.repository.requireProject();
     final cuts = [
@@ -421,6 +424,13 @@ class _CutCommands {
           repository: _coordinator.repository,
           cutIds: cutIds,
           open: openFolds,
+        ),
+      if (conteCameraRoom case (:final to)
+          when cuts.any((cut) => cut.metadata.conteCameraRoom != to))
+        UpdateCutConteCameraRoomCommand(
+          repository: _coordinator.repository,
+          cutIds: cutIds,
+          room: to,
         ),
     ]);
   }

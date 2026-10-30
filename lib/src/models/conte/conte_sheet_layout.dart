@@ -15,9 +15,11 @@ import 'dart:ui' show Rect, Size;
 import '../canvas_size.dart';
 import '../sheet_paper.dart';
 import '../timesheet_info.dart';
+import 'conte_camera_room.dart';
 import 'conte_sheet_form.dart';
 import 'conte_sheet_source.dart';
 
+export 'conte_camera_room.dart';
 export 'conte_sheet_form.dart';
 
 /// The sheet's measurements in its [form] — the first form's page (유저
@@ -362,7 +364,16 @@ typedef ConteCameraPlan = ({
 /// cell's words beside it, and they ALL move to the row under it — the
 /// length too (「침범해서 공간없으면 아래칸을 쓰는게」 · 「초수도
 /// 다음코마에 넣으면되니까」 · 「내려갈땐 다 같이 내려가도록하자」).
-ConteCameraPlan conteCameraPlan(ConteSheetMetrics m, ConteCameraWork? work) {
+///
+/// A cut that keeps its cells ([room] [ConteCameraRoom.inCell], I-82) asks
+/// the same law with the cell's own bounds — one row, and no further right
+/// than the picture column — so the sweep is laid as small as its window
+/// holds it, and the words stay beside it.
+ConteCameraPlan conteCameraPlan(
+  ConteSheetMetrics m,
+  ConteCameraWork? work, {
+  ConteCameraRoom room = ConteCameraRoom.grows,
+}) {
   if (work == null) {
     return (
       pictureRows: 1,
@@ -372,9 +383,13 @@ ConteCameraPlan conteCameraPlan(ConteSheetMetrics m, ConteCameraWork? work) {
       scale: 1,
     );
   }
+  final (rowsMax, reach) = switch (room) {
+    ConteCameraRoom.grows => (conteCameraPictureRowsMax, m.timeLeft),
+    ConteCameraRoom.inCell => (1, m.actionLeft),
+  };
   final screensTall = work.field.height / work.screen.height;
-  final rows = (screensTall - 1e-9).ceil().clamp(1, conteCameraPictureRowsMax);
-  final scale = _fieldScale(m, work, rows);
+  final rows = (screensTall - 1e-9).ceil().clamp(1, rowsMax);
+  final scale = _fieldScale(m, work, rows, reach: reach);
   final right =
       m.pictureLeft + work.field.width * scale + 2 * m.silhouetteBorder;
   return (
@@ -386,14 +401,16 @@ ConteCameraPlan conteCameraPlan(ConteSheetMetrics m, ConteCameraWork? work) {
   );
 }
 
-/// [ConteCameraPlan.scale] for a picture [pictureRows] rows tall.
+/// [ConteCameraPlan.scale] for a picture [pictureRows] rows tall whose box
+/// ends on the right no further than [reach].
 double _fieldScale(
   ConteSheetMetrics m,
   ConteCameraWork work,
-  int pictureRows,
-) {
+  int pictureRows, {
+  required double reach,
+}) {
   final tallest = pictureRows * m.rowHeight - 2 * m.silhouetteBorder;
-  final widest = m.timeLeft - m.pictureLeft - 2 * m.silhouetteBorder;
+  final widest = reach - m.pictureLeft - 2 * m.silhouetteBorder;
   return [
     m.windowHeight / work.screen.height,
     tallest / work.field.height,
@@ -657,7 +674,11 @@ List<ContePageLayout> layoutConteSheet(
       final cell = cut.cells[index];
       // A cell never straddles a page: one that does not fit moves whole,
       // and what it leaves behind is the hole the big X marks.
-      final plan = conteCameraPlan(metrics, cell.camera);
+      final plan = conteCameraPlan(
+        metrics,
+        cell.camera,
+        room: cut.cameraRoom,
+      );
       final rowSpan = plan.pictureRows + (plan.wordsBelow ? 1 : 0);
       if (row + rowSpan > metrics.rowsPerPage) {
         flushPage(hole: true);

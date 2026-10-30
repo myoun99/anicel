@@ -1,4 +1,5 @@
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/conte/conte_camera_room.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/cut_metadata.dart';
@@ -118,7 +119,7 @@ void main() {
       'every cut back', () {
     final (:repository, :cuts, :history) = fixture();
 
-    cuts.setCutStaffNames(cutIds: const [cut1, cut3], names: {key: '佐藤'});
+    cuts.saveCutSettings(cutIds: const [cut1, cut3], names: {key: '佐藤'});
 
     expect(staffOf(repository, cut1), {'key': '佐藤'});
     expect(staffOf(repository, cut2), {'key': '佐藤'}, reason: 'the sibling');
@@ -138,7 +139,7 @@ void main() {
   test('a name every one of the cuts already has is no undo step', () {
     final (:repository, :cuts, :history) = fixture();
 
-    cuts.setCutStaffNames(cutIds: const [cut3], names: {layout: '清'});
+    cuts.saveCutSettings(cutIds: const [cut3], names: {layout: '清'});
 
     expect(history.undoCount, 0);
     expect(staffOf(repository, cut3), {'layout': '清'});
@@ -168,7 +169,7 @@ void main() {
       reason: '⛔not the work\'s 山田 — a cut names its own',
     );
 
-    cuts.setCutStaffNames(cutIds: const [cut2], names: {roughKey: '林'});
+    cuts.saveCutSettings(cutIds: const [cut2], names: {roughKey: '林'});
     expect(
       artist(cut2),
       '林',
@@ -176,7 +177,7 @@ void main() {
     );
     expect(artist(cut3), '');
 
-    cuts.setCutStaffNames(cutIds: const [cut2], names: {key: ''});
+    cuts.saveCutSettings(cutIds: const [cut2], names: {key: ''});
     expect(staffOf(repository, cut2), {'rough-key': '林'});
     expect(envelopeKey(cut2), '');
   });
@@ -212,7 +213,7 @@ void main() {
         expect(foldsOf(repository, id), {LayerProcess.roughKey});
       }
 
-      cuts.setCutStaffNames(
+      cuts.saveCutSettings(
         cutIds: const [cut1, cut3],
         names: {layout: '林'},
         openFolds: {LayerProcess.key, LayerProcess.layout},
@@ -239,14 +240,14 @@ void main() {
     test('a save of folds alone is a step; one that changes nothing is '
         'none', () {
       final (:repository, :cuts, :history) = fixture();
-      cuts.setCutStaffNames(
+      cuts.saveCutSettings(
         cutIds: const [cut1],
         names: const {},
         openFolds: {LayerProcess.roughKey},
       );
       expect(history.canUndo, isFalse);
 
-      cuts.setCutStaffNames(
+      cuts.saveCutSettings(
         cutIds: const [cut1],
         names: const {},
         openFolds: const {},
@@ -311,6 +312,64 @@ void main() {
       const metadata = CutMetadata(scene: 'S12');
       expect(CutMetadata.fromJson(metadata.toJson()), metadata);
       expect(const CutMetadata(scene: '').toJson(), isEmpty);
+    });
+  });
+
+  /// I-82-Q1 「서식 전체 + 컷마다 덮어쓰기」: a cut keeps a room of its own
+  /// over the format window's, and a 겸용 pair keeps one — one cut on paper.
+  group('the room a cut\'s conte cells take', () {
+    ConteCameraRoom? roomOf(ProjectRepository repository, CutId id) =>
+        requireCut(repository.requireProject(), id).metadata.conteCameraRoom;
+
+    test('is the format\'s until a save gives the cuts it is about their '
+        'own — a 겸용 sibling too — in the names\' ONE undo step', () {
+      final (:repository, :cuts, :history) = fixture();
+      for (final id in [cut1, cut2, cut3]) {
+        expect(roomOf(repository, id), isNull, reason: '$id');
+      }
+
+      cuts.saveCutSettings(
+        cutIds: const [cut1, cut3],
+        names: {layout: '林'},
+        conteCameraRoom: (to: ConteCameraRoom.inCell),
+      );
+      for (final id in [cut1, cut2, cut3]) {
+        expect(roomOf(repository, id), ConteCameraRoom.inCell, reason: '$id');
+      }
+
+      history.undo();
+      expect(history.canUndo, isFalse, reason: 'ONE step');
+      for (final id in [cut1, cut2, cut3]) {
+        expect(roomOf(repository, id), isNull, reason: '$id');
+      }
+      expect(staffOf(repository, cut3), {'layout': '清'});
+    });
+
+    test('a null gives the pair back to the format; a room every cut '
+        'already keeps is no step', () {
+      final (:repository, :cuts, :history) = fixture();
+      cuts.saveCutSettings(
+        cutIds: const [cut3],
+        names: const {},
+        conteCameraRoom: (to: null),
+      );
+      expect(history.canUndo, isFalse);
+
+      cuts.saveCutSettings(
+        cutIds: const [cut2],
+        names: const {},
+        conteCameraRoom: (to: ConteCameraRoom.grows),
+      );
+      expect(roomOf(repository, cut1), ConteCameraRoom.grows);
+      cuts.saveCutSettings(
+        cutIds: const [cut2],
+        names: const {},
+        conteCameraRoom: (to: null),
+      );
+      expect((roomOf(repository, cut1), roomOf(repository, cut2)), (
+        null,
+        null,
+      ));
     });
   });
 }

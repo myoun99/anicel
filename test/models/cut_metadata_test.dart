@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/conte/conte_camera_room.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/cut_metadata.dart';
@@ -101,6 +102,35 @@ void main() {
       });
 
       expect(metadata, const CutMetadata.empty());
+    });
+
+    test('I-82: a cut takes the format\'s camera room until it keeps one of '
+        'its own — written only then, and given back by null', () {
+      expect(const CutMetadata.empty().conteCameraRoom, isNull);
+      expect(
+        const CutMetadata.empty().toJson().containsKey('conteCameraRoom'),
+        isFalse,
+      );
+      for (final room in ConteCameraRoom.values) {
+        final own = const CutMetadata.empty().copyWith(conteCameraRoom: room);
+        expect(CutMetadata.fromJson(own.toJson()), own, reason: '$room');
+        expect(own, isNot(const CutMetadata.empty()), reason: '$room');
+        expect(
+          own.copyWith(scene: 'S1').conteCameraRoom,
+          room,
+          reason: 'another change keeps it',
+        );
+        expect(
+          own.copyWith(conteCameraRoom: null),
+          const CutMetadata.empty(),
+          reason: 'null gives it back to the format',
+        );
+      }
+      expect(
+        CutMetadata.fromJson(const {'conteCameraRoom': 'unknown'})
+            .conteCameraRoom,
+        isNull,
+      );
     });
   });
 

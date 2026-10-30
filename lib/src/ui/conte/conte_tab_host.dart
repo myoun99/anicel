@@ -498,6 +498,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
           cover: info.conteCover,
           blankPage: info.conteBlankPage,
           fixedText: info.conteFixedText,
+          cameraRoom: info.conteCameraRoom,
         ),
       ),
       commit: (format) => _session.updateTimesheetInfo(
@@ -507,6 +508,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
           conteCover: format.cover,
           conteBlankPage: format.blankPage,
           conteFixedText: format.fixedText,
+          conteCameraRoom: format.cameraRoom,
         ),
       ),
     );
