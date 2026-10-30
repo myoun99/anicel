@@ -55,7 +55,11 @@ void main() {
       ValueNotifier<BrushToolState> brush,
     })
   >
-  pumpPanel(WidgetTester tester, {CutGuides? guides}) async {
+  pumpPanel(
+    WidgetTester tester, {
+    CutGuides? guides,
+    ValueNotifier<bool>? rowTakesStrokes,
+  }) async {
     final keys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: keys,
@@ -76,24 +80,31 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: BrushCanvasPanel(
-            coordinator: coordinator,
-            canvasSize: size,
-            availableFrameKeys: keys,
-            cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-            historyManager: history,
-            brushToolState: brush,
-            selectionCommands: CanvasSelectionCommands(),
-            guides: guides,
-            viewport: viewport,
-            activeStrokeOverlayModel: overlay,
-            viewportUnderlayBuilder: (context, viewport, painter, float) =>
-                painter == null
-                ? const SizedBox.shrink()
-                : CustomPaint(
-                    painter: painter,
-                    size: Size(size.width.toDouble(), size.height.toDouble()),
-                  ),
+          body: ValueListenableBuilder<bool>(
+            valueListenable: rowTakesStrokes ?? ValueNotifier(true),
+            builder: (context, takes, _) => BrushCanvasPanel(
+              coordinator: coordinator,
+              canvasSize: size,
+              availableFrameKeys: keys,
+              cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+              historyManager: history,
+              brushToolState: brush,
+              selectionCommands: CanvasSelectionCommands(),
+              guides: guides,
+              viewport: viewport,
+              rowAcceptsStrokes: takes,
+              activeStrokeOverlayModel: overlay,
+              viewportUnderlayBuilder: (context, viewport, painter, float) =>
+                  painter == null
+                  ? const SizedBox.shrink()
+                  : CustomPaint(
+                      painter: painter,
+                      size: Size(
+                        size.width.toDouble(),
+                        size.height.toDouble(),
+                      ),
+                    ),
+            ),
           ),
         ),
       ),
@@ -189,6 +200,34 @@ void main() {
         kind: PointerDeviceKind.stylus,
         position: on(tester, to),
         timeStamp: time + const Duration(milliseconds: 8),
+      ),
+    );
+    await tester.pump();
+  }
+
+  /// A tap of a pen pressed at [pressure], at [at].
+  Future<void> penTap(
+    WidgetTester tester,
+    Offset at, {
+    required double pressure,
+  }) async {
+    const pen = 78;
+    tester.binding.handlePointerEvent(
+      PointerDownEvent(
+        pointer: pen,
+        kind: PointerDeviceKind.stylus,
+        position: on(tester, at),
+        pressure: pressure,
+        pressureMin: 0,
+        pressureMax: 1,
+      ),
+    );
+    await tester.pump();
+    tester.binding.handlePointerEvent(
+      PointerUpEvent(
+        pointer: pen,
+        kind: PointerDeviceKind.stylus,
+        position: on(tester, at),
       ),
     );
     await tester.pump();
@@ -380,9 +419,7 @@ void main() {
 
   // 🗣️F-483 (유저 2026-10-27): 「마지막 찍은 필압 기준으로 직선 그리도록」.
   testWidgets('🚨the line is laid at the pressure the last stroke\'s last dab '
-      'was laid at — shown and landed alike, and on into the next line', (
-    tester,
-  ) async {
+      'was laid at — shown and landed alike', (tester) async {
     final env = await pumpPanel(tester);
     final mouse = await mouseAt(tester, const Offset(10, 10));
     final laid = debugStrokeDabsLaid = <BrushDab>[];
@@ -402,14 +439,89 @@ void main() {
     await click(tester, mouse, hand);
     expect(env.overlay.hasStrokeContent, isFalse, reason: 'it has landed');
     expect(laid, isEmpty, reason: 'it lands what was shown, laid as it was');
+  });
+
+  // 🗣️F-513 (유저 2026-10-30): 「z로 찍는건 그 기준에 안들어가서 … z로 찍다가
+  // 중간에 마우스로 찍고 다시z누르면 진해져있어야하는데」.
+  testWidgets('🚨the click that lands a line is the next line\'s press: a '
+      'mouse\'s, after a light pen, lays the next one at full', (
+    tester,
+  ) async {
+    final env = await pumpPanel(tester);
+    final mouse = await mouseAt(tester, const Offset(10, 10));
+    final laid = debugStrokeDabsLaid = <BrushDab>[];
+    addTearDown(() => debugStrokeDabsLaid = null);
+    await penStroke(tester, strokeFrom, strokeEnd, pressure: 0.3);
+    final pressed = laid.last.pressure;
+    expect(pressed, lessThan(0.9), reason: '⛔premise: the pen pressed light');
+
+    await holdTheKey(tester, true);
+    await hover(tester, mouse, hand);
+    await untilShown(tester, env.overlay);
+    laid.clear();
+    await click(tester, mouse, hand);
+    expect(env.overlay.hasStrokeContent, isFalse, reason: '⛔premise: landed');
 
     await hover(tester, mouse, const Offset(300, 280));
     await untilShown(tester, env.overlay);
-    expect(
-      {for (final dab in laid) dab.pressure},
-      {pressed},
-      reason: 'the line landed is the last stroke',
+    expect({for (final dab in laid) dab.pressure}, {1.0});
+  });
+
+  testWidgets('a run of lines landed by a pen: each is laid at the tap that '
+      'landed the one before', (tester) async {
+    final env = await pumpPanel(tester);
+    final mouse = await mouseAt(tester, const Offset(10, 10));
+    final laid = debugStrokeDabsLaid = <BrushDab>[];
+    addTearDown(() => debugStrokeDabsLaid = null);
+    await penStroke(tester, strokeFrom, strokeEnd, pressure: 0.3);
+    await holdTheKey(tester, true);
+
+    Future<Set<double>> nextLineAt(Offset at) async {
+      laid.clear();
+      await hover(tester, mouse, at);
+      await untilShown(tester, env.overlay);
+      return {for (final dab in laid) dab.pressure};
+    }
+
+    expect(await nextLineAt(hand), {0.3}, reason: '⛔premise: the stroke\'s');
+    await penTap(tester, hand, pressure: 0.6);
+    expect(await nextLineAt(const Offset(300, 280)), {0.6});
+    await penTap(tester, const Offset(300, 280), pressure: 0.9);
+    expect(await nextLineAt(const Offset(200, 250)), {0.9});
+  });
+
+  testWidgets('a click that lands nothing is no start: the next stroke is '
+      'laid at its own pen', (tester) async {
+    final takes = ValueNotifier(true);
+    addTearDown(takes.dispose);
+    final env = await pumpPanel(tester, rowTakesStrokes: takes);
+    final mouse = await mouseAt(tester, const Offset(10, 10));
+    final laid = debugStrokeDabsLaid = <BrushDab>[];
+    addTearDown(() => debugStrokeDabsLaid = null);
+    await penStroke(tester, strokeFrom, strokeEnd, pressure: 0.3);
+    final steps = env.history.undoCount;
+
+    takes.value = false;
+    await holdTheKey(tester, true);
+    await hover(tester, mouse, hand);
+    expect(antsOf(tester), isNotEmpty, reason: '⛔premise: the line is up');
+    await click(tester, mouse, hand);
+    expect(antsOf(tester), isEmpty, reason: '⛔premise: the line\'s press');
+    expect(env.history.undoCount, steps, reason: '⛔premise: nothing landed');
+
+    takes.value = true;
+    await holdTheKey(tester, false);
+    await penStroke(
+      tester,
+      const Offset(60, 200),
+      const Offset(150, 220),
+      pressure: 0.5,
     );
+    await holdTheKey(tester, true);
+    laid.clear();
+    await hover(tester, mouse, const Offset(300, 280));
+    await untilShown(tester, env.overlay);
+    expect({for (final dab in laid) dab.pressure}, {0.5});
   });
 
   testWidgets('the key let go takes it back, and nothing lands', (
