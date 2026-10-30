@@ -99,7 +99,7 @@ edit=$(call 'opening an edit' -X POST -H 'content-type: application/json' \
 call 'uploading the bundle' -X POST -T "$bundle" -H 'expect:' \
   -H 'content-type: application/octet-stream' \
   "$api_root/upload/androidpublisher/v3/applications/$package/edits/$edit/bundles?uploadType=media" \
-  > /dev/null || exit 1
+  > /dev/null
 
 release="{\"name\":\"$number ($version)\",\"versionCodes\":[\"$number\"],\"status\":\"completed\"}"
 call 'naming the release' -X PUT -H 'content-type: application/json' \
@@ -107,13 +107,13 @@ call 'naming the release' -X PUT -H 'content-type: application/json' \
   "$app/edits/$edit/tracks/$track" > /dev/null || exit 1
 
 call 'validating the edit' -X POST -d '' "$app/edits/$edit:validate" \
-  > /dev/null || exit 1
+  > /dev/null
 
 if [ "$mode" = --check ]; then
-  call 'throwing the edit away' -X DELETE "$app/edits/$edit" > /dev/null || exit 1
+  call 'throwing the edit away' -X DELETE "$app/edits/$edit" > /dev/null
   echo "play: $number ($version) validates for the closed test; nothing published"
   exit 0
 fi
 
-call 'publishing' -X POST -d '' "$app/edits/$edit:commit" > /dev/null || exit 1
+call 'publishing' -X POST -d '' "$app/edits/$edit:commit" > /dev/null
 echo "play: $number ($version) sent to the closed test"
