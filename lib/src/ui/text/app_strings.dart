@@ -3776,6 +3776,7 @@ enum AppStrings {
     'shortcutAction.window-tool-rail-right': 'ツールバーを右端に',
     'shortcutAction.window-region-on-top': 'タイムライン領域を上に',
     'shortcutAction.window-brush-values-on-strip': 'ブラシの値を上部のバーに',
+    'shortcutAction.window-rail-tools-only': 'ツールバーはツールだけ',
     'shortcutAction.window-full-screen': '全画面表示',
     'shortcutAction.window-region-fold': 'タイムライン領域を畳む / 開く',
     'shortcutAction.window-reset-layout': 'ワークスペース配置をリセット',
@@ -5568,6 +5569,7 @@ enum AppStrings {
     'shortcutAction.window-tool-rail-right': '툴 바를 오른쪽에',
     'shortcutAction.window-region-on-top': '타임라인 영역을 위로',
     'shortcutAction.window-brush-values-on-strip': '브러시 값을 상단띠로',
+    'shortcutAction.window-rail-tools-only': '툴 바에 도구만',
     'shortcutAction.window-full-screen': '전체 창 모드',
     'shortcutAction.window-region-fold': '타임라인 영역 접기 / 펼치기',
     'shortcutAction.window-reset-layout': '작업공간 배치 초기화',
@@ -7377,6 +7379,8 @@ enum AppStrings {
     'shortcutAction.window-region-on-top': 'Zone de timeline en haut',
     'shortcutAction.window-brush-values-on-strip':
         'Valeurs du pinceau dans le bandeau du haut',
+    'shortcutAction.window-rail-tools-only':
+        "Seulement les outils dans la barre d'outils",
     'shortcutAction.window-full-screen': 'Plein écran',
     'shortcutAction.window-region-fold': 'Replier / déplier la zone de timeline',
     'shortcutAction.window-reset-layout': "Réinitialiser l'espace de travail",
@@ -9297,6 +9301,7 @@ enum AppStrings {
     'shortcutAction.window-tool-rail-right': '工具条在右侧',
     'shortcutAction.window-region-on-top': '时间轴区域置顶',
     'shortcutAction.window-brush-values-on-strip': '画笔数值放在顶部栏',
+    'shortcutAction.window-rail-tools-only': '工具条只放工具',
     'shortcutAction.window-full-screen': '全屏',
     'shortcutAction.window-region-fold': '折叠 / 展开时间轴区域',
     'shortcutAction.window-reset-layout': '重置工作区布局',

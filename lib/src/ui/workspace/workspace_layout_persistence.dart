@@ -70,6 +70,7 @@ class _WorkspaceLayoutPersistence {
         _state._bottomDockCollapsed = false;
         _state._regionOnTop = false;
         _state._brushValuesOnStrip.value = false;
+        _state._railToolsOnly.value = false;
       });
       _state._layout.restore(docks: _EditorWorkspaceState._defaultDocks());
     });
@@ -115,6 +116,7 @@ class _WorkspaceLayoutPersistence {
       _state._regionOnTop = payload['regionOnTop'] == true;
       _state._brushValuesOnStrip.value =
           payload['brushValuesOnStrip'] == true;
+      _state._railToolsOnly.value = payload['railToolsOnly'] == true;
       final savedInset = payload['bottomInset'];
       if (savedInset is num && savedInset.isFinite && savedInset >= 0) {
         _state._bottomInsetOverride.value = savedInset.toDouble();
@@ -237,6 +239,7 @@ class _WorkspaceLayoutPersistence {
     'openRails': _state._openRails.toList(),
     'regionOnTop': _state._regionOnTop,
     'brushValuesOnStrip': _state._brushValuesOnStrip.value,
+    'railToolsOnly': _state._railToolsOnly.value,
     'brushPresetView': _state._brushPresetView.value.toJson(),
     // Absent until the window has been moved, by the rail extents' rule.
     if (_state._brushDetailAt.value case final at?)

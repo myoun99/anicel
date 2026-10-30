@@ -940,6 +940,10 @@ abstract final class EditorActionIds {
   /// (I-34).
   static const brushValuesOnStrip = 'window-brush-values-on-strip';
 
+  /// Whether the tool strip holds its tools alone — no shortcut buttons
+  /// (undo, redo, onion, solo …) above them (I-128).
+  static const railToolsOnly = 'window-rail-tools-only';
+
   /// The window's full screen (I-103-Q2) — the desktops' only.
   static const fullScreen = 'window-full-screen';
 
@@ -2233,6 +2237,16 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.brushValuesOnStrip,
     label: 'Brush values on the top strip',
+    shelf: ShortcutShelf.panels,
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  // 🗣️I-128 (유저 2026-10-25): 「이 숏컷 버튼 안쓰는 사람 위해서 설정의 패널에
+  // 해당 영역 끌수있게 옵션 제공」 — named, as its neighbours, for the
+  // state that is not the default.
+  const EditorActionDefinition(
+    id: EditorActionIds.railToolsOnly,
+    label: 'Tools only on the tool strip',
     shelf: ShortcutShelf.panels,
     defaultActivators: [],
     menuRow: true,

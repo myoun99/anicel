@@ -1269,7 +1269,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       toggler: _togglePanelVisibility,
       // The brush's place too: the strip shows the brush's values or not
       // by it, where the region's place is read only when its row opens.
-      relay: Listenable.merge([_layout, _brushValuesOnStrip]),
+      relay: Listenable.merge([_layout, _brushValuesOnStrip, _railToolsOnly]),
       layoutReset: _layoutPersistence.resetWorkspaceLayout,
       toolRailOnRight: () =>
           _layout.tabsIn(EditorWorkspace.toolRightGroupId).isNotEmpty,
@@ -1298,6 +1298,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           return;
         }
         _brushValuesOnStrip.value = onStrip;
+        _layoutPersistence.scheduleLayoutSave();
+      },
+      railToolsOnly: () => _railToolsOnly.value,
+      railToolsOnlySetter: (toolsOnly) {
+        if (_railToolsOnly.value == toolsOnly) {
+          return;
+        }
+        _railToolsOnly.value = toolsOnly;
         _layoutPersistence.scheduleLayoutSave();
       },
       regionFolder: _toggleRegionFolded,
@@ -1851,6 +1859,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     widget.panelsMenu?.detach();
     // After the bridge lets go: its relay listens to it.
     _brushValuesOnStrip.dispose();
+    _railToolsOnly.dispose();
     _layoutPersistence._layoutSaveTimer?.cancel();
     _layout.removeListener(_layoutPersistence.scheduleLayoutSave);
     _layout.extentRevision.removeListener(_layoutPersistence.scheduleLayoutSave);
@@ -2151,6 +2160,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// 기본값은 알약으로 두는걸 기본값으로」. A notifier, as the strip above the
   /// workspace and the canvas inside it both follow it.
   final ValueNotifier<bool> _brushValuesOnStrip = ValueNotifier<bool>(false);
+
+  /// Whether the tool strip holds its tools alone — false, the default,
+  /// stands the shortcut buttons above them
+  /// ([WorkspacePanelsMenuController.railToolsOnly], I-128).
+  final ValueNotifier<bool> _railToolsOnly = ValueNotifier<bool>(false);
 
   /// How close to the rail's width counts as "the same", so the edge lands on
   /// the pass-through boundary instead of just beside it.
