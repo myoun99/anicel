@@ -444,16 +444,10 @@ class CameraFrameRenderService {
     // 🗣️I-132-Q34 a (유저 2026-10-30): a plugin's step in the tree runs over
     // what its chain made before it, and every render made here WAITS for
     // it — a film's frame, a panel's picture ([FxPluginStages]).
-    final stages = FxPluginStages();
-    final ui.Picture picture;
-    try {
-      picture = await stages.recordedThrough(
-        recorded,
-        discard: (made) => made.dispose(),
-      );
-    } finally {
-      stages.dispose();
-    }
+    final picture = await FxPluginStages.recordedThrough(
+      recorded,
+      discard: (made) => made.dispose(),
+    );
     try {
       return await picture.toImage(resolvedOutput.width, resolvedOutput.height);
     } finally {

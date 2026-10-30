@@ -868,17 +868,10 @@ Future<ui.Picture?> _recordedThrough(
   ui.Rect rect,
   void Function(ui.Canvas canvas) draw, {
   bool Function()? gone,
-}) async {
-  final stages = FxPluginStages();
-  try {
-    return await stages.recordedThrough(
-      () => gone?.call() ?? false ? null : recordedOver(rect, draw),
-      discard: (picture) => picture?.dispose(),
-    );
-  } finally {
-    stages.dispose();
-  }
-}
+}) => FxPluginStages.recordedThrough(
+  () => gone?.call() ?? false ? null : recordedOver(rect, draw),
+  discard: (picture) => picture?.dispose(),
+);
 
 /// A picture of what [draw] draws over [rect] in world coordinates, with
 /// [rect]'s top left at its origin.

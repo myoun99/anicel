@@ -498,7 +498,7 @@ const _imageHolders = <String, String>{
 
   // — 2026-10-31, a plugin anywhere in a chain (I-132-Q34 a).
   'lib/src/ui/canvas/fx_plugin_stages.dart → _stages':
-      'one recording through its plugins (recordedThrough): each step\'s '
-      'input read back and what its plugin made, let go of the moment the '
-      'recording is made (dispose) — the working set of a render',
+      'one recording through its plugins: each step\'s input read back and '
+      'what its plugin made, the stages made and let go of by the one call '
+      'that records (recordedThrough) — the working set of a render',
 };

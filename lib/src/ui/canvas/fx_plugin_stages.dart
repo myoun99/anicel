@@ -24,20 +24,26 @@ import '../../services/cel_text_laying.dart';
 /// 🔬on the Surface Pro 11, p50 24 ms at 1280×720, 45 at 1920×1080, 170 at
 /// 3840×2160, 2026-10-30). So a recording that meets a plugin's step here
 /// leaves the step's input with these stages and goes on as if the step
-/// were off; whoever asked for the picture sees it [missed], waits for the
-/// reads and the plugins ([resolve]), and records the same picture again —
-/// each step met then draws what its plugin made, in the order the steps
-/// were met ([recording]).
+/// were off; the route that asked for the picture sees it [_missed], waits
+/// for the read and the plugin ([_resolve]), and records the same picture
+/// again — each step met then draws what its plugin made, in the order the
+/// steps were met ([_recording]).
 ///
 /// ⛔ONE STAGE A ROUND. A plugin over another's picture meets its input
 /// only once the inner one has run, and nothing here can tell which steps
 /// a missed one feeds: so the first step missed in a round is the one run,
-/// every later one asked again in the next.
+/// every later one met again in the next.
 ///
-/// ⛔Only a route that can wait asks through these ([recording]); any other
-/// that meets a plugin's step draws it as if off — so a screen that would
-/// show such a frame stands on the picture it showed before.
+/// ⛔Only a route that can wait asks through these ([recordedThrough]); any
+/// other that meets a plugin's step draws it as if off — so a screen that
+/// would show such a frame stands on the picture it showed before.
+///
+/// 🚨STAGES LIVE FOR ONE RECORDING: [recordedThrough] makes them and lets
+/// them go — what they hold is the working set of one picture, and no
+/// route holds them to let go of.
 final class FxPluginStages {
+  FxPluginStages._();
+
   final List<_Stage> _stages = [];
   int _met = 0;
   bool _missed = false;
@@ -54,52 +60,55 @@ final class FxPluginStages {
   static int get unrun => _unrun;
   static int _unrun = 0;
 
-  /// Whether the last [recording] met a step it had no picture for.
-  bool get missed => _missed;
+  /// [record] recorded with every plugin's step met in it run — recorded
+  /// again after each step is ([_resolve]) until none is missed, the
+  /// drawing each round made and replaced let go of by [discard]. A
+  /// recorded picture holds its own claim on what it draws, so the stages
+  /// are let go of as this answers.
+  ///
+  /// ⚠️At most [_rounds]: a step met anew each round — a sample unequal to
+  /// itself — would ask for ever; past them it is drawn as if off.
+  static Future<T> recordedThrough<T>(
+    T Function() record, {
+    required void Function(T made) discard,
+  }) async {
+    final stages = FxPluginStages._();
+    try {
+      var made = stages._recording(record);
+      for (var round = 0; stages._missed && round < _rounds; round += 1) {
+        await stages._resolve();
+        discard(made);
+        made = stages._recording(record);
+      }
+      return made;
+    } finally {
+      stages._dispose();
+    }
+  }
+
+  static const int _rounds = 16;
 
   /// [record], each plugin's step met in it drawing what its plugin made
   /// where these stages hold it ([ranOver]).
-  T recording<T>(T Function() record) {
+  T _recording<T>(T Function() record) {
     _met = 0;
     _missed = false;
     return runZoned(record, zoneValues: {_zoneKey: this});
   }
 
-  /// [record] recorded with every plugin's step met in it run — recorded
-  /// again after each step is ([resolve]) until none is missed, the drawing
-  /// each round made and replaced let go of by [discard]. A recorded
-  /// picture holds its own claim on what it draws, so these stages may be
-  /// let go of the moment this answers.
-  ///
-  /// ⚠️At most [_rounds]: a step met anew each round — a sample unequal to
-  /// itself — would ask for ever; past them it is drawn as if off.
-  Future<T> recordedThrough<T>(
-    T Function() record, {
-    required void Function(T made) discard,
-  }) async {
-    var made = recording(record);
-    for (var round = 0; missed && round < _rounds; round += 1) {
-      await resolve();
-      discard(made);
-      made = recording(record);
-    }
-    return made;
-  }
-
-  static const int _rounds = 16;
-
-  /// Runs the step the last [recording] missed first: its input read back,
-  /// through its plugin, and the picture it made held for the next.
-  Future<void> resolve() async {
+  /// Runs the step the last [_recording] missed first — every step before
+  /// it was met again and had run: its input read back, through its
+  /// plugin, and the picture it made held for the next.
+  Future<void> _resolve() async {
     for (final stage in _stages) {
-      if (stage.asked) {
+      if (!stage.ran) {
         await stage.run();
         return;
       }
     }
   }
 
-  void dispose() {
+  void _dispose() {
     for (final stage in _stages) {
       stage.dispose();
     }
@@ -109,7 +118,7 @@ final class FxPluginStages {
   /// [input] — the picture a chain made before [effect], [scale] of its
   /// pixels a canvas pixel, with [paper] where the paper lies in them —
   /// through [effect]'s plugin, a picture the caller owns: what the
-  /// recording these stages run met at this step ([recording]); null where
+  /// recording these stages run met at this step ([_recording]); null where
   /// no recording that can wait is running, or where this step is still to
   /// be run.
   static ui.Image? ranOver(
@@ -149,17 +158,9 @@ final class FxPluginStages {
       there.dispose();
       _stages[at] = asked;
     }
-    _missFirst(asked);
-    return null;
-  }
-
-  /// [stage] asked to run, where no step before it in this round missed
-  /// ([FxPluginStages]' one-a-round): a later one's input may hold what a
-  /// missed one would have made.
-  void _missFirst(_Stage stage) {
-    stage.asked = !_missed;
     _missed = true;
     _unrun += 1;
+    return null;
   }
 }
 
@@ -185,9 +186,6 @@ final class _Stage {
   /// What the plugin made, the step's own until it is let go of.
   ui.Image? made;
 
-  /// Whether it is the one to run next ([FxPluginStages.resolve]).
-  bool asked = false;
-
   /// Whether it has been run — [made] null after it is a plugin that
   /// failed.
   bool ran = false;
@@ -202,7 +200,6 @@ final class _Stage {
       other.paper == paper;
 
   Future<void> run() async {
-    asked = false;
     ran = true;
     final input = _input;
     final run = effect.run;
@@ -249,7 +246,7 @@ final class _Stage {
       ],
       moment: moment,
     );
-    if (output == null || output.length != width * height * 4) {
+    if (output == null) {
       return null;
     }
     zeroFullyClearPixels(output);

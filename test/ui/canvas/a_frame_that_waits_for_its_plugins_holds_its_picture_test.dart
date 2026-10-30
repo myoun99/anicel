@@ -178,13 +178,15 @@ void main() {
 
   /// A canvas standing on [nodes]' frame — its one row inked at (4..8,
   /// 4..8) — over a store on [gpu]; what [screen] shows, the overlay its
-  /// pen's steps are shown by, and a hand of the pen's row anew.
+  /// pen's steps are shown by, and a hand of the pen's row anew — on another
+  /// frame's nodes where it is handed them.
   Future<
     ({
       FramePictureStore<FramePictureKey> store,
       FramePictureKey picture,
       ActiveStrokeOverlayModel overlay,
-      Future<void> Function() handAnew,
+      Future<void> Function([List<CompositeNode<CanvasStackRow>>? nodes])
+      handAnew,
     })
   >
   standOn(
@@ -222,11 +224,12 @@ void main() {
     );
     final store = FramePictureStore<FramePictureKey>(gpu: gpu);
     addTearDown(store.dispose);
+    var standing = nodes;
     final run = runOver(
       images,
       store,
       canvasSize: canvasSize,
-      stackOf: (_) => nodes,
+      stackOf: (_) => standing,
     );
     final shown = (
       cut: cut,
@@ -242,7 +245,7 @@ void main() {
         view: standingOn(
           run,
           picture: shown,
-          nodes: nodes,
+          nodes: standing,
           // The pasteboard left of the page in view.
           viewport: CanvasViewport(panX: 8, panY: 4),
           live: (
@@ -258,7 +261,10 @@ void main() {
       store: store,
       picture: run.pictures.keyOfStack(nodes, shown),
       overlay: overlay,
-      handAnew: () => standWith(aPainter()),
+      handAnew: ([nodes]) {
+        standing = nodes ?? standing;
+        return standWith(aPainter());
+      },
     );
   }
 
@@ -448,6 +454,86 @@ void main() {
       reason: 'LIVENESS: answered',
     );
     expect(landed, isFalse);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  /// The columns the ink shows in on [shot].
+  Set<int> inkColumnsOf(Shot shot) => {
+    for (var at = 0; at < shot.rgba.length; at += 4)
+      if (shot.rgba[at] == ink[0] &&
+          shot.rgba[at + 1] == ink[1] &&
+          shot.rgba[at + 2] == ink[2] &&
+          shot.rgba[at + 3] == ink[3])
+        at ~/ 4 % shot.width,
+  };
+
+  /// What [screen] shows once [nodes]' frame stands there, its picture
+  /// made.
+  Future<Shot> shownOnceMade(
+    WidgetTester tester,
+    List<CompositeNode<CanvasStackRow>> nodes,
+  ) async {
+    final screen = GlobalKey();
+    final (:store, :picture, overlay: _, handAnew: _) = await standOn(
+      tester,
+      screen,
+      nodes,
+      WritesNeverLand(),
+    );
+    expect(
+      await settleAsync(tester, () => store.bytesOf(picture) != null),
+      isTrue,
+      reason: 'LIVENESS: the frame\'s picture is made',
+    );
+    await lendBothClocks(tester, rounds: 2);
+    return shotOf(tester, screen);
+  }
+
+  testWidgets('a frame that waits for a plugin is shown as its plugin made '
+      'it', (tester) async {
+    final asDrawn = inkColumnsOf(
+      await shownOnceMade(tester, inAFolder(const [])),
+    );
+    expect(asDrawn, isNotEmpty, reason: '⛔CONTROL: the ink, as drawn');
+
+    final shown = inkColumnsOf(
+      await shownOnceMade(
+        tester,
+        inAFolder([aPlugin(ShiftingFxPlugin(by: 2))]),
+      ),
+    );
+
+    // Two canvas pixels to the right, as many of the screen's each.
+    final by = 2 * tester.view.devicePixelRatio.round();
+    expect(shown, {for (final column in asDrawn) column + by});
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a frame that waits for a plugin, handed another whose picture '
+      'is not there yet, stays on the picture it showed', (tester) async {
+    final screen = GlobalKey();
+    final gpu = WritesNeverLand();
+    addTearDown(gpu.letAllThrough);
+    final (:store, :picture, overlay: _, :handAnew) = await standOn(
+      tester,
+      screen,
+      inAFolder([aPlugin(ShiftingFxPlugin(by: 2))]),
+      gpu,
+    );
+    expect(
+      await settleAsync(tester, () => store.bytesOf(picture) != null),
+      isTrue,
+      reason: 'LIVENESS: the frame\'s picture is made',
+    );
+    await lendBothClocks(tester, rounds: 2);
+    final before = await shotOf(tester, screen);
+    expect(onlyTheScreen(before), isFalse, reason: '⛔premise: it is shown');
+
+    gpu.holdsRenders = true;
+    await handAnew(inAFolder([aPlugin(ShiftingFxPlugin(by: 3))]));
+    await tester.pump();
+
+    expect(differences(before, await shotOf(tester, screen)), isEmpty);
     await tester.pumpWidget(const SizedBox());
   });
 }

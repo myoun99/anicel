@@ -1,7 +1,14 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/fx_plugin_description.dart';
+import 'package:anicel/src/models/fx_plugin_run.dart';
 import 'package:anicel/src/models/layer_effect.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/composite_effect_paint.dart';
 import 'package:anicel/src/ui/canvas/fx_plugin_stages.dart';
 import 'package:anicel/src/ui/canvas/subtree_image_composite.dart'
@@ -40,14 +47,19 @@ void main() {
     run: fxPluginRunOf(runner),
   );
 
-  /// [chain] over [source] as the steps a route draws it in, recorded.
-  ui.Picture recorded(ui.Image source, List<ResolvedLayerEffect> chain) {
-    final plan = resolveCompositeEffectPlan(chain, paper: paper);
+  /// [chain] over [source] as the steps a route draws it in, recorded —
+  /// the paper lying [on] its pixels.
+  ui.Picture recorded(
+    ui.Image source,
+    List<ResolvedLayerEffect> chain, {
+    Rect on = paper,
+  }) {
+    final plan = resolveCompositeEffectPlan(chain, paper: on);
     final image = applyEffectSteps(
       source: source,
       steps: plan.preSteps,
       imageScale: 1,
-      paper: paper,
+      paper: on,
     );
     final recorder = ui.PictureRecorder();
     ui.Canvas(recorder).drawImage(image, Offset.zero, Paint());
@@ -91,22 +103,160 @@ void main() {
       'step draws what it made', () async {
     final runner = ShiftingFxPlugin(by: 2);
     final picture = source();
-    final stages = FxPluginStages();
-    var recordings = 0;
-    final made = await stages.recordedThrough(() {
-      recordings += 1;
-      return recorded(picture, [plugin(runner)]);
-    }, discard: (made) => made.dispose());
-    stages.dispose();
+    final recordings = <ui.Picture>[];
+    final discarded = <ui.Picture>[];
+    final made = await FxPluginStages.recordedThrough(
+      () {
+        final made = recorded(picture, [plugin(runner)]);
+        recordings.add(made);
+        return made;
+      },
+      discard: (made) {
+        discarded.add(made);
+        made.dispose();
+      },
+    );
 
     final row = await rowOf(made);
     expect(row[0], clear);
     expect(row[2], red);
-    expect(recordings, 2, reason: 'one round to meet it, one to draw it');
+    expect(
+      recordings,
+      hasLength(2),
+      reason: 'one round to meet it, one to draw it',
+    );
     expect(runner.renders, 1);
     // Handed the picture its chain made, where it lies.
     expect(runner.inputs.single, (left: 0, top: 0, width: width, height: 2));
+    expect(discarded, [recordings.first], reason: 'the round it replaced');
+    expect(
+      picture.debugGetOpenHandleStackTraces(),
+      hasLength(1),
+      reason: 'what its plugin was handed is let go of once it answers',
+    );
     picture.dispose();
+  });
+
+  test('handed its picture where it lies on the paper, and each row it '
+      'names on the same grid, as the row\'s own cel holds it', () async {
+    final reading = FxPluginDescription.fromJson({
+      ...shiftingFxPluginDescription.toJson(),
+      'params': [
+        {'id': 'map', 'kind': 'layer', 'label': 'Map'},
+      ],
+    })!;
+    const green = [0, 200, 0, 255];
+    const map = LayerId('map');
+    final runner = ShiftingFxPlugin(by: 0);
+    final effect = ResolvedLayerEffect(
+      kind: EffectKind.plugin,
+      plugin: reading,
+      values: const [0],
+      layers: const {'map': map},
+      run: fxPluginRunOf(
+        runner,
+        rows: {
+          // A cel of the paper's size, green at its (1, 0).
+          map: BitmapSurface(
+            canvasSize: const CanvasSize(width: 4, height: height),
+            tileSize: 4,
+            tiles: {
+              TileCoord(x: 0, y: 0): BitmapTile(
+                size: 4,
+                pixels: Uint8List(4 * 4 * 4)..setAll(4, green),
+              ),
+            },
+          ),
+        },
+      ),
+    );
+    final picture = source();
+
+    // The paper two pixels into the picture: its first pixel lies two left
+    // of the paper's.
+    final made = await FxPluginStages.recordedThrough(
+      () => recorded(picture, [effect], on: const Rect.fromLTWH(2, 0, 4, 2)),
+      discard: (made) => made.dispose(),
+    );
+    made.dispose();
+    picture.dispose();
+
+    expect(runner.inputs.single, (left: -2, top: 0, width: width, height: 2));
+    final row = runner.lastLayers.single;
+    expect((row.left, row.top, row.width, row.height), (-2, 0, width, 2));
+    expect(row.pixels.sublist(3 * 4, 4 * 4), green, reason: 'the cel\'s (1, 0)');
+    expect(row.pixels.sublist(0, 4), clear, reason: 'left of the paper');
+  });
+
+  for (final (what, rows, metAs)
+      in [
+        (
+          'over a picture of another size',
+          height * 2,
+          (ResolvedLayerEffect effect) => effect,
+        ),
+        (
+          'as another sample',
+          height,
+          (ResolvedLayerEffect effect) => ResolvedLayerEffect(
+            kind: effect.kind,
+            plugin: effect.plugin,
+            values: effect.values,
+            frame: 1,
+            run: effect.run,
+          ),
+        ),
+      ]) {
+    test('a step met again $what is run again', () async {
+      final runner = ShiftingFxPlugin(by: 0);
+      final step = plugin(runner);
+      final first = source();
+      final recorder = ui.PictureRecorder();
+      ui.Canvas(recorder);
+      final then = recorder.endRecording().toImageSync(width, rows);
+      var recordings = 0;
+
+      final made = await FxPluginStages.recordedThrough(() {
+        recordings += 1;
+        return recordings == 1
+            ? recorded(first, [step])
+            : recorded(then, [metAs(step)]);
+      }, discard: (made) => made.dispose());
+      made.dispose();
+      first.dispose();
+      then.dispose();
+
+      expect(runner.renders, 2, reason: 'once for each it was met as');
+      expect(recordings, 3);
+    });
+  }
+
+  test('a pixel its plugin leaves clear is clear, whatever colour it gave '
+      'it', () async {
+    final runner = _LeavesColourInTheClear();
+    final picture = source();
+
+    final made = await FxPluginStages.recordedThrough(
+      () => recorded(picture, [
+        ResolvedLayerEffect(
+          kind: EffectKind.plugin,
+          plugin: shiftingFxPluginDescription,
+          values: const [],
+          run: fxPluginRunOf(runner),
+        ),
+      ]),
+      discard: (made) => made.dispose(),
+    );
+    final image = await made.toImage(width, height);
+    final data = await image.toByteData();
+    image.dispose();
+    made.dispose();
+    picture.dispose();
+
+    expect(runner.renders, 1, reason: '⛔premise');
+    final premultiplied = Uint8List.view(data!.buffer);
+    expect(premultiplied.sublist(4, 8), clear);
+    expect(premultiplied.sublist(0, 4), red, reason: '⛔CONTROL: as it was');
   });
 
   test('a route that cannot wait draws it as if off — and says so', () async {
@@ -128,13 +278,11 @@ void main() {
     final first = ShiftingFxPlugin(by: 1);
     final second = ShiftingFxPlugin(by: 2);
     final picture = source();
-    final stages = FxPluginStages();
     var recordings = 0;
-    final made = await stages.recordedThrough(() {
+    final made = await FxPluginStages.recordedThrough(() {
       recordings += 1;
       return recorded(picture, [plugin(first), plugin(second)]);
     }, discard: (made) => made.dispose());
-    stages.dispose();
 
     final row = await rowOf(made);
     expect(row[3], red);
@@ -149,13 +297,11 @@ void main() {
   test('a plugin that fails is drawn as if off, and asked no more', () async {
     final runner = ShiftingFxPlugin(by: 2, fails: true);
     final picture = source();
-    final stages = FxPluginStages();
     var recordings = 0;
-    final made = await stages.recordedThrough(() {
+    final made = await FxPluginStages.recordedThrough(() {
       recordings += 1;
       return recorded(picture, [plugin(runner)]);
     }, discard: (made) => made.dispose());
-    stages.dispose();
 
     final row = await rowOf(made);
     expect(row[0], red);
@@ -163,4 +309,33 @@ void main() {
     expect(runner.renders, 1);
     picture.dispose();
   });
+}
+
+/// Gives back what it is handed, every clear pixel of it given a colour no
+/// alpha shows.
+final class _LeavesColourInTheClear implements FxPluginRunner {
+  int renders = 0;
+
+  @override
+  int? reach(Float64List values, FxPluginMoment moment) => 0;
+
+  @override
+  Uint8List? render({
+    required FxPluginPicture input,
+    required Float64List values,
+    required List<FxPluginPicture> layers,
+    required FxPluginMoment moment,
+  }) {
+    renders += 1;
+    final out = Uint8List.fromList(input.pixels);
+    for (var at = 0; at < out.length; at += 4) {
+      if (out[at + 3] == 0) {
+        out.setRange(at, at + 3, const [90, 90, 90]);
+      }
+    }
+    return out;
+  }
+
+  @override
+  void close() {}
 }
