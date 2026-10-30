@@ -98,6 +98,37 @@ void main() {
       );
       expect(session.cutVerbs.plannedNewCut, isNull);
     });
+
+    test('a range in the gap before the open cut is offered the name the '
+        'cut takes there — after the cut in front, not the open one', () {
+      final project = oneCut();
+      final track = project.tracks.single;
+      final second = track.cuts.single.copyWith(
+        id: const CutId('cut-2'),
+        name: '2',
+        leadingGapFrames: 4,
+      );
+      final session = EditorSessionManager(
+        initialProject: project.copyWith(
+          tracks: [
+            track.copyWith(cuts: [...track.cuts, second]),
+          ],
+        ),
+      );
+      addTearDown(session.dispose);
+      session.selectCut(second.id);
+      session.trackFrameRangeSelection.value = const TrackFrameRangeSelection(
+        trackId: TrackId('track'),
+        anchorRow: TrackRowAddress(TrackId('track')),
+        startFrame: 8,
+        endFrameExclusive: 10,
+      );
+
+      final offered = session.cutVerbs.plannedNewCut!;
+      expect(offered.name, '1A');
+      session.cutVerbs.createCut();
+      expect(cutsOf(session)[1].name, offered.name);
+    });
   });
 
   group('the window', () {
