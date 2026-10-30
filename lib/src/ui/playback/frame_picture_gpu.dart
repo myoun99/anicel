@@ -56,6 +56,17 @@ abstract interface class FramePictureGpu {
 /// (`doesSupportFramebufferRenderMipmap` false on the Surface Pro 11).
 /// Both kinds landed and showed under `FilterQuality.medium` at every zoom
 /// from 1/2 to 1/128 there (2026-10-24).
+///
+/// ⛔NOT A TEXTURE A LEVEL (F-509-Q11, 유저 2026-10-30 「큰 공사라도 성능적으로
+/// 확실하면 하고싶으니」 · 「그럼 재고」): levels as textures of their own,
+/// written texture to texture, would take no buffer. Measured on the Surface
+/// Pro 11 (profile, GLES, 64 px patches over a noise frame, 120 steps, three
+/// rounds, nothing else running; probe `canvas-base-probes/f509-levels`): a
+/// step into its picture at p50 4.5–5.5 ms as it is, 3.7–5.3 so, and
+/// 3.6–4.8 with no level written at all — a millisecond at most, for every
+/// platform's picture store built again and a zoomed-out view drawn from a
+/// level picked by hand. ⚠️A light frame: what a copy out waits for grows
+/// with the GPU's work before it (D7-2), so a heavy scene may give more.
 class FlutterGpuFramePictures implements FramePictureGpu {
   @override
   Future<ui.Image> render(ui.Picture picture, int width, int height) =>
