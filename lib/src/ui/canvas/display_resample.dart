@@ -347,6 +347,20 @@ ui.Rect displayEdgeRect(
   required double pixelRatio,
 }) => antiAlias ? rect : cutOnThePixelGrid(canvas, rect, pixelRatio);
 
+/// [canvas] clipped to [rect], its edge cut as the display law says
+/// ([displayEdgeRect]) — a wall, or where a frame ends, cuts what lies on
+/// both sides of it where the display cuts the canvas's own edge
+/// (the-walk-family-cuts-the-rest-on-the-grid).
+void clipToTheDisplayEdge(
+  ui.Canvas canvas,
+  ui.Rect rect, {
+  required bool antiAlias,
+  required double pixelRatio,
+}) => canvas.clipRect(
+  displayEdgeRect(canvas, rect, antiAlias: antiAlias, pixelRatio: pixelRatio),
+  doAntiAlias: antiAlias,
+);
+
 /// [image]'s [src] laid over [dst] as the display lays an image it is
 /// handed: one at canvas resolution of the world [viewport] shows on a
 /// screen of [devicePixelRatio], under the canvas's transform. It samples

@@ -219,8 +219,17 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
     // The clip is the PASTEBOARD: artwork past the canvas edge stays
     // visible while editing (dimmed below); composite/export raster at
     // canvas size, so output still crops to the stage. A file's picture
-    // laid past the wall keeps the rest of itself (F-374-Q8).
-    canvas.clipRect(storableRect);
+    // laid past the wall keeps the rest of itself (F-374-Q8). The wall cuts
+    // as the display cuts the canvas's edge — ↩️at a fraction of a pixel,
+    // a sheet's window's too, until the-walk-family-cuts-the-rest-on-the-grid.
+    clipToTheDisplayEdge(
+      canvas,
+      storableRect,
+      antiAlias:
+          resolvedViewport != null &&
+          displayEdgeAntiAliased(resolvedViewport, devicePixelRatio),
+      pixelRatio: devicePixelRatio,
+    );
     // The standalone route reads the display law itself: the tiles are
     // resampled by the whole device scale, so they are drawn at that
     // scale's filter — reduced, from their pictures' chains.
