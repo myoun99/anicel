@@ -105,8 +105,9 @@ void main() {
         ],
       );
       // ↩️31 with the bake switch, gone 2026-10-23 (F-448); 31 again with
-      // Send Feedback under About (I-139, 2026-10-28).
-      expect(menuActions, hasLength(31));
+      // Send Feedback under About (I-139, 2026-10-28); 32 with the tool
+      // strip's tools alone under Panels (I-128, 2026-10-30).
+      expect(menuActions, hasLength(32));
       expect(
         editorActionDefinitions.last.shelf,
         ShortcutShelf.panels,
@@ -322,13 +323,28 @@ void main() {
       );
       await tester.pump();
       expect(find.text('Panels'), findsOneWidget);
+      final list = find
+          .descendant(
+            of: find.byKey(const ValueKey<String>('shortcut-action-list')),
+            matching: find.byType(Scrollable),
+          )
+          .first;
       for (final id in [
         EditorActionIds.toolRailOnRight,
         EditorActionIds.regionOnTop,
         EditorActionIds.brushValuesOnStrip,
+        EditorActionIds.railToolsOnly,
         EditorActionIds.resetLayout,
         'panel-timesheet',
       ]) {
+        // The window is 420 tall and its list builds what it shows: each
+        // row is scrolled to, down the list. ↩️All of them stood in it at
+        // once until the shelf grew a row (I-128, 2026-10-30).
+        await tester.scrollUntilVisible(
+          find.byKey(ValueKey<String>('shortcut-record-$id')),
+          40,
+          scrollable: list,
+        );
         expect(
           find.byKey(ValueKey<String>('shortcut-record-$id')),
           findsOneWidget,
