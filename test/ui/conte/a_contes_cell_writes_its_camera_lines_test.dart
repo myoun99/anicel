@@ -27,6 +27,9 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// 이런거마다 개행되고」 — what the camera does while a conte cell is on,
 /// a line to each move and each stretch it stands still, in the cell's
 /// own frames.
+///
+/// 🗣️I-93 (유저 2026-10-30): 「패널에서 카메라 아무것도 안했으면 안적는다」 ·
+/// 「액션쪽도 카메라레이어 움직임인거니까 그거 시트off되면 사라지게」.
 void main() {
   CameraPose at(double x, {double zoom = 1, double turn = 0}) => CameraPose(
     center: CanvasPoint(x: x, y: 0),
@@ -40,6 +43,7 @@ void main() {
     Map<int, CameraPose> keys, {
     List<int> lengths = const [24],
     bool bypassed = false,
+    bool onSheet = true,
     CameraInstructionSet? glossary,
   }) {
     final frames = <Frame>[];
@@ -82,6 +86,7 @@ void main() {
                   frames: const [],
                   timeline: const {},
                   transformEnabled: !bypassed,
+                  onTimesheet: onSheet,
                 ),
               ],
             ),
@@ -112,11 +117,33 @@ void main() {
     ]);
   });
 
-  test('a panel the move does not reach is FIX throughout, and the panel '
-      'it is in writes it where it stands', () {
+  test('🎯a panel the camera does nothing in writes nothing, and the panel '
+      'the move is in writes it where it stands', () {
     expect(linesOf({14: at(0), 20: at(40)}, lengths: const [12, 12]), [
-      ['FIX (0+12)'],
+      <String>[],
       ['FIX (0+2)', 'PAN (0+7)', 'FIX (0+3)'],
+    ]);
+  });
+
+  test('a panel the move fills is that move alone, in every panel it '
+      'fills', () {
+    expect(linesOf({0: at(0), 23: at(40)}, lengths: const [8, 8, 8]), [
+      ['PAN (0+8)'],
+      ['PAN (0+8)'],
+      ['PAN (0+8)'],
+    ]);
+  });
+
+  test('a move that ends on its panel's last frame leaves the panel after '
+      'it blank, and one that starts on a panel's first the panel before '
+      'it', () {
+    expect(linesOf({0: at(0), 11: at(40)}, lengths: const [12, 12]), [
+      ['PAN (0+12)'],
+      <String>[],
+    ]);
+    expect(linesOf({12: at(0), 23: at(40)}, lengths: const [12, 12]), [
+      <String>[],
+      ['PAN (0+12)'],
     ]);
   });
 
@@ -161,17 +188,26 @@ void main() {
     ]);
   });
 
-  test('a camera with no key, one key, or its work bypassed stands still: '
-      'one FIX the cell long', () {
-    expect(linesOf(const {}), [
-      ['FIX (1+0)'],
-    ], reason: 'no key');
-    expect(linesOf({7: at(30)}), [
-      ['FIX (1+0)'],
-    ], reason: 'one key');
-    expect(linesOf({5: at(0), 15: at(40)}, bypassed: true), [
-      ['FIX (1+0)'],
-    ], reason: 'the camera row switched off');
+  test('a camera with no key, one key, keys that hold one pose, or its work '
+      'bypassed stands still: nothing is written', () {
+    const blank = [<String>[]];
+    expect(linesOf(const {}), blank, reason: 'no key');
+    expect(linesOf({7: at(30)}), blank, reason: 'one key');
+    expect(linesOf({5: at(9), 15: at(9)}), blank, reason: 'one pose');
+    expect(
+      linesOf({5: at(0), 15: at(40)}, bypassed: true),
+      blank,
+      reason: 'the camera row switched off',
+    );
+  });
+
+  test('a camera off the sheet writes nothing, however it moves — the SE '
+      'row's law (F-345)', () {
+    expect(linesOf({5: at(0), 15: at(40)}, onSheet: false), [<String>[]]);
+    expect(
+      linesOf({5: at(0), 15: at(40)}, lengths: const [12, 12], onSheet: false),
+      [<String>[], <String>[]],
+    );
   });
 
   test('a cut an O.L arrives into counts its camera from the のりしろ: a '
@@ -241,7 +277,7 @@ void main() {
       ],
       [
         ['PAN (0+11)', 'FIX (0+9)'],
-        ['FIX (1+4)'],
+        <String>[],
       ],
     );
   });

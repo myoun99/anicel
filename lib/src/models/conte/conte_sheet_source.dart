@@ -59,7 +59,8 @@ class ConteCellSource {
 
   /// What the camera does while the cell is on, as its ACTION column writes
   /// it over the words typed there — a line to each move and each stretch
-  /// it stands still, `PAN (0+11)` (`conteCameraStretches`, I-93).
+  /// it stands still beside one, `PAN (0+11)` (`conteCameraStretches`,
+  /// I-93), and none where it does nothing.
   final List<String> cameraLines;
 
   /// The transitions the cell's ACTION column writes under [cameraLines] —

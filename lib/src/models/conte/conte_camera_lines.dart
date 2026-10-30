@@ -12,7 +12,8 @@ typedef ConteCameraStretch = ({CameraMove? move, int frames});
 /// WHAT THE CAMERA DOES WHILE A CONTE CELL IS ON (I-93): the cut's frames
 /// [from] to [to], in order, as each of [moves] ([cameraMoves]) where it
 /// moves and a FIX where none does — a line each on the cell's ACTION
-/// column ([conteCameraLine]).
+/// column ([conteCameraLine]). A cell no move reaches has none: its FIX
+/// says nothing the blank does not.
 ///
 /// 🗣️I-93 (유저 2026-10-12): 「콘티용지패널 내용란에 고정텍스트로 PAN이나
 /// TU나 추가로 콘티엔 시간정보가 같은 칸내에선 없으니 FIX부분 도
@@ -24,11 +25,18 @@ typedef ConteCameraStretch = ({CameraMove? move, int frames});
 /// FIX (0+8) 이런식 … 편집할때마다 바뀌는. 각 FIX PAN 이런거마다
 /// 개행되고」.
 ///
+/// 🗣️I-93 (유저 2026-10-30): 「지금보면 FIX도 매 패널마다 적어주는데 그게
+/// 아님. 카메라움직임 발생해서 그게 기록되고 그 다음에 픽스인부분이 있으면
+/// 적어주는것임. 즉 패널중간에 움직이기 시작하면 해당패널에서 픽스적어주고,
+/// PAN같은거적어줌. 패널내에서 끝나고 멈춰있는 카메라일때도 PAN같은거 적고
+/// 다음 FIX. 패널에서 카메라 아무것도 안했으면 안적는다」. ↩️Every cell wrote
+/// its FIX, the whole cell long where the camera stood still.
+///
 /// ⚠️Mine: a move holds its frames from its first key to the frame before
 /// the next move starts — and its end key too where no move starts there,
 /// so the PAN from 6f to 16f is the user's 11 frames, and the stretches of
-/// a cut add up to its length. Every frame no move holds is FIX, a stretch
-/// to each run of them.
+/// a cell a move reaches add up to the cell. Every frame of it no move
+/// holds is FIX, a stretch to each run of them.
 ///
 /// ⚠️Mine: a cell writes its own frames only — a move two cells share is a
 /// stretch in each, as long as each holds it.
@@ -57,7 +65,9 @@ List<ConteCameraStretch> conteCameraStretches(
     at = end;
   }
   add(null, at, to);
-  return stretches;
+  return stretches.any((stretch) => stretch.move != null)
+      ? stretches
+      : const [];
 }
 
 /// [stretch] as its line reads: its move's word ([cameraMoveWord]) or the

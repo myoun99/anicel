@@ -260,19 +260,19 @@ ConteCellSource _cellSource({
 }
 
 /// What [cut]'s camera does over its frames [from] to [to], a line to each
-/// stretch ([conteCameraStretches]) in [project]'s glossary and count.
+/// stretch ([conteCameraStretches]) in [project]'s glossary and count —
+/// none off the sheet ([LayerStackQueries.cameraOnSheet], I-93).
 ///
 /// ⚠️Mine: a camera whose work is bypassed stands still — the camera row's
-/// switch shows the canvas centred — so it is FIX throughout, as a camera
-/// with no key is (I-93: 「값이 동일해서 안움직이고 있거나 키가 없는
-/// 부분」).
+/// switch shows the canvas centred — so it writes what a camera with no
+/// key does (I-93: 「값이 동일해서 안움직이고 있거나 키가 없는 부분」).
 List<String> _cameraLinesIn(
   Cut cut,
   Project project, {
   required int from,
   required int to,
 }) {
-  final moves = cut.layers.cameraWorkBypassed
+  final moves = cut.layers.cameraWorkBypassed || !cut.layers.cameraOnSheet
       ? const <CameraMove>[]
       : cameraMoves(cut.camera.track);
   return [

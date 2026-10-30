@@ -434,7 +434,7 @@ class TimesheetDocument {
     // The CAM keyframe column obeys the camera layer's timesheet toggle
     // (unified layer controls); toggled off it stays printed blank form
     // space, like an unbacked slot.
-    final cameraOnSheet = cut.layers.cameraLayer?.onTimesheet ?? true;
+    final cameraOnSheet = cut.layers.cameraOnSheet;
     // CAM slots: the camera-keyframe column, one per instruction row, and
     // — when a transition rides the sheet (D31) — one more for it. Spare
     // fixed slots absorb them first; a crowded cut grows the block, the
