@@ -39,6 +39,10 @@ import '../../helpers/placement_reading.dart';
 /// the test's Vulkan, at the most ([expectShownAsWhole]).
 const int _roundingMoves = 9;
 
+/// How far the engine's blur lands a row's byte from the whole's when the
+/// part it blurs is the smaller input, at the most ([expectShownAsWhole]).
+const int _blurRatioMoves = 60;
+
 void main() {
   setUpAll(LayerBlendShader.load);
 
@@ -126,16 +130,27 @@ void main() {
   /// A rounding moved no byte past [_roundingMoves] but those flips, under
   /// 2% of them; a part laid a texel off moves most of them.
   ///
-  /// ⚠️A row's blur reduced by the camera stays red here, and on GLES by the
-  /// same bytes: the engine's blur scales its input by a size rounded up
-  /// (`gaussian_blur_filter_contents.cc`), so a smaller part blurs at
-  /// another ratio (impeller-sweep-canvas-reds-Q1).
+  /// 🗣️A row's blur between two levels of the camera is held to
+  /// [_blurRatioMoves] alone, and only on Impeller (유저 2026-10-30, board
+  /// impeller-sweep-canvas-reds-Q1: 「받아들인다」): the engine's blur scales
+  /// its input by a size rounded up (`gaussian_blur_filter_contents.cc`), so
+  /// a smaller part blurs at another ratio. 🔬237 of these 640 bytes moved,
+  /// by up to 56 here and 58 on the Windows app's GLES, under a blur of noise.
   void expectShownAsWhole(
     Uint8List shown,
     Uint8List whole, {
     required bool posed,
+    bool blursAtAnotherRatio = false,
   }) {
     if (ui.ImageFilter.isShaderFilterSupported) {
+      if (blursAtAnotherRatio) {
+        expect(
+          differences(shown, whole).most <= _blurRatioMoves,
+          isTrue,
+          reason: differ(shown, whole),
+        );
+        return;
+      }
       var moved = 0;
       for (var index = 0; index < shown.length; index += 1) {
         if ((shown[index] - whole[index]).abs() > _roundingMoves) {
@@ -645,6 +660,10 @@ void main() {
               inPieces,
               whole,
               posed: scene.contains('posed') || through.turns,
+              blursAtAnotherRatio:
+                  camera == 'square at two fifths' &&
+                  (scene == 'inside blurred' ||
+                      scene == 'the three over each other'),
             );
           });
         });
