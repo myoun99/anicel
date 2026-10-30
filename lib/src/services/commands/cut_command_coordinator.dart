@@ -464,6 +464,9 @@ class CutCommandCoordinator {
   // library). The coordinator keeps the public commands as forwarders.
   _LinkCommands get _links => _LinkCommands(this);
 
+  ({String name, CanvasSize canvasSize}) plannedLinkedCut({
+    required CutId sourceCutId,
+  }) => _links.plannedLinkedCut(sourceCutId: sourceCutId);
   void createLinkedCut({required CutId sourceCutId, String? name}) =>
       _links.createLinkedCut(sourceCutId: sourceCutId, name: name);
   void unlinkLayer({required CutId cutId, required LayerId layerId}) =>

@@ -18,17 +18,26 @@ import 'size_fields_row.dart';
 /// 거기서 정한값으로 만들어짐」 — the size is the canvas size window's own
 /// fields and presets. ⛔No 「캔버스에서 조정」: there is no canvas yet to
 /// adjust ([SizePresetsRow] says why a window that has one keeps it).
+///
+/// 🗣️I-100-Q1 (유저 2026-10-30 「겸용 컷 만들기도 창을 연다(이름만)」): a 겸용
+/// cut's window too ([action]) — its size its source's, fixed, since the
+/// two share their pictures ([onSizeChanged] null).
 class NewCutDialog extends StatefulWidget {
   const NewCutDialog({
     super.key,
+    this.action = EditorActionIds.cutNew,
     required this.initialName,
     required this.initialSize,
     required this.onSizeChanged,
   });
 
+  /// The action that opens it, which names it.
+  final String action;
   final String initialName;
   final CanvasSize initialSize;
-  final ValueChanged<CanvasSize> onSizeChanged;
+
+  /// The size typed or picked. Null where it is fixed.
+  final ValueChanged<CanvasSize>? onSizeChanged;
 
   @override
   State<NewCutDialog> createState() => _NewCutDialogState();
@@ -56,7 +65,7 @@ class _NewCutDialogState extends State<NewCutDialog> {
     setState(() {});
     final size = _entered;
     if (size != null) {
-      widget.onSizeChanged(size);
+      widget.onSizeChanged?.call(size);
     }
   }
 
@@ -70,9 +79,10 @@ class _NewCutDialogState extends State<NewCutDialog> {
   Widget build(BuildContext context) {
     final strings = AppText.strings;
     final entered = _entered;
+    final sizable = widget.onSizeChanged != null;
     return AppPromptDialog.keyed(
       keyPrefix: 'new-cut',
-      title: editorActionLabel(EditorActionIds.cutNew),
+      title: editorActionLabel(widget.action),
       // Not the ＋ the button wears: every ＋ glyph is the add accent
       // (`add_glyph_accent_test`), and a window's title is no button.
       titleIcon: Icons.movie_outlined,
@@ -89,14 +99,14 @@ class _NewCutDialogState extends State<NewCutDialog> {
             keyPrefix: 'new-cut',
             widthController: _widthController,
             heightController: _heightController,
-            onChanged: _sizeChanged,
+            onChanged: sizable ? _sizeChanged : null,
           ),
           const SizedBox(height: 12),
           SizePresetsButton(
             keyPrefix: 'new-cut',
             groups: canvasSizePresetGroups,
             entered: entered,
-            onPicked: _picked,
+            onPicked: sizable ? _picked : null,
           ),
         ],
       ),

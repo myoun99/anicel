@@ -487,11 +487,25 @@ class CutVerbs {
     _changes.notifyChanged();
   }
 
+  /// What the new cut window offers for a 겸용 cut of the active cut
+  /// (🗣️I-100-Q1, [CutCommandCoordinator.plannedLinkedCut]) — null with no
+  /// active cut.
+  ({String name, CanvasSize canvasSize})? get plannedLinkedCut =>
+      switch (_timeline.editingSession.activeCutId) {
+        null => null,
+        final cutId => _project.cutCommandCoordinator.plannedLinkedCut(
+          sourceCutId: cutId,
+        ),
+      };
+
   /// 겸용컷 생성: a new cut whose drawing layers are all LINKED to the
-  /// active cut's (empty timelines — same pictures, own timing).
-  void createLinkedCutFromActiveCut() => _activeCut.onActiveCut(
-    (cutId) =>
-        _project.cutCommandCoordinator.createLinkedCut(sourceCutId: cutId),
+  /// active cut's (empty timelines — same pictures, own timing), named
+  /// [name] — what the new cut window confirms.
+  void createLinkedCutFromActiveCut({String? name}) => _activeCut.onActiveCut(
+    (cutId) => _project.cutCommandCoordinator.createLinkedCut(
+      sourceCutId: cutId,
+      name: name,
+    ),
   );
 
   /// 겸용 변경 preview: what linking the active cut with [targetCutId]

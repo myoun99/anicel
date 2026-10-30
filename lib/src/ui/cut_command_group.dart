@@ -2,6 +2,7 @@ import 'dart:async' show unawaited;
 
 import 'package:flutter/material.dart';
 
+import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/cut_metadata.dart';
 import 'cut/cut_note_dialog.dart';
@@ -176,6 +177,24 @@ Future<void> _askNewCut(BuildContext context, EditorSessionManager session) {
   );
 }
 
+/// The same window for a 겸용 cut of the active cut (🗣️I-100-Q1): the name
+/// [CutVerbs.createLinkedCutFromActiveCut] gives it unasked, over the
+/// active cut's canvas, which it keeps.
+Future<void> _askLinkedCut(
+  BuildContext context,
+  EditorSessionManager session,
+) => askAboutThenCommit<({String name, CanvasSize canvasSize}), String>(
+  context,
+  session.cutVerbs.plannedLinkedCut,
+  dialog: (planned) => NewCutDialog(
+    action: EditorActionIds.cutCreateLinked,
+    initialName: planned.name,
+    initialSize: planned.canvasSize,
+    onSizeChanged: null,
+  ),
+  commit: (name) => session.cutVerbs.createLinkedCutFromActiveCut(name: name),
+);
+
 /// The cut pill's menu as it opens. [context] is where a row's window opens
 /// from — the pill's, or the shell's when a key presses the row.
 ///
@@ -244,7 +263,7 @@ List<PanelFlyoutEntry> cutMenuEntries(
       shortcuts: const [EditorActionIds.cutCreateLinked],
       icon: Icons.link,
       enabled: session.activeCutOrNull != null,
-      onSelected: session.cutVerbs.createLinkedCutFromActiveCut,
+      onSelected: () => unawaited(_askLinkedCut(context, session)),
     ),
     PanelFlyoutItem(
       keyValue: 'convert-cut-to-linked-button',

@@ -414,6 +414,10 @@ void main() {
       );
       final cuts = cutsOf(tester);
       await pressKeyOf(tester, EditorActionIds.cutCreateLinked);
+      // Its window asks first (I-100-Q1), as the row's does.
+      expect(cutsOf(tester), cuts);
+      await tester.tap(find.byKey(const ValueKey('new-cut-ok-button')));
+      await tester.pumpAndSettle();
       expect(cutsOf(tester), cuts + 1);
     });
 

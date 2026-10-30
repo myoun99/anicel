@@ -27,7 +27,10 @@ class SizeFieldsRow extends StatelessWidget {
   final String keyPrefix;
   final TextEditingController widthController;
   final TextEditingController heightController;
-  final VoidCallback onChanged;
+
+  /// A number typed. Null where the size is fixed — the fields show it
+  /// and take nothing (a 겸용 cut's, its source's, 🗣️I-100-Q1).
+  final VoidCallback? onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -45,7 +48,8 @@ class SizeFieldsRow extends StatelessWidget {
               autofocus: true,
               keyboardType: TextInputType.number,
               inputFormatters: halfWidthDigitsOnly,
-              onChanged: (_) => onChanged(),
+              enabled: onChanged != null,
+              onChanged: (_) => onChanged?.call(),
             ),
           ),
         ),
@@ -62,7 +66,8 @@ class SizeFieldsRow extends StatelessWidget {
               controller: heightController,
               keyboardType: TextInputType.number,
               inputFormatters: halfWidthDigitsOnly,
-              onChanged: (_) => onChanged(),
+              enabled: onChanged != null,
+              onChanged: (_) => onChanged?.call(),
             ),
           ),
         ),
@@ -184,8 +189,9 @@ class SizePresetsButton extends StatelessWidget {
   /// The size the fields hold — its row is marked.
   final CanvasSize? entered;
 
-  /// A row picked: the fields take its size.
-  final ValueChanged<CanvasSize> onPicked;
+  /// A row picked: the fields take its size. Null where the size is fixed
+  /// ([SizeFieldsRow.onChanged]): the list stands, dead.
+  final ValueChanged<CanvasSize>? onPicked;
 
   List<PanelFlyoutEntry> _rows() => [
     for (final (index, group) in groups.indexed) ...[
@@ -198,7 +204,7 @@ class SizePresetsButton extends StatelessWidget {
               '${preset.name} '
               '${pixelSizeLabel(preset.size.width, preset.size.height)}',
         ),
-        onPicked: (preset) => onPicked(preset.size),
+        onPicked: (preset) => onPicked?.call(preset.size),
       ),
     ],
   ];
@@ -207,6 +213,7 @@ class SizePresetsButton extends StatelessWidget {
   Widget build(BuildContext context) => PanelFlyoutButton(
     key: ValueKey<String>('$keyPrefix-presets'),
     label: AppText.strings.canvasSizePresets,
+    enabled: onPicked != null,
     entriesBuilder: _rows,
   );
 }

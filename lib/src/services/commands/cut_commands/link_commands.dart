@@ -12,6 +12,22 @@ class _LinkCommands {
 
   final CutCommandCoordinator _coordinator;
 
+  /// The 겸용 cut [createLinkedCut] makes of [sourceCutId] when it is told
+  /// no name — what the new cut window offers for it (🗣️I-100-Q1): the
+  /// name that counts on from its source's — it is inserted right after
+  /// its source, so the source is what it counts from — and its source's
+  /// canvas, whose pictures it shares.
+  ({String name, CanvasSize canvasSize}) plannedLinkedCut({
+    required CutId sourceCutId,
+  }) {
+    final project = _coordinator.repository.requireProject();
+    final source = requireCut(project, sourceCutId);
+    return (
+      name: CutCommandCoordinator.nextCutNameAfter(project, source.name),
+      canvasSize: source.canvasSize,
+    );
+  }
+
   /// 겸용컷 생성 (L2): a new cut whose drawing layers share the source's
   /// cel banks with EMPTY timelines — the bank re-exposes to a new
   /// rhythm. One undo step; the new cut becomes active.
@@ -29,11 +45,7 @@ class _LinkCommands {
         editingSession: _coordinator.editingSession,
         sourceCutId: sourceCutId,
         newCutId: plan.newCutId,
-        // A linked cut is inserted right after its source, so the source
-        // is what it counts from.
-        newName:
-            name ??
-            CutCommandCoordinator.nextCutNameAfter(project, sourceCut.name),
+        newName: name ?? plannedLinkedCut(sourceCutId: sourceCutId).name,
         layerIdMap: plan.layerIdMap,
         newGroupIdBySource: plan.newGroupIdBySource,
         coveringFrameIdBySource: plan.coveringFrameIdBySource,

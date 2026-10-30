@@ -1440,6 +1440,9 @@ Future<void> layerKindShots(WidgetTester tester) async {
   );
   await tester.tap(byKey('add-cut-create-linked'));
   await settleReal(tester, 4);
+  // Its window asks the name first (I-100-Q1).
+  await tester.tap(byKey('new-cut-ok-button'));
+  await settleReal(tester, 4);
   await tester.tap(byKey('timeline-mode-storyboard-button'));
   await settleReal(tester);
   final board = bottomDock(tester);

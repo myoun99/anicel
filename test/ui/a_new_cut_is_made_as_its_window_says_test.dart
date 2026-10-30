@@ -130,6 +130,26 @@ void main() {
       session.cutVerbs.createCut();
       expect(cutsOf(session)[1].name, offered.name);
     });
+
+    test('🗣️a 겸용 cut is offered the name it takes after the open cut and '
+        "the open cut's canvas — and takes the name it is given (I-100-Q1)",
+        () {
+      final session = sessionOnOneCut();
+      final offered = session.cutVerbs.plannedLinkedCut!;
+      expect(offered, (name: '2', canvasSize: open));
+
+      session.cutVerbs.createLinkedCutFromActiveCut(name: 'B');
+      final made = cutsOf(session)[1];
+      expect((made.name, made.canvasSize), ('B', open));
+    });
+
+    test('a 겸용 cut told no name takes the one it was offered', () {
+      final session = sessionOnOneCut();
+      final offered = session.cutVerbs.plannedLinkedCut!;
+
+      session.cutVerbs.createLinkedCutFromActiveCut();
+      expect(cutsOf(session)[1].name, offered.name);
+    });
   });
 
   group('the window', () {
@@ -341,6 +361,63 @@ void main() {
       expect(session.activeTrack.cuts, hasLength(1));
       await confirm(tester);
       expect(session.activeTrack.cuts, hasLength(2));
+    });
+
+    group('🗣️the 겸용 row opens it too, its size fixed (I-100-Q1)', () {
+      Future<void> pressLinked(WidgetTester tester) => tapCutCommandButton(
+        tester,
+        const ValueKey<String>('add-cut-create-linked'),
+      );
+
+      testWidgets("named for its action, over the open cut's canvas, which "
+          'takes nothing typed or picked', (tester) async {
+        final session = await pump(tester);
+        await pressLinked(tester);
+
+        expect(byKey('new-cut-dialog'), findsOneWidget);
+        expect(session.activeTrack.cuts, hasLength(1));
+        expect(
+          find.descendant(
+            of: byKey('new-cut-dialog'),
+            matching: find.text(
+              editorActionLabel(EditorActionIds.cutCreateLinked),
+            ),
+          ),
+          findsOneWidget,
+        );
+        expect(field(tester, 'new-cut-text-field').text, '2');
+        for (final key in ['new-cut-width-field', 'new-cut-height-field']) {
+          expect(tester.widget<TextField>(byKey(key)).enabled, isFalse);
+        }
+        expect(
+          (
+            field(tester, 'new-cut-width-field').text,
+            field(tester, 'new-cut-height-field').text,
+          ),
+          ('${open.width}', '${open.height}'),
+        );
+        expect(
+          tester.widget<PanelFlyoutButton>(byKey('new-cut-presets')).enabled,
+          isFalse,
+        );
+      });
+
+      testWidgets('its confirm makes the 겸용 cut as named; its cancel, '
+          'nothing', (tester) async {
+        final session = await pump(tester);
+        await pressLinked(tester);
+        await tester.tap(byKey('new-cut-cancel-button'));
+        await tester.pumpAndSettle();
+        expect(session.activeTrack.cuts, hasLength(1));
+
+        await pressLinked(tester);
+        await tester.enterText(byKey('new-cut-text-field'), 'B');
+        await confirm(tester);
+
+        expect(session.activeTrack.cuts, hasLength(2));
+        final made = session.activeCutOrNull!;
+        expect((made.name, made.canvasSize), ('B', open));
+      });
     });
   });
 }
