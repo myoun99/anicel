@@ -130,10 +130,10 @@ void main() {
       '(F-227) — the camera from there, not from the cut\'s head', () {
     final work = cellsOf(
       CutCamera(keyframes: {0: at(0, 0), 23: at(96, 0)}),
-      lengths: const [12],
-      conteStart: 12,
-    ).single.camera!;
-    expect(work.keys.map((key) => key.label), ['13f', '24f']);
+      lengths: const [6, 12],
+      conteStart: 6,
+    ).first.camera!;
+    expect(work.keys.map((key) => key.label), ['7f', '12f']);
   });
 
   test('two keys in the cell, unnamed: each called by the frame it stands on '
