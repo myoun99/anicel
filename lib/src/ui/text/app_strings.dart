@@ -1775,6 +1775,8 @@ enum AppStrings {
       _s('fxPluginUnopenedTemplate')
           .replaceAll('{file}', file)
           .replaceAll('{why}', why);
+  String get fxPluginsOfDevice => _s('fxPluginsOfDevice');
+  String get fxPluginDelete => _s('fxPluginDelete');
 
   /// Why a picked file was not taken as a font.
   String get textToolFontUnreadable => _s('textToolFontUnreadable');
@@ -3284,6 +3286,8 @@ enum AppStrings {
         '"{file}" is not an FX plugin this app can read.',
     'fxPluginUnopenedTemplate':
         '"{file}" could not be opened as an FX plugin on this device: {why}',
+    'fxPluginsOfDevice': 'Plugins on this device',
+    'fxPluginDelete': 'Delete plugin',
     'brImportedOneTemplate': 'Imported 1 brush from "{file}".',
     'brImportedManyTemplate': 'Imported {count} brushes from "{file}".',
     'brImportWarningsTemplate': '{summary} ({count} entries with warnings)',
@@ -4216,6 +4220,7 @@ enum AppStrings {
     'effectKind.cameraLensBlur': 'ブラー（カメラレンズ）',
     'effectKind.colorKey': 'カラーキー',
     'effectKind.celNumber': 'セル番号',
+    'effectKind.plugin': 'プラグイン',
     'effectParameter.brightness': '輝度',
     'effectParameter.contrast': 'コントラスト',
     'effectParameter.hue': 'マスターの色相',
@@ -5058,6 +5063,8 @@ enum AppStrings {
     'fxPluginUnreadableTemplate': '「{file}」は読み込めるFXプラグインではありません。',
     'fxPluginUnopenedTemplate':
         '「{file}」をこの端末でFXプラグインとして開けませんでした: {why}',
+    'fxPluginsOfDevice': 'このデバイスのプラグイン',
+    'fxPluginDelete': 'プラグインを削除',
     'brImportedOneTemplate': '「{file}」からブラシを1個読み込みました。',
     'brImportedManyTemplate': '「{file}」からブラシを{count}個読み込みました。',
     'brImportWarningsTemplate': '{summary}（警告のある項目 {count}件）',
@@ -6019,6 +6026,7 @@ enum AppStrings {
     'effectKind.cameraLensBlur': '카메라 렌즈 흐림',
     'effectKind.colorKey': '색상 키',
     'effectKind.celNumber': '셀 번호',
+    'effectKind.plugin': '플러그인',
     'effectParameter.brightness': '명도',
     'effectParameter.contrast': '대비',
     'effectParameter.hue': '마스터 색조',
@@ -6853,6 +6861,8 @@ enum AppStrings {
     'fxPluginUnreadableTemplate': '「{file}」은(는) 읽을 수 있는 FX 플러그인이 아닙니다.',
     'fxPluginUnopenedTemplate':
         '「{file}」을(를) 이 기기에서 FX 플러그인으로 열 수 없습니다: {why}',
+    'fxPluginsOfDevice': '이 기기의 플러그인',
+    'fxPluginDelete': '플러그인 삭제',
     'brImportedOneTemplate': '「{file}」에서 브러시 1개를 가져왔습니다.',
     'brImportedManyTemplate': '「{file}」에서 브러시 {count}개를 가져왔습니다.',
     'brImportWarningsTemplate': '{summary} (경고가 있는 항목 {count}개)',
@@ -7865,6 +7875,7 @@ enum AppStrings {
     'effectKind.cameraLensBlur': "Flou d'objectif",
     'effectKind.colorKey': 'Masquage par couleur',
     'effectKind.celNumber': 'Numéro de cellulo',
+    'effectKind.plugin': 'Plug-in',
     'effectParameter.brightness': 'Luminosité',
     'effectParameter.contrast': 'Contraste',
     'effectParameter.hue': 'Teinte globale',
@@ -8809,6 +8820,8 @@ enum AppStrings {
     'fxPluginUnopenedTemplate':
         '« {file} » n’a pas pu être ouvert comme plug-in FX sur cet '
         'appareil : {why}',
+    'fxPluginsOfDevice': 'Plug-ins de cet appareil',
+    'fxPluginDelete': 'Supprimer le plug-in',
     'brImportedOneTemplate': '1 brosse importée depuis « {file} ».',
     'brImportedManyTemplate': '{count} brosses importées depuis « {file} ».',
     'brImportWarningsTemplate':
@@ -9747,6 +9760,7 @@ enum AppStrings {
     'effectKind.cameraLensBlur': '相机镜头模糊',
     'effectKind.colorKey': '颜色键',
     'effectKind.celNumber': '赛璐珞编号',
+    'effectKind.plugin': '插件',
     'effectParameter.brightness': '亮度',
     'effectParameter.contrast': '对比度',
     'effectParameter.hue': '主色相',
@@ -10553,6 +10567,8 @@ enum AppStrings {
     'fxPluginInstalledTemplate': '已安装 FX 插件“{name}”。',
     'fxPluginUnreadableTemplate': '“{file}”不是可读取的 FX 插件。',
     'fxPluginUnopenedTemplate': '无法在此设备上将“{file}”作为 FX 插件打开：{why}',
+    'fxPluginsOfDevice': '此设备的插件',
+    'fxPluginDelete': '删除插件',
     'brImportedOneTemplate': '已从“{file}”导入 1 个画笔。',
     'brImportedManyTemplate': '已从“{file}”导入 {count} 个画笔。',
     'brImportWarningsTemplate': '{summary}（{count} 项有警告）',

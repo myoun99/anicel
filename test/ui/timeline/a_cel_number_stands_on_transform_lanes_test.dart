@@ -226,7 +226,7 @@ void main() {
 
       expect(lens.keyFrames(effects), {3});
       expect(lens.keysOf(effects).keys, [3]);
-      expect(lens.numberShown(5), isNull);
+      expect(lens.numberShown(effects, 5), isNull);
 
       final shifted = lens.update(
         effects,
@@ -241,16 +241,22 @@ void main() {
     });
   });
 
-  test('no parameter of any kind is named as a stand lane is — the id '
-      'alone tells them apart', () {
-    for (final kind in EffectKind.values) {
-      for (final spec in kind.parameters) {
-        expect(effectStandLanes, isNot(contains(spec.id)), reason: kind.name);
-      }
+  test('each lane of an effect is one lane — no parameter of a kind is '
+      'named as where it stands — and where it stands walks a path, asked '
+      'of the effect', () {
+    for (final kind in effectKindsAddedAlone) {
+      final lanes = LayerEffect.defaults(id: id, kind: kind).lanes;
+      expect(lanes.toSet(), hasLength(lanes.length), reason: kind.name);
     }
-    expect(effectLaneWalksAPath(position), isTrue);
-    expect(effectLaneWalksAPath(scale), isFalse);
-    expect(effectLaneWalksAPath(effectLaneId(id, 'ink')), isFalse);
+    final effects = [number()];
+    expect(effectLaneWalksAPath(effects, position), isTrue);
+    expect(effectLaneWalksAPath(effects, scale), isFalse);
+    expect(effectLaneWalksAPath(effects, effectLaneId(id, 'ink')), isFalse);
+    expect(
+      effectLaneWalksAPath(const [], position),
+      isFalse,
+      reason: 'an effect the chain has not',
+    );
   });
 
   group('the keys', () {

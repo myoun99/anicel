@@ -80,7 +80,7 @@ void main() {
       'every parameter starts at its spec default, so adding a filter is a '
       'no-op',
       () {
-        for (final kind in EffectKind.values) {
+        for (final kind in effectKindsAddedAlone) {
           final effect = LayerEffect.defaults(
             id: const EffectId('e1'),
             kind: kind,
@@ -88,15 +88,22 @@ void main() {
           for (final spec in kind.parameters) {
             expect(effect.parameterOf(spec.id).value, spec.defaultValue);
           }
-          // A filter changes no pixel until a value moves; a kind that
-          // draws its own picture draws it as it is added — a cel number
-          // added writes the number (I-65).
+          // A filter changes no pixel until a value moves; a kind whose
+          // defaults change pixels changes them as it is added — a cel
+          // number added writes the number (I-65).
           expect(
             resolveLayerEffectsAt(effects: [effect], frameIndex: 0),
-            kind.drawsItsOwnPicture ? hasLength(1) : isEmpty,
+            kind.changesNothingAtItsDefaults ? isEmpty : hasLength(1),
             reason: 'a fresh $kind',
           );
         }
+        expect(
+          [
+            for (final kind in effectKindsAddedAlone)
+              if (!kind.changesNothingAtItsDefaults) kind,
+          ],
+          [EffectKind.celNumber],
+        );
       },
     );
 

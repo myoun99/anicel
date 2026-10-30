@@ -1,6 +1,8 @@
 import '../core/collection_equality.dart';
 import 'canvas_point.dart';
 import 'canvas_size.dart';
+import 'effect_parameter_spec.dart';
+import 'fx_plugin_description.dart';
 import 'layer_id.dart';
 import 'property_track.dart';
 import 'string_id.dart';
@@ -12,12 +14,16 @@ import 'transform_track.dart'
         argbKeySpace,
         doubleKeySpace,
         layerIdentityPose,
-        menuKeySpace,
         resolveAnchorTrackAtTime,
         transformLaneOf,
         transformNamedKeyChanges,
         transformPropertyOfLaneId,
         transformTrackWithNamedKeys;
+
+// The specs are a file of their own so a plugin's description, which an
+// effect keeps ([LayerEffect.plugin]), reads them without this one — the two
+// would import each other (I-132, 2026-10-30).
+export 'effect_parameter_spec.dart';
 
 /// Stable identity of one effect INSTANCE on a layer — the lane address
 /// (`fx:<id>:<parameter>`) and the undo commands both name effects by this,
@@ -83,6 +89,8 @@ enum EffectKind {
     drawsItsOwnPicture: false,
     isBasic: false,
     staysOnItsRow: false,
+    addedByItsKind: true,
+    changesNothingAtItsDefaults: true,
   ),
   // 🗣️I-132-Q4 (유저 2026-10-27): 「이름 · 범위만 AE 에 맞추고 식은 지금대로」
   // — the names and ranges are AE's Hue/Saturation (Adobe's help, read
@@ -121,6 +129,8 @@ enum EffectKind {
     drawsItsOwnPicture: false,
     isBasic: false,
     staysOnItsRow: false,
+    addedByItsKind: true,
+    changesNothingAtItsDefaults: true,
   ),
 
   /// AE's Gaussian Blur: `blurriness` each way along its `blurDimensions`.
@@ -171,6 +181,8 @@ enum EffectKind {
     strength: 'blurriness',
     isBasic: false,
     staysOnItsRow: false,
+    addedByItsKind: true,
+    changesNothingAtItsDefaults: true,
   ),
 
   /// Every pixel the average of the line through it — AE's Directional
@@ -209,6 +221,8 @@ enum EffectKind {
     strength: 'blurLength',
     isBasic: false,
     staysOnItsRow: false,
+    addedByItsKind: true,
+    changesNothingAtItsDefaults: true,
   ),
 
   /// Every pixel the average of the arc through it about its `center`
@@ -259,6 +273,8 @@ enum EffectKind {
     strength: 'amount',
     isBasic: false,
     staysOnItsRow: false,
+    addedByItsKind: true,
+    changesNothingAtItsDefaults: true,
   ),
 
   /// Every pixel the mean of the pixels about it its iris covers — AE's
@@ -409,6 +425,8 @@ enum EffectKind {
     strength: 'blurRadius',
     isBasic: false,
     staysOnItsRow: false,
+    addedByItsKind: true,
+    changesNothingAtItsDefaults: true,
   ),
 
   /// THE colour key: its Key Operation erases every pixel within the
@@ -430,6 +448,8 @@ enum EffectKind {
     strength: 'amount',
     isBasic: false,
     staysOnItsRow: false,
+    addedByItsKind: true,
+    changesNothingAtItsDefaults: true,
   ),
 
   /// The CEL NUMBER (I-65): the row's name and its drawing's, in letters
@@ -468,6 +488,34 @@ enum EffectKind {
     drawsItsOwnPicture: true,
     isBasic: true,
     staysOnItsRow: true,
+    addedByItsKind: true,
+    changesNothingAtItsDefaults: false,
+  ),
+
+  /// A plugin's effect: its parameters, the words they go by and what it
+  /// does to the pixels are the plugin's ([LayerEffect.plugin],
+  /// anicel_fx_plugin.h) — ONE kind for every plugin, told apart by the
+  /// description it keeps, so a plugin's lanes, keys and values are the
+  /// app's own code (🗣️I-132-Q29).
+  ///
+  /// 🗣️I-132 (유저 2026-10-26): 「fx는 ae처럼 플러그인화. 즉 유저가
+  /// 커스텀해서 fx추가할수있게」.
+  plugin(
+    'plugin',
+    label: 'Plugin',
+    parameters: [],
+    // How far past its input it reads and draws is the plugin's to say
+    // (`anicel_fx_reach`): a chain makes room for it as for a blur.
+    spreadsPixels: true,
+    runsOnSourcePixels: false,
+    drawsItsOwnPicture: false,
+    isBasic: false,
+    staysOnItsRow: false,
+    // Added as one of the plugins this device has, never as the kind alone.
+    addedByItsKind: false,
+    // Its defaults are the plugin's to mean — an inversion changes every
+    // pixel at its first value.
+    changesNothingAtItsDefaults: false,
   );
 
   const EffectKind(
@@ -479,6 +527,8 @@ enum EffectKind {
     required this.drawsItsOwnPicture,
     required this.isBasic,
     required this.staysOnItsRow,
+    required this.addedByItsKind,
+    required this.changesNothingAtItsDefaults,
     this.strength,
   });
 
@@ -558,15 +608,20 @@ enum EffectKind {
   /// 나머지 fx 만 입는다」.
   final bool staysOnItsRow;
 
+  /// Whether the kind ALONE is added — an entry of the Fx list and an action
+  /// of its own. A plugin's effect is added as one of the plugins this
+  /// device has (I-132), its description with it.
+  final bool addedByItsKind;
+
+  /// Whether a sample at its parameters' defaults changes no pixel — every
+  /// kind of the app's own is built so («an effect you just added must
+  /// change nothing until you touch a value», [LayerEffect.defaults]) but
+  /// the cel number, whose letters are what it does, and a plugin's, whose
+  /// defaults are the plugin's to mean ([ResolvedLayerEffect.isNoOp]).
+  final bool changesNothingAtItsDefaults;
+
   /// The parameter [id] of this kind — null for an id it does not declare.
-  EffectParameterSpec? parameterSpec(String id) {
-    for (final spec in parameters) {
-      if (spec.id == id) {
-        return spec;
-      }
-    }
-    return null;
-  }
+  EffectParameterSpec? parameterSpec(String id) => _specOf(parameters, id);
 
   String toJson() => jsonValue;
 
@@ -585,229 +640,22 @@ enum EffectKind {
   }
 }
 
-/// How a parameter's value reads in the lane's value column.
-enum EffectParameterUnit {
-  /// A bare number (Brightness, Contrast, Saturation, Lightness — the
-  /// −100…100 sliders every paint tool shows unitless).
-  number,
+/// The kinds added as themselves ([EffectKind.addedByItsKind]), in their
+/// order — the Fx list's own rows and the actions that press them.
+final List<EffectKind> effectKindsAddedAlone = List.unmodifiable([
+  for (final kind in EffectKind.values)
+    if (kind.addedByItsKind) kind,
+]);
 
-  /// Degrees (Hue).
-  degrees,
-
-  /// Canvas pixels (Blur radii). ★ Canvas pixels, NOT device pixels: the
-  /// playback cache renders at a reduced raster and must scale these, or a
-  /// half-size preview would show a double-strength blur.
-  pixels,
-
-  /// One of the parameter's [EffectParameterSpec.choices] — the value is
-  /// the number of the word, the lane a menu, its keys steps
-  /// ([menuKeySpace]). 🗣️I-132-Q6 (유저 2026-10-27): 「레인 하나 — 값이
-  /// 메뉴, 키프레임은 계단」 — AE's pop-up properties, a colour key's Key
-  /// Operation the first.
-  choice,
-
-  /// An ARGB colour — keyed as an SE name tag's inks are, in their key space
-  /// ([argbKeySpace]) and their type: its keys are [LayerEffect.colors]',
-  /// not numbers in [LayerEffect.parameters], so a paste pairs them with a
-  /// colour's alone (`laneKeysSpliced` asks the keys' type). The lane is
-  /// the shared colour swatch, and unkeyed the spec's default — a colour
-  /// has no static value, as the ink never had.
-  ///
-  /// 🗣️I-132-Q10 (유저 2026-10-27): 「합친다 — 키 색상 = 색 레인 하나(셀
-  /// 번호 · 이름표 잉크와 같은 컬러 팝오버)」 · 「ae 기준으로 맞춤」 — and
-  /// F-477 (10-26) before it, for the cel number's: 「쓸데없이 빨강파랑초록
-  /// 나누지말고」.
-  color,
-
-  /// On or off — AE's checkbox, whose value is 1 or 0 to a script (Adobe's
-  /// community, read 2026-10-28) as a menu's is the number of its word. So
-  /// it is a number here too: its keys step ([menuKeySpace]) and pair with
-  /// a number's when pasted, as a menu's do. The lane is a flag's ring —
-  /// the value cell IS the control, a tap flips it (F-22).
-  flag,
-
-  /// A point on the row's paper — keyed as a transform's Position is, in
-  /// its lane's own words: its keys are [LayerEffect.points]', a track
-  /// whose Position alone is keyed, so it keys, walks a path, takes a
-  /// value, resets and names as Position does, and the canvas places it
-  /// with a cross. Unkeyed it rests where a row does: the paper's middle.
-  ///
-  /// 🗣️I-132-Q12 b (유저 2026-10-28): 「효과 매개변수에 「점」 종류를 새로」 —
-  /// a point of each effect's own (a radial blur's centre, a lens flare's
-  /// later), where a cel number's stand is the picture it draws.
-  point,
-
-  /// Another row of the effect's cut, or none — no number and NO KEYS: its
-  /// row is [LayerEffect.layers]', the one value at every frame. The lane
-  /// is a menu, as a [choice]'s, of none and the cut's rows by name.
-  ///
-  /// 🗣️I-132-Q16 a (유저 2026-10-28): 「「레이어」는 같은 컷의 행을 고르는
-  /// 메뉴(없음 + 행 이름들, 키 없음)」 — a camera lens blur's blur map the
-  /// first. A row that is not the cut's — deleted, or an effect pasted
-  /// into another cut — reads as none, as a dangling attach does
-  /// (`attachedBaseOf`).
-  layer,
-}
-
-/// One word of a menu parameter ([EffectParameterUnit.choice]).
-class EffectChoice {
-  const EffectChoice({required this.id, required this.label});
-
-  /// What the word's strings are keyed by (`effectChoice.<id>`).
-  final String id;
-
-  /// The English word, the one a table without it reads.
-  final String label;
-}
-
-/// One parameter of one effect kind: its id, label, default and range.
-/// The specs ARE the schema — the lane UI, the value parser, the JSON
-/// round-trip and the resolver all read this table instead of repeating a
-/// switch per effect.
-class EffectParameterSpec {
-  const EffectParameterSpec({
-    required this.id,
-    required this.label,
-    required this.defaultValue,
-    required this.minimum,
-    required double maximum,
-    this.unit = EffectParameterUnit.number,
-  }) : assert(
-         unit != EffectParameterUnit.choice &&
-             unit != EffectParameterUnit.color &&
-             unit != EffectParameterUnit.flag &&
-             unit != EffectParameterUnit.point &&
-             unit != EffectParameterUnit.layer,
-         'A menu is EffectParameterSpec.choice, a colour '
-         'EffectParameterSpec.color, a flag EffectParameterSpec.flag, a '
-         'point EffectParameterSpec.point and a row EffectParameterSpec.layer '
-         '— none has a range of its own.',
-       ),
-       _maximum = maximum,
-       choices = const [];
-
-  /// A menu of [choices], the word [defaultValue] counts to — the first
-  /// unless it says — chosen until a key or a value says otherwise.
-  const EffectParameterSpec.choice({
-    required this.id,
-    required this.label,
-    required this.choices,
-    int defaultValue = 0,
-  }) : defaultValue = defaultValue + 0.0,
-       minimum = 0,
-       _maximum = null,
-       unit = EffectParameterUnit.choice;
-
-  /// A colour ([EffectParameterUnit.color]), [defaultValue] until a key or a
-  /// value says otherwise — any ARGB there is.
-  const EffectParameterSpec.color({
-    required this.id,
-    required this.label,
-    required int defaultValue,
-  }) : defaultValue = defaultValue + 0.0,
-       minimum = 0,
-       _maximum = 0xFFFFFFFF + 0.0,
-       unit = EffectParameterUnit.color,
-       choices = const [];
-
-  /// A flag ([EffectParameterUnit.flag]), off until a key or a value says
-  /// otherwise — or on, where a plugin's checkbox starts on
-  /// (`FxPluginDescription`): its default is the plugin's to say.
-  const EffectParameterSpec.flag({
-    required this.id,
-    required this.label,
-    bool on = false,
-  }) : defaultValue = on ? 1 : 0,
-       minimum = 0,
-       _maximum = 1,
-       unit = EffectParameterUnit.flag,
-       choices = const [];
-
-  /// A point ([EffectParameterUnit.point]): no number at all — its keys
-  /// are [LayerEffect.points]'.
-  const EffectParameterSpec.point({required this.id, required this.label})
-    : defaultValue = 0,
-      minimum = 0,
-      _maximum = 0,
-      unit = EffectParameterUnit.point,
-      choices = const [];
-
-  /// A row of the effect's cut ([EffectParameterUnit.layer]): no number and
-  /// no keys — its row is [LayerEffect.layers]', none until one is picked.
-  const EffectParameterSpec.layer({required this.id, required this.label})
-    : defaultValue = 0,
-      minimum = 0,
-      _maximum = 0,
-      unit = EffectParameterUnit.layer,
-      choices = const [];
-
-  final String id;
-  final String label;
-  final double defaultValue;
-  final double minimum;
-  final double? _maximum;
-  final EffectParameterUnit unit;
-
-  /// The words a menu parameter holds one of; empty for a number.
-  final List<EffectChoice> choices;
-
-  /// The largest value — a menu's last word.
-  double get maximum => _maximum ?? (choices.length - 1).toDouble();
-
-  /// Whether the value steps from key to key: nothing lies between two of a
-  /// menu's words, nor between on and off.
-  bool get _steps =>
-      unit == EffectParameterUnit.choice || unit == EffectParameterUnit.flag;
-
-  /// How the value walks between two keys: a menu and a flag step, a number
-  /// lerps. A colour's keys are not numbers, and walk in [argbKeySpace].
-  KeyValueSpace<double> get keySpace {
-    assert(
-      unit != EffectParameterUnit.color &&
-          unit != EffectParameterUnit.point &&
-          unit != EffectParameterUnit.layer,
-      'A colour keys in argbKeySpace, over LayerEffect.colors, a point as a '
-      'Position does, over LayerEffect.points, and a row not at all.',
-    );
-    return _steps ? menuKeySpace : doubleKeySpace;
+/// The spec of [specs] whose id is [id] — null for none.
+EffectParameterSpec? _specOf(List<EffectParameterSpec> specs, String id) {
+  for (final spec in specs) {
+    if (spec.id == id) {
+      return spec;
+    }
   }
-
-  /// How a key made on this lane leaves — a step's holds, so its mark says
-  /// the step [keySpace] takes; null where a key leaves as it always has.
-  KeyExit? get keyExit => _steps ? KeyExit.hold : null;
-
-  double clamp(double value) => value.clamp(minimum, maximum).toDouble();
+  return null;
 }
-
-/// Whether a flag's [value] is on ([EffectParameterUnit.flag]): the nearer
-/// of 0 and 1, as a menu reads the nearer of its words — a number pasted on
-/// is either.
-bool effectFlagIsOn(double value) => value >= 0.5;
-
-/// The ids of every kind's colour parameters ([EffectParameterUnit.color])
-/// — what a lane read off its id alone holds, as a copy's off another row
-/// is read.
-final Set<String> effectColorParameters = {
-  for (final kind in EffectKind.values)
-    for (final spec in kind.parameters)
-      if (spec.unit == EffectParameterUnit.color) spec.id,
-};
-
-/// The ids of every kind's points ([EffectParameterUnit.point]) — what a
-/// lane read off its id alone holds, as [effectColorParameters] is.
-final Set<String> effectPointParameters = {
-  for (final kind in EffectKind.values)
-    for (final spec in kind.parameters)
-      if (spec.unit == EffectParameterUnit.point) spec.id,
-};
-
-/// The ids of every kind's rows ([EffectParameterUnit.layer]) — lanes that
-/// keep no keys, read off their id alone as [effectColorParameters] are.
-final Set<String> effectLayerParameters = {
-  for (final kind in EffectKind.values)
-    for (final spec in kind.parameters)
-      if (spec.unit == EffectParameterUnit.layer) spec.id,
-};
 
 /// The colour key's parameters ([EffectKind.colorKey]).
 ///
@@ -963,17 +811,25 @@ class LayerEffect {
   /// a colour, a point or a row the kind declares is materialized (unkeyed,
   /// or none, where it was missing), and a kind that draws no picture of
   /// its own stands none, whatever it was handed.
+  ///
+  /// The specs are the [plugin]'s for a plugin's effect, which keeps one
+  /// ([EffectKind.plugin]) — and the kind's own for every other, which keeps
+  /// none, whatever it was handed.
   LayerEffect({
     required this.id,
     required this.kind,
+    FxPluginDescription? plugin,
     this.enabled = true,
     Map<String, EffectParameter>? parameters,
     Map<String, PropertyTrack<int>>? colors,
     Map<String, TransformTrack>? points,
     Map<String, LayerId?>? layers,
     TransformTrack? stand,
-  }) : parameters = Map.unmodifiable({
-         for (final spec in kind.parameters)
+  }) : plugin = kind == EffectKind.plugin
+           ? ArgumentError.checkNotNull(plugin, 'plugin')
+           : null,
+       parameters = Map.unmodifiable({
+         for (final spec in _specsOf(kind, plugin))
            if (spec.unit != EffectParameterUnit.color &&
                spec.unit != EffectParameterUnit.point &&
                spec.unit != EffectParameterUnit.layer)
@@ -982,17 +838,17 @@ class LayerEffect {
                  EffectParameter(value: spec.defaultValue),
        }),
        colors = Map.unmodifiable({
-         for (final spec in kind.parameters)
+         for (final spec in _specsOf(kind, plugin))
            if (spec.unit == EffectParameterUnit.color)
              spec.id: colors?[spec.id] ?? PropertyTrack<int>.empty(),
        }),
        points = Map.unmodifiable({
-         for (final spec in kind.parameters)
+         for (final spec in _specsOf(kind, plugin))
            if (spec.unit == EffectParameterUnit.point)
              spec.id: points?[spec.id] ?? TransformTrack.empty(),
        }),
        layers = Map.unmodifiable({
-         for (final spec in kind.parameters)
+         for (final spec in _specsOf(kind, plugin))
            if (spec.unit == EffectParameterUnit.layer)
              spec.id: layers?[spec.id],
        }),
@@ -1000,17 +856,48 @@ class LayerEffect {
            ? stand
            : TransformTrack.empty();
 
-  /// A fresh effect of [kind], every parameter at its spec default — what
-  /// "Add effect" creates (an effect you just added must change nothing
-  /// until you touch a value). The plain constructor normalizes to exactly
-  /// this; the name is here because the call sites read better.
+  /// A fresh effect of [kind] — of [plugin], for a plugin's — every
+  /// parameter at its spec default: what "Add effect" creates. The plain
+  /// constructor normalizes to exactly this; the name is here because the
+  /// call sites read better.
   factory LayerEffect.defaults({
     required EffectId id,
     required EffectKind kind,
-  }) => LayerEffect(id: id, kind: kind);
+    FxPluginDescription? plugin,
+  }) => LayerEffect(id: id, kind: kind, plugin: plugin);
 
   final EffectId id;
   final EffectKind kind;
+
+  /// The plugin a plugin's effect ([EffectKind.plugin]) is of — its
+  /// description as the plugin gave it, kept by the project so a machine
+  /// without the plugin still shows its lanes, values and keys
+  /// (🗣️I-132-Q28 「fx 줄은 남기고, 걸리지 않은 채 「플러그인 없음」으로
+  /// 둔다」). Null for every other kind.
+  final FxPluginDescription? plugin;
+
+  /// Every parameter of this effect, in its order — the [plugin]'s, or the
+  /// kind's own. ⛔Ask here, never [EffectKind.parameters]: a plugin's kind
+  /// declares none.
+  List<EffectParameterSpec> get specs => _specsOf(kind, plugin);
+
+  /// The parameter [id] of this effect ([specs]) — null for an id it does
+  /// not declare.
+  EffectParameterSpec? specOf(String id) => _specOf(specs, id);
+
+  /// Its English name ([labelOf]); the program's language reads
+  /// `LayerEffectWords`.
+  String get label => labelOf(kind, plugin);
+
+  /// The English name of an effect of [kind] — of [plugin], for a plugin's:
+  /// the plugin's own ([FxPluginDescription.name]).
+  static String labelOf(EffectKind kind, FxPluginDescription? plugin) =>
+      plugin?.name ?? kind.label;
+
+  static List<EffectParameterSpec> _specsOf(
+    EffectKind kind,
+    FxPluginDescription? plugin,
+  ) => kind == EffectKind.plugin ? plugin!.parameters : kind.parameters;
 
   /// The effect's own switch (AE's per-effect fx eyeball). A disabled
   /// effect resolves to nothing at all — it keeps its keys for later.
@@ -1060,7 +947,7 @@ class LayerEffect {
   EffectParameter parameterOf(String id) =>
       parameters[id] ??
       EffectParameter(
-        value: kind.parameterSpec(id)?.defaultValue ?? 0,
+        value: specOf(id)?.defaultValue ?? 0,
       );
 
   /// [id] is for a copy that stands beside its source — a paste, a
@@ -1068,6 +955,7 @@ class LayerEffect {
   LayerEffect copyWith({
     EffectId? id,
     EffectKind? kind,
+    FxPluginDescription? plugin,
     bool? enabled,
     Map<String, EffectParameter>? parameters,
     Map<String, PropertyTrack<int>>? colors,
@@ -1078,6 +966,7 @@ class LayerEffect {
     return LayerEffect(
       id: id ?? this.id,
       kind: kind ?? this.kind,
+      plugin: plugin ?? this.plugin,
       enabled: enabled ?? this.enabled,
       parameters: parameters ?? this.parameters,
       colors: colors ?? this.colors,
@@ -1151,17 +1040,18 @@ class LayerEffect {
   /// its parameters.
   List<String> get lanes => [
     if (kind.drawsItsOwnPicture) ...effectStandLanes,
-    for (final spec in kind.parameters) spec.id,
+    for (final spec in specs) spec.id,
   ];
 
   Map<String, dynamic> toJson() => {
     'id': id.toJson(),
     'kind': kind.toJson(),
+    if (plugin case final plugin?) 'plugin': plugin.toJson(),
     if (!enabled) 'enabled': false,
     'parameters': {
       for (final entry in parameters.entries)
         // A parameter sitting at its default with no keys says nothing.
-        if (entry.value.value != _specDefault(kind, entry.key) ||
+        if (entry.value.value != (specOf(entry.key)?.defaultValue ?? 0) ||
             entry.value.track.isNotEmpty)
           entry.key: entry.value.toJson(),
     },
@@ -1191,10 +1081,21 @@ class LayerEffect {
     final rawPoints = json['points'] as Map<String, dynamic>? ?? {};
     final rawLayers = json['layers'] as Map<String, dynamic>? ?? {};
     final stand = json['stand'] as Map<String, dynamic>?;
+    // A plugin's effect whose description is not a whole one is refused as
+    // an effect of a kind this app has not is ([EffectKind.fromJson]).
+    final plugin = kind == EffectKind.plugin
+        ? FxPluginDescription.fromJson(json['plugin']) ??
+              (throw ArgumentError.value(
+                json['plugin'],
+                'plugin',
+                'A plugin effect keeps a whole description of its plugin.',
+              ))
+        : null;
     // The constructor fills whatever the file left out.
     return LayerEffect(
       id: EffectId.fromJson(json['id'] as Map<String, dynamic>),
       kind: kind,
+      plugin: plugin,
       enabled: json['enabled'] as bool? ?? true,
       parameters: {
         for (final entry in rawParameters.entries)
@@ -1229,6 +1130,7 @@ class LayerEffect {
       other is LayerEffect &&
           other.id == id &&
           other.kind == kind &&
+          other.plugin == plugin &&
           other.enabled == enabled &&
           mapEquals(other.parameters, parameters) &&
           mapEquals(other.colors, colors) &&
@@ -1240,6 +1142,7 @@ class LayerEffect {
   int get hashCode => Object.hash(
     id,
     kind,
+    plugin,
     enabled,
     Object.hashAll([
       for (final entry in parameters.entries)
@@ -1262,16 +1165,13 @@ class LayerEffect {
       'LayerEffect($kind, enabled: $enabled, parameters: $parameters)';
 }
 
-double _specDefault(EffectKind kind, String parameterId) =>
-    kind.parameterSpec(parameterId)?.defaultValue ?? 0;
-
 /// An effect with its parameters SAMPLED at one frame — what the composite
-/// carries and what the caches compare. Values are in
-/// [EffectKind.parameters]' order, which is the only order anything builds
-/// them in.
+/// carries and what the caches compare. Values are in [specs]' order, which
+/// is the only order anything builds them in.
 class ResolvedLayerEffect {
   ResolvedLayerEffect({
     required this.kind,
+    this.plugin,
     required List<double> values,
     this.stand,
     Map<String, CanvasPoint?> points = const {},
@@ -1281,6 +1181,12 @@ class ResolvedLayerEffect {
        layers = Map.unmodifiable(layers);
 
   final EffectKind kind;
+
+  /// The plugin a plugin's effect is of ([LayerEffect.plugin]).
+  final FxPluginDescription? plugin;
+
+  /// Every parameter of the effect, in [values]' order ([LayerEffect.specs]).
+  List<EffectParameterSpec> get specs => LayerEffect._specsOf(kind, plugin);
 
   /// A point's or a row's is its spec's 0: neither is a number ([points],
   /// [layers]).
@@ -1301,7 +1207,6 @@ class ResolvedLayerEffect {
   final Map<String, LayerId?> layers;
 
   double parameter(String id) {
-    final specs = kind.parameters;
     final index = specs.indexWhere((spec) => spec.id == id);
     if (index < 0) {
       return 0;
@@ -1322,6 +1227,7 @@ class ResolvedLayerEffect {
       ? this
       : ResolvedLayerEffect(
           kind: kind,
+          plugin: plugin,
           values: values,
           stand: stand,
           points: points,
@@ -1333,15 +1239,16 @@ class ResolvedLayerEffect {
   /// resolver, so nothing downstream ever pays for a filter that does
   /// nothing.
   ///
-  /// A kind that draws its own picture never is: drawing it is what it does.
+  /// A kind whose defaults change pixels never is
+  /// ([EffectKind.changesNothingAtItsDefaults]): a cel number's letters are
+  /// what it does, and what a plugin does at its defaults is the plugin's.
   bool get isNoOp {
-    if (kind.drawsItsOwnPicture) {
+    if (!kind.changesNothingAtItsDefaults) {
       return false;
     }
     if (kind.strength case final strength? when parameter(strength) <= 0) {
       return true;
     }
-    final specs = kind.parameters;
     for (
       var index = 0;
       index < specs.length && index < values.length;
@@ -1359,6 +1266,7 @@ class ResolvedLayerEffect {
       identical(this, other) ||
       other is ResolvedLayerEffect &&
           other.kind == kind &&
+          other.plugin == plugin &&
           listEquals(other.values, values) &&
           other.stand == stand &&
           mapEquals(other.points, points) &&
@@ -1367,6 +1275,7 @@ class ResolvedLayerEffect {
   @override
   int get hashCode => Object.hash(
     kind,
+    plugin,
     Object.hashAll(values),
     stand,
     Object.hashAll([
@@ -1471,11 +1380,11 @@ List<ResolvedLayerEffect> resolveLayerEffectsAt({
     if (!effect.enabled) {
       continue;
     }
-    final specs = effect.kind.parameters;
     final sample = ResolvedLayerEffect(
       kind: effect.kind,
+      plugin: effect.plugin,
       values: [
-        for (final spec in specs)
+        for (final spec in effect.specs)
           spec.clamp(effectValueAt(effect, spec, frameIndex.toDouble())),
       ],
       stand: effect.kind.drawsItsOwnPicture
@@ -1636,7 +1545,7 @@ double effectParameterValueAtTime(
 ) {
   for (final effect in effects) {
     if (effect.id == effectId) {
-      return switch (effect.kind.parameterSpec(parameterId)) {
+      return switch (effect.specOf(parameterId)) {
         final spec? => effectValueAt(effect, spec, time),
         null => effect.parameterOf(parameterId).resolveAtTime(time),
       };

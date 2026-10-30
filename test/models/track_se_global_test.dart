@@ -315,7 +315,7 @@ void main() {
         'global frame', () {
       PropertyTrack<T> at40<T>(T value) =>
           PropertyTrack<T>(keys: {40: PropertyKey(value)});
-      for (final kind in EffectKind.values) {
+      for (final kind in effectKindsAddedAlone) {
         final effect = LayerEffect(
           id: const EffectId('fx-1'),
           kind: kind,
@@ -345,7 +345,7 @@ void main() {
           expect(
             effectLaneLens(laneId)!.keyFrames(rebased),
             // 🗣️I-132-Q16 a: a row's lane keeps no keys to rebase.
-            effectLayerParameters.contains(lane) ? isEmpty : {20},
+            effect.layers.containsKey(lane) ? isEmpty : {20},
             reason: '${kind.name}: $lane',
           );
         }

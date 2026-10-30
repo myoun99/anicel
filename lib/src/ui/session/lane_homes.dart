@@ -5,9 +5,9 @@ import '../../models/se_name_tag.dart';
 import '../../models/se_sound.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/transform_track.dart';
-import '../timeline/effect_lane_editing.dart' show effectLaneLens;
-import '../timeline/effect_lane_policy.dart'
-    show effectLaneWalksAPath, parseEffectLaneId;
+import '../timeline/effect_lane_editing.dart'
+    show effectLaneLens, effectLaneWalksAPath;
+import '../timeline/effect_lane_policy.dart' show parseEffectLaneId;
 import '../timeline/lane_span_keys_shift.dart' show laneSpanKeysMoved;
 import '../timeline/property_lane_lens.dart';
 import '../timeline/reference_lane_policy.dart' show transformLanesByHome;
@@ -34,7 +34,12 @@ import 'lane_edit_subject.dart';
 /// ↩️The range move's 「safe because the span keeps a lane selection
 /// single-family」 stopped being true with #1381.
 class LaneHome<T> {
-  const LaneHome(this.keys, this.laneIds, this.lensOf);
+  const LaneHome(
+    this.keys,
+    this.laneIds,
+    this.lensOf, {
+    bool Function(T keys, String laneId) walks = _walksNoPath,
+  }) : _walks = walks;
 
   /// What the home holds now.
   final T keys;
@@ -45,6 +50,14 @@ class LaneHome<T> {
 
   /// How a lane id reaches into [keys] — null for one that cannot.
   final LaneLens<T>? Function(String laneId) lensOf;
+
+  /// Whether the keys of a lane of [keys] walk a path — the home's own
+  /// family's answer: a transform's by the lane's id ([laneWalksAPath]),
+  /// an effect's by the effect it is of ([effectLaneWalksAPath]).
+  final bool Function(T keys, String laneId) _walks;
+
+  /// Whether the keys of lane [laneId] here walk a path.
+  bool walksAPath(String laneId) => _walks(keys, laneId);
 
   /// Whether a lane here holds a key at a frame [covers] takes.
   bool keyedWhere(bool Function(int frame) covers) =>
@@ -64,13 +77,16 @@ class LaneHome<T> {
   /// — a lane with none there as an empty map.
   Iterable<LaneKeys> keysWhere(bool Function(int frame) covers) sync* {
     for (final laneId in laneIds) {
-      final held = lensOf(laneId)?.keysOf(keys) ?? const {};
+      final lens = lensOf(laneId);
+      final kept = lens?.keysOf(keys) ?? const {};
       yield (
         laneId: laneId,
         keys: {
-          for (final MapEntry(key: frame, value: key) in held.entries)
+          for (final MapEntry(key: frame, value: key) in kept.entries)
             if (covers(frame)) frame: key,
         },
+        walksAPath: walksAPath(laneId),
+        shown: (held) => lens?.numberShown(keys, held),
       );
     }
   }
@@ -156,8 +172,25 @@ class LaneHome<T> {
       );
 }
 
-/// One lane's keys, by frame ([LaneHome.keysWhere]).
-typedef LaneKeys = ({String laneId, Map<int, PropertyKey<Object?>> keys});
+/// One lane's keys, by frame ([LaneHome.keysWhere]) — and what its row
+/// says of them, read where they are taken: whether they walk a path
+/// ([LaneHome.walksAPath]) and the number one of them shows as
+/// ([LaneLens.numberShown]). ⛔Not read again off the lane's id where they
+/// land: a copy may land on another row, and an effect's lane id says only
+/// what its effect does — a plugin's ids are its own (I-132).
+typedef LaneKeys = ({
+  String laneId,
+  Map<int, PropertyKey<Object?>> keys,
+  bool walksAPath,
+  double? Function(double held) shown,
+});
+
+bool _walksNoPath(Object? keys, String laneId) => false;
+
+/// A bare transform lane's keys walk a path by its id ([laneWalksAPath]) —
+/// a row's own and its reference fx's.
+bool _transformLaneWalksAPath(TransformTrack keys, String laneId) =>
+    laneWalksAPath(laneId);
 
 /// A copy of keys (`KeyBoard`, F-388): each lane's keys by their frame from
 /// the copy's first, and the frames the copy spans — the run a paste puts
@@ -197,13 +230,24 @@ RowLaneHomes rowLaneHomes(LaneEditSubject subject, List<String> laneIds) {
   }
   final byHome = transformLanesByHome(transform);
   return (
-    own: LaneHome(subject.transformTrack, byHome.own, transformLaneLens),
+    own: LaneHome(
+      subject.transformTrack,
+      byHome.own,
+      transformLaneLens,
+      walks: _transformLaneWalksAPath,
+    ),
     reference: LaneHome(
       subject.referenceFx ?? TransformTrack.empty(),
       byHome.reference,
       transformLaneLens,
+      walks: _transformLaneWalksAPath,
     ),
-    effects: LaneHome(subject.effects, effects, effectLaneLens),
+    effects: LaneHome(
+      subject.effects,
+      effects,
+      effectLaneLens,
+      walks: effectLaneWalksAPath,
+    ),
     nameTag: LaneHome(
       subject.seNameTag?.track ?? SeNameTagTrack.empty(),
       nameTag,
@@ -228,24 +272,6 @@ bool rowLaneHomesKeyedWhere(
   RowLaneHomes homes,
   bool Function(int frame) covers,
 ) => rowLaneHomesInOrder(homes).any((home) => home.keyedWhere(covers));
-
-/// The number [held] on lane [laneId] shows as ([LaneLens.numberShown]) —
-/// asked of the home whose table names the lane: every row's homes read
-/// the same tables, and their lane ids never meet ([rowLaneHomes]). Null
-/// for a lane of no numbers.
-double? rowLaneNumberShown(RowLaneHomes homes, String laneId, double held) =>
-    rowLaneHomesInOrder(homes)
-        .map((home) => home.lensOf(laneId))
-        .nonNulls
-        .firstOrNull
-        ?.numberShown(held);
-
-/// Whether the keys of lane [laneId] walk a path, whichever home names it:
-/// a row's own and its reference fx's bare ([laneWalksAPath]), where an
-/// effect stands its picture under the effect's id
-/// ([effectLaneWalksAPath]).
-bool rowLaneWalksAPath(String laneId) =>
-    laneWalksAPath(laneId) || effectLaneWalksAPath(laneId);
 
 /// What [verb] leaves [subject]'s row at, home by home — each home it
 /// answers null for left alone.

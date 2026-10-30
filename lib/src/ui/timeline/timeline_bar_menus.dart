@@ -12,6 +12,7 @@ import '../../models/pixel_verb_settings.dart';
 import '../../services/cel_pixel_overwrite.dart' show CelPixelVerb;
 import '../cut_command_group.dart';
 import '../editor_session_manager.dart';
+import '../session/effects_and_fx.dart' show EffectChainHolder;
 import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/app_strings.dart';
@@ -196,7 +197,7 @@ class TimelineBarMenus {
       // ("Dimmed with nothing to act on, never hidden") — a menu that grew
       // and shrank under the pointer would make the artist look for an
       // entry that is simply not there today.
-      for (final kind in EffectKind.values)
+      for (final kind in effectKindsAddedAlone)
         PanelFlyoutItem(
           keyValue: 'add-effect-${kind.jsonValue}',
           label: editorActionLabel(addEffectActionId(kind)),
@@ -207,6 +208,48 @@ class TimelineBarMenus {
           onSelected: holder == null
               ? null
               : () => session.effectsAndFx.addEffect(holder, kind),
+        ),
+      ..._plugins(holder),
+    ];
+  }
+
+  /// The plugins this device has installed (I-132), under their own
+  /// heading — each added as an effect of it, and deleted off the device
+  /// from its row, as the text tool's list keeps this device's fonts. None
+  /// of either, heading included, on a device that has none.
+  List<PanelFlyoutEntry> _plugins(EffectChainHolder? holder) {
+    final installed = session.fxPlugins;
+    if (installed.plugins.isEmpty) {
+      return const [];
+    }
+    final canAdd =
+        holder != null &&
+        session.effectsAndFx.canAddEffect(holder, EffectKind.plugin);
+    return [
+      const PanelFlyoutDivider(),
+      PanelFlyoutHeader(AppText.strings.fxPluginsOfDevice),
+      for (final (:description, wasm: _, native: _) in installed.plugins)
+        PanelFlyoutItem(
+          keyValue: 'add-effect-plugin-${description.id}',
+          label: addEffectLabel(description.name, AppText.language),
+          icon: Icons.extension_outlined,
+          enabled: canAdd,
+          onSelected: holder == null
+              ? null
+              : () => session.effectsAndFx.addEffect(
+                  holder,
+                  EffectKind.plugin,
+                  plugin: description,
+                ),
+          actions: [
+            PanelFlyoutRowAction(
+              keyValue: 'add-effect-plugin-${description.id}-delete',
+              icon: Icons.delete_outline,
+              tooltip: AppText.strings.fxPluginDelete,
+              does: PanelFlyoutActionDoes.deletes,
+              onPressed: () => unawaited(installed.uninstall(description.id)),
+            ),
+          ],
         ),
     ];
   }

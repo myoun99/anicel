@@ -359,6 +359,10 @@ _PaintPart _paintPartOf(
       'A cel number splits the chain before a paint is resolved — see '
       'celNumberedRow.',
     ),
+    // ⏳NOT DRAWN YET: where a plugin reads its input — a cel's own pixels
+    // at once, or any step's picture read back from the GPU — is
+    // I-132-Q32's to say (2026-10-30). Until then it changes no pixel.
+    EffectKind.plugin => const _NoPart(),
   };
 }
 

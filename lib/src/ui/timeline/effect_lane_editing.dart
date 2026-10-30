@@ -114,7 +114,7 @@ List<LayerEffect>? effectsWithLaneKeysWritten(
   PropertyKey<Object?>? adopted,
   KeyTypePick pick = const KeyTypePick(),
 }) {
-  final walks = effectLaneWalksAPath(laneId);
+  final walks = effectLaneWalksAPath(effects, laneId);
   return effectLaneLens(laneId)?.update(
     effects,
     <U>(PropertyTrack<U> lane) => lane.withKeysWritten(
@@ -245,7 +245,7 @@ List<LayerEffect>? effectsWithGroupReset(
   return _editEffect(effects, address.effectId, (effect) {
     var next = effect;
     var changed = false;
-    for (final spec in effect.kind.parameters) {
+    for (final spec in effect.specs) {
       // A point goes back as where the effect stands does, below.
       if (effect.points.containsKey(spec.id)) {
         continue;
@@ -385,38 +385,46 @@ class _EffectLaneLens implements LaneLens<List<LayerEffect>> {
 
   /// A parameter shows the number it holds ([formatEffectLaneValue]); a
   /// header holds none, where the effect stands and a point are points, as
-  /// a transform's Position and Scale are, and a colour is a colour.
-  ///
-  /// ⚠️Read off the lane's id alone: the keys may be a copy off another
-  /// row ([LaneHome.numbersTaken]), whose chain no lens here sees.
+  /// a transform's Position and Scale are, a colour is a colour and a row a
+  /// row — as the effect holds them ([LayerEffect.parameters]), not as the
+  /// lane's id would say: a plugin's ids are its own (I-132), and one may
+  /// be an id of the app's of another unit. A copy off another row asks
+  /// that row's chain, as it is copied (`LaneKeys.shown`).
   @override
-  double? numberShown(double held) => switch (parseEffectLaneId(laneId)) {
-    (effectId: _, parameterId: final lane?)
-        when !effectStandLanes.contains(lane) &&
-            !effectColorParameters.contains(lane) &&
-            !effectPointParameters.contains(lane) &&
-            !effectLayerParameters.contains(lane) =>
-      held,
-    _ => null,
-  };
+  double? numberShown(List<LayerEffect> effects, double held) => _readLane(
+    effects,
+    laneId,
+    (effect, lane) => effect.parameters.containsKey(lane) ? held : null,
+  );
 
   /// A number given a parameter is held clamped to its range, as its value
-  /// editor takes it typed ([parseEffectLaneValue]); a colour and a point
-  /// take none.
+  /// editor takes it typed ([parseEffectLaneValue]); a colour, a point and
+  /// a row take none.
   @override
   double? numberHeld(List<LayerEffect> effects, double shown) => _readLane(
     effects,
     laneId,
-    (effect, lane) => switch (effect.kind.parameterSpec(lane)) {
-      final spec?
-          when spec.unit != EffectParameterUnit.color &&
-              spec.unit != EffectParameterUnit.point &&
-              spec.unit != EffectParameterUnit.layer =>
-        spec.clamp(shown),
-      _ => null,
-    },
+    (effect, lane) => effect.parameters.containsKey(lane)
+        ? effect.specOf(lane)!.clamp(shown)
+        : null,
   );
 }
+
+/// Whether the keys of effect lane [laneId] of [effects] walk a path: where
+/// an effect stands its picture, and a point — a Position of its own — as
+/// a transform's Position does ([laneWalksAPath]); a parameter's never do.
+/// Asked of the effect the lane is of ([LayerEffect.transformLaneAt]), not
+/// of the id alone: a plugin's ids are its own (I-132).
+bool effectLaneWalksAPath(List<LayerEffect> effects, String laneId) =>
+    _readLane(
+      effects,
+      laneId,
+      (effect, lane) => switch (effect.transformLaneAt(lane)) {
+        (keys: _, lane: final kept) => laneWalksAPath(kept),
+        null => false,
+      },
+    ) ??
+    false;
 
 /// What [read] answers of the effect a lane addresses, given the lane — a
 /// parameter's id or one where the effect stands — null when the lane is a
@@ -523,7 +531,7 @@ List<LayerEffect>? _editColor(
   PropertyTrack<int>? Function(PropertyTrack<int> keys, int rest) edit,
 ) => _editLane(effects, laneId, (effect, lane) {
   final keys = effect.colors[lane];
-  final spec = effect.kind.parameterSpec(lane);
+  final spec = effect.specOf(lane);
   if (keys == null || spec == null) {
     return null;
   }
@@ -646,7 +654,7 @@ List<LayerEffect>? _editParameter(
   EffectParameter? Function(EffectParameter parameter, EffectParameterSpec spec)
   edit,
 ) => _editLane(effects, laneId, (effect, parameterId) {
-  final spec = effect.kind.parameterSpec(parameterId);
+  final spec = effect.specOf(parameterId);
   if (spec == null) {
     return null;
   }

@@ -42,9 +42,9 @@ abstract interface class LaneLens<Track> {
   /// lane is of (F-374).
   Map<int, PropertyKey<Object?>> keysOf(Track track);
 
-  /// The number [held] — a value of this lane — shows as in its value
-  /// column; null for a lane of no numbers.
-  double? numberShown(double held);
+  /// The number [held] — a value of this lane of [track] — shows as in its
+  /// value column; null for a lane of no numbers.
+  double? numberShown(Track track, double held);
 
   /// What this lane of [track] holds for the number [shown] — what its
   /// value editor makes of it typed, clamped where the lane's range ends;
@@ -134,7 +134,7 @@ class PropertyLaneLens<Track, T> implements LaneLens<Track> {
   Map<int, PropertyKey<Object?>> keysOf(Track track) => get(track).keys;
 
   @override
-  double? numberShown(double held) => numbers?.shown(held);
+  double? numberShown(Track track, double held) => numbers?.shown(held);
 
   @override
   double? numberHeld(Track track, double shown) => numbers?.held(shown);

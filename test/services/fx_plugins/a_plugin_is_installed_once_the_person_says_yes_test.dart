@@ -172,4 +172,34 @@ void main() {
       '2',
     );
   });
+
+  test('a plugin deleted goes off the device, files and all, and the rest '
+      'stay as they stood', () async {
+    final installed = plugins();
+    await installed.install(
+      fileOf(describing('a.b', '1'), natives: true),
+      confirm: answering(true),
+    );
+    await installed.install(
+      fileOf(describing('c.d', '1')),
+      confirm: answering(true),
+    );
+    final gone = installed.plugins.first;
+    var heard = 0;
+    installed.addListener(() => heard += 1);
+
+    await installed.uninstall('a.b');
+
+    expect(heard, 1);
+    expect([for (final p in installed.plugins) p.description.id], ['c.d']);
+    expect(await library.read(gone.wasm), isNull);
+    expect(await library.read(gone.native!), isNull);
+    expect(await library.read(installed.plugins.single.wasm), isNotNull);
+    final again = InstalledFxPlugins(service: library);
+    await again.load();
+    expect([for (final p in again.plugins) p.description.id], ['c.d']);
+
+    await installed.uninstall('a.b');
+    expect(heard, 1, reason: 'one it has not is no change');
+  });
 }

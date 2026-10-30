@@ -1450,7 +1450,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       effects: [boxed.effect],
       frameIndex: at.frame,
     ).single;
-    final name = '${row.name} ${boxed.effect.kind.label}';
+    final name = '${row.name} ${boxed.effect.label}';
     return boxed.effect.kind.drawsItsOwnPicture
         ? _effectPictureBox(
             frame,

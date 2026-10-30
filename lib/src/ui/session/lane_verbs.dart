@@ -1624,7 +1624,8 @@ class LaneVerbs {
     bool Function(T keys, String laneId, int frame)? canRove,
     bool Function(String laneId)? takesSides,
   }) sync* {
-    for (final (:laneId, :keys) in home.keysWhere(lane.contains)) {
+    for (final (:laneId, :keys, :walksAPath, shown: _)
+        in home.keysWhere(lane.contains)) {
       final sided = takesSides?.call(laneId) ?? true;
       for (final MapEntry(key: frame, value: key) in keys.entries) {
         yield (
@@ -1632,6 +1633,7 @@ class LaneVerbs {
           key: key,
           canRove: canRove?.call(home.keys, laneId, frame) ?? false,
           takesSides: sided,
+          walksAPath: walksAPath,
         );
       }
     }
@@ -1648,13 +1650,16 @@ class LaneVerbs {
     }
     return [
       for (final home in rowLaneHomesInOrder(homes))
-        for (final (:laneId, :keys) in home.keysWhere(lane.contains))
+        for (final (:laneId, :keys, :walksAPath, :shown)
+            in home.keysWhere(lane.contains))
           (
             laneId: laneId,
             keys: {
               for (final MapEntry(key: frame, value: key) in keys.entries)
                 frame - lane.startIndex: key,
             },
+            walksAPath: walksAPath,
+            shown: shown,
           ),
     ];
   }
@@ -1857,7 +1862,7 @@ class LaneVerbs {
     }
     final pasted = _keysSplicedInto(
       scope,
-      _keysPairedWith(copy.lanes, _pasteTargetsOf(scope.homes), scope.homes),
+      _keysPairedWith(copy.lanes, _pasteTargetsOf(scope.homes)),
       (
         start: lane.startIndex,
         liftCount: liftCount,
@@ -1993,8 +1998,8 @@ class LaneVerbs {
   /// 행에 같은 것을」) and several pair with them in order, as a frame copy's
   /// rows pair with a band's. A lane of another kind of data takes nothing
   /// ([_sameKind]); one of the same kind takes each number as the copied
-  /// lane shows it ([LaneHome.numbersTaken] — [homes] read the lanes'
-  /// tables, [rowLaneNumberShown]).
+  /// lane shows it ([LaneHome.numbersTaken] — as its own row said where it
+  /// was copied, [LaneKeys.shown]).
   /// 🗣️key-paste-across-lanes-keeps-the-raw-value-Q1 (유저 2026-10-22):
   /// 「회전 · 불투명도 · 이펙트의 숫자끼리는 숫자 그대로」 — ↩️the number
   /// HELD went across, so an opacity of 78.5% put on a rotation made 0.79°,
@@ -2003,7 +2008,6 @@ class LaneVerbs {
   static Map<_PastedLane, Map<int, PropertyKey<Object?>>> _keysPairedWith(
     List<LaneKeys> copied,
     List<_PastedLane> targets,
-    RowLaneHomes homes,
   ) {
     final byId = {for (final lane in copied) lane.laneId: lane.keys};
     if (targets.any((target) => byId.containsKey(target.laneId))) {
@@ -2015,30 +2019,29 @@ class LaneVerbs {
         copied.length == 1 ? copied.single : copied.elementAtOrNull(index);
     return {
       for (final (index, target) in targets.indexed)
-        if (pairedAt(index) case final lane?
-            when _sameKind(lane.laneId, target.laneId))
+        if (pairedAt(index) case final lane? when _sameKind(lane, target))
           target: target.home.numbersTaken(
             target.laneId,
             lane.keys,
-            (held) => rowLaneNumberShown(homes, lane.laneId, held),
+            lane.shown,
           ),
     };
   }
 
   /// Whether keys copied on lane [from] mean on lane [to] what they meant
   /// there — AE's 「the same type of data」: a place in space
-  /// ([rowLaneWalksAPath] — a position or an anchor, a reference's too, and
-  /// where an effect stands its picture) on a place, any other on any other
-  /// of its value type ([laneKeysSpliced]).
+  /// ([LaneHome.walksAPath] — a position or an anchor, a reference's too,
+  /// where an effect stands its picture and an effect's point) on a place,
+  /// any other on any other of its value type ([laneKeysSpliced]).
   /// 🗣️key-paste-across-lanes-keeps-the-raw-value-Q1 (유저 2026-10-22):
   /// 「AE 그대로 — 같은 종류의 데이터끼리」 — a position's 1170 put on a
   /// scale made it 117000%.
-  static bool _sameKind(String from, String to) =>
-      rowLaneWalksAPath(from) == rowLaneWalksAPath(to);
+  static bool _sameKind(LaneKeys from, _PastedLane to) =>
+      from.walksAPath == to.home.walksAPath(to.laneId);
 
   /// The names the range's keys carry — null for an unnamed one.
   Set<String?> _laneRangeKeyNames() => {
-    for (final (:key, laneId: _, canRove: _, takesSides: _)
+    for (final (:key, laneId: _, canRove: _, takesSides: _, walksAPath: _)
         in _laneRangeKeys())
       key.name,
   };
@@ -2065,7 +2068,8 @@ class LaneVerbs {
   /// header draws where its members disagree). A name tag's flag holds by
   /// nature, so its keys are not asked (#902).
   List<({KeySide incoming, KeyExit outgoing})> get laneKeySidesForSelection => [
-    for (final (:key, :takesSides, laneId: _, canRove: _) in _laneRangeKeys())
+    for (final (:key, :takesSides, laneId: _, canRove: _, walksAPath: _)
+        in _laneRangeKeys())
       if (takesSides) (incoming: key.incoming, outgoing: key.outgoing),
   ];
 
@@ -2074,8 +2078,9 @@ class LaneVerbs {
   /// lit where they agree as the sides are. Empty where no covered key
   /// walks a path: the row is offered and refused.
   List<KeyPath> get laneKeyPathsForSelection => [
-    for (final (:laneId, :key, canRove: _, takesSides: _) in _laneRangeKeys())
-      if (rowLaneWalksAPath(laneId)) key.path,
+    for (final (:key, :walksAPath, laneId: _, canRove: _, takesSides: _)
+        in _laneRangeKeys())
+      if (walksAPath) key.path,
   ];
 
   /// Whether each key the range covers that may give its time up roves
@@ -2084,7 +2089,8 @@ class LaneVerbs {
   /// covered key may — the first and the last keep their time, and only a
   /// position's keys walk a path: the row is offered and refused.
   List<bool> get laneKeyRovingForSelection => [
-    for (final (:key, :canRove, laneId: _, takesSides: _) in _laneRangeKeys())
+    for (final (:key, :canRove, laneId: _, takesSides: _, walksAPath: _)
+        in _laneRangeKeys())
       if (canRove) key.roving,
   ];
 
@@ -3007,14 +3013,15 @@ typedef _LaneEdits = ({
 typedef _LaneKeyNaming = ({String? name, bool adopt});
 
 /// A key the lane range covers ([LaneVerbs._laneRangeKeys]): the lane it is
-/// on, the key, whether it may give its time up there (I-89 ④), and
-/// whether it takes the key window's sides — a name tag's flag holds by
-/// nature (#902).
+/// on, the key, whether it may give its time up there (I-89 ④), whether
+/// it takes the key window's sides — a name tag's flag holds by nature
+/// (#902) — and whether its lane's keys walk a path ([LaneHome.walksAPath]).
 typedef _LaneRangeKey = ({
   String laneId,
   PropertyKey<Object?> key,
   bool canRove,
   bool takesSides,
+  bool walksAPath,
 });
 
 /// A layer's lanes a band holds ([LaneVerbs.bandLanesRiding]): the row the

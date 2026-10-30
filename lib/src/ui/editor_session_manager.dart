@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../services/flutter_test_run.dart';
 import '../services/font_library_service.dart';
+import '../services/fx_plugins/installed_fx_plugins.dart';
 import '../services/persistence/failed_save_copies.dart';
 import '../services/persistence/media_staging_store.dart';
 import '../services/persistence/open_project_file.dart';
@@ -212,6 +213,7 @@ class EditorSessionManager extends ChangeNotifier
     AudioConformStore? audioConformStore,
     MediaStagingStore? mediaStagingStore,
     FontLibraryService? fontLibrary,
+    InstalledFxPlugins? fxPlugins,
     ImageCache? frameworkImageCache,
     FailedSaveCopies? failedSaveCopies,
     AppClipboard? appClipboard,
@@ -225,6 +227,8 @@ class EditorSessionManager extends ChangeNotifier
        _appClipboard = appClipboard ?? AppClipboard(),
        _fileIsOpenElsewhere = fileIsOpenElsewhere,
        _ownsAppSettings = appSettings == null,
+       fxPlugins = fxPlugins ?? InstalledFxPlugins(),
+       _ownsFxPlugins = fxPlugins == null,
        appSettings = appSettings ?? (EditorAppSettings()..restore()),
        repository = ProjectRepository(initialProject: initialProject) {
     historyManager = HistoryManager()
@@ -318,6 +322,15 @@ class EditorSessionManager extends ChangeNotifier
   /// one is shared by every open project and released by the shell that
   /// made it (I-7); a session built without one made it for itself.
   final bool _ownsAppSettings;
+
+  /// The fx plugins this device has installed (I-132) — the app's one,
+  /// which every open project lists from, or this session's own, empty,
+  /// where none was handed it (a test's).
+  final InstalledFxPlugins fxPlugins;
+
+  /// Whether [fxPlugins] is this session's own to let go of, as
+  /// [_ownsAppSettings] says of [appSettings].
+  final bool _ownsFxPlugins;
 
   /// The program + notation languages — a value-only channel (widgets
   /// subscribe where they read strings; no whole-session notify).
@@ -1649,6 +1662,9 @@ class EditorSessionManager extends ChangeNotifier
     () {
       if (_ownsAppSettings) {
         appSettings.dispose();
+      }
+      if (_ownsFxPlugins) {
+        fxPlugins.dispose();
       }
     },
     visibilitySolo.dispose,

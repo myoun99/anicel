@@ -146,7 +146,7 @@ void main() {
         ..selectCut(const CutId('a'))
         ..standOnRow(const LayerRowAddress(LayerId('a-conte'))),
     );
-    for (final kind in EffectKind.values) {
+    for (final kind in effectKindsAddedAlone) {
       expect(
         addOf(session, storyboard, kind).enabled,
         addOf(timeline.session, timeline, kind).enabled,
@@ -217,7 +217,7 @@ void main() {
         'lands on the track, not on the row the timeline holds', () {
       final session = standingAt(const TrackRowAddress(trackId), 3);
       final storyboard = StoryboardToolbarPanelContext(session);
-      for (final kind in EffectKind.values) {
+      for (final kind in effectKindsAddedAlone) {
         expect(
           addOf(session, storyboard, kind).enabled,
           !kind.drawsItsOwnPicture,
@@ -256,7 +256,7 @@ void main() {
     void expectGrey(EditorSessionManager session) {
       final storyboard = StoryboardToolbarPanelContext(session);
       expect(storyboard.effectChainHolder, isNull);
-      for (final kind in EffectKind.values) {
+      for (final kind in effectKindsAddedAlone) {
         expect(
           addOf(session, storyboard, kind).enabled,
           isFalse,

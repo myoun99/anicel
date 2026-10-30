@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
@@ -395,6 +396,86 @@ void main() {
       now().transformTrack.position.keys[8]?.value,
       CanvasPoint(x: 1170, y: 300),
     );
+  });
+
+  // I-132: a plugin's ids are its own — 'center' is a number of this one
+  // and 'amount' its point, where a radial blur has them the other way
+  // round. A copy is what its own row said of it, never its id.
+  group('a plugin\'s lane goes as its plugin says, whatever its id', () {
+    final plugin = FxPluginDescription.fromJson({
+      'spec': 1,
+      'id': 'com.example.swap',
+      'name': 'Swap',
+      'vendor': 'Example',
+      'version': '1',
+      'can': ['cpu'],
+      'params': [
+        {
+          'id': 'center',
+          'kind': 'number',
+          'label': 'Centre',
+          'default': 0,
+          'min': 0,
+          'max': 10,
+        },
+        {'id': 'amount', 'kind': 'point', 'label': 'Amount'},
+      ],
+    })!;
+    late EffectId fx;
+    setUp(() {
+      s.effectsAndFx.addEffectToActiveLayer(EffectKind.plugin, plugin: plugin);
+      fx = now().effects.single.id;
+    });
+
+    void typed(String lane, int frame, String value) =>
+        s.laneVerbs.setLaneValueAt(
+          before.id,
+          effectLaneId(fx, lane),
+          frame,
+          value,
+          frameIsGlobal: false,
+          description: 'Type',
+          scaleLinked: false,
+        );
+
+    test('its number goes on an opacity as the number it shows', () {
+      typed('center', 4, '5');
+      standOn(effectLaneId(fx, 'center'), at: 4);
+      pill.copyFrame();
+
+      standOn('opacity', at: 9);
+      pill.pasteIndependentFrame();
+
+      expect(
+        now().transformTrack.opacity.keys[9]?.value,
+        closeTo(0.05, 1e-9),
+      );
+    });
+
+    test('its point is a place — on a cel number\'s Scale neither paste '
+        'lit, on a layer\'s Position as it is', () {
+      s.effectsAndFx.addEffectToActiveLayer(EffectKind.celNumber);
+      final number = now().effects.last.id;
+      typed('amount', 3, '1170, 300');
+      standOn(effectLaneId(fx, 'amount'), at: 3);
+      pill.copyFrame();
+      final scale = now().effects.last.stand.scale;
+
+      standOn(effectLaneId(number, 'scale'), at: 8);
+      expect(
+        (pill.canPasteIndependentFrame, pill.canPasteLinkedFrame),
+        (false, false),
+      );
+      pill.pasteIndependentFrame();
+      expect(now().effects.last.stand.scale, scale);
+
+      standOn('position', at: 8);
+      pill.pasteIndependentFrame();
+      expect(
+        now().transformTrack.position.keys[8]?.value,
+        CanvasPoint(x: 1170, y: 300),
+      );
+    });
   });
 
   // I-132-Q10: a colour key's colour is a colour lane as a cel number's ink

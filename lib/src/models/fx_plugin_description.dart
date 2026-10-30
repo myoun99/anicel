@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'layer_effect.dart';
+import 'effect_parameter_spec.dart';
 
 /// What an fx plugin says of itself — its description (anicel_fx_plugin.h),
 /// read STRICTLY: a description that is not whole is no plugin, because
@@ -14,7 +14,7 @@ import 'layer_effect.dart';
 /// ⛔Nothing a description leaves out is made up here: a number or an angle
 /// without its range, a menu without its words is refused, not given one.
 final class FxPluginDescription {
-  const FxPluginDescription({
+  FxPluginDescription({
     required this.id,
     required this.name,
     required this.vendor,
@@ -99,6 +99,19 @@ final class FxPluginDescription {
     'params': [for (final spec in parameters) _jsonOf(spec)],
   };
 
+  /// The description as one text — what tells two apart: an effect keeps
+  /// its plugin's ([LayerEffect.plugin]), so a project read back must hold
+  /// the effect it saved, and the composite's caches compare it.
+  late final String _said = jsonEncode(toJson());
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FxPluginDescription && other._said == _said;
+
+  @override
+  int get hashCode => _said.hashCode;
+
   /// An id, a parameter's or a plugin's: letters, digits and `_ . -` —
   /// nothing a lane's address (`fx:<id>:<parameter>`) or a file name
   /// would read otherwise.
@@ -120,6 +133,7 @@ final class FxPluginDescription {
           EffectParameterSpec(
             id: id,
             label: label,
+            ownWords: true,
             defaultValue: initial.toDouble(),
             minimum: low.toDouble(),
             maximum: high.toDouble(),
@@ -136,17 +150,31 @@ final class FxPluginDescription {
           EffectParameterSpec.color(
             id: id,
             label: label,
+            ownWords: true,
             defaultValue: _argbOf(r, g, b, a),
           ),
-        ('point', _) => EffectParameterSpec.point(id: id, label: label),
+        ('point', _) => EffectParameterSpec.point(
+          id: id,
+          label: label,
+          ownWords: true,
+        ),
         ('checkbox', {'default': final bool on}) =>
-          EffectParameterSpec.flag(id: id, label: label, on: on),
+          EffectParameterSpec.flag(
+            id: id,
+            label: label,
+            on: on,
+            ownWords: true,
+          ),
         ('menu', {
           'choices': final List<dynamic> words,
           'default': final int initial,
         }) =>
           _menuOf(id, label, words, initial),
-        ('layer', _) => EffectParameterSpec.layer(id: id, label: label),
+        ('layer', _) => EffectParameterSpec.layer(
+          id: id,
+          label: label,
+          ownWords: true,
+        ),
         _ => null,
       };
     }
@@ -165,7 +193,7 @@ final class FxPluginDescription {
         'id': final String choice,
         'label': final String said,
       } when _isName(choice)) {
-        choices.add(EffectChoice(id: choice, label: said));
+        choices.add(EffectChoice(id: choice, label: said, ownWords: true));
       } else {
         return null;
       }
@@ -176,6 +204,7 @@ final class FxPluginDescription {
     return EffectParameterSpec.choice(
       id: id,
       label: label,
+      ownWords: true,
       choices: List.unmodifiable(choices),
       defaultValue: initial,
     );

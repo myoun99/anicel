@@ -4,7 +4,7 @@ import '../../models/key_mark.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
-import '../../models/transform_track.dart' show TransformPose, laneWalksAPath;
+import '../../models/transform_track.dart' show TransformPose;
 import '../text/app_strings.dart';
 import '../text/model_vocabulary.dart';
 import '../text/readout_text.dart';
@@ -62,23 +62,6 @@ String effectLaneId(EffectId effectId, String parameterId) =>
     parameterId: rest.substring(separator + 1),
   );
 }
-
-/// Whether the keys of effect lane [laneId] walk a path: where an effect
-/// stands its picture, and a point — a Position of its own — as a
-/// transform's Position does ([laneWalksAPath]); a parameter's never do.
-/// Asked of the id alone, as a copy's lanes and a range's are — no
-/// parameter is named as such a lane is ([effectStandLanes],
-/// [effectPointParameters]).
-bool effectLaneWalksAPath(String laneId) =>
-    switch (parseEffectLaneId(laneId)) {
-      (effectId: _, parameterId: final lane?)
-          when effectStandLanes.contains(lane) =>
-        laneWalksAPath(lane),
-      (effectId: _, parameterId: final lane?)
-          when effectPointParameters.contains(lane) =>
-        laneWalksAPath('position'),
-      _ => false,
-    };
 
 /// The effect of [effects] the CANVAS's box drives while [laneId] is stood
 /// on, and the [lane] of it whose keys the box moves — R5 #10, 「an fx
@@ -159,7 +142,7 @@ List<PropertyLaneRow> effectPropertyLanes(
         // F-37 (유저 2026-09-15, F-37-Q1: 「전부 번역 — 레인 이름도
         // 한국어로」): the effect's name in the program language — the same
         // words its Add entry reads.
-        label: effect.kind.labelFor(AppText.language),
+        label: effect.labelFor(AppText.language),
         // AE's per-effect eyeball: the header carries this effect's own
         // on/off switch as the shared `fx` glyph. A bypassed effect keeps
         // its keys and says so HERE, rather than looking like a broken
@@ -183,7 +166,7 @@ List<PropertyLaneRow> effectPropertyLanes(
     if (effect.kind.drawsItsOwnPicture) {
       rows.addAll(_standLanes(effect, standAt));
     }
-    for (final (index, spec) in effect.kind.parameters.indexed) {
+    for (final (index, spec) in effect.specs.indexed) {
       // A point is a Position of its own: the transform's row of it.
       if (effect.points[spec.id] case final point?) {
         final lane = spec.id;

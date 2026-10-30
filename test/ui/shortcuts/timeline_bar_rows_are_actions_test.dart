@@ -58,7 +58,7 @@ final barRows = [
   EditorActionIds.layerAttachSyncedAbove,
   EditorActionIds.layerAttachSyncedBelow,
   EditorActionIds.frameSelectRowSpan,
-  for (final kind in EffectKind.values) addEffectActionId(kind),
+  for (final kind in effectKindsAddedAlone) addEffectActionId(kind),
 ];
 
 /// The shared pill's colour edit list — actions since 2026-09-13 and I-55,
@@ -153,7 +153,7 @@ void main() {
         reason: 'a button of the pill, not a row of a menu',
       );
       expect(ids.sublist(theSwitch + 1), [
-        for (final kind in EffectKind.values) addEffectActionId(kind),
+        for (final kind in effectKindsAddedAlone) addEffectActionId(kind),
       ]);
     });
 

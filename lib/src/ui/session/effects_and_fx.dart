@@ -1,6 +1,7 @@
 import '../../models/attached_layer_resolve.dart'
     show attachRowWearsBaseComposite;
 import '../../models/cut_id.dart';
+import '../../models/fx_plugin_description.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
@@ -104,11 +105,14 @@ class EffectsAndFx {
   /// SE row's active row is its cut's projection, whose keys sit on the
   /// cut's frames — appending to that would write them back onto the
   /// track's row at the wrong frames.
-  void addEffectToActiveLayer(EffectKind kind) {
+  void addEffectToActiveLayer(
+    EffectKind kind, {
+    FxPluginDescription? plugin,
+  }) {
     if (canAddEffectToActiveLayer(kind)) {
       _appendToActiveLayer([
-        (id) => LayerEffect.defaults(id: id, kind: kind),
-      ], description: 'Add ${kind.label}');
+        (id) => LayerEffect.defaults(id: id, kind: kind, plugin: plugin),
+      ], description: 'Add ${LayerEffect.labelOf(kind, plugin)}');
     }
   }
 
@@ -120,10 +124,19 @@ class EffectsAndFx {
         TrackChain(:final trackId) => canAddEffectToTrack(trackId, kind),
       };
 
-  /// Adds an effect of [kind] to [holder]'s chain.
-  void addEffect(EffectChainHolder holder, EffectKind kind) => switch (holder) {
-    ActiveRowChain() => addEffectToActiveLayer(kind),
-    TrackChain(:final trackId) => addEffectToTrack(trackId, kind),
+  /// Adds an effect of [kind] to [holder]'s chain — of [plugin], for a
+  /// plugin's ([EffectKind.plugin]).
+  void addEffect(
+    EffectChainHolder holder,
+    EffectKind kind, {
+    FxPluginDescription? plugin,
+  }) => switch (holder) {
+    ActiveRowChain() => addEffectToActiveLayer(kind, plugin: plugin),
+    TrackChain(:final trackId) => addEffectToTrack(
+      trackId,
+      kind,
+      plugin: plugin,
+    ),
   };
 
   /// Whether [holder]'s chain takes any of [effects] — each by the gate an
@@ -424,11 +437,15 @@ class EffectsAndFx {
 
   /// Adds an effect to the V row's chain, as [addEffectToActiveLayer] does
   /// to a layer's.
-  void addEffectToTrack(TrackId trackId, EffectKind kind) {
+  void addEffectToTrack(
+    TrackId trackId,
+    EffectKind kind, {
+    FxPluginDescription? plugin,
+  }) {
     if (canAddEffectToTrack(trackId, kind)) {
       _appendToTrack(trackId, [
-        (id) => LayerEffect.defaults(id: id, kind: kind),
-      ], description: 'Add ${kind.label}');
+        (id) => LayerEffect.defaults(id: id, kind: kind, plugin: plugin),
+      ], description: 'Add ${LayerEffect.labelOf(kind, plugin)}');
     }
   }
 

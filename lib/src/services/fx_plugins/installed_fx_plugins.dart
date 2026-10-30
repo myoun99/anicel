@@ -128,6 +128,26 @@ class InstalledFxPlugins extends ChangeNotifier {
     return FxPluginInstalled(description, replaced: previous?.description);
   }
 
+  /// Takes plugin [id] off this device: its files go, and an effect of it
+  /// keeps its lanes as one of a plugin this device has not
+  /// (🗣️I-132-Q28). The index is written first, so a device stopped in
+  /// between is left a stray file, never a plugin without one.
+  Future<void> uninstall(String id) async {
+    final gone = _plugins
+        .where((plugin) => plugin.description.id == id)
+        .firstOrNull;
+    if (gone == null) {
+      return;
+    }
+    _plugins = List.unmodifiable([
+      for (final plugin in _plugins)
+        if (!identical(plugin, gone)) plugin,
+    ]);
+    notifyListeners();
+    await _service.saveIndex(_plugins);
+    await _service.delete(gone);
+  }
+
   @override
   void dispose() {
     _disposed = true;
