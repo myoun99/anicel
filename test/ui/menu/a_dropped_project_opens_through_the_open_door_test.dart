@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/models/layer_effect.dart' show EffectKind;
 import 'package:anicel/src/services/persistence/recent_projects.dart';
@@ -157,6 +158,11 @@ void main() {
         matching: find.text(AppText.strings.fxPluginsNotOnDevice(['Glow'])),
       ),
       findsOneWidget,
+    );
+    // One line, every name in it (「없는 플러그인: 이름」).
+    expect(
+      AppStrings.of(AppLanguage.en).fxPluginsNotOnDevice(['Glow', 'Haze']),
+      'Plugins not on this device: Glow, Haze',
     );
   });
 

@@ -131,7 +131,9 @@ void main() {
     final installed = await installing([plugin('here')]);
 
     expect(await missingIn(installed), ['on.track', 'on.se', 'on.cut']);
-    expect((await installed.missingFrom(wearing)).first.version, '1');
+    final missing = await installed.missingFrom(wearing);
+    expect(missing.first.version, '1');
+    expect(() => missing.add(plugin('else')), throwsUnsupportedError);
 
     await installed.install(
       fileOf(plugin('on.se', version: '3')),
