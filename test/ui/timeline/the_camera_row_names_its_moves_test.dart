@@ -57,6 +57,27 @@ void main() {
       expect((word.from, word.to, word.word), (0, 6, 'TRACK UP'));
     });
 
+    // 🗣️I-89 (유저 2026-10-10): 「그리고 회전은 모아트기준대로 하자」.
+    test('a turn is written 回転, before the move it rides with', () {
+      final lane = cameraUnionHeader(
+        keyed({
+          0: at(0),
+          4: CameraPose(center: CanvasPoint(x: 0, y: 0), rotationDegrees: 30),
+          8: CameraPose(
+            center: CanvasPoint(x: 0, y: 0),
+            zoom: 0.5,
+            rotationDegrees: 60,
+          ),
+        }).track,
+        defById: CameraInstructionSet.standard.defById,
+      );
+
+      expect([for (final word in lane.stretchWords) word.word], [
+        '回転',
+        '回転 T.B',
+      ]);
+    });
+
     test('a term the vocabulary has lost is written by its id', () {
       final lane = cameraUnionHeader(
         keyed({0: at(0), 4: at(9)}).track,
