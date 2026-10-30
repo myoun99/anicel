@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/dialogs/start_number_window.dart';
+import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 import '../../helpers/number_pad_keyboard.dart';
 
 /// 🗣️I-18 (유저): 「누르면 숫자 편집하는 창 나와서 숫자만 입력가능. 드래그로
@@ -121,5 +122,19 @@ void main() {
       await tester.pumpAndSettle();
     }
     expect(shown(tester), '0');
+  });
+
+  // 🗣️F-507 (유저 2026-10-29): 「자동이름조정 왼쪽정렬인거 이상하니
+  // 중앙정렬」.
+  testWidgets('its number stands in the middle of the window', (tester) async {
+    await open(tester);
+    expect(
+      tester.getCenter(find.byType(DragValueLabel)).dx,
+      moreOrLessEquals(
+        tester
+            .getCenter(find.byKey(const ValueKey<String>('auto-name-dialog')))
+            .dx,
+      ),
+    );
   });
 }

@@ -40,3 +40,19 @@ Future<void> openThePadsKeyboard(WidgetTester tester) async {
   await tester.pump();
   await tester.pump();
 }
+
+/// Types [text] as a hand types the number of the readout [keyValue]
+/// (`DragValueLabel`, `WindowNumber`): its pencil, the pad's number pressed
+/// for the keyboard, the text, Enter. Settles once the pad is gone.
+Future<void> typeOnThePad(
+  WidgetTester tester,
+  String keyValue,
+  String text,
+) async {
+  await tester.tap(find.byKey(ValueKey<String>('$keyValue-edit')));
+  await tester.pumpAndSettle();
+  await openThePadsKeyboard(tester);
+  await tester.enterText(find.byKey(ValueKey<String>('$keyValue-input')), text);
+  await tester.testTextInput.receiveAction(TextInputAction.done);
+  await tester.pumpAndSettle();
+}

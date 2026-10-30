@@ -4,14 +4,15 @@ import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
-import '../widgets/drag_value_label.dart';
+import '../widgets/window_number.dart';
 
 /// 자동 이름 지정's one question (I-18): the number the first block takes.
 ///
 /// 🗣️I-18 (유저): 「누르면 숫자 편집하는 창 나와서 숫자만 입력가능. 드래그로
 /// 조절하거나 수동입력. 기본값은 1인상태」. The number is the app's operable
-/// readout ([DragValueLabel]) — a drag along it moves it, its ± step it,
-/// its pencil types it, digits alone — and it opens at 1 EVERY time:
+/// readout, the one every number window asks with ([WindowNumber]) — a drag
+/// along it moves it, its ± step it, its pencil types it, digits alone —
+/// and it opens at 1 EVERY time:
 /// 「기본값은 1인상태」 names where it starts, not a number it keeps.
 ///
 /// Pops the number on Apply, nothing on Cancel.
@@ -33,13 +34,6 @@ class _StartNumberWindowState extends State<StartNumberWindow> {
   /// sign, so the drag does not reach a number the field could not take.
   void _setStart(int value) => setState(() => _start = value < 0 ? 0 : value);
 
-  void _typed(String text) {
-    final typed = int.tryParse(text);
-    if (typed != null) {
-      _setStart(typed);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final strings = AppText.strings;
@@ -55,16 +49,10 @@ class _StartNumberWindowState extends State<StartNumberWindow> {
       body: AppWindowField(
         label: strings.autoNameStartField,
         emphasized: true,
-        child: DragValueLabel(
+        child: WindowNumber(
           keyValue: 'auto-name-start',
-          text: '$_start',
-          unitsPerPixel: 1 / 8,
-          width: 96,
-          textStyle: Theme.of(context).textTheme.titleMedium,
-          digitsOnly: true,
-          steps: true,
-          onDragDelta: (delta) => _setStart(_start + delta.round()),
-          onEditSubmit: _typed,
+          value: _start,
+          onChanged: _setStart,
         ),
       ),
       actions: [

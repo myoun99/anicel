@@ -14,6 +14,8 @@ import 'package:anicel/src/ui/dialogs/se_instance_dialog.dart';
 import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
+import '../../helpers/number_pad_keyboard.dart';
+
 /// The preview's paper — the timeline's own row painter.
 TimelineRowCellsPainter previewCellsOf(WidgetTester tester) =>
     tester
@@ -22,6 +24,16 @@ TimelineRowCellsPainter previewCellsOf(WidgetTester tester) =>
             )
             .painter!
         as TimelineRowCellsPainter;
+
+/// The number a window number [key] shows (`WindowNumber`).
+String shownIn(WidgetTester tester, String key) => tester
+    .widget<Text>(
+      find.descendant(
+        of: find.byKey(ValueKey<String>(key)),
+        matching: find.byType(Text),
+      ),
+    )
+    .data!;
 
 /// Opens [dialog] through a real route so pops deliver results.
 Future<void> _openDialog<T>(
@@ -206,10 +218,8 @@ void main() {
       ),
       (r) => result = r,
     );
-    final offset = find.byKey(const ValueKey('se-dialogue-offset-field'));
-    final koma = find.byKey(const ValueKey('se-koma-per-glyph-field'));
-    String typed(Finder field) =>
-        tester.widget<TextField>(field).controller!.text;
+    const offset = 'se-dialogue-offset-field';
+    const koma = 'se-koma-per-glyph-field';
     DialogueFitText preview() => tester.widget<DialogueFitText>(
       find.descendant(
         of: find.byKey(const ValueKey<String>('instance-edit-preview')),
@@ -217,7 +227,7 @@ void main() {
       ),
     );
 
-    expect((typed(offset), typed(koma)), ('1', '2'));
+    expect((shownIn(tester, offset), shownIn(tester, koma)), ('1', '2'));
     expect(preview().spacing, opened);
     expect(
       preview().frames,
@@ -225,24 +235,26 @@ void main() {
       reason: 'the block as long as it is — the spacing counts in its frames',
     );
 
-    await tester.enterText(offset, '4');
-    await tester.enterText(koma, '5');
-    await tester.pump();
+    await typeOnThePad(tester, offset, '4');
+    await typeOnThePad(tester, koma, '5');
     expect(preview().spacing, typedIn);
 
-    await tester.enterText(koma, '');
-    await tester.pump();
+    for (var step = 0; step < 5; step += 1) {
+      await tester.tap(find.byKey(const ValueKey<String>('$koma-step-down')));
+      await tester.pump();
+    }
+    const kept = SeDialogueSpacing(offset: 4, komaPerGlyph: 1);
     expect(
-      preview().spacing.komaPerGlyph,
-      5,
-      reason: 'a field typed empty keeps what it last counted',
+      (shownIn(tester, koma), preview().spacing),
+      ('1', kept),
+      reason: 'a koma per glyph moved under one shows the one it keeps',
     );
 
     await tester.tap(
       find.byKey(const ValueKey<String>('instance-edit-ok-button')),
     );
     await tester.pumpAndSettle();
-    expect(result!.spacing, typedIn);
+    expect(result!.spacing, kept);
   });
 
   testWidgets('SE dialog: a new block opens on the standard — from its '
@@ -253,10 +265,11 @@ void main() {
       const SeInstanceDialog(creating: true),
       (r) => result = r,
     );
-    String typed(String key) =>
-        tester.widget<TextField>(find.byKey(ValueKey(key))).controller!.text;
     expect(
-      (typed('se-dialogue-offset-field'), typed('se-koma-per-glyph-field')),
+      (
+        shownIn(tester, 'se-dialogue-offset-field'),
+        shownIn(tester, 'se-koma-per-glyph-field'),
+      ),
       ('0', '3'),
     );
     await tester.tap(
@@ -267,25 +280,19 @@ void main() {
   });
 
   testWidgets('SE dialog: the window opens with the keyboard on the '
-      'dialogue — the counts beside it do not take it', (tester) async {
+      'dialogue', (tester) async {
     await _openDialog<SeInstanceDialogResult>(
       tester,
       const SeInstanceDialog(creating: true),
       (_) {},
     );
-    bool focused(String key) => tester
-        .widget<EditableText>(
-          find.descendant(
-            of: find.byKey(ValueKey<String>(key)),
-            matching: find.byType(EditableText),
-          ),
-        )
-        .focusNode
-        .hasFocus;
-    expect(focused('se-dialogue-field'), isTrue);
-    for (final key in ['se-dialogue-offset-field', 'se-koma-per-glyph-field']) {
-      expect(focused(key), isFalse, reason: key);
-    }
+    final dialogue = tester.widget<EditableText>(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('se-dialogue-field')),
+        matching: find.byType(EditableText),
+      ),
+    );
+    expect(dialogue.focusNode.hasFocus, isTrue);
   });
 
   testWidgets('SE dialog cancel pops nothing', (tester) async {
