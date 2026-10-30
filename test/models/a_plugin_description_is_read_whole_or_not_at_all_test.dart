@@ -133,6 +133,9 @@ void main() {
         'can': ['cpu', 3],
       },
       'an id a lane would misread': {...plugin([]), 'id': 'com:example'},
+      'a parameter of an id a lane would misread': plugin([
+        amount({'id': 'glow:amount'}),
+      ]),
       'a number with no range': plugin([amount({'max': null})]),
       'a default past its range': plugin([amount({'default': 101})]),
       'a kind the app has not': plugin([amount({'kind': 'curve'})]),
