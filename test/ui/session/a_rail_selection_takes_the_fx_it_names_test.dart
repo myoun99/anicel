@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -306,6 +307,32 @@ void main() {
 
     expect(_stack(session), ['y']);
     expect(_effectsOf(session, 'y'), [EffectKind.blur]);
+  });
+
+  testWidgets('a plugin\'s effect is listed by its plugin\'s name (I-132)', (
+    tester,
+  ) async {
+    final session = _session();
+    session.effectsAndFx.addEffectToActiveLayer(
+      EffectKind.plugin,
+      plugin: FxPluginDescription.fromJson({
+        'spec': 1,
+        'id': 'com.example.glow',
+        'name': 'Glow',
+        'vendor': 'Example',
+        'version': '1',
+        'can': ['cpu'],
+        'params': [],
+      }),
+    );
+    _select(session, [
+      const LayerRowAddress(LayerId('x')),
+      _header(session, EffectKind.plugin),
+    ]);
+
+    await pressDelete(tester, session);
+
+    expect(find.text('y · Glow'), findsOneWidget);
   });
 
   /// 🗣️F-476-Q1 (유저 2026-10-27): 「b + 복제도」 — the pill's copy, cut,

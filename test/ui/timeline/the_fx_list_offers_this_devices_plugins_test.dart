@@ -241,6 +241,31 @@ void main() {
     expect(rowOf(session, 'a.b').enabled, isFalse);
   });
 
+  test('a row asks its gate of a plugin\'s kind — one that numbers no '
+      'drawing takes a plugin, and no cel number', () async {
+    final session = sessionOn(
+      await deviceWith(['a.b']),
+      also: [
+        Layer(
+          id: const LayerId('adjust'),
+          name: 'Adjust',
+          kind: LayerKind.adjustment,
+          frames: const [],
+        ),
+      ],
+    )..selectLayer(const LayerId('adjust'));
+
+    expect(
+      listOf(session)
+          .whereType<PanelFlyoutItem>()
+          .singleWhere((row) => row.keyValue == 'add-effect-celNumber')
+          .enabled,
+      isFalse,
+      reason: '⛔전제',
+    );
+    expect(rowOf(session, 'a.b').enabled, isTrue);
+  });
+
   test('its row\'s delete takes it off the device, and an effect of it '
       'keeps its lanes', () async {
     final device = await deviceWith(['a.b', 'c.d']);

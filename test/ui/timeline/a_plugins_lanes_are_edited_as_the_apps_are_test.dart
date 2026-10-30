@@ -1,5 +1,6 @@
 import 'package:anicel/src/models/fx_plugin_description.dart';
 import 'package:anicel/src/models/layer_effect.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_editing.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -33,6 +34,16 @@ void main() {
         'label': 'Tint',
         'default': [1, 0, 0, 1],
       },
+      {
+        'id': 'mode',
+        'kind': 'menu',
+        'label': 'Mode',
+        'choices': [
+          {'id': 'soft', 'label': 'Soft'},
+          {'id': 'hard', 'label': 'Hard'},
+        ],
+        'default': 0,
+      },
     ],
   })!;
   const id = EffectId('fx-glow');
@@ -50,8 +61,31 @@ void main() {
 
     expect(rows.first.isGroupHeader, isTrue);
     expect(rows.first.label, 'Glow');
-    expect(rows.skip(1).map((row) => row.laneId), [amount, tint]);
-    expect(rows.skip(1).map((row) => row.label), ['Glow Amount', 'Tint']);
+    expect(rows.skip(1).map((row) => row.laneId), [
+      amount,
+      tint,
+      effectLaneId(id, 'mode'),
+    ]);
+    expect(rows.skip(1).map((row) => row.label), [
+      'Glow Amount',
+      'Tint',
+      'Mode',
+    ]);
+  });
+
+  test('its menu\'s value steps between its keys, as an app menu\'s does', () {
+    final keyed = effect.withParameter(
+      'mode',
+      EffectParameter(
+        value: 0,
+        track: PropertyTrack<double>(
+          keys: {0: const PropertyKey(0), 8: const PropertyKey(1)},
+        ),
+      ),
+    );
+
+    expect(effectParameterValueAtTime([keyed], id, 'mode', 4), 0);
+    expect(effectParameterValueAtTime([keyed], id, 'mode', 8), 1);
   });
 
   test('a typed number is held to the plugin\'s range, not the app\'s', () {
