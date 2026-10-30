@@ -93,6 +93,8 @@ void main() {
       windowBucket: bucket,
       axis: Axis.horizontal,
       laneExtent: timelineLayerRowHeight,
+      playhead: null,
+      frameCount: 0,
     ),
   );
 
@@ -250,6 +252,8 @@ void main() {
                 windowBucket: bucket,
                 axis: Axis.horizontal,
                 laneExtent: timelineLayerRowHeight,
+                playhead: null,
+                frameCount: 0,
               ),
               edits: null,
               mode: LaneGraphMode.value,

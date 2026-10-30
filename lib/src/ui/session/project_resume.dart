@@ -91,7 +91,8 @@ class ProjectResume {
   final bool showSeconds;
 
   /// The header graphs standing open — how tall, plotting what, enlarged or
-  /// not, their pen up or not — and the lanes pinned to them (I-89 ③): a
+  /// not, their pen up or not, their transform box shown or not, their snap
+  /// on or not — and the lanes pinned to them (I-89 ③): a
   /// view setting kept here as the zooms are (유저 답 F-360-Q1 「보기 설정처럼
   /// — 저장은 되고 언두는 안 됨」). Turning one is no edit, so no undo step
   /// takes it back and nothing marks the film unsaved, and the file still
@@ -127,6 +128,7 @@ class ProjectResume {
             if (graph.enlarged) 'enlarged': true,
             if (graph.pen) 'pen': true,
             if (!graph.transformBox) 'transformBox': false,
+            if (graph.snap) 'snap': true,
           },
       },
     if (laneGraphs.pinned.isNotEmpty) 'pinnedLanes': [...laneGraphs.pinned],
@@ -187,7 +189,7 @@ class ProjectResume {
 
   /// The header graph [json] holds — a part it does not hold readably
   /// stands as on a graph nobody has sized, plotted, enlarged, taken the
-  /// pen up in or hidden the transform box of.
+  /// pen up in, hidden the transform box of or turned the snap on in.
   static LaneGraph _laneGraph(Map<String, Object?> json) => LaneGraph(
     extent: _positive(json['extent']),
     mode:
@@ -198,6 +200,7 @@ class ProjectResume {
     enlarged: json['enlarged'] == true,
     pen: json['pen'] == true,
     transformBox: json['transformBox'] != false,
+    snap: json['snap'] == true,
   );
 
   /// [value] as a zoom or an offset can be read back: a finite number above

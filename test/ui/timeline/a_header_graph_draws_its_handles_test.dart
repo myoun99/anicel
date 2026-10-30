@@ -108,6 +108,8 @@ void main() {
       windowBucket: bucket,
       axis: axis,
       laneExtent: timelineLayerRowHeight,
+      playhead: null,
+      frameCount: 0,
     ),
   );
 

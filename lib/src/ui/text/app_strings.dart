@@ -2104,6 +2104,8 @@ enum AppStrings {
   String get laneGraphPenOn => _s('laneGraphPenOn');
   String get laneGraphTransformBox => _s('laneGraphTransformBox');
   String get laneGraphTransformBoxOn => _s('laneGraphTransformBoxOn');
+  String get laneGraphSnap => _s('laneGraphSnap');
+  String get laneGraphSnapOn => _s('laneGraphSnapOn');
   String get railClipOn => _s('railClipOn');
   String get railClip => _s('railClip');
   String get tlLayerMark => _s('tlLayerMark');
@@ -3390,6 +3392,8 @@ enum AppStrings {
     'laneGraphPenOn': 'Pen (on)',
     'laneGraphTransformBox': 'Transform box',
     'laneGraphTransformBoxOn': 'Transform box (on)',
+    'laneGraphSnap': 'Snap',
+    'laneGraphSnapOn': 'Snap (on)',
     'railClipOn': 'Clip to layer below (on)',
     'railClip': 'Clip to layer below',
     'tlLayerMark': 'Layer mark',
@@ -5168,6 +5172,8 @@ enum AppStrings {
     'laneGraphPenOn': 'ペン（オン）',
     'laneGraphTransformBox': '変形ボックス',
     'laneGraphTransformBoxOn': '変形ボックス（オン）',
+    'laneGraphSnap': 'スナップ',
+    'laneGraphSnapOn': 'スナップ（オン）',
     'railClipOn': '下のレイヤーでクリッピング（オン）',
     'railClip': '下のレイヤーでクリッピング',
     'tlLayerMark': 'レイヤーマーク',
@@ -6967,6 +6973,8 @@ enum AppStrings {
     'laneGraphPenOn': '펜 (켜짐)',
     'laneGraphTransformBox': '변형 상자',
     'laneGraphTransformBoxOn': '변형 상자 (켜짐)',
+    'laneGraphSnap': '스냅',
+    'laneGraphSnapOn': '스냅 (켜짐)',
     'railClipOn': '아래 레이어로 클리핑 (켜짐)',
     'railClip': '아래 레이어로 클리핑',
     'tlLayerMark': '레이어 마크',
@@ -8919,6 +8927,8 @@ enum AppStrings {
     'laneGraphPenOn': 'Plume (activée)',
     'laneGraphTransformBox': 'Boîte de transformation',
     'laneGraphTransformBoxOn': 'Boîte de transformation (activée)',
+    'laneGraphSnap': 'Magnétisme',
+    'laneGraphSnapOn': 'Magnétisme (activé)',
     'railClipOn': 'Masque d’écrêtage sur le calque inférieur (activé)',
     'railClip': 'Masque d’écrêtage sur le calque inférieur',
     'tlLayerMark': 'Repère de calque',
@@ -10675,6 +10685,8 @@ enum AppStrings {
     'laneGraphPenOn': '钢笔（开）',
     'laneGraphTransformBox': '变换框',
     'laneGraphTransformBoxOn': '变换框（开）',
+    'laneGraphSnap': '吸附',
+    'laneGraphSnapOn': '吸附（开）',
     'railClipOn': '用下一图层剪贴（开）',
     'railClip': '用下一图层剪贴',
     'tlLayerMark': '图层标记',

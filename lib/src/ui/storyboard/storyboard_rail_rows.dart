@@ -2352,6 +2352,7 @@ class _StoryboardRailRows {
       enlarge: (key) => verbs.enlarge(held(key)),
       pen: (key) => verbs.pen(held(key)),
       transformBox: (key) => verbs.transformBox(held(key)),
+      snap: (key) => verbs.snap(held(key)),
     );
   }
 
@@ -2618,6 +2619,29 @@ class _StoryboardRailRows {
     return null;
   }
 
+  /// The grid this rail's header graphs are drawn in (I-89 ①), a lane
+  /// [metrics] high, their keys edited and picked as [drawn]'s lanes' are —
+  /// on this rail's frames, the track's: its playhead the global one, its
+  /// end the movie's, where the end line stands (graph-key-drag-snaps).
+  LaneGraphGrid _laneGraphGridOf(
+    TimelineGridMetrics metrics,
+    _LanesDrawn drawn,
+  ) => (
+    frameAxis: (
+      geometry: _state._frameGeometry,
+      windowBucket: _state._horizontalWindowBucket,
+      axis: Axis.horizontal,
+      laneExtent: metrics.layerRowHeight,
+      playhead: _state.widget.playheadFrame,
+      frameCount: movieEndFrames(_state.widget.project),
+    ),
+    frameAxisController: _state._horizontalController,
+    keyPrefix: 'storyboard',
+    verbs: _laneGraphVerbs,
+    laneEdit: drawn.laneEdit,
+    laneRange: drawn.laneRange,
+  );
+
   /// [carrierId]'s [lanes] on the frame side as the table lays them
   /// (I-89 ①): each lane's strip at its extent, and an open graph's lanes
   /// as ONE graph across their unit — the timeline's frame side
@@ -2631,7 +2655,7 @@ class _StoryboardRailRows {
     List<PropertyLaneRow> lanes,
     _LanesDrawn drawn,
   ) {
-    final (:laneEdit, :laneRange, :linesOf, :strip) = drawn;
+    final (laneEdit: _, laneRange: _, :linesOf, :strip) = drawn;
     final seating = _laneSeating;
     final first = lanes.isEmpty
         ? null
@@ -2642,19 +2666,7 @@ class _StoryboardRailRows {
     final metrics = TimelineGridMetrics(
       layerRowHeight: _state._rowHeights.lane,
     );
-    final LaneGraphGrid grid = (
-      frameAxis: (
-        geometry: _state._frameGeometry,
-        windowBucket: _state._horizontalWindowBucket,
-        axis: Axis.horizontal,
-        laneExtent: metrics.layerRowHeight,
-      ),
-      frameAxisController: _state._horizontalController,
-      keyPrefix: 'storyboard',
-      verbs: _laneGraphVerbs,
-      laneEdit: laneEdit,
-      laneRange: laneRange,
-    );
+    final grid = _laneGraphGridOf(metrics, drawn);
     List<Widget> laid(List<TimelineDisplayRow> rows) => laneGraphFrameSide(
       (
         rows: rows.sublist(first, first + lanes.length),

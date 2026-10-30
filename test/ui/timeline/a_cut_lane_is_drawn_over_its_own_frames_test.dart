@@ -79,6 +79,8 @@ void main() {
       windowBucket: null,
       axis: Axis.horizontal,
       laneExtent: timelineLayerRowHeight,
+      playhead: null,
+      frameCount: 0,
     ),
   );
 

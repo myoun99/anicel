@@ -5,8 +5,8 @@ import 'package:flutter/foundation.dart'
 /// group or the lane it was pressed on (`laneGroupKey`): a group's graph
 /// on or off, a lane pinned to every graph or let go, what a graph plots,
 /// how far it stands along the rail, a graph enlarged over every other
-/// row or let back, its pen taken up or put down, and its transform box
-/// shown or hidden.
+/// row or let back, its pen taken up or put down, its transform box
+/// shown or hidden, and its snap turned on or off.
 typedef LaneGraphVerbs = ({
   ValueChanged<String> toggle,
   ValueChanged<String> togglePin,
@@ -15,6 +15,7 @@ typedef LaneGraphVerbs = ({
   ValueChanged<String> enlarge,
   ValueChanged<String> pen,
   ValueChanged<String> transformBox,
+  ValueChanged<String> snap,
 });
 
 /// What a header graph plots: the values, or how fast they change — a
@@ -39,7 +40,8 @@ double laneGraphMostExtent(double view, double rowExtent) =>
 
 /// ONE group's open header graph (I-89 ③): how far it stands along the
 /// rail, what it plots, whether it is enlarged over the rest, whether its
-/// pen is up, and whether its transform box is shown.
+/// pen is up, whether its transform box is shown, and whether its snap is
+/// on.
 @immutable
 class LaneGraph {
   const LaneGraph({
@@ -48,6 +50,7 @@ class LaneGraph {
     this.enlarged = false,
     this.pen = false,
     this.transformBox = true,
+    this.snap = false,
   });
 
   /// The grip's extent; null until a grip has said one.
@@ -84,6 +87,16 @@ class LaneGraph {
   /// window.
   final bool transformBox;
 
+  /// Whether its SNAP is on (AE's 「Snap」 in its graph editor,
+  /// graph-key-drag-snaps): a key carried snaps to the times and the values
+  /// of the keys about it, to the playhead and to the frames' two ends,
+  /// with a line drawn where it snaps — and Ctrl held (⌘ on a Mac) turns
+  /// it the other way for as long as it is held ([LaneGraphPicture]).
+  ///
+  /// ⚠️Mine: off, as AE's snap button starts — and one graph's, kept as
+  /// [pen] is.
+  final bool snap;
+
   /// How far the graph stands on a rail of [rowExtent] rows: the grip's,
   /// or [laneGraphOpeningRows] rows — so a graph nobody has sized follows
   /// the OS text size its rows do.
@@ -96,12 +109,14 @@ class LaneGraph {
     bool? enlarged,
     bool? pen,
     bool? transformBox,
+    bool? snap,
   }) => LaneGraph(
     extent: extent ?? this.extent,
     mode: mode ?? this.mode,
     enlarged: enlarged ?? this.enlarged,
     pen: pen ?? this.pen,
     transformBox: transformBox ?? this.transformBox,
+    snap: snap ?? this.snap,
   );
 
   @override
@@ -111,11 +126,12 @@ class LaneGraph {
       other.mode == mode &&
       other.enlarged == enlarged &&
       other.pen == pen &&
-      other.transformBox == transformBox;
+      other.transformBox == transformBox &&
+      other.snap == snap;
 
   @override
   int get hashCode =>
-      Object.hash(extent, mode, enlarged, pen, transformBox);
+      Object.hash(extent, mode, enlarged, pen, transformBox, snap);
 }
 
 /// THE RAIL'S HEADER GRAPHS (I-89 ③) — a view setting, kept in the file

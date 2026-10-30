@@ -80,6 +80,12 @@ const ledger = <String, Why>{
   'timeline/timeline_lane_graph.dart | '
           "'\$keyPrefix-lane-graph-box-\$groupKey'":
       Why.aRow,
+  // Its snap (AE's 「Snap」, graph-key-drag-snaps): it turns the snap of the
+  // graph it stands in on or off, and Ctrl held (Cmd on a Mac) during a
+  // carry turns it the other way.
+  'timeline/timeline_lane_graph.dart | '
+          "'\$keyPrefix-lane-graph-snap-\$groupKey'":
+      Why.aRow,
   'timeline/timeline_lane_rows.dart | '
           "'\$_keyPrefix-lane-group-fx-\${layer.id}-\${lane.laneId}'":
       Why.aRow,

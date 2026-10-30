@@ -700,8 +700,22 @@ import '../../tool/refactor/clone_scan.dart';
 /// which is `_requireSeRow` now.
 /// 🔬Measured on the lane over master (`992516ed9`, at 86): this one added,
 /// none gone.
+///
+/// 87 → 86 (2026-10-30, graph-key-drag-snaps — AE's Snap, a header graph's
+/// third switch beside its pen and its transform box). The pair 88 → 89
+/// kept by the rule of three left:
+///
+///     lib/src/ui/session/session_row_button_presses.dart
+///       SessionRowButtonPresses.penLaneGraph
+///       SessionRowButtonPresses.transformBoxLaneGraph
+///
+/// The snap is the third switch that note waited for, and the three turn
+/// through one body now (`_turnLaneGraphSwitch`), each naming the field it
+/// reads and the one it writes — no flag says which switch.
+/// 🔬Measured on the lane over master (`f32fe4b06`, at 87): none added,
+/// this one gone.
 void main() {
-  const ceiling = 87;
+  const ceiling = 86;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

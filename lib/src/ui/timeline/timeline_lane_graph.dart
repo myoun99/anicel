@@ -7,7 +7,6 @@ import 'package:flutter/material.dart' show Icons;
 import 'package:flutter/widgets.dart';
 
 import '../../core/neighbour_pairs.dart';
-import '../../core/one_way.dart';
 import '../../models/key_mark.dart' show KeyMark;
 import '../../models/key_side.dart'
     show
@@ -53,12 +52,18 @@ import 'lane_graph.dart';
 import 'lane_graph_box_stretch.dart';
 import 'lane_graph_seats.dart'
     show LaneGraphLine, laneGraphDrawnLanes, laneGraphGuests;
+import 'lane_graph_snap.dart'
+    show
+        LaneGraphCarry,
+        LaneGraphSnap,
+        LaneGraphSnapKey,
+        LaneGraphSnapLine,
+        laneGraphUnsnapped;
 import 'layer_label_controls.dart' show layerMarkColor;
 import 'property_lane_model.dart';
 import 'timeline_cells_row_facts.dart' show TimelineCellsRowGrid;
 import 'timeline_drag_preview.dart' show timelineDragPreviewLayerFor;
 import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
-import 'timeline_exposure_comma_drag_policy.dart' show commaDragFrameDelta;
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_range_gesture.dart'
     show
@@ -164,12 +169,17 @@ List<Widget> laneGraphFrameSide(
 /// with it), the window over it and which way they run — what its picture and
 /// its handles read — and how far a lane's row of them reaches across: the
 /// room its keys are marked in, which a graph's are marked in too
-/// (F-367-Q3).
+/// (F-367-Q3). And what a key carried snaps to along them besides the keys
+/// (graph-key-drag-snaps, AE's snap): the frame the grid's [playhead]
+/// stands on — none where it keeps none — and their end, [frameCount]
+/// frames on from frame 0 — none where it is 0.
 typedef LaneGraphFrames = ({
   ValueNotifier<TimelineFrameGeometry> geometry,
   ValueListenable<int>? windowBucket,
   Axis axis,
   double laneExtent,
+  ValueListenable<int?>? playhead,
+  int frameCount,
 });
 
 /// What a header graph reads of the grid it is drawn in (I-89 ③): its
@@ -202,6 +212,8 @@ LaneGraphGrid laneGraphGridOf(
     windowBucket: grid.windowBucket,
     axis: grid.axis,
     laneExtent: grid.metrics.layerRowHeight,
+    playhead: grid.hooks.frameCursor,
+    frameCount: grid.hooks.playbackFrameCount,
   ),
   frameAxisController: grid.frameAxisController,
   keyPrefix: grid.keyPrefix,
@@ -357,6 +369,7 @@ class TimelineLaneGraph extends StatelessWidget {
                 mode: seat.graph.mode,
                 pen: seat.graph.pen,
                 transformBox: seat.graph.transformBox,
+                snap: seat.graph.snap,
               ),
             ),
           ),
@@ -395,6 +408,8 @@ class TimelineLaneGraph extends StatelessWidget {
             onTransformBox: verbs == null
                 ? null
                 : () => verbs.transformBox(seat.groupKey),
+            snap: seat.graph.snap,
+            onSnap: verbs == null ? null : () => verbs.snap(seat.groupKey),
           ),
         ),
         if (guests.isNotEmpty)
@@ -470,6 +485,12 @@ class TimelineLaneGraph extends StatelessWidget {
 /// keys inside it ([TimelineLaneRangeCallbacks.onSelectRows]). A tap there
 /// lets every key go, as a tap on a lane's band does.
 ///
+/// And its SNAP (graph-key-drag-snaps, AE's snap in its graph editor): with
+/// it on — or off, with Ctrl held (⌘ on a Mac) for as long as it is held —
+/// a key carried snaps to the keys about it, the playhead and the frames'
+/// ends, a line drawn where it does ([LaneGraphCarry]). A box's handle
+/// pulled stretches unsnapped: Ctrl says something else there.
+///
 /// While a handle or a key is in hand the picture is held to what its
 /// lines were fitted to when it was taken ([TimelineLaneGraphPainter.held]).
 class LaneGraphPicture extends StatefulWidget {
@@ -483,6 +504,7 @@ class LaneGraphPicture extends StatefulWidget {
     required this.mode,
     this.pen = false,
     this.transformBox = true,
+    this.snap = false,
   });
 
   final List<LaneGraphLine> own;
@@ -505,6 +527,9 @@ class LaneGraphPicture extends StatefulWidget {
 
   /// Whether its graph's transform box is shown ([LaneGraph.transformBox]).
   final bool transformBox;
+
+  /// Whether its graph's snap is on ([LaneGraph.snap]).
+  final bool snap;
 
   @override
   State<LaneGraphPicture> createState() => _LaneGraphPictureState();
@@ -569,6 +594,18 @@ class _KeyInHand {
   /// The keys it lifts, as they stood when the move began — none until it
   /// does ([_LaneGraphLift.keysOf]).
   List<_KeyLifted> lifted = const [];
+
+  /// How the hand carries it, and what it snaps to — none until the move
+  /// begins ([_LaneGraphLift.carryOf]) — and where it has snapped.
+  LaneGraphCarry? carry;
+  LaneGraphSnap snap = laneGraphUnsnapped;
+
+  /// The line it draws where it has snapped ([LaneGraphSnapLine]) — none
+  /// until the move begins.
+  CustomPainter? get snapLine => switch (carry) {
+    final carry? => LaneGraphSnapLine(carry, snap),
+    null => null,
+  };
 
   /// The row the key is on — what a grid holds built while it is carried.
   TimelineRowAddress get row =>
@@ -660,7 +697,11 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
       child: OwningAxisGrip(
         axis: null,
         configure: _configure,
-        child: CustomPaint(painter: painter, child: const SizedBox.expand()),
+        child: CustomPaint(
+          painter: painter,
+          foregroundPainter: _keyInHand?.snapLine,
+          child: const SizedBox.expand(),
+        ),
       ),
     );
     final lanes = widget.lanes;
@@ -901,14 +942,17 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     }
     inHand.moving = true;
     inHand.lifted = _lift.keysOf(inHand);
+    inHand.carry = _lift.carryOf(inHand, _painter);
     lanes.onGripTaken?.call(inHand.row);
   }
 
   /// The selection goes along the frames as far as the hand has, by whole
-  /// frames — the band's own step ([commaDragFrameDelta]) — and the view
-  /// pans where the hand reaches its edge, as under a band's drag (D42).
-  /// Across, its keys' values go as far as the hand ([_valuesRaised]).
-  /// With Shift held, one of the two alone ([_keptToOneWay]).
+  /// frames, and the view pans where the hand reaches its edge, as under a
+  /// band's drag (D42). Across, its keys' values go as far as the hand
+  /// ([_valuesRaised]). With Shift held, one of the two alone; with the
+  /// snap on — or off, with Ctrl held — snapped ([LaneGraphCarry]). Both
+  /// keys are read at every move, as the canvas reads its modifier: held
+  /// before the press and pressed during the drag are one question.
   void _carryTo(_KeyInHand inHand, DragUpdateDetails details) {
     if (!inHand.moving) {
       return;
@@ -917,18 +961,19 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
       _stretchTo(inHand, box, details);
       return;
     }
-    final axis = widget.frameAxis.axis;
     edgeAutoPanApply(
       context: context,
       globalPosition: details.globalPosition,
-      axis: axis,
+      axis: widget.frameAxis.axis,
     );
-    final moved = _keptToOneWay(details.localPosition - inHand.press);
-    final frames = commaDragFrameDelta(
-      accumulatedDelta: partAlong(axis, moved),
-      frameCellExtent: widget.frameAxis.geometry.value.frameCellExtent,
+    final (:frames, :rise, :snap) = inHand.carry!.carriedBy(
+      details.localPosition - inHand.press,
+      oneWay: ModifierKeys.isShiftPressed,
+      snapping: widget.snap != ModifierKeys.isControlOrCommandPressed,
     );
-    final rise = partAcross(axis, moved);
+    if (snap != inHand.snap) {
+      setState(() => inHand.snap = snap);
+    }
     if (frames == inHand.frames && rise == inHand.rise) {
       return;
     }
@@ -1005,23 +1050,6 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
           ),
       ]),
     );
-  }
-
-  /// [moved] as a carry takes it: with Shift held, the one way it has gone
-  /// further alone — along the frames or across the graph (I-3 ③, AE's
-  /// Shift-drag in its graph editor). Read at every move, as the canvas
-  /// reads its modifier: held before the press and pressed during the drag
-  /// are one question.
-  Offset _keptToOneWay(Offset moved) {
-    if (!ModifierKeys.isShiftPressed) {
-      return moved;
-    }
-    final axis = widget.frameAxis.axis;
-    final (along, across) = keptToOneWay(
-      partAlong(axis, moved),
-      partAcross(axis, moved),
-    );
-    return offsetAlong(axis, along: along, across: across);
   }
 
   /// What [inHand]'s lifted keys say once the hand has gone
@@ -1333,6 +1361,33 @@ class _LaneGraphLift {
     ];
   }
 
+  /// How the hand carries [inHand]'s key ([LaneGraphCarry]), snapping it
+  /// (graph-key-drag-snaps) to every key [painter] marks that the
+  /// selection does not carry — read when the move begins, as [keysOf]
+  /// reads them — and to the playhead and the ends of the picture's frames.
+  LaneGraphCarry carryOf(
+    _KeyInHand inHand,
+    TimelineLaneGraphPainter painter,
+  ) {
+    final frameAxis = picture.frameAxis;
+    LaneGraphSnapKey snappedBy(LaneGraphKey key) => (
+      time: TimelineLaneGraphPainter._timeOf(key.line, key.frame),
+      across: partAcross(frameAxis.axis, key.at),
+    );
+    return LaneGraphCarry(
+      axis: frameAxis.axis,
+      frames: frameAxis.geometry,
+      alongOf: laneGraphAlong,
+      key: snappedBy(inHand.key),
+      keys: [
+        for (final key in painter.keysIn(size))
+          if (!painter._picks(key)) snappedBy(key),
+      ],
+      playhead: frameAxis.playhead,
+      frameCount: frameAxis.frameCount,
+    );
+  }
+
   /// The marks of [picked] a stretch raises across the graph (I-3 ⑥), each
   /// with its key's numbers and the range its line is fitted to. A speed
   /// graph marks no key, so it boxes none to stretch.
@@ -1474,8 +1529,9 @@ const double _graphToolsGap = 6;
 
 /// A graph's own tools, at the view's start (I-89 ③, the mock's 5판): what
 /// it plots — its values, or how fast they change — its pen (I-3 ④), its
-/// transform box shown or hidden (AE's 「Show Transform Box」), and the
-/// button that enlarges it over every other row or lets it back (③D).
+/// transform box shown or hidden (AE's 「Show Transform Box」), its snap
+/// (AE's 「Snap」, graph-key-drag-snaps), and the button that enlarges it
+/// over every other row or lets it back (③D).
 class LaneGraphTools extends StatelessWidget {
   const LaneGraphTools({
     super.key,
@@ -1489,6 +1545,8 @@ class LaneGraphTools extends StatelessWidget {
     this.onPen,
     this.transformBox = true,
     this.onTransformBox,
+    this.snap = false,
+    this.onSnap,
   });
 
   /// The grid's key prefix and the graph's group, which its pills' keys
@@ -1522,13 +1580,19 @@ class LaneGraphTools extends StatelessWidget {
   /// Null where the host hands the graph no verbs, as [onPlot].
   final VoidCallback? onTransformBox;
 
-  /// The pills, the pen and the box are laid out in the room they are
-  /// given, but never in less than the pen's and the box's own.
+  /// Whether the graph's snap is on — its button on ([LaneGraph.snap]).
+  final bool snap;
+
+  /// Null where the host hands the graph no verbs, as [onPlot].
+  final VoidCallback? onSnap;
+
+  /// The pills, the pen, the box and the snap are laid out in the room
+  /// they are given, but never in less than the three buttons' own.
   static BoxConstraints _roomForTheButtons(BoxConstraints room) =>
       room.copyWith(
         maxWidth: math.max(
           room.maxWidth,
-          2 * (_graphToolsGap + AppIconButtonSize.strip.maxWidth),
+          3 * (_graphToolsGap + AppIconButtonSize.strip.maxWidth),
         ),
       );
 
@@ -1545,16 +1609,16 @@ class LaneGraphTools extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // ⚠️Mine: in a view too narrow for every button, the pen and the
-            // box give their width up after the pills — cut where their room
-            // ends — and the enlarge button keeps all of its own, as it did
-            // before the pen stood beside it.
+            // ⚠️Mine: in a view too narrow for every button, the pen, the
+            // box and the snap give their width up after the pills — cut
+            // where their room ends — and the enlarge button keeps all of
+            // its own, as it did before the pen stood beside it.
             Flexible(
               child: ConstraintsTransformBox(
                 alignment: AlignmentDirectional.centerStart,
                 clipBehavior: Clip.hardEdge,
                 constraintsTransform: _roomForTheButtons,
-                child: _pillsPenAndBox(strings),
+                child: _pillsAndSwitches(strings),
               ),
             ),
             const SizedBox(width: _graphToolsGap),
@@ -1576,8 +1640,8 @@ class LaneGraphTools extends StatelessWidget {
     );
   }
 
-  /// The plot's two pills, and the pen and the box beside them.
-  Widget _pillsPenAndBox(AppStrings strings) {
+  /// The plot's two pills, and the pen, the box and the snap beside them.
+  Widget _pillsAndSwitches(AppStrings strings) {
     final onPlot = this.onPlot;
     PillItem pill(LaneGraphMode plotted, String label) => PillItem(
       keyValue: '$keyPrefix-lane-graph-plot-${plotted.name}-$groupKey',
@@ -1619,6 +1683,18 @@ class LaneGraphTools extends StatelessWidget {
           isSelected: transformBox,
           icon: const Icon(Icons.crop_free),
           onPressed: onTransformBox,
+        ),
+        const SizedBox(width: _graphToolsGap),
+        // ⚠️Mine: AE's glyph is a magnet, which Material does not draw; this
+        // one is two arrows drawn to a line — what a key carried does where
+        // it snaps.
+        AppIconButton(
+          keyValue: '$keyPrefix-lane-graph-snap-$groupKey',
+          tooltip: snap ? strings.laneGraphSnapOn : strings.laneGraphSnap,
+          size: AppIconButtonSize.strip,
+          isSelected: snap,
+          icon: const Icon(Icons.vertical_align_center),
+          onPressed: onSnap,
         ),
       ],
     );

@@ -63,6 +63,8 @@ void main() {
           windowBucket: bucket,
           axis: Axis.horizontal,
           laneExtent: timelineLayerRowHeight,
+          playhead: null,
+          frameCount: 0,
         ),
       );
       int readsOfAPaint() {

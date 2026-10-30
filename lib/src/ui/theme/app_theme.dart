@@ -186,6 +186,14 @@ abstract final class AppColors {
   /// now, held at the mid-tone that survives both substrates.
   static const Color beatLine = Color(0xFF7C8184);
 
+  /// LINE — where a key carried across a header graph SNAPS
+  /// (graph-key-drag-snaps): AE draws its snap line orange.
+  ///
+  /// ⚠️Mine: this orange. No colour of the app's said 「snapped」 before
+  /// it, and it is drawn over a graph's lines of every colour, on either
+  /// palette.
+  static const Color snapLine = Color(0xFFFF9500);
+
   /// INK — primary text and icons.
   static Color get text => _palette.text;
 

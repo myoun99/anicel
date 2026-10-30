@@ -1024,6 +1024,8 @@ void main() {
     'laneGraphPenOn': (s) => s.laneGraphPenOn,
     'laneGraphTransformBox': (s) => s.laneGraphTransformBox,
     'laneGraphTransformBoxOn': (s) => s.laneGraphTransformBoxOn,
+    'laneGraphSnap': (s) => s.laneGraphSnap,
+    'laneGraphSnapOn': (s) => s.laneGraphSnapOn,
     'railClipOn': (s) => s.railClipOn,
     'railClip': (s) => s.railClip,
     'tlLayerMark': (s) => s.tlLayerMark,
