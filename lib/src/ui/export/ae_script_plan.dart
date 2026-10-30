@@ -1,6 +1,7 @@
 import '../../models/attached_layer_resolve.dart' show fxCarrierOf;
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
+import '../../models/export_cel_kind.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_folder.dart';
@@ -16,6 +17,7 @@ import '../../services/export/ae_script.dart';
 import '../canvas/canvas_look.dart' show CanvasCamera;
 import 'ae_keyframe_data.dart' show aeCameraSampleOf;
 import 'export_cel_group_plan.dart';
+import 'export_cels_selection.dart' show exportCelKindOf;
 
 /// The After Effects project [plan]'s cels are laid into — the AE Script
 /// tab's script (ae-script-export).
@@ -30,6 +32,8 @@ import 'export_cel_group_plan.dart';
 /// one the app composites as one picture ([folderNeedsCompositeBuffer]) is
 /// a comp of its own. Q2 「날것으로 — 이펙트 없이」: no effect is carried.
 /// Q4 「넣는다 — 앱이 놓은 그대로 WAV 로」: the camera comp sounds the cut.
+/// Q3 「AE 가이드 레이어로 따로」: a direction row and the camera's path are
+/// guides of the canvas comp — seen while working, never rendered.
 ///
 /// A transform is the app's own, AE's order (`layerPoseMatrix`): anchor,
 /// scale, turn, position — a folder's over its rows' by parenting. Values
@@ -72,7 +76,15 @@ List<AeComp> aeCompsOf({
       width: cut.canvasSize.width,
       height: cut.canvasSize.height,
       frames: run.frames,
-      layers: laying.stack(null),
+      layers: [
+        ...laying.stack(null),
+        if (run.cameraPath case final path?)
+          AeLayer(
+            name: path,
+            source: AeStill(path: path, frame: 0, length: run.frames),
+            guide: true,
+          ),
+      ],
     );
     comps
       ..add(canvas)
@@ -82,10 +94,10 @@ List<AeComp> aeCompsOf({
 }
 
 /// A cut as its comps run: [frames] long — its sheet's rows, the のりしろ an
-/// O.L asks included, as its XDTS (`cutSheetFrameCount`) — and the sound
-/// heard along them: a file beside the script, or null where the cut
-/// sounds nothing.
-typedef AeCutRun = ({int frames, String? sound});
+/// O.L asks included, as its XDTS (`cutSheetFrameCount`) — the sound heard
+/// along them, and its camera's path drawn over its canvas: each a file
+/// beside the script, or null where the cut has none.
+typedef AeCutRun = ({int frames, String? sound, String? cameraPath});
 
 /// The cuts [aeCompsOf] lays a camera comp for, in its order — the ones a
 /// caller writes a sound for.
@@ -388,6 +400,8 @@ class _CanvasLaying {
       parent: nulls[row.folderId],
       blend: row.blendMode,
       enabled: cut.layers.rowVisible(row),
+      // A direction is seen over the shot, never in it (Q3).
+      guide: exportCelKindOf(row, cut.layers) == ExportCelKind.direction,
       transform: _transformOf(
         carrier,
         opacity: (frame) =>

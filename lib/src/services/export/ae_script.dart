@@ -59,12 +59,14 @@ sealed class AeLayerSource {
 }
 
 /// A picture beside the script, at [path] relative to it, shown from
-/// [frame] for one frame — a cel of a row's cel comp.
+/// [frame] for [length] frames — a cel of a row's cel comp, one frame; a
+/// guide drawn once for the cut, all of it.
 final class AeStill extends AeLayerSource {
-  const AeStill({required this.path, required this.frame});
+  const AeStill({required this.path, required this.frame, this.length = 1});
 
   final String path;
   final int frame;
+  final int length;
 }
 
 /// Another comp of the script, shown whole over this one — or, with
@@ -102,10 +104,16 @@ class AeLayer {
     this.enabled = true,
     this.parent,
     this.timeRemap = const [],
+    this.guide = false,
   });
 
   final String name;
   final AeLayerSource source;
+
+  /// Whether it is After Effects' guide layer: seen in the comp's window,
+  /// never in a render — 🗣️ae-script-export-Q3 (유저 2026-10-16) 「AE 가이드
+  /// 레이어로 따로」, for the camera's path and the directions.
+  final bool guide;
 
   /// Null leaves After Effects' own: the picture centred in the comp.
   final AeTransform? transform;
@@ -308,9 +316,9 @@ class _AeScriptWriter {
   void _writeLayer(String compId, AeLayer layer, Map<AeLayer, String> layers) {
     final id = layers[layer]!;
     switch (layer.source) {
-      case AeStill(:final path, :final frame):
+      case AeStill(:final path, :final frame, :final length):
         _out.writeln(
-          '  $id = still($compId, ${_footageOf(path)}, $frame);',
+          '  $id = still($compId, ${_footageOf(path)}, $frame, $length);',
         );
       case AeCompSource(comp: final source):
         _out.writeln('  $id = $compId.layers.add(${_comps[source]});');
@@ -342,6 +350,9 @@ class _AeScriptWriter {
     }
     if (!layer.enabled) {
       _out.writeln('  $id.enabled = false;');
+    }
+    if (layer.guide) {
+      _out.writeln('  $id.guideLayer = true;');
     }
   }
 
@@ -468,10 +479,10 @@ const String _helpers = r'''
     item.parentFolder = parts;
     return item;
   }
-  function still(into, item, frame) {
+  function still(into, item, frame, length) {
     var layer = into.layers.add(item);
     layer.inPoint = t(frame);
-    layer.outPoint = t(frame + 1);
+    layer.outPoint = t(frame + length);
     return layer;
   }
   function tf(layer, name) {

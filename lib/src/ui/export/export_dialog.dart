@@ -2919,10 +2919,13 @@ class ExportDialogState extends State<ExportDialog> {
   }
 
   /// The AE Script tab's run: the cels the list shows bright, written as
-  /// the tab writes them ([AeScriptExportSpec.written]), then the script
-  /// that lays them out in After Effects beside them ([aeCompsOf]).
+  /// the tab writes them ([AeScriptExportSpec.written]), the camera's path
+  /// of each cut it lays as a guide ([AeScriptExportSpec.guideCamera]), then
+  /// the script that lays them out in After Effects beside them
+  /// ([aeCompsOf]).
   Future<String> _exportAeScript() {
-    final spec = _specs.aeScript.written;
+    final ae = _specs.aeScript;
+    final spec = ae.written;
     final plan = _celGroupPlan();
     final renderer = ExportFrameRenderer.forFormat(
       session: _session,
@@ -2931,25 +2934,58 @@ class ExportDialogState extends State<ExportDialog> {
     );
     final guideInk = guideColorOf(context);
     final cels = plan.writtenCels;
+    final cuts = aeCutsOf(_session.repository.requireProject(), plan);
+    // What goes beside the cels is named by its cut, bumped past the cels'
+    // names and each other's — as the disk tells names apart.
+    final taken = {for (final cel in cels) cel.fileName.toLowerCase()};
+    String claim(String name) =>
+        claimedOutputName(name, taken, keyOf: (name) => name.toLowerCase());
+    final paths = <({Cut cut, String fileName})>[
+      if (ae.guideCamera)
+        for (final cut in cuts)
+          if (CameraPath.of(cut, _session.camera.cameraFrameSize) != null)
+            (
+              cut: cut,
+              fileName: claim(
+                '${sanitizeExportFileComponent(cut.name)}_camera.png',
+              ),
+            ),
+    ];
     return _runImageExport(
-      count: cels.length,
-      renderImage: (index) =>
-          renderer.renderCelGroup(
-            cels[index],
-            spec.sizeMode,
-            guideColor: guideInk,
-          ),
-      fileNameFor: (index) => cels[index].fileName,
-      thenWrite: [() => _writeAeScript(plan, scope: spec.scope)],
+      count: cels.length + paths.length,
+      renderImage: (index) => index < cels.length
+          ? renderer.renderCelGroup(
+              cels[index],
+              spec.sizeMode,
+              guideColor: guideInk,
+            )
+          : renderer.cameraPathOf(paths[index - cels.length].cut) ??
+                Future.value(),
+      fileNameFor: (index) => index < cels.length
+          ? cels[index].fileName
+          : paths[index - cels.length].fileName,
+      thenWrite: [
+        () => _writeAeScript(
+          plan,
+          scope: spec.scope,
+          cameraPaths: {
+            for (final (:cut, :fileName) in paths) cut.id: fileName,
+          },
+          claim: claim,
+        ),
+      ],
       says: _Tally.files,
     );
   }
 
-  /// The script of [plan]'s cels, named after what [scope] covers, and the
-  /// sound of each cut it lays beside it ([_writeAeSounds]).
+  /// The script of [plan]'s cuts, named after what [scope] covers, over
+  /// the [cameraPaths] already written — and the sound of each cut beside
+  /// it ([_writeAeSounds]), named by [claim].
   Future<void> _writeAeScript(
     ExportCelGroupPlan plan, {
     required ExportScopeKind scope,
+    required Map<CutId, String> cameraPaths,
+    required String Function(String name) claim,
   }) async {
     final project = _session.repository.requireProject();
     final name = unnamedExportName(
@@ -2964,6 +3000,7 @@ class ExportDialogState extends State<ExportDialog> {
     final sounds = await _writeAeSounds(
       aeCutsOf(project, plan),
       framesOf: framesOf,
+      claim: claim,
     );
     final script = AeScript(
       name: name,
@@ -2977,7 +3014,11 @@ class ExportDialogState extends State<ExportDialog> {
           poseOf: _session.camera.cameraPoseForCut,
           frameSize: _session.camera.cameraFrameSize,
         ),
-        runOf: (cut) => (frames: framesOf(cut), sound: sounds[cut.id]),
+        runOf: (cut) => (
+          frames: framesOf(cut),
+          sound: sounds[cut.id],
+          cameraPath: cameraPaths[cut.id],
+        ),
       ),
     );
     final file = File(_joinLocation('$name.jsx'));
@@ -2986,20 +3027,16 @@ class ExportDialogState extends State<ExportDialog> {
   }
 
   /// Each of [cuts]' sound as the app plays it over the frames its comps
-  /// run ([framesOf]), a WAV beside the script by the cut's name — keyed by
-  /// the cut. A cut that sounds nothing has none.
+  /// run ([framesOf]), a WAV beside the script by the cut's name ([claim])
+  /// — keyed by the cut. A cut that sounds nothing has none.
   Future<Map<CutId, String>> _writeAeSounds(
     Iterable<Cut> cuts, {
     required int Function(Cut cut) framesOf,
+    required String Function(String name) claim,
   }) async {
     final sounds = <CutId, String>{};
-    final taken = <String>{};
     for (final cut in cuts) {
-      final fileName = claimedOutputName(
-        '${sanitizeExportFileComponent(cut.name)}.wav',
-        taken,
-        keyOf: (name) => name.toLowerCase(),
-      );
+      final fileName = claim('${sanitizeExportFileComponent(cut.name)}.wav');
       final run = [
         for (var frame = 0; frame < framesOf(cut); frame += 1)
           ExportFrameTask(cut: cut, frameIndex: frame),
@@ -4119,6 +4156,28 @@ class ExportDialogState extends State<ExportDialog> {
                   strings.exPaperLabel,
                   spec.applyPaper,
                   () => spec.copyWith(applyPaper: !spec.applyPaper),
+                ),
+              ],
+            ),
+          ],
+          // Where the Cels tab applies its paper, the AE Script tab lays its
+          // guides: the camera's path over the canvas comp (Q3). Its
+          // directions are a kind above, laid as guides too.
+          if (_tab == ExportTab.aeScript) ...[
+            const SizedBox(height: 6),
+            _celRuleCaption(strings.exLayGuides),
+            const SizedBox(height: 3),
+            PillStrip(
+              items: [
+                _pill(
+                  keyValue: 'export-ae-camera-path',
+                  label: strings.cameraPath,
+                  selected: _specs.aeScript.guideCamera,
+                  onPick: () => _updateSpec(
+                    _specs.aeScript.copyWith(
+                      guideCamera: !_specs.aeScript.guideCamera,
+                    ),
+                  ),
                 ),
               ],
             ),

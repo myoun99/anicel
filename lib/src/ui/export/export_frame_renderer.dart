@@ -1707,11 +1707,31 @@ class ExportFrameRenderer {
   CameraOverlayPass? _cameraWorkOver(
     ExportCelGroupTask task,
     CameraView view,
-  ) {
-    final cut = task.listedCut;
-    final path = task.cameraLaid
-        ? CameraPath.of(cut, session.camera.cameraFrameSize)
-        : null;
+  ) => task.cameraLaid ? _cameraPathOver(task.listedCut, view) : null;
+
+  /// [cut]'s camera path alone, on nothing, over its whole canvas — what a
+  /// cel of it in the canvas's size lays with the camera's work
+  /// ([_cameraWorkOver]); null where the camera moves nothing. The AE
+  /// Script tab's guide over the canvas comp (ae-script-export-Q3).
+  Future<ui.Image>? cameraPathOf(Cut cut) {
+    final view = cameraViewOver(cut.canvasSize.canvasRect);
+    final pass = _cameraPathOver(cut, view);
+    if (pass == null) {
+      return null;
+    }
+    return _transparentRenderService.renderThroughCamera(
+      nodes: const [],
+      pose: view.pose,
+      cameraFrameSize: view.frameSize,
+      canvasSize: cut.canvasSize,
+      overlayPass: pass,
+    );
+  }
+
+  /// [cut]'s camera path as [_cameraWorkOver] lays it through [view] — null
+  /// where the camera moves nothing ([CameraPath.of]).
+  CameraOverlayPass? _cameraPathOver(Cut cut, CameraView view) {
+    final path = CameraPath.of(cut, session.camera.cameraFrameSize);
     if (path == null) {
       return null;
     }

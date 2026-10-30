@@ -157,7 +157,7 @@ void main() {
       ]);
       expect(script, contains('C[0] = comp("A cels", 8, 8, 3, parts);'));
       expect(script, contains('S[0] = footage("A/A0001.png");'));
-      expect(script, contains('L[1] = still(C[0], S[1], 1);'));
+      expect(script, contains('L[1] = still(C[0], S[1], 1, 1);'));
       expect(script, contains('C[1] = comp("c1 canvas", 8, 8, 11, bin);'));
       expect(script, contains('L[0] = C[1].layers.add(C[0]);'));
       expect(script, contains('remap(L[0], [0, 3, 5], [0, 2, 1]);'));
@@ -217,6 +217,23 @@ void main() {
       expect(script, isNot(contains('L[1].blendingMode')));
       expect(script, isNot(contains('L[1].enabled')));
     });
+  });
+
+  test('a guide is After Effects\' guide layer, a still held as long as '
+      'it is told', () {
+    final script = scriptOf([
+      compOf(const [
+        AeLayer(
+          name: 'C1_camera.png',
+          source: AeStill(path: 'C1_camera.png', frame: 0, length: 11),
+          guide: true,
+        ),
+        AeLayer(name: 'B', source: AeNullSource()),
+      ]),
+    ]);
+    expect(script, contains('L[0] = still(C[0], S[0], 0, 11);'));
+    expect(script, contains('L[0].guideLayer = true;'));
+    expect(script, isNot(contains('L[1].guideLayer')));
   });
 
   test('a sound is its file beside the script, laid as it is', () {

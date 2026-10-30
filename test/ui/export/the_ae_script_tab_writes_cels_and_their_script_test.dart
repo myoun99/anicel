@@ -9,8 +9,11 @@ import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
+import 'package:anicel/src/models/camera_pose.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -59,10 +62,12 @@ void main() {
   Frame frame(String id, String name) =>
       Frame(id: FrameId(id), duration: 1, strokes: const [], name: name);
 
-  /// A (two cels) · B (one) · a paper row · a direction row.
+  /// A (two cels) · B (one) · a paper row · a direction row, the camera
+  /// [camera].
   EditorSessionManager film({
     List<Layer> seLayers = const [],
     AudioConformStore? sounds,
+    CutCamera? camera,
   }) => EditorSessionManager(
     audioConformStore: sounds,
     initialProject: Project(
@@ -81,6 +86,7 @@ void main() {
               name: 'CUT1',
               duration: 2,
               canvasSize: size,
+              camera: camera,
               layers: [
                 Layer(
                   id: const LayerId('paper'),
@@ -258,8 +264,11 @@ void main() {
     expect(byKey('export-cels-kind-cel'), findsOneWidget);
     expect(byKey('export-cels-kind-art'), findsOneWidget);
     expect(byKey('export-cels-kind-conte'), findsOneWidget);
+    // ae-script-export-Q3: a direction is a guide in AE, and so is the
+    // camera's path — the two switches.
+    expect(byKey('export-cels-kind-direction'), findsOneWidget);
+    expect(byKey('export-ae-camera-path'), findsOneWidget);
     for (final absent in [
-      'export-cels-kind-direction',
       'export-cels-kind-timesheet',
       'export-cels-kind-envelope',
       'export-cels-apply-paper',
@@ -285,7 +294,7 @@ void main() {
 
     expect(
       state.debugSpecs.aeScript.cels.kinds,
-      {ExportCelKind.cel},
+      {ExportCelKind.cel, ExportCelKind.direction},
     );
     expect(
       state.debugSpecs.cels.kinds,
@@ -353,6 +362,55 @@ void main() {
     expect(at(perFrame + perFrame ~/ 2), isNot(0), reason: 'frame 1 sounds');
     final script = File('${temp.path}/CUT1.jsx').readAsStringSync();
     expect(script, contains('footage("CUT1.wav")'));
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('🎯a cut whose camera moves gets its path beside its cels, '
+      'a guide over the canvas comp — and none when it is switched off',
+      (tester) async {
+    // ae-script-export-Q3 「AE 가이드 레이어로 따로」: the path is drawn
+    // once for the cut, on the canvas, not into any cel.
+    CameraPose at(double x) =>
+        CameraPose(center: CanvasPoint(x: x, y: 4));
+    final moving = CutCamera(keyframes: {0: at(2), 1: at(6)});
+
+    final temp = Directory.systemTemp.createTempSync('qa-ae-script-path');
+    deleteAfterSessionEnds(temp);
+    final session = film(camera: moving);
+    addTearDown(session.dispose);
+    draw(session);
+    final state = await pumpAeScript(tester, session, temp);
+    await tester.runAsync(state.export);
+    await tester.pump();
+
+    expect(filesWrittenUnder(temp), contains('CUT1_camera.png'));
+    final trail = await tester.runAsync(
+      () => alphaOf(File('${temp.path}/CUT1_camera.png'), 4, 4),
+    );
+    expect(trail, greaterThan(0), reason: 'the path between the keys');
+    expect(
+      await tester.runAsync(() => alphaOf(File('${temp.path}/A1.png'), 4, 4)),
+      0,
+      reason: 'the path was stamped into a cel',
+    );
+    final script = File('${temp.path}/CUT1.jsx').readAsStringSync();
+    expect(script, contains('footage("CUT1_camera.png")'));
+    expect(script, contains('.guideLayer = true;'));
+
+    final off = Directory.systemTemp.createTempSync('qa-ae-script-path-off');
+    deleteAfterSessionEnds(off);
+    final second = await pumpAeScript(tester, session, off);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('export-ae-camera-path')),
+    );
+    await tester.pump();
+    await tester.runAsync(second.export);
+    await tester.pump();
+    expect(filesWrittenUnder(off), isNot(contains('CUT1_camera.png')));
+    expect(
+      File('${off.path}/CUT1.jsx').readAsStringSync(),
+      isNot(contains('CUT1_camera.png')),
+    );
     session.playbackRig.prerenderScheduler.cancel();
   });
 }

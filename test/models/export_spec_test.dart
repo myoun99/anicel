@@ -358,6 +358,17 @@ void main() {
       expect(ExportTabSpecs.fromJson(updated.toJson()), updated);
     });
 
+    test('the AE Script tab\'s camera path switch is kept, on unless turned '
+        'off (ae-script-export-Q3)', () {
+      const on = AeScriptExportSpec();
+      expect(on.guideCamera, isTrue);
+      expect(on.toJson(), isNot(contains('guideCamera')));
+      final off = on.copyWith(guideCamera: false);
+      expect(off, isNot(on));
+      expect(AeScriptExportSpec.fromJson(off.toJson()), off);
+      expect(AeScriptExportSpec.fromJson(on.toJson()), on);
+    });
+
     test('the tabs are five — the timesheet and the cut envelope are no '
         'tab, and what a file of an older build kept for them is left '
         'unread', () {

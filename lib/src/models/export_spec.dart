@@ -722,25 +722,31 @@ class ConteExportSpec extends ExportTabSpec {
 /// Cels spec's, this tab's own ([cels]), and what a delivery cel adds over
 /// the drawing is not asked ([written]).
 class AeScriptExportSpec extends ExportTabSpec {
-  const AeScriptExportSpec({this.cels = defaultCels});
+  const AeScriptExportSpec({this.cels = defaultCels, this.guideCamera = true});
 
-  /// The kinds of row a comp lays. A document is no row, and a direction
-  /// is laid over the shot as a guide (Q3 「AE 가이드 레이어로 따로」), not as
-  /// a cel of it.
+  /// The kinds of row a comp lays. A document is no row; a direction is
+  /// laid over the shot as a guide (`AeLayer.guide` — Q3 「AE 가이드 레이어로
+  /// 따로」), not as a cel of it.
   static const Set<ExportCelKind> rowKinds = {
     ExportCelKind.cel,
     ExportCelKind.conte,
     ExportCelKind.art,
+    ExportCelKind.direction,
   };
 
-  /// The cels and the art: what a comp is made of.
+  /// The cels and the art, and the directions over them as guides: what a
+  /// comp is made of.
   static const CelsExportSpec defaultCels = CelsExportSpec(
-    kinds: {ExportCelKind.cel, ExportCelKind.art},
+    kinds: {ExportCelKind.cel, ExportCelKind.art, ExportCelKind.direction},
   );
 
   /// How the tab picks its cels — a Cels spec's picking, the rest left at
   /// its defaults ([picking]).
   final CelsExportSpec cels;
+
+  /// Whether a cut whose camera moves gets its camera's path over its
+  /// canvas comp, a guide — Q3 「AE 가이드 레이어로 따로」, never on a cel.
+  final bool guideCamera;
 
   @override
   ExportTab get tab => ExportTab.aeScript;
@@ -771,12 +777,16 @@ class AeScriptExportSpec extends ExportTabSpec {
         scope: spec.scope,
       );
 
-  AeScriptExportSpec copyWith({CelsExportSpec? cels}) =>
-      AeScriptExportSpec(cels: picking(cels ?? this.cels));
+  AeScriptExportSpec copyWith({CelsExportSpec? cels, bool? guideCamera}) =>
+      AeScriptExportSpec(
+        cels: picking(cels ?? this.cels),
+        guideCamera: guideCamera ?? this.guideCamera,
+      );
 
   @override
   Map<String, dynamic> toJson() => {
     if (cels != defaultCels) 'cels': picking(cels).toJson(),
+    if (!guideCamera) 'guideCamera': false,
   };
 
   static AeScriptExportSpec fromJson(Map<String, dynamic> json) =>
@@ -787,14 +797,17 @@ class AeScriptExportSpec extends ExportTabSpec {
           ),
           _ => defaultCels,
         },
+        guideCamera: json['guideCamera'] as bool? ?? true,
       );
 
   @override
   bool operator ==(Object other) =>
-      other is AeScriptExportSpec && other.cels == cels;
+      other is AeScriptExportSpec &&
+      other.cels == cels &&
+      other.guideCamera == guideCamera;
 
   @override
-  int get hashCode => cels.hashCode;
+  int get hashCode => Object.hash(cels, guideCamera);
 }
 
 /// The dialog's last-used spec per tab (app state, persisted with the

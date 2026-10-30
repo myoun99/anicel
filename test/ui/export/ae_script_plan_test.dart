@@ -11,6 +11,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
@@ -98,6 +99,7 @@ void main() {
     List<Layer> layers, {
     CameraPose Function(Cut cut, int frame)? cameraPoseAt,
     String? sound,
+    String? cameraPath,
   }) {
     final project = projectWith(layers);
     return aeCompsOf(
@@ -113,7 +115,8 @@ void main() {
             (_, _) => CameraPose(center: CanvasPoint(x: 4, y: 4)),
         frameSize: const CanvasSize(width: 4, height: 2),
       ),
-      runOf: (cut) => (frames: cut.duration, sound: sound),
+      runOf: (cut) =>
+          (frames: cut.duration, sound: sound, cameraPath: cameraPath),
     );
   }
 
@@ -310,6 +313,35 @@ void main() {
       ]).last.layers.map((layer) => layer.source),
       everyElement(isNot(isA<AeSound>())),
       reason: 'a cut that sounds nothing has no sound layer',
+    );
+  });
+
+  test('a direction row is a guide of the canvas comp — seen, never '
+      'rendered — the other rows are not', () {
+    final comps = compsOf([
+      row('a', blocks: {0: ('1', 6)}),
+      row('d', blocks: {0: ('1', 3)}).copyWith(kind: LayerKind.instruction),
+    ]);
+    final canvasComp = compNamed(comps, 'C1 canvas');
+    expect(layerNamed(canvasComp, 'D').guide, isTrue);
+    expect(layerNamed(canvasComp, 'A').guide, isFalse);
+  });
+
+  test('a cut\'s camera path is a guide over its whole canvas comp, on top',
+      () {
+    final comps = compsOf([
+      row('a', blocks: {0: ('1', 6)}),
+    ], cameraPath: 'C1_camera.png');
+    final path = compNamed(comps, 'C1 canvas').layers.last;
+    expect(path.guide, isTrue);
+    final still = path.source as AeStill;
+    expect((still.path, still.frame, still.length), ('C1_camera.png', 0, 6));
+    expect(
+      compNamed(compsOf([
+        row('a', blocks: {0: ('1', 6)}),
+      ]), 'C1 canvas').layers.map((layer) => layer.guide),
+      everyElement(isFalse),
+      reason: 'a cut with no path has no guide of it',
     );
   });
 }
