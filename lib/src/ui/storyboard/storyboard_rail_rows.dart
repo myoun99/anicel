@@ -1651,22 +1651,7 @@ class _StoryboardRailRows {
       return const [];
     }
     final (:reach, :rowId) = named;
-    final covered = <({double top, double bottom})>[];
-    var y = 0.0;
-    for (final slot in _trackGroupRowGeometry(track)) {
-      final lane = slot.laneRow;
-      if (lane != null &&
-          lane.layerId == rowId &&
-          laneBandStandsOn(
-            selection,
-            selection.layerId,
-            lane.laneId,
-            seat: slot.graph,
-          )) {
-        covered.add((top: y, bottom: y + slot.height));
-      }
-      y += slot.height;
-    }
+    final covered = _bandedLanesOf(track, rowId, selection);
     if (covered.isEmpty) {
       return const [];
     }
@@ -1691,6 +1676,32 @@ class _StoryboardRailRows {
               _ => (top: (row.top + row.bottom) / 2, bottom: row.bottom),
             }),
     ];
+  }
+
+  /// Where the band of [selection] stands across [track]'s group: on each
+  /// lane of the projection row [rowId] it covers ([laneBandStandsOn]).
+  List<({double top, double bottom})> _bandedLanesOf(
+    Track track,
+    LayerId rowId,
+    TimelineLaneSelection selection,
+  ) {
+    final covered = <({double top, double bottom})>[];
+    var y = 0.0;
+    for (final slot in _trackGroupRowGeometry(track)) {
+      final lane = slot.laneRow;
+      if (lane != null &&
+          lane.layerId == rowId &&
+          laneBandStandsOn(
+            selection,
+            selection.layerId,
+            lane.laneId,
+            seat: slot.graph,
+          )) {
+        covered.add((top: y, bottom: y + slot.height));
+      }
+      y += slot.height;
+    }
+    return covered;
   }
 
   /// One piece of [_projectionLaneBand]: [stretch]'s frames, [across] the
