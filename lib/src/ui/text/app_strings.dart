@@ -853,6 +853,7 @@ enum AppStrings {
   String get conteOutline => _s('conteOutline');
   String get conteOutlineOn => _s('conteOutlineOn');
   String get conteOutlineOff => _s('conteOutlineOff');
+  String get conteFixedText => _s('conteFixedText');
   String get envelopeFormatTitle => _s('envelopeFormatTitle');
   String get envelopeForm => _s('envelopeForm');
   String get sheetModeNotation => _s('sheetModeNotation');
@@ -2654,6 +2655,7 @@ enum AppStrings {
     'conteOutline': 'Black frame round pictures',
     'conteOutlineOn': 'On',
     'conteOutlineOff': 'Off',
+    'conteFixedText': 'Fixed text',
     'envelopeFormatTitle': 'Envelope format',
     'envelopeForm': 'Form',
     'sheetModeNotation': 'Notation Sheet (repeat/hold words)',
@@ -4035,6 +4037,7 @@ enum AppStrings {
     'conteOutline': '画面の黒枠',
     'conteOutlineOn': 'あり',
     'conteOutlineOff': 'なし',
+    'conteFixedText': '固定テキスト',
     'envelopeFormatTitle': 'カット袋書式',
     'envelopeForm': '様式',
     'sheetModeNotation': '表記シート（リピート・止めの文字）',
@@ -5841,6 +5844,7 @@ enum AppStrings {
     'conteOutline': '화면 검은 외곽선',
     'conteOutlineOn': '적용',
     'conteOutlineOff': '미적용',
+    'conteFixedText': '고정 텍스트',
     'envelopeFormatTitle': '컷 봉투 서식',
     'envelopeForm': '양식',
     'sheetModeNotation': '표기 시트(반복·止め 글자)',
@@ -7685,6 +7689,7 @@ enum AppStrings {
     'conteOutline': 'Cadre noir des images',
     'conteOutlineOn': 'Oui',
     'conteOutlineOff': 'Non',
+    'conteFixedText': 'Texte fixe',
     'envelopeFormatTitle': 'Format de l\'enveloppe',
     'envelopeForm': 'Modèle',
     'sheetModeNotation': 'Feuille de notation (répétition / maintien)',
@@ -9576,6 +9581,7 @@ enum AppStrings {
     'conteOutline': '画面黑框',
     'conteOutlineOn': '有',
     'conteOutlineOff': '无',
+    'conteFixedText': '固定文本',
     'envelopeFormatTitle': '卡袋版式',
     'envelopeForm': '样式',
     'sheetModeNotation': '标注表（重复·保持文字）',

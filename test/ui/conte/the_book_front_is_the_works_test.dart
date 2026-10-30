@@ -177,4 +177,36 @@ void main() {
     await tester.pumpAndSettle();
     expect((laid().form, laid().outlined), (ConteSheetForm.analog, true));
   });
+
+  testWidgets('the cells\' fixed text is taken out in the same window: the '
+      'sheet writes none on save, the work keeps it, and one undo puts it '
+      'back', (tester) async {
+    // 유저 2026-10-12 (I-93): 「고정텍스트 표기할지 안할지 콘티용지패널에
+    // 설정할수있도록. 타임시트처럼 전용 설정창 만들어서」.
+    await pumpHost(tester);
+    bool written() => tester
+        .widget<ConteBookPage>(find.byType(ConteBookPage).first)
+        .source
+        .fixedText;
+    expect(written(), isTrue, reason: 'written unless taken out');
+
+    await tap(tester, 'conte-format-button');
+    expect(pillOn(tester, 'conte-format-fixed-text'), isTrue);
+    await tap(tester, 'conte-format-fixed-text');
+    expect(written(), isTrue, reason: 'nothing before save');
+    await tap(tester, 'conte-format-save-button');
+
+    expect(session.timesheetInfo.conteFixedText, isFalse);
+    expect(written(), isFalse);
+
+    // The window says what the sheet is now.
+    await tap(tester, 'conte-format-button');
+    expect(pillOn(tester, 'conte-format-fixed-text'), isFalse);
+    await tap(tester, 'conte-format-cancel-button');
+
+    session.undo();
+    await tester.pumpAndSettle();
+    expect(session.timesheetInfo.conteFixedText, isTrue);
+    expect(written(), isTrue);
+  });
 }

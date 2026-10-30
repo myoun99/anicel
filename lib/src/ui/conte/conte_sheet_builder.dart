@@ -4,8 +4,10 @@ import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/widgets.dart' show StringCharacters;
 
 import '../../models/canvas_size.dart';
+import '../../models/camera_moves.dart' show CameraMove, cameraMoves;
 import '../../models/camera_work_marks.dart'
     show CameraKeyRole, cameraKeyLabel;
+import '../../models/conte/conte_camera_lines.dart';
 import '../../models/conte/conte_sheet_source.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
@@ -60,7 +62,7 @@ ConteSheetSource buildConteSheetSource(Project project) {
           start: entry.startFrame,
           panels: panels[index],
         )),
-        cameraFrameSize: project.cameraSize,
+        project: project,
       ),
     );
   }
@@ -79,6 +81,7 @@ ConteSheetSource buildConteSheetSource(Project project) {
     framesPerSecond: project.frameRate.countingBase,
     cover: info.conteCover,
     blankPage: info.conteBlankPage,
+    fixedText: info.conteFixedText,
   );
 }
 
@@ -88,7 +91,7 @@ ConteCutSource _cutSource({
   required List<StoryboardCoverageCell> cells,
   required int endFrame,
   required List<ConteDialogueLine> dialogue,
-  required CanvasSize cameraFrameSize,
+  required Project project,
 }) {
   final storyboard = storyboardLayerForCut(cut);
   return ConteCutSource(
@@ -102,7 +105,7 @@ ConteCutSource _cutSource({
           cut: cut,
           cell: cell,
           storyboard: storyboard,
-          cameraFrameSize: cameraFrameSize,
+          project: project,
         ),
     ],
     dialogue: dialogue,
@@ -113,7 +116,7 @@ ConteCellSource _cellSource({
   required Cut cut,
   required StoryboardCoverageCell cell,
   required Layer? storyboard,
-  required CanvasSize cameraFrameSize,
+  required Project project,
 }) {
   // The cell counts the conte's frames; the row, the camera and the picture
   // count the cut's, which begin that much earlier in a cut an O.L arrives
@@ -130,8 +133,47 @@ ConteCellSource _cellSource({
       _ => null,
     },
     action: exposure?.memo?.actionMemo ?? '',
-    camera: _cameraWorkIn(cut, cell, cameraFrameSize, conteStart: conteStart),
+    camera: _cameraWorkIn(
+      cut,
+      cell,
+      project.cameraSize,
+      conteStart: conteStart,
+    ),
+    // Over the cut's frames the cell shows — the span its camera work is
+    // read over.
+    cameraLines: _cameraLinesIn(
+      cut,
+      project,
+      from: conteStart + cell.startIndex,
+      to: conteStart + cell.endIndexExclusive,
+    ),
   );
+}
+
+/// What [cut]'s camera does over its frames [from] to [to], a line to each
+/// stretch ([conteCameraStretches]) in [project]'s glossary and count.
+///
+/// ⚠️Mine: a camera whose work is bypassed stands still — the camera row's
+/// switch shows the canvas centred — so it is FIX throughout, as a camera
+/// with no key is (I-93: 「값이 동일해서 안움직이고 있거나 키가 없는
+/// 부분」).
+List<String> _cameraLinesIn(
+  Cut cut,
+  Project project, {
+  required int from,
+  required int to,
+}) {
+  final moves = cut.layers.cameraWorkBypassed
+      ? const <CameraMove>[]
+      : cameraMoves(cut.camera.track);
+  return [
+    for (final stretch in conteCameraStretches(moves, from: from, to: to))
+      conteCameraLine(
+        stretch,
+        defById: project.cameraInstructions.defById,
+        framesPerSecond: project.frameRate.countingBase,
+      ),
+  ];
 }
 
 /// What the camera does while [cell] is on screen: its frame at the cell's

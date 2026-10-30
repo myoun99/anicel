@@ -185,9 +185,6 @@ class _ContePdfPageWriter {
   final Map<BrushFrameKey, PdfImage> inkPictures;
   final Map<BrushFrameKey, List<CelPhoto>> inkPhotos;
 
-  /// The painter's line height (TextStyle height: 1.25).
-  static const double _lineHeight = 1.25;
-
   late PdfGraphics _g;
   late double _pageHeight;
 
@@ -426,7 +423,8 @@ class _ContePdfPageWriter {
             slot.width,
           )
         : [words.text];
-    final lineHeight = size * _lineHeight;
+    // The painter's line ([conteTextStyle]).
+    final lineHeight = size * conteLineHeight;
     final totalHeight = lines.length * lineHeight;
     final top = words.v.place(slot.top, slot.height, totalHeight);
     final ascent = (words.bold ? bold : regular).ascent * size;

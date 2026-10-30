@@ -294,5 +294,30 @@ void main() {
         ConteSheetForm.analog,
       );
     });
+
+    test('the conte\'s fixed text is written unless taken out, and taken out '
+        'travels with the work', () {
+      // 유저 2026-10-12 (I-93): 「고정텍스트 표기할지 안할지
+      // 콘티용지패널에 설정할수있도록」.
+      expect(TimesheetInfo.empty.conteFixedText, isTrue);
+      expect(TimesheetInfo.fromJson(const {}).conteFixedText, isTrue);
+      expect(
+        TimesheetInfo.empty.toJson().containsKey('conteFixedText'),
+        isFalse,
+      );
+      final info = TimesheetInfo.empty.copyWith(conteFixedText: false);
+
+      final restored = TimesheetInfo.fromJson(info.toJson());
+
+      expect(restored, info);
+      expect(restored.conteFixedText, isFalse);
+      expect(
+        restored.copyWith(conteCover: false).conteFixedText,
+        isFalse,
+        reason: 'another change keeps it',
+      );
+      expect(info, isNot(TimesheetInfo.empty), reason: 'one undo step');
+      expect(info.hashCode, isNot(TimesheetInfo.empty.hashCode));
+    });
   });
 }

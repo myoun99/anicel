@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -8,7 +9,7 @@ import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/conte/conte_page_marks.dart'
-    show conteCellTextSize, conteInkArgb;
+    show conteActionWordsDrop, conteCellTextSize, conteInkArgb;
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
 import '../../models/cut_id.dart';
@@ -156,40 +157,45 @@ class ConteBookPage extends StatelessWidget {
   /// 해도 내용물은 독립」: a link shares the drawing, never the timeline's
   /// entries). A cell with no block has nowhere to keep them and offers no
   /// target.
-  List<SheetTextTarget> _actionTargets() {
-    final m = page.metrics;
-    return [
-      for (final cell in page.cells)
-        if (cell.source.frameId != null)
-          SheetTextTarget(
-            keyValue: 'conte-action-edit-${cell.cutId}-${cell.cellIndex}',
-            // The cell's own rows of the column — its words flow past them
-            // on paper, but a tap below belongs to the cell there.
-            box: Rect.fromLTRB(
-              cell.actionRect.left,
-              cell.actionRect.top,
-              cell.actionRect.right,
-              m.rowTop(cell.rowOnPage + cell.rowSpan),
-            ),
-            textRect: Rect.fromLTRB(
-              cell.actionRect.left + 4,
-              cell.actionRect.top + 4,
-              cell.actionRect.right - 4,
-              m.rowTop(cell.rowOnPage + cell.rowSpan) - 4,
-            ),
-            text: cell.source.action,
-            style: conteTextStyle(
-              conteCellTextSize,
-              color: const Color(conteInkArgb),
-            ),
-            onCommitted: (text) =>
-                session.storyboardCursor.setStoryboardCellAction(
-                  cutId: CutId(cell.cutId),
-                  cellIndex: cell.cellIndex,
-                  action: text,
-                ),
-          ),
-    ];
+  List<SheetTextTarget> _actionTargets() => [
+    for (final cell in page.cells)
+      if (cell.source.frameId != null) _actionTarget(cell),
+  ];
+
+  /// [cell]'s ACTION target: the cell's own rows of the column — its words
+  /// flow past them on paper, but a tap below belongs to the cell there —
+  /// from under its fixed lines, which no one types into (I-93): the field
+  /// types where the page prints the words after them
+  /// ([conteActionWordsDrop]).
+  SheetTextTarget _actionTarget(ContePlacedCell cell) {
+    final rect = cell.actionRect;
+    final bottom = page.metrics.rowTop(cell.rowOnPage + cell.rowSpan);
+    // ⚠️Mine: fixed lines that outrun the rows leave the field no height,
+    // never one upside down.
+    final top = math.min(
+      rect.top + conteActionWordsDrop(source, cell),
+      bottom - 8,
+    );
+    return SheetTextTarget(
+      keyValue: 'conte-action-edit-${cell.cutId}-${cell.cellIndex}',
+      box: Rect.fromLTRB(rect.left, top, rect.right, bottom),
+      textRect: Rect.fromLTRB(
+        rect.left + 4,
+        top + 4,
+        rect.right - 4,
+        bottom - 4,
+      ),
+      text: cell.source.action,
+      style: conteTextStyle(
+        conteCellTextSize,
+        color: const Color(conteInkArgb),
+      ),
+      onCommitted: (text) => session.storyboardCursor.setStoryboardCellAction(
+        cutId: CutId(cell.cutId),
+        cellIndex: cell.cellIndex,
+        action: text,
+      ),
+    );
   }
 
   /// Each cell's picture, a claimed press of its own.

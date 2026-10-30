@@ -11,6 +11,11 @@ typedef CameraMove = ({int from, int to, String term, bool turning});
 /// The glossary's id for a turn alone (`CameraInstructionSet.standard`).
 const cameraTurnTerm = 'rotate';
 
+/// The glossary's id for a camera standing still
+/// (`CameraInstructionSet.standard`): what the conte writes where no move
+/// is (I-93, `conteCameraLine`).
+const cameraFixTerm = 'fix';
+
 /// THE CAMERA'S MOVES AS THE SHEET NAMES THEM (I-73 ⑤): each stretch
 /// between two of [track]'s keys that moves, with its term.
 ///

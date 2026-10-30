@@ -418,6 +418,7 @@ void main() {
     'conteOutline': (s) => s.conteOutline,
     'conteOutlineOn': (s) => s.conteOutlineOn,
     'conteOutlineOff': (s) => s.conteOutlineOff,
+    'conteFixedText': (s) => s.conteFixedText,
     'envelopeFormatTitle': (s) => s.envelopeFormatTitle,
     'envelopeForm': (s) => s.envelopeForm,
     'sheetModeNotation': (s) => s.sheetModeNotation,
