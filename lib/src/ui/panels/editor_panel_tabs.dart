@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import '../layout/device_grid.dart';
 import '../theme/app_theme.dart';
 import '../widgets/dock_edge_splitter.dart' show DockSplitterEdges;
-import '../widgets/drag_chip.dart';
 import '../widgets/grip_band.dart';
 import '../widgets/kept_tail_row.dart';
 import '../widgets/overflow_scrollers.dart';
@@ -964,7 +963,7 @@ class _PanelTabButton extends StatelessWidget {
       data: dragData,
       // Every drag's chip, hung where every drag hangs it (I-39) — this
       // one sat centred on the pointer, a look of its own.
-      feedback: DragChip(items: [(icon: icon, label: label)]),
+      chip: [(icon: icon, label: label)],
       nearby: panelHovered,
       atBottom: stripAtBottom,
       edgeOutline: edgeOutline,

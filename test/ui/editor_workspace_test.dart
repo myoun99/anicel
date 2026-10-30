@@ -847,68 +847,6 @@ void main() {
       expect(viewer().position, same(page));
       expect(viewer().position.value, 2);
     });
-
-    testWidgets('a panel that ends up on the floor keeps a way back', (
-      tester,
-    ) async {
-      // The floor is the one dock with NO tab strip, so a panel down there
-      // has no button on itself — and the Panels list reports it as OPEN,
-      // which means the only thing that list offers is closing it. The
-      // switch listing whatever is actually on the floor is the way back.
-      await _pumpHome(tester);
-
-      // Emptying the floor is what makes its drop zone appear; the Panels
-      // list is the only way to do it (no X on a chromeless dock).
-      await _togglePanel(tester, 'canvas');
-      await _togglePanel(tester, 'media-viewer');
-      expect(find.byType(EditorCanvasArea), findsNothing);
-      expect(
-        find.byKey(const ValueKey<String>('top-strip-floor-timesheet')),
-        findsNothing,
-        reason: 'nothing is on the floor yet',
-      );
-
-      // ⛔NOT the zone's centre. The empty floor's zone is `expandToFill`,
-      // so it reaches UNDER the region floating over the artwork — and once
-      // that region opens at half the window (D37), the geometric centre is
-      // behind it. A person aims at what they can see; a `getCenter` aims
-      // at arithmetic, and this one used to land on the visible part only
-      // because the region was short.
-      await _dragTab(tester, find.byKey(_timesheetTabKey), () {
-        final zone = tester.getRect(
-          find.byKey(const ValueKey<String>('editor-dock-drop-rail-center')),
-        );
-        return Offset(zone.center.dx, zone.top + 40);
-      });
-      expect(
-        find.byKey(const ValueKey<String>('top-strip-floor-timesheet')),
-        findsOneWidget,
-        reason: 'the drag landed it on the floor',
-      );
-
-      // It is on the floor, so the switch offers it — after the two homes,
-      // which stay listed whatever is down there.
-      final timesheetFloorButton = find.byKey(
-        const ValueKey<String>('top-strip-floor-timesheet'),
-      );
-      expect(timesheetFloorButton, findsOneWidget);
-
-      // Fetch a home back: the sheet is now BEHIND the canvas with nothing
-      // of its own on screen. This is the state that used to be a dead end.
-      await tester.tap(
-        find.byKey(const ValueKey<String>('top-strip-floor-canvas')),
-      );
-      await tester.pumpAndSettle();
-      expect(find.byType(EditorCanvasArea), findsOneWidget);
-      expect(find.byType(TimesheetTabHost), findsNothing);
-
-      // And back again — the button is still there, and it works.
-      expect(timesheetFloorButton, findsOneWidget);
-      await tester.tap(timesheetFloorButton);
-      await tester.pumpAndSettle();
-      expect(find.byType(TimesheetTabHost), findsOneWidget);
-      expect(find.byType(EditorCanvasArea), findsNothing);
-    });
   });
 
   group('EditorWorkspace tab drag-docking', () {

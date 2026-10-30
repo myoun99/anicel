@@ -114,63 +114,57 @@ class _WorkspaceRail {
     }
   }
 
-  /// A strip button carried by its band to [toId], an empty slot of any
-  /// strip, with every panel it holds (🗣️I-147: 「해당 버튼들 패널들
-  /// 통째로 옮길수있도록」) — and its size ([EditorPanelLayoutModel.moveGroup]).
-  ///
-  /// 🗣️I-147-Q2 a (유저 2026-10-30): 「상단 띠에서는 패널마다 버튼 하나」 —
-  /// carried to the top strip, a group of several stands there as a button
-  /// per panel, in the strip's empty slots from [toId] on.
+  /// A strip button carried by its band to [toId] — an empty slot of any
+  /// strip, or a rail's button — with every panel it holds (🗣️I-147:
+  /// 「해당 버튼들 패널들 통째로 옮길수있도록」), as a panel dropped there
+  /// goes ([_dropIntoRailGroup]: one verb for the slot and the button).
   ///
   /// It lands showing, as a placed panel does ([ensureRailOpen]): open
   /// beside the drawing, or on the top strip its front panel laid.
-  void moveGroupTo({required String fromId, required String toId}) {
-    final tabs = _state._layout.tabsIn(fromId);
+  void carryGroupTo({required String fromId, required String toId}) {
     final front = _state._layout.activeTabIn(fromId);
     if (front == null) {
       return;
     }
     _state._mutatingLayout(() {
-      if (isTopSlot(toId) && tabs.length > 1) {
-        for (final tabId in tabs) {
-          final slot = _state._docks._emptyTopSlot();
-          if (slot != null) {
-            _state._layout.moveTab(
-              tabId: tabId,
-              toDockId: slot,
-              insertIndex: 0,
-            );
-          }
-        }
-      } else {
-        _state._layout.moveGroup(fromDockId: fromId, toDockId: toId);
-      }
+      _placeCarried(fromId: fromId, toId: toId, front: front);
       _state._rebuild(() => _state._openRails.remove(fromId));
     });
     _landShowing(front);
   }
 
-  /// A strip button carried by its band onto a rail button [toId]: what it
-  /// holds JOINS that group, its front panel in front — as a panel dropped
-  /// on the button joins it ([_dropIntoRailGroup]; I-147-Q2 a).
-  void joinGroupInto({required String fromId, required String toId}) {
-    final tabs = _state._layout.tabsIn(fromId);
-    final front = _state._layout.activeTabIn(fromId);
-    if (front == null) {
-      return;
-    }
-    _state._mutatingLayout(() {
+  /// 🗣️I-147-Q2 a (유저 2026-10-30): onto a rail's button what it holds
+  /// JOINS that group, its front panel in front; 「상단 띠에서는 패널마다
+  /// 버튼 하나」 — into the top strip a group of several stands as a button
+  /// per panel, in the strip's empty slots; anywhere else it moves whole,
+  /// its size with it ([EditorPanelLayoutModel.moveGroup]).
+  void _placeCarried({
+    required String fromId,
+    required String toId,
+    required String front,
+  }) {
+    final layout = _state._layout;
+    final tabs = layout.tabsIn(fromId);
+    if (layout.tabsIn(toId).isNotEmpty) {
+      // ⚠️[setToolRailOnRight] appends a group the same way — two, so not
+      // one body yet (CLAUDE.md, the rule of three): the third merges them.
       for (final tabId in tabs) {
-        _state._layout.moveTab(
+        layout.moveTab(
           tabId: tabId,
           toDockId: toId,
-          insertIndex: _state._layout.tabsIn(toId).length,
+          insertIndex: layout.tabsIn(toId).length,
         );
       }
-      _state._layout.selectTab(toId, front);
-      _state._rebuild(() => _state._openRails.remove(fromId));
-    });
-    _landShowing(front);
+      layout.selectTab(toId, front);
+    } else if (isTopSlot(toId) && tabs.length > 1) {
+      for (final tabId in tabs) {
+        if (_state._docks._emptyTopSlot() case final slot?) {
+          layout.moveTab(tabId: tabId, toDockId: slot, insertIndex: 0);
+        }
+      }
+    } else {
+      layout.moveGroup(fromDockId: fromId, toDockId: toId);
+    }
   }
 
   /// [tabId], carried with its button, showing where it landed.

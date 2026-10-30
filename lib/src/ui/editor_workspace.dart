@@ -124,10 +124,11 @@ import 'widgets/app_scrollbar.dart';
 import 'widgets/static_raster.dart';
 import 'widgets/superellipse_clip.dart';
 import 'widgets/tick_layer.dart';
-import 'widgets/drag_chip.dart';
 import 'widgets/grip_band.dart' show LiftingGripBand;
+import 'widgets/strip_group_rule.dart' show StripGroupRule;
 import 'keyed_keep_alive_stack.dart';
 import 'sliced_value_listenable_builder.dart';
+import 'timeline/axis_turn.dart' show alongBox;
 import 'timeline/memo_token.dart' show ByList;
 import 'conte/conte_ink.dart';
 import 'conte/conte_picture_ink.dart';
@@ -220,6 +221,7 @@ part 'workspace/workspace_docks.dart';
 part 'workspace/workspace_layout_persistence.dart';
 part 'workspace/workspace_tabs.dart';
 part 'workspace/workspace_rail.dart';
+part 'workspace/workspace_strip_buttons.dart';
 part 'workspace/workspace_flip_hud.dart';
 part 'workspace/workspace_brush_presets.dart';
 part 'workspace/workspace_brush_groups.dart';
@@ -824,6 +826,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   // State keeps the entry points its build tree calls as forwarders.
   late final _WorkspaceDocks _docks = _WorkspaceDocks(this);
 
+  /// The strips' group buttons — the rails' and the top strip's (I-147):
+  /// their own object, in workspace/workspace_strip_buttons.dart.
+  late final _WorkspaceStripButtons _strips = _WorkspaceStripButtons(this);
+
   /// The door a collaborator rebuilds through - setState is protected,
   /// and a collaborator is not a subclass.
   void _rebuild(VoidCallback fn) => setState(fn);
@@ -1341,7 +1347,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           ),
       ],
       floorTabSelector: _tabs.selectFloorTab,
-      floorGroups: (context) => _docks.buildFloorGroupButtons(),
+      floorGroups: (context) => _strips.buildFloorGroupButtons(),
       regionOnTop: () => _regionOnTop,
       regionMover: (onTop) {
         if (_regionOnTop == onTop) {
@@ -3370,11 +3376,9 @@ class _RailGroupButton extends StatelessWidget {
         : LiftingGripBand<_StripGroupDragData>(
             gripKey: ValueKey<String>('rail-group-band-$railId'),
             data: _StripGroupDragData(railId),
-            feedback: DragChip(
-              items: [
-                for (final tab in tabs) (icon: tab.icon, label: tab.label),
-              ],
-            ),
+            chip: [
+              for (final tab in tabs) (icon: tab.icon, label: tab.label),
+            ],
             nearby: nearby,
             onLifted: onLifted,
           );

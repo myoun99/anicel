@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import 'drag_chip.dart';
 import 'owning_draggable.dart';
 
 /// THE app's grip band: a thin rule along an edge saying "there is a handle
@@ -72,7 +73,7 @@ class LiftingGripBand<T extends Object> extends StatefulWidget {
     super.key,
     required this.gripKey,
     required this.data,
-    required this.feedback,
+    required this.chip,
     required this.nearby,
     this.atBottom = false,
     this.edgeOutline = 0,
@@ -85,8 +86,9 @@ class LiftingGripBand<T extends Object> extends StatefulWidget {
   /// keeps the target's footprint and never arms.
   final T? data;
 
-  /// What hangs at the pointer while it is carried.
-  final Widget feedback;
+  /// What hangs at the pointer while it is carried — the app's one chip
+  /// ([DragChip]), a line for each thing that goes.
+  final List<DragChipItem> chip;
 
   /// Whether the pointer is anywhere on what holds the thing — its panel,
   /// its strip: the first rung of the ladder (유저, R3 #9).
@@ -139,7 +141,7 @@ class _LiftingGripBandState<T extends Object>
 
   @override
   Widget build(BuildContext context) {
-    Widget grip = MouseRegion(
+    final grip = MouseRegion(
       cursor: _armed ? SystemMouseCursors.grab : SystemMouseCursors.basic,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -161,49 +163,53 @@ class _LiftingGripBandState<T extends Object>
             alignment: widget.atBottom
                 ? Alignment.bottomCenter
                 : Alignment.topCenter,
-            child: ValueListenableBuilder<bool>(
-              valueListenable: widget.nearby,
-              builder: (context, nearby, _) => SizedBox(
-                // BOTH axes, not just the height. `Align` hands its child
-                // LOOSE constraints, and a `ColoredBox` with no child takes
-                // `constraints.smallest` — so a band told only how THICK to
-                // be laid out 0px wide. It was coloured correctly, on the
-                // right edge, climbing the right ladder, and invisible: the
-                // whole handle simply did not exist on screen (유저, R4 #6).
-                //
-                // ⚠️Third time this trap has bitten: R1a collapsed a grip's
-                // HEIGHT the same way. A `ColoredBox` is a leaf — it never
-                // has a size of its own to fall back on.
-                width: double.infinity,
-                height: _bandExtent,
-                child: ColoredBox(color: _bandColor(nearby)),
-              ),
-            ),
+            child: _band(),
           ),
         ),
       ),
     );
-    final data = widget.data;
-    if (data != null) {
-      grip = OwningDraggable<T>(
-        data: data,
-        maxSimultaneousDrags: 1,
-        // The avatar origin IS the pointer, so drop regions can split
-        // themselves into exact before/after halves from the drag offset.
-        dragAnchorStrategy: pointerDragAnchorStrategy,
-        feedback: widget.feedback,
-        onDragStarted: () {
-          setState(() => _lifted = true);
-          widget.onLifted?.call(data);
-        },
-        // onDragEnd covers completion AND cancellation.
-        onDragEnd: (_) {
-          setState(() => _lifted = false);
-          widget.onLifted?.call(null);
-        },
-        child: grip,
-      );
-    }
-    return grip;
+    return switch (widget.data) {
+      null => grip,
+      final data => _lifting(data, grip),
+    };
   }
+
+  Widget _band() => ValueListenableBuilder<bool>(
+    valueListenable: widget.nearby,
+    builder: (context, nearby, _) => SizedBox(
+      // BOTH axes, not just the height. `Align` hands its child LOOSE
+      // constraints, and a `ColoredBox` with no child takes
+      // `constraints.smallest` — so a band told only how THICK to be laid
+      // out 0px wide. It was coloured correctly, on the right edge,
+      // climbing the right ladder, and invisible: the whole handle simply
+      // did not exist on screen (유저, R4 #6).
+      //
+      // ⚠️Third time this trap has bitten: R1a collapsed a grip's HEIGHT
+      // the same way. A `ColoredBox` is a leaf — it never has a size of its
+      // own to fall back on.
+      width: double.infinity,
+      height: _bandExtent,
+      child: ColoredBox(color: _bandColor(nearby)),
+    ),
+  );
+
+  /// [grip], carrying [data] when pressed and moved.
+  Widget _lifting(T data, Widget grip) => OwningDraggable<T>(
+    data: data,
+    maxSimultaneousDrags: 1,
+    // The avatar origin IS the pointer, so drop regions can split
+    // themselves into exact before/after halves from the drag offset.
+    dragAnchorStrategy: pointerDragAnchorStrategy,
+    feedback: DragChip(items: widget.chip),
+    onDragStarted: () {
+      setState(() => _lifted = true);
+      widget.onLifted?.call(data);
+    },
+    // onDragEnd covers completion AND cancellation.
+    onDragEnd: (_) {
+      setState(() => _lifted = false);
+      widget.onLifted?.call(null);
+    },
+    child: grip,
+  );
 }
