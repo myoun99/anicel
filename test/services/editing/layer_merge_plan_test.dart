@@ -1325,6 +1325,44 @@ void main() {
       ]);
     });
 
+    test("a pair linked by another of its rows: the cut the keeper has no "
+        "self in keeps its own keeper's id, not its folder's", () {
+      final s = conte('s');
+      final t = conte('t');
+      final plan = merge(
+        cutOf([
+          s,
+          onIt('k1', s, 'K1', inside: 'P'),
+          onIt('k2', s, 'K2', inside: 'P'),
+          filing('P'),
+        ]),
+        ['P'],
+        elsewhere: [
+          cutOf(id: 'd', [
+            t,
+            onIt('j1', t, 'K1', inside: 'Q'),
+            onIt('j2', t, 'K2', inside: 'Q'),
+            filing('Q'),
+          ]),
+        ],
+        links: [
+          ['c/k1', 'd/j1'],
+        ],
+      )!;
+
+      expect([for (final row in plan.others.single.layers) row.id.value], [
+        't',
+        'j2',
+      ]);
+      expect(
+        [
+          for (final member in plan.links.groups.single.members)
+            '${member.cutId.value}/${member.layerId.value}',
+        ],
+        ['c/k2', 'd/j2'],
+      );
+    });
+
     test('two 겸용 pairs on the track merge as two layers — each a row of '
         'the link table of its own', () {
       Cut pair(String cut, String conteId, String prefix) {
