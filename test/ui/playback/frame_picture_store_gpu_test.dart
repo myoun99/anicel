@@ -266,6 +266,20 @@ void main() {
 
       copy(4 * 4 * 4);
       expect(() => copy(4 * 4 * 4 - 1), throwsException);
+
+      void copyOut(gpu.DeviceBuffer into) =>
+          copyTextureIntoBuffer(context.createCommandBuffer(), texture, into);
+
+      copyOut(buffer);
+      expect(
+        () => copyOut(
+          context.createDeviceBuffer(
+            gpu.StorageMode.devicePrivate,
+            4 * 4 * 4 - 1,
+          ),
+        ),
+        throwsException,
+      );
     },
     skip: noFlutterGpu,
   );
