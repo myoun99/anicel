@@ -97,6 +97,7 @@ void main() {
   List<AeComp> compsOf(
     List<Layer> layers, {
     CameraPose Function(Cut cut, int frame)? cameraPoseAt,
+    String? sound,
   }) {
     final project = projectWith(layers);
     return aeCompsOf(
@@ -112,7 +113,7 @@ void main() {
             (_, _) => CameraPose(center: CanvasPoint(x: 4, y: 4)),
         frameSize: const CanvasSize(width: 4, height: 2),
       ),
-      framesOf: (cut) => cut.duration,
+      runOf: (cut) => (frames: cut.duration, sound: sound),
     );
   }
 
@@ -290,5 +291,25 @@ void main() {
     expect(look.position.value, [2, 1], reason: 'the camera comp\'s centre');
     expect(look.scale.value, [200, 200]);
     expect(look.rotation.value, [-10]);
+  });
+
+  test('a cut with a sound is heard in its camera comp, under the picture, '
+      'from its start', () {
+    final comps = compsOf([
+      row('a', blocks: {0: ('1', 6)}),
+    ], sound: 'C1.wav');
+    final camera = compNamed(comps, 'C1');
+    expect([for (final layer in camera.layers) layer.name], [
+      'C1.wav',
+      'C1 canvas',
+    ]);
+    expect((camera.layers.first.source as AeSound).path, 'C1.wav');
+    expect(
+      compsOf([
+        row('a', blocks: {0: ('1', 6)}),
+      ]).last.layers.map((layer) => layer.source),
+      everyElement(isNot(isA<AeSound>())),
+      reason: 'a cut that sounds nothing has no sound layer',
+    );
   });
 }

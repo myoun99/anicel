@@ -26,10 +26,10 @@ import 'export_cel_group_plan.dart';
 /// canvas comp, a row's cels are ONE layer: a comp of its cels a frame each,
 /// shown a cel at a time by Time Remap hold keys where the row's blocks say
 /// — 🗣️유저 2026-07-25 「일반적으로 타임리맵」, a layer a block turned down.
-/// A folder that
-/// passes its rows through is a null they are parented to; one the app
-/// composites as one picture ([folderNeedsCompositeBuffer]) is a comp of
-/// its own. Q2 「날것으로 — 이펙트 없이」: no effect is carried.
+/// A folder that passes its rows through is a null they are parented to;
+/// one the app composites as one picture ([folderNeedsCompositeBuffer]) is
+/// a comp of its own. Q2 「날것으로 — 이펙트 없이」: no effect is carried.
+/// Q4 「넣는다 — 앱이 놓은 그대로 WAV 로」: the camera comp sounds the cut.
 ///
 /// A transform is the app's own, AE's order (`layerPoseMatrix`): anchor,
 /// scale, turn, position — a folder's over its rows' by parenting. Values
@@ -41,46 +41,72 @@ import 'export_cel_group_plan.dart';
 /// and the rows riding it are in its picture (`renderCelGroup`), so its
 /// layer carries the transform's animated opacity alone.
 ///
-/// [framesOf] is how long a cut's comps run — its sheet's rows, the のりしろ
-/// an O.L asks included, as its XDTS ([cutSheetFrameCount]).
-/// [camera] is the camera the render looks through. The script's name and
-/// rate are the caller's ([AeScript]).
+/// [runOf] is how a cut's comps run ([AeCutRun]). [camera] is the camera
+/// the render looks through. The script's name and rate are the caller's
+/// ([AeScript]).
 List<AeComp> aeCompsOf({
   required Project project,
   required ExportCelGroupPlan plan,
   required CanvasCamera camera,
-  required int Function(Cut cut) framesOf,
+  required AeCutRun Function(Cut cut) runOf,
 }) {
   final comps = <AeComp>[];
-  final laid = <CutId>{};
-  for (final listed in _listedCuts(plan)) {
-    final banks = _banksOf(listed, plan, comps);
-    for (final cut in linkedCutGroupInTrackOrder(project, cutId: listed.id)) {
-      if (!laid.add(cut.id)) {
-        continue;
-      }
-      final run = _CutRun(
-        cut: cut,
-        frames: framesOf(cut),
-        banks: {
-          for (final MapEntry(key: axis, value: bank) in banks.entries)
-            ?_counterpart(project, listed, axis, cut): bank,
-        },
-        comps: comps,
-      );
-      final canvas = AeComp(
-        name: '${cut.name} canvas',
-        width: cut.canvasSize.width,
-        height: cut.canvasSize.height,
-        frames: run.frames,
-        layers: run.stack(null),
-      );
-      comps
-        ..add(canvas)
-        ..add(_cameraComp(cut, canvas, camera));
-    }
+  final banks = <CutId, Map<LayerId, _Bank>>{};
+  for (final (:listed, :cut) in _laidCuts(project, plan)) {
+    final listedBanks = banks.putIfAbsent(
+      listed.id,
+      () => _banksOf(listed, plan, comps),
+    );
+    final run = runOf(cut);
+    final laying = _CanvasLaying(
+      cut: cut,
+      frames: run.frames,
+      banks: {
+        for (final MapEntry(key: axis, value: bank) in listedBanks.entries)
+          ?_counterpart(project, listed, axis, cut): bank,
+      },
+      comps: comps,
+    );
+    final canvas = AeComp(
+      name: '${cut.name} canvas',
+      width: cut.canvasSize.width,
+      height: cut.canvasSize.height,
+      frames: run.frames,
+      layers: laying.stack(null),
+    );
+    comps
+      ..add(canvas)
+      ..add(_cameraComp(cut, canvas, camera, sound: run.sound));
   }
   return comps;
+}
+
+/// A cut as its comps run: [frames] long — its sheet's rows, the のりしろ an
+/// O.L asks included, as its XDTS (`cutSheetFrameCount`) — and the sound
+/// heard along them: a file beside the script, or null where the cut
+/// sounds nothing.
+typedef AeCutRun = ({int frames, String? sound});
+
+/// The cuts [aeCompsOf] lays a camera comp for, in its order — the ones a
+/// caller writes a sound for.
+Iterable<Cut> aeCutsOf(Project project, ExportCelGroupPlan plan) => [
+  for (final (:cut, listed: _) in _laidCuts(project, plan)) cut,
+];
+
+/// Each cut the plan lists cels in, then the cuts linked to it in track
+/// order, each once — with the listed cut whose cels it shows.
+Iterable<({Cut listed, Cut cut})> _laidCuts(
+  Project project,
+  ExportCelGroupPlan plan,
+) sync* {
+  final laid = <CutId>{};
+  for (final listed in _listedCuts(plan)) {
+    for (final cut in linkedCutGroupInTrackOrder(project, cutId: listed.id)) {
+      if (laid.add(cut.id)) {
+        yield (listed: listed, cut: cut);
+      }
+    }
+  }
 }
 
 /// The cuts the plan lists cels in, in its order.
@@ -161,8 +187,13 @@ _Bank _bank(
 
 /// [cut]'s camera comp: the camera's frame, looking at [canvas] where the
 /// camera stands — anchored at its centre, turned against it and scaled
-/// by its zoom ([aeCameraSampleOf]).
-AeComp _cameraComp(Cut cut, AeComp canvas, CanvasCamera camera) {
+/// by its zoom ([aeCameraSampleOf]) — over the cut's [sound], if it has one.
+AeComp _cameraComp(
+  Cut cut,
+  AeComp canvas,
+  CanvasCamera camera, {
+  required String? sound,
+}) {
   final frameSize = camera.frameSize;
   final samples = [
     for (var frame = 0; frame < canvas.frames; frame += 1)
@@ -174,6 +205,7 @@ AeComp _cameraComp(Cut cut, AeComp canvas, CanvasCamera camera) {
     height: frameSize.height,
     frames: canvas.frames,
     layers: [
+      if (sound != null) AeLayer(name: sound, source: AeSound(sound)),
       AeLayer(
         name: canvas.name,
         source: AeCompSource(canvas),
@@ -207,8 +239,8 @@ AeComp _cameraComp(Cut cut, AeComp canvas, CanvasCamera camera) {
 /// One cut's canvas comp as it is laid: the cut, how long it runs, the cel
 /// comp of each of its rows that has one, and the script's comps, which a
 /// folder's comp joins.
-class _CutRun {
-  _CutRun({
+class _CanvasLaying {
+  _CanvasLaying({
     required this.cut,
     required this.frames,
     required this.banks,

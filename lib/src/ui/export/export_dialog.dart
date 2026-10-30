@@ -2079,10 +2079,12 @@ class ExportDialogState extends State<ExportDialog> {
         ..sort((a, b) => a.path.compareTo(b.path));
       for (final output in made) {
         final name = fileNameOfPath(output.path);
-        var own = name;
-        for (var bump = 2; !taken.add(own.toLowerCase()); bump += 1) {
-          own = bumpedOutputName(name, bump, isFolder: output is Directory);
-        }
+        final own = claimedOutputName(
+          name,
+          taken,
+          keyOf: (name) => name.toLowerCase(),
+          isFolder: output is Directory,
+        );
         outputs.add(
           own == name
               ? output.path
@@ -2943,7 +2945,8 @@ class ExportDialogState extends State<ExportDialog> {
     );
   }
 
-  /// The script of [plan]'s cels, named after what [scope] covers.
+  /// The script of [plan]'s cels, named after what [scope] covers, and the
+  /// sound of each cut it lays beside it ([_writeAeSounds]).
   Future<void> _writeAeScript(
     ExportCelGroupPlan plan, {
     required ExportScopeKind scope,
@@ -2952,6 +2955,15 @@ class ExportDialogState extends State<ExportDialog> {
     final name = unnamedExportName(
       project,
       cut: scope == ExportScopeKind.cut ? _activeCut : null,
+    );
+    int framesOf(Cut cut) => cutSheetFrameCount(
+      _session,
+      cut: cut,
+      cutStartFrame: _trackStartOf(cut),
+    );
+    final sounds = await _writeAeSounds(
+      aeCutsOf(project, plan),
+      framesOf: framesOf,
     );
     final script = AeScript(
       name: name,
@@ -2965,16 +2977,38 @@ class ExportDialogState extends State<ExportDialog> {
           poseOf: _session.camera.cameraPoseForCut,
           frameSize: _session.camera.cameraFrameSize,
         ),
-        framesOf: (cut) => cutSheetFrameCount(
-          _session,
-          cut: cut,
-          cutStartFrame: _trackStartOf(cut),
-        ),
+        runOf: (cut) => (frames: framesOf(cut), sound: sounds[cut.id]),
       ),
     );
     final file = File(_joinLocation('$name.jsx'));
     await file.parent.create(recursive: true);
     await file.writeAsString(writeAeScript(script), flush: true);
+  }
+
+  /// Each of [cuts]' sound as the app plays it over the frames its comps
+  /// run ([framesOf]), a WAV beside the script by the cut's name — keyed by
+  /// the cut. A cut that sounds nothing has none.
+  Future<Map<CutId, String>> _writeAeSounds(
+    Iterable<Cut> cuts, {
+    required int Function(Cut cut) framesOf,
+  }) async {
+    final sounds = <CutId, String>{};
+    final taken = <String>{};
+    for (final cut in cuts) {
+      final fileName = claimedOutputName(
+        '${sanitizeExportFileComponent(cut.name)}.wav',
+        taken,
+        keyOf: (name) => name.toLowerCase(),
+      );
+      final run = [
+        for (var frame = 0; frame < framesOf(cut); frame += 1)
+          ExportFrameTask(cut: cut, frameIndex: frame),
+      ];
+      if (await _writeAudioMix(run, _joinLocation(fileName))) {
+        sounds[cut.id] = fileName;
+      }
+    }
+    return sounds;
   }
 
   /// The digital sheet of a cut's timesheet, at [sheet]'s file.
@@ -2993,24 +3027,32 @@ class ExportDialogState extends State<ExportDialog> {
   /// Renders the SE mix to a temp WAV through the same mixer playback
   /// uses; null = nothing audible (video-only encode).
   Future<String?> _renderAudioMix(List<ExportFrameTask> videoPlan) async {
+    final path =
+        '${Directory.systemTemp.path}${Platform.pathSeparator}'
+        'qa_export_mix_${DateTime.now().microsecondsSinceEpoch}.wav';
+    return await _writeAudioMix(videoPlan, path) ? path : null;
+  }
+
+  /// The SE mix of [plan]'s frames, written to [path] as a WAV through the
+  /// same mixer playback uses — false, and nothing written, when nothing
+  /// there is audible.
+  Future<bool> _writeAudioMix(List<ExportFrameTask> plan, String path) async {
     final schedule = buildExportAudioPlan(
-      plan: videoPlan,
+      plan: plan,
       project: _session.repository.requireProject(),
     );
     if (schedule.isEmpty) {
-      return null;
+      return false;
     }
     final store = _session.audioConformStore;
     for (final clip in schedule) {
       await store.ensureFor(clip.filePath);
     }
-    final path =
-        '${Directory.systemTemp.path}${Platform.pathSeparator}'
-        'qa_export_mix_${DateTime.now().microsecondsSinceEpoch}.wav';
-    final written = await writeExportAudioMixWav(
+    await File(path).parent.create(recursive: true);
+    return writeExportAudioMixWav(
       schedule: schedule,
       rate: _session.projectSettings.projectFrameRate,
-      totalFrames: videoPlan.length,
+      totalFrames: plan.length,
       sampleRate: store.projectSampleRate,
       resolveSource: (filePath) async {
         final entry = await store.ensureFor(filePath);
@@ -3025,7 +3067,6 @@ class ExportDialogState extends State<ExportDialog> {
       outputPath: path,
       log: debugPrint,
     );
-    return written ? path : null;
   }
 
   void cancelExport() {

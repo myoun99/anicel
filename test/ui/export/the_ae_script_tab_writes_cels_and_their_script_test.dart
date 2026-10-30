@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
@@ -22,16 +23,20 @@ import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
+import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 
 import '../../helpers/files_written_under.dart';
 import '../../helpers/project_scratch_folder.dart';
+import '../../helpers/written_wav.dart';
 
 /// The AE Script tab's run, down to the files on disk: the cels the Cels
 /// list picks, written as the tab writes them, and the script beside them
@@ -55,7 +60,11 @@ void main() {
       Frame(id: FrameId(id), duration: 1, strokes: const [], name: name);
 
   /// A (two cels) · B (one) · a paper row · a direction row.
-  EditorSessionManager film() => EditorSessionManager(
+  EditorSessionManager film({
+    List<Layer> seLayers = const [],
+    AudioConformStore? sounds,
+  }) => EditorSessionManager(
+    audioConformStore: sounds,
     initialProject: Project(
       id: const ProjectId('project'),
       name: 'Project',
@@ -65,6 +74,7 @@ void main() {
         Track(
           id: const TrackId('track'),
           name: 'Track',
+          seLayers: seLayers,
           cuts: [
             Cut(
               id: cutId,
@@ -282,6 +292,67 @@ void main() {
       const CelsExportSpec().kinds,
       reason: 'the AE Script tab wrote the Cels tab\'s picking',
     );
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('🎯a cut that sounds is heard in AE as the app plays it: its '
+      'mix a WAV by the cut\'s name, as long as its comps, laid in its '
+      'camera comp', (tester) async {
+    final temp = Directory.systemTemp.createTempSync('qa-ae-script-sound');
+    deleteAfterSessionEnds(temp);
+    // ae-script-export-Q4 「넣는다 — 앱이 놓은 그대로 WAV 로」: a sound on the
+    // track from the cut's second frame, its PCM a steady half.
+    final store = AudioConformStore(
+      resolveConformPath: (_) => null,
+      runner: (request) async => ConformResult(
+        outcome: ConformOutcome.built,
+        samples: Float32List(request.projectSampleRate)..fillRange(
+          0,
+          request.projectSampleRate,
+          0.5,
+        ),
+        channels: 1,
+        sampleRate: request.projectSampleRate,
+        frames: request.projectSampleRate,
+      ),
+      log: (_) {},
+    );
+    final session = film(
+      sounds: store,
+      seLayers: [
+        Layer(
+          id: const LayerId('se'),
+          name: 'S1',
+          kind: LayerKind.se,
+          frames: [frame('se1', '1')],
+          timeline: {
+            1: const TimelineExposure.drawing(FrameId('se1'), length: 1),
+          },
+          audioClips: [
+            AudioClip(filePath: 'voice.wav', frameId: const FrameId('se1')),
+          ],
+        ),
+      ],
+    );
+    addTearDown(session.dispose);
+    draw(session);
+
+    final state = await pumpAeScript(tester, session, temp);
+    await tester.runAsync(state.export);
+    await tester.pump();
+
+    expect(filesWrittenUnder(temp), contains('CUT1.wav'));
+    final wav = readWrittenWav(
+      File('${temp.path}/CUT1.wav').readAsBytesSync(),
+    );
+    // Two frames at 24 — the comps' length — at the store's rate.
+    final perFrame = wav.sampleRate ~/ 24;
+    expect(wav.length, perFrame * 2);
+    double at(int sample) => wav.samples[sample * wav.channels];
+    expect(at(perFrame ~/ 2), 0, reason: 'nothing sounds on frame 0');
+    expect(at(perFrame + perFrame ~/ 2), isNot(0), reason: 'frame 1 sounds');
+    final script = File('${temp.path}/CUT1.jsx').readAsStringSync();
+    expect(script, contains('footage("CUT1.wav")'));
     session.playbackRig.prerenderScheduler.cancel();
   });
 }

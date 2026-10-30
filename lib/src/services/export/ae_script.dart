@@ -9,7 +9,7 @@ import '../../models/project_frame_rate.dart';
 /// 🗣️ae-script-export-Q1 (유저 2026-10-15): 「카메라같은건 애초에 업계에서
 /// 카메라용 컴포지션(카메라 해상도 크기의 컴포지션,그안에 소재 컴포지션있음),
 /// 그리고 소재 컴포지션(캔버스 사이즈의 컴포지션. 여기에 원본 그림이 들어감)」
-/// — what goes in which comp is the plan's (`buildAeScript`); this is how a
+/// — what goes in which comp is the plan's (`aeCompsOf`); this is how a
 /// comp is SAID to After Effects.
 ///
 /// ⛔Nothing here reads the app's model beyond the blend a layer wears: the
@@ -52,8 +52,8 @@ class AeComp {
   final bool tucked;
 }
 
-/// What a layer shows: a picture file, another comp — or nothing, a null
-/// layer that only carries the layers parented to it.
+/// What a layer shows: a picture file, another comp, a sound — or nothing, a
+/// null layer that only carries the layers parented to it.
 sealed class AeLayerSource {
   const AeLayerSource();
 }
@@ -79,6 +79,17 @@ final class AeCompSource extends AeLayerSource {
 /// to it (a folder that composites nothing of its own).
 final class AeNullSource extends AeLayerSource {
   const AeNullSource();
+}
+
+/// A sound beside the script, at [path] relative to it, heard from the
+/// comp's start — the cut's own, as the app plays it.
+///
+/// 🗣️ae-script-export-Q4 (유저 2026-10-16): 「넣는다 — 앱이 놓은 그대로
+/// WAV 로」.
+final class AeSound extends AeLayerSource {
+  const AeSound(this.path);
+
+  final String path;
 }
 
 /// One layer of a comp.
@@ -237,7 +248,7 @@ class _AeScriptWriter {
 
   final AeScript script;
   final StringBuffer _out = StringBuffer();
-  final Map<String, String> _stills = {};
+  final Map<String, String> _footage = {};
   final Map<AeComp, String> _comps = Map.identity();
 
   String write() {
@@ -299,12 +310,14 @@ class _AeScriptWriter {
     switch (layer.source) {
       case AeStill(:final path, :final frame):
         _out.writeln(
-          '  $id = still($compId, ${_stillOf(path)}, $frame);',
+          '  $id = still($compId, ${_footageOf(path)}, $frame);',
         );
       case AeCompSource(comp: final source):
         _out.writeln('  $id = $compId.layers.add(${_comps[source]});');
       case AeNullSource():
         _out.writeln('  $id = $compId.layers.addNull($compId.duration);');
+      case AeSound(:final path):
+        _out.writeln('  $id = $compId.layers.add(${_footageOf(path)});');
     }
     _out.writeln('  $id.name = ${_string(layer.name)};');
     if (layer.timeRemap.isNotEmpty) {
@@ -332,8 +345,8 @@ class _AeScriptWriter {
     }
   }
 
-  String _stillOf(String path) => _stills.putIfAbsent(path, () {
-    final id = 'S[${_stills.length}]';
+  String _footageOf(String path) => _footage.putIfAbsent(path, () {
+    final id = 'S[${_footage.length}]';
     _out.writeln('  $id = footage(${_string(path)});');
     return id;
   });

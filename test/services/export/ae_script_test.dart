@@ -219,6 +219,16 @@ void main() {
     });
   });
 
+  test('a sound is its file beside the script, laid as it is', () {
+    final script = scriptOf([
+      compOf(const [AeLayer(name: 'C1.wav', source: AeSound('C1.wav'))]),
+    ]);
+    expect(script, contains('S[0] = footage("C1.wav");'));
+    expect(script, contains('L[0] = C[0].layers.add(S[0]);'));
+    expect(script, contains('L[0].name = "C1.wav";'));
+    expect(script, isNot(contains('hold(L[0]')));
+  });
+
   test('the rate is written as its fraction', () {
     final script = scriptOf([
       compOf(const []),

@@ -713,7 +713,7 @@ class ConteExportSpec extends ExportTabSpec {
 
 /// The AE Script tab (ae-script-export): the rows' cels as the Cels tab
 /// picks them, written raw beside a script that lays them out in After
-/// Effects (`buildAeScript`).
+/// Effects (`aeCompsOf`).
 ///
 /// 🗣️ae-script-export-Q1 (유저 2026-10-15): 「셀 탭에서 내보내는게아니라 그냥 ae
 /// 스크립트? 탭을 새로 만들어서 거기서 셀부분 선택하는 동작은 셀 탭 그대로
