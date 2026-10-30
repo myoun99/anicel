@@ -824,8 +824,10 @@ void main() {
         final c = await open(
           tester,
           projectOf(rows, keyed: false, plugin: true),
-          // Far past where the float lands: the landing is the cel.
-          fxPlugins: await installedShiftingFxPlugin(tester, by: 40),
+          // Past the stamp a float lands as — the box it was carried in,
+          // 60 round the sheets, scaled up too — so that only a landing
+          // made on the whole cel shows where the sheet goes.
+          fxPlugins: await installedShiftingFxPlugin(tester, by: 100),
         );
         expect(
           theCanvasRowRunsAPlugin(tester),
