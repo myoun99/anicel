@@ -4,6 +4,7 @@ import '../../models/composite_tree.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
+import '../../models/fx_plugin_binding.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_folder.dart';
@@ -57,7 +58,9 @@ class EditingCanvas {
       TimelineDragPreview? dragPreview,
     )
     ghostsAt,
+    required FxPluginBinding Function(Cut cut) pluginsIn,
   }) : _ghostsAt = ghostsAt,
+       _pluginsIn = pluginsIn,
        _cutEffectsAt = cutEffectsAt,
        _project = project,
        _selection = selection,
@@ -73,6 +76,10 @@ class EditingCanvas {
   /// (`MovieCelHydrator.laidAt`) — the stack moves it to where its row's
   /// reference fx stands now ([EditingStackMap]).
   final TransformPose? Function(BrushFrameKey key) _movieLaidAt;
+
+  /// What runs the plugins a cut's chains run on this canvas
+  /// (`EditorSessionManager.fxPluginsIn`).
+  final FxPluginBinding Function(Cut cut) _pluginsIn;
 
   /// Each onion row's ghosts at a cut's frame (`OnionSkin.ghostsAt`).
   final Map<LayerId, List<CutFrameCompositeGhost>> Function(
@@ -144,6 +151,7 @@ class EditingCanvas {
       frameIndex: frameIndex,
       activeLayerId: null,
       movieLaidAt: _movieLaidAt,
+      plugins: _pluginsIn(cut),
     ).mapTree(
       readingTheirRows(
         [
@@ -304,6 +312,7 @@ class EditingCanvas {
       frameIndex: frameIndex,
       activeLayerId: drawingLayerId,
       movieLaidAt: _movieLaidAt,
+      plugins: _pluginsIn(cut),
     );
     final drawing = drawingLayerId == null
         ? null

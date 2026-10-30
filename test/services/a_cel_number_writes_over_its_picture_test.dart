@@ -92,6 +92,7 @@ void main() {
 
   List<CompositeNode<CutFrameCompositeLayer>> planOf(Layer layer) =>
       planCutFrameCompositeTree(
+        plugins: null,
         cut: cutOf(layer),
         frameIndex: 0,
         surfaceResolver: (_, _) => surface,
@@ -200,6 +201,7 @@ void main() {
     List<CompositeNode<CutFrameCompositeLayer>> planOfRows(
       List<Layer> layers,
     ) => planCutFrameCompositeTree(
+      plugins: null,
       cut: cutOf(numbered).copyWith(layers: layers),
       frameIndex: 0,
       surfaceResolver: (_, _) => surface,
@@ -267,6 +269,7 @@ void main() {
     expect(kindsOf(worn), ['blur', 'blur']);
     expect(chainWornBy(cut, base), base.effects);
     final nodes = planCutFrameCompositeTree(
+      plugins: null,
       cut: cut,
       frameIndex: 0,
       surfaceResolver: (_, _) => surface,
@@ -289,6 +292,7 @@ void main() {
       'nowhere else in the tree (F-481)', () {
     List<CompositeNode<CutFrameCompositeLayer>> blankPlanOf(Layer layer) =>
         planCutFrameCompositeTree(
+          plugins: null,
           cut: cutOf(layer),
           frameIndex: 0,
           surfaceResolver: (_, _) => null,

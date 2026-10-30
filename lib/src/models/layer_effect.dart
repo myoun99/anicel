@@ -3,6 +3,7 @@ import 'canvas_point.dart';
 import 'canvas_size.dart';
 import 'effect_parameter_spec.dart';
 import 'fx_plugin_description.dart';
+import 'fx_plugin_run.dart';
 import 'layer_id.dart';
 import 'property_track.dart';
 import 'string_id.dart';
@@ -1168,6 +1169,8 @@ class ResolvedLayerEffect {
     this.stand,
     Map<String, CanvasPoint?> points = const {},
     Map<String, LayerId?> layers = const {},
+    this.frame,
+    this.run,
   }) : values = List.unmodifiable(values),
        points = Map.unmodifiable(points),
        layers = Map.unmodifiable(layers);
@@ -1198,6 +1201,36 @@ class ResolvedLayerEffect {
   /// the cut's to say, and its signature's.
   final Map<String, LayerId?> layers;
 
+  /// The frame a PLUGIN's sample is of — null for every other kind's.
+  ///
+  /// ★A plugin is told the frame it runs at (anicel_fx_frame), so its
+  /// picture may move from frame to frame where its values stand still —
+  /// the one kind whose sample is not its values alone. Every reader that
+  /// asks whether two frames show the same picture (the signature a run of
+  /// frames shares, `computeCutFrameCompositeSignature`) compares samples,
+  /// so a plugin's frames are never taken for one another, bound to a run
+  /// or not.
+  final int? frame;
+
+  /// What a plugin's effect is run with at this frame ([FxPluginRun]) —
+  /// null for every other kind, and for a plugin's where it does not run:
+  /// 🗣️I-132-Q32 b, on a cel row with nothing before it but colour keys,
+  /// on a device that has the plugin (`bindFxPluginRun`). A plugin's
+  /// effect without one changes no pixel.
+  final FxPluginRun? run;
+
+  /// This sample run with [run].
+  ResolvedLayerEffect withRun(FxPluginRun run) => ResolvedLayerEffect(
+    kind: kind,
+    plugin: plugin,
+    values: values,
+    stand: stand,
+    points: points,
+    layers: layers,
+    frame: frame,
+    run: run,
+  );
+
   double parameter(String id) {
     final index = specs.indexWhere((spec) => spec.id == id);
     if (index < 0) {
@@ -1224,6 +1257,8 @@ class ResolvedLayerEffect {
           stand: stand,
           points: points,
           layers: {for (final parameter in layers.keys) parameter: null},
+          frame: frame,
+          run: run,
         );
 
   /// Whether this sample changes no pixel: at its defaults, or at its kind's
@@ -1262,7 +1297,9 @@ class ResolvedLayerEffect {
           listEquals(other.values, values) &&
           other.stand == stand &&
           mapEquals(other.points, points) &&
-          mapEquals(other.layers, layers);
+          mapEquals(other.layers, layers) &&
+          other.frame == frame &&
+          other.run == run;
 
   @override
   int get hashCode => Object.hash(
@@ -1276,6 +1313,8 @@ class ResolvedLayerEffect {
     Object.hashAll([
       for (final entry in layers.entries) Object.hash(entry.key, entry.value),
     ]),
+    frame,
+    run,
   );
 
   @override
@@ -1400,6 +1439,7 @@ ResolvedLayerEffect sampleLayerEffectAt(LayerEffect effect, int frameIndex) =>
           id: effectPointAt(keys, frameIndex.toDouble()),
       },
       layers: effect.layers,
+      frame: effect.plugin == null ? null : frameIndex,
     );
 
 /// Whether any of [effects] spreads pixels beyond their own coverage — the

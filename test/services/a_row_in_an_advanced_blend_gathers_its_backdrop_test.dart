@@ -60,6 +60,7 @@ void main() {
     List<Layer> layers, {
     Set<String>? artwork,
   }) => planCutFrameCompositeTree(
+    plugins: null,
     cut: Cut(
       id: const CutId('cut'),
       name: 'Cut',

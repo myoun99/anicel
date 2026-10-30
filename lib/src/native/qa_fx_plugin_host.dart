@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
+import '../models/fx_plugin_run.dart';
 import 'qa_engine_abi.dart';
 
 /// `qa_fx_picture` (qa_fx_plugin.h): premultiplied RGBA8 rows, its first
@@ -43,27 +44,6 @@ final class QaFxRenderJobStruct extends Struct {
   @Double()
   external double scale;
 }
-
-/// A picture a plugin is handed or gives back: premultiplied RGBA8, rows
-/// [width] × 4 bytes apart, its first pixel at ([left], [top]) on the
-/// canvas.
-typedef FxPluginPicture = ({
-  Uint8List pixels,
-  int width,
-  int height,
-  int left,
-  int top,
-});
-
-/// When a plugin is asked: the frame's index from the cut's first, its
-/// time in seconds, the frames a second, and the output pixels a canvas
-/// pixel is drawn at (below 1 in a draft).
-typedef FxPluginMoment = ({
-  int frameIndex,
-  double time,
-  double frameRate,
-  double scale,
-});
 
 /// What opening a plugin gives: the plugin, or what the host said of why
 /// not.
@@ -213,7 +193,7 @@ typedef _PluginCalls = ({
 });
 
 /// One open plugin. ⚠️Asked by one thread at a time; [close] lets it go.
-final class QaFxPlugin {
+final class QaFxPlugin implements FxPluginRunner {
   QaFxPlugin._(this._handle, this._calls);
 
   Pointer<Void> _handle;
@@ -242,10 +222,11 @@ final class QaFxPlugin {
     }
   });
 
-  /// How far past its input the effect reaches for [values] (four doubles
-  /// a parameter, anicel_fx_value) at [moment], in output pixels — or null
-  /// where the plugin failed to say.
+  @override
   int? reach(Float64List values, FxPluginMoment moment) => using((arena) {
+    if (_handle == nullptr) {
+      return null;
+    }
     final at = arena<Double>(values.isEmpty ? 1 : values.length);
     at.asTypedList(values.length).setAll(0, values);
     final reach = _calls.reach(
@@ -260,16 +241,16 @@ final class QaFxPlugin {
     return reach < 0 ? null : reach;
   });
 
-  /// [input] as the effect draws it, its size and place — or null where the
-  /// plugin failed (the row is then drawn as if the effect were off).
-  /// [layers] are the rows its layer parameters name, in the places the
-  /// values give them.
+  @override
   Uint8List? render({
     required FxPluginPicture input,
     required Float64List values,
     required List<FxPluginPicture> layers,
     required FxPluginMoment moment,
   }) => using((arena) {
+    if (_handle == nullptr) {
+      return null;
+    }
     final job = arena<QaFxRenderJobStruct>();
     _lay(job.ref.input, input, arena);
     final bytes = input.width * input.height * 4;
@@ -313,7 +294,7 @@ final class QaFxPlugin {
       ..top = picture.top;
   }
 
-  /// Lets the plugin go; nothing may be asked of it after.
+  @override
   void close() {
     if (_handle == nullptr) {
       return;

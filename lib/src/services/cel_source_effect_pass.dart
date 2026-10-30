@@ -32,6 +32,7 @@ import '../models/bitmap_tile_rewrite.dart';
 import '../models/layer_effect.dart';
 import '../models/tile_coord.dart';
 import '../native/qa_native_engine.dart';
+import 'cel_plugin_pass.dart';
 
 /// What a [CelColorKey] does to the pixels its colour names.
 ///
@@ -235,6 +236,12 @@ class CelColorKey {
 /// hold was normalized to match so the lane list never lied. Order is free
 /// now, so the split follows the order instead of the order following the
 /// split.
+///
+/// 🗣️AND A PLUGIN RIGHT AFTER THEM, ONE (I-132-Q32 b, 유저 2026-10-30: 「b
+/// 로 첫 판」): 「셀 행에서 fx 줄 맨 앞(앞에 색상 키만 있어도 됨)일 때 돈다 —
+/// 색상 키의 CPU 길과 같은 자리」. A plugin anywhere else — under another
+/// effect, a second one — paints nothing (`composite_effect_paint`'s
+/// `_NoPart`) until a road for it is added (Q32 c: a).
 ({List<ResolvedLayerEffect> source, List<ResolvedLayerEffect> paint})
 splitSourceEffects(List<ResolvedLayerEffect> effects) {
   if (effects.isEmpty) {
@@ -243,6 +250,10 @@ splitSourceEffects(List<ResolvedLayerEffect> effects) {
   var leading = 0;
   while (leading < effects.length &&
       effects[leading].kind.runsOnSourcePixels) {
+    leading += 1;
+  }
+  if (leading < effects.length &&
+      effects[leading].kind == EffectKind.plugin) {
     leading += 1;
   }
   if (leading == 0) {
@@ -283,6 +294,20 @@ List<double> celSourceEffectSignature(List<ResolvedLayerEffect> effects) {
 bool sameCelSourceEffectSignature(List<double> a, List<double> b) =>
     listEquals(a, b);
 
+/// The plugin's effect a source run ([splitSourceEffects]) ends at, where
+/// it runs ([ResolvedLayerEffect.run]) — null where none does.
+///
+/// ★WHAT A CACHE OVER A SHOWN CEL HOLDS BESIDE [celSourceEffectSignature]:
+/// a plugin's picture moves with its values, its frame and the rows it
+/// reads, none of which is a cel's revision. And the question a route that
+/// shows a cel a TILE at a time asks: a plugin is run over the whole cel
+/// ([celSurfaceThroughPlugin]), never a tile.
+ResolvedLayerEffect? celSourcePlugin(List<ResolvedLayerEffect> effects) =>
+    switch (effects.lastOrNull) {
+      final effect? when effect.run != null => effect,
+      _ => null,
+    };
+
 /// [surface] with every color key in [effects] applied, or [surface] itself
 /// when there is nothing to do.
 ///
@@ -296,6 +321,15 @@ BitmapSurface celSurfaceWithSourceEffects(
   if (effects.isEmpty) {
     return surface;
   }
+  final keyed = _keyed(surface, effects);
+  return switch (celSourcePlugin(effects)) {
+    final plugin? => celSurfaceThroughPlugin(keyed, plugin),
+    null => keyed,
+  };
+}
+
+/// [surface] with every colour key in [effects] applied.
+BitmapSurface _keyed(BitmapSurface surface, List<ResolvedLayerEffect> effects) {
   final keys = _keysOf(effects);
   if (keys.isEmpty) {
     return surface;
@@ -331,6 +365,7 @@ void celSourceEffectsOverStraight(
   if (effects.isEmpty) {
     return;
   }
+  assert(celSourcePlugin(effects) == null, _wholeCelOnly);
   final keys = _keysOf(effects);
   if (keys.isNotEmpty) {
     _keyedPixels(straight, keys, () => straight);
@@ -349,6 +384,7 @@ BitmapTile celTileWithSourceEffects(
   List<ResolvedLayerEffect> effects,
   int tileSize,
 ) {
+  assert(celSourcePlugin(effects) == null, _wholeCelOnly);
   final keys = _keysOf(effects);
   return keys.isEmpty
       ? tile
@@ -356,6 +392,9 @@ BitmapTile celTileWithSourceEffects(
           for (final key in keys) ...key.signature,
         ], tileSize);
 }
+
+const String _wholeCelOnly =
+    'A plugin runs over the whole cel (celSurfaceAsShown), never a tile.';
 
 /// The colour keys [effects] applies, in its order — a kind that keys
 /// nothing, and a key that does nothing, left out.

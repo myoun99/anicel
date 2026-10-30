@@ -80,6 +80,7 @@ void main() {
     List<Layer> layers, {
     Set<String>? artwork,
   }) => planCutFrameCompositeTree(
+    plugins: null,
     cut: cutOf(layers),
     frameIndex: 0,
     // A surface per row, each its own — so a leaf says whose it is.

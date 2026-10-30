@@ -243,6 +243,7 @@ void main() {
   group('the surface plan', () {
     test('carries the chain to the paint routes, leaves and groups alike', () {
       final nodes = planCutFrameCompositeTree(
+        plugins: null,
         cut: cut([
           drawingLayer(id: 'a', folder: 'f', effects: [blur(3)]),
           folderRow('f', effects: [brightness(10)]),

@@ -244,7 +244,7 @@ final class FxPluginDescription {
       EffectParameterUnit.color => {
         ...head,
         'kind': 'color',
-        'default': _channelsOf(spec.defaultValue.toInt()),
+        'default': channelsOf(spec.defaultValue.toInt()),
       },
       EffectParameterUnit.point => {...head, 'kind': 'point'},
       EffectParameterUnit.flag => {
@@ -265,7 +265,9 @@ final class FxPluginDescription {
     };
   }
 
-  static List<double> _channelsOf(int argb) => [
+  /// [argb] as the spec says a colour: r, g, b, a from 0 to 1 — a
+  /// description's default, and a frame's value (anicel_fx_value).
+  static List<double> channelsOf(int argb) => [
     for (final shift in const [16, 8, 0, 24]) ((argb >> shift) & 0xFF) / 255,
   ];
 }

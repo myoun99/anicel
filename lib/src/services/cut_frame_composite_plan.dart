@@ -8,6 +8,7 @@ import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
+import '../models/fx_plugin_binding.dart';
 import '../models/layer.dart';
 import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart';
@@ -1686,14 +1687,19 @@ List<CompositeNode<CutFrameCompositeRow>> _folderAsRead(
 /// entries whose frame has no artwork drop out, and a group left empty by
 /// that drops with them (an empty buffer is a wasted saveLayer) — save one
 /// a cel number is written on, which stands bare ([mapCompositeLeaves]).
+///
+/// [plugins] runs each plugin a row's chain runs ([FxPluginBinding]).
 List<CompositeNode<CutFrameCompositeLayer>> planCutFrameCompositeTree({
   required Cut cut,
   required int frameIndex,
   required LayerFrameSurfaceResolver surfaceResolver,
+  required FxPluginBinding? plugins,
 }) => _withSurfaces(
   resolveCutFrameCompositeTree(cut: cut, frameIndex: frameIndex),
   cut: cut,
+  frameIndex: frameIndex,
   surfaceResolver: surfaceResolver,
+  plugins: plugins,
 );
 
 /// Row [row] of [cut] at [frameIndex] as a chain that reads it reads it
@@ -1705,11 +1711,14 @@ List<CompositeNode<CutFrameCompositeLayer>>? planRowAsRead({
   required LayerId row,
   required int frameIndex,
   required LayerFrameSurfaceResolver surfaceResolver,
+  required FxPluginBinding? plugins,
 }) => switch (_rowAsRead(cut, row, frameIndex: frameIndex, liveLayerId: null)) {
   final read? => _withSurfaces(
     read,
     cut: cut,
+    frameIndex: frameIndex,
     surfaceResolver: surfaceResolver,
+    plugins: plugins,
   ),
   null => null,
 };
@@ -1719,7 +1728,9 @@ List<CompositeNode<CutFrameCompositeLayer>>? planRowAsRead({
 List<CompositeNode<CutFrameCompositeLayer>> _withSurfaces(
   List<CompositeNode<CutFrameCompositeRow>> nodes, {
   required Cut cut,
+  required int frameIndex,
   required LayerFrameSurfaceResolver surfaceResolver,
+  required FxPluginBinding? plugins,
 }) {
   CutFrameCompositeLayer? layerOf(
     CutFrameCompositeRow row,
@@ -1738,7 +1749,14 @@ List<CompositeNode<CutFrameCompositeLayer>> _withSurfaces(
         opacity: row.opacity,
         blendMode: row.blendMode,
         placement: row.placement,
-        effects: row.effects,
+        effects:
+            plugins?.call(
+              row.effects,
+              cut: cut,
+              row: row.layer,
+              frameIndex: frameIndex,
+            ) ??
+            row.effects,
       ),
       null => null,
     },

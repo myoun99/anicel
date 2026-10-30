@@ -223,6 +223,7 @@ void main() {
       ]);
       final flat = visit(cut: posed, frameIndex: 0).single.placement;
       final tree = planCutFrameCompositeTree(
+        plugins: null,
         cut: posed,
         frameIndex: 0,
         surfaceResolver: resolver,

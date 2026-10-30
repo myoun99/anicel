@@ -139,6 +139,7 @@ void main() {
           ).renderThroughCamera(
             canvasSize: canvas,
             nodes: planCutFrameCompositeTree(
+              plugins: null,
               cut: Cut(
                 id: cutId,
                 name: 'Cut',

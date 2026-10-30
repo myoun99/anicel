@@ -16,6 +16,7 @@ import '../../models/export_format_selection.dart';
 import '../../models/export_spec.dart' show ExportLayerFx;
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
+import '../../models/fx_plugin_binding.dart';
 import '../../models/import/import_warning.dart'
     show ImportWarning, layerEffectsNotApplied, unsupportedLayerKind;
 import '../../models/layer.dart';
@@ -29,6 +30,7 @@ import '../../services/brush_frame_store.dart' show CelRead;
 import '../../models/composite_tree.dart';
 import '../../services/cel_numbered_row.dart';
 import '../../services/cut_frame_composite_plan.dart';
+import '../../services/fx_plugins/device_fx_plugin_binding.dart';
 import '../../services/layer_as_output.dart';
 import '../../services/layer_pose_matrix.dart' show LayerPlacement;
 import '../text/se_name_tag_paint.dart';
@@ -267,6 +269,15 @@ class ExportFrameRenderer {
       }
     }
   }
+
+  /// What runs the plugins [cut]'s chains run in this render
+  /// ([deviceFxPluginBinding]): the device's builds, the project's frame
+  /// rate, and the rows' cels as this render reads them ([_surfaceFor]).
+  FxPluginBinding _pluginsOf(Cut cut) => deviceFxPluginBinding(
+    runnerFor: session.fxPlugins.runnerFor,
+    frameRate: session.repository.requireProject().frameRate,
+    surfaceOf: (layer, frame) => _surfaceFor(cut, layer, frame),
+  );
 
   BitmapSurface? _surfaceFor(Cut cut, Layer layer, Frame frame) {
     // 🚨A MOVIE's pictures are read through, never held here: a movie is a
@@ -618,7 +629,12 @@ class ExportFrameRenderer {
           opacity: paint.opacity,
           blendMode: paint.blendMode,
           placement: drawing.render.placement,
-          effects: paint.effects,
+          effects: _pluginsOf(cut)(
+            paint.effects,
+            cut: cut,
+            row: layer,
+            frameIndex: task.frameIndex,
+          ),
         ),
         text: celNumberText(
           rowName: layer.name,
@@ -638,6 +654,7 @@ class ExportFrameRenderer {
         row: row,
         frameIndex: task.frameIndex,
         surfaceResolver: (layer, frame) => _surfaceFor(cut, layer, frame),
+        plugins: _pluginsOf(cut),
       ),
     );
   }
@@ -768,6 +785,7 @@ class ExportFrameRenderer {
     cut: _cutForRender(task.cut),
     frameIndex: task.frameIndex,
     surfaceResolver: (layer, frame) => _surfaceFor(task.cut, layer, frame),
+    plugins: _pluginsOf(task.cut),
   );
 
   /// The BACKDROP ground (R3b) under a video frame — null when nothing is
@@ -1393,7 +1411,11 @@ class ExportFrameRenderer {
     final cutOf = Map<CutFrameCompositeLayer, Cut>.identity();
     final shown = mapCompositeLeaves<_CelLaid, CutFrameCompositeLayer>(
       stack,
-      (laid) => _laidInTheCel(laid, cutOf: cutOf),
+      (laid) => _laidInTheCel(
+        laid,
+        cutOf: cutOf,
+        frameIndex: celGroupFirstExposure(task),
+      ),
     );
     return renderService.renderThroughCamera(
       nodes: _readingOnPaper(
@@ -1474,7 +1496,11 @@ class ExportFrameRenderer {
               nodes: _readingOnPaper(
                 mapCompositeLeaves(
                   _celNumbered(row, _alone(row.effects), asOnePicture: false),
-                  (laid) => _laidInTheCel(laid, cutOf: cutOf),
+                  (laid) => _laidInTheCel(
+        laid,
+        cutOf: cutOf,
+        frameIndex: celGroupFirstExposure(task),
+      ),
                 ),
                 cutOf: cutOf,
                 frameIndex: celGroupFirstExposure(task),
@@ -1591,13 +1617,19 @@ class ExportFrameRenderer {
   CutFrameCompositeLayer _laidInTheCel(
     _CelLaid laid, {
     required Map<CutFrameCompositeLayer, Cut> cutOf,
+    required int frameIndex,
   }) {
     final layer = CutFrameCompositeLayer(
       surface: laid.row.surface,
       opacity: laid.paint.opacity,
       blendMode: laid.paint.blendMode,
       placement: laid.row.placement,
-      effects: laid.paint.effects,
+      effects: _pluginsOf(laid.row.cut)(
+        laid.paint.effects,
+        cut: laid.row.cut,
+        row: laid.row.layer,
+        frameIndex: frameIndex,
+      ),
     );
     cutOf[layer] = laid.row.cut;
     return layer;
@@ -1624,6 +1656,7 @@ class ExportFrameRenderer {
         row: row,
         frameIndex: frameIndex,
         surfaceResolver: (layer, frame) => _surfaceFor(cut, layer, frame),
+        plugins: _pluginsOf(cut),
       ),
       null => null,
     },

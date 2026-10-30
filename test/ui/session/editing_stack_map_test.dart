@@ -80,6 +80,7 @@ void main() {
       frameIndex: 0,
       activeLayerId: s.activeLayerId,
       movieLaidAt: s.movieCels.laidAt,
+      plugins: null,
     );
     return (
       map,
@@ -201,6 +202,7 @@ void main() {
         frameIndex: frameIndex,
         activeLayerId: s.activeLayerId,
         movieLaidAt: s.movieCels.laidAt,
+        plugins: null,
       );
       return (
         map,

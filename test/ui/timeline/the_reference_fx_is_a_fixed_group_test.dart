@@ -173,6 +173,7 @@ void main() {
       frameIndex: 0,
       activeLayerId: null,
       movieLaidAt: movieLaidAt ?? (_) => null,
+      plugins: null,
     );
     return [
       for (final node in map.mapTree(
@@ -406,6 +407,7 @@ void main() {
       frameIndex: 0,
       activeLayerId: null,
       movieLaidAt: s.movieCels.laidAt,
+      plugins: null,
     );
     final requests = [
       for (final node in map.mapTree(

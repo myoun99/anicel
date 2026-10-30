@@ -235,10 +235,11 @@ class RenderCaches {
   BitmapSurface? brushSurfaceForLayerFrame(Layer layer, Frame frame) =>
       switch (_project.activeCutOrNull) {
         null => null, // Gap state: no cut, no artwork.
-        final cut => _surfaceIn(cut, layer.id, frame.id),
+        final cut => celSurfaceIn(cut, layer.id, frame.id),
       };
 
-  BitmapSurface? _surfaceIn(Cut cut, LayerId row, FrameId cel) {
+  /// Cel [cel] of row [row] of [cut] as the store holds it — any cut's.
+  BitmapSurface? celSurfaceIn(Cut cut, LayerId row, FrameId cel) {
     // R19 P3b: the baked raster is the truth — the resolver is a plain
     // reference read (valid display cache first, else baked). No replay
     // exists anymore.
@@ -278,7 +279,7 @@ class RenderCaches {
     // 2026-10-06: 「셀의 그림이랑 정확히 동일」). ⚠️The transform TOOL's own box
     // frames the drawing alone — it never takes a text (「변형도구로 잡히지도
     // 아무 영향도 없음」) — and does not ask here.
-    final drawn = _surfaceIn(cut, row, cel);
+    final drawn = celSurfaceIn(cut, row, cel);
     final surface = drawn == null ? null : celSurfaceWithTextsLaid(drawn);
     if (surface == null) {
       return null;

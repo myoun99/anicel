@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../services/flutter_test_run.dart';
 import '../services/font_library_service.dart';
+import '../services/fx_plugins/device_fx_plugin_binding.dart';
 import '../services/fx_plugins/installed_fx_plugins.dart';
 import '../services/persistence/failed_save_copies.dart';
 import '../services/persistence/media_staging_store.dart';
@@ -38,6 +39,7 @@ import '../models/transform_track.dart';
 import '../models/cut_id.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
+import '../models/fx_plugin_binding.dart';
 import '../models/layer.dart';
 import '../models/layer_effect.dart' show EffectId;
 import '../models/layer_id.dart';
@@ -1928,6 +1930,17 @@ class EditorSessionManager extends ChangeNotifier
     movieLaidAt: (key) => movieCels.laidAt(key),
     ghostsAt: (cut, frameIndex, dragPreview) =>
         onionSkin.ghostsAt(cut, frameIndex, dragPreview),
+    pluginsIn: fxPluginsIn,
+  );
+
+  /// What runs the plugins [cut]'s chains run on this device
+  /// ([deviceFxPluginBinding]): its builds ([InstalledFxPlugins.runnerFor]),
+  /// the project's frame rate, and each row's cel as the store holds it.
+  FxPluginBinding fxPluginsIn(Cut cut) => deviceFxPluginBinding(
+    runnerFor: fxPlugins.runnerFor,
+    frameRate: repository.requireProject().frameRate,
+    surfaceOf: (layer, frame) =>
+        renderCaches.celSurfaceIn(cut, layer.id, frame.id),
   );
 
   // ── the opacity verbs: their own object, in their own file ──────────
