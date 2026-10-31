@@ -122,6 +122,11 @@ const ledger = <String, Why>{
   // not a value the tool keeps.
   "brush/text_tool_settings.dart | 'text-tool-flip-horizontal'":
       Why.aSetting,
+  // The stamp's two: switches of the held piece's own pose (F-527), lit
+  // while they are on.
+  "brush/tool_settings_panel.dart | 'cut-flip-horizontal-button'":
+      Why.aSetting,
+  "brush/tool_settings_panel.dart | 'cut-flip-vertical-button'": Why.aSetting,
 
   // ── THE DOOR TO A SECOND LEVEL ──────────────────────────────────────
   // A value's pencil: it opens the value's number pad and runs nothing.
@@ -223,6 +228,7 @@ void main() {
     'CommandPill',
     'ToolSettingAction',
     'ToolSettingAction.glyph',
+    'ToolSettingAction.flip',
   }, what: 'button');
 
   test('⛔premise: the scan reaches the buttons — the bar spelling '

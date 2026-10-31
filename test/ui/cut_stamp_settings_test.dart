@@ -15,6 +15,7 @@ import 'package:anicel/src/services/cut_piece_slot.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
 import '../helpers/boolean_dot_probe.dart';
@@ -135,8 +136,8 @@ void main() {
       // TS8: ONE paste button. The pair that said Above/Below was spelling
       // a composite order, and the blend control says that now.
       'cut-paste-at-origin-button',
-      'cut-flip-horizontal-switch',
-      'cut-flip-vertical-switch',
+      'cut-flip-horizontal-button',
+      'cut-flip-vertical-button',
       'cut-scale-slider',
       'cut-reset-button',
       'cut-register-tip-button',
@@ -184,14 +185,70 @@ void main() {
     final slot = CutPieceSlot()..hold(_piece());
     final bytes = slot.piece!.image;
     await pump(tester, tool: CanvasTool.cutStamp, slot: slot);
-    await tester.pressRingIn(
-      find.byKey(const ValueKey<String>('cut-flip-horizontal-switch')),
+    await tester.tap(
+      find.byKey(const ValueKey<String>('cut-flip-horizontal-button')),
     );
     await tester.pump();
     expect(slot.piece!.flipHorizontal, isTrue);
     // The flag moved; the pixels did not. Baking would destroy the
     // original and break undo of a stamp.
     expect(identical(slot.piece!.image, bytes), isTrue);
+  });
+
+  // 🗣️F-527 (유저 2026-11-01): 「스탬프는 원본이 아니란 상태를 보여줄필요가
+  // 있으니 적용중이면 강조색」.
+  for (final (key, flipped) in [
+    (
+      'cut-flip-horizontal-button',
+      (CutPiece piece) => piece.flipHorizontal,
+    ),
+    ('cut-flip-vertical-button', (CutPiece piece) => piece.flipVertical),
+  ]) {
+    testWidgets('$key wears the accent while its flip is on, and only then', (
+      tester,
+    ) async {
+      final slot = CutPieceSlot()..hold(_piece());
+      await pump(tester, tool: CanvasTool.cutStamp, slot: slot);
+      final face = find.byKey(ValueKey<String>(key));
+      Color? ground() =>
+          (tester.widget<DecoratedBox>(face).decoration as ShapeDecoration)
+              .color;
+
+      expect(ground(), AppColors.surface, reason: 'the piece as it was cut');
+
+      await tester.tap(face);
+      await tester.pump();
+      expect(flipped(slot.piece!), isTrue);
+      expect(ground(), AppColors.accent);
+
+      await tester.tap(face);
+      await tester.pump();
+      expect(flipped(slot.piece!), isFalse);
+      expect(ground(), AppColors.surface);
+
+      await tester.tap(face);
+      await tester.pump();
+      slot.resetPose();
+      await tester.pump();
+      expect(ground(), AppColors.surface, reason: 'reset clears both flips');
+    });
+  }
+
+  testWidgets('the stamp\'s flips are the transform\'s buttons', (
+    tester,
+  ) async {
+    final slot = CutPieceSlot()..hold(_piece());
+    await pump(tester, tool: CanvasTool.cutStamp, slot: slot);
+    final across = tester.toolSettingAction(
+      find.byKey(const ValueKey<String>('cut-flip-horizontal-button')),
+    );
+    final down = tester.toolSettingAction(
+      find.byKey(const ValueKey<String>('cut-flip-vertical-button')),
+    );
+    expect(across.label, AppText.strings.trFlipHorizontal);
+    expect(down.label, AppText.strings.trFlipVertical);
+    expect(across.glyph, isA<Icon>());
+    expect(down.glyph, isA<RotatedBox>());
   });
 
   testWidgets('Reset is dead until the piece is actually posed', (

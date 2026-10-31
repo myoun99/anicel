@@ -1809,8 +1809,6 @@ enum AppStrings {
   String get toolCutHoldingTemplate => _s('toolCutHoldingTemplate');
   String get toolLibraryEmpty => _s('toolLibraryEmpty');
   String get toolCutPasteAtOrigin => _s('toolCutPasteAtOrigin');
-  String get toolCutFlipHorizontal => _s('toolCutFlipHorizontal');
-  String get toolCutFlipVertical => _s('toolCutFlipVertical');
   String get toolCutRegisterTip => _s('toolCutRegisterTip');
   String get toolCutDeletesSource => _s('toolCutDeletesSource');
   String get toolReadSource => _s('toolReadSource');
@@ -3148,8 +3146,6 @@ enum AppStrings {
     'toolCutHoldingTemplate': 'Holding {size} px',
     'toolLibraryEmpty': 'Nothing to show',
     'toolCutPasteAtOrigin': 'Paste at original position',
-    'toolCutFlipHorizontal': 'Flip horizontal',
-    'toolCutFlipVertical': 'Flip vertical',
     'toolCutRegisterTip': 'Register as Tip',
     'toolCutDeletesSource': 'Delete original',
     'toolReadSource': 'Reference',
@@ -4844,8 +4840,6 @@ enum AppStrings {
     'toolCutHoldingTemplate': '{size} px を持っています',
     'toolLibraryEmpty': '表示するものがありません',
     'toolCutPasteAtOrigin': '元の位置に貼り付け',
-    'toolCutFlipHorizontal': '左右反転',
-    'toolCutFlipVertical': '上下反転',
     'toolCutRegisterTip': '先端として登録',
     'toolCutDeletesSource': '元画像を削除',
     'toolReadSource': '参照',
@@ -6657,8 +6651,6 @@ enum AppStrings {
     'toolCutHoldingTemplate': '{size} px 를 들고 있습니다',
     'toolLibraryEmpty': '표시할 것이 없습니다',
     'toolCutPasteAtOrigin': '원래 위치에 붙여넣기',
-    'toolCutFlipHorizontal': '좌우 반전',
-    'toolCutFlipVertical': '상하 반전',
     'toolCutRegisterTip': '팁으로 등록',
     'toolCutDeletesSource': '원본 삭제',
     'toolReadSource': '참조',
@@ -8611,8 +8603,6 @@ enum AppStrings {
     'toolCutHoldingTemplate': 'En main : {size} px',
     'toolLibraryEmpty': 'Rien à afficher',
     'toolCutPasteAtOrigin': 'Coller à la position d\'origine',
-    'toolCutFlipHorizontal': 'Miroir horizontal',
-    'toolCutFlipVertical': 'Miroir vertical',
     'toolCutRegisterTip': 'Enregistrer comme pointe',
     'toolCutDeletesSource': "Supprimer l'original",
     'toolReadSource': 'Référence',
@@ -10400,8 +10390,6 @@ enum AppStrings {
     'toolCutHoldingTemplate': '持有 {size} px',
     'toolLibraryEmpty': '没有可显示的内容',
     'toolCutPasteAtOrigin': '粘贴到原位置',
-    'toolCutFlipHorizontal': '水平翻转',
-    'toolCutFlipVertical': '垂直翻转',
     'toolCutRegisterTip': '注册为笔尖',
     'toolCutDeletesSource': '删除原图',
     'toolReadSource': '参考',

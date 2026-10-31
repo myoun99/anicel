@@ -855,10 +855,9 @@ class _BoxRows extends StatelessWidget {
         label: '',
         bar: reading.follow(
           (values) => values.writable,
-          (writable) => ToolSettingAction.glyph(
+          (writable) => ToolSettingAction.flip(
             keyValue: 'text-tool-flip-horizontal',
-            label: strings.trFlipHorizontal,
-            glyph: const Icon(Icons.flip),
+            horizontal: true,
             onPressed: writable ? () => reading.now.flipHorizontal() : null,
           ),
         ),
