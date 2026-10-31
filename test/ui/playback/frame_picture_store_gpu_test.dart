@@ -417,19 +417,24 @@ void main() {
 
 /// [image] at every level of its chain, as a zoomed-out view draws it:
 /// at 1/2^k under `FilterQuality.medium`.
+///
+/// On a handle of its own, as a screen holds one: a picture's image is let
+/// go of when the levels its patches owe are written, 200 ms on, and a
+/// machine under load has that between two of these levels.
 Future<List<Uint8List>> _levels(ui.Image image) async {
+  final held = image.clone();
   final levels = <Uint8List>[];
   for (
     var k = 0;
-    (image.width >> k) >= 1 && (image.height >> k) >= 1;
+    (held.width >> k) >= 1 && (held.height >> k) >= 1;
     k += 1
   ) {
-    final width = image.width >> k;
-    final height = image.height >> k;
+    final width = held.width >> k;
+    final height = held.height >> k;
     final recorder = ui.PictureRecorder();
     ui.Canvas(recorder).drawImageRect(
-      image,
-      ui.Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      held,
+      ui.Rect.fromLTWH(0, 0, held.width.toDouble(), held.height.toDouble()),
       ui.Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
       ui.Paint()..filterQuality = ui.FilterQuality.medium,
     );
@@ -439,6 +444,7 @@ Future<List<Uint8List>> _levels(ui.Image image) async {
     levels.add((await drawn.toByteData())!.buffer.asUint8List());
     drawn.dispose();
   }
+  held.dispose();
   return levels;
 }
 
