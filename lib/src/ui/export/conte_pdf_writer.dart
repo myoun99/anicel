@@ -42,10 +42,10 @@ import '../theme/app_theme.dart' show AppTypography;
 /// verbatim. A break on screen IS a break on the page.
 ///
 /// Fonts: the app's bundled faces ([AppTypography.bundledFiles] — BIZ
-/// UDPGothic for Latin, kana and kanji; 나눔고딕 behind it for Hangul, the
-/// order the app's own text resolves in), both weights, per-run selection
-/// by glyph coverage so mixed-script lines print whole. Both are OFL
-/// (THIRD_PARTY.md).
+/// UDPGothic for Latin, kana and kanji; 나눔고딕 behind it for Hangul and
+/// the keyboard's `~` ([AppTypography] says why), the order the app's own
+/// text resolves in), both weights, per-run selection by glyph coverage so
+/// mixed-script lines print whole. Both are OFL (THIRD_PARTY.md).
 class ContePdfFonts {
   ContePdfFonts._({
     required this.regular,
