@@ -18,6 +18,7 @@ import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_words_in.dart';
+import '../../helpers/canvas_on_its_pixels.dart';
 
 /// 🗣️I-20 (유저 2026-09-30): 「이 텍스트는 타임시트에도 이름 위에 빨간 가로선
 /// 위에 배경색없이 텍스트만 띄우도록」 · 「ON일때는 타임시트 이름위 … 표시하지
@@ -196,7 +197,7 @@ void main() {
   });
 }
 
-class _Paragraphs implements Canvas {
+class _Paragraphs with CanvasOnItsPixels implements Canvas {
   final offsets = <Offset>[];
 
   /// The name boxes laid: rects in the name's accent tint.

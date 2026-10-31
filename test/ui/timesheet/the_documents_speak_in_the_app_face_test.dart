@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -25,6 +24,7 @@ import 'package:anicel/src/ui/envelope/cut_envelope_painter.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 
 import '../../helpers/app_faces.dart';
+import '../../helpers/canvas_on_its_pixels.dart';
 import '../../helpers/run_edge_fixtures.dart';
 
 /// 🗣️documents-in-which-face-Q1 (유저 2026-09-24: 「둘다 앱글꼴로 통일」):
@@ -217,16 +217,12 @@ TimesheetDocument _sheet() => TimesheetDocument.fromCut(
 
 /// Every paragraph painted: its natural width and its baseline — two faces
 /// that agree on one of them seldom agree on both.
-class _Paragraphs implements Canvas {
+class _Paragraphs with CanvasOnItsPixels implements Canvas {
   final metrics = <(double, double)>[];
 
   @override
   void drawParagraph(ui.Paragraph paragraph, Offset offset) =>
       metrics.add((paragraph.maxIntrinsicWidth, paragraph.alphabeticBaseline));
-
-  /// What the paper's cut asks (`cutOnThePixelGrid`).
-  @override
-  Float64List getTransform() => Matrix4.identity().storage;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;

@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -12,6 +13,10 @@ class PaintedGlyphBoxes implements Canvas {
   final boxes = <Rect>[];
   final _saved = <Matrix4>[];
   var _transform = Matrix4.identity();
+
+  /// What the paper's cut reads: where the painter stands by now.
+  @override
+  Float64List getTransform() => _transform.storage;
 
   @override
   void save() => _saved.add(_transform.clone());
