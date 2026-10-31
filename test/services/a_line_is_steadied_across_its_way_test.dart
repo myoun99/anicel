@@ -182,6 +182,19 @@ void main() {
     );
 
     expect(moved.last.position.x, 0);
+
+    final after = line.follow(CanvasPoint(x: 100, y: 0), _rest, at: _sample);
+    expect(after.last.position.x, greaterThan(0));
+  });
+
+  test('🚨with no way told yet a frame still closes on the pen', () {
+    final line = _line();
+    line.follow(CanvasPoint(x: 100, y: 0), _rest, at: Duration.zero);
+
+    line.lookAtFrame(Duration.zero);
+    line.lookAtFrame(_sample);
+
+    expect(line.brush.position.x, closeTo(100 * 0.647, 1));
   });
 
   test('🚨the readings come level with the line', () {
@@ -199,5 +212,22 @@ void main() {
 
     expect(brush.position.x, closeTo(pen.x + 5, 0.01));
     expect(brush.readings.pressure, closeTo(0.9, 0.01));
+  });
+
+  test('🚨they go as far as the line went, across it too', () {
+    final line = _line();
+    _go(line, 1200);
+
+    final pen = line.brush.position;
+    final brush = line
+        .follow(
+          CanvasPoint(x: pen.x + 5, y: 1),
+          (pressure: 0.9, lean: null, twist: null, speed: 0.0),
+          at: _sample * 61,
+        )
+        .last;
+
+    expect(brush.position.y, inInclusiveRange(0.6, 0.8));
+    expect(brush.readings.pressure, greaterThan(0.85));
   });
 }
