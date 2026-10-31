@@ -57,7 +57,6 @@ void main() {
             ),
             availableFrameKeys: frameKeys,
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-            floorCover: EdgeInsets.zero,
             canvasSize: canvasSize,
           ),
         ),

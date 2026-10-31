@@ -112,7 +112,6 @@ void main() {
               availableFrameKeys: const [],
               cacheInvalidationSink: BrushEditCacheInvalidationSink(),
               canvasSize: const CanvasSize(width: 300, height: 300),
-              floorCover: cover,
               contentOverride: (context, viewport) => const SizedBox.expand(),
             ),
           ),

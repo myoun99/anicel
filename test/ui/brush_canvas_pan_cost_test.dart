@@ -60,7 +60,6 @@ void main() {
             ),
             availableFrameKeys: frameKeys,
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-            floorCover: EdgeInsets.zero,
             // MERGED mode: this is the configuration in which the host owns
             // the overlay and the panel hands a surface painter down — i.e.
             // the one the drawing floor actually runs in.

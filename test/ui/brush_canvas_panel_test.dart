@@ -63,12 +63,10 @@ const testLeftPill = CanvasEdgePill(
 
 /// The panel as the app mounts it, with [onFloor] deciding WHERE.
 ///
-/// 🚨[CanvasFloorInsets] is what says "you are lying on the floor" — the
-/// panel reads it out of the tree rather than being told, which is the
-/// whole reason no host had to learn a new parameter. A test that wants the
-/// floor's pill has to put the panel under one; `floorCover:` is a
-/// different thing entirely (how much of the artwork is covered) and says
-/// nothing about where the panel is.
+/// 🚨[CanvasFloorInsets] is what says "you are lying on the floor", and how
+/// much of the artwork is covered — the panel reads it out of the tree
+/// rather than being told, which is the whole reason no host had to learn a
+/// new parameter. A test that wants either has to put the panel under one.
 Widget floorPillHarness({
   required double width,
   required bool onFloor,
@@ -88,8 +86,6 @@ Widget floorPillHarness({
     coordinator: BrushCanvasFixture.createCoordinator(frameKeys: frameKeys),
     availableFrameKeys: frameKeys,
     cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-    floorCover: floorCover,
-    floorLeftRailBand: floorLeftRailBand,
     leftPill: leftPill,
     documentName: documentName,
     canvasSize: const CanvasSize(width: 300, height: 300),
@@ -163,7 +159,6 @@ void main() {
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
             // A canvas standing on its own IS the floor, and that is where the
             // view controls live (법: 뷰 컨트롤은 바닥에만).
-            floorCover: EdgeInsets.zero,
           ),
         ),
       ),
@@ -249,7 +244,6 @@ void main() {
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
             // A canvas standing on its own IS the floor, and that is where the
             // view controls live (법: 뷰 컨트롤은 바닥에만).
-            floorCover: EdgeInsets.zero,
           ),
         ),
       ),
@@ -779,7 +773,6 @@ void main() {
         ),
         availableFrameKeys: frameKeys,
         cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-        floorCover: EdgeInsets.zero,
       );
       await tester.pumpWidget(
         MaterialApp(
@@ -850,7 +843,6 @@ void main() {
               cacheInvalidationSink: BrushEditCacheInvalidationSink(),
               // A canvas standing on its own IS the floor, and that is where the
               // view controls live (법: 뷰 컨트롤은 바닥에만).
-              floorCover: EdgeInsets.zero,
             ),
           ),
         ),
@@ -939,7 +931,6 @@ void main() {
               cacheInvalidationSink: BrushEditCacheInvalidationSink(),
               // A canvas standing on its own IS the floor, and that is where the
               // view controls live (법: 뷰 컨트롤은 바닥에만).
-              floorCover: EdgeInsets.zero,
               canvasSize: const CanvasSize(width: 300, height: 300),
             ),
           ),
@@ -1012,7 +1003,6 @@ void main() {
                 ),
                 availableFrameKeys: frameKeys,
                 cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-                floorCover: EdgeInsets.zero,
                 allowViewRotation: false,
                 bottomBarLeading: leading,
                 bottomBarHostToken: width,
@@ -1065,7 +1055,6 @@ void main() {
               coordinator: coordinator,
               availableFrameKeys: frameKeys,
               cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-              floorCover: EdgeInsets.zero,
               canvasSize: const CanvasSize(width: 300, height: 300),
             ),
           ),
@@ -1124,7 +1113,6 @@ void main() {
                   ),
                   availableFrameKeys: frameKeys,
                   cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-                  floorCover: EdgeInsets.zero,
                   paperColor: 0xFFFFFFFF,
                   onPaperColorChanged: (_) {},
                   // Six is what the media viewer asked for before ⑤ and ⑥
@@ -1608,7 +1596,6 @@ void main() {
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
             // A canvas standing on its own IS the floor, and that is where the
             // view controls live (법: 뷰 컨트롤은 바닥에만).
-            floorCover: EdgeInsets.zero,
           ),
         ),
       ),
@@ -1649,7 +1636,6 @@ void main() {
                 coordinator: coordinator,
                 availableFrameKeys: frameKeys,
                 cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-                floorCover: EdgeInsets.zero,
                 canvasSize: const CanvasSize(width: 100, height: 50),
               ),
             ),
@@ -1717,7 +1703,6 @@ void main() {
               cacheInvalidationSink: BrushEditCacheInvalidationSink(),
               // A canvas standing on its own IS the floor, and that is where the
               // view controls live (법: 뷰 컨트롤은 바닥에만).
-              floorCover: EdgeInsets.zero,
               canvasSize: const CanvasSize(width: 100, height: 50),
             ),
           ),
@@ -1790,7 +1775,6 @@ void main() {
                 cacheInvalidationSink: BrushEditCacheInvalidationSink(),
                 // A canvas standing on its own IS the floor, and that is where the
                 // view controls live (법: 뷰 컨트롤은 바닥에만).
-                floorCover: EdgeInsets.zero,
                 canvasSize: const CanvasSize(width: 100, height: 50),
               ),
             ),
@@ -1918,7 +1902,6 @@ void main() {
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
             // A canvas standing on its own IS the floor, and that is where the
             // view controls live (법: 뷰 컨트롤은 바닥에만).
-            floorCover: EdgeInsets.zero,
             brushToolState: ValueNotifier(BrushToolState.clamped(
               color: settings.color,
               size: settings.size,
@@ -1948,7 +1931,6 @@ void main() {
             ),
             availableFrameKeys: frameKeys,
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-            floorCover: EdgeInsets.zero,
             brushToolState: brush,
           ),
         ),
@@ -1984,7 +1966,6 @@ void main() {
             cacheInvalidationSink: sink,
             // A canvas standing on its own IS the floor, and that is where the
             // view controls live (법: 뷰 컨트롤은 바닥에만).
-            floorCover: EdgeInsets.zero,
             brushToolState: ValueNotifier(BrushToolState.clamped(size: 8)),
           ),
         ),
@@ -2029,7 +2010,6 @@ void main() {
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
             // A canvas standing on its own IS the floor, and that is where the
             // view controls live (법: 뷰 컨트롤은 바닥에만).
-            floorCover: EdgeInsets.zero,
             brushToolState: ValueNotifier(BrushToolState.clamped(size: 8)),
             canvasSize: BrushCanvasFixture.canvasSize,
           ),
@@ -2110,7 +2090,6 @@ void main() {
               cacheInvalidationSink: BrushEditCacheInvalidationSink(),
               // A canvas standing on its own IS the floor, and that is where the
               // view controls live (법: 뷰 컨트롤은 바닥에만).
-              floorCover: EdgeInsets.zero,
             ),
           ),
         ),
@@ -2155,7 +2134,6 @@ void main() {
               cacheInvalidationSink: BrushEditCacheInvalidationSink(),
               // A canvas standing on its own IS the floor, and that is where the
               // view controls live (법: 뷰 컨트롤은 바닥에만).
-              floorCover: EdgeInsets.zero,
               canvasSize: const CanvasSize(width: 300, height: 300),
               viewport: CanvasViewport(zoom: 2),
               onViewportChanged: syncedViewports.add,
@@ -2209,7 +2187,6 @@ void main() {
               cacheInvalidationSink: BrushEditCacheInvalidationSink(),
               // A canvas standing on its own IS the floor, and that is where the
               // view controls live (법: 뷰 컨트롤은 바닥에만).
-              floorCover: EdgeInsets.zero,
               canvasSize: const CanvasSize(width: 300, height: 300),
               viewport: CanvasViewport(zoom: 2),
               onViewportChanged: syncedViewports.add,
@@ -2262,7 +2239,6 @@ void main() {
               cacheInvalidationSink: BrushEditCacheInvalidationSink(),
               // A canvas standing on its own IS the floor, and that is where the
               // view controls live (법: 뷰 컨트롤은 바닥에만).
-              floorCover: EdgeInsets.zero,
               canvasSize: const CanvasSize(width: 300, height: 300),
               onViewportChanged: onViewportChanged,
               contentOverride: (context, viewport) => const SizedBox.expand(),
@@ -2466,7 +2442,6 @@ void main() {
                 cacheInvalidationSink: BrushEditCacheInvalidationSink(),
                 // A canvas standing on its own IS the floor, and that is where the
                 // view controls live (법: 뷰 컨트롤은 바닥에만).
-                floorCover: EdgeInsets.zero,
                 canvasSize: const CanvasSize(width: 300, height: 300),
                 onViewportChanged: (v) => viewports.add(renderOf(tester, v)),
               ),
@@ -2514,7 +2489,6 @@ void main() {
                 cacheInvalidationSink: BrushEditCacheInvalidationSink(),
                 // A canvas standing on its own IS the floor, and that is where the
                 // view controls live (법: 뷰 컨트롤은 바닥에만).
-                floorCover: EdgeInsets.zero,
                 canvasSize: const CanvasSize(width: 300, height: 300),
                 onViewportChanged: (v) => viewports.add(renderOf(tester, v)),
               ),
@@ -2562,7 +2536,6 @@ void main() {
                 cacheInvalidationSink: BrushEditCacheInvalidationSink(),
                 // A canvas standing on its own IS the floor, and that is where the
                 // view controls live (법: 뷰 컨트롤은 바닥에만).
-                floorCover: EdgeInsets.zero,
                 canvasSize: const CanvasSize(width: 300, height: 300),
                 onViewportChanged: (v) => viewports.add(renderOf(tester, v)),
               ),
@@ -2633,7 +2606,6 @@ void main() {
                 coordinator: coordinator,
                 availableFrameKeys: frameKeys,
                 cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-                floorCover: EdgeInsets.zero,
                 canvasSize: const CanvasSize(width: 300, height: 300),
                 contentStrokeActive: contentStroke,
                 onViewportChanged: (v) => viewports.add(renderOf(tester, v)),
@@ -2679,7 +2651,6 @@ void main() {
                 coordinator: coordinator,
                 availableFrameKeys: frameKeys,
                 cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-                floorCover: EdgeInsets.zero,
                 canvasSize: const CanvasSize(width: 300, height: 300),
               ),
             ),
@@ -2759,7 +2730,6 @@ void main() {
               cacheInvalidationSink: BrushEditCacheInvalidationSink(),
               // A canvas standing on its own IS the floor, and that is where the
               // view controls live (법: 뷰 컨트롤은 바닥에만).
-              floorCover: EdgeInsets.zero,
               brushToolState: ValueNotifier(
                 BrushToolState.clamped(size: 40, tool: tool),
               ),
@@ -2872,7 +2842,6 @@ void main() {
               cacheInvalidationSink: BrushEditCacheInvalidationSink(),
               // A canvas standing on its own IS the floor, and that is where the
               // view controls live (법: 뷰 컨트롤은 바닥에만).
-              floorCover: EdgeInsets.zero,
               brushToolState: ValueNotifier(BrushToolState.clamped(size: 1)),
             ),
           ),

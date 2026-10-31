@@ -97,7 +97,6 @@ void main() {
                 ),
                 availableFrameKeys: frameKeys,
                 cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-                floorCover: EdgeInsets.zero,
                 brushToolState: brush,
                 sampleColorAt: (_) => 0x336699,
                 onEyedropperPick: (_) {},
@@ -454,7 +453,6 @@ void main() {
             ),
             availableFrameKeys: frameKeys,
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-            floorCover: EdgeInsets.zero,
             brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
               tool: CanvasTool.fill,
             )),

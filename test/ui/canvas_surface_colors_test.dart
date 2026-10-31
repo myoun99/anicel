@@ -65,7 +65,6 @@ void main() {
               availableFrameKeys: frameKeys,
               cacheInvalidationSink: BrushEditCacheInvalidationSink(),
               canvasSize: BrushCanvasFixture.canvasSize,
-              floorCover: EdgeInsets.zero,
               backdropArgb: backdrop,
               pasteboardColor: pasteboard,
               // Zoomed out far enough that the panel shows the apron AND
@@ -161,7 +160,6 @@ void main() {
                 availableFrameKeys: frameKeys,
                 cacheInvalidationSink: BrushEditCacheInvalidationSink(),
                 canvasSize: BrushCanvasFixture.canvasSize,
-                floorCover: EdgeInsets.zero,
                 backdropArgb: backdrop,
                 backdropNone: backdropNone,
                 pasteboardColor: pasteboard,
@@ -293,7 +291,6 @@ void main() {
                 availableFrameKeys: frameKeys,
                 cacheInvalidationSink: BrushEditCacheInvalidationSink(),
                 canvasSize: BrushCanvasFixture.canvasSize,
-                floorCover: EdgeInsets.zero,
                 viewport: seedFromRender(
                   tester,
                   CanvasViewport(zoom: 0.05, panX: 450, panY: 300),
@@ -353,7 +350,6 @@ void main() {
                 availableFrameKeys: frameKeys,
                 cacheInvalidationSink: BrushEditCacheInvalidationSink(),
                 canvasSize: BrushCanvasFixture.canvasSize,
-                floorCover: EdgeInsets.zero,
                 backdropArgb: own,
                 viewport: seedFromRender(
                   tester,
@@ -417,7 +413,6 @@ void main() {
                   availableFrameKeys: frameKeys,
                   cacheInvalidationSink: BrushEditCacheInvalidationSink(),
                   canvasSize: BrushCanvasFixture.canvasSize,
-                  floorCover: EdgeInsets.zero,
                   canvasBase: canvasBase,
                   backdropArgb: own,
                   viewport: seedFromRender(
@@ -488,7 +483,6 @@ void main() {
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
             // A canvas standing on its own IS the floor, and that is where the
             // view controls live (법: 뷰 컨트롤은 바닥에만).
-            floorCover: EdgeInsets.zero,
             paperColor: paper,
             onPaperColorChanged: (value) => paper = value,
             pasteboardColor: pasteboard,
@@ -546,7 +540,6 @@ void main() {
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
             // A canvas standing on its own IS the floor, and that is where the
             // view controls live (법: 뷰 컨트롤은 바닥에만).
-            floorCover: EdgeInsets.zero,
             // A THINNED paper: the pick below has to keep its alpha.
             paperColor: 0x80FFFFFF,
             onPaperColorChanged: commits.add,
@@ -621,7 +614,6 @@ void main() {
             ),
             availableFrameKeys: frameKeys,
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-            floorCover: EdgeInsets.zero,
             backdropArgb: 0xFF102030,
             onBackdropColorChanged: commits.add,
             onBackdropNone: () => nones += 1,

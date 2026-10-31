@@ -30,7 +30,6 @@ import '../canvas/viewport_pages_painter.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../brush/brush_canvas_panel.dart';
 import '../brush/canvas_book.dart';
-import '../brush/canvas_floor_insets.dart';
 import '../brush/canvas_selection_commands.dart';
 import '../brush/brush_tool_state.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
@@ -1448,11 +1447,6 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       });
     }
 
-    // Zero unless this viewer is the one lying on the app's floor — the
-    // tree answers it, as it answers the canvas (`MainCanvasBrushHost`): a
-    // viewer in a rail is not under the provider. ↩️The floor's viewer was
-    // handed none, so its bars stood under the panels lying on it.
-    final floor = CanvasFloorInsets.maybeOf(context);
     final transport = _transport(context, pageIndex, pageCount);
 
     // I-114: the brush writes on the page of a file the project carries
@@ -1472,9 +1466,6 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       ValueListenable<BrushToolState>? tool, {
       bool inks = false,
     }) => BrushCanvasPanel(
-      floorCover: floor?.insets ?? EdgeInsets.zero,
-      floorRightRailBand: floor?.rightRailBand,
-      floorBottomOverlaySpan: floor?.bottomOverlaySpan ?? 0,
       coordinator: null,
       availableFrameKeys: const [],
       cacheInvalidationSink: _cacheInvalidationSink,

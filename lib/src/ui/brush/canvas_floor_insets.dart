@@ -14,10 +14,10 @@ typedef CanvasFloorBand = ({double top, double bottom});
 /// it which of its edges are hidden.
 ///
 /// This is that answer, published by the shell around the floor dock and read
-/// by whichever canvas host is currently lying there. Two properties make it
-/// the right shape for the job:
+/// by the canvas panel lying there, whichever host mounted it
+/// (`BrushCanvasPanel`). Two properties make it the right shape for the job:
 ///
-///  * A host that is NOT on the floor — the conte in the bottom panel, a
+///  * A panel that is NOT on the floor — the conte in the bottom panel, a
 ///    timesheet in a rail column — is not under this widget at all, so it
 ///    reads null and keeps the arithmetic it has always had. Being the floor
 ///    is a question about WHERE you are, and inherited scope is exactly that
@@ -43,6 +43,15 @@ class CanvasFloorInsets extends InheritedWidget {
   ///
   /// A band that is only half covered still costs the whole edge here,
   /// because framing cannot put half a picture behind a panel.
+  ///
+  /// The PANELS only. A panel's own capsules are added where framing reads
+  /// the window (`BrushCanvasPanel._framingInsets`): the pill, the transport
+  /// and the left pill are cover there, the panbars float on the drawing.
+  /// ↩️None was until 2026-09-30 — a capsule hiding a corner of the artwork
+  /// was the price of not spending a strip of the screen on idle chrome.
+  /// The user took that back for the pill (「판정을 알약까지 포함해서
+  /// 판정」) and then for the page strip that stood on the left edge
+  /// (F-346).
   final EdgeInsets insets;
 
   /// WHERE the side columns actually are, vertically.
@@ -76,26 +85,6 @@ class CanvasFloorInsets extends InheritedWidget {
   /// floor at all.
   static CanvasFloorInsets? maybeOf(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<CanvasFloorInsets>();
-
-  /// Whether [context] is on the floor AT ALL — the presence of this
-  /// widget, not the numbers in it.
-  ///
-  /// 유저 확정 2026-08-13 (「바닥 둘만」): the floor's panels lay their whole
-  /// vocabulary out on the pill, and a panel in a rail or the bottom dock
-  /// keeps it behind the gear. That is this question, and the tree already
-  /// answers it — the same reason [maybeOf] exists rather than a flag each
-  /// host remembers to pass.
-  ///
-  /// 🚨Deliberately does NOT subscribe. [maybeOf] registers a dependency on
-  /// the INSETS, which change on every frame of a rail resize; a canvas
-  /// panel that took that dependency to learn one unchanging bool would
-  /// rebuild its whole spine through the drag. Presence cannot change
-  /// without this element being rebuilt anyway (the floor and the rails are
-  /// different subtrees, so moving a panel between them rebuilds it), which
-  /// is exactly when this is read again.
-  static bool isFloor(BuildContext context) =>
-      context.getElementForInheritedWidgetOfExactType<CanvasFloorInsets>() !=
-      null;
 
   @override
   bool updateShouldNotify(CanvasFloorInsets oldWidget) =>

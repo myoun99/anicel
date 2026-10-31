@@ -298,10 +298,6 @@ class BrushCanvasPanel extends StatefulWidget {
     this.contentShapeTargetAt,
     this.contentTakesPressAt,
     this.fitFocusRect,
-    this.floorCover = EdgeInsets.zero,
-    this.floorLeftRailBand,
-    this.floorRightRailBand,
-    this.floorBottomOverlaySpan = 0,
     this.autoFrame,
     this.unframedFit,
     this.viewLimit,
@@ -772,44 +768,6 @@ class BrushCanvasPanel extends StatefulWidget {
   /// active). Null keeps Fit on the canvas itself.
   final Rect? fitFocusRect;
 
-  /// The edges of this panel's box that other panels are lying on.
-  ///
-  /// This is the concrete form of the split [canvasVisibleRect] describes —
-  /// which parts of the box are covered, and therefore are not part of the
-  /// window the artist looks through. Zero for a panel nothing is covering,
-  /// which is every canvas surface but the floor.
-  ///
-  /// The PANELS only. This panel's own capsules are added where framing
-  /// reads the window (`_framingInsets`): the pill, the transport and the
-  /// left pill are cover there, the panbars float on the drawing.
-  /// ↩️None was until 2026-09-30 — a capsule hiding a corner of the artwork
-  /// was the price of not spending a strip of the screen on idle chrome.
-  /// The user took that back for the pill (「판정을 알약까지 포함해서
-  /// 판정」, [_CanvasEditorPanelShell.pillBandIn]) and then for the page
-  /// strip that stood on the left edge (F-346).
-  final EdgeInsets floorCover;
-
-  /// WHERE the rail on each side edge actually is, vertically — null when
-  /// nothing is open there.
-  ///
-  /// [floorCover] says how much of the edge is unusable, which is the right
-  /// question for FRAMING and the wrong one for the control that lives on
-  /// that edge — the vertical panbar on the right, the [leftPill] on the
-  /// left: a short rail panel covers a band, and a control that steps aside
-  /// for a panel nowhere near it reads as floating (유저, R3 #5).
-  /// ↩️The left rail's band was asked for the page strip on that edge, gone
-  /// with the strip under the bars (F-383), and asked again for the brush
-  /// pill there (I-34).
-  final CanvasFloorBand? floorLeftRailBand;
-
-  /// See [floorLeftRailBand].
-  final CanvasFloorBand? floorRightRailBand;
-
-  /// ⑩: what floats over the floor's BOTTOM edge without framing the
-  /// artwork — the collapsed row. The horizontal panbar steps up by it, and
-  /// nothing else does, because nothing else was being buried.
-  final double floorBottomOverlaySpan;
-
   /// Host-driven reframing: when the request's token changes between
   /// updates the panel reframes onto its rect (see
   /// [CanvasAutoFrameRequest]). Null never reframes — the user owns the
@@ -1259,14 +1217,35 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   PasteboardWall get _stagePasteboard =>
       widget.canvasSize.pasteboardAt(_stagePasteboardReach);
 
-  /// Whether this panel is the one LYING ON THE FLOOR — which decides
-  /// whether its pill lays its whole vocabulary out or keeps it folded
-  /// behind the gear (유저 확정 2026-08-13: 「바닥 둘만」).
+  /// What lies on this panel, where it lies on the floor — null anywhere
+  /// else, and nothing lies on it there.
   ///
   /// Read from the tree rather than taken as a parameter, for the reason
   /// [CanvasFloorInsets] was built on: five hosts mount this panel and the
   /// question is about WHERE, not about who mounted it.
-  late bool _onFloor;
+  ///
+  /// 🗣️F-515 (유저 2026-10-31): 「다른 캔버스나 메인뷰어랑 법 통일해서 배경이면
+  /// 바닥이나 상단에 도킹된 패널이나 좌우에 생길수있는 알약이나 패널등 그걸
+  /// 기준으로 영역 정하도록」. ↩️Each host read it and handed it on, and a
+  /// host that did not was a panel lain on without knowing: the floor's
+  /// viewer stood its bars under them, and a timesheet or a conte laid on
+  /// the floor stopped with its foot under the timeline.
+  ///
+  /// ↩️Whether it was the floor at all was read apart, depending on nothing,
+  /// so that learning one bool would not rebuild the panel through a rail's
+  /// drag. The floor's panels rebuilt through it all the same, by their
+  /// hosts; a panel on the floor frames by these numbers.
+  CanvasFloorInsets? _floor;
+
+  /// Whether this panel is the one LYING ON THE FLOOR — which decides
+  /// whether its pill lays its whole vocabulary out or keeps it folded
+  /// behind the gear (유저 확정 2026-08-13: 「바닥 둘만」).
+  bool get _onFloor => _floor != null;
+
+  /// The edges of this panel's box that other panels are lying on — of the
+  /// split [canvasVisibleRect] describes, what is not part of the window the
+  /// artist looks through.
+  EdgeInsets get _floorCover => _floor?.insets ?? EdgeInsets.zero;
 
   /// How thick this panel's bars are — the panbars and any bar inside it,
   /// which the panel tells through [AppScrollbarLaneScope].
@@ -1561,7 +1540,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   void didChangeDependencies() {
     super.didChangeDependencies();
     _shellBars.readStageColors();
-    _onFloor = CanvasFloorInsets.isFloor(context);
+    _floor = CanvasFloorInsets.maybeOf(context);
     _lane = _onFloor
         ? AppScrollbarLane.thick
         : AppScrollbarLaneScope.of(context);
@@ -2345,7 +2324,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// already covers the pill — the page strip's law on that edge.
   EdgeInsets get _framingInsets {
     final covered =
-        widget.floorCover +
+        _floorCover +
         (_onFloor
             ? EdgeInsets.zero
             : _CanvasEditorPanelShell.dockedLanesOf(_lane)) +
@@ -2354,7 +2333,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
           bottom: _CanvasEditorPanelShell.transportCover(
             widget.transport,
             onFloor: _onFloor,
-            floorOverlay: widget.floorBottomOverlaySpan,
+            floorOverlay: _floor?.bottomOverlaySpan ?? 0,
           ),
         );
     final pill = _CanvasEditorPanelShell.leftPillBandOf(widget.leftPill);
@@ -3341,7 +3320,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// above the band.
   ///
   /// ⚠️The floor's overlay — the collapsed row — frames nothing by itself
-  /// ([BrushCanvasPanel.floorBottomOverlaySpan]): it is see-through, and
+  /// ([CanvasFloorInsets.bottomOverlaySpan]): it is see-through, and
   /// the picture does not move for it. The capsule standing ON it is not
   /// see-through, so with a transport the cover reaches from the edge up.
   static double transportCover(
@@ -3444,7 +3423,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   final double bottomOverlaySpan;
 
   /// The vertical bands the rails on the two side edges occupy — see
-  /// [BrushCanvasPanel.floorLeftRailBand].
+  /// [CanvasFloorInsets.leftRailBand].
   final CanvasFloorBand? leftRailBand;
   final CanvasFloorBand? rightRailBand;
 

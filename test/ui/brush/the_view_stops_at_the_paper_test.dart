@@ -23,6 +23,7 @@ import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
+import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
 import 'package:anicel/src/ui/brush/canvas_view_limit.dart';
 import 'package:anicel/src/ui/brush/canvas_viewport_pan_metrics.dart';
 import 'package:anicel/src/ui/brush/sheet_canvas_panel.dart';
@@ -189,11 +190,18 @@ void main() {
       Rect? limit = paper,
       Size box = const Size(400, 300),
       CanvasTransportBand? transport,
+      EdgeInsets? floorCover,
     }) async {
       final controller = ValueNotifier<CanvasViewport?>(null);
       addTearDown(controller.dispose);
       await tester.pumpWidget(
-        sheetIn(controller, box, limit: limit, transport: transport),
+        sheetIn(
+          controller,
+          box,
+          limit: limit,
+          transport: transport,
+          floorCover: floorCover,
+        ),
       );
       await tester.pumpAndSettle();
       // 🚨The store is in DEVICE units and the painting in logical ones,
@@ -315,6 +323,24 @@ void main() {
 
       await drag(tester, const Offset(900, 900));
       expect(paperOnScreen(tester).top, closeTo(pillBandOf(tester), 1e-6));
+      expectStoreShows(tester, controller);
+    });
+
+    testWidgets('🗣️F-515: laid on the floor, a sheet comes out from under what '
+        'lies on it — a drag past the bottom end stops with the paper\'s edge '
+        'above the timeline, past the right end beside the rail', (
+      tester,
+    ) async {
+      const cover = EdgeInsets.only(right: 60, bottom: 90);
+      final controller = await pumpSheet(tester, floorCover: cover);
+      controller.value = device(tester, CanvasViewport(panX: -100));
+      await tester.pump();
+      final box = tester.getSize(find.byType(CanvasViewportGestureLayer));
+
+      await drag(tester, const Offset(-2000, -2000));
+      final on = paperOnScreen(tester);
+      expect(on.bottom, closeTo(box.height - cover.bottom, 1e-6));
+      expect(on.right, closeTo(box.width - cover.right, 1e-6));
       expectStoreShows(tester, controller);
     });
 
@@ -601,27 +627,33 @@ Future<void> pumpSheetAgain(
 }
 
 /// A sheet over a 648×848 canvas in a box of [box], its view in
-/// [controller].
+/// [controller] — lying on the floor, under [floorCover], where given.
 Widget sheetIn(
   ValueNotifier<CanvasViewport?> controller,
   Size box, {
   Rect? limit = const Rect.fromLTWH(24, 24, 600, 800),
   CanvasTransportBand? transport,
-}) => MaterialApp(
-  home: Align(
-    alignment: Alignment.topLeft,
-    child: SizedBox.fromSize(
-      size: box,
-      child: SheetCanvasPanel(
-        cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-        sheetSize: const Size(648, 848),
-        viewport: null,
-        viewportController: controller,
-        viewLimit: limit,
-        drawingOn: false,
-        transport: transport,
-        content: (context, viewport) => const SizedBox.expand(),
+  EdgeInsets? floorCover,
+}) {
+  final sheet = SheetCanvasPanel(
+    cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+    sheetSize: const Size(648, 848),
+    viewport: null,
+    viewportController: controller,
+    viewLimit: limit,
+    drawingOn: false,
+    transport: transport,
+    content: (context, viewport) => const SizedBox.expand(),
+  );
+  return MaterialApp(
+    home: Align(
+      alignment: Alignment.topLeft,
+      child: SizedBox.fromSize(
+        size: box,
+        child: floorCover == null
+            ? sheet
+            : CanvasFloorInsets(insets: floorCover, child: sheet),
       ),
     ),
-  ),
-);
+  );
+}

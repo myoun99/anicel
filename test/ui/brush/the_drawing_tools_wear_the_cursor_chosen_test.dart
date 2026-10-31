@@ -61,7 +61,6 @@ void main() {
             ),
             availableFrameKeys: frameKeys,
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-            floorCover: EdgeInsets.zero,
             brushToolState: ValueNotifier(
               BrushToolState.defaults.copyWith(tool: tool, size: 40),
             ),
@@ -467,7 +466,6 @@ void main() {
               ),
               availableFrameKeys: frameKeys,
               cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-              floorCover: EdgeInsets.zero,
               brushToolState: brush,
             ),
           ),
