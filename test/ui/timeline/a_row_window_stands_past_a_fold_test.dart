@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -12,6 +14,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 
 import '../../helpers/named_finders.dart';
 import '../../helpers/timeline_host.dart';
@@ -127,4 +130,66 @@ void main() {
       expect(lastRow, findsOneWidget, reason: 'down again');
     });
   }
+
+  testWidgets('a walk down the rows and back leaves no row of the view out', (
+    tester,
+  ) async {
+    await open(tester);
+    final position = rows(tester);
+    final view = tester.getRect(
+      find.byKey(const ValueKey<String>('timeline-vertical-scroll-viewport')),
+    );
+    expect(position.maxScrollExtent, greaterThan(0), reason: '⛔전제');
+
+    void expectViewFilled() {
+      final built = find.byType(TimelineLayerControlsRow).evaluate().map(
+        (row) => tester.getRect(find.byWidget(row.widget)),
+      );
+      final top = built.map((row) => row.top).reduce(math.min);
+      final bottom = built.map((row) => row.bottom).reduce(math.max);
+      expect(top, lessThanOrEqualTo(view.top), reason: 'at ${position.pixels}');
+      expect(
+        bottom,
+        greaterThanOrEqualTo(view.bottom),
+        reason: 'at ${position.pixels}',
+      );
+    }
+
+    // Short of the very end, where the rows may stop before the view does.
+    final end = position.maxScrollExtent - 1;
+    for (var at = 0.0; at < end; at += 7) {
+      position.jumpTo(at);
+      await tester.pump();
+      expectViewFilled();
+    }
+    for (var at = end; at > 0; at -= 7) {
+      position.jumpTo(at);
+      await tester.pump();
+      expectViewFilled();
+    }
+  });
+
+  testWidgets('a scroll inside one window lays no row', (tester) async {
+    await open(tester);
+    final position = rows(tester);
+    var laid = 0;
+    debugOnRebuildDirtyWidget = (element, _) {
+      if (element.widget is ValueListenableBuilder<int>) {
+        laid += 1;
+      }
+    };
+    addTearDown(() => debugOnRebuildDirtyWidget = null);
+
+    position.jumpTo(1);
+    await tester.pump();
+    final inside = laid;
+    laid = 0;
+    position.jumpTo(position.maxScrollExtent);
+    await tester.pump();
+    final across = laid;
+    debugOnRebuildDirtyWidget = null;
+
+    expect(across, greaterThan(0), reason: 'LIVENESS: a crossing was seen');
+    expect(inside, 0);
+  });
 }
