@@ -1128,10 +1128,12 @@ const int _wholeLevelSide = 256;
 /// Surface Pro 11, release, the frames' order in turn, 2026-10-31 — the
 /// first jump of the ruler after the onion is switched on, to the screen:
 /// S5_BA cut 352 with every row visible (2944 x 1792), at once 74–151 ms,
-/// in pieces of 512 300–348 ms (2048: 123–271). 🔬A frame laid again, to its
-/// raster's end: S5_BA at once 9–96 ms, in pieces of 1024 306–408; the paper
+/// in pieces of 512 300–348 ms (2048: 123–271). 🔬A frame laid again, its
+/// cels in hand: S5_BA at once 9–96 ms, in pieces of 1024 306–408; the paper
 /// alone of a 3840² cut (3840 x 3840) at once 8–114, in pieces of 1024
-/// 453–901.
+/// 453–901. ⚠️Those at once are the raster thread's, the GPU not waited for,
+/// and those in pieces wait on their writes: it is the jump to the screen
+/// that decides, not these.
 const int framePictureSide = 4096;
 
 /// The side of the pieces of a picture past [framePictureSide]
