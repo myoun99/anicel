@@ -51,6 +51,7 @@ class CutEnvelopeEditLayer extends StatelessWidget {
       viewport: viewport,
       fieldKey: 'cut-envelope-edit-field',
       barrierKey: 'cut-envelope-edit-barrier',
+      paper: Color(layout.form.paperArgb),
       targets: [
         for (final placed in layout.placedBoxes)
           if (placed.box.contentKind == EnvelopeContentKind.text)

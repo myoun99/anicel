@@ -335,10 +335,11 @@ void main() {
   /// or right.
   group('the envelope\'s staff box', () {
     const key = LayerMark(process: LayerProcess.key);
-    final form = CutEnvelopeForm(
+    CutEnvelopeForm formOn(int paperArgb) => CutEnvelopeForm(
       id: 'aligned',
       name: 'Aligned',
       aspectRatio: 2,
+      paperArgb: paperArgb,
       boxes: [
         for (final (i, align) in [
           (0, EnvelopeAlign.left),
@@ -361,7 +362,10 @@ void main() {
       ],
     );
 
-    Future<void> pumpEnvelope(WidgetTester tester) async {
+    Future<void> pumpEnvelope(
+      WidgetTester tester, {
+      int paperArgb = 0xFFFFFFFF,
+    }) async {
       await loadTheAppFaces();
       final session = EditorSessionManager(
         initialProject: createDefaultProject(),
@@ -384,7 +388,7 @@ void main() {
                 child: CutEnvelopePaper(
                   session: session,
                   layout: CutEnvelopeLayout.fit(
-                    form: form,
+                    form: formOn(paperArgb),
                     paperWidth: 1000,
                     paperHeight: 500,
                   ),
@@ -422,5 +426,15 @@ void main() {
         );
       });
     }
+
+    // 실기 (I-127, 2026-11-01): 「입력 칸은 바탕이 흰색」.
+    testWidgets('on a form\'s kraft the printed words stand down on the kraft '
+        '— no white patch', (tester) async {
+      await pumpEnvelope(tester, paperArgb: 0xFFE3D5B0);
+      final box = tester.getRect(
+        find.byKey(const ValueKey<String>('cut-envelope-staff-0-edit')),
+      );
+      expect(await openAndCompare(tester, box: box, field: field), isEmpty);
+    });
   });
 }

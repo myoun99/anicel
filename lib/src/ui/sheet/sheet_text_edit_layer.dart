@@ -91,12 +91,19 @@ class SheetTextEditLayer extends StatefulWidget {
     required this.viewport,
     required this.fieldKey,
     required this.barrierKey,
+    this.paper = const Color(0xFFFFFFFF),
   });
 
   final List<SheetTextTarget> targets;
 
   /// The live panel viewport — the transform the sheet's painter applies.
   final CanvasViewport viewport;
+
+  /// The paper the sheet prints on, laid over the printed words while the
+  /// field types their replacement. White but where a form says otherwise
+  /// (timesheet H4, the conte) — ↩️the envelope's kraft took a white patch
+  /// (실기 I-127, 2026-11-01).
+  final Color paper;
 
   /// The editing field's key and the tap-away barrier's.
   final String fieldKey;
@@ -278,12 +285,7 @@ class _SheetTextEditLayerState extends State<SheetTextEditLayer> {
     return [
       Positioned.fromRect(
         rect: _onScreen(_printedWords(target)),
-        child: const IgnorePointer(
-          // White: both sheets this serves print on white (timesheet H4,
-          // conte). ↩️It was the timesheet's old stock tint, which H4
-          // retired.
-          child: ColoredBox(color: Color(0xFFFFFFFF)),
-        ),
+        child: IgnorePointer(child: ColoredBox(color: widget.paper)),
       ),
       Positioned.fromRect(
         rect: _onScreen(
