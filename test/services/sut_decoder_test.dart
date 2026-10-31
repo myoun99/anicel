@@ -13,6 +13,7 @@ import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/brush_shape.dart';
+import 'package:anicel/src/models/brush_texture_mode.dart';
 import 'package:anicel/src/models/brush_tip_order.dart';
 import 'package:anicel/src/models/separable_blend_mode.dart';
 import 'package:anicel/src/services/sut/sut_decoder.dart';
@@ -253,6 +254,8 @@ void main() {
     int mixColorEffectorMinimum = 0,
     int mixAlphaEffectorFlags = 0x00,
     int mixAlphaEffectorMinimum = 0,
+    // The 紙質適用方法 index, null where the file says nothing.
+    int? textureCompositeMode,
   }) async {
     // Unique per call: a test that builds several fixtures would otherwise
     // reopen the first one and fail on its existing tables.
@@ -292,7 +295,7 @@ void main() {
         DualThickness INTEGER, DualRotation REAL, DualUseSpray INTEGER,
         DualSpraySize REAL, DualSprayDensity INTEGER,
         BrushMixColorEffector BLOB, BrushMixAlphaEffector BLOB,
-        BrushAdjustFlowByInterval INTEGER);
+        BrushAdjustFlowByInterval INTEGER, TextureCompositeMode INTEGER);
       CREATE TABLE MaterialFile(_PW_ID INTEGER PRIMARY KEY,
         CatalogPath TEXT, OriginalPath TEXT, FileData BLOB);
     ''');
@@ -328,11 +331,12 @@ void main() {
       'BrushRevisionByViewScale, BrushRevisionBezier, '
       'DualBrushCompositeMode, DualInterval, DualThickness, DualRotation, '
       'DualUseSpray, DualSpraySize, DualSprayDensity, '
-      'BrushMixColorEffector, BrushMixAlphaEffector) '
+      'BrushMixColorEffector, BrushMixAlphaEffector, '
+      'TextureCompositeMode) '
       'VALUES (9, 80, 50.0, 60, 70, 15.0, 40, 200.0, 1, ?, ?, ?, ?, '
       '?, 200.0, 4, ?, 182.0, 90, 1, -40, 30, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
       '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
-      '?, ?, ?, ?)',
+      '?, ?, ?, ?, ?)',
       [
         tipArray ?? patternArray(catalogPath),
         sizeEffector ??
@@ -405,6 +409,7 @@ void main() {
           mixAlphaEffectorFlags,
           minimumPercent: mixAlphaEffectorMinimum,
         ),
+        textureCompositeMode,
       ],
     );
     // Round brush without pattern data.
@@ -1535,6 +1540,65 @@ void main() {
       result.warnings.any((w) => w.contains('anti-aliasing level 7')),
       isTrue,
     );
+  });
+
+  group('紙質適用方法', () {
+    Future<SutImportResult> papered(int? mode, {bool paper = true}) async {
+      final path = await buildFixture(
+        tipPng: await blackPng(4, 4),
+        texturePng: paper ? await blackPng(8, 8) : null,
+        textureCompositeMode: mode,
+      );
+      return decodeSutBrushFile(
+        File(path).readAsBytesSync(),
+        sourceName: 'fixture',
+      );
+    }
+
+    BrushTextureMode modeOf(SutImportResult result) =>
+        result.presets.first.settings.textureMode;
+
+    test('乗算 and 高さ come in as themselves and say nothing', () async {
+      final multiplied = await papered(1);
+      expect(modeOf(multiplied), BrushTextureMode.multiply);
+      expect(noted(multiplied), isEmpty);
+
+      final heights = await papered(9);
+      expect(modeOf(heights), BrushTextureMode.height);
+      expect(noted(heights), isEmpty);
+    });
+
+    test('a file without the column lays its paper as it drew', () async {
+      final result = await papered(null);
+      expect(modeOf(result), BrushTextureMode.multiply);
+      expect(noted(result), isEmpty);
+    });
+
+    test('a mode with no kernel comes in as 乗算 and says which', () async {
+      const names = {
+        0: '通常',
+        2: '減算',
+        3: '比較',
+        4: '輪郭',
+        5: 'オーバーレイ',
+        6: '覆い焼きカラー',
+        7: '焼き込みカラー',
+        8: 'ハードミックス',
+        12: '#12',
+      };
+      for (final MapEntry(key: mode, value: name) in names.entries) {
+        final result = await papered(mode);
+        expect(modeOf(result), BrushTextureMode.multiply, reason: name);
+        expect(noted(result), [
+          'Brush "테스트 브러시": paper texture at $name has no equivalent '
+              'yet; imported as 乗算.',
+        ]);
+      }
+    });
+
+    test('a brush with no paper says nothing of how it would lay one', () async {
+      expect(noted(await papered(2, paper: false)), isEmpty);
+    });
   });
 
   test('⛔DualAntiAlias is a different column and does not drive this', () async {

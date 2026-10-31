@@ -1,8 +1,7 @@
 /// How a brush's paper texture meets the coverage of each dab — Clip
 /// Studio's テクスチャ合成モード, Photoshop's texture Mode.
 ///
-/// Both formats offer more (Clip Studio lists nine, Photoshop ten); this
-/// engine draws the two a brush here asks for.
+/// Both formats offer ten; this engine draws the two a brush here asks for.
 enum BrushTextureMode {
   /// The paper darkens the coverage by its density:
   /// `coverage * ((1 - density) + density * sample)`. Every brush drew this
