@@ -813,11 +813,11 @@ class _FramePictureViewState extends State<FramePictureView> {
     }
     _pictures.giveWayToSteps();
     _keepAs(to);
-    // Shown once its texels are in the picture, at every level — or, where
-    // they never went in, the frame as it stands from the paint after: the
-    // picture let go on the way (a write the GPU threw on, F-509). ⛔Not
-    // the picture until the next change: a step that did not go in showed
-    // only once another came after it.
+    // Shown once its texels are in the picture, at every level a screen
+    // reads — or, where they never went in, the frame as it stands from the
+    // paint after: the picture let go on the way (a write the GPU threw on,
+    // F-509). ⛔Not the picture until the next change: a step that did not
+    // go in showed only once another came after it.
     _stepOnItsWay = true;
     _pace.asked();
     unawaited(
@@ -965,10 +965,19 @@ class _FramePicturePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // Told before the step this paint asks for: a write lays what a screen
+    // reads. A picture behind what this one reads is drawn as it stands
+    // until its levels are in, where the frame can be.
+    final inThePicture =
+        this.shown?.picture.readAt(
+          displayScaleOf(viewport.zoom, devicePixelRatio),
+        ) ??
+        true;
     catchUp();
     canvas.save();
     canvas.clipRect(Offset.zero & size);
-    final shown = standing.whole && !waits ? null : this.shown;
+    final stands = standing.whole || (!inThePicture && asItStands != null);
+    final shown = stands && !waits ? null : this.shown;
     final ground = this.ground;
     if (ground != null && (shown != null || asItStands != null)) {
       canvas.drawColor(ground, BlendMode.srcOver);

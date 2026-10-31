@@ -236,6 +236,7 @@ void main() {
     expect(store.holds(lent), isFalse);
 
     await tester.pumpWidget(const SizedBox());
+    await tester.runAsync(store.settled);
     expect(
       store.pinnedBytes,
       0,

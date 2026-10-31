@@ -4,6 +4,9 @@ library;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/ui/canvas/display_resample.dart'
+    show drawOnTheDisplay;
 import 'package:anicel/src/ui/playback/flutter_gpu_copies.dart';
 import 'package:anicel/src/ui/playback/frame_picture_gpu.dart';
 import 'package:anicel/src/ui/playback/frame_picture_store.dart';
@@ -65,10 +68,11 @@ void main() {
         store.patch(from: 'before', to: 'after', rect: patch, draw: withPatch),
         isTrue,
       );
-      // Answered the moment every level holds it: what a screen shows
-      // under that key from then on is the picture alone.
+      // Answered the moment every level a screen reads holds it: what a
+      // screen shows under that key from then on is the picture alone.
       await store.landingOf('after');
       expect(store.peek('after'), same(patched));
+      await store.settled();
 
       final fresh = await store.lay('fresh', (
         extent: extent,
@@ -133,6 +137,7 @@ void main() {
       }
       await store.landingOf('${strokes.length}');
       expect(store.peek('${strokes.length}'), same(patched));
+      await store.settled();
 
       final fresh = await store.lay('fresh', (
         extent: extent,
@@ -149,6 +154,65 @@ void main() {
         );
       }
       store.dispose();
+    },
+    skip: noFlutterGpu,
+  );
+
+  // 🚨★★★F-512: a step writes no level under what the screen says it reads,
+  // so the screen must read no level under what it says: a picture behind
+  // the rest is drawn as the picture laid whole.
+  test(
+    'a screen draws a picture behind the levels it does not read as the '
+    'picture laid with the patch in it',
+    () async {
+      const extent = ui.Rect.fromLTWH(0, 0, side + 0.0, side + 0.0);
+      Future<int> apartAt(double scale, {required double toldAt}) async {
+        final store = FramePictureStore<String>();
+        final behind = await store.lay('before', (
+          extent: extent,
+          outside: const ui.Color(0xFFFFFFFF),
+          draw: frame,
+        ));
+        behind!.readAt(toldAt);
+        store.patch(from: 'before', to: 'after', rect: patch, draw: withPatch);
+        await store.landingOf('after');
+        final fresh = await store.lay('fresh', (
+          extent: extent,
+          outside: const ui.Color(0xFFFFFFFF),
+          draw: withPatch,
+        ));
+        final apart = _mostApart(
+          await _onScreen(behind.image, scale),
+          await _onScreen(fresh!.image, scale),
+        );
+        store.dispose();
+        return apart;
+      }
+
+      for (final scale in const [
+        1.0,
+        0.75,
+        0.6,
+        0.5,
+        0.44,
+        0.3,
+        0.25,
+        0.2,
+        0.125,
+      ]) {
+        expect(
+          await apartAt(scale, toldAt: scale),
+          lessThanOrEqualTo(1),
+          reason: 'at $scale',
+        );
+      }
+      for (final scale in const [0.44, 0.3, 0.2]) {
+        expect(
+          await apartAt(scale, toldAt: 1),
+          greaterThan(1),
+          reason: '⛔premise: at $scale the level it reads shows',
+        );
+      }
     },
     skip: noFlutterGpu,
   );
@@ -376,6 +440,33 @@ Future<List<Uint8List>> _levels(ui.Image image) async {
     drawn.dispose();
   }
   return levels;
+}
+
+/// [image] on a screen at display [scale], as a frame's picture is drawn.
+Future<Uint8List> _onScreen(ui.Image image, double scale) async {
+  final recorder = ui.PictureRecorder();
+  final canvas = ui.Canvas(recorder)..scale(scale);
+  final whole = ui.Rect.fromLTWH(
+    0,
+    0,
+    image.width.toDouble(),
+    image.height.toDouble(),
+  );
+  drawOnTheDisplay(
+    canvas,
+    image,
+    whole,
+    whole,
+    viewport: CanvasViewport(zoom: scale),
+    devicePixelRatio: 1,
+  );
+  final picture = recorder.endRecording();
+  final size = (image.width * scale).ceil();
+  final drawn = await picture.toImage(size, size);
+  picture.dispose();
+  final bytes = (await drawn.toByteData())!.buffer.asUint8List();
+  drawn.dispose();
+  return bytes;
 }
 
 int _mostApart(Uint8List a, Uint8List b) {
