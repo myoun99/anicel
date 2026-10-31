@@ -1441,11 +1441,18 @@ void main() {
     });
 
     // 🗣️F-529: a change made while the bar filled waited out its raster.
-    test('one that fits goes in pieces where it asks to', () async {
-      final gpu = _RecordingGpu()..allocates = true;
-      final store = FramePictureStore<String>(gpu: gpu, pieceSide: 512);
+    FramePictureStore<String> aheadInPieces(_RecordingGpu gpu) =>
+        FramePictureStore<String>(
+          gpu: gpu,
+          pieceSide: 512,
+          aheadInPieces: () => true,
+        );
 
-      final laid = await store.lay('a', over(extent), inPieces: true);
+    test('one that fits goes in pieces where one made ahead does', () async {
+      final gpu = _RecordingGpu()..allocates = true;
+      final store = aheadInPieces(gpu);
+
+      final laid = await store.lay('a', over(extent));
 
       expect(gpu.allocated, [(1152, 640)]);
       expect(store.peek('a'), same(laid));
@@ -1454,12 +1461,12 @@ void main() {
 
     test('and at once if a screen asks for it before its turn', () async {
       final gpu = _RecordingGpu()..allocates = true;
-      final store = FramePictureStore<String>(gpu: gpu, pieceSide: 512);
+      final store = aheadInPieces(gpu);
       final small = over(const ui.Rect.fromLTWH(0, 0, 8, 8));
 
       await Future.wait([
         store.lay('before it', small),
-        store.lay('a', over(extent), inPieces: true),
+        store.lay('a', over(extent)),
         store.lay('a', over(extent), shownNow: true),
       ]);
 

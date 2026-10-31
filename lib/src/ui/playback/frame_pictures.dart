@@ -571,7 +571,6 @@ class FramePictures implements PlaybackPictures {
         drawing,
         shownNow: shownNow,
         gone: shouldAbort,
-        inPieces: !shownNow && quietTurns.atRest,
       );
     } on Object {
       unawaited(turn.gaveUp());

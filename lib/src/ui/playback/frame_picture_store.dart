@@ -152,6 +152,7 @@ class FramePictureStore<K extends Object> {
     FramePictureGpu? gpu,
     int onceSide = framePictureSide,
     int pieceSide = framePieceSide,
+    this.aheadInPieces = _atOnce,
   }) : _gpu = gpu ?? FlutterGpuFramePictures(),
        _onceSide = onceSide,
        _pieceSide = pieceSide;
@@ -163,6 +164,10 @@ class FramePictureStore<K extends Object> {
 
   /// The side of the pieces of a picture past [_onceSide].
   final int _pieceSide;
+
+  /// Whether one made ahead goes in pieces though it fits at once
+  /// ([_layNow]), asked as it takes its turn.
+  final bool Function() aheadInPieces;
 
   final Map<K, _Entry<K>> _entries = {};
 
@@ -224,14 +229,11 @@ class FramePictureStore<K extends Object> {
   /// filled — the screen's picture in 1.3 s, then the values the drag had
   /// passed, 5 s of them, with the bar standing. ⚠️What is on the raster
   /// thread already cannot be taken back.
-  ///
-  /// [inPieces] lays it a piece at a time though it fits at once ([_layNow]).
   Future<FramePicture?> lay(
     K key,
     FrameDrawing frame, {
     bool shownNow = false,
     bool Function() gone = _stays,
-    bool inPieces = false,
   }) async {
     final there = peek(key);
     if (there != null) {
@@ -247,7 +249,6 @@ class FramePictureStore<K extends Object> {
         queued.askers.add(gone);
         if (shownNow) {
           queued.shown = true;
-          queued.inPieces = false;
           _lays
             ..remove(queued)
             ..insert(0, queued);
@@ -255,8 +256,7 @@ class FramePictureStore<K extends Object> {
         return queued.done.future;
       }
     }
-    final lay = _Lay<K>(key, frame, shown: shownNow, inPieces: inPieces)
-      ..askers.add(gone);
+    final lay = _Lay<K>(key, frame, shown: shownNow)..askers.add(gone);
     if (shownNow) {
       _lays.insert(0, lay);
     } else {
@@ -520,7 +520,7 @@ class FramePictureStore<K extends Object> {
   /// screen waits for.
   ///
   /// 🗣️F-529 (유저 2026-11-01): 「더 좋은 방안있다면 개선바람」 — ONE MADE AHEAD
-  /// WHILE NOTHING PLAYS GOES IN PIECES ([_Lay.inPieces]): a change made
+  /// WHILE NOTHING PLAYS GOES IN PIECES ([aheadInPieces]): a change made
   /// while the bar fills waited out the raster of the picture being made and
   /// then its own. 🔬Surface Pro 11, profile, S5_BA cut 353, every row
   /// visible, 114 frames, 2436 x 1524: the change on screen 0.64–2.2 s at
@@ -533,9 +533,9 @@ class FramePictureStore<K extends Object> {
       return null;
     }
     assert(_pieceSide % (1 << patchedLevels) == 0, 'a piece off the grid');
-    final pieces = extent.longestSide <= _onceSide && !lay.inPieces
-        ? [extent]
-        : piecesOver(extent, side: _pieceSide);
+    final atOnce =
+        extent.longestSide <= _onceSide && (lay.shown || !aheadInPieces());
+    final pieces = atOnce ? [extent] : piecesOver(extent, side: _pieceSide);
     final allocated = pieces.length == 1
         ? null
         : _gpu.allocate(extent.width.toInt(), extent.height.toInt());
@@ -1409,7 +1409,7 @@ class _Entry<K> {
 }
 
 class _Lay<K> {
-  _Lay(this.key, this.frame, {required this.shown, required this.inPieces});
+  _Lay(this.key, this.frame, {required this.shown});
 
   final K key;
   final FrameDrawing frame;
@@ -1417,10 +1417,6 @@ class _Lay<K> {
 
   /// Whether a screen asked for it, not one making it ahead.
   bool shown;
-
-  /// Whether it goes a piece at a time though it fits at once
-  /// ([FramePictureStore._layNow]) — until a screen asks for it first.
-  bool inPieces;
 
   /// What says each one who asked for it has left ([FramePictureStore.lay]).
   final List<bool Function()> askers = [];
@@ -1431,6 +1427,9 @@ class _Lay<K> {
 
 /// One who asks for a lay and does not leave.
 bool _stays() => false;
+
+/// What a store told nothing lays one made ahead by, where it fits.
+bool _atOnce() => false;
 
 /// One [FramePictureStore.patch], widened, until its picture has moved.
 class _Patch<K> {

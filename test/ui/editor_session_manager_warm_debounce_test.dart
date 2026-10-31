@@ -316,5 +316,15 @@ void main() {
 
       expect(started(), 1);
     });
+
+    test('a frame made ahead asks the session if it goes in pieces', () {
+      final store = aSession().playbackRig.framePictures.store;
+      expect(store.aheadInPieces(), isFalse, reason: 'a test\'s clock');
+
+      RenderCaches.aheadGoesInPieces = true;
+      addTearDown(() => RenderCaches.aheadGoesInPieces = false);
+
+      expect(store.aheadInPieces(), isTrue);
+    });
   });
 }

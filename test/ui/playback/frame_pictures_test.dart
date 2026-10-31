@@ -103,9 +103,8 @@ void main() {
     CanvasSize? drawnAt,
     QuietTurns? quietTurns,
     void Function()? onWalk,
-    FramePictureStore<FramePictureKey>? laidIn,
   }) {
-    final store = laidIn ?? FramePictureStore<FramePictureKey>();
+    final store = FramePictureStore<FramePictureKey>();
     addTearDown(store.dispose);
     return FramePictures(
       store: store,
@@ -449,71 +448,6 @@ void main() {
     });
   });
 
-  // 🗣️F-529: a change made while the bar filled waited out its raster.
-  group('what goes in pieces', () {
-    /// [images]' pictures, a turn [held] or not, each lay noted in [store].
-    FramePictures noted(
-      LayerFrameImageCache images,
-      _NotingStore store, {
-      required bool held,
-    }) => picturesOf(
-      images,
-      laidIn: store,
-      quietTurns: QuietTurns(
-        clock: QuietClock(
-          quiet: () => null,
-          held: () => held,
-          gpuDone: () async {},
-        ),
-      ),
-    );
-
-    testWidgets('a frame made ahead while nothing plays', (tester) async {
-      await tester.runAsync(() async {
-        final images = LayerFrameImageCache(frameStore: storeOf(['a']));
-        addTearDown(images.dispose);
-        final store = _NotingStore();
-        final pictures = noted(images, store, held: false);
-
-        await pictures.make(at(0), shouldAbort: () => false);
-
-        expect(store.inPieces, [true]);
-      });
-    });
-
-    testWidgets('⛔not the frame a screen stands on', (tester) async {
-      await tester.runAsync(() async {
-        final images = LayerFrameImageCache(frameStore: storeOf(['a']));
-        addTearDown(images.dispose);
-        final store = _NotingStore();
-        final pictures = noted(images, store, held: false);
-
-        await pictures.makeShown(
-          pictures.stackOf(at(0)),
-          at(0),
-          shouldAbort: () => false,
-          keepsNodes: false,
-        );
-
-        expect(store.inPieces, [false]);
-      });
-    });
-
-    testWidgets('⛔not one made ahead of a run: what a run waits for is '
-        'not to be slowed', (tester) async {
-      await tester.runAsync(() async {
-        final images = LayerFrameImageCache(frameStore: storeOf(['a']));
-        addTearDown(images.dispose);
-        final store = _NotingStore();
-        final pictures = noted(images, store, held: true);
-
-        await pictures.make(at(0), shouldAbort: () => false);
-
-        expect(store.inPieces, [false]);
-      });
-    });
-  });
-
   test('the budget\'s order: each picture is wanted at the soonest step that '
       'shows it, and a picture no step shows is not wanted at all', () {
     final images = LayerFrameImageCache(frameStore: storeOf(['a', 'b']));
@@ -772,28 +706,5 @@ class _CountsReadings extends LayerFrameImageCache {
       read += 1;
     }
     return super.storedSurfaceOrNull(key, canvasSize: canvasSize);
-  }
-}
-
-/// A store noting of each lay whether it was asked to go in pieces.
-final class _NotingStore extends FramePictureStore<FramePictureKey> {
-  final List<bool> inPieces = [];
-
-  @override
-  Future<FramePicture?> lay(
-    FramePictureKey key,
-    FrameDrawing frame, {
-    bool shownNow = false,
-    bool Function() gone = notDue,
-    bool inPieces = false,
-  }) {
-    this.inPieces.add(inPieces);
-    return super.lay(
-      key,
-      frame,
-      shownNow: shownNow,
-      gone: gone,
-      inPieces: inPieces,
-    );
   }
 }
