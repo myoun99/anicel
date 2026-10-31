@@ -304,10 +304,13 @@ class _BrushEditStroke {
       final stabilizer = _state._stabilizer;
       if (stabilizer == null) {
         advanceStrokeThroughGuides(penPosition);
-        return;
+      } else {
+        _paintSteadied(stabilizer.follow(penPosition, _readings, at: at));
+        _keepSteadying();
       }
-      _paintSteadied(stabilizer.follow(penPosition, _readings, at: at));
-      _keepSteadying();
+      // On the stroke as it comes, for the step asked late in this frame
+      // (`StepPace`).
+      _state._overlay.flushPendingOverlayDabs();
     }
     if (_state._opening.holds(
       paint,

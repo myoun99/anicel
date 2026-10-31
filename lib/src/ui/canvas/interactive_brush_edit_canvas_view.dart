@@ -542,12 +542,20 @@ class _InteractiveBrushEditCanvasViewState
 
   BrushLiveStrokeRasterizer? _liveRasterizer;
 
-  /// Dabs collected since the last rasterized batch. Pointer samples arrive
-  /// far above the display rate (1000Hz mice, 240Hz pens); rasterizing per
-  /// EVENT multiplied the blend work for zero visible benefit, so moves only
-  /// queue dabs and one frame callback blends the batch. Dab generation,
-  /// order and blend math are unchanged — the batch is byte-identical to
-  /// per-event blending, and pen-up flushes synchronously before commit.
+  /// Dabs collected since the last rasterized batch: one frame callback
+  /// blends what a press, a path or a shape queued. Dab generation, order
+  /// and blend math are the same either way — the batch is byte-identical
+  /// to per-event blending, and pen-up flushes synchronously before commit.
+  ///
+  /// ↩️Every pointer sample queued here until F-512 (rasterizing per event
+  /// «multiplied the blend work for zero visible benefit», 2026-07-08): a
+  /// pen's sample blends as it comes now
+  /// ([_BrushEditStroke.takeSample]): a step asked late in a frame holds
+  /// what came in it (`StepPace`), and the work is the same dabs. 🔬Main PC,
+  /// 144 Hz, input at 1000 Hz: a frame every vsync still. ⛔Once a sample, not
+  /// at every queue: a post-correcting brush lays its whole line again at the
+  /// pen-up, a queue a point, and that held this thread 72 ms on the main PC
+  /// and 144 on the Surface Pro 11.
   final List<BrushDab> _pendingOverlayDabs = <BrushDab>[];
   bool _overlayFlushScheduled = false;
 

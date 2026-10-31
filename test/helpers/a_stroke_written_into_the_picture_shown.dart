@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -476,6 +477,241 @@ void aStrokeIsWrittenIntoThePictureShown({
       ),
       isEmpty,
       reason: 'and all three are in the picture',
+    );
+
+    await tester.pumpWidget(const SizedBox());
+    overlay.dispose();
+  }, skip: skipped);
+
+  /// A screen on the frame's picture, and what lets a test take a stroke's
+  /// steps on it: the step, and [pacedBy] six of them in frames so long.
+  Future<
+    ({
+      void Function(TileCoord at) step,
+      Future<void> Function(Duration frame) pacedBy,
+      WritesLand gpu,
+      FramePictureStore<FramePictureKey> store,
+      FramePictureKey picture,
+    })
+  >
+  standing(
+    WidgetTester tester,
+    String lineage,
+    BrushFrameStore cels,
+    ActiveStrokeOverlayModel overlay,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final images = LayerFrameImageCache(frameStore: cels);
+    addTearDown(images.dispose);
+    final live = BitmapSurfacePainter(
+      surface: BrushFrameDisplayCacheService(
+        frameStore: cels,
+        canvasSize: canvasSize,
+      ).prepareFramePreview(key).previewSurface,
+      overlayModel: overlay,
+      showTransparentBackground: false,
+      lineage: lineage,
+    );
+    final gpu = WritesLand();
+    final store = FramePictureStore<FramePictureKey>(gpu: gpu);
+    addTearDown(store.dispose);
+    final run = runOf(images, store);
+    final picture = run.pictures.keyOfStack(nodes, frame);
+    await pump(
+      tester,
+      run,
+      key: const ValueKey(0),
+      view: CanvasViewport(),
+      live: live,
+    );
+    expect(
+      await settleAsync(tester, () => store.bytesOf(picture) != null),
+      isTrue,
+      reason: 'LIVENESS: the frame\'s picture is made',
+    );
+    await lendBothClocks(tester, rounds: 2);
+    void step(TileCoord at) => overlay.showResultTiles([
+      PromotedStrokeTile(at, tileOf(at, stroke, (_) => true), 1),
+    ]);
+    return (
+      step: step,
+      pacedBy: (frame) async {
+        for (var i = 0; i < 6; i += 1) {
+          step(TileCoord(x: i % 2, y: 0));
+          await tester.pump(frame);
+          final kept = keptByTheCanvas(tester, picture);
+          if (store.landingOf(kept) == null) {
+            await tester.pump(frame);
+          }
+          await inThePicture(tester, store.landingOf(kept));
+        }
+        // A paint on the way there held a step of nothing: gone, with the
+        // one after the last landing's.
+        await tester.pump(frame);
+        await tester.pump(frame);
+      },
+      gpu: gpu,
+      store: store,
+      picture: picture,
+    );
+  }
+
+  const aSecond = Duration(seconds: 1);
+
+  testWidgets('🚨a stroke\'s step is held for what the last steps leave of a '
+      'frame, and goes in before the next (F-512)', (tester) async {
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+    final (:step, :pacedBy, :gpu, :store, :picture) = await standing(
+      tester,
+      'a-step-held',
+      storeWithTheCel(),
+      overlay,
+    );
+    await pacedBy(aSecond);
+    final written = gpu.patchesWritten;
+
+    step(TileCoord(x: 0, y: 1));
+    await tester.pump(aSecond);
+    final kept = keptByTheCanvas(tester, picture);
+    expect(store.landingOf(kept), isNull, reason: 'held at the paint');
+
+    await tester.pump(aSecond);
+    await inThePicture(tester, store.landingOf(kept));
+    expect(gpu.patchesWritten, written + 1, reason: 'asked as it was held');
+
+    await tester.pumpWidget(const SizedBox());
+    overlay.dispose();
+  }, skip: skipped);
+
+  testWidgets('a step is timed from when it went: a view up longer than a '
+      'frame still holds (F-512)', (tester) async {
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+    final (:step, :pacedBy, gpu: _, :store, :picture) = await standing(
+      tester,
+      'a-step-timed',
+      storeWithTheCel(),
+      overlay,
+    );
+    const frame = Duration(milliseconds: 300);
+    await tester.runAsync(() => Future<void>.delayed(frame * 2));
+    await pacedBy(frame);
+    step(TileCoord(x: 0, y: 1));
+    await tester.pump(frame);
+    expect(store.landingOf(keptByTheCanvas(tester, picture)), isNull);
+
+    await tester.pumpWidget(const SizedBox());
+    overlay.dispose();
+  }, skip: skipped);
+
+  testWidgets('a step held with the view going leaves nothing behind (F-512)', (
+    tester,
+  ) async {
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+    final (:step, :pacedBy, gpu: _, :store, :picture) = await standing(
+      tester,
+      'a-step-held-as-the-view-goes',
+      storeWithTheCel(),
+      overlay,
+    );
+    await pacedBy(aSecond);
+    step(TileCoord(x: 0, y: 1));
+    await tester.pump(aSecond);
+    expect(
+      store.landingOf(keptByTheCanvas(tester, picture)),
+      isNull,
+      reason: '⛔premise: held',
+    );
+    // Another paint while it is held, with a frame that leaves one to hold
+    // for: no second timer.
+    step(TileCoord(x: 1, y: 1));
+    await tester.pump(aSecond ~/ 2);
+    // A timer left running fails the test as it ends.
+    await tester.pumpWidget(const SizedBox());
+    overlay.dispose();
+  }, skip: skipped);
+
+  testWidgets('🚨where the last steps leave nothing of a frame the paint asks '
+      'for the step, as ever (F-512)', (tester) async {
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+    final (:step, :pacedBy, gpu: _, :store, :picture) = await standing(
+      tester,
+      'a-step-at-the-paint',
+      storeWithTheCel(),
+      overlay,
+    );
+    const frame = Duration(milliseconds: 1);
+    await pacedBy(frame);
+    step(TileCoord(x: 0, y: 1));
+    await tester.pump(frame);
+    final landing = store.landingOf(keptByTheCanvas(tester, picture));
+    expect(landing, isNotNull);
+    await inThePicture(tester, landing);
+
+    await tester.pumpWidget(const SizedBox());
+    overlay.dispose();
+  }, skip: skipped);
+
+  testWidgets('⛔a stroke let go while its step is held: the stroke gone goes '
+      'in at no timer — it waits for the paint (F-512)', (tester) async {
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+    final (:step, :pacedBy, :gpu, :store, :picture) = await standing(
+      tester,
+      'a-stroke-let-go',
+      storeWithTheCel(),
+      overlay,
+    );
+    await pacedBy(aSecond);
+    final written = gpu.patchesWritten;
+    step(TileCoord(x: 0, y: 1));
+    await tester.pump(aSecond);
+    expect(
+      store.landingOf(keptByTheCanvas(tester, picture)),
+      isNull,
+      reason: '⛔premise: held',
+    );
+
+    overlay.reset();
+    await tester.binding.delayed(aSecond * 2);
+    expect(gpu.patchesWritten, written, reason: 'the time it was held for');
+    expect(store.landingOf(keptByTheCanvas(tester, picture)), isNull);
+
+    await tester.pumpWidget(const SizedBox());
+    overlay.dispose();
+  }, skip: skipped);
+
+  testWidgets('⛔a cel committed with no build while a step is held: the view '
+      'draws what it stood on, and it waits for the build (F-512)', (
+    tester,
+  ) async {
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+    final cels = storeWithTheCel();
+    final (:step, :pacedBy, :gpu, :store, :picture) = await standing(
+      tester,
+      'a-cel-committed-with-no-build',
+      cels,
+      overlay,
+    );
+    await pacedBy(aSecond);
+    final written = gpu.patchesWritten;
+    step(TileCoord(x: 0, y: 1));
+    await tester.pump(aSecond);
+    expect(
+      store.landingOf(keptByTheCanvas(tester, picture)),
+      isNull,
+      reason: '⛔premise: held',
+    );
+
+    cels.markCelEdited(key);
+    await tester.binding.delayed(aSecond * 2);
+    expect(gpu.patchesWritten, written, reason: 'the time it was held for');
+
+    step(TileCoord(x: 1, y: 1));
+    await tester.pump();
+    expect(
+      store.landingOf(keptByTheCanvas(tester, picture)),
+      isNotNull,
+      reason: 'the paint asks for it, and at once: no step to hold',
     );
 
     await tester.pumpWidget(const SizedBox());
