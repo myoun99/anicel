@@ -1187,6 +1187,99 @@ void main() {
     store.dispose();
   });
 
+  // 🗣️F-529: 「굽던거 버리고 다시굽는게 맞지않을까」.
+  group('a lay all who asked for it have left', () {
+    FrameDrawing wide(int index) =>
+        over(ui.Rect.fromLTWH(0, 0, 128.0 * index, 8));
+
+    /// Lets each render go until every one of [laid] has answered.
+    Future<void> rendersGo(
+      _RecordingGpu gpu,
+      List<Future<FramePicture?>> laid,
+    ) async {
+      var all = false;
+      unawaited(Future.wait(laid).then((_) => all = true));
+      while (!all) {
+        gpu.releaseRender();
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+      }
+    }
+
+    test('is not made when its turn comes: it answers null, holds nothing, '
+        'and what stands behind it goes on', () async {
+      final gpu = _RecordingGpu()..holdRenders = true;
+      final store = FramePictureStore<String>(gpu: gpu);
+      var left = false;
+      final laying = store.lay('laying', wide(1));
+      final stale = store.lay('stale', wide(2), gone: () => left);
+      final behind = store.lay('behind', wide(3));
+
+      left = true;
+      await rendersGo(gpu, [laying, stale, behind]);
+
+      expect(await stale, isNull);
+      expect(store.holds('stale'), isFalse);
+      expect(await behind, isNotNull);
+      expect(
+        gpu.rendered.map((size) => size.$1),
+        [128, 384],
+        reason: 'no raster for a picture nobody will look at',
+      );
+      store.dispose();
+    });
+
+    test('asked as it turns: one who left before its turn and came back is '
+        'made', () async {
+      final gpu = _RecordingGpu()..holdRenders = true;
+      final store = FramePictureStore<String>(gpu: gpu);
+      var left = true;
+      final laying = store.lay('laying', wide(1));
+      final back = store.lay('back', wide(2), gone: () => left);
+      await pollUntil(() => gpu.recorded.isNotEmpty);
+
+      left = false;
+      await rendersGo(gpu, [laying, back]);
+
+      expect(await back, isNotNull);
+      store.dispose();
+    });
+
+    test('is made while anyone who asked for it stays', () async {
+      final gpu = _RecordingGpu()..holdRenders = true;
+      final store = FramePictureStore<String>(gpu: gpu);
+      final laying = store.lay('laying', wide(1));
+      final walk = store.lay('both', wide(2), gone: () => true);
+      final screen = store.lay('both', wide(2), shownNow: true);
+
+      await rendersGo(gpu, [laying, walk, screen]);
+
+      expect(await screen, isNotNull);
+      expect(await walk, same(await screen));
+      expect(gpu.rendered.map((size) => size.$1), [128, 256]);
+      store.dispose();
+    });
+
+    test('asked for twice, goes once both have left', () async {
+      final gpu = _RecordingGpu()..holdRenders = true;
+      final store = FramePictureStore<String>(gpu: gpu);
+      final laying = store.lay('laying', wide(1));
+      final walk = store.lay('both', wide(2), gone: () => true);
+      final screen = store.lay(
+        'both',
+        wide(2),
+        shownNow: true,
+        gone: () => true,
+      );
+
+      await rendersGo(gpu, [laying, walk, screen]);
+
+      expect(await walk, isNull);
+      expect(await screen, isNull);
+      expect(gpu.rendered.map((size) => size.$1), [128]);
+      store.dispose();
+    });
+  });
+
   test('the budget lets go of the picture wanted latest, never a pinned '
       'one, and counts each by the app\'s one image estimate', () async {
     final store = FramePictureStore<String>(gpu: _RecordingGpu());
@@ -1481,6 +1574,33 @@ void main() {
         expect(await asked, same(await ahead));
         expect(await other, isNotNull);
         expect(order, [...pieces('ahead', 8), 'other']);
+        store.dispose();
+      });
+
+      test('🗣️F-529: left by all who asked for it, it stops at its next '
+          'piece, whole or not — what is behind it goes on', () async {
+        final gpu = _RecordingGpu()
+          ..allocates = true
+          ..holdWrites = true;
+        final store = inPieces(gpu);
+        final order = <String>[];
+        var left = false;
+        final ahead = store.lay(
+          'ahead',
+          noted(order, 'ahead', long),
+          gone: () => left,
+        );
+        final behind = store.lay('behind', noted(order, 'behind', small));
+        await pollUntil(() => gpu.bases.length == 1);
+
+        left = true;
+        gpu.releaseWrite();
+
+        expect(await ahead, isNull);
+        expect(await behind, isNotNull);
+        expect(store.holds('ahead'), isFalse);
+        expect(order, [...pieces('ahead', 4), 'behind']);
+        expect(gpu.bases, hasLength(1));
         store.dispose();
       });
 

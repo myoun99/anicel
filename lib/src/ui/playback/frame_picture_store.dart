@@ -214,10 +214,21 @@ class FramePictureStore<K extends Object> {
   /// the frame on screen before any made ahead of it, asked for ahead itself
   /// or not, and before the rest of one laid in pieces ([_givenWay]). A key
   /// a patch is moving a picture to is the patch's to make.
+  ///
+  /// 🗣️F-529 (유저 2026-11-01): 「어차피 화면 모든 프레임 바뀌니까 허용하고
+  /// 굽던거 버리고 다시굽는게 맞지않을까」 — [gone] says the one asking has no
+  /// use for it any more, and a lay all who asked for it are gone from is not
+  /// made when its turn comes, nor the rest of it where it is laid in pieces:
+  /// it answers null. ↩️Every lay in the line was made, whoever had left:
+  /// 🔬Surface Pro 11, S5_BA cut 353, an opacity slider dragged while the bar
+  /// filled — the screen's picture in 1.3 s, then the values the drag had
+  /// passed, 5 s of them, with the bar standing. ⚠️What is on the raster
+  /// thread already cannot be taken back.
   Future<FramePicture?> lay(
     K key,
     FrameDrawing frame, {
     bool shownNow = false,
+    bool Function() gone = _stays,
   }) async {
     final there = peek(key);
     if (there != null) {
@@ -230,6 +241,7 @@ class FramePictureStore<K extends Object> {
     }
     for (final queued in _lays) {
       if (queued.key == key) {
+        queued.askers.add(gone);
         if (shownNow) {
           queued.shown = true;
           _lays
@@ -239,7 +251,7 @@ class FramePictureStore<K extends Object> {
         return queued.done.future;
       }
     }
-    final lay = _Lay<K>(key, frame, shown: shownNow);
+    final lay = _Lay<K>(key, frame, shown: shownNow)..askers.add(gone);
     if (shownNow) {
       _lays.insert(0, lay);
     } else {
@@ -442,7 +454,7 @@ class FramePictureStore<K extends Object> {
 
   Future<void> _layInItsTurn(_Lay<K> lay) async {
     try {
-      final laid = await _layNow(lay);
+      final laid = lay.unwanted ? null : await _layNow(lay);
       if (!lay.done.isCompleted) {
         lay.done.complete(laid);
       }
@@ -578,6 +590,9 @@ class FramePictureStore<K extends Object> {
       for (final (at, piece) in pieces.indexed) {
         if (!lay.shown) {
           await _givenWay(lay);
+        }
+        if (lay.unwanted) {
+          return false;
         }
         final image = await _drawnOver(piece, lay.frame.draw);
         if (image == null || _disposed) {
@@ -1387,7 +1402,16 @@ class _Lay<K> {
 
   /// Whether a screen asked for it, not one making it ahead.
   bool shown;
+
+  /// What says each one who asked for it has left ([FramePictureStore.lay]).
+  final List<bool Function()> askers = [];
+
+  /// Whether all who asked for it have left.
+  bool get unwanted => askers.every((gone) => gone());
 }
+
+/// One who asks for a lay and does not leave.
+bool _stays() => false;
 
 /// One [FramePictureStore.patch], widened, until its picture has moved.
 class _Patch<K> {

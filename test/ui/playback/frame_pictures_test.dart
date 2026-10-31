@@ -430,6 +430,24 @@ void main() {
     });
   });
 
+  testWidgets('🗣️F-529: so does one left while it stands in the store\'s '
+      'line — no raster for it, and the walk is told it did not land', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final images = LayerFrameImageCache(frameStore: storeOf(['a']));
+      addTearDown(images.dispose);
+      final pictures = picturesOf(images);
+
+      // Asked as it begins, once its cels are read, and for its turn: it is
+      // past those, in the line, when it is left.
+      var asked = 0;
+      expect(await pictures.make(at(0), shouldAbort: () => ++asked > 3), isFalse);
+
+      expect(pictures.has(at(0)), isFalse);
+    });
+  });
+
   test('the budget\'s order: each picture is wanted at the soonest step that '
       'shows it, and a picture no step shows is not wanted at all', () {
     final images = LayerFrameImageCache(frameStore: storeOf(['a', 'b']));

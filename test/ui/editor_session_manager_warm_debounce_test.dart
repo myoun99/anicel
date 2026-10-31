@@ -182,4 +182,134 @@ void main() {
           'point of the debounce',
     );
   });
+
+  // 🗣️F-529 (유저 2026-11-01): 「어차피 화면 모든 프레임 바뀌니까 허용하고
+  // 굽던거 버리고 다시굽는게 맞지않을까」.
+  group('what the frames show moves', () {
+    EditorSessionManager aSession() {
+      final session = EditorSessionManager(
+        initialProject: Project(
+          id: const ProjectId('project'),
+          name: 'P',
+          createdAt: DateTime.utc(2026),
+          tracks: [
+            Track(
+              id: const TrackId('track'),
+              name: 'T',
+              cuts: [
+                Cut(
+                  id: const CutId('cut'),
+                  name: '1',
+                  duration: 4,
+                  canvasSize: canvasSize,
+                  layers: [
+                    Layer(
+                      id: const LayerId('layer'),
+                      name: 'A',
+                      frames: [
+                        Frame(
+                          id: const FrameId('frame-1'),
+                          duration: 1,
+                          strokes: const [],
+                        ),
+                      ],
+                      timeline: {
+                        0: const TimelineExposure.drawing(
+                          FrameId('frame-1'),
+                          length: 4,
+                        ),
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+      addTearDown(session.dispose);
+      return session;
+    }
+
+    /// Counts the walks [session] starts from here on.
+    int Function() walks(EditorSessionManager session) {
+      final progress = session.playbackRig.prerenderScheduler.progress;
+      var started = 0;
+      void count() {
+        if (progress.value.cached == 0 && progress.value.total > 0) {
+          started += 1;
+        }
+      }
+
+      progress.addListener(count);
+      addTearDown(() => progress.removeListener(count));
+      return () => started;
+    }
+
+    Future<void> aTurn() async {
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+    }
+
+    test('🚨a row\'s eye starts the walk over: a walk at rest stayed at rest '
+        'with its bar emptied, and one on its way went on past the frames it '
+        'had made', () async {
+      final session = aSession();
+      await aTurn();
+      final started = walks(session);
+
+      session.layerSwitches.toggleLayerVisibility(const LayerId('layer'));
+      expect(started(), 0, reason: 'at the burst\'s trailing edge');
+      await aTurn();
+
+      expect(started(), 1);
+    });
+
+    test('so does a row\'s opacity', () async {
+      final session = aSession();
+      await aTurn();
+      final started = walks(session);
+
+      session.opacityVerbs.setLayerOpacity(
+        layerId: const LayerId('layer'),
+        opacity: 0.5,
+      );
+      await aTurn();
+
+      expect(started(), 1);
+    });
+
+    test('so does an undo: it goes through history as the change did',
+        () async {
+      final session = aSession();
+      session.layerSwitches.toggleLayerVisibility(const LayerId('layer'));
+      await aTurn();
+      final started = walks(session);
+
+      session.undo();
+      await aTurn();
+
+      expect(started(), 1);
+    });
+
+    test('a slider in flight only asks the walk to stand back: nothing is '
+        'written until it lands', () async {
+      final session = aSession();
+      await aTurn();
+      final started = walks(session);
+
+      final scheduler = session.playbackRig.prerenderScheduler;
+      final before = scheduler.lastEditActivity;
+      session.opacityVerbs.previewLayerOpacity(const LayerId('layer'), 0.5);
+      await aTurn();
+
+      expect(started(), 0);
+      expect(scheduler.lastEditActivity.isAfter(before), isTrue);
+
+      session.opacityVerbs.commitLayerOpacity(const LayerId('layer'), 0.5);
+      await aTurn();
+
+      expect(started(), 1);
+    });
+  });
 }

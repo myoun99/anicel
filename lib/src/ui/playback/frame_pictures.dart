@@ -541,7 +541,8 @@ class FramePictures implements PlaybackPictures {
   }
 
   /// Lays [key]'s picture of [drawing] in its turn ([make]); false where
-  /// the turn did not come.
+  /// the turn did not come, or [shouldAbort] left the store's line before
+  /// its lay was made.
   Future<bool> _lay(
     FramePictureKey key,
     FrameDrawing drawing,
@@ -565,16 +566,21 @@ class FramePictures implements PlaybackPictures {
       // run waits for (the asks came back last first). The walk asks in the
       // order it wants them; the store lays them so — and a screen standing
       // on a frame that is not there asks for it to go first ([makeShown]).
-      laid = await store.lay(key, drawing, shownNow: shownNow);
+      laid = await store.lay(
+        key,
+        drawing,
+        shownNow: shownNow,
+        gone: shouldAbort,
+      );
     } on Object {
       unawaited(turn.gaveUp());
       rethrow;
     }
     if (laid == null) {
       unawaited(turn.gaveUp());
-    } else {
-      await turn.landed();
+      return !shouldAbort();
     }
+    await turn.landed();
     return true;
   }
 

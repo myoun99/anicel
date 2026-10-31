@@ -224,6 +224,10 @@ class PlaybackPrerenderScheduler {
     _lastActivity = DateTime.now();
   }
 
+  /// When the last edit was told of ([notifyEditActivity]).
+  @visibleForTesting
+  DateTime get lastEditActivity => _lastActivity;
+
   /// Open input holds (pen down, drag in flight). While any hold is open
   /// warming stands down HARD: the idle gate stays closed regardless of
   /// elapsed time, and an in-flight composite aborts between layers — a

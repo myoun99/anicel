@@ -313,8 +313,8 @@ class RenderCaches {
   /// stay synchronous, because a stale composite must be unservable the
   /// instant the stroke lands. The window costs nothing in production —
   /// warming cannot start until [PlaybackPrerenderScheduler.idleDelay]
-  /// (1200ms) of quiet anyway, so any window under that only merges
-  /// restarts it never delays.
+  /// of quiet anyway, so any window under that only merges restarts it
+  /// never delays.
   Timer? _warmDebounce;
 
   static final Duration _warmDebounceWindow =
@@ -326,8 +326,21 @@ class RenderCaches {
       ? Duration.zero
       : const Duration(milliseconds: 200);
 
-  void _onBrushFrameInvalidated(BrushFrameCacheInvalidation invalidation) {
-    // Warming yields to the edit and then re-renders the dirty frames.
+  void _onBrushFrameInvalidated(BrushFrameCacheInvalidation invalidation) =>
+      framesMoved();
+
+  /// What the frames show moved: warming yields to the edit, and what it
+  /// was making goes with the walk it was made for
+  /// ([FramePictureStore.lay]), and it starts over from the playhead.
+  ///
+  /// 🗣️F-529 (유저 2026-11-01): 「어차피 화면 모든 프레임 바뀌니까 허용하고
+  /// 굽던거 버리고 다시굽는게 맞지않을까」 — every change that goes through
+  /// history, so the eye and the opacity too. 🔬S5_BA cut 353: told only of
+  /// its cels, a walk at rest stayed at rest with the bar emptied (4 s
+  /// watched, until a seek), and one on its way went on from where it stood
+  /// with the 43 frames behind it stale, where the frame on screen was laid
+  /// before it looked.
+  void framesMoved() {
     _onEditActivity();
     _warmDebounce?.cancel();
     _warmDebounce = Timer(_warmDebounceWindow, () {
