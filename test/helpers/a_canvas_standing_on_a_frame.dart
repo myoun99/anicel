@@ -202,6 +202,10 @@ class WritesNeverLand extends RendersHeld {
   @override
   Object? hold(ui.Image image) => image;
 
+  /// None: a picture written a piece at a time would never be whole.
+  @override
+  Object? allocate(int width, int height) => null;
+
   @override
   int levelsOf(Object held) {
     final image = held as ui.Image;
@@ -235,6 +239,10 @@ class WritesLand extends RendersHeld {
 
   @override
   Object? hold(ui.Image image) => _gpu.hold(image);
+
+  @override
+  Object? allocate(int width, int height) =>
+      _gpu.allocate(width, height);
 
   @override
   int levelsOf(Object held) => _gpu.levelsOf(held);

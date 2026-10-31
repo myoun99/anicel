@@ -149,7 +149,7 @@ class FramePictureStore<K extends Object> {
 
   /// Lays [key]'s picture of [frame]: the store rasters what it draws over
   /// its extent, widened to whole texels of the deepest level its patches
-  /// write ([wholeLevelPixelsOutward]).
+  /// write ([wholeLevelPixelsOutward]) — a piece at a time ([_layNow]).
   ///
   /// Lays wait their turn, one at a time; [shownNow] goes to the front —
   /// the frame on screen before any made ahead of it. A key a patch is
@@ -351,6 +351,9 @@ class FramePictureStore<K extends Object> {
     }
   }
 
+  /// ⚠️A lay stays in [_lays] until it is done — a piece at a time it takes
+  /// many frames, and the same key asked for meanwhile waits on it, not
+  /// laid a second time over it.
   Future<void> _pump() async {
     if (_laying) {
       return;
@@ -358,11 +361,18 @@ class FramePictureStore<K extends Object> {
     _laying = true;
     try {
       while (_lays.isNotEmpty) {
-        final lay = _lays.removeAt(0);
+        final lay = _lays.first;
         try {
-          lay.done.complete(await _layNow(lay));
+          final laid = await _layNow(lay);
+          if (!lay.done.isCompleted) {
+            lay.done.complete(laid);
+          }
         } on Object catch (error, stack) {
-          lay.done.completeError(error, stack);
+          if (!lay.done.isCompleted) {
+            lay.done.completeError(error, stack);
+          }
+        } finally {
+          _lays.remove(lay);
         }
       }
     } finally {
@@ -370,35 +380,138 @@ class FramePictureStore<K extends Object> {
     }
   }
 
+  /// 🚨★★★A PICTURE IS LAID A PIECE AT A TIME (card
+  /// a-picture-lay-holds-the-raster-thread, D7-2): each [_pieceSide] square
+  /// of it on the patches' grid is recorded and rastered alone, and the
+  /// pieces are written into a texture made whole beforehand ([_written],
+  /// a patch's very write) — every level of it. The picture answers to its
+  /// key once every piece is in; until then the frame is drawn as it
+  /// stands, as while any lay is on its way.
+  ///
+  /// 🔬Rastered at once, the picture was one raster job, and the frame on
+  /// screen waited it out (Surface Pro 11, release, GLES, 2026-10-31): a
+  /// 3840² cut's ink to the pasteboard's end, its picture 11520 x 3968, held
+  /// the raster thread 376–766 ms a lay, 1032–2207 ms with its onion's
+  /// ghosts in place; S5_BA cut 352, 2944 x 1792, up to 409 ms. Even
+  /// nothing drawn over 11520 x 3968 held one frame's raster 298–317 ms.
+  /// Written in pieces of 512 by this write: no frame's raster past 2 ms,
+  /// the whole in 1.3–1.5 s; of 1024, 9–14 ms and 1.1–1.4 s.
+  ///
+  /// ⛔Not at a lower resolution: 유저 「해상도로 속도를 사지 않는다」.
+  ///
+  /// A picture of one piece is rastered at once, its chain the engine's;
+  /// so is one where no texture can be made ([FramePictureGpu.allocate]),
+  /// as it was.
   Future<FramePicture?> _layNow(_Lay<K> lay) async {
     final (:extent, :patchedLevels) = _shapeOf(lay.frame.extent);
     if (extent.isEmpty) {
       return null;
     }
-    // The frame's key is its signature, so what it draws is the same
-    // however often it is drawn.
-    final recorded = await _recordedThrough(extent, lay.frame.draw);
+    assert(_pieceSide % (1 << patchedLevels) == 0, 'a piece off the grid');
+    final pieces = _piecesOf(extent);
+    final allocated = pieces.length == 1
+        ? null
+        : _gpu.allocate(extent.width.toInt(), extent.height.toInt());
+    if (allocated == null) {
+      // The frame's key is its signature, so what it draws is the same
+      // however often — and however much of it at a time — it is drawn.
+      final image = await _drawnOver(extent, lay.frame.draw);
+      if (image == null) {
+        return null;
+      }
+      if (_disposed) {
+        image.dispose();
+        return null;
+      }
+      final held = _gpu.hold(image);
+      return _laid(
+        lay.key,
+        _Entry<K>(
+          FramePicture._(image, extent, lay.frame.outside),
+          held: held,
+          levels: held == null ? 1 : _gpu.levelsOf(held),
+          patchedLevels: patchedLevels,
+        ),
+      );
+    }
+    final entry = _Entry<K>(
+      FramePicture._(_gpu.imageOf(allocated), extent, lay.frame.outside),
+      held: allocated,
+      levels: _gpu.levelsOf(allocated),
+      patchedLevels: patchedLevels,
+    );
+    final bool written;
+    try {
+      written = await _writtenInPieces(entry, pieces, lay.frame.draw);
+    } on Object {
+      // Thrown to whoever waits on the lay, as by a lay rastered at once.
+      _letGo(entry);
+      rethrow;
+    }
+    if (!written || _disposed) {
+      _letGo(entry);
+      return null;
+    }
+    return _laid(lay.key, entry);
+  }
+
+  /// [entry]'s picture is [key]'s from here on.
+  FramePicture _laid(K key, _Entry<K> entry) {
+    entry.lastUsed = ++_clock;
+    _entries[key] = entry;
+    return entry.picture;
+  }
+
+  /// Writes [pieces] into [entry]'s picture, each recorded and rastered in
+  /// its turn, at most [_batchTexels] of them a write ([_written]).
+  /// Answers whether every one went in; the rasters are let go of either
+  /// way.
+  Future<bool> _writtenInPieces(
+    _Entry<K> entry,
+    List<ui.Rect> pieces,
+    void Function(ui.Canvas canvas) draw,
+  ) async {
+    final batch = <_Texels>[];
+    var texels = 0;
+    try {
+      for (final (at, piece) in pieces.indexed) {
+        final image = await _drawnOver(piece, draw);
+        if (image == null || _disposed) {
+          image?.dispose();
+          return false;
+        }
+        batch.add((rect: piece, image: image));
+        texels += image.width * image.height;
+        if (texels >= _batchTexels || at == pieces.length - 1) {
+          if (!await _written(entry, batch)) {
+            return false;
+          }
+          for (final written in batch) {
+            written.image.dispose();
+          }
+          batch.clear();
+          texels = 0;
+        }
+      }
+      return true;
+    } finally {
+      for (final unwritten in batch) {
+        unwritten.image.dispose();
+      }
+    }
+  }
+
+  /// What [draw] draws over [rect], its plugins run, rastered — null where
+  /// what it draws was gone first ([_recordedThrough]).
+  Future<ui.Image?> _drawnOver(
+    ui.Rect rect,
+    void Function(ui.Canvas canvas) draw,
+  ) async {
+    final recorded = await _recordedThrough(rect, draw);
     if (recorded == null) {
       return null;
     }
-    final image = await _rendered(
-      recorded,
-      extent.width.toInt(),
-      extent.height.toInt(),
-    );
-    if (_disposed) {
-      image.dispose();
-      return null;
-    }
-    final held = _gpu.hold(image);
-    final entry = _Entry<K>(
-      FramePicture._(image, extent, lay.frame.outside),
-      held: held,
-      levels: held == null ? 1 : _gpu.levelsOf(held),
-      patchedLevels: patchedLevels,
-    )..lastUsed = ++_clock;
-    _entries[lay.key] = entry;
-    return entry.picture;
+    return _rendered(recorded, rect.width.toInt(), rect.height.toInt());
   }
 
   /// A patch whose render throws cannot go in: its picture is let go and
@@ -485,8 +598,8 @@ class FramePictureStore<K extends Object> {
     }
   }
 
-  /// Writes [batch] into [entry]'s picture — a later patch over an earlier
-  /// — at every level of it: the base, each patch's own halvings down to
+  /// Writes [batch] into [entry]'s picture — a later patch over an earlier,
+  /// or the pieces of a lay ([_layNow]) — at every level of it: the base, each patch's own halvings down to
   /// the deepest patched level, and every level under that made again
   /// whole, once for them all ([_run]). Answers whether the GPU did.
   ///
@@ -778,6 +891,28 @@ int _patchedLevelsFor(int width, int height) {
 }
 
 const int _wholeLevelSide = 256;
+
+/// The side of a piece a picture is laid in ([FramePictureStore._layNow]):
+/// a multiple of the deepest patched level's texel at any picture a GPU
+/// takes, so every piece is a patch's shape.
+const int _pieceSide = 512;
+
+/// The texels of the pieces one write takes ([FramePictureStore._written]).
+const int _batchTexels = 1 << 20;
+
+/// The pieces a picture over [extent] is laid in: [_pieceSide] squares
+/// from its top left, row after row, the last of each row and column what
+/// is left of it.
+List<ui.Rect> _piecesOf(ui.Rect extent) => [
+  for (var top = extent.top; top < extent.bottom; top += _pieceSide)
+    for (var left = extent.left; left < extent.right; left += _pieceSide)
+      ui.Rect.fromLTRB(
+        left,
+        top,
+        math.min(left + _pieceSide, extent.right),
+        math.min(top + _pieceSide, extent.bottom),
+      ),
+];
 
 /// Where the picture a store lays of a frame drawn over [extent] lies
 /// ([FramePicture.extent]) — what it weighs before it is made.

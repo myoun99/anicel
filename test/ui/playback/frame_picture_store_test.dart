@@ -748,6 +748,144 @@ void main() {
     gpu.releaseRender();
     expect(await first, isNull, reason: 'it came back after the dispose');
   });
+
+  // 🚨a-picture-lay-holds-the-raster-thread: a picture rastered at once was
+  // one raster job the screen waited out — 2.2 s on the Surface Pro 11.
+  group('a picture laid in pieces', () {
+    // 1100 x 600 lies on 1152 x 640: three pieces across, two down, the
+    // last of each what is left of it.
+    const extent = ui.Rect.fromLTWH(0, 0, 1100, 600);
+    const pieces = [
+      (0, 0, 0, 512, 512),
+      (0, 512, 0, 512, 512),
+      (0, 1024, 0, 128, 512),
+      (0, 0, 512, 512, 128),
+      (0, 512, 512, 512, 128),
+      (0, 1024, 512, 128, 128),
+    ];
+
+    test('is rastered a piece at a time into one texture made whole, every '
+        'level of each written — its key answering once the last is in, '
+        'none before', () async {
+      final gpu = _RecordingGpu()
+        ..allocates = true
+        ..holdWrites = true;
+      final store = FramePictureStore<String>(gpu: gpu);
+      FramePicture? laid;
+      unawaited(store.lay('a', over(extent)).then((done) => laid = done));
+      await pollUntil(() => gpu.bases.isNotEmpty);
+
+      expect(gpu.allocated, [(1152, 640)]);
+      // Then the write's own: the deepest level whole, and the halvings'
+      // run.
+      expect(gpu.rendered.take(pieces.length), [
+        for (final (_, _, _, width, height) in pieces) (width, height),
+      ]);
+      expect(gpu.rendered, isNot(contains((1152, 640))));
+      expect(gpu.bases.single.map(_baseDescribed), pieces);
+      expect(
+        [
+          for (final span in gpu.levelWrites.single.spans)
+            if (span.level == 1) _spanDescribed(span),
+        ],
+        [
+          for (final (_, x, y, width, height) in pieces)
+            (1, x ~/ 2, y ~/ 2, width ~/ 2, height ~/ 2),
+        ],
+        reason: 'each piece writes its own halvings',
+      );
+      expect(store.holds('a'), isFalse);
+      expect(store.peek('a'), isNull);
+
+      gpu.releaseWrite();
+      await pollUntil(() => laid != null);
+      expect(laid!.extent, const ui.Rect.fromLTWH(0, 0, 1152, 640));
+      expect(store.peek('a'), same(laid));
+      store.dispose();
+    });
+
+    test('goes a million texels a write', () async {
+      final gpu = _RecordingGpu()..allocates = true;
+      final store = FramePictureStore<String>(gpu: gpu);
+      await store.lay('a', over(const ui.Rect.fromLTWH(0, 0, 2048, 1024)));
+      expect(
+        [for (final base in gpu.bases) base.length],
+        [4, 4],
+        reason: 'eight pieces of 512 a side, four to a million',
+      );
+      store.dispose();
+    });
+
+    test('of one piece is its raster', () async {
+      final gpu = _RecordingGpu()..allocates = true;
+      final store = FramePictureStore<String>(gpu: gpu);
+      final picture = await store.lay(
+        'a',
+        over(const ui.Rect.fromLTWH(0, 0, 500, 300)),
+      );
+      expect(picture!.extent, const ui.Rect.fromLTWH(0, 0, 512, 384));
+      expect(gpu.allocated, isEmpty);
+      expect(gpu.rendered, [(512, 384)]);
+      expect(gpu.bases, isEmpty);
+      store.dispose();
+    });
+
+    test('where no texture can be made is rastered at once', () async {
+      final gpu = _RecordingGpu();
+      final store = FramePictureStore<String>(gpu: gpu);
+      final picture = await store.lay('a', over(extent));
+      expect(picture, isNotNull);
+      expect(gpu.allocated, isEmpty);
+      expect(gpu.rendered, [(1152, 640)]);
+      store.dispose();
+    });
+
+    test('asked for again while it is laid is laid once', () async {
+      final gpu = _RecordingGpu()
+        ..allocates = true
+        ..holdWrites = true;
+      final store = FramePictureStore<String>(gpu: gpu);
+      final first = store.lay('a', over(extent));
+      await pollUntil(() => gpu.bases.isNotEmpty);
+      final again = store.lay('a', over(extent), shownNow: true);
+      gpu.releaseWrite();
+      expect(await again, same(await first));
+      expect(gpu.allocated, hasLength(1));
+      store.dispose();
+    });
+
+    test('whose write the GPU did not do is none — its key answers with '
+        'nothing', () async {
+      final gpu = _RecordingGpu()
+        ..allocates = true
+        ..writesLand = false;
+      final store = FramePictureStore<String>(gpu: gpu);
+      expect(await store.lay('a', over(extent)), isNull);
+      expect(store.holds('a'), isFalse);
+      store.dispose();
+    });
+
+    test('whose piece threw rendering answers with the throw, and the next '
+        'lay goes on', () async {
+      final gpu = _RecordingGpu()..allocates = true;
+      final store = FramePictureStore<String>(gpu: gpu);
+      var drawn = 0;
+      final throwing = store.lay('a', (
+        extent: extent,
+        outside: white,
+        draw: (canvas) {
+          drawn += 1;
+          gpu.rendersThrow = drawn == 2 ? StateError('a piece') : null;
+          fill(canvas);
+        },
+      ));
+      await expectLater(throwing, throwsStateError);
+      expect(store.holds('a'), isFalse);
+      gpu.rendersThrow = null;
+      expect(await store.lay('b', over(extent)), isNotNull);
+      store.dispose();
+    });
+  });
 }
 
 Future<FramePicture> _layed(
@@ -861,6 +999,27 @@ class _RecordingGpu implements FramePictureGpu {
   /// lets go of the picture's image once a write gives it another.
   @override
   Object? hold(ui.Image image) => gpu ? image.clone() : null;
+
+  /// Whether a texture can be made for a picture laid a piece at a time —
+  /// its texels clear, a write taking none ([allocated]).
+  bool allocates = false;
+
+  /// The sizes of the textures made.
+  final List<(int, int)> allocated = [];
+
+  @override
+  Object? allocate(int width, int height) {
+    if (!gpu || !allocates) {
+      return null;
+    }
+    allocated.add((width, height));
+    final recorder = ui.PictureRecorder();
+    ui.Canvas(recorder);
+    final picture = recorder.endRecording();
+    final image = picture.toImageSync(width, height);
+    picture.dispose();
+    return image;
+  }
 
   @override
   int levelsOf(Object held) {

@@ -1,4 +1,4 @@
-@Tags(['impeller'])
+@Tags(['gpu'])
 library;
 
 import 'dart:typed_data';
@@ -31,6 +31,7 @@ import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import 'package:anicel/src/ui/session/editor_app_settings.dart';
 
+import '../../helpers/a_canvas_standing_on_a_frame.dart' show noFlutterGpu;
 import '../../helpers/draw_on_current_frame.dart';
 
 /// 🗣️onion-ghosts-in-place ② (유저 2026-10-26 「보통 합성이 아닌 경우라도
@@ -46,7 +47,9 @@ void main() {
   setUpAll(LayerBlendShader.load);
   setUpAll(DirectionalBlurShader.load);
 
-  const canvasSize = CanvasSize(width: 128, height: 128);
+  // Past a piece across ([FramePictureStore] lays a picture a piece at a
+  // time, on Flutter GPU): two of them, every ghost in the first.
+  const canvasSize = CanvasSize(width: 640, height: 128);
   const pen = LayerId('pen');
   // The pen's cels before and after the playhead, the ghosts at frame 1:
   // one on the left, one on the right — and the drawing between them.
@@ -464,4 +467,26 @@ void main() {
       }
     });
   });
+
+  // 🚨a-picture-lay-holds-the-raster-thread: the ghosts' place rastered
+  // whole at each piece was the frame's raster again a piece.
+  testWidgets('laid a piece at a time, the ghosts\' place is rastered where '
+      'a piece meets it — not at every piece', (tester) async {
+    await tester.runAsync(() async {
+      final session = inked(shapes['rows over and under it']!());
+      final (:inPlace, :film) = atTheHead(session);
+      final over = besideThe(session);
+      await make(over, film);
+      debugGhostPlaceRasters = 0;
+      await make(over, inPlace);
+
+      final (extent, _) = await bytesOf(over, inPlace);
+      expect(
+        extent.width,
+        greaterThan(512),
+        reason: '⛔premise: laid in more than one piece',
+      );
+      expect(debugGhostPlaceRasters, 1, reason: 'every ghost in one piece');
+    });
+  }, skip: noFlutterGpu != null);
 }

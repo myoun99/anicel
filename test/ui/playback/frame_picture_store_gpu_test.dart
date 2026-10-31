@@ -228,6 +228,72 @@ void main() {
     skip: noFlutterGpu,
   );
 
+  // 🚨a-picture-lay-holds-the-raster-thread: a picture over more than a
+  // piece is written into a texture made whole, a piece at a time.
+  test(
+    'a picture laid a piece at a time is, at every level, the picture '
+    'rastered at once — its texture made in the format a raster is',
+    () async {
+      final pictures = FlutterGpuFramePictures();
+      final context = gpu.gpuContext;
+      // Three pieces across, two down, the last of each a part: the light
+      // runs across every edge between them.
+      const extent = ui.Rect.fromLTWH(0, 0, 1280, 768);
+      void across(ui.Canvas canvas) {
+        canvas.drawRect(
+          extent,
+          ui.Paint()
+            ..shader = ui.Gradient.linear(
+              ui.Offset.zero,
+              const ui.Offset(1280, 768),
+              const [ui.Color(0xFFCC2020), ui.Color(0x402040CC)],
+            ),
+        );
+        for (var at = 0; at < 9; at += 1) {
+          canvas.drawCircle(
+            ui.Offset(256.0 + at * 97, 300.0 + (at % 3) * 150),
+            61,
+            ui.Paint()..color = const ui.Color(0xC0FFEE00),
+          );
+        }
+      }
+
+      final store = FramePictureStore<String>();
+      final laid = await store.lay('a', (
+        extent: extent,
+        outside: const ui.Color(0x00000000),
+        draw: across,
+      ));
+      final recorded = recordedOver(extent, across);
+      final whole = await recorded.toImage(1280, 768);
+      recorded.dispose();
+
+      expect(
+        gpu.Texture.fromImage(context, whole).format,
+        context.defaultColorFormat,
+        reason: 'the texture a lay is written into is made in it',
+      );
+      expect(
+        pictures.levelsOf(pictures.hold(laid!.image)!),
+        pictures.levelsOf(pictures.hold(whole)!),
+        reason: 'the chain of a picture rastered at once',
+      );
+      final want = await _levels(whole);
+      final got = await _levels(laid.image);
+      expect(got, hasLength(want.length));
+      for (var level = 0; level < want.length; level += 1) {
+        expect(
+          _mostApart(got[level], want[level]),
+          lessThanOrEqualTo(1),
+          reason: 'level $level',
+        );
+      }
+      whole.dispose();
+      store.dispose();
+    },
+    skip: noFlutterGpu,
+  );
+
   test('a texel flutter_gpu has no name for is BGRA10_XR, eight bytes — a '
       'write into it is not sized at nothing (F-509-Q9)', () {
     expect(FlutterGpuFramePictures.bytesPerTexel(gpu.PixelFormat.unknown), 8);
@@ -289,17 +355,22 @@ void main() {
 /// at 1/2^k under `FilterQuality.medium`.
 Future<List<Uint8List>> _levels(ui.Image image) async {
   final levels = <Uint8List>[];
-  for (var k = 0; (image.width >> k) >= 1; k += 1) {
-    final size = image.width >> k;
+  for (
+    var k = 0;
+    (image.width >> k) >= 1 && (image.height >> k) >= 1;
+    k += 1
+  ) {
+    final width = image.width >> k;
+    final height = image.height >> k;
     final recorder = ui.PictureRecorder();
     ui.Canvas(recorder).drawImageRect(
       image,
       ui.Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
-      ui.Rect.fromLTWH(0, 0, size.toDouble(), size.toDouble()),
+      ui.Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
       ui.Paint()..filterQuality = ui.FilterQuality.medium,
     );
     final picture = recorder.endRecording();
-    final drawn = await picture.toImage(size, size);
+    final drawn = await picture.toImage(width, height);
     picture.dispose();
     levels.add((await drawn.toByteData())!.buffer.asUint8List());
     drawn.dispose();

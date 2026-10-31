@@ -32,6 +32,13 @@ abstract interface class FramePictureGpu {
   /// render with it are out of the release, skia-devices-out-of-release).
   Object? hold(ui.Image image);
 
+  /// A texture [width] x [height] with a whole mip chain, held as [hold]
+  /// holds one, in the format [render] rasters in — none of its texels
+  /// written yet: a picture too big to raster at once, written into a piece
+  /// at a time ([FramePictureStore.lay]). Null where there is no GPU to
+  /// write with, or no such texture to make.
+  Object? allocate(int width, int height);
+
   /// The mip levels [held]'s texture has: the base and every halving down
   /// to one texel.
   int levelsOf(Object held);
@@ -81,6 +88,40 @@ class FlutterGpuFramePictures implements FramePictureGpu {
       return null;
     }
     return gpu.Texture.fromImage(context, image);
+  }
+
+  /// 🔬Made, not rastered (a-picture-lay-holds-the-raster-thread, Surface
+  /// Pro 11, release, GLES, 2026-10-31): an 11520 x 3968 picture rastered
+  /// at once held one frame's raster 298–317 ms with nothing drawn in it,
+  /// whatever was; a texture of that size and chain made so held none past
+  /// 9 ms, nor letting it go.
+  ///
+  /// 📐In the context's default colour format: the one the engine rasters
+  /// a picture into (`DisplayListToTexture`) — pinned on the runner by
+  /// `frame_picture_store_gpu_test.dart`, as a texture-to-texture copy
+  /// takes no other.
+  ///
+  /// ⚠️A format `flutter_gpu` has no name for (BGRA10_XR, [bytesPerTexel])
+  /// cannot be made: such a picture is rastered at once, as before.
+  @override
+  Object? allocate(int width, int height) {
+    final gpu.GpuContext context;
+    try {
+      context = gpu.gpuContext;
+    } on Exception {
+      return null;
+    }
+    final format = context.defaultColorFormat;
+    if (format == gpu.PixelFormat.unknown) {
+      return null;
+    }
+    return context.createTexture(
+      gpu.StorageMode.devicePrivate,
+      width,
+      height,
+      format: format,
+      mipLevelCount: gpu.Texture.fullMipCount(width, height),
+    );
   }
 
   /// How many bytes a texel of [format] takes — what a write into the levels

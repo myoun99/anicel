@@ -588,6 +588,10 @@ class _WritesLandWhenLet extends RendersHeld {
   @override
   Object? hold(ui.Image image) => image.clone();
 
+  /// None: its writes take no texels, so a picture is rastered at once.
+  @override
+  Object? allocate(int width, int height) => null;
+
   @override
   int levelsOf(Object held) {
     final image = held as ui.Image;
