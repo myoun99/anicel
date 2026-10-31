@@ -10,6 +10,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/shape_tool_options.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
@@ -226,6 +227,33 @@ void main() {
       tester,
       CanvasTool.fillShape,
       softness: softness,
+    );
+    softness.value = feather;
+    await drag(
+      tester,
+      find.byKey(layerKey),
+      const Offset(10, 10),
+      const Offset(190, 110),
+    );
+    expect(rowAt(coordinator), edgeOf(coordinator, feather));
+  });
+
+  testWidgets('the shape tool\'s area lands the selection\'s own edge', (
+    tester,
+  ) async {
+    final softness = ValueNotifier(SelectionMaskOptions.none);
+    final coordinator = await pumpPanel(
+      tester,
+      CanvasTool.shape,
+      softness: softness,
+      brush: (state) => state.copyWith(
+        drawShape: CanvasShapeKind.rect,
+        shapeOptions: const ShapeToolOptions(
+          part: ShapePart.fill,
+          opacity: 1,
+          antiAlias: false,
+        ),
+      ),
     );
     softness.value = feather;
     await drag(

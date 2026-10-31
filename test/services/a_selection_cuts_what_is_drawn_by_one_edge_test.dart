@@ -154,6 +154,14 @@ void main() {
     expect(region.mayCover(columnAt(97)), isFalse, reason: 'fixture premise');
     expect(clip.mayCover(columnAt(97)), isTrue, reason: 'grown four pixels');
     expect(clip.mayCover(columnAt(90)), isFalse, reason: 'past the growth');
+    expect(clip.mayCover(columnAt(122)), isTrue, reason: 'on the right too');
+    expect(clip.mayCover(columnAt(130)), isFalse);
+    DirtyRegion rowAt(int y) =>
+        DirtyRegion.fromXYWH(x: 100, y: y, width: 20, height: 1);
+    expect(clip.mayCover(rowAt(97)), isTrue, reason: 'above');
+    expect(clip.mayCover(rowAt(90)), isFalse);
+    expect(clip.mayCover(rowAt(122)), isTrue, reason: 'and below');
+    expect(clip.mayCover(rowAt(130)), isFalse);
   });
 
   test('a selection the wall leaves nothing of covers nothing', () {
@@ -249,6 +257,41 @@ void main() {
     options: const SelectionMaskOptions(featherPx: 8),
   );
   final row = soft.maskFor(left: 0, top: 100, width: 300, height: 1);
+
+  test('a stamp the selection cannot reach reads nothing of it', () {
+    final asked = <int>[];
+    final rgba = Uint8List(10 * 10 * 4)..fillRange(0, 10 * 10 * 4, 255);
+    final dab = paintDab(20, 190).copyWith(
+      stamp: BrushStampImage(id: 'off', width: 10, height: 10, rgba: rgba),
+    );
+    final clip = SelectionClip.outline(
+      _ReadsSpied(rect(60, 20, 240, 180), asked),
+    );
+    expect(clipStampDabToSelection(dab, clip: clip), isNull);
+    expect(asked, isEmpty);
+  });
+
+  test('a dab the selection cannot reach is left out before the stroke is '
+      'rastered: it widens nothing that is read', () {
+    final asked = <int>[];
+    final clip = SelectionClip.outline(
+      _ReadsSpied(rect(60, 20, 240, 180), asked),
+    );
+    List<int> readFor(List<BrushDab> dabs) {
+      asked.clear();
+      clipDabsToSelection(
+        dabs: dabs,
+        canvasSize: canvas,
+        tileSize: 64,
+        clip: clip,
+      );
+      return List.of(asked);
+    }
+
+    final near = readFor([paintDab(150, 100)]);
+    expect(near, isNotEmpty, reason: 'fixture premise');
+    expect(readFor([paintDab(150, 100), paintDab(20, 190)]), near);
+  });
 
   test('fixture premise: the row reads a ramp', () {
     expect(row[60], greaterThan(0));
