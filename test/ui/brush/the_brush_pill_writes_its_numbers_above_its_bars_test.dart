@@ -24,6 +24,7 @@ import 'package:anicel/src/ui/theme/disabled_ink.dart';
 import 'package:anicel/src/ui/theme/text_on_ground.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
+import 'package:anicel/src/ui/widgets/value_hands.dart';
 
 import '../../helpers/app_faces.dart';
 import '../../helpers/app_icon_button_probe.dart';
@@ -414,6 +415,106 @@ void main() {
     final past = Offset(pill.right + 2, tester.getCenter(readout('size')).dy);
     await tester.tapAt(past);
     expect(floor, [past]);
+  });
+
+  // 🗣️F-528 (유저 2026-11-01): 「브러시 사이즈쪽 알약의 한걸음 올리기,내리기
+  // 버튼들. 너무 작으니 좌우 길이 알약 다 차지하도록 크기 키우기」.
+  group('🚨F-528', () {
+    Rect cell(WidgetTester tester, String side, String which) =>
+        tester.getRect(
+          find.descendant(
+            of: bar(side),
+            matching: find.byKey(ValueKey<String>('field-slider-step-$which')),
+          ),
+        );
+
+    void expectTheStepsRunThePill(WidgetTester tester) {
+      final pill = tester.getRect(capsule);
+      for (final side in sides) {
+        final down = cell(tester, side, 'down');
+        final up = cell(tester, side, 'up');
+        expect(down.left, pill.left + 1, reason: side);
+        expect(up.right, pill.right - 1, reason: side);
+        expect(down.right, up.left, reason: side);
+        expect(down.width, up.width, reason: side);
+      }
+    }
+
+    testWidgets('each bar\'s ± run the whole pill inside its ring, a half '
+        'each, and its track keeps its thickness, centred over them', (
+      tester,
+    ) async {
+      await pumpPill(tester);
+      expectTheStepsRunThePill(tester);
+      final pill = tester.getRect(capsule);
+      final thickness = BrushValueBars.stoodThicknessIn(
+        tester.element(capsule),
+      );
+      for (final side in sides) {
+        final track = tester.getRect(trackOf(side));
+        expect(track.width, thickness, reason: side);
+        expect(track.center.dx, pill.center.dx, reason: side);
+      }
+    });
+
+    testWidgets('a press right at the pill\'s edge is the step\'s', (
+      tester,
+    ) async {
+      final brushTool = await pumpPill(tester);
+      double size() => brushTool.value.activeSize;
+      final before = size();
+
+      await tester.tapAt(
+        cell(tester, 'size', 'up').centerRight - const Offset(1, 0),
+      );
+      await tester.pump();
+      final stepped = size();
+      expect(stepped, greaterThan(before));
+
+      await tester.tapAt(
+        cell(tester, 'size', 'down').centerLeft + const Offset(1, 0),
+      );
+      await tester.pump();
+      expect(size(), lessThan(stepped));
+    });
+
+    testWidgets('they follow the pill where the OS text widens it', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await pumpPill(tester);
+      final width = tester.getSize(capsule).width;
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await tester.pump();
+      expect(tester.getSize(capsule).width, greaterThan(width));
+      expectTheStepsRunThePill(tester);
+    });
+
+    testWidgets('the bars the strip lays keep the ± of their own height', (
+      tester,
+    ) async {
+      final brushTool = ValueNotifier(BrushToolState.defaults);
+      addTearDown(brushTool.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildAppTheme(),
+          home: Scaffold(
+            body: Center(
+              child: BrushValueBars(
+                brushTool: brushTool,
+                widths: BrushValueBars.full,
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(
+        tester.getSize(find.byType(ValueSteps).first).height,
+        BrushValueBars.barHeight,
+      );
+    });
   });
 
   testWidgets('the pill keeps the view pill\'s room inside both its ends', (
