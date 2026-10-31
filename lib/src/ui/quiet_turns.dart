@@ -87,7 +87,7 @@ final class QuietTurns {
   Future<void> _taken = Future<void>.value();
 
   /// Nothing held and no quiet kept: a turn is given at once.
-  bool _atRest() => clock.quiet() == null && !clock.held();
+  bool get atRest => clock.quiet() == null && !clock.held();
 
   /// A turn in the quiet that is now — waited for to begin — for a job
   /// [span] long: null when that quiet has no room for one, is over, or
@@ -97,7 +97,7 @@ final class QuietTurns {
     QuietSpan span, {
     required bool Function() gone,
   }) async {
-    if (_atRest()) {
+    if (atRest) {
       return QuietTurn._(this, span);
     }
     final release = await _queue();
@@ -122,7 +122,7 @@ final class QuietTurns {
     bool Function() due = notDue,
   }) async {
     while (!gone()) {
-      if (due() || _atRest()) {
+      if (due() || atRest) {
         return QuietTurn._(this, span);
       }
       final release = await _queue();

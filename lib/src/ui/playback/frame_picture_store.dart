@@ -224,11 +224,14 @@ class FramePictureStore<K extends Object> {
   /// filled — the screen's picture in 1.3 s, then the values the drag had
   /// passed, 5 s of them, with the bar standing. ⚠️What is on the raster
   /// thread already cannot be taken back.
+  ///
+  /// [inPieces] lays it a piece at a time though it fits at once ([_layNow]).
   Future<FramePicture?> lay(
     K key,
     FrameDrawing frame, {
     bool shownNow = false,
     bool Function() gone = _stays,
+    bool inPieces = false,
   }) async {
     final there = peek(key);
     if (there != null) {
@@ -244,6 +247,7 @@ class FramePictureStore<K extends Object> {
         queued.askers.add(gone);
         if (shownNow) {
           queued.shown = true;
+          queued.inPieces = false;
           _lays
             ..remove(queued)
             ..insert(0, queued);
@@ -251,7 +255,8 @@ class FramePictureStore<K extends Object> {
         return queued.done.future;
       }
     }
-    final lay = _Lay<K>(key, frame, shown: shownNow)..askers.add(gone);
+    final lay = _Lay<K>(key, frame, shown: shownNow, inPieces: inPieces)
+      ..askers.add(gone);
     if (shownNow) {
       _lays.insert(0, lay);
     } else {
@@ -511,14 +516,24 @@ class FramePictureStore<K extends Object> {
   /// A picture inside [_onceSide] is rastered at once, its chain the
   /// engine's; so is one where no texture can be made
   /// ([FramePictureGpu.allocate]), as it was. ⛔Not every picture in pieces:
-  /// where one fits, at once is cheaper ([framePictureSide]).
+  /// where one fits, at once is cheaper ([framePictureSide]) — for one a
+  /// screen waits for.
+  ///
+  /// 🗣️F-529 (유저 2026-11-01): 「더 좋은 방안있다면 개선바람」 — ONE MADE AHEAD
+  /// WHILE NOTHING PLAYS GOES IN PIECES ([_Lay.inPieces]): a change made
+  /// while the bar fills waited out the raster of the picture being made and
+  /// then its own. 🔬Surface Pro 11, profile, S5_BA cut 353, every row
+  /// visible, 114 frames, 2436 x 1524: the change on screen 0.64–2.2 s at
+  /// once, 0.06–0.19 in pieces (a dragged slider 2.3–2.6, 1.5); frames drawn
+  /// while the bar fills 64, 811; the longest between two 1.0–2.3 s, 0.6.
+  /// The whole bar 20–22 s, 31.
   Future<FramePicture?> _layNow(_Lay<K> lay) async {
     final (:extent, :patchedLevels) = _shapeOf(lay.frame.extent);
     if (extent.isEmpty) {
       return null;
     }
     assert(_pieceSide % (1 << patchedLevels) == 0, 'a piece off the grid');
-    final pieces = extent.longestSide <= _onceSide
+    final pieces = extent.longestSide <= _onceSide && !lay.inPieces
         ? [extent]
         : piecesOver(extent, side: _pieceSide);
     final allocated = pieces.length == 1
@@ -1165,7 +1180,7 @@ const int _wholeLevelSide = 256;
 /// that decides, not these.
 const int framePictureSide = 4096;
 
-/// The side of the pieces of a picture past [framePictureSide]
+/// The side of the pieces a picture is laid in
 /// ([FramePictureStore._layNow]): a multiple of the deepest patched level's
 /// texel at any picture a GPU takes, so every piece is a patch's shape.
 ///
@@ -1394,7 +1409,7 @@ class _Entry<K> {
 }
 
 class _Lay<K> {
-  _Lay(this.key, this.frame, {required this.shown});
+  _Lay(this.key, this.frame, {required this.shown, required this.inPieces});
 
   final K key;
   final FrameDrawing frame;
@@ -1402,6 +1417,10 @@ class _Lay<K> {
 
   /// Whether a screen asked for it, not one making it ahead.
   bool shown;
+
+  /// Whether it goes a piece at a time though it fits at once
+  /// ([FramePictureStore._layNow]) — until a screen asks for it first.
+  bool inPieces;
 
   /// What says each one who asked for it has left ([FramePictureStore.lay]).
   final List<bool Function()> askers = [];
