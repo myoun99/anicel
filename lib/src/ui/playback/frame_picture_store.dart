@@ -600,9 +600,10 @@ class FramePictureStore<K extends Object> {
   }
 
   /// Writes [batch] into [entry]'s picture — a later patch over an earlier,
-  /// or the pieces of a lay ([_layNow]) — at every level of it: the base, each patch's own halvings down to
-  /// the deepest patched level, and every level under that made again
-  /// whole, once for them all ([_run]). Answers whether the GPU did.
+  /// or the pieces of a lay ([_layNow]) — at every level of it: the base,
+  /// each patch's own halvings down to the deepest patched level, and every
+  /// level under that made again whole, once for them all ([_run]). Answers
+  /// whether the GPU did.
   ///
   /// 🚨★★★EVERY LEVEL WITH EVERY BATCH, AND THE PICTURE ANSWERS ONLY THEN —
   /// the screen draws the picture and nothing over it (F-465, 유저 채팅
