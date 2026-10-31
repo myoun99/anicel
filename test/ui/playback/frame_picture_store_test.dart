@@ -770,7 +770,7 @@ void main() {
       final gpu = _RecordingGpu()
         ..allocates = true
         ..holdWrites = true;
-      final store = FramePictureStore<String>(gpu: gpu);
+      final store = FramePictureStore<String>(gpu: gpu, pieceSide: 512);
       FramePicture? laid;
       unawaited(store.lay('a', over(extent)).then((done) => laid = done));
       await pollUntil(() => gpu.bases.isNotEmpty);
@@ -806,7 +806,7 @@ void main() {
 
     test('goes a million texels a write', () async {
       final gpu = _RecordingGpu()..allocates = true;
-      final store = FramePictureStore<String>(gpu: gpu);
+      final store = FramePictureStore<String>(gpu: gpu, pieceSide: 512);
       await store.lay('a', over(const ui.Rect.fromLTWH(0, 0, 2048, 1024)));
       expect(
         [for (final base in gpu.bases) base.length],
@@ -818,7 +818,7 @@ void main() {
 
     test('of one piece is its raster', () async {
       final gpu = _RecordingGpu()..allocates = true;
-      final store = FramePictureStore<String>(gpu: gpu);
+      final store = FramePictureStore<String>(gpu: gpu, pieceSide: 512);
       final picture = await store.lay(
         'a',
         over(const ui.Rect.fromLTWH(0, 0, 500, 300)),
@@ -830,9 +830,30 @@ void main() {
       store.dispose();
     });
 
+    test('in the app is laid at once up to 4096 a side, in pieces past it '
+        '(framePictureSide)', () async {
+      final gpu = _RecordingGpu()..allocates = true;
+      final store = FramePictureStore<String>(gpu: gpu);
+      await store.lay('a', over(const ui.Rect.fromLTWH(0, 0, 4096, 8)));
+      expect(
+        gpu.allocated,
+        isEmpty,
+        reason: '🚨in pieces, an S5 picture took twice as long to lay',
+      );
+      expect(gpu.rendered, [(4096, 128)]);
+
+      await store.lay('b', over(const ui.Rect.fromLTWH(0, 0, 4097, 8)));
+      expect(
+        gpu.allocated,
+        [(4224, 128)],
+        reason: '🚨at once, a 3840² picture held the raster thread seconds',
+      );
+      store.dispose();
+    });
+
     test('where no texture can be made is rastered at once', () async {
       final gpu = _RecordingGpu();
-      final store = FramePictureStore<String>(gpu: gpu);
+      final store = FramePictureStore<String>(gpu: gpu, pieceSide: 512);
       final picture = await store.lay('a', over(extent));
       expect(picture, isNotNull);
       expect(gpu.allocated, isEmpty);
@@ -844,7 +865,7 @@ void main() {
       final gpu = _RecordingGpu()
         ..allocates = true
         ..holdWrites = true;
-      final store = FramePictureStore<String>(gpu: gpu);
+      final store = FramePictureStore<String>(gpu: gpu, pieceSide: 512);
       final first = store.lay('a', over(extent));
       await pollUntil(() => gpu.bases.isNotEmpty);
       final again = store.lay('a', over(extent), shownNow: true);
@@ -859,7 +880,7 @@ void main() {
       final gpu = _RecordingGpu()
         ..allocates = true
         ..writesLand = false;
-      final store = FramePictureStore<String>(gpu: gpu);
+      final store = FramePictureStore<String>(gpu: gpu, pieceSide: 512);
       expect(await store.lay('a', over(extent)), isNull);
       expect(store.holds('a'), isFalse);
       store.dispose();
@@ -870,7 +891,7 @@ void main() {
       final gpu = _RecordingGpu()
         ..allocates = true
         ..holdWrites = true;
-      final store = FramePictureStore<String>(gpu: gpu);
+      final store = FramePictureStore<String>(gpu: gpu, pieceSide: 512);
       final laid = store.lay('a', over(extent));
       await pollUntil(() => gpu.bases.isNotEmpty);
       store.dispose();
@@ -884,7 +905,7 @@ void main() {
     test('whose piece threw rendering answers with the throw, and the next '
         'lay goes on', () async {
       final gpu = _RecordingGpu()..allocates = true;
-      final store = FramePictureStore<String>(gpu: gpu);
+      final store = FramePictureStore<String>(gpu: gpu, pieceSide: 512);
       var drawn = 0;
       final throwing = store.lay('a', (
         extent: extent,

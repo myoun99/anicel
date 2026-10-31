@@ -179,7 +179,8 @@ void main() {
   /// Pictures of [session]'s frames in a store of their own.
   FramePictures besideThe(EditorSessionManager session) {
     final its = session.playbackRig.framePictures;
-    final store = FramePictureStore<FramePictureKey>();
+    // Pieces of 512, so a page of 640 is laid in two.
+    final store = FramePictureStore<FramePictureKey>(pieceSide: 512);
     final pictures = FramePictures(
       store: store,
       layerImages: its.layerImages,

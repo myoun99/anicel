@@ -101,10 +101,19 @@ class FramePicture extends ChangeNotifier {
 /// laid whole once ([lay]), then patched where it stands ([patch]), let go
 /// of by the playback budget's one order ([enforceBudget]).
 class FramePictureStore<K extends Object> {
-  FramePictureStore({FramePictureGpu? gpu})
-    : _gpu = gpu ?? FlutterGpuFramePictures();
+  /// [pieceSide] is for tests, to lay a small picture a piece at a time
+  /// ([_layNow]); the app lays every picture by [framePictureSide].
+  FramePictureStore({
+    FramePictureGpu? gpu,
+    int pieceSide = framePictureSide,
+  }) : _gpu = gpu ?? FlutterGpuFramePictures(),
+       _pieceSide = pieceSide;
 
   final FramePictureGpu _gpu;
+
+  /// The longest side a picture is laid at once, and the side of the
+  /// pieces of one past it ([_layNow]).
+  final int _pieceSide;
 
   final Map<K, _Entry<K>> _entries = {};
 
@@ -381,13 +390,13 @@ class FramePictureStore<K extends Object> {
     }
   }
 
-  /// 🚨★★★A PICTURE IS LAID A PIECE AT A TIME (card
-  /// a-picture-lay-holds-the-raster-thread, D7-2): each [_pieceSide] square
-  /// of it on the patches' grid is recorded and rastered alone, and the
-  /// pieces are written into a texture made whole beforehand ([_written],
-  /// a patch's very write) — every level of it. The picture answers to its
-  /// key once every piece is in; until then the frame is drawn as it
-  /// stands, as while any lay is on its way.
+  /// 🚨★★★A PICTURE LONGER THAN [framePictureSide] IS LAID A PIECE AT A TIME
+  /// (card a-picture-lay-holds-the-raster-thread, D7-2): each [_pieceSide]
+  /// square of it on the patches' grid is recorded and rastered alone, and
+  /// the pieces are written into a texture made whole beforehand
+  /// ([_written], a patch's very write) — every level of it. The picture
+  /// answers to its key once every piece is in; until then the frame is
+  /// drawn as it stands, as while any lay is on its way.
   ///
   /// 🔬Rastered at once, the picture was one raster job, and the frame on
   /// screen waited it out (Surface Pro 11, release, GLES, 2026-10-31): a
@@ -402,7 +411,8 @@ class FramePictureStore<K extends Object> {
   ///
   /// A picture of one piece is rastered at once, its chain the engine's;
   /// so is one where no texture can be made ([FramePictureGpu.allocate]),
-  /// as it was.
+  /// as it was. ⛔Not every picture in pieces: where one fits, at once is
+  /// cheaper ([framePictureSide]).
   Future<FramePicture?> _layNow(_Lay<K> lay) async {
     final (:extent, :patchedLevels) = _shapeOf(lay.frame.extent);
     if (extent.isEmpty) {
@@ -894,10 +904,23 @@ int _patchedLevelsFor(int width, int height) {
 
 const int _wholeLevelSide = 256;
 
-/// The side of a piece a picture is laid in ([FramePictureStore._layNow]):
-/// a multiple of the deepest patched level's texel at any picture a GPU
-/// takes, so every piece is a patch's shape.
-const int _pieceSide = 512;
+/// The longest side a picture is laid at once, and the side of the pieces
+/// of one past it ([FramePictureStore._layNow]): a multiple of the deepest
+/// patched level's texel at any picture a GPU takes, so every piece is a
+/// patch's shape.
+///
+/// 🔬A piece's levels under the base are written through `flutter_gpu`
+/// ([FramePictureStore._written] — halvings rastered, then copied out of
+/// the GPU), where a picture laid at once has its chain made on the GPU by
+/// the engine; on a heavy frame that costs more than the one raster.
+/// Surface Pro 11, release, the frames' order in turn, 2026-10-31 — the
+/// first jump of the ruler after the onion is switched on, to the screen:
+/// S5_BA cut 352 with every row visible (2944 x 1792), at once 74–151 ms,
+/// in pieces of 512 300–348 ms (2048: 123–271); a 3840² cut's ink to the
+/// pasteboard's end (11520 x 3968), at once never within 2.5 s, in pieces
+/// of 4096 125–454 ms (1024: 51–75; 512: 75–100). ⚠️Laying at once up to
+/// one side and in smaller pieces past it is two sides, not measured yet.
+const int framePictureSide = 4096;
 
 /// The texels of the pieces one write takes ([FramePictureStore._written]).
 const int _batchTexels = 1 << 20;
