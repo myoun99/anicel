@@ -10,8 +10,8 @@ import 'dart:math' as math;
 /// Where they leave nothing — the levels written with every step, a machine
 /// busy with something else, a slower one — there is none, and a step goes
 /// at the paint as it did. 🔬Main PC, 144 Hz, a new project, the pen to the
-/// ink on the glass, p50 at 300 and 1200 px/s: at 100% 22.5 and 18.7 → 20.9
-/// and 17.3 ms, at the fit 18.6 and 18.4 → 17.5 and 15.6, and no later under
+/// ink on the glass, p50 at 300 and 1200 px/s: at 100% 15.8 and 17.0 → 14.2
+/// and 15.6 ms, at the fit 17.6 and 18.1 → 16.5 and 15.4, and no later under
 /// the test line's load. The Surface Pro 11, input to raster done, p50 at 300
 /// and 1200 px/s and p99: at the fit, every level with every step and so no
 /// hold, 14.3 and 19.5 → 13.8 and 14.5 ms, p99 the same; at 100% with no
@@ -39,7 +39,7 @@ final class StepPace {
 
   /// What a step asked late is given over what the last ones took: a timer
   /// came 0.8 ms late at the median, 2.6 at p99. 🔬2 ms gave the gain back
-  /// (at the fit 19.8 and 17.8 ms) and no steadier frames.
+  /// (at the fit 18.8 and 17.5 ms) and no steadier frames.
   static const int _marginMicros = 1000;
 
   /// Under this a timer is no earlier than the paint's own ask.
