@@ -33,7 +33,6 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
-import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
