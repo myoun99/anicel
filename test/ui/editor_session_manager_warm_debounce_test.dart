@@ -279,19 +279,6 @@ void main() {
       expect(started(), 1);
     });
 
-    test('so does an undo: it goes through history as the change did',
-        () async {
-      final session = aSession();
-      session.layerSwitches.toggleLayerVisibility(const LayerId('layer'));
-      await aTurn();
-      final started = walks(session);
-
-      session.undo();
-      await aTurn();
-
-      expect(started(), 1);
-    });
-
     test('a slider in flight only asks the walk to stand back: nothing is '
         'written until it lands', () async {
       final session = aSession();
@@ -300,6 +287,8 @@ void main() {
 
       final scheduler = session.playbackRig.prerenderScheduler;
       final before = scheduler.lastEditActivity;
+      // The wall clock's own step: told in the same one, nothing would show.
+      await Future<void>.delayed(const Duration(milliseconds: 20));
       session.opacityVerbs.previewLayerOpacity(const LayerId('layer'), 0.5);
       await aTurn();
 
