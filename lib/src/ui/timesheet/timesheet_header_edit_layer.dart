@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/canvas_viewport.dart';
 import '../../models/timesheet_info.dart' show TimesheetHeaderField;
+import '../sheet/sheet_line.dart';
 import '../sheet/sheet_text_edit_layer.dart';
 import '../text/app_face.dart';
 import 'timesheet_document_painter.dart';

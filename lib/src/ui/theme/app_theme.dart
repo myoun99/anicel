@@ -475,7 +475,9 @@ abstract final class AppPopupSurface {
 
 /// The one outline every text input wears: hairline at rest, accent on
 /// focus, danger on error, 4px corners. Inline cell editors that must stay
-/// bare opt out at the call site with `filled: false` + [InputBorder.none].
+/// bare opt out of ALL of it at the call site — the fill, the padding and
+/// the border of every state: what a decoration leaves unset, the theme
+/// fills in (`InlineEditField`, `SheetTextEditLayer`).
 /// A field is the one control that cannot take [AppShapes]: Material wants
 /// an [InputBorder] here, and the superellipse borders are [OutlinedBorder]s.
 /// It still reads its radius from the same place, so the well corner moves

@@ -4,6 +4,7 @@ import '../../models/canvas_viewport.dart';
 import '../../models/envelope/cut_envelope_form.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
 import '../../models/envelope/cut_envelope_source.dart';
+import '../sheet/sheet_line.dart';
 import '../sheet/sheet_text_edit_layer.dart';
 import '../text/app_face.dart';
 import 'cut_envelope_painter.dart';
@@ -79,7 +80,7 @@ class CutEnvelopeEditLayer extends StatelessWidget {
       size: placed.box.contentSize,
       color: envelopeValueInk,
     );
-    final line = envelopeLine(text, style, layout, placed);
+    final line = sheetLine(text, style);
     final align = placed.box.contentAlign;
     final textRect = envelopeLineSlot(
       layout,
@@ -97,11 +98,7 @@ class CutEnvelopeEditLayer extends StatelessWidget {
       textRect: textRect,
       text: text,
       style: style,
-      form: switch (align) {
-        EnvelopeAlign.left => SheetTextForm.leftLine,
-        EnvelopeAlign.center => SheetTextForm.centredLine,
-        EnvelopeAlign.right => SheetTextForm.rightLine,
-      },
+      form: envelopeLineForm(align),
       onCommitted: commit,
     );
   }

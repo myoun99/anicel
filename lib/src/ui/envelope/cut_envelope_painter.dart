@@ -16,6 +16,7 @@ import '../canvas/viewport_canvas_transform.dart';
 import 'cut_envelope_ink.dart';
 import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
 import '../sheet/sheet_ink_layer.dart' show SheetInkOnScreen;
+import '../sheet/sheet_line.dart';
 import '../sheet_painting.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
@@ -270,11 +271,9 @@ class CutEnvelopePainter extends CustomPainter
     required Color color,
     bool top = false,
   }) {
-    final painter = envelopeLine(
+    final painter = sheetLine(
       text,
       envelopeWordsStyle(face, layout, size: size, color: color),
-      layout,
-      placed,
     );
     final slot = envelopeLineSlot(
       layout,
@@ -283,12 +282,11 @@ class CutEnvelopePainter extends CustomPainter
       align: align,
       top: top,
     );
-    final x = switch (align) {
-      EnvelopeAlign.left => slot.left,
-      EnvelopeAlign.right => slot.right - painter.width,
-      EnvelopeAlign.center => slot.center.dx - painter.width / 2,
-    };
-    painter.paint(canvas, Offset(x, slot.top));
+    SheetLinePlace.of(
+      painter.size,
+      slot,
+      envelopeLineForm(align),
+    ).paint(canvas, painter);
     painter.dispose();
   }
 
@@ -331,19 +329,12 @@ TextStyle envelopeWordsStyle(
   height: 1.1,
 );
 
-/// [text] laid out as [placed] sets it: one line, cut short where the box
-/// runs out. The caller disposes it.
-TextPainter envelopeLine(
-  String text,
-  TextStyle style,
-  CutEnvelopeLayout layout,
-  PlacedEnvelopeBox placed,
-) => TextPainter(
-  text: TextSpan(text: text, style: style),
-  textDirection: TextDirection.ltr,
-  maxLines: 1,
-  ellipsis: '…',
-)..layout(maxWidth: _lineWidth(layout, placed));
+/// How a line stands at [align].
+SheetTextForm envelopeLineForm(EnvelopeAlign align) => switch (align) {
+  EnvelopeAlign.left => SheetTextForm.leftLine,
+  EnvelopeAlign.center => SheetTextForm.centredLine,
+  EnvelopeAlign.right => SheetTextForm.rightLine,
+};
 
 /// The rect [placed] sets a line [lineHeight] tall in, at [align]: where
 /// the painter prints it and where the in-place editor types it

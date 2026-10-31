@@ -56,15 +56,20 @@ class _TimesheetBandsPass {
       }
       if (_painter._drawContent) {
         final value = TimesheetDocumentPainter.headerValueRect(box.rect);
-        _painter._text(
-          canvas,
+        final line = sheetLine(
           headerFieldValue(box.field, pageIndex),
-          Offset(value.center.dx, value.top),
-          fontSize: TimesheetDocumentPainter.headerValueSize,
-          bold: true,
-          centeredAtX: true,
-          maxWidth: value.width,
+          TimesheetDocumentPainter.wordsStyle(
+            _painter.face,
+            fontSize: TimesheetDocumentPainter.headerValueSize,
+            bold: true,
+          ),
         );
+        SheetLinePlace.of(
+          line.size,
+          value,
+          SheetTextForm.centredLine,
+        ).paint(canvas, line);
+        line.dispose();
         if (box.field == TimesheetHeaderField.time && _owesNoriShiro) {
           _paintDrawnLength(canvas, value);
         }

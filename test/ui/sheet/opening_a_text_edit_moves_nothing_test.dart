@@ -36,7 +36,7 @@ import 'package:anicel/src/ui/brush/sheet_canvas_panel.dart'
     show SheetStrokeHold;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_paper.dart';
-import 'package:anicel/src/ui/theme/app_theme.dart' show AppTypography;
+import 'package:anicel/src/ui/theme/app_theme.dart' show buildAppTheme;
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
 /// 🚨OPENING A TEXT EDIT MOVES NOTHING (F-188, 유저 2026-09-26: 「액션란
@@ -48,6 +48,11 @@ import 'package:anicel/src/ui/timesheet_tab_host.dart';
 /// heights — and draws nothing round them. So the page with the editor
 /// open is the page without it, but for the caret — on every sheet the one
 /// editor serves, at any zoom, whatever the platform's text scale.
+///
+/// 실기 (I-127, 2026-11-01): 「입력 중 앞 글자가 잘리고 위아래도 잘린다」 —
+/// ⚠️in the app's theme, which is where a field takes its padding and its
+/// focus frame from. ↩️These ran in a bare `MaterialApp`, which has neither,
+/// and stayed green over a field that lay 9 units off its print.
 void main() {
   const boundary = ValueKey<String>('screen');
   const words = '하야토가 문을 박차고 뛰어든다. 숨을 고르며 방 안을 천천히 '
@@ -182,6 +187,7 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
         MaterialApp(
+          theme: buildAppTheme(),
           home: Scaffold(
             body: Builder(
               builder: (context) => MediaQuery(
@@ -269,21 +275,14 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
         MaterialApp(
+          theme: buildAppTheme(),
           home: Scaffold(
-            // The face the app's theme gives every word — the one the sheet
-            // prints in.
-            body: DefaultTextStyle.merge(
-              style: const TextStyle(
-                fontFamily: AppTypography.bundledFamily,
-                fontFamilyFallback: AppTypography.bundledFallback,
-              ),
-              child: RepaintBoundary(
-                key: boundary,
-                child: TimesheetTabHost(
-                  session: session,
-                  viewport: CanvasViewport(),
-                  onViewportChanged: (_) {},
-                ),
+            body: RepaintBoundary(
+              key: boundary,
+              child: TimesheetTabHost(
+                session: session,
+                viewport: CanvasViewport(),
+                onViewportChanged: (_) {},
               ),
             ),
           ),
@@ -318,6 +317,26 @@ void main() {
         session.activeCutId!,
         sheetArtistMark,
         '大川ユキ',
+      );
+      await tester.pumpAndSettle();
+      final box = tester.getRect(
+        find.byKey(const ValueKey<String>('timesheet-name-edit-p0')),
+      );
+      expect(
+        await openAndCompare(tester, box: box, field: field),
+        isEmpty,
+      );
+    });
+
+    // 🗣️I-127-Q4 (유저 2026-11-01): 「글자를 줄여 칸에 맞춘다」 — the one
+    // line-box law, this sheet's name as the envelope's.
+    testWidgets('the name box: a name too long for it, shrunk, is typed on '
+        'its printed glyphs', (tester) async {
+      await pumpSheet(tester);
+      session.cutVerbs.setCutStaffName(
+        session.activeCutId!,
+        sheetArtistMark,
+        'tanaka yoshiyuki tanaka',
       );
       await tester.pumpAndSettle();
       final box = tester.getRect(
@@ -365,6 +384,7 @@ void main() {
     Future<void> pumpEnvelope(
       WidgetTester tester, {
       int paperArgb = 0xFFFFFFFF,
+      String name = '大川ユキ',
     }) async {
       await loadTheAppFaces();
       final session = EditorSessionManager(
@@ -377,30 +397,23 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
         MaterialApp(
+          theme: buildAppTheme(),
           home: Scaffold(
-            body: DefaultTextStyle.merge(
-              style: const TextStyle(
-                fontFamily: AppTypography.bundledFamily,
-                fontFamilyFallback: AppTypography.bundledFallback,
-              ),
-              child: RepaintBoundary(
-                key: boundary,
-                child: CutEnvelopePaper(
-                  session: session,
-                  layout: CutEnvelopeLayout.fit(
-                    form: formOn(paperArgb),
-                    paperWidth: 1000,
-                    paperHeight: 500,
-                  ),
-                  source: CutEnvelopeSource(
-                    staff: {key.keySlug: '大川ユキ'},
-                  ),
-                  owner: session.activeCutId,
-                  viewport: CanvasViewport(),
-                  strokeHold: hold,
-                  cacheInvalidationSink:
-                      session.renderCaches.cacheInvalidationHub,
+            body: RepaintBoundary(
+              key: boundary,
+              child: CutEnvelopePaper(
+                session: session,
+                layout: CutEnvelopeLayout.fit(
+                  form: formOn(paperArgb),
+                  paperWidth: 1000,
+                  paperHeight: 500,
                 ),
+                source: CutEnvelopeSource(staff: {key.keySlug: name}),
+                owner: session.activeCutId,
+                viewport: CanvasViewport(),
+                strokeHold: hold,
+                cacheInvalidationSink:
+                    session.renderCaches.cacheInvalidationHub,
               ),
             ),
           ),
@@ -435,6 +448,43 @@ void main() {
         find.byKey(const ValueKey<String>('cut-envelope-staff-0-edit')),
       );
       expect(await openAndCompare(tester, box: box, field: field), isEmpty);
+    });
+
+    // 🗣️I-127-Q4 (유저 2026-11-01): 「글자를 줄여 칸에 맞춘다」.
+    const long =
+        'tanaka yoshiyuki tanaka yoshiyuki tanaka yoshiyuki tanaka yoshiyuki '
+        'tanaka yoshiyuki tanaka yoshiyuki';
+
+    for (final (i, align) in [(0, 'left'), (1, 'centred'), (2, 'right')]) {
+      testWidgets('a name too long for a box set $align: shrunk, it is typed '
+          'on its printed glyphs', (tester) async {
+        await pumpEnvelope(tester, name: long);
+        final box = tester.getRect(
+          find.byKey(ValueKey<String>('cut-envelope-staff-$i-edit')),
+        );
+        expect(await openAndCompare(tester, box: box, field: field), isEmpty);
+      });
+    }
+
+    testWidgets('a name typed past its box shrinks as it goes: it scrolls no '
+        'glyph out, and the caret stays in the box', (tester) async {
+      await pumpEnvelope(tester);
+      final box = tester.getRect(
+        find.byKey(const ValueKey<String>('cut-envelope-staff-0-edit')),
+      );
+      await tester.tapAt(box.center);
+      await tester.pumpAndSettle();
+      await tester.enterText(field, long);
+      await tester.pumpAndSettle();
+
+      final editable = tester
+          .state<EditableTextState>(
+            find.descendant(of: field, matching: find.byType(EditableText)),
+          )
+          .renderEditable;
+      expect(editable.maxScrollExtent, 0);
+      expect(editable.offset.pixels, 0);
+      expect(box.contains(caretOf(tester, field).deflate(3).center), isTrue);
     });
   });
 }
