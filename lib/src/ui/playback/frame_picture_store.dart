@@ -211,8 +211,9 @@ class FramePictureStore<K extends Object> {
   /// write ([wholeLevelPixelsOutward]) — a piece at a time ([_layNow]).
   ///
   /// Lays wait their turn, one at a time; [shownNow] goes to the front —
-  /// the frame on screen before any made ahead of it. A key a patch is
-  /// moving a picture to is the patch's to make.
+  /// the frame on screen before any made ahead of it, asked for ahead itself
+  /// or not, and before the rest of one laid in pieces ([_givenWay]). A key
+  /// a patch is moving a picture to is the patch's to make.
   Future<FramePicture?> lay(
     K key,
     FrameDrawing frame, {
@@ -229,10 +230,16 @@ class FramePictureStore<K extends Object> {
     }
     for (final queued in _lays) {
       if (queued.key == key) {
+        if (shownNow) {
+          queued.shown = true;
+          _lays
+            ..remove(queued)
+            ..insert(0, queued);
+        }
         return queued.done.future;
       }
     }
-    final lay = _Lay<K>(key, frame);
+    final lay = _Lay<K>(key, frame, shown: shownNow);
     if (shownNow) {
       _lays.insert(0, lay);
     } else {
@@ -426,22 +433,47 @@ class FramePictureStore<K extends Object> {
     _laying = true;
     try {
       while (_lays.isNotEmpty) {
-        final lay = _lays.first;
-        try {
-          final laid = await _layNow(lay);
-          if (!lay.done.isCompleted) {
-            lay.done.complete(laid);
-          }
-        } on Object catch (error, stack) {
-          if (!lay.done.isCompleted) {
-            lay.done.completeError(error, stack);
-          }
-        } finally {
-          _lays.remove(lay);
-        }
+        await _layInItsTurn(_lays.first);
       }
     } finally {
       _laying = false;
+    }
+  }
+
+  Future<void> _layInItsTurn(_Lay<K> lay) async {
+    try {
+      final laid = await _layNow(lay);
+      if (!lay.done.isCompleted) {
+        lay.done.complete(laid);
+      }
+    } on Object catch (error, stack) {
+      if (!lay.done.isCompleted) {
+        lay.done.completeError(error, stack);
+      }
+    } finally {
+      _lays.remove(lay);
+    }
+  }
+
+  /// Lays what was put before [lay], made ahead and being laid in pieces —
+  /// the frames on screen ([this.lay]'s `shownNow`) — and [lay] goes on from
+  /// where it stands.
+  ///
+  /// 🗣️a-lay-gives-way-to-the-frame-on-screen (유저 2026-10-31, 「일부 조각만
+  /// 보이는 프레임이 존재한단건가? 받아들이긴할건데 개선은 가능했으면」): no
+  /// frame shows some of its pieces ([_laid] puts a picture under its key
+  /// once it is whole), so what a slow device showed was the wait — the
+  /// frame on screen behind every piece of one being made ahead of it,
+  /// 1.1–1.5 s of them on a 3840² cut. A raster at once cannot be cut; a
+  /// lay in pieces can, between its writes.
+  ///
+  /// ⛔A frame on screen gives way to none: a scrub asks for each frame it
+  /// crosses, and each stopped would hold a texture of the whole picture
+  /// while it waits — 244 MB with its chain on a 3840² cut, on no budget. So
+  /// one lay at most stands stopped.
+  Future<void> _givenWay(_Lay<K> lay) async {
+    while (_lays.isNotEmpty && !identical(_lays.first, lay)) {
+      await _layInItsTurn(_lays.first);
     }
   }
 
@@ -510,7 +542,7 @@ class FramePictureStore<K extends Object> {
     );
     final bool written;
     try {
-      written = await _writtenInPieces(entry, pieces, lay.frame.draw);
+      written = await _writtenInPieces(lay, entry, pieces);
     } on Object {
       // Thrown to whoever waits on the lay, as by a lay rastered at once.
       _letGo(entry);
@@ -532,19 +564,22 @@ class FramePictureStore<K extends Object> {
   }
 
   /// Writes [pieces] into [entry]'s picture, each recorded and rastered in
-  /// its turn, at most [_batchTexels] of them a write ([_written]).
-  /// Answers whether every one went in; the rasters are let go of either
-  /// way.
+  /// its turn, at most [_batchTexels] of them a write ([_written]), made
+  /// ahead giving way between them ([_givenWay]). Answers whether every one
+  /// went in; the rasters are let go of either way.
   Future<bool> _writtenInPieces(
+    _Lay<K> lay,
     _Entry<K> entry,
     List<ui.Rect> pieces,
-    void Function(ui.Canvas canvas) draw,
   ) async {
     final batch = <_Texels>[];
     var texels = 0;
     try {
       for (final (at, piece) in pieces.indexed) {
-        final image = await _drawnOver(piece, draw);
+        if (!lay.shown) {
+          await _givenWay(lay);
+        }
+        final image = await _drawnOver(piece, lay.frame.draw);
         if (image == null || _disposed) {
           image?.dispose();
           return false;
@@ -1328,11 +1363,14 @@ class _Entry<K> {
 }
 
 class _Lay<K> {
-  _Lay(this.key, this.frame);
+  _Lay(this.key, this.frame, {required this.shown});
 
   final K key;
   final FrameDrawing frame;
   final Completer<FramePicture?> done = Completer<FramePicture?>();
+
+  /// Whether a screen asked for it, not one making it ahead.
+  bool shown;
 }
 
 /// One [FramePictureStore.patch], widened, until its picture has moved.

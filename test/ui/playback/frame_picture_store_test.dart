@@ -1160,6 +1160,28 @@ void main() {
     store.dispose();
   });
 
+  test('a frame laid ahead goes before those ahead of it once it is shown',
+      () async {
+    final gpu = _RecordingGpu()..holdRenders = true;
+    final store = FramePictureStore<String>(gpu: gpu);
+    FrameDrawing wide(int index) =>
+        over(ui.Rect.fromLTWH(0, 0, 128.0 * index, 8));
+    final laid = <Future<FramePicture?>>[
+      store.lay('a', wide(1)),
+      store.lay('b', wide(2)),
+      store.lay('c', wide(3)),
+      store.lay('c', wide(3), shownNow: true),
+    ];
+    var allLaid = false;
+    unawaited(Future.wait(laid).then((_) => allLaid = true));
+    while (!allLaid) {
+      gpu.releaseRender();
+      await Future<void>.delayed(const Duration(milliseconds: 1));
+    }
+    expect(gpu.rendered.map((size) => size.$1), [128, 384, 256]);
+    store.dispose();
+  });
+
   test('the budget lets go of the picture wanted latest, never a pinned '
       'one, and counts each by the app\'s one image estimate', () async {
     final store = FramePictureStore<String>(gpu: _RecordingGpu());
@@ -1332,6 +1354,193 @@ void main() {
       expect(await again, same(await first));
       expect(gpu.allocated, hasLength(1));
       store.dispose();
+    });
+
+    // 🗣️a-lay-gives-way-to-the-frame-on-screen: the frame on screen waited
+    // out every piece of the one laid ahead of it.
+    group('gives way to the frame shown now', () {
+      // Eight pieces of 512, four to a write.
+      const long = ui.Rect.fromLTWH(0, 0, 2048, 1024);
+      const small = ui.Rect.fromLTWH(0, 0, 384, 8);
+
+      /// [name]'s frame, noted in [order] at each draw of it.
+      FrameDrawing noted(List<String> order, String name, ui.Rect extent) => (
+        extent: extent,
+        outside: white,
+        draw: (canvas) {
+          order.add(name);
+          fill(canvas);
+        },
+      );
+
+      List<String> pieces(String name, int count) =>
+          List.filled(count, name);
+
+      test('between its writes, and goes on from where it stood — no piece '
+          'drawn twice, its key answering once the last is in', () async {
+        final gpu = _RecordingGpu()
+          ..allocates = true
+          ..holdWrites = true;
+        final store = inPieces(gpu);
+        final order = <String>[];
+        final ahead = store.lay('ahead', noted(order, 'ahead', long));
+        await pollUntil(() => gpu.bases.length == 1);
+
+        final shown = store.lay(
+          'shown',
+          noted(order, 'shown', small),
+          shownNow: true,
+        );
+        gpu.releaseWrite();
+        expect(await shown, isNotNull);
+        expect(store.holds('ahead'), isFalse);
+
+        await pollUntil(() => gpu.bases.length == 2);
+        gpu.releaseWrite();
+        final laid = await ahead;
+        expect(store.peek('ahead'), same(laid));
+        expect(order, [
+          ...pieces('ahead', 4),
+          'shown',
+          ...pieces('ahead', 4),
+        ]);
+        expect(gpu.allocated, [(2048, 1024)]);
+        expect(
+          gpu.bases.map((base) => base.length),
+          [4, 4],
+          reason: 'every piece written, into the one texture',
+        );
+        store.dispose();
+      });
+
+      test('never one shown itself: a scrub stops one lay at most, not a '
+          'picture\'s texture for each frame it crosses', () async {
+        final gpu = _RecordingGpu()
+          ..allocates = true
+          ..holdWrites = true;
+        final store = inPieces(gpu);
+        final order = <String>[];
+        final ahead = store.lay('ahead', noted(order, 'ahead', long));
+        await pollUntil(() => gpu.bases.length == 1);
+        final shown = store.lay(
+          'shown',
+          noted(order, 'shown', long),
+          shownNow: true,
+        );
+        gpu.releaseWrite();
+        await pollUntil(() => gpu.bases.length == 2);
+        final last = store.lay(
+          'last',
+          noted(order, 'last', small),
+          shownNow: true,
+        );
+        gpu.releaseWrite();
+        await pollUntil(() => gpu.bases.length == 3);
+        gpu.releaseWrite();
+        expect(await shown, isNotNull);
+        expect(await last, isNotNull);
+        await pollUntil(() => gpu.bases.length == 4);
+        gpu.releaseWrite();
+        expect(await ahead, isNotNull);
+
+        expect(order, [
+          ...pieces('ahead', 4),
+          ...pieces('shown', 8),
+          'last',
+          ...pieces('ahead', 4),
+        ]);
+        store.dispose();
+      });
+
+      test('nor one made ahead once a screen asks for it', () async {
+        final gpu = _RecordingGpu()
+          ..allocates = true
+          ..holdWrites = true;
+        final store = inPieces(gpu);
+        final order = <String>[];
+        final ahead = store.lay('ahead', noted(order, 'ahead', long));
+        await pollUntil(() => gpu.bases.length == 1);
+        final asked = store.lay(
+          'ahead',
+          noted(order, 'ahead', long),
+          shownNow: true,
+        );
+        final other = store.lay(
+          'other',
+          noted(order, 'other', small),
+          shownNow: true,
+        );
+        gpu.releaseWrite();
+        await pollUntil(() => gpu.bases.length == 2);
+        gpu.releaseWrite();
+        expect(await asked, same(await ahead));
+        expect(await other, isNotNull);
+        expect(order, [...pieces('ahead', 8), 'other']);
+        store.dispose();
+      });
+
+      test('asked for shown now itself once it is stopped, it stays where it '
+          'stands — laid once', () async {
+        final gpu = _RecordingGpu()
+          ..allocates = true
+          ..holdWrites = true;
+        final store = inPieces(gpu);
+        final order = <String>[];
+        final ahead = store.lay('ahead', noted(order, 'ahead', long));
+        await pollUntil(() => gpu.bases.length == 1);
+        final shown = store.lay(
+          'shown',
+          noted(order, 'shown', long),
+          shownNow: true,
+        );
+        gpu.releaseWrite();
+        await pollUntil(() => gpu.bases.length == 2);
+        final again = store.lay(
+          'ahead',
+          noted(order, 'ahead', long),
+          shownNow: true,
+        );
+        gpu.releaseWrite();
+        await pollUntil(() => gpu.bases.length == 3);
+        gpu.releaseWrite();
+        expect(await shown, isNotNull);
+        await pollUntil(() => gpu.bases.length == 4);
+        gpu.releaseWrite();
+        expect(await again, same(await ahead));
+        expect(order, [
+          ...pieces('ahead', 4),
+          ...pieces('shown', 8),
+          ...pieces('ahead', 4),
+        ]);
+        expect(gpu.allocated, hasLength(2));
+        store.dispose();
+      });
+
+      test('its store disposed while it is stopped, it and what it gave way '
+          'to are none', () async {
+        final gpu = _RecordingGpu()
+          ..allocates = true
+          ..holdWrites = true;
+        final store = inPieces(gpu);
+        final order = <String>[];
+        final ahead = store.lay('ahead', noted(order, 'ahead', long));
+        await pollUntil(() => gpu.bases.length == 1);
+        final shown = store.lay(
+          'shown',
+          noted(order, 'shown', long),
+          shownNow: true,
+        );
+        gpu.releaseWrite();
+        await pollUntil(() => gpu.bases.length == 2);
+
+        store.dispose();
+        expect(await ahead, isNull);
+        expect(await shown, isNull);
+        gpu.releaseWrite();
+        await pumpEventQueue();
+        expect(store.holds('shown'), isFalse);
+        expect(store.holds('ahead'), isFalse);
+      });
     });
 
     test('whose write the GPU did not do is none — its key answers with '
