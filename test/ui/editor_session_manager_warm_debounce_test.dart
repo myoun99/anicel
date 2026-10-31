@@ -259,7 +259,7 @@ void main() {
       final started = walks(session);
 
       session.layerSwitches.toggleLayerVisibility(const LayerId('layer'));
-      expect(started(), 0, reason: 'at the burst\'s trailing edge');
+      expect(started(), 0, reason: 'once the command is done');
       await aTurn();
 
       expect(started(), 1);
@@ -274,6 +274,21 @@ void main() {
         layerId: const LayerId('layer'),
         opacity: 0.5,
       );
+      await aTurn();
+
+      expect(started(), 1);
+    });
+
+    test('two changes in one turn start it over once', () async {
+      final session = aSession();
+      await aTurn();
+      final started = walks(session);
+
+      session.opacityVerbs.setLayerOpacity(
+        layerId: const LayerId('layer'),
+        opacity: 0.5,
+      );
+      session.layerSwitches.toggleLayerVisibility(const LayerId('layer'));
       await aTurn();
 
       expect(started(), 1);

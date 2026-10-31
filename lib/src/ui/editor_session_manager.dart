@@ -266,9 +266,11 @@ class EditorSessionManager extends ChangeNotifier
     historyManager.addListener(refreshLiveAudioSchedule);
     historyManager.addListener(_railFollowsTheDocument);
     historyManager.addListener(renderCaches.framesMoved);
-    // A preview in flight is an edit: its every step is a frame of its own
-    // to lay, and the walk stands back from it as from a stroke (F-529).
-    dragPreview.addListener(playbackRig.prerenderScheduler.notifyEditActivity);
+    // A slider in flight is an edit: its every step is a frame of its own to
+    // lay, and the walk stands back from it as from a stroke (F-529).
+    opacityVerbs.dragPreview.addListener(
+      playbackRig.prerenderScheduler.notifyEditActivity,
+    );
     // F-360: the rows' folds as the opened file holds them, before any
     // history change asks again.
     railView.readFolds(repository.currentProject);
@@ -1668,7 +1670,7 @@ class EditorSessionManager extends ChangeNotifier
     () => historyManager.removeListener(refreshLiveAudioSchedule),
     () => historyManager.removeListener(_railFollowsTheDocument),
     () => historyManager.removeListener(renderCaches.framesMoved),
-    () => dragPreview.removeListener(
+    () => opacityVerbs.dragPreview.removeListener(
       playbackRig.prerenderScheduler.notifyEditActivity,
     ),
     voiceRecording.dispose,

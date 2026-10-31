@@ -326,21 +326,8 @@ class RenderCaches {
       ? Duration.zero
       : const Duration(milliseconds: 200);
 
-  void _onBrushFrameInvalidated(BrushFrameCacheInvalidation invalidation) =>
-      framesMoved();
-
-  /// What the frames show moved: warming yields to the edit, and what it
-  /// was making goes with the walk it was made for
-  /// ([FramePictureStore.lay]), and it starts over from the playhead.
-  ///
-  /// 🗣️F-529 (유저 2026-11-01): 「어차피 화면 모든 프레임 바뀌니까 허용하고
-  /// 굽던거 버리고 다시굽는게 맞지않을까」 — every change that goes through
-  /// history, so the eye and the opacity too. 🔬S5_BA cut 353: told only of
-  /// its cels, a walk at rest stayed at rest with the bar emptied (4 s
-  /// watched, until a seek), and one on its way went on from where it stood
-  /// with the 43 frames behind it stale, where the frame on screen was laid
-  /// before it looked.
-  void framesMoved() {
+  void _onBrushFrameInvalidated(BrushFrameCacheInvalidation invalidation) {
+    // Warming yields to the edit and then re-renders the dirty frames.
     _onEditActivity();
     _warmDebounce?.cancel();
     _warmDebounce = Timer(_warmDebounceWindow, () {
@@ -354,6 +341,38 @@ class RenderCaches {
         return;
       }
       _changes.warmActiveCut();
+    });
+  }
+
+  /// Owed since a history change, until the one who changed it is done.
+  bool _walkOwed = false;
+
+  /// What the frames show moved: warming yields to the edit, what it was
+  /// making goes with the walk it was made for ([FramePictureStore.lay]),
+  /// and it starts over from the playhead once the command is done — a
+  /// command's history comes before the session has stood up after it.
+  ///
+  /// 🗣️F-529 (유저 2026-11-01): 「어차피 화면 모든 프레임 바뀌니까 허용하고
+  /// 굽던거 버리고 다시굽는게 맞지않을까」 — every change that goes through
+  /// history, so the eye and the opacity too. 🔬S5_BA cut 353: told only of
+  /// its cels, a walk at rest stayed at rest with the bar emptied (4 s
+  /// watched, until a seek), and one on its way went on from where it stood
+  /// with the 43 frames behind it stale, where the frame on screen was laid
+  /// before it looked.
+  ///
+  /// ⛔Not [_warmDebounce]: commands do not come a dab at a time, and a timer
+  /// left by the last command of a test outlives its turn.
+  void framesMoved() {
+    _onEditActivity();
+    if (_walkOwed) {
+      return;
+    }
+    _walkOwed = true;
+    scheduleMicrotask(() {
+      _walkOwed = false;
+      if (!_sessionDisposed()) {
+        _changes.warmActiveCut();
+      }
     });
   }
 
