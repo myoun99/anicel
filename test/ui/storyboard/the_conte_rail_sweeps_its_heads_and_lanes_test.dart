@@ -521,6 +521,27 @@ void main() {
     );
   });
 
+  testWidgets('the FOLD column folds up the rail as it does down it', (
+    tester,
+  ) async {
+    final session = await pump(tester, conteOnT2: true, riders: true);
+
+    await sweep(
+      tester,
+      'storyboard-attach-twirl-c-conte',
+      'storyboard-attach-twirl-a-conte',
+    );
+
+    expect(
+      session.railView.collapsedAttachBaseIds.value,
+      containsAll(const [
+        LayerId('a-conte'),
+        LayerId('b-conte'),
+        LayerId('c-conte'),
+      ]),
+    );
+  });
+
   testWidgets('⛔the V row draws a twirl only while its track has lanes, as '
       'every row does — the twirl the sweep paints', (tester) async {
     await pump(tester);

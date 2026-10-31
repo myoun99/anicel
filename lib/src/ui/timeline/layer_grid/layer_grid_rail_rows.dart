@@ -61,7 +61,9 @@ class _LayerGridRailRows {
   /// A row as the shared swipe wants it. The identity is what the sweep
   /// dedupes by, and a lane row and its owner share a layer — so it is
   /// BOTH.
-  RailSwipeRow<TimelineDisplayRow> _railSwipeRow(TimelineDisplayRow row) => (
+  ({TimelineDisplayRow row, Object id}) _railSwipeRow(
+    TimelineDisplayRow row,
+  ) => (
     row: row,
     id: '${row.layer.id.value}/${row.lane?.laneId ?? ''}',
   );

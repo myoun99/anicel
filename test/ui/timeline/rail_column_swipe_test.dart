@@ -84,7 +84,13 @@ class _Rail {
       last = values.length - 1;
     }
     return [
-      for (var row = first; row <= last; row += 1) (row: row, id: row),
+      for (var row = first; row <= last; row += 1)
+        (
+          row: row,
+          id: row,
+          start: row * _rowHeight,
+          end: (row + 1) * _rowHeight,
+        ),
     ];
   }
 }
