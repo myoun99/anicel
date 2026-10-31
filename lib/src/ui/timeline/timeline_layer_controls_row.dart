@@ -153,8 +153,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.keyPrefix = 'timeline',
     this.mainExtent,
     required this.layer,
-    required this.active,
-    this.selected = false,
+    this.active = false,
     required this.metrics,
     required this.onSelectLayer,
     this.onSettledPress,
@@ -211,16 +210,14 @@ class TimelineLayerControlsRow extends StatelessWidget {
   final double? mainExtent;
 
   final Layer layer;
-  final bool active;
 
-  /// ⑨: this row is in the rail's ROW SELECTION — what the row verbs act on.
+  /// R28 #11: ONE selection — and now there is only one THING that can be
+  /// selected. A folder is a layer, so `activeLayerId` answers for both and
+  /// two rows can no longer read as selected at once by construction.
   ///
-  /// ㊴ (유저 08-12): it wears the accent RING, not the wash. Sharing the wash
-  /// with [active] was defensible on paper — both mean "the verbs act here" —
-  /// and wrong on screen, where it left nothing to tell the two apart. The
-  /// wash answers "where am I standing", the ring answers "what is selected",
-  /// and a row can honestly be both.
-  final bool selected;
+  /// What the row is told where no kept row stands above it; a kept row's
+  /// plate asks its berth ([BerthRow.activeOf]).
+  final bool active;
 
   final TimelineGridMetrics metrics;
   final ValueChanged<LayerId> onSelectLayer;
@@ -436,8 +433,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     // ★So it moved to where the cells' band already was: an overlay across
     // the rail ([TimelineRowSelectionBands]) — one shape per contiguous run
     // over the LAYER area (A2 2026-08-17 pulled the band back out of the
-    // section zone). `selected` stays because the row still reports it to
-    // semantics and keys its memo on it. ⛔F-26: the sheet retired its ring
+    // section zone). ⛔F-26: the sheet retired its ring
     // per column (「하나하나 실루엣 선택」) for exactly this reason (T1) — the
     // grid lays one band per contiguous run over the header strip instead,
     // through the same widget.
@@ -473,16 +469,9 @@ class TimelineLayerControlsRow extends StatelessWidget {
   Widget _surface(BuildContext context, ColorScheme colorScheme) =>
       ArenaTapHold(
         name: _rowName,
-        child: RowPlate(
-          name: active ? '$keyPrefix-selected-layer' : null,
-          width: _size.width,
-          height: _size.height,
-          padding: _padding,
-          decoration: _plate(colorScheme),
-          // The program language's word, as the conte's own rows say it.
-          label: active
-              ? AppText.strings.semSelectedLayer
-              : AppText.strings.semLayer,
+        child: _StoodPlate(
+          row: this,
+          colorScheme: colorScheme,
           // R10 R6 — THE RAIL ROW, STOOD UP. The sheet's column is the
           // shared skeleton in the shared order at the shared extents,
           // running downward: the same list the rail's rows and the legend
@@ -528,20 +517,25 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// A flag on the real row rather than a second row that lists the
   /// same slots: the collapsed overlay then follows this widget by
   /// construction, including whatever column it grows next.
-  BoxDecoration? _plate(ColorScheme colorScheme) {
+  BoxDecoration? _plate(ColorScheme colorScheme, {required bool active}) {
     if (chromeless) return null;
-    return _horizontal ? _rowPlate(colorScheme) : _columnPlate(colorScheme);
+    return _horizontal
+        ? _rowPlate(colorScheme, active: active)
+        : _columnPlate(colorScheme, active: active);
   }
 
   /// CONSTANT 1px side/bottom borders (UI-R10 #20). Selection speaks
   /// through the BACKGROUND alone now (UI-R18 #5) — the accent border
   /// doubled the signal for nothing.
-  /// ㊴: the wash is the ACTIVE row's alone. `selected` used to share it,
-  /// and on screen that made the two states one — the selection now speaks
-  /// through the band, the way a selected frame run always has. Shared with
-  /// the property lanes' own "you are standing here" wash
-  /// ([railSelectedRowColor]) so the two cannot drift apart.
-  BoxDecoration _rowPlate(ColorScheme colorScheme) {
+  /// ㊴ (유저 08-12): the wash is the ACTIVE row's alone. The selection used
+  /// to share it, defensible on paper — both mean "the verbs act here" —
+  /// and wrong on screen, where it left nothing to tell the two apart. The
+  /// wash answers "where am I standing", the band answers "what is
+  /// selected", the way a selected frame run always has, and a row can
+  /// honestly be both. Shared with the property lanes' own "you are
+  /// standing here" wash ([railSelectedRowColor]) so the two cannot drift
+  /// apart.
+  BoxDecoration _rowPlate(ColorScheme colorScheme, {required bool active}) {
     final borderColor = colorScheme.outlineVariant;
     return BoxDecoration(
       color: active ? railSelectedRowColor(colorScheme) : colorScheme.surface,
@@ -568,7 +562,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// neighbor's right (the frame rail closes the first column). And constant
   /// in COLOUR too: the accent outline the active column drew was retired
   /// from the timeline rows long ago (UI-R18 #5) and survived here alone.
-  BoxDecoration _columnPlate(ColorScheme colorScheme) {
+  BoxDecoration _columnPlate(ColorScheme colorScheme, {required bool active}) {
     final ground = colorScheme.surfaceContainerHighest;
     final borderColor = colorScheme.outlineVariant;
     return BoxDecoration(
@@ -1151,6 +1145,38 @@ bool _rowFolds(TimelineDisplayRow row, List<Layer> layers) =>
 /// What a button at the end of a name looks like
 /// ([TimelineLayerControlsRow]): its glyph, and whether it warns — the
 /// reference button, red while its file is short of film.
+/// A row's plate, as the row stood on wears it: the one piece of the row a
+/// stand changes, so it alone hears one ([BerthRow.activeOf]) — [child],
+/// the row's contents, stands as the row built it.
+class _StoodPlate extends StatelessWidget {
+  const _StoodPlate({
+    required this.row,
+    required this.colorScheme,
+    required this.child,
+  });
+
+  final TimelineLayerControlsRow row;
+  final ColorScheme colorScheme;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = BerthRow.activeOf(context) ?? row.active;
+    return RowPlate(
+      name: active ? '${row.keyPrefix}-selected-layer' : null,
+      width: row._size.width,
+      height: row._size.height,
+      padding: row._padding,
+      decoration: row._plate(colorScheme, active: active),
+      // The program language's word, as the conte's own rows say it.
+      label: active
+          ? AppText.strings.semSelectedLayer
+          : AppText.strings.semLayer,
+      child: child,
+    );
+  }
+}
+
 final class _NameButtonLook {
   const _NameButtonLook(this.glyph, {this.danger = false});
 

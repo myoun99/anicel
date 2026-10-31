@@ -95,7 +95,11 @@ class _LayerGridRailRows {
     return _state._railRowMemo.keep(
       berths,
       row,
-      (facts: facts, drag: _state._rowDrags.inputsFor(row)),
+      (
+        active: row.layer.id == grid.hooks.activeLayerId,
+        facts: facts,
+        drag: _state._rowDrags.inputsFor(row),
+      ),
       () => layerControlsRowFrom(facts, row, grid, fold),
     );
   }
