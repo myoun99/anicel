@@ -21,6 +21,7 @@ import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/services/brush_stroke_blend.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
+import 'package:anicel/src/services/selection_clip.dart';
 
 /// R27 #4: the live overlay's PRE-BLEND must be byte-identical to the
 /// pen-up commit — for EVERY brush blend mode, erase included, against
@@ -199,7 +200,7 @@ void main() {
         final rasterizer = BrushLiveStrokeRasterizer(
           pasteboard: bigCanvas.pasteboardAt(PasteboardReach.whole),
           tileSize: liveTile,
-        )..selectionRegion = region;
+        )..selectionClip = SelectionClip.outline(region);
         rasterizer.blendFrom([
           BrushDab(
             center: CanvasPoint(x: 32, y: 32),

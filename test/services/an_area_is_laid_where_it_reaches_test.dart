@@ -33,6 +33,7 @@ import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/mask_morphology.dart';
 import 'package:anicel/src/services/mask_soft_edge.dart';
 import 'package:anicel/src/services/plain_line_region.dart';
+import 'package:anicel/src/services/selection_clip.dart';
 
 import '../helpers/fill_pieces.dart';
 import '../helpers/native_engine_path.dart';
@@ -388,7 +389,7 @@ void main() {
       );
       final data = selection == null
           ? raw
-          : clipStrokeCommitToSelection(raw, region: selection, surface: base)!;
+          : clipStrokeCommitToSelection(raw, clip: SelectionClip.outline(selection), surface: base)!;
       return brushCommitResultForBrushDabSequenceOnBitmapSurface(
         surface: base,
         sequence: BrushDabSequence(data.sourceDabs),
@@ -517,7 +518,7 @@ void main() {
         surface: base,
         dabs: pieces,
         blendMode: BrushBlendMode.color,
-        selection: selection,
+        selection: SelectionClip.outline(selection),
         layerId: layerId,
         frameId: frameId,
       );

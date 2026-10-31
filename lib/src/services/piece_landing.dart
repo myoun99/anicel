@@ -5,17 +5,14 @@ import '../models/layer_id.dart';
 import '../models/pasteboard_bounds.dart';
 import 'brush_frame_editing_coordinator.dart';
 import 'cache_invalidation_executor.dart';
-import 'canvas_selection.dart'
-    show
-        SelectionMaskOptions,
-        SelectionMaskReading,
-        selectionMaskOnPasteboard;
-import 'canvas_selection_paint_clip.dart' show clipStampDabToSelectionMask;
+import 'canvas_selection.dart' show SelectionMaskOptions;
+import 'canvas_selection_paint_clip.dart' show clipStampDabToSelection;
 import 'canvas_selection_region.dart';
 import 'cel_pixel_region.dart' show regionInArtworkSpace;
 import 'command.dart';
 import 'commands/brush_lift_move_history_command.dart';
 import 'layer_pose_matrix.dart' show LayerPlacement;
+import 'selection_clip.dart';
 
 /// WHERE a held picture lands: the cels a press names, where each of their
 /// rows stands on the canvas, and the selection it lands through.
@@ -199,8 +196,8 @@ Map<BrushFrameKey, PieceDab> pieceDabs({
   return answered;
 }
 
-/// The selection as each row shows it, read ONCE per distinct outline, and
-/// a dab cut through it once per outline.
+/// The selection as each row shows it, and a dab cut through it once per
+/// distinct outline.
 ///
 /// A range is mostly one row, and rows are mostly unplaced: without the
 /// three memos a feathered marquee over twenty-four cels is rasterized
@@ -217,14 +214,13 @@ class _SelectionOnTheRows {
   final PasteboardWall _wall;
 
   /// A row's placement is the row's, whichever of its cels asks.
-  final _ofRow = <LayerId, SelectionMaskReading?>{};
+  final _ofRow = <LayerId, SelectionClip?>{};
 
   /// An unposed row gets the selection back as the same object, so every
-  /// plain row shares one reading.
-  final _ofOutline =
-      Map<CanvasSelectionRegion, SelectionMaskReading?>.identity();
+  /// plain row shares one clip.
+  final _ofOutline = Map<CanvasSelectionRegion, SelectionClip>.identity();
 
-  final _cuts = Map<BrushDab, Map<SelectionMaskReading, BrushDab?>>.identity();
+  final _cuts = Map<BrushDab, Map<SelectionClip, BrushDab?>>.identity();
 
   /// [dab] through the selection as the row at [placement] shows it — [dab]
   /// itself with nothing selected, null when nothing of it survives.
@@ -237,7 +233,7 @@ class _SelectionOnTheRows {
     if (selection == null) {
       return dab;
     }
-    final reading = _ofRow.putIfAbsent(row, () {
+    final clip = _ofRow.putIfAbsent(row, () {
       // Drawn on the canvas, read in the row's own artwork: a posed row
       // draws its pixels somewhere else than the marquee was drawn.
       final onTheRow = regionInArtworkSpace(
@@ -248,25 +244,18 @@ class _SelectionOnTheRows {
           ? null
           : _ofOutline.putIfAbsent(
               onTheRow,
-              () => selectionMaskOnPasteboard(
+              () => SelectionClip.of(
                 onTheRow,
                 wall: _wall,
                 options: _ground.options,
               ),
             );
     });
-    if (reading == null) {
+    if (clip == null) {
       return null;
     }
     return _cuts
         .putIfAbsent(dab, () => {})
-        .putIfAbsent(
-          reading,
-          () => clipStampDabToSelectionMask(
-            dab,
-            mask: reading.mask,
-            box: reading.box,
-          ),
-        );
+        .putIfAbsent(clip, () => clipStampDabToSelection(dab, clip: clip));
   }
 }

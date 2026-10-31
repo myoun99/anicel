@@ -69,18 +69,7 @@ class _CanvasPanelSelection {
     // of the drag loop and only rebuilds when the ants this panel owns
     // actually change.
     final next = idleSelectionRegion;
-    // 🚨The panel builds a SECOND thing from the region: the clip the
-    // drawing view lays a stroke through (R26 #18). Under a painting tool
-    // the two change together — no layer is mounted, so the idle ants ARE
-    // the region. The shape tool (I-69) is the one that draws its strokes
-    // with the layer mounted: the ants this panel owns never change, and a
-    // region changed by a command while it is in hand (select all,
-    // deselect, invert) still has to reach the view, or the next shape is
-    // clipped to a selection that is no longer there.
-    final clipIsStale =
-        canvasToolDrawsShapes(_state._brush.tool) &&
-        _state.widget.selectionCommands?.region != _state._strokeClipAsBuilt;
-    if (next == _state._paintedIdleRegion && !clipIsStale) {
+    if (next == _state._paintedIdleRegion) {
       return;
     }
     _state._rebuild(_state._syncIdleAnts);
@@ -121,6 +110,30 @@ class _CanvasPanelSelection {
   CanvasSelectionRegion? regionOnTheRow(CanvasSelectionRegion region) {
     final placement = _state.widget.interactiveContentPose;
     return regionInArtworkSpace(region: region, placement: placement);
+  }
+
+  /// What is drawn on the active row is cut by, as of now — [clipOf] the
+  /// live selection, null with nothing selected.
+  SelectionClip? clipNow() => switch (_state.widget.selectionCommands?.region) {
+    null => null,
+    final selection => clipOf(selection),
+  };
+
+  /// [selection] as what is drawn on the active row is cut by it: on the
+  /// row's own artwork ([regionOnTheRow]), at the softness the tool settings
+  /// give it. Null where [regionOnTheRow] is.
+  SelectionClip? clipOf(CanvasSelectionRegion selection) {
+    final onTheRow = regionOnTheRow(selection);
+    return onTheRow == null
+        ? null
+        : SelectionClip.of(
+            onTheRow,
+            // Every surface the coordinator writes stops at this wall.
+            wall: _state.widget.coordinator!.sessionStore.pasteboard,
+            options:
+                _state.widget.selectionMaskOptions?.value ??
+                SelectionMaskOptions.none,
+          );
   }
 
   /// A canvas point on the active row's artwork — where a press on the
@@ -286,10 +299,10 @@ class _CanvasPanelSelection {
     // The stroke is the row's own artwork (the draw-through wrap); the
     // selection is the canvas's — on a posed row they meet only once the
     // selection is taken back to the artwork it shows.
-    final region = regionOnTheRow(selection);
-    if (region == null) {
+    final clip = clipOf(selection);
+    if (clip == null) {
       return null;
     }
-    return clipStrokeCommitToSelection(data, region: region, surface: surface);
+    return clipStrokeCommitToSelection(data, clip: clip, surface: surface);
   }
 }

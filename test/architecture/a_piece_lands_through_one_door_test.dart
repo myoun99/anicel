@@ -42,14 +42,16 @@ void main() {
     return (files: files..sort(), scanned: scanned);
   }
 
-  test('🚨a piece is cut through a selection\'s soft mask in the door, and '
-      'nowhere else', () {
-    final found = spelling('clipStampDabToSelectionMask(');
+  // 🗣️brush-fidelity-Q11 · Q12 (유저 2026-10-18): 「같은 문으로 자른다」. A road
+  // that spells the outline out has opted out of the selection's softness.
+  test('🚨nothing that draws is cut by a selection\'s bare outline — only a '
+      'sheet window\'s paper has an edge with no softness', () {
+    final found = spelling('SelectionClip.outline(');
     expect(found.scanned, greaterThan(500), reason: 'the scan found lib/src');
     expect(found.files, [
       // Where it is declared.
-      'lib/src/services/canvas_selection_paint_clip.dart',
-      'lib/src/services/piece_landing.dart',
+      'lib/src/services/selection_clip.dart',
+      'lib/src/ui/sheet/sheet_ink_layer.dart',
     ]);
   });
 

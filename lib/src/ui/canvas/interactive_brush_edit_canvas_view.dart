@@ -37,7 +37,7 @@ import '../../services/brush_tip_stamp_cache.dart';
 import '../../services/brush_pressure_dynamics.dart';
 import '../../services/brush_stroke_commit_data.dart';
 import '../../services/canvas_segment_clipper.dart';
-import '../../services/canvas_selection_region.dart';
+import '../../services/selection_clip.dart';
 import '../../models/drawing_guide.dart';
 import '../../services/guide_geometry.dart';
 import '../../services/guide_stroke_input.dart';
@@ -96,15 +96,19 @@ Duration shapeShowFrameShare = const Duration(microseconds: 4000);
 /// afresh — under [blend]. [shape] is what the pieces are OF, compared by
 /// value: the same shape asked for again asks for nothing new.
 ///
-/// 🚨The pieces come THROUGH the selection already: the maker cuts, the
-/// view lays what it is handed. ↩️The view cut them itself, at the hard
-/// outline — which a held picture's ghost (brush-fidelity-Q9: the ghost is
-/// what lands) would have had cut twice, the door having cut it once at
-/// the selection's softness.
+/// 🚨A piece is cut ONCE. [selection] is what the view lays the pieces
+/// through, and null for a held picture's ghost (brush-fidelity-Q9: the
+/// ghost is what lands), whose pieces come through the door cut already.
+/// ↩️The maker cut a shape's too, so the dabs a shape landed with were cut
+/// ones: harmless at a hard outline, but under a soft one the commit
+/// re-deriving them on a cel that had moved, or 확정 laying them again,
+/// took the selection's ramp a second time (brush-fidelity-Q11). A fill's
+/// dabs have always stayed whole.
 typedef ShapeArea = ({
   Object shape,
   Iterable<BrushDab> Function() pieces,
   BrushBlendMode blend,
+  SelectionClip? selection,
 });
 
 /// This view's hand for a shape being dragged (I-69-Q4ⓒ) —
@@ -178,7 +182,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.onTemporaryToolRelease,
     this.toolHolds,
     this.fillDabsAt,
-    this.selectionRegion,
+    this.selectionNow,
     this.overlayModel,
     this.paintsContent = true,
     this.editable = true,
@@ -378,15 +382,18 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   )?
   fillDabsAt;
 
-  /// R26 #18: the live selection region (canvas coordinates). Non-null
-  /// confines the stroke to it — the region goes to the RASTERIZER, which
-  /// masks the accumulated stroke's alpha inside the pre-blend kernel, so
+  /// R26 #18: what a stroke or a fill starting NOW is confined to, in this
+  /// view's cel; null confines it to nothing. Asked at the start of each,
+  /// as [celNow] and [inputSettings] are, so a selection or a softness
+  /// changed since the last build has nothing to wait for. The clip goes to
+  /// the RASTERIZER, which masks the accumulated stroke's alpha inside the
+  /// pre-blend kernel, so
   /// the tiles the user sees and the tiles pen-up promotes are already
   /// clipped. (It used to be a painter clipPath over the overlay; that
   /// showed the right thing but cost the whole-coordinate replacement
   /// path — a clipped overlay cannot own a coordinate — so every selected
   /// stroke fell back to a per-frame isolation layer.)
-  final CanvasSelectionRegion? selectionRegion;
+  final SelectionClip? Function()? selectionNow;
 
   /// The live-stroke overlay. HOST-OWNED when non-null, which is what lets
   /// the editing canvas draw the active layer inside its composite tree: a
@@ -879,7 +886,7 @@ class _InteractiveBrushEditCanvasViewState
     // R26 #18: the selection reaches the KERNEL through the rasterizer.
     // Captured once per stroke — it cannot change mid-stroke (the
     // selection layer is not mounted while a painting tool is active).
-    _liveRasterizer!.selectionRegion = widget.selectionRegion;
+    _liveRasterizer!.selectionClip = widget.selectionNow?.call();
     // F-12: and so does the opacity ceiling, by the same route and with
     // the same "captured once per stroke" rule — the dabs carry only their
     // own variation now, so this is the only place the tool's opacity

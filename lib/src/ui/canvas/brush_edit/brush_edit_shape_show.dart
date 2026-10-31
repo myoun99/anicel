@@ -427,8 +427,7 @@ class _ShapeLaying {
       surface: _laidOn,
       dabs: [dab],
       blendMode: area.blend,
-      // Cut already, by whoever made the pieces ([ShapeArea]).
-      selection: null,
+      selection: area.selection,
       layerId: layerId,
       frameId: frameId,
     );

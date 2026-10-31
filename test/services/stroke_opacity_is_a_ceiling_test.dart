@@ -17,6 +17,7 @@ import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/services/brush_stroke_blend.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
+import 'package:anicel/src/services/selection_clip.dart';
 
 /// F-12 — **stroke opacity is a CEILING.**
 ///
@@ -245,9 +246,9 @@ void main() {
               tileSize: 8,
             )
             ..strokeOpacity = 0.5
-            ..selectionRegion = CanvasSelectionRegion.shape(
+            ..selectionClip = SelectionClip.outline(CanvasSelectionRegion.shape(
               CanvasSelectionShape.rect(left: 0, top: 0, right: 2, bottom: 8),
-            );
+            ));
       rasterizer.blendFrom([
         for (var i = 0; i < 30; i += 1) pixelDab(i),
       ], from: 0);

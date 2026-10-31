@@ -18,6 +18,7 @@ import '../../services/guide_stroke_input.dart' show ShiftLine;
 import '../../services/input/modifier_keys.dart';
 import '../../services/canvas_selection_paint_clip.dart';
 import '../../services/canvas_selection_region.dart';
+import '../../services/selection_clip.dart';
 import '../../services/canvas_selection_shape.dart';
 import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/history_manager.dart';
@@ -958,14 +959,14 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
   /// keeps it all.
   void _land(
     SheetWindow window,
-    CanvasSelectionRegion? keeps,
+    SelectionClip? keeps,
     BrushStrokeCommitData strokeData,
   ) {
     final landed = keeps == null
         ? strokeData
         : clipStrokeCommitToSelection(
             strokeData,
-            region: keeps,
+            clip: keeps,
             surface: widget.sessionStateFor(window).canvasState.currentSurface,
           );
     if (landed != null) {
@@ -1163,7 +1164,9 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
   /// picture onto the paper; a stroke stays in its window now (H49), and so
   /// scaled a brush drew too thin to hold together.
   Widget _view(SheetWindow window, CanvasSelectionRegion region) {
-    final keeps = window.keepsOnlyWhatItShows ? region : null;
+    final keeps = window.keepsOnlyWhatItShows
+        ? SelectionClip.outline(region)
+        : null;
     return InteractiveBrushEditCanvasView(
       key: ValueKey<String>('${widget.keyPrefix}-ink-${window.id}'),
       celNow: () => widget.sessionStateFor(window).canvasState.currentSurface,
@@ -1171,7 +1174,7 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
       frameId: window.key.frameId,
       inputSettings: () => widget.brushToolState.value.toInputSettings(),
       viewport: window.inkViewport(widget.viewport),
-      selectionRegion: keeps,
+      selectionNow: () => keeps,
       // The sheet paper is painted below this stack; an opaque
       // background here would cover it.
       showTransparentBackground: false,

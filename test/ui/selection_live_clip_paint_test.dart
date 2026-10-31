@@ -15,6 +15,7 @@ import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
+import 'package:anicel/src/services/selection_clip.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 
@@ -108,7 +109,7 @@ void main() {
     final rasterizer = BrushLiveStrokeRasterizer(
       pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
       tileSize: tileSize,
-    )..selectionRegion = region;
+    )..selectionClip = region == null ? null : SelectionClip.outline(region);
     final dirty = rasterizer.blendFrom(dabs, from: 0);
     final model = ActiveStrokeOverlayModel(tileSize: tileSize)
       ..blendMode = mode

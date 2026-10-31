@@ -17,6 +17,7 @@ import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_paint_clip.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
+import 'package:anicel/src/services/selection_clip.dart';
 
 /// R26 #18: painting clips to the selection. The clip runs on the
 /// stroke's own straight-alpha buffer, which is why one pass covers every
@@ -50,7 +51,7 @@ void main() {
     final clipped = clipStrokePixelsToSelection(
       pixels: solidBlock(bounds),
       bounds: bounds,
-      region: regionRect(5, 5, 15, 15),
+      clip: SelectionClip.outline(regionRect(5, 5, 15, 15)),
     )!;
     expect(alphaAt(clipped.pixels, bounds, 10, 10), 255);
     expect(alphaAt(clipped.pixels, bounds, 2, 2), 0);
@@ -76,7 +77,7 @@ void main() {
       final clipped = clipStrokePixelsToSelection(
         pixels: solidBlock(bounds),
         bounds: bounds,
-        region: regionRect(2, 2, 4, 4),
+        clip: SelectionClip.outline(regionRect(2, 2, 4, 4)),
       )!;
       expect(
         clipped.pixels[3],
@@ -138,7 +139,7 @@ void main() {
       clipStrokePixelsToSelection(
         pixels: solidBlock(bounds),
         bounds: bounds,
-        region: regionRect(50, 50, 60, 60),
+        clip: SelectionClip.outline(regionRect(50, 50, 60, 60)),
       ),
       isNull,
     );
@@ -163,7 +164,7 @@ void main() {
     final clipped = clipStrokePixelsToSelection(
       pixels: solidBlock(bounds),
       bounds: bounds,
-      region: region,
+      clip: SelectionClip.outline(region),
     )!;
     expect(alphaAt(clipped.pixels, bounds, 2, 2), 255);
     expect(alphaAt(clipped.pixels, bounds, 10, 10), 0, reason: 'in the hole');
@@ -193,7 +194,7 @@ void main() {
       final clipped = clipStrokePixelsToSelection(
         pixels: rasterized.pixels,
         bounds: rasterized.bounds,
-        region: regionRect(0, 0, 20, 64),
+        clip: SelectionClip.outline(regionRect(0, 0, 20, 64)),
       );
       // The dab straddles x = 20, so the left half survives the clip.
       expect(clipped, isNotNull);
@@ -306,7 +307,7 @@ void main() {
       expect(
         clipStrokeCommitToSelection(
           data,
-          region: regionRect(0, 0, 20, 64),
+          clip: SelectionClip.outline(regionRect(0, 0, 20, 64)),
           surface: surface,
         ),
         same(data),
@@ -314,7 +315,7 @@ void main() {
       expect(
         clipStrokeCommitToSelection(
           promotedOn(surface, [dab(10, 10)], empty: true),
-          region: regionRect(0, 0, 20, 64),
+          clip: SelectionClip.outline(regionRect(0, 0, 20, 64)),
           surface: surface,
         ),
         isNull,
@@ -328,7 +329,7 @@ void main() {
       final landedSince = BitmapSurface(canvasSize: canvas, tileSize: 32);
       final landed = clipStrokeCommitToSelection(
         promotedOn(base, [dab(10, 10), dab(18, 10), dab(40, 10)]),
-        region: regionRect(0, 0, 20, 64),
+        clip: SelectionClip.outline(regionRect(0, 0, 20, 64)),
         surface: landedSince,
       )!;
       expect(landed.promotedTiles, isNull);
@@ -340,7 +341,7 @@ void main() {
             promotedTiles: const [],
             end: CanvasPoint(x: 10, y: 10),
           ),
-          region: regionRect(0, 0, 20, 64),
+          clip: SelectionClip.outline(regionRect(0, 0, 20, 64)),
           surface: landedSince,
         )!.end,
         CanvasPoint(x: 10, y: 10),
@@ -365,7 +366,7 @@ void main() {
       expect(
         clipStrokeCommitToSelection(
           promotedOn(base, [dab(40, 10)]),
-          region: regionRect(0, 0, 20, 64),
+          clip: SelectionClip.outline(regionRect(0, 0, 20, 64)),
           surface: landedSince,
         ),
         isNull,

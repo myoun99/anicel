@@ -21,6 +21,7 @@ import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/services/canvas_selection_paint_clip.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
+import 'package:anicel/src/services/selection_clip.dart';
 
 import '../helpers/native_engine_path.dart';
 
@@ -278,7 +279,7 @@ void main() {
       final base = paintedBase();
       final clipped = clipStrokeCommitToSelection(
         BrushStrokeCommitData(sourceDabs: dabs, blendMode: mode),
-        region: region,
+        clip: SelectionClip.outline(region),
         surface: base,
       )!;
       expectSameArtwork(

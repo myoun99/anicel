@@ -8,7 +8,7 @@ import '../models/layer_id.dart';
 import 'brush_commit_builder.dart';
 import 'brush_live_stroke_rasterizer.dart';
 import 'canvas_selection_paint_clip.dart';
-import 'canvas_selection_region.dart';
+import 'selection_clip.dart';
 
 /// The stroke revision a promoted fill's tiles carry: a fill's pieces are
 /// blended in one pass, so there is exactly one revision to hand over at
@@ -45,7 +45,7 @@ List<PromotedStrokeTile> promoteFillDabs({
   required BitmapSurface surface,
   required List<BrushDab> dabs,
   required BrushBlendMode blendMode,
-  required CanvasSelectionRegion? selection,
+  required SelectionClip? selection,
   required LayerId layerId,
   required FrameId frameId,
 }) {
@@ -54,7 +54,7 @@ List<PromotedStrokeTile> promoteFillDabs({
       if (selection == null)
         dab
       else
-        ?clipStampDabToSelection(dab, region: selection),
+        ?clipStampDabToSelection(dab, clip: selection),
   ];
   if (landings.isEmpty) {
     return const [];

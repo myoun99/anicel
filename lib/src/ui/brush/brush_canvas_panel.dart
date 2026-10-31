@@ -42,6 +42,7 @@ import '../../models/dirty_region.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_paint_clip.dart';
 import '../../services/canvas_selection_region.dart';
+import '../../services/selection_clip.dart';
 import '../../services/cel_pixel_region.dart' show regionInArtworkSpace;
 import '../../services/selection_placement.dart';
 import '../../services/stamp_carry.dart';
@@ -1580,12 +1581,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// The region this panel last painted ants for — the rebuild guard.
   CanvasSelectionRegion? _paintedIdleRegion;
 
-  /// The selection as the last build handed it to the drawing view, which
-  /// clips a stroke to it — so that a region changed since can be told
-  /// from one that has not
-  /// ([_CanvasPanelSelection.handleSelectionChannelChanged]).
-  CanvasSelectionRegion? _strokeClipAsBuilt;
-
   /// The idle ants animate only when they are the ones on screen: the
   /// mounted selection layer runs its own ticker.
   void _syncIdleAnts() {
@@ -2209,8 +2204,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
     final coordinator = widget.coordinator!;
     final activeKey = coordinator.activeFrameKey;
-    final liveSelection = widget.selectionCommands?.region;
-    _strokeClipAsBuilt = liveSelection;
     final interactiveView = InteractiveBrushEditCanvasView(
       // STABLE key (R13-2): keying by frameId remounted the whole
       // interactive subtree on every frame flip — the constant flip
@@ -2238,10 +2231,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // R26 #18: the live stroke shows clipped to the selection, exactly
       // as the commit will clip it — in the row's own artwork, where this
       // view draws (a-marquee-on-a-posed-row).
-      selectionRegion: switch (liveSelection) {
-        null => null,
-        final selection => _selectionSeat.regionOnTheRow(selection),
-      },
+      selectionNow: _selectionSeat.clipNow,
       strokeLander: _viewLander,
       // I-69: the shape tool has the view draw what its drag traced.
       shapeShow: _shapeShow,
@@ -2796,6 +2786,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         }
       },
       blend: blend,
+      selection: null,
     );
   }
 
@@ -2963,30 +2954,18 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       ShapePart.line => _brush.activeOpacity * line.opacity,
     };
     final blend = _brush.activeBlendMode;
-    // The maker cuts ([ShapeArea]): the selection's hard outline on the row,
-    // as the view's own clip cut it before (brush-fidelity-Q11 asks whether
-    // a shape should take the selection's softness as a held picture does).
-    final selection = switch (widget.selectionCommands?.region) {
-      null => null,
-      final live => _selectionSeat.regionOnTheRow(live),
-    };
     return (
       shape: (region, color, opacity, antiAlias, blend),
       pieces: () => region == null
           ? const <BrushDab>[]
-          : [
-              for (final piece in regionFillPieces(
-                region: region,
-                color: color,
-                opacity: opacity,
-                options: FloodFillOptions(expandPx: 0, antiAlias: antiAlias),
-              ))
-                if (selection == null)
-                  piece
-                else
-                  ?clipStampDabToSelection(piece, region: selection),
-            ],
+          : regionFillPieces(
+              region: region,
+              color: color,
+              opacity: opacity,
+              options: FloodFillOptions(expandPx: 0, antiAlias: antiAlias),
+            ),
       blend: blend,
+      selection: _selectionSeat.clipNow(),
     );
   }
 
