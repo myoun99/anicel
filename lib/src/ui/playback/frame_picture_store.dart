@@ -770,6 +770,13 @@ class FramePictureStore<K extends Object> {
   /// under another session's tests 66–77 → 38–42 ms, a frame every 55 → 21
   /// ms; quiet 17 → 16 ms. The Surface Pro 11, at 100%, input to raster
   /// done: p50 12.8 → 12.5 ms, p90 20.4 → 15.2 ms.
+  /// 🚨THERE THE WAIT MOVES, AND THE OVERLAY'S RASTER SEES ONLY ONE SIDE OF
+  /// IT: the levels' copy out held the raster thread before a frame, in the
+  /// queue nothing shows, and without it the GPU's tail falls inside the
+  /// frame after — the overlay's longest 5–10 → 17–34 ms, which held this
+  /// back four rounds. In a stroke, at 100%, one run of each, 13 long
+  /// strokes and 20 hatched: queue + raster p90 8.5 → 5.7 and 4.7 → 2.4 ms,
+  /// gaps past 16.7 ms 52 → 29 and 78 → 44, past 50 ms 8 → 8 and 17 → 15.
   /// ↩️Every level with every batch, 2026-10-26 to 10-31, 「because the
   /// screen may read it」: only a zoom change does, and it can wait for one.
   /// ⛔Not D7-2 again: nothing is drawn over the picture, so F-465's two
@@ -1158,7 +1165,11 @@ const Duration _levelsQuiet = Duration(milliseconds: 200);
 /// none: 8 of 12 hatched 17.1–29.4 ms and 8 of 12 long 11.6–20.9 ms, against
 /// 2.9–9.0 (once 14.4) and 3.1–9.6 (once 20.3). The write of such a part took
 /// 13–30 ms where a step's takes 3.4 and asks nothing of the raster's frames,
-/// and a step's patch is about this big.
+/// and a step's patch is about this big. 16 K: 9 of 12 long ones 14.8–28.2 ms
+/// and 6 of 12 hatched 12.8–29.2, against 3.5–8.0.
+/// ⚠️No size moved those frames, and owing the levels for good did not either:
+/// they are the GPU behind a step ([FramePictureStore._written]). The size
+/// stands on D7-2's frame and on the write's own 13–30 ms.
 const int _owedAtOnce = 16 * 1024;
 
 /// The first of [owed]'s parts, along its long side so that a long thin
