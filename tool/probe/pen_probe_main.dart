@@ -34,6 +34,7 @@
 import 'dart:async';
 import 'dart:ffi';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:ui' as ui;
 
 import 'package:anicel/src/ui/debug/input_inspector.dart';
@@ -132,6 +133,39 @@ final _setCursorPos = _user32
     .lookupFunction<Int32 Function(Int32, Int32), int Function(int, int)>(
       'SetCursorPos',
     );
+final _createWindow = _user32
+    .lookupFunction<
+      IntPtr Function(
+        Uint32,
+        Pointer<Utf16>,
+        Pointer<Utf16>,
+        Uint32,
+        Int32,
+        Int32,
+        Int32,
+        Int32,
+        IntPtr,
+        IntPtr,
+        IntPtr,
+        IntPtr,
+      ),
+      int Function(
+        int,
+        Pointer<Utf16>,
+        Pointer<Utf16>,
+        int,
+        int,
+        int,
+        int,
+        int,
+        int,
+        int,
+        int,
+        int,
+      )
+    >('CreateWindowExW');
+final _destroyWindow = _user32
+    .lookupFunction<Int32 Function(IntPtr), int Function(int)>('DestroyWindow');
 
 const _ptPen = 3;
 const _feedbackDefault = 1;
@@ -224,6 +258,35 @@ String _where(int view, _Point at) {
         'foreground ${_getForegroundWindow()} · cursor $where';
   } finally {
     calloc.free(cursor);
+  }
+}
+
+const _styleOfTheOtherWindow = 0x80000100 | 0x10000000;
+const _exStyleOfTheOtherWindow = 0x8 | 0x80 | 0x08000000;
+
+/// Another window, around [at], the way another app's stands over the view:
+/// a pen there is not over the view. WS_POPUP on top of all, not taking the
+/// foreground; SS_NOTIFY, for a bare static lets a pen through to what is
+/// under it.
+int _otherWindow(_Point at) {
+  final staticClass = 'STATIC'.toNativeUtf16();
+  try {
+    return _createWindow(
+      _exStyleOfTheOtherWindow,
+      staticClass,
+      nullptr,
+      _styleOfTheOtherWindow,
+      at.x - 100,
+      at.y - 100,
+      200,
+      200,
+      0,
+      0,
+      0,
+      0,
+    );
+  } finally {
+    calloc.free(staticClass);
   }
 }
 
@@ -347,6 +410,44 @@ Future<void> _mouseMoves(_Heard heard, {int dx = 8}) async {
 Future<void> _settle() async {
   await Future<void>.delayed(const Duration(milliseconds: 60));
   await WidgetsBinding.instance.endOfFrame;
+}
+
+/// A hand moves the mouse to and fro for [how] — past [PenEchoes.silence].
+Future<void> _mouseMovesFor(_Heard heard, Duration how) async {
+  final watch = Stopwatch()..start();
+  var dx = 8;
+  while (watch.elapsed < how) {
+    await _mouseMoves(heard, dx: dx);
+    dx = -dx;
+  }
+}
+
+/// The pen, from another thread, while the view's stands still past the
+/// five seconds Windows gives a window before a ghost takes its place: a
+/// frame the view does not take in, and its leave behind the ghost.
+void _leavesBehindTheGhost(({int device, _Point at}) pen) {
+  final hand = _Pen(pen.device);
+  _sleep(300);
+  hand.now(pen.at, inRange: true);
+  _sleep(5700);
+  hand.now(pen.at, inRange: false);
+}
+
+/// A pen's arrival and hover, straight into the binding: no device stands
+/// behind it, so nothing will ever say it left.
+void _holdAPenNothingWillSayWent() {
+  final dispatcher = ui.PlatformDispatcher.instance;
+  ui.PointerData of(ui.PointerChange change) => ui.PointerData(
+    viewId: dispatcher.implicitView!.viewId,
+    change: change,
+    kind: PointerDeviceKind.stylus,
+    device: 77,
+  );
+  dispatcher.onPointerDataPacket?.call(
+    ui.PointerDataPacket(
+      data: [of(ui.PointerChange.add), of(ui.PointerChange.hover)],
+    ),
+  );
 }
 
 /// The pointers Windows answers GetPointerInfo for, asked from this thread
@@ -556,6 +657,170 @@ Future<List<String>> _cases(_Pen pen, int view, _Heard heard) async {
   await _settle();
   await mouseAfter('a pen that left while the window was hidden lets the '
       'mouse in');
+
+  // 🗣️F-520 (유저 2026-10-31): 「마우스로 어떠한 조작을 해도 인식안되고 …
+  // 해당 상황에서 펜으로는 정상적으로 작동」 — F-427's words, with no file
+  // dialog behind them. Every way left that a pen goes unheard: each says
+  // what the mouse found at once (`INFO`), then whether it is back after a
+  // second of moving, and lets go of what stayed (WM_ENABLE), for a stuck
+  // case not to fail the ones after it.
+  Future<void> mouseFinds(String name) async {
+    lines.add('INFO engine sent: ${_penSent()}');
+    _setForegroundWindow(top);
+    await _parkCursor(at);
+    heard.reset();
+    await _mouseMoves(heard);
+    lines.add('INFO $name, at once: $heard');
+    heard.reset();
+    await _mouseMovesFor(heard, const Duration(milliseconds: 1400));
+    expect(name, heard.mouse > 0);
+    _enableWindow(top, 0);
+    _enableWindow(top, 1);
+    await _settle();
+    _penSent();
+  }
+
+  Future<void> press(_Point on) async {
+    pen.raw(on, _flagInRange | _flagInContact | _flagDown);
+    await _settle();
+  }
+
+  Future<void> lift(_Point on) async {
+    pen.raw(on, _flagInRange | _flagUp);
+    await _settle();
+  }
+
+  final beside = (x: at.x + 200, y: at.y);
+
+  var other = _otherWindow(beside);
+  await _settle();
+  lines.add('INFO another window: ${_where(view, beside)}');
+  await pen.hover(at);
+  await pen.hover(beside);
+  await pen.leave(beside);
+  _destroyWindow(other);
+  await mouseFinds('a pen that went over another window and left');
+
+  other = _otherWindow(beside);
+  await _settle();
+  await pen.hover(at);
+  await pen.hover(beside);
+  await pen.hover(at);
+  await pen.leave(at);
+  _destroyWindow(other);
+  await mouseFinds('a pen that went over another window and back and left');
+
+  await pen.hover(at);
+  other = _otherWindow(at);
+  await _settle();
+  await pen.hover(at);
+  await pen.leave(at);
+  _destroyWindow(other);
+  await mouseFinds('a pen another window came up under, moved and left');
+
+  await pen.hover(at);
+  other = _otherWindow(at);
+  await _settle();
+  await pen.leave(at);
+  _destroyWindow(other);
+  await mouseFinds('a pen another window came up under, still, and left');
+
+  await pen.hover(at);
+  other = _otherWindow(at);
+  await _settle();
+  await pen.leave(at);
+  await _settle();
+  await pen.hover(at);
+  _destroyWindow(other);
+  await _settle();
+  await pen.leave(at);
+  await mouseFinds('a pen back as another window went, and left');
+
+  other = _otherWindow(beside);
+  await _settle();
+  await pen.hover(at);
+  await press(at);
+  pen.raw(beside, _flagInRange | _flagInContact | _flagUpdate);
+  await _settle();
+  await lift(beside);
+  await pen.leave(beside);
+  _destroyWindow(other);
+  await mouseFinds('a pen pressed here, lifted over another window, gone');
+
+  await pen.hover(at);
+  await press(at);
+  other = _otherWindow(at);
+  await _settle();
+  pen.raw(at, _flagInRange | _flagInContact | _flagUpdate);
+  await _settle();
+  await lift(at);
+  await pen.leave(at);
+  _destroyWindow(other);
+  await mouseFinds('a pen pressed as another window came up under its tip');
+
+  await pen.hover(at);
+  await press(at);
+  other = _otherWindow(at);
+  await _settle();
+  pen.raw(at, _flagUpdate);
+  await _settle();
+  _destroyWindow(other);
+  await mouseFinds('a pen that left at once as another window came up under '
+      'its tip');
+
+  other = _otherWindow(beside);
+  await _settle();
+  await pen.hover(at);
+  _setForegroundWindow(other);
+  await _settle();
+  await pen.hover(at);
+  await pen.leave(at);
+  _destroyWindow(other);
+  await mouseFinds('a pen that left with the foreground elsewhere');
+
+  await pen.hover(at, inverted: true);
+  await pen.leave(at);
+  await mouseFinds('an eraser whose flag dropped at its leave');
+
+  await pen.hover(at);
+  await pen.leave(at, inverted: true);
+  await mouseFinds('a tip whose eraser flag rose at its leave');
+
+  final second = _createPen(_ptPen, 1, _feedbackDefault);
+  await _Pen(second).hover(at);
+  _destroyPen(second);
+  await _settle();
+  await mouseFinds('a pen whose device went while in range');
+
+  await pen.hover(at);
+  await Isolate.spawn(_leavesBehindTheGhost, (device: pen.device, at: at));
+  _sleep(6500);
+  await _settle();
+  await mouseFinds('a pen that left behind the ghost of a stalled window');
+
+  // No leave: a pen still in range and saying nothing. ⚠️Windows takes a
+  // synthetic pen away within a few hundred ms of its last frame, so this
+  // says what a resting pen does no more than that a real one might.
+  await pen.hover(at);
+  await mouseFinds('a pen in range that says nothing');
+  await pen.leave(at);
+  await _settle();
+  _penSent();
+
+  // All that was not found, as the binding meets it: a pen it holds in range
+  // that no message will ever say went, and the real mouse after it.
+  _holdAPenNothingWillSayWent();
+  await mouseFinds('a pen no window will ever say went');
+
+  // F-400 stays: a pen that speaks keeps its echo's mouse out, however long.
+  await _parkCursor(at);
+  heard.reset();
+  for (var round = 0; round < 6; round++) {
+    await pen.hover(at);
+    await _mouseMoves(heard);
+  }
+  expect('a pen that keeps speaking keeps the mouse out', heard.mouse == 0);
+  await pen.leave(at);
   return lines;
 }
 Future<void> main() async {

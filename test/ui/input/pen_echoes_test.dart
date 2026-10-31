@@ -215,6 +215,104 @@ void main() {
       expect(admit(const PointerHoverEvent(kind: mouse)), isTrue);
       expect(echoes.leavesUnheard(), isEmpty);
     });
+
+    group('🚨F-520: no window to say a pen went — the mouse says it', () {
+      const silence = PenEchoes.silence;
+      const justShort = Duration(milliseconds: 1);
+
+      PointerHoverEvent penAt(Duration at) => PointerHoverEvent(
+        kind: pen,
+        device: penDevice,
+        timeStamp: at,
+        position: const Offset(5, 6),
+      );
+      PointerHoverEvent mouseAt(Duration at) =>
+          PointerHoverEvent(kind: mouse, timeStamp: at);
+      List<int> shownBy(Duration at) => [
+        for (final leave in echoes.leavesShownBy(mouseAt(at))) leave.device,
+      ];
+
+      test('a mouse that keeps speaking a whole silence, no pen saying a '
+          'word, is a mouse — the pen went, and with it in the mouse is '
+          'back', () {
+        admit(penAt(Duration.zero));
+        const began = Duration(seconds: 7);
+
+        expect(shownBy(began), isEmpty, reason: 'its first word proves nothing');
+        expect(shownBy(began + silence - justShort), isEmpty);
+        final leaves = echoes.leavesShownBy(mouseAt(began + silence));
+        expect(
+          [
+            for (final leave in leaves)
+              (leave.kind, leave.device, leave.position),
+          ],
+          [(pen, penDevice, const Offset(5, 6))],
+        );
+        expect(admit(mouseAt(began + silence)), isFalse, reason: 'not yet in');
+
+        expect(leaves.every(admit), isTrue);
+        expect(admit(mouseAt(began + silence)), isTrue);
+      });
+
+      test('🚨F-400 stays: a pen that speaks starts the count over — its '
+          'echoes, however long they go on, prove nothing', () {
+        admit(penAt(Duration.zero));
+        const step = Duration(milliseconds: 200);
+        for (var word = 1; word < 40; word += 1) {
+          expect(shownBy(step * word), isEmpty, reason: 'word $word');
+          admit(penAt(step * word));
+          expect(admit(mouseAt(step * word)), isFalse, reason: 'word $word');
+        }
+      });
+
+      test('a pen spoke after the mouse began: the count is from the first '
+          'word after it, not the first before', () {
+        admit(penAt(Duration.zero));
+        expect(shownBy(Duration.zero), isEmpty);
+        admit(penAt(silence - justShort));
+        expect(shownBy(silence), isEmpty, reason: 'the count begins here');
+        expect(shownBy(silence * 2 - justShort), isEmpty);
+        expect(shownBy(silence * 2), [penDevice]);
+      });
+
+      test('two words a silence apart are no proof: the echo a pen left '
+          'behind it, and one that ran ahead of its next move', () {
+        admit(penAt(Duration.zero));
+        expect(shownBy(justShort), isEmpty);
+        expect(shownBy(justShort + silence), isEmpty);
+        expect(shownBy(const Duration(minutes: 10)), isEmpty);
+      });
+
+      test('a mouse that pauses for less than a silence is still speaking', () {
+        admit(penAt(Duration.zero));
+        expect(shownBy(Duration.zero), isEmpty);
+        expect(shownBy(silence - justShort), isEmpty);
+        expect(shownBy(silence), [penDevice]);
+      });
+
+      test('a mouse with no pen to speak over shows nothing, and a pen after '
+          'it is counted from scratch', () {
+        expect(shownBy(Duration.zero), isEmpty);
+        expect(shownBy(silence), isEmpty);
+        admit(penAt(silence));
+        expect(shownBy(silence * 2), isEmpty);
+      });
+
+      for (final kind in [pen, PointerDeviceKind.touch]) {
+        test('only a mouse says it: a ${kind.name} shows nothing', () {
+          admit(penAt(Duration.zero));
+          for (var word = 0; word < 4; word += 1) {
+            expect(
+              echoes.leavesShownBy(
+                PointerHoverEvent(kind: kind, timeStamp: silence * (word / 2)),
+              ),
+              isEmpty,
+              reason: 'word $word',
+            );
+          }
+        });
+      }
+    });
   });
 
   group('where it stands — the binding, where the platform\'s events come '
@@ -228,8 +326,10 @@ void main() {
       int device = 0,
       int pointer = 0,
       int buttons = 0,
+      Duration timeStamp = Duration.zero,
     }) => ui.PointerData(
       viewId: tester.view.viewId,
+      timeStamp: timeStamp,
       change: change,
       kind: kind,
       device: device,
@@ -336,6 +436,83 @@ void main() {
         send([at(tester, ui.PointerChange.hover, mouse)]);
         expect(heard, ['stylus hover', 'stylus exit', 'mouse hover']);
         send([at(tester, ui.PointerChange.remove, mouse)]);
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.windows),
+    );
+
+    testWidgets(
+      '🚨F-520: a pen gone with no window to say so — the mouse that keeps '
+      'speaking lets it go, its hover ends, and its own press comes in',
+      (tester) async {
+        final heard = <String>[];
+        await tester.pumpWidget(
+          MouseRegion(
+            onExit: (event) => heard.add('${event.kind.name} exit'),
+            child: Listener(
+              behavior: HitTestBehavior.opaque,
+              onPointerHover: (event) => heard.add('${event.kind.name} hover'),
+              onPointerDown: (event) => heard.add('${event.kind.name} down'),
+              child: const SizedBox.expand(),
+            ),
+          ),
+        );
+        const began = Duration(seconds: 3);
+        const silence = PenEchoes.silence;
+        send([
+          at(tester, ui.PointerChange.add, pen, device: penDevice),
+          at(tester, ui.PointerChange.hover, pen, device: penDevice),
+          at(tester, ui.PointerChange.add, mouse, timeStamp: began),
+          at(tester, ui.PointerChange.hover, mouse, timeStamp: began),
+        ]);
+        send([
+          at(
+            tester,
+            ui.PointerChange.hover,
+            mouse,
+            timeStamp: began + silence - const Duration(milliseconds: 1),
+          ),
+        ]);
+        expect(heard, ['stylus hover']);
+        expect(InputInspector.echoes, 2, reason: 'each kept out, and counted');
+
+        send([
+          at(
+            tester,
+            ui.PointerChange.down,
+            mouse,
+            pointer: 9,
+            buttons: kPrimaryButton,
+            timeStamp: began + silence,
+          ),
+        ]);
+        expect(heard, ['stylus hover', 'stylus exit', 'mouse down']);
+
+        send([
+          at(
+            tester,
+            ui.PointerChange.up,
+            mouse,
+            pointer: 9,
+            timeStamp: began + silence,
+          ),
+          at(tester, ui.PointerChange.hover, pen, device: penDevice),
+          at(
+            tester,
+            ui.PointerChange.hover,
+            mouse,
+            timeStamp: began + silence,
+          ),
+        ]);
+        expect(
+          heard,
+          ['stylus hover', 'stylus exit', 'mouse down', 'stylus hover'],
+          reason: 'a pen that comes back is in range again, and has a mouse '
+              'no more',
+        );
+        send([
+          at(tester, ui.PointerChange.remove, pen, device: penDevice),
+          at(tester, ui.PointerChange.remove, mouse),
+        ]);
       },
       variant: TargetPlatformVariant.only(TargetPlatform.windows),
     );
