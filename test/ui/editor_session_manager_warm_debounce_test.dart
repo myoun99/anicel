@@ -282,6 +282,19 @@ void main() {
       expect(started(), 1);
     });
 
+    test('under a test\'s clock it stays out of it unless the test asks',
+        () async {
+      RenderCaches.walkFollowsHistory = false;
+      final session = aSession();
+      await aTurn();
+      final started = walks(session);
+
+      session.layerSwitches.toggleLayerVisibility(const LayerId('layer'));
+      await aTurn();
+
+      expect(started(), 0);
+    });
+
     test('two changes in one turn start it over once', () async {
       final session = aSession();
       await aTurn();
