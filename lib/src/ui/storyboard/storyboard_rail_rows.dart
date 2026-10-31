@@ -649,7 +649,10 @@ class _StoryboardRailRows {
   /// 🚨ONE LIST for the three places that lay these rows out — the row
   /// table, the rail's labels and the strips — as [_shownSeSlots] is.
   List<int> _shownConteSeats(Track track) {
-    final folders = <Cut, LayerFolderIndex>{};
+    // 🚨I-22: by identity. A cut's hash walks every layer it holds, and this
+    // asks it once a seat, several times a build: 213ms of the 2,475ms
+    // sixteen presses on the film's ruler took (S5 cut 352, debug).
+    final Map<Cut, LayerFolderIndex> folders = Map.identity();
     return [
       for (final seat in conteSeatsOf(track.cuts))
         if (_conteSeatShown(track, seat, folders)) seat,
