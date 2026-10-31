@@ -168,10 +168,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
   /// ruler content re-window from it (sub-cell movement rebuilds nothing).
   final ValueNotifier<int> _frameWindowBucket = ValueNotifier<int>(0);
 
-  /// The LAYER-axis twin of [_frameWindowBucket]: the window the rows are
-  /// cut to ([_LayerGridScroll.standAt]'s token). Only what lays the
-  /// window's rows subscribes — the rail's rows, its selection bands and
-  /// the cells' rows ([_RowWindowCut]).
+  /// The LAYER-axis twin of [_frameWindowBucket]: moves when the scroll
+  /// carries the rows into another window ([_LayerGridScroll.standAt]). Only
+  /// what lays the window's rows subscribes — the rail's rows, its selection
+  /// bands and the cells' rows ([_RowWindowCut]).
   ///
   /// ↩️It gated the grid's whole body under the header (frame-panels-build-
   /// in-one-frame ④, 2026-10-29): a move kept the rows (③) and built the
@@ -186,6 +186,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
   /// widgets. The frame axis has not done that since UI-R9 #12a; this is
   /// the same shape, on the other axis.
   final ValueNotifier<int> _rowWindowBucket = ValueNotifier<int>(0);
+
+  /// The window the rows were last laid in ([_LayerGridScroll.windowToken]).
+  int _rowWindowLaid = -1;
 
   double _verticalScrollOffset = 0;
 
@@ -581,6 +584,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
             scrollOffset: effectiveVerticalScrollOffset,
             viewportExtent: bodyViewportHeight,
           );
+    _rowWindowLaid = _scroll.windowToken(rowWindow, edges);
     final windowRows = rows.sublist(
       rowWindow.startIndex,
       rowWindow.endIndexExclusive,

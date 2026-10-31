@@ -53,21 +53,29 @@ class _LayerGridScroll {
   /// hold the top still while the bottom crosses rows (I-89 ③).
   void standAt(double offset) {
     final edges = _state._drawnEdges;
-    final window = edges.window(
-      scrollOffset: offset,
-      viewportExtent: _state._rowViewportExtent,
+    final window = windowToken(
+      edges.window(
+        scrollOffset: offset,
+        viewportExtent: _state._rowViewportExtent,
+      ),
+      edges,
     );
-    final newBucket =
-        window.startIndex * (edges.count + 1) + window.endIndexExclusive;
     _state._verticalScrollOffset = offset;
-    // ⚠️Compared against the NOTIFIER, not against a bucket recomputed from
-    // the old offset. They agree while nothing else moves, but a row-height
-    // change or a collapse moves the boundary under a stationary scroll —
-    // and then the "old" bucket is a number nobody ever rendered.
-    if (newBucket != _state._rowWindowBucket.value) {
-      _state._rowWindowBucket.value = newBucket;
+    // ⚠️Compared against the window last LAID, as the storyboard's rows are
+    // ([_StoryboardRowsWindow.handleScroll]): a pass that lays other rows
+    // moves the windows under a scroll that stands still.
+    // ↩️F-526 (유저 11-01): it was compared against the last token this
+    // published — a fold lays rows without publishing one, so going down
+    // again after shutting and opening reached the number of a window no
+    // longer drawn, and the rows it held were never cut.
+    if (window != _state._rowWindowLaid) {
+      _state._rowWindowBucket.value += 1;
     }
   }
+
+  /// [window] of [edges] as one number, to tell it from another.
+  int windowToken(TimelineVisibleRange window, TimelineRowEdges edges) =>
+      window.startIndex * (edges.count + 1) + window.endIndexExclusive;
 
   double effectiveHorizontalScrollOffset({
     required double requestedOffset,
