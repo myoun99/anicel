@@ -603,6 +603,7 @@ class TimelineLaneRangeHooks {
     required this.onTapAt,
     required this.onTapClear,
     required this.onMoveBegin,
+    required this.moveLands,
     required this.onMoveUpdate,
     required this.onMoveEnd,
     required this.onMoveCancel,
@@ -653,6 +654,10 @@ class TimelineLaneRangeHooks {
 
   final bool Function() onMoveBegin;
 
+  /// Whether the move in flight lands [frameDelta] frames on, as a step
+  /// there would — what a header graph's key asks before it snaps there.
+  final bool Function(int frameDelta) moveLands;
+
   /// A move step: the selection [frameDelta] frames along — after
   /// [stretch], where a header graph's box stretches its keys (I-3 ⑥) —
   /// and, carried by a header graph's key or box, its keys' [values]
@@ -680,6 +685,7 @@ class TimelineLaneRangeCallbacks {
     required this.onTapAt,
     required this.onTapClear,
     required this.onMoveBegin,
+    required this.moveLands,
     required this.onMoveUpdate,
     required this.onMoveEnd,
     required this.onMoveCancel,
@@ -774,6 +780,10 @@ class TimelineLaneRangeCallbacks {
   onSelectRows;
 
   final bool Function() onMoveBegin;
+
+  /// Whether the move in flight lands [frameDelta] frames on, as a step
+  /// there would — what a header graph's key asks before it snaps there.
+  final bool Function(int frameDelta) moveLands;
 
   /// A move step: the selection [frameDelta] frames along — after
   /// [stretch], where a header graph's box stretches its keys (I-3 ⑥) —

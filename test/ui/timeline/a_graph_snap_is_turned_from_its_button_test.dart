@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/session/session_row_button_presses.dart';
 import 'package:anicel/src/ui/text/app_strings.dart' show AppText;
+import 'package:anicel/src/ui/timeline/lane_graph_snap.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
 import 'package:anicel/src/ui/timeline/timeline_lane_graph.dart';
@@ -105,6 +106,45 @@ void main() {
     expect(_rotationAt(s, 8), 45);
     expect(s.historyManager.canUndo, undoable);
   });
+
+  // 🗣️검증/서피스 10-31 (ㄱ): near a key of its own curve the line was drawn
+  // and the key stopped short of it, its height with it.
+  testWidgets('carried up to a key of its own curve, it draws no line, stops '
+      'on the frame before it, and its height goes on', (tester) async {
+    final s = await _pump(tester, {0: 0, 8: 45, 16: 90});
+    await _openTheGraph(tester, s);
+    await _tapTheSnap(tester);
+    final carried = _keyOnScreen(tester, 8);
+    final cell = (_keyOnScreen(tester, 16).dx - carried.dx) / 8;
+    expect(cell / 2, greaterThan(3), reason: '⛔전제: 3 short, on its frame');
+
+    final gesture = await tester.startGesture(
+      carried,
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    await gesture.moveBy(Offset(7 * cell, 0));
+    await tester.pump();
+    await gesture.moveBy(Offset(cell - 3, -30));
+    await tester.pump();
+    expect(_snapped(tester).time, isNull);
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(_keyedFrames(s), [0, 15, 16]);
+    expect(_rotationAt(s, 15), isNot(closeTo(45, 1e-6)));
+  });
+}
+
+/// Where the key in hand has snapped, as the line it draws says.
+LaneGraphSnap _snapped(WidgetTester tester) {
+  final paint = find.descendant(
+    of: _pictureFinder,
+    matching: find.byType(CustomPaint),
+  );
+  return (tester.widget<CustomPaint>(paint).foregroundPainter!
+          as LaneGraphSnapLine)
+      .snap;
 }
 
 Finder get _snapButton =>
@@ -193,13 +233,16 @@ Future<void> _tapNamed(WidgetTester tester, String name) async {
   await tester.pumpAndSettle();
 }
 
-/// The app over a cut 48 frames long, its drawing's Rotation keyed 0 on
-/// frame 0 and 45 on 8.
-Future<EditorSessionManager> _pump(WidgetTester tester) async {
+/// The app over a cut 48 frames long, its drawing's Rotation keyed as
+/// [rotation] says — by default 0 on frame 0 and 45 on 8.
+Future<EditorSessionManager> _pump(
+  WidgetTester tester, [
+  Map<int, double> rotation = const {0: 0, 8: 45},
+]) async {
   await tester.binding.setSurfaceSize(const Size(1400, 1200));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
-    MaterialApp(home: HomePage(initialProject: _project)),
+    MaterialApp(home: HomePage(initialProject: _projectKeyed(rotation))),
   );
   await tester.pumpAndSettle();
   await tester.drag(
@@ -210,7 +253,7 @@ Future<EditorSessionManager> _pump(WidgetTester tester) async {
   return tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
 }
 
-final _project = Project(
+Project _projectKeyed(Map<int, double> rotation) => Project(
   id: const ProjectId('graph-snap'),
   name: 'Graph Snap',
   createdAt: DateTime.utc(2026, 10, 30),
@@ -231,9 +274,10 @@ final _project = Project(
               name: 'Drawing',
               frames: const [],
               transformTrack: TransformTrack.empty().copyWith(
-                rotation: PropertyTrack<double>()
-                    .withKey(0, 0)
-                    .withKey(8, 45),
+                rotation: rotation.entries.fold<PropertyTrack<double>>(
+                  PropertyTrack<double>(),
+                  (track, key) => track.withKey(key.key, key.value),
+                ),
               ),
             ),
           ],

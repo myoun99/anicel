@@ -57,6 +57,22 @@ void main() {
     (track, entry) => track.withKey(entry.key, entry.value),
   );
 
+  test('a move says it does not land on a key off the span, and that it '
+      'lands past it and on a key of its own', () {
+    keyed(
+      TransformTrack.empty().copyWith(rotation: keys({2: 10, 4: 20, 8: 30})),
+    );
+    pick(['rotation'], 2, 4);
+    expect(s.laneMove.beginLaneRangeMoveDrag(), isTrue);
+
+    expect(s.laneMove.laneRangeMoveLands(2), isTrue, reason: '4 and 6');
+    expect(s.laneMove.laneRangeMoveLands(4), isFalse, reason: '6 and 8');
+    expect(s.laneMove.laneRangeMoveLands(5), isTrue, reason: '7 and 9, past it');
+
+    s.laneMove.cancelLaneRangeMoveDrag();
+    expect(rotation(), {2: 10, 4: 20, 8: 30});
+  });
+
   test('stretched twice as long about its first key, every key goes twice '
       'as far from it — and the outline with them', () {
     keyed(

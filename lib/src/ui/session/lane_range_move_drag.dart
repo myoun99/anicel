@@ -78,6 +78,11 @@ class LaneRangeMoveDragVerbs {
     return true;
   }
 
+  /// Whether the move in flight lands [frameDelta] frames on — no move in
+  /// flight lands nowhere ([LaneRangeMoveDrag.lands]).
+  bool laneRangeMoveLands(int frameDelta) =>
+      _laneMoveDrag?.lands(frameDelta) ?? false;
+
   /// A lane-move drag step: moves EVERY spanned lane's ranged keys
   /// [frameDelta] frames on, after [stretch] where a graph's box stretches
   /// them (R26 #3 — one rigid group, all-or-nothing across lanes) — each

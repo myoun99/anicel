@@ -265,6 +265,7 @@ void main() {
                     .add('pick ${layer.value} $lane $anchor-$head $across'),
                 onTapAt: (_, _, _) => heard.add('stand'),
                 onTapClear: () => heard.add('clear'),
+                moveLands: (_) => true,
                 onMoveBegin: () => false,
                 onMoveUpdate: (_, {stretch, values, landings}) {},
                 onMoveEnd: () {},

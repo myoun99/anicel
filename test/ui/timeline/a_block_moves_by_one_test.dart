@@ -542,6 +542,7 @@ void main() {
                 heard.selects.add((anchor, head)),
             onTapAt: (_, _, _) {},
             onTapClear: () => heard.clears += 1,
+            moveLands: (_) => true,
             onMoveBegin: () {
               heard.begins.add(heard.steps.length);
               return true;

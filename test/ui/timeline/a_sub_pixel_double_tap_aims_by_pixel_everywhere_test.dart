@@ -88,6 +88,7 @@ void main() {
                         onSelectUpdate: (_, _, _, _, _) {},
                         onTapAt: (_, _, _) {},
                         onTapClear: () {},
+                        moveLands: (_) => true,
                         onMoveBegin: () => false,
                         onMoveUpdate: (_, {stretch, values, landings}) {},
                         onMoveEnd: () {},

@@ -2121,6 +2121,7 @@ class _StoryboardRailRows {
       onTapClear: host.onTapClear,
       onCreateKeys: host.onCreateKeys,
       onMoveBegin: host.onMoveBegin,
+      moveLands: host.moveLands,
       onMoveUpdate: host.onMoveUpdate,
       onMoveEnd: host.onMoveEnd,
       onMoveCancel: host.onMoveCancel,
