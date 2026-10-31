@@ -224,9 +224,9 @@ class _BrushEditPressure {
   /// How many samples those rows keep: what the card's row has room for.
   static const _openingRows = 10;
 
-  /// How the contact's opening was held, once it was painted: for how long,
+  /// How the last opening was held: for how long,
   /// how many samples, and how many of them had a force of their own by then.
-  /// Null until it is, and for a contact that held nothing.
+  /// Null before the first.
   ({Duration waited, int held, int fixed})? _opened;
 
   /// The opening [held] samples for [waited] and painted [fixed] of them with
@@ -389,7 +389,6 @@ class _BrushEditPressure {
       _sidecarTouched = false;
       _heldRepeats.clear();
       _openingForces.clear();
-      _opened = null;
     }
     final pressure = pressureOf(event);
     if (pressure.read || opening) {
