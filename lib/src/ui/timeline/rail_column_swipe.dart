@@ -285,7 +285,7 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
   RailSwipeRow<TRow>? _pressedRow;
 
   /// Where the stretch begins: the pressed row where it stands NOW, which a
-  /// fold above it has moved ([_findPressedRow]).
+  /// fold above it has moved ([_pressedRowNow]).
   double _stretchStart = 0;
 
   /// Paints [row] to the target: pressed only if it DISAGREES — a swipe
@@ -476,10 +476,15 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
   /// A press on a column this rail does not sweep ([columnIndex] -1) holds
   /// its drag and latches nothing.
   void _start(int columnIndex) {
-    final row = _pressedRow;
-    if (columnIndex < 0 || row == null) {
+    final pressed = _pressedRow;
+    if (columnIndex < 0 || pressed == null) {
       return;
     }
+    // ⚠️The rail's row, not the one read on the down: that is the row from
+    // before the button wrote, and a column that reads its row reads what
+    // the press changed there. ↩️Read off the press alone, a sweep latched
+    // the value the row had and painted nothing past the press.
+    final row = _pressedRowNow(pressed.id) ?? pressed;
     final column = widget.columns[columnIndex];
     // A row carrying no control in this column has no value to latch —
     // pressing an attach row's arrow must not begin painting the sheet
@@ -503,20 +508,16 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
       ..clear()
       ..add(row.id);
     _stretchStart = row.start;
-    _findPressedRow();
     // The button's own step is the sweep's first.
     _sweepMark = _pressMark;
   }
 
-  /// Reads where the pressed row stands now. Past the fold of a row that
+  /// The pressed row as the rail holds it now. Past the fold of a row that
   /// held it there is none, and the stretch begins where it last stood.
-  void _findPressedRow() {
-    final id = _pressedRow?.id;
-    final rows = widget.rowsIn(0, double.maxFinite);
-    if (rows.where((row) => row.id == id).firstOrNull case final row?) {
-      _stretchStart = row.start;
-    }
-  }
+  RailSwipeRow<TRow>? _pressedRowNow(Object? id) => widget
+      .rowsIn(0, double.maxFinite)
+      .where((row) => row.id == id)
+      .firstOrNull;
 
   void _end() {
     final mark = _sweepMark;
@@ -539,7 +540,9 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
     // Here and not at a move: a row moves only with a build, and a pointer
     // move asks the rail once.
     if (_column != null) {
-      _findPressedRow();
+      if (_pressedRowNow(_pressedRow?.id) case final row?) {
+        _stretchStart = row.start;
+      }
     }
   }
 
