@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
 import 'package:flutter/material.dart';
 
@@ -21,6 +23,23 @@ import 'memo_token.dart';
 /// asked only whether the picture was there, while the run had stopped
 /// waiting for it.
 typedef ReadyRun = ({int startIndex, int endIndexExclusive, bool unreadable});
+
+/// [run] at the end of [runs] — joined onto the last one where it starts as
+/// that one ends and is as readable.
+void appendReadyRun(List<ReadyRun> runs, ReadyRun run) {
+  final last = runs.isEmpty ? null : runs.last;
+  if (last != null &&
+      last.endIndexExclusive == run.startIndex &&
+      last.unreadable == run.unreadable) {
+    runs.last = (
+      startIndex: last.startIndex,
+      endIndexExclusive: run.endIndexExclusive,
+      unreadable: run.unreadable,
+    );
+  } else {
+    runs.add(run);
+  }
+}
 
 /// Which stretches of the frames `[start, endExclusive)` are READY to
 /// play. Answered once per span of one picture, never per frame: zoomed
@@ -168,6 +187,54 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
     }
     final window = _visibleWindow();
     return runsIn(window.startIndex, window.endIndexExclusive);
+  }
+
+  /// [readyRuns] once the window has moved on from [read]: what the two
+  /// windows share stands as it was read, and only what the move uncovered
+  /// is asked.
+  ///
+  /// 🚨I-22 ②: a fast scroll moves the window on every frame, and every
+  /// move read all of it — 161ms of the 374ms a fast scroll's frames took
+  /// (24 rows, 480 frames, 8px a frame, profile build), the largest thing
+  /// in them. What turned a frame ready or not in between arrives on the
+  /// signal, which reads the whole window again ([_ReadyRunsGate.recheck]).
+  List<ReadyRun> _readyRunsMovedOn(_ReadyRunsRead read) {
+    final runsIn = readyRunsIn;
+    if (runsIn == null) {
+      return const [];
+    }
+    final window = _visibleWindow();
+    final from = math.max(read.window.startIndex, window.startIndex);
+    final to = math.min(
+      read.window.endIndexExclusive,
+      window.endIndexExclusive,
+    );
+    if (from >= to) {
+      return runsIn(window.startIndex, window.endIndexExclusive);
+    }
+    final runs = <ReadyRun>[];
+    if (window.startIndex < from) {
+      for (final run in runsIn(window.startIndex, from)) {
+        appendReadyRun(runs, run);
+      }
+    }
+    for (final run in read.runs) {
+      final start = math.max(run.startIndex, from);
+      final end = math.min(run.endIndexExclusive, to);
+      if (start < end) {
+        appendReadyRun(runs, (
+          startIndex: start,
+          endIndexExclusive: end,
+          unreadable: run.unreadable,
+        ));
+      }
+    }
+    if (to < window.endIndexExclusive) {
+      for (final run in runsIn(to, window.endIndexExclusive)) {
+        appendReadyRun(runs, run);
+      }
+    }
+    return runs;
   }
 
   /// The frame the tint marks, or null when it is outside the window (the
@@ -339,19 +406,25 @@ class _TimelineRulerCursorOverlayState
   }
 }
 
+/// The runs of a [window], read.
+typedef _ReadyRunsRead = ({
+  ({int startIndex, int endIndexExclusive}) window,
+  List<ReadyRun> runs,
+});
+
 /// The overlay's [TimelineRulerCursorOverlay.repaintSignal], passed on
 /// only when the ready runs the current painter reads differ from the runs
 /// it last drew.
 ///
 /// And the runs a paint draws: the last reading, while nothing that could
-/// move it has come — a signal, a rebuild or another window.
+/// move it has come — a signal or a rebuild; another window asks for what
+/// it uncovered.
 class _ReadyRunsGate extends ChangeNotifier {
   _ReadyRunsGate(this._painter);
 
   final TimelineRulerCursorOverlayPainter Function() _painter;
   List<ReadyRun>? _drawn;
-  ({({int startIndex, int endIndexExclusive}) window, List<ReadyRun> runs})?
-  _read;
+  _ReadyRunsRead? _read;
 
   void drew(List<ReadyRun> runs) => _drawn = runs;
 
@@ -364,7 +437,9 @@ class _ReadyRunsGate extends ChangeNotifier {
     if (read != null && read.window == window) {
       return read.runs;
     }
-    final runs = painter.readyRuns();
+    final runs = read == null
+        ? painter.readyRuns()
+        : painter._readyRunsMovedOn(read);
     _read = (window: window, runs: runs);
     return runs;
   }

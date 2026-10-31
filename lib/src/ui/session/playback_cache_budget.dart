@@ -7,7 +7,8 @@ import '../playback/frame_pictures.dart';
 import '../playback/playback_pictures.dart' show PictureState;
 import '../playback/canvas_playback_controller.dart';
 import '../playback/playback_prerender_scheduler.dart' show PictureRoom;
-import '../timeline/timeline_ruler_cursor_overlay.dart' show ReadyRun;
+import '../timeline/timeline_ruler_cursor_overlay.dart'
+    show ReadyRun, appendReadyRun;
 import 'render_caches.dart';
 import 'session_roles.dart';
 
@@ -255,22 +256,11 @@ class PlaybackCacheBudget implements PictureRoom, HeldNodesLine {
           (state == PictureState.gaveUp && !unreadable)) {
         continue;
       }
-      final last = runs.isEmpty ? null : runs.last;
-      if (last != null &&
-          last.endIndexExclusive == span.start &&
-          last.unreadable == unreadable) {
-        runs.last = (
-          startIndex: last.startIndex,
-          endIndexExclusive: span.endExclusive,
-          unreadable: unreadable,
-        );
-      } else {
-        runs.add((
-          startIndex: span.start,
-          endIndexExclusive: span.endExclusive,
-          unreadable: unreadable,
-        ));
-      }
+      appendReadyRun(runs, (
+        startIndex: span.start,
+        endIndexExclusive: span.endExclusive,
+        unreadable: unreadable,
+      ));
     }
     return runs;
   }
