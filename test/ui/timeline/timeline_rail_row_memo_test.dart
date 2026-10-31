@@ -12,6 +12,7 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show LayerMarkChip;
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
+import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 import 'package:anicel/src/ui/widgets/row_plate.dart';
 
@@ -156,48 +157,61 @@ void main() {
 
   // 🔬I-22-rest (11-01): a click built the two rows it moved between, whole,
   // for one colour.
-  testWidgets('a stand moves the wash and builds neither row', (tester) async {
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-
-    final session = await pumpTimelineHost(
+  for (final (orientation, prefix) in const [
+    (TimelineOrientation.horizontal, 'timeline'),
+    (TimelineOrientation.vertical, 'xsheet'),
+  ]) {
+    testWidgets('a stand moves the wash and builds neither row: $prefix', (
       tester,
-      createDefaultProject(),
-      surface: const Size(1400, 1000),
-      pixelsPerFrame: 24,
-    );
+    ) async {
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
 
-    final stoodOn = session.activeLayerId!;
-    final next = session.layers.firstWhere((row) => row.id != stoodOn).id;
-    Color? ground(LayerId id) => tester
-        .widget<RowPlate>(
-          find.descendant(
-            of: find.byWidgetPredicate(
-              (widget) =>
-                  widget is TimelineLayerControlsRow && widget.layer.id == id,
+      final session = await pumpTimelineHost(
+        tester,
+        createDefaultProject(),
+        surface: const Size(1400, 1000),
+        orientation: orientation,
+        pixelsPerFrame: 24,
+      );
+
+      final stoodOn = session.activeLayerId!;
+      final next = session.layers.firstWhere((row) => row.id != stoodOn).id;
+      Color? ground(LayerId id) => tester
+          .widget<RowPlate>(
+            find.descendant(
+              of: find.byWidgetPredicate(
+                (widget) =>
+                    widget is TimelineLayerControlsRow &&
+                    widget.layer.id == id,
+              ),
+              matching: find.byType(RowPlate),
             ),
-            matching: find.byType(RowPlate),
-          ),
-        )
-        .decoration!
-        .color;
-    final washed = ground(stoodOn);
-    final bare = ground(next);
-    expect(washed, isNot(bare), reason: '⛔전제');
+          )
+          .decoration!
+          .color;
+      final washed = ground(stoodOn);
+      final bare = ground(next);
+      expect(washed, isNot(bare), reason: '⛔전제');
 
-    final built = <Type>{};
-    debugOnRebuildDirtyWidget = (element, _) =>
-        built.add(element.widget.runtimeType);
-    addTearDown(() => debugOnRebuildDirtyWidget = null);
-    session.standOnRow(LayerRowAddress(next));
-    await tester.pump();
-    debugOnRebuildDirtyWidget = null;
+      final built = <Type>{};
+      debugOnRebuildDirtyWidget = (element, _) =>
+          built.add(element.widget.runtimeType);
+      addTearDown(() => debugOnRebuildDirtyWidget = null);
+      session.standOnRow(LayerRowAddress(next));
+      await tester.pump();
+      debugOnRebuildDirtyWidget = null;
 
-    expect(built, contains(TimelinePanel), reason: 'LIVENESS: rows were asked');
-    expect(built, isNot(contains(TimelineLayerControlsRow)));
-    expect((ground(stoodOn), ground(next)), (bare, washed));
-    expect(find.named('timeline-selected-layer'), findsOneWidget);
-  });
+      expect(
+        built,
+        contains(TimelinePanel),
+        reason: 'LIVENESS: rows were asked',
+      );
+      expect(built, isNot(contains(TimelineLayerControlsRow)));
+      expect((ground(stoodOn), ground(next)), (bare, washed));
+      expect(find.named('$prefix-selected-layer'), findsOneWidget);
+    });
+  }
 
   testWidgets('a timesheet edit does NOT rebuild the rail row, a rename does',
       (tester) async {
