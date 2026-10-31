@@ -186,6 +186,9 @@ void main() {
   // 🗣️F-529 (유저 2026-11-01): 「어차피 화면 모든 프레임 바뀌니까 허용하고
   // 굽던거 버리고 다시굽는게 맞지않을까」.
   group('what the frames show moves', () {
+    setUp(() => RenderCaches.walkFollowsHistory = true);
+    tearDown(() => RenderCaches.walkFollowsHistory = false);
+
     EditorSessionManager aSession() {
       final session = EditorSessionManager(
         initialProject: Project(

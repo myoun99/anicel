@@ -21,6 +21,8 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../../services/flutter_test_run.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_cache_invalidation.dart';
@@ -347,6 +349,16 @@ class RenderCaches {
   /// Owed since a history change, until the one who changed it is done.
   bool _walkOwed = false;
 
+  /// Whether a history change starts the walk over ([framesMoved]) — the
+  /// app's way, and a test's that asks. ⛔Off by itself under a test's clock:
+  /// the quiet a walk waits for is nothing there
+  /// ([PlaybackPrerenderScheduler.idleDelay]), so it would run ahead of the
+  /// frame a change is on its way to — 28 tests at the last of their
+  /// commands, a walk's turn still pending, and two pins of a picture that
+  /// is moved found it laid anew.
+  @visibleForTesting
+  static bool walkFollowsHistory = !underFlutterTest;
+
   /// What the frames show moved: warming yields to the edit, what it was
   /// making goes with the walk it was made for ([FramePictureStore.lay]),
   /// and it starts over from the playhead once the command is done — a
@@ -364,7 +376,7 @@ class RenderCaches {
   /// left by the last command of a test outlives its turn.
   void framesMoved() {
     _onEditActivity();
-    if (_walkOwed) {
+    if (_walkOwed || !walkFollowsHistory) {
       return;
     }
     _walkOwed = true;
