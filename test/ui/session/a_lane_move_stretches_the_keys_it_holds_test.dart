@@ -67,7 +67,7 @@ void main() {
 
     expect(s.laneMove.laneRangeMoveLands(2), isTrue, reason: '4 and 6');
     expect(s.laneMove.laneRangeMoveLands(4), isFalse, reason: '6 and 8');
-    expect(s.laneMove.laneRangeMoveLands(5), isTrue, reason: '7 and 9, past it');
+    expect(s.laneMove.laneRangeMoveLands(5), isTrue, reason: '7 and 9');
 
     s.laneMove.cancelLaneRangeMoveDrag();
     expect(rotation(), {2: 10, 4: 20, 8: 30});
