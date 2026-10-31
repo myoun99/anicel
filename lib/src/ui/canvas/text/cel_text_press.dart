@@ -66,14 +66,15 @@ class CelTextScene {
 ///   the same code answers whatever is there — as a stroke's press on an
 ///   empty frame is still that stroke, `_BrushEditCelPress`).
 /// · A text by its LETTERS: inside it → the caret, and dragged a selection
-///   — or with Ctrl held, or a finger on the glass, the box's: dragged it
-///   moves (I-96) · on another
-///   text → confirm, take that one · on nothing → confirm and let go.
+///   · on another text → confirm, take that one · on nothing → confirm and
+///   let go.
 /// · A text by its BOX — the one order every box on the canvas keeps
 ///   ([boxPressAt], F-222): its cross → the cross is carried · a corner →
 ///   scale · a side edge (a box only) → its width · inside → move, or let
 ///   go where it went down, its letters · outside → another text if one is
 ///   there, else the turn, or let go where it went down.
+/// · A text by its LETTERS with Ctrl held, or a finger on the glass
+///   ([celTextHandWearsTheBox]): the row above, the letters staying held.
 ///
 /// 🗣️The cross's row is 유저's of 2026-10-07 (R9-rest-Q2 「끌어서 중심을
 /// 옮긴다」 — 「앵커포인트? 랑 같은 개념인거같은데 최대한 같은 법 쓰면서」):
@@ -95,7 +96,8 @@ CelTextPress? celTextPressAt(
   if (session == null) {
     return _takeOr(pressed, () => _EmptyPress(event, artwork));
   }
-  return scene.tool.hold == CelTextHold.letters
+  return scene.tool.hold == CelTextHold.letters &&
+          !celTextHandWearsTheBox(event.pointer)
       ? _pressWhileTyping(pressed, session)
       : _pressOnBox(pressed, session);
 }
@@ -125,13 +127,6 @@ CelTextPress? _pressWhileTyping(_Pressed pressed, CelTextSession session) {
   final artwork = pressed.artwork;
   final layout = session.shown.layout;
   if (layout.boxContains(artwork)) {
-    // 🗣️I-96 (유저 2026-10-12): 「편집중이던 뭐던 컨트롤 누르고 상자 이동
-    // 가능하도록. ae에도 있던 기능인거같은데」 — with it held the press is
-    // the box's, as it is with the text held by its box: dragged, it
-    // carries the text, and the letters stay held.
-    if (_carriesTheBox(pressed.event)) {
-      return _InsidePress(pressed.event, artwork, held: true);
-    }
     final at = layout.positionAt(artwork).offset;
     scene.tool.typeAt(TextSelection.collapsed(offset: at));
     return _LetterPress(pressed.event, base: at);
@@ -142,26 +137,34 @@ CelTextPress? _pressWhileTyping(_Pressed pressed, CelTextSession session) {
   });
 }
 
-/// Whether Ctrl is held — ⌘ on a Mac or an iPad, where Ctrl is ⌘
-/// (`canvasRotateHold`'s note) — or a finger rests on the glass beside
-/// [event], a tablet's Ctrl. Asked as the press goes down.
+/// Whether a text held by its letters is held by its box for as long as the
+/// hand says so: Ctrl — ⌘ on a Mac or an iPad, where Ctrl is ⌘
+/// (`canvasRotateHold`'s note) — or a finger resting on the glass beside
+/// [pointer], a tablet's Ctrl. What a press asks as it goes down, and what
+/// the chrome wears, so what is seen is what is grabbed.
+///
+/// 🗣️F-523 (유저 2026-11-01): 「컨트롤누를때 이동가능한거, 그게아니라 애초에
+/// 변형 가능한 상태로 진입하게 … 누른동안 꼭짓점에 사각형생기고 그런거」.
+/// ↩️I-96 (유저 2026-10-12: 「편집중이던 뭐던 컨트롤 누르고 상자 이동
+/// 가능하도록. ae에도 있던 기능인거같은데」) gave it the move alone. ⛔The hold
+/// itself stays the letters': [CelTextTool.stopTyping] at the key would close
+/// the visit and take the field away, and Ctrl+A or Ctrl+V with it.
 ///
 /// 🗣️I-96-Q3 (유저 2026-10-16, a): 「손가락도 — 늘 켜짐(변형 · 도형처럼)」 —
 /// no switch, as the transform handle's finger and the shape's have none.
 /// ⚠️Its cost was named with the answer: a palm on the glass while the pen
 /// picks letters carries the box instead.
-bool _carriesTheBox(PointerDownEvent event) {
-  return ModifierKeys.isControlOrCommandPressed ||
-      CanvasTouchContacts.aFingerDownBesides(event.pointer);
-}
+bool celTextHandWearsTheBox(int? pointer) =>
+    ModifierKeys.isControlOrCommandPressed ||
+    CanvasTouchContacts.aFingerDownBesides(pointer);
 
 /// How far the hand went on the cel, [from] → [to], for a press that
 /// MOVES something — the box, the cross: kept to one way while Shift is
 /// held (I-136, [TransformBoxLaw.oneWay]), asked at every move.
 ///
 /// ⚠️The KEY alone: a finger beside the press is the text's Ctrl already
-/// ([_carriesTheBox]), and one that carries the box rests on through the
-/// drag — read as Shift too, every carry by finger would keep to one way.
+/// ([celTextHandWearsTheBox]), and one that carries the box rests on through
+/// the drag — read as Shift too, every carry by finger would keep to one way.
 CanvasPoint _movedOnTheCel(Offset from, Offset to) {
   final travel = CanvasPoint(x: to.dx - from.dx, y: to.dy - from.dy);
   return ModifierKeys.isShiftPressed ? TransformBoxLaw.oneWay(travel) : travel;
@@ -189,6 +192,9 @@ CelTextPress? _pressOnBox(_Pressed pressed, CelTextSession session) {
   // middle of its BOX, 「항상 상자의 중심」, wherever the cross was carried;
   // the turn goes round the CROSS.
   final centre = layout.onCanvas.centre;
+  // What the field holds while the letters are held ([CelTextTool
+  // .contentInHand]): a box's edit is made on the letters typed.
+  final start = scene.tool.contentInHand!;
   return switch (hit?.press) {
     BoxPress.anchor => _CrossPress(
       event,
@@ -197,20 +203,20 @@ CelTextPress? _pressOnBox(_Pressed pressed, CelTextSession session) {
     ),
     BoxPress.handle when hit!.handle < _leadingEdgeHandle => _ScalePress(
       event,
-      start: session.content,
+      start: start,
       centre: centre,
       reach: _reachOf(scene, event.localPosition, centre),
     ),
     BoxPress.handle when hit!.handle < _leadingDepthHandle => _WidthPress(
       event,
       artwork,
-      start: session.content,
+      start: start,
       byLeadingEdge: hit.handle == _leadingEdgeHandle,
     ),
     BoxPress.handle => _DepthPress(
       event,
       artwork,
-      start: session.content,
+      start: start,
       lettersDepth: layout.lettersDepth,
       byLeadingEdge: hit!.handle == _leadingDepthHandle,
     ),
@@ -222,7 +228,7 @@ CelTextPress? _pressOnBox(_Pressed pressed, CelTextSession session) {
         scene.tool.confirm();
         return null;
       }
-      return _TurnPress(event, artwork, start: session.content, about: cross);
+      return _TurnPress(event, artwork, start: start, about: cross);
     }),
     // A row's position path is bent on its row's box (I-89 ④); a text's box
     // is handed no tangents.

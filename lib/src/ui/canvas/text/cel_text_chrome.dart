@@ -22,7 +22,9 @@ import 'cel_text_tool.dart';
 ///   필요」), its handles, and the cross it is turned about: in the middle
 ///   of the box until a hand carries it ([celTextCrossOf]);
 /// · HELD BY ITS LETTERS — the box, and in it the caret, the selected
-///   letters and the line under the ones being composed.
+///   letters and the line under the ones being composed — and over them
+///   what a text held by its box wears, for as long as the hand holds the
+///   box ([wearsTheBox]).
 ///
 /// And the box an empty drag is tracing.
 ///
@@ -46,6 +48,7 @@ class CelTextChromePainter extends CustomPainter with RepaintOnProps {
     required this.tracedBox,
     required this.caretLit,
     required this.color,
+    this.wearsTheBox = false,
     // ⚠️The cross is told of on a line of its own: carrying it draws this
     // again and wakes nobody else (`CelTextTool.carryCross`). So is the
     // text a hand carries (`CelTextTool.shownInHand`, F-344).
@@ -71,6 +74,10 @@ class CelTextChromePainter extends CustomPainter with RepaintOnProps {
   /// Whether the caret is in the lit half of its blink.
   final ValueListenable<bool> caretLit;
   final Color color;
+
+  /// Whether the hand holds the box of a text held by its letters
+  /// ([celTextHandWearsTheBox]).
+  final bool wearsTheBox;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -103,8 +110,9 @@ class CelTextChromePainter extends CustomPainter with RepaintOnProps {
       _paintLetters(canvas, layout, letters);
     }
     // A text held by its letters is typed into: nothing of it is sized or
-    // turned, so it wears neither the handles nor the cross.
-    final byBox = letters == null;
+    // turned, so it wears neither the handles nor the cross — until the
+    // hand takes the box.
+    final byBox = letters == null || wearsTheBox;
     _paintBox(
       canvas,
       layout.boxCorners,
@@ -218,5 +226,6 @@ class CelTextChromePainter extends CustomPainter with RepaintOnProps {
     tracedBox,
     ByIdentity(caretLit),
     color,
+    wearsTheBox,
   );
 }

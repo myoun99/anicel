@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HardwareKeyboard, KeyEvent;
 
 import '../../../models/app_input_settings.dart';
 import '../../../models/brush_frame_key.dart';
@@ -14,6 +15,7 @@ import '../../shortcuts/focused_text_field.dart';
 import '../../text/canvas_letter_faces.dart';
 import '../../theme/app_theme.dart';
 import '../canvas_press.dart';
+import '../canvas_touch_contacts.dart';
 import 'cel_text_chrome.dart';
 import 'cel_text_field.dart';
 import 'cel_text_press.dart';
@@ -109,6 +111,10 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
   final ValueNotifier<bool> _caretLit = ValueNotifier<bool>(true);
   Timer? _caretBlink;
 
+  /// Whether the hand holds the box of a text held by its letters
+  /// ([celTextHandWearsTheBox]), as it was last heard ([_askTheHand]).
+  bool _wearsTheBox = false;
+
   /// The texts the cel under the tool carried when this was last built —
   /// what a build is measured against, to say when they are others
   /// ([_tellOfTextsChanged]).
@@ -121,6 +127,9 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
     super.initState();
     _tool.addListener(_toolChanged);
     CanvasLetterFaces.changes.addListener(_facesChanged);
+    HardwareKeyboard.instance.addHandler(_heardKey);
+    CanvasTouchContacts.addAppWideTouchListener(_askTheHand);
+    CanvasTouchContacts.addAppWideLiftListener(_askTheHand);
     _syncField();
   }
 
@@ -201,6 +210,9 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
   void dispose() {
     _tool.removeListener(_toolChanged);
     CanvasLetterFaces.changes.removeListener(_facesChanged);
+    HardwareKeyboard.instance.removeHandler(_heardKey);
+    CanvasTouchContacts.removeAppWideTouchListener(_askTheHand);
+    CanvasTouchContacts.removeAppWideLiftListener(_askTheHand);
     _caretBlink?.cancel();
     _caretLit.dispose();
     _fieldFocus.dispose();
@@ -260,6 +272,26 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
           _fieldFocus.requestFocus();
         }
       });
+    }
+  }
+
+  /// A key [event] as the keyboard hears it (`HardwareKeyboard.addHandler`).
+  /// Always false — the key goes on to the field and the shortcuts.
+  bool _heardKey(KeyEvent event) {
+    _askTheHand();
+    return false;
+  }
+
+  /// Asks whether the hand holds the box. ⛔Not while a press is in flight:
+  /// the box it took hold of stays worn until it comes up ([_endPress]).
+  ///
+  /// ⚠️A pen's or a mouse's hover asks too: on Windows a pen hovering lets a
+  /// key go in the engine's record, and the real release after it is never
+  /// heard (I-61, `ModifierKeys`).
+  void _askTheHand() {
+    final worn = celTextHandWearsTheBox(null);
+    if (_following == null && worn != _wearsTheBox) {
+      setState(() => _wearsTheBox = worn);
     }
   }
 
@@ -371,6 +403,7 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
     setState(() {
       _following = null;
       _tracedBox = null;
+      _wearsTheBox = celTextHandWearsTheBox(null);
     });
     widget.onDragActive(false);
   }
@@ -408,12 +441,14 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
             // The caret's own cursor where a press would set letters; a
             // text held by its box is moved and sized, as a row's box is.
             cursor:
-                widget.wearsItsCursor && (session == null || letters != null)
+                widget.wearsItsCursor &&
+                    (session == null || (letters != null && !_wearsTheBox))
                 ? SystemMouseCursors.text
                 : MouseCursor.defer,
             child: Listener(
               key: const ValueKey<String>('cel-text-tool-layer'),
               behavior: HitTestBehavior.opaque,
+              onPointerHover: (_) => _askTheHand(),
               onPointerDown: _pointerDown,
               onPointerMove: _pointerMove,
               onPointerUp: _pointerUp,
@@ -428,6 +463,7 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
                   tracedBox: _tracedBox,
                   caretLit: _caretLit,
                   color: AppColors.accent,
+                  wearsTheBox: _wearsTheBox,
                 ),
                 child: const SizedBox.expand(),
               ),
