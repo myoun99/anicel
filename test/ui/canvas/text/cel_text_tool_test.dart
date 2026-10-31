@@ -330,6 +330,22 @@ void main() {
       expect(shownFor(tool, cel), isNull);
     });
 
+    test('landNow redraws the panel for what it lands, and for nothing with '
+        'nothing in hand — every door out of where you stand passes it', () {
+      final (:tool, :host, baker: _, :cel) = hand();
+      final idle = host.redrawn;
+
+      tool.landNow();
+
+      expect(host.redrawn, idle);
+
+      tool.beginText(cel, at);
+      final held = host.redrawn;
+      tool.landNow();
+
+      expect(host.redrawn, greaterThan(held));
+    });
+
     test('landNow lands what is SHOWN, at once, and gives the last want '
         'up: the engine\'s late answer changes nothing', () async {
       final (:tool, :host, :baker, :cel) = hand();
