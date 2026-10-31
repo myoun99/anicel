@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:anicel/src/services/resample/resample_kernel.dart';
@@ -63,8 +64,52 @@ Uint8List coverageTruth({
   // same `(s + 0.5) / samples` it was formed as per sample.
   final centres = [for (var s = 0; s < samples; s += 1) (s + 0.5) / samples];
 
+  /// The colour every sample of pixel ([x], [y]) lands on, where the box
+  /// round its four corner samples holds one colour — an affine map keeps
+  /// the rest inside them, so the vote would come out the same at no count.
+  /// 📏On a drawing most pixels are paper: the sweep's 59 seconds were
+  /// mostly these, each with a thousand samples to say one thing.
+  int? oneColourUnder(int x, int y) {
+    if (!t.isAffine) {
+      return null;
+    }
+    final near = centres.first;
+    final far = centres.last;
+    final ax = t.a * near;
+    final bx = t.a * far;
+    final cx = t.b * near;
+    final dx = t.b * far;
+    final ay = t.d * near;
+    final by = t.d * far;
+    final cy = t.e * near;
+    final dy = t.e * far;
+    final u = t.a * x + t.b * y + t.c - 0.5;
+    final v = t.d * x + t.e * y + t.f - 0.5;
+    final left = (u + math.min(ax, bx) + math.min(cx, dx)).round();
+    final right = (u + math.max(ax, bx) + math.max(cx, dx)).round();
+    final top = (v + math.min(ay, by) + math.min(cy, dy)).round();
+    final bottom = (v + math.max(ay, by) + math.max(cy, dy)).round();
+    if (left < 0 || top < 0 || right >= srcWidth || bottom >= srcHeight) {
+      return null;
+    }
+    final colour = srcWords[top * srcWidth + left];
+    for (var iy = top; iy <= bottom; iy += 1) {
+      for (var ix = left; ix <= right; ix += 1) {
+        if (srcWords[iy * srcWidth + ix] != colour) {
+          return null;
+        }
+      }
+    }
+    return colour;
+  }
+
   for (var y = 0; y < dstHeight; y += 1) {
     for (var x = 0; x < dstWidth; x += 1) {
+      final colour = oneColourUnder(x, y);
+      if (colour != null) {
+        dstWords[y * dstWidth + x] = colour;
+        continue;
+      }
       tokens.clear();
       counts.clear();
       // A sample mostly lands where the one before it did, so the colour it
