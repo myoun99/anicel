@@ -120,6 +120,59 @@ void main() {
     expect(turned.y, closeTo(5 * 0.647, 0.3));
   });
 
+  test('🚨whichever way it goes', () {
+    final line = _line();
+    late CanvasPoint pen;
+    for (var i = 1; i <= 60; i += 1) {
+      pen = CanvasPoint(x: -720.0 * i / 240, y: 960.0 * i / 240);
+      line.follow(pen, _rest, at: _sample * i);
+    }
+
+    expect(line.brush.position.x, closeTo(pen.x, 0.02));
+    expect(line.brush.position.y, closeTo(pen.y, 0.02));
+  });
+
+  test('🚨a pen standing on the line reads what it read', () {
+    final line = _line();
+    _go(line, 1200);
+    final pen = line.brush.position;
+    line.follow(pen, _rest, at: _sample * 61);
+    final stood = line.follow(pen, _rest, at: _sample * 62).last;
+
+    expect(stood.position, pen);
+    expect(stood.readings.pressure, _rest.pressure);
+  });
+
+  test('🚨a corner kept is gone through, whatever is level with the pen', () {
+    final line = StrokeStabilizer(
+      lagAt: (_) => const Duration(milliseconds: 60),
+      acrossOnly: _floor,
+      keepsCorners: true,
+      start: (position: CanvasPoint(x: 0, y: 0), readings: _rest),
+      at: Duration.zero,
+    );
+    final way = <CanvasPoint>[];
+    for (var i = 1; i <= 40; i += 1) {
+      way.addAll(
+        line
+            .follow(CanvasPoint(x: i * 5.0, y: 0), _rest, at: _sample * i)
+            .map((point) => point.position),
+      );
+    }
+    for (var i = 1; i <= 40; i += 1) {
+      way.addAll(
+        line
+            .follow(CanvasPoint(x: 200, y: i * 5.0), _rest, at: _sample * (40 + i))
+            .map((point) => point.position),
+      );
+    }
+
+    expect(
+      way.map((point) => point.distanceTo(CanvasPoint(x: 200, y: 0))),
+      contains(closeTo(0, 0.5)),
+    );
+  });
+
   test('samples that share a clock tell no way', () {
     final line = _line();
     final moved = line.follow(

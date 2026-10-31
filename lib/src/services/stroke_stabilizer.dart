@@ -187,7 +187,7 @@ class StrokeStabilizer {
     final dx = _pen.position.x - _brush.position.x;
     final dy = _pen.position.y - _brush.position.y;
     final left = math.sqrt(dx * dx + dy * dy);
-    if (acrossOnly == Duration.zero || speed == 0 || left == 0) {
+    if (speed == 0 || left == 0) {
       return;
     }
     final micros = elapsed.inMicroseconds;
