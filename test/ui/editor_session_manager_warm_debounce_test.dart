@@ -295,21 +295,6 @@ void main() {
       expect(started(), 0);
     });
 
-    test('two changes in one turn start it over once', () async {
-      final session = aSession();
-      await aTurn();
-      final started = walks(session);
-
-      session.opacityVerbs.setLayerOpacity(
-        layerId: const LayerId('layer'),
-        opacity: 0.5,
-      );
-      session.layerSwitches.toggleLayerVisibility(const LayerId('layer'));
-      await aTurn();
-
-      expect(started(), 1);
-    });
-
     test('a slider in flight only asks the walk to stand back: nothing is '
         'written until it lands', () async {
       final session = aSession();

@@ -346,9 +346,6 @@ class RenderCaches {
     });
   }
 
-  /// Owed since a history change, until the one who changed it is done.
-  bool _walkOwed = false;
-
   /// Whether a history change starts the walk over ([framesMoved]) — the
   /// app's way, and a test's that asks. ⛔Off by itself under a test's clock:
   /// the quiet a walk waits for is nothing there
@@ -376,12 +373,10 @@ class RenderCaches {
   /// left by the last command of a test outlives its turn.
   void framesMoved() {
     _onEditActivity();
-    if (_walkOwed || !walkFollowsHistory) {
+    if (!walkFollowsHistory) {
       return;
     }
-    _walkOwed = true;
     scheduleMicrotask(() {
-      _walkOwed = false;
       if (!_sessionDisposed()) {
         _changes.warmActiveCut();
       }
