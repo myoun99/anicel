@@ -230,42 +230,45 @@ void main() {
         sheet: 'timesheet',
       );
 
-      final form = CutEnvelopePresets.all.first;
-      final envelope = CutEnvelopeLayout.fit(
-        form: form,
-        paperWidth: 1920,
-        paperHeight: 1920 / form.aspectRatio,
-      );
-      final sheet = onScreen(
-        Rect.fromLTWH(0, 0, envelope.paperWidth, envelope.paperHeight),
-        through: view,
-        ratio: ratio,
-      );
-      final room = Size(sheet.right + 16, sheet.bottom + 16).ceilToSize();
-      final paper = Color(form.paperArgb);
-      expectCutOnTheGrid(
-        await rasterize(
-          CutEnvelopePainter(
-            layout: envelope,
-            source: const CutEnvelopeSource(),
-            face: const TextStyle(),
-            viewport: view,
-            effectiveRatio: ratio,
-            layers: layers,
-          ),
-          room / ratio,
+      // Every form: an edge a whole canvas unit happens to round to the same
+      // device pixel is cut alike under either ratio, and passes on nothing.
+      for (final form in CutEnvelopePresets.all) {
+        final envelope = CutEnvelopeLayout.fit(
+          form: form,
+          paperWidth: 1920,
+          paperHeight: 1920 / form.aspectRatio,
+        );
+        final sheet = onScreen(
+          Rect.fromLTWH(0, 0, envelope.paperWidth, envelope.paperHeight),
+          through: view,
           ratio: ratio,
-        ),
-        room,
-        page: sheet,
-        paper: [
-          (paper.r * 255).round(),
-          (paper.g * 255).round(),
-          (paper.b * 255).round(),
-          (paper.a * 255).round(),
-        ],
-        sheet: 'envelope ${form.id}',
-      );
+        );
+        final room = Size(sheet.right + 16, sheet.bottom + 16).ceilToSize();
+        final paper = Color(form.paperArgb);
+        expectCutOnTheGrid(
+          await rasterize(
+            CutEnvelopePainter(
+              layout: envelope,
+              source: const CutEnvelopeSource(),
+              face: const TextStyle(),
+              viewport: view,
+              effectiveRatio: ratio,
+              layers: layers,
+            ),
+            room / ratio,
+            ratio: ratio,
+          ),
+          room,
+          page: sheet,
+          paper: [
+            (paper.r * 255).round(),
+            (paper.g * 255).round(),
+            (paper.b * 255).round(),
+            (paper.a * 255).round(),
+          ],
+          sheet: 'envelope ${form.id}',
+        );
+      }
     });
   });
 
