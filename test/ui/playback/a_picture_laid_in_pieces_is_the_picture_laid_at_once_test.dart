@@ -255,6 +255,16 @@ void main() {
         ],
       ),
     ],
+    // Far enough to reduce what it reads (`blurReductionCell`).
+    'a row blurred far': () => [
+      drawing('under'),
+      drawing(
+        'over',
+        effects: [
+          effect(EffectKind.blur, {'blurriness': 40}),
+        ],
+      ),
+    ],
     'a folder blurred': () => [
       drawing('under'),
       drawing('in', folder: 'f'),
