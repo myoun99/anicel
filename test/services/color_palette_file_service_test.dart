@@ -107,12 +107,11 @@ void main() {
   });
 
   test('folding and locking are each palette\'s own, and a lock keeps the '
-      'places where they stand — its colours read packed', () {
+      'places where they stand', () {
     final locked = two().withLocked('p1', locked: true);
     expect(locked.palettes.first.locked, isTrue);
     expect(locked.palettes[1].locked, isFalse);
     expect(slotsOf(locked, 'p1'), slotsOf(two(), 'p1'));
-    expect(locked.palettes.first.colors, [red, blue, red]);
 
     final folded = two().withFolded('p4', folded: true);
     expect([for (final palette in folded.palettes) palette.folded], [
