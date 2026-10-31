@@ -145,18 +145,23 @@ class FramePicture extends ChangeNotifier {
 /// laid whole once ([lay]), then patched where it stands ([patch]), let go
 /// of by the playback budget's one order ([enforceBudget]).
 class FramePictureStore<K extends Object> {
-  /// [pieceSide] is for tests, to lay a small picture a piece at a time
-  /// ([_layNow]); the app lays every picture by [framePictureSide].
+  /// [onceSide] and [pieceSide] are for tests, to lay a small picture a
+  /// piece at a time ([_layNow]); the app lays every picture by
+  /// [framePictureSide] and [framePieceSide].
   FramePictureStore({
     FramePictureGpu? gpu,
-    int pieceSide = framePictureSide,
+    int onceSide = framePictureSide,
+    int pieceSide = framePieceSide,
   }) : _gpu = gpu ?? FlutterGpuFramePictures(),
+       _onceSide = onceSide,
        _pieceSide = pieceSide;
 
   final FramePictureGpu _gpu;
 
-  /// The longest side a picture is laid at once, and the side of the
-  /// pieces of one past it ([_layNow]).
+  /// The longest side a picture is laid at once ([_layNow]).
+  final int _onceSide;
+
+  /// The side of the pieces of a picture past [_onceSide].
   final int _pieceSide;
 
   final Map<K, _Entry<K>> _entries = {};
@@ -459,17 +464,19 @@ class FramePictureStore<K extends Object> {
   ///
   /// ⛔Not at a lower resolution: 유저 「해상도로 속도를 사지 않는다」.
   ///
-  /// A picture of one piece is rastered at once, its chain the engine's;
-  /// so is one where no texture can be made ([FramePictureGpu.allocate]),
-  /// as it was. ⛔Not every picture in pieces: where one fits, at once is
-  /// cheaper ([framePictureSide]).
+  /// A picture inside [_onceSide] is rastered at once, its chain the
+  /// engine's; so is one where no texture can be made
+  /// ([FramePictureGpu.allocate]), as it was. ⛔Not every picture in pieces:
+  /// where one fits, at once is cheaper ([framePictureSide]).
   Future<FramePicture?> _layNow(_Lay<K> lay) async {
     final (:extent, :patchedLevels) = _shapeOf(lay.frame.extent);
     if (extent.isEmpty) {
       return null;
     }
     assert(_pieceSide % (1 << patchedLevels) == 0, 'a piece off the grid');
-    final pieces = piecesOver(extent, side: _pieceSide);
+    final pieces = extent.longestSide <= _onceSide
+        ? [extent]
+        : piecesOver(extent, side: _pieceSide);
     final allocated = pieces.length == 1
         ? null
         : _gpu.allocate(extent.width.toInt(), extent.height.toInt());
@@ -1077,10 +1084,7 @@ int _patchedLevelsFor(int width, int height) {
 
 const int _wholeLevelSide = 256;
 
-/// The longest side a picture is laid at once, and the side of the pieces
-/// of one past it ([FramePictureStore._layNow]): a multiple of the deepest
-/// patched level's texel at any picture a GPU takes, so every piece is a
-/// patch's shape.
+/// The longest side a picture is laid at once ([FramePictureStore._layNow]).
 ///
 /// 🔬A piece's levels under the base are written through `flutter_gpu`
 /// ([FramePictureStore._written] — halvings rastered, then copied out of
@@ -1089,11 +1093,17 @@ const int _wholeLevelSide = 256;
 /// Surface Pro 11, release, the frames' order in turn, 2026-10-31 — the
 /// first jump of the ruler after the onion is switched on, to the screen:
 /// S5_BA cut 352 with every row visible (2944 x 1792), at once 74–151 ms,
-/// in pieces of 512 300–348 ms (2048: 123–271); a 3840² cut's ink to the
-/// pasteboard's end (11520 x 3968), at once never within 2.5 s, in pieces
-/// of 4096 125–454 ms (1024: 51–75; 512: 75–100). ⚠️Laying at once up to
-/// one side and in smaller pieces past it is two sides, not measured yet.
+/// in pieces of 512 300–348 ms (2048: 123–271).
 const int framePictureSide = 4096;
+
+/// The side of the pieces of a picture past [framePictureSide]
+/// ([FramePictureStore._layNow]): a multiple of the deepest patched level's
+/// texel at any picture a GPU takes, so every piece is a patch's shape.
+///
+/// 🔬As for [framePictureSide], a 3840² cut's ink to the pasteboard's end
+/// (11520 x 3968): at once never within 2.5 s, in pieces of 4096
+/// 125–454 ms, of 1024 51–75, of 512 75–100.
+const int framePieceSide = 1024;
 
 /// The texels of the pieces one write takes ([FramePictureStore._written]).
 const int _batchTexels = 1 << 20;

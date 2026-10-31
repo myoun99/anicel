@@ -118,7 +118,10 @@ void main() {
     });
     final images = LayerFrameImageCache(frameStore: cels);
     addTearDown(images.dispose);
-    final store = FramePictureStore<FramePictureKey>(pieceSide: 512);
+    final store = FramePictureStore<FramePictureKey>(
+      onceSide: 512,
+      pieceSide: 512,
+    );
     addTearDown(store.dispose);
     final run = runOver(
       images,

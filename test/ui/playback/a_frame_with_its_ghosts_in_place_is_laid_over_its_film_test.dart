@@ -180,7 +180,10 @@ void main() {
   FramePictures besideThe(EditorSessionManager session) {
     final its = session.playbackRig.framePictures;
     // Pieces of 512, so a page of 640 is laid in two.
-    final store = FramePictureStore<FramePictureKey>(pieceSide: 512);
+    final store = FramePictureStore<FramePictureKey>(
+      onceSide: 512,
+      pieceSide: 512,
+    );
     final pictures = FramePictures(
       store: store,
       layerImages: its.layerImages,

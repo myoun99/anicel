@@ -322,7 +322,7 @@ void main() {
         }
       }
 
-      final store = FramePictureStore<String>(pieceSide: 512);
+      final store = FramePictureStore<String>(onceSide: 512, pieceSide: 512);
       final laid = await store.lay('a', (
         extent: extent,
         outside: const ui.Color(0x00000000),
