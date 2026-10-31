@@ -14,7 +14,6 @@ import '../../services/playback/frame_demand.dart';
 import '../canvas/canvas_layer_stack_view.dart';
 import '../canvas/composite_tree_paint.dart' show BelowThePen;
 import '../canvas/display_resample.dart' show rectOutwardOnGrid;
-import '../canvas/fx_plugin_stages.dart' show FxPluginStages;
 import '../canvas/subtree_image_composite.dart'
     show HeldSubtreeRasters, blurReductionCell;
 import '../quiet_turns.dart';
@@ -806,9 +805,7 @@ ui.Rect _onTheCells(ui.Rect place, ui.Rect extent) {
 /// [drawing], [key]'s nodes held first: [holding] — the same frame, drawn
 /// to keep them — drawn whole into nothing ([HeldSubtreeRasters.holdOnly])
 /// where its lay first draws, and noted so ([HeldSubtreeRasters.heldAllOf])
-/// — not where the store hands back a picture there already. Drawn so
-/// again until a drawing meets every plugin's step run
-/// ([FxPluginStages.unrun]): a raster with one drawn as if off is not kept.
+/// — not where the store hands back a picture there already.
 ///
 /// 🚨ONCE A LAY, NOT A PIECE: the store draws the frame a piece at a time
 /// ([FramePictureStore.lay]), and drawn to hold at each piece, each let go
@@ -825,12 +822,11 @@ FrameDrawing _heldFirst(
     outside: drawing.outside,
     draw: (canvas) {
       if (!heldAll) {
-        final unrun = FxPluginStages.unrun;
         final recorder = ui.PictureRecorder();
         holding.draw(ui.Canvas(recorder));
         recorder.endRecording().dispose();
         held.heldAllOf(key);
-        heldAll = FxPluginStages.unrun == unrun;
+        heldAll = true;
       }
       drawing.draw(canvas);
     },

@@ -11,6 +11,7 @@ import '../../services/playback/let_go_wanted_latest.dart';
 import '../canvas/display_resample.dart'
     show frameGridOutward, wholeLevelPixelsOutward;
 import '../canvas/fx_plugin_stages.dart';
+import '../canvas/image_pieces.dart' show piecesOver;
 import '../debug/input_inspector.dart' show InputInspector;
 import 'frame_picture_gpu.dart';
 
@@ -408,7 +409,7 @@ class FramePictureStore<K extends Object> {
       return null;
     }
     assert(_pieceSide % (1 << patchedLevels) == 0, 'a piece off the grid');
-    final pieces = _piecesOf(extent);
+    final pieces = piecesOver(extent, side: _pieceSide);
     final allocated = pieces.length == 1
         ? null
         : _gpu.allocate(extent.width.toInt(), extent.height.toInt());
@@ -899,20 +900,6 @@ const int _pieceSide = 512;
 
 /// The texels of the pieces one write takes ([FramePictureStore._written]).
 const int _batchTexels = 1 << 20;
-
-/// The pieces a picture over [extent] is laid in: [_pieceSide] squares
-/// from its top left, row after row, the last of each row and column what
-/// is left of it.
-List<ui.Rect> _piecesOf(ui.Rect extent) => [
-  for (var top = extent.top; top < extent.bottom; top += _pieceSide)
-    for (var left = extent.left; left < extent.right; left += _pieceSide)
-      ui.Rect.fromLTRB(
-        left,
-        top,
-        math.min(left + _pieceSide, extent.right),
-        math.min(top + _pieceSide, extent.bottom),
-      ),
-];
 
 /// Where the picture a store lays of a frame drawn over [extent] lies
 /// ([FramePicture.extent]) — what it weighs before it is made.
