@@ -230,13 +230,14 @@ void main() {
         sheet: 'timesheet',
       );
 
-      // Every form: an edge a whole canvas unit happens to round to the same
-      // device pixel is cut alike under either ratio, and passes on nothing.
+      // 1925: the right edge stands at 723.58 units, 1085.4 pixels — cut on
+      // units it lands a pixel out, at 1086. At most widths the two round
+      // alike, and the sheet passes on nothing.
       for (final form in CutEnvelopePresets.all) {
         final envelope = CutEnvelopeLayout.fit(
           form: form,
-          paperWidth: 1920,
-          paperHeight: 1920 / form.aspectRatio,
+          paperWidth: 1925,
+          paperHeight: 1925 / form.aspectRatio,
         );
         final sheet = onScreen(
           Rect.fromLTWH(0, 0, envelope.paperWidth, envelope.paperHeight),
