@@ -37,6 +37,8 @@ import 'timeline/layer_row_drag.dart'
     show TimelineRowDragHooks, timelineRowAddressOfDragSubject;
 import 'timeline/timeline_cel_content_source.dart';
 import 'timeline/timeline_current_row.dart';
+import 'timeline/timeline_ruler_cursor_overlay.dart'
+    show ReadyRunsOfTheDocument;
 import 'timeline/timeline_cut_end_handle.dart';
 import 'timeline/timeline_grid_hooks.dart' show TimelineRowMemoAux;
 import 'timeline/instance_editor_commands.dart';
@@ -174,6 +176,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     _session.playbackRig.prerenderScheduler.progress,
     _session.renderCaches.brushFrameStore.celPixelRevision,
   ]);
+
+  late final ReadyRunsOfTheDocument _readyRuns = ReadyRunsOfTheDocument(
+    _session.playbackRig.playbackCache.playbackReadyRuns,
+  );
 
   /// P2b: the rail row IS the handle. Pen and mouse move it; a finger
   /// scrolls, because the rail scrolls along the very axis this drag runs.
@@ -528,8 +534,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             playbackFrame:
                 _session.playbackRig.playback.globalFrameIndexListenable,
             stepsUntilShown: _stepsUntilShown,
-            readyRunsIn:
-                _session.playbackRig.playbackCache.playbackReadyRuns,
+            readyRunsIn: _readyRuns.of(
+              _session.repository.requireProject(),
+              _session.activeCutId,
+            ),
             playbackFrameCount:
                 _session.activeCutSpan.activeCutPlaybackFrameCount,
             // The のりしろ: how far past the cut's end line it is DRAWN, and

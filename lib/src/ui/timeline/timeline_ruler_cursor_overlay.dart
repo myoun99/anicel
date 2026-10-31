@@ -27,6 +27,35 @@ typedef ReadyRun = ({int startIndex, int endIndexExclusive, bool unreadable});
 /// out to ten minutes a window is ~15,000 frames (I-22).
 typedef ReadyRunsIn = List<ReadyRun> Function(int start, int endExclusive);
 
+/// A host's [ReadyRunsIn], one function while the document it reads stands:
+/// another function is how a rebuild tells the strip the answer may have
+/// moved ([TimelineRulerCursorOverlay]), and a rebuild that moved nothing of
+/// it — a row sweep's, which are most of them — tells it nothing.
+///
+/// 🚨F-26: a host rebuilds for what it shows, and the selection is shown. A
+/// sweep over the rail read how ready the whole cut is at every row it
+/// crossed: 525ms of a 1,966ms sample on S5 cut 352 (68 rows, debug), the
+/// largest single thing a selection did, for a bar it cannot change.
+class ReadyRunsOfTheDocument {
+  ReadyRunsOfTheDocument(this._read);
+
+  final ReadyRunsIn _read;
+  ReadyRunsIn? _standing;
+  Object? _project;
+  Object? _cut;
+
+  /// The function for [project], immutable, as the host's [cut] stands in it.
+  ReadyRunsIn of(Object project, Object? cut) {
+    final standing = _standing;
+    if (standing != null && identical(project, _project) && cut == _cut) {
+      return standing;
+    }
+    _project = project;
+    _cut = cut;
+    return _standing = (start, end) => _read(start, end);
+  }
+}
+
 /// A frame ruler's MOVING layer: the current-frame tint and the green
 /// cached-range bar, painted OVER the static header cells and driven by
 /// [CustomPainter.repaint] — so a playhead tick, a warming frame or a cel
@@ -248,6 +277,7 @@ class _TimelineRulerCursorOverlayState
     extends State<TimelineRulerCursorOverlay> {
   late final _ReadyRunsGate _gate = _ReadyRunsGate(() => _painter);
   late TimelineRulerCursorOverlayPainter _painter;
+  Widget? _built;
 
   @override
   void initState() {
@@ -273,9 +303,7 @@ class _TimelineRulerCursorOverlayState
 
   @override
   Widget build(BuildContext context) {
-    // A rebuild may hand the strip another answer: read it anew.
-    _gate.forget();
-    _painter = TimelineRulerCursorOverlayPainter(
+    final painter = TimelineRulerCursorOverlayPainter(
       playhead: widget.playhead,
       repaintSignal: _gate,
       windowBucket: widget.windowBucket,
@@ -287,12 +315,22 @@ class _TimelineRulerCursorOverlayState
       onPaintedRuns: _gate.drew,
       runsToDraw: _gate.runsToDraw,
     );
-    return IgnorePointer(
+    // The same strip handed back whole: a new child round the same inputs
+    // would lay its layer out and paint it ([TickLayer]), and that paint
+    // reads, for a host that rebuilt for something else.
+    final built = _built;
+    if (built != null && !painter.shouldRepaint(_painter)) {
+      return built;
+    }
+    // A rebuild handed the strip another answer: read it anew.
+    _gate.forget();
+    _painter = painter;
+    return _built = IgnorePointer(
       // What a tick moves, on the one layer every tick rides (I-22 ③).
       child: TickLayer(
         child: CustomPaint(
           key: ValueKey<String>(widget.keyValue),
-          painter: _painter,
+          painter: painter,
         ),
       ),
     );
