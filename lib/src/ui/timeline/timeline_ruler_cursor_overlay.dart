@@ -61,16 +61,23 @@ class ReadyRunsOfTheDocument {
   final ReadyRunsIn _read;
   ReadyRunsIn? _standing;
   Object? _project;
-  Object? _cut;
+  Object? _frames;
 
-  /// The function for [project], immutable, as the host's [cut] stands in it.
-  ReadyRunsIn of(Object project, Object? cut) {
+  /// The function for [project], immutable, and for whose [frames] the
+  /// host's bar answers: a cut's on the timeline, a track's on the film.
+  ///
+  /// 🚨I-22: not the film's active cut. A scrub crosses the cuts of a track
+  /// and the film's bar walks all of them whichever stands: 109ms of the
+  /// 2,475ms sixteen presses on its ruler took (S5 cut 352, debug).
+  ReadyRunsIn of(Object project, Object? frames) {
     final standing = _standing;
-    if (standing != null && identical(project, _project) && cut == _cut) {
+    if (standing != null &&
+        identical(project, _project) &&
+        frames == _frames) {
       return standing;
     }
     _project = project;
-    _cut = cut;
+    _frames = frames;
     // A new function is the news: a tear-off of [_read] would compare equal.
     // ignore: unnecessary_lambdas
     return _standing = (start, end) => _read(start, end);

@@ -106,7 +106,27 @@ void main() {
       expect(reads, [(2, 5)], reason: 'and it is the host\'s own read');
     });
 
-    Project twoCuts() => Project(
+    Cut cutOf(String id) => Cut(
+      id: CutId(id),
+      name: id,
+      duration: 12,
+      canvasSize: const CanvasSize(width: 640, height: 360),
+      camera: CutCamera.empty(),
+      layers: [
+        Layer(
+          id: LayerId('$id-a'),
+          name: 'A',
+          frames: const [],
+        ),
+        Layer(
+          id: LayerId('$id-b'),
+          name: 'B',
+          frames: const [],
+        ),
+      ],
+    );
+
+    Project twoTracks() => Project(
       id: const ProjectId('ready'),
       name: 'Ready',
       createdAt: DateTime.utc(2026, 10, 31),
@@ -114,28 +134,12 @@ void main() {
         Track(
           id: const TrackId('t'),
           name: 'V',
-          cuts: [
-            for (final id in const ['one', 'two'])
-              Cut(
-                id: CutId(id),
-                name: id,
-                duration: 12,
-                canvasSize: const CanvasSize(width: 640, height: 360),
-                camera: CutCamera.empty(),
-                layers: [
-                  Layer(
-                    id: LayerId('$id-a'),
-                    name: 'A',
-                    frames: const [],
-                  ),
-                  Layer(
-                    id: LayerId('$id-b'),
-                    name: 'B',
-                    frames: const [],
-                  ),
-                ],
-              ),
-          ],
+          cuts: [cutOf('one'), cutOf('two')],
+        ),
+        Track(
+          id: const TrackId('u'),
+          name: 'V2',
+          cuts: [cutOf('three')],
         ),
       ],
     );
@@ -163,18 +167,26 @@ void main() {
           tapKey(tester, 'timeline-mode-storyboard-button'),
     };
 
+    Future<EditorSessionManager> stand(
+      WidgetTester tester,
+      Future<void> Function(WidgetTester) enter,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(initialProject: twoTracks())),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await enter(tester);
+      return sessionOf(tester);
+    }
+
     for (final MapEntry(key: surface, value: enter) in surfaces.entries) {
-      testWidgets('on $surface a selection keeps it, an edit and another '
-          'cut do not', (tester) async {
-        await tester.binding.setSurfaceSize(const Size(1280, 1200));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
-        await tester.pumpWidget(
-          MaterialApp(home: HomePage(initialProject: twoCuts())),
-        );
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 300));
-        await enter(tester);
-        final session = sessionOf(tester);
+      testWidgets('on $surface a selection keeps it, an edit does not', (
+        tester,
+      ) async {
+        final session = await stand(tester, enter);
         final before = answer(tester);
 
         session.rowSelection.value = const [
@@ -190,21 +202,51 @@ void main() {
 
         session.layerSwitches.setAllLayersVisibility(false);
         await tester.pump();
-        final edited = answer(tester);
         expect(
-          identical(edited, before),
+          identical(answer(tester), before),
           isFalse,
           reason: 'an edit may have — the document says so',
         );
+      });
+    }
+
+    for (final surface in const ['the timeline', 'the x-sheet']) {
+      testWidgets('on $surface another cut does not keep it', (tester) async {
+        final session = await stand(tester, surfaces[surface]!);
+        final before = answer(tester);
 
         session.selectCut(const CutId('two'));
         await tester.pump();
         expect(
-          identical(answer(tester), edited),
+          identical(answer(tester), before),
           isFalse,
           reason: 'another cut answers for its own frames',
         );
       });
     }
+
+    testWidgets('on the storyboard another cut of the track keeps it, '
+        'another track does not', (tester) async {
+      final session = await stand(tester, surfaces['the storyboard']!);
+      final before = answer(tester);
+
+      session.selectCut(const CutId('two'));
+      await tester.pump();
+      expect(session.activeCutId, const CutId('two'));
+      expect(
+        identical(answer(tester), before),
+        isTrue,
+        reason: 'the film\'s bar walks the track whichever cut stands',
+      );
+
+      session.selectCut(const CutId('three'));
+      await tester.pump();
+      expect(session.selectedTrackId, const TrackId('u'));
+      expect(
+        identical(answer(tester), before),
+        isFalse,
+        reason: 'another track is other frames',
+      );
+    });
   });
 }

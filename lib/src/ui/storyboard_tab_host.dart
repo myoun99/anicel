@@ -952,7 +952,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onScrubEnd: () => commitStoryboardScrub(_session),
                     readyRunsIn: _readyRuns.of(
                       _session.repository.requireProject(),
-                      _session.activeCutId,
+                      _session.selectedTrackId,
                     ),
                     thumbnails: widget.thumbnails,
                     audioPeaksFor: _session.voiceRecording.audioPeaksForDisplay,
