@@ -22,18 +22,19 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
-import 'package:anicel/src/models/layer_effect.dart';
-import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pixel_clipboard_verb.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
+import 'package:anicel/src/models/transform_pose.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -170,17 +171,19 @@ void main() {
     ];
   }
 
-  /// [project] with its rows `a` and `b` in a folder that blurs them — a
-  /// spreading effect, so a change of theirs cannot be told by where it
+  /// [project] with its row `b` turned 30° about the page's centre — a pose
+  /// that leaves the axes, so a change of its cannot be told by where it
   /// lands.
-  Project underABlurredFolder(Project project) {
-    const folder = LayerId('folder');
+  Project withRowBTurned(Project project) {
     final track = project.tracks.first;
     final cut = track.cuts.first;
-    final blur = LayerEffect.defaults(
-      id: const EffectId('blur'),
-      kind: EffectKind.blur,
-    ).copyWith(parameters: {'blurriness': EffectParameter(value: 2)});
+    final pose = TransformPose(
+      center: CanvasPoint(
+        x: cut.canvasSize.width / 2,
+        y: cut.canvasSize.height / 2,
+      ),
+      rotationDegrees: 30,
+    );
     return project.copyWith(
       tracks: [
         track.copyWith(
@@ -188,14 +191,10 @@ void main() {
             cut.copyWith(
               layers: [
                 for (final layer in cut.layers)
-                  if (layer.id.value == 'a') ...[
-                    layer.copyWith(folderId: folder),
-                    createFolderLayer(
-                      id: folder,
-                      name: 'F',
-                    ).copyWith(effects: [blur]),
-                  ] else if (layer.id.value == 'b')
-                    layer.copyWith(folderId: folder)
+                  if (layer.id.value == 'b')
+                    layer.copyWith(
+                      transformTrack: TransformTrack(keyframes: {0: pose}),
+                    )
                   else
                     layer,
               ],
@@ -363,13 +362,21 @@ void main() {
     );
   });
 
-  testWidgets('nor of the picture\'s edge: under a blurred folder, where a '
-      'change cannot be told by where it lands, a paste stays once you leave '
-      'the frame and come back', (tester) async {
-    final s = await up(tester, project: underABlurredFolder(fixture()));
+  testWidgets('nor of the picture\'s edge: on a turned row, where a change '
+      'cannot be told by where it lands, a paste inside the page stays once '
+      'you leave the frame and come back', (tester) async {
+    final s = await up(tester, project: withRowBTurned(fixture()));
+    final page = s.requireActiveCut.canvasSize;
+    final middleX = page.width / 2;
+    final middleY = page.height / 2;
     s.selectFrameIndex(1);
     await settle(tester);
-    paintTile(s, 'a1', TileCoord(x: 0, y: 0), red);
+    paintTile(
+      s,
+      'a1',
+      TileCoord(x: middleX ~/ 128, y: middleY ~/ 128),
+      red,
+    );
     await settle(tester);
     s.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.copy);
     s.selectFrameIndex(0);
@@ -383,9 +390,10 @@ void main() {
     s.selectFrameIndex(0);
     await settle(tester);
 
+    // The row turns about the page's middle, which stays where it is.
     expect(
-      (await pictureAt(tester, 64, 64))?.first,
-      greaterThan(200),
+      await pictureAt(tester, middleX, middleY),
+      red,
       reason: '↩️the frame\'s key held the picture that never had it',
     );
   });
