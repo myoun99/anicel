@@ -51,7 +51,8 @@ void main() {
   ];
 
   testWidgets('the line runs behind a quick pen; switched off, nothing '
-      'steadies it — and Clip Studio\'s 0 is still a little behind', (
+      'steadies it — and Clip Studio\'s 0 steadies it only across its way, '
+      'level with the pen along it (F-512-Q4)', (
     tester,
   ) async {
     final steadied = await _draw(tester, straight, stabilization: 100);
@@ -61,8 +62,7 @@ void main() {
     expect(_reach(plain.beforeLift), closeTo(160, 1));
 
     final atZero = await _draw(tester, straight, stabilization: 0);
-    expect(_reach(atZero.beforeLift), lessThan(159));
-    expect(_reach(atZero.beforeLift), greaterThan(150));
+    expect(_reach(atZero.beforeLift), closeTo(160, 1));
   });
 
   testWidgets('the pen lifts and the line goes to where it lifted '

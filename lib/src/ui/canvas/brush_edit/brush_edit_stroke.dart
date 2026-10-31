@@ -337,6 +337,7 @@ class _BrushEditStroke {
             start: (position: at, readings: _readings),
             at: startedAt,
             keepsCorners: correction.sharpenCorners,
+            acrossOnly: BrushCorrection.lagAtClipStudioZero,
           )
         : null;
   }

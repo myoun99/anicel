@@ -96,6 +96,13 @@ class BrushCorrection {
   ///
   /// ⚠️Mine, to be matched by hand against Clip Studio: no source says what
   /// its 0 does beyond 「little to no visible correction」.
+  ///
+  /// 🗣️유저 F-512-Q4 (2026-10-31): 「4ms 를 그대로 둔다」, and 「4ms를
+  /// 최대한 줄일수있다면 줄이고싶음. 첨언하자면 클튜는 0으로해도 보정이
+  /// 들어가있음」 — so this much of the lag holds the line back only across
+  /// the way the pen goes (`StrokeStabilizer.acrossOnly`), and along it the
+  /// line is level with the pen: 🔬worked through for a 240 Hz pen, the same
+  /// share of a wobble taken out, 2.3 ms behind → none.
   static const Duration lagAtClipStudioZero = Duration(milliseconds: 4);
 
   /// How far behind the pen the line runs at Clip Studio's 100: 0.165 s,

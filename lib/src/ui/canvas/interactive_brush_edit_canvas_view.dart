@@ -17,6 +17,7 @@ import '../debug/input_inspector.dart';
 import '../brush/brush_tool_state.dart' show CanvasTool;
 import '../../models/app_input_settings.dart';
 import '../../models/brush_blend_mode.dart';
+import '../../models/brush_correction.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_input_source.dart';
 import '../../models/canvas_point.dart';
