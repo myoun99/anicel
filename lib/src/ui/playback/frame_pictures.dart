@@ -511,7 +511,7 @@ class FramePictures implements PlaybackPictures {
         : null;
     final heldFilm = film != null && store.holds(film) ? film : null;
     final keeps = keepsNodes && heldFilm == null;
-    final made = drawingNow(nodes, picture);
+    final made = drawingNow(nodes, picture, keepsNodes: keeps);
     // Asked once the drawing is: a cel it was made without is noted now.
     final key = keyOfStack(nodes, picture);
     final drawing = heldFilm == null
@@ -524,8 +524,8 @@ class FramePictures implements PlaybackPictures {
               ? _heldFirst(
                   heldNodes,
                   key,
-                  drawingNow(nodes, picture, keepsNodes: true).frame.drawing,
                   drawing,
+                  () => drawingNow(nodes, picture).frame.drawing,
                 )
               : drawing,
           shouldAbort,
@@ -802,33 +802,63 @@ ui.Rect _onTheCells(ui.Rect place, ui.Rect extent) {
   ).intersect(extent);
 }
 
-/// [drawing], [key]'s nodes held first: [holding] — the same frame, drawn
-/// to keep them — drawn whole into nothing ([HeldSubtreeRasters.holdOnly])
-/// where its lay first draws, and noted so ([HeldSubtreeRasters.heldAllOf])
-/// — not where the store hands back a picture there already.
+/// [keeping] — [key]'s frame, drawn to keep its nodes — and noted so
+/// ([HeldSubtreeRasters.heldAllOf]) where its lay draws it, not where the
+/// store hands back a picture there already.
 ///
-/// 🚨ONCE A LAY, NOT A PIECE: the store draws the frame a piece at a time
-/// ([FramePictureStore.lay]), and drawn to hold at each piece, each let go
-/// of every node the pieces before it held, then drew it whole again.
+/// 🚨ONCE A LAY, NOT A PIECE: laid a piece at a time ([FramePictureStore.lay]),
+/// a frame drawn to keep at each piece let go of every node the pieces
+/// before it held ([HeldSubtreeRasters.holdOnly]), then drew it whole again.
+/// So where its lay first draws a piece, [keeping] is drawn whole into
+/// nothing, and every piece is drawn by [cutting] — the same frame keeping
+/// nothing, cut from what was kept. Laid at once, it is [keeping], drawn as
+/// it was before pieces: once.
 FrameDrawing _heldFirst(
   HeldSubtreeRasters held,
   FramePictureKey key,
-  FrameDrawing holding,
-  FrameDrawing drawing,
+  FrameDrawing keeping,
+  FrameDrawing Function() cutting,
 ) {
-  var heldAll = false;
+  FrameDrawing? cut;
   return (
-    extent: drawing.extent,
-    outside: drawing.outside,
+    extent: keeping.extent,
+    outside: keeping.outside,
     draw: (canvas) {
-      if (!heldAll) {
-        final recorder = ui.PictureRecorder();
-        holding.draw(ui.Canvas(recorder));
-        recorder.endRecording().dispose();
-        held.heldAllOf(key);
-        heldAll = true;
+      final cutAlready = cut;
+      if (cutAlready != null) {
+        _drawnInALay(cutAlready, canvas);
+        return;
       }
-      drawing.draw(canvas);
+      final extent = keeping.extent;
+      if (canvas.getLocalClipBounds().intersect(extent) == extent) {
+        _drawnInALay(keeping, canvas);
+        held.heldAllOf(key);
+        return;
+      }
+      final recorder = ui.PictureRecorder();
+      _drawnInALay(keeping, ui.Canvas(recorder));
+      recorder.endRecording().dispose();
+      held.heldAllOf(key);
+      final pieces = cut = cutting();
+      _drawnInALay(pieces, canvas);
     },
   );
 }
+
+/// [drawing] drawn onto [canvas] by a lay that keeps its frame's nodes,
+/// counted ([debugKeptFrameDraws]).
+void _drawnInALay(FrameDrawing drawing, ui.Canvas canvas) {
+  assert(() {
+    debugKeptFrameDraws += 1;
+    return true;
+  }());
+  drawing.draw(canvas);
+}
+
+/// How many times a frame laid to keep its nodes was drawn ([_heldFirst])
+/// since a test zeroed it: once where it is laid at once, and once more
+/// than its pieces where it is laid a piece at a time.
+///
+/// ⚠️Written under `assert`, so a release build pays nothing.
+@visibleForTesting
+int debugKeptFrameDraws = 0;
