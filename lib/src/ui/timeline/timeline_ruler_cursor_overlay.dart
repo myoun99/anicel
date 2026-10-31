@@ -52,6 +52,8 @@ class ReadyRunsOfTheDocument {
     }
     _project = project;
     _cut = cut;
+    // A new function is the news: a tear-off of [_read] would compare equal.
+    // ignore: unnecessary_lambdas
     return _standing = (start, end) => _read(start, end);
   }
 }

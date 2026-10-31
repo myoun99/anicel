@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart' hide Layer;
+import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderCustomPaint;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
