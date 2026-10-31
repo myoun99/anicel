@@ -28,6 +28,7 @@ import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart'
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
@@ -172,6 +173,7 @@ void aStrokeIsWrittenIntoThePictureShown({
     required Key key,
     required CanvasViewport view,
     required BitmapSurfacePainter live,
+    SelectionFloatOverlay? float,
   }) => tester.pumpWidget(
     onAScreen(
       screen,
@@ -185,7 +187,7 @@ void aStrokeIsWrittenIntoThePictureShown({
         viewport: view,
         live: (
           activeSurfacePainter: live,
-          floatOverlay: null,
+          floatOverlay: float,
           liftedRows: const {},
         ),
       ),
@@ -1456,6 +1458,86 @@ void aStrokeIsWrittenIntoThePictureShown({
       store.laid,
       isNot(contains(next)),
       reason: 'the next stroke\'s landing moves it again, not laid anew',
+    );
+
+    await tester.pumpWidget(const SizedBox());
+    overlay.dispose();
+  }, skip: skipped);
+
+  testWidgets('🚨a landing that comes with a float in hand is no move: where '
+      'it lands cannot be told, and the picture it would leave under the '
+      'frame\'s key never gets it (F-525)', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const lineage = 'a-landing-with-a-float';
+    final cels = storeWithTheCel();
+    final images = LayerFrameImageCache(frameStore: cels);
+    addTearDown(images.dispose);
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+    BitmapSurface surfaceOfTheCel() => BrushFrameDisplayCacheService(
+      frameStore: cels,
+      canvasSize: canvasSize,
+    ).prepareFramePreview(key).previewSurface;
+    BitmapSurfacePainter painterOfTheCel() => BitmapSurfacePainter(
+      surface: surfaceOfTheCel(),
+      overlayModel: overlay,
+      showTransparentBackground: false,
+      lineage: lineage,
+    );
+    final store = _LaysCounted(gpu: WritesLand());
+    addTearDown(store.dispose);
+    final run = runOf(images, store);
+    final view = CanvasViewport(panX: 8, panY: 4);
+    final before = run.pictures.keyOfStack(nodes, frame);
+
+    await pump(
+      tester,
+      run,
+      key: const ValueKey(0),
+      view: view,
+      live: painterOfTheCel(),
+    );
+    expect(
+      await settleAsync(tester, () => store.bytesOf(before) != null),
+      isTrue,
+      reason: 'LIVENESS: the frame\'s picture is made',
+    );
+    await lendBothClocks(tester, rounds: 2);
+
+    final first = TileCoord(x: 0, y: 0);
+    final drawn = surfaceOfTheCel();
+    cels.storeBakedSurface(
+      key,
+      BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: tileSize,
+        tiles: {...drawn.tiles, first: tileOf(first, stroke, (_) => true)},
+      ),
+    );
+    cels.markCelEdited(key);
+    final after = run.pictures.keyOfStack(nodes, frame);
+    expect(after, isNot(before), reason: '⛔premise: the frame\'s key moved');
+    final float = SelectionFloatOverlay(
+      SelectionFloatPaint(surface: painterOfTheCel()),
+    );
+    addTearDown(float.dispose);
+    await pump(
+      tester,
+      run,
+      key: const ValueKey(0),
+      view: view,
+      live: painterOfTheCel(),
+      float: float,
+    );
+    expect(
+      await settleAsync(tester, () => store.peek(after) != null),
+      isTrue,
+      reason: 'LIVENESS: the frame\'s next key has its picture',
+    );
+    expect(
+      store.laid,
+      contains(after),
+      reason: 'laid anew: ↩️moved, it was the picture before the landing',
     );
 
     await tester.pumpWidget(const SizedBox());

@@ -26,6 +26,8 @@ import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_effect.dart';
+import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pixel_clipboard_verb.dart';
 import 'package:anicel/src/models/project.dart';
@@ -168,11 +170,50 @@ void main() {
     ];
   }
 
-  Future<EditorSessionManager> up(WidgetTester tester) async {
+  /// [project] with its rows `a` and `b` in a folder that blurs them — a
+  /// spreading effect, so a change of theirs cannot be told by where it
+  /// lands.
+  Project underABlurredFolder(Project project) {
+    const folder = LayerId('folder');
+    final track = project.tracks.first;
+    final cut = track.cuts.first;
+    final blur = LayerEffect.defaults(
+      id: const EffectId('blur'),
+      kind: EffectKind.blur,
+    ).copyWith(parameters: {'blurriness': EffectParameter(value: 2)});
+    return project.copyWith(
+      tracks: [
+        track.copyWith(
+          cuts: [
+            cut.copyWith(
+              layers: [
+                for (final layer in cut.layers)
+                  if (layer.id.value == 'a') ...[
+                    layer.copyWith(folderId: folder),
+                    createFolderLayer(
+                      id: folder,
+                      name: 'F',
+                    ).copyWith(effects: [blur]),
+                  ] else if (layer.id.value == 'b')
+                    layer.copyWith(folderId: folder)
+                  else
+                    layer,
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Future<EditorSessionManager> up(
+    WidgetTester tester, {
+    Project? project,
+  }) async {
     await tester.binding.setSurfaceSize(const Size(1700, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
-      MaterialApp(home: HomePage(initialProject: fixture())),
+      MaterialApp(home: HomePage(initialProject: project ?? fixture())),
     );
     await tester.pumpAndSettle();
     final s = tester
@@ -318,6 +359,33 @@ void main() {
     expect(
       await pictureAt(tester, pastTheX, pastTheY),
       red,
+      reason: '↩️the frame\'s key held the picture that never had it',
+    );
+  });
+
+  testWidgets('nor of the picture\'s edge: under a blurred folder, where a '
+      'change cannot be told by where it lands, a paste stays once you leave '
+      'the frame and come back', (tester) async {
+    final s = await up(tester, project: underABlurredFolder(fixture()));
+    s.selectFrameIndex(1);
+    await settle(tester);
+    paintTile(s, 'a1', TileCoord(x: 0, y: 0), red);
+    await settle(tester);
+    s.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.copy);
+    s.selectFrameIndex(0);
+    s.selectLayer(const LayerId('b'));
+    await settle(tester);
+
+    s.pixelVerbs.runPixelClipboardVerb(PixelClipboardVerb.pasteAbove);
+    await settle(tester);
+    s.selectFrameIndex(1);
+    await settle(tester);
+    s.selectFrameIndex(0);
+    await settle(tester);
+
+    expect(
+      (await pictureAt(tester, 64, 64))?.first,
+      greaterThan(200),
       reason: '↩️the frame\'s key held the picture that never had it',
     );
   });
