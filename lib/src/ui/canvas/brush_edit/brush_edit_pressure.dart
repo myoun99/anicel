@@ -201,6 +201,11 @@ class _BrushEditPressure {
     return AppInput.applyPressureCurve(_platformPressure(recorded.value));
   }
 
+  /// Whether the platform has said it will correct the force of the sample
+  /// stamped [at], and has not yet: UIKit's estimate, not one it calls final.
+  bool awaitsCorrection(Duration at) =>
+      QaPenLedger.forceAt(at)?.state == PenLedgerState.estimated;
+
   /// What the pen ledger answered for each of this contact's samples when
   /// it was asked — null for one it held nothing for.
   final Map<Duration, PenLedgerState?> _ledgerAnswers = {};
@@ -218,6 +223,19 @@ class _BrushEditPressure {
 
   /// How many samples those rows keep: what the card's row has room for.
   static const _openingRows = 10;
+
+  /// How the contact's opening was held, once it was painted: for how long,
+  /// how many samples, and how many of them had a force of their own by then.
+  /// Null until it is, and for a contact that held nothing.
+  ({Duration waited, int held, int fixed})? _opened;
+
+  /// The opening [held] samples for [waited] and painted [fixed] of them with
+  /// their own recorded force.
+  void noteOpened({
+    required Duration waited,
+    required int held,
+    required int fixed,
+  }) => _opened = (waited: waited, held: held, fixed: fixed);
 
   /// How this contact's samples leaned: how many there were, how many read
   /// a lean, and the lowest and highest altitude among those.
@@ -289,6 +307,13 @@ class _BrushEditPressure {
       return '$name ${cells.join(' ')}';
     }
 
+    final opened = _opened;
+    if (opened != null) {
+      InputInspector.note(
+        'opened ${opened.waited.inMilliseconds}ms '
+        'held=${opened.held} own=${opened.fixed}',
+      );
+    }
     InputInspector.note(row('force', (_, force) => _shortForce(force)));
     InputInspector.note(row('state', (at, _) => _letterOf(_ledgerAnswers[at])));
     InputInspector.note(
@@ -364,6 +389,7 @@ class _BrushEditPressure {
       _sidecarTouched = false;
       _heldRepeats.clear();
       _openingForces.clear();
+      _opened = null;
     }
     final pressure = pressureOf(event);
     if (pressure.read || opening) {
