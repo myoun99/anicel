@@ -506,7 +506,13 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(const ValueKey<String>('shortcut-reset-all-button')),
+      find.byKey(const ValueKey<String>('shortcut-preset-reset-button')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(
+        const ValueKey<String>('shortcut-preset-reset-confirm-button'),
+      ),
     );
     await tester.pumpAndSettle();
     await tester.tap(

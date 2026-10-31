@@ -552,7 +552,7 @@ void main() {
     'onionPlacementOnTop': (s) => s.onionPlacementOnTop,
     'onionPlacementInPlace': (s) => s.onionPlacementInPlace,
     'shortcutTitle': (s) => s.shortcutTitle,
-    'shortcutResetAll': (s) => s.shortcutResetAll,
+    'shortcutResetPreset': (s) => s.shortcutResetPreset,
     'shortcutResetToDefault': (s) => s.shortcutResetToDefault,
     'shortcutUnassign': (s) => s.shortcutUnassign,
     'shortcutRecordNew': (s) => s.shortcutRecordNew,

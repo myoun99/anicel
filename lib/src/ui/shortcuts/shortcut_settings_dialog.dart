@@ -33,7 +33,7 @@ import '../theme/app_theme.dart';
 
 /// The Keyboard Shortcuts editor (Edit menu): a searchable action list
 /// shelved by where each key's button stands ([ShortcutShelf]),
-/// click-to-record capture, conflict highlighting and per-action / global
+/// click-to-record capture, conflict highlighting and per-action / preset
 /// resets — the PS/CSP settings-page convention.
 class ShortcutSettingsDialog extends StatefulWidget {
   const ShortcutSettingsDialog({super.key, required this.bindings});
@@ -193,15 +193,42 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
         _ => false,
       };
 
-  /// The bundles [query] finds something in — every shelf above a row it
-  /// finds, a brush title or a brush.
+  /// The bundles [definition] stands in — every shelf above it and, a brush
+  /// title or a brush, its own.
+  Iterable<String> _foldsOver(EditorActionDefinition definition) => [
+    for (final shelf in definition.shelf.path) _shelfBundleOf(shelf),
+    ?_bundleOf(definition),
+  ];
+
+  /// The bundles [query] finds something in.
   Set<String> _bundlesFound(String query) => {
     for (final definition in widget.bindings.definitions)
-      if (_matches(definition, query)) ...{
-        for (final shelf in definition.shelf.path) _shelfBundleOf(shelf),
-        ?_bundleOf(definition),
-      },
+      if (_matches(definition, query)) ..._foldsOver(definition),
   };
+
+  /// What stands red: every action a clash takes in — keys or touch alike —
+  /// and every bundle over it, a brush group's title row among them (it is
+  /// named by the bundle it folds).
+  ///
+  /// 🗣️F-522 (유저 2026-11-01): 「할당 충돌하면 해당 들어있는 항목 다
+  /// 빨간강조색으로. 어디 들어있는건지 안보임. 패널 안 빨간강조색만들고 미디어
+  /// 빨간강조색만들고 이런식」 — every shelf starts shut, so a clash stood
+  /// behind folds with only the banner to say it was there. What is under a
+  /// fold is what the red answers, whatever the search shows of it.
+  Set<String> _clashed() {
+    final bindings = widget.bindings;
+    final clashing = {
+      ...bindings.conflictedActionIds,
+      ...bindings.touchConflictedActionIds,
+    };
+    return {
+      for (final definition in bindings.definitions)
+        if (clashing.contains(definition.id)) ...{
+          definition.id,
+          ..._foldsOver(definition),
+        },
+    };
+  }
 
   void _openFoundBundles() {
     final query = _query;
@@ -225,6 +252,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     final bindings = widget.bindings;
     final conflicted = bindings.conflictedActionIds;
     final touchConflicted = bindings.touchConflictedActionIds;
+    final clashed = _clashed();
     final query = _query;
     final found = _bundlesFound(query);
     // A bundle whose TITLE the search matched shows every brush it holds.
@@ -263,7 +291,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
       if (!found.contains(fold)) {
         return;
       }
-      rows.add(_shelfHeading(theme, shelf));
+      rows.add(_shelfHeading(theme, shelf, red: clashed.contains(fold)));
       if (!_openBundles.contains(fold)) {
         return;
       }
@@ -282,7 +310,14 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
             found.contains(bundle);
         if (rootTitleDue) {
           rootsTitled.add(bundle);
-          rows.add(_rootTitleRow(theme, bundle, depth));
+          rows.add(
+            _rootTitleRow(
+              theme,
+              bundle,
+              depth,
+              red: clashed.contains(bundle),
+            ),
+          );
         }
         if (shown) {
           rows.add(
@@ -292,6 +327,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
               definition: definition,
               conflicted: conflicted.contains(definition.id),
               touchConflicted: touchConflicted.contains(definition.id),
+              red: clashed.contains(definition.id),
               recording: _recordingActionId == definition.id,
               depth: depth,
               bundle: bundle,
@@ -314,8 +350,13 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
   }
 
   /// A shelf's heading, a step in from the shelf it stands on and carrying
-  /// its fold as a brush bundle's title does — a place's in the accent.
-  Widget _shelfHeading(ThemeData theme, ShortcutShelf shelf) {
+  /// its fold as a brush bundle's title does — a place's in the accent,
+  /// any in the clash's [red].
+  Widget _shelfHeading(
+    ThemeData theme,
+    ShortcutShelf shelf, {
+    required bool red,
+  }) {
     final bundle = _shelfBundleOf(shelf);
     final place = shelf.parent == null;
     return Padding(
@@ -333,7 +374,10 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
             Expanded(
               child: Text(
                 _shelfName(shelf),
-                style: theme.textTheme.labelLarge?.copyWith(
+                style: _wordsIn(
+                  theme,
+                  theme.textTheme.labelLarge,
+                  red: red,
                   color: place ? theme.colorScheme.primary : null,
                 ),
               ),
@@ -344,7 +388,12 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     );
   }
 
-  Widget _rootTitleRow(ThemeData theme, String bundle, int depth) => Padding(
+  Widget _rootTitleRow(
+    ThemeData theme,
+    String bundle,
+    int depth, {
+    required bool red,
+  }) => Padding(
     key: ValueKey<String>('shortcut-row-$bundle'),
     padding: EdgeInsets.only(left: depth * _step, top: 2, bottom: 2),
     child: _foldRow(
@@ -355,7 +404,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
           Expanded(
             child: Text(
               brushRootSectionLabel,
-              style: theme.textTheme.bodyMedium,
+              style: _wordsIn(theme, theme.textTheme.bodyMedium, red: red),
             ),
           ),
         ],
@@ -537,6 +586,30 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     commit: () => widget.bindings.deletePreset(preset),
   );
 
+  /// The preset in use back as it came, once the user says so — it can
+  /// hold a whole layout of recorded keys.
+  ///
+  /// 🗣️F-522 (유저 2026-11-01): 「키보드 단축키 모두초기화버튼, 현재 프리셋
+  /// 초기화로 바꾸고, 누르면 초기화하겟냐고 메시지창 띄우기」. ↩️「모두
+  /// 초기화」 fired on the press, and said more than it did: what was
+  /// recorded under another preset has always stayed with it.
+  Future<void> _resetPreset(BuildContext context) => confirmThenCommit(
+    context,
+    dialog: (context) => confirmWindow(
+      context,
+      ConfirmQuestion(
+        keys: confirmDialogKeys('shortcut-preset-reset'),
+        title: AppText.strings.shortcutResetPreset,
+        titleIcon: Icons.restart_alt,
+        message: AppText.strings.shortcutResetPresetBody(
+          _presetName(widget.bindings.preset),
+        ),
+      ),
+      accept: ConfirmChoice(AppText.strings.commonReset),
+    ),
+    commit: widget.bindings.resetAll,
+  );
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -621,10 +694,10 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
       ),
       actions: [
         AppWindowAction(
-          label: AppText.strings.shortcutResetAll,
-          actionKey: const ValueKey<String>('shortcut-reset-all-button'),
+          label: AppText.strings.shortcutResetPreset,
+          actionKey: const ValueKey<String>('shortcut-preset-reset-button'),
           emphasis: AppWindowActionEmphasis.danger,
-          onPressed: bindings.resetAll,
+          onPressed: () => unawaited(_resetPreset(context)),
         ),
         AppWindowAction(
           label: AppText.strings.commonClose,
@@ -640,6 +713,15 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
 /// One step of the list's depth: the twirl's own width, so a row's words
 /// start where the words of the row it folds under do.
 const double _step = layerLaneToggleSlotWidth;
+
+/// [style] as a row writes it: in the banner's red where a clash stands
+/// ([_ShortcutSettingsDialogState._clashed]), in [color] everywhere else.
+TextStyle? _wordsIn(
+  ThemeData theme,
+  TextStyle? style, {
+  required bool red,
+  Color? color,
+}) => style?.copyWith(color: red ? theme.colorScheme.error : color);
 
 /// A row that folds, pressed anywhere on itself — [toggle] — its twirl
 /// first, left of its words, and only showing.
@@ -681,6 +763,7 @@ class _ActionRow extends StatelessWidget {
     required this.definition,
     required this.conflicted,
     required this.touchConflicted,
+    required this.red,
     required this.recording,
     required this.depth,
     required this.onRecord,
@@ -694,6 +777,10 @@ class _ActionRow extends StatelessWidget {
   final EditorActionDefinition definition;
   final bool conflicted;
   final bool touchConflicted;
+
+  /// Whether its name stands red: a clash is on it, or, a group's title,
+  /// on what it folds.
+  final bool red;
 
   /// Whether this row is recording its next key.
   final bool recording;
@@ -822,7 +909,7 @@ class _ActionRow extends StatelessWidget {
               Expanded(
                 child: Text(
                   actionLabelOf(definition),
-                  style: theme.textTheme.bodyMedium,
+                  style: _wordsIn(theme, theme.textTheme.bodyMedium, red: red),
                 ),
               ),
               ConstrainedBox(

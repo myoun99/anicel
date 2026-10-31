@@ -1287,7 +1287,9 @@ enum AppStrings {
 
   // --- The shortcut editor ---
   String get shortcutTitle => _s('shortcutTitle');
-  String get shortcutResetAll => _s('shortcutResetAll');
+  String get shortcutResetPreset => _s('shortcutResetPreset');
+  String shortcutResetPresetBody(String name) =>
+      _s('shortcutResetPresetTemplate').replaceAll('{name}', name);
   String get shortcutResetToDefault => _s('shortcutResetToDefault');
   String get shortcutUnassign => _s('shortcutUnassign');
   String get shortcutRecordNew => _s('shortcutRecordNew');
@@ -2827,7 +2829,10 @@ enum AppStrings {
     'onionPegBeforeTemplate': '{n} back',
     'onionPegAfterTemplate': '{n} ahead',
     'shortcutTitle': 'Keyboard shortcuts',
-    'shortcutResetAll': 'Reset all',
+    'shortcutResetPreset': 'Reset current preset',
+    'shortcutResetPresetTemplate':
+        'Reset the keys of the preset "{name}"? What you changed in it '
+        'will be lost.',
     'shortcutFileImportedTemplate':
         '{taken} shortcuts brought into the new preset "{preset}" '
         '({skipped} with nothing to go on here).',
@@ -4443,7 +4448,8 @@ enum AppStrings {
     'onionPegBeforeTemplate': '前 {n}',
     'onionPegAfterTemplate': '後 {n}',
     'shortcutTitle': 'キーボードショートカット',
-    'shortcutResetAll': 'すべてリセット',
+    'shortcutResetPreset': '現在のプリセットをリセット',
+    'shortcutResetPresetTemplate': 'プリセット「{name}」のキーをリセットしますか？変更した内容は失われます。',
     'shortcutFileImportedTemplate':
         'ショートカット {taken} 件を新しいプリセット「{preset}」に'
         '取り込みました（対応なし {skipped} 件）。',
@@ -6262,7 +6268,8 @@ enum AppStrings {
     'onionPegBeforeTemplate': '이전 {n}',
     'onionPegAfterTemplate': '이후 {n}',
     'shortcutTitle': '키보드 단축키',
-    'shortcutResetAll': '모두 초기화',
+    'shortcutResetPreset': '현재 프리셋 초기화',
+    'shortcutResetPresetTemplate': '「{name}」 프리셋의 키를 초기화할까요? 바꾼 내용은 사라집니다.',
     'shortcutFileImportedTemplate':
         '단축키 {taken}개를 새 프리셋 「{preset}」에 가져왔습니다'
         '(대응 없음 {skipped}개).',
@@ -8130,7 +8137,10 @@ enum AppStrings {
     'onionPegBeforeTemplate': '{n} avant',
     'onionPegAfterTemplate': '{n} après',
     'shortcutTitle': 'Raccourcis clavier',
-    'shortcutResetAll': 'Tout réinitialiser',
+    'shortcutResetPreset': 'Réinitialiser le préréglage actuel',
+    'shortcutResetPresetTemplate':
+        'Réinitialiser les touches du préréglage « {name} » ? Vos '
+        'modifications seront perdues.',
     'shortcutFileImportedTemplate':
         '{taken} raccourcis importés dans le nouveau préréglage '
         '« {preset} » ({skipped} sans équivalent ici).',
@@ -10016,7 +10026,8 @@ enum AppStrings {
     'onionPegBeforeTemplate': '之前 {n}',
     'onionPegAfterTemplate': '之后 {n}',
     'shortcutTitle': '键盘快捷键',
-    'shortcutResetAll': '全部重置',
+    'shortcutResetPreset': '重置当前预设',
+    'shortcutResetPresetTemplate': '要重置预设“{name}”的按键吗？所做的更改将会丢失。',
     'shortcutFileImportedTemplate':
         '已将 {taken} 个快捷键导入新预设“{preset}”（{skipped} 个无对应）。',
     'shortcutPresets': '预设',
