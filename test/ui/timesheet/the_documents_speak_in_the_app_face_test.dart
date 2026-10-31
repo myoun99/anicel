@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -222,6 +223,10 @@ class _Paragraphs implements Canvas {
   @override
   void drawParagraph(ui.Paragraph paragraph, Offset offset) =>
       metrics.add((paragraph.maxIntrinsicWidth, paragraph.alphabeticBaseline));
+
+  /// What the paper's cut asks (`cutOnThePixelGrid`).
+  @override
+  Float64List getTransform() => Matrix4.identity().storage;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
