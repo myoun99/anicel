@@ -138,7 +138,7 @@ void main() {
     TimelineDisplayRow.layer(row ?? drawing, layerIndex: 0),
     (
       hooks: TimelineGridHooks(
-        activeLayerId: null,
+        activeLayer: ValueNotifier(null),
         frameCursor: ValueNotifier<int>(0),
         playbackFrameCount: playbackFrameCount,
         noriShiro: noriShiro,

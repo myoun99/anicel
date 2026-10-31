@@ -79,7 +79,7 @@ void main() {
     TimelineDisplayRow.layer(row, layerIndex: 0, depth: depth),
     (
       hooks: TimelineGridHooks(
-        activeLayerId: activeLayerId,
+        activeLayer: ValueNotifier(activeLayerId),
         frameCursor: ValueNotifier<int>(0),
         playbackFrameCount: 24,
         exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,

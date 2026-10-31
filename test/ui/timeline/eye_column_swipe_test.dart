@@ -49,7 +49,7 @@ Widget _grid({
         child: LayerTimelineGrid(
           metrics: metrics,
           hooks: TimelineGridHooks(
-            activeLayerId: layers.first.id,
+            activeLayer: ValueNotifier(layers.first.id),
             frameCursor: ValueNotifier<int>(0),
             playbackFrameCount: 8,
             exposureStateForLayer: (_, _) =>

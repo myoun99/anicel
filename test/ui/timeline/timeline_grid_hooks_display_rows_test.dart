@@ -42,7 +42,7 @@ void main() {
     LayerFxState Function(LayerId layerId)? layerFxStateOf,
     LayerId? activeLayerId,
   }) => TimelineGridHooks(
-    activeLayerId: activeLayerId,
+    activeLayer: ValueNotifier(activeLayerId),
     frameCursor: ValueNotifier<int>(0),
     playbackFrameCount: 24,
     exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,
@@ -134,7 +134,7 @@ void main() {
         PropertyLaneRow(laneId: laneId, label: laneId, keyMarks: const {}),
     ];
     final graphed = TimelineGridHooks(
-      activeLayerId: null,
+      activeLayer: ValueNotifier(null),
       frameCursor: ValueNotifier<int>(0),
       playbackFrameCount: 24,
       exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,

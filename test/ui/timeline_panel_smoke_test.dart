@@ -156,7 +156,7 @@ Widget _panel({
         height: 320,
         child: TimelinePanel(
           layers: cut.layers,
-          activeLayerId: cut.layers.single.id,
+          activeLayer: ValueNotifier(cut.layers.single.id),
           frameCursor: ValueNotifier<int>(currentFrameIndex),
           playbackFrameCount: cut.duration,
           exposureStateForLayer: (_, frameIndex) => frameIndex == 0

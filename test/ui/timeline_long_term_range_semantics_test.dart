@@ -143,7 +143,7 @@ Widget _panel(_TimelineRangeFixture fixture, {int currentFrameIndex = 0}) {
         height: 320,
         child: TimelinePanel(
           layers: cut.layers,
-          activeLayerId: cut.layers.single.id,
+          activeLayer: ValueNotifier(cut.layers.single.id),
           frameCursor: ValueNotifier<int>(currentFrameIndex),
           playbackFrameCount: cut.duration,
           exposureStateForLayer: fixture.exposureStateForLayer,

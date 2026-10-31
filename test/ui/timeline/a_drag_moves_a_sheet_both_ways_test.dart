@@ -112,7 +112,7 @@ void main() {
       timelineRailExtent: rail,
       xsheetRailExtent: rail,
       layers: [for (var i = 0; i < (rows ?? 60); i += 1) drawing('draw-$i')],
-      activeLayerId: const LayerId('draw-0'),
+      activeLayer: ValueNotifier(const LayerId('draw-0')),
       frameCursor: cursor,
       playbackFrameCount: 400,
       exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,

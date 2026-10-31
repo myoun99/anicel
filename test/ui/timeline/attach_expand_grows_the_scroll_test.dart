@@ -54,7 +54,7 @@ void main() {
         width: 900,
         height: 150,
         child: LayerTimelineGrid(
-hooks: TimelineGridHooks(activeLayerId: const LayerId('E'),
+hooks: TimelineGridHooks(activeLayer: ValueNotifier(const LayerId('E')),
 frameCursor: ValueNotifier<int>(0),
 playbackFrameCount: 12,
 exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,
@@ -205,7 +205,7 @@ layers: layers,
               width: 900,
               height: 150,
               child: LayerTimelineGrid(
-hooks: TimelineGridHooks(activeLayerId: const LayerId('E'),
+hooks: TimelineGridHooks(activeLayer: ValueNotifier(const LayerId('E')),
 frameCursor: ValueNotifier<int>(0),
 playbackFrameCount: 12,
 exposureStateForLayer: (_, _) =>

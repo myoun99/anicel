@@ -109,7 +109,7 @@ void main() {
         home: Scaffold(
           body: LayerTimelineGrid(
             hooks: TimelineGridHooks(
-              activeLayerId: const LayerId('draw-0'),
+              activeLayer: ValueNotifier(const LayerId('draw-0')),
               frameCursor: cursor,
               playbackFrameCount: frames,
               exposureStateForLayer: (_, _) =>
@@ -165,7 +165,7 @@ void main() {
         home: Scaffold(
           body: TimelinePanel(
             layers: layers,
-            activeLayerId: const LayerId('draw-0'),
+            activeLayer: ValueNotifier(const LayerId('draw-0')),
             frameCursor: cursor,
             playbackFrameCount: frames,
             exposureStateForLayer: (_, _) =>

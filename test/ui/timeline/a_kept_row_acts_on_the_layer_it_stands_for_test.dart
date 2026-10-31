@@ -574,7 +574,7 @@ Widget _panel(
       body: TimelinePanel(
         layers: layers ?? _layersOf(cut),
         rowDragHooks: drags,
-        activeLayerId: LayerId(cut.base),
+        activeLayer: ValueNotifier(LayerId(cut.base)),
         substrateGeneration: cut.world,
         frameCursor: _cursor,
         playbackFrameCount: 12,

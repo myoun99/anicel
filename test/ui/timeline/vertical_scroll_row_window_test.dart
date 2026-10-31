@@ -38,7 +38,7 @@ void main() {
         height: 240,
         child: LayerTimelineGrid(
           hooks: TimelineGridHooks(
-            activeLayerId: const LayerId('L0'),
+            activeLayer: ValueNotifier(const LayerId('L0')),
             frameCursor: ValueNotifier<int>(0),
             playbackFrameCount: 12,
             exposureStateForLayer: (_, _) =>

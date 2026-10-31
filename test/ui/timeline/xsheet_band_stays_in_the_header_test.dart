@@ -38,7 +38,7 @@ void main() {
         height: 700,
         child: TimelinePanel(
           layers: layers,
-          activeLayerId: const LayerId('A'),
+          activeLayer: ValueNotifier(const LayerId('A')),
           frameCursor: ValueNotifier<int>(0),
           playbackFrameCount: 12,
           exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,

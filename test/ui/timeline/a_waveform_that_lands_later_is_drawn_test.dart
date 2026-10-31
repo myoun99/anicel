@@ -69,7 +69,7 @@ void main() {
             TimelineGridMetrics.defaults.layerRowHeight,
           ),
           hooks: TimelineGridHooks(
-            activeLayerId: null,
+            activeLayer: ValueNotifier(null),
             frameCursor: ValueNotifier<int>(0),
             playbackFrameCount: 24,
             exposureStateForLayer: _uncovered,

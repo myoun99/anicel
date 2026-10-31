@@ -215,7 +215,7 @@ void main() {
                   ).copyWith(isVisible: folderOn),
                   drawing('outside', visible: outsideOn),
                 ],
-                activeLayerId: const LayerId('outside'),
+                activeLayer: ValueNotifier(const LayerId('outside')),
                 frameCursor: cursor,
                 playbackFrameCount: 12,
                 exposureStateForLayer: (_, _) =>

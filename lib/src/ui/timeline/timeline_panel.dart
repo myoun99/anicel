@@ -65,7 +65,7 @@ class TimelinePanel extends StatefulWidget {
   const TimelinePanel({
     super.key,
     required this.layers,
-    required this.activeLayerId,
+    required this.activeLayer,
     required this.frameCursor,
     this.frameReadySignal,
     this.revealSelectionTick,
@@ -181,7 +181,7 @@ class TimelinePanel extends StatefulWidget {
   });
 
   final List<Layer> layers;
-  final LayerId? activeLayerId;
+  final ValueListenable<LayerId?> activeLayer;
 
   /// R27 #6: the layer label's blend-mode column.
   final void Function(LayerId layerId, LayerBlendMode mode)?
@@ -704,7 +704,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
 
     // ONE bundle for both grids — see [TimelineGridHooks].
     final hooks = TimelineGridHooks(
-      activeLayerId: widget.activeLayerId,
+      activeLayer: widget.activeLayer,
       dragPreview: widget.dragPreview,
       frameCursor: widget.frameCursor,
       frameReadySignal: widget.frameReadySignal,

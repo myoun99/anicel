@@ -596,7 +596,7 @@ void main() {
                   frames: const [],
                 ),
               ],
-              activeLayerId: const LayerId('a'),
+              activeLayer: ValueNotifier(const LayerId('a')),
               frameCursor: cursor,
               playbackFrameCount: 12,
               noriShiro: () => margin,

@@ -128,7 +128,7 @@ void main() {
                       rows: rows,
                       edges: TimelineRowEdges.uniform(rows.length, 28),
                       frameCellExtent: 16,
-                      activeLayerId: null,
+                      activeLayer: ValueNotifier(null),
                       standing: standing,
                     ),
                   ),

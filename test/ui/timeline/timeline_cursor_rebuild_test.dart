@@ -43,7 +43,7 @@ void main() {
         home: Scaffold(
           body: LayerTimelineGrid(
             hooks: TimelineGridHooks(
-              activeLayerId: const LayerId('layer-1'),
+              activeLayer: ValueNotifier(const LayerId('layer-1')),
               frameCursor: cursor,
               playbackFrameCount: 24,
               exposureStateForLayer: stateFor,
@@ -94,7 +94,7 @@ void main() {
         home: Scaffold(
           body: XSheetTimelineGrid(
             hooks: TimelineGridHooks(
-              activeLayerId: const LayerId('layer-1'),
+              activeLayer: ValueNotifier(const LayerId('layer-1')),
               frameCursor: cursor,
               playbackFrameCount: 24,
               exposureStateForLayer: stateFor,

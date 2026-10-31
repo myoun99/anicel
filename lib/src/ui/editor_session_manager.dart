@@ -3141,6 +3141,23 @@ class EditorSessionManager extends ChangeNotifier
   @override
   void notifyChanged() => notifyListeners();
 
+  /// How many announcements have said more than where the stand went. A
+  /// host that prints by this hears every other announcement, and shows the
+  /// stand through what hears it itself ([Standing.activeLayerListenable]).
+  ///
+  /// 🔬I-22-rest (11-01, S5_BA 컷352, 디버그): a click on a rail row built
+  /// the whole timeline host, 195 widgets and 9ms, for a colour on two rows
+  /// and the cursor's wash.
+  int get newsRevision => _newsRevision;
+  int _newsRevision = 0;
+
+  /// Every listener hears a stand; only [newsRevision] does not move.
+  @override
+  void notifyStood() {
+    _followTheAnnouncement();
+    super.notifyListeners();
+  }
+
   /// Every announcement first lets the verbs' row follow an active layer the
   /// program moved ([Standing.followActiveLayer], F-183 ③) — the one point
   /// every door that moves it passes, collaborators' and this class's own.
@@ -3148,10 +3165,15 @@ class EditorSessionManager extends ChangeNotifier
   /// rows' seats there too ([Standing.followConteSeats], F-322).
   @override
   void notifyListeners() {
+    _newsRevision += 1;
+    _followTheAnnouncement();
+    super.notifyListeners();
+  }
+
+  void _followTheAnnouncement() {
     rowSelectionVerbs.followConteSeats();
     standing.followConteSeats();
     standing.followActiveLayer();
-    super.notifyListeners();
   }
 
   // --- Run-edge NEW FRAMES drag (UI-R8 [+] handle) --------------------------

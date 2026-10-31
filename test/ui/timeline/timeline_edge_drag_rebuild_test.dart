@@ -49,7 +49,7 @@ void main() {
   }) {
     final grid = LayerTimelineGrid(
       hooks: TimelineGridHooks(
-        activeLayerId: activeLayerId ?? layers.first.id,
+        activeLayer: ValueNotifier(activeLayerId ?? layers.first.id),
         frameCursor: cursor,
         dragPreview: dragPreview,
         playbackFrameCount: 24,
@@ -140,7 +140,7 @@ void main() {
           home: Scaffold(
             body: XSheetTimelineGrid(
               hooks: TimelineGridHooks(
-                activeLayerId: layerA.id,
+                activeLayer: ValueNotifier(layerA.id),
                 frameCursor: cursor,
                 dragPreview: preview,
                 playbackFrameCount: 24,
@@ -357,7 +357,7 @@ void main() {
                 rebuild = setState;
                 return LayerTimelineGrid(
                   hooks: TimelineGridHooks(
-                    activeLayerId: layerA.id,
+                    activeLayer: ValueNotifier(layerA.id),
                     frameCursor: cursor,
                     playbackFrameCount: 24,
                     exposureStateForLayer: stateFor,

@@ -89,7 +89,7 @@ void main() {
             viewportKey: keys[axis]!,
             controller: controllers[axis]!,
             hooks: () => TimelineGridHooks(
-              activeLayerId: const LayerId('layer-1'),
+              activeLayer: ValueNotifier(const LayerId('layer-1')),
               frameCursor: ValueNotifier<int>(0),
               playbackFrameCount: 1000,
               exposureStateForLayer: stateFor,

@@ -156,7 +156,7 @@ void main() {
   });
 
   // 🔬I-22-rest (11-01): a click built the two rows it moved between, whole,
-  // for one colour.
+  // for one colour — and the panel around them.
   for (final (orientation, prefix) in const [
     (TimelineOrientation.horizontal, 'timeline'),
     (TimelineOrientation.vertical, 'xsheet'),
@@ -203,10 +203,11 @@ void main() {
       debugOnRebuildDirtyWidget = null;
 
       expect(
-        built,
-        contains(TimelinePanel),
-        reason: 'LIVENESS: rows were asked',
+        built.map((type) => '$type'),
+        contains('_StoodPlate'),
+        reason: 'LIVENESS: a stand was seen',
       );
+      expect(built, isNot(contains(TimelinePanel)));
       expect(built, isNot(contains(TimelineLayerControlsRow)));
       expect((ground(stoodOn), ground(next)), (bare, washed));
       expect(find.named('$prefix-selected-layer'), findsOneWidget);

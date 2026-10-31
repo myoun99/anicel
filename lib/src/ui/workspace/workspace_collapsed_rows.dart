@@ -544,7 +544,8 @@ class _WorkspaceCollapsedRows {
           frameCursor: session.playheadCursors.cutFrame,
           rows: [displayRow],
           edges: TimelineRowEdges.uniform(1, metrics.layerRowHeight),
-          activeLayerId: layer.id,
+          // The one row here IS the row stood on.
+          activeLayer: AlwaysStoppedAnimation<LayerId?>(layer.id),
           currentRow: session.standing.currentRowListenable,
           frameStartIndex: geometry.value.frameStartIndex,
           frameEndIndexExclusive: geometry.value.frameEndIndexExclusive,

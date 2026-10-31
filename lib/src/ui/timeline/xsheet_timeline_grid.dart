@@ -543,7 +543,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
       rows: entries,
       edges: edges,
       frameCellExtent: _metrics.frameCellWidth,
-      activeLayerId: widget.hooks.activeLayerId,
+      activeLayer: widget.hooks.activeLayer,
       standing: widget.hooks.currentRowHooks?.currentRow,
     );
   }
@@ -618,7 +618,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
       frameCursor: widget.hooks.frameCursor,
       rows: entries,
       edges: edges,
-      activeLayerId: widget.hooks.activeLayerId,
+      activeLayer: widget.hooks.activeLayer,
       frameStartIndex: 0,
       frameEndIndexExclusive: _frameScroll.renderedFrameCount,
       leadingFrameSpacerWidth: 0,
@@ -1003,6 +1003,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
     return TimelineGridShell(
       ground: colorScheme.surfaceContainerHighest,
       framesPerSecond: _countingFps,
+      activeLayer: widget.hooks.activeLayer,
       controllers: [_frameScrollController, _layerScrollController],
       layers: widget.layers,
       child: ValueListenableBuilder<double?>(

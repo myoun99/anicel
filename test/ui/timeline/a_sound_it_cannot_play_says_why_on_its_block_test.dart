@@ -98,7 +98,7 @@ void main() {
           home: Scaffold(
             body: TimelinePanel(
               layers: [row(clipped: clipped)],
-              activeLayerId: null,
+              activeLayer: ValueNotifier(null),
               frameCursor: ValueNotifier<int>(0),
               playbackFrameCount: 24,
               exposureStateForLayer: (_, _) =>

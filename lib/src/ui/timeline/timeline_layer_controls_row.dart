@@ -23,6 +23,7 @@ import 'axis_turn.dart';
 import 'berth_row.dart';
 import 'layer_rail_columns.dart';
 import 'rail_eyes.dart';
+import 'rail_stand.dart';
 import '../widgets/rail_glyph_button.dart';
 import '../widgets/row_plate.dart';
 import 'timeline_double_tap.dart'
@@ -216,7 +217,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// two rows can no longer read as selected at once by construction.
   ///
   /// What the row is told where no kept row stands above it; a kept row's
-  /// plate asks its berth ([BerthRow.activeOf]).
+  /// plate asks its grid ([RailStand]).
   final bool active;
 
   final TimelineGridMetrics metrics;
@@ -1146,7 +1147,7 @@ bool _rowFolds(TimelineDisplayRow row, List<Layer> layers) =>
 /// ([TimelineLayerControlsRow]): its glyph, and whether it warns — the
 /// reference button, red while its file is short of film.
 /// A row's plate, as the row stood on wears it: the one piece of the row a
-/// stand changes, so it alone hears one ([BerthRow.activeOf]) — [child],
+/// stand changes, so it alone hears one ([RailStand]) — [child],
 /// the row's contents, stands as the row built it.
 class _StoodPlate extends StatelessWidget {
   const _StoodPlate({
@@ -1161,7 +1162,7 @@ class _StoodPlate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final active = BerthRow.activeOf(context) ?? row.active;
+    final active = RailStand.standsOnRow(context) ?? row.active;
     return RowPlate(
       name: active ? '${row.keyPrefix}-selected-layer' : null,
       width: row._size.width,

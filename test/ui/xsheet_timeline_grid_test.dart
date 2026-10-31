@@ -603,7 +603,7 @@ Widget _grid({
           style: face,
           child: XSheetTimelineGrid(
             hooks: TimelineGridHooks(
-              activeLayerId: const LayerId('layer-1'),
+              activeLayer: ValueNotifier(const LayerId('layer-1')),
               frameCursor: ValueNotifier<int>(currentFrameIndex),
               playbackFrameCount: frameCount,
               exposureStateForLayer:

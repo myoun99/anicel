@@ -419,7 +419,7 @@ Widget _xsheetHarness({
   return MaterialApp(
     home: Scaffold(
       body: XSheetTimelineGrid(
-hooks: TimelineGridHooks(activeLayerId: layer.id,
+hooks: TimelineGridHooks(activeLayer: ValueNotifier(layer.id),
 frameCursor: ValueNotifier<int>(0),
 playbackFrameCount: 24,
 exposureStateForLayer: _stateFor,

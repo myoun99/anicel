@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show OffsetLayer;
 import 'package:flutter_test/flutter_test.dart';
@@ -16,20 +18,11 @@ Future<double> lineOnScreen(WidgetTester tester, Finder line) async {
   final at = tester.getRect(line);
   final screen = (Offset.zero & view.size).intersect(at);
   final width = (view.size.width * scale).round();
-  final height = (view.size.height * scale).round();
-  final layer = view.debugLayer! as OffsetLayer;
-  final pixels = await tester.runAsync(() async {
-    final shot = await layer.toImage(
-      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
-    );
-    final bytes = await shot.toByteData();
-    shot.dispose();
-    return bytes;
-  });
+  final pixels = await screenPixels(tester);
   bool isLine(int x, int y) {
     final byte = (y * width + x) * 4;
     final argb =
-        pixels!.getUint8(byte + 3) << 24 |
+        pixels.getUint8(byte + 3) << 24 |
         pixels.getUint8(byte) << 16 |
         pixels.getUint8(byte + 1) << 8 |
         pixels.getUint8(byte + 2);
@@ -52,4 +45,25 @@ Future<double> lineOnScreen(WidgetTester tester, Finder line) async {
     }
   }
   return shown / length;
+}
+
+/// The pixels the frame painted: the whole view, RGBA, row by row.
+Future<ByteData> screenPixels(WidgetTester tester) async {
+  final view = tester.binding.renderViews.first;
+  final scale = view.configuration.devicePixelRatio;
+  final layer = view.debugLayer! as OffsetLayer;
+  final pixels = await tester.runAsync(() async {
+    final shot = await layer.toImage(
+      Rect.fromLTWH(
+        0,
+        0,
+        (view.size.width * scale).roundToDouble(),
+        (view.size.height * scale).roundToDouble(),
+      ),
+    );
+    final bytes = await shot.toByteData();
+    shot.dispose();
+    return bytes;
+  });
+  return pixels!;
 }

@@ -35,6 +35,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: TimelineGridShell(
+          activeLayer: ValueNotifier(null),
           ground: const Color(0xFF123456),
           framesPerSecond: 30,
           layers: [folder, member],

@@ -1,8 +1,11 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
+import '../../models/layer_id.dart';
 import '../input/panel_pan.dart';
 import 'rail_eyes.dart';
+import 'rail_stand.dart';
 import 'stylus_glide_stop.dart';
 import 'timeline_beat_lines.dart';
 
@@ -26,6 +29,7 @@ class TimelineGridShell extends StatelessWidget {
     super.key,
     required this.ground,
     required this.framesPerSecond,
+    required this.activeLayer,
     required this.controllers,
     required this.layers,
     required this.child,
@@ -36,6 +40,9 @@ class TimelineGridShell extends StatelessWidget {
 
   /// The counting fps — which boundaries are SECOND boundaries.
   final int framesPerSecond;
+
+  /// The layer stood on, handed down to the grid's rows ([RailStand]).
+  final ValueListenable<LayerId?> activeLayer;
 
   /// The grid's own scroll controllers ([StylusGlideStop.controllers]).
   final List<ScrollController> controllers;
@@ -71,7 +78,10 @@ class TimelineGridShell extends StatelessWidget {
           // set to 「없음」 still scrolled both grids (found by F-351's pin).
           child: PanelPanDriver(
             controllers: controllers,
-            child: RailEyes.forLayers(layers, stack: layers, child: child),
+            child: RailStand(
+              activeLayer: activeLayer,
+              child: RailEyes.forLayers(layers, stack: layers, child: child),
+            ),
           ),
         ),
       ),

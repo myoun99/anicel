@@ -66,7 +66,7 @@ void main() {
         home: Scaffold(
           body: LayerTimelineGrid(
             hooks: TimelineGridHooks(
-              activeLayerId: null,
+              activeLayer: ValueNotifier(null),
               frameCursor: cursor,
               playbackFrameCount: 24,
               exposureStateForLayer: stateFor,
@@ -122,7 +122,7 @@ void main() {
         home: Scaffold(
           body: XSheetTimelineGrid(
             hooks: TimelineGridHooks(
-              activeLayerId: null,
+              activeLayer: ValueNotifier(null),
               frameCursor: cursor,
               playbackFrameCount: 24,
               exposureStateForLayer: stateFor,
@@ -192,7 +192,7 @@ void main() {
         home: Scaffold(
           body: XSheetTimelineGrid(
             hooks: TimelineGridHooks(
-              activeLayerId: null,
+              activeLayer: ValueNotifier(null),
               frameCursor: cursor,
               playbackFrameCount: 24,
               exposureStateForLayer: stateFor,

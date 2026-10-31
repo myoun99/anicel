@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
+import 'package:flutter/foundation.dart'
+    show ChangeNotifier, ValueListenable, ValueNotifier;
 
 import '../../services/editing/active_cut_helpers.dart';
 import '../../services/editing/layer_standing_after_change.dart'
@@ -304,6 +305,7 @@ class Standing {
       return;
     }
     _activeSeen = active;
+    _activeLayerNews.moved();
     _solo.syncVisibilitySolo();
     final row = _timelineRow;
     if (active == null || row == null || row.owningLayerId == active) {
@@ -372,9 +374,19 @@ class Standing {
   final ValueNotifier<TimelineRowAddress?> currentRowListenable =
       ValueNotifier<TimelineRowAddress?>(null);
 
+  /// The active layer as news, for what shows it without hearing the whole
+  /// session — told at the announcement every door passes
+  /// ([followActiveLayer]). ⚠️Not [currentRowListenable]: that is the row of
+  /// the panel being worked in, the rail's while it is the storyboard.
+  ValueListenable<LayerId?> get activeLayerListenable => _activeLayerNews;
+  late final _ActiveLayerNews _activeLayerNews = _ActiveLayerNews(
+    () => _selection.activeLayerId,
+  );
+
   void dispose() {
     _working.dispose();
     currentRowListenable.dispose();
+    _activeLayerNews.dispose();
   }
 
   /// The TIMELINE's own row, the way [_storyboardRow] is the rail's: the
@@ -1239,7 +1251,7 @@ class Standing {
   /// one of its LANES, taken in the same publish, so re-standing on the
   /// lane you are on repaints nothing.
   void _seatLayer(LayerId layerId, {TimelineRowAddress? row}) {
-    var changed = false;
+    var cleared = false;
     // A frame-range selection lives on the rows it COVERS: moving to a row
     // outside them drops it. The lane selection follows the same rule, on
     // its one layer.
@@ -1256,13 +1268,14 @@ class Standing {
     if (_selection.frameRangeSelection.value case final cells?
         when !cells.coversLayer(layerId)) {
       _selection.clearFrameRangeSelection();
-      changed = true;
+      cleared = true;
     }
     if (_selection.laneRangeSelection.value != null &&
         _selection.laneRangeSelection.value!.layerId != layerId) {
       _rangeSelections.clearLaneRangeSelection();
-      changed = true;
+      cleared = true;
     }
+    var stood = false;
     // ALREADY-ACTIVE IS FREE. Every timeline cell tap calls this before it
     // seeks — `select()` sends the layer and the frame — and the seek itself
     // is deliberately notify-free (it rides the cursor notifier). This was
@@ -1274,7 +1287,7 @@ class Standing {
       // ↩️The solo followed the active layer from here, and from no other
       // door (F-327). It follows at the announcement below now, which every
       // door passes ([followActiveLayer]).
-      changed = true;
+      stood = true;
     }
     // R10 #13: the TIMELINE's row moves with the layer — and the rail's row
     // with it, where the stand is the timeline's ([_railFollowsTheTimeline]).
@@ -1282,16 +1295,23 @@ class Standing {
     // user put it」) until I-126.
     _timelineRow = row ?? LayerRowAddress(layerId);
     if (_railFollowsTheTimeline() && _inSight(WorkingPanel.storyboard)) {
-      changed = true;
+      stood = true;
     }
     // The drawn row rides its own notifier, so leaving a property lane for
     // its layer row repaints the rail even when nothing else changed —
     // "already active is free" stays true for the session notify.
     publishCurrentRow();
-    if (changed) {
+    if (cleared || (stood && _aStandChangesTheRows)) {
       _changes.notifyChanged();
+    } else if (stood) {
+      _changes.notifyStood();
     }
   }
+
+  /// Whether a stand changes more of a row than that it is stood on: a
+  /// filter spares the row stood on, and a solo follows it.
+  bool get _aStandChangesTheRows =>
+      _railView.rowFilter.value.isActive || _solo.layerVisibilitySoloEnabled;
 
   /// Whether standing at [from] is standing somewhere other than [there] —
   /// the question an undo asks before it takes an edit back (I-41).
@@ -1572,4 +1592,19 @@ class Standing {
     }
     return display.where((row) => hiddenBy(row) == null).firstOrNull;
   }
+}
+
+/// [Standing.activeLayerListenable]. It holds no layer of its own: [value] is
+/// the selection's answer, so the two cannot come apart, and its listeners
+/// hear when [Standing.followActiveLayer] saw that answer move.
+class _ActiveLayerNews with ChangeNotifier
+    implements ValueListenable<LayerId?> {
+  _ActiveLayerNews(this._read);
+
+  final LayerId? Function() _read;
+
+  @override
+  LayerId? get value => _read();
+
+  void moved() => notifyListeners();
 }

@@ -93,7 +93,7 @@ void main() {
                   frameCursor: ValueNotifier<int>(frame),
                   rows: shown ?? rows,
                   edges: timelineRowEdgesOf(shown ?? rows, metrics),
-                  activeLayerId: const LayerId('a'),
+                  activeLayer: ValueNotifier(const LayerId('a')),
                   currentRow: ValueNotifier<TimelineRowAddress?>(standing),
                   dragPreview: ValueNotifier<TimelineDragPreview?>(preview),
                   frameStartIndex: windowStart,

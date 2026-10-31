@@ -88,7 +88,7 @@ void main() {
               berths: berthsInOrder(rows),
               edges: timelineRowEdgesOf(rows, metrics),
               hooks: TimelineGridHooks(
-                activeLayerId: null,
+                activeLayer: ValueNotifier(null),
                 frameCursor: ValueNotifier<int>(0),
                 playbackFrameCount: 12,
                 exposureStateForLayer: stateFor,

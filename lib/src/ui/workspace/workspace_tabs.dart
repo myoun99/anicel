@@ -106,7 +106,8 @@ class _WorkspaceTabs {
   /// (session-news-rebuilds-unsliced, 2026-10-20). The timesheet hears it
   /// inside its host, through its document's memo key; the frame panels
   /// still hear it all, what they show of it being their rows' facts
-  /// (F-244).
+  /// (F-244), but for a stand, which the timeline's rows do not print
+  /// ([EditorSessionManager.newsRevision]).
   ///
   /// ⛔A sheet's VIEW is not in [listenable]: its panel hears the view
   /// itself ([BrushCanvasPanel.viewportController], 08-21) and prints the
@@ -906,7 +907,6 @@ class _WorkspaceTabs {
             // setStates the world). Seeks are NOT session notifies — the
             // grids ride the frame cursor and never rebuild for them.
             listenable: Listenable.merge([
-              _state.widget.session,
               _state._timelineOrientation,
               // Zoom (_timelinePixelsPerFrame) is NOT merged here (UI-R6
               // #4): the host scopes it to the panel subtree, so a zoom
@@ -914,6 +914,7 @@ class _WorkspaceTabs {
               _state._rulerView,
               _state.widget.session.railView.drawn,
             ]),
+            printed: () => TimelineTabHost.printedBy(_state.widget.session),
             host: (context) => TimelineTabHost(
               session: _state.widget.session,
               transformOptions: _state._transformOptions,

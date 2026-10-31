@@ -49,7 +49,7 @@ void main() {
         home: Scaffold(
           body: TimelinePanel(
             layers: layers,
-            activeLayerId: const LayerId('alpha'),
+            activeLayer: ValueNotifier(const LayerId('alpha')),
             frameCursor: cursor,
             playbackFrameCount: 12,
             exposureStateForLayer: (_, _) =>

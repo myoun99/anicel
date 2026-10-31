@@ -40,7 +40,7 @@ import 'timeline_layer_controls_row.dart';
 /// its whole life, and a kept row calls them through the hooks it was
 /// built with, each asking the session at the event. ⛔Nor is whether the
 /// row is the one stood on: a stand changes one colour on two rows, and it
-/// reaches the plate past the memo ([BerthRow.activeOf]).
+/// reaches the plate past the memo ([RailStand]).
 ///
 /// Zoom-independent by construction (UI-R7 #1): nothing here reads
 /// frameCellWidth, so zoom steps always hit. The row reads the four
@@ -211,11 +211,9 @@ Widget layerControlsRowFrom(
   );
 }
 
-/// What a kept controls row was built from: its facts, what its drag
-/// wrapper was built from, and whether it is the row stood on, which is
-/// handed past both ([BerthRow.activeOf]).
+/// What a kept controls row was built from: its facts and what its drag
+/// wrapper was built from.
 typedef LayerControlsRowInputs = ({
-  bool active,
   LayerControlsRowFacts facts,
   // F-244: the row's DRAG wrapper is kept with it, so a commit that moved
   // no row rebuilds no wrapper (it rebuilt all of them, ~170 elements on
@@ -260,7 +258,6 @@ final class KeptLayerControlsRows {
     final built = _rows.keep(berths, row, inputs.facts, build);
     return BerthRow(
       layer: row.layer,
-      active: inputs.active,
       child: _wrapped.keep(
         berths,
         row,

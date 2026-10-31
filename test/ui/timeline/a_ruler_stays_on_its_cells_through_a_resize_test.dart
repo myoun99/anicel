@@ -70,7 +70,7 @@ void main() {
             height: 264,
             child: LayerTimelineGrid(
               hooks: TimelineGridHooks(
-                activeLayerId: const LayerId('draw-0'),
+                activeLayer: ValueNotifier(const LayerId('draw-0')),
                 frameCursor: cursor,
                 playbackFrameCount: frames.value,
                 exposureStateForLayer: (_, _) =>
@@ -273,7 +273,7 @@ void main() {
                 height: extent,
                 child: TimelinePanel(
                   layers: layers,
-                  activeLayerId: const LayerId('draw-0'),
+                  activeLayer: ValueNotifier(const LayerId('draw-0')),
                   frameCursor: cursor,
                   playbackFrameCount: 240,
                   exposureStateForLayer: (_, _) =>

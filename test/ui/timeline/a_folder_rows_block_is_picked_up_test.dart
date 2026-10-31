@@ -66,7 +66,7 @@ void main() {
         home: Scaffold(
           body: LayerTimelineGrid(
             hooks: TimelineGridHooks(
-              activeLayerId: member.id,
+              activeLayer: ValueNotifier(member.id),
               frameCursor: cursor,
               playbackFrameCount: 48,
               exposureStateForLayer: stateFor,

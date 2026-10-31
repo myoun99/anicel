@@ -35,7 +35,7 @@ class TimelineCursorLayer extends StatelessWidget {
     required this.frameCursor,
     required this.rows,
     required this.edges,
-    required this.activeLayerId,
+    required this.activeLayer,
     this.currentRow,
     required this.frameStartIndex,
     required this.frameEndIndexExclusive,
@@ -81,7 +81,7 @@ class TimelineCursorLayer extends StatelessWidget {
   /// open graph's lane covers the graph — its unit, room and all: the
   /// graph is one picture (I-89 ③).
   final TimelineRowEdges edges;
-  final LayerId? activeLayerId;
+  final ValueListenable<LayerId?> activeLayer;
 
   /// The row you are STANDING on. There is exactly one, and the standing
   /// cell goes with it — when it is a property lane the layer's row gives
@@ -146,6 +146,7 @@ class TimelineCursorLayer extends StatelessWidget {
               frameCursor,
               ?frameRangeSelection,
               ?laneRangeSelection,
+              activeLayer,
               ?currentRow,
               ?dragPreview,
               ?windowBucket,
@@ -461,5 +462,5 @@ class TimelineCursorLayer extends StatelessWidget {
   /// A folder row answers to its own id now, so only lanes (which share
   /// their layer's id) are skipped.
   bool _rowIsActiveLayer(TimelineDisplayRow row) =>
-      !row.isLane && row.layer.id == activeLayerId;
+      !row.isLane && row.layer.id == activeLayer.value;
 }

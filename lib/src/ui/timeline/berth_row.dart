@@ -27,11 +27,6 @@ import 'memo_token.dart';
 /// themselves to the semantics tree on every crossing a scrub or a play
 /// made — the largest share of a crossing frame left.
 ///
-/// 🔬I-22-rest (11-01, S5_BA 컷352, 디버그): a click on a rail row built the
-/// two rows it moved between, whole, for one colour. So whether the row is
-/// the one stood on is asked here too ([activeOf]), and only its plate
-/// hears it.
-///
 /// ⛔A kept row's own [Layer] is the one it was BUILT for: equal to this
 /// one in its face, another layer by its id. Nothing in a kept row asks
 /// that id for what it acts on. Its NAMES are spelled with it — a finder
@@ -43,7 +38,6 @@ class BerthRow extends InheritedModel<BerthAspect> {
     Layer? shown,
     this.silhouette,
     this.world,
-    this.active,
     required super.child,
   }) : shown = shown ?? layer;
 
@@ -68,10 +62,6 @@ class BerthRow extends InheritedModel<BerthAspect> {
   /// null on a row that draws none (the rail's).
   final BerthWorld? world;
 
-  /// Whether the row is the layer's row stood on — null where the row is
-  /// told by what builds it.
-  final bool? active;
-
   /// The layer the row at [context] stands for now — [context] rebuilt
   /// when the row stands for ANOTHER layer; null where no kept row stands
   /// above. What the row shows of the layer is its face, which the memo
@@ -79,14 +69,6 @@ class BerthRow extends InheritedModel<BerthAspect> {
   static Layer? of(BuildContext context) => InheritedModel.inheritFrom<
     BerthRow
   >(context, aspect: BerthAspect.standsFor)?.layer;
-
-  /// Whether the row at [context] is the one stood on — [context] rebuilt
-  /// when that changes; null where no kept row stands above.
-  static bool? activeOf(BuildContext context) =>
-      InheritedModel.inheritFrom<BerthRow>(
-        context,
-        aspect: BerthAspect.active,
-      )?.active;
 
   /// [of] at an event — a press, a drag's start — without depending on it.
   static Layer? at(BuildContext context) =>
@@ -109,9 +91,7 @@ class BerthRow extends InheritedModel<BerthAspect> {
 
   @override
   bool updateShouldNotify(BerthRow oldWidget) =>
-      oldWidget.layer.id != layer.id ||
-      oldWidget.active != active ||
-      _showsOtherThan(oldWidget);
+      oldWidget.layer.id != layer.id || _showsOtherThan(oldWidget);
 
   @override
   bool updateShouldNotifyDependent(
@@ -120,8 +100,6 @@ class BerthRow extends InheritedModel<BerthAspect> {
   ) =>
       (dependencies.contains(BerthAspect.standsFor) &&
           oldWidget.layer.id != layer.id) ||
-      (dependencies.contains(BerthAspect.active) &&
-          oldWidget.active != active) ||
       (dependencies.contains(BerthAspect.shows) &&
           _showsOtherThan(oldWidget));
 }
@@ -170,9 +148,6 @@ enum BerthAspect {
 
   /// What the row draws ([BerthRow.shows]).
   shows,
-
-  /// Whether the row is the one stood on ([BerthRow.activeOf]).
-  active,
 }
 
 /// The id of the layer the row at [context] stands for now — [builtFor],
