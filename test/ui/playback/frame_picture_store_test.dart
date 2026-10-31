@@ -865,6 +865,22 @@ void main() {
       store.dispose();
     });
 
+    test('whose store is disposed while it is written is none — nothing is '
+        'held after the write', () async {
+      final gpu = _RecordingGpu()
+        ..allocates = true
+        ..holdWrites = true;
+      final store = FramePictureStore<String>(gpu: gpu);
+      final laid = store.lay('a', over(extent));
+      await pollUntil(() => gpu.bases.isNotEmpty);
+      store.dispose();
+      expect(await laid, isNull);
+
+      gpu.releaseWrite();
+      await pumpEventQueue();
+      expect(store.holds('a'), isFalse, reason: 'laid into a store let go');
+    });
+
     test('whose piece threw rendering answers with the throw, and the next '
         'lay goes on', () async {
       final gpu = _RecordingGpu()..allocates = true;
