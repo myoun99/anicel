@@ -730,6 +730,11 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// 49 / 60 ms, at 100% 2111 / 3168 ms → 41 / 54 ms, a frame every vsync
   /// again (it was every other one). ⛔Not until the step is rendered
   /// rather than in: 61 / 77 ms fitted, its batches behind it instead.
+  /// ⛔Not with the cursor's frames held a vsync while one is on its way, to
+  /// leave the raster thread to it (F-512, 2026-10-31, `82bdbe4d1`): the main
+  /// PC gained only under another session's tests, ink p50 46.5 → 33.8 ms;
+  /// the Surface Pro 11, quiet, gained nothing — 34 → 35 ms at 100%, 33 → 41
+  /// fitted — and a stroke's frames went 88–90 → 53–63 fps, under F-130's 60.
   ///
   /// ⛔NOT WHILE A STROKE'S LANDING MOVES THE PICTURE ([_moving]): the last
   /// of the stroke goes in now, under the key it moves to ([_moves]) — left
