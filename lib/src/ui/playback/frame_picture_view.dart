@@ -602,17 +602,30 @@ class _FramePictureViewState extends State<FramePictureView> {
 
   /// 🚨A STROKE THAT LANDS MOVES THE PICTURE IT WAS PATCHED INTO: [key] is
   /// the frame shown but for the cel the pen is on, and every change of
-  /// the live rows is in its picture — the stroke's own steps — so its
-  /// texels are [key]'s. ⛔Any other change of the frame — another row, the
-  /// pen's own row's opacity, another frame — is a new picture.
+  /// the live rows is in its picture — the stroke's own steps — or goes in
+  /// at the next patch, so its texels are [key]'s. ⛔Any other change of the
+  /// frame — another row, the pen's own row's opacity, another frame — is a
+  /// new picture.
+  ///
+  /// 🗣️F-525 (유저 2026-11-01): 「솔로할때만 안보임」 — ⛔SO IS A CHANGE THAT
+  /// CANNOT GO IN ([_canCatchUp]). What lands on the cel but a stroke — a
+  /// paste, a redo — has no step in the picture, all of it to go in at that
+  /// patch; moved first and refused it, the picture stayed under the frame's
+  /// key without it, and every screen that came back took it. A stack in
+  /// solo draws no other row past the page, so a paste from one reached past
+  /// its picture and not past the whole frame's.
   bool _moves(FramePictureKey key) {
     final from = _showing;
     final drawnOn = _drawnOn;
-    if (_shown == null || from == null || drawnOn == null) {
+    final shown = _shown;
+    if (shown == null || from == null || drawnOn == null) {
       return false;
     }
     if (_pictures.keyOfStack(widget.nodes, widget.picture, asOf: drawnOn) !=
         from) {
+      return false;
+    }
+    if (!_canCatchUp(shown.picture)) {
       return false;
     }
     // What is still out of it goes in under the key it moves to
@@ -641,6 +654,24 @@ class _FramePictureViewState extends State<FramePictureView> {
     );
     return true;
   }
+
+  /// Whether what the live rows moved since the picture shown last held them
+  /// can go into [picture]: what [_catchUp] and [_writeIn] would draw the
+  /// frame as it stands for.
+  bool _canCatchUp(FramePicture picture) {
+    final live = _live;
+    final held = _held;
+    return live != null &&
+        held != null &&
+        live.steady &&
+        live.movedSince(held).located &&
+        _fits(live.drawing.extent, picture.extent);
+  }
+
+  /// ⛔A picture does not grow: whether what a frame draws over [drawn] is
+  /// all inside a picture of [extent].
+  static bool _fits(Rect drawn, Rect extent) =>
+      drawn.intersect(extent) == drawn;
 
   /// The live rows were handed anew — a lift taken up or put down, the
   /// pen's row's painter once its stroke landed: a change of the live rows
@@ -796,7 +827,7 @@ class _FramePictureViewState extends State<FramePictureView> {
     // row or column of tiles would be drawn as it stands.
     final extent = picture.extent;
     final drawing = live.drawing;
-    if (drawing.extent.intersect(extent) != drawing.extent) {
+    if (!_fits(drawing.extent, extent)) {
       _standing.whole = true;
       return;
     }
