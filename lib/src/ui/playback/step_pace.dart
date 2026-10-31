@@ -10,9 +10,13 @@ import 'dart:math' as math;
 /// Where they leave nothing — the levels written with every step, a machine
 /// busy with something else, a slower one — there is none, and a step goes
 /// at the paint as it did. 🔬Main PC, 144 Hz, a new project, the pen to the
-/// ink on the glass, p50 at 300 and 1200 px/s: at 100% 22.2 and 18.2 → 18.4
-/// and 15.3 ms, at the fit 19.6 and 17.2 → 18.2 and 15.7, and the same under
-/// the test line's load. ⛔ONE STEP A FRAME, not as each sample comes: that took
+/// ink on the glass, p50 at 300 and 1200 px/s: at 100% 22.5 and 18.7 → 20.9
+/// and 17.3 ms, at the fit 18.6 and 18.4 → 17.5 and 15.6, and no later under
+/// the test line's load. The Surface Pro 11, input to raster done, p50 at 300
+/// and 1200 px/s and p99: at the fit, every level with every step and so no
+/// hold, 14.3 and 19.5 → 13.8 and 14.5 ms, p99 the same; at 100% with no
+/// level written, 12.4 and 13.2 → 8.0 and 8.2 ms, p99 22–23 → 18–24.
+/// ⛔ONE STEP A FRAME, not as each sample comes: that took
 /// 11 ms to 7.5 on the main PC, and on the Surface Pro 11 p99 21–28 → 42–59
 /// ms at 100% and 39–46 → 340 ms at the fit, the copies out of the GPU one
 /// behind the other (2026-10-31).
