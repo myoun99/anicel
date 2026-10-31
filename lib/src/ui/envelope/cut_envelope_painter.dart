@@ -110,6 +110,7 @@ class CutEnvelopePainter extends CustomPainter
       devicePixelRatio: effectiveRatio,
       paper: Size(layout.paperWidth, layout.paperHeight),
     );
+    final grid = SheetDeviceGrid.of(size, sheet);
     canvas.save();
     enterSheetPaperSpace(canvas, size, sheet);
     if (_draws(SheetPaintLayer.paper)) {
@@ -117,6 +118,7 @@ class CutEnvelopePainter extends CustomPainter
         canvas,
         Rect.fromLTWH(0, 0, layout.paperWidth, layout.paperHeight),
         Color(layout.form.paperArgb),
+        pixelRatio: grid.devicePixelRatio,
       );
     }
 
@@ -128,7 +130,7 @@ class CutEnvelopePainter extends CustomPainter
       _paintContent(canvas);
     }
     if (_draws(SheetPaintLayer.ink)) {
-      _paintInk(canvas, SheetDeviceGrid.of(size, sheet));
+      _paintInk(canvas, grid);
     }
     canvas.restore();
     // On screen the ink is the stratum's last, and drawn out of paper

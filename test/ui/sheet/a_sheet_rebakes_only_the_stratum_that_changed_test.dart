@@ -49,7 +49,7 @@ import '../../helpers/cel_photo_fixture.dart';
 /// 유저 2026-09-25: 「그림 수정하거나 텍스트 바뀌거나 하는데 용지
 /// 리빌드하면 너무 비효율적이잖아」 · 「캔버스베이스패널은 다 통일해줘」.
 /// Read as each stratum's bake count (`RenderStaticRaster.captureCount` —
-/// the test renderer bakes): a renamed cut re-records the values alone, a
+/// baked on every engine here): a renamed cut re-records the values alone, a
 /// stroke the ink alone, a landed picture the strata that print pictures —
 /// and a change of the sheet's shape re-records its form.
 ///
@@ -171,6 +171,10 @@ void main() {
       )
     >
     mount(WidgetTester tester) async {
+      // The count is the instrument, so the bake is asked for: on Impeller a
+      // raster paints through and never counts (`StaticRaster.capturePays`).
+      StaticRaster.debugCapturePaysOverride = true;
+      addTearDown(() => StaticRaster.debugCapturePaysOverride = null);
       session = EditorSessionManager(initialProject: _project());
       addTearDown(session.dispose);
       thumbnails = ChangeNotifier();

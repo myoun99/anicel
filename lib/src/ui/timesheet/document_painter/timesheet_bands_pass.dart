@@ -18,6 +18,9 @@ class _TimesheetBandsPass {
         canvas,
         _painter.layout.pageRect(pageIndex),
         TimesheetDocumentPainter._paper,
+        // With no view it is an export, whose canvas lands on its pixels
+        // already: its ratio says what its photos are sampled for.
+        pixelRatio: _painter.viewport == null ? 1 : _painter.effectiveRatio,
       );
     }
   }
