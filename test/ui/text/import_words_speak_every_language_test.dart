@@ -89,7 +89,6 @@ void main() {
     'abrCorruptSection',
     'abrNoBrushes',
     'abrNothingImportable',
-    'sutCannotOpen',
     'sutUnreadable',
     'sutNoBrushData',
     'sutNothingImportable',

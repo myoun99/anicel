@@ -17,12 +17,12 @@ import 'package:sqlite3/sqlite3.dart';
 /// `SessionScratch` holds is the isolate's own.
 ///
 /// ⚠️Sync on purpose: async `dart:io` never completes under the widget-test
-/// clock, and all a reader does here is query.
+/// clock, and all a reader does here is query. A file that can be large is
+/// read here on a worker: the `.clip` door's and `decodeSutBrushFile`'s.
 ///
-/// ↩️One reader still copies on its own — the brush library's `.sut`. The
-/// shortcut files (I-107) came here first and `readClipDocument` moved here
-/// (2026-10-30); the board card `three-readers-copy-an-sqlite-file-their-
-/// own-way` asks the brush library's owner to follow.
+/// ↩️Three readers copied on their own (board `three-readers-copy-an-sqlite-
+/// file-their-own-way`): the shortcut files (I-107) came here first,
+/// `readClipDocument` moved here on 2026-10-30 and the `.sut` on 10-31.
 T readSqliteBytes<T>(
   List<int> bytes,
   T Function(Database database) read, {

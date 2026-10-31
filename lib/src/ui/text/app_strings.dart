@@ -4657,7 +4657,6 @@ enum AppStrings {
     'importWarning.abrCorruptSection': 'ABR のセクションの長さが壊れています。',
     'importWarning.abrNoBrushes': 'ABR ファイルにブラシが見つかりません。',
     'importWarning.abrNothingImportable': 'ABR ファイルに読み込めるブラシがありませんでした。',
-    'importWarning.sutCannotOpen': 'ファイルを開けませんでした: {error}',
     'importWarning.sutUnreadable':
         'このファイルは読み込める CLIP STUDIO のブラシではありません（{error}）。',
     'importWarning.sutNoBrushData': 'このファイルに CLIP STUDIO のブラシデータが見つかりません。',
@@ -6476,7 +6475,6 @@ enum AppStrings {
     'importWarning.abrCorruptSection': 'ABR 구역의 길이가 손상되었습니다.',
     'importWarning.abrNoBrushes': 'ABR 파일에서 브러시를 찾지 못했습니다.',
     'importWarning.abrNothingImportable': 'ABR 파일에 가져올 수 있는 브러시가 없습니다.',
-    'importWarning.sutCannotOpen': '파일을 열지 못했습니다: {error}',
     'importWarning.sutUnreadable':
         '이 파일은 읽을 수 있는 CLIP STUDIO 브러시가 아닙니다({error}).',
     'importWarning.sutNoBrushData': '이 파일에서 CLIP STUDIO 브러시 데이터를 찾지 못했습니다.',
@@ -8420,7 +8418,6 @@ enum AppStrings {
     'importWarning.abrNoBrushes': 'Aucune brosse trouvée dans le fichier ABR.',
     'importWarning.abrNothingImportable':
         'Le fichier ABR ne contient aucune brosse importable.',
-    'importWarning.sutCannotOpen': 'Impossible d’ouvrir le fichier : {error}',
     'importWarning.sutUnreadable':
         'Ce fichier n’est pas une brosse CLIP STUDIO lisible ({error}).',
     'importWarning.sutNoBrushData':
@@ -10224,7 +10221,6 @@ enum AppStrings {
     'importWarning.abrCorruptSection': 'ABR 区段长度已损坏。',
     'importWarning.abrNoBrushes': '在 ABR 文件中未找到画笔。',
     'importWarning.abrNothingImportable': 'ABR 文件中没有可导入的画笔。',
-    'importWarning.sutCannotOpen': '无法打开文件：{error}',
     'importWarning.sutUnreadable': '此文件不是可读取的 CLIP STUDIO 画笔（{error}）。',
     'importWarning.sutNoBrushData': '在此文件中未找到 CLIP STUDIO 画笔数据。',
     'importWarning.sutNothingImportable': '文件中没有可导入的画笔。',

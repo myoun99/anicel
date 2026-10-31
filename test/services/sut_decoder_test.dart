@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
@@ -493,7 +494,7 @@ void main() {
       texturePng: await blackPng(8, 8),
     );
     final result = await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     );
 
@@ -559,7 +560,7 @@ void main() {
       thumbnailPng: await blankPng(6, 4),
     );
     final result = await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     );
 
@@ -614,7 +615,7 @@ void main() {
       );
 
       final result = await decodeSutBrushFile(
-        filePath: path,
+        File(path).readAsBytesSync(),
         sourceName: 'fixture',
       );
 
@@ -629,7 +630,7 @@ void main() {
       final path = await buildFixture(tipPng: await blackPng(6, 4));
 
       final result = await decodeSutBrushFile(
-        filePath: path,
+        File(path).readAsBytesSync(),
         sourceName: 'fixture',
       );
 
@@ -651,7 +652,7 @@ void main() {
         ..execute('UPDATE Variant SET BrushAdjustFlowByInterval = ?', [stored])
         ..close();
       final result = await decodeSutBrushFile(
-        filePath: path,
+        File(path).readAsBytesSync(),
         sourceName: 'fixture',
       );
       return result.presets.first.settings.adjustsFlowBySpacing;
@@ -671,7 +672,7 @@ void main() {
       'says so', () async {
     final path = await buildFixture(tipPng: await blankPng(4, 4));
     final result = await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     );
 
@@ -713,7 +714,7 @@ void main() {
       ]),
     );
     final result = await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     );
 
@@ -744,7 +745,7 @@ void main() {
       tipArray: patternArrayOf([(layer: layer, catalog: installed)]),
     );
     final result = await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     );
 
@@ -767,7 +768,7 @@ void main() {
       tipArray: patternArrayOf([(layer: layer, catalog: '')]),
     );
     final result = await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     );
 
@@ -785,7 +786,7 @@ void main() {
         patternOrderType: stored,
       );
       final result = await decodeSutBrushFile(
-        filePath: path,
+        File(path).readAsBytesSync(),
         sourceName: 'fixture',
       );
       expect(noted(result), isEmpty, reason: '$stored');
@@ -809,7 +810,7 @@ void main() {
       patternOrderType: 9,
     );
     final result = await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     );
 
@@ -828,7 +829,7 @@ void main() {
       ]),
     );
     final result = await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     );
 
@@ -852,7 +853,7 @@ void main() {
       ],
     );
     final curve = (await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     )).presets.first.settings.sizePressureCurve!;
 
@@ -876,7 +877,7 @@ void main() {
       sizePressureGraph: const [(0.0, 0.0), (1.0, 1.0)],
     );
     final curve = (await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     )).presets.first.settings.sizePressureCurve;
 
@@ -893,7 +894,7 @@ void main() {
       sizePressureGraph: const [(0.0, 1.0), (0.5, 0.2), (1.0, 0.0)],
     );
     final curve = (await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     )).presets.first.settings.sizePressureCurve!;
 
@@ -912,7 +913,7 @@ void main() {
       sizePressureGraph: const [(0.2, 0.0), (0.7, 0.9), (1.0, 1.0)],
     );
     final curve = (await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     )).presets.first.settings.sizePressureCurve;
 
@@ -937,7 +938,7 @@ void main() {
         sizeEffector: sizeEffector,
       );
       return (await decodeSutBrushFile(
-        filePath: path,
+        File(path).readAsBytesSync(),
         sourceName: 'fixture',
       )).presets.first.settings;
     }
@@ -1020,7 +1021,7 @@ void main() {
       flowEffectorMinimum: 10,
     );
     final s = (await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     )).presets.first.settings;
 
@@ -1049,7 +1050,7 @@ void main() {
       useSpray: 0,
     );
     final s = (await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     )).presets.first.settings;
 
@@ -1081,7 +1082,7 @@ void main() {
       useSpray: 0,
     );
     final s = (await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     )).presets.first.settings;
 
@@ -1103,7 +1104,7 @@ void main() {
       rotationRandomInSpray: 69,
     );
     final s = (await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     )).presets.first.settings;
 
@@ -1125,7 +1126,7 @@ void main() {
       rotationRandomInSpray: 0,
     );
     final s = (await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     )).presets.first.settings;
 
@@ -1148,7 +1149,7 @@ void main() {
       dualSprayDensity: 3,
     );
     final s = (await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     )).presets.first.settings;
 
@@ -1173,7 +1174,7 @@ void main() {
       dualSprayDensity: 3,
     );
     final s = (await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     )).presets.first.settings;
 
@@ -1191,7 +1192,7 @@ void main() {
       syncDualBrushSize: 1,
     );
     final s = (await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     )).presets.first.settings;
 
@@ -1210,7 +1211,7 @@ void main() {
       dualCompositeMode: 0,
     );
     final result = await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     );
 
@@ -1231,7 +1232,7 @@ void main() {
       dualCompositeMode: 1,
     );
     final result = await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     );
 
@@ -1257,7 +1258,7 @@ void main() {
       syncDualBrushSize: 1,
     );
     final s = (await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     )).presets.first.settings;
 
@@ -1275,7 +1276,7 @@ void main() {
       dualFlow: 30,
     );
     final s = (await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     )).presets.first.settings;
 
@@ -1290,7 +1291,7 @@ void main() {
       dualSize: 25.0, // absolute, against the fixture's 50px brush
     );
     final s = (await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     )).presets.first.settings;
 
@@ -1301,7 +1302,7 @@ void main() {
     // Brushes that never enabled a dual tip still carry a stored DualSize.
     final path = await buildFixture(tipPng: await blackPng(4, 4));
     final s = (await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     )).presets.first.settings;
 
@@ -1320,7 +1321,7 @@ void main() {
       thicknessEffectorRandomMinimum: 35,
     );
     final s = (await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     )).presets.first.settings;
 
@@ -1339,7 +1340,7 @@ void main() {
       intervalEffectorRandomMinimum: 20,
     );
     final s = (await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     )).presets.first.settings;
 
@@ -1354,7 +1355,7 @@ void main() {
       compositeMode: 2,
     );
     final result = await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     );
 
@@ -1370,7 +1371,7 @@ void main() {
     // the brush composites normally and says so.
     final path = await buildFixture(tipPng: await blackPng(4, 4));
     final result = await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     );
 
@@ -1384,7 +1385,7 @@ void main() {
         compositeMode: entry.key,
       );
       final result = await decodeSutBrushFile(
-        filePath: path,
+        File(path).readAsBytesSync(),
         sourceName: 'fixture',
       );
       expect(
@@ -1462,7 +1463,7 @@ void main() {
       compositeMode: 20,
     );
     final result = await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     );
 
@@ -1487,7 +1488,7 @@ void main() {
         antiAlias: entry.key,
       );
       final result = await decodeSutBrushFile(
-        filePath: path,
+        File(path).readAsBytesSync(),
         sourceName: 'fixture',
       );
       expect(
@@ -1507,7 +1508,7 @@ void main() {
       antiAlias: null,
     );
     final result = await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     );
 
@@ -1523,7 +1524,7 @@ void main() {
       antiAlias: 7,
     );
     final result = await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     );
 
@@ -1543,7 +1544,7 @@ void main() {
       antiAlias: 0,
     );
     final result = await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     );
 
@@ -1559,7 +1560,7 @@ void main() {
         flickerReduction: entry.key,
       );
       final result = await decodeSutBrushFile(
-        filePath: path,
+        File(path).readAsBytesSync(),
         sourceName: 'fixture',
       );
       expect(
@@ -1579,7 +1580,7 @@ void main() {
       '(F-418-Q6)', () async {
     final path = await buildFixture(tipPng: await blackPng(4, 4));
     final result = await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     );
     expect(result.presets, hasLength(2));
@@ -1596,7 +1597,7 @@ void main() {
       '(F-418)', () async {
     Future<BrushCorrection> read(Future<String> fixture) async {
       final result = await decodeSutBrushFile(
-        filePath: await fixture,
+        File(await fixture).readAsBytesSync(),
         sourceName: 'fixture',
       );
       return result.presets.first.settings.correction;
@@ -1668,7 +1669,7 @@ void main() {
       mixColorExtension: 30,
     );
     final s = (await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     )).presets.first.settings;
 
@@ -1690,7 +1691,7 @@ void main() {
       mixAlphaEffectorMinimum: 50,
     );
     final s = (await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     )).presets.first.settings;
 
@@ -1720,7 +1721,7 @@ void main() {
       mixColorExtension: 10,
     );
     final s = (await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     )).presets.first.settings;
 
@@ -1736,7 +1737,7 @@ void main() {
       brushSizeUnit: 2,
     );
     final result = await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     );
 
@@ -1750,7 +1751,7 @@ void main() {
       brushSizeUnit: 7,
     );
     final result = await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     );
 
@@ -1764,7 +1765,7 @@ void main() {
       includeMaterial: false,
     );
     final result = await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     );
 
@@ -1782,28 +1783,57 @@ void main() {
     );
   });
 
+  test('the read leaves this isolate: it goes on turning meanwhile', () async {
+    // No material, so no tip decode gives a turn of its own.
+    final path = await buildFixture(
+      tipPng: await blackPng(2, 2),
+      includeMaterial: false,
+    );
+    final bytes = File(path).readAsBytesSync();
+    var turns = 0;
+    final turning = Timer.periodic(Duration.zero, (_) => turns += 1);
+    addTearDown(turning.cancel);
+
+    await decodeSutBrushFile(bytes, sourceName: 'fixture');
+
+    expect(turns, greaterThan(0));
+  });
+
   test('rejects non-sqlite and non-brush files with clear errors', () async {
-    final bogus = '${tempDirectory.path}/bogus.sut';
-    await File(bogus).writeAsString('not a database at all');
-    expect(
-      () => decodeSutBrushFile(filePath: bogus, sourceName: 'bogus'),
-      throwsA(isA<SutDecodeException>()),
+    // ⚠️Each by its own key: a refusal comes back across the worker, and
+    // one that did not would still be a throw.
+    Matcher refused(String key) => throwsA(
+      isA<SutDecodeException>().having(
+        (refusal) => refusal.reason.key,
+        'its key',
+        key,
+      ),
+    );
+    await expectLater(
+      () => decodeSutBrushFile(
+        utf8.encode('not a database at all'),
+        sourceName: 'bogus',
+      ),
+      refused('sutUnreadable'),
     );
 
     final empty = '${tempDirectory.path}/empty.sut';
     final database = sqlite3.open(empty);
     database.execute('CREATE TABLE Unrelated(a INTEGER)');
     database.close();
-    expect(
-      () => decodeSutBrushFile(filePath: empty, sourceName: 'empty'),
-      throwsA(isA<SutDecodeException>()),
+    await expectLater(
+      () => decodeSutBrushFile(
+        File(empty).readAsBytesSync(),
+        sourceName: 'empty',
+      ),
+      refused('sutNoBrushData'),
     );
   });
 
   test('oversized tips are downscaled to the mask cap', () async {
     final path = await buildFixture(tipPng: await blackPng(320, 100));
     final result = await decodeSutBrushFile(
-      filePath: path,
+      File(path).readAsBytesSync(),
       sourceName: 'fixture',
     );
 
