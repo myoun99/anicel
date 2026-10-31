@@ -1,6 +1,7 @@
 import 'dart:collection';
 
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dots_at.dart';
 import '../helpers/run_edge_fixtures.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/storyboard_coverage.dart';
@@ -17,6 +18,28 @@ TimelineExposure _drawing(String id, {int length = 1}) =>
     TimelineExposure.drawing(FrameId(id), length: length);
 
 void main() {
+  test('🗣️F-519: a panel filled out to the conte keeps its dots to its end', () {
+    final filled = storyboardTimelineFilledToCover(
+      timeline: SplayTreeMap<int, TimelineExposure>.of({
+        2: TimelineExposure.drawing(
+          const FrameId('p'),
+          length: 4,
+          breakdownMarks: dotsAt(const [3]),
+        ),
+      }),
+      cutDuration: 8,
+      conteStart: 0,
+    )!;
+
+    expect(filled.keys, [0], reason: 'it reaches back to the conte start');
+    expect(filled[0]!.length, 8);
+    expect(
+      filled[0]!.breakdownOffsets,
+      [7],
+      reason: 'two cells more at its end, as many at its head',
+    );
+  });
+
   test('no layer at all is ONE cell over the whole cut', () {
     final cells = storyboardCoverageCells(timeline: null, cutDuration: 12);
 

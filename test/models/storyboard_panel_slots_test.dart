@@ -7,6 +7,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/storyboard_panel_slots.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 
+import '../helpers/dots_at.dart';
 import '../helpers/run_edge_fixtures.dart';
 
 /// THE TRACK AS PANELS — the unit that lets ONE lead-edge rule serve the
@@ -177,6 +178,33 @@ void main() {
       next[0]!.frameId,
       const FrameId('p0'),
       reason: 'a panel keeps its picture — only its timing changed',
+    );
+  });
+
+  test('🗣️F-519: a panel\'s dots keep to its end, as a frame block\'s do', () {
+    final row = SplayTreeMap<int, TimelineExposure>.of({
+      0: TimelineExposure.drawing(
+        const FrameId('p0'),
+        length: 4,
+        breakdownMarks: dotsAt(const [3]),
+      ),
+      4: TimelineExposure.drawing(
+        const FrameId('p1'),
+        length: 6,
+        breakdownMarks: dotsAt(const [2]),
+      ),
+    });
+
+    final next = conteTimelineFromPanels(
+      timeline: row,
+      panelLengths: [6, 4],
+    )!;
+
+    expect(next[0]!.breakdownOffsets, [5], reason: 'p0\'s tail moved on');
+    expect(
+      next[6]!.breakdownOffsets,
+      isEmpty,
+      reason: 'p1\'s head came to its dot, on cell 6',
     );
   });
 

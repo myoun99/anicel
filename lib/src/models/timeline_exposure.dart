@@ -65,7 +65,8 @@ class TimelineExposure {
 
   /// A block's [marks] as they stand on a block that starts [cut] cells into
   /// it: each moved back [cut], each wearing its mark, and the ones at or
-  /// before the cut gone — offset 0 is the drawing itself.
+  /// before the cut gone — offset 0 is the drawing itself. A negative [cut]
+  /// is a head that grew ([atLengthKeepingDotsToItsEnd]).
   ///
   /// THE one shift for every block that loses its head: the tail a band's X
   /// leaves, the back half of a split, a repeat's part a wall cuts into.
@@ -175,6 +176,21 @@ class TimelineExposure {
       endEdge: endEdge ?? this.endEdge,
     );
   }
+
+  /// This block [length] long, each dot as far from its END as it stood —
+  /// and one the head comes to, gone ([marksPastCut]). So a dot rides the
+  /// tail edge and stands where it is under the lead edge, the same answer
+  /// for whichever of them moved the length.
+  ///
+  /// 🗣️F-519 (유저 2026-10-31): 「프레임 블록에 붙이는 중간나누기마크, 지금
+  /// 앞엣지를 움직일때 같이움직이는데. 이게아니라 뒤엣지 움직일때
+  /// 같이움직이도록」. ↩️[copyWith]'s length keeps each dot's offset from the
+  /// HEAD, which rode them on the lead edge — and it still does, for a block
+  /// cut in two, whose dots stay on their cells.
+  TimelineExposure atLengthKeepingDotsToItsEnd(int length) => copyWith(
+    length: length,
+    breakdownMarks: marksPastCut(breakdownMarks, this.length! - length),
+  );
 
   /// This entry with [mark] on [side].
   TimelineExposure withEdgeMark(

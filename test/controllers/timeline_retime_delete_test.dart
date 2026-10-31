@@ -74,6 +74,18 @@ void main() {
       });
     });
 
+    test('a dot keeps to the block\'s end: the comma buttons move the tail', () {
+      final harness = _Harness({
+        0: _drawing('a', 4, dots: [1, 3]),
+      });
+
+      harness.retime({0: 6});
+
+      harness.expectTimeline({
+        0: _drawing('a', 6, dots: [3, 5]),
+      });
+    });
+
     test('a shrink drops the dots it cut off', () {
       final harness = _Harness({
         0: _drawing('a', 4, dots: [1, 3]),
