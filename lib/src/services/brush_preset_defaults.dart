@@ -1000,7 +1000,13 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
     groupId: _watercolorGroup,
     settings: BrushSettings(
       size: 22,
-      hardness: 0.6,
+      // 🗣️F-521 (유저 2026-11-01): 「클튜에 맞춰서 통일」. 📏Clip Studio's 진한
+      // 수채 is a hard nib at 中 (its .sut: BrushHardness 100, AntiAlias 2),
+      // so its edge is the step's alone: 10–90% 1.0 · 1.4 · 1.9px at 60px.
+      // ↩️Was 0.6: a ramp 7px wide that every step stood behind, so 1단계 to
+      // 3단계 drew one airbrush edge (「1부터 3이랑 거의 똑같고」).
+      hardness: 1.0,
+      antiAlias: BrushAntiAlias.medium,
       flow: 0.9375,
       opacity: 0.9,
       spacing: BrushShape.generalSpacing,

@@ -34,6 +34,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/brush_dab_interpolator.dart';
+import 'package:anicel/src/services/brush_preset_defaults.dart';
 import 'package:anicel/src/services/brush_tip_stamp_cache.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
 
@@ -69,6 +70,15 @@ const _clipStudio = {
   },
 };
 
+/// Clip Studio's 진한 수채 at 60px, step by step (F-521, 유저 2026-11-01,
+/// `参考/CSP_decode/1101_AA`): the 10–90% band, near-level lines read a
+/// column at a time as Q5's were.
+const _denseWatercolorAt60 = {
+  BrushAntiAlias.low: 1.01,
+  BrushAntiAlias.medium: 1.44,
+  BrushAntiAlias.high: 1.85,
+};
+
 /// The ink of a column of Clip Studio's G펜 lines at 1단계 · 2단계 · 3단계 —
 /// board a-one-pixel-dab-drops-out-by-where-it-lies Q4 (2026-10-25).
 const _clipStudioInk = [
@@ -85,14 +95,19 @@ const _clipStudioInk = [
 ];
 
 /// A G-pen dab of [size] at [step], centred at ([x], [y]).
-BrushDab _gPen(BrushAntiAlias step, double size, double x, double y) =>
-    BrushDab(
+BrushDab _gPen(
+  BrushAntiAlias step,
+  double size,
+  double x,
+  double y, {
+  double hardness = 1,
+}) => BrushDab(
       center: CanvasPoint(x: x, y: y),
       color: 0xFF000000,
       size: size,
       opacity: 1,
       flow: 1,
-      hardness: 1,
+      hardness: hardness,
       pressure: 1,
       sequence: 0,
       tipShape: BrushTipShape.round,
@@ -152,7 +167,11 @@ double _ink(BrushAntiAlias step, double size) {
 /// A straight G-pen line at -62° ([_laid]), its alpha row by row on a
 /// square canvas that holds its middle rows clear of its caps — 200 a side
 /// up to size 50.
-List<int> _line(BrushAntiAlias step, {double size = 10}) {
+List<int> _line(
+  BrushAntiAlias step, {
+  double size = 10,
+  double hardness = 1,
+}) {
   final reach = math.max(60.0, size * 0.8);
   final side = math.max(200, (2 * (0.883 * reach + size / 2) + 20).ceil());
   BrushDab at(double t) {
@@ -162,6 +181,7 @@ List<int> _line(BrushAntiAlias step, {double size = 10}) {
       size,
       side / 2 + t * math.cos(angle) + 0.137,
       side / 2 + t * math.sin(angle) + 0.291,
+      hardness: hardness,
     );
   }
 
@@ -259,6 +279,27 @@ void main() {
       });
     }
   }
+
+  // F-521: 「우리앱은 안티앨리어스 1부터 3이랑 거의 똑같고」 — a brush whose
+  // hardness ramp is wider than every step shows none of them, so this reads
+  // the hardness the roster ships.
+  final denseWatercolor = defaultBrushPresets
+      .firstWhere((preset) => preset.id.value == 'builtin-dense-watercolor')
+      .settings;
+
+  for (final MapEntry(key: step, value: target)
+      in _denseWatercolorAt60.entries) {
+    test('AA ${step.name}: the edge Clip Studio\'s 진한 수채 draws at 60', () {
+      final p = _profile(
+        _line(step, size: 60, hardness: denseWatercolor.hardness),
+      ).profile;
+      expect(_crossing(p, 0.1) - _crossing(p, 0.9), closeTo(target, 0.16));
+    });
+  }
+
+  test('진한 수채 ships at Clip Studio\'s step, 中', () {
+    expect(denseWatercolor.antiAlias, BrushAntiAlias.medium);
+  });
 
   for (final (size, row) in _clipStudioInk) {
     test('🚨the ink Clip Studio\'s line lays at size $size, at every step',
