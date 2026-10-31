@@ -242,7 +242,12 @@ class _LayerGridRailRows {
             rowsIn: (fromY, toY) => _railRowsIn(fromY, toY, rows, window.now),
             child: Stack(
               children: [
-                window.laid((window) => _windowedRailRows(rows, window)),
+                RailRowLines(
+                  drag: _state.widget.hooks.rowDragHooks?.drag,
+                  child: window.laid(
+                    (window) => _windowedRailRows(rows, window),
+                  ),
+                ),
                 // The section ZONES over the
                 // rows' reserved band slots
                 // (UI-R7 #2): the old gutter

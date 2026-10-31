@@ -1969,14 +1969,14 @@ class _StoryboardRailRows {
   /// label's own edges — under an S row, a conte row and an fx header while
   /// their lanes followed, and at the V row inside a group whose drop lands
   /// past the rows above and below it.
-  ({double lead, double trail}) Function() linesBeyondFrom(
+  RowLinesBeyond? Function() linesBeyondFrom(
     TimelineRowAddress anchor,
   ) => () {
     final table = _pointerTable();
     final rows = table.rows;
     final at = rows.indexWhere((row) => row.standing == anchor);
     if (at < 0) {
-      return (lead: 0.0, trail: 0.0);
+      return null;
     }
     final head = rows[at].held;
     final track = rows[at].track;

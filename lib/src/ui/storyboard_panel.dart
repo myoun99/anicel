@@ -134,6 +134,7 @@ import 'timeline/effect_lane_policy.dart'
     show effectGroupLaneId, effectPropertyLanes, parseEffectLaneId;
 import 'timeline/layer_drop_policy.dart'
     show
+        RowLinesBeyond,
         linesBeyondRow,
         ownsTheLane,
         rowStepsBetween,
@@ -147,6 +148,7 @@ import 'timeline/layer_row_drag.dart'
         LayerRowDragSubject,
         LayerRowDragTarget,
         LayerRowSubject,
+        RailRowLines,
         TimelineRowDragHooks,
         TrackRowSubject,
         TrackSeRowSubject,
@@ -2407,28 +2409,33 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                   axis: Axis.vertical,
                                   columns: _sweep.columns(),
                                   rowsIn: _sweep.rowsIn,
-                                  // Laid by the rows' window, as the strips.
-                                  child: _rowsWindow.laidColumn(
-                                    _rowsWindow.railKeep,
-                                    (rowsOf) => [
-                                      // Track groups in TIMELINE order (R6
-                                      // B3): the S rows sit ABOVE their V
-                                      // track, slots bottom-up like the
-                                      // timeline (top-down S2, S1, V — R7-④).
-                                      for (
-                                        var index = 0;
-                                        index < frame.project.tracks.length;
-                                        index++
-                                      )
-                                        ..._railRows.railRowsForTrack(
-                                          frame.project.tracks[index],
-                                          index,
-                                          rowsOf(index),
-                                        ),
-                                    ],
-                                    // One pass of the rail's keep: a row it
-                                    // stops drawing is let go of.
-                                    newPass: _rows.railPass,
+                                  child: RailRowLines(
+                                    drag: widget.rowDragHooks?.drag,
+                                    // Laid by the rows' window, as the
+                                    // strips.
+                                    child: _rowsWindow.laidColumn(
+                                      _rowsWindow.railKeep,
+                                      (rowsOf) => [
+                                        // Track groups in TIMELINE order
+                                        // (R6 B3): the S rows sit ABOVE
+                                        // their V track, slots bottom-up
+                                        // like the timeline (top-down S2,
+                                        // S1, V — R7-④).
+                                        for (
+                                          var index = 0;
+                                          index < frame.project.tracks.length;
+                                          index++
+                                        )
+                                          ..._railRows.railRowsForTrack(
+                                            frame.project.tracks[index],
+                                            index,
+                                            rowsOf(index),
+                                          ),
+                                      ],
+                                      // One pass of the rail's keep: a row
+                                      // it stops drawing is let go of.
+                                      newPass: _rows.railPass,
+                                    ),
                                   ),
                                 ),
                                 // The row selection, over the LAYER area

@@ -22,6 +22,7 @@ import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
 import 'package:anicel/src/ui/widgets/instant_tap_region.dart'
     show InstantTapRegion;
 
+import '../../helpers/line_on_screen.dart';
 import '../../helpers/named_finders.dart';
 import '../../helpers/storyboard_host.dart';
 
@@ -285,9 +286,16 @@ Future<Map<String, Set<double>>> _linesOfACarry(
     await gesture.moveTo(Offset(start.dx, stop));
     await tester.pump();
     for (final element in _anyLine.evaluate()) {
-      (lines[(element.widget.key! as ValueKey<String>).value] ??= {}).add(
-        tester.getRect(find.byKey(element.widget.key!)).center.dy,
-      );
+      final key = element.widget.key!;
+      final name = (key as ValueKey<String>).value;
+      if (!lines.containsKey(name)) {
+        expect(
+          await lineOnScreen(tester, find.byKey(key)),
+          greaterThan(0.5),
+          reason: '$name stands there and the screen does not show it',
+        );
+      }
+      (lines[name] ??= {}).add(tester.getRect(find.byKey(key)).center.dy);
     }
   }
   await gesture.moveTo(start);
