@@ -146,6 +146,36 @@ void main() {
     });
   }
 
+  // PEN-12 #7, the timeline grids' clamp, and what a scrub reads on Impeller:
+  // a stretch's `ImageFiltered` is handed a new filter on every build, and a
+  // rebuild at a cut crossing repainted the scrollers it stood over. The
+  // default test platform is Android, the one a stretch is built on.
+  testWidgets('the storyboard grid stretches nothing past its ends', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: HomePage(initialProject: project()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byType(StoryboardPanel),
+        matching: find.byType(StretchingOverscrollIndicator),
+      ),
+      findsNothing,
+    );
+  });
+
   // canvas-stack-relays-the-panel-per-scrub-crossing (I-22 계측, 09-28): where
   // a scrub parks, the canvas shows the track stack, which rebuilds as the
   // frame it follows crosses into another cut — bare under the panel
