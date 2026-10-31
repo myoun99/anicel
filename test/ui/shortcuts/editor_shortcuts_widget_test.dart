@@ -20,6 +20,7 @@ import '../flyout_test_helpers.dart';
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/app_shortcuts.dart';
 import '../../helpers/frame_keys.dart';
+import '../../helpers/named_finders.dart';
 
 /// P1: the app-level shortcut layer end to end — flipping, tools, undo,
 /// the text-field bare-letter guard and live re-recording through the
@@ -403,7 +404,15 @@ void main() {
           find.byType(TimelineLayerControlsRow),
         )
         .toList();
-    LayerId activeId() => rails().singleWhere((r) => r.active).layer.id;
+    LayerId activeId() => tester
+        .widget<TimelineLayerControlsRow>(
+          find.ancestor(
+            of: find.named('timeline-selected-layer'),
+            matching: find.byType(TimelineLayerControlsRow),
+          ),
+        )
+        .layer
+        .id;
 
     final order = [for (final rail in rails()) rail.layer.id];
     expect(order.length, 6);
