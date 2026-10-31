@@ -565,6 +565,11 @@ void main() {
       expect(tally(), [ok + 1, failed + 1, threw]);
       await write(_RecordingGpu()..writesThrow = StateError('unsized texels'));
       expect(tally(), [ok + 1, failed + 1, threw + 1]);
+      expect(
+        InputInspector.pinned['picture threw'],
+        'threw writing: Bad state: unsized texels',
+        reason: 'the count does not say what threw (build 1086)',
+      );
     });
 
     test('the GPU threw writing lets go of the picture and answers every '

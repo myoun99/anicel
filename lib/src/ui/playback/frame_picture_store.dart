@@ -1057,7 +1057,7 @@ class FramePictureStore<K extends Object> {
 /// Reports [error], thrown while [doing] — what a [FramePictureStore] goes
 /// on from as not done.
 void _report(Object error, StackTrace stack, String doing) {
-  _PictureWrites.threw();
+  _PictureWrites.threw(error, doing);
   FlutterError.reportError(
     FlutterErrorDetails(
       exception: error,
@@ -1080,6 +1080,11 @@ abstract final class _PictureWrites {
   static int _failed = 0;
   static int _threw = 0;
 
+  /// What threw last and what it was doing, for the line under the count:
+  /// 🔬build 1086's one throw in 306 writes (F-509, 2026-11-01) could not be
+  /// told from the code, and the count says nothing of what it was.
+  static String? _thrown;
+
   /// [write], its answer counted. One the engine refuses throws before it
   /// has one to give: [threw].
   static Future<bool> answered(Future<bool> write) async {
@@ -1093,15 +1098,24 @@ abstract final class _PictureWrites {
     return done;
   }
 
-  static void threw() {
+  static void threw(Object error, String doing) {
     _threw += 1;
+    // The card's row is one line: the words that tell one throw from another.
+    final said = '$error'.split('\n').first.replaceFirst('Exception: ', '');
+    _thrown = 'threw ${doing.split(' ').first}: $said';
     _show();
   }
 
-  static void _show() => InputInspector.pin(
-    'picture writes',
-    'picture writes ok $_ok · failed $_failed · threw $_threw',
-  );
+  static void _show() {
+    InputInspector.pin(
+      'picture writes',
+      'picture writes ok $_ok · failed $_failed · threw $_threw',
+    );
+    final thrown = _thrown;
+    if (thrown != null) {
+      InputInspector.pin('picture threw', thrown);
+    }
+  }
 }
 
 /// The levels a patch writes from its own texels: as many halvings as it

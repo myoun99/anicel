@@ -665,6 +665,36 @@ void main() {
           InputInspector.notes['ledger'],
           'ledger meas=0 est=1 fin=1 upd=1 rep=1 none=0',
         );
+        expect(InputInspector.notes['force'], 'force .50 .60');
+        expect(InputInspector.notes['state'], 'state e f');
+        expect(InputInspector.notes['fixed'], 'fixed .70 -');
+      },
+      variant: ipad,
+    );
+
+    testWidgets(
+      'the inspector\'s opening rows are the contact\'s own first ten samples '
+      '(a-light-press-opens-with-heavy-dabs)',
+      (tester) async {
+        InputInspector.visible.value = true;
+        final samples = [
+          for (var i = 0; i < 12; i += 1)
+            _s(Offset(4.0 + 16 * i, 8), 0.1 + i / 20, 8 * i),
+        ];
+        await _strokes(tester, _pressureBrush, [_pencil(samples)]);
+        expect(
+          InputInspector.notes['force'],
+          'force .10 .15 .20 .25 .30 .35 .40 .45 .50 .55',
+        );
+
+        await _strokes(tester, _pressureBrush, [
+          _pencil(samples.sublist(8, 10)),
+        ]);
+        expect(
+          InputInspector.notes['force'],
+          'force .50 .55',
+          reason: 'the next contact, none of the last',
+        );
       },
       variant: ipad,
     );
