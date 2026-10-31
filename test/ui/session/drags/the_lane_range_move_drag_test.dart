@@ -219,6 +219,20 @@ void main() {
     expect(session.commits, isEmpty);
   });
 
+  test('🚨it says where a step would land, moving nothing: not on a key, '
+      'not where the subject will not take it, and always where it stands', () {
+    final free = open();
+    expect(free.drag!.lands(1), isTrue, reason: 'on 4 and 5');
+    expect(free.drag!.lands(5), isFalse, reason: 'on 8 and 9, a key');
+    expect(free.drag!.lands(7), isTrue, reason: 'on 10 and 11, past it');
+    expect(free.preview.value, isNull);
+    expect(free.commits, isEmpty);
+
+    final refused = open(previewRefuses: true);
+    expect(refused.drag!.lands(1), isFalse);
+    expect(refused.drag!.lands(0), isTrue, reason: 'nothing to show or refuse');
+  });
+
   test('🚨the OUTLINE rides the shift, so the selection lands on what it '
       'moved', () {
     final session = open();
