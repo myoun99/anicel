@@ -1321,6 +1321,32 @@ void main() {
         });
       }
 
+      // 🗣️F-523: the table of a text held by its box, its letters still
+      // held — and they are the field's: a bake the engine refused took the
+      // want back, with every letter still typed in the field.
+      test('🚨a corner sizes what the FIELD holds, not the want a refused '
+          'bake took back', () async {
+        final (:tool, :scene, :baker, begun: _, traced: _) = table(
+          texts: [carried(4, says('ab'))],
+        );
+        press(scene, 12, 12);
+        tool.typeAt(const TextSelection.collapsed(offset: 2));
+        tool.letters!.value = const TextEditingValue(
+          text: 'abc',
+          selection: TextSelection.collapsed(offset: 3),
+        );
+        await baker.pending.refuse(StateError('no raster'));
+        expect(tool.session!.content.text, 'ab', reason: '⛔premise');
+        hold(LogicalKeyboardKey.controlLeft);
+
+        final corner = press(scene, 26, 20)!;
+        move(scene, corner, 36, 27);
+        up(scene, corner, 36, 27);
+
+        expect(tool.letters!.content.text, 'abc');
+        expect(tool.letters!.content.spans.single.style.fontSize, 16);
+      });
+
       test('🚨the finger PRESSING is not its own Ctrl, nor one that has '
           'lifted: the press inside sets the caret', () {
         final (:tool, :scene, baker: _, begun: _, traced: _) = table(
