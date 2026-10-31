@@ -89,6 +89,15 @@ void main() {
     );
   }
 
+  test('a red run stays apart from the ready one it meets', () {
+    const ready = (startIndex: 0, endIndexExclusive: 2, unreadable: false);
+    const red = (startIndex: 2, endIndexExclusive: 4, unreadable: true);
+    final runs = <ReadyRun>[];
+    appendReadyRun(runs, ready);
+    appendReadyRun(runs, red);
+    expect(runs, [ready, red]);
+  });
+
   testWidgets('a move asks for the frames it uncovered and no others', (
     tester,
   ) async {
