@@ -652,7 +652,7 @@ class _StoryboardRailRows {
     // 🚨I-22: by identity. A cut's hash walks every layer it holds, and this
     // asks it once a seat, several times a build: 213ms of the 2,475ms
     // sixteen presses on the film's ruler took (S5 cut 352, debug).
-    final Map<Cut, LayerFolderIndex> folders = Map.identity();
+    final folders = Map<Cut, LayerFolderIndex>.identity();
     return [
       for (final seat in conteSeatsOf(track.cuts))
         if (_conteSeatShown(track, seat, folders)) seat,

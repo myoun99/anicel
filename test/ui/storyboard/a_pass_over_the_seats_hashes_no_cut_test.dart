@@ -25,16 +25,15 @@ class _CountedCut extends Cut {
         camera: CutCamera.empty(),
       );
 
-  static var hashes = 0;
+  static int hashes = 0;
 
   @override
+  // The hash is what this counts: equality stands as the cut's.
+  // ignore: hash_and_equals
   int get hashCode {
     hashes += 1;
     return super.hashCode;
   }
-
-  @override
-  bool operator ==(Object other) => super == other;
 }
 
 /// 🚨I-22: THE RAIL'S PASS OVER ITS SEATS HASHES NO CUT.
