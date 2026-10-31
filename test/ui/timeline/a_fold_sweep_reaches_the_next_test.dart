@@ -281,6 +281,54 @@ void main() {
     expect(folderShut(session), isFalse);
   });
 
+  testWidgets('back on the press, the row a fold slid under it opens again', (
+    tester,
+  ) async {
+    final session = await pump(tester, aGroupOverAFolder());
+    final height = tester.getRect(find.named('timeline-layer-row-b')).height;
+    final gesture = await press(tester, 'timeline-attach-twirl-b');
+
+    await gesture.moveBy(Offset(0, height));
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(folderShut(session), isTrue, reason: '⛔전제');
+
+    await gesture.moveBy(Offset(0, -height));
+    await tester.pump(const Duration(milliseconds: 16));
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(folderShut(session), isFalse);
+  });
+
+  testWidgets('⛔a fold above the press moves it, and the sweep up goes on '
+      'from where it stands', (tester) async {
+    final session = await pump(
+      tester,
+      film([
+        plain('m', folderId: folder),
+        createFolderLayer(id: folder, name: 'f'),
+        plain('a'),
+        plain('a1', attachedTo: a),
+        plain('b'),
+        plain('b1', attachedTo: b),
+      ]),
+    );
+    final start = tester.getCenter(find.named('timeline-attach-twirl-a'));
+    final gesture = await press(tester, 'timeline-attach-twirl-a');
+    final end = tester.getCenter(find.named('timeline-attach-twirl-b'));
+    await moveTo(tester, gesture, start, end);
+    expect(folded(session), {a, b}, reason: '⛔전제');
+
+    // Both folds lifted a, and f with it, up towards the cursor: a stretch
+    // begun where a stood reaches past a now, down onto f.
+    await gesture.moveBy(const Offset(0, -2));
+    await tester.pump(const Duration(milliseconds: 16));
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(folderShut(session), isFalse);
+  });
+
   testWidgets('a sweep down the rail reaches the row a fold slid under the '
       'press', (tester) async {
     final session = await pump(tester, aGroupOverAFolder());

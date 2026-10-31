@@ -437,6 +437,42 @@ void main() {
     );
   });
 
+  testWidgets('a pointer drawn back part of the way lets go only the rows it '
+      'left', (tester) async {
+    final rail = await pump(
+      tester,
+      _Rail({for (var row = 0; row < 8; row += 1) row: false}),
+    );
+    final gesture = await tester.startGesture(const Offset(30, 20));
+    await tester.pump();
+    for (final y in [30.0, 140.0, 60.0]) {
+      await gesture.moveTo(Offset(30, y));
+      await tester.pump();
+    }
+    await gesture.up();
+    await tester.pump();
+
+    expect(rail.toggled, [0, 1, 2, 3, 3, 2]);
+  });
+
+  testWidgets('a sweep up the rail paints outward from the press, and holds '
+      'what it reached', (tester) async {
+    final rail = await pump(
+      tester,
+      _Rail({for (var row = 0; row < 8; row += 1) row: false}),
+    );
+    final gesture = await tester.startGesture(const Offset(30, 140));
+    await tester.pump();
+    for (final y in [130.0, 10.0, 12.0, 8.0]) {
+      await gesture.moveTo(Offset(30, y));
+      await tester.pump();
+    }
+    await gesture.up();
+    await tester.pump();
+
+    expect(rail.toggled, [3, 2, 1, 0]);
+  });
+
   // 🚨②, MEASURED. 유저 suspected the sweep does work per BUTTON on every
   // pointer move. It does not and it did not: the column is the pressed
   // button's answer, given ONCE at the press, and an update asks the host

@@ -542,6 +542,39 @@ void main() {
     );
   });
 
+  testWidgets('🚨the head a sweep up folded stays folded while the cursor '
+      'stays, the rows it lifted sliding under it', (tester) async {
+    final session = await pump(tester, conteOnT2: true, riders: true);
+    Set<LayerId> folded() => session.railView.collapsedAttachBaseIds.value;
+    final start = tester.getCenter(
+      find.named('storyboard-attach-twirl-c-conte'),
+    );
+    final end = tester.getCenter(find.named('storyboard-attach-twirl-a-conte'));
+    final gesture = await tester.startGesture(
+      start,
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+    for (var step = 1; step <= 16; step += 1) {
+      await gesture.moveTo(Offset.lerp(start, end, step / 16)!);
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(folded(), contains(const LayerId('a-conte')), reason: '⛔전제');
+
+    for (var nudge = 0; nudge < 6; nudge += 1) {
+      await gesture.moveBy(Offset(0, nudge.isEven ? -1 : 1));
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(
+        folded(),
+        contains(const LayerId('a-conte')),
+        reason: 'nudge $nudge',
+      );
+    }
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('⛔the V row draws a twirl only while its track has lanes, as '
       'every row does — the twirl the sweep paints', (tester) async {
     await pump(tester);
