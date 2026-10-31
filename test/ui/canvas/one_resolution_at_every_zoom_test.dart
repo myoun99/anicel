@@ -78,12 +78,13 @@ void main() {
                     ? [
                         // ↩️In multiply, until every advanced blend went
                         // over its backdrop in the shader (a-blurred-
-                        // folder-cut-by-the-view-moves-on-vulkan); add is
-                        // a folder that still buffers as a group.
+                        // folder-cut-by-the-view-moves-on-vulkan), and in
+                        // add until it did too (brush-fidelity Q3); a
+                        // strength below 1 buffers as a group.
                         const CompositeGroup<CanvasStackRow>(
                           children: [CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1))],
-                          opacity: 1,
-                          blendMode: LayerBlendMode.add,
+                          opacity: 0.5,
+                          blendMode: LayerBlendMode.normal,
                         ),
                       ]
                     : const [CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1))],

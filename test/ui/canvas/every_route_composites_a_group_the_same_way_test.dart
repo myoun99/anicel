@@ -199,26 +199,27 @@ void main() {
   // zoom`, and a `Canvas` will not say so — the walk carries the number.
   // Cut that wire and the folder still draws, at a resolution nobody
   // chose, next to siblings drawn at the right one.
-  CompositeNode<CutFrameCompositeLayer> folder(LayerBlendMode blendMode) =>
+  CompositeNode<CutFrameCompositeLayer> folder({double opacity = 1}) =>
       CompositeGroup<CutFrameCompositeLayer>(
         children: [
           CompositeLeaf<CutFrameCompositeLayer>(
             CutFrameCompositeLayer(surface: inkedSurface(), opacity: 1),
           ),
         ],
-        opacity: 1,
-        blendMode: blendMode,
+        opacity: opacity,
+        blendMode: LayerBlendMode.normal,
       );
   final folders = <String, CompositeNode<CutFrameCompositeLayer>>{
     // A folder only becomes a group node when it NEEDS the buffer.
     // ↩️It was a multiply one, until an advanced blend went over its
-    // backdrop (a-blurred-folder-cut-by-the-view-moves-on-vulkan).
-    'a folder in add': folder(LayerBlendMode.add),
+    // backdrop (a-blurred-folder-cut-by-the-view-moves-on-vulkan), and an
+    // add one until it did too (brush-fidelity Q3).
+    'a folder at half strength': folder(opacity: 0.5),
     // …and that blend rasterises its backdrop and the folder, as the plan
     // hands it over.
     'a folder composed over its backdrop': CompositeBackdropBlend(
       backdrop: const [],
-      source: folder(LayerBlendMode.normal),
+      source: folder(),
       blendMode: LayerBlendMode.multiply,
     ),
   };

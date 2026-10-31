@@ -13,9 +13,9 @@
 ///
 /// 🚨★NONE IS A GPU BLEND. The BRUSH composites every one on the CPU,
 /// through the commit's own kernel, and a LAYER in one is composed over its
-/// backdrop by the blend shader ([LayerBlendMode.needsItsBackdrop]) — add
-/// alone is the GPU's `plus`, the premultiplied saturating add both sides
-/// mean by it.
+/// backdrop by the blend shader ([LayerBlendMode.needsItsBackdrop]).
+/// ↩️add alone was the GPU's `plus`, the premultiplied saturating add: that
+/// is Clip Studio's 加算(発光), not its 加算 ([glows]).
 /// ↩️A column here mapped the twelve the layer list always offered onto
 /// Impeller's blends, and the seven Photoshop and Clip Studio add (linear
 /// burn … divide, brush-fidelity 유저 2026-10-17 Q3 「13개 + 클튜의 발광
@@ -31,7 +31,9 @@ enum SeparableBlendMode {
   lighten('Lighten'),
   screen('Screen'),
   colorDodge('Color Dodge'),
+  glowDodge('Glow Dodge'),
   add('Add'),
+  glowAdd('Add (Glow)'),
   overlay('Overlay'),
   softLight('Soft Light'),
   hardLight('Hard Light'),
@@ -44,6 +46,20 @@ enum SeparableBlendMode {
   divide('Divide');
 
   const SeparableBlendMode(this.label);
+
+  /// Whether this is one of Clip Studio's two 発光 modes (brush-fidelity Q3 ·
+  /// Q6, 유저 2026-10-17 「13개 + 클튜의 발광 둘」): the B of the mode it
+  /// glows, read with the source's colour TIMES ITS ALPHA and not mixed by
+  /// the alpha after — so a thin source on a bright ground saturates where
+  /// the plain mode only goes part of the way.
+  ///
+  /// 🔬Clip Studio's own exports of one stroke under the four modes
+  /// (`参考/CSP_decode/1017`, on an opaque ground): at alpha 127, a source of
+  /// 255 over 129 lands 192 in 加算 and 255 in 加算(発光); a source of 61 over
+  /// 174 lands 201 in 覆い焼きカラー and 197 in 覆い焼き(発光). The law over a
+  /// ground that is not opaque is the `csp-format` reader's, measured in
+  /// Clip Studio: the source alone where the ground is empty, as every mode.
+  bool get glows => this == glowDodge || this == glowAdd;
 
   /// The industry-standard English label every paint tool shares.
   ///

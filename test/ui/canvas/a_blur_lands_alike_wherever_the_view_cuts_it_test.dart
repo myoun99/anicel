@@ -166,12 +166,9 @@ void main() {
       ], effects: blur),
     ],
     'a blurred row': (drawnOn) => [rowOf(drawnOn: drawnOn, effects: blur)],
-    // A row in add is drawn as an image of its own (`blendsAsImage`), so
-    // the row drawn on reads its blur off a raster whatever is decided for
-    // the plain one. ([paperless]: add over white paper is white.)
-    'a blurred row in add': (drawnOn) => [
-      rowOf(drawnOn: drawnOn, effects: blur, blendMode: LayerBlendMode.add),
-    ],
+    // ↩️'a blurred row in add' stood here, drawn as an image of its own,
+    // until add went over its backdrop (brush-fidelity Q3): such a row
+    // paints normal, the plain row above.
     'a blurring adjustment': (drawnOn) => [
       CompositeAdjustment(
         children: [rowOf(drawnOn: drawnOn)],
@@ -188,20 +185,16 @@ void main() {
     ],
   };
 
-  /// The scenes drawn with no paper.
-  const paperless = {'a blurred row in add'};
-
   StackedFrame frameOf(
     List<CompositeNode<CanvasStackRow>> nodes,
     ({LayerFrameImageCache cache, BitmapSurfacePainter pen}) ink, {
     required bool drawnOn,
-    bool paper = true,
   }) => stackedFrameOf(
     nodes,
     page: (
       canvasSize: canvasSize,
       pasteboardReach: PasteboardReach.whole,
-      paintPaper: paper,
+      paintPaper: true,
       paperBackground: ProjectBackground.defaultBackground,
     ),
     surfaceOf: (cel) =>
@@ -340,7 +333,6 @@ void main() {
           nodesOf(drawnOn),
           bars(),
           drawnOn: drawnOn,
-          paper: !paperless.contains(name),
         );
         final picture = await pictureOf(tester, frame);
         final pictureWidth = picture.extent.width.toInt();

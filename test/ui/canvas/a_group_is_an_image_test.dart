@@ -600,11 +600,13 @@ void main() {
                   nodes: [
                     // ↩️A multiply folder, until an advanced blend went
                     // over its backdrop (a-blurred-folder-cut-by-the-view-
-                    // moves-on-vulkan); add's still needs the buffer.
+                    // moves-on-vulkan), and an add one until it did too
+                    // (brush-fidelity Q3); a strength below 1 needs the
+                    // buffer.
                     const CompositeGroup<CanvasStackRow>(
                       children: [CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1))],
-                      opacity: 1,
-                      blendMode: LayerBlendMode.add,
+                      opacity: 0.5,
+                      blendMode: LayerBlendMode.normal,
                     ),
                   ],
                   imageCache: LayerFrameImageCache(

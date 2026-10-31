@@ -124,8 +124,12 @@ float channel(float mode, float s, float d) {
     // screen: cs + cd - cs·cd.
     b = (255.0 * (s + d) - s * d) / 65025.0;
   }
-  if (mode == 7.0) {
-    // color dodge: cd / (1 - cs) — on bytes, d / (255 - s).
+  if (mode == 1.0 || mode == 27.0) {
+    // add, and add's 発光: cs + cd, saturated.
+    b = min(255.0, s + d) / 255.0;
+  }
+  if (mode == 7.0 || mode == 26.0) {
+    // color dodge, and its 発光: cd / (1 - cs) — on bytes, d / (255 - s).
     b = d <= 0.0
         ? 0.0
         : (s >= 255.0 ? 1.0 : min(1.0, d / max(255.0 - s, 1.0)));
@@ -221,10 +225,16 @@ void main() {
   // its parser's depth ("exceeded max parse depth"), and the asset then
   // carries no stage for the backends that read SkSL. Exactly one mode
   // matches, so the separate ifs answer what the chain did.
+  float as1 = sa / 255.0;
+  float ad1 = da / 255.0;
+  // Clip Studio's 発光 reads the source's colour times its alpha, and is not
+  // mixed by the alpha after (`SeparableBlendMode.glows`).
+  bool glows = uMode == 26.0 || uMode == 27.0;
+  vec3 read = glows ? s * as1 : s;
   vec3 b = vec3(
-    channel(uMode, s.r, d.r),
-    channel(uMode, s.g, d.g),
-    channel(uMode, s.b, d.b)
+    channel(uMode, read.r, d.r),
+    channel(uMode, read.g, d.g),
+    channel(uMode, read.b, d.b)
   );
   if (uMode == 20.0 || uMode == 21.0) {
     // darker / lighter colour: the colour whose channel total is lower /
@@ -256,11 +266,11 @@ void main() {
   // The W3C composite on straight alpha, as the CPU writes it:
   //   ao = as + ad(1 - as)
   //   co = [ as(1-ad)cs + ad(1-as)cd + as·ad·B ] / ao
-  float as1 = sa / 255.0;
-  float ad1 = da / 255.0;
+  // — a 発光's own: co = [ as(1-ad)cs + ad·B ] / ao.
   float ao = as1 + ad1 * (1.0 - as1);
-  vec3 co = (as1 * (1.0 - ad1) * cs + ad1 * (1.0 - as1) * cd
-      + as1 * ad1 * b) / max(ao, 1.0e-9);
+  vec3 co = (as1 * (1.0 - ad1) * cs
+      + (glows ? ad1 * b : ad1 * (1.0 - as1) * cd + as1 * ad1 * b))
+      / max(ao, 1.0e-9);
 
   // 📐ROUNDED HERE, NOT BY THE BACKEND: the CPU's `round(x * 255)`, handed
   // over as an exact n/255.

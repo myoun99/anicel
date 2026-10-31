@@ -2258,7 +2258,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   ),
   // 🗣️I-103-Q2 (유저 2026-10-16): a row of the workspace drawer and a row of
   // this list. Its default key waits on I-103-Q3 — the F11 the question
-  // named is the overlay blend's (I-31's F1–F12, in order).
+  // named is the color dodge blend's (I-31's F1–F12, in order).
   const EditorActionDefinition(
     id: EditorActionIds.fullScreen,
     label: 'Full screen',

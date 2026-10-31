@@ -108,11 +108,14 @@ void main() {
       drawing('a', opacity: 0.5, blend: LayerBlendMode.add),
       drawing('b', clips: true),
     ]);
-    final clip = nodes.single as _Clip;
+    final blend =
+        nodes.single as CompositeBackdropBlend<CutFrameCompositeLayer>;
+    expect(blend.blendMode, LayerBlendMode.add);
+    final clip = blend.source as _Clip;
     expect(whose(clip.base), 'a');
     final base = (clip.base as _Leaf).payload;
     expect((base.opacity, base.blendMode), (1.0, LayerBlendMode.normal));
-    expect((clip.opacity, clip.blendMode), (0.5, LayerBlendMode.add));
+    expect((clip.opacity, clip.blendMode), (0.5, LayerBlendMode.normal));
     expect([for (final node in clip.scope) whose(node)], ['b']);
   });
 

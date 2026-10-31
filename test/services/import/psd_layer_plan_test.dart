@@ -283,8 +283,11 @@ void main() {
     test('every mode a layer can take comes in as itself', () {
       expect(
         psdBlendModes.values.toSet(),
-        LayerBlendMode.values.toSet(),
-        reason: 'Photoshop has every one',
+        LayerBlendMode.values.toSet().difference({
+          LayerBlendMode.glowDodge,
+          LayerBlendMode.glowAdd,
+        }),
+        reason: 'Photoshop has every one but Clip Studio\'s 発光',
       );
       final result = plan(document([raster('burnt', blend: 'lbrn')]));
       expect(result.layers.first.blendMode, LayerBlendMode.linearBurn);

@@ -99,7 +99,7 @@ final class CompositeAdjustment<L> extends CompositeNode<L> {
 }
 
 /// A row in an advanced blend — multiply, linear burn, hue … every mode but
-/// normal and add ([LayerBlendMode.needsItsBackdrop]) — with its [backdrop]:
+/// normal ([LayerBlendMode.needsItsBackdrop]) — with its [backdrop]:
 /// everything composited below it in its scope, as one picture, which
 /// [source] is composed over by the blend's own formula.
 ///

@@ -416,7 +416,7 @@ void main() {
       () => LayerBlendShader.shaderFor(
         backdrop: blank,
         source: blank,
-        mode: LayerBlendMode.add,
+        mode: LayerBlendMode.normal,
         width: 1,
         height: 1,
       ),

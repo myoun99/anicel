@@ -44,7 +44,7 @@ void main() {
     id: LayerId(id),
     name: id.toUpperCase(),
     parentId: parent == null ? null : LayerId(parent),
-  ).copyWith(blendMode: LayerBlendMode.add);
+  ).copyWith(blendMode: LayerBlendMode.normal);
 
   Layer adjustmentRow(String id, {String? folder}) =>
       createAdjustmentLayer(id: LayerId(id), name: id.toUpperCase()).copyWith(
@@ -121,7 +121,7 @@ void main() {
       );
       final group = nodes.single as CompositeGroup<CutFrameCompositeLayer>;
       expect(group.children, hasLength(1));
-      expect(group.blendMode, LayerBlendMode.add);
+      expect(group.blendMode, LayerBlendMode.normal);
     });
 
     test('an outer folder drops when the inner one it held was emptied', () {

@@ -101,29 +101,39 @@ import 'clip_lettering.dart';
 import 'clip_placement.dart';
 import 'media_import_planner.dart' show ImportIdMint;
 
-/// What a CLIP STUDIO composite number blends as here — the program's own
-/// menu order (memory `csp-clip-format-notes` §4; 0 · 2 · 30 measured on
-/// the samples, the rest from the table MoArt reads by). A number absent
-/// here arrives as normal and said — the .tvpp and PSD law.
+/// What a CLIP STUDIO composite number blends as here (memory
+/// `csp-clip-format-notes` §4; 0 · 2 · 30 measured on the samples, 1 · 6 · 9 ·
+/// 10 · 11 · 12 in 유저's `1017`, the rest the table of the `csp-format`
+/// reader, read off a Clip Studio EX file of one layer per mode, and of
+/// `clip_to_psd`, which agree). A number absent here arrives as normal and
+/// said — the .tvpp and PSD law.
 ///
-/// ⚠️Absent now means NOBODY HAS READ WHICH MODE IT IS, not that we lack the
-/// mode: since brush-fidelity-Q4 (유저 2026-10-17 「레이어까지 같이」) a
-/// layer takes every mode the brush does, but MoArt's table stops at the
-/// ones below, and the numbers of linear burn, subtract, the lights, hard
-/// mix, darker / lighter colour and divide are not in it. The brush menu's
-/// numbers (`sut_decoder.dart`) are a different list and do not line up.
+/// ↩️It stopped at MoArt's table, which has no linear burn, subtract, lights,
+/// hard mix, darker / lighter colour, divide or 発光. The numbers do not
+/// follow the menu, and the brush menu's (`sut_decoder.dart`) are another
+/// list that does not line up with these.
 const Map<int, LayerBlendMode> clipBlendModes = {
   0: LayerBlendMode.normal,
   1: LayerBlendMode.darken,
   2: LayerBlendMode.multiply,
   3: LayerBlendMode.colorBurn,
+  4: LayerBlendMode.linearBurn,
+  5: LayerBlendMode.subtract,
+  6: LayerBlendMode.darkerColor,
   7: LayerBlendMode.lighten,
   8: LayerBlendMode.screen,
   9: LayerBlendMode.colorDodge,
+  10: LayerBlendMode.glowDodge,
   11: LayerBlendMode.add,
+  12: LayerBlendMode.glowAdd,
+  13: LayerBlendMode.lighterColor,
   14: LayerBlendMode.overlay,
   15: LayerBlendMode.softLight,
   16: LayerBlendMode.hardLight,
+  17: LayerBlendMode.vividLight,
+  18: LayerBlendMode.linearLight,
+  19: LayerBlendMode.pinLight,
+  20: LayerBlendMode.hardMix,
   21: LayerBlendMode.difference,
   22: LayerBlendMode.exclusion,
   23: LayerBlendMode.hue,
@@ -131,6 +141,7 @@ const Map<int, LayerBlendMode> clipBlendModes = {
   25: LayerBlendMode.chroma,
   26: LayerBlendMode.luminosity,
   30: LayerBlendMode.passThrough,
+  36: LayerBlendMode.divide,
 };
 
 /// The composite a CLIP STUDIO folder passes its layers through with.

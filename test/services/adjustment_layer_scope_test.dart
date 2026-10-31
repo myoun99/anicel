@@ -199,7 +199,7 @@ void main() {
           drawing('m1', folder: 'f'),
           adjustment('fx', folder: 'f'),
           drawing('m2', folder: 'f'),
-          folderRow('f', blendMode: LayerBlendMode.add),
+          folderRow('f', blendMode: LayerBlendMode.normal),
         ]),
       );
       // [A, group(F)] — the adjustment lives INSIDE the group.
@@ -254,7 +254,7 @@ void main() {
           drawing('c', folder: 'f1'),
           adjustment('fx', folder: 'f1'),
           folderRow('f1', parent: 'f2'),
-          folderRow('f2', blendMode: LayerBlendMode.add),
+          folderRow('f2', blendMode: LayerBlendMode.normal),
         ]),
       );
       expect(tree, hasLength(2));

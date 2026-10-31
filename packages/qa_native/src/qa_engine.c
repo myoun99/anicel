@@ -270,28 +270,14 @@ enum {
   QA_STROKE_BLEND_SATURATION = 23,
   QA_STROKE_BLEND_CHROMA = 24,
   QA_STROKE_BLEND_LUMINOSITY = 25,
+  // v62 (brush-fidelity Q3 · Q6): Clip Studio's two 発光 modes. Each has the
+  // channel table's B of the mode it glows; what differs is the composite,
+  // qa_stroke_blend_glows.
+  QA_STROKE_BLEND_GLOW_DODGE = 26,
+  QA_STROKE_BLEND_GLOW_ADD = 27,
 };
 
 static double qa_stroke_blend_channel(int32_t mode, double cs, double cd);
-
-/* How the SECOND tip's coverage combines with the first's (v33, v60).
-   [dual] is the SOURCE, [coverage] the destination.
-
-   ⛔ADD IS NOT IN THE B(Cs, Cd) TABLE, in either language. Skia's `plus` is
-   a saturating add of PREMULTIPLIED colour, so the stroke kernel answers it
-   before the channel table is ever reached — and on a single coverage that
-   same operation is min(1, cs + cd). Routing it through the table would
-   fall out of the switch's default and silently compute EXCLUSION, which is
-   the kind of wrong that looks plausible. Clip Studio's index 12 is 加算, so
-   this is not a hypothetical arm: it is one of the two modes actually found
-   in the user's files. */
-static double qa_dual_combine(int32_t mode, double dual, double coverage) {
-  if (mode == QA_STROKE_BLEND_ADD) {
-    const double sum = dual + coverage;
-    return sum > 1.0 ? 1.0 : sum;
-  }
-  return qa_stroke_blend_channel(mode, dual, coverage);
-}
 
 // Field order/types MUST match the Dart QaDabSpecStruct exactly; the
 // loader cross-checks qa_dab_spec_sizeof() against Dart's sizeOf<>().
@@ -824,7 +810,7 @@ static int32_t qa_dual_view_rows(
           alpha = first * (one_minus_density + density * level);
         } else {
           alpha = first * one_minus_density +
-                  density * qa_dual_combine(mode, level, first);
+                  density * qa_stroke_blend_channel(mode, level, first);
           if (alpha > 1.0) {
             alpha = 1.0;
           }
@@ -3345,7 +3331,15 @@ static double qa_stroke_blend_channel(int32_t mode, double cs, double cd) {
       return cs > cd ? cs : cd;
     case QA_STROKE_BLEND_SCREEN:
       return cs + cd - cs * cd;
-    case QA_STROKE_BLEND_COLOR_DODGE: {
+    case QA_STROKE_BLEND_ADD:
+    case QA_STROKE_BLEND_GLOW_ADD: {
+      // ↩️Add had no B: Skia's `plus`, answered before this table. That is
+      // 加算(発光); 加算 has this one and mixes by alpha.
+      const double sum = cs + cd;
+      return sum < 1.0 ? sum : 1.0;
+    }
+    case QA_STROKE_BLEND_COLOR_DODGE:
+    case QA_STROKE_BLEND_GLOW_DODGE: {
       if (cd <= 0.0) return 0.0;
       if (cs >= 1.0) return 1.0;
       const double quotient = cd / (1.0 - cs);
@@ -3427,6 +3421,23 @@ static double qa_stroke_blend_channel(int32_t mode, double cs, double cd) {
 // 🚨Every expression keeps the Dart reference's grouping
 // (brush_stroke_blend.dart `_ChannelMix`); FP contraction is
 // off in every build, so the parity suite holds them byte for byte.
+
+// Clip Studio's 発光: the B of the mode it glows, read with the source's
+// colour times its alpha and not mixed by the alpha after
+// (SeparableBlendMode.glows says what measured it).
+static int32_t qa_stroke_blend_glows(int32_t mode) {
+  return mode == QA_STROKE_BLEND_GLOW_DODGE || mode == QA_STROKE_BLEND_GLOW_ADD;
+}
+
+// One channel's byte: the W3C composite on straight alpha, or a 発光's own.
+static inline int32_t qa_stroke_composite(int32_t glows, double as_, double ad,
+                                          double ao, double cs, double cd,
+                                          double b) {
+  return qa_stroke_clamp_byte(
+      glows ? (as_ * (1.0 - ad) * cs + ad * b) / ao
+            : (as_ * (1.0 - ad) * cs + ad * (1.0 - as_) * cd + as_ * ad * b) /
+                  ao);
+}
 
 static int32_t qa_stroke_blend_is_triple(int32_t mode) {
   return mode >= QA_STROKE_BLEND_DARKER_COLOR &&
@@ -3594,49 +3605,26 @@ static int32_t qa_stroke_blend_row(
       out_a = sa;
     } else {
       const double as_ = sa / 255.0, ad = da / 255.0;
-      if (mode == QA_STROKE_BLEND_ADD) {
-        // Skia plus: saturating premultiplied add.
-        double ao = as_ + ad;
-        if (ao > 1.0) ao = 1.0;
-        double premul_r = src[0] / 255.0 * as_ + dst[0] / 255.0 * ad;
-        if (premul_r > 1.0) premul_r = 1.0;
-        double premul_g = src[1] / 255.0 * as_ + dst[1] / 255.0 * ad;
-        if (premul_g > 1.0) premul_g = 1.0;
-        double premul_b = src[2] / 255.0 * as_ + dst[2] / 255.0 * ad;
-        if (premul_b > 1.0) premul_b = 1.0;
-        out_r = qa_stroke_clamp_byte(premul_r / ao);
-        out_g = qa_stroke_clamp_byte(premul_g / ao);
-        out_b = qa_stroke_clamp_byte(premul_b / ao);
-        out_a = qa_stroke_clamp_byte(ao);
+      const double ao = as_ + ad * (1.0 - as_);
+      const double cs_r = src[0] / 255.0, cd_r = dst[0] / 255.0;
+      const double cs_g = src[1] / 255.0, cd_g = dst[1] / 255.0;
+      const double cs_b = src[2] / 255.0, cd_b = dst[2] / 255.0;
+      const int32_t glows = qa_stroke_blend_glows(mode);
+      const double read = glows ? as_ : 1.0;
+      // One composite for both kinds of B: per channel, or a colour of
+      // three (the six that mix the channels).
+      double b[3];
+      if (qa_stroke_blend_is_triple(mode)) {
+        qa_stroke_blend_triple(mode, src, dst, b);
       } else {
-        const double ao = as_ + ad * (1.0 - as_);
-        const double cs_r = src[0] / 255.0, cd_r = dst[0] / 255.0;
-        const double cs_g = src[1] / 255.0, cd_g = dst[1] / 255.0;
-        const double cs_b = src[2] / 255.0, cd_b = dst[2] / 255.0;
-        // One composite for both kinds of B: per channel, or a colour of
-        // three (the six that mix the channels).
-        double b[3];
-        if (qa_stroke_blend_is_triple(mode)) {
-          qa_stroke_blend_triple(mode, src, dst, b);
-        } else {
-          b[0] = qa_stroke_blend_channel(mode, cs_r, cd_r);
-          b[1] = qa_stroke_blend_channel(mode, cs_g, cd_g);
-          b[2] = qa_stroke_blend_channel(mode, cs_b, cd_b);
-        }
-        out_r = qa_stroke_clamp_byte(
-            (as_ * (1.0 - ad) * cs_r + ad * (1.0 - as_) * cd_r +
-             as_ * ad * b[0]) /
-            ao);
-        out_g = qa_stroke_clamp_byte(
-            (as_ * (1.0 - ad) * cs_g + ad * (1.0 - as_) * cd_g +
-             as_ * ad * b[1]) /
-            ao);
-        out_b = qa_stroke_clamp_byte(
-            (as_ * (1.0 - ad) * cs_b + ad * (1.0 - as_) * cd_b +
-             as_ * ad * b[2]) /
-            ao);
-        out_a = qa_stroke_clamp_byte(ao);
+        b[0] = qa_stroke_blend_channel(mode, cs_r * read, cd_r);
+        b[1] = qa_stroke_blend_channel(mode, cs_g * read, cd_g);
+        b[2] = qa_stroke_blend_channel(mode, cs_b * read, cd_b);
       }
+      out_r = qa_stroke_composite(glows, as_, ad, ao, cs_r, cd_r, b[0]);
+      out_g = qa_stroke_composite(glows, as_, ad, ao, cs_g, cd_g, b[1]);
+      out_b = qa_stroke_composite(glows, as_, ad, ao, cs_b, cd_b, b[2]);
+      out_a = qa_stroke_clamp_byte(ao);
     }
     if ((uint8_t)out_r != dst[0] || (uint8_t)out_g != dst[1] ||
         (uint8_t)out_b != dst[2] || (uint8_t)out_a != dst[3]) {
@@ -7049,4 +7037,6 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // carries it from both planes (qa_dual_view_rows). qa_dab_spec drops the
 // per-dab dual mask - dual_density, dual_one_minus_density, dual_size,
 // dual_composite_mode and its lattices. Sizeof moves, both structs.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 61; }
+// v62: stroke blend ids 26 and 27, Clip Studio's two 発光 modes, and id 1
+// (add) reads a B and mixes by alpha - the saturating add it was is id 27.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 62; }

@@ -75,12 +75,12 @@ void main() {
 
   test('the folder CONTAINING the active layer buffers too — the merged '
       'painter closes the saveLayer it opened', () {
-    final s = sessionWithFolder(blend: LayerBlendMode.add);
+    final s = sessionWithFolder(blend: LayerBlendMode.normal);
     final nodes = s.editingCanvas.stack.nodes;
 
     expect(countGroups(nodes), 1);
     final group = nodes.whereType<CompositeGroup<CanvasStackRow>>().single;
-    expect(group.blendMode, LayerBlendMode.add);
+    expect(group.blendMode, LayerBlendMode.normal);
     expect(
       holdsActive(group.children),
       isTrue,
@@ -92,12 +92,12 @@ void main() {
 
   test('inside a buffering folder the member carries no folder state — it '
       'is on the buffer, so nothing double-applies', () {
-    final s = sessionWithFolder(blend: LayerBlendMode.add, opacity: 0.5);
+    final s = sessionWithFolder(blend: LayerBlendMode.normal, opacity: 0.5);
     final group = s.editingCanvas.stack.nodes
         .whereType<CompositeGroup<CanvasStackRow>>()
         .single;
     expect(group.opacity, closeTo(0.5, 1e-9));
-    expect(group.blendMode, LayerBlendMode.add);
+    expect(group.blendMode, LayerBlendMode.normal);
 
     final active = group.children
         .whereType<CompositeLeaf<CanvasStackRow>>()
@@ -118,7 +118,7 @@ void main() {
       (layer) => layer.folderId == null && layer.id != s.activeLayerId,
     );
     final folderId = cut.layers.folderLayers.single.id;
-    s.layerSwitches.setLayerBlendMode(folderId, LayerBlendMode.add);
+    s.layerSwitches.setLayerBlendMode(folderId, LayerBlendMode.normal);
     s.selectLayer(outside.id);
 
     expect(countGroups(s.editingCanvas.stack.nodes), 1);
@@ -126,7 +126,7 @@ void main() {
 
   test('🚨a folder whose every member was SKIPPED produces no node at all — '
       'a group buffer around nothing is a saveLayer for nothing', () {
-    final s = sessionWithFolder(blend: LayerBlendMode.add);
+    final s = sessionWithFolder(blend: LayerBlendMode.normal);
     final cut = s.activeCutOrNull!;
     final folderId = cut.layers.folderLayers.single.id;
     // Hide every drawing inside the folder: the tree skips them, and the

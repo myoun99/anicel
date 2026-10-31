@@ -573,7 +573,9 @@ BrushBlendMode _blendModeOf(
     7 => BrushBlendMode.lighten, // 比較(明)
     8 => BrushBlendMode.screen, // スクリーン
     9 => BrushBlendMode.colorDodge, // 覆い焼きカラー
+    10 => BrushBlendMode.glowDodge, // 覆い焼き(発光)
     12 => BrushBlendMode.add, // 加算
+    13 => BrushBlendMode.glowAdd, // 加算(発光)
     14 => BrushBlendMode.overlay, // オーバーレイ
     15 => BrushBlendMode.softLight, // ソフトライト
     16 => BrushBlendMode.hardLight, // ハードライト
@@ -609,9 +611,7 @@ BrushBlendMode _blendModeOf(
 /// The 合成モード menu entry at [index], for warnings.
 String _clipStudioBlendName(int index) => switch (index) {
   5 => '焼き込み(黒)',
-  10 => '覆い焼き(発光)',
   11 => '覆い焼き(白)',
-  13 => '加算(発光)',
   20 => '透明度置換',
   21 => '比較(濃度)',
   22 => '消去(比較)',

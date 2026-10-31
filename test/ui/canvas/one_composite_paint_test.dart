@@ -57,7 +57,7 @@ void main() {
     expect(const ui.Color.fromRGBO(0, 0, 0, 1.5).a, 1.5);
   });
 
-  test('the blend and the CHAIN both land on it', () {
+  test('the strength and the CHAIN both land on it', () {
     // ⛔A `CompositeEffectPaint.none` FIXTURE CANNOT TEST THIS, and this
     // test used one: `applyTo` returns immediately on an empty chain, so
     // deleting the call outright left the assertion green. 🧪Caught by
@@ -72,13 +72,23 @@ void main() {
 
     // ↩️Multiply stood here, until every advanced blend went over its
     // backdrop in the shader (a-blurred-folder-cut-by-the-view-moves-on-
-    // vulkan) and no paint lays one. Add is a blend a paint still lays.
+    // vulkan) and no paint lays one; then add, until it did too
+    // (brush-fidelity Q3). A blend that reaches a paint is a route that
+    // skipped the plan.
+    expect(
+      () => layerCompositePaint(
+        opacity: 0.5,
+        blendMode: LayerBlendMode.add,
+        effects: chain,
+      ),
+      throwsStateError,
+    );
     final paint = layerCompositePaint(
       opacity: 0.5,
-      blendMode: LayerBlendMode.add,
+      blendMode: LayerBlendMode.normal,
       effects: chain,
     );
-    expect(paint.blendMode, LayerBlendMode.add.paintBlendMode);
+    expect(paint.blendMode, ui.BlendMode.srcOver);
     expect(paint.color.a, closeTo(0.5, 1e-9));
     expect(
       paint.colorFilter,

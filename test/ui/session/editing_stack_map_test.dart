@@ -48,8 +48,9 @@ void main() {
   /// ↩️The blend was multiply — the one that went missing — until every
   /// advanced blend went over its backdrop in the shader (a-blurred-folder-
   /// cut-by-the-view-moves-on-vulkan): a row in one paints normal as the
-  /// source of a blend node, and the node carries the blend. Add is a
-  /// blend the row still carries itself.
+  /// source of a blend node, and the node carries the blend. ↩️Add was a
+  /// blend the row carried itself, until it went the same way
+  /// (brush-fidelity Q3).
   EditorSessionManager sessionOnADressedRow() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
@@ -106,13 +107,14 @@ void main() {
     final (_, nodes) = stackOf(s);
 
     expect(
-      activeRowIn(nodes).blendMode,
+      nodes.whereType<CompositeBackdropBlend<CanvasStackRow>>().single.blendMode,
       LayerBlendMode.add,
       reason:
           'being the row you are drawing on is not a reason to '
           'composite differently — this arm dropped the field once and a '
           'multiply row read as normal on the editing canvas alone',
     );
+    expect(activeRowIn(nodes).blendMode, LayerBlendMode.normal);
   });
 
   test('the active row names the SAME cel the image branch would have asked '

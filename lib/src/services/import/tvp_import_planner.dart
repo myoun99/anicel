@@ -424,13 +424,18 @@ CameraPose _cameraPoseFor(TvpCameraPose pose) {
 /// what every layer of every measured file carries. Modes with no
 /// Anicel formula fall back to normal and say so rather than picking a
 /// lookalike.
+///
+/// ⚠️`Add` reads as [LayerBlendMode.glowAdd] because that is the formula it
+/// has always drawn by: the plus of old, which turned out to be Clip
+/// Studio's 加算(発光), not its 加算. Which one TVPaint's Add is has not been
+/// measured (brush-fidelity-Q15) — this keeps the picture as it was.
 LayerBlendMode _blendModeFor(TvpLayer source, List<ImportWarning> warnings) {
   final key = source.blendingMode
       .toLowerCase()
       .replaceAll(RegExp(r'[\s_()-]'), '');
   final mode = switch (key) {
     'color' || 'normal' => LayerBlendMode.normal,
-    'add' || 'addgamma' => LayerBlendMode.add,
+    'add' || 'addgamma' => LayerBlendMode.glowAdd,
     'multiply' => LayerBlendMode.multiply,
     'screen' => LayerBlendMode.screen,
     'darken' => LayerBlendMode.darken,
