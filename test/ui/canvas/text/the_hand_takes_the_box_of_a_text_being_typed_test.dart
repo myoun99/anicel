@@ -117,9 +117,8 @@ void main() {
     testWidgets('🚨a corner sizes it, its letters still held, and what is '
         'typed next goes into it as sized', (tester) async {
       final c = await hiBeingTyped(tester);
-      final size = () => textToolOf(
-        tester,
-      ).contentInHand!.spans.first.style.fontSize;
+      double size() =>
+          textToolOf(tester).contentInHand!.spans.first.style.fontSize;
       final before = size();
 
       await tester.sendKeyDownEvent(ctrl);
