@@ -380,7 +380,7 @@ void main() {
     // open here ran the whole patience out — sixty seconds a test (10-19).
     // ↩️It walked the linger 50ms a frame until 10-20: 25 rounds an open,
     // 8 with the linger passed in one step.
-    final shown = await settleBehindTheWaitWindow(
+    await settleBehindTheWaitWindow(
       tester,
       () =>
           tester
@@ -389,8 +389,8 @@ void main() {
               .projectFile
               .path ==
           path,
+      reason: 'the tab on screen holds the file',
     );
-    expect(shown, isTrue, reason: 'the tab on screen holds the file');
     // The window lingers with its check for `appProgressDoneLinger`, and a
     // window still up would swallow the next tap.
     await pumpPastTheWaitWindow(tester);

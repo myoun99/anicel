@@ -94,8 +94,11 @@ void expectOneBar(List<double> told, List<double> stops) {
 Future<void> pumpPastTheWaitWindow(WidgetTester tester) async {
   final window = find.byType(AppProgressDialog);
   await tester.pump();
-  await settleBehindTheWaitWindow(tester, () => window.evaluate().isEmpty);
-  expect(window, findsNothing, reason: 'the wait window went');
+  await settleBehindTheWaitWindow(
+    tester,
+    () => window.evaluate().isEmpty,
+    reason: 'the wait window went',
+  );
 }
 
 /// [settleAsync] for work that may stand behind the app's wait window —
@@ -110,16 +113,29 @@ Future<void> pumpPastTheWaitWindow(WidgetTester tester) async {
 /// ⚠️The tap that starts the work is made OUTSIDE `runAsync`: in it the
 /// linger is 900ms of real time, which no step passes (10-20: a save, an
 /// open from the recents — each paid it whole).
-Future<bool> settleBehindTheWaitWindow(
+///
+/// ↩️It answered whether [ready] came until 2026-10-31, and a wait that ran
+/// out went on quietly: a merge test whose button was cut off waited its
+/// minute and passed, on the weak line after it (I-78 ③ mutants, board
+/// `wait-window-settle-returns-quietly`). One caller in 28 read the answer,
+/// and only to assert it, so the wait asserts it now.
+Future<void> settleBehindTheWaitWindow(
   WidgetTester tester,
-  FutureOr<bool> Function() ready,
-) => settleAsync(
-  tester,
-  ready,
-  beat: _hop,
-  step: const Duration(milliseconds: 50),
-  everyFrame: () => passTheDoneLinger(tester),
-);
+  FutureOr<bool> Function() ready, {
+  String reason = 'what stood behind the wait window came',
+}) async {
+  expect(
+    await settleAsync(
+      tester,
+      ready,
+      beat: _hop,
+      step: const Duration(milliseconds: 50),
+      everyFrame: () => passTheDoneLinger(tester),
+    ),
+    isTrue,
+    reason: reason,
+  );
+}
 
 /// The real time a round of [settleBehindTheWaitWindow] lends: a turn of the
 /// real event loop, no more. What the window waits on is a chain of real
