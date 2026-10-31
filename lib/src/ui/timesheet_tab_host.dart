@@ -373,8 +373,9 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
     final ink = _inkMount();
 
     // A change to what the sheet prints ([_printedNews]) rebuilds the sheet
-    // data and hands the windows fresh ink session surfaces; the ink — a
-    // stroke, an undo, a redo — notifies through the controller (F-80 ②).
+    // data and hands the windows fresh ink session surfaces. The ink — a
+    // stroke, an undo, a redo — is not heard here: its windows and its
+    // stratum hear it themselves ([SheetInkLayer.inkChanges]).
     // The playhead deliberately does NOT
     // live here (R13-2): cursor moves, committed seeks and playback ticks
     // repaint the thin playhead overlay only — repainting the whole B4
@@ -382,11 +383,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
     // hitch. Page-granular playhead facts (auto page turn, Fit target,
     // the frame label) rebuild through the token-gated scope below.
     // And the page read, which the panel moves as the view scrolls.
-    final listenable = Listenable.merge([
-      _printedNews,
-      ?inkController,
-      _reading,
-    ]);
+    final listenable = Listenable.merge([_printedNews, _reading]);
 
     final sheet = ListenableBuilder(
       listenable: listenable,

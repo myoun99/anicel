@@ -105,6 +105,7 @@ class TimesheetInkLayer extends StatelessWidget {
       brushToolState: brushToolState,
       strokeActive: strokeActive,
       history: historyManager.gestures,
+      inkChanges: controller,
       sessionStateFor: (window) => controller.sessionStateFor(null, window.key),
       onStrokeCommitted: (window, strokeData) => controller.commitStroke(
         plane: null,

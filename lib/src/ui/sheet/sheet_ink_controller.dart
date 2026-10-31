@@ -61,7 +61,9 @@ abstract class SheetInkController<P> extends ChangeNotifier {
   /// The canvas met the same thing on 2026-08-27, and its answer is the one
   /// here: [BrushFrameStore.celPixelRevision] is the one signal every
   /// surface write bumps — a stroke, an undo, a redo, a file restore — so
-  /// the controller follows that, whoever made the write.
+  /// the controller follows that, whoever made the write. (The windows hear
+  /// this for themselves now, [SheetInkLayer.inkChanges], not through their
+  /// hosts: a host that did not hear lost the stroke, I-127.)
   SheetInkController(Map<P, InkPlaneSlot> planes) : _planes = planes {
     for (final slot in planes.values) {
       slot.store.celPixelRevision.addListener(_onCelPixelsChanged);

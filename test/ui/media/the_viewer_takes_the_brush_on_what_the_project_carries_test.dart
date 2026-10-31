@@ -14,6 +14,7 @@ import 'package:anicel/src/services/persistence/app_memory_settings.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/sheet_canvas_panel.dart' show sheetRunsTool;
+import 'package:anicel/src/ui/canvas/brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 import 'package:anicel/src/ui/media/viewer_ink.dart';
@@ -183,6 +184,48 @@ void main() {
 
     session.historyManager.undo();
     expect(ink.hasInkFor(plane, window.key), isFalse);
+  });
+
+  // 🗣️실기 (I-127, 2026-11-01), the export window's: 「떼는 순간 미리보기에서
+  // 사라집니다」 — every sheet's layer hears its ink, the viewer's too.
+  testWidgets('🚨the page shows its ink as it is while the brush is on — a '
+      'stroke lifted, its undo, its redo', (tester) async {
+    final (:session, :path) = await carrying(
+      tester,
+      directory,
+      writeCarriedPicture,
+    );
+    await view(tester, session, path, allowed: true);
+    final overlay = tester.widget<ViewerInkOverlay>(
+      find.byType(ViewerInkOverlay),
+    );
+    bool viewHoldsInk() => !tester
+        .widget<BrushEditCanvasView>(
+          find.descendant(
+            of: find.byType(ViewerInkOverlay),
+            matching: find.byType(BrushEditCanvasView),
+          ),
+        )
+        .surface
+        .holdsNothing;
+
+    final origin = tester.getTopLeft(find.byType(ViewerInkOverlay));
+    final rect = overlay.windows.single.screenRect(overlay.viewport);
+    final gesture = await tester.startGesture(origin + rect.center, pointer: 7);
+    await tester.pump();
+    await gesture.moveTo(origin + rect.center + const Offset(6, 4));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+    expect(viewHoldsInk(), isTrue, reason: 'the pen lifted, the stroke stays');
+
+    session.historyManager.undo();
+    await tester.pump();
+    expect(viewHoldsInk(), isFalse, reason: 'undone, it is gone from the view');
+
+    session.historyManager.redo();
+    await tester.pump();
+    expect(viewHoldsInk(), isTrue, reason: 'redone, it is back');
   });
 
   testWidgets('the brush cursor stands only while the page takes ink — the '

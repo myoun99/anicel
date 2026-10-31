@@ -129,6 +129,7 @@ class ViewerInkOverlay extends StatelessWidget {
     brushToolState: brushToolState,
     strokeActive: strokeActive,
     history: historyManager.gestures,
+    inkChanges: controller,
     sessionStateFor: (window) =>
         controller.sessionStateFor(window.plane! as CanvasSize, window.key),
     onStrokeCommitted: (window, strokeData) => controller.commitStroke(

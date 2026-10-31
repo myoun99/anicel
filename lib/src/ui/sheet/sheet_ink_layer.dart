@@ -725,6 +725,7 @@ class SheetInkLayer extends StatefulWidget {
     required this.history,
     required this.sessionStateFor,
     required this.onStrokeCommitted,
+    required this.inkChanges,
     this.imageFor,
     this.imageRepaint,
     this.photoHold,
@@ -760,6 +761,17 @@ class SheetInkLayer extends StatefulWidget {
 
   final void Function(SheetWindow window, BrushStrokeCommitData strokeData)
   onStrokeCommitted;
+
+  /// What says the surfaces of [windows] moved — a stroke, an undo, a redo,
+  /// a restored file ([SheetInkController]).
+  ///
+  /// 🚨THE LAYER HEARS IT, NOT WHOEVER MOUNTS THE LAYER. A view paints its
+  /// surface as it stood when the view was built, so ink that moved under a
+  /// layer nobody built again is not on screen. ↩️Each host heard its ink
+  /// for that (F-80 ②) and a host that did not — the export window's papers
+  /// (실기 I-127, 2026-11-01: 「떼는 순간 미리보기에서 사라집니다. 탭을 다녀오면
+  /// 나옵니다」), the viewer — lost a stroke at the pen's lift.
+  final Listenable inkChanges;
 
   /// The pool files a window's photos are drawn from (I-97) — null while
   /// one is still being read, and no photo at all where this is null — and
@@ -1029,7 +1041,12 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: widget.inkChanges,
+    builder: (context, _) => _layer(context),
+  );
+
+  Widget _layer(BuildContext context) {
     final windows = widget.windows;
     final regions = sheetInkRegions(windows);
     final keeping = [

@@ -30,6 +30,7 @@ import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/canvas/brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_overlay.dart';
@@ -41,6 +42,8 @@ import 'package:anicel/src/ui/export/export_preview_panel.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/sheet/paper_editing.dart';
+import 'package:anicel/src/ui/sheet/sheet_ink_controller.dart';
+import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_key_funnel.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_ink_layer.dart';
@@ -272,6 +275,89 @@ void main() {
       isTrue,
       reason: 'the stroke lands on the page\'s paper',
     );
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  /// 🗣️실기 (I-127, 2026-11-01): 「끄는 동안은 보이고 떼는 순간 미리보기에서
+  /// 사라집니다. 탭을 다녀오면 나옵니다.」 A stroke across the paper shown, its
+  /// undo and its redo: after each, the paper's brush views show [ink] as it
+  /// is now.
+  Future<void> expectInkShownAsItIs(
+    WidgetTester tester,
+    EditorSessionManager session,
+    SheetInkController<Null> ink,
+  ) async {
+    final pen = await tester.startGesture(
+      tester.getCenter(find.byType(InteractiveBrushEditCanvasView).first),
+      kind: PointerDeviceKind.stylus,
+    );
+    await tester.pump();
+    for (var step = 0; step < 4; step += 1) {
+      await pen.moveBy(const Offset(12, 8));
+      await tester.pump();
+    }
+    await pen.up();
+    await tester.pump();
+
+    final layer = tester.widget<SheetInkLayer>(find.byType(SheetInkLayer));
+    final written = layer.windows.firstWhere(
+      (window) => ink.hasInkFor(null, window.key),
+    );
+    bool viewHoldsInk() => !tester
+        .widget<BrushEditCanvasView>(
+          find.descendant(
+            of: keyed('${layer.keyPrefix}-ink-${written.id}'),
+            matching: find.byType(BrushEditCanvasView),
+          ),
+        )
+        .surface
+        .holdsNothing;
+
+    expect(viewHoldsInk(), isTrue, reason: 'the pen lifted, the stroke stays');
+
+    session.undo();
+    await tester.pump();
+    expect(viewHoldsInk(), isFalse, reason: 'undone, it is gone from the view');
+
+    session.redo();
+    await tester.pump();
+    expect(viewHoldsInk(), isTrue, reason: 'redone, it is back');
+  }
+
+  testWidgets('🚨the timesheet page shows its ink as it is — a stroke lifted, '
+      'its undo, its redo — though nothing around the paper hears it', (
+    tester,
+  ) async {
+    final session = film();
+    addTearDown(session.dispose);
+    final kit = paperEditingKit(session);
+    kit.timesheetBrushAllowed.value = true;
+    await pumpCels(tester, session, editing: kit);
+    await standOn(tester, 'document-timesheet');
+
+    await expectInkShownAsItIs(tester, session, kit.timesheetInk);
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('🚨the cut envelope shows its ink as it is, the same', (
+    tester,
+  ) async {
+    final session = film();
+    addTearDown(session.dispose);
+    final kit = paperEditingKit(session);
+    kit.envelopeBrushAllowed.value = true;
+    await pumpCels(
+      tester,
+      session,
+      editing: kit,
+      spec: CelsExportSpec(
+        kinds: everything.kinds,
+        envelopePaper: CutEnvelopePaperMode.sheet,
+      ),
+    );
+    await standOn(tester, 'document-envelope');
+
+    await expectInkShownAsItIs(tester, session, kit.envelopeInk);
     session.playbackRig.prerenderScheduler.cancel();
   });
 
