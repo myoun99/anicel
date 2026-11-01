@@ -12,6 +12,7 @@ library;
 import 'package:flutter/widgets.dart';
 
 import '../text/vertical_writing_text.dart';
+import '../widgets/ellipsis_text.dart';
 
 /// A box of [extent] along [axis]; the other dimension is the child's own.
 SizedBox alongBox(Axis axis, double extent, {Widget? child}) =>
@@ -127,7 +128,7 @@ Positioned pastAlong(
 /// had a name.
 Widget readableText(Axis axis, String text, {TextStyle? style}) =>
     axis == Axis.horizontal
-    ? Text(text, overflow: TextOverflow.ellipsis, style: style)
+    ? EllipsisText(text, style: style)
     : ClipRect(
         child: VerticalWritingText(
           text: text,

@@ -4,6 +4,7 @@ import '../../models/conte/conte_camera_room.dart';
 import '../../models/conte/conte_sheet_form.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
+import '../widgets/ellipsis_text.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/pill_strip.dart';
 import 'dialog_verb.dart';
@@ -139,10 +140,9 @@ class _ConteFormatWindowState extends State<ConteFormatWindow> {
       spacing: 12,
       children: [
         Flexible(
-          child: Text(
+          child: EllipsisText(
             cuts?.words ?? AppText.strings.noCutSelected,
             maxLines: 1,
-            overflow: TextOverflow.ellipsis,
           ),
         ),
         PanelFlyoutButton(

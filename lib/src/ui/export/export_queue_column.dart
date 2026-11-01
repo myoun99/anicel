@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/ellipsis_text.dart';
 import 'export_job.dart';
 import 'export_preset_rail.dart' show ExportPresetRail;
 import '../text/app_strings.dart';
@@ -44,10 +45,9 @@ class ExportQueueColumn extends StatelessWidget {
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(
+                    child: EllipsisText(
                       AppText.strings.exRenderQueue.toUpperCase(),
                       maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.labelSmall?.copyWith(
                         fontSize: 9,
                         letterSpacing: 1.1,
@@ -173,13 +173,12 @@ class _JobCard extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
-                    child: Text(
+                    child: EllipsisText(
                       AppText.strings.exJob(
                         job.id,
                         ExportPresetRail.tabLabel(job.tab),
                       ),
                       maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.labelSmall?.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
@@ -210,10 +209,9 @@ class _JobCard extends StatelessWidget {
                 ],
               ),
               if (job.message != null)
-                Text(
+                EllipsisText(
                   job.message!,
                   maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(
                     fontSize: 9.5,
                     color: theme.colorScheme.onSurfaceVariant,

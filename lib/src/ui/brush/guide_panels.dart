@@ -13,6 +13,7 @@ import '../dialogs/app_prompt_dialog.dart';
 import '../dialogs/dialog_verb.dart';
 import '../text/app_strings.dart';
 import '../widgets/content_scrollbar.dart';
+import '../widgets/ellipsis_text.dart';
 import '../widgets/settings_rows.dart';
 import '../theme/app_theme.dart';
 import '../widgets/field_slider.dart';
@@ -823,11 +824,10 @@ class _VanishingPointRow extends StatelessWidget {
   /// moves it.
   Widget _reads(BuildContext context, String text) {
     final theme = Theme.of(context);
-    return Text(
+    return EllipsisText(
       text,
       key: ValueKey<String>('guide-vanishing-point-$index-reads'),
       maxLines: 1,
-      overflow: TextOverflow.ellipsis,
       style: theme.textTheme.labelSmall?.copyWith(
         color: theme.colorScheme.onSurfaceVariant,
       ),

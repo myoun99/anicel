@@ -6,6 +6,7 @@ import '../../services/persistence/anicel_project_archive.dart'
     show AnicelFormatRefused, anicelOldestReadFormatVersion;
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
+import '../widgets/ellipsis_text.dart';
 import '../input/control_press_claim.dart';
 import 'dialog_verb.dart';
 import '../theme/app_theme.dart';
@@ -211,12 +212,14 @@ class DetailsDisclosure extends StatelessWidget {
               for (final line in lines)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 1),
-                  child: Text(
-                    oneLineEach ? _firstLineOf(line) : line,
-                    style: theme.textTheme.bodySmall,
-                    maxLines: oneLineEach ? 1 : null,
-                    overflow: oneLineEach ? TextOverflow.ellipsis : null,
-                  ),
+                  child: oneLineEach
+                      ? EllipsisText(
+                          _firstLineOf(line),
+                          whole: line,
+                          style: theme.textTheme.bodySmall,
+                          maxLines: 1,
+                        )
+                      : Text(line, style: theme.textTheme.bodySmall),
                 ),
             ],
           ),

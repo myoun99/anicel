@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart';
+import '../widgets/ellipsis_text.dart';
 import 'editor_action_registry.dart';
 import 'editor_shortcut_bindings.dart';
 import 'shortcut_activator_codec.dart';
@@ -160,13 +161,12 @@ class ShortcutKeysText extends StatelessWidget {
     }
     return Padding(
       padding: padding,
-      child: Text(
+      child: EllipsisText(
         keys,
         // One line, and the tail gives where the room is a tab's: a key
         // that wrapped would push the name out of its row.
         maxLines: 1,
         softWrap: false,
-        overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontSize: fontSize,
           color: enabled

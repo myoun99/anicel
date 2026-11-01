@@ -48,6 +48,7 @@ import '../conte/conte_picture_ink.dart' show contePicturesOverInkIn;
 import '../conte/conte_sheet_builder.dart';
 import '../conte/conte_words_in.dart';
 import '../envelope/cut_envelope_builder.dart';
+import '../widgets/ellipsis_text.dart';
 import 'export_envelope_render.dart';
 import 'conte_pdf_writer.dart';
 import 'ae_script_plan.dart';
@@ -96,7 +97,6 @@ import '../timesheet/timesheet_document_painter.dart'
 import '../timesheet/cut_sheet_document.dart';
 import '../timesheet/timesheet_ink_layer.dart' show timesheetInkWindows;
 import '../timesheet/timesheet_words_in.dart';
-import '../widgets/app_tooltip.dart';
 import '../widgets/app_window.dart';
 import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/folder_pick_flow.dart';
@@ -3555,16 +3555,12 @@ class ExportDialogState extends State<ExportDialog> {
                 room.maxWidth - _footerGap - _progressLeastWidth,
               ),
             ),
-            child: AppTooltip(
-              message: order,
-              child: Text(
-                order,
-                key: const ValueKey<String>('export-order-line'),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+            child: EllipsisText(
+              order,
+              key: const ValueKey<String>('export-order-line'),
+              maxLines: 1,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ),
@@ -3578,11 +3574,10 @@ class ExportDialogState extends State<ExportDialog> {
   /// The least the footer's bar is given — drawn so in the F-289 mock.
   static const double _progressLeastWidth = 24;
 
-  Widget _statusNote(ThemeData theme) => Text(
+  Widget _statusNote(ThemeData theme) => EllipsisText(
     _statusMessage ?? '',
     key: const ValueKey<String>('export-status'),
     maxLines: 1,
-    overflow: TextOverflow.ellipsis,
     style: theme.textTheme.bodySmall?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
     ),
@@ -4278,10 +4273,9 @@ class ExportDialogState extends State<ExportDialog> {
   /// What a rule of the column is called, over its control.
   Widget _celRuleCaption(String text) {
     final theme = Theme.of(context);
-    return Text(
+    return EllipsisText(
       text,
       maxLines: 1,
-      overflow: TextOverflow.ellipsis,
       style: theme.textTheme.labelSmall?.copyWith(
         fontSize: 10,
         color: theme.colorScheme.onSurfaceVariant,

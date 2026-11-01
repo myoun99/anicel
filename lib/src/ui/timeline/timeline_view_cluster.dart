@@ -12,6 +12,7 @@ import '../theme/app_theme.dart' show AppColors;
 import '../widgets/app_icon_button.dart';
 import '../widgets/app_tooltip.dart';
 import '../widgets/drag_value_label.dart';
+import '../widgets/ellipsis_text.dart';
 import '../widgets/kept_tail_row.dart' show FoldFloor;
 import '../widgets/tick_layer.dart';
 import 'timeline_zoom_limits.dart';
@@ -286,12 +287,11 @@ class _CutName extends StatelessWidget {
               message: _written(name),
               child: Align(
                 alignment: Alignment.centerRight,
-                child: Text(
+                child: EllipsisText(
                   _shown(name),
                   key: const ValueKey<String>('timeline-cut-name'),
                   maxLines: 1,
                   softWrap: false,
-                  overflow: TextOverflow.ellipsis,
                   style: style,
                 ),
               ),

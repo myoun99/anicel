@@ -6,6 +6,7 @@ import '../text/app_strings.dart';
 import '../text/full_width_numerals.dart';
 import '../theme/app_theme.dart' show AppCursors, AppShapes;
 import '../repaint_props.dart';
+import '../widgets/ellipsis_text.dart';
 
 /// One grid cell: the cut — or the 겸용 group — it stands for. [ids] toggle
 /// together, [label] is what the cell prints (one cut's name, or the
@@ -126,11 +127,10 @@ class _ExportCutGridState extends State<ExportCutGrid> {
             ),
             const SizedBox(width: 6),
             Flexible(
-              child: Text(
+              child: EllipsisText(
                 AppText.strings.exCutsIncluded(included, widget.cuts.length),
                 key: const ValueKey<String>('export-cut-grid-count'),
                 maxLines: 1,
-                overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.labelSmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                   fontSize: 9.5,
@@ -232,10 +232,9 @@ class _CutCell extends StatelessWidget {
               ),
               borderRadius: BorderRadius.circular(2),
             ),
-            child: Text(
+            child: EllipsisText(
               label,
               maxLines: 1,
-              overflow: TextOverflow.ellipsis,
               style: theme.textTheme.labelSmall?.copyWith(
                 fontSize: 7.5,
                 height: 1,

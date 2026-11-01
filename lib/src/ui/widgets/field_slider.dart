@@ -17,6 +17,7 @@ import '../theme/disabled_ink.dart';
 import '../theme/text_on_ground.dart';
 import '../timeline/axis_turn.dart';
 import '../timeline/memo_token.dart' show ByList, Kept, keptWhileSame;
+import 'ellipsis_text.dart';
 import 'ground_ink_writing.dart';
 import 'keyboard_press.dart';
 import 'named.dart' show NamesItself;
@@ -1402,10 +1403,9 @@ class _FieldSliderWriting extends StatelessWidget {
     return Row(
       children: [
         Expanded(
-          child: Text(
+          child: EllipsisText(
             bar.label!,
             maxLines: 1,
-            overflow: TextOverflow.ellipsis,
             style: label,
           ),
         ),

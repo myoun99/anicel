@@ -8,6 +8,7 @@ import '../../models/brush_input_source.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../theme/app_theme.dart';
 import 'anchored_popup.dart';
+import 'ellipsis_text.dart';
 import 'field_slider.dart';
 import 'kept_tail_row.dart';
 import 'setting_source_button.dart';
@@ -467,10 +468,9 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
           child: Row(
             children: [
               Expanded(
-                child: Text(
+                child: EllipsisText(
                   _nameOf(source),
                   maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                   style: AnchoredPopupText.caption,
                 ),
               ),

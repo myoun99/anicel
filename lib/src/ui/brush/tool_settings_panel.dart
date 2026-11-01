@@ -16,6 +16,7 @@ import '../../services/transform_box_law.dart';
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/panel_keys.dart' show PanelKeysBinding;
 import '../widgets/drag_value_label.dart';
+import '../widgets/ellipsis_text.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/settings_rows.dart';
 import 'brush_settings_panel.dart';
@@ -1535,7 +1536,7 @@ class _ReadSourceControl extends StatelessWidget {
         // What the answer reads right now, under the answers.
         ToolSettingRow(
           label: '',
-          child: Text(
+          child: EllipsisText(
             names == null
                 ? AppText.strings.toolReadsEveryVisibleLayer
                 : names.isEmpty
@@ -1543,7 +1544,6 @@ class _ReadSourceControl extends StatelessWidget {
                 : names.join(' · '),
             key: ValueKey<String>('$tool-reads'),
             maxLines: 1,
-            overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),

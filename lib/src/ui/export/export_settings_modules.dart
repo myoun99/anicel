@@ -16,6 +16,7 @@ import '../text/app_strings.dart';
 import '../text/pixel_size_label.dart';
 import '../text/text_measure.dart';
 import '../input/control_press_claim.dart';
+import '../widgets/ellipsis_text.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/pill_strip.dart';
@@ -83,14 +84,13 @@ class ExportAccordion extends StatelessWidget {
                 child: Row(
                   children: [
                     Expanded(
-                      child: Text(
+                      child: EllipsisText(
                         // A module holding nothing yet says only its name —
                         // not a dash with nothing after it.
                         expanded || summary.isEmpty
                             ? title
                             : '$title — $summary',
                         maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.labelMedium?.copyWith(
                           color: expanded ? null : dim,
                           fontWeight: expanded
@@ -259,10 +259,9 @@ class ExportModuleRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final name = SizedBox(
       width: captionWidthIn(context),
-      child: Text(
+      child: EllipsisText(
         caption.wordsIn(AppText.strings),
         maxLines: 1,
-        overflow: TextOverflow.ellipsis,
         style: _wordStyleOf(Theme.of(context)),
       ),
     );

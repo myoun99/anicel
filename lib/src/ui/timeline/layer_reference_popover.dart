@@ -12,6 +12,7 @@ import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart';
 import '../widgets/anchored_popup.dart';
+import '../widgets/ellipsis_text.dart';
 import 'movie_source_shortfall.dart';
 import 'rasterize_reference_rows.dart';
 
@@ -145,11 +146,10 @@ class _LayerReferencePopover extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
+          EllipsisText(
             _sourceLine(targets),
             key: const ValueKey<String>('layer-reference-source'),
             maxLines: 1,
-            overflow: TextOverflow.ellipsis,
             style: AnchoredPopupText.caption,
           ),
           // The red button's OWN WORDS. The rail can only go red; pressing
@@ -157,11 +157,10 @@ class _LayerReferencePopover extends StatelessWidget {
           // lives here as one more item and nowhere else.
           if (shortfall > 0) ...[
             const SizedBox(height: 2),
-            Text(
+            EllipsisText(
               AppText.strings.tlReferenceSourceShort(shortfall),
               key: const ValueKey<String>('layer-reference-source-short'),
               maxLines: 1,
-              overflow: TextOverflow.ellipsis,
               style: AnchoredPopupText.caption.copyWith(
                 color: AppColors.danger,
               ),
@@ -227,7 +226,7 @@ class _RasterizeButton extends StatelessWidget {
             fontWeight: FontWeight.w700,
           ),
         ),
-        child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+        child: EllipsisText(label, maxLines: 1),
       ),
     );
   }

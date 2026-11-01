@@ -1,3 +1,4 @@
+import '../widgets/ellipsis_text.dart';
 import '../widgets/empty_state_text.dart';
 import 'package:flutter/material.dart';
 
@@ -179,19 +180,17 @@ class _PresetEntry extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    EllipsisText(
                       preset.name,
                       maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.labelSmall?.copyWith(
                         fontWeight: FontWeight.w600,
                         color: selected ? accent : null,
                       ),
                     ),
-                    Text(
+                    EllipsisText(
                       ExportPresetRail.describe(preset.spec),
                       maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall?.copyWith(
                         fontSize: 9.5,
                         color: theme.colorScheme.onSurfaceVariant,

@@ -1,4 +1,5 @@
 import '../canvas/canvas_press.dart' show canvasPressButtons, canvasPressPans;
+import '../widgets/ellipsis_text.dart';
 import '../widgets/empty_state_text.dart';
 import '../widgets/named.dart';
 import '../widgets/tick_layer.dart';
@@ -1588,11 +1589,10 @@ class _XSheetSectionBandCell extends StatelessWidget {
         child: Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 2),
-            child: Text(
+            child: EllipsisText(
               timelineSectionLabel(run.section),
               maxLines: 1,
               softWrap: false,
-              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 9,
                 letterSpacing: 1.2,

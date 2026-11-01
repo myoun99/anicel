@@ -11,6 +11,7 @@ import '../theme/disabled_ink.dart';
 import '../input/control_press_claim.dart';
 import 'app_icon_button.dart';
 import 'boolean_dot.dart';
+import 'ellipsis_text.dart';
 import 'rail_glyph_button.dart';
 
 /// One entry of a [showPanelFlyout] list.
@@ -1338,15 +1339,14 @@ Widget _itemBody(
   children: [
     ..._leadingMark(entry),
     Expanded(
-      child: Text(
+      child: EllipsisText(
         entry.label,
         // ONE line, ending in an ellipsis where the row ends: a row is one
         // line tall, and a label can be a caller's own words — a text's
         // letters (R9-rest: 「이름은 그냥 텍스트 글자대로」) — as long as
-        // they like. (No `softWrap: false` beside these two: the last line
+        // they like. (No `softWrap: false` beside it: the last line
         // an ellipsis ends is filled to its edge either way — measured.)
         maxLines: 1,
-        overflow: TextOverflow.ellipsis,
         style: TextStyle(fontSize: 12, color: _inkFor(entry)),
       ),
     ),
@@ -1704,11 +1704,10 @@ class PanelFlyoutChip extends StatelessWidget {
     );
     final text = vertical
         ? VerticalWritingText(text: label, style: labelStyle)
-        : Text(
+        : EllipsisText(
             label,
             maxLines: 1,
             softWrap: false,
-            overflow: TextOverflow.ellipsis,
             textAlign: expand ? TextAlign.center : TextAlign.start,
             style: labelStyle,
           );

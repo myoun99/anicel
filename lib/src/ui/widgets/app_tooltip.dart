@@ -85,9 +85,9 @@ typedef _Saying = ({
   TextDirection? reading,
 });
 
-/// [AppTooltip]'s box: its child, the press it takes for the long press, the
-/// hover it hands the window and the tooltip a screen reader hears.
-class _RenderAppTooltip extends RenderProxyBox with SummonsTooltip {
+/// [AppTooltip]'s box: its child and the tooltip a screen reader hears.
+class _RenderAppTooltip extends RenderProxyBox
+    with SummonsTooltip, TooltipBox {
   _RenderAppTooltip(this._saying, {required BuildContext tooltipContext}) {
     this.tooltipContext = tooltipContext;
   }
@@ -105,6 +105,36 @@ class _RenderAppTooltip extends RenderProxyBox with SummonsTooltip {
   @override
   String get tooltipMessage => _saying.message;
 
+  @override
+  TooltipTriggerMode get tooltipTrigger => _saying.triggerMode;
+
+  @override
+  void describeSemanticsConfiguration(SemanticsConfiguration config) {
+    super.describeSemanticsConfiguration(config);
+    if (_saying.message.isEmpty) {
+      return;
+    }
+    config.tooltip = _saying.message;
+    if (_saying.reading case final reading?) {
+      config.textDirection = reading;
+    }
+  }
+}
+
+/// WHAT A POINTER MEETS IN A BOX THAT SAYS SOMETHING, whatever else the box
+/// is: the press it takes for the long press and the hover it hands the
+/// window. [AppTooltip]'s, and the boxes that say their own words only while
+/// they are cut (`EllipsisText`, `VerticalWritingText`), so one rule of
+/// nesting answers for all of them.
+///
+/// While [tooltipMessage] is empty the box is what it was without this: a
+/// word that fits leaves the tooltip around it to answer ([_Nesting]), and
+/// its press to whatever it stands in.
+mixin TooltipBox on RenderBox, SummonsTooltip {
+  /// How a hand that cannot hover opens it — the theme's, read at the press.
+  TooltipTriggerMode get tooltipTrigger =>
+      AppTooltipLook.triggerModeIn(tooltipContext!);
+
   /// The hover's target, apart from the box: the box takes every press in
   /// it, but only the innermost tooltip answers a hover.
   late final _TooltipHover _hover = _TooltipHover(this);
@@ -114,7 +144,7 @@ class _RenderAppTooltip extends RenderProxyBox with SummonsTooltip {
   /// on the path only when no tooltip inside it is ([_Nesting]).
   @override
   bool hitTest(BoxHitTestResult result, {required Offset position}) {
-    if (_saying.message.isEmpty) {
+    if (tooltipMessage.isEmpty) {
       return super.hitTest(result, position: position);
     }
     final outermost = _Nesting.outermost;
@@ -138,32 +168,20 @@ class _RenderAppTooltip extends RenderProxyBox with SummonsTooltip {
 
   @override
   void handleEvent(PointerEvent event, BoxHitTestEntry entry) {
-    if (event is PointerDownEvent) {
-      summonOnLongPress(event, _saying.triggerMode);
-    }
-  }
-
-  @override
-  void describeSemanticsConfiguration(SemanticsConfiguration config) {
-    super.describeSemanticsConfiguration(config);
-    if (_saying.message.isEmpty) {
-      return;
-    }
-    config.tooltip = _saying.message;
-    if (_saying.reading case final reading?) {
-      config.textDirection = reading;
+    if (event is PointerDownEvent && tooltipMessage.isNotEmpty) {
+      summonOnLongPress(event, tooltipTrigger);
     }
   }
 }
 
-/// What a mouse over an [AppTooltip] meets: the window opens as it enters
-/// and goes as it leaves.
+/// What a mouse over a [TooltipBox] meets: the window opens as it enters and
+/// goes as it leaves.
 final class _TooltipHover
     with Diagnosticable
     implements HitTestTarget, MouseTrackerAnnotation {
   _TooltipHover(this._box);
 
-  final _RenderAppTooltip _box;
+  final TooltipBox _box;
 
   @override
   MouseCursor get cursor => MouseCursor.defer;
@@ -440,8 +458,11 @@ mixin SummonsTooltip on RenderBox implements SummonedTooltipTarget {
   set tooltipContext(BuildContext value) => _tooltipContext = value;
 
   /// The tooltip's own trigger on a touch or a pen: Flutter's, the devices
-  /// that cannot hover.
-  late final LongPressGestureRecognizer _longPress = LongPressGestureRecognizer(
+  /// that cannot hover. Made at the first press: a label that is only ever
+  /// looked at never needs one.
+  LongPressGestureRecognizer? _longPress;
+
+  LongPressGestureRecognizer _makeLongPress() => LongPressGestureRecognizer(
     debugOwner: this,
     supportedDevices: const {
       PointerDeviceKind.invertedStylus,
@@ -460,12 +481,12 @@ mixin SummonsTooltip on RenderBox implements SummonedTooltipTarget {
   @protected
   void summonOnLongPress(PointerDownEvent event, TooltipTriggerMode mode) {
     if (mode == TooltipTriggerMode.longPress) {
-      _longPress.addPointer(event);
+      (_longPress ??= _makeLongPress()).addPointer(event);
     }
   }
 
   void _onLongPress() {
-    if (_longPress.primaryPointer case final pointer?) {
+    if (_longPress?.primaryPointer case final pointer?) {
       SummonedTooltip.longPressed(this, pointer);
     }
   }
@@ -492,7 +513,7 @@ mixin SummonsTooltip on RenderBox implements SummonedTooltipTarget {
 
   @override
   void dispose() {
-    _longPress.dispose();
+    _longPress?.dispose();
     super.dispose();
   }
 }

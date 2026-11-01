@@ -5,6 +5,7 @@ import '../input/control_press_claim.dart';
 import '../text/text_measure.dart';
 import '../theme/app_theme.dart';
 import 'app_tooltip.dart';
+import 'ellipsis_text.dart';
 import 'field_slider.dart' show FieldSlider;
 
 const _pillPadding = EdgeInsets.symmetric(horizontal: 7, vertical: 2);
@@ -482,10 +483,9 @@ class Pill extends StatelessWidget {
         : onTap == null
         ? theme.disabledColor
         : theme.colorScheme.onSurface;
-    Text word(String text, {bool shown = true}) => Text(
+    Text word(String text, {bool shown = true}) => EllipsisText(
       text,
       maxLines: 1,
-      overflow: TextOverflow.ellipsis,
       style: _wordStyleOf(theme)?.copyWith(color: inkFor(shown: shown)),
     );
     final other = otherLabel;

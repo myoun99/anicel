@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import 'ellipsis_text.dart';
 
 /// Builds an anchored popup's content. [close] is how the content dismisses
 /// itself — a picker that closes on pick, a Done button. Both kinds of
@@ -110,10 +111,9 @@ class AnchoredPopupHeader extends StatelessWidget {
     return Row(
       children: [
         Expanded(
-          child: Text(
+          child: EllipsisText(
             title,
             maxLines: 1,
-            overflow: TextOverflow.ellipsis,
             style: AnchoredPopupText.title,
           ),
         ),
