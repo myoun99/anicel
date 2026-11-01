@@ -24,6 +24,8 @@
 #include <dcomp.h>
 #include <stdint.h>
 
+extern "C" HWND qa_display_app_window(void);
+
 namespace {
 
 typedef HRESULT(WINAPI* qa_dcomp_create_fn)(IUnknown*, REFIID, void**);
@@ -92,8 +94,7 @@ int32_t qa_compose_start(void) {
     return 1;
   }
   const qa_dcomp_create_fn create = qa_dcomp_create();
-  HWND window = nullptr;
-  EnumWindows(qa_find_app_window, reinterpret_cast<LPARAM>(&window));
+  HWND window = qa_display_app_window();
   if (create == nullptr || window == nullptr) {
     return 0;
   }
@@ -114,6 +115,13 @@ int32_t qa_compose_start(void) {
 }
 
 }  // namespace
+
+// The app's window, or null where this process shows none.
+extern "C" HWND qa_display_app_window(void) {
+  HWND window = nullptr;
+  EnumWindows(qa_find_app_window, reinterpret_cast<LPARAM>(&window));
+  return window;
+}
 
 // qa_display.c's qa_display_compose_every_vblank, on Windows.
 extern "C" int32_t qa_display_compose_win(int32_t on) {

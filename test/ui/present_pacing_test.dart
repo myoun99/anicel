@@ -30,6 +30,10 @@ class _Display implements DisplayTiming {
   int lookedAfter = 900;
   int seamAfter = 2900;
 
+  /// The refresh of the screen the window lies on: the compositor's clock,
+  /// [period], but where a test puts it on a slower one.
+  double screenPeriod = period;
+
   final List<int> waits = [];
 
   int get _vsyncStart =>
@@ -61,8 +65,11 @@ class _Display implements DisplayTiming {
   }
 
   @override
-  ({int vblankMicros, double periodMicros})? vblankGrid() =>
-      (vblankMicros: vblank, periodMicros: period);
+  VblankGrid? vblankGrid() => (
+    vblankMicros: vblank,
+    periodMicros: screenPeriod,
+    composedEveryMicros: period,
+  );
 
   @override
   void waitUntil(int micros) => waits.add(micros);
@@ -155,9 +162,13 @@ void main() {
   PresentClaim expectedClaim({RasterSpread? spread}) => expected.claim(
     nowMicros: display.lookNow,
     vblankMicros: _Display.vblank,
-    periodMicros: _Display.period,
+    periodMicros: display.screenPeriod,
+    composedEveryMicros: _Display.period,
     budgetMicros: PresentPacing.budgetMicros,
-    handOffMicros: (spread ?? RasterSpread()).handOffFor(_Display.period),
+    handOffMicros: (spread ?? RasterSpread()).handOffFor(
+      display.screenPeriod,
+      composedEveryMicros: _Display.period,
+    ),
   );
 
   /// A look in this frame changed what its clock shows — said to the
@@ -207,6 +218,29 @@ void main() {
     await tester.pump(vsync);
 
     expect(readAt, Duration(microseconds: claim!.shownAtMicros));
+    expect(display.waits, [claim!.handOffMicros]);
+  });
+
+  testWidgets('🚨on a screen slower than the compositor\'s clock the look is '
+      'read at that screen\'s next vblank, and its frame waits for the '
+      'hand-off on that screen\'s own grid', (tester) async {
+    const refresh = 16680.0;
+    final shown = await settle(tester);
+    display.screenPeriod = refresh;
+    Duration? readAt;
+    PresentClaim? claim;
+
+    lookNext((_) {
+      claim = expectedClaim();
+      readAt = frameShownAt();
+      shown.value += 1;
+      changedInTheLook();
+    });
+    await tester.pump(vsync);
+
+    final vblank = claim!.vblankMicros;
+    expect(((vblank - _Display.vblank) / refresh) % 1, closeTo(0, 1e-6));
+    expect(readAt!.inMicroseconds, (vblank + refresh).round());
     expect(display.waits, [claim!.handOffMicros]);
   });
 
@@ -468,8 +502,12 @@ void main() {
         nowMicros: now,
         vblankMicros: _Display.vblank,
         periodMicros: _Display.period,
+        composedEveryMicros: _Display.period,
         budgetMicros: PresentPacing.budgetMicros,
-        handOffMicros: RasterSpread().handOffFor(_Display.period),
+        handOffMicros: RasterSpread().handOffFor(
+          _Display.period,
+          composedEveryMicros: _Display.period,
+        ),
       );
       frameShownAt();
       shown.value += 1;
@@ -791,11 +829,13 @@ void main() {
       required int gap,
     }) => quietBetweenHeldFrames(
       held: (
-        vblankMicros:
-            last.shownAtMicros - presentShownAfterVblanks * _Display.period,
-        periodMicros: _Display.period,
+        vblankMicros: last.vblankMicros,
+        periodMicros: display.screenPeriod,
         gap: gap,
-        handOffMicros: RasterSpread().handOffFor(_Display.period),
+        handOffMicros: RasterSpread().handOffFor(
+          display.screenPeriod,
+          composedEveryMicros: _Display.period,
+        ),
       ),
       marginMicros: PresentPacing.budgetMicros + 1000,
     );
@@ -809,6 +849,16 @@ void main() {
       final last = await holdChanges(tester, shown, [41700, 41700, 41700]);
 
       expect(quietForBackgroundGpuWork(), quietAfter(last, gap: 6));
+    });
+
+    testWidgets('🚨on a slower screen it is read off that screen\'s vblanks '
+        'and refreshes', (tester) async {
+      final shown = await settle(tester);
+      display.screenPeriod = 16680;
+
+      final last = await holdChanges(tester, shown, [33360, 33360, 33360]);
+
+      expect(quietForBackgroundGpuWork(), quietAfter(last, gap: 2));
     });
 
     testWidgets('🚨frames are held from a clock\'s look — before the quiet '

@@ -7039,4 +7039,7 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // dual_composite_mode and its lattices. Sizeof moves, both structs.
 // v62: stroke blend ids 26 and 27, Clip Studio's two 発光 modes, and id 1
 // (add) reads a B and mixes by alpha - the saturating add it was is id 27.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 62; }
+// v63: qa_display_window_screens - the vblanks of the screens the app's
+// window lies on, which the compositor's own clock is not when one of them
+// is slower than it.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 63; }

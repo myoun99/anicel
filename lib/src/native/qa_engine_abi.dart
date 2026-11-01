@@ -320,7 +320,11 @@ import '../core/on_a_worker.dart';
 /// - v62: stroke blend ids 26 and 27 — Clip Studio's two 発光 modes
 ///   ([SeparableBlendMode.glows], brush-fidelity Q3 · Q6) — and id 1, add,
 ///   reads a B and mixes by alpha: the saturating add it was is id 27.
-const int kQaEngineAbiVersion = 62;
+/// - v63: `qa_display_window_screens` — the vblanks of the screens the app's
+///   window lies on, which the compositor's clock is not when one is slower
+///   than it (`gridOfTheWindow`, board
+///   playback-pacing-knows-one-display-only, 유저 2026-11-02).
+const int kQaEngineAbiVersion = 63;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

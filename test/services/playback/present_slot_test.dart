@@ -17,7 +17,7 @@ void main() {
   double handOffOf(List<int> lengths, {int capacity = 32}) {
     final spread = RasterSpread(capacity: capacity);
     lengths.forEach(spread.add);
-    return spread.handOffFor(period);
+    return spread.handOffFor(period, composedEveryMicros: period);
   }
 
   /// A claim for a look made at [now].
@@ -29,8 +29,11 @@ void main() {
     nowMicros: now.round(),
     vblankMicros: vblank,
     periodMicros: period,
+    composedEveryMicros: period,
     budgetMicros: budget,
-    handOffMicros: handOff ?? RasterSpread().handOffFor(period),
+    handOffMicros:
+        handOff ??
+        RasterSpread().handOffFor(period, composedEveryMicros: period),
   );
 
   /// The vblank a claim's picture is shown on.
@@ -293,9 +296,9 @@ void main() {
       for (var i = 0; i < 7; i += 1) {
         spread.add(9000);
       }
-      expect(spread.handOffFor(period), -2000);
+      expect(spread.handOffFor(period, composedEveryMicros: period), -2000);
       spread.add(9000);
-      expect(spread.handOffFor(period), -9000);
+      expect(spread.handOffFor(period, composedEveryMicros: period), -9000);
     });
 
     test('🚨one scene an upload landed in does not move the window', () {
@@ -367,6 +370,117 @@ void main() {
         'work waits; it is not let run beside the frames', () {
       final quiet = quietAfter(gap: 1, handOffMicros: -6000);
       expect(quiet.untilMicros, lessThanOrEqualTo(quiet.fromMicros));
+    });
+  });
+
+  /// 🚨THE COMPOSITOR HAS ONE CLOCK AND EVERY SCREEN ITS OWN VBLANKS (card
+  /// playback-pacing-knows-one-display-only, 2026-11-02): a window on a
+  /// 59.95Hz screen under a 143.9Hz compositor.
+  group('on a screen slower than the compositor\'s clock', () {
+    const refresh = 16680.0;
+
+    PresentClaim claimOnIt(
+      PresentClaims claims,
+      num now, {
+      double composedEvery = period,
+    }) => claims.claim(
+      nowMicros: now.round(),
+      vblankMicros: vblank,
+      periodMicros: refresh,
+      composedEveryMicros: composedEvery,
+      budgetMicros: budget,
+      handOffMicros: -4000,
+    );
+
+    int indexOf(PresentClaim claim) =>
+        ((claim.vblankMicros - vblank) / refresh).round();
+
+    test('🚨a picture is shown on the very next of its vblanks, not three '
+        'on', () {
+      final claim = claimOnIt(PresentClaims(), vblank + 1000);
+      expect(claim.shownAtMicros, (claim.vblankMicros + refresh).round());
+    });
+
+    test('🚨a look claims the earliest vblank it can make: a lead of a look '
+        'is no refresh there, and a refresh of it only holds the frame', () {
+      const now = vblank + 1000;
+      // Its frame needs budget + 4ms before the vblank it claims.
+      final claim = claimOnIt(PresentClaims(), now);
+      expect(indexOf(claim), 1);
+      expect(
+        claim.handOffMicros - now,
+        lessThan(refresh),
+        reason: 'held for less than a refresh',
+      );
+    });
+
+    test('🚨the looks of one refresh all claim its vblank — they come faster '
+        'than the vblanks, and do not run on ahead of them', () {
+      final claims = PresentClaims();
+      final filled = <int>[];
+      for (var i = 0; i < 12; i += 1) {
+        filled.add(indexOf(claimOnIt(claims, vblank + i * period)));
+      }
+      expect(filled, [1, 1, 2, 2, 3, 3, 3, 4, 4, 5, 5, 6]);
+    });
+
+    test('🚨a look after a change takes the next vblank: the one it claimed '
+        'carries the picture already', () {
+      final claims = PresentClaims();
+      final first = claimOnIt(claims, vblank + 1000);
+      claims.changed();
+      final next = claimOnIt(claims, vblank + 1000 + period);
+      expect(indexOf(next), indexOf(first) + 1);
+    });
+
+    test('🚨a look\'s worth of a refresh is what is kept: 120Hz under 143.9 '
+        'keeps less than its two, and 60 under 120 keeps one', () {
+      final fast = PresentClaims().claim(
+        nowMicros: vblank + 1000,
+        vblankMicros: vblank,
+        periodMicros: 8333,
+        composedEveryMicros: period,
+        budgetMicros: budget,
+        handOffMicros: -4000,
+      );
+      expect(((fast.vblankMicros - vblank) / 8333).round(), 1);
+
+      final half = PresentClaims().claim(
+        nowMicros: vblank + 1000,
+        vblankMicros: vblank,
+        periodMicros: 16666,
+        composedEveryMicros: 8333,
+        budgetMicros: budget,
+        handOffMicros: -4000,
+      );
+      expect(((half.vblankMicros - vblank) / 16666).round(), 1);
+    });
+
+    test('🚨what a raster has to end in: what a refresh leaves past the '
+        'composition frame it waits for and that frame\'s present', () {
+      expect(
+        latchWidthMicros(refresh, period),
+        refresh - period - composedFramePresentsAfterMicros,
+      );
+      expect(
+        latchWidthMicros(period, period),
+        period - presentLatchEarlyMicros - presentLatchLateMicros,
+        reason: 'the compositor\'s own screen is as it was',
+      );
+      expect(latchWidthMicros(8333, period), 0, reason: 'none, never less');
+    });
+
+    test('🚨the scenes are placed for that width, not the refresh\'s: most '
+        'of them 8ms past the shortest are past the window', () {
+      final spread = RasterSpread();
+      for (var i = 0; i < 8; i += 1) {
+        spread.add(3000);
+      }
+      for (var i = 0; i < 12; i += 1) {
+        spread.add(11000);
+      }
+      expect(spread.handOffFor(refresh, composedEveryMicros: period), -11000);
+      expect(spread.handOffFor(refresh, composedEveryMicros: refresh), -3000);
     });
   });
 }
