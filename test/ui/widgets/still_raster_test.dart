@@ -583,6 +583,7 @@ void main() {
         width: _width,
         height: _height,
       );
+      await lastFrame(tester);
       await tester.binding.delayed(step);
       expect(region.debugCaptureCount, 0);
     });
