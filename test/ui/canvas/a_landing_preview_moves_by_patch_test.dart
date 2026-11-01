@@ -193,7 +193,7 @@ void main() {
   }) async {
     gpu.holdsRenders = true;
     await change();
-    await tester.pump();
+    await aFrameAndItsStep(tester);
     final landing = store.landingOf(keptByTheCanvas(tester, shown));
     expect(
       landing,

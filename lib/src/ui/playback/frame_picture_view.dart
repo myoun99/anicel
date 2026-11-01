@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show listEquals;
-import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
+import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import 'package:flutter/widgets.dart';
 
 import '../../core/tree_nodes.dart';
@@ -331,7 +331,6 @@ class _FramePictureViewState extends State<FramePictureView> {
   void dispose() {
     widget.run.landings.removeListener(_landed);
     _heldStep?.cancel();
-    _hearLive(null);
     _letGo(_store);
     _repaint.dispose();
     super.dispose();
@@ -353,7 +352,7 @@ class _FramePictureViewState extends State<FramePictureView> {
   void _standLive({bool Function(BrushFrameKey cel)? onScreen}) {
     _stoodBy = _pictures.keyAsItStands(widget.nodes, widget.picture);
     _waits = waitsForItsPlugins(widget.nodes);
-    _hearLive(null);
+    _liveChanges = null;
     _live = null;
     _onScreen = const {};
     final live = widget.live;
@@ -378,7 +377,7 @@ class _FramePictureViewState extends State<FramePictureView> {
     );
     _live = frame;
     if (live != null) {
-      _hearLive(frame.changes);
+      _liveChanges = frame.changes;
     }
     final nodes = widget.nodes;
     _onScreen = {
@@ -935,8 +934,32 @@ class _FramePictureViewState extends State<FramePictureView> {
     return (overlay?.strokeInHand ?? false) && _celNow() == _drawnOn;
   }
 
-  /// [_catchUp] for a paint: at once, or for a stroke in hand as late as its
-  /// step goes in before the next frame ([StepPace]).
+  /// [_catchUp] for a paint: at once, or for a stroke in hand once the
+  /// frame is out, as late as its step goes in before the next frame
+  /// ([StepPace]).
+  ///
+  /// 🚨★★⛔NOT IN THE PAINT WHILE A STROKE IS IN HAND, where the last steps
+  /// leave a frame nothing as well (F-533, 유저 2026-11-01 「최대한 그
+  /// 외적으로 좋아지기만 하는 부분에서」). Recording a step takes 4–9 ms in a
+  /// heavy frame, and in the paint that frame goes out that much later: it
+  /// took the next vsync with it, and a step had a frame to itself. 🔬Main PC,
+  /// 144 Hz, S5_BA cut 352, every row on, at 60%, in turn in one run, tests
+  /// running, input to raster done p50 / p90: 20 px 28.1–29.0 / 34.8–37.1 →
+  /// 21.5–22.2 / 27.6–30.3 ms, 300 px 37.0–39.3 / 44.6–50.5 → 32.4–33.5 /
+  /// 42.6–44.3 ms, a frame's build 5.1–5.4 → 1.6 ms. A new project, fitted,
+  /// the same way: 45–52 → 39–43 ms, p99 79.5 → 64.7. Quiet, and at 100% in a
+  /// new project, no change either way: those steps are held already.
+  ///
+  /// ⛔Not at the next frame's top, for a sample that came between frames:
+  /// the step lands 8–10 ms sooner and past that frame's paint, and the ink
+  /// is no earlier (36–40 ms against 37–38). ⛔Not as the last step lands:
+  /// 300 px 33–36 ms but 20 px 26–31, and steps with no frame between them
+  /// are what the Surface Pro 11 turned down (`StepPace`). ⛔Not a post-frame
+  /// callback: 1–2 ms behind the timer, 20 px 22.4–23.7, 300 px 32.7–37.3.
+  /// ↩️Where nothing was held this went ahead of the paint from 2026-11-02,
+  /// from the frame's callbacks: 1–3 steps in 230 went that way, a pen's
+  /// samples coming between frames (`AnicelBinding`), and its measured gain
+  /// was not seen again.
   void _catchUpAtPaint() {
     _pace.painted(SchedulerBinding.instance.currentSystemFrameTimeStamp);
     if (!_strokeInHand) {
@@ -947,61 +970,17 @@ class _FramePictureViewState extends State<FramePictureView> {
     if (_heldStep != null) {
       return;
     }
-    final hold = _pace.ask();
-    if (hold == Duration.zero) {
-      _catchUp();
-      return;
-    }
-    _heldStep = Timer(hold, () {
+    _heldStep = Timer(_pace.ask(), () {
       _heldStep = null;
       if (_strokeInHand) {
+        final whole = _standing.whole;
         _catchUp();
+        // The paint that asked read [_standing] before this.
+        if (_standing.whole != whole) {
+          _repaint.value += 1;
+        }
       }
     });
-  }
-
-  /// Hears the live rows through [changes] from here on, as the painter
-  /// does.
-  void _hearLive(Listenable? changes) {
-    _liveChanges?.removeListener(_liveMoved);
-    changes?.addListener(_liveMoved);
-    _liveChanges = changes;
-  }
-
-  /// The live rows moved: at the top of a frame, a stroke's samples coming
-  /// in. Its step is asked once all of them are in
-  /// ([_stepAheadOfThePaint]) — the frame's callbacks done, its build not
-  /// begun.
-  void _liveMoved() {
-    if (SchedulerBinding.instance.schedulerPhase ==
-        SchedulerPhase.transientCallbacks) {
-      scheduleMicrotask(_stepAheadOfThePaint);
-    }
-  }
-
-  /// 🚨★★A STEP THE LAST ONES LEFT NO ROOM TO HOLD GOES AHEAD OF THE PAINT
-  /// (F-533, 유저 2026-11-01 「최대한 그 외적으로 좋아지기만 하는 부분에서 구조를
-  /// 효율적으로 리팩토링」). Asked at the paint, its render goes to the raster
-  /// thread right behind that paint's frame and waits it out; asked here it
-  /// goes first, on a thread the frame before has left, and the frame waits
-  /// for it instead. 🔬Main PC, 144 Hz, a new project, in turn in one run,
-  /// input to raster done, p50 at 300 px/s: at 100% as tests came and went
-  /// 29.1 → 21.8, 25.0 → 15.6, 21.9 → 10.4 ms, a step's render 5.4 → 1.9
-  /// ms; fitted, quiet, 15.3 → 12.3 ms, p90 28.0 → 21.5; fitted, under
-  /// eighteen suites of tests, 72.3 → 70.2 ms, the levels' waits behind it
-  /// the same. 🔬The Surface Pro 11 lost nothing by it (release, 120 Hz,
-  /// S5_BA cut 352, every row on, 2026-11-02, with the levels a step lays cut
-  /// to what the screen reads): input to ink p50 32–33 → 32–33 ms, seen 25 ms
-  /// apart so no gain of this size can show there, vsync to raster end p50
-  /// 2.2 → 2.0 ms at 100% and 2.6 → 2.8 ms fitted. ⛔No sooner than this:
-  /// where the last steps leave a frame
-  /// room the pace holds a step (`StepPace`), and that is the later and so
-  /// the fuller one, in before the next frame all the same.
-  void _stepAheadOfThePaint() {
-    if (mounted && _strokeInHand && !_pace.holds) {
-      _pace.askNow();
-      _catchUp();
-    }
   }
 
   /// Lets go of what is shown, and of [store]'s hold on its picture.

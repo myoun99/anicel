@@ -268,7 +268,7 @@ void main() {
     await penOn(high);
     gpu.holdsRenders = true;
     step(at);
-    await tester.pump();
+    await aFrameAndItsStep(tester);
 
     expect(
       store.landingOf(keptByTheCanvas(tester, picture)),
@@ -313,7 +313,7 @@ void main() {
     await penOn(high);
     gpu.holdsRenders = true;
     step(at);
-    await tester.pump();
+    await aFrameAndItsStep(tester);
     expect(store.landingOf(keptByTheCanvas(tester, picture)), isNotNull);
 
     await tester.pumpWidget(const SizedBox());
@@ -326,7 +326,7 @@ void main() {
     final (:penOn, :step, :gpu, store: _, picture: _, landOn: _) =
         await aCanvas(tester);
     step(at);
-    await tester.pump();
+    await aFrameAndItsStep(tester);
     expect(gpu.written, 1, reason: '⛔premise: the step is in the picture');
     gpu.letTheWritesLand();
     await lendBothClocks(tester, rounds: 2);
