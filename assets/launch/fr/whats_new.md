@@ -3,7 +3,7 @@
 ## Nouveau
 
 - **Texte fixe sur la feuille de temps** — la colonne mémo écrit les mouvements de caméra et les changements de scène comme la feuille de conte. La colonne mémo est maintenant double, et le texte fixe s'active pour toute l'œuvre et pour le plan actuel.
-- **Couleur et opacité des guides** — réglez la couleur et l'opacité sur la ligne du guide dans la bibliothèque d'outils. Les lignes ne pâlissent plus quand vous changez d'outil. Les réglages de perspective gagnent la ligne d'horizon, et chaque point de fuite a sa densité, jusqu'à 192.
+- **Couleur et opacité des repères** — réglez la couleur et l'opacité sur la ligne du repère dans la bibliothèque d'outils. Les lignes ne pâlissent plus quand vous changez d'outil. Les réglages de perspective gagnent la ligne d'horizon, et chaque point de fuite a sa densité, jusqu'à 192.
 - **Raccourcis de taille de brosse** — « ] » augmente d'un cran et « [ » diminue. Dans le préréglage TVPaint, ce sont « + » et « - ».
 - **Couper dossiers et calques attachés** — les dossiers et les calques attachés se coupent et se collent aussi.
 - **Coller sur une ligne synchronisée** — collez un bloc de frame sur une ligne attachée synchronisée : le bloc reste, seule son image change.
