@@ -1,29 +1,12 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../models/canvas_viewport.dart';
 import '../input/control_press_claim.dart';
 import '../widgets/cursor_notice.dart' show cursorNotices;
-
-/// How a sheet sets the words of a [SheetTextTarget] — the form the field
-/// types them in, so the editing happens on the printed glyphs.
-enum SheetTextForm {
-  /// From the top left of the rect, wrapped at its width: a memo, an ACTION.
-  paragraph,
-
-  /// One line centred across the rect, from its top: a header box's value.
-  centredLine,
-
-  /// One line from the rect's left, from its top: an envelope box's value
-  /// its form sets left (I-127-Q1).
-  leftLine,
-
-  /// One line up to the rect's right, from its top.
-  rightLine;
-
-  /// Whether the words are one line, cut short where the rect ends.
-  bool get isLine => this != paragraph;
-}
+import 'sheet_line.dart';
 
 /// One place on a sheet whose typed text a tap edits in place.
 class SheetTextTarget {
@@ -91,12 +74,19 @@ class SheetTextEditLayer extends StatefulWidget {
     required this.viewport,
     required this.fieldKey,
     required this.barrierKey,
+    this.paper = const Color(0xFFFFFFFF),
   });
 
   final List<SheetTextTarget> targets;
 
   /// The live panel viewport — the transform the sheet's painter applies.
   final CanvasViewport viewport;
+
+  /// The paper the sheet prints on, laid over the printed words while the
+  /// field types their replacement. White but where a form says otherwise
+  /// (timesheet H4, the conte) — ↩️the envelope's kraft took a white patch
+  /// (실기 I-127, 2026-11-01).
+  final Color paper;
 
   /// The editing field's key and the tap-away barrier's.
   final String fieldKey;
@@ -270,95 +260,91 @@ class _SheetTextEditLayerState extends State<SheetTextEditLayer> {
   /// face) moved as the editor opened. And it drew an accent outline round
   /// the box, beside the sheet's own lines.
   List<Widget> _editor(SheetTextTarget target) {
-    final paper = target.textRect;
-    // The field's caret room stands after the words whichever way they are
-    // set: centred in the rect it is laid in less that room, a line
-    // centres where the printer centres it — and ends where it ends.
     final line = target.form.isLine;
-    return [
-      Positioned.fromRect(
-        rect: _onScreen(_printedWords(target)),
-        child: const IgnorePointer(
-          // White: both sheets this serves print on white (timesheet H4,
-          // conte). ↩️It was the timesheet's old stock tint, which H4
-          // retired.
-          child: ColoredBox(color: Color(0xFFFFFFFF)),
-        ),
-      ),
-      Positioned.fromRect(
-        rect: _onScreen(
-          Rect.fromLTWH(
-            paper.left,
-            paper.top,
-            paper.width + _caretRoom,
-            paper.height,
-          ),
-        ),
-        child: FittedBox(
-          fit: BoxFit.fill,
-          alignment: Alignment.topLeft,
-          child: SizedBox(
-            // The field sets its words that much narrower than it is, for
-            // the caret after the last glyph; this much wider, it breaks
-            // them where the printer does.
-            width: paper.width + _caretRoom,
-            height: paper.height,
-            child: Focus(
-              onKeyEvent: (node, event) {
-                if (event is KeyDownEvent &&
-                    event.logicalKey == LogicalKeyboardKey.escape) {
-                  _cancel();
-                  return KeyEventResult.handled;
-                }
-                return KeyEventResult.ignored;
-              },
-              // H24: a drag in the field selects text — the field's own
-              // verb — so it takes the STRONG claim, and the canvas surface
-              // under the sheet stands down for it rather than holding the
-              // drag.
-              child: DragVerbClaim(
-                child: MediaQuery.withNoTextScaling(
-                  child: TextField(
-                    key: ValueKey<String>(widget.fieldKey),
-                    controller: _controller,
-                    focusNode: _focusNode,
-                    autofocus: true,
-                    maxLines: line ? 1 : null,
-                    expands: !line,
-                    textAlign: switch (target.form) {
-                      SheetTextForm.centredLine => TextAlign.center,
-                      SheetTextForm.rightLine => TextAlign.end,
-                      SheetTextForm.paragraph ||
-                      SheetTextForm.leftLine => TextAlign.start,
-                    },
-                    // The printer's style and nothing else: a field lays
-                    // its words out in the theme's input style with this
-                    // one over it, and whatever this leaves unset — the
-                    // theme's letter spacing, for one — the printer never
-                    // had.
-                    style: target.style.copyWith(
-                      inherit: false,
-                      // The baseline a painter sets words on, which a
-                      // style that inherits nothing has to name.
-                      textBaseline:
-                          target.style.textBaseline ?? TextBaseline.alphabetic,
-                    ),
-                    strutStyle: StrutStyle.disabled,
-                    cursorWidth: _cursorWidth,
-                    decoration: const InputDecoration(
-                      // Bare: this field sits ON the printed sheet (paper
-                      // white), so it opts out of the app-wide dark filled
-                      // box.
-                      filled: false,
-                      isCollapsed: true,
-                      border: InputBorder.none,
-                    ),
-                  ),
-                ),
-              ),
+    final field = Focus(
+      onKeyEvent: (node, event) {
+        if (event is KeyDownEvent &&
+            event.logicalKey == LogicalKeyboardKey.escape) {
+          _cancel();
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      // H24: a drag in the field selects text — the field's own verb — so it
+      // takes the STRONG claim, and the canvas surface under the sheet stands
+      // down for it rather than holding the drag.
+      child: DragVerbClaim(
+        child: MediaQuery.withNoTextScaling(
+          child: TextField(
+            key: ValueKey<String>(widget.fieldKey),
+            controller: _controller,
+            focusNode: _focusNode,
+            autofocus: true,
+            maxLines: line ? 1 : null,
+            expands: !line,
+            textAlign: switch (target.form) {
+              SheetTextForm.centredLine => TextAlign.center,
+              SheetTextForm.rightLine => TextAlign.end,
+              SheetTextForm.paragraph ||
+              SheetTextForm.leftLine => TextAlign.start,
+            },
+            // The printer's style and nothing else: a field lays its words
+            // out in the theme's input style with this one over it, and
+            // whatever this leaves unset — the theme's letter spacing, for
+            // one — the printer never had.
+            style: target.style.copyWith(
+              inherit: false,
+              // The baseline a painter sets words on, which a style that
+              // inherits nothing has to name.
+              textBaseline:
+                  target.style.textBaseline ?? TextBaseline.alphabetic,
+            ),
+            strutStyle: StrutStyle.disabled,
+            cursorWidth: _cursorWidth,
+            // BARE, all of it: this field sits ON the printed sheet, so it
+            // takes nothing of the app-wide boxed field — no fill, no padding,
+            // no frame in any state. 🐛It opted out of the fill and the resting
+            // border alone, and the theme's 9 by 8 and its focused frame came
+            // in: 18 narrower than its print, it scrolled a name the paper
+            // prints whole and cut the glyphs top and bottom (실기 I-127,
+            // 2026-11-01). As [InlineEditField]'s, the same bug on 10-11 —
+            // ⚠️two bare fields; a third is when they share this.
+            decoration: const InputDecoration(
+              filled: false,
+              isCollapsed: true,
+              contentPadding: EdgeInsets.zero,
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              disabledBorder: InputBorder.none,
+              errorBorder: InputBorder.none,
+              focusedErrorBorder: InputBorder.none,
             ),
           ),
         ),
+      ),
+    );
+    return [
+      Positioned.fromRect(
+        rect: _onScreen(_printedWords(target)),
+        child: IgnorePointer(child: ColoredBox(color: widget.paper)),
+      ),
+      // A line stands as the words typed so far will print, so it keeps to
+      // its box as they grow (I-127-Q4).
+      ValueListenableBuilder<TextEditingValue>(
+        valueListenable: _controller!,
+        child: field,
+        builder: (context, typed, field) {
+          final laid = _fieldSize(target, typed.text);
+          return Positioned.fromRect(
+            rect: _onScreen(_fieldShown(target, typed.text, laid)),
+            child: FittedBox(
+              fit: BoxFit.fill,
+              alignment: Alignment.topLeft,
+              child: SizedBox.fromSize(size: laid, child: field),
+            ),
+          );
+        },
       ),
     ];
   }
@@ -371,35 +357,75 @@ class _SheetTextEditLayerState extends State<SheetTextEditLayer> {
   /// takes off the width it breaks its lines at.
   static const double _caretRoom = 1 + _cursorWidth;
 
+  /// How [typed] runs as a line in [target]'s style.
+  Size _lineOf(SheetTextTarget target, String typed) {
+    final line = sheetLine(typed, target.style);
+    final size = line.size;
+    line.dispose();
+    return size;
+  }
+
+  /// What the field is laid out in, in paper units. The field sets its words
+  /// that much narrower than it is, for the caret after the last glyph; this
+  /// much wider, it breaks them where the printer does, and a line wider
+  /// than the rect runs its length, so nothing scrolls.
+  Size _fieldSize(SheetTextTarget target, String typed) {
+    final slot = target.textRect;
+    final wide = target.form.isLine
+        ? math.max(_lineOf(target, typed).width, slot.width)
+        : slot.width;
+    return Size(wide + _caretRoom, slot.height);
+  }
+
+  /// Where a field [laid] that size is shown, in paper units. From the rect's
+  /// left whichever way its words are set: a line that fits centres or ends
+  /// where the printer does in the rect the field is laid in less its caret
+  /// room, and one that shrinks fills it.
+  Rect _fieldShown(SheetTextTarget target, String typed, Size laid) {
+    final slot = target.textRect;
+    if (!target.form.isLine) {
+      return slot.topLeft & laid;
+    }
+    final place = SheetLinePlace.of(
+      _lineOf(target, typed),
+      slot,
+      target.form,
+    );
+    return Offset(slot.left, place.rect.top) & laid * place.scale;
+  }
+
   /// Where [target]'s words stand printed, in paper units: the printer's
   /// layout of them in [SheetTextTarget.textRect], and a paper unit round
-  /// it for the edges of the glyphs — but none above the rect: the printer
-  /// clips the words to it (`SheetWords`), and a sheet may print right over
-  /// it. ⚠️Mine (I-93): the conte's fixed lines end where a cell's typed
-  /// words begin, and the unit above hid the foot of the last one.
+  /// it for the edges of the glyphs, at the scale the glyphs stand at — but
+  /// none above the rect: the printer clips the words to it (`SheetWords`),
+  /// and a sheet may print right over it. ⚠️Mine (I-93): the conte's fixed
+  /// lines end where a cell's typed words begin, and the unit above hid the
+  /// foot of the last one.
   Rect _printedWords(SheetTextTarget target) {
     final slot = target.textRect;
-    final line = target.form.isLine;
+    final (printed, edge) = target.form.isLine
+        ? switch (SheetLinePlace.of(
+            _lineOf(target, target.text),
+            slot,
+            target.form,
+          )) {
+            final place => (place.rect, place.scale),
+          }
+        : (slot.topLeft & _paragraphOf(target), 1.0);
+    final room = slot.inflate(1);
+    return printed
+        .inflate(edge)
+        .intersect(Rect.fromLTRB(room.left, slot.top, room.right, room.bottom));
+  }
+
+  /// How [target]'s words run wrapped at its rect's width.
+  Size _paragraphOf(SheetTextTarget target) {
     final painter = TextPainter(
       text: TextSpan(text: target.text, style: target.style),
       textDirection: TextDirection.ltr,
-      maxLines: line ? 1 : null,
-      ellipsis: line ? '…' : null,
-    )..layout(maxWidth: slot.width);
-    final printed = Rect.fromLTWH(
-      switch (target.form) {
-        SheetTextForm.centredLine => slot.center.dx - painter.width / 2,
-        SheetTextForm.rightLine => slot.right - painter.width,
-        SheetTextForm.paragraph || SheetTextForm.leftLine => slot.left,
-      },
-      slot.top,
-      painter.width,
-      painter.height,
-    );
+    )..layout(maxWidth: target.textRect.width);
+    final size = painter.size;
     painter.dispose();
-    final room = slot.inflate(1);
-    return printed
-        .inflate(1)
-        .intersect(Rect.fromLTRB(room.left, slot.top, room.right, room.bottom));
+    return size;
   }
 }

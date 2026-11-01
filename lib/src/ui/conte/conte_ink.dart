@@ -234,6 +234,7 @@ class ConteInkLayer extends StatelessWidget {
       brushToolState: brushToolState,
       strokeActive: strokeActive,
       history: historyManager.gestures,
+      inkChanges: Listenable.merge([controller, pictures]),
       // The plane axis stays HERE, with the controller that has one: a
       // picture's plane is its cel's canvas size; the ink has one plane.
       sessionStateFor: (window) => switch (window.plane) {

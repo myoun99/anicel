@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
+import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
 import 'package:anicel/src/ui/brush/canvas_visible_rect.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/effective_device_pixel_ratio.dart';
@@ -89,9 +90,8 @@ void main() {
     session.createDrawingAtCurrentFrame();
     await tester.pumpAndSettle();
 
-    final panel = tester.widget<BrushCanvasPanel>(
-      find.byType(BrushCanvasPanel).first,
-    );
+    final panelFinder = find.byType(BrushCanvasPanel).first;
+    final panel = tester.widget<BrushCanvasPanel>(panelFinder);
     const zoom = 1.1;
     const pan = Offset(37, 23);
     panel.viewportController!.value = CanvasViewport(
@@ -107,7 +107,10 @@ void main() {
     // float over the canvas floor (a press under the brush panel or the
     // timeline lands on the panel, and the stroke never starts) — and in
     // its right half, clear of the panels that float at the top left.
-    final visible = canvasVisibleRect(box.size, panel.floorCover);
+    final visible = canvasVisibleRect(
+      box.size,
+      CanvasFloorInsets.maybeOf(tester.element(panelFinder))!.insets,
+    );
     Offset local(double fx, double fy) => Offset(
       visible.left + visible.width * fx,
       visible.top + visible.height * fy,

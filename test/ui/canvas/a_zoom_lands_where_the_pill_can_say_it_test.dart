@@ -284,7 +284,6 @@ void main() {
                   ),
                   availableFrameKeys: frameKeys,
                   cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-                  floorCover: EdgeInsets.zero,
                   canvasSize: canvasSize,
                   viewport: viewport,
                   viewportController: controller,

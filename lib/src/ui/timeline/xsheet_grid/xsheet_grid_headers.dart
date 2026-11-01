@@ -119,7 +119,11 @@ class _XSheetGridHeaders {
     return _kept.keep(
       _state._berths,
       entry,
-      (facts: facts, drag: drag),
+      (
+        active: entry.layer.id == grid.hooks.activeLayerId,
+        facts: facts,
+        drag: drag,
+      ),
       () => layerControlsRowFrom(facts, entry, grid, fold),
     );
   }

@@ -41,8 +41,9 @@ import '../repaint_props.dart';
 /// SE rows reuse the drawing rows' white paper frame blocks (the cells
 /// themselves paint the paper); this overlay adds the sheet's SE writing on
 /// top: the speaker name in an accent box at the block start (only when
-/// set) and the dialogue glyphs distributed evenly across the block, with
-/// the audio waveform sandwiched between paper and text.
+/// set) and the dialogue glyphs standing on their koma
+/// ([dialogueGlyphSlots]), with the audio waveform sandwiched between paper
+/// and text.
 
 /// Whether rows of [kind] use the sheet-style SE rendering: cell glyphs and
 /// X marks stay suppressed — the entry's writing comes from the row-level

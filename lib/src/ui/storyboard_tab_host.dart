@@ -43,6 +43,8 @@ import 'timeline/layer_row_drag.dart'
     show TimelineRowDragHooks, timelineRowAddressOfDragSubject;
 import 'timeline/se_layer_mixer.dart';
 import 'timeline/timeline_current_row.dart';
+import 'timeline/timeline_ruler_cursor_overlay.dart'
+    show ReadyRunsOfTheDocument;
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks;
 import 'storyboard_playhead_mapping.dart';
@@ -234,6 +236,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     _session.playbackRig.prerenderScheduler.progress,
     _session.renderCaches.brushFrameStore.celPixelRevision,
   ]);
+
+  late final ReadyRunsOfTheDocument _readyRuns = ReadyRunsOfTheDocument(
+    (start, end) => storyboardReadyRuns(_session, start, end),
+  );
 
   /// The rail's row-order drag: the S rows re-order their track's list, the
   /// V rows the tracks.
@@ -944,8 +950,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onScrubGlobalFrame: (frame) =>
                         scrubStoryboardGlobalFrame(_session, frame),
                     onScrubEnd: () => commitStoryboardScrub(_session),
-                    readyRunsIn: (start, end) =>
-                        storyboardReadyRuns(_session, start, end),
+                    readyRunsIn: _readyRuns.of(
+                      _session.repository.requireProject(),
+                      _session.selectedTrackId,
+                    ),
                     thumbnails: widget.thumbnails,
                     audioPeaksFor: _session.voiceRecording.audioPeaksForDisplay,
                     soundCannotPlay: _session.playbackRig.soundCannotPlay,
@@ -1014,6 +1022,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       onActivateAt: (_, _, globalFrame) =>
                           unawaited(_activateLaneCell(globalFrame)),
                       onMoveBegin: _session.laneMove.beginLaneRangeMoveDrag,
+                      moveLands: _session.laneMove.laneRangeMoveLands,
                       onMoveUpdate:
                           (frameDelta, {stretch, values, landings}) =>
                               _session.laneMove.updateLaneRangeMoveDrag(

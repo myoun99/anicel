@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
@@ -481,7 +480,10 @@ class BrushPresetLibrary extends ChangeNotifier {
         warnings = const [];
         handInFile = pack.handSettings;
       } else if (lowerName.endsWith('.sut') || lowerName.endsWith('.sutg')) {
-        final result = await _decodeSutBytes(pick.bytes, sourceName: baseName);
+        final result = await decodeSutBrushFile(
+          pick.bytes,
+          sourceName: baseName,
+        );
         imported = result.presets;
         warnings = result.warnings;
       } else {
@@ -532,27 +534,6 @@ class BrushPresetLibrary extends ChangeNotifier {
     return warnings.isEmpty
         ? summary
         : AppText.strings.brImportWarnings(summary, warnings.length);
-  }
-
-  /// The SQLite reader needs a file path; work on a scratch copy so the
-  /// user's original brush file is never opened for writing or locked.
-  Future<SutImportResult> _decodeSutBytes(
-    Uint8List bytes, {
-    required String sourceName,
-  }) async {
-    final directory = await Directory.systemTemp.createTemp('sut_import');
-    try {
-      final file = File('${directory.path}/import.sut');
-      await file.writeAsBytes(bytes, flush: true);
-      return await decodeSutBrushFile(
-        filePath: file.path,
-        sourceName: sourceName,
-      );
-    } finally {
-      unawaited(
-        directory.delete(recursive: true).catchError((Object _) => directory),
-      );
-    }
   }
 
   String _nextPresetName() {

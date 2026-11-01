@@ -38,7 +38,9 @@ import 'timeline_layer_controls_row.dart';
 /// base composite, a folder member's opacity override, the rail's column
 /// widths). The row's VERBS are not facts: a host wires the same verbs for
 /// its whole life, and a kept row calls them through the hooks it was
-/// built with, each asking the session at the event.
+/// built with, each asking the session at the event. ⛔Nor is whether the
+/// row is the one stood on: a stand changes one colour on two rows, and it
+/// reaches the plate past the memo ([BerthRow.activeOf]).
 ///
 /// Zoom-independent by construction (UI-R7 #1): nothing here reads
 /// frameCellWidth, so zoom steps always hit. The row reads the four
@@ -49,16 +51,6 @@ typedef LayerControlsRowFacts = ({
   // rail-visible field stays put (see the completeness contract on
   // [ControlsRowFace]).
   ControlsRowFace layer,
-  // R28 #11: ONE selection — and now there is only one THING that can be
-  // selected. A folder is a layer, so `activeLayerId` answers for both
-  // and two rows can no longer read as selected at once by construction.
-  bool active,
-  // ㉞: the row selection wash. SESSION state like [active] and invisible to
-  // the Layer comparison — ⑨ passed `selected` to the row without giving the
-  // memo a way to see it change, so the wash never appeared until some other
-  // fact happened to invalidate the entry. The state was right the whole
-  // time; the cache answered "unchanged" (the ㉘ shape).
-  bool selected,
   bool hasLanes,
   bool lanesExpanded,
   int depth,
@@ -138,9 +130,6 @@ LayerControlsRowFacts layerControlsRowFacts(
   final graphKey = laneGraphHeadedBy(row.layer, null);
   return (
     layer: ControlsRowFace(row.layer),
-    active: id == hooks.activeLayerId,
-    // ⑨ · T1: in the row selection the row verbs act on — by ADDRESS.
-    selected: hooks.selectedRows.contains(row.address),
     hasLanes: hasLanes,
     lanesExpanded: hooks.expandedLaneLayerIds.contains(id),
     depth: row.depth,
@@ -181,8 +170,6 @@ Widget layerControlsRowFrom(
     mainExtent: facts.mainExtent,
     layer: row.layer,
     wearsBaseComposite: facts.wearsBaseComposite,
-    active: facts.active,
-    selected: facts.selected,
     metrics: grid.metrics,
     onSelectLayer: hooks.onSelectLayer,
     // T10: the rail row and the frame cells take the SAME settled-tap
@@ -224,9 +211,11 @@ Widget layerControlsRowFrom(
   );
 }
 
-/// What a kept controls row was built from: its facts, and what its drag
-/// wrapper was built from.
+/// What a kept controls row was built from: its facts, what its drag
+/// wrapper was built from, and whether it is the row stood on, which is
+/// handed past both ([BerthRow.activeOf]).
 typedef LayerControlsRowInputs = ({
+  bool active,
   LayerControlsRowFacts facts,
   // F-244: the row's DRAG wrapper is kept with it, so a commit that moved
   // no row rebuilds no wrapper (it rebuilt all of them, ~170 elements on
@@ -271,6 +260,7 @@ final class KeptLayerControlsRows {
     final built = _rows.keep(berths, row, inputs.facts, build);
     return BerthRow(
       layer: row.layer,
+      active: inputs.active,
       child: _wrapped.keep(
         berths,
         row,

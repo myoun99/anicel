@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId;
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 
+import '../../helpers/line_on_screen.dart';
 import '../../helpers/named_finders.dart';
 import '../../helpers/timeline_host.dart';
 
@@ -299,10 +300,17 @@ Future<Map<String, Set<double>>> _linesOfACarry(
     );
     await tester.pump();
     for (final element in _anyLine.evaluate()) {
-      final line = tester.getRect(find.byKey(element.widget.key!)).center;
-      (lines[(element.widget.key! as ValueKey<String>).value] ??= {}).add(
-        partAcross(axis, line),
-      );
+      final key = element.widget.key!;
+      final line = tester.getRect(find.byKey(key)).center;
+      final name = (key as ValueKey<String>).value;
+      if (!lines.containsKey(name)) {
+        expect(
+          await lineOnScreen(tester, find.byKey(key)),
+          greaterThan(0.5),
+          reason: '$name stands there and the screen does not show it',
+        );
+      }
+      (lines[name] ??= {}).add(partAcross(axis, line));
     }
   }
   await gesture.moveTo(start);

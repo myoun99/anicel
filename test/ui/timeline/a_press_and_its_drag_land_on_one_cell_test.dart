@@ -163,6 +163,7 @@ void main() {
             onSelectUpdate: (_, _, anchor, _, _) => anchors.add(anchor),
             onTapAt: (_, _, _) {},
             onTapClear: () {},
+            moveLands: (_) => true,
             onMoveBegin: () => false,
             onMoveUpdate: (_, {stretch, values, landings}) {},
             onMoveEnd: () {},

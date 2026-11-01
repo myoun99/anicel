@@ -52,6 +52,18 @@ class _BrushEditOpening {
   /// nearest measurement is closer to the hand than the stand-in the
   /// device put there.
   ///
+  /// 🚨★AND THE OPENING WAITS FOR ITS OWN FORCE (유저 2026-11-01,
+  /// a-light-press-opens-with-heavy-dabs: 「엄청나게 약하게 스트로크 시작해도
+  /// 필압강하게 3개dab정도가 찍힘」). 🔬Build 1086, a second of a weak stroke:
+  /// `ledger meas=1 est=75 fin=0 upd=73 rep=3` — UIKit does correct its
+  /// estimates. The first force past the stand-in is one of them, on its way
+  /// down from it, and the press and its repeats took it. So the samples up to
+  /// that one ([_WaitingSample.opens]) wait for the corrections UIKit owes
+  /// them ([_awaitsACorrection]), and each is painted with its own — one that
+  /// is owed none, as the press, with the nearest after it. ⚠️The price is
+  /// the first dab that much later: the inspector's `opened` line says how
+  /// much. A pen with no corrections to send pays nothing.
+  ///
   /// ⛔NOT 「paint the stand-in and repaint when the reading comes」 — what
   /// is shown once is seen ([[no-optimistic-commit-then-revert]]).
   ///
@@ -59,8 +71,8 @@ class _BrushEditOpening {
   /// nothing it draws.
   ({Duration since, List<_WaitingSample> samples})? _waiting;
 
-  /// How long a stroke waits for its first reading before it takes the
-  /// device's word.
+  /// How long a stroke waits for its first reading, and for the corrections
+  /// of its opening, before it takes the device's word.
   ///
   /// The longest wait on record is UIKit's: seven coalesced samples at
   /// 240 Hz, 29 ms (Apple Developer Forums 96700) — and on the user's iPad
@@ -69,7 +81,8 @@ class _BrushEditOpening {
   /// A pen that never measures — one without a force sensor may repeat its
   /// stand-in for good — would otherwise hold its whole stroke off screen
   /// until it lifted; past this bound it paints what it reports, as it
-  /// always did. Only such a pen ever pays it.
+  /// always did. Only such a pen ever pays all of it. ⚠️How late UIKit's
+  /// corrections come is one report's ~50 ms, not measured here.
   static const Duration _patience = Duration(milliseconds: 100);
 
   /// Whether this contact has not read a pressure yet.
@@ -95,7 +108,7 @@ class _BrushEditOpening {
     if (_awaitsAReading) {
       _waiting = (
         since: at,
-        samples: [_waitingSample(paintPress, at, position)],
+        samples: [_waitingSample(paintPress, at, position, opens: true)],
       );
       return;
     }
@@ -113,6 +126,7 @@ class _BrushEditOpening {
     required ({bool pressure, bool speed}) read,
   }) {
     final waiting = _waiting;
+    final opens = _pressureUnread;
     if (waiting != null) {
       // Only what the brush reads is filled: what it does not read stays as
       // the device reported it, exactly as in a stroke that never waited.
@@ -140,10 +154,14 @@ class _BrushEditOpening {
     if (waiting == null) {
       return false;
     }
-    if (_awaitsAReading && at - waiting.since <= _patience) {
-      waiting.samples.add(_waitingSample(paint, at, penPosition));
+    // In the list first: the sample that brought the reading is owed a
+    // correction like the ones it fills.
+    waiting.samples.add(_waitingSample(paint, at, penPosition, opens: opens));
+    if ((_awaitsAReading || _awaitsACorrection) &&
+        at - waiting.since <= _patience) {
       return true;
     }
+    waiting.samples.removeLast();
     _paintWaiting();
     return false;
   }
@@ -177,6 +195,15 @@ class _BrushEditOpening {
           ((_state._strokeDynamics?.readsDirection ?? false) ||
               (_state._secondStroke?.readsDirection ?? false)));
 
+  /// Whether a sample of the opening is still owed the force UIKit will send
+  /// after the fact — by a brush that draws with it.
+  bool get _awaitsACorrection =>
+      _reads(BrushInputSource.pressure) &&
+      _waiting!.samples.any(
+        (sample) =>
+            sample.opens && _state._pressure.awaitsCorrection(sample.at),
+      );
+
   /// Whether this stroke's brush reads [source] at all.
   bool _reads(BrushInputSource source) =>
       (_state._activeStrokeInputSettings ?? _state.widget.inputSettings())
@@ -208,32 +235,58 @@ class _BrushEditOpening {
   void _paintWaiting() {
     final samples = _waiting!.samples;
     _waiting = null;
+    final fixed = _takeRecordedPressures(samples);
+    _state._pressure.noteOpened(
+      waited: samples.last.at - samples.first.at,
+      held: samples.length,
+      fixed: fixed,
+    );
     for (final sample in samples) {
       final own = sample.readings;
       final lean = own.lean;
       _state._stroke.paintReading(
-        own
-            .withPressure(
-              _state._pressure.recordedPressure(sample.at) ?? own.pressure,
-            )
-            .withLean(
-              lean == null
-                  ? null
-                  : recordedPenLean(sample.at, lean.azimuthDegrees) ?? lean,
-            ),
+        own.withLean(
+          lean == null
+              ? null
+              : recordedPenLean(sample.at, lean.azimuthDegrees) ?? lean,
+        ),
         sample.paint,
       );
     }
+  }
+
+  /// Each of [samples] takes the force the platform has recorded for it, and
+  /// one of the opening with none takes the nearest recorded after it —
+  /// the press, whose own record is the stand-in. Answers how many had their
+  /// own.
+  int _takeRecordedPressures(List<_WaitingSample> samples) {
+    var fixed = 0;
+    double? nearest;
+    for (final sample in samples.reversed) {
+      final recorded = _state._pressure.recordedPressure(sample.at);
+      if (recorded != null) {
+        fixed += 1;
+        nearest = recorded;
+      }
+      if (recorded != null || sample.opens) {
+        sample.readings = sample.readings.withPressure(
+          nearest ?? sample.readings.pressure,
+        );
+      }
+    }
+    return fixed;
   }
 
   /// The sample just noted, stamped [at] at [position], as it waits.
   _WaitingSample _waitingSample(
     void Function() paint,
     Duration at,
-    CanvasPoint position,
-  ) => _WaitingSample(
+    CanvasPoint position, {
+    required bool opens,
+  }) => _WaitingSample(
     at: at,
     position: position,
+    opens: opens,
     readings: _state._readings,
     paint: paint,
   );
@@ -248,6 +301,7 @@ class _WaitingSample {
   _WaitingSample({
     required this.at,
     required this.position,
+    required this.opens,
     required this.readings,
     required this.paint,
   });
@@ -258,6 +312,13 @@ class _WaitingSample {
   /// Where the pen was, before any smoothing: the press's is where the
   /// stroke's direction is measured from.
   final CanvasPoint position;
+
+  /// Whether it is of the contact's OPENING: taken before it read a pressure,
+  /// or the sample that first did. What such a sample reported is the
+  /// stand-in or the estimate coming down from it, so it waits for its own
+  /// correction ([_BrushEditOpening._awaitsACorrection]). A sample after
+  /// those keeps its own estimate if none has come.
+  final bool opens;
 
   /// What the sample read, whole — its pressure and speed filled in as the
   /// first readings come ([_BrushEditOpening._fillWaiting]).

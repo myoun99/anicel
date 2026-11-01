@@ -261,13 +261,13 @@ class _BlockLayout {
     }
   }
 
-  /// The timeline this layout describes: drawings at their new starts.
-  /// Block-owned dots ride inside the entries for free; copyWith drops
-  /// offsets a shrink cut off.
+  /// The timeline this layout describes: drawings at their new starts, each
+  /// one's dots kept to its end whichever edge moved it — the comma edge,
+  /// the neighbour a lead edge trades with and the retime alike.
   SplayTreeMap<int, TimelineExposure> toTimeline() {
     final next = SplayTreeMap<int, TimelineExposure>();
     for (var i = 0; i < blocks.length; i += 1) {
-      next[starts[i]] = blocks[i].entry.copyWith(length: lengths[i]);
+      next[starts[i]] = blocks[i].entry.atLengthKeepingDotsToItsEnd(lengths[i]);
     }
     return next;
   }

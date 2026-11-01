@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
 import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart' show Pill;
+import 'package:anicel/src/ui/widgets/window_number.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/number_pad_keyboard.dart';
@@ -527,6 +528,35 @@ void main() {
       (picked(tester, InbetweenMark.one), picked(tester, InbetweenMark.two)),
       (true, false),
       reason: '지난번 고른 것 기억',
+    );
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  // 🗣️F-518 (유저 2026-10-31): 「숫자 초기값이 -임 … 기본값은 0말고 3으로하자.
+  // 그리고 이 숫자는 마지막에 적용한값 기억하도록」.
+  testWidgets('🗣️F-518: the window opens on 3, then on the count applied '
+      'last — a window cancelled leaves it', (tester) async {
+    final session = await pumpEditor(tester);
+    standOn(session, idA, 1);
+    await tester.pumpAndSettle();
+    int? opensOn() =>
+        tester.widget<WindowNumber>(find.byType(WindowNumber).first).value;
+
+    await openWindow(tester);
+    expect(opensOn(), 3, reason: 'a number, not the 「-」 of none to show');
+    await typeAndApply(tester, '2');
+    expect(marksAt(session, idA, 0), [1, 3, 5, 7, 9]);
+    expect(AppFrameCountSettings.settings.value.lastEveryCount, 2);
+
+    await openWindow(tester);
+    expect(opensOn(), 2, reason: '마지막에 적용한값 기억');
+    await typeOnThePad(tester, 'mark-every-field', '6');
+    await tester.tap(find.text(AppText.strings.commonCancel));
+    await tester.pumpAndSettle();
+    expect(
+      AppFrameCountSettings.settings.value.lastEveryCount,
+      2,
+      reason: 'cancelled is not applied',
     );
     session.playbackRig.prerenderScheduler.cancel();
   });

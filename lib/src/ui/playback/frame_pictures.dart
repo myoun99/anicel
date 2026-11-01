@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../../core/lru.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
@@ -518,7 +520,14 @@ class FramePictures implements PlaybackPictures {
     if ((keepsNodes || !drawsOnlyItsPage(key)) &&
         !await _lay(
           key,
-          keeps ? _thenHeldAllOf(heldNodes, key, drawing) : drawing,
+          keeps
+              ? _heldFirst(
+                  heldNodes,
+                  key,
+                  drawing,
+                  () => drawingNow(nodes, picture).frame.drawing,
+                )
+              : drawing,
           shouldAbort,
           due,
           shownNow: shownNow,
@@ -695,6 +704,14 @@ class FramePictures implements PlaybackPictures {
   }
 }
 
+/// How many pictures of the ghosts' place frames laid over their film have
+/// rastered ([_overTheFilm]) since a test zeroed it — what tells a place
+/// rastered where a piece meets it from one rastered whole at every piece.
+///
+/// ⚠️Written under `assert`, so a release build pays nothing.
+@visibleForTesting
+int debugGhostPlaceRasters = 0;
+
 /// 🚨A FRAME WITH ITS GHOSTS IN PLACE IS LAID OVER ITS FILM
 /// (onion-ghosts-in-place ②, 유저 2026-10-26 「보통 합성이 아닌 경우라도
 /// 최대한 극한으로 개선해보자」): [frame]'s picture made of the picture of
@@ -729,10 +746,20 @@ FrameDrawing _overTheFilm(StackedFrame frame, FramePicture? Function() film) {
         return;
       }
       _inStead(canvas, under.image, under.extent.topLeft);
-      final place = _onTheCells(ghosts, pictureExtentOf(whole.extent));
+      // 🚨The place where it is drawn: the store lays the picture a piece
+      // at a time ([FramePictureStore.lay]), and the ghosts' place rastered
+      // whole at each piece was the frame's whole raster again a piece.
+      final place = _onTheCells(
+        ghosts.intersect(canvas.getLocalClipBounds()),
+        pictureExtentOf(whole.extent),
+      );
       if (place.isEmpty) {
         return;
       }
+      assert(() {
+        debugGhostPlaceRasters += 1;
+        return true;
+      }());
       final alone = recordedOver(place, whole.draw);
       final image = alone.toImageSync(
         place.width.toInt(),
@@ -775,18 +802,63 @@ ui.Rect _onTheCells(ui.Rect place, ui.Rect extent) {
   ).intersect(extent);
 }
 
-/// [drawing], noting once it is drawn that [key]'s nodes are held
-/// ([HeldSubtreeRasters.heldAllOf]) — where its lay draws it, not where the
+/// [keeping] — [key]'s frame, drawn to keep its nodes — and noted so
+/// ([HeldSubtreeRasters.heldAllOf]) where its lay draws it, not where the
 /// store hands back a picture there already.
-FrameDrawing _thenHeldAllOf(
+///
+/// 🚨ONCE A LAY, NOT A PIECE: laid a piece at a time ([FramePictureStore.lay]),
+/// a frame drawn to keep at each piece let go of every node the pieces
+/// before it held ([HeldSubtreeRasters.holdOnly]), then drew it whole again.
+/// So where its lay first draws a piece, [keeping] is drawn whole into
+/// nothing, and every piece is drawn by [cutting] — the same frame keeping
+/// nothing, cut from what was kept. Laid at once, it is [keeping], drawn as
+/// it was before pieces: once.
+FrameDrawing _heldFirst(
   HeldSubtreeRasters held,
   FramePictureKey key,
-  FrameDrawing drawing,
-) => (
-  extent: drawing.extent,
-  outside: drawing.outside,
-  draw: (canvas) {
-    drawing.draw(canvas);
-    held.heldAllOf(key);
-  },
-);
+  FrameDrawing keeping,
+  FrameDrawing Function() cutting,
+) {
+  FrameDrawing? cut;
+  return (
+    extent: keeping.extent,
+    outside: keeping.outside,
+    draw: (canvas) {
+      final cutAlready = cut;
+      if (cutAlready != null) {
+        _drawnInALay(cutAlready, canvas);
+        return;
+      }
+      final extent = keeping.extent;
+      if (canvas.getLocalClipBounds().intersect(extent) == extent) {
+        _drawnInALay(keeping, canvas);
+        held.heldAllOf(key);
+        return;
+      }
+      final recorder = ui.PictureRecorder();
+      _drawnInALay(keeping, ui.Canvas(recorder));
+      recorder.endRecording().dispose();
+      held.heldAllOf(key);
+      final pieces = cut = cutting();
+      _drawnInALay(pieces, canvas);
+    },
+  );
+}
+
+/// [drawing] drawn onto [canvas] by a lay that keeps its frame's nodes,
+/// counted ([debugKeptFrameDraws]).
+void _drawnInALay(FrameDrawing drawing, ui.Canvas canvas) {
+  assert(() {
+    debugKeptFrameDraws += 1;
+    return true;
+  }());
+  drawing.draw(canvas);
+}
+
+/// How many times a frame laid to keep its nodes was drawn ([_heldFirst])
+/// since a test zeroed it: once where it is laid at once, and once more
+/// than its pieces where it is laid a piece at a time.
+///
+/// ⚠️Written under `assert`, so a release build pays nothing.
+@visibleForTesting
+int debugKeptFrameDraws = 0;

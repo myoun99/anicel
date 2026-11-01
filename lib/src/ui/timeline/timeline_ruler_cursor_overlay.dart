@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
 import 'package:flutter/material.dart';
 
@@ -22,10 +24,65 @@ import 'memo_token.dart';
 /// waiting for it.
 typedef ReadyRun = ({int startIndex, int endIndexExclusive, bool unreadable});
 
+/// [run] at the end of [runs] — joined onto the last one where it starts as
+/// that one ends and is as readable.
+void appendReadyRun(List<ReadyRun> runs, ReadyRun run) {
+  final last = runs.isEmpty ? null : runs.last;
+  if (last != null &&
+      last.endIndexExclusive == run.startIndex &&
+      last.unreadable == run.unreadable) {
+    runs.last = (
+      startIndex: last.startIndex,
+      endIndexExclusive: run.endIndexExclusive,
+      unreadable: run.unreadable,
+    );
+  } else {
+    runs.add(run);
+  }
+}
+
 /// Which stretches of the frames `[start, endExclusive)` are READY to
 /// play. Answered once per span of one picture, never per frame: zoomed
 /// out to ten minutes a window is ~15,000 frames (I-22).
 typedef ReadyRunsIn = List<ReadyRun> Function(int start, int endExclusive);
+
+/// A host's [ReadyRunsIn], one function while the document it reads stands:
+/// another function is how a rebuild tells the strip the answer may have
+/// moved ([TimelineRulerCursorOverlay]), and a rebuild that moved nothing of
+/// it — a row sweep's, which are most of them — tells it nothing.
+///
+/// 🚨F-26: a host rebuilds for what it shows, and the selection is shown. A
+/// sweep over the rail read how ready the whole cut is at every row it
+/// crossed: 525ms of a 1,966ms sample on S5 cut 352 (68 rows, debug), the
+/// largest single thing a selection did, for a bar it cannot change.
+class ReadyRunsOfTheDocument {
+  ReadyRunsOfTheDocument(this._read);
+
+  final ReadyRunsIn _read;
+  ReadyRunsIn? _standing;
+  Object? _project;
+  Object? _frames;
+
+  /// The function for [project], immutable, and for whose [frames] the
+  /// host's bar answers: a cut's on the timeline, a track's on the film.
+  ///
+  /// 🚨I-22: not the film's active cut. A scrub crosses the cuts of a track
+  /// and the film's bar walks all of them whichever stands: 109ms of the
+  /// 2,475ms sixteen presses on its ruler took (S5 cut 352, debug).
+  ReadyRunsIn of(Object project, Object? frames) {
+    final standing = _standing;
+    if (standing != null &&
+        identical(project, _project) &&
+        frames == _frames) {
+      return standing;
+    }
+    _project = project;
+    _frames = frames;
+    // A new function is the news: a tear-off of [_read] would compare equal.
+    // ignore: unnecessary_lambdas
+    return _standing = (start, end) => _read(start, end);
+  }
+}
 
 /// A frame ruler's MOVING layer: the current-frame tint and the green
 /// cached-range bar, painted OVER the static header cells and driven by
@@ -139,6 +196,54 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
     return runsIn(window.startIndex, window.endIndexExclusive);
   }
 
+  /// [readyRuns] once the window has moved on from [read]: what the two
+  /// windows share stands as it was read, and only what the move uncovered
+  /// is asked.
+  ///
+  /// 🚨I-22 ②: a fast scroll moves the window on every frame, and every
+  /// move read all of it — 161ms of the 374ms a fast scroll's frames took
+  /// (24 rows, 480 frames, 8px a frame, profile build), the largest thing
+  /// in them. What turned a frame ready or not in between arrives on the
+  /// signal, which reads the whole window again ([_ReadyRunsGate.recheck]).
+  List<ReadyRun> _readyRunsMovedOn(_ReadyRunsRead read) {
+    final runsIn = readyRunsIn;
+    if (runsIn == null) {
+      return const [];
+    }
+    final window = _visibleWindow();
+    final from = math.max(read.window.startIndex, window.startIndex);
+    final to = math.min(
+      read.window.endIndexExclusive,
+      window.endIndexExclusive,
+    );
+    if (from >= to) {
+      return runsIn(window.startIndex, window.endIndexExclusive);
+    }
+    final runs = <ReadyRun>[];
+    if (window.startIndex < from) {
+      for (final run in runsIn(window.startIndex, from)) {
+        appendReadyRun(runs, run);
+      }
+    }
+    for (final run in read.runs) {
+      final start = math.max(run.startIndex, from);
+      final end = math.min(run.endIndexExclusive, to);
+      if (start < end) {
+        appendReadyRun(runs, (
+          startIndex: start,
+          endIndexExclusive: end,
+          unreadable: run.unreadable,
+        ));
+      }
+    }
+    if (to < window.endIndexExclusive) {
+      for (final run in runsIn(to, window.endIndexExclusive)) {
+        appendReadyRun(runs, run);
+      }
+    }
+    return runs;
+  }
+
   /// The frame the tint marks, or null when it is outside the window (the
   /// probe surface for "which frame does the ruler show as current").
   int? tintedFrame() {
@@ -248,6 +353,7 @@ class _TimelineRulerCursorOverlayState
     extends State<TimelineRulerCursorOverlay> {
   late final _ReadyRunsGate _gate = _ReadyRunsGate(() => _painter);
   late TimelineRulerCursorOverlayPainter _painter;
+  Widget? _built;
 
   @override
   void initState() {
@@ -273,9 +379,7 @@ class _TimelineRulerCursorOverlayState
 
   @override
   Widget build(BuildContext context) {
-    // A rebuild may hand the strip another answer: read it anew.
-    _gate.forget();
-    _painter = TimelineRulerCursorOverlayPainter(
+    final painter = TimelineRulerCursorOverlayPainter(
       playhead: widget.playhead,
       repaintSignal: _gate,
       windowBucket: widget.windowBucket,
@@ -287,31 +391,47 @@ class _TimelineRulerCursorOverlayState
       onPaintedRuns: _gate.drew,
       runsToDraw: _gate.runsToDraw,
     );
-    return IgnorePointer(
+    // The same strip handed back whole: a new child round the same inputs
+    // would lay its layer out and paint it ([TickLayer]), and that paint
+    // reads, for a host that rebuilt for something else.
+    final built = _built;
+    if (built != null && !painter.shouldRepaint(_painter)) {
+      return built;
+    }
+    // A rebuild handed the strip another answer: read it anew.
+    _gate.forget();
+    _painter = painter;
+    return _built = IgnorePointer(
       // What a tick moves, on the one layer every tick rides (I-22 ③).
       child: TickLayer(
         child: CustomPaint(
           key: ValueKey<String>(widget.keyValue),
-          painter: _painter,
+          painter: painter,
         ),
       ),
     );
   }
 }
 
+/// The runs of a [window], read.
+typedef _ReadyRunsRead = ({
+  ({int startIndex, int endIndexExclusive}) window,
+  List<ReadyRun> runs,
+});
+
 /// The overlay's [TimelineRulerCursorOverlay.repaintSignal], passed on
 /// only when the ready runs the current painter reads differ from the runs
 /// it last drew.
 ///
 /// And the runs a paint draws: the last reading, while nothing that could
-/// move it has come — a signal, a rebuild or another window.
+/// move it has come — a signal or a rebuild; another window asks for what
+/// it uncovered.
 class _ReadyRunsGate extends ChangeNotifier {
   _ReadyRunsGate(this._painter);
 
   final TimelineRulerCursorOverlayPainter Function() _painter;
   List<ReadyRun>? _drawn;
-  ({({int startIndex, int endIndexExclusive}) window, List<ReadyRun> runs})?
-  _read;
+  _ReadyRunsRead? _read;
 
   void drew(List<ReadyRun> runs) => _drawn = runs;
 
@@ -324,7 +444,9 @@ class _ReadyRunsGate extends ChangeNotifier {
     if (read != null && read.window == window) {
       return read.runs;
     }
-    final runs = painter.readyRuns();
+    final runs = read == null
+        ? painter.readyRuns()
+        : painter._readyRunsMovedOn(read);
     _read = (window: window, runs: runs);
     return runs;
   }

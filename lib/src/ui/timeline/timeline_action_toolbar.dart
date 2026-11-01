@@ -79,7 +79,8 @@ Future<void> showTimelineCommaCountDialog(
 /// 🗣️I-130-Q2 (유저 2026-10-25 「창에서 마크를 고른다」 — 간격 숫자 옆에
 /// ○ / ● 고르기(지난번 고른 것 기억). 자동 추가 버튼은 하나 그대로). Before
 /// any pick, on the mark an unnamed drawing wears (F-489-Q1 「둘 다
-/// 따라간다」).
+/// 따라간다」). And on the count applied last, 3 before any
+/// (`AppFrameCountSettings.lastEveryCount`, F-518).
 Future<void> showMarkEveryDialog(
   BuildContext context,
   EditorSessionManager session, {
@@ -101,6 +102,7 @@ Future<void> showMarkEveryDialog(
     titleIcon: _markEveryIcon,
     // The interval is the one number the title does not say.
     field: strings.markEveryField,
+    initialCount: AppFrameCountSettings.settings.value.lastEveryCount,
     mark: (
       picked: mark,
       onPicked: (picked) {
@@ -112,6 +114,9 @@ Future<void> showMarkEveryDialog(
     ),
   );
   if (every != null && every >= 1) {
+    session.appSettings.setFrameCountSettings(
+      AppFrameCountSettings.settings.value.copyWith(lastEveryCount: every),
+    );
     panel.markEvery(every, mark);
   }
 }

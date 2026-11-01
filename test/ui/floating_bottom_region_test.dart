@@ -266,9 +266,9 @@ void main() {
 
       // And the FLOOR is told the cover moved with it, so Fit still frames
       // the artwork where it can be seen.
-      final panel = tester.widget<BrushCanvasPanel>(mainCanvasPanelShell());
-      expect(panel.floorCover.top, greaterThan(0));
-      expect(panel.floorCover.bottom, 0);
+      final moved = canvasFloorCover(tester);
+      expect(moved.top, greaterThan(0));
+      expect(moved.bottom, 0);
     });
   });
 
@@ -278,8 +278,7 @@ void main() {
     ) async {
       await pumpApp(tester);
 
-      final panel = tester.widget<BrushCanvasPanel>(mainCanvasPanelShell());
-      final cover = panel.floorCover;
+      final cover = canvasFloorCover(tester);
       expect(cover, isNotNull, reason: 'the main canvas IS the floor');
 
       final box = tester.getRect(mainCanvasPanelShell());
@@ -305,9 +304,8 @@ void main() {
       await tester.tap(fit);
       await tester.pumpAndSettle();
 
-      final panel = tester.widget<BrushCanvasPanel>(mainCanvasPanelShell());
       final box = tester.getRect(mainCanvasPanelShell());
-      final window = canvasVisibleRect(box.size, panel.floorCover);
+      final window = canvasVisibleRect(box.size, canvasFloorCover(tester));
       final timeline = tester.getRect(region());
 
       // The window Fit aimed at is entirely above the timeline. A Fit
@@ -345,10 +343,9 @@ void main() {
       final timeline = tester.getRect(region());
       final pillRect = tester.getRect(pill());
       final canvas = tester.getRect(mainCanvasPanelShell());
-      final panel = tester.widget<BrushCanvasPanel>(mainCanvasPanelShell());
       final visible = canvasVisibleRect(
         canvas.size,
-        panel.floorCover,
+        canvasFloorCover(tester),
       ).shift(canvas.topLeft);
       expect(
         visible.center.dx,
@@ -542,7 +539,6 @@ void main() {
                 ),
                 availableFrameKeys: frameKeys,
                 cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-                floorCover: EdgeInsets.zero,
               ),
             ),
           ),

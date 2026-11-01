@@ -10,6 +10,7 @@ import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
+import '../../helpers/canvas_on_its_pixels.dart';
 
 /// 🚨THE SAME TRANSFORM THE DOCUMENT TOOK — the sheet's paper painter and
 /// the playhead overlay on top of it must enter document space through
@@ -18,7 +19,7 @@ import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 ///
 /// That law was written in a comment and kept by hand in two bodies. This
 /// reads the prologue off a spy canvas so it is measured instead.
-class _PrologueSpy implements Canvas {
+class _PrologueSpy with CanvasOnItsPixels implements Canvas {
   final ops = <String>[];
 
   @override

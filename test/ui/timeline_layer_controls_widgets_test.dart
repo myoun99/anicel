@@ -316,7 +316,7 @@ void main() {
 
       await tester.pumpWidget(_row(layer: layer));
       expect(tester.widget(row), isA<ArenaTapHold>());
-      expect(parentOf(plate), isA<ArenaTapHold>());
+      expect(find.descendant(of: row, matching: plate), findsOneWidget);
       expect(parentOf(slots.first), isA<RowPlate>());
       expect(
         tester.getRect(slots.first),

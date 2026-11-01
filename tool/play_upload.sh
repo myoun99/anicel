@@ -104,7 +104,7 @@ call 'uploading the bundle' -X POST -T "$bundle" -H 'expect:' \
 release="{\"name\":\"$number ($version)\",\"versionCodes\":[\"$number\"],\"status\":\"completed\"}"
 call 'naming the release' -X PUT -H 'content-type: application/json' \
   -d "{\"track\":\"$track\",\"releases\":[$release]}" \
-  "$app/edits/$edit/tracks/$track" > /dev/null || exit 1
+  "$app/edits/$edit/tracks/$track" > /dev/null
 
 call 'validating the edit' -X POST -d '' "$app/edits/$edit:validate" \
   > /dev/null

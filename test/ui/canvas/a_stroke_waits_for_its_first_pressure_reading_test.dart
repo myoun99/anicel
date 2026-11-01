@@ -665,9 +665,247 @@ void main() {
           InputInspector.notes['ledger'],
           'ledger meas=0 est=1 fin=1 upd=1 rep=1 none=0',
         );
+        expect(InputInspector.notes['force'], 'force .50 .60');
+        expect(InputInspector.notes['state'], 'state e f');
+        expect(InputInspector.notes['fixed'], 'fixed .70 -');
       },
       variant: ipad,
     );
+
+    testWidgets(
+      'the inspector\'s opening rows are the contact\'s own first ten samples '
+      '(a-light-press-opens-with-heavy-dabs)',
+      (tester) async {
+        InputInspector.visible.value = true;
+        final samples = [
+          for (var i = 0; i < 12; i += 1)
+            _s(Offset(4.0 + 16 * i, 8), 0.1 + i / 20, 8 * i),
+        ];
+        await _strokes(tester, _pressureBrush, [_pencil(samples)]);
+        expect(
+          InputInspector.notes['force'],
+          'force .10 .15 .20 .25 .30 .35 .40 .45 .50 .55',
+        );
+
+        await _strokes(tester, _pressureBrush, [
+          _pencil(samples.sublist(8, 10)),
+        ]);
+        expect(
+          InputInspector.notes['force'],
+          'force .50 .55',
+          reason: 'the next contact, none of the last',
+        );
+      },
+      variant: ipad,
+    );
+    // 🗣️유저 2026-11-01: 「엄청나게 약하게 스트로크 시작해도 필압강하게 3개dab
+    // 정도가 찍힘」. 🔬Build 1086, a second of a weak stroke: `ledger meas=1
+    // est=75 fin=0 upd=73 rep=3`. The strokes here have that shape: UIKit
+    // calls the press measured with the stand-in for its record, and owes
+    // every other sample a correction.
+    group('the opening waits for the force UIKit owes it', () {
+      late List<BrushDab> laid;
+
+      setUp(() {
+        laid = debugStrokeDabsLaid = <BrushDab>[];
+      });
+      tearDown(() => debugStrokeDabsLaid = null);
+
+      /// The contact's sample at [x], taken [at] ms in, on the ledger as
+      /// UIKit first says it.
+      Future<void> sample(
+        WidgetTester tester,
+        double x,
+        double force,
+        int at, {
+        PenLedgerReading reading = _estimatedReading,
+      }) async {
+        ledger[_ms(at)] = at == 0 ? measured(force) : reading;
+        (at == 0 ? _down : _move)(
+          tester,
+          Offset(x, 8),
+          time: _ms(at),
+          force: force,
+          pressureMax: _pencilMax,
+        );
+        await tester.pump();
+      }
+
+      double pressureAt(List<BrushDab> dabs, double x) =>
+          dabs.where((dab) => dab.center.x == x).single.pressure;
+
+      testWidgets(
+        'each sample up to the first reading is held for its own correction '
+        'and painted with it — not with the first estimate past the stand-in',
+        (tester) async {
+          InputInspector.visible.value = true;
+          final results = <List<BrushDab>>[];
+          await _pump(tester, _pressureBrush, results);
+          await sample(tester, 4, _stand, 0);
+          await sample(tester, 20, _stand, 8);
+          await sample(tester, 36, _stand, 16);
+          await sample(tester, 52, 0.16, 24);
+          expect(laid, isEmpty, reason: '⛔the reading came, the force did not');
+
+          ledger[_ms(8)] = measured(0.04);
+          ledger[_ms(16)] = measured(0.05);
+          await sample(tester, 68, 0.12, 32);
+          expect(
+            laid,
+            isEmpty,
+            reason: 'the sample that brought the reading is owed one too',
+          );
+
+          ledger[_ms(24)] = measured(0.06);
+          await sample(tester, 84, 0.10, 40);
+          expect(laid, isNotEmpty, reason: 'the opening has what it waited for');
+          _up(tester, const Offset(84, 8), time: _ms(44));
+          await tester.pump();
+
+          final dabs = results.single;
+          expect(
+            pressureAt(dabs, 4),
+            closeTo(_ipad(0.04), 1e-9),
+            reason: 'the press is owed none: the nearest after it',
+          );
+          expect(pressureAt(dabs, 20), closeTo(_ipad(0.04), 1e-9));
+          expect(pressureAt(dabs, 36), closeTo(_ipad(0.05), 1e-9));
+          expect(pressureAt(dabs, 52), closeTo(_ipad(0.06), 1e-9));
+          expect(
+            pressureAt(dabs, 68),
+            closeTo(_ipad(0.12), 1e-9),
+            reason: 'past the opening a sample keeps its own estimate',
+          );
+          expect(pressureAt(dabs, 84), closeTo(_ipad(0.10), 1e-9));
+          expect(InputInspector.notes['opened'], 'opened 32ms held=5 own=3');
+        },
+        variant: ipad,
+      );
+
+      testWidgets(
+        'a sample past the opening that was corrected meanwhile takes it, and '
+        'one UIKit calls final takes the nearest after it',
+        (tester) async {
+          final results = <List<BrushDab>>[];
+          await _pump(tester, _pressureBrush, results);
+          await sample(tester, 4, _stand, 0);
+          await sample(tester, 20, _stand, 8);
+          await sample(
+            tester,
+            36,
+            _stand,
+            16,
+            reading: (state: PenLedgerState.estimatedFinal, value: 0.0),
+          );
+          await sample(tester, 52, 0.16, 24);
+          await sample(tester, 68, 0.12, 32);
+          ledger[_ms(8)] = measured(0.04);
+          ledger[_ms(24)] = measured(0.06);
+          ledger[_ms(32)] = measured(0.03);
+          await sample(tester, 84, 0.10, 40);
+          _up(tester, const Offset(84, 8), time: _ms(44));
+          await tester.pump();
+
+          final dabs = results.single;
+          expect(pressureAt(dabs, 20), closeTo(_ipad(0.04), 1e-9));
+          expect(pressureAt(dabs, 36), closeTo(_ipad(0.06), 1e-9));
+          expect(pressureAt(dabs, 68), closeTo(_ipad(0.03), 1e-9));
+        },
+        variant: ipad,
+      );
+
+      testWidgets(
+        'the corrections are given the patience and no more: past it the '
+        'opening lands on the first reading, as it did',
+        (tester) async {
+          final results = <List<BrushDab>>[];
+          await _pump(tester, _pressureBrush, results);
+          await sample(tester, 4, _stand, 0);
+          await sample(tester, 20, _stand, 8);
+          await sample(tester, 36, 0.16, 16);
+          await sample(tester, 52, 0.14, 100);
+          expect(laid, isEmpty, reason: '⛔at the patience it still waits');
+          await sample(tester, 68, 0.12, 101);
+          expect(laid, isNotEmpty);
+          _up(tester, const Offset(68, 8), time: _ms(104));
+          await tester.pump();
+
+          final dabs = results.single;
+          for (final x in [4.0, 20.0, 36.0]) {
+            expect(pressureAt(dabs, x), closeTo(_ipad(0.16), 1e-9));
+          }
+          expect(pressureAt(dabs, 52), closeTo(_ipad(0.14), 1e-9));
+        },
+        variant: ipad,
+      );
+
+      testWidgets(
+        'what UIKit calls final owes nothing: the first reading ends the wait',
+        (tester) async {
+          const finalEstimate = (
+            state: PenLedgerState.estimatedFinal,
+            value: 0.0,
+          );
+          final results = <List<BrushDab>>[];
+          await _pump(tester, _pressureBrush, results);
+          await sample(tester, 4, _stand, 0);
+          await sample(tester, 20, _stand, 8, reading: finalEstimate);
+          expect(laid, isEmpty, reason: '⛔CONTROL: the stand-in waits');
+          await sample(tester, 36, 0.16, 16, reading: finalEstimate);
+          expect(laid, isNotEmpty);
+          _up(tester, const Offset(36, 8), time: _ms(20));
+          await tester.pump();
+        },
+        variant: ipad,
+      );
+
+      testWidgets(
+        'a brush that does not draw with pressure is held by no correction',
+        (tester) async {
+          final results = <List<BrushDab>>[];
+          await _pump(
+            tester,
+            BrushEditCanvasInputSettings(
+              correction: BrushCorrection.none,
+              size: 8,
+              curves: {
+                (BrushPressureTarget.size, BrushInputSource.speed):
+                    BrushPressureCurve.identity(),
+              },
+            ),
+            results,
+          );
+          await sample(tester, 4, _stand, 0);
+          expect(laid, isEmpty, reason: '⛔CONTROL: the press has no speed');
+          await sample(tester, 20, 0.16, 8);
+          expect(laid, isNotEmpty);
+          _up(tester, const Offset(20, 8), time: _ms(12));
+          await tester.pump();
+        },
+        variant: ipad,
+      );
+
+      testWidgets(
+        'a pen lifted before they all came lands the opening with what has '
+        'come',
+        (tester) async {
+          final results = <List<BrushDab>>[];
+          await _pump(tester, _pressureBrush, results);
+          await sample(tester, 4, _stand, 0);
+          await sample(tester, 20, _stand, 8);
+          await sample(tester, 36, 0.16, 16);
+          ledger[_ms(8)] = measured(0.04);
+          _up(tester, const Offset(36, 8), time: _ms(20));
+          await tester.pump();
+
+          final dabs = results.single;
+          expect(pressureAt(dabs, 4), closeTo(_ipad(0.04), 1e-9));
+          expect(pressureAt(dabs, 20), closeTo(_ipad(0.04), 1e-9));
+          expect(pressureAt(dabs, 36), closeTo(_ipad(0.16), 1e-9));
+        },
+        variant: ipad,
+      );
+    });
   });
 
   group('the lean is read as it comes; the direction waits like pressure', () {

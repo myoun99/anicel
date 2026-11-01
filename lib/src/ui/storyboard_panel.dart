@@ -134,6 +134,7 @@ import 'timeline/effect_lane_policy.dart'
     show effectGroupLaneId, effectPropertyLanes, parseEffectLaneId;
 import 'timeline/layer_drop_policy.dart'
     show
+        RowLinesBeyond,
         linesBeyondRow,
         ownsTheLane,
         rowStepsBetween,
@@ -147,6 +148,7 @@ import 'timeline/layer_row_drag.dart'
         LayerRowDragSubject,
         LayerRowDragTarget,
         LayerRowSubject,
+        RailRowLines,
         TimelineRowDragHooks,
         TrackRowSubject,
         TrackSeRowSubject,
@@ -2052,19 +2054,29 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     return TimelineGridLaw(
       ground: Theme.of(context).colorScheme.surface,
       framesPerSecond: _countingFps,
-      // R26 #34: the canvas's pan moves the conte panel too, through the
-      // timeline grids' one driver.
-      child: PanelPanDriver(
-        controllers: [_verticalController, _horizontalController],
-        // The panel fills what it is given — its column is as tall as it
-        // may be and stretched — and says so, for the body below to be
-        // laid out alone.
-        child: SizedBox.expand(
-          child: ValueListenableBuilder<double?>(
-            valueListenable: _railRows._railExtent,
-            // Every notify runs this again: laid out, painted and described
-            // alone, or each one rebuilt the nodes of the rows in it (I-57).
-            builder: (context, _, _) => LaidOutAlone(builder: _sizedBody),
+      // PEN-12 #7, the timeline grids' clamp ([TimelineGridShell]), and over
+      // the driver for the same reason: this ruler and rail mirror the
+      // offset as theirs do, and cannot stretch with the cells. It also
+      // keeps a rebuild from painting: on Impeller a stretch hands its
+      // `ImageFiltered` a new filter on every build, which repainted the
+      // scrollers at every cut a scrub crossed (2026-10-31).
+      child: ScrollConfiguration(
+        behavior: ScrollConfiguration.of(context).copyWith(overscroll: false),
+        // R26 #34: the canvas's pan moves the conte panel too, through the
+        // timeline grids' one driver.
+        child: PanelPanDriver(
+          controllers: [_verticalController, _horizontalController],
+          // The panel fills what it is given — its column is as tall as it
+          // may be and stretched — and says so, for the body below to be
+          // laid out alone.
+          child: SizedBox.expand(
+            child: ValueListenableBuilder<double?>(
+              valueListenable: _railRows._railExtent,
+              // Every notify runs this again: laid out, painted and
+              // described alone, or each one rebuilt the nodes of the rows
+              // in it (I-57).
+              builder: (context, _, _) => LaidOutAlone(builder: _sizedBody),
+            ),
           ),
         ),
       ),
@@ -2397,28 +2409,33 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                   axis: Axis.vertical,
                                   columns: _sweep.columns(),
                                   rowsIn: _sweep.rowsIn,
-                                  // Laid by the rows' window, as the strips.
-                                  child: _rowsWindow.laidColumn(
-                                    _rowsWindow.railKeep,
-                                    (rowsOf) => [
-                                      // Track groups in TIMELINE order (R6
-                                      // B3): the S rows sit ABOVE their V
-                                      // track, slots bottom-up like the
-                                      // timeline (top-down S2, S1, V — R7-④).
-                                      for (
-                                        var index = 0;
-                                        index < frame.project.tracks.length;
-                                        index++
-                                      )
-                                        ..._railRows.railRowsForTrack(
-                                          frame.project.tracks[index],
-                                          index,
-                                          rowsOf(index),
-                                        ),
-                                    ],
-                                    // One pass of the rail's keep: a row it
-                                    // stops drawing is let go of.
-                                    newPass: _rows.railPass,
+                                  child: RailRowLines(
+                                    drag: widget.rowDragHooks?.drag,
+                                    // Laid by the rows' window, as the
+                                    // strips.
+                                    child: _rowsWindow.laidColumn(
+                                      _rowsWindow.railKeep,
+                                      (rowsOf) => [
+                                        // Track groups in TIMELINE order
+                                        // (R6 B3): the S rows sit ABOVE
+                                        // their V track, slots bottom-up
+                                        // like the timeline (top-down S2,
+                                        // S1, V — R7-④).
+                                        for (
+                                          var index = 0;
+                                          index < frame.project.tracks.length;
+                                          index++
+                                        )
+                                          ..._railRows.railRowsForTrack(
+                                            frame.project.tracks[index],
+                                            index,
+                                            rowsOf(index),
+                                          ),
+                                      ],
+                                      // One pass of the rail's keep: a row
+                                      // it stops drawing is let go of.
+                                      newPass: _rows.railPass,
+                                    ),
                                   ),
                                 ),
                                 // The row selection, over the LAYER area

@@ -32,16 +32,16 @@ class NamedPalette {
   /// 유저 2026-10-28: 「이름 탭하면 접기」).
   final bool folded;
 
-  /// Locked: it shows its colours alone, packed with no empty place, and
-  /// takes no edit — a press only picks (I-131, 유저 2026-10-28: 「빈 칸
-  /// 없애서 fit하게 컴팩트하게 … 색끼리 드래그도 안되고 그런 편집기능 다
-  /// 잠금」). The places keep where they stand, so it unlocks as it was.
+  /// Locked: a colour stays in its place, an empty place shows nothing and
+  /// a row with no colour takes no room, and it takes no edit — a press
+  /// only picks (I-131, 유저 2026-10-28: 「빈 칸 없애서 fit하게 컴팩트하게 …
+  /// 색끼리 드래그도 안되고 그런 편집기능 다 잠금」; F-516, 유저 2026-10-31:
+  /// 「칸 재정렬이아니라 칸 원래위치 지킴 … 세번째줄에 아무것도 없다면
+  /// 필요없는공간이니 공간자체가 잘 사라지도록. 첫번째줄이 비어있을때도
+  /// 마찬가지」). The places keep where they stand, so it unlocks as it was.
   final bool locked;
 
   bool holds(int color) => slots.contains(color);
-
-  /// The places a locked palette shows: its colours, in order.
-  List<int> get colors => [...slots.nonNulls];
 
   NamedPalette _with({
     String? id,

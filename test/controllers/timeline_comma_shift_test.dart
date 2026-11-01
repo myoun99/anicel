@@ -22,8 +22,9 @@ import '../helpers/dots_at.dart';
 /// first and move only on contact. The LEAD edge trades instead (I-21,
 /// 유저 2026-09-12, 「프리미어 프로처럼」): it moves ONE boundary, spends
 /// the gap in front before asking the block in front for frames, and stops
-/// when that block is down to one — nothing in front ever moves. Marks ride
-/// with their covering block either way.
+/// when that block is down to one — nothing in front ever moves. Marks keep
+/// to their block's END either way: 🗣️F-519 (유저 2026-10-31) 「앞엣지를
+/// 움직일때 같이움직이는데. 이게아니라 뒤엣지 움직일때 같이움직이도록」.
 ///
 /// ⚠️The rule itself is `models/block_run_lead_edge.dart`, and its cases
 /// are pinned there; these are the frame axis reading the same answer.
@@ -165,7 +166,7 @@ void main() {
   });
 
   group('marks (block-owned breakdown dots)', () {
-    test('dots ride inside their blocks through a comma shift', () {
+    test('a dot rides the tail edge, and a block pushed keeps its own', () {
       // A[0,4) with a dot at offset 2, glued B[4,6) with a dot at offset 1.
       final harness = _Harness({
         0: _drawing('a', 4, dots: [2]),
@@ -174,15 +175,15 @@ void main() {
 
       harness.shift(blockStart: 0, edge: TimelineBlockEdge.end, delta: 2);
 
-      // A grows in place (dot offset unchanged); B is pushed to 6 and its
-      // dot rides along for free.
+      // A's dot stays two cells from A's end; B is pushed to 6 whole.
       harness.expectTimeline({
-        0: _drawing('a', 6, dots: [2]),
+        0: _drawing('a', 6, dots: [4]),
         6: _drawing('b', 2, dots: [1]),
       });
     });
 
-    test('a comma shrink drops the dots it cut off', () {
+    test('a tail drawn back brings its dots, and one that reaches the head '
+        'goes', () {
       final harness = _Harness({
         0: _drawing('a', 4, dots: [1, 3]),
       });
@@ -191,6 +192,51 @@ void main() {
 
       harness.expectTimeline({
         0: _drawing('a', 2, dots: [1]),
+      });
+    });
+
+    test('a dot stands on its cell under the lead edge', () {
+      // A[2,8) with dots on cells 5 and 7.
+      final harness = _Harness({
+        2: _drawing('a', 6, dots: [3, 5]),
+      });
+
+      harness.shift(blockStart: 2, edge: TimelineBlockEdge.start, delta: -2);
+      harness.expectTimeline({
+        0: _drawing('a', 8, dots: [5, 7]),
+      });
+
+      harness.shift(blockStart: 0, edge: TimelineBlockEdge.start, delta: 4);
+      harness.expectTimeline({
+        4: _drawing('a', 4, dots: [1, 3]),
+      });
+    });
+
+    test('a lead edge coming to a dot takes it', () {
+      final harness = _Harness({
+        0: _drawing('a', 6, dots: [2, 4]),
+      });
+
+      harness.shift(blockStart: 0, edge: TimelineBlockEdge.start, delta: 2);
+
+      harness.expectTimeline({
+        2: _drawing('a', 4, dots: [2]),
+      });
+    });
+
+    test('the block a lead edge trades with moves its tail, so its dots '
+        'follow', () {
+      // A[0,4) with a dot on cell 3, glued B[4,8) with a dot on cell 5.
+      final harness = _Harness({
+        0: _drawing('a', 4, dots: [3]),
+        4: _drawing('b', 4, dots: [1]),
+      });
+
+      harness.shift(blockStart: 4, edge: TimelineBlockEdge.start, delta: -2);
+
+      harness.expectTimeline({
+        0: _drawing('a', 2, dots: [1]),
+        2: _drawing('b', 6, dots: [3]),
       });
     });
   });

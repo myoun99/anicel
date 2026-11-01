@@ -43,6 +43,7 @@ import 'package:anicel/src/services/fx_plugins/installed_fx_plugins.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
+import 'package:anicel/src/ui/canvas/brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart'
     show waitsForItsPlugins;
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
@@ -60,6 +61,7 @@ import 'package:anicel/src/ui/media/viewer_render_tier.dart'
 import 'package:anicel/src/ui/sheet/sheet_image_cache.dart'
     show SheetImageLookup;
 import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
+import 'package:anicel/src/ui/sheet/sheet_photos.dart' show SheetPhotosPainter;
 import 'package:anicel/src/ui/sheet_painting.dart' show sheetPictureQuality;
 import 'package:anicel/src/ui/timeline/axis_turn.dart'
     show offsetAlong, partAcross;
@@ -479,6 +481,72 @@ void main() {
       expect(keeps(sheetInkApron + 1.5), isFalse);
     });
 
+    // 실기 (I-127, 2026-11-01): 「떼는 순간 미리보기에서 사라집니다」 — nothing
+    // over this layer builds it again.
+    testWidgets('🚨the band shows its ink as it is — a stroke lifted, its '
+        'undo, its redo', (tester) async {
+      final origin = await pump(
+        tester,
+        CameraPose(center: CanvasPoint(x: 320, y: 180)),
+      );
+      final slot = picture.window.slot;
+      final y = slot.center.dy;
+      await stroke(tester, origin, [
+        Offset(slot.right + 30, y),
+        Offset(slot.right + 20, y),
+      ]);
+
+      final row = conteInkWindows(
+        page,
+        unwrittenInkIdOf: bandOf,
+      ).singleWhere((window) => window.key == conteInkRowKey(cutId, 'band-0'));
+      bool viewHoldsInk() => !tester
+          .widget<BrushEditCanvasView>(
+            find.descendant(
+              of: find.byKey(ValueKey<String>('conte-ink-${row.id}')),
+              matching: find.byType(BrushEditCanvasView),
+            ),
+          )
+          .surface
+          .holdsNothing;
+
+      expect(viewHoldsInk(), isTrue, reason: 'the pen lifted, it stays');
+      history.undo();
+      await tester.pump();
+      expect(viewHoldsInk(), isFalse, reason: 'undone, it is gone');
+      history.redo();
+      await tester.pump();
+      expect(viewHoldsInk(), isTrue, reason: 'redone, it is back');
+    });
+
+    testWidgets('🚨a picture\'s window shows its cel\'s photos as they are — '
+        'one put, its undo', (tester) async {
+      await pump(tester, CameraPose(center: CanvasPoint(x: 320, y: 180)));
+      int photosShown() => [
+        for (final paint in tester.widgetList<CustomPaint>(
+          find.descendant(
+            of: find.byType(ConteInkLayer),
+            matching: find.byType(CustomPaint),
+          ),
+        ))
+          if (paint.painter case final SheetPhotosPainter photos)
+            photos.photos.length,
+      ].fold(0, (sum, count) => sum + count);
+      expect(photosShown(), 0, reason: 'premise');
+
+      cels.putPhoto(
+        plane: picture.window.plane! as CanvasSize,
+        key: picture.window.key,
+        reference: photoOf(1).reference,
+        historyManager: history,
+      );
+      await tester.pump();
+      expect(photosShown(), 1);
+
+      history.undo();
+      await tester.pump();
+      expect(photosShown(), 0);
+    });
   });
 
   /// The conte tab over [session], rebuilt as the workspace rebuilds it —

@@ -45,6 +45,7 @@ import '../timeline/timeline_glyph_cache.dart' show timelineWordSetOnto;
 import '../repaint_props.dart';
 import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
 import '../sheet/sheet_ink_layer.dart' show SheetInkOnScreen;
+import '../sheet/sheet_line.dart';
 import '../sheet_painting.dart' show paintSheetInkWindow, paintSheetPaper;
 import '../timeline/memo_token.dart';
 

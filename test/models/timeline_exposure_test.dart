@@ -127,6 +127,31 @@ void main() {
       expect(drawing.copyWith(length: 9).breakdownOffsets, const [1, 3, 5]);
     });
 
+    test('🗣️F-519: a length kept to the end moves each dot with the end, '
+        'and the mark each wears; the head takes one it comes to', () {
+      const marks = {1: InbetweenMark.one, 3: InbetweenMark.two};
+      const block = TimelineExposure.drawing(
+        FrameId('a'),
+        length: 4,
+        breakdownMarks: marks,
+      );
+
+      expect(block.atLengthKeepingDotsToItsEnd(4), block);
+      expect(block.atLengthKeepingDotsToItsEnd(6).length, 6);
+      expect(block.atLengthKeepingDotsToItsEnd(6).breakdownMarks, {
+        3: InbetweenMark.one,
+        5: InbetweenMark.two,
+      });
+      expect(block.atLengthKeepingDotsToItsEnd(3).breakdownMarks, {
+        2: InbetweenMark.two,
+      });
+      expect(
+        block.atLengthKeepingDotsToItsEnd(1).breakdownMarks,
+        isEmpty,
+        reason: 'a dot at the head is no dot: offset 0 is the drawing',
+      );
+    });
+
     test('a block that starts a cut in keeps the dots past it, moved back '
         'and each wearing its own mark', () {
       const marks = {

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show listEquals;
+import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import 'package:flutter/widgets.dart';
 
 import '../../core/tree_nodes.dart';
@@ -25,6 +26,7 @@ import '../effective_device_pixel_ratio.dart';
 import 'frame_picture_store.dart';
 import 'frame_pictures.dart';
 import 'stacked_frame_picture.dart';
+import 'step_pace.dart';
 
 /// What a screen showing frames takes from their maker: the signal that a
 /// frame's picture landed, and the pictures the frames are kept in.
@@ -238,6 +240,12 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// too, which F-512 found leaves the frame's own key short of it.
   bool _stepOnItsWay = false;
 
+  /// When this view's steps are asked ([_catchUpAtPaint]).
+  final StepPace _pace = StepPace();
+
+  /// The step a paint held back.
+  Timer? _heldStep;
+
   /// Whether the frame is drawn as it stands in place of the picture shown.
   final _DrawnAsItStands _standing = _DrawnAsItStands();
 
@@ -322,6 +330,7 @@ class _FramePictureViewState extends State<FramePictureView> {
   @override
   void dispose() {
     widget.run.landings.removeListener(_landed);
+    _heldStep?.cancel();
     _letGo(_store);
     _repaint.dispose();
     super.dispose();
@@ -593,17 +602,30 @@ class _FramePictureViewState extends State<FramePictureView> {
 
   /// 🚨A STROKE THAT LANDS MOVES THE PICTURE IT WAS PATCHED INTO: [key] is
   /// the frame shown but for the cel the pen is on, and every change of
-  /// the live rows is in its picture — the stroke's own steps — so its
-  /// texels are [key]'s. ⛔Any other change of the frame — another row, the
-  /// pen's own row's opacity, another frame — is a new picture.
+  /// the live rows is in its picture — the stroke's own steps — or goes in
+  /// at the next patch, so its texels are [key]'s. ⛔Any other change of the
+  /// frame — another row, the pen's own row's opacity, another frame — is a
+  /// new picture.
+  ///
+  /// 🗣️F-525 (유저 2026-11-01): 「솔로할때만 안보임」 — ⛔SO IS A CHANGE THAT
+  /// CANNOT GO IN ([_canCatchUp]). What lands on the cel but a stroke — a
+  /// paste, a redo — has no step in the picture, all of it to go in at that
+  /// patch; moved first and refused it, the picture stayed under the frame's
+  /// key without it, and every screen that came back took it. A stack in
+  /// solo draws no other row past the page, so a paste from one reached past
+  /// its picture and not past the whole frame's.
   bool _moves(FramePictureKey key) {
     final from = _showing;
     final drawnOn = _drawnOn;
-    if (_shown == null || from == null || drawnOn == null) {
+    final shown = _shown;
+    if (shown == null || from == null || drawnOn == null) {
       return false;
     }
     if (_pictures.keyOfStack(widget.nodes, widget.picture, asOf: drawnOn) !=
         from) {
+      return false;
+    }
+    if (!_canCatchUp(shown.picture)) {
       return false;
     }
     // What is still out of it goes in under the key it moves to
@@ -632,6 +654,24 @@ class _FramePictureViewState extends State<FramePictureView> {
     );
     return true;
   }
+
+  /// Whether what the live rows moved since the picture shown last held them
+  /// can go into [picture]: what [_catchUp] and [_writeIn] would draw the
+  /// frame as it stands for.
+  bool _canCatchUp(FramePicture picture) {
+    final live = _live;
+    final held = _held;
+    return live != null &&
+        held != null &&
+        live.steady &&
+        live.movedSince(held).located &&
+        _fits(live.drawing.extent, picture.extent);
+  }
+
+  /// ⛔A picture does not grow: whether what a frame draws over [drawn] is
+  /// all inside a picture of [extent].
+  static bool _fits(Rect drawn, Rect extent) =>
+      drawn.intersect(extent) == drawn;
 
   /// The live rows were handed anew — a lift taken up or put down, the
   /// pen's row's painter once its stroke landed: a change of the live rows
@@ -701,8 +741,8 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// into it, patched in where it lands — or the frame is drawn as it stands
   /// from here on.
   ///
-  /// 🚨ASKED AT EACH PAINT ([_FramePicturePainter.paint]) and where a build
-  /// hands the live rows anew — not at each change of theirs, where a change
+  /// 🚨ASKED AT EACH PAINT ([_catchUpAtPaint]) and where a build hands the
+  /// live rows anew — not at each change of theirs, where a change
   /// and what goes with it come apart: a stroke that lands lets go of its
   /// overlay in the call that commits it, and the painter of the cel as
   /// committed comes with the next build. Measured at the change, the
@@ -721,6 +761,11 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// 49 / 60 ms, at 100% 2111 / 3168 ms → 41 / 54 ms, a frame every vsync
   /// again (it was every other one). ⛔Not until the step is rendered
   /// rather than in: 61 / 77 ms fitted, its batches behind it instead.
+  /// ⛔Not with the cursor's frames held a vsync while one is on its way, to
+  /// leave the raster thread to it (F-512, 2026-10-31, `82bdbe4d1`): the main
+  /// PC gained only under another session's tests, ink p50 46.5 → 33.8 ms;
+  /// the Surface Pro 11, quiet, gained nothing — 34 → 35 ms at 100%, 33 → 41
+  /// fitted — and a stroke's frames went 88–90 → 53–63 fps, under F-130's 60.
   ///
   /// ⛔NOT WHILE A STROKE'S LANDING MOVES THE PICTURE ([_moving]): the last
   /// of the stroke goes in now, under the key it moves to ([_moves]) — left
@@ -782,7 +827,7 @@ class _FramePictureViewState extends State<FramePictureView> {
     // row or column of tiles would be drawn as it stands.
     final extent = picture.extent;
     final drawing = live.drawing;
-    if (drawing.extent.intersect(extent) != drawing.extent) {
+    if (!_fits(drawing.extent, extent)) {
       _standing.whole = true;
       return;
     }
@@ -804,15 +849,17 @@ class _FramePictureViewState extends State<FramePictureView> {
     }
     _pictures.giveWayToSteps();
     _keepAs(to);
-    // Shown once its texels are in the picture, at every level — or, where
-    // they never went in, the frame as it stands from the paint after: the
-    // picture let go on the way (a write the GPU threw on, F-509). ⛔Not
-    // the picture until the next change: a step that did not go in showed
-    // only once another came after it.
+    // Shown once its texels are in the picture, at every level a screen
+    // reads — or, where they never went in, the frame as it stands from the
+    // paint after: the picture let go on the way (a write the GPU threw on,
+    // F-509). ⛔Not the picture until the next change: a step that did not
+    // go in showed only once another came after it.
     _stepOnItsWay = true;
+    _pace.asked();
     unawaited(
       _store.landingOf(to)!.then((landed) {
         _stepOnItsWay = false;
+        _pace.landed();
         if (!mounted) {
           return;
         }
@@ -822,6 +869,39 @@ class _FramePictureViewState extends State<FramePictureView> {
         _repaint.value += 1;
       }),
     );
+  }
+
+  /// Whether a stroke is in hand on the cel the picture was taken on. ⛔Its
+  /// overlay let go, or that cel committed with no build yet, is a change
+  /// apart from what goes with it ([_catchUp]): not a step to hold.
+  bool get _strokeInHand {
+    final overlay = widget.live?.activeSurfacePainter?.overlayModel;
+    return (overlay?.hasStrokeContent ?? false) && _celNow() == _drawnOn;
+  }
+
+  /// [_catchUp] for a paint: at once, or for a stroke in hand as late as its
+  /// step goes in before the next frame ([StepPace]).
+  void _catchUpAtPaint() {
+    _pace.painted(SchedulerBinding.instance.currentSystemFrameTimeStamp);
+    if (!_strokeInHand) {
+      _pace.askNow();
+      _catchUp();
+      return;
+    }
+    if (_heldStep != null) {
+      return;
+    }
+    final hold = _pace.ask();
+    if (hold == Duration.zero) {
+      _catchUp();
+      return;
+    }
+    _heldStep = Timer(hold, () {
+      _heldStep = null;
+      if (_strokeInHand) {
+        _catchUp();
+      }
+    });
   }
 
   /// Lets go of what is shown, and of [store]'s hold on its picture.
@@ -869,7 +949,7 @@ class _FramePictureViewState extends State<FramePictureView> {
           waits: _waits,
           ground: widget.ground,
           cut: widget.cut,
-          catchUp: _catchUp,
+          catchUp: _catchUpAtPaint,
           viewport: widget.viewport,
           devicePixelRatio: EffectiveDevicePixelRatio.of(context),
           repaint: Listenable.merge([_repaint, _liveChanges]),
@@ -921,10 +1001,19 @@ class _FramePicturePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // Told before the step this paint asks for: a write lays what a screen
+    // reads. A picture behind what this one reads is drawn as it stands
+    // until its levels are in, where the frame can be.
+    final inThePicture =
+        this.shown?.picture.readAt(
+          displayScaleOf(viewport.zoom, devicePixelRatio),
+        ) ??
+        true;
     catchUp();
     canvas.save();
     canvas.clipRect(Offset.zero & size);
-    final shown = standing.whole && !waits ? null : this.shown;
+    final stands = standing.whole || (!inThePicture && asItStands != null);
+    final shown = stands && !waits ? null : this.shown;
     final ground = this.ground;
     if (ground != null && (shown != null || asItStands != null)) {
       canvas.drawColor(ground, BlendMode.srcOver);

@@ -801,8 +801,6 @@ void main() {
     'toolCutHoldingTemplate': (s) => s.toolCutHoldingTemplate,
     'toolLibraryEmpty': (s) => s.toolLibraryEmpty,
     'toolCutPasteAtOrigin': (s) => s.toolCutPasteAtOrigin,
-    'toolCutFlipHorizontal': (s) => s.toolCutFlipHorizontal,
-    'toolCutFlipVertical': (s) => s.toolCutFlipVertical,
     'toolCutRegisterTip': (s) => s.toolCutRegisterTip,
     'toolCutDeletesSource': (s) => s.toolCutDeletesSource,
     'toolReadSource': (s) => s.toolReadSource,

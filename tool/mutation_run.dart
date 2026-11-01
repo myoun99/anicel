@@ -46,6 +46,7 @@ import 'dart:io';
 
 import 'import_graph.dart';
 import 'mutations.dart';
+import 'process_tree.dart';
 
 /// How long one suite may take before the run is called a timeout.
 ///
@@ -488,7 +489,7 @@ Future<Verdict> _runSuite(List<String> namers) async {
 
   Timer(_suiteTimeout, () {
     if (done.isCompleted) return;
-    process.kill(ProcessSignal.sigkill);
+    cutTree(process.pid);
     done.complete(-1);
   });
 

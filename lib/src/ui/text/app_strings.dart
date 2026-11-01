@@ -1809,8 +1809,6 @@ enum AppStrings {
   String get toolCutHoldingTemplate => _s('toolCutHoldingTemplate');
   String get toolLibraryEmpty => _s('toolLibraryEmpty');
   String get toolCutPasteAtOrigin => _s('toolCutPasteAtOrigin');
-  String get toolCutFlipHorizontal => _s('toolCutFlipHorizontal');
-  String get toolCutFlipVertical => _s('toolCutFlipVertical');
   String get toolCutRegisterTip => _s('toolCutRegisterTip');
   String get toolCutDeletesSource => _s('toolCutDeletesSource');
   String get toolReadSource => _s('toolReadSource');
@@ -3148,8 +3146,6 @@ enum AppStrings {
     'toolCutHoldingTemplate': 'Holding {size} px',
     'toolLibraryEmpty': 'Nothing to show',
     'toolCutPasteAtOrigin': 'Paste at original position',
-    'toolCutFlipHorizontal': 'Flip horizontal',
-    'toolCutFlipVertical': 'Flip vertical',
     'toolCutRegisterTip': 'Register as Tip',
     'toolCutDeletesSource': 'Delete original',
     'toolReadSource': 'Reference',
@@ -4657,7 +4653,6 @@ enum AppStrings {
     'importWarning.abrCorruptSection': 'ABR のセクションの長さが壊れています。',
     'importWarning.abrNoBrushes': 'ABR ファイルにブラシが見つかりません。',
     'importWarning.abrNothingImportable': 'ABR ファイルに読み込めるブラシがありませんでした。',
-    'importWarning.sutCannotOpen': 'ファイルを開けませんでした: {error}',
     'importWarning.sutUnreadable':
         'このファイルは読み込める CLIP STUDIO のブラシではありません（{error}）。',
     'importWarning.sutNoBrushData': 'このファイルに CLIP STUDIO のブラシデータが見つかりません。',
@@ -4845,8 +4840,6 @@ enum AppStrings {
     'toolCutHoldingTemplate': '{size} px を持っています',
     'toolLibraryEmpty': '表示するものがありません',
     'toolCutPasteAtOrigin': '元の位置に貼り付け',
-    'toolCutFlipHorizontal': '左右反転',
-    'toolCutFlipVertical': '上下反転',
     'toolCutRegisterTip': '先端として登録',
     'toolCutDeletesSource': '元画像を削除',
     'toolReadSource': '参照',
@@ -6476,7 +6469,6 @@ enum AppStrings {
     'importWarning.abrCorruptSection': 'ABR 구역의 길이가 손상되었습니다.',
     'importWarning.abrNoBrushes': 'ABR 파일에서 브러시를 찾지 못했습니다.',
     'importWarning.abrNothingImportable': 'ABR 파일에 가져올 수 있는 브러시가 없습니다.',
-    'importWarning.sutCannotOpen': '파일을 열지 못했습니다: {error}',
     'importWarning.sutUnreadable':
         '이 파일은 읽을 수 있는 CLIP STUDIO 브러시가 아닙니다({error}).',
     'importWarning.sutNoBrushData': '이 파일에서 CLIP STUDIO 브러시 데이터를 찾지 못했습니다.',
@@ -6659,8 +6651,6 @@ enum AppStrings {
     'toolCutHoldingTemplate': '{size} px 를 들고 있습니다',
     'toolLibraryEmpty': '표시할 것이 없습니다',
     'toolCutPasteAtOrigin': '원래 위치에 붙여넣기',
-    'toolCutFlipHorizontal': '좌우 반전',
-    'toolCutFlipVertical': '상하 반전',
     'toolCutRegisterTip': '팁으로 등록',
     'toolCutDeletesSource': '원본 삭제',
     'toolReadSource': '참조',
@@ -8420,7 +8410,6 @@ enum AppStrings {
     'importWarning.abrNoBrushes': 'Aucune brosse trouvée dans le fichier ABR.',
     'importWarning.abrNothingImportable':
         'Le fichier ABR ne contient aucune brosse importable.',
-    'importWarning.sutCannotOpen': 'Impossible d’ouvrir le fichier : {error}',
     'importWarning.sutUnreadable':
         'Ce fichier n’est pas une brosse CLIP STUDIO lisible ({error}).',
     'importWarning.sutNoBrushData':
@@ -8614,8 +8603,6 @@ enum AppStrings {
     'toolCutHoldingTemplate': 'En main : {size} px',
     'toolLibraryEmpty': 'Rien à afficher',
     'toolCutPasteAtOrigin': 'Coller à la position d\'origine',
-    'toolCutFlipHorizontal': 'Miroir horizontal',
-    'toolCutFlipVertical': 'Miroir vertical',
     'toolCutRegisterTip': 'Enregistrer comme pointe',
     'toolCutDeletesSource': "Supprimer l'original",
     'toolReadSource': 'Référence',
@@ -10224,7 +10211,6 @@ enum AppStrings {
     'importWarning.abrCorruptSection': 'ABR 区段长度已损坏。',
     'importWarning.abrNoBrushes': '在 ABR 文件中未找到画笔。',
     'importWarning.abrNothingImportable': 'ABR 文件中没有可导入的画笔。',
-    'importWarning.sutCannotOpen': '无法打开文件：{error}',
     'importWarning.sutUnreadable': '此文件不是可读取的 CLIP STUDIO 画笔（{error}）。',
     'importWarning.sutNoBrushData': '在此文件中未找到 CLIP STUDIO 画笔数据。',
     'importWarning.sutNothingImportable': '文件中没有可导入的画笔。',
@@ -10404,8 +10390,6 @@ enum AppStrings {
     'toolCutHoldingTemplate': '持有 {size} px',
     'toolLibraryEmpty': '没有可显示的内容',
     'toolCutPasteAtOrigin': '粘贴到原位置',
-    'toolCutFlipHorizontal': '水平翻转',
-    'toolCutFlipVertical': '垂直翻转',
     'toolCutRegisterTip': '注册为笔尖',
     'toolCutDeletesSource': '删除原图',
     'toolReadSource': '参考',

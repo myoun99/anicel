@@ -1,5 +1,6 @@
 import '../brush_preset_id_mint.dart';
 import 'dart:async';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:sqlite3/sqlite3.dart';
@@ -18,6 +19,7 @@ import '../../models/brush_tip_order.dart';
 import '../../models/import/import_warning.dart';
 import '../brush_tip_coverage.dart';
 import '../brush_tip_image_codec.dart';
+import '../persistence/sqlite_bytes.dart';
 import 'sut_material_tip.dart';
 
 /// Result of decoding a Clip Studio Paint `.sut`/`.sutg` brush file.
@@ -48,22 +50,20 @@ class SutDecodeException extends ImportRefusal {
 /// catalog path in `BrushPatternImageArray`. The Variant schema varies across
 /// CSP versions,
 /// so every column read tolerates absence.
-Future<SutImportResult> decodeSutBrushFile({
-  required String filePath,
+///
+/// ⚠️The rows are read on a worker, as a `.psd` is
+/// (`psd_expand_import.dart`): [readSqliteBytes] copies the whole file out
+/// synchronously, and the materials are read whole — on the UI isolate a
+/// large brush file would stop the app for both (board
+/// `three-readers-copy-an-sqlite-file-their-own-way`). The tips decode here,
+/// where the engine is.
+Future<SutImportResult> decodeSutBrushFile(
+  Uint8List bytes, {
   required String sourceName,
 }) async {
-  final Database database;
+  final _SutRows rows;
   try {
-    database = sqlite3.open(filePath, mode: OpenMode.readOnly);
-  } on SqliteException catch (error) {
-    throw SutDecodeException(
-      ImportWarning('sutCannotOpen', 'Could not open the file: {error}', {
-        'error': error.message,
-      }),
-    );
-  }
-  try {
-    return await _decode(database, sourceName: sourceName);
+    rows = await Isolate.run(() => readSqliteBytes(bytes, _rowsOf));
   } on SqliteException catch (error) {
     throw SutDecodeException(
       ImportWarning(
@@ -72,15 +72,19 @@ Future<SutImportResult> decodeSutBrushFile({
         {'error': error.message},
       ),
     );
-  } finally {
-    database.close();
   }
+  return _decode(rows, sourceName: sourceName);
 }
 
-Future<SutImportResult> _decode(
-  Database database, {
-  required String sourceName,
-}) async {
+/// What a brush file's database holds, out of it: plain values, for the
+/// worker to hand across.
+typedef _SutRows = ({
+  Map<int, Map<String, Object?>> variantsById,
+  List<({String path, Uint8List data})> materials,
+  List<Map<String, Object?>> nodes,
+});
+
+_SutRows _rowsOf(Database database) {
   final tables = database
       .select("SELECT name FROM sqlite_master WHERE type='table'")
       .map((row) => row['name'] as String)
@@ -94,7 +98,6 @@ Future<SutImportResult> _decode(
     );
   }
 
-  final warnings = <String>[];
   final variantsById = <int, Map<String, Object?>>{};
   for (final row in database.select('SELECT * FROM Variant')) {
     final id = row['VariantID'];
@@ -122,12 +125,27 @@ Future<SutImportResult> _decode(
     }
   }
 
+  return (
+    variantsById: variantsById,
+    materials: materials,
+    nodes: [
+      for (final row in database.select('SELECT * FROM Node'))
+        Map<String, Object?>.from(row),
+    ],
+  );
+}
+
+Future<SutImportResult> _decode(
+  _SutRows rows, {
+  required String sourceName,
+}) async {
+  final (:variantsById, :materials, :nodes) = rows;
+  final warnings = <String>[];
   final mint = BrushPresetIdMint();
 
   final presets = <BrushPreset>[];
   var nodeIndex = 0;
-  for (final row in database.select('SELECT * FROM Node')) {
-    final node = Map<String, Object?>.from(row);
+  for (final node in nodes) {
     nodeIndex += 1;
     final variantId = node['NodeVariantID'];
     final variant = variantId is int ? variantsById[variantId] : null;

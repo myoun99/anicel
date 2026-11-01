@@ -30,6 +30,12 @@ import 'stroke_corners.dart';
 /// and closes the same share of that way — with none, the way is straight
 /// for the pen, as above.
 ///
+/// 🗣️What steadies the line and need not hold it back steadies it only
+/// across the way the pen goes (F-512-Q4, 유저 2026-10-31: 「4ms를
+/// 최대한 줄일수있다면 줄이고싶음. 첨언하자면 클튜는 0으로해도 보정이
+/// 들어가있음」) — [acrossOnly]. A wobble shows across a line; along it, it
+/// only moves the dabs along.
+///
 /// Times are the PEN's: a sample's [follow] carries the event's time, and
 /// a frame's [lookAtFrame] is counted from the first frame after the last
 /// sample — the two clocks are never compared.
@@ -42,6 +48,7 @@ class StrokeStabilizer {
     required PenPoint start,
     required Duration at,
     bool keepsCorners = false,
+    this.acrossOnly = Duration.zero,
   }) : _brush = start,
        _pen = start,
        _brushAt = at,
@@ -53,6 +60,24 @@ class StrokeStabilizer {
   /// close all but 1/e of the distance left. Clip Studio's 速度による手ブレ
   /// 補正 bends it by the speed; without it, it is one time.
   final Duration Function(double speed) lagAt;
+
+  /// How much of [lagAt] steadies the line only across the way the pen goes:
+  /// along it, the line runs that much less behind.
+  final Duration acrossOnly;
+
+  /// How long the way the pen goes is told over: a sample's own step says
+  /// more of its wobble than of its way.
+  ///
+  /// ⚠️Mine: long enough for a line's wobble not to turn it (5 samples at
+  /// 240 Hz, about 6° at 300 px/s), short enough to follow a line's curve.
+  static const Duration _wayToldOver = Duration(milliseconds: 20);
+
+  /// Canvas px/s from which the way the pen goes is sure; slower, [acrossOnly]
+  /// goes as far as the pen does, and all round at a stand.
+  ///
+  /// ⚠️Mine: under it what [acrossOnly] holds back is under a pixel, and a
+  /// wobble of a pixel's fifth turns the way.
+  static const double _waySureFrom = 300;
 
   /// Closer than this, in canvas pixels, the line is where the pen is.
   static const double _settlesWithin = 0.01;
@@ -67,6 +92,10 @@ class StrokeStabilizer {
 
   /// The pen time the brush stands at.
   Duration _brushAt;
+
+  /// The way the pen goes, in canvas px/s ([_wayToldOver]).
+  double _wayX = 0;
+  double _wayY = 0;
 
   /// The pen time of the latest sample, and the frame that first looked
   /// after it — or null while no frame has.
@@ -86,6 +115,7 @@ class StrokeStabilizer {
     PenReadings readings, {
     required Duration at,
   }) {
+    _noteTheWay(pen, at);
     _pen = (position: pen, readings: readings);
     _goThrough(_corners?.add(_pen) ?? const []);
     _sampleAt = at;
@@ -137,6 +167,48 @@ class StrokeStabilizer {
     }
   }
 
+  /// The pen came to [pen] at [at]: what it says of the way it goes.
+  void _noteTheWay(CanvasPoint pen, Duration at) {
+    final elapsed = (at - _sampleAt).inMicroseconds;
+    if (elapsed <= 0) {
+      return;
+    }
+    final seconds = elapsed / Duration.microsecondsPerSecond;
+    final share = 1 - math.exp(-elapsed / _wayToldOver.inMicroseconds);
+    _wayX += ((pen.x - _pen.position.x) / seconds - _wayX) * share;
+    _wayY += ((pen.y - _pen.position.y) / seconds - _wayY) * share;
+  }
+
+  /// Brings the line along the way the pen goes by what [elapsed] closes of
+  /// [acrossOnly]: of a [lag] all [acrossOnly], level with the pen. What is
+  /// left of the way is across it, for [_closeTo] to close.
+  void _goAlong(Duration elapsed, Duration lag) {
+    final speed = math.sqrt(_wayX * _wayX + _wayY * _wayY);
+    final dx = _pen.position.x - _brush.position.x;
+    final dy = _pen.position.y - _brush.position.y;
+    final left = math.sqrt(dx * dx + dy * dy);
+    if (speed == 0 || left == 0) {
+      return;
+    }
+    final micros = elapsed.inMicroseconds;
+    final behind = math.exp(
+      micros / lag.inMicroseconds -
+          micros / (lag - acrossOnly).inMicroseconds,
+    );
+    final go =
+        (dx * _wayX + dy * _wayY) /
+        speed *
+        (1 - behind) *
+        math.min(1.0, speed / _waySureFrom);
+    _brush = (
+      position: CanvasPoint(
+        x: _brush.position.x + _wayX / speed * go,
+        y: _brush.position.y + _wayY / speed * go,
+      ),
+      readings: readingsBetween(_brush.readings, _pen.readings, go.abs() / left),
+    );
+  }
+
   /// Closes the share of the way left that the time to [at] closes;
   /// answers the corners the line went through on it.
   List<PenPoint> _closeTo(Duration at) {
@@ -149,6 +221,7 @@ class StrokeStabilizer {
     final share =
         1 - math.exp(-elapsed.inMicroseconds / lag.inMicroseconds);
     if (_ahead.isEmpty) {
+      _goAlong(elapsed, lag);
       _moveTo(_brush, _pen, share);
       return const [];
     }

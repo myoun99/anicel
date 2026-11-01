@@ -32,10 +32,19 @@ class _WorkspaceFoldedStoryboard {
   EditorSessionManager? _session;
   Listenable? _heard;
 
-  void _follow() => fold.value = (
-    row: _session?.standing.storyboardStandingRow,
-    height: row()?.height,
-  );
+  /// 🚨News only while the fold IS the storyboard's: with the timeline's
+  /// panel in the region this keeps nothing the floor reads, and it held
+  /// still. ↩️The stand rides along where the timeline stands (I-126), so a
+  /// press on a timeline row woke the floor for a fold nobody was showing —
+  /// 🔬40 of a click's 518 builds, and the floor's layout (I-22-rest, 10-31,
+  /// S5_BA's cut 352). The panel changing in the region is the layout's own
+  /// news, which the floor hears for itself and reads the fold anew on.
+  void _follow() => fold.value = _state._collapsedRows._collapsedRowIsStoryboard
+      ? (
+          row: _session?.standing.storyboardStandingRow,
+          height: row()?.height,
+        )
+      : (row: null, height: null);
 
   /// Follows [session]'s stand and the rail it is laid on — the
   /// workspace's door for the project coming on screen (I-7).

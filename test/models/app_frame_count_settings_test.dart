@@ -31,4 +31,13 @@ void main() {
       );
     }
   });
+
+  test('🗣️F-518: a store with no count holds 3; an applied one keeps itself '
+      'across a restart', () {
+    expect(AppFrameCountSettings.fromJson(const {}).lastEveryCount, 3);
+    const applied = AppFrameCountSettings(lastEveryCount: 5);
+    expect(AppFrameCountSettings.fromJson(applied.toJson()), applied);
+    expect(applied, isNot(const AppFrameCountSettings()));
+    expect(applied.copyWith().lastEveryCount, 5);
+  });
 }

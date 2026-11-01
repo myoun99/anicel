@@ -25,6 +25,8 @@ import 'package:anicel/src/ui/timeline/lane_graph.dart';
 import 'package:anicel/src/ui/timeline/lane_graph_box_stretch.dart';
 import 'package:anicel/src/ui/timeline/lane_graph_seats.dart'
     show LaneGraphReach;
+import 'package:anicel/src/ui/timeline/lane_graph_snap.dart'
+    show LaneGraphSnapLine;
 import 'package:anicel/src/ui/timeline/lane_graph_toggle.dart'
     show LaneGraphToggle;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
@@ -528,6 +530,67 @@ void main() {
     await gesture.up();
     await tester.pumpAndSettle();
   }
+
+  // 🗣️검증/서피스 10-31 (ㄴ): a time past its cut drew the line off the key,
+  // which stood on the cut's last frame with its height held.
+  testWidgets('a camera key carried past its cut draws no line at a time '
+      'beyond it, stops on the cut\'s last frame, and its height goes on', (
+    tester,
+  ) async {
+    final session = await pumpHost(tester, cameras(), twirl: 'a-cam');
+    SessionRowButtonPresses(session).toggleLaneGraph(inHand);
+    await tester.pumpAndSettle();
+    session.rowSelection.value = [LaneRowAddress(cameraRow, 'rotation')];
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(ValueKey<String>('storyboard-lane-graph-snap-$cameraGraph')),
+    );
+    await tester.pumpAndSettle();
+    final (:painter, :box) = pictureOf(tester, cameraGraph);
+    final key = painter
+        .keysIn(box.size)
+        .singleWhere((key) => key.line.layer.id == aCam && key.frame == 0);
+
+    final gesture = await tester.startGesture(
+      box.localToGlobal(key.at),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    await gesture.moveBy(const Offset(23.0 * 12, 0));
+    await tester.pump();
+    // Seven pixels short of b's key on 26: on 25, out of a.
+    await gesture.moveBy(const Offset(3.0 * 12 - 7, -30));
+    await tester.pump();
+    final line = find.descendant(
+      of: find.descendant(
+        of: graphOf(cameraGraph),
+        matching: find.byType(LaneGraphPicture),
+      ),
+      matching: find.byType(CustomPaint),
+    );
+    expect(
+      (tester.widget<CustomPaint>(line).foregroundPainter!
+              as LaneGraphSnapLine)
+          .snap
+          .time,
+      isNull,
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    final rotation = session
+        .repository
+        .requireProject()
+        .tracks
+        .single
+        .cuts
+        .first
+        .camera
+        .track
+        .rotation;
+    expect(rotation.keys.keys.toList()..sort(), [12, 23]);
+    expect(rotation.keyAt(23)!.value, isNot(closeTo(0, 1e-6)));
+  });
 
   testWidgets('a box on its ground picks the keys of the cut it began in, in '
       'that cut\'s own frames — as a sweep on the row\'s lanes does '

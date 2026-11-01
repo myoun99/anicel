@@ -128,9 +128,14 @@ void main() {
     );
   });
 
+  // 🔬I-22-rest (11-01): a stand reaches the plate past the memo
+  // ([BerthRow.activeOf]), so the row it leaves is the row it kept.
+  test('a stand and a selection are no facts of the row', () {
+    expect(facts(activeLayerId: id), facts());
+    expect(facts(selectedRows: {const LayerRowAddress(id)}), facts());
+  });
+
   final changes = <String, LayerControlsRowFacts Function()>{
-    'active': () => facts(activeLayerId: id),
-    'selected': () => facts(selectedRows: {const LayerRowAddress(id)}),
     'lanesExpanded': () => facts(expandedLaneLayerIds: {id}),
     'fxState': () => facts(fxState: LayerFxState.off),
     'onionSkinEnabled': () => facts(onionSkinEnabled: true),

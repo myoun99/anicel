@@ -544,6 +544,7 @@ laneRange: TimelineLaneRangeHooks(
               },
               onTapAt: (_, _, _) => laneSelection.value = null,
               onTapClear: () {},
+              moveLands: (_) => true,
               onMoveBegin: () => false,
               onMoveUpdate: (_, {stretch, values, landings}) {},
               onMoveEnd: () {},
@@ -1030,6 +1031,7 @@ metrics: const TimelineGridMetrics(
             onSelectUpdate: (_, _, _, head, _) => heads.add(head),
             onTapAt: (_, _, _) {},
             onTapClear: () {},
+            moveLands: (_) => true,
             onMoveBegin: () => false,
             onMoveUpdate: (_, {stretch, values, landings}) {},
             onMoveEnd: () {},
@@ -1723,6 +1725,7 @@ laneRange: TimelineLaneRangeHooks(
                     selectUpdates.add(anchor),
                 onTapAt: (_, _, _) {},
                 onTapClear: () {},
+                moveLands: (_) => true,
                 onMoveBegin: () => true,
                 onMoveUpdate: (step, {stretch, values, landings}) =>
                     moveUpdates.add(step),
@@ -1894,6 +1897,7 @@ laneRange: TimelineLaneRangeHooks(
                 // for it with the same one line.
                 onTapAt: (_, _, frame) => cursor.value = frame,
                 onTapClear: () {},
+                moveLands: (_) => true,
                 onMoveBegin: () => false,
                 onMoveUpdate: (_, {stretch, values, landings}) {},
                 onMoveEnd: () {},

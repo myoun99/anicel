@@ -3,7 +3,7 @@ import '../models/brush_blend_mode.dart';
 import '../models/brush_dab.dart';
 import '../models/placed_tile.dart';
 import 'brush_live_stroke_rasterizer.dart';
-import 'canvas_selection_region.dart';
+import 'selection_clip.dart';
 
 /// 🚨★★★I-75: A BLUR STROKE RE-DERIVED FROM ITS DABS IS LAID BY THE ONE
 /// RASTERIZER THAT SHOWED IT — the commit when the cel moved under its
@@ -19,14 +19,14 @@ List<PlacedTile> blurStrokeLandedOn(
   BitmapSurface surface,
   List<BrushDab> dabs, {
   required double opacity,
-  CanvasSelectionRegion? selection,
+  SelectionClip? selection,
 }) {
   final rasterizer =
       BrushLiveStrokeRasterizer(
           pasteboard: surface.pasteboard,
           tileSize: surface.tileSize,
         )
-        ..selectionRegion = selection
+        ..selectionClip = selection
         ..strokeOpacity = opacity
         ..blurOver(surface);
   rasterizer.blendFrom(dabs);

@@ -34,7 +34,6 @@ void main() {
             ),
             availableFrameKeys: frameKeys,
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-            floorCover: EdgeInsets.zero,
             brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
               tool: CanvasTool.brush,
               size: 40,

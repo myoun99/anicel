@@ -46,16 +46,25 @@ endif()
 # repository (28 MB zipped; a binary in git stays in every clone for ever).
 # Linked statically: 12.9 MB in an executable on Windows x64, where its DLL
 # is 22 MB (measured 2026-10-30).
-# ⚠️Windows x64 first. The other prebuilt libraries (macOS · Linux ·
+# ⚠️Windows first, x64 and ARM64. The other prebuilt libraries (macOS · Linux ·
 # Android) and the iPad's build from source are rounds of their own; until
 # then a build without the engine opens native plugins only and tells a
 # .wasm so (qa_fx_plugin.c).
 set(QA_WASMTIME_VERSION "48.0.8")
 set(QA_WASMTIME_DIR "")
+set(qa_wt_arch "")
 if(WIN32 AND CMAKE_C_COMPILER_ARCHITECTURE_ID STREQUAL "x64")
-  set(qa_wt_name "wasmtime-v${QA_WASMTIME_VERSION}-x86_64-windows-c-api")
+  set(qa_wt_arch "x86_64")
   set(qa_wt_sha256
     "31c2d97399b2555c06233a5fe0d2ba7373d020dae584107b1e3f459dd1756c42")
+elseif(WIN32 AND CMAKE_C_COMPILER_ARCHITECTURE_ID STREQUAL "ARM64")
+  set(qa_wt_arch "aarch64")
+  set(qa_wt_sha256
+    "2dd5ec2f86b9d50da93e4f29985472c0520ee3545e5ab9e8771430f39011c269")
+endif()
+if(qa_wt_arch)
+  set(qa_wt_name
+    "wasmtime-v${QA_WASMTIME_VERSION}-${qa_wt_arch}-windows-c-api")
   file(TO_CMAKE_PATH "$ENV{LOCALAPPDATA}" qa_wt_home)
   set(qa_wt_cache
     "${qa_wt_home}/anicel/third_party/wasmtime-v${QA_WASMTIME_VERSION}")

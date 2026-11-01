@@ -38,6 +38,13 @@ import '../helpers/settle_async.dart';
 /// 취소? 픽셀지우기? 해서 지운 그림이 계속 남아있음 … 재생할땐 특정그림이 있는
 /// 화면이 보이고, 멈추면 특정그림 없고 셀번호fx가 보이는 상황」.
 void main() {
+  // The test font sets ○ and ● as one and the same box.
+  // ⛔Not loaded inside the mark's test: the faces were heard only after its
+  // first paint, which set the number from the layout the tests before it
+  // kept in the test font — that shot and the one after the pick went back
+  // were the same stale boxes, and the test passed whatever the pick drew.
+  setUpAll(loadTheAppFaces);
+
   const cels = ['c0', 'c1'];
   const underCels = ['u0', 'u1'];
   const under = LayerId('under');
@@ -433,8 +440,6 @@ void main() {
     addTearDown(
       () => AppFrameGridSettings.settings.value = const AppFrameGridSettings(),
     );
-    // The test font sets ○ and ● as one and the same box.
-    await loadTheAppFaces();
     final session = await pump(tester);
     final places = placesOf(tester, session);
     final two = await shot(tester, places.letters);

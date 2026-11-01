@@ -237,7 +237,20 @@ void main() {
       'brush-pill-size-bar',
       'brush-pill-opacity-bar',
     ]) {
-      expect(part(key).width, 20, reason: '$key across');
+      expect(
+        tester
+            .getSize(
+              key.endsWith('-bar')
+                  ? find.descendant(
+                      of: inPill(key),
+                      matching: find.byType(FieldSliderTrack),
+                    )
+                  : inPill(key),
+            )
+            .width,
+        20,
+        reason: '$key across',
+      );
       expect(
         tester.getRect(inPill(key)).center.dx,
         closeTo(box.center.dx, 0.01),

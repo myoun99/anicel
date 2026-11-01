@@ -52,7 +52,12 @@ class _StoryboardRailSweep {
           return rows;
         }
         if (slot.display case final row? when top + slot.height > lo) {
-          rows.add((row: row, id: row.address));
+          rows.add((
+            row: row,
+            id: row.address,
+            start: top,
+            end: top + slot.height,
+          ));
         }
         top += slot.height;
       }

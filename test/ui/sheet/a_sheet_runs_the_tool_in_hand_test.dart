@@ -23,6 +23,7 @@ import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/sheet_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/tool_cursor_sprite.dart';
+import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
 import 'package:anicel/src/ui/conte/conte_picture_ink.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
@@ -334,6 +335,16 @@ void main() {
           inkUnder(tester, window, Offset(drag.from.dx, drag.to.dy)),
           isFalse,
         );
+      });
+
+      testWidgets('a window cuts what is drawn on it to what it keeps while '
+          'it is drawn, not only where it lands', (tester) async {
+        await sheet.pump(tester, holding(CanvasTool.shape));
+        final window = aWindow(tester, sheet.keyPrefix);
+        final view = tester.widget<InteractiveBrushEditCanvasView>(
+          find.byKey(ValueKey<String>('${sheet.keyPrefix}-ink-${window.id}')),
+        );
+        expect(view.selectionNow!(), isNotNull);
       });
 
       testWidgets('the brush wears its own tip — and a tool the sheet does '

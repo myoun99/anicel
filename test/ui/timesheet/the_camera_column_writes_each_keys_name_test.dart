@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_words_in.dart';
 
 import '../../helpers/camera_key_names.dart';
+import '../../helpers/canvas_on_its_pixels.dart';
 
 /// 🗣️I-89 ⑤ (유저 2026-10-10): 「헤더이름따라서 이름 적고, 없거나 하면 아까
 /// 정한대로 12f 이런식으로 프레임 번호」 — and again, the sheet still dotting
@@ -162,7 +163,7 @@ void main() {
 }
 
 /// The words and dots a sheet prints, where.
-class _Ink implements Canvas {
+class _Ink with CanvasOnItsPixels implements Canvas {
   final words = <({Offset at, double width})>[];
   final dots = <Offset>[];
 

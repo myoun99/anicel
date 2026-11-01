@@ -1635,6 +1635,9 @@ class _RastersInTurn implements FramePictureGpu {
   Object? hold(ui.Image image) => null;
 
   @override
+  Object? allocate(int width, int height) => null;
+
+  @override
   int levelsOf(Object held) => 1;
 
   @override

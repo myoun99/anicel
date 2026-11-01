@@ -31,6 +31,7 @@ import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/services/canvas_selection_paint_clip.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
+import 'package:anicel/src/services/selection_clip.dart';
 
 import '../helpers/native_engine_path.dart';
 
@@ -132,7 +133,9 @@ void main() {
   }) {
     final rasterizer =
         BrushLiveStrokeRasterizer(pasteboard: wall, tileSize: tileSize)
-          ..selectionRegion = selection
+          ..selectionClip = selection == null
+              ? null
+              : SelectionClip.outline(selection)
           ..strokeOpacity = opacity
           ..blurOver(base);
     for (var from = 0; from < dabs.length; from += 5) {
@@ -282,9 +285,9 @@ void main() {
 
     final clipped = clipStrokeCommitToSelection(
       BrushStrokeCommitData(sourceDabs: dabs),
-      region: CanvasSelectionRegion.shape(
+      clip: SelectionClip.outline(CanvasSelectionRegion.shape(
         CanvasSelectionShape.rect(left: 0, top: 0, right: 192, bottom: 128),
-      ),
+      )),
       surface: base,
     )!;
     expectSameArtwork(
@@ -779,7 +782,7 @@ void main() {
     expectSameArtwork(
       clipStrokeCommitToSelection(
             BrushStrokeCommitData(sourceDabs: rub()),
-            region: selection,
+            clip: SelectionClip.outline(selection),
             surface: base,
           )!.promotedTiles!.fold(
             base,

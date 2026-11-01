@@ -132,12 +132,14 @@ void main() {
   });
 
   /// The picture drawing [own], its snap [snap], its frames ending
-  /// [frameCount] on — what a carry tells its lanes kept in [told].
+  /// [frameCount] on, its move landing where [lands] says — what a carry
+  /// tells its lanes kept in [told].
   Future<void> pump(
     WidgetTester tester, {
     bool snap = false,
     int frameCount = 0,
     List<LaneGraphLine>? own,
+    bool Function(int frames)? lands,
   }) => tester.pumpWidget(
     Directionality(
       textDirection: TextDirection.ltr,
@@ -165,6 +167,7 @@ void main() {
               onTapAt: (_, _, _) {},
               onTapClear: () {},
               onMoveBegin: () => true,
+              moveLands: lands ?? (_) => true,
               onMoveUpdate: (frames, {stretch, values, landings}) =>
                   told = (frames: frames, stretch: stretch, values: values),
               onMoveEnd: () {},
@@ -266,6 +269,41 @@ void main() {
     await gesture.up();
     await tester.pump();
     expect(tester.renderObject(paint()), isNot(snapLine()));
+  });
+
+  // 🗣️검증/서피스 10-31: a time the move holds at drew the line and stopped
+  // the key short of it, its height with it.
+  testWidgets('a time the key cannot land on is no target: no line, and it '
+      'goes where the hand is', (tester) async {
+    await pump(tester, snap: true, lands: (frames) => frames != 12);
+
+    final gesture = await carry(tester, nearTwenty);
+    expect(told!.frames, 11);
+    expect(tester.renderObject(paint()), isNot(snapLine()));
+    await gesture.up();
+  });
+
+  testWidgets('on a frame it cannot land on, its time stays on the last that '
+      'landed and its height goes on with the hand — and past it, it goes on', (
+    tester,
+  ) async {
+    await pump(tester, lands: (frames) => frames != 3);
+
+    final gesture = await carry(tester, const Offset(2 * cell, 0));
+    expect(told!.frames, 2, reason: '⛔전제');
+    expect(told!.values, isNull, reason: '⛔전제');
+
+    await gesture.moveBy(const Offset(cell, -20));
+    await tester.pump();
+    expect(told!.frames, 2);
+    final raised = told!.values;
+    expect(raised, isNotNull, reason: 'the height goes on');
+
+    await gesture.moveBy(const Offset(cell, 0));
+    await tester.pump();
+    expect(told!.frames, 4);
+    expect(told!.values!.inputs, raised!.inputs);
+    await gesture.up();
   });
 
   testWidgets('it snaps to the frame the playhead stands on', (tester) async {
@@ -460,6 +498,7 @@ void main() {
     LaneGraphCarry carry({
       List<({int time, double across})> keys = const [],
       int? playhead,
+      bool Function(int frames)? lands,
     }) => LaneGraphCarry(
       axis: Axis.horizontal,
       frames: geometry,
@@ -468,7 +507,34 @@ void main() {
       keys: keys,
       playhead: ValueNotifier(playhead),
       frameCount: 0,
+      lands: lands ?? (_) => true,
     );
+
+    test('of two times in reach it takes the nearest it can land on, and '
+        'asks only of those in reach', () {
+      final asked = <int>[];
+      // The hand on 10 and a sixth: 11 five pixels on, 10 one back, and 30
+      // far out of reach.
+      final carried =
+          carry(
+            keys: const [
+              (time: 30, across: 90),
+              (time: 10, across: 90),
+              (time: 11, across: 90),
+            ],
+            lands: (frames) {
+              asked.add(frames);
+              return frames != 2;
+            },
+          ).carriedBy(
+            const Offset(2 * cell + 1, 0),
+            oneWay: false,
+            snapping: true,
+          );
+      expect(carried.snap.time, 11);
+      expect(carried.frames, 3);
+      expect(asked, unorderedEquals([2, 3]));
+    });
 
     test('a hand as near two times takes the first the graph names — a '
         'key\'s before the playhead\'s', () {

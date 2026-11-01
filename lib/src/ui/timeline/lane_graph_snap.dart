@@ -52,6 +52,12 @@ typedef LaneGraphCarried = ({int frames, double rise, LaneGraphSnap snap});
 /// about it is marked — each way on its own, to the nearest within
 /// [laneGraphSnapReach] of the hand.
 ///
+/// 🗣️graph-key-drag-snaps (검증/서피스 10-31): a time the key cannot land
+/// on is no target. A move that cannot land holds where it was, so a snap
+/// there left the line drawn and the key stopped short of it, three frames
+/// off at 37% — on the time of a key of its own curve, and for a camera
+/// key, on the end of its cut.
+///
 /// What it snaps to is read when the carry begins, as the keys the hand
 /// lifts are: the lines draw the move in flight. The playhead is read at
 /// every step, and every time stands where the frames lie at that step —
@@ -65,6 +71,7 @@ class LaneGraphCarry {
     required this.keys,
     required this.playhead,
     required this.frameCount,
+    required this.lands,
   });
 
   /// Which way the graph's frames run.
@@ -88,6 +95,10 @@ class LaneGraphCarry {
   /// Where the frames end, that many on from frame 0 — 0 where they have
   /// no end to snap to.
   final int frameCount;
+
+  /// Whether a carry [frames] whole frames along lands, as the move in
+  /// flight says.
+  final bool Function(int frames) lands;
 
   /// How far a hand gone [moved] carries the key — with Shift held
   /// ([oneWay]) the one way it went further alone — and where it snaps,
@@ -129,13 +140,17 @@ class LaneGraphCarry {
   }
 
   /// The time the hand gone [moved] along the frames snaps to: of [_times],
-  /// the nearest within [laneGraphSnapReach] of it, where the frames lie
-  /// now — null where none is so near.
+  /// the nearest it can land on within [laneGraphSnapReach] of it, where
+  /// the frames lie now — null where none is so near.
   int? _timeNear(double moved) {
     final frames = this.frames.value;
     double at(int time) => alongOf(time.toDouble(), frames);
     final hand = at(key.time) + moved;
-    return _nearest(_times, (time) => at(time) - hand);
+    return _nearest(
+      _times,
+      (time) => at(time) - hand,
+      taken: (time) => lands(time - key.time),
+    );
   }
 
   /// Where across the graph the hand gone [rose] across it snaps to: of
@@ -157,17 +172,22 @@ class LaneGraphCarry {
 }
 
 /// Of [targets], the one nearest the hand by how far [away] it says each
-/// stands — the first of the nearest, and only within [laneGraphSnapReach]
-/// either way; null where none is so near.
+/// stands — the first of the nearest, only within [laneGraphSnapReach]
+/// either way, and only where [taken] says it may be; null where none is
+/// so near. [taken] is asked of those in reach alone: a target's landing is
+/// a move's, and the graph's keys are many.
 T? _nearest<T extends Object>(
   Iterable<T> targets,
-  double Function(T target) away,
-) {
+  double Function(T target) away, {
+  bool Function(T target)? taken,
+}) {
   T? nearest;
   var least = double.infinity;
   for (final target in targets) {
     final distance = away(target).abs();
-    if (distance <= laneGraphSnapReach && distance < least) {
+    if (distance <= laneGraphSnapReach &&
+        distance < least &&
+        (taken?.call(target) ?? true)) {
       nearest = target;
       least = distance;
     }

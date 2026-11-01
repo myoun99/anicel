@@ -20,8 +20,9 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
+import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
-import 'package:anicel/src/services/canvas_selection_shape.dart';
+import 'package:anicel/src/services/selection_clip.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
@@ -785,6 +786,7 @@ void main() {
           options: const FloodFillOptions(expandPx: 0, antiAlias: false),
         ),
         blend: BrushBlendMode.color,
+        selection: null,
       );
       expect(area.pieces(), hasLength(2), reason: 'fixture: one tile, two');
 
@@ -796,6 +798,59 @@ void main() {
       int alphaAt(int x, int y) => landed[(y * 256 + x) * 4 + 3];
       expect(alphaAt(30, 110), 255, reason: 'the piece above 128');
       expect(alphaAt(30, 150), 255, reason: 'the piece below');
+    });
+
+    // brush-fidelity-Q11: the dabs a shape lands with are what the commit
+    // re-derives it from, and what 확정 lays again. Cut already, the
+    // selection's ramp would be taken twice.
+    testWidgets('an area is cut through its selection once: the tiles are '
+        'cut, the dabs it lands with stay whole', (tester) async {
+      final big = BitmapSurface(
+        canvasSize: const CanvasSize(width: 256, height: 256),
+        tileSize: 256,
+      );
+      final host = _Host();
+      final overlay = ActiveStrokeOverlayModel();
+      addTearDown(overlay.dispose);
+      await _pump(tester, host, _brush(), overlay: overlay, cel: big);
+      final region = CanvasSelectionRegion.shape(
+        CanvasSelectionShape.rect(left: 10, top: 40, right: 60, bottom: 90),
+      );
+      final area = (
+        shape: region,
+        pieces: () => regionFillPieces(
+          region: region,
+          color: 0xFFFF0000,
+          options: const FloodFillOptions(expandPx: 0, antiAlias: false),
+        ),
+        blend: BrushBlendMode.color,
+        selection: SelectionClip.of(
+          CanvasSelectionRegion.shape(
+            CanvasSelectionShape.rect(left: 0, top: 50, right: 256, bottom: 80),
+          ),
+          wall: big.pasteboard,
+          options: const SelectionMaskOptions(featherPx: 4),
+        ),
+      );
+
+      host.show!.show(area);
+      await untilShown(tester, overlay);
+      expect(host.show!.land(area), isTrue);
+
+      final data = host.data.single;
+      final landed = data.promotedTiles!.single.tile.pixels;
+      int alphaAt(int x, int y) => landed[(y * 256 + x) * 4 + 3];
+      expect(alphaAt(30, 45), 0, reason: 'above the selection');
+      expect(alphaAt(30, 50), greaterThan(0));
+      expect(alphaAt(30, 50), lessThan(255), reason: 'the selection\'s ramp');
+      expect(alphaAt(30, 65), 255, reason: 'deep inside it');
+
+      final piece = data.sourceDabs.single.stamp!;
+      expect(
+        [for (var i = 3; i < piece.rgba.length; i += 4) piece.rgba[i]],
+        everyElement(255),
+        reason: 'the dab the commit would cut again is the whole piece',
+      );
     });
 
     testWidgets('a cel that changes under it takes what showed with it, and '

@@ -251,10 +251,10 @@ SplayTreeMap<int, TimelineExposure>? storyboardTimelineFilledToCover({
   for (var index = 0; index < cells.length; index += 1) {
     final cell = cells[index];
     // The entry keeps its own memo and dots; only where it starts and how
-    // long it holds are rewritten.
-    next[conteStart + cell.startIndex] = timeline[keys[index]]!.copyWith(
-      length: cell.length,
-    );
+    // long it holds are rewritten — its dots kept to its end, as a frame
+    // block's are.
+    next[conteStart + cell.startIndex] = timeline[keys[index]]!
+        .atLengthKeepingDotsToItsEnd(cell.length);
   }
   return next;
 }

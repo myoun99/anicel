@@ -17,6 +17,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
+import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
 import 'package:anicel/src/ui/brush/canvas_visible_rect.dart';
 import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
@@ -65,8 +66,14 @@ Offset visibleCanvasPoint(WidgetTester tester, {Offset offset = Offset.zero}) =>
 /// taken over the whole frame is a count of the panels. Ask inside this
 /// rectangle and dark means drawing.
 Rect visibleCanvasRect(WidgetTester tester) {
-  final shellFinder = mainCanvasPanelShell();
-  final panel = tester.widget<BrushCanvasPanel>(shellFinder);
-  final shell = tester.getRect(shellFinder);
-  return canvasVisibleRect(shell.size, panel.floorCover).shift(shell.topLeft);
+  final shell = tester.getRect(mainCanvasPanelShell());
+  return canvasVisibleRect(
+    shell.size,
+    canvasFloorCover(tester),
+  ).shift(shell.topLeft);
 }
+
+/// The edges of the drawing canvas the panels lying on it cover.
+EdgeInsets canvasFloorCover(WidgetTester tester) =>
+    CanvasFloorInsets.maybeOf(tester.element(mainCanvasPanelShell()))?.insets ??
+    EdgeInsets.zero;

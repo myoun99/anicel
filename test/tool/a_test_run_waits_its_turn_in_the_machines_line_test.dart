@@ -1,6 +1,7 @@
 @TestOn('vm')
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -444,6 +445,76 @@ void main() {
       expect(placed(['bash', 'x.sh', '-j', '9'], 5), [
         'bash', 'x.sh', '-j', '9', //
       ]);
+    });
+  });
+
+  group("a run's own time limit", () {
+    test('the line keeps it: the words go, the seconds stay', () {
+      final (:command, :limit) = timeLimitOf([
+        'timeout', '300', 'flutter', 'test', 'a_test.dart', //
+      ]);
+      expect(command, ['flutter', 'test', 'a_test.dart']);
+      expect(limit, const Duration(seconds: 300));
+      expect(
+        timeLimitOf(['timeout', '45s', 'x']).limit,
+        const Duration(seconds: 45),
+      );
+      expect(
+        timeLimitOf(['timeout', '5m', 'x']).limit,
+        const Duration(minutes: 5),
+      );
+      expect(
+        timeLimitOf(['timeout', '2h', 'x']).limit,
+        const Duration(hours: 2),
+      );
+    });
+
+    test('any other spelling stays the command it was', () {
+      for (final command in [
+        ['timeout', '-k', '5', '300', 'flutter', 'test'],
+        ['timeout', '1.5m', 'x'],
+        ['timeout', '0', 'x'],
+        ['timeout', '300'],
+        ['flutter', 'test'],
+      ]) {
+        final kept = timeLimitOf(command);
+        expect(kept.command, command);
+        expect(kept.limit, isNull);
+      }
+    });
+
+    test('a run past its limit is cut, and answers as `timeout` did', () async {
+      final exit = Completer<int>();
+      var cuts = 0;
+      final answer = withinLimit(exit.future, Duration.zero, () {
+        cuts++;
+        exit.complete(1);
+      });
+      expect(await answer, kTimedOut);
+      expect(cuts, 1);
+    });
+
+    test('a run inside its limit answers for itself and is not cut', () async {
+      var cuts = 0;
+      final answer = withinLimit(Future.value(3), Duration.zero, () => cuts++);
+      expect(await answer, 3);
+      await pumpEventQueue();
+      expect(cuts, 0);
+    });
+
+    test('⛔every tool that ends a test run ends all that stands under it', () {
+      // `flutter test` runs its testers two and three processes down, and
+      // the test no test may spawn (`tests_do_not_race_the_code_test`) would
+      // be the only other way to see a kill that stops at the shell.
+      for (final tool in [
+        'tool/test_queue.dart',
+        'tool/affected_tests.dart',
+        'tool/mutation_run.dart',
+      ]) {
+        final source = File(tool).readAsStringSync();
+        expect(source, contains('cutTree('), reason: tool);
+        expect(source, isNot(contains('.kill(')), reason: tool);
+      }
     });
   });
 

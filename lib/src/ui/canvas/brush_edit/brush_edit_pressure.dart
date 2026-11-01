@@ -110,6 +110,9 @@ class _BrushEditPressure {
     final recorded = QaPenLedger.forceAt(event.timeStamp);
     if (QaPenLedger.start()) {
       _ledgerAnswers[event.timeStamp] = recorded?.state;
+      if (_openingForces.length < _openingRows) {
+        _openingForces[event.timeStamp] = event.pressure;
+      }
     }
     final repeat = _isUIKitForceEstimate(event);
     if (repeat) {
@@ -198,6 +201,11 @@ class _BrushEditPressure {
     return AppInput.applyPressureCurve(_platformPressure(recorded.value));
   }
 
+  /// Whether the platform has said it will correct the force of the sample
+  /// stamped [at], and has not yet: UIKit's estimate, not one it calls final.
+  bool awaitsCorrection(Duration at) =>
+      QaPenLedger.forceAt(at)?.state == PenLedgerState.estimated;
+
   /// What the pen ledger answered for each of this contact's samples when
   /// it was asked — null for one it held nothing for.
   final Map<Duration, PenLedgerState?> _ledgerAnswers = {};
@@ -208,6 +216,26 @@ class _BrushEditPressure {
   /// so it is painted with the first reading after it, never with its
   /// record ([recordedPressure]). Emptied when a contact begins.
   final Map<Duration, PenLedgerState?> _heldRepeats = {};
+
+  /// The force each of this contact's first samples brought, in the order
+  /// they came ([_noteOpening]). Emptied when a contact begins.
+  final Map<Duration, double> _openingForces = {};
+
+  /// How many samples those rows keep: what the card's row has room for.
+  static const _openingRows = 10;
+
+  /// How the last opening was held: for how long,
+  /// how many samples, and how many of them had a force of their own by then.
+  /// Null before the first.
+  ({Duration waited, int held, int fixed})? _opened;
+
+  /// The opening [held] samples for [waited] and painted [fixed] of them with
+  /// their own recorded force.
+  void noteOpened({
+    required Duration waited,
+    required int held,
+    required int fixed,
+  }) => _opened = (waited: waited, held: held, fixed: fixed);
 
   /// How this contact's samples leaned: how many there were, how many read
   /// a lean, and the lowest and highest altitude among those.
@@ -260,8 +288,55 @@ class _BrushEditPressure {
       'rep=${_heldRepeats.length} '
       'none=${count(PenLedgerState.noPressure) + count(null)}',
     );
+    _noteOpening();
     _ledgerAnswers.clear();
   }
+
+  /// 🔬HOW A CONTACT OPENED, sample by sample: the force each brought, what
+  /// the ledger called it then, and what UIKit has corrected it to by the
+  /// stroke's end — rows the hovers cannot push out, as they do the pointer's
+  /// own (🗣️a-light-press-opens-with-heavy-dabs, 유저 2026-11-01: 「엄청나게
+  /// 약하게 스트로크 시작해도 필압강하게 3개dab정도가 찍힘」 · 「초반부분이
+  /// 마우스줄때문에 날라가서」).
+  void _noteOpening() {
+    String row(String name, String Function(Duration at, double force) cell) {
+      final cells = [
+        for (final MapEntry(key: at, value: force) in _openingForces.entries)
+          cell(at, force),
+      ];
+      return '$name ${cells.join(' ')}';
+    }
+
+    final opened = _opened;
+    if (opened != null) {
+      InputInspector.note(
+        'opened ${opened.waited.inMilliseconds}ms '
+        'held=${opened.held} own=${opened.fixed}',
+      );
+    }
+    InputInspector.note(row('force', (_, force) => _shortForce(force)));
+    InputInspector.note(row('state', (at, _) => _letterOf(_ledgerAnswers[at])));
+    InputInspector.note(
+      row('fixed', (at, _) {
+        final now = QaPenLedger.forceAt(at);
+        final corrected =
+            now?.state == PenLedgerState.measured &&
+            _ledgerAnswers[at] != PenLedgerState.measured;
+        return corrected ? _shortForce(now!.value) : '-';
+      }),
+    );
+  }
+
+  static String _shortForce(double force) =>
+      force.toStringAsFixed(2).replaceFirst('0.', '.');
+
+  static String _letterOf(PenLedgerState? state) => switch (state) {
+    PenLedgerState.measured => 'm',
+    PenLedgerState.estimated => 'e',
+    PenLedgerState.estimatedFinal => 'f',
+    PenLedgerState.noPressure => 'n',
+    null => '-',
+  };
 
   /// 🚨UIKIT'S STAND-IN FORCE. Apple Pencil's force travels over Bluetooth
   /// and lands after the touch does, so UIKit reports an ESTIMATE for the
@@ -313,6 +388,7 @@ class _BrushEditPressure {
       _pressedForce = event.pressure;
       _sidecarTouched = false;
       _heldRepeats.clear();
+      _openingForces.clear();
     }
     final pressure = pressureOf(event);
     if (pressure.read || opening) {

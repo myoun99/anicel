@@ -70,7 +70,7 @@ class _BrushEditFill {
       surface: surface,
       dabs: dabs,
       blendMode: blend,
-      selection: _state.widget.selectionRegion,
+      selection: _state.widget.selectionNow?.call(),
       layerId: _state.widget.layerId,
       frameId: _state.widget.frameId,
     );

@@ -659,21 +659,6 @@ class _CutStampSettings extends StatelessWidget {
             // I-33 moved it to the panel's one slot, where it is pinned
             // instead of scrolling away with the knobs.
             //
-            // Flip is a flag applied at stamp time, never baked into the
-            // held bytes: baking would destroy the original, and flipping
-            // is a byte re-order that keeps the 1:1 contract intact.
-            SettingsSwitchRow(
-              tileKey: const ValueKey<String>('cut-flip-horizontal-switch'),
-              label: AppText.strings.toolCutFlipHorizontal,
-              value: piece.flipHorizontal,
-              onChanged: (value) => holder.updatePose(flipHorizontal: value),
-            ),
-            SettingsSwitchRow(
-              tileKey: const ValueKey<String>('cut-flip-vertical-switch'),
-              label: AppText.strings.toolCutFlipVertical,
-              value: piece.flipVertical,
-              onChanged: (value) => holder.updatePose(flipVertical: value),
-            ),
             // Percent, not pixels: with pixels "original" is 300 for one
             // piece and 40 for the next, so the number would have to be
             // remembered. And NOT the top strip's brush size — sharing it
@@ -691,6 +676,28 @@ class _CutStampSettings extends StatelessWidget {
                 unit: '%',
                 onChanged: (value) =>
                     holder.updatePose(scalePercent: value.round()),
+              ),
+            ),
+            // Under the size, as the transform's stand under its angle.
+            //
+            // Flip is a flag applied at stamp time, never baked into the
+            // held bytes: baking would destroy the original, and flipping
+            // is a byte re-order that keeps the 1:1 contract intact.
+            ToolSettingRow.pair(
+              label: '',
+              first: ToolSettingAction.flip(
+                keyValue: 'cut-flip-horizontal-button',
+                horizontal: true,
+                isSelected: piece.flipHorizontal,
+                onPressed: () =>
+                    holder.updatePose(flipHorizontal: !piece.flipHorizontal),
+              ),
+              second: ToolSettingAction.flip(
+                keyValue: 'cut-flip-vertical-button',
+                horizontal: false,
+                isSelected: piece.flipVertical,
+                onPressed: () =>
+                    holder.updatePose(flipVertical: !piece.flipVertical),
               ),
             ),
             // ↩️The paste stood under the name of the piece, and the reset
@@ -1280,17 +1287,15 @@ class _MoveSettingsState extends State<_MoveSettings> {
           // own glyphs, half the control column each (유저 2026-10-10).
           ToolSettingRow.pair(
             label: '',
-            first: ToolSettingAction.glyph(
+            first: ToolSettingAction.flip(
               keyValue: 'move-flip-horizontal-button',
-              label: strings.trFlipHorizontal,
-              glyph: const Icon(Icons.flip),
+              horizontal: true,
               shortcuts: const [EditorActionIds.transformFlipHorizontal],
               onPressed: flipHorizontal,
             ),
-            second: ToolSettingAction.glyph(
+            second: ToolSettingAction.flip(
               keyValue: 'move-flip-vertical-button',
-              label: strings.trFlipVertical,
-              glyph: const RotatedBox(quarterTurns: 1, child: Icon(Icons.flip)),
+              horizontal: false,
               shortcuts: const [EditorActionIds.transformFlipVertical],
               onPressed: flipVertical,
             ),

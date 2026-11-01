@@ -649,7 +649,10 @@ class _StoryboardRailRows {
   /// 🚨ONE LIST for the three places that lay these rows out — the row
   /// table, the rail's labels and the strips — as [_shownSeSlots] is.
   List<int> _shownConteSeats(Track track) {
-    final folders = <Cut, LayerFolderIndex>{};
+    // 🚨I-22: by identity. A cut's hash walks every layer it holds, and this
+    // asks it once a seat, several times a build: 213ms of the 2,475ms
+    // sixteen presses on the film's ruler took (S5 cut 352, debug).
+    final folders = Map<Cut, LayerFolderIndex>.identity();
     return [
       for (final seat in conteSeatsOf(track.cuts))
         if (_conteSeatShown(track, seat, folders)) seat,
@@ -1966,14 +1969,14 @@ class _StoryboardRailRows {
   /// label's own edges — under an S row, a conte row and an fx header while
   /// their lanes followed, and at the V row inside a group whose drop lands
   /// past the rows above and below it.
-  ({double lead, double trail}) Function() linesBeyondFrom(
+  RowLinesBeyond? Function() linesBeyondFrom(
     TimelineRowAddress anchor,
   ) => () {
     final table = _pointerTable();
     final rows = table.rows;
     final at = rows.indexWhere((row) => row.standing == anchor);
     if (at < 0) {
-      return (lead: 0.0, trail: 0.0);
+      return null;
     }
     final head = rows[at].held;
     final track = rows[at].track;
@@ -2118,6 +2121,7 @@ class _StoryboardRailRows {
       onTapClear: host.onTapClear,
       onCreateKeys: host.onCreateKeys,
       onMoveBegin: host.onMoveBegin,
+      moveLands: host.moveLands,
       onMoveUpdate: host.onMoveUpdate,
       onMoveEnd: host.onMoveEnd,
       onMoveCancel: host.onMoveCancel,

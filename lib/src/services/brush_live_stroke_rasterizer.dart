@@ -19,7 +19,7 @@ import '../native/qa_native_engine.dart';
 import 'brush_blur_picture.dart';
 import 'brush_dab_dirty_region.dart';
 import 'brush_dab_kernel.dart';
-import 'canvas_selection_region.dart';
+import 'selection_clip.dart';
 import 'brush_stroke_blend.dart'
     show
         bitmapSurfaceRegionPixels,
@@ -269,7 +269,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   /// alpha), so the pre-blended result equals the base wherever the
   /// selection excludes it — which is what lets the overlay keep
   /// replacing whole coordinates instead of falling back to a clip.
-  CanvasSelectionRegion? selectionRegion;
+  SelectionClip? selectionClip;
 
   /// 🚨★F-12 — the stroke's opacity CEILING, in the same channel and by the
   /// same route as the selection above, because it is the same kind of
@@ -296,7 +296,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   double strokeOpacity = 1;
 
   /// I-75: the cel a BLUR stroke rewrites ([BrushBlurPicture]) — set by
-  /// [blurOver] before the first dab, as [selectionRegion] is; null for a
+  /// [blurOver] before the first dab, as [selectionClip] is; null for a
   /// stroke that paints.
   ///
   /// A blur stroke keeps no stroke tiles: its result at a coordinate is the
@@ -776,8 +776,8 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   /// tool is active and the ceiling is fixed at pen-down, so one build per
   /// tile lasts the stroke.
   _MaskTile? _maskTileFor(int key, TileCoord coord) {
-    final region = selectionRegion;
-    if (region == null) {
+    final clip = selectionClip;
+    if (clip == null) {
       if (strokeOpacityCoverage(strokeOpacity) >= 255) {
         return null;
       }
@@ -793,7 +793,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       return cached.allInside ? null : cached;
     }
     final bytes = strokeCoverageMask(
-      selection: region.maskFor(
+      selection: clip.maskFor(
         left: coord.x * tileSize,
         top: coord.y * tileSize,
         width: tileSize,
@@ -1164,7 +1164,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     // exactly what they hold without it. That is what keeps one stroke
     // over a sheet's windows (each hearing it, each confined to its own
     // slice) at the cost of one stroke rather than one per window.
-    final selection = selectionRegion;
+    final selection = selectionClip;
     final reach = selection == null ? null : dirtyRegionForBrushDab(dab);
     if (selection != null && (reach == null || !selection.mayCover(reach))) {
       return null;

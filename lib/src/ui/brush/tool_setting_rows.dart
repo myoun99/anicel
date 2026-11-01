@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart' show ControlPressClaim;
 import '../shortcuts/editor_shortcut_scope.dart' show ShortcutTooltip;
+import '../text/app_strings.dart' show AppText;
 import '../theme/app_theme.dart' show AppColors, AppCursors;
 import '../theme/disabled_ink.dart';
 import '../theme/text_on_ground.dart';
@@ -347,10 +348,10 @@ class ToolSettingAction extends StatefulWidget {
     required this.onPressed,
     this.shortcuts = const [],
     this.decides = false,
-  }) : glyph = null;
+  }) : glyph = null,
+       isSelected = false;
 
-  /// The same button showing a [glyph] — the transform's two flips — its
-  /// [label] the tooltip.
+  /// The same button showing a [glyph], its [label] the tooltip.
   const ToolSettingAction.glyph({
     super.key,
     required this.keyValue,
@@ -358,13 +359,39 @@ class ToolSettingAction extends StatefulWidget {
     required Widget this.glyph,
     required this.onPressed,
     this.shortcuts = const [],
-  }) : decides = false;
+  }) : decides = false,
+       isSelected = false;
+
+  /// The flip, in the view pill's own glyphs: the one button every panel
+  /// flips by, [horizontal] or up and down, [isSelected] where the flip stays
+  /// on what the panel poses.
+  ///
+  /// 🗣️F-527 (유저 2026-11-01): 「잘라내기도구 스탬프의 좌우반전, 변형도구의
+  /// 좌우반전같은거 버튼재사용. 그러고 스탬프는 원본이 아니란 상태를
+  /// 보여줄필요가있으니 적용중이면 강조색」. ↩️The stamp's two were switches.
+  ToolSettingAction.flip({
+    super.key,
+    required this.keyValue,
+    required bool horizontal,
+    required this.onPressed,
+    this.shortcuts = const [],
+    this.isSelected = false,
+  }) : label = horizontal
+           ? AppText.strings.trFlipHorizontal
+           : AppText.strings.trFlipVertical,
+       glyph = horizontal
+           ? const Icon(Icons.flip)
+           : const RotatedBox(quarterTurns: 1, child: Icon(Icons.flip)),
+       decides = false;
 
   final String keyValue;
   final String label;
   final Widget? glyph;
   final VoidCallback? onPressed;
   final bool decides;
+
+  /// Whether what it switches is on — shown by the accent alone.
+  final bool isSelected;
 
   /// The actions it is the button of (I-40) — its panel binds them to the
   /// same press (`PanelKeysBinding`), and their live keys join its tooltip
@@ -382,7 +409,9 @@ class _ToolSettingActionState extends State<ToolSettingAction> {
   @override
   Widget build(BuildContext context) {
     final live = widget.onPressed != null;
-    final ground = widget.decides ? AppColors.accent : AppColors.surface;
+    final ground = widget.decides || widget.isSelected
+        ? AppColors.accent
+        : AppColors.surface;
     final hovered = live && _hovering;
     final shown = hovered ? Color.lerp(ground, Colors.white, 0.08)! : ground;
     final frame = FieldSlider.frameOf(

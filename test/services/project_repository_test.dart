@@ -1023,10 +1023,10 @@ void main() {
       // in the entry was dropped.
       expect(updatedLayer.timeline.keys, layer.timeline.keys);
       expect(updatedLayer.timeline[0]!.frameId, layer.timeline[0]!.frameId);
-      expect(
-        updatedLayer.timeline[0]!.breakdownOffsets,
-        layer.timeline[0]!.breakdownOffsets,
-      );
+      // 🗣️F-519: stretched at its end, the dot keeps to that end.
+      expect(updatedLayer.timeline[0]!.breakdownOffsets, [
+        updatedCut.duration - 3,
+      ]);
       expect(updatedLayer.timeline[0]!.length, updatedCut.duration);
       expect(updatedLayer.isVisible, isFalse);
       expect(updatedLayer.opacity, 0.25);

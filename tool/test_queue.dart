@@ -50,6 +50,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'flutter_room.dart';
+import 'process_tree.dart';
 import 'test_seconds.dart';
 
 /// The suites every run in the line holds between them, when the line names
@@ -423,6 +424,50 @@ int? _flutterTestAt(List<String> command) {
     if (command[i] == 'flutter' && command[i + 1] == 'test') return i;
   }
   return null;
+}
+
+/// `timeout`'s own answer for a run it cut, which the runs that read it
+/// (a mutant's 「it hung」) go on reading.
+const kTimedOut = 124;
+
+final _plainTimeLimit = RegExp(r'^([1-9]\d*)([smh]?)$');
+
+/// [command] and its own time limit: `timeout 300 flutter test …` is the
+/// `flutter test …` with 300 seconds, kept by [withinLimit].
+///
+/// 🚨NOT BY `timeout` ITSELF (card test-queue-timeout-leaves-testers): on
+/// Windows it asks the flutter tool to stop, waits ten seconds and ends it,
+/// and the tool goes on starting testers meanwhile — each `flutter test
+/// test/ui` it cut left three to six of them with no parent, 29 and 8GB in
+/// a morning, which the line cannot see and `flutter_room` pays for. Any
+/// other spelling (`-k`, `1.5m`, `0` for no limit) stays the command it was.
+({List<String> command, Duration? limit}) timeLimitOf(List<String> command) {
+  final plain = command.length > 2 && command.first == 'timeout'
+      ? _plainTimeLimit.firstMatch(command[1])
+      : null;
+  if (plain == null) return (command: command, limit: null);
+  final seconds = const {'': 1, 's': 1, 'm': 60, 'h': 3600}[plain[2]]!;
+  return (
+    command: command.sublist(2),
+    limit: Duration(seconds: int.parse(plain[1]!) * seconds),
+  );
+}
+
+/// What the run answers with [exit], or [kTimedOut] once [limit] has passed
+/// and [cut] has ended it.
+Future<int> withinLimit(
+  Future<int> exit,
+  Duration limit,
+  void Function() cut,
+) async {
+  var timedOut = false;
+  final clock = Timer(limit, () {
+    timedOut = true;
+    cut();
+  });
+  final code = await exit;
+  clock.cancel();
+  return timedOut ? kTimedOut : code;
 }
 
 /// The tickets in [line] whose runs are alive, by name — [mine] among them
@@ -1023,14 +1068,18 @@ Future<void> main(List<String> args) async {
     files: filesAsked(args),
     work: workAsked(args, timesOnThisMachine()),
     (suites) async {
-      final command = placed(args, suites);
+      final (:command, :limit) = timeLimitOf(placed(args, suites));
       final started = await Process.start(
         command.first,
         command.skip(1).toList(),
         mode: ProcessStartMode.inheritStdio,
         runInShell: Platform.isWindows,
       );
-      return started.exitCode;
+      if (limit == null) return started.exitCode;
+      return withinLimit(started.exitCode, limit, () {
+        stderr.writeln('test_queue: ${limit.inSeconds}s are up, cutting it');
+        cutTree(started.pid);
+      });
     },
   );
 }

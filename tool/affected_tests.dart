@@ -57,6 +57,7 @@ import 'bash_executable.dart';
 import 'import_graph.dart';
 import 'master_check.dart';
 import 'native_engine_provenance.dart';
+import 'process_tree.dart';
 import 'test_queue.dart';
 import 'test_results.dart';
 import 'test_seconds.dart';
@@ -1454,19 +1455,6 @@ List<String> stillRunning(String report) {
   ];
 }
 
-/// Ends the process [pid] and every process under it: `flutter test` runs
-/// its testers two and three processes down, and ending the shell alone
-/// leaves them holding the machine. ⚠️Off Windows only the shell's own
-/// children go with it.
-void _cutTree(int pid) {
-  if (Platform.isWindows) {
-    Process.runSync('taskkill', ['/PID', '$pid', '/T', '/F']);
-  } else {
-    Process.runSync('pkill', ['-KILL', '-P', '$pid']);
-    Process.killPid(pid, ProcessSignal.sigkill);
-  }
-}
-
 /// `flutter test` writes its counter and its verdict in English whatever
 /// the machine's locale is, because they come from Dart. Anything cmd.exe
 /// says does not — which is why this looks for the shape of a test result
@@ -1502,7 +1490,7 @@ Future<_BatchResult> _flutterTest(
   final look = Timer.periodic(kLookForSilence, (_) {
     if (cut || !silence.isPast(kSilentBatch, DateTime.now())) return;
     cut = true;
-    _cutTree(process.pid);
+    cutTree(process.pid);
   });
   final pumped = <Future<void>>[
     process.stdout.map((chunk) {

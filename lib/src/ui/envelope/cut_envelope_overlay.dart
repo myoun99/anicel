@@ -69,6 +69,7 @@ class CutEnvelopeInkOverlay extends StatelessWidget {
       brushToolState: brushToolState,
       strokeActive: strokeActive,
       history: historyManager.gestures,
+      inkChanges: controller,
       // ⛔One plane, so the window's plane stays null and this controller
       // never asks. That is the whole shape of the envelope's difference.
       sessionStateFor: (window) => controller.sessionStateFor(null, window.key),

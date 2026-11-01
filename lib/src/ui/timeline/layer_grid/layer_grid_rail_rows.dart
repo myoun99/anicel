@@ -61,7 +61,9 @@ class _LayerGridRailRows {
   /// A row as the shared swipe wants it. The identity is what the sweep
   /// dedupes by, and a lane row and its owner share a layer — so it is
   /// BOTH.
-  RailSwipeRow<TimelineDisplayRow> _railSwipeRow(TimelineDisplayRow row) => (
+  ({TimelineDisplayRow row, Object id}) _railSwipeRow(
+    TimelineDisplayRow row,
+  ) => (
     row: row,
     id: '${row.layer.id.value}/${row.lane?.laneId ?? ''}',
   );
@@ -95,7 +97,11 @@ class _LayerGridRailRows {
     return _state._railRowMemo.keep(
       berths,
       row,
-      (facts: facts, drag: _state._rowDrags.inputsFor(row)),
+      (
+        active: row.layer.id == grid.hooks.activeLayerId,
+        facts: facts,
+        drag: _state._rowDrags.inputsFor(row),
+      ),
       () => layerControlsRowFrom(facts, row, grid, fold),
     );
   }
@@ -236,7 +242,12 @@ class _LayerGridRailRows {
             rowsIn: (fromY, toY) => _railRowsIn(fromY, toY, rows, window.now),
             child: Stack(
               children: [
-                window.laid((window) => _windowedRailRows(rows, window)),
+                RailRowLines(
+                  drag: _state.widget.hooks.rowDragHooks?.drag,
+                  child: window.laid(
+                    (window) => _windowedRailRows(rows, window),
+                  ),
+                ),
                 // The section ZONES over the
                 // rows' reserved band slots
                 // (UI-R7 #2): the old gutter

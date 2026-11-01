@@ -154,9 +154,9 @@ double paintVerticalText(
 /// table's rotation, lean and condensation.
 ///
 /// Split out of [paintVerticalText] for hosts that place their own cells:
-/// the SE dialogue spreads its glyphs evenly over the frames a block covers
-/// (`dialogueGlyphCenters`) rather than stacking them at a fixed leading,
-/// so it cannot go through the column renderer — but it must still ROTATE
+/// the SE dialogue stands its glyphs on the frames of a block
+/// (`dialogueGlyphSlots`) rather than stacking them at a fixed leading, so
+/// it cannot go through the column renderer — but it must still ROTATE
 /// what the table rotates. Both the screen overlay and the printed sheet
 /// were placing dialogue glyphs upright, which left `ー` a horizontal bar
 /// in the one place a vertical column makes it most obvious.

@@ -9,6 +9,7 @@ import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
+import 'package:anicel/src/services/selection_clip.dart';
 
 BrushDab _dab({required double x, required double y, double size = 10}) {
   return BrushDab(
@@ -40,7 +41,7 @@ void main() {
           width: 1024,
           height: 1024,
         ).pasteboardAt(PasteboardReach.whole),
-      )..selectionRegion = box(0, 0, 100, 100);
+      )..selectionClip = SelectionClip.outline(box(0, 0, 100, 100));
       rasterizer.blendFrom([
         _dab(x: 600.5, y: 600.5),
         _dab(x: 700.5, y: 600.5),
@@ -56,7 +57,7 @@ void main() {
           width: 512,
           height: 512,
         ).pasteboardAt(PasteboardReach.whole),
-      )..selectionRegion = box(100, 100, 200, 200);
+      )..selectionClip = SelectionClip.outline(box(100, 100, 200, 200));
       rasterizer.blendFrom([_dab(x: 96.5, y: 150.5, size: 12)], from: 0);
       final row = Uint8List(512 * 4);
       rasterizer.copyRow(0, 150, 512, row, 0);

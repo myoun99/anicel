@@ -35,11 +35,13 @@ typedef BrushBarReadouts = ({
 });
 
 /// How a bar stands where it is laid: the place's [BrushValuesLayout], its
-/// thickness there, and its readout where its number stands above it.
+/// thickness there, its readout where its number stands above it, and how
+/// far its ± run where that is past its thickness ([FieldSlider.stepsRun]).
 typedef _BarStand = ({
   BrushValuesLayout layout,
   double thickness,
   FieldSliderReadout? readout,
+  double? stepsRun,
 });
 
 /// What the bars show of the state ([BrushValueBars.build]).
@@ -143,8 +145,8 @@ class BrushValueBars extends StatelessWidget {
       gap +
       SettingSourceButton.slotWidth;
 
-  /// A stood bar's thickness at 1× — the pill's, and every other part of
-  /// the pill is as wide.
+  /// A stood bar's thickness at 1× — the pill's, and every part of it but
+  /// the ± under the bars is as wide.
   ///
   /// 🗣️유저 2026-10-18 (I-34): 「크기나 압력이나 다른 버튼이나 알약에
   /// 맞출수있어? 슬라이더는 특히 표준 버튼정도가 슬림하고 적당한거같은데」 —
@@ -182,6 +184,7 @@ class BrushValueBars extends StatelessWidget {
     // 🗣️I-34 (유저 2026-10-18): 「숫자만으로 하자」 — the pill's bars.
     nameInside: !stand.layout.stood,
     readout: stand.readout,
+    stepsRun: stand.stepsRun,
     onChanged: onChanged,
   );
 
@@ -200,13 +203,19 @@ class BrushValueBars extends StatelessWidget {
     axis: stand.layout.axis,
     nameInside: !stand.layout.stood,
     readout: stand.readout,
+    stepsRun: stand.stepsRun,
     onChanged: onChanged,
   );
 
   /// The two bars as [layout] writes them, at the ends of their ranges —
   /// what the measures below read, and the hold ([heldSize]).
   static BrushBars _measured(BrushValuesLayout layout, double thickness) {
-    final stand = (layout: layout, thickness: thickness, readout: null);
+    final stand = (
+      layout: layout,
+      thickness: thickness,
+      readout: null,
+      stepsRun: null,
+    );
     return (
       size: _sizeBar(stand, value: BrushToolState.maxSize, onChanged: null),
       opacity: _opacityBar(stand, value: 1, onChanged: null),
@@ -285,9 +294,15 @@ class BrushValueBars extends StatelessWidget {
   /// field outside the slice may have moved since it was built.
   BrushBars _barsFor(BuildContext context, BrushToolState state) {
     final thickness = layout.stood ? stoodThicknessIn(context) : barHeight;
+    final stepsRun = layout.stood ? BrushValuesPill.stepsRunIn(context) : null;
     return (
       size: _sizeBar(
-        (layout: layout, thickness: thickness, readout: readouts?.size),
+        (
+          layout: layout,
+          thickness: thickness,
+          readout: readouts?.size,
+          stepsRun: stepsRun,
+        ),
         // The ACTIVE tool's size, as the bar beside it is the active
         // tool's opacity: the shape tool's plain line keeps its own.
         value: BrushToolState.clampSize(state.activeSize),
@@ -297,7 +312,12 @@ class BrushValueBars extends StatelessWidget {
             : null,
       ),
       opacity: _opacityBar(
-        (layout: layout, thickness: thickness, readout: readouts?.opacity),
+        (
+          layout: layout,
+          thickness: thickness,
+          readout: readouts?.opacity,
+          stepsRun: stepsRun,
+        ),
         // TP1: the ACTIVE tool's opacity — the fill and the stamp keep
         // their own, so this bar stops being the brush's alone (유저: 툴마다
         // 기억하게해서 필 툴도 불투명도 설정하면 그걸로 채워지게).
@@ -375,7 +395,7 @@ class BrushValueBars extends StatelessWidget {
         Widget placed(double length, FieldSlider bar) => sizedAlong(
           layout.axis,
           along: length,
-          across: bar.height,
+          across: bar.reachAcross,
           child: bar,
         );
         final bars = _barsFor(context, state);
@@ -588,6 +608,14 @@ class BrushValuesPill extends StatefulWidget {
     BrushValueBars.stoodThicknessIn(context) + CanvasCapsule.barPillEnd * 2,
     BrushValueBars.readoutSizesIn(context).width + _ringRoom * 2,
   );
+
+  /// How far its bars' ± run: all of it, inside the ring's pixel.
+  ///
+  /// 🗣️F-528 (유저 2026-11-01): 「브러시 사이즈쪽 알약의 한걸음
+  /// 올리기,내리기 버튼들. 너무 작으니 좌우 길이 알약 다 차지하도록 크기
+  /// 키우기」. ↩️They ran the bar's 20, each cell 10 across.
+  static double stepsRunIn(BuildContext context) =>
+      widthIn(context) - _ringRoom * 2;
 
   /// The ring's pixel inside the capsule's edge ([CanvasCapsule]), which a
   /// readout as wide as the pill keeps clear of.

@@ -8,7 +8,8 @@ import 'dart:math' as math;
 
 import 'editor_session_manager.dart';
 import 'playback/canvas_playback_controller.dart';
-import 'timeline/timeline_ruler_cursor_overlay.dart' show ReadyRun;
+import 'timeline/timeline_ruler_cursor_overlay.dart'
+    show ReadyRun, appendReadyRun;
 import '../models/cut_id.dart';
 import '../models/storyboard_timeline_layout.dart';
 
@@ -109,7 +110,7 @@ List<ReadyRun> storyboardReadyRuns(
     final to = edges[stretch + 1];
     final owner = owners[stretch];
     if (owner == null) {
-      _append(runs, (
+      appendReadyRun(runs, (
         startIndex: from,
         endIndexExclusive: to,
         unreadable: false,
@@ -131,7 +132,7 @@ List<ReadyRun> storyboardReadyRuns(
                     shown.cut.id == owner.cutId && shown.isBottomTrack,
               ),
         )) {
-      _append(runs, (
+      appendReadyRun(runs, (
         startIndex: run.startIndex + onTrack,
         endIndexExclusive: run.endIndexExclusive + onTrack,
         unreadable: run.unreadable,
@@ -139,27 +140,6 @@ List<ReadyRun> storyboardReadyRuns(
     }
   }
   return runs;
-}
-
-/// [run] at the end of [runs] — joined onto the last one where it starts as
-/// that one ends and is as readable.
-///
-/// ⛔Not shared with the cut's own bar, which joins its spans the same way
-/// (`PlaybackCacheBudget.playbackReadyRunsForCut`): the SECOND, and the
-/// rule of three holds.
-void _append(List<ReadyRun> runs, ReadyRun run) {
-  final last = runs.isEmpty ? null : runs.last;
-  if (last != null &&
-      last.endIndexExclusive == run.startIndex &&
-      last.unreadable == run.unreadable) {
-    runs.last = (
-      startIndex: last.startIndex,
-      endIndexExclusive: run.endIndexExclusive,
-      unreadable: run.unreadable,
-    );
-  } else {
-    runs.add(run);
-  }
 }
 
 /// Each stretch between two [edges] with the FIRST of [entries] covering

@@ -942,7 +942,7 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     }
     inHand.moving = true;
     inHand.lifted = _lift.keysOf(inHand);
-    inHand.carry = _lift.carryOf(inHand, _painter);
+    inHand.carry = _lift.carryOf(inHand, _painter, lanes.moveLands);
     lanes.onGripTaken?.call(inHand.row);
   }
 
@@ -953,6 +953,10 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
   /// snap on — or off, with Ctrl held — snapped ([LaneGraphCarry]). Both
   /// keys are read at every move, as the canvas reads its modifier: held
   /// before the press and pressed during the drag are one question.
+  ///
+  /// 🗣️graph-key-drag-snaps (검증/서피스 10-31): where the hand's frame
+  /// lands nowhere, the key's time stays on the last that did and its
+  /// height goes on with the hand — the blocked step would hold both.
   void _carryTo(_KeyInHand inHand, DragUpdateDetails details) {
     if (!inHand.moving) {
       return;
@@ -966,7 +970,8 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
       globalPosition: details.globalPosition,
       axis: widget.frameAxis.axis,
     );
-    final (:frames, :rise, :snap) = inHand.carry!.carriedBy(
+    final carry = inHand.carry!;
+    final (:frames, :rise, :snap) = carry.carriedBy(
       details.localPosition - inHand.press,
       oneWay: ModifierKeys.isShiftPressed,
       snapping: widget.snap != ModifierKeys.isControlOrCommandPressed,
@@ -974,12 +979,13 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     if (snap != inHand.snap) {
       setState(() => inHand.snap = snap);
     }
-    if (frames == inHand.frames && rise == inHand.rise) {
+    final landed = carry.lands(frames) ? frames : inHand.frames;
+    if (landed == inHand.frames && rise == inHand.rise) {
       return;
     }
-    inHand.frames = frames;
+    inHand.frames = landed;
     inHand.rise = rise;
-    widget.lanes!.onMoveUpdate(frames, values: _valuesRaised(inHand));
+    widget.lanes!.onMoveUpdate(landed, values: _valuesRaised(inHand));
   }
 
   /// The keys the box holds STRETCHED as far as its handle in hand has
@@ -1368,6 +1374,7 @@ class _LaneGraphLift {
   LaneGraphCarry carryOf(
     _KeyInHand inHand,
     TimelineLaneGraphPainter painter,
+    bool Function(int frames) lands,
   ) {
     final frameAxis = picture.frameAxis;
     LaneGraphSnapKey snappedBy(LaneGraphKey key) => (
@@ -1385,6 +1392,7 @@ class _LaneGraphLift {
       ],
       playhead: frameAxis.playhead,
       frameCount: frameAxis.frameCount,
+      lands: lands,
     );
   }
 

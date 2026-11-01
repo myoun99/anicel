@@ -849,6 +849,12 @@ class SelectionMaskOptions {
   /// Extra bounding-box padding the post-passes may write into.
   int get bboxPad =>
       (growPx > 0 ? growPx : 0) + featherPx.ceil() + (antiAlias ? 1 : 0);
+
+  /// How far from a pixel the post-passes read to decide it. ⚠️Not
+  /// [bboxPad]: a shrink writes nothing past the outline, and it reads as
+  /// far as a grow does.
+  int get neighbourReach =>
+      growPx.abs() + featherPx.ceil() + (antiAlias ? 1 : 0);
 }
 
 /// Inward feather: 3-4 chamfer distance from the OUTSIDE, alpha ramps
@@ -1034,8 +1040,9 @@ void _antiAliasMask(Uint8List mask, int width, int height) {
 ///
 /// Shared with the PIXEL verbs (색 변환 / 픽셀 비우기) so a selection means
 /// the same pixels whichever verb reads it. ⚠️Callers that rasterize the
-/// mask in pieces must pad each piece by [SelectionMaskOptions.bboxPad] and
-/// keep only the middle: the post-passes read neighbours, so a piece
+/// mask in pieces must pad each piece by
+/// [SelectionMaskOptions.neighbourReach] and keep only the middle, as
+/// `SelectionClip` does: the post-passes read neighbours, so a piece
 /// rasterized without padding softens against its own edge and leaves a
 /// seam where the pieces meet.
 Uint8List buildSelectionMask({

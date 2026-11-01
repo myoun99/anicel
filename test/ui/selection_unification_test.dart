@@ -14,6 +14,7 @@ import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/history_manager.dart';
+import 'package:anicel/src/services/selection_clip.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart'
     show LayerPoseSample;
 import 'package:anicel/src/models/transform_track.dart' show TransformPose;
@@ -708,13 +709,14 @@ void main() {
     await gesture.moveTo(origin + const Offset(35, 50));
     await tester.pump();
 
+    SelectionClip? cutBy() => tester
+        .widget<InteractiveBrushEditCanvasView>(
+          find.byType(InteractiveBrushEditCanvasView),
+        )
+        .selectionNow!();
     expect(
-      tester
-          .widget<InteractiveBrushEditCanvasView>(
-            find.byType(InteractiveBrushEditCanvasView),
-          )
-          .selectionRegion,
-      region,
+      cutBy()!.maskFor(left: 0, top: 0, width: 120, height: 120),
+      region.maskFor(left: 0, top: 0, width: 120, height: 120),
       reason: 'the stroke rasterizer masks with this region',
     );
 
@@ -726,14 +728,7 @@ void main() {
     // pipeline the R27 #4 parity suites pin.
     env.commands.setRegion(null);
     await tester.pump();
-    expect(
-      tester
-          .widget<InteractiveBrushEditCanvasView>(
-            find.byType(InteractiveBrushEditCanvasView),
-          )
-          .selectionRegion,
-      isNull,
-    );
+    expect(cutBy(), isNull);
   });
 
   testWidgets('the lift honours the composite region: a subtracted hole '

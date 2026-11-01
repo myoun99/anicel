@@ -748,7 +748,15 @@ class CelTextTool extends ChangeNotifier {
   /// cannot wait a frame: a step of history about to be taken, a panel
   /// going away. A want still being set is given up; what the person saw
   /// is what lands.
+  ///
+  /// ⛔With nothing in hand there is nothing to show either: every door out
+  /// of where you stand comes through here ([HistoryPlaces.leave]), and a
+  /// press on the row you stand on built the canvas panel again for it
+  /// (I-22-rest, 10-31 — 🔬68 builds at S5_BA's cut 352).
   void landNow() {
+    if (!holdsAnything) {
+      return;
+    }
     _wayOut.landAll();
     _changed();
   }

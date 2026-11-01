@@ -161,6 +161,19 @@ class LaneRangeMoveDrag {
     );
   }
 
+  /// Whether a move of the span's keys [frameDelta] frames on lands —
+  /// false where [update] would hold: on a key, or where the home refuses
+  /// it. Values move no key, so the keys' [LaneKeyValues] do not enter it.
+  bool lands(int frameDelta) {
+    final moved = laneSpanKeysMovedOn(
+      _subject,
+      laneIds: _laneIds,
+      span: _selectionBefore,
+      to: (_, frame) => frame + frameDelta,
+    );
+    return moved != null && (moved.isEmpty || _subject.preview(moved) != null);
+  }
+
   /// Moves every spanned lane's ranged keys [frameDelta] frames on — after
   /// [stretch], where a graph's box stretches them (I-3 ⑥), and each where
   /// its [landings] say, where one corner of the box goes alone

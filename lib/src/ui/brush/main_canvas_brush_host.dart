@@ -32,7 +32,6 @@ import '../../services/piece_landing.dart';
 import '../canvas/active_stroke_overlay.dart';
 import '../../services/layer_pose_paint.dart';
 import 'brush_canvas_panel.dart';
-import 'canvas_floor_insets.dart';
 import 'brush_editor_selection.dart';
 import 'canvas_selection_commands.dart';
 import 'cel_text_commands.dart';
@@ -534,16 +533,6 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
   ) {
     return BrushCanvasPanel(
       key: const ValueKey<String>('main-canvas-brush-host'),
-      // Zero unless this host is lying on the app's floor — which is a
-      // question about WHERE it is mounted, so the tree answers it. A host
-      // opened in a rail column or the bottom panel is simply not under the
-      // provider, and nothing lies on it.
-      floorCover: CanvasFloorInsets.maybeOf(context)?.insets ?? EdgeInsets.zero,
-      floorLeftRailBand: CanvasFloorInsets.maybeOf(context)?.leftRailBand,
-      floorRightRailBand: CanvasFloorInsets.maybeOf(context)?.rightRailBand,
-      // ⑩: what a control on the bottom edge has to clear.
-      floorBottomOverlaySpan:
-          CanvasFloorInsets.maybeOf(context)?.bottomOverlaySpan ?? 0,
       coordinator: coordinator,
       celEditable: hasCelUnderPlayhead,
       // H19: the row question, carried separately — the pixel verbs still

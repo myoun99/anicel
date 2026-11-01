@@ -11,7 +11,7 @@ import 'timeline_beat_lines.dart';
 /// canvas's pan and the rows' eyes, in that order. The rail grid and the
 /// x-sheet each spelled
 /// the first three (the audit's clone scan, 2026-09-06); the storyboard
-/// publishes the law alone because it has no glide to stop.
+/// publishes the law and the clamp alone because it has no glide to stop.
 ///
 /// PEN-9: a stylus approach stops a coasting fling — mid-glide the
 /// viewports ignore-pointer their children, so without the stop a pen

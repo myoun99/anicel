@@ -623,7 +623,7 @@ class LayerRowDragTarget extends StatefulWidget {
   /// are the row's, and no gap is drawn inside them. Asked as a line is
   /// drawn, so a twirl since this row was kept is in it. Null draws both
   /// at the row's own edges.
-  final ({double lead, double trail}) Function()? linesBeyond;
+  final RowLinesBeyond? Function()? linesBeyond;
 
   /// A5 (2026-08-17): the press landed here and its recognizer lives in
   /// this row's State — a host that windows its rows listens so it can
@@ -656,6 +656,19 @@ class LayerRowDragTarget extends StatefulWidget {
 }
 
 class _LayerRowDragTargetState extends State<LayerRowDragTarget> {
+  /// The rail that draws this row's line after it ([RailRowLines]).
+  _RailRowLinesState? _railLines;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final lines = _RailRowLinesScope.maybeOf(context);
+    if (!identical(lines, _railLines)) {
+      _railLines?._rows.remove(this);
+      _railLines = lines?.._rows.add(this);
+    }
+  }
+
   /// The hooks a drag on this row speaks to. A row without them builds no
   /// detector ([build]), so no drag begins where they are null.
   TimelineRowDragHooks get _hooks => widget.hooks!;
@@ -810,6 +823,7 @@ class _LayerRowDragTargetState extends State<LayerRowDragTarget> {
 
   @override
   void dispose() {
+    _railLines?._rows.remove(this);
     _putDown();
     // A mid-drag unmount lands the operation AFTER the frame rather than
     // leaking an open session verb (R12-③ — the same backstop the range
@@ -945,15 +959,7 @@ class _LayerRowDragTargetState extends State<LayerRowDragTarget> {
     return ValueListenableBuilder<LayerRowDragState?>(
       valueListenable: hooks.drag,
       builder: (context, drag, child) {
-        // A caret belongs on rows of the dragged subject's OWN kind: a Blur
-        // travelling on layer A raises nothing on layer B's chain, and
-        // nothing on the layer stack either.
-        final showing =
-            drag != null &&
-                drag.legal &&
-                widget.subject.sharesLaneWith(drag.subject)
-            ? drag
-            : null;
+        final showing = _showing(drag);
         // R5 #15: an ON-ROW drop has no caret — the row itself is the
         // landing, so the row lights and the gaps stay quiet.
         final onRow =
@@ -961,13 +967,9 @@ class _LayerRowDragTargetState extends State<LayerRowDragTarget> {
             showing.onRowTarget != null &&
             widget.subject.namesRow(showing.onRowTarget!);
         final caretShowing = showing != null && showing.onRowTarget == null;
-        final slot = widget.slotBefore;
-        final leading = caretShowing && showing.caretSlot == slot;
-        final trailing =
-            caretShowing &&
-            widget.drawsTheGapAfter &&
-            slot != null &&
-            showing.caretSlot == slot + 1;
+        final leading =
+            caretShowing && showing.caretSlot == widget.slotBefore;
+        final trailing = _railLines == null && _drawsLineAfter(showing);
         final lifted = drag?.subject == widget.subject || _lifting;
         return Stack(
           clipBehavior: Clip.none,
@@ -979,11 +981,46 @@ class _LayerRowDragTargetState extends State<LayerRowDragTarget> {
             if (leading)
               _caret(colorScheme, atStart: true, label: showing.joinLabel),
             if (trailing)
-              _caret(colorScheme, atStart: false, label: showing.joinLabel),
+              _caret(colorScheme, atStart: false, label: showing?.joinLabel),
           ],
         );
       },
       child: _gestures(child: widget.child),
+    );
+  }
+
+  /// [drag] as this row shows it.
+  ///
+  /// A caret belongs on rows of the dragged subject's OWN kind: a Blur
+  /// travelling on layer A raises nothing on layer B's chain, and nothing
+  /// on the layer stack either.
+  LayerRowDragState? _showing(LayerRowDragState? drag) =>
+      drag != null && drag.legal && widget.subject.sharesLaneWith(drag.subject)
+      ? drag
+      : null;
+
+  /// Whether the line [showing] draws is the one past this row.
+  bool _drawsLineAfter(LayerRowDragState? showing) {
+    final slot = widget.slotBefore;
+    return showing != null &&
+        showing.onRowTarget == null &&
+        widget.drawsTheGapAfter &&
+        slot != null &&
+        showing.caretSlot == slot + 1;
+  }
+
+  /// The line past this row as its rail draws it over the rows, or null
+  /// where [drag] draws none here.
+  Widget? _lineOverRows(LayerRowDragState? drag, ColorScheme colorScheme) {
+    final showing = _showing(drag);
+    if (!_drawsLineAfter(showing)) {
+      return null;
+    }
+    return _caret(
+      colorScheme,
+      atStart: false,
+      label: showing!.joinLabel,
+      overRowsAt: widget.linesBeyond?.call()?.end,
     );
   }
 
@@ -1092,6 +1129,7 @@ class _LayerRowDragTargetState extends State<LayerRowDragTarget> {
     ColorScheme colorScheme, {
     required bool atStart,
     String? label,
+    double? overRowsAt,
   }) {
     final barSize = sizeAlong(
       widget.axis,
@@ -1139,12 +1177,87 @@ class _LayerRowDragTargetState extends State<LayerRowDragTarget> {
         'timeline-row-caret-${atStart ? 'before' : 'after'}-'
         '${_keyOf(widget.subject)}',
       ),
-      across: -past - layerRowCaretThickness / 2,
-      fromEnd: !atStart,
+      across: (overRowsAt ?? -past) - layerRowCaretThickness / 2,
+      fromEnd: overRowsAt == null && !atStart,
       alongStart: _layerAreaStart,
       child: content,
     );
   }
+}
+
+/// A rail's [child] rows and, over them, the line a carry draws after a row.
+///
+/// 🔬sheet-gap-stands-inside-open-lanes (11-01, 서피스 검증: 맨 아래 레이어의
+/// 레인을 펼치고 그 뒤로 끌면 가로선이 어디에도 없다 — 착지는 맞다). Rows
+/// paint in order, and a row drew this line in its own stack, so past the
+/// lanes after it the line stood in the tree and reached no pixel of 437:
+/// the rows after it painted over it. Measured by what reaches the screen
+/// (`a_line_past_the_lanes_shows_test`); a test of where the line stands
+/// had passed the whole time.
+///
+/// 🚨The row still says whether there is a line and where, for every kind
+/// of row a rail carries; only the painting moves here, after every row.
+/// ⛔The line BEFORE a row needs none of this: that row paints after what
+/// it stands beside. And the sheet stands none over its columns, whose line
+/// after one stands at the column's own edge.
+class RailRowLines extends StatefulWidget {
+  const RailRowLines({super.key, required this.drag, required this.child});
+
+  /// What the rows' carry shows; null on a rail no row of which is carried.
+  final ValueListenable<LayerRowDragState?>? drag;
+
+  final Widget child;
+
+  @override
+  State<RailRowLines> createState() => _RailRowLinesState();
+}
+
+class _RailRowLinesState extends State<RailRowLines> {
+  final Set<_LayerRowDragTargetState> _rows = {};
+
+  @override
+  Widget build(BuildContext context) {
+    final drag = widget.drag;
+    return _RailRowLinesScope(
+      lines: this,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          widget.child,
+          if (drag != null)
+            Positioned.fill(
+              child: ValueListenableBuilder<LayerRowDragState?>(
+                valueListenable: drag,
+                builder: (context, carried, _) {
+                  final colorScheme = Theme.of(context).colorScheme;
+                  return Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      for (final row in _rows)
+                        ?row._lineOverRows(carried, colorScheme),
+                    ],
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RailRowLinesScope extends InheritedWidget {
+  const _RailRowLinesScope({required this.lines, required super.child});
+
+  final _RailRowLinesState lines;
+
+  static _RailRowLinesState? maybeOf(BuildContext context) => context
+      .dependOnInheritedWidgetOfExactType<_RailRowLinesScope>()
+      ?.lines;
+
+  @override
+  bool updateShouldNotify(_RailRowLinesScope oldWidget) =>
+      !identical(lines, oldWidget.lines);
 }
 
 /// 🚨★★★재배치 불가 행의 답 — **두 레일이 같은 코드를 부른다.**
@@ -1382,7 +1495,7 @@ _RowReach _rowReach(
     final rows = dragRows();
     final index = rows.indexWhere((row) => row.address == address);
     return index < 0
-        ? (lead: 0.0, trail: 0.0)
+        ? null
         : linesBeyondRow(dragEdges(), index, displayRowUnitAt(rows, index));
   },
 );
@@ -1390,7 +1503,7 @@ _RowReach _rowReach(
 typedef _RowReach = ({
   double Function(double offset) pointerRowsAt,
   int Function(double offset) selectRowDeltaAt,
-  ({double lead, double trail}) Function() linesBeyond,
+  RowLinesBeyond? Function() linesBeyond,
 });
 
 /// What [layerRowDragWrapper] builds a row's wrapper FROM — equal while the

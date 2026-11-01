@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
+import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
 import 'package:anicel/src/ui/brush/tools_panel.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -209,6 +210,32 @@ void main() {
     expect(find.byType(CutEnvelopeTabHost), findsNothing);
     // And the top strip keeps its buttons.
     expect(railGroupButton(top(3)), findsOneWidget);
+  });
+
+  testWidgets('🗣️F-515: the timeline lies on every sheet laid on the floor as '
+      'it lies on the canvas', (tester) async {
+    await pumpApp(tester);
+    final timeline = canvasFloorCover(tester).bottom;
+    expect(timeline, greaterThan(0), reason: '⛔premise: it lies on the floor');
+    await carry(tester, sheets, () => railGroupButton(top(1)));
+
+    for (final (slot, host) in [
+      (1, TimesheetTabHost),
+      (2, ConteTabHost),
+      (3, CutEnvelopeTabHost),
+    ]) {
+      await tester.tap(railGroupButton(top(slot)));
+      await tester.pumpAndSettle();
+      final panel = find.descendant(
+        of: find.byType(host),
+        matching: find.byType(BrushCanvasPanel),
+      );
+      expect(
+        CanvasFloorInsets.maybeOf(tester.element(panel.first))?.insets.bottom,
+        timeline,
+        reason: '$host',
+      );
+    }
   });
 
   testWidgets('a button holding a panel that is no canvas-base panel finds no '

@@ -43,7 +43,8 @@ class ValueSteps extends StatelessWidget {
   /// `<keyPrefix>-up` and `<keyPrefix>-down` key the two cells.
   final String keyPrefix;
 
-  /// The value's thickness — its height lying down, its width stood up.
+  /// The value's thickness — its height lying down, its width stood up, or
+  /// what it is given stood past that ([FieldSlider.stepsRun]).
   final double height;
   final bool enabled;
   final ValueChanged<int> onStep;

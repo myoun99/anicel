@@ -19,6 +19,7 @@ import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/services/canvas_selection_paint_clip.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
+import 'package:anicel/src/services/selection_clip.dart';
 
 import '../helpers/native_engine_path.dart';
 
@@ -107,7 +108,7 @@ void main() {
     final raw = BrushStrokeCommitData(sourceDabs: [dab], blendMode: mode);
     final data = selection == null
         ? raw
-        : clipStrokeCommitToSelection(raw, region: selection, surface: base)!;
+        : clipStrokeCommitToSelection(raw, clip: SelectionClip.outline(selection), surface: base)!;
     return brushCommitResultForBrushDabSequenceOnBitmapSurface(
       surface: base,
       sequence: BrushDabSequence(data.sourceDabs),
@@ -219,7 +220,7 @@ void main() {
 
   test('a stamp the selection cannot reach lands nothing at all', () {
     expect(
-      clipStampDabToSelection(stamp(opacity: 0.4), region: box(150, 192)),
+      clipStampDabToSelection(stamp(opacity: 0.4), clip: SelectionClip.outline(box(150, 192))),
       isNull,
     );
   });

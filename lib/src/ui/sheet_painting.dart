@@ -177,19 +177,29 @@ void paintSheetImageIn(
 /// Lays down a sheet's PAPER — the one way the timesheet, the conte and the
 /// cut envelope fill it.
 ///
-/// 🚨NOT anti-aliased (F-179, 유저 2026-09-25: 「용지 외곽에 반투명 라인
+/// 🚨CUT ON THE PIXEL GRID (F-179, 유저 2026-09-25: 「용지 외곽에 반투명 라인
 /// 있는데 이런거 필요없어」). A sheet's view never rotates, and its paper
 /// edge lands wherever zoom × page size puts it — a fractional device
-/// position more often than not. An anti-aliased fill covers that pixel
-/// partly: a one-pixel line of paper blended over the backdrop, around
-/// every page. Cut on the pixel centres, the edge is the same hard boundary
-/// F-67 gives the drawing canvas's paper.
+/// position more often than not. A fill covers that pixel partly: a
+/// one-pixel line of paper blended over the backdrop, around every page.
+/// Cut on the pixel centres, the edge is the same hard boundary F-67 gives
+/// the drawing canvas's paper, by the same move ([cutOnThePixelGrid], and
+/// [pixelRatio] as there).
+///
+/// ↩️`isAntiAlias = false` alone was the cut until 2026-10-31, and Impeller
+/// does not honour it: 192 of 255 down the edge, back on every device since
+/// the move to Impeller (board `impeller-sweep-sheet-playback-reds`).
 ///
 /// ↩️The timesheet also stroked a 1.4px border ON its page edge, half of
 /// it over the backdrop — the other line. It is gone, not moved here.
-void paintSheetPaper(Canvas canvas, Rect rect, Color color) {
+void paintSheetPaper(
+  Canvas canvas,
+  Rect rect,
+  Color color, {
+  required double pixelRatio,
+}) {
   canvas.drawRect(
-    rect,
+    cutOnThePixelGrid(canvas, rect, pixelRatio),
     Paint()
       ..color = color
       ..isAntiAlias = false,

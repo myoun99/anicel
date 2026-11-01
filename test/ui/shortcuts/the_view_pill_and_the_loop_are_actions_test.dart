@@ -157,7 +157,6 @@ void main() {
                 ),
                 availableFrameKeys: frameKeys,
                 cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-                floorCover: EdgeInsets.zero,
                 canvasSize: const CanvasSize(width: 300, height: 300),
                 viewCommands: viewCommands,
               ),

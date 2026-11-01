@@ -4,6 +4,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
+import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
 import 'package:anicel/src/ui/brush/canvas_visible_rect.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 
@@ -68,15 +69,17 @@ void main() {
               child: SizedBox(
                 width: 800,
                 height: 600,
-                child: BrushCanvasPanel(
-                  coordinator: BrushCanvasFixture.createCoordinator(
-                    frameKeys: frameKeys,
+                // Being covered is what makes a panel the floor, so the
+                // cover IS the way to say "something is floating on me".
+                child: CanvasFloorInsets(
+                  insets: insets,
+                  child: BrushCanvasPanel(
+                    coordinator: BrushCanvasFixture.createCoordinator(
+                      frameKeys: frameKeys,
+                    ),
+                    availableFrameKeys: frameKeys,
+                    cacheInvalidationSink: BrushEditCacheInvalidationSink(),
                   ),
-                  availableFrameKeys: frameKeys,
-                  cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-                  // Being covered is what makes a panel the floor, so the
-                  // cover IS the way to say "something is floating on me".
-                  floorCover: insets,
                 ),
               ),
             ),

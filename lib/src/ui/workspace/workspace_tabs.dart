@@ -1099,7 +1099,6 @@ class _WorkspaceTabs {
           builder: (context) => _panelHost(
             listenable: Listenable.merge([
               _state._views._conteBrushAllowed,
-              _state._views._conteInk,
               // Its pictures' cels, followed through the store: an undo
               // that moves no row still moves their pixels (F-80 ②).
               _state._views._contePictures,
@@ -1144,7 +1143,6 @@ class _WorkspaceTabs {
           builder: (context) => _panelHost(
             listenable: Listenable.merge([
               _state._views._envelopeBrushAllowed,
-              _state._views._envelopeInk,
               // F-90: the envelope of the cut under the playhead, turning
               // over at a crossing like the sheet beside it.
               _state.widget.session.cutUnderPlayhead.listenable,

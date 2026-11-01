@@ -45,11 +45,13 @@ void main() {
       }
       final kinds = [for (final e in chain) '${e.widget.runtimeType}'];
       // The hold wears the row's name itself (2026-10-28): a [Named] over
-      // it was one element more.
+      // it was one element more. The plate's own element hears a stand past
+      // the kept row (I-22-rest).
       expect(kinds, [
         'InstantTapRegion',
         '_LabelDoubleTap',
         'ArenaTapHold',
+        '_StoodPlate',
       ], reason: 'the body\'s boxes, in the order they hear a press');
       expect(chain.whereType<StatefulElement>(), isEmpty);
     }

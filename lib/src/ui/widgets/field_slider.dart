@@ -104,6 +104,7 @@ class FieldSlider extends StatefulWidget implements NamesItself {
     this.nameInside = true,
     this.upright = false,
     this.readout,
+    this.stepsRun,
   }) : levels = null,
        floor = null,
        assert(max > min, 'max must exceed min'),
@@ -114,6 +115,10 @@ class FieldSlider extends StatefulWidget implements NamesItself {
        assert(
          readout == null || (axis == Axis.vertical && !upright),
          'a readout writes the number of a stood bar, which writes nothing',
+       ),
+       assert(
+         stepsRun == null || axis == Axis.vertical,
+         'the ± of a lying bar run its height: only a stood one is given more',
        ),
        assert(
          scale != FieldSliderScale.exponential || min > 0,
@@ -163,6 +168,7 @@ class FieldSlider extends StatefulWidget implements NamesItself {
        axis = Axis.horizontal,
        upright = false,
        readout = null,
+       stepsRun = null,
        assert(max > min, 'max must exceed min'),
        assert(
          scale != FieldSliderScale.exponential || min > 0,
@@ -208,6 +214,7 @@ class FieldSlider extends StatefulWidget implements NamesItself {
     this.nameInside = true,
     this.upright = false,
     this.readout,
+    this.stepsRun,
   }) : assert(
          !upright || (axis == Axis.vertical && (label == null || !nameInside)),
          'a bar stands its number up only stood, and writes the number alone',
@@ -215,6 +222,10 @@ class FieldSlider extends StatefulWidget implements NamesItself {
        assert(
          readout == null || (axis == Axis.vertical && !upright),
          'a readout writes the number of a stood bar, which writes nothing',
+       ),
+       assert(
+         stepsRun == null || axis == Axis.vertical,
+         'the ± of a lying bar run its height: only a stood one is given more',
        ),
        min = 0,
        fillOrigin = null,
@@ -279,6 +290,7 @@ class FieldSlider extends StatefulWidget implements NamesItself {
        nameInside = true,
        upright = false,
        readout = null,
+       stepsRun = null,
        assert(max > 0, 'max must exceed min'),
        assert(floor <= max, 'the floor stands on the scale');
 
@@ -408,6 +420,18 @@ class FieldSlider extends StatefulWidget implements NamesItself {
   /// 세로면 알기힘듬. 그러니 그냥 텍스트 독립시키자. 슬라이더 막대엔 텍스트
   /// 없애고, 연필버튼도 여기선 대체되니 없애고」.
   final FieldSliderReadout? readout;
+
+  /// How far a stood bar's ± run across, where what it stands in gives them
+  /// more than its [height]; null, its [height]. The bar's box is as wide
+  /// ([reachAcross]) and its track stands centred in it.
+  ///
+  /// 🗣️F-528 (유저 2026-11-01), the brush pill's: 「브러시 사이즈쪽 알약의
+  /// 한걸음 올리기,내리기 버튼들. 너무 작으니 좌우 길이 알약 다 차지하도록
+  /// 크기 키우기」.
+  final double? stepsRun;
+
+  /// What the bar takes across its run: its [height], or its ± past it.
+  double get reachAcross => stepsRun ?? height;
 
   /// How many digits a standing number sets in one cell: one — 「한 글자씩
   /// 한 칸」 (F-460-Q1, 유저 2026-10-23: 「2/0/0/0/./0 이렇게 위에서
@@ -1256,14 +1280,14 @@ class _FieldSliderState extends State<FieldSlider> {
     final hands = keptWhileSame(
       _hands,
       FieldSlider,
-      (widget.height, widget.axis, _enabled, widget.readout == null),
+      (widget.reachAcross, widget.axis, _enabled, widget.readout == null),
       () => Flex(
         direction: widget.axis,
         mainAxisSize: MainAxisSize.min,
         children: [
           ValueSteps(
             keyPrefix: 'field-slider-step',
-            height: widget.height,
+            height: widget.reachAcross,
             enabled: _enabled,
             onStep: _stepBy,
             axis: widget.axis,

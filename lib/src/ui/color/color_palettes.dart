@@ -265,16 +265,33 @@ class _PalettePlaces extends StatelessWidget {
   final PaletteView view;
   final _Hands hands;
 
-  /// The places it shows, by index: every one — or, locked, its colours
-  /// alone, packed ([NamedPalette.locked]).
+  /// How many of its places stand in a row.
+  int get _columns => switch (view) {
+    PaletteView.compact => _compactColumns,
+    PaletteView.cards => _cardColumns,
+  };
+
+  /// Whether the row place [index] stands in holds a colour.
+  bool _rowHoldsAColour(int index) => palette.slots
+      .skip(index - index % _columns)
+      .take(_columns)
+      .any((color) => color != null);
+
+  /// The places it lays, by index: every one — or, locked, the rows that
+  /// hold a colour, whole, so each colour stays in its column
+  /// ([NamedPalette.locked]).
   List<int> get _shown => [
     for (var index = 0; index < palette.slots.length; index += 1)
-      if (!palette.locked || palette.slots[index] != null) index,
+      if (!palette.locked || _rowHoldsAColour(index)) index,
   ];
 
   Widget _place(int index, double extent) {
     final color = palette.slots[index];
     final locked = palette.locked;
+    if (locked && color == null) {
+      // Its row keeps the room and that is all: no ring, nothing to press.
+      return const SizedBox.shrink();
+    }
     return _Place(
       key: ValueKey<String>('palette-${palette.id}-slot-$index'),
       color: color,
@@ -797,8 +814,8 @@ class _ColorPalettesPanelState extends State<ColorPalettesPanel> {
           children: [
             Expanded(child: _name(palette, row.grip)),
             // I-131 (유저 2026-10-28): 「팔레트 잠금버튼 지금 색 빼기 왼쪽에
-            // 만들기」 — locked, the palette shows its colours packed and
-            // takes no edit ([NamedPalette.locked]).
+            // 만들기」 — locked, the palette drops its empty places and takes
+            // no edit ([NamedPalette.locked]).
             AppIconButton(
               keyValue: 'palette-${palette.id}-lock',
               tooltip: strings.paletteLock,

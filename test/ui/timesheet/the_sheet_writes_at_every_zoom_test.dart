@@ -16,6 +16,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
+import '../../helpers/canvas_on_its_pixels.dart';
 
 /// The sheet's writing never drops out (tiny-glyphs-shrink-not-vanish).
 ///
@@ -26,7 +27,7 @@ import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 ///
 /// Counted off a spy canvas: every text the sheet writes is a paragraph,
 /// and with culling off the same sheet has the same writing at any zoom.
-class _WritingSpy implements Canvas {
+class _WritingSpy with CanvasOnItsPixels implements Canvas {
   int paragraphs = 0;
 
   @override

@@ -39,7 +39,6 @@ void main() {
               ),
               availableFrameKeys: frameKeys,
               cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-              floorCover: EdgeInsets.zero,
               onPaperColorChanged: (_) {},
               onPasteboardColorChanged: (_) {},
               onPasteboardSizeChanged: sizes?.add,

@@ -98,7 +98,8 @@ List<StoryboardPanelSlot> panelSlotsOfCuts(List<StoryboardCutInput> cuts) {
 /// The keys are read straight off the panel lengths of that cut, from where
 /// its conte starts in the cut's own frames ([storyboardConteStart] — 0,
 /// or the のりしろ an arriving O.L asks for); every block keeps its entry
-/// (and its breakdown dots) and only its key moves. The panels are the
+/// and its key moves, its breakdown dots kept to its end as a frame block's
+/// are ([TimelineExposure.atLengthKeepingDotsToItsEnd]). The panels are the
 /// row's REAL blocks: the ghosts that hold its first and last panel through
 /// the のりしろ are the run-edge pass's, derived again once this is written.
 /// Null when nothing moved.
@@ -123,7 +124,9 @@ SplayTreeMap<int, TimelineExposure>? conteTimelineFromPanels({
     if (entries[i].key != cursor) {
       moved = true;
     }
-    next[cursor] = entries[i].value.copyWith(length: panelLengths[i]);
+    next[cursor] = entries[i].value.atLengthKeepingDotsToItsEnd(
+      panelLengths[i],
+    );
     cursor += panelLengths[i];
   }
   return moved || !_sameLengths(entries, panelLengths) ? next : null;

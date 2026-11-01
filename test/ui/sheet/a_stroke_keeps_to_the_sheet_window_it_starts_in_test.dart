@@ -339,6 +339,7 @@ void main() {
                     brushToolState: ValueNotifier(BrushToolState.defaults),
                     strokeActive: strokeActive,
                     history: history.gestures,
+                    inkChanges: controller,
                     sessionStateFor: (window) =>
                         controller.sessionStateFor(null, window.key),
                     onStrokeCommitted: (window, strokeData) =>

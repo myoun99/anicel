@@ -135,9 +135,12 @@ ui.Rect rectOutwardOnGrid(
 /// is not reduced, and otherwise down to the one past the level its
 /// reduction lands at, the two a sampler blends between.
 ///
-/// ⚠️Down to one level at any reduction, `low` included: Impeller on
-/// Vulkan reads a picture's chain under `low` too (GLES does not —
-/// one-picture-per-frame ②-5b-2 착지 줄의 🔬).
+/// ⚠️Down to one level at any reduction, `low` included, though `low`
+/// reads none (`FramePicture.readAt`): what is laid by this comes out wider
+/// than `low` needs, and a bilinear read does reach past a rect. ↩️It said
+/// Impeller on Vulkan reads a picture's chain under `low` too
+/// (one-picture-per-frame ②-5b-2 착지 줄의 🔬): the engine does not, nor did
+/// the tester's Vulkan measured 2026-10-31.
 int levelsReadAt(double displayScale) => displayScale >= 1
     ? 0
     : (math.log(1 / displayScale) / math.ln2).floor() + 1;

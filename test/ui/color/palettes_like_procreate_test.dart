@@ -41,6 +41,23 @@ ColorPaletteState _two() => ColorPaletteState(
   defaultId: 'p1',
 );
 
+/// 「Skin」 holding [colors] by place, and a 「Sky」 under it.
+ColorPaletteState _holding(Map<int, int> colors) => ColorPaletteState(
+  palettes: [
+    NamedPalette(
+      id: 'p1',
+      name: 'Skin',
+      slots: [for (var i = 0; i < NamedPalette.slotCount; i += 1) colors[i]],
+    ),
+    NamedPalette(
+      id: 'p2',
+      name: 'Sky',
+      slots: NamedPalette.placed(const [_blue]),
+    ),
+  ],
+  defaultId: 'p1',
+);
+
 /// What the panel was handed back, as the host keeps it.
 class _Desk {
   _Desk(this.palettes, this.color);
@@ -433,10 +450,8 @@ void main() {
       );
     });
 
-    testWidgets('locked, it shows its colours alone, packed, and a press '
-        'only picks — no fill, no carry, no −, no colour window', (
-      tester,
-    ) async {
+    testWidgets('locked, it shows its colours alone, and a press only '
+        'picks — no fill, no carry, no −, no colour window', (tester) async {
       final desk = await _open(
         tester,
         color: _red,
@@ -446,12 +461,6 @@ void main() {
       expect(lock.isSelected, isTrue);
       expect(_shownPlaces('p1'), 3);
       expect(_place('p1', 2), findsNothing, reason: 'the empty place goes');
-      expect(
-        tester.getRect(_place('p1', 3)).left -
-            tester.getRect(_place('p1', 1)).right,
-        moreOrLessEquals(4),
-        reason: 'the colour after the empty place packs up to the one before',
-      );
       expect(
         tester.widget<AppIconButtonFace>(_key('palette-p1-remove')).onPressed,
         isNull,
@@ -468,6 +477,73 @@ void main() {
       expect(desk.palettes.palettes.first.locked, isFalse);
       expect(_shownPlaces('p1'), NamedPalette.slotCount);
       expect(desk.slotsOf('p1').take(4), [_red, _blue, null, _red]);
+    });
+
+    // F-516 (유저 2026-10-31): 「사라지고 칸 재정렬이아니라 칸 원래위치 지킴」.
+    for (final (row, colors, rowsGone) in const [
+      ('first', {14: _red, 25: _blue}, {14: 1, 25: 1}),
+      ('middle', {3: _red, 23: _blue}, {3: 0, 23: 1}),
+      ('last', {3: _red, 14: _blue}, {3: 0, 14: 0}),
+    ]) {
+      testWidgets('locked, an empty $row row takes no room, and each colour '
+          'keeps its column and its order (F-516)', (tester) async {
+        await _open(tester, palettes: _holding(colors));
+        Offset at(int index) => tester.getTopLeft(_place('p1', index));
+        Offset below() => tester.getTopLeft(_key('palette-p2-lock'));
+        final pitch = Offset(0, at(10).dy - at(0).dy);
+        final stood = {for (final index in colors.keys) index: at(index)};
+        final stoodBelow = below();
+
+        await _press(tester, _key('palette-p1-lock'));
+
+        expect(_shownPlaces('p1'), colors.length);
+        for (final MapEntry(key: index, value: gone) in rowsGone.entries) {
+          expect(
+            at(index),
+            offsetMoreOrLessEquals(stood[index]! - pitch * gone.toDouble()),
+          );
+        }
+        expect(
+          below(),
+          offsetMoreOrLessEquals(stoodBelow - pitch),
+          reason: 'what stands under the palette comes up by the empty row',
+        );
+      });
+    }
+
+    testWidgets('the cards lose their empty rows by the same law, three to '
+        'a row (F-516)', (tester) async {
+      await _open(
+        tester,
+        size: const Size(300, 1400),
+        palettes: _holding(const {
+          4: _red,
+          29: _blue,
+        }).withView(PaletteView.cards),
+      );
+      Offset at(int index) => tester.getTopLeft(_place('p1', index));
+      final pitch = Offset(0, at(3).dy - at(0).dy);
+      final red = at(4);
+      final blue = at(29);
+
+      await _press(tester, _key('palette-p1-lock'));
+
+      expect(_shownPlaces('p1'), 2);
+      expect(at(4), offsetMoreOrLessEquals(red - pitch));
+      expect(at(29), offsetMoreOrLessEquals(blue - pitch * 8));
+    });
+
+    testWidgets('locked, an empty place beside a colour is nothing to press '
+        '— it holds room and fills nothing (F-516)', (tester) async {
+      final desk = await _open(tester, palettes: _holding(const {0: _red}));
+      final empty = tester.getCenter(_place('p1', 1));
+
+      await _press(tester, _key('palette-p1-lock'));
+      await tester.tapAt(empty, kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+
+      expect(desk.slotsOf('p1')[1], isNull);
+      expect(desk.color, _green);
     });
 
     testWidgets('a double click on a colour opens its window: the wheel '
@@ -636,7 +712,7 @@ void main() {
         expect(desk.slotsOf('p1')[0], isNull);
       });
 
-      testWidgets('${kind.name}: a locked default stands packed here too — '
+      testWidgets('${kind.name}: a locked default loses its empty places here too — '
           'the same places, not a second set', (tester) async {
         final desk = await _open(
           tester,

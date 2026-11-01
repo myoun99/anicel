@@ -26,6 +26,7 @@ import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/services/canvas_selection_paint_clip.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
+import 'package:anicel/src/services/selection_clip.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
@@ -135,7 +136,7 @@ void main() {
       surface: base,
       dabs: [dab],
       blendMode: BrushBlendMode.color,
-      selection: region,
+      selection: SelectionClip.outline(region),
       layerId: layerId,
       frameId: frameId,
     );
@@ -146,7 +147,7 @@ void main() {
     // cannot part again without this going red.
     final funneled = clipStrokeCommitToSelection(
       BrushStrokeCommitData(sourceDabs: [dab]),
-      region: region,
+      clip: SelectionClip.outline(region),
       surface: base,
     )!;
     final classic = brushCommitResultForBrushDabSequenceOnBitmapSurface(
@@ -189,7 +190,7 @@ void main() {
         surface: base,
         dabs: [fillDab()],
         blendMode: BrushBlendMode.color,
-        selection: outside,
+        selection: SelectionClip.outline(outside),
         layerId: layerId,
         frameId: frameId,
       ),

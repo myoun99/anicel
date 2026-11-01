@@ -18,6 +18,9 @@ class _TimesheetBandsPass {
         canvas,
         _painter.layout.pageRect(pageIndex),
         TimesheetDocumentPainter._paper,
+        // With no view it is an export, whose canvas lands on its pixels
+        // already: its ratio says what its photos are sampled for.
+        pixelRatio: _painter.viewport == null ? 1 : _painter.effectiveRatio,
       );
     }
   }
@@ -53,15 +56,20 @@ class _TimesheetBandsPass {
       }
       if (_painter._drawContent) {
         final value = TimesheetDocumentPainter.headerValueRect(box.rect);
-        _painter._text(
-          canvas,
+        final line = sheetLine(
           headerFieldValue(box.field, pageIndex),
-          Offset(value.center.dx, value.top),
-          fontSize: TimesheetDocumentPainter.headerValueSize,
-          bold: true,
-          centeredAtX: true,
-          maxWidth: value.width,
+          TimesheetDocumentPainter.wordsStyle(
+            _painter.face,
+            fontSize: TimesheetDocumentPainter.headerValueSize,
+            bold: true,
+          ),
         );
+        SheetLinePlace.of(
+          line.size,
+          value,
+          SheetTextForm.centredLine,
+        ).paint(canvas, line);
+        line.dispose();
         if (box.field == TimesheetHeaderField.time && _owesNoriShiro) {
           _paintDrawnLength(canvas, value);
         }

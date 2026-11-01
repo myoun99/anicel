@@ -159,13 +159,20 @@ mixin UiScaleViewConfiguration on RendererBinding {
     return false;
   }
 
+  /// What comes in with [event]: the leaves of the pens it shows gone
+  /// (🚨F-520, [PenEchoes.leavesShownBy]), then the event, each past [_letIn].
+  Iterable<PointerEvent> _comesInWith(PointerEvent event) => [
+    ..._penEchoes.leavesShownBy(event),
+    event,
+  ].where(_letIn);
+
   void _handleScaledPointerDataPacket(ui.PointerDataPacket packet) {
     try {
       _pendingScaledPointerEvents.addAll(
         PointerEventConverter.expand(
           packet.data,
           _effectiveRatioOfView,
-        ).where(_letIn),
+        ).expand(_comesInWith),
       );
       if (!locked) {
         _flushScaledPointerEvents();

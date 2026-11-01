@@ -1319,22 +1319,27 @@ bool ownsTheLane(TimelineRowAddress head, TimelineRowAddress? address) {
   );
 }
 
+/// Where a row's two lines stand: [lead] before it, to where its unit begins,
+/// and [trail] after it, to where the unit ends — both none while its lanes
+/// are shut — and [end], where that end stands along the rail.
+typedef RowLinesBeyond = ({double lead, double trail, double end});
+
 /// How far past the row at [at] its two lines stand where [edges] lay the
-/// rows: [lead] before it, to where its [unit] begins, and [trail] after
-/// it, to where the unit ends. Both are none while its lanes are shut.
+/// rows, its [unit] being what it stands for.
 ///
 /// 🚨The row draws the lines, so it must be told how far its unit reaches.
 /// A line drawn at the row's own edge stood between the row and its lanes:
 /// under the rail's last row and its chain's last header while the drop
 /// landed past their lanes, and inside every unit with lanes open on the
 /// sheet (10-25).
-({double lead, double trail}) linesBeyondRow(
+RowLinesBeyond linesBeyondRow(
   TimelineRowEdges edges,
   int at,
   ({int first, int last}) unit,
 ) => (
   lead: edges.startOf(at) - edges.startOf(unit.first),
   trail: edges.startOf(unit.last + 1) - edges.endOf(at),
+  end: edges.startOf(unit.last + 1),
 );
 
 /// The row a file held over the layer area would make, and the gap it

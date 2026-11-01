@@ -276,6 +276,30 @@ void main() {
       expect(session.laneRangeSelection.value!.startIndex, 23);
     });
 
+    test('the move says so before it is stepped — and asking moves '
+        'nothing', () {
+      final session = onTheCameraRow(b, 0)
+        ..updateLaneRangeSelectionDrag(
+          layerId: const LayerId('b-cam'),
+          laneId: 'position',
+          anchorIndex: 2,
+          headIndex: 2,
+          spanLaneIds: const [],
+        );
+      expect(session.laneMove.laneRangeMoveLands(0), isFalse, reason: '⛔none');
+      expect(session.laneMove.beginLaneRangeMoveDrag(), isTrue);
+      final lands = session.laneMove.laneRangeMoveLands;
+
+      expect(lands(0), isTrue, reason: 'nowhere to go is no landing to refuse');
+      expect(lands(21), isTrue, reason: 'on 23, b\'s last');
+      expect(lands(22), isFalse, reason: 'on 24, past it');
+      expect(session.dragPreview.value, isNull);
+      expect(session.laneRangeSelection.value!.startIndex, 2);
+
+      session.laneMove.cancelLaneRangeMoveDrag();
+      expect(positionKeysOf(session, b), [2]);
+    });
+
     test('🚨…and so do the keys a range of cells carries', () {
       final session = onTheCameraRow(b, 0)
         ..updateFrameRangeSelectionDrag(
