@@ -51,7 +51,8 @@ import 'settle_async.dart';
 /// OVER the picture shows its ink twice.
 ///
 /// A step shows at the paint after its texels are in, with no build
-/// between; where it goes past the picture (a picture does not grow), the
+/// between; where it goes past the picture, the picture is widened and the
+/// step goes in all the same; past what a picture can be widened to, the
 /// whole frame as it stands shows at the paint after it.
 ///
 /// A stroke that lands moves the picture to the frame's next key where it
@@ -508,8 +509,93 @@ void aStrokeIsWrittenIntoThePictureShown({
     await tester.pumpWidget(const SizedBox());
   }, skip: skipped);
 
-  testWidgets('🚨a step past the picture draws the frame as it stands at the '
-      'paint after it — not the picture without the step until a build', (
+  testWidgets('🚨a step past the picture widens it and goes in as every step '
+      'does: the picture until it is in, the frame with it after (F-533)', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const lineage = 'a-step-widens-the-picture';
+    final cels = storeWithTheCel();
+    final images = LayerFrameImageCache(frameStore: cels);
+    addTearDown(images.dispose);
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+    final live = BitmapSurfacePainter(
+      surface: BrushFrameDisplayCacheService(
+        frameStore: cels,
+        canvasSize: canvasSize,
+      ).prepareFramePreview(key).previewSurface,
+      overlayModel: overlay,
+      showTransparentBackground: false,
+      lineage: lineage,
+    );
+    final gpu = WritesLand();
+    final store = FramePictureStore<FramePictureKey>(gpu: gpu);
+    addTearDown(store.dispose);
+    final run = runOf(images, store);
+    final picture = run.pictures.keyOfStack(nodes, frame);
+    final view = CanvasViewport(panX: 8, panY: 4);
+
+    await pump(tester, run, key: const ValueKey(0), view: view, live: live);
+    expect(
+      await settleAsync(tester, () => store.bytesOf(picture) != null),
+      isTrue,
+      reason: 'LIVENESS: the frame\'s picture is made',
+    );
+    await lendBothClocks(tester, rounds: 2);
+    final before = await onScreen(tester);
+    final shown = store.peek(picture)!;
+    final was = shown.extent;
+
+    gpu.holdsRenders = true;
+    addTearDown(gpu.letAllThrough);
+    final past = TileCoord(x: -1, y: 0);
+    overlay.showResultTiles([
+      PromotedStrokeTile(past, tileOf(past, stroke, (_) => true), 1),
+    ]);
+    await tester.pump();
+    final landing = store.landingOf(keptByTheCanvas(tester, picture));
+    expect(landing, isNotNull, reason: 'it goes in as a step does');
+    expect(shown.room.left, lessThan(was.left), reason: 'it is widened');
+    expect(shown.extent, was);
+    expect(
+      differences(before, await onScreen(tester)),
+      isEmpty,
+      reason: 'on its way, the picture as it stood — not the frame drawn '
+          'as it stands',
+    );
+
+    gpu
+      ..holdsRenders = false
+      ..letAllThrough();
+    await inThePicture(tester, landing);
+    await tester.pump();
+    expect(shown.extent.left, lessThan(was.left));
+    expect(store.peek(keptByTheCanvas(tester, picture)), same(shown));
+    final stepped = await onScreen(tester);
+    expect(differences(before, stepped), isNotEmpty);
+    expect(
+      differences(
+        await asItStands(
+          tester,
+          images,
+          picture: picture,
+          view: view,
+          live: live,
+        ),
+        stepped,
+      ),
+      isEmpty,
+      reason: 'pixel for pixel',
+    );
+
+    await tester.pumpWidget(const SizedBox());
+    overlay.dispose();
+  }, skip: skipped);
+
+  testWidgets('🚨a step past what the picture can be widened to draws the '
+      'frame as it stands at the paint after it — not the picture without '
+      'the step until a build', (
     tester,
   ) async {
     tester.view.devicePixelRatio = 1;
@@ -528,7 +614,10 @@ void aStrokeIsWrittenIntoThePictureShown({
       showTransparentBackground: false,
       lineage: lineage,
     );
-    final store = FramePictureStore<FramePictureKey>(gpu: WritesLand());
+    final store = FramePictureStore<FramePictureKey>(
+      gpu: WritesLand(),
+      onceSide: 1,
+    );
     addTearDown(store.dispose);
     final run = runOf(images, store);
     final picture = run.pictures.keyOfStack(nodes, frame);
@@ -553,7 +642,7 @@ void aStrokeIsWrittenIntoThePictureShown({
     expect(
       store.landingOf(keptByTheCanvas(tester, picture)),
       isNull,
-      reason: '⛔premise: a picture does not grow — no patch goes past it',
+      reason: '⛔premise: it cannot be widened — no patch goes past it',
     );
     final stepped = await onScreen(tester);
     expect(
@@ -1340,6 +1429,108 @@ void aStrokeIsWrittenIntoThePictureShown({
     );
 
     gpu.letAllThrough();
+    await tester.pumpWidget(const SizedBox());
+    overlay.dispose();
+  }, skip: skipped);
+
+  testWidgets('🚨a stroke that lands while its picture is widened moves that '
+      'picture — not laid anew over it (F-533)', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const lineage = 'a-stroke-lands-while-its-picture-is-widened';
+    final cels = storeWithTheCel();
+    final images = LayerFrameImageCache(frameStore: cels);
+    addTearDown(images.dispose);
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+    BitmapSurfacePainter painterOfTheCel() => BitmapSurfacePainter(
+      surface: BrushFrameDisplayCacheService(
+        frameStore: cels,
+        canvasSize: canvasSize,
+      ).prepareFramePreview(key).previewSurface,
+      overlayModel: overlay,
+      showTransparentBackground: false,
+      lineage: lineage,
+    );
+    final gpu = WritesLand();
+    final store = _LaysCounted(gpu: gpu);
+    addTearDown(store.dispose);
+    final run = runOf(images, store);
+    final view = CanvasViewport(panX: 8, panY: 4);
+    final before = run.pictures.keyOfStack(nodes, frame);
+
+    await pump(
+      tester,
+      run,
+      key: const ValueKey(0),
+      view: view,
+      live: painterOfTheCel(),
+    );
+    expect(
+      await settleAsync(tester, () => store.bytesOf(before) != null),
+      isTrue,
+      reason: 'LIVENESS: the frame\'s picture is made',
+    );
+    await lendBothClocks(tester, rounds: 2);
+    final shown = store.peek(before)!;
+
+    gpu.holdsRenders = true;
+    addTearDown(gpu.letAllThrough);
+    final past = TileCoord(x: -1, y: 0);
+    final tile = tileOf(past, stroke, (_) => true);
+    overlay.showResultTiles([PromotedStrokeTile(past, tile, 1)]);
+    await tester.pump();
+    expect(
+      store.landingOf(keptByTheCanvas(tester, before)),
+      isNotNull,
+      reason: '⛔premise: the step is on its way',
+    );
+
+    final drawn = BrushFrameDisplayCacheService(
+      frameStore: cels,
+      canvasSize: canvasSize,
+    ).prepareFramePreview(key).previewSurface;
+    cels.storeBakedSurface(
+      key,
+      BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: tileSize,
+        tiles: {...drawn.tiles, past: tile},
+      ),
+    );
+    cels.markCelEdited(key);
+    overlay.reset();
+    final after = run.pictures.keyOfStack(nodes, frame);
+    expect(after, isNot(before), reason: '⛔premise: the frame\'s key moved');
+    await pump(
+      tester,
+      run,
+      key: const ValueKey(0),
+      view: view,
+      live: painterOfTheCel(),
+    );
+
+    gpu
+      ..holdsRenders = false
+      ..letAllThrough();
+    expect(
+      await settleAsync(tester, () => store.peek(after) != null),
+      isTrue,
+      reason: 'the picture answers to the frame\'s next key',
+    );
+    expect(store.peek(after), same(shown));
+    expect(
+      store.laid,
+      isNot(contains(after)),
+      reason: 'moved where it stands, not laid anew',
+    );
+    var every = false;
+    unawaited(store.settled().then((_) => every = true));
+    expect(
+      await settleAsync(tester, () => every),
+      isTrue,
+      reason: 'LIVENESS: its levels are in',
+    );
+
     await tester.pumpWidget(const SizedBox());
     overlay.dispose();
   }, skip: skipped);

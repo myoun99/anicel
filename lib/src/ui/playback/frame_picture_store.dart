@@ -81,7 +81,7 @@ typedef FrameDrawing = ({
 /// 진짜 비상사태」; 1079 from its second stroke, every stroke from 1080).
 /// Every runner and Windows draw the whole screen each frame, which hid it.
 class FramePicture extends ChangeNotifier {
-  FramePicture._(this._image, this.extent, this.outside);
+  FramePicture._(this._image, this._extent, this.outside) : _room = _extent;
 
   /// Whether a screen has read this picture's levels since its patches last
   /// paused — whether a write lays them ([readAt]).
@@ -99,7 +99,14 @@ class FramePicture extends ChangeNotifier {
   ui.Image _image;
 
   /// Where [image] lies in the world — whole pixels, at least what was laid.
-  final ui.Rect extent;
+  ui.Rect get extent => _extent;
+  ui.Rect _extent;
+
+  /// Where it lies once what was asked of it is in: [extent], or where it is
+  /// on its way to being widened to ([FramePictureStore.widen]) — what a step
+  /// can go into, and a stroke's landing move, from the moment that is asked.
+  ui.Rect get room => _room;
+  ui.Rect _room;
 
   /// The frame's colour everywhere outside [extent].
   final ui.Color outside;
@@ -138,6 +145,14 @@ class FramePicture extends ChangeNotifier {
     _image = now;
     notifyListeners();
     was.dispose();
+  }
+
+  /// [image] is [now], over [extent], from here on, each of its levels the
+  /// engine's own ([FramePictureGpu.render]), so none is owed.
+  void _widened(ui.Image now, ui.Rect extent) {
+    _extent = extent;
+    _owed = null;
+    _written(now);
   }
 }
 
@@ -293,7 +308,7 @@ class FramePictureStore<K extends Object> {
   ///
   /// Answers false, and lets go of [from]'s picture, where it cannot: no
   /// picture under [from], no GPU to write with, or [rect] reaching past
-  /// the picture's extent — a picture does not grow; lay [to] anew.
+  /// the picture's [FramePicture.room] — [widen] it first, or lay [to] anew.
   ///
   /// [draw] is called before this answers, not when the patch's turn to
   /// render comes: a stroke's step draws the overlay's tile pictures, which
@@ -317,7 +332,7 @@ class FramePictureStore<K extends Object> {
       return false;
     }
     final widened = wholeLevelPixelsOutward(rect, entry.patchedLevels);
-    if (entry.held == null || !_covers(entry.picture.extent, widened)) {
+    if (entry.held == null || !_covers(entry.picture.room, widened)) {
       _letGo(entry);
       return false;
     }
@@ -331,6 +346,122 @@ class FramePictureStore<K extends Object> {
     _becoming[to] = (entry: entry, patch: asked);
     entry.renders = entry.renders.then((_) => _renderPatch(entry, asked));
     return true;
+  }
+
+  /// Widens the picture of [key] to hold [over], in its turn behind the
+  /// patches on their way into it, and answers where it will lie — null,
+  /// nothing asked, where there is no picture to write into or it would be
+  /// too big to raster at once ([framePictureSide]). A patch into what it
+  /// gains can be asked for at once.
+  ///
+  /// The picture it is: what it holds copied, texel for texel, and [draw]
+  /// under the rim it gains, recorded before this answers and rastered
+  /// alone, on nothing, as a patch is ([patch]). Told to its listeners as a
+  /// write is.
+  ui.Rect? widen({
+    required K key,
+    required ui.Rect over,
+    required void Function(ui.Canvas canvas) draw,
+    bool Function()? gone,
+  }) {
+    final entry = _entries[key] ?? _becoming[key]?.entry;
+    if (entry == null || entry.held == null) {
+      return null;
+    }
+    final picture = entry.picture;
+    final was = picture.room;
+    final room = pictureExtentOf(was.expandToInclude(over));
+    if (room.longestSide > _onceSide) {
+      return null;
+    }
+    picture._room = room;
+    final rim = [
+      for (final rect in _rimBetween(was, room))
+        (
+          rect: rect,
+          recorded: _recordedThrough(rect, draw, gone: gone)..ignore(),
+        ),
+    ];
+    entry.renders = entry.renders.then((_) => _widen(entry, room, rim));
+    return room;
+  }
+
+  /// [widen]'s rim rastered, and the picture laid again around what it
+  /// holds. ⛔A write takes its turn behind the ones under way, the levels
+  /// owed among them: they read the texture this lets go of.
+  Future<void> _widen(
+    _Entry<K> entry,
+    ui.Rect room,
+    List<({ui.Rect rect, Future<ui.Picture?> recorded})> rim,
+  ) async {
+    final texels = <_Texels>[];
+    try {
+      for (final (:rect, :recorded) in rim) {
+        final drawn = await recorded;
+        if (drawn == null) {
+          // What it drew was gone before its plugins had run ([patch]).
+          _letGo(entry);
+          return;
+        }
+        texels.add((
+          rect: rect,
+          image: await _rendered(
+            drawn,
+            rect.width.toInt(),
+            rect.height.toInt(),
+          ),
+        ));
+      }
+      entry.writes = entry.writes.then((_) => _laidWider(entry, room, texels));
+      await entry.writes;
+    } on Object catch (error, stack) {
+      _report(error, stack, 'rendering the rim a frame picture is widened by');
+      _letGo(entry);
+    }
+  }
+
+  /// [entry]'s picture is what it holds and [rim], over [room], from here on.
+  Future<void> _laidWider(
+    _Entry<K> entry,
+    ui.Rect room,
+    List<_Texels> rim,
+  ) async {
+    final picture = entry.picture;
+    try {
+      if (entry.gone) {
+        return;
+      }
+      final image = await _readAt(
+        [
+          (
+            image: picture.image,
+            from: _whole(picture.image),
+            to: picture.extent.shift(-room.topLeft),
+          ),
+          for (final (:rect, :image) in rim)
+            (image: image, from: _whole(image), to: rect.shift(-room.topLeft)),
+        ],
+        room.width.toInt(),
+        room.height.toInt(),
+      );
+      final held = entry.gone ? null : _gpu.hold(image);
+      if (held == null) {
+        image.dispose();
+        _letGo(entry);
+        return;
+      }
+      entry
+        ..held = held
+        ..levels = _gpu.levelsOf(held);
+      picture._widened(image, room);
+    } on Object catch (error, stack) {
+      _report(error, stack, 'widening a frame picture');
+      _letGo(entry);
+    } finally {
+      for (final (rect: _, :image) in rim) {
+        image.dispose();
+      }
+    }
   }
 
   /// Moves the picture of [from] to [to] as it is, in its turn behind the
@@ -1218,6 +1349,17 @@ ui.Rect pictureExtentOf(ui.Rect extent) => _shapeOf(extent).extent;
   );
 }
 
+/// What of [outer] lies past [inner], which it holds, in up to four rects.
+List<ui.Rect> _rimBetween(ui.Rect inner, ui.Rect outer) => [
+  for (final rect in [
+    ui.Rect.fromLTRB(outer.left, outer.top, outer.right, inner.top),
+    ui.Rect.fromLTRB(outer.left, inner.bottom, outer.right, outer.bottom),
+    ui.Rect.fromLTRB(outer.left, inner.top, inner.left, inner.bottom),
+    ui.Rect.fromLTRB(inner.right, inner.top, outer.right, inner.bottom),
+  ])
+    if (!rect.isEmpty) rect,
+];
+
 bool _covers(ui.Rect extent, ui.Rect rect) =>
     !rect.isEmpty &&
     rect.left >= extent.left &&
@@ -1376,10 +1518,15 @@ class _Entry<K> {
   final FramePicture picture;
 
   /// The texture behind [picture]'s image — null where there is no GPU to
-  /// write with, and then the picture cannot be patched.
-  final Object? held;
+  /// write with, and then the picture cannot be patched. Another once it is
+  /// widened ([FramePictureStore.widen]).
+  Object? held;
 
-  final int levels;
+  int levels;
+
+  /// ⛔Not again for a picture widened: the grid its extent lies on is deeper
+  /// than any picture's patched levels ([frameGridOutward]), and a side past
+  /// a power of two only leaves one more level made again whole.
   final int patchedLevels;
 
   /// The deepest level [picture] has.

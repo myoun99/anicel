@@ -225,8 +225,9 @@ void main() {
     WidgetTester tester,
     GlobalKey screen,
     List<CompositeNode<CanvasStackRow>> nodes,
-    RendersHeld gpu,
-  ) async {
+    RendersHeld gpu, {
+    int onceSide = framePictureSide,
+  }) async {
     final cels = BrushFrameStore();
     keepInAFile(cels, {
       key: BitmapSurface(
@@ -265,7 +266,10 @@ void main() {
       showTransparentBackground: false,
       lineage: 'a-frame-that-waits-${nodes.hashCode}',
     );
-    final store = FramePictureStore<FramePictureKey>(gpu: gpu);
+    final store = FramePictureStore<FramePictureKey>(
+      gpu: gpu,
+      onceSide: onceSide,
+    );
     addTearDown(store.dispose);
     var standing = nodes;
     final run = runOver(
@@ -360,8 +364,8 @@ void main() {
       expect(onlyTheScreen(await shotOf(tester, screen)), waits);
     });
 
-    testWidgets('a frame that $name: a step no patch can follow — past its '
-        'picture — ${waits ? 'leaves the picture shown' : 'draws the frame '
+    testWidgets('a frame that $name: a step no patch can follow — past what '
+        'its picture can be widened to — ${waits ? 'leaves the picture shown' : 'draws the frame '
                   'as it stands'}', (tester) async {
       final screen = GlobalKey();
       final gpu = WritesNeverLand();
@@ -370,6 +374,7 @@ void main() {
         screen,
         nodesOf(),
         gpu,
+        onceSide: 1,
       );
       expect(
         await settleAsync(tester, () => store.bytesOf(picture) != null),
@@ -383,7 +388,7 @@ void main() {
       expect(
         store.landingOf(keptByTheCanvas(tester, picture)),
         isNull,
-        reason: '⛔premise: a picture does not grow — no patch goes past it',
+        reason: '⛔premise: it cannot be widened — no patch goes past it',
       );
 
       expect(

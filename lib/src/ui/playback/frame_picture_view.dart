@@ -665,11 +665,10 @@ class _FramePictureViewState extends State<FramePictureView> {
         held != null &&
         live.steady &&
         live.movedSince(held).located &&
-        _fits(live.drawing.extent, picture.extent);
+        _fits(live.drawing.extent, picture.room);
   }
 
-  /// ⛔A picture does not grow: whether what a frame draws over [drawn] is
-  /// all inside a picture of [extent].
+  /// Whether what a frame draws over [drawn] is all inside [extent].
   static bool _fits(Rect drawn, Rect extent) =>
       drawn.intersect(extent) == drawn;
 
@@ -831,15 +830,13 @@ class _FramePictureViewState extends State<FramePictureView> {
     StackedFrame live,
     Rect dirty,
   ) {
-    // ⛔A picture does not grow: a frame that now draws past it is drawn as
-    // it stands, and its next picture is laid wide enough. Inside it, the
-    // change is cut to it — past it the frame draws nothing, and the pixel
-    // the change is widened by ([StackedFrame.movedSince]) has no texel
-    // there. ⛔Not by the change alone: every stroke on the page's first
-    // row or column of tiles would be drawn as it stands.
-    final extent = picture.extent;
+    // Inside it, the change is cut to it — past it the frame draws nothing,
+    // and the pixel the change is widened by ([StackedFrame.movedSince]) has
+    // no texel there.
+    bool gone() => !mounted || !identical(_live, live);
     final drawing = live.drawing;
-    if (!_fits(drawing.extent, extent)) {
+    final extent = _roomFor(picture, drawing, gone);
+    if (extent == null) {
       _standing.whole = true;
       return;
     }
@@ -854,7 +851,7 @@ class _FramePictureViewState extends State<FramePictureView> {
       rect: rect,
       draw: drawing.draw,
       // Drawn again once its plugins have run, by the frame still standing.
-      gone: () => !mounted || !identical(_live, live),
+      gone: gone,
     )) {
       _standing.whole = true;
       return;
@@ -882,6 +879,28 @@ class _FramePictureViewState extends State<FramePictureView> {
       }),
     );
   }
+
+  /// Where [picture] holds what [drawing] draws: where it lies, or where it
+  /// is widened to — null where it cannot be, and the frame is drawn as it
+  /// stands. ⛔By what the frame draws, not the change alone: every stroke on
+  /// the page's first row or column of tiles reaches a pixel past the page.
+  ///
+  /// ↩️A picture did not grow: a frame that drew past it was drawn as it
+  /// stood until its key moved, and its next picture laid wide enough — all
+  /// the stroke that first reached a new band of tiles past the picture, and
+  /// a lay after it.
+  ui.Rect? _roomFor(
+    FramePicture picture,
+    FrameDrawing drawing,
+    bool Function() gone,
+  ) => _fits(drawing.extent, picture.room)
+      ? picture.room
+      : _store.widen(
+          key: _keptAs!,
+          over: drawing.extent,
+          draw: drawing.draw,
+          gone: gone,
+        );
 
   /// Whether a stroke is in hand on the cel the picture was taken on. ⛔Its
   /// overlay let go, or that cel committed with no build yet, is a change
