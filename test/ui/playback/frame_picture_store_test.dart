@@ -728,8 +728,8 @@ void main() {
     Iterable<int> levelsOf(({(int, int) run, List<RunSpan> spans}) write) =>
         write.spans.map((span) => span.level);
 
-    test('is none for a screen above 1/2 and every one for a screen at or '
-        'under it', () async {
+    test('is none for a screen above 1/2 and what a screen reads at or under '
+        'it', () async {
       Future<List<int>> laidAt(double scale) async {
         final gpu = _RecordingGpu();
         final store = FramePictureStore<String>(gpu: gpu);
@@ -743,9 +743,89 @@ void main() {
       expect(await laidAt(1), isEmpty);
       expect(await laidAt(0.75), isEmpty);
       expect(await laidAt(0.51), isEmpty);
-      expect(await laidAt(0.5), everyLevel);
-      expect(await laidAt(0.44), everyLevel);
-      expect(await laidAt(0.2), everyLevel);
+      expect(await laidAt(0.5), [1, 2]);
+      expect(await laidAt(0.44), [1, 2]);
+      expect(await laidAt(0.2), [1, 2, 3]);
+      expect(await laidAt(_readsLevels), everyLevel);
+    });
+
+    test('🚨a step lays what a screen reads and no deeper, the rest owed until '
+        'the patches pause (F-533)', () async {
+      final gpu = _RecordingGpu();
+      final store = FramePictureStore<String>(gpu: gpu);
+      final picture = await _layed(store, 'a', 1024);
+      expect(picture.readAt(0.4), isTrue);
+      final rendered = gpu.rendered.length;
+      store.patch(from: 'a', to: 'b', rect: spot, draw: fill);
+      expect(await store.landingOf('b'), isTrue);
+      expect(levelsOf(gpu.levelWrites.single), [1, 2]);
+      expect(
+        gpu.rendered,
+        hasLength(rendered + 2),
+        reason: 'the patch and its halvings, no level drawn whole for them',
+      );
+      expect(picture.readAt(0.4), isTrue, reason: 'all it reads is in');
+
+      expect(await pollUntil(() => gpu.levelWrites.length == 2), isTrue);
+      expect(levelsOf(gpu.levelWrites.last), everyLevel);
+      store.dispose();
+    });
+
+    test('a screen deeper than a step went is told so until they are in, and '
+        'the steps after it go as deep (F-533)', () async {
+      final gpu = _RecordingGpu();
+      final store = FramePictureStore<String>(gpu: gpu);
+      final picture = await _layed(store, 'a', 1024);
+      picture.readAt(0.4);
+      store.patch(from: 'a', to: 'b', rect: spot, draw: fill);
+      await store.landingOf('b');
+
+      expect(picture.readAt(0.2), isFalse);
+      expect(await pollUntil(() => picture.readAt(0.2)), isTrue);
+      expect(levelsOf(gpu.levelWrites.last), everyLevel);
+
+      store.patch(from: 'b', to: 'c', rect: spot, draw: fill);
+      await store.landingOf('c');
+      expect(levelsOf(gpu.levelWrites.last), [1, 2, 3]);
+      store.dispose();
+    });
+
+    test('a step that went less deep than the one before leaves the shallower '
+        'mark owed (F-533)', () async {
+      final gpu = _RecordingGpu();
+      final store = FramePictureStore<String>(gpu: gpu);
+      final picture = await _layed(store, 'a', 1024);
+      picture.readAt(0.2);
+      store.patch(from: 'a', to: 'b', rect: spot, draw: fill);
+      await store.landingOf('b');
+      expect(levelsOf(gpu.levelWrites.single), [1, 2, 3]);
+      await Future<void>.delayed(pause);
+      // The patches paused: what was read is forgotten.
+      picture.readAt(0.4);
+      store.patch(from: 'b', to: 'c', rect: spot, draw: fill);
+      await store.landingOf('c');
+      expect(levelsOf(gpu.levelWrites.last), [1, 2]);
+      expect(picture.readAt(0.4), isTrue);
+      expect(picture.readAt(0.2), isFalse);
+      await store.settled();
+      store.dispose();
+    });
+
+    test('tells no screen as the rest of what it reads is laid: nothing it '
+        'draws changes (F-533)', () async {
+      final gpu = _RecordingGpu();
+      final store = FramePictureStore<String>(gpu: gpu);
+      final picture = await _layed(store, 'a', 1200);
+      picture.readAt(0.4);
+      var told = 0;
+      picture.addListener(() => told += 1);
+      store.patch(from: 'a', to: 'b', rect: spot, draw: fill);
+      await store.landingOf('b');
+      expect(told, 1);
+
+      await store.settled();
+      expect(told, 2, reason: 'the last of them, as ever');
+      store.dispose();
     });
 
     test('waits for the patches to pause, a step laying the base alone',
@@ -771,11 +851,11 @@ void main() {
       final gpu = _RecordingGpu();
       final store = FramePictureStore<String>(gpu: gpu);
       final picture = await _layed(store, 'a', 1024);
-      expect(picture.readAt(0.4), isTrue, reason: 'nothing is owed yet');
+      expect(picture.readAt(_readsLevels), isTrue, reason: 'nothing is owed yet');
       store.patch(from: 'a', to: 'b', rect: spot, draw: fill);
       await store.landingOf('b');
       expect(levelsOf(gpu.levelWrites.single), everyLevel);
-      expect(picture.readAt(0.2), isTrue);
+      expect(picture.readAt(_readsLevels), isTrue);
       await store.settled();
       expect(gpu.levelWrites, hasLength(1));
       store.dispose();
@@ -785,7 +865,7 @@ void main() {
       final gpu = _RecordingGpu();
       final store = FramePictureStore<String>(gpu: gpu);
       (await _layed(store, 'a', 1024))
-        ..readAt(0.4)
+        ..readAt(_readsLevels)
         ..readAt(1);
       store.patch(from: 'a', to: 'b', rect: spot, draw: fill);
       await store.landingOf('b');
@@ -801,13 +881,13 @@ void main() {
       expect(await pollUntil(() => gpu.bases.length == 1), isTrue);
       store.patch(from: 'b', to: 'c', rect: spot, draw: fill);
       expect(await pollUntil(() => gpu.rendered.length == 3), isTrue);
-      expect(picture.readAt(0.4), isTrue, reason: '⛔premise: nothing owed yet');
+      expect(picture.readAt(_readsLevels), isTrue, reason: '⛔premise: nothing owed yet');
 
       gpu.holdWrites = false;
       gpu.releaseWrite();
       expect(await store.landingOf('c'), isTrue);
       expect(levelsOf(gpu.levelWrites.single), everyLevel);
-      expect(picture.readAt(0.4), isFalse, reason: 'the first step owes them');
+      expect(picture.readAt(_readsLevels), isFalse, reason: 'the first step owes them');
       store.dispose();
     });
 
@@ -823,9 +903,9 @@ void main() {
       expect(told, 1);
       final behind = picture.image;
 
-      expect(picture.readAt(0.4), isFalse);
+      expect(picture.readAt(_readsLevels), isFalse);
       expect(picture.readAt(_readsLevels), isFalse, reason: 'asked once');
-      expect(await pollUntil(() => picture.readAt(0.4)), isTrue);
+      expect(await pollUntil(() => picture.readAt(_readsLevels)), isTrue);
       expect(gpu.levelWrites, hasLength(1));
       expect(levelsOf(gpu.levelWrites.single), everyLevel);
       expect(told, 2, reason: 'whoever draws it draws the one it is now');
@@ -847,7 +927,7 @@ void main() {
       store.patch(from: 'b', to: 'c', rect: spot, draw: fill);
       expect(await pollUntil(() => gpu.recorded.length == asked + 1), isTrue);
 
-      expect(picture.readAt(0.4), isFalse);
+      expect(picture.readAt(_readsLevels), isFalse);
       expect(
         await pollUntil(() => gpu.recorded.length == asked + 2),
         isTrue,
@@ -2114,8 +2194,8 @@ Future<FramePicture> _layed(
       canvas.drawPaint(ui.Paint()..color = const ui.Color(0xFF0000FF)),
 )))!;
 
-/// A display scale at which a screen reads a picture's levels.
-const double _readsLevels = 0.4;
+/// A display scale at which a screen reads every level of a picture.
+const double _readsLevels = 1 / 1024;
 
 /// What the store reports as it goes on ([FlutterError.onError]) from here
 /// to the end of the test.

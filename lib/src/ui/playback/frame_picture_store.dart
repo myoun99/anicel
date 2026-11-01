@@ -12,6 +12,7 @@ import '../canvas/display_resample.dart'
     show
         filterQualityForDisplayScale,
         frameGridOutward,
+        levelsReadAt,
         wholeLevelPixelsOutward;
 import '../canvas/fx_plugin_stages.dart';
 import '../canvas/image_pieces.dart' show piecesOver;
@@ -83,12 +84,18 @@ typedef FrameDrawing = ({
 class FramePicture extends ChangeNotifier {
   FramePicture._(this._image, this._extent, this.outside);
 
-  /// Whether a screen has read this picture's levels since its patches last
-  /// paused — whether a write lays them ([readAt]).
-  bool _levelsRead = false;
+  /// The deepest level a screen has read of this picture since its patches
+  /// last paused — how far down a write lays ([readAt]).
+  int _levelsRead = 0;
 
-  /// Where the levels are behind the base.
+  /// Where the levels under [_wholeTo] are behind the base.
   ui.Rect? _owed;
+
+  /// The deepest level [_owed] leaves out.
+  int _wholeTo = 0;
+
+  /// Whether a screen reads a level that owes.
+  bool get _levelsWaitedFor => _levelsRead > _wholeTo;
 
   /// Asks for the levels owed at once.
   late final void Function() _levelsWanted;
@@ -106,7 +113,7 @@ class FramePicture extends ChangeNotifier {
   final ui.Color outside;
 
   /// Tells the picture that a screen draws it at [displayScale], before the
-  /// screen asks for a step: a write lays the levels if a screen reads them
+  /// screen asks for a step: a write lays the levels a screen reads
   /// ([FramePictureStore._written]). Answers whether [image] is as it is as
   /// far as that reads — where not, the levels are written now, and the
   /// screen has the frame as it stands to draw until they are in.
@@ -123,9 +130,11 @@ class FramePicture extends ChangeNotifier {
   /// cost every step above 1/2 there two waits.
   bool readAt(double displayScale) {
     final levels =
-        filterQualityForDisplayScale(displayScale) == ui.FilterQuality.medium;
-    _levelsRead = _levelsRead || levels;
-    if (!levels || _owed == null) {
+        filterQualityForDisplayScale(displayScale) == ui.FilterQuality.medium
+        ? levelsReadAt(displayScale)
+        : 0;
+    _levelsRead = math.max(_levelsRead, levels);
+    if (_owed == null || levels <= _wholeTo) {
       return true;
     }
     _levelsWanted();
@@ -842,7 +851,7 @@ class FramePictureStore<K extends Object> {
         if (image != null) (rect: patch.rect, image: image),
     ];
     final picture = entry.picture;
-    final downTo = picture._levelsRead ? entry.deepest : 0;
+    final downTo = math.min(picture._levelsRead, entry.deepest);
     if (await _wentIn(entry, texels, downTo)) {
       _owe(entry, texels, downTo);
       picture._written(_gpu.imageOf(entry.held!));
@@ -885,6 +894,9 @@ class FramePictureStore<K extends Object> {
   void _owe(_Entry<K> entry, List<_Texels> texels, int downTo) {
     final picture = entry.picture;
     if (downTo < entry.deepest) {
+      picture._wholeTo = picture._owed == null
+          ? downTo
+          : math.min(picture._wholeTo, downTo);
       var rect = picture._owed ?? texels.first.rect;
       for (final patch in texels) {
         rect = rect.expandToInclude(patch.rect);
@@ -893,7 +905,7 @@ class FramePictureStore<K extends Object> {
     }
     entry.quiet?.cancel();
     entry.quiet = Timer(_levelsQuiet, () {
-      picture._levelsRead = false;
+      picture._levelsRead = 0;
       _writeOwed(entry);
     });
   }
@@ -917,7 +929,8 @@ class FramePictureStore<K extends Object> {
   Future<void> _layOwed(_Entry<K> entry) async {
     final picture = entry.picture;
     final owed = picture._owed;
-    final stepping = (entry.quiet?.isActive ?? false) && !picture._levelsRead;
+    final stepping =
+        (entry.quiet?.isActive ?? false) && !picture._levelsWaitedFor;
     if (owed == null || entry.gone || stepping) {
       return;
     }
@@ -945,7 +958,7 @@ class FramePictureStore<K extends Object> {
       picture._owed = _restOf(owed, rect);
       // The last is told whoever reads: a screen that came to read them
       // since the pause began has them from it.
-      if (picture._levelsRead || picture._owed == null) {
+      if (picture._levelsWaitedFor || picture._owed == null) {
         picture._written(_gpu.imageOf(entry.held!));
       }
       if (picture._owed != null) {
@@ -955,14 +968,13 @@ class FramePictureStore<K extends Object> {
   }
 
   /// Writes [batch] into [entry]'s picture — a later patch over an earlier,
-  /// or the pieces of a lay ([_layNow]) — down to level [downTo], which is
-  /// none or the deepest: the base, each patch's own halvings down to the
-  /// deepest patched level, and every level under that as far as [downTo]
-  /// made again whole, once for them all ([_run]). Answers whether the GPU
-  /// did.
+  /// or the pieces of a lay ([_layNow]) — down to level [downTo]: the base,
+  /// each patch's own halvings down to the deepest patched level, and every
+  /// level under that as far as [downTo] made again whole, once for them
+  /// all ([_run]). Answers whether the GPU did.
   ///
-  /// 🚨★★★EVERY LEVEL WITH EVERY BATCH WHERE A SCREEN READS LEVELS, AND THE
-  /// PICTURE ANSWERS ONLY THEN — the screen draws the picture and nothing
+  /// 🚨★★★EVERY LEVEL A SCREEN READS WITH EVERY BATCH, AND THE PICTURE
+  /// ANSWERS ONLY THEN — the screen draws the picture and nothing
   /// over it (F-465, 유저 채팅 2026-10-26 「그럼 그냥 바로 바로쓰기로 바꾸고,
   /// 잔재들 없애고, 최대한 개선해보자」; F-512-Q2, 유저 2026-10-31 「그림 한
   /// 장만 유지한다」). Where no screen reads them they wait for the patches
@@ -987,11 +999,11 @@ class FramePictureStore<K extends Object> {
   /// ⛔Not D7-2 again: nothing is drawn over the picture, so F-465's two
   /// images of one frame cannot come back, and nothing is held meanwhile
   /// but a rect.
-  /// ⛔Not only the levels a screen reads, at or under 1/2 (F-512): the main
-  /// PC under load went 75–84 → 61–65 ms fitted, but on the Surface Pro 11
-  /// (two levels in place of eleven, 44%) a step was no sooner in and showed
-  /// later — mean 4 ms, p50 34 → 41 ms at 930 px/s: there the copy out waits
-  /// on the GPU however little it copies.
+  /// ↩️Every level at or under 1/2 (F-512: the main PC under load went
+  /// 75–84 → 61–65 ms fitted, but on the Surface Pro 11, two levels in place
+  /// of eleven at 44%, a step was no sooner in and showed later — mean 4 ms,
+  /// p50 34 → 41 ms at 930 px/s, there the copy out waiting on the GPU
+  /// however little it copies).
   ///
   /// ↩️The base went in with each batch and the levels under it waited —
   /// for the patches to pause 200 ms, or for 64 of them or 4 Mi texels,
