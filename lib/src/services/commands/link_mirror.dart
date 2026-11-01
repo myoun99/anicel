@@ -384,9 +384,12 @@ namedTransformWrites(
 /// counterpart in it (the mirrors' rule: a partial match means the
 /// structure diverged, so we stand down rather than guess). A cut whose
 /// layers are all unlinked has no siblings at all.
-List<CutId> linkedCutSiblings(Project project, {required CutId cutId}) {
+List<CutId> linkedCutSiblings(Project project, {required CutId cutId}) =>
+    _siblingsOf(requireCut(project, cutId), project);
+
+List<CutId> _siblingsOf(Cut cut, Project project) {
   final registry = project.linkRegistry;
-  final cut = requireCut(project, cutId);
+  final cutId = cut.id;
   var linkedLayerCount = 0;
   final counterpartsByCut = <CutId, int>{};
   for (final layer in cut.layers) {
@@ -428,13 +431,38 @@ List<CutId> linkedCutSiblings(Project project, {required CutId cutId}) {
 /// what it reads must not depend on which sibling happens to be open.
 ///
 /// ↩️Each of those walked the tracks for itself.
-List<Cut> linkedCutGroupInTrackOrder(Project project, {required CutId cutId}) {
-  final group = <CutId>{cutId, ...linkedCutSiblings(project, cutId: cutId)};
-  return [
-    for (final track in project.tracks)
-      for (final cut in track.cuts)
-        if (group.contains(cut.id)) cut,
-  ];
+List<Cut> linkedCutGroupInTrackOrder(Project project, {required CutId cutId}) =>
+    LinkedCutGroups(project).of(requireCut(project, cutId));
+
+/// [linkedCutGroupInTrackOrder] for a reader asking of every cut: the tracks
+/// are walked once, not once to each cut.
+///
+/// ⚠️F-531: 400 cuts spent a third of the conte's reading walking them
+/// (12ms of 37ms, measured), and that grows with the square of the cuts.
+final class LinkedCutGroups {
+  LinkedCutGroups(this._project);
+
+  final Project _project;
+
+  late final Map<CutId, ({int place, Cut cut})> _placed = {
+    for (final (place, cut) in [
+      for (final track in _project.tracks) ...track.cuts,
+    ].indexed)
+      cut.id: (place: place, cut: cut),
+  };
+
+  /// [cut]'s group, in track order. A member no track holds is left out.
+  List<Cut> of(Cut cut) {
+    final siblings = _siblingsOf(cut, _project);
+    if (siblings.isEmpty) {
+      return [cut];
+    }
+    final members = [
+      for (final id in {cut.id, ...siblings})
+        ?_placed[id],
+    ]..sort((a, b) => a.place.compareTo(b.place));
+    return [for (final member in members) member.cut];
+  }
 }
 
 /// [layerId]'s counterpart inside [targetCutId] — the member of its link
