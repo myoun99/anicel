@@ -57,12 +57,12 @@ class _BrushEditOpening {
   /// 필압강하게 3개dab정도가 찍힘」). 🔬Build 1086, a second of a weak stroke:
   /// `ledger meas=1 est=75 fin=0 upd=73 rep=3` — UIKit does correct its
   /// estimates. The first force past the stand-in is one of them, on its way
-  /// down from it, and the press and its repeats took it. So the samples up to
-  /// that one ([_WaitingSample.opens]) wait for the corrections UIKit owes
-  /// them ([_awaitsACorrection]), and each is painted with its own — one that
-  /// is owed none, as the press, with the nearest after it. ⚠️The price is
-  /// the first dab that much later: the inspector's `opened` line says how
-  /// much. A pen with no corrections to send pays nothing.
+  /// down from it, and the press and its repeats took it. So the opening waits
+  /// for the correction of its last sample ([_awaitsACorrection]), and each of
+  /// the samples up to that one ([_WaitingSample.opens]) is painted with its
+  /// own — one that has none, as the press, with the nearest after it.
+  /// ⚠️The price is the first dab that much later: the inspector's `opened`
+  /// line says how much. A pen with no corrections to send pays nothing.
   ///
   /// ⛔NOT 「paint the stand-in and repaint when the reading comes」 — what
   /// is shown once is seen ([[no-optimistic-commit-then-revert]]).
@@ -81,8 +81,11 @@ class _BrushEditOpening {
   /// A pen that never measures — one without a force sensor may repeat its
   /// stand-in for good — would otherwise hold its whole stroke off screen
   /// until it lifted; past this bound it paints what it reports, as it
-  /// always did. Only such a pen ever pays all of it. ⚠️How late UIKit's
-  /// corrections come is one report's ~50 ms, not measured here.
+  /// always did. Only such a pen ever pays all of it. 🔬How late UIKit's
+  /// corrections come: build 1087's one weak stroke had samples up to about
+  /// 69 ms corrected when the wait ended near 103 ms, so about 30 ms behind
+  /// the sample then; one report says ~50 ms. ⚠️Whether the first of a stroke
+  /// comes that soon is not measured.
   static const Duration _patience = Duration(milliseconds: 100);
 
   /// Whether this contact has not read a pressure yet.
@@ -195,13 +198,23 @@ class _BrushEditOpening {
           ((_state._strokeDynamics?.readsDirection ?? false) ||
               (_state._secondStroke?.readsDirection ?? false)));
 
-  /// Whether a sample of the opening is still owed the force UIKit will send
-  /// after the fact — by a brush that draws with it.
+  /// Whether the opening's last sample is still owed the force UIKit will
+  /// send after the fact — by a brush that draws with it.
+  ///
+  /// 🚨THE LAST ONE, NOT EVERY ONE (유저 2026-11-02: 「시작지연은
+  /// 줄일수있으면 줄이고싶어」). ↩️It asked of every sample of the opening,
+  /// and the press is one. 🔬Build 1087, a weak stroke: `opened 95ms held=12
+  /// own=8` · `state e e e` · `fixed - .00 .01` · `est=100 upd=99`: UIKit
+  /// calls the press an estimate it will correct and never does, so every
+  /// opening ran to the patience, and the fixture had the press measured.
+  /// ⚠️Build 1086 lost a second one (`est=75 upd=73`), so naming the press is
+  /// not enough: past the last sample's correction nothing is worth waiting
+  /// for. One that came late or never takes the nearest after it
+  /// ([_takeRecordedPressures]).
   bool get _awaitsACorrection =>
       _reads(BrushInputSource.pressure) &&
-      _waiting!.samples.any(
-        (sample) =>
-            sample.opens && _state._pressure.awaitsCorrection(sample.at),
+      _state._pressure.awaitsCorrection(
+        _waiting!.samples.lastWhere((sample) => sample.opens).at,
       );
 
   /// Whether this stroke's brush reads [source] at all.
@@ -315,9 +328,10 @@ class _WaitingSample {
 
   /// Whether it is of the contact's OPENING: taken before it read a pressure,
   /// or the sample that first did. What such a sample reported is the
-  /// stand-in or the estimate coming down from it, so it waits for its own
-  /// correction ([_BrushEditOpening._awaitsACorrection]). A sample after
-  /// those keeps its own estimate if none has come.
+  /// stand-in or the estimate coming down from it, so it takes its own
+  /// correction, or the nearest after it, and the opening waits for the last
+  /// of them ([_BrushEditOpening._awaitsACorrection]). A sample after those
+  /// keeps its own estimate if none has come.
   final bool opens;
 
   /// What the sample read, whole — its pressure and speed filled in as the

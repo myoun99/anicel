@@ -712,7 +712,8 @@ void main() {
       tearDown(() => debugStrokeDabsLaid = null);
 
       /// The contact's sample at [x], taken [at] ms in, on the ledger as
-      /// UIKit first says it.
+      /// UIKit first says it — the press too. 🔬Build 1087: `state e e e` ·
+      /// `fixed - .00 .01`: UIKit calls it an estimate and never corrects it.
       Future<void> sample(
         WidgetTester tester,
         double x,
@@ -720,7 +721,7 @@ void main() {
         int at, {
         PenLedgerReading reading = _estimatedReading,
       }) async {
-        ledger[_ms(at)] = at == 0 ? measured(force) : reading;
+        ledger[_ms(at)] = reading;
         (at == 0 ? _down : _move)(
           tester,
           Offset(x, 8),
@@ -778,6 +779,62 @@ void main() {
           );
           expect(pressureAt(dabs, 84), closeTo(_ipad(0.10), 1e-9));
           expect(InputInspector.notes['opened'], 'opened 32ms held=5 own=3');
+        },
+        variant: ipad,
+      );
+
+      testWidgets(
+        'the opening does not wait for the press, which is never corrected: '
+        'its last sample\'s correction ends the wait, well short of the '
+        'patience',
+        (tester) async {
+          InputInspector.visible.value = true;
+          final results = <List<BrushDab>>[];
+          await _pump(tester, _pressureBrush, results);
+          await sample(tester, 4, _stand, 0);
+          await sample(tester, 20, _stand, 8);
+          await sample(tester, 36, 0.17, 16);
+          await sample(tester, 52, 0.04, 24);
+          ledger[_ms(8)] = measured(0.01);
+          await sample(tester, 68, 0.02, 32);
+          expect(
+            laid,
+            isEmpty,
+            reason: '⛔CONTROL: the opening\'s last sample is still owed one',
+          );
+
+          ledger[_ms(16)] = measured(0.02);
+          await sample(tester, 84, 0.02, 40);
+          expect(laid, isNotEmpty, reason: 'nothing is left worth waiting for');
+          _up(tester, const Offset(84, 8), time: _ms(44));
+          await tester.pump();
+
+          final dabs = results.single;
+          expect(pressureAt(dabs, 4), closeTo(_ipad(0.01), 1e-9));
+          expect(pressureAt(dabs, 36), closeTo(_ipad(0.02), 1e-9));
+          expect(InputInspector.notes['opened'], 'opened 32ms held=5 own=2');
+        },
+        variant: ipad,
+      );
+
+      testWidgets(
+        'a repeat UIKit never corrects holds nothing either: it takes the '
+        'nearest after it',
+        (tester) async {
+          final results = <List<BrushDab>>[];
+          await _pump(tester, _pressureBrush, results);
+          await sample(tester, 4, _stand, 0);
+          await sample(tester, 20, _stand, 8);
+          await sample(tester, 36, 0.17, 16);
+          ledger[_ms(16)] = measured(0.02);
+          await sample(tester, 52, 0.04, 24);
+          expect(laid, isNotEmpty);
+          _up(tester, const Offset(52, 8), time: _ms(28));
+          await tester.pump();
+
+          final dabs = results.single;
+          expect(pressureAt(dabs, 4), closeTo(_ipad(0.02), 1e-9));
+          expect(pressureAt(dabs, 20), closeTo(_ipad(0.02), 1e-9));
         },
         variant: ipad,
       );
