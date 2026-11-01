@@ -23,8 +23,10 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_display_cache_service.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
+import 'package:anicel/src/models/dirty_region.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart'
-    show PromotedStrokeTile;
+    show ActiveStrokePixelSource, PromotedStrokeTile;
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
@@ -828,6 +830,49 @@ void aStrokeIsWrittenIntoThePictureShown({
     overlay.dispose();
   }, skip: skipped);
 
+  testWidgets('🚨the samples a step on its way passes over are pictured by '
+      'the step after it, not as they come (F-533)', (tester) async {
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+    final (step: _, :pacedBy, :gpu, :store, :picture) = await standing(
+      tester,
+      'pictured-by-the-step',
+      storeWithTheCel(),
+      overlay,
+    );
+    const frame = Duration(milliseconds: 1);
+    await pacedBy(frame);
+    final source = _StrokeCountingReads(canvasSize);
+    final region = DirtyRegion(
+      left: 0,
+      top: 16,
+      rightExclusive: 8,
+      bottomExclusive: 24,
+    );
+
+    overlay.updateRegion(source: source, region: region);
+    await tester.pump(frame);
+    final onItsWay = store.landingOf(keptByTheCanvas(tester, picture));
+    expect(onItsWay, isNotNull, reason: '⛔premise: a step on its way');
+    expect(source.reads, isPositive, reason: 'the step read what it writes');
+
+    final read = source.reads;
+    gpu.holdsRenders = true;
+    addTearDown(gpu.letAllThrough);
+    for (var i = 0; i < 4; i += 1) {
+      overlay.updateRegion(source: source, region: region);
+      await tester.pump(frame);
+    }
+    expect(source.reads, read, reason: 'nothing was asked of them yet');
+
+    gpu.letAllThrough();
+    await inThePicture(tester, onItsWay);
+    await tester.pump(frame);
+    expect(source.reads, greaterThan(read), reason: 'the next step did');
+
+    await tester.pumpWidget(const SizedBox());
+    overlay.dispose();
+  }, skip: skipped);
+
   testWidgets('⛔a stroke let go while its step is held: the stroke gone goes '
       'in at no timer — it waits for the paint (F-512)', (tester) async {
     final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
@@ -1543,6 +1588,24 @@ void aStrokeIsWrittenIntoThePictureShown({
     await tester.pumpWidget(const SizedBox());
     overlay.dispose();
   }, skip: skipped);
+}
+
+/// A stroke of nothing that says how many rows of it were read.
+class _StrokeCountingReads implements ActiveStrokePixelSource {
+  _StrokeCountingReads(this._page);
+
+  final CanvasSize _page;
+
+  int reads = 0;
+
+  @override
+  PasteboardWall get pasteboard => _page.pasteboardAt(PasteboardReach.whole);
+
+  @override
+  void copyRow(int x, int y, int count, Uint8List target, int targetOffset) {
+    reads += 1;
+    target.fillRange(targetOffset, targetOffset + count * 4, 0);
+  }
 }
 
 /// A store that says which keys were laid.
