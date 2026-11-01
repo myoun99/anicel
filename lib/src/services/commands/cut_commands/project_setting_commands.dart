@@ -27,12 +27,15 @@ class _ProjectSettingCommands {
   );
 
   /// The 타임시트 서식 window's save: the work's sheet format and the paper
-  /// of the cut the sheet shows ([cutId]; none in the gap) — each only if
-  /// it changed, ONE undo step together ([HistoryManager.runAsOneStep]).
+  /// of the cut the sheet shows ([cutId]; none in the gap) and, where one was
+  /// picked, whether it writes its fixed lines ([fixedText] — its `to` null
+  /// for the format's, F-542) — each only if it changed, ONE undo step
+  /// together ([HistoryManager.runAsOneStep]).
   void setTimesheetFormat({
     required TimesheetInfo info,
     CutId? cutId,
     TimesheetSheetKind? kind,
+    ({bool? to})? fixedText,
   }) {
     final repository = _coordinator.repository;
     final history = _coordinator.historyManager;
@@ -56,17 +59,32 @@ class _ProjectSettingCommands {
           ),
         );
       }
+      if (fixedText case (:final to)
+          when cutId != null &&
+              LinkedCutFieldCommand.linkedCutsOf(project, [cutId]).any(
+                (id) => requireCut(project, id).metadata.sheetFixedText != to,
+              )) {
+        history.execute(
+          UpdateCutSheetFixedTextCommand(
+            repository: repository,
+            cutIds: [cutId],
+            on: to,
+          ),
+        );
+      }
     });
   }
 
   /// The 콘티 용지 서식 window's save: the work's format and, where one was
   /// picked, the room [cutIds]' conte cells take ([cameraRoom] — its `to`
-  /// null for the format's, I-82-Q1), on the 겸용 pair as one — each only
-  /// if it changed, ONE undo step together.
+  /// null for the format's, I-82-Q1) and whether they write their fixed
+  /// lines ([fixedText], F-542), on the 겸용 pair as one — each only if it
+  /// changed, ONE undo step together.
   void setConteFormat({
     required TimesheetInfo info,
     required List<CutId> cutIds,
     ({ConteCameraRoom? to})? cameraRoom,
+    ({bool? to})? fixedText,
   }) {
     final repository = _coordinator.repository;
     final history = _coordinator.historyManager;
@@ -86,6 +104,18 @@ class _ProjectSettingCommands {
             repository: repository,
             cutIds: cutIds,
             room: to,
+          ),
+        );
+      }
+      if (fixedText case (:final to)
+          when LinkedCutFieldCommand.linkedCutsOf(project, cutIds).any(
+            (id) => requireCut(project, id).metadata.conteFixedText != to,
+          )) {
+        history.execute(
+          UpdateCutConteFixedTextCommand(
+            repository: repository,
+            cutIds: cutIds,
+            on: to,
           ),
         );
       }

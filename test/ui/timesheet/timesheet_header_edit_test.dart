@@ -81,7 +81,7 @@ void main() {
               child: TimesheetHeaderEditLayer(
                 layout: layout,
                 viewport: CanvasViewport(),
-                onMemoCommitted: (page, memo) =>
+                onMemoCommitted: (page, side, memo) =>
                     committedMemos.add((page, memo)),
                 headerCommits: {
                   for (final field in roads)

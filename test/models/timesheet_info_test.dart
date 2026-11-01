@@ -321,6 +321,31 @@ void main() {
       expect(info.hashCode, isNot(TimesheetInfo.empty.hashCode));
     });
 
+    test('the sheet\'s fixed text is its own, written unless taken out, and '
+        'taken out travels with the work', () {
+      // 유저 2026-11-02 (F-542): 「고정텍스트 적용/미적용 설정 똑같이 만들어서」.
+      expect(TimesheetInfo.empty.sheetFixedText, isTrue);
+      expect(TimesheetInfo.fromJson(const {}).sheetFixedText, isTrue);
+      expect(
+        TimesheetInfo.empty.toJson().containsKey('sheetFixedText'),
+        isFalse,
+      );
+      final info = TimesheetInfo.empty.copyWith(sheetFixedText: false);
+
+      final restored = TimesheetInfo.fromJson(info.toJson());
+
+      expect(restored, info);
+      expect(restored.sheetFixedText, isFalse);
+      expect(restored.conteFixedText, isTrue, reason: 'each paper its own');
+      expect(
+        restored.copyWith(conteCover: false).sheetFixedText,
+        isFalse,
+        reason: 'another change keeps it',
+      );
+      expect(info, isNot(TimesheetInfo.empty), reason: 'one undo step');
+      expect(info.hashCode, isNot(TimesheetInfo.empty.hashCode));
+    });
+
     // 🗣️유저 2026-10-30: 「그리고 기본값은 칸 안에가 되도록」.
     test('I-82: a moving camera\'s cell keeps its box unless the format lets '
         'it grow, and grown travels with the work', () {

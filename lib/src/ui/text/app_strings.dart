@@ -1062,6 +1062,7 @@ enum AppStrings {
   String get cnLinkedCuts => _s('cnLinkedCuts');
   String get cnCutHead => _s('cnCutHead');
   String get cnCutTail => _s('cnCutTail');
+  String get cnWholeCut => _s('cnWholeCut');
 
   /// What the timesheet PRINTS — read from the NOTATION language's table,
   /// not the program's (`timesheetWordsIn`): its header boxes' labels, and
@@ -3547,6 +3548,7 @@ enum AppStrings {
     'cnLinkedCuts': 'Linked',
     'cnCutHead': 'Cut head',
     'cnCutTail': 'Cut tail',
+    'cnWholeCut': 'Full cut',
     'sheetPrintEpisode': 'Ep.no',
     'sheetPrintTitle': 'Title',
     'sheetPrintScene': 'Scene',
@@ -5382,6 +5384,7 @@ enum AppStrings {
     'cnLinkedCuts': '兼用',
     'cnCutHead': 'カット頭',
     'cnCutTail': 'カット尻',
+    'cnWholeCut': '全尺',
     'sheetPrintEpisode': '話数',
     'sheetPrintTitle': 'タイトル',
     'sheetPrintScene': 'シーン',
@@ -7206,6 +7209,7 @@ enum AppStrings {
     'cnLinkedCuts': '겸용',
     'cnCutHead': '컷 앞',
     'cnCutTail': '컷 뒤',
+    'cnWholeCut': '컷 전체',
     'sheetPrintEpisode': '화수',
     'sheetPrintTitle': '제목',
     'sheetPrintScene': '씬',
@@ -9214,6 +9218,7 @@ enum AppStrings {
     'cnLinkedCuts': 'Lié',
     'cnCutHead': 'Début de plan',
     'cnCutTail': 'Fin de plan',
+    'cnWholeCut': 'Plan entier',
     'sheetPrintEpisode': 'Ép.',
     'sheetPrintTitle': 'Titre',
     'sheetPrintScene': 'Scène',
@@ -10983,6 +10988,7 @@ enum AppStrings {
     'cnLinkedCuts': '链接',
     'cnCutHead': '镜头开头',
     'cnCutTail': '镜头结尾',
+    'cnWholeCut': '全长',
     'sheetPrintEpisode': '话数',
     'sheetPrintTitle': '标题',
     'sheetPrintScene': '场景',

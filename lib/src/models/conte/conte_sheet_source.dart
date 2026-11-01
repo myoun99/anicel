@@ -13,6 +13,7 @@ import '../camera_work_marks.dart' show CameraKeyRole;
 import '../cut_id.dart';
 import '../frame_id.dart';
 import '../se_line_type.dart';
+import '../sheet_fixed_lines.dart';
 import 'conte_camera_room.dart';
 
 /// One panel of a cut, as the sheet reads it.
@@ -29,11 +30,7 @@ class ConteCellSource {
     this.inkId,
     this.action = '',
     this.camera,
-    this.cameraLines = const [],
-    this.transitionLines = const [],
-    this.linkedCuts = const [],
-    this.cutHeadLines = const [],
-    this.cutTailLines = const [],
+    this.fixedLines = SheetFixedLines.none,
   });
 
   /// Cut-LOCAL frames.
@@ -60,26 +57,9 @@ class ConteCellSource {
   /// drawn over it.
   final ConteCameraWork? camera;
 
-  /// What the camera does while the cell is on, as its ACTION column writes
-  /// it over the words typed there — a line to each move and each stretch
-  /// it stands still beside one, `6f-16f PAN (0+11)`
-  /// (`conteCameraStretches`, I-93), and none where it does nothing.
-  final List<String> cameraLines;
-
-  /// The transitions the cell's ACTION column writes under [cameraLines] —
-  /// `c1 × c2 カットO.L (1+0)` (`conteTransitionLine`, I-93-Q1).
-  final List<String> transitionLines;
-
-  /// The cuts the cell's cut is 겸용 with, as its ACTION column writes them
-  /// under [transitionLines] — on the cut's first cell only, none on the
-  /// others (유저 2026-11-01, F-531: 「해당 컷의 첫번째 패널에만 적어줌」).
-  final List<String> linkedCuts;
-
-  /// The fades on the head of the cell's cut and on its tail — `FI (0+6)`
-  /// (`conteTransitionLine`) — on its first cell and its last, none on the
-  /// others. Above every other line and under every other line.
-  final List<String> cutHeadLines;
-  final List<String> cutTailLines;
+  /// What the cell's ACTION column writes over the words typed there — none
+  /// where the cut or the work leaves them out.
+  final SheetFixedLines fixedLines;
 
   int get lengthFrames => endFrameExclusive - startFrame;
 }
@@ -232,7 +212,6 @@ class ConteSheetSource {
     this.framesPerSecond = 24,
     this.cover = true,
     this.blankPage = true,
-    this.fixedText = true,
   });
 
   final List<ConteCutSource> cuts;
@@ -262,13 +241,6 @@ class ConteSheetSource {
   /// the same front.
   final bool cover;
   final bool blankPage;
-
-  /// Whether a cell writes its camera's lines, its transitions and its 겸용
-  /// cuts over its ACTION words ([ConteCellSource.cameraLines] ·
-  /// [ConteCellSource.transitionLines] · [ConteCellSource.linkedCuts]) — the
-  /// work's choice
-  /// (`TimesheetInfo.conteFixedText`), read here for the same reason.
-  final bool fixedText;
 
   /// The cut [cutId] names. Every cut a layout placed is here.
   ConteCutSource cutById(String cutId) =>

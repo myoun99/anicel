@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show ValueNotifier;
 
+import '../../models/sheet_memo_side.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_resize_anchor.dart';
 import '../../models/canvas_size.dart';
@@ -323,20 +324,29 @@ class CutVerbs {
   void updateActiveCutNote({required int page, required String note}) =>
       _activeCut.onActiveCut((cutId) => _writeNote(cutId, page, note));
 
-  /// [cutId]'s memo on page [page] of its timesheet — the cut the paper
-  /// prints (I-127).
+  /// [cutId]'s memo on [side] of page [page] of its timesheet — the cut the
+  /// paper prints (I-127).
   void updateCutNote({
     required CutId cutId,
     required int page,
     required String note,
-  }) => _activeCut.onCut(cutId, (cutId) => _writeNote(cutId, page, note));
+    SheetMemoSide side = SheetMemoSide.left,
+  }) => _activeCut.onCut(
+    cutId,
+    (cutId) => _writeNote(cutId, page, note, side: side),
+  );
 
-  void _writeNote(CutId cutId, int page, String note) =>
-      _project.cutCommandCoordinator.updateCutNote(
-        cutId: cutId,
-        page: page,
-        note: note,
-      );
+  void _writeNote(
+    CutId cutId,
+    int page,
+    String note, {
+    SheetMemoSide side = SheetMemoSide.left,
+  }) => _project.cutCommandCoordinator.updateCutNote(
+    cutId: cutId,
+    page: page,
+    note: note,
+    side: side,
+  );
 
   /// The cuts a pick in the cut button is about: the ones the storyboard's
   /// range covers, or — with no range up — the active cut. ONE list either
@@ -405,11 +415,13 @@ class CutVerbs {
   void saveConteFormat(
     TimesheetInfo info, {
     ({ConteCameraRoom? to})? cameraRoom,
+    ({bool? to})? fixedText,
   }) {
     _project.cutCommandCoordinator.setConteFormat(
       info: info,
       cutIds: addressedCutIds,
       cameraRoom: cameraRoom,
+      fixedText: fixedText,
     );
     _changes.notifyChanged();
   }

@@ -15,6 +15,7 @@ import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/commands/cut_command_coordinator.dart';
+import 'package:anicel/src/services/commands/linked_cut_field_command.dart';
 import 'package:anicel/src/services/editing/editing_session_state.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/project_lookup.dart';
@@ -372,6 +373,105 @@ void main() {
         null,
         null,
       ));
+    });
+  });
+
+  /// F-542 「카메라 움직임처럼 전체설정이랑 현재컷 설정 두개로」: each paper's
+  /// fixed text is kept as the room a cut's cells take.
+  group('whether a cut\'s papers write their fixed lines', () {
+    List<bool?> conteOf(ProjectRepository repository) => [
+      for (final id in [cut1, cut2, cut3])
+        requireCut(repository.requireProject(), id).metadata.conteFixedText,
+    ];
+    List<bool?> sheetOf(ProjectRepository repository) => [
+      for (final id in [cut1, cut2, cut3])
+        requireCut(repository.requireProject(), id).metadata.sheetFixedText,
+    ];
+
+    test('a save gives the conte\'s to the 겸용 pair, in the work format\'s '
+        'ONE undo step, and leaves the sheet\'s alone', () {
+      final (:repository, :cuts, :history) = fixture();
+      final before = repository.requireProject().timesheetInfo;
+
+      cuts.setConteFormat(
+        info: before.copyWith(conteCover: !before.conteCover),
+        cutIds: const [cut1],
+        fixedText: (to: false),
+      );
+      expect(conteOf(repository), [false, false, null]);
+      expect(sheetOf(repository), [null, null, null]);
+
+      history.undo();
+      expect(history.canUndo, isFalse, reason: 'ONE step');
+      expect(conteOf(repository), [null, null, null]);
+      expect(repository.requireProject().timesheetInfo, before);
+    });
+
+    test('a save gives the sheet\'s the same way', () {
+      final (:repository, :cuts, :history) = fixture();
+      final before = repository.requireProject().timesheetInfo;
+
+      cuts.setTimesheetFormat(
+        info: before.copyWith(sheetFixedText: false),
+        cutId: cut2,
+        fixedText: (to: true),
+      );
+      expect(sheetOf(repository), [true, true, null]);
+      expect(conteOf(repository), [null, null, null]);
+
+      history.undo();
+      expect(history.canUndo, isFalse, reason: 'ONE step');
+      expect(sheetOf(repository), [null, null, null]);
+      expect(repository.requireProject().timesheetInfo, before);
+    });
+
+    test('what every cut already keeps is no step; a null gives the pair '
+        'back to the format', () {
+      final (:repository, :cuts, :history) = fixture();
+      final info = repository.requireProject().timesheetInfo;
+      cuts.setConteFormat(
+        info: info,
+        cutIds: const [cut3],
+        fixedText: (to: null),
+      );
+      cuts.setTimesheetFormat(info: info, cutId: cut3, fixedText: (to: null));
+      expect(history.canUndo, isFalse);
+
+      cuts.setTimesheetFormat(info: info, fixedText: (to: true));
+      expect(history.canUndo, isFalse, reason: 'no cut in the gap');
+
+      cuts.setTimesheetFormat(info: info, cutId: cut1, fixedText: (to: false));
+      cuts.setTimesheetFormat(info: info, cutId: cut2, fixedText: (to: null));
+      expect(sheetOf(repository), [null, null, null]);
+    });
+
+    test('a cut made 겸용 of another starts with its fixed text', () {
+      final made = withLinkedCutFieldsOf(
+        cut(cut3, 'l3'),
+        cut(
+          cut1,
+          'l1',
+          const CutMetadata(conteFixedText: false, sheetFixedText: true),
+        ),
+      );
+      expect(made.metadata.conteFixedText, isFalse);
+      expect(made.metadata.sheetFixedText, isTrue);
+    });
+
+    test('travels with the cut through its file — none writes nothing', () {
+      const metadata = CutMetadata(conteFixedText: false, sheetFixedText: true);
+      expect(CutMetadata.fromJson(metadata.toJson()), metadata);
+      expect(const CutMetadata().toJson(), isEmpty);
+      expect(metadata, isNot(const CutMetadata(conteFixedText: false)));
+      expect(metadata, isNot(const CutMetadata(sheetFixedText: true)));
+      expect(
+        metadata.hashCode,
+        isNot(const CutMetadata(conteFixedText: false).hashCode),
+      );
+      expect(metadata.copyWith(conteFixedText: null).conteFixedText, isNull);
+      expect(metadata.copyWith(sheetFixedText: null).sheetFixedText, isNull);
+      expect(metadata.copyWith(scene: 'S').conteFixedText, isFalse);
+      expect(metadata.copyWith(scene: 'S').sheetFixedText, isTrue);
     });
   });
 }

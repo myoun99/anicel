@@ -69,11 +69,14 @@ void main() {
     final project = work();
     final before = cell(project, 0);
     expect(before.camera, isNotNull, reason: 'fixture: the camera moves');
-    expect(before.cameraLines, isNotEmpty, reason: 'fixture: it writes');
+    expect(before.fixedLines.camera, isNotEmpty, reason: 'fixture: it writes');
 
     final after = cell(project.copyWith(name: 'Renamed'), 0);
     expect(identical(after.camera, before.camera), isTrue);
-    expect(identical(after.cameraLines, before.cameraLines), isTrue);
+    expect(
+      identical(after.fixedLines.camera, before.fixedLines.camera),
+      isTrue,
+    );
   });
 
   test('the cut an edit touched reads again, and only it', () {
@@ -107,17 +110,17 @@ void main() {
 
   test('another count writes its lines again', () {
     final project = work();
-    final before = cell(project, 0).cameraLines;
+    final before = cell(project, 0).fixedLines.camera;
     final after = cell(
       project.copyWith(frameRate: const ProjectFrameRate.integer(12)),
       0,
-    ).cameraLines;
+    ).fixedLines.camera;
     expect(after, isNot(before));
   });
 
   test('another glossary writes its lines again', () {
     final project = work();
-    final before = cell(project, 0).cameraLines;
+    final before = cell(project, 0).fixedLines.camera;
     expect(before.join(), contains('PAN'), reason: 'fixture: a pan');
 
     final after = cell(
@@ -137,7 +140,7 @@ void main() {
         ),
       ),
       0,
-    ).cameraLines;
+    ).fixedLines.camera;
     expect(after.join(), contains('ヨコ'));
   });
 }

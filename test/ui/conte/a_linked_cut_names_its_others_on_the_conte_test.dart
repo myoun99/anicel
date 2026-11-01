@@ -17,6 +17,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_link_registry.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/sheet_fixed_lines.dart';
 import 'package:anicel/src/models/sheet_marks.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
@@ -106,7 +107,7 @@ void main() {
         .firstWhere(
           (each) => each.cutId == cutId && each.cellIndex == cellIndex,
         );
-    return conteFixedLinesOf(source, cell, words: words ?? korean);
+    return cell.source.fixedLines.writtenIn(words ?? korean);
   }
 
   group('🎯the sheet writes the OTHER cuts of its group', () {
@@ -170,7 +171,7 @@ void main() {
     final source = buildConteSheetSource(project);
     final cells = source.cuts.first.cells;
 
-    expect(cells.map((cell) => cell.linkedCuts), [
+    expect(cells.map((cell) => cell.fixedLines.linkedCuts), [
       ['c100'],
       isEmpty,
       isEmpty,
@@ -185,23 +186,26 @@ void main() {
     const camera = ['FIX (0+5)', 'PAN (0+11)'];
     const transitions = ['c1 × c2 カットO.L (0+12)'];
 
-    ConteSheetSource sourceOf({bool fixedText = true}) => ConteSheetSource(
-      fixedText: fixedText,
+    ConteSheetSource sourceOf({
+      SheetFixedLines lines = const SheetFixedLines(
+        camera: camera,
+        transitions: transitions,
+        linkedCuts: ['c100', 'c102'],
+      ),
+    }) => ConteSheetSource(
       cuts: [
         ConteCutSource(
           cutId: const CutId('A'),
           name: 'A',
           durationFrames: 24,
           cumulativeEndFrames: 24,
-          cells: const [
+          cells: [
             ConteCellSource(
               startFrame: 0,
               endFrameExclusive: 24,
               pictureFrame: 0,
               action: action,
-              cameraLines: camera,
-              transitionLines: transitions,
-              linkedCuts: ['c100', 'c102'],
+              fixedLines: lines,
             ),
           ],
         ),
@@ -221,7 +225,7 @@ void main() {
       final slot = cell.actionRect.deflate(4);
       const line = conteCellTextSize * conteLineHeight;
 
-      expect(conteFixedLinesOf(source, cell, words: korean), [
+      expect(cell.source.fixedLines.writtenIn(korean), [
         ...camera,
         ...transitions,
         '겸용 c100,c102',
@@ -231,7 +235,7 @@ void main() {
         closeTo(slot.top + 3 * line, 1e-9),
       );
       expect(
-        conteActionWordsDrop(source, cell, words: korean),
+        conteActionWordsDrop(cell, words: korean),
         closeTo(4 * line, 1e-9),
       );
       expect(
@@ -242,12 +246,12 @@ void main() {
 
     test('taken out of the sheet with the others, the words are back at the '
         'top', () {
-      final source = sourceOf(fixedText: false);
+      final source = sourceOf(lines: SheetFixedLines.none);
       final page = layoutConteSheet(source).single;
       final cell = page.cells.single;
 
-      expect(conteFixedLinesOf(source, cell, words: korean), isEmpty);
-      expect(conteActionWordsDrop(source, cell, words: korean), 0);
+      expect(cell.source.fixedLines.writtenIn(korean), isEmpty);
+      expect(conteActionWordsDrop(cell, words: korean), 0);
       expect(
         contePageMarks(
           page,
@@ -277,7 +281,7 @@ void main() {
                 startFrame: 0,
                 endFrameExclusive: 24,
                 pictureFrame: 0,
-                linkedCuts: others,
+                fixedLines: SheetFixedLines(linkedCuts: others),
               ),
             ],
           ),
@@ -324,6 +328,7 @@ void main() {
       String linked, {
       String cutHead = 'h',
       String cutTail = 't',
+      String wholeCut = 'w',
     }) => ConteWords(
       cut: 'c',
       picture: 'p',
@@ -335,9 +340,11 @@ void main() {
       linked: linked,
       cutHead: cutHead,
       cutTail: cutTail,
+      wholeCut: wholeCut,
     );
 
     expect(saying('겸용'), isNot(saying('兼用')));
+    expect(saying('겸용'), isNot(saying('겸용', wholeCut: '全尺')));
     expect(saying('겸용'), saying('겸용'));
     expect(saying('겸용'), isNot(saying('겸용', cutHead: '컷 앞')));
     expect(saying('겸용'), isNot(saying('겸용', cutTail: '컷 뒤')));

@@ -4,7 +4,8 @@ import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/widgets.dart' show StringCharacters;
 
 import '../../core/signed_memo.dart';
-import '../../models/camera_instruction.dart' show CameraInstructionSet;
+import '../../models/camera_instruction.dart'
+    show CameraInstructionSet, InstructionEvent;
 import '../../models/canvas_size.dart';
 import '../../models/camera_moves.dart' show CameraMove, cameraMoves;
 import '../../models/camera_work_marks.dart'
@@ -19,6 +20,8 @@ import '../../models/layer.dart';
 import '../../models/layer_mark.dart';
 import '../../models/layer_process.dart';
 import '../../models/project.dart';
+import '../../models/sheet_fixed_lines.dart';
+import '../../models/timesheet_document.dart' show SheetPages;
 import '../../models/storyboard_coverage.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
@@ -79,9 +82,9 @@ ConteSheetSource buildConteSheetSource(Project project, {String? olWord}) {
           start: entry.startFrame,
           panels: panels[index],
         )),
-        transitionLines: _transitionLinesOn(
+        transitions: _transitionsWrittenOn(
           entry,
-          cellsOf[index],
+          cellsOf[index].length,
           transitions[track.id]!,
           project,
         ),
@@ -105,8 +108,87 @@ ConteSheetSource buildConteSheetSource(Project project, {String? olWord}) {
     framesPerSecond: project.frameRate.countingBase,
     cover: info.conteCover,
     blankPage: info.conteBlankPage,
-    fixedText: info.conteFixedText,
   );
+}
+
+/// What each of [cut]'s timesheet [pages] writes in its memo band: a conte
+/// cell's lines, the page for the cell (🗣️F-542, 유저 2026-11-02: 「똑같이 법
+/// 재사용/통일하면서」), each as a page writes it ([sheetCameraLine] ·
+/// [sheetTransitionLine]) in [words] — none where the cut or the work leaves
+/// them out, or the cut is on no track.
+List<SheetFixedLines> sheetPageFixedLines(
+  Project project,
+  Cut cut, {
+  required SheetPages pages,
+  required ({String ol, String wholeCut}) words,
+}) {
+  final writes =
+      cut.metadata.sheetFixedText ?? project.timesheetInfo.sheetFixedText;
+  final entry = writes
+      ? buildStoryboardTimelineLayout(
+          project,
+        ).where((entry) => entry.cut.id == cut.id).firstOrNull
+      : null;
+  if (entry == null) {
+    return const [];
+  }
+  final defById = project.cameraInstructions.defById;
+  final keyNames = transformKeyAgreedNames(cut.camera.track);
+  final moves = _movesWrittenOn(cut);
+  return _linesOfStretches(
+    // A sheet's rows are the cut's own frames, the のりしろ before its conte
+    // among them.
+    cameraLinesOf: (page) => [
+      for (final stretch in conteCameraStretches(
+        moves,
+        from: page * pages.frames,
+        to: (page + 1) * pages.frames,
+      ))
+        if (stretch.move case final move?)
+          sheetCameraLine(
+            move,
+            defById: defById,
+            keyNames: keyNames,
+            wholeCut: move.from == 0 && move.to == pages.drawnFrames - 1
+                ? words.wholeCut
+                : null,
+          ),
+    ],
+    transitions: _transitionsWrittenOn(
+      entry,
+      pages.count,
+      _transitionsOf(project, olWord: words.ol)[entry.trackId]!,
+      project,
+    ),
+    transitionLineOf: (event) => sheetTransitionLine(event, defById: defById),
+    linkedCuts: _othersOfItsGroup(cut, LinkedCutGroups(project)),
+  );
+}
+
+/// What each stretch of a cut writes: its camera's lines ([cameraLinesOf]),
+/// the joins each writes, the 겸용 cuts and the fade on its head on the first
+/// and the fade on its tail on the last, the transitions as [transitionLineOf]
+/// writes them.
+List<SheetFixedLines> _linesOfStretches({
+  required List<String> Function(int stretch) cameraLinesOf,
+  required _CutTransitions transitions,
+  required String Function(InstructionEvent event) transitionLineOf,
+  required List<String> linkedCuts,
+}) {
+  final count = transitions.joins.length;
+  List<String> written(List<InstructionEvent> events) => [
+    for (final event in events) transitionLineOf(event),
+  ];
+  return [
+    for (var stretch = 0; stretch < count; stretch += 1)
+      SheetFixedLines(
+        cutHead: stretch == 0 ? written(transitions.head) : const [],
+        camera: cameraLinesOf(stretch),
+        transitions: written(transitions.joins[stretch]),
+        linkedCuts: stretch == 0 ? linkedCuts : const [],
+        cutTail: stretch == count - 1 ? written(transitions.tail) : const [],
+      ),
+  ];
 }
 
 /// Where the pages of [project]'s conte book begin on its track — its first
@@ -144,7 +226,7 @@ ConteCutSource _cutSource(
   StoryboardTimelineLayoutEntry entry, {
   required List<StoryboardCoverageCell> cells,
   required List<ConteDialogueLine> dialogue,
-  required _CutTransitionLines transitionLines,
+  required _CutTransitions transitions,
   required List<String> linkedCuts,
   required Project project,
 }) {
@@ -157,6 +239,18 @@ ConteCutSource _cutSource(
     ),
     () => _cellCamerasOf(entry.cut, cells, project),
   );
+  final writes =
+      entry.cut.metadata.conteFixedText ?? project.timesheetInfo.conteFixedText;
+  final fixedLines = _linesOfStretches(
+    cameraLinesOf: (index) => cameras[index].lines,
+    transitions: transitions,
+    transitionLineOf: (event) => conteTransitionLine(
+      event,
+      defById: project.cameraInstructions.defById,
+      framesPerSecond: project.frameRate.countingBase,
+    ),
+    linkedCuts: linkedCuts,
+  );
   return ConteCutSource(
     cutId: entry.cut.id,
     name: entry.cut.name,
@@ -168,14 +262,7 @@ ConteCutSource _cutSource(
           cut: entry.cut,
           cell: cell,
           camera: cameras[index],
-          lines: (
-            transitions: transitionLines.joins[index],
-            linkedCuts: index == 0 ? linkedCuts : const [],
-            cutHead: index == 0 ? transitionLines.head : const [],
-            cutTail: index == cells.length - 1
-                ? transitionLines.tail
-                : const [],
-          ),
+          fixedLines: writes ? fixedLines[index] : SheetFixedLines.none,
         ),
     ],
     dialogue: dialogue,
@@ -281,35 +368,37 @@ Map<TrackId, _TrackTransitions> _transitionsOf(
 
 /// The transitions a cut writes: the fades on its head and on its tail, and
 /// the joins each of its cells writes.
-typedef _CutTransitionLines = ({
-  List<String> head,
-  List<List<String>> joins,
-  List<String> tail,
+typedef _CutTransitions = ({
+  List<InstructionEvent> head,
+  List<List<InstructionEvent>> joins,
+  List<InstructionEvent> tail,
 });
 
-/// The transitions [track] writes on [entry]'s [cells] (I-93-Q1), in the
-/// order they start (the row keeps its spans so): an O.L on the last cell of
-/// the cut it leaves — 「앞 컷에만」, nowhere on the cut it enters — and a
-/// fade, which only applies inside its own cut
-/// ([oneSidedSpanAppliesToCut]), on the end of the cut its side says.
+/// The transitions [track] writes on [entry]'s [stretches] — its conte cells
+/// or its sheet's pages (I-93-Q1) — in the order they start (the row keeps
+/// its spans so): an O.L on the last of the cut it leaves — 「앞 컷에만」,
+/// nowhere on the cut it enters — and a fade, which only applies inside its
+/// own cut ([oneSidedSpanAppliesToCut]), on the end of the cut its side says.
 ///
 /// 🗣️F-540 (유저 2026-11-02): 「FI나 FO같은건 컷 앞이랑 뒤에 고정적으로
 /// 붙는것임」. ⚠️Mine: W.I and W.O with them, and a fade that starts inside
 /// its cut too. ↩️A fade was written on the cell it started in.
 ///
 /// ⚠️Mine: an O.L out of a gap leaves no cut, so no conte writes it.
-_CutTransitionLines _transitionLinesOn(
+_CutTransitions _transitionsWrittenOn(
   StoryboardTimelineLayoutEntry entry,
-  List<StoryboardCoverageCell> cells,
+  int stretches,
   _TrackTransitions track,
   Project project,
 ) {
   final lines = (
-    head: <String>[],
-    joins: [for (final _ in cells) <String>[]],
-    tail: <String>[],
+    head: <InstructionEvent>[],
+    joins: [
+      for (var index = 0; index < stretches; index += 1) <InstructionEvent>[],
+    ],
+    tail: <InstructionEvent>[],
   );
-  if (cells.isEmpty) {
+  if (stretches == 0) {
     return lines;
   }
   for (final entryOfRow in track.row.instructions.entries) {
@@ -333,13 +422,7 @@ _CutTransitionLines _transitionLinesOn(
         TransitionSides.fadesIn => lines.head,
         TransitionSides.fadesOut => lines.tail,
       };
-      onCut.add(
-        conteTransitionLine(
-          entryOfRow.value,
-          defById: project.cameraInstructions.defById,
-          framesPerSecond: project.frameRate.countingBase,
-        ),
-      );
+      onCut.add(entryOfRow.value);
     }
   }
   return lines;
@@ -349,13 +432,7 @@ ConteCellSource _cellSource({
   required Cut cut,
   required StoryboardCoverageCell cell,
   required _CellCamera camera,
-  required ({
-    List<String> transitions,
-    List<String> linkedCuts,
-    List<String> cutHead,
-    List<String> cutTail,
-  })
-  lines,
+  required SheetFixedLines fixedLines,
 }) {
   // The cell counts the conte's frames; the row, the camera and the picture
   // count the cut's, which begin that much earlier in a cut an O.L arrives
@@ -374,11 +451,7 @@ ConteCellSource _cellSource({
     },
     action: exposure?.memo?.actionMemo ?? '',
     camera: camera.work,
-    cameraLines: camera.lines,
-    transitionLines: lines.transitions,
-    linkedCuts: lines.linkedCuts,
-    cutHeadLines: lines.cutHead,
-    cutTailLines: lines.cutTail,
+    fixedLines: fixedLines,
   );
 }
 

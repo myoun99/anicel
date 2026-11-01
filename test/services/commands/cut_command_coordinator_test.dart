@@ -16,6 +16,7 @@ import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/cut_metadata.dart';
+import 'package:anicel/src/models/sheet_memo_side.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -1276,6 +1277,48 @@ void main() {
       expect(fixture.editingSession.activeCutId, cutA.id);
       expect(fixture.historyManager.undoCount, 1);
       expect(fixture.historyManager.redoCount, 0);
+    });
+
+    test('updateCutNote writes the side it is told, one step, and asks '
+        'that side whether anything changed', () {
+      const right = SheetMemoSide.right;
+      final cutA = _cut(
+        id: 'cut-1',
+        name: 'Cut A',
+        metadata: const CutMetadata(pageNotes: ['Same note']),
+      );
+      final fixture = _fixture(
+        _project(
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA]),
+          ],
+        ),
+        activeCutId: cutA.id,
+      );
+
+      fixture.coordinator.updateCutNote(
+        cutId: cutA.id,
+        page: 0,
+        note: 'Same note',
+        side: right,
+      );
+
+      final written = requireCut(fixture.project, cutA.id).metadata;
+      expect(written.noteOf(0, side: right), 'Same note');
+      expect(fixture.historyManager.undoCount, 1, reason: 'the left said it');
+
+      fixture.coordinator.updateCutNote(
+        cutId: cutA.id,
+        page: 0,
+        note: 'Same note',
+        side: right,
+      );
+      expect(fixture.historyManager.undoCount, 1, reason: 'no change now');
+
+      fixture.historyManager.undo();
+      final undone = requireCut(fixture.project, cutA.id).metadata;
+      expect(undone.noteOf(0, side: right), '');
+      expect(undone.noteOf(0), 'Same note');
     });
 
     test('updateCutNote skips unchanged note without history entry', () {

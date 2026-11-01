@@ -387,15 +387,17 @@ class _CutCommands {
     required CutId cutId,
     required int page,
     required String note,
+    SheetMemoSide side = SheetMemoSide.left,
   }) => _coordinator._executeIfChanged(
     subject: _coordinator._requireCut(cutId),
     value: note,
-    read: (cut) => cut.metadata.noteOf(page),
+    read: (cut) => cut.metadata.noteOf(page, side: side),
     command: (_) => UpdateCutNoteCommand(
       repository: _coordinator.repository,
       cutId: cutId,
       page: page,
       note: note,
+      side: side,
     ),
   );
 

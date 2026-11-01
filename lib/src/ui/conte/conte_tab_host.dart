@@ -513,6 +513,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
           conteCameraRoom: save.format.cameraRoom,
         ),
         cameraRoom: save.cutCameraRoom,
+        fixedText: save.cutFixedText,
       ),
     );
   }
@@ -532,6 +533,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
           ? strings.conteCameraRoomCurrentCut(cut.name)
           : strings.conteCameraRoomSelectedCuts(cutIds.length),
       room: cut.metadata.conteCameraRoom,
+      fixedText: cut.metadata.conteFixedText,
     );
   }
 

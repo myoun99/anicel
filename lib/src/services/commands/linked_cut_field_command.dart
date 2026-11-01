@@ -62,7 +62,9 @@ typedef CutFieldWrite<T> =
 /// field a [LinkedCutFieldCommand] writes onto the pair as one: the drawing
 /// guides (`SetCutGuidesCommand`), the colour label (`UpdateCutMarkCommand`),
 /// the sheet it prints on (`UpdateCutSheetKindCommand`), the room its conte
-/// cells take (`UpdateCutConteCameraRoomCommand`) and its staff
+/// cells take (`UpdateCutConteCameraRoomCommand`), whether its papers write
+/// their fixed lines (`UpdateCutConteFixedTextCommand` ·
+/// `UpdateCutSheetFixedTextCommand`) and its staff
 /// (`UpdateCutStaffNameCommand`). A cut made 겸용 of another starts with
 /// them, so the pair is one answer from its first frame.
 ///
@@ -75,6 +77,8 @@ Cut withLinkedCutFieldsOf(Cut cut, Cut sibling) => cut.copyWith(
     mark: sibling.metadata.mark,
     sheetKind: sibling.metadata.sheetKind,
     conteCameraRoom: sibling.metadata.conteCameraRoom,
+    conteFixedText: sibling.metadata.conteFixedText,
+    sheetFixedText: sibling.metadata.sheetFixedText,
     staff: sibling.metadata.staff,
   ),
 );

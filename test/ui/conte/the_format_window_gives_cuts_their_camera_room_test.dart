@@ -121,9 +121,13 @@ void main() {
     await pumpHost(tester);
     await tap(tester, 'conte-format-button');
 
-    expect(find.text('Overall settings'), findsOneWidget);
-    expect(find.text('Cut settings'), findsOneWidget);
-    expect(find.text('Current cut (C12)'), findsOneWidget);
+    expect(
+      find.text('Overall settings'),
+      findsNWidgets(2),
+      reason: 'the fixed text is set the same way',
+    );
+    expect(find.text('Cut settings'), findsNWidgets(2));
+    expect(find.text('Current cut (C12)'), findsNWidgets(2));
     expect(shownOn(tester, button), 'As the format');
     expect(litRow(tester), '$button-format');
 
@@ -192,7 +196,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tap(tester, 'conte-format-button');
-    expect(find.text('Selected cuts (2)'), findsOneWidget);
+    expect(find.text('Selected cuts (2)'), findsNWidgets(2));
     await pick(tester, 'inCell');
     await save(tester);
 
@@ -242,7 +246,7 @@ void main() {
 
     await tap(tester, 'conte-format-button');
 
-    expect(find.text('No cut selected'), findsOneWidget);
+    expect(find.text('No cut selected'), findsNWidgets(2));
     expect(
       tester
           .widget<PanelFlyoutButton>(find.byKey(const ValueKey<String>(button)))

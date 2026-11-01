@@ -183,7 +183,7 @@ class ConteBookPage extends StatelessWidget {
     // ⚠️Mine: fixed lines that outrun the rows leave the field no height,
     // never one upside down.
     final top = math.min(
-      rect.top + conteActionWordsDrop(source, cell, words: _words),
+      rect.top + conteActionWordsDrop(cell, words: _words),
       bottom - 8,
     );
     return SheetTextTarget(

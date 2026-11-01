@@ -4,6 +4,7 @@ import 'package:anicel/src/models/conte/conte_camera_room.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/cut_metadata.dart';
+import 'package:anicel/src/models/sheet_memo_side.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/layer_section_defaults.dart';
@@ -35,6 +36,47 @@ void main() {
         reason: 'a blank last page is no memo — the same value as never '
             'written',
       );
+    });
+
+    // 🗣️F-542 (유저 2026-11-02): 「타임시트 메모란, 텍스트 공간 왼쪽 오른쪽
+    // 두개로 나누자」 · Q1: 「둘 다 동일한 메모」.
+    test('🚨each side of a page has a memo of its own, by the one law', () {
+      const right = SheetMemoSide.right;
+      final written = const CutMetadata.empty()
+          .withPageNote(1, 'Left')
+          .withPageNote(1, 'Right', side: right);
+      expect(written.noteOf(1), 'Left');
+      expect(written.noteOf(1, side: SheetMemoSide.left), 'Left');
+      expect(written.noteOf(1, side: right), 'Right');
+      expect(written.noteOf(0, side: right), '');
+      expect(written.noteOf(-1, side: right), '');
+      expect(written.noteOf(2, side: right), '');
+      expect(written.pageNotes, ['', 'Left']);
+      expect(written.rightPageNotes, ['', 'Right']);
+
+      expect(
+        written.withPageNote(1, '', side: right).rightPageNotes,
+        isEmpty,
+        reason: 'a blank last page is no memo, on the right as on the left',
+      );
+      expect(written.withPageNote(1, '', side: right).noteOf(1), 'Left');
+
+      final saved = written.toJson();
+      expect(saved['rightPageNotes'], ['', 'Right']);
+      expect(CutMetadata.fromJson(saved), written);
+      expect(
+        const CutMetadata.empty().toJson(),
+        isNot(contains('rightPageNotes')),
+      );
+
+      const one = CutMetadata(rightPageNotes: ['a']);
+      expect(one, const CutMetadata(rightPageNotes: ['a']));
+      expect(one.hashCode, const CutMetadata(rightPageNotes: ['a']).hashCode);
+      expect(one, isNot(const CutMetadata(rightPageNotes: ['b'])));
+      expect(one, isNot(const CutMetadata(pageNotes: ['a'])));
+      expect(one.copyWith(pageNotes: const ['b']).rightPageNotes, ['a']);
+      expect(one.toString(), contains('rightPageNotes: [a]'));
+      expect(const CutMetadata.empty().rightPageNotes, isEmpty);
     });
 
     test('🗣️the colour label is part of the value — metadata differing only '

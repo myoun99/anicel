@@ -141,27 +141,70 @@ class _TimesheetBandsPass {
   /// memo types into its top left, spanning the full width (F-301: each
   /// page its own).
   void paintMemoBand(Canvas canvas, int pageIndex) {
-    final memo = TimesheetDocumentPainter.memoTextRect(
-      _painter.layout.memoBandRect(pageIndex),
-    );
-    final text = _painter.document.memoTextOf(pageIndex);
-    if (text.isNotEmpty) {
-      final painter = TextPainter(
-        text: TextSpan(
-          text: text,
-          style: TimesheetDocumentPainter.wordsStyle(
-            _painter.face,
-            fontSize: TimesheetDocumentPainter.memoSize,
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-        maxLines: 8,
-        ellipsis: '…',
-      )..layout(maxWidth: memo.width);
-      painter.paint(canvas, memo.topLeft);
+    for (final side in SheetMemoSide.values) {
+      _paintFixedLines(canvas, pageIndex, side);
+      _paintMemo(canvas, pageIndex, side);
     }
-    // NO derived instruction lines here (R5-⑥), and since I-72 none written
-    // into the memo either: the memo is the person's alone.
+    // Since I-72 no line is written INTO a memo: it is the person's alone.
+    // ↩️F-542 took back R5-⑥'s 「no derived lines in the band」: they stand
+    // over the memos, as the conte cell's over its ACTION words.
+  }
+
+  /// The memo on [side] of the page, wrapped at its width.
+  void _paintMemo(Canvas canvas, int pageIndex, SheetMemoSide side) {
+    final memo = _painter.layout.memoWordsRect(pageIndex, side);
+    final text = _painter.document.memoTextOf(pageIndex, side: side);
+    if (text.isEmpty) {
+      return;
+    }
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TimesheetDocumentPainter.wordsStyle(
+          _painter.face,
+          fontSize: TimesheetDocumentPainter.memoSize,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: memo.height ~/ TimesheetDocumentPainter.memoLine,
+      ellipsis: '…',
+    )..layout(maxWidth: memo.width);
+    painter.paint(canvas, memo.topLeft);
+  }
+
+  /// What the page writes of itself on [side], a line each down from the
+  /// top, shrunk to the side's width as the conte's are.
+  void _paintFixedLines(Canvas canvas, int pageIndex, SheetMemoSide side) {
+    const size = TimesheetDocumentPainter.memoSize;
+    const line = TimesheetDocumentPainter.memoLine;
+    final lines = _painter.layout.fixedLinesOn(pageIndex, side);
+    final room = _painter.layout.memoSideRect(pageIndex, side);
+    for (final (index, text) in lines.indexed) {
+      final top = room.top + index * line;
+      _painter._text(
+        canvas,
+        text,
+        Offset(room.left, top),
+        fontSize: sheetWordsSize(
+          SheetWords(
+            SheetPaintLayer.content,
+            text: text,
+            slot: Rect.fromLTWH(room.left, top, room.width, line),
+            size: size,
+            argb: TimesheetDocumentPainter._ink.toARGB32(),
+            fit: SheetWordsFit.shrink,
+          ),
+          (size, {required bold, required color}) =>
+              TimesheetDocumentPainter.wordsStyle(
+                _painter.face,
+                fontSize: size,
+                color: color,
+                bold: bold,
+              ),
+        ),
+        maxWidth: room.width,
+      );
+    }
   }
 
   /// The cut-end strikethrough at the bottom edge of the last row the

@@ -3,30 +3,37 @@ import '../core/copy_with_sentinel.dart';
 import 'conte/conte_camera_room.dart';
 import 'layer_mark.dart';
 import 'layer_process.dart';
+import 'sheet_memo_side.dart';
 import 'timesheet_sheet_kind.dart';
 
 class CutMetadata {
   const CutMetadata({
     this.pageNotes = const [],
+    this.rightPageNotes = const [],
     this.mark = LayerMark.none,
     this.staff = const {},
     this.sheetKind = TimesheetSheetKind.sixSeconds,
     this.scene = '',
     this.openStaffFolds = staffFoldsOpenAtFirst,
     this.conteCameraRoom,
+    this.conteFixedText,
+    this.sheetFixedText,
   });
 
   const CutMetadata.empty()
     : pageNotes = const [],
+      rightPageNotes = const [],
       mark = LayerMark.none,
       staff = const {},
       sheetKind = TimesheetSheetKind.sixSeconds,
       scene = '',
       openStaffFolds = staffFoldsOpenAtFirst,
-      conteCameraRoom = null;
+      conteCameraRoom = null,
+      conteFixedText = null,
+      sheetFixedText = null;
 
-  /// The memo written on each page of the cut's timesheet, by page —
-  /// trailing blanks left off ([withPageNote]).
+  /// The memo written on the left of each page of the cut's timesheet, by
+  /// page — trailing blanks left off ([withPageNote]).
   ///
   /// 🗣️F-301 (유저 2026-10-05): 「타임시트의 메모란은 페이지별로 다름 …
   /// 페이지별로 독립」. ↩️It was one note per cut, printed on every page and
@@ -35,20 +42,40 @@ class CutMetadata {
   /// (F-252).
   final List<String> pageNotes;
 
-  /// The memo on page [page] (0-based), empty where none is written.
-  String noteOf(int page) =>
-      page >= 0 && page < pageNotes.length ? pageNotes[page] : '';
+  /// The memo on the right of each page, as [pageNotes] is the left's
+  /// ([SheetMemoSide], F-542).
+  final List<String> rightPageNotes;
 
-  /// [text] as page [page]'s memo, the others as they are.
-  CutMetadata withPageNote(int page, String text) {
+  List<String> _notesOn(SheetMemoSide side) => switch (side) {
+    SheetMemoSide.left => pageNotes,
+    SheetMemoSide.right => rightPageNotes,
+  };
+
+  /// The memo on [side] of page [page] (0-based), empty where none is
+  /// written.
+  String noteOf(int page, {SheetMemoSide side = SheetMemoSide.left}) {
+    final notes = _notesOn(side);
+    return page >= 0 && page < notes.length ? notes[page] : '';
+  }
+
+  /// [text] as the memo on [side] of page [page], the others as they are.
+  CutMetadata withPageNote(
+    int page,
+    String text, {
+    SheetMemoSide side = SheetMemoSide.left,
+  }) {
     final notes = [
-      for (var at = 0; at < pageNotes.length || at <= page; at += 1)
-        if (at == page) text else noteOf(at),
+      for (var at = 0; at < _notesOn(side).length || at <= page; at += 1)
+        if (at == page) text else noteOf(at, side: side),
     ];
     while (notes.isNotEmpty && notes.last.isEmpty) {
       notes.removeLast();
     }
-    return copyWith(pageNotes: List.unmodifiable(notes));
+    final kept = List<String>.unmodifiable(notes);
+    return switch (side) {
+      SheetMemoSide.left => copyWith(pageNotes: kept),
+      SheetMemoSide.right => copyWith(rightPageNotes: kept),
+    };
   }
 
   /// The cut's 색 라벨 — the SAME label a layer carries, palette and all.
@@ -99,6 +126,14 @@ class CutMetadata {
   /// 전체 + 컷마다 덮어쓰기」.
   final ConteCameraRoom? conteCameraRoom;
 
+  /// Whether this cut's conte cells and its timesheet's pages write their
+  /// fixed lines — null where the cut takes the format window's
+  /// (`TimesheetInfo.conteFixedText` · `TimesheetInfo.sheetFixedText`):
+  /// 🗣️F-542 (유저 2026-11-02): 「타임시트용지나 콘티용지든 고정텍스트를 카메라
+  /// 움직임처럼 전체설정이랑 현재컷 설정 두개로 나눔」.
+  final bool? conteFixedText;
+  final bool? sheetFixedText;
+
   /// [mark]'s name on this cut, or empty when nobody is set.
   String staffNameFor(LayerMark mark) => staff[mark.keySlug] ?? '';
 
@@ -108,15 +143,19 @@ class CutMetadata {
 
   CutMetadata copyWith({
     List<String>? pageNotes,
+    List<String>? rightPageNotes,
     LayerMark? mark,
     Map<String, String>? staff,
     TimesheetSheetKind? sheetKind,
     String? scene,
     Set<LayerProcess>? openStaffFolds,
     Object? conteCameraRoom = copyWithSentinel,
+    Object? conteFixedText = copyWithSentinel,
+    Object? sheetFixedText = copyWithSentinel,
   }) {
     return CutMetadata(
       pageNotes: pageNotes ?? this.pageNotes,
+      rightPageNotes: rightPageNotes ?? this.rightPageNotes,
       mark: mark ?? this.mark,
       staff: staff ?? this.staff,
       sheetKind: sheetKind ?? this.sheetKind,
@@ -125,11 +164,18 @@ class CutMetadata {
       conteCameraRoom: identical(conteCameraRoom, copyWithSentinel)
           ? this.conteCameraRoom
           : conteCameraRoom as ConteCameraRoom?,
+      conteFixedText: identical(conteFixedText, copyWithSentinel)
+          ? this.conteFixedText
+          : conteFixedText as bool?,
+      sheetFixedText: identical(sheetFixedText, copyWithSentinel)
+          ? this.sheetFixedText
+          : sheetFixedText as bool?,
     );
   }
 
   Map<String, dynamic> toJson() => {
     if (pageNotes.isNotEmpty) 'pageNotes': [...pageNotes],
+    if (rightPageNotes.isNotEmpty) 'rightPageNotes': [...rightPageNotes],
     if (!mark.isNone) 'mark': mark.toJson(),
     if (staff.isNotEmpty) 'staff': {...staff},
     if (sheetKind != TimesheetSheetKind.sixSeconds)
@@ -141,6 +187,8 @@ class CutMetadata {
           if (openStaffFolds.contains(process)) process.jsonValue,
       ],
     if (conteCameraRoom case final room?) 'conteCameraRoom': room.name,
+    'conteFixedText': ?conteFixedText,
+    'sheetFixedText': ?sheetFixedText,
     // The per-cut fade TARGET (FO/WO) is gone (R3b) — legacy 'fadeTarget'
     // keys are ignored on read. ↩️F-192: the black or white a fade clears
     // from or closes to is the TERM's (F.x black, W.x white —
@@ -155,6 +203,9 @@ class CutMetadata {
       pageNotes: List.unmodifiable([
         for (final note in json['pageNotes'] as List? ?? const []) '$note',
       ]),
+      rightPageNotes: List.unmodifiable([
+        for (final note in json['rightPageNotes'] as List? ?? const []) '$note',
+      ]),
       mark: LayerMark.fromJson(json['mark']),
       staff: staffFromJson(json['staff']),
       sheetKind: TimesheetSheetKind.fromJson(json['sheetKind']),
@@ -166,6 +217,8 @@ class CutMetadata {
         _ => staffFoldsOpenAtFirst,
       },
       conteCameraRoom: ConteCameraRoom.named(json['conteCameraRoom']),
+      conteFixedText: json['conteFixedText'] as bool?,
+      sheetFixedText: json['sheetFixedText'] as bool?,
     );
   }
 
@@ -174,16 +227,20 @@ class CutMetadata {
       identical(this, other) ||
       other is CutMetadata &&
           listEquals(other.pageNotes, pageNotes) &&
+          listEquals(other.rightPageNotes, rightPageNotes) &&
           other.mark == mark &&
           mapEquals(other.staff, staff) &&
           other.sheetKind == sheetKind &&
           other.scene == scene &&
           setEquals(other.openStaffFolds, openStaffFolds) &&
-          other.conteCameraRoom == conteCameraRoom;
+          other.conteCameraRoom == conteCameraRoom &&
+          other.conteFixedText == conteFixedText &&
+          other.sheetFixedText == sheetFixedText;
 
   @override
   int get hashCode => Object.hash(
     Object.hashAll(pageNotes),
+    Object.hashAll(rightPageNotes),
     mark,
     Object.hashAllUnordered(
       staff.entries.map((entry) => Object.hash(entry.key, entry.value)),
@@ -192,12 +249,15 @@ class CutMetadata {
     scene,
     Object.hashAllUnordered(openStaffFolds),
     conteCameraRoom,
+    conteFixedText,
+    sheetFixedText,
   );
 
   @override
   String toString() =>
-      'CutMetadata(pageNotes: $pageNotes, '
+      'CutMetadata(pageNotes: $pageNotes, rightPageNotes: $rightPageNotes, '
       'mark: $mark, staff: $staff, sheetKind: $sheetKind, scene: $scene, '
       'openStaffFolds: $openStaffFolds, '
-      'conteCameraRoom: $conteCameraRoom)';
+      'conteCameraRoom: $conteCameraRoom, '
+      'conteFixedText: $conteFixedText, sheetFixedText: $sheetFixedText)';
 }

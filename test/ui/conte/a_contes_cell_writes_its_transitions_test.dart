@@ -95,19 +95,19 @@ void main() {
     String? word = olWord,
   }) => [
     for (final cells in cellsOf(transitions, word: word))
-      [for (final cell in cells) cell.transitionLines],
+      [for (final cell in cells) cell.fixedLines.transitions],
   ];
 
   /// The head lines each cell of each cut writes.
   List<List<List<String>>> headsOf(Map<int, InstructionEvent> transitions) => [
     for (final cells in cellsOf(transitions))
-      [for (final cell in cells) cell.cutHeadLines],
+      [for (final cell in cells) cell.fixedLines.cutHead],
   ];
 
   /// The tail lines each cell of each cut writes.
   List<List<List<String>>> tailsOf(Map<int, InstructionEvent> transitions) => [
     for (final cells in cellsOf(transitions))
-      [for (final cell in cells) cell.cutTailLines],
+      [for (final cell in cells) cell.fixedLines.cutTail],
   ];
 
   test('🎯an O.L is written on the last cell of the cut it leaves — the two '

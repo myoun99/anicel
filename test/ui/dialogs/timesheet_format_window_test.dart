@@ -6,6 +6,7 @@ import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/models/timesheet_sheet_kind.dart';
 import 'package:anicel/src/ui/dialogs/timesheet_format_window.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 import '../../helpers/ime_draft.dart';
@@ -28,9 +29,13 @@ Future<void> _openWindow(
   WidgetTester tester,
   TimesheetInfo initial,
   void Function(TimesheetInfo? result) onResult, {
-  ({TimesheetSheetKind kind, int celColumns})? sheet,
+  ({TimesheetSheetKind kind, int celColumns, String words, bool? fixedText})?
+  sheet,
   void Function(TimesheetFormat? format)? onFormat,
 }) async {
+  // Tall enough that the window's body has nothing to scroll.
+  await tester.binding.setSurfaceSize(const Size(800, 1000));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
       home: Builder(
@@ -282,6 +287,82 @@ void main() {
   // The paper the cut on the sheet prints on (timesheet-sheet-kind-scope-Q1
   // 「컷마다 따로」), and the paper its cel columns do not fit refused
   // (timesheet-sheet-capacity-Q1 「3초 시트로 고정(6초 끔)」).
+  group('the fixed text', () {
+    const work = ValueKey<String>('timesheet-format-fixed-text');
+    const button = 'timesheet-format-cut-fixed-text';
+    const cutButton = ValueKey<String>(button);
+
+    ({TimesheetSheetKind kind, int celColumns, String words, bool? fixedText})
+    keeping(bool? fixedText) => (
+      kind: TimesheetSheetKind.sixSeconds,
+      celColumns: 3,
+      words: 'c1',
+      fixedText: fixedText,
+    );
+
+    PanelFlyoutButton shown(WidgetTester tester) =>
+        tester.widget<PanelFlyoutButton>(find.byKey(cutButton));
+
+    testWidgets('🎯the work\'s is written unless taken out, and saved', (
+      tester,
+    ) async {
+      TimesheetFormat? format;
+      await _openWindow(
+        tester,
+        TimesheetInfo.empty,
+        (_) {},
+        sheet: keeping(null),
+        onFormat: (saved) => format = saved,
+      );
+      await _press(tester, work);
+      await _press(tester, _save);
+      expect(format!.info.sheetFixedText, isFalse);
+      expect(format!.cutFixedText, isNull, reason: 'none was picked');
+    });
+
+    testWidgets('it opens as the work keeps it, and saves that untouched', (
+      tester,
+    ) async {
+      TimesheetFormat? format;
+      await _openWindow(
+        tester,
+        TimesheetInfo.empty.copyWith(sheetFixedText: false),
+        (_) {},
+        sheet: keeping(null),
+        onFormat: (saved) => format = saved,
+      );
+      await _press(tester, _save);
+      expect(format!.info.sheetFixedText, isFalse);
+    });
+
+    testWidgets('🎯the cut\'s shows what it keeps and goes out as picked, the '
+        'format\'s among them', (tester) async {
+      TimesheetFormat? format;
+      await _openWindow(
+        tester,
+        TimesheetInfo.empty,
+        (_) {},
+        sheet: keeping(false),
+        onFormat: (saved) => format = saved,
+      );
+      final strings = AppText.strings;
+      expect(find.text('c1'), findsOneWidget);
+      expect(shown(tester).label, strings.conteOutlineOff);
+
+      await _press(tester, cutButton);
+      await _press(tester, const ValueKey<String>('$button-format'));
+      expect(shown(tester).label, strings.conteCameraRoomAsSheet);
+      await _press(tester, _save);
+      expect(format!.cutFixedText, (to: null));
+    });
+
+    testWidgets('in the gap there is no cut to set it for', (tester) async {
+      await _openWindow(tester, TimesheetInfo.empty, (_) {});
+      expect(shown(tester).enabled, isFalse);
+      expect(find.text(AppText.strings.noCutSelected), findsOneWidget);
+    });
+  });
+
   group('the paper', () {
     ValueKey<String> paper(TimesheetSheetKind kind) =>
         ValueKey<String>('timesheet-format-paper-${kind.jsonValue}');
@@ -295,7 +376,7 @@ void main() {
         tester,
         TimesheetInfo.empty,
         (_) {},
-        sheet: (kind: six, celColumns: 3),
+        sheet: (kind: six, celColumns: 3, words: 'c1', fixedText: null),
         onFormat: (saved) => format = saved,
       );
       expect(_pill(tester, paper(six)).selected, isTrue);
@@ -317,7 +398,7 @@ void main() {
         tester,
         TimesheetInfo.empty,
         (_) {},
-        sheet: (kind: six, celColumns: 9),
+        sheet: (kind: six, celColumns: 9, words: 'c1', fixedText: null),
         onFormat: (saved) => format = saved,
       );
       expect(_pill(tester, paper(three)).selected, isTrue);

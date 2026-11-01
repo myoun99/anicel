@@ -1,4 +1,5 @@
 import '../editing/default_cut_helpers.dart';
+import '../../models/sheet_memo_side.dart';
 import '../editing/editing_session_state.dart';
 import '../editing/run_id_mint.dart' show mintCutId;
 import '../../core/collection_equality.dart';
@@ -78,6 +79,7 @@ import 'update_cut_camera_command.dart';
 import 'linked_cut_field_command.dart';
 import 'update_cut_mark_command.dart';
 import 'update_cut_conte_camera_room_command.dart';
+import 'update_cut_fixed_text_command.dart';
 import 'update_cut_sheet_kind_command.dart';
 import 'update_cut_scene_command.dart';
 import 'update_cut_staff_folds_command.dart';
@@ -255,7 +257,8 @@ class CutCommandCoordinator {
     required CutId cutId,
     required int page,
     required String note,
-  }) => _cuts.updateCutNote(cutId: cutId, page: page, note: note);
+    SheetMemoSide side = SheetMemoSide.left,
+  }) => _cuts.updateCutNote(cutId: cutId, page: page, note: note, side: side);
   void saveCutSettings({
     required List<CutId> cutIds,
     required Map<LayerMark, String> names,
@@ -271,19 +274,23 @@ class CutCommandCoordinator {
     required TimesheetInfo info,
     CutId? cutId,
     TimesheetSheetKind? kind,
+    ({bool? to})? fixedText,
   }) => _projectSettings.setTimesheetFormat(
     info: info,
     cutId: cutId,
     kind: kind,
+    fixedText: fixedText,
   );
   void setConteFormat({
     required TimesheetInfo info,
     required List<CutId> cutIds,
     ({ConteCameraRoom? to})? cameraRoom,
+    ({bool? to})? fixedText,
   }) => _projectSettings.setConteFormat(
     info: info,
     cutIds: cutIds,
     cameraRoom: cameraRoom,
+    fixedText: fixedText,
   );
   void commitCutMoveReorder({
     required TrackId trackId,

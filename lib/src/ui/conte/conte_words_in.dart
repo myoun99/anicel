@@ -18,5 +18,6 @@ ConteWords conteWordsIn(AppLanguage notation) {
     linked: strings.cnLinkedCuts,
     cutHead: strings.cnCutHead,
     cutTail: strings.cnCutTail,
+    wholeCut: strings.cnWholeCut,
   );
 }

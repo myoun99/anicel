@@ -99,9 +99,39 @@ String conteCameraLine(
     final fix = instructionTermName(cameraFixTerm, defById(cameraFixTerm));
     return '$fix ($length)';
   }
+  return '${cameraMoveLine(move, defById: defById, keyNames: keyNames)} '
+      '($length)';
+}
+
+/// [move] by the two keys it runs between and its word, in the glossary
+/// [defById] reads: `A-B T.U`, `1f-5f T.U`.
+String cameraMoveLine(
+  CameraMove move, {
+  required CameraInstructionDef? Function(String id) defById,
+  required Map<int, String> keyNames,
+}) {
   final from = cameraKeyLabel(keyNames[move.from], move.from);
   final to = cameraKeyLabel(keyNames[move.to], move.to);
-  return '$from-$to ${cameraMoveWord(move, defById)} ($length)';
+  return '$from-$to ${cameraMoveWord(move, defById)}';
+}
+
+/// [move] as a timesheet page writes it: [cameraMoveLine] and no length, the
+/// sheet's rows being its length. [wholeCut] follows it, in brackets, where
+/// it is what the move that runs the cut's first frame to its last wears.
+///
+/// 🗣️F-542 (유저 2026-11-02): 「콘티용지패널엔 시간정보가 없어서 PAN (6+6)
+/// 이렇게 지시명뒤에 시간 써두지만 타임시트엔 안쓰도록. 즉 A-B PAN 이렇게
+/// 되도록. 대신 A랑 B 이렇게 처음이랑 끝 대상이 컷 처음/끝에 위치해있을때만
+/// 끝에 괄호로 (全尺)라고 쓰도록」. ⚠️Mine: for the same reason a sheet writes
+/// no FIX — 「콘티엔 시간정보가 같은 칸내에선 없으니」 is why a conte does.
+String sheetCameraLine(
+  CameraMove move, {
+  required CameraInstructionDef? Function(String id) defById,
+  required Map<int, String> keyNames,
+  String? wholeCut,
+}) {
+  final line = cameraMoveLine(move, defById: defById, keyNames: keyNames);
+  return wholeCut == null ? line : '$line ($wholeCut)';
 }
 
 /// What a conte line writes between the two cuts an O.L joins: a cross,
@@ -117,7 +147,7 @@ const conteTransitionCross = '×';
 /// .displayLabel] — the O.L's word, or a fade's term in the glossary
 /// [defById] reads) and how long it lasts, whole — `c1 × c2 カットO.L (1+0)`.
 /// A fade joins no cuts: `FO (0+12)`, and the end of its cut is its target
-/// (`conteFixedLinesOf`, F-540).
+/// (`SheetFixedLines.writtenIn`, F-540).
 ///
 /// 🗣️I-93-Q1 (유저 2026-10-30): 「앞 컷에만, 전체 길이로」 + 「대상도
 /// 적어주는거 잊지말고. c1 c2 カットO.L (1+0) 이런식」. [event] is the one
@@ -128,14 +158,23 @@ String conteTransitionLine(
   required CameraInstructionDef? Function(String id) defById,
   required int framesPerSecond,
 }) {
+  final length = secondsPlusFramesLabel(event.length, framesPerSecond);
+  return '${sheetTransitionLine(event, defById: defById)} ($length)';
+}
+
+/// A transition as a timesheet page writes it: the cuts it joins and what it
+/// says, and no length, as [sheetCameraLine] — `c1 × c2 カットO.L`. ⚠️Mine:
+/// 「타임시트엔 안쓰도록」 was said of a camera's; the same reason holds here.
+String sheetTransitionLine(
+  InstructionEvent event, {
+  required CameraInstructionDef? Function(String id) defById,
+}) {
   final ends = [
     for (final end in [event.valueA, event.valueB])
       if (end != null && end.isNotEmpty) end,
   ];
-  final word = event.displayLabel(event.defIn(defById));
-  final length = secondsPlusFramesLabel(event.length, framesPerSecond);
   return [
     if (ends.isNotEmpty) ends.join(' $conteTransitionCross '),
-    '$word ($length)',
+    event.displayLabel(event.defIn(defById)),
   ].join(' ');
 }

@@ -2493,11 +2493,13 @@ class EditorSessionManager extends ChangeNotifier
     required TimesheetInfo info,
     CutId? cutId,
     TimesheetSheetKind? kind,
+    ({bool? to})? fixedText,
   }) {
     cutCommandCoordinator.setTimesheetFormat(
       info: info,
       cutId: cutId,
       kind: kind,
+      fixedText: fixedText,
     );
     notifyListeners();
   }

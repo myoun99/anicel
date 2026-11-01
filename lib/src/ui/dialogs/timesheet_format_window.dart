@@ -8,11 +8,17 @@ import 'dialog_verb.dart';
 import '../text/app_strings.dart';
 import '../text/full_width_numerals.dart';
 import '../widgets/pill_strip.dart';
+import 'work_and_cut_setting_field.dart';
 
 /// What the 「타임시트 서식」 window answers: the work's sheet format and the
 /// paper of the cut the sheet shows — null in the gap, where there is no
-/// cut to set it on.
-typedef TimesheetFormat = ({TimesheetInfo info, TimesheetSheetKind? kind});
+/// cut to set it on — and whether it writes its fixed lines (`cutFixedText`
+/// — null where none was picked, its `to` null for the format's; F-542).
+typedef TimesheetFormat = ({
+  TimesheetInfo info,
+  TimesheetSheetKind? kind,
+  ({bool? to})? cutFixedText,
+});
 
 /// 「타임시트 서식」: how the paper timesheet prints — the paper the cut on
 /// the sheet prints on, which header boxes it carries, the stretch lines,
@@ -40,8 +46,15 @@ class TimesheetFormatWindow extends StatefulWidget {
 
   /// The cut the sheet shows: the paper it chose, and the cel columns its
   /// sheet prints — what decides whether the 6-second sheet holds them
-  /// ([sheetKindFits]). Null in the gap.
-  final ({TimesheetSheetKind kind, int celColumns})? sheet;
+  /// ([sheetKindFits]) — the words that say which cut, and the fixed text it
+  /// keeps (null for the format's). Null in the gap.
+  final ({
+    TimesheetSheetKind kind,
+    int celColumns,
+    String words,
+    bool? fixedText,
+  })?
+  sheet;
 
   @override
   State<TimesheetFormatWindow> createState() => _TimesheetFormatWindowState();
@@ -61,6 +74,11 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
   );
   late bool _seEmptyFill = widget.initialInfo.seEmptyFill;
   late TimesheetSheetKind? _kind = widget.sheet?.kind;
+  late bool _fixedText = widget.initialInfo.sheetFixedText;
+
+  /// The cut's own fixed text as picked — null until one is, so saving
+  /// leaves it as it stands.
+  ({bool? to})? _cutFixedText;
 
   static String _fieldLabel(TimesheetHeaderField field) {
     final strings = AppText.strings;
@@ -98,8 +116,10 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
         exposureBarThreshold: () => _actionLine.threshold,
         cellExposureBarThreshold: () => _cellLine.threshold,
         seEmptyFill: _seEmptyFill,
+        sheetFixedText: _fixedText,
       ),
       kind: _kind,
+      cutFixedText: _cutFixedText,
     );
     Navigator.of(context).pop(format);
   }
@@ -214,6 +234,25 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
     );
   }
 
+  /// Whether a page writes its fixed lines: the whole work's and the cut's,
+  /// as the conte's window sets its own (F-542).
+  Widget _fixedTextField() {
+    final strings = AppText.strings;
+    return FixedTextSettingField(
+      work: TogglePill(
+        keyValue: 'timesheet-format-fixed-text',
+        on: _fixedText,
+        words: (on: strings.conteOutlineOn, off: strings.conteOutlineOff),
+        onChanged: (on) => setState(() => _fixedText = on),
+      ),
+      keyValue: 'timesheet-format-cut-fixed-text',
+      cutWords: widget.sheet?.words,
+      picked: _cutFixedText,
+      stands: widget.sheet?.fixedText,
+      onPicked: (on) => setState(() => _cutFixedText = (to: on)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final strings = AppText.strings;
@@ -257,6 +296,7 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
               _cellLine,
             ),
             _seWash(),
+            _fixedTextField(),
           ],
         ),
       ),

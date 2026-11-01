@@ -564,11 +564,11 @@ Iterable<SheetMark> _cell(
   yield contePictureOf(cell, m);
   yield* conteCameraMarksOf(cell, m);
   final action = cell.actionRect.deflate(4);
-  yield* _fixedLines(source, cell, action, words);
+  yield* _fixedLines(cell, action, words);
   yield SheetWords(
     SheetPaintLayer.content,
     text: cell.source.action,
-    slot: _below(action, conteActionWordsDrop(source, cell, words: words)),
+    slot: _below(action, conteActionWordsDrop(cell, words: words)),
     size: conteCellTextSize,
     argb: _ink,
   );
@@ -581,43 +581,15 @@ Iterable<SheetMark> _cell(
   );
 }
 
-/// The lines [cell]'s ACTION column writes over the words typed there: what
-/// the camera does while the cell is on ([ConteCellSource.cameraLines],
-/// I-93), under them the transitions written there
-/// ([ConteCellSource.transitionLines], I-93-Q1) and under those the cuts its
-/// cut is 겸용 with ([ConteCellSource.linkedCuts], F-531) — or none where
-/// the work leaves them out ([ConteSheetSource.fixedText]).
-///
-/// 🗣️F-540 (유저 2026-11-02): 「FI나 FO같은건 컷 앞이랑 뒤에 고정적으로
-/// 붙는것임. 업계에서는 보통 カット頭 F.I (0+6) 이런식으로 컷 머리 라고 씀.
-/// 뒤는 カット尻 이렇게. 한국어는 컷 앞 컷 뒤」 · 「텍스트 위치는 고정적으로
-/// 고정텍스트 공간 내에서 맨 위나 맨 아래」 — a fade's target is the end of
-/// the cut it stands on, so it opens the lines or closes them.
-List<String> conteFixedLinesOf(
-  ConteSheetSource source,
-  ContePlacedCell cell, {
-  required ConteWords words,
-}) => source.fixedText
-    ? [
-        for (final line in cell.source.cutHeadLines) '${words.cutHead} $line',
-        ...cell.source.cameraLines,
-        ...cell.source.transitionLines,
-        if (cell.source.linkedCuts.isNotEmpty)
-          '${words.linked} ${cell.source.linkedCuts.join(',')}',
-        for (final line in cell.source.cutTailLines) '${words.cutTail} $line',
-      ]
-    : const [];
-
 /// How far below the top of its ACTION words [cell]'s typed words begin:
-/// under its fixed lines ([conteFixedLinesOf]), a conte line each. The ONE
-/// number the page prints the words by and the field types them at, so
-/// the typing stands on the printed words — no one types into the fixed
+/// under its fixed lines ([ConteCellSource.fixedLines]), a conte line each.
+/// The ONE number the page prints the words by and the field types them at,
+/// so the typing stands on the printed words — no one types into the fixed
 /// lines (유저 2026-10-12, I-93: 「이 고정텍스트는 지울수없도록?」).
 double conteActionWordsDrop(
-  ConteSheetSource source,
   ContePlacedCell cell, {
   required ConteWords words,
-}) => conteFixedLinesOf(source, cell, words: words).length * _cellLine;
+}) => cell.source.fixedLines.writtenIn(words).length * _cellLine;
 
 /// [cell]'s fixed lines in [slot], its ACTION words' slot: from its top a
 /// conte line each, each on one line, never broken, in the words' ink
@@ -625,12 +597,11 @@ double conteActionWordsDrop(
 /// outrun the column (F-531: 「다른 겸용컷 전부 보여줌」, and 09-25's
 /// 「길어져서 다 안들어가면 크기 작게하는방향, 기본적으로 그렇게」).
 Iterable<SheetMark> _fixedLines(
-  ConteSheetSource source,
   ContePlacedCell cell,
   Rect slot,
   ConteWords words,
 ) sync* {
-  final lines = conteFixedLinesOf(source, cell, words: words);
+  final lines = cell.source.fixedLines.writtenIn(words);
   for (final (index, text) in lines.indexed) {
     final line = _below(slot, index * _cellLine);
     yield SheetWords(
