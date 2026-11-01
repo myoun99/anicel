@@ -1513,10 +1513,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (!state.supports(ToolParameter.size)) {
       return;
     }
-    final size = BrushValueBars.steppedSize(
-      BrushToolState.clampSize(state.activeSize),
-      direction,
-    );
+    final size = BrushValueBars.steppedSize(state.activeSize, direction);
     if (size != null) {
       _brushTool.value = state.withActiveSize(size);
     }

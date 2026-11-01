@@ -108,18 +108,6 @@ void main() {
       expect(hand().activeSize, rack.last);
     });
 
-    testWidgets('🚨a size past the bar steps from where the bar stands it', (
-      tester,
-    ) async {
-      await pumpApp(tester);
-      await useAnicelKeys(tester);
-      expect(rack.last, BrushToolState.maxSize, reason: '⛔전제');
-      put(tester, hand().withActiveSize(rack.last * 2));
-
-      await press(tester, LogicalKeyboardKey.bracketLeft);
-      expect(hand().activeSize, rack[rack.length - 2]);
-    });
-
     testWidgets('🚨the tool in hand\'s own size moves — the eraser\'s, and the '
         'brush keeps its', (tester) async {
       await pumpApp(tester);
