@@ -664,7 +664,6 @@ void aStrokeIsWrittenIntoThePictureShown({
       isTrue,
       reason: 'LIVENESS: the rim is on its way',
     );
-    final standing = await onScreen(tester);
 
     store.letGo(picture);
     gpu
@@ -677,9 +676,24 @@ void aStrokeIsWrittenIntoThePictureShown({
       isTrue,
       reason: 'LIVENESS: the widening has come to nothing',
     );
-    await tester.pump();
 
-    expect(differences(standing, await onScreen(tester)), isEmpty);
+    // A paint from elsewhere: nothing about it asks for the stroke.
+    final panned = CanvasViewport(panX: 9, panY: 4);
+    await pump(tester, run, key: const ValueKey(0), view: panned, live: live);
+    final shot = await onScreen(tester);
+    expect(
+      differences(
+        await asItStands(
+          tester,
+          images,
+          picture: picture,
+          view: panned,
+          live: live,
+        ),
+        shot,
+      ),
+      isEmpty,
+    );
 
     await tester.pumpWidget(const SizedBox());
     overlay.dispose();
