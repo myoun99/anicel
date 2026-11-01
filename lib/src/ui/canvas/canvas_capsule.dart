@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../widgets/still_raster.dart';
 import '../widgets/superellipse_clip.dart';
 
 /// One floating control surface on the canvas: opaque, superellipse,
@@ -28,6 +29,11 @@ import '../widgets/superellipse_clip.dart';
 /// PASTEBOARD, a colour the user chooses, so no fill of ours can be
 /// relied on to contrast with it — the same reason the panbar lane has
 /// carried a hairline since the palette collapsed to three fills.
+///
+/// Each is a region of its own ([StillRaster]): the canvas under it may
+/// never come from an image, so its dock holds none, but a capsule is
+/// chrome lying on the canvas, and every frame of a stroke drew all of
+/// them for nothing. [StillRaster]'s class doc has the run.
 class CanvasCapsule extends StatelessWidget {
   const CanvasCapsule({
     super.key,
@@ -57,17 +63,20 @@ class CanvasCapsule extends StatelessWidget {
     final shape = short.isFinite
         ? AppShapes.control(short)
         : AppShapes.container(AppShapes.wellRadius);
-    return DecoratedBox(
-      key: ValueKey<String>(keyValue),
-      decoration: ShapeDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        shape: shape.copyWith(
-          side: BorderSide(color: AppColors.backdrop),
+    return StillRaster(
+      debugLabel: 'capsule:$keyValue',
+      child: DecoratedBox(
+        key: ValueKey<String>(keyValue),
+        decoration: ShapeDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          shape: shape.copyWith(
+            side: BorderSide(color: AppColors.backdrop),
+          ),
         ),
-      ),
-      child: SuperellipseClip(
-        shape: shape,
-        child: SizedBox(width: width, height: height, child: child),
+        child: SuperellipseClip(
+          shape: shape,
+          child: SizedBox(width: width, height: height, child: child),
+        ),
       ),
     );
   }

@@ -86,4 +86,26 @@ void main() {
       ]),
     );
   });
+
+  testWidgets('a capsule on the canvas is drawn from its image, the dock under '
+      'it not (F-533)', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.pumpAndSettle();
+    // One region is taken a frame.
+    for (var i = 0; i < 24; i += 1) {
+      tester.binding.scheduleFrame();
+      await tester.pump();
+    }
+
+    // A second view pill stands in a dock that holds an image of its own.
+    expect(
+      StillRaster.census
+          .where((r) => r.attached)
+          .where((r) => r.debugLabel == 'capsule:canvas-view-pill')
+          .map((r) => r.debugDrawnFromImage),
+      contains(isTrue),
+    );
+  });
 }

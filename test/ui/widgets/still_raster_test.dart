@@ -425,6 +425,33 @@ void main() {
     );
   });
 
+  testWidgets('a region inside a region that repaints shows in the next '
+      'frame', (tester) async {
+    final color = ValueNotifier<Color>(_red);
+    addTearDown(color.dispose);
+    final child = StillRaster(
+      debugLabel: 'inner',
+      child: CustomPaint(painter: _Fill(color), size: Size.infinite),
+    );
+    await _pump(tester, child);
+    final outer = tester
+        .renderObjectList<RenderStillRaster>(find.byType(StillRaster))
+        .first;
+    for (var i = 0; i < 12 && !outer.debugDrawnFromImage; i += 1) {
+      await _frame(tester);
+    }
+    expect(outer.debugDrawnFromImage, isTrue);
+
+    color.value = _blue;
+    await tester.pump();
+    final bytes = await captureBytes(tester);
+    expect(
+      capturePixelAt(tester, bytes, const Offset(_left + 100, _top + 100)),
+      _blue,
+      reason: 'a region kept showing its old image',
+    );
+  });
+
   group('a layer property that changes shows in the next frame', () {
     for (final MapEntry(key: what, value: build) in _layerChanges.entries) {
       testWidgets(what, (tester) async {

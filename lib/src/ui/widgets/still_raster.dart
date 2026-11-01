@@ -71,8 +71,9 @@ import 'static_raster.dart';
 ///
 /// Around each DOCK REGION ([EditorDockHost] — every rail group and the
 /// floating bottom region), which is where the measurement found the
-/// frames going, and the two tool strips and the top strip, the chrome no
-/// dock holds. Only on Impeller ([cachePays]); on Skia the engine's own
+/// frames going, the two tool strips and the top strip, the chrome no dock
+/// holds, and each capsule on the canvas, in the one dock that opts out
+/// ([CanvasCapsule]). Only on Impeller ([cachePays]); on Skia the engine's own
 /// raster cache and [StaticRaster]'s bakes stay what they were measured
 /// as, and this is a boundary with a clip.
 ///
@@ -84,6 +85,9 @@ import 'static_raster.dart';
 /// raster done p50 / p90 / p99: fitted 56.5 / 74.3 / 146.4 → 46.0 / 60.8 /
 /// 85.3 ms, a frame's raster 6.3 → 5.0; at 100% 35.7 / 49.8 / 76.7 → 32.9
 /// / 44.7 / 73.2 ms, 6.1 → 5.3. Quiet, p50: 10.0 → 9.8 and 8.7 → 7.9 ms.
+/// The capsules on top of them, the same way: fitted 49.6 / 64.3 / 128.0 →
+/// 44.0 / 59.2 / 90.6 ms, 5.3 → 4.3; at 100% 34.1 / 45.7 / 70.6 → 30.0 /
+/// 43.0 / 60.7 ms, 5.5 → 4.3. Quiet, p50: 9.4 → 9.0 and 7.2 → 6.7 ms.
 class StillRaster extends SingleChildRenderObjectWidget {
   const StillRaster({
     super.key,
