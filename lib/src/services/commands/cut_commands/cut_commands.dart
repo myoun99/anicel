@@ -39,6 +39,13 @@ class _CutCommands {
   /// [cutId] names that cut ahead — the conte's next cut is drawn into
   /// before it exists (H44). [name] is the one the new cut window gave it
   /// (I-100); none takes the one where it lands ([nextCutNameAfter]).
+  ///
+  /// [canvasSize] unsaid is the open cut's, and with no cut open the
+  /// default. 🗣️F-537 (유저 2026-11-02): 「새 컷 만들때 크기, 현재 컷 기준으로
+  /// 만듬. 너비랑 크기. 현재컷 없이 갭에 서있으면 지금처럼 기본값으로」.
+  /// ↩️I-100 offered A4 200dpi whatever was open. The conte's next cut kept
+  /// the open cut's all along (I-100-Q2): a stroke makes that cut, and no
+  /// window can ask in the middle of one.
   CreateCutCommand createCutCommand({
     required TrackId trackId,
     CanvasSize? canvasSize,
@@ -67,8 +74,14 @@ class _CutCommands {
       index: anchor.index,
       leadingGapFrames: placement?.leadingGapFrames ?? 0,
       duration: placement?.duration,
-      canvasSize: canvasSize ?? defaultCutCanvasSize,
+      canvasSize: canvasSize ?? _openCanvas(project) ?? defaultCutCanvasSize,
     );
+  }
+
+  /// The canvas of the cut open now, or null in a gap, where none is.
+  CanvasSize? _openCanvas(Project project) {
+    final open = _coordinator.editingSession.activeCutId;
+    return open == null ? null : cutPositionOf(project, open)?.cut.canvasSize;
   }
 
   /// The name an EXPLICIT landing counts from: the cut in front of it —

@@ -18,6 +18,8 @@ import 'size_fields_row.dart';
 /// 거기서 정한값으로 만들어짐」 — the size is the canvas size window's own
 /// fields and presets. ⛔No 「캔버스에서 조정」: there is no canvas yet to
 /// adjust ([SizePresetsRow] says why a window that has one keeps it).
+/// ↩️The canvas offered is the open cut's where one is open (F-537); A4
+/// 200dpi stands in a gap.
 ///
 /// 🗣️I-100-Q1 (유저 2026-10-30 「겸용 컷 만들기도 창을 연다(이름만)」): a 겸용
 /// cut's window too ([action]) — its size its source's, fixed, since the

@@ -160,10 +160,6 @@ class AutoFrameForStroke {
       trackId: landing.trackId,
       cut: _project.cutCommandCoordinator.plannedCut(
         trackId: landing.trackId,
-        // The active cut's canvas, as every new cut's was before the new
-        // cut window (I-100): a stroke makes this cut, and no window can
-        // ask in the middle of one. Which size it takes is I-100-Q2's.
-        canvasSize: _project.activeCutOrNull?.canvasSize,
         placement: landing.placement,
         cutId: _nextConteCut ??= mintCutId(),
       ),
@@ -183,7 +179,6 @@ class AutoFrameForStroke {
     _nextConteCut = null;
     _project.cutCommandCoordinator.createCut(
       trackId: landing.trackId,
-      canvasSize: _project.activeCutOrNull?.canvasSize,
       placement: landing.placement,
       cutId: cutId,
     );

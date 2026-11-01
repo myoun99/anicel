@@ -79,7 +79,8 @@ class CutVerbs {
 
   /// The cut [createCut] makes when it is told nothing — what the new cut
   /// window offers (I-100): the name the cut takes where it lands, and the
-  /// new cut's canvas, A4 200dpi. Null where the ＋ has no place for one.
+  /// open cut's canvas (F-537, [CutCommandCoordinator.plannedCut]). Null
+  /// where the ＋ has no place for one.
   Cut? get plannedNewCut {
     final plan = _placement.cutCreationPlan;
     if (plan == null) {
@@ -98,7 +99,9 @@ class CutVerbs {
   /// 정하는데, 그게아니라 앞으로는 컷 만들기 버튼 누르면 컷 생성창 열려서,
   /// 거기서 이름(기본값 넣어줌), 캔버스 사이즈(기본값 a4 200dpi) 정하도록.
   /// 거기서 정한값으로 만들어짐」. ↩️A new cut took the active cut's canvas,
-  /// as new scenes in TVPaint/Clip Studio take the project's.
+  /// as new scenes in TVPaint/Clip Studio take the project's. ↩️↩️And the
+  /// window offers that canvas again: the size is the open cut's where one
+  /// is open (F-537), and the window stays.
   void createCut({String? name, CanvasSize? canvasSize}) {
     final plan = _placement.cutCreationPlan;
     if (plan == null) {
