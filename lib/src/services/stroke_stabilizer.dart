@@ -88,8 +88,8 @@ class StrokeStabilizer {
   /// 0에서 심하고, 6에서 괜찮아짐」). A quick turn is done within
   /// [_wayToldOver], so the line was taken along where the pen had been going
   /// and swung back. 🔬A U-turn of 6–15 px at 1500–5000 px/s, 240 Hz, turned
-  /// 193–232° through two changes of side at 0 and 1, where a line steadied
-  /// all round turns 180°; with this, 180–184° and none. On a straight line
+  /// 191–232° through two changes of side at 0 and 1, where a line steadied
+  /// all round turns 180°; with this, 179–184° and none. On a straight line
   /// with a wobble of 0.4 px it stays within 0.1 ms of the pen from 1200 px/s,
   /// 0.5 ms at 300, where all round is 2.3 ms.
   ///
