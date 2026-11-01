@@ -102,7 +102,7 @@ void main() {
         'render comes', () async {
       final gpu = _RecordingGpu()..holdWrites = true;
       final store = FramePictureStore<String>(gpu: gpu);
-      await _layed(store, 'a', 1024);
+      (await _layed(store, 'a', 1024)).readAt(_readsLevels);
       // A stroke's step draws tile pictures the next step replaces.
       var ink = red;
       store.patch(
@@ -202,7 +202,7 @@ void main() {
           'run', () async {
         final gpu = _RecordingGpu()..holdWrites = true;
         final store = FramePictureStore<String>(gpu: gpu);
-        await _layed(store, 'a', 1024);
+        (await _layed(store, 'a', 1024)).readAt(_readsLevels);
         final (:draw, :draws, :runner) = throughAPlugin();
 
         store.patch(from: 'a', to: 'b', rect: paper, draw: draw);
@@ -271,7 +271,7 @@ void main() {
     test('lets go of its texels once they are in its picture', () async {
       final gpu = _RecordingGpu()..holdWrites = true;
       final store = FramePictureStore<String>(gpu: gpu);
-      await _layed(store, 'a', 128);
+      (await _layed(store, 'a', 128)).readAt(_readsLevels);
       store.patch(
         from: 'a',
         to: 'b',
@@ -534,11 +534,133 @@ void main() {
       noGpu.dispose();
     });
 
+    group('with no copy out (F-533)', () {
+      const spot8 = ui.Rect.fromLTWH(0, 0, 8, 8);
+
+      test('its write is not waited for: it lands with the GPU still '
+          'writing', () async {
+        final gpu = _RecordingGpu()..holdWrites = true;
+        final store = FramePictureStore<String>(gpu: gpu);
+        await _layed(store, 'a', 256);
+
+        store.patch(from: 'a', to: 'b', rect: spot8, draw: fill);
+
+        expect(await store.landingOf('b'), isTrue);
+        expect(gpu.bases, hasLength(1), reason: '⛔premise: it was written');
+        expect(gpu.levelWrites, isEmpty, reason: '⛔premise: no copy out');
+        expect(gpu.heldWrites, 1, reason: '⛔premise: not answered yet');
+        expect(store.peek('b'), isNotNull);
+        await _landAll(gpu, store);
+        store.dispose();
+      });
+
+      test('with one it is: the step waits for what the screen reads', () async {
+        final gpu = _RecordingGpu()..holdWrites = true;
+        final store = FramePictureStore<String>(gpu: gpu);
+        (await _layed(store, 'a', 256)).readAt(_readsLevels);
+        var landed = false;
+
+        store.patch(from: 'a', to: 'b', rect: spot8, draw: fill);
+        unawaited(store.landingOf('b')!.then((_) => landed = true));
+        expect(await pollUntil(() => gpu.levelWrites.isNotEmpty), isTrue);
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        expect(landed, isFalse);
+
+        await _landAll(gpu, store);
+        expect(landed, isTrue);
+        store.dispose();
+      });
+
+      test('the next step does not wait for it either: it goes behind it, '
+          'each laid in the order asked', () async {
+        final gpu = _RecordingGpu()..holdWrites = true;
+        final store = FramePictureStore<String>(gpu: gpu);
+        await _layed(store, 'a', 256);
+
+        store.patch(from: 'a', to: 'b', rect: spot8, draw: fill);
+        store.patch(from: 'b', to: 'c', rect: spot8.shift(const ui.Offset(16, 0)), draw: fill);
+
+        expect(await store.landingOf('c'), isTrue);
+        expect(gpu.heldWrites, 2);
+        expect([for (final base in gpu.bases) base.single.x], [0, 16]);
+        await _landAll(gpu, store);
+        store.dispose();
+      });
+
+      test('one the GPU did not do lets go of its picture all the same, when '
+          'the GPU says so', () async {
+        final gpu = _RecordingGpu()
+          ..holdWrites = true
+          ..writesLand = false;
+        final store = FramePictureStore<String>(gpu: gpu);
+        await _layed(store, 'a', 256);
+
+        store.patch(from: 'a', to: 'b', rect: spot8, draw: fill);
+        expect(await store.landingOf('b'), isTrue);
+        final picture = store.peek('b')!;
+        expect(picture.image.debugDisposed, isFalse, reason: '⛔premise');
+
+        gpu.releaseWrite();
+        expect(await pollUntil(() => store.peek('b') == null), isTrue);
+        expect(await pollUntil(() => picture.image.debugDisposed), isTrue);
+        store.dispose();
+      });
+
+      test('one that came back an error is reported, and lets go of its '
+          'picture too', () async {
+        final reported = _reported();
+        final gpu = _RecordingGpu()
+          ..holdWrites = true
+          ..writesFailWith = StateError('the GPU lost it');
+        final store = FramePictureStore<String>(gpu: gpu);
+        await _layed(store, 'a', 256);
+
+        store.patch(from: 'a', to: 'b', rect: spot8, draw: fill);
+        expect(await store.landingOf('b'), isTrue);
+
+        gpu.releaseWrite();
+        expect(await pollUntil(() => store.peek('b') == null), isTrue);
+        expect(reported.single, isA<StateError>());
+        store.dispose();
+      });
+
+      test('one that threw as it was asked did not write, as with one',
+          () async {
+        final reported = _reported();
+        final gpu = _RecordingGpu();
+        final store = FramePictureStore<String>(gpu: gpu);
+        await _layed(store, 'a', 256);
+        gpu.writesThrow = StateError('refused');
+
+        store.patch(from: 'a', to: 'b', rect: spot8, draw: fill);
+
+        expect(await store.landingOf('b'), isFalse);
+        expect(store.peek('b'), isNull);
+        expect(reported.single, isA<StateError>());
+        store.dispose();
+      });
+
+      test('its texels go once the GPU has them: what it copies is the '
+          'GPU\'s to hold', () async {
+        final gpu = _RecordingGpu()..holdWrites = true;
+        final store = FramePictureStore<String>(gpu: gpu);
+        await _layed(store, 'a', 256);
+
+        store.patch(from: 'a', to: 'b', rect: spot8, draw: fill);
+
+        expect(await store.landingOf('b'), isTrue);
+        expect(gpu.bases.single.single.source.debugDisposed, isTrue);
+        await _landAll(gpu, store);
+        store.dispose();
+      });
+    });
+
     test('the GPU did not write lets go of the picture: no key answers with '
         'texels it does not hold', () async {
       final gpu = _RecordingGpu()..writesLand = false;
       final store = FramePictureStore<String>(gpu: gpu);
       final picture = await _layed(store, 'a', 256);
+      picture.readAt(_readsLevels);
       store.patch(
         from: 'a',
         to: 'b',
@@ -878,16 +1000,17 @@ void main() {
       final gpu = _RecordingGpu()..holdWrites = true;
       final store = FramePictureStore<String>(gpu: gpu);
       final picture = await _layed(store, 'a', 1024);
+      picture.readAt(0.4);
       store.patch(from: 'a', to: 'b', rect: spot, draw: fill);
       expect(await pollUntil(() => gpu.bases.length == 1), isTrue);
       store.patch(from: 'b', to: 'c', rect: spot, draw: fill);
-      expect(await pollUntil(() => gpu.rendered.length == 3), isTrue);
+      expect(await pollUntil(() => gpu.rendered.length == 4), isTrue);
       expect(picture.readAt(_readsLevels), isTrue, reason: '⛔premise: nothing owed yet');
 
       gpu.holdWrites = false;
       gpu.releaseWrite();
       expect(await store.landingOf('c'), isTrue);
-      expect(levelsOf(gpu.levelWrites.single), everyLevel);
+      expect(levelsOf(gpu.levelWrites.last), everyLevel);
       expect(picture.readAt(_readsLevels), isFalse, reason: 'the first step owes them');
       store.dispose();
     });
@@ -897,17 +1020,18 @@ void main() {
       final gpu = _RecordingGpu()..holdWrites = true;
       final store = FramePictureStore<String>(gpu: gpu);
       final picture = await _layed(store, 'a', 1024);
+      picture.readAt(0.4);
       store.patch(from: 'a', to: 'b', rect: spot, draw: fill);
       expect(await pollUntil(() => gpu.bases.length == 1), isTrue);
       store.patch(from: 'b', to: 'c', rect: spot, draw: fill);
-      expect(await pollUntil(() => gpu.rendered.length == 3), isTrue);
-      expect(picture.readAt(0.4), isTrue, reason: '⛔premise: nothing owed yet');
+      expect(await pollUntil(() => gpu.rendered.length == 4), isTrue);
+      expect(picture.readAt(0.2), isTrue, reason: '⛔premise: nothing owed yet');
 
       gpu.holdWrites = false;
       gpu.releaseWrite();
       expect(await store.landingOf('c'), isTrue);
-      expect(levelsOf(gpu.levelWrites.single), [1, 2, 3]);
-      expect(picture.readAt(0.4), isFalse, reason: 'the first step owes them');
+      expect(levelsOf(gpu.levelWrites.last), [1, 2, 3, 4]);
+      expect(picture.readAt(0.2), isFalse, reason: 'the first step owes them');
       store.dispose();
     });
 
@@ -2099,7 +2223,7 @@ void main() {
         'of', () async {
       final gpu = _RecordingGpu();
       final store = FramePictureStore<String>(gpu: gpu);
-      await _layed(store, 'a', 256);
+      (await _layed(store, 'a', 256)).readAt(_readsLevels);
       gpu
         ..rendered.clear()
         ..holdWrites = true;
@@ -2326,6 +2450,12 @@ class _RecordingGpu implements FramePictureGpu {
   /// What every write throws as it is asked, where anything.
   Error? writesThrow;
 
+  /// What every write comes back with, once answered, where anything.
+  Error? writesFailWith;
+
+  /// The writes the GPU has not answered yet.
+  int get heldWrites => _heldWrites.length;
+
   /// What every render throws as it is asked, where anything.
   Error? rendersThrow;
 
@@ -2353,7 +2483,12 @@ class _RecordingGpu implements FramePictureGpu {
 
   void releaseWrite() {
     if (_heldWrites.isNotEmpty) {
-      _heldWrites.removeAt(0).complete(writesLand);
+      final held = _heldWrites.removeAt(0);
+      if (writesFailWith case final thrown?) {
+        held.completeError(thrown);
+      } else {
+        held.complete(writesLand);
+      }
     }
   }
 
