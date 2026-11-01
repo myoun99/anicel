@@ -14,6 +14,11 @@ import 'berth_row.dart';
 /// ⛔One listener, above the rows: one on each row would be a State in
 /// every row, which the row body may not have (`RowPlate`'s chain,
 /// a_row_body_is_light_boxes_test).
+///
+/// ⚠️A row asks by the layer it stands for, so a cut switch builds each kept
+/// row's plate, as it does its eye: one build a row, and a plate is one box.
+/// Told by what the grid builds, as it was, the rows would have to be laid
+/// again at every stand, about 2ms where this is two plates.
 class RailStand extends StatelessWidget {
   const RailStand({super.key, required this.activeLayer, required this.child});
 
