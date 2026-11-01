@@ -364,6 +364,17 @@ void main() {
       expect(turn(ShortcutPreset.tvpaint), 'Shift+Space');
     });
 
+    test('🗣️I-119-Q5 「그냥 z로 다 두자」: the line is held on Z under every '
+        'preset', () {
+      for (final preset in ShortcutPreset.values) {
+        expect(
+          keysOf(preset, EditorActionIds.canvasLineHold),
+          ['Z'],
+          reason: preset.name,
+        );
+      }
+    });
+
     for (final preset in ShortcutPreset.values) {
       test('${preset.name} ships with no two actions on one key', () {
         final bindings = EditorShortcutBindings()..setPreset(preset);

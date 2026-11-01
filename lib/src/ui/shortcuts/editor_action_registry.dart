@@ -1183,8 +1183,10 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // too; I-119-Q1: 「그럼 컨트롤 말고 다른 키로 배치하자. 추천대로」 — Z, the
   // one letter left free under the left hand. ⚠️Bare Z was left free ON
   // PURPOSE (I-63, the lasso tile's key above); whether the line may have
-  // it is asked on the board (I-119-Q3). Clip Studio and TVPaint have no
-  // key for this, so their presets leave it without one (F-417-Q1).
+  // it is asked on the board (I-119-Q3). 🗣️I-119-Q5 (유저 2026-11-01): 「쉬프트
+  // 못쓰는건 치명적이니 그냥 z로 다 두자」 — Z under every preset. ↩️Clip
+  // Studio's and TVPaint's had no key for it (F-417-Q1), so a new install
+  // had no line.
   const EditorActionDefinition(
     id: EditorActionIds.canvasLineHold,
     label: 'Line from the Last Stroke (hold)',

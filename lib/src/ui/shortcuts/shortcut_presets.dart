@@ -667,6 +667,14 @@ final Map<String, ProgramRow> _clipStudioRows = {
 /// here, and the rail tool takes it (the rule `M` · `U` · `G` follow in the
 /// CLIP STUDIO table).
 final Map<String, ProgramRow> _tvpaintRows = {
+  // 🗣️I-119-Q5 (유저 2026-11-01): 「쉬프트못쓰는건 치명적이니 그냥 z로 다
+  // 두자」 — the one key here the program does not ship, and Clip Studio,
+  // which names none for it, takes this row (F-417). ⛔Not the program's own
+  // Ctrl+Shift (I-119-Q4): held on Shift, the line has no eight ways left.
+  EditorActionIds.canvasLineHold: const ProgramRow(
+    [],
+    [SingleActivator(LogicalKeyboardKey.keyZ)],
+  ),
   // レイヤー: 左に移動 / 右に移動.
   EditorActionIds.framePrevious: const ProgramRow(
     ['LayerLeft'],
