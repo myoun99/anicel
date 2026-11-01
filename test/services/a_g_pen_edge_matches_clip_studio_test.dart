@@ -297,9 +297,21 @@ void main() {
     });
   }
 
-  test('진한 수채 ships at Clip Studio\'s step, 中', () {
-    expect(denseWatercolor.antiAlias, BrushAntiAlias.medium);
-  });
+  // 🗣️F-521-Q1: 「클튜처럼 경도 100%로 맞춘다」.
+  for (final name in [
+    'builtin-watercolor',
+    'builtin-analog-watercolor',
+    'builtin-dense-watercolor',
+    'builtin-flat-wash',
+  ]) {
+    test('$name ships on Clip Studio\'s hard nib at 中', () {
+      final settings = defaultBrushPresets
+          .firstWhere((preset) => preset.id.value == name)
+          .settings;
+      expect(settings.hardness, 1);
+      expect(settings.antiAlias, BrushAntiAlias.medium);
+    });
+  }
 
   for (final (size, row) in _clipStudioInk) {
     test('🚨the ink Clip Studio\'s line lays at size $size, at every step',
