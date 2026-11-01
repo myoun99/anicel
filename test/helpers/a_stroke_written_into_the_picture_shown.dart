@@ -51,9 +51,9 @@ import 'settle_async.dart';
 /// OVER the picture shows its ink twice.
 ///
 /// A step shows at the paint after its texels are in, with no build
-/// between; where it goes past the picture, the picture is widened and the
-/// step goes in all the same; past what a picture can be widened to, the
-/// whole frame as it stands shows at the paint after it.
+/// between; where it goes past the picture, the whole frame as it stands
+/// shows at the paint after it, the picture is widened meanwhile, and what
+/// the stroke did since goes in as a step does.
 ///
 /// A stroke that lands moves the picture to the frame's next key where it
 /// stands, and the next stroke is written into it there. Another screen
@@ -509,8 +509,8 @@ void aStrokeIsWrittenIntoThePictureShown({
     await tester.pumpWidget(const SizedBox());
   }, skip: skipped);
 
-  testWidgets('🚨a step past the picture widens it and goes in as every step '
-      'does: the picture until it is in, the frame with it after (F-533)', (
+  testWidgets('🚨a step past the picture draws the frame as it stands, widens '
+      'the picture meanwhile, and goes in as a step from there on (F-533)', (
     tester,
   ) async {
     tester.view.devicePixelRatio = 1;
@@ -554,26 +554,58 @@ void aStrokeIsWrittenIntoThePictureShown({
       PromotedStrokeTile(past, tileOf(past, stroke, (_) => true), 1),
     ]);
     await tester.pump();
-    final landing = store.landingOf(keptByTheCanvas(tester, picture));
-    expect(landing, isNotNull, reason: 'it goes in as a step does');
-    expect(shown.room.left, lessThan(was.left), reason: 'it is widened');
-    expect(shown.extent, was);
     expect(
-      differences(before, await onScreen(tester)),
-      isEmpty,
-      reason: 'on its way, the picture as it stood — not the frame drawn '
-          'as it stands',
+      store.landingOf(keptByTheCanvas(tester, picture)),
+      isNull,
+      reason: 'no step waits for it',
+    );
+    expect(
+      await settleAsync(tester, () => gpu.rendersWaiting == 1),
+      isTrue,
+      reason: 'LIVENESS: the rim is on its way',
+    );
+    expect(shown.extent, was);
+    final meanwhile = await onScreen(tester);
+    expect(
+      differences(before, meanwhile),
+      isNotEmpty,
+      reason: 'the stroke shows at the paint after it, not when it is wider',
     );
 
     gpu
       ..holdsRenders = false
       ..letAllThrough();
-    await inThePicture(tester, landing);
-    await tester.pump();
+    expect(
+      await settleAsync(tester, () => shown.extent != was),
+      isTrue,
+      reason: 'the picture lies wider',
+    );
     expect(shown.extent.left, lessThan(was.left));
+
+    // The stroke goes on: a step, in the picture.
+    gpu.holdsRenders = true;
+    final further = TileCoord(x: -1, y: 1);
+    overlay.showResultTiles([
+      PromotedStrokeTile(further, tileOf(further, stroke, (_) => true), 2),
+    ]);
+    await tester.pump();
+    expect(
+      await settleAsync(
+        tester,
+        () => store.landingOf(keptByTheCanvas(tester, picture)) != null,
+      ),
+      isTrue,
+      reason: 'a step again, the frame not standing',
+    );
+    final step = store.landingOf(keptByTheCanvas(tester, picture));
+    gpu
+      ..holdsRenders = false
+      ..letAllThrough();
+    await inThePicture(tester, step);
+    await tester.pump();
     expect(store.peek(keptByTheCanvas(tester, picture)), same(shown));
     final stepped = await onScreen(tester);
-    expect(differences(before, stepped), isNotEmpty);
+    expect(differences(meanwhile, stepped), isNotEmpty);
     expect(
       differences(
         await asItStands(
@@ -594,8 +626,8 @@ void aStrokeIsWrittenIntoThePictureShown({
   }, skip: skipped);
 
   testWidgets('🚨a step past what the picture can be widened to draws the '
-      'frame as it stands at the paint after it — not the picture without '
-      'the step until a build', (
+      'frame as it stands, and it stays so — not the picture without the '
+      'step until a build', (
     tester,
   ) async {
     tester.view.devicePixelRatio = 1;
@@ -1433,8 +1465,9 @@ void aStrokeIsWrittenIntoThePictureShown({
     overlay.dispose();
   }, skip: skipped);
 
-  testWidgets('🚨a stroke that lands while its picture is widened moves that '
-      'picture — not laid anew over it (F-533)', (tester) async {
+  testWidgets('⛔a stroke that lands while its picture is widened: the frame '
+      'stands until its next picture is laid, and that picture is shown '
+      '(F-533)', (tester) async {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);
     const lineage = 'a-stroke-lands-while-its-picture-is-widened';
@@ -1480,9 +1513,9 @@ void aStrokeIsWrittenIntoThePictureShown({
     overlay.showResultTiles([PromotedStrokeTile(past, tile, 1)]);
     await tester.pump();
     expect(
-      store.landingOf(keptByTheCanvas(tester, before)),
-      isNotNull,
-      reason: '⛔premise: the step is on its way',
+      await settleAsync(tester, () => gpu.rendersWaiting == 1),
+      isTrue,
+      reason: '⛔premise: the picture is on its way to wider',
     );
 
     final drawn = BrushFrameDisplayCacheService(
@@ -1517,11 +1550,22 @@ void aStrokeIsWrittenIntoThePictureShown({
       isTrue,
       reason: 'the picture answers to the frame\'s next key',
     );
-    expect(store.peek(after), same(shown));
+    expect(store.peek(after), isNot(same(shown)));
+    expect(store.laid, contains(after), reason: 'laid, as ever');
+    await tester.pump();
     expect(
-      store.laid,
-      isNot(contains(after)),
-      reason: 'moved where it stands, not laid anew',
+      differences(
+        await asItStands(
+          tester,
+          images,
+          picture: after,
+          view: view,
+          live: painterOfTheCel(),
+        ),
+        await onScreen(tester),
+      ),
+      isEmpty,
+      reason: 'the stroke, whichever way it came',
     );
     var every = false;
     unawaited(store.settled().then((_) => every = true));

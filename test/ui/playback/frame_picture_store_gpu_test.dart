@@ -136,12 +136,16 @@ void main() {
       // The way a stroke goes: a step in it first, its levels waiting.
       store.patch(from: 'before', to: 'stepped', rect: patch, draw: withPatch);
       await store.landingOf('stepped');
-      final room = store.widen(
+      final widening = store.widen(
         key: 'stepped',
         over: const ui.Rect.fromLTRB(-200, -5, side + 0.0, side + 0.0),
         draw: past,
       );
-      expect(room, const ui.Rect.fromLTRB(-256, -128, side + 0.0, side + 0.0));
+      expect(await widening, isTrue);
+      expect(
+        widened!.extent,
+        const ui.Rect.fromLTRB(-256, -128, side + 0.0, side + 0.0),
+      );
       expect(
         store.patch(
           from: 'stepped',
@@ -153,11 +157,11 @@ void main() {
       );
       expect(await store.landingOf('after'), isTrue);
       expect(store.peek('after'), same(widened));
-      widened!.readAt(0.25);
+      widened.readAt(0.25);
       await store.settled();
 
       final fresh = await store.lay('fresh', (
-        extent: room!,
+        extent: widened.extent,
         outside: const ui.Color(0xFFFFFFFF),
         draw: (canvas) {
           pastWithPatch(canvas);

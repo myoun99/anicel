@@ -81,7 +81,7 @@ typedef FrameDrawing = ({
 /// 진짜 비상사태」; 1079 from its second stroke, every stroke from 1080).
 /// Every runner and Windows draw the whole screen each frame, which hid it.
 class FramePicture extends ChangeNotifier {
-  FramePicture._(this._image, this._extent, this.outside) : _room = _extent;
+  FramePicture._(this._image, this._extent, this.outside);
 
   /// Whether a screen has read this picture's levels since its patches last
   /// paused — whether a write lays them ([readAt]).
@@ -101,12 +101,6 @@ class FramePicture extends ChangeNotifier {
   /// Where [image] lies in the world — whole pixels, at least what was laid.
   ui.Rect get extent => _extent;
   ui.Rect _extent;
-
-  /// Where it lies once what was asked of it is in: [extent], or where it is
-  /// on its way to being widened to ([FramePictureStore.widen]) — what a step
-  /// can go into, and a stroke's landing move, from the moment that is asked.
-  ui.Rect get room => _room;
-  ui.Rect _room;
 
   /// The frame's colour everywhere outside [extent].
   final ui.Color outside;
@@ -308,7 +302,7 @@ class FramePictureStore<K extends Object> {
   ///
   /// Answers false, and lets go of [from]'s picture, where it cannot: no
   /// picture under [from], no GPU to write with, or [rect] reaching past
-  /// the picture's [FramePicture.room] — [widen] it first, or lay [to] anew.
+  /// the picture's extent — [widen] it first, or lay [to] anew.
   ///
   /// [draw] is called before this answers, not when the patch's turn to
   /// render comes: a stroke's step draws the overlay's tile pictures, which
@@ -332,7 +326,7 @@ class FramePictureStore<K extends Object> {
       return false;
     }
     final widened = wholeLevelPixelsOutward(rect, entry.patchedLevels);
-    if (entry.held == null || !_covers(entry.picture.room, widened)) {
+    if (entry.held == null || !_covers(entry.picture.extent, widened)) {
       _letGo(entry);
       return false;
     }
@@ -349,16 +343,15 @@ class FramePictureStore<K extends Object> {
   }
 
   /// Widens the picture of [key] to hold [over], in its turn behind the
-  /// patches on their way into it, and answers where it will lie — null,
-  /// nothing asked, where there is no picture to write into or it would be
-  /// too big to raster at once ([framePictureSide]). A patch into what it
-  /// gains can be asked for at once.
+  /// patches on their way into it, and answers once that is done or failed
+  /// — null, nothing asked, where there is no picture to write into or it
+  /// would be too big to raster at once ([framePictureSide]).
   ///
   /// The picture it is: what it holds copied, texel for texel, and [draw]
   /// under the rim it gains, recorded before this answers and rastered
   /// alone, on nothing, as a patch is ([patch]). Told to its listeners as a
   /// write is.
-  ui.Rect? widen({
+  Future<bool>? widen({
     required K key,
     required ui.Rect over,
     required void Function(ui.Canvas canvas) draw,
@@ -369,27 +362,28 @@ class FramePictureStore<K extends Object> {
       return null;
     }
     final picture = entry.picture;
-    final was = picture.room;
-    final room = pictureExtentOf(was.expandToInclude(over));
+    final room = pictureExtentOf(picture.extent.expandToInclude(over));
     if (room.longestSide > _onceSide) {
       return null;
     }
-    picture._room = room;
     final rim = [
-      for (final rect in _rimBetween(was, room))
+      for (final rect in _rimBetween(picture.extent, room))
         (
           rect: rect,
           recorded: _recordedThrough(rect, draw, gone: gone)..ignore(),
         ),
     ];
-    entry.renders = entry.renders.then((_) => _widen(entry, room, rim));
-    return room;
+    final widened = Completer<bool>();
+    entry.renders = entry.renders.then(
+      (_) => widened.complete(_widen(entry, room, rim)),
+    );
+    return widened.future;
   }
 
   /// [widen]'s rim rastered, and the picture laid again around what it
   /// holds. ⛔A write takes its turn behind the ones under way, the levels
   /// owed among them: they read the texture this lets go of.
-  Future<void> _widen(
+  Future<bool> _widen(
     _Entry<K> entry,
     ui.Rect room,
     List<({ui.Rect rect, Future<ui.Picture?> recorded})> rim,
@@ -401,7 +395,7 @@ class FramePictureStore<K extends Object> {
         if (drawn == null) {
           // What it drew was gone before its plugins had run ([patch]).
           _letGo(entry);
-          return;
+          return false;
         }
         texels.add((
           rect: rect,
@@ -412,16 +406,22 @@ class FramePictureStore<K extends Object> {
           ),
         ));
       }
-      entry.writes = entry.writes.then((_) => _laidWider(entry, room, texels));
+      var laid = false;
+      entry.writes = entry.writes.then(
+        (_) async => laid = await _laidWider(entry, room, texels),
+      );
       await entry.writes;
+      return laid;
     } on Object catch (error, stack) {
       _report(error, stack, 'rendering the rim a frame picture is widened by');
       _letGo(entry);
+      return false;
     }
   }
 
-  /// [entry]'s picture is what it holds and [rim], over [room], from here on.
-  Future<void> _laidWider(
+  /// [entry]'s picture is what it holds and [rim], over [room], from here on
+  /// — answers whether it is.
+  Future<bool> _laidWider(
     _Entry<K> entry,
     ui.Rect room,
     List<_Texels> rim,
@@ -429,7 +429,7 @@ class FramePictureStore<K extends Object> {
     final picture = entry.picture;
     try {
       if (entry.gone) {
-        return;
+        return false;
       }
       final image = await _readAt(
         [
@@ -448,15 +448,17 @@ class FramePictureStore<K extends Object> {
       if (held == null) {
         image.dispose();
         _letGo(entry);
-        return;
+        return false;
       }
       entry
         ..held = held
         ..levels = _gpu.levelsOf(held);
       picture._widened(image, room);
+      return true;
     } on Object catch (error, stack) {
       _report(error, stack, 'widening a frame picture');
       _letGo(entry);
+      return false;
     } finally {
       for (final (rect: _, :image) in rim) {
         image.dispose();

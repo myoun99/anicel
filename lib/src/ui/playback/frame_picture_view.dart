@@ -665,7 +665,7 @@ class _FramePictureViewState extends State<FramePictureView> {
         held != null &&
         live.steady &&
         live.movedSince(held).located &&
-        _fits(live.drawing.extent, picture.room);
+        _fits(live.drawing.extent, picture.extent);
   }
 
   /// Whether what a frame draws over [drawn] is all inside [extent].
@@ -830,14 +830,17 @@ class _FramePictureViewState extends State<FramePictureView> {
     StackedFrame live,
     Rect dirty,
   ) {
-    // Inside it, the change is cut to it — past it the frame draws nothing,
-    // and the pixel the change is widened by ([StackedFrame.movedSince]) has
-    // no texel there.
-    bool gone() => !mounted || !identical(_live, live);
+    // A frame that now draws past its picture is drawn as it stands, and
+    // the picture widened to it. Inside it, the change is cut to it — past
+    // it the frame draws nothing, and the pixel the change is widened by
+    // ([StackedFrame.movedSince]) has no texel there. ⛔Not by the change
+    // alone: every stroke on the page's first row or column of tiles reaches
+    // a pixel past the page.
+    final extent = picture.extent;
     final drawing = live.drawing;
-    final extent = _roomFor(picture, drawing, gone);
-    if (extent == null) {
+    if (!_fits(drawing.extent, extent)) {
       _standing.whole = true;
+      _widen(picture, live, drawing);
       return;
     }
     final rect = dirty.intersect(extent);
@@ -851,7 +854,7 @@ class _FramePictureViewState extends State<FramePictureView> {
       rect: rect,
       draw: drawing.draw,
       // Drawn again once its plugins have run, by the frame still standing.
-      gone: gone,
+      gone: () => _leftBehind(live),
     )) {
       _standing.whole = true;
       return;
@@ -880,27 +883,48 @@ class _FramePictureViewState extends State<FramePictureView> {
     );
   }
 
-  /// Where [picture] holds what [drawing] draws: where it lies, or where it
-  /// is widened to — null where it cannot be, and the frame is drawn as it
-  /// stands. ⛔By what the frame draws, not the change alone: every stroke on
-  /// the page's first row or column of tiles reaches a pixel past the page.
+  /// Whether [live] is not what stands here any more.
+  bool _leftBehind(StackedFrame live) => !mounted || !identical(_live, live);
+
+  /// [picture] widened to hold [drawing] ([FramePictureStore.widen]), and
+  /// what the live rows moved meanwhile goes into it as any step does — the
+  /// frame drawn as it stands until then, and from then on where it cannot
+  /// be widened.
   ///
-  /// ↩️A picture did not grow: a frame that drew past it was drawn as it
-  /// stood until its key moved, and its next picture laid wide enough — all
-  /// the stroke that first reached a new band of tiles past the picture, and
-  /// a lay after it.
-  ui.Rect? _roomFor(
-    FramePicture picture,
-    FrameDrawing drawing,
-    bool Function() gone,
-  ) => _fits(drawing.extent, picture.room)
-      ? picture.room
-      : _store.widen(
-          key: _keptAs!,
-          over: drawing.extent,
-          draw: drawing.draw,
-          gone: gone,
-        );
+  /// ↩️A picture did not grow: the frame stood until its key moved and its
+  /// next picture was laid wide enough — all of the stroke that first
+  /// reached a new band of tiles past the picture, and a lay after it.
+  /// 🔬F-533, main PC, 144 Hz, profile, S5_BA cut 352 with every row visible,
+  /// fitted, 2026-11-01: strokes along the picture's edges at 300 px/s, their
+  /// ink past it from first dab to last. Quiet, 20 px: a frame every 13.9 →
+  /// 6.9 ms, the build's p50 5.4 → 0.3 ms, ink p50 11–13 → 9–10 ms and p90
+  /// 19–20 → 13 ms. 300 px: 13.9 → 6.9 ms, 7 → 0.4 ms, 17–20 → 14 ms and
+  /// 20–31 → 18–21 ms. Under another session's tests, 20 px: a frame every
+  /// 28–35 → 7–10 ms, the build's p50 21–25 → 1.4 ms, and ink p50 35–42 →
+  /// 44–51 ms, what a stroke inside the page gets there. Widening took
+  /// 3–74 ms. ⚠️Not measured on the Surface Pro 11.
+  /// ⛔Not with the step waiting for it, the frame not standing: the stroke
+  /// stopped on screen for it — ink's longest 70–133 → 98–212 ms under the
+  /// same tests.
+  void _widen(FramePicture picture, StackedFrame live, FrameDrawing drawing) {
+    unawaited(
+      _store
+          .widen(
+            key: _keptAs!,
+            over: drawing.extent,
+            draw: drawing.draw,
+            gone: () => _leftBehind(live),
+          )
+          ?.then((widened) {
+            if (widened &&
+                !_leftBehind(live) &&
+                identical(_shown?.picture, picture)) {
+              _standing.whole = false;
+              _repaint.value += 1;
+            }
+          }),
+    );
+  }
 
   /// Whether a stroke is in hand on the cel the picture was taken on. ⛔Its
   /// overlay let go, or that cel committed with no build yet, is a change

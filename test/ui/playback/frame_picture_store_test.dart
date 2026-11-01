@@ -251,15 +251,15 @@ void main() {
         final (:draw, :draws, :runner) = throughAPlugin();
         var gone = false;
 
-        store.widen(
+        final widened = store.widen(
           key: 'a',
           over: const ui.Rect.fromLTRB(-5, 0, 256, 256),
           draw: draw,
           gone: () => gone,
         );
         gone = true;
-        await pollUntil(() => store.peek('a') == null);
 
+        expect(await widened, isFalse);
         expect(draws(), 1, reason: 'not drawn again');
         expect(runner.renders, 1, reason: '⛔premise: the round came');
         expect(store.peek('a'), isNull);
@@ -1793,19 +1793,23 @@ void main() {
       );
     }
 
-    test('answers where it will lie, on the frame grid, which a patch can '
-        'go into at once, and lies there once it is in', () async {
+    test('lies on the frame grid once it is in, under the key it had, and a '
+        'patch past where it lay goes in', () async {
       final store = FramePictureStore<String>(gpu: _RecordingGpu());
       final picture = await _layed(store, 'a', 256);
-      final room = store.widen(key: 'a', over: left, draw: green);
-
-      expect(room, const ui.Rect.fromLTRB(-128, 0, 256, 256));
-      expect(picture.room, room);
+      final widened = store.widen(key: 'a', over: left, draw: green)!;
       expect(
         picture.extent,
         const ui.Rect.fromLTWH(0, 0, 256, 256),
         reason: 'not before it does',
       );
+
+      expect(await widened, isTrue);
+      expect(picture.extent, const ui.Rect.fromLTRB(-128, 0, 256, 256));
+      expect(picture.image.width, 384);
+      expect(picture.image.height, 256);
+      expect(store.peek('a'), same(picture));
+      expect(store.bytesOf('a'), 384 * 256 * 4);
       expect(
         store.patch(
           from: 'a',
@@ -1816,12 +1820,7 @@ void main() {
         isTrue,
       );
       expect(await store.landingOf('b'), isTrue);
-
-      expect(picture.extent, room);
-      expect(picture.image.width, 384);
-      expect(picture.image.height, 256);
       expect(store.peek('b'), same(picture));
-      expect(store.bytesOf('b'), 384 * 256 * 4);
       store.dispose();
     });
 
@@ -1831,12 +1830,11 @@ void main() {
       final picture = await _layed(store, 'a', 256);
       gpu.rendered.clear();
 
-      store.widen(
+      await store.widen(
         key: 'a',
         over: const ui.Rect.fromLTRB(-5, -5, 261, 261),
         draw: green,
       );
-      await store.settled();
 
       expect(picture.extent, const ui.Rect.fromLTRB(-128, -128, 384, 384));
       expect(gpu.rendered, [
@@ -1861,6 +1859,20 @@ void main() {
       store.dispose();
     });
 
+    test('lets go of its rim once it is in the picture', () async {
+      final gpu = _RecordingGpu();
+      final store = FramePictureStore<String>(gpu: gpu);
+      final picture = await _layed(store, 'a', 256);
+      gpu.images.clear();
+      await store.widen(key: 'a', over: left, draw: green);
+
+      expect(gpu.images, hasLength(2));
+      expect(gpu.images.first.debugDisposed, isTrue);
+      expect(gpu.images.last, same(picture.image));
+      expect(picture.image.debugDisposed, isFalse);
+      store.dispose();
+    });
+
     test('is told to whoever draws it, as a write is', () async {
       final store = FramePictureStore<String>(gpu: _RecordingGpu());
       final picture = await _layed(store, 'a', 256);
@@ -1870,10 +1882,9 @@ void main() {
         () => seen.add((picture.extent, picture.image.width)),
       );
 
-      final room = store.widen(key: 'a', over: left, draw: green)!;
-      await store.settled();
+      await store.widen(key: 'a', over: left, draw: green);
 
-      expect(seen, [(room, 384)]);
+      expect(seen, [(const ui.Rect.fromLTRB(-128, 0, 256, 256), 384)]);
       expect(was.debugDisposed, isTrue);
       store.dispose();
     });
@@ -1884,12 +1895,16 @@ void main() {
       final store = FramePictureStore<String>(gpu: gpu);
       final picture = await _layed(store, 'a', 256)
         ..readAt(_readsLevels);
-      final room = store.widen(
+      await store.widen(
         key: 'a',
         over: const ui.Rect.fromLTRB(-300, 0, 256, 256),
         draw: green,
       );
-      expect(room!.width, 640, reason: '⛔premise: a level more than 256');
+      expect(
+        picture.extent.width,
+        640,
+        reason: '⛔premise: a level more than 256',
+      );
       store.patch(
         from: 'a',
         to: 'b',
@@ -1905,7 +1920,6 @@ void main() {
         9,
         reason: 'the deepest of 640, not of 256',
       );
-      expect(picture.extent, room);
       store.dispose();
     });
 
@@ -1919,8 +1933,7 @@ void main() {
         draw: green,
       );
       expect(await store.landingOf('b'), isTrue);
-      store.widen(key: 'b', over: left, draw: green);
-      await store.settled();
+      await store.widen(key: 'b', over: left, draw: green);
 
       expect(picture.readAt(_readsLevels), isTrue);
       store.dispose();
@@ -1940,7 +1953,7 @@ void main() {
         rect: const ui.Rect.fromLTWH(0, 0, 8, 8),
         draw: green,
       );
-      store.widen(key: 'b', over: left, draw: green);
+      unawaited(store.widen(key: 'b', over: left, draw: green));
       expect(
         await pollUntil(() => gpu.rendered.contains((128, 256))),
         isTrue,
@@ -1977,7 +1990,6 @@ void main() {
         isNull,
       );
       await capped.settled();
-      expect(picture.room, picture.extent);
       expect(picture.extent, const ui.Rect.fromLTWH(0, 0, 256, 256));
       expect(drawn, 0);
       expect(once.rendered, isEmpty);
@@ -1987,14 +1999,14 @@ void main() {
       capped.dispose();
     });
 
-    test('that threw lets go of the picture, the patch behind it answered, '
-        'and is reported', () async {
+    test('that threw lets go of the picture and answers so, the patch behind '
+        'it too, and is reported', () async {
       final reported = _reported();
       final gpu = _RecordingGpu();
       final store = FramePictureStore<String>(gpu: gpu);
       final picture = await _layed(store, 'a', 256);
       gpu.rendersThrow = StateError('no raster');
-      store.widen(key: 'a', over: left, draw: green);
+      final widened = store.widen(key: 'a', over: left, draw: green)!;
       store.patch(
         from: 'a',
         to: 'b',
@@ -2002,7 +2014,9 @@ void main() {
         draw: green,
       );
 
-      expect(await patiently(store.landingOf('b')!), isFalse);
+      final landing = store.landingOf('b')!;
+      expect(await patiently(widened), isFalse);
+      expect(await patiently(landing), isFalse);
       expect(store.peek('a'), isNull);
       expect(store.peek('b'), isNull);
       expect(await pollUntil(() => picture.image.debugDisposed), isTrue);
@@ -2017,11 +2031,36 @@ void main() {
       final store = FramePictureStore<String>(gpu: gpu);
       await _layed(store, 'a', 256);
       gpu.rendersThrowAt = (384, 256);
-      store.widen(key: 'a', over: left, draw: green);
-      await store.settled();
 
+      expect(await store.widen(key: 'a', over: left, draw: green), isFalse);
       expect(store.peek('a'), isNull);
       expect(reported.single, isA<StateError>());
+      store.dispose();
+    });
+
+    test('of a picture let go while it is laid again takes nothing, and '
+        'leaves nothing behind', () async {
+      final gpu = _RecordingGpu();
+      final store = FramePictureStore<String>(gpu: gpu);
+      final picture = await _layed(store, 'a', 256);
+      final was = picture.image;
+      gpu
+        ..recorded.clear()
+        ..holdRenders = true;
+      final widened = store.widen(key: 'a', over: left, draw: green);
+      expect(await pollUntil(() => gpu.recorded.length == 1), isTrue);
+      gpu.releaseRender();
+      expect(await pollUntil(() => gpu.recorded.length == 2), isTrue);
+      store.letGo('a');
+      gpu
+        ..holdRenders = false
+        ..releaseRender();
+      expect(await widened, isFalse);
+      expect(await pollUntil(() => was.debugDisposed), isTrue);
+
+      expect(picture.image, same(was));
+      expect(picture.extent, const ui.Rect.fromLTWH(0, 0, 256, 256));
+      expect(gpu.images.last.debugDisposed, isTrue);
       store.dispose();
     });
 
@@ -2034,14 +2073,14 @@ void main() {
         ..rendered.clear()
         ..recorded.clear()
         ..holdRenders = true;
-      store.widen(key: 'a', over: left, draw: green);
+      final widened = store.widen(key: 'a', over: left, draw: green);
       expect(await pollUntil(() => gpu.recorded.length == 1), isTrue);
       store.letGo('a');
       gpu
         ..holdRenders = false
         ..releaseRender();
-      await store.settled();
 
+      expect(await widened, isFalse);
       expect(gpu.rendered, [(128, 256)], reason: 'the rim alone');
       store.dispose();
     });
@@ -2124,6 +2163,9 @@ class _RecordingGpu implements FramePictureGpu {
 
   final List<(int, int)> rendered = [];
   final List<ui.Picture> recorded = [];
+
+  /// Every image a render made.
+  final List<ui.Image> images = [];
   final List<List<BaseWrite>> bases = [];
   final List<({(int, int) run, List<RunSpan> spans})> levelWrites = [];
 
@@ -2153,15 +2195,18 @@ class _RecordingGpu implements FramePictureGpu {
       throw StateError('no raster at $width x $height');
     }
     recorded.add(picture);
-    if (!holdRenders) {
+    Future<ui.Image> made() async {
       rendered.add((width, height));
-      return picture.toImage(width, height);
+      final image = await picture.toImage(width, height);
+      images.add(image);
+      return image;
+    }
+
+    if (!holdRenders) {
+      return made();
     }
     final done = Completer<ui.Image>();
-    _heldRenders.add(() {
-      rendered.add((width, height));
-      done.complete(picture.toImage(width, height));
-    });
+    _heldRenders.add(() => done.complete(made()));
     return done.future;
   }
 
