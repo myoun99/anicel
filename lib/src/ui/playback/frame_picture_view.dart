@@ -308,8 +308,6 @@ class _FramePictureViewState extends State<FramePictureView> {
         !identical(oldWidget.run.pictures, widget.run.pictures) ||
         !_sameLive(oldWidget.live, widget.live) ||
         oldWidget.wholeFrames != widget.wholeFrames;
-    // Asked of the frame as it stood, before it stands anew.
-    final holdsWhatIsStored = handedAnew && _holdsOnlyWhatIsStored;
     if (handedAnew) {
       final shown = _onScreen;
       final drawnLive = oldWidget.drawnLive;
@@ -325,7 +323,7 @@ class _FramePictureViewState extends State<FramePictureView> {
     // you went back and forth).
     _look();
     if (handedAnew && widget.live != null) {
-      _liveRowsHandedAnew(holdsWhatIsStored: holdsWhatIsStored);
+      _liveRowsHandedAnew();
     }
   }
 
@@ -693,28 +691,18 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// 「moved」 — the frame was drawn as it stands until its key moved: on S5
   /// cut 352 5–9 ms a paint in debug, at each click on a row, and the first
   /// stroke on the row clicked composed the whole frame a step at a time.
-  void _liveRowsHandedAnew({required bool holdsWhatIsStored}) {
+  /// ⛔Asked of a picture only what no key answers, what it holds past the
+  /// cels ([_showsUnstored]): what they store, its key holds it to. Asking
+  /// what moved besides caught nothing (the mutants of 2026-11-01).
+  void _liveRowsHandedAnew() {
     if (_shown != null) {
       final penMoved = _celDrawnOn() != _drawnOn?.cel;
-      if (_held == null || (holdsWhatIsStored && penMoved)) {
+      if (_held == null || (penMoved && !_showsUnstored(_held))) {
         _drawnOn = _celNow();
         _tell();
       }
       _catchUp();
     }
-  }
-
-  /// Whether the picture shown holds all the live rows [_live] draws, and
-  /// no pixel their cels do not store: what it can go on showing whichever
-  /// cel the pen comes to.
-  bool get _holdsOnlyWhatIsStored {
-    final live = _live;
-    final held = _held;
-    if (live == null || held == null || _showsUnstored(held)) {
-      return false;
-    }
-    final moved = live.movedSince(held);
-    return moved.located && moved.dirty == null;
   }
 
   /// Tells what of the live rows the picture just taken holds: all of them
