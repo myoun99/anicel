@@ -727,7 +727,6 @@ class _StillLayer extends OffsetLayer {
       SchedulerBinding.instance.addPostFrameCallback(check);
     }
 
-    _FrameGap.wait(this);
     SchedulerBinding.instance.addPostFrameCallback(check);
   }
 
