@@ -113,6 +113,7 @@ import 'timeline/memo_token.dart' show ByList;
 import 'sliced_value_listenable_builder.dart' show SlicedListenableBuilder;
 import 'widgets/cursor_notice.dart';
 import 'widgets/panel_flyout.dart' show pressFlyoutRow;
+import 'widgets/still_raster.dart';
 
 /// The editor shell: a slim top menu strip (menu bar + quick actions —
 /// the AppBar retired so the editor keeps the vertical space) plus the
@@ -1678,7 +1679,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                           in _projects.sessions)
                                         projectTabLabel(_projects, session),
                                     ]),
-                                    builder: (context, _) => _topStrip(),
+                                    builder: (context, _) => StillRaster(
+                                      debugLabel: 'top-strip',
+                                      child: _topStrip(),
+                                    ),
                                   ),
                                 ),
                               ),

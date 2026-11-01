@@ -122,6 +122,7 @@ import 'panels/workspace_layout_store.dart';
 import 'panels/workspace_panels_menu.dart';
 import 'widgets/app_scrollbar.dart';
 import 'widgets/static_raster.dart';
+import 'widgets/still_raster.dart';
 import 'widgets/superellipse_clip.dart';
 import 'widgets/tick_layer.dart';
 import 'widgets/grip_band.dart' show LiftingGripBand;

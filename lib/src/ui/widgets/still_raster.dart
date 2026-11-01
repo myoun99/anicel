@@ -71,9 +71,19 @@ import 'static_raster.dart';
 ///
 /// Around each DOCK REGION ([EditorDockHost] — every rail group and the
 /// floating bottom region), which is where the measurement found the
-/// frames going. Only on Impeller ([cachePays]); on Skia the engine's own
+/// frames going, and the two tool strips and the top strip, the chrome no
+/// dock holds. Only on Impeller ([cachePays]); on Skia the engine's own
 /// raster cache and [StaticRaster]'s bakes stay what they were measured
 /// as, and this is a boundary with a clip.
+///
+/// 🔬The strips came last (F-533, 2026-11-01): they were the most of what
+/// a frame still drew, 88 of 186 draws, and a stroke's steps wait behind
+/// the frames, so a frame's raster counts for more than itself. Main PC,
+/// 144 Hz, S5_BA cut 352 with every row shown, 300 px/s under eighteen
+/// suites of tests, the regions on and off in turn in one run, input to
+/// raster done p50 / p90 / p99: fitted 56.5 / 74.3 / 146.4 → 46.0 / 60.8 /
+/// 85.3 ms, a frame's raster 6.3 → 5.0; at 100% 35.7 / 49.8 / 76.7 → 32.9
+/// / 44.7 / 73.2 ms, 6.1 → 5.3. Quiet, p50: 10.0 → 9.8 and 8.7 → 7.9 ms.
 class StillRaster extends SingleChildRenderObjectWidget {
   const StillRaster({
     super.key,

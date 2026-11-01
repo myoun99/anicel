@@ -60,4 +60,30 @@ void main() {
           'proves nothing',
     );
   });
+
+  testWidgets('the tool strips and the top strip, which no dock holds, are '
+      'drawn from their images as the docks are (F-533)', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.pumpAndSettle();
+    // One region is taken a frame.
+    for (var i = 0; i < 24; i += 1) {
+      tester.binding.scheduleFrame();
+      await tester.pump();
+    }
+
+    final fromImage = {
+      for (final region in StillRaster.census.where((r) => r.attached))
+        if (region.debugDrawnFromImage) region.debugLabel,
+    };
+    expect(
+      fromImage,
+      containsAll([
+        'strip:${EditorWorkspace.toolLeftGroupId}',
+        'strip:${EditorWorkspace.toolRightGroupId}',
+        'top-strip',
+      ]),
+    );
+  });
 }
