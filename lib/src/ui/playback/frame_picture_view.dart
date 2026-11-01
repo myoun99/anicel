@@ -888,7 +888,7 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// apart from what goes with it ([_catchUp]): not a step to hold.
   bool get _strokeInHand {
     final overlay = widget.live?.activeSurfacePainter?.overlayModel;
-    return (overlay?.hasStrokeContent ?? false) && _celNow() == _drawnOn;
+    return (overlay?.strokeInHand ?? false) && _celNow() == _drawnOn;
   }
 
   /// [_catchUp] for a paint: at once, or for a stroke in hand as late as its

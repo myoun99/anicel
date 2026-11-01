@@ -34,9 +34,9 @@ import 'deferred_image_disposal.dart';
 ///
 /// A lightweight editor-local [ChangeNotifier]: the interactive view blends
 /// new dabs into its live CPU stroke buffer and hands the touched region to
-/// [updateRegion]; every picture that lands notifies the canvas painter
-/// through the `CustomPainter.repaint` hook, so strokes repaint without
-/// rebuilding any widgets.
+/// [updateRegion], which notifies the canvas painter through the
+/// `CustomPainter.repaint` hook, so strokes repaint without rebuilding any
+/// widgets.
 ///
 /// The overlay displays through the EXACT pipeline the committed tiles use:
 /// straight-alpha buffer bytes become tile pictures through the one door
@@ -47,16 +47,28 @@ import 'deferred_image_disposal.dart';
 /// fractional zoom, visibly shifting the active stroke's pixels against
 /// committed strokes.
 ///
-/// 🚨★★★PICTURED INSIDE THE FLUSH, ON EVERY ENGINE (유저 절대규칙
-/// 2026-09-17: 「보이는 중이랑 결과랑 절대로 다르면 안 되」). The picture of
-/// a coordinate and the stroke revision it shows are recorded in the same
-/// synchronous call that pre-blended it, so the pen-up handoff finds a
+/// 🚨★★★PICTURED IN THE CALL THAT READS IT, ON EVERY ENGINE (유저 절대규칙
+/// 2026-09-17: 「보이는 중이랑 결과랑 절대로 다르면 안 되」). What a stroke
+/// touched is pictured the first time anything reads the pictures
+/// ([tileImages], [takeTileImageAt], [pictureOwed]) — the picture of a
+/// coordinate and the stroke revision it shows recorded in the same
+/// synchronous call that pre-blended it — so the pen-up handoff finds a
 /// picture at every promoted tile's revision and nothing ever has to stand
 /// in for a committed tile afterwards — there is no decode in flight, no
 /// settle window, no stand-in. Where the engine uploads (Impeller, every
 /// platform since 3.47) the picture is a real texture; where it draws
 /// (Skia, the test runner) it is a rasterized picture — the door makes the
 /// same bytes either way.
+///
+/// ↩️Pictured inside every flush until F-533 (유저 2026-11-01 「최대한 그
+/// 외적으로 좋아지기만 하는 부분에서 구조를 효율적으로 리팩토링」): a step goes
+/// into the frame's picture only once the last is in, so under load most
+/// flushes uploaded pictures the next flush replaced with nothing having
+/// drawn them, on a raster thread already 96% busy. 🔬Main PC, 144 Hz, a new
+/// project, under eighteen suites of tests, in turn in one run, 300 px/s:
+/// pictures made 2381 → 666 at 100% and 1919 → 350 fitted, a flush 0.8 → 0.3
+/// ms, input to raster done p50 36.1 → 35.0 and 73.1 → 66.1 ms. Quiet, a
+/// flush for each step, 2879 → 2086, and no later.
 class ActiveStrokeOverlayModel extends ChangeNotifier {
   ActiveStrokeOverlayModel({int tileSize = defaultCelTileSize})
     : _tileSize = tileSize;
@@ -78,7 +90,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// legal while the overlay is empty (call after [reset]) — images are
   /// keyed by tile coordinate, which changes meaning with the grid.
   void configureTileSize(int tileSize) {
-    assert(_tileImages.isEmpty, 'configureTileSize requires an empty overlay');
+    assert(!strokeInHand, 'configureTileSize requires an empty overlay');
     _tileSize = tileSize;
   }
 
@@ -135,6 +147,12 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
 
   final Map<TileCoord, ui.Image> _tileImages = <TileCoord, ui.Image>{};
 
+  /// Where the stroke moved and no picture shows it yet ([pictureOwed]).
+  final Set<TileCoord> _owed = <TileCoord>{};
+
+  /// What shows [_owed]: null where nothing is owed.
+  ActiveStrokePixelSource? _owedFrom;
+
   /// 🗣️I-132-Q32 b 「무거운 플러그인은 그 행이 바뀔 때마다 캔버스가 그만큼
   /// 멈춘다」: on a row whose chain runs a plugin, a result changes the
   /// cel's whole picture — the plugin may move a pixel anywhere — so it is
@@ -163,12 +181,17 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// Overlay tile pictures by tile coordinate. Tiles never overlap, so the
   /// painter draws each with plain source-over at `(coord * tileSize)`,
   /// exactly like the committed tile images.
-  late final Map<TileCoord, ui.Image> tileImages = UnmodifiableMapView(
-    _tileImages,
-  );
+  Map<TileCoord, ui.Image> get tileImages {
+    pictureOwed();
+    return UnmodifiableMapView(_tileImages);
+  }
 
   /// Whether the overlay currently has stroke content to draw.
-  bool get hasStrokeContent => _tileImages.isNotEmpty;
+  bool get hasStrokeContent => tileImages.isNotEmpty;
+
+  /// Whether a stroke is in hand here, its pictures made or not: what asks
+  /// of a stroke in every paint, whether or not anything draws it.
+  bool get strokeInHand => _owedFrom != null || _tileImages.isNotEmpty;
 
   /// 🚨★★★A FILL'S RESULT TILES, AS THIS OVERLAY'S PICTURES (유저 절대규칙
   /// 2026-09-17, `promoteFillDabs`): the tiles the commit will install,
@@ -177,22 +200,24 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// them at [fillPromotionRevision] and nothing is pictured twice. Every
   /// picture exists before this returns: a fill appears whole.
   void showResultTiles(Iterable<PromotedStrokeTile> tiles) {
+    pictureOwed();
     if (_pluginOver != null) {
       for (final entry in tiles) {
         _landed[entry.coord] = entry.tile;
       }
       _showThroughPlugin();
-      return;
+    } else {
+      for (final entry in tiles) {
+        _install(
+          entry.coord,
+          BitmapTileImageCache.pictureOfTile(
+            tileShownFor(entry.coord, entry.tile),
+          ),
+          revision: entry.revision,
+        );
+      }
     }
-    for (final entry in tiles) {
-      _install(
-        entry.coord,
-        BitmapTileImageCache.pictureOfTile(
-          tileShownFor(entry.coord, entry.tile),
-        ),
-        revision: entry.revision,
-      );
-    }
+    notifyListeners();
   }
 
   /// The plates of the texts the cel under this stroke carries that stand
@@ -232,13 +257,32 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   List<ResolvedLayerEffect> get _effectsOver =>
       preBlended ? sourceEffects : const [];
 
-  /// Snapshots the overlay tiles that [region] touches from the live
-  /// stroke [source] and pictures them — inside this call.
+  /// The overlay tiles that [region] touches moved in the live stroke
+  /// [source]: pictured when they are next read ([pictureOwed]).
   void updateRegion({
     required ActiveStrokePixelSource source,
     required DirtyRegion region,
   }) {
-    final coords = region.toTileCoords(tileSize: tileSize).toList();
+    if (!identical(_owedFrom, source)) {
+      pictureOwed();
+    }
+    _owedFrom = source;
+    _owed.addAll(region.toTileCoords(tileSize: tileSize));
+    notifyListeners();
+  }
+
+  /// Snapshots the overlay tiles the stroke moved since the last read from
+  /// its live source, and pictures them — inside this call. ⚠️Before the
+  /// source gives up what it holds: a pen-up's promotion takes the tiles
+  /// out of it.
+  void pictureOwed() {
+    final source = _owedFrom;
+    if (source == null) {
+      return;
+    }
+    final coords = _owed.toList();
+    _owedFrom = null;
+    _owed.clear();
     final preBlended = _preBlendedFrom(source);
     if (preBlended != null && _pluginOver != null) {
       _eachPreBlended(preBlended, coords, _keepLanded);
@@ -269,8 +313,8 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
 
   /// The cel with the stroke's result laid in ([_landed]), as its row shows
   /// it — run through the chain whole — pictured at every coordinate it or
-  /// the cel as it stood shows, in ONE notification: what pen-up lands is
-  /// what is on screen, and a coordinate the plugin cleared shows clear.
+  /// the cel as it stood shows, at once: what pen-up lands is what is on
+  /// screen, and a coordinate the plugin cleared shows clear.
   void _showThroughPlugin() {
     final base = preBlendBase!;
     final shown = celSurfaceAsShown(
@@ -289,7 +333,6 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
         shown.tileAt(coord) ?? BitmapTile.blank(size: tileSize),
       );
     }
-    notifyListeners();
   }
 
   /// [updateRegion]'s pictures for [coords], made OFF SCREEN and kept for
@@ -349,7 +392,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   int get stagedCount => _staged.length;
 
   /// [source] when its tiles picture through the pre-blend at this grid —
-  /// the road [updateRegion] takes for a whole region in one kernel call —
+  /// the road [pictureOwed] takes for a whole region in one kernel call —
   /// or null.
   BrushLiveStrokeRasterizer? _preBlendedFrom(ActiveStrokePixelSource source) {
     final preBlendBase = this.preBlendBase;
@@ -520,7 +563,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
 
   /// [image] becomes [coord]'s picture — the one it showed before retired
   /// DEFERRED (a frame may still be holding it), the stroke [revision] it
-  /// represents recorded beside it — and the painter is told.
+  /// represents recorded beside it.
   void _install(TileCoord coord, ui.Image image, {required int? revision}) {
     final previous = _tileImages[coord];
     if (previous != null) {
@@ -530,7 +573,6 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     if (revision != null) {
       _tileImageRevisions[coord] = revision;
     }
-    notifyListeners();
   }
 
   /// [coord]'s picture as a screen drawing it REDUCED samples it — carrying
@@ -543,7 +585,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// that measures the live row by its pictures (`LiveSurfaceTokens`) sees
   /// the coordinate change once and patches the same bytes once.
   ui.Image? chainedTileImageAt(TileCoord coord) {
-    final image = _tileImages[coord];
+    final image = tileImages[coord];
     if (image == null || carriesChain(image)) {
       return image;
     }
@@ -562,6 +604,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// at becomes the committed tile's image, with no second picture and no
   /// window where the tile has none.
   ui.Image? takeTileImageAt(TileCoord coord, {required int revision}) {
+    pictureOwed();
     if (_tileImageRevisions[coord] != revision) {
       return null;
     }
@@ -587,6 +630,8 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   }
 
   void _clearTiles() {
+    _owed.clear();
+    _owedFrom = null;
     _landed.clear();
     for (final image in _tileImages.values) {
       // The overlay being cleared is what the on-screen frame currently

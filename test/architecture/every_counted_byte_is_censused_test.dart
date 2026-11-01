@@ -425,8 +425,6 @@ const _imageHolders = <String, String>{
   'lib/src/ui/canvas/active_stroke_overlay.dart → _tileImages':
       'the tiles of the stroke in progress, each freed as it settles into '
       'the surface',
-  'lib/src/ui/canvas/active_stroke_overlay.dart → tileImages':
-      'an unmodifiable VIEW of _tileImages: the same holding, not a second',
   'lib/src/ui/canvas/deferred_image_disposal.dart → _buckets':
       'images already let go, kept only for the frames the raster thread '
       'may still read; a disposal queue, not a holding',
