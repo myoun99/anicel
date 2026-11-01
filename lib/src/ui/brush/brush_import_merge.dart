@@ -1,15 +1,7 @@
 import '../../models/brush_group.dart';
 import '../../models/brush_preset.dart';
-import '../../models/brush_preset_id.dart';
 import '../../services/brush_preset_file_service.dart';
 import '../../services/brush_preset_id_mint.dart';
-
-/// A brush import folded into the library, and where each brush of the file
-/// landed: the id the file gave it → the id it holds in the library.
-typedef BrushImportLanding = ({
-  BrushPresetLibraryData library,
-  Map<String, BrushPresetId> landedAs,
-});
 
 /// Folds a freshly decoded brush import into [library].
 ///
@@ -27,7 +19,7 @@ typedef BrushImportLanding = ({
 /// id the library already holds is minted afresh by the one mint
 /// ([BrushPresetIdMint]); two presets still never share an id (ids key the
 /// rows).
-BrushImportLanding mergeImportedBrushPresets({
+BrushPresetLibraryData mergeImportedBrushPresets({
   required BrushPresetLibraryData library,
   required List<BrushPreset> imported,
   required String sourceName,
@@ -36,32 +28,12 @@ BrushImportLanding mergeImportedBrushPresets({
   final mint = BrushPresetIdMint(
     taken: [for (final preset in library.presets) preset.id.value],
   );
-  final landedAs = <String, BrushPresetId>{};
   final landed = [
     for (final preset in imported)
-      preset.copyWith(
-        id: _landing(landedAs, preset.id.value, mint),
-        groupId: groupId,
-      ),
+      preset.copyWith(id: mint.next(preset.id.value), groupId: groupId),
   ];
   final groups = library.groups.any((group) => group.id == groupId)
       ? library.groups
       : [...library.groups, BrushGroup(id: groupId, name: sourceName)];
-  return (
-    library: (groups: groups, presets: [...library.presets, ...landed]),
-    landedAs: landedAs,
-  );
-}
-
-/// The id the brush the file calls [inFile] lands under, written into
-/// [landedAs] — the first brush of an id keeps the answer, since a file
-/// that gives two brushes one id cannot say which its settings are for.
-BrushPresetId _landing(
-  Map<String, BrushPresetId> landedAs,
-  String inFile,
-  BrushPresetIdMint mint,
-) {
-  final id = mint.next(inFile);
-  landedAs.putIfAbsent(inFile, () => id);
-  return id;
+  return (groups: groups, presets: [...library.presets, ...landed]);
 }

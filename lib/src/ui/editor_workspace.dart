@@ -1279,7 +1279,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _presetLibrary = BrushPresetLibrary(
       fileService: widget.presetFileService,
       tipLibrary: _tipLibrary,
-      handSettingsPort: _brushPresets._handSettingsPort,
+      handSettingsToCarry: _brushPresets._handSettingsToCarry,
     );
     // 🗣️I-56: the library's groups and brushes are shortcut rows, and a key
     // presses what the tab or the brush row does.
