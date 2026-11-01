@@ -1067,6 +1067,20 @@ class FramePictureStore<K extends Object> {
   /// to raster end p50 2.9–4.7 → 11.3–14.2 ms, the UI and the raster
   /// themselves unchanged. 🚨The main PC does not speak for the Surface
   /// here: measure a change to these waits there before it lands.
+  ///
+  /// 🔬A WRITE WITH NO COPY OUT IS NOT WAITED FOR (F-533, 2026-11-01): what
+  /// goes to the GPU goes first — on GLES both a write and a frame are the
+  /// raster thread's tasks, in the order asked, and elsewhere the write is
+  /// on the queue before the next frame is drawn — so a frame asked for
+  /// from here on has its texels, and an answer buys nothing but its round
+  /// trip, about 0.1 ms on a quiet main PC and 5–8 ms under load. Main PC,
+  /// 144 Hz, S5_BA cut 352, 60%, every row on, 20 px, input to raster end
+  /// p50 / p90: quiet 8.3–8.6 / 12–14 → 7.1–7.5 / 10.5–11 ms; under another
+  /// session's tests 31–42 → 29–37 ms. ⛔Not with levels: the copy out is
+  /// the wait, it holds the raster thread whoever waits for it, and that
+  /// answered at the submission is the 190 late frames above.
+  /// ⚠️The answer is still heard: a write that did not go in lets go of
+  /// its picture late ([_heardLater]), the frame laid anew.
   Future<bool> _written(
     _Entry<K> entry,
     List<_Texels> batch,
@@ -1091,24 +1105,50 @@ class FramePictureStore<K extends Object> {
     deepest?.dispose();
     final image = run.image;
     try {
-      return entry.gone ||
-          await _PictureWrites.answered(
-            _gpu.write(
-              entry.held!,
-              [
-                for (final patch in batch)
-                  (
-                    source: patch.image,
-                    x: _xOf(picture, patch.rect),
-                    y: _yOf(picture, patch.rect),
-                  ),
-              ],
-              image == null ? null : (run: image, spans: run.spans),
-            ),
-          );
+      if (entry.gone) {
+        return true;
+      }
+      final write = _PictureWrites.answered(
+        _gpu.write(
+          entry.held!,
+          [
+            for (final patch in batch)
+              (
+                source: patch.image,
+                x: _xOf(picture, patch.rect),
+                y: _yOf(picture, patch.rect),
+              ),
+          ],
+          image == null ? null : (run: image, spans: run.spans),
+        ),
+      );
+      if (image != null) {
+        return await write;
+      }
+      _heardLater(entry, write);
+      return true;
     } finally {
       image?.dispose();
     }
+  }
+
+  /// [write] into [entry]'s picture, gone to the GPU and not waited for
+  /// ([_written]): the picture is let go if it did not go in, as one waited
+  /// for is ([_wentIn]).
+  void _heardLater(_Entry<K> entry, Future<bool> write) {
+    unawaited(
+      write.then(
+        (done) {
+          if (!done) {
+            _letGo(entry);
+          }
+        },
+        onError: (Object error, StackTrace stack) {
+          _report(error, stack, 'writing patches into a frame picture');
+          _letGo(entry);
+        },
+      ),
+    );
   }
 
   /// [asked] has its texels in [entry]'s picture, or never will: its key
