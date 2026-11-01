@@ -34,10 +34,10 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// (`FramePictures.heldNodes`; card paint-walk-redoes-the-same-work-each-
 /// step): laid for the canvas that stands on it, a folder drawn whole is
 /// kept, and a stroke's step patched into the frame as it stands is cut
-/// from it — on the playback line beside the frames' pictures, each a page
-/// at the most and as many as the line has room for (🗣️유저 2026-10-27,
-/// Q3 = c: 「위 폴더는 하나씩, 재생 메모리 몫 안에서 전부」), only those of the
-/// frame last drawn to hold them, and let go of at a memory warning.
+/// from it — on the playback line beside the frames' pictures, as many as
+/// the line has room for (🗣️유저 2026-10-27, Q3 = c: 「위 폴더는 하나씩, 재생
+/// 메모리 몫 안에서 전부」), only those of the frame last drawn to hold them,
+/// and let go of at a memory warning.
 void main() {
   const canvasSize = CanvasSize(width: 32, height: 24);
   const folders = [LayerId('folder'), LayerId('folder2')];
@@ -333,8 +333,8 @@ void main() {
     });
   });
 
-  testWidgets('⚖️each node held is a page at the most, and as many are held '
-      'as the playback line has room for', (tester) async {
+  testWidgets('⚖️a node is held at the size it drew, and as many are held as '
+      'the playback line has room for', (tester) async {
     await tester.runAsync(() async {
       void keep(HeldSubtreeRasters held, String key, Rect bounds) {
         final recorder = ui.PictureRecorder();
@@ -350,29 +350,25 @@ void main() {
         recorder.endRecording().dispose();
       }
 
-      /// The nodes held in a session on a line of [line] bytes, the page
-      /// told by a frame laid on it.
-      Future<HeldSubtreeRasters> heldOn({int? line}) async {
+      /// The nodes held in a session on a line of [line] bytes.
+      HeldSubtreeRasters heldOn({int? line}) {
         final s = session();
         addTearDown(s.dispose);
         if (line != null) {
           s.playbackRig.playbackCache.debugSetPlaybackCacheBudgetBytes(line);
         }
-        final held = s.playbackRig.framePictures.heldNodes;
-        await shown(s, drawn(s));
-        held.clear();
-        return held;
+        return s.playbackRig.framePictures.heldNodes;
       }
 
       const whole = Rect.fromLTWH(0, 0, 32, 24);
-      final wide = await heldOn();
+      final wide = heldOn();
       keep(wide, 'past the page', const Rect.fromLTWH(0, 0, 33, 24));
-      expect(wide, hasLength(0));
+      expect(wide, hasLength(1), reason: 'its ink reaches the pasteboard');
       keep(wide, 'the page', whole);
       keep(wide, 'another page', whole);
-      expect(wide, hasLength(2), reason: 'a page each, not one together');
+      expect(wide, hasLength(3), reason: 'each its own, not one together');
 
-      final narrow = await heldOn(line: 2 * page - 1);
+      final narrow = heldOn(line: 2 * page - 1);
       keep(narrow, 'the page', whole);
       keep(narrow, 'another page', whole);
       expect(narrow, hasLength(1), reason: 'the line has room for one');

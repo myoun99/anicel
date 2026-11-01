@@ -558,8 +558,8 @@ final class SubtreeHold {
 ///
 /// Two shelves, each bounded on its own: what lies below the row a pen
 /// draws into ([SubtreeHold.below], [bytesBelow]) and the nodes held one by
-/// one ([bytes], each [eachAtMost]) — 🗣️유저 2026-10-27 (Q2 = c) 「그리는 행
-/// 아래 · 위를 한 장씩 묶어 든다」. ⛔Not one: what lies below is drawn first
+/// one ([bytes]) — 🗣️유저 2026-10-27 (Q2 = c) 「그리는 행 아래 · 위를 한 장씩
+/// 묶어 든다」. ⛔Not one: what lies below is drawn first
 /// as a frame is laid, and the nodes over it kept after would push it out
 /// first. One raster past its shelf is not kept at all: it is drawn as it
 /// was before.
@@ -570,9 +570,8 @@ final class SubtreeHold {
 final class HeldSubtreeRasters {
   HeldSubtreeRasters({
     required int Function() bytes,
-    int Function()? eachAtMost,
     int Function() bytesBelow = _none,
-  }) : _nodes = _HeldShelf(bytes, each: eachAtMost),
+  }) : _nodes = _HeldShelf(bytes),
        _below = _HeldShelf(bytesBelow);
 
   final _HeldShelf _nodes;
@@ -646,14 +645,11 @@ final class HeldSubtreeRasters {
 }
 
 /// One shelf of [HeldSubtreeRasters]: the least recently used let go of
-/// first, past [_bytes] — and none kept past [_each].
+/// first, past [_bytes].
 final class _HeldShelf {
-  _HeldShelf(int Function() bytes, {int Function()? each})
-    : _bytes = bytes,
-      _each = each ?? bytes;
+  _HeldShelf(this._bytes);
 
   final int Function() _bytes;
-  final int Function() _each;
   late final Lru<Object, HeldSubtreeRaster> _held = Lru(
     limit: _bytes,
     costOf: _bytesOf,
@@ -664,7 +660,7 @@ final class _HeldShelf {
   /// place aside ([HeldSubtreeRasters.lettings]).
   int lettings = 0;
 
-  bool _fits(int bytes) => bytes <= _each() && bytes <= _bytes();
+  bool _fits(int bytes) => bytes <= _bytes();
 
   /// Keeps [drawn] for [key] in handles of its own — the caller lets go of
   /// its own — where it fits; answers whether it did.

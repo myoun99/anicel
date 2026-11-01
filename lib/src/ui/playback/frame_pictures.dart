@@ -128,22 +128,25 @@ class FramePictures implements PlaybackPictures {
   /// ⚖️Below the pen, two pages at the most — the page of the frame last
   /// drawn with them ([estimatedImageBytes]): the frame's own list and the
   /// folder the pen is in — the option 유저 picked 2026-10-27 (Q2 = c):
-  /// 「폴더가 몇 개든 2~3장」. Over it, each node a page at the most, and as
-  /// many as the playback [line] has room for — the frames' pictures made
-  /// ahead give way to them (🗣️유저 2026-10-27, Q3 = c: 「위 폴더는 하나씩,
-  /// 재생 메모리 몫 안에서 전부」). The screen is fed by the frame's picture,
-  /// and these only make its patches cheaper. Past it they are let go of,
-  /// and a patch draws them as it did before; and they are only ever the
-  /// nodes of the frame last drawn to hold them
-  /// ([HeldSubtreeRasters.holdOnly]).
+  /// 「폴더가 몇 개든 2~3장」. Over it, as many as the playback [line] has
+  /// room for — the frames' pictures made ahead give way to them (🗣️유저
+  /// 2026-10-27, Q3 = c: 「위 폴더는 하나씩, 재생 메모리 몫 안에서 전부」).
+  /// The screen is fed by the frame's picture, and these only make its
+  /// patches cheaper. Past it they are let go of, and a patch draws them as
+  /// it did before; and they are only ever the nodes of the frame last drawn
+  /// to hold them ([HeldSubtreeRasters.holdOnly]).
   ///
   /// ↩️One page held the nodes over the pen together until Q3: 🔬nine
   /// folders at 50% over the row drawn on, one of them fitted and a step
   /// drew the rest — a step on the screen p50 14.8–27.5ms against
   /// 6.5–12.6ms at 100% (10-27, the whole app, Windows, profile).
+  ///
+  /// ↩️Each node a page at the most until 2026-11-01 — a guess that a folder
+  /// is never bigger than the page, in that option's cost: one whose ink
+  /// reaches the pasteboard, 2720 x 1696 on a page of 2436 x 1524 in S5_BA
+  /// cut 353, was never held, though Q3 said 「전부」.
   late final HeldSubtreeRasters heldNodes = HeldSubtreeRasters(
     bytes: () => line?.bytesForNodes ?? playbackCacheBudgetBytes,
-    eachAtMost: () => _heldPageBytes,
     bytesBelow: () => 2 * _heldPageBytes,
   );
   int _heldPageBytes = 0;
