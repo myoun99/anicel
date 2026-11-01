@@ -96,6 +96,7 @@ void main() {
     Layer layer, {
     TimelineGridTileStore? store,
     ValueNotifier<int>? bucket,
+    TimelineCellExposureState Function(Layer layer, int frameIndex)? state,
   }) => TimelineRowCellsPainter(
     layer: layer,
     geometry: testFrameGeometry(
@@ -104,7 +105,7 @@ void main() {
       frameEndIndexExclusive: built,
     ),
     crossAxisExtent: 28,
-    exposureStateForLayer: stateFor,
+    exposureStateForLayer: state ?? stateFor,
     frameNameForLayer: frameNameOf,
     colorScheme: const ColorScheme.dark(),
     baseTextStyle: const TextStyle(fontSize: 11),
@@ -248,6 +249,37 @@ void main() {
         hasLength(painter.ghostInkCellsIn(0, built).length),
         reason: 'the six names and the X, and no word a tile holds',
       );
+    });
+
+    test('🚨over fresh tiles a row that holds no ghost asks none of its '
+        'cells: a ghost\'s ink is asked of the window at every '
+        'paint', () async {
+      if (dllPath == null) {
+        markTestSkipped('qa_engine.dll not built');
+        return;
+      }
+      var asked = 0;
+      final painter = painterFor(
+        rowOf({
+          0: const TimelineExposure.drawing(FrameId('a'), length: 12),
+          12: const TimelineExposure.drawing(FrameId('b'), length: 12),
+        }),
+        store: store,
+        state: (layer, frame) {
+          asked += 1;
+          return stateFor(layer, frame);
+        },
+      );
+      const size = Size(built * 24, 28);
+      painter.paint(_PaintSpy(), size);
+      await tileStoreIdle(store);
+      asked = 0;
+      final spy = _PaintSpy();
+
+      painter.paint(spy, size);
+
+      expect(spy.tiles, built ~/ 4, reason: 'premise: every span is tiled');
+      expect(asked, 0);
     });
   });
 }

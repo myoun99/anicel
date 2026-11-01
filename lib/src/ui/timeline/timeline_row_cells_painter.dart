@@ -440,6 +440,12 @@ class TimelineRowCellsPainter extends CustomPainter
   /// is immutable, and an edited one is a new painter.
   late final List<int> _cellEdges = timelineRowCellEdges(layer);
 
+  /// Whether this layer's timeline holds a ghost — found once, as
+  /// [_cellEdges].
+  late final bool _holdsAGhost = layer.timeline.values.any(
+    (entry) => entry.ghost,
+  );
+
   /// [from, to) as its stretches, in order, each from [from] or an edge to
   /// the next edge — every cell of one paints as its first.
   Iterable<({int start, int end})> _stretchesIn(int from, int to) sync* {
@@ -991,7 +997,10 @@ class TimelineRowCellsPainter extends CustomPainter
     ({int startIndex, int endIndexExclusive}) window,
   ) {
     final (startIndex: from, endIndexExclusive: to) = window;
-    if (to <= from) {
+    // 🚨Most rows hold none (I-22): a ghost's ink is asked of the window at
+    // every paint, and a row with no ghost walked every writing cell of it
+    // for nothing — 1.2 ms a frame on a wheel at 8px a frame, in profile.
+    if (to <= from || !_holdsAGhost) {
       return;
     }
     final lead = _wordGrowingInto(from);

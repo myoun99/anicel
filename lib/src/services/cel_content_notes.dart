@@ -54,6 +54,10 @@ final class CelContentNotes {
   /// Whether [key] is noted at the content it holds now.
   bool has(BrushFrameKey key) => _notedAt[key] == _contentOf(key);
 
+  /// Whether no cel is noted at all — what a reader asking of every cell
+  /// asks first: a note the content moved past still counts as one.
+  bool get isEmpty => _notedAt.isEmpty;
+
   /// Notes [key] at the content it holds now.
   void note(BrushFrameKey key) {
     final content = _contentOf(key);
