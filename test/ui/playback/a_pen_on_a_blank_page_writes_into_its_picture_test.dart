@@ -254,6 +254,57 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('🚨and so has one that comes with no cel yet: the pen is on what '
+      'it was on, nothing, and the picture holds nothing of its row', (
+    tester,
+  ) async {
+    final nodes = rowOn(null);
+    final (cels: _, :run, :store) = aPage(() => nodes);
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+    addTearDown(overlay.dispose);
+    final blank = run.pictures.keyOfStack(nodes, page);
+
+    await standOn(
+      tester,
+      run,
+      nodes: nodes,
+      live: (
+        activeSurfacePainter: null,
+        floatOverlay: null,
+        liftedRows: const {},
+      ),
+    );
+    expect(
+      await settleAsync(tester, () => store.bytesOf(blank) != null),
+      isTrue,
+      reason: '⛔premise: the page\'s picture is taken with no pen\'s row',
+    );
+    await lendBothClocks(tester, rounds: 2);
+
+    await standOn(
+      tester,
+      run,
+      nodes: nodes,
+      live: (
+        activeSurfacePainter: painterOver(
+          BitmapSurface(canvasSize: canvasSize, tileSize: tileSize),
+          overlay,
+        ),
+        floatOverlay: null,
+        liftedRows: const {},
+      ),
+    );
+    step(overlay);
+    await tester.pump();
+    expect(
+      store.landingOf(keptByTheCanvas(tester, blank)),
+      isNotNull,
+      reason: 'the step is on its way into the page\'s picture',
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('a run — a screen that draws nothing live — makes no picture '
       'of a page alone, and draws it as it stands', (tester) async {
     final nodes = rowOn(cel);
