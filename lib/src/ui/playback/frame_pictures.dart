@@ -4,12 +4,15 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../../core/lru.dart';
+import '../../core/tree_nodes.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/composite_tree.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/rgba_image_bytes.dart';
 import '../../services/cel_content_notes.dart';
+import '../../services/playback/cut_composite_structure.dart';
+import '../../services/playback/cut_frame_composite_signature.dart';
 import '../../services/playback/frame_demand.dart';
 import '../canvas/canvas_layer_stack_view.dart';
 import '../canvas/composite_tree_paint.dart' show BelowThePen;
@@ -166,20 +169,19 @@ class FramePictures implements PlaybackPictures {
   /// on a full line none is kept, and the walk draws each as it did before.
   ///
   /// A frame laid in pieces draws each of them whole once ([_heldFirst]),
-  /// where every piece ran the chain on what it cut of the folder.
+  /// where every piece ran the chain on what it cut of the folder — and only
+  /// for the picture after it ([_holdsAhead]).
   ///
   /// 🔬Surface Pro 11, profile, S5_BA cut 353 (38 rows, one folder under a
   /// camera lens blur at 2720 x 1696 whose rows change at 2 of 47 frames),
   /// the bar's 114 frames from nothing, in turn: 36.7–39.1 s → 9.5–10.2 s in
   /// pieces, 19.0–21.0 s → 5.7–5.8 s at once; two thirds of it was that
   /// chain, 20 s → 7 s with it off.
-  ///
-  /// ⛔Not a picture past [FramePictureStore.fitsARaster]: such a frame goes
-  /// in pieces because no raster that size may hold the raster thread, and
-  /// its nodes drawn whole would be that raster.
   late final HeldSubtreeRasters aheadNodes = HeldSubtreeRasters(
-    bytes: () => line?.bytesLeftFree ?? playbackCacheBudgetBytes,
+    bytes: () => _roomAhead,
   );
+
+  int get _roomAhead => line?.bytesLeftFree ?? playbackCacheBudgetBytes;
 
   /// The line [heldNodes] stand on — null where none is told: the line's
   /// own size, which nothing else holds then.
@@ -562,7 +564,7 @@ class FramePictures implements PlaybackPictures {
         : _overTheFilm(made.frame, () => store.peek(heldFilm));
     final keeps =
         heldFilm == null &&
-        (shownNow ? keepsNodes : store.fitsARaster(drawing.extent));
+        (shownNow ? keepsNodes : _holdsAhead(key, picture, drawing.extent));
     if ((keepsNodes || !drawsOnlyItsPage(key)) &&
         !await _lay(
           key,
@@ -588,12 +590,77 @@ class FramePictures implements PlaybackPictures {
         )) {
       return false;
     }
+    // What the picture laid took of the line.
     aheadNodes.fit();
     if (made.thrown case (final error, final stack)) {
       Error.throwWithStackTrace(error, stack);
     }
     return true;
   }
+
+  /// 🚨WHETHER THE FRAME OF [key], OVER [extent], DRAWS ITS NODES WHOLE AS IT
+  /// IS MADE AHEAD ([aheadNodes]): where the next picture of its cut draws
+  /// one of them too, and none holds it. Drawn whole, a folder is one raster
+  /// holding the raster thread through its chain — what 🗣️F-529-Q1 chose
+  /// pieces against — so it is drawn so only to be found: where a folder
+  /// changes at every picture, the frame goes piece by piece as it did.
+  ///
+  /// ⛔Not past [FramePictureStore.fitsARaster]: such a frame goes in pieces
+  /// because no raster that size may hold that thread at all. ⛔Nor where
+  /// the [line] has no room for it: not kept, it would be drawn whole for
+  /// nothing, and again in every piece.
+  bool _holdsAhead(
+    FramePictureKey key,
+    DemandedPicture picture,
+    ui.Rect extent,
+  ) {
+    if (!store.fitsARaster(extent) ||
+        estimatedImageBytes(extent.width.ceil(), extent.height.ceil()) >
+            _roomAhead) {
+      return false;
+    }
+    final spans = compositeStructureSpansIn(
+      picture.cut,
+      start: picture.frameIndex,
+      end: picture.cut.duration,
+    );
+    if (spans.length < 2) {
+      return false;
+    }
+    final next = keyOf((
+      cut: picture.cut,
+      frameIndex: spans[1].start,
+      paintPaper: picture.paintPaper,
+      ghosts: picture.ghosts,
+    ));
+    return _hasOneToHold(
+      key.signature.nodes,
+      preorderNodes(next.signature.nodes).toSet(),
+    );
+  }
+
+  /// Whether, of [nodes] from the top down, one that [next] draws too and a
+  /// walk holds is not held yet.
+  bool _hasOneToHold(
+    List<CompositeNodeSignature> nodes,
+    Set<CompositeNodeSignature> next,
+  ) => nodes.any(
+    (node) => next.contains(node) && _isHeldByAWalk(node)
+        ? !aheadNodes.holds(node)
+        : _hasOneToHold(node.children, next),
+  );
+
+  /// Whether a walk holds [node]'s picture (`_CompositeTreeWalk._holdOf`).
+  static bool _isHeldByAWalk(CompositeNodeSignature node) => switch (node) {
+    CompositeGroupSignature() ||
+    CompositeAdjustmentSignature() ||
+    CompositeClipSignature() => true,
+    CompositeReadsRowsSignature(:final node) => _isHeldByAWalk(node),
+    CompositeLeafSignature() ||
+    CompositeBackdropBlendSignature() ||
+    CompositeOpaqueSignature() ||
+    CompositeCelNumberSignature() => false,
+  };
 
   /// Lays [key]'s picture of [drawing] in its turn ([make]); false where
   /// the turn did not come, or [shouldAbort] left the store's line before

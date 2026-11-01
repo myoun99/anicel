@@ -24,6 +24,8 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
 import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart' show StackRun;
+import 'package:anicel/src/ui/playback/frame_pictures.dart'
+    show debugKeptFrameDraws;
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
@@ -33,7 +35,10 @@ import '../../helpers/cels_kept_in_a_file.dart';
 /// 🚨A FRAME MADE AHEAD FINDS THE FOLDER THE ONE BEFORE IT DREW (유저
 /// 2026-11-01, F-529-Q1: 「거기서 굽는시간 최대한 단축하고싶음」): a walk went
 /// through 47 frames of a cut whose lens-blurred folder changes at two of
-/// them, and ran the blur at every one — two thirds of the bar.
+/// them, and ran the blur at every one — two thirds of the bar. A frame
+/// draws a folder whole only for the picture after it: drawn whole it holds
+/// the raster thread through its chain, and one nothing finds was that for
+/// nothing.
 void main() {
   const tileSize = 16;
   const canvasSize = CanvasSize(width: 300, height: 200);
@@ -45,16 +50,19 @@ void main() {
     layerId: LayerId(layer),
     frameId: FrameId(frame),
   );
+  final still = celOf('still', 'first');
   final inFolder = celOf('in-folder', 'first');
   final inFolderLater = celOf('in-folder', 'later');
-  final moving = [celOf('moving', 'first'), celOf('moving', 'later')];
+  final moving = [
+    for (final frame in ['a', 'b', 'c', 'd']) celOf('moving', frame),
+  ];
 
   /// A frame of the cut, on the row that changes at each.
   DemandedPicture frameAt(int index) => (
     cut: Cut(
       id: inFolder.cutId,
       name: 'Cut',
-      duration: 2,
+      duration: moving.length,
       canvasSize: canvasSize,
       layers: [
         for (final cels in [
@@ -98,38 +106,40 @@ void main() {
     },
   );
 
-  /// The row that changes at each frame, over a folder at half strength —
-  /// one picture of its own — holding [folderCel] of that frame.
+  CompositeNode<CanvasStackRow> rowOf(BrushFrameKey cel) =>
+      CompositeLeaf(CanvasLayerImageRequest(frameKey: cel, opacity: 1));
+
+  /// [children] at half strength: one picture of their own.
+  CompositeNode<CanvasStackRow> folderOf(
+    List<CompositeNode<CanvasStackRow>> children,
+  ) => CompositeGroup<CanvasStackRow>(
+    children: children,
+    opacity: 0.5,
+    blendMode: LayerBlendMode.normal,
+    effects: const [],
+  );
+
+  /// A row no frame changes and the row that changes at each, over a folder
+  /// holding [folderCel] of that frame.
   List<CompositeNode<CanvasStackRow>> treeOf(
     DemandedPicture picture,
     BrushFrameKey Function(int frame) folderCel,
   ) => [
-    CompositeLeaf(
-      CanvasLayerImageRequest(frameKey: moving[picture.frameIndex], opacity: 1),
-    ),
-    CompositeGroup<CanvasStackRow>(
-      children: [
-        CompositeLeaf(
-          CanvasLayerImageRequest(
-            frameKey: folderCel(picture.frameIndex),
-            opacity: 1,
-          ),
-        ),
-      ],
-      opacity: 0.5,
-      blendMode: LayerBlendMode.normal,
-      effects: const [],
-    ),
+    rowOf(still),
+    rowOf(moving[picture.frameIndex]),
+    folderOf([rowOf(folderCel(picture.frameIndex))]),
   ];
 
-  /// The frames' pictures, their folder holding [folderCel] of each frame.
-  StackRun walkOver(BrushFrameKey Function(int frame) folderCel) {
+  /// The frames' pictures, stacked as [stackOf] stacks them.
+  StackRun walkOf(
+    List<CompositeNode<CanvasStackRow>> Function(DemandedPicture) stackOf,
+  ) {
     final cels = BrushFrameStore();
     keepInAFile(cels, {
+      still: filled(0x70),
       inFolder: filled(0x30),
       inFolderLater: filled(0xC0),
-      moving.first: filled(0x10),
-      moving.last: filled(0xE0),
+      for (final (at, cel) in moving.indexed) cel: filled(0x10 + 0x40 * at),
     });
     final images = LayerFrameImageCache(frameStore: cels);
     addTearDown(images.dispose);
@@ -139,11 +149,17 @@ void main() {
       images,
       store,
       canvasSize: canvasSize,
-      stackOf: (picture) => treeOf(picture, folderCel),
+      stackOf: stackOf,
     );
     addTearDown(run.pictures.dispose);
+    debugSubtreeRasterCount = 0;
+    debugKeptFrameDraws = 0;
     return run;
   }
+
+  /// The frames' pictures, their folder holding [folderCel] of each frame.
+  StackRun walkOver(BrushFrameKey Function(int frame) folderCel) =>
+      walkOf((picture) => treeOf(picture, folderCel));
 
   Future<void> madeAhead(StackRun run, int frame) async {
     expect(
@@ -153,31 +169,80 @@ void main() {
     );
   }
 
-  testWidgets('a folder the next frame made ahead draws the same is not drawn '
-      'again', (tester) async {
+  testWidgets('a folder the next picture draws the same is drawn once, and '
+      'the frames after it draw nothing whole', (tester) async {
     await tester.runAsync(() async {
       final run = walkOver((_) => inFolder);
-      debugSubtreeRasterCount = 0;
 
       await madeAhead(run, 0);
       expect(debugSubtreeRasterCount, 1, reason: '⛔premise: drawn');
+      expect(debugKeptFrameDraws, 1, reason: '⛔premise: to be held');
       await madeAhead(run, 1);
+      await madeAhead(run, 2);
 
       expect(debugSubtreeRasterCount, 1, reason: 'found');
+      expect(debugKeptFrameDraws, 1, reason: 'held already');
     });
   });
 
-  testWidgets('a folder the next frame draws another way is drawn, and only '
-      'that frame\'s is held', (tester) async {
+  testWidgets('🚨a folder the next picture draws another way is not drawn '
+      'whole to be held: nothing would find it', (tester) async {
     await tester.runAsync(() async {
-      final run = walkOver((frame) => frame == 0 ? inFolder : inFolderLater);
-      debugSubtreeRasterCount = 0;
+      final run = walkOver((frame) => frame < 2 ? inFolder : inFolderLater);
 
-      await madeAhead(run, 0);
       await madeAhead(run, 1);
 
+      expect(debugSubtreeRasterCount, 1, reason: '⛔premise: drawn');
+      expect(debugKeptFrameDraws, 0);
+      expect(run.pictures.aheadNodes, hasLength(0));
+    });
+  });
+
+  testWidgets('the last picture of its cut holds nothing for a next', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final run = walkOver((_) => inFolder);
+
+      await madeAhead(run, moving.length - 1);
+
+      expect(debugKeptFrameDraws, 0);
+      expect(run.pictures.aheadNodes, hasLength(0));
+    });
+  });
+
+  testWidgets('a folder that changes is held anew for the pictures after it, '
+      'and the one before is let go of', (tester) async {
+    await tester.runAsync(() async {
+      final run = walkOver((frame) => frame < 2 ? inFolder : inFolderLater);
+
+      for (var frame = 0; frame < moving.length; frame += 1) {
+        await madeAhead(run, frame);
+      }
+
       expect(debugSubtreeRasterCount, 2);
+      expect(debugKeptFrameDraws, 2);
       expect(run.pictures.aheadNodes, hasLength(1));
+    });
+  });
+
+  testWidgets('a folder that stays inside one that changes is held all the '
+      'same', (tester) async {
+    await tester.runAsync(() async {
+      final run = walkOf(
+        (picture) => [
+          folderOf([
+            rowOf(moving[picture.frameIndex]),
+            folderOf([rowOf(inFolder)]),
+          ]),
+        ],
+      );
+
+      await madeAhead(run, 0);
+      expect(debugSubtreeRasterCount, 2, reason: '⛔premise: both drawn');
+      await madeAhead(run, 1);
+
+      expect(debugSubtreeRasterCount, 3, reason: 'the inner one found');
     });
   });
 

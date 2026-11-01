@@ -29,6 +29,8 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
 import 'package:anicel/src/ui/diagnostics/memory_census.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/playback/frame_pictures.dart'
+    show debugKeptFrameDraws;
 
 /// 🚨★THE FRAME A SCREEN STANDS ON HOLDS ITS FOLDERS' PICTURES
 /// (`FramePictures.heldNodes`; card paint-walk-redoes-the-same-work-each-
@@ -47,27 +49,45 @@ void main() {
   ];
   final page = estimatedImageBytes(32, 24);
 
-  Layer row(String id, [LayerId? folder]) => Layer(
+  Layer row(String id, [LayerId? folder, int length = 1]) => Layer(
     id: LayerId(id),
     name: id,
     folderId: folder,
     frames: [Frame(id: FrameId('$id-0'), duration: 1, strokes: const [])],
-    timeline: {0: TimelineExposure.drawing(FrameId('$id-0'), length: 1)},
+    timeline: {0: TimelineExposure.drawing(FrameId('$id-0'), length: length)},
   );
 
   /// [count] folders at half strength, two drawn rows in each — each one
   /// picture of its own — and, [withPen], a row a pen may draw on between
-  /// the first and the rest.
-  EditorSessionManager session({int count = 1, bool withPen = false}) {
+  /// the first and the rest — and, [turning], a row of its own turns to
+  /// another cel at a second frame, a second picture of the same folders.
+  EditorSessionManager session({
+    int count = 1,
+    bool withPen = false,
+    bool turning = false,
+  }) {
     final layers = [
       for (var at = 0; at < count; at += 1) ...[
-        for (final id in rowsOf[at]) row(id, folders[at]),
+        for (final id in rowsOf[at]) row(id, folders[at], turning ? 2 : 1),
         createFolderLayer(
           id: folders[at],
           name: 'F$at',
         ).copyWith(opacity: 0.5),
         if (withPen && at == 0) row('pen'),
       ],
+      if (turning)
+        Layer(
+          id: const LayerId('turning'),
+          name: 'turning',
+          frames: [
+            for (final id in const ['turning-0', 'turning-1'])
+              Frame(id: FrameId(id), duration: 1, strokes: const []),
+          ],
+          timeline: {
+            0: const TimelineExposure.drawing(FrameId('turning-0'), length: 1),
+            1: const TimelineExposure.drawing(FrameId('turning-1'), length: 1),
+          },
+        ),
     ];
     return EditorSessionManager(
       initialProject: Project(
@@ -82,7 +102,7 @@ void main() {
               Cut(
                 id: const CutId('cut'),
                 name: 'cut',
-                duration: 1,
+                duration: turning ? 2 : 1,
                 canvasSize: canvasSize,
                 layers: layers,
               ),
@@ -294,7 +314,7 @@ void main() {
       /// A session on a line of [line] bytes, its frame of two folders made
       /// ahead.
       Future<EditorSessionManager> walked({int? line}) async {
-        final s = session(count: 2);
+        final s = session(count: 2, turning: true);
         addTearDown(s.dispose);
         if (line != null) {
           s.playbackRig.playbackCache.debugSetPlaybackCacheBudgetBytes(line);
@@ -314,6 +334,14 @@ void main() {
       final picture = wide.renderCaches.framePictureStore.estimatedBytes;
       expect(aheadOf(wide), hasLength(2), reason: '⛔premise');
       expect(picture, greaterThan(0), reason: '⛔premise');
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      final census = collectMemoryCensus([wide]).items;
+      debugDefaultTargetPlatformOverride = null;
+      expect(
+        census.firstWhere((item) => item.id == 'framePictures').bytes,
+        picture + folders,
+        reason: 'counted with the frames\' pictures',
+      );
       final line = wide.playbackRig.playbackCache;
       expect(
         line.bytes,
@@ -327,6 +355,18 @@ void main() {
         hasLength(1),
         reason: 'the picture laid took it back, all but the newest',
       );
+
+      debugKeptFrameDraws = 0;
+      expect(aheadOf(await walked(line: 1)), hasLength(0));
+      expect(
+        debugKeptFrameDraws,
+        0,
+        reason: '🚨no room, and it would be drawn whole for nothing',
+      );
+
+      line.lend(line.playbackCacheByteBudget);
+      expect(aheadOf(wide), hasLength(1), reason: 'the line moved under them');
+      line.lend(0);
 
       line.respondToMemoryPressure();
       expect(aheadOf(wide), hasLength(0));

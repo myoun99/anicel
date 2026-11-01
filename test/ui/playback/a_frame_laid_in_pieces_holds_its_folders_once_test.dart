@@ -57,19 +57,31 @@ void main() {
   final a = celOf('a');
   final b = celOf('b');
   final pen = celOf('pen');
-  DemandedPicture frameOf(CanvasSize size) => (
+  const later = FrameId('later');
+
+  /// The first frame of a cut of [size] where the row a pen is on turns to
+  /// another cel [turning], so a next picture draws what this one does.
+  DemandedPicture frameOf(CanvasSize size, {bool turning = true}) => (
     cut: Cut(
       id: a.cutId,
       name: 'Cut',
-      duration: 1,
+      duration: turning ? 2 : 1,
       canvasSize: size,
       layers: [
         for (final cel in [a, b, pen])
           Layer(
             id: cel.layerId,
             name: 'Layer',
-            frames: [Frame(id: cel.frameId, duration: 1, strokes: const [])],
-            timeline: {0: TimelineExposure.drawing(cel.frameId, length: 1)},
+            frames: [
+              Frame(id: cel.frameId, duration: 1, strokes: const []),
+              if (turning && cel == pen)
+                Frame(id: later, duration: 1, strokes: const []),
+            ],
+            timeline: {
+              0: TimelineExposure.drawing(cel.frameId, length: 1),
+              if (turning && cel == pen)
+                1: const TimelineExposure.drawing(later, length: 1),
+            },
           ),
       ],
     ),
@@ -175,11 +187,13 @@ void main() {
 
   /// [picture] of a frame made ahead by a store that takes [onceSide] at
   /// once and lays it in pieces of 512 where [inPieces], its folder under
-  /// [effects] — and what it held.
+  /// [effects], a next picture drawing it where [turning] — and what it
+  /// held.
   Future<({FramePicture? laid, HeldSubtreeRasters held})> madeAhead(
     CanvasSize size, {
     required int onceSide,
     bool inPieces = true,
+    bool turning = true,
     List<ResolvedLayerEffect> effects = const [],
   }) async {
     final cels = BrushFrameStore();
@@ -203,7 +217,7 @@ void main() {
       stackOf: (_) => tree,
     );
     addTearDown(run.pictures.dispose);
-    final frame = frameOf(size);
+    final frame = frameOf(size, turning: turning);
     debugSubtreeRasterCount = 0;
     debugKeptFrameDraws = 0;
     await run.pictures.make(frame, shouldAbort: () => false);
@@ -225,6 +239,25 @@ void main() {
       );
       expect(held, hasLength(1), reason: 'the folder');
       expect(debugSubtreeRasterCount, 1, reason: 'drawn whole once');
+    });
+  }, skip: noFlutterGpu != null);
+
+  testWidgets('🚨made ahead a piece at a time with no picture after it, the '
+      'frame draws no folder whole: nothing would find it', (tester) async {
+    await tester.runAsync(() async {
+      final (:laid, :held) = await madeAhead(
+        canvasSize,
+        onceSide: 2048,
+        turning: false,
+      );
+
+      expect(
+        laid?.extent.width,
+        greaterThan(512),
+        reason: '⛔premise: laid in more than one piece',
+      );
+      expect(held, hasLength(0));
+      expect(debugKeptFrameDraws, 0, reason: 'never drawn to keep');
     });
   }, skip: noFlutterGpu != null);
 

@@ -610,6 +610,9 @@ final class HeldSubtreeRasters {
   /// go of since — drawn so again, it would hold nothing more.
   bool holdsAllOf(Object of) => _allOf == (of: of, lettings: _lettings);
 
+  /// Whether the picture of the node [key] says what it draws of is held.
+  bool holds(Object key) => _nodes._held.containsKey(key);
+
   /// Draws [draw] — a frame drawn whole to hold its nodes — and lets go of
   /// every raster held that it neither found nor kept: those of the frame
   /// a canvas stood on before, and of what a frame held before it changed.
