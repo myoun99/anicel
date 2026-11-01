@@ -372,6 +372,25 @@ void main() {
     });
   });
 
+  test('🚨on the compositor\'s own screen a picture is shown three vblanks '
+      'past the one its raster ends past — at 60Hz too, where the law of a '
+      'slower screen would have it two (at 143.9Hz the two meet)', () {
+    const sixty = 16666.0;
+    final claim = PresentClaims().claim(
+      nowMicros: vblank + 1000,
+      vblankMicros: vblank,
+      periodMicros: sixty,
+      composedVblankMicros: vblank,
+      composedEveryMicros: sixty,
+      budgetMicros: budget,
+      handOffMicros: -2000,
+    );
+    expect(
+      claim.shownAtMicros,
+      (claim.vblankMicros + presentShownAfterVblanks * sixty).round(),
+    );
+  });
+
   /// 🚨THE COMPOSITOR HAS ONE CLOCK AND EVERY SCREEN ITS OWN VBLANKS (card
   /// playback-pacing-knows-one-display-only, 2026-11-02): a window on a
   /// 59.95Hz screen under a 143.9Hz compositor.

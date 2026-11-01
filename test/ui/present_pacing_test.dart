@@ -484,6 +484,40 @@ void main() {
     await tester.pump(vsync);
   }
 
+  testWidgets('🚨on a slower screen the scenes are placed for the latch\'s '
+      'width on the compositor\'s grid, not for the screen\'s refresh', (
+    tester,
+  ) async {
+    final shown = await settle(tester);
+    display.screenPeriod = 16680;
+    final learned = RasterSpread();
+    // Most of them further past the shortest than a composition frame
+    // leaves, and nearer than a refresh of the screen would.
+    for (final ranFor in [...List.filled(8, 3000), ...List.filled(12, 11000)]) {
+      await heldFrame(tester, shown, learned);
+      await seenPast(
+        tester,
+        ranFor: ranFor,
+        late: PresentPacing.seenLateUnmeasuredMicros,
+      );
+      learned.add(ranFor);
+    }
+    expect(learned.handOffFor(_Display.period), -11000, reason: '⛔premise');
+    expect(learned.handOffFor(16680), -3000, reason: '⛔premise');
+    display.waits.clear();
+    PresentClaim? claim;
+
+    lookNext((_) {
+      claim = expectedClaim(spread: learned);
+      frameShownAt();
+      shown.value += 1;
+      changedInTheLook();
+    });
+    await tester.pump(vsync);
+
+    expect(display.waits, [claim!.handOffMicros]);
+  });
+
   testWidgets('🚨a held frame\'s length is read as its raster ends — the '
       'moment the raster thread is seen past its scene, less how late it is '
       'seen — and moves the next hand-off at once', (tester) async {
