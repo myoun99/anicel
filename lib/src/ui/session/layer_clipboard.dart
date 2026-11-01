@@ -90,24 +90,21 @@ class LayerClipboard implements BringsMedia {
   /// The rows of the cut stood in, bottom → top.
   List<Layer> get _stack => _project.activeCutOrNull?.layers ?? const [];
 
-  /// Whether the board can hold [layer]: every row that is the cut's to
-  /// lose — not a track's SE row, and not the camera, which stays.
-  bool _boardHolds(Layer layer) => switch (layer.kind) {
-    LayerKind.se || LayerKind.transition || LayerKind.camera => false,
-    _ => true,
-  };
+  /// Whether the board can hold [layer]: every row of the cut but the
+  /// camera, which stays — a paste refuses it. A track's rows are no row of
+  /// the cut.
+  bool _boardHolds(Layer layer) => layer.kind != LayerKind.camera;
 
-  /// The selected rows the board can hold — whatever order they were
-  /// selected in, a paste puts them down as they stood.
+  /// The selected rows of the cut — whatever order they were selected in, a
+  /// paste puts them down as they stood.
   ///
-  /// A row no board can hold contributes nothing: a track-owned SE row, an
-  /// attach row. A row's kind decides what the edit DOES, never whether the
-  /// row could be selected (뿌리 A).
+  /// A row's kind decides what the edit DOES, never whether the row could be
+  /// selected (뿌리 A).
   List<Layer> get _selectedRows {
     final selected = _rowSelection.selectedLayerIds.toSet();
     return [
       for (final layer in _stack)
-        if (selected.contains(layer.id) && _boardHolds(layer)) layer,
+        if (selected.contains(layer.id)) layer,
     ];
   }
 
