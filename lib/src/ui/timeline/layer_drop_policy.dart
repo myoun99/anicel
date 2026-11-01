@@ -11,7 +11,9 @@
 ///   the sheet renders it raw. That direction is INFERRED from the two lists
 ///   rather than passed in: a flag would be a fourth place where a surface
 ///   gets its own opinion about which way the stack runs, and R9 #22 is what
-///   that costs.
+///   that costs. So [stack] here is the stack as the surfaces list it
+///   ([sectionedLayerOrder]): raw, a cut's rows may stand across its
+///   sections (F-538), and no two rows would say which way the list runs.
 /// * **Whether it may.** The proposed stack is handed to
 ///   [folderStructureProblem] — the structure validator that already exists.
 ///   A drop that would split a folder's run, mix an attach organizer with
@@ -287,11 +289,25 @@ bool _gapBordersItsSeat(
 /// 끌면 … 이미지 그립한거 드롭해도 아무 반응없음. 해당영역에 넣는거
 /// 가능하게」 — every gap had a non-drawing row on both sides, so none of
 /// them could take the row.
+///
+/// [stack] is the cut's as it stands, and so is the index: it is what the
+/// row is inserted into. The answer is found in the list ([_newRowSeat]) and
+/// read back into [stack], over the same row (F-538).
 int? newRowInsertionForSlot({
   required List<Layer> stack,
   required List<Layer> displayRows,
   required int slot,
 }) {
+  final listed = sectionedLayerOrder(stack);
+  final seat = _newRowSeat(listed, displayRows, slot);
+  if (seat == null || seat == 0) {
+    return seat;
+  }
+  return stack.indexWhere((layer) => layer.id == listed[seat - 1].id) + 1;
+}
+
+/// [newRowInsertionForSlot] in [stack] as the surfaces list it.
+int? _newRowSeat(List<Layer> stack, List<Layer> displayRows, int slot) {
   if (!stack.any(_standsInTheDrawingSection)) {
     return slot == _emptyDrawingSectionSlot(displayRows)
         ? newRowPlacement(stack, 0).index

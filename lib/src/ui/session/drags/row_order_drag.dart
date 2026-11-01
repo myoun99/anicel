@@ -28,6 +28,8 @@ import '../../timeline/layer_row_drag.dart'
         LayerRowDragSubject,
         LayerRowSubject,
         TrackRowSubject;
+import '../../timeline/timeline_section_policy.dart'
+    show sectionedLayerOrder;
 import '../../timeline/timeline_section_runs.dart'
     show timelineSectionRunsOf;
 
@@ -322,8 +324,9 @@ class RowOrderDrag {
     LayerId movingId,
     LayerId? pointerInRow,
   ) => (probe) {
+    final stack = _listed(cut);
     final insertAt = modelInsertionForSlot(
-      stack: cut.layers,
+      stack: stack,
       displayRows: displayLayers,
       slot: probe,
     );
@@ -331,7 +334,7 @@ class RowOrderDrag {
       return null;
     }
     LayerDropPlan? read(LayerId? pointer) => resolveLayerDrop(
-      stack: cut.layers,
+      stack: stack,
       movingId: movingId,
       insertAt: insertAt,
       pointerInRow: pointer,
@@ -444,7 +447,7 @@ class RowOrderDrag {
     // one step" rule this drag has always used is the same sentence read
     // from the other end.
     final plan = resolveLayerDropOnRow(
-      stack: cut.layers,
+      stack: _listed(cut),
       movingId: subject.layerId,
       targetId: targetId,
       alsoMoving: _rowSelectionCarriedBy(subject.layerId),
@@ -623,6 +626,19 @@ class RowOrderDrag {
     _channel.value = null;
   }
 }
+
+/// [cut]'s stack as the surfaces list it: what a gap is a gap of
+/// ([sectionedLayerOrder]). A plan's order is the whole stack, so a landing
+/// writes it so.
+///
+/// 🗣️F-538 (유저 2026-11-02): 「선택한 레이어를 TAP레이어 밑에 드래그로
+/// 움직이는게 불가능」 · 「액션란 양 끝? 해당 란 양 끝에 옮기는게
+/// 불가능한듯」. ↩️A drop read `cut.layers`, and a row is made over the row
+/// stood on, whichever section that is (`newRowPlacementOn`): with ACTION's
+/// rows across the camera's there, the ends of ACTION stood against the
+/// wrong rows, and over the camera's the stack ran the other way against
+/// the list.
+List<Layer> _listed(Cut cut) => sectionedLayerOrder(cut.layers);
 
 /// [slot] as the caret DRAWS it: a landing found past the end of the moving
 /// row's section — over the rows of another, which draw no line (a camera

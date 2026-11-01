@@ -8,6 +8,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../services/project_lookup.dart' show layerAnywhereOrNull;
+import '../timeline/timeline_section_policy.dart' show sectionedLayerOrder;
 import '../timeline/layer_drop_policy.dart'
     show detachLandingIndex, resolveLayerDrop;
 import '../text/app_strings.dart';
@@ -197,11 +198,13 @@ class FoldersAndAttachments {
       return;
     }
     final attach = LayerAttachDrop(detachIds: {row.id});
-    final landing = detachLandingIndex(cut.layers, row.id);
+    // As the drag reads it ([RowOrderDrag]'s landings, F-538).
+    final stack = sectionedLayerOrder(cut.layers);
+    final landing = detachLandingIndex(stack, row.id);
     final plan = landing == null
         ? null
         : resolveLayerDrop(
-            stack: cut.layers,
+            stack: stack,
             movingId: row.id,
             insertAt: landing,
           );
