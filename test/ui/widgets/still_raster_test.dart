@@ -561,6 +561,32 @@ void main() {
       expect(region.debugCaptureCount, 0);
     });
 
+    testWidgets('a region gone empty is not taken', (tester) async {
+      // Nothing lets go of an empty region: it stays owed, and its gate is
+      // what says no.
+      Future<void> show(double side) => pumpSurface(
+        tester,
+        Center(
+          child: SizedBox.square(
+            dimension: side,
+            child: StillRaster(debugLabel: 'test', child: _box()),
+          ),
+        ),
+        left: _left,
+        width: _width,
+        height: _height,
+      );
+
+      await show(100);
+      final region = _region(tester);
+      await lastFrame(tester);
+      await show(0);
+      await lastFrame(tester);
+      await tester.binding.delayed(step);
+      expect(region.debugCaptureCount, 0);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('a region that is gone is owed nothing', (tester) async {
       await _pump(tester, _box());
       await lastFrame(tester);
