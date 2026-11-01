@@ -8,7 +8,6 @@ import '../brush_frame_editing_coordinator.dart';
 import '../cache_invalidation_executor.dart';
 import '../cel_text_laying.dart';
 import '../command.dart';
-import '../undo_surface_snapshot.dart';
 import 'cel_snapshot_step.dart';
 
 /// ONE EDIT OF THE TEXTS A CEL CARRIES, as one undoable step (R9-rest, the
@@ -25,7 +24,9 @@ import 'cel_snapshot_step.dart';
 /// A text is a value of the cel's picture (`BitmapSurface.texts`), so the
 /// step is the picture before and after ([CelSnapshotStep]) and one Ctrl+Z
 /// puts the letters, their settings and their pixels back together.
-class CelTextEditCommand with CelSnapshotStep implements Command {
+class CelTextEditCommand
+    with CelSnapshotStep, CelPictureEditStep
+    implements Command {
   /// Sets a text on [frameKey]'s cel: [content], with [plate] — the pixels
   /// it was baked to (`bakeCelTextPlate`).
   ///
@@ -71,6 +72,7 @@ class CelTextEditCommand with CelSnapshotStep implements Command {
 
   @override
   final BrushFrameEditingCoordinator coordinator;
+  @override
   final BrushFrameKey frameKey;
   @override
   final CacheInvalidationSink? cacheInvalidationSink;
@@ -96,41 +98,15 @@ class CelTextEditCommand with CelSnapshotStep implements Command {
   /// `BrushStrokeHistoryCommand.retainsCommitPayload` is.
   bool get retainsPutPayload => _put != null;
 
-  UndoSurfacePair? _surfaces;
-  bool _landed = false;
-
-  /// Null until the landing, and for an edit that changed nothing — a text
-  /// set exactly as it was, or one taken off a cel that no longer has it.
+  /// A text set exactly as it was, or one taken off a cel that no longer has
+  /// it, comes back as it was.
   @override
-  UndoSurfacePair? get surfaces => _surfaces;
-
-  @override
-  void execute() {
-    if (_landed) {
-      restoreAfter();
-      return;
-    }
-    _landed = true;
-    final before = coordinator.currentSurfaceOf(frameKey);
-    final edited = _edited(before);
+  BitmapSurface edited(BitmapSurface picture) {
+    final edited = _edited(picture);
     _put = null;
-    if (identical(edited, before)) {
-      return;
-    }
-    coordinator.restoreSurfaceSnapshot(
-      frameKey,
-      edited,
-      cacheInvalidationSink: cacheInvalidationSink,
-    );
-    _surfaces = UndoSurfacePair(
-      key: frameKey,
-      before: before,
-      after: coordinator.currentSurfaceOf(frameKey),
-    );
+    return edited;
   }
 
-  /// [before] as this edit leaves it — [before] itself where it changes
-  /// nothing.
   BitmapSurface _edited(BitmapSurface before) {
     if (_leavesItsPixels) {
       return celSurfaceWithTextAsDrawing(before, _textId!);
@@ -158,7 +134,4 @@ class CelTextEditCommand with CelSnapshotStep implements Command {
           ]
         : [...texts, set];
   }
-
-  @override
-  void undo() => restoreBefore();
 }

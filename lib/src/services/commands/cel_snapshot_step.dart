@@ -1,3 +1,5 @@
+import '../../models/bitmap_surface.dart';
+import '../../models/brush_frame_key.dart';
 import '../brush_frame_editing_coordinator.dart';
 import '../cache_invalidation_executor.dart';
 import '../cels_ahead.dart';
@@ -80,4 +82,53 @@ mixin CelSnapshotStep
       cacheInvalidationSink: cacheInvalidationSink,
     );
   }
+}
+
+/// A [CelSnapshotStep] that lands as ONE edit of the cel's picture: [edited]
+/// reads the picture as it stands when the step lands, the pair is kept, a
+/// redo puts its after back and an undo its before. An edit that changes
+/// nothing keeps nothing: such a step holds, reads and puts back nothing.
+///
+/// ↩️A text's edit and a photo's each spelled this out, word for word but for
+/// what they edit; a paste's picture on a synced row (F-545) was the third
+/// (CLAUDE.md 절대명령 1).
+mixin CelPictureEditStep on CelSnapshotStep implements Command {
+  BrushFrameKey get frameKey;
+
+  /// [picture] as this edit leaves it — [picture] itself where it changes
+  /// nothing.
+  BitmapSurface edited(BitmapSurface picture);
+
+  UndoSurfacePair? _surfaces;
+  bool _landed = false;
+
+  @override
+  UndoSurfacePair? get surfaces => _surfaces;
+
+  @override
+  void execute() {
+    if (_landed) {
+      restoreAfter();
+      return;
+    }
+    _landed = true;
+    final before = coordinator.currentSurfaceOf(frameKey);
+    final after = edited(before);
+    if (identical(after, before)) {
+      return;
+    }
+    coordinator.restoreSurfaceSnapshot(
+      frameKey,
+      after,
+      cacheInvalidationSink: cacheInvalidationSink,
+    );
+    _surfaces = UndoSurfacePair(
+      key: frameKey,
+      before: before,
+      after: coordinator.currentSurfaceOf(frameKey),
+    );
+  }
+
+  @override
+  void undo() => restoreBefore();
 }
