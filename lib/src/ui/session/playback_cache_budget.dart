@@ -104,7 +104,7 @@ class PlaybackCacheBudget implements PictureRoom, HeldNodesLine {
   /// The nodes held go first only past their own room ([bytesForNodes]):
   /// the line moved under them.
   void enforcePlaybackCacheBudget() {
-    _run.pictures.heldNodes.fit();
+    _run.pictures.fitNodes();
     _playbackCacheBudgetEnforcer.enforce(
       wantedAt: _run.pictures.wantedAt(_run.demand),
       lentBytes: _besideThePictures,
@@ -133,6 +133,12 @@ class PlaybackCacheBudget implements PictureRoom, HeldNodesLine {
         _lentBytes -
         _run.pictures.heldNodes.heldBelowBytes;
     return room < 0 ? 0 : room;
+  }
+
+  @override
+  int get bytesLeftFree {
+    final free = bytes - _renderCaches.framePictureStore.estimatedBytes;
+    return free < 0 ? 0 : free;
   }
 
   @override
@@ -177,7 +183,7 @@ class PlaybackCacheBudget implements PictureRoom, HeldNodesLine {
   /// the frame's nodes held let go of first, as they only make a stroke's
   /// steps cheaper.
   void respondToMemoryPressure() {
-    _run.pictures.heldNodes.clear();
+    _run.pictures.letGoOfNodes();
     _playbackCacheBudgetEnforcer.respondToMemoryPressure();
     enforcePlaybackCacheBudget();
   }

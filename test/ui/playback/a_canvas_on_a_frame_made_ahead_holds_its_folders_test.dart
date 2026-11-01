@@ -445,5 +445,8 @@ final class _CountedLine implements HeldNodesLine {
   int get bytesForNodes => 1 << 30;
 
   @override
+  int get bytesLeftFree => 1 << 30;
+
+  @override
   void giveWayToNodes() => gaveWay += 1;
 }

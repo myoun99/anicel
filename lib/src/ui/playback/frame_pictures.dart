@@ -43,6 +43,9 @@ abstract interface class HeldNodesLine {
   /// How much of the line the nodes held one by one may hold now.
   int get bytesForNodes;
 
+  /// How much of the line nothing holds now.
+  int get bytesLeftFree;
+
   /// The frames' pictures give way to what the nodes hold now.
   void giveWayToNodes();
 }
@@ -145,31 +148,68 @@ class FramePictures implements PlaybackPictures {
   );
   int _heldPageBytes = 0;
 
+  /// 🚨★THE PICTURES THE NODES OF THE FRAME LAST MADE AHEAD WERE DRAWN INTO
+  /// (🗣️유저 2026-11-01, F-529-Q1: 「거기서 굽는시간 최대한 단축하고싶음」):
+  /// what the next frame made ahead finds, so a folder that draws the same
+  /// on both is not rastered again nor its chain run again — a frame's
+  /// [heldNodes] are what a canvas stands on, these what a walk goes through.
+  /// One frame's: each frame made ahead lets go of what it neither found
+  /// nor kept ([HeldSubtreeRasters.holdOnly]).
+  ///
+  /// ⚖️In what the [line] has free ([HeldNodesLine.bytesLeftFree]) — the
+  /// frames' pictures feed the screen and these only make them cheaper, so
+  /// no picture gives way to them, nor does a walk end a picture short. A
+  /// picture laid takes it back as it lands, all but the newest ([Lru.fit]);
+  /// on a full line none is kept, and the walk draws each as it did before.
+  ///
+  /// A frame laid in pieces draws each of them whole once ([_heldFirst]),
+  /// where every piece ran the chain on what it cut of the folder.
+  ///
+  /// 🔬Surface Pro 11, profile, S5_BA cut 353 (38 rows, one folder under a
+  /// camera lens blur at 2720 x 1696 whose rows change at 2 of 47 frames),
+  /// the bar's 114 frames from nothing, in turn: 36.7–39.1 s → 9.5–10.2 s in
+  /// pieces, 19.0–21.0 s → 5.7–5.8 s at once; two thirds of it was that
+  /// chain, 20 s → 7 s with it off.
+  ///
+  /// ⛔Not a picture past [FramePictureStore.fitsARaster]: such a frame goes
+  /// in pieces because no raster that size may hold the raster thread, and
+  /// its nodes drawn whole would be that raster.
+  late final HeldSubtreeRasters aheadNodes = HeldSubtreeRasters(
+    bytes: () => line?.bytesLeftFree ?? playbackCacheBudgetBytes,
+  );
+
   /// The line [heldNodes] stand on — null where none is told: the line's
   /// own size, which nothing else holds then.
   final HeldNodesLine? line;
 
-  /// Where a frame drawn on [page] finds its nodes' pictures ([heldNodes]),
-  /// its rows signed as its key signs them — and keeps the ones it draws
-  /// whole where it [keeps], what lies below its pen drawn as [below] says.
+  /// What the pictures of the nodes held weigh, on the [line] beside the
+  /// frames' ([heldNodes], [aheadNodes]).
+  int get heldBytes => heldNodes.heldBytes + aheadNodes.heldBytes;
+
+  /// The nodes held past what the [line] has room for are let go of.
+  void fitNodes() {
+    heldNodes.fit();
+    aheadNodes.fit();
+  }
+
+  /// Lets go of the pictures the frames' nodes are held in.
+  void letGoOfNodes() {
+    heldNodes.clear();
+    aheadNodes.clear();
+  }
+
+  /// A frame drawn on [page] as [pictures] say, its rows signed as its key
+  /// signs them.
   ({HeldNodePictures pictures, int Function(BrushFrameKey cel) revisionOf})
-  _holding(
-    FramePage page, {
-    required bool keeps,
-    required BelowThePen below,
-  }) {
+  _holding(FramePage page, HeldNodePictures pictures) {
     _heldPageBytes = estimatedImageBytes(
       page.canvasSize.width,
       page.canvasSize.height,
     );
-    return (
-      pictures: (rasters: heldNodes, keeps: keeps, below: below),
-      revisionOf: _revisionOf,
-    );
+    return (pictures: pictures, revisionOf: _revisionOf);
   }
 
-  /// Lets go of the pictures the frames' nodes are held in ([heldNodes]).
-  void dispose() => heldNodes.clear();
+  void dispose() => letGoOfNodes();
 
   /// Whether the frame's picture is made of [cel]: one with something to
   /// draw — a cel with nothing in it draws nothing, and N frames of blank
@@ -429,9 +469,10 @@ class FramePictures implements PlaybackPictures {
   /// again — that is there, and stays as it is.
   ///
   /// The frame laid for the screen keeps them as it is laid ([makeShown]);
-  /// one laid ahead keeps none — the warmer lays every frame but the one a
-  /// cut opens on, and asks for the one a screen stands on as the screen
-  /// does, so either may lay it.
+  /// one laid ahead keeps none of them, its own being the walk's
+  /// ([aheadNodes]) — the warmer lays every frame but the one a cut opens
+  /// on, and asks for the one a screen stands on as the screen does, so
+  /// either may lay it.
   ///
   /// Held, the frames' pictures made ahead give way to them on the [line]
   /// — here, where the screen holds the frame's own picture already: a
@@ -459,8 +500,7 @@ class FramePictures implements PlaybackPictures {
     drawingNow(
       nodes,
       picture,
-      keepsNodes: true,
-      below: BelowThePen.asHeld,
+      held: (rasters: heldNodes, keeps: true, below: BelowThePen.asHeld),
     ).frame.drawing.draw(ui.Canvas(recorder));
     recorder.endRecording().dispose();
     heldNodes.heldAllOf(keyOfStack(nodes, picture));
@@ -510,22 +550,33 @@ class FramePictures implements PlaybackPictures {
         ? keyOfStack(stackWithoutGhosts(nodes), picture)
         : null;
     final heldFilm = film != null && store.holds(film) ? film : null;
-    final keeps = keepsNodes && heldFilm == null;
-    final made = drawingNow(nodes, picture, keepsNodes: keeps);
+    final rasters = shownNow ? heldNodes : aheadNodes;
+    final made = drawingNow(nodes, picture, held: _findsIn(rasters));
     // Asked once the drawing is: a cel it was made without is noted now.
     final key = keyOfStack(nodes, picture);
     final drawing = heldFilm == null
         ? made.frame.drawing
         : _overTheFilm(made.frame, () => store.peek(heldFilm));
+    final keeps =
+        heldFilm == null &&
+        (shownNow ? keepsNodes : store.fitsARaster(drawing.extent));
     if ((keepsNodes || !drawsOnlyItsPage(key)) &&
         !await _lay(
           key,
           keeps
               ? _heldFirst(
-                  heldNodes,
+                  rasters,
                   key,
+                  () => drawingNow(
+                    nodes,
+                    picture,
+                    held: (
+                      rasters: rasters,
+                      keeps: true,
+                      below: BelowThePen.whole,
+                    ),
+                  ).frame.drawing,
                   drawing,
-                  () => drawingNow(nodes, picture).frame.drawing,
                 )
               : drawing,
           shouldAbort,
@@ -534,6 +585,7 @@ class FramePictures implements PlaybackPictures {
         )) {
       return false;
     }
+    aheadNodes.fit();
     if (made.thrown case (final error, final stack)) {
       Error.throwWithStackTrace(error, stack);
     }
@@ -591,15 +643,14 @@ class FramePictures implements PlaybackPictures {
   /// held at another canvas size, is noted and drawn without — so the key
   /// asked after this ([keyOfStack]) is of the picture it gave.
   ///
-  /// Where it [keepsNodes], the pictures its nodes are drawn into whole are
-  /// kept ([heldNodes]); what lies below its pen is drawn as [below] says.
+  /// [held] says where the pictures its nodes are drawn into are found, and
+  /// kept: by default found among [heldNodes], and none kept.
   ///
   /// ⚠️Reads a cel not in hand on this thread ([readIn] first).
   FrameDrawingNow drawingNow(
     List<CompositeNode<CanvasStackRow>> nodes,
     DemandedPicture picture, {
-    bool keepsNodes = false,
-    BelowThePen below = BelowThePen.whole,
+    HeldNodePictures? held,
   }) {
     final page = pageOf(picture);
     (Object, StackTrace)? thrown;
@@ -609,10 +660,17 @@ class FramePictures implements PlaybackPictures {
       surfaceOf: (cel) => _drawn(cel)
           ? _readNow(cel, page, (error, stack) => thrown ??= (error, stack))
           : null,
-      held: _holding(page, keeps: keepsNodes, below: below),
+      held: _holding(page, held ?? _findsIn(heldNodes)),
     );
     return (frame: frame, thrown: thrown);
   }
+
+  /// A frame that finds its nodes' pictures in [rasters] and keeps none.
+  static HeldNodePictures _findsIn(HeldSubtreeRasters rasters) => (
+    rasters: rasters,
+    keeps: false,
+    below: BelowThePen.whole,
+  );
 
   /// [readInStack] on this thread for the cels [onScreen] says are on screen
   /// already — a screen whose first frame may not go without them
@@ -680,7 +738,11 @@ class FramePictures implements PlaybackPictures {
           ? layerImages.storedSurfaceOrNull(cel, canvasSize: page.canvasSize)
           : null,
       live: live,
-      held: _holding(page, keeps: false, below: BelowThePen.inCells),
+      held: _holding(page, (
+        rasters: heldNodes,
+        keeps: false,
+        below: BelowThePen.inCells,
+      )),
     );
   }
 
@@ -822,31 +884,30 @@ ui.Rect _onTheCells(ui.Rect place, ui.Rect extent) {
 FrameDrawing _heldFirst(
   HeldSubtreeRasters held,
   FramePictureKey key,
-  FrameDrawing keeping,
-  FrameDrawing Function() cutting,
+  FrameDrawing Function() keeping,
+  FrameDrawing cutting,
 ) {
-  FrameDrawing? cut;
+  var cuts = false;
   return (
-    extent: keeping.extent,
-    outside: keeping.outside,
+    extent: cutting.extent,
+    outside: cutting.outside,
     draw: (canvas) {
-      final cutAlready = cut;
-      if (cutAlready != null) {
-        _drawnInALay(cutAlready, canvas);
+      if (cuts) {
+        _drawnInALay(cutting, canvas);
         return;
       }
-      final extent = keeping.extent;
+      final extent = cutting.extent;
       if (canvas.getLocalClipBounds().intersect(extent) == extent) {
-        _drawnInALay(keeping, canvas);
+        _drawnInALay(keeping(), canvas);
         held.heldAllOf(key);
         return;
       }
       final recorder = ui.PictureRecorder();
-      _drawnInALay(keeping, ui.Canvas(recorder));
+      _drawnInALay(keeping(), ui.Canvas(recorder));
       recorder.endRecording().dispose();
       held.heldAllOf(key);
-      final pieces = cut = cutting();
-      _drawnInALay(pieces, canvas);
+      cuts = true;
+      _drawnInALay(cutting, canvas);
     },
   );
 }

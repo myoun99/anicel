@@ -287,6 +287,52 @@ void main() {
     });
   });
 
+  testWidgets('⚖️a walk holds a frame\'s folders in what the line has free: '
+      'no picture gives way to them, a picture laid takes it back, and they '
+      'go at a memory warning', (tester) async {
+    await tester.runAsync(() async {
+      /// A session on a line of [line] bytes, its frame of two folders made
+      /// ahead.
+      Future<EditorSessionManager> walked({int? line}) async {
+        final s = session(count: 2);
+        addTearDown(s.dispose);
+        if (line != null) {
+          s.playbackRig.playbackCache.debugSetPlaybackCacheBudgetBytes(line);
+        }
+        await s.playbackRig.framePictures.make(
+          drawn(s, count: 2),
+          shouldAbort: () => false,
+        );
+        return s;
+      }
+
+      HeldSubtreeRasters aheadOf(EditorSessionManager s) =>
+          s.playbackRig.framePictures.aheadNodes;
+
+      final wide = await walked();
+      final folders = aheadOf(wide).heldBytes;
+      final picture = wide.renderCaches.framePictureStore.estimatedBytes;
+      expect(aheadOf(wide), hasLength(2), reason: '⛔premise');
+      expect(picture, greaterThan(0), reason: '⛔premise');
+      final line = wide.playbackRig.playbackCache;
+      expect(
+        line.bytes,
+        line.playbackCacheByteBudget,
+        reason: 'the pictures have the line to themselves',
+      );
+
+      expect(aheadOf(await walked(line: picture + folders)), hasLength(2));
+      expect(
+        aheadOf(await walked(line: picture + folders - 1)),
+        hasLength(1),
+        reason: 'the picture laid took it back, all but the newest',
+      );
+
+      line.respondToMemoryPressure();
+      expect(aheadOf(wide), hasLength(0));
+    });
+  });
+
   testWidgets('⚖️each node held is a page at the most, and as many are held '
       'as the playback line has room for', (tester) async {
     await tester.runAsync(() async {

@@ -210,6 +210,11 @@ class FramePictureStore<K extends Object> {
   bool _disposed = false;
   int _clock = 0;
 
+  /// Whether the picture of a frame drawn over [extent] is one a raster may
+  /// make whole ([_layNow]).
+  bool fitsARaster(ui.Rect extent) =>
+      _shapeOf(extent).extent.longestSide <= _onceSide;
+
   /// Whether [key]'s picture is there — asked by a warmer and a ready bar
   /// over frames no screen draws now, so unlike [peek] it is no use of the
   /// picture: what the budget lets go of last among equals is what a
@@ -680,8 +685,7 @@ class FramePictureStore<K extends Object> {
       return null;
     }
     assert(_pieceSide % (1 << patchedLevels) == 0, 'a piece off the grid');
-    final atOnce =
-        extent.longestSide <= _onceSide && (lay.shown || !aheadInPieces());
+    final atOnce = fitsARaster(extent) && (lay.shown || !aheadInPieces());
     final pieces = atOnce ? [extent] : piecesOver(extent, side: _pieceSide);
     final allocated = pieces.length == 1
         ? null
