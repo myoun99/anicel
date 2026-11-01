@@ -32,6 +32,10 @@ void main() {
     // press — its opaque listener — and only the innermost tooltip stands
     // on a hover's path — its exclusive mouse region. It gates nothing.
     'lib/src/ui/widgets/app_tooltip.dart',
+    // A plate a press goes through and a mouse reads: it stands what
+    // hears a hover on the path and answers for no press. Nothing in it
+    // is admitted, and so nothing gated.
+    'lib/src/ui/widgets/ellipsis_text.dart',
   };
   final proxyBox = RegExp(r'extends RenderProxyBox\b');
   final hitTest = RegExp(r'bool hitTest\(BoxHitTestResult');
