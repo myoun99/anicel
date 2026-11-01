@@ -373,18 +373,129 @@ void main() {
     });
 
     // 🗣️I-81-Q4 (유저 2026-10-30): 「페이지뷰는 초 옆에 페이지 넘어가는곳마다
-    // p1 p2라고 쓸뿐임 그 외는 프레임뷰랑 똑같음. 프레임숫자가 페이지마다
-    // 초기화되는정도」. ↩️The seconds counted again from each page's head,
-    // which wrote its page instead.
-    test('a page\'s head writes its page beside its second, and the seconds '
-        'are the frames view\'s', () {
+    // p1 p2라고 쓸뿐임」 · F-539 (유저 2026-11-02): 「프레임만 6초넘어갔을때
+    // 초기화하는게 아니라 초 숫자도 같이 초기화. 즉 0 1 2 3 4 5 0 1 2 3 4 5」.
+    test('a page\'s head writes its page beside its second, and a sheet\'s '
+        'pages count their seconds again', () {
       final strip = paged();
       expect(strip.secondsLabelEverySeconds, 1, reason: 'the premise');
       expect(strip.modelAt(0).secondsLabel, '0 p1');
       expect(strip.modelAt(24).secondsLabel, '1');
-      expect(strip.modelAt(144).secondsLabel, '6 p2');
-      expect(strip.modelAt(168).secondsLabel, '7');
-      expect(strip.modelAt(264).secondsLabel, '11');
+      expect(strip.modelAt(120).secondsLabel, '5');
+      expect(strip.modelAt(144).secondsLabel, '0 p2');
+      expect(strip.modelAt(168).secondsLabel, '1');
+      expect(strip.modelAt(264).secondsLabel, '5');
+    });
+
+    test('off the page view the same pages leave the seconds running', () {
+      final strip = paged();
+      final frames = scale(
+        rulerView: FrameRulerView.frames,
+        pages: strip.pages,
+      );
+      expect(frames.modelAt(144).secondsLabel, '6');
+      expect(frames.writingAt(150, current: true).second, '6');
+    });
+
+    test('a rung that does not fit a page\'s seconds gives way to whole '
+        'pages, so the walk never writes a second out of order', () {
+      TimelineRulerScale at(double cell) => paged(
+        cell: cell,
+        frames: 14400,
+      );
+      final rungs = <int>{};
+      for (var cell = 2.0; cell > 1 / 64; cell /= 1.15) {
+        final strip = at(cell);
+        final rung = strip.secondsLabelEverySeconds;
+        rungs.add(rung);
+        expect(
+          6 % rung == 0 || rung % 6 == 0,
+          isTrue,
+          reason: 'a rung of $rung at $cell',
+        );
+        for (final frame in strip.framesWrittenIn((
+          startIndex: 0,
+          endIndexExclusive: 1440,
+        ))) {
+          final written = strip.modelAt(frame).secondsLabel.split(' ').first;
+          if (written.isEmpty || written.startsWith('p')) {
+            continue;
+          }
+          expect(
+            int.parse(written),
+            (frame % 144) ~/ 24,
+            reason: 'frame $frame at a rung of $rung',
+          );
+        }
+      }
+      expect(rungs, containsAll([6, 12]), reason: 'the premise');
+    });
+
+    test('where a rung is fitted, what a second takes is still measured: a '
+        'page\'s last second, not the strip\'s', () {
+      final sheet = paged(cell: 1, frames: 144000);
+      final framesView = scale(
+        frameEndIndexExclusive: 144000,
+        playbackFrameCount: 144000,
+        metrics: TimelineGridMetrics.defaults.copyWith(frameCellWidth: 1),
+      );
+      expect(
+        sheet.secondsLabelEverySeconds,
+        lessThan(framesView.secondsLabelEverySeconds),
+      );
+    });
+
+    test('a strip shorter than its page is measured by the seconds it '
+        'reaches', () {
+      for (var cell = 2.0; cell > 1 / 8; cell /= 1.15) {
+        final strip = paged(cell: cell, frames: 48, page: 2400);
+        final framesView = scale(
+          frameEndIndexExclusive: 48,
+          playbackFrameCount: 48,
+          metrics: TimelineGridMetrics.defaults.copyWith(frameCellWidth: cell),
+        );
+        expect(
+          strip.secondsLabelEverySeconds,
+          framesView.secondsLabelEverySeconds,
+          reason: 'at $cell',
+        );
+      }
+    });
+
+    test('a page\'s mark is measured beside the second it writes: a sheet\'s '
+        'mark on a long strip stands closer than a book\'s', () {
+      const frames = 14400;
+      final heads = [for (var head = 0; head < frames; head += 144) head];
+      bool closer(double cell) {
+        final book = scale(
+          rulerView: FrameRulerView.pages,
+          pages: TimelineRulerPages.startingAt(heads),
+          frameEndIndexExclusive: frames,
+          playbackFrameCount: frames,
+          metrics: TimelineGridMetrics.defaults.copyWith(frameCellWidth: cell),
+        );
+        final sheet = paged(cell: cell, frames: frames);
+        return sheet.pagesLabelEvery < book.pagesLabelEvery;
+      }
+
+      expect(
+        [for (var cell = 1.0; cell > 1 / 8; cell /= 1.1) cell].any(closer),
+        isTrue,
+      );
+    });
+
+    test('a book\'s pages leave the seconds running: their lengths are their '
+        'cells\'', () {
+      final book = scale(
+        rulerView: FrameRulerView.pages,
+        pages: const TimelineRulerPages.startingAt([0, 100, 240]),
+        frameEndIndexExclusive: 480,
+        playbackFrameCount: 480,
+      );
+      expect(book.modelAt(120).secondsLabel, '5');
+      expect(book.modelAt(240).secondsLabel, '10 p3');
+      expect(book.writingAt(250, current: true).second, '10');
+      expect(book.secondsLabelEverySeconds, 1);
     });
 
     test('a second that would run into a page\'s mark writes nothing — '
@@ -402,6 +513,7 @@ void main() {
           heads: [for (var head = 0; head < 1440; head += 144) head],
           everyPages: everyPages,
           clearFrames: clear,
+          secondsRestartEvery: 144,
         ),
       );
       expect(at(96, every: 2), '4');
@@ -411,15 +523,15 @@ void main() {
         '',
         reason: 'p2 stands a second on, and a rung is five',
       );
-      expect(at(168, clear: 24), '7');
+      expect(at(168, clear: 24), '1');
       expect(at(168, clear: 25), '', reason: 'p2 takes more than a second');
       expect(at(144, every: 5), 'p2', reason: 'a head off the rung');
-      expect(at(144, everyPages: 2), '6', reason: 'a page left unwritten');
-      expect(at(288, everyPages: 2), '12 p3');
+      expect(at(144, everyPages: 2), '0', reason: 'a page left unwritten');
+      expect(at(288, everyPages: 2), '0 p3');
     });
 
     test('past where a page holds its mark, every Nth page writes it; the '
-        'numbers stand where the frames view\'s do, each its page\'s', () {
+        'numbers stand on the seconds\' marks, each its page\'s', () {
       final strip = paged(cell: 1 / 8, frames: 14400, page: 72);
       final every = strip.pagesLabelEvery;
       expect(every, greaterThan(1), reason: 'the premise');
@@ -430,20 +542,17 @@ void main() {
         endsWith('p${every + 1}'),
       );
       expect(strip.modelAt(72).secondsLabel, isNot(contains('p')));
-      final framesView = scale(
-        frameEndIndexExclusive: 14400,
-        playbackFrameCount: 14400,
-        metrics: TimelineGridMetrics.defaults.copyWith(frameCellWidth: 1 / 8),
-      );
+      final marks = 24 * strip.secondsLabelEverySeconds;
+      expect(strip.labelEveryFrames % marks, 0, reason: 'on the marks');
       var written = 0;
       for (var frame = 0; frame < 14400; frame += 1) {
-        final there = framesView.modelAt(frame).label;
+        final there = frame % strip.labelEveryFrames == 0;
         expect(
           strip.modelAt(frame).label,
-          there.isEmpty ? isEmpty : '${frame % 72 + 1}',
+          there ? '${frame % 72 + 1}' : isEmpty,
           reason: 'frame $frame',
         );
-        written += there.isEmpty ? 0 : 1;
+        written += there ? 1 : 0;
       }
       expect(written, greaterThan(1), reason: 'the premise');
     });

@@ -43,17 +43,25 @@ import '../text/word_condensation.dart';
 /// [TimelineRulerScale.secondsLabelEverySeconds]); counted from 0, so the
 /// head always writes.
 ///
-/// Under the page view ([pages], I-81) the seconds are the frames view's,
-/// and a page's head writes the page beside its second ([timelinePageMark])
-/// — 🗣️I-81-Q4 (유저 2026-10-30): 「페이지뷰는 초 옆에 페이지 넘어가는곳마다
-/// p1 p2라고 쓸뿐임 그 외는 프레임뷰랑 똑같음」 — every `everyPages`-th
+/// Under the page view ([pages], I-81) a page's head writes the page beside
+/// its second ([timelinePageMark]) — 🗣️I-81-Q4 (유저 2026-10-30): 「페이지뷰는
+/// 초 옆에 페이지 넘어가는곳마다 p1 p2라고 쓸뿐임」 — every `everyPages`-th
 /// page's only, past where the pages hold their marks
 /// ([TimelineRulerScale.pagesLabelEvery], I-22's 「겹칠때 생략」). A second
 /// that would run into a page's mark writes nothing: within a rung before
 /// it, or within its `clearFrames` after. ⚠️Mine: the mark after its
-/// second, a space between (`6 p2`). ↩️The seconds counted again from each
-/// page's head, which wrote its page instead — 유저 10-06 「초나 프레임
-/// 표시가 장수마다 리셋되는데」, of the paper, read as the ruler's two lines.
+/// second, a space between (`0 p2`).
+///
+/// 🗣️F-539 (유저 2026-11-02): 「타임시트가 인쇄물이라 페이지에 6초까지만
+/// 들어가서 6초마다 초기화임. 프레임만 6초넘어갔을때 초기화하는게 아니라
+/// 초 숫자도 같이 초기화. 즉 0 1 2 3 4 5 0 1 2 3 4 5」 — an X-sheet's pages
+/// count their seconds again ([TimelinePageMarks.secondsRestartEvery]).
+/// ⚠️Mine: a conte book's do not. The card speaks of the sheet's six
+/// seconds, and a book's pages are as long as their cells. ↩️I-81-Q4 ran
+/// the seconds on across the pages (「그 외는 프레임뷰랑 똑같음」), and before
+/// it a page's head wrote its page in place of its second (유저 10-06
+/// 「초나 프레임 표시가 장수마다 리셋되는데」, of the paper, read as the
+/// ruler's two lines).
 String timelineRulerSecondsLabel({
   required int frameIndex,
   required int framesPerSecond,
@@ -65,12 +73,13 @@ String timelineRulerSecondsLabel({
       ? timelineRulerSecondOf(
           frameIndex: frameIndex,
           framesPerSecond: framesPerSecond,
+          restartsEvery: pages?.secondsRestartEvery,
         )
       : '';
   if (pages == null) {
     return second;
   }
-  final (:heads, :everyPages, :clearFrames) = pages;
+  final (:heads, :everyPages, :clearFrames, secondsRestartEvery: _) = pages;
   final page = timelinePageAt(heads, frameIndex);
   final marked = page - page % everyPages;
   final sinceMark = frameIndex - heads[marked];
@@ -85,12 +94,14 @@ String timelineRulerSecondsLabel({
 
 /// How the page view writes its pages' marks ([timelineRulerSecondsLabel]):
 /// the frames the pages begin on ([TimelineRulerPages]), every how many
-/// pages a mark is written, and how many frames past one the next second
-/// keeps clear of it.
+/// pages a mark is written, how many frames past one the next second keeps
+/// clear of it, and every how many frames the seconds count again — null
+/// where they run on.
 typedef TimelinePageMarks = ({
   List<int> heads,
   int everyPages,
   int clearFrames,
+  int? secondsRestartEvery,
 });
 
 /// The page of [heads] (from 0) [frameIndex] lies in — the last, past
@@ -131,13 +142,16 @@ String timelinePageMark(int pageIndex) => 'p${pageIndex + 1}';
 
 /// The second [frameIndex] lies in, counted from 0 like the marks — what
 /// the playhead writes on the seconds line wherever it stands (I-16); the
-/// marks print it only where a second begins.
+/// marks print it only where a second begins. Counted again every
+/// [restartsEvery] frames where it is not null (F-539, a sheet's pages).
 String timelineRulerSecondOf({
   required int frameIndex,
   required int framesPerSecond,
+  int? restartsEvery,
 }) {
   final safeFps = timelineSecondFrames(framesPerSecond);
-  return timelineSecondsMark(frameIndex ~/ safeFps);
+  final frame = restartsEvery == null ? frameIndex : frameIndex % restartsEvery;
+  return timelineSecondsMark(frame ~/ safeFps);
 }
 
 /// [seconds] as the seconds line writes it: the count alone below a
@@ -578,9 +592,9 @@ final class TimelineRulerScale {
   /// and how big is the strip's own ([TimelineFrameRulerPainter.glyphsAt],
   /// `XSheetFrameRailPainter.glyphsAt`); what is written is this.
   ///
-  /// The page view's pair is the frames view's, its number in its page
-  /// (I-81-Q4 「그 외는 프레임뷰랑 똑같음」). ↩️It wrote the page it stood in
-  /// on the seconds line (`p2`).
+  /// The page view's pair is the frames view's, its number in its page and
+  /// on a sheet's pages its second too (I-81-Q4, F-539). ↩️It wrote the page
+  /// it stood in on the seconds line (`p2`).
   ({String number, String second}) writingAt(
     int frameIndex, {
     required bool current,
@@ -594,6 +608,7 @@ final class TimelineRulerScale {
       second: timelineRulerSecondOf(
         frameIndex: frameIndex,
         framesPerSecond: framesPerSecond,
+        restartsEvery: _secondsRestartEvery,
       ),
     );
   }
@@ -827,11 +842,42 @@ final class TimelineRulerScale {
   /// the seconds ladder ([timelineSecondsHolding]) whose span holds the
   /// widest second this strip writes ([_widestMark]). Every second, at
   /// every zoom the old floor allowed; I-22's 「겹칠때 생략」 past that.
+  ///
+  /// Where the pages count the seconds again a rung has to fit the page: a
+  /// page's seconds divide evenly by it or it is a run of whole pages. The
+  /// walk ([framesWrittenIn]) strides from frame 0, so five on a page of six
+  /// would write 0 5 4 3 … (F-539).
   int get secondsLabelEverySeconds =>
-      _secondsLabelEveryOf[this] ??= timelineSecondsHolding(
-        _widestMark(timelineSecondsMark(_lastFrame ~/ _secondFrames)),
-        _secondFrames * metrics.frameCellWidth,
+      _secondsLabelEveryOf[this] ??= _fittedToThePage(
+        timelineSecondsHolding(
+          _widestMark(_widestSecond),
+          _secondFrames * metrics.frameCellWidth,
+        ),
       );
+
+  int _fittedToThePage(int rung) {
+    final restart = _secondsRestartEvery;
+    if (restart == null) {
+      return rung;
+    }
+    final page = restart ~/ _secondFrames;
+    return page % rung == 0 ? rung : page * (rung / page).ceil();
+  }
+
+  /// The second this strip writes that sets the widest: its last, or the
+  /// last of a page where the pages count them again.
+  String get _widestSecond {
+    final restart = _secondsRestartEvery;
+    final last = restart == null
+        ? _lastFrame
+        : math.min(_lastFrame, restart - 1);
+    return timelineSecondsMark(last ~/ _secondFrames);
+  }
+
+  /// Every how many frames the seconds count again: a sheet's pages, under
+  /// the page view (F-539). Null elsewhere, a book's pages among them.
+  int? get _secondsRestartEvery =>
+      rulerView == FrameRulerView.pages ? pages?.frames : null;
 
   /// Every how many PAGES the page view writes a page's mark; 1 off it.
   int get pagesLabelEvery => _pageMarks?.everyPages ?? 1;
@@ -850,8 +896,7 @@ final class TimelineRulerScale {
     return _pageMarksOf[this] ??= () {
       final heads = pages.headsBefore(frameEndIndexExclusive);
       final widest = _widestMark(
-        '${timelineSecondsMark(_lastFrame ~/ _secondFrames)} '
-        '${timelinePageMark(heads.length - 1)}',
+        '$_widestSecond ${timelinePageMark(heads.length - 1)}',
       );
       final frames = widest / metrics.frameCellWidth;
       return (
@@ -865,6 +910,7 @@ final class TimelineRulerScale {
           return true;
         }),
         clearFrames: frames.ceil(),
+        secondsRestartEvery: _secondsRestartEvery,
       );
     }();
   }
