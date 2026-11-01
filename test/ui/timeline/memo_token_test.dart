@@ -52,6 +52,22 @@ void main() {
     });
   });
 
+  group('ByMap', () {
+    test('a rebuilt map with equal contents is the same input, as a key', () {
+      final kept = {
+        const ByMap({1: 'a', 2: 'b'}): 'kept',
+      };
+
+      expect(kept[const ByMap({1: 'a', 2: 'b'})], 'kept');
+      expect(kept[const ByMap({1: 'a', 2: 'c'})], isNull);
+    });
+
+    test('🚨it is hashed without walking what it maps: a row\'s whole '
+        'timeline, at every paint', () {
+      expect(() => ByMap({1: _Unhashable()}).hashCode, returnsNormally);
+    });
+  });
+
   group('KeptPiece', () {
     final host = ValueNotifier<int>(0);
     tearDown(() => host.value = 0);
@@ -193,4 +209,13 @@ class _Piece extends KeptPiece {
         ? text
         : CountsAssemblies(assemblies: assembled, child: text);
   }
+}
+
+/// What no hash may ask of: a value a map's hash would walk.
+class _Unhashable {
+  @override
+  int get hashCode => throw StateError('walked');
+
+  @override
+  bool operator ==(Object other) => identical(this, other);
 }

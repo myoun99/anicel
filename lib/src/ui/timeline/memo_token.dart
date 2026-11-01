@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../models/app_language.dart';
-import '../collection_equality.dart';
 import '../text/app_strings.dart';
 
 /// A memo-token field that compares by IDENTITY.
@@ -62,6 +61,12 @@ final class ByList<T> {
 
 /// A memo-token field that compares by MAP CONTENTS — a rebuilt map with
 /// the same keys mapped to equal values is the same input.
+///
+/// 🚨HASHED BY ITS LENGTH (I-22): a word painter hashes what its picture is
+/// drawn from at every paint ([RepaintOnWordBakes.pictureKey]), and this map
+/// is a row's whole timeline — on a wheel's notch, every row's, for a window
+/// no kept picture answers: 1.2 ms a frame in debug. What a field hashes to
+/// only has to agree for equal maps; [operator ==] tells two of a length.
 final class ByMap<K, V> {
   const ByMap(this.value);
 
@@ -72,7 +77,7 @@ final class ByMap<K, V> {
       other is ByMap<K, V> && mapEquals(other.value, value);
 
   @override
-  int get hashCode => mapHash(value);
+  int get hashCode => value.length;
 }
 
 /// What a memo holds for one key: the widget as built, the facts it was
