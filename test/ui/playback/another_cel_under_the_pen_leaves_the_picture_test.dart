@@ -261,11 +261,12 @@ void main() {
       'picture — not the whole frame composed a step at a time', (
     tester,
   ) async {
-    final (:penOn, :step, gpu: _, :store, :picture, landOn: _) = await aCanvas(
+    final (:penOn, :step, :gpu, :store, :picture, landOn: _) = await aCanvas(
       tester,
     );
 
     await penOn(high);
+    gpu.holdsRenders = true;
     step(at);
     await tester.pump();
 
@@ -280,11 +281,12 @@ void main() {
 
   testWidgets('🚨and that stroke, landed, moves the picture to the frame\'s '
       'next key: the cel the pen is on is the one it came to', (tester) async {
-    final (:penOn, :step, gpu: _, :store, picture: _, :landOn) = await aCanvas(
+    final (:penOn, :step, :gpu, :store, picture: _, :landOn) = await aCanvas(
       tester,
     );
 
     await penOn(high);
+    gpu.holdsRenders = true;
     step(at);
     await tester.pump();
     final drawn = await landOn(high);
@@ -300,7 +302,7 @@ void main() {
 
   testWidgets('a row the pen cannot draw on leaves it too, and back from it '
       'the next stroke is written in', (tester) async {
-    final (:penOn, :step, gpu: _, :store, :picture, landOn: _) = await aCanvas(
+    final (:penOn, :step, :gpu, :store, :picture, landOn: _) = await aCanvas(
       tester,
     );
 
@@ -309,6 +311,7 @@ void main() {
     expect(drawnAsItStands(tester), isFalse);
 
     await penOn(high);
+    gpu.holdsRenders = true;
     step(at);
     await tester.pump();
     expect(store.landingOf(keptByTheCanvas(tester, picture)), isNotNull);
@@ -370,6 +373,7 @@ void main() {
     expect(gpu.written, 1);
 
     await tester.pumpWidget(const SizedBox());
+    await tester.pump(theLevelsPause);
   });
 }
 
@@ -389,7 +393,10 @@ class _WritesHeld extends WritesNeverLand {
   }
 
   @override
-  ui.Image imageOf(Object held) => held as ui.Image;
+  Object? hold(ui.Image image) => image.clone();
+
+  @override
+  ui.Image imageOf(Object held) => (held as ui.Image).clone();
 
   @override
   Future<bool> write(Object held, List<BaseWrite> base, LevelWrites? levels) {

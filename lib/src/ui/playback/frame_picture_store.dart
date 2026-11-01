@@ -1078,7 +1078,11 @@ class FramePictureStore<K extends Object> {
   /// p50 / p90: quiet 8.3–8.6 / 12–14 → 7.1–7.5 / 10.5–11 ms; under another
   /// session's tests 31–42 → 29–37 ms. ⛔Not with levels: the copy out is
   /// the wait, it holds the raster thread whoever waits for it, and that
-  /// answered at the submission is the 190 late frames above.
+  /// answered at the submission is the 190 late frames above. 🔬On the
+  /// Surface Pro 11 it took nothing back (release, 120 Hz, S5_BA cut 352,
+  /// every row on, 100%, strokes after a rest, 2026-11-02, each frame timed
+  /// over 3,720 and 2,942 frames in turn): over 16.7 ms 5.1 → 5.3%, over
+  /// 30 ms 0.65 → 0.44%, input to ink p50 33 ms alike.
   /// ⚠️The answer is still heard: a write that did not go in lets go of
   /// its picture late ([_heardLater]), the frame laid anew.
   Future<bool> _written(

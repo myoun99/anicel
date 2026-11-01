@@ -1008,7 +1008,7 @@ void aStrokeIsWrittenIntoThePictureShown({
   testWidgets('🚨where the last steps leave nothing of a frame the paint asks '
       'for the step, as ever (F-512)', (tester) async {
     final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
-    final (:step, :pacedBy, gpu: _, :store, :picture) = await standing(
+    final (:step, :pacedBy, :gpu, :store, :picture) = await standing(
       tester,
       'a-step-at-the-paint',
       storeWithTheCel(),
@@ -1016,10 +1016,12 @@ void aStrokeIsWrittenIntoThePictureShown({
     );
     const frame = Duration(milliseconds: 1);
     await pacedBy(frame);
+    gpu.holdsRenders = true;
     step(TileCoord(x: 0, y: 1));
     await tester.pump(frame);
     final landing = store.landingOf(keptByTheCanvas(tester, picture));
     expect(landing, isNotNull);
+    gpu.letAllThrough();
     await inThePicture(tester, landing);
 
     await tester.pumpWidget(const SizedBox());
@@ -1045,6 +1047,8 @@ void aStrokeIsWrittenIntoThePictureShown({
       bottomExclusive: 24,
     );
 
+    gpu.holdsRenders = true;
+    addTearDown(gpu.letAllThrough);
     overlay.updateRegion(source: source, region: region);
     await tester.pump(frame);
     final onItsWay = store.landingOf(keptByTheCanvas(tester, picture));
@@ -1052,8 +1056,6 @@ void aStrokeIsWrittenIntoThePictureShown({
     expect(source.reads, isPositive, reason: 'the step read what it writes');
 
     final read = source.reads;
-    gpu.holdsRenders = true;
-    addTearDown(gpu.letAllThrough);
     for (var i = 0; i < 4; i += 1) {
       overlay.updateRegion(source: source, region: region);
       await tester.pump(frame);
@@ -1249,6 +1251,7 @@ void aStrokeIsWrittenIntoThePictureShown({
     );
 
     await tester.pumpWidget(const SizedBox());
+    await tester.pump(theLevelsPause);
     overlay.dispose();
   }, skip: skipped);
 
@@ -1534,6 +1537,7 @@ void aStrokeIsWrittenIntoThePictureShown({
         // The pen put down again at once: the step is on screen as the last
         // one's write is in — before the move comes in, painted only after.
         gpu.beforeTheNextLands = showTheSecondStep;
+        unawaited(moving!.then((_) => gpu.holdsRenders = true));
         gpu.letAllThrough();
         await inThePicture(tester, moving);
       }
@@ -1720,6 +1724,7 @@ void aStrokeIsWrittenIntoThePictureShown({
 
     gpu.letAllThrough();
     await tester.pumpWidget(const SizedBox());
+    await tester.pump(theLevelsPause);
     overlay.dispose();
   }, skip: skipped);
 
@@ -1999,6 +2004,7 @@ void aStrokeIsWrittenIntoThePictureShown({
     );
 
     await tester.pumpWidget(const SizedBox());
+    await tester.pump(theLevelsPause);
     overlay.dispose();
   }, skip: skipped);
 

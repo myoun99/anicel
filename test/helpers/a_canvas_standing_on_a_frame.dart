@@ -255,8 +255,8 @@ class WritesLand extends RendersHeld {
   @override
   ui.Image imageOf(Object held) => _gpu.imageOf(held);
 
-  /// Runs once, as the next write is in and before the store hears of it:
-  /// what comes to the screen meanwhile.
+  /// Runs once, as the next write has gone to the GPU and before the store
+  /// goes on: what comes to the screen meanwhile.
   void Function()? beforeTheNextLands;
 
   /// How many patches went into a picture, each write's together.
@@ -269,13 +269,17 @@ class WritesLand extends RendersHeld {
     LevelWrites? levels,
   ) async {
     patchesWritten += base.length;
-    final written = await _gpu.write(held, base, levels);
+    final written = _gpu.write(held, base, levels);
     final meanwhile = beforeTheNextLands;
     beforeTheNextLands = null;
     meanwhile?.call();
     return written;
   }
 }
+
+/// Long enough for what the steps of a stroke owe the levels to be laid: a
+/// step that went in leaves a store's timer running past its view.
+const Duration theLevelsPause = Duration(milliseconds: 250);
 
 /// Why this runner cannot write into a frame's picture, or null when it can.
 final String? noFlutterGpu = () {
@@ -307,22 +311,29 @@ final String? noFlutterGpu = () {
 /// told apart by its identity: a view drawing the image it drew before the
 /// write showed the write nowhere there (F-509), and every capture here
 /// would still show it.
+///
+/// A [landing] null is a step already in: a write with no copy out is not
+/// waited for (F-533), and may be in before the paint of the frame that
+/// sent it — that frame shows it, and there is nothing to wait for. The
+/// frame such a step asks when it is in later is pinned by holding its
+/// render ([RendersHeld.holdsRenders]).
 Future<void> inThePicture(WidgetTester tester, Future<void>? landing) async {
-  expect(landing, isNotNull, reason: '⛔premise: on its way into a picture');
-  var landed = false;
-  var framed = false;
-  unawaited(
-    landing!.then((_) {
-      landed = true;
-      framed = tester.binding.hasScheduledFrame;
-    }),
-  );
-  expect(
-    await settleAsync(tester, () => landed),
-    isTrue,
-    reason: 'LIVENESS: it is in the picture',
-  );
-  expect(framed, isTrue, reason: 'the view asks for the frame that shows it');
+  if (landing != null) {
+    var landed = false;
+    var framed = false;
+    unawaited(
+      landing.then((_) {
+        landed = true;
+        framed = tester.binding.hasScheduledFrame;
+      }),
+    );
+    expect(
+      await settleAsync(tester, () => landed),
+      isTrue,
+      reason: 'LIVENESS: it is in the picture',
+    );
+    expect(framed, isTrue, reason: 'the view asks for the frame that shows it');
+  }
   await tester.pump();
   final views = find.descendant(
     of: find.byType(FramePictureView),

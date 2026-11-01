@@ -40,8 +40,9 @@ import '../../helpers/settle_async.dart';
 /// A screen that draws nothing live still makes no picture of a page alone
 /// (`FramePictures.drawsOnlyItsPage`), and draws it as it stands.
 ///
-/// The writes never land ([WritesNeverLand]): a step on its way into the
-/// picture is the oracle, the GPU's own writes are pinned elsewhere
+/// A step's render waits ([RendersHeld.holdsRenders]), its write never lands
+/// ([WritesNeverLand]): a step on its way into the picture is the oracle,
+/// the GPU's own writes are pinned elsewhere
 /// (`a_stroke_is_written_into_the_picture_shown_test`).
 void main() {
   const tileSize = 16;
@@ -98,13 +99,17 @@ void main() {
     lineage: 'a-pen-on-a-blank-page',
   );
 
+  /// The GPU of the page last made ([aPage]).
+  late WritesNeverLand gpu;
+
   /// The cels, their pictures and the store of the frames', torn down after.
   ({BrushFrameStore cels, StackRun run, FramePictureStore<FramePictureKey> store})
   aPage(List<CompositeNode<CanvasStackRow>> Function() nodes) {
     final cels = BrushFrameStore();
     final images = LayerFrameImageCache(frameStore: cels);
     addTearDown(images.dispose);
-    final store = FramePictureStore<FramePictureKey>(gpu: WritesNeverLand());
+    gpu = WritesNeverLand();
+    final store = FramePictureStore<FramePictureKey>(gpu: gpu);
     addTearDown(store.dispose);
     final run = runOver(
       images,
@@ -170,6 +175,7 @@ void main() {
     );
     await lendBothClocks(tester, rounds: 2);
 
+    gpu.holdsRenders = true;
     step(overlay);
     await tester.pump();
     expect(
@@ -224,6 +230,7 @@ void main() {
       nodes: nodes,
       live: liveOver(BitmapSurface(canvasSize: canvasSize, tileSize: tileSize)),
     );
+    gpu.holdsRenders = true;
     step(overlay);
     await tester.pump();
     expect(
@@ -294,6 +301,7 @@ void main() {
         liftedRows: const {},
       ),
     );
+    gpu.holdsRenders = true;
     step(overlay);
     await tester.pump();
     expect(
