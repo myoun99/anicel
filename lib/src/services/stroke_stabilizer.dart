@@ -79,6 +79,23 @@ class StrokeStabilizer {
   /// wobble of a pixel's fifth turns the way.
   static const double _waySureFrom = 300;
 
+  /// How fast [acrossOnly] gives way as the pen turns off its way: what goes
+  /// along it is the square of the cosine between the way and the pen's step,
+  /// to this power — 89% of it 10° off, 32% at 30°, next to none from 60°.
+  ///
+  /// 🚨A WAY TOLD OVER TIME IS OLD IN A TURN (F-536, 유저 2026-11-01: 「꺾이는
+  /// 부분에서 곡선이 아니라 선이 휘어짐. 보정을 끄면 괜찮은데 보정키고
+  /// 0에서 심하고, 6에서 괜찮아짐」). A quick turn is done within
+  /// [_wayToldOver], so the line was taken along where the pen had been going
+  /// and swung back. 🔬A U-turn of 6–15 px at 1500–5000 px/s, 240 Hz, turned
+  /// 193–232° through two changes of side at 0 and 1, where a line steadied
+  /// all round turns 180°; with this, 180–184° and none. On a straight line
+  /// with a wobble of 0.4 px it stays within 0.1 ms of the pen from 1200 px/s,
+  /// 0.5 ms at 300, where all round is 2.3 ms.
+  ///
+  /// ⚠️Mine: 2 left a change of side at 1500 px/s, 8 did no better.
+  static const int _turnGives = 4;
+
   /// Closer than this, in canvas pixels, the line is where the pen is.
   static const double _settlesWithin = 0.01;
 
@@ -96,6 +113,10 @@ class StrokeStabilizer {
   /// The way the pen goes, in canvas px/s ([_wayToldOver]).
   double _wayX = 0;
   double _wayY = 0;
+
+  /// How much of [acrossOnly] the pen's latest step left going along the way
+  /// ([_turnGives]).
+  double _keptToTheWay = 0;
 
   /// The pen time of the latest sample, and the frame that first looked
   /// after it — or null while no frame has.
@@ -167,16 +188,32 @@ class StrokeStabilizer {
     }
   }
 
-  /// The pen came to [pen] at [at]: what it says of the way it goes.
+  /// The pen came to [pen] at [at]: what it says of the way it goes, and how
+  /// well it kept to it.
   void _noteTheWay(CanvasPoint pen, Duration at) {
     final elapsed = (at - _sampleAt).inMicroseconds;
     if (elapsed <= 0) {
       return;
     }
     final seconds = elapsed / Duration.microsecondsPerSecond;
+    final stepX = (pen.x - _pen.position.x) / seconds;
+    final stepY = (pen.y - _pen.position.y) / seconds;
+    _keptToTheWay = _keptBy(stepX, stepY);
     final share = 1 - math.exp(-elapsed / _wayToldOver.inMicroseconds);
-    _wayX += ((pen.x - _pen.position.x) / seconds - _wayX) * share;
-    _wayY += ((pen.y - _pen.position.y) / seconds - _wayY) * share;
+    _wayX += (stepX - _wayX) * share;
+    _wayY += (stepY - _wayY) * share;
+  }
+
+  /// What a step of [stepX], [stepY] leaves of the way so far ([_turnGives]):
+  /// nothing, turned back on it.
+  double _keptBy(double stepX, double stepY) {
+    final along = stepX * _wayX + stepY * _wayY;
+    if (along <= 0) {
+      return 0;
+    }
+    final lengths =
+        (stepX * stepX + stepY * stepY) * (_wayX * _wayX + _wayY * _wayY);
+    return math.pow(along * along / lengths, _turnGives).toDouble();
   }
 
   /// Brings the line along the way the pen goes by what [elapsed] closes of
@@ -199,6 +236,7 @@ class StrokeStabilizer {
         (dx * _wayX + dy * _wayY) /
         speed *
         (1 - behind) *
+        _keptToTheWay *
         math.min(1.0, speed / _waySureFrom);
     _brush = (
       position: CanvasPoint(

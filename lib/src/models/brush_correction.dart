@@ -101,7 +101,8 @@ class BrushCorrection {
   /// 최대한 줄일수있다면 줄이고싶음. 첨언하자면 클튜는 0으로해도 보정이
   /// 들어가있음」 — so this much of the lag holds the line back only across
   /// the way the pen goes (`StrokeStabilizer.acrossOnly`), and along it the
-  /// line is level with the pen: 🔬worked through for a 240 Hz pen, the same
+  /// line is level with the pen while it keeps to that way (F-536):
+  /// 🔬worked through for a 240 Hz pen, the same
   /// share of a wobble taken out, 2.3 ms behind → none.
   static const Duration lagAtClipStudioZero = Duration(milliseconds: 4);
 
