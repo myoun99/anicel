@@ -287,9 +287,9 @@ LogicalKeyboardKey? _tvpaintKey(String name) =>
 /// names for `[` and `=` — the two characters an INI line cannot start a
 /// key with.
 ///
-/// `+` is the pad's: a key event names the key, not what it types, so the
-/// `+` that Shift types on the keyboard's own row reads as that row's key,
-/// which differs by keyboard, and no key press ever names the character.
+/// `+` is the pad's, the one that presses alike on every keyboard: a key
+/// event names the key, not what it types, and the `+` Shift types on a
+/// keyboard's own row reads as that row's key, which differs by keyboard.
 const Map<String, LogicalKeyboardKey> _tvpaintNamedKeys = {
   '+': LogicalKeyboardKey.numpadAdd,
   'braquet': LogicalKeyboardKey.bracketLeft,

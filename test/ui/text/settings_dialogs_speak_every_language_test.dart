@@ -336,7 +336,13 @@ void main() {
   /// strip」 — answered in the other four languages by id
   /// (`shortcutAction.window-rail-tools-only`). The ceiling stood at the
   /// count (139) when it came.
-  const untranslatedElsewhere = 140;
+  ///
+  /// 141 (I-149, the brush size's keys, 2026-11-02): the English rows of two
+  /// new registry actions, 「Brush Size Up」 and 「Brush Size Down」 —
+  /// answered in the other four languages by id
+  /// (`shortcutAction.brush-size-up` · `-down`). The ceiling stood one under
+  /// the count of them when they came.
+  const untranslatedElsewhere = 141;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');
