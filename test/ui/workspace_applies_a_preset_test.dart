@@ -21,9 +21,13 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/shortcuts/brush_actions.dart';
+import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart'
+    show BrushLibraryActionIds;
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
+import 'package:anicel/src/ui/shortcuts/panel_keys.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import '../helpers/brush_values_on_strip.dart';
@@ -857,6 +861,124 @@ void main() {
     expect(back.flow, 0.3, reason: '「사이즈말고도 … 싹 다」');
     expect(back.antiAlias, BrushAntiAlias.none);
     expect(curveOf(back), jsonEncode(curve.toJson()));
+  });
+
+  group('🗣️I-148: the button left of the wrench', () {
+    final resetButton = find.byKey(
+      const ValueKey<String>('brush-reset-button'),
+    );
+
+    /// What the button holds: null is a dead one.
+    VoidCallback? held(WidgetTester tester) =>
+        tester.widget<AppIconButtonFace>(resetButton).onPressed;
+
+    Future<void> press(WidgetTester tester) async {
+      await tester.ensureVisible(resetButton);
+      await tester.pumpAndSettle();
+      await tester.tap(resetButton);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('it stands dead on a brush the hand left alone, and names '
+        'its action', (tester) async {
+      await pumpWithPresets(tester);
+      await openBrushSettings(tester);
+
+      expect(held(tester), isNull);
+      expect(
+        tester
+            .widget<AppIconButton>(
+              find.ancestor(
+                of: resetButton,
+                matching: find.byType(AppIconButton),
+              ),
+            )
+            .shortcuts,
+        [BrushLibraryActionIds.resetHeldBrush],
+      );
+    });
+
+    testWidgets('a brush goes back to the values it came with, whole — and '
+        'nothing is left to come back later', (tester) async {
+      await pumpWithPresets(tester);
+      await openBrushSettings(tester);
+      final shown = onScreen(tester);
+      await pick(tester, shown[1]);
+      await pick(tester, shown[0]);
+      final own = settings(tester).state;
+      await edit(
+        tester,
+        (state) => state.copyWith(
+          size: own.size + 20,
+          sizePressureCurve: BrushPressureCurve.linearFrom(0.6),
+          flow: 0.3,
+          antiAlias: BrushAntiAlias.none,
+        ),
+      );
+      expect(held(tester), isNotNull);
+
+      await press(tester);
+
+      final back = settings(tester).state;
+      expect(back.size, own.size);
+      expect(back.flow, own.flow);
+      expect(back.antiAlias, own.antiAlias);
+      expect(curveOf(back), curveOf(own));
+      expect(held(tester), isNull, reason: 'at its values again');
+
+      await pick(tester, shown[1]);
+      await pick(tester, shown[0]);
+      expect(settings(tester).state.size, own.size);
+      expect(held(tester), isNull);
+    });
+
+    testWidgets('a key is the same press', (tester) async {
+      await pumpWithPresets(tester);
+      await openBrushSettings(tester);
+      final own = settings(tester).state.flow;
+      await edit(tester, (state) => state.copyWith(flow: 0.3));
+
+      PanelKeysScope.maybeOf(
+        tester.element(find.byType(BrushSettingsPanel)),
+      )!.press(BrushLibraryActionIds.resetHeldBrush, CanvasTool.brush);
+      await tester.pumpAndSettle();
+
+      expect(settings(tester).state.flow, own);
+    });
+
+    testWidgets('a brush the user saved goes back to what was saved', (
+      tester,
+    ) async {
+      await pumpWithPresets(tester);
+      await openBrushSettings(tester);
+      await edit(tester, (state) => state.copyWith(flow: 0.3));
+      await tester.tap(
+        find.byKey(const ValueKey<String>('brush-preset-save-button')),
+      );
+      await tester.pumpAndSettle();
+      await edit(tester, (state) => state.copyWith(flow: 0.7));
+
+      await press(tester);
+
+      expect(settings(tester).state.flow, 0.3);
+    });
+
+    testWidgets('it answers for the tool in hand: what the eraser set on a '
+        'brush goes, and what the brush tool set on it stays', (tester) async {
+      await pumpWithPresets(tester);
+      await openBrushSettings(tester);
+      final brushIn = settings(tester).state;
+      await edit(tester, (state) => state.copyWith(flow: 0.3));
+
+      await takeUp(tester, 'eraser');
+      await edit(tester, (state) => state.copyWith(flow: 0.7));
+      await press(tester);
+      expect(settings(tester).state.flow, brushIn.flow, reason: 'the file');
+
+      await takeUp(tester, 'brush');
+      expect(settings(tester).state.flow, 0.3);
+      expect(settings(tester).state.presetId, brushIn.presetId);
+    });
   });
 
   testWidgets('🚨what the hand set survives closing the app — and the brush '

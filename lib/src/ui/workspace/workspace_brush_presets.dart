@@ -278,6 +278,23 @@ class _WorkspaceBrushPresets {
     );
   }
 
+  /// What puts the brush in hand back to its own values, or null while the
+  /// hand has changed none (🗣️I-148, 유저 2026-11-01: 「임포트했을때 값이나
+  /// 초기값으로 바꿔줌」). Its file IS those values, whichever brush it is:
+  /// the hand never writes there (H25), so taking the file up again is all
+  /// of it, and [followBrushTool] finds nothing left to remember.
+  VoidCallback? get resetHeldBrush {
+    final state = _state._brushTool.value;
+    final id = state.presetId;
+    final preset = id == null ? null : _presetNamed(id);
+    if (preset == null ||
+        !_brushHandSettings.containsKey(_handKey(state.tool, preset.id))) {
+      return null;
+    }
+    return () =>
+        _state._brushTool.value = state.withPreset(preset, tool: state.tool);
+  }
+
   /// When the libraries have landed and the opening brush has been taken
   /// up — what a resumed tool choice waits for (F-123): a brush is named by
   /// its preset, and only a library that has loaded can find it.

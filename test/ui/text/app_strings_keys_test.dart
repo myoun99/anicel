@@ -865,6 +865,7 @@ void main() {
     'brGroupTexture': (s) => s.brGroupTexture,
     'brGroupCorrection': (s) => s.brGroupCorrection,
     'brDetailTitle': (s) => s.brDetailTitle,
+    'brResetHeldBrush': (s) => s.brResetHeldBrush,
     'brShowInPanel': (s) => s.brShowInPanel,
     'brHideFromPanel': (s) => s.brHideFromPanel,
     'brBlend': (s) => s.brBlend,

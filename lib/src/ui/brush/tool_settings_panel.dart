@@ -82,7 +82,11 @@ class ToolSettingsPanel extends StatelessWidget {
     this.onCutPasteAtOrigin,
     this.onRegisterCutPieceAsTip,
     this.brushDetailAt,
+    this.onResetBrush,
   });
+
+  /// See [BrushSettingsPanel.onResetBrush].
+  final VoidCallback? onResetBrush;
 
   /// Where the brush detail window stands — see
   /// [BrushSettingsPanel.detailAt].
@@ -254,6 +258,7 @@ class ToolSettingsPanel extends StatelessWidget {
       onRenameTip: onRenameTip,
       onDeleteTip: onDeleteTip,
       detailAt: brushDetailAt,
+      onResetBrush: onResetBrush,
     ),
     CanvasTool.fill => _FillSettings(
       options: fillOptions,

@@ -570,6 +570,7 @@ abstract final class BrushLibraryActionIds {
   static const reset = 'brush-library-reset';
   static const importBrushes = 'brush-library-import';
   static const saveHeldBrush = 'brush-library-save-held-brush';
+  static const resetHeldBrush = 'brush-library-reset-held-brush';
 }
 
 EditorActionDefinition _brushLibraryAction(
@@ -601,6 +602,13 @@ List<EditorActionDefinition> _brushLibraryActions() {
     _brushLibraryAction(
       BrushLibraryActionIds.saveHeldBrush,
       (l) => s(l).brSaveAsPreset,
+      menuRow: false,
+      panelButton: true,
+    ),
+    // The brush settings' button beside the wrench (I-148).
+    _brushLibraryAction(
+      BrushLibraryActionIds.resetHeldBrush,
+      (l) => s(l).brResetHeldBrush,
       menuRow: false,
       panelButton: true,
     ),

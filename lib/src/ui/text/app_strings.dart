@@ -1926,6 +1926,7 @@ enum AppStrings {
   String get brGroupTexture => _s('brGroupTexture');
   String get brGroupCorrection => _s('brGroupCorrection');
   String get brDetailTitle => _s('brDetailTitle');
+  String get brResetHeldBrush => _s('brResetHeldBrush');
   String get brShowInPanel => _s('brShowInPanel');
   String get brHideFromPanel => _s('brHideFromPanel');
 
@@ -3247,6 +3248,7 @@ enum AppStrings {
     'brGroupTexture': 'Texture',
     'brGroupCorrection': 'Correction',
     'brDetailTitle': 'Brush Details',
+    'brResetHeldBrush': 'Reset brush to its initial settings',
     'brShowInPanel': 'Show in the panel',
     'brHideFromPanel': 'Hide from the panel',
     'brBlend': 'Blend',
@@ -4944,6 +4946,7 @@ enum AppStrings {
     'brGroupTexture': '質感',
     'brGroupCorrection': '補正',
     'brDetailTitle': 'ブラシ詳細',
+    'brResetHeldBrush': 'ブラシを初期設定に戻す',
     'brShowInPanel': 'パネルに表示',
     'brHideFromPanel': 'パネルに表示しない',
     'shortcutAction.frame-auto-create': 'フレーム自動生成',
@@ -6757,6 +6760,7 @@ enum AppStrings {
     'brGroupTexture': '질감',
     'brGroupCorrection': '보정',
     'brDetailTitle': '브러시 상세',
+    'brResetHeldBrush': '브러시를 초기 설정으로 초기화',
     'brShowInPanel': '패널에 보이기',
     'brHideFromPanel': '패널에서 숨기기',
     'shortcutAction.frame-auto-create': '프레임 자동 생성',
@@ -8714,6 +8718,7 @@ enum AppStrings {
     'brGroupTexture': 'Texture',
     'brGroupCorrection': 'Correction',
     'brDetailTitle': 'Détails de la brosse',
+    'brResetHeldBrush': 'Rétablir les réglages initiaux de la brosse',
     'brShowInPanel': 'Afficher dans le panneau',
     'brHideFromPanel': 'Masquer du panneau',
     'shortcutAction.frame-auto-create': "Création auto d'images",
@@ -10503,6 +10508,7 @@ enum AppStrings {
     'brGroupTexture': '纹理',
     'brGroupCorrection': '修正',
     'brDetailTitle': '画笔详细设置',
+    'brResetHeldBrush': '将画笔恢复为初始设置',
     'brShowInPanel': '在面板中显示',
     'brHideFromPanel': '在面板中隐藏',
     'shortcutAction.frame-auto-create': '自动创建帧',

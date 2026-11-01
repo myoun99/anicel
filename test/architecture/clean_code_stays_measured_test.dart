@@ -1612,7 +1612,13 @@ void main() {
   /// unlanded. 🔬`clean_code_diff` against master (`edd34ba45`) names this
   /// one and no other class. ⛔Not split to fit: the store is the one that
   /// records what goes in, and waiting is how it records now.
-  const longClasses = 82;
+  ///
+  /// ⚠️82 → 83 on 2026-11-01, ONE name: `_WorkspaceBrushPresets` crossed
+  /// when the hand's changes came to be taken back (I-148,
+  /// `resetHeldBrush`). 🔬`clean_code_diff` against master names this one and
+  /// no other class. ⛔Not split to fit: the bank and what takes from it
+  /// stand together.
+  const longClasses = 83;
 
   late CleanCodeScan scan;
   setUpAll(() {
