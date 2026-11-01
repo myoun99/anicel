@@ -212,11 +212,16 @@ void main() {
 
   test('🚨a wobble does not bring the lag back: it is no turn', () {
     final dice = math.Random(7);
-    double wobble(int _) => (dice.nextDouble() - 0.5) * 0.8;
+    final line = _line();
+    var behind = 0.0;
+    for (var i = 1; i <= 60; i += 1) {
+      final x = 1200 * (_sample * i).inMicroseconds / 1e6;
+      final y = (dice.nextDouble() - 0.5) * 0.8;
+      final at = _sample * i;
+      behind += x - line.follow(CanvasPoint(x: x, y: y), _rest, at: at).last.position.x;
+    }
 
-    final behind = _go(_line(), 1200, across: wobble).behind;
-
-    expect(behind, closeTo(0, 1200 * 0.0003));
+    expect(behind / 60, closeTo(0, 1200 * 0.0002));
   });
 
   test('🚨a pen that turns back goes nowhere along its old way', () {
