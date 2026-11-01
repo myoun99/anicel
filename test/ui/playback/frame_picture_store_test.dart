@@ -2025,6 +2025,19 @@ void main() {
       store.dispose();
     });
 
+    test('that threw rastering its rim, nothing behind it, does too', () async {
+      final reported = _reported();
+      final gpu = _RecordingGpu();
+      final store = FramePictureStore<String>(gpu: gpu);
+      await _layed(store, 'a', 256);
+      gpu.rendersThrowAt = (128, 256);
+
+      expect(await store.widen(key: 'a', over: left, draw: green), isFalse);
+      expect(store.peek('a'), isNull);
+      expect(reported.single, isA<StateError>());
+      store.dispose();
+    });
+
     test('that threw laying the picture around its rim does too', () async {
       final reported = _reported();
       final gpu = _RecordingGpu();
@@ -2066,6 +2079,7 @@ void main() {
 
     test('of a picture let go on the way lays nothing and leaves no image '
         'behind', () async {
+      final reported = _reported();
       final gpu = _RecordingGpu();
       final store = FramePictureStore<String>(gpu: gpu);
       await _layed(store, 'a', 256);
@@ -2082,6 +2096,7 @@ void main() {
 
       expect(await widened, isFalse);
       expect(gpu.rendered, [(128, 256)], reason: 'the rim alone');
+      expect(reported, isEmpty, reason: 'nothing read of what was let go');
       store.dispose();
     });
 

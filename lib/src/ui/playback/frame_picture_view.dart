@@ -916,11 +916,11 @@ class _FramePictureViewState extends State<FramePictureView> {
             gone: () => _leftBehind(live),
           )
           ?.then((widened) {
-            if (widened &&
-                !_leftBehind(live) &&
-                identical(_shown?.picture, picture)) {
+            // Told as a write is ([_written]): the paint it brings catches
+            // up. ⛔Not where the picture was let go: it was never wider, and
+            // the frame standing is all that shows the stroke.
+            if (widened && identical(_shown?.picture, picture)) {
               _standing.whole = false;
-              _repaint.value += 1;
             }
           }),
     );

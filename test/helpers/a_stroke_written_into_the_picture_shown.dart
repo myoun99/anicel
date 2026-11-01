@@ -572,6 +572,13 @@ void aStrokeIsWrittenIntoThePictureShown({
       reason: 'the stroke shows at the paint after it, not when it is wider',
     );
 
+    // The stroke goes on meanwhile, and the pen stops.
+    final further = TileCoord(x: -1, y: 1);
+    overlay.showResultTiles([
+      PromotedStrokeTile(further, tileOf(further, stroke, (_) => true), 2),
+    ]);
+    await tester.pump();
+
     gpu
       ..holdsRenders = false
       ..letAllThrough();
@@ -581,29 +588,16 @@ void aStrokeIsWrittenIntoThePictureShown({
       reason: 'the picture lies wider',
     );
     expect(shown.extent.left, lessThan(was.left));
-
-    // The stroke goes on: a step, in the picture.
-    gpu.holdsRenders = true;
-    final further = TileCoord(x: -1, y: 1);
-    overlay.showResultTiles([
-      PromotedStrokeTile(further, tileOf(further, stroke, (_) => true), 2),
-    ]);
-    await tester.pump();
     expect(
       await settleAsync(
         tester,
-        () => store.landingOf(keptByTheCanvas(tester, picture)) != null,
+        () => store.peek(keptByTheCanvas(tester, picture)) != null,
       ),
       isTrue,
-      reason: 'a step again, the frame not standing',
+      reason: 'what it did meanwhile goes in, by itself, as a step',
     );
-    final step = store.landingOf(keptByTheCanvas(tester, picture));
-    gpu
-      ..holdsRenders = false
-      ..letAllThrough();
-    await inThePicture(tester, step);
-    await tester.pump();
     expect(store.peek(keptByTheCanvas(tester, picture)), same(shown));
+    await tester.pump();
     final stepped = await onScreen(tester);
     expect(differences(meanwhile, stepped), isNotEmpty);
     expect(
@@ -620,6 +614,72 @@ void aStrokeIsWrittenIntoThePictureShown({
       isEmpty,
       reason: 'pixel for pixel',
     );
+
+    await tester.pumpWidget(const SizedBox());
+    overlay.dispose();
+  }, skip: skipped);
+
+  testWidgets('⛔a picture let go on its way to wider leaves the frame standing '
+      '— it is all that shows the stroke (F-533)', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const lineage = 'a-picture-let-go-while-it-is-widened';
+    final cels = storeWithTheCel();
+    final images = LayerFrameImageCache(frameStore: cels);
+    addTearDown(images.dispose);
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+    final live = BitmapSurfacePainter(
+      surface: BrushFrameDisplayCacheService(
+        frameStore: cels,
+        canvasSize: canvasSize,
+      ).prepareFramePreview(key).previewSurface,
+      overlayModel: overlay,
+      showTransparentBackground: false,
+      lineage: lineage,
+    );
+    final gpu = WritesLand();
+    final store = FramePictureStore<FramePictureKey>(gpu: gpu);
+    addTearDown(store.dispose);
+    final run = runOf(images, store);
+    final picture = run.pictures.keyOfStack(nodes, frame);
+    final view = CanvasViewport(panX: 8, panY: 4);
+
+    await pump(tester, run, key: const ValueKey(0), view: view, live: live);
+    expect(
+      await settleAsync(tester, () => store.bytesOf(picture) != null),
+      isTrue,
+      reason: 'LIVENESS: the frame\'s picture is made',
+    );
+    await lendBothClocks(tester, rounds: 2);
+
+    gpu.holdsRenders = true;
+    addTearDown(gpu.letAllThrough);
+    final past = TileCoord(x: -1, y: 0);
+    overlay.showResultTiles([
+      PromotedStrokeTile(past, tileOf(past, stroke, (_) => true), 1),
+    ]);
+    await tester.pump();
+    expect(
+      await settleAsync(tester, () => gpu.rendersWaiting == 1),
+      isTrue,
+      reason: 'LIVENESS: the rim is on its way',
+    );
+    final standing = await onScreen(tester);
+
+    store.letGo(picture);
+    gpu
+      ..holdsRenders = false
+      ..letAllThrough();
+    var every = false;
+    unawaited(store.settled().then((_) => every = true));
+    expect(
+      await settleAsync(tester, () => every),
+      isTrue,
+      reason: 'LIVENESS: the widening has come to nothing',
+    );
+    await tester.pump();
+
+    expect(differences(standing, await onScreen(tester)), isEmpty);
 
     await tester.pumpWidget(const SizedBox());
     overlay.dispose();
