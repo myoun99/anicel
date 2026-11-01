@@ -56,6 +56,7 @@ import '../services/color_palette_file_service.dart';
 import '../services/project_repository.dart';
 import 'brush/brush_library_keys.dart';
 import 'brush/brush_tool_state.dart';
+import 'brush/brush_value_group.dart';
 import 'brush/confirm_verb.dart';
 import 'brush/history_verbs.dart';
 import 'brush/temporary_tool.dart';
@@ -1215,6 +1216,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       // R5: and the rails bring it back into view. These are the moves that
       // happen WITHOUT a pointer, so they are the ones that could walk the
       // selection off screen (user, 2026-08-09).
+      case EditorActionIds.brushSizeUp:
+        _stepBrushSize(1);
+      case EditorActionIds.brushSizeDown:
+        _stepBrushSize(-1);
       case EditorActionIds.framePrevious:
         _session.frameVerbs.selectPreviousFrame();
         _session.revealSelection();
@@ -1498,6 +1503,22 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final wall = _session.activePasteboardOrNull;
     if (wall != null) {
       _canvasSelectionCommands.invertSelection(pasteboard: wall, reach: reach);
+    }
+  }
+
+  /// One step of the size bar's ± from the keys, where the bar would take
+  /// it: the tool in hand's size, and nothing on a tool with none.
+  void _stepBrushSize(int direction) {
+    final state = _brushTool.value;
+    if (!state.supports(ToolParameter.size)) {
+      return;
+    }
+    final size = BrushValueBars.steppedSize(
+      BrushToolState.clampSize(state.activeSize),
+      direction,
+    );
+    if (size != null) {
+      _brushTool.value = state.withActiveSize(size);
     }
   }
 

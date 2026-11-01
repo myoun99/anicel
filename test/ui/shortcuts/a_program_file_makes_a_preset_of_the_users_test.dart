@@ -290,14 +290,14 @@ void main() {
       'without the program — TVPaint\'s, under the Clip Studio preset', () {
     final rows = presetRows(ShortcutPreset.clipStudio);
     expect(
-      rows[EditorActionIds.canvasFlipHorizontal]!.keys,
+      rows[EditorActionIds.onionSkinToggle]!.keys,
       isEmpty,
       reason: '⛔fixture premise',
     );
 
     bindings.setPreset(ShortcutPreset.clipStudio);
 
-    expect(keysOf(EditorActionIds.canvasFlipHorizontal), ['[']);
+    expect(keysOf(EditorActionIds.onionSkinToggle), ['Ctrl+L']);
   });
 
   test('every TVPaint command a row names has its Japanese name, for the '

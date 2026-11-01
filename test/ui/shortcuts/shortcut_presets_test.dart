@@ -161,7 +161,6 @@ void main() {
       expect(keysOf(clipStudio, EditorActionIds.framePrevious), ['←']);
       expect(keysOf(clipStudio, EditorActionIds.frameNext), ['→']);
       expect(keysOf(clipStudio, EditorActionIds.onionSkinToggle), ['Ctrl+L']);
-      expect(keysOf(clipStudio, EditorActionIds.canvasFlipVertical), [']']);
     });
 
     test('🚨F-417: an action TVPaint does not name takes Clip Studio\'s '
@@ -205,7 +204,10 @@ void main() {
       const clipStudio = ShortcutPreset.clipStudio;
       // Space — TVPaint's play — is Clip Studio's hand; I — TVPaint's new
       // frame — its eyedropper; F2 — TVPaint's Color blend — its cut; B —
-      // TVPaint's cut tool — its brush.
+      // TVPaint's cut tool — its brush; [ and ] — TVPaint's flips — its
+      // brush size (I-149).
+      expect(keysOf(clipStudio, EditorActionIds.canvasFlipHorizontal), isEmpty);
+      expect(keysOf(clipStudio, EditorActionIds.canvasFlipVertical), isEmpty);
       expect(keysOf(clipStudio, EditorActionIds.playbackToggle), isEmpty);
       expect(keysOf(clipStudio, EditorActionIds.frameNewDrawing), isEmpty);
       expect(

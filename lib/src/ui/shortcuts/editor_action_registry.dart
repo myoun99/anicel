@@ -793,6 +793,10 @@ abstract final class EditorActionIds {
   static const toolCut = 'tool-cut';
   static const toolCutWhole = 'tool-cut-whole';
   static const toolCutStamp = 'tool-cut-stamp';
+
+  /// One step of the size bar's ±, on the tool in hand (I-149).
+  static const brushSizeUp = 'brush-size-up';
+  static const brushSizeDown = 'brush-size-down';
   static const selectionDeselect = 'selection-deselect';
   static const selectionInvert = 'selection-invert';
   static const selectionInvertInCanvas = 'selection-invert-in-canvas';
@@ -1568,6 +1572,21 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     shelf: ShortcutShelf.tools,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyG)],
     toolPress: RailToolPress(CanvasTool.guide),
+  ),
+  // 🗣️I-149 (유저 2026-11-02): 「브러시 사이즈 변경(한걸음올리기 내리기)
+  // 단축키 없지않나? 등록하고 클튜나 tvp도 아마 키 있을텐데 등록. anicel은
+  // [랑 ]. ]가 한걸음 올리기」.
+  const EditorActionDefinition(
+    id: EditorActionIds.brushSizeUp,
+    label: 'Brush Size Up',
+    shelf: ShortcutShelf.tools,
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.bracketRight)],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.brushSizeDown,
+    label: 'Brush Size Down',
+    shelf: ShortcutShelf.tools,
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.bracketLeft)],
   ),
   // I-40: the guide list's two ＋ — one a kind of guide.
   const EditorActionDefinition(

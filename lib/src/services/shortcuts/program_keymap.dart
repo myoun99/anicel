@@ -109,6 +109,8 @@ const Map<String, String> tvpaintShownNames = {
   'LayerDown': 'レイヤー: 下に移動',
   'ZoomRotateAdd15': 'ズーム: 回転 +15(反時計回り)',
   'ZoomRotateSub15': 'ズーム: 回転 -15(時計回り)',
+  'IncreaseToolsSize': 'ツール オプション: サイズ拡大',
+  'DecreaseToolsSize': 'ツール オプション: サイズ縮小',
   'ZoomIn': 'ズーム: ズームイン',
   'ZoomOut': 'ズーム: ズームアウト',
   'ZoomFlipX': 'ズーム: 水平に反転',
@@ -284,7 +286,12 @@ LogicalKeyboardKey? _tvpaintKey(String name) =>
 /// The keys TVPaint names in words. `braquet` and `equal` are its config's
 /// names for `[` and `=` — the two characters an INI line cannot start a
 /// key with.
+///
+/// `+` is the pad's: a key event names the key, not what it types, so the
+/// `+` that Shift types on the keyboard's own row reads as that row's key,
+/// which differs by keyboard, and no key press ever names the character.
 const Map<String, LogicalKeyboardKey> _tvpaintNamedKeys = {
+  '+': LogicalKeyboardKey.numpadAdd,
   'braquet': LogicalKeyboardKey.bracketLeft,
   'equal': LogicalKeyboardKey.equal,
   'space': LogicalKeyboardKey.space,

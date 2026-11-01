@@ -701,7 +701,7 @@ class FieldSlider extends StatefulWidget implements NamesItself {
   /// A notch that would land on the number [value] writes moves it by the
   /// last digit instead: an exponential sweep's notch is less than a tenth
   /// under 0.2, and a step that writes the same number is no step (F-488).
-  double? _stepFrom(double value, int direction, {required bool fine}) {
+  double? stepFrom(double value, int direction, {required bool fine}) {
     if (stops != null) {
       final stop = _stopPast(value, direction);
       return stop == null ? null : held(stop);
@@ -1139,7 +1139,7 @@ class _FieldSliderState extends State<FieldSlider> {
     if (!_enabled) {
       return;
     }
-    final value = widget._stepFrom(
+    final value = widget.stepFrom(
       widget.value,
       direction,
       fine: ModifierKeys.isShiftPressed,
