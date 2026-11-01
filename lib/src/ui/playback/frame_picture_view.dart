@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show listEquals;
-import 'package:flutter/scheduler.dart' show SchedulerBinding;
+import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
 import 'package:flutter/widgets.dart';
 
 import '../../core/tree_nodes.dart';
@@ -331,6 +331,7 @@ class _FramePictureViewState extends State<FramePictureView> {
   void dispose() {
     widget.run.landings.removeListener(_landed);
     _heldStep?.cancel();
+    _hearLive(null);
     _letGo(_store);
     _repaint.dispose();
     super.dispose();
@@ -352,7 +353,7 @@ class _FramePictureViewState extends State<FramePictureView> {
   void _standLive({bool Function(BrushFrameKey cel)? onScreen}) {
     _stoodBy = _pictures.keyAsItStands(widget.nodes, widget.picture);
     _waits = waitsForItsPlugins(widget.nodes);
-    _liveChanges = null;
+    _hearLive(null);
     _live = null;
     _onScreen = const {};
     final live = widget.live;
@@ -377,7 +378,7 @@ class _FramePictureViewState extends State<FramePictureView> {
     );
     _live = frame;
     if (live != null) {
-      _liveChanges = frame.changes;
+      _hearLive(frame.changes);
     }
     final nodes = widget.nodes;
     _onScreen = {
@@ -957,6 +958,45 @@ class _FramePictureViewState extends State<FramePictureView> {
         _catchUp();
       }
     });
+  }
+
+  /// Hears the live rows through [changes] from here on, as the painter
+  /// does.
+  void _hearLive(Listenable? changes) {
+    _liveChanges?.removeListener(_liveMoved);
+    changes?.addListener(_liveMoved);
+    _liveChanges = changes;
+  }
+
+  /// The live rows moved: at the top of a frame, a stroke's samples coming
+  /// in. Its step is asked once all of them are in
+  /// ([_stepAheadOfThePaint]) — the frame's callbacks done, its build not
+  /// begun.
+  void _liveMoved() {
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.transientCallbacks) {
+      scheduleMicrotask(_stepAheadOfThePaint);
+    }
+  }
+
+  /// 🚨★★A STEP THE LAST ONES LEFT NO ROOM TO HOLD GOES AHEAD OF THE PAINT
+  /// (F-533, 유저 2026-11-01 「최대한 그 외적으로 좋아지기만 하는 부분에서 구조를
+  /// 효율적으로 리팩토링」). Asked at the paint, its render goes to the raster
+  /// thread right behind that paint's frame and waits it out; asked here it
+  /// goes first, on a thread the frame before has left, and the frame waits
+  /// for it instead. 🔬Main PC, 144 Hz, a new project, in turn in one run,
+  /// input to raster done, p50 at 300 px/s: at 100% as tests came and went
+  /// 29.1 → 21.8, 25.0 → 15.6, 21.9 → 10.4 ms, a step's render 5.4 → 1.9
+  /// ms; fitted, quiet, 15.3 → 12.3 ms, p90 28.0 → 21.5; fitted, under
+  /// eighteen suites of tests, 72.3 → 70.2 ms, the levels' waits behind it
+  /// the same. ⛔No sooner than this: where the last steps leave a frame
+  /// room the pace holds a step (`StepPace`), and that is the later and so
+  /// the fuller one, in before the next frame all the same.
+  void _stepAheadOfThePaint() {
+    if (mounted && _strokeInHand && !_pace.holds) {
+      _pace.askNow();
+      _catchUp();
+    }
   }
 
   /// Lets go of what is shown, and of [store]'s hold on its picture.

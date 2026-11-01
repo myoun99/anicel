@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderCustomPaint;
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/models/bitmap_surface.dart';
@@ -1063,6 +1064,145 @@ void aStrokeIsWrittenIntoThePictureShown({
     await inThePicture(tester, onItsWay);
     await tester.pump(frame);
     expect(source.reads, greaterThan(read), reason: 'the next step did');
+
+    await tester.pumpWidget(const SizedBox());
+    overlay.dispose();
+  }, skip: skipped);
+
+  const aMillisecond = Duration(milliseconds: 1);
+
+  /// [change] as a stroke's samples come: in the next frame's callbacks.
+  void inAFrame(void Function() change) =>
+      SchedulerBinding.instance.scheduleFrameCallback((_) => change());
+
+  testWidgets('🚨where the last steps leave nothing of a frame, the samples '
+      'of a frame send its step ahead of its paint (F-533)', (tester) async {
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+    final (:step, :pacedBy, :gpu, :store, :picture) = await standing(
+      tester,
+      'a-step-ahead',
+      storeWithTheCel(),
+      overlay,
+    );
+    await pacedBy(aMillisecond);
+    gpu.rendersAskedIn.clear();
+
+    inAFrame(() => step(TileCoord(x: 0, y: 1)));
+    await tester.pump(aMillisecond);
+    expect(gpu.rendersAskedIn, [SchedulerPhase.midFrameMicrotasks]);
+    await inThePicture(
+      tester,
+      store.landingOf(keptByTheCanvas(tester, picture)),
+    );
+
+    await tester.pumpWidget(const SizedBox());
+    overlay.dispose();
+  }, skip: skipped);
+
+  testWidgets('⛔a change outside a frame goes at the paint, as ever: no step '
+      'ahead of what it comes with (F-533)', (tester) async {
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+    final (:step, :pacedBy, :gpu, :store, :picture) = await standing(
+      tester,
+      'a-step-at-its-paint',
+      storeWithTheCel(),
+      overlay,
+    );
+    await pacedBy(aMillisecond);
+    gpu.rendersAskedIn.clear();
+
+    step(TileCoord(x: 0, y: 1));
+    await tester.idle();
+    expect(gpu.rendersAskedIn, isEmpty);
+    expect(store.landingOf(keptByTheCanvas(tester, picture)), isNull);
+
+    await tester.pump(aMillisecond);
+    await inThePicture(
+      tester,
+      store.landingOf(keptByTheCanvas(tester, picture)),
+    );
+
+    await tester.pumpWidget(const SizedBox());
+    overlay.dispose();
+  }, skip: skipped);
+
+  testWidgets('⛔where the last steps leave a frame room, the samples of a '
+      'frame hold their step as the paint does (F-533)', (tester) async {
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+    final (:step, :pacedBy, gpu: _, :store, :picture) = await standing(
+      tester,
+      'a-step-not-ahead',
+      storeWithTheCel(),
+      overlay,
+    );
+    await pacedBy(aSecond);
+
+    inAFrame(() => step(TileCoord(x: 0, y: 1)));
+    await tester.pump(aSecond);
+    expect(store.landingOf(keptByTheCanvas(tester, picture)), isNull);
+
+    await tester.pump(aSecond);
+    await inThePicture(
+      tester,
+      store.landingOf(keptByTheCanvas(tester, picture)),
+    );
+
+    await tester.pumpWidget(const SizedBox());
+    overlay.dispose();
+  }, skip: skipped);
+
+  testWidgets('a step gone ahead is timed from when it went: the pace holds '
+      'again once steps leave a frame room (F-533)', (tester) async {
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+    final (:step, :pacedBy, gpu: _, :store, :picture) = await standing(
+      tester,
+      'a-step-ahead-timed',
+      storeWithTheCel(),
+      overlay,
+    );
+    const frame = Duration(milliseconds: 300);
+    await pacedBy(aMillisecond);
+    await tester.runAsync(() => Future<void>.delayed(frame * 2));
+
+    for (var i = 0; i < 6; i += 1) {
+      inAFrame(() => step(TileCoord(x: i % 2, y: 1)));
+      await tester.pump(frame);
+      final kept = keptByTheCanvas(tester, picture);
+      if (store.landingOf(kept) == null) {
+        await tester.pump(frame);
+      }
+      await inThePicture(tester, store.landingOf(kept));
+    }
+    await tester.pump(frame);
+    await tester.pump(frame);
+
+    inAFrame(() => step(TileCoord(x: 0, y: 1)));
+    await tester.pump(frame);
+    expect(store.landingOf(keptByTheCanvas(tester, picture)), isNull);
+
+    await tester.pumpWidget(const SizedBox());
+    overlay.dispose();
+  }, skip: skipped);
+
+  testWidgets('⛔a stroke let go in a frame\'s callbacks sends no step ahead: '
+      'the stroke gone waits for the paint (F-533)', (tester) async {
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+    final (:step, :pacedBy, :gpu, store: _, picture: _) = await standing(
+      tester,
+      'a-stroke-let-go-ahead',
+      storeWithTheCel(),
+      overlay,
+    );
+    await pacedBy(aMillisecond);
+    gpu.rendersAskedIn.clear();
+
+    step(TileCoord(x: 0, y: 1));
+    inAFrame(overlay.reset);
+    await tester.pump(aMillisecond);
+    expect(
+      gpu.rendersAskedIn,
+      isNot(contains(SchedulerPhase.midFrameMicrotasks)),
+    );
 
     await tester.pumpWidget(const SizedBox());
     overlay.dispose();
