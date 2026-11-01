@@ -168,8 +168,10 @@ ConteCutSource _cutSource(
           cut: entry.cut,
           cell: cell,
           camera: cameras[index],
-          transitionLines: transitionLines[index],
-          linkedCuts: index == 0 ? linkedCuts : const [],
+          lines: (
+            transitions: transitionLines[index],
+            linkedCuts: index == 0 ? linkedCuts : const [],
+          ),
         ),
     ],
     dialogue: dialogue,
@@ -339,8 +341,7 @@ ConteCellSource _cellSource({
   required Cut cut,
   required StoryboardCoverageCell cell,
   required _CellCamera camera,
-  required List<String> transitionLines,
-  required List<String> linkedCuts,
+  required ({List<String> transitions, List<String> linkedCuts}) lines,
 }) {
   // The cell counts the conte's frames; the row, the camera and the picture
   // count the cut's, which begin that much earlier in a cut an O.L arrives
@@ -360,8 +361,8 @@ ConteCellSource _cellSource({
     action: exposure?.memo?.actionMemo ?? '',
     camera: camera.work,
     cameraLines: camera.lines,
-    transitionLines: transitionLines,
-    linkedCuts: linkedCuts,
+    transitionLines: lines.transitions,
+    linkedCuts: lines.linkedCuts,
   );
 }
 
