@@ -989,7 +989,12 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// 29.1 → 21.8, 25.0 → 15.6, 21.9 → 10.4 ms, a step's render 5.4 → 1.9
   /// ms; fitted, quiet, 15.3 → 12.3 ms, p90 28.0 → 21.5; fitted, under
   /// eighteen suites of tests, 72.3 → 70.2 ms, the levels' waits behind it
-  /// the same. ⛔No sooner than this: where the last steps leave a frame
+  /// the same. 🔬The Surface Pro 11 lost nothing by it (release, 120 Hz,
+  /// S5_BA cut 352, every row on, 2026-11-02, with the levels a step lays cut
+  /// to what the screen reads): input to ink p50 32–33 → 32–33 ms, seen 25 ms
+  /// apart so no gain of this size can show there, vsync to raster end p50
+  /// 2.2 → 2.0 ms at 100% and 2.6 → 2.8 ms fitted. ⛔No sooner than this:
+  /// where the last steps leave a frame
   /// room the pace holds a step (`StepPace`), and that is the later and so
   /// the fuller one, in before the next frame all the same.
   void _stepAheadOfThePaint() {
