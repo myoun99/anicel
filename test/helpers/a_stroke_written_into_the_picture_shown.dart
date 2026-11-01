@@ -1099,6 +1099,48 @@ void aStrokeIsWrittenIntoThePictureShown({
     overlay.dispose();
   }, skip: skipped);
 
+  testWidgets('🚨a frame\'s samples go ahead as ONE step, every tile of them '
+      'in it (F-533)', (tester) async {
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+    final (step: _, :pacedBy, :gpu, :store, :picture) = await standing(
+      tester,
+      'a-step-whole',
+      storeWithTheCel(),
+      overlay,
+    );
+    await pacedBy(aMillisecond);
+    gpu.rendersAskedIn.clear();
+
+    inAFrame(
+      () => overlay.showResultTiles([
+        for (final at in [TileCoord(x: 0, y: 1), TileCoord(x: 1, y: 1)])
+          PromotedStrokeTile(at, tileOf(at, stroke, (_) => true), 2),
+      ]),
+    );
+    await tester.pump(aMillisecond);
+    await inThePicture(
+      tester,
+      store.landingOf(keptByTheCanvas(tester, picture)),
+    );
+    await tester.pump(aMillisecond);
+    expect(gpu.rendersAskedIn, hasLength(1));
+
+    await tester.pumpWidget(const SizedBox());
+    overlay.dispose();
+  }, skip: skipped);
+
+  testWidgets('a view that goes hears the stroke no more (F-533)', (
+    tester,
+  ) async {
+    final overlay = _OverlayCountingWhoHears(tileSize: tileSize);
+    await standing(tester, 'a-view-gone', storeWithTheCel(), overlay);
+    expect(overlay.hearing, greaterThan(0), reason: '⛔premise: heard');
+
+    await tester.pumpWidget(const SizedBox());
+    expect(overlay.hearing, 0);
+    overlay.dispose();
+  }, skip: skipped);
+
   testWidgets('⛔a change outside a frame goes at the paint, as ever: no step '
       'ahead of what it comes with (F-533)', (tester) async {
     final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
@@ -1165,6 +1207,8 @@ void aStrokeIsWrittenIntoThePictureShown({
     await tester.runAsync(() => Future<void>.delayed(frame * 2));
 
     for (var i = 0; i < 6; i += 1) {
+      // Its paint long gone: the step is timed from here.
+      await tester.runAsync(() => Future<void>.delayed(frame));
       inAFrame(() => step(TileCoord(x: i % 2, y: 1)));
       await tester.pump(frame);
       final kept = keptByTheCanvas(tester, picture);
@@ -2075,4 +2119,22 @@ class _LaysCounted extends FramePictureStore<FramePictureKey> {
   }
 
   static bool _stays() => false;
+}
+/// An overlay that says how many listen to it.
+class _OverlayCountingWhoHears extends ActiveStrokeOverlayModel {
+  _OverlayCountingWhoHears({required super.tileSize});
+
+  int hearing = 0;
+
+  @override
+  void addListener(VoidCallback listener) {
+    hearing += 1;
+    super.addListener(listener);
+  }
+
+  @override
+  void removeListener(VoidCallback listener) {
+    hearing -= 1;
+    super.removeListener(listener);
+  }
 }
