@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -22,9 +21,9 @@ import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 ///   지우고 클립 저장」): the cut asks the copy's ladder, so where the copy
 ///   takes the selected rows the cut takes them too — never the frame axis
 ///   under them;
-/// * 결정 14 ②ⓐ: a cut banks exactly what it lifts. A row whose delete
-///   would take rows the board does not hold — a base's attach rows — is
-///   not lifted, and a row the delete refuses is not banked;
+/// * 결정 14 ②ⓐ: a cut banks exactly what it lifts. A row the delete
+///   refuses is not banked, and what the delete takes along — a base's
+///   attach rows, a folder's rows (F-535 · F-532) — the board holds;
 /// * the rows go as ONE undo step, and a paste puts them down as the copy's
 ///   rows land (I-77).
 ///
@@ -170,49 +169,6 @@ void main() {
   });
 
   group('a cut banks exactly what it lifts (결정 14 ②ⓐ)', () {
-    test('a base with an attach row stays — its delete would take a row the '
-        'board does not hold — and the plain row beside it goes alone', () {
-      final r = threeRows();
-      r.s.createDrawingAtCurrentFrame();
-      r.s.folders.addAttachedLayer(AttachedPlacement.above);
-      final rider = r.s.activeLayerId!;
-      expect(drawingRows(r.s)[1].attachedToLayerId, r.a, reason: '⛔전제');
-      select(r.s, [r.a, r.b]);
-
-      pill(r.s).cutRun();
-
-      expect(names(r.s), ['A', drawingRows(r.s)[1].name, 'C']);
-      expect(drawingRows(r.s)[1].id, rider);
-      r.s.selectLayer(r.c);
-      pill(r.s).pasteIndependentFrame();
-      expect(
-        names(r.s).where((name) => name == 'A'),
-        hasLength(1),
-        reason: 'A was not lifted, so it is not in hand either',
-      );
-      expect(names(r.s).last, 'B');
-    });
-
-    test('with only such a base selected the cut is dark: the rows claim '
-        'the press, and the drawing under it is not cut instead', () {
-      final r = threeRows();
-      r.s.createDrawingAtCurrentFrame();
-      r.s.folders.addAttachedLayer(AttachedPlacement.above);
-      r.s.selectLayer(r.a);
-      select(r.s, [r.a]);
-      final drawn = drawingRows(r.s).first.timeline.length;
-      final steps = r.s.historyManager.undoCount;
-
-      expect(pill(r.s).canCutRun, isFalse);
-      expect(pill(r.s).cutPress, isNull);
-      pill(r.s).cutRun();
-
-      expect(drawingRows(r.s), hasLength(4));
-      expect(drawingRows(r.s).first.timeline, hasLength(drawn));
-      expect(r.s.historyManager.undoCount, steps, reason: 'no step at all');
-      expect(holdsFrames(r.s) || rowsOf(r.s).hasLayerClipboard, isFalse);
-    });
-
     test('a row no delete takes — the last instruction row — leaves the cut '
         'dark', () {
       final r = threeRows();

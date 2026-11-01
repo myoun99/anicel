@@ -17,7 +17,6 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/layer_clipboard.dart';
 import 'package:anicel/src/ui/session/layer_verbs.dart';
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
-import '../../helpers/a_folder_made_by_hand.dart';
 
 /// 🗣️F-532 (유저 2026-11-01): 「레이어에서 폴더도 잘라내기 가능하게. 폴더
 /// 삭제랑 동일하게 내부에도 적용되서 내부 다 잘라냄」.
@@ -52,6 +51,23 @@ void main() {
         folderId: inside == null ? null : LayerId(inside),
         frames: const [],
         timeline: const {},
+      );
+
+  LayerLinkGroup linkOf(String id, String first, String second) =>
+      LayerLinkGroup(
+        id: id,
+        members: [
+          LayerLinkMember(
+            trackId: track,
+            cutId: firstCut,
+            layerId: LayerId(first),
+          ),
+          LayerLinkMember(
+            trackId: track,
+            cutId: secondCut,
+            layerId: LayerId(second),
+          ),
+        ],
       );
 
   Cut cutOf(CutId id, List<Layer> layers) => Cut(
@@ -266,37 +282,46 @@ void main() {
       expect(stack(s), ['note', 'over', 'a<F', 'F']);
     });
 
-    test('a folder holding an attach row stays: its delete would take a '
-        'row no board holds, and the cut goes dark', () {
+    test('🗣️F-532-Q1: a folder holding an attach row goes with it, and the '
+        'row rides its base again', () {
       final s = sessionOf(nested());
       s.selectLayer(const LayerId('a'));
       s.folders.addAttachedLayer(AttachedPlacement.above);
+      final riderName = s.activeLayer!.name;
       select(s, ['F']);
-      final steps = s.historyManager.undoCount;
 
-      expect(rowsOf(s).canCopySelectedRows, isTrue, reason: '⛔전제');
-      expect(pill(s).canCutRun, isFalse);
       pill(s).cutRun();
 
-      expect(s.historyManager.undoCount, steps, reason: 'no step at all');
-      expect(rowsOf(s).hasLayerClipboard, isFalse);
+      expect(stack(s), ['under', 'over']);
+      s.selectLayer(const LayerId('over'));
+      pill(s).pasteIndependentFrame();
+
+      final rows = s.requireActiveCut.layers;
+      final rider = rows.singleWhere((row) => row.name == riderName);
+      final base = rows.singleWhere((row) => row.name == 'a');
+      expect(rider.attachedToLayerId, base.id);
+      expect(rider.folderId, base.folderId);
+      expect(stack(s), ['under', 'over', 'a<F', '$riderName<F', ...[
+        'b<F',
+        'c<G',
+        'G<F',
+        'F',
+      ]]);
     });
 
-    test('its rows beside it are lifted all the same — what stays is the '
-        'row that cannot go', () {
-      final s = sessionOf(nested());
-      s.selectLayer(const LayerId('a'));
-      s.folders.addAttachedLayer(AttachedPlacement.above);
-      select(s, ['F', 'b']);
+    test('a row a board cannot hold stays, let out of the folder as a delete '
+        'lets it out', () {
+      final s = sessionOf([
+        row('cam', inside: 'F', kind: LayerKind.camera),
+        row('a', inside: 'F'),
+        row('F', kind: LayerKind.folder),
+        row('over'),
+      ]);
+      select(s, ['F']);
 
       pill(s).cutRun();
 
-      expect(
-        stack(s).any((name) => name.startsWith('b')),
-        isFalse,
-        reason: 'b may go alone',
-      );
-      expect(stack(s), contains('F'));
+      expect(stack(s), ['cam', 'over']);
     });
   });
 
@@ -315,28 +340,20 @@ void main() {
       expect(stack(s), [...read(nested()), 'c<G', 'G']);
     });
 
-    test('an attach row it holds stays behind, as it does a base it rides', () {
-      final s = sessionOf(nested());
-      s.selectLayer(const LayerId('c'));
-      s.folders.addAttachedLayer(AttachedPlacement.above);
-      select(s, ['G']);
+    test('an adjustment row it holds comes with it', () {
+      final s = sessionOf([
+        row('a', inside: 'F'),
+        row('fx', inside: 'F', kind: LayerKind.adjustment),
+        row('F', kind: LayerKind.folder),
+        row('over'),
+      ]);
+      select(s, ['F']);
 
-      pill(s).copyFrame();
-      s.selectLayer(const LayerId('over'));
+      pill(s).cutRun();
+
+      expect(stack(s), ['over']);
       pill(s).pasteIndependentFrame();
-
-      expect(stack(s).sublist(stack(s).length - 2), ['c<G', 'G']);
-    });
-
-    test('an attach organizer rides its base: it is no row a board holds', () {
-      final s = sessionOf(nested());
-      s.selectLayer(const LayerId('a'));
-      s.folders.addAttachedLayer(AttachedPlacement.above);
-      final organizer = groupTheActiveAttachIntoAFolder(s);
-
-      s.rowSelection.value = [LayerRowAddress(organizer)];
-
-      expect(rowsOf(s).canCopySelectedRows, isFalse);
+      expect(stack(s), ['over', 'a<F', 'fx<F', 'F']);
     });
 
     test('a duplicate still has no folder to copy', () {
@@ -386,29 +403,115 @@ void main() {
     });
   });
 
+  group('🗣️F-532-Q2: the linked paste lands the folder too', () {
+    test('its rows are linked copies, in a folder of their own', () {
+      final s = sessionOf(nested());
+      select(s, ['G']);
+      pill(s).copyFrame();
+
+      s.selectLayer(const LayerId('over'));
+      expect(pill(s).canPasteLinkedFrame, isTrue);
+      pill(s).pasteLinkedFrame();
+
+      expect(stack(s), [...read(nested()), 'c<G', 'G']);
+      expect(
+        s.repository.requireProject().linkRegistry.groupOf(
+          cutId: firstCut,
+          layerId: const LayerId('c'),
+        ),
+        isNotNull,
+        reason: 'the row is linked to its copy',
+      );
+    });
+
+    test('nested, as it stood, and one undo takes it back', () {
+      final s = sessionOf(nested());
+      select(s, ['F']);
+      pill(s).copyFrame();
+
+      s.selectLayer(const LayerId('over'));
+      pill(s).pasteLinkedFrame();
+
+      expect(stack(s), [
+        ...read(nested()),
+        'a<F',
+        'b<F',
+        'c<G',
+        'G<F',
+        'F',
+      ]);
+      s.undo();
+      expect(stack(s), read(nested()));
+    });
+
+    test('in a 겸용 cut the copies stand in the sibling\'s folder', () {
+      final s = sessionOf(
+        [row('base'), row('a', inside: 'F'), row('F', kind: LayerKind.folder)],
+        sibling: [
+          row('mirror'),
+          row('a2', inside: 'F2'),
+          row('F2', kind: LayerKind.folder),
+        ],
+        links: LayerLinkRegistry(
+          groups: [
+            linkOf('g0', 'base', 'mirror'),
+            linkOf('g1', 'a', 'a2'),
+            linkOf('g2', 'F', 'F2'),
+          ],
+        ),
+      );
+      select(s, ['F']);
+      pill(s).copyFrame();
+
+      s.selectLayer(const LayerId('base'));
+      pill(s).pasteLinkedFrame();
+
+      final sibling = s.repository
+          .requireProject()
+          .tracks
+          .single
+          .cuts
+          .last
+          .layers;
+      expect(folderStructureProblem(sibling), isNull);
+      expect(read(sibling), ['mirror', 'a2<F', 'F', 'a2<F2', 'F2']);
+    });
+  });
+
+  test('🗣️F-535: in a 겸용 cut the sibling\'s attach row rides the sibling\'s '
+      'copy of the base', () {
+    Layer rider(String id, String base) =>
+        row(id).copyWith(attachedToLayerId: LayerId(base));
+    final s = sessionOf(
+      [row('base'), rider('on', 'base')],
+      sibling: [row('mirror'), rider('on2', 'mirror')],
+      links: LayerLinkRegistry(
+        groups: [linkOf('g0', 'base', 'mirror'), linkOf('g1', 'on', 'on2')],
+      ),
+    );
+    select(s, ['base']);
+    pill(s).copyFrame();
+
+    s.selectLayer(const LayerId('base'));
+    pill(s).pasteIndependentFrame();
+
+    final sibling = s.repository
+        .requireProject()
+        .tracks
+        .single
+        .cuts
+        .last
+        .layers;
+    expect(sibling, hasLength(4));
+    expect(sibling[2].attachedToLayerId, isNull);
+    expect(sibling[3].attachedToLayerId, sibling[2].id);
+  });
+
   test('in a 겸용 cut the sibling gets the folder over its rows too', () {
     final s = sessionOf(
       [row('base'), row('a', inside: 'F'), row('F', kind: LayerKind.folder)],
       sibling: [row('mirror')],
-      links: LayerLinkRegistry(
-        groups: [
-          LayerLinkGroup(
-            id: 'g',
-            members: const [
-              LayerLinkMember(
-                trackId: track,
-                cutId: firstCut,
-                layerId: LayerId('base'),
-              ),
-              LayerLinkMember(
-                trackId: track,
-                cutId: secondCut,
-                layerId: LayerId('mirror'),
-              ),
-            ],
-          ),
-        ],
-      ),
+      links: LayerLinkRegistry(groups: [linkOf('g', 'base', 'mirror')]),
     );
     select(s, ['F']);
     pill(s).copyFrame();

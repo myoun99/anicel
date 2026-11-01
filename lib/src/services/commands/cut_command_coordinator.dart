@@ -112,6 +112,12 @@ part 'cut_commands/track_commands.dart';
 part 'cut_commands/folder_and_attachment_commands.dart';
 part 'cut_commands/project_setting_commands.dart';
 
+/// What a pasted row stands on, of the rows the paste put down before it:
+/// the folder it goes in and the base it rides, with its cel links — the
+/// base's side already the cels that base landed with. Neither is the
+/// row's to carry: a payload names no row ([LayerCopyPayload]).
+typedef PastedAnchors = ({LayerId? folderId, LayerAttachment? riding});
+
 /// A pasted (or duplicated) layer: its id, and which cel of the copy each
 /// of its cels was minted from — what the pictures follow, since they live
 /// in a store keyed by the ids the paste just changed (F-62's lesson, at the
@@ -512,10 +518,12 @@ class CutCommandCoordinator {
     required CutId cutId,
     required LayerId layerId,
     required int insertionIndex,
+    LayerId? intoFolder,
   }) => _links.linkDuplicateLayer(
     cutId: cutId,
     layerId: layerId,
     insertionIndex: insertionIndex,
+    intoFolder: intoFolder,
   );
 
   // ── the folder and attachment commands: their own object ────────────
@@ -774,8 +782,9 @@ class CutCommandCoordinator {
   }
 
   /// [payload] as a row of [cutId], where a NEW row aimed at [insertionIndex]
-  /// goes ([newRowPlacement]) — in [intoFolder], the row a copied folder
-  /// landed as, when one is named.
+  /// goes ([newRowPlacement]) — standing on [anchors], the rows a paste put
+  /// down before it, when it names them. A row riding a base stands in the
+  /// group's run where it is aimed, as the row of that group it is.
   ///
   /// ↩️F-532: a pasted row took the seat as asked and belonged to no folder,
   /// so one put down among a folder's rows stood in their run outside it; the
@@ -784,7 +793,7 @@ class CutCommandCoordinator {
     required CutId cutId,
     required LayerCopyPayload payload,
     required int insertionIndex,
-    LayerId? intoFolder,
+    PastedAnchors anchors = const (folderId: null, riding: null),
   }) {
     if (payload.kind == LayerKind.camera) {
       throw StateError('The camera layer cannot be pasted.');
@@ -792,13 +801,22 @@ class CutCommandCoordinator {
 
     final project = repository.requireProject();
     final cut = _requireCut(cutId);
-    final seat = newRowPlacement(cut.layers, insertionIndex);
+    final riding = anchors.riding;
+    final base = switch (riding?.attachedToLayerId) {
+      final id? => cut.layers.byId(id),
+      null => null,
+    };
+    final seat = base == null
+        ? newRowPlacement(cut.layers, insertionIndex)
+        : (index: insertionIndex, folderId: base.folderId);
     final plan = planPasteLayerCommandInput(
       project: project,
       targetCut: cut,
       payload: payload,
       insertionIndex: seat.index,
-      folderId: intoFolder ?? seat.folderId,
+    );
+    final placed = plan.layer.copyWith(
+      folderId: anchors.folderId ?? seat.folderId,
     );
 
     // A pasted row is an added row: in a 겸용 cut its siblings get it too
@@ -807,7 +825,15 @@ class CutCommandCoordinator {
       plannedAddLayerCommand(
         repository: repository,
         cutId: cutId,
-        layer: plan.layer,
+        layer: riding == null
+            ? placed
+            : _ridingAgain(
+                // The plan's one conte row per cut is no law for a row
+                // riding that one (F-535).
+                placed.copyWith(kind: payload.kind),
+                riding,
+                plan.frameIdMap,
+              ),
         insertionIndex: plan.insertionIndex,
       ),
     );
@@ -818,6 +844,23 @@ class CutCommandCoordinator {
       handwriting: plan.handwriting,
     );
   }
+
+  /// [row] riding as [riding] says, its side of the links the cels [minted]
+  /// for it.
+  static Layer _ridingAgain(
+    Layer row,
+    LayerAttachment riding,
+    Map<FrameId, FrameId> minted,
+  ) => LayerAttachment(
+    attachedToLayerId: riding.attachedToLayerId,
+    placement: riding.placement,
+    mode: riding.mode,
+    timeline: riding.mode == AttachedMode.synced ? const {} : row.timeline,
+    baseFrameLinks: {
+      for (final link in riding.baseFrameLinks.entries)
+        link.key: ?minted[link.value],
+    },
+  ).applyTo(row);
 
   /// RASTERIZE (§6-f): nulls the media reference of every use of the
   /// layer's cels ([referenceLetGo], F-374-Q10) — the pixels are already

@@ -99,7 +99,6 @@ PasteLayerCommandInputPlan planPasteLayerCommandInput({
   required Cut targetCut,
   required LayerCopyPayload payload,
   required int insertionIndex,
-  LayerId? folderId,
 }) {
   final ids = _ProjectIdSnapshot.fromProject(project)..includeCut(targetCut);
   final newLayerId = LayerId(
@@ -153,7 +152,6 @@ PasteLayerCommandInputPlan planPasteLayerCommandInput({
     isVisible: payload.isVisible,
     opacity: payload.opacity,
     kind: pastedKind,
-    folderId: folderId,
     // The reference is kind-agnostic (§6-z23's second axis): the pasted
     // copy shows the same library asset.
     mediaReference: payload.mediaReference,
