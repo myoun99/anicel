@@ -36,7 +36,10 @@ import 'package:anicel/src/ui/brush/sheet_canvas_panel.dart'
     show SheetStrokeHold;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_paper.dart';
-import 'package:anicel/src/ui/theme/app_theme.dart' show buildAppTheme;
+import 'package:anicel/src/ui/sheet/sheet_text_edit_layer.dart'
+    show sheetTextEditFrameKey, sheetTextEditFrameWidth;
+import 'package:anicel/src/ui/theme/app_theme.dart'
+    show AppColors, buildAppTheme;
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
 /// 🚨OPENING A TEXT EDIT MOVES NOTHING (F-188, 유저 2026-09-26: 「액션란
@@ -46,8 +49,13 @@ import 'package:anicel/src/ui/timesheet_tab_host.dart';
 /// A tap on the printed words puts the field ON them: the field lays the
 /// words out as the printer did — its face, its size, its width, its line
 /// heights — and draws nothing round them. So the page with the editor
-/// open is the page without it, but for the caret — on every sheet the one
-/// editor serves, at any zoom, whatever the platform's text scale.
+/// open is the page without it, but for the caret and the frame that says
+/// so — on every sheet the one editor serves, at any zoom, whatever the
+/// platform's text scale.
+///
+/// 🗣️F-543 (2026-11-02): 「제대로 수정중인지 모르겠음. 그냥 오버레이식으로
+/// 보여주도록? 지금처럼 보여지는 텍스트랑 편집들어갈때랑 패딩같은거
+/// 안달라지는게 목표」 — the frame lies over all of it, on the box's own line.
 ///
 /// 실기 (I-127, 2026-11-01): 「입력 중 앞 글자가 잘리고 위아래도 잘린다」 —
 /// ⚠️in the app's theme, which is where a field takes its padding and its
@@ -94,7 +102,8 @@ void main() {
   const rounding = 24;
 
   /// Opens the field over [box] — a rect on the screen — and returns every
-  /// device pixel round the box that the opening changed, the caret aside.
+  /// device pixel round the box that the opening changed, the caret and the
+  /// frame on the box's line aside.
   Future<List<Offset>> openAndCompare(
     WidgetTester tester, {
     required Rect box,
@@ -107,10 +116,43 @@ void main() {
     expect(field, findsOneWidget);
     final open = await shoot(tester);
     final caret = caretOf(tester, field);
+    final frame = tester.getRect(find.byKey(sheetTextEditFrameKey));
+    expect(
+      frame,
+      rectMoreOrLessEquals(box.inflate(sheetTextEditFrameWidth / 2)),
+    );
 
     final ratio = tester.view.devicePixelRatio;
     final width =
         (tester.getSize(find.byKey(boundary)).width * ratio).round();
+    // The line's edges lie between device pixels: each spills into one.
+    final ring = frame.inflate(1 / ratio);
+    final inside = frame.deflate(sheetTextEditFrameWidth + 1 / ratio);
+
+    /// The colour [at] — a point on the screen — shows in [shot], as ARGB.
+    int colourAt(Uint8List shot, Offset at) {
+      final pixel = (at - screen) * ratio;
+      final from = (pixel.dy.floor() * width + pixel.dx.floor()) * 4;
+      return shot[from + 3] << 24 |
+          shot[from] << 16 |
+          shot[from + 1] << 8 |
+          shot[from + 2];
+    }
+
+    const line = sheetTextEditFrameWidth / 2;
+    for (final edge in [
+      Offset(frame.center.dx, frame.top + line),
+      Offset(frame.center.dx, frame.bottom - line),
+      Offset(frame.left + line, frame.center.dy),
+      Offset(frame.right - line, frame.center.dy),
+    ]) {
+      expect(
+        colourAt(open, edge),
+        AppColors.accent.toARGB32(),
+        reason: 'the frame stands whole, over the paper, on the box\'s line',
+      );
+    }
+
     final region = box.inflate(6).shift(-screen);
     return [
       for (var y = (region.top * ratio).floor(); y < region.bottom * ratio; y++)
@@ -119,15 +161,17 @@ void main() {
           x < region.right * ratio;
           x++
         )
-          if (!caret.contains(Offset(x + 0.5, y + 0.5) / ratio + screen) &&
-              [
-                for (var c = 0; c < 4; c++)
-                  (closed[(y * width + x) * 4 + c] -
-                              open[(y * width + x) * 4 + c])
-                          .abs() >
-                      rounding,
-              ].contains(true))
-            Offset(x + 0.5, y + 0.5) / ratio,
+          if (Offset(x + 0.5, y + 0.5) / ratio + screen case final at
+              when !caret.contains(at) &&
+                  !(ring.contains(at) && !inside.contains(at)) &&
+                  [
+                    for (var c = 0; c < 4; c++)
+                      (closed[(y * width + x) * 4 + c] -
+                                  open[(y * width + x) * 4 + c])
+                              .abs() >
+                          rounding,
+                  ].contains(true))
+            at - screen,
     ];
   }
 
@@ -465,6 +509,29 @@ void main() {
         expect(await openAndCompare(tester, box: box, field: field), isEmpty);
       });
     }
+
+    testWidgets('a press in the open field is the field\'s, under the frame; '
+        'the frame goes as the field does', (tester) async {
+      await pumpEnvelope(tester);
+      final box = tester.getRect(
+        find.byKey(const ValueKey<String>('cut-envelope-staff-0-edit')),
+      );
+      await tester.tapAt(box.center);
+      await tester.pumpAndSettle();
+      final editable = tester
+          .state<EditableTextState>(
+            find.descendant(of: field, matching: find.byType(EditableText)),
+          )
+          .renderEditable;
+
+      await tester.tapAt(tester.getTopLeft(field) + const Offset(1, 4));
+      await tester.pumpAndSettle();
+      expect(editable.selection?.baseOffset, 0, reason: 'the caret went there');
+
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+      expect(find.byKey(sheetTextEditFrameKey), findsNothing);
+    });
 
     testWidgets('a name typed past its box shrinks as it goes: it scrolls no '
         'glyph out, and the caret stays in the box', (tester) async {
