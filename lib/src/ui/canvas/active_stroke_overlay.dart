@@ -153,6 +153,11 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// What shows [_owed]: null where nothing is owed.
   ActiveStrokePixelSource? _owedFrom;
 
+  /// Where the stroke moved, a region an [updateRegion], since the pictures
+  /// last changed any other way: from then on it is another list, and a
+  /// mark in this one tells nothing ([movedSince]). It goes with its stroke.
+  List<DirtyRegion> _moves = [];
+
   /// 🗣️I-132-Q32 b 「무거운 플러그인은 그 행이 바뀔 때마다 캔버스가 그만큼
   /// 멈춘다」: on a row whose chain runs a plugin, a result changes the
   /// cel's whole picture — the plugin may move a pixel anywhere — so it is
@@ -193,6 +198,25 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// of a stroke in every paint, whether or not anything draws it.
   bool get strokeInHand => _owedFrom != null || _tileImages.isNotEmpty;
 
+  /// Where the pictures stand, for [movedSince] to be asked from.
+  OverlayMoveMark get moveMark => (moves: _moves, count: _moves.length);
+
+  /// What the stroke moved since [mark] — inside the tiles whose pictures it
+  /// changed, the pixels that are not what they were. Null where that cannot
+  /// be told: the pictures changed some other way since (a fill's tiles, a
+  /// shape put up, a tile handed over, a plugin's whole cel), or they are
+  /// another stroke's, or nothing moved.
+  DirtyRegion? movedSince(OverlayMoveMark mark) {
+    if (!identical(mark.moves, _moves)) {
+      return null;
+    }
+    DirtyRegion? moved;
+    for (final region in _moves.skip(mark.count)) {
+      moved = moved?.union(region) ?? region;
+    }
+    return moved;
+  }
+
   /// 🚨★★★A FILL'S RESULT TILES, AS THIS OVERLAY'S PICTURES (유저 절대규칙
   /// 2026-09-17, `promoteFillDabs`): the tiles the commit will install,
   /// each pictured from its own bytes and shown at its coordinate exactly
@@ -217,6 +241,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
         );
       }
     }
+    _moves = [];
     notifyListeners();
   }
 
@@ -265,6 +290,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   }) {
     _owedFrom = source;
     _owed.addAll(region.toTileCoords(tileSize: tileSize));
+    _moves.add(region);
     notifyListeners();
   }
 
@@ -313,6 +339,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// the cel as it stood shows, at once: what pen-up lands is what is on
   /// screen, and a coordinate the plugin cleared shows clear.
   void _showThroughPlugin() {
+    _moves = [];
     final base = preBlendBase!;
     final shown = celSurfaceAsShown(
       base.putTiles([
@@ -604,6 +631,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     if (_tileImageRevisions[coord] != revision) {
       return null;
     }
+    _moves = [];
     _tileImageRevisions.remove(coord);
     return _tileImages.remove(coord);
   }
@@ -628,6 +656,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   void _clearTiles() {
     _owed.clear();
     _owedFrom = null;
+    _moves = [];
     _landed.clear();
     for (final image in _tileImages.values) {
       // The overlay being cleared is what the on-screen frame currently
@@ -639,6 +668,11 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     _tileImageRevisions.clear();
   }
 }
+
+/// A place in the moves of an overlay's pictures
+/// ([ActiveStrokeOverlayModel.moveMark]): what they moved since it is what
+/// [ActiveStrokeOverlayModel.movedSince] tells.
+typedef OverlayMoveMark = ({List<DirtyRegion> moves, int count});
 
 /// One overlay tile of the CLASSIC route (a host whose overlay grid differs
 /// from its surface's, or a plain colour-mode stroke), as the door reads

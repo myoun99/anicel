@@ -261,6 +261,9 @@ class WritesLand extends RendersHeld {
   /// How many patches went into a picture, each write's together.
   int patchesWritten = 0;
 
+  /// How wide the widest of them was, in texels.
+  int widestPatch = 0;
+
   @override
   Future<bool> write(
     Object held,
@@ -268,6 +271,9 @@ class WritesLand extends RendersHeld {
     LevelWrites? levels,
   ) async {
     patchesWritten += base.length;
+    for (final write in base) {
+      widestPatch = math.max(widestPatch, write.source.width);
+    }
     final written = _gpu.write(held, base, levels);
     final meanwhile = beforeTheNextLands;
     beforeTheNextLands = null;
