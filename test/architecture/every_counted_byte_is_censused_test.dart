@@ -441,6 +441,9 @@ const _imageHolders = <String, String>{
   'lib/src/ui/playback/frame_picture_store.dart → _entries':
       'counted:estimatedBytes',
   'lib/src/ui/widgets/static_raster.dart → census': 'counted:censusBytes',
+  'lib/src/ui/widgets/still_raster.dart → _owed':
+      'the regions owed an image, which hold none while they wait: what a '
+      'region takes is counted where it goes (rasterBytes)',
   // … or pushed to where the census reads them …
   'lib/src/ui/media/shown_rasters.dart → _held':
       'every picture drawn as large as it is shown — a viewer\'s pages, the '
