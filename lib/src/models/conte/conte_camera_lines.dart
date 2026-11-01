@@ -116,7 +116,8 @@ const conteTransitionCross = '×';
 /// crossed ([conteTransitionCross]), what it says ([InstructionEvent
 /// .displayLabel] — the O.L's word, or a fade's term in the glossary
 /// [defById] reads) and how long it lasts, whole — `c1 × c2 カットO.L (1+0)`.
-/// A fade joins no cuts: `FO (0+12)`.
+/// A fade joins no cuts: `FO (0+12)`, and the end of its cut is its target
+/// (`conteFixedLinesOf`, F-540).
 ///
 /// 🗣️I-93-Q1 (유저 2026-10-30): 「앞 컷에만, 전체 길이로」 + 「대상도
 /// 적어주는거 잊지말고. c1 c2 カットO.L (1+0) 이런식」. [event] is the one

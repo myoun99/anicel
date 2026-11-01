@@ -16,6 +16,8 @@ class ConteWords {
     required this.cutsSuffix,
     required this.artist,
     required this.linked,
+    required this.cutHead,
+    required this.cutTail,
   });
 
   /// The head of the body's five columns.
@@ -35,6 +37,11 @@ class ConteWords {
   /// (`conteFixedLinesOf`, F-531).
   final String linked;
 
+  /// What opens the line of a fade on a cut's head — 「カット頭 FI (0+6)」 —
+  /// and of one on its tail, 「カット尻」 (`conteFixedLinesOf`, F-540).
+  final String cutHead;
+  final String cutTail;
+
   @override
   bool operator ==(Object other) =>
       other is ConteWords &&
@@ -45,7 +52,9 @@ class ConteWords {
       other.seconds == seconds &&
       other.cutsSuffix == cutsSuffix &&
       other.artist == artist &&
-      other.linked == linked;
+      other.linked == linked &&
+      other.cutHead == cutHead &&
+      other.cutTail == cutTail;
 
   @override
   int get hashCode => Object.hash(
@@ -57,5 +66,7 @@ class ConteWords {
     cutsSuffix,
     artist,
     linked,
+    cutHead,
+    cutTail,
   );
 }

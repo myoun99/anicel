@@ -587,16 +587,24 @@ Iterable<SheetMark> _cell(
 /// ([ConteCellSource.transitionLines], I-93-Q1) and under those the cuts its
 /// cut is 겸용 with ([ConteCellSource.linkedCuts], F-531) — or none where
 /// the work leaves them out ([ConteSheetSource.fixedText]).
+///
+/// 🗣️F-540 (유저 2026-11-02): 「FI나 FO같은건 컷 앞이랑 뒤에 고정적으로
+/// 붙는것임. 업계에서는 보통 カット頭 F.I (0+6) 이런식으로 컷 머리 라고 씀.
+/// 뒤는 カット尻 이렇게. 한국어는 컷 앞 컷 뒤」 · 「텍스트 위치는 고정적으로
+/// 고정텍스트 공간 내에서 맨 위나 맨 아래」 — a fade's target is the end of
+/// the cut it stands on, so it opens the lines or closes them.
 List<String> conteFixedLinesOf(
   ConteSheetSource source,
   ContePlacedCell cell, {
   required ConteWords words,
 }) => source.fixedText
     ? [
+        for (final line in cell.source.cutHeadLines) '${words.cutHead} $line',
         ...cell.source.cameraLines,
         ...cell.source.transitionLines,
         if (cell.source.linkedCuts.isNotEmpty)
           '${words.linked} ${cell.source.linkedCuts.join(',')}',
+        for (final line in cell.source.cutTailLines) '${words.cutTail} $line',
       ]
     : const [];
 

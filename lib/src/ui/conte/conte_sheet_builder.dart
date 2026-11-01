@@ -144,7 +144,7 @@ ConteCutSource _cutSource(
   StoryboardTimelineLayoutEntry entry, {
   required List<StoryboardCoverageCell> cells,
   required List<ConteDialogueLine> dialogue,
-  required List<List<String>> transitionLines,
+  required _CutTransitionLines transitionLines,
   required List<String> linkedCuts,
   required Project project,
 }) {
@@ -169,8 +169,12 @@ ConteCutSource _cutSource(
           cell: cell,
           camera: cameras[index],
           lines: (
-            transitions: transitionLines[index],
+            transitions: transitionLines.joins[index],
             linkedCuts: index == 0 ? linkedCuts : const [],
+            cutHead: index == 0 ? transitionLines.head : const [],
+            cutTail: index == cells.length - 1
+                ? transitionLines.tail
+                : const [],
           ),
         ),
     ],
@@ -275,46 +279,61 @@ Map<TrackId, _TrackTransitions> _transitionsOf(
   return byTrack;
 }
 
-/// The transitions [track] writes on [entry]'s [cells] (I-93-Q1), a list
-/// to each cell, in the order they start (the row keeps its spans so): an
-/// O.L on the last cell of the cut it leaves — 「앞 컷에만」, nowhere on the
-/// cut it enters — and a fade, which only applies inside its own cut
-/// ([oneSidedSpanAppliesToCut]), on the cell of it the fade starts in.
+/// The transitions a cut writes: the fades on its head and on its tail, and
+/// the joins each of its cells writes.
+typedef _CutTransitionLines = ({
+  List<String> head,
+  List<List<String>> joins,
+  List<String> tail,
+});
+
+/// The transitions [track] writes on [entry]'s [cells] (I-93-Q1), in the
+/// order they start (the row keeps its spans so): an O.L on the last cell of
+/// the cut it leaves — 「앞 컷에만」, nowhere on the cut it enters — and a
+/// fade, which only applies inside its own cut
+/// ([oneSidedSpanAppliesToCut]), on the end of the cut its side says.
+///
+/// 🗣️F-540 (유저 2026-11-02): 「FI나 FO같은건 컷 앞이랑 뒤에 고정적으로
+/// 붙는것임」. ⚠️Mine: W.I and W.O with them, and a fade that starts inside
+/// its cut too. ↩️A fade was written on the cell it started in.
 ///
 /// ⚠️Mine: an O.L out of a gap leaves no cut, so no conte writes it.
-List<List<String>> _transitionLinesOn(
+_CutTransitionLines _transitionLinesOn(
   StoryboardTimelineLayoutEntry entry,
   List<StoryboardCoverageCell> cells,
   _TrackTransitions track,
   Project project,
 ) {
-  final lines = [for (final _ in cells) <String>[]];
+  final lines = (
+    head: <String>[],
+    joins: [for (final _ in cells) <String>[]],
+    tail: <String>[],
+  );
   if (cells.isEmpty) {
     return lines;
   }
   for (final entryOfRow in track.row.instructions.entries) {
     final span = transitionSpanOfEvent(entryOfRow, project.cameraInstructions);
-    final cell = switch (transitionSidesOf(span.mark)) {
-      TransitionSides.both =>
-        transitionCutsJoined(
-                  track.placed,
-                  start: span.start,
-                  end: span.start + span.length,
-                ).leaving?.id ==
-                entry.cutId
-            ? cells.length - 1
-            : null,
-      _ =>
-        oneSidedSpanAppliesToCut(
-              span: span,
-              cutStart: entry.startFrame,
-              cutEnd: entry.endFrame,
-            )
-            ? _cellHolding(cells, span.start - entry.startFrame)
-            : null,
-    };
-    if (cell != null) {
-      lines[cell].add(
+    final sides = transitionSidesOf(span.mark);
+    final written = sides == TransitionSides.both
+        ? transitionCutsJoined(
+                track.placed,
+                start: span.start,
+                end: span.start + span.length,
+              ).leaving?.id ==
+              entry.cutId
+        : oneSidedSpanAppliesToCut(
+            span: span,
+            cutStart: entry.startFrame,
+            cutEnd: entry.endFrame,
+          );
+    if (written) {
+      final onCut = switch (sides) {
+        TransitionSides.both => lines.joins.last,
+        TransitionSides.fadesIn => lines.head,
+        TransitionSides.fadesOut => lines.tail,
+      };
+      onCut.add(
         conteTransitionLine(
           entryOfRow.value,
           defById: project.cameraInstructions.defById,
@@ -326,22 +345,17 @@ List<List<String>> _transitionLinesOn(
   return lines;
 }
 
-/// The index of the cell of [cells] holding [frame], one of their frames —
-/// the first where it lies before them, the last where it lies past them.
-int _cellHolding(List<StoryboardCoverageCell> cells, int frame) {
-  for (final (index, cell) in cells.indexed) {
-    if (frame < cell.endIndexExclusive) {
-      return index;
-    }
-  }
-  return cells.length - 1;
-}
-
 ConteCellSource _cellSource({
   required Cut cut,
   required StoryboardCoverageCell cell,
   required _CellCamera camera,
-  required ({List<String> transitions, List<String> linkedCuts}) lines,
+  required ({
+    List<String> transitions,
+    List<String> linkedCuts,
+    List<String> cutHead,
+    List<String> cutTail,
+  })
+  lines,
 }) {
   // The cell counts the conte's frames; the row, the camera and the picture
   // count the cut's, which begin that much earlier in a cut an O.L arrives
@@ -363,6 +377,8 @@ ConteCellSource _cellSource({
     cameraLines: camera.lines,
     transitionLines: lines.transitions,
     linkedCuts: lines.linkedCuts,
+    cutHeadLines: lines.cutHead,
+    cutTailLines: lines.cutTail,
   );
 }
 

@@ -19,10 +19,14 @@ void main() {
   const camera = ['FIX (0+5)', 'PAN (0+11)', 'FIX (0+8)'];
   const line = conteCellTextSize * conteLineHeight;
   final ja = conteWordsIn(AppLanguage.ja);
+  final ko = conteWordsIn(AppLanguage.ko);
 
   ConteSheetSource sourceOf(
     List<String> lines, {
     List<String> transitions = const [],
+    List<String> linked = const [],
+    List<String> heads = const [],
+    List<String> tails = const [],
     bool fixedText = true,
   }) => ConteSheetSource(
     fixedText: fixedText,
@@ -40,6 +44,9 @@ void main() {
             action: action,
             cameraLines: lines,
             transitionLines: transitions,
+            linkedCuts: linked,
+            cutHeadLines: heads,
+            cutTailLines: tails,
           ),
         ],
       ),
@@ -153,6 +160,44 @@ void main() {
     );
 
     final out = sourceOf(camera, transitions: transitions, fixedText: false);
+    expect(conteFixedLinesOf(out, printed(out).cell, words: ja), isEmpty);
+  });
+
+  // 🗣️F-540 (유저 2026-11-02): 「カット頭 F.I (0+6) 이런식으로 컷 머리 라고
+  // 씀. 뒤는 カット尻 이렇게. 한국어는 컷 앞 컷 뒤」 · 「텍스트 위치는
+  // 고정적으로 고정텍스트 공간 내에서 맨 위나 맨 아래」.
+  test('🎯a fade on its cut\'s head opens the lines and one on its tail '
+      'closes them, each under its end\'s word', () {
+    const transitions = ['c1 × c2 カットO.L (1+0)'];
+    final source = sourceOf(
+      camera,
+      transitions: transitions,
+      linked: const ['c2'],
+      heads: const ['FI (0+6)'],
+      tails: const ['FO (0+8)'],
+    );
+    final cell = printed(source).cell;
+    expect(conteFixedLinesOf(source, cell, words: ja), [
+      'カット頭 FI (0+6)',
+      ...camera,
+      ...transitions,
+      '${ja.linked} c2',
+      'カット尻 FO (0+8)',
+    ]);
+    final korean = conteFixedLinesOf(source, cell, words: ko);
+    expect(korean.first, '컷 앞 FI (0+6)');
+    expect(korean.last, '컷 뒤 FO (0+8)');
+    expect(
+      conteActionWordsDrop(source, cell, words: ja),
+      (camera.length + 4) * line,
+      reason: 'the typed words begin under the last of them',
+    );
+    final out = sourceOf(
+      const [],
+      heads: const ['FI (0+6)'],
+      tails: const ['FO (0+8)'],
+      fixedText: false,
+    );
     expect(conteFixedLinesOf(out, printed(out).cell, words: ja), isEmpty);
   });
 

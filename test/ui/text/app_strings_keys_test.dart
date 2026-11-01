@@ -1123,6 +1123,8 @@ void main() {
     'cnCoverCuts': (s) => s.cnCoverCuts,
     'cnCoverArtist': (s) => s.cnCoverArtist,
     'cnLinkedCuts': (s) => s.cnLinkedCuts,
+    'cnCutHead': (s) => s.cnCutHead,
+    'cnCutTail': (s) => s.cnCutTail,
     'sheetPrintEpisode': (s) => s.sheetPrintEpisode,
     'sheetPrintTitle': (s) => s.sheetPrintTitle,
     'sheetPrintScene': (s) => s.sheetPrintScene,

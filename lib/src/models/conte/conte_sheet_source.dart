@@ -32,6 +32,8 @@ class ConteCellSource {
     this.cameraLines = const [],
     this.transitionLines = const [],
     this.linkedCuts = const [],
+    this.cutHeadLines = const [],
+    this.cutTailLines = const [],
   });
 
   /// Cut-LOCAL frames.
@@ -72,6 +74,12 @@ class ConteCellSource {
   /// under [transitionLines] — on the cut's first cell only, none on the
   /// others (유저 2026-11-01, F-531: 「해당 컷의 첫번째 패널에만 적어줌」).
   final List<String> linkedCuts;
+
+  /// The fades on the head of the cell's cut and on its tail — `FI (0+6)`
+  /// (`conteTransitionLine`) — on its first cell and its last, none on the
+  /// others. Above every other line and under every other line.
+  final List<String> cutHeadLines;
+  final List<String> cutTailLines;
 
   int get lengthFrames => endFrameExclusive - startFrame;
 }

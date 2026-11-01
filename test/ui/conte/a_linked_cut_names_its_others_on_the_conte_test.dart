@@ -320,7 +320,11 @@ void main() {
   });
 
   test('two sets of words apart only in it are not the same words', () {
-    ConteWords saying(String linked) => ConteWords(
+    ConteWords saying(
+      String linked, {
+      String cutHead = 'h',
+      String cutTail = 't',
+    }) => ConteWords(
       cut: 'c',
       picture: 'p',
       action: 'a',
@@ -329,15 +333,22 @@ void main() {
       cutsSuffix: 'x',
       artist: 'r',
       linked: linked,
+      cutHead: cutHead,
+      cutTail: cutTail,
     );
 
     expect(saying('겸용'), isNot(saying('兼用')));
     expect(saying('겸용'), saying('겸용'));
+    expect(saying('겸용'), isNot(saying('겸용', cutHead: '컷 앞')));
+    expect(saying('겸용'), isNot(saying('겸용', cutTail: '컷 뒤')));
   });
 
   test('every language has its word', () {
     for (final language in AppLanguage.values) {
-      expect(conteWordsIn(language).linked, isNotEmpty, reason: '$language');
+      final words = conteWordsIn(language);
+      expect(words.linked, isNotEmpty, reason: '$language');
+      expect(words.cutHead, isNotEmpty, reason: '$language');
+      expect(words.cutTail, isNotEmpty, reason: '$language');
     }
     expect(korean.linked, '겸용');
     expect(japanese.linked, '兼用');

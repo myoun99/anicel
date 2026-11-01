@@ -1057,6 +1057,8 @@ enum AppStrings {
   String get cnCoverCuts => _s('cnCoverCuts');
   String get cnCoverArtist => _s('cnCoverArtist');
   String get cnLinkedCuts => _s('cnLinkedCuts');
+  String get cnCutHead => _s('cnCutHead');
+  String get cnCutTail => _s('cnCutTail');
 
   /// What the timesheet PRINTS — read from the NOTATION language's table,
   /// not the program's (`timesheetWordsIn`): its header boxes' labels, and
@@ -3537,6 +3539,8 @@ enum AppStrings {
     'cnCoverCuts': ' cuts',
     'cnCoverArtist': 'Storyboard',
     'cnLinkedCuts': 'Linked',
+    'cnCutHead': 'Cut head',
+    'cnCutTail': 'Cut tail',
     'sheetPrintEpisode': 'Ep.no',
     'sheetPrintTitle': 'Title',
     'sheetPrintScene': 'Scene',
@@ -5365,6 +5369,8 @@ enum AppStrings {
     'cnCoverCuts': 'cut',
     'cnCoverArtist': 'コンテ',
     'cnLinkedCuts': '兼用',
+    'cnCutHead': 'カット頭',
+    'cnCutTail': 'カット尻',
     'sheetPrintEpisode': '話数',
     'sheetPrintTitle': 'タイトル',
     'sheetPrintScene': 'シーン',
@@ -7182,6 +7188,8 @@ enum AppStrings {
     'cnCoverCuts': '컷',
     'cnCoverArtist': '콘티',
     'cnLinkedCuts': '겸용',
+    'cnCutHead': '컷 앞',
+    'cnCutTail': '컷 뒤',
     'sheetPrintEpisode': '화수',
     'sheetPrintTitle': '제목',
     'sheetPrintScene': '씬',
@@ -9183,6 +9191,8 @@ enum AppStrings {
     'cnCoverCuts': ' plans',
     'cnCoverArtist': 'Storyboard',
     'cnLinkedCuts': 'Lié',
+    'cnCutHead': 'Début de plan',
+    'cnCutTail': 'Fin de plan',
     'sheetPrintEpisode': 'Ép.',
     'sheetPrintTitle': 'Titre',
     'sheetPrintScene': 'Scène',
@@ -10945,6 +10955,8 @@ enum AppStrings {
     'cnCoverCuts': '个镜头',
     'cnCoverArtist': '分镜',
     'cnLinkedCuts': '链接',
+    'cnCutHead': '镜头开头',
+    'cnCutTail': '镜头结尾',
     'sheetPrintEpisode': '话数',
     'sheetPrintTitle': '标题',
     'sheetPrintScene': '场景',

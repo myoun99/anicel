@@ -16,5 +16,7 @@ ConteWords conteWordsIn(AppLanguage notation) {
     cutsSuffix: strings.cnCoverCuts,
     artist: strings.cnCoverArtist,
     linked: strings.cnLinkedCuts,
+    cutHead: strings.cnCutHead,
+    cutTail: strings.cnCutTail,
   );
 }
