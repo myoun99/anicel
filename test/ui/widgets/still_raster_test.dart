@@ -387,6 +387,207 @@ void main() {
     expect(tookOn, hasLength(2), reason: 'both regions took their image');
   });
 
+  group('when the frames stop (F-533)', () {
+    // A click, a hover, a pen lifting: the region changed, its frames
+    // ended with the change, and the wait was left for the next stroke to
+    // count, drawing the region whole on its first frames.
+    const step = Duration(milliseconds: 50);
+    const justShort = Duration(milliseconds: 49);
+    const theRest = Duration(milliseconds: 1);
+
+    /// The frame a mount leaves asked for, and the gap from its end.
+    Future<void> lastFrame(WidgetTester tester) => _frame(tester);
+
+    testWidgets('a region waiting for its image is taken, and asks for no '
+        'frame', (tester) async {
+      await _pump(tester, _box());
+      final region = _region(tester);
+      await lastFrame(tester);
+      await tester.binding.delayed(justShort);
+      expect(region.debugCaptureCount, 0, reason: 'before the gap');
+      await tester.binding.delayed(theRest);
+      expect(region.debugCaptureCount, 1);
+      expect(
+        tester.binding.hasScheduledFrame,
+        isFalse,
+        reason: 'the next frame that comes anyway draws it',
+      );
+      await _frame(tester);
+      expect(region.debugDrawnFromImage, isTrue);
+    });
+
+    testWidgets('a frame starts the gap over', (tester) async {
+      await _pump(tester, _box());
+      final region = _region(tester);
+      await lastFrame(tester);
+      await tester.binding.delayed(justShort);
+      await _frame(tester);
+      await tester.binding.delayed(justShort);
+      expect(region.debugCaptureCount, 0);
+      await tester.binding.delayed(theRest);
+      expect(region.debugCaptureCount, 1);
+    });
+
+    testWidgets('a frame on its way is waited for', (tester) async {
+      await _pump(tester, _box());
+      final region = _region(tester);
+      await lastFrame(tester);
+      tester.binding.scheduleFrame();
+      await tester.binding.delayed(step);
+      expect(
+        region.debugCaptureCount,
+        0,
+        reason: 'what it would take may be about to change',
+      );
+      await tester.pump();
+      await tester.binding.delayed(step);
+      expect(region.debugCaptureCount, 1);
+    });
+
+    testWidgets('regions in one gap are taken a step apart', (tester) async {
+      await pumpSurface(
+        tester,
+        Row(
+          // Stretched, for the reason the frame apart test above gives.
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Expanded(child: StillRaster(debugLabel: 'a', child: _box())),
+            Expanded(
+              child: StillRaster(debugLabel: 'b', child: _box(color: _blue)),
+            ),
+          ],
+        ),
+        left: _left,
+        width: _width,
+        height: _height,
+      );
+      final regions = tester
+          .renderObjectList<RenderStillRaster>(find.byType(StillRaster))
+          .toList();
+      await lastFrame(tester);
+      int taken() => regions.fold(0, (sum, r) => sum + r.debugCaptureCount);
+      await tester.binding.delayed(step);
+      expect(taken(), 1);
+      await tester.binding.delayed(justShort);
+      expect(taken(), 1);
+      await tester.binding.delayed(theRest);
+      expect(taken(), 2);
+    });
+
+    testWidgets('a region that threw an image away waits as many more steps '
+        'as it would frames', (tester) async {
+      final color = ValueNotifier<Color>(_red);
+      addTearDown(color.dispose);
+      await _pump(
+        tester,
+        RepaintBoundary(
+          child: CustomPaint(painter: _Fill(color), size: Size.infinite),
+        ),
+      );
+      final region = _region(tester);
+      await lastFrame(tester);
+      await tester.binding.delayed(step);
+      expect(region.debugCaptureCount, 1);
+      color.value = _blue;
+      await _frame(tester);
+      // Twice the shortest wait, two steps: and it is the wait the back-off
+      // says, not one step more.
+      await tester.binding.delayed(step + justShort);
+      expect(region.debugCaptureCount, 1);
+      await tester.binding.delayed(theRest);
+      expect(region.debugCaptureCount, 2);
+    });
+
+    testWidgets('a region the frames took leaves no step behind', (
+      tester,
+    ) async {
+      final color = ValueNotifier<Color>(_red);
+      addTearDown(color.dispose);
+      await pumpSurface(
+        tester,
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Expanded(child: StillRaster(debugLabel: 'a', child: _box())),
+            Expanded(
+              child: StillRaster(
+                debugLabel: 'b',
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    painter: _Fill(color),
+                    size: Size.infinite,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        left: _left,
+        width: _width,
+        height: _height,
+      );
+      final regions = tester
+          .renderObjectList<RenderStillRaster>(find.byType(StillRaster))
+          .toList();
+      // Frames take the first, the second changing all the while.
+      for (var frame = 0; frame <= StillRaster.stillFrames; frame += 1) {
+        color.value = frame.isEven ? _blue : _red;
+        await _frame(tester);
+      }
+      expect(regions.first.debugCaptureCount, 1);
+      expect(regions.last.debugCaptureCount, 0);
+      await tester.binding.delayed(step);
+      expect(regions.last.debugCaptureCount, 1);
+    });
+
+    testWidgets('a region offstage is not taken', (tester) async {
+      Future<void> show({required bool offstage}) => pumpSurface(
+        tester,
+        Offstage(
+          offstage: offstage,
+          child: StillRaster(debugLabel: 'test', child: _box()),
+        ),
+        left: _left,
+        width: _width,
+        height: _height,
+      );
+
+      await show(offstage: false);
+      final region = _region(tester);
+      await lastFrame(tester);
+      await show(offstage: true);
+      await lastFrame(tester);
+      await tester.binding.delayed(step);
+      expect(region.debugCaptureCount, 0);
+    });
+
+    testWidgets('a region that is gone is owed nothing', (tester) async {
+      await _pump(tester, _box());
+      await lastFrame(tester);
+      await tester.pumpWidget(const SizedBox());
+      // A timer left behind fails the test by itself; this says the other
+      // half: what is on screen now is not touched.
+      expect(tester.takeException(), isNull);
+      await tester.binding.delayed(step);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a region whose content says no is not taken', (tester) async {
+      await _pump(tester, _box());
+      final region = _region(tester);
+      await lastFrame(tester);
+      await pumpSurface(
+        tester,
+        StillRaster(debugLabel: 'test', enabled: false, child: _box()),
+        left: _left,
+        width: _width,
+        height: _height,
+      );
+      await tester.binding.delayed(step);
+      expect(region.debugCaptureCount, 0);
+    });
+  });
+
   testWidgets('its image is counted, and let go of with the region', (
     tester,
   ) async {
