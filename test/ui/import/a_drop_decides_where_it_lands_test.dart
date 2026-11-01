@@ -29,6 +29,7 @@ import '../../helpers/temp_dir.dart';
 import '../../helpers/three_frame_gif.dart';
 import '../../helpers/wait_window.dart';
 import '../../helpers/reference_to.dart';
+import '../../helpers/text_finders.dart';
 
 /// 🚨THE DROP PLACE DECIDES (유저 2026-09-11, 미디어 배치 라운드: 「떨어뜨린
 /// 자리가 곧 답」). A file let go on a picture row's frame area becomes new
@@ -360,7 +361,7 @@ void main() {
       }
       return tester
           .widget<Text>(
-            find.descendant(of: cell(id, path), matching: find.byType(Text)),
+            find.descendant(of: cell(id, path), matching: find.anyText()),
           )
           .data!;
     }

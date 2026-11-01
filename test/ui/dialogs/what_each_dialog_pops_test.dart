@@ -9,6 +9,8 @@ import 'package:anicel/src/ui/dialogs/rename_layer_dialog.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/app_window.dart' show AppWindowField;
 
+import '../../helpers/text_finders.dart';
+
 /// 🚨WHAT EACH DIALOG POPS, AND WHICH ONES REFUSE AN EMPTY VALUE.
 ///
 /// Nothing named these (the audit's untested-file pass, 2026-09-05), and
@@ -491,7 +493,7 @@ void main() {
         );
         expect(named, findsOneWidget, reason: 'fixture');
         expect(
-          find.descendant(of: named, matching: find.byType(Text)),
+          find.descendant(of: named, matching: find.anyText()),
           findsNothing,
           reason: 'the field stands alone under the title that names it',
         );

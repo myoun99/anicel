@@ -64,6 +64,19 @@ void main() {
     expect(hits, unorderedEquals(paintedCuts.keys));
   });
 
+  test('no test looks for text the way that misses a cut word', () {
+    // `find.byType` asks for the exact type: it misses every EllipsisText,
+    // and a test that expects to find NONE would pass for it. `find.anyText`
+    // and `find.anyRichText` see them all.
+    final blind = RegExp(r'find\.byType\((Rich)?Text\b');
+    final hits = <String>[
+      for (final file in dartFilesUnder('test'))
+        if (!file.path.endsWith('every_cut_word_says_itself_test.dart'))
+          if (blind.hasMatch(code(file.readAsStringSync()))) file.path,
+    ];
+    expect(hits, isEmpty, reason: 'reach for find.anyText');
+  });
+
   test('the scans see what they guard', () {
     expect(across.hasMatch('overflow: TextOverflow.ellipsis,'), isTrue);
     expect(across.hasMatch('VerticalTextOverflow.ellipsis'), isFalse);

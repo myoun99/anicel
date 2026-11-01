@@ -13,6 +13,7 @@ import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import '../../helpers/named_finders.dart';
 import '../../helpers/storyboard_host.dart';
 import '../../helpers/timeline_host.dart';
+import '../../helpers/text_finders.dart';
 
 /// R9 #22 — the rail's column skeleton, measured on the REAL widget tree.
 ///
@@ -68,7 +69,7 @@ void main() {
     // walking the row rather than by key (the label carries none).
     final sName = find.descendant(
       of: sRow,
-      matching: find.byType(Text),
+      matching: find.anyText(),
     );
     expect(sName, findsWidgets);
 

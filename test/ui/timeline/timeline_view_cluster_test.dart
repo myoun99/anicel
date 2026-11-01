@@ -14,6 +14,8 @@ import 'package:anicel/src/ui/timeline/timeline_view_cluster.dart';
 import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 import 'package:anicel/src/ui/widgets/value_hands.dart' show ValuePencil;
 
+import '../../helpers/text_finders.dart';
+
 void main() {
   const reference = TimelineZoomLimits.referencePixelsPerFrame;
 
@@ -56,7 +58,7 @@ void main() {
 
   final readout = find.byKey(const ValueKey<String>('timeline-zoom-readout'));
   String said(WidgetTester tester) => tester
-      .widget<Text>(find.descendant(of: readout, matching: find.byType(Text)))
+      .widget<Text>(find.descendant(of: readout, matching: find.anyText()))
       .data!;
 
   Future<void> drag(WidgetTester tester, double dx) async {

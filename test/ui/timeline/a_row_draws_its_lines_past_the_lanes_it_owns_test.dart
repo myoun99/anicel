@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import '../../helpers/line_on_screen.dart';
 import '../../helpers/named_finders.dart';
 import '../../helpers/timeline_host.dart';
+import '../../helpers/text_finders.dart';
 
 /// 🚨sheet-gap-stands-inside-open-lanes (10-25): a row's UNIT is itself and
 /// the lanes it opens — after it on the rail, before it on the sheet (R9
@@ -80,7 +81,7 @@ void main() {
                 'timeline-lane-label-b-${effectGroupLaneId(_e1)}',
               ),
             ),
-            matching: find.byType(Text),
+            matching: find.anyText(),
           )
           .first,
       _stops(header.top, second.bottom + 12),

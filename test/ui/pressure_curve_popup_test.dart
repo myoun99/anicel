@@ -9,6 +9,8 @@ import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/ui/widgets/anchored_popup.dart';
 import 'package:anicel/src/ui/widgets/pressure_curve_popup.dart';
 
+import '../helpers/text_finders.dart';
+
 /// BB-3: the shared pressure-curve editor popup — the CSP editing grammar
 /// (drag points, press-to-add, drag-out-to-remove, switch = on/off).
 void main() {
@@ -215,7 +217,7 @@ void main() {
       find
           .descendant(
             of: find.byType(AnchoredPopupHeader),
-            matching: find.byType(Text),
+            matching: find.anyText(),
           )
           .first,
     );

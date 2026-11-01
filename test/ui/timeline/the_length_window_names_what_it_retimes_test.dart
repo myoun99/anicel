@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/widgets/app_window.dart' show AppWindowField;
 import 'package:anicel/src/ui/widgets/window_number.dart';
 
 import '../../helpers/home_page_probes.dart';
+import '../../helpers/text_finders.dart';
 
 /// 🗣️I-24-open-entry (유저 2026-10-01): 「노출 길이 설정 (프레임), 노출 길이
 /// 설정 (컷) 이렇게 하자 … 프레임이든 초+코마든 노출 프레임수라는 텍스트
@@ -50,7 +51,7 @@ void main() {
       .widget<Text>(
         find.descendant(
           of: find.byKey(ValueKey<String>(key)),
-          matching: find.byType(Text),
+          matching: find.anyText(),
         ),
       )
       .data!;

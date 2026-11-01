@@ -30,6 +30,7 @@ import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/settings_flyout.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/number_pad_keyboard.dart';
+import '../../helpers/text_finders.dart';
 
 const pill = ValueKey<String>('canvas-brush-pill');
 const row = 'menu-window-brush-values-on-strip';
@@ -358,11 +359,11 @@ void main() {
     expect(tester.getSize(boxes.last), tester.getSize(boxes.first));
     final written = <String>[];
     for (final box in boxes) {
-      final number = find.descendant(of: box, matching: find.byType(Text));
+      final number = find.descendant(of: box, matching: find.anyText());
       expect(number, findsOneWidget, reason: '⛔fixture premise: it writes');
       written.add(tester.widget<Text>(number).data!);
       final line = tester.renderObject<RenderParagraph>(
-        find.descendant(of: number, matching: find.byType(RichText)),
+        find.descendant(of: number, matching: find.anyRichText()),
       );
       final room = tester.getSize(box);
       expect(

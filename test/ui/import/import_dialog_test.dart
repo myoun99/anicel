@@ -31,6 +31,7 @@ import '../../helpers/stand_in_movie.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
 import '../../helpers/import_span.dart';
+import '../../helpers/text_finders.dart';
 
 /// Empties [file], once nothing else holds it mapped.
 ///
@@ -781,7 +782,7 @@ void main() {
         return widget.data!;
       }
       return tester
-          .widget<Text>(find.descendant(of: cell, matching: find.byType(Text)))
+          .widget<Text>(find.descendant(of: cell, matching: find.anyText()))
           .data!;
     }
 

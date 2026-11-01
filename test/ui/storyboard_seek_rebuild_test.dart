@@ -14,6 +14,7 @@ import 'storyboard_cut_block_probe.dart';
 import '../helpers/app_icon_button_probe.dart';
 import '../helpers/named_finders.dart';
 import '../helpers/storyboard_host.dart';
+import '../helpers/text_finders.dart';
 
 /// A COMMITTED SEEK — an arrow-key flip, a ruler release, a `.`/`,` step —
 /// must not rebuild the storyboard panel. It reaches exactly the places
@@ -147,7 +148,7 @@ void main() {
           '${effectLaneId(effectId, 'brightness')}',
         ),
       ),
-      matching: find.byType(Text),
+      matching: find.anyText(),
     );
     String valueText() => tester.widget<Text>(valueCell).data!;
 

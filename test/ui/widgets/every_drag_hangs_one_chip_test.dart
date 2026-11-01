@@ -30,6 +30,7 @@ import 'package:anicel/src/ui/widgets/drag_chip.dart';
 import '../../helpers/named_finders.dart';
 import '../../helpers/storyboard_twirls.dart';
 import '../../helpers/rail_group_button.dart';
+import '../../helpers/text_finders.dart';
 
 /// I-39 (유저 2026-09-17): 「무언가를 드래그할때 커서에 생기는 그립ui,
 /// 공용화가 안되있는거같음. 패널탭띠 … 풀에서 드래그하는거랑 ui가 미묘한게
@@ -422,7 +423,7 @@ void main() {
                 'timeline-lane-label-b-fx-group:${effectId.value}',
               ),
             ),
-            matching: find.byType(Text),
+            matching: find.anyText(),
           )
           .first,
       select: const Offset(30, 0),

@@ -39,6 +39,7 @@ import '../../helpers/canvas_pill.dart';
 import '../../helpers/device_viewport.dart';
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/number_pad_keyboard.dart';
+import '../../helpers/text_finders.dart';
 
 void main() {
   const pageSize = ui.Size(600, 800);
@@ -129,7 +130,7 @@ void main() {
       .widget<Text>(
         find.descendant(
           of: find.byKey(const ValueKey<String>('media-viewer-page-readout')),
-          matching: find.byType(Text),
+          matching: find.anyText(),
         ),
       )
       .data!;

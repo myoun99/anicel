@@ -29,6 +29,7 @@ import '../ui/flyout_test_helpers.dart'
     show flyoutOwnerByItemKey, readCommandEnabled;
 import 'app_icon_button_probe.dart';
 import 'named_finders.dart';
+import 'text_finders.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
@@ -481,7 +482,7 @@ String? selectedCellStateLabel(WidgetTester tester) {
       continue;
     }
     final texts = tester.widgetList<Text>(
-      find.descendant(of: cellFinder, matching: find.byType(Text)),
+      find.descendant(of: cellFinder, matching: find.anyText()),
     );
     return texts.isEmpty ? null : texts.first.semanticsLabel;
   }

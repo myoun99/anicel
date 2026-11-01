@@ -24,6 +24,8 @@ import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 import 'package:anicel/src/ui/timeline/timeline_ruler_norishiro_boundary.dart';
 
+import '../../helpers/text_finders.dart';
+
 /// The ruler's のりしろ mark: a second end-line saying how much is DRAWN, past
 /// the red line saying how much PLAYS.
 ///
@@ -76,7 +78,7 @@ void main() {
         'boxes spread as the handle grows', (tester) async {
       await pumpBoundary(tester, cutEnd: 100, drawnEnd: 200);
       final narrow = [
-        for (final text in tester.widgetList<Text>(find.byType(Text)))
+        for (final text in tester.widgetList<Text>(find.anyText()))
           text.data!,
       ];
       expect(narrow, ['노', '리', '시', '로']);
@@ -97,7 +99,7 @@ void main() {
     testWidgets('a handle too short for the word keeps the LINE and drops the '
         'letters — four glyphs in 0+2 would collide', (tester) async {
       await pumpBoundary(tester, cutEnd: 100, drawnEnd: 118);
-      expect(find.byType(Text), findsNothing);
+      expect(find.anyText(), findsNothing);
       expect(
         find.byKey(const ValueKey<String>('timeline-norishiro-label')),
         findsNothing,
@@ -112,19 +114,19 @@ void main() {
         'prefixed to it', (tester) async {
       // 60px holds 여백 (2 glyphs) comfortably…
       await pumpBoundary(tester, cutEnd: 100, drawnEnd: 160, label: '여백');
-      expect(find.byType(Text), findsNWidgets(2));
+      expect(find.anyText(), findsNWidgets(2));
 
       // …and not O.L 여백 (7 glyphs incl. the space), which is why the room a
       // label needs is counted per glyph.
       await pumpBoundary(tester, cutEnd: 100, drawnEnd: 160, label: 'O.L 여백');
-      expect(find.byType(Text), findsNothing);
+      expect(find.anyText(), findsNothing);
       expect(find.byType(DecoratedBox), findsOneWidget);
     });
 
     testWidgets('an empty label keeps the line alone (a language with no short '
         'word for it)', (tester) async {
       await pumpBoundary(tester, cutEnd: 100, drawnEnd: 300, label: '');
-      expect(find.byType(Text), findsNothing);
+      expect(find.anyText(), findsNothing);
       expect(find.byType(DecoratedBox), findsOneWidget);
     });
 

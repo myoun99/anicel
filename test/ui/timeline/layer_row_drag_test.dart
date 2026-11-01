@@ -35,6 +35,7 @@ import 'package:anicel/src/ui/timeline/timeline_row_edges.dart';
 import '../../helpers/named_finders.dart';
 import '../../helpers/timeline_host.dart';
 import '../../helpers/row_folds.dart';
+import '../../helpers/text_finders.dart';
 
 /// The row-order drag, driven as a real gesture: the rail row IS the
 /// handle, the caret says where the row would land, and the release commits
@@ -564,7 +565,7 @@ void main() {
     // header wears the layer row's trailing skeleton, and its centre is the
     // group's Reset since the opacity column widened.
     final grip = find
-        .descendant(of: header, matching: find.byType(Text))
+        .descendant(of: header, matching: find.anyText())
         .first;
     await tester.ensureVisible(header);
     await tester.pumpAndSettle();
@@ -748,7 +749,7 @@ void main() {
     // centred across (F-436①, 유저 2026-10-21 — ↩️it stood at the far end).
     final box = tester.getRect(swallow);
     final badge = tester.getRect(
-      find.descendant(of: swallow, matching: find.byType(Text)),
+      find.descendant(of: swallow, matching: find.anyText()),
     );
     expect(
       badge.left - box.left,
@@ -1105,7 +1106,7 @@ void main() {
     );
     final rowWord =
         tester
-            .getRect(find.descendant(of: swallow, matching: find.byType(Text)))
+            .getRect(find.descendant(of: swallow, matching: find.anyText()))
             .left -
         tester.getRect(swallow).left;
     await gesture.cancel();
@@ -1125,7 +1126,7 @@ void main() {
     );
     final lineWord =
         tester
-            .getRect(find.descendant(of: caret, matching: find.byType(Text)))
+            .getRect(find.descendant(of: caret, matching: find.anyText()))
             .left -
         tester.getRect(bar).left;
     await gesture.cancel();

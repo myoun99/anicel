@@ -22,6 +22,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/named_finders.dart';
 import '../../helpers/number_pad_keyboard.dart';
+import '../../helpers/text_finders.dart';
 
 /// ⑨b SE audio UX: the row's mute speaker and its 「오디오」 group (I-140 —
 /// ↩️the audio lane's AE-style offset value field, then the lane itself).
@@ -230,7 +231,7 @@ void main() {
         find.byKey(ValueKey<String>('timeline-lane-value-sea-voice-$laneId'));
     String shown(String laneId) => tester
         .widgetList<Text>(
-          find.descendant(of: value(laneId), matching: find.byType(Text)),
+          find.descendant(of: value(laneId), matching: find.anyText()),
         )
         .map((text) => text.data)
         .join();

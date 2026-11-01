@@ -12,6 +12,7 @@ import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
+import '../../helpers/text_finders.dart';
 
 /// 🚨THE COLUMN LAW of the import/placement window (유저 2026-09-11, 미디어
 /// 배치 라운드 5·6): a column stands only when some row of THIS window has
@@ -78,7 +79,7 @@ void main() {
     }
     return tester
         .widget<Text>(
-          find.descendant(of: cell(id, path), matching: find.byType(Text)),
+          find.descendant(of: cell(id, path), matching: find.anyText()),
         )
         .data!;
   }

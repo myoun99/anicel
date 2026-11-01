@@ -8,6 +8,8 @@ import 'package:anicel/src/ui/storyboard_panel.dart'
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_run_labels_painter.dart';
 
+import '../helpers/text_finders.dart';
+
 /// The storyboard's CONTE row is PAINTED — by the timeline's own row
 /// painter, on the cuts' conte layers laid on the track's axis — so tests
 /// read it off that painter, the way the timeline's row probes do, and its
@@ -64,7 +66,7 @@ String? conteRowName(WidgetTester tester, String trackId) => tester
     .widget<Text>(
       find.descendant(
         of: find.byKey(ValueKey<String>('storyboard-conte-label-$trackId')),
-        matching: find.byType(Text),
+        matching: find.anyText(),
       ),
     )
     .data;

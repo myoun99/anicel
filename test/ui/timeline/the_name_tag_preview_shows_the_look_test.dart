@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_preview.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/text_finders.dart';
 
 /// The name tag's live preview on its group header — nothing named it
 /// (2026-09-05).
@@ -63,7 +64,7 @@ void main() {
     expect(find.text('名前'), findsOneWidget);
     expect(find.text('セリフ'), findsNothing);
     expect(
-      find.byType(Text),
+      find.anyText(),
       findsOneWidget,
       reason: 'not an EMPTY Text beside it — the row draws one thing',
     );

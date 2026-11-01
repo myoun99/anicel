@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/look_test_binding.dart';
+import '../../helpers/text_finders.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -170,7 +171,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey<String>('canvas-playback-view')),
-        matching: find.byType(Text),
+        matching: find.anyText(),
       ),
       findsNothing,
       reason: '설명 문구 금지 — and the old words were English only',

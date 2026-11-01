@@ -25,6 +25,7 @@ import 'package:anicel/src/ui/widgets/instant_tap_region.dart'
 import '../../helpers/line_on_screen.dart';
 import '../../helpers/named_finders.dart';
 import '../../helpers/storyboard_host.dart';
+import '../../helpers/text_finders.dart';
 
 /// 🚨sheet-gap-stands-inside-open-lanes (10-25), the timeline's law on the
 /// conte's rail (「타임라인 패널에만 있는 것은 콘티 패널에도」): a row's
@@ -93,7 +94,7 @@ void main() {
                   widget is LayerRowDragTarget &&
                   widget.subject == _header(_e1),
             ),
-            matching: find.byType(Text),
+            matching: find.anyText(),
           )
           .first,
       _stops(header.top, parameters.bottom + 12),

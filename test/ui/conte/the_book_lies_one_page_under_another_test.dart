@@ -34,6 +34,7 @@ import 'package:anicel/src/ui/widgets/app_scrollbar_lane.dart';
 import '../../helpers/canvas_pill.dart';
 import '../../helpers/device_viewport.dart';
 import '../../helpers/sheet_paper_view.dart';
+import '../../helpers/text_finders.dart';
 
 /// 🗣️F-201 (유저 2026-09-27): 「캔버스 베이스 패널, 뷰어든 콘티 프리뷰든
 /// pdf같은거 여러페이지 동시에 볼수있게 하고싶음. pdf리더같은거 밑으로 쭉
@@ -149,7 +150,7 @@ void main() {
       .widget<Text>(
         find.descendant(
           of: find.byKey(const ValueKey<String>('conte-page-readout')),
-          matching: find.byType(Text),
+          matching: find.anyText(),
         ),
       )
       .data!;

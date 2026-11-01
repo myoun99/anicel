@@ -22,6 +22,7 @@ import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/text_finders.dart';
 
 void main() {
   Future<EditorShortcutBindings> pump(WidgetTester tester) async {
@@ -274,7 +275,7 @@ void main() {
     Finder headingOf(ShortcutShelf shelf) =>
         find.byKey(ValueKey<String>(headingKeyOf(shelf)));
     Finder wordsOf(Finder row) =>
-        find.descendant(of: row, matching: find.byType(Text));
+        find.descendant(of: row, matching: find.anyText());
 
     testWidgets('pressing a heading\'s WORDS opens it, and pressing its far '
         'end shuts it — the end the list\'s scrollbar runs by', (
@@ -479,7 +480,7 @@ void main() {
         .widget<Text>(
           find.descendant(
             of: find.byKey(ValueKey<String>(key)),
-            matching: find.byType(Text),
+            matching: find.anyText(),
           ),
         )
         .style

@@ -38,6 +38,7 @@ import '../helpers/cel_photo_fixture.dart';
 import '../helpers/reference_to.dart';
 import '../helpers/named_finders.dart';
 import '../helpers/rail_group_button.dart';
+import '../helpers/text_finders.dart';
 
 const _toolsTabKey = ValueKey<String>('panel-tab-tools');
 const _canvasTabKey = ValueKey<String>('panel-tab-canvas');
@@ -1026,7 +1027,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(_brushesTabKey),
-          matching: find.byType(Text),
+          matching: find.anyText(),
         ),
         findsNothing,
         reason: 'no name on the button',

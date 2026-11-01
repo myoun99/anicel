@@ -22,6 +22,7 @@ import 'flyout_test_helpers.dart';
 import '../helpers/named_finders.dart';
 import '../helpers/room_for_the_pills.dart';
 import '../helpers/timeline_host.dart';
+import '../helpers/text_finders.dart';
 
 /// 🚨T25 — renaming a layer goes through the SHARED pill's Edit Instance
 /// now (유저 2026-08-14: 「인스턴스 편집 버튼도 공통버튼으로 이동 … 그러고
@@ -247,7 +248,7 @@ Text _layerNameText(WidgetTester tester, LayerId layerId) {
   final nameFinder = find.named('timeline-layer-name-$layerId');
   final textFinder = find.descendant(
     of: nameFinder,
-    matching: find.byType(Text),
+    matching: find.anyText(),
   );
   return tester.widget<Text>(textFinder.first);
 }

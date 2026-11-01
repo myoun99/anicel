@@ -32,6 +32,7 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
 
 import '../../helpers/named_finders.dart';
 import '../../helpers/storyboard_host.dart';
+import '../../helpers/text_finders.dart';
 
 /// 🗣️I-73 ④ (유저 2026-10-08): 「카메라 행 범위는 키표시/이동/레인 등 모든거
 /// 콘티패널에서 가능. 컷 클램핑만 되도록」 — and the camera row's head is the
@@ -499,7 +500,7 @@ void main() {
         .widget<Text>(
           find.descendant(
             of: key('storyboard-lane-value-$rowId-$laneId'),
-            matching: find.byType(Text),
+            matching: find.anyText(),
           ),
         )
         .data!;

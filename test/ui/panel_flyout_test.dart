@@ -6,6 +6,8 @@ import 'package:anicel/src/ui/panels/panel_scrollbar.dart';
 import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
+import '../helpers/text_finders.dart';
+
 /// The shared flyout's opening direction (UI-R6 #1): plenty of room below
 /// opens downward as always; a cramped bottom anchor opens the whole list
 /// UPWARD (bottom hugging the anchor's top) with the item order unchanged —
@@ -484,7 +486,7 @@ void main() {
       final text = find.byKey(const ValueKey<String>('strength-text'));
       final painted = tester
           .widget<RichText>(
-            find.descendant(of: text, matching: find.byType(RichText)),
+            find.descendant(of: text, matching: find.anyRichText()),
           )
           .text
           .style!
@@ -530,7 +532,7 @@ void main() {
 
   bool cut(WidgetTester tester, String label) => tester
       .renderObject<RenderParagraph>(
-        find.descendant(of: find.text(label), matching: find.byType(RichText)),
+        find.descendant(of: find.text(label), matching: find.anyRichText()),
       )
       .didExceedMaxLines;
 

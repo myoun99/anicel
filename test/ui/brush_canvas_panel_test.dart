@@ -33,6 +33,7 @@ import '../helpers/brush_canvas_fixture.dart';
 import '../helpers/pinch_recognised_at.dart';
 import 'brush_canvas_test_helpers.dart';
 import '../helpers/number_pad_keyboard.dart';
+import '../helpers/text_finders.dart';
 
 /// Everything a floor pill shows that a rail pill folds away — in the order
 /// it is laid out, which is also the reverse of the order it folds in.
@@ -1598,7 +1599,7 @@ void main() {
       const ValueKey<String>('canvas-viewport-zoom-label'),
     );
     String zoomText() => tester
-        .widget<Text>(find.descendant(of: label, matching: find.byType(Text)))
+        .widget<Text>(find.descendant(of: label, matching: find.anyText()))
         .data!;
     final before = zoomText();
     final gesture = await tester.startGesture(tester.getCenter(label));

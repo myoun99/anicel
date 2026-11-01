@@ -19,6 +19,7 @@ import '../../helpers/device_viewport.dart';
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/rail_group_button.dart';
+import '../../helpers/text_finders.dart';
 
 /// The viewers remember what they were looking at, WITH THE FILM (유저
 /// 확정 ⑤㉑, 2026-08-12): which reference belongs beside which drawing is
@@ -49,7 +50,7 @@ Finder _subViewer() =>
     find.byKey(const ValueKey<String>('media-viewer-sub-panel'));
 
 String _pageTextIn(WidgetTester tester, Finder viewer) => tester
-    .widgetList<Text>(find.descendant(of: viewer, matching: find.byType(Text)))
+    .widgetList<Text>(find.descendant(of: viewer, matching: find.anyText()))
     .map((text) => text.data ?? '')
     .firstWhere((text) => text.contains('/'), orElse: () => '');
 

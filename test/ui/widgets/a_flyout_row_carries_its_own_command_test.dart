@@ -9,6 +9,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/text_finders.dart';
 
 /// 🗣️R9-rest, 유저 2026-10-06 of the text tool's 「선택된 텍스트」 list:
 /// 「거기서 다른 텍스트 선택할수있게 리스트 고르는. 팝오버로 리스트
@@ -296,7 +297,7 @@ void main() {
     );
 
     final name = tester.renderObject<RenderParagraph>(
-      find.descendant(of: find.text(long), matching: find.byType(RichText)),
+      find.descendant(of: find.text(long), matching: find.anyRichText()),
     );
     final reach = name
         .getBoxesForSelection(

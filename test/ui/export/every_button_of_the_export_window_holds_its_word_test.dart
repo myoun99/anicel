@@ -31,6 +31,7 @@ import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 import '../../helpers/app_faces.dart';
+import '../../helpers/text_finders.dart';
 
 /// 🗣️F-486 (유저 2026-10-27): 「출력창 셀 탭, 콘티같은거 일본어에서 빈
 /// 버튼되는데 아마 길어서 문제생기는듯. 일단 출력창 버튼들 자동맞춤해서
@@ -92,7 +93,7 @@ void main() {
   /// much.
   List<String> cutWords(WidgetTester tester, Type type) => [
     for (final element in find
-        .descendant(of: find.byType(type), matching: find.byType(RichText))
+        .descendant(of: find.byType(type), matching: find.anyRichText())
         .evaluate())
       if (element.renderObject case final RenderParagraph paragraph)
         if ((

@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 
 import '../../helpers/timeline_host.dart';
+import '../../helpers/text_finders.dart';
 
 /// 🚨유저 #8 (2026-08-14): 「타임라인 펼친상황의 버튼갱신, **1,2,3,4,n만
 /// 천천히 페이드인**하면서 나타나거나 페이드아웃하면서 사라짐. **누가 이런
@@ -40,7 +41,7 @@ void main() {
             .widget<RichText>(
               find.descendant(
                 of: find.byKey(ValueKey<String>(id)),
-                matching: find.byType(RichText),
+                matching: find.anyRichText(),
               ),
             )
             .text

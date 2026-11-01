@@ -10,6 +10,7 @@ import 'package:anicel/src/ui/timeline/key_choice_row.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart' show Pill, PillStrip;
 
 import '../../helpers/app_faces.dart';
+import '../../helpers/text_finders.dart';
 
 /// I-89 ④-Q5 · anchor-walks-a-path-Q4: the key window's choice rows — how
 /// the path passes through the covered keys (AE's four), whether their time
@@ -213,7 +214,7 @@ void main() {
             for (final paragraph in tester.renderObjectList<RenderParagraph>(
               find.descendant(
                 of: find.byType(PillStrip),
-                matching: find.byType(RichText),
+                matching: find.anyRichText(),
               ),
             ))
               if (paragraph.didExceedMaxLines) paragraph.text.toPlainText(),

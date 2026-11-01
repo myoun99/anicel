@@ -20,6 +20,7 @@ import '../../helpers/number_pad_keyboard.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/settle_async.dart';
+import '../../helpers/text_finders.dart';
 
 /// The media viewer panel (R4, §6-h): images and PDF pages inside the
 /// canvas shell, page stepping, and the honest refusals. The PDF renderer
@@ -113,7 +114,7 @@ void main() {
     );
     expect(label, findsOneWidget, reason: 'in its place, not removed');
     String zoomText() => tester
-        .widget<Text>(find.descendant(of: label, matching: find.byType(Text)))
+        .widget<Text>(find.descendant(of: label, matching: find.anyText()))
         .data!;
     final before = zoomText();
 

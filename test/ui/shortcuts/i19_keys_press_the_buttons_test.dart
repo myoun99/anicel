@@ -9,6 +9,7 @@ import '../../helpers/app_shortcuts.dart';
 import '../../helpers/home_page_probes.dart';
 import '../../helpers/panel_finders.dart';
 import '../timeline/timeline_cell_probe.dart' show timelineCellGlobalRect;
+import '../../helpers/text_finders.dart';
 
 /// 🗣️I-19 (유저 2026-09-12 / 09-13): 「여러 단축키 기존 버튼에 연결」 — every
 /// key here presses a button that already existed, and the test for each is
@@ -291,7 +292,7 @@ void main() {
             of: inMainCanvas(
               find.byKey(const ValueKey<String>('canvas-viewport-zoom-label')),
             ),
-            matching: find.byType(Text),
+            matching: find.anyText(),
           ),
         )
         .data!;

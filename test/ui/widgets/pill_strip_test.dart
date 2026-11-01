@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
+import '../../helpers/text_finders.dart';
+
 /// The app's one grouped choice (board `pill-group-everywhere`), laid
 /// across — the export window's first shape — or down, for answers too long
 /// to sit side by side in a panel's width (the tool settings' read source).
@@ -308,7 +310,7 @@ void main() {
         .widget<Text>(
           find.descendant(
             of: find.byKey(ValueKey<String>(key)),
-            matching: find.byType(Text),
+            matching: find.anyText(),
           ),
         )
         .style!

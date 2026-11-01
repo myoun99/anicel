@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
 
 import '../../helpers/named_finders.dart';
 import '../../helpers/timeline_host.dart';
+import '../../helpers/text_finders.dart';
 
 const _probe = ValueKey<String>('probe');
 const _beside = ValueKey<String>('beside');
@@ -149,7 +150,7 @@ void main() {
     );
     final area = find.named('timeline-layer-name-${session.activeLayerId}');
     final letters = find
-        .descendant(of: area, matching: find.byType(RichText))
+        .descendant(of: area, matching: find.anyRichText())
         .first;
     expect(tester.getTopLeft(letters).dx, tester.getTopLeft(area).dx);
     expect(

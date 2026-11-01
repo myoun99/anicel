@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart' show Pill, PillStrip;
 
 import '../../helpers/app_faces.dart';
+import '../../helpers/text_finders.dart';
 
 /// 🗣️I-89 ② (유저 2026-10-10: 「B' 두줄 줄마다 세기로 가자」): the key window
 /// gives each side of the covered keys a row — its kind, then its ease's
@@ -200,7 +201,7 @@ void main() {
           for (final paragraph in tester.renderObjectList<RenderParagraph>(
             find.descendant(
               of: find.byType(PillStrip),
-              matching: find.byType(RichText),
+              matching: find.anyRichText(),
             ),
           ))
             if (paragraph.didExceedMaxLines) paragraph.text.toPlainText(),

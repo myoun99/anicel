@@ -19,6 +19,8 @@ import 'package:anicel/src/ui/theme/disabled_ink.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/overflow_scrollers.dart';
 
+import '../../helpers/text_finders.dart';
+
 const int _red = 0xFFE53935;
 const int _blue = 0xFF1E88E5;
 const int _green = 0xFF43A047;
@@ -573,7 +575,7 @@ void main() {
           .widget<Text>(
             find.descendant(
               of: _key('palette-$id-name'),
-              matching: find.byType(Text),
+              matching: find.anyText(),
             ),
           )
           .style
