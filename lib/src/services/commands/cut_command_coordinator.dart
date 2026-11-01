@@ -24,6 +24,7 @@ import '../../models/layer_mark.dart';
 import '../../models/layer_process.dart';
 import '../../models/timeline_repeat.dart' show rederiveRunBehaviors;
 import '../../models/media_asset.dart';
+import '../../models/new_row_placement.dart' show newRowPlacement;
 import '../../models/pasteboard_bounds.dart' show PasteboardSize;
 import '../../models/se_name_tag.dart';
 import '../../models/se_sound.dart';
@@ -772,22 +773,32 @@ class CutCommandCoordinator {
     );
   }
 
+  /// [payload] as a row of [cutId], where a NEW row aimed at [insertionIndex]
+  /// goes ([newRowPlacement]) — in [intoFolder], the row a copied folder
+  /// landed as, when one is named.
+  ///
+  /// ↩️F-532: a pasted row took the seat as asked and belonged to no folder,
+  /// so one put down among a folder's rows stood in their run outside it; the
+  /// linked paste beside it asked [newRowPlacement] all along.
   PastedLayer pasteLayer({
     required CutId cutId,
     required LayerCopyPayload payload,
     required int insertionIndex,
+    LayerId? intoFolder,
   }) {
-    if (payload.kind.isFixed) {
+    if (payload.kind == LayerKind.camera) {
       throw StateError('The camera layer cannot be pasted.');
     }
 
     final project = repository.requireProject();
     final cut = _requireCut(cutId);
+    final seat = newRowPlacement(cut.layers, insertionIndex);
     final plan = planPasteLayerCommandInput(
       project: project,
       targetCut: cut,
       payload: payload,
-      insertionIndex: insertionIndex,
+      insertionIndex: seat.index,
+      folderId: intoFolder ?? seat.folderId,
     );
 
     // A pasted row is an added row: in a 겸용 cut its siblings get it too
