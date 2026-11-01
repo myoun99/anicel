@@ -25,6 +25,7 @@ void main() {
       expect(gridOfTheWindow(composed: composed, screens: const []), (
         vblankMicros: 1000,
         periodMicros: 6948.6,
+        composedVblankMicros: 1000,
         composedEveryMicros: 6948.6,
       ));
     });
@@ -33,6 +34,7 @@ void main() {
       expect(gridOfTheWindow(composed: composed, screens: const [slow]), (
         vblankMicros: 4000,
         periodMicros: 16949.1,
+        composedVblankMicros: 1000,
         composedEveryMicros: 6948.6,
       ));
     });
@@ -42,6 +44,7 @@ void main() {
       const sixtyGrid = (
         vblankMicros: 3000,
         periodMicros: 16666.6,
+        composedVblankMicros: 1000,
         composedEveryMicros: 6948.6,
       );
       expect(
@@ -59,6 +62,7 @@ void main() {
       const clock = (
         vblankMicros: 1000,
         periodMicros: 6948.6,
+        composedVblankMicros: 1000,
         composedEveryMicros: 6948.6,
       );
       expect(
@@ -133,6 +137,7 @@ void main() {
       grid.periodMicros,
       reason: 'a test has no window: it stands on the compositor\'s clock',
     );
+    expect(grid.composedVblankMicros, grid.vblankMicros);
     expect(
       (grid.vblankMicros - Timeline.now).abs(),
       lessThan(Duration.microsecondsPerSecond),

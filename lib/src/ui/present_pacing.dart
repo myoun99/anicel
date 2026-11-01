@@ -245,12 +245,10 @@ mixin PresentPacing on WidgetsBinding {
       nowMicros: now,
       vblankMicros: grid.vblankMicros,
       periodMicros: grid.periodMicros,
+      composedVblankMicros: grid.composedVblankMicros,
       composedEveryMicros: grid.composedEveryMicros,
       budgetMicros: budgetMicros,
-      handOffMicros: _spread.handOffFor(
-        grid.periodMicros,
-        composedEveryMicros: grid.composedEveryMicros,
-      ),
+      handOffMicros: _spread.handOffFor(grid.composedEveryMicros),
     );
   }
 
@@ -284,7 +282,7 @@ mixin PresentPacing on WidgetsBinding {
     final frame = platformDispatcher.frameData.frameNumber;
     final released = timing.nowMicros;
     _paced[frame] = (released: released, seen: null);
-    final period = _gridOf(timing).periodMicros;
+    final period = _composedEvery(timing);
     final vblank = claim.vblankMicros;
     final before = _heldVblank;
     if (before != null) {
@@ -338,9 +336,11 @@ mixin PresentPacing on WidgetsBinding {
   @protected
   Future<void> rasterBehind() => rasterThreadBehind();
 
-  VblankGrid _gridOf(DisplayTiming timing) =>
-      timing.vblankGrid() ??
-      (vblankMicros: 0, periodMicros: 1e6 / 60, composedEveryMicros: 1e6 / 60);
+  /// A held frame's latch is on the compositor's vblanks, whatever screen it
+  /// is shown on ([PresentClaim]): so are the gaps between them and the
+  /// quiet they leave.
+  double _composedEvery(DisplayTiming timing) =>
+      timing.vblankGrid()?.composedEveryMicros ?? 1e6 / 60;
 
   /// A clock running and looking, on a display that says: its frames are
   /// held for their vblanks ([framesAreHeld]).
@@ -362,16 +362,13 @@ mixin PresentPacing on WidgetsBinding {
     // The second fewest of the last gaps: one odd one — the loop's wrap, a
     // run's first frames — does not shut every quiet after it.
     final gaps = [..._heldGaps]..sort();
-    final grid = _gridOf(timing);
+    final period = _composedEvery(timing);
     return quietBetweenHeldFrames(
       held: (
         vblankMicros: vblank,
-        periodMicros: grid.periodMicros,
+        periodMicros: period,
         gap: gaps[math.min(1, gaps.length - 1)],
-        handOffMicros: _spread.handOffFor(
-          grid.periodMicros,
-          composedEveryMicros: grid.composedEveryMicros,
-        ),
+        handOffMicros: _spread.handOffFor(period),
       ),
       // What the next held frame's own work may still take before its
       // hand-off ([budgetMicros]), and a millisecond.

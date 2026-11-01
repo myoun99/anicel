@@ -6,11 +6,12 @@ import 'package:ffi/ffi.dart';
 import 'qa_engine_abi.dart';
 
 /// Where a window's pictures land: a real vblank of its screen on the frame
-/// clock, that screen's refresh period, and how often the compositor
-/// composes — the same period but on a screen slower than its clock.
+/// clock and that screen's refresh period — and the compositor's, which is
+/// the same grid but on a screen slower than its clock.
 typedef VblankGrid = ({
   int vblankMicros,
   double periodMicros,
+  int composedVblankMicros,
   double composedEveryMicros,
 });
 
@@ -19,7 +20,7 @@ typedef RefreshLine = ({int vblankMicros, double periodMicros});
 
 /// Within this much of the compositor's period a screen is on its clock:
 /// the two are read apart, and differ in their last digits.
-const double _onItsClock = 1.01;
+const double _onItsClockWithin = 1.01;
 
 /// 🚨THE GRID OF A WINDOW ON [screens] — THE FASTEST OF THEM (유저
 /// 2026-11-02: 「주사율 다른 모니터 둘에 걸쳐있으면 높은쪽을 기반으로
@@ -39,12 +40,14 @@ VblankGrid gridOfTheWindow({
       fastest = screen;
     }
   }
-  final line = fastest == null || fastest.periodMicros <= composedEvery * _onItsClock
-      ? composed
-      : fastest;
+  final onItsClock =
+      fastest == null ||
+      fastest.periodMicros <= composedEvery * _onItsClockWithin;
+  final line = onItsClock ? composed : fastest;
   return (
     vblankMicros: line.vblankMicros,
     periodMicros: line.periodMicros,
+    composedVblankMicros: composed.vblankMicros,
     composedEveryMicros: composedEvery,
   );
 }

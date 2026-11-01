@@ -43,51 +43,53 @@ const int presentLatchLateMicros = 1500;
 /// composition frame reaches the glass on the second vblank after it starts.
 const int presentShownAfterVblanks = 3;
 
-/// 🚨ON A SCREEN SLOWER THAN THE COMPOSITOR'S CLOCK A PICTURE LANDS BY
-/// ANOTHER LAW (Windows, the compositor kept composing at 143.9Hz, a window
-/// on a 59.95Hz screen, 2026-11-02: 300 pictures handed over at every phase
-/// of the screen's refresh, each told by one pixel of the desktop as the
-/// compositor presented it): the next composition frame takes it, that frame
-/// presents it about [composedFramePresentsAfterMicros] on, and the screen
-/// shows it on its own next vblank — this many after the one it claimed,
-/// where its raster ends. Ended in the first 42 hundredths of a refresh past
-/// a vblank: 115 of 117 on the next one; and later and later into the next
-/// after it, none of 31 in the last tenth of the refresh, which is the same
-/// vblank's window opening a little early. (84 of a hundred with the
-/// compositor left to compose on demand.)
-const int presentShownAfterScreenVblanks = 1;
+/// 🚨ON A SCREEN SLOWER THAN THE COMPOSITOR'S CLOCK A PICTURE IS TAKEN BY THE
+/// SAME LATCH AND SHOWN BY ANOTHER LAW (Windows, a compositor kept composing
+/// at 143.9Hz, the window on a 59.95Hz screen, 2026-11-02, the app's own
+/// clock against one pixel of the desktop as the compositor presented it):
+/// which composition frame takes a picture is settled on the COMPOSITOR'S
+/// vblanks, by the latch above; that frame presents it within
+/// [composedFramePresentsWithinMicros] of starting, and the screen shows it
+/// on its own next vblank — the one a look claims. 🔬Under other sessions'
+/// tests, 16 seconds a film: 24 frames a second landed −0.4 to +0.3ms off
+/// the moment its clock read (p1–p99), 2 of 384 a refresh off, and 2 and 3
+/// refreshes by turns but for 2; 30 a second 19 of 480 a refresh off, 12 a
+/// second 11 of 192. Held on the compositor's grid and read as if shown
+/// there, as it was: −12 to +7ms at 24, and 135 of 470 off the cadence at 30
+/// where this has 38.
+///
+/// ↩️Handed over against the SCREEN's vblanks the same pictures went two
+/// ways as the two grids drifted past each other: a raster ending 0.4–3.5ms
+/// past a vblank presented 8–18ms on and one in seven a refresh late, and
+/// ended a composition frame sooner, one in ten a refresh early. A test
+/// window with no GPU work left had shown neither (115 of 117 on the next
+/// vblank): only a raster's end has to wait for the GPU.
+///
+/// The present mostly takes 1–5ms and tails off well past that: 7ms of room
+/// left 17 in a hundred a refresh late at 30 frames a second and 27 at 12
+/// (card playback-pacing-knows-one-display-only).
+const int composedFramePresentsWithinMicros = 10000;
 
-/// How long after it starts a composition frame presents: 🔬1–5ms, a median
-/// of about 2.5ms, on the 143.9Hz clock (2026-10-15, 9,147 presents to
-/// another screen).
-const int composedFramePresentsAfterMicros = 2500;
+/// A look's claim on a screen's vblank, for a picture shown on [vblank]: the
+/// last of the compositor's vblanks whose latch reaches it — the frame that
+/// starts on the next of them, and its present, come before [vblank].
+double latchOnTheCompositor({
+  required double vblank,
+  required int composedVblankMicros,
+  required double composedEveryMicros,
+}) {
+  final latest =
+      vblank - composedEveryMicros - composedFramePresentsWithinMicros;
+  final index = ((latest - composedVblankMicros) / composedEveryMicros)
+      .floorToDouble();
+  return composedVblankMicros + index * composedEveryMicros;
+}
 
-/// How many vblanks after the one it claimed a picture is shown, on a screen
-/// of [periodMicros] under a compositor composing every
-/// [composedEveryMicros].
-int shownAfterVblanks(double periodMicros, double composedEveryMicros) =>
-    composedEveryMicros < periodMicros
-    ? presentShownAfterScreenVblanks
-    : presentShownAfterVblanks;
-
-/// How wide the window a raster ends in to land on its vblank is, on that
-/// screen. Past a slower screen's vblank a picture has the composition frame
-/// it waits for and that frame's present to go through before the next.
-double latchWidthMicros(double periodMicros, double composedEveryMicros) =>
-    math.max(
-      0.0,
-      composedEveryMicros < periodMicros
-          ? periodMicros -
-                composedEveryMicros -
-                composedFramePresentsAfterMicros
-          : periodMicros - presentLatchEarlyMicros - presentLatchLateMicros,
-    );
-
-/// A look's claim on a vblank: [vblankMicros], that vblank, [handOffMicros],
-/// the moment its frame's scene is handed over — the one that ends the
-/// shortest of the recent scenes on the latch's early edge
-/// ([RasterSpread.handOffFor]) — and [shownAtMicros], the moment its picture
-/// is shown.
+/// A look's claim: [vblankMicros], the compositor's vblank its raster is to
+/// end past, [handOffMicros], the moment its frame's scene is handed over —
+/// the one that ends the shortest of the recent scenes on the latch's early
+/// edge ([RasterSpread.handOffFor]) — and [shownAtMicros], the moment its
+/// picture is shown.
 ///
 /// ↩️It had a latest hand-off too, the last moment that ended the longest
 /// scene on the latch's late edge, and a look claimed a vblank its frame
@@ -145,8 +147,7 @@ typedef PresentClaim = ({
 /// late. On a screen slower than that they round down to what a look is
 /// worth of its refreshes, so a 59.95Hz screen under 143.9Hz looks keeps
 /// neither: the next look is a fraction of a refresh away, and a vblank of
-/// lead would only hold every frame back. 🔬Simulated as above against the
-/// landing measured there ([presentShownAfterScreenVblanks]), 24 frames a
+/// lead would only hold every frame back. 🔬Simulated as above, 24 frames a
 /// second: a held frame waited 33.7ms (at worst 42.8ms) with the lead kept
 /// in vblanks, 16.2ms (19.7ms) like this, and landed the same — 2 and 3
 /// refreshes by turns, 1.3 in a hundred otherwise.
@@ -165,26 +166,37 @@ final class PresentClaims {
   /// to come taking at most [budgetMicros] and its scene handed over
   /// [handOffMicros] past that vblank.
   ///
-  /// [vblankMicros] is any real vblank and [periodMicros] the real refresh
-  /// period, both on the frame clock; [composedEveryMicros] how often the
-  /// compositor composes, which the engine looks at.
+  /// [vblankMicros] is any real vblank of the screen and [periodMicros] its
+  /// real refresh period, [composedVblankMicros] and [composedEveryMicros]
+  /// the compositor's — the same but on a screen slower than its clock, and
+  /// what the engine looks at — all on the frame clock.
   PresentClaim claim({
     required int nowMicros,
     required int vblankMicros,
     required double periodMicros,
+    required int composedVblankMicros,
     required double composedEveryMicros,
     required int budgetMicros,
     required double handOffMicros,
   }) {
+    final slower = composedEveryMicros < periodMicros;
+    double latchOf(double vblank) => slower
+        ? latchOnTheCompositor(
+            vblank: vblank,
+            composedVblankMicros: composedVblankMicros,
+            composedEveryMicros: composedEveryMicros,
+          )
+        : vblank;
     final refreshesALook = composedEveryMicros / periodMicros;
     final lead = (PresentClaims.lead * refreshesALook).floor();
     final reserve = (PresentClaims.reserve * refreshesALook).floor();
     int indexOf(double micros) =>
         ((micros - vblankMicros) / periodMicros).round();
-    final natural =
-        ((nowMicros + budgetMicros - handOffMicros - vblankMicros) /
-                periodMicros)
-            .ceil();
+    final inReach = nowMicros + budgetMicros - handOffMicros;
+    var natural = ((inReach - vblankMicros) / periodMicros).ceil();
+    while (latchOf(vblankMicros + natural * periodMicros) < inReach) {
+      natural += 1;
+    }
     final last = _last == null ? null : indexOf(_last!);
     final int index;
     // Nowhere near the last claim — a run started again, or a clock that
@@ -205,11 +217,13 @@ final class PresentClaims {
     final vblank = vblankMicros + index * periodMicros;
     _last = vblank;
     _lastChanged = false;
-    final shownAfter = shownAfterVblanks(periodMicros, composedEveryMicros);
+    final latch = latchOf(vblank);
     return (
-      vblankMicros: vblank,
-      handOffMicros: (vblank + handOffMicros).round(),
-      shownAtMicros: (vblank + shownAfter * periodMicros).round(),
+      vblankMicros: latch,
+      handOffMicros: (latch + handOffMicros).round(),
+      shownAtMicros:
+          (slower ? vblank : vblank + presentShownAfterVblanks * periodMicros)
+              .round(),
     );
   }
 
@@ -283,16 +297,15 @@ final class RasterSpread {
   static const double ageDecay = 0.85;
 
   /// Where to hand a scene over, against the vblank its raster is to end
-  /// past, on a display of [periodMicros] under a compositor composing every
-  /// [composedEveryMicros]: the window of the latch's width that holds the
-  /// most of the recent lengths, each weighing [ageDecay] for every newer
-  /// one, handed over so that the shortest of them ends on the latch's early
-  /// edge.
-  double handOffFor(
-    double periodMicros, {
-    required double composedEveryMicros,
-  }) {
-    final width = latchWidthMicros(periodMicros, composedEveryMicros);
+  /// past, on a display of [periodMicros]: the window of the latch's width
+  /// that holds the most of the recent lengths, each weighing [ageDecay]
+  /// for every newer one, handed over so that the shortest of them ends on
+  /// the latch's early edge.
+  double handOffFor(double periodMicros) {
+    final width = math.max(
+      0.0,
+      periodMicros - presentLatchEarlyMicros - presentLatchLateMicros,
+    );
     final lengths = _byLength();
     // Each candidate holds lengths[i..j], all within one width of the
     // shortest.

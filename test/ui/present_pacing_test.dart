@@ -34,6 +34,10 @@ class _Display implements DisplayTiming {
   /// [period], but where a test puts it on a slower one.
   double screenPeriod = period;
 
+  /// Off the screen's own, which it is only on the compositor's clock: there
+  /// a claim reads [vblank] alone.
+  static const int composedVblank = vblank + 1234;
+
   final List<int> waits = [];
 
   int get _vsyncStart =>
@@ -68,6 +72,7 @@ class _Display implements DisplayTiming {
   VblankGrid? vblankGrid() => (
     vblankMicros: vblank,
     periodMicros: screenPeriod,
+    composedVblankMicros: composedVblank,
     composedEveryMicros: period,
   );
 
@@ -163,12 +168,10 @@ void main() {
     nowMicros: display.lookNow,
     vblankMicros: _Display.vblank,
     periodMicros: display.screenPeriod,
+    composedVblankMicros: _Display.composedVblank,
     composedEveryMicros: _Display.period,
     budgetMicros: PresentPacing.budgetMicros,
-    handOffMicros: (spread ?? RasterSpread()).handOffFor(
-      display.screenPeriod,
-      composedEveryMicros: _Display.period,
-    ),
+    handOffMicros: (spread ?? RasterSpread()).handOffFor(_Display.period),
   );
 
   /// A look in this frame changed what its clock shows — said to the
@@ -222,8 +225,8 @@ void main() {
   });
 
   testWidgets('🚨on a screen slower than the compositor\'s clock the look is '
-      'read at that screen\'s next vblank, and its frame waits for the '
-      'hand-off on that screen\'s own grid', (tester) async {
+      'read at a vblank of that screen, and its frame waits for a hand-off '
+      'on the compositor\'s grid', (tester) async {
     const refresh = 16680.0;
     final shown = await settle(tester);
     display.screenPeriod = refresh;
@@ -238,9 +241,15 @@ void main() {
     });
     await tester.pump(vsync);
 
-    final vblank = claim!.vblankMicros;
-    expect(((vblank - _Display.vblank) / refresh) % 1, closeTo(0, 1e-6));
-    expect(readAt!.inMicroseconds, (vblank + refresh).round());
+    expect(readAt, Duration(microseconds: claim!.shownAtMicros));
+    expect(
+      ((readAt!.inMicroseconds - _Display.vblank) / refresh) % 1,
+      closeTo(0, 1e-3),
+    );
+    expect(
+      ((claim!.vblankMicros - _Display.composedVblank) / _Display.period) % 1,
+      closeTo(0, 1e-6),
+    );
     expect(display.waits, [claim!.handOffMicros]);
   });
 
@@ -502,12 +511,10 @@ void main() {
         nowMicros: now,
         vblankMicros: _Display.vblank,
         periodMicros: _Display.period,
+        composedVblankMicros: _Display.composedVblank,
         composedEveryMicros: _Display.period,
         budgetMicros: PresentPacing.budgetMicros,
-        handOffMicros: RasterSpread().handOffFor(
-          _Display.period,
-          composedEveryMicros: _Display.period,
-        ),
+        handOffMicros: RasterSpread().handOffFor(_Display.period),
       );
       frameShownAt();
       shown.value += 1;
@@ -830,12 +837,9 @@ void main() {
     }) => quietBetweenHeldFrames(
       held: (
         vblankMicros: last.vblankMicros,
-        periodMicros: display.screenPeriod,
+        periodMicros: _Display.period,
         gap: gap,
-        handOffMicros: RasterSpread().handOffFor(
-          display.screenPeriod,
-          composedEveryMicros: _Display.period,
-        ),
+        handOffMicros: RasterSpread().handOffFor(_Display.period),
       ),
       marginMicros: PresentPacing.budgetMicros + 1000,
     );
@@ -851,14 +855,14 @@ void main() {
       expect(quietForBackgroundGpuWork(), quietAfter(last, gap: 6));
     });
 
-    testWidgets('🚨on a slower screen it is read off that screen\'s vblanks '
-        'and refreshes', (tester) async {
+    testWidgets('🚨on a slower screen it is still read off the compositor\'s '
+        'vblanks: that is where a held frame\'s latch is', (tester) async {
       final shown = await settle(tester);
-      display.screenPeriod = 16680;
+      display.screenPeriod = _Display.period * 2.5;
 
-      final last = await holdChanges(tester, shown, [33360, 33360, 33360]);
+      final last = await holdChanges(tester, shown, [34743, 34743, 34743]);
 
-      expect(quietForBackgroundGpuWork(), quietAfter(last, gap: 2));
+      expect(quietForBackgroundGpuWork(), quietAfter(last, gap: 5));
     });
 
     testWidgets('🚨frames are held from a clock\'s look — before the quiet '

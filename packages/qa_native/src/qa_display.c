@@ -164,6 +164,7 @@ HWND qa_display_app_window(void);
 typedef struct {
   LUID adapter;
   UINT target;
+  int64_t period_ns;
 } qa_screen;
 
 typedef struct {
@@ -219,10 +220,13 @@ static int qa_screens_under(HWND window, qa_screen* screens) {
     if (DisplayConfigGetDeviceInfo(&source.header) != ERROR_SUCCESS) {
       continue;
     }
-    for (int n = 0; n < names.count; n += 1) {
+    const DISPLAYCONFIG_RATIONAL rate = paths[i].targetInfo.refreshRate;
+    for (int n = 0; n < names.count && rate.Numerator != 0; n += 1) {
       if (lstrcmpW(names.names[n], source.viewGdiDeviceName) == 0) {
         screens[count].adapter = paths[i].targetInfo.adapterId;
         screens[count].target = paths[i].targetInfo.id;
+        screens[count].period_ns =
+            (int64_t)(1e9 * rate.Denominator / rate.Numerator);
         count += 1;
         break;
       }
@@ -330,13 +334,16 @@ QA_EXPORT int32_t qa_display_window_screens(int64_t* out, int32_t max) {
           ids[i].displayAdapterLuid.LowPart != screens[s].adapter.LowPart ||
           ids[i].displayAdapterLuid.HighPart != screens[s].adapter.HighPart ||
           FAILED(qa_comp_target_stats_of(frame, &ids[i], &target)) ||
-          target.presentedStats.time == 0 || target.vblankDuration == 0) {
+          target.presentedStats.time == 0) {
         continue;
       }
       out[2 * answered] =
           qa_display_micros((int64_t)target.presentedStats.time);
-      out[2 * answered + 1] = (int64_t)((double)target.vblankDuration * 1e9 /
-                                        (double)qa_display_frequency());
+      // 🚨THE MODE'S PERIOD, NOT THE LAST REFRESH'S (2026-11-02): a screen
+      // that stretches a refresh for a late picture says so in
+      // vblankDuration — 16.68ms, then 18.6 — and a grid laid at 18.6 is off
+      // by two milliseconds a refresh.
+      out[2 * answered + 1] = screens[s].period_ns;
       answered += 1;
       break;
     }
