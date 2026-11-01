@@ -128,10 +128,15 @@ class FramePicture extends ChangeNotifier {
   /// and on a device's Vulkan. ↩️A flag took those two to read them, on a
   /// note of one-picture-per-frame ②-5b-2 the engine does not bear out, and
   /// cost every step above 1/2 there two waits.
+  ///
+  /// 📐One level deeper than a zoom reads drawn square on ([levelsReadAt]):
+  /// a turned screen's level is the GPU's own reckoning, half a level deeper
+  /// at the most where it sums the axes, and a level short would show a step
+  /// short on that screen until the patches pause.
   bool readAt(double displayScale) {
     final levels =
         filterQualityForDisplayScale(displayScale) == ui.FilterQuality.medium
-        ? levelsReadAt(displayScale)
+        ? levelsReadAt(displayScale) + 1
         : 0;
     _levelsRead = math.max(_levelsRead, levels);
     if (_owed == null || levels <= _wholeTo) {
@@ -1003,7 +1008,11 @@ class FramePictureStore<K extends Object> {
   /// 75–84 → 61–65 ms fitted, but on the Surface Pro 11, two levels in place
   /// of eleven at 44%, a step was no sooner in and showed later — mean 4 ms,
   /// p50 34 → 41 ms at 930 px/s, there the copy out waiting on the GPU
-  /// however little it copies).
+  /// however little it copies). 🔬Only those a screen reads, with the step
+  /// paced as it now is (F-533, 2026-11-01), main PC, 144 Hz, S5_BA cut 352
+  /// with every row shown, fitted, 300 px/s, in turn in one run, input to
+  /// raster done p50 / p90: quiet 16.1 / 21.5 → 10.7 / 15.9 ms, under
+  /// eighteen suites of tests 70.3 / 92.8 → 59.5 / 77.7 ms.
   ///
   /// ↩️The base went in with each batch and the levels under it waited —
   /// for the patches to pause 200 ms, or for 64 of them or 4 Mi texels,

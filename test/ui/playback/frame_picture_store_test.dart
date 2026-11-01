@@ -743,9 +743,9 @@ void main() {
       expect(await laidAt(1), isEmpty);
       expect(await laidAt(0.75), isEmpty);
       expect(await laidAt(0.51), isEmpty);
-      expect(await laidAt(0.5), [1, 2]);
-      expect(await laidAt(0.44), [1, 2]);
-      expect(await laidAt(0.2), [1, 2, 3]);
+      expect(await laidAt(0.5), [1, 2, 3]);
+      expect(await laidAt(0.44), [1, 2, 3]);
+      expect(await laidAt(0.2), [1, 2, 3, 4]);
       expect(await laidAt(_readsLevels), everyLevel);
     });
 
@@ -753,12 +753,12 @@ void main() {
         'the patches pause (F-533)', () async {
       final gpu = _RecordingGpu();
       final store = FramePictureStore<String>(gpu: gpu);
-      final picture = await _layed(store, 'a', 1024);
+      final picture = await _layed(store, 'a', 2048);
       expect(picture.readAt(0.4), isTrue);
       final rendered = gpu.rendered.length;
       store.patch(from: 'a', to: 'b', rect: spot, draw: fill);
       expect(await store.landingOf('b'), isTrue);
-      expect(levelsOf(gpu.levelWrites.single), [1, 2]);
+      expect(levelsOf(gpu.levelWrites.single), [1, 2, 3]);
       expect(
         gpu.rendered,
         hasLength(rendered + 2),
@@ -767,7 +767,7 @@ void main() {
       expect(picture.readAt(0.4), isTrue, reason: 'all it reads is in');
 
       expect(await pollUntil(() => gpu.levelWrites.length == 2), isTrue);
-      expect(levelsOf(gpu.levelWrites.last), everyLevel);
+      expect(levelsOf(gpu.levelWrites.last), [...everyLevel, 11]);
       store.dispose();
     });
 
@@ -786,7 +786,7 @@ void main() {
 
       store.patch(from: 'b', to: 'c', rect: spot, draw: fill);
       await store.landingOf('c');
-      expect(levelsOf(gpu.levelWrites.last), [1, 2, 3]);
+      expect(levelsOf(gpu.levelWrites.last), [1, 2, 3, 4]);
       store.dispose();
     });
 
@@ -798,13 +798,14 @@ void main() {
       picture.readAt(0.2);
       store.patch(from: 'a', to: 'b', rect: spot, draw: fill);
       await store.landingOf('b');
-      expect(levelsOf(gpu.levelWrites.single), [1, 2, 3]);
+      expect(levelsOf(gpu.levelWrites.single), [1, 2, 3, 4]);
       await Future<void>.delayed(pause);
+
       // The patches paused: what was read is forgotten.
       picture.readAt(0.4);
       store.patch(from: 'b', to: 'c', rect: spot, draw: fill);
       await store.landingOf('c');
-      expect(levelsOf(gpu.levelWrites.last), [1, 2]);
+      expect(levelsOf(gpu.levelWrites.last), [1, 2, 3]);
       expect(picture.readAt(0.4), isTrue);
       expect(picture.readAt(0.2), isFalse);
       await store.settled();
