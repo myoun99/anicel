@@ -50,7 +50,7 @@ import 'deferred_image_disposal.dart';
 /// 🚨★★★PICTURED IN THE CALL THAT READS IT, ON EVERY ENGINE (유저 절대규칙
 /// 2026-09-17: 「보이는 중이랑 결과랑 절대로 다르면 안 되」). What a stroke
 /// touched is pictured the first time anything reads the pictures
-/// ([tileImages], [takeTileImageAt], [pictureOwed]) — the picture of a
+/// ([tileImages], [pictureOwed]) — the picture of a
 /// coordinate and the stroke revision it shows recorded in the same
 /// synchronous call that pre-blended it — so the pen-up handoff finds a
 /// picture at every promoted tile's revision and nothing ever has to stand
@@ -263,9 +263,6 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     required ActiveStrokePixelSource source,
     required DirtyRegion region,
   }) {
-    if (!identical(_owedFrom, source)) {
-      pictureOwed();
-    }
     _owedFrom = source;
     _owed.addAll(region.toTileCoords(tileSize: tileSize));
     notifyListeners();
@@ -604,7 +601,6 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// at becomes the committed tile's image, with no second picture and no
   /// window where the tile has none.
   ui.Image? takeTileImageAt(TileCoord coord, {required int revision}) {
-    pictureOwed();
     if (_tileImageRevisions[coord] != revision) {
       return null;
     }
