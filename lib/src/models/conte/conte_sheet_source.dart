@@ -31,6 +31,7 @@ class ConteCellSource {
     this.camera,
     this.cameraLines = const [],
     this.transitionLines = const [],
+    this.linkedCuts = const [],
   });
 
   /// Cut-LOCAL frames.
@@ -66,6 +67,11 @@ class ConteCellSource {
   /// The transitions the cell's ACTION column writes under [cameraLines] —
   /// `c1 × c2 カットO.L (1+0)` (`conteTransitionLine`, I-93-Q1).
   final List<String> transitionLines;
+
+  /// The cuts the cell's cut is 겸용 with, as its ACTION column writes them
+  /// under [transitionLines] — on the cut's first cell only, none on the
+  /// others (유저 2026-11-01, F-531: 「해당 컷의 첫번째 패널에만 적어줌」).
+  final List<String> linkedCuts;
 
   int get lengthFrames => endFrameExclusive - startFrame;
 }
@@ -249,9 +255,10 @@ class ConteSheetSource {
   final bool cover;
   final bool blankPage;
 
-  /// Whether a cell writes its camera's lines and its transitions over its
-  /// ACTION words ([ConteCellSource.cameraLines] ·
-  /// [ConteCellSource.transitionLines]) — the work's choice
+  /// Whether a cell writes its camera's lines, its transitions and its 겸용
+  /// cuts over its ACTION words ([ConteCellSource.cameraLines] ·
+  /// [ConteCellSource.transitionLines] · [ConteCellSource.linkedCuts]) — the
+  /// work's choice
   /// (`TimesheetInfo.conteFixedText`), read here for the same reason.
   final bool fixedText;
 

@@ -18,6 +18,7 @@ void main() {
   const action = 'ハヤト走る';
   const camera = ['FIX (0+5)', 'PAN (0+11)', 'FIX (0+8)'];
   const line = conteCellTextSize * conteLineHeight;
+  final ja = conteWordsIn(AppLanguage.ja);
 
   ConteSheetSource sourceOf(
     List<String> lines, {
@@ -55,7 +56,7 @@ void main() {
       words: contePageMarks(
         page,
         source,
-        words: conteWordsIn(AppLanguage.ja),
+        words: ja,
       ).whereType<SheetWords>().toList(),
     );
   }
@@ -92,7 +93,7 @@ void main() {
         ),
         reason: text,
       );
-      expect(mark.fit, SheetWordsFit.oneLine, reason: 'never broken');
+      expect(mark.fit, SheetWordsFit.shrink, reason: 'never broken');
       expect(
         (mark.layer, mark.argb, mark.size, mark.bold),
         (typed.layer, typed.argb, typed.size, typed.bold),
@@ -107,7 +108,10 @@ void main() {
     final (:cell, :words) = printed(source);
     final slot = cell.actionRect.deflate(4);
 
-    expect(conteActionWordsDrop(source, cell), closeTo(3 * line, 1e-9));
+    expect(
+      conteActionWordsDrop(source, cell, words: ja),
+      closeTo(3 * line, 1e-9),
+    );
     expectRect(
       wordsSaying(words, action).slot,
       Rect.fromLTRB(slot.left, slot.top + 3 * line, slot.right, slot.bottom),
@@ -119,8 +123,8 @@ void main() {
     final source = sourceOf(camera, fixedText: false);
     final (:cell, :words) = printed(source);
 
-    expect(conteFixedLinesOf(source, cell), isEmpty);
-    expect(conteActionWordsDrop(source, cell), 0);
+    expect(conteFixedLinesOf(source, cell, words: ja), isEmpty);
+    expect(conteActionWordsDrop(source, cell, words: ja), 0);
     for (final text in camera) {
       expect(words.where((each) => each.text == text), isEmpty, reason: text);
     }
@@ -143,10 +147,13 @@ void main() {
         reason: text,
       );
     }
-    expect(conteActionWordsDrop(source, cell), closeTo(5 * line, 1e-9));
+    expect(
+      conteActionWordsDrop(source, cell, words: ja),
+      closeTo(5 * line, 1e-9),
+    );
 
     final out = sourceOf(camera, transitions: transitions, fixedText: false);
-    expect(conteFixedLinesOf(out, printed(out).cell), isEmpty);
+    expect(conteFixedLinesOf(out, printed(out).cell, words: ja), isEmpty);
   });
 
   test('lines that outrun the column end at its foot, and the words typed '

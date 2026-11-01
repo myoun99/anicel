@@ -28,11 +28,13 @@ import '../../models/track_transitions.dart' show transitionSpanOfEvent;
 import '../../models/transition_geometry.dart'
     show TransitionSides, oneSidedSpanAppliesToCut, transitionSidesOf;
 import '../../models/transition_names.dart'
-    show transitionCutsJoined, transitionRowNamedByItsCuts;
+    show transitionCutsJoined, transitionRowNamedByItsCuts, writtenCutName;
 import '../text/app_strings.dart';
 import '../../services/camera_frame_corners.dart'
     show cameraFramesBounds, cameraFramesShown;
 import '../../services/camera_path.dart' show CameraPath;
+import '../../services/commands/link_mirror.dart'
+    show LinkedCutGroups;
 import '../storyboard_layer_policy.dart';
 import '../text/dialogue_fit_layout.dart'
     show dialogueGlyphSlots, dialogueGlyphsShownIn;
@@ -58,6 +60,7 @@ ConteSheetSource buildConteSheetSource(Project project, {String? olWord}) {
       ),
   ];
   final panels = _panelsOnTheirTracks(layout, cellsOf);
+  final groups = LinkedCutGroups(project);
   final transitions = _transitionsOf(
     project,
     olWord: olWord ?? AppText.strings.tlTransitionCutOl,
@@ -82,6 +85,7 @@ ConteSheetSource buildConteSheetSource(Project project, {String? olWord}) {
           transitions[track.id]!,
           project,
         ),
+        linkedCuts: _othersOfItsGroup(entry.cut, groups),
         project: project,
       ),
     );
@@ -141,6 +145,7 @@ ConteCutSource _cutSource(
   required List<StoryboardCoverageCell> cells,
   required List<ConteDialogueLine> dialogue,
   required List<List<String>> transitionLines,
+  required List<String> linkedCuts,
   required Project project,
 }) {
   final cameras = _cellCameras.resolve(
@@ -164,6 +169,7 @@ ConteCutSource _cutSource(
           cell: cell,
           camera: cameras[index],
           transitionLines: transitionLines[index],
+          linkedCuts: index == 0 ? linkedCuts : const [],
         ),
     ],
     dialogue: dialogue,
@@ -173,6 +179,16 @@ ConteCutSource _cutSource(
         project.timesheetInfo.conteCameraRoom,
   );
 }
+
+/// The cuts [cut] is 겸용 with, as a line writes them: every other of its
+/// group, in the group's order — none where it stands alone.
+///
+/// 🗣️F-531 (유저 2026-11-01): 「c100의 칸에는 겸용 c98,c102 이런식. 다른
+/// 겸용컷 전부 보여줌」.
+List<String> _othersOfItsGroup(Cut cut, LinkedCutGroups groups) => [
+  for (final other in groups.of(cut))
+    if (other.id != cut.id) writtenCutName(other),
+];
 
 /// What a cut's camera does on one of its cells: the work drawn on the
 /// picture ([_cameraWorkIn]), the lines written beside it ([_cameraLinesIn]).
@@ -324,6 +340,7 @@ ConteCellSource _cellSource({
   required StoryboardCoverageCell cell,
   required _CellCamera camera,
   required List<String> transitionLines,
+  required List<String> linkedCuts,
 }) {
   // The cell counts the conte's frames; the row, the camera and the picture
   // count the cut's, which begin that much earlier in a cut an O.L arrives
@@ -344,6 +361,7 @@ ConteCellSource _cellSource({
     camera: camera.work,
     cameraLines: camera.lines,
     transitionLines: transitionLines,
+    linkedCuts: linkedCuts,
   );
 }
 

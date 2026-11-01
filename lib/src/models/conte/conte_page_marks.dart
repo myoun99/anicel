@@ -88,7 +88,7 @@ List<SheetMark> contePageMarks(
       ContePageKind.blank => const <SheetMark>[],
       ContePageKind.body => [
         ..._form(metrics, words),
-        ..._content(page, source, liveFramesOf),
+        ..._content(page, source, liveFramesOf, words),
       ],
     },
     ...conteInkMarks(page, metrics),
@@ -352,6 +352,7 @@ Iterable<SheetMark> _content(
   ContePageLayout page,
   ConteSheetSource source,
   ConteLiveLength? liveFramesOf,
+  ConteWords words,
 ) sync* {
   final m = page.metrics;
   // Top-left, this page among the body's pages; top-right, the company logo
@@ -390,7 +391,7 @@ Iterable<SheetMark> _content(
   }
   yield* _rulesAcross(page);
   for (final cell in page.cells) {
-    yield* _cell(m, source, cell);
+    yield* _cell(m, source, cell, words);
   }
   yield* _times(page, source, liveFramesOf);
 
@@ -557,16 +558,17 @@ Iterable<SheetMark> _cell(
   ConteSheetMetrics m,
   ConteSheetSource source,
   ContePlacedCell cell,
+  ConteWords words,
 ) sync* {
   yield* _cameraWork(m, cell);
   yield contePictureOf(cell, m);
   yield* conteCameraMarksOf(cell, m);
   final action = cell.actionRect.deflate(4);
-  yield* _fixedLines(source, cell, action);
+  yield* _fixedLines(source, cell, action, words);
   yield SheetWords(
     SheetPaintLayer.content,
     text: cell.source.action,
-    slot: _below(action, conteActionWordsDrop(source, cell)),
+    slot: _below(action, conteActionWordsDrop(source, cell, words: words)),
     size: conteCellTextSize,
     argb: _ink,
   );
@@ -581,14 +583,21 @@ Iterable<SheetMark> _cell(
 
 /// The lines [cell]'s ACTION column writes over the words typed there: what
 /// the camera does while the cell is on ([ConteCellSource.cameraLines],
-/// I-93) and under them the transitions written there
-/// ([ConteCellSource.transitionLines], I-93-Q1) — or none where the work
-/// leaves them out ([ConteSheetSource.fixedText]).
+/// I-93), under them the transitions written there
+/// ([ConteCellSource.transitionLines], I-93-Q1) and under those the cuts its
+/// cut is 겸용 with ([ConteCellSource.linkedCuts], F-531) — or none where
+/// the work leaves them out ([ConteSheetSource.fixedText]).
 List<String> conteFixedLinesOf(
   ConteSheetSource source,
-  ContePlacedCell cell,
-) => source.fixedText
-    ? [...cell.source.cameraLines, ...cell.source.transitionLines]
+  ContePlacedCell cell, {
+  required ConteWords words,
+}) => source.fixedText
+    ? [
+        ...cell.source.cameraLines,
+        ...cell.source.transitionLines,
+        if (cell.source.linkedCuts.isNotEmpty)
+          '${words.linked} ${cell.source.linkedCuts.join(',')}',
+      ]
     : const [];
 
 /// How far below the top of its ACTION words [cell]'s typed words begin:
@@ -596,18 +605,25 @@ List<String> conteFixedLinesOf(
 /// number the page prints the words by and the field types them at, so
 /// the typing stands on the printed words — no one types into the fixed
 /// lines (유저 2026-10-12, I-93: 「이 고정텍스트는 지울수없도록?」).
-double conteActionWordsDrop(ConteSheetSource source, ContePlacedCell cell) =>
-    conteFixedLinesOf(source, cell).length * _cellLine;
+double conteActionWordsDrop(
+  ConteSheetSource source,
+  ContePlacedCell cell, {
+  required ConteWords words,
+}) => conteFixedLinesOf(source, cell, words: words).length * _cellLine;
 
 /// [cell]'s fixed lines in [slot], its ACTION words' slot: from its top a
 /// conte line each, each on one line, never broken, in the words' ink
-/// (I-93: 「각 FIX PAN 이런거마다 개행되고」).
+/// (I-93: 「각 FIX PAN 이런거마다 개행되고」) — smaller where it would
+/// outrun the column (F-531: 「다른 겸용컷 전부 보여줌」, and 09-25's
+/// 「길어져서 다 안들어가면 크기 작게하는방향, 기본적으로 그렇게」).
 Iterable<SheetMark> _fixedLines(
   ConteSheetSource source,
   ContePlacedCell cell,
   Rect slot,
+  ConteWords words,
 ) sync* {
-  for (final (index, text) in conteFixedLinesOf(source, cell).indexed) {
+  final lines = conteFixedLinesOf(source, cell, words: words);
+  for (final (index, text) in lines.indexed) {
     final line = _below(slot, index * _cellLine);
     yield SheetWords(
       SheetPaintLayer.content,
@@ -620,7 +636,7 @@ Iterable<SheetMark> _fixedLines(
       ),
       size: conteCellTextSize,
       argb: _ink,
-      fit: SheetWordsFit.oneLine,
+      fit: SheetWordsFit.shrink,
     );
   }
 }

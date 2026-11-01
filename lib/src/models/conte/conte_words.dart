@@ -15,6 +15,7 @@ class ConteWords {
     required this.seconds,
     required this.cutsSuffix,
     required this.artist,
+    required this.linked,
   });
 
   /// The head of the body's five columns.
@@ -30,6 +31,10 @@ class ConteWords {
   /// The cover's staff line's name for the conte artist.
   final String artist;
 
+  /// What opens the line naming a cut's 겸용 cuts — 「겸용 c100,c102」
+  /// (`conteFixedLinesOf`, F-531).
+  final String linked;
+
   @override
   bool operator ==(Object other) =>
       other is ConteWords &&
@@ -39,9 +44,18 @@ class ConteWords {
       other.dialogue == dialogue &&
       other.seconds == seconds &&
       other.cutsSuffix == cutsSuffix &&
-      other.artist == artist;
+      other.artist == artist &&
+      other.linked == linked;
 
   @override
-  int get hashCode =>
-      Object.hash(cut, picture, action, dialogue, seconds, cutsSuffix, artist);
+  int get hashCode => Object.hash(
+    cut,
+    picture,
+    action,
+    dialogue,
+    seconds,
+    cutsSuffix,
+    artist,
+    linked,
+  );
 }

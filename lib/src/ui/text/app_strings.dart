@@ -1056,6 +1056,7 @@ enum AppStrings {
   String get cnHeadSeconds => _s('cnHeadSeconds');
   String get cnCoverCuts => _s('cnCoverCuts');
   String get cnCoverArtist => _s('cnCoverArtist');
+  String get cnLinkedCuts => _s('cnLinkedCuts');
 
   /// What the timesheet PRINTS — read from the NOTATION language's table,
   /// not the program's (`timesheetWordsIn`): its header boxes' labels, and
@@ -3535,6 +3536,7 @@ enum AppStrings {
     'cnHeadSeconds': 'TIME',
     'cnCoverCuts': ' cuts',
     'cnCoverArtist': 'Storyboard',
+    'cnLinkedCuts': 'Linked',
     'sheetPrintEpisode': 'Ep.no',
     'sheetPrintTitle': 'Title',
     'sheetPrintScene': 'Scene',
@@ -5362,6 +5364,7 @@ enum AppStrings {
     'cnHeadSeconds': '秒',
     'cnCoverCuts': 'cut',
     'cnCoverArtist': 'コンテ',
+    'cnLinkedCuts': '兼用',
     'sheetPrintEpisode': '話数',
     'sheetPrintTitle': 'タイトル',
     'sheetPrintScene': 'シーン',
@@ -7178,6 +7181,7 @@ enum AppStrings {
     'cnHeadSeconds': '초',
     'cnCoverCuts': '컷',
     'cnCoverArtist': '콘티',
+    'cnLinkedCuts': '겸용',
     'sheetPrintEpisode': '화수',
     'sheetPrintTitle': '제목',
     'sheetPrintScene': '씬',
@@ -9178,6 +9182,7 @@ enum AppStrings {
     'cnHeadSeconds': 'DURÉE',
     'cnCoverCuts': ' plans',
     'cnCoverArtist': 'Storyboard',
+    'cnLinkedCuts': 'Lié',
     'sheetPrintEpisode': 'Ép.',
     'sheetPrintTitle': 'Titre',
     'sheetPrintScene': 'Scène',
@@ -10939,6 +10944,7 @@ enum AppStrings {
     'cnHeadSeconds': '秒',
     'cnCoverCuts': '个镜头',
     'cnCoverArtist': '分镜',
+    'cnLinkedCuts': '链接',
     'sheetPrintEpisode': '话数',
     'sheetPrintTitle': '标题',
     'sheetPrintScene': '场景',

@@ -12,6 +12,7 @@ import '../../models/conte/conte_page_marks.dart'
     show conteActionWordsDrop, conteCellTextSize, conteInkArgb;
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
+import '../../models/conte/conte_words.dart';
 import '../../models/cut_id.dart';
 import '../brush/sheet_canvas_panel.dart' show SheetStrokeHold;
 import '../editor_session_manager.dart';
@@ -167,6 +168,10 @@ class ConteBookPage extends StatelessWidget {
     for (final cell in page.cells) _actionTarget(cell),
   ];
 
+  /// The printed words: the notation language's, as the timesheet's are.
+  ConteWords get _words =>
+      conteWordsIn(session.languageSettings.value.notationLanguage);
+
   /// [cell]'s ACTION target: the cell's own rows of the column — its words
   /// flow past them on paper, but a tap below belongs to the cell there —
   /// from under its fixed lines, which no one types into (I-93): the field
@@ -178,7 +183,7 @@ class ConteBookPage extends StatelessWidget {
     // ⚠️Mine: fixed lines that outrun the rows leave the field no height,
     // never one upside down.
     final top = math.min(
-      rect.top + conteActionWordsDrop(source, cell),
+      rect.top + conteActionWordsDrop(source, cell, words: _words),
       bottom - 8,
     );
     return SheetTextTarget(
@@ -268,9 +273,7 @@ class ConteBookPage extends StatelessWidget {
     }) => ContePagePainter(
       page: page,
       source: source,
-      // The printed words follow the notation language, as the timesheet's
-      // do.
-      words: conteWordsIn(session.languageSettings.value.notationLanguage),
+      words: _words,
       // No outline marks the cell being worked on (유저 2026-09-25:
       // 「포커스기능 없애자 … 해당 칸 강조색 실루엣한다던가」) — the sheet
       // is paper, and paper shows no focus.
