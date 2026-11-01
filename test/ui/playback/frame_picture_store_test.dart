@@ -892,6 +892,25 @@ void main() {
       store.dispose();
     });
 
+    test('a step owes is not paid by a step after it that goes part of the '
+        'way (F-533)', () async {
+      final gpu = _RecordingGpu()..holdWrites = true;
+      final store = FramePictureStore<String>(gpu: gpu);
+      final picture = await _layed(store, 'a', 1024);
+      store.patch(from: 'a', to: 'b', rect: spot, draw: fill);
+      expect(await pollUntil(() => gpu.bases.length == 1), isTrue);
+      store.patch(from: 'b', to: 'c', rect: spot, draw: fill);
+      expect(await pollUntil(() => gpu.rendered.length == 3), isTrue);
+      expect(picture.readAt(0.4), isTrue, reason: '⛔premise: nothing owed yet');
+
+      gpu.holdWrites = false;
+      gpu.releaseWrite();
+      expect(await store.landingOf('c'), isTrue);
+      expect(levelsOf(gpu.levelWrites.single), [1, 2, 3]);
+      expect(picture.readAt(0.4), isFalse, reason: 'the first step owes them');
+      store.dispose();
+    });
+
     test('is written at once for a screen that comes to read it, which is '
         'told so until it is in', () async {
       final gpu = _RecordingGpu();
@@ -1068,6 +1087,31 @@ void main() {
         store.dispose();
       });
 
+      test('tells no screen until the last, where what it reads is in: they '
+          'change nothing it draws (F-533)', () async {
+        final gpu = _RecordingGpu();
+        final store = FramePictureStore<String>(gpu: gpu);
+        final picture = await _layed(store, 'a', 1024);
+        picture.readAt(0.4);
+        store.patch(from: 'a', to: 'b', rect: stroke, draw: fill);
+        await store.landingOf('b');
+        var told = 0;
+        picture.addListener(() => told += 1);
+        gpu.holdWrites = true;
+        expect(await pollUntil(() => gpu.levelWrites.length == 2), isTrue);
+        expect(picture.readAt(0.4), isTrue, reason: 'all it reads is in');
+        gpu
+          ..holdWrites = false
+          ..releaseWrite();
+        expect(
+          await pollUntil(() => gpu.levelWrites.length == 1 + parts.length),
+          isTrue,
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        expect(told, 1, reason: 'the last part, and no other');
+        store.dispose();
+      });
+
       test('tells a screen every part, where one reads them', () async {
         final gpu = _RecordingGpu();
         final store = FramePictureStore<String>(gpu: gpu);
@@ -1116,6 +1160,37 @@ void main() {
         expect(
           await pollUntil(() => gpu.levelWrites.length == parts.length),
           isTrue,
+        );
+        store.dispose();
+      });
+
+      test('stops for a step too where a screen has what it reads (F-533)',
+          () async {
+        final gpu = _RecordingGpu();
+        final store = FramePictureStore<String>(gpu: gpu);
+        final picture = await _layed(store, 'a', 1024);
+        picture.readAt(0.4);
+        store.patch(from: 'a', to: 'b', rect: stroke, draw: fill);
+        await store.landingOf('b');
+        gpu.holdWrites = true;
+        expect(await pollUntil(() => gpu.levelWrites.length == 2), isTrue);
+        expect(picture.readAt(0.4), isTrue, reason: 'all it reads is in');
+        store.patch(
+          from: 'b',
+          to: 'c',
+          rect: const ui.Rect.fromLTWH(320, 32, 32, 32),
+          draw: fill,
+        );
+        await Future<void>.delayed(Duration.zero);
+        gpu
+          ..holdWrites = false
+          ..releaseWrite();
+        expect(await store.landingOf('c'), isTrue);
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+        expect(
+          gpu.levelWrites,
+          hasLength(3),
+          reason: 'the step is in, the rest waits for its pause',
         );
         store.dispose();
       });
