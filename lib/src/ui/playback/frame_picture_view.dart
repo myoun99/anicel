@@ -308,6 +308,8 @@ class _FramePictureViewState extends State<FramePictureView> {
         !identical(oldWidget.run.pictures, widget.run.pictures) ||
         !_sameLive(oldWidget.live, widget.live) ||
         oldWidget.wholeFrames != widget.wholeFrames;
+    // Asked of the frame as it stood, before it stands anew.
+    final holdsWhatIsStored = handedAnew && _holdsOnlyWhatIsStored;
     if (handedAnew) {
       final shown = _onScreen;
       final drawnLive = oldWidget.drawnLive;
@@ -323,7 +325,7 @@ class _FramePictureViewState extends State<FramePictureView> {
     // you went back and forth).
     _look();
     if (handedAnew && widget.live != null) {
-      _liveRowsHandedAnew();
+      _liveRowsHandedAnew(holdsWhatIsStored: holdsWhatIsStored);
     }
   }
 
@@ -683,14 +685,36 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// 🚨A pen's row come to a picture that holds nothing of the live rows is
   /// told as its taking told them ([_tell]), with the cel the pen is on —
   /// untold, a blank page's first stroke was drawn as it stands, whole.
-  void _liveRowsHandedAnew() {
+  ///
+  /// 🚨ANOTHER CEL UNDER THE PEN IS NO CHANGE OF THE PICTURE (I-22): where
+  /// the key stays, the picture holds that cel's stored pixels as it holds
+  /// every row's, and it is told the same way. ↩️Measured from what the
+  /// picture held of the cel left — another cel's tiles, every one of them
+  /// 「moved」 — the frame was drawn as it stands until its key moved: on S5
+  /// cut 352 5–9 ms a paint in debug, at each click on a row, and the first
+  /// stroke on the row clicked composed the whole frame a step at a time.
+  void _liveRowsHandedAnew({required bool holdsWhatIsStored}) {
     if (_shown != null) {
-      if (_held == null) {
+      final penMoved = _celDrawnOn() != _drawnOn?.cel;
+      if (_held == null || (holdsWhatIsStored && penMoved)) {
         _drawnOn = _celNow();
         _tell();
       }
       _catchUp();
     }
+  }
+
+  /// Whether the picture shown holds all the live rows [_live] draws, and
+  /// no pixel their cels do not store: what it can go on showing whichever
+  /// cel the pen comes to.
+  bool get _holdsOnlyWhatIsStored {
+    final live = _live;
+    final held = _held;
+    if (live == null || held == null || _showsUnstored(held)) {
+      return false;
+    }
+    final moved = live.movedSince(held);
+    return moved.located && moved.dirty == null;
   }
 
   /// Tells what of the live rows the picture just taken holds: all of them
