@@ -569,6 +569,12 @@ class _WorkspaceTabs {
                                 .session
                                 .cutVerbs
                                 .setActiveCutGuides,
+                            onGuidesPreview: _state
+                                .widget
+                                .session
+                                .cutVerbs
+                                .previewActiveCutGuides,
+                            currentColorOf: () => _state._brushTool.value.color,
                           ),
                         ),
                       ),
@@ -658,6 +664,11 @@ class _WorkspaceTabs {
                                               .session
                                               .cutVerbs
                                               .previewActiveCutGuides,
+                                          guidesInFlight: _state
+                                              .widget
+                                              .session
+                                              .cutVerbs
+                                              .guidesDragPreview,
                                           onGuideRasterized: _guideRasterizer(
                                             context,
                                             cut.pasteboard?.canvas,

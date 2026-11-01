@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart';
@@ -78,6 +79,7 @@ class ToolSettingsPanel extends StatelessWidget {
     this.selectedGuideId,
     this.onGuidesCommitted,
     this.onGuidesPreview,
+    this.guidesInFlight,
     this.onGuideRasterized,
     this.cutPieceSlot,
     this.onCutPasteAtOrigin,
@@ -101,6 +103,9 @@ class ToolSettingsPanel extends StatelessWidget {
 
   /// The guide drag in flight — see [GuideSettings.onGuidesPreview].
   final ValueChanged<CutGuides>? onGuidesPreview;
+
+  /// What that drag has made of them — see [GuideSettings.guidesInFlight].
+  final ValueListenable<CutGuides?>? guidesInFlight;
 
   /// 래스터라이즈 — see [GuideSettings.onGuideRasterized].
   final ValueChanged<DrawingGuide>? onGuideRasterized;
@@ -333,6 +338,9 @@ class ToolSettingsPanel extends StatelessWidget {
       canvasSize: pasteboard?.canvas,
       onGuidesCommitted: onGuidesCommitted ?? (_) {},
       onGuidesPreview: onGuidesPreview ?? (_) {},
+      guidesInFlight: guidesInFlight,
+      // The brush's colour, for the colour window's 「현재 색 반영」.
+      currentColorOf: () => state.color,
       onGuideRasterized: onGuideRasterized,
     ),
   };

@@ -106,6 +106,26 @@ void main() {
     return out;
   }
 
+  testWidgets('🚨a name wears its guide\'s colour (F-544)', (tester) async {
+    const red = 0xFFFF0000;
+    final named = await render(
+      tester,
+      painterFor([symmetry().copyWith(color: red)], emphasized: true),
+    );
+    final blank = await render(
+      tester,
+      painterFor([symmetry(name: '').copyWith(color: red)], emphasized: true),
+    );
+    final diff = differences(named, blank);
+    expect(diff, isNotEmpty);
+
+    final width = size.width.toInt();
+    for (final (:x, :y) in diff) {
+      final pixel = named.getUint32((y * width + x) * 4);
+      expect(pixel >> 16 & 0xFF, 0, reason: 'no green in it at ($x, $y)');
+    }
+  });
+
   testWidgets('a symmetry says ITS name, centred above its centre point', (
     tester,
   ) async {

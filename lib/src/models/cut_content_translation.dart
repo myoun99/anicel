@@ -145,7 +145,11 @@ GuideShape _translatedShape(GuideShape shape, double dx, double dy) =>
         eyeLevel: _translatedAxis(shape.eyeLevel, dx, dy),
         vanishingPoints: [
           for (final point in shape.vanishingPoints)
-            _translatedVanishingPoint(point, dx, dy),
+            _translatedVanishingPoint(
+              point,
+              dx,
+              dy,
+            ).drawing(point.lineDensity),
         ],
       ),
     };

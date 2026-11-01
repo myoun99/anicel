@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/widgets/pill_strip.dart';
 import 'package:anicel/src/ui/widgets/settings_rows.dart';
 
 import '../../helpers/boolean_dot_probe.dart';
+import '../../helpers/named_finders.dart';
 
 /// What the guide TOOL's entry in the tool SETTINGS panel decides — the
 /// half of `guide_panels.dart` that edits a guide rather than lists one.
@@ -261,16 +262,13 @@ void main() {
             .widgetList<SettingsSwitchRow>(find.byType(SettingsSwitchRow))
             .map((row) => row.tileKey)
             .toSet(),
-        {
-          const ValueKey<String>('guide-eye-level-visible'),
-          const ValueKey<String>('guide-constrain-eye-level'),
-        },
+        {const ValueKey<String>('guide-constrain-eye-level')},
       );
     });
 
-    testWidgets('🚨its two switches write the eye level\'s own facts, each '
-        'to its own field', (tester) async {
-      Future<PerspectiveShape> toggle(String key) async {
+    testWidgets('🚨its eye and its switch write the eye level\'s own facts, '
+        'each to its own field', (tester) async {
+      Future<PerspectiveShape> toggle(Future<void> Function() press) async {
         CutGuides? committed;
         await pumpSettings(
           tester,
@@ -282,12 +280,14 @@ void main() {
           const GuideId('p1'),
           (next) => committed = next,
         );
-        await tester.pressRingIn(find.byKey(ValueKey<String>(key)));
+        await press();
         await tester.pump();
         return perspectiveOf(committed!, 'p1');
       }
 
-      final hiddenEyeLevel = await toggle('guide-eye-level-visible');
+      final hiddenEyeLevel = await toggle(
+        () => tester.tap(find.named('guide-eye-level-visible')),
+      );
       expect(hiddenEyeLevel.eyeLevelVisible, isFalse);
       expect(
         hiddenEyeLevel.constrainToEyeLevel,
@@ -297,7 +297,11 @@ void main() {
             'questions — 유저 kept both switches',
       );
 
-      final freedPoints = await toggle('guide-constrain-eye-level');
+      final freedPoints = await toggle(
+        () => tester.pressRingIn(
+          find.byKey(const ValueKey<String>('guide-constrain-eye-level')),
+        ),
+      );
       expect(freedPoints.constrainToEyeLevel, isFalse);
       expect(freedPoints.eyeLevelVisible, isTrue);
     });
@@ -463,17 +467,20 @@ void main() {
         onPreview: (next) => shown = next,
       );
       final bar = tester.widget<FieldSlider>(
-        find.byKey(const ValueKey<String>('guide-line-density')),
+        find.byKey(const ValueKey<String>('guide-vanishing-point-0-density')),
       );
       expect(bar.value, defaultGuideLineDensity);
-      expect((bar.min, bar.max), (4, 48));
+      expect((bar.min, bar.max), (4, 192));
 
       bar.onChanged!(20.4);
       expect(committed, isNull);
-      expect(perspectiveOf(shown!, 'p1').lineDensity, 20);
+      expect(perspectiveOf(shown!, 'p1').vanishingPoints.single.lineDensity, 20);
 
       bar.onChangeEnd!(30);
-      expect(perspectiveOf(committed!, 'p1').lineDensity, 30);
+      expect(
+        perspectiveOf(committed!, 'p1').vanishingPoints.single.lineDensity,
+        30,
+      );
     });
 
     testWidgets('🚨the LAST vanishing point cannot be removed — a '
@@ -557,6 +564,9 @@ void main() {
 
     testWidgets('🚨the ＋ adds a point on the plane beside the eye level\'s '
         'handle, ON the eye level — however many there are', (tester) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
       final addButton = find.byKey(
         const ValueKey<String>('guide-add-vanishing-point'),
       );
@@ -651,9 +661,16 @@ void main() {
           .data!;
     }
 
-    testWidgets('🚨a point on the paper reads its position ROUNDED, not '
-        'truncated — a point at 1234.6 is nearer 1235', (tester) async {
-      expect(await readoutFor(tester, at(1234.6, -7.4)), '1235, -7');
+    testWidgets('🚨two drawn lines that meet read where they meet ROUNDED, '
+        'not truncated — a point at 1234.6 is nearer 1235', (tester) async {
+      final meeting = VanishingPointFromLines(
+        GuideLine(
+          a: CanvasPoint(x: 1234.6, y: 0),
+          b: CanvasPoint(x: 1234.6, y: 10),
+        ),
+        GuideLine(a: CanvasPoint(x: 0, y: -7.4), b: CanvasPoint(x: 10, y: -7.4)),
+      );
+      expect(await readoutFor(tester, meeting), '1235, -7');
     });
 
     testWidgets('two drawn lines that never meet say so instead of dividing '

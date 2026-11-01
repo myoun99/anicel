@@ -512,6 +512,9 @@ enum AppStrings {
   String get guideMirrorModeOn => _s('guideMirrorModeOn');
   String get guideMirrorModeOff => _s('guideMirrorModeOff');
   String get guideEyeLevelShow => _s('guideEyeLevelShow');
+  String get guideEyeLevel => _s('guideEyeLevel');
+  String get guideVisibleLabel => _s('guideVisibleLabel');
+  String get guideColor => _s('guideColor');
   String get guideConstrainToEyeLevel => _s('guideConstrainToEyeLevel');
   String get guideConstrainToEyeLevelNote => _s('guideConstrainToEyeLevelNote');
   String get guideVanishingPoint => _s('guideVanishingPoint');
@@ -2385,6 +2388,9 @@ enum AppStrings {
     'guideMirrorModeOn': 'Copies alternate handedness (a true mirror).',
     'guideMirrorModeOff': 'Copies are rotations — nothing is mirrored.',
     'guideEyeLevelShow': 'Show eye level',
+    'guideEyeLevel': 'Eye level',
+    'guideVisibleLabel': 'Show',
+    'guideColor': 'Color',
     'guideConstrainToEyeLevel': 'Hold vanishing points on the eye level',
     'guideConstrainToEyeLevelNote':
         'Binds the next drag; it does not move what is already placed.',
@@ -3770,6 +3776,9 @@ enum AppStrings {
     'guideMirrorModeOn': 'コピーが左右反転します（本当の鏡）。',
     'guideMirrorModeOff': 'コピーは回転のみ — 反転しません。',
     'guideEyeLevelShow': 'アイレベルを表示',
+    'guideEyeLevel': 'アイレベル',
+    'guideVisibleLabel': '表示',
+    'guideColor': '色',
     'guideConstrainToEyeLevel': '消失点をアイレベル上に固定',
     'guideConstrainToEyeLevelNote': '次のドラッグに効きます。すでに置いたものは動きません。',
     'guideVanishingPoint': '消失点',
@@ -5602,6 +5611,9 @@ enum AppStrings {
     'guideMirrorMode': '선대칭',
     'guideMirrorModeOff': '사본은 회전일 뿐 — 뒤집히지 않습니다.',
     'guideEyeLevelShow': '아이레벨 표시',
+    'guideEyeLevel': '아이레벨',
+    'guideVisibleLabel': '표시',
+    'guideColor': '색',
     'guideConstrainToEyeLevel': '소실점을 아이레벨에 고정',
     'guideConstrainToEyeLevelNote': '다음 드래그부터 적용됩니다. 이미 놓인 것은 움직이지 않습니다.',
     'guideVanishingPoint': '소실점',
@@ -7440,6 +7452,9 @@ enum AppStrings {
     'guideMirrorModeOff':
         'Les copies sont des rotations — rien n\'est inversé.',
     'guideEyeLevelShow': 'Afficher la ligne d\'horizon',
+    'guideEyeLevel': 'Ligne d\'horizon',
+    'guideVisibleLabel': 'Afficher',
+    'guideColor': 'Couleur',
     'guideConstrainToEyeLevel': 'Garder les points de fuite sur l\'horizon',
     'guideConstrainToEyeLevelNote':
         'S\'applique au prochain déplacement ; ne bouge pas l\'existant.',
@@ -9414,6 +9429,9 @@ enum AppStrings {
     'guideMirrorModeOn': '副本左右翻转（真正的镜像）。',
     'guideMirrorModeOff': '副本只是旋转 — 不会翻转。',
     'guideEyeLevelShow': '显示视平线',
+    'guideEyeLevel': '视平线',
+    'guideVisibleLabel': '显示',
+    'guideColor': '颜色',
     'guideConstrainToEyeLevel': '将消失点固定在视平线上',
     'guideConstrainToEyeLevelNote': '对下一次拖动生效；不会移动已放置的。',
     'guideVanishingPoint': '消失点',

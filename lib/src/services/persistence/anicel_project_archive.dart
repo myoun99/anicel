@@ -65,6 +65,22 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v30 (2026-11-02, F-544 — 유저: 「선 밀도는 소실점별로 정하게」,
+/// 「192까지 늘려도될듯」, 「가이드별로 색 바꿀수있게」, 「불투명도 막대」): a
+/// vanishing point says how densely it draws (`lineDensity` on the point,
+/// where it stood on the shape), up to 192; a guide says its `opacity` and
+/// `color`, an eye level its `eyeLevelColor`. A v29 build refuses a point
+/// of more than 48 lines with an error that names nothing a person could
+/// act on, and reads none of the rest — its next save writes the guide back
+/// plain. The bump turns both into a refusal
+/// ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape was read for it, and it did not move the floor
+/// ([anicelOldestReadFormatVersion]): a v29 document opens, the word
+/// `lineDensity` on its shape goes unread, and each of its points draws
+/// twelve. One bar puts that back; a floor would refuse every v29 file for
+/// it. That weighing is mine, not the user's.
+///
 /// v29 (2026-10-24, card `a-cooled-empty-cel-reads-drawn`): a cel's blob
 /// says in its head whether its picture shows anything (cel blob v4,
 /// `AnicelCelBlob.showsSomething`), so a cel kept in a file answers whether
@@ -452,7 +468,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 29;
+const int anicelFormatVersion = 30;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).

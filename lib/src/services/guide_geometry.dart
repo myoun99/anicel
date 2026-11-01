@@ -491,7 +491,7 @@ PerspectiveShape movedEyeLevel(PerspectiveShape shape, GuideAxis eyeLevel) {
     eyeLevel: eyeLevel,
     vanishingPoints: [
       for (final point in shape.vanishingPoints)
-        _mapVanishingPoint(point, motion),
+        _mapVanishingPoint(point, motion).drawing(point.lineDensity),
     ],
   );
 }
