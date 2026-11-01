@@ -656,6 +656,44 @@ void main() {
     );
   });
 
+  test('🚨a sixteenth past its capacity it comes back to it in one letting '
+      'go, not one tile at each landing', () async {
+    if (!available) {
+      markTestSkipped('qa_engine.dll not built');
+      return;
+    }
+    final store = TimelineGridTileStore.instance..debugCapacity = 16;
+    addTearDown(() => store.debugCapacity = TimelineGridTileStore.capacity);
+    final painter = painterFor(blockLayer(), store: store);
+    ui.Image? tile(int span) => store.tileFor(
+      painter: painter,
+      spanStartIndex: span * 2,
+      spanEndIndexExclusive: span * 2 + 2,
+      devicePixelRatio: 2.0,
+    );
+    Future<ui.Image> landed(int span) async {
+      expect(
+        await pollUntil(() => tile(span) != null),
+        isTrue,
+        reason: 'span $span never landed',
+      );
+      return tile(span)!;
+    }
+
+    final images = [
+      for (var span = 0; span < 17; span += 1) await landed(span),
+    ];
+    int goneOf(List<ui.Image> tiles) =>
+        tiles.where((image) => image.debugDisposed).length;
+    expect(goneOf(images), 0, reason: 'a sixteenth past it: none let go yet');
+
+    images.add(await landed(17));
+
+    expect(goneOf(images), 2, reason: 'back at its capacity, in one go');
+    expect(images[0].debugDisposed, isTrue, reason: 'asked for longest ago');
+    expect(images[1].debugDisposed, isTrue);
+  });
+
   // 🚨playback-draws-frames-the-film-did-not-change-in (2026-10-24): a run
   // shows its pages in its own order and round again, so the tile asked for
   // longest ago is the next one it shows — what an LRU lets go of first.

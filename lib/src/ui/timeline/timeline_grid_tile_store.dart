@@ -105,13 +105,14 @@ class TimelineGridTileStore {
   final LinkedHashMap<String, _TileRequest> _starved =
       LinkedHashMap<String, _TileRequest>();
 
-  /// How many tiles it keeps. A span tile at 96px × a 28px row × DPR 2 ≈
-  /// 42KB; 768 covers dozens of rows × the whole scroll neighborhood before
-  /// it lets any go.
+  /// How many tiles it comes back to keeping ([_letGoWantedLatest]). A span
+  /// tile at 96px × a 28px row × DPR 2 ≈ 42KB; 768 covers dozens of rows ×
+  /// the whole scroll neighborhood before it lets any go.
   static const int capacity = 768;
 
-  /// How many tiles it keeps: [capacity] — lowered by a test that lands a
-  /// few past it, where 769 would be as many real rasters. ⚠️TEST ONLY.
+  /// How many tiles it comes back to keeping: [capacity] — lowered by a test
+  /// that lands a few past it, where 769 would be as many real rasters.
+  /// ⚠️TEST ONLY.
   @visibleForTesting
   int debugCapacity = capacity;
 
@@ -563,8 +564,17 @@ class TimelineGridTileStore {
   /// are kept: by [letGoWantedLatest], the one order playback's caches let
   /// go by — the least recently asked for first among tiles wanted alike,
   /// as an `Lru` would, which is every tile wherever nothing plays.
+  ///
+  /// 🚨ASKED ONCE A SIXTEENTH PAST [debugCapacity], NOT AT EVERY LANDING
+  /// (I-22): the order weighs and sorts every tile kept, to let one go, and
+  /// a strip scrolled past what is kept lands a dozen tiles a notch. ↩️Asked
+  /// at each, a landing took the frame's turn: at 24px a frame in debug, 24
+  /// rows, a frame began 18.5 ms late at the median and 52.8 at p95 (0.8 and
+  /// 4.3 now), and a wheel's 40 notches drew 35 frames, not 55. ⛔Past it and
+  /// not short of it: a lap that just outgrew [capacity] keeps every tile it
+  /// shows (the 793 of the doc on [_entries]).
   void _letGoWantedLatest() {
-    if (_entries.length <= debugCapacity) {
+    if (_entries.length <= debugCapacity + debugCapacity ~/ 16) {
       return;
     }
     final shownBy = <String, _RowShows>{};
