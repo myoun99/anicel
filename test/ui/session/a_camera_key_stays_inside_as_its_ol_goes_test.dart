@@ -122,29 +122,30 @@ void main() {
   });
 
   group('the O.L taken away at once', () {
-    test('🚨the keys on the frames that went come in by six — a\'s past its '
-        'end, b\'s before its conte — and the undo puts them back', () {
+    test('🚨the end pushes the keys it meets in, as a cut\'s end does '
+        '(F-541) — a\'s past its end, b\'s before its conte — and the undo '
+        'puts them back', () {
       final session = open();
 
       session.transitions.updateTransitionInstructions(const {});
 
-      expect(keysOf(session, a), {0: 0, 20: 20, 21: 27, 23: 29});
-      expect(keysOf(session, b), {0: 0, 21: 27, 23: 29});
+      expect(keysOf(session, a), {0: 0, 20: 20, 22: 27, 23: 29});
+      expect(keysOf(session, b), {0: 0, 22: 27, 23: 29});
 
       session.undo();
       expect(keysOf(session, a), {0: 0, 20: 20, 27: 27, 29: 29});
       expect(keysOf(session, b), {0: 0, 27: 27, 29: 29});
 
       session.redo();
-      expect(keysOf(session, a), {0: 0, 20: 20, 21: 27, 23: 29});
+      expect(keysOf(session, a), {0: 0, 20: 20, 22: 27, 23: 29});
     });
 
-    test('a key coming in onto another takes its frame '
-        '(I-73-camera-row-Q8) — and the undo brings both back', () {
+    test('a key before the end\'s reach stays where it stood — and the undo '
+        'brings the other back', () {
       final session = open(aKeys: [0, 21, 27]);
 
       session.transitions.updateTransitionInstructions(const {});
-      expect(keysOf(session, a), {0: 0, 21: 27});
+      expect(keysOf(session, a), {0: 0, 21: 21, 23: 27});
 
       session.undo();
       expect(keysOf(session, a), {0: 0, 21: 21, 27: 27});
@@ -166,7 +167,7 @@ void main() {
         {18: 12},
         reason: '⛔전제: the O.L stays on a\'s end, over a|c now',
       );
-      expect(keysOf(session, b), {0: 0, 21: 27, 23: 29});
+      expect(keysOf(session, b), {0: 0, 22: 27, 23: 29});
       expect(keysOf(session, c), {0: 0, 29: 23});
 
       session.undo();
@@ -176,26 +177,25 @@ void main() {
   });
 
   group('a drag that makes the のりしろ shorter', () {
-    test('🚨its end stops short of a\'s keys — a frame in, where 27 still '
-        'stands and the end key comes in with the end', () {
+    test('🚨its end pushes a\'s keys in, as a cut\'s end does', () {
       final session = open();
 
       dragEdge(session, TimelineBlockEdge.end, -5);
 
-      expect(spansOf(session), {18: 11});
-      expect(keysOf(session, a), {0: 0, 20: 20, 27: 27, 28: 29});
+      expect(spansOf(session), {18: 7});
+      expect(keysOf(session, a), {0: 0, 20: 20, 23: 27, 24: 29});
     });
 
-    test('🚨its start stops short of b\'s', () {
+    test('🚨its start pushes b\'s', () {
       final session = open();
 
       dragEdge(session, TimelineBlockEdge.start, 5);
 
-      expect(spansOf(session), {19: 11});
-      expect(keysOf(session, b), {0: 0, 27: 27, 28: 29});
+      expect(spansOf(session), {23: 7});
+      expect(keysOf(session, b), {0: 0, 23: 27, 24: 29});
     });
 
-    test('🚨the span slid along holds its last step that keeps them', () {
+    test('🚨the span slid along pushes them too', () {
       final session = open();
       final row = session.activeTrack.transitionLayer.id;
       session.updateTrackRowRangeSelectionByFrame(
@@ -209,9 +209,9 @@ void main() {
       session.rangeMove.updateFrameRangeMoveDrag(frameDelta: 3);
       session.rangeMove.endFrameRangeMoveDrag();
 
-      expect(spansOf(session), {19: 12}, reason: 'b keeps 27 at a 5-frame head');
-      expect(keysOf(session, b), {0: 0, 27: 27, 28: 29});
-      expect(keysOf(session, a), {0: 0, 20: 20, 27: 27, 30: 29});
+      expect(spansOf(session), {21: 12});
+      expect(keysOf(session, b), {0: 0, 25: 27, 26: 29});
+      expect(keysOf(session, a), {0: 0, 20: 20, 27: 27, 32: 29});
     });
 
     test('drawn out instead, nothing stops it — the end key goes out', () {

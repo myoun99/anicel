@@ -121,20 +121,52 @@ void main() {
     );
   });
 
-  group('a shrink that comes at once (I-73-camera-row-Q7)', () {
-    test('🚨brings every key on the frames that went in by as many frames — '
-        'the end key with them, every lane', () {
+  // 🗣️F-541 (유저 2026-11-02): 「그냥 안멈추고 만나면 밀어버리면 되지않나」 ·
+  // I-21 「불도저로 쭉 미는느낌」. ↩️Keys came in by the frames that went,
+  // one landing on another taking its frame (I-73-camera-row-Q7 · Q8).
+  group('a shrink pushes the keys it meets', () {
+    test('🚨each on a frame of its own, the end key leading them, on every '
+        'lane', () {
       final moved = cameraFollowingItsEnd(
         cameraOf([0, 20, 27, 29], turns: [0, 27]),
         lastFrame: 23,
         previousLastFrame: 29,
       );
 
-      expect(positions(moved), {0: 0, 20: 20, 21: 27, 23: 29});
-      expect(moved.track.rotation.keys.keys, [0, 21]);
+      expect(positions(moved), {0: 0, 20: 20, 22: 27, 23: 29});
+      expect(moved.track.rotation.keys.keys, [0, 22]);
     });
 
-    test('a key coming in onto another takes its frame (Q8)', () {
+    test('🚨a key with no key behind it is pushed as soon as the end reaches '
+        'it', () {
+      expect(
+        positions(
+          cameraFollowingItsEnd(
+            cameraOf([0, 12]),
+            lastFrame: 8,
+            previousLastFrame: 23,
+          ),
+        ),
+        {0: 0, 8: 12},
+      );
+    });
+
+    test('it stands where it stood until the end reaches it', () {
+      final camera = cameraOf([0, 12]);
+      expect(
+        identical(
+          cameraFollowingItsEnd(
+            camera,
+            lastFrame: 12,
+            previousLastFrame: 23,
+          ),
+          camera,
+        ),
+        isTrue,
+      );
+    });
+
+    test('a key the end meets is pushed, never lost', () {
       expect(
         positions(
           cameraFollowingItsEnd(
@@ -143,8 +175,19 @@ void main() {
             previousLastFrame: 23,
           ),
         ),
-        {0: 0, 15: 23},
+        {0: 0, 14: 15, 15: 23},
       );
+    });
+
+    test('a key two lanes share stays one key, whatever else a lane has', () {
+      final moved = cameraFollowingItsEnd(
+        cameraOf([0, 10, 12], turns: [0, 10]),
+        lastFrame: 8,
+        previousLastFrame: 12,
+      );
+
+      expect(positions(moved), {0: 0, 7: 10, 8: 12});
+      expect(moved.track.rotation.keys.keys, [0, 7]);
     });
 
     test('a key that stood past the old end already is not for this write to '
@@ -161,7 +204,7 @@ void main() {
       );
     });
 
-    test('a key that would come in before frame 0 lands on it', () {
+    test('a key before the end\'s reach stays', () {
       expect(
         positions(
           cameraFollowingItsEnd(
@@ -170,7 +213,21 @@ void main() {
             previousLastFrame: 29,
           ),
         ),
-        {0: 20, 1: 1},
+        {1: 1, 5: 20},
+      );
+    });
+
+    test('out of frames — only a shrink at once gets there — the last pushed '
+        'onto frame 0 takes it (Q8)', () {
+      expect(
+        positions(
+          cameraFollowingItsEnd(
+            cameraOf([0, 1, 2, 3]),
+            lastFrame: 1,
+            previousLastFrame: 3,
+          ),
+        ),
+        {0: 2, 1: 3},
       );
     });
   });
@@ -184,11 +241,10 @@ void main() {
   });
 
   group('the shortest a cut may become', () {
-    test('stops one frame past the last key but the one on the end', () {
+    test('leaves every key a frame of its own', () {
       expect(
         cameraDrawnFrameFloor(cameraOf([0, 12, 23]), drawnFrameCount: 24),
-        14,
-        reason: 'key 12 stays; the end key needs frame 13',
+        3,
       );
       expect(
         cameraDrawnFrameFloor(cameraOf([0, 23]), drawnFrameCount: 24),
@@ -196,10 +252,10 @@ void main() {
       );
     });
 
-    test('with no key on the end, keeps the last key inside', () {
+    test('with no key on the end, as much', () {
       expect(
         cameraDrawnFrameFloor(cameraOf([0, 20]), drawnFrameCount: 24),
-        21,
+        2,
       );
     });
 
@@ -207,7 +263,7 @@ void main() {
         'do', () {
       expect(
         cameraDrawnFrameFloor(cameraOf([0, 12, 40]), drawnFrameCount: 24),
-        13,
+        2,
       );
       expect(
         cameraDrawnFrameFloor(cameraOf([0, 23, 40]), drawnFrameCount: 24),

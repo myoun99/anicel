@@ -80,10 +80,10 @@ int drawnFramesOfCutAt({
 /// or more passes by construction: the floor never stands past them.
 ///
 /// 🗣️I-73-camera-row-Q7 (유저 2026-10-09 → `floor`): 「컷 길이 줄이기와
-/// 똑같이 — 안쪽 키 앞에서 멈춤」. A drag that makes a のりしろ shorter
-/// stops short of the camera keys on it, as a cut's end does, the key on
-/// the end coming in with it (`cameraFollowingItsEnd`). What takes a
-/// のりしろ away at once is not stopped: the keys on it come in.
+/// 똑같이」. A drag that makes a のりしろ shorter pushes the camera keys in
+/// as a cut's end does (`cameraFollowingItsEnd`, ↩️F-541: they both stopped
+/// short of them), and stops where they have no frames left. What takes a
+/// のりしろ away at once is not stopped.
 bool transitionRowKeepsCameraKeys(
   Track track,
   Layer row,

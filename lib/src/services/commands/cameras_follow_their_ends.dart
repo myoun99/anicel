@@ -17,7 +17,8 @@ import '../project_repository.dart';
 ///
 /// And what came in does not go back out when the のりしろ comes back
 /// (only the end key does), so every camera the edit moved is kept as it
-/// was and put back after the command's undo.
+/// was and put back after the command's undo. ⚠️A command that writes a
+/// cut's length and goes round this leaves keys pushed in behind its undo.
 class CamerasFollowTheirEnds {
   CamerasFollowTheirEnds(this._repository);
 

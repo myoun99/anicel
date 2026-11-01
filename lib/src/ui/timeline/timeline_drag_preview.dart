@@ -11,6 +11,7 @@ import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
 import '../../models/project.dart';
 import '../../models/track.dart';
 import '../../models/track_id.dart';
@@ -927,7 +928,28 @@ Layer? timelineRowPreviewLayer(TimelineDragPreview? preview, Layer layer) =>
     rowShownWhileMoved(
       layer,
       (layerId) => timelineDragPreviewLayerFor(preview, layerId),
-    );
+    ) ??
+    _cameraRowMarker(preview, layer);
+
+/// A fresh clone of the camera row while [preview] carries a camera ([layer]
+/// is its marker, as for a block move or a lane edit): the row's cells and
+/// lanes are the cut's camera, read through the session off this same
+/// preview, and nothing else trips its gate.
+///
+/// 🗣️F-541 (유저 2026-11-02): 「콘티패널에서 컷크기 줄일때 카메라레이어의 키
+/// 줄이는거 라이브로 따라가는데, 타임라인패널만 안따라감. 법 통일」. The
+/// storyboard's rows listen to the track itself; the timeline's stood on
+/// their gate, which a length change never tripped.
+Layer? _cameraRowMarker(TimelineDragPreview? preview, Layer layer) {
+  final carried = switch (preview) {
+    CutTrimDragPreview(:final previewCameras) ||
+    ExposureEdgeDragPreview(:final previewCameras) => previewCameras,
+    _ => const <CutId, CutCamera>{},
+  };
+  return layer.kind == LayerKind.camera && carried.isNotEmpty
+      ? layer.copyWith()
+      : null;
+}
 
 /// What [layer]'s row shows while a drag has the rows [movedRowOf] answers
 /// for where it put them, or null when the drag does not reach it — a row
