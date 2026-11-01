@@ -1556,8 +1556,11 @@ class _LaysCounted extends FramePictureStore<FramePictureKey> {
     FramePictureKey key,
     FrameDrawing frame, {
     bool shownNow = false,
+    bool Function() gone = _stays,
   }) {
     laid.add(key);
-    return super.lay(key, frame, shownNow: shownNow);
+    return super.lay(key, frame, shownNow: shownNow, gone: gone);
   }
+
+  static bool _stays() => false;
 }
