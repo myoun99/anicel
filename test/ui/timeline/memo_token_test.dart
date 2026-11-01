@@ -55,11 +55,11 @@ void main() {
   group('ByMap', () {
     test('a rebuilt map with equal contents is the same input, as a key', () {
       final kept = {
-        const ByMap({1: 'a', 2: 'b'}): 'kept',
+        ByMap(Map.of({1: 'a', 2: 'b'})): 'kept',
       };
 
-      expect(kept[const ByMap({1: 'a', 2: 'b'})], 'kept');
-      expect(kept[const ByMap({1: 'a', 2: 'c'})], isNull);
+      expect(kept[ByMap(Map.of({1: 'a', 2: 'b'}))], 'kept');
+      expect(kept[ByMap(Map.of({1: 'a', 2: 'c'}))], isNull);
     });
 
     test('🚨it is hashed without walking what it maps: a row\'s whole '
