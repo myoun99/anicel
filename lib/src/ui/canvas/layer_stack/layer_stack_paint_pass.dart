@@ -383,6 +383,7 @@ class _LayerStackPaintPass {
     _held = (
       rasters: rasters,
       keyOf: _drawsOf,
+      pictureOf: _pictureOf,
       drawnOn: _drawnOn,
       keeps: false,
       below: BelowThePen.cellsOnly,
@@ -1106,6 +1107,7 @@ class _LayerStackPaintPass {
     (:final rasters, :final keeps, :final below) => (
       rasters: rasters,
       keyOf: _drawsOf,
+      pictureOf: _pictureOf,
       drawnOn: _drawnOn,
       keeps: keeps,
       below: below,
@@ -1160,6 +1162,14 @@ class _LayerStackPaintPass {
       _ => null,
     };
   }
+
+  /// What [node]'s own picture holds: what it draws, at full strength
+  /// ([CompositeNodeSignature.asItsPicture]). What the paper lies in has no
+  /// picture of its own: a blend's backdrop ([onUnderlay]).
+  Object? _pictureOf(CompositeNode<_PaintRow> node) => switch (_drawsOf(node)) {
+    final CompositeNodeSignature rows => rows.asItsPicture,
+    final drawn => drawn,
+  };
 
   static CompositeLayerSignature? _signatureOf(_PaintRow row) => switch (row) {
     _PaintCelSurface(:final signature) => signature,

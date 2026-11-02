@@ -44,7 +44,8 @@ typedef CompositeRoute<L> = ({
 });
 
 /// Where a route holds the pictures of its nodes ([HeldSubtreeRasters]):
-/// what a node draws ([keyOf] — null for one drawn afresh each time), the
+/// what a node draws ([keyOf] — null for one drawn afresh each time) and
+/// what its own picture holds ([pictureOf] — of the same nodes), the
 /// row a pen draws on ([drawnOn]) — what lies below it held as one picture
 /// or in cells, as [below] says ([_CompositeTreeWalk._belowThePen]) — and
 /// whether a node over it drawn whole here is kept ([keeps]). [cells] is
@@ -53,6 +54,7 @@ typedef CompositeRoute<L> = ({
 typedef SubtreeHolding<L> = ({
   HeldSubtreeRasters rasters,
   Object? Function(CompositeNode<L> node) keyOf,
+  Object? Function(CompositeNode<L> node) pictureOf,
   bool Function(L row) drawnOn,
   bool keeps,
   BelowThePen below,
@@ -622,7 +624,7 @@ class _CompositeTreeWalk<L> {
   /// them.
   SubtreeHold? _holdOf(CompositeNode<L> node, Rect within) {
     final held = route.held;
-    final key = held?.keyOf(node);
+    final key = held?.pictureOf(node);
     if (held == null || key == null || _holdsThePen(node)) {
       return null;
     }

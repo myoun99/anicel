@@ -34,7 +34,10 @@ import 'viewport_canvas_transform.dart';
 import '../../services/cel_source_effect_pass.dart';
 import '../../services/cel_surface_as_shown.dart';
 import '../../services/playback/cut_frame_composite_signature.dart'
-    show CompositeLayerSignature, CutFrameCompositeSignature;
+    show
+        CompositeLayerSignature,
+        CompositeNodeSignature,
+        CutFrameCompositeSignature;
 import 'raster_picture.dart';
 import 'tile_origin.dart';
 

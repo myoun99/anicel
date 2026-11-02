@@ -635,22 +635,22 @@ class FramePictures implements PlaybackPictures {
       paintPaper: picture.paintPaper,
       ghosts: picture.ghosts,
     ));
-    return _hasOneToHold(
-      key.signature.nodes,
-      preorderNodes(next.signature.nodes).toSet(),
-    );
+    return _hasOneToHold(key.signature.nodes, {
+      for (final node in preorderNodes(next.signature.nodes)) node.asItsPicture,
+    });
   }
 
-  /// Whether, of [nodes] from the top down, one that [next] draws too and a
-  /// walk holds is not held yet.
+  /// Whether, of [nodes] from the top down, one whose picture [next] has too
+  /// and a walk holds is not held yet.
   bool _hasOneToHold(
     List<CompositeNodeSignature> nodes,
     Set<CompositeNodeSignature> next,
-  ) => nodes.any(
-    (node) => next.contains(node) && _isHeldByAWalk(node)
-        ? !aheadNodes.holds(node)
-        : _hasOneToHold(node.children, next),
-  );
+  ) => nodes.any((node) {
+    final picture = node.asItsPicture;
+    return next.contains(picture) && _isHeldByAWalk(node)
+        ? !aheadNodes.holds(picture)
+        : _hasOneToHold(node.children, next);
+  });
 
   /// Whether a walk holds [node]'s picture (`_CompositeTreeWalk._holdOf`).
   static bool _isHeldByAWalk(CompositeNodeSignature node) => switch (node) {

@@ -113,9 +113,10 @@ void main() {
   CompositeGroup<CanvasStackRow> folder(
     List<CompositeNode<CanvasStackRow>> of, {
     List<ResolvedLayerEffect> effects = const [],
+    double strength = 0.6,
   }) => CompositeGroup(
     children: of,
-    opacity: 0.6,
+    opacity: strength,
     blendMode: LayerBlendMode.normal,
     effects: effects,
   );
@@ -311,6 +312,20 @@ void main() {
     expect(debugSubtreeRasterCount, 0);
     expect(cut, inPlace);
     expect(held, hasLength(1));
+  });
+
+  test('🚨that one picture holds each node at the strength it is laid at: a '
+      'folder laid otherwise is another picture, though its own is the same '
+      '— the one thing a node is found by that it is not', () async {
+    await lay(underThePen());
+    expect(held, hasLength(1), reason: '⛔premise');
+
+    final stepped = await aStep([
+      rowOf('below'),
+      folder([rowOf('ramp'), rowOf('other')], strength: 0.2),
+      pen(),
+    ]);
+    expect(stepped.pixels, stepped.fresh);
   });
 
   test('🚨a step is cut from that one picture — nothing under the pen is '
