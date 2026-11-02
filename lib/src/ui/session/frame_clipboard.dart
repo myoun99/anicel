@@ -1238,7 +1238,7 @@ class FrameClipboard implements BringsMedia {
   }
 
   /// Which cels of [landing]'s row take which of the copy's drawings
-  /// ([picturesPastedOnSyncedRow]) — none on a row that owns its blocks, and
+  /// ([picturesHungInBlocks]) — none on a row that owns its blocks, and
   /// none of a copy of no drawings: an SE row's blocks hold no picture.
   ///
   /// ⚠️Mine, not the user's: 「어태치 싱크 레이어의 프레임블록」 was what they
@@ -1255,9 +1255,11 @@ class FrameClipboard implements BringsMedia {
       return const {};
     }
     final (:index, :liftCount) = landing.at;
-    return picturesPastedOnSyncedRow(
+    return picturesHungInBlocks(
       attachedRowAsShown(row, cut.layers),
-      clip: landing.clip,
+      drawings: [
+        for (final exposure in landing.clip.exposures.values) ?exposure.frameId,
+      ],
       from: index,
       until: liftCount == 0 ? null : index + liftCount,
     );

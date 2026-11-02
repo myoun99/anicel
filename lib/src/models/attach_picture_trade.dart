@@ -1,3 +1,4 @@
+import 'attach_picture_paste.dart';
 import 'attached_layer_resolve.dart' show isSyncedAttachedLayer;
 import 'block_row_swap.dart';
 import 'cel_rekey.dart';
@@ -76,6 +77,39 @@ List<CelPictureMove>? picturesTradedInAttachGroup({
     }
   }
   return moves;
+}
+
+/// The PICTURES a drag trades with the blocks it lands on: [cels], the blocks
+/// it carries off row [from], go to the blocks of [onto] from frame [at] as a
+/// paste's would ([picturesHungInBlocks]), and each hands its own back.
+///
+/// 🗣️F-546 (유저 2026-11-03): 「일반행 복사해서 다른 어태치싱크행에
+/// 붙여넣을수있듯이. 그게 그림교체로 작동하듯이, 일반행을 어태치싱크행으로
+/// 블록을 드래그하는것도 가능하게. 지금은 어태치행으로 드래그하면 기준행의
+/// 블록을 바꿔치도록 작동되고있음. 어태치행이랑 그림 바꿔치는느낌? 결과적으로
+/// 그렇게되면됨」.
+///
+/// [onto] is the row as a cut shows it (`attachedRowAsShown`). ⚠️Mine: a cel
+/// two of [cels] show trades once, with the first block it lands on — a cel
+/// that gave twice would take one picture back and lose the other.
+List<CelPictureMove> picturesTradedInBlocks({
+  required LayerId from,
+  required List<FrameId> cels,
+  required Layer onto,
+  required int at,
+}) {
+  final given = <FrameId>{};
+  return [
+    for (final MapEntry(key: taker, value: cel) in picturesHungInBlocks(
+      onto,
+      drawings: cels,
+      from: at,
+    ).entries)
+      if (given.add(cel)) ...[
+        (fromRow: from, fromCel: cel, toRow: onto.id, toCel: taker),
+        (fromRow: onto.id, fromCel: taker, toRow: from, toCel: cel),
+      ],
+  ];
 }
 
 /// [row]'s cel for the base's [baseCel]: its link on a synced row, the cel

@@ -218,8 +218,8 @@ void main() {
     expect(s.historyManager.undoCount, steps);
   });
 
-  test('the hand over a mirror is over its base: a block dropped on another '
-      'row\'s mirror lands on that row', () {
+  test('the hand over a mirror is over its base: a block dropped where '
+      'another row\'s mirror shows none lands on that row', () {
     final (:s, :base, :mirror, :other) = baseWithAMirror(
       AttachedPlacement.above,
     );

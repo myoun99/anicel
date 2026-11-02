@@ -5,11 +5,74 @@ import 'package:anicel/src/models/cel_rekey.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
 
 /// F-330 · I-98: a rows' hop on the same frames inside an attach group
 /// trades their pictures — each row's cel for the base's cel, by the law a
 /// move's landed-on blocks go back by.
 void main() {
+  group('🎯F-546: a drag\'s blocks and the blocks they land on', () {
+    const from = LayerId('from');
+    const onto = LayerId('onto');
+    final row = Layer(
+      id: onto,
+      name: 'onto',
+      frames: const [],
+      timeline: {
+        for (final start in [0, 2, 4])
+          start: TimelineExposure.drawing(FrameId('x$start'), length: 2),
+      },
+    );
+
+    List<CelPictureMove> traded(List<String> cels, {required int at}) =>
+        picturesTradedInBlocks(
+          from: from,
+          cels: [for (final cel in cels) FrameId(cel)],
+          onto: row,
+          at: at,
+        );
+
+    List<CelPictureMove> trade(String cel, String taker) => [
+      (
+        fromRow: from,
+        fromCel: FrameId(cel),
+        toRow: onto,
+        toCel: FrameId(taker),
+      ),
+      (
+        fromRow: onto,
+        fromCel: FrameId(taker),
+        toRow: from,
+        toCel: FrameId(cel),
+      ),
+    ];
+
+    test('each trades with a block from the landing on, the first the one '
+        'the landing stands in', () {
+      expect(traded(['a', 'b'], at: 2), [
+        ...trade('a', 'x2'),
+        ...trade('b', 'x4'),
+      ]);
+      expect(traded(['a', 'b'], at: 3), [
+        ...trade('a', 'x2'),
+        ...trade('b', 'x4'),
+      ]);
+    });
+
+    test('until the blocks run out, or the cels', () {
+      expect(traded(['a', 'b'], at: 4), trade('a', 'x4'));
+      expect(traded(['a'], at: 0), trade('a', 'x0'));
+    });
+
+    test('nothing where no block stands', () {
+      expect(traded(['a'], at: 6), isEmpty);
+    });
+
+    test('⚠️Mine: a cel two blocks show trades once', () {
+      expect(traded(['a', 'a'], at: 0), trade('a', 'x0'));
+    });
+  });
+
   const baseId = LayerId('base');
   final base = Layer(id: baseId, name: 'A', frames: const []);
 
