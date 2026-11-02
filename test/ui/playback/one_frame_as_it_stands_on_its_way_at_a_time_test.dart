@@ -367,10 +367,20 @@ void main() {
     expect(await redOnThePage(tester), closeTo(redAt(0.2), 1));
     raster.past();
     await tester.pump();
-    expect(raster.laid, 2, reason: 'a picture sends out no frame as it stands');
 
     await tester.pumpWidget(shown(run, live, raster, 0.8));
-    expect(raster.laid, 3, reason: '⛔premise: on its way, and it lags');
+    expect(raster.laid, 3, reason: '⛔premise: it went out');
+    raster.past();
+    await tester.pump();
+    expect(
+      await standsAt(tester, run, live, raster, 0.2),
+      isTrue,
+      reason: 'taken with nothing on its way',
+    );
+    expect(raster.laid, 3, reason: 'a picture sends out no frame as it stands');
+
+    await tester.pumpWidget(shown(run, live, raster, 0.8));
+    expect(raster.laid, 4, reason: '⛔premise: on its way, and it lags');
     expect(
       await standsAt(tester, run, live, raster, 0.2),
       isTrue,
