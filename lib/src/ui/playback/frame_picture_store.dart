@@ -678,7 +678,8 @@ class FramePictureStore<K extends Object> {
   /// visible, 114 frames, 2436 x 1524: the change on screen 0.64–2.2 s at
   /// once, 0.06–0.65 in pieces (a dragged slider 2.3–2.6, 1.5–3.2); frames
   /// drawn while the bar fills 64, 790–820; the longest between two 1.0–2.3
-  /// s, 0.4–1.1. The whole bar 20–22 s, 30–32.
+  /// s, 0.4–1.1. The whole bar 20–22 s, 30–32; 8 in pieces once a frame made
+  /// ahead held its folders (`FramePictures.aheadNodes`).
   Future<FramePicture?> _layNow(_Lay<K> lay) async {
     final (:extent, :patchedLevels) = _shapeOf(lay.frame.extent);
     if (extent.isEmpty) {

@@ -174,9 +174,10 @@ class FramePictures implements PlaybackPictures {
   ///
   /// 🔬Surface Pro 11, profile, S5_BA cut 353 (38 rows, one folder under a
   /// camera lens blur at 2720 x 1696 whose rows change at 2 of 47 frames),
-  /// the bar's 114 frames from nothing, in turn: 36.7–39.1 s → 9.5–10.2 s in
-  /// pieces, 19.0–21.0 s → 5.7–5.8 s at once; two thirds of it was that
-  /// chain, 20 s → 7 s with it off.
+  /// the bar's 114 frames from nothing, in turn: 29.9–30.8 s → 8.0–8.5 s;
+  /// with the cut's moving rows moved into that folder, which then changes at
+  /// every picture and is not held, 28.8–29.2 s → 24.1–24.4 s. Two thirds of
+  /// a bar was that chain: laid at once, 20 s → 7 s with it off.
   late final HeldSubtreeRasters aheadNodes = HeldSubtreeRasters(
     bytes: () => _roomAhead,
   );
