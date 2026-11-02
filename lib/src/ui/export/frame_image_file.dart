@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' show Color;
 
 import '../../models/export_spec.dart';
 import '../../models/import/import_warning.dart' show ImportWarning;
@@ -15,7 +16,7 @@ import 'still_image_encoders.dart';
 ///
 /// ↩️The export window worked this out for itself, as the frame its image
 /// tab opens on; 「다른 이름으로 저장」 takes that same frame
-/// (backlog-21-Q7: 「내보내기 「이미지」와 같은 깨끗한 한 장」).
+/// (backlog-21-Q7, and F-547 for what it shows).
 ExportFrameTask? frameUnderThePlayhead(EditorSessionManager session) {
   final cut = session.activeCutSpan.exportAnchorCutOrNull;
   if (cut == null) {
@@ -44,19 +45,25 @@ typedef FrameImageFile = ({
 
 /// Writes [task] as ONE still file under [spec] — its size, its layer FX,
 /// its format's ground and bytes; a PSD, the cut's rows apart
-/// ([ExportFrameRenderer.frameRows]) — with [paper] laid under its rows
-/// ([ExportFrameRenderer.renderComposite]). True when the file was written.
+/// ([ExportFrameRenderer.frameRows]) with what is shown over them in a row
+/// of its own ([ExportFrameRenderer.rowShownOver]) — as the canvas shows it,
+/// with [paper] laid under its rows ([ExportFrameRenderer.renderAsShown]).
+/// True when the file was written.
 ///
 /// 🚨The image tab's one picture and 「다른 이름으로 저장」's are THIS call
-/// (backlog-21-Q7, 유저 2026-09-30: 「내보내기 「이미지」와 같은 깨끗한 한
-/// 장」) — the same picture because it is the same code, never two
-/// spellings that agree today. What each asks of it differs only in what it
-/// hands in: the spec, and the paper.
+/// (backlog-21-Q7, 유저 2026-09-30: 「내보내기 「이미지」와 같은 한 장」) —
+/// the same picture because it is the same code, never two spellings that
+/// agree today. What each asks of it differs only in what it hands in: the
+/// spec, and the paper.
+///
+/// ↩️That one picture was 「깨끗한 한 장」, no mark of the screen on it, until
+/// F-547 (유저 2026-11-03): 「화면 보이는 그대로 … 출력탭 이미지저장도 마찬가지」.
 Future<bool> writeFrameImage(
   EditorSessionManager session,
   ExportFrameTask task,
   ImageExportSpec spec,
   FrameImageFile file, {
+  required Color guideInk,
   ProjectBackground? paper,
 }) async {
   final renderer = ExportFrameRenderer.forFormat(
@@ -66,13 +73,20 @@ Future<bool> writeFrameImage(
   );
   final summary = await const PngSequenceExportService().exportImages(
     count: 1,
-    renderImage: (_) =>
-        renderer.renderComposite(task, spec.sizeMode, paper: paper),
+    renderImage: (_) => renderer.renderAsShown(
+      task,
+      spec.sizeMode,
+      guideInk: guideInk,
+      paper: paper,
+    ),
     fileNameFor: (_) => file.name,
     directoryPath: file.directory,
     encoderFor: (_) => layeredEncoderFor(
       spec.format,
-      () => renderer.frameRows(task, spec.sizeMode, paper: paper),
+      () => [
+        ...renderer.frameRows(task, spec.sizeMode, paper: paper),
+        ?renderer.rowShownOver(task, spec.sizeMode, guideInk: guideInk),
+      ],
     ),
     isCancelled: file.isCancelled,
     onProgress: file.onProgress,

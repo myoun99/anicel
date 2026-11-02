@@ -207,6 +207,24 @@ class CameraFrameBox extends StatelessWidget {
   }
 }
 
+/// The camera view's dim: all of [size] outside [framePath], black at
+/// [dimOpacity].
+void paintCameraDim(
+  Canvas canvas,
+  Size size,
+  Path framePath,
+  double dimOpacity,
+) {
+  final dimPath = Path()
+    ..fillType = PathFillType.evenOdd
+    ..addRect(Offset.zero & size)
+    ..addPath(framePath, Offset.zero);
+  canvas.drawPath(
+    dimPath,
+    Paint()..color = Colors.black.withValues(alpha: dimOpacity),
+  );
+}
+
 class CameraFramePainter extends CustomPainter with RepaintOnProps {
   const CameraFramePainter({
     required this.pose,
@@ -239,14 +257,7 @@ class CameraFramePainter extends CustomPainter with RepaintOnProps {
     final framePath = Path()..addPolygon(corners, true);
 
     if (dimOpacity > 0) {
-      final dimPath = Path()
-        ..fillType = PathFillType.evenOdd
-        ..addRect(Offset.zero & size)
-        ..addPath(framePath, Offset.zero);
-      canvas.drawPath(
-        dimPath,
-        Paint()..color = Colors.black.withValues(alpha: dimOpacity),
-      );
+      paintCameraDim(canvas, size, framePath, dimOpacity);
     }
 
     // ONE hairline, and that is the whole silhouette (user, 2026-08-08).

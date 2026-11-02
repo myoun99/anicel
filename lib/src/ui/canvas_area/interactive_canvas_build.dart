@@ -949,12 +949,12 @@ class _InteractiveCanvasBuild {
       shot,
       Stack(
         children: [
-          // Guides are EDITING scaffolding: they are drawn
-          // here and nowhere else — playback, thumbnails and
-          // export never see them, the way a ruler never
-          // prints. Under the camera frame and the gizmos,
-          // which are chrome about the shot rather than about
-          // the drawing.
+          // Guides are EDITING scaffolding: playback and thumbnails
+          // never see them, and a film never does. A file does where
+          // the hand lays them over a cel (I-105), and a picture of
+          // what the canvas shows (F-547). Under the camera frame and
+          // the gizmos, which are chrome about the shot rather than
+          // about the drawing.
           if (editing && frame.session.cutVerbs.activeCutGuides.isNotEmpty)
             _state._guideOverlay(
               frame.session,

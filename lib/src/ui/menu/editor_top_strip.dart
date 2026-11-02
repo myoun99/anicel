@@ -26,6 +26,7 @@ import '../../native/window_full_screen.dart';
 import '../brush/brush_tool_state.dart';
 import '../brush/brush_value_group.dart';
 import '../brush/tools_panel.dart' show RailButton;
+import '../canvas/guide_overlay.dart' show guideColorOf;
 import '../widgets/anchored_popup.dart';
 import '../widgets/ellipsis_text.dart';
 import '../widgets/field_slider.dart';
@@ -2276,7 +2277,12 @@ Future<void> saveFrameAsImage(
   if (frame == null) {
     return;
   }
-  final writePicture = _pictureSaveAsWrites(session, frame, format);
+  final writePicture = _pictureSaveAsWrites(
+    session,
+    frame,
+    format,
+    guideColorOf(context),
+  );
   // The export window's image, and named as it is: after the cut it is a
   // frame of (F-404 — 「이미지는 기본적으로 현재컷이 대상인거니 … 컷이름」).
   final name = unnamedExportName(
@@ -2324,12 +2330,15 @@ Future<void> saveFrameAsImage(
 ///
 /// 🗣️backlog-21 (유저 08-13): 「다른이름으로 저장으로 csp처럼 현재
 /// 보이는대로 png나 jpg 이런식으로 저장하게하고싶어. 물론 캔버스영역으로
-/// 클립하는건 당연」. What it takes is Q7's answer (09-30): 「내보내기
-/// 「이미지」와 같은 깨끗한 한 장」 — the image tab's picture at size =
-/// canvas ([writeFrameImage]): the layers as they show, none of the editing
-/// marks, the view's rotation and flip ignored, the pasteboard cut off. Its
-/// settings are that tab's defaults, not the ones last used there: this is
-/// Save As, not the export window — all but its ground. Whatever the
+/// 클립하는건 당연」. What it takes is the image tab's picture at size =
+/// canvas ([writeFrameImage], Q7's answer, 09-30): what the canvas shows
+/// (F-547), the view's rotation and flip ignored, the pasteboard cut off.
+/// ↩️Q7 said 「내보내기 「이미지」와 같은 깨끗한 한 장」, none of the editing
+/// marks, until F-547 (유저 2026-11-03): 「카메라 경로가 출력안되있음」 ·
+/// 「다른이름저장은 진짜 보이는대로 출력이니까 가이드던 어니언스킨이던 뭐던 화면
+/// 보이는 그대로 캔버스사이즈로 크롭해서 출력하도록」. Its settings are that
+/// tab's defaults, not the ones last used there: this is Save As, not the
+/// export window — all but its ground. Whatever the
 /// format, the picture stands on the project's PAPER as the canvas shows
 /// it, its colour and its alpha; where the paper is absent or thin, a file
 /// that keeps alpha (PNG) keeps nothing there and one that cannot (JPG)
@@ -2349,6 +2358,7 @@ Future<bool> Function(String path) _pictureSaveAsWrites(
   EditorSessionManager session,
   ExportFrameTask task,
   ExportStillFormat format,
+  Color guideInk,
 ) {
   final spec = ImageExportSpec(
     format: ExportFormatSelection(
@@ -2379,6 +2389,7 @@ Future<bool> Function(String path) _pictureSaveAsWrites(
       // PSD): nothing is left out of one.
       onLeftOut: null,
     ),
+    guideInk: guideInk,
     paper: paper,
   );
 }

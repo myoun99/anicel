@@ -161,12 +161,13 @@ void main() {
     return picture;
   });
 
-  /// The RGBA at the canvas's far corner — off the dab, so the paper and
-  /// what the file stands it on are all there is — of the picture Save As
+  /// The RGBA at the canvas's middle — off the dab, and inside the camera's
+  /// frame, round which an open eye dims the picture (F-547) — so the paper
+  /// and what the file stands it on are all there is — of the picture Save As
   /// writes as [format] once [session]'s paper is [paper]. Read back by the
   /// `image` package, by the file's name, so every format Save As writes is
   /// read one way — Flutter's own decoder reads neither TGA nor TIFF.
-  Future<List<int>> cornerOn(
+  Future<List<int>> middleOn(
     WidgetTester tester,
     EditorSessionManager session,
     ExportStillFormat format,
@@ -187,9 +188,9 @@ void main() {
       target,
       File(target).readAsBytesSync(),
     )!;
-    final corner = picture.getPixel(canvas.width - 1, canvas.height - 1);
+    final middle = picture.getPixel(canvas.width ~/ 2, canvas.height ~/ 2);
     return [
-      for (final channel in [corner.r, corner.g, corner.b, corner.a])
+      for (final channel in [middle.r, middle.g, middle.b, middle.a])
         channel.toInt(),
     ];
   }
@@ -318,7 +319,7 @@ void main() {
     );
     final picture = await pixelsOf(tester, bytes, [
       (10, 10),
-      (canvas.width - 1, canvas.height - 1),
+      (canvas.width ~/ 2, canvas.height ~/ 2),
     ]);
     expect(
       (picture!.width, picture.height),
@@ -360,7 +361,7 @@ void main() {
     final session = strip.projects.active;
     drawOnCurrentFrame(session);
     Future<List<int>> png(ProjectBackground paper) =>
-        cornerOn(tester, session, ExportStillFormat.png, paper);
+        middleOn(tester, session, ExportStillFormat.png, paper);
 
     expect(
       await png(const ProjectBackground.color(0xFF2040C0)),
@@ -386,7 +387,7 @@ void main() {
     // A small canvas: the eight pictures go through writers the engine
     // has none of, which walk every pixel in Dart, and under a busy
     // machine's eighteen suites one WEBP at the default canvas outwaited
-    // the wait (2026-10-22). What is pinned is the paper at a corner,
+    // the wait (2026-10-22). What is pinned is the paper at the middle,
     // which a canvas of any size has.
     final bare = createDefaultProject();
     final track = bare.tracks.single;
@@ -414,7 +415,7 @@ void main() {
       ExportStillFormat.webp,
     ]) {
       expect(
-        await cornerOn(
+        await middleOn(
           tester,
           session,
           format,
@@ -424,7 +425,7 @@ void main() {
         reason: '$format: 「앱에서 설정한 캔버스 색 따라감」',
       );
       expect(
-        await cornerOn(
+        await middleOn(
           tester,
           session,
           format,
@@ -448,7 +449,7 @@ void main() {
     final session = strip.projects.active;
     drawOnCurrentFrame(session);
     Future<List<int>> jpg(ProjectBackground paper) async =>
-        (await cornerOn(tester, session, ExportStillFormat.jpg, paper))
+        (await middleOn(tester, session, ExportStillFormat.jpg, paper))
             .take(3)
             .toList();
     // A JPEG's flat colour comes back within a few levels of what it was.
@@ -503,7 +504,7 @@ void main() {
     expect(bytes.sublist(0, 2), [0xFF, 0xD8], reason: 'a JPEG file');
     final picture = await pixelsOf(tester, bytes, [
       (10, 10),
-      (canvas.width - 1, canvas.height - 1),
+      (canvas.width ~/ 2, canvas.height ~/ 2),
     ]);
     expect((picture!.width, picture.height), (canvas.width, canvas.height));
     expect(

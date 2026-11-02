@@ -5,7 +5,10 @@ import 'package:flutter/foundation.dart' show listEquals, visibleForTesting;
 
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
+import '../../models/camera_path_settings.dart';
+import '../../models/camera_pose.dart';
 import '../../models/canvas_size.dart';
+import '../../models/canvas_viewport.dart';
 import '../../models/cel_number_letters.dart' show celNumberText;
 import '../../models/cut.dart';
 import '../../models/pasteboard_bounds.dart';
@@ -24,6 +27,7 @@ import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/movie_cel.dart';
+import '../../models/onion_skin_settings.dart' show OnionSkinPlacement;
 import '../../models/transition_geometry.dart'
     show TransitionVeil, cutTransitionVeilsAt;
 import '../../services/brush_frame_store.dart' show CelRead;
@@ -43,11 +47,17 @@ import '../../services/playback/playback_frame_mapping.dart'
         sourceOverWeights,
         trackGroupSourceOverWeights;
 import '../../services/camera_frame_corners.dart'
-    show CameraView, cameraViewOver, pictureView;
+    show
+        CameraView,
+        cameraFrameCornersInCanvas,
+        cameraViewOver,
+        pictureView;
+import '../../models/sheet_marks.dart' show SheetMark;
 import '../../models/sheet_paint_layer.dart';
 import '../../services/camera_path.dart';
 import '../../services/camera_projection_matrix.dart'
     show cameraMovesPixelsWhole;
+import '../camera/camera_frame_overlay.dart' show paintCameraDim;
 import '../camera/camera_frame_render_service.dart';
 import '../camera/camera_path_overlay.dart';
 import '../canvas/guide_overlay.dart' show paintGuideLines;
@@ -497,14 +507,11 @@ class ExportFrameRenderer {
   /// picture (R5b) — ON for presentation renders (the アフレコ video),
   /// OFF for compositing sources: PNG sequences already stay unposed and
   /// unfaded for the same reason, and a thumbnail has no room for them.
-  /// [paper] is laid under the rows as the canvas lays it — none for a
-  /// compositing source, the project's for a picture of how it looks.
   Future<ui.Image> renderComposite(
     ExportFrameTask task,
     ExportSizeMode mode, {
     CanvasSize? outputSize,
     bool withNameTags = false,
-    ProjectBackground? paper,
   }) {
     _startFrame();
     return _composite(
@@ -515,7 +522,221 @@ class ExportFrameRenderer {
       nameTags: withNameTags
           ? session.seEntries.seNameTagsForCutFrame(task.cut, task.frameIndex)
           : const [],
+    );
+  }
+
+  /// [task]'s frame as the canvas shows it, in [mode]'s view of it — the
+  /// picture a person asks for by hand (「다른 이름으로 저장」, the export
+  /// window's image tab), where [renderComposite] is a film's: the rows with
+  /// their onion ghosts ([_nodesAsShown]), and over them what the canvas
+  /// draws on the picture's own pixels ([_shownOver]). [paper] is laid under
+  /// the rows as the canvas lays it, and a guide that names no colour of its
+  /// own is drawn in [guideInk].
+  ///
+  /// 🗣️F-547 (유저 2026-11-03): 「다른이름저장은 진짜 보이는대로 출력이니까
+  /// 가이드던 어니언스킨이던 뭐던 화면 보이는 그대로 캔버스사이즈로 크롭해서
+  /// 출력하도록 … 심플하게 구현하기만 하면됨」 · 「출력탭 이미지저장도 마찬가지」.
+  ///
+  /// ⛔Not a capture of the screen, though that reads simpler: the screen is
+  /// the view's — cut at the panel's edges and at its zoom. It is what the
+  /// canvas draws from, drawn by what draws it, at the file's pixels; what
+  /// the canvas has hidden is in no picture of it.
+  Future<ui.Image> renderAsShown(
+    ExportFrameTask task,
+    ExportSizeMode mode, {
+    required ui.Color guideInk,
+    CanvasSize? outputSize,
+    ProjectBackground? paper,
+  }) async {
+    _startFrame();
+    final cut = task.cut;
+    final view = _viewFor(cut, task.frameIndex, mode);
+    await _hydrate(cut, task.frameIndex);
+    return renderService.renderThroughCamera(
+      nodes: _nodesAsShown(task),
+      pose: view.pose,
+      cameraFrameSize: view.frameSize,
+      outputSize: outputSize,
+      canvasSize: cut.canvasSize,
+      cutsToTheCanvas: true,
       paper: paper,
+      overlayPass: _shownOver(task, view, guideInk),
+    );
+  }
+
+  /// [task]'s tree under the V row's chain, as [renderComposite] lays it,
+  /// with its onion ghosts where the canvas lays them
+  /// ([OnionSkinPlacement]): each directly under its row's drawing, or over
+  /// the frame's every row.
+  List<CompositeNode<CutFrameCompositeLayer>> _nodesAsShown(
+    ExportFrameTask task,
+  ) {
+    final inPlace =
+        session.onionSkin.settings.value.placement ==
+        OnionSkinPlacement.inPlace;
+    final ghosts = _ghostsOf(task);
+    return [
+      ...underTheCutsFx(
+        planCutFrameCompositeTree(
+          cut: _cutForRender(task.cut),
+          frameIndex: task.frameIndex,
+          reading: _readingOf(task.cut),
+          ghostsOf: inPlace ? (row) => ghosts[row.id] ?? const [] : null,
+        ),
+        _stillChainOf(task),
+      ),
+      if (!inPlace) ..._ghostsAlone(task),
+    ];
+  }
+
+  /// The onion ghosts of [task]'s frame, each onion row's under its id — of
+  /// the cut as this render sees it, so a chain the render leaves off
+  /// ([_cutForRender]) is off them too.
+  Map<LayerId, List<CutFrameCompositeGhost>> _ghostsOf(ExportFrameTask task) =>
+      session.onionSkin.ghostsAt(
+        _cutForRender(task.cut),
+        task.frameIndex,
+        null,
+      );
+
+  /// [task]'s onion ghosts by themselves.
+  List<CompositeNode<CutFrameCompositeLayer>> _ghostsAlone(
+    ExportFrameTask task,
+  ) => planCutFrameGhosts(
+    cut: _cutForRender(task.cut),
+    frameIndex: task.frameIndex,
+    ghosts: _ghostsOf(task).values.expand((ghosts) => ghosts),
+    reading: _readingOf(task.cut),
+  );
+
+  /// What the canvas draws over [task]'s picture on the picture's own
+  /// pixels, through [view], in the order it stacks them (`_overlayStack`):
+  /// the guides, the SE rows' name tags, the screens one-sided transitions
+  /// lay, the camera's path and the dim of its view. Null where it shows none
+  /// of them.
+  ///
+  /// ⛔Not what it draws at the screen's size whatever the zoom — a guide's
+  /// handles and names, a row's path, the crosses in time, a box, the camera
+  /// frame's hairline and cross: 🗣️F-547
+  /// 「카메라에 서있을때 조작 나오는거라던가도 출력되버리면 상관없고 딱히 결과적으로
+  /// 그런 픽셀사이즈가 아닌건 출력안된다해도 상관없음」.
+  ///
+  /// ⚠️Nor an O.L's other cut, or the thinning that makes room for it (the
+  /// canvas's fade wash): a picture of two cuts is the film's, and this is
+  /// the one cut as it stands — my call, not the user's, for 「심플하게」.
+  CameraOverlayPass? _shownOver(
+    ExportFrameTask task,
+    CameraView view,
+    ui.Color guideInk,
+  ) {
+    final cut = task.cut;
+    final veils = _veilsOf(task);
+    return _laidOver([
+      _guideLinesOver(
+        cut,
+        [
+          for (final guide in cut.guides.guides)
+            if (guide.visible) guide,
+        ],
+        view,
+        guideInk,
+      ),
+      _nameTagsOver(
+        cut,
+        session.seEntries.seNameTagsForCutFrame(cut, task.frameIndex),
+      ),
+      if (veils.isNotEmpty)
+        (canvas, _) => paintTransitionVeils(
+          canvas,
+          session.pasteboardOf(cut.canvasSize).rect,
+          veils,
+        ),
+      _cameraPathShown(task),
+      _cameraDimShown(task),
+    ]);
+  }
+
+  /// [task]'s camera path as the canvas draws it off the camera's row
+  /// ([CameraPathOverlay.standing]): as the canvas's camera path settings
+  /// say, around [task]'s frame where they keep to it, as large as the
+  /// canvas prints it there ([CameraPathOverlay.printedAt]) — the overlay's
+  /// own marks, on a view that is the canvas. Null where it draws none.
+  CameraOverlayPass? _cameraPathShown(ExportFrameTask task) {
+    final settings = CameraPathSettings.settings.value;
+    final path = settings.show == CameraPathShow.off
+        ? null
+        : CameraPath.of(task.cut, session.camera.cameraFrameSize);
+    if (path == null) {
+      return null;
+    }
+    return _marksOver(
+      task.cut,
+      CameraPathOverlay(
+        path: path,
+        playhead: task.frameIndex,
+        settings: settings,
+        viewport: CanvasViewport(),
+        standing: false,
+        printedAt: _poseAt(task),
+      ).marks,
+    );
+  }
+
+  /// The camera view's dim over [task]'s picture, round the frame the camera
+  /// stands in there, where the view is on. The eye is the switch: closed,
+  /// the picture has none. Null where there is none.
+  CameraOverlayPass? _cameraDimShown(ExportFrameTask task) {
+    final view = session.cameraViewMode;
+    final dim = view.dim.value;
+    if (!view.enabled.value || dim <= 0) {
+      return null;
+    }
+    final frame = ui.Path()
+      ..addPolygon(
+        cameraFrameCornersInCanvas(
+          pose: _poseAt(task),
+          cameraFrameSize: session.camera.cameraFrameSize,
+        ),
+        true,
+      );
+    final stage = task.cut.canvasSize.canvasRect.size;
+    return (canvas, _) => paintCameraDim(canvas, stage, frame, dim);
+  }
+
+  /// The camera's pose at [task]'s frame, as this render sees the camera
+  /// ([_viewFor]).
+  CameraPose _poseAt(ExportFrameTask task) => session.camera.cameraPoseForCut(
+    _cutForRender(task.cut),
+    task.frameIndex,
+  );
+
+  /// What [renderAsShown] lays over [task]'s rows, as a row of its own over
+  /// a file that keeps them apart ([frameRows]) — the ghosts with the rest,
+  /// wherever they lie in the picture, as no row of the file holds one; so
+  /// a person who wants the rows alone hides one row. Null where the canvas
+  /// shows nothing over them.
+  ExportLayerRow? rowShownOver(
+    ExportFrameTask task,
+    ExportSizeMode mode, {
+    required ui.Color guideInk,
+  }) {
+    final cut = task.cut;
+    final view = _viewFor(cut, task.frameIndex, mode);
+    final over = _shownOver(task, view, guideInk);
+    final ghosts = _ghostsAlone(task);
+    if (over == null && ghosts.isEmpty) {
+      return null;
+    }
+    return ExportLayerRow(
+      name: AppText.notation.exOnScreen,
+      draw: () => _transparentRenderService.renderThroughCamera(
+        nodes: ghosts,
+        pose: view.pose,
+        cameraFrameSize: view.frameSize,
+        canvasSize: cut.canvasSize,
+        cutsToTheCanvas: true,
+        overlayPass: over,
+      ),
     );
   }
 
@@ -779,16 +1000,22 @@ class ExportFrameRenderer {
       cutsToTheCanvas: true,
       paper: paper,
       rows: rows,
-      overlayPass: nameTags.isEmpty
-          ? null
-          : (canvas, rasterScale) => paintSeNameTags(
-              canvas,
-              tags: nameTags,
-              canvasSize: cut.canvasSize,
-              rasterScale: rasterScale,
-            ),
+      overlayPass: _nameTagsOver(cut, nameTags),
     );
   }
+
+  /// [nameTags] over [cut]'s picture. Null for none.
+  CameraOverlayPass? _nameTagsOver(
+    Cut cut,
+    List<ResolvedSeNameTag> nameTags,
+  ) => nameTags.isEmpty
+      ? null
+      : (canvas, rasterScale) => paintSeNameTags(
+          canvas,
+          tags: nameTags,
+          canvasSize: cut.canvasSize,
+          rasterScale: rasterScale,
+        );
 
   /// [task]'s composite tree, of the cut as this render sees it
   /// ([_cutForRender]): the window's 레이어 FX is expressed by rendering
@@ -1723,11 +1950,21 @@ class ExportFrameRenderer {
     ExportCelGroupTask task,
     CameraView view,
     ui.Color color,
+  ) => _guideLinesOver(
+    task.listedCut,
+    task.guidesLaid ? exportLaidGuidesOf(task.listedCut) : const [],
+    view,
+    color,
+  );
+
+  /// [guides] of [cut] as the canvas draws them at rest ([paintGuideLines]),
+  /// through [view]. Null for none.
+  CameraOverlayPass? _guideLinesOver(
+    Cut cut,
+    List<DrawingGuide> guides,
+    CameraView view,
+    ui.Color color,
   ) {
-    final cut = task.listedCut;
-    final guides = task.guidesLaid
-        ? exportLaidGuidesOf(cut)
-        : const <DrawingGuide>[];
     if (guides.isEmpty) {
       return null;
     }
@@ -1785,17 +2022,21 @@ class ExportFrameRenderer {
     if (path == null) {
       return null;
     }
-    final marks = cameraPathMarks(
-      path,
-      place: (point) => point,
-      // The file is the view's frame at full size.
-      sizes: CameraPathOverlay.sizesOnTheCanvas(view.pose),
-      layer: SheetPaintLayer.picture,
-    ).toList();
-    final paper = ui.Size(
-      cut.canvasSize.width.toDouble(),
-      cut.canvasSize.height.toDouble(),
+    return _marksOver(
+      cut,
+      cameraPathMarks(
+        path,
+        place: (point) => point,
+        // The file is the view's frame at full size.
+        sizes: CameraPathOverlay.sizesOnTheCanvas(view.pose),
+        layer: SheetPaintLayer.picture,
+      ).toList(),
     );
+  }
+
+  /// [marks], placed on [cut]'s canvas, as the sheets print theirs.
+  CameraOverlayPass _marksOver(Cut cut, List<SheetMark> marks) {
+    final paper = cut.canvasSize.canvasRect.size;
     return (canvas, _) => const SheetCanvasPrinter(style: conteTextStyle).paint(
       canvas,
       paper,

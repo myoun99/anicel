@@ -150,7 +150,9 @@ void main() {
       effects: [if (effects) brighter()],
       isVisible: false,
     ),
-    createCameraLayer(cutId: cutId),
+    // Its eye shut: open, the file would keep the view's dim in a row of
+    // its own (a_saved_picture_shows_the_screen_test).
+    createCameraLayer(cutId: cutId).copyWith(isVisible: false),
   ];
 
   /// A film of the one cut, its cels drawn: a black dot on 「A」, a blue one
@@ -235,13 +237,19 @@ void main() {
     final folder = Directory.systemTemp.createTempSync('frame-psd');
     deleteAfterSessionEnds(folder);
     final leftOut = <ImportWarning>[];
-    final wrote = await writeFrameImage(session, frameOf(session), spec, (
-      directory: folder.path,
-      name: 'frame.psd',
-      isCancelled: null,
-      onProgress: null,
-      onLeftOut: leftOut.addAll,
-    ));
+    final wrote = await writeFrameImage(
+      session,
+      frameOf(session),
+      spec,
+      (
+        directory: folder.path,
+        name: 'frame.psd',
+        isCancelled: null,
+        onProgress: null,
+        onLeftOut: leftOut.addAll,
+      ),
+      guideInk: const Color(0xFF000000),
+    );
     expect(wrote, isTrue);
     return (
       readPsdDocument(File('${folder.path}/frame.psd').readAsBytesSync()),

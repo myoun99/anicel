@@ -1537,6 +1537,7 @@ class ExportDialogState extends State<ExportDialog> {
       layerFx: spec.layerFx,
       format: spec.format,
     );
+    final guideInk = guideColorOf(context);
     return ExportPreviewDocument(
       subject: ExportTab.image,
       look: (
@@ -1550,9 +1551,10 @@ class ExportDialogState extends State<ExportDialog> {
       pageCount: math.max(1, cut.duration),
       opensAlpha: spec.format.wantsAlpha,
       sizeOf: (_) => _frameSizeOf(cut, spec.sizeMode),
-      renderAt: (page, size) => renderer.renderComposite(
+      renderAt: (page, size) => renderer.renderAsShown(
         ExportFrameTask(cut: cut, frameIndex: page),
         spec.sizeMode,
+        guideInk: guideInk,
         outputSize: size,
       ),
     );
@@ -2822,13 +2824,19 @@ class ExportDialogState extends State<ExportDialog> {
     final fileName =
         _placedName ??
         _singleFileName(ExportTab.image, spec.format.stillFormat.fileExtension);
-    final written = await writeFrameImage(_session, task, spec, (
-      directory: _outputDirectory,
-      name: fileName,
-      isCancelled: () => _cancelRequested,
-      onProgress: _reportProgress,
-      onLeftOut: _leftOut.addAll,
-    ));
+    final written = await writeFrameImage(
+      _session,
+      task,
+      spec,
+      (
+        directory: _outputDirectory,
+        name: fileName,
+        isCancelled: () => _cancelRequested,
+        onProgress: _reportProgress,
+        onLeftOut: _leftOut.addAll,
+      ),
+      guideInk: guideColorOf(context),
+    );
     return written
         ? AppText.strings.exDoneFile(fileName)
         : AppText.strings.exNothingInFrame;
