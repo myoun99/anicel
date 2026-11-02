@@ -17,6 +17,7 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_section_defaults.dart';
 import 'package:anicel/src/models/onion_skin_settings.dart';
@@ -458,6 +459,48 @@ void main() {
         });
       });
     }
+
+    testWidgets('the tab\'s 레이어 FX reach the ghost: off, its row\'s chain is '
+        'off it as it is off the row', (tester) async {
+      await tester.runAsync(() async {
+        final s = sessionOf();
+        ink(s, earlier, 40, 40);
+        s.effectsAndFx.updateLayerEffects(rowId, [
+          LayerEffect(
+            id: const EffectId('blur'),
+            kind: EffectKind.blur,
+            parameters: {'blurriness': EffectParameter(value: 8)},
+          ),
+        ]);
+        ghosting(s, OnionSkinPlacement.onTop);
+
+        /// How many pixels of the dab's row the ghost reaches: a blur
+        /// spreads it past the dab.
+        Future<int> reach(ExportLayerFx fx) async {
+          final renderer = ExportFrameRenderer(
+            session: s,
+            background: const ui.Color(0x00000000),
+            layerFx: fx,
+          );
+          addTearDown(renderer.dispose);
+          final rgba = await bytesOf(
+            await renderer.renderAsShown(
+              standing(s),
+              ExportSizeMode.canvas,
+              guideInk: guideInk,
+            ),
+          );
+          return [
+            for (var x = 0; x < 200; x += 1)
+              if (at(rgba, x, 40)[3] > 0) x,
+          ].length;
+        }
+
+        final bare = await reach(ExportLayerFx.off);
+        expect(bare, greaterThan(0), reason: '⛔premise: a ghost is drawn');
+        expect(await reach(ExportLayerFx.on), greaterThan(bare));
+      });
+    });
 
     testWidgets('🚨where it lies: under the row\'s own drawing in place, over '
         'it on top — as the canvas lays it', (tester) async {
