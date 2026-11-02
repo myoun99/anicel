@@ -613,7 +613,13 @@ void main() {
               layout.memoBandRect(0).top)
           .ceil();
       final height = line.toInt();
-      expect(two.sublist(top, top + height), one.sublist(top, top + height));
+      // A line's last row is left out: the fallback font differs by platform,
+      // and on Linux (CI, PR #1491) the next line's antialiasing reaches up
+      // into it.
+      expect(
+        two.sublist(top, top + height - 1),
+        one.sublist(top, top + height - 1),
+      );
       expect(
         two.sublist(top + height, top + 2 * height),
         isNot(one.sublist(top + height, top + 2 * height)),
@@ -666,7 +672,8 @@ void main() {
           room.left,
           room.top,
           room.right,
-          layout.memoWordsRect(page, left).top,
+          // One row short, as in 'each line stands in a line of its own'.
+          layout.memoWordsRect(page, left).top - 1,
         );
       }
 
