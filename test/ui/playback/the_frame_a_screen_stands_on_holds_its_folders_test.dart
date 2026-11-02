@@ -8,6 +8,7 @@ import 'package:anicel/src/models/brush_history_policy.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -171,9 +172,9 @@ void main() {
   }
 
   testWidgets('laid for the canvas that stands on it the frame keeps its '
-      'folder, and a step patched in as it stands is cut from it — laid '
-      'ahead of a screen, or for one that draws nothing live, it keeps '
-      'none', (tester) async {
+      'folder, and a step patched in as it stands is cut from it, as a '
+      'screen drawing it as it stands is — laid ahead of a screen, or for '
+      'one that draws nothing live, it keeps none', (tester) async {
     await tester.runAsync(() async {
       final s = session();
       addTearDown(s.dispose);
@@ -210,6 +211,18 @@ void main() {
           .draw(ui.Canvas(recorder)..clipRect(const Rect.fromLTWH(6, 8, 9, 7)));
       recorder.endRecording().dispose();
       expect(debugSubtreeRasterCount, 0, reason: 'cut from what is held');
+
+      final screen = ui.PictureRecorder();
+      standingPictures
+          .frameAsItStands(standingPictures.stackOf(stood), stood)
+          .paintOnScreen(
+            ui.Canvas(screen),
+            const Size(32, 24),
+            viewport: CanvasViewport(),
+            devicePixelRatio: 1,
+          );
+      screen.endRecording().dispose();
+      expect(debugSubtreeRasterCount, 0, reason: 'found by the screen too');
     });
   });
 

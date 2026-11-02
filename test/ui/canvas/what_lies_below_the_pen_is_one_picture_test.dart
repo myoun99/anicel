@@ -11,6 +11,7 @@ import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -195,6 +196,25 @@ void main() {
     return bytes!.buffer.asUint8List();
   }
 
+  /// [frame]'s pixels as a screen draws it as it stands, on a view of the
+  /// page ([StackedFrame.paintOnScreen]).
+  Future<Uint8List> onScreen(StackedFrame frame) async {
+    final size = white.canvasSize;
+    final recorder = ui.PictureRecorder();
+    frame.paintOnScreen(
+      ui.Canvas(recorder),
+      Size(size.width.toDouble(), size.height.toDouble()),
+      viewport: CanvasViewport(),
+      devicePixelRatio: 1,
+    );
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(size.width, size.height);
+    picture.dispose();
+    final bytes = await image.toByteData();
+    image.dispose();
+    return bytes!.buffer.asUint8List();
+  }
+
   /// The frame laid whole for a canvas that stands on it, its nodes kept.
   Future<void> lay(List<CompositeNode<CanvasStackRow>> nodes) async {
     final laid = frame(nodes, below: BelowThePen.whole, keeps: true);
@@ -267,6 +287,30 @@ void main() {
     expect(stepped.freshRasters, 1, reason: '⛔premise: the folder');
     expect(stepped.pixels, stepped.fresh);
     expect(held, hasLength(1), reason: 'no cell of what is held whole');
+  });
+
+  test('🚨a screen drawing the frame as it stands is cut from that one '
+      'picture too — and with it not held, draws it in place and keeps no '
+      'cell', () async {
+    final nodes = underThePen();
+    final asItStands = frame(
+      nodes,
+      below: BelowThePen.inCells,
+      live: penStep,
+    );
+
+    debugSubtreeRasterCount = 0;
+    final inPlace = await onScreen(asItStands);
+    expect(debugSubtreeRasterCount, 1, reason: 'the folder, and nothing more');
+    expect(held, hasLength(0));
+
+    await lay(nodes);
+    expect(held, hasLength(1), reason: '⛔premise');
+    debugSubtreeRasterCount = 0;
+    final cut = await onScreen(asItStands);
+    expect(debugSubtreeRasterCount, 0);
+    expect(cut, inPlace);
+    expect(held, hasLength(1));
   });
 
   test('🚨a step is cut from that one picture — nothing under the pen is '

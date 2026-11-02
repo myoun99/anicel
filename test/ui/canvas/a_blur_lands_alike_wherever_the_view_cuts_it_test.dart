@@ -33,6 +33,7 @@ import 'package:anicel/src/services/layer_pose_matrix.dart' show LayerPlacement;
 import 'package:anicel/src/services/se_name_tag_plan.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/canvas/composite_tree_paint.dart';
 import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
@@ -189,6 +190,7 @@ void main() {
     List<CompositeNode<CanvasStackRow>> nodes,
     ({LayerFrameImageCache cache, BitmapSurfacePainter pen}) ink, {
     required bool drawnOn,
+    HeldNodePictures? held,
   }) => stackedFrameOf(
     nodes,
     page: (
@@ -207,6 +209,10 @@ void main() {
       ),
       painters: LiftedRowPainters(),
     ),
+    held: switch (held) {
+      final held? => (pictures: held, revisionOf: (_) => 1),
+      null => null,
+    },
   );
 
   Future<Uint8List> rgbaOf(WidgetTester tester, ui.Picture picture, Size at) =>
@@ -346,6 +352,61 @@ void main() {
         );
       });
     }
+  }
+
+  for (final name in const [
+    'a blurred folder',
+    'a folder at 55% in a blurred folder',
+    'a blurring adjustment',
+    'a blurring adjustment at half',
+  ]) {
+    testWidgets('🚨$name held whole: a view that cuts it lays the frame\'s '
+        'picture byte for byte, its chain not run', (tester) async {
+      final ink = bars();
+      final nodes = scenes[name]!(false);
+      final held = HeldSubtreeRasters(bytes: () => 1 << 30);
+      addTearDown(held.clear);
+      final picture = await pictureOf(
+        tester,
+        frameOf(
+          nodes,
+          ink,
+          drawnOn: false,
+          held: (rasters: held, keeps: true, below: BelowThePen.whole),
+        ),
+      );
+      expect(held.length, greaterThan(0), reason: '⛔premise: kept');
+
+      debugSubtreeRasterCount = 0;
+      final shown = await asItStands(
+        tester,
+        frameOf(
+          nodes,
+          ink,
+          drawnOn: false,
+          held: (rasters: held, keeps: false, below: BelowThePen.inCells),
+        ),
+        edge,
+      );
+      expect(debugSubtreeRasterCount, 0, reason: 'found');
+
+      final width = view.width.toInt();
+      final pictureWidth = picture.extent.width.toInt();
+      var unlike = 0;
+      for (var y = 0; y < view.height; y += 1) {
+        for (var x = 0; x < width; x += 1) {
+          final px = (edge + x - picture.extent.left).toInt();
+          final py = (top + y - picture.extent.top).toInt();
+          for (var c = 0; c < 4; c += 1) {
+            if (shown[(y * width + x) * 4 + c] !=
+                picture.rgba[(py * pictureWidth + px) * 4 + c]) {
+              unlike += 1;
+            }
+          }
+        }
+      }
+      expect(unlike, 0);
+    });
   }
 
   testWidgets('a blurred SE name tag by the view\'s edge: a pan by a pixel '

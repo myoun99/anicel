@@ -123,10 +123,11 @@ class FramePictures implements PlaybackPictures {
   /// ([HeldNodePictures]; card paint-walk-redoes-the-same-work-each-step,
   /// 실측 5): kept as the frame is laid for that canvas ([makeShown]), or
   /// once a canvas stands on one laid ahead ([holdNodesOf]), and found as a
-  /// stroke's steps are patched into it ([frameAsItStands]) — what lies
-  /// below the row a pen draws on, as one picture or in the cells a step
-  /// landed in ([BelowThePen]), and each folder over it drawn whole are not
-  /// drawn again for each step that does not touch them.
+  /// stroke's steps are patched into it and as a screen draws it as it
+  /// stands ([frameAsItStands]) — what lies below the row a pen draws on, as
+  /// one picture or in the cells a step landed in ([BelowThePen]), and each
+  /// folder over it drawn whole are not drawn again for each step, or each
+  /// value of a drag, that does not touch them.
   ///
   /// ⚖️Below the pen, two pages at the most — the page of the frame last
   /// drawn with them ([estimatedImageBytes]): the frame's own list and the
@@ -134,10 +135,10 @@ class FramePictures implements PlaybackPictures {
   /// 「폴더가 몇 개든 2~3장」. Over it, as many as the playback [line] has
   /// room for — the frames' pictures made ahead give way to them (🗣️유저
   /// 2026-10-27, Q3 = c: 「위 폴더는 하나씩, 재생 메모리 몫 안에서 전부」).
-  /// The screen is fed by the frame's picture, and these only make its
-  /// patches cheaper. Past it they are let go of, and a patch draws them as
-  /// it did before; and they are only ever the nodes of the frame last drawn
-  /// to hold them ([HeldSubtreeRasters.holdOnly]).
+  /// The screen is fed by the frame's picture, and these only make what
+  /// comes before it cheaper. Past it they are let go of, and those draw them
+  /// as they did before; and they are only ever the nodes of the frame last
+  /// drawn to hold them ([HeldSubtreeRasters.holdOnly]).
   ///
   /// ↩️One page held the nodes over the pen together until Q3: 🔬nine
   /// folders at 50% over the row drawn on, one of them fitted and a step
