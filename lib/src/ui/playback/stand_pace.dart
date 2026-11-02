@@ -13,10 +13,10 @@ import '../gpu_fences.dart';
 /// waits ([waits]), and only the newest stands once it is past. 🔬Surface
 /// Pro 11, profile, S5_BA cut 353, every row on, an opacity dragged 30 steps
 /// at 16 ms and let go, with a canvas's frame as it stands keeping what it
-/// draws whole (`FramePictures.frameAsItStands`): a row beside the folders, let
-/// go to its picture 0.30–0.46 → 0.08–0.28 s, the longest a frame waited
-/// 0.30–0.42 → 0.23–0.31 s; a row in the blurred folder, the longest a frame
-/// waited 1.3–2.3 → 0.60–0.82 s, let go to its picture 1.3–2.2 → 0.50–1.9 s.
+/// draws whole (`FramePictures.frameAsItStands`): a row in the blurred folder,
+/// the longest a frame waited 1.4–1.8 → 0.60–0.86 s, let go to its picture
+/// 1.3–1.6 → 0.67–2.0 s (mostly 1.0); a row beside the folders, the longest
+/// a frame waited 0.30–0.41 → 0.27–0.31 s, let go to its picture as it was.
 ///
 /// Told by the fence ([rasterThreadBehind]) and only once it has come: a
 /// frame a fence has said nothing of goes out as it was handed.
