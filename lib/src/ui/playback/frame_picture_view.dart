@@ -26,6 +26,7 @@ import '../effective_device_pixel_ratio.dart';
 import 'frame_picture_store.dart';
 import 'frame_pictures.dart';
 import 'stacked_frame_picture.dart';
+import 'stand_pace.dart';
 import 'step_pace.dart';
 
 /// What a screen showing frames takes from their maker: the signal that a
@@ -78,6 +79,7 @@ class FramePictureView extends StatefulWidget {
     this.drawnLive = const {},
     this.ground,
     this.cut,
+    this.standPace,
   });
 
   final StackRun run;
@@ -159,6 +161,10 @@ class FramePictureView extends StatefulWidget {
   /// live picture takes over from showed past the canvas (🔬F-215's switch
   /// pin, 10-31). Null: nothing is cut.
   final List<Offset>? cut;
+
+  /// When this view's frames as they stand go out — a pace of its own where
+  /// null: a test's raster thread is in the test's hands.
+  final StandPace? standPace;
 
   @override
   State<FramePictureView> createState() => _FramePictureViewState();
@@ -246,6 +252,13 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// The step a paint held back.
   Timer? _heldStep;
 
+  /// When a frame as it stands goes out.
+  late final StandPace _standPace = widget.standPace ?? StandPace();
+
+  /// Whether the tree handed last waits for the frame on its way
+  /// ([_waitsItsTurn]).
+  bool _handedBehind = false;
+
   /// Whether the frame is drawn as it stands in place of the picture shown.
   final _DrawnAsItStands _standing = _DrawnAsItStands();
 
@@ -286,6 +299,7 @@ class _FramePictureViewState extends State<FramePictureView> {
     widget.run.landings.addListener(_landed);
     _standLive(onScreen: widget.alreadyShown ? (_) => true : null);
     _look();
+    _goesOut();
   }
 
   @override
@@ -308,13 +322,24 @@ class _FramePictureViewState extends State<FramePictureView> {
         !identical(oldWidget.run.pictures, widget.run.pictures) ||
         !_sameLive(oldWidget.live, widget.live) ||
         oldWidget.wholeFrames != widget.wholeFrames;
-    if (handedAnew) {
-      final shown = _onScreen;
-      final drawnLive = oldWidget.drawnLive;
-      _standLive(
-        onScreen: (cel) => shown.contains(cel) || drawnLive.contains(cel),
-      );
+    _handedBehind = handedAnew && _waitsItsTurn(oldWidget);
+    if (_handedBehind) {
+      return;
     }
+    if (handedAnew) {
+      _standAnew(oldWidget.drawnLive);
+    } else {
+      _look();
+    }
+  }
+
+  /// The frame stands as it was handed last, [drawnLive] as they were last
+  /// drawn.
+  void _standAnew(Set<BrushFrameKey> drawnLive) {
+    final shown = _onScreen;
+    _standLive(
+      onScreen: (cel) => shown.contains(cel) || drawnLive.contains(cel),
+    );
     // 🚨THE FRAME FIRST, THEN WHAT ITS LIVE ROWS MOVED: rows handed with
     // another frame are that frame's. Measured against the picture of the
     // frame left, they were patched INTO it — and every screen showing that
@@ -322,8 +347,36 @@ class _FramePictureViewState extends State<FramePictureView> {
     // frame you left stayed where the frame you went to has nothing, once
     // you went back and forth).
     _look();
-    if (handedAnew && widget.live != null) {
+    if (widget.live != null) {
       _liveRowsHandedAnew();
+    }
+    _goesOut();
+  }
+
+  /// Tells the pace where this frame's screen draws a frame as it stands.
+  void _goesOut() {
+    if (_shown == null && _live != null && !_waits) {
+      _standPace.stood(_standHandedBehind);
+    }
+  }
+
+  /// Whether the tree handed waits for the frame as it stands on its way
+  /// ([StandPace]): nothing but the tree moved, and no picture of it is
+  /// there to take.
+  bool _waitsItsTurn(FramePictureView oldWidget) =>
+      _standPace.waits &&
+      _shown == null &&
+      identical(oldWidget.run.pictures, widget.run.pictures) &&
+      _sameLive(oldWidget.live, widget.live) &&
+      oldWidget.wholeFrames == widget.wholeFrames &&
+      !_store.holds(_pictures.keyOfStack(widget.nodes, widget.picture));
+
+  /// The raster thread is past the frame on its way: the newest tree handed
+  /// meanwhile stands.
+  void _standHandedBehind() {
+    if (mounted && _handedBehind) {
+      _handedBehind = false;
+      setState(() => _standAnew(widget.drawnLive));
     }
   }
 
