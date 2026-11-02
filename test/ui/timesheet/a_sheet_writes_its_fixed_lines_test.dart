@@ -197,8 +197,8 @@ void main() {
         'sheet\'s rows are its time', () {
       final work = project();
       expect(pagesOf(work, 0, 3), [
-        ['カット頭 FI', '7f-17f PAN', '${ja.linked} c3'],
-        ['31f-41f PAN'],
+        ['カット頭 FI', '7f-17f PAN', '31f-41f PAN', '${ja.linked} c3'],
+        <String>[],
         ['カット尻 FO'],
       ]);
       expect(pagesOf(work, 1, 1), [
@@ -235,14 +235,54 @@ void main() {
       expect(leaving, ['c2 × c3 カットO.L']);
     });
 
-    test('the camera by the page\'s own frames, however the conte is cut', () {
+    test('🎯the camera on the first page alone, however the conte is cut', () {
       expect(
         pagesOf(project(cells: const [60]), 0, 3),
         pagesOf(project(), 0, 3),
       );
-      final [first, middle, _] = pagesOf(project(), 0, 3);
-      expect(first.where((line) => line.contains('PAN')), hasLength(1));
-      expect(middle.where((line) => line.contains('PAN')), hasLength(1));
+      final [first, middle, last] = pagesOf(project(), 0, 3);
+      expect(first.where((line) => line.contains('PAN')), hasLength(2));
+      expect(middle.where((line) => line.contains('PAN')), isEmpty);
+      expect(last.where((line) => line.contains('PAN')), isEmpty);
+    });
+
+    test('⚠️Mine: a move that starts on a later page with it', () {
+      final work = workOf(
+        CutCamera(keyframes: {30: at(0), 40: at(40)}),
+        duration: 60,
+      );
+      expect(pagesOf(work, 0, 3), [
+        ['31f-41f PAN'],
+        <String>[],
+        <String>[],
+      ]);
+    });
+
+    test('⛔a conte cell keeps what it holds of a move two cells share', () {
+      final work = Project(
+        id: const ProjectId('sheet-camera'),
+        name: 'Sheet camera',
+        createdAt: DateTime.utc(2026, 11, 2),
+        tracks: [
+          Track(
+            id: track,
+            name: 'Video',
+            cuts: [
+              cutNamed(
+                '1',
+                cells: const [30, 30],
+                camera: CutCamera(keyframes: {20: at(0), 40: at(40)}),
+              ),
+            ],
+          ),
+        ],
+      );
+      final [first, second] = [
+        for (final cell in buildConteSheetSource(work).cuts.single.cells)
+          cell.fixedLines.camera.where((line) => line.contains('PAN')),
+      ];
+      expect(first, ['21f-41f PAN (0+10)']);
+      expect(second, ['21f-41f PAN (0+11)']);
     });
 
     test('a cut on no track writes none', () {
@@ -284,15 +324,15 @@ void main() {
       expect(pagesOf(workOf(named), 0, 1).single, ['A-B PAN (全尺)']);
     });
 
-    test('⚠️Mine: a page it crosses says so too', () {
+    test('🎯once, however many pages it crosses', () {
       final work = workOf(
         CutCamera(keyframes: {0: at(0), 59: at(40)}),
         duration: 60,
       );
       expect(pagesOf(work, 0, 3), [
         ['1f-60f PAN (全尺)'],
-        ['1f-60f PAN (全尺)'],
-        ['1f-60f PAN (全尺)'],
+        <String>[],
+        <String>[],
       ]);
     });
   });

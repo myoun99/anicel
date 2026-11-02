@@ -23,7 +23,8 @@ class SheetFixedLines {
 
   /// What the camera does while the stretch is on — a line to each move and
   /// each stretch it stands still beside one, `6f-16f PAN (0+11)`
-  /// (`conteCameraStretches`, I-93), and none where it does nothing.
+  /// (`conteCameraStretches`, I-93), and none where it does nothing. A
+  /// sheet writes its cut's on its first page alone (F-542).
   final List<String> camera;
 
   /// The transitions written there — `c1 × c2 カットO.L (1+0)`

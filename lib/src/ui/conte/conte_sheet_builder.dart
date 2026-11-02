@@ -116,6 +116,13 @@ ConteSheetSource buildConteSheetSource(Project project, {String? olWord}) {
 /// 재사용/통일하면서」), each as a page writes it ([sheetCameraLine] ·
 /// [sheetTransitionLine]) in [words] — none where the cut or the work leaves
 /// them out, or the cut is on no track.
+///
+/// 🗣️F-542 (유저 2026-11-02): 「고정텍스트 카메라지시 써주는거, 첫페이지에만
+/// 쓰는것임」 · 「지금 2페이지넘는 카메라 움직임 컷에 걸칠때 페이지마다 지시
+/// 쓰는데 안그러도록」: the cut's camera is written once, whole, on its first
+/// page. ⚠️Mine: a move that starts on a later page with it. ↩️Each page wrote
+/// the moves of its own frames, as a conte cell still does: a cell has no
+/// rows to say how long, so it writes what it holds of each.
 List<SheetFixedLines> sheetPageFixedLines(
   Project project,
   Cut cut, {
@@ -134,26 +141,26 @@ List<SheetFixedLines> sheetPageFixedLines(
   }
   final defById = project.cameraInstructions.defById;
   final keyNames = transformKeyAgreedNames(cut.camera.track);
-  final moves = _movesWrittenOn(cut);
+  // A sheet's rows are the cut's own frames, the のりしろ before its conte
+  // among them.
+  final cameraLines = [
+    for (final stretch in conteCameraStretches(
+      _movesWrittenOn(cut),
+      from: 0,
+      to: pages.count * pages.frames,
+    ))
+      if (stretch.move case final move?)
+        sheetCameraLine(
+          move,
+          defById: defById,
+          keyNames: keyNames,
+          wholeCut: move.from == 0 && move.to == pages.drawnFrames - 1
+              ? words.wholeCut
+              : null,
+        ),
+  ];
   return _linesOfStretches(
-    // A sheet's rows are the cut's own frames, the のりしろ before its conte
-    // among them.
-    cameraLinesOf: (page) => [
-      for (final stretch in conteCameraStretches(
-        moves,
-        from: page * pages.frames,
-        to: (page + 1) * pages.frames,
-      ))
-        if (stretch.move case final move?)
-          sheetCameraLine(
-            move,
-            defById: defById,
-            keyNames: keyNames,
-            wholeCut: move.from == 0 && move.to == pages.drawnFrames - 1
-                ? words.wholeCut
-                : null,
-          ),
-    ],
+    cameraLinesOf: (page) => page == 0 ? cameraLines : const [],
     transitions: _transitionsWrittenOn(
       entry,
       pages.count,
