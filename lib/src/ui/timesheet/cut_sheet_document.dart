@@ -3,6 +3,8 @@ import '../../models/cut.dart';
 import '../../models/sheet_sources.dart';
 import '../../models/timesheet_document.dart';
 import '../../services/export/xdts_builder.dart';
+import '../conte/conte_sheet_builder.dart';
+import '../conte/conte_words_in.dart';
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
 
@@ -50,6 +52,20 @@ TimesheetDocument cutSheetDocument(
         : null,
     dataSheet: dataSheet,
     unnamedMark: AppFrameGridSettings.settings.value.unnamedMark,
+    fixedLinesOfPages: (pages) {
+      final words = conteWordsIn(
+        session.languageSettings.value.notationLanguage,
+      );
+      return [
+        for (final lines in sheetPageFixedLines(
+          session.repository.requireProject(),
+          cut,
+          pages: pages,
+          words: (ol: sheetOlWord(session), wholeCut: words.wholeCut),
+        ))
+          lines.writtenIn(words),
+      ];
+    },
   );
 }
 

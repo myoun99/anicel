@@ -228,8 +228,8 @@ class _WorkspaceBrushPresets {
     );
   }
 
-  /// Writes the bank as it stands — where the debounce above, an import and
-  /// the workspace's dispose all end.
+  /// Writes the bank as it stands — where the debounce above and the
+  /// workspace's dispose end.
   void saveHandSettings() => unawaited(
     _brushHandSettingsStore.save(
       Map<String, BrushHandSettings>.of(_brushHandSettings),
@@ -276,6 +276,23 @@ class _WorkspaceBrushPresets {
               resolveTip: _state._tipLibrary.maskFor,
             ),
     );
+  }
+
+  /// What puts the brush in hand back to its own values, or null while the
+  /// hand has changed none (🗣️I-148, 유저 2026-11-01: 「임포트했을때 값이나
+  /// 초기값으로 바꿔줌」). Its file IS those values, whichever brush it is:
+  /// the hand never writes there (H25), so taking the file up again is all
+  /// of it, and [followBrushTool] finds nothing left to remember.
+  VoidCallback? get resetHeldBrush {
+    final state = _state._brushTool.value;
+    final id = state.presetId;
+    final preset = id == null ? null : _presetNamed(id);
+    if (preset == null ||
+        !_brushHandSettings.containsKey(_handKey(state.tool, preset.id))) {
+      return null;
+    }
+    return () =>
+        _state._brushTool.value = state.withPreset(preset, tool: state.tool);
   }
 
   /// When the libraries have landed and the opening brush has been taken
@@ -434,8 +451,8 @@ class _WorkspaceBrushPresets {
   /// Where the bank files what [tool] set on [preset].
   ///
   /// The BRUSH tool files under the preset's own id — the key exports carry
-  /// and imports hand back (`BrushHandSettingsPort`), so a brush file still
-  /// round-trips what the hand set on it. The ERASER files under its own
+  /// ([_handSettingsToCarry]), so a brush file still takes what the hand set
+  /// on it to the other side. The ERASER files under its own
   /// name: each paint tool keeps its own settings (R11-④), and a size set
   /// while erasing must not come back the next time that brush is picked to
   /// draw with — which one key shared by both tools would do.
@@ -509,25 +526,16 @@ class _WorkspaceBrushPresets {
     _state._brushTool.value = state.withPreset(saved, tool: state.tool);
   }
 
-  /// Runs one of the libraries' file imports and puts its message, if any,
-  /// in a notice. Both libraries answer the same contract — a user-facing
-  /// message on failure, null on success or a cancelled picker — so which
-  /// library is the one value that differs.
-  /// The port the library exports and imports hand settings through.
+  /// What an exported file carries of the bank.
   ///
   /// ⚠️The bank lives HERE, beside the tool state that writes it, so the
   /// library borrows it rather than owning a second copy.
-  BrushHandSettingsPort get _handSettingsPort => (
-    read: () => brushHandSettingsToCarry(
-      _brushHandSettings,
-      fileOf: (key) => _presetNamed(BrushPresetId(key))?.settings,
-      resolveTip: _state._tipLibrary.maskFor,
-    ),
-    write: (arrived) {
-      _brushHandSettings.addAll(arrived);
-      saveHandSettings();
-    },
-  );
+  Map<String, BrushHandSettings> _handSettingsToCarry() =>
+      brushHandSettingsToCarry(
+        _brushHandSettings,
+        fileOf: (key) => _presetNamed(BrushPresetId(key))?.settings,
+        resolveTip: _state._tipLibrary.maskFor,
+      );
 
   /// Writes one brush, or a whole group, as a `.anibrush`.
   ///

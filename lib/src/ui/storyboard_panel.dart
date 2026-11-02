@@ -94,6 +94,7 @@ import 'timeline/timeline_swipe_columns.dart'
     show RailSwipeHooks, timelineSwipeColumns;
 import 'widgets/dock_edge_splitter.dart';
 import 'widgets/drag_chip.dart' show DragChipItem;
+import 'widgets/ellipsis_text.dart';
 import 'widgets/tick_layer.dart';
 import 'timeline/property_lane_model.dart'
     show
@@ -3382,9 +3383,8 @@ class _StoryboardHeadlessLabel extends KeptPiece {
               // The one row-name style every surface wears
               // ([layerRowNameStyle], F-26 #1226 — 「스토리보드패널도
               // 겸사겸사 싹 다 폰트 통일」): no layer, so no eye to dim it.
-              child: Text(
+              child: EllipsisText(
                 name,
-                overflow: TextOverflow.ellipsis,
                 style: layerRowNameStyle(context),
               ),
             ),
@@ -5036,13 +5036,12 @@ class StoryboardTrackLabelRow extends KeptPiece {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    EllipsisText(
                       trackLabel,
                       key: ValueKey<String>(
                         'storyboard-track-label-${trackId.value}',
                       ),
                       maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                       softWrap: false,
                       // F-26: 「지금 우선 V1라는 글자만 볼드체인거 굉장히
                       // 통일감면에서 이상함」 — a row's name is a row's name

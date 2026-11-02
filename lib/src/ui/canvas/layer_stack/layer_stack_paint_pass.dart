@@ -586,7 +586,7 @@ class _LayerStackPaintPass {
   /// the slot and cut its drawing away (found in F-243's review, when every
   /// posed row in an advanced blend took this route — ↩️until such a row
   /// painted normal over its backdrop; a colour key below a painted effect
-  /// and add's `plus` on a buffered row still take it).
+  /// still takes it).
   Rect _slotBufferBounds(
     _SurfaceSlot slot,
     _SurfaceRowPaint paint,
@@ -983,10 +983,10 @@ class _LayerStackPaintPass {
     // ↩️Since F-243 an advanced blend on the row itself was buffered too,
     // so a multiply or screen row paid it on every paint — until such a
     // row painted normal over its backdrop
-    // (a-blurred-folder-cut-by-the-view-moves-on-vulkan). The one blend
-    // a buffered row still wears here is add's `plus`.
-    final blendsAsImage =
-        needsBuffer && activePaint.blendMode != BlendMode.srcOver;
+    // (a-blurred-folder-cut-by-the-view-moves-on-vulkan). ↩️The one blend
+    // a buffered row still wore was add's `plus`, until Clip Studio's
+    // exports showed 加算 mixes as every other (brush-fidelity Q3): no
+    // row reaches here in a blend any more, and the route is gone.
     // 🚨★★★A CHAIN OF THE ROW'S OWN THAT SPREADS READS A RASTER ON THE
     // CANVAS'S GRID, as a folder's does ([rasterCellFor];
     // nested-folder-buffers-read-past-the-view-Q1 = c, 유저 2026-10-27
@@ -1000,7 +1000,7 @@ class _LayerStackPaintPass {
     // as far as its spread reaches and a pan draws the picture — where the
     // row drawn on had the whole view drawn as it stands at every paint.
     final spreads = activePlan.outsetPixels > 0;
-    if (activePlan.preSteps.isNotEmpty || blendsAsImage || spreads) {
+    if (activePlan.preSteps.isNotEmpty || spreads) {
       drawSubtreeAsImage(
         canvas: canvas,
         bounds: effectBufferBounds(

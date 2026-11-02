@@ -21,6 +21,7 @@ import '../../helpers/brush_canvas_fixture.dart';
 import '../../helpers/canvas_pill.dart';
 import '../../helpers/pinch_recognised_at.dart';
 import '../../helpers/number_pad_keyboard.dart';
+import '../../helpers/text_finders.dart';
 
 /// 🚨★★★ONE LAW FOR WHERE A ZOOM LANDS, AND THE PILL WRITES ALL OF IT.
 ///
@@ -300,7 +301,7 @@ void main() {
         .widget<Text>(
           find.descendant(
             of: find.byKey(ValueKey<String>(key)),
-            matching: find.byType(Text),
+            matching: find.anyText(),
           ),
         )
         .data!;

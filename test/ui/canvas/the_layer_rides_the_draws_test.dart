@@ -59,7 +59,8 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// and these comparisons once held multiply and screen too; on the Windows
 /// app each tile drawn in multiply blended the whole screen. So a row in an
 /// advanced blend never rides (pinned below), and the blend compared here is
-/// the one besides srcOver that still does — add.
+/// the one besides srcOver that could — `plus`. ↩️A row in add wore it,
+/// until add went over its backdrop too (brush-fidelity Q3).
 ///
 /// ⚠️THE TILE PAINT IS WHY IT HOLDS. `FilterQuality.none` and each tile's
 /// edge on the pixel grid are what make adjacent tiles disjoint in DEVICE
@@ -721,17 +722,15 @@ void main() {
       );
     });
 
-    testWidgets('🚨F-172: a buffered row whose blend is not srcOver blends as '
-        'an IMAGE — no saveLayer carries the blend', (tester) async {
-      // 유저 2026-09-20: 「곱하기 … 스탬프 사용시 해당 레이어가 뭔가 색이
-      // 진해짐」. On Impeller a saveLayer restored through an advanced blend
-      // composited the rows ABOVE a second time (the paint pass has the
-      // measurement). This VM rasters with Skia and never showed it, so the
-      // pin is the ROUTE, not the pixels.
-      //
-      // ↩️The stamp's ghost buffered the row here — the report was made with
-      // it — until brush-fidelity-Q9 (10-18) made the ghost the overlay's
-      // tiles; a landing preview over the row buffers it the same way.
+    // ↩️🚨F-172 — 'a buffered row whose blend is not srcOver blends as an IMAGE
+    // — no saveLayer carries the blend' was pinned here (유저 2026-09-20:
+    // 「곱하기 … 스탬프 사용시 해당 레이어가 뭔가 색이 진해짐」; on Impeller a
+    // saveLayer restored through an advanced blend composited the rows ABOVE
+    // a second time). The last blend a buffered row wore was add's `plus`,
+    // until add went over its backdrop too (brush-fidelity Q3): no row reaches
+    // that saveLayer in a blend now, and the route is gone.
+    testWidgets('a buffered row keeps the cheaper saveLayer: the image '
+        'route\'s price is paid only where it buys something', (tester) async {
       final preview = ValueNotifier<LandingPreview?>(
         SelectionFloatPaint(
           image: await tester.runAsync(_decodedSquare),
@@ -740,58 +739,32 @@ void main() {
         ),
       );
       addTearDown(preview.dispose);
-
-      Future<List<Invocation>> callsFor(LayerBlendMode blend) async {
-        final canvas = _ClippedRecordingCanvas(
-          const Rect.fromLTWH(0, 0, 200, 150),
-        );
-        await paintActive(
-          tester,
-          effects: const [],
-          blendMode: blend,
-          disableBuffer: true,
-          landingPreview: preview,
-          // The route, not the pixels: no paper. A recording canvas has no
-          // transform to cut the paper's edge on the grid by
-          // (`cutOnThePixelGrid`) — ↩️the paper was the composite's bake's
-          // to record, on a canvas of its own, until nothing kept a bake
-          // (one-picture-per-frame ②-5a).
-          paintPaper: false,
-          recordInto: canvas,
-        );
-        expect(
-          debugLiveLayerRodeTheDraws,
-          isFalse,
-          reason: '⛔premise: the float buffers the row',
-        );
-        return [for (final call in canvas.invocations) call.invocation];
-      }
-
-      Iterable<Paint> paintsOf(List<Invocation> calls, Symbol member, int at) =>
-          calls
-              .where((call) => call.memberName == member)
-              .map((call) => call.positionalArguments[at] as Paint);
-
-      // ↩️Multiply and screen were the blends read here, until such a row
-      // painted normal over its backdrop
-      // (a-blurred-folder-cut-by-the-view-moves-on-vulkan): add's `plus` is
-      // the one a buffered row still wears.
-      final calls = await callsFor(LayerBlendMode.add);
-      expect(
-        paintsOf(calls, #saveLayer, 1).map((paint) => paint.blendMode),
-        everyElement(BlendMode.srcOver),
-        reason: 'add rode a saveLayer',
+      final canvas = _ClippedRecordingCanvas(
+        const Rect.fromLTWH(0, 0, 200, 150),
+      );
+      await paintActive(
+        tester,
+        effects: const [],
+        disableBuffer: true,
+        landingPreview: preview,
+        // The route, not the pixels: no paper. A recording canvas has no
+        // transform to cut the paper's edge on the grid by
+        // (`cutOnThePixelGrid`) — ↩️the paper was the composite's bake's to
+        // record, on a canvas of its own, until nothing kept a bake
+        // (one-picture-per-frame ②-5a).
+        paintPaper: false,
+        recordInto: canvas,
       );
       expect(
-        paintsOf(calls, #drawImageRect, 3).map((paint) => paint.blendMode),
-        contains(BlendMode.plus),
-        reason: 'the add blend rides the image instead',
+        debugLiveLayerRodeTheDraws,
+        isFalse,
+        reason: '⛔premise: the float buffers the row',
       );
-
-      // ⛔And a srcOver row keeps the cheaper saveLayer: the image route's
-      // price is paid only where it buys something.
       expect(
-        paintsOf(await callsFor(LayerBlendMode.normal), #saveLayer, 1),
+        [
+          for (final call in canvas.invocations)
+            if (call.invocation.memberName == #saveLayer) call,
+        ],
         isNotEmpty,
         reason: 'a normal row still buffers through a saveLayer',
       );
@@ -850,11 +823,13 @@ void main() {
       // the pose moves the ink to, a row moved right and down rastered the
       // wrong rect and its drawing was cut away (F-243's review, when every
       // posed multiply row took that route). A row in add with a landing
-      // preview over it takes it (F-172); on no paper `plus` lays the same
-      // bytes as `srcOver`, so the normal row, buffered through a
-      // saveLayer, is the reference. ↩️It was a multiply row over white
-      // paper, until such a row painted normal over its backdrop
-      // (a-blurred-folder-cut-by-the-view-moves-on-vulkan).
+      // preview over it took it (F-172). A key below a painted effect takes
+      // it now, keying no colour of this stroke, so the row under the same
+      // effect with no key, buffered through a saveLayer, is the reference.
+      // ↩️It was a multiply row over white paper, until such a row painted
+      // normal over its backdrop
+      // (a-blurred-folder-cut-by-the-view-moves-on-vulkan), and then a row
+      // in add, until it did too (brush-fidelity Q3).
       final preview = ValueNotifier<LandingPreview?>(
         SelectionFloatPaint(
           image: await tester.runAsync(_decodedSquare),
@@ -865,7 +840,7 @@ void main() {
       addTearDown(preview.dispose);
 
       Future<Uint8List> pixelsFor(
-        LayerBlendMode blend, {
+        List<ResolvedLayerEffect> effects, {
         required TransformPose pose,
         double zoom = 1,
         double panX = 0,
@@ -873,9 +848,8 @@ void main() {
       }) async {
         await paintActive(
           tester,
-          effects: const [],
+          effects: effects,
           opacity: 1,
-          blendMode: blend,
           pose: pose,
           zoom: zoom,
           panX: panX,
@@ -908,6 +882,11 @@ void main() {
         return bytes!.buffer.asUint8List();
       }
 
+      final brighter = ResolvedLayerEffect(
+        kind: EffectKind.brightnessContrast,
+        values: const [10, 0],
+      );
+
       Future<void> expectTheSameStroke(
         String what, {
         required TransformPose pose,
@@ -917,7 +896,7 @@ void main() {
       }) async {
         debugLastSubtreeRaster = null;
         final normal = await pixelsFor(
-          LayerBlendMode.normal,
+          [brighter],
           pose: pose,
           zoom: zoom,
           panX: panX,
@@ -928,8 +907,14 @@ void main() {
           isNull,
           reason: '$what: ⛔premise: the normal row buffers in a saveLayer',
         );
-        final added = await pixelsFor(
-          LayerBlendMode.add,
+        final keyed = await pixelsFor(
+          [
+            brighter,
+            ResolvedLayerEffect(
+              kind: EffectKind.colorKey,
+              values: const [0, 0xFFF0C020, 60, 100],
+            ),
+          ],
           pose: pose,
           zoom: zoom,
           panX: panX,
@@ -938,19 +923,19 @@ void main() {
         expect(
           debugLastSubtreeRaster,
           isNotNull,
-          reason: '$what: ⛔premise: the add row takes the image route',
+          reason: '$what: ⛔premise: the keyed row takes the image route',
         );
         var inked = 0;
         var differing = 0;
         for (var i = 0; i < normal.length; i += 4) {
-          // The stroke is pure blue; nothing is under it.
-          if (normal[i + 2] == 255 && normal[i] == 0) {
+          // Nothing is under the stroke.
+          if (normal[i + 3] != 0) {
             inked += 1;
           }
-          if (normal[i] != added[i] ||
-              normal[i + 1] != added[i + 1] ||
-              normal[i + 2] != added[i + 2] ||
-              normal[i + 3] != added[i + 3]) {
+          if (normal[i] != keyed[i] ||
+              normal[i + 1] != keyed[i + 1] ||
+              normal[i + 2] != keyed[i + 2] ||
+              normal[i + 3] != keyed[i + 3]) {
             differing += 1;
           }
         }
@@ -958,7 +943,7 @@ void main() {
         expect(
           differing,
           0,
-          reason: '$what: the posed add row must show its stroke where the '
+          reason: '$what: the posed keyed row must show its stroke where the '
               'normal row does — $differing pixels differ',
         );
       }

@@ -9,6 +9,7 @@ import 'package:anicel/src/ui/widgets/transport_bar.dart';
 import '../../helpers/app_faces.dart';
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/number_pad_keyboard.dart';
+import '../../helpers/text_finders.dart';
 
 /// The one page turner every panel that turns pages wears in the band under
 /// it (F-383, 「최대한 통일」): ◀ n/N ▶ lying in a row, a drag on the
@@ -170,7 +171,7 @@ void main() {
         .widget<RichText>(
           find.descendant(
             of: find.byKey(readout),
-            matching: find.byType(RichText),
+            matching: find.anyRichText(),
           ),
         )
         .text

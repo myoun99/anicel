@@ -9,7 +9,7 @@ import 'dart:math' as math;
 /// The hold is what the last steps leave of a frame, less [_marginMicros].
 /// Where they leave nothing — the levels written with every step, a machine
 /// busy with something else, a slower one — there is none, and a step goes
-/// at the paint as it did. 🔬Main PC, 144 Hz, a new project, the pen to the
+/// as the frame is out. 🔬Main PC, 144 Hz, a new project, the pen to the
 /// ink on the glass, p50 at 300 and 1200 px/s: at 100% 15.8 and 17.0 → 14.2
 /// and 15.6 ms, at the fit 17.6 and 18.1 → 16.5 and 15.4, and no later under
 /// the test line's load. The Surface Pro 11, input to raster done, p50 at 300
@@ -42,7 +42,7 @@ final class StepPace {
   /// (at the fit 18.8 and 17.5 ms) and no steadier frames.
   static const int _marginMicros = 1000;
 
-  /// Under this a timer is no earlier than the paint's own ask.
+  /// Under this a timer is no later than the frame going out.
   static const int _leastHoldMicros = 500;
 
   /// The frame at [frame] is painting: a screen with nothing new paints

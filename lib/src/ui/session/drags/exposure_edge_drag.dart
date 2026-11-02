@@ -809,7 +809,8 @@ bool commitSpliceKeepingTheCutOnItsRow({
 
 /// The fewest frames [cut] may keep for its camera's keys
 /// (I-73-camera-row-Q4, [minimumCutDurationForCamera]): a conte edit's end
-/// stops short of them, as a trim's does. Its keys are not the drag's, so
+/// pushes them in and stops there, as a trim's does. Its keys are not the
+/// drag's, so
 /// the committed camera is the right one to read; a row that would end
 /// sooner is tiled out to the cut's end again by the write (and by the
 /// preview, which settles as the write does).

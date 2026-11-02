@@ -7,6 +7,7 @@ import '../widgets/app_window.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/pill_strip.dart';
 import 'dialog_verb.dart';
+import 'work_and_cut_setting_field.dart';
 
 /// What the 「콘티 용지 서식」 window answers: the form the sheet is printed
 /// in and whether its pictures stand in the black, the front the conte
@@ -22,17 +23,22 @@ typedef ConteFormat = ({
   ConteCameraRoom cameraRoom,
 });
 
-/// The cuts the window's 컷 설정 row is about: the [words] that say which,
-/// and the room the first of them keeps (null for the format's), as the
-/// cut button shows the first addressed cut's.
-typedef ConteFormatCuts = ({String words, ConteCameraRoom? room});
+/// The cuts the window's 컷 설정 rows are about: the [words] that say which,
+/// and the room and the fixed text the first of them keeps (null for the
+/// format's), as the cut button shows the first addressed cut's.
+typedef ConteFormatCuts = ({
+  String words,
+  ConteCameraRoom? room,
+  bool? fixedText,
+});
 
-/// What the window's 저장 gives: the work's [format], and the room picked
-/// for the cuts it is about ([cutCameraRoom] — null where none was picked,
-/// its `to` null for the format's; I-82).
+/// What the window's 저장 gives: the work's [format], and the room and the
+/// fixed text picked for the cuts it is about ([cutCameraRoom] · [cutFixedText]
+/// — null where none was picked, its `to` null for the format's; I-82 · F-542).
 typedef ConteFormatSave = ({
   ConteFormat format,
   ({ConteCameraRoom? to})? cutCameraRoom,
+  ({bool? to})? cutFixedText,
 });
 
 /// The words [room] is picked by — the whole work's two, and the third of
@@ -92,10 +98,8 @@ class _ConteFormatWindowState extends State<ConteFormatWindow> {
   /// cuts differ keeps each one's own until then.
   ({ConteCameraRoom? to})? _cutCameraRoom;
 
-  ConteCameraRoom? get _shownCutCameraRoom => switch (_cutCameraRoom) {
-    (:final to) => to,
-    null => widget.cuts?.room,
-  };
+  /// The fixed text picked for the cuts, likewise.
+  ({bool? to})? _cutFixedText;
 
   static String _formName(ConteSheetForm form) => switch (form) {
     ConteSheetForm.analog => AppText.strings.conteFormAnalog,
@@ -129,55 +133,19 @@ class _ConteFormatWindowState extends State<ConteFormatWindow> {
     ),
   );
 
-  /// The cuts' own room beside the words that say which cuts — the
-  /// format's (null) or one of their own, the one picked lit.
-  Widget _cutCameraRoomRow() {
-    final cuts = widget.cuts;
-    const rooms = <ConteCameraRoom?>[null, ...ConteCameraRoom.values];
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      spacing: 12,
-      children: [
-        Flexible(
-          child: Text(
-            cuts?.words ?? AppText.strings.noCutSelected,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        PanelFlyoutButton(
-          key: const ValueKey<String>('conte-format-cut-camera-room'),
-          label: conteCameraRoomName(_shownCutCameraRoom),
-          enabled: cuts != null,
-          entriesBuilder: () => rooms.asFlyoutValueChoices(
-            current: _shownCutCameraRoom,
-            choiceOf: (room) => PanelFlyoutChoice(
-              key: 'conte-format-cut-camera-room-${room?.name ?? 'format'}',
-              label: conteCameraRoomName(room),
-            ),
-            onPicked: (room) => setState(() => _cutCameraRoom = (to: room)),
-          ),
-        ),
-      ],
-    );
-  }
-
   /// How much a moving camera's cell takes: the whole work's and the cuts'.
-  Widget _cameraRoomField() {
-    final strings = AppText.strings;
-    return AppWindowField(
-      label: strings.conteCameraRoom,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        spacing: 8,
-        children: [
-          _field(strings.conteCameraRoomAll, _cameraRoomButton()),
-          _field(strings.cutSettingsTitle, _cutCameraRoomRow()),
-        ],
-      ),
-    );
-  }
+  Widget _cameraRoomField() => WorkAndCutSettingField<ConteCameraRoom>(
+    label: AppText.strings.conteCameraRoom,
+    work: _cameraRoomButton(),
+    cutWords: widget.cuts?.words,
+    keyValue: 'conte-format-cut-camera-room',
+    choices: ConteCameraRoom.values,
+    picked: _cutCameraRoom,
+    stands: widget.cuts?.room,
+    nameOf: conteCameraRoomName,
+    choiceKeyOf: (room) => room?.name ?? 'format',
+    onPicked: (room) => setState(() => _cutCameraRoom = (to: room)),
+  );
 
   /// One page of the front, put in or left out.
   Widget _page(String keyValue, bool on, ValueChanged<bool> onChanged) {
@@ -203,6 +171,17 @@ class _ConteFormatWindowState extends State<ConteFormatWindow> {
       onChanged: (on) => setState(() => _fixedText = on),
     );
   }
+
+  /// Whether a cell writes its fixed lines: the whole work's and the cuts',
+  /// as the camera's room is (F-542).
+  Widget _fixedTextField() => FixedTextSettingField(
+    work: _fixedTextSwitch(),
+    keyValue: 'conte-format-cut-fixed-text',
+    cutWords: widget.cuts?.words,
+    picked: _cutFixedText,
+    stands: widget.cuts?.fixedText,
+    onPicked: (on) => setState(() => _cutFixedText = (to: on)),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -253,7 +232,7 @@ class _ConteFormatWindowState extends State<ConteFormatWindow> {
                 (on) => setState(() => _blankPage = on),
               ),
             ),
-            _field(strings.conteFixedText, _fixedTextSwitch()),
+            _fixedTextField(),
             _cameraRoomField(),
           ],
         ),
@@ -265,6 +244,7 @@ class _ConteFormatWindowState extends State<ConteFormatWindow> {
   void _save() => Navigator.of(context).pop<ConteFormatSave>((
     format: _edited,
     cutCameraRoom: _cutCameraRoom,
+    cutFixedText: _cutFixedText,
   ));
 
   ConteFormat get _edited => (

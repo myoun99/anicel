@@ -1,4 +1,5 @@
 import '../canvas/canvas_press.dart' show canvasPressButtons, canvasPressPans;
+import '../widgets/ellipsis_text.dart';
 import '../widgets/empty_state_text.dart';
 import '../widgets/named.dart';
 import '../widgets/tick_layer.dart';
@@ -543,7 +544,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
       rows: entries,
       edges: edges,
       frameCellExtent: _metrics.frameCellWidth,
-      activeLayerId: widget.hooks.activeLayerId,
+      activeLayer: widget.hooks.activeLayer,
       standing: widget.hooks.currentRowHooks?.currentRow,
     );
   }
@@ -618,7 +619,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
       frameCursor: widget.hooks.frameCursor,
       rows: entries,
       edges: edges,
-      activeLayerId: widget.hooks.activeLayerId,
+      activeLayer: widget.hooks.activeLayer,
       frameStartIndex: 0,
       frameEndIndexExclusive: _frameScroll.renderedFrameCount,
       leadingFrameSpacerWidth: 0,
@@ -1003,6 +1004,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
     return TimelineGridShell(
       ground: colorScheme.surfaceContainerHighest,
       framesPerSecond: _countingFps,
+      activeLayer: widget.hooks.activeLayer,
       controllers: [_frameScrollController, _layerScrollController],
       layers: widget.layers,
       child: ValueListenableBuilder<double?>(
@@ -1587,11 +1589,10 @@ class _XSheetSectionBandCell extends StatelessWidget {
         child: Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 2),
-            child: Text(
+            child: EllipsisText(
               timelineSectionLabel(run.section),
               maxLines: 1,
               softWrap: false,
-              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 9,
                 letterSpacing: 1.2,

@@ -90,12 +90,12 @@ void main() {
 
     test('the dual tip combines two coverages through the same rows', () {
       expect(
-        blendDualCoverage(SeparableBlendMode.linearBurn, 0.75, 0.5),
+        blendSeparableChannel(SeparableBlendMode.linearBurn, 0.75, 0.5),
         closeTo(0.25, 1e-12),
       );
-      expect(blendDualCoverage(SeparableBlendMode.hardMix, 0.5, 0.5), 1.0);
-      expect(blendDualCoverage(SeparableBlendMode.hardMix, 0.5, 0.25), 0.0);
-      expect(blendDualCoverage(SeparableBlendMode.subtract, 0.25, 0.5), 0.25);
+      expect(blendSeparableChannel(SeparableBlendMode.hardMix, 0.5, 0.5), 1.0);
+      expect(blendSeparableChannel(SeparableBlendMode.hardMix, 0.5, 0.25), 0.0);
+      expect(blendSeparableChannel(SeparableBlendMode.subtract, 0.25, 0.5), 0.25);
     });
   });
 

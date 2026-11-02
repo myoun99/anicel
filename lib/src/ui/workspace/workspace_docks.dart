@@ -141,6 +141,35 @@ class _WorkspaceDocks {
     if (!hasTools && groups.isEmpty && emptySlot == null) {
       return _emptyDockZone(dockId, Axis.vertical);
     }
+    final strip = StaticRaster(
+      debugLabel: 'edge-dock:$dockId',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // The tool column is rendered as CONTENT, not through a dock host.
+          // A host fills whatever it is handed — that is right for a panel
+          // and wrong for a strip, and it is why the group buttons under the
+          // tools sat at the far end of the tool strip while the sub-strip's
+          // sat at the top. Both strips read from the top down now, which is
+          // the only way they read as one family.
+          if (hasTools)
+            Flexible(child: _toolColumn(_state._layout.tabsIn(dockId).first)),
+          // 도구툴그룹밑에도 (유저, R3 #15). The tool column already ends its
+          // history cluster with one of these; the panel buttons under it
+          // are a third kind of thing and were the only seam on the strip
+          // with nothing marking it.
+          if (hasTools && (groups.isNotEmpty || emptySlot != null))
+            _stripDivider(_state.context),
+          _state._strips.build(
+            groups: groups,
+            emptySlot: emptySlot,
+            nearby: right
+                ? _state._stripNearby.right
+                : _state._stripNearby.left,
+          ),
+        ],
+      ),
+    );
     return EditorPanelDock.filled(
       side: side,
       // The THIRD link in the window-origin chain: this strip decides the
@@ -154,42 +183,20 @@ class _WorkspaceDocks {
       // over a column of buttons is a title for something that needs no
       // title. Every other dock keeps its strip.
       //
-      // Baked, and this one is in the FLOOR: the two strips are the only
-      // chrome that survives every rung of the ladder, including "every
-      // panel closed" — which measured 2.5–3.6 ms/frame with nothing on
-      // screen but them, the top strip and an empty canvas. Dozens of
-      // icon buttons and swatches, re-executed on the GPU for a pointer
-      // that moved over the canvas. Hover and selection dirty it, and
-      // that is exactly when it should re-bake.
-      child: StaticRaster(
-        debugLabel: 'edge-dock:$dockId',
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // The tool column is rendered as CONTENT, not through a dock host.
-            // A host fills whatever it is handed — that is right for a panel
-            // and wrong for a strip, and it is why the group buttons under the
-            // tools sat at the far end of the tool strip while the sub-strip's
-            // sat at the top. Both strips read from the top down now, which is
-            // the only way they read as one family.
-            if (hasTools)
-              Flexible(child: _toolColumn(_state._layout.tabsIn(dockId).first)),
-            // 도구툴그룹밑에도 (유저, R3 #15). The tool column already ends its
-            // history cluster with one of these; the panel buttons under it
-            // are a third kind of thing and were the only seam on the strip
-            // with nothing marking it.
-            if (hasTools && (groups.isNotEmpty || emptySlot != null))
-              _stripDivider(_state.context),
-            _state._strips.build(
-              groups: groups,
-              emptySlot: emptySlot,
-              nearby: right
-                  ? _state._stripNearby.right
-                  : _state._stripNearby.left,
-            ),
-          ],
-        ),
-      ),
+      // Drawn from one image while it stays the same, and this one is in
+      // the FLOOR: the two strips are the only chrome that survives every
+      // rung of the ladder, including "every panel closed" — which measured
+      // 2.5–3.6 ms/frame with nothing on screen but them, the top strip and
+      // an empty canvas. Dozens of icon buttons and swatches, re-executed
+      // on the GPU for a pointer that moved over the canvas. Hover and
+      // selection dirty it, and that is exactly when it should be taken
+      // again.
+      // ↩️Baked alone: under Impeller a bake is a zone and no more
+      // ([StaticRaster.capturePays], 2026-09-24), and these strips, rendered
+      // as content, never came under a dock's region ([StillRaster]) — so
+      // every frame drew them. 🔬With the top strip beside them (F-533,
+      // 2026-11-01; [StillRaster]'s class doc has the run).
+      child: StillRaster(debugLabel: 'strip:$dockId', child: strip),
     );
   }
 

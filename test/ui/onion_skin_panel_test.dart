@@ -9,6 +9,7 @@ import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
 import '../helpers/vertical_text_finder.dart';
+import '../helpers/text_finders.dart';
 
 /// The onion panel's light-table graph: every peg on screen at once, the
 /// bars that carry the opacity, the order numbers that switch them, zero as
@@ -240,7 +241,7 @@ void main() {
         .widget<Text>(
           find.descendant(
             of: pegSwitch(side, index),
-            matching: find.byType(Text),
+            matching: find.anyText(),
           ),
         )
         .style

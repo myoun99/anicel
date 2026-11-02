@@ -155,10 +155,10 @@ void main() {
   final center = CanvasPoint(x: 75, y: 50.5);
 
   final scenes = <String, _Scene>{
-    'ink rows through normal and add': () => [
+    'ink rows at their strengths': () => [
       row('interior'),
       row('leftTop', opacity: 0.8),
-      row('rightBottom', opacity: 0.7, blendMode: LayerBlendMode.add),
+      row('rightBottom', opacity: 0.7),
       row('pasteboard'),
       row('sparse', opacity: 0.5),
     ],
@@ -197,7 +197,7 @@ void main() {
         children: [
           row('interior'),
           row('leftTop', opacity: 0.8),
-          row('rightBottom', blendMode: LayerBlendMode.add),
+          row('rightBottom'),
         ],
         opacity: 0.9,
         blendMode: LayerBlendMode.normal,
@@ -266,7 +266,7 @@ void main() {
       expect(cropped, greaterThanOrEqualTo(3), reason: 'LIVENESS: crops');
 
       await render(
-        scenes['ink rows through normal and add']!(),
+        scenes['ink rows at their strengths']!(),
         cameras['square over the canvas']!,
       );
 
@@ -336,7 +336,7 @@ void main() {
           [whole('interior'), ink('leftTop')],
         ),
         (
-          'ink rows through normal and add',
+          'ink rows at their strengths',
           'turned',
           [for (final id in cels.keys) whole(id)],
         ),
@@ -362,7 +362,7 @@ void main() {
       final laidDown = debugCropsLaidDown;
 
       await render(
-        scenes['ink rows through normal and add']!(),
+        scenes['ink rows at their strengths']!(),
         cameras['square over the canvas']!,
         rows: kept,
       );
@@ -385,7 +385,7 @@ void main() {
     await tester.runAsync(() async {
       final kept = _Kept(laidTexelForTexel: true);
       addTearDown(kept.dispose);
-      final nodes = scenes['ink rows through normal and add']!();
+      final nodes = scenes['ink rows at their strengths']!();
       final laidBack = debugWholesLaidBack;
 
       await render(nodes, cameras['square over the canvas']!, rows: kept);

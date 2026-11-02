@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
+import '../../helpers/text_finders.dart';
+
 const _key = ValueKey<String>('yes-no');
 const _words = (on: 'Filled', off: 'Left empty for now');
 
@@ -33,7 +35,7 @@ Pill _pill(WidgetTester tester) =>
 String _shownWord(WidgetTester tester) {
   final shown = [
     for (final text in tester.widgetList<Text>(
-      find.descendant(of: find.byKey(_key), matching: find.byType(Text)),
+      find.descendant(of: find.byKey(_key), matching: find.anyText()),
     ))
       if ((text.style?.color?.a ?? 1) > 0) text.data!,
   ];

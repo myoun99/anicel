@@ -33,7 +33,7 @@ import '../theme/app_theme.dart';
 
 /// The Keyboard Shortcuts editor (Edit menu): a searchable action list
 /// shelved by where each key's button stands ([ShortcutShelf]),
-/// click-to-record capture, conflict highlighting and per-action / global
+/// click-to-record capture, conflict highlighting and per-action / preset
 /// resets — the PS/CSP settings-page convention.
 class ShortcutSettingsDialog extends StatefulWidget {
   const ShortcutSettingsDialog({super.key, required this.bindings});
@@ -51,6 +51,9 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
   /// key-event listener captures the next non-modifier press.
   String? _recordingActionId;
   final FocusNode _recordFocus = FocusNode(debugLabel: 'shortcut-record');
+
+  /// What the window does with its presets, on its bindings.
+  _PresetVerbs get _presets => _PresetVerbs(widget.bindings);
 
   @override
   void initState() {
@@ -193,15 +196,42 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
         _ => false,
       };
 
-  /// The bundles [query] finds something in — every shelf above a row it
-  /// finds, a brush title or a brush.
+  /// The bundles [definition] stands in — every shelf above it and, a brush
+  /// title or a brush, its own.
+  Iterable<String> _foldsOver(EditorActionDefinition definition) => [
+    for (final shelf in definition.shelf.path) _shelfBundleOf(shelf),
+    ?_bundleOf(definition),
+  ];
+
+  /// The bundles [query] finds something in.
   Set<String> _bundlesFound(String query) => {
     for (final definition in widget.bindings.definitions)
-      if (_matches(definition, query)) ...{
-        for (final shelf in definition.shelf.path) _shelfBundleOf(shelf),
-        ?_bundleOf(definition),
-      },
+      if (_matches(definition, query)) ..._foldsOver(definition),
   };
+
+  /// What stands red: every action a clash takes in — keys or touch alike —
+  /// and every bundle over it, a brush group's title row among them (it is
+  /// named by the bundle it folds).
+  ///
+  /// 🗣️F-522 (유저 2026-11-01): 「할당 충돌하면 해당 들어있는 항목 다
+  /// 빨간강조색으로. 어디 들어있는건지 안보임. 패널 안 빨간강조색만들고 미디어
+  /// 빨간강조색만들고 이런식」 — every shelf starts shut, so a clash stood
+  /// behind folds with only the banner to say it was there. What is under a
+  /// fold is what the red answers, whatever the search shows of it.
+  Set<String> _clashed() {
+    final bindings = widget.bindings;
+    final clashing = {
+      ...bindings.conflictedActionIds,
+      ...bindings.touchConflictedActionIds,
+    };
+    return {
+      for (final definition in bindings.definitions)
+        if (clashing.contains(definition.id)) ...{
+          definition.id,
+          ..._foldsOver(definition),
+        },
+    };
+  }
 
   void _openFoundBundles() {
     final query = _query;
@@ -225,6 +255,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     final bindings = widget.bindings;
     final conflicted = bindings.conflictedActionIds;
     final touchConflicted = bindings.touchConflictedActionIds;
+    final clashed = _clashed();
     final query = _query;
     final found = _bundlesFound(query);
     // A bundle whose TITLE the search matched shows every brush it holds.
@@ -263,7 +294,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
       if (!found.contains(fold)) {
         return;
       }
-      rows.add(_shelfHeading(theme, shelf));
+      rows.add(_shelfHeading(theme, shelf, red: clashed.contains(fold)));
       if (!_openBundles.contains(fold)) {
         return;
       }
@@ -282,7 +313,14 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
             found.contains(bundle);
         if (rootTitleDue) {
           rootsTitled.add(bundle);
-          rows.add(_rootTitleRow(theme, bundle, depth));
+          rows.add(
+            _rootTitleRow(
+              theme,
+              bundle,
+              depth,
+              red: clashed.contains(bundle),
+            ),
+          );
         }
         if (shown) {
           rows.add(
@@ -292,6 +330,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
               definition: definition,
               conflicted: conflicted.contains(definition.id),
               touchConflicted: touchConflicted.contains(definition.id),
+              red: clashed.contains(definition.id),
               recording: _recordingActionId == definition.id,
               depth: depth,
               bundle: bundle,
@@ -314,8 +353,13 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
   }
 
   /// A shelf's heading, a step in from the shelf it stands on and carrying
-  /// its fold as a brush bundle's title does — a place's in the accent.
-  Widget _shelfHeading(ThemeData theme, ShortcutShelf shelf) {
+  /// its fold as a brush bundle's title does — a place's in the accent,
+  /// any in the clash's [red].
+  Widget _shelfHeading(
+    ThemeData theme,
+    ShortcutShelf shelf, {
+    required bool red,
+  }) {
     final bundle = _shelfBundleOf(shelf);
     final place = shelf.parent == null;
     return Padding(
@@ -333,7 +377,10 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
             Expanded(
               child: Text(
                 _shelfName(shelf),
-                style: theme.textTheme.labelLarge?.copyWith(
+                style: _wordsIn(
+                  theme,
+                  theme.textTheme.labelLarge,
+                  red: red,
                   color: place ? theme.colorScheme.primary : null,
                 ),
               ),
@@ -344,7 +391,12 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     );
   }
 
-  Widget _rootTitleRow(ThemeData theme, String bundle, int depth) => Padding(
+  Widget _rootTitleRow(
+    ThemeData theme,
+    String bundle,
+    int depth, {
+    required bool red,
+  }) => Padding(
     key: ValueKey<String>('shortcut-row-$bundle'),
     padding: EdgeInsets.only(left: depth * _step, top: 2, bottom: 2),
     child: _foldRow(
@@ -355,7 +407,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
           Expanded(
             child: Text(
               brushRootSectionLabel,
-              style: theme.textTheme.bodyMedium,
+              style: _wordsIn(theme, theme.textTheme.bodyMedium, red: red),
             ),
           ),
         ],
@@ -363,9 +415,119 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     ),
   );
 
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final bindings = widget.bindings;
+    final conflicted = bindings.conflictedActionIds;
+    final rows = _rows(theme);
+
+    return AppWindow(
+      windowKey: const ValueKey<String>('shortcut-settings-dialog'),
+      title: AppText.strings.shortcutTitle,
+      titleIcon: Icons.keyboard_outlined,
+      onClose: () => Navigator.of(context).pop(),
+      width: 520,
+      height: 520,
+      scrollBody: false,
+      body: Focus(
+        focusNode: _recordFocus,
+        onKeyEvent: _onRecordKey,
+        child: SizedBox(
+          width: 480,
+          height: 420,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // 🗣️I-63: the preset the keys below start from. Picking one
+              // shows ITS keys and what was recorded under it — from a
+              // list, as every preset is picked (유저 2026-10-12, I-93:
+              // 「이런 프리셋 변경은 특히 앱 통틀어서 리스트 팝오버로」).
+              // ↩️It was a pill strip until then.
+              Align(
+                alignment: Alignment.centerLeft,
+                child: PanelFlyoutButton(
+                  key: const ValueKey<String>('shortcut-preset'),
+                  label: _PresetVerbs.nameOf(bindings.preset),
+                  entriesBuilder: () => _presets.entries(context),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                key: const ValueKey<String>('shortcut-search-field'),
+                controller: _search,
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.search, size: 18),
+                  hintText: AppText.strings.shortcutSearch,
+                  isDense: true,
+                ),
+                onChanged: (_) => setState(_openFoundBundles),
+              ),
+              // 🗣️F-318 (유저 2026-10-08): 「동일한 단축키 있을때 빨간
+              // 경고메시지가 영어로 뜨고」 — the table has had the sentence
+              // in every language since the window was localised
+              // (`shortcutConflictBanner`); this line went on writing the
+              // English one itself.
+              //
+              // ⛔Its PLACE is always there (「없다가 생기는 UI 금지」): laid
+              // out in the program language whether or not a key clashes,
+              // and shown when one does. ↩️It was mounted on the clash, and
+              // the list under it jumped down a line — two, in the
+              // languages the sentence wraps in.
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Visibility.maintain(
+                  visible: conflicted.isNotEmpty,
+                  child: Text(
+                    AppText.strings.shortcutConflictBanner,
+                    key: const ValueKey<String>('shortcut-conflict-banner'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: ListView(
+                  key: const ValueKey<String>('shortcut-action-list'),
+                  children: rows,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        AppWindowAction(
+          label: AppText.strings.shortcutResetPreset,
+          actionKey: const ValueKey<String>('shortcut-preset-reset-button'),
+          emphasis: AppWindowActionEmphasis.danger,
+          onPressed: () => unawaited(_presets.reset(context)),
+        ),
+        AppWindowAction(
+          label: AppText.strings.commonClose,
+          actionKey: const ValueKey<String>('shortcut-close-button'),
+          emphasis: AppWindowActionEmphasis.primary,
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ],
+    );
+  }
+}
+
+/// What the window does with its presets — the list its preset button opens
+/// and the reset at its foot.
+///
+/// ↩️Methods of the window's State until F-522 took it past six hundred
+/// lines.
+final class _PresetVerbs {
+  const _PresetVerbs(this.bindings);
+
+  final EditorShortcutBindings bindings;
+
   /// A preset's name: one the app ships in the program language — the app's
   /// own name in every one — and the user's as it was given.
-  static String _presetName(ShortcutLayout preset) => switch (preset) {
+  static String nameOf(ShortcutLayout preset) => switch (preset) {
     ShortcutPreset() => AppText.strings.shortcutPresetName(
       preset.name,
       preset.label,
@@ -382,8 +544,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
   /// 🗣️I-107-Q3 (유저 2026-10-18): 「a + 이름 바꾸기」 · 「프리셋
   /// 복제버튼도 추가」 — a rename beside the delete, and a duplicate on every
   /// row.
-  List<PanelFlyoutEntry> _presets(BuildContext context) {
-    final bindings = widget.bindings;
+  List<PanelFlyoutEntry> entries(BuildContext context) {
     final strings = AppText.strings;
     return [
       PanelFlyoutHeader(
@@ -416,9 +577,9 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     final key = 'shortcut-preset-${preset.id}';
     return PanelFlyoutItem(
       keyValue: key,
-      label: _presetName(preset),
-      selected: preset == widget.bindings.preset,
-      onSelected: () => widget.bindings.setPreset(preset),
+      label: nameOf(preset),
+      selected: preset == bindings.preset,
+      onSelected: () => bindings.setPreset(preset),
       actions: [
         if (preset is UserShortcutPreset)
           PanelFlyoutRowAction(
@@ -475,19 +636,18 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
       titleIcon: Icons.content_copy,
       fieldLabel: AppText.strings.commonNameField,
       initialValue: AppText.strings.shortcutPresetCopyName(
-        _presetName(preset),
+        nameOf(preset),
       ),
       confirmLabel: AppText.strings.commonSave,
       emptyError: AppText.strings.shortcutPresetNameEmpty,
     ),
-    commit: (name) => widget.bindings.duplicatePreset(preset, name),
+    commit: (name) => bindings.duplicatePreset(preset, name),
   );
 
   /// [preset] written as a shortcut file of its own (I-142), under the name
   /// its row shows.
   Future<void> _exportPreset(BuildContext context, ShortcutLayout preset) {
-    final bindings = widget.bindings;
-    final name = _presetName(preset);
+    final name = nameOf(preset);
     return handSettingsFileToUser(
       context,
       name: name,
@@ -514,7 +674,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
       confirmLabel: AppText.strings.commonRename,
       emptyError: AppText.strings.shortcutPresetNameEmpty,
     ),
-    commit: (name) => widget.bindings.renamePreset(preset, name),
+    commit: (name) => bindings.renamePreset(preset, name),
   );
 
   /// A preset of the user's deleted, once the user says so — it holds a
@@ -534,112 +694,46 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
       ),
       accept: ConfirmChoice(AppText.strings.commonDelete),
     ),
-    commit: () => widget.bindings.deletePreset(preset),
+    commit: () => bindings.deletePreset(preset),
   );
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final bindings = widget.bindings;
-    final conflicted = bindings.conflictedActionIds;
-    final rows = _rows(theme);
-
-    return AppWindow(
-      windowKey: const ValueKey<String>('shortcut-settings-dialog'),
-      title: AppText.strings.shortcutTitle,
-      titleIcon: Icons.keyboard_outlined,
-      onClose: () => Navigator.of(context).pop(),
-      width: 520,
-      height: 520,
-      scrollBody: false,
-      body: Focus(
-        focusNode: _recordFocus,
-        onKeyEvent: _onRecordKey,
-        child: SizedBox(
-          width: 480,
-          height: 420,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // 🗣️I-63: the preset the keys below start from. Picking one
-              // shows ITS keys and what was recorded under it — from a
-              // list, as every preset is picked (유저 2026-10-12, I-93:
-              // 「이런 프리셋 변경은 특히 앱 통틀어서 리스트 팝오버로」).
-              // ↩️It was a pill strip until then.
-              Align(
-                alignment: Alignment.centerLeft,
-                child: PanelFlyoutButton(
-                  key: const ValueKey<String>('shortcut-preset'),
-                  label: _presetName(bindings.preset),
-                  entriesBuilder: () => _presets(context),
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                key: const ValueKey<String>('shortcut-search-field'),
-                controller: _search,
-                decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.search, size: 18),
-                  hintText: AppText.strings.shortcutSearch,
-                  isDense: true,
-                ),
-                onChanged: (_) => setState(_openFoundBundles),
-              ),
-              // 🗣️F-318 (유저 2026-10-08): 「동일한 단축키 있을때 빨간
-              // 경고메시지가 영어로 뜨고」 — the table has had the sentence
-              // in every language since the window was localised
-              // (`shortcutConflictBanner`); this line went on writing the
-              // English one itself.
-              //
-              // ⛔Its PLACE is always there (「없다가 생기는 UI 금지」): laid
-              // out in the program language whether or not a key clashes,
-              // and shown when one does. ↩️It was mounted on the clash, and
-              // the list under it jumped down a line — two, in the
-              // languages the sentence wraps in.
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Visibility.maintain(
-                  visible: conflicted.isNotEmpty,
-                  child: Text(
-                    AppText.strings.shortcutConflictBanner,
-                    key: const ValueKey<String>('shortcut-conflict-banner'),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.error,
-                    ),
-                  ),
-                ),
-              ),
-              Expanded(
-                child: ListView(
-                  key: const ValueKey<String>('shortcut-action-list'),
-                  children: rows,
-                ),
-              ),
-            ],
-          ),
+  /// The preset in use back as it came, once the user says so — it can
+  /// hold a whole layout of recorded keys.
+  ///
+  /// 🗣️F-522 (유저 2026-11-01): 「키보드 단축키 모두초기화버튼, 현재 프리셋
+  /// 초기화로 바꾸고, 누르면 초기화하겟냐고 메시지창 띄우기」. ↩️「모두
+  /// 초기화」 fired on the press, and said more than it did: what was
+  /// recorded under another preset has always stayed with it.
+  Future<void> reset(BuildContext context) => confirmThenCommit(
+    context,
+    dialog: (context) => confirmWindow(
+      context,
+      ConfirmQuestion(
+        keys: confirmDialogKeys('shortcut-preset-reset'),
+        title: AppText.strings.shortcutResetPreset,
+        titleIcon: Icons.restart_alt,
+        message: AppText.strings.shortcutResetPresetBody(
+          nameOf(bindings.preset),
         ),
       ),
-      actions: [
-        AppWindowAction(
-          label: AppText.strings.shortcutResetAll,
-          actionKey: const ValueKey<String>('shortcut-reset-all-button'),
-          emphasis: AppWindowActionEmphasis.danger,
-          onPressed: bindings.resetAll,
-        ),
-        AppWindowAction(
-          label: AppText.strings.commonClose,
-          actionKey: const ValueKey<String>('shortcut-close-button'),
-          emphasis: AppWindowActionEmphasis.primary,
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ],
-    );
-  }
+      accept: ConfirmChoice(AppText.strings.commonReset),
+    ),
+    commit: bindings.resetAll,
+  );
 }
 
 /// One step of the list's depth: the twirl's own width, so a row's words
 /// start where the words of the row it folds under do.
 const double _step = layerLaneToggleSlotWidth;
+
+/// [style] as a row writes it: in the banner's red where a clash stands
+/// ([_ShortcutSettingsDialogState._clashed]), in [color] everywhere else.
+TextStyle? _wordsIn(
+  ThemeData theme,
+  TextStyle? style, {
+  required bool red,
+  Color? color,
+}) => style?.copyWith(color: red ? theme.colorScheme.error : color);
 
 /// A row that folds, pressed anywhere on itself — [toggle] — its twirl
 /// first, left of its words, and only showing.
@@ -681,6 +775,7 @@ class _ActionRow extends StatelessWidget {
     required this.definition,
     required this.conflicted,
     required this.touchConflicted,
+    required this.red,
     required this.recording,
     required this.depth,
     required this.onRecord,
@@ -694,6 +789,10 @@ class _ActionRow extends StatelessWidget {
   final EditorActionDefinition definition;
   final bool conflicted;
   final bool touchConflicted;
+
+  /// Whether its name stands red: a clash is on it, or, a group's title,
+  /// on what it folds.
+  final bool red;
 
   /// Whether this row is recording its next key.
   final bool recording;
@@ -822,7 +921,7 @@ class _ActionRow extends StatelessWidget {
               Expanded(
                 child: Text(
                   actionLabelOf(definition),
-                  style: theme.textTheme.bodyMedium,
+                  style: _wordsIn(theme, theme.textTheme.bodyMedium, red: red),
                 ),
               ),
               ConstrainedBox(

@@ -84,7 +84,7 @@ void main() {
     final cursor = ValueNotifier<int>(0);
     addTearDown(cursor.dispose);
     final hooks = TimelineGridHooks(
-      activeLayerId: layers.first.id,
+      activeLayer: ValueNotifier(layers.first.id),
       frameCursor: cursor,
       playbackFrameCount: frameCount,
       exposureStateForLayer: stateFor,
@@ -580,7 +580,7 @@ void main() {
         home: Scaffold(
           body: LayerTimelineGrid(
             hooks: TimelineGridHooks(
-              activeLayerId: const LayerId('layer-r'),
+              activeLayer: ValueNotifier(const LayerId('layer-r')),
               frameCursor: cursor,
               playbackFrameCount: 24,
               exposureStateForLayer: stateFor,

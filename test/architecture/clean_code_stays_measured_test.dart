@@ -533,7 +533,7 @@ void main() {
   ///
   /// ⚠️405 → 407 on 2026-10-18, two named as the rule above asks (I-105 —
   /// 유저 2026-10-16: 「셀 출력시 CAM 적용 하는거랑 똑같이 … 가이드 버튼」).
-  /// `paintGuidesAtRest` (five) is the one picture 래스터라이즈 bakes and a
+  /// `paintGuideLines` (five) is the one picture 래스터라이즈 bakes and a
   /// cel's export lays over a drawing (I-105-Q2: 「법 통일」): the guides,
   /// the paper and the colour they are drawn on and in, and how many of its
   /// own pixels a canvas pixel is — the bake at one, a file at the CAM's
@@ -1612,7 +1612,13 @@ void main() {
   /// unlanded. 🔬`clean_code_diff` against master (`edd34ba45`) names this
   /// one and no other class. ⛔Not split to fit: the store is the one that
   /// records what goes in, and waiting is how it records now.
-  const longClasses = 82;
+  ///
+  /// ⚠️82 → 83 on 2026-11-01, ONE name: `_WorkspaceBrushPresets` crossed
+  /// when the hand's changes came to be taken back (I-148,
+  /// `resetHeldBrush`). 🔬`clean_code_diff` against master names this one and
+  /// no other class. ⛔Not split to fit: the bank and what takes from it
+  /// stand together.
+  const longClasses = 83;
 
   late CleanCodeScan scan;
   setUpAll(() {

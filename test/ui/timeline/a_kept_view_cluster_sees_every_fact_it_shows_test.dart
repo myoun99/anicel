@@ -65,7 +65,7 @@ void main() {
     home: Scaffold(
       body: TimelinePanel(
         layers: layers,
-        activeLayerId: const LayerId('a'),
+        activeLayer: ValueNotifier(const LayerId('a')),
         frameCursor: cursor,
         playbackFrameCount: 48,
         exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,

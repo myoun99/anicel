@@ -50,6 +50,7 @@ import '../timeline/layer_rail_columns.dart'
         LayerTypeButton,
         layerRailLeadingCells,
         layerRailLeadingWidthTo;
+import '../widgets/ellipsis_text.dart';
 import 'import_file_settings.dart';
 import 'import_file_table.dart';
 import 'import_preview.dart';
@@ -2150,11 +2151,10 @@ class _ImportDialogState extends State<ImportDialog> {
         else
           button,
         if (said case _Sentence(:final words))
-          Text(
+          EllipsisText(
             words,
             key: const ValueKey<String>('import-status'),
             style: Theme.of(context).textTheme.labelSmall,
-            overflow: TextOverflow.ellipsis,
           ),
       ],
     );
@@ -3184,11 +3184,10 @@ class _ImportDialogState extends State<ImportDialog> {
       child: Row(
         children: [
           Expanded(
-            child: Text(
+            child: EllipsisText(
               label,
               key: const ValueKey<String>('import-source-line'),
               style: theme.textTheme.bodySmall,
-              overflow: TextOverflow.ellipsis,
             ),
           ),
           if (parsed != null) ..._folderLanding(theme, parsed),

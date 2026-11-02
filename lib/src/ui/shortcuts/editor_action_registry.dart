@@ -570,6 +570,7 @@ abstract final class BrushLibraryActionIds {
   static const reset = 'brush-library-reset';
   static const importBrushes = 'brush-library-import';
   static const saveHeldBrush = 'brush-library-save-held-brush';
+  static const resetHeldBrush = 'brush-library-reset-held-brush';
 }
 
 EditorActionDefinition _brushLibraryAction(
@@ -601,6 +602,13 @@ List<EditorActionDefinition> _brushLibraryActions() {
     _brushLibraryAction(
       BrushLibraryActionIds.saveHeldBrush,
       (l) => s(l).brSaveAsPreset,
+      menuRow: false,
+      panelButton: true,
+    ),
+    // The brush settings' button beside the wrench (I-148).
+    _brushLibraryAction(
+      BrushLibraryActionIds.resetHeldBrush,
+      (l) => s(l).brResetHeldBrush,
       menuRow: false,
       panelButton: true,
     ),
@@ -785,6 +793,10 @@ abstract final class EditorActionIds {
   static const toolCut = 'tool-cut';
   static const toolCutWhole = 'tool-cut-whole';
   static const toolCutStamp = 'tool-cut-stamp';
+
+  /// One step of the size bar's ±, on the tool in hand (I-149).
+  static const brushSizeUp = 'brush-size-up';
+  static const brushSizeDown = 'brush-size-down';
   static const selectionDeselect = 'selection-deselect';
   static const selectionInvert = 'selection-invert';
   static const selectionInvertInCanvas = 'selection-invert-in-canvas';
@@ -1175,8 +1187,10 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // too; I-119-Q1: 「그럼 컨트롤 말고 다른 키로 배치하자. 추천대로」 — Z, the
   // one letter left free under the left hand. ⚠️Bare Z was left free ON
   // PURPOSE (I-63, the lasso tile's key above); whether the line may have
-  // it is asked on the board (I-119-Q3). Clip Studio and TVPaint have no
-  // key for this, so their presets leave it without one (F-417-Q1).
+  // it is asked on the board (I-119-Q3). 🗣️I-119-Q5 (유저 2026-11-01): 「쉬프트
+  // 못쓰는건 치명적이니 그냥 z로 다 두자」 — Z under every preset. ↩️Clip
+  // Studio's and TVPaint's had no key for it (F-417-Q1), so a new install
+  // had no line.
   const EditorActionDefinition(
     id: EditorActionIds.canvasLineHold,
     label: 'Line from the Last Stroke (hold)',
@@ -1558,6 +1572,21 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     shelf: ShortcutShelf.tools,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyG)],
     toolPress: RailToolPress(CanvasTool.guide),
+  ),
+  // 🗣️I-149 (유저 2026-11-02): 「브러시 사이즈 변경(한걸음올리기 내리기)
+  // 단축키 없지않나? 등록하고 클튜나 tvp도 아마 키 있을텐데 등록. anicel은
+  // [랑 ]. ]가 한걸음 올리기」.
+  const EditorActionDefinition(
+    id: EditorActionIds.brushSizeUp,
+    label: 'Brush Size Up',
+    shelf: ShortcutShelf.tools,
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.bracketRight)],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.brushSizeDown,
+    label: 'Brush Size Down',
+    shelf: ShortcutShelf.tools,
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.bracketLeft)],
   ),
   // I-40: the guide list's two ＋ — one a kind of guide.
   const EditorActionDefinition(
@@ -2258,7 +2287,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   ),
   // 🗣️I-103-Q2 (유저 2026-10-16): a row of the workspace drawer and a row of
   // this list. Its default key waits on I-103-Q3 — the F11 the question
-  // named is the overlay blend's (I-31's F1–F12, in order).
+  // named is the color dodge blend's (I-31's F1–F12, in order).
   const EditorActionDefinition(
     id: EditorActionIds.fullScreen,
     label: 'Full screen',

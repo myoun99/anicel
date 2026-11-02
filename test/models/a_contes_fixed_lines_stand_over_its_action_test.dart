@@ -6,6 +6,7 @@ import 'package:anicel/src/models/conte/conte_page_marks.dart';
 import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
 import 'package:anicel/src/models/conte/conte_sheet_source.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/sheet_fixed_lines.dart';
 import 'package:anicel/src/models/sheet_marks.dart';
 import 'package:anicel/src/ui/conte/conte_words_in.dart';
 
@@ -18,13 +19,16 @@ void main() {
   const action = 'ハヤト走る';
   const camera = ['FIX (0+5)', 'PAN (0+11)', 'FIX (0+8)'];
   const line = conteCellTextSize * conteLineHeight;
+  final ja = conteWordsIn(AppLanguage.ja);
+  final ko = conteWordsIn(AppLanguage.ko);
 
   ConteSheetSource sourceOf(
     List<String> lines, {
     List<String> transitions = const [],
-    bool fixedText = true,
+    List<String> linked = const [],
+    List<String> heads = const [],
+    List<String> tails = const [],
   }) => ConteSheetSource(
-    fixedText: fixedText,
     cuts: [
       ConteCutSource(
         cutId: const CutId('A'),
@@ -37,8 +41,13 @@ void main() {
             endFrameExclusive: 24,
             pictureFrame: 0,
             action: action,
-            cameraLines: lines,
-            transitionLines: transitions,
+            fixedLines: SheetFixedLines(
+              camera: lines,
+              transitions: transitions,
+              linkedCuts: linked,
+              cutHead: heads,
+              cutTail: tails,
+            ),
           ),
         ],
       ),
@@ -55,7 +64,7 @@ void main() {
       words: contePageMarks(
         page,
         source,
-        words: conteWordsIn(AppLanguage.ja),
+        words: ja,
       ).whereType<SheetWords>().toList(),
     );
   }
@@ -92,7 +101,7 @@ void main() {
         ),
         reason: text,
       );
-      expect(mark.fit, SheetWordsFit.oneLine, reason: 'never broken');
+      expect(mark.fit, SheetWordsFit.shrink, reason: 'never broken');
       expect(
         (mark.layer, mark.argb, mark.size, mark.bold),
         (typed.layer, typed.argb, typed.size, typed.bold),
@@ -107,20 +116,22 @@ void main() {
     final (:cell, :words) = printed(source);
     final slot = cell.actionRect.deflate(4);
 
-    expect(conteActionWordsDrop(source, cell), closeTo(3 * line, 1e-9));
+    expect(
+      conteActionWordsDrop(cell, words: ja),
+      closeTo(3 * line, 1e-9),
+    );
     expectRect(
       wordsSaying(words, action).slot,
       Rect.fromLTRB(slot.left, slot.top + 3 * line, slot.right, slot.bottom),
     );
   });
 
-  test('taken out of the sheet, no line is written and the words are back '
-      'at the top', () {
-    final source = sourceOf(camera, fixedText: false);
+  test('with no line to write the words are at the top', () {
+    final source = sourceOf(const []);
     final (:cell, :words) = printed(source);
 
-    expect(conteFixedLinesOf(source, cell), isEmpty);
-    expect(conteActionWordsDrop(source, cell), 0);
+    expect(cell.source.fixedLines.writtenIn(ja), isEmpty);
+    expect(conteActionWordsDrop(cell, words: ja), 0);
     for (final text in camera) {
       expect(words.where((each) => each.text == text), isEmpty, reason: text);
     }
@@ -143,10 +154,41 @@ void main() {
         reason: text,
       );
     }
-    expect(conteActionWordsDrop(source, cell), closeTo(5 * line, 1e-9));
+    expect(
+      conteActionWordsDrop(cell, words: ja),
+      closeTo(5 * line, 1e-9),
+    );
+  });
 
-    final out = sourceOf(camera, transitions: transitions, fixedText: false);
-    expect(conteFixedLinesOf(out, printed(out).cell), isEmpty);
+  // 🗣️F-540 (유저 2026-11-02): 「カット頭 F.I (0+6) 이런식으로 컷 머리 라고
+  // 씀. 뒤는 カット尻 이렇게. 한국어는 컷 앞 컷 뒤」 · 「텍스트 위치는
+  // 고정적으로 고정텍스트 공간 내에서 맨 위나 맨 아래」.
+  test('🎯a fade on its cut\'s head opens the lines and one on its tail '
+      'closes them, each under its end\'s word', () {
+    const transitions = ['c1 × c2 カットO.L (1+0)'];
+    final source = sourceOf(
+      camera,
+      transitions: transitions,
+      linked: const ['c2'],
+      heads: const ['FI (0+6)'],
+      tails: const ['FO (0+8)'],
+    );
+    final cell = printed(source).cell;
+    expect(cell.source.fixedLines.writtenIn(ja), [
+      'カット頭 FI (0+6)',
+      ...camera,
+      ...transitions,
+      '${ja.linked} c2',
+      'カット尻 FO (0+8)',
+    ]);
+    final korean = cell.source.fixedLines.writtenIn(ko);
+    expect(korean.first, '컷 앞 FI (0+6)');
+    expect(korean.last, '컷 뒤 FO (0+8)');
+    expect(
+      conteActionWordsDrop(cell, words: ja),
+      (camera.length + 4) * line,
+      reason: 'the typed words begin under the last of them',
+    );
   });
 
   test('lines that outrun the column end at its foot, and the words typed '

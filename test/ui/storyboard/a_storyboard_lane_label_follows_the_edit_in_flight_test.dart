@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 
 import '../../helpers/named_finders.dart';
 import '../../helpers/storyboard_host.dart';
+import '../../helpers/text_finders.dart';
 
 /// F-195 on the STORYBOARD's rail: a value scrubbed on an S row's lane or on
 /// the V row's fx chain is shown by the label itself through the one drag
@@ -41,7 +42,7 @@ void main() {
       .widget<Text>(
         find.descendant(
           of: find.byKey(ValueKey<String>(key)),
-          matching: find.byType(Text),
+          matching: find.anyText(),
         ),
       )
       .data!;

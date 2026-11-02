@@ -347,11 +347,16 @@ void main() {
           await _settle(tester);
         }
 
+        // On the view's own pixels: a still region's image is a copy on that
+        // grid and a resample on any other, where the frame before it drew
+        // the region afresh (F-533: the capsule's on this 3.0 view, shot at
+        // 1.0, was 300 pixels off it, up to 117/255).
+        final ratio = tester.view.devicePixelRatio;
         brushAllowed.value = on;
         await tester.pump();
-        final first = await shoot(tester);
+        final first = await shoot(tester, pixelRatio: ratio);
         await _settle(tester);
-        final settled = await shoot(tester);
+        final settled = await shoot(tester, pixelRatio: ratio);
 
         if (sheet.sheet == 'conte') {
           // What the page shows of the cut's picture: its print with the

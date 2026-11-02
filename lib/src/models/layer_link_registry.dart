@@ -132,16 +132,25 @@ class LayerLinkRegistry {
 
   bool get isNotEmpty => groups.isNotEmpty;
 
-  /// The group containing (cut, layer), or null when the layer is
-  /// unlinked.
-  LayerLinkGroup? groupOf({required CutId cutId, required LayerId layerId}) {
+  /// Each member's group, the first to hold it. A registry never changes,
+  /// so this is read once.
+  ///
+  /// ⚠️F-531: a sheet asks this of every row of every cut, and walking the
+  /// groups for each answer grew with cuts × rows × groups.
+  late final Map<(CutId, LayerId), LayerLinkGroup> _groupOfMember = () {
+    final index = <(CutId, LayerId), LayerLinkGroup>{};
     for (final group in groups) {
-      if (group.contains(cutId: cutId, layerId: layerId)) {
-        return group;
+      for (final member in group.members) {
+        index.putIfAbsent((member.cutId, member.layerId), () => group);
       }
     }
-    return null;
-  }
+    return index;
+  }();
+
+  /// The group containing (cut, layer), or null when the layer is
+  /// unlinked.
+  LayerLinkGroup? groupOf({required CutId cutId, required LayerId layerId}) =>
+      _groupOfMember[(cutId, layerId)];
 
   /// (cut, layer)'s counterpart inside [targetCutId] — the member of its
   /// group that lives there, or null when the row does not reach that cut.

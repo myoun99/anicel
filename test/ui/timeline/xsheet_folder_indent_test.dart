@@ -51,7 +51,7 @@ void main() {
         home: Scaffold(
           body: TimelinePanel(
             layers: layers,
-            activeLayerId: const LayerId('top'),
+            activeLayer: ValueNotifier(const LayerId('top')),
             frameCursor: ValueNotifier<int>(0),
             playbackFrameCount: 12,
             exposureStateForLayer: (_, _) =>

@@ -434,8 +434,8 @@ void main() {
       ),
       // ↩️'through an advanced blend' (multiply), until such a layer
       // painted normal over its backdrop
-      // (a-blurred-folder-cut-by-the-view-moves-on-vulkan).
-      ('through add', drawing(blendMode: LayerBlendMode.add), false),
+      // (a-blurred-folder-cut-by-the-view-moves-on-vulkan); 'through add'
+      // until it did too (brush-fidelity Q3).
       ('posed and blurred', drawing(pose: turned, effects: [blur]), true),
     ]) {
       testWidgets(name, (tester) async {

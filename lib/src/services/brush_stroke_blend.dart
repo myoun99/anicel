@@ -210,6 +210,8 @@ int separableBlendModeNativeId(SeparableBlendMode mode) {
     SeparableBlendMode.pinLight => 17,
     SeparableBlendMode.hardMix => 18,
     SeparableBlendMode.divide => 19,
+    SeparableBlendMode.glowDodge => 26,
+    SeparableBlendMode.glowAdd => 27,
   };
 }
 
@@ -243,6 +245,9 @@ int nonSeparableBlendModeNativeId(NonSeparableBlendMode mode) {
 /// speaks; a separable-only caller passes `mode.blendMode` — no, it passes
 /// the [BrushBlendMode] of the same name, which `SeparableBlendMode` and
 /// `BrushBlendMode` share by construction ([BrushBlendMode.separable]).
+///
+/// A mode that [SeparableBlendMode.glows] has the B of the mode it glows:
+/// what differs is what its composite hands in ([blendStrokeRegionPixels]).
 double blendSeparableChannel(SeparableBlendMode mode, double cs, double cd) {
   switch (mode) {
     case SeparableBlendMode.darken:
@@ -261,7 +266,7 @@ double blendSeparableChannel(SeparableBlendMode mode, double cs, double cd) {
       return math.max(cs, cd);
     case SeparableBlendMode.screen:
       return cs + cd - cs * cd;
-    case SeparableBlendMode.colorDodge:
+    case SeparableBlendMode.colorDodge || SeparableBlendMode.glowDodge:
       if (cd <= 0) {
         return 0;
       }
@@ -332,19 +337,11 @@ double blendSeparableChannel(SeparableBlendMode mode, double cs, double cd) {
       return quotient < 1 ? quotient : 1.0;
     case SeparableBlendMode.exclusion:
       return cs + cd - 2 * cs * cd;
-    case SeparableBlendMode.add:
-      // ⛔ADD HAS NO B(Cs, Cd), and refusing is what keeps that visible.
-      // Skia's `plus` is a saturating add of PREMULTIPLIED colour, so the
-      // stroke kernel answers it before reaching this table and the dual
-      // mask answers it in [blendDualCoverage]. An arm here that returned
-      // "something reasonable" would be a third definition of 加算 that
-      // agrees with neither.
-      throw ArgumentError.value(
-        mode,
-        'mode',
-        'add is a premultiplied saturating add, not a channel blend — see '
-            'blendDualCoverage / the stroke kernel',
-      );
+    case SeparableBlendMode.add || SeparableBlendMode.glowAdd:
+      // ↩️ADD HAD NO B: Skia's `plus`, a saturating add of premultiplied
+      // colour, answered before this table. That is 加算(発光); Clip Studio's
+      // 加算 has this B and mixes by alpha ([SeparableBlendMode.glows]).
+      return math.min(1, cs + cd);
   }
 }
 
@@ -407,7 +404,9 @@ final class _ChannelMix {
           BrushBlendMode.lighten ||
           BrushBlendMode.screen ||
           BrushBlendMode.colorDodge ||
+          BrushBlendMode.glowDodge ||
           BrushBlendMode.add ||
+          BrushBlendMode.glowAdd ||
           BrushBlendMode.overlay ||
           BrushBlendMode.softLight ||
           BrushBlendMode.hardLight ||
@@ -576,6 +575,7 @@ Uint8List blendStrokeRegionPixels({
   // Null for the six that mix the channels — their B comes from [mix].
   final separable = mode.separable;
   final mix = separable == null ? _ChannelMix() : null;
+  final glows = separable?.glows ?? false;
   for (var i = 0; i < pixelCount; i += 1) {
     final o = i * 4;
     final sa = src[o + 3];
@@ -623,19 +623,6 @@ Uint8List blendStrokeRegionPixels({
     }
     final as_ = sa / 255.0;
     final ad = da / 255.0;
-    if (mode == BrushBlendMode.add) {
-      // Skia plus: saturating premultiplied add.
-      final ao = math.min(1.0, as_ + ad);
-      for (var c = 0; c < 3; c += 1) {
-        final premul = math.min(
-          1.0,
-          src[o + c] / 255.0 * as_ + dst[o + c] / 255.0 * ad,
-        );
-        result[o + c] = _clampByte(premul / ao);
-      }
-      result[o + 3] = _clampByte(ao);
-      continue;
-    }
     final ao = as_ + ad * (1 - as_);
     // One composite for both kinds of B: per channel, or a colour of three.
     mix?.blend(mode, src, o, dst, o);
@@ -643,43 +630,17 @@ Uint8List blendStrokeRegionPixels({
       final cs = src[o + c] / 255.0;
       final cd = dst[o + c] / 255.0;
       final b = mix == null
-          ? blendSeparableChannel(separable!, cs, cd)
+          ? blendSeparableChannel(separable!, glows ? cs * as_ : cs, cd)
           : mix.b[c];
       result[o + c] = _clampByte(
-        (as_ * (1 - ad) * cs + ad * (1 - as_) * cd + as_ * ad * b) / ao,
+        glows
+            ? (as_ * (1 - ad) * cs + ad * b) / ao
+            : (as_ * (1 - ad) * cs + ad * (1 - as_) * cd + as_ * ad * b) / ao,
       );
     }
     result[o + 3] = _clampByte(ao);
   }
   return result;
-}
-
-/// How the SECOND tip's coverage combines with the first's (v33, v60).
-///
-/// [dual] is the SOURCE, [coverage] the destination — the dual tip is the
-/// second tip applied over the first. ⚠️Multiply is commutative so nothing
-/// that exists today can tell the order apart; the non-commutative modes
-/// are REASONED, not measured, and want a side-by-side against Clip Studio
-/// before anything is built on them.
-///
-/// ⛔ADD IS NOT IN THE B(Cs, Cd) TABLE. Skia's `plus` is a saturating add of
-/// PREMULTIPLIED colour, which is why the stroke kernel answers it before
-/// [blendSeparableChannel] is reached; on a single coverage that same
-/// operation is `min(1, cs + cd)`. Clip Studio's 合成モード index 12 is 加算,
-/// so this arm is one of the two modes actually found in the user's files —
-/// not a hypothetical.
-///
-/// 🚨The C mirror is `qa_dual_combine`, and the parity suite pins the pair.
-double blendDualCoverage(
-  SeparableBlendMode mode,
-  double dual,
-  double coverage,
-) {
-  if (mode == SeparableBlendMode.add) {
-    final sum = dual + coverage;
-    return sum > 1.0 ? 1.0 : sum;
-  }
-  return blendSeparableChannel(mode, dual, coverage);
 }
 
 /// The byte alpha a stroke with a second tip shows where its first plane
@@ -699,6 +660,12 @@ int dualViewAlpha(int firstWide, int secondWide, BrushDualView view) {
 /// and what the brush list's swatch reads, whose planes are doubles.
 /// Where the first tip laid nothing, nothing shows: a second tip lays only
 /// where both lay.
+///
+/// The second tip's coverage is the SOURCE of the blend, the first's the
+/// destination — the dual tip is the second tip applied over the first.
+/// ⚠️Multiply is commutative so nothing that exists today can tell the order
+/// apart; the non-commutative modes are REASONED, not measured, and want a
+/// side-by-side against Clip Studio before anything is built on them.
 double dualViewLevel(double first, double second, BrushDualView view) {
   if (first <= 0.0) {
     return 0.0;
@@ -709,7 +676,7 @@ double dualViewLevel(double first, double second, BrushDualView view) {
   }
   final combined =
       first * (1.0 - density) +
-      density * blendDualCoverage(view.compositeMode, second, first);
+      density * blendSeparableChannel(view.compositeMode, second, first);
   return combined > 1.0 ? 1.0 : combined;
 }
 

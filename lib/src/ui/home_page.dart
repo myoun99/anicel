@@ -56,6 +56,7 @@ import '../services/color_palette_file_service.dart';
 import '../services/project_repository.dart';
 import 'brush/brush_library_keys.dart';
 import 'brush/brush_tool_state.dart';
+import 'brush/brush_value_group.dart';
 import 'brush/confirm_verb.dart';
 import 'brush/history_verbs.dart';
 import 'brush/temporary_tool.dart';
@@ -113,6 +114,7 @@ import 'timeline/memo_token.dart' show ByList;
 import 'sliced_value_listenable_builder.dart' show SlicedListenableBuilder;
 import 'widgets/cursor_notice.dart';
 import 'widgets/panel_flyout.dart' show pressFlyoutRow;
+import 'widgets/still_raster.dart';
 
 /// The editor shell: a slim top menu strip (menu bar + quick actions —
 /// the AppBar retired so the editor keeps the vertical space) plus the
@@ -1214,6 +1216,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       // R5: and the rails bring it back into view. These are the moves that
       // happen WITHOUT a pointer, so they are the ones that could walk the
       // selection off screen (user, 2026-08-09).
+      case EditorActionIds.brushSizeUp:
+        _stepBrushSize(1);
+      case EditorActionIds.brushSizeDown:
+        _stepBrushSize(-1);
       case EditorActionIds.framePrevious:
         _session.frameVerbs.selectPreviousFrame();
         _session.revealSelection();
@@ -1500,6 +1506,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
+  /// One step of the size bar's ± from the keys, where the bar would take
+  /// it: the tool in hand's size, and nothing on a tool with none.
+  void _stepBrushSize(int direction) {
+    final state = _brushTool.value;
+    if (!state.supports(ToolParameter.size)) {
+      return;
+    }
+    final size = BrushValueBars.steppedSize(state.activeSize, direction);
+    if (size != null) {
+      _brushTool.value = state.withActiveSize(size);
+    }
+  }
+
   void _abandonPolygonOrCancelTransform() {
     // I-97-Q4: Escape lets go of a photo held on a sheet, as a press past
     // its cell does — first: any press of a tool past the photo lets go of
@@ -1678,7 +1697,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                           in _projects.sessions)
                                         projectTabLabel(_projects, session),
                                     ]),
-                                    builder: (context, _) => _topStrip(),
+                                    builder: (context, _) => StillRaster(
+                                      debugLabel: 'top-strip',
+                                      child: _topStrip(),
+                                    ),
                                   ),
                                 ),
                               ),

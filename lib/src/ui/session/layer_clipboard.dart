@@ -1,9 +1,13 @@
+import '../../models/attached_layer_mount.dart';
+import '../../models/attached_layer_resolve.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/cut.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
 import '../../models/new_row_placement.dart' show seatAboveRow;
+import '../../models/track_transitions.dart' show cutDrawnFrameCount;
 import '../../services/clipboard/layer_copy_payload.dart';
 import '../../services/commands/cut_command_coordinator.dart' show PastedLayer;
 import '../../services/media/media_byte_source.dart' show MediaByteSource;
@@ -59,7 +63,8 @@ class LayerClipboard implements BringsMedia {
   /// ([RowSelection.selectedLayerIds]).
   final RowSelection _rowSelection;
 
-  /// The delete a 잘라내기 lifts its rows with (I-123).
+  /// The delete a 잘라내기 lifts its rows with (I-123), and what it takes
+  /// along ([LayerVerbs.rowsHeldBy]).
   final LayerVerbs _layerVerbs;
 
   /// The app's layer board ([LayerBoard]) — every open project's clipboard
@@ -82,20 +87,47 @@ class LayerClipboard implements BringsMedia {
 
   bool get hasLayerClipboard => _board._copy != null;
 
-  /// The selected rows a copy takes, bottom → top as the cut stacks them —
-  /// whatever order they were selected in, a paste puts them down as they
-  /// stood.
+  /// The rows of the cut stood in, bottom → top.
+  List<Layer> get _stack => _project.activeCutOrNull?.layers ?? const [];
+
+  /// Whether the board can hold [layer]: every row of the cut but the
+  /// camera, which stays — a paste refuses it. A track's rows are no row of
+  /// the cut.
+  bool _boardHolds(Layer layer) => layer.kind != LayerKind.camera;
+
+  /// The selected rows of the cut — whatever order they were selected in, a
+  /// paste puts them down as they stood.
   ///
-  /// A row no board can hold contributes nothing ([layerTakesACopy]): a
-  /// track-owned SE row, an attach row. A row's kind decides what the edit
-  /// DOES, never whether the row could be selected (뿌리 A).
-  List<Layer> get _rowsToCopy {
+  /// A row's kind decides what the edit DOES, never whether the row could be
+  /// selected (뿌리 A).
+  List<Layer> get _selectedRows {
     final selected = _rowSelection.selectedLayerIds.toSet();
     return [
-      for (final layer in _project.activeCutOrNull?.layers ?? const <Layer>[])
-        if (selected.contains(layer.id) && layerTakesACopy(layer)) layer,
+      for (final layer in _stack)
+        if (selected.contains(layer.id)) layer,
     ];
   }
+
+  /// [rows] and what a delete of them takes along ([LayerVerbs.rowsHeldBy])
+  /// — a folder what it holds, a base its attach rows — bottom → top as the
+  /// cut stacks them, each once: the rows the board takes for them.
+  ///
+  /// 🗣️F-535 (유저 2026-11-01): 「기준레이어 잘라내면 삭제가 내부도
+  /// 삭제하려하듯이 내부 어태치레이어들도 잘라냄. 법 통일」.
+  List<Layer> _withWhatTheyHold(List<Layer> rows) {
+    final held = _layerVerbs.rowsHeldBy([for (final row in rows) row.id]);
+    final taken = {
+      for (final row in [...rows, ...held])
+        if (_boardHolds(row)) row.id,
+    };
+    return [
+      for (final layer in _stack)
+        if (taken.contains(layer.id)) layer,
+    ];
+  }
+
+  /// The rows a copy of the selection takes.
+  List<Layer> get _rowsToCopy => _withWhatTheyHold(_selectedRows);
 
   /// Whether the row selection names a row the board can take — the ROWS
   /// rung of the shared pill's copy.
@@ -114,17 +146,20 @@ class LayerClipboard implements BringsMedia {
   /// 🗣️I-123 (유저 2026-10-22): 「레이어도 타임라인 공용알약의 잘라내기 버튼
   /// 사용가능. 여러레이어 선택해서 사용한다던가 다른 규칙 참고해서 법 통일」.
   ///
-  /// The selected rows a 잘라내기 lifts: those a copy takes whose delete
-  /// takes nothing besides them ([LayerVerbs.deletesAlone]).
+  /// 🗣️F-532 (유저 2026-11-01): 「레이어에서 폴더도 잘라내기 가능하게.
+  /// 폴더 삭제랑 동일하게 내부에도 적용되서 내부 다 잘라냄」.
+  ///
+  /// The rows a 잘라내기 lifts: those a copy takes that may go, each with
+  /// what its delete takes along.
   ///
   /// 🚨결정 14 ②ⓐ, the frame cut's law (`FrameClipboard.cutAt`): a cut banks
   /// exactly what it lifts — 「클립보드가 담지 않은 것을 들어내면 그건 삭제지
-  /// 잘라내기가 아니다」. A base's delete takes its attach rows, which no copy
-  /// holds ([layerTakesACopy]), so a base that has them stays where it is.
-  List<Layer> get _rowsToCut => [
-    for (final layer in _rowsToCopy)
-      if (_layerVerbs.deletesAlone(layer)) layer,
-  ];
+  /// 잘라내기가 아니다」. ↩️So a base with attach rows stayed where it was
+  /// while no board held them (I-123); the board holds them now (F-535).
+  List<Layer> get _rowsToCut => _withWhatTheyHold([
+    for (final layer in _selectedRows)
+      if (_layerVerbs.canDeleteLayer(layer)) layer,
+  ]);
 
   /// Whether the selected rows hold one a 잘라내기 may lift — the ROWS rung
   /// of the shared pill's cut, which the copy's rung claims
@@ -144,9 +179,10 @@ class LayerClipboard implements BringsMedia {
     }
     final cut = _project.requireActiveCut;
     final taken = [for (final layer in rows) _copyOf(layer, cut)];
-    _layerVerbs.deleteLayers([
-      for (final row in taken) row.sourceId,
-    ], step: 'Cut rows');
+    _layerVerbs.deleteLayers(
+      _layerVerbs.rowsNotTakenAlong([for (final row in taken) row.sourceId]),
+      step: 'Cut rows',
+    );
     final stayed = {
       for (final layer in _project.requireActiveCut.layers) layer.id,
     };
@@ -185,20 +221,40 @@ class LayerClipboard implements BringsMedia {
   }
 
   /// [layer] as the board holds it: the row, and what it showed.
-  _CopiedLayer _copyOf(Layer layer, Cut cut) => _CopiedLayer(
-    sourceId: layer.id,
-    payload: copyLayerToPayload(layer),
-    pictures: picturesShownBy(
-      store: _renderCaches.brushFrameStore,
-      cels: layer.frames,
-      keyOf: (cel) => _project.brushFrameKeyForCut(cut, layer.id, cel),
-    ),
-    handwriting: conteHandwritingShownBy(
-      store: _renderCaches.conteInkRowStore,
-      cut: cut.id,
-      exposures: layer.timeline.values,
-    ),
-  );
+  _CopiedLayer _copyOf(Layer layer, Cut cut) {
+    final row = _ofItsOwn(layer, cut);
+    return _CopiedLayer(
+      source: layer,
+      payload: copyLayerToPayload(row),
+      pictures: picturesShownBy(
+        store: _renderCaches.brushFrameStore,
+        cels: row.frames,
+        keyOf: (cel) => _project.brushFrameKeyForCut(cut, layer.id, cel),
+      ),
+      handwriting: conteHandwritingShownBy(
+        store: _renderCaches.conteInkRowStore,
+        cut: cut.id,
+        exposures: row.timeline.values,
+      ),
+    );
+  }
+
+  /// [layer] as a row of its own — an attach row with the timing it wore
+  /// baked in ([detachedLayer]), so that it lands whole with no base under
+  /// it.
+  Layer _ofItsOwn(Layer layer, Cut cut) {
+    if (!isAttachedLayer(layer)) {
+      return layer;
+    }
+    return detachedLayer(
+      attached: layer,
+      base: attachedBaseOf(layer, cut.layers),
+      drawnFrameCount: cutDrawnFrameCount(
+        _project.repository.requireProject(),
+        cut.id,
+      )!,
+    );
+  }
 
   /// Whether a paste here must first HOLD the bytes of media the copy
   /// carries from another project — the UI's cue for its wait window
@@ -228,7 +284,7 @@ class LayerClipboard implements BringsMedia {
   /// the conte row away first. The board takes that row now, and
   /// `r9_p1_instant_cel_test` reaches both paste arms with it.
   bool _lands(_CopiedLayer row) =>
-      _layerStack.canAddLayerOfKind(row.payload.kind);
+      _layerStack.canAddLayerOfKind(row.alone.kind);
 
   /// The board's rows, each a row of its own in this cut — above the row
   /// you stand on, in the order they were copied in. ONE undo for the rows
@@ -249,22 +305,54 @@ class LayerClipboard implements BringsMedia {
       _project.repository.requireProject(),
     );
     final pasted = <({_CopiedLayer row, PastedLayer landed})>[];
+    final landedAs = <LayerId, PastedLayer>{};
+    final bases = {
+      for (final row in copy.rows)
+        if (_lands(row)) row.sourceId,
+    };
+    bool rides(_CopiedLayer row) =>
+        bases.contains(row.riding?.attachedToLayerId);
+    void land(_CopiedLayer row, int seat) {
+      final landed = _project.cutCommandCoordinator.pasteLayer(
+        cutId: cut.id,
+        payload: _respelled(
+          rides(row) ? row.payload : row.alone,
+          arrival.respell,
+        ),
+        insertionIndex: seat,
+        anchors: (
+          folderId: landedAs[row.folderId]?.layerId,
+          riding: rides(row)
+              ? _ridingOn(landedAs[row.riding!.attachedToLayerId]!, row)
+              : null,
+        ),
+      );
+      landedAs[row.sourceId] = landed;
+      pasted.add((row: row, landed: landed));
+    }
+
     _project.historyManager.runAsOneStep('Paste rows', () {
       landArrival(_project, arrival);
       // The TOP row first, each one above the standing row: every row put
-      // down lifts the ones before it, so the block reads as it was copied.
+      // down lifts the ones before it, so the block reads as it was copied
+      // — and a folder, standing right above what it holds, lands before it.
       for (final row in copy.rows.reversed) {
-        if (!_lands(row)) {
-          continue;
+        if (_lands(row) && !rides(row)) {
+          land(row, _seatAbove(standing));
         }
-        pasted.add((
-          row: row,
-          landed: _project.cutCommandCoordinator.pasteLayer(
-            cutId: cut.id,
-            payload: _respelled(row.payload, arrival.respell),
-            insertionIndex: _seatAbove(standing),
-          ),
-        ));
+      }
+      // An attach row names the base it rides, so it comes after it: into
+      // the block from the top, for an organizer stands over the rows it
+      // holds, each row right under the one it stood under.
+      int seatOf(PastedLayer landed) => _project.requireActiveCut.layers
+          .indexWhere((layer) => layer.id == landed.layerId);
+      var seat = seatOf(pasted.first.landed) + 1;
+      for (final row in copy.rows.reversed) {
+        if (rides(row)) {
+          land(row, seat);
+        } else if (landedAs[row.sourceId] case final landed?) {
+          seat = seatOf(landed);
+        }
       }
     });
     for (final one in pasted) {
@@ -276,6 +364,22 @@ class LayerClipboard implements BringsMedia {
     _changes.notifyChanged();
   }
 
+  /// [row]'s ride on the row its base [landed] as: its side of the links
+  /// still names the cels it was copied with.
+  LayerAttachment _ridingOn(PastedLayer landed, _CopiedLayer row) {
+    final riding = row.riding!;
+    return LayerAttachment(
+      attachedToLayerId: landed.layerId,
+      placement: riding.placement,
+      mode: riding.mode,
+      timeline: riding.timeline,
+      baseFrameLinks: {
+        for (final link in riding.baseFrameLinks.entries)
+          ?landed.minted[link.key]: link.value,
+      },
+    );
+  }
+
   /// The board's rows a LINKED paste copies here.
   ///
   /// A link is 「the same cel」 (I-7), so it serves the cut the rows were
@@ -283,19 +387,23 @@ class LayerClipboard implements BringsMedia {
   /// no cel of this one — though it may well wear the same id — and a row
   /// that is gone, or is in another cut, has none to share here. A copy
   /// lands beside its source, so a per-cut singleton has no second
-  /// ([layerTakesACopyBesideIt]).
-  List<LayerId> get _rowsToLink {
+  /// ([layerTakesACopyBesideIt]). A folder of the user's lands as it would
+  /// in an independent paste, for the rows to go in: it has no cels to link
+  /// (F-532-Q2). An organizer rides in the attach group its base copies.
+  List<_CopiedLayer> get _rowsToLink {
     final copy = _board._copy;
     if (copy == null || !identical(copy.from, this)) {
       return const [];
     }
     // A row's id is its project's, so 「still in this cut」 is one lookup.
-    final here = _project.activeCutOrNull?.layers ?? const <Layer>[];
+    final here = _stack;
     return [
       for (final row in copy.rows)
         if (here.byId(row.sourceId) case final layer?
-            when layerTakesACopyBesideIt(layer))
-          row.sourceId,
+            when layerTakesACopyBesideIt(layer) ||
+                layer.kind.groupsLayers &&
+                    attachOrganizerBaseOf(layer, here) == null)
+          row,
     ];
   }
 
@@ -308,27 +416,39 @@ class LayerClipboard implements BringsMedia {
   /// ↩️The layer menu's 「링크해서 복제」 did this for the active row alone,
   /// and put the copy above its source.
   void pasteRowsLinked() {
-    final ids = _rowsToLink;
-    if (ids.isEmpty) {
+    final rows = _rowsToLink;
+    if (rows.isEmpty) {
       return;
     }
     // A row still in the cut implies the cut.
     final cut = _project.requireActiveCut;
     final standing = _selection.activeLayer?.id;
-    final copies = <LayerId>[];
+    final landedAs = <LayerId, LayerId>{};
+    final commands = _project.cutCommandCoordinator;
     _project.historyManager.runAsOneStep('Paste rows linked', () {
       // Top first, for [pasteRows]' reason.
-      for (final id in ids.reversed) {
-        copies.add(
-          _project.cutCommandCoordinator.linkDuplicateLayer(
-            cutId: cut.id,
-            layerId: id,
-            insertionIndex: _seatAbove(standing),
-          ),
-        );
+      for (final row in rows.reversed) {
+        final folder = landedAs[row.folderId];
+        landedAs[row.sourceId] = row.payload.kind.groupsLayers
+            ? commands
+                  .pasteLayer(
+                    cutId: cut.id,
+                    payload: row.payload,
+                    insertionIndex: _seatAbove(standing),
+                    anchors: (folderId: folder, riding: null),
+                  )
+                  .layerId
+            : commands.linkDuplicateLayer(
+                cutId: cut.id,
+                layerId: row.sourceId,
+                insertionIndex: _seatAbove(standing),
+                intoFolder: folder,
+              );
       }
     });
-    _changes.refreshAfterCutCommand(preferredActiveLayerId: copies.first);
+    _changes.refreshAfterCutCommand(
+      preferredActiveLayerId: landedAs[rows.last.sourceId],
+    );
     _changes.notifyChanged();
   }
 
@@ -434,17 +554,37 @@ class _CopiedRows implements BoardCopy {
 /// One row on the board.
 class _CopiedLayer {
   const _CopiedLayer({
-    required this.sourceId,
+    required this.source,
     required this.payload,
     required this.pictures,
     required this.handwriting,
   });
 
+  /// The row as it stood when it was copied.
+  final Layer source;
+
   /// The row it was copied off — what a LINKED paste copies again.
-  final LayerId sourceId;
+  LayerId get sourceId => source.id;
+
+  /// The folder it stood in — a paste puts it back there when the board
+  /// holds that folder too. A payload names no folder ([LayerCopyPayload]):
+  /// this one is only ever read against the rows beside it.
+  LayerId? get folderId => source.folderId;
+
+  /// What it rode — a paste puts it back on that base when the board holds
+  /// it too, and it lands as [alone] when not. As the folder above, for the
+  /// same reason.
+  LayerAttachment? get riding =>
+      isAttachedLayer(source) ? LayerAttachment.of(source) : null;
 
   /// The row, as [copyLayerToPayload] carries it.
   final LayerCopyPayload payload;
+
+  /// [payload] to land with no base under it: an attach row of a kind the
+  /// cut holds one of rode that row, and is not to take its place.
+  LayerCopyPayload get alone => riding != null && payload.kind.isSingletonPerCut
+      ? payload.copyWith(kind: LayerKind.animation)
+      : payload;
 
   /// The pictures its cels showed when it was copied, by cel id — BY VALUE,
   /// for the frame board's reason ([picturesShownBy], F-161): the paste may

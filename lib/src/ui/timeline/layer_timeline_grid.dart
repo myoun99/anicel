@@ -704,7 +704,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
       rows: rows,
       edges: edges,
       frameCellExtent: _metrics.frameCellWidth,
-      activeLayerId: widget.hooks.activeLayerId,
+      activeLayer: widget.hooks.activeLayer,
       standing: widget.hooks.currentRowHooks?.currentRow,
     );
   }
@@ -732,7 +732,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
       dragPreview: widget.hooks.dragPreview,
       rows: rows,
       edges: edges,
-      activeLayerId: widget.hooks.activeLayerId,
+      activeLayer: widget.hooks.activeLayer,
       frameStartIndex: 0,
       frameEndIndexExclusive: _renderedFrameCount,
       leadingFrameSpacerWidth: 0,
@@ -882,6 +882,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
     return TimelineGridShell(
       ground: colorScheme.surfaceContainerHighest,
       framesPerSecond: _countingFps,
+      activeLayer: widget.hooks.activeLayer,
       controllers: [_horizontalScrollController, _verticalScrollController],
       layers: widget.layers,
       child: LayoutBuilder(

@@ -24,7 +24,7 @@ void main() {
     TimelineLaneRangeHooks? laneRange,
     int playbackFrameCount = 48,
   }) => TimelineGridHooks(
-    activeLayerId: const LayerId('a'),
+    activeLayer: ValueNotifier(const LayerId('a')),
     frameCursor: ValueNotifier<int>(0),
     playbackFrameCount: playbackFrameCount,
     exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,

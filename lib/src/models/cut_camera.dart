@@ -127,22 +127,26 @@ bool cameraWriteKeepsKeysIn(
 ///   2026-10-09): 「끝 칸의 키는 늘릴때나 줄일때 컷 끝에 붙어있기만 하면되.
 ///   위치만 이동되도록」. The key on the FIRST frame needs nothing: frame 0
 ///   is where the cut begins however it is trimmed.
-/// - **Shrunk**: every key on the frames that went comes in by as many
-///   frames as went, the end key with them. 🗣️Q7 (유저 2026-10-09):
-///   「OL삭제한다거나 하면 키를 컷 길이 줄이는거랑 동일하게 그 사라진
-///   코마만큼 컷길이 움직인거랑 동일한 규칙으로 키를 앞당긴다」. A shrink the
-///   hand drives stops short of every key but the end's
-///   ([cameraDrawnFrameFloor]), so there the end key is the one that comes
-///   in; a shrink that comes at once — an O.L taken away, a cut moved off
-///   its O.L — brings in all it went past. A key coming in onto another
-///   takes its frame — I-73-camera-row-Q8 (→ `moved`): 「컷길이 조절할때랑
-///   같은규칙으로 최대한 통일」, the end key keeping to the end.
+/// - **Shrunk**: the end pushes every key it meets in ahead of it, each on
+///   a frame of its own ([_framesPushedIn]), the end key leading them.
+///   🗣️F-541 (유저 2026-11-02): 「cam 키가 중간에 있으면 처음 컷엣지
+///   드래그시 거기서 멈추고 다시 드래그해야 시작되는데, 그냥 안멈추고
+///   만나면 밀어버리면 되지않나? 기존 규칙 그대로 참고하면서」 — the
+///   bulldozer a block's front edge is (I-21 「불도저로 쭉 미는느낌」), which
+///   a hand drives as far as the keys have frames ([cameraDrawnFrameFloor]).
+///   One law for that and for a shrink that comes at once, an O.L taken
+///   away or a cut moved off its O.L — 🗣️Q7 (유저 2026-10-09): 「OL삭제한다거나
+///   하면 키를 컷 길이 줄이는거랑 동일하게 … 동일한 규칙으로 키를 앞당긴다」.
+///   Only that one can outrun the frames: a key pushed past frame 0 takes
+///   that frame — I-73-camera-row-Q8 (→ `moved`): 「컷길이 조절할때랑
+///   같은규칙으로 최대한 통일」. ↩️A hand stopped short of every key but the
+///   end's, and a shrink at once brought keys in by the frames that went,
+///   so one landing on another took its frame.
 ///
 /// ⚠️The step back is not this move the other way: what came in stays in
-/// as the cut grows again, so the commands that take a のりしろ away put
-/// their cameras back on the way back (`CamerasFollowTheirEnds`) — and,
-/// passing through layouts on the way, settle them from where they found
-/// them.
+/// as the cut grows again, so the commands that move a cut's end put their
+/// cameras back on the way back (`CamerasFollowTheirEnds`) — and, passing
+/// through layouts on the way, settle them from where they found them.
 ///
 /// ⚠️A cut of one frame has its key on both ends at once: it stays on the
 /// first as the cut grows.
@@ -166,14 +170,38 @@ CutCamera cameraFollowingItsEnd(
             ),
           );
   }
+  final seats = _seatsPushedIn(
+    camera.track.keyedFrames,
+    lastFrame: lastFrame,
+    previousLastFrame: previousLastFrame,
+  );
   return _cameraWithEachLane(
     camera,
-    <T>(lane) => _laneWithGoneFramesIn(
-      lane,
-      lastFrame: lastFrame,
-      previousLastFrame: previousLastFrame,
-    ),
+    <T>(lane) => _laneWithFramesMoved(lane, seats),
   );
+}
+
+/// Where the keys on [frames], first to last, sit as the end comes in from
+/// [previousLastFrame] to [lastFrame]: each on [lastFrame] or a frame short
+/// of the key behind it, whichever is sooner, down to frame 0 — one map for
+/// every lane, so a key two lanes share stays one key. A key that was past
+/// [previousLastFrame] already is not this write's to move.
+Map<int, int> _seatsPushedIn(
+  Set<int> frames, {
+  required int lastFrame,
+  required int previousLastFrame,
+}) {
+  final seats = <int, int>{};
+  var room = lastFrame;
+  for (final frame in frames.toList().reversed) {
+    if (frame > previousLastFrame) {
+      continue;
+    }
+    final seat = math.min(frame, math.max(0, room));
+    seats[frame] = seat;
+    room = seat - 1;
+  }
+  return seats;
 }
 
 /// [lane] with its key on [previousLastFrame] on [lastFrame], unless
@@ -196,29 +224,20 @@ PropertyTrack<T> _laneWithEndKeyOut<T>(
   );
 }
 
-/// [lane] with every key past [lastFrame], up to [previousLastFrame], in
-/// by the frames that went — written after the keys that stay, so one
-/// coming in onto another takes its frame. A key that was past
-/// [previousLastFrame] already is not this write's to move.
-PropertyTrack<T> _laneWithGoneFramesIn<T>(
-  PropertyTrack<T> lane, {
-  required int lastFrame,
-  required int previousLastFrame,
-}) {
-  bool went(int frame) => frame > lastFrame && frame <= previousLastFrame;
-  if (!lane.keys.keys.any(went)) {
-    return lane;
-  }
-  final gone = previousLastFrame - lastFrame;
-  return PropertyTrack(
-    keys: {
-      for (final entry in lane.keys.entries)
-        if (!went(entry.key)) entry.key: entry.value,
-      for (final entry in lane.keys.entries)
-        if (went(entry.key)) math.max(0, entry.key - gone): entry.value,
-    },
-  );
-}
+/// [lane] with its keys on the frames of [moved] on the frames it says —
+/// written after the keys that stay, first to last, so one that lands on
+/// another takes its frame.
+PropertyTrack<T> _laneWithFramesMoved<T>(
+  PropertyTrack<T> lane,
+  Map<int, int> moved,
+) => PropertyTrack(
+  keys: {
+    for (final entry in lane.keys.entries)
+      if (!moved.containsKey(entry.key)) entry.key: entry.value,
+    for (final entry in lane.keys.entries)
+      ?moved[entry.key]: entry.value,
+  },
+);
 
 /// [camera] with [edit] applied to each of its lanes — the very camera
 /// when it changed none.
@@ -238,11 +257,10 @@ CutCamera _cameraWithEachLane(
 }
 
 /// The fewest frames a cut drawn for [drawnFrameCount] frames may be drawn
-/// for and keep [camera]'s keys on them: the key on its last frame comes in
-/// with the end ([cameraFollowingItsEnd]), and every other key stays where
-/// it is — so up to the frame after the last of those. The camera lives
-/// inside its cut, as the conte does (`minimumCutDurationFor`, 유저
-/// 2026-07-27): a shrink stops short of a key rather than putting one out.
+/// for and keep [camera]'s keys on them: the end pushes them in
+/// ([cameraFollowingItsEnd]), so a frame to each. The camera lives inside
+/// its cut, as the conte does (`minimumCutDurationFor`, 유저 2026-07-27): a
+/// shrink stops where the keys have no frames left, rather than lose one.
 ///
 /// A key already past the end bounds nothing: it is not the shrink's to
 /// keep in ([cameraWriteKeepsKeysIn] lets it stand for the same reason), and
@@ -250,21 +268,8 @@ CutCamera _cameraWithEachLane(
 /// file left at frame 40 of a 30-frame cut held the cut's end and its
 /// O.L's edge where they were.
 int cameraDrawnFrameFloor(CutCamera camera, {required int drawnFrameCount}) {
-  final last = drawnFrameCount - 1;
-  var floor = 1;
-  var keysTheEnd = false;
-  var inside = 0;
-  for (final frame in camera.track.keyedFrames) {
-    if (frame > last) {
-      continue;
-    }
-    inside += 1;
-    if (frame == last) {
-      keysTheEnd = true;
-    } else if (frame + 1 > floor) {
-      floor = frame + 1;
-    }
-  }
-  // The key on the end needs a frame of its own past the others.
-  return keysTheEnd && inside > 1 ? floor + 1 : floor;
+  final inside = camera.track.keyedFrames.where(
+    (frame) => frame < drawnFrameCount,
+  );
+  return math.max(1, inside.length);
 }

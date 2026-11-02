@@ -433,11 +433,11 @@ final class CutLeadTrimDrag extends CutTrimDrag {
   }
 
   /// [cumulativeDelta] as far as the cameras let it go (I-73-camera-row-Q4,
-  /// [minimumCutDurationForCamera]): shrinking the cut from its front stops
-  /// short of its keys, and drawing it out stops short of the keys of the
-  /// glued cut in front, which gives the frames once the gap between them
-  /// is spent. Only on the cut's FIRST panel: an inner panel trades frames
-  /// inside its own cut, whose length stays.
+  /// [minimumCutDurationForCamera]): shrinking the cut from its front
+  /// pushes its keys in until they have no frames left, and drawing it out
+  /// does the same to the glued cut in front, which gives the frames once
+  /// the gap between them is spent. Only on the cut's FIRST panel: an inner
+  /// panel trades frames inside its own cut, whose length stays.
   int _cameraBounded(int cumulativeDelta) {
     if (_panelIndex != 0) {
       return cumulativeDelta;
@@ -453,9 +453,7 @@ final class CutLeadTrimDrag extends CutTrimDrag {
     return math.max(cumulativeDelta, -(gap + _cameraRoomOf(_order[index - 1])));
   }
 
-  /// How far [id] may shrink before its camera would leave a key outside
-  /// it: the key on its last frame comes in with the end, and the end stops
-  /// short of the others.
+  /// How far [id] may shrink before its camera's keys run out of frames.
   int _cameraRoomOf(CutId id) {
     final cut = _roles.project.cutById(id);
     if (cut == null) {
@@ -541,8 +539,8 @@ final class CutTrailTrimDrag extends CutTrimDrag {
     int cumulativeDelta,
   ) {
     // The trailing edge sits on the LAST panel, so its floor is the row's
-    // full extent ([minimumCutDurationFor]) — and the camera's last key but
-    // the one on the end; cuts with neither keep the plain one-frame floor.
+    // full extent ([minimumCutDurationFor]) — and a frame to each camera
+    // key; cuts with neither keep the plain one-frame floor.
     final trimmedCut = _roles.project.cutById(_cutId);
     final minDuration = trimmedCut == null
         ? 1

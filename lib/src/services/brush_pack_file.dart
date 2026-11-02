@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../models/brush_hand_settings.dart';
 import '../models/brush_preset.dart';
 import '../models/import/import_warning.dart';
+import 'brush_hand_overlay.dart';
 
 /// The extension of a brush file Anicel writes itself.
 const String anicelBrushExtension = 'anibrush';
@@ -38,14 +39,29 @@ class BrushPack {
 
   final List<BrushPreset> presets;
 
-  /// Keyed by preset id. ⚠️Ids SURVIVE an import — the merge replaces on a
-  /// collision rather than re-minting (two presets may never share an id) —
-  /// so these keys are the same ids the receiving library will hold.
+  /// Keyed by the id each brush has in THIS file, which is not always the
+  /// one it lands under (F-433) — so they are read here, against the file's
+  /// own brushes ([brushesAsHanded]), before anything lands.
   ///
   /// Each is an overlay over its brush's settings (see [BrushHandSettings]),
   /// its tips carried WHOLE for the reason the presets' are.
   final Map<String, BrushHandSettings> handSettings;
 }
+
+/// [pack]'s brushes as they stood in the hand that exported them: what it
+/// had set is their own value now.
+///
+/// 🗣️I-148-Q1 (유저 2026-11-01): 「가져온 직후 값으로 돌아간다」. The reset
+/// button takes a brush back to its own values, so what arrived has to BE
+/// them. ↩️The overlay used to land in the receiving hand's bank, and reset
+/// took the size the brush came with away along with the rest.
+List<BrushPreset> brushesAsHanded(BrushPack pack) => [
+  for (final preset in pack.presets)
+    if (pack.handSettings[preset.id.value] case final hand?)
+      preset.copyWith(settings: brushSettingsUnderHand(preset.settings, hand))
+    else
+      preset,
+];
 
 /// Thrown when a file cannot be read as an Anicel brush pack.
 class BrushPackFormatException extends ImportRefusal {

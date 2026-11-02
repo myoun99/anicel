@@ -113,7 +113,7 @@ void main() {
     );
     return [
       for (final cell in buildConteSheetSource(project).cuts.single.cells)
-        cell.cameraLines,
+        cell.fixedLines.camera,
     ];
   }
 
@@ -329,7 +329,7 @@ void main() {
     expect(
       [
         for (final cell in buildConteSheetSource(project).cuts.last.cells)
-          cell.cameraLines,
+          cell.fixedLines.camera,
       ],
       [
         ['13f-23f PAN (0+11)', 'FIX (0+9)'],

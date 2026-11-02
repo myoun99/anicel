@@ -14,6 +14,7 @@ import 'layer_process.dart';
 import 'project_frame_rate.dart' show secondsPlusFramesLabel;
 import 'se_dialogue_spacing.dart';
 import 'se_line_type.dart';
+import 'sheet_memo_side.dart';
 import 'sheet_paint_layer.dart' show SheetPaintLayer;
 import 'sheet_sources.dart';
 import 'timeline_exposure.dart';
@@ -29,6 +30,10 @@ import 'transition_geometry.dart';
 /// 러프원화이름이면 될거같고」). ↩️It was the 원화 (09-25: 「…스태프의 원화
 /// 이름 인식하게하고」).
 const LayerMark sheetArtistMark = LayerMark(process: LayerProcess.roughKey);
+
+/// The pages a cut's sheet lays: how many, how many frames to a page, and how
+/// many frames the cut draws on them.
+typedef SheetPages = ({int count, int frames, int drawnFrames});
 
 /// How many paper pages [drawnFrameCount] rows fill at [pageFrameCount]
 /// rows a page — always at least one, and capped so junk data cannot ask
@@ -348,6 +353,8 @@ class TimesheetDocument {
     required this.episode,
     required this.artist,
     required this.pageMemos,
+    required this.rightPageMemos,
+    required this.pageFixedLines,
     required this.visibleHeaderFields,
     required this.exposureBarThreshold,
     required this.cellExposureBarThreshold,
@@ -399,6 +406,10 @@ class TimesheetDocument {
     // The mark a drawing with no name wears (Preferences ▸ Display, F-489)
     // — the app's pick, which `cutSheetDocument` hands every sheet.
     InbetweenMark unnamedMark = defaultUnnamedDrawingMark,
+    // What each page writes of itself in its memo band (F-542), asked of its
+    // caller as the pages stand: `cutSheetDocument` gathers it, the sheet's
+    // geometry stays here.
+    List<List<String>> Function(SheetPages pages)? fixedLinesOfPages,
   }) {
     const seColumnCount = 2;
     const cameraColumnCount = 2;
@@ -504,6 +515,14 @@ class TimesheetDocument {
       episode: info.episode,
       artist: cut.metadata.staffNameFor(sheetArtistMark),
       pageMemos: cut.metadata.pageNotes,
+      rightPageMemos: cut.metadata.rightPageNotes,
+      pageFixedLines:
+          fixedLinesOfPages?.call((
+            count: pageCount,
+            frames: pageFrameCount,
+            drawnFrames: drawnFrameCount,
+          )) ??
+          const [],
       visibleHeaderFields: List.unmodifiable(info.visibleFields),
       exposureBarThreshold: info.exposureBarThreshold,
       cellExposureBarThreshold: info.cellExposureBarThreshold,
@@ -632,9 +651,27 @@ class TimesheetDocument {
   /// (R5-⑥) until I-72 took that out.
   final List<String> pageMemos;
 
-  /// The memo on page [page], empty where none is written (F-301).
-  String memoTextOf(int page) =>
-      page >= 0 && page < pageMemos.length ? pageMemos[page] : '';
+  /// The memo on the right of each page's band ([CutMetadata.rightPageNotes]).
+  final List<String> rightPageMemos;
+
+  /// The memo on [side] of page [page], empty where none is written (F-301).
+  String memoTextOf(int page, {SheetMemoSide side = SheetMemoSide.left}) {
+    final memos = switch (side) {
+      SheetMemoSide.left => pageMemos,
+      SheetMemoSide.right => rightPageMemos,
+    };
+    return page >= 0 && page < memos.length ? memos[page] : '';
+  }
+
+  /// What each page writes of itself over its memos, by page: a conte cell's
+  /// fixed lines (`SheetFixedLines`, F-542), never in a memo.
+  final List<List<String>> pageFixedLines;
+
+  /// The fixed lines on page [page], none where it writes none.
+  List<String> fixedLinesOf(int page) =>
+      page >= 0 && page < pageFixedLines.length
+      ? pageFixedLines[page]
+      : const [];
 
   /// The ACTION and CELL blocks' stretch lines, mirrored from
   /// [TimesheetInfo] (null = off, N = from the (N+1)th comma of a run of

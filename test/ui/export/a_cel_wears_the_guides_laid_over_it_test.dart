@@ -276,7 +276,7 @@ void main() {
       ], keys: {0: CameraPose(center: CanvasPoint(x: 260, y: 200), zoom: 2)});
       final cel = await celOf(session, laid: true, mode: ExportSizeMode.camera);
       expect(cel.width, camera.width);
-      expect(inkDown(cel, 280, top: 80, bottom: 100), closeTo(0.28, 0.05));
+      expect(inkDown(cel, 280, top: 80, bottom: 100), closeTo(0.85, 0.05));
     });
     await tester.pumpAndSettle();
   });

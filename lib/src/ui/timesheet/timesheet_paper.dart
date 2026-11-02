@@ -109,11 +109,13 @@ class TimesheetPaper extends StatelessWidget {
             key: const ValueKey<String>('timesheet-header-edit-layer'),
             layout: layout,
             viewport: viewport,
-            onMemoCommitted: (page, memo) => session.cutVerbs.updateCutNote(
-              cutId: cutId,
-              page: page,
-              note: memo,
-            ),
+            onMemoCommitted: (page, side, memo) =>
+                session.cutVerbs.updateCutNote(
+                  cutId: cutId,
+                  page: page,
+                  side: side,
+                  note: memo,
+                ),
             headerCommits: _headerCommits(),
           ),
         ),

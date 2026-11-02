@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 import '../../helpers/app_shortcuts.dart';
 import '../../helpers/fake_playback_transport.dart';
 import '../../helpers/panel_finders.dart';
+import '../../helpers/text_finders.dart';
 
 /// 🚨R6q3 — 유저 2026-08-25, 답 2번: 「키보드 줌도 통과시킨다. 재생 중 줌은
 /// 입력 수단과 무관하게 한 법으로」 — and 2026-09-13, I-19-zoom-key-playback
@@ -50,7 +51,7 @@ void main() {
       .widget<Text>(
         find.descendant(
           of: inMainCanvas(find.byKey(ValueKey<String>(key))),
-          matching: find.byType(Text),
+          matching: find.anyText(),
         ),
       )
       .data!;

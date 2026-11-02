@@ -8,6 +8,14 @@
 // else the engine's vsync IS the display's, and nothing here is asked for:
 // qa_display_vblank answers 0 and the wait returns at once.
 //
+// 🚨THE COMPOSITOR HAS ONE CLOCK AND EVERY SCREEN ITS OWN VBLANKS (measured
+// 2026-10-15, four screens of 144, 59.94, 59.95 and 60Hz): DWM's timing is
+// that clock, so a window on a slower screen is on a grid its pictures do
+// not land on. qa_display_window_screens names the vblanks of the screens
+// the window lies on; the compositor's per-target statistics are the only
+// word on those (Windows 11 on — without them there is no such answer, and
+// the app stays on the compositor's clock as it always was).
+//
 // Times are in microseconds of the performance counter - the clock Dart's
 // timeline reads on Windows, and so the clock the engine's frame times are
 // on. The compositor stamps its vblanks with the same counter.
@@ -85,6 +93,166 @@ static int64_t qa_display_now(void) {
   return qa_display_micros(counter.QuadPart);
 }
 
+// COMPOSITION_FRAME_STATS, _TARGET_ID, _STATS and _TARGET_STATS as
+// dcomptypes.h declares them. Declared here for the reason DWM's is: the
+// build needs no recent SDK, and dcomp.dll is asked for them at run time
+// because only Windows 11 has them.
+typedef struct {
+  UINT64 startTime;
+  UINT64 targetTime;
+  UINT64 framePeriod;
+} qa_comp_frame_stats;
+
+typedef struct {
+  LUID displayAdapterLuid;
+  LUID renderAdapterLuid;
+  UINT vidPnSourceId;
+  UINT vidPnTargetId;
+  UINT uniqueId;
+} qa_comp_target_id;
+
+typedef struct {
+  UINT presentCount;
+  UINT refreshCount;
+  UINT virtualRefreshCount;
+  UINT64 time;
+} qa_comp_stats;
+
+typedef struct {
+  UINT outstandingPresents;
+  UINT64 presentTime;
+  UINT64 vblankDuration;
+  qa_comp_stats presentedStats;
+  qa_comp_stats completedStats;
+} qa_comp_target_stats;
+
+#define QA_COMP_FRAME_ID_COMPLETED 2
+#define QA_COMP_MAX_TARGETS 16
+
+typedef HRESULT(WINAPI* qa_comp_frame_id_fn)(int, UINT64*);
+typedef HRESULT(WINAPI* qa_comp_stats_fn)(UINT64, qa_comp_frame_stats*, UINT,
+                                          qa_comp_target_id*, UINT*);
+typedef HRESULT(WINAPI* qa_comp_target_stats_fn)(UINT64,
+                                                 const qa_comp_target_id*,
+                                                 qa_comp_target_stats*);
+
+static qa_comp_frame_id_fn qa_comp_frame_id;
+static qa_comp_stats_fn qa_comp_stats_of;
+static qa_comp_target_stats_fn qa_comp_target_stats_of;
+
+static int qa_comp_loaded(void) {
+  static int tried;
+  if (!tried) {
+    tried = 1;
+    HMODULE dcomp = LoadLibraryW(L"dcomp.dll");
+    if (dcomp != NULL) {
+      qa_comp_frame_id = (qa_comp_frame_id_fn)(void*)GetProcAddress(
+          dcomp, "DCompositionGetFrameId");
+      qa_comp_stats_of = (qa_comp_stats_fn)(void*)GetProcAddress(
+          dcomp, "DCompositionGetStatistics");
+      qa_comp_target_stats_of = (qa_comp_target_stats_fn)(void*)GetProcAddress(
+          dcomp, "DCompositionGetTargetStatistics");
+    }
+  }
+  return qa_comp_frame_id != NULL && qa_comp_stats_of != NULL &&
+         qa_comp_target_stats_of != NULL;
+}
+
+// qa_display_compose.cpp: the app's window, or NULL.
+HWND qa_display_app_window(void);
+
+typedef struct {
+  LUID adapter;
+  UINT target;
+  int64_t period_ns;
+} qa_screen;
+
+typedef struct {
+  WCHAR names[QA_COMP_MAX_TARGETS][CCHDEVICENAME];
+  int count;
+} qa_monitor_names;
+
+static BOOL CALLBACK qa_monitor_named(HMONITOR monitor, HDC dc, LPRECT clip,
+                                      LPARAM names) {
+  (void)dc;
+  (void)clip;
+  qa_monitor_names* found = (qa_monitor_names*)names;
+  MONITORINFOEXW info;
+  ZeroMemory(&info, sizeof(info));
+  info.cbSize = sizeof(info);
+  if (found->count < QA_COMP_MAX_TARGETS &&
+      GetMonitorInfoW(monitor, (MONITORINFO*)&info)) {
+    lstrcpynW(found->names[found->count], info.szDevice, CCHDEVICENAME);
+    found->count += 1;
+  }
+  return TRUE;
+}
+
+// The screens under the window's CLIENT area: its outer rect stands 8 pixels
+// past a maximized window's screen, onto whatever lies beside it.
+static int qa_screens_under(HWND window, qa_screen* screens) {
+  RECT client;
+  POINT origin = {0, 0};
+  if (!GetClientRect(window, &client) || !ClientToScreen(window, &origin)) {
+    return 0;
+  }
+  OffsetRect(&client, origin.x, origin.y);
+  qa_monitor_names names;
+  names.count = 0;
+  EnumDisplayMonitors(NULL, &client, qa_monitor_named, (LPARAM)&names);
+
+  DISPLAYCONFIG_PATH_INFO paths[QA_COMP_MAX_TARGETS];
+  DISPLAYCONFIG_MODE_INFO modes[QA_COMP_MAX_TARGETS * 2];
+  UINT32 path_count = QA_COMP_MAX_TARGETS;
+  UINT32 mode_count = QA_COMP_MAX_TARGETS * 2;
+  if (QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &path_count, paths, &mode_count,
+                         modes, NULL) != ERROR_SUCCESS) {
+    return 0;
+  }
+  int count = 0;
+  for (UINT32 i = 0; i < path_count; i += 1) {
+    DISPLAYCONFIG_SOURCE_DEVICE_NAME source;
+    ZeroMemory(&source, sizeof(source));
+    source.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
+    source.header.size = sizeof(source);
+    source.header.adapterId = paths[i].sourceInfo.adapterId;
+    source.header.id = paths[i].sourceInfo.id;
+    if (DisplayConfigGetDeviceInfo(&source.header) != ERROR_SUCCESS) {
+      continue;
+    }
+    const DISPLAYCONFIG_RATIONAL rate = paths[i].targetInfo.refreshRate;
+    for (int n = 0; n < names.count && rate.Numerator != 0; n += 1) {
+      if (lstrcmpW(names.names[n], source.viewGdiDeviceName) == 0) {
+        screens[count].adapter = paths[i].targetInfo.adapterId;
+        screens[count].target = paths[i].targetInfo.id;
+        screens[count].period_ns =
+            (int64_t)(1e9 * rate.Denominator / rate.Numerator);
+        count += 1;
+        break;
+      }
+    }
+  }
+  return count;
+}
+
+// Where the window lies, read at most this often: a look asks every frame,
+// and a window moves far less often than that.
+#define QA_SCREENS_FRESH_US 250000
+
+static int qa_screens_now(qa_screen* screens) {
+  static qa_screen held[QA_COMP_MAX_TARGETS];
+  static int count;
+  static int64_t read_at;
+  const int64_t now = qa_display_now();
+  if (read_at == 0 || now - read_at >= QA_SCREENS_FRESH_US) {
+    read_at = now;
+    const HWND window = qa_display_app_window();
+    count = window == NULL ? 0 : qa_screens_under(window, held);
+  }
+  CopyMemory(screens, held, sizeof(held));
+  return count;
+}
+
 // The timer the wait sleeps on: high-resolution where the system has one
 // (Windows 10 1803 on), the plain one otherwise - it only wakes coarser,
 // and the spin at the end takes up the rest.
@@ -129,6 +297,60 @@ QA_EXPORT int32_t qa_display_vblank(int64_t* out2) {
                       (double)qa_display_frequency());
   return 1;
 #else
+  return 0;
+#endif
+}
+
+// The screens the app's window lies on, at most [max]: out[2n] a real vblank
+// of the n-th, in microseconds, out[2n + 1] its refresh period, in
+// NANOseconds, as qa_display_vblank has them. The count; 0 with no app window
+// to ask about, where the compositor keeps no such statistics (before
+// Windows 11), and everywhere but Windows.
+QA_EXPORT int32_t qa_display_window_screens(int64_t* out, int32_t max) {
+  if (out == NULL) {
+    return 0;
+  }
+#if defined(_WIN32)
+  if (!qa_comp_loaded()) {
+    return 0;
+  }
+  qa_screen screens[QA_COMP_MAX_TARGETS];
+  const int count = qa_screens_now(screens);
+  UINT64 frame = 0;
+  qa_comp_frame_stats stats;
+  qa_comp_target_id ids[QA_COMP_MAX_TARGETS];
+  UINT id_count = 0;
+  if (count == 0 ||
+      FAILED(qa_comp_frame_id(QA_COMP_FRAME_ID_COMPLETED, &frame)) ||
+      FAILED(qa_comp_stats_of(frame, &stats, QA_COMP_MAX_TARGETS, ids,
+                              &id_count))) {
+    return 0;
+  }
+  int32_t answered = 0;
+  for (int s = 0; s < count && answered < max; s += 1) {
+    for (UINT i = 0; i < id_count && i < QA_COMP_MAX_TARGETS; i += 1) {
+      qa_comp_target_stats target;
+      if (ids[i].vidPnTargetId != screens[s].target ||
+          ids[i].displayAdapterLuid.LowPart != screens[s].adapter.LowPart ||
+          ids[i].displayAdapterLuid.HighPart != screens[s].adapter.HighPart ||
+          FAILED(qa_comp_target_stats_of(frame, &ids[i], &target)) ||
+          target.presentedStats.time == 0) {
+        continue;
+      }
+      out[2 * answered] =
+          qa_display_micros((int64_t)target.presentedStats.time);
+      // 🚨THE MODE'S PERIOD, NOT THE LAST REFRESH'S (2026-11-02): a screen
+      // that stretches a refresh for a late picture says so in
+      // vblankDuration — 16.68ms, then 18.6 — and a grid laid at 18.6 is off
+      // by two milliseconds a refresh.
+      out[2 * answered + 1] = screens[s].period_ns;
+      answered += 1;
+      break;
+    }
+  }
+  return answered;
+#else
+  (void)max;
   return 0;
 #endif
 }

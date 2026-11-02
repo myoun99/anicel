@@ -29,6 +29,8 @@ void main() {
     nowMicros: now.round(),
     vblankMicros: vblank,
     periodMicros: period,
+    composedVblankMicros: vblank,
+    composedEveryMicros: period,
     budgetMicros: budget,
     handOffMicros: handOff ?? RasterSpread().handOffFor(period),
   );
@@ -367,6 +369,143 @@ void main() {
         'work waits; it is not let run beside the frames', () {
       final quiet = quietAfter(gap: 1, handOffMicros: -6000);
       expect(quiet.untilMicros, lessThanOrEqualTo(quiet.fromMicros));
+    });
+  });
+
+  test('🚨on the compositor\'s own screen a picture is shown three vblanks '
+      'past the one its raster ends past — at 60Hz too, where the law of a '
+      'slower screen would have it two (at 143.9Hz the two meet)', () {
+    const sixty = 16666.0;
+    final claim = PresentClaims().claim(
+      nowMicros: vblank + 1000,
+      vblankMicros: vblank,
+      periodMicros: sixty,
+      composedVblankMicros: vblank,
+      composedEveryMicros: sixty,
+      budgetMicros: budget,
+      handOffMicros: -2000,
+    );
+    expect(
+      claim.shownAtMicros,
+      (claim.vblankMicros + presentShownAfterVblanks * sixty).round(),
+    );
+  });
+
+  /// 🚨THE COMPOSITOR HAS ONE CLOCK AND EVERY SCREEN ITS OWN VBLANKS (card
+  /// playback-pacing-knows-one-display-only, 2026-11-02): a window on a
+  /// 59.95Hz screen under a 143.9Hz compositor.
+  group('on a screen slower than the compositor\'s clock', () {
+    const refresh = 16680.0;
+    const composedAt = vblank + 1000;
+    const handOff = -2000.0;
+
+    PresentClaim claimOnIt(
+      PresentClaims claims,
+      num now, {
+      double screen = refresh,
+      double composedEvery = period,
+    }) => claims.claim(
+      nowMicros: now.round(),
+      vblankMicros: vblank,
+      periodMicros: screen,
+      composedVblankMicros: composedAt,
+      composedEveryMicros: composedEvery,
+      budgetMicros: budget,
+      handOffMicros: handOff,
+    );
+
+    double latchOf(double vblankShownOn) => latchOnTheCompositor(
+      vblank: vblankShownOn,
+      composedVblankMicros: composedAt,
+      composedEveryMicros: period,
+    );
+
+    int indexOf(num shownAt) => ((shownAt - vblank) / refresh).round();
+
+    /// The earliest of the screen's vblanks a look at [now] can make.
+    int earliestAt(num now) {
+      var index = -1000;
+      while (latchOf(vblank + index * refresh) + handOff < now + budget) {
+        index += 1;
+      }
+      return index;
+    }
+
+    test('🚨the latch on the compositor\'s grid is the last whose frame and '
+        'present still come before the vblank shown on', () {
+      const shownOn = vblank + 100 * refresh;
+      final latch = latchOf(shownOn);
+      expect(
+        ((latch - composedAt) / period) % 1,
+        closeTo(0, 1e-6),
+        reason: 'one of the compositor\'s own vblanks',
+      );
+      final frame = latch + period;
+      expect(
+        frame + composedFramePresentsWithinMicros,
+        lessThanOrEqualTo(shownOn),
+      );
+      expect(
+        frame + period + composedFramePresentsWithinMicros,
+        greaterThan(shownOn),
+      );
+    });
+
+    test('🚨a picture is shown on the vblank claimed, and its frame handed '
+        'over at the latch for it', () {
+      final claim = claimOnIt(PresentClaims(), vblank + 1000);
+      final shownOn = claim.shownAtMicros.toDouble();
+      expect(
+        ((shownOn - vblank) / refresh) % 1,
+        closeTo(0, 1e-3),
+        reason: 'one of the screen\'s own vblanks, not one on past it',
+      );
+      expect(claim.vblankMicros, latchOf(shownOn));
+      expect(claim.handOffMicros, (latchOf(shownOn) + handOff).round());
+    });
+
+    test('🚨a look claims the earliest vblank it can make: a lead of a look '
+        'is no refresh there, and a refresh of it only holds the frame', () {
+      const now = vblank + 5000;
+      expect(
+        indexOf(claimOnIt(PresentClaims(), now).shownAtMicros),
+        earliestAt(now),
+      );
+    });
+
+    test('🚨the looks of one refresh all claim its vblank — they come faster '
+        'than the vblanks, and do not run on ahead of them', () {
+      final claims = PresentClaims();
+      for (var i = 0; i < 60; i += 1) {
+        final now = vblank + i * period;
+        expect(indexOf(claimOnIt(claims, now).shownAtMicros), earliestAt(now));
+      }
+    });
+
+    test('🚨a look after a change takes the next vblank: the one it claimed '
+        'carries the picture already', () {
+      final claims = PresentClaims();
+      final first = claimOnIt(claims, vblank + 1000);
+      claims.changed();
+      final next = claimOnIt(claims, vblank + 1000 + period);
+      expect(
+        indexOf(next.shownAtMicros),
+        indexOf(first.shownAtMicros) + 1,
+      );
+    });
+
+    test('🚨what a look is worth of a refresh is what is kept: 120Hz under '
+        '143.9 has no lead and one vblank of reserve', () {
+      const fast = 8333.0;
+      final claims = PresentClaims();
+      int claimed() {
+        final claim = claimOnIt(claims, vblank + 1000, screen: fast);
+        return ((claim.shownAtMicros - vblank) / fast).round();
+      }
+
+      final first = claimed();
+      expect(claimed(), first + 1);
+      expect(claimed(), first + 1, reason: 'reserve spent: the same again');
     });
   });
 }

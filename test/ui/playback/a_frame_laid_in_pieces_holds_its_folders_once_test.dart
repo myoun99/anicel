@@ -15,6 +15,7 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
@@ -24,6 +25,7 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart'
     show DemandedPicture, FrameGhosts;
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/canvas/iris_blur_shader.dart';
 import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
 import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart'
@@ -55,19 +57,31 @@ void main() {
   final a = celOf('a');
   final b = celOf('b');
   final pen = celOf('pen');
-  DemandedPicture frameOf(CanvasSize size) => (
+  const later = FrameId('later');
+
+  /// The first frame of a cut of [size] where the row a pen is on turns to
+  /// another cel [turning], so a next picture draws what this one does.
+  DemandedPicture frameOf(CanvasSize size, {bool turning = true}) => (
     cut: Cut(
       id: a.cutId,
       name: 'Cut',
-      duration: 1,
+      duration: turning ? 2 : 1,
       canvasSize: size,
       layers: [
         for (final cel in [a, b, pen])
           Layer(
             id: cel.layerId,
             name: 'Layer',
-            frames: [Frame(id: cel.frameId, duration: 1, strokes: const [])],
-            timeline: {0: TimelineExposure.drawing(cel.frameId, length: 1)},
+            frames: [
+              Frame(id: cel.frameId, duration: 1, strokes: const []),
+              if (turning && cel == pen)
+                Frame(id: later, duration: 1, strokes: const []),
+            ],
+            timeline: {
+              0: TimelineExposure.drawing(cel.frameId, length: 1),
+              if (turning && cel == pen)
+                1: const TimelineExposure.drawing(later, length: 1),
+            },
           ),
       ],
     ),
@@ -91,7 +105,9 @@ void main() {
 
   /// Two rows in a folder at half strength — one picture of its own — over
   /// the row a pen is on.
-  List<CompositeNode<CanvasStackRow>> treeOf() => [
+  List<CompositeNode<CanvasStackRow>> treeOf({
+    List<ResolvedLayerEffect> effects = const [],
+  }) => [
     CompositeLeaf<CanvasStackRow>(
       CanvasActiveLayerRow(opacity: 1, frameKey: pen),
     ),
@@ -102,7 +118,7 @@ void main() {
       ],
       opacity: 0.5,
       blendMode: LayerBlendMode.normal,
-      effects: const [],
+      effects: effects,
     ),
   ];
 
@@ -166,6 +182,127 @@ void main() {
         1 + pieces,
         reason: 'whole into nothing once, then each piece',
       );
+    });
+  }, skip: noFlutterGpu != null);
+
+  /// [picture] of a frame made ahead by a store that takes [onceSide] at
+  /// once and lays it in pieces of 512 where [inPieces], its folder under
+  /// [effects], a next picture drawing it where [turning] — and what it
+  /// held.
+  Future<({FramePicture? laid, HeldSubtreeRasters held})> madeAhead(
+    CanvasSize size, {
+    required int onceSide,
+    bool inPieces = true,
+    bool turning = true,
+    List<ResolvedLayerEffect> effects = const [],
+  }) async {
+    final cels = BrushFrameStore();
+    keepInAFile(cels, {
+      a: filled(const [0x30, 0x60, 0x90, 0xFF], size),
+      b: filled(const [0x90, 0x30, 0x10, 0xFF], size),
+    });
+    final images = LayerFrameImageCache(frameStore: cels);
+    addTearDown(images.dispose);
+    final store = FramePictureStore<FramePictureKey>(
+      onceSide: onceSide,
+      pieceSide: 512,
+      aheadInPieces: () => inPieces,
+    );
+    addTearDown(store.dispose);
+    final tree = treeOf(effects: effects);
+    final run = runOver(
+      images,
+      store,
+      canvasSize: size,
+      stackOf: (_) => tree,
+    );
+    addTearDown(run.pictures.dispose);
+    final frame = frameOf(size, turning: turning);
+    debugSubtreeRasterCount = 0;
+    debugKeptFrameDraws = 0;
+    await run.pictures.make(frame, shouldAbort: () => false);
+    return (
+      laid: store.peek(run.pictures.keyOfStack(tree, frame)),
+      held: run.pictures.aheadNodes,
+    );
+  }
+
+  testWidgets('made ahead a piece at a time, the frame draws its folder whole '
+      'once, each piece cut from it', (tester) async {
+    await tester.runAsync(() async {
+      final (:laid, :held) = await madeAhead(canvasSize, onceSide: 2048);
+
+      expect(
+        laid?.extent.width,
+        greaterThan(512),
+        reason: '⛔premise: laid in more than one piece',
+      );
+      expect(held, hasLength(1), reason: 'the folder');
+      expect(debugSubtreeRasterCount, 1, reason: 'drawn whole once');
+    });
+  }, skip: noFlutterGpu != null);
+
+  testWidgets('🚨made ahead a piece at a time with no picture after it, the '
+      'frame draws no folder whole: nothing would find it', (tester) async {
+    await tester.runAsync(() async {
+      final (:laid, :held) = await madeAhead(
+        canvasSize,
+        onceSide: 2048,
+        turning: false,
+      );
+
+      expect(
+        laid?.extent.width,
+        greaterThan(512),
+        reason: '⛔premise: laid in more than one piece',
+      );
+      expect(held, hasLength(0));
+      expect(debugKeptFrameDraws, 0, reason: 'never drawn to keep');
+    });
+  }, skip: noFlutterGpu != null);
+
+  testWidgets('made ahead past what a raster may make whole, the frame holds '
+      'no folder: drawn whole, it would be that raster', (tester) async {
+    await tester.runAsync(() async {
+      final (:laid, :held) = await madeAhead(canvasSize, onceSide: 512);
+
+      expect(
+        laid?.extent.width,
+        greaterThan(512),
+        reason: '⛔premise: past the side',
+      );
+      expect(held, hasLength(0));
+      expect(debugKeptFrameDraws, 0, reason: 'never drawn to keep');
+    });
+  }, skip: noFlutterGpu != null);
+
+  testWidgets('a folder under a lens blur, cut from its one picture, lays the '
+      'frame made ahead in pieces as at once, to the byte', (tester) async {
+    await tester.runAsync(() async {
+      await IrisBlurShader.load();
+      final blur = ResolvedLayerEffect(
+        kind: EffectKind.cameraLensBlur,
+        values: [
+          for (final spec in EffectKind.cameraLensBlur.parameters)
+            if (spec.id == 'blurRadius') 4 else spec.defaultValue,
+        ],
+      );
+      Future<Uint8List> bytes({required bool inPieces}) async {
+        final (:laid, held: _) = await madeAhead(
+          canvasSize,
+          onceSide: 2048,
+          inPieces: inPieces,
+          effects: [blur],
+        );
+        final data = await laid!.image.toByteData();
+        return data!.buffer.asUint8List();
+      }
+
+      final inPieces = await bytes(inPieces: true);
+      final atOnce = await bytes(inPieces: false);
+
+      expect(inPieces, isNot(everyElement(0)), reason: '⛔premise: drawn');
+      expect(inPieces, orderedEquals(atOnce));
     });
   }, skip: noFlutterGpu != null);
 

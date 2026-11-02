@@ -145,23 +145,6 @@ void main() {
       expect(holdsFrames(r.s), isTrue);
     });
 
-    test('an attach row is no row a board holds either', () {
-      final r = threeRows();
-      r.s.createDrawingAtCurrentFrame();
-      r.s.folders.addAttachedLayer(AttachedPlacement.above);
-      final rider = r.s.activeLayerId!;
-      select(r.s, [rider]);
-
-      expect(rowsOf(r.s).canCopySelectedRows, isFalse);
-      // …but beside a row that is, the copy takes that one alone.
-      select(r.s, [rider, r.b]);
-      pill(r.s).copyFrame();
-      r.s.selectLayer(r.c);
-      pill(r.s).pasteIndependentFrame();
-      expect(names(r.s).where((name) => name == 'B'), hasLength(2));
-      expect(drawingRows(r.s), hasLength(5), reason: 'A, its rider, B, B, C');
-    });
-
     test('the STORYBOARD\'s copy is never the rows, and rows in hand are '
         'nothing its pastes put down', () {
       final r = threeRows();

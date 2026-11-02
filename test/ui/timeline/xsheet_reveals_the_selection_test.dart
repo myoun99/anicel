@@ -86,7 +86,7 @@ Widget _sheet({
         height: 600,
         child: XSheetTimelineGrid(
           hooks: TimelineGridHooks(
-            activeLayerId: activeLayerId,
+            activeLayer: ValueNotifier(activeLayerId),
             frameCursor: ValueNotifier<int>(cursor),
             revealSelectionTick: revealSelectionTick,
             playbackFrameCount: frameCount,

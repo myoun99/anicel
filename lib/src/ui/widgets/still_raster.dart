@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -59,7 +60,8 @@ import 'static_raster.dart';
 /// in while a clock looks ([_StillLayer._waitNow]) — for the next frame, or
 /// for the frame itself where only its ticks moved in it; and dropped the
 /// moment the region is re-added with a different layer tree
-/// ([_StillLayer._signatureOf] says what "different" covers).
+/// ([_StillLayer._signatureOf] says what "different" covers). Where the
+/// frames stop before that, it is taken in the gap ([_FrameGap]).
 ///
 /// Content that changes without the layer tree knowing — an external
 /// texture, a platform view, a follower pinned to a leader elsewhere, a
@@ -71,9 +73,23 @@ import 'static_raster.dart';
 ///
 /// Around each DOCK REGION ([EditorDockHost] — every rail group and the
 /// floating bottom region), which is where the measurement found the
-/// frames going. Only on Impeller ([cachePays]); on Skia the engine's own
+/// frames going, the two tool strips and the top strip, the chrome no dock
+/// holds, and each capsule on the canvas, in the one dock that opts out
+/// ([CanvasCapsule]). Only on Impeller ([cachePays]); on Skia the engine's own
 /// raster cache and [StaticRaster]'s bakes stay what they were measured
 /// as, and this is a boundary with a clip.
+///
+/// 🔬The strips came last (F-533, 2026-11-01): they were the most of what
+/// a frame still drew, 88 of 186 draws, and a stroke's steps wait behind
+/// the frames, so a frame's raster counts for more than itself. Main PC,
+/// 144 Hz, S5_BA cut 352 with every row shown, 300 px/s under eighteen
+/// suites of tests, the regions on and off in turn in one run, input to
+/// raster done p50 / p90 / p99: fitted 56.5 / 74.3 / 146.4 → 46.0 / 60.8 /
+/// 85.3 ms, a frame's raster 6.3 → 5.0; at 100% 35.7 / 49.8 / 76.7 → 32.9
+/// / 44.7 / 73.2 ms, 6.1 → 5.3. Quiet, p50: 10.0 → 9.8 and 8.7 → 7.9 ms.
+/// The capsules on top of them, the same way: fitted 49.6 / 64.3 / 128.0 →
+/// 44.0 / 59.2 / 90.6 ms, 5.3 → 4.3; at 100% 34.1 / 45.7 / 70.6 → 30.0 /
+/// 43.0 / 60.7 ms, 5.5 → 4.3. Quiet, p50: 9.4 → 9.0 and 7.2 → 6.7 ms.
 class StillRaster extends SingleChildRenderObjectWidget {
   const StillRaster({
     super.key,
@@ -425,6 +441,7 @@ class _StillLayer extends OffsetLayer {
             )
           : StillRaster.stillFrames;
     }
+    _FrameGap.leave(this);
     _strata?.dispose();
     _strata = null;
     _imageSignature = null;
@@ -706,10 +723,22 @@ class _StillLayer extends OffsetLayer {
         return;
       }
       _watching = true;
+      _FrameGap.wait(this);
       SchedulerBinding.instance.addPostFrameCallback(check);
     }
 
     SchedulerBinding.instance.addPostFrameCallback(check);
+  }
+
+  /// Takes the region in a gap in the frames ([_FrameGap]), for the next
+  /// frame that comes anyway.
+  void _takeInAGap() {
+    if (attached &&
+        _strata == null &&
+        _owner._gate() == StillStandDown.none &&
+        _capture()) {
+      markNeedsAddToScene();
+    }
   }
 
   /// Takes the region's strata as the scene last had it — every stratum a
@@ -755,6 +784,7 @@ class _StillLayer extends OffsetLayer {
       _imageSignature = signature;
       _capturedAt = _frame;
       StillRaster._capturesEver += 1;
+      _FrameGap.leave(this);
     } on Object catch (error, stack) {
       _refused(error, stack);
       return false;
@@ -920,6 +950,78 @@ typedef _Layout = ({
 /// Where each stratum's part sits in the one image — null for a stratum
 /// that reaches nothing — and the image's size, in device pixels.
 typedef _Packing = ({List<Offset?> at, Size size});
+
+/// The regions owed an image, for the gap when the frames stop.
+///
+/// 🚨A REGION STANDS STILL WHETHER FRAMES COME OR NOT (F-533, 2026-11-01).
+/// A wait counted in frames is counted only by the frames something else
+/// asks for, and [_StillLayer._watch] asks for none (its ⛔, H40). So a
+/// region changed by a click, a hover or a pen lifting, its frames over
+/// with the change, waited through the whole gap, and the next stroke paid:
+/// its first frames drew the region whole, and the image landed on the one
+/// after, in the ink a stroke is felt by. 🔬Main PC, 144 Hz, S5_BA cut 352
+/// with every row shown, a tool picked 400 ms before each stroke, the gap
+/// off and on in turn in one run: under eighteen suites of tests the first
+/// ink 122.5 → 75.7 ms, the first four frames' raster 7.4 7.9 8.7 7.6 → 3.9
+/// 4.7 4.1 4.3 ms; quiet 3.0 2.3 1.8 1.7 → 1.6 1.1 1.1 1.0 ms, the first
+/// ink no different (23.9, 25.7). The stroke after a pen lift that changed
+/// the timeline: 9.3 8.1 8.8 → 3.9 1.1 1.0 ms.
+///
+/// So once no frame has come for a [_step], the region that has waited
+/// longest is taken, one a [_step], for the next frame that comes. That
+/// asks for no frame either, and lands on none. A region that backed off
+/// waits as many more steps as it would have frames, so what changes every
+/// so often is not taken every time.
+abstract final class _FrameGap {
+  /// The quiet a region waiting the shortest wait needs: its
+  /// [StillRaster.stillFrames] at 60Hz. It is what keeps two images apart
+  /// too — the dearest on the Surface are 18–31 ms
+  /// ([StillRaster._lastCaptureFrame]).
+  static const Duration _step = Duration(milliseconds: 50);
+
+  static final Set<_StillLayer> _owed = <_StillLayer>{};
+  static Timer? _timer;
+
+  /// The steps gone by since the last frame.
+  static int _quiet = 0;
+
+  /// [layer] saw a frame and is still owed its image: the quiet starts
+  /// over.
+  static void wait(_StillLayer layer) {
+    _owed.add(layer);
+    _quiet = 0;
+    _timer?.cancel();
+    _timer = Timer(_step, _stepped);
+  }
+
+  /// [layer] is owed nothing, or is gone.
+  static void leave(_StillLayer layer) {
+    if (_owed.remove(layer) && _owed.isEmpty) {
+      _timer?.cancel();
+      _timer = null;
+    }
+  }
+
+  static void _stepped() {
+    _timer = null;
+    // A frame is on its way: the regions hear it, and wait from there.
+    if (SchedulerBinding.instance.hasScheduledFrame) {
+      return;
+    }
+    _quiet += 1;
+    final waited = _quiet * StillRaster.stillFrames;
+    for (final layer in _owed) {
+      if (waited >= layer._stillFramesNeeded) {
+        _owed.remove(layer);
+        layer._takeInAGap();
+        break;
+      }
+    }
+    if (_owed.isNotEmpty) {
+      _timer = Timer(_step, _stepped);
+    }
+  }
+}
 
 /// A region's STRATA as taken — what it paints between one live tick and
 /// the next, each a part of ONE image — and the ticks drawn live between

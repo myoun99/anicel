@@ -67,7 +67,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: LayerTimelineGrid(
-hooks: TimelineGridHooks(activeLayerId: const LayerId('layer-1'),
+hooks: TimelineGridHooks(activeLayer: ValueNotifier(const LayerId('layer-1')),
 frameCursor: cursor,
 playbackFrameCount: frameCount,
 exposureStateForLayer: stateFor,

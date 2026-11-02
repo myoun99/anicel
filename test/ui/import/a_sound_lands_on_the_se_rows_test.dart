@@ -35,6 +35,7 @@ import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
+import '../../helpers/text_finders.dart';
 
 /// 🚨A SOUND ON THE TIMELINE GOES TO THE SE ROWS (유저 2026-09-11, 미디어 배치
 /// 라운드 6: 「SE1부터 시작해서 뒤든 앞이든 겹치지 않는, 공간이 존재하는
@@ -357,7 +358,7 @@ void main() {
     final into = find.byKey(ValueKey<String>('import-cell-into-$path'));
     expect(
       tester
-          .widget<Text>(find.descendant(of: into, matching: find.byType(Text)))
+          .widget<Text>(find.descendant(of: into, matching: find.anyText()))
           .data,
       AppText.strings.imIntoSeRow,
     );
@@ -516,7 +517,7 @@ void main() {
       expect(
         tester
             .widget<Text>(
-              find.descendant(of: into, matching: find.byType(Text)),
+              find.descendant(of: into, matching: find.anyText()),
             )
             .data,
         AppText.strings.imIntoRowCell(s2.name, 6),

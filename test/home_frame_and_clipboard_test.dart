@@ -17,6 +17,7 @@ import 'helpers/home_page_probes.dart';
 import 'helpers/room_for_the_pills.dart';
 import 'helpers/named_finders.dart';
 import 'ui/timeline/timeline_cell_probe.dart' show timelineCellGlobalRect;
+import 'helpers/text_finders.dart';
 
 void main() {
   testWidgets('rename to empty clears frame name', (WidgetTester tester) async {
@@ -60,7 +61,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey<String>('app-notice-details-list')),
-        matching: find.byType(Text),
+        matching: find.anyText(),
       ),
       findsOneWidget,
     );

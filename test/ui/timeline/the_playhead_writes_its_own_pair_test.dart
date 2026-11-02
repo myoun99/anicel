@@ -137,12 +137,13 @@ void main() {
       );
     });
 
-    // I-81-Q4 「그 외는 프레임뷰랑 똑같음」. ↩️It wrote the page it stood in.
-    test('I-81: under the page view it writes the second it stands in, as '
-        'the frames view does, and its number in its page', () {
+    // F-539 「초 숫자도 같이 초기화」. ↩️It wrote the page it stood in, then
+    // the second as the frames view does (I-81-Q4).
+    test('I-81: under the page view it writes its number and its second in '
+        'its page', () {
       final pages = scaleOf(rulerView: FrameRulerView.pages, pageFrames: 48);
       expect(rulerWriting(pages, 47).pair.map(textOf), ['48', '1']);
-      expect(rulerWriting(pages, 50).pair.map(textOf), ['3', '2']);
+      expect(rulerWriting(pages, 50).pair.map(textOf), ['3', '0']);
     });
 
     test('the rail writes the pair on a frame its cadence skips', () {

@@ -29,15 +29,17 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
 import 'package:anicel/src/ui/diagnostics/memory_census.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/playback/frame_pictures.dart'
+    show debugKeptFrameDraws;
 
 /// 🚨★THE FRAME A SCREEN STANDS ON HOLDS ITS FOLDERS' PICTURES
 /// (`FramePictures.heldNodes`; card paint-walk-redoes-the-same-work-each-
 /// step): laid for the canvas that stands on it, a folder drawn whole is
 /// kept, and a stroke's step patched into the frame as it stands is cut
-/// from it — on the playback line beside the frames' pictures, each a page
-/// at the most and as many as the line has room for (🗣️유저 2026-10-27,
-/// Q3 = c: 「위 폴더는 하나씩, 재생 메모리 몫 안에서 전부」), only those of the
-/// frame last drawn to hold them, and let go of at a memory warning.
+/// from it — on the playback line beside the frames' pictures, as many as
+/// the line has room for (🗣️유저 2026-10-27, Q3 = c: 「위 폴더는 하나씩, 재생
+/// 메모리 몫 안에서 전부」), only those of the frame last drawn to hold them,
+/// and let go of at a memory warning.
 void main() {
   const canvasSize = CanvasSize(width: 32, height: 24);
   const folders = [LayerId('folder'), LayerId('folder2')];
@@ -47,27 +49,45 @@ void main() {
   ];
   final page = estimatedImageBytes(32, 24);
 
-  Layer row(String id, [LayerId? folder]) => Layer(
+  Layer row(String id, [LayerId? folder, int length = 1]) => Layer(
     id: LayerId(id),
     name: id,
     folderId: folder,
     frames: [Frame(id: FrameId('$id-0'), duration: 1, strokes: const [])],
-    timeline: {0: TimelineExposure.drawing(FrameId('$id-0'), length: 1)},
+    timeline: {0: TimelineExposure.drawing(FrameId('$id-0'), length: length)},
   );
 
   /// [count] folders at half strength, two drawn rows in each — each one
   /// picture of its own — and, [withPen], a row a pen may draw on between
-  /// the first and the rest.
-  EditorSessionManager session({int count = 1, bool withPen = false}) {
+  /// the first and the rest — and, [turning], a row of its own turns to
+  /// another cel at a second frame, a second picture of the same folders.
+  EditorSessionManager session({
+    int count = 1,
+    bool withPen = false,
+    bool turning = false,
+  }) {
     final layers = [
       for (var at = 0; at < count; at += 1) ...[
-        for (final id in rowsOf[at]) row(id, folders[at]),
+        for (final id in rowsOf[at]) row(id, folders[at], turning ? 2 : 1),
         createFolderLayer(
           id: folders[at],
           name: 'F$at',
         ).copyWith(opacity: 0.5),
         if (withPen && at == 0) row('pen'),
       ],
+      if (turning)
+        Layer(
+          id: const LayerId('turning'),
+          name: 'turning',
+          frames: [
+            for (final id in const ['turning-0', 'turning-1'])
+              Frame(id: FrameId(id), duration: 1, strokes: const []),
+          ],
+          timeline: {
+            0: const TimelineExposure.drawing(FrameId('turning-0'), length: 1),
+            1: const TimelineExposure.drawing(FrameId('turning-1'), length: 1),
+          },
+        ),
     ];
     return EditorSessionManager(
       initialProject: Project(
@@ -82,7 +102,7 @@ void main() {
               Cut(
                 id: const CutId('cut'),
                 name: 'cut',
-                duration: 1,
+                duration: turning ? 2 : 1,
                 canvasSize: canvasSize,
                 layers: layers,
               ),
@@ -287,8 +307,74 @@ void main() {
     });
   });
 
-  testWidgets('⚖️each node held is a page at the most, and as many are held '
-      'as the playback line has room for', (tester) async {
+  testWidgets('⚖️a walk holds a frame\'s folders in what the line has free: '
+      'no picture gives way to them, a picture laid takes it back, and they '
+      'go at a memory warning', (tester) async {
+    await tester.runAsync(() async {
+      /// A session on a line of [line] bytes, its frame of two folders made
+      /// ahead.
+      Future<EditorSessionManager> walked({int? line}) async {
+        final s = session(count: 2, turning: true);
+        addTearDown(s.dispose);
+        if (line != null) {
+          s.playbackRig.playbackCache.debugSetPlaybackCacheBudgetBytes(line);
+        }
+        await s.playbackRig.framePictures.make(
+          drawn(s, count: 2),
+          shouldAbort: () => false,
+        );
+        return s;
+      }
+
+      HeldSubtreeRasters aheadOf(EditorSessionManager s) =>
+          s.playbackRig.framePictures.aheadNodes;
+
+      final wide = await walked();
+      final folders = aheadOf(wide).heldBytes;
+      final picture = wide.renderCaches.framePictureStore.estimatedBytes;
+      expect(aheadOf(wide), hasLength(2), reason: '⛔premise');
+      expect(picture, greaterThan(0), reason: '⛔premise');
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      final census = collectMemoryCensus([wide]).items;
+      debugDefaultTargetPlatformOverride = null;
+      expect(
+        census.firstWhere((item) => item.id == 'framePictures').bytes,
+        picture + folders,
+        reason: 'counted with the frames\' pictures',
+      );
+      final line = wide.playbackRig.playbackCache;
+      expect(
+        line.bytes,
+        line.playbackCacheByteBudget,
+        reason: 'the pictures have the line to themselves',
+      );
+
+      expect(aheadOf(await walked(line: picture + folders)), hasLength(2));
+      expect(
+        aheadOf(await walked(line: picture + folders - 1)),
+        hasLength(1),
+        reason: 'the picture laid took it back, all but the newest',
+      );
+
+      debugKeptFrameDraws = 0;
+      expect(aheadOf(await walked(line: 1)), hasLength(0));
+      expect(
+        debugKeptFrameDraws,
+        0,
+        reason: '🚨no room, and it would be drawn whole for nothing',
+      );
+
+      line.lend(line.playbackCacheByteBudget);
+      expect(aheadOf(wide), hasLength(1), reason: 'the line moved under them');
+      line.lend(0);
+
+      line.respondToMemoryPressure();
+      expect(aheadOf(wide), hasLength(0));
+    });
+  });
+
+  testWidgets('⚖️a node is held at the size it drew, and as many are held as '
+      'the playback line has room for', (tester) async {
     await tester.runAsync(() async {
       void keep(HeldSubtreeRasters held, String key, Rect bounds) {
         final recorder = ui.PictureRecorder();
@@ -304,29 +390,25 @@ void main() {
         recorder.endRecording().dispose();
       }
 
-      /// The nodes held in a session on a line of [line] bytes, the page
-      /// told by a frame laid on it.
-      Future<HeldSubtreeRasters> heldOn({int? line}) async {
+      /// The nodes held in a session on a line of [line] bytes.
+      HeldSubtreeRasters heldOn({int? line}) {
         final s = session();
         addTearDown(s.dispose);
         if (line != null) {
           s.playbackRig.playbackCache.debugSetPlaybackCacheBudgetBytes(line);
         }
-        final held = s.playbackRig.framePictures.heldNodes;
-        await shown(s, drawn(s));
-        held.clear();
-        return held;
+        return s.playbackRig.framePictures.heldNodes;
       }
 
       const whole = Rect.fromLTWH(0, 0, 32, 24);
-      final wide = await heldOn();
+      final wide = heldOn();
       keep(wide, 'past the page', const Rect.fromLTWH(0, 0, 33, 24));
-      expect(wide, hasLength(0));
+      expect(wide, hasLength(1), reason: 'its ink reaches the pasteboard');
       keep(wide, 'the page', whole);
       keep(wide, 'another page', whole);
-      expect(wide, hasLength(2), reason: 'a page each, not one together');
+      expect(wide, hasLength(3), reason: 'each its own, not one together');
 
-      final narrow = await heldOn(line: 2 * page - 1);
+      final narrow = heldOn(line: 2 * page - 1);
       keep(narrow, 'the page', whole);
       keep(narrow, 'another page', whole);
       expect(narrow, hasLength(1), reason: 'the line has room for one');

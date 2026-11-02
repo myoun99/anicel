@@ -56,7 +56,7 @@ void main() {
             valueListenable: collapsed,
             builder: (context, collapsedIds, _) => LayerTimelineGrid(
               hooks: TimelineGridHooks(
-                activeLayerId: const LayerId('base'),
+                activeLayer: ValueNotifier(const LayerId('base')),
                 frameCursor: ValueNotifier<int>(0),
                 playbackFrameCount: 12,
                 exposureStateForLayer: (_, _) =>

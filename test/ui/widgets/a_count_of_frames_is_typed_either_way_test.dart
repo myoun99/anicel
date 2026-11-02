@@ -13,6 +13,7 @@ import 'package:anicel/src/ui/widgets/window_number.dart';
 
 import '../../helpers/app_shortcuts.dart';
 import '../../helpers/number_pad_keyboard.dart';
+import '../../helpers/text_finders.dart';
 
 /// 🗣️I-24 (유저 2026-09-14): 「코마 수 설정창에서 기존처럼 프레임수로 정하는거랑
 /// 추가로 초수+코마로 조절하는거 신설. 버튼으로 각각 옵션 변경가능. 초수+코마는
@@ -74,7 +75,7 @@ void main() {
       .widget<Text>(
         find.descendant(
           of: find.byKey(ValueKey<String>(key)),
-          matching: find.byType(Text),
+          matching: find.anyText(),
         ),
       )
       .data!;

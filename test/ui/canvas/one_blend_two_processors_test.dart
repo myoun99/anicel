@@ -375,6 +375,45 @@ void main() {
     printOnFailure('$onTheHalf pairs on a half step');
   });
 
+  // A 発光 parts from the mode it glows only where the source is thin, which
+  // the sweep at alpha 255 never sees (`SeparableBlendMode.glows`).
+  for (final mode in [LayerBlendMode.glowDodge, LayerBlendMode.glowAdd]) {
+    test('${mode.name}: a white of every alpha over every grey is the '
+        'brush\'s', () async {
+      final source = Uint8List(side * side * 4);
+      final backdrop = Uint8List(side * side * 4);
+      for (var y = 0; y < side; y += 1) {
+        for (var x = 0; x < side; x += 1) {
+          final at = (y * side + x) * 4;
+          source
+            ..[at] = 255
+            ..[at + 1] = 255
+            ..[at + 2] = 255
+            ..[at + 3] = x;
+          backdrop
+            ..[at] = y
+            ..[at + 1] = y
+            ..[at + 2] = y
+            ..[at + 3] = 255;
+        }
+      }
+      final gpu = await composed(backdrop, source, mode);
+      final cpu = blendStrokeRegionPixels(
+        dst: backdrop,
+        src: source,
+        mode: brushTwinOf(mode),
+        pixelCount: side * side,
+      );
+      final apart = <String>[];
+      for (var at = 0; at < gpu.length; at += 1) {
+        if ((gpu[at] - cpu[at]).abs() > 1) {
+          apart.add('byte $at: GPU ${gpu[at]}, brush ${cpu[at]}');
+        }
+      }
+      expect(apart, isEmpty);
+    });
+  }
+
   test('no row leaves the backdrop exactly as it was, no backdrop leaves the '
       'row exactly as it is', () async {
     // The brush's two verbatim copies: alpha 0 on either side.
@@ -416,7 +455,7 @@ void main() {
       () => LayerBlendShader.shaderFor(
         backdrop: blank,
         source: blank,
-        mode: LayerBlendMode.add,
+        mode: LayerBlendMode.normal,
         width: 1,
         height: 1,
       ),

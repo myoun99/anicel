@@ -9,6 +9,7 @@ import '../../models/se_line_type.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
+import '../widgets/ellipsis_text.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/frame_count_field.dart';
 import '../widgets/panel_flyout.dart';
@@ -325,9 +326,8 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
                       const Icon(Icons.graphic_eq, size: 16),
                       const SizedBox(width: 6),
                       Expanded(
-                        child: Text(
+                        child: EllipsisText(
                           link.label,
-                          overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.bodySmall,
                         ),
                       ),

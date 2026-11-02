@@ -727,7 +727,7 @@ Widget _panel(
           Expanded(
             child: TimelinePanel(
               layers: layers ?? _layers[cut]!,
-              activeLayerId: null,
+              activeLayer: ValueNotifier(null),
               substrateGeneration: cut.world,
               frameCursor: _cursor,
               playbackFrameCount: 12,

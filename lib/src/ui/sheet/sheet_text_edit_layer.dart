@@ -5,8 +5,15 @@ import 'package:flutter/services.dart';
 
 import '../../models/canvas_viewport.dart';
 import '../input/control_press_claim.dart';
+import '../theme/app_theme.dart' show AppColors;
 import '../widgets/cursor_notice.dart' show cursorNotices;
 import 'sheet_line.dart';
+
+/// The frame an open field stands in, on the screen ([SheetTextEditLayer]).
+const sheetTextEditFrameKey = ValueKey<String>('sheet-text-edit-frame');
+
+/// How wide that frame is, in screen units at any zoom.
+const double sheetTextEditFrameWidth = 2;
 
 /// One place on a sheet whose typed text a tap edits in place.
 class SheetTextTarget {
@@ -246,7 +253,8 @@ class _SheetTextEditLayerState extends State<SheetTextEditLayer> {
   /// 「액션란 메모 시작할때 ui가 써져있는거랑 다름. 뭔가 이동되는느낌?
   /// 최대한 안움직이게하고 ui심플하게. 지금 실루엣 라인이 두개나있음」):
   /// the field sets the words the page printed on the glyphs it printed
-  /// them with, so opening it changes nothing on the page but the caret.
+  /// them with, so opening it changes nothing on the page but the caret and
+  /// the frame that says so.
   ///
   /// The field is laid out ON THE PAPER — at the printed size, the printed
   /// width, no strut and no text scaling, the printer's own layout — and
@@ -259,6 +267,15 @@ class _SheetTextEditLayerState extends State<SheetTextEditLayer> {
   /// sets at their natural heights (a Korean line is set in the fallback
   /// face) moved as the editor opened. And it drew an accent outline round
   /// the box, beside the sheet's own lines.
+  ///
+  /// 🗣️THE FRAME IS NO PART OF THE FIELD (F-543, 유저 2026-11-02: 「외곽선
+  /// 보여줫는데 없으니 제대로 수정중인지 모르겠음. 그냥 오버레이식으로
+  /// 보여주도록? 지금처럼 보여지는 텍스트랑 편집들어갈때랑 패딩같은거
+  /// 안달라지는게 목표」): that the box is being typed in is said over all of
+  /// it, on the box's own line — one line where F-188 counted two — and the
+  /// field lays out as if it were not there. ↩️That word was the theme's
+  /// focused frame, in the field, until 4ae9e46c0 took it out with the
+  /// padding that came in with it.
   List<Widget> _editor(SheetTextTarget target) {
     final line = target.form.isLine;
     final field = Focus(
@@ -345,6 +362,21 @@ class _SheetTextEditLayerState extends State<SheetTextEditLayer> {
             ),
           );
         },
+      ),
+      Positioned.fromRect(
+        key: sheetTextEditFrameKey,
+        rect: _onScreen(target.box).inflate(sheetTextEditFrameWidth / 2),
+        // Over the field: a press in it is the field's.
+        child: IgnorePointer(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: AppColors.accent,
+                width: sheetTextEditFrameWidth,
+              ),
+            ),
+          ),
+        ),
       ),
     ];
   }

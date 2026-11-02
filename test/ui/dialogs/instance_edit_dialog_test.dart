@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/number_pad_keyboard.dart';
+import '../../helpers/text_finders.dart';
 
 /// The preview's paper — the timeline's own row painter.
 TimelineRowCellsPainter previewCellsOf(WidgetTester tester) =>
@@ -30,7 +31,7 @@ String shownIn(WidgetTester tester, String key) => tester
     .widget<Text>(
       find.descendant(
         of: find.byKey(ValueKey<String>(key)),
-        matching: find.byType(Text),
+        matching: find.anyText(),
       ),
     )
     .data!;

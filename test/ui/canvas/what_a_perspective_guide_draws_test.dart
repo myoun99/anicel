@@ -33,14 +33,14 @@ void main() {
   DrawingGuide guideOf(
     List<VanishingPoint> points, {
     int density = defaultGuideLineDensity,
+    bool eyeLevelVisible = false,
   }) => DrawingGuide(
     id: id,
     name: '퍼스 1',
     shape: PerspectiveShape(
       eyeLevel: GuideAxis(origin: CanvasPoint(x: 150, y: 100), angleDegrees: 0),
-      eyeLevelVisible: false,
-      vanishingPoints: points,
-      lineDensity: density,
+      eyeLevelVisible: eyeLevelVisible,
+      vanishingPoints: [for (final point in points) point.drawing(density)],
     ),
   );
 
@@ -152,23 +152,36 @@ void main() {
         'stem from the eye level\'s handle, twice the line\'s weight — and '
         'the point on the plane on none', () {
       final lines = linesOf(
-        (canvas) => painterOf(guide, emphasized: true).paint(canvas, size),
+        (canvas) => painterOf(
+          guideOf(
+            (guide.shape as PerspectiveShape).vanishingPoints,
+            eyeLevelVisible: true,
+          ),
+          emphasized: true,
+        ).paint(canvas, size),
       );
 
       final stems = lines.where(isStem).toList();
       expect(stems, hasLength(1));
-      // A paint keeps its width in 32 bits.
-      expect(
-        stems.single.paint.strokeWidth,
-        closeTo(1.6 * 2, 1e-6),
-        reason: 'picked: 1.6',
-      );
+      expect(stems.single.paint.strokeWidth, 2);
       const rays = defaultGuideLineDensity;
       const lanes = defaultGuideLineDensity * 2 + 1;
       expect(
         lines,
-        hasLength(rays + lanes + 1),
-        reason: 'rays, lanes and the one stem — nothing for the point',
+        hasLength(rays + lanes + 1 + 1),
+        reason:
+            'rays, lanes, the eye level and the one stem — nothing for the '
+            'point',
+      );
+    });
+
+    test('🚨the stem goes with the eye level\'s handle: hidden, it starts '
+        'from nothing (F-544)', () {
+      expect(
+        linesOf(
+          (canvas) => painterOf(guide, emphasized: true).paint(canvas, size),
+        ).where(isStem),
+        isEmpty,
       );
     });
 

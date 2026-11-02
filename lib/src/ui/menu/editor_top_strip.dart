@@ -27,6 +27,7 @@ import '../brush/brush_tool_state.dart';
 import '../brush/brush_value_group.dart';
 import '../brush/tools_panel.dart' show RailButton;
 import '../widgets/anchored_popup.dart';
+import '../widgets/ellipsis_text.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/kept_tail_row.dart';
 import '../text/app_strings.dart';
@@ -1264,7 +1265,7 @@ class _ProjectTab extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Flexible(
-                      child: Text(
+                      child: EllipsisText(
                         label,
                         // The key the strip's name has always worn, on the
                         // name of the project on screen.
@@ -1272,7 +1273,6 @@ class _ProjectTab extends StatelessWidget {
                             ? const ValueKey<String>('top-strip-project-name')
                             : null,
                         maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 12,
                           color: selected
@@ -1329,7 +1329,7 @@ class _ProjectTabOverflow extends StatelessWidget {
         onPicked: projects.activate,
       ),
       child: Center(
-        child: Text(
+        child: EllipsisText(
           activeHidden
               ? projectTabLabel(projects, active)
               : '+${hidden.length}',
@@ -1337,7 +1337,6 @@ class _ProjectTabOverflow extends StatelessWidget {
               ? const ValueKey<String>('top-strip-project-name')
               : null,
           maxLines: 1,
-          overflow: TextOverflow.ellipsis,
           style: TextStyle(
             fontSize: 12,
             color: activeHidden

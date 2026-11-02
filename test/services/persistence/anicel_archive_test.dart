@@ -304,6 +304,21 @@ void main() {
     expect(anicelFormatVersion, greaterThan(28));
   });
 
+  // F-542 (format 31): a timesheet page has a memo on its right as on its
+  // left, and a cut says whether its papers write their fixed lines. A v30
+  // build reads none of the words and its next save writes the cut back
+  // without them, nothing said — so a file this build writes says a number
+  // a v30 build refuses as a newer Anicel's. No older shape went for it, so
+  // a v30 file is read here.
+  test('🚨a file that may hold a right memo says a format a v30 build '
+      'refuses as newer, and a v30 file opens', () {
+    expect(anicelFormatVersion, greaterThan(30));
+    expect(
+      decodeAnicelProjectDocument(documentSaying(30)).project,
+      isNotNull,
+    );
+  });
+
   test('a newer formatVersion refuses to load with a clear error', () {
     final bytes = buildAnicelArchiveBytes(
       project: createDefaultProject(),

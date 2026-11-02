@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/panels/tool_size_preset_panel.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
+import '../../helpers/text_finders.dart';
+
 /// **I-2 — the tool's sizes, as buttons.**
 ///
 /// 유저 2026-08-24: 「클튜처럼 툴 사이즈 패널 만들고싶음. **프리셋으로서 툴
@@ -102,7 +104,7 @@ void main() {
 
     Color inkOf(double value) => tester
         .widget<Text>(
-          find.descendant(of: cell(value), matching: find.byType(Text)),
+          find.descendant(of: cell(value), matching: find.anyText()),
         )
         .style!
         .color!;

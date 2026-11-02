@@ -44,6 +44,7 @@ import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/stand_in_movie.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
+import '../../helpers/text_finders.dart';
 
 void main() {
   late Directory tempDir;
@@ -119,7 +120,7 @@ void main() {
   );
 
   String buttonLabel(WidgetTester tester) => tester
-      .widget<Text>(find.descendant(of: rasterize, matching: find.byType(Text)))
+      .widget<Text>(find.descendant(of: rasterize, matching: find.anyText()))
       .data!;
 
   /// A session with a [frameCount]-frame take placed as a reference from

@@ -8,6 +8,8 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/setting_source_button.dart';
 import 'package:anicel/src/ui/widgets/tip_direction_popup.dart';
 
+import '../../helpers/text_finders.dart';
+
 /// 向き behind one button beside the angle (F-176-Q6, 유저 2026-10-21
 /// 「클튜처럼 — 각도 옆 버튼 하나」): the base the tip turns from and its
 /// random turn, in the window that button opens.
@@ -194,7 +196,7 @@ void main() {
                 of: find.byKey(
                   ValueKey<String>('brush-tool-rotation-${base.name}'),
                 ),
-                matching: find.byType(Text),
+                matching: find.anyText(),
               ),
             )
             .style!

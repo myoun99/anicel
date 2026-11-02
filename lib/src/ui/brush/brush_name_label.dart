@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/ellipsis_text.dart';
+
 /// A brush preset's name as its row writes it — ONE label for a row with a
 /// stroke preview and a row without one.
 ///
@@ -46,11 +48,10 @@ class BrushNameLabel extends StatelessWidget {
         // and would be a placement nobody asked for in the other — 「편의
         // 규칙을 발명하지 말 것」. One band, one alignment.
         alignment: Alignment.centerLeft,
-        child: Text(
+        child: EllipsisText(
           name,
           maxLines: 1,
           textAlign: TextAlign.left,
-          overflow: TextOverflow.ellipsis,
           style: TextStyle(
             fontSize: fontSize,
             color: selected ? scheme.onSurface : scheme.onSurfaceVariant,

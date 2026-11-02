@@ -9,6 +9,7 @@ import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 
 import '../../helpers/app_shortcuts.dart';
 import '../../helpers/panel_finders.dart';
+import '../../helpers/text_finders.dart';
 
 /// 🗣️I-19 (유저 2026-09-12): 「이런 버튼들 툴버튼도 그런데 툴팁으로 숏컷 키
 /// 보여주도록. 낡지않을구조로.」 — and 09-13: 「맥은 컨트롤키가 다르다
@@ -220,7 +221,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey<String>('sub-tool-select-rect')),
-        matching: find.byType(Text),
+        matching: find.anyText(),
       ),
       findsOneWidget,
       reason: 'an unbound tile prints its name and nothing else',

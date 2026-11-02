@@ -30,6 +30,9 @@ import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 /// The fix is identity per coordinate, exactly like the committed-tile
 /// loop next to it: the overlay replaces a tile's IMAGE only when a dab
 /// touched it, so an unchanged image object is "this tile did not move".
+/// Inside those tiles the rect is what the dabs moved
+/// (`ActiveStrokeOverlayModel.movedSince`, F-533 2026-11-02): ↩️it was the
+/// tiles, 8 wide here where the dab is 5.
 /// The rect is what a canvas that stands patches into its picture
 /// ([StackedFrame.movedSince]). ↩️It was read off the canvas's display
 /// buffer (`DisplayBufferCache.lastDirtyRect`), until nothing kept one
@@ -64,7 +67,7 @@ void main() {
     sequence: sequence,
   );
 
-  testWidgets('the second dab dirties its own tile, not the whole stroke', (
+  testWidgets('the second dab dirties its own rect, not the whole stroke', (
     tester,
   ) async {
     final overlay = ActiveStrokeOverlayModel(tileSize: 8);
@@ -113,19 +116,19 @@ void main() {
     // them — a posed sibling or a rounded edge can put ink a fraction over
     // the line, and a patch trusting the exact rect leaves a hairline of
     // the previous frame.
-    // 🚨MEASURED, BOTH WAYS (2026-09-04): the dab's tile is 8 wide and
-    // this rect is 10 — one pixel added on each side. A `greaterThan(8)`
-    // bound was the first try and it never failed, because the tile
-    // already clears 8: a bound the mutation cannot cross pins nothing.
+    // 🚨MEASURED, BOTH WAYS (2026-09-04): the dab is 5 wide and this rect
+    // is 7 — one pixel added on each side. A `greaterThan(8)` bound on the
+    // tile it was then was the first try and it never failed, because the
+    // tile already clears 8: a bound the mutation cannot cross pins nothing.
     // (Until 2026-09-17 the union was 24: the committed tiles' pictures
     // landed between the warm paints and this one, and a token that read
     // the picture called every tile dirty. A tile's token is the tile now
     // — its picture is made from its own bytes inside the paint.)
     expect(
       first.dirty!.width,
-      10.0,
+      7.0,
       reason:
-          'the 8-wide tile plus the hairline inflate — an exact-rect '
+          'the 5-wide dab plus the hairline inflate — an exact-rect '
           'patch leaves a line of the frame before along the dab',
     );
 
@@ -142,7 +145,7 @@ void main() {
     expect(dirty, isNotNull, reason: 'the dab moved the live row');
     expect(
       dirty!.left,
-      greaterThanOrEqualTo(15),
+      18,
       reason:
           'tile 0 did not move, so the patch must not reach back into '
           'it — under the old union walk this rect spanned the whole '
@@ -150,8 +153,8 @@ void main() {
     );
     expect(
       dirty.width,
-      lessThanOrEqualTo(10),
-      reason: 'one touched tile plus the hairline inflate',
+      7,
+      reason: 'the dab of this step plus the hairline inflate',
     );
   });
 }

@@ -122,6 +122,12 @@ void main() {
           'a CLIP STUDIO text layer\'s cel begins as its texts, handed in '
           '(`texts: texts`) — it has no drawing of its own (F-370-Q3)',
     ),
+    'lib/src/ui/session/frame_clipboard.dart': (
+      count: 1,
+      why:
+          'a block the copy found blank hangs in a synced row\'s cel as a '
+          'picture with nothing on it — no text to lose (F-545)',
+    ),
   };
 
   /// The places that put the texts, the photos and where a file lies back
@@ -199,7 +205,7 @@ void main() {
           'these build fewer pictures fresh than the ledger says — lower '
           'the count, or take the line out',
     );
-    expect(found.values.fold<int>(0, (sum, count) => sum + count), 21);
+    expect(found.values.fold<int>(0, (sum, count) => sum + count), 22);
   });
 
   test('the places that rebuild a picture from its parts hand the texts, '

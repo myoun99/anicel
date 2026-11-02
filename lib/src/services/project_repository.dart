@@ -349,14 +349,13 @@ class ProjectRepository {
   ///    write-time invariant covers the next importer by construction.
   /// 6. THE CAMERA'S KEYS ON ITS FRAMES ([cameraFollowingItsEnd], I-73 ④):
   ///    the key on a cut's last drawn frame stays on it whenever that frame
-  ///    moves, and a shrink brings in every key on the frames it took — the
-  ///    same drawn end as 5, moved by the same writes. Where the last frame
-  ///    was is the last write's, read off what it settled. A shrink the
-  ///    hand drives stops short of the other keys, so an undo that writes
-  ///    the length back carries the end key back; the commands that take a
-  ///    のりしろ away at once put their cameras back themselves
-  ///    (`CamerasFollowTheirEnds`), and an undo that restores the whole
-  ///    project starts the memo afresh and moves nothing.
+  ///    moves, and a shrink pushes in the keys it meets — the same drawn end
+  ///    as 5, moved by the same writes. Where the last frame was is the last
+  ///    write's, read off what it settled. What a shrink pushed in does not
+  ///    go back out when the length does, so the commands that move a cut's
+  ///    end put their cameras back themselves (`CamerasFollowTheirEnds`),
+  ///    and an undo that restores the whole project starts the memo afresh
+  ///    and moves nothing.
   /// Identity-preserving on no-ops, so an already-normal project passes
   /// through untouched.
   Project _normalized(Project project) {

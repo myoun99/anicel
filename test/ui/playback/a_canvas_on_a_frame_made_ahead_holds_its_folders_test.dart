@@ -299,7 +299,7 @@ void main() {
           1,
         ),
       ]);
-      await tester.pump();
+      await aFrameAndItsStep(tester);
     }
 
     await aStepIn(0x10);
@@ -443,6 +443,9 @@ final class _CountedLine implements HeldNodesLine {
 
   @override
   int get bytesForNodes => 1 << 30;
+
+  @override
+  int get bytesLeftFree => 1 << 30;
 
   @override
   void giveWayToNodes() => gaveWay += 1;

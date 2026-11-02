@@ -6,6 +6,7 @@ import '../../models/brush_tip_entry.dart';
 import '../../models/brush_tip_mask.dart';
 import '../text/app_strings.dart';
 import '../widgets/anchored_popup.dart';
+import '../widgets/ellipsis_text.dart';
 import 'brush_tip_preview.dart';
 import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart' show AppCursors, AppShapes;
@@ -460,10 +461,9 @@ class _BrushTipPickerBodyState extends State<_BrushTipPickerBody> {
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(
+                    child: EllipsisText(
                       managed?.name ?? AppText.strings.brTipNone,
                       style: theme.textTheme.labelSmall,
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   if (onRename != null)

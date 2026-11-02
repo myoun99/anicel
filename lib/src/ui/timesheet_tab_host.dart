@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../models/app_frame_grid_settings.dart';
+import '../models/app_language.dart';
 import '../models/canvas_viewport.dart';
 import '../models/cut.dart';
 import '../models/inbetween_mark.dart';
@@ -115,6 +116,7 @@ typedef _Printed = ({
   int cutStartFrame,
   ByIdentity<Object> info,
   String projectName,
+  AppLanguage notation,
   ByIdentity<Object> instructionSet,
   ByIdentity<Object> trackSe,
   ByIdentity<Object> transition,
@@ -164,6 +166,8 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
       cutStartFrame: at.startFrame,
       info: ByIdentity(session.timesheetInfo),
       projectName: session.repository.requireProject().name,
+      // What a page writes of itself is in the sheet's language (F-542).
+      notation: session.languageSettings.value.notationLanguage,
       instructionSet: ByIdentity(session.camera.cameraInstructionSet),
       // Track-owned SE rows join the memo key: their edits change the track
       // list identity, not the cut's.
@@ -215,7 +219,11 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   /// unchanged — for a guide picked on the canvas or the onion switched on
   /// (session-news-rebuilds-unsliced, 2026-10-20).
   late final SlicedListenable<_Printed?> _printedNews = SlicedListenable(
-    Listenable.merge([widget.session, AppFrameGridSettings.settings]),
+    Listenable.merge([
+      widget.session,
+      widget.session.languageSettings,
+      AppFrameGridSettings.settings,
+    ]),
     () => _printedBy(widget.session),
   );
 
@@ -282,12 +290,15 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
             : (
                 kind: cut.metadata.sheetKind,
                 celColumns: SheetSources.of(cut: cut).celColumnsAcross,
+                words: AppText.strings.conteCameraRoomCurrentCut(cut.name),
+                fixedText: cut.metadata.sheetFixedText,
               ),
       ),
       commit: (format) => session.updateTimesheetFormat(
         info: format.info,
         cutId: cut?.id,
         kind: format.kind,
+        fixedText: format.cutFixedText,
       ),
     );
   }

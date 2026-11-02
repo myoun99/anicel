@@ -467,7 +467,7 @@ Widget _body({
           viewportMainExtent: viewportMainExtent,
           edges: timelineRowEdgesOf(rows, metrics),
           hooks: TimelineGridHooks(
-            activeLayerId: null,
+            activeLayer: ValueNotifier(null),
             frameCursor: ValueNotifier<int>(0),
             playbackFrameCount: playbackFrameCount,
             exposureStateForLayer:

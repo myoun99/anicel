@@ -186,7 +186,7 @@ void main() {
         rasterizer.blendFrom(dabs, from: dabs.length - 1);
         overlay.updateRegion(source: rasterizer, region: region);
       });
-      await tester.pump();
+      await aFrameAndItsStep(tester);
       final landing = patched.landingOf(keptByTheCanvas(tester, shown));
       expect(
         landing,

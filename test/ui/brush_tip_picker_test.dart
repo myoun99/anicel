@@ -11,6 +11,8 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/anchored_popup.dart';
 
+import '../helpers/text_finders.dart';
+
 BrushTipMask _mask(String id, {int value = 200}) => BrushTipMask(
   id: id,
   size: 4,
@@ -145,7 +147,7 @@ void main() {
       find
           .descendant(
             of: find.byType(AnchoredPopupHeader),
-            matching: find.byType(Text),
+            matching: find.anyText(),
           )
           .first,
     );

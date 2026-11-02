@@ -80,14 +80,19 @@ void main() {
   // ↩️'a row the GPU has a blend for stays a row' — multiply did, until
   // every advanced blend went over its backdrop in the shader
   // (a-blurred-folder-cut-by-the-view-moves-on-vulkan Q3 · Q4). What the
-  // GPU lays in place is all that stays a row.
-  test('a row in normal or add stays a row', () {
-    final nodes = planOf([
+  // GPU lays in place is all that stays a row. ↩️'a row in normal or add'
+  // — add's `plus` did, until Clip Studio's exports showed 加算 mixes as
+  // every other (brush-fidelity Q3).
+  test('a row in normal stays a row, and one in add does not', () {
+    expect(
+      planOf([drawing('a'), drawing('b'), drawing('c')]),
+      everyElement(isA<_Leaf>()),
+    );
+    final added = planOf([
       drawing('a'),
       drawing('b', blend: LayerBlendMode.add),
-      drawing('c'),
     ]);
-    expect(nodes, everyElement(isA<_Leaf>()));
+    expect((added.single as _Blend).blendMode, LayerBlendMode.add);
   });
 
   test('a row in a blend the GPU has gathers as the rest do', () {

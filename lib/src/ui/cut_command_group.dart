@@ -160,7 +160,8 @@ VoidCallback? newCutPress(
     : null;
 
 /// The window offers the cut [CutVerbs.createCut] makes unasked — its name
-/// where it lands, A4 200dpi — and the cut is made as the window leaves it.
+/// where it lands, the open cut's canvas — and the cut is made as the window
+/// leaves it.
 Future<void> _askNewCut(BuildContext context, EditorSessionManager session) {
   final planned = session.cutVerbs.plannedNewCut;
   var size = planned?.canvasSize;

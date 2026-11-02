@@ -14,6 +14,9 @@ import '../../models/brush_tip_order.dart';
 import '../../models/brush_texture_mode.dart';
 import '../../models/separable_blend_mode.dart';
 import '../panels/editor_panel_frame.dart';
+import '../shortcuts/editor_action_registry.dart'
+    show BrushLibraryActionIds;
+import '../shortcuts/panel_keys.dart' show PanelKeysBinding;
 import '../timeline/layer_label_controls.dart'
     show LayerVisibilityToggleButton;
 import '../widgets/app_icon_button.dart';
@@ -74,6 +77,7 @@ class BrushSettingsPanel extends StatefulWidget {
     this.onRenameTip,
     this.onDeleteTip,
     this.detailAt,
+    this.onResetBrush,
   });
 
   final BrushToolState state;
@@ -96,6 +100,10 @@ class BrushSettingsPanel extends StatefulWidget {
   /// buttons out — the same shape [onTipImportRequested] already has.
   final void Function(BrushTipEntry tip)? onRenameTip;
   final void Function(BrushTipEntry tip)? onDeleteTip;
+
+  /// Puts the brush in hand back to its own values; null while it stands at
+  /// them, and its button is dead.
+  final VoidCallback? onResetBrush;
 
   /// Where the brush detail window stands ([FloatingAppWindow.at]) — the
   /// workspace's, so it opens where it was left after a restart (Q3 「창은
@@ -291,7 +299,13 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => PanelKeysBinding(
+    tool: state.tool,
+    buttons: {BrushLibraryActionIds.resetHeldBrush: widget.onResetBrush},
+    child: _frame(context),
+  );
+
+  Widget _frame(BuildContext context) {
     return EditorPanelFrame(
       title: AppText.strings.brushSettingsTitle,
       // H35: the tool settings panel's content keeps its bar in view.
@@ -336,7 +350,9 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
   }
 
   /// The wrench under the rows, at the panel's end, over a hairline — what
-  /// opens the brush detail window and closes it again.
+  /// opens the brush detail window and closes it again — and left of it what
+  /// puts the brush back to its own values (I-148), dead until the hand has
+  /// changed one.
   Widget _detailBar(BuildContext context) => Padding(
     padding: const EdgeInsets.only(top: 2),
     child: Column(
@@ -349,22 +365,33 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
           color: Theme.of(context).colorScheme.outlineVariant,
         ),
         const SizedBox(height: ToolSettingsSection.rowGap),
-        Align(
-          alignment: Alignment.centerRight,
-          child: FloatingAppWindow(
-            controller: _detail,
-            at: _detailAt,
-            size: _detailSize,
-            window: _detailWindow,
-            child: AppIconButton(
-              keyValue: 'brush-detail-button',
-              tooltip: AppText.strings.brDetailTitle,
-              icon: const Icon(Icons.build_outlined),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            AppIconButton(
+              keyValue: 'brush-reset-button',
+              tooltip: AppText.strings.brResetHeldBrush,
+              shortcuts: const [BrushLibraryActionIds.resetHeldBrush],
+              icon: const Icon(Icons.restart_alt),
               outlined: true,
-              isSelected: _detail.isShowing,
-              onPressed: () => setState(_detail.toggle),
+              onPressed: widget.onResetBrush,
             ),
-          ),
+            const SizedBox(width: ToolSettingColumns.gap),
+            FloatingAppWindow(
+              controller: _detail,
+              at: _detailAt,
+              size: _detailSize,
+              window: _detailWindow,
+              child: AppIconButton(
+                keyValue: 'brush-detail-button',
+                tooltip: AppText.strings.brDetailTitle,
+                icon: const Icon(Icons.build_outlined),
+                outlined: true,
+                isSelected: _detail.isShowing,
+                onPressed: () => setState(_detail.toggle),
+              ),
+            ),
+          ],
         ),
       ],
     ),

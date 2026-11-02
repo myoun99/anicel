@@ -30,6 +30,14 @@ class _Display implements DisplayTiming {
   int lookedAfter = 900;
   int seamAfter = 2900;
 
+  /// The refresh of the screen the window lies on: the compositor's clock,
+  /// [period], but where a test puts it on a slower one.
+  double screenPeriod = period;
+
+  /// Off the screen's own, which it is only on the compositor's clock: there
+  /// a claim reads [vblank] alone.
+  static const int composedVblank = vblank + 1234;
+
   final List<int> waits = [];
 
   int get _vsyncStart =>
@@ -61,8 +69,12 @@ class _Display implements DisplayTiming {
   }
 
   @override
-  ({int vblankMicros, double periodMicros})? vblankGrid() =>
-      (vblankMicros: vblank, periodMicros: period);
+  VblankGrid? vblankGrid() => (
+    vblankMicros: vblank,
+    periodMicros: screenPeriod,
+    composedVblankMicros: composedVblank,
+    composedEveryMicros: period,
+  );
 
   @override
   void waitUntil(int micros) => waits.add(micros);
@@ -155,7 +167,9 @@ void main() {
   PresentClaim expectedClaim({RasterSpread? spread}) => expected.claim(
     nowMicros: display.lookNow,
     vblankMicros: _Display.vblank,
-    periodMicros: _Display.period,
+    periodMicros: display.screenPeriod,
+    composedVblankMicros: _Display.composedVblank,
+    composedEveryMicros: _Display.period,
     budgetMicros: PresentPacing.budgetMicros,
     handOffMicros: (spread ?? RasterSpread()).handOffFor(_Display.period),
   );
@@ -207,6 +221,35 @@ void main() {
     await tester.pump(vsync);
 
     expect(readAt, Duration(microseconds: claim!.shownAtMicros));
+    expect(display.waits, [claim!.handOffMicros]);
+  });
+
+  testWidgets('🚨on a screen slower than the compositor\'s clock the look is '
+      'read at a vblank of that screen, and its frame waits for a hand-off '
+      'on the compositor\'s grid', (tester) async {
+    const refresh = 16680.0;
+    final shown = await settle(tester);
+    display.screenPeriod = refresh;
+    Duration? readAt;
+    PresentClaim? claim;
+
+    lookNext((_) {
+      claim = expectedClaim();
+      readAt = frameShownAt();
+      shown.value += 1;
+      changedInTheLook();
+    });
+    await tester.pump(vsync);
+
+    expect(readAt, Duration(microseconds: claim!.shownAtMicros));
+    expect(
+      ((readAt!.inMicroseconds - _Display.vblank) / refresh) % 1,
+      closeTo(0, 1e-3),
+    );
+    expect(
+      ((claim!.vblankMicros - _Display.composedVblank) / _Display.period) % 1,
+      closeTo(0, 1e-6),
+    );
     expect(display.waits, [claim!.handOffMicros]);
   });
 
@@ -441,6 +484,40 @@ void main() {
     await tester.pump(vsync);
   }
 
+  testWidgets('🚨on a slower screen the scenes are placed for the latch\'s '
+      'width on the compositor\'s grid, not for the screen\'s refresh', (
+    tester,
+  ) async {
+    final shown = await settle(tester);
+    display.screenPeriod = 16680;
+    final learned = RasterSpread();
+    // Most of them further past the shortest than a composition frame
+    // leaves, and nearer than a refresh of the screen would.
+    for (final ranFor in [...List.filled(8, 3000), ...List.filled(12, 11000)]) {
+      await heldFrame(tester, shown, learned);
+      await seenPast(
+        tester,
+        ranFor: ranFor,
+        late: PresentPacing.seenLateUnmeasuredMicros,
+      );
+      learned.add(ranFor);
+    }
+    expect(learned.handOffFor(_Display.period), -11000, reason: '⛔premise');
+    expect(learned.handOffFor(16680), -3000, reason: '⛔premise');
+    display.waits.clear();
+    PresentClaim? claim;
+
+    lookNext((_) {
+      claim = expectedClaim(spread: learned);
+      frameShownAt();
+      shown.value += 1;
+      changedInTheLook();
+    });
+    await tester.pump(vsync);
+
+    expect(display.waits, [claim!.handOffMicros]);
+  });
+
   testWidgets('🚨a held frame\'s length is read as its raster ends — the '
       'moment the raster thread is seen past its scene, less how late it is '
       'seen — and moves the next hand-off at once', (tester) async {
@@ -468,6 +545,8 @@ void main() {
         nowMicros: now,
         vblankMicros: _Display.vblank,
         periodMicros: _Display.period,
+        composedVblankMicros: _Display.composedVblank,
+        composedEveryMicros: _Display.period,
         budgetMicros: PresentPacing.budgetMicros,
         handOffMicros: RasterSpread().handOffFor(_Display.period),
       );
@@ -791,8 +870,7 @@ void main() {
       required int gap,
     }) => quietBetweenHeldFrames(
       held: (
-        vblankMicros:
-            last.shownAtMicros - presentShownAfterVblanks * _Display.period,
+        vblankMicros: last.vblankMicros,
         periodMicros: _Display.period,
         gap: gap,
         handOffMicros: RasterSpread().handOffFor(_Display.period),
@@ -809,6 +887,16 @@ void main() {
       final last = await holdChanges(tester, shown, [41700, 41700, 41700]);
 
       expect(quietForBackgroundGpuWork(), quietAfter(last, gap: 6));
+    });
+
+    testWidgets('🚨on a slower screen it is still read off the compositor\'s '
+        'vblanks: that is where a held frame\'s latch is', (tester) async {
+      final shown = await settle(tester);
+      display.screenPeriod = _Display.period * 2.5;
+
+      final last = await holdChanges(tester, shown, [34743, 34743, 34743]);
+
+      expect(quietForBackgroundGpuWork(), quietAfter(last, gap: 5));
     });
 
     testWidgets('🚨frames are held from a clock\'s look — before the quiet '

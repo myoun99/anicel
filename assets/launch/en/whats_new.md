@@ -2,24 +2,36 @@
 
 ## New
 
-- **Guides in the AE script** — the AE script lays the camera's path and directions as guide layers over the canvas comp.
-- **Effects in the AE script** — a row with Brightness & Contrast, Hue/Saturation, a Gaussian, Directional, Radial or Camera Lens Blur, or Color Key gets the nearest After Effects effect, with its values carried over.
-- **Camera moves in the conte** — "Camera moves" in Conte sheet format chooses whether the cell grows or the move stays inside it. The default is "Keep in the cell": the cell keeps its size and shows the whole move scaled down. "Cut settings" under it overrides that for the current cut or the selected cuts alone.
-- **Page view on the ruler** — the button at the timeline ruler's left corner chooses Frames, Seconds+frames or Pages. On Pages the numbers restart with each timesheet page, and the turn of a page reads like "p2". The Conte panel's ruler counts by conte sheet pages.
-- **Lay a panel on the floor** — drag the Conte Sheet, Timesheet, Cut envelope or Sub Viewer to the top strip and it gets a button; pressing it lays that panel where the canvas sits. The canvas button brings the canvas back.
+- **Fixed text on the timesheet** — the timesheet's memo column writes camera moves and scene changes as the conte sheet does. The memo column is now split in two, and fixed text is turned on and off for the whole work and for the current cut.
+- **Guide color and opacity** — set a guide's color and opacity on its row in the tool library. Lines no longer fade when you move to another tool. Perspective settings gain an eye level item, and each vanishing point has its own line density, up to 192.
+- **Brush size shortcuts** — "]" steps up and "[" steps down. In the TVPaint preset they are "+" and "-".
+- **Cut folders and attach layers** — folders and attach layers can now be cut and pasted.
+- **Paste onto a synced row** — paste a frame block onto a synced attach row and the block stays; only its picture changes.
+- **Reset a brush** — the button left of the brush details puts the current brush back to its initial settings.
 
 ## Improved
 
-- **Strokes on iPhone and iPad** — a stroke writes only what changed into the frame's picture instead of redrawing the whole frame, and pictures take half the memory. In exchange, P3 photos and videos display as sRGB.
-- **Pencils** — the 2H, HB, 2B and 4B pencils, the colored pencil and the mechanical pencil are rebuilt. The pencil feel now comes from the brush tip rather than the paper texture, so the grain stays with the texture off. Brush presets now default to 5% spacing, and the old mechanical pencil stays on in the Pen group as Mechanical Pen. The new settings arrive with "Reset brush library".
-- **Camera lines in the conte** — a move's line names its two keys, like "1f-5f T.U", or "A-B T.U" when they have names. FIX appears only before and after a camera move, and a cell where the camera does nothing stays blank. Turning the camera row off the sheet clears these lines and the timesheet's CAM column together. The camera rectangles in a cell are drawn at every key, as on the canvas.
-- **Imported brushes** — a .sut brush's real tip is read, and its flow-by-spacing setting follows the file. Anti-aliasing no longer clears a tip's greys. Brushes imported before need importing again.
+- **Stroke speed** — less time from input to screen, so a stroke keeps closer to the pen.
+- **Large pictures** — large pictures are laid in pieces, so the screen stalls less. Changing opacity or visibility while frames are being made ahead now shows at once.
+- **Playback and monitors** — with the window on a 60Hz monitor, pictures land on that screen's clock (Windows 11 and later).
+- **Directions on the conte sheet** — FI and FO are marked "Cut head" and "Cut tail", at the top of the first panel and the bottom of the last. Linked cuts list the cuts they are linked to on their first panel.
+- **New cut size** — a new cut starts at the current cut's size. Where there is no cut it uses the default (A4 at 200dpi).
+- **Page view on the ruler** — the seconds count again from each page too.
+- **Cut ends and camera keys** — shortening a cut on the timeline now moves camera keys with the drag, and pushes them when it meets them.
+- **Text boxes on the sheets** — a name too long for its box shrinks to fit. A box being edited shows a frame on the box's own line.
+- **Selections** — the brush, eraser, fill and shapes now follow a selection's soft edge.
+- **Brushes** — Add and Add (Glow) are told apart as in Clip Studio. Imported brushes read how they lay their paper, and watercolor brushes show Clip Studio's anti-aliasing steps.
+- **Shortcuts** — "Reset current preset" asks first. Groups with a clash show red. Z straight lines work under every preset.
 
 ## Fixed
 
-- **Strokes falling behind the cursor** — the longer the stroke, the further the line fell behind; it now keeps up.
-- **Video import on Android** — importing a video left the preview black and made no new cut or layer.
-- The AE script stopped at a cel with no picture, and a row's opacity went missing.
-- Z straight lines in a row each take the pressure of the press before.
-- The export's Cels tab leaves out cels with no picture, so its count matches the files written.
-- Tapping a conte sheet's content cell in a cut with no storyboard layer now says why.
+- **Stroke starts on iPad** — the first few dabs came out strong even on a light start.
+- **Stabilizer at sharp turns** — with stabilization on, a quick turn bent the line.
+- **Moving rows to the ends** — a row dragged to the very top or bottom of its section didn't move.
+- Pixels pasted while the active layer was solo stayed hidden until solo was turned off.
+- Opening an attach layer or folder low in the list and scrolling hid the rows below.
+- The mouse could stop responding while a pen was in use.
+- Holding Ctrl while typing now moves and resizes the text box.
+- A graph key snapped to places it could not land.
+- In-between marks stay to the end of a block when its front edge moves.
+- A locked palette keeps its colors in place and drops only its empty rows.

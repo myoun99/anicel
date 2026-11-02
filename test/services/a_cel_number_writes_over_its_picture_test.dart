@@ -117,8 +117,11 @@ void main() {
         blend: LayerBlendMode.add,
       ),
     );
-    final group = nodes.single as _Group;
-    expect((group.opacity, group.blendMode), (0.5, LayerBlendMode.add));
+    final blend =
+        nodes.single as CompositeBackdropBlend<CutFrameCompositeLayer>;
+    expect(blend.blendMode, LayerBlendMode.add);
+    final group = blend.source as _Group;
+    expect((group.opacity, group.blendMode), (0.5, LayerBlendMode.normal));
     expect(kindsOf(group.effects), ['blur']);
     final [row as _Leaf, letters as _Number] = group.children;
     final picture = row.payload;
@@ -178,14 +181,17 @@ void main() {
     final added = planOf(
       drawing(effects: [number('n')], blend: LayerBlendMode.add),
     );
-    for (final (says, nodes, opacity, blendMode) in [
-      ('a strength below 1', faint, 0.5, LayerBlendMode.normal),
-      ('a blend other than normal', added, 1.0, LayerBlendMode.add),
+    final blend =
+        added.single as CompositeBackdropBlend<CutFrameCompositeLayer>;
+    expect(blend.blendMode, LayerBlendMode.add);
+    for (final (says, node, opacity) in [
+      ('a strength below 1', faint.single, 0.5),
+      ('a blend other than normal', blend.source, 1.0),
     ]) {
-      final group = nodes.single as _Group;
+      final group = node as _Group;
       expect(
         (group.opacity, group.blendMode),
-        (opacity, blendMode),
+        (opacity, LayerBlendMode.normal),
         reason: says,
       );
       expect(group.children.last, isA<_Number>(), reason: says);

@@ -122,6 +122,7 @@ import 'panels/workspace_layout_store.dart';
 import 'panels/workspace_panels_menu.dart';
 import 'widgets/app_scrollbar.dart';
 import 'widgets/static_raster.dart';
+import 'widgets/still_raster.dart';
 import 'widgets/superellipse_clip.dart';
 import 'widgets/tick_layer.dart';
 import 'widgets/grip_band.dart' show LiftingGripBand;
@@ -1279,7 +1280,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _presetLibrary = BrushPresetLibrary(
       fileService: widget.presetFileService,
       tipLibrary: _tipLibrary,
-      handSettingsPort: _brushPresets._handSettingsPort,
+      handSettingsToCarry: _brushPresets._handSettingsToCarry,
     );
     // 🗣️I-56: the library's groups and brushes are shortcut rows, and a key
     // presses what the tab or the brush row does.

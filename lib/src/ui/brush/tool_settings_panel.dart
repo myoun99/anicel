@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart';
@@ -16,6 +17,7 @@ import '../../services/transform_box_law.dart';
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/panel_keys.dart' show PanelKeysBinding;
 import '../widgets/drag_value_label.dart';
+import '../widgets/ellipsis_text.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/settings_rows.dart';
 import 'brush_settings_panel.dart';
@@ -77,12 +79,17 @@ class ToolSettingsPanel extends StatelessWidget {
     this.selectedGuideId,
     this.onGuidesCommitted,
     this.onGuidesPreview,
+    this.guidesInFlight,
     this.onGuideRasterized,
     this.cutPieceSlot,
     this.onCutPasteAtOrigin,
     this.onRegisterCutPieceAsTip,
     this.brushDetailAt,
+    this.onResetBrush,
   });
+
+  /// See [BrushSettingsPanel.onResetBrush].
+  final VoidCallback? onResetBrush;
 
   /// Where the brush detail window stands — see
   /// [BrushSettingsPanel.detailAt].
@@ -96,6 +103,9 @@ class ToolSettingsPanel extends StatelessWidget {
 
   /// The guide drag in flight — see [GuideSettings.onGuidesPreview].
   final ValueChanged<CutGuides>? onGuidesPreview;
+
+  /// What that drag has made of them — see [GuideSettings.guidesInFlight].
+  final ValueListenable<CutGuides?>? guidesInFlight;
 
   /// 래스터라이즈 — see [GuideSettings.onGuideRasterized].
   final ValueChanged<DrawingGuide>? onGuideRasterized;
@@ -254,6 +264,7 @@ class ToolSettingsPanel extends StatelessWidget {
       onRenameTip: onRenameTip,
       onDeleteTip: onDeleteTip,
       detailAt: brushDetailAt,
+      onResetBrush: onResetBrush,
     ),
     CanvasTool.fill => _FillSettings(
       options: fillOptions,
@@ -327,6 +338,9 @@ class ToolSettingsPanel extends StatelessWidget {
       canvasSize: pasteboard?.canvas,
       onGuidesCommitted: onGuidesCommitted ?? (_) {},
       onGuidesPreview: onGuidesPreview ?? (_) {},
+      guidesInFlight: guidesInFlight,
+      // The brush's colour, for the colour window's 「현재 색 반영」.
+      currentColorOf: () => state.color,
       onGuideRasterized: onGuideRasterized,
     ),
   };
@@ -1530,7 +1544,7 @@ class _ReadSourceControl extends StatelessWidget {
         // What the answer reads right now, under the answers.
         ToolSettingRow(
           label: '',
-          child: Text(
+          child: EllipsisText(
             names == null
                 ? AppText.strings.toolReadsEveryVisibleLayer
                 : names.isEmpty
@@ -1538,7 +1552,6 @@ class _ReadSourceControl extends StatelessWidget {
                 : names.join(' · '),
             key: ValueKey<String>('$tool-reads'),
             maxLines: 1,
-            overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),

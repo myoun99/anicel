@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
 import '../../helpers/export_preview_probe.dart';
+import '../../helpers/text_finders.dart';
 
 /// 🗣️F-289 (유저 2026-10-06): the export window's preview is a canvas-base
 /// panel, and such a panel wears what its document is — 「이 캔버스
@@ -210,7 +211,7 @@ void main() {
       Text plate() => tester.widget<Text>(
         find.descendant(
           of: find.byKey(const ValueKey<String>('canvas-document-name')),
-          matching: find.byType(Text),
+          matching: find.anyText(),
         ),
       );
 

@@ -19,6 +19,7 @@ import '../../models/tile_coord.dart';
 import '../debug/input_inspector.dart';
 import '../../core/dev_profile.dart';
 import '../playback/frame_picture_store.dart' show FrameDrawing;
+import 'active_stroke_overlay.dart' show OverlayMoveMark;
 import 'bitmap_surface_painter.dart';
 import '../../services/layer_pose_paint.dart';
 import 'tiled_surface_compose.dart';
@@ -255,6 +256,7 @@ typedef LiveRows = ({
 /// overlay's CPU pre-blended tiles, which [overlay] carries.
 typedef LiveSurfaceTokens = ({
   Map<Object, Object> overlay,
+  OverlayMoveMark? overlayMoves,
   Map<Object, Object> tiles,
   List<({Object value, Rect rect})> previews,
 });
@@ -942,6 +944,7 @@ final class _LayerStackPainter {
       overlay: <TileCoord, Object>{
         ...overlay?.tileImages ?? const <TileCoord, ui.Image>{},
       },
+      overlayMoves: overlay?.moveMark,
       tiles: <TileCoord, Object>{
         for (final entry in surfacePainter.surface.tiles.entries)
           entry.key: entry.value,
@@ -972,13 +975,14 @@ final class _LayerStackPainter {
       return (located: false, dirty: null, now: null);
     }
     final kept = since;
-    var dirty = tileCoordsWorldRect(
-      _movedCoords(
-        kept.overlay,
-        now.overlay,
-      ).followedBy(_movedCoords(kept.tiles, now.tiles)),
+    var dirty = _whereTheOverlayMoved(kept, now);
+    final tiles = tileCoordsWorldRect(
+      _movedCoords(kept.tiles, now.tiles),
       activeSurfacePainter!.surface.tileSize,
     );
+    if (tiles != null) {
+      dirty = dirty?.expandToInclude(tiles) ?? tiles;
+    }
     // F-130: a preview that moved (or came, or went) dirties where it WAS
     // and where it IS — the old place is repainted without it. The stamp's
     // ghost was the first (now the overlay's tiles); F-344's text in hand.
@@ -1002,6 +1006,52 @@ final class _LayerStackPainter {
       paper: canvasSize.canvasRect,
     );
     return (located: shows != null, dirty: shows, now: now);
+  }
+
+  /// What the overlay's pictures moved from [kept] to [now], in the live
+  /// row's space: the pixels the stroke moved
+  /// ([ActiveStrokeOverlayModel.movedSince]) where a change there shows
+  /// there and nowhere else, and the tiles it moved anywhere else.
+  ///
+  /// 🚨A TILE IS WHAT A PICTURE IS MADE OF, NOT WHAT MOVED. ↩️A step of a
+  /// 20 px line wrote about 46,000 texels into the frame's picture to change
+  /// 2,300 (F-533). 🔬Main PC, 144 Hz, S5_BA cut 352, every row on, fitted,
+  /// 300 px/s, in turn in one run, input to raster end p50 / p90. Under
+  /// another session's tests, 20 px 38.1–39.4 / 54.8–61.2 → 34.8–37.7 /
+  /// 45.7–55.5 ms and 300 px 48.9–55.0 / 60.3–79.0 → 44.0–49.9 / 59.0–66.7 ms,
+  /// with 10–20% more steps. Quiet, 20 px 9.0–9.7 → 8.6–9.3 ms p50, 300 px
+  /// 13.3–16.1 / 21–22 → 11.9–13.7 / 18 ms. Quiet at 60% the times do not
+  /// move: there a step is held for the frame, and the raster has room.
+  ///
+  /// ⛔NOT THROUGH A POSE OR A SPREAD, where a change does not show as
+  /// itself: those keep the tiles. A tile's quad holds all it shows, however
+  /// a pose samples it; a dab's rect does not, and past it a row enlarged
+  /// reads half a texel, as wide on the canvas as the row is enlarged. And a
+  /// spread's raster is as large as the patch, which on Vulkan comes apart
+  /// from the frame along the patch's edge
+  /// (a-blur-under-a-clip-cuts-its-edge-on-vulkan): left on the tile, that
+  /// edge stays off the ink.
+  Rect? _whereTheOverlayMoved(LiveSurfaceTokens kept, LiveSurfaceTokens now) {
+    final painter = activeSurfacePainter!;
+    final tiles = tileCoordsWorldRect(
+      _movedCoords(kept.overlay, now.overlay),
+      painter.surface.tileSize,
+    );
+    final mark = kept.overlayMoves;
+    if (tiles == null || mark == null) {
+      return tiles;
+    }
+    final moved = painter.overlayModel?.movedSince(mark)?.rect;
+    final showsAsItself =
+        moved != null &&
+        _whereTheRowShows(
+              nodes,
+              moved,
+              _isTheLiveRow,
+              paper: canvasSize.canvasRect,
+            ) ==
+            moved;
+    return showsAsItself ? moved : tiles;
   }
 
   /// Whether what the live rows draw can change only where their tokens

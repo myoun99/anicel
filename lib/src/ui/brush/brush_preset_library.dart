@@ -101,7 +101,7 @@ class BrushPresetLibrary extends ChangeNotifier {
     BrushPresetFileService? fileService,
     FilePicker? filePicker,
     BrushTipLibrary? tipLibrary,
-    this.handSettingsPort,
+    this.handSettingsToCarry,
   }) : _fileService = fileService ?? BrushPresetFileService(),
        _filePicker = filePicker ?? pickAnyFile,
        _tipLibrary = tipLibrary;
@@ -109,17 +109,16 @@ class BrushPresetLibrary extends ChangeNotifier {
   final BrushPresetFileService _fileService;
   final FilePicker _filePicker;
 
-  /// How an exported file gets the hand settings, and how an imported one
-  /// gives them back.
+  /// What an exported file carries of the hand, by preset id.
   ///
   /// 🚨유저 (`Q-brush-store`): 「앱 안에서는 앱 저장소에 두되 내보낼 때는
   /// 브러시 파일에 쓴다」, and 2026-09-08: 「불투명도든 뭐든 손설정이든 정한거
   /// 싹 다 내보낼때 나르도록 하고싶음」.
   ///
-  /// ⚠️A PORT, not a store: the bank lives in the workspace beside the tool
-  /// state that writes it, and pulling the whole store in here would give
-  /// one value two owners. Null in tests that do not care.
-  final BrushHandSettingsPort? handSettingsPort;
+  /// ⚠️ASKED FOR, not stored: the bank lives in the workspace beside the
+  /// tool state that writes it, and pulling the whole store in here would
+  /// give one value two owners. Null in tests that do not care.
+  final Map<String, BrushHandSettings> Function()? handSettingsToCarry;
 
   /// Where the sampled tips live. Presets reference them by id on disk, so
   /// loading resolves through here — and any tip that arrives INSIDE a
@@ -363,7 +362,7 @@ class BrushPresetLibrary extends ChangeNotifier {
       for (final preset in presets)
         if (preset.groupId != null) preset.groupId,
     };
-    final bank = handSettingsPort?.read() ?? const {};
+    final bank = handSettingsToCarry?.call() ?? const {};
     final pack = BrushPack(
       presets: presets,
       handSettings: {
@@ -471,14 +470,10 @@ class BrushPresetLibrary extends ChangeNotifier {
     }
     final List<BrushPreset> imported;
     final List<String> warnings;
-    // What the exporting hand had set on each brush, by preset id.
-    var handInFile = const <String, BrushHandSettings>{};
     try {
       if (lowerName.endsWith('.$anicelBrushExtension')) {
-        final pack = decodeBrushPack(utf8.decode(pick.bytes));
-        imported = pack.presets;
+        imported = brushesAsHanded(decodeBrushPack(utf8.decode(pick.bytes)));
         warnings = const [];
-        handInFile = pack.handSettings;
       } else if (lowerName.endsWith('.sut') || lowerName.endsWith('.sutg')) {
         final result = await decodeSutBrushFile(
           pick.bytes,
@@ -504,27 +499,8 @@ class BrushPresetLibrary extends ChangeNotifier {
       imported: imported,
       sourceName: baseName,
     );
-    _groups = merged.library.groups;
-    _presets = merged.library.presets;
-    // 🚨THE HAND SETTINGS ARRIVE WITH THEIR BRUSH (유저, `Q-brush-store`:
-    // 「내보낼 때는 브러시 파일에 쓴다」).
-    //
-    // ⚠️Keyed by id, and the id in the file is not always the id in the
-    // library: one the library already held was minted afresh (F-433), so
-    // each entry follows its brush to where it landed. ↩️The merge used to
-    // REPLACE a colliding preset, which kept the two ids one. An entry
-    // naming a brush that did not land is dropped — a bank row for a preset
-    // that does not exist would attach to whatever took that id later.
-    final port = handSettingsPort;
-    if (handInFile.isNotEmpty && port != null) {
-      final landed = {
-        for (final MapEntry(key: inFile, :value) in handInFile.entries)
-          if (merged.landedAs[inFile] case final id?) id.value: value,
-      };
-      if (landed.isNotEmpty) {
-        port.write(landed);
-      }
-    }
+    _groups = merged.groups;
+    _presets = merged.presets;
     _notify();
     _persist();
     // The pack's tips become library tips in their own right, so they can be
@@ -560,13 +536,3 @@ class BrushPresetLibrary extends ChangeNotifier {
   void _persist() =>
       unawaited(_fileService.save((groups: _groups, presets: _presets)));
 }
-
-/// How the library reaches the hand-settings bank without owning it.
-///
-/// ⚠️Two operations because there are two: an export READS what the hand has
-/// set, and an import WRITES what arrived. One callback answering both would
-/// be a flag deciding which question it was asked.
-typedef BrushHandSettingsPort = ({
-  Map<String, BrushHandSettings> Function() read,
-  void Function(Map<String, BrushHandSettings> arrived) write,
-});

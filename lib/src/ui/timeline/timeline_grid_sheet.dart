@@ -62,7 +62,7 @@ class TimelineRowsGridSheet extends StatelessWidget {
     required this.rows,
     required this.edges,
     required this.frameCellExtent,
-    required this.activeLayerId,
+    required this.activeLayer,
     this.standing,
     this.axis = Axis.horizontal,
   });
@@ -73,7 +73,7 @@ class TimelineRowsGridSheet extends StatelessWidget {
   /// the X-sheet.
   final TimelineRowEdges edges;
   final double frameCellExtent;
-  final LayerId? activeLayerId;
+  final ValueListenable<LayerId?> activeLayer;
 
   /// The row the verbs act on; the fx lanes light with it. Null leaves
   /// every lane unlit (harnesses that mount a grid with no session).
@@ -83,12 +83,9 @@ class TimelineRowsGridSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final standing = this.standing;
-    if (standing == null) {
-      return _sheet(context, null);
-    }
-    return ValueListenableBuilder<TimelineRowAddress?>(
-      valueListenable: standing,
-      builder: (context, row, _) => _sheet(context, row),
+    return ListenableBuilder(
+      listenable: Listenable.merge([activeLayer, ?standing]),
+      builder: (context, _) => _sheet(context, standing?.value),
     );
   }
 
@@ -103,7 +100,7 @@ class TimelineRowsGridSheet extends StatelessWidget {
           ? TimelineGridRows.none
           : _rowsOn((
               hostGround: hostGround,
-              activeLayerId: activeLayerId,
+              activeLayerId: activeLayer.value,
               standing: standing,
               colorScheme: Theme.of(context).colorScheme,
             )),

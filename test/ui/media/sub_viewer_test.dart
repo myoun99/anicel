@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/session/media_file_views.dart';
 import '../../helpers/canvas_pill.dart';
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/rail_group_button.dart';
+import '../../helpers/text_finders.dart';
 
 /// The SECOND viewer (유저 확정 2026-08-12): the same panel docked like
 /// any other, so a reference can sit beside the drawing while the floor's
@@ -56,7 +57,7 @@ Finder _subViewer() =>
 /// The page readout of ONE viewer — the finder has to be scoped, because
 /// two viewers on screen both draw one.
 Finder _readoutIn(Finder viewer) =>
-    find.descendant(of: viewer, matching: find.byType(Text));
+    find.descendant(of: viewer, matching: find.anyText());
 
 String _pageTextIn(WidgetTester tester, Finder viewer) => tester
     .widgetList<Text>(_readoutIn(viewer))

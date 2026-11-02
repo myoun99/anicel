@@ -21,6 +21,7 @@ import '../widgets/app_icon_button.dart';
 import '../widgets/app_scrollbar.dart';
 import '../widgets/app_tooltip.dart';
 import '../widgets/boolean_dot.dart';
+import '../widgets/ellipsis_text.dart';
 import '../widgets/pill_strip.dart';
 import 'export_cel_group_plan.dart';
 
@@ -468,11 +469,10 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
         onTap: silentPress(standOn),
         child: Align(
           alignment: Alignment.centerLeft,
-          child: Text(
+          child: EllipsisText(
             row.name,
             key: ValueKey<String>('export-cels-name-$idValue'),
             maxLines: 1,
-            overflow: TextOverflow.ellipsis,
             style: layerRowNameStyle(context).copyWith(color: ink),
           ),
         ),
@@ -935,11 +935,10 @@ class _LayDirectionCaption extends StatelessWidget {
           )..layout();
           final fits = whole.width <= constraints.maxWidth;
           whole.dispose();
-          return Text(
+          return EllipsisText(
             fits ? strings.exLayDirection : strings.tlKindInstruction,
             key: const ValueKey<String>('export-cels-lay-caption'),
             maxLines: 1,
-            overflow: TextOverflow.ellipsis,
             style: style,
           );
         },

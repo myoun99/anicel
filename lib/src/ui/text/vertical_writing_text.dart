@@ -9,6 +9,7 @@ import 'word_bake.dart' show RepaintOnWordBakes;
 import 'word_condensation.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart' show ByList;
+import '../widgets/app_tooltip.dart' show SummonsTooltip, TooltipBox;
 import '../widgets/ground_ink_writing.dart' show GroundInkRun;
 
 // Hosts pick a Latin form when they mount the widget, so the choice has to
@@ -443,7 +444,7 @@ class VerticalWritingText extends LeafRenderObjectWidget {
         textDirection: Directionality.maybeOf(context),
         painter: painterIn(context),
         preferredSize: naturalSizeIn(context),
-      );
+      )..tooltipContext = context;
 
   @override
   void updateRenderObject(
@@ -451,6 +452,7 @@ class VerticalWritingText extends LeafRenderObjectWidget {
     RenderVerticalWriting renderObject,
   ) {
     renderObject
+      ..tooltipContext = context
       ..text = text
       ..textDirection = Directionality.maybeOf(context)
       ..painter = painterIn(context)
@@ -463,7 +465,12 @@ class VerticalWritingText extends LeafRenderObjectWidget {
 ///
 /// ★It says the text on the node above it, as the `Semantics` it replaces
 /// did: no node of its own, its painter carrying none.
-class RenderVerticalWriting extends RenderCustomPaint {
+///
+/// 🗣️F-530: a column that ends in `⋮` says the whole of its text in the
+/// tooltip, as `EllipsisText` does across — the same box, by one rule of
+/// nesting ([TooltipBox]).
+class RenderVerticalWriting extends RenderCustomPaint
+    with SummonsTooltip, TooltipBox {
   RenderVerticalWriting({
     required String text,
     required TextDirection? textDirection,
@@ -481,6 +488,14 @@ class RenderVerticalWriting extends RenderCustomPaint {
     _text = value;
     markNeedsSemanticsUpdate();
   }
+
+  @override
+  String get tooltipMessage => switch (painter) {
+    final _VerticalWritingPainter column
+        when hasSize && column.isCutIn(size) =>
+      _text,
+    _ => '',
+  };
 
   TextDirection? _textDirection;
   TextDirection? get textDirection => _textDirection;
@@ -568,6 +583,29 @@ class _VerticalWritingPainter extends CustomPainter
   final double endInset;
   final List<GroundInkRun>? inks;
 
+  /// The extent of a slot at the natural leading.
+  double get _naturalCellExtent => (style.fontSize ?? 12) * lineHeight;
+
+  /// What the column has to run down in a box [size] big.
+  double _mainExtentIn(Size size) =>
+      math.max(0, size.height - endInset * 2);
+
+  /// Whether a box [size] big ends the column short of its text
+  /// ([paintVerticalText]).
+  bool isCutIn(Size size) =>
+      overflow == VerticalTextOverflow.ellipsis &&
+      verticalTextSpanCount(
+            verticalTextCells(
+              text,
+              tateChuYokoDigits: tateChuYokoDigits,
+              latinForm: latinForm,
+            ),
+          ) >
+          verticalTextCapacityCells(
+            mainExtent: _mainExtentIn(size),
+            naturalCellExtent: _naturalCellExtent,
+          );
+
   @override
   void paintWords(Canvas canvas, Size size) {
     final inks = this.inks;
@@ -601,8 +639,8 @@ class _VerticalWritingPainter extends CustomPainter
       style: style,
       centerX: size.width / 2,
       top: endInset,
-      mainExtent: math.max(0, size.height - endInset * 2),
-      naturalCellExtent: fontSize * lineHeight,
+      mainExtent: _mainExtentIn(size),
+      naturalCellExtent: _naturalCellExtent,
       setWord: paintFittedText,
       // The leading is proportional here, unlike the timesheet's fixed-row
       // sheet: at the natural extent this returns the full font size, and

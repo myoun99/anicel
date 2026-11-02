@@ -935,13 +935,19 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
   // 아니라 아날로그 수채라던가 이런식으로 하고 질감도 진짜 아날로그질감
   // 종이질감」). The digital washes carry no paper; the paper — cold-press
   // tooth, not the generic grain — lives on Analog Watercolor alone.
+  //
+  // 🗣️F-521-Q1 (유저 2026-11-01): 「클튜처럼 경도 100%로 맞춘다」. 📏Every
+  // watercolor here stands on Clip Studio's hard nib at 中, Dense
+  // Watercolor's reason below: under a soft ramp no anti-alias step shows.
+  // ↩️Watercolor and Analog Watercolor were 0.3, Flat Wash 0.35.
   BrushPreset(
     id: const BrushPresetId('builtin-watercolor'),
     name: 'Watercolor',
     groupId: _watercolorGroup,
     settings: BrushSettings(
       size: 28,
-      hardness: 0.3,
+      hardness: 1.0,
+      antiAlias: BrushAntiAlias.medium,
       flow: 0.5774,
       opacity: 0.8,
       spacing: BrushShape.generalSpacing,
@@ -954,7 +960,8 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
     groupId: _watercolorGroup,
     settings: BrushSettings(
       size: 28,
-      hardness: 0.3,
+      hardness: 1.0,
+      antiAlias: BrushAntiAlias.medium,
       // ⚠️Lower than Watercolor's on purpose: the paper multiplies every
       // dab, and a pile that reaches the stroke's ceiling has no tooth left
       // to show — at Watercolor's flow the hollows and the crowns both
@@ -1024,7 +1031,8 @@ final List<BrushPreset> _builtinsAsMade = <BrushPreset>[
     groupId: _watercolorGroup,
     settings: BrushSettings(
       size: 44,
-      hardness: 0.35,
+      hardness: 1.0,
+      antiAlias: BrushAntiAlias.medium,
       flow: 0.6392,
       opacity: 0.75,
       spacing: BrushShape.generalSpacing,

@@ -74,6 +74,11 @@ from the Google Fonts collection (`github.com/google/fonts`, `ofl/` tree):
 | `NanumGothic-Regular.ttf` | Nanum Gothic | NHN Corporation | 앱 UI · 콘티 PDF |
 | `NanumGothic-Bold.ttf` | Nanum Gothic | NHN Corporation | 앱 UI · 콘티 PDF |
 
+**The two `BIZUDPGothic-*.ttf` files are a modified version**: U+007E is taken
+out of their cmaps, so that 나눔고딕 draws the keyboard's `~` in the middle of a
+line (유저 2026-11-01, F-524-Q1) — the glyphs and every other table are as
+obtained. BIZ UDPGothic declares no reserved font name.
+
 The OFL permits bundling and embedding; the fonts remain under their own
 license, and their reserved font names are not used for any derivative.
 License text: <https://openfontlicense.org>.

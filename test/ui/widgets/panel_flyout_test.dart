@@ -7,6 +7,7 @@ import 'package:anicel/src/ui/widgets/command_pill.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import '../../helpers/boolean_dot_probe.dart';
+import '../../helpers/text_finders.dart';
 
 void main() {
   Widget harness(Widget child) {
@@ -209,7 +210,7 @@ void main() {
         .widget<Text>(
           find.descendant(
             of: find.byKey(ValueKey<String>(key)),
-            matching: find.byType(Text),
+            matching: find.anyText(),
           ),
         )
         .style
@@ -295,7 +296,7 @@ void main() {
     Text labelOf(String key) => tester.widget<Text>(
       find.descendant(
         of: find.byKey(ValueKey<String>(key)),
-        matching: find.byType(Text),
+        matching: find.anyText(),
       ),
     );
     expect(labelOf('flyout-item-current').style?.color, AppColors.accent);

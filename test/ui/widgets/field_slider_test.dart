@@ -9,6 +9,8 @@ import 'package:anicel/src/ui/theme/text_on_ground.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/ground_ink_writing.dart';
 
+import '../../helpers/text_finders.dart';
+
 void main() {
   const sliderKey = ValueKey<String>('field-slider-under-test');
 
@@ -192,7 +194,7 @@ void main() {
     // 보여주도록. 없는 UI가 생겨나지 않게 하라는 원칙이 이 경우를 말함」.
     String written(WidgetTester tester) => tester
         .widgetList<Text>(
-          find.descendant(of: find.byKey(sliderKey), matching: find.byType(Text)),
+          find.descendant(of: find.byKey(sliderKey), matching: find.anyText()),
         )
         .last
         .data!;
@@ -325,7 +327,7 @@ void main() {
   group('the writing on the bar', () {
     Finder valueTextOf(Key key) => find.descendant(
       of: find.byKey(key),
-      matching: find.byType(Text),
+      matching: find.anyText(),
     );
 
     testWidgets('micro variant (no label) centers the value text', (
@@ -1048,7 +1050,7 @@ void main() {
           .widgetList<RichText>(
             find.descendant(
               of: find.byType(FieldSliderTrack),
-              matching: find.byType(RichText),
+              matching: find.anyRichText(),
             ),
           )
           .last

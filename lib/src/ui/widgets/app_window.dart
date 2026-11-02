@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'app_tooltip.dart';
 import 'app_icon_button.dart';
+import 'ellipsis_text.dart';
 import 'settings_rows.dart' show settingsHelpTooltip;
 import 'package:flutter/material.dart';
 
@@ -304,10 +305,9 @@ class AppWindow extends StatelessWidget {
   /// The title — and, for a window the hand places, what moves it: the
   /// bar's own gesture, the whole of the bar but its close button.
   Widget _titleHandle(String title, ThemeData theme) {
-    final text = Text(
+    final text = EllipsisText(
       title,
       maxLines: 1,
-      overflow: TextOverflow.ellipsis,
       style: theme.textTheme.labelMedium?.copyWith(
         color: theme.colorScheme.onSurface,
         fontWeight: FontWeight.w500,

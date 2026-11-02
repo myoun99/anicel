@@ -51,6 +51,7 @@ import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/export_preview_probe.dart';
+import '../../helpers/text_finders.dart';
 
 /// The Cels tab (F-289): the rules that pick the rows — the kinds, one
 /// label picked through the timeline's own flyout, a take picker with
@@ -285,7 +286,7 @@ void main() {
       .widget<Text>(
         find.descendant(
           of: find.byKey(ValueKey<String>(key)),
-          matching: find.byType(Text),
+          matching: find.anyText(),
         ),
       )
       .data!;
@@ -459,7 +460,7 @@ void main() {
     );
     expect(
       tester
-          .widget<Text>(find.descendant(of: label, matching: find.byType(Text)))
+          .widget<Text>(find.descendant(of: label, matching: find.anyText()))
           .style
           ?.color,
       timelineTextOnColor(layerMarkColor(state.debugSpecs.cels.label)),
@@ -1215,7 +1216,7 @@ void main() {
       );
       final chip = tester.getRect(picker);
       final word = tester.getRect(
-        find.descendant(of: picker, matching: find.byType(Text)),
+        find.descendant(of: picker, matching: find.anyText()),
       );
       expect(word.left - chip.left, chip.right - word.right, reason: key);
     }

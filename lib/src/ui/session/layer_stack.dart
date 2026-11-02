@@ -367,6 +367,12 @@ class LayerStack {
     if (soundCannotPlayAt(layer, frameIndex) != null) {
       return true;
     }
+    // Asked at every cell a row paints, and no cel is noted in all but a
+    // damaged file: which cel a cell shows is not looked up for that (I-22,
+    // 1 ms a frame on a wheel at 8px a frame, in profile).
+    if (_renderCaches.layerFrameImageCache.unreadable.isEmpty) {
+      return false;
+    }
     final cel = _celAt(layer, frameIndex);
     return cel != null && celCannotBeRead(cel.cut, layer.id, cel.frameId);
   }

@@ -18,6 +18,7 @@ import 'package:anicel/src/services/persistence/app_memory_settings.dart';
 import 'package:anicel/src/models/app_language.dart';
 
 import '../../helpers/census_where_textures_are_ram.dart';
+import '../../helpers/text_finders.dart';
 
 /// Preferences ▸ Memory (유저 2026-08-28): 「이 앱이 쓰는 메모리의 총합.
 /// 그리고 추가적으로 거기서 어떤항목이 얼만큼 차지하는지도 보여주고」.
@@ -274,7 +275,7 @@ void main() {
               of: find
                   .ancestor(of: find.text(label), matching: find.byType(Row))
                   .first,
-              matching: find.byType(Text),
+              matching: find.anyText(),
             ),
           )
           .last

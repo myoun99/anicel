@@ -5,6 +5,7 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/tab_rail_wiring.dart';
+import 'package:anicel/src/ui/sliced_value_listenable_builder.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_window.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
@@ -119,12 +120,12 @@ Future<Widget> _timelineTab(
       body: SizedBox.expand(
         child: TickLayer.host(
           child: ListenableBuilder(
-            listenable: Listenable.merge([
-              session,
-              turned,
-              session.railView.drawn,
-            ]),
-            builder: tab,
+            listenable: Listenable.merge([turned, session.railView.drawn]),
+            builder: (context, _) => SlicedListenableBuilder<Object>(
+              listenable: session,
+              slice: () => TimelineTabHost.printedBy(session),
+              builder: (context, _) => tab(context, null),
+            ),
           ),
         ),
       ),

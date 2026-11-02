@@ -668,8 +668,7 @@ class _FramePictureViewState extends State<FramePictureView> {
         _fits(live.drawing.extent, picture.extent);
   }
 
-  /// ⛔A picture does not grow: whether what a frame draws over [drawn] is
-  /// all inside a picture of [extent].
+  /// Whether what a frame draws over [drawn] is all inside [extent].
   static bool _fits(Rect drawn, Rect extent) =>
       drawn.intersect(extent) == drawn;
 
@@ -683,9 +682,21 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// 🚨A pen's row come to a picture that holds nothing of the live rows is
   /// told as its taking told them ([_tell]), with the cel the pen is on —
   /// untold, a blank page's first stroke was drawn as it stands, whole.
+  ///
+  /// 🚨ANOTHER CEL UNDER THE PEN IS NO CHANGE OF THE PICTURE (I-22): where
+  /// the key stays, the picture holds that cel's stored pixels as it holds
+  /// every row's, and it is told the same way. ↩️Measured from what the
+  /// picture held of the cel left — another cel's tiles, every one of them
+  /// 「moved」 — the frame was drawn as it stands until its key moved: on S5
+  /// cut 352 5–9 ms a paint in debug, at each click on a row, and the first
+  /// stroke on the row clicked composed the whole frame a step at a time.
+  /// ⛔Asked of a picture only what no key answers, what it holds past the
+  /// cels ([_showsUnstored]): what they store, its key holds it to. Asking
+  /// what moved besides caught nothing (the mutants of 2026-11-01).
   void _liveRowsHandedAnew() {
     if (_shown != null) {
-      if (_held == null) {
+      final penMoved = _celDrawnOn() != _drawnOn?.cel;
+      if (_held == null || (penMoved && !_showsUnstored(_held))) {
         _drawnOn = _celNow();
         _tell();
       }
@@ -819,16 +830,17 @@ class _FramePictureViewState extends State<FramePictureView> {
     StackedFrame live,
     Rect dirty,
   ) {
-    // ⛔A picture does not grow: a frame that now draws past it is drawn as
-    // it stands, and its next picture is laid wide enough. Inside it, the
-    // change is cut to it — past it the frame draws nothing, and the pixel
-    // the change is widened by ([StackedFrame.movedSince]) has no texel
-    // there. ⛔Not by the change alone: every stroke on the page's first
-    // row or column of tiles would be drawn as it stands.
+    // A frame that now draws past its picture is drawn as it stands, and
+    // the picture widened to it. Inside it, the change is cut to it — past
+    // it the frame draws nothing, and the pixel the change is widened by
+    // ([StackedFrame.movedSince]) has no texel there. ⛔Not by the change
+    // alone: every stroke on the page's first row or column of tiles reaches
+    // a pixel past the page.
     final extent = picture.extent;
     final drawing = live.drawing;
     if (!_fits(drawing.extent, extent)) {
       _standing.whole = true;
+      _widen(picture, live, drawing);
       return;
     }
     final rect = dirty.intersect(extent);
@@ -842,7 +854,7 @@ class _FramePictureViewState extends State<FramePictureView> {
       rect: rect,
       draw: drawing.draw,
       // Drawn again once its plugins have run, by the frame still standing.
-      gone: () => !mounted || !identical(_live, live),
+      gone: () => _leftBehind(live),
     )) {
       _standing.whole = true;
       return;
@@ -871,16 +883,83 @@ class _FramePictureViewState extends State<FramePictureView> {
     );
   }
 
+  /// Whether [live] is not what stands here any more.
+  bool _leftBehind(StackedFrame live) => !mounted || !identical(_live, live);
+
+  /// [picture] widened to hold [drawing] ([FramePictureStore.widen]), and
+  /// what the live rows moved meanwhile goes into it as any step does — the
+  /// frame drawn as it stands until then, and from then on where it cannot
+  /// be widened.
+  ///
+  /// ↩️A picture did not grow: the frame stood until its key moved and its
+  /// next picture was laid wide enough — all of the stroke that first
+  /// reached a new band of tiles past the picture, and a lay after it.
+  /// 🔬F-533, main PC, 144 Hz, profile, S5_BA cut 352 with every row visible,
+  /// fitted, 2026-11-01: strokes along the picture's edges at 300 px/s, their
+  /// ink past it from first dab to last. Quiet, 20 px: a frame every 13.9 →
+  /// 6.9 ms, the build's p50 5.4 → 0.3 ms, ink p50 11–13 → 9–10 ms and p90
+  /// 19–20 → 13 ms. 300 px: 13.9 → 6.9 ms, 7 → 0.4 ms, 17–20 → 14 ms and
+  /// 20–31 → 18–21 ms. Under another session's tests, 20 px: a frame every
+  /// 28–35 → 7–10 ms, the build's p50 21–25 → 1.4 ms, and ink p50 35–42 →
+  /// 44–51 ms, what a stroke inside the page gets there. Widening took
+  /// 3–74 ms. ⚠️Not measured on the Surface Pro 11.
+  /// ⛔Not with the step waiting for it, the frame not standing: the stroke
+  /// stopped on screen for it — ink's longest 70–133 → 98–212 ms under the
+  /// same tests.
+  void _widen(FramePicture picture, StackedFrame live, FrameDrawing drawing) {
+    unawaited(
+      _store
+          .widen(
+            key: _keptAs!,
+            over: drawing.extent,
+            draw: drawing.draw,
+            gone: () => _leftBehind(live),
+          )
+          ?.then((widened) {
+            // Told as a write is ([_written]): the paint it brings catches
+            // up. ⛔Not where the picture was let go: it was never wider, and
+            // the frame standing is all that shows the stroke.
+            if (widened && identical(_shown?.picture, picture)) {
+              _standing.whole = false;
+            }
+          }),
+    );
+  }
+
   /// Whether a stroke is in hand on the cel the picture was taken on. ⛔Its
   /// overlay let go, or that cel committed with no build yet, is a change
   /// apart from what goes with it ([_catchUp]): not a step to hold.
   bool get _strokeInHand {
     final overlay = widget.live?.activeSurfacePainter?.overlayModel;
-    return (overlay?.hasStrokeContent ?? false) && _celNow() == _drawnOn;
+    return (overlay?.strokeInHand ?? false) && _celNow() == _drawnOn;
   }
 
-  /// [_catchUp] for a paint: at once, or for a stroke in hand as late as its
-  /// step goes in before the next frame ([StepPace]).
+  /// [_catchUp] for a paint: at once, or for a stroke in hand once the
+  /// frame is out, as late as its step goes in before the next frame
+  /// ([StepPace]).
+  ///
+  /// 🚨★★⛔NOT IN THE PAINT WHILE A STROKE IS IN HAND, where the last steps
+  /// leave a frame nothing as well (F-533, 유저 2026-11-01 「최대한 그
+  /// 외적으로 좋아지기만 하는 부분에서」). Recording a step takes 4–9 ms in a
+  /// heavy frame, and in the paint that frame goes out that much later: it
+  /// took the next vsync with it, and a step had a frame to itself. 🔬Main PC,
+  /// 144 Hz, S5_BA cut 352, every row on, at 60%, in turn in one run, tests
+  /// running, input to raster done p50 / p90: 20 px 28.1–29.0 / 34.8–37.1 →
+  /// 21.5–22.2 / 27.6–30.3 ms, 300 px 37.0–39.3 / 44.6–50.5 → 32.4–33.5 /
+  /// 42.6–44.3 ms, a frame's build 5.1–5.4 → 1.6 ms. A new project, fitted,
+  /// the same way: 45–52 → 39–43 ms, p99 79.5 → 64.7. Quiet, and at 100% in a
+  /// new project, no change either way: those steps are held already.
+  ///
+  /// ⛔Not at the next frame's top, for a sample that came between frames:
+  /// the step lands 8–10 ms sooner and past that frame's paint, and the ink
+  /// is no earlier (36–40 ms against 37–38). ⛔Not as the last step lands:
+  /// 300 px 33–36 ms but 20 px 26–31, and steps with no frame between them
+  /// are what the Surface Pro 11 turned down (`StepPace`). ⛔Not a post-frame
+  /// callback: 1–2 ms behind the timer, 20 px 22.4–23.7, 300 px 32.7–37.3.
+  /// ↩️Where nothing was held this went ahead of the paint from 2026-11-02,
+  /// from the frame's callbacks: 1–3 steps in 230 went that way, a pen's
+  /// samples coming between frames (`AnicelBinding`), and its measured gain
+  /// was not seen again.
   void _catchUpAtPaint() {
     _pace.painted(SchedulerBinding.instance.currentSystemFrameTimeStamp);
     if (!_strokeInHand) {
@@ -891,15 +970,15 @@ class _FramePictureViewState extends State<FramePictureView> {
     if (_heldStep != null) {
       return;
     }
-    final hold = _pace.ask();
-    if (hold == Duration.zero) {
-      _catchUp();
-      return;
-    }
-    _heldStep = Timer(hold, () {
+    _heldStep = Timer(_pace.ask(), () {
       _heldStep = null;
       if (_strokeInHand) {
+        final whole = _standing.whole;
         _catchUp();
+        // The paint that asked read [_standing] before this.
+        if (_standing.whole != whole) {
+          _repaint.value += 1;
+        }
       }
     });
   }

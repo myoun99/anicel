@@ -69,9 +69,10 @@ void main() {
       tester.binding.scheduleFrame();
       await tester.pump();
     }
-    final region = tester.renderObject<RenderStillRaster>(
-      find.byType(StillRaster),
-    );
+    // The sheet's own capsules are regions too: this is the one around it.
+    final region = tester
+        .renderObjectList<RenderStillRaster>(find.byType(StillRaster))
+        .first;
     expect(region.debugDrawnFromImage, isTrue, reason: 'still, first');
 
     final pen = await tester.createGesture(kind: PointerDeviceKind.stylus);

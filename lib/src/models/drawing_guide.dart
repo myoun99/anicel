@@ -190,7 +190,30 @@ class GuideLine {
 ///   (Clip Studio's affordance). Parallel lines simply resolve to `w == 0`,
 ///   so the infinite case falls out with no tolerance to tune.
 sealed class VanishingPoint {
-  const VanishingPoint();
+  const VanishingPoint({this.lineDensity = defaultGuideLineDensity});
+
+  /// How many lines this point draws: the rays round a point on the plane,
+  /// and for a family at infinity the lanes on either side of the one
+  /// through the middle of the view, a 1/[lineDensity] of the view apart.
+  ///
+  /// 🗣️유저 07-19: 「포인트에서 뻗어나오는 가이드 선의 밀도 조절 가능」.
+  /// 🗣️F-544 (유저 2026-11-02): 「선 밀도는 소실점별로 정하게. 그래서
+  /// 소실점의 해당 레인에 막대 두도록」. ↩️vanishing-point-types-Q4
+  /// (2026-10-16) had one bar for the guide, every point of it drawing the
+  /// same count.
+  ///
+  /// ⛔Here and not in a list beside the points: two lists kept the same
+  /// length is one more thing to keep. [PerspectiveShape] checks the range.
+  final int lineDensity;
+
+  /// This point drawing [lineDensity] lines, standing where it stands.
+  VanishingPoint drawing(int lineDensity);
+
+  /// Written only where it is not the default — a point that does not say
+  /// draws twelve (`anicelFormatVersion`, v30).
+  Map<String, int> get _densityWord => {
+    if (lineDensity != defaultGuideLineDensity) 'lineDensity': lineDensity,
+  };
 
   HomogeneousPoint resolve();
 
@@ -198,17 +221,21 @@ sealed class VanishingPoint {
 
   static VanishingPoint fromJson(Map<String, dynamic> json) {
     final type = json['type'];
+    final lineDensity = json['lineDensity'] as int? ?? defaultGuideLineDensity;
     return switch (type) {
       'at' => VanishingPointAt(
         CanvasPoint.fromJson(json['point'] as Map<String, dynamic>),
+        lineDensity: lineDensity,
       ),
       'towards' => VanishingPointTowards(
         dx: (json['dx'] as num).toDouble(),
         dy: (json['dy'] as num).toDouble(),
+        lineDensity: lineDensity,
       ),
       'lines' => VanishingPointFromLines(
         GuideLine.fromJson(json['first'] as Map<String, dynamic>),
         GuideLine.fromJson(json['second'] as Map<String, dynamic>),
+        lineDensity: lineDensity,
       ),
       _ => throw ArgumentError.value(
         type,
@@ -221,23 +248,33 @@ sealed class VanishingPoint {
 
 /// A vanishing point the user placed directly.
 final class VanishingPointAt extends VanishingPoint {
-  const VanishingPointAt(this.point);
+  const VanishingPointAt(this.point, {super.lineDensity});
 
   final CanvasPoint point;
+
+  @override
+  VanishingPointAt drawing(int lineDensity) =>
+      VanishingPointAt(point, lineDensity: lineDensity);
 
   @override
   HomogeneousPoint resolve() => HomogeneousPoint.at(point.x, point.y);
 
   @override
-  Map<String, dynamic> toJson() => {'type': 'at', 'point': point.toJson()};
+  Map<String, dynamic> toJson() => {
+    'type': 'at',
+    'point': point.toJson(),
+    ..._densityWord,
+  };
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is VanishingPointAt && other.point == point;
+      other is VanishingPointAt &&
+          other.point == point &&
+          other.lineDensity == lineDensity;
 
   @override
-  int get hashCode => point.hashCode;
+  int get hashCode => Object.hash(point, lineDensity);
 
   @override
   String toString() => 'VanishingPointAt($point)';
@@ -246,7 +283,11 @@ final class VanishingPointAt extends VanishingPoint {
 /// A vanishing point at infinity: the family stays parallel, running along
 /// `(dx, dy)`. A vertical family is `(0, 1)` exactly.
 final class VanishingPointTowards extends VanishingPoint {
-  VanishingPointTowards({required this.dx, required this.dy}) {
+  VanishingPointTowards({
+    required this.dx,
+    required this.dy,
+    super.lineDensity,
+  }) {
     if (!dx.isFinite || !dy.isFinite) {
       throw ArgumentError('A vanishing direction must be finite.');
     }
@@ -284,18 +325,30 @@ final class VanishingPointTowards extends VanishingPoint {
   double get degrees => math.atan2(dy, dx) * 180 / math.pi;
 
   @override
+  VanishingPointTowards drawing(int lineDensity) =>
+      VanishingPointTowards(dx: dx, dy: dy, lineDensity: lineDensity);
+
+  @override
   HomogeneousPoint resolve() => HomogeneousPoint.towards(dx, dy);
 
   @override
-  Map<String, dynamic> toJson() => {'type': 'towards', 'dx': dx, 'dy': dy};
+  Map<String, dynamic> toJson() => {
+    'type': 'towards',
+    'dx': dx,
+    'dy': dy,
+    ..._densityWord,
+  };
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is VanishingPointTowards && other.dx == dx && other.dy == dy;
+      other is VanishingPointTowards &&
+          other.dx == dx &&
+          other.dy == dy &&
+          other.lineDensity == lineDensity;
 
   @override
-  int get hashCode => Object.hash(dx, dy);
+  int get hashCode => Object.hash(dx, dy, lineDensity);
 
   @override
   String toString() => 'VanishingPointTowards($dx, $dy)';
@@ -305,10 +358,14 @@ final class VanishingPointTowards extends VanishingPoint {
 /// lines (rather than baking the crossing into a point) is what lets the
 /// user grab a line later and slide the convergence.
 final class VanishingPointFromLines extends VanishingPoint {
-  const VanishingPointFromLines(this.first, this.second);
+  const VanishingPointFromLines(this.first, this.second, {super.lineDensity});
 
   final GuideLine first;
   final GuideLine second;
+
+  @override
+  VanishingPointFromLines drawing(int lineDensity) =>
+      VanishingPointFromLines(first, second, lineDensity: lineDensity);
 
   @override
   HomogeneousPoint resolve() {
@@ -328,6 +385,7 @@ final class VanishingPointFromLines extends VanishingPoint {
     'type': 'lines',
     'first': first.toJson(),
     'second': second.toJson(),
+    ..._densityWord,
   };
 
   @override
@@ -335,10 +393,11 @@ final class VanishingPointFromLines extends VanishingPoint {
       identical(this, other) ||
       other is VanishingPointFromLines &&
           other.first == first &&
-          other.second == second;
+          other.second == second &&
+          other.lineDensity == lineDensity;
 
   @override
-  int get hashCode => Object.hash(first, second);
+  int get hashCode => Object.hash(first, second, lineDensity);
 
   @override
   String toString() => 'VanishingPointFromLines($first, $second)';
@@ -474,7 +533,7 @@ final class PerspectiveShape extends GuideShape {
     this.snapEnabled = true,
     this.eyeLevelVisible = true,
     this.constrainToEyeLevel = true,
-    this.lineDensity = defaultGuideLineDensity,
+    this.eyeLevelColor,
   }) : vanishingPoints = List.unmodifiable(vanishingPoints) {
     // 🗣️유저 2026-09-17 (vanishing-point-types): 「소실점 몇개든
     // 추가할수있게」. ↩️A guide held one to three until 2026-10-16.
@@ -485,13 +544,15 @@ final class PerspectiveShape extends GuideShape {
         'A perspective guide carries at least one vanishing point.',
       );
     }
-    if (lineDensity < minGuideLineDensity ||
-        lineDensity > maxGuideLineDensity) {
-      throw ArgumentError.value(
-        lineDensity,
-        'lineDensity',
-        'Line density must be $minGuideLineDensity…$maxGuideLineDensity.',
-      );
+    for (final VanishingPoint(:lineDensity) in vanishingPoints) {
+      if (lineDensity < minGuideLineDensity ||
+          lineDensity > maxGuideLineDensity) {
+        throw ArgumentError.value(
+          lineDensity,
+          'lineDensity',
+          'Line density must be $minGuideLineDensity…$maxGuideLineDensity.',
+        );
+      }
     }
   }
 
@@ -501,15 +562,11 @@ final class PerspectiveShape extends GuideShape {
   final bool eyeLevelVisible;
   final bool constrainToEyeLevel;
 
-  /// How many lines each vanishing point draws: the rays round a point on
-  /// the plane, and for a family at infinity the lanes on either side of
-  /// the one through the middle of the view, a 1/[lineDensity] of the view
-  /// apart.
+  /// The eye level's own colour (0xAARRGGBB) — null while it wears
+  /// [DrawingGuide.color].
   ///
-  /// 🗣️유저 07-19: 「포인트에서 뻗어나오는 가이드 선의 밀도 조절 가능」 —
-  /// and vanishing-point-types-Q4 (2026-10-16): ONE bar for the guide, every
-  /// point of it drawing the same count, the parallels' spacing with them.
-  final int lineDensity;
+  /// 🗣️F-544 (유저 2026-11-02): 「아이레벨도 아이레벨표시쪽에 만드는데」.
+  final int? eyeLevelColor;
 
   @override
   GuideKind get kind => GuideKind.perspective;
@@ -520,20 +577,31 @@ final class PerspectiveShape extends GuideShape {
     bool? snapEnabled,
     bool? eyeLevelVisible,
     bool? constrainToEyeLevel,
-    int? lineDensity,
+    int? eyeLevelColor,
   }) => PerspectiveShape(
     vanishingPoints: vanishingPoints ?? this.vanishingPoints,
     eyeLevel: eyeLevel ?? this.eyeLevel,
     snapEnabled: snapEnabled ?? this.snapEnabled,
     eyeLevelVisible: eyeLevelVisible ?? this.eyeLevelVisible,
     constrainToEyeLevel: constrainToEyeLevel ?? this.constrainToEyeLevel,
-    lineDensity: lineDensity ?? this.lineDensity,
+    eyeLevelColor: eyeLevelColor ?? this.eyeLevelColor,
   );
 
   /// This guide with its point at [index] standing as [point] — what the
-  /// canvas's handles and the panel's row both write.
+  /// canvas's handles and the panel's row both write. Where a point stands
+  /// is all it writes: the lines it draws stay its own, whatever it turned
+  /// into ([withLineDensity]).
   PerspectiveShape withVanishingPoint(int index, VanishingPoint point) =>
-      copyWith(vanishingPoints: [...vanishingPoints]..[index] = point);
+      copyWith(
+        vanishingPoints: [...vanishingPoints]
+          ..[index] = point.drawing(vanishingPoints[index].lineDensity),
+      );
+
+  /// This guide with its point at [index] drawing [lineDensity] lines.
+  PerspectiveShape withLineDensity(int index, int lineDensity) => copyWith(
+    vanishingPoints: [...vanishingPoints]
+      ..[index] = vanishingPoints[index].drawing(lineDensity),
+  );
 
   @override
   Map<String, dynamic> toJson() => {
@@ -545,9 +613,7 @@ final class PerspectiveShape extends GuideShape {
     'snapEnabled': snapEnabled,
     'eyeLevelVisible': eyeLevelVisible,
     'constrainToEyeLevel': constrainToEyeLevel,
-    // Written only where it is not the default — a guide that does not
-    // say draws twelve at this version too (`anicelFormatVersion`, v20).
-    if (lineDensity != defaultGuideLineDensity) 'lineDensity': lineDensity,
+    if (eyeLevelColor != null) 'eyeLevelColor': eyeLevelColor,
   };
 
   factory PerspectiveShape.fromJson(Map<String, dynamic> json) =>
@@ -560,7 +626,7 @@ final class PerspectiveShape extends GuideShape {
         snapEnabled: json['snapEnabled'] as bool? ?? true,
         eyeLevelVisible: json['eyeLevelVisible'] as bool? ?? true,
         constrainToEyeLevel: json['constrainToEyeLevel'] as bool? ?? true,
-        lineDensity: json['lineDensity'] as int? ?? defaultGuideLineDensity,
+        eyeLevelColor: json['eyeLevelColor'] as int?,
       );
 
   @override
@@ -572,7 +638,7 @@ final class PerspectiveShape extends GuideShape {
           other.snapEnabled == snapEnabled &&
           other.eyeLevelVisible == eyeLevelVisible &&
           other.constrainToEyeLevel == constrainToEyeLevel &&
-          other.lineDensity == lineDensity;
+          other.eyeLevelColor == eyeLevelColor;
 
   @override
   int get hashCode => Object.hash(
@@ -581,21 +647,21 @@ final class PerspectiveShape extends GuideShape {
     snapEnabled,
     eyeLevelVisible,
     constrainToEyeLevel,
-    lineDensity,
+    eyeLevelColor,
   );
 
   @override
   String toString() =>
-      'PerspectiveShape(${vanishingPoints.length} VP, snap: $snapEnabled, '
-      '$lineDensity lines)';
+      'PerspectiveShape(${vanishingPoints.length} VP, snap: $snapEnabled)';
 }
 
-/// The fewest lines a vanishing point draws ([PerspectiveShape.lineDensity])
-/// — vanishing-point-types-Q4's bar, 4…48.
+/// The fewest lines a vanishing point draws ([VanishingPoint.lineDensity])
+/// — vanishing-point-types-Q4's bar.
 const int minGuideLineDensity = 4;
 
-/// The most lines a vanishing point draws ([PerspectiveShape.lineDensity]).
-const int maxGuideLineDensity = 48;
+/// The most lines a vanishing point draws ([VanishingPoint.lineDensity]).
+/// 🗣️F-544 (유저 2026-11-02): 「192까지 늘려도될듯」. ↩️48 from Q4.
+const int maxGuideLineDensity = 192;
 
 /// What a perspective draws until its bar is moved: twelve rays, one every
 /// 30° — the count the guide drew from 08-12, when it was a constant.
@@ -618,6 +684,8 @@ class DrawingGuide {
     required this.name,
     required this.shape,
     this.visible = true,
+    this.opacity = 1,
+    this.color,
   });
 
   final GuideId id;
@@ -625,21 +693,46 @@ class DrawingGuide {
   final GuideShape shape;
   final bool visible;
 
+  /// How opaque this guide's lines stand, 0…1 — everywhere they are drawn.
+  ///
+  /// 🗣️F-544 (유저 2026-11-02): 「앞으로 가이드도구떠나면 선 연해진다던가
+  /// 이런거 안하도록. 그런거는 사용자가 불투명도 막대로 조절. 대칭쪽에도
+  /// 똑같이 적용」. ⚠️Like a layer's: a perspective's rays stand fainter
+  /// than its eye level within it (`GuideOverlayPainter`), and the bar
+  /// scales the two together.
+  final double opacity;
+
+  /// This guide's colour (0xAARRGGBB) — null while it wears the app's
+  /// (`guideColorOf`), the one guide colour there was until 2026-11-02.
+  ///
+  /// 🗣️F-544 (유저 2026-11-02): 「도구 라이브러리쪽에 공용 색 동그란
+  /// 아이콘만들어서 가이드별로 색 바꿀수있게」.
+  final int? color;
+
   GuideKind get kind => shape.kind;
 
-  DrawingGuide copyWith({String? name, GuideShape? shape, bool? visible}) =>
-      DrawingGuide(
-        id: id,
-        name: name ?? this.name,
-        shape: shape ?? this.shape,
-        visible: visible ?? this.visible,
-      );
+  DrawingGuide copyWith({
+    String? name,
+    GuideShape? shape,
+    bool? visible,
+    double? opacity,
+    int? color,
+  }) => DrawingGuide(
+    id: id,
+    name: name ?? this.name,
+    shape: shape ?? this.shape,
+    visible: visible ?? this.visible,
+    opacity: opacity ?? this.opacity,
+    color: color ?? this.color,
+  );
 
   Map<String, dynamic> toJson() => {
     'id': id.toJson(),
     'name': name,
     'shape': shape.toJson(),
     'visible': visible,
+    if (opacity != 1) 'opacity': opacity,
+    if (color != null) 'color': color,
   };
 
   factory DrawingGuide.fromJson(Map<String, dynamic> json) => DrawingGuide(
@@ -647,6 +740,8 @@ class DrawingGuide {
     name: json['name'] as String,
     shape: GuideShape.fromJson(json['shape'] as Map<String, dynamic>),
     visible: json['visible'] as bool? ?? true,
+    opacity: (json['opacity'] as num?)?.toDouble() ?? 1,
+    color: json['color'] as int?,
   );
 
   @override
@@ -656,10 +751,12 @@ class DrawingGuide {
           other.id == id &&
           other.name == name &&
           other.shape == shape &&
-          other.visible == visible;
+          other.visible == visible &&
+          other.opacity == opacity &&
+          other.color == color;
 
   @override
-  int get hashCode => Object.hash(id, name, shape, visible);
+  int get hashCode => Object.hash(id, name, shape, visible, opacity, color);
 
   @override
   String toString() => 'DrawingGuide($id, $name, $shape)';

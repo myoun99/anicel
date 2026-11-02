@@ -6,6 +6,7 @@ import '../text/app_strings.dart' show AppText;
 import '../theme/app_theme.dart' show AppColors, AppCursors;
 import '../theme/disabled_ink.dart';
 import '../theme/text_on_ground.dart';
+import '../widgets/ellipsis_text.dart';
 import '../widgets/field_slider.dart' show FieldSlider;
 import '../widgets/pill_strip.dart';
 import 'tool_settings_section.dart' show ToolSettingsSection;
@@ -188,10 +189,9 @@ class ToolSettingRow extends StatelessWidget {
                 child: Row(
                   children: [
                     Expanded(
-                      child: Text(
+                      child: EllipsisText(
                         label,
                         maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                         style: style,
                       ),
                     ),
@@ -425,10 +425,9 @@ class _ToolSettingActionState extends State<ToolSettingAction> {
             data: IconThemeData(color: ink, size: _glyphSize),
             child: glyph,
           )
-        : Text(
+        : EllipsisText(
             widget.label,
             maxLines: 1,
-            overflow: TextOverflow.ellipsis,
             style: Theme.of(
               context,
             ).textTheme.labelSmall?.copyWith(color: ink),

@@ -23,6 +23,7 @@ import '../helpers/app_icon_button_probe.dart';
 import '../helpers/named_finders.dart';
 import '../helpers/room_for_the_pills.dart';
 import '../helpers/timeline_host.dart';
+import '../helpers/text_finders.dart';
 
 // ⑰ (2026-08-12): Delete Layer left the Layer FLYOUT, then left its own
 // button too. 유저: 「딜리트 = 버튼 하나 … 레이어를 선택했으면 레이어 삭제」.
@@ -328,7 +329,7 @@ Layer _layer(ProjectRepository repository, LayerId layerId) {
 
 String _selectedLayerName(WidgetTester tester) {
   final selected = find.named('timeline-selected-layer');
-  final texts = find.descendant(of: selected, matching: find.byType(Text));
+  final texts = find.descendant(of: selected, matching: find.anyText());
   // Skip the section gutter label (ACTION/SE/CAM) that leads a
   // section's first row; the layer name is the next text.
   const gutterLabels = {'ACTION', 'SE', 'CAM'};
@@ -352,7 +353,7 @@ List<String> _visibleXSheetLayerNames(WidgetTester tester) {
 String _layerText(WidgetTester tester, LayerId layerId) {
   final textFinder = find.descendant(
     of: find.named('timeline-layer-name-$layerId'),
-    matching: find.byType(Text),
+    matching: find.anyText(),
   );
   return tester.widget<Text>(textFinder.first).data!;
 }

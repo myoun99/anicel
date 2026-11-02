@@ -95,7 +95,7 @@ void main() {
     required ValueListenable<int?> playback,
     TimelineNoriShiro Function()? noriShiro,
   }) => TimelineGridHooks(
-    activeLayerId: const LayerId('draw-0'),
+    activeLayer: ValueNotifier(const LayerId('draw-0')),
     frameCursor: cursor,
     playbackFrame: playback,
     playbackFrameCount: frames,

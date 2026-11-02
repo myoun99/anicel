@@ -32,6 +32,7 @@ import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/export_format_pick.dart';
 import '../../helpers/export_preview_probe.dart';
+import '../../helpers/text_finders.dart';
 
 /// 🗣️F-289 (유저 2026-10-06): the export window's preview is a canvas-base
 /// panel that wears what the tab's file is — the Sequence and the Image tab
@@ -317,7 +318,7 @@ void main() {
     expect(
       find.descendant(
         of: keyed('export-preview-empty'),
-        matching: find.byType(Text),
+        matching: find.anyText(),
       ),
       findsOneWidget,
     );

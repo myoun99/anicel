@@ -1,4 +1,5 @@
 import '../editing/default_cut_helpers.dart';
+import '../../models/sheet_memo_side.dart';
 import '../editing/editing_session_state.dart';
 import '../editing/run_id_mint.dart' show mintCutId;
 import '../../core/collection_equality.dart';
@@ -24,6 +25,7 @@ import '../../models/layer_mark.dart';
 import '../../models/layer_process.dart';
 import '../../models/timeline_repeat.dart' show rederiveRunBehaviors;
 import '../../models/media_asset.dart';
+import '../../models/new_row_placement.dart' show newRowPlacement;
 import '../../models/pasteboard_bounds.dart' show PasteboardSize;
 import '../../models/se_name_tag.dart';
 import '../../models/se_sound.dart';
@@ -77,6 +79,7 @@ import 'update_cut_camera_command.dart';
 import 'linked_cut_field_command.dart';
 import 'update_cut_mark_command.dart';
 import 'update_cut_conte_camera_room_command.dart';
+import 'update_cut_fixed_text_command.dart';
 import 'update_cut_sheet_kind_command.dart';
 import 'update_cut_scene_command.dart';
 import 'update_cut_staff_folds_command.dart';
@@ -110,6 +113,12 @@ part 'cut_commands/link_commands.dart';
 part 'cut_commands/track_commands.dart';
 part 'cut_commands/folder_and_attachment_commands.dart';
 part 'cut_commands/project_setting_commands.dart';
+
+/// What a pasted row stands on, of the rows the paste put down before it:
+/// the folder it goes in and the base it rides, with its cel links — the
+/// base's side already the cels that base landed with. Neither is the
+/// row's to carry: a payload names no row ([LayerCopyPayload]).
+typedef PastedAnchors = ({LayerId? folderId, LayerAttachment? riding});
 
 /// A pasted (or duplicated) layer: its id, and which cel of the copy each
 /// of its cels was minted from — what the pictures follow, since they live
@@ -248,7 +257,8 @@ class CutCommandCoordinator {
     required CutId cutId,
     required int page,
     required String note,
-  }) => _cuts.updateCutNote(cutId: cutId, page: page, note: note);
+    SheetMemoSide side = SheetMemoSide.left,
+  }) => _cuts.updateCutNote(cutId: cutId, page: page, note: note, side: side);
   void saveCutSettings({
     required List<CutId> cutIds,
     required Map<LayerMark, String> names,
@@ -264,19 +274,23 @@ class CutCommandCoordinator {
     required TimesheetInfo info,
     CutId? cutId,
     TimesheetSheetKind? kind,
+    ({bool? to})? fixedText,
   }) => _projectSettings.setTimesheetFormat(
     info: info,
     cutId: cutId,
     kind: kind,
+    fixedText: fixedText,
   );
   void setConteFormat({
     required TimesheetInfo info,
     required List<CutId> cutIds,
     ({ConteCameraRoom? to})? cameraRoom,
+    ({bool? to})? fixedText,
   }) => _projectSettings.setConteFormat(
     info: info,
     cutIds: cutIds,
     cameraRoom: cameraRoom,
+    fixedText: fixedText,
   );
   void commitCutMoveReorder({
     required TrackId trackId,
@@ -511,10 +525,12 @@ class CutCommandCoordinator {
     required CutId cutId,
     required LayerId layerId,
     required int insertionIndex,
+    LayerId? intoFolder,
   }) => _links.linkDuplicateLayer(
     cutId: cutId,
     layerId: layerId,
     insertionIndex: insertionIndex,
+    intoFolder: intoFolder,
   );
 
   // ── the folder and attachment commands: their own object ────────────
@@ -772,22 +788,42 @@ class CutCommandCoordinator {
     );
   }
 
+  /// [payload] as a row of [cutId], where a NEW row aimed at [insertionIndex]
+  /// goes ([newRowPlacement]) — standing on [anchors], the rows a paste put
+  /// down before it, when it names them. A row riding a base stands in the
+  /// group's run where it is aimed, as the row of that group it is.
+  ///
+  /// ↩️F-532: a pasted row took the seat as asked and belonged to no folder,
+  /// so one put down among a folder's rows stood in their run outside it; the
+  /// linked paste beside it asked [newRowPlacement] all along.
   PastedLayer pasteLayer({
     required CutId cutId,
     required LayerCopyPayload payload,
     required int insertionIndex,
+    PastedAnchors anchors = const (folderId: null, riding: null),
   }) {
-    if (payload.kind.isFixed) {
+    if (payload.kind == LayerKind.camera) {
       throw StateError('The camera layer cannot be pasted.');
     }
 
     final project = repository.requireProject();
     final cut = _requireCut(cutId);
+    final riding = anchors.riding;
+    final base = switch (riding?.attachedToLayerId) {
+      final id? => cut.layers.byId(id),
+      null => null,
+    };
+    final seat = base == null
+        ? newRowPlacement(cut.layers, insertionIndex)
+        : (index: insertionIndex, folderId: base.folderId);
     final plan = planPasteLayerCommandInput(
       project: project,
       targetCut: cut,
       payload: payload,
-      insertionIndex: insertionIndex,
+      insertionIndex: seat.index,
+    );
+    final placed = plan.layer.copyWith(
+      folderId: anchors.folderId ?? seat.folderId,
     );
 
     // A pasted row is an added row: in a 겸용 cut its siblings get it too
@@ -796,7 +832,15 @@ class CutCommandCoordinator {
       plannedAddLayerCommand(
         repository: repository,
         cutId: cutId,
-        layer: plan.layer,
+        layer: riding == null
+            ? placed
+            : _ridingAgain(
+                // The plan's one conte row per cut is no law for a row
+                // riding that one (F-535).
+                placed.copyWith(kind: payload.kind),
+                riding,
+                plan.frameIdMap,
+              ),
         insertionIndex: plan.insertionIndex,
       ),
     );
@@ -807,6 +851,23 @@ class CutCommandCoordinator {
       handwriting: plan.handwriting,
     );
   }
+
+  /// [row] riding as [riding] says, its side of the links the cels [minted]
+  /// for it.
+  static Layer _ridingAgain(
+    Layer row,
+    LayerAttachment riding,
+    Map<FrameId, FrameId> minted,
+  ) => LayerAttachment(
+    attachedToLayerId: riding.attachedToLayerId,
+    placement: riding.placement,
+    mode: riding.mode,
+    timeline: riding.mode == AttachedMode.synced ? const {} : row.timeline,
+    baseFrameLinks: {
+      for (final link in riding.baseFrameLinks.entries)
+        link.key: ?minted[link.value],
+    },
+  ).applyTo(row);
 
   /// RASTERIZE (§6-f): nulls the media reference of every use of the
   /// layer's cels ([referenceLetGo], F-374-Q10) — the pixels are already

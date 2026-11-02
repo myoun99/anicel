@@ -36,6 +36,7 @@ import '../theme/app_theme.dart' show AppColors, AppShapes;
 import '../widgets/app_icon_button.dart'
     show AppIconButton, AppIconButtonSize;
 import '../widgets/dock_edge_splitter.dart' show DockEdgeSplitter;
+import '../widgets/ellipsis_text.dart';
 import '../widgets/owning_axis_grip.dart' show OwningAxisGrip;
 import '../widgets/pill_strip.dart' show PillItem, PillStrip;
 import 'axis_turn.dart'
@@ -1842,7 +1843,7 @@ class LaneGraphGuestTags extends StatelessWidget {
   final List<LaneGraphLine> guests;
 
   @override
-  Widget build(BuildContext context) => IgnorePointer(
+  Widget build(BuildContext context) => PressesGoThrough(
     child: DecoratedBox(
       decoration: ShapeDecoration(
         color: AppColors.surface,
@@ -1879,9 +1880,8 @@ class LaneGraphGuestTags extends StatelessWidget {
           ),
         ),
         Flexible(
-          child: Text(
+          child: EllipsisText(
             '${layer.name} · ${lane.label}',
-            overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: 11, color: AppColors.text),
           ),
         ),

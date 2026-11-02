@@ -55,7 +55,7 @@ void main() {
     addTearDown(geometry.dispose);
     final grid = (
       hooks: TimelineGridHooks(
-        activeLayerId: null,
+        activeLayer: ValueNotifier(null),
         frameCursor: cursor,
         playbackFrameCount: frames,
         exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,

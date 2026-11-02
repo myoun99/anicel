@@ -29,6 +29,10 @@ import '../helpers/home_page_probes.dart';
 /// 거기서 정한값으로 만들어짐」 — the cut pill's ＋, and its key, ask the
 /// new cut's name and canvas, and the cut is made as the window leaves
 /// them.
+///
+/// 🗣️F-537 (유저 2026-11-02): 「새 컷 만들때 크기, 현재 컷 기준으로 만듬. 너비랑
+/// 크기. 현재컷 없이 갭에 서있으면 지금처럼 기본값으로」 — what the window
+/// offers.
 void main() {
   const open = CanvasSize(width: 640, height: 360);
 
@@ -64,17 +68,29 @@ void main() {
     List<Cut> cutsOf(EditorSessionManager session) =>
         session.repository.requireProject().tracks.single.cuts;
 
-    test("🎯a new cut is offered A4 200dpi, not the open cut's canvas — "
-        'and is made as offered when nothing is said', () {
+    test("🎯a new cut is offered the open cut's canvas — and is made as "
+        'offered when nothing is said', () {
       final session = sessionOnOneCut();
-      expect(session.activeCutOrNull?.canvasSize, open, reason: '⛔전제');
+
+      final offered = session.cutVerbs.plannedNewCut!;
+      expect(offered.canvasSize, open);
+
+      session.cutVerbs.createCut();
+      final made = cutsOf(session)[1];
+      expect((made.name, made.canvasSize), (offered.name, offered.canvasSize));
+    });
+
+    test('🎯in a gap, where no cut is open, it is offered the default — and '
+        'is made as offered', () {
+      final session = sessionOnOneCut();
+      session.parkGlobalFrame(20);
+      expect(session.activeCutOrNull, isNull, reason: '⛔전제');
 
       final offered = session.cutVerbs.plannedNewCut!;
       expect(offered.canvasSize, defaultCutCanvasSize);
 
       session.cutVerbs.createCut();
-      final made = cutsOf(session)[1];
-      expect((made.name, made.canvasSize), (offered.name, offered.canvasSize));
+      expect(cutsOf(session)[1].canvasSize, defaultCutCanvasSize);
     });
 
     test('it is offered the name it takes where it lands, and takes the '
@@ -127,6 +143,7 @@ void main() {
 
       final offered = session.cutVerbs.plannedNewCut!;
       expect(offered.name, '1A');
+      expect(offered.canvasSize, open, reason: 'a cut is open all the same');
       session.cutVerbs.createCut();
       expect(cutsOf(session)[1].name, offered.name);
     });
@@ -182,7 +199,9 @@ void main() {
     }
 
     testWidgets('the ＋ opens it before any cut is made: the name the cut '
-        'would take, selected and in hand, over A4 200dpi', (tester) async {
+        "would take, selected and in hand, over the open cut's canvas", (
+      tester,
+    ) async {
       final session = await pump(tester);
       await pressPlus(tester);
 
@@ -206,7 +225,7 @@ void main() {
           field(tester, 'new-cut-width-field').text,
           field(tester, 'new-cut-height-field').text,
         ),
-        ('${defaultCutCanvasSize.width}', '${defaultCutCanvasSize.height}'),
+        ('${open.width}', '${open.height}'),
       );
     });
 
@@ -302,14 +321,16 @@ void main() {
       await confirm(tester);
       expect(
         session.activeCutOrNull?.canvasSize,
-        CanvasSize(width: 800, height: defaultCutCanvasSize.height),
+        CanvasSize(width: 800, height: open.height),
       );
     });
 
     testWidgets("its list is the canvas size window's — the paper's, a "
-        "line, the video's — with A4 200dpi marked; no 「캔버스에서 조정」, "
-        'as there is no canvas yet', (tester) async {
-      await pump(tester);
+        "line, the video's — with what it offers marked: A4 200dpi from a "
+        'gap; no 「캔버스에서 조정」, as there is no canvas yet', (tester) async {
+      final session = await pump(tester);
+      session.parkGlobalFrame(20);
+      await tester.pump();
       await pressPlus(tester);
       final rows = tester
           .widget<PanelFlyoutButton>(byKey('new-cut-presets'))

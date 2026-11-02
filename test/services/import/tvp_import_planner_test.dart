@@ -168,6 +168,21 @@ void main() {
       expect(result.warnings, isEmpty);
     });
 
+    test('Add keeps the picture it has always drawn: the 発光 formula, until '
+        'it is measured (brush-fidelity-Q15)', () {
+      for (final name in ['Add', 'Add (Gamma)']) {
+        final result = plan(
+          clip(
+            layers: [
+              layer('A', blendingMode: name, blocks: [block(0, 1)]),
+            ],
+          ),
+        );
+        final a = result.cut.layers.firstWhere((l) => l.name == 'A');
+        expect(a.blendMode, LayerBlendMode.glowAdd, reason: name);
+      }
+    });
+
     test('an unmapped blending mode falls back to normal and says so', () {
       final result = plan(
         clip(

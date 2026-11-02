@@ -20,8 +20,9 @@ enum FrameRulerView {
   secondsPlusFrames('seconds'),
 
   /// The frames view, the numbers restarting at each page the strip counts
-  /// by ([TimelineRulerPages]) — `p1`, `p2` … beside the second at each
-  /// page's head (I-81-Q4
+  /// by ([TimelineRulerPages]) and on a sheet's pages the seconds with them
+  /// (F-539 「0 1 2 3 4 5 0 1 2 3 4 5」) — `p1`, `p2` … beside the second at
+  /// each page's head (I-81-Q4
   /// 「초 옆에 페이지 넘어가는곳마다 p1 p2라고 쓸뿐임」).
   pages('pages');
 

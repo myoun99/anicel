@@ -9,6 +9,7 @@ import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 import '../../helpers/app_faces.dart';
 import '../../helpers/brush_canvas_fixture.dart';
 import '../../helpers/canvas_pill.dart';
+import '../../helpers/text_finders.dart';
 
 /// F-122: the pill writes every digit the view has, so its two readouts
 /// have to hold the WIDEST number each can write — `1600.00%` and
@@ -79,7 +80,7 @@ void main() {
     final painted = tester.widget<RichText>(
       find.descendant(
         of: find.byKey(ValueKey<String>(key)),
-        matching: find.byType(RichText),
+        matching: find.anyRichText(),
       ),
     );
     return (

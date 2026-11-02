@@ -65,7 +65,7 @@ void main() {
       // text, and a name is a name whatever its layer.
       ('\n  first line\n\nsecond line', unknown, 0),
       // A raster layer whose blend has no equivalent.
-      ('odd', 1, 5),
+      ('odd', 1, 27),
     ]);
     final projects = OpenProjects(
       first: createDefaultProject(),
@@ -124,7 +124,7 @@ void main() {
     final cut = tester.widget<Text>(inNotice('first line…'));
     expect((cut.maxLines, cut.overflow), (1, TextOverflow.ellipsis));
     expect(
-      inNotice('Blend mode 5 has no equivalent — set to normal. (1)'),
+      inNotice('Blend mode 27 has no equivalent — set to normal. (1)'),
       findsOneWidget,
       reason: 'a second reason, a fold of its own',
     );

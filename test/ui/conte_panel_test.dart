@@ -44,6 +44,7 @@ import 'package:anicel/src/ui/storyboard_layer_policy.dart';
 import 'package:anicel/src/ui/text/app_strings.dart' show AppStrings;
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppTypography;
 import '../helpers/number_pad_keyboard.dart';
+import '../helpers/text_finders.dart';
 
 /// The conte panel IS the sheet: it draws the renderer the export draws, a
 /// cell press picks that cut and frame, and the ACTION text lands on the
@@ -271,7 +272,7 @@ void main() {
         .widget<Text>(
           find.descendant(
             of: find.byKey(const ValueKey<String>('conte-page-readout')),
-            matching: find.byType(Text),
+            matching: find.anyText(),
           ),
         )
         .data!;

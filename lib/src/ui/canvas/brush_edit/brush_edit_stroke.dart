@@ -706,6 +706,7 @@ class _BrushEditStroke {
       _state._overlay.resetOverlay();
       return;
     }
+    _state._overlay._overlayModel.pictureOwed();
     final promoted = rasterizer.promoteStrokeTiles(
       base: base,
       mode: blendMode,
@@ -747,8 +748,9 @@ class _BrushEditStroke {
   ///
   /// The handoff is revision-gated (only an image at the promoted tile's
   /// own revision qualifies; a stale one would be pinned to that tile
-  /// forever). The flush pictures every tile inside the call, so every
-  /// promoted tile has one; a tile whose image is somehow not there — a
+  /// forever). The pen-up pictures every tile before the promotion
+  /// ([ActiveStrokeOverlayModel.pictureOwed]), so every promoted tile has
+  /// one; a tile whose image is somehow not there — a
   /// coordinate the flush never touched at this revision — is pictured
   /// from its own bytes on the spot, through the same door. Either way the
   /// committed tile has its picture before the commit is announced, and

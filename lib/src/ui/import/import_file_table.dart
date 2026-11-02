@@ -10,6 +10,7 @@ import '../theme/app_theme.dart';
 import '../widgets/anchored_popup.dart';
 import '../widgets/app_scrollbar.dart';
 import '../widgets/boolean_dot.dart';
+import '../widgets/ellipsis_text.dart';
 import '../widgets/overflow_scrollers.dart';
 import '../widgets/settings_rows.dart' show settingsHelpTooltip;
 import '../input/control_press_claim.dart';
@@ -453,10 +454,9 @@ class _ImportFileTableState extends State<ImportFileTable> {
     final dim = _dimStyle(theme);
     return _tableLine(
       metrics,
-      name: Text(
+      name: EllipsisText(
         AppText.strings.commonNameField,
         style: dim,
-        overflow: TextOverflow.ellipsis,
       ),
       modified: Text(AppText.strings.imModified, style: dim, maxLines: 1),
       size: Text(
@@ -517,11 +517,10 @@ class _ImportFileTableState extends State<ImportFileTable> {
             name: Row(
               children: [
                 Flexible(
-                  child: Text(
+                  child: EllipsisText(
                     row.name,
                     key: ValueKey<String>('import-name-${row.path}'),
                     maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: isSelected ? AppColors.accent : null,
                     ),

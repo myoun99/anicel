@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart' show AppCursors, AppShapes;
+import 'ellipsis_text.dart';
 import 'instant_tap_region.dart';
 
 /// One tab in a rail of groups down a panel's left side — the brush
@@ -122,12 +123,11 @@ class GroupTab extends StatelessWidget {
                       left: face != null ? 0 : 5,
                       right: 3,
                     ),
-                    child: Text(
+                    child: EllipsisText(
                       label,
                       maxLines: 1,
                       // Group names run long — a pack keeps the file's name
                       // — so the tail is what gives.
-                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: nameFontSize,
                         color: selected

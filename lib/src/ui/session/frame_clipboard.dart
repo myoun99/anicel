@@ -1,5 +1,6 @@
 import '../../controllers/timeline_controller.dart'
     show SpliceRider, SpliceRun;
+import '../../models/attach_picture_paste.dart';
 import '../../models/attached_layer_resolve.dart';
 import '../../models/audio_clip.dart';
 import '../../models/bitmap_surface.dart';
@@ -14,6 +15,9 @@ import '../../models/timeline_exposure.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/timeline_repeat.dart' show ghostFreeTimeline;
 import '../../models/timeline_splice.dart';
+import '../../services/bitmap_surface_geometry.dart'
+    show resizeBitmapSurfaceCanvas;
+import '../../services/commands/cel_picture_replace_command.dart';
 import '../../services/media/media_byte_source.dart' show MediaByteSource;
 import '../../services/project_lookup.dart' show attachedMirrorGroupOf;
 import '../../services/persistence/media_staging_store.dart';
@@ -24,6 +28,7 @@ import 'frame_verbs.dart' show rowTakesNewCels;
 import 'independent_clip_mint.dart';
 import 'lane_homes.dart' show KeyCopy, LanesAlone;
 import 'lane_verbs.dart';
+import 'pixel_editing.dart';
 import 'session_roles.dart';
 import 'what_a_copy_brings.dart';
 
@@ -47,6 +52,7 @@ class FrameClipboard implements BringsMedia {
     required FrameIds frameIds,
     required ActiveCutControllers controllers,
     required RenderCaches renderCaches,
+    required PixelEditing pixelEditing,
     required MediaByteSource Function(String poolPath) mediaBytesOf,
     required MediaStagingStore staging,
     required LaneVerbs laneVerbs,
@@ -57,6 +63,7 @@ class FrameClipboard implements BringsMedia {
        _frameIds = frameIds,
        _controllers = controllers,
        _renderCaches = renderCaches,
+       _pixelEditing = pixelEditing,
        _mediaBytesOf = mediaBytesOf,
        _staging = staging,
        _laneVerbs = laneVerbs;
@@ -84,6 +91,11 @@ class FrameClipboard implements BringsMedia {
   final FrameIds _frameIds;
   final ActiveCutControllers _controllers;
   final RenderCaches _renderCaches;
+
+  /// What hangs a pasted picture in a synced row's cel — null until a canvas
+  /// has built one, and with none a paste there stands down, as a pixel
+  /// verb does.
+  final PixelEditing _pixelEditing;
 
   _CopiedFrameReference? get _copiedFrame => _board._copy;
 
@@ -315,8 +327,8 @@ class FrameClipboard implements BringsMedia {
     }
     final entries = <_CopiedRow>[];
     for (final row in _pasteTargetRowsBesides(place)) {
-      final clip = _controllers.timelineController.copyRunForLayer(
-        layerId: row.id,
+      final clip = _runCopiedOff(
+        row,
         index: band.startOn(row.id),
         count: band.length,
       );
@@ -606,6 +618,13 @@ class FrameClipboard implements BringsMedia {
     _changes.notifyChanged();
   }
 
+  /// Whether [row] holds blocks of its own — all but a SYNCED attach row,
+  /// which shows its base's.
+  bool _ownsItsBlocks(LayerId row) => switch (_project.rangeLayerById(row)) {
+    final layer? => !isSyncedAttachedLayer(layer),
+    null => true,
+  };
+
   void copyFrameAtCurrentFrame() => copyAt(timelinePlace);
 
   void copyAt(ClipboardPlace? place) {
@@ -779,15 +798,20 @@ class FrameClipboard implements BringsMedia {
       return false;
     }
     final layer = place._row;
-    if (_copiedFrame == null) {
+    final copied = _copiedFrame;
+    if (copied == null) {
       return false;
+    }
+    // A SYNCED attach row owns no timeline of its own: it makes no cel, and
+    // takes the copy's pictures in the blocks it shows (F-545).
+    if (isSyncedAttachedLayer(layer)) {
+      return _picturesTakenOn(_landingsOn(place, copied).first).isNotEmpty;
     }
     // The row's half of every door that makes a cel ([rowTakesNewCels]): a
     // direction row pastes blocks like every cel row (its span rides the
-    // block it is, R27); a SYNCED attach row owns no timeline of its own; a
-    // reference row's picture comes from the library; an IMAGE row holds
-    // ONE cel, and takes one only while it stands empty — as the
-    // selection's lift leaves it ([_onceLifted]).
+    // block it is, R27); a reference row's picture comes from the library;
+    // an IMAGE row holds ONE cel, and takes one only while it stands empty
+    // — as the selection's lift leaves it ([_onceLifted]).
     if (!rowTakesNewCels(_onceLifted(layer, _selectedRunAt(place)))) {
       return false;
     }
@@ -967,9 +991,11 @@ class FrameClipboard implements BringsMedia {
   }
 
   /// The drawings of [landing]'s row a 링크 붙여넣기 would show under the
-  /// names it pastes ([_joinsOf]).
+  /// names it pastes ([_joinsOf]) — none on a SYNCED row, which no link lands
+  /// on ([rowHoldsLinks]).
   List<FrameId> _heldOn(_PasteLanding landing) =>
-      _linkLandingOf(landing) == ClipLanding.sameNames
+      _ownsItsBlocks(landing.target.id) &&
+          _linkLandingOf(landing) == ClipLanding.sameNames
       ? {
           ...drawingsHeldUnderTheNamesOf(landing.target, (
             clip: landing.clip,
@@ -986,7 +1012,8 @@ class FrameClipboard implements BringsMedia {
   /// one-band-no-lane-tail-Q3's option: 「띠 첫 칸에서의 간격 그대로」), the
   /// frames they span replaced: no cell of that row moves, so none of its
   /// keys past them does (타임라인/콘티's call, 2026-10-28 — a paste that
-  /// put them in would push its keys off the cells they key).
+  /// put them in would push its keys off the cells they key). The same goes
+  /// for a SYNCED row, whose cells no paste moves.
   List<_KeysLanding> _keysLaidBy(
     ClipboardPlace place,
     _CopiedFrameReference copied,
@@ -994,7 +1021,13 @@ class FrameClipboard implements BringsMedia {
   ) => [
     for (final landing in landings)
       if (landing.keys case final keys?)
-        (row: landing.target.id, keys: keys, at: landing.at),
+        (
+          row: landing.target.id,
+          keys: keys,
+          at: _ownsItsBlocks(landing.target.id)
+              ? landing.at
+              : (index: landing.at.index, liftCount: keys.length),
+        ),
     for (final lanes in copied.lanesAlone)
       if (_laneVerbs.rowOfLanesAlone(lanes) case final row?)
         (
@@ -1029,9 +1062,10 @@ class FrameClipboard implements BringsMedia {
   /// Empty when no band covers the anchor, which is what keeps the
   /// single-row paste on the same code path instead of beside it.
   ///
-  /// ⚠️The kind filter: a SYNCED attach row has no timing of its own — a
-  /// paste into it writes something the next normalize takes straight back
-  /// out.
+  /// ↩️F-545: a SYNCED attach row was passed over, having no timing of its
+  /// own — a paste's cells written into it are taken straight back out by
+  /// the next normalize. It takes its seat now: a copy takes the pictures
+  /// it shows, a paste hangs pictures in its cels ([_picturesTakenOn]).
   ///
   /// 🗣️image-row-cut-paste-Q1 (유저 2026-10-07): 「밴드도 이미지 행을
   /// 다룬다 — 그림이 있어도 갈아끼운다」 — a PICTURE row takes its seat
@@ -1057,9 +1091,7 @@ class FrameClipboard implements BringsMedia {
         continue;
       }
       final row = _project.rangeLayerById(id);
-      if (row == null ||
-          !row.kind.takesAuthoredCels ||
-          isSyncedAttachedLayer(row)) {
+      if (row == null || !row.kind.takesAuthoredCels) {
         continue;
       }
       rows.add(row);
@@ -1115,6 +1147,10 @@ class FrameClipboard implements BringsMedia {
     final landings = _landingsOn(place, copied);
     for (final landing in landings) {
       final target = landing.target;
+      // Its cells are its base's: a SYNCED row takes pictures, below.
+      if (!_ownsItsBlocks(target.id)) {
+        continue;
+      }
       // ⚠️ONCE per row. The independent branch MINTS inside here, so asking
       // twice would coin two sets of cels and reference only one of them —
       // the layer would carry orphans nothing points at.
@@ -1162,6 +1198,12 @@ class FrameClipboard implements BringsMedia {
           description: description,
         );
       }
+      // After the splice: a base pasted beside its synced row has new cels
+      // for that row to hang the pictures in. A link lands on no synced
+      // row ([rowHoldsLinks]).
+      if (independent) {
+        landings.forEach(_hangPicturesOn);
+      }
     });
     final cut = _project.activeCutOrNull;
     for (final (targetId, minted, pictures) in mintedByLayer) {
@@ -1193,6 +1235,65 @@ class FrameClipboard implements BringsMedia {
       _changes.refreshAfterCutCommand();
     }
     _changes.notifyChanged();
+  }
+
+  /// Which cels of [landing]'s row take which of the copy's drawings
+  /// ([picturesPastedOnSyncedRow]) — none on a row that owns its blocks, and
+  /// none of a copy of no drawings: an SE row's blocks hold no picture.
+  ///
+  /// ⚠️Mine, not the user's: 「어태치 싱크 레이어의 프레임블록」 was what they
+  /// named, but a copy from any drawing row hangs the same way, the rule
+  /// asking only what the copy shows.
+  Map<FrameId, FrameId> _picturesTakenOn(_PasteLanding landing) {
+    final cut = _project.activeCutOrNull;
+    final row = _project.rangeLayerById(landing.target.id);
+    if (cut == null ||
+        row == null ||
+        _pixelEditing.coordinator == null ||
+        !landing.linkable ||
+        !isSyncedAttachedLayer(row)) {
+      return const {};
+    }
+    final (:index, :liftCount) = landing.at;
+    return picturesPastedOnSyncedRow(
+      attachedRowAsShown(row, cut.layers),
+      clip: landing.clip,
+      from: index,
+      until: liftCount == 0 ? null : index + liftCount,
+    );
+  }
+
+  /// Hangs what [landing] brings in the cels of its row — a drawing the copy
+  /// found blank, as a blank — each at its cut's canvas, for the reason
+  /// [carryBakedPictures] gives. A cel that already shows it takes no step.
+  void _hangPicturesOn(_PasteLanding landing) {
+    final coordinator = _pixelEditing.coordinator;
+    final cut = _project.activeCutOrNull;
+    if (coordinator == null || cut == null) {
+      return;
+    }
+    final taken = _picturesTakenOn(landing);
+    for (final MapEntry(key: cel, value: drawing) in taken.entries) {
+      final key = _project.brushFrameKeyForCut(cut, landing.target.id, cel);
+      final now = coordinator.currentSurfaceOf(key);
+      final picture = resizeBitmapSurfaceCanvas(
+        landing.pictures[drawing] ?? BitmapSurface(canvasSize: cut.canvasSize),
+        cut.canvasSize,
+      );
+      if (identical(picture, now) ||
+          !picture.showsSomething && !now.showsSomething) {
+        continue;
+      }
+      _project.historyManager.execute(
+        CelPictureReplaceCommand(
+          coordinator: coordinator,
+          frameKey: key,
+          picture: picture,
+          cacheInvalidationSink: _renderCaches.cacheInvalidationHub,
+          description: 'Paste frames',
+        ),
+      );
+    }
   }
 
   /// THE ONE SPLICE ([TimelineController.splicedLayers]) committed by the

@@ -405,8 +405,13 @@ void main() {
         for (final MapEntry(key: row, value: types)
             in rebuilt.inRows.entries) {
           if (row != _two.draw) {
+            // Its plate asks which layer the row stands for now, as its eye
+            // does (I-22-rest); a plate is one box, so nothing builds under
+            // it.
             expect(
-              types.difference({RailEyeBuilder}),
+              {
+                for (final type in types) '$type',
+              }.difference({'$RailEyeBuilder', '_StoodPlate'}),
               isEmpty,
               reason: '$row shows what the row it was built for showed',
             );
@@ -574,7 +579,7 @@ Widget _panel(
       body: TimelinePanel(
         layers: layers ?? _layersOf(cut),
         rowDragHooks: drags,
-        activeLayerId: LayerId(cut.base),
+        activeLayer: ValueNotifier(LayerId(cut.base)),
         substrateGeneration: cut.world,
         frameCursor: _cursor,
         playbackFrameCount: 12,

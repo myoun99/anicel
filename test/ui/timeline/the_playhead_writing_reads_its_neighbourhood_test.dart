@@ -243,7 +243,7 @@ void main() {
       );
       expect(
         scale.modelAt(14400).secondsLabel,
-        '10:00 p101',
+        '0 p101',
         reason: 'fixture',
       );
       for (final frame in [14401, 14403, 14406, 14410]) {

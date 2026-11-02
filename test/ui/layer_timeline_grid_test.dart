@@ -870,7 +870,7 @@ void main() {
                   height: 260,
                   child: XSheetTimelineGrid(
                     hooks: TimelineGridHooks(
-                      activeLayerId: const LayerId('layer-1'),
+                      activeLayer: ValueNotifier(const LayerId('layer-1')),
                       frameCursor: cursor,
                       playbackFrameCount: 48,
                       exposureStateForLayer: (_, _) =>
@@ -2472,7 +2472,7 @@ Widget _grid({
         height: 260,
         child: LayerTimelineGrid(
           hooks: TimelineGridHooks(
-            activeLayerId: const LayerId('layer-1'),
+            activeLayer: ValueNotifier(const LayerId('layer-1')),
             frameCursor: ValueNotifier<int>(currentFrameIndex),
             playbackFrameCount: playbackFrameCount,
             exposureStateForLayer:

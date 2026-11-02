@@ -4,6 +4,8 @@ import 'package:anicel/main.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
+import '../../helpers/text_finders.dart';
+
 /// 🚨F-170 (유저 2026-09-20): 「앱 초기 실행시, 레이어의 블렌드 모드가 영어가
 /// 되있음. Normal로. 그 상태에서 다른 레이어로 이동하거나 프레임 생성하면
 /// 표준이라고 한글로 바뀜」.
@@ -29,7 +31,7 @@ void main() {
 
   List<String> wordsOnScreen(WidgetTester tester) => [
     for (final text in tester.widgetList<RichText>(
-      find.byType(RichText, skipOffstage: false),
+      find.anyRichText(skipOffstage: false),
     ))
       if (text.text.toPlainText().trim() case final word when word.isNotEmpty)
         word,

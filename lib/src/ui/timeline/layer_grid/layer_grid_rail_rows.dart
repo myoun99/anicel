@@ -98,7 +98,6 @@ class _LayerGridRailRows {
       berths,
       row,
       (
-        active: row.layer.id == grid.hooks.activeLayerId,
         facts: facts,
         drag: _state._rowDrags.inputsFor(row),
       ),

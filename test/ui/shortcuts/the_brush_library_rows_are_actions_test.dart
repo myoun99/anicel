@@ -197,7 +197,11 @@ void main() {
                 !definition.menuRow)
               definition.id,
         },
-        {BrushLibraryActionIds.importBrushes, BrushLibraryActionIds.saveHeldBrush},
+        {
+          BrushLibraryActionIds.importBrushes,
+          BrushLibraryActionIds.saveHeldBrush,
+          BrushLibraryActionIds.resetHeldBrush,
+        },
       );
     });
 
@@ -207,7 +211,7 @@ void main() {
         for (final definition in editorActionDefinitions)
           if (definition.shelf == ShortcutShelf.brushLibrary) definition,
       ];
-      expect(library, hasLength(15));
+      expect(library, hasLength(16));
       for (final definition in library) {
         expect(definition.defaultActivators, isEmpty, reason: definition.id);
       }

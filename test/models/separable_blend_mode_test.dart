@@ -31,7 +31,9 @@ const _expected = <SeparableBlendMode, String>{
   SeparableBlendMode.lighten: 'Lighten',
   SeparableBlendMode.screen: 'Screen',
   SeparableBlendMode.colorDodge: 'Color Dodge',
+  SeparableBlendMode.glowDodge: 'Glow Dodge',
   SeparableBlendMode.add: 'Add',
+  SeparableBlendMode.glowAdd: 'Add (Glow)',
   SeparableBlendMode.overlay: 'Overlay',
   SeparableBlendMode.softLight: 'Soft Light',
   SeparableBlendMode.hardLight: 'Hard Light',
@@ -201,9 +203,9 @@ void main() {
 
     // 🗣️a-blurred-folder-cut-by-the-view-moves-on-vulkan Q4 (유저 2026-10-22
     // 「골은 b」): every advanced blend is the shader's; the GPU lays only the
-    // two it lays pixel by pixel where it draws. ↩️Multiply, screen … and the
+    // one it lays pixel by pixel where it draws. ↩️Multiply, screen … and the
     // four that mix the channels were painted in the GPU's own blends.
-    test('only normal and add are painted in a GPU blend; every other mode '
+    test('only normal is painted in a GPU blend; every other mode '
         'is composed over its backdrop', () {
       expect(
         {
@@ -213,7 +215,6 @@ void main() {
         {
           LayerBlendMode.passThrough: BlendMode.srcOver,
           LayerBlendMode.normal: BlendMode.srcOver,
-          LayerBlendMode.add: BlendMode.plus,
         },
       );
       for (final mode in LayerBlendMode.values) {

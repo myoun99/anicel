@@ -137,12 +137,8 @@ void main() {
 
       trim(session, a, TimelineBlockEdge.end, -20);
 
-      expect(
-        cutIn(session, a).duration,
-        14,
-        reason: 'key 12 stays, and the end key takes frame 13',
-      );
-      expect(keysOf(session, a), {0: 0, 12: 12, 13: 23});
+      expect(cutIn(session, a).duration, 4);
+      expect(keysOf(session, a), {0: 0, 2: 12, 3: 23});
     });
 
     test('and the hand shows it before the release does', () {
@@ -189,13 +185,56 @@ void main() {
       expect(keysOf(session, b), {2: 2, 23: 23});
     });
 
-    test('🚨the front stops short of every other key too', () {
+    test('🚨the front pushes the keys in too', () {
       final session = open();
 
       trim(session, a, TimelineBlockEdge.start, 20);
 
-      expect(cutIn(session, a).duration, 14);
-      expect(keysOf(session, a), {0: 0, 12: 12, 13: 23});
+      expect(cutIn(session, a).duration, 4);
+      expect(keysOf(session, a), {0: 0, 2: 12, 3: 23});
+    });
+
+    test('🚨past where the keys have frames it stops, each on its own — and '
+        'the undo puts them all back', () {
+      final session = open();
+
+      trim(session, a, TimelineBlockEdge.end, -30);
+
+      expect(cutIn(session, a).duration, 3);
+      expect(keysOf(session, a), {0: 0, 1: 12, 2: 23});
+
+      session.undo();
+      expect(cutIn(session, a).duration, 24);
+      expect(keysOf(session, a), {0: 0, 12: 12, 23: 23});
+    });
+
+    test('🚨a key in the middle with none on the end: the first drag goes '
+        'straight through it (F-541)', () {
+      final session = EditorSessionManager(
+        initialProject: Project(
+          id: const ProjectId('middle'),
+          name: 'Middle',
+          createdAt: DateTime.utc(2026, 11, 2),
+          tracks: [
+            Track(
+              id: const TrackId('t'),
+              name: 'V',
+              cuts: [
+                cutOf('a', [0, 12]),
+              ],
+            ),
+          ],
+        ),
+      );
+      addTearDown(session.dispose);
+
+      trim(session, a, TimelineBlockEdge.end, -16);
+
+      expect(cutIn(session, a).duration, 8);
+      expect(keysOf(session, a), {0: 0, 7: 12});
+
+      session.undo();
+      expect(keysOf(session, a), {0: 0, 12: 12});
     });
   });
 
@@ -210,11 +249,10 @@ void main() {
 
     expect(
       cutIn(session, a).duration,
-      8,
-      reason: 'drawn for 14 — key 12, then the end key — six of them the '
-          'のりしろ',
+      4,
+      reason: 'drawn for ten, six of them the のりしろ',
     );
-    expect(keysOf(session, a), {0: 0, 12: 12, 13: 23});
+    expect(keysOf(session, a), {0: 0, 8: 12, 9: 23});
   });
 
   test('🚨drawn out from the front, the glued cut in front gives no frame '
@@ -225,10 +263,10 @@ void main() {
 
     expect(
       (cutIn(session, a).duration, cutIn(session, b).duration),
-      (14, 34),
-      reason: 'a gives ten — its key 12 stays, and its end key takes 13',
+      (4, 44),
+      reason: 'a gives twenty, pushing its keys in',
     );
-    expect(keysOf(session, a), {0: 0, 12: 12, 13: 23});
+    expect(keysOf(session, a), {0: 0, 2: 12, 3: 23});
   });
 
   test('…the gap between them spent first', () {
@@ -255,8 +293,8 @@ void main() {
 
     expect(
       (cutIn(session, a).duration, cutIn(session, b).duration),
-      (14, 38),
-      reason: 'b takes the four of the gap, then the ten a can give',
+      (8, 44),
+      reason: 'b takes the four of the gap, then sixteen of a',
     );
   });
 
@@ -313,15 +351,18 @@ void main() {
           .map((entry) => entry.key),
     ];
 
-    test('🚨its end — the conte\'s last comma — stops short of the camera\'s '
-        'keys too, the last panel tiled out to it', () {
+    test('🚨its end — the conte\'s last comma — pushes the camera\'s keys '
+        'too, as far as its last panel lets it', () {
       final session = withConte([0, 16, 23]);
 
       trim(session, const CutId('c'), TimelineBlockEdge.end, -10);
 
-      expect(cutIn(session, const CutId('c')).duration, 18);
-      expect(panelsOf(session), [0, 12], reason: 'the last panel runs to 18');
-      expect(keysOf(session, const CutId('c')), {0: 0, 16: 16, 17: 23});
+      expect(cutIn(session, const CutId('c')).duration, 14);
+      expect(panelsOf(session), [0, 12], reason: 'the last panel runs to 14');
+      expect(keysOf(session, const CutId('c')), {0: 0, 12: 16, 13: 23});
+
+      session.undo();
+      expect(keysOf(session, const CutId('c')), {0: 0, 16: 16, 23: 23});
     });
 
     test('an inner panel\'s front trades frames inside its cut — its length, '

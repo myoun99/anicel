@@ -42,7 +42,15 @@ const Map<String, LayerBlendMode> psdBlendModes = {
   'lum ': LayerBlendMode.luminosity,
 };
 
-/// The code Photoshop stores [mode] under — every mode has one.
-String psdBlendKeyOf(LayerBlendMode mode) => psdBlendModes.entries
-    .firstWhere((entry) => entry.value == mode)
-    .key;
+/// The code Photoshop stores [mode] under — every mode has one. Clip
+/// Studio's two 発光 are not Photoshop's: each goes as the mode it glows.
+String psdBlendKeyOf(LayerBlendMode mode) {
+  final stored = switch (mode) {
+    LayerBlendMode.glowDodge => LayerBlendMode.colorDodge,
+    LayerBlendMode.glowAdd => LayerBlendMode.add,
+    _ => mode,
+  };
+  return psdBlendModes.entries
+      .firstWhere((entry) => entry.value == stored)
+      .key;
+}

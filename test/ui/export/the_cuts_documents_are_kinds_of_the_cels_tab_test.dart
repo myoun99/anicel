@@ -41,6 +41,7 @@ import '../../helpers/export_format_pick.dart';
 import '../../helpers/files_written_under.dart';
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/export_preview_probe.dart';
+import '../../helpers/text_finders.dart';
 
 /// 🗣️F-289 (유저 2026-10-05): 「타임시트 탭을 그냥 셀 탭의 내부로 편입.
 /// 컷봉투탭도 셀 내부로 편입. 위치는 추가버튼의 미술/디렉션/시트/컷봉투
@@ -160,7 +161,7 @@ void main() {
   /// The word a list button shows — the one [Text] it draws.
   String shown(WidgetTester tester, String key) => tester
       .widget<Text>(
-        find.descendant(of: keyed(key), matching: find.byType(Text)),
+        find.descendant(of: keyed(key), matching: find.anyText()),
       )
       .data!;
 

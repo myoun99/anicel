@@ -110,20 +110,25 @@ List<GuideHandle> guideHandles(CutGuides guides) {
           ),
         );
       case PerspectiveShape():
-        handles.add(
-          GuideHandle(
-            guideId: guide.id,
-            kind: GuideHandleKind.origin,
-            position: shape.eyeLevel.origin,
-          ),
-        );
-        handles.add(
-          GuideHandle(
-            guideId: guide.id,
-            kind: GuideHandleKind.eyeLevelAngle,
-            position: alongAxis(shape.eyeLevel, _axisHandleReach),
-          ),
-        );
+        // 🗣️F-544 (유저 2026-11-02): 「아이레벨 표시 off하면 캔버스에 점
+        // 두개 스냅 남는데 스냅 포인트도 사라지게」 — its line's two
+        // handles go with it. The panel's 위치 still moves it.
+        if (shape.eyeLevelVisible) {
+          handles.add(
+            GuideHandle(
+              guideId: guide.id,
+              kind: GuideHandleKind.origin,
+              position: shape.eyeLevel.origin,
+            ),
+          );
+          handles.add(
+            GuideHandle(
+              guideId: guide.id,
+              kind: GuideHandleKind.eyeLevelAngle,
+              position: alongAxis(shape.eyeLevel, _axisHandleReach),
+            ),
+          );
+        }
         handles.addAll(_pointHandles(guide.id, shape));
     }
   }
@@ -201,6 +206,9 @@ const double _axisHandleReach = 120;
 /// (vanishing-point-types-Q3).
 const double _parallelHandleReach = 220;
 
+/// How wide a guide's lines stand, on the screen.
+const double _lineWeight = 1;
+
 /// Draws the cut's guides over the editing canvas.
 ///
 /// EDITING CANVAS ONLY. Guides are scaffolding for drawing, not part of the
@@ -222,11 +230,16 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
   final CanvasViewport viewport;
   final CanvasSize canvasSize;
 
-  /// True while the guide tool is active: the lines darken and the handles
-  /// appear. Otherwise the guides stay legible but quiet — they are still
-  /// steering the brush, so hiding them entirely would be a surprise.
+  /// True while the guide tool is active: the handles and the names appear.
+  ///
+  /// 🗣️F-544 (유저 2026-11-02): 「앞으로 가이드도구떠나면 선 연해진다던가
+  /// 이런거 안하도록. 그런거는 사용자가 불투명도 막대로 조절」. ⛔So the
+  /// LINES never read it: they stand the same with the tool in hand and
+  /// without. ↩️They went from 0.95 · 0.6 to 0.28, and from 1.6 wide to 1.
   final bool emphasized;
 
+  /// The colour a guide that names none of its own wears
+  /// ([DrawingGuide.color]).
   final Color color;
 
   /// The app's face the guides' names are set in (`appFaceOf`) — set from
@@ -260,9 +273,9 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
     final bounds = Offset.zero & size;
     for (final guide in guides.guides) {
       if (!guide.visible) continue;
-      final opacity = _opacityOf(guide);
-      _paintLines(canvas, bounds, guide, opacity);
+      _paintLines(canvas, bounds, guide);
       if (emphasized) {
+        final opacity = _toolMarksOpacityOf(guide);
         _paintHandles(canvas, guide, opacity);
         // 🚨THE NAMES, and only while the guide tool is out (유저: 「이름표시는
         // 가이드툴이 선택됬을때, 그리고 물론 결과적으로 비지블 on으로 했을때만
@@ -276,23 +289,24 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
   /// [guide]'s LINES over [size], as [paint] draws them — no handle, no
   /// name: what 래스터라이즈 bakes ([guideLinesOnPaper]).
   void paintLines(Canvas canvas, Size size, DrawingGuide guide) =>
-      _paintLines(canvas, Offset.zero & size, guide, _opacityOf(guide));
+      _paintLines(canvas, Offset.zero & size, guide);
 
-  double _opacityOf(DrawingGuide guide) =>
-      emphasized ? (guide.id == selectedGuideId ? 0.95 : 0.6) : 0.28;
+  /// How opaque the tool's marks on [guide] stand, its handles and its
+  /// names — stronger on the one it holds picked. ⛔Not
+  /// [DrawingGuide.opacity]: a bar run down to nothing must not take the
+  /// handles with the lines.
+  double _toolMarksOpacityOf(DrawingGuide guide) =>
+      guide.id == selectedGuideId ? 0.95 : 0.6;
 
-  double _weightOf(DrawingGuide guide) =>
-      emphasized && guide.id == selectedGuideId ? 1.6 : 1.0;
+  Color _colorOf(DrawingGuide guide) => switch (guide.color) {
+    final argb? => Color(argb),
+    null => color,
+  };
 
-  void _paintLines(
-    Canvas canvas,
-    Rect bounds,
-    DrawingGuide guide,
-    double opacity,
-  ) {
+  void _paintLines(Canvas canvas, Rect bounds, DrawingGuide guide) {
     final paint = Paint()
-      ..color = color.withValues(alpha: opacity)
-      ..strokeWidth = _weightOf(guide)
+      ..color = _colorOf(guide).withValues(alpha: guide.opacity)
+      ..strokeWidth = _lineWeight
       ..style = PaintingStyle.stroke
       ..isAntiAlias = true;
     final shape = guide.shape;
@@ -300,7 +314,7 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
       case SymmetryShape():
         _paintSymmetry(canvas, bounds, shape, paint);
       case PerspectiveShape():
-        _paintPerspective(canvas, bounds, shape, paint, opacity);
+        _paintPerspective(canvas, bounds, shape, paint, guide.opacity);
     }
   }
 
@@ -311,9 +325,10 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
   /// 위 중앙정렬로 표시」 — so a symmetry says ITS name once, and a
   /// perspective says nothing about itself and names each point instead.
   void _paintNames(Canvas canvas, Rect bounds, DrawingGuide guide, double a) {
+    final ink = _colorOf(guide).withValues(alpha: a);
     switch (guide.shape) {
       case SymmetryShape(:final axis):
-        _paintNameAbove(canvas, bounds, _toScreen(axis.origin), guide.name, a);
+        _paintNameAbove(canvas, bounds, _toScreen(axis.origin), guide.name, ink);
       case PerspectiveShape(:final vanishingPoints):
         for (var i = 0; i < vanishingPoints.length; i += 1) {
           final at = vanishingPoints[i].resolve().position;
@@ -329,7 +344,7 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
             bounds,
             _toScreen(at),
             '$vanishingPointLabel ${i + 1}',
-            a,
+            ink,
           );
         }
     }
@@ -345,7 +360,7 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
     Rect bounds,
     Offset at,
     String text,
-    double opacity,
+    Color ink,
   ) {
     if (text.isEmpty) {
       return;
@@ -354,7 +369,7 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
       text: TextSpan(
         text: text,
         style: face.copyWith(
-          color: color.withValues(alpha: opacity),
+          color: ink,
           fontSize: 11,
           height: 1.1,
         ),
@@ -423,7 +438,10 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
   ) {
     if (shape.eyeLevelVisible) {
       final horizon = Paint()
-        ..color = paint.color.withValues(alpha: opacity * 0.85)
+        ..color = switch (shape.eyeLevelColor) {
+          final argb? => Color(argb),
+          null => paint.color,
+        }.withValues(alpha: opacity * 0.85)
         ..strokeWidth = paint.strokeWidth
         ..style = PaintingStyle.stroke
         ..isAntiAlias = true;
@@ -441,18 +459,26 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
       ..style = PaintingStyle.stroke
       ..isAntiAlias = true;
     for (final vanishingPoint in shape.vanishingPoints) {
-      _paintVanishingFan(
-        canvas,
-        bounds,
-        vanishingPoint,
-        rays,
-        shape.lineDensity,
-      );
+      _paintVanishingFan(canvas, bounds, vanishingPoint, rays);
     }
   }
 
-  /// The fan of [lines] lines converging on one vanishing point — the
-  /// guide's [PerspectiveShape.lineDensity].
+  /// How far a line from [from] runs to have left the whole of [bounds],
+  /// whichever way it goes.
+  ///
+  /// 🗣️F-544 (유저 2026-11-02): 「소실점 멀면 뭔가 길이 무한이아니라
+  /// 제한두는거같은데. 제한없이 보이는거에서 안끊기도록」. ↩️Every line ran
+  /// a fixed twice the view's long side from where it starts, so a start
+  /// that zooming carried further off than that drew short of the view.
+  double _reachPast(Rect bounds, Offset from) => [
+    bounds.topLeft,
+    bounds.topRight,
+    bounds.bottomLeft,
+    bounds.bottomRight,
+  ].map((corner) => (corner - from).distance).reduce(math.max);
+
+  /// The fan of lines converging on one vanishing point — its
+  /// [VanishingPoint.lineDensity].
   ///
   /// A finite point gets rays radiating from it; a point at infinity gets
   /// PARALLEL lines, which is exactly what it means. Both cases are read
@@ -463,8 +489,8 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
     Rect bounds,
     VanishingPoint vanishingPoint,
     Paint paint,
-    int lines,
   ) {
+    final lines = vanishingPoint.lineDensity;
     final resolved = vanishingPoint.resolve();
     if (resolved.isInfinite) {
       _paintParallelFamily(canvas, bounds, resolved, paint, lines);
@@ -472,15 +498,15 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
     }
     final position = resolved.position;
     if (position == null) return;
-    final diagonal = bounds.longestSide * 2;
     final apex = _toScreen(position);
+    final reach = _reachPast(bounds, apex);
     for (var index = 0; index < lines; index += 1) {
       final angle = math.pi * 2 * index / lines;
       canvas.drawLine(
         apex,
         Offset(
-          apex.dx + math.cos(angle) * diagonal,
-          apex.dy + math.sin(angle) * diagonal,
+          apex.dx + math.cos(angle) * reach,
+          apex.dy + math.sin(angle) * reach,
         ),
         paint,
       );
@@ -542,6 +568,10 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
     }
   }
 
+  /// [_reachPast] from [origin], in canvas units.
+  double _reachOnCanvas(Rect bounds, CanvasPoint origin) =>
+      _reachPast(bounds, _toScreen(origin)) / math.max(viewport.zoom, 1e-6);
+
   void _drawInfiniteLine(
     Canvas canvas,
     Rect bounds,
@@ -550,7 +580,7 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
     Paint paint,
   ) {
     final radians = angleDegrees * math.pi / 180;
-    final far = bounds.longestSide * 2 / math.max(viewport.zoom, 1e-6);
+    final far = _reachOnCanvas(bounds, origin);
     final a = _toScreen(
       CanvasPoint(
         x: origin.x - math.cos(radians) * far,
@@ -574,7 +604,7 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
     Paint paint,
   ) {
     final radians = angleDegrees * math.pi / 180;
-    final far = bounds.longestSide * 2 / math.max(viewport.zoom, 1e-6);
+    final far = _reachOnCanvas(bounds, origin);
     canvas.drawLine(
       _toScreen(origin),
       _toScreen(
@@ -589,7 +619,7 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
 
   void _paintHandles(Canvas canvas, DrawingGuide guide, double opacity) {
     final fill = Paint()
-      ..color = color.withValues(alpha: opacity)
+      ..color = _colorOf(guide).withValues(alpha: opacity)
       ..style = PaintingStyle.fill
       ..isAntiAlias = true;
     final ring = Paint()
@@ -609,7 +639,9 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
   /// The stem each family at infinity's handle hangs on, from the eye
   /// level's handle it turns about — part of the handle, so drawn with the
   /// handles, never baked (the approved picture of
-  /// vanishing-point-types-Q3: twice the line's weight).
+  /// vanishing-point-types-Q3: twice the line's weight). It goes with the
+  /// eye level's handle: a stem from a hidden one would start from nothing
+  /// — my reading of F-544, not a word of the user's.
   void _paintParallelStems(
     Canvas canvas,
     DrawingGuide guide,
@@ -617,10 +649,10 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
     double opacity,
   ) {
     final shape = guide.shape;
-    if (shape is! PerspectiveShape) return;
+    if (shape is! PerspectiveShape || !shape.eyeLevelVisible) return;
     final stem = Paint()
-      ..color = color.withValues(alpha: opacity)
-      ..strokeWidth = _weightOf(guide) * 2
+      ..color = _colorOf(guide).withValues(alpha: opacity)
+      ..strokeWidth = _lineWeight * 2
       ..style = PaintingStyle.stroke
       ..isAntiAlias = true;
     final origin = _toScreen(shape.eyeLevel.origin);
@@ -644,14 +676,15 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
   );
 }
 
-/// The colour the guides are drawn in — what the canvas's overlay paints
-/// with, and what 래스터라이즈 bakes with, read in one place.
+/// The colour a guide that names none of its own is drawn in — what the
+/// canvas's overlay paints with, and what 래스터라이즈 bakes with, read in
+/// one place.
 Color guideColorOf(BuildContext context) =>
     Theme.of(context).colorScheme.primary;
 
-/// [guides]' lines as the canvas draws them at rest — the faint line a
-/// drawing is made over: their colour, their weight, their density, their
-/// eye level — no handle, no name — on [canvasSize]'s paper and nothing
+/// [guides]' lines as the canvas draws them: their colour, their opacity,
+/// their weight, their density, their eye level — no handle, no name — on
+/// [canvasSize]'s paper and nothing
 /// past its edge, onto [canvas] in canvas pixels; a line [scale] times as
 /// fine as a canvas pixel, for a picture that holds a canvas pixel in
 /// [scale] of its own.
@@ -660,7 +693,7 @@ Color guideColorOf(BuildContext context) =>
 /// lays over a drawing (I-105) — one picture, by one function: 🗣️I-105-Q2
 /// (유저 2026-10-16): 「래스터라이즈와 같은 … 모습」 — 「애초에 래스터라이즈도
 /// 캔버스에 보이는 옅은선 그대로 래스터라이즈하도록 법 통일」.
-void paintGuidesAtRest(
+void paintGuideLines(
   Canvas canvas,
   List<DrawingGuide> guides, {
   required CanvasSize canvasSize,
@@ -688,10 +721,9 @@ void paintGuidesAtRest(
 }
 
 /// [guide]'s lines on [canvasSize]'s paper, a canvas pixel to a pixel, as
-/// the canvas draws them at rest ([paintGuidesAtRest]) — the faint line a
-/// drawing is made over: its colour, its weight, its density, its eye
-/// level — no handle, no name. The picture 래스터라이즈 lands. Null when
-/// the picture cannot be read back.
+/// the canvas draws them ([paintGuideLines]): its colour, its opacity, its
+/// weight, its density, its eye level — no handle, no name. The picture
+/// 래스터라이즈 lands. Null when the picture cannot be read back.
 ///
 /// 🗣️vanishing-point-types-Q6 (유저 2026-10-16): 「화면에 보이는 그대로」 —
 /// 「가이드와 같은 색 · 굵기 · 밀도, 아이레벨 선도 포함 — 용지 안만」.
@@ -710,7 +742,7 @@ Future<CutPiece?> guideLinesOnPaper(
   final image = await rasterizeOffscreen(
     width: canvasSize.width,
     height: canvasSize.height,
-    paint: (canvas) => paintGuidesAtRest(
+    paint: (canvas) => paintGuideLines(
       canvas,
       [guide],
       canvasSize: canvasSize,

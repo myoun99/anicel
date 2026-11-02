@@ -83,7 +83,16 @@ void main() {
     expect(inkOf(session), isNull, reason: '⛔premise: a blank cel');
 
     final button = find.byKey(const ValueKey<String>('guide-rasterize'));
-    await tester.ensureVisible(button);
+    await tester.scrollUntilVisible(
+      button,
+      200,
+      scrollable: find
+          .ancestor(
+            of: find.byType(GuideSettings),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     await tester.pump();
     await tester.tap(button);
     // The bake reads the picture back off the engine: real time.

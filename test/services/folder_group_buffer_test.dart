@@ -30,8 +30,10 @@ import '../helpers/placement_reading.dart';
 /// advanced blend went over its backdrop in the shader
 /// (a-blurred-folder-cut-by-the-view-moves-on-vulkan): a folder in one is
 /// a blend of its own now, its buffer the row it composes
-/// (`a_row_in_an_advanced_blend_gathers_its_backdrop_test`). Add and
-/// normal still buffer as a group that lays its own blend.
+/// (`a_row_in_an_advanced_blend_gathers_its_backdrop_test`). ↩️Add
+/// stood here until it went the same way (brush-fidelity Q3): normal
+/// buffers as a group that lays its own, and in any other the group is
+/// the source of its blend.
 void main() {
   const canvasSize = CanvasSize(width: 4, height: 4);
 
@@ -86,10 +88,10 @@ void main() {
     test('a real BLEND isolates the group', () {
       final tree = treeOf([
         member('a', folder: 'f'),
-        folderRow('f', blend: LayerBlendMode.add),
+        folderRow('f', blend: LayerBlendMode.normal),
       ]);
       final group = tree.single as CompositeGroup<CutFrameCompositeRow>;
-      expect(group.blendMode, LayerBlendMode.add);
+      expect(group.blendMode, LayerBlendMode.normal);
       expect(group.opacity, 1);
       expect(group.children, hasLength(1));
     });
@@ -142,12 +144,13 @@ void main() {
         member('a', folder: 'f'),
         folderRow('f', blend: LayerBlendMode.add, opacity: 0.5),
       ]);
-      final group = tree.single as CompositeGroup<CutFrameCompositeRow>;
+      final blend = tree.single as CompositeBackdropBlend<CutFrameCompositeRow>;
+      final group = blend.source as CompositeGroup<CutFrameCompositeRow>;
       final leaf = group.children.single as CompositeLeaf<CutFrameCompositeRow>;
       final entry = leaf.payload as CutFrameCompositeEntry;
 
       expect(group.opacity, closeTo(0.5, 1e-9));
-      expect(group.blendMode, LayerBlendMode.add);
+      expect(blend.blendMode, LayerBlendMode.add);
       expect(
         entry.opacity,
         1,
@@ -179,10 +182,10 @@ void main() {
       final tree = treeOf([
         member('a', folder: 'inner'),
         folderRow('inner', parent: 'outer'),
-        folderRow('outer', blend: LayerBlendMode.add),
+        folderRow('outer', blend: LayerBlendMode.normal),
       ]);
       final group = tree.single as CompositeGroup<CutFrameCompositeRow>;
-      expect(group.blendMode, LayerBlendMode.add);
+      expect(group.blendMode, LayerBlendMode.normal);
       expect(
         group.children.single,
         isA<CompositeLeaf<CutFrameCompositeRow>>(),
@@ -196,9 +199,10 @@ void main() {
         folderRow('inner', parent: 'outer', blend: LayerBlendMode.normal),
         folderRow('outer', blend: LayerBlendMode.add),
       ]);
-      final outer = tree.single as CompositeGroup<CutFrameCompositeRow>;
+      final blend = tree.single as CompositeBackdropBlend<CutFrameCompositeRow>;
+      final outer = blend.source as CompositeGroup<CutFrameCompositeRow>;
       final inner = outer.children.single as CompositeGroup<CutFrameCompositeRow>;
-      expect(outer.blendMode, LayerBlendMode.add);
+      expect(blend.blendMode, LayerBlendMode.add);
       expect(inner.blendMode, LayerBlendMode.normal);
     });
 

@@ -7,6 +7,7 @@ import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
 import 'package:anicel/src/ui/widgets/app_scrollbar_lane.dart';
+import 'package:anicel/src/ui/widgets/ellipsis_text.dart';
 
 import '../../helpers/canvas_pill.dart';
 import '../../helpers/device_viewport.dart';
@@ -261,7 +262,7 @@ void main() {
     const plate = ValueKey<String>('canvas-document-name');
 
     testWidgets('stands at the artwork\'s lower left over the horizontal '
-        'lane, and takes no pointer', (tester) async {
+        'lane, and takes no press', (tester) async {
       for (final transport in [false, true]) {
         await mount(
           tester,
@@ -276,17 +277,11 @@ void main() {
         expect(where.left, panel.left + margin);
         expect(where.bottom, across.top - margin, reason: 'over the lane');
         expect(
-          tester
-              .widget<IgnorePointer>(
-                find
-                    .ancestor(
-                      of: find.byKey(plate),
-                      matching: find.byType(IgnorePointer),
-                    )
-                    .first,
-              )
-              .ignoring,
-          isTrue,
+          find.ancestor(
+            of: find.byKey(plate),
+            matching: find.byType(PressesGoThrough),
+          ),
+          findsOneWidget,
           reason: 'a plate, not a control: the press is the canvas\'s',
         );
       }

@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/dialogs/frame_name_conflict_dialog.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
+import '../../helpers/text_finders.dart';
+
 /// 🗣️I-18 (유저): 「이제 링크프레임이나 링크레이어 발동할때 뜨는 안내메시지를
 /// 단일 변경만 대응하는게 아니라 복수 대응을 기본으로. 대상의 프레임을
 /// 리스트로서 보여주도록」.
@@ -41,7 +43,7 @@ void main() {
     await pump(tester, const ['1 · A · 2']);
 
     expect(
-      find.descendant(of: find.byKey(list), matching: find.byType(Text)),
+      find.descendant(of: find.byKey(list), matching: find.anyText()),
       findsOneWidget,
     );
   });

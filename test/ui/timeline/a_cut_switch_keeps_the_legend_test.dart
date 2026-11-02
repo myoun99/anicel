@@ -323,7 +323,7 @@ Widget _panel(
     body: TimelinePanel(
       key: key,
       layers: layers ?? _layersOf(cut, marked: marked, rows: rows),
-      activeLayerId: rows == 0 ? null : LayerId('$cut-1'),
+      activeLayer: ValueNotifier(rows == 0 ? null : LayerId('$cut-1')),
       substrateGeneration: cut,
       frameCursor: _cursor,
       playbackFrameCount: 12,

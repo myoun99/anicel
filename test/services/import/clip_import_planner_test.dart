@@ -1021,7 +1021,7 @@ void main() {
       'layers it holds, and a blend handed to layers that overlap is said', () {
     final a = animation('A', [
       folder('1', [
-        folder('in', [layer('x'), layer('y')], composite: 5),
+        folder('in', [layer('x'), layer('y')], composite: 27),
       ]),
       folder('2', [
         folder('in', [layer('z'), layer('w')], composite: 8),
@@ -1134,7 +1134,7 @@ void main() {
         // of it here, so there is nothing to say (the sound's own group).
         layer('s', kind: ClipLayerKind.sound, drawn: false),
         layer('o', kind: ClipLayerKind.other),
-        layer('odd', composite: 5),
+        layer('odd', composite: 27),
       ]),
       [timeline(const [])],
     );

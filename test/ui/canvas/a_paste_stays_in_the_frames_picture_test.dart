@@ -2,8 +2,9 @@
 // 즉 솔로할때만 안보임. 다른 붙여넣기관련도 버그났을수도있으니 근본적으로확인」.
 //
 // Whatever lands on a cel but a stroke has no step in the picture shown: it
-// goes in as one patch. Reaching past a picture, which does not grow, it
-// cannot — and the frame's key must not be left with a picture short of it.
+// goes in as one patch. Reaching past a picture, with no step to widen it,
+// it cannot — and the frame's key must not be left with a picture short of
+// it.
 //
 // 🚨The frame goes first here, as in the app: [settle] builds before the
 // warmer gets a turn. Pumped by time alone, the warmer lays the new key first

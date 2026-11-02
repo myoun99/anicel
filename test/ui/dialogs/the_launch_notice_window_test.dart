@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/widgets/markdown_subset.dart';
 import 'package:anicel/src/ui/widgets/settings_rows.dart';
 
 import '../../helpers/dart_sources.dart';
+import '../../helpers/text_finders.dart';
 
 /// A dismissal kept in memory: one store, read by every launch of a test
 /// as the settings file is read by every launch of the app.
@@ -322,7 +323,7 @@ void main() {
         for (final text in tester.widgetList<RichText>(
           find.descendant(
             of: find.byType(MarkdownSubset),
-            matching: find.byType(RichText),
+            matching: find.anyRichText(),
           ),
         ))
           text.text.toPlainText(),

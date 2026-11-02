@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
+import 'package:anicel/src/models/sheet_fixed_lines.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/conte/conte_book_page.dart';
@@ -184,10 +185,17 @@ void main() {
     // 유저 2026-10-12 (I-93): 「고정텍스트 표기할지 안할지 콘티용지패널에
     // 설정할수있도록. 타임시트처럼 전용 설정창 만들어서」.
     await pumpHost(tester);
-    bool written() => tester
-        .widget<ConteBookPage>(find.byType(ConteBookPage).first)
-        .source
-        .fixedText;
+    bool written() => !identical(
+      tester
+          .widget<ConteBookPage>(find.byType(ConteBookPage).first)
+          .source
+          .cuts
+          .first
+          .cells
+          .first
+          .fixedLines,
+      SheetFixedLines.none,
+    );
     expect(written(), isTrue, reason: 'written unless taken out');
 
     await tap(tester, 'conte-format-button');

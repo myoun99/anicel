@@ -29,6 +29,7 @@ import 'package:anicel/src/ui/widgets/value_hands.dart';
 import '../../helpers/app_faces.dart';
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/number_pad_keyboard.dart';
+import '../../helpers/text_finders.dart';
 
 const sides = ['size', 'opacity'];
 
@@ -42,7 +43,7 @@ Finder trackOf(String side) =>
     find.descendant(of: bar(side), matching: find.byType(FieldSliderTrack));
 
 Finder wordsOf(String side) =>
-    find.descendant(of: readout(side), matching: find.byType(Text));
+    find.descendant(of: readout(side), matching: find.anyText());
 
 final typing = find.byKey(const ValueKey<String>('field-slider-type-input'));
 
@@ -108,7 +109,7 @@ void main() {
 
     for (final side in sides) {
       for (final writing in [
-        find.byType(Text),
+        find.anyText(),
         find.byType(VerticalWritingText),
       ]) {
         expect(

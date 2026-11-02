@@ -7,6 +7,7 @@ import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/sheet_memo_side.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timesheet_document.dart' show sheetArtistMark;
 import 'package:anicel/src/models/timesheet_ink_keys.dart';
@@ -174,6 +175,40 @@ void main() {
   });
 
   group('TimesheetTabHost memo editing (brush off)', () {
+    testWidgets('🎯the right side is a memo of its own: it opens empty, '
+        'lands on its own side, and one undo takes it back', (tester) async {
+      await pumpHost(tester, brushAllowed: false);
+      session.cutVerbs.updateCutNote(
+        cutId: session.requireActiveCut.id,
+        page: 0,
+        note: 'LEFT',
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timesheet-memo-right-edit-p0')),
+      );
+      await tester.pumpAndSettle();
+      final editor = tester.widget<TextField>(find.byKey(_editorKey));
+      expect(editor.controller!.text, isEmpty, reason: 'not the left\'s');
+      await tester.enterText(find.byKey(_editorKey), 'RIGHT');
+      final paperOrigin = tester.getTopLeft(
+        find.byKey(const ValueKey<String>('timesheet-content-paint')),
+      );
+      await tester.tapAt(paperOrigin + const Offset(5, 5));
+      await tester.pumpAndSettle();
+
+      final written = session.requireActiveCut.metadata;
+      expect(written.noteOf(0, side: SheetMemoSide.right), 'RIGHT');
+      expect(written.noteOf(0), 'LEFT');
+
+      session.undo();
+      expect(
+        session.requireActiveCut.metadata.noteOf(0, side: SheetMemoSide.right),
+        '',
+      );
+    });
+
     testWidgets('editing the memo band commits the cut note', (tester) async {
       await pumpHost(tester, brushAllowed: false);
 

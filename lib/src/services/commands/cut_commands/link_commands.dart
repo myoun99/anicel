@@ -198,11 +198,13 @@ class _LinkCommands {
   /// 링크 복제 (L2): duplicates [layerId]'s whole attach group as a free
   /// group sharing the originals' cel banks (same FrameIds — the store's
   /// canonical resolution makes the pictures one), aimed at the stack seat
-  /// [insertionIndex]. One undo step. Answers [layerId]'s own copy.
+  /// [insertionIndex] — in [intoFolder] when one is named. One undo step.
+  /// Answers [layerId]'s own copy.
   LayerId linkDuplicateLayer({
     required CutId cutId,
     required LayerId layerId,
     required int insertionIndex,
+    LayerId? intoFolder,
   }) {
     final project = _coordinator.repository.requireProject();
     final cut = requireCut(project, cutId);
@@ -219,6 +221,7 @@ class _LinkCommands {
         cutId: cutId,
         sourceLayerId: layerId,
         insertionIndex: insertionIndex,
+        intoFolder: intoFolder,
         layerIdMap: plan.layerIdMap,
         newGroupIdBySource: plan.newGroupIdBySource,
         siblings: plan.siblings,

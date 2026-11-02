@@ -193,7 +193,7 @@ void main() {
   }) async {
     gpu.holdsRenders = true;
     await change();
-    await tester.pump();
+    await aFrameAndItsStep(tester);
     final landing = store.landingOf(keptByTheCanvas(tester, shown));
     expect(
       landing,
@@ -333,8 +333,7 @@ void main() {
   // ↩️A preview that crossed the edge of the live row's extent moved the
   // display buffer's rect, and the carry had to repaint both its places
   // (F-85, adversarial review 2026-09-15), until nothing kept a buffer
-  // (one-picture-per-frame ②-5a). A picture does not grow: what goes past
-  // it draws the frame as it stands
+  // (one-picture-per-frame ②-5a). What goes past a picture widens it
   // (`a_stroke_is_written_into_the_picture_shown_test`).
 
   testWidgets('an EMPTY cel: the second step of a stroke patches — an empty '

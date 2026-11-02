@@ -1,5 +1,5 @@
 // THE SHORTCUTS EDITOR: THE SEARCH NARROWS THE LIST, RECORD CAPTURES THE
-// NEXT KEY AS THE ACTION'S ONLY BINDING, AND RESET ALL PUTS THE DEFAULTS
+// NEXT KEY AS THE ACTION'S ONLY BINDING, AND THE PRESET'S RESET PUTS ITS KEYS
 // BACK.
 //
 // No test named this dialog (audit 2026-09-03). These pins drive it as a
@@ -12,6 +12,7 @@ import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
     show actionLabelOf;
+import 'package:anicel/src/ui/shortcuts/shortcut_presets.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_dialog.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_shelf.dart';
 import 'package:anicel/src/ui/shortcuts/touch_shortcuts.dart';
@@ -21,6 +22,7 @@ import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/text_finders.dart';
 
 void main() {
   Future<EditorShortcutBindings> pump(WidgetTester tester) async {
@@ -273,7 +275,7 @@ void main() {
     Finder headingOf(ShortcutShelf shelf) =>
         find.byKey(ValueKey<String>(headingKeyOf(shelf)));
     Finder wordsOf(Finder row) =>
-        find.descendant(of: row, matching: find.byType(Text));
+        find.descendant(of: row, matching: find.anyText());
 
     testWidgets('pressing a heading\'s WORDS opens it, and pressing its far '
         'end shuts it — the end the list\'s scrollbar runs by', (
@@ -359,7 +361,7 @@ void main() {
     expect(recorded.control, isTrue);
   });
 
-  testWidgets('record captures the next key, and reset all restores', (
+  testWidgets('record captures the next key, and the reset restores', (
     tester,
   ) async {
     final bindings = await pump(tester);
@@ -377,13 +379,224 @@ void main() {
     expect(recorded.control || recorded.shift || recorded.alt, isFalse);
 
     await tester.tap(
-      find.byKey(const ValueKey<String>('shortcut-reset-all-button')),
+      find.byKey(const ValueKey<String>('shortcut-preset-reset-button')),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(
+        const ValueKey<String>('shortcut-preset-reset-confirm-button'),
+      ),
+    );
+    await tester.pumpAndSettle();
     expect(
       bindings.activatorsFor(id).map((a) => a.trigger),
       defaults.map((a) => a.trigger),
     );
+  });
+
+  // 🗣️F-522 (유저 2026-11-01): 「키보드 단축키 모두초기화버튼, 현재 프리셋
+  // 초기화로 바꾸고, 누르면 초기화하겟냐고 메시지창 띄우기. 그리고 할당 충돌하면
+  // 해당 들어있는 항목 다 빨간강조색으로. 어디 들어있는건지 안보임. 패널 안
+  // 빨간강조색만들고 미디어 빨간강조색만들고 이런식」.
+  group('🚨F-522', () {
+    const spare = SingleActivator(LogicalKeyboardKey.f20);
+    final resetButton = find.byKey(
+      const ValueKey<String>('shortcut-preset-reset-button'),
+    );
+
+    List<LogicalKeyboardKey> keysOf(EditorShortcutBindings bindings, String id) =>
+        [for (final each in bindings.activatorsFor(id)) each.trigger];
+
+    Future<void> press(WidgetTester tester, Finder button) async {
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+    }
+
+    for (final language in AppLanguage.values) {
+      testWidgets('the button names the preset in use, not 「all」, and its '
+          'window names the preset (${language.name})', (tester) async {
+        final before = AppText.settings.value;
+        addTearDown(() => AppText.settings.value = before);
+        AppText.settings.value = AppLanguageSettings(programLanguage: language);
+        final bindings = await pump(tester);
+        final strings = AppStrings.of(language);
+        expect(
+          find.descendant(
+            of: resetButton,
+            matching: find.text(strings.shortcutResetPreset),
+          ),
+          findsOneWidget,
+        );
+
+        await press(tester, resetButton);
+
+        final preset = bindings.preset as ShortcutPreset;
+        expect(
+          find.text(
+            strings.shortcutResetPresetBody(
+              strings.shortcutPresetName(preset.name, preset.label),
+            ),
+          ),
+          findsOneWidget,
+        );
+      });
+    }
+
+    testWidgets('the reset asks first: cancelled nothing moves, and only the '
+        'yes puts the keys back', (tester) async {
+      final bindings = await pump(tester);
+      final id = bindings.definitions.first.id;
+      final defaults = keysOf(bindings, id);
+      bindings.setActivators(id, const [spare]);
+      await tester.pump();
+
+      await press(tester, resetButton);
+      expect(
+        find.byKey(const ValueKey<String>('shortcut-preset-reset-dialog')),
+        findsOneWidget,
+      );
+      expect(keysOf(bindings, id), [spare.trigger], reason: 'not yet answered');
+
+      await press(
+        tester,
+        find.byKey(
+          const ValueKey<String>('shortcut-preset-reset-cancel-button'),
+        ),
+      );
+      expect(keysOf(bindings, id), [spare.trigger]);
+
+      await press(tester, resetButton);
+      await press(
+        tester,
+        find.byKey(
+          const ValueKey<String>('shortcut-preset-reset-confirm-button'),
+        ),
+      );
+      expect(keysOf(bindings, id), defaults);
+    });
+
+    /// The ink [key]'s words are written in.
+    Color? inkOf(WidgetTester tester, String key) => tester
+        .widget<Text>(
+          find.descendant(
+            of: find.byKey(ValueKey<String>(key)),
+            matching: find.anyText(),
+          ),
+        )
+        .style
+        ?.color;
+
+    Color red(WidgetTester tester) =>
+        Theme.of(tester.element(search)).colorScheme.error;
+
+    /// A row two shelves deep and a row of another place — the clash under
+    /// test, and every fold over the first.
+    (String, String) twoPlaces(EditorShortcutBindings bindings) {
+      final deep = bindings.definitions.firstWhere(
+        (row) => row.shelf.path.length > 1,
+      );
+      final other = bindings.definitions.firstWhere(
+        (row) => row.shelf.path.first != deep.shelf.path.first,
+      );
+      return (deep.id, other.id);
+    }
+
+    Future<void> everyFoldOverTheRowIsRed(
+      WidgetTester tester,
+      EditorShortcutBindings bindings,
+      String id,
+    ) async {
+      final color = red(tester);
+      for (final shelf in shelfOf(bindings, id).path) {
+        await tester.ensureVisible(twirlOf(shelf));
+        await tester.pump();
+        expect(inkOf(tester, headingKeyOf(shelf)), color, reason: shelf.name);
+        await tester.tap(twirlOf(shelf));
+        await tester.pump();
+      }
+    }
+
+    testWidgets('a clash of keys stands red on every fold over it, step by '
+        'step down to its row, while the other places keep their ink', (
+      tester,
+    ) async {
+      final bindings = await pump(tester);
+      final (deep, other) = twoPlaces(bindings);
+      final place = shelfOf(bindings, deep).path.first;
+      final calm = ShortcutShelf.places.firstWhere(
+        (each) =>
+            each != place && each != shelfOf(bindings, other).path.first,
+      );
+      final accent = Theme.of(tester.element(search)).colorScheme.primary;
+      expect(inkOf(tester, headingKeyOf(place)), accent, reason: '⛔premise');
+
+      bindings
+        ..setActivators(deep, const [spare])
+        ..setActivators(other, const [spare]);
+      await tester.pump();
+
+      expect(inkOf(tester, headingKeyOf(calm)), accent);
+      expect(
+        inkOf(tester, headingKeyOf(shelfOf(bindings, other).path.first)),
+        red(tester),
+        reason: 'both sides of the clash',
+      );
+      await everyFoldOverTheRowIsRed(tester, bindings, deep);
+      final row = find.byKey(ValueKey<String>('shortcut-row-$deep'));
+      await tester.ensureVisible(row);
+      await tester.pump();
+      Color? rowInk() => tester
+          .widget<Text>(
+            find.descendant(
+              of: row,
+              matching: find.text(actionLabelOf(bindings.definitionFor(deep)!)),
+            ),
+          )
+          .style
+          ?.color;
+      expect(rowInk(), red(tester));
+
+      bindings.setActivators(other, const []);
+      await tester.pump();
+      expect(rowInk(), isNot(red(tester)), reason: 'it ended');
+    });
+
+    testWidgets('a clash of touch gestures stands red the same way', (
+      tester,
+    ) async {
+      final bindings = await pump(tester);
+      final (deep, other) = twoPlaces(bindings);
+      for (final id in [deep, other]) {
+        bindings.setTouchGesture(id, TouchGesture.values.last);
+      }
+      await tester.pump();
+      expect(bindings.touchConflictedActionIds, containsAll([deep, other]));
+      expect(bindings.conflictedActionIds, isEmpty, reason: '⛔premise');
+
+      await everyFoldOverTheRowIsRed(tester, bindings, deep);
+    });
+
+    testWidgets('the red says what is under a fold, whatever the search '
+        'shows of it', (tester) async {
+      final bindings = await pump(tester);
+      final (deep, other) = twoPlaces(bindings);
+      bindings
+        ..setActivators(deep, const [spare])
+        ..setActivators(other, const [spare]);
+      final place = shelfOf(bindings, deep).path.first;
+      final calm = bindings.definitions.firstWhere(
+        (row) => row.shelf.path.first == place && row.id != deep,
+      );
+      await tester.enterText(search, actionLabelOf(calm));
+      await tester.pump();
+      expect(
+        actionLabelOf(bindings.definitionFor(deep)!),
+        isNot(actionLabelOf(calm)),
+        reason: '⛔premise: the search leaves the clash out',
+      );
+
+      expect(inkOf(tester, headingKeyOf(place)), red(tester));
+    });
   });
 
   // F-230: the touch column picks from the shared list, 「없음」 first.

@@ -323,11 +323,10 @@ int _conteStartOf(StoryboardTimelineLayoutEntry entry) =>
 /// a hole to repair.
 ///
 /// The CAMERA lives inside its cut the same way (I-73-camera-row-Q4, 유저
-/// 2026-10-09: 「밖엔 애초에 존재못하게하는게 지금구조잖아」): the key on the
-/// cut's last frame comes in with the end, and the end stops short of every
-/// other key ([cameraDrawnFrameFloor]) — counted in the frames the cut is
-/// drawn for, [drawnFrameCount], so the のりしろ it owes is no length to
-/// trim.
+/// 2026-10-09: 「밖엔 애초에 존재못하게하는게 지금구조잖아」): the end pushes
+/// the keys it meets in, and stops where they have no frames left
+/// ([cameraDrawnFrameFloor]) — counted in the frames the cut is drawn for,
+/// [drawnFrameCount], so the のりしろ it owes is no length to trim.
 int minimumCutDurationFor(Cut cut, {required int drawnFrameCount}) {
   final layer = storyboardLayerForCut(cut);
   final conte = layer == null ? 1 : minimumCutDurationForStoryboardRow(layer);

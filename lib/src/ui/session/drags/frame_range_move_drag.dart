@@ -1568,8 +1568,8 @@ class FrameRangeMoveDrag {
         starts: starts,
         frameDelta: frameDelta,
       );
-      // …nor one that draws a cut past its camera keys: a のりしろ made
-      // shorter stops short of them (🗣️I-73-camera-row-Q7).
+      // …nor one that leaves a cut too few frames for its camera keys: a
+      // のりしろ made shorter pushes them in that far (🗣️I-73-camera-row-Q7).
       if (shifted == null ||
           !_transitions.keepsCameraKeys(
             row.copyWith(

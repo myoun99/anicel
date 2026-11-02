@@ -21,6 +21,8 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../../services/flutter_test_run.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_cache_invalidation.dart';
@@ -43,6 +45,7 @@ import '../../services/cut_frame_composite_plan.dart'
 import '../../services/playback/editor_cache_invalidation_hub.dart';
 import '../playback/frame_picture_store.dart';
 import '../playback/layer_frame_image_cache.dart';
+import '../quiet_turns.dart';
 import '../playback/stacked_frame_picture.dart' show FramePictureKey;
 import 'session_roles.dart';
 import 'cache_budgets.dart';
@@ -305,7 +308,23 @@ class RenderCaches {
   /// shows ([FramePictureKey]), so an edit asks for another picture and
   /// none needs telling ([FramePictures]).
   late final FramePictureStore<FramePictureKey> framePictureStore =
-      FramePictureStore();
+      FramePictureStore(
+        aheadInPieces: () => madeAheadInPieces(QuietTurns.instance),
+      );
+
+  /// Whether a frame made ahead goes in pieces though it fits at once: while
+  /// nothing plays (the store's `_layNow` has what it buys). ⛔Not ahead of a
+  /// run: what a run waits for is not to be slowed, and how it fares there
+  /// has not been measured.
+  @visibleForTesting
+  static bool madeAheadInPieces(QuietTurns turns) =>
+      aheadGoesInPieces && turns.atRest;
+
+  /// ⛔Off by itself under a test's clock: a patch into a picture made in
+  /// pieces leaves the pause its levels wait for pending past the test — 4
+  /// tests.
+  @visibleForTesting
+  static bool aheadGoesInPieces = !underFlutterTest;
 
   /// A5 — the trailing edge of an edit burst, so the warming queue
   /// restarts ONCE per burst instead of once per dab commit. Only the
@@ -313,8 +332,8 @@ class RenderCaches {
   /// stay synchronous, because a stale composite must be unservable the
   /// instant the stroke lands. The window costs nothing in production —
   /// warming cannot start until [PlaybackPrerenderScheduler.idleDelay]
-  /// (1200ms) of quiet anyway, so any window under that only merges
-  /// restarts it never delays.
+  /// of quiet anyway, so any window under that only merges restarts it
+  /// never delays.
   Timer? _warmDebounce;
 
   static final Duration _warmDebounceWindow =
@@ -341,6 +360,43 @@ class RenderCaches {
         return;
       }
       _changes.warmActiveCut();
+    });
+  }
+
+  /// Whether a history change starts the walk over ([framesMoved]) — the
+  /// app's way, and a test's that asks. ⛔Off by itself under a test's clock:
+  /// the quiet a walk waits for is nothing there
+  /// ([PlaybackPrerenderScheduler.idleDelay]), so it would run ahead of the
+  /// frame a change is on its way to — 28 tests at the last of their
+  /// commands, a walk's turn still pending, and two pins of a picture that
+  /// is moved found it laid anew.
+  @visibleForTesting
+  static bool walkFollowsHistory = !underFlutterTest;
+
+  /// What the frames show moved: warming yields to the edit, what it was
+  /// making goes with the walk it was made for ([FramePictureStore.lay]),
+  /// and it starts over from the playhead once the command is done — a
+  /// command's history comes before the session has stood up after it.
+  ///
+  /// 🗣️F-529 (유저 2026-11-01): 「어차피 화면 모든 프레임 바뀌니까 허용하고
+  /// 굽던거 버리고 다시굽는게 맞지않을까」 — every change that goes through
+  /// history, so the eye and the opacity too. 🔬S5_BA cut 353: told only of
+  /// its cels, a walk at rest stayed at rest with the bar emptied (4 s
+  /// watched, until a seek), and one on its way went on from where it stood
+  /// with the 43 frames behind it stale, where the frame on screen was laid
+  /// before it looked.
+  ///
+  /// ⛔Not [_warmDebounce]: commands do not come a dab at a time, and a timer
+  /// left by the last command of a test outlives its turn.
+  void framesMoved() {
+    _onEditActivity();
+    if (!walkFollowsHistory) {
+      return;
+    }
+    scheduleMicrotask(() {
+      if (!_sessionDisposed()) {
+        _changes.warmActiveCut();
+      }
     });
   }
 

@@ -111,7 +111,7 @@ void main() {
             home: Scaffold(
               body: TimelinePanel(
                 layers: [_drawing(a, 'A'), _drawing(b, 'B')],
-                activeLayerId: a,
+                activeLayer: ValueNotifier(a),
                 frameCursor: cursor,
                 playbackFrameCount: 12,
                 exposureStateForLayer: (_, _) =>

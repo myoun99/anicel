@@ -285,41 +285,83 @@ void main() {
       expect(many.vanishingPoints, hasLength(7));
     });
 
-    test('🚨its line density is held to 4…48, and draws twelve until it is '
-        'moved', () {
+    test('🚨a point\'s line density is held to 4…192, and draws twelve '
+        'until it is moved', () {
       PerspectiveShape withDensity(int density) => PerspectiveShape(
-        vanishingPoints: [VanishingPointAt(_point(1, 1))],
+        vanishingPoints: [VanishingPointAt(_point(1, 1), lineDensity: density)],
         eyeLevel: eyeLevel(),
-        lineDensity: density,
       );
+      int densityOf(PerspectiveShape shape) =>
+          shape.vanishingPoints.single.lineDensity;
 
       expect(() => withDensity(3), throwsArgumentError);
-      expect(() => withDensity(49), throwsArgumentError);
-      expect(withDensity(4).lineDensity, 4);
-      expect(withDensity(48).lineDensity, 48);
-      expect(
-        PerspectiveShape(
-          vanishingPoints: [VanishingPointAt(_point(1, 1))],
-          eyeLevel: eyeLevel(),
-        ).lineDensity,
-        12,
-      );
+      expect(() => withDensity(193), throwsArgumentError);
+      expect(densityOf(withDensity(4)), 4);
+      expect(densityOf(withDensity(192)), 192);
+      expect(VanishingPointAt(_point(1, 1)).lineDensity, 12);
     });
 
     test('🚨the density is written only where it is not twelve — and a '
-        'guide that says none draws twelve', () {
-      final plain = PerspectiveShape(
-        vanishingPoints: [VanishingPointAt(_point(1, 1))],
-        eyeLevel: eyeLevel(),
+        'point that says none draws twelve', () {
+      final family = VanishingPointTowards(dx: 0, dy: 1);
+      final lines = VanishingPointFromLines(
+        GuideLine(a: _point(0, 0), b: _point(10, 1)),
+        GuideLine(a: _point(0, 50), b: _point(10, 40)),
       );
-      expect(plain.toJson(), isNot(contains('lineDensity')));
-      expect((GuideShape.fromJson(plain.toJson()) as PerspectiveShape)
-          .lineDensity, 12);
+      for (final plain in [VanishingPointAt(_point(1, 1)), family, lines]) {
+        expect(plain.toJson(), isNot(contains('lineDensity')));
+        expect(VanishingPoint.fromJson(plain.toJson()).lineDensity, 12);
 
-      final dense = plain.copyWith(lineDensity: 30);
-      expect(dense.toJson()['lineDensity'], 30);
-      expect(GuideShape.fromJson(dense.toJson()), dense);
-      expect(dense, isNot(plain), reason: 'the density is part of it');
+        final dense = plain.drawing(30);
+        expect(dense.toJson()['lineDensity'], 30);
+        expect(VanishingPoint.fromJson(dense.toJson()), dense);
+        expect(dense, isNot(plain), reason: 'the density is part of it');
+        expect(dense.resolve().x, plain.resolve().x);
+        expect(dense.resolve().y, plain.resolve().y);
+      }
+    });
+
+    test('🚨a guide\'s opacity and colour, and its eye level\'s colour, are '
+        'written where they are set — and part of what it is', () {
+      final plain = DrawingGuide(
+        id: const GuideId('p'),
+        name: 'P',
+        shape: PerspectiveShape(
+          vanishingPoints: [VanishingPointAt(_point(1, 1))],
+          eyeLevel: eyeLevel(),
+        ),
+      );
+      expect(plain.opacity, 1);
+      expect(plain.color, isNull);
+      expect(plain.toJson().keys, isNot(contains('opacity')));
+      expect(plain.toJson().keys, isNot(contains('color')));
+      expect(
+        plain.shape.toJson().keys,
+        isNot(contains('eyeLevelColor')),
+      );
+      expect(DrawingGuide.fromJson(plain.toJson()), plain);
+
+      final worn = plain.copyWith(
+        opacity: 0.4,
+        color: 0xFF112233,
+        shape: (plain.shape as PerspectiveShape).copyWith(
+          eyeLevelColor: 0xFF445566,
+        ),
+      );
+      final back = DrawingGuide.fromJson(worn.toJson());
+      expect(back, worn);
+      expect(back.opacity, 0.4);
+      expect(back.color, 0xFF112233);
+      expect(
+        (back.shape as PerspectiveShape).eyeLevelColor,
+        0xFF445566,
+      );
+      expect(plain.copyWith(opacity: 0.4), isNot(plain));
+      expect(plain.copyWith(color: 0xFF112233), isNot(plain));
+      expect(
+        plain.copyWith(opacity: 0.4).hashCode,
+        isNot(plain.hashCode),
+      );
     });
 
     test('round-trips through JSON', () {

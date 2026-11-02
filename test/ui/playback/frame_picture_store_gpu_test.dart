@@ -101,6 +101,93 @@ void main() {
   );
 
   test(
+    'every level of a picture widened, a patch across its old edge, is the '
+    'level of the picture laid over all of it (F-533)',
+    () async {
+      void past(ui.Canvas canvas) {
+        frame(canvas);
+        canvas.drawRect(
+          const ui.Rect.fromLTRB(-256, -128, side + 128, 0),
+          ui.Paint()..color = const ui.Color(0xFF20C040),
+        );
+        canvas.drawRect(
+          const ui.Rect.fromLTRB(-256, 0, 0, side + 0.0),
+          ui.Paint()..color = const ui.Color(0x80C0C020),
+        );
+      }
+
+      const across = ui.Rect.fromLTWH(-19, 301, 37, 41);
+      void pastWithPatch(ui.Canvas canvas) {
+        past(canvas);
+        canvas
+          ..save()
+          ..clipRect(across)
+          ..drawPaint(ui.Paint()..color = const ui.Color(0xFFFFEE00))
+          ..restore();
+      }
+
+      final store = FramePictureStore<String>();
+      const extent = ui.Rect.fromLTWH(0, 0, side + 0.0, side + 0.0);
+      final widened = await store.lay('before', (
+        extent: extent,
+        outside: const ui.Color(0xFFFFFFFF),
+        draw: frame,
+      ));
+      // The way a stroke goes: a step in it first, its levels waiting.
+      store.patch(from: 'before', to: 'stepped', rect: patch, draw: withPatch);
+      await store.landingOf('stepped');
+      final widening = store.widen(
+        key: 'stepped',
+        over: const ui.Rect.fromLTRB(-200, -5, side + 0.0, side + 0.0),
+        draw: past,
+      );
+      expect(await widening, isTrue);
+      expect(
+        widened!.extent,
+        const ui.Rect.fromLTRB(-256, -128, side + 0.0, side + 0.0),
+      );
+      expect(
+        store.patch(
+          from: 'stepped',
+          to: 'after',
+          rect: across,
+          draw: pastWithPatch,
+        ),
+        isTrue,
+      );
+      expect(await store.landingOf('after'), isTrue);
+      expect(store.peek('after'), same(widened));
+      widened.readAt(0.25);
+      await store.settled();
+
+      final fresh = await store.lay('fresh', (
+        extent: widened.extent,
+        outside: const ui.Color(0xFFFFFFFF),
+        draw: (canvas) {
+          pastWithPatch(canvas);
+          canvas
+            ..save()
+            ..clipRect(patch)
+            ..drawPaint(ui.Paint()..color = const ui.Color(0xFFFFEE00))
+            ..restore();
+        },
+      ));
+      final want = await _levels(fresh!.image);
+      final got = await _levels(widened.image);
+      expect(got.length, want.length);
+      for (var level = 0; level < want.length; level += 1) {
+        expect(
+          _mostApart(got[level], want[level]),
+          lessThanOrEqualTo(1),
+          reason: 'level $level',
+        );
+      }
+      store.dispose();
+    },
+    skip: noFlutterGpu,
+  );
+
+  test(
     'patches asked back to back land as the picture laid with them all, '
     'a later one over an earlier at every level',
     () async {

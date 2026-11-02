@@ -156,7 +156,7 @@ void main() {
       }, duration: 120),
     );
     expect(
-      cell.source.cameraLines.length * line,
+      cell.source.fixedLines.camera.length * line,
       greaterThan(target.box.bottom - cell.actionRect.top),
       reason: 'fixture: the lines run past the rows',
     );

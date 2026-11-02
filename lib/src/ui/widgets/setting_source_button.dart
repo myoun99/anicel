@@ -5,6 +5,7 @@ import '../theme/app_theme.dart';
 import '../theme/disabled_ink.dart';
 import '../theme/text_on_ground.dart' show textOnColor;
 import 'app_tooltip.dart';
+import 'ellipsis_text.dart';
 
 /// The button at a settings row's END that says whether anything moves the
 /// setting and opens the window that sets what does — the curve button
@@ -217,10 +218,9 @@ class SettingSourceName extends StatelessWidget {
       onTap: silentPress(onPressed),
       child: Align(
         alignment: Alignment.centerLeft,
-        child: Text(
+        child: EllipsisText(
           label,
           maxLines: 1,
-          overflow: TextOverflow.ellipsis,
           style: TextStyle(
             fontSize: 10,
             color: lit ? AppColors.accent : SettingSourceButton.offInk,

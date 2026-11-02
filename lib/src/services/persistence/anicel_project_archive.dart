@@ -65,6 +65,42 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v31 (2026-11-02, F-542 — 유저: 「둘 다 동일한 메모고」, 「고정텍스트를
+/// 카메라 움직임처럼 전체설정이랑 현재컷 설정 두개로 나눔」): a timesheet
+/// page has a memo on its right as on its left (`CutMetadata.rightPageNotes`,
+/// a list written only when a page has one), and whether a paper writes its
+/// fixed lines is said for the work (`TimesheetInfo.sheetFixedText`, written
+/// only where it is off) and for a cut (`CutMetadata.conteFixedText` ·
+/// `sheetFixedText`, written only where the cut says). A v30 build reads
+/// none of the words: it opens the cut without its right memos and its
+/// settings, and its next save writes it back without them — and nothing
+/// said. The bump turns that into a refusal ([decodeAnicelProjectDocument]).
+///
+/// ⚠️A number of its own, though v30 landed the same morning: a build made
+/// between the two says v30 and loses these words, and the number is the
+/// only thing that tells them apart. That weighing is mine, not the user's.
+///
+/// ⚠️No older shape was read for it, and it did not move the floor
+/// ([anicelOldestReadFormatVersion]): a cut that says none of them has no
+/// right memo and takes the format window's setting at THIS version too, so
+/// a v30 file is such a document.
+///
+/// v30 (2026-11-02, F-544 — 유저: 「선 밀도는 소실점별로 정하게」,
+/// 「192까지 늘려도될듯」, 「가이드별로 색 바꿀수있게」, 「불투명도 막대」): a
+/// vanishing point says how densely it draws (`lineDensity` on the point,
+/// where it stood on the shape), up to 192; a guide says its `opacity` and
+/// `color`, an eye level its `eyeLevelColor`. A v29 build refuses a point
+/// of more than 48 lines with an error that names nothing a person could
+/// act on, and reads none of the rest — its next save writes the guide back
+/// plain. The bump turns both into a refusal
+/// ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape was read for it, and it did not move the floor
+/// ([anicelOldestReadFormatVersion]): a v29 document opens, the word
+/// `lineDensity` on its shape goes unread, and each of its points draws
+/// twelve. One bar puts that back; a floor would refuse every v29 file for
+/// it. That weighing is mine, not the user's.
+///
 /// v29 (2026-10-24, card `a-cooled-empty-cel-reads-drawn`): a cel's blob
 /// says in its head whether its picture shows anything (cel blob v4,
 /// `AnicelCelBlob.showsSomething`), so a cel kept in a file answers whether
@@ -452,7 +488,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 29;
+const int anicelFormatVersion = 31;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).

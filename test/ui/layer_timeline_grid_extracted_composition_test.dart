@@ -130,7 +130,7 @@ Widget _grid({int currentFrameIndex = 0, int playbackFrameCount = 24}) {
         height: 260,
         child: LayerTimelineGrid(
           hooks: TimelineGridHooks(
-            activeLayerId: const LayerId('layer-1'),
+            activeLayer: ValueNotifier(const LayerId('layer-1')),
             frameCursor: ValueNotifier<int>(currentFrameIndex),
             playbackFrameCount: playbackFrameCount,
             exposureStateForLayer: (_, _) =>

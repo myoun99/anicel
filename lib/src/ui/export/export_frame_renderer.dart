@@ -50,7 +50,7 @@ import '../../services/camera_projection_matrix.dart'
     show cameraMovesPixelsWhole;
 import '../camera/camera_frame_render_service.dart';
 import '../camera/camera_path_overlay.dart';
-import '../canvas/guide_overlay.dart' show paintGuidesAtRest;
+import '../canvas/guide_overlay.dart' show paintGuideLines;
 import '../conte/conte_fonts.dart' show conteTextStyle;
 import '../sheet_painting.dart';
 import '../../services/composite_effect_paint.dart' show alphaOnly;
@@ -1713,7 +1713,7 @@ class ExportFrameRenderer {
   /// hand laid them in ([ExportCelGroupTask.listedCut]) that a cel wears
   /// ([exportLaidGuidesOf]), in [color]: the picture 래스터라이즈 bakes,
   /// the faint line the canvas draws at rest on the paper alone
-  /// ([paintGuidesAtRest]), at the camera's work's sizes — a pixel of the
+  /// ([paintGuideLines]), at the camera's work's sizes — a pixel of the
   /// file for each pixel of the screen (I-89-Q20). Null where none is laid.
   ///
   /// 🗣️I-105-Q2 (유저 2026-10-16): 「래스터라이즈와 같은 … 모습」 — and
@@ -1731,7 +1731,7 @@ class ExportFrameRenderer {
     if (guides.isEmpty) {
       return null;
     }
-    return (canvas, _) => paintGuidesAtRest(
+    return (canvas, _) => paintGuideLines(
       canvas,
       guides,
       canvasSize: cut.canvasSize,

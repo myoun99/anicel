@@ -139,6 +139,13 @@ class TimelineTabHost extends StatefulWidget {
   /// chain to show.
   final ValueNotifier<TransformToolOptions>? transformOptions;
 
+  /// What the timeline prints of [session], to the panel host that hears
+  /// the session through it: all of it but where the stand went, which what
+  /// shows it hears itself ([TimelinePanel.activeLayer],
+  /// [EditorSessionManager.newsRevision]).
+  static Object printedBy(EditorSessionManager session) =>
+      session.newsRevision;
+
   @override
   State<TimelineTabHost> createState() => _TimelineTabHostState();
 }
@@ -505,7 +512,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             Widget? child,
           ) => TimelinePanel(
             layers: _displayLayers(),
-            activeLayerId: _session.activeLayerId,
+            activeLayer: _session.standing.activeLayerListenable,
             // #29: the (project, cut) world the rows' resolvers answer
             // from. Travels WITH the rebuild that carries the new cut's
             // rows — a setter could skew from what is on screen; a build

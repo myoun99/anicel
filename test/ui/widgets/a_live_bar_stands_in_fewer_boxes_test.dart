@@ -11,6 +11,8 @@ import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/ground_ink_writing.dart';
 import 'package:anicel/src/ui/widgets/owning_axis_grip.dart';
 
+import '../../helpers/text_finders.dart';
+
 /// A live bar stands in FEWER BOXES (card frame-panels-build-in-one-frame,
 /// 2026-10-28): its grip says its node, its cursor and its wheel where a
 /// [Semantics], a [Listener] and a [MouseRegion] stood over it, and the box
@@ -117,7 +119,7 @@ void main() {
         'pixels': await pixels(tester),
         'size': box.size,
         'words': [
-          for (final words in find.byType(RichText).evaluate())
+          for (final words in find.anyRichText().evaluate())
             tester.getRect(find.byWidget(words.widget)),
         ],
         if (asksNeeds) ...{
@@ -361,7 +363,7 @@ void main() {
           for (final words in find
               .descendant(
                 of: find.byType(FieldSliderTrack),
-                matching: find.byType(RichText),
+                matching: find.anyRichText(),
               )
               .evaluate())
             tester.getRect(find.byWidget(words.widget)).shift(-track.topLeft),

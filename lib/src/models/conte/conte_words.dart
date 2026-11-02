@@ -15,6 +15,10 @@ class ConteWords {
     required this.seconds,
     required this.cutsSuffix,
     required this.artist,
+    required this.linked,
+    required this.cutHead,
+    required this.cutTail,
+    required this.wholeCut,
   });
 
   /// The head of the body's five columns.
@@ -30,6 +34,19 @@ class ConteWords {
   /// The cover's staff line's name for the conte artist.
   final String artist;
 
+  /// What opens the line naming a cut's 겸용 cuts — 「겸용 c100,c102」
+  /// (`SheetFixedLines.writtenIn`, F-531).
+  final String linked;
+
+  /// What opens the line of a fade on a cut's head — 「カット頭 FI (0+6)」 —
+  /// and of one on its tail, 「カット尻」 (`SheetFixedLines.writtenIn`, F-540).
+  final String cutHead;
+  final String cutTail;
+
+  /// What a timesheet page writes after a camera move that runs the whole
+  /// cut — 「A-B PAN (全尺)」 (`sheetCameraLine`, F-542).
+  final String wholeCut;
+
   @override
   bool operator ==(Object other) =>
       other is ConteWords &&
@@ -39,9 +56,24 @@ class ConteWords {
       other.dialogue == dialogue &&
       other.seconds == seconds &&
       other.cutsSuffix == cutsSuffix &&
-      other.artist == artist;
+      other.artist == artist &&
+      other.linked == linked &&
+      other.cutHead == cutHead &&
+      other.cutTail == cutTail &&
+      other.wholeCut == wholeCut;
 
   @override
-  int get hashCode =>
-      Object.hash(cut, picture, action, dialogue, seconds, cutsSuffix, artist);
+  int get hashCode => Object.hash(
+    cut,
+    picture,
+    action,
+    dialogue,
+    seconds,
+    cutsSuffix,
+    artist,
+    linked,
+    cutHead,
+    cutTail,
+    wholeCut,
+  );
 }

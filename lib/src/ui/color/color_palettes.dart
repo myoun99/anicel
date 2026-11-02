@@ -38,6 +38,7 @@ import '../theme/app_theme.dart' show AppColors, AppCursors, AppShapes;
 import '../theme/disabled_ink.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/color_swatch_button.dart' show showColorPickerPopup;
+import '../widgets/ellipsis_text.dart';
 import '../widgets/inline_edit_field.dart';
 import '../widgets/owning_draggable.dart';
 import '../widgets/panel_flyout.dart';
@@ -789,11 +790,10 @@ class _ColorPalettesPanelState extends State<ColorPalettesPanel> {
             alignment: Alignment.centerLeft,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 2),
-              child: Text(
+              child: EllipsisText(
                 palette.name,
                 style: style,
                 maxLines: 1,
-                overflow: TextOverflow.ellipsis,
               ),
             ),
           ),

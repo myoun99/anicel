@@ -40,8 +40,9 @@ import '../../helpers/settle_async.dart';
 /// A screen that draws nothing live still makes no picture of a page alone
 /// (`FramePictures.drawsOnlyItsPage`), and draws it as it stands.
 ///
-/// The writes never land ([WritesNeverLand]): a step on its way into the
-/// picture is the oracle, the GPU's own writes are pinned elsewhere
+/// A step's render waits ([RendersHeld.holdsRenders]), its write never lands
+/// ([WritesNeverLand]): a step on its way into the picture is the oracle,
+/// the GPU's own writes are pinned elsewhere
 /// (`a_stroke_is_written_into_the_picture_shown_test`).
 void main() {
   const tileSize = 16;
@@ -98,13 +99,17 @@ void main() {
     lineage: 'a-pen-on-a-blank-page',
   );
 
+  /// The GPU of the page last made ([aPage]).
+  late WritesNeverLand gpu;
+
   /// The cels, their pictures and the store of the frames', torn down after.
   ({BrushFrameStore cels, StackRun run, FramePictureStore<FramePictureKey> store})
   aPage(List<CompositeNode<CanvasStackRow>> Function() nodes) {
     final cels = BrushFrameStore();
     final images = LayerFrameImageCache(frameStore: cels);
     addTearDown(images.dispose);
-    final store = FramePictureStore<FramePictureKey>(gpu: WritesNeverLand());
+    gpu = WritesNeverLand();
+    final store = FramePictureStore<FramePictureKey>(gpu: gpu);
     addTearDown(store.dispose);
     final run = runOver(
       images,
@@ -170,8 +175,9 @@ void main() {
     );
     await lendBothClocks(tester, rounds: 2);
 
+    gpu.holdsRenders = true;
     step(overlay);
-    await tester.pump();
+    await aFrameAndItsStep(tester);
     expect(
       store.landingOf(keptByTheCanvas(tester, blank)),
       isNotNull,
@@ -224,8 +230,9 @@ void main() {
       nodes: nodes,
       live: liveOver(BitmapSurface(canvasSize: canvasSize, tileSize: tileSize)),
     );
+    gpu.holdsRenders = true;
     step(overlay);
-    await tester.pump();
+    await aFrameAndItsStep(tester);
     expect(
       store.landingOf(keptByTheCanvas(tester, blank)),
       isNotNull,
@@ -249,6 +256,58 @@ void main() {
       isNotNull,
       reason: 'the stroke landed on the cel the pen was on: the picture '
           'moves to the frame\'s next key — ⛔not laid again whole',
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('🚨and so has one that comes with no cel yet: the pen is on what '
+      'it was on, nothing, and the picture holds nothing of its row', (
+    tester,
+  ) async {
+    final nodes = rowOn(null);
+    final (cels: _, :run, :store) = aPage(() => nodes);
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+    addTearDown(overlay.dispose);
+    final blank = run.pictures.keyOfStack(nodes, page);
+
+    await standOn(
+      tester,
+      run,
+      nodes: nodes,
+      live: (
+        activeSurfacePainter: null,
+        floatOverlay: null,
+        liftedRows: const {},
+      ),
+    );
+    expect(
+      await settleAsync(tester, () => store.bytesOf(blank) != null),
+      isTrue,
+      reason: '⛔premise: the page\'s picture is taken with no pen\'s row',
+    );
+    await lendBothClocks(tester, rounds: 2);
+
+    await standOn(
+      tester,
+      run,
+      nodes: nodes,
+      live: (
+        activeSurfacePainter: painterOver(
+          BitmapSurface(canvasSize: canvasSize, tileSize: tileSize),
+          overlay,
+        ),
+        floatOverlay: null,
+        liftedRows: const {},
+      ),
+    );
+    gpu.holdsRenders = true;
+    step(overlay);
+    await aFrameAndItsStep(tester);
+    expect(
+      store.landingOf(keptByTheCanvas(tester, blank)),
+      isNotNull,
+      reason: 'the step is on its way into the page\'s picture',
     );
 
     await tester.pumpWidget(const SizedBox());

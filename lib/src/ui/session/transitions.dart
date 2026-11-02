@@ -160,9 +160,9 @@ class Transitions {
       trackTransitionOwner(layerId) != null;
 
   /// Whether [row] — a track's transition row as a drag would leave it —
-  /// draws none of the track's cuts past its camera keys
+  /// leaves each of the track's cuts a frame for every camera key
   /// ([transitionRowKeepsCameraKeys], I-73-camera-row-Q7): the drags that
-  /// make a のりしろ shorter stop short of them.
+  /// make a のりしろ shorter stop where it does not.
   bool keepsCameraKeys(Layer row) => switch (trackTransitionOwner(row.id)) {
     final owner? => transitionRowKeepsCameraKeys(
       owner,
@@ -172,10 +172,9 @@ class Transitions {
     null => true,
   };
 
-  /// The cameras [row] moves once written — the key on the last frame of
-  /// each cut it draws for other frames (`cameraFollowingItsEnd`,
-  /// I-73-camera-row-Q7) — so a drag shows them where its release leaves
-  /// them.
+  /// The cameras [row] moves once written — the keys of each cut it draws
+  /// for other frames (`cameraFollowingItsEnd`, I-73-camera-row-Q7) — so a
+  /// drag shows them where its release leaves them.
   Map<CutId, CutCamera> camerasCarriedBy(Layer row) {
     final owner = trackTransitionOwner(row.id);
     if (owner == null) {

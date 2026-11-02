@@ -75,7 +75,7 @@ void main() {
     return MaterialApp(
       home: Scaffold(
         body: LayerTimelineGrid(
-hooks: TimelineGridHooks(activeLayerId: layers.first.id,
+hooks: TimelineGridHooks(activeLayer: ValueNotifier(layers.first.id),
 frameCursor: cursor,
 playbackFrameCount: 24,
 exposureStateForLayer: stateFor,
@@ -143,7 +143,7 @@ metrics: metrics,
     TimelineLaneRangeHooks? laneRange,
   }) {
     final gridHooks = TimelineGridHooks(
-      activeLayerId: const LayerId('layer-a'),
+      activeLayer: ValueNotifier(const LayerId('layer-a')),
       frameCursor: cursor,
       playbackFrameCount: 120,
       exposureStateForLayer: stateFor,
@@ -513,7 +513,7 @@ metrics: metrics,
       MaterialApp(
         home: Scaffold(
           body: LayerTimelineGrid(
-hooks: TimelineGridHooks(activeLayerId: const LayerId('layer-a'),
+hooks: TimelineGridHooks(activeLayer: ValueNotifier(const LayerId('layer-a')),
 frameCursor: cursor,
 playbackFrameCount: 24,
 exposureStateForLayer: stateFor,
@@ -634,7 +634,7 @@ metrics: const TimelineGridMetrics(
       MaterialApp(
         home: Scaffold(
           body: LayerTimelineGrid(
-hooks: TimelineGridHooks(activeLayerId: const LayerId('se-1'),
+hooks: TimelineGridHooks(activeLayer: ValueNotifier(const LayerId('se-1')),
 frameCursor: cursor,
 playbackFrameCount: 24,
 dragPreview: dragPreview,
@@ -720,7 +720,7 @@ metrics: const TimelineGridMetrics(
       MaterialApp(
         home: Scaffold(
           body: LayerTimelineGrid(
-hooks: TimelineGridHooks(activeLayerId: const LayerId('se-1'),
+hooks: TimelineGridHooks(activeLayer: ValueNotifier(const LayerId('se-1')),
 frameCursor: cursor,
 playbackFrameCount: 24,
 exposureStateForLayer: stateFor,
@@ -809,7 +809,7 @@ metrics: const TimelineGridMetrics(
       MaterialApp(
         home: Scaffold(
           body: LayerTimelineGrid(
-hooks: TimelineGridHooks(activeLayerId: const LayerId('anim-1'),
+hooks: TimelineGridHooks(activeLayer: ValueNotifier(const LayerId('anim-1')),
 frameCursor: cursor,
 playbackFrameCount: 24,
 exposureStateForLayer: stateFor,
@@ -1274,7 +1274,7 @@ metrics: const TimelineGridMetrics(
       MaterialApp(
         home: Scaffold(
           body: LayerTimelineGrid(
-hooks: TimelineGridHooks(activeLayerId: const LayerId('layer-a'),
+hooks: TimelineGridHooks(activeLayer: ValueNotifier(const LayerId('layer-a')),
 frameCursor: cursor,
 playbackFrameCount: 24,
 exposureStateForLayer: stateFor,
@@ -1312,7 +1312,7 @@ layers: [blockLayer('layer-a')],
       MaterialApp(
         home: Scaffold(
           body: XSheetTimelineGrid(
-hooks: TimelineGridHooks(activeLayerId: const LayerId('layer-a'),
+hooks: TimelineGridHooks(activeLayer: ValueNotifier(const LayerId('layer-a')),
 frameCursor: cursor,
 playbackFrameCount: 24,
 exposureStateForLayer: stateFor,
@@ -1390,7 +1390,7 @@ layers: [blockLayer('layer-a'), blockLayer('layer-b', start: 10)],
         home: Scaffold(
           body: XSheetTimelineGrid(
             hooks: TimelineGridHooks(
-              activeLayerId: const LayerId('layer-a'),
+              activeLayer: ValueNotifier(const LayerId('layer-a')),
               frameCursor: cursor,
               playbackFrameCount: 24,
               exposureStateForLayer: stateFor,
@@ -1700,7 +1700,7 @@ layers: [blockLayer('layer-a'), blockLayer('layer-b', start: 10)],
         MaterialApp(
           home: Scaffold(
             body: LayerTimelineGrid(
-hooks: TimelineGridHooks(activeLayerId: const LayerId('layer-a'),
+hooks: TimelineGridHooks(activeLayer: ValueNotifier(const LayerId('layer-a')),
 frameCursor: cursor,
 playbackFrameCount: 24,
 exposureStateForLayer: stateFor,
@@ -1872,7 +1872,7 @@ metrics: const TimelineGridMetrics(
         MaterialApp(
           home: Scaffold(
             body: LayerTimelineGrid(
-hooks: TimelineGridHooks(activeLayerId: const LayerId('layer-a'),
+hooks: TimelineGridHooks(activeLayer: ValueNotifier(const LayerId('layer-a')),
 frameCursor: cursor,
 playbackFrameCount: 24,
 exposureStateForLayer: stateFor,
@@ -1963,7 +1963,7 @@ metrics: const TimelineGridMetrics(
         MaterialApp(
           home: Scaffold(
             body: LayerTimelineGrid(
-hooks: TimelineGridHooks(activeLayerId: const LayerId('layer-a'),
+hooks: TimelineGridHooks(activeLayer: ValueNotifier(const LayerId('layer-a')),
 frameCursor: cursor,
 playbackFrameCount: 24,
 dragPreview: dragPreview,

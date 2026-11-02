@@ -53,6 +53,7 @@ import 'timeline_cell_probe.dart';
 import '../../helpers/named_finders.dart';
 import '../../helpers/timeline_host.dart';
 import '../../helpers/number_pad_keyboard.dart';
+import '../../helpers/text_finders.dart';
 
 /// A straight key that holds from there on — AE's Toggle Hold Keyframe.
 const _heldOut = SidesKeyMark(
@@ -1353,7 +1354,7 @@ void main() {
                     'timeline-lane-value-lane-cam-layer-scale',
                   ),
                 ),
-                matching: find.byType(Text),
+                matching: find.anyText(),
               ),
             )
             .data,
@@ -1407,7 +1408,7 @@ void main() {
                     'timeline-lane-value-lane-cam-layer-scale',
                   ),
                 ),
-                matching: find.byType(Text),
+                matching: find.anyText(),
               ),
             )
             .data,
@@ -1540,7 +1541,7 @@ void main() {
                     'timeline-lane-value-lane-cam-layer-scale',
                   ),
                 ),
-                matching: find.byType(Text),
+                matching: find.anyText(),
               ),
             )
             .data,
@@ -1583,7 +1584,7 @@ void main() {
                     'timeline-lane-value-lane-cam-layer-scale',
                   ),
                 ),
-                matching: find.byType(Text),
+                matching: find.anyText(),
               ),
             )
             .data,
@@ -1800,7 +1801,7 @@ void main() {
               of: find.byKey(
                 const ValueKey<String>('xsheet-lane-value-lane-cam-layer-scale'),
               ),
-              matching: find.byType(Text),
+              matching: find.anyText(),
             ),
           )
           .map((text) => text.data ?? '')

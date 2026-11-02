@@ -78,8 +78,11 @@ class LayerVerbs {
   /// throw skipped the refresh and lost the undo step — 「삭제해도
   /// 반응없음. 다른 레이어 이동하니까 삭제되있음」. Above it they went first,
   /// one by one, which is why that side worked.
-  List<LayerId> deletableSelectedLayerIds() {
-    final ids = selectedLayerIdsWhere(canDeleteLayer);
+  List<LayerId> deletableSelectedLayerIds() =>
+      rowsNotTakenAlong(selectedLayerIdsWhere(canDeleteLayer));
+
+  /// [ids] less the rows another of them takes along ([rowsHeldBy]).
+  List<LayerId> rowsNotTakenAlong(List<LayerId> ids) {
     final takenAlong = _takenAlongBy(ids);
     return [
       for (final id in ids)
@@ -126,12 +129,6 @@ class LayerVerbs {
           row.id,
     };
   }
-
-  /// Whether a delete of [layer] takes it ALONE: it may go, and nothing goes
-  /// with it ([rowsHeldBy]) — what a 잘라내기 may lift, its board holding the
-  /// row and nothing besides (I-123: a base's attach rows are no copy's).
-  bool deletesAlone(Layer layer) =>
-      canDeleteLayer(layer) && rowsHeldBy([layer.id]).isEmpty;
 
   /// The selected rows that may be DUPLICATED (⑨'s 복사).
   ///
@@ -602,9 +599,9 @@ class LayerVerbs {
   /// loop's feet.
   ///
   /// No row named here is one another of them takes along — the selection's
-  /// delete leaves those out ([deletableSelectedLayerIds]) and a 잘라내기
-  /// lifts only rows that go alone ([deletesAlone]) — so no removal finds
-  /// its row already gone. ↩️The order was thought to answer that too, for
+  /// delete and a 잘라내기 both leave those out ([rowsNotTakenAlong]) — so
+  /// no removal finds its row already gone. ↩️The order was thought to
+  /// answer that too, for
   /// an attach cascade; it did only while the attach rows stood above their
   /// base (F-464).
   void deleteLayers(List<LayerId> ids, {required String step}) {

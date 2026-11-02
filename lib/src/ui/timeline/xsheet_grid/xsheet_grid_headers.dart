@@ -120,7 +120,6 @@ class _XSheetGridHeaders {
       _state._berths,
       entry,
       (
-        active: entry.layer.id == grid.hooks.activeLayerId,
         facts: facts,
         drag: drag,
       ),

@@ -19,6 +19,7 @@ import '../../helpers/brush_canvas_fixture.dart';
 import '../../helpers/canvas_pill.dart';
 import '../../helpers/dart_sources.dart';
 import '../../helpers/number_pad_keyboard.dart';
+import '../../helpers/text_finders.dart';
 
 /// 🗣️I-27 (유저 2026-09-13): 「설정 줌 스냅 근처에 최대 줌 제한기능. 100%이면
 /// 100% 넘어서 확대하지 못하게 락 거는용도. 축소는 이전처럼 자유. 동시에
@@ -199,7 +200,7 @@ void main() {
             of: find.byKey(
               const ValueKey<String>('canvas-viewport-zoom-label'),
             ),
-            matching: find.byType(Text),
+            matching: find.anyText(),
           ),
         )
         .data!;

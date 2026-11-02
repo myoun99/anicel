@@ -49,7 +49,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: LayerTimelineGrid(
-hooks: TimelineGridHooks(activeLayerId: const LayerId('layer-1'),
+hooks: TimelineGridHooks(activeLayer: ValueNotifier(const LayerId('layer-1')),
 frameCursor: cursor,
 playbackFrameCount: 20,
 exposureStateForLayer: stateFor,
@@ -99,7 +99,7 @@ layers: layers,
       MaterialApp(
         home: Scaffold(
           body: XSheetTimelineGrid(
-hooks: TimelineGridHooks(activeLayerId: const LayerId('layer-1'),
+hooks: TimelineGridHooks(activeLayer: ValueNotifier(const LayerId('layer-1')),
 frameCursor: cursor,
 playbackFrameCount: 20,
 exposureStateForLayer: stateFor,

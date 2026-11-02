@@ -1,4 +1,5 @@
 import '../widgets/app_tooltip.dart';
+import '../widgets/ellipsis_text.dart';
 import '../widgets/empty_state_text.dart';
 import '../widgets/app_icon_button.dart';
 import 'dart:async' show unawaited;
@@ -453,7 +454,7 @@ class MediaPoolPanel extends StatelessWidget {
           ),
           const SizedBox(width: 6),
           Expanded(
-            child: Text(
+            child: EllipsisText(
               // The count's position differs by language, so the string
               // carries the slot rather than the call site carrying the
               // word order.
@@ -462,7 +463,6 @@ class MediaPoolPanel extends StatelessWidget {
                 fontSize: 12,
                 color: colorScheme.onErrorContainer,
               ),
-              overflow: TextOverflow.ellipsis,
             ),
           ),
           if (onRelinkMissing != null)
@@ -575,10 +575,9 @@ class MediaPoolPanel extends StatelessWidget {
                   Row(
                     children: [
                       Flexible(
-                        child: Text(
+                        child: EllipsisText(
                           asset.name,
                           maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                           style: _nameLine,
                         ),
                       ),
@@ -598,10 +597,9 @@ class MediaPoolPanel extends StatelessWidget {
                   // hover away and no longer the only thing on offer.
                   AppTooltip(
                     message: asset.path,
-                    child: Text(
+                    child: EllipsisText(
                       _subtitleFor(asset),
                       maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 9,
                         color: colorScheme.onSurfaceVariant,

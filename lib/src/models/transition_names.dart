@@ -16,7 +16,7 @@ import 'transition_geometry.dart';
 ///
 /// * an O.L joins two cuts: it starts at the cut whose end it crosses and
 ///   ends at the cut whose start it crosses, each written as that cut's name
-///   after a `c` ([transitionEndName]), and it is named [olWord] — the word
+///   after a `c` ([writtenCutName]), and it is named [olWord] — the word
 ///   in the language the reader prints in;
 /// * a one-sided fade's only target is its own cut (D26), which the sheet or
 ///   row it is read on already names — it writes no ends and goes by its
@@ -49,10 +49,10 @@ Layer transitionRowNamedByItsCuts({
           )
         : null;
     final text = twoSided ? olWord : null;
-    final from = ends?.leaving == null ? null : transitionEndName(ends!.leaving!);
+    final from = ends?.leaving == null ? null : writtenCutName(ends!.leaving!);
     final to = ends?.entering == null
         ? null
-        : transitionEndName(ends!.entering!);
+        : writtenCutName(ends!.entering!);
     final same =
         event.text == text && event.valueA == from && event.valueB == to;
     named[entry.key] = same
@@ -63,9 +63,9 @@ Layer transitionRowNamedByItsCuts({
   return changed ? row.copyWith(instructions: named) : row;
 }
 
-/// How a cut is written at a transition's end: its name after a `c`, so
-/// `301` reads as a cut (F-229).
-String transitionEndName(Cut cut) => 'c${cut.name}';
+/// How a line on a sheet writes a cut — a transition's end, a 겸용 cut's
+/// others: its name after a `c`, so `301` reads as a cut (F-229).
+String writtenCutName(Cut cut) => 'c${cut.name}';
 
 /// The cut whose END `[start, end)` crosses and the cut whose START it
 /// crosses — the crossing test [transitionSpanFires] makes for a cut's

@@ -94,7 +94,7 @@ void main() {
     expect(timelineHeaderModel(tester, 23).label, '24');
     expect(timelineHeaderModel(tester, 24).label, '1');
     expect(timelineHeaderModel(tester, 25).label, '2');
-    expect(timelineHeaderModel(tester, 24).secondsLabel, '1 p2');
+    expect(timelineHeaderModel(tester, 24).secondsLabel, '0 p2');
     expect(timelineHeaderModel(tester, 23).secondsLabel, '');
   });
 

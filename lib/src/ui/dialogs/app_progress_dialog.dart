@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
+import '../widgets/ellipsis_text.dart';
 
 /// What a [AppProgressDialog] is showing right now.
 ///
@@ -149,7 +150,7 @@ class AppProgressDialog extends StatelessWidget {
                 child: ValueListenableBuilder<String>(
                   valueListenable:
                       runningStatus ?? const _FixedLabel(''),
-                  builder: (context, status, _) => Text(
+                  builder: (context, status, _) => EllipsisText(
                     value.done
                         ? doneLabel
                         : (runningStatus == null || status.isEmpty
@@ -157,7 +158,6 @@ class AppProgressDialog extends StatelessWidget {
                               : status),
                     key: const ValueKey<String>('app-progress-label'),
                     maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: value.done
                           ? theme.colorScheme.primary

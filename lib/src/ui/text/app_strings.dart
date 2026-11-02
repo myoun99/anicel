@@ -512,6 +512,9 @@ enum AppStrings {
   String get guideMirrorModeOn => _s('guideMirrorModeOn');
   String get guideMirrorModeOff => _s('guideMirrorModeOff');
   String get guideEyeLevelShow => _s('guideEyeLevelShow');
+  String get guideEyeLevel => _s('guideEyeLevel');
+  String get guideVisibleLabel => _s('guideVisibleLabel');
+  String get guideColor => _s('guideColor');
   String get guideConstrainToEyeLevel => _s('guideConstrainToEyeLevel');
   String get guideConstrainToEyeLevelNote => _s('guideConstrainToEyeLevelNote');
   String get guideVanishingPoint => _s('guideVanishingPoint');
@@ -1056,6 +1059,10 @@ enum AppStrings {
   String get cnHeadSeconds => _s('cnHeadSeconds');
   String get cnCoverCuts => _s('cnCoverCuts');
   String get cnCoverArtist => _s('cnCoverArtist');
+  String get cnLinkedCuts => _s('cnLinkedCuts');
+  String get cnCutHead => _s('cnCutHead');
+  String get cnCutTail => _s('cnCutTail');
+  String get cnWholeCut => _s('cnWholeCut');
 
   /// What the timesheet PRINTS — read from the NOTATION language's table,
   /// not the program's (`timesheetWordsIn`): its header boxes' labels, and
@@ -1287,7 +1294,9 @@ enum AppStrings {
 
   // --- The shortcut editor ---
   String get shortcutTitle => _s('shortcutTitle');
-  String get shortcutResetAll => _s('shortcutResetAll');
+  String get shortcutResetPreset => _s('shortcutResetPreset');
+  String shortcutResetPresetBody(String name) =>
+      _s('shortcutResetPresetTemplate').replaceAll('{name}', name);
   String get shortcutResetToDefault => _s('shortcutResetToDefault');
   String get shortcutUnassign => _s('shortcutUnassign');
   String get shortcutRecordNew => _s('shortcutRecordNew');
@@ -1924,6 +1933,7 @@ enum AppStrings {
   String get brGroupTexture => _s('brGroupTexture');
   String get brGroupCorrection => _s('brGroupCorrection');
   String get brDetailTitle => _s('brDetailTitle');
+  String get brResetHeldBrush => _s('brResetHeldBrush');
   String get brShowInPanel => _s('brShowInPanel');
   String get brHideFromPanel => _s('brHideFromPanel');
 
@@ -2379,6 +2389,9 @@ enum AppStrings {
     'guideMirrorModeOn': 'Copies alternate handedness (a true mirror).',
     'guideMirrorModeOff': 'Copies are rotations — nothing is mirrored.',
     'guideEyeLevelShow': 'Show eye level',
+    'guideEyeLevel': 'Eye level',
+    'guideVisibleLabel': 'Show',
+    'guideColor': 'Color',
     'guideConstrainToEyeLevel': 'Hold vanishing points on the eye level',
     'guideConstrainToEyeLevelNote':
         'Binds the next drag; it does not move what is already placed.',
@@ -2827,7 +2840,10 @@ enum AppStrings {
     'onionPegBeforeTemplate': '{n} back',
     'onionPegAfterTemplate': '{n} ahead',
     'shortcutTitle': 'Keyboard shortcuts',
-    'shortcutResetAll': 'Reset all',
+    'shortcutResetPreset': 'Reset current preset',
+    'shortcutResetPresetTemplate':
+        'Reset the keys of the preset "{name}"? What you changed in it '
+        'will be lost.',
     'shortcutFileImportedTemplate':
         '{taken} shortcuts brought into the new preset "{preset}" '
         '({skipped} with nothing to go on here).',
@@ -3242,6 +3258,7 @@ enum AppStrings {
     'brGroupTexture': 'Texture',
     'brGroupCorrection': 'Correction',
     'brDetailTitle': 'Brush Details',
+    'brResetHeldBrush': 'Reset brush to its initial settings',
     'brShowInPanel': 'Show in the panel',
     'brHideFromPanel': 'Hide from the panel',
     'brBlend': 'Blend',
@@ -3528,6 +3545,10 @@ enum AppStrings {
     'cnHeadSeconds': 'TIME',
     'cnCoverCuts': ' cuts',
     'cnCoverArtist': 'Storyboard',
+    'cnLinkedCuts': 'Linked',
+    'cnCutHead': 'Cut head',
+    'cnCutTail': 'Cut tail',
+    'cnWholeCut': 'Full cut',
     'sheetPrintEpisode': 'Ep.no',
     'sheetPrintTitle': 'Title',
     'sheetPrintScene': 'Scene',
@@ -3757,6 +3778,9 @@ enum AppStrings {
     'guideMirrorModeOn': 'コピーが左右反転します（本当の鏡）。',
     'guideMirrorModeOff': 'コピーは回転のみ — 反転しません。',
     'guideEyeLevelShow': 'アイレベルを表示',
+    'guideEyeLevel': 'アイレベル',
+    'guideVisibleLabel': '表示',
+    'guideColor': '色',
     'guideConstrainToEyeLevel': '消失点をアイレベル上に固定',
     'guideConstrainToEyeLevelNote': '次のドラッグに効きます。すでに置いたものは動きません。',
     'guideVanishingPoint': '消失点',
@@ -4158,6 +4182,8 @@ enum AppStrings {
     'shortcutAction.tool-text': 'テキストツール',
     'shortcutAction.tool-shape': '図形ツール',
     'shortcutAction.tool-guide': 'ガイドツール',
+    'shortcutAction.brush-size-up': 'ブラシサイズを上げる',
+    'shortcutAction.brush-size-down': 'ブラシサイズを下げる',
     'shortcutAction.guide-add-symmetry': '新規対称ガイド',
     'shortcutAction.guide-add-perspective': '新規パースガイド',
     'shortcutAction.timesheet-data-mode': '表記シート / データシート',
@@ -4234,7 +4260,9 @@ enum AppStrings {
     'blendMode.lighten': '比較（明）',
     'blendMode.screen': 'スクリーン',
     'blendMode.colorDodge': '覆い焼きカラー',
+    'blendMode.glowDodge': '覆い焼き(発光)',
     'blendMode.add': '加算',
+    'blendMode.glowAdd': '加算(発光)',
     'blendMode.overlay': 'オーバーレイ',
     'blendMode.softLight': 'ソフトライト',
     'blendMode.hardLight': 'ハードライト',
@@ -4443,7 +4471,8 @@ enum AppStrings {
     'onionPegBeforeTemplate': '前 {n}',
     'onionPegAfterTemplate': '後 {n}',
     'shortcutTitle': 'キーボードショートカット',
-    'shortcutResetAll': 'すべてリセット',
+    'shortcutResetPreset': '現在のプリセットをリセット',
+    'shortcutResetPresetTemplate': 'プリセット「{name}」のキーをリセットしますか？変更した内容は失われます。',
     'shortcutFileImportedTemplate':
         'ショートカット {taken} 件を新しいプリセット「{preset}」に'
         '取り込みました（対応なし {skipped} 件）。',
@@ -4936,6 +4965,7 @@ enum AppStrings {
     'brGroupTexture': '質感',
     'brGroupCorrection': '補正',
     'brDetailTitle': 'ブラシ詳細',
+    'brResetHeldBrush': 'ブラシを初期設定に戻す',
     'brShowInPanel': 'パネルに表示',
     'brHideFromPanel': 'パネルに表示しない',
     'shortcutAction.frame-auto-create': 'フレーム自動生成',
@@ -5351,6 +5381,10 @@ enum AppStrings {
     'cnHeadSeconds': '秒',
     'cnCoverCuts': 'cut',
     'cnCoverArtist': 'コンテ',
+    'cnLinkedCuts': '兼用',
+    'cnCutHead': 'カット頭',
+    'cnCutTail': 'カット尻',
+    'cnWholeCut': '全尺',
     'sheetPrintEpisode': '話数',
     'sheetPrintTitle': 'タイトル',
     'sheetPrintScene': 'シーン',
@@ -5582,6 +5616,9 @@ enum AppStrings {
     'guideMirrorMode': '선대칭',
     'guideMirrorModeOff': '사본은 회전일 뿐 — 뒤집히지 않습니다.',
     'guideEyeLevelShow': '아이레벨 표시',
+    'guideEyeLevel': '아이레벨',
+    'guideVisibleLabel': '표시',
+    'guideColor': '색',
     'guideConstrainToEyeLevel': '소실점을 아이레벨에 고정',
     'guideConstrainToEyeLevelNote': '다음 드래그부터 적용됩니다. 이미 놓인 것은 움직이지 않습니다.',
     'guideVanishingPoint': '소실점',
@@ -5976,6 +6013,8 @@ enum AppStrings {
     'shortcutAction.tool-text': '텍스트 도구',
     'shortcutAction.tool-shape': '도형 도구',
     'shortcutAction.tool-guide': '가이드 도구',
+    'shortcutAction.brush-size-up': '브러시 크기 올리기',
+    'shortcutAction.brush-size-down': '브러시 크기 내리기',
     'shortcutAction.guide-add-symmetry': '새 대칭 가이드',
     'shortcutAction.guide-add-perspective': '새 퍼스 가이드',
     'shortcutAction.timesheet-data-mode': '표기 시트 / 데이터 시트',
@@ -6052,7 +6091,9 @@ enum AppStrings {
     'blendMode.lighten': '밝게 하기',
     'blendMode.screen': '스크린',
     'blendMode.colorDodge': '색상 닷지',
+    'blendMode.glowDodge': '색상 닷지(발광)',
     'blendMode.add': '선형 닷지(추가)',
+    'blendMode.glowAdd': '선형 닷지(발광)',
     'blendMode.overlay': '오버레이',
     'blendMode.softLight': '소프트 라이트',
     'blendMode.hardLight': '하드 라이트',
@@ -6262,7 +6303,8 @@ enum AppStrings {
     'onionPegBeforeTemplate': '이전 {n}',
     'onionPegAfterTemplate': '이후 {n}',
     'shortcutTitle': '키보드 단축키',
-    'shortcutResetAll': '모두 초기화',
+    'shortcutResetPreset': '현재 프리셋 초기화',
+    'shortcutResetPresetTemplate': '「{name}」 프리셋의 키를 초기화할까요? 바꾼 내용은 사라집니다.',
     'shortcutFileImportedTemplate':
         '단축키 {taken}개를 새 프리셋 「{preset}」에 가져왔습니다'
         '(대응 없음 {skipped}개).',
@@ -6746,6 +6788,7 @@ enum AppStrings {
     'brGroupTexture': '질감',
     'brGroupCorrection': '보정',
     'brDetailTitle': '브러시 상세',
+    'brResetHeldBrush': '브러시를 초기 설정으로 초기화',
     'brShowInPanel': '패널에 보이기',
     'brHideFromPanel': '패널에서 숨기기',
     'shortcutAction.frame-auto-create': '프레임 자동 생성',
@@ -7163,6 +7206,10 @@ enum AppStrings {
     'cnHeadSeconds': '초',
     'cnCoverCuts': '컷',
     'cnCoverArtist': '콘티',
+    'cnLinkedCuts': '겸용',
+    'cnCutHead': '컷 앞',
+    'cnCutTail': '컷 뒤',
+    'cnWholeCut': '컷 전체',
     'sheetPrintEpisode': '화수',
     'sheetPrintTitle': '제목',
     'sheetPrintScene': '씬',
@@ -7413,6 +7460,9 @@ enum AppStrings {
     'guideMirrorModeOff':
         'Les copies sont des rotations — rien n\'est inversé.',
     'guideEyeLevelShow': 'Afficher la ligne d\'horizon',
+    'guideEyeLevel': 'Ligne d\'horizon',
+    'guideVisibleLabel': 'Afficher',
+    'guideColor': 'Couleur',
     'guideConstrainToEyeLevel': 'Garder les points de fuite sur l\'horizon',
     'guideConstrainToEyeLevelNote':
         'S\'applique au prochain déplacement ; ne bouge pas l\'existant.',
@@ -7834,6 +7884,8 @@ enum AppStrings {
     'shortcutAction.tool-text': 'Outil texte',
     'shortcutAction.tool-shape': 'Outil forme',
     'shortcutAction.tool-guide': 'Outil repère',
+    'shortcutAction.brush-size-up': 'Augmenter la taille du pinceau',
+    'shortcutAction.brush-size-down': 'Réduire la taille du pinceau',
     'shortcutAction.guide-add-symmetry': 'Nouveau repère de symétrie',
     'shortcutAction.guide-add-perspective': 'Nouveau repère de perspective',
     'shortcutAction.timesheet-data-mode': 'Feuille de notation / de données',
@@ -7913,7 +7965,9 @@ enum AppStrings {
     'blendMode.lighten': 'Éclaircir',
     'blendMode.screen': 'Superposition',
     'blendMode.colorDodge': 'Densité couleur -',
+    'blendMode.glowDodge': 'Densité couleur - (lueur)',
     'blendMode.add': 'Densité linéaire - (Ajout)',
+    'blendMode.glowAdd': 'Densité linéaire - (lueur)',
     'blendMode.overlay': 'Incrustation',
     'blendMode.softLight': 'Lumière tamisée',
     'blendMode.hardLight': 'Lumière crue',
@@ -8130,7 +8184,10 @@ enum AppStrings {
     'onionPegBeforeTemplate': '{n} avant',
     'onionPegAfterTemplate': '{n} après',
     'shortcutTitle': 'Raccourcis clavier',
-    'shortcutResetAll': 'Tout réinitialiser',
+    'shortcutResetPreset': 'Réinitialiser le préréglage actuel',
+    'shortcutResetPresetTemplate':
+        'Réinitialiser les touches du préréglage « {name} » ? Vos '
+        'modifications seront perdues.',
     'shortcutFileImportedTemplate':
         '{taken} raccourcis importés dans le nouveau préréglage '
         '« {preset} » ({skipped} sans équivalent ici).',
@@ -8698,6 +8755,7 @@ enum AppStrings {
     'brGroupTexture': 'Texture',
     'brGroupCorrection': 'Correction',
     'brDetailTitle': 'Détails de la brosse',
+    'brResetHeldBrush': 'Rétablir les réglages initiaux de la brosse',
     'brShowInPanel': 'Afficher dans le panneau',
     'brHideFromPanel': 'Masquer du panneau',
     'shortcutAction.frame-auto-create': "Création auto d'images",
@@ -9157,6 +9215,10 @@ enum AppStrings {
     'cnHeadSeconds': 'DURÉE',
     'cnCoverCuts': ' plans',
     'cnCoverArtist': 'Storyboard',
+    'cnLinkedCuts': 'Lié',
+    'cnCutHead': 'Début de plan',
+    'cnCutTail': 'Fin de plan',
+    'cnWholeCut': 'Plan entier',
     'sheetPrintEpisode': 'Ép.',
     'sheetPrintTitle': 'Titre',
     'sheetPrintScene': 'Scène',
@@ -9378,6 +9440,9 @@ enum AppStrings {
     'guideMirrorModeOn': '副本左右翻转（真正的镜像）。',
     'guideMirrorModeOff': '副本只是旋转 — 不会翻转。',
     'guideEyeLevelShow': '显示视平线',
+    'guideEyeLevel': '视平线',
+    'guideVisibleLabel': '显示',
+    'guideColor': '颜色',
     'guideConstrainToEyeLevel': '将消失点固定在视平线上',
     'guideConstrainToEyeLevelNote': '对下一次拖动生效；不会移动已放置的。',
     'guideVanishingPoint': '消失点',
@@ -9735,6 +9800,8 @@ enum AppStrings {
     'shortcutAction.tool-text': '文字工具',
     'shortcutAction.tool-shape': '形状工具',
     'shortcutAction.tool-guide': '参考线工具',
+    'shortcutAction.brush-size-up': '增大画笔大小',
+    'shortcutAction.brush-size-down': '减小画笔大小',
     'shortcutAction.guide-add-symmetry': '新建对称参考线',
     'shortcutAction.guide-add-perspective': '新建透视参考线',
     'shortcutAction.timesheet-data-mode': '标注表 / 数据表',
@@ -9811,7 +9878,9 @@ enum AppStrings {
     'blendMode.lighten': '变亮',
     'blendMode.screen': '滤色',
     'blendMode.colorDodge': '颜色减淡',
+    'blendMode.glowDodge': '颜色减淡（发光）',
     'blendMode.add': '线性减淡（添加）',
+    'blendMode.glowAdd': '线性减淡（发光）',
     'blendMode.overlay': '叠加',
     'blendMode.softLight': '柔光',
     'blendMode.hardLight': '强光',
@@ -10016,7 +10085,8 @@ enum AppStrings {
     'onionPegBeforeTemplate': '之前 {n}',
     'onionPegAfterTemplate': '之后 {n}',
     'shortcutTitle': '键盘快捷键',
-    'shortcutResetAll': '全部重置',
+    'shortcutResetPreset': '重置当前预设',
+    'shortcutResetPresetTemplate': '要重置预设“{name}”的按键吗？所做的更改将会丢失。',
     'shortcutFileImportedTemplate':
         '已将 {taken} 个快捷键导入新预设“{preset}”（{skipped} 个无对应）。',
     'shortcutPresets': '预设',
@@ -10484,6 +10554,7 @@ enum AppStrings {
     'brGroupTexture': '纹理',
     'brGroupCorrection': '修正',
     'brDetailTitle': '画笔详细设置',
+    'brResetHeldBrush': '将画笔恢复为初始设置',
     'brShowInPanel': '在面板中显示',
     'brHideFromPanel': '在面板中隐藏',
     'shortcutAction.frame-auto-create': '自动创建帧',
@@ -10914,6 +10985,10 @@ enum AppStrings {
     'cnHeadSeconds': '秒',
     'cnCoverCuts': '个镜头',
     'cnCoverArtist': '分镜',
+    'cnLinkedCuts': '链接',
+    'cnCutHead': '镜头开头',
+    'cnCutTail': '镜头结尾',
+    'cnWholeCut': '全长',
     'sheetPrintEpisode': '话数',
     'sheetPrintTitle': '标题',
     'sheetPrintScene': '场景',

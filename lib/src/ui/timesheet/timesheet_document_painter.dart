@@ -16,6 +16,7 @@ import '../../models/frame.dart' show InbetweenMark;
 import '../../models/se_dialogue_spacing.dart';
 import '../../models/se_line_type.dart' show SeLineType;
 import '../../models/sheet_marks.dart';
+import '../../models/sheet_memo_side.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../../models/sheet_paper.dart';
 import '../../models/timesheet_document.dart';
@@ -46,7 +47,8 @@ import '../repaint_props.dart';
 import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
 import '../sheet/sheet_ink_layer.dart' show SheetInkOnScreen;
 import '../sheet/sheet_line.dart';
-import '../sheet_painting.dart' show paintSheetInkWindow, paintSheetPaper;
+import '../sheet_painting.dart'
+    show paintSheetInkWindow, paintSheetPaper, sheetWordsSize;
 import '../timeline/memo_token.dart';
 
 export '../../models/sheet_paint_layer.dart' show SheetPaintLayer;
@@ -414,6 +416,84 @@ class TimesheetDocumentLayout {
   Rect memoBandRect(int pageIndex) {
     final band = headerBandRect(pageIndex);
     return Rect.fromLTWH(band.left, band.bottom, band.width, memoBandHeight);
+  }
+
+  /// The text space of [side] of page [pageIndex]'s memo band: half of the
+  /// band's, a memo of its own on each side ([SheetMemoSide]).
+  Rect memoSideRect(int pageIndex, SheetMemoSide side) {
+    final room = TimesheetDocumentPainter.memoTextRect(
+      memoBandRect(pageIndex),
+    );
+    const gap = TimesheetDocumentPainter.memoColumnGap / 2;
+    return switch (side) {
+      SheetMemoSide.left => Rect.fromLTRB(
+        room.left,
+        room.top,
+        room.center.dx - gap,
+        room.bottom,
+      ),
+      SheetMemoSide.right => Rect.fromLTRB(
+        room.center.dx + gap,
+        room.top,
+        room.right,
+        room.bottom,
+      ),
+    };
+  }
+
+  /// The fixed lines on [side] of page [pageIndex]: down the left memo, and
+  /// on down the right where the left runs out (F-542-Q1).
+  ///
+  /// ⚠️Mine: each side keeps its last line for the words typed there, so a
+  /// memo written before the lines grew still prints. Lines past the two
+  /// sides are not written, as the conte's past its column.
+  List<String> fixedLinesOn(int pageIndex, SheetMemoSide side) {
+    final lines = document.fixedLinesOf(pageIndex);
+    final height = memoSideRect(pageIndex, side).height;
+    final room = height ~/ TimesheetDocumentPainter.memoLine - 1;
+    return switch (side) {
+      SheetMemoSide.left => lines.take(room).toList(),
+      SheetMemoSide.right => lines.skip(room).take(room).toList(),
+    };
+  }
+
+  /// Where the memo on [side] of page [pageIndex] is set: under the fixed
+  /// lines written there, a [TimesheetDocumentPainter.memoLine] each, the
+  /// conte's way (`conteActionWordsDrop`). The ONE rect the page prints the
+  /// memo in and the field types it at.
+  Rect memoWordsRect(int pageIndex, SheetMemoSide side) {
+    final room = memoSideRect(pageIndex, side);
+    final lines = fixedLinesOn(pageIndex, side).length;
+    return Rect.fromLTRB(
+      room.left,
+      room.top + lines * TimesheetDocumentPainter.memoLine,
+      room.right,
+      room.bottom,
+    );
+  }
+
+  /// What the memo field on [side] of page [pageIndex] opens over: its half
+  /// of the band, under the fixed lines written there, so no one types into
+  /// them (유저 2026-10-12, I-93: 「이 고정텍스트는 지울수없도록?」).
+  Rect memoEditBox(int pageIndex, SheetMemoSide side) {
+    final band = memoBandRect(pageIndex);
+    final top = fixedLinesOn(pageIndex, side).isEmpty
+        ? band.top
+        : memoWordsRect(pageIndex, side).top;
+    return switch (side) {
+      SheetMemoSide.left => Rect.fromLTRB(
+        band.left,
+        top,
+        band.center.dx,
+        band.bottom,
+      ),
+      SheetMemoSide.right => Rect.fromLTRB(
+        band.center.dx,
+        top,
+        band.right,
+        band.bottom,
+      ),
+    };
   }
 
   /// Where a global frame lands: page, half and row within the half.
@@ -985,6 +1065,13 @@ class TimesheetDocumentPainter extends CustomPainter
   /// The Direction memo: set this size, from the top left of
   /// [memoTextRect], wrapped at its width.
   static const double memoSize = 11;
+
+  /// What a fixed line stands in, in the memo band, and what a memo counts
+  /// the lines it has room for by.
+  static const double memoLine = 16;
+
+  /// The white between the band's two memos ([memoSideRect]).
+  static const double memoColumnGap = 16;
 
   /// Where the memo is set in its band.
   static Rect memoTextRect(Rect band) => Rect.fromLTRB(

@@ -8,11 +8,97 @@ import 'package:anicel/src/native/qa_engine_abi.dart';
 import '../helpers/native_engine_path.dart';
 
 /// The engine's word on the display (`qa_display_vblank`,
-/// `qa_display_wait_until_us`, `qa_display_compose_every_vblank`): where
-/// the real vblanks are, on the frame clock, a wait that ends on its
-/// microsecond — what a clock's frame is handed to the GPU by
-/// (`PresentPacing`) — and the compositor kept composing while it runs.
+/// `qa_display_window_screens`, `qa_display_wait_until_us`,
+/// `qa_display_compose_every_vblank`): where the real vblanks are, on the
+/// frame clock, a wait that ends on its microsecond — what a clock's frame
+/// is handed to the GPU by (`PresentPacing`) — and the compositor kept
+/// composing while it runs.
 void main() {
+  group('🚨the grid of a window (유저 2026-11-02: 「주사율 다른 모니터 둘에 '
+      '걸쳐있으면 높은쪽을 기반으로 하도록」)', () {
+    const composed = (vblankMicros: 1000, periodMicros: 6948.6);
+    const fast = (vblankMicros: 2000, periodMicros: 6948.5);
+    const sixty = (vblankMicros: 3000, periodMicros: 16666.6);
+    const slow = (vblankMicros: 4000, periodMicros: 16949.1);
+
+    test('on no screen anybody named, the compositor\'s clock', () {
+      expect(gridOfTheWindow(composed: composed, screens: const []), (
+        vblankMicros: 1000,
+        periodMicros: 6948.6,
+        composedVblankMicros: 1000,
+        composedEveryMicros: 6948.6,
+      ));
+    });
+
+    test('on a slower screen, that screen, under the compositor\'s clock', () {
+      expect(gridOfTheWindow(composed: composed, screens: const [slow]), (
+        vblankMicros: 4000,
+        periodMicros: 16949.1,
+        composedVblankMicros: 1000,
+        composedEveryMicros: 6948.6,
+      ));
+    });
+
+    test('🚨across two slower screens, the faster of them, in either order',
+        () {
+      const sixtyGrid = (
+        vblankMicros: 3000,
+        periodMicros: 16666.6,
+        composedVblankMicros: 1000,
+        composedEveryMicros: 6948.6,
+      );
+      expect(
+        gridOfTheWindow(composed: composed, screens: const [slow, sixty]),
+        sixtyGrid,
+      );
+      expect(
+        gridOfTheWindow(composed: composed, screens: const [sixty, slow]),
+        sixtyGrid,
+      );
+    });
+
+    test('🚨across the compositor\'s screen and a slower one, the '
+        'compositor\'s clock itself, not its screen\'s reading of it', () {
+      const clock = (
+        vblankMicros: 1000,
+        periodMicros: 6948.6,
+        composedVblankMicros: 1000,
+        composedEveryMicros: 6948.6,
+      );
+      expect(
+        gridOfTheWindow(composed: composed, screens: const [sixty, fast]),
+        clock,
+      );
+      expect(
+        gridOfTheWindow(composed: composed, screens: const [fast, sixty]),
+        clock,
+      );
+    });
+
+    test('⛔a screen faster than the compositor\'s clock is not taken: '
+        'nothing was measured there', () {
+      const faster = (vblankMicros: 5000, periodMicros: 4166.6);
+      expect(
+        gridOfTheWindow(composed: composed, screens: const [faster]).vblankMicros,
+        1000,
+      );
+    });
+
+    test('⛔a screen a hundredth slower than the clock is on it — and one '
+        'past that is not', () {
+      const just = (vblankMicros: 5000, periodMicros: 7018.0);
+      const past = (vblankMicros: 5000, periodMicros: 7020.0);
+      expect(
+        gridOfTheWindow(composed: composed, screens: const [just]).vblankMicros,
+        1000,
+      );
+      expect(
+        gridOfTheWindow(composed: composed, screens: const [past]).vblankMicros,
+        5000,
+      );
+    });
+  });
+
   final dllPath = nativeEngineLibraryPathOrNull();
 
   setUp(() {
@@ -46,6 +132,12 @@ void main() {
       inInclusiveRange(1000, 100000),
       reason: 'a refresh between 10 and 1000 times a second',
     );
+    expect(
+      grid.composedEveryMicros,
+      grid.periodMicros,
+      reason: 'a test has no window: it stands on the compositor\'s clock',
+    );
+    expect(grid.composedVblankMicros, grid.vblankMicros);
     expect(
       (grid.vblankMicros - Timeline.now).abs(),
       lessThan(Duration.microsecondsPerSecond),

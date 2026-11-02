@@ -101,14 +101,16 @@ class LayerCopyPayload {
   /// Clips to the layer below (I-92).
   final bool clipsToBelow;
 
-  /// This payload with [timeline] and [instructions] replaced — how a paste
-  /// from another project re-spells the terms the row names (I-7).
+  /// This payload with these replaced — how a paste from another project
+  /// re-spells the terms the row names (I-7), and how an attach row lands
+  /// with no base under it (`LayerClipboard`).
   LayerCopyPayload copyWith({
+    LayerKind? kind,
     Map<int, TimelineExposure>? timeline,
     Map<int, InstructionEvent>? instructions,
   }) => LayerCopyPayload(
     name: name,
-    kind: kind,
+    kind: kind ?? this.kind,
     isVisible: isVisible,
     opacity: opacity,
     frames: frames,

@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/text_finders.dart';
 
 /// **F-26 — the x-sheet is the rail turned on its side, including its
 /// grammar.**
@@ -49,7 +50,7 @@ void main() {
         home: Scaffold(
           body: TimelinePanel(
             layers: layers,
-            activeLayerId: const LayerId('alpha'),
+            activeLayer: ValueNotifier(const LayerId('alpha')),
             frameCursor: cursor,
             playbackFrameCount: 12,
             exposureStateForLayer: (_, _) =>
@@ -124,7 +125,7 @@ void main() {
         .widget<Text>(
           find.descendant(
             of: find.named('timeline-layer-name-beta'),
-            matching: find.byType(Text),
+            matching: find.anyText(),
           ),
         )
         .style!;

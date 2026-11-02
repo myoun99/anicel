@@ -102,12 +102,12 @@ class TransitionEdgeDrag implements EditorDragSession {
   /// The row's two preview forms (`Transitions.previewFormsOf`).
   final ({Layer shown, Layer? global}) Function(Layer row) _formsOf;
 
-  /// Whether a row draws no cut past its camera keys
+  /// Whether a row leaves each cut a frame for every camera key
   /// (`Transitions.keepsCameraKeys`).
   final bool Function(Layer row) _keepsCameraKeys;
 
   /// The cameras a row moves once written (`Transitions.camerasCarriedBy`):
-  /// the key on a cut's last frame follows the edge under the hand.
+  /// the keys follow the edge under the hand.
   final Map<CutId, CutCamera> Function(Layer row) _camerasCarriedBy;
 
   /// The row's own writer on the session ([updateTransitionInstructions]):
@@ -134,11 +134,10 @@ class TransitionEdgeDrag implements EditorDragSession {
     );
   }
 
-  /// The row with the edge [delta] frames over — or, where that would draw
-  /// a cut past its camera keys, the nearest step back that does not: the
-  /// edge stops short of them as a cut's end does (🗣️I-73-camera-row-Q7,
-  /// 「컷 길이 줄이기와 똑같이 — 안쪽 키 앞에서 멈춤」). Null where the edge
-  /// does not move.
+  /// The row with the edge [delta] frames over — or, where that would leave
+  /// a cut too few frames for its camera keys, the nearest step back that
+  /// does not, as a cut's end stops (🗣️I-73-camera-row-Q7, 「컷 길이 줄이기와
+  /// 똑같이」). Null where the edge does not move.
   Layer? _rowAt(int delta) {
     // A hand far past a span's own floor steps back through the one row
     // the shift clamps it to: that row is asked once.

@@ -14,6 +14,7 @@ import '../../models/brush_preset.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_settings.dart';
 import '../../models/brush_shape.dart';
+import '../../models/brush_texture_mode.dart';
 import '../../models/brush_tip_mask.dart';
 import '../../models/brush_tip_order.dart';
 import '../../models/import/import_warning.dart';
@@ -179,6 +180,7 @@ Future<SutImportResult> _decode(
     var textureInvert = false;
     var textureBrightness = 0.0;
     var textureContrast = 0.0;
+    var textureMode = BrushTextureMode.multiply;
     if (variant['TextureImage'] != null) {
       final part = (
         brushName: name,
@@ -205,6 +207,11 @@ Future<SutImportResult> _decode(
         textureInvert = _intOf(variant['TextureReverseDensity']) == 1;
         textureBrightness = _signedPercent(variant['TextureBrightness']);
         textureContrast = _signedPercent(variant['TextureContrast']);
+        textureMode = _textureModeOf(
+          variant['TextureCompositeMode'],
+          brushName: name,
+          warnings: warnings,
+        );
         // Rotation stays unmapped on purpose: the tiled samplers run off a
         // separable per-axis lattice that exists precisely BECAUSE textures
         // never rotate, so honouring one brush's angle would cost every
@@ -269,6 +276,7 @@ Future<SutImportResult> _decode(
           textureInvert: textureInvert,
           textureBrightness: textureBrightness,
           textureContrast: textureContrast,
+          textureMode: textureMode,
           dualMask: dualMask,
           brushName: name,
           warnings: warnings,
@@ -297,6 +305,7 @@ BrushSettings _settingsFromVariant(
   bool textureInvert = false,
   double textureBrightness = 0.0,
   double textureContrast = 0.0,
+  BrushTextureMode textureMode = BrushTextureMode.multiply,
   BrushTipMask? dualMask,
 }) {
   // `BrushSizeUnit` scales the stored number: 0 stores pixels outright, 2
@@ -412,6 +421,7 @@ BrushSettings _settingsFromVariant(
     textureInvert: textureInvert,
     textureBrightness: textureBrightness,
     textureContrast: textureContrast,
+    textureMode: textureMode,
     textureScale: _textureScaleOf(variant),
     textureDensity: _textureDensityOf(variant),
     mixesGroundColor: mixesGroundColor,
@@ -573,7 +583,9 @@ BrushBlendMode _blendModeOf(
     7 => BrushBlendMode.lighten, // 比較(明)
     8 => BrushBlendMode.screen, // スクリーン
     9 => BrushBlendMode.colorDodge, // 覆い焼きカラー
+    10 => BrushBlendMode.glowDodge, // 覆い焼き(発光)
     12 => BrushBlendMode.add, // 加算
+    13 => BrushBlendMode.glowAdd, // 加算(発光)
     14 => BrushBlendMode.overlay, // オーバーレイ
     15 => BrushBlendMode.softLight, // ソフトライト
     16 => BrushBlendMode.hardLight, // ハードライト
@@ -609,12 +621,55 @@ BrushBlendMode _blendModeOf(
 /// The 合成モード menu entry at [index], for warnings.
 String _clipStudioBlendName(int index) => switch (index) {
   5 => '焼き込み(黒)',
-  10 => '覆い焼き(発光)',
   11 => '覆い焼き(白)',
-  13 => '加算(発光)',
   20 => '透明度置換',
   21 => '比較(濃度)',
   22 => '消去(比較)',
+  _ => '#$index',
+};
+
+/// How a Clip Studio sub tool lays its paper on its coverage.
+///
+/// `TextureCompositeMode` is the INDEX of its 紙質適用方法 menu, top to
+/// bottom, read off the user's screenshots (brush-fidelity, 2026-11-01): 0
+/// 通常, 1 乗算, 2 減算, 3 比較, 4 輪郭, 5 オーバーレイ, 6 覆い焼きカラー,
+/// 7 焼き込みカラー, 8 ハードミックス, 9 高さ.
+///
+/// ↩️The column went unread: every paper came in as 乗算 and nothing said
+/// so, though the reference brushes stand at 減算 and 輪郭. ⚠️The manual gives
+/// no formulas, so the eight this engine does not draw wait on a sample
+/// (brush-fidelity-Q14) and until then come in as 乗算, saying which. 高さ
+/// is this engine's own reading of the name, not yet measured against Clip
+/// Studio's. A file without the column is an older one: 乗算, as it drew.
+BrushTextureMode _textureModeOf(
+  Object? value, {
+  required String brushName,
+  required List<String> warnings,
+}) {
+  final index = _intOf(value);
+  if (index == null || index == 1) {
+    return BrushTextureMode.multiply;
+  }
+  if (index == 9) {
+    return BrushTextureMode.height;
+  }
+  warnings.add(
+    'Brush "$brushName": paper texture at ${_paperModeName(index)} has no '
+    'equivalent yet; imported as 乗算.',
+  );
+  return BrushTextureMode.multiply;
+}
+
+/// The 紙質適用方法 menu entry at [index], for warnings.
+String _paperModeName(int index) => switch (index) {
+  0 => '通常',
+  2 => '減算',
+  3 => '比較',
+  4 => '輪郭',
+  5 => 'オーバーレイ',
+  6 => '覆い焼きカラー',
+  7 => '焼き込みカラー',
+  8 => 'ハードミックス',
   _ => '#$index',
 };
 

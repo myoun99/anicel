@@ -307,9 +307,16 @@ void main() {
   });
 
   test('every blend the app has is one Photoshop has, and reads back as '
-      'itself', () {
+      'itself — but Clip Studio\'s 発光, which it has not', () {
     for (final mode in LayerBlendMode.values) {
-      expect(psdBlendModes[psdBlendKeyOf(mode)], mode);
+      expect(
+        psdBlendModes[psdBlendKeyOf(mode)],
+        switch (mode) {
+          LayerBlendMode.glowDodge => LayerBlendMode.colorDodge,
+          LayerBlendMode.glowAdd => LayerBlendMode.add,
+          _ => mode,
+        },
+      );
     }
   });
 

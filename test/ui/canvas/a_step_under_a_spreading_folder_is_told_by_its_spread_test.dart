@@ -140,10 +140,10 @@ void main() {
     effects: blur,
   );
 
-  testWidgets('a row alone: its tile and the hairline', (tester) async {
+  testWidgets('a row alone: its dab and the hairline', (tester) async {
     final moved = await aDabUnder(tester, [row()]);
     expect(moved.located, isTrue);
-    expect(moved.dirty, const Rect.fromLTRB(-1, -1, 9, 9));
+    expect(moved.dirty, const Rect.fromLTRB(-1, 1, 6, 8));
   });
 
   testWidgets('a row in a blurred folder: grown by the folder\'s blur', (
@@ -242,7 +242,7 @@ void main() {
     final moved = await aDabUnder(tester, [
       row(blendMode: LayerBlendMode.add),
     ]);
-    expect(moved.dirty, const Rect.fromLTRB(-1, -1, 9, 9));
+    expect(moved.dirty, const Rect.fromLTRB(-1, 1, 6, 8));
   });
 
   testWidgets('⛔a row turned off the axes is not told', (tester) async {

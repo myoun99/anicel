@@ -67,7 +67,7 @@ class TimelineRowMemoAux {
 /// decision of its own it follows, marked (x-sheet).
 class TimelineGridHooks {
   const TimelineGridHooks({
-    required this.activeLayerId,
+    required this.activeLayer,
     required this.frameCursor,
     this.frameReadySignal,
     this.revealSelectionTick,
@@ -163,7 +163,11 @@ class TimelineGridHooks {
     this.onLayerBlendModeSelected,
   });
 
-  final LayerId? activeLayerId;
+  /// The layer stood on, as news: what shows it hears it here, so a stand
+  /// builds neither grid again (I-22-rest).
+  final ValueListenable<LayerId?> activeLayer;
+
+  LayerId? get activeLayerId => activeLayer.value;
 
   /// The frame cursor (editing playhead, or the playback position while
   /// playing). ONLY the cursor layer, the ruler and the lane labels

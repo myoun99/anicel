@@ -265,6 +265,12 @@ class EditorSessionManager extends ChangeNotifier
     // it.
     historyManager.addListener(refreshLiveAudioSchedule);
     historyManager.addListener(_railFollowsTheDocument);
+    historyManager.addListener(renderCaches.framesMoved);
+    // A slider in flight is an edit: its every step is a frame of its own to
+    // lay, and the walk stands back from it as from a stroke (F-529).
+    opacityVerbs.dragPreview.addListener(
+      playbackRig.prerenderScheduler.notifyEditActivity,
+    );
     // F-360: the rows' folds as the opened file holds them, before any
     // history change asks again.
     railView.readFolds(repository.currentProject);
@@ -809,7 +815,19 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/frame_clipboard.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
-  late final FrameClipboard clipboard = FrameClipboard(board: _appClipboard.frames, project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, renderCaches: renderCaches, mediaBytesOf: projectFile.mediaByteSourceFor, staging: mediaStagingStore, laneVerbs: laneVerbs);
+  late final FrameClipboard clipboard = FrameClipboard(
+    board: _appClipboard.frames,
+    project: this,
+    selection: this,
+    changes: this,
+    pixelEditing: pixelEditing,
+    frameIds: this,
+    controllers: activeCutControllers,
+    renderCaches: renderCaches,
+    mediaBytesOf: projectFile.mediaByteSourceFor,
+    staging: mediaStagingStore,
+    laneVerbs: laneVerbs,
+  );
   late final LayerClipboard layerClipboard = LayerClipboard(board: _appClipboard.layers, project: this, selection: this, changes: this, layerStack: layerStack, renderCaches: renderCaches, mediaBytesOf: projectFile.mediaByteSourceFor, staging: mediaStagingStore, rowSelection: rowSelectionVerbs, layerVerbs: layerVerbs);
   late final KeyClipboard keyClipboard = KeyClipboard(board: _appClipboard.keys, laneVerbs: laneVerbs, changes: this);
   late final EffectClipboard effectClipboard = EffectClipboard(board: _appClipboard.effects, laneVerbs: laneVerbs, effectsAndFx: effectsAndFx, changes: this);
@@ -1663,6 +1681,10 @@ class EditorSessionManager extends ChangeNotifier
     () => historyManager.removeListener(projectFile.markDirty),
     () => historyManager.removeListener(refreshLiveAudioSchedule),
     () => historyManager.removeListener(_railFollowsTheDocument),
+    () => historyManager.removeListener(renderCaches.framesMoved),
+    () => opacityVerbs.dragPreview.removeListener(
+      playbackRig.prerenderScheduler.notifyEditActivity,
+    ),
     voiceRecording.dispose,
     playbackRig.dispose,
     renderCaches.dispose,
@@ -2471,11 +2493,13 @@ class EditorSessionManager extends ChangeNotifier
     required TimesheetInfo info,
     CutId? cutId,
     TimesheetSheetKind? kind,
+    ({bool? to})? fixedText,
   }) {
     cutCommandCoordinator.setTimesheetFormat(
       info: info,
       cutId: cutId,
       kind: kind,
+      fixedText: fixedText,
     );
     notifyListeners();
   }
@@ -3131,6 +3155,23 @@ class EditorSessionManager extends ChangeNotifier
   @override
   void notifyChanged() => notifyListeners();
 
+  /// How many announcements have said more than where the stand went. A
+  /// host that prints by this hears every other announcement, and shows the
+  /// stand through what hears it itself ([Standing.activeLayerListenable]).
+  ///
+  /// 🔬I-22-rest (11-01, S5_BA 컷352, 디버그): a click on a rail row built
+  /// the whole timeline host, 195 widgets and 9ms, for a colour on two rows
+  /// and the cursor's wash.
+  int get newsRevision => _newsRevision;
+  int _newsRevision = 0;
+
+  /// Every listener hears a stand; only [newsRevision] does not move.
+  @override
+  void notifyStood() {
+    _followTheAnnouncement();
+    super.notifyListeners();
+  }
+
   /// Every announcement first lets the verbs' row follow an active layer the
   /// program moved ([Standing.followActiveLayer], F-183 ③) — the one point
   /// every door that moves it passes, collaborators' and this class's own.
@@ -3138,10 +3179,15 @@ class EditorSessionManager extends ChangeNotifier
   /// rows' seats there too ([Standing.followConteSeats], F-322).
   @override
   void notifyListeners() {
+    _newsRevision += 1;
+    _followTheAnnouncement();
+    super.notifyListeners();
+  }
+
+  void _followTheAnnouncement() {
     rowSelectionVerbs.followConteSeats();
     standing.followConteSeats();
     standing.followActiveLayer();
-    super.notifyListeners();
   }
 
   // --- Run-edge NEW FRAMES drag (UI-R8 [+] handle) --------------------------

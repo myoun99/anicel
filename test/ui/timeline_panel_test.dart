@@ -419,7 +419,7 @@ Widget _panel({
     home: Scaffold(
       body: TimelinePanel(
         layers: layers ?? _layers,
-        activeLayerId: activeLayerId ?? const LayerId('layer-1'),
+        activeLayer: ValueNotifier(activeLayerId ?? const LayerId('layer-1')),
         frameCursor: ValueNotifier<int>(currentFrameIndex),
         playbackFrameCount: playbackFrameCount,
         exposureStateForLayer:

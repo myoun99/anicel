@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/sheet_memo_side.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/timesheet_info.dart' show TimesheetHeaderField;
 import '../sheet/sheet_line.dart';
@@ -46,8 +47,9 @@ class TimesheetHeaderEditLayer extends StatelessWidget {
   /// applies).
   final CanvasViewport viewport;
 
-  /// Commits the Direction memo edited on page [page].
-  final void Function(int page, String memo) onMemoCommitted;
+  /// Commits the Direction memo edited on [side] of page [page].
+  final void Function(int page, SheetMemoSide side, String memo)
+  onMemoCommitted;
 
   /// Where the words typed into a header box land, by its field. A box
   /// with no road here prints only.
@@ -58,26 +60,28 @@ class TimesheetHeaderEditLayer extends StatelessWidget {
     // The face the sheet prints in — the strata's painter reads the same
     // ambient style.
     final face = appFaceOf(DefaultTextStyle.of(context).style);
-    // Every paper page has a memo band, and a memo of its own (F-301).
+    // Every paper page has a memo band, and memos of its own (F-301).
     return SheetTextEditLayer(
       viewport: viewport,
       fieldKey: 'timesheet-header-edit-field',
       barrierKey: 'timesheet-header-edit-barrier',
       targets: [
         for (final page in layout.pageIndexes) ...[
-          SheetTextTarget(
-            keyValue: 'timesheet-memo-edit-p$page',
-            box: layout.memoBandRect(page),
-            textRect: TimesheetDocumentPainter.memoTextRect(
-              layout.memoBandRect(page),
+          for (final side in SheetMemoSide.values)
+            SheetTextTarget(
+              keyValue: switch (side) {
+                SheetMemoSide.left => 'timesheet-memo-edit-p$page',
+                SheetMemoSide.right => 'timesheet-memo-right-edit-p$page',
+              },
+              box: layout.memoEditBox(page, side),
+              textRect: layout.memoWordsRect(page, side),
+              text: layout.document.memoTextOf(page, side: side),
+              style: TimesheetDocumentPainter.wordsStyle(
+                face,
+                fontSize: TimesheetDocumentPainter.memoSize,
+              ),
+              onCommitted: (memo) => onMemoCommitted(page, side, memo),
             ),
-            text: layout.document.memoTextOf(page),
-            style: TimesheetDocumentPainter.wordsStyle(
-              face,
-              fontSize: TimesheetDocumentPainter.memoSize,
-            ),
-            onCommitted: (memo) => onMemoCommitted(page, memo),
-          ),
           for (final box in layout.headerFieldBoxes(page))
             if ((
                   headerCommits[box.field],

@@ -8,6 +8,8 @@ import 'package:anicel/src/ui/panels/editor_panel_header.dart';
 import 'package:anicel/src/ui/timeline/layer_opacity_field.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
+import '../../helpers/text_finders.dart';
+
 /// Three shared widgets the audit pulled out of copies, none named by a
 /// test (2026-09-05).
 void main() {
@@ -139,7 +141,7 @@ void main() {
       await pump(tester, const EditorPanelHeader(trailing: Text('a control')));
 
       expect(find.text('a control'), findsOneWidget);
-      expect(find.byType(Text), findsOneWidget);
+      expect(find.anyText(), findsOneWidget);
     });
 
     testWidgets('🚨its controls are right-aligned and SCROLL when the panel '

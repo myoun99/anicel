@@ -3,16 +3,23 @@ import 'dart:async';
 import '../timeline/layer_label_controls.dart' show LayerVisibilityToggleButton;
 import '../widgets/app_icon_button.dart';
 import '../widgets/boolean_dot.dart';
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/drawing_guide.dart';
 import '../../services/guide_geometry.dart' show alongAxis, toggledParallel;
+import '../canvas/guide_overlay.dart'
+    show GuideHandle, GuideHandleKind, dragGuideHandle, guideColorOf;
 import '../dialogs/app_prompt_dialog.dart';
 import '../dialogs/dialog_verb.dart';
 import '../text/app_strings.dart';
+import '../text/readout_text.dart' show columnValueOf, columnValueText;
+import '../widgets/color_swatch_button.dart';
 import '../widgets/content_scrollbar.dart';
+import '../widgets/drag_value_label.dart';
+import '../widgets/ellipsis_text.dart';
 import '../widgets/settings_rows.dart';
 import '../theme/app_theme.dart';
 import '../widgets/field_slider.dart';
@@ -104,15 +111,25 @@ class GuideLibraryList extends StatelessWidget {
     required this.guides,
     required this.canvasSize,
     required this.onGuidesCommitted,
+    required this.onGuidesPreview,
     required this.selectedGuideId,
     required this.onGuideSelected,
+    this.currentColorOf,
   });
 
   final CutGuides guides;
   final CanvasSize canvasSize;
   final ValueChanged<CutGuides> onGuidesCommitted;
+
+  /// A bar or a wheel in flight — see [GuideSettings.onGuidesPreview].
+  final ValueChanged<CutGuides> onGuidesPreview;
+
   final GuideId? selectedGuideId;
   final ValueChanged<GuideId?> onGuideSelected;
+
+  /// The colour 「현재 색 반영」 copies in
+  /// ([ColorSwatchButton.currentColorOf]).
+  final int Function()? currentColorOf;
 
   String _uniqueId(String prefix) {
     var index = 1;
@@ -151,6 +168,32 @@ class GuideLibraryList extends StatelessWidget {
   void _replace(DrawingGuide guide) {
     onGuidesCommitted(guides.replacing(guide));
   }
+
+  void _preview(DrawingGuide guide) {
+    onGuidesPreview(guides.replacing(guide));
+  }
+
+  _GuideRow _row(
+    DrawingGuide guide, {
+    required bool acting,
+    required bool inPickOneGroup,
+    required ValueChanged<bool> onActingChanged,
+  }) => _GuideRow(
+    guide: guide,
+    selected: guide.id == selectedGuideId,
+    acting: acting,
+    inPickOneGroup: inPickOneGroup,
+    currentColorOf: currentColorOf,
+    onSelected: () => onGuideSelected(guide.id),
+    onActingChanged: onActingChanged,
+    onVisibleChanged: (visible) => _replace(guide.copyWith(visible: visible)),
+    onColorPicking: (argb) => _preview(guide.copyWith(color: argb)),
+    onColorPicked: (argb) => _replace(guide.copyWith(color: argb)),
+    onOpacityMoved: (opacity) => _preview(guide.copyWith(opacity: opacity)),
+    onOpacityLet: (opacity) => _replace(guide.copyWith(opacity: opacity)),
+    onRename: (context) => unawaited(_rename(context, guide)),
+    onDelete: () => _delete(guide.id),
+  );
 
   /// 유저 (guide-sym): 「**이름변경 버튼을 비지블 버튼 왼쪽에**, 공통 이름변경
   /// 창」 — and 공통 is [AppPromptDialog], the app's one "type a short
@@ -214,24 +257,18 @@ class GuideLibraryList extends StatelessWidget {
             action: EditorActionIds.guideAddSymmetry,
           ),
           for (final guide in guides.symmetryGuides)
-            _GuideRow(
-              guide: guide,
-              selected: guide.id == selectedGuideId,
+            _row(
+              guide,
               acting: guides.activeSymmetryId == guide.id,
               // ONE `activeSymmetryId`: turning a symmetry on turns the one
               // that was acting off.
               inPickOneGroup: true,
-              onSelected: () => onGuideSelected(guide.id),
               onActingChanged: (acting) => onGuidesCommitted(
                 guides.copyWith(
                   activeSymmetryId: acting ? guide.id : null,
                   clearActiveSymmetry: !acting,
                 ),
               ),
-              onVisibleChanged: (visible) =>
-                  _replace(guide.copyWith(visible: visible)),
-              onRename: () => unawaited(_rename(context, guide)),
-              onDelete: () => _delete(guide.id),
             ),
           const Divider(height: 12),
           _GuideGroupHeader(
@@ -241,14 +278,12 @@ class GuideLibraryList extends StatelessWidget {
             action: EditorActionIds.guideAddPerspective,
           ),
           for (final guide in guides.perspectiveGuides)
-            _GuideRow(
-              guide: guide,
-              selected: guide.id == selectedGuideId,
+            _row(
+              guide,
               acting: (guide.shape as PerspectiveShape).snapEnabled,
               // Per guide on purpose ([PerspectiveShape.snapEnabled]):
               // several may snap at once.
               inPickOneGroup: false,
-              onSelected: () => onGuideSelected(guide.id),
               onActingChanged: (snapping) => _replace(
                 guide.copyWith(
                   shape: (guide.shape as PerspectiveShape).copyWith(
@@ -256,10 +291,6 @@ class GuideLibraryList extends StatelessWidget {
                   ),
                 ),
               ),
-              onVisibleChanged: (visible) =>
-                  _replace(guide.copyWith(visible: visible)),
-              onRename: () => unawaited(_rename(context, guide)),
-              onDelete: () => _delete(guide.id),
             ),
           if (guides.isEmpty)
             Padding(
@@ -325,9 +356,14 @@ class _GuideRow extends StatelessWidget {
     required this.selected,
     required this.acting,
     required this.inPickOneGroup,
+    required this.currentColorOf,
     required this.onSelected,
     required this.onActingChanged,
     required this.onVisibleChanged,
+    required this.onColorPicking,
+    required this.onColorPicked,
+    required this.onOpacityMoved,
+    required this.onOpacityLet,
     required this.onRename,
     required this.onDelete,
   });
@@ -340,10 +376,15 @@ class _GuideRow extends StatelessWidget {
   /// differently, which is why each call site says it.
   final bool inPickOneGroup;
 
+  final int Function()? currentColorOf;
   final VoidCallback onSelected;
   final ValueChanged<bool> onActingChanged;
   final ValueChanged<bool> onVisibleChanged;
-  final VoidCallback onRename;
+  final ValueChanged<int> onColorPicking;
+  final ValueChanged<int> onColorPicked;
+  final ValueChanged<double> onOpacityMoved;
+  final ValueChanged<double> onOpacityLet;
+  final ValueChanged<BuildContext> onRename;
   final VoidCallback onDelete;
 
   @override
@@ -355,11 +396,15 @@ class _GuideRow extends StatelessWidget {
       child: ListTile(
         key: ValueKey<String>('guide-row-${guide.id.value}'),
         dense: true,
+        // The header's 12 at the left; a tile's own gutters left a name a
+        // few pixels beside four controls and a bar.
+        contentPadding: const EdgeInsetsDirectional.only(start: 12, end: 4),
+        horizontalTitleGap: 8,
+        minLeadingWidth: 0,
         // Selection reads from colour alone — no trailing check glyph.
         selected: selected,
         selectedTileColor: colorScheme.surfaceContainerHigh,
         onTap: onSelected,
-        title: Text(guide.name),
         // 🚨THE BUTTON 유저 made the app's boolean from (guide-sym ⑥⑧,
         // 2026-08-31: 「적용시 안에 동그라미 추가」) — [BooleanDot] carries
         // the ring, the dot and the user's two off colours.
@@ -373,9 +418,23 @@ class _GuideRow extends StatelessWidget {
           inPickOneGroup: inPickOneGroup,
           onChanged: onActingChanged,
         ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
+        // ONE Row in the title, ⛔not the tile's trailing: a trailing that
+        // takes the tile's width is an assertion, and the name and the bar
+        // are the two that can give at a narrow panel.
+        title: Row(
           children: [
+            Expanded(
+              flex: 3,
+              child: EllipsisText(guide.name, maxLines: 1),
+            ),
+            // 🗣️F-544 (유저 2026-11-02): 「공용 색 동그란 아이콘」.
+            _GuideColorButton(
+              keyValue: 'guide-color-${guide.id.value}',
+              color: guide.color ?? guideColorOf(context).toARGB32(),
+              currentColorOf: currentColorOf,
+              onPicking: onColorPicking,
+              onPicked: onColorPicked,
+            ),
             // 유저 (guide-sym): 「**이름변경 버튼을 비지블 버튼 왼쪽에**」 — the
             // position is the instruction, so it is first in this Row and
             // stays first. The verb it opens is the shared one; see
@@ -387,7 +446,20 @@ class _GuideRow extends StatelessWidget {
               // own (`brush-tip-rename`), and the same icon the window
               // wears in its own title.
               icon: const Icon(Icons.drive_file_rename_outline),
-              onPressed: onRename,
+              onPressed: () => onRename(context),
+            ),
+            // 🗣️F-544 (유저 2026-11-02): 「비지블버튼 왼쪽에 불투명도 막대
+            // 넣어서 보이는거 불투명도 조절가능하게」. The layer row's micro
+            // bar: the number alone.
+            Expanded(
+              flex: 2,
+              child: FieldSlider.opacity(
+                name: 'guide-opacity-${guide.id.value}',
+                value: guide.opacity,
+                height: 18 + FieldSlider.growthIn(context),
+                onChanged: onOpacityMoved,
+                onChangeEnd: onOpacityLet,
+              ),
             ),
             // ⛔NOT a hand-rolled eye. 유저 (F-58): 「비지블버튼은
             // 다른곳에서도 쓰니까 공용화/통일화」 — and this was the last
@@ -415,6 +487,180 @@ class _GuideRow extends StatelessWidget {
   }
 }
 
+/// The app's one colour button on a colour of a guide's: every colour the
+/// wheel passes shown, the one it came to rest on written — one pick, one
+/// undo, as a bar's drag is.
+class _GuideColorButton extends StatefulWidget {
+  const _GuideColorButton({
+    required this.keyValue,
+    required this.color,
+    required this.currentColorOf,
+    required this.onPicking,
+    required this.onPicked,
+  });
+
+  final String keyValue;
+  final int color;
+  final int Function()? currentColorOf;
+  final ValueChanged<int> onPicking;
+  final ValueChanged<int> onPicked;
+
+  @override
+  State<_GuideColorButton> createState() => _GuideColorButtonState();
+}
+
+class _GuideColorButtonState extends State<_GuideColorButton> {
+  /// The colour the window holds, until it closes; the panel underneath
+  /// shows the written one, a preview being no write.
+  int? _picking;
+
+  @override
+  Widget build(BuildContext context) => ColorSwatchButton(
+    keyValue: widget.keyValue,
+    tooltip: AppText.strings.guideColor,
+    color: _picking ?? widget.color,
+    currentColorOf: widget.currentColorOf,
+    onChanged: (argb) {
+      setState(() => _picking = argb);
+      widget.onPicking(argb);
+    },
+    onSettled: () {
+      final picked = _picking;
+      if (picked != null) {
+        widget.onPicked(picked);
+        setState(() => _picking = null);
+      }
+    },
+  );
+}
+
+/// A point of a guide in numbers: the transform tool's 위치 — X on the
+/// name's line, Y under it, each a number box with its hands — and every
+/// number of it goes where the canvas's handle would take the point
+/// ([dragGuideHandle]), the eye-level law with it.
+///
+/// 🗣️F-544 (유저 2026-11-02): 「변형도구같은거 그대로 재사용해서 위치값」.
+class _GuidePointValues extends StatelessWidget {
+  const _GuidePointValues({
+    required this.keyPrefix,
+    required this.label,
+    required this.guides,
+    required this.guidesInFlight,
+    required this.guideId,
+    required this.handle,
+    required this.pointIn,
+    required this.onGuidesPreview,
+    required this.onGuidesCommitted,
+    this.vanishingPointIndex,
+  });
+
+  final String keyPrefix;
+  final String label;
+  final CutGuides guides;
+  final ValueListenable<CutGuides?>? guidesInFlight;
+  final GuideId guideId;
+  final GuideHandleKind handle;
+  final int? vanishingPointIndex;
+
+  /// Where the point stands in the guides given it — null where they hold
+  /// no such point any more.
+  final CanvasPoint? Function(DrawingGuide guide) pointIn;
+
+  final ValueChanged<CutGuides> onGuidesPreview;
+  final ValueChanged<CutGuides> onGuidesCommitted;
+
+  CutGuides get _now => guidesInFlight?.value ?? guides;
+
+  CanvasPoint? _pointOf(CutGuides shown) => switch (shown.guideFor(guideId)) {
+    final guide? => pointIn(guide),
+    null => null,
+  };
+
+  CutGuides _movedTo(CanvasPoint to) => dragGuideHandle(
+    _now,
+    GuideHandle(
+      guideId: guideId,
+      kind: handle,
+      position: to,
+      vanishingPointIndex: vanishingPointIndex,
+    ),
+    to,
+  );
+
+  /// [at] with the value this box holds replaced by [value].
+  static CanvasPoint _withX(CanvasPoint at, double value) =>
+      CanvasPoint(x: value, y: at.y);
+
+  static CanvasPoint _withY(CanvasPoint at, double value) =>
+      CanvasPoint(x: at.x, y: value);
+
+  Widget _box(
+    CutGuides shown, {
+    required String name,
+    required double Function(CanvasPoint at) read,
+    required CanvasPoint Function(CanvasPoint at, double value) write,
+  }) {
+    final at = _pointOf(shown);
+    return DragValueLabel.box(
+      keyValue: '$keyPrefix-${name.toLowerCase()}',
+      name: name,
+      text: at == null ? '' : columnValueText(read(at)),
+      onDragDelta: (units) {
+        final now = _pointOf(_now);
+        if (now != null) {
+          onGuidesPreview(_movedTo(write(now, read(now) + units)));
+        }
+      },
+      // ONE SCRUB IS ONE STEP BACK, as the transform's box says.
+      onOperationEnd: () => onGuidesCommitted(_now),
+      onEditSubmit: (raw) {
+        final typed = columnValueOf(raw);
+        final now = _pointOf(_now);
+        if (typed != null && now != null) {
+          onGuidesCommitted(_movedTo(write(now, typed)));
+        }
+      },
+    );
+  }
+
+  Widget _following(Widget Function(CutGuides shown) box) =>
+      switch (guidesInFlight) {
+        null => box(guides),
+        final inFlight => ValueListenableBuilder<CutGuides?>(
+          valueListenable: inFlight,
+          builder: (context, flying, _) => box(flying ?? guides),
+        ),
+      };
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      ToolSettingRow.bar(
+        label: label,
+        bar: _following(
+          (shown) => _box(
+            shown,
+            name: 'X',
+            read: (at) => at.x,
+            write: _withX,
+          ),
+        ),
+      ),
+      ToolSettingRow.bar(
+        label: '',
+        bar: _following(
+          (shown) => _box(
+            shown,
+            name: 'Y',
+            read: (at) => at.y,
+            write: _withY,
+          ),
+        ),
+      ),
+    ],
+  );
+}
+
 /// The guide TOOL's entry in the tool SETTINGS panel — the knobs for the
 /// selected guide. Same panel every other tool uses; guides get no panel of
 /// their own.
@@ -427,6 +673,8 @@ class GuideSettings extends StatelessWidget {
     required this.onGuidesCommitted,
     required this.onGuidesPreview,
     required this.onGuideRasterized,
+    this.guidesInFlight,
+    this.currentColorOf,
   });
 
   final CutGuides guides;
@@ -447,7 +695,16 @@ class GuideSettings extends StatelessWidget {
   /// preview would be back to one entry per sample.
   final ValueChanged<CutGuides> onGuidesPreview;
 
-  /// 래스터라이즈: the guide's lines, as the canvas shows them at rest, drawn
+  /// What a drag in flight has made of the guides, for the numbers that
+  /// follow it — a canvas handle's as well as a box's own — without this
+  /// panel rebuilding ([_GuidePointValues]). Null where nothing flies.
+  final ValueListenable<CutGuides?>? guidesInFlight;
+
+  /// The colour 「현재 색 반영」 copies in
+  /// ([ColorSwatchButton.currentColorOf]).
+  final int Function()? currentColorOf;
+
+  /// 래스터라이즈: the guide's lines, as the canvas shows them, drawn
   /// into the cels (vanishing-point-types-Q5 · Q6, I-105-Q2). Null where
   /// nothing can take them — the button keeps its place and goes dead.
   final ValueChanged<DrawingGuide>? onGuideRasterized;
@@ -508,9 +765,43 @@ class GuideSettings extends StatelessWidget {
     );
   }
 
+  /// The numbers of [guide]'s point [handle] moves.
+  _GuidePointValues _pointValues(
+    DrawingGuide guide, {
+    required String keyPrefix,
+    required String label,
+    required GuideHandleKind handle,
+    required CanvasPoint? Function(DrawingGuide guide) pointIn,
+    int? vanishingPointIndex,
+  }) => _GuidePointValues(
+    keyPrefix: keyPrefix,
+    label: label,
+    guides: guides,
+    guidesInFlight: guidesInFlight,
+    guideId: guide.id,
+    handle: handle,
+    vanishingPointIndex: vanishingPointIndex,
+    pointIn: pointIn,
+    onGuidesPreview: onGuidesPreview,
+    onGuidesCommitted: onGuidesCommitted,
+  );
+
   List<Widget> _symmetryFields(DrawingGuide guide, SymmetryShape shape) {
     final strings = AppText.strings;
     return [
+      // 🗣️F-544 (유저 2026-11-02): 「이런 ui개편같은거 다른 도구설정쪽
+      // 참고해서 그대로 재사용하면서 법 통일」 — a symmetry's middle is a
+      // point the canvas's handle moves, as a vanishing point is.
+      _pointValues(
+        guide,
+        keyPrefix: 'guide-origin',
+        label: strings.trPosition,
+        handle: GuideHandleKind.origin,
+        pointIn: (guide) => switch (guide.shape) {
+          SymmetryShape(:final axis) => axis.origin,
+          _ => null,
+        },
+      ),
       SettingsSwitchRow(
         tileKey: const ValueKey<String>('guide-line-symmetry'),
         label: strings.guideMirrorMode,
@@ -553,7 +844,6 @@ class GuideSettings extends StatelessWidget {
     ToolSettingsFold Function(String group) foldOf,
   ) {
     final strings = AppText.strings;
-    final points = shape.vanishingPoints;
     return [
       // ⛔THE SNAP SWITCH IS GONE FROM HERE (유저 2026-09-01, guide-sym):
       // 「퍼스자의 툴설정에 있는 스냅버튼, **이거 중복되니까 삭제. 퍼스자
@@ -564,70 +854,16 @@ class GuideSettings extends StatelessWidget {
       // one fact twice, and the two could disagree only in how far the user
       // had to look. ⚠️`snapEnabled` itself is untouched; what went is the
       // second control for it.
-      SettingsSwitchRow(
-        tileKey: const ValueKey<String>('guide-eye-level-visible'),
-        label: strings.guideEyeLevelShow,
-        value: shape.eyeLevelVisible,
-        onChanged: (value) =>
-            _replaceShape(guide, shape.copyWith(eyeLevelVisible: value)),
-      ),
-      SettingsSwitchRow(
-        tileKey: const ValueKey<String>('guide-constrain-eye-level'),
-        label: strings.guideConstrainToEyeLevel,
-        help: strings.guideConstrainToEyeLevelNote,
-        value: shape.constrainToEyeLevel,
-        onChanged: (value) =>
-            _replaceShape(guide, shape.copyWith(constrainToEyeLevel: value)),
-      ),
-      // 🗣️vanishing-point-types-Q4 (유저 2026-10-16): ONE bar for the
-      // guide, every point of it drawing the count.
-      ToolSettingRow.bar(
-        label: strings.guideLineDensity,
-        bar: FieldSlider.cell(
-          key: const ValueKey<String>('guide-line-density'),
-          label: strings.guideLineDensity,
-          value: shape.lineDensity.toDouble(),
-          min: minGuideLineDensity.toDouble(),
-          max: maxGuideLineDensity.toDouble(),
-          divisions: maxGuideLineDensity - minGuideLineDensity,
-          // ⛔PREVIEW while the bar moves, COMMIT on release — the count
-          // bar's one drag, one undo.
-          onChanged: (value) => onGuidesPreview(
-            _withShape(guide, shape.copyWith(lineDensity: value.round())),
-          ),
-          onChangeEnd: (value) => _replaceShape(
-            guide,
-            shape.copyWith(lineDensity: value.round()),
-          ),
-        ),
+      ...toolSettingsGroup(
+        strings.guideEyeLevel,
+        first: true,
+        fold: foldOf('eye-level'),
+        rows: _eyeLevelRows(guide, shape),
       ),
       ...toolSettingsGroup(
         strings.guideVanishingPoint,
         fold: foldOf('vanishing-points'),
-        rows: [
-          for (var index = 0; index < points.length; index += 1)
-            _VanishingPointRow(
-              index: index,
-              point: points[index],
-              onParallelToggled: _parallelToggled(guide, shape, index),
-              // The angle cell and the canvas's direction handle write the one
-              // value (vanishing-point-types-Q3): shown while it moves,
-              // committed once it is let go.
-              onTurned: (degrees) => onGuidesPreview(
-                _withShape(guide, _turned(shape, index, degrees)),
-              ),
-              onTurnEnded: (degrees) =>
-                  _replaceShape(guide, _turned(shape, index, degrees)),
-              onRemoved: points.length > 1
-                  ? () => _replaceShape(
-                      guide,
-                      shape.copyWith(
-                        vanishingPoints: [...points]..removeAt(index),
-                      ),
-                    )
-                  : null,
-            ),
-        ],
+        rows: _vanishingPointRows(guide, shape),
       ),
       ToolSettingActions(
         lines: [
@@ -647,6 +883,116 @@ class GuideSettings extends StatelessWidget {
           ],
         ],
       ),
+    ];
+  }
+
+  /// 🗣️F-544 (유저 2026-11-02): 「애초에 아이레벨이라고 항목화하자.
+  /// 퍼스가이드안에서 항목화해서 표시 버튼, 색 버튼, 위치값 이렇게」.
+  List<Widget> _eyeLevelRows(DrawingGuide guide, PerspectiveShape shape) {
+    final strings = AppText.strings;
+    return [
+      ToolSettingRow.atEnd(
+        label: strings.guideVisibleLabel,
+        child: LayerVisibilityToggleButton(
+          name: 'guide-eye-level-visible',
+          isVisible: shape.eyeLevelVisible,
+          tooltip: strings.guideEyeLevelShow,
+          onToggle: () => _replaceShape(
+            guide,
+            shape.copyWith(eyeLevelVisible: !shape.eyeLevelVisible),
+          ),
+        ),
+      ),
+      ToolSettingRow.atEnd(
+        label: strings.guideColor,
+        child: Builder(
+          builder: (context) => _GuideColorButton(
+            keyValue: 'guide-eye-level-color',
+            color:
+                shape.eyeLevelColor ??
+                guide.color ??
+                guideColorOf(context).toARGB32(),
+            currentColorOf: currentColorOf,
+            onPicking: (argb) => onGuidesPreview(
+              _withShape(guide, shape.copyWith(eyeLevelColor: argb)),
+            ),
+            onPicked: (argb) =>
+                _replaceShape(guide, shape.copyWith(eyeLevelColor: argb)),
+          ),
+        ),
+      ),
+      _pointValues(
+        guide,
+        keyPrefix: 'guide-eye-level',
+        label: strings.trPosition,
+        handle: GuideHandleKind.origin,
+        pointIn: (guide) => switch (guide.shape) {
+          PerspectiveShape(:final eyeLevel) => eyeLevel.origin,
+          _ => null,
+        },
+      ),
+    ];
+  }
+
+  List<Widget> _vanishingPointRows(
+    DrawingGuide guide,
+    PerspectiveShape shape,
+  ) {
+    final strings = AppText.strings;
+    final points = shape.vanishingPoints;
+    return [
+      SettingsSwitchRow(
+        tileKey: const ValueKey<String>('guide-constrain-eye-level'),
+        label: strings.guideConstrainToEyeLevel,
+        help: strings.guideConstrainToEyeLevelNote,
+        value: shape.constrainToEyeLevel,
+        onChanged: (value) =>
+            _replaceShape(guide, shape.copyWith(constrainToEyeLevel: value)),
+      ),
+      for (var index = 0; index < points.length; index += 1)
+        _VanishingPointRow(
+          index: index,
+          point: points[index],
+          whereItStands: _pointValues(
+            guide,
+            keyPrefix: 'guide-vanishing-point-$index',
+            label: '${index + 1}',
+            handle: GuideHandleKind.vanishingPoint,
+            vanishingPointIndex: index,
+            pointIn: (guide) => switch (guide.shape) {
+              PerspectiveShape(:final vanishingPoints)
+                  when index < vanishingPoints.length =>
+                vanishingPoints[index].resolve().position,
+              _ => null,
+            },
+          ),
+          onParallelToggled: _parallelToggled(guide, shape, index),
+          // The angle cell and the canvas's direction handle write the one
+          // value (vanishing-point-types-Q3): shown while it moves,
+          // committed once it is let go.
+          onTurned: (degrees) => onGuidesPreview(
+            _withShape(guide, _turned(shape, index, degrees)),
+          ),
+          onTurnEnded: (degrees) =>
+              _replaceShape(guide, _turned(shape, index, degrees)),
+          // ⛔PREVIEW while the bar moves, COMMIT on release — one drag,
+          // one undo.
+          onDensityMoved: (density) => onGuidesPreview(
+            _withShape(guide, shape.withLineDensity(index, density)),
+          ),
+          onDensityLet: (density) => _replaceShape(
+            guide,
+            shape.withLineDensity(index, density),
+          ),
+          onRemoved: points.length > 1
+              ? () => _replaceShape(
+                  guide,
+                  shape.copyWith(
+                    vanishingPoints: [...points]..removeAt(index),
+                  ),
+                )
+              : null,
+        ),
     ];
   }
 
@@ -713,21 +1059,27 @@ class GuideSettings extends StatelessWidget {
   );
 }
 
-/// One vanishing point as a row of the grid: its number in the name column;
-/// in the first cell where it stands — or, a family at infinity, the way it
-/// runs as an angle; its 「평행」 pill and its delete sharing the second.
+/// One vanishing point's lines of the grid: its number in the name column
+/// beside where it stands — or, a family at infinity, the way it runs as an
+/// angle; its density bar; its 「평행」 pill and its delete.
 class _VanishingPointRow extends StatelessWidget {
   const _VanishingPointRow({
     required this.index,
     required this.point,
+    required this.whereItStands,
     required this.onParallelToggled,
     required this.onTurned,
     required this.onTurnEnded,
+    required this.onDensityMoved,
+    required this.onDensityLet,
     required this.onRemoved,
   });
 
   final int index;
   final VanishingPoint point;
+
+  /// The point's 위치, for a point the hand placed.
+  final Widget whereItStands;
 
   /// The 「평행」 pill's press — null where it is refused, and the pill keeps
   /// its place.
@@ -736,6 +1088,10 @@ class _VanishingPointRow extends StatelessWidget {
   /// A family at infinity's angle cell, while it moves and once let go.
   final ValueChanged<double> onTurned;
   final ValueChanged<double> onTurnEnded;
+
+  /// The point's density bar, while it moves and once let go.
+  final ValueChanged<int> onDensityMoved;
+  final ValueChanged<int> onDensityLet;
 
   final VoidCallback? onRemoved;
 
@@ -750,42 +1106,68 @@ class _VanishingPointRow extends StatelessWidget {
     // came looking for, while the second arm also catches a cross product
     // that overflowed to NaN — which nobody would read out of it alone.
     final atInfinity = resolved.isInfinite || position == null;
-    return ToolSettingRow.pair(
+    return Column(
       key: ValueKey<String>('guide-vanishing-point-$index'),
-      label: '${index + 1}',
-      first: _whereItStands(context, strings, position),
-      second: _parallelAndRemove(strings, atInfinity: atInfinity),
+      children: [
+        _whereIt(context, strings, position),
+        // 🗣️F-544 (유저 2026-11-02): 「소실점의 해당 레인에 막대 두도록」.
+        ToolSettingRow.bar(
+          label: strings.guideLineDensity,
+          bar: FieldSlider.cell(
+            key: ValueKey<String>('guide-vanishing-point-$index-density'),
+            label: strings.guideLineDensity,
+            value: point.lineDensity.toDouble(),
+            min: minGuideLineDensity.toDouble(),
+            max: maxGuideLineDensity.toDouble(),
+            divisions: maxGuideLineDensity - minGuideLineDensity,
+            onChanged: (value) => onDensityMoved(value.round()),
+            onChangeEnd: (value) => onDensityLet(value.round()),
+          ),
+        ),
+        ToolSettingRow(
+          label: '',
+          child: _parallelAndRemove(strings, atInfinity: atInfinity),
+        ),
+      ],
     );
   }
 
-  /// The first cell: where the point stands — or, a family at infinity, the
-  /// angle it runs at, typed here.
-  Widget _whereItStands(
+  /// The point's first line, or two: where it stands — or, a family at
+  /// infinity, the angle it runs at, typed here.
+  Widget _whereIt(
     BuildContext context,
     AppStrings strings,
     CanvasPoint? position,
   ) => switch (point) {
+    VanishingPointAt() => whereItStands,
     // 🗣️vanishing-point-types-Q3 (유저 2026-10-16): 「각도 칸으로
     // 정확히」 — 90 is the vertical family, stated exactly.
-    final VanishingPointTowards towards => FieldSlider.cell(
-      key: ValueKey<String>('guide-vanishing-point-$index-angle'),
-      label: strings.guideParallelAngle,
-      value: towards.degrees,
-      min: -180,
-      max: 180,
-      unit: '°',
-      onChanged: onTurned,
-      onChangeEnd: onTurnEnded,
+    final VanishingPointTowards towards => ToolSettingRow.bar(
+      label: '${index + 1}',
+      bar: FieldSlider.cell(
+        key: ValueKey<String>('guide-vanishing-point-$index-angle'),
+        label: strings.guideParallelAngle,
+        value: towards.degrees,
+        min: -180,
+        max: 180,
+        unit: '°',
+        onChanged: onTurned,
+        onChangeEnd: onTurnEnded,
+      ),
     ),
-    _ => _reads(
-      context,
-      position == null
-          ? strings.guideVanishingPointAtInfinity
-          : '${position.x.round()}, ${position.y.round()}',
+    // Two drawn lines name it: they say where it is, not a number.
+    VanishingPointFromLines() => ToolSettingRow(
+      label: '${index + 1}',
+      child: _reads(
+        context,
+        position == null
+            ? strings.guideVanishingPointAtInfinity
+            : '${position.x.round()}, ${position.y.round()}',
+      ),
     ),
   };
 
-  /// The second cell: the 「평행」 pill and the delete, side by side.
+  /// The point's last line: the 「평행」 pill and the delete, side by side.
   Widget _parallelAndRemove(AppStrings strings, {required bool atInfinity}) =>
       Row(
         children: [
@@ -819,15 +1201,13 @@ class _VanishingPointRow extends StatelessWidget {
         ],
       );
 
-  /// Where the point stands, read and not edited here — the canvas handle
-  /// moves it.
+  /// Where the point stands, read and not edited here.
   Widget _reads(BuildContext context, String text) {
     final theme = Theme.of(context);
-    return Text(
+    return EllipsisText(
       text,
       key: ValueKey<String>('guide-vanishing-point-$index-reads'),
       maxLines: 1,
-      overflow: TextOverflow.ellipsis,
       style: theme.textTheme.labelSmall?.copyWith(
         color: theme.colorScheme.onSurfaceVariant,
       ),

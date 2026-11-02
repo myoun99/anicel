@@ -229,6 +229,14 @@ class BrushValueBars extends StatelessWidget {
   static double heldSize(double size) =>
       _measured(BrushValuesLayout.strip, barHeight).size.held(size);
 
+  /// Where one step [direction] (+1 up, −1 down) from [size] lands on the
+  /// size bar — its ±, for the hand that steps the size with no bar under
+  /// it, the keys (I-149). Null past the rack's ends.
+  static double? steppedSize(double size, int direction) => _measured(
+    BrushValuesLayout.strip,
+    barHeight,
+  ).size.stepFrom(size, direction, fine: false);
+
   /// The narrowest each bar goes: where it still writes its name and its
   /// widest number whole ([FieldSlider.narrowestIn]).
   ///

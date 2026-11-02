@@ -53,7 +53,7 @@ void main() {
           width: 900,
           height: 260,
           child: LayerTimelineGrid(
-hooks: TimelineGridHooks(activeLayerId: activeLayerId,
+hooks: TimelineGridHooks(activeLayer: ValueNotifier(activeLayerId),
 frameCursor: ValueNotifier<int>(0),
 playbackFrameCount: 12,
 exposureStateForLayer: (_, _) =>
@@ -170,7 +170,7 @@ layers: layers,
           home: Scaffold(
             body: TimelinePanel(
               layers: model,
-              activeLayerId: const LayerId('base'),
+              activeLayer: ValueNotifier(const LayerId('base')),
               frameCursor: ValueNotifier<int>(0),
               playbackFrameCount: 12,
               exposureStateForLayer: (_, _) =>

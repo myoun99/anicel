@@ -5,6 +5,7 @@ import '../text/app_strings.dart';
 import '../timeline/layer_label_controls.dart';
 import '../timeline/layer_rail_columns.dart' show LayerTypeButton;
 import '../widgets/app_scrollbar.dart';
+import '../widgets/ellipsis_text.dart';
 import '../widgets/settings_rows.dart';
 import 'export_cels_board.dart';
 
@@ -125,11 +126,10 @@ class _ExportCelsStackState extends State<ExportCelsStack> {
     padding: const EdgeInsets.symmetric(horizontal: 8),
     child: Align(
       alignment: Alignment.centerLeft,
-      child: Text(
+      child: EllipsisText(
         AppText.strings.exCelsLayersOut,
         key: const ValueKey<String>('export-cels-stack-head'),
         maxLines: 1,
-        overflow: TextOverflow.ellipsis,
         style: layerRowNameStyle(
           context,
         ).copyWith(fontWeight: FontWeight.bold),

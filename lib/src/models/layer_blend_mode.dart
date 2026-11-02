@@ -37,7 +37,9 @@ enum LayerBlendMode {
   lighten,
   screen,
   colorDodge,
+  glowDodge,
   add,
+  glowAdd,
   overlay,
   softLight,
   hardLight,
@@ -73,8 +75,8 @@ enum LayerBlendMode {
 
   /// Whether a row in this mode is composed over a picture of everything
   /// below it ([CompositeBackdropBlend], `shaders/layer_blend.frag`) rather
-  /// than drawn in a GPU blend: every mode but the two the GPU lays pixel by
-  /// pixel where it draws — normal and add.
+  /// than drawn in a GPU blend: every mode but normal, the one the GPU lays
+  /// pixel by pixel where it draws.
   ///
   /// 🗣️brush-fidelity-Q4 (유저 2026-10-17 「레이어까지 같이」): a layer takes
   /// every mode the brush does, and the ones the GPU has no blend for were
@@ -85,9 +87,11 @@ enum LayerBlendMode {
   /// and a detour of its own (F-243 · F-172 · F-287 · flutter#179547 · GLES
   /// rounding), and the shader is the brush's formula on every device.
   /// ↩️Until then the twelve the list always had and the four that mix the
-  /// channels kept the GPU's blend.
+  /// channels kept the GPU's blend. ↩️And add its `plus`, until Clip Studio's
+  /// own exports showed that for 加算(発光) ([SeparableBlendMode.glows]): its
+  /// 加算 has a B and mixes by alpha, as every other here (유저 2026-10-17 Q3).
   bool get needsItsBackdrop => switch (this) {
-    passThrough || normal || add => false,
+    passThrough || normal => false,
     _ => true,
   };
 
@@ -99,7 +103,6 @@ enum LayerBlendMode {
   /// paint: the plan composes it over its backdrop ([needsItsBackdrop]).
   BlendMode get paintBlendMode => switch (this) {
     passThrough || normal => BlendMode.srcOver,
-    add => BlendMode.plus,
     _ => throw StateError(
       '$name is composed over its backdrop (CompositeBackdropBlend), never '
       'painted in a blend',

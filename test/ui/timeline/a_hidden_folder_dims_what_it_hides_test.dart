@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/named_finders.dart';
+import '../../helpers/text_finders.dart';
 
 /// 🚨F-185 (유저 2026-09-26): 「폴더에 대한 비지블버튼 조작시, 지금 로직은
 /// 맘에드는데, 비지블off일때 내부 레이어의 비지블이 on에다가 활성화색인데 그림
@@ -215,7 +216,7 @@ void main() {
                   ).copyWith(isVisible: folderOn),
                   drawing('outside', visible: outsideOn),
                 ],
-                activeLayerId: const LayerId('outside'),
+                activeLayer: ValueNotifier(const LayerId('outside')),
                 frameCursor: cursor,
                 playbackFrameCount: 12,
                 exposureStateForLayer: (_, _) =>
@@ -258,14 +259,15 @@ void main() {
       // I-62: the NAME wears what the label wears.
       Color? nameInk(String id) {
         final name = find.named('$prefix-layer-name-$id');
-        Finder as(Type type) =>
-            find.descendant(of: name, matching: find.byType(type));
+        Finder as(Finder kind) => find.descendant(of: name, matching: kind);
         return orientation == TimelineOrientation.vertical
             ? tester
-                  .widget<VerticalWritingText>(as(VerticalWritingText))
+                  .widget<VerticalWritingText>(
+                    as(find.byType(VerticalWritingText)),
+                  )
                   .style
                   ?.color
-            : tester.widget<Text>(as(Text)).style?.color;
+            : tester.widget<Text>(as(find.anyText())).style?.color;
       }
 
       final lit = (member: nameInk('member'), outside: nameInk('outside'));

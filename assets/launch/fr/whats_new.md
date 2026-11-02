@@ -2,24 +2,36 @@
 
 ## Nouveau
 
-- **Guides dans le script AE** — le script AE pose la trajectoire de la caméra et les directions en calques guides au-dessus de la composition du canevas.
-- **Effets dans le script AE** — une rangée avec Luminosité/Contraste, Teinte/Saturation, un flou gaussien, directionnel, radial ou d'objectif, ou Masquage par couleur reçoit l'effet After Effects le plus proche, avec ses valeurs.
-- **Mouvements de caméra dans le conte** — « Mouvements de caméra », dans Format de la feuille de conte, choisit d'agrandir la case ou de garder le mouvement dedans. Par défaut, « Dans la case » : la case garde sa taille et montre tout le mouvement réduit. « Réglages du plan », juste en dessous, ne remplace le choix que pour le plan actuel ou les plans sélectionnés.
-- **Vue par pages de la règle** — le bouton à l'angle gauche de la règle de la timeline choisit entre Images, Secondes+images et Pages. En Pages, la numérotation repart à chaque page de la feuille de temps et le changement de page s'inscrit sous la forme « p2 ». La règle du panneau Conte compte par pages de feuille de conte.
-- **Poser un panneau au fond** — glissez la Feuille de conte, la Feuille de temps, l'Enveloppe de plan ou la Visionneuse secondaire vers la bande du haut : un bouton apparaît, et il pose ce panneau à la place du canevas. Le bouton du canevas le ramène.
+- **Texte fixe sur la feuille de temps** — la colonne mémo écrit les mouvements de caméra et les changements de scène comme la feuille de conte. La colonne mémo est maintenant double, et le texte fixe s'active pour toute l'œuvre et pour le plan actuel.
+- **Couleur et opacité des repères** — réglez la couleur et l'opacité sur la ligne du repère dans la bibliothèque d'outils. Les lignes ne pâlissent plus quand vous changez d'outil. Les réglages de perspective gagnent la ligne d'horizon, et chaque point de fuite a sa densité, jusqu'à 192.
+- **Raccourcis de taille de brosse** — « ] » augmente d'un cran et « [ » diminue. Dans le préréglage TVPaint, ce sont « + » et « - ».
+- **Couper dossiers et calques attachés** — les dossiers et les calques attachés se coupent et se collent aussi.
+- **Coller sur une ligne synchronisée** — collez un bloc de frame sur une ligne attachée synchronisée : le bloc reste, seule son image change.
+- **Rétablir une brosse** — le bouton à gauche des détails de la brosse rétablit ses réglages initiaux.
 
 ## Améliorations
 
-- **Traits sur iPhone et iPad** — un trait n'écrit plus que ce qui change, sans redessiner toute l'image, et les images prennent deux fois moins de mémoire. En contrepartie, les photos et vidéos P3 s'affichent en sRGB.
-- **Crayons** — les crayons 2H, HB, 2B et 4B, le crayon de couleur et le porte-mine sont refaits. Le grain vient maintenant de la pointe de la brosse et non de la texture du papier : il reste même texture coupée. L'espacement par défaut des préréglages passe à 5 %, et l'ancien porte-mine reste dans le groupe Plume sous le nom Stylo porte-mine. Les nouveaux réglages arrivent avec « Réinitialiser la bibliothèque ».
-- **Lignes de caméra du conte** — une ligne de mouvement nomme ses deux clés, comme « 1f-5f T.U », ou « A-B T.U » si elles ont un nom. FIX ne s'écrit qu'avant et après un mouvement de caméra, et une case où la caméra ne fait rien reste vide. Retirer la rangée caméra de la feuille efface ces lignes et la colonne CAM de la feuille de temps. Les cadres de caméra d'une case se dessinent à chaque clé, comme sur le canevas.
-- **Brosses importées** — la vraie pointe d'une brosse .sut est lue, et l'ajustement du flux selon l'intervalle suit le fichier. L'anticrénelage n'efface plus les gris de la pointe. Les brosses déjà importées doivent être réimportées.
+- **Vitesse du trait** — moins de temps entre la saisie et l'écran : le trait suit le stylet de plus près.
+- **Grandes images** — les grandes images sont posées par morceaux, l'écran se fige moins. Changer l'opacité ou la visibilité pendant la préparation des images s'affiche aussitôt.
+- **Lecture et moniteurs** — avec la fenêtre sur un moniteur 60 Hz, les images suivent l'horloge de cet écran (Windows 11 et plus).
+- **Indications sur la feuille de conte** — FI et FO portent « Début de plan » et « Fin de plan », en haut de la première vignette et en bas de la dernière. Les plans liés indiquent leurs plans liés sur leur première vignette.
+- **Taille d'un nouveau plan** — un nouveau plan commence à la taille du plan actuel. Là où il n'y a pas de plan, il prend la valeur par défaut (A4 à 200 dpi).
+- **Vue par pages de la règle** — les secondes se recomptent aussi à chaque page.
+- **Bouts de plan et clés caméra** — raccourcir un plan dans la timeline déplace aussi les clés caméra avec le geste, et les pousse quand il les rencontre.
+- **Cases de texte des feuilles** — un nom trop long pour sa case se réduit pour y tenir. Une case en cours d'édition montre un cadre sur son propre trait.
+- **Sélections** — la brosse, la gomme, le remplissage et les formes suivent le bord doux de la sélection.
+- **Brosses** — Densité linéaire (Ajout) et (lueur) se distinguent comme dans Clip Studio. Les brosses importées lisent leur façon de poser le papier, et les aquarelles montrent les paliers d'anticrénelage de Clip Studio.
+- **Raccourcis** — « Réinitialiser le préréglage actuel » demande d'abord. Les groupes en conflit s'affichent en rouge. Les droites Z marchent dans tous les préréglages.
 
 ## Corrections
 
-- **Traits en retard sur le curseur** — plus le trait était long, plus la ligne s'éloignait du curseur ; elle suit désormais.
-- **Import de vidéos sur Android** — importer une vidéo laissait l'aperçu noir et ne créait ni plan ni calque.
-- Le script AE s'arrêtait sur un cellulo sans image, et l'opacité d'une rangée se perdait.
-- Les droites Z en série prennent chacune la pression de l'appui précédent.
-- L'onglet Cellulos de l'export écarte les cellulos sans image : le compte de la liste égale les fichiers écrits.
-- Toucher une case de contenu de la feuille de conte dans un plan sans calque storyboard dit maintenant pourquoi.
+- **Début de trait sur iPad** — les premiers points sortaient forts même avec un début léger.
+- **Stabilisation dans les virages** — avec la stabilisation, un virage rapide courbait la ligne.
+- **Déplacer des lignes aux extrémités** — une ligne glissée tout en haut ou tout en bas de sa section ne bougeait pas.
+- Des pixels collés avec le calque actif en solo restaient invisibles jusqu'à la fin du solo.
+- Ouvrir un calque attaché ou un dossier en bas de la liste puis défiler masquait les lignes du dessous.
+- La souris pouvait cesser de répondre pendant l'usage du stylet.
+- Maintenir Ctrl pendant la saisie déplace et redimensionne la zone de texte.
+- Une clé de graphe s'aimantait à des endroits où elle ne pouvait pas aller.
+- Les repères d'intervalle restent jusqu'à la fin du bloc quand son bord avant bouge.
+- Une palette verrouillée garde ses couleurs en place et retire seulement ses lignes vides.

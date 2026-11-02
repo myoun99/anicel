@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/ui/text/text_line.dart';
 
+import '../../helpers/text_finders.dart';
+
 /// A line a box sets itself is set as a `Text` of the same style would be
 /// ([textLineTypeIn]) — over the ambient style, at the text scale, in bold
 /// where bold text is asked for. ↩️Pinned through the frame counter's line
@@ -52,11 +54,11 @@ void main() {
       final line = textLineIn('120', type)..layout();
       addTearDown(line.dispose);
 
-      expect(line.size, tester.getSize(find.byType(Text)), reason: '$scale');
+      expect(line.size, tester.getSize(find.anyText()), reason: '$scale');
       // The test font sets bold as wide as plain: the type says it.
       expect(
         type.style,
-        tester.renderObject<RenderParagraph>(find.byType(RichText)).text.style,
+        tester.renderObject<RenderParagraph>(find.anyRichText()).text.style,
         reason: 'bold: $bold',
       );
     }

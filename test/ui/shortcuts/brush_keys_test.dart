@@ -601,6 +601,33 @@ void main() {
       );
     });
 
+    // 🗣️F-522 (유저 2026-11-01): 「해당 들어있는 항목 다 빨간강조색으로」.
+    testWidgets('a clash on a brush stands red on the title that folds it — '
+        'a group\'s, and the root section\'s word — and on no other', (
+      tester,
+    ) async {
+      final bindings = await pump(tester);
+      const spare = SingleActivator(LogicalKeyboardKey.f20);
+      bindings
+        ..setActivators(presetId('maru'), const [spare])
+        ..setActivators(presetId('loose'), const [spare]);
+      await tester.pump();
+      final red = Theme.of(tester.element(search)).colorScheme.error;
+
+      Future<Color?> inkOf(String row, String words) async {
+        final found = find.descendant(
+          of: find.byKey(ValueKey<String>('shortcut-row-$row')),
+          matching: find.text(words),
+        );
+        await bringIn(tester, found);
+        return tester.widget<Text>(found).style?.color;
+      }
+
+      expect(await inkOf(groupId(inks), 'Inks'), red);
+      expect(await inkOf('brush-root', brushRootSectionLabel), red);
+      expect(await inkOf(groupId(chalks), 'Chalks'), isNot(red));
+    });
+
     testWidgets('a twirl opens its bundle and shuts it again — the root '
         'section\'s too, whose title is no row', (tester) async {
       await pump(tester);

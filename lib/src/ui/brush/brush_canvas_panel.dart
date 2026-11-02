@@ -69,6 +69,7 @@ import '../canvas/bitmap_surface_painter.dart';
 import '../canvas/active_stroke_overlay.dart';
 import '../canvas/canvas_selection_layer.dart';
 import '../canvas/canvas_touch_contacts.dart' show CanvasTouchContacts;
+import '../widgets/ellipsis_text.dart';
 import 'promoted_touch_aim_policy.dart' show aimIsPromotedTouch;
 import '../canvas/canvas_zoom_scale.dart';
 import '../canvas/selection_ants_painter.dart';
@@ -3764,7 +3765,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
 /// The file's name on a see-through plate ([BrushCanvasPanel.documentName]),
 /// at the lower left of the room it is given and never wider than it.
 ///
-/// A plate, not a control: it takes no pointer, so a press on it is the
+/// A plate, not a control: it takes no press, so a press on it is the
 /// canvas's.
 class _CanvasDocumentName extends StatelessWidget {
   const _CanvasDocumentName(this.name, {required this.absent});
@@ -3775,7 +3776,7 @@ class _CanvasDocumentName extends StatelessWidget {
   final bool absent;
 
   @override
-  Widget build(BuildContext context) => IgnorePointer(
+  Widget build(BuildContext context) => PressesGoThrough(
     child: Align(
       alignment: Alignment.bottomLeft,
       child: DecoratedBox(
@@ -3786,10 +3787,9 @@ class _CanvasDocumentName extends StatelessWidget {
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-          child: Text(
+          child: EllipsisText(
             name,
             maxLines: 1,
-            overflow: TextOverflow.ellipsis,
             style: Theme.of(
               context,
             ).textTheme.labelSmall?.copyWith(

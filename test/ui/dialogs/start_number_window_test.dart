@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/dialogs/start_number_window.dart';
 import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 import '../../helpers/number_pad_keyboard.dart';
+import '../../helpers/text_finders.dart';
 
 /// 🗣️I-18 (유저): 「누르면 숫자 편집하는 창 나와서 숫자만 입력가능. 드래그로
 /// 조절하거나 수동입력. 기본값은 1인상태」.
@@ -36,7 +37,7 @@ void main() {
 
   String shown(WidgetTester tester) => tester
       .widget<Text>(
-        find.descendant(of: find.byKey(label), matching: find.byType(Text)),
+        find.descendant(of: find.byKey(label), matching: find.anyText()),
       )
       .data!;
 

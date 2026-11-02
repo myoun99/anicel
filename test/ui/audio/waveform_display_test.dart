@@ -53,7 +53,7 @@ void main() {
         home: Scaffold(
           body: TimelinePanel(
             layers: [_seLayer()],
-            activeLayerId: null,
+            activeLayer: ValueNotifier(null),
             frameCursor: ValueNotifier<int>(0),
             playbackFrameCount: 48,
             exposureStateForLayer: (_, _) =>

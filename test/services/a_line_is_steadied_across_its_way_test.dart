@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -43,6 +45,55 @@ StrokeStabilizer _line({
     y = brush.position.y;
   }
   return (behind: x - line.brush.position.x, y: y);
+}
+
+/// The pen [distance] px along a run of 600 px, half a circle of [radius],
+/// and the same way back.
+CanvasPoint _uTurn(double distance, double radius) {
+  const run = 600.0;
+  final arc = math.pi * radius;
+  if (distance <= run) {
+    return CanvasPoint(x: distance, y: 0);
+  }
+  if (distance <= run + arc) {
+    final turned = (distance - run) / radius;
+    return CanvasPoint(
+      x: run + radius * math.sin(turned),
+      y: radius - radius * math.cos(turned),
+    );
+  }
+  return CanvasPoint(x: run - (distance - run - arc), y: 2 * radius);
+}
+
+/// How a line turned on the way round a U-turn taken at [speed] px/s: through
+/// how many degrees all told, and how often it changed side.
+({double degrees, int changes}) _roundTheTurn(
+  StrokeStabilizer line,
+  double speed, {
+  required double radius,
+}) {
+  final seconds = _sample.inMicroseconds / 1e6;
+  final way = [
+    for (var i = 1; i * speed * seconds < 1200 + math.pi * radius; i += 1)
+      ...line
+          .follow(_uTurn(i * speed * seconds, radius), _rest, at: _sample * i)
+          .map((point) => point.position),
+  ].where((point) => point.x > 480).toList();
+  var degrees = 0.0;
+  var changes = 0;
+  var side = 0.0;
+  for (var i = 1; i + 1 < way.length; i += 1) {
+    final (a, b, c) = (way[i - 1], way[i], way[i + 1]);
+    final (ux, uy) = (b.x - a.x, b.y - a.y);
+    final (vx, vy) = (c.x - b.x, c.y - b.y);
+    final turn = math.atan2(ux * vy - uy * vx, ux * vx + uy * vy) * 180 / math.pi;
+    degrees += turn.abs();
+    if (turn.abs() > 2) {
+      changes += side * turn < 0 ? 1 : 0;
+      side = turn;
+    }
+  }
+  return (degrees: degrees, changes: changes);
 }
 
 void main() {
@@ -118,6 +169,75 @@ void main() {
         .position;
 
     expect(turned.y, closeTo(5 * 0.647, 0.3));
+  });
+
+  group('🚨a quick turn is turned once (F-536)', () {
+    for (final (speed, radius) in [
+      (1500.0, 6.0),
+      (3000.0, 6.0),
+      (3000.0, 15.0),
+      (5000.0, 6.0),
+      (5000.0, 15.0),
+    ]) {
+      test('$speed px/s round $radius px', () {
+        final turn = _roundTheTurn(_line(), speed, radius: radius);
+
+        expect(turn.changes, 0, reason: '⛔it swings out and back');
+        expect(turn.degrees, closeTo(180, 5));
+      });
+    }
+
+    test('🚨and a brush past 0 alike', () {
+      final turn = _roundTheTurn(
+        _line(lag: const Duration(microseconds: 5610)),
+        1500,
+        radius: 6,
+      );
+
+      expect(turn.changes, 0);
+      expect(turn.degrees, closeTo(180, 5));
+    });
+
+    test('🚨CONTROL: steadied all round, it always was', () {
+      final turn = _roundTheTurn(
+        _line(acrossOnly: Duration.zero),
+        5000,
+        radius: 6,
+      );
+
+      expect(turn.changes, 0);
+      expect(turn.degrees, closeTo(180, 1));
+    });
+  });
+
+  test('🚨a wobble does not bring the lag back: it is no turn', () {
+    final dice = math.Random(7);
+    final line = _line();
+    var behind = 0.0;
+    for (var i = 1; i <= 60; i += 1) {
+      final x = 1200 * (_sample * i).inMicroseconds / 1e6;
+      final y = (dice.nextDouble() - 0.5) * 0.8;
+      final at = _sample * i;
+      behind += x - line.follow(CanvasPoint(x: x, y: y), _rest, at: at).last.position.x;
+    }
+
+    expect(behind / 60, closeTo(0, 1200 * 0.0002));
+  });
+
+  test('🚨a pen that turns back goes nowhere along its old way', () {
+    final line = _line();
+    final before = _go(line, 1200);
+    final at = line.brush.position;
+    final back = line
+        .follow(
+          CanvasPoint(x: at.x + before.behind - 4, y: 0),
+          _rest,
+          at: _sample * 61,
+        )
+        .last
+        .position;
+
+    expect(back.x, closeTo(at.x - 4 * 0.647, 0.3));
   });
 
   test('🚨whichever way it goes', () {

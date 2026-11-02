@@ -85,6 +85,21 @@ void main() {
       expect(registry().canonicalCelKey(key), key);
     });
 
+    test('a member two groups hold answers the first of them', () {
+      final links = LayerLinkRegistry(
+        groups: [
+          LayerLinkGroup(id: 'first', members: [member('cut-a', 'layer-1')]),
+          LayerLinkGroup(id: 'second', members: [member('cut-a', 'layer-1')]),
+        ],
+      );
+      final held = links.groupOf(
+        cutId: const CutId('cut-a'),
+        layerId: const LayerId('layer-1'),
+      );
+
+      expect(held?.id, 'first');
+    });
+
     test('toJson/fromJson round-trips', () {
       final links = registry();
       expectJsonRoundTrip(links, LayerLinkRegistry.fromJson);

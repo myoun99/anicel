@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show ValueNotifier;
 
+import '../../models/sheet_memo_side.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_resize_anchor.dart';
 import '../../models/canvas_size.dart';
@@ -79,7 +80,8 @@ class CutVerbs {
 
   /// The cut [createCut] makes when it is told nothing — what the new cut
   /// window offers (I-100): the name the cut takes where it lands, and the
-  /// new cut's canvas, A4 200dpi. Null where the ＋ has no place for one.
+  /// open cut's canvas (F-537, [CutCommandCoordinator.plannedCut]). Null
+  /// where the ＋ has no place for one.
   Cut? get plannedNewCut {
     final plan = _placement.cutCreationPlan;
     if (plan == null) {
@@ -98,7 +100,9 @@ class CutVerbs {
   /// 정하는데, 그게아니라 앞으로는 컷 만들기 버튼 누르면 컷 생성창 열려서,
   /// 거기서 이름(기본값 넣어줌), 캔버스 사이즈(기본값 a4 200dpi) 정하도록.
   /// 거기서 정한값으로 만들어짐」. ↩️A new cut took the active cut's canvas,
-  /// as new scenes in TVPaint/Clip Studio take the project's.
+  /// as new scenes in TVPaint/Clip Studio take the project's. ↩️↩️And the
+  /// window offers that canvas again: the size is the open cut's where one
+  /// is open (F-537), and the window stays.
   void createCut({String? name, CanvasSize? canvasSize}) {
     final plan = _placement.cutCreationPlan;
     if (plan == null) {
@@ -320,20 +324,29 @@ class CutVerbs {
   void updateActiveCutNote({required int page, required String note}) =>
       _activeCut.onActiveCut((cutId) => _writeNote(cutId, page, note));
 
-  /// [cutId]'s memo on page [page] of its timesheet — the cut the paper
-  /// prints (I-127).
+  /// [cutId]'s memo on [side] of page [page] of its timesheet — the cut the
+  /// paper prints (I-127).
   void updateCutNote({
     required CutId cutId,
     required int page,
     required String note,
-  }) => _activeCut.onCut(cutId, (cutId) => _writeNote(cutId, page, note));
+    SheetMemoSide side = SheetMemoSide.left,
+  }) => _activeCut.onCut(
+    cutId,
+    (cutId) => _writeNote(cutId, page, note, side: side),
+  );
 
-  void _writeNote(CutId cutId, int page, String note) =>
-      _project.cutCommandCoordinator.updateCutNote(
-        cutId: cutId,
-        page: page,
-        note: note,
-      );
+  void _writeNote(
+    CutId cutId,
+    int page,
+    String note, {
+    SheetMemoSide side = SheetMemoSide.left,
+  }) => _project.cutCommandCoordinator.updateCutNote(
+    cutId: cutId,
+    page: page,
+    note: note,
+    side: side,
+  );
 
   /// The cuts a pick in the cut button is about: the ones the storyboard's
   /// range covers, or — with no range up — the active cut. ONE list either
@@ -402,11 +415,13 @@ class CutVerbs {
   void saveConteFormat(
     TimesheetInfo info, {
     ({ConteCameraRoom? to})? cameraRoom,
+    ({bool? to})? fixedText,
   }) {
     _project.cutCommandCoordinator.setConteFormat(
       info: info,
       cutIds: addressedCutIds,
       cameraRoom: cameraRoom,
+      fixedText: fixedText,
     );
     _changes.notifyChanged();
   }

@@ -24,6 +24,7 @@ import 'package:anicel/src/ui/canvas/brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/app_scrollbar.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
@@ -32,6 +33,7 @@ import '../helpers/brush_canvas_fixture.dart';
 import '../helpers/pinch_recognised_at.dart';
 import 'brush_canvas_test_helpers.dart';
 import '../helpers/number_pad_keyboard.dart';
+import '../helpers/text_finders.dart';
 
 /// Everything a floor pill shows that a rail pill folds away — in the order
 /// it is laid out, which is also the reverse of the order it folds in.
@@ -541,6 +543,35 @@ void main() {
       expect(
         tester.getRect(leftCapsule).bottom,
         lessThanOrEqualTo(name.top - 6 + 0.01),
+      );
+    });
+
+    testWidgets('🗣️F-530: a file name cut on its plate says itself whole, and '
+        'a press on the plate is still the canvas\'s', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(300, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      addTearDown(SummonedTooltip.dismiss);
+      final name = 'a_very_long_file_name_' * 10;
+      await tester.pumpWidget(
+        floorPillHarness(width: 300, onFloor: true, documentName: name),
+      );
+      await tester.pumpAndSettle();
+      final plate = find.byKey(const ValueKey<String>('canvas-document-name'));
+
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+      await mouse.addPointer(location: Offset.zero);
+      await tester.pump();
+      await mouse.moveTo(tester.getCenter(plate));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(SummonedTooltip.debugShownMessage, name);
+
+      final hits = tester.hitTestOnBinding(tester.getCenter(plate));
+      expect(
+        hits.path.map((entry) => entry.target),
+        isNot(contains(tester.renderObject(plate))),
+        reason: 'a press there reaches past the plate',
       );
     });
 
@@ -1568,7 +1599,7 @@ void main() {
       const ValueKey<String>('canvas-viewport-zoom-label'),
     );
     String zoomText() => tester
-        .widget<Text>(find.descendant(of: label, matching: find.byType(Text)))
+        .widget<Text>(find.descendant(of: label, matching: find.anyText()))
         .data!;
     final before = zoomText();
     final gesture = await tester.startGesture(tester.getCenter(label));

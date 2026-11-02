@@ -22,6 +22,7 @@ import '../../helpers/canvas_pill.dart';
 import '../../helpers/device_viewport.dart';
 import '../../helpers/sheet_paper_view.dart';
 import '../../helpers/number_pad_keyboard.dart';
+import '../../helpers/text_finders.dart';
 
 /// THE TIMESHEET'S PAGE VIEW LAYS ITS SHEETS ONE UNDER ANOTHER (F-201,
 /// 유저 2026-09-27 F-201-timesheet-pages-Q1: 「타임시트 페이지 보기도
@@ -177,7 +178,7 @@ void main() {
         .widget<Text>(
           find.descendant(
             of: find.byKey(_pageLabelKey),
-            matching: find.byType(Text),
+            matching: find.anyText(),
           ),
         )
         .data!;

@@ -332,6 +332,17 @@ Map<String, List<SingleActivator>> fileKeysOf(Iterable<ProgramKeymap> files) {
 /// animation's among them. ⚠️MY READINGS, each the same command or the
 /// nearest, not the user's: the table they answered held only keys.
 final Map<String, ProgramRow> _clipStudioRows = {
+  // Brush Size palette: Select larger / smaller preset than current — the
+  // rack our bar steps through. `toolsizeplus` / `toolsizeminus` ship with
+  // no key; they are the nearest command to a file that gives them one.
+  EditorActionIds.brushSizeUp: const ProgramRow(
+    ['toolsizenext', 'toolsizeplus'],
+    [SingleActivator(LogicalKeyboardKey.bracketRight)],
+  ),
+  EditorActionIds.brushSizeDown: const ProgramRow(
+    ['toolsizeprevious', 'toolsizeminus'],
+    [SingleActivator(LogicalKeyboardKey.bracketLeft)],
+  ),
   // Change Selected Layer > Layer Above / Layer Below.
   EditorActionIds.layerUp: const ProgramRow(
     ['layerselectupperlayer'],
@@ -651,9 +662,8 @@ final Map<String, ProgramRow> _clipStudioRows = {
 ///
 /// ⚠️Where the program's key names a command the app has no action for —
 /// `A` shakes the view, `G` `H` `V` `J` `K` are selection modes, `1`…`9`
-/// scroll the view, `+` `-` size the brush — the action that held the key
-/// here keeps it: only a key the program gives to one of OUR actions leaves
-/// another ([ProgramKeys]).
+/// scroll the view — the action that held the key here keeps it: only a key
+/// the program gives to one of OUR actions leaves another ([ProgramKeys]).
 /// ⚠️`Space` plays (「再生 / 一時停止」), so the pan held on it has no key
 /// under this preset. The program pans on Alt and turns the view on
 /// Ctrl+Alt, each held while dragging (its 「Rotate, pan, zoom」 page) — a
@@ -667,6 +677,14 @@ final Map<String, ProgramRow> _clipStudioRows = {
 /// here, and the rail tool takes it (the rule `M` · `U` · `G` follow in the
 /// CLIP STUDIO table).
 final Map<String, ProgramRow> _tvpaintRows = {
+  // 🗣️I-119-Q5 (유저 2026-11-01): 「쉬프트못쓰는건 치명적이니 그냥 z로 다
+  // 두자」 — the one key here the program does not ship, and Clip Studio,
+  // which names none for it, takes this row (F-417). ⛔Not the program's own
+  // Ctrl+Shift (I-119-Q4): held on Shift, the line has no eight ways left.
+  EditorActionIds.canvasLineHold: const ProgramRow(
+    [],
+    [SingleActivator(LogicalKeyboardKey.keyZ)],
+  ),
   // レイヤー: 左に移動 / 右に移動.
   EditorActionIds.framePrevious: const ProgramRow(
     ['LayerLeft'],
@@ -702,6 +720,24 @@ final Map<String, ProgramRow> _tvpaintRows = {
   EditorActionIds.canvasRotateCw: const ProgramRow(
     ['ZoomRotateSub15'],
     [SingleActivator(LogicalKeyboardKey.pageDown, shift: true)],
+  ),
+  // ツール オプション: サイズ拡大 / サイズ縮小, on `+` and `-`. A key event
+  // names the key, not what it types: `+` is Shift on `;` (JIS) or on `=`
+  // (US), so each stands here as it is pressed, the pad's first.
+  EditorActionIds.brushSizeUp: const ProgramRow(
+    ['IncreaseToolsSize'],
+    [
+      SingleActivator(LogicalKeyboardKey.numpadAdd),
+      SingleActivator(LogicalKeyboardKey.semicolon, shift: true),
+      SingleActivator(LogicalKeyboardKey.equal, shift: true),
+    ],
+  ),
+  EditorActionIds.brushSizeDown: const ProgramRow(
+    ['DecreaseToolsSize'],
+    [
+      SingleActivator(LogicalKeyboardKey.numpadSubtract),
+      SingleActivator(LogicalKeyboardKey.minus),
+    ],
   ),
   // ズーム: ズームイン / ズームアウト.
   EditorActionIds.canvasZoomIn: const ProgramRow(

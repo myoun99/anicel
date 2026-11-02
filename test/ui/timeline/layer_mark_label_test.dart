@@ -78,7 +78,7 @@ Widget _panel({TimelineOrientation orientation = TimelineOrientation.horizontal}
     home: Scaffold(
       body: TimelinePanel(
         layers: layers,
-        activeLayerId: const LayerId('a'),
+        activeLayer: ValueNotifier(const LayerId('a')),
         frameCursor: ValueNotifier<int>(0),
         playbackFrameCount: 12,
         exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,

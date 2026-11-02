@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/effective_device_pixel_ratio.dart';
 
 import '../../helpers/brush_canvas_fixture.dart';
 import '../../helpers/canvas_pill.dart';
+import '../../helpers/text_finders.dart';
 
 /// 100% means one artwork pixel per DEVICE pixel (유저 확정 2026-08-21), and
 /// the same division keeps the UI scale off the document views.
@@ -208,7 +209,7 @@ void main() {
             of: find.byKey(
               const ValueKey<String>('canvas-viewport-zoom-label'),
             ),
-            matching: find.byType(Text),
+            matching: find.anyText(),
           ),
         )
         .data!;

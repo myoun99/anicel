@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/settings_rows.dart';
 
 import '../helpers/boolean_dot_probe.dart';
+import '../helpers/text_finders.dart';
 
 /// 🚨★★★A RING BESIDE A LABEL IS ONE ROW — 유저 answered board
 /// `one-boolean-row-shape-Q1` on 2026-09-24: 「**설정 줄 하나로**」.
@@ -257,7 +258,7 @@ void main() {
           );
           final before = tester.booleanDotIn(tile).value;
           final label = find
-              .descendant(of: tile, matching: find.byType(Text))
+              .descendant(of: tile, matching: find.anyText())
               .first;
 
           var at = position.pixels;

@@ -42,6 +42,7 @@ class LinkDuplicateLayerCommand implements Command {
     required this.cutId,
     required this.sourceLayerId,
     required this.insertionIndex,
+    this.intoFolder,
     required this.layerIdMap,
     required this.newGroupIdBySource,
     this.siblings = const [],
@@ -55,6 +56,10 @@ class LinkDuplicateLayerCommand implements Command {
 
   /// The seat in the cut's stack the copies are aimed at.
   final int insertionIndex;
+
+  /// The folder of [cutId] the copies go in, whatever the seat's row stands
+  /// in — the row a copied folder landed as (F-532-Q2).
+  final LayerId? intoFolder;
 
   /// Planned ids: source member id → its copy's id (planner-assigned so
   /// redo reproduces the exact state).
@@ -103,6 +108,7 @@ class LinkDuplicateLayerCommand implements Command {
                   sourceIndex: seat,
                   sibling: requireCut(project, use.cutId),
                 ),
+          intoFolder: _folderIn(project, use.cutId),
         );
       }
       return laid.project.copyWith(
@@ -117,13 +123,26 @@ class LinkDuplicateLayerCommand implements Command {
     _hasExecuted = true;
   }
 
+  /// [intoFolder] as the cut [use] stands in holds it.
+  LayerId? _folderIn(Project project, CutId use) => switch (intoFolder) {
+    null => null,
+    final folder when use == cutId => folder,
+    final folder => linkCounterpartIn(
+      project,
+      cutId: cutId,
+      layerId: folder,
+      targetCutId: use,
+    ),
+  };
+
   /// [use]'s group copied in its cut, the copies laid where a NEW row would
-  /// be asked for [aimedAt], and each joined to the group of the row it
-  /// copies.
+  /// be asked for [aimedAt] — in [intoFolder] when one is named — and each
+  /// joined to the group of the row it copies.
   static ({Project project, List<LayerLinkGroup> groups}) _laid(
     ({Project project, List<LayerLinkGroup> groups}) laid,
     LinkDuplicateUse use, {
     required int aimedAt,
+    required LayerId? intoFolder,
   }) {
     final group = requireAttachedGroup(
       laid.project,
@@ -156,7 +175,8 @@ class LinkDuplicateLayerCommand implements Command {
           // copies onto the copied folder row. A folder pointer OUT of the
           // slice — the folder the group stood in — is the landing's: the
           // copies join the folder they are put down in.
-          folderId: _copiedFolderOf(member, use) ?? placement.folderId,
+          folderId:
+              _copiedFolderOf(member, use) ?? intoFolder ?? placement.folderId,
         ),
     ];
     var groups = laid.groups;

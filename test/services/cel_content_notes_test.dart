@@ -115,6 +115,26 @@ void main() {
     expect(notes.has(cel), isFalse);
   });
 
+  test('it is empty until a cel is noted, and again once the note is taken '
+      'back — and a note the content moved past still counts', () {
+    final store = BrushFrameStore();
+    final notes = CelContentNotes(store);
+    addTearDown(notes.dispose);
+    final cel = key('a');
+    store.getOrCreateFrame(cel);
+    expect(notes.isEmpty, isTrue);
+
+    notes.note(cel);
+    expect(notes.isEmpty, isFalse);
+
+    store.markCelEdited(cel);
+    expect(notes.has(cel), isFalse, reason: 'premise: the content moved');
+    expect(notes.isEmpty, isFalse);
+
+    notes.clear(cel);
+    expect(notes.isEmpty, isTrue);
+  });
+
   group('the revision', () {
     test('moves when a note is made and when it is taken back', () {
       final store = BrushFrameStore();

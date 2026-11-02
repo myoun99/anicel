@@ -173,6 +173,9 @@ abstract class RendersHeld implements FramePictureGpu {
   /// How many renders wait their turn.
   int get rendersWaiting => _waiting.length;
 
+  /// How many renders were asked for.
+  int rendersAsked = 0;
+
   /// Lets the render that has waited longest through.
   void letOneThrough() => _waiting.removeAt(0).complete();
 
@@ -187,6 +190,7 @@ abstract class RendersHeld implements FramePictureGpu {
 
   @override
   Future<ui.Image> render(ui.Picture picture, int width, int height) async {
+    rendersAsked += 1;
     if (holdsRenders) {
       final turn = Completer<void>();
       _waiting.add(turn);
@@ -250,12 +254,15 @@ class WritesLand extends RendersHeld {
   @override
   ui.Image imageOf(Object held) => _gpu.imageOf(held);
 
-  /// Runs once, as the next write is in and before the store hears of it:
-  /// what comes to the screen meanwhile.
+  /// Runs once, as the next write has gone to the GPU and before the store
+  /// goes on: what comes to the screen meanwhile.
   void Function()? beforeTheNextLands;
 
   /// How many patches went into a picture, each write's together.
   int patchesWritten = 0;
+
+  /// How wide the widest of them was, in texels.
+  int widestPatch = 0;
 
   @override
   Future<bool> write(
@@ -264,13 +271,20 @@ class WritesLand extends RendersHeld {
     LevelWrites? levels,
   ) async {
     patchesWritten += base.length;
-    final written = await _gpu.write(held, base, levels);
+    for (final write in base) {
+      widestPatch = math.max(widestPatch, write.source.width);
+    }
+    final written = _gpu.write(held, base, levels);
     final meanwhile = beforeTheNextLands;
     beforeTheNextLands = null;
     meanwhile?.call();
     return written;
   }
 }
+
+/// Long enough for what the steps of a stroke owe the levels to be laid: a
+/// step that went in leaves a store's timer running past its view.
+const Duration theLevelsPause = Duration(milliseconds: 250);
 
 /// Why this runner cannot write into a frame's picture, or null when it can.
 final String? noFlutterGpu = () {
@@ -282,6 +296,13 @@ final String? noFlutterGpu = () {
         '`flutter test --enable-impeller --enable-flutter-gpu`: $error';
   }
 }();
+
+/// The frame for what changed, and the step its paint asks for: that goes
+/// once the frame is out, or later where the pace holds it.
+Future<void> aFrameAndItsStep(WidgetTester tester, [Duration? frame]) async {
+  await tester.pump(frame);
+  await tester.pump(Duration.zero);
+}
 
 /// Waits for [landing] — a patch or a move a store answers for
 /// (`FramePictureStore.landingOf`) — to be in its picture, and pumps the
@@ -302,22 +323,29 @@ final String? noFlutterGpu = () {
 /// told apart by its identity: a view drawing the image it drew before the
 /// write showed the write nowhere there (F-509), and every capture here
 /// would still show it.
+///
+/// A [landing] null is a step already in: a write with no copy out is not
+/// waited for (F-533), and may be in before the paint of the frame that
+/// sent it — that frame shows it, and there is nothing to wait for. The
+/// frame such a step asks when it is in later is pinned by holding its
+/// render ([RendersHeld.holdsRenders]).
 Future<void> inThePicture(WidgetTester tester, Future<void>? landing) async {
-  expect(landing, isNotNull, reason: '⛔premise: on its way into a picture');
-  var landed = false;
-  var framed = false;
-  unawaited(
-    landing!.then((_) {
-      landed = true;
-      framed = tester.binding.hasScheduledFrame;
-    }),
-  );
-  expect(
-    await settleAsync(tester, () => landed),
-    isTrue,
-    reason: 'LIVENESS: it is in the picture',
-  );
-  expect(framed, isTrue, reason: 'the view asks for the frame that shows it');
+  if (landing != null) {
+    var landed = false;
+    var framed = false;
+    unawaited(
+      landing.then((_) {
+        landed = true;
+        framed = tester.binding.hasScheduledFrame;
+      }),
+    );
+    expect(
+      await settleAsync(tester, () => landed),
+      isTrue,
+      reason: 'LIVENESS: it is in the picture',
+    );
+    expect(framed, isTrue, reason: 'the view asks for the frame that shows it');
+  }
   await tester.pump();
   final views = find.descendant(
     of: find.byType(FramePictureView),

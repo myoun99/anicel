@@ -12,6 +12,7 @@ import '../../services/input/raw_pen_input_service.dart';
 import '../../services/input/wintab_pen_service.dart';
 import '../canvas/canvas_touch_contacts.dart' show CanvasTouchContacts;
 import '../theme/app_theme.dart' show AppColors, AppShapes;
+import '../widgets/ellipsis_text.dart';
 import 'key_trace.dart';
 
 /// The cross-platform INPUT INSPECTOR (pen program, PEN-1).
@@ -475,10 +476,9 @@ class _InspectorCard extends StatelessWidget {
                   Row(
                     children: [
                       Expanded(
-                        child: Text(
+                        child: EllipsisText(
                           'INPUT INSPECTOR',
                           maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w700,
@@ -586,11 +586,10 @@ class _InspectorCard extends StatelessWidget {
                     ],
                   ),
                   for (final entry in InputInspector.pinned.entries)
-                    Text(
+                    EllipsisText(
                       entry.value,
                       key: ValueKey<String>('input-inspector-pin-${entry.key}'),
                       maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                       style: rowStyle.copyWith(color: AppColors.accent),
                     ),
                   if (samples.isEmpty)
@@ -602,10 +601,9 @@ class _InspectorCard extends StatelessWidget {
                     )
                   else
                     for (var i = start; i < samples.length; i += 1)
-                      Text(
+                      EllipsisText(
                         samples[i].describe(),
                         maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                         style: rowStyle.copyWith(
                           color: _kindColor(colorScheme, samples[i].kind),
                         ),
@@ -627,10 +625,9 @@ class _InspectorCard extends StatelessWidget {
                     style: rowStyle.copyWith(color: _inspectorSecondInk),
                   ),
                   for (final line in InputInspector.notes.values)
-                    Text(
+                    EllipsisText(
                       line,
                       maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                       style: rowStyle.copyWith(
                         color: colorScheme.onSurfaceVariant,
                       ),

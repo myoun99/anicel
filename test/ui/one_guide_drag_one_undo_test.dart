@@ -10,7 +10,11 @@ import 'package:anicel/src/ui/canvas/guide_overlay.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/text/readout_text.dart';
+import 'package:anicel/src/ui/widgets/color_swatch_button.dart';
+import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 
+import '../helpers/named_finders.dart';
 import '../helpers/panel_finders.dart';
 import '../helpers/rail_group_button.dart';
 
@@ -91,6 +95,8 @@ void main() {
     await tester.pumpAndSettle();
     final slider = find.byKey(const ValueKey<String>('guide-line-count'));
     expect(slider, findsOneWidget, reason: '⛔전제: 그 가이드의 설정이 떴다');
+    await tester.ensureVisible(slider);
+    await tester.pumpAndSettle();
     final entries = s.historyManager.undoCount;
 
     final box = tester.getRect(slider);
@@ -130,6 +136,77 @@ void main() {
       oneSymmetry(),
       reason: '「편집도 전부 언두 기록」 — one undo puts the guide back',
     );
+  });
+
+  testWidgets('🚨the library\'s opacity bar is one undo too, and its swatch '
+      'offers the brush\'s colour (F-544)', (tester) async {
+    final s = await guideToolApp(tester);
+    final verbs = s.cutVerbs;
+    final slider = find.named('guide-opacity-g');
+    expect(slider, findsOneWidget, reason: '⛔전제: 도구 라이브러리가 떴다');
+    final entries = s.historyManager.undoCount;
+
+    final box = tester.getRect(slider);
+    final gesture = await tester.startGesture(
+      box.center,
+      kind: PointerDeviceKind.mouse,
+    );
+    for (var i = 1; i <= 4; i += 1) {
+      await gesture.moveTo(
+        box.center - Offset(i * (box.width / 16), 0),
+      );
+      await tester.pump();
+    }
+    expect(
+      verbs.activeCutGuidesForDisplay,
+      isNot(verbs.activeCutGuides),
+      reason: 'the bar in flight shows without being written',
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(s.historyManager.undoCount, entries + 1);
+    expect(verbs.activeCutGuides.guideFor(id)!.opacity, lessThan(1));
+
+    final swatch = tester.widget<ColorSwatchButton>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is ColorSwatchButton && widget.keyValue == 'guide-color-g',
+      ),
+    );
+    final workspace = tester.widget<EditorWorkspace>(
+      find.byType(EditorWorkspace),
+    );
+    expect(swatch.currentColorOf!(), workspace.brushTool!.value.color);
+  });
+
+  testWidgets('🚨a number box\'s scrub is one undo, and its number follows '
+      'the drag in flight (F-544)', (tester) async {
+    final s = await guideToolApp(tester);
+    final verbs = s.cutVerbs;
+    await pressToolSettingsButton(tester);
+    await tester.pumpAndSettle();
+    DragValueLabel box() => tester.widget<DragValueLabel>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is DragValueLabel && widget.keyValue == 'guide-origin-x',
+      ),
+    );
+    final entries = s.historyManager.undoCount;
+
+    box().onDragDelta(5);
+    box().onDragDelta(5);
+    await tester.pump();
+    expect(box().text, columnValueText(20), reason: 'it was at 10');
+    expect(verbs.activeCutGuidesForDisplay, isNot(verbs.activeCutGuides));
+
+    box().onOperationEnd!();
+    await tester.pumpAndSettle();
+    expect(s.historyManager.undoCount, entries + 1);
+    expect(verbs.activeCutGuidesForDisplay, verbs.activeCutGuides);
+
+    s.undo();
+    expect(verbs.activeCutGuides, oneSymmetry());
   });
 
   testWidgets('a HANDLE drag on the canvas is one undo too — the same preview, '

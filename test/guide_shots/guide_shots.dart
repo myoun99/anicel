@@ -1691,6 +1691,50 @@ void guideShots(AppLanguage language) {
   );
 
   testWidgets(
+    'the storyboard at work, ${language.name}',
+    (tester) async {
+      outDir = '$outRoot/${language.name}/img';
+      Directory(outDir).createSync(recursive: true);
+      final words = wordsFor(language);
+      await pumpApp(tester, sampleProject(language), language);
+      final s = sessionOf(tester);
+      await drawSample(tester);
+      await placeMedia(tester, words);
+
+      // The storyboard step as it is worked: the conte layer stood on, the
+      // cuts in a row below, the conte sheet beside the canvas.
+      s.selectCut(cut1);
+      await settleReal(tester, 4);
+      s.selectLayer(conte1);
+      s.selectFrameIndex(9);
+      await tester.tap(byKey('timeline-mode-storyboard-button'));
+      await settleReal(tester);
+      await dragGrip(tester, 'bottom', const Offset(0, 183));
+      await dragGrip(tester, 'rail-R2', const Offset(-240, 0));
+      await dragGrip(tester, 'rail-R2-height', const Offset(0, 860));
+      await settleReal(tester);
+      final panel = tester.getRect(timesheetPanel());
+      await tester.tap(byKey('timeline-mode-conte-button'));
+      await settleReal(tester);
+      await fitCanvas(tester);
+
+      // The sheet brought up to read: as wide as its panel, from the top of
+      // the page, so the panels' words show beside their pictures.
+      final wheel = TestPointer(1, PointerDeviceKind.mouse);
+      await tester.sendEventToBinding(
+        wheel.hover(Offset(panel.center.dx, panel.top + 190)),
+      );
+      for (var tick = 0; tick < 4; tick++) {
+        await tester.sendEventToBinding(wheel.scroll(const Offset(0, -120)));
+      }
+      await tester.pump();
+      await settleReal(tester);
+      await shot(tester, 'overview-conte');
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.windows),
+  );
+
+  testWidgets(
     'guide shots, ${language.name}',
     (tester) async {
       outDir = '$outRoot/${language.name}/img';

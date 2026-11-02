@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/se_name_tag.dart';
 import '../../models/text_cel_style.dart';
+import '../widgets/ellipsis_text.dart';
 import 'axis_turn.dart'
     show extentAcross, extentAlong, readableText, rectAlong;
 
@@ -82,10 +83,9 @@ class SeNameTagLanePreview extends StatelessWidget {
             child: _lined(
               tag.lineStyle,
               horizontal
-                  ? Text(
+                  ? EllipsisText(
                       line,
                       maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                       style: _styleOf(tag.lineStyle),
                     )
                   : readableText(axis, line, style: _styleOf(tag.lineStyle)),

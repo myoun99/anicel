@@ -103,6 +103,10 @@ abstract interface class SelectionAccess {
 
 abstract interface class ChangeSink {
   void notifyChanged();
+
+  /// [notifyChanged] for a stand that moved nothing but the stand
+  /// ([EditorSessionManager.newsRevision]).
+  void notifyStood();
   void refreshAfterCutCommand({
     LayerId? preferredActiveLayerId,
     int? preferredFrameIndex,

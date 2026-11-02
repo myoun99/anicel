@@ -610,6 +610,17 @@ abstract final class AppTypography {
   /// 🔬**크기로 골랐다**: BIZ 의 作 은 em 의 95×95%를 쓰는데(흔한 고딕은 88~92 —
   /// 그게 UD 다), 나눔고딕의 가는 87×92 로 후보 중 가장 가깝다. 작으면 같은
   /// 12px 에서 **한글만 작아 보이고** 폰트가 둘이라는 사실이 화면에 드러난다.
+  ///
+  /// 🚨F-524 (유저 2026-11-01): 「2~4를 쓴다치면 물결표모양이 위에 붙어서
+  /// 써짐 … 중앙에 써졌으면하는데」. The keyboard's `~` (U+007E, not the
+  /// 〜 · ～ a Japanese IME types) was BIZ's, which draws it as a small high
+  /// tilde: its middle at 71.7% of the em, the digits' at 38.5% and
+  /// 나눔고딕's `~` at 36.9%. The order cannot send a letter on while the
+  /// face in front of it has one — so that ONE code point is taken out of
+  /// the bundled BIZ files' cmaps (F-524-Q1: 「나눔고딕의 물결을 쓴다」) and
+  /// 나눔고딕 draws it, on the screen and in the conte's PDF.
+  /// ⚠️A fresh copy of the files brings the high tilde back:
+  /// `the_keyboard_tilde_is_nanums_test` holds them.
   static const List<String> _fallback = <String>['Nanum Gothic'];
 
   /// 🚨THE BUNDLED FACES, whatever the UI language — for what has to print

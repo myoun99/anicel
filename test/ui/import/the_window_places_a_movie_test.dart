@@ -30,6 +30,7 @@ import '../../helpers/settle_async.dart';
 import '../../helpers/stand_in_movie.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
+import '../../helpers/text_finders.dart';
 
 void main() {
   late Directory tempDir;
@@ -94,7 +95,7 @@ void main() {
       return widget.data!;
     }
     return tester
-        .widget<Text>(find.descendant(of: cell, matching: find.byType(Text)))
+        .widget<Text>(find.descendant(of: cell, matching: find.anyText()))
         .data!;
   }
 

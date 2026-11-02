@@ -43,6 +43,7 @@ class TimesheetInfo {
     this.conteOutlined = true,
     this.conteFixedText = true,
     this.conteCameraRoom = ConteCameraRoom.standard,
+    this.sheetFixedText = true,
   });
 
   static const TimesheetInfo empty = TimesheetInfo();
@@ -142,6 +143,11 @@ class TimesheetInfo {
   /// the format window's (I-82-Q1 「서식 전체 + 컷마다 덮어쓰기」).
   final ConteCameraRoom conteCameraRoom;
 
+  /// Whether a timesheet page writes its fixed lines in its memo band, for
+  /// every cut that does not say (`CutMetadata.sheetFixedText`) — the format
+  /// window's, as [conteFixedText] is the conte's (유저 2026-11-02, F-542).
+  final bool sheetFixedText;
+
   /// The name for [mark]'s work, or empty when nobody is set — so a form
   /// binding never has to null-check.
   String staffNameFor(LayerMark mark) => staff[mark.keySlug] ?? '';
@@ -169,6 +175,7 @@ class TimesheetInfo {
     bool? conteOutlined,
     bool? conteFixedText,
     ConteCameraRoom? conteCameraRoom,
+    bool? sheetFixedText,
   }) {
     return TimesheetInfo(
       title: title ?? this.title,
@@ -195,6 +202,7 @@ class TimesheetInfo {
       conteOutlined: conteOutlined ?? this.conteOutlined,
       conteFixedText: conteFixedText ?? this.conteFixedText,
       conteCameraRoom: conteCameraRoom ?? this.conteCameraRoom,
+      sheetFixedText: sheetFixedText ?? this.sheetFixedText,
     );
   }
 
@@ -227,6 +235,7 @@ class TimesheetInfo {
     if (!conteFixedText) 'conteFixedText': false,
     if (conteCameraRoom != ConteCameraRoom.standard)
       'conteCameraRoom': conteCameraRoom.name,
+    if (!sheetFixedText) 'sheetFixedText': false,
   };
 
   factory TimesheetInfo.fromJson(Map<String, dynamic> json) {
@@ -255,6 +264,7 @@ class TimesheetInfo {
       conteForm: ConteSheetForm.named(json['conteForm']),
       conteOutlined: json['conteOutlined'] as bool? ?? true,
       conteFixedText: json['conteFixedText'] as bool? ?? true,
+      sheetFixedText: json['sheetFixedText'] as bool? ?? true,
       conteCameraRoom:
           ConteCameraRoom.named(json['conteCameraRoom']) ??
           ConteCameraRoom.standard,
@@ -279,6 +289,7 @@ class TimesheetInfo {
           other.conteOutlined == conteOutlined &&
           other.conteFixedText == conteFixedText &&
           other.conteCameraRoom == conteCameraRoom &&
+          other.sheetFixedText == sheetFixedText &&
           mapEquals(other.staff, staff) &&
           other.hiddenFields.length == hiddenFields.length &&
           other.hiddenFields.containsAll(hiddenFields);
@@ -299,6 +310,7 @@ class TimesheetInfo {
     conteOutlined,
     conteFixedText,
     conteCameraRoom,
+    sheetFixedText,
     Object.hashAllUnordered(
       staff.entries.map((entry) => Object.hash(entry.key, entry.value)),
     ),

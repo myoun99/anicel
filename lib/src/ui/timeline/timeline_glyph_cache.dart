@@ -45,7 +45,6 @@ void paintTimelineGlyphOnGround(
   String text,
   TextStyle style, {
   required Color ground,
-  double? maxWidth,
   WordFit fit = wordFitsAsItIs,
   double tightening = 0,
 }) {
@@ -54,7 +53,6 @@ void paintTimelineGlyphOnGround(
     laidOutGlyph(
       text,
       style.copyWith(color: timelineTextOnColor(ground)),
-      maxWidth: maxWidth,
       tightening: tightening,
     ),
     offset,

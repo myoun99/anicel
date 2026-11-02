@@ -51,7 +51,7 @@ Widget _grid({double height = 900, LayerRailExtent? railExtent}) {
         width: 900,
         height: height,
         child: XSheetTimelineGrid(
-hooks: TimelineGridHooks(activeLayerId: const LayerId('layer-1'),
+hooks: TimelineGridHooks(activeLayer: ValueNotifier(const LayerId('layer-1')),
 frameCursor: cursor,
 playbackFrameCount: 8,
 exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,
@@ -79,7 +79,7 @@ Widget _gridWithOptionalColumns() {
         width: 900,
         height: 900,
         child: XSheetTimelineGrid(
-hooks: TimelineGridHooks(activeLayerId: const LayerId('layer-1'),
+hooks: TimelineGridHooks(activeLayer: ValueNotifier(const LayerId('layer-1')),
 frameCursor: cursor,
 playbackFrameCount: 8,
 exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,
@@ -826,7 +826,7 @@ void main() {
             width: 900,
             height: 900,
             child: XSheetTimelineGrid(
-hooks: TimelineGridHooks(activeLayerId: const LayerId('member'),
+hooks: TimelineGridHooks(activeLayer: ValueNotifier(const LayerId('member')),
 frameCursor: cursor,
 playbackFrameCount: 8,
 exposureStateForLayer: (_, _) =>

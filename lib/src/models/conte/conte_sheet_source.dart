@@ -13,6 +13,7 @@ import '../camera_work_marks.dart' show CameraKeyRole;
 import '../cut_id.dart';
 import '../frame_id.dart';
 import '../se_line_type.dart';
+import '../sheet_fixed_lines.dart';
 import 'conte_camera_room.dart';
 
 /// One panel of a cut, as the sheet reads it.
@@ -29,8 +30,7 @@ class ConteCellSource {
     this.inkId,
     this.action = '',
     this.camera,
-    this.cameraLines = const [],
-    this.transitionLines = const [],
+    this.fixedLines = SheetFixedLines.none,
   });
 
   /// Cut-LOCAL frames.
@@ -57,15 +57,9 @@ class ConteCellSource {
   /// drawn over it.
   final ConteCameraWork? camera;
 
-  /// What the camera does while the cell is on, as its ACTION column writes
-  /// it over the words typed there — a line to each move and each stretch
-  /// it stands still beside one, `6f-16f PAN (0+11)`
-  /// (`conteCameraStretches`, I-93), and none where it does nothing.
-  final List<String> cameraLines;
-
-  /// The transitions the cell's ACTION column writes under [cameraLines] —
-  /// `c1 × c2 カットO.L (1+0)` (`conteTransitionLine`, I-93-Q1).
-  final List<String> transitionLines;
+  /// What the cell's ACTION column writes over the words typed there — none
+  /// where the cut or the work leaves them out.
+  final SheetFixedLines fixedLines;
 
   int get lengthFrames => endFrameExclusive - startFrame;
 }
@@ -218,7 +212,6 @@ class ConteSheetSource {
     this.framesPerSecond = 24,
     this.cover = true,
     this.blankPage = true,
-    this.fixedText = true,
   });
 
   final List<ConteCutSource> cuts;
@@ -248,12 +241,6 @@ class ConteSheetSource {
   /// the same front.
   final bool cover;
   final bool blankPage;
-
-  /// Whether a cell writes its camera's lines and its transitions over its
-  /// ACTION words ([ConteCellSource.cameraLines] ·
-  /// [ConteCellSource.transitionLines]) — the work's choice
-  /// (`TimesheetInfo.conteFixedText`), read here for the same reason.
-  final bool fixedText;
 
   /// The cut [cutId] names. Every cut a layout placed is here.
   ConteCutSource cutById(String cutId) =>
