@@ -121,10 +121,11 @@ class FramePictures implements PlaybackPictures {
 
   /// 🚨★THE PICTURES THE NODES OF A FRAME A CANVAS STANDS ON WERE DRAWN INTO
   /// ([HeldNodePictures]; card paint-walk-redoes-the-same-work-each-step,
-  /// 실측 5): kept as the frame is laid for that canvas ([makeShown]), or
+  /// 실측 5): kept as the frame is laid for that canvas ([makeShown]), as
+  /// that canvas's screen draws it as it stands ([frameAsItStands]), or
   /// once a canvas stands on one laid ahead ([holdNodesOf]), and found as a
   /// stroke's steps are patched into it and as a screen draws it as it
-  /// stands ([frameAsItStands]) — what lies below the row a pen draws on, as
+  /// stands — what lies below the row a pen draws on, as
   /// one picture or in the cells a step landed in ([BelowThePen]), and each
   /// folder over it drawn whole are not drawn again for each step, or each
   /// value of a drag, that does not touch them.
@@ -797,6 +798,13 @@ class FramePictures implements PlaybackPictures {
   ///
   /// ⛔Not [_drawnOf]: the row a pen is on draws what it holds live, a cel
   /// with nothing stored in it included — the first stroke on it.
+  ///
+  /// 🚨WHAT A CANVAS'S SCREEN DRAWS WHOLE, THE PICTURE LAID BESIDE IT FINDS
+  /// (card a-dragged-opacity-slider-lags-at-rest): each value of a drag is
+  /// drawn here and laid at once ([makeShown]), and a folder the value lies
+  /// in ran its chain in both. So it keeps what that lay would for that
+  /// canvas (`keepsNodes`): whichever draws first spares the other, and a
+  /// value costs one chain.
   StackedFrame frameAsItStands(
     List<CompositeNode<CanvasStackRow>> nodes,
     DemandedPicture picture, {
@@ -812,7 +820,7 @@ class FramePictures implements PlaybackPictures {
       live: live,
       held: _holding(page, (
         rasters: heldNodes,
-        keeps: false,
+        keeps: live != null,
         below: BelowThePen.inCells,
       )),
     );

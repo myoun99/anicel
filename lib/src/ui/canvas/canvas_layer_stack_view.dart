@@ -279,9 +279,9 @@ typedef StoredRow = ({
 
 /// Where a frame's picture keeps the pictures its nodes are drawn into
 /// ([HeldSubtreeRasters]) — whether the frame drawn here keeps the ones it
-/// draws whole: the frame laid for a screen that stands on it, every row
-/// in hand; a stroke's step patched into it, and the screen drawing it as it
-/// stands, only find them — and what it does with what lies below its pen
+/// draws whole: the frame for a canvas that stands on it, laid or drawn as it
+/// stands — a stroke's step patched in is cut by its patch, and keeps none
+/// of what that cuts — and what it does with what lies below its pen
 /// ([below]).
 typedef HeldNodePictures = ({
   HeldSubtreeRasters rasters,

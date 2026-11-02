@@ -290,6 +290,28 @@ void main() {
       expect(patched, fresh);
     });
 
+    for (final (zoom, ratio, whole) in const [
+      (1.0, 1.0, true),
+      (0.4, 1.0, true),
+      (1.0, 2.0, true),
+      (3.0, 1.0, false),
+    ]) {
+      test('🚨$name a screen keeps at $zoom on a ratio of $ratio is the '
+          'picture its frame finds — the pixels it would have drawn — and it '
+          'keeps none it does not see whole', () async {
+        final extent = frame(nodesOf()).drawing.extent;
+        final fresh = await drawn(frame(nodesOf()), extent);
+
+        await onScreen(frame(nodesOf(), keeps: true), zoom: zoom, ratio: ratio);
+        expect(held.length, whole ? 1 : 0);
+
+        debugSubtreeRasterCount = 0;
+        final laid = await drawn(frame(nodesOf(), keeps: false), extent);
+        expect(debugSubtreeRasterCount, whole ? 0 : 1);
+        expect(laid, fresh);
+      });
+    }
+
     for (final strength in const [0.2, 1.0]) {
       test('🚨$name laid at $strength is the picture it was — found by a '
           'step, by a screen and by the frame\'s next picture, the pixels it '
