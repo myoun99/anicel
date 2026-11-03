@@ -5,6 +5,7 @@ import '../../models/cut.dart';
 import '../../models/cut_camera.dart'
     show cameraKeyFits, cameraWriteKeepsKeysIn;
 import '../../models/transform_track.dart';
+import '../../models/fx_basis.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
@@ -26,6 +27,7 @@ import '../storyboard_layer_policy.dart' show projectedLayerInHand;
 import '../timeline/effect_lane_editing.dart'
     show
         effectLaneKeyCanRove,
+        effectsWithBasis,
         effectsWithEnabledToggled,
         effectsWithGroupReset,
         effectsWithLaneKeyToggled,
@@ -1091,6 +1093,39 @@ class LaneVerbs {
     final effectId = parseEffectLaneId(headerLaneId)?.effectId;
     if (effectId != null) {
       toggleLaneEffectEnabled(layerId, effectId, description: description);
+    }
+  }
+
+  /// A group header's basis chip (I-120-Q10), dispatched as its switch is
+  /// ([toggleLaneGroupEnabled]): the Transform group's is the row's own
+  /// field, an effect's is that effect's. A pick of what it already reads
+  /// writes nothing.
+  void setLaneGroupBasis(
+    LayerId layerId,
+    String headerLaneId,
+    FxBasis basis, {
+    required String description,
+  }) {
+    final layer = laneVerbLayerFor(layerId);
+    if (layer == null) {
+      return;
+    }
+    if (headerLaneId == transformGroupHeaderLane.laneId) {
+      if (layer.transformBasis != basis) {
+        _controllers.layerController.setLayerTransformBasis(
+          layerId: layerId,
+          basis: basis,
+        );
+        _changes.notifyChanged();
+      }
+      return;
+    }
+    final effectId = parseEffectLaneId(headerLaneId)?.effectId;
+    final next = effectId == null
+        ? null
+        : effectsWithBasis(layer.effects, effectId, basis);
+    if (next != null) {
+      _commitLaneEffects(layer, next, description: description);
     }
   }
 

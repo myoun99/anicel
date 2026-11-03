@@ -2,6 +2,7 @@ import '../core/collection_equality.dart';
 import '../core/copy_with_sentinel.dart';
 import 'attached_mode.dart';
 import 'conte_key.dart';
+import 'fx_basis.dart';
 import 'layer.dart';
 import 'layer_blend_mode.dart';
 import 'layer_effect.dart';
@@ -207,6 +208,7 @@ final class ConteHead {
     this.isVisible = true,
     this.onTimesheet = true,
     this.transformEnabled = true,
+    this.transformBasis = FxBasis.frame,
     this.effects = const [],
     this.collapsed = false,
     this.lanesExpanded = false,
@@ -222,6 +224,7 @@ final class ConteHead {
     isVisible: layer.isVisible,
     onTimesheet: layer.onTimesheet,
     transformEnabled: layer.transformEnabled,
+    transformBasis: layer.transformBasis,
     effects: layer.effects,
     collapsed: layer.collapsed,
     lanesExpanded: layer.lanesExpanded,
@@ -240,6 +243,7 @@ final class ConteHead {
   /// 머리로 하나」). ↩️Each cut's own until then.
   final bool onTimesheet;
   final bool transformEnabled;
+  final FxBasis transformBasis;
 
   /// The chain whose SHAPE is worn — its numbers are whichever row's gave
   /// it, and a row that has numbers of its own keeps them.
@@ -257,6 +261,7 @@ final class ConteHead {
       row.isVisible == isVisible &&
       row.onTimesheet == onTimesheet &&
       row.transformEnabled == transformEnabled &&
+      row.transformBasis == transformBasis &&
       row.collapsed == collapsed &&
       row.lanesExpanded == lanesExpanded &&
       setEquals(row.expandedLaneGroups, expandedLaneGroups) &&
@@ -274,6 +279,7 @@ final class ConteHead {
           isVisible: isVisible,
           onTimesheet: onTimesheet,
           transformEnabled: transformEnabled,
+          transformBasis: transformBasis,
           effects: effectChainWithSharedShape(effects, onto: row.effects),
           collapsed: collapsed,
           lanesExpanded: lanesExpanded,
@@ -296,6 +302,10 @@ final class ConteHead {
         (layer) => layer.transformEnabled,
         transformEnabled,
       ),
+      transformBasis: changed(
+        (layer) => layer.transformBasis,
+        transformBasis,
+      ),
       effects: sameEffectChainShape(after.effects, before.effects)
           ? effects
           : after.effects,
@@ -317,6 +327,8 @@ final class ConteHead {
     if (!isVisible) 'isVisible': false,
     if (!onTimesheet) 'onTimesheet': false,
     if (!transformEnabled) 'transformEnabled': false,
+    if (transformBasis != FxBasis.frame)
+      'transformBasis': transformBasis.toJson(),
     if (effects.isNotEmpty)
       'effects': [for (final effect in effects) effect.toJson()],
     if (collapsed) 'collapsed': true,
@@ -335,6 +347,7 @@ final class ConteHead {
     isVisible: json['isVisible'] as bool? ?? true,
     onTimesheet: json['onTimesheet'] as bool? ?? true,
     transformEnabled: json['transformEnabled'] as bool? ?? true,
+    transformBasis: FxBasis.fromJson(json['transformBasis']),
     effects: [
       for (final effect in json['effects'] as List<dynamic>? ?? const [])
         LayerEffect.fromJson(effect as Map<String, dynamic>),
@@ -359,6 +372,7 @@ final class ConteHead {
           other.isVisible == isVisible &&
           other.onTimesheet == onTimesheet &&
           other.transformEnabled == transformEnabled &&
+          other.transformBasis == transformBasis &&
           listEquals(other.effects, effects) &&
           other.collapsed == collapsed &&
           other.lanesExpanded == lanesExpanded &&
@@ -373,6 +387,7 @@ final class ConteHead {
     isVisible,
     onTimesheet,
     transformEnabled,
+    transformBasis,
     Object.hashAll(effects),
     collapsed,
     lanesExpanded,

@@ -462,7 +462,11 @@ void main() {
     );
     List<ResolvedLayerEffect> bound(Layer a, List<Layer> others, int at) =>
         binding(
-          resolveLayerEffectsAt(effects: a.effects, frameIndex: at),
+          resolveLayerEffectsAt(
+            effects: a.effects,
+            frameIndex: at,
+            blocks: null,
+          ),
           cut: cutOf([...others, a]),
           frameIndex: at,
         );
@@ -511,7 +515,11 @@ void main() {
       final a = row('a', effects: [pluginOn()]);
       expect(
         elsewhere(
-          resolveLayerEffectsAt(effects: a.effects, frameIndex: 0),
+          resolveLayerEffectsAt(
+            effects: a.effects,
+            frameIndex: 0,
+            blocks: null,
+          ),
           cut: cutOf([a]),
           frameIndex: 0,
         ).single.run,
@@ -540,7 +548,11 @@ void main() {
       expect(layer.effects, isEmpty);
 
       expect(
-        resolveLayerEffectsAt(effects: a.effects, frameIndex: 3).single.frame,
+        resolveLayerEffectsAt(
+          effects: a.effects,
+          frameIndex: 3,
+          blocks: null,
+        ).single.frame,
         3,
       );
       expect(
@@ -552,6 +564,7 @@ void main() {
             ).withParameter('blurriness', EffectParameter(value: 3)),
           ],
           frameIndex: 3,
+          blocks: null,
         ).single.frame,
         isNull,
       );

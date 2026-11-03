@@ -94,6 +94,7 @@ void main() {
           resolveLayerEffectsAt(
             effects: [effect.withParameter('amount', EffectParameter(value: 5))],
             frameIndex: frame,
+            blocks: null,
           ).single;
 
       expect(at(radial(), 4).points['center'], isNull);

@@ -1,5 +1,6 @@
 import 'dart:ui' show Offset;
 
+import '../../models/fx_basis.dart';
 import '../../models/fx_plugin_description.dart';
 import '../../models/key_mark.dart';
 import '../../models/layer.dart';
@@ -126,6 +127,16 @@ String effectLaneId(EffectId effectId, String parameterId) =>
 /// (`InstalledFxPlugins.has`) — the header of one it has not greys
 /// ([PropertyLaneRow.pluginNotOnDevice]). Null on a rail that is not told
 /// the device's plugins: its headers read as the app's own.
+///
+/// [rowHasBlocks] says whether the row the chain rides has blocks of its
+/// own to step on ([Layer.fxBlocks]) — each header then wears its effect's
+/// basis chip ([PropertyLaneRow.groupBasis], I-120-Q9). A track's chain has
+/// none.
+///
+/// [shownFrame] is the frame whose value the canvas shows at a frame for an
+/// effect read by a basis — its value column prints that one, its line
+/// stays the keys' (I-120-Q12, `transformPropertyLanes`). Null: each frame
+/// its own.
 List<PropertyLaneRow> effectPropertyLanes(
   List<LayerEffect> effects, {
   List<Layer> cutRows = const [],
@@ -135,6 +146,8 @@ List<PropertyLaneRow> effectPropertyLanes(
   TransformPose Function(EffectId effectId, String lane, double time)?
   standAt,
   bool Function(FxPluginDescription plugin)? hasPlugin,
+  bool rowHasBlocks = false,
+  int Function(FxBasis basis, int frame)? shownFrame,
 }) {
   if (effects.isEmpty) {
     return const [];
@@ -142,6 +155,9 @@ List<PropertyLaneRow> effectPropertyLanes(
   final rows = <PropertyLaneRow>[];
   for (final effect in effects) {
     final expanded = isExpanded(effect.id);
+    final shown = shownFrame == null
+        ? null
+        : (int frame) => shownFrame(effect.basis, frame);
     final lanes = [for (final lane in effect.lanes) effect.laneTrack(lane)!];
     rows.add(
       PropertyLaneRow(
@@ -155,6 +171,7 @@ List<PropertyLaneRow> effectPropertyLanes(
         // its keys and says so HERE, rather than looking like a broken
         // parameter.
         groupEnabled: effect.enabled,
+        groupBasis: rowHasBlocks ? effect.basis : null,
         pluginNotOnDevice: switch ((effect.plugin, hasPlugin)) {
           (final plugin?, final has?) => !has(plugin),
           _ => false,
@@ -175,7 +192,7 @@ List<PropertyLaneRow> effectPropertyLanes(
       continue;
     }
     if (effect.kind.drawsItsOwnPicture) {
-      rows.addAll(_standLanes(effect, standAt));
+      rows.addAll(_standLanes(effect, standAt, shown));
     }
     for (final (index, spec) in effect.specs.indexed) {
       // A point is a Position of its own: the transform's row of it.
@@ -189,6 +206,7 @@ List<PropertyLaneRow> effectPropertyLanes(
             poseAt: standAt == null
                 ? null
                 : (time) => standAt(effect.id, lane, time),
+            shownFrame: shown,
           ),
         );
         continue;
@@ -228,7 +246,11 @@ List<PropertyLaneRow> effectPropertyLanes(
               ? null
               : (frameIndex) => formatEffectLaneValue(
                   spec,
-                  valueAt(effect.id, spec.id, frameIndex.toDouble()),
+                  valueAt(
+                    effect.id,
+                    spec.id,
+                    (shown?.call(frameIndex) ?? frameIndex).toDouble(),
+                  ),
                 ),
           scrubValue: !numbered
               ? null
@@ -305,6 +327,7 @@ List<PropertyLaneRow> _standLanes(
   LayerEffect effect,
   TransformPose Function(EffectId effectId, String lane, double time)?
   standAt,
+  int Function(int frame)? shownFrame,
 ) {
   final ids = {
     for (final lane in effectStandLanes) effectLaneId(effect.id, lane),
@@ -317,6 +340,7 @@ List<PropertyLaneRow> _standLanes(
       poseAt: standAt == null
           ? null
           : (time) => standAt(effect.id, effectStandLanes.first, time),
+      shownFrame: shownFrame,
       laneIdOf: (lane) => effectLaneId(effect.id, lane),
     ))
       if (ids.contains(row.laneId)) row,

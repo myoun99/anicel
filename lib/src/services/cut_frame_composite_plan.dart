@@ -1,3 +1,5 @@
+import 'dart:collection';
+
 import '../models/attached_layer_resolve.dart';
 import '../models/bitmap_surface.dart';
 import '../models/canvas_point.dart';
@@ -17,6 +19,7 @@ import '../models/layer_id.dart';
 import '../models/movie_cel.dart';
 import '../models/property_track.dart';
 import '../models/timeline_coverage.dart';
+import '../models/timeline_exposure.dart';
 import '../models/transform_track.dart';
 import 'layer_pose_matrix.dart' show pictureMoved;
 import 'layer_pose_paint.dart';
@@ -118,7 +121,7 @@ TransformPose? resolveLayerPoseAt({
     return null;
   }
   return track.resolveAt(
-    frameIndex: frameIndex,
+    frameIndex: layer.transformReadFrame(frameIndex),
     orElse: () => layerIdentityPose(canvasSize),
   );
 }
@@ -129,7 +132,10 @@ CanvasPoint? resolveLayerAnchorPointAt({
   required Layer layer,
   required int frameIndex,
 }) {
-  return resolveAnchorTrackAt(layer.transformTrack.anchorPoint, frameIndex);
+  return resolveAnchorTrackAt(
+    layer.transformTrack.anchorPoint,
+    layer.transformReadFrame(frameIndex),
+  );
 }
 
 /// The layer's effective opacity at [frameIndex]: static layer opacity ×
@@ -151,7 +157,10 @@ double resolveLayerEffectiveOpacityAt({
 double _ownStrengthAt(Layer layer, Layer carrier, int frameIndex) =>
     carrier.transformEnabled
     ? layer.opacity *
-          resolveOpacityTrackAt(carrier.transformTrack.opacity, frameIndex)
+          resolveOpacityTrackAt(
+            carrier.transformTrack.opacity,
+            carrier.transformReadFrame(frameIndex),
+          )
     : layer.opacity;
 
 /// Resolves the drawable surface for a layer's frame (e.g. by replaying the
@@ -650,7 +659,11 @@ List<ResolvedLayerEffect> resolveFolderEffectsAt({
   required Layer folder,
   required int frameIndex,
 }) {
-  return resolveLayerEffectsAt(effects: folder.effects, frameIndex: frameIndex);
+  return resolveLayerEffectsAt(
+    effects: folder.effects,
+    frameIndex: frameIndex,
+    blocks: folder.fxBlocks,
+  );
 }
 
 /// A folder's own effective opacity at [frameIndex]: static × the animated
@@ -662,7 +675,10 @@ double resolveFolderOpacityAt({
 }) {
   return (folder.opacity *
           (folder.transformEnabled
-              ? resolveOpacityTrackAt(folder.transformTrack.opacity, frameIndex)
+              ? resolveOpacityTrackAt(
+                  folder.transformTrack.opacity,
+                  folder.transformReadFrame(frameIndex),
+                )
               : 1.0))
       .clamp(0.0, 1.0)
       .toDouble();
@@ -744,7 +760,7 @@ resolveFolderChainAt({
                   (fxEnabled
                       ? resolveOpacityTrackAt(
                           folder.transformTrack.opacity,
-                          frameIndex,
+                          folder.transformReadFrame(frameIndex),
                         )
                       : 1.0))
               .clamp(0.0, 1.0);
@@ -777,12 +793,13 @@ LayerPoseSample? _folderPoseAt(
   if (!folder.transformEnabled || !hasGeometry) {
     return null;
   }
+  final read = folder.transformReadFrame(frameIndex);
   return (
     pose: track.resolveAt(
-      frameIndex: frameIndex,
+      frameIndex: read,
       orElse: () => layerIdentityPose(canvasSize),
     ),
-    anchorPoint: resolveAnchorTrackAt(track.anchorPoint, frameIndex),
+    anchorPoint: resolveAnchorTrackAt(track.anchorPoint, read),
   );
 }
 
@@ -1118,6 +1135,12 @@ List<LayerEffect> chainWornBy(Cut cut, Layer layer) {
   return painting == null ? const [] : _wornChain(layer, painting.carrier);
 }
 
+/// The blocks the chain [layer] wears ([chainWornBy]) steps on where it is
+/// read by the block — its OWNER's, the base's for an attach row (I-120):
+/// the fx are the base's. Null where it wears none.
+SplayTreeMap<int, TimelineExposure>? chainBlocksOf(Cut cut, Layer layer) =>
+    _paintingRowOf(cut, layer)?.carrier.fxBlocks;
+
 List<LayerEffect> _wornChain(Layer layer, Layer carrier) =>
     carrier.id == layer.id
     ? carrier.effects
@@ -1164,6 +1187,7 @@ List<LayerEffect> _wornChain(Layer layer, Layer carrier) =>
       effects: resolveLayerEffectsAt(
         effects: _wornChain(layer, painting.carrier),
         frameIndex: frameIndex,
+        blocks: painting.carrier.fxBlocks,
       ),
     ),
   );
@@ -1227,9 +1251,12 @@ CutFrameCompositeRow? _resolveLayerNode(
   // Each effect carries its own ([LayerEffect.enabled]) and the master
   // writes them all, so gating here too would make the row switch reach
   // effects it had not turned off.
+  // A chain read by the block steps on its OWNER's blocks — the base's, for
+  // an attach row that wears it (I-120): the fx are the base's.
   final effects = resolveLayerEffectsAt(
     effects: _wornChain(layer, fxCarrier),
     frameIndex: frameIndex,
+    blocks: fxCarrier.fxBlocks,
   );
   // The placement is [layerPlacementAt]'s: the same own part, under the
   // folder poses this walk already gathered with the chain's gates.
@@ -1315,6 +1342,7 @@ _adjustmentScopeNode({
   final effects = resolveLayerEffectsAt(
     effects: adjustment.effects,
     frameIndex: frameIndex,
+    blocks: adjustment.fxBlocks,
   );
   if (effects.isEmpty) {
     return null;

@@ -15,6 +15,7 @@ import '../models/attached_placement.dart' show AttachedPlacement;
 import '../models/canvas_size.dart';
 import '../models/conte_group.dart';
 import '../models/cut.dart';
+import '../models/fx_basis.dart';
 import '../models/cut_id.dart';
 import '../models/frame_id.dart';
 import '../models/fx_plugin_description.dart';
@@ -762,6 +763,7 @@ class StoryboardPanel extends StatefulWidget {
     this.onToggleTrackEffectEnabled,
     this.onResetTrackEffectGroup,
     this.onToggleLaneGroupEnabled,
+    this.onSetLaneGroupBasis,
     this.laneGroupOnOf,
     this.onResetLaneGroup,
     this.seCommaDrag,
@@ -1560,6 +1562,11 @@ class StoryboardPanel extends StatefulWidget {
   final void Function(Layer layer, PropertyLaneRow lane)?
   onToggleLaneGroupEnabled;
   final void Function(Layer layer, PropertyLaneRow lane)? onResetLaneGroup;
+
+  /// An S row's, and a conte row's, group header basis chip — the
+  /// timeline's own verb (I-120-Q10). Null leaves the chip out.
+  final void Function(Layer layer, PropertyLaneRow lane, FxBasis basis)?
+  onSetLaneGroupBasis;
 
   /// A LIVE read of a lane group's switch, by its header lane — for the
   /// column sweep, as [layerOnTimesheetOf] is.

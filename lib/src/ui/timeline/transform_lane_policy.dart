@@ -5,6 +5,7 @@ import '../../models/camera_instruction.dart'
 import '../../models/camera_moves.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
+import '../../models/fx_basis.dart';
 import '../../models/cut_camera.dart' show CutCamera;
 import '../../models/key_mark.dart';
 import '../../models/key_range_move.dart'
@@ -55,6 +56,7 @@ PropertyLaneRow transformGroupHeader({
   Map<int, KeyMark> keyMarks = const {},
   Map<int, String> keyNames = const {},
   bool? enabled,
+  FxBasis? basis,
   List<LaneStretchWord> stretchWords = const [],
 }) {
   return PropertyLaneRow(
@@ -73,6 +75,9 @@ PropertyLaneRow transformGroupHeader({
     // transform of their own to bypass (the camera moves through the cut's
     // camera track; its row-level switch covers that).
     groupEnabled: enabled,
+    // What it reads its keys by (I-120-Q10); null on a row with no blocks
+    // of its own to step on.
+    groupBasis: basis,
     stretchWords: stretchWords,
   );
 }
@@ -92,6 +97,7 @@ PropertyLaneRow transformUnionHeader({
   required TransformTrack track,
   required bool expanded,
   bool? enabled,
+  FxBasis? basis,
   List<LaneStretchWord> stretchWords = const [],
 }) {
   return transformGroupHeader(
@@ -99,6 +105,7 @@ PropertyLaneRow transformUnionHeader({
     keyMarks: transformKeyMarkUnion(track),
     keyNames: transformKeyNameUnion(track),
     enabled: enabled,
+    basis: basis,
     stretchWords: stretchWords,
   );
 }
@@ -168,6 +175,10 @@ List<PropertyLaneRow> cameraPropertyLanes(
 ///
 /// [laneIdOf] names each member's row: a reference's fx is these lanes
 /// under ids of its own (F-374, `reference:position`, …).
+///
+/// [shownFrame] is the frame whose value the canvas shows at a frame — the
+/// head of its block where the group reads by blocks (I-120-Q12); the value
+/// column prints that one ([_reading]). Null: each frame its own.
 List<PropertyLaneRow> transformPropertyLanes(
   TransformTrack track, {
   required ScaleLaneForm scaleForm,
@@ -175,6 +186,7 @@ List<PropertyLaneRow> transformPropertyLanes(
   TransformPose Function(double time)? poseAt,
   CanvasPoint Function(double time)? anchorAt,
   double Function(double time)? opacityAt,
+  int Function(int frame)? shownFrame,
   String Function(String laneId) laneIdOf = _itsOwnLaneId,
 }) {
   const point = [LaneCurvePalette.across, LaneCurvePalette.down];
@@ -191,6 +203,7 @@ List<PropertyLaneRow> transformPropertyLanes(
           parts: point,
           printed: (anchor) =>
               '${columnValueText(anchor.x)}, ${columnValueText(anchor.y)}',
+          shownFrame: shownFrame,
         ),
         scrubValue: (label, delta) =>
             scrubTransformLaneValue('anchor-point', label, delta),
@@ -201,6 +214,7 @@ List<PropertyLaneRow> transformPropertyLanes(
       laneId: laneIdOf('position'),
       label: AppText.strings.tlLanePosition,
       poseAt: poseAt,
+      shownFrame: shownFrame,
     ),
     _lane(
       laneIdOf('scale'),
@@ -217,6 +231,7 @@ List<PropertyLaneRow> transformPropertyLanes(
           ],
         },
         printed: (pose) => scaleForm.label(pose.scale),
+        shownFrame: shownFrame,
       ),
       scrubValue: scaleForm.scrubbed,
       linkable: scaleForm.links,
@@ -230,6 +245,7 @@ List<PropertyLaneRow> transformPropertyLanes(
         (pose) => [pose.rotationDegrees],
         parts: const [LaneCurvePalette.rotation],
         printed: (pose) => formatTransformLaneValue('rotation', pose),
+        shownFrame: shownFrame,
       ),
       scrubValue: (label, delta) =>
           scrubTransformLaneValue('rotation', label, delta),
@@ -245,6 +261,7 @@ List<PropertyLaneRow> transformPropertyLanes(
           parts: const [LaneCurvePalette.opacity],
           printed: (opacity) =>
               '${columnValueText(opacityLaneNumbers.shown(opacity))}%',
+          shownFrame: shownFrame,
         ),
         scrubValue: (label, delta) =>
             scrubTransformLaneValue('opacity', label, delta),
@@ -254,12 +271,14 @@ List<PropertyLaneRow> transformPropertyLanes(
 
 /// [track]'s Position row, as [laneId] and named [label] — the transform's
 /// own, and an effect's point's (I-132-Q12 b: a Position of its own, named
-/// as its effect names it), valued where [poseAt] stands it.
+/// as its effect names it), valued where [poseAt] stands it — its value
+/// column at [shownFrame] ([transformPropertyLanes]).
 PropertyLaneRow transformPositionLane(
   TransformTrack track, {
   required String laneId,
   required String label,
   TransformPose Function(double time)? poseAt,
+  int Function(int frame)? shownFrame,
 }) => _lane(
   laneId,
   label,
@@ -269,6 +288,7 @@ PropertyLaneRow transformPositionLane(
     (pose) => [pose.center.x, pose.center.y],
     parts: const [LaneCurvePalette.across, LaneCurvePalette.down],
     printed: (pose) => formatTransformLaneValue('position', pose),
+    shownFrame: shownFrame,
   ),
   scrubValue: (label, delta) =>
       scrubTransformLaneValue('position', label, delta),
@@ -280,6 +300,12 @@ String _itsOwnLaneId(String laneId) => laneId;
 /// What a lane's value column prints and the line a header graph draws it
 /// by (I-89 ③), off ONE reading of its value — so the two cannot come to
 /// disagree. The line's keys are the track's ([_lane]).
+///
+/// 🗣️I-120-Q12 (유저 2026-11-04: a 「키는 서 있는 프레임에, 값 칸 · 그래프는
+/// 키 곡선 그대로」 + 「값 칸 숫자도 대응하도록 해서 캔버스랑 같도록」): on a
+/// group read by blocks the column prints what the canvas shows — the
+/// reading at the head of the block — and the line stays the keys'. One
+/// reading still; the column asks it at another frame.
 typedef _LaneReading = ({
   String Function(int frameIndex)? label,
   ({List<Color> parts, List<double> Function(double time) at})? curve,
@@ -294,10 +320,12 @@ _LaneReading _reading<V>(
   List<double> Function(V value) numbers, {
   required List<Color> parts,
   required String Function(V value) printed,
+  required int Function(int frame)? shownFrame,
 }) => at == null
     ? (label: null, curve: null)
     : (
-        label: (frame) => printed(at(frame.toDouble())),
+        label: (frame) =>
+            printed(at((shownFrame?.call(frame) ?? frame).toDouble())),
         curve: (parts: parts, at: (time) => numbers(at(time))),
       );
 

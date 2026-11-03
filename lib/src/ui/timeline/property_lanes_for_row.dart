@@ -1,5 +1,6 @@
 import '../../models/attached_layer_resolve.dart';
 import '../../models/canvas_size.dart';
+import '../../models/fx_basis.dart';
 import '../../models/fx_plugin_description.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart'
@@ -67,6 +68,20 @@ List<PropertyLaneRow> propertyLanesForRow({
   required bool Function(FxPluginDescription plugin)? hasPlugin,
 }) {
   final source = valueSourceAt;
+
+  /// I-120-Q12: the rail frame whose value the canvas shows at rail
+  /// [frame] for a group read by [basis] — on 「블록」 the head of the block
+  /// it shows on the row its value is read off, carried back as far as the
+  /// projection carried it (a projection moves a row's frames, never their
+  /// spacing — [_sourceAtTime]).
+  int shownFrame(FxBasis basis, int frame) {
+    final at = source?.call(frame);
+    if (at == null) {
+      return frame;
+    }
+    return frame - at.frame + fxReadFrame(basis, at.layer.fxBlocks, at.frame);
+  }
+
   // Attach rows ride their BASE's transform/opacity lanes (W5 fx sharing)
   // — no lanes of their own; a row riding the conte authors its own fx and
   // has them (I-99). R9: the 공정 ORGANIZER folder joins
@@ -101,6 +116,9 @@ List<PropertyLaneRow> propertyLanesForRow({
         enabled: layer.kind.hasLayerTransform
             ? layer.transformEnabled
             : null,
+        // I-120-Q9: the basis chip only where the row has blocks of its
+        // own to step on — a folder's transform reads every frame.
+        basis: layer.fxBlocks == null ? null : layer.transformBasis,
       ),
       if (expanded) ...group.where((lane) => !lane.isGroupHeader),
     ];
@@ -116,6 +134,7 @@ List<PropertyLaneRow> propertyLanesForRow({
       layer.transformTrack,
       scaleForm: scaleLaneFormOf(layer),
       includeAnchorAndOpacity: true,
+      shownFrame: (frame) => shownFrame(layer.transformBasis, frame),
       poseAt: centre == null || source == null
           ? null
           : (time) {
@@ -191,6 +210,8 @@ List<PropertyLaneRow> propertyLanesForRow({
               );
             },
       hasPlugin: hasPlugin,
+      rowHasBlocks: layer.fxBlocks != null,
+      shownFrame: shownFrame,
     );
   }
 

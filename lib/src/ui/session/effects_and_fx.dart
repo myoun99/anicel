@@ -6,7 +6,6 @@ import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
-import '../../models/track.dart';
 import '../../models/track_id.dart';
 import '../../models/track_transform_lane_carrier.dart';
 import '../../services/command.dart';
@@ -219,16 +218,6 @@ class EffectsAndFx {
       }
     }
   }
-
-  /// An effect parameter's resolved value at [frameIndex] — the lane value
-  /// column and the key-freeze source, read through the SAME resolver the
-  /// composite uses so the number in the lane is the number on the canvas.
-  double layerEffectParameterAtFrame(
-    Layer layer,
-    EffectId effectId,
-    String parameterId,
-    int frameIndex,
-  ) => effectParameterValueAt(layer.effects, effectId, parameterId, frameIndex);
 
   /// The row's FX state: its TRANSFORM switch ([Layer.transformEnabled])
   /// plus every effect's own switch, read as one answer for the layer-label
@@ -521,16 +510,6 @@ class EffectsAndFx {
         description: 'Toggle effect',
         edit: (effects) => effectsWithEnabledToggled(effects, effectId),
       );
-
-  /// A track effect parameter's resolved value at GLOBAL [frameIndex] — the
-  /// lane value column and the key-freeze source, through the same resolver
-  /// the composite samples with.
-  double trackEffectParameterAtFrame(
-    Track track,
-    EffectId effectId,
-    String parameterId,
-    int frameIndex,
-  ) => effectParameterValueAt(track.effects, effectId, parameterId, frameIndex);
 
   /// The V row's fx toggle, one undoable write.
   void toggleTrackFx(TrackId trackId) {

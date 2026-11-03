@@ -25,7 +25,7 @@ void main() {
       );
 
   AeEffect aeOf(LayerEffect effect, {int frames = 1}) =>
-      aeEffectOf(effect, frames: frames, paper: paper)!;
+      aeEffectOf(effect, frames: frames, paper: paper, blocks: null)!;
 
   List<double> still(AeEffect effect, String number) =>
       effect.values['${effect.matchName}-$number']!.value!;
@@ -180,6 +180,7 @@ void main() {
         LayerEffect(id: const EffectId('e'), kind: EffectKind.celNumber),
         frames: 1,
         paper: paper,
+        blocks: null,
       ),
       isNull,
     );

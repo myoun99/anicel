@@ -441,6 +441,7 @@ void main() {
             effects: resolveLayerEffectsAt(
               effects: layer.effects,
               frameIndex: 2,
+              blocks: null,
             ),
           ),
       ],

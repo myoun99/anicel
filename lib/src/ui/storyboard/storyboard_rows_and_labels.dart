@@ -293,6 +293,9 @@ class _StoryboardRowsAndLabels {
     /// until F-101 gave the S rows the timeline's switch.
     void Function(PropertyLaneRow lane)? onToggleGroupEnabled,
 
+    /// The header's basis chip (I-120-Q10). Null leaves it out.
+    void Function(PropertyLaneRow lane, FxBasis basis)? onSetGroupBasis,
+
     /// The header's RESET (R5, AE's group Reset). Null hides the button —
     /// a header whose group has no reset route must not show one.
     void Function(PropertyLaneRow lane)? onResetGroup,
@@ -341,6 +344,9 @@ class _StoryboardRowsAndLabels {
         onToggleLaneGroupEnabled: onToggleGroupEnabled == null
             ? null
             : (_, _) => onToggleGroupEnabled(lane),
+        onSetLaneGroupBasis: onSetGroupBasis == null
+            ? null
+            : (_, _, basis) => onSetGroupBasis(lane, basis),
         onResetLaneGroup: onResetGroup == null || !lane.isGroupHeader
             ? null
             : (_, _) => onResetGroup(lane),

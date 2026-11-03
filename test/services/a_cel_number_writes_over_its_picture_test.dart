@@ -269,6 +269,7 @@ void main() {
     final worn = resolveLayerEffectsAt(
       effects: chainWornBy(cut, attach),
       frameIndex: 0,
+      blocks: null,
     );
     expect(kindsOf(worn), ['blur', 'blur']);
     expect(chainWornBy(cut, base), base.effects);

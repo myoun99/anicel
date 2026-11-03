@@ -142,6 +142,11 @@ enum AppStrings {
   String keyPathKindName(String name, String fallback) =>
       _values['keyPathKind.$name'] ?? fallback;
 
+  /// What an fx reads its keys by (I-120-Q10), by the enum value's `name` —
+  /// the contract [keySideKindName] keeps.
+  String fxBasisName(String name, String fallback) =>
+      _values['fxBasis.$name'] ?? fallback;
+
   /// A selection mode's name, by the enum value's `name` — the same reversal;
   /// the ko rows are the user's own words (R26 #16).
   String selectionModeName(String name, String fallback) =>
@@ -2149,6 +2154,7 @@ enum AppStrings {
   // five languages.
   String get railLayerBlendMode => _s('railLayerBlendMode');
   String get railFolderBlendMode => _s('railFolderBlendMode');
+  String get tlFxBasisTemplate => _s('tlFxBasisTemplate');
   String get railHideLayer => _s('railHideLayer');
   String get railShowLayer => _s('railShowLayer');
   String get railBypassLayerFx => _s('railBypassLayerFx');
@@ -3484,6 +3490,7 @@ enum AppStrings {
     'tlExpandAllLayers': 'Expand all layers',
     'railLayerBlendMode': 'Layer blend mode',
     'railFolderBlendMode': 'Folder blend mode',
+    'tlFxBasisTemplate': '{name} applies per',
     'railHideLayer': 'Hide layer',
     'railShowLayer': 'Show layer',
     'railBypassLayerFx': 'Bypass layer FX',
@@ -3806,6 +3813,8 @@ enum AppStrings {
     'keyPathKind.bezier': 'ベジェ',
     'keyPathKind.continuousBezier': '連続ベジェ',
     'keyPathKind.autoBezier': '自動ベジェ',
+    'fxBasis.frame': 'フレーム',
+    'fxBasis.block': 'ブロック',
     'keyRoving': 'ロービング',
     'keySideIncomingHelp':
         '前のキーからこのキーに入る速さ。リニア：一定 · イーズ：減速して到着 · クイック：加速して到着 · スムーズ：前後のキーに合わせて速さをつなぐ。影響：その変化が区間のどれだけにかかるか。',
@@ -3924,6 +3933,10 @@ enum AppStrings {
         'リンクされたレイヤーが同じセルの絵を別々の位置に見せているため、'
         'セル1枚に収められません。'
         '参照を同じ位置にそろえるとラスタライズできます。',
+    'referenceWait.blocks':
+        'このレイヤーのトランスフォームはブロック単位で適用されるため、'
+        '動く参照をキーにできません。'
+        'トランスフォームの適用対象をフレームにするとラスタライズできます。',
     'pasteProgressRunning': 'ペースト中…',
     'pasteProgressDone': 'ペーストしました',
     'duplicateProgressRunning': '複製中…',
@@ -5319,6 +5332,7 @@ enum AppStrings {
     'tlExpandAllLayers': 'すべてのレイヤーを展開',
     'railLayerBlendMode': 'レイヤーの合成モード',
     'railFolderBlendMode': 'フォルダーの合成モード',
+    'tlFxBasisTemplate': '{name}の適用対象',
     'railHideLayer': 'レイヤーを隠す',
     'railShowLayer': 'レイヤーを表示',
     'railBypassLayerFx': 'レイヤーFXをバイパス',
@@ -5677,6 +5691,8 @@ enum AppStrings {
     'keyPathKind.bezier': '베지어',
     'keyPathKind.continuousBezier': '연속 베지어',
     'keyPathKind.autoBezier': '자동 베지어',
+    'fxBasis.frame': '프레임',
+    'fxBasis.block': '블록',
     'keyRoving': '로빙',
     'keySideIncomingHelp':
         '앞 키에서 이 키로 들어오는 빠르기. 리니어: 고르게 · 천천히: 느려지며 도착 · 급하게: 빨라지며 도착 · 부드럽게: 앞뒤 키에 맞춰 빠르기를 이어 지나감. 세기: 그 변화가 구간의 얼마만큼에 걸치는지.',
@@ -5790,6 +5806,9 @@ enum AppStrings {
     'referenceWait.usesApart':
         '링크된 레이어들이 같은 셀의 그림을 서로 다른 자리에 보여, 셀 한 장에 '
         '담을 수 없습니다. 참조를 같은 자리로 맞추면 래스터라이즈됩니다.',
+    'referenceWait.blocks':
+        '이 레이어의 변형은 블록 단위로 적용되어, 움직이는 참조를 키로 옮길 '
+        '수 없습니다. 변형의 적용 대상을 프레임으로 바꾸면 래스터라이즈됩니다.',
     'pasteProgressRunning': '붙여넣는 중…',
     'pasteProgressDone': '붙여넣음',
     'duplicateProgressRunning': '복제하는 중…',
@@ -7175,6 +7194,7 @@ enum AppStrings {
     'tlExpandAllLayers': '모든 레이어 펼치기',
     'railLayerBlendMode': '레이어 블렌드 모드',
     'railFolderBlendMode': '폴더 블렌드 모드',
+    'tlFxBasisTemplate': '{name} 적용 대상',
     'railHideLayer': '레이어 숨기기',
     'railShowLayer': '레이어 표시',
     'railBypassLayerFx': '레이어 FX 우회',
@@ -7549,6 +7569,8 @@ enum AppStrings {
     'keyPathKind.bezier': 'Bézier',
     'keyPathKind.continuousBezier': 'Bézier continue',
     'keyPathKind.autoBezier': 'Bézier auto',
+    'fxBasis.frame': 'Image',
+    'fxBasis.block': 'Bloc',
     'keyRoving': 'Itinérance',
     'keySideIncomingHelp':
         'Comment la valeur arrive à la clé. Linéaire : vitesse constante · Lissage : en ralentissant · Vite : en accélérant · Fluide : à la vitesse que donnent les clés voisines. Influence : quelle part du trajet prend le changement.',
@@ -7670,6 +7692,10 @@ enum AppStrings {
         'Les calques liés montrent l’image de ce cellulo à des endroits '
         'différents, et un cellulo la garde à un seul. Alignez leur '
         'Référence pour pixelliser.',
+    'referenceWait.blocks':
+        'La Transformation de ce calque s’applique par bloc, et une '
+        'Référence qui bouge ne peut pas devenir ses clés. Appliquez la '
+        'Transformation par image pour pixelliser.',
     'pasteProgressRunning': 'Collage…',
     'pasteProgressDone': 'Collé',
     'duplicateProgressRunning': 'Duplication…',
@@ -9186,6 +9212,7 @@ enum AppStrings {
     'tlExpandAllLayers': 'Déplier tous les calques',
     'railLayerBlendMode': 'Mode de fusion du calque',
     'railFolderBlendMode': 'Mode de fusion du dossier',
+    'tlFxBasisTemplate': '{name} s’applique par',
     'railHideLayer': 'Masquer le calque',
     'railShowLayer': 'Afficher le calque',
     'railBypassLayerFx': 'Contourner les FX du calque',
@@ -9570,6 +9597,8 @@ enum AppStrings {
     'keyPathKind.bezier': '贝塞尔曲线',
     'keyPathKind.continuousBezier': '连续贝塞尔曲线',
     'keyPathKind.autoBezier': '自动贝塞尔曲线',
+    'fxBasis.frame': '帧',
+    'fxBasis.block': '块',
     'keyRoving': '漂浮',
     'keySideIncomingHelp':
         '值进入此关键帧的方式。线性：匀速 · 缓动：减速进入 · 快速：加速进入 · 平滑：按前后关键帧接续速度。影响：变化占区间的多少。',
@@ -9674,6 +9703,9 @@ enum AppStrings {
     'referenceWait.usesApart':
         '链接的图层在不同位置显示同一张赛璐珞的画面，'
         '一张赛璐珞只能放在一个位置。将参照对齐到同一位置即可栅格化。',
+    'referenceWait.blocks':
+        '此图层的变换按块应用，移动的参照无法转为关键帧。'
+        '将变换的应用对象改为帧即可栅格化。',
     'pasteProgressRunning': '粘贴中…',
     'pasteProgressDone': '已粘贴',
     'duplicateProgressRunning': '复制中…',
@@ -11000,6 +11032,7 @@ enum AppStrings {
     'tlExpandAllLayers': '展开所有图层',
     'railLayerBlendMode': '图层混合模式',
     'railFolderBlendMode': '文件夹混合模式',
+    'tlFxBasisTemplate': '{name}的应用对象',
     'railHideLayer': '隐藏图层',
     'railShowLayer': '显示图层',
     'railBypassLayerFx': '旁通图层 FX',

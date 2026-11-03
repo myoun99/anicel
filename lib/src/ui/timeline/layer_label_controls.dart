@@ -483,15 +483,10 @@ class LayerBlendModeChip extends StatelessWidget {
     this.axis = Axis.horizontal,
   });
 
-  /// The RAIL's direction. Vertical is the x-sheet's stood-up column: the
-  /// slot spends its extent as HEIGHT and the mode name reads down the
-  /// button.
-  /// This was the one control in the shared skeleton that hardcoded its
-  /// axis, so on the sheet it drew a 58-wide chip inside a 28px column.
+  /// The RAIL's direction ([RailChoiceChip.axis]).
   final Axis axis;
 
-  /// What a finder calls the chip ('timeline-layer-blend-a') — a [Named],
-  /// as a [RailGlyphButton.name] is and for its reason.
+  /// What a finder calls the chip ('timeline-layer-blend-a').
   final String name;
 
   /// Prefix for the flyout option keys
@@ -509,9 +504,6 @@ class LayerBlendModeChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final nonNormal = blendMode != LayerBlendMode.normal;
-    final vertical = axis == Axis.vertical;
     // 🚨F-170 (유저 2026-09-20): 「앱 초기 실행시, 레이어의 블렌드 모드가
     // 영어가 되있음. Normal로. 그 상태에서 다른 레이어로 이동하거나 프레임
     // 생성하면 표준이라고 한글로 바뀜」. The saved language lands after the
@@ -520,6 +512,68 @@ class LayerBlendModeChip extends StatelessWidget {
     // rebuild, with English as the default. Asked here, at build, like
     // every other vocabulary ([AppText.language]).
     final language = AppText.language;
+    return RailChoiceChip<LayerBlendMode>(
+      name: name,
+      tooltip: isGroup
+          ? AppText.strings.railFolderBlendMode
+          : AppText.strings.railLayerBlendMode,
+      optionKeyPrefix: optionKeyPrefix,
+      value: blendMode,
+      options: () => LayerBlendMode.optionsFor(isGroup: isGroup),
+      labelOf: (mode) => mode.labelFor(language),
+      marked: blendMode != LayerBlendMode.normal,
+      onPicked: onBlendModeSelected,
+      axis: axis,
+    );
+  }
+}
+
+/// THE rail's word chip (R28 #2): a row's choice read as its word, picked
+/// from a list — accent and bold while it is not the plain one (selection
+/// style: color only, no check glyph in the row itself). The blend chip
+/// ([LayerBlendModeChip]) is this chip, and so is an fx header's basis chip
+/// (I-120-Q10: 「리스트팝오버로」), in the column the blend's stands in.
+class RailChoiceChip<T extends Enum> extends StatelessWidget {
+  const RailChoiceChip({
+    super.key,
+    required this.name,
+    required this.tooltip,
+    required this.optionKeyPrefix,
+    required this.value,
+    required this.options,
+    required this.labelOf,
+    required this.marked,
+    required this.onPicked,
+    this.axis = Axis.horizontal,
+  });
+
+  /// What a finder calls the chip — a [Named], as a [RailGlyphButton.name]
+  /// is and for its reason.
+  final String name;
+  final String tooltip;
+
+  /// Prefix for the flyout option keys (prefix + the value's `name`).
+  final String optionKeyPrefix;
+  final T value;
+
+  /// The list's values, in order — asked when the list opens.
+  final List<T> Function() options;
+  final String Function(T value) labelOf;
+
+  /// Whether [value] wears the accent: it is not the plain choice.
+  final bool marked;
+  final ValueChanged<T> onPicked;
+
+  /// The RAIL's direction. Vertical is the x-sheet's stood-up column: the
+  /// slot spends its extent as HEIGHT and the word reads down the button.
+  /// This was the one control in the shared skeleton that hardcoded its
+  /// axis, so on the sheet it drew a 58-wide chip inside a 28px column.
+  final Axis axis;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final vertical = axis == Axis.vertical;
     // The chip's word grows with the OS text size, and the box around it
     // grows by as much (text-scale-rail-rows: the bars' law — a box drawn
     // around one line at 1× grows as that line grows; 0 at 1×). Measured:
@@ -545,25 +599,21 @@ class LayerBlendModeChip extends StatelessWidget {
       child: Center(
         child: RailFlyoutTrigger(
           name: name,
-          tooltip: isGroup
-              ? AppText.strings.railFolderBlendMode
-              : AppText.strings.railLayerBlendMode,
+          tooltip: tooltip,
           hoverShape: PanelFlyoutChip.shape,
-          entriesBuilder: () => LayerBlendMode.optionsFor(
-            isGroup: isGroup,
-          ).asFlyoutChoices(
-            current: blendMode,
+          entriesBuilder: () => options().asFlyoutChoices(
+            current: value,
             keyPrefix: optionKeyPrefix,
-            labelOf: (mode) => mode.labelFor(language),
-            onPicked: onBlendModeSelected,
+            labelOf: labelOf,
+            onPicked: onPicked,
           ),
           child: PanelFlyoutChip(
             axis: axis,
-            label: blendMode.labelFor(language),
+            label: labelOf(value),
             expand: true,
             fontSize: _blendFontSize,
-            fontWeight: nonNormal ? FontWeight.w700 : FontWeight.w400,
-            labelColor: nonNormal
+            fontWeight: marked ? FontWeight.w700 : FontWeight.w400,
+            labelColor: marked
                 ? AppColors.accent
                 : colorScheme.onSurfaceVariant,
             padding: vertical

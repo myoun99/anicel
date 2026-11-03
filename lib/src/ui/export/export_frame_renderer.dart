@@ -1863,6 +1863,7 @@ class ExportFrameRenderer {
         effects: resolveLayerEffectsAt(
           effects: _outputChainOf(chainWornBy(cut, layer)),
           frameIndex: firstExposure,
+          blocks: chainBlocksOf(cut, layer),
         ),
         placement: referenceMoveAt(_asOutput(layer), firstExposure),
       ));

@@ -1,3 +1,5 @@
+import 'dart:collection';
+
 import '../../models/attached_layer_resolve.dart' show fxCarrierOf;
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
@@ -9,6 +11,7 @@ import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/timeline_coverage.dart';
+import '../../models/timeline_exposure.dart';
 import '../../services/commands/link_mirror.dart'
     show linkCounterpartIn, linkedCutGroupInTrackOrder;
 import '../../services/cut_frame_composite_plan.dart'
@@ -426,7 +429,7 @@ class _CanvasLaying {
           resolveFolderOpacityAt(folder: folder, frameIndex: frame) *
           _passedStrength(folder, frame),
     ),
-    effects: _effectsOf(folder.effects),
+    effects: _effectsOf(folder.effects, blocks: folder.fxBlocks),
   );
 
   /// A row's cels: its cel comp a frame at a time where [holds] says.
@@ -455,7 +458,7 @@ class _CanvasLaying {
                 1.0) *
             _passedStrength(row, frame),
       ),
-      effects: _effectsOf(chainWornBy(cut, row)),
+      effects: _effectsOf(chainWornBy(cut, row), blocks: carrier.fxBlocks),
     );
   }
 
@@ -480,14 +483,23 @@ class _CanvasLaying {
           ],
         ),
       ),
-      effects: _effectsOf(row.effects),
+      effects: _effectsOf(row.effects, blocks: row.fxBlocks),
     );
   }
 
-  /// [chain] as After Effects' nearest effects (Q5) — the ones it has.
-  List<AeEffect> _effectsOf(List<LayerEffect> chain) => [
+  /// [chain] as After Effects' nearest effects (Q5) — the ones it has, each
+  /// read where its basis says over [blocks], its owner's.
+  List<AeEffect> _effectsOf(
+    List<LayerEffect> chain, {
+    required SplayTreeMap<int, TimelineExposure>? blocks,
+  }) => [
     for (final effect in chain)
-      ?aeEffectOf(effect, frames: frames, paper: cut.canvasSize),
+      ?aeEffectOf(
+        effect,
+        frames: frames,
+        paper: cut.canvasSize,
+        blocks: blocks,
+      ),
   ];
 
   /// The strength the folders passing [row] through lend it at [frame] —

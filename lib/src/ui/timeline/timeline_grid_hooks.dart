@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/cut_id.dart';
+import '../../models/fx_basis.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -149,6 +150,7 @@ class TimelineGridHooks {
     this.laneEdit,
     this.onToggleLaneGroup,
     this.onToggleLaneGroupEnabled,
+    this.onSetLaneGroupBasis,
     this.onResetLaneGroup,
     this.hiddenSections = const {},
     this.rowFilter = TimelineRowFilter.none,
@@ -569,6 +571,10 @@ class TimelineGridHooks {
   /// The group header's own ON/OFF switch (R6), forwarded to the lane rows.
   final void Function(Layer layer, PropertyLaneRow lane)?
   onToggleLaneGroupEnabled;
+
+  /// The group header's basis chip (I-120-Q10), forwarded to the lane rows.
+  final void Function(Layer layer, PropertyLaneRow lane, FxBasis basis)?
+  onSetLaneGroupBasis;
 
   /// The group header's RESET (R5), forwarded to the lane rows.
   final void Function(Layer layer, PropertyLaneRow lane)? onResetLaneGroup;

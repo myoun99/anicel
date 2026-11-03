@@ -1,7 +1,11 @@
+import 'dart:collection';
+
 import '../core/collection_equality.dart';
 import 'canvas_point.dart';
 import 'canvas_size.dart';
 import 'effect_parameter_spec.dart';
+import 'fx_basis.dart';
+import 'timeline_exposure.dart';
 import 'fx_plugin_description.dart';
 import 'fx_plugin_run.dart';
 import 'layer_id.dart';
@@ -821,6 +825,7 @@ class LayerEffect {
     required this.kind,
     FxPluginDescription? plugin,
     this.enabled = true,
+    this.basis = FxBasis.frame,
     Map<String, EffectParameter>? parameters,
     Map<String, PropertyTrack<int>>? colors,
     Map<String, TransformTrack>? points,
@@ -904,6 +909,11 @@ class LayerEffect {
   /// effect resolves to nothing at all — it keeps its keys for later.
   final bool enabled;
 
+  /// What its keys are read at ([FxBasis]) — the effect's bundle's own,
+  /// worn as part of the chain's SHAPE as [enabled] is
+  /// ([effectChainWithSharedShape]).
+  final FxBasis basis;
+
   /// Parameter id → parameter, always the kind's FULL spec set of numbers
   /// (see the constructor) — its colours are [colors]. A parameter added to
   /// a spec later therefore appears at its default on old data, with no
@@ -957,6 +967,7 @@ class LayerEffect {
     EffectId? id,
     EffectKind? kind,
     bool? enabled,
+    FxBasis? basis,
     Map<String, EffectParameter>? parameters,
     Map<String, PropertyTrack<int>>? colors,
     Map<String, TransformTrack>? points,
@@ -968,6 +979,7 @@ class LayerEffect {
       kind: kind ?? this.kind,
       plugin: plugin,
       enabled: enabled ?? this.enabled,
+      basis: basis ?? this.basis,
       parameters: parameters ?? this.parameters,
       colors: colors ?? this.colors,
       points: points ?? this.points,
@@ -1048,6 +1060,7 @@ class LayerEffect {
     'kind': kind.toJson(),
     if (plugin case final plugin?) 'plugin': plugin.toJson(),
     if (!enabled) 'enabled': false,
+    if (basis != FxBasis.frame) 'basis': basis.toJson(),
     'parameters': {
       for (final entry in parameters.entries)
         // A parameter sitting at its default with no keys says nothing.
@@ -1090,6 +1103,7 @@ class LayerEffect {
       // not is ([EffectKind.fromJson]).
       plugin: FxPluginDescription.fromJson(json['plugin']),
       enabled: json['enabled'] as bool? ?? true,
+      basis: FxBasis.fromJson(json['basis']),
       parameters: {
         for (final entry in rawParameters.entries)
           entry.key: EffectParameter.fromJson(
@@ -1125,6 +1139,7 @@ class LayerEffect {
           other.kind == kind &&
           other.plugin == plugin &&
           other.enabled == enabled &&
+          other.basis == basis &&
           mapEquals(other.parameters, parameters) &&
           mapEquals(other.colors, colors) &&
           mapEquals(other.points, points) &&
@@ -1137,6 +1152,7 @@ class LayerEffect {
     kind,
     plugin,
     enabled,
+    basis,
     Object.hashAll([
       for (final entry in parameters.entries)
         Object.hash(entry.key, entry.value),
@@ -1399,9 +1415,15 @@ double effectValueAt(
 /// Samples [effects] at [frameIndex], dropping the disabled ones and the
 /// ones that resolve to a no-op. An empty result is the overwhelmingly
 /// common case and every consumer treats it as "no filter work at all".
+///
+/// Each effect reads its keys where its [LayerEffect.basis] says, over
+/// [blocks] — the blocks of the row whose chain this is, null for one that
+/// has none ([fxReadFrame]). ⛔REQUIRED so every route answers whose blocks
+/// it reads: a chain sampled without them goes on moving through the holds.
 List<ResolvedLayerEffect> resolveLayerEffectsAt({
   required List<LayerEffect> effects,
   required int frameIndex,
+  required SplayTreeMap<int, TimelineExposure>? blocks,
 }) {
   if (effects.isEmpty) {
     return const [];
@@ -1411,7 +1433,10 @@ List<ResolvedLayerEffect> resolveLayerEffectsAt({
     if (!effect.enabled) {
       continue;
     }
-    final sample = sampleLayerEffectAt(effect, frameIndex);
+    final sample = sampleLayerEffectAt(
+      effect,
+      fxReadFrame(effect.basis, blocks, frameIndex),
+    );
     if (sample.isNoOp) {
       continue;
     }
@@ -1714,15 +1739,20 @@ List<LayerEffect> effectChainWithSharedShape(
         // take the incoming one whole.
         null => effect,
         final existing when existing.kind != effect.kind => effect,
-        // Same effect: keep this cut's numbers, take the shared switch.
-        final existing => existing.copyWith(enabled: effect.enabled),
+        // Same effect: keep this cut's numbers, take the shared switch and
+        // what the keys are read at.
+        final existing => existing.copyWith(
+          enabled: effect.enabled,
+          basis: effect.basis,
+        ),
       },
   ];
 }
 
 /// Whether [a] and [b] are chains of one SHAPE ([effectChainWithSharedShape]
 /// lays [b]'s over [a] as [a]): the same effects in the same order, each
-/// switched the same way — whatever their numbers.
+/// switched the same way and read at the same basis — whatever their
+/// numbers.
 bool sameEffectChainShape(List<LayerEffect> a, List<LayerEffect> b) {
   if (a.length != b.length) {
     return false;
@@ -1731,7 +1761,8 @@ bool sameEffectChainShape(List<LayerEffect> a, List<LayerEffect> b) {
     final (left, right) = (a[index], b[index]);
     if (left.id != right.id ||
         left.kind != right.kind ||
-        left.enabled != right.enabled) {
+        left.enabled != right.enabled ||
+        left.basis != right.basis) {
       return false;
     }
   }

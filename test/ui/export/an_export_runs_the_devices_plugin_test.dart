@@ -272,7 +272,11 @@ void main() {
 
       final run = s
           .fxPluginsIn(cut)(
-            resolveLayerEffectsAt(effects: row.effects, frameIndex: 0),
+            resolveLayerEffectsAt(
+              effects: row.effects,
+              frameIndex: 0,
+              blocks: null,
+            ),
             cut: cut,
             frameIndex: 0,
           )

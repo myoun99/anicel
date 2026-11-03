@@ -6,6 +6,7 @@ import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../text/app_strings.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/cut_id.dart';
+import '../../models/fx_basis.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/attached_layer_resolve.dart' show attachArrowPlacement;
@@ -161,6 +162,7 @@ class TimelinePanel extends StatefulWidget {
     this.laneEdit,
     this.onToggleLaneGroup,
     this.onToggleLaneGroupEnabled,
+    this.onSetLaneGroupBasis,
     this.onResetLaneGroup,
     this.hiddenSections = const {},
     this.onToggleSection,
@@ -600,6 +602,10 @@ class TimelinePanel extends StatefulWidget {
   final void Function(Layer layer, PropertyLaneRow lane)?
   onToggleLaneGroupEnabled;
 
+  /// The group header's basis chip (I-120-Q10), forwarded to the lane rows.
+  final void Function(Layer layer, PropertyLaneRow lane, FxBasis basis)?
+  onSetLaneGroupBasis;
+
   /// The group header's RESET (R5), forwarded to the lane rows.
   final void Function(Layer layer, PropertyLaneRow lane)? onResetLaneGroup;
 
@@ -791,6 +797,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       laneEdit: widget.laneEdit,
       onToggleLaneGroup: widget.onToggleLaneGroup,
       onToggleLaneGroupEnabled: widget.onToggleLaneGroupEnabled,
+      onSetLaneGroupBasis: widget.onSetLaneGroupBasis,
       onResetLaneGroup: widget.onResetLaneGroup,
       hiddenSections: widget.hiddenSections,
       rowFilter: widget.rowFilter,

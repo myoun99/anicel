@@ -226,6 +226,11 @@ Layer duplicateLayerAsIndependentCopy({
     mediaReference: source.mediaReference,
     seNameTag: source.seNameTag,
     transformTrack: source.transformTrack,
+    // The transform's switch (R8) and what it reads its keys by (I-120-Q10)
+    // go with its keys — the switch had been left out, so a copy showed a
+    // bypassed transform switched on.
+    transformEnabled: source.transformEnabled,
+    transformBasis: source.transformBasis,
     // The effect chain is layer state like the transform track (R6): a
     // duplicated cut keeps its 촬영 work. The rows it names remap as the
     // attach pointer does, below.

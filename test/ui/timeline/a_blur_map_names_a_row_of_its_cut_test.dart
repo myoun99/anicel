@@ -84,6 +84,7 @@ void main() {
         final sample = resolveLayerEffectsAt(
           effects: [named],
           frameIndex: frame,
+          blocks: null,
         ).single;
         expect(sample.layers, {map: const LayerId('map')});
         expect(sample.parameter(map), 0, reason: 'no number');

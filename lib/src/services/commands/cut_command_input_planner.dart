@@ -221,6 +221,7 @@ PasteLayerCommandInputPlan planPasteLayerCommandInput({
     blendMode: payload.blendMode,
     transformTrack: payload.transformTrack,
     transformEnabled: payload.transformEnabled,
+    transformBasis: payload.transformBasis,
     effects: payload.effects,
     mark: payload.mark,
     onTimesheet: payload.onTimesheet,

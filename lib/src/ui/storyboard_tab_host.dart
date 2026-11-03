@@ -1070,6 +1070,13 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                           lane.laneId,
                           description: 'Toggle ${lane.label}',
                         ),
+                    onSetLaneGroupBasis: (layer, lane, basis) =>
+                        _session.laneVerbs.setLaneGroupBasis(
+                          layer.id,
+                          lane.laneId,
+                          basis,
+                          description: 'Set ${lane.label} basis',
+                        ),
                     onResetLaneGroup: (layer, lane) =>
                         _session.laneVerbs.resetLaneGroup(
                           layer.id,

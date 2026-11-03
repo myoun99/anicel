@@ -92,7 +92,11 @@ void main() {
           // defaults change pixels changes them as it is added — a cel
           // number added writes the number (I-65).
           expect(
-            resolveLayerEffectsAt(effects: [effect], frameIndex: 0),
+            resolveLayerEffectsAt(
+              effects: [effect],
+              frameIndex: 0,
+              blocks: null,
+            ),
             kind.changesNothingAtItsDefaults ? isEmpty : hasLength(1),
             reason: 'a fresh $kind',
           );
@@ -146,6 +150,7 @@ void main() {
           blur(blurriness: 6, dimensions: 2),
         ],
         frameIndex: 0,
+        blocks: null,
       );
       expect(resolved, hasLength(1));
       expect(resolved.single.kind, EffectKind.blur);
@@ -156,7 +161,7 @@ void main() {
     test('a DISABLED effect resolves to nothing but keeps its keys', () {
       final disabled = blur(blurriness: 6).copyWith(enabled: false);
       expect(
-        resolveLayerEffectsAt(effects: [disabled], frameIndex: 0),
+        resolveLayerEffectsAt(effects: [disabled], frameIndex: 0, blocks: null),
         isEmpty,
       );
       expect(disabled.parameterOf('blurriness').value, 6);
@@ -168,7 +173,11 @@ void main() {
         kind: EffectKind.brightnessContrast,
         parameters: {'brightness': EffectParameter(value: 5000)},
       );
-      final resolved = resolveLayerEffectsAt(effects: [wild], frameIndex: 0);
+      final resolved = resolveLayerEffectsAt(
+        effects: [wild],
+        frameIndex: 0,
+        blocks: null,
+      );
       expect(resolved.single.parameter('brightness'), 100);
     });
 
@@ -188,7 +197,7 @@ void main() {
         },
       );
       expect(
-        resolveLayerEffectsAt(effects: [animated], frameIndex: 0),
+        resolveLayerEffectsAt(effects: [animated], frameIndex: 0, blocks: null),
         isEmpty,
         reason: 'sampled at its default at frame 0 — nothing to paint',
       );
@@ -196,6 +205,7 @@ void main() {
         resolveLayerEffectsAt(
           effects: [animated],
           frameIndex: 5,
+          blocks: null,
         ).single.parameter('blurriness'),
         5,
       );
@@ -209,13 +219,17 @@ void main() {
       );
       expect(
         resolvedEffectsSpreadPixels(
-          resolveLayerEffectsAt(effects: [colour], frameIndex: 0),
+          resolveLayerEffectsAt(effects: [colour], frameIndex: 0, blocks: null),
         ),
         isFalse,
       );
       expect(
         resolvedEffectsSpreadPixels(
-          resolveLayerEffectsAt(effects: [blur(blurriness: 3)], frameIndex: 0),
+          resolveLayerEffectsAt(
+            effects: [blur(blurriness: 3)],
+            frameIndex: 0,
+            blocks: null,
+          ),
         ),
         isTrue,
       );

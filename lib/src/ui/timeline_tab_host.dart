@@ -934,6 +934,14 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                   lane.laneId,
                   description: 'Toggle ${lane.label}',
                 ),
+            // I-120-Q10: the header's basis chip, dispatched as its switch.
+            onSetLaneGroupBasis: (layer, lane, basis) =>
+                _session.laneVerbs.setLaneGroupBasis(
+                  layer.id,
+                  lane.laneId,
+                  basis,
+                  description: 'Set ${lane.label} basis',
+                ),
             // R5: AE's group Reset. The session owns the scope rule (the
             // playhead, or a live lane range's keys) so both grids and the
             // storyboard ask the same question.

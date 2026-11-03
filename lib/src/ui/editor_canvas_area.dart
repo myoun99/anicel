@@ -1449,6 +1449,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final resolved = resolveLayerEffectsAt(
       effects: [boxed.effect],
       frameIndex: at.frame,
+      blocks: row.fxBlocks,
     ).single;
     final name = '${row.name} ${boxed.effect.label}';
     return boxed.effect.kind.drawsItsOwnPicture

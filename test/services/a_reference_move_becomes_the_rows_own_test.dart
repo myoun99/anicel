@@ -13,6 +13,7 @@ import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/fx_basis.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -626,6 +627,49 @@ void main() {
       nameIsFree: (property, name) => true,
     );
     expect(carry, isA<ReferenceCarried>());
+  });
+
+  group('a row whose transform reads by blocks (I-120-Q10)', () {
+    // Five blocks of five: 0 · 5 · 10 · 15 · 20, then empty cells.
+    Layer onBlocks(Layer row) => row.copyWith(
+      timeline: {
+        for (var head = 0; head < 25; head += 5)
+          head: const TimelineExposure.drawing(FrameId('p'), length: 5),
+      },
+      transformBasis: FxBasis.block,
+    );
+
+    test('🚨cannot carry a moving reference as keys — they would be read '
+        'by blocks too, and the picture move once a block', () {
+      final row = onBlocks(
+        paper(
+          laid: TransformPose(center: offMiddle),
+          fx: TransformTrack.empty().copyWith(
+            position: PropertyTrack<CanvasPoint>()
+                .withKey(0, offMiddle)
+                .withKey(24, CanvasPoint(x: 190, y: 110)),
+          ),
+        ),
+      );
+      expect(whyUncarried(row), ReferenceWait.blocks);
+    });
+
+    test('🎯carries a still one as it showed it, the row\'s own steps '
+        'included — on past its last key to where its block ends', () {
+      final row = onBlocks(
+        paper(
+          laid: TransformPose(center: offMiddle),
+          pose: TransformPose.uniform(center: offMiddle, zoom: 2),
+          own: TransformTrack.empty().copyWith(
+            rotation: PropertyTrack<double>().withKey(0, 0).withKey(24, 90),
+          ),
+        ),
+      );
+
+      final track = carried(row)!;
+
+      expect(strayed(row, track, frames(40)), lessThanOrEqualTo(1 + 1e-9));
+    });
   });
 
   test('a file laid other than 1:1 and upright has no move the row carries',
