@@ -431,7 +431,22 @@ class CelsExportSpec extends ExportTabSpec {
   /// let them do.
   final ExportLayerFx layerFx;
 
+  /// The naming as the user set it — what the window shows and a preset
+  /// keeps. The run names by [namingInForce].
   final ExportCelNaming naming;
+
+  /// [naming] as this export names its files: under the project scope every
+  /// cut has a folder of its own, whatever its pill was left at
+  /// ([cutFolderHeld]).
+  ///
+  /// 🗣️I-153 (유저 2026-11-04): 「범위에서 프로젝트 고르면 이름규칙
+  /// 폴더생성에서 컷 체크 고정되도록」. ⚠️The user's own pill is kept as it
+  /// was: back on one cut, it says what it said.
+  ExportCelNaming get namingInForce =>
+      cutFolderHeld ? naming.copyWith(cutFolder: true) : naming;
+
+  /// Whether the scope holds the cut's folder on ([namingInForce]).
+  bool get cutFolderHeld => scope == ExportScopeKind.project;
 
   final ExportScopeKind scope;
 

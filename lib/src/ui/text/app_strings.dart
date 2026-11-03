@@ -1435,6 +1435,12 @@ enum AppStrings {
   String get exTakeLatest => _s('exTakeLatest');
   String get exFolders => _s('exFolders');
   String get exNameParts => _s('exNameParts');
+
+  /// What 「폴더 생성」 and 「이름 지정」 do, on a hover of their names, and
+  /// why the cut folder is held under a project-wide export (I-153).
+  String get exFoldersTip => _s('exFoldersTip');
+  String get exNamePartsTip => _s('exNamePartsTip');
+  String get exCutFolderHeld => _s('exCutFolderHeld');
   String get exTarget => _s('exTarget');
   String get exLayer => _s('exLayer');
   String exCelCount(int count) => _count('exCelCount', count);
@@ -2985,6 +2991,13 @@ enum AppStrings {
     'exTakeLatest': 'Latest',
     'exFolders': 'Folders',
     'exNameParts': 'Name',
+    'exFoldersTip':
+        'Makes a folder for each chosen name and writes into it, nested '
+        'project › cut › layer. e.g. Project/Cut/A/A1.png',
+    'exNamePartsTip':
+        'Puts the chosen names in the file name: project_cut_, then the '
+        'layer name against the cel number. e.g. Project_Cut_A1.png',
+    'exCutFolderHeld': 'A project-wide export makes a folder for every cut.',
     'exTarget': 'Target',
     'exLayer': 'Layer',
     'exCelCount': '{n} cels',
@@ -4634,6 +4647,13 @@ enum AppStrings {
     'exTakeLatest': '最新',
     'exFolders': 'フォルダ作成',
     'exNameParts': '名前指定',
+    'exFoldersTip':
+        '選んだ名前ごとにフォルダを作って書き出します。プロジェクト › カット › '
+        'レイヤーの順に入れ子になります。例: プロジェクト/カット/A/A1.png',
+    'exNamePartsTip':
+        '選んだ名前をファイル名に入れます。プロジェクト_カット_ の後に'
+        'レイヤー名とセル番号が続きます。例: プロジェクト_カット_A1.png',
+    'exCutFolderHeld': '範囲がプロジェクトのときはカットごとにフォルダを作ります。',
     'exTarget': '対象',
     'exLayer': 'レイヤー',
     'exCelCount': '{n}枚',
@@ -6486,6 +6506,13 @@ enum AppStrings {
     'exTakeLatest': '최신',
     'exFolders': '폴더 생성',
     'exNameParts': '이름 지정',
+    'exFoldersTip':
+        '고른 이름마다 폴더를 만들어 그 안에 씁니다. 프로젝트 › 컷 › 레이어 '
+        '순으로 겹칩니다. 예: 프로젝트/컷/A/A1.png',
+    'exNamePartsTip':
+        '고른 이름을 파일 이름에 넣습니다. 프로젝트_컷_ 뒤에 레이어 이름과 '
+        '셀 번호가 붙습니다. 예: 프로젝트_컷_A1.png',
+    'exCutFolderHeld': '범위가 프로젝트일 때는 컷마다 폴더를 만듭니다.',
     'exTarget': '대상',
     'exLayer': '레이어',
     'exCelCount': '{n}장',
@@ -8397,6 +8424,13 @@ enum AppStrings {
     'exTakeLatest': 'Dernière',
     'exFolders': 'Dossiers',
     'exNameParts': 'Nom',
+    'exFoldersTip':
+        'Crée un dossier pour chaque nom choisi et y écrit, imbriqués '
+        'projet › plan › calque. Ex. : Projet/Plan/A/A1.png',
+    'exNamePartsTip':
+        'Met les noms choisis dans le nom du fichier : projet_plan_, puis '
+        'le nom du calque collé au numéro du cellulo. Ex. : Projet_Plan_A1.png',
+    'exCutFolderHeld': 'Un export du projet entier crée un dossier par plan.',
     'exTarget': 'Cible',
     'exLayer': 'Calque',
     'exCelCount': '{n} cellulos',
@@ -10308,6 +10342,13 @@ enum AppStrings {
     'exTakeLatest': '最新',
     'exFolders': '创建文件夹',
     'exNameParts': '命名',
+    'exFoldersTip':
+        '为每个所选名称建一个文件夹并写入其中，按 项目 › 镜头 › 图层 嵌套。'
+        '例：项目/镜头/A/A1.png',
+    'exNamePartsTip':
+        '把所选名称写进文件名：项目_镜头_ 之后是图层名紧接赛璐珞编号。'
+        '例：项目_镜头_A1.png',
+    'exCutFolderHeld': '范围为项目时，每个镜头都建一个文件夹。',
     'exTarget': '对象',
     'exLayer': '图层',
     'exCelCount': '{n}张',

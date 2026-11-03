@@ -248,6 +248,10 @@ class ExportDialogState extends State<ExportDialog> {
     for (final kind in ExportCelKind.values) kind: TextEditingController(),
   };
 
+  /// The naming module's folder-name fields: the project's, the cut's.
+  final ExportAffixFields _celProjectFolderFields = ExportAffixFields();
+  final ExportAffixFields _celCutFolderFields = ExportAffixFields();
+
   bool _isExporting = false;
   bool _cancelRequested = false;
   String? _statusMessage;
@@ -420,6 +424,8 @@ class ExportDialogState extends State<ExportDialog> {
     for (final controller in _celPrefixControllers.values) {
       controller.dispose();
     }
+    _celProjectFolderFields.dispose();
+    _celCutFolderFields.dispose();
     _queue.dispose();
     _notices.dispose();
     _availability.removeListener(_onAvailabilityChanged);
@@ -485,17 +491,20 @@ class ExportDialogState extends State<ExportDialog> {
   void _syncControllersFromSpecs() {
     _namingBaseController.text = _specs.sequence.naming.baseName;
     _celSuffixController.text = _celsSpec.naming.suffix;
-    _syncCelPrefixFields();
+    _syncCelNameFields();
   }
 
-  /// The prefix fields read what the spec says — a restore, a preset, a
-  /// reset. ⛔Not on every spec write: the field being typed in would have
-  /// its caret thrown to the end.
-  void _syncCelPrefixFields() {
+  /// The prefix and folder-name fields read what the spec says — a restore,
+  /// a preset, a reset. ⛔Not on every spec write: the field being typed in
+  /// would have its caret thrown to the end.
+  void _syncCelNameFields() {
+    final naming = _celsSpec.naming;
     for (final MapEntry(key: kind, value: controller)
         in _celPrefixControllers.entries) {
-      controller.text = _celsSpec.naming.prefixOf(kind);
+      controller.text = naming.prefixOf(kind);
     }
+    _celProjectFolderFields.show(naming.projectFolderName);
+    _celCutFolderFields.show(naming.cutFolderName);
   }
 
   bool _expandedFor(String id, {bool fallback = false}) =>
@@ -4610,7 +4619,8 @@ class ExportDialogState extends State<ExportDialog> {
   }
 
   /// The Cels tab's naming module. Its reset puts the spec's naming AND the
-  /// fields that show it back — the suffix's and every kind's prefix.
+  /// fields that show it back — the suffix's, every kind's prefix and the
+  /// folders' names.
   ExportAccordion _celNamingAccordion(CelsExportSpec spec) => _namingAccordion(
     // The collapsed summary IS the first file's name — the one example
     // the user can read (유저: 「미리보기 이름이니까 … 삭제」 of the
@@ -4620,13 +4630,16 @@ class ExportDialogState extends State<ExportDialog> {
     onReset: () {
       _updateSpec(spec.copyWith(naming: const ExportCelNaming()));
       _celSuffixController.text = '';
-      _syncCelPrefixFields();
+      _syncCelNameFields();
     },
     child: ExportCelNamingModule(
       naming: spec.naming,
       enabled: !_isExporting,
       suffixController: _celSuffixController,
       prefixControllers: _celPrefixControllers,
+      projectFolderFields: _celProjectFolderFields,
+      cutFolderFields: _celCutFolderFields,
+      cutFolderHeld: spec.cutFolderHeld,
       onChanged: (naming) => _updateSpec(spec.copyWith(naming: naming)),
     ),
   );

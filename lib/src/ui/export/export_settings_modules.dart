@@ -20,6 +20,7 @@ import '../widgets/ellipsis_text.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/pill_strip.dart';
+import '../widgets/settings_rows.dart' show settingsHelpTooltip;
 
 /// Compact building blocks of the export window's settings column (v10):
 /// one accordion grammar, pill strips, and the shared Format module.
@@ -188,6 +189,8 @@ enum ExportCaption {
   layerFx,
   target,
   folders,
+  projectFolderName,
+  cutFolderName,
   nameParts,
   prefix;
 
@@ -207,6 +210,8 @@ enum ExportCaption {
     layerFx => strings.exApplyLayerFx,
     target => strings.exTarget,
     folders => strings.exFolders,
+    projectFolderName => strings.exProject,
+    cutFolderName => strings.exCut,
     nameParts => strings.exNameParts,
     prefix => strings.exPrefix,
   };
@@ -217,6 +222,7 @@ class ExportModuleRow extends StatelessWidget {
     super.key,
     required this.caption,
     required this.child,
+    this.help,
   }) : _strip = false;
 
   /// A row whose control is a strip of pills: beside its caption where the
@@ -230,11 +236,19 @@ class ExportModuleRow extends StatelessWidget {
     super.key,
     required this.caption,
     required PillStrip strip,
+    this.help,
   }) : child = strip,
        _strip = true;
 
   final ExportCaption caption;
   final Widget child;
+
+  /// What the row does, as a tooltip on its name ([settingsHelpTooltip]) —
+  /// null where the name says it on its own.
+  ///
+  /// 🗣️I-153 (유저 2026-11-04): 「이름지정 이게 무슨기능이었지? …
+  /// 툴팁으로 무슨내용인지 이름지정 호버하면 뜨게하도록. 폴더도 마찬가지」.
+  final String? help;
 
   /// Whether [child] is a strip that goes under the caption when it does
   /// not fit beside it ([ExportModuleRow.strip]).
@@ -265,7 +279,7 @@ class ExportModuleRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = SizedBox(
+    final words = SizedBox(
       width: captionWidthIn(context),
       child: EllipsisText(
         caption.wordsIn(AppText.strings),
@@ -273,6 +287,7 @@ class ExportModuleRow extends StatelessWidget {
         style: _wordStyleOf(Theme.of(context)),
       ),
     );
+    final name = settingsHelpTooltip(help, words);
     return Padding(
       padding: const EdgeInsets.only(bottom: 5),
       child: _strip
@@ -1319,6 +1334,28 @@ String exportCelKindLabel(ExportCelKind kind) => switch (kind) {
   ExportCelKind.video => AppText.strings.exVideo,
 };
 
+/// A name's two fields — what goes before it and what after
+/// ([ExportNameAffix]) — the window's, as the suffix's is, so a preset or a
+/// reset can write them ([show]).
+class ExportAffixFields {
+  final TextEditingController prefix = TextEditingController();
+  final TextEditingController suffix = TextEditingController();
+
+  /// Sets both fields to [affix].
+  void show(ExportNameAffix affix) {
+    prefix.text = affix.prefix;
+    suffix.text = affix.suffix;
+  }
+
+  void dispose() {
+    prefix.dispose();
+    suffix.dispose();
+  }
+}
+
+/// The folders whose names take a prefix and a suffix.
+enum _NamedFolder { project, cut }
+
 /// Cel-file naming: the CSP-style options ported into the module grammar.
 class ExportCelNamingModule extends StatelessWidget {
   const ExportCelNamingModule({
@@ -1328,6 +1365,9 @@ class ExportCelNamingModule extends StatelessWidget {
     required this.onChanged,
     required this.suffixController,
     required this.prefixControllers,
+    required this.projectFolderFields,
+    required this.cutFolderFields,
+    this.cutFolderHeld = false,
   });
 
   final ExportCelNaming naming;
@@ -1338,6 +1378,17 @@ class ExportCelNamingModule extends StatelessWidget {
   /// One field a kind ([ExportCelNaming.prefixOf]) — the window's, as the
   /// suffix's is, so a preset or a reset can write them.
   final Map<ExportCelKind, TextEditingController> prefixControllers;
+
+  /// The project's and the cut's folder names' fields
+  /// ([ExportCelNaming.projectFolderName] · [ExportCelNaming.cutFolderName]).
+  final ExportAffixFields projectFolderFields;
+  final ExportAffixFields cutFolderFields;
+
+  /// Whether the cut folder is made whatever [naming] says
+  /// ([CelsExportSpec.cutFolderHeld]): its pill reads chosen and takes no
+  /// tap, and says why. [naming] keeps the user's own pick for when the
+  /// hold lets go.
+  final bool cutFolderHeld;
 
   /// How many prefix fields share a line of the settings column.
   static const int _prefixesPerLine = 3;
@@ -1380,28 +1431,92 @@ class ExportCelNamingModule extends StatelessWidget {
   }
 
   /// Three names the file can carry and the same three the folders can, as
-  /// two multi-select strips.
+  /// two multi-select strips. A [cutHeldBecause] holds the cut's pill
+  /// chosen, untappable, with that as its tooltip.
   PillStrip _names({
     required String keyPrefix,
-    required bool project,
-    required bool cut,
-    required bool layer,
+    required ({bool project, bool cut, bool layer}) chosen,
     required ExportCelNaming Function(String which) toggled,
+    String? cutHeldBecause,
   }) {
     final strings = AppText.strings;
-    PillItem item(String which, String label, bool selected) =>
+    PillItem item(String which, String label, bool selected, [String? held]) =>
         PillItem(
           keyValue: '$keyPrefix-$which',
           label: label,
-          selected: selected,
-          onTap: enabled ? () => onChanged(toggled(which)) : null,
+          selected: selected || held != null,
+          onTap: enabled && held == null
+              ? () => onChanged(toggled(which))
+              : null,
+          tooltip: held,
         );
     return PillStrip(
       items: [
-        item('project', strings.exProject, project),
-        item('cut', strings.exCut, cut),
-        item('layer', strings.exLayer, layer),
+        item('project', strings.exProject, chosen.project),
+        item('cut', strings.exCut, chosen.cut, cutHeldBecause),
+        item('layer', strings.exLayer, chosen.layer),
       ],
+    );
+  }
+
+  /// [folder]'s prefix and suffix, on a row of their own under 「폴더 생성」.
+  ///
+  /// 🗣️I-153 (유저 2026-11-04): 「폴더생성에서 컷이나 프로젝트 누르면
+  /// 아래에 접두 접미사 텍스트 지정할수있도록」 — the row keeps its seat and
+  /// its fields open when the folder is made (「없다가 생기는 UI 금지」).
+  Widget _folderNameRow(_NamedFolder folder) {
+    final strings = AppText.strings;
+    final (caption, fields, affix, made) = switch (folder) {
+      _NamedFolder.project => (
+        ExportCaption.projectFolderName,
+        projectFolderFields,
+        naming.projectFolderName,
+        naming.projectFolder,
+      ),
+      _NamedFolder.cut => (
+        ExportCaption.cutFolderName,
+        cutFolderFields,
+        naming.cutFolderName,
+        naming.cutFolder || cutFolderHeld,
+      ),
+    };
+    ExportCelNaming named(ExportNameAffix to) => switch (folder) {
+      _NamedFolder.project => naming.copyWith(projectFolderName: to),
+      _NamedFolder.cut => naming.copyWith(cutFolderName: to),
+    };
+    Widget field(
+      String side,
+      TextEditingController controller,
+      ExportNameAffix Function(String typed) typed,
+    ) => Expanded(
+      child: AppWindowField(
+        label: side == 'prefix' ? strings.exPrefix : strings.exSuffix,
+        child: TextField(
+          key: ValueKey<String>('export-cel-folder-${folder.name}-$side'),
+          controller: controller,
+          enabled: enabled && made,
+          onChanged: (value) => onChanged(named(typed(value))),
+        ),
+      ),
+    );
+    return ExportModuleRow(
+      caption: caption,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          field(
+            'prefix',
+            fields.prefix,
+            (typed) => affix.copyWith(prefix: typed),
+          ),
+          const SizedBox(width: 8),
+          field(
+            'suffix',
+            fields.suffix,
+            (typed) => affix.copyWith(suffix: typed),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1415,26 +1530,37 @@ class ExportCelNamingModule extends StatelessWidget {
       children: [
         ExportModuleRow.strip(
           caption: ExportCaption.folders,
+          help: AppText.strings.exFoldersTip,
           strip: _names(
             keyPrefix: 'export-cel-folder',
-            project: naming.projectFolder,
-            cut: naming.cutFolder,
-            layer: naming.layerFolder,
+            chosen: (
+              project: naming.projectFolder,
+              cut: naming.cutFolder,
+              layer: naming.layerFolder,
+            ),
             toggled: (which) => switch (which) {
               'project' =>
                 naming.copyWith(projectFolder: !naming.projectFolder),
               'cut' => naming.copyWith(cutFolder: !naming.cutFolder),
               _ => naming.copyWith(layerFolder: !naming.layerFolder),
             },
+            cutHeldBecause: cutFolderHeld
+                ? AppText.strings.exCutFolderHeld
+                : null,
           ),
         ),
+        _folderNameRow(_NamedFolder.project),
+        _folderNameRow(_NamedFolder.cut),
         ExportModuleRow.strip(
           caption: ExportCaption.nameParts,
+          help: AppText.strings.exNamePartsTip,
           strip: _names(
             keyPrefix: 'export-cel-include',
-            project: naming.includeProjectName,
-            cut: naming.includeCutName,
-            layer: naming.includeLayerName,
+            chosen: (
+              project: naming.includeProjectName,
+              cut: naming.includeCutName,
+              layer: naming.includeLayerName,
+            ),
             toggled: (which) => switch (which) {
               'project' => naming.copyWith(
                 includeProjectName: !naming.includeProjectName,

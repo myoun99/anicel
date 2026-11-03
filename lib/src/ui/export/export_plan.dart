@@ -456,11 +456,16 @@ class ExportCelFileNamer {
   }) => _unused(_foldersOf(projectName, cutName), base, extension);
 
   /// The folders the naming rule makes, as the path a file name starts
-  /// with.
+  /// with — the project's and the cut's in what they wear around their
+  /// names ([ExportCelNaming.cutFolderName]).
   String _foldersOf(String projectName, String cutName, [String? layerName]) {
     final folder = [
-      if (naming.projectFolder) sanitizeExportFileComponent(projectName),
-      if (naming.cutFolder) sanitizeExportFileComponent(cutName),
+      if (naming.projectFolder)
+        sanitizeExportFileComponent(
+          naming.projectFolderName.around(projectName),
+        ),
+      if (naming.cutFolder)
+        sanitizeExportFileComponent(naming.cutFolderName.around(cutName)),
       if (naming.layerFolder && layerName != null)
         sanitizeExportFileComponent(layerName),
     ].join('/');

@@ -122,6 +122,60 @@ void main() {
       expect(restored.naming.projectFolder, isTrue);
     });
 
+    test('🗣️I-153: the folders\' names keep what they wear, and a bare one '
+        'is not written', () {
+      const naming = ExportCelNaming(
+        projectFolderName: ExportNameAffix(prefix: 'csm_'),
+        cutFolderName: ExportNameAffix(prefix: 'csm_14_', suffix: '_lo'),
+      );
+      final json = naming.toJson();
+      expect(json, {
+        'projectFolderName': {'prefix': 'csm_'},
+        'cutFolderName': {'prefix': 'csm_14_', 'suffix': '_lo'},
+      });
+      expect(ExportCelNaming.fromJson(json), naming);
+      expect(const ExportCelNaming().toJson(), isEmpty);
+      expect(
+        ExportCelNaming.fromJson({
+          'cutFolderName': {'prefix': 7, 'suffix': '_lo'},
+          'projectFolderName': 'csm_',
+        }),
+        const ExportCelNaming(
+          cutFolderName: ExportNameAffix(suffix: '_lo'),
+        ),
+        reason: 'what is not a string is no affix',
+      );
+      expect(naming.cutFolderName.around('085'), 'csm_14_085_lo');
+      expect(naming, isNot(const ExportCelNaming()));
+      expect(
+        naming.copyWith(cutFolderName: const ExportNameAffix()),
+        isNot(const ExportCelNaming()),
+        reason: 'the project folder\'s name is still worn',
+      );
+      expect(naming.hashCode, isNot(const ExportCelNaming().hashCode));
+    });
+
+    test('🗣️I-153: a project-wide export makes the cut\'s folder whatever its '
+        'pill says, and keeps the pill as the user left it', () {
+      // 유저 2026-11-04: 「범위에서 프로젝트 고르면 이름규칙 폴더생성에서
+      // 컷 체크 고정되도록」.
+      const off = ExportCelNaming(layerFolder: true);
+      const project = CelsExportSpec(
+        scope: ExportScopeKind.project,
+        naming: off,
+      );
+      expect(project.cutFolderHeld, isTrue);
+      expect(project.namingInForce, off.copyWith(cutFolder: true));
+      expect(project.naming, off);
+      expect(
+        CelsExportSpec.fromJson(project.toJson()).naming.cutFolder,
+        isFalse,
+      );
+      const cut = CelsExportSpec(naming: off);
+      expect(cut.cutFolderHeld, isFalse);
+      expect(cut.namingInForce, off);
+    });
+
     test('the label stores its stage and revise only — a take riding the '
         'stored label is dropped on read, since the take is its own field',
         () {

@@ -964,7 +964,7 @@ extension _NamingRunFiles on _NamingRun {
       cutName: cutName,
       labelName: labelName,
       celName: celName,
-      naming: spec.naming,
+      naming: namer.naming,
     ),
   );
 }
@@ -1000,7 +1000,7 @@ ExportCelGroupPlan buildExportCelGroupPlan({
     project: project,
     spec: spec,
     namer: ExportCelFileNamer(
-      naming: spec.naming,
+      naming: spec.namingInForce,
       fileExtension: fileExtension,
     ),
   );
@@ -1133,7 +1133,7 @@ Iterable<ExportDocumentSheet> _filesOf(
         projectName: entry.run.project.name,
         cutName: entry.cutName,
         base:
-            '${entry.run.spec.naming.prefixOf(kind)}'
+            '${entry.run.namer.naming.prefixOf(kind)}'
             '${exportDocumentBase(kind, of, page, pages)}',
         extension: exportDocumentExtension(kind, entry.run.spec),
       ),
