@@ -1741,11 +1741,10 @@ class BrushFrameStore {
   /// and FU rose to 3000MB.
   ///
   /// · Hot: the surface itself ([storeCopiedSurface]) — the tiles are shared.
-  /// · Kept at [canvasSize]: the bytes as they are kept. A stretch of the
-  ///   saved file is the copy's stretch too, and the save writes it under
-  ///   the copy's own name; a parked one is parked again under the copy's
-  ///   name — one cel, one file, since a parked file goes with its cel
-  ///   ([_dropCold]).
+  /// · Kept at [canvasSize]: the bytes as they are kept, which the save
+  ///   writes under the copy's own name. A stretch of the saved file is the
+  ///   copy's stretch too; a parked one is parked again for the copy — one
+  ///   cel, one file, since a parked file goes with its cel ([_dropCold]).
   /// · Kept at another size: read for this copy alone, laid to
   ///   [canvasSize] and parked — never hot.
   /// · Nothing kept, or bytes that will not read right now: nothing, as a
@@ -1782,7 +1781,7 @@ class BrushFrameStore {
       return;
     }
     final copy = kept.ref.canvasSize == canvasSize
-        ? AnicelCelBlob.reKeyed(blob, key)
+        ? blob
         : AnicelCelBlob.ofSurface(
             key,
             resizeBitmapSurfaceCanvas(
