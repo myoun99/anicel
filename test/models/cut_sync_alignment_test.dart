@@ -1,10 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/conte/conte_ink_keys.dart';
 import 'package:anicel/src/models/conte_key.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/cut_sync.dart';
 import 'package:anicel/src/models/cut_sync_alignment.dart';
+import 'package:anicel/src/models/exposure_memo.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -317,6 +319,24 @@ void main() {
 
       expect(cutOf(aligned, x).duration, 10);
       expect(cutOf(aligned, y).duration, 10);
+    });
+
+    test('a block one cut of a sync holds alone is written on the sync\'s '
+        'paper — a load keeps its handwriting', () {
+      const written = {
+        0: TimelineExposure.drawing(
+          FrameId('f1'),
+          length: 3,
+          memo: ExposureMemo(inkId: 'ink-1'),
+        ),
+      };
+      final project = twoTimelines(
+        xCut,
+        yCut.copyWith(layers: [cel('y-a'), cel('y-own', timeline: written)]),
+        secondOpen: true,
+      );
+
+      expect(writtenConteBlocks(project), {(x, 'ink-1')});
     });
   });
 }
