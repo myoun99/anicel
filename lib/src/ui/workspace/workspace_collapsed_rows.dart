@@ -338,7 +338,7 @@ class _WorkspaceCollapsedRows {
       onToggleLayerClip: (_) {},
       onOpenLayerMixer: (_, _) {},
       onOpenLayerReference: (_, _) async {},
-      onOpenLayerLinks: (_, _) async {},
+      onOpenLayerLinks: (_, _, _) async {},
       onOpenCameraPath: (_) async {},
       onLayerBlendModeSelected: (_, _) {},
     );

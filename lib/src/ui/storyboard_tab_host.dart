@@ -917,14 +917,17 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       }
                     },
                     // I-25: a linked cut's name wears the link icon, and the
-                    // icon opens the link window.
+                    // icon opens the link window — a 동기컷's, the sync's
+                    // beside it (I-150).
                     linkedCutIds: _session.cutVerbs.linkedCutIds,
                     syncedCutIds: _session.cutVerbs.syncedCutIds,
-                    onOpenCutLinks: (context, cutId) => showCutLinkWindow(
-                      context,
-                      session: _session,
-                      cutId: cutId,
-                    ),
+                    onOpenCutLinks: (context, cutId, kind) =>
+                        showCutLinkWindow(
+                          context,
+                          session: _session,
+                          cutId: cutId,
+                          kind: kind,
+                        ),
                     // The end line edits the MOVIE length (UI-R20 #3): the
                     // project's trailing gap, never the cuts.
                     movieEnd: StoryboardMovieEndCallbacks(

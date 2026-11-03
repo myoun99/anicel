@@ -665,11 +665,13 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                   session: _session,
                   layerId: layerId,
                 ),
-            onOpenLayerLinks: (anchorContext, layerId) => showLayerLinkWindow(
-              anchorContext,
-              session: _session,
-              layerId: layerId,
-            ),
+            onOpenLayerLinks: (anchorContext, layerId, kind) =>
+                showLayerLinkWindow(
+                  anchorContext,
+                  session: _session,
+                  layerId: layerId,
+                  kind: kind,
+                ),
             onOpenCameraPath: (anchorContext) => showCameraPathSettings(
               anchorContext,
               _session.appSettings.setCameraPathSettings,

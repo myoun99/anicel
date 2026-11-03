@@ -13,6 +13,7 @@ import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/sound_cannot_play.dart';
+import '../dialogs/link_window.dart' show LinkKind;
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart' show LayerFxState;
 import 'lane_graph.dart' show LaneGraphVerbs, LaneGraphsView;
@@ -330,8 +331,13 @@ class TimelinePanel extends StatefulWidget {
   final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
   onOpenLayerReference;
 
-  /// A linked row's badge, both orientations: the link window (I-25).
-  final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
+  /// A linked row's badge, both orientations: the link window (I-25) — and
+  /// a 동기컷's row's sync badge, its [LinkKind] the sync (I-150).
+  final Future<void> Function(
+    BuildContext anchorContext,
+    LayerId layerId,
+    LinkKind kind,
+  )?
   onOpenLayerLinks;
 
   /// The camera row's path button, both orientations (I-89 ④).

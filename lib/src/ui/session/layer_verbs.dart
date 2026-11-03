@@ -501,19 +501,6 @@ class LayerVerbs {
     );
   }
 
-  /// Whether [unlinkLayers] takes any of [layerIds] apart from anything —
-  /// its link window's button lights by it.
-  bool unlinksAnyOf(Iterable<LayerId> layerIds) {
-    final cut = _project.activeCutOrNull;
-    return cut != null &&
-        layerIds.any(
-          (id) => switch (cut.layers.firstWhereOrNull((row) => row.id == id)) {
-            final layer? => groupIsLinked(layer, cut),
-            null => false,
-          },
-        );
-  }
-
   /// Whether the ACTIVE cut is a linked cut (겸용 — its linked rows all have
   /// counterparts in another cut, [linkedCutsBeyondItsSync]): its rows then
   /// share their pictures as the cut does, and one row cannot leave alone.

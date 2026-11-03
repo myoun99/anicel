@@ -60,6 +60,7 @@ import 'canvas/view_hand.dart';
 import 'storyboard/storyboard_rows_channel.dart';
 import '../services/audio/audio_peaks_extractor.dart';
 import 'audio/sound_cannot_play.dart' show SoundCannotPlay, soundCannotPlayIn;
+import 'dialogs/link_window.dart' show LinkKind;
 import 'storyboard_cut_blocks_painter.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
 import 'storyboard_layer_policy.dart';
@@ -1133,12 +1134,14 @@ class StoryboardPanel extends StatefulWidget {
   /// The LINKED cuts (I-25): their names wear the link icon.
   final Set<CutId> linkedCutIds;
 
-  /// The 동기컷 among them (I-150-Q3): their icon is the sync glyph.
+  /// The 동기컷 among them (I-150-Q3): their name wears the sync's button.
   final Set<CutId> syncedCutIds;
 
-  /// Pressed on a linked cut's link icon: the link window (I-25). Null
-  /// keeps the icon display-only.
-  final void Function(BuildContext context, CutId cutId)? onOpenCutLinks;
+  /// Pressed on a cut's link icon: the link window (I-25) — or on a
+  /// 동기컷's sync icon, its [LinkKind] the sync (I-150). Null keeps the
+  /// icons display-only.
+  final void Function(BuildContext context, CutId cutId, LinkKind kind)?
+  onOpenCutLinks;
 
   /// Movie-end drag hooks (UI-R20 #3); null hides the end grip (the line
   /// still shows).
@@ -5203,12 +5206,14 @@ class _StoryboardTrackRow extends KeptPiece {
   /// The LINKED cuts on this track (I-25): their names wear the link icon.
   final Set<CutId> linkedCutIds;
 
-  /// The 동기컷 among them (I-150-Q3): their icon is the sync glyph.
+  /// The 동기컷 among them (I-150-Q3): their name wears the sync's button.
   final Set<CutId> syncedCutIds;
 
-  /// Pressed on a linked cut's link icon: the link window (I-25). Null
-  /// keeps the icon display-only.
-  final void Function(BuildContext context, CutId cutId)? onOpenCutLinks;
+  /// Pressed on a cut's link icon: the link window (I-25) — or on a
+  /// 동기컷's sync icon, its [LinkKind] the sync (I-150). Null keeps the
+  /// icons display-only.
+  final void Function(BuildContext context, CutId cutId, LinkKind kind)?
+  onOpenCutLinks;
 
   final TrackId trackId;
   final List<StoryboardTimelineLayoutEntry> layoutEntries;
@@ -5661,8 +5666,9 @@ class _StoryboardTrackRow extends KeptPiece {
     _handlePressDown(event);
   }
 
-  /// I-25: a linked cut's link icon opens the link window — on the square
-  /// the paint leaves it ([StoryboardCutBlocksPainter.linkAffordances]).
+  /// I-25: a linked cut's link icon opens the link window — and a 동기컷's
+  /// sync icon, the sync's (I-150) — on the square the paint leaves each
+  /// ([StoryboardCutBlocksPainter.badgeSquares]).
   ///
   /// 🗣️I-150 (유저 2026-11-03): 「컷블록의 링크버튼 타임라인의 레이어의
   /// 링크버튼이랑 조작감이 다름. 타임라인은 커서가 손가락커서된다거나」. It is
@@ -5676,7 +5682,7 @@ class _StoryboardTrackRow extends KeptPiece {
   Widget _linkButtons(
     BuildContext context,
     StoryboardCutBlocksPainter painter,
-    void Function(BuildContext context, CutId cutId) onOpen,
+    void Function(BuildContext context, CutId cutId, LinkKind kind) onOpen,
   ) {
     final ink = Theme.of(context).colorScheme.primary;
     return Positioned.fill(
@@ -5689,22 +5695,19 @@ class _StoryboardTrackRow extends KeptPiece {
           listenable: painter,
           builder: (context, _) => Stack(
             children: [
-              for (final (cutId, square) in painter.linkAffordances())
+              for (final (cutId, kind, square) in painter.badgeSquares())
                 Positioned.fromRect(
                   rect: square,
                   child: RailGlyphButton(
-                    name: 'storyboard-cut-link-${cutId.value}',
-                    tooltip: AppText.strings.tlLinkedWith,
+                    name: 'storyboard-cut-${kind.name}-${cutId.value}',
+                    tooltip: kind.title,
                     size: AppIconButtonBox(
                       width: square.width,
                       height: square.height,
                       iconSize: square.height,
                     ),
-                    glyph: RailIconGlyph(
-                      painter.linkGlyphOf(cutId),
-                      color: ink,
-                    ),
-                    onPressed: () => onOpen(context, cutId),
+                    glyph: RailIconGlyph(kind.glyph, color: ink),
+                    onPressed: () => onOpen(context, cutId, kind),
                   ),
                 ),
             ],

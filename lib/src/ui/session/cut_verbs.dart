@@ -17,7 +17,7 @@ import '../../models/timesheet_info.dart';
 import '../../services/command.dart' show WorkAhead;
 import '../../services/commands/convert_to_linked_cut_plan.dart';
 import '../../services/commands/link_mirror.dart'
-    show linkedCutSiblings, linkedCutsBeyondItsSync;
+    show linkedCutsBeyondItsSync;
 import '../../services/project_lookup.dart' show cutPositionOf;
 import '../../services/commands/set_cut_guides_command.dart';
 import '../text/place_lines.dart'
@@ -654,21 +654,22 @@ class CutVerbs {
     );
   }
 
-  /// The LINKED cuts — 겸용 and 동기컷 alike ([linkedCutSiblings]) — which
-  /// wear the link icon on their blocks (I-25: 「링크컷이 발생해있는 경우,
-  /// 모든 컷에 적용」); a 동기컷's is the sync glyph ([syncedCutIds]).
+  /// The LINKED cuts — linked to a cut beyond their own 동기컷
+  /// ([linkedCutsBeyondItsSync]) — which wear the link icon on their blocks
+  /// (I-25: 「링크컷이 발생해있는 경우, 모든 컷에 적용」).
   Set<CutId> get linkedCutIds {
     final project = _project.repository.requireProject();
     return {
       for (final track in project.tracks)
         for (final cut in track.cuts)
-          if (linkedCutSiblings(project, cutId: cut.id).isNotEmpty) cut.id,
+          if (linkedCutsBeyondItsSync(project, cutId: cut.id).isNotEmpty)
+            cut.id,
     };
   }
 
   /// The 동기컷 among the open timeline's cuts (I-150-Q3): their blocks wear
-  /// the sync glyph, apart from a 겸용's link — 「배지에도 겸용이란
-  /// 이름이아니라 동기컷? 뭐 그런식으로 따로 표시」.
+  /// the sync's own button, apart from a 겸용's link — 「배지에도 겸용이란
+  /// 이름이아니라 동기컷? 뭐 그런식으로 따로 표시」, 「버튼나누자」.
   Set<CutId> get syncedCutIds {
     final project = _project.repository.requireProject();
     final registry = project.linkRegistry;

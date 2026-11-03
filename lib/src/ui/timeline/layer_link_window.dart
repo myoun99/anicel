@@ -13,30 +13,33 @@ import '../text/app_strings.dart';
 ///
 /// A linked cut's rows share as the cut does, so on one the button stays in
 /// place, off, and says why (「링크컷일경우엔 링크해제버튼 비활성화하고
-/// 툴팁으로 링크컷이기때문에 불가능하다고 띄움」) — as it does where the rows
-/// are linked only to themselves in their 동기컷's other cuts, which 동기
-/// 해제 parts (I-150-Q6).
+/// 툴팁으로 링크컷이기때문에 불가능하다고 띄움」).
+///
+/// Its [kind] the sync, a 동기컷's row's (I-150-Q3): the cut its cut is in
+/// the other timelines, and 동기 해제 (I-150-Q6) — the cut's, which the row
+/// stands for there.
 Future<void> showLayerLinkWindow(
   BuildContext context, {
   required EditorSessionManager session,
   required LayerId layerId,
+  required LinkKind kind,
 }) {
   final layerVerbs = session.layerVerbs;
   final rows = session.rowSelectionVerbs.rowsActedOnBy(layerId);
   final cutId = session.activeCutOrNull?.id;
-  final linkedCut = layerVerbs.activeCutIsLinkedCut;
-  return showLinkWindow(
-    context,
-    LinkWindow(
+  return showLinkWindow(context, switch (kind) {
+    LinkKind.link => LinkWindow(
+      kind: kind,
       targets: layerVerbs.linkPartnersOf(layerId),
-      unlink: linkedCut || !layerVerbs.unlinksAnyOf(rows)
+      action: layerVerbs.activeCutIsLinkedCut
           ? null
           : () => layerVerbs.unlinkLayers(rows),
-      unlinkOffReason: linkedCut
-          ? AppText.strings.linkWindowUnlinkLinkedCut
-          : AppText.strings.linkWindowUnlinkSyncedCut,
-      synced: layerVerbs.syncPartnersOf(layerId),
-      unsync: cutId == null ? null : () => session.cutVerbs.unsyncCut(cutId),
+      actionOffReason: AppText.strings.linkWindowUnlinkLinkedCut,
     ),
-  );
+    LinkKind.sync => LinkWindow(
+      kind: kind,
+      targets: layerVerbs.syncPartnersOf(layerId),
+      action: cutId == null ? null : () => session.cutVerbs.unsyncCut(cutId),
+    ),
+  });
 }

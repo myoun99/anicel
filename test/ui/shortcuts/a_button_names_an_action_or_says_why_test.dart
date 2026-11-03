@@ -55,9 +55,10 @@ const ledger = <String, Why>{
   "media/media_pool_panel.dart | 'media-asset-in-use-\${asset.path}'":
       Why.aRow,
   "menu/editor_top_strip.dart | 'project-tab-close-\$index'": Why.aRow,
-  // A linked cut's link button (I-150): its cut's, as the layer's link
-  // badge is its row's.
-  "storyboard_panel.dart | 'storyboard-cut-link-\${cutId.value}'": Why.aRow,
+  // A cut's link and sync buttons (I-150): its cut's, as the layer's
+  // badges are its row's.
+  "storyboard_panel.dart | 'storyboard-cut-\${kind.name}-\${cutId.value}'":
+      Why.aRow,
   // A header graph's two toggles (I-89 ③): the graph of the group whose
   // header or camera row wears it, and the pin of the lane it stands on.
   'timeline/lane_graph_toggle.dart | name': Why.aRow,

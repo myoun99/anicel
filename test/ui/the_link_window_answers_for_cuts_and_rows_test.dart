@@ -127,13 +127,16 @@ void main() {
 
       expect(s.cutVerbs.linkedCutLines(source), isEmpty);
       expect(s.cutVerbs.syncedCutLines(source), [elsewhere]);
-      expect(s.cutVerbs.linkedCutIds, {source}, reason: 'it wears its glyph');
+      expect(
+        s.cutVerbs.linkedCutIds,
+        isEmpty,
+        reason: 'no link button — the sync has its own',
+      );
       expect(s.cutVerbs.syncedCutIds, {source});
       expect(s.cutVerbs.cutIsLinked(source), isFalse);
       expect(s.layerVerbs.linkPartnersOf(row), isEmpty);
       expect(s.layerVerbs.syncPartnersOf(row), [elsewhere]);
       expect(s.layerVerbs.activeCutIsLinkedCut, isFalse);
-      expect(s.layerVerbs.unlinksAnyOf([row]), isFalse);
       expect(s.layerVerbs.linkedSelectedLayerIds(), isEmpty);
       final unshared = [
         for (final layer in s.layers)
@@ -182,9 +185,9 @@ void main() {
   group('the window', () {
     Future<void> pump(
       WidgetTester tester, {
-      required VoidCallback? unlink,
-      List<String> synced = const [],
-      VoidCallback? unsync,
+      LinkKind kind = LinkKind.link,
+      List<String> targets = const ['C002 · A', 'C003 · A'],
+      required VoidCallback? action,
     }) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -194,11 +197,10 @@ void main() {
                 onPressed: () => showLinkWindow(
                   context,
                   LinkWindow(
-                    targets: const ['C002 · A', 'C003 · A'],
-                    unlink: unlink,
-                    unlinkOffReason: 'why not',
-                    synced: synced,
-                    unsync: unsync,
+                    kind: kind,
+                    targets: targets,
+                    action: action,
+                    actionOffReason: 'why not',
                   ),
                 ),
                 child: const Text('open'),
@@ -213,7 +215,7 @@ void main() {
 
     testWidgets('lists the linked places and unlinks', (tester) async {
       var unlinked = 0;
-      await pump(tester, unlink: () => unlinked += 1);
+      await pump(tester, action: () => unlinked += 1);
       expect(find.text('C002 · A'), findsOneWidget);
       expect(find.text('C003 · A'), findsOneWidget);
 
@@ -224,40 +226,48 @@ void main() {
       expect(find.byKey(const ValueKey<String>('link-window')), findsNothing);
     });
 
-    testWidgets("a 동기컷's other cuts are listed apart, under their own "
-        'word, and 동기 해제 stands beside 링크 해제', (tester) async {
-      await pump(tester, unlink: () {}, unsync: () {});
-      expect(keyed('link-window-synced'), findsNothing);
-      expect(keyed('link-window-unsync'), findsNothing);
-      await tester.tapAt(Offset.zero);
-      await tester.pumpAndSettle();
-
+    // 🗣️유저 2026-11-04: 「동기컷이 지금 링크랑 같은 버튼인데, 그거말고 그냥
+    // 버튼나누자. 동기 대상 뭐 이런식? 아이콘도 다른거쓰고」.
+    testWidgets("the sync's window: 동기 대상 under the sync glyph, and its one "
+        'button 동기 해제', (tester) async {
       var unsynced = 0;
       await pump(
         tester,
-        unlink: null,
-        synced: const ['예고 · C001'],
-        unsync: () => unsynced += 1,
+        kind: LinkKind.sync,
+        targets: const ['예고 · C001'],
+        action: () => unsynced += 1,
+      );
+      expect(keyed('link-window'), findsNothing);
+      expect(
+        find.descendant(
+          of: keyed('sync-window'),
+          matching: find.text(AppText.strings.syncedWith),
+        ),
+        findsOneWidget,
       );
       expect(
-        tester.widget<Text>(keyed('link-window-synced')).data,
-        AppText.strings.linkWindowSynced,
+        find.descendant(
+          of: keyed('sync-window'),
+          matching: find.byIcon(Icons.sync),
+        ),
+        findsOneWidget,
       );
       expect(
-        tester.widget<Text>(keyed('link-window-synced-0')).data,
+        tester.widget<Text>(keyed('sync-window-target-0')).data,
         '예고 · C001',
       );
-      await tester.tap(keyed('link-window-unsync'));
+      expect(keyed('link-window-unlink'), findsNothing);
+      await tester.tap(keyed('sync-window-unsync'));
       await tester.pumpAndSettle();
 
       expect(unsynced, 1);
-      expect(find.byKey(const ValueKey<String>('link-window')), findsNothing);
+      expect(keyed('sync-window'), findsNothing);
     });
 
     testWidgets('an unlink it may not do stays in place, off, and says why', (
       tester,
     ) async {
-      await pump(tester, unlink: null);
+      await pump(tester, action: null);
       final button = tester.widget<FilledButton>(
         find.byKey(const ValueKey<String>('link-window-unlink')),
       );
@@ -272,10 +282,15 @@ void main() {
     Future<void> timeline(WidgetTester tester, EditorSessionManager s) =>
         pumpTimelineHostOn(tester, s, surface: roomy, pixelsPerFrame: 24);
 
-    Future<void> openBadge(WidgetTester tester, LayerId row) async {
-      await tester.tap(
-        find.named('timeline-layer-link-badge-${row.value}'),
-      );
+    Finder badge(LayerId row, [LinkKind kind = LinkKind.link]) =>
+        find.named('timeline-layer-${kind.name}-badge-${row.value}');
+
+    Future<void> openBadge(
+      WidgetTester tester,
+      LayerId row, [
+      LinkKind kind = LinkKind.link,
+    ]) async {
+      await tester.tap(badge(row, kind));
       await tester.pumpAndSettle();
     }
 
@@ -323,58 +338,99 @@ void main() {
       );
     });
 
-    testWidgets("a 동기컷's row wears the sync glyph; its window lists the "
-        'cut apart, its 링크 해제 is off and says why, and 동기 해제 parts '
-        'them', (tester) async {
+    // 🗣️유저 2026-11-04: 「동기컷이 지금 링크랑 같은 버튼인데, 그거말고 그냥
+    // 버튼나누자. 동기 대상 뭐 이런식? 아이콘도 다른거쓰고」.
+    testWidgets("a 동기컷's row wears the sync's own badge, not the link's; "
+        'its window lists the cut, and 동기 해제 parts them', (tester) async {
       final (:s, source: _, :elsewhere) = apart(synced: true);
       final row = s.activeLayerId!;
       await timeline(tester, s);
-      final badge = find.named('timeline-layer-link-badge-${row.value}');
-      expect(tester.appIconButton(badge).icon, Icons.sync);
+      final synced = badge(row, LinkKind.sync);
+      expect(tester.appIconButton(synced).icon, Icons.sync);
+      expect(badge(row), findsNothing, reason: 'it has no 겸용');
 
-      await openBadge(tester, row);
+      await openBadge(tester, row, LinkKind.sync);
+      expect(keyed('sync-window'), findsOneWidget);
       expect(find.text(elsewhere), findsOneWidget);
-      expect(
-        tester
-            .widget<FilledButton>(
-              find.byKey(const ValueKey<String>('link-window-unlink')),
-            )
-            .onPressed,
-        isNull,
-      );
-      expect(
-        find.tooltipSaying(AppText.strings.linkWindowUnlinkSyncedCut),
-        findsOneWidget,
-      );
-      await tester.tap(keyed('link-window-unsync'));
+      await tester.tap(keyed('sync-window-unsync'));
       await tester.pumpAndSettle();
 
       expect(s.repository.requireProject().linkRegistry.syncs, isEmpty);
       expect(s.layerVerbs.isLayerLinked(row), isFalse);
-      expect(badge, findsNothing, reason: 'a cut of its own');
+      expect(synced, findsNothing, reason: 'a cut of its own');
     });
 
-    testWidgets("a 동기컷's block wears the sync glyph, and its window parts "
-        'it as the row\'s does', (tester) async {
+    testWidgets("a 동기컷's row with a 겸용 too wears both badges, each "
+        'opening its own window', (tester) async {
+      final (:s, source: _, :elsewhere) = apart(synced: true);
+      final row = s.activeLayerId!;
+      linkDuplicateActiveRow(s);
+      expect(s.layerVerbs.linkPartnersOf(row), isNotEmpty, reason: '⛔전제');
+      await timeline(tester, s);
+      expect(tester.appIconButton(badge(row)).icon, Icons.link);
+      expect(tester.appIconButton(badge(row, LinkKind.sync)).icon, Icons.sync);
+
+      await openBadge(tester, row);
+      expect(keyed('link-window'), findsOneWidget);
+      expect(keyed('sync-window'), findsNothing);
+      expect(find.text(elsewhere), findsNothing, reason: 'the sync is apart');
+      await tester.tapAt(Offset.zero);
+      await tester.pumpAndSettle();
+
+      await openBadge(tester, row, LinkKind.sync);
+      expect(keyed('sync-window'), findsOneWidget);
+      expect(keyed('link-window'), findsNothing);
+      expect(find.text(elsewhere), findsOneWidget);
+    });
+
+    testWidgets("a 동기컷's block wears the sync's own button, and its window "
+        'parts it as the row\'s does', (tester) async {
       final (:s, :source, :elsewhere) = apart(synced: true);
       await pumpStoryboardHostOn(tester, s, surface: roomy, pixelsPerFrame: 12);
-      final button = find.named('storyboard-cut-link-${source.value}');
-      expect(cutBlocksPainter(tester).linkGlyphOf(source), Icons.sync);
+      final button = find.named('storyboard-cut-sync-${source.value}');
+      expect(cutBlocksPainter(tester).badgesOf(source), [LinkKind.sync]);
       expect(tester.appIconButton(button).icon, Icons.sync);
+      expect(find.named('storyboard-cut-link-${source.value}'), findsNothing);
 
       await tester.tap(button);
       await tester.pumpAndSettle();
+      expect(keyed('sync-window'), findsOneWidget);
       expect(find.text(elsewhere), findsOneWidget);
-      expect(
-        find.tooltipSaying(AppText.strings.linkWindowUnlinkSyncedCut),
-        findsOneWidget,
-      );
-      await tester.tap(keyed('link-window-unsync'));
+      await tester.tap(keyed('sync-window-unsync'));
       await tester.pumpAndSettle();
 
       expect(s.repository.requireProject().linkRegistry.syncs, isEmpty);
-      expect(s.cutVerbs.linkedCutIds, isEmpty);
+      expect(s.cutVerbs.syncedCutIds, isEmpty);
       expect(button, findsNothing);
+    });
+
+    testWidgets("a 동기컷 with a 겸용 wears the link's square and the sync's "
+        'right after it, each opening its own window', (tester) async {
+      final (:s, :source, :elsewhere) = apart(synced: true);
+      s.cutVerbs.createLinkedCutFromActiveCut();
+      final partner = s.requireActiveCut.id;
+      await pumpStoryboardHostOn(tester, s, surface: roomy, pixelsPerFrame: 12);
+      final painter = cutBlocksPainter(tester);
+      expect(painter.badgesOf(source), [LinkKind.link, LinkKind.sync]);
+      final squares = painter.badgeSquaresOf(painter.blockForCut(source)!);
+      expect([for (final (kind, _) in squares) kind], [
+        LinkKind.link,
+        LinkKind.sync,
+      ]);
+      expect(squares.last.$2.left, squares.first.$2.right);
+
+      await tester.tap(find.named('storyboard-cut-link-${source.value}'));
+      await tester.pumpAndSettle();
+      expect(keyed('link-window'), findsOneWidget);
+      expect(find.text(s.cutById(partner)!.name), findsWidgets);
+      expect(find.text(elsewhere), findsNothing);
+      await tester.tapAt(Offset.zero);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.named('storyboard-cut-sync-${source.value}'));
+      await tester.pumpAndSettle();
+      expect(keyed('sync-window'), findsOneWidget);
+      expect(find.text(elsewhere), findsOneWidget);
     });
 
     testWidgets('a linked cut\'s name wears the link icon, which opens the '
@@ -387,9 +443,8 @@ void main() {
 
       final painter = cutBlocksPainter(tester);
       final block = painter.blockForCut(source)!;
-      expect(block.isLinkedCut, isTrue);
-      expect(painter.linkGlyphOf(source), Icons.link);
-      final icon = painter.linkAffordanceRectOf(block)!;
+      expect(block.badges, [LinkKind.link]);
+      final (_, icon) = painter.badgeSquaresOf(block).single;
       expect(
         icon.left,
         greaterThan(block.topBand.left),

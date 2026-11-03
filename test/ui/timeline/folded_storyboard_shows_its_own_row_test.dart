@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/ui/dialogs/link_window.dart' show LinkKind;
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
@@ -177,7 +178,7 @@ void main() {
 
     final made = s.repository.requireProject().tracks.single.cuts.last.id;
     expect(painter().syncedCutIds, {made});
-    expect(painter().linkGlyphOf(made), Icons.sync);
+    expect(painter().badgesOf(made), [LinkKind.sync]);
   });
 
   testWidgets('F-234: the folded row prints its words from the ambient style '

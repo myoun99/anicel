@@ -3,21 +3,39 @@ import 'package:flutter/material.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 
-/// The glyph that says a cut or a row shares its pictures — a row's badge,
-/// a cut block's square: the link, or a 동기컷's sync, set apart from the
-/// 겸용 (🗣️I-150-Q3: 「배지에도 겸용이란 이름이아니라 동기컷? 뭐 그런식으로
-/// 따로 표시」). One answer, so the cut's icon stays the row's (I-25:
-/// 「레이어에서 사용하는거랑 똑같은 것」).
-IconData linkGlyph({required bool synced}) =>
-    synced ? Icons.sync : Icons.link;
+/// What a cut or a row shares, and so which of its two buttons and windows
+/// answers: its pictures with a 겸용 (I-25) — the link — or, a 동기컷, its
+/// very self with the cut it is in the other timelines (I-150-Q3) — the
+/// sync. A glyph each, the cut's the row's (I-25: 「레이어에서 사용하는거랑
+/// 똑같은 것」).
+///
+/// 🗣️유저 2026-11-04: 「동기컷이 지금 링크랑 같은 버튼인데, 그거말고 그냥
+/// 버튼나누자. 동기 대상 뭐 이런식? 아이콘도 다른거쓰고」. ↩️A 동기컷 wore the
+/// sync glyph on the link's one button, and the link window listed it under
+/// a heading of its own with 동기 해제 beside 링크 해제.
+enum LinkKind {
+  link(Icons.link),
+  sync(Icons.sync);
+
+  const LinkKind(this.glyph);
+
+  final IconData glyph;
+
+  /// The window's title, which heads the button's tooltip too.
+  String get title => switch (this) {
+    link => AppText.strings.tlLinkedWith,
+    sync => AppText.strings.syncedWith,
+  };
+}
 
 /// Opens [window] and waits for it to close. ↩️It took the window's
 /// fields one by one and built it, a second list of them to keep in step.
 Future<void> showLinkWindow(BuildContext context, LinkWindow window) =>
     showDialog<void>(context: context, builder: (context) => window);
 
-/// THE LINK WINDOW: what a cut or a row is linked to, and the one button
-/// that unlinks it.
+/// THE LINK WINDOW: what a cut or a row is linked to — or, its [kind] the
+/// sync, the cut a 동기컷 is in the other timelines — and the one button that
+/// takes it apart.
 ///
 /// 🗣️I-25 (유저 2026-09-14): 「링크컷/링크레이어 등 좀 더 알기쉽게. 우선
 /// 링크컷이 발생해있는 경우, 모든 컷에 적용. 내용은 컷블록에서 컷 이름 오른쪽에
@@ -30,40 +48,33 @@ Future<void> showLinkWindow(BuildContext context, LinkWindow window) =>
 class LinkWindow extends StatelessWidget {
   const LinkWindow({
     super.key,
+    required this.kind,
     required this.targets,
-    required this.unlink,
-    this.unlinkOffReason,
-    this.synced = const [],
-    this.unsync,
+    required this.action,
+    this.actionOffReason,
   });
 
-  /// The linked places, one line each — view only.
+  /// Which window: the link's or the sync's.
+  final LinkKind kind;
+
+  /// The places it shares with, one line each — view only.
   final List<String> targets;
 
-  /// The cut it is in the other timelines — its 동기컷's other cuts — one
-  /// line each, under their own heading, apart from the 겸용 (🗣️I-150-Q3:
-  /// 「배지에도 겸용이란 이름이아니라 동기컷? 뭐 그런식으로 따로 표시」).
-  /// Empty: not a 동기컷.
-  final List<String> synced;
-
-  /// 동기 해제 (I-150-Q6, 유저 2026-11-04 「동기 해제 = 독립 컷」): the
-  /// button beside [unlink] while [synced] lists a cut.
-  final VoidCallback? unsync;
-
-  /// What the button does; null keeps it in place, off, with
-  /// [unlinkOffReason] as its tooltip.
-  final VoidCallback? unlink;
-  final String? unlinkOffReason;
+  /// What the button does — 링크 해제, or 동기 해제 (I-150-Q6, 유저
+  /// 2026-11-04 「동기 해제 = 독립 컷」); null keeps it in place, off, with
+  /// [actionOffReason] as its tooltip.
+  final VoidCallback? action;
+  final String? actionOffReason;
 
   @override
   Widget build(BuildContext context) {
     final strings = AppText.strings;
-    final unlink = this.unlink;
-    final unsync = this.unsync;
+    final action = this.action;
+    final name = kind.name;
     return AppWindow(
-      windowKey: const ValueKey<String>('link-window'),
-      title: strings.tlLinkedWith,
-      titleIcon: Icons.link,
+      windowKey: ValueKey<String>('$name-window'),
+      title: kind.title,
+      titleIcon: kind.glyph,
       onClose: () => Navigator.of(context).pop(),
       width: 320,
       body: ConstrainedBox(
@@ -77,24 +88,7 @@ class LinkWindow extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(vertical: 3),
                   child: Text(
                     line,
-                    key: ValueKey<String>('link-window-target-$index'),
-                  ),
-                ),
-              if (synced.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 9, bottom: 3),
-                  child: Text(
-                    strings.linkWindowSynced,
-                    key: const ValueKey<String>('link-window-synced'),
-                    style: Theme.of(context).textTheme.labelMedium,
-                  ),
-                ),
-              for (final (index, line) in synced.indexed)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Text(
-                    line,
-                    key: ValueKey<String>('link-window-synced-$index'),
+                    key: ValueKey<String>('$name-window-target-$index'),
                   ),
                 ),
             ],
@@ -102,25 +96,22 @@ class LinkWindow extends StatelessWidget {
         ),
       ),
       actions: [
-        if (synced.isNotEmpty && unsync != null)
-          AppWindowAction(
-            label: strings.linkWindowUnsync,
-            actionKey: const ValueKey<String>('link-window-unsync'),
-            onPressed: () {
-              Navigator.of(context).pop();
-              unsync();
-            },
-          ),
         AppWindowAction(
-          label: strings.linkWindowUnlink,
-          actionKey: const ValueKey<String>('link-window-unlink'),
+          label: switch (kind) {
+            LinkKind.link => strings.linkWindowUnlink,
+            LinkKind.sync => strings.linkWindowUnsync,
+          },
+          actionKey: ValueKey<String>(switch (kind) {
+            LinkKind.link => 'link-window-unlink',
+            LinkKind.sync => 'sync-window-unsync',
+          }),
           emphasis: AppWindowActionEmphasis.primary,
-          tooltip: unlink == null ? unlinkOffReason : null,
-          onPressed: unlink == null
+          tooltip: action == null ? actionOffReason : null,
+          onPressed: action == null
               ? null
               : () {
                   Navigator.of(context).pop();
-                  unlink();
+                  action();
                 },
         ),
       ],

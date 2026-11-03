@@ -1000,14 +1000,11 @@ enum AppStrings {
   String get linkWindowUnlink => _s('linkWindowUnlink');
   String get linkWindowUnlinkLinkedCut => _s('linkWindowUnlinkLinkedCut');
 
-  /// I-150-Q3 · Q6: the link window's 동기 list — the cut it is in the other
-  /// timelines — and the button that makes it a cut of its own.
-  String get linkWindowSynced => _s('linkWindowSynced');
+  /// I-150-Q3 · Q6: the sync window's title — the cut it is in the other
+  /// timelines, as [tlLinkedWith] is the link window's (유저 2026-11-04:
+  /// 「동기 대상 뭐 이런식?」) — and the button that makes it a cut of its own.
+  String get syncedWith => _s('syncedWith');
   String get linkWindowUnsync => _s('linkWindowUnsync');
-
-  /// I-150-Q6: why 링크 해제 is off where all a cut or a row is linked to is
-  /// itself in its 동기컷's other cuts — 동기 해제 is what parts them.
-  String get linkWindowUnlinkSyncedCut => _s('linkWindowUnlinkSyncedCut');
   String get tlResetGroup => _s('tlResetGroup');
   String get tlEffects => _s('tlEffects');
   String get tlAddEffectTemplate => _s('tlAddEffectTemplate');
@@ -3587,9 +3584,8 @@ enum AppStrings {
     'tlKey': 'Key',
     'linkWindowUnlink': 'Unlink',
     'linkWindowUnlinkLinkedCut': "A linked cut's layers unlink with the cut",
-    'linkWindowSynced': 'Synced',
+    'syncedWith': 'Synced with',
     'linkWindowUnsync': 'Unsync',
-    'linkWindowUnlinkSyncedCut': 'A synced cut is made independent by Unsync',
     'tlResetGroup': 'Reset (keeps keys)',
     'tlEffects': 'Effects',
     'tlAddEffectTemplate': 'Add {name}',
@@ -5462,9 +5458,8 @@ enum AppStrings {
     'shortcutAction.frame-select-row-span': '行全体を選択',
     'linkWindowUnlink': 'リンクを解除',
     'linkWindowUnlinkLinkedCut': '兼用カットのレイヤーはカットごと解除します',
-    'linkWindowSynced': '同期',
+    'syncedWith': '同期先',
     'linkWindowUnsync': '同期を解除',
-    'linkWindowUnlinkSyncedCut': '同期カットは「同期を解除」で独立させます',
     'tlResetGroup': 'リセット（キーは残す）',
     'tlEffects': 'エフェクト',
     'tlAddEffectTemplate': '{name}を追加',
@@ -7320,9 +7315,8 @@ enum AppStrings {
     'shortcutAction.frame-select-row-span': '행 전체 선택',
     'linkWindowUnlink': '링크 해제',
     'linkWindowUnlinkLinkedCut': '겸용컷이라 레이어만 해제할 수 없습니다',
-    'linkWindowSynced': '동기',
+    'syncedWith': '동기 대상',
     'linkWindowUnsync': '동기 해제',
-    'linkWindowUnlinkSyncedCut': '동기컷은 동기 해제로 독립시킵니다',
     'tlResetGroup': '리셋 (키는 유지)',
     'tlEffects': '이펙트',
     'tlAddEffectTemplate': '{name} 추가',
@@ -9316,10 +9310,8 @@ enum AppStrings {
     'shortcutAction.frame-select-row-span': 'Sélectionner toute la ligne',
     'linkWindowUnlink': 'Délier',
     'linkWindowUnlinkLinkedCut': "Les calques d'une coupe liée se délient avec la coupe",
-    'linkWindowSynced': 'Synchronisé',
+    'syncedWith': 'Synchronisé avec',
     'linkWindowUnsync': 'Désynchroniser',
-    'linkWindowUnlinkSyncedCut':
-        'Une coupe synchronisée devient indépendante par Désynchroniser',
     'tlResetGroup': 'Réinitialiser (garde les clés)',
     'tlEffects': 'Effets',
     'tlAddEffectTemplate': 'Ajouter {name}',
@@ -11112,9 +11104,8 @@ enum AppStrings {
     'shortcutAction.frame-select-row-span': '选择整行',
     'linkWindowUnlink': '取消链接',
     'linkWindowUnlinkLinkedCut': '链接镜头的图层只能随镜头一起取消链接',
-    'linkWindowSynced': '同步',
+    'syncedWith': '同步到',
     'linkWindowUnsync': '取消同步',
-    'linkWindowUnlinkSyncedCut': '同步镜头通过“取消同步”独立',
     'tlResetGroup': '重置（保留关键帧）',
     'tlEffects': '效果',
     'tlAddEffectTemplate': '添加{name}',

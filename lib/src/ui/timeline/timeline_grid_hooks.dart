@@ -10,6 +10,7 @@ import '../../models/layer_kind.dart';
 import '../../models/timeline_row_address.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/sound_cannot_play.dart';
+import '../dialogs/link_window.dart' show LinkKind;
 import '../input/two_axis_drag.dart' show SheetZoom, sheetZoom;
 import 'layer_label_controls.dart' show LayerMarkEdit;
 import 'layer_rail_columns.dart' show LayerRailOptionalColumns;
@@ -361,9 +362,14 @@ class TimelineGridHooks {
   final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
   onOpenLayerReference;
 
-  /// A linked row's badge: the link window (I-25). Null leaves the badge a
-  /// picture.
-  final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
+  /// A linked row's badge: the link window (I-25) — and a 동기컷's row's
+  /// sync badge, its [LinkKind] the sync (I-150). Null leaves the badges
+  /// pictures.
+  final Future<void> Function(
+    BuildContext anchorContext,
+    LayerId layerId,
+    LinkKind kind,
+  )?
   onOpenLayerLinks;
 
   /// The camera row's path button: how the canvas shows the camera's path
@@ -402,8 +408,8 @@ class TimelineGridHooks {
   /// header became the rail's row stood up and asked for them too.
   final List<String> Function(LayerId layerId)? layerLinkPartnersOf;
 
-  /// The badge's 동기 lines (I-150-Q3): the cut a layer's cut is in the other
-  /// timelines, when the layer is a row they share. Null shows none.
+  /// The sync badge's lines (I-150-Q3): the cut a layer's cut is in the
+  /// other timelines, when the layer is a row they share. Null shows none.
   final List<String> Function(LayerId layerId)? layerSyncPartnersOf;
 
   /// The row twirl that folds a FOLDER's members (the attach fold has its
