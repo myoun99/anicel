@@ -65,6 +65,13 @@ List<PanelFlyoutEntry> _entries(BuildContext context, TimelineVerbs verbs) {
             onPressed: () => unawaited(_rename(context, verbs, timeline)),
           ),
           PanelFlyoutRowAction(
+            keyValue: 'timeline-${timeline.id.value}-duplicate',
+            icon: Icons.content_copy,
+            tooltip: strings.timelineDuplicate,
+            does: PanelFlyoutActionDoes.adds,
+            onPressed: () => unawaited(_duplicate(context, verbs, timeline)),
+          ),
+          PanelFlyoutRowAction(
             keyValue: 'timeline-${timeline.id.value}-delete',
             icon: Icons.delete_outline,
             tooltip: strings.timelineDelete,
@@ -102,3 +109,22 @@ Future<void> _rename(
     },
   );
 }
+
+/// [timeline] copied whole, right after it and opened, under the name the
+/// user gives — offered as a copy's, as a shortcut preset's duplicate is.
+Future<void> _duplicate(
+  BuildContext context,
+  TimelineVerbs verbs,
+  ProjectTimeline timeline,
+) => askThenCommit<String>(
+  context,
+  dialog: (_) => AppPromptDialog.keyed(
+    keyPrefix: 'timeline-duplicate',
+    title: AppText.strings.timelineDuplicate,
+    titleIcon: Icons.content_copy,
+    fieldLabel: AppText.strings.commonNameField,
+    initialValue: AppText.strings.copyNamed(timelineNameOf(timeline)),
+    confirmLabel: AppText.strings.commonSave,
+  ),
+  commit: (name) => verbs.duplicateTimeline(timeline.id, name),
+);

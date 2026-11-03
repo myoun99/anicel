@@ -105,6 +105,36 @@ void main() {
     expect(headingWords(tester), AppText.strings.timelineNumbered(1));
   });
 
+  testWidgets('a row\'s duplicate offers a copy\'s name, and the copy '
+      'stands right after it, opened', (tester) async {
+    await pumpConte(tester);
+    await openList(tester);
+    await tester.tap(byKey('timeline-add'));
+    await tester.pumpAndSettle();
+    await openList(tester);
+    await tester.tap(byKey('${rowOf(0)}-duplicate'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<TextField>(byKey('timeline-duplicate-text-field'))
+          .controller!
+          .text,
+      AppText.strings.copyNamed(AppText.strings.timelineNumbered(1)),
+    );
+    await tester.enterText(byKey('timeline-duplicate-text-field'), '예고');
+    await tester.tap(byKey('timeline-duplicate-ok-button'));
+    await tester.pumpAndSettle();
+
+    final timelines = session.timelineVerbs.timelines;
+    expect(timelines.map(timelineNameOf), [
+      AppText.strings.timelineNumbered(1),
+      '예고',
+      AppText.strings.timelineNumbered(2),
+    ]);
+    expect(session.timelineVerbs.currentTimelineId, timelines[1].id);
+    expect(headingWords(tester), '예고');
+  });
+
   testWidgets('a row\'s pencil names it, and the heading reads the name; '
       'its delete takes it away — never the last one', (tester) async {
     await pumpConte(tester);
