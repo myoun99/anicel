@@ -202,7 +202,7 @@ void main() {
     void Function() change,
   ) async {
     change();
-    await aFrameAndItsStep(tester);
+    await tester.pump();
     await inThePicture(tester, store.landingOf(to));
   }
 

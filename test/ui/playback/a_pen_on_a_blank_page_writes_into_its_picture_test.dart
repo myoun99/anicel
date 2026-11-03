@@ -177,7 +177,7 @@ void main() {
 
     gpu.holdsRenders = true;
     step(overlay);
-    await aFrameAndItsStep(tester);
+    await tester.pump();
     expect(
       store.landingOf(keptByTheCanvas(tester, blank)),
       isNotNull,
@@ -232,7 +232,7 @@ void main() {
     );
     gpu.holdsRenders = true;
     step(overlay);
-    await aFrameAndItsStep(tester);
+    await tester.pump();
     expect(
       store.landingOf(keptByTheCanvas(tester, blank)),
       isNotNull,
@@ -303,7 +303,7 @@ void main() {
     );
     gpu.holdsRenders = true;
     step(overlay);
-    await aFrameAndItsStep(tester);
+    await tester.pump();
     expect(
       store.landingOf(keptByTheCanvas(tester, blank)),
       isNotNull,
