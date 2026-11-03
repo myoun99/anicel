@@ -144,11 +144,11 @@ void main() {
       addTearDown(renderer.dispose);
 
       debugLastSubtreeRaster = null;
-      (await renderer.renderComposite(
+      (await renderer.renderVideoFrame(
         ExportFrameTask(cut: s.requireActiveCut, frameIndex: 0),
         ExportSizeMode.camera,
+        preserveAlpha: false,
         outputSize: const CanvasSize(width: 960, height: 540),
-        withNameTags: true,
       )).dispose();
 
       expect(debugLastSubtreeRaster, isNotNull, reason: 'one picture');

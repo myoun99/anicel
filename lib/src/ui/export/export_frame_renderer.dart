@@ -156,12 +156,20 @@ class ExportFrameRenderer {
          session: session,
          layerFx: layerFx,
          keepsRowsApart: format.keepsRowsApart,
-         background: (alphaVideo || (format.isStill && format.wantsAlpha))
-             ? const ui.Color(0x00000000)
-             : format.isStill
-             ? ui.Color(format.backgroundArgb)
-             : const ui.Color(0xFFFFFFFF),
+         background: groundFor(format, alphaVideo: alphaVideo),
        );
+
+  /// The ground [ExportFrameRenderer.forFormat] makes a run written in
+  /// [format] on — read by a preview of that run as well, so the two lay
+  /// the one ground (export-film-preview-is-not-the-film).
+  static ui.Color groundFor(
+    ExportFormatSelection format, {
+    bool alphaVideo = false,
+  }) => (alphaVideo || (format.isStill && format.wantsAlpha))
+      ? const ui.Color(0x00000000)
+      : format.isStill
+      ? ui.Color(format.backgroundArgb)
+      : const ui.Color(0xFFFFFFFF);
 
   final EditorSessionManager session;
   final CameraFrameRenderService renderService;
@@ -503,15 +511,16 @@ class ExportFrameRenderer {
   /// which is exactly the raw canvas at 1:1 pixels on the white paper.
   /// [outputSize] scales the same view down (storyboard thumbnails); null
   /// exports at full size.
-  /// [withNameTags] draws the SE rows' on-canvas name tags over the
-  /// picture (R5b) — ON for presentation renders (the アフレコ video),
-  /// OFF for compositing sources: PNG sequences already stay unposed and
-  /// unfaded for the same reason, and a thumbnail has no room for them.
+  ///
+  /// No SE name tags (R5b): a compositing source stays clean, as a PNG
+  /// sequence stays unposed and unfaded, and a thumbnail has no room for
+  /// them. A film burns them in ([renderVideoFrame]). ↩️A flag drew them
+  /// here for the export window's preview of a film, which draws the film's
+  /// own frame now (export-film-preview-is-not-the-film).
   Future<ui.Image> renderComposite(
     ExportFrameTask task,
     ExportSizeMode mode, {
     CanvasSize? outputSize,
-    bool withNameTags = false,
   }) {
     _startFrame();
     return _composite(
@@ -519,9 +528,6 @@ class ExportFrameRenderer {
       _viewFor(task.cut, task.frameIndex, mode),
       outputSize: outputSize,
       trackEffects: _stillChainOf(task),
-      nameTags: withNameTags
-          ? session.seEntries.seNameTagsForCutFrame(task.cut, task.frameIndex)
-          : const [],
     );
   }
 
@@ -1108,26 +1114,47 @@ class ExportFrameRenderer {
     return _pictures.of((route, signature), () => _rows.during(render));
   }
 
-  /// [cut]'s picture at [frameIndex] over its whole canvas, on this
-  /// renderer's ground, under the V row's [trackEffects] and [nameTags] — a
-  /// canvas-size video frame's picture.
+  /// [cut]'s picture at [frameIndex] over its whole canvas, its paper laid
+  /// with its rows on this renderer's ground, under the V row's
+  /// [trackEffects] and the SE rows' name tags — a canvas-size video
+  /// frame's picture, at [outputSize] where one is asked. The presentation
+  /// render: the アフレコ name tags belong in the video (their row's eye is
+  /// the switch).
+  ///
+  /// 🗣️export-film-preview-is-not-the-film-Q1 (유저 2026-11-04: 「깐다 —
+  /// 카메라 크기와 같게」): the paper is laid here as the stage's is in a
+  /// camera-size frame ([_stackUnit]). ↩️A canvas-size film stood on the
+  /// ground alone — white, or nothing in an alpha master — whatever the
+  /// paper was.
   Future<ui.Image> _canvasPicture(
     Cut cut,
     int frameIndex,
-    List<ResolvedSeNameTag> nameTags,
-    List<ResolvedLayerEffect> trackEffects,
-  ) => _cutPicture(
-    cut,
-    frameIndex,
-    route: ('canvas', seNameTagSignature(nameTags), ByList(trackEffects)),
-    render: (rows) => _composite(
-      ExportFrameTask(cut: cut, frameIndex: frameIndex),
-      _viewFor(cut, frameIndex, ExportSizeMode.canvas),
-      trackEffects: trackEffects,
-      nameTags: nameTags,
-      rows: rows,
-    ),
-  );
+    List<ResolvedLayerEffect> trackEffects, {
+    CanvasSize? outputSize,
+  }) {
+    final nameTags = session.seEntries.seNameTagsForCutFrame(cut, frameIndex);
+    final paper = session.projectSettings.projectBackground;
+    return _cutPicture(
+      cut,
+      frameIndex,
+      route: (
+        'canvas',
+        seNameTagSignature(nameTags),
+        ByList(trackEffects),
+        paper,
+        outputSize,
+      ),
+      render: (rows) => _composite(
+        ExportFrameTask(cut: cut, frameIndex: frameIndex),
+        _viewFor(cut, frameIndex, ExportSizeMode.canvas),
+        outputSize: outputSize,
+        trackEffects: trackEffects,
+        nameTags: nameTags,
+        paper: paper,
+        rows: rows,
+      ),
+    );
+  }
 
   /// A video run of [plan] in [mode] — its frames, drawn in order
   /// ([ExportRun.frame]), every row held from the frame that composes it
@@ -1142,7 +1169,7 @@ class ExportFrameRenderer {
     plan,
     mode,
     cutsOf: (task) => _cutsOfVideoFrame(task, mode),
-    draw: (task) => _videoFrame(task, mode, preserveAlpha: preserveAlpha),
+    draw: (task) => renderVideoFrame(task, mode, preserveAlpha: preserveAlpha),
   );
 
   /// A run of STILLS of [plan] in [mode] — a picture sequence's frames,
@@ -1302,22 +1329,47 @@ class ExportFrameRenderer {
   ///
   /// A frame that is the picture the frame before it was comes back as
   /// that picture ([_frameOf]).
-  Future<ui.Image> _videoFrame(
+  ///
+  /// [outputSize] draws the same frame at another size — a preview's
+  /// (export-film-preview-is-not-the-film). ↩️The window's preview of a film
+  /// drew [renderComposite]'s still instead: no stage, no other track, no
+  /// pose, no fade, and a checkerboard where the film lays its paper.
+  Future<ui.Image> renderVideoFrame(
     ExportFrameTask task,
     ExportSizeMode mode, {
     required bool preserveAlpha,
-  }) async {
+    CanvasSize? outputSize,
+  }) {
     _startFrame();
-    if (mode == ExportSizeMode.camera) {
-      return _renderTrackStackForVideo(task, preserveAlpha: preserveAlpha);
-    }
+    return switch (mode) {
+      ExportSizeMode.camera => _renderTrackStackForVideo(
+        task,
+        preserveAlpha: preserveAlpha,
+        outputSize: outputSize,
+      ),
+      ExportSizeMode.canvas => _canvasVideoFrame(
+        task,
+        preserveAlpha: preserveAlpha,
+        outputSize: outputSize,
+      ),
+    };
+  }
+
+  /// The CANVAS-size video frame of [task] ([renderVideoFrame]): the
+  /// backdrop in a gap, a transition's cuts mixed in their shared space, or
+  /// the cut's own picture under its one-sided screens.
+  Future<ui.Image> _canvasVideoFrame(
+    ExportFrameTask task, {
+    required bool preserveAlpha,
+    CanvasSize? outputSize,
+  }) async {
     final ground = _backdropGround(preserveAlpha: preserveAlpha);
     final (:cuts, :shared) = _canvasFrameOf(task);
     if (cuts.isEmpty) {
       // A leading-gap frame: nothing plays — the BACKDROP (R3b), exactly
       // what playback shows in the gap. Opaque codecs bake the floor; an
       // alpha master keeps the gap transparent.
-      final size = task.cut.canvasSize;
+      final size = outputSize ?? task.cut.canvasSize;
       return _frameOf<_GapFrame>(
         (size: size, ground: ground),
         width: size.width,
@@ -1326,7 +1378,11 @@ class ExportFrameRenderer {
       );
     }
     if (shared != null) {
-      return _canvasSpaceTransitionFrame(shared, ground: ground);
+      return _canvasSpaceTransitionFrame(
+        shared,
+        ground: ground,
+        outputSize: outputSize,
+      );
     }
     final cut = task.cut;
     // The V effects are TRACK data on the global axis (R4). No track fade:
@@ -1334,13 +1390,11 @@ class ExportFrameRenderer {
     // above, on the frames it actually covers, and the track's static
     // opacity went with the V row's bar (I-73).
     final trackEffects = _trackChainOf(task);
-    // The presentation render: the アフレコ name tags belong in the video
-    // (their row's eye is the switch).
     final image = await _canvasPicture(
       cut,
       task.frameIndex,
-      session.seEntries.seNameTagsForCutFrame(cut, task.frameIndex),
       trackEffects,
+      outputSize: outputSize,
     );
     // F-192: a lone F.I/F.O/W.I/W.O is ONE contribution, so it never reached
     // the transition mix above — ↩️its fade was simply missing from a
@@ -1428,8 +1482,9 @@ class ExportFrameRenderer {
   Future<ui.Image> _canvasSpaceTransitionFrame(
     _SharedTransitionSpace shared, {
     required ui.Color? ground,
+    CanvasSize? outputSize,
   }) async {
-    final size = shared.size;
+    final size = outputSize ?? shared.size;
     return _frameOf<_MixedFrame>(
       (
         size: size,
@@ -1441,10 +1496,6 @@ class ExportFrameRenderer {
                 await _canvasPicture(
                   contribution.cut,
                   contribution.localFrameIndex,
-                  session.seEntries.seNameTagsForCutFrame(
-                    contribution.cut,
-                    contribution.localFrameIndex,
-                  ),
                   // The V row's chain on this contribution, keys included —
                   // the dissolve weights what the chain made, not what it
                   // started from.
@@ -1453,6 +1504,7 @@ class ExportFrameRenderer {
                     shared.globalFrame,
                     frameIndex: contribution.localFrameIndex,
                   ),
+                  outputSize: outputSize,
                 ),
               ),
               weight: shared.weights[i].clamp(0.0, 1.0),
@@ -1492,6 +1544,7 @@ class ExportFrameRenderer {
   Future<ui.Image> _renderTrackStackForVideo(
     ExportFrameTask task, {
     required bool preserveAlpha,
+    CanvasSize? outputSize,
   }) async {
     final positions = _stackPositionsOf(task);
     // The unit alphas, and then the source-over weights that make the stack
@@ -1503,7 +1556,7 @@ class ExportFrameRenderer {
     ]);
     final weights = trackGroupSourceOverWeights(positions, unitAlphas);
 
-    final size = session.camera.cameraFrameSize;
+    final size = outputSize ?? session.camera.cameraFrameSize;
     return _frameOf<_StackFrame>(
       (
         size: size,
@@ -1517,6 +1570,7 @@ class ExportFrameRenderer {
               position,
               weights[i],
               preserveAlpha: preserveAlpha,
+              outputSize: outputSize,
             ),
         ]),
       ),
@@ -1541,6 +1595,7 @@ class ExportFrameRenderer {
     TrackStackContribution position,
     double weight, {
     required bool preserveAlpha,
+    CanvasSize? outputSize,
   }) async {
     final cut = position.cut;
     final frameIndex = position.localFrameIndex;
@@ -1563,10 +1618,11 @@ class ExportFrameRenderer {
     final picture = await _cutPicture(
       cut,
       frameIndex,
-      route: ('stack', view, ByList(trackEffects), paper),
+      route: ('stack', view, ByList(trackEffects), paper, outputSize),
       render: (rows) => _composite(
         ExportFrameTask(cut: cut, frameIndex: frameIndex),
         view,
+        outputSize: outputSize,
         trackEffects: trackEffects,
         paper: paper,
         rows: rows,
@@ -1574,9 +1630,16 @@ class ExportFrameRenderer {
       ),
     );
     final project = session.repository.requireProject();
+    // A preview's size of the frame is the view playback shows a frame at
+    // ([PlaybackFramePainter.viewport]): what the painters raster, the names
+    // above all, rasters at the scale it is shown at.
+    final shownAt = outputSize == null
+        ? null
+        : CanvasViewport(zoom: outputSize.width / view.frameSize.width);
     PlaybackFramePainter painter({required bool under}) => PlaybackFramePainter(
       canvasSize: cut.canvasSize,
       pasteboardReach: project.pasteboardReach,
+      viewport: shownAt,
       cameraPose: view.pose,
       cameraFrameSize: view.frameSize,
       // The paper is the picture's; an absent one prints nothing.

@@ -468,26 +468,32 @@ class ExportDialogState extends State<ExportDialog> {
     }
   }
 
+  /// The renderer a preview of what is written in [format] draws with — the
+  /// one the file is written with ([_writeFilm]), on its ground.
+  ///
+  /// ↩️It laid the format's background colour under a film as well, where
+  /// the film lays white (export-film-preview-is-not-the-film).
   ExportFrameRenderer _previewRendererFor({
     required ExportLayerFx layerFx,
     required ExportFormatSelection format,
-  }) {
-    final bgKey = _groundKeyOf(format);
-    return _previewRenderers.putIfAbsent(
-      (layerFx, bgKey, format.keepsRowsApart),
-      () => ExportFrameRenderer(
-        session: _session,
-        layerFx: layerFx,
-        keepsRowsApart: format.keepsRowsApart,
-        background: bgKey == -1 ? const ui.Color(0x00000000) : ui.Color(bgKey),
-      ),
-    );
-  }
+  }) => _previewRenderers.putIfAbsent(
+    (layerFx, _groundKeyOf(format), format.keepsRowsApart),
+    () => ExportFrameRenderer.forFormat(
+      session: _session,
+      layerFx: layerFx,
+      format: format,
+      alphaVideo: format.wantsAlpha,
+    ),
+  );
 
-  /// What stands under a picture written in [format], as one number: its
-  /// background, or -1 for one whose alpha stays open (RGBA outputs).
+  /// What stands under a picture written in [format], as one number: the
+  /// ground its file is made on ([ExportFrameRenderer.groundFor]) — clear
+  /// where its alpha stays open.
   static int _groundKeyOf(ExportFormatSelection format) =>
-      format.wantsAlpha ? -1 : format.backgroundArgb;
+      ExportFrameRenderer.groundFor(
+        format,
+        alphaVideo: format.wantsAlpha,
+      ).toARGB32();
 
   // --- state plumbing -------------------------------------------------------
 
@@ -1659,26 +1665,33 @@ class ExportDialogState extends State<ExportDialog> {
   ) {
     final (:format, :sizeMode, :layerFx, withSound: _) = run;
     final renderer = _previewRendererFor(layerFx: layerFx, format: format);
-    // The video run burns the SE name tags in (videoRun);
-    // stills stay clean because they are compositing sources. The preview
-    // has to answer the same question, or it shows a frame the export
-    // will not produce.
-    final withNameTags = format.kind == ExportMediaKind.video;
+    // A film's frame is the one its file holds ([_writeFilm]): the stage
+    // and its paper, the tracks over it, the pose and the fade, and the
+    // ground of a frame nothing plays in (export-film-preview-is-not-the-
+    // film). A picture sequence's is the still its run writes — clean, a
+    // compositing source.
+    final film = format.isVideo;
     return ExportPreviewDocument(
       subject: subject,
-      look: (sizeMode, layerFx, _groundKeyOf(format), withNameTags),
+      look: (sizeMode, layerFx, _groundKeyOf(format), film),
       shape: ExportPreviewShape.runs,
       framesPerSecond: _previewRate,
       pageCount: plan.length,
       opensAlpha: format.wantsAlpha,
       sizeOf: (page) => _frameSizeOf(plan[page].cut, sizeMode),
-      renderAt: (page, size) async => plan[page].isGap
+      renderAt: (page, size) async => film
+          ? await renderer.renderVideoFrame(
+              plan[page],
+              sizeMode,
+              preserveAlpha: format.wantsAlpha,
+              outputSize: size,
+            )
+          : plan[page].isGap
           ? null
           : await renderer.renderComposite(
               plan[page],
               sizeMode,
               outputSize: size,
-              withNameTags: withNameTags,
             ),
     );
   }
