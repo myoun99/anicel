@@ -18,9 +18,11 @@ import 'package:anicel/src/models/pill_subject.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timesheet_ink_keys.dart';
+import 'package:anicel/src/services/brush_frame_store.dart' show CelRead;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 
+import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/conte_track_fixture.dart';
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/pill_row_clipboard.dart';
@@ -704,6 +706,35 @@ void main() {
       caches.timesheetInkStore.bakedSurfacesForCut(first).values,
       [same(page)],
     );
+  });
+
+  // 🗣️Card timeline-copy-thaws-every-cel (유저 2026-11-04): a copy takes
+  // its source in the tier the store keeps it in.
+  test('동기 해제 copies a sheet kept in the saved file without thawing '
+      'it', () {
+    final s = session();
+    final made = linkedIntoANewTimeline(s);
+    final pages = s.renderCaches.timesheetInkStore;
+    // Kept as the save keeps it: under the sync's paper.
+    keepInAFile(pages, {
+      pages.canonicalKeyOf(timesheetInkPageKey(made.id, 0)): ink(),
+    });
+    open(s, 0);
+
+    s.cutVerbs.unsyncCut(first);
+
+    expect(pages.hotBakedBytes, 0);
+    for (final cut in [first, made.id]) {
+      final looked = pages.bakedSurfaceOrNull(
+        timesheetInkPageKey(cut, 0),
+        read: CelRead.look,
+      );
+      expect(
+        looked?.tiles[TileCoord(x: 0, y: 0)]?.pixels,
+        ink().tiles[TileCoord(x: 0, y: 0)]!.pixels,
+        reason: '$cut',
+      );
+    }
   });
 
   test('동기 해제 of one cut of three leaves the other two one cut', () {

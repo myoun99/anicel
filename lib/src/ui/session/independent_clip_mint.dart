@@ -555,6 +555,20 @@ void carryConteHandwriting({
   keep: (key, surface, _) => store.storeBakedSurface(key, surface),
 );
 
+/// [carryConteHandwriting] for a copy made beside its source — a duplicated
+/// block or row: each copied block's handwriting through the store
+/// ([BrushFrameStore.copyCel]) at the size it is kept at, so none kept
+/// thaws ([copyBakedPictures]'s reason).
+void copyConteHandwriting({
+  required BrushFrameStore store,
+  required CutId cut,
+  required Map<String, String> copies,
+}) {
+  for (final MapEntry(key: copy, value: source) in copies.entries) {
+    store.copyCel(conteInkRowKey(cut, source), conteInkRowKey(cut, copy));
+  }
+}
+
 /// The handwriting the blocks of [exposures] show on [cut]'s conte as it is
 /// NOW, by each block's id — what a copy takes BY VALUE, for
 /// [picturesShownBy]'s reason.

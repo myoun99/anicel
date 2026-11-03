@@ -130,24 +130,13 @@ final class LinkPartCopies {
 
   /// [taken] copied — AFTER the table changed, when a copier's keys resolve
   /// to itself, the first of its part. The copies an undo empties are the
-  /// keys that keep a picture now ([BrushFrameStore.celKeysOfCut]): a cel
-  /// whose source kept none was copied nothing.
+  /// ones the store says it made: a cel whose source kept none was copied
+  /// nothing.
   void keep(List<LinkPartCopy> taken) {
     _kept.clear();
-    final store = _store;
-    if (store == null) {
-      return;
-    }
     for (final (:from, :to, :canvasSize) in taken) {
-      store.copyCel(from, to, canvasSize: canvasSize);
-    }
-    final kept = {
-      for (final cut in {for (final copy in taken) copy.to.cutId})
-        ...store.celKeysOfCut(cut),
-    };
-    for (final (:to, :canvasSize, from: _) in taken) {
-      if (kept.contains(to)) {
-        _kept.add((to, canvasSize));
+      if (_store!.copyCel(from, to, canvasSize: canvasSize) case final kept?) {
+        _kept.add((to, kept));
       }
     }
   }

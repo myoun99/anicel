@@ -8,6 +8,7 @@ import '../../models/envelope/cut_envelope_ink_keys.dart'
     show envelopeInkKeyOfCut;
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
+import '../../models/project.dart';
 import '../../models/timesheet_ink_keys.dart' show timesheetInkKeyOfCut;
 import '../../services/brush_frame_store.dart' show BrushFrameStore;
 import '../envelope/cut_envelope_builder.dart' show cutEnvelopeInkOwner;
@@ -32,6 +33,14 @@ import 'session_roles.dart';
 /// take theirs here. A duplicate copies at once, its source beside it
 /// ([duplicate]); the board holds what the cut showed ([shownBy]) until a
 /// paste puts it onto the copy ([carry]).
+///
+/// 🗣️유저 2026-09-26 (cut-duplicate-sheet-ink-Q1): 「따라간다 — 복제는
+/// 전부 복사」 — the sheets' handwriting too: the conte cells' block by
+/// block — each copied block keeps its handwriting id, on the copy's cut —
+/// the envelope's and the timesheet's box by box and band by band. From
+/// there the copy's is its own. A duplicated cut is no sibling, so it owns
+/// its envelope; a copied timeline's 겸용 cuts are each other's, and read
+/// theirs from the representative's copy.
 class CutCopies {
   CutCopies({
     required ProjectAccess project,
@@ -45,29 +54,31 @@ class CutCopies {
   /// What [source] shows NOW — BY VALUE, for [picturesShownBy]'s reason: a
   /// paste may land after the source was drawn over or cut away, or in
   /// another project, whose stores have nothing under its keys.
-  ///
-  /// The sheets' ink is owned the way the load prunes it (`_InkOwners`): a
-  /// conte cell by its block, the others by their cut — the envelope's by
-  /// the cut that OWNS the envelope, the representative when [source]
-  /// shares one ([cutEnvelopeInkOwner]) — and a 동기컷's sheets, that owner's
-  /// envelope among them, by its sync's canonical, the paper its cuts all
-  /// write on (`syncedSheetInkKey`).
-  CutPictures shownBy(Cut source) => _withSheetInk(
-    source,
-    cels: {
-      for (final row in source.layers)
-        row.id: picturesShownBy(
-          store: _renderCaches.brushFrameStore,
-          cels: row.frames,
-          keyOf: (cel) => _project.brushFrameKeyForCut(source, row.id, cel),
-        ),
-    },
-  );
+  CutPictures shownBy(Cut source) {
+    final project = _project.repository.requireProject();
+    Map<BrushFrameKey, BitmapSurface> written(_Sheet sheet) => sheet
+        .storeIn(_renderCaches)
+        .bakedSurfacesForCut(sheet.paperOf(project, source.id));
+    return CutPictures(
+      cels: {
+        for (final row in source.layers)
+          row.id: picturesShownBy(
+            store: _renderCaches.brushFrameStore,
+            cels: row.frames,
+            keyOf: (cel) => _project.brushFrameKeyForCut(source, row.id, cel),
+          ),
+      },
+      conte: written(_Sheet.conte),
+      envelope: written(_Sheet.envelope),
+      timesheet: written(_Sheet.timesheet),
+    );
+  }
 
   /// [source] onto its copy [copy] at once, its source standing beside it —
   /// whose rows [rows] and whose cels [cels] name, by the ones they copy.
-  /// Each cel's picture goes through the store ([copyBakedPictures]), so
-  /// nothing kept thaws; the sheets' handwriting goes as [carry] takes it.
+  /// Each picture and each sheet's handwriting goes through its store
+  /// ([BrushFrameStore.copyCel], [copyBakedPictures]), so nothing kept
+  /// thaws (card `timeline-copy-thaws-every-cel`).
   void duplicate(
     Cut source, {
     required CutId copy,
@@ -84,26 +95,15 @@ class CutCopies {
         to: (cut: into, row: rows[row.id]!),
       );
     }
-    _carrySheetInk(_withSheetInk(source, cels: const {}), to: copy);
-  }
-
-  /// [cels] with the sheets' handwriting [source] shows now.
-  CutPictures _withSheetInk(
-    Cut source, {
-    required Map<LayerId, Map<FrameId, BitmapSurface>> cels,
-  }) {
     final project = _project.repository.requireProject();
-    final paper = project.linkRegistry.syncCanonicalOf(source.id);
-    return CutPictures(
-      cels: cels,
-      conte: _renderCaches.conteInkRowStore.bakedSurfacesForCut(paper),
-      envelope: _renderCaches.envelopeInkStore.bakedSurfacesForCut(
-        project.linkRegistry.syncCanonicalOf(
-          cutEnvelopeInkOwner(project, source.id),
-        ),
-      ),
-      timesheet: _renderCaches.timesheetInkStore.bakedSurfacesForCut(paper),
-    );
+    for (final sheet in _Sheet.values) {
+      final store = sheet.storeIn(_renderCaches);
+      for (final key in store.celKeysOfCut(sheet.paperOf(project, source.id))) {
+        if (sheet.onCopy(key, copy) case final onCopy?) {
+          store.copyCel(key, onCopy);
+        }
+      }
+    }
   }
 
   /// [shown] onto the copy [copy] — whose rows [rows] and whose cels [cels]
@@ -126,45 +126,53 @@ class CutCopies {
         pictureOf: (cel) => pictures[cel],
       );
     }
-    _carrySheetInk(shown, to: copy);
+    for (final sheet in _Sheet.values) {
+      final store = sheet.storeIn(_renderCaches);
+      carrySurfaces(
+        sources: shown._writtenOn(sheet).entries,
+        surfaceOf: (written) => written.value,
+        keyOfCopy: (written) => sheet.onCopy(written.key, copy),
+        keep: (key, surface, _) => store.storeBakedSurface(key, surface),
+      );
+    }
   }
+}
 
-  /// The sheets' handwriting of a copied cut, onto its copy: the conte
-  /// cells' block by block — each copied block keeps its handwriting id, on
-  /// the copy's cut — the envelope's and the timesheet's box by box and band
-  /// by band. From there the copy's is its own.
-  ///
-  /// 🗣️유저 2026-09-26 (cut-duplicate-sheet-ink-Q1): 「따라간다 — 복제는
-  /// 전부 복사」. A duplicated cut is no sibling, so it owns its envelope; a
-  /// copied timeline's 겸용 cuts are each other's, and read theirs from the
-  /// representative's copy.
-  void _carrySheetInk(CutPictures shown, {required CutId to}) {
-    void carry(
-      BrushFrameStore store,
-      Map<BrushFrameKey, BitmapSurface> written,
-      BrushFrameKey? Function(BrushFrameKey key) inCopy,
-    ) => carrySurfaces(
-      sources: written.entries,
-      surfaceOf: (written) => written.value,
-      keyOfCopy: (written) => inCopy(written.key),
-      keep: (key, surface, _) => store.storeBakedSurface(key, surface),
-    );
+/// The sheets a cut writes on — each read, held and copied by one table.
+enum _Sheet {
+  conte,
+  envelope,
+  timesheet;
 
-    carry(_renderCaches.conteInkRowStore, shown.conte, (key) {
-      final block = conteInkRowIdOf(key);
-      return block == null ? null : conteInkRowKey(to, block);
-    });
-    carry(
-      _renderCaches.envelopeInkStore,
-      shown.envelope,
-      (key) => envelopeInkKeyOfCut(key, to),
-    );
-    carry(
-      _renderCaches.timesheetInkStore,
-      shown.timesheet,
-      (key) => timesheetInkKeyOfCut(key, to),
-    );
-  }
+  BrushFrameStore storeIn(RenderCaches caches) => switch (this) {
+    conte => caches.conteInkRowStore,
+    envelope => caches.envelopeInkStore,
+    timesheet => caches.timesheetInkStore,
+  };
+
+  /// The cut [source]'s writing on this sheet is kept under — owned the way
+  /// the load prunes it (`_InkOwners`): a conte cell by its block, the
+  /// others by their cut — the envelope's by the cut that OWNS the
+  /// envelope, the representative when [source] shares one
+  /// ([cutEnvelopeInkOwner]) — and a 동기컷's sheets, that owner's envelope
+  /// among them, by its sync's canonical, the paper its cuts all write on
+  /// (`syncedSheetInkKey`).
+  CutId paperOf(Project project, CutId source) =>
+      project.linkRegistry.syncCanonicalOf(switch (this) {
+        envelope => cutEnvelopeInkOwner(project, source),
+        conte || timesheet => source,
+      });
+
+  /// Where [key] of this sheet goes on the copy [to]: a conte cell under
+  /// its block's handwriting id, a box and a band as they are.
+  BrushFrameKey? onCopy(BrushFrameKey key, CutId to) => switch (this) {
+    conte => switch (conteInkRowIdOf(key)) {
+      final block? => conteInkRowKey(to, block),
+      null => null,
+    },
+    envelope => envelopeInkKeyOfCut(key, to),
+    timesheet => timesheetInkKeyOfCut(key, to),
+  };
 }
 
 /// What a cut showed when [CutCopies.shownBy] read it: its cels' pictures,
@@ -182,6 +190,13 @@ class CutPictures {
   final Map<BrushFrameKey, BitmapSurface> conte;
   final Map<BrushFrameKey, BitmapSurface> envelope;
   final Map<BrushFrameKey, BitmapSurface> timesheet;
+
+  Map<BrushFrameKey, BitmapSurface> _writtenOn(_Sheet sheet) =>
+      switch (sheet) {
+        _Sheet.conte => conte,
+        _Sheet.envelope => envelope,
+        _Sheet.timesheet => timesheet,
+      };
 
   /// Every one of them — the memory census's to weigh, while a board holds
   /// them.

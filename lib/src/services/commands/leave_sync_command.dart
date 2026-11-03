@@ -51,17 +51,15 @@ class LeaveSyncCommand extends LinkRegistrySnapshotCommand {
     final paper = sync.canonical;
     final copier = paper == cutId ? staying.first : cutId;
 
-    // Read under the paper's own keys while it is still the paper.
-    final copies = <(BrushFrameStore, BrushFrameKey, BitmapSurface)>[];
-    for (final store in sheetInkStores) {
-      for (final key in store.celKeysOfCut(paper)) {
-        final surface = store.bakedSurfaceOrNull(key);
-        if (sheetInkKeyOfCut(key, copier) case final copy?
-            when surface != null) {
-          copies.add((store, copy, surface));
-        }
-      }
-    }
+    // Named under the paper's own keys while it is still the paper — read
+    // by nothing: the store copies each in the tier it keeps it in
+    // (`BrushFrameStore.copyCel`, card timeline-copy-thaws-every-cel).
+    final copies = <(BrushFrameStore, BrushFrameKey, BrushFrameKey)>[
+      for (final store in sheetInkStores)
+        for (final key in store.celKeysOfCut(paper))
+          if (sheetInkKeyOfCut(key, copier) case final copy?)
+            (store, key, copy),
+    ];
 
     snapshotRegistry(project);
     repository.updateProject(
@@ -81,9 +79,10 @@ class LeaveSyncCommand extends LinkRegistrySnapshotCommand {
     // The copier's keys resolve to itself now — the first of its part, or
     // a cut of its own.
     _copied.clear();
-    for (final (store, key, surface) in copies) {
-      store.storeBakedSurface(key, surface);
-      _copied.add((store, key, surface.canvasSize));
+    for (final (store, from, to) in copies) {
+      if (store.copyCel(from, to) case final canvasSize?) {
+        _copied.add((store, to, canvasSize));
+      }
     }
     markExecuted();
   }

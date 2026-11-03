@@ -1752,41 +1752,50 @@ class BrushFrameStore {
   ///
   /// ⚠️A room that refuses the park leaves the copy hot: over budget is a
   /// number, and losing the drawing is not ([_storeCold]).
-  void copyCel(
+  ///
+  /// [canvasSize] left out: the size the source is kept at — a sheet's
+  /// handwriting, whose surface is the sheet's whatever the cut's canvas
+  /// (card store-copies-a-kept-cel-without-thawing: the sheets' copies are
+  /// the same 「key A → key B」, a third copy of it).
+  ///
+  /// Answers the size the copy is kept at, or null where nothing was
+  /// copied — what an undo that empties the copies it made empties.
+  CanvasSize? copyCel(
     BrushFrameKey from,
     BrushFrameKey to, {
-    required CanvasSize canvasSize,
+    CanvasSize? canvasSize,
   }) {
     final source = _canonicalize(from);
     final hot = _bakedSurfaces[source];
     if (hot != null) {
-      storeCopiedSurface(
-        to,
-        resizeBitmapSurfaceCanvas(hot, canvasSize),
-        source: from,
+      final copy = resizeBitmapSurfaceCanvas(
+        hot,
+        canvasSize ?? hot.canvasSize,
       );
-      return;
+      storeCopiedSurface(to, copy, source: from);
+      return copy.canvasSize;
     }
     final kept = _kept(source);
     if (kept == null) {
-      return;
+      return null;
     }
+    final size = canvasSize ?? kept.ref.canvasSize;
     final key = _canonicalize(to);
-    if (!kept.parked && kept.ref.canvasSize == canvasSize) {
+    if (!kept.parked && kept.ref.canvasSize == size) {
       _keepCopy(key, () => _fileCels[key] = kept.ref);
-      return;
+      return size;
     }
     final blob = _keptBlobOrNull(source);
     if (blob == null) {
-      return;
+      return null;
     }
-    final copy = kept.ref.canvasSize == canvasSize
+    final copy = kept.ref.canvasSize == size
         ? blob
         : AnicelCelBlob.ofSurface(
             key,
             resizeBitmapSurfaceCanvas(
               _behind(blob.decode().toSurface()),
-              canvasSize,
+              size,
             ),
           );
     final path = ScratchCelFiles.write(
@@ -1796,9 +1805,10 @@ class BrushFrameStore {
     );
     if (path == null) {
       storeBakedSurface(key, copy.decode().toSurface());
-      return;
+      return size;
     }
     _keepCopy(key, () => _keepCold(key, _parkedRef(path, copy)));
+    return size;
   }
 
   /// [key] keeping, from now on, only the copy [place] keeps — a picture

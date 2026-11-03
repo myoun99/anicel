@@ -13,6 +13,8 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/bitmap_surface_geometry.dart'
+    show resizeBitmapSurfaceCanvas;
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/anicel_file_service.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
@@ -229,13 +231,66 @@ void main() {
     });
   });
 
-  test('nothing kept, nothing copied', () {
+  test('nothing kept, nothing copied — and it answers so', () {
     final store = BrushFrameStore();
 
-    store.copyCel(key('a'), key('b'), canvasSize: size);
-
+    expect(store.copyCel(key('a'), key('b'), canvasSize: size), isNull);
     expect(store.celHasRenderableContent(key('b')), isFalse);
     expect(store.dirtyCelKeysSinceSave, isEmpty);
+  });
+
+  test('a copy answers the size it is kept at — what an undo empties', () {
+    final store = BrushFrameStore();
+    keepInAFile(store, {key('a'): inked(1)});
+    const bigger = CanvasSize(width: 32, height: 32);
+
+    expect(store.copyCel(key('a'), key('b'), canvasSize: size), size);
+    expect(store.copyCel(key('a'), key('c'), canvasSize: bigger), bigger);
+  });
+
+  // 🗣️Card store-copies-a-kept-cel-without-thawing (저장 → 타임라인/콘티,
+  // 2026-11-04): the sheets' handwriting copies the same way, at the size
+  // its surface is — the sheet's, whatever the cut's canvas.
+  group('left without a size, a copy keeps the size its source is kept '
+      'at', () {
+    const sheet = CanvasSize(width: 24, height: 40);
+
+    BitmapSurface onTheSheet(int seed) =>
+        resizeBitmapSurfaceCanvas(inked(seed), sheet);
+
+    test('hot: the very surface — the tiles shared, nothing laid', () {
+      final store = BrushFrameStore()
+        ..storeBakedSurface(key('a'), onTheSheet(3));
+
+      expect(store.copyCel(key('a'), key('b')), sheet);
+      expect(
+        identical(
+          store.hotBakedSurfaceOrNull(key('b')),
+          store.hotBakedSurfaceOrNull(key('a')),
+        ),
+        isTrue,
+      );
+    });
+
+    test('kept in the saved file: the same stretch, nothing thawed', () {
+      final store = BrushFrameStore();
+      keepInAFile(store, {key('a'): onTheSheet(1)});
+
+      expect(store.copyCel(key('a'), key('b')), sheet);
+      expect(store.hotBakedBytes, 0);
+      expect(store.isCelFileBacked(key('b')), isTrue);
+      expect(looked(store, 'b'), pixelsOf(inked(1)));
+    });
+
+    test('parked: parked again, never hot', () {
+      final store = BrushFrameStore();
+      parkCold(store, {key('a'): onTheSheet(2)});
+
+      expect(store.copyCel(key('a'), key('b')), sheet);
+      expect(store.hotBakedBytes, 0);
+      expect(store.isCelCold(key('b')), isTrue);
+      expect(looked(store, 'b'), pixelsOf(inked(2)));
+    });
   });
 
   group('the save writes each copy under its own name', () {

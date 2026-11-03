@@ -2,7 +2,6 @@ import 'package:collection/collection.dart' show IterableExtension;
 
 import '../../services/editing/layer_standing_after_change.dart';
 import '../../models/attached_layer_resolve.dart';
-import '../../models/conte/conte_ink_keys.dart' show conteInkRowKey;
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
@@ -16,7 +15,7 @@ import '../../services/project_lookup.dart'
     show cutWritingRow, projectLayersAnywhere;
 import 'active_cut_controllers.dart';
 import 'independent_clip_mint.dart'
-    show carryConteHandwriting, copyBakedPictures;
+    show copyBakedPictures, copyConteHandwriting;
 import 'render_caches.dart';
 import 'row_selection.dart';
 import 'session_roles.dart';
@@ -335,13 +334,10 @@ class LayerVerbs {
       from: (cut: cut, row: layerId),
       to: (cut: cut, row: copy.layerId),
     );
-    final ink = _renderCaches.conteInkRowStore;
-    carryConteHandwriting(
-      store: ink,
+    copyConteHandwriting(
+      store: _renderCaches.conteInkRowStore,
       cut: cut.id,
       copies: copy.handwriting,
-      handwritingOf: (inkId) =>
-          ink.bakedSurfaceOrNull(conteInkRowKey(cut.id, inkId)),
     );
     return copy.layerId;
   }
