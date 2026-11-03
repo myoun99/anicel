@@ -28,6 +28,7 @@ import '../../models/layer_id.dart';
 import '../../models/tile_coord.dart';
 import '../../services/brush_dab_interpolator.dart';
 import '../../services/brush_ground_color_mixing.dart';
+import '../../services/brush_in_and_out_along.dart';
 import '../../services/brush_ground_color_sampling.dart';
 import '../../services/brush_fill_promotion.dart';
 import '../../services/brush_live_stroke_rasterizer.dart';
@@ -479,6 +480,11 @@ class _InteractiveBrushEditCanvasViewState
   /// pointer-down from the stroke's settings snapshot ([_BrushEditStroke]).
   BrushSecondStroke? _secondStroke;
 
+  /// How far the active stroke has come, for its 入り抜き
+  /// ([BrushInAndOutAlong]). Made with the stroke from its settings
+  /// snapshot ([_BrushEditStroke]).
+  BrushInAndOutAlong? _inAndOut;
+
   /// Latest known stroke direction (visual CCW degrees); kept across
   /// stationary events so direction-following tips do not snap back.
   double? _lastDirectionDegrees;
@@ -506,7 +512,8 @@ class _InteractiveBrushEditCanvasViewState
   StrokeStabilizer? _stabilizer;
 
   /// The line the pen's stroke has been laid along so far, each point with
-  /// what it read there — what its 後補正 smooths at pen-up (F-418). Null
+  /// what it read there — what its 後補正 smooths and its 抜き ends at
+  /// pen-up (F-418, brush-in-and-out). Null
   /// for a stroke the tool lays: it draws no line of the pen's.
   List<PenPoint>? _drawn;
 

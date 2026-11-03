@@ -1,6 +1,7 @@
 import 'brush_anti_alias.dart';
 import 'brush_blend_mode.dart';
 import 'brush_correction.dart';
+import 'brush_in_and_out.dart';
 import 'separable_blend_mode.dart';
 import 'brush_input_source.dart';
 import 'brush_mixing_method.dart';
@@ -67,6 +68,7 @@ class BrushSettings {
     double colorStretch = 0.0,
     bool adjustsFlowBySpacing = true,
     BrushCorrection correction = const BrushCorrection(),
+    BrushInAndOut inAndOut = BrushInAndOut.none,
     this.shown = BrushSettingsRow.shownByDefault,
   }) : shape = BrushShape(
          color: color,
@@ -122,6 +124,7 @@ class BrushSettings {
          colorStretch: colorStretch,
          adjustsFlowBySpacing: adjustsFlowBySpacing,
          correction: correction,
+         inAndOut: inAndOut,
        ) {
     _validateShape(shape);
   }
@@ -244,6 +247,9 @@ class BrushSettings {
   /// The line's correction — see [BrushShape.correction].
   BrushCorrection get correction => shape.correction;
 
+  /// How the line comes in and goes out — see [BrushShape.inAndOut].
+  BrushInAndOut get inAndOut => shape.inAndOut;
+
   /// The pressure curve driving [target], if any.
   BrushPressureCurve? pressureCurveFor(BrushPressureTarget target) =>
       shape.pressureCurveFor(target);
@@ -297,6 +303,7 @@ class BrushSettings {
     double? colorStretch,
     bool? adjustsFlowBySpacing,
     BrushCorrection? correction,
+    BrushInAndOut? inAndOut,
     Set<BrushSettingsRow>? shown,
   }) {
     return BrushSettings(
@@ -360,6 +367,7 @@ class BrushSettings {
       colorStretch: colorStretch ?? this.colorStretch,
       adjustsFlowBySpacing: adjustsFlowBySpacing ?? this.adjustsFlowBySpacing,
       correction: correction ?? this.correction,
+      inAndOut: inAndOut ?? this.inAndOut,
       shown: shown ?? this.shown,
     );
   }
@@ -452,6 +460,8 @@ class BrushSettings {
     // before the brush held its correction round-trips byte-identically.
     if (correction != const BrushCorrection())
       'correction': correction.toJson(),
+    // Off its default only, by the same rule.
+    if (inAndOut != BrushInAndOut.none) 'inAndOut': inAndOut.toJson(),
     // Written only off the three every brush shows, for the same reason —
     // and so a brush handed back to them leaves no key for the hand's
     // overlay to keep. An EMPTY list is written: it is a brush showing
@@ -558,6 +568,7 @@ class BrushSettings {
       colorStretch: (json['colorStretch'] as num?)?.toDouble() ?? 0.0,
       adjustsFlowBySpacing: json['adjustsFlowBySpacing'] as bool? ?? true,
       correction: BrushCorrection.fromJson(json['correction']),
+      inAndOut: BrushInAndOut.fromJson(json['inAndOut']),
       shown: switch (json['shown']) {
         final List<dynamic> names => {
           for (final name in names)
@@ -620,6 +631,10 @@ void _validateShape(BrushShape shape) {
     'postStrength',
     BrushCorrection.maxPostStrength,
   );
+  _validateInAndOut(shape.inAndOut.inLength, 'inLength');
+  _validateInAndOut(shape.inAndOut.outLength, 'outLength');
+  _validateUnitInterval(shape.inAndOut.sizeMinimum, 'inAndOut.sizeMinimum');
+  _validateUnitInterval(shape.inAndOut.flowMinimum, 'inAndOut.flowMinimum');
   _validatePositive(shape.size, 'size');
   _validateUnitInterval(shape.opacity, 'opacity');
   _validateUnitInterval(shape.flow, 'flow');
@@ -681,6 +696,18 @@ void _validateCorrection(double value, String name, double max) {
       value,
       name,
       'BrushSettings.correction.$name must be between 0 and $max inclusive.',
+    );
+  }
+}
+
+/// An 入り抜き length [name], 0..[BrushInAndOut.maxLength].
+void _validateInAndOut(double value, String name) {
+  if (!value.isFinite || value < 0.0 || value > BrushInAndOut.maxLength) {
+    throw ArgumentError.value(
+      value,
+      name,
+      'BrushSettings.inAndOut.$name must be between 0 and '
+      '${BrushInAndOut.maxLength} inclusive.',
     );
   }
 }

@@ -1948,6 +1948,10 @@ enum AppStrings {
   String get brPostBySpeed => _s('brPostBySpeed');
   String get brPostByViewScale => _s('brPostByViewScale');
   String get brPostBezier => _s('brPostBezier');
+  String get brInLength => _s('brInLength');
+  String get brOutLength => _s('brOutLength');
+  String get brInOutSize => _s('brInOutSize');
+  String get brInOutFlow => _s('brInOutFlow');
   String get brSharpenCorners => _s('brSharpenCorners');
   String get brGroupInk => _s('brGroupInk');
   String get brGroupTip => _s('brGroupTip');
@@ -1955,6 +1959,7 @@ enum AppStrings {
   String get brGroupScattering => _s('brGroupScattering');
   String get brGroupTexture => _s('brGroupTexture');
   String get brGroupCorrection => _s('brGroupCorrection');
+  String get brGroupInAndOut => _s('brGroupInAndOut');
   String get brDetailTitle => _s('brDetailTitle');
   String get brResetHeldBrush => _s('brResetHeldBrush');
   String get brShowInPanel => _s('brShowInPanel');
@@ -3290,6 +3295,10 @@ enum AppStrings {
     'brPostBySpeed': 'Adjust by speed',
     'brPostByViewScale': 'Adjust by zoom',
     'brPostBezier': 'Bezier curve',
+    'brInLength': 'Start',
+    'brOutLength': 'End',
+    'brInOutSize': 'Size at the ends',
+    'brInOutFlow': 'Flow at the ends',
     'brSharpenCorners': 'Sharpen corners',
     'brGroupInk': 'Ink',
     'brGroupTip': 'Brush tip',
@@ -3297,6 +3306,7 @@ enum AppStrings {
     'brGroupScattering': 'Scattering',
     'brGroupTexture': 'Texture',
     'brGroupCorrection': 'Correction',
+    'brGroupInAndOut': 'Start and end',
     'brDetailTitle': 'Brush Details',
     'brResetHeldBrush': 'Reset brush to its initial settings',
     'brShowInPanel': 'Show in the panel',
@@ -4464,7 +4474,7 @@ enum AppStrings {
     'paletteLock': 'パレットをロック',
     'paletteMore': 'その他',
     'penPressureTitle': '筆圧',
-    'brushDynamicsTitle': '入り抜き',
+    'brushDynamicsTitle': '影響元設定',
     'curveSourcePressure': '筆圧',
     'curveSourceTilt': '傾き',
     'curveSourceSpeed': '速度',
@@ -5014,6 +5024,10 @@ enum AppStrings {
     'brPostBySpeed': '速度で調整',
     'brPostByViewScale': '表示倍率で調整',
     'brPostBezier': 'ベジェ曲線',
+    'brInLength': '入り',
+    'brOutLength': '抜き',
+    'brInOutSize': 'サイズ最小値',
+    'brInOutFlow': '流量最小値',
     'brSharpenCorners': '角をとがらせる',
     'brGroupInk': 'インク',
     'brGroupTip': 'ブラシ先端',
@@ -5021,6 +5035,7 @@ enum AppStrings {
     'brGroupScattering': '散布',
     'brGroupTexture': '質感',
     'brGroupCorrection': '補正',
+    'brGroupInAndOut': '入り抜き',
     'brDetailTitle': 'ブラシ詳細',
     'brResetHeldBrush': 'ブラシを初期設定に戻す',
     'brShowInPanel': 'パネルに表示',
@@ -6854,6 +6869,10 @@ enum AppStrings {
     'brPostBySpeed': '속도로 조정',
     'brPostByViewScale': '배율로 조정',
     'brPostBezier': '베지어 곡선',
+    'brInLength': '시작',
+    'brOutLength': '끝',
+    'brInOutSize': '크기 최소',
+    'brInOutFlow': '흐름 최소',
     'brSharpenCorners': '각 날카롭게',
     'brGroupInk': '잉크',
     'brGroupTip': '브러시 끝',
@@ -6861,6 +6880,7 @@ enum AppStrings {
     'brGroupScattering': '살포',
     'brGroupTexture': '질감',
     'brGroupCorrection': '보정',
+    'brGroupInAndOut': '시작과 끝',
     'brDetailTitle': '브러시 상세',
     'brResetHeldBrush': '브러시를 초기 설정으로 초기화',
     'brShowInPanel': '패널에 보이기',
@@ -8838,6 +8858,10 @@ enum AppStrings {
     'brPostBySpeed': 'Ajuster à la vitesse',
     'brPostByViewScale': 'Ajuster au zoom',
     'brPostBezier': 'Courbe de Bézier',
+    'brInLength': 'Début',
+    'brOutLength': 'Fin',
+    'brInOutSize': 'Taille aux extrémités',
+    'brInOutFlow': 'Débit aux extrémités',
     'brSharpenCorners': 'Angles vifs',
     'brGroupInk': 'Encre',
     'brGroupTip': 'Pointe',
@@ -8845,6 +8869,7 @@ enum AppStrings {
     'brGroupScattering': 'Dispersion',
     'brGroupTexture': 'Texture',
     'brGroupCorrection': 'Correction',
+    'brGroupInAndOut': 'Début et fin',
     'brDetailTitle': 'Détails de la brosse',
     'brResetHeldBrush': 'Rétablir les réglages initiaux de la brosse',
     'brShowInPanel': 'Afficher dans le panneau',
@@ -10654,6 +10679,10 @@ enum AppStrings {
     'brPostBySpeed': '按速度调整',
     'brPostByViewScale': '按缩放调整',
     'brPostBezier': '贝塞尔曲线',
+    'brInLength': '入笔',
+    'brOutLength': '收笔',
+    'brInOutSize': '大小最小值',
+    'brInOutFlow': '流量最小值',
     'brSharpenCorners': '锐化拐角',
     'brGroupInk': '墨水',
     'brGroupTip': '笔尖',
@@ -10661,6 +10690,7 @@ enum AppStrings {
     'brGroupScattering': '散布',
     'brGroupTexture': '纹理',
     'brGroupCorrection': '修正',
+    'brGroupInAndOut': '入笔和收笔',
     'brDetailTitle': '画笔详细设置',
     'brResetHeldBrush': '将画笔恢复为初始设置',
     'brShowInPanel': '在面板中显示',

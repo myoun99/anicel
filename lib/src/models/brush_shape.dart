@@ -5,6 +5,7 @@ import 'brush_input_source.dart';
 import 'brush_blend_mode.dart';
 import 'brush_dab.dart' show BrushDab, BrushDualView;
 import 'brush_correction.dart';
+import 'brush_in_and_out.dart';
 import 'brush_mixing_method.dart';
 import 'separable_blend_mode.dart';
 import 'brush_pressure_curve.dart';
@@ -88,6 +89,7 @@ class BrushShape {
     this.colorStretch = 0.0,
     this.adjustsFlowBySpacing = true,
     this.correction = const BrushCorrection(),
+    this.inAndOut = BrushInAndOut.none,
   });
 
   /// 🚨The finest [spacing] a brush may have: 1% of its size (유저
@@ -402,6 +404,10 @@ class BrushShape {
   /// brush's own (F-418-Q6).
   final BrushCorrection correction;
 
+  /// How the line this brush draws comes in and goes out — Clip Studio's
+  /// 入り抜き (brush-in-and-out).
+  final BrushInAndOut inAndOut;
+
   /// The curve by which [source] drives [target], if any.
   BrushPressureCurve? curveFor(
     BrushPressureTarget target,
@@ -504,6 +510,7 @@ class BrushShape {
       colorStretch: colorStretch,
       adjustsFlowBySpacing: adjustsFlowBySpacing,
       correction: correction,
+      inAndOut: inAndOut,
       rotationMode: rotationMode,
       angleJitter: angleJitter,
       scatterRadiusRatio: scatterRadiusRatio,
@@ -579,6 +586,7 @@ class BrushShape {
     double? colorStretch,
     bool? adjustsFlowBySpacing,
     BrushCorrection? correction,
+    BrushInAndOut? inAndOut,
   }) {
     return BrushShape(
       color: color ?? this.color,
@@ -627,6 +635,7 @@ class BrushShape {
       colorStretch: colorStretch ?? this.colorStretch,
       adjustsFlowBySpacing: adjustsFlowBySpacing ?? this.adjustsFlowBySpacing,
       correction: correction ?? this.correction,
+      inAndOut: inAndOut ?? this.inAndOut,
     );
   }
 
@@ -680,7 +689,8 @@ class BrushShape {
           other.paintDensity == paintDensity &&
           other.colorStretch == colorStretch &&
           other.adjustsFlowBySpacing == adjustsFlowBySpacing &&
-          other.correction == correction;
+          other.correction == correction &&
+          other.inAndOut == inAndOut;
 
   @override
   int get hashCode => Object.hashAll([
@@ -730,6 +740,7 @@ class BrushShape {
     colorStretch,
     adjustsFlowBySpacing,
     correction,
+    inAndOut,
   ]);
 
   @override
@@ -756,7 +767,7 @@ class BrushShape {
       'textureContrast: $textureContrast, '
       'textureScale: $textureScale, textureDensity: $textureDensity, '
       'textureMode: $textureMode, '
-      'correction: $correction)';
+      'correction: $correction, inAndOut: $inAndOut)';
 }
 
 /// The four pressure curves as a [BrushShape.curves] map.

@@ -19,6 +19,7 @@ import '../../services/brush_dab_coverage.dart';
 import '../../services/brush_dab_interpolator.dart';
 import '../../services/brush_dab_share.dart';
 import '../../services/brush_dab_tip_geometry.dart';
+import '../../services/brush_in_and_out_along.dart';
 import '../../services/brush_pixel_blend.dart';
 import '../../services/brush_pressure_dynamics.dart';
 import '../../services/brush_second_stroke.dart';
@@ -508,6 +509,27 @@ Uint8List rasterizeBrushStrokeSample(
   final swing = height * 0.18;
 
   const curveSteps = 512;
+  CanvasPoint curveAt(int step) {
+    final t = step / curveSteps;
+    return CanvasPoint(
+      x: margin + t * run,
+      y: height / 2 + math.sin(t * math.pi * 2) * swing,
+    );
+  }
+
+  // The brush's 入り抜き by the canvas's own measure, as long against the
+  // swatch's size as against the brush's.
+  final scale = baseSize / settings.size;
+  final inAndOut = BrushInAndOutAlong(
+    settings.inAndOut.copyWith(
+      inLength: settings.inAndOut.inLength * scale,
+      outLength: settings.inAndOut.outLength * scale,
+    ),
+    from: curveAt(0),
+    length: lengthThrough([
+      for (var step = 0; step <= curveSteps; step += 1) curveAt(step),
+    ]),
+  );
   double? previousX;
   double? previousY;
   var pendingDistance = double.infinity;
@@ -519,8 +541,10 @@ Uint8List rasterizeBrushStrokeSample(
   );
   for (var step = 0; step <= curveSteps; step += 1) {
     final t = step / curveSteps;
-    final x = margin + t * run;
-    final y = height / 2 + math.sin(t * math.pi * 2) * swing;
+    final point = curveAt(step);
+    final x = point.x;
+    final y = point.y;
+    inAndOut.goTo(point);
     if (previousX != null && previousY != null) {
       final dx = x - previousX;
       final dy = y - previousY;
@@ -547,7 +571,7 @@ Uint8List rasterizeBrushStrokeSample(
     // ACCUMULATED swatch once, at the end — on the dab it would not cap
     // anything, and the preview would go on darkening past the setting
     // exactly the way the canvas did.
-    final curved = applyBrushInputDynamics(
+    final read = applyBrushInputDynamics(
       BrushDab(
         center: CanvasPoint(x: x, y: y),
         color: 0xFF000000,
@@ -579,6 +603,7 @@ Uint8List rasterizeBrushStrokeSample(
       ),
       shape: settings.shape,
     );
+    final curved = inAndOut.taper([read]).single;
     // The curve's own heading here: the canvas reads the pen's last move,
     // and its opening dab waits for the first (H43) — which is this.
     final heading = strokeDirectionDegrees(

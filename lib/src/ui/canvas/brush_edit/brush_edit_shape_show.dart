@@ -315,6 +315,7 @@ class _BrushEditShapeShow implements ShapeShow {
         waypoints.first,
         dice: Object.hashAll(laying.path.points),
         pressure: laying.path.pressure,
+        length: lengthThrough(waypoints),
       );
       _state._overlay._overlayModel.dropStaged();
       _rasterHolds = null;

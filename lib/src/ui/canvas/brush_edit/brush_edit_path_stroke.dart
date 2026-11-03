@@ -67,6 +67,7 @@ class _BrushEditPathStroke {
       waypoints.first,
       dice: Object.hashAll(path),
       pressure: pressure,
+      length: lengthThrough(waypoints),
     );
     for (final point in waypoints.skip(1)) {
       stroke.advanceStrokeTo(point);

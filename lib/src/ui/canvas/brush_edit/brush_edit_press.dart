@@ -408,9 +408,10 @@ class _BrushEditPress {
         _state._stroke.advanceStrokeTo(locked);
       }
     }
-    // The whole line is down now, and its 後補正 lays it again smoothed
-    // (F-418-Q7) — before the commit reads the tiles.
-    _state._stroke.postCorrect();
+    // The whole line is down now, and it is laid again where its 後補正
+    // smooths it (F-418-Q7) or its 抜き takes its end out
+    // (brush-in-and-out-Q2) — before the commit reads the tiles.
+    _state._stroke.layAgainAtLift();
 
     final hadDabs = _state._collectedDabs.isNotEmpty;
     var landed = false;

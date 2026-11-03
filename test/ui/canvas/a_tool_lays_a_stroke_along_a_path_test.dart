@@ -9,6 +9,7 @@ import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
+import 'package:anicel/src/models/brush_in_and_out.dart';
 import 'package:anicel/src/models/brush_shape.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
@@ -180,6 +181,32 @@ void main() {
       isNot(_look(plain.committed.single)),
       reason: "fixture: the hand's stroke was smoothed",
     );
+  });
+
+  testWidgets('it comes in and goes out as the hand\'s stroke through the '
+      'same points does once the pen lifts — its end known before it is '
+      'laid (入り抜き)', (tester) async {
+    final host = _Host();
+    await _pump(
+      tester,
+      host,
+      _brush(inAndOut: const BrushInAndOut(inLength: 30, outLength: 30)),
+    );
+
+    expect(host.show!.landStroke(corner), isTrue);
+    await tester.pump();
+    await _byMouse(tester, const [
+      Offset(10, 10),
+      Offset(100, 10),
+      Offset(100, 50),
+    ]);
+
+    expect(host.committed, hasLength(2));
+    final laid = host.committed.first;
+    expect(_look(laid), _look(host.committed.last));
+    final along = laid[laid.length ~/ 2].size;
+    expect(laid.first.size, lessThan(along), reason: 'it came in');
+    expect(laid.last.size, lessThan(along), reason: 'it went out');
   });
 
   testWidgets('⛔a cancelled stroke leaves no line behind to smooth: the '
@@ -898,6 +925,7 @@ BrushEditCanvasInputSettings _brush({
   double? stabilizer,
   double postStrength = 0,
   BrushTipRotationMode rotation = BrushTipRotationMode.fixed,
+  BrushInAndOut inAndOut = BrushInAndOut.none,
 }) => BrushToolState.defaults
     .copyWith(
       size: 6,
@@ -909,6 +937,7 @@ BrushEditCanvasInputSettings _brush({
         postBySpeed: false,
       ),
       rotationMode: rotation,
+      inAndOut: inAndOut,
     )
     .toInputSettings();
 

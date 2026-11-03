@@ -1,6 +1,7 @@
 import '../../models/brush_anti_alias.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/brush_correction.dart';
+import '../../models/brush_in_and_out.dart';
 import '../../models/separable_blend_mode.dart';
 import '../../models/brush_input_source.dart';
 import '../../models/brush_mixing_method.dart';
@@ -364,6 +365,7 @@ class BrushToolState {
     CanvasShapeKind fillShape = CanvasShapeKind.rect,
     CanvasShapeKind drawShape = CanvasShapeKind.rect,
     BrushCorrection correction = const BrushCorrection(),
+    BrushInAndOut inAndOut = BrushInAndOut.none,
     BrushBlendMode blendMode = BrushBlendMode.color,
     BrushAntiAlias antiAlias = BrushAntiAlias.high,
     BrushBlendMode fillBlendMode = BrushBlendMode.color,
@@ -420,6 +422,7 @@ class BrushToolState {
       fillShape: fillShape,
       drawShape: drawShape,
       correction: correction,
+      inAndOut: inAndOut,
       blendMode: blendMode,
       antiAlias: antiAlias,
       fillBlendMode: fillBlendMode,
@@ -544,6 +547,7 @@ class BrushToolState {
     CanvasShapeKind? fillShape,
     CanvasShapeKind? drawShape,
     BrushCorrection? correction,
+    BrushInAndOut? inAndOut,
     BrushBlendMode? blendMode,
     BrushAntiAlias? antiAlias,
     BrushBlendMode? fillBlendMode,
@@ -606,6 +610,7 @@ class BrushToolState {
         blendMode: blendMode ?? BrushBlendMode.color,
         antiAlias: antiAlias ?? BrushAntiAlias.high,
         correction: correction ?? const BrushCorrection(),
+        inAndOut: inAndOut ?? BrushInAndOut.none,
       ),
       tool: tool ?? CanvasTool.brush,
       selectShape: selectShape ?? CanvasShapeKind.rect,
@@ -654,14 +659,20 @@ class BrushToolState {
     textureBrightness: clampSignedUnit(s.textureBrightness),
     textureContrast: clampSignedUnit(s.textureContrast),
     correction: s.correction.copyWith(
-      stabilization: clampCorrection(
+      stabilization: clampUpTo(
         s.correction.stabilization,
         BrushCorrection.maxStabilization,
       ),
-      postStrength: clampCorrection(
+      postStrength: clampUpTo(
         s.correction.postStrength,
         BrushCorrection.maxPostStrength,
       ),
+    ),
+    inAndOut: s.inAndOut.copyWith(
+      inLength: clampUpTo(s.inAndOut.inLength, BrushInAndOut.maxLength),
+      outLength: clampUpTo(s.inAndOut.outLength, BrushInAndOut.maxLength),
+      sizeMinimum: clampUnit(s.inAndOut.sizeMinimum),
+      flowMinimum: clampUnit(s.inAndOut.flowMinimum),
     ),
   );
 
@@ -763,6 +774,10 @@ class BrushToolState {
 
   /// How this brush corrects its line — see [BrushShape.correction].
   BrushCorrection get correction => shape.correction;
+
+  /// How this brush's line comes in and goes out — see
+  /// [BrushShape.inAndOut].
+  BrushInAndOut get inAndOut => shape.inAndOut;
   double get scatterRadiusRatio => shape.scatterRadiusRatio;
   int get scatterCount => shape.scatterCount;
   bool get scatterBothAxes => shape.scatterBothAxes;
@@ -1263,6 +1278,7 @@ class BrushToolState {
     CanvasShapeKind? fillShape,
     CanvasShapeKind? drawShape,
     BrushCorrection? correction,
+    BrushInAndOut? inAndOut,
     BrushBlendMode? fillBlendMode,
     BrushBlendMode? cutStampBlendMode,
     BrushBlendMode? shapeBlendMode,
@@ -1336,6 +1352,7 @@ class BrushToolState {
           blendMode: blendMode,
           antiAlias: antiAlias,
           correction: correction,
+          inAndOut: inAndOut,
         ),
       ),
       tool: tool ?? this.tool,
@@ -1514,8 +1531,9 @@ class BrushToolState {
     return value.clamp(0.05, 10.0).toDouble();
   }
 
-  /// Clamps a correction value — the 손떨림 보정, the 후보정 — into 0..[max].
-  static double clampCorrection(double value, double max) {
+  /// Clamps a value on a 0..[max] scale — the 손떨림 보정, the 후보정, the
+  /// 入り抜き's lengths.
+  static double clampUpTo(double value, double max) {
     if (!value.isFinite) {
       return 0.0;
     }
