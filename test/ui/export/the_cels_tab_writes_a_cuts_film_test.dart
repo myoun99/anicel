@@ -20,6 +20,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track.dart';
@@ -74,14 +75,17 @@ void main() {
     ],
   );
 
-  /// Cuts 301 and 302, each a KEY row A with two cels.
-  EditorSessionManager film() => inkEveryCel(
+  /// Cuts 301 and 302, each a KEY row A with two cels — on [paper].
+  EditorSessionManager film({
+    ProjectBackground paper = ProjectBackground.defaultBackground,
+  }) => inkEveryCel(
     EditorSessionManager(
       initialProject: Project(
         id: const ProjectId('project'),
         name: 'Project',
         cameraSize: const CanvasSize(width: 32, height: 18),
         createdAt: DateTime.utc(2026),
+        background: paper,
         tracks: [
           Track(
             id: const TrackId('track'),
@@ -287,7 +291,15 @@ void main() {
       '(I-152: 「색처리든 뭐든 gif에대한 세부설정가능한거 두고싶어」)', (
     tester,
   ) async {
-    final session = film();
+    // A film lays the paper (export-film-preview-is-not-the-film-Q1, 유저
+    // 2026-11-04: 「깐다 — 카메라 크기와 같게」): the ground the cels leave
+    // is clear only where the paper is none.
+    final session = film(
+      paper: const ProjectBackground.color(
+        ProjectBackground.defaultPaperArgb,
+        none: true,
+      ),
+    );
     addTearDown(session.dispose);
     draw(session);
 
