@@ -17,6 +17,7 @@ import '../../helpers/cel_photo_fixture.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/the_file_itself.dart';
+import '../../helpers/whole_carry.dart';
 
 /// I-97 B2 — the sheets' media images (the logo, a cover's picture, the
 /// photos on their ink) are read THROUGH THE PROJECT, AS LARGE AS SHOWN:
@@ -184,12 +185,12 @@ void main() {
     test('🚨a picture is of one carry: carried anew, the path is read again '
         'and the old picture is not stood in — an undo shows it again, and '
         'a carry that cannot be read refuses only itself (F-550-Q3)', () async {
-      var carry = (poolPath: 'a', token: 'first');
+      var carry = wholeCarry('a', 'first');
       makeCache(carryFor: (_) => carry);
       addTearDown(cache.dispose);
       final first = await hold('a', 4);
 
-      carry = (poolPath: 'a', token: 'anew');
+      carry = wholeCarry('a', 'anew');
       expect(cache.imageFor('a', width: 4), isNull, reason: 'not the first');
       await pumpEventQueue();
       expect(reads.asked.last, (path: 'a', width: 4));
@@ -198,7 +199,7 @@ void main() {
       await pumpEventQueue();
       expect(reads.asked, hasLength(2), reason: 'the new carry is refused');
 
-      carry = (poolPath: 'a', token: 'first');
+      carry = wholeCarry('a', 'first');
       expect(identical(cache.imageFor('a', width: 4), first), isTrue);
       cache.imageFor('a', width: 8);
       await pumpEventQueue();

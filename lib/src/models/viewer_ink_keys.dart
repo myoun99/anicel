@@ -19,6 +19,8 @@ import 'track_id.dart';
 /// belongs to a file the project CARRIES, so its keys carry that carry's
 /// name ([MediaAsset.carriedAs]): minted whole, it goes where the carry
 /// goes — a relink keeps the ink, a carry made again starts on blank paper.
+/// 🗣️F-550-Q4 (유저 2026-11-04: 「빈 종이로 시작(지금대로)」): so does a file
+/// imported again and taken as it is now — an undo brings its ink back.
 const ProjectId viewerInkProjectId = ProjectId('viewer-ink');
 const TrackId viewerInkTrackId = TrackId('viewer-ink');
 const CutId viewerInkCutId = CutId('viewer-ink');

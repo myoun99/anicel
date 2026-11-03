@@ -196,6 +196,40 @@ void main() {
       expect(session.repository.requireProject().mediaAssets, pool);
       expect(session.historyManager.undoCount, steps);
     });
+
+    testWidgets('a file that holds what the pool carries already is left as it '
+        'is — no second copy, no step; one as long but of other bytes is '
+        'carried anew', (tester) async {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      final paths = [
+        for (final name in ['same.wav', 'other.wav'])
+          normalizedMediaPath('${tempDir.path}/$name'),
+      ];
+      await tester.runAsync(() async {
+        for (final path in paths) {
+          await File(path).writeAsBytes(List<int>.filled(3000, 1));
+        }
+        await session.mediaPool.importMediaFiles(paths, copyIntoProject: true);
+        await File(paths[1]).writeAsBytes([
+          ...List<int>.filled(2999, 1),
+          2,
+        ]);
+      });
+      final before = [for (final path in paths) carryIn(session, path)];
+      final steps = session.historyManager.undoCount;
+
+      final anew = await tester.runAsync(
+        () => session.mediaPool.carryAnew(paths),
+      );
+
+      expect(anew, {paths[1]}, reason: 'its last byte, not its length');
+      expect(carryIn(session, paths[0]), before[0]);
+      expect(carryIn(session, paths[1]), isNot(before[1]));
+      expect(session.historyManager.undoCount, steps + 1);
+    });
   });
 
   group('the rows that show it', () {
@@ -402,10 +436,14 @@ void main() {
         .widget<Text>(find.byKey(ValueKey<String>('import-resolution-$path')))
         .data!;
 
-    Future<void> pressImport(WidgetTester tester) async {
+    Future<void> pressImport(
+      WidgetTester tester,
+      EditorSessionManager session,
+    ) async {
       await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
       await pumpPastTheWaitWindow(tester);
       await tester.pumpAndSettle();
+      session.playbackRig.prerenderScheduler.cancel();
     }
 
     testWidgets('🗣️a carried file picked again: the window shows the FILE, '
@@ -426,7 +464,7 @@ void main() {
         '16×16',
         reason: 'the file as it is, not the 8×8 the pool holds',
       );
-      await pressImport(tester);
+      await pressImport(tester, session);
 
       expect(carryIn(session, path), isNot(before));
       expect(
@@ -457,7 +495,7 @@ void main() {
       await openWindow(tester, session, path, fromThePool: true);
       await settle(tester, () => resolutionOf(tester, path) != '');
       expect(resolutionOf(tester, path), '8×8');
-      await pressImport(tester);
+      await pressImport(tester, session);
 
       expect(carryIn(session, path), before);
       expect(middleOf(session, cutId, row), redPixel);
@@ -509,7 +547,7 @@ void main() {
         reason: 'what plays is the file too, not the pool\'s copy',
       );
 
-      await pressImport(tester);
+      await pressImport(tester, session);
       final peaks = await tester.runAsync(
         () => session.audioConformStore.ensurePeaksFor(path),
       );
@@ -540,7 +578,7 @@ void main() {
       await tester.runAsync(() => writeSolidPng(tempDir, 'clip.gif'));
 
       await openWindow(tester, session, path);
-      await pressImport(tester);
+      await pressImport(tester, session);
 
       expect(importWarningsButton, findsOneWidget);
       final notice = await openImportWarnings(tester);
