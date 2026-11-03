@@ -238,7 +238,8 @@ class ImportLanding {
       _project.repository.requireProject(),
     );
     final usedCutIds = {
-      for (final track in _project.repository.requireProject().tracks)
+      for (final track
+          in _project.repository.requireProject().tracksOfEveryTimeline)
         for (final cut in track.cuts) cut.id.value,
     };
     return ImportIdMint(

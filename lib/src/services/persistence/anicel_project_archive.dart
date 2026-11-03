@@ -65,6 +65,21 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v33 (2026-11-03, I-150 — 유저: 「새로운 타임라인을 만들수있음」): a
+/// project holds its TIMELINES (`Project.timelines` — each its tracks and
+/// its trailing gap) and says which one is open (`currentTimeline`), where
+/// its one set of tracks and its trailing gap stood right under it. A v32
+/// build finds no `tracks` there and fails the open on the cast, naming
+/// nothing a person could act on — so the bump refuses the file up front
+/// instead, as a newer Anicel's ([decodeAnicelProjectDocument]).
+///
+/// ⛔The older shape is not read (the save law, and the save lane's word on
+/// this one), and the floor rose with it ([anicelOldestReadFormatVersion]).
+/// One that has to open is carried over by hand: its `tracks` and
+/// `trailingFrames` go into one timeline, `timelines: [{id: {value:
+/// timeline-1}, number: 1, tracks, trailingFrames}]`, beside
+/// `currentTimeline: {value: timeline-1}`.
+///
 /// v32 (2026-11-03, I-151 — 유저: 「출력창, 셀 탭에 영상도 출력하는 기능
 /// 추가」): the Cels tab writes a cut's film as one of the cut's documents,
 /// so a film turned off on its list is kept in the project's export
@@ -496,7 +511,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 32;
+const int anicelFormatVersion = 33;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).
@@ -523,7 +538,9 @@ const int anicelFormatVersion = 32;
 /// 28: a key's one handle and its mirror are no longer read (v28 above).
 /// 29: a cel blob that does not say whether it shows anything is no longer
 /// read (v29 above).
-const int anicelOldestReadFormatVersion = 29;
+/// 33: a project's tracks and trailing gap right under it, in no timeline,
+/// are no longer read (v33 above).
+const int anicelOldestReadFormatVersion = 33;
 
 /// A project document the format numbers refuse — saved by a NEWER Anicel,
 /// or in a format older than [anicelOldestReadFormatVersion] — with the
@@ -1221,7 +1238,7 @@ AnicelArchiveContents parseAnicelArchiveBytes(Uint8List bytes) {
 /// the same tree that could drift from this one.
 Set<String> projectMediaPaths(Project project) {
   final paths = <String>{for (final asset in project.mediaAssets) asset.path};
-  for (final track in project.tracks) {
+  for (final track in project.tracksOfEveryTimeline) {
     for (final layer in track.seLayers) {
       for (final clip in layer.audioClips) {
         paths.add(clip.filePath);

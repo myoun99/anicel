@@ -44,7 +44,7 @@ String? conteInkRowIdOf(BrushFrameKey key) =>
 /// Every block [project] has written on, by its cut and its handwriting id
 /// — what a loaded row entry must still name.
 Set<(CutId, String)> writtenConteBlocks(Project project) => {
-  for (final track in project.tracks)
+  for (final track in project.tracksOfEveryTimeline)
     for (final cut in track.cuts)
       for (final layer in cut.layers)
         for (final exposure in layer.timeline.values)

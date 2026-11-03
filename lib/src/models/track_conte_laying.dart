@@ -55,7 +55,7 @@ Set<LayerId> conteFillsGiven(Project? before, Project? after) {
   }
   final was = _cutsById(before);
   final given = <LayerId>{};
-  for (final track in after.tracks) {
+  for (final track in after.tracksOfEveryTimeline) {
     for (final cut in track.cuts) {
       final old = was[cut.id];
       if (identical(old, cut)) {
@@ -126,7 +126,7 @@ List<ConteHeadPut> conteHeadsPut(
 
 /// Every cut of [project] by its id — none for no project.
 Map<CutId, Cut> _cutsById(Project? project) => {
-  for (final track in project?.tracks ?? const <Track>[])
+  for (final track in project?.tracksOfEveryTimeline ?? const <Track>[])
     for (final cut in track.cuts) cut.id: cut,
 };
 
@@ -158,7 +158,7 @@ List<LayerLinkGroup> _withoutGoneFills(
     return groups;
   }
   final held = {
-    for (final track in project.tracks)
+    for (final track in project.tracksOfEveryTimeline)
       for (final cut in track.cuts)
         for (final layer in cut.layers)
           if (isConteFill(layer)) (cut.id, layer.id),

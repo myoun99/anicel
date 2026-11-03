@@ -40,9 +40,12 @@ void main() {
       final original = createDefaultProject();
       final json = original.toJson();
       // Strip the R9 key the way a pre-R9 writer would have.
-      for (final track
-          in (json['tracks'] as List).cast<Map<String, dynamic>>()) {
-        track.remove('fxEnabled');
+      for (final timeline
+          in (json['timelines'] as List).cast<Map<String, dynamic>>()) {
+        for (final track
+            in (timeline['tracks'] as List).cast<Map<String, dynamic>>()) {
+          track.remove('fxEnabled');
+        }
       }
 
       final reopened = Project.fromJson(

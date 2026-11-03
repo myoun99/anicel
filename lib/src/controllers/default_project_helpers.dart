@@ -1,15 +1,20 @@
+import 'dart:math' show max;
+
 import '../models/app_workspace_colors.dart';
+import '../models/canvas_size.dart';
+import '../models/cut.dart';
 import '../models/cut_id.dart';
+import '../models/layer_id.dart';
 import '../models/layer_section_defaults.dart';
 import '../models/project.dart';
 import '../models/project_frame_rate.dart';
 import '../models/project_id.dart';
+import '../models/project_timeline.dart';
 import '../models/track.dart';
 import '../models/track_id.dart';
 import '../services/editing/default_cut_helpers.dart';
 import '../services/editing/default_layer_helpers.dart';
-import '../services/editing/run_id_mint.dart' show mintFrameId;
-import '../services/project_tree_editor.dart' show updateLayerAnywhere;
+import '../services/editing/run_id_mint.dart';
 import 'timeline_controller.dart' show layerBornWithItsFirstCel;
 
 Project createDefaultProject({DateTime? createdAt}) {
@@ -44,38 +49,70 @@ Project createDefaultProject({DateTime? createdAt}) {
 /// above, a .tvpp opened as a project — stays at 24 as it was.
 Project newUntitledProject() {
   final now = DateTime.now().toUtc();
-  final bare = createDefaultProject(createdAt: now).copyWith(
+  return createDefaultProject(createdAt: now).copyWith(
     id: ProjectId('project-${now.microsecondsSinceEpoch}-${_minted++}'),
     pasteboardArgb: AppWorkspaceColors.settings.value.pasteboardArgb,
     frameRate: const ProjectFrameRate.ntsc(24),
+    tracks: [_newTrack(createDefaultTrack(), defaultLayerIdForSequence(1))],
   );
-  final rowA = defaultLayerIdForSequence(1);
-  return updateLayerAnywhere(
-        bare,
-        rowA,
-        (layer) => layerBornWithItsFirstCel(layer, mintFrameId(rowA)),
-      ) ??
-      bare;
 }
 
 int _minted = 0;
 
+/// A NEW TIMELINE for [project] (I-150): the track a new project opens with
+/// ([newUntitledProject] — 🗣️「새 프로젝트를 만드는것과 동일하게」), under
+/// ids [project] holds nowhere — the run's for its track and its cut, and
+/// [rowA] for its row — numbered after the last.
+///
+/// Its cut's canvas is [canvasSize], handed in by whoever stands on a cut:
+/// a new cut is the open cut's size (F-537), the default in a gap.
+ProjectTimeline newTimelineIn(
+  Project project, {
+  required LayerId rowA,
+  required CanvasSize canvasSize,
+}) => ProjectTimeline(
+  id: mintTimelineId(),
+  number: project.timelines.map((timeline) => timeline.number).reduce(max) + 1,
+  tracks: [
+    _newTrack(
+      createDefaultTrack(
+        trackId: mintTrackId(),
+        firstCut: _firstCut(
+          cutId: mintCutId(),
+          rowA: rowA,
+          canvasSize: canvasSize,
+        ),
+      ),
+      rowA,
+    ),
+  ],
+);
+
+/// [track] with its row [rowA] born with its first cel (F-211).
+Track _newTrack(Track track, LayerId rowA) => track.copyWith(
+  cuts: [
+    for (final cut in track.cuts)
+      cut.copyWith(
+        layers: [
+          for (final layer in cut.layers)
+            if (layer.id == rowA)
+              layerBornWithItsFirstCel(layer, mintFrameId(rowA))
+            else
+              layer,
+        ],
+      ),
+  ],
+);
+
 Track createDefaultTrack({
   TrackId trackId = const TrackId('default-track'),
   String name = 'Track 1',
+  Cut? firstCut,
 }) {
   return Track(
     id: trackId,
     name: name,
-    cuts: [
-      createDefaultCut(
-        cutId: const CutId('default-cut-1'),
-        // Bare numbers, the sheet convention (UI-R7 #3): cuts are '1',
-        // '2', … — displays add no prefix.
-        name: '1',
-        layerId: defaultLayerIdForSequence(1),
-      ),
-    ],
+    cuts: [firstCut ?? _firstCut()],
     // The timesheet's SE rows are TRACK fixtures (global frame axis).
     seLayers: [
       createTrackSeLayer(trackId: trackId, slot: 1),
@@ -83,3 +120,17 @@ Track createDefaultTrack({
     ],
   );
 }
+
+/// The cut a track opens with: cut 「1」, its row A [rowA].
+Cut _firstCut({
+  CutId cutId = const CutId('default-cut-1'),
+  LayerId? rowA,
+  CanvasSize canvasSize = defaultCutCanvasSize,
+}) => createDefaultCut(
+  cutId: cutId,
+  // Bare numbers, the sheet convention (UI-R7 #3): cuts are '1',
+  // '2', … — displays add no prefix.
+  name: '1',
+  layerId: rowA ?? defaultLayerIdForSequence(1),
+  canvasSize: canvasSize,
+);

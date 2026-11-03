@@ -1184,7 +1184,11 @@ class ProjectFileDoor {
   /// through the rebuild's own clamp. And the tools, as they were.
   void _standWhereItWasSaved(ProjectResume resume, Project project) {
     final savedCut = resume.cutId;
-    if (savedCut != null && cutPositionOf(project, savedCut) != null) {
+    // On the open timeline: the cut stood on is one of its (I-150).
+    if (savedCut != null &&
+        project.tracks.any(
+          (track) => track.cuts.any((cut) => cut.id == savedCut),
+        )) {
       _timeline.editingSession.setActiveCutId(savedCut);
     }
     _controllers.rebuild(
@@ -1326,7 +1330,7 @@ Future<ProjectFileRead> readProjectFile(
 /// Every cut the project holds — what a loaded envelope's or timesheet's
 /// ink is checked against.
 Set<CutId> _everyCutId(Project project) => {
-  for (final track in project.tracks)
+  for (final track in project.tracksOfEveryTimeline)
     for (final cut in track.cuts) cut.id,
 };
 
@@ -1408,7 +1412,7 @@ bool _healStaleCelSizes(
   required BrushFrameStore store,
 }) {
   final cutSizes = {
-    for (final track in project.tracks)
+    for (final track in project.tracksOfEveryTimeline)
       for (final cut in track.cuts) cut.id: cut.canvasSize,
   };
   final healedCuts = <CutId>{};

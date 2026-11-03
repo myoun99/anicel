@@ -165,6 +165,7 @@ import 'session/layer_verbs.dart';
 import 'session/cut_verbs.dart';
 import 'session/rail_view.dart';
 import 'session/panel_view_memory.dart';
+import 'session/timeline_verbs.dart';
 import 'session/timeline_zoom_memory.dart';
 import 'session/range_selections.dart';
 import 'session/se_entries.dart';
@@ -1851,6 +1852,17 @@ class EditorSessionManager extends ChangeNotifier
     activeCut: _activeCutEdits,
     placement: cutPlacement,
     renderCaches: renderCaches,
+  );
+
+  // ── the timeline verbs: their own object, in their own file ─────────
+  //
+  // A collaborator (session/timeline_verbs.dart), named as the cut verbs
+  // are: `session.timelineVerbs.openTimeline(id)`.
+  late final TimelineVerbs timelineVerbs = TimelineVerbs(
+    project: this,
+    timeline: this,
+    changes: this,
+    layerIds: layerIds,
   );
 
   @override

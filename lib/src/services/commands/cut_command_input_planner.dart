@@ -714,7 +714,7 @@ class _ProjectIdSnapshot {
       layerIds: <String>{},
       linkGroupIds: {for (final group in project.linkRegistry.groups) group.id},
     );
-    for (final track in project.tracks) {
+    for (final track in project.tracksOfEveryTimeline) {
       for (final cut in track.cuts) {
         snapshot.includeCut(cut);
       }

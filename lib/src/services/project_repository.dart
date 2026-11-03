@@ -184,18 +184,19 @@ class ProjectRepository {
     if (rows.isEmpty) {
       return;
     }
-    updateProject((project) {
-      final tracks = mappedOrSame(project.tracks, (track) {
-        final cuts = mappedOrSame(
-          track.cuts,
-          (cut) => cutWithoutConteFills(cut, rows),
-        );
-        return identical(cuts, track.cuts) ? track : track.copyWith(cuts: cuts);
-      });
-      return identical(tracks, project.tracks)
-          ? project
-          : project.copyWith(tracks: tracks);
-    });
+    updateProject(
+      (project) => project.withTracksOfEveryTimeline(
+        (tracks) => mappedOrSame(tracks, (track) {
+          final cuts = mappedOrSame(
+            track.cuts,
+            (cut) => cutWithoutConteFills(cut, rows),
+          );
+          return identical(cuts, track.cuts)
+              ? track
+              : track.copyWith(cuts: cuts);
+        }),
+      ),
+    );
   }
 
   /// Takes off each head of [heads] — heads the structure put on rows that

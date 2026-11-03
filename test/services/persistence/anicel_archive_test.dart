@@ -309,14 +309,24 @@ void main() {
   // build reads none of the words and its next save writes the cut back
   // without them, nothing said — so a file this build writes says a number
   // a v30 build refuses as a newer Anicel's. No older shape went for it, so
-  // a v30 file is read here.
+  // a v30 file was read here, until format 32's floor.
   test('🚨a file that may hold a right memo says a format a v30 build '
-      'refuses as newer, and a v30 file opens', () {
+      'refuses as newer', () {
     expect(anicelFormatVersion, greaterThan(30));
+  });
+
+  // I-150 (format 32): a project holds its timelines, where a v31 file has
+  // its one set of tracks right under the project — a shape this build no
+  // longer reads, so it is refused by its number rather than at the cast;
+  // and a file this build writes says a number a v31 build refuses as a
+  // newer Anicel's.
+  test('🚨a v31 file is refused by its number — its tracks stand in no '
+      'timeline', () {
     expect(
-      decodeAnicelProjectDocument(documentSaying(30)).project,
-      isNotNull,
+      () => decodeAnicelProjectDocument(documentSaying(31)),
+      refusesNaming('format 31,'),
     );
+    expect(anicelFormatVersion, greaterThan(31));
   });
 
   test('a newer formatVersion refuses to load with a clear error', () {

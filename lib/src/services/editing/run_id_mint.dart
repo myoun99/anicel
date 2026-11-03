@@ -1,6 +1,8 @@
 import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
+import '../../models/timeline_id.dart';
+import '../../models/track_id.dart';
 
 /// A drawing id no other in this run has — for every project open in it
 /// (I-7), and for a project being MADE before any session holds it (a
@@ -31,6 +33,16 @@ FrameId mintFrameId(LayerId layerId) =>
 /// drawings' ids the run's ([mintFrameId]) and the conte's handwriting ids
 /// (`StoryboardCursor.conteInkIdFor`).
 CutId mintCutId() => CutId('cut-${_nextInRun()}');
+
+/// A timeline id no other in this run has, from the same count (I-150).
+TimelineId mintTimelineId() => TimelineId('timeline-${_nextInRun()}');
+
+/// A track id no other in this run has, from the same count (I-150).
+///
+/// A new timeline's track is its own: a cel's picture is kept under its
+/// track's id with the rest of its key, and so are the track's own SE rows
+/// and transition row, which are named after it.
+TrackId mintTrackId() => TrackId('track-${_nextInRun()}');
 
 /// The count advanced, as the tail of an id: the wall clock, then the
 /// count ([mintFrameId]'s warning says which of the two is the identity).
