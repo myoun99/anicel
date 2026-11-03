@@ -87,7 +87,8 @@ import '../models/storyboard_timeline_layout.dart';
 import '../services/command.dart' show WorkAhead;
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/link_mirror.dart' show headMirrorRows;
-import '../services/audio/audio_conform_runner.dart' show runConformHere;
+import '../services/audio/audio_conform_runner.dart'
+    show conformingInto, resamplingInto, runConformHere;
 import '../native/qa_audio_device.dart' show audioDeviceUnlessTesting;
 import '../native/qa_native_engine.dart';
 import 'canvas/tile_picture_budget.dart';
@@ -1808,9 +1809,8 @@ class EditorSessionManager extends ChangeNotifier
               // short-circuit before any decode, so this stays cheap.
               runner: underFlutterTest
                   ? (request) => Future.value(runConformHere(request))
-                  : null,
-              placeForPlayback: (floats) =>
-                  audioDeviceUnlessTesting()?.newSamples(floats),
+                  : conformingInto(audioDeviceUnlessTesting),
+              resampleRunner: resamplingInto(audioDeviceUnlessTesting),
             ))
         // The store answers when a conform lands or is let go, which is
         // exactly when the pool's size column stops being true.
