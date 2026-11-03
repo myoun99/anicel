@@ -922,15 +922,6 @@ img.Image _gifPictureWithClear(
   _Gif gif,
 ) {
   final count = clear.length;
-  if (laid == 0) {
-    return img.Image.fromBytes(
-      width: gif.width,
-      height: gif.height,
-      bytes: Uint8List(count).buffer,
-      numChannels: 1,
-      palette: img.PaletteUint8(1, 4),
-    );
-  }
   final among = Uint8List(laid * 3);
   for (var pixel = 0, target = 0; pixel < count; pixel += 1) {
     if (clear[pixel] == 0) {

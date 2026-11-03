@@ -395,15 +395,19 @@ void main() {
       );
     });
 
-    test('a frame left all clear is all the clear colour', () async {
-      final pixels = pixelsOf(
-        await written(
-          'nothing.gif',
-          await frame(const ui.Color(0x00000000)),
-          alpha: true,
-        ),
-      );
-      expect({for (final p in pixels) p.$4}, {0});
+    test('a frame left all clear is all the clear colour, whichever way '
+        'the palette is found among no colours', () async {
+      for (final reduction in ExportGifReduction.values) {
+        final pixels = pixelsOf(
+          await written(
+            'nothing-${reduction.name}.gif',
+            await frame(const ui.Color(0x00000000)),
+            alpha: true,
+            settings: ExportGifSettings(reduction: reduction),
+          ),
+        );
+        expect({for (final p in pixels) p.$4}, {0}, reason: reduction.name);
+      }
     });
 
     test('🚨the clear colour is an entry of its own beside a full palette — '
