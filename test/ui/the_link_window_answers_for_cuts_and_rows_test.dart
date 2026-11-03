@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RendererBinding;
@@ -19,6 +21,7 @@ import 'storyboard_cut_block_probe.dart';
 import '../helpers/pill_row_clipboard.dart';
 import '../helpers/named_finders.dart';
 import '../helpers/app_icon_button_probe.dart';
+import '../helpers/painted_glyph_boxes.dart';
 import '../helpers/storyboard_host.dart';
 import '../helpers/timeline_host.dart';
 
@@ -433,6 +436,33 @@ void main() {
       expect(find.text(elsewhere), findsOneWidget);
     });
 
+    testWidgets('a name too long for its band narrows into what its badges '
+        'leave it, and never runs under them', (tester) async {
+      final (:s, :source, elsewhere: _) = apart(synced: true);
+      s.cutVerbs.createLinkedCutFromActiveCut();
+      s.cutVerbs.renameCuts({source: 'W' * 60});
+      await pumpStoryboardHostOn(tester, s, surface: roomy, pixelsPerFrame: 12);
+      final painter = cutBlocksPainter(tester);
+      final block = painter.blockForCut(source)!;
+      final squares = painter.badgeSquaresOf(block);
+      expect(
+        [for (final (kind, _) in squares) kind],
+        [LinkKind.link, LinkKind.sync],
+        reason: '⛔전제',
+      );
+
+      final canvas = _WordBoxes();
+      painter.paint(canvas, tester.getSize(cutBlocksFinder()));
+      final name = [
+        for (final box in canvas.boxes)
+          if (block.topBand.contains(box.center)) box,
+      ];
+      expect(name, isNotEmpty, reason: '⛔전제: the name is painted');
+      for (final box in name) {
+        expect(box.right, lessThanOrEqualTo(squares.first.$2.left + 0.01));
+      }
+    });
+
     testWidgets('a linked cut\'s name wears the link icon, which opens the '
         'window, whose button makes the cut independent', (tester) async {
       final s = session();
@@ -546,4 +576,13 @@ void main() {
       expect(far, findsOneWidget);
     });
   });
+}
+
+/// [PaintedGlyphBoxes], and the box a word drawn from its bake stands in.
+class _WordBoxes extends PaintedGlyphBoxes {
+  @override
+  void drawImageRect(ui.Image image, Rect src, Rect dst, Paint paint) =>
+      boxes.add(
+        MatrixUtils.transformRect(Matrix4.fromFloat64List(getTransform()), dst),
+      );
 }
