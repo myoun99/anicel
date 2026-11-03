@@ -56,10 +56,18 @@ PartedLinkGroup partLinkGroup(
   );
 }
 
-/// The cels a parted group's copiers start from ([partLinkGroup]) — taken
+/// One cel a copier starts from ([LinkPartCopies.take]): the key its
+/// picture is kept under, the copier's own key, and the copier's canvas.
+typedef LinkPartCopy = ({
+  BrushFrameKey from,
+  BrushFrameKey to,
+  CanvasSize canvasSize,
+});
+
+/// The cels a parted group's copiers start from ([partLinkGroup]) — named
 /// through each copier's keys while the table still links them to the kept
-/// cels, kept under those keys once it no longer does, and emptied again by
-/// an undo.
+/// cels, copied under those keys once it no longer does, and emptied again
+/// by an undo.
 final class LinkPartCopies {
   LinkPartCopies(this._store);
 
@@ -78,23 +86,25 @@ final class LinkPartCopies {
   /// being harmless the moment the user drew on the forked layer.
   ///
   /// ⛔It cannot become a [RetainedBytesCommand] instead: the answer is
-  /// not「report these bytes」, it is「do not hold them」. A redo re-reads
-  /// the pixels from the store on its way through execute anyway.
+  /// not「report these bytes」, it is「do not hold them」. A redo copies
+  /// again from the store on its way through execute anyway.
   final List<(BrushFrameKey, CanvasSize)> _kept = [];
 
-  /// [copiers]' cels as they read now — BEFORE the table changes, so their
-  /// keys still resolve to the kept cels. The caller holds them LOCALLY and
-  /// hands them to [keep] in the same call ([_kept]'s reason).
-  List<(BrushFrameKey, BitmapSurface)> take(
-    Project project,
-    Iterable<LayerLinkMember> copiers,
-  ) {
+  /// [copiers]' cels, each the key its picture is kept under now and the
+  /// copier's own key it goes to — named BEFORE the table changes, while a
+  /// copier's keys still resolve to the kept cels. Nothing is read: [keep]
+  /// hands each pair to the store, which copies in the tier the cel is kept
+  /// in ([BrushFrameStore.copyCel]). 🗣️Card `timeline-copy-thaws-every-cel`
+  /// (유저 2026-11-04): read as a use, every cel kept in the saved file
+  /// thawed hot to be copied.
+  List<LinkPartCopy> take(Project project, Iterable<LayerLinkMember> copiers) {
     final store = _store;
-    final taken = <(BrushFrameKey, BitmapSurface)>[];
+    final taken = <LinkPartCopy>[];
     if (store == null) {
       return taken;
     }
     for (final copier in copiers) {
+      final canvasSize = requireCut(project, copier.cutId).canvasSize;
       final row = requireLayer(
         project,
         cutId: copier.cutId,
@@ -108,22 +118,37 @@ final class LinkPartCopies {
           layerId: copier.layerId,
           frameId: frame.id,
         );
-        if (store.bakedSurfaceOrNull(key) case final surface?) {
-          taken.add((key, surface));
-        }
+        taken.add((
+          from: store.canonicalKeyOf(key),
+          to: key,
+          canvasSize: canvasSize,
+        ));
       }
     }
     return taken;
   }
 
-  /// [taken] kept under its keys — AFTER the table changed, when a copier's
-  /// keys resolve to itself, the first of its part. Surfaces are immutable:
-  /// sharing the object is a true copy-on-write fork.
-  void keep(List<(BrushFrameKey, BitmapSurface)> taken) {
+  /// [taken] copied — AFTER the table changed, when a copier's keys resolve
+  /// to itself, the first of its part. The copies an undo empties are the
+  /// keys that keep a picture now ([BrushFrameStore.celKeysOfCut]): a cel
+  /// whose source kept none was copied nothing.
+  void keep(List<LinkPartCopy> taken) {
     _kept.clear();
-    for (final (key, surface) in taken) {
-      _store!.storeBakedSurface(key, surface);
-      _kept.add((key, surface.canvasSize));
+    final store = _store;
+    if (store == null) {
+      return;
+    }
+    for (final (:from, :to, :canvasSize) in taken) {
+      store.copyCel(from, to, canvasSize: canvasSize);
+    }
+    final kept = {
+      for (final cut in {for (final copy in taken) copy.to.cutId})
+        ...store.celKeysOfCut(cut),
+    };
+    for (final (:to, :canvasSize, from: _) in taken) {
+      if (kept.contains(to)) {
+        _kept.add((to, canvasSize));
+      }
     }
   }
 

@@ -15,14 +15,15 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 import '../../helpers/cels_kept_in_a_file.dart';
+import '../../helpers/pill_row_clipboard.dart';
 
 /// 🗣️Card `timeline-copy-thaws-every-cel` (유저 2026-11-04: 「FU파일에서
 /// 타임라인복제해서 사용하려하는데, 메모리가 3000mb까지 폭증」): a copy
 /// made beside its source read every cel it copied as a use, so each one
 /// kept in the saved file thawed hot. A copy takes its source's picture in
 /// the tier the store keeps it in ([BrushFrameStore.copyCel]) — a
-/// duplicated block, row, cut and timeline, and a cel given a copy of its
-/// own (링크 독립).
+/// duplicated block, row, cut and timeline, and a cel or a row given cels
+/// of its own (링크 독립).
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late EditorSessionManager session;
@@ -45,20 +46,28 @@ void main() {
       ?.tiles[TileCoord(x: 0, y: 0)]
       ?.pixels;
 
+  /// The drawing kept in the saved file, and nothing else in the store — as
+  /// an opened project keeps it.
+  late void Function() keepTheDrawing;
+
   setUp(() {
     session = EditorSessionManager(initialProject: newUntitledProject());
     store = session.renderCaches.brushFrameStore;
     final cut = session.requireActiveCut;
     final row = session.activeLayer!;
     drawnRowAt = cut.layers.indexOf(row);
-    keepInAFile(store, {
-      keyOf(cut, row.id, row.frames.single.id): BitmapSurface(
-        canvasSize: cut.canvasSize,
-        tileSize: 256,
-        tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 256, pixels: ink)},
-      ),
-    });
-    expect(store.hotBakedBytes, 0, reason: 'fixture: kept, not hot');
+    final drawn = keyOf(cut, row.id, row.frames.single.id);
+    keepTheDrawing = () {
+      keepInAFile(store, {
+        drawn: BitmapSurface(
+          canvasSize: cut.canvasSize,
+          tileSize: 256,
+          tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 256, pixels: ink)},
+        ),
+      });
+      expect(store.hotBakedBytes, 0, reason: 'fixture: kept, not hot');
+    };
+    keepTheDrawing();
   });
   tearDown(() => session.dispose());
 
@@ -98,6 +107,24 @@ void main() {
     session.layerVerbs.duplicateActiveLayer();
     final cut = session.requireActiveCut;
     final copy = cut.layers.where((row) => !before.contains(row.id)).single;
+    expectThawsNothing(keyOf(cut, copy.id, copy.frames.single.id));
+  });
+
+  test('a row given cels of its own (링크 독립 of a row)', () {
+    final before = {for (final row in session.requireActiveCut.layers) row.id};
+    linkDuplicateActiveRow(session);
+    final linked = session.requireActiveCut.layers
+        .where((row) => !before.contains(row.id))
+        .single;
+    expect(session.layerVerbs.isLayerLinked(linked.id), isTrue);
+    // The board took the rows by value (F-161), reading the drawing.
+    keepTheDrawing();
+
+    session.layerVerbs.unlinkLayers([linked.id]);
+
+    expect(session.layerVerbs.isLayerLinked(linked.id), isFalse);
+    final cut = session.requireActiveCut;
+    final copy = cut.layers.firstWhere((row) => row.id == linked.id);
     expectThawsNothing(keyOf(cut, copy.id, copy.frames.single.id));
   });
 

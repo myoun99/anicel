@@ -851,7 +851,18 @@ void main() {
   /// (`edd34ba45`) names those two added and nothing gone. ⛔Not bundled to
   /// fit: the leaf, the bare row and the chain are three kinds of node, and
   /// the drawing and whether it still stands are two questions.
-  const wideSignatures = 456;
+  ///
+  /// ⚠️456 → 457 on 2026-11-04, named as the rule above asks (card
+  /// timeline-copy-thaws-every-cel, 유저 「타임라인복제 … 메모리가 3000mb까지
+  /// 폭증」): `copyBakedPictures` (five) is the ONE way a copy made beside
+  /// its source — a duplicated block, row, cut and timeline, and 링크 독립 —
+  /// hands its cels to the store's copy, where four sites each read the
+  /// picture as a use and thawed every kept cel. Its inputs are the store
+  /// that copies, the project that names the keys, the cels the copy
+  /// minted, and the rows they go from and to. 🔬`clean_code_diff` against
+  /// master (`fcee56de1`) names it added and nothing gone. ⛔Not bundled to
+  /// fit: the source's row and the copy's are two places.
+  const wideSignatures = 457;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -1220,7 +1231,12 @@ void main() {
   /// parting across timelines answers with too (I-150 ⑤d). 🔬
   /// `clean_code_diff` against master (`a90e3e9d5`) names it gone and
   /// nothing added.
-  const longBodies = 416;
+  ///
+  /// ⚠️416 → 415 on 2026-11-04, following one down: the cel board's folder
+  /// column handed its rows and lane to a method of their own (`5745769e0`,
+  /// I-153), landed beside ⑤d. 🔬`clean_code_diff` across that commit names
+  /// `ExportCelsBoardState._folderColumn` gone and nothing added.
+  const longBodies = 415;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
