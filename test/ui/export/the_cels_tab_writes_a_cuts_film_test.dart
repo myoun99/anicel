@@ -208,11 +208,20 @@ void main() {
       ),
       into: temp,
     );
+    final steps = <(int, int)>[];
+    state.debugOnProgress = (done, total) => steps.add((done, total));
 
     await tester.runAsync(state.export);
     await tester.pump();
 
     expect(filesWrittenUnder(temp), ['A1.png', 'A2.png', '_CUT301.gif']);
+    expect(
+      {for (final (_, total) in steps) total},
+      {4},
+      reason: 'the bar counts the two cels and the film\'s two frames',
+    );
+    expect(steps, containsAllInOrder([(2, 4), (3, 4), (4, 4)]));
+    expect(steps.last, (4, 4));
     final movie = img.decodeGif(
       File('${temp.path}/_CUT301.gif').readAsBytesSync(),
     )!;
@@ -336,6 +345,11 @@ void main() {
     expect(sound, findsOneWidget);
     expect(keyed('export-film-format-bitrate'), findsOneWidget);
     expect(state.debugSpecs.cels.videoAudio, isTrue);
+    expect(
+      keyed('export-film-format-kind'),
+      findsNothing,
+      reason: 'a film is a movie: no 동영상 · 이미지 to pick between',
+    );
 
     await pickFromExportList(
       tester,
@@ -382,6 +396,11 @@ void main() {
           widget is ExportAccordion && widget.title == AppText.strings.exAudio,
     );
     expect(sound, findsOneWidget, reason: 'LIVENESS — an MP4 asks it');
+    expect(
+      keyed('export-format-kind'),
+      findsOneWidget,
+      reason: 'LIVENESS — the Sequence tab writes movies and stills',
+    );
 
     await pickExportContainer(tester, ExportVideoContainer.gif);
     final state = tester.state<ExportDialogState>(find.byType(ExportDialog));

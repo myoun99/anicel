@@ -275,6 +275,51 @@ void main() {
       expect(find.byKey(const ValueKey<String>('export-format-file')),
           findsOneWidget);
     });
+
+    // I-151: the Cels tab's film is a movie and nothing else.
+    testWidgets('and a module of movies alone has none either — only the '
+        'containers', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ExportFormatModule(
+              selection: const ExportFormatSelection(),
+              capabilities: const ExportFormatCapabilities(
+                stills: [],
+                video: {
+                  ExportVideoContainer.mp4: [ExportVideoCodec.h264],
+                  ExportVideoContainer.gif: [ExportVideoCodec.gif],
+                },
+              ),
+              enabled: true,
+              onChanged: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byKey(const ValueKey<String>('export-format-kind')),
+          findsNothing);
+      expect(find.byKey(const ValueKey<String>('export-format-file')),
+          findsOneWidget);
+    });
+  });
+
+  test('🗣️a container with one way of packing says itself (I-152): 「GIF」, '
+      'where MP4 says its codec beside it', () {
+    expect(
+      ExportFormatModule.summarize(
+        const ExportFormatSelection(
+          container: ExportVideoContainer.gif,
+          videoCodec: ExportVideoCodec.gif,
+        ),
+      ),
+      'GIF',
+    );
+    expect(
+      ExportFormatModule.summarize(const ExportFormatSelection()),
+      'MP4 · H.264',
+    );
   });
 
   testWidgets('🚨BOTH channel chips are offered on a format with alpha — one '

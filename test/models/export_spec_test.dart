@@ -307,6 +307,39 @@ void main() {
       }
     });
 
+    test('🗣️I-151: the film\'s format and its sound are the cels spec\'s — an '
+        'MP4 with its sound by default, carried by the JSON once one moves, '
+        'and a movie however its JSON says otherwise', () {
+      const spec = CelsExportSpec();
+      expect(spec.videoFormat, const ExportFormatSelection());
+      expect(spec.videoAudio, isTrue);
+      expect(
+        spec.toJson().keys,
+        isNot(anyOf(contains('videoFormat'), contains('videoAudio'))),
+      );
+
+      const gif = ExportFormatSelection(
+        container: ExportVideoContainer.gif,
+        videoCodec: ExportVideoCodec.gif,
+      );
+      for (final one in [
+        spec.copyWith(videoFormat: gif),
+        spec.copyWith(videoAudio: false),
+      ]) {
+        expect(one, isNot(spec));
+        expect(one.hashCode, isNot(spec.hashCode));
+        expect(CelsExportSpec.fromJson(one.toJson()), one);
+      }
+
+      final still = const ExportFormatSelection(
+        kind: ExportMediaKind.still,
+      ).toJson();
+      expect(
+        CelsExportSpec.fromJson({'videoFormat': still}).videoFormat.kind,
+        ExportMediaKind.video,
+      );
+    });
+
     test('I-117: the conte is ONE file as a PDF or as a Photoshop document — '
         '「콘티용지탭 psd 출력시 … 한 파일안에 여러 페이지 그룹」 — and a '
         'file a page as any other picture', () {
