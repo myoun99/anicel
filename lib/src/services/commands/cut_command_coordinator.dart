@@ -70,6 +70,7 @@ import 'delete_layer_command.dart';
 import 'duplicate_cut_command.dart';
 import 'leave_sync_command.dart';
 import 'link_duplicate_layer_command.dart';
+import 'part_links_across_timelines_command.dart';
 import 'unlink_layer_command.dart';
 import 'rename_cut_command.dart';
 import 'update_cut_durations_command.dart';

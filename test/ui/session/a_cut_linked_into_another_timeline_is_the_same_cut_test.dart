@@ -756,6 +756,216 @@ void main() {
     expect(cutIn(s, 0, first).duration, made.duration);
   });
 
+  // 🗣️I-150-Q3 (유저 2026-11-03): 「일단 다른 타임라인끼리는 단순 겸용컷
+  // 작동안하게」 — a cut leaving its sync, a 겸용 it had where it stood is no
+  // 겸용 of the cuts it leaves.
+  group('a 동기컷 leaving its sync parts the 겸용 it had where it stood from '
+      'the cuts it leaves', () {
+    /// The 동기컷 in the second timeline made a 겸용 of the cut before it
+    /// there, and drawn on through its first row: the cut, that cut, the
+    /// row and its counterparts there and in the first timeline, and the
+    /// cel drawn and its picture.
+    ({
+      CutId made,
+      CutId here,
+      LayerId row,
+      LayerId inHere,
+      LayerId inFirst,
+      FrameId cel,
+      BitmapSurface picture,
+    })
+    linkedWhereItStands(EditorSessionManager s) {
+      final made = linkedIntoANewTimeline(s).id;
+      final here = projectOf(s).tracks.single.cuts.first.id;
+      s.cutCommandCoordinator.convertCutToLinked(
+        originCutId: here,
+        targetCutId: made,
+      );
+      standIn(s, cutIn(s, 1, made));
+      drawOnCurrentFrame(s);
+      final drawn = cutIn(s, 1, made);
+      final row = drawn.layers.first.id;
+      final registry = projectOf(s).linkRegistry;
+      LayerId? across(CutId to) =>
+          registry.counterpartIn(cutId: made, layerId: row, targetCutId: to);
+      final picture = pictureOf(s, drawn, drawn.layers.first.frames.last.id);
+      expect(
+        [across(here), across(first), picture],
+        everyElement(isNotNull),
+        reason: '⛔전제: a drawn row of the three',
+      );
+      return (
+        made: made,
+        here: here,
+        row: row,
+        inHere: across(here)!,
+        inFirst: across(first)!,
+        cel: drawn.layers.first.frames.last.id,
+        picture: picture!,
+      );
+    }
+
+    /// [cel] as [s] reads it on [row] of [cut], wherever [cut] stands.
+    BitmapSurface? pictureAt(
+      EditorSessionManager s,
+      CutId cut,
+      LayerId row,
+      FrameId cel,
+    ) {
+      final there = projectOf(s).timelines
+          .expand((timeline) => timeline.tracks)
+          .expand((track) => track.cuts)
+          .singleWhere((placed) => placed.id == cut);
+      return s.renderCaches.brushFrameStore.bakedSurfaceOrNull(
+        s.brushFrameKeyForCut(there, row, cel),
+      );
+    }
+
+    /// Every link group's rows in one timeline — no sync is left to join
+    /// two.
+    void expectNoLinkAcrossTimelines(EditorSessionManager s) {
+      final project = projectOf(s);
+      expect(project.linkRegistry.syncs, isEmpty, reason: '⛔전제');
+      final timelineOf = {
+        for (final timeline in project.timelines)
+          for (final track in timeline.tracks)
+            for (final cut in track.cuts) cut.id: timeline.id,
+      };
+      for (final group in project.linkRegistry.groups) {
+        expect(
+          {for (final member in group.members) timelineOf[member.cutId]},
+          hasLength(1),
+          reason: '${group.id}: ${group.members}',
+        );
+      }
+    }
+
+    test('by 동기 해제: the 겸용 there parts from the first timeline\'s cut, '
+        'each keeping the picture — one step, undone and done again', () {
+      final s = session();
+      final (:made, :here, :row, :inHere, :inFirst, :cel, :picture) =
+          linkedWhereItStands(s);
+      final depth = s.historyManager.undoCount;
+
+      s.cutVerbs.unsyncCut(made);
+
+      void expectParted() {
+        expectNoLinkAcrossTimelines(s);
+        expect(
+          [
+            pictureAt(s, here, inHere, cel),
+            pictureAt(s, first, inFirst, cel),
+            pictureAt(s, made, row, cel),
+          ],
+          [same(picture), same(picture), same(picture)],
+        );
+      }
+
+      expectParted();
+      expect(s.historyManager.undoCount, depth + 1);
+
+      s.historyManager.undo();
+      final registry = projectOf(s).linkRegistry;
+      expect(registry.syncOf(made)?.cuts, [first, made]);
+      expect(
+        registry.counterpartIn(
+          cutId: here,
+          layerId: inHere,
+          targetCutId: first,
+        ),
+        inFirst,
+        reason: 'one row of one cut again',
+      );
+      expect(pictureAt(s, first, inFirst, cel), same(picture));
+
+      s.historyManager.redo();
+      expectParted();
+    });
+
+    test('deleted: the 겸용 there parts from the first timeline\'s cut, '
+        'each keeping the picture — one step with the delete', () {
+      for (final batch in [false, true]) {
+        final s = session();
+        final (:made, :here, :row, :inHere, :inFirst, :cel, :picture) =
+            linkedWhereItStands(s);
+        final depth = s.historyManager.undoCount;
+
+        if (batch) {
+          s.cutCommandCoordinator.deleteCuts(cutIds: [made]);
+        } else {
+          s.cutCommandCoordinator.deleteCut(cutId: made);
+        }
+
+        expectNoLinkAcrossTimelines(s);
+        expect(
+          [pictureAt(s, here, inHere, cel), pictureAt(s, first, inFirst, cel)],
+          [same(picture), same(picture)],
+          reason: 'batch: $batch',
+        );
+        expect(s.historyManager.undoCount, depth + 1, reason: 'batch: $batch');
+
+        s.historyManager.undo();
+        expect(
+          projectOf(s).linkRegistry.counterpartIn(
+            cutId: here,
+            layerId: inHere,
+            targetCutId: first,
+          ),
+          inFirst,
+          reason: 'batch: $batch',
+        );
+        expect(projectOf(s).linkRegistry.syncOf(made)?.cuts, [first, made]);
+        expect(pictureAt(s, made, row, cel), same(picture));
+      }
+    });
+
+    test('one of three leaving, the 겸용 there parts from the other two, '
+        'which stay one cut', () {
+      final s = session();
+      final (:made, :here, row: _, :inHere, :inFirst, cel: _, picture: _) =
+          linkedWhereItStands(s);
+      s.timelineVerbs.addTimeline();
+      StoryboardToolbarPanelContext(s).pasteLinkedFrame();
+      final third = projectOf(s).tracks.single.cuts.last.id;
+      expect(
+        projectOf(s).linkRegistry.syncs.single.cuts,
+        [first, made, third],
+        reason: '⛔전제',
+      );
+      open(s, 1);
+
+      s.cutVerbs.unsyncCut(made);
+
+      final registry = projectOf(s).linkRegistry;
+      expect(registry.syncs.single.cuts, [first, third]);
+      expect(
+        registry.counterpartIn(
+          cutId: first,
+          layerId: inFirst,
+          targetCutId: third,
+        ),
+        isNotNull,
+        reason: 'the two are still one cut',
+      );
+      expect(
+        registry.counterpartIn(
+          cutId: here,
+          layerId: inHere,
+          targetCutId: first,
+        ),
+        isNull,
+      );
+      expect(
+        registry.counterpartIn(
+          cutId: here,
+          layerId: inHere,
+          targetCutId: third,
+        ),
+        isNull,
+      );
+    });
+  });
+
   test('linked into the timeline the sync stands in already, it is a 겸용 '
       'of the cut there — a sync stands in a timeline once', () {
     final s = session();

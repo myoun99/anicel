@@ -142,13 +142,15 @@ class _LinkCommands {
   /// 동기 해제 (I-150-Q6, 유저 2026-11-04 「동기 해제 = 독립 컷」): [cutId]
   /// leaves its 동기컷 ([LeaveSyncCommand]) and then every link of its rows,
   /// each as 독립시키기 unlinks one — an independent cut, every picture and
-  /// every sheet each part's own. ONE undo step. Nothing for a cut of its
-  /// own.
+  /// every sheet each part's own — and a 겸용 it had where it stood parts
+  /// from the cuts it leaves ([PartLinksAcrossTimelinesCommand]). ONE undo
+  /// step. Nothing for a cut of its own.
   void unsyncCut(CutId cutId) {
     final project = _coordinator.repository.requireProject();
     if (project.linkRegistry.syncOf(cutId) == null) {
       return;
     }
+    final groupIds = linkGroupsHolding(project.linkRegistry, {cutId});
     _coordinator.historyManager.runAsOneStep('Leave sync', () {
       _coordinator.historyManager.execute(
         LeaveSyncCommand(
@@ -160,6 +162,13 @@ class _LinkCommands {
       for (final layer in requireCut(project, cutId).layers) {
         unlinkLayer(cutId: cutId, layerId: layer.id);
       }
+      _coordinator.historyManager.execute(
+        PartLinksAcrossTimelinesCommand(
+          repository: _coordinator.repository,
+          brushFrameStore: _coordinator.brushFrameStore,
+          groupIds: groupIds,
+        ),
+      );
     });
   }
 

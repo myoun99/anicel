@@ -506,15 +506,22 @@ class _CutCommands {
   /// clear the track, and the replacement was indistinguishable from a
   /// real cut in the undo stack.
   void deleteCut({required CutId cutId}) {
-    _coordinator.historyManager.execute(
-      DeleteCutCommand(
-        repository: _coordinator.repository,
-        editingSession: _coordinator.editingSession,
-        cutId: cutId,
-        brushFrameStore: _coordinator.brushFrameStore,
-        sheetInkStores: _coordinator.sheetInkStores,
-      ),
+    final parting = _partingLinksOf({cutId});
+    final delete = DeleteCutCommand(
+      repository: _coordinator.repository,
+      editingSession: _coordinator.editingSession,
+      cutId: cutId,
+      brushFrameStore: _coordinator.brushFrameStore,
+      sheetInkStores: _coordinator.sheetInkStores,
     );
+    if (parting == null) {
+      _coordinator.historyManager.execute(delete);
+    } else {
+      _coordinator.historyManager.executeAsOneStep(delete.description, [
+        delete,
+        parting,
+      ]);
+    }
   }
 
   /// Deletes a batch of cuts as ONE undo step; emptying the track is
@@ -529,7 +536,23 @@ class _CutCommands {
           brushFrameStore: _coordinator.brushFrameStore,
           sheetInkStores: _coordinator.sheetInkStores,
         ),
+      ?_partingLinksOf(cutIds.toSet()),
     ]);
+  }
+
+  /// A 동기컷 deleted leaves its sync, so a 겸용 it had where it stood parts
+  /// from the sync's other cuts ([PartLinksAcrossTimelinesCommand]) — named
+  /// before [leaving] go. Null where none of them is a 동기컷.
+  Command? _partingLinksOf(Set<CutId> leaving) {
+    final registry = _coordinator.repository.requireProject().linkRegistry;
+    if (!leaving.any((cutId) => registry.syncOf(cutId) != null)) {
+      return null;
+    }
+    return PartLinksAcrossTimelinesCommand(
+      repository: _coordinator.repository,
+      brushFrameStore: _coordinator.brushFrameStore,
+      groupIds: linkGroupsHolding(registry, leaving),
+    );
   }
 
   /// Copies [sourceCutId] into [targetTrackId] at [index] — the track's end
