@@ -6,6 +6,7 @@ import 'conte/conte_ink_keys.dart';
 import 'cut.dart';
 import 'cut_id.dart';
 import 'cut_sync.dart';
+import 'envelope/cut_envelope_ink_keys.dart' show envelopeInkKeyOfCut;
 import 'layer.dart';
 import 'layer_effect.dart' show effectsWithRowsRenamed;
 import 'layer_id.dart';
@@ -209,12 +210,16 @@ Map<CutId, Cut> _cutsNamed(Project project, Set<CutId> ids) => {
 };
 
 /// [key] as its store keeps it: a synced cut's sheets are ONE paper — the
-/// conte's block handwriting and the timesheet's pages are kept under the
-/// sync's canonical cut ([LayerLinkRegistry.syncCanonicalOf]), the same
-/// block, the same page. [key] itself for any other.
+/// conte's block handwriting, the timesheet's pages and the envelope's boxes
+/// are kept under the sync's canonical cut
+/// ([LayerLinkRegistry.syncCanonicalOf]), the same block, the same page, the
+/// same box. [key] itself for any other.
 ///
 /// 🗣️I-150-Q3 「실질 같은컷」: what is written on one cut's sheet is on the
-/// other's. The envelope is the owner's already (`cutEnvelopeInkOwner`).
+/// other's. 🗣️I-150-Q4 (유저 2026-11-03): 「동기컷으로서 답하자면 실질
+/// 같은컷이기에 타임라인을 넘어 한 묶음」 — the envelope too. ↩️It was left to
+/// its owner (`cutEnvelopeInkOwner`), which is found in the open timeline
+/// only: a 동기컷's envelope was one per timeline.
 BrushFrameKey syncedSheetInkKey(LayerLinkRegistry registry, BrushFrameKey key) {
   final canonical = registry.syncCanonicalOf(key.cutId);
   if (canonical == key.cutId) {
@@ -224,10 +229,11 @@ BrushFrameKey syncedSheetInkKey(LayerLinkRegistry registry, BrushFrameKey key) {
 }
 
 /// [key]'s sheet ink — the same block of the conte, the same page of the
-/// timesheet — on the cut [cutId] instead; null for a key that is neither.
+/// timesheet, the same box of the envelope — on the cut [cutId] instead;
+/// null for a key that is none of them.
 BrushFrameKey? sheetInkKeyOfCut(BrushFrameKey key, CutId cutId) {
   if (conteInkRowIdOf(key) case final inkId?) {
     return conteInkRowKey(cutId, inkId);
   }
-  return timesheetInkKeyOfCut(key, cutId);
+  return timesheetInkKeyOfCut(key, cutId) ?? envelopeInkKeyOfCut(key, cutId);
 }

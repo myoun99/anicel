@@ -9,6 +9,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/conte/conte_ink_keys.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/envelope/cut_envelope_ink_keys.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -221,13 +222,27 @@ void main() {
     );
   });
 
+  // 🗣️I-150-Q4 (유저 2026-11-03): 「동기컷으로서 답하자면 실질 같은컷이기에
+  // 타임라인을 넘어 한 묶음」 — the envelope with the sheets.
   test('what is written on one cut\'s sheets is on the other\'s — one '
-      'timesheet page, one conte block, kept once', () {
+      'timesheet page, one conte block, one envelope box, kept once', () {
     final s = session();
     final made = linkedIntoANewTimeline(s);
     final caches = s.renderCaches;
     final page = ink();
     final block = ink(seed: 2);
+    final box = ink(seed: 3);
+    caches.envelopeInkStore.storeBakedSurface(
+      envelopeInkBoxKey(made.id, 'cut'),
+      box,
+    );
+    expect(
+      caches.envelopeInkStore.bakedSurfaceOrNull(
+        envelopeInkBoxKey(first, 'cut'),
+      ),
+      same(box),
+    );
+    expect(caches.envelopeInkStore.bakedSurfacesForCut(made.id), isEmpty);
     caches.timesheetInkStore.storeBakedSurface(
       timesheetInkPageKey(made.id, 0),
       page,
@@ -275,9 +290,14 @@ void main() {
     final made = linkedIntoANewTimeline(s);
     final caches = s.renderCaches;
     final page = ink();
+    final box = ink(seed: 3);
     caches.timesheetInkStore.storeBakedSurface(
       timesheetInkPageKey(made.id, 0),
       page,
+    );
+    caches.envelopeInkStore.storeBakedSurface(
+      envelopeInkBoxKey(made.id, 'cut'),
+      box,
     );
     open(s, 0);
 
@@ -289,12 +309,21 @@ void main() {
       [same(page)],
     );
     expect(caches.timesheetInkStore.bakedSurfacesForCut(first), isEmpty);
+    expect(
+      caches.envelopeInkStore.bakedSurfacesForCut(made.id).values,
+      [same(box)],
+      reason: 'the envelope is the paper too',
+    );
 
     s.historyManager.undo();
     expect(projectOf(s).linkRegistry.syncOf(made.id)?.cuts, [first, made.id]);
     expect(
       caches.timesheetInkStore.bakedSurfacesForCut(first).values,
       [same(page)],
+    );
+    expect(
+      caches.envelopeInkStore.bakedSurfacesForCut(first).values,
+      [same(box)],
     );
   });
 
@@ -333,6 +362,10 @@ void main() {
       timesheetInkPageKey(made.id, 0),
       ink(),
     );
+    caches.envelopeInkStore.storeBakedSurface(
+      envelopeInkBoxKey(made.id, 'cut'),
+      ink(seed: 3),
+    );
 
     s.timelineVerbs.duplicateTimeline(projectOf(s).timelines[1].id, 'copy');
 
@@ -341,6 +374,7 @@ void main() {
     expect(projectOf(s).linkRegistry.syncOf(copy.id), isNull);
     expect(projectOf(s).linkRegistry.syncOf(made.id)?.cuts, [first, made.id]);
     expect(caches.timesheetInkStore.bakedSurfacesForCut(copy.id), hasLength(1));
+    expect(caches.envelopeInkStore.bakedSurfacesForCut(copy.id), hasLength(1));
   });
 
   test('linked into a third timeline, the cut joins the same sync — one '
@@ -615,12 +649,14 @@ void main() {
   });
 
   test('동기 해제 of the cut whose id the sheets are kept under leaves the '
-      'other a copy of them — a timesheet page and a conte block', () {
+      'other a copy of them — a timesheet page, a conte block, an envelope '
+      'box', () {
     final s = session();
     final made = linkedIntoANewTimeline(s);
     final caches = s.renderCaches;
     final page = ink();
     final block = ink(seed: 2);
+    final box = ink(seed: 3);
     caches.timesheetInkStore.storeBakedSurface(
       timesheetInkPageKey(made.id, 0),
       page,
@@ -629,9 +665,20 @@ void main() {
       conteInkRowKey(made.id, 'block-1'),
       block,
     );
+    caches.envelopeInkStore.storeBakedSurface(
+      envelopeInkBoxKey(made.id, 'cut'),
+      box,
+    );
     open(s, 0);
 
     s.cutVerbs.unsyncCut(first);
+    for (final cut in [first, made.id]) {
+      expect(
+        caches.envelopeInkStore.bakedSurfacesForCut(cut).values,
+        [same(box)],
+        reason: '$cut',
+      );
+    }
 
     expect(projectOf(s).linkRegistry.syncs, isEmpty);
     for (final cut in [first, made.id]) {

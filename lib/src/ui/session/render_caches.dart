@@ -171,8 +171,10 @@ class RenderCaches {
   /// The cut envelope's ink store — SESSION-owned for the same reason: the
   /// archive persists it, the workspace's controller owns the coordinator.
   /// Its keys carry the OWNER cut's id, so an entry whose cut is gone is
-  /// pruned at LOAD exactly like a conte row's.
-  final BrushFrameStore envelopeInkStore = BrushFrameStore();
+  /// pruned at LOAD exactly like a conte row's — a 동기컷's, its sync's
+  /// canonical ([_onSyncedSheets]).
+  late final BrushFrameStore envelopeInkStore = BrushFrameStore()
+    ..setLinkResolver(_onSyncedSheets);
 
   /// The timesheet's ink store — SESSION-owned like the conte's and the
   /// envelope's (유저 2026-09-26: 「다 통일해줘. 기능은 어차피 생길수있어」):
@@ -182,8 +184,9 @@ class RenderCaches {
   late final BrushFrameStore timesheetInkStore = BrushFrameStore()
     ..setLinkResolver(_onSyncedSheets);
 
-  /// A 동기컷's sheets are one paper ([syncedSheetInkKey]): the conte's and
-  /// the timesheet's handwriting resolve to the sync's canonical cut, read
+  /// A 동기컷's sheets are one paper ([syncedSheetInkKey]): the conte's,
+  /// the timesheet's and the envelope's handwriting resolve to the sync's
+  /// canonical cut, read
   /// off the CURRENT project's table on every resolve, as the drawings'
   /// link resolver reads it.
   BrushFrameKey _onSyncedSheets(BrushFrameKey key) => switch (_project
