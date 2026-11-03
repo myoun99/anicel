@@ -433,8 +433,12 @@ if(NOT ANDROID AND NOT IOS)
   # against the published header, without the /utf-8 the app's own sources
   # need — so a change here that breaks the plugin a maker starts from fails
   # the engine's build and its pins (an_fx_plugin_answers_through_the_engine).
+  # The app's build reads this file through the plugin's symlink
+  # (windows/flutter/ephemeral/.plugin_symlinks/qa_native), where three
+  # levels up is not the repository — so the climb starts from the real path.
+  get_filename_component(qa_native_real_dir "${CMAKE_CURRENT_LIST_DIR}" REALPATH)
   add_library(qa_fx_sdk_example SHARED
-    "${CMAKE_CURRENT_LIST_DIR}/../../../sdk/fx/example/shadow.c")
+    "${qa_native_real_dir}/../../../sdk/fx/example/shadow.c")
   target_include_directories(qa_fx_sdk_example PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}")
   set_target_properties(qa_fx_sdk_example PROPERTIES
